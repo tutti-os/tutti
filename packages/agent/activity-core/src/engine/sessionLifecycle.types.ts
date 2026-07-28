@@ -1,6 +1,6 @@
 import type {
+  AgentActivityDurableMessage,
   AgentActivityInteraction,
-  AgentActivityMessage,
   AgentActivitySession,
   AgentActivityTurn,
   AgentActivityTurnCancelResponse
@@ -134,7 +134,7 @@ export interface SessionHistoryAuthoritativeSnapshotReceivedIntent {
   childSessions: readonly AgentActivitySessionInput[];
   editRetry?: AgentActivityEditRetryAvailability;
   historyRevision: number;
-  messages: readonly AgentActivityMessage[];
+  messages: readonly AgentActivityDurableMessage[];
   session: AgentActivitySessionInput;
   liveTurnId?: string;
   sessionMessageWindows?: readonly (AgentActivitySessionMessageWindow & {

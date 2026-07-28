@@ -86,6 +86,43 @@ test("projects message deltas and clears them on authoritative deletion", () => 
   harness.engine.dispose();
 });
 
+test("authoritative history drops a terminal optimistic row from a retracted Turn", () => {
+  const harness = createHarness();
+  harness.coordinator.ingestEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "message_delta",
+    data: {
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      messageId: "retracted-message",
+      turnId: "retracted-turn",
+      role: "assistant",
+      kind: "text",
+      occurredAtUnixMs: 10,
+      completedAtUnixMs: 11,
+      status: "completed",
+      content: { operation: "set", value: "old answer" }
+    }
+  });
+
+  assert.equal(
+    harness.coordinator.project(harness.readCanonicalSnapshot())
+      .sessionMessagesById["session-1"]?.length,
+    1
+  );
+
+  harness.coordinator.reconcileAuthoritativeHistory("session-1", [], []);
+
+  assert.equal(
+    harness.coordinator.project(harness.readCanonicalSnapshot())
+      .sessionMessagesById["session-1"]?.length,
+    0
+  );
+  harness.coordinator.dispose();
+  harness.engine.dispose();
+});
+
 test("reconnect hydrates the workspace, priority session, and cached messages", () => {
   const harness = createHarness();
   harness.engine.dispatch({

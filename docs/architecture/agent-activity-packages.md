@@ -228,6 +228,10 @@ and client-submit identity are both absent from effective history; unresolved
 requests and turnless controls remain. Historical Turns are projection truth,
 not live attention signals. Files changed by a retracted Turn remain real
 filesystem effects and are not compensated by this renderer replacement.
+The daemon Session-detail projection must therefore read effective Turns;
+complete `ListSessionTurns` results remain available only to audit-oriented
+queries. Terminal message-delta overlays use the same effective Turn and
+client-submit identities when authoritative history makes omission meaningful.
 
 It does not own:
 

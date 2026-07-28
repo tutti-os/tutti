@@ -38,6 +38,43 @@ test("state reconcile applies one mapped aggregate without reading messages", as
   );
 });
 
+test("authoritative history reconcile replaces effective messages and cleans the optimistic overlay", async () => {
+  const effectiveMessage = message({
+    messageId: "replacement-message",
+    turnId: "replacement-turn",
+    version: 2
+  });
+  const root = session("root-1", { messageVersion: 2 });
+  const harness = createHarness({
+    getSessionDetail: async () => sessionDetail(root),
+    listSessionMessages: async (input) =>
+      input.order === "desc"
+        ? page([effectiveMessage], false, 2)
+        : page([], false, 2)
+  });
+
+  const result = await harness.executor.execute({
+    ...command("state_and_messages"),
+    authoritativeMessages: true
+  });
+
+  assert.equal(result.status, "applied");
+  assert.deepEqual(
+    harness
+      .project()
+      .sessionMessagesById["root-1"]?.map((candidate) => candidate.messageId),
+    ["replacement-message"]
+  );
+  assert.deepEqual(harness.reconciledAuthoritativeHistories, [
+    {
+      agentSessionId: "root-1",
+      messageIds: ["replacement-message"],
+      turnIds: []
+    }
+  ]);
+  assert.deepEqual(harness.reconciledOverlays, []);
+});
+
 test("messages reconcile uses newest-page and records its server boundary", async () => {
   const requests: MessageRequest[] = [];
   const harness = createHarness({
@@ -451,12 +488,24 @@ function createHarness(
     }
   });
   const reconciledOverlays: string[] = [];
+  const reconciledAuthoritativeHistories: Array<{
+    agentSessionId: string;
+    messageIds: string[];
+    turnIds: string[];
+  }> = [];
   const executor = createAgentActivitySessionReconcileExecutor({
     childMessageHydration,
     engine,
     ...(options.isAvailable ? { isAvailable: options.isAvailable } : {}),
     isSessionDeleted: options.isSessionDeleted ?? (() => false),
     port,
+    reconcileAuthoritativeHistory: (agentSessionId, messages, turns) => {
+      reconciledAuthoritativeHistories.push({
+        agentSessionId,
+        messageIds: messages.map((message) => message.messageId),
+        turnIds: turns.map((turn) => turn.turnId)
+      });
+    },
     reconcileOptimisticMessages: (agentSessionId) => {
       reconciledOverlays.push(agentSessionId);
     },
@@ -474,6 +523,7 @@ function createHarness(
     },
     executor,
     project: () => projector(engine.getSnapshot()),
+    reconciledAuthoritativeHistories,
     reconciledOverlays
   };
 }

@@ -106,6 +106,7 @@ test("terminal turn observation always verifies state and messages", () => {
     {
       agentSessionId: "session-1",
       commandId: "session:reconcile:session-1:1",
+      live: true,
       scope: "state_and_messages",
       timeoutMs: 30_000,
       type: "session/reconcile",
@@ -339,6 +340,7 @@ test("required history revision stays pending until a composite authoritative sn
       agentSessionId: "session-1",
       authoritativeMessages: true,
       commandId: "session:reconcile:session-1:1",
+      live: false,
       requiredHistoryRevision: 4,
       scope: "state_and_messages",
       timeoutMs: 30_000,

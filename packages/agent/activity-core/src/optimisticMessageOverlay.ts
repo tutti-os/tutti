@@ -9,7 +9,8 @@ import {
 } from "./merge.ts";
 import type {
   AgentActivityMessage,
-  AgentActivityMessageSemantics
+  AgentActivityMessageSemantics,
+  AgentActivityTurn
 } from "./types.ts";
 
 export interface AgentActivityOptimisticApplyResult {
@@ -42,6 +43,19 @@ export interface AgentActivityOptimisticMessageOverlay {
     canonicalMessages: readonly AgentActivityMessage[]
   ): void;
   /**
+   * Replaces one Session from an authoritative effective-history snapshot.
+   *
+   * Unlike an ordinary read, omission is meaningful after history replacement:
+   * a terminal optimistic row is removed when neither its Turn nor stable
+   * client-submit identity remains in effective history. Turnless controls stay
+   * projected until another explicit lifecycle boundary removes the Session.
+   */
+  reconcileAuthoritativeHistory(
+    scope: AgentActivityOptimisticMessageScope,
+    canonicalMessages: readonly AgentActivityMessage[],
+    effectiveTurns: readonly AgentActivityTurn[]
+  ): void;
+  /**
    * Drops all cached state for one Session when the host removes or rebinds
    * that Session. A stream discontinuity should instead complete an
    * authoritative read and call reconcile so a confirmed optimistic terminal
@@ -64,6 +78,22 @@ export function createAgentActivityOptimisticMessageOverlay(): AgentActivityOpti
   const optimistic = new Map<string, OptimisticEntry>();
   const canonical = new Map<string, AgentActivityMessage>();
 
+  function replaceCanonicalBase(
+    scope: AgentActivityOptimisticMessageScope,
+    messages: readonly AgentActivityMessage[]
+  ): {
+    normalized: AgentActivityMessage[];
+    prefix: string;
+  } {
+    const normalized = normalizeCanonicalMessages(scope, messages);
+    const prefix = scopePrefix(scope);
+    deleteScopeEntries(canonical, prefix);
+    for (const message of normalized) {
+      canonical.set(messageKey(message), cloneMessage(message));
+    }
+    return { normalized, prefix };
+  }
+
   return {
     apply(event) {
       if (event.eventType !== "message_delta") {
@@ -73,13 +103,7 @@ export function createAgentActivityOptimisticMessageOverlay(): AgentActivityOpti
     },
 
     reconcile(scope, messages) {
-      const normalized = normalizeCanonicalMessages(scope, messages);
-      const prefix = scopePrefix(scope);
-      deleteScopeEntries(canonical, prefix);
-      for (const message of normalized) {
-        const key = messageKey(message);
-        canonical.set(key, cloneMessage(message));
-      }
+      const { prefix } = replaceCanonicalBase(scope, messages);
       for (const [key, entry] of optimistic) {
         if (!key.startsWith(prefix)) {
           continue;
@@ -89,6 +113,46 @@ export function createAgentActivityOptimisticMessageOverlay(): AgentActivityOpti
           !entry.explicitlyTerminal ||
           (canonicalMessage !== undefined &&
             isTerminalMessage(canonicalMessage))
+        ) {
+          optimistic.delete(key);
+        }
+      }
+    },
+
+    reconcileAuthoritativeHistory(scope, messages, effectiveTurns) {
+      const { normalized, prefix } = replaceCanonicalBase(scope, messages);
+      const effectiveTurnIds = new Set<string>();
+      for (const turn of effectiveTurns) {
+        if (turn.agentSessionId !== scope.agentSessionId) {
+          throw new Error(
+            "effective Agent activity Turn is outside the optimistic overlay scope"
+          );
+        }
+        const turnId = turn.turnId.trim();
+        if (turnId) effectiveTurnIds.add(turnId);
+      }
+      const effectiveClientSubmitIds = new Set(
+        normalized
+          .map(clientSubmitId)
+          .filter((value): value is string => value !== null)
+      );
+      for (const [key, entry] of optimistic) {
+        if (!key.startsWith(prefix)) continue;
+        const canonicalMessage = canonical.get(key);
+        if (
+          !entry.explicitlyTerminal ||
+          (canonicalMessage !== undefined &&
+            isTerminalMessage(canonicalMessage))
+        ) {
+          optimistic.delete(key);
+          continue;
+        }
+        const turnId = entry.message.turnId?.trim() ?? "";
+        if (!turnId) continue;
+        const submitId = clientSubmitId(entry.message);
+        if (
+          !effectiveTurnIds.has(turnId) &&
+          (submitId === null || !effectiveClientSubmitIds.has(submitId))
         ) {
           optimistic.delete(key);
         }
@@ -264,6 +328,11 @@ function recordValue(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (cloneJSONValue(value) as Record<string, unknown>)
     : null;
+}
+
+function clientSubmitId(message: AgentActivityMessage): string | null {
+  const value = message.payload.clientSubmitId;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function utf8ByteLength(value: string): number {

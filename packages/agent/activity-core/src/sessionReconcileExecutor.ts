@@ -14,7 +14,8 @@ import type {
   AgentActivityDurableMessage,
   AgentActivityMessage,
   AgentActivityMessagePage,
-  AgentActivitySession
+  AgentActivitySession,
+  AgentActivityTurn
 } from "./types.ts";
 
 const MESSAGE_PAGE_SIZE = 100;
@@ -86,6 +87,11 @@ export interface CreateAgentActivitySessionReconcileExecutorInput {
   isSessionDeleted(agentSessionId: string): boolean;
   onTrace?(event: AgentActivitySessionReconcileTrace): void;
   port: AgentActivitySessionReconcilePort;
+  reconcileAuthoritativeHistory(
+    agentSessionId: string,
+    canonicalMessages: readonly AgentActivityDurableMessage[],
+    effectiveTurns: readonly AgentActivityTurn[]
+  ): void;
   reconcileOptimisticMessages(agentSessionId: string): void;
   workspaceId: string;
 }
@@ -331,7 +337,10 @@ export function createAgentActivitySessionReconcileExecutor(
       if (pageIndex === 0) {
         anchorLatestVersion = normalizeVersion(page.latestVersion);
       }
-      latestVersion = Math.max(latestVersion, normalizeVersion(page.latestVersion));
+      latestVersion = Math.max(
+        latestVersion,
+        normalizeVersion(page.latestVersion)
+      );
       messages.push(...page.messages);
       if (!page.hasMore || page.messages.length === 0) break;
       if (pageIndex === MAX_MESSAGE_PAGES - 1) {
@@ -373,7 +382,10 @@ export function createAgentActivitySessionReconcileExecutor(
         );
       }
     }
-    latestVersion = Math.max(latestVersion, latestMessageVersion(tail.messages));
+    latestVersion = Math.max(
+      latestVersion,
+      latestMessageVersion(tail.messages)
+    );
     return {
       hasMore: false,
       latestVersion,
@@ -420,7 +432,10 @@ export function createAgentActivitySessionReconcileExecutor(
           ) {
             continue;
           }
-          const filtered = withoutDeletedChildren(after, input.isSessionDeleted);
+          const filtered = withoutDeletedChildren(
+            after,
+            input.isSessionDeleted
+          );
           const latestTurnId = filtered.session.latestTurn?.turnId.trim() ?? "";
           const liveTurn = filtered.turns.find(
             (turn) => turn.turnId.trim() === latestTurnId
@@ -464,7 +479,11 @@ export function createAgentActivitySessionReconcileExecutor(
             status: "applied",
             type: "detailApply"
           });
-          input.reconcileOptimisticMessages(agentSessionId);
+          input.reconcileAuthoritativeHistory(
+            agentSessionId,
+            page.messages,
+            filtered.turns
+          );
           return {
             affectedSessionIds: detailSessionIds(filtered),
             appliedMessages: page.messages,

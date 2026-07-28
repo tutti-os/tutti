@@ -16,6 +16,7 @@ type TurnStore interface {
 	GetTurn(context.Context, string, string, string) (agentactivitybiz.Turn, bool, error)
 	GetSession(context.Context, string, string) (agentactivitybiz.Session, bool, error)
 	ListSessionTurns(context.Context, string, string) ([]agentactivitybiz.Turn, error)
+	ListEffectiveSessionTurns(context.Context, string, string) ([]agentactivitybiz.Turn, error)
 	ListSessionInteractions(context.Context, agentactivitybiz.ListSessionInteractionsInput) ([]agentactivitybiz.Interaction, error)
 	ListLatestTurns(context.Context, string, []string) (map[string]agentactivitybiz.Turn, error)
 	ListLatestTurnInteractions(context.Context, string, []string) (map[string][]agentactivitybiz.Interaction, error)

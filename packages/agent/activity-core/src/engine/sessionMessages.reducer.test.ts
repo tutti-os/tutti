@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { AgentActivityMessage } from "../types.ts";
+import type { AgentActivityDurableMessage } from "../types.ts";
 import {
   createInitialSessionMessagesState,
   sessionMessagesReducer,
@@ -8,11 +8,11 @@ import {
 } from "./sessionMessages.reducer.ts";
 
 function message(
-  overrides: Partial<AgentActivityMessage> & {
+  overrides: Partial<AgentActivityDurableMessage> & {
     messageId: string;
     agentSessionId: string;
   }
-): AgentActivityMessage {
+): AgentActivityDurableMessage {
   return {
     workspaceId: "workspace-1",
     role: "assistant",

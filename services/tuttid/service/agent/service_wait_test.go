@@ -138,6 +138,10 @@ func (r *waitRuntime) ListSessionTurns(_ context.Context, workspaceID string, se
 	return []agentactivitybiz.Turn{turn}, nil
 }
 
+func (r *waitRuntime) ListEffectiveSessionTurns(ctx context.Context, workspaceID string, sessionID string) ([]agentactivitybiz.Turn, error) {
+	return r.ListSessionTurns(ctx, workspaceID, sessionID)
+}
+
 func (r *waitRuntime) GetTurn(_ context.Context, workspaceID string, sessionID string, turnID string) (agentactivitybiz.Turn, bool, error) {
 	turn, ok := r.persistedTurn(workspaceID, sessionID)
 	return turn, ok && turn.TurnID == turnID, nil

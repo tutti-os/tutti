@@ -80,6 +80,9 @@ func (*Store) upsertAgentMessageTx(
 		return existing, true, nil
 	}
 	if ok && protectExisting {
+		if agentMessageSubmitProvenanceReplay(existing, message, input.Semantics) {
+			return existing, true, nil
+		}
 		return Message{}, false, fmt.Errorf(
 			"workspace agent activity message %q conflicts with durable submit provenance",
 			input.MessageID,
@@ -159,6 +162,38 @@ func agentMessageProjectionAlreadyApplied(
 		strings.TrimSpace(existing.Kind) == strings.TrimSpace(projected.Kind) &&
 		strings.TrimSpace(existing.Status) == strings.TrimSpace(projected.Status) &&
 		reflect.DeepEqual(existing.Payload, projected.Payload)
+}
+
+// A runtime's initial user-message report and the Host's post-Exec provenance
+// barrier can race to persist the same client submit. Their stable semantic
+// envelope is identical, while transport metadata such as sequence and
+// timestamps may differ between reports. Treat that as an idempotent replay
+// without weakening the protected content, identity, or semantics checks.
+func agentMessageSubmitProvenanceReplay(
+	existing Message,
+	projected agentactivityprojection.MessageSnapshot,
+	semantics *MessageSemantics,
+) bool {
+	if strings.TrimSpace(existing.TurnID) != strings.TrimSpace(projected.TurnID) ||
+		strings.TrimSpace(existing.Role) != "user" ||
+		strings.TrimSpace(projected.Role) != "user" ||
+		strings.TrimSpace(existing.Kind) != "text" ||
+		strings.TrimSpace(projected.Kind) != "text" ||
+		strings.TrimSpace(existing.Status) != strings.TrimSpace(projected.Status) ||
+		!reflect.DeepEqual(existing.Semantics, cloneMessageSemantics(semantics)) {
+		return false
+	}
+	existingClientSubmitID := payloadString(existing.Payload, "clientSubmitId")
+	projectedClientSubmitID := payloadString(projected.Payload, "clientSubmitId")
+	if existingClientSubmitID == "" || existingClientSubmitID != projectedClientSubmitID {
+		return false
+	}
+	for _, key := range []string{"content", "contentMode", "displayPrompt", "text"} {
+		if !reflect.DeepEqual(existing.Payload[key], projected.Payload[key]) {
+			return false
+		}
+	}
+	return true
 }
 
 func getAgentMessageForUpdate(

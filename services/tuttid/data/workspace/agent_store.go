@@ -342,6 +342,10 @@ func (s *SQLiteStore) ListSessionTurns(ctx context.Context, workspaceID string, 
 	return s.agentReadStore().ListSessionTurns(ctx, workspaceID, agentSessionID)
 }
 
+func (s *SQLiteStore) ListEffectiveSessionTurns(ctx context.Context, workspaceID string, agentSessionID string) ([]agentactivitybiz.Turn, error) {
+	return s.agentReadStore().ListEffectiveSessionTurns(ctx, workspaceID, agentSessionID)
+}
+
 func (s *SQLiteStore) ListSessionTurnSummaries(ctx context.Context, input agentactivitybiz.ListSessionTurnSummariesInput) (agentactivitybiz.SessionTurnSummaryPage, error) {
 	return s.agentReadStore().ListSessionTurnSummaries(ctx, input)
 }

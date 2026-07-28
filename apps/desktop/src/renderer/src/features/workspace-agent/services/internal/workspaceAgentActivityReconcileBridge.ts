@@ -726,6 +726,10 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
           ),
         listSessionMessages: (query) => entry.adapter.listSessionMessages(query)
       },
+      reconcileAuthoritativeHistory: (agentSessionId, messages, turns) =>
+        this.eventCoordinator(
+          normalizedWorkspaceId
+        ).reconcileAuthoritativeHistory(agentSessionId, messages, turns),
       reconcileOptimisticMessages: (agentSessionId) =>
         this.reconcileOptimisticMessages(normalizedWorkspaceId, agentSessionId),
       workspaceId: normalizedWorkspaceId

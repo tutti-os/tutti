@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestReportActivityStateTreatsJSONEquivalentExistingMessageAsSubmitProvenanceReplay(t *testing.T) {
+func TestReportActivityStateTreatsSemanticExistingMessageAsSubmitProvenanceReplay(t *testing.T) {
 	t.Parallel()
 
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
@@ -28,7 +28,8 @@ func TestReportActivityStateTreatsJSONEquivalentExistingMessageAsSubmitProvenanc
 		MessageID: "client-submit:user:submit-1", TurnID: "turn-1",
 		Role: "user", Kind: "text", Status: "completed", OccurredAtUnixMS: 3,
 		Payload: map[string]any{
-			"clientSubmitId": "submit-1",
+			"clientSubmitId":          "submit-1",
+			"clientSubmittedAtUnixMs": int64(2),
 			"content": []map[string]any{{
 				"type": "text",
 				"text": "hello",
@@ -48,12 +49,26 @@ func TestReportActivityStateTreatsJSONEquivalentExistingMessageAsSubmitProvenanc
 		t.Fatalf("ordinary report result=%#v error=%v", ordinary, err)
 	}
 
+	provenanceMessage := message
+	provenanceMessage.OccurredAtUnixMS = 4
+	provenanceMessage.Payload = map[string]any{
+		"clientSubmitId": "submit-1",
+		"content": []map[string]any{{
+			"type": "text",
+			"text": "hello",
+		}},
+		"contentMode":             "snapshot",
+		"clientSubmittedAtUnixMs": int64(4),
+		"sequence":                int64(9),
+		"source":                  "host",
+		"text":                    "hello",
+	}
 	provenance, err := store.ReportActivityState(ctx, ActivityStateReport{
 		Session: SessionStateReport{
 			WorkspaceID: "ws-1", AgentSessionID: "session-1", Origin: "runtime",
 			Provider: "codex", ProviderSessionID: "provider-1", Status: "active", CurrentPhase: "working", OccurredAtUnixMS: 4,
 		},
-		Messages: []MessageUpdate{message},
+		Messages: []MessageUpdate{provenanceMessage},
 	})
 	if err != nil {
 		t.Fatalf("submit provenance replay error=%v", err)
@@ -70,7 +85,10 @@ func TestReportActivityStateTreatsJSONEquivalentExistingMessageAsSubmitProvenanc
 		t.Fatalf("canonical content block=%#v", content[0])
 	}
 	if sequence, ok := provenance.Messages.Messages[0].Payload["sequence"].(float64); !ok || sequence != 1 {
-		t.Fatalf("canonical sequence=%#v, want float64(1)", provenance.Messages.Messages[0].Payload["sequence"])
+		t.Fatalf("canonical sequence=%#v, want original float64(1)", provenance.Messages.Messages[0].Payload["sequence"])
+	}
+	if submittedAt, ok := provenance.Messages.Messages[0].Payload["clientSubmittedAtUnixMs"].(float64); !ok || submittedAt != 2 {
+		t.Fatalf("canonical client submitted time=%#v, want original float64(2)", provenance.Messages.Messages[0].Payload["clientSubmittedAtUnixMs"])
 	}
 
 	conflicting := message
@@ -91,6 +109,18 @@ func TestReportActivityStateTreatsJSONEquivalentExistingMessageAsSubmitProvenanc
 	})
 	if err == nil || !strings.Contains(err.Error(), "conflicts with durable submit provenance") {
 		t.Fatalf("conflicting submit provenance error=%v", err)
+	}
+	conflictingSemantics := provenanceMessage
+	conflictingSemantics.Semantics = &MessageSemantics{TurnSettling: true}
+	_, err = store.ReportActivityState(ctx, ActivityStateReport{
+		Session: SessionStateReport{
+			WorkspaceID: "ws-1", AgentSessionID: "session-1", Origin: "runtime",
+			Provider: "codex", ProviderSessionID: "provider-1", Status: "active", CurrentPhase: "working", OccurredAtUnixMS: 6,
+		},
+		Messages: []MessageUpdate{conflictingSemantics},
+	})
+	if err == nil || !strings.Contains(err.Error(), "conflicts with durable submit provenance") {
+		t.Fatalf("semantically conflicting submit provenance error=%v", err)
 	}
 	session, ok, err := store.GetSession(ctx, "ws-1", "session-1")
 	if err != nil || !ok || session.MessageVersion != 1 {

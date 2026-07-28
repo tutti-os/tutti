@@ -9,6 +9,7 @@ import (
 
 type Repository = agentstore.Repository
 type SessionTurnSummaryReader = agentstore.SessionTurnSummaryReader
+type EffectiveSessionTurnReader = agentstore.EffectiveSessionTurnReader
 
 type ClearSessionsResult = agentstore.ClearSessionsResult
 type PurgeDeletedSessionsInput = agentstore.PurgeDeletedSessionsInput

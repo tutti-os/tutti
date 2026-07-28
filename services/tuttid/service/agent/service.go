@@ -623,7 +623,7 @@ func (s *Service) GetDetailWithProjection(
 		return SessionDetail{}, err
 	}
 	if s.TurnStore != nil {
-		turns, err := s.TurnStore.ListSessionTurns(ctx, strings.TrimSpace(workspaceID), session.ID)
+		turns, err := s.TurnStore.ListEffectiveSessionTurns(ctx, strings.TrimSpace(workspaceID), session.ID)
 		if err != nil {
 			return SessionDetail{}, err
 		}

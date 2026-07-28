@@ -171,7 +171,7 @@ func TestProtocolV2ProjectionRestoresSettledLatestTurnWithoutActiveTurn(t *testi
 	}
 }
 
-func TestGetDetailReturnsAllDurableSessionTurns(t *testing.T) {
+func TestGetDetailReturnsEffectiveSessionTurns(t *testing.T) {
 	t.Parallel()
 	runtime := newFakeRuntime()
 	runtime.sessions["workspace-1:session-1"] = ProviderRuntimeSession{
@@ -187,19 +187,20 @@ func TestGetDetailReturnsAllDurableSessionTurns(t *testing.T) {
 	}
 	service := newIsolatedAgentService(runtime)
 	service.TurnStore = failingTurnStore{
-		latestTurn:   turns[1],
-		sessionTurns: turns,
+		latestTurn:            turns[1],
+		sessionTurns:          turns,
+		effectiveSessionTurns: turns[1:],
 	}
 
 	detail, err := service.GetDetail(context.Background(), "workspace-1", "session-1")
 	if err != nil {
 		t.Fatalf("GetDetail() error = %v", err)
 	}
-	if len(detail.Turns) != 2 || detail.Turns[0].TurnID != "turn-1" || detail.Turns[1].TurnID != "turn-2" {
+	if len(detail.Turns) != 1 || detail.Turns[0].TurnID != "turn-2" {
 		t.Fatalf("detail turns = %#v", detail.Turns)
 	}
-	if got := detail.Turns[1].FileChanges["files"]; got == nil {
-		t.Fatalf("second turn file changes = %#v", detail.Turns[1].FileChanges)
+	if got := detail.Turns[0].FileChanges["files"]; got == nil {
+		t.Fatalf("effective turn file changes = %#v", detail.Turns[0].FileChanges)
 	}
 }
 
@@ -261,6 +262,8 @@ type failingTurnStore struct {
 	interactions               []agentactivitybiz.Interaction
 	sessionTurns               []agentactivitybiz.Turn
 	sessionTurnsErr            error
+	effectiveSessionTurns      []agentactivitybiz.Turn
+	effectiveSessionTurnsErr   error
 }
 
 func (s failingTurnStore) GetLatestTurn(context.Context, string, string) (agentactivitybiz.Turn, bool, error) {
@@ -275,6 +278,13 @@ func (s failingTurnStore) ListSessionTurns(context.Context, string, string) ([]a
 		return []agentactivitybiz.Turn{}, nil
 	}
 	return []agentactivitybiz.Turn{s.latestTurn}, nil
+}
+
+func (s failingTurnStore) ListEffectiveSessionTurns(ctx context.Context, workspaceID string, agentSessionID string) ([]agentactivitybiz.Turn, error) {
+	if s.effectiveSessionTurns != nil || s.effectiveSessionTurnsErr != nil {
+		return s.effectiveSessionTurns, s.effectiveSessionTurnsErr
+	}
+	return s.ListSessionTurns(ctx, workspaceID, agentSessionID)
 }
 
 func (s failingTurnStore) ListLatestTurns(context.Context, string, []string) (map[string]agentactivitybiz.Turn, error) {
