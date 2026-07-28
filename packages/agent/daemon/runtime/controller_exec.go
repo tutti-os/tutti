@@ -220,6 +220,7 @@ type GoalControlInput struct {
 	GoalRevision       int64
 	RepairEpoch        int64
 	SubmissionMetadata map[string]any
+	RequireLive        bool
 }
 
 type GoalControlResult struct {
@@ -247,8 +248,14 @@ func (c *Controller) GoalControl(ctx context.Context, input GoalControlInput) (G
 	if !ok {
 		return GoalControlResult{}, fmt.Errorf("agent provider does not support goals")
 	}
-	if err := c.ensureLiveAdapterSession(ctx, session, adapter); err != nil {
-		return GoalControlResult{}, err
+	if input.RequireLive {
+		if probe, ok := adapter.(LiveSessionProbeAdapter); ok && !probe.HasLiveSession(session) {
+			return GoalControlResult{}, ErrSessionDisconnected
+		}
+	} else {
+		if err := c.ensureLiveAdapterSession(ctx, session, adapter); err != nil {
+			return GoalControlResult{}, err
+		}
 	}
 	adapterResult, err := goalAdapter.ApplyGoal(ctx, session, GoalApplyInput{
 		Action: input.Action, Objective: input.Objective,

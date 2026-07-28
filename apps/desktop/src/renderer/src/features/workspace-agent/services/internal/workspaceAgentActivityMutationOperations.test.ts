@@ -132,6 +132,8 @@ function activitySession(): AgentActivitySession {
     agentSessionId: "session-1",
     agentTargetId: "local:codex",
     capabilities: null,
+    lifecycleCapabilities: { fork: false, forkThroughTurn: false },
+    forkedFrom: null,
     createdAtUnixMs: 1,
     cwd: "/workspace",
     endedAtUnixMs: null,

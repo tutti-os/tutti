@@ -2,10 +2,12 @@ import {
   workspaceAgentSessionStatus,
   type AgentActivityAdapter,
   type AgentActivitySession,
+  type AgentActivitySessionDetailSnapshot,
   type AgentPromptContentBlock
 } from "@tutti-os/agent-activity-core";
 import {
   agentActivityMessageFromTuttidMessage,
+  agentActivitySessionDetailFromTuttid as mapAgentActivitySessionDetailFromTuttid,
   agentActivitySessionFromTuttidSession as mapAgentActivitySessionFromTuttidSession,
   agentActivityTuttiModeActivationFromTuttid
 } from "@tutti-os/agent-activity-tuttid-adapter";
@@ -20,8 +22,11 @@ import type {
   CreateWorkspaceAgentSessionRequest,
   SendWorkspaceAgentSessionInputRequest,
   WorkspaceAgentSession,
+  WorkspaceAgentSessionDetailResponse,
+  WorkspaceAgentSessionForkOperation,
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
+import { isTuttidProtocolError } from "@tutti-os/client-tuttid-ts";
 import type { DesktopRuntimeApi } from "@preload/types";
 import { getActiveLocale } from "../../../i18n/runtime.ts";
 import { wrapLocalizedTuttidErrorIfSpecific } from "../../../lib/desktopErrors.ts";
@@ -45,6 +50,21 @@ export function agentActivitySessionFromTuttidSession(
   return mapAgentActivitySessionFromTuttidSession(workspaceId, session, {
     currentUserId: DESKTOP_AGENT_GUI_CURRENT_USER_ID
   });
+}
+
+export function agentActivitySessionDetailFromTuttid(
+  workspaceId: string,
+  expectedAgentSessionId: string,
+  detail: WorkspaceAgentSessionDetailResponse
+): AgentActivitySessionDetailSnapshot {
+  return mapAgentActivitySessionDetailFromTuttid(
+    workspaceId,
+    expectedAgentSessionId,
+    detail,
+    {
+      currentUserId: DESKTOP_AGENT_GUI_CURRENT_USER_ID
+    }
+  );
 }
 
 export function createDesktopAgentActivityAdapter({
@@ -83,7 +103,8 @@ export function createDesktopAgentActivityAdapter({
             beforeVersion: input.beforeVersion,
             order: input.order,
             limit: input.limit
-          }
+          },
+          { signal: input.signal }
         );
         const messages = response.messages.map((message) =>
           agentActivityMessageFromTuttidMessage(input.workspaceId, message)
@@ -461,7 +482,133 @@ export function createDesktopAgentActivityAdapter({
         { pinned: input.pinned }
       );
       return agentActivitySessionFromTuttidSession(input.workspaceId, session);
+    },
+    async forkSession(input) {
+      let startedOperation: WorkspaceAgentSessionForkOperation;
+      try {
+        startedOperation = await tuttidClient.forkWorkspaceAgentSession(
+          input.workspaceId,
+          input.sourceAgentSessionId,
+          {
+            point: { type: "throughTurn", turnId: input.turnId },
+            requestId: input.requestId,
+            targetAgentSessionId: input.targetAgentSessionId
+          },
+          { signal: input.signal }
+        );
+      } catch (error) {
+        if (isTuttidProtocolError(error)) throw error;
+        throw sessionForkDeliveryUnknownError(error);
+      }
+      const operation = await waitForWorkspaceAgentSessionForkOperation(
+        tuttidClient,
+        input.workspaceId,
+        startedOperation,
+        input.signal
+      );
+      const result = agentActivityForkSessionResult(
+        input.workspaceId,
+        operation
+      );
+      if (result.status === "committed") {
+        // A committed, unacknowledged operation recovered by boundary owns the
+        // real child identity. The Engine must adopt that durable request and
+        // target instead of manufacturing the caller's new target locally.
+        return result;
+      }
+      return {
+        ...result,
+        // Unknown recovery has no canonical child to adopt. Keep transport
+        // correlation scoped to the current Engine record while operationId
+        // identifies the original durable attempt.
+        requestId: input.requestId,
+        sourceAgentSessionId: input.sourceAgentSessionId,
+        targetAgentSessionId: input.targetAgentSessionId,
+        turnId: input.turnId
+      };
     }
+  };
+}
+
+async function waitForWorkspaceAgentSessionForkOperation(
+  client: TuttidClient,
+  workspaceId: string,
+  startedOperation: WorkspaceAgentSessionForkOperation,
+  signal?: AbortSignal
+): Promise<WorkspaceAgentSessionForkOperation> {
+  let operation = startedOperation;
+  while (operation.status === "accepted") {
+    if (signal?.aborted) {
+      throw sessionForkDeliveryUnknownError(
+        signal.reason ?? new Error("session fork polling aborted")
+      );
+    }
+    try {
+      operation = await client.getWorkspaceAgentSessionForkOperation(
+        workspaceId,
+        operation.operationId,
+        { signal }
+      );
+    } catch (error) {
+      throw sessionForkDeliveryUnknownError(error);
+    }
+    if (operation.status === "accepted") {
+      try {
+        await waitForSessionForkPoll(signal);
+      } catch (error) {
+        throw sessionForkDeliveryUnknownError(error);
+      }
+    }
+  }
+  return operation;
+}
+
+function waitForSessionForkPoll(signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason ?? new Error("session fork polling aborted"));
+      return;
+    }
+    const timeout = setTimeout(finish, 500);
+    function finish(): void {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    }
+    function abort(): void {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", abort);
+      reject(signal?.reason ?? new Error("session fork polling aborted"));
+    }
+    signal?.addEventListener("abort", abort, { once: true });
+  });
+}
+
+function sessionForkDeliveryUnknownError(error: unknown): Error {
+  return Object.assign(
+    new Error(
+      error instanceof Error
+        ? error.message
+        : "Unable to reconcile session fork operation."
+    ),
+    { reason: "agent_session_fork_delivery_unknown" }
+  );
+}
+
+function agentActivityForkSessionResult(
+  workspaceId: string,
+  operation: WorkspaceAgentSessionForkOperation
+) {
+  return {
+    error: operation.error,
+    operationId: operation.operationId,
+    requestId: operation.requestId,
+    session: operation.session
+      ? agentActivitySessionFromTuttidSession(workspaceId, operation.session)
+      : null,
+    sourceAgentSessionId: operation.sourceAgentSessionId,
+    status: operation.status,
+    targetAgentSessionId: operation.targetAgentSessionId,
+    turnId: operation.point.turnId
   };
 }
 

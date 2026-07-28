@@ -1,7 +1,11 @@
+import { canonicalInteractionKey } from "@tutti-os/agent-activity-core";
 import type {
   TuttidClient,
+  WorkspaceAgentInteraction,
   WorkspaceAgentSession,
+  WorkspaceAgentSessionDetailResponse,
   WorkspaceAgentSessionMessage,
+  WorkspaceAgentTurn,
   WorkspaceSummary
 } from "@tutti-os/client-tuttid-ts";
 import { AgentDirectoryService } from "./agentDirectoryService";
@@ -271,6 +275,144 @@ describe("WorkspaceActivityService", () => {
     service.dispose();
   });
 
+  test("keeps Interaction submission and availability in Engine-owned state", async () => {
+    let interactiveCalls = 0;
+    const interaction = createInteraction();
+    const turn: WorkspaceAgentTurn = {
+      ...createTurn("session-1", interaction.turnId),
+      phase: "waiting",
+      settledAtUnixMs: null
+    };
+    const session = {
+      ...createSession(),
+      activeTurn: turn,
+      activeTurnId: turn.turnId,
+      latestTurn: turn,
+      latestTurnInteractions: [interaction],
+      pendingInteractions: [interaction]
+    };
+    const client = createClient({
+      interactive: async () => {
+        interactiveCalls += 1;
+        return new Promise<never>(() => undefined);
+      },
+      listMessages: emptyMessagePage,
+      session: () => session
+    });
+    const service = createService(client);
+
+    await service.start();
+    await flushAsyncWork();
+    service.respondToInteraction(interaction, { optionId: "allow-once" });
+    service.respondToInteraction(interaction, { optionId: "allow-once" });
+    await flushAsyncWork();
+
+    const interactionKey = canonicalInteractionKey(
+      interaction.agentSessionId,
+      interaction.turnId,
+      interaction.requestId
+    );
+    expect(interactiveCalls).toBe(1);
+    expect(service.getSnapshot().interactionStates[interactionKey]).toEqual({
+      failed: false,
+      runtimeAvailable: true,
+      submitting: true
+    });
+
+    service.pause();
+    expect(service.getSnapshot().interactionStates[interactionKey]).toEqual({
+      failed: false,
+      runtimeAvailable: false,
+      submitting: true
+    });
+    service.dispose();
+  });
+
+  test("retries a failed Interaction with the exact Engine-owned response", async () => {
+    const interaction = createInteraction();
+    const requests: Record<string, unknown>[] = [];
+    let attempt = 0;
+    const turn: WorkspaceAgentTurn = {
+      ...createTurn("session-1", interaction.turnId),
+      phase: "waiting",
+      settledAtUnixMs: null
+    };
+    const session = {
+      ...createSession(),
+      activeTurn: turn,
+      activeTurnId: turn.turnId,
+      latestTurn: turn,
+      latestTurnInteractions: [interaction],
+      pendingInteractions: [interaction]
+    };
+    const client = createClient({
+      interactive: async (_workspaceId, _agentSessionId, _requestId, input) => {
+        requests.push(input);
+        attempt += 1;
+        if (attempt === 1) throw new Error("temporary failure");
+        return session;
+      },
+      listMessages: emptyMessagePage,
+      session: () => session
+    });
+    const service = createService(client);
+
+    await service.start();
+    await flushAsyncWork();
+    service.respondToInteraction(interaction, { optionId: "allow-once" });
+    await flushAsyncWork();
+
+    const interactionKey = canonicalInteractionKey(
+      interaction.agentSessionId,
+      interaction.turnId,
+      interaction.requestId
+    );
+    expect(
+      service.getSnapshot().interactionStates[interactionKey]?.failed
+    ).toBe(true);
+
+    service.respondToInteraction(interaction);
+    await flushAsyncWork();
+
+    expect(requests).toEqual([
+      {
+        action: null,
+        optionId: "allow-once",
+        payload: null,
+        turnId: interaction.turnId
+      },
+      {
+        action: null,
+        optionId: "allow-once",
+        payload: null,
+        turnId: interaction.turnId
+      }
+    ]);
+    service.dispose();
+  });
+
+  test("fails closed when a response does not match a canonical pending Interaction", async () => {
+    let interactiveCalls = 0;
+    const client = createClient({
+      interactive: async () => {
+        interactiveCalls += 1;
+        return createSession();
+      },
+      listMessages: emptyMessagePage
+    });
+    const service = createService(client);
+
+    await service.start();
+    await flushAsyncWork();
+    service.respondToInteraction(createInteraction(), {
+      optionId: "allow-once"
+    });
+    await flushAsyncWork();
+
+    expect(interactiveCalls).toBe(0);
+    service.dispose();
+  });
+
   test("routes pin changes through the canonical session mutation command", async () => {
     let session = createSession();
     const pinRequests: boolean[] = [];
@@ -358,6 +500,33 @@ describe("WorkspaceActivityService", () => {
     service.dispose();
   });
 
+  test("applies a remote session deletion without letting the rail revive it", async () => {
+    let liveListener: ((delivery: AgentLiveDelivery) => void) | null = null;
+    let session: WorkspaceAgentSession | null = createSession();
+    const client = createClient({
+      listMessages: emptyMessagePage,
+      session: () => session
+    });
+    const service = createService(client, {
+      deviceLink: createLiveDeviceLink((listener) => {
+        liveListener = listener;
+      })
+    });
+
+    await service.start();
+    await flushAsyncWork();
+    session = null;
+    liveListener!({
+      agentSessionId: "session-1",
+      kind: "session_deleted"
+    });
+
+    expect(service.getSnapshot().activity.sessions).toEqual([]);
+    expect(service.getSnapshot().selectedAgentSessionId).toBeNull();
+
+    service.dispose();
+  });
+
   test("projects live message deltas and disables fallback message polling", async () => {
     const clock = new RecordingClock();
     let liveListener: ((delivery: AgentLiveDelivery) => void) | null = null;
@@ -416,6 +585,378 @@ describe("WorkspaceActivityService", () => {
         ?.payload.text
     ).toBe("message-1!");
     expect(clock.activeDelays()).not.toContain(1_000);
+
+    service.dispose();
+  });
+
+  test("applies a continuous live Session audit without a redundant detail read", async () => {
+    let liveListener: ((delivery: AgentLiveDelivery) => void) | null = null;
+    let detailReads = 0;
+    const client = createClient({
+      detail: async () => {
+        detailReads += 1;
+        return {
+          childSessions: [],
+          session: createSession(),
+          turns: []
+        };
+      },
+      listMessages: async (_workspaceId, agentSessionId) => ({
+        agentSessionId,
+        hasMore: false,
+        latestVersion: 1,
+        messages: [createMessage("message-1", 1)]
+      })
+    });
+    const deviceLink = {
+      closeLink: async () => undefined,
+      requestAgentHTTP: async () => ({
+        body: "",
+        errorCode: "",
+        headers: {},
+        protocolEpoch: 1,
+        status: 204
+      }),
+      subscribeAgentLive: (
+        _workspaceId: string,
+        listener: (delivery: AgentLiveDelivery) => void
+      ) => {
+        liveListener = listener;
+        return { close() {} };
+      }
+    } satisfies DeviceLinkPort;
+    const service = createService(client, { deviceLink });
+
+    await service.start();
+    await flushAsyncWork();
+    liveListener!({
+      event: {
+        agentSessionId: "session-1",
+        data: {
+          agentSessionId: "session-1",
+          audit: {
+            auditId: "audit-1",
+            occurredAtUnixMs: 2,
+            payload: { text: "/goal clear" },
+            role: "user",
+            version: 2
+          },
+          eventType: "session_audit",
+          workspaceId: workspace.id
+        },
+        eventType: "session_audit",
+        workspaceId: workspace.id
+      },
+      kind: "event"
+    });
+    await flushAsyncWork();
+
+    expect(
+      service
+        .getSnapshot()
+        .activity.sessionMessagesById["session-1"]?.map(
+          (message) => message.messageId
+        )
+    ).toEqual(["message-1", "audit-1"]);
+    expect(detailReads).toBe(0);
+
+    service.dispose();
+  });
+
+  test("runs an authoritative live reconcile while an older page is in flight", async () => {
+    let liveListener: ((delivery: AgentLiveDelivery) => void) | null = null;
+    let resolveOlder: ((value: ReturnType<typeof messagePage>) => void) | null =
+      null;
+    const queries: Array<Record<string, unknown>> = [];
+    const client = createClient({
+      detail: async () => ({
+        childSessions: [],
+        session: createSession(),
+        turns: []
+      }),
+      listMessages: async (_workspaceId, agentSessionId, query) => {
+        queries.push(query);
+        if ("beforeVersion" in query) {
+          return new Promise((resolve) => {
+            resolveOlder = resolve;
+          });
+        }
+        const version = queries.length === 1 ? 5 : 6;
+        return {
+          ...messagePage(agentSessionId, `message-${version}`, version),
+          hasMore: version === 5
+        };
+      }
+    });
+    const service = createService(client, {
+      deviceLink: createLiveDeviceLink((listener) => {
+        liveListener = listener;
+      })
+    });
+
+    await service.start();
+    await flushAsyncWork();
+    const older = service.loadOlderMessages();
+    await flushAsyncWork();
+    liveListener!(sessionDiscontinuity());
+    await flushAsyncWork();
+
+    expect(queries).toEqual([
+      { limit: 100, order: "desc" },
+      { beforeVersion: 5, limit: 100, order: "desc" },
+      { afterVersion: 0, order: "asc" }
+    ]);
+    expect(
+      service
+        .getSnapshot()
+        .activity.sessionMessagesById["session-1"]?.some(
+          (message) => message.version === 6
+        )
+    ).toBe(true);
+
+    resolveOlder!(messagePage("session-1", "message-1", 1));
+    await older;
+    service.dispose();
+  });
+
+  test("runs an authoritative live reconcile while incremental polling is in flight", async () => {
+    const clock = new RecordingClock();
+    let liveListener: ((delivery: AgentLiveDelivery) => void) | null = null;
+    let resolveIncremental:
+      | ((value: ReturnType<typeof messagePage>) => void)
+      | null = null;
+    const queries: Array<Record<string, unknown>> = [];
+    const client = createClient({
+      detail: async () => ({
+        childSessions: [],
+        session: createSession(),
+        turns: []
+      }),
+      listMessages: async (_workspaceId, agentSessionId, query) => {
+        queries.push(query);
+        if (query.afterVersion === 5) {
+          return new Promise((resolve) => {
+            resolveIncremental = resolve;
+          });
+        }
+        const version = queries.length === 1 ? 5 : 7;
+        return messagePage(agentSessionId, `message-${version}`, version);
+      }
+    });
+    const service = createService(client, {
+      clock,
+      deviceLink: createLiveDeviceLink((listener) => {
+        liveListener = listener;
+      })
+    });
+
+    await service.start();
+    await flushAsyncWork();
+    clock.runNext(1_000);
+    await flushAsyncWork();
+    liveListener!(sessionDiscontinuity());
+    await flushAsyncWork();
+
+    expect(queries).toEqual([
+      { limit: 100, order: "desc" },
+      { afterVersion: 5, order: "asc" },
+      { afterVersion: 0, order: "asc" }
+    ]);
+    expect(
+      service
+        .getSnapshot()
+        .activity.sessionMessagesById["session-1"]?.some(
+          (message) => message.version === 7
+        )
+    ).toBe(true);
+
+    resolveIncremental!(messagePage("session-1", "message-6", 6));
+    await flushAsyncWork();
+    service.dispose();
+  });
+
+  test("surfaces and clears authoritative message reconcile failures", async () => {
+    let liveListener: ((delivery: AgentLiveDelivery) => void) | null = null;
+    let failReconcile = true;
+    let messageVersion = 1;
+    const client = createClient({
+      detail: async () => ({
+        childSessions: [],
+        session: createSession(),
+        turns: []
+      }),
+      listMessages: async (_workspaceId, agentSessionId, query) => {
+        if ("afterVersion" in query && failReconcile) {
+          throw new Error("message reconcile failed");
+        }
+        messageVersion += 1;
+        return messagePage(
+          agentSessionId,
+          `message-${messageVersion}`,
+          messageVersion
+        );
+      }
+    });
+    const service = createService(client, {
+      deviceLink: createLiveDeviceLink((listener) => {
+        liveListener = listener;
+      })
+    });
+
+    await service.start();
+    await flushAsyncWork();
+    liveListener!(sessionDiscontinuity());
+    await flushAsyncWork();
+    expect(service.getSnapshot().errorCode).toBe("request_failed");
+
+    failReconcile = false;
+    service.pause();
+    service.resume();
+    await flushAsyncWork();
+    expect(service.getSnapshot().errorCode).toBeNull();
+
+    service.dispose();
+  });
+
+  test("loads a newly selected Session without waiting for the previous Session request", async () => {
+    let resolveFirst: ((value: ReturnType<typeof messagePage>) => void) | null =
+      null;
+    const requestedSessionIds: string[] = [];
+    const second = { ...createSession(), id: "session-2", title: "Second" };
+    const client = createClient({
+      listMessages: async (_workspaceId, agentSessionId) => {
+        requestedSessionIds.push(agentSessionId);
+        if (agentSessionId === "session-1") {
+          return new Promise((resolve) => {
+            resolveFirst = resolve;
+          });
+        }
+        return messagePage(agentSessionId, "message-2", 2);
+      },
+      sessions: () => [createSession(), second]
+    });
+    const service = createService(client);
+
+    await service.start();
+    await flushAsyncWork();
+    service.selectSession("session-2");
+    await flushAsyncWork();
+
+    expect(requestedSessionIds).toEqual(["session-1", "session-2"]);
+    expect(
+      service.getSnapshot().activity.sessionMessagesById["session-2"]?.[0]
+        ?.messageId
+    ).toBe("message-2");
+
+    resolveFirst!(messagePage("session-1", "message-1", 1));
+    await flushAsyncWork();
+    service.dispose();
+  });
+
+  test("reconciles one authoritative detail aggregate with child Sessions", async () => {
+    let liveListener: ((delivery: AgentLiveDelivery) => void) | null = null;
+    const root = createSession();
+    const childInteraction = {
+      ...createInteraction(),
+      agentSessionId: "child-1",
+      requestId: "child-request-1",
+      turnId: "child-turn-1"
+    };
+    const childTurn: WorkspaceAgentTurn = {
+      ...createTurn("child-1", childInteraction.turnId),
+      phase: "waiting",
+      settledAtUnixMs: null
+    };
+    const child = {
+      ...createChildSession(root.id),
+      activeTurn: childTurn,
+      activeTurnId: childTurn.turnId,
+      latestTurn: childTurn,
+      latestTurnInteractions: [childInteraction],
+      pendingInteractions: [childInteraction]
+    };
+    const client = createClient({
+      detail: async () => ({
+        childSessions: [child],
+        session: root,
+        turns: [createTurn(root.id, "turn-root-1")]
+      }),
+      listMessages: emptyMessagePage
+    });
+    const deviceLink = {
+      closeLink: async () => undefined,
+      requestAgentHTTP: async () => ({
+        body: "",
+        errorCode: "",
+        headers: {},
+        protocolEpoch: 1,
+        status: 204
+      }),
+      subscribeAgentLive: (
+        _workspaceId: string,
+        listener: (delivery: AgentLiveDelivery) => void
+      ) => {
+        liveListener = listener;
+        return { close() {} };
+      }
+    } satisfies DeviceLinkPort;
+    const service = createService(client, { deviceLink });
+
+    await service.start();
+    await flushAsyncWork();
+    liveListener!({
+      kind: "discontinuity",
+      reason: "canonical_update",
+      reconcileKeys: [
+        {
+          agentSessionId: root.id,
+          kind: "session",
+          workspaceId: workspace.id
+        }
+      ]
+    });
+    await flushAsyncWork();
+    await flushAsyncWork();
+
+    expect(
+      service
+        .getSnapshot()
+        .activity.sessions.map((session) => session.agentSessionId)
+    ).toEqual(expect.arrayContaining([root.id, child.id]));
+    expect(
+      service
+        .getSnapshot()
+        .activity.sessions.find(
+          (session) => session.agentSessionId === child.id
+        )
+    ).toEqual(
+      expect.objectContaining({
+        kind: "child",
+        parentAgentSessionId: root.id,
+        rootAgentSessionId: root.id,
+        userId: "account-user-1"
+      })
+    );
+    const childInteractionKey = canonicalInteractionKey(
+      childInteraction.agentSessionId,
+      childInteraction.turnId,
+      childInteraction.requestId
+    );
+    expect(
+      service.getSnapshot().interactionStates[childInteractionKey]
+        ?.runtimeAvailable
+    ).toBe(true);
+
+    service.pause();
+    expect(
+      service.getSnapshot().interactionStates[childInteractionKey]
+        ?.runtimeAvailable
+    ).toBe(false);
+    service.resume();
+    expect(
+      service.getSnapshot().interactionStates[childInteractionKey]
+        ?.runtimeAvailable
+    ).toBe(true);
 
     service.dispose();
   });
@@ -523,6 +1064,16 @@ function createClient(options: {
     workspaceId: string,
     input: { agentSessionId: string }
   ): Promise<WorkspaceAgentSession>;
+  detail?(
+    workspaceId: string,
+    agentSessionId: string
+  ): Promise<WorkspaceAgentSessionDetailResponse>;
+  interactive?(
+    workspaceId: string,
+    agentSessionId: string,
+    requestId: string,
+    input: Record<string, unknown>
+  ): Promise<WorkspaceAgentSession>;
   deleteBatch?(
     workspaceId: string,
     input: { sessionIds: string[] }
@@ -558,6 +1109,7 @@ function createClient(options: {
     input: { title: string }
   ): Promise<WorkspaceAgentSession>;
   session?(): WorkspaceAgentSession | null;
+  sessions?(): WorkspaceAgentSession[];
   settings?(
     workspaceId: string,
     agentSessionId: string,
@@ -573,38 +1125,53 @@ function createClient(options: {
     createWorkspaceAgentSession: options.create,
     deleteWorkspaceAgentSessionsBatch: options.deleteBatch,
     getAgentProviderComposerOptions: options.composerOptions,
+    getWorkspaceAgentSession: options.detail,
     listAgentTargets: async () => ({ targets: options.targets ?? [] }),
     listWorkspaceAgentSessionMessages: options.listMessages,
     listWorkspaceAgentSessionSections: async () => {
-      const session =
-        options.session === undefined ? createSession() : options.session();
-      if (!session) {
+      const sessions =
+        options.sessions?.() ??
+        (() => {
+          const session =
+            options.session === undefined ? createSession() : options.session();
+          return session ? [session] : [];
+        })();
+      if (sessions.length === 0) {
         return {
           pinned: { hasMore: false, sessions: [], totalCount: 0 },
           sections: [],
           workspaceId: workspace.id
         };
       }
-      const pinned = session.pinnedAtUnixMs
-        ? { hasMore: false, sessions: [session], totalCount: 1 }
-        : { hasMore: false, sessions: [], totalCount: 0 };
+      const pinnedSessions = sessions.filter(
+        (session) => session.pinnedAtUnixMs != null
+      );
+      const conversationSessions = sessions.filter(
+        (session) => session.pinnedAtUnixMs == null
+      );
       return {
-        pinned,
-        sections: session.pinnedAtUnixMs
-          ? []
-          : [
-              {
-                hasMore: false,
-                kind: "conversations" as const,
-                sectionKey: "conversations",
-                sessions: [session],
-                totalCount: 1
-              }
-            ],
+        pinned: {
+          hasMore: false,
+          sessions: pinnedSessions,
+          totalCount: pinnedSessions.length
+        },
+        sections:
+          conversationSessions.length === 0
+            ? []
+            : [
+                {
+                  hasMore: false,
+                  kind: "conversations" as const,
+                  sectionKey: "conversations",
+                  sessions: conversationSessions,
+                  totalCount: conversationSessions.length
+                }
+              ],
         workspaceId: workspace.id
       };
     },
     sendWorkspaceAgentSessionInput: options.send,
+    submitWorkspaceAgentInteractive: options.interactive,
     updateWorkspaceAgentSessionPin: options.pin,
     updateWorkspaceAgentSessionSettings: options.settings,
     updateWorkspaceAgentSessionTitle: options.rename
@@ -652,12 +1219,15 @@ function createSession(): WorkspaceAgentSession {
     createdAtUnixMs: 1,
     cwd: "/",
     endedAtUnixMs: null,
+    forkedFrom: null,
     goal: null,
     id: "session-1",
     imported: false,
     kind: "root",
     latestTurn: null,
     latestTurnInteractions: [],
+    lifecycleCapabilities: { fork: false, forkThroughTurn: false },
+    messageVersion: 0,
     parentAgentSessionId: null,
     parentToolCallId: null,
     parentTurnId: null,
@@ -679,6 +1249,57 @@ function createSession(): WorkspaceAgentSession {
   };
 }
 
+function createChildSession(rootAgentSessionId: string): WorkspaceAgentSession {
+  return {
+    ...createSession(),
+    id: "child-1",
+    kind: "child",
+    parentAgentSessionId: rootAgentSessionId,
+    parentToolCallId: "tool-call-1",
+    parentTurnId: "turn-root-1",
+    rootAgentSessionId,
+    rootTurnId: "turn-root-1",
+    title: "Child"
+  };
+}
+
+function createTurn(
+  agentSessionId: string,
+  turnId: string
+): WorkspaceAgentTurn {
+  return {
+    agentSessionId,
+    completedCommand: null,
+    error: null,
+    fileChanges: null,
+    origin: "user_prompt",
+    outcome: null,
+    phase: "settled",
+    settledAtUnixMs: 3,
+    startedAtUnixMs: 2,
+    turnId,
+    updatedAtUnixMs: 3
+  };
+}
+
+function createInteraction(): WorkspaceAgentInteraction {
+  return {
+    agentSessionId: "session-1",
+    createdAtUnixMs: 3,
+    input: {
+      options: [{ label: "Allow", optionId: "allow-once" }]
+    },
+    kind: "approval",
+    metadata: {},
+    output: null,
+    requestId: "request-1",
+    status: "pending",
+    toolName: "Approval",
+    turnId: "turn-1",
+    updatedAtUnixMs: 3
+  };
+}
+
 function createMessage(
   messageId: string,
   version: number
@@ -696,10 +1317,28 @@ function createMessage(
   };
 }
 
+function messagePage(
+  agentSessionId: string,
+  messageId: string,
+  version: number
+) {
+  return {
+    agentSessionId,
+    hasMore: false,
+    latestVersion: version,
+    messages: [
+      {
+        ...createMessage(messageId, version),
+        agentSessionId
+      }
+    ]
+  };
+}
+
 async function flushAsyncWork(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
+  for (let turn = 0; turn < 12; turn += 1) {
+    await Promise.resolve();
+  }
 }
 
 class ManualClock implements ClockPort {
@@ -716,14 +1355,15 @@ class RecordingClock implements ClockPort {
   private readonly tasks: Array<{
     canceled: boolean;
     delayMs: number;
+    task: () => void;
   }> = [];
 
   now(): number {
     return 1_000;
   }
 
-  schedule(delayMs: number): { cancel(): void } {
-    const task = { canceled: false, delayMs };
+  schedule(delayMs: number, callback: () => void): { cancel(): void } {
+    const task = { canceled: false, delayMs, task: callback };
     this.tasks.push(task);
     return {
       cancel: () => {
@@ -737,4 +1377,46 @@ class RecordingClock implements ClockPort {
       .filter((task) => !task.canceled)
       .map((task) => task.delayMs);
   }
+
+  runNext(delayMs: number): void {
+    const task = this.tasks.find(
+      (candidate) => !candidate.canceled && candidate.delayMs === delayMs
+    );
+    if (!task) throw new Error(`no active ${delayMs}ms task`);
+    task.canceled = true;
+    task.task();
+  }
+}
+
+function createLiveDeviceLink(
+  onSubscribe: (listener: (delivery: AgentLiveDelivery) => void) => void
+): DeviceLinkPort {
+  return {
+    closeLink: async () => undefined,
+    requestAgentHTTP: async () => ({
+      body: "",
+      errorCode: "",
+      headers: {},
+      protocolEpoch: 1,
+      status: 204
+    }),
+    subscribeAgentLive: (_workspaceId, listener) => {
+      onSubscribe(listener);
+      return { close() {} };
+    }
+  };
+}
+
+function sessionDiscontinuity(): AgentLiveDelivery {
+  return {
+    kind: "discontinuity",
+    reason: "canonical_update",
+    reconcileKeys: [
+      {
+        agentSessionId: "session-1",
+        kind: "session",
+        workspaceId: workspace.id
+      }
+    ]
+  };
 }

@@ -7,7 +7,7 @@ import {
 import {
   AgentAnalyticsErrorCode,
   agentAnalyticsSuccessFields
-} from "./agent-error-fields.ts";
+} from "../../workspace-agent/agentAnalyticsError.ts";
 import type { ReporterEventInput } from "../services/reporterService.interface.ts";
 
 class AgentTestReporter extends BaseAnalyticsReporter<{

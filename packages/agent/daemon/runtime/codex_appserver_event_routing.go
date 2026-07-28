@@ -29,7 +29,10 @@ func (a *CodexAppServerAdapter) appServerNotificationRoute(
 		if len(added) > 0 {
 			a.scheduleChildNicknameFetches(session, added)
 		}
-		return appServerNotificationRoute{events: events}
+		return appServerNotificationRoute{
+			events:               events,
+			registeredChildCount: len(added),
+		}
 	}
 
 	child, ok := a.appServerChildThread(session.AgentSessionID, eventThreadID)
@@ -72,11 +75,12 @@ func (a *CodexAppServerAdapter) appServerNotificationRoute(
 		a.storeAppServerChildThread(session.AgentSessionID, eventThreadID, child)
 	}
 	return appServerNotificationRoute{
-		session:    eventSession,
-		child:      child,
-		turnID:     child.turnID,
-		normalizer: child.normalizer,
-		events:     prefixEvents,
+		session:              eventSession,
+		child:                child,
+		turnID:               child.turnID,
+		normalizer:           child.normalizer,
+		events:               prefixEvents,
+		registeredChildCount: len(added),
 	}
 }
 
@@ -131,21 +135,13 @@ func (a *CodexAppServerAdapter) rememberAppServerChildThreads(
 	parentTurnID string,
 	item map[string]any,
 ) ([]string, []activityshared.Event) {
-	if asString(item["type"]) != "collabAgentToolCall" {
+	spawn, ok := appServerChildSpawnEvidenceFromItem(item)
+	if !ok {
 		return nil, nil
 	}
-	childThreadIDs := appServerReceiverThreadIDs(item["receiverThreadIds"])
-	if len(childThreadIDs) == 0 {
-		return nil, nil
-	}
+	childThreadIDs := spawn.childThreadIDs
 	parentThreadID = strings.TrimSpace(parentThreadID)
-	parentItemID := strings.TrimSpace(asString(item["id"]))
-	// Wait/close cards reference existing children but are not delegation
-	// edges. A durable child is created only from the spawn card that supplies
-	// its immutable parent tool-call id.
-	if appServerAgentControlToolName(asString(item["tool"])) != "" {
-		return nil, nil
-	}
+	parentItemID := spawn.parentItemID
 	rootAgentSessionID = strings.TrimSpace(rootAgentSessionID)
 	rootTurnID = strings.TrimSpace(rootTurnID)
 	parentAgentSessionID = strings.TrimSpace(parentAgentSessionID)
@@ -238,6 +234,49 @@ func (a *CodexAppServerAdapter) rememberAppServerChildThreads(
 		}
 	}
 	return added, events
+}
+
+type appServerChildSpawnEvidence struct {
+	parentItemID   string
+	childThreadIDs []string
+}
+
+func appServerChildSpawnEvidenceFromItem(item map[string]any) (appServerChildSpawnEvidence, bool) {
+	parentItemID := strings.TrimSpace(asString(item["id"]))
+	if parentItemID == "" {
+		return appServerChildSpawnEvidence{}, false
+	}
+	switch asString(item["type"]) {
+	case "collabAgentToolCall":
+		// Wait/close cards reference existing children but are not delegation
+		// edges. A durable child is created only from a spawn-shaped card that
+		// supplies its immutable parent tool-call id.
+		if appServerAgentControlToolName(asString(item["tool"])) != "" {
+			return appServerChildSpawnEvidence{}, false
+		}
+		childThreadIDs := appServerReceiverThreadIDs(item["receiverThreadIds"])
+		if len(childThreadIDs) == 0 {
+			return appServerChildSpawnEvidence{}, false
+		}
+		return appServerChildSpawnEvidence{
+			parentItemID:   parentItemID,
+			childThreadIDs: childThreadIDs,
+		}, true
+	case "subAgentActivity":
+		if asString(item["kind"]) != "started" {
+			return appServerChildSpawnEvidence{}, false
+		}
+		childThreadID := strings.TrimSpace(asString(item["agentThreadId"]))
+		if childThreadID == "" {
+			return appServerChildSpawnEvidence{}, false
+		}
+		return appServerChildSpawnEvidence{
+			parentItemID:   parentItemID,
+			childThreadIDs: []string{childThreadID},
+		}, true
+	default:
+		return appServerChildSpawnEvidence{}, false
+	}
 }
 
 func (a *CodexAppServerAdapter) appServerChildThread(agentSessionID string, childThreadID string) (*codexAppServerThreadContext, bool) {

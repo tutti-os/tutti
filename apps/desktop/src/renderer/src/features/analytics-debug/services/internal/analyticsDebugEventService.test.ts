@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { TrackEvent } from "@tutti-os/client-tuttid-ts";
+import type { AnalyticsDebugEventSnapshot } from "@tutti-os/analytics-debug";
 import { AnalyticsDebugEventService } from "./analyticsDebugEventService.ts";
 
 test("analytics debug event service records immutable snapshots and notifies listeners", () => {
   const service = new AnalyticsDebugEventService();
-  const snapshots: TrackEvent[][] = [];
+  const snapshots: AnalyticsDebugEventSnapshot[] = [];
   const unsubscribe = service.subscribe(() => {
     snapshots.push(service.getSnapshot());
   });
@@ -13,7 +13,7 @@ test("analytics debug event service records immutable snapshots and notifies lis
   const params = { source: "dashboard" };
   service.recordEvents([
     {
-      client_ts: 1749124800000,
+      clientTS: 1749124800000,
       name: "workspace.opened",
       params
     }
@@ -22,7 +22,7 @@ test("analytics debug event service records immutable snapshots and notifies lis
 
   assert.deepEqual(service.getSnapshot(), [
     {
-      client_ts: 1749124800000,
+      clientTS: 1749124800000,
       name: "workspace.opened",
       params: {
         source: "dashboard"
@@ -39,7 +39,7 @@ test("analytics debug event service records immutable snapshots and notifies lis
   unsubscribe();
   service.recordEvents([
     {
-      client_ts: 1749124800001,
+      clientTS: 1749124800001,
       name: "screen.viewed"
     }
   ]);
@@ -89,7 +89,7 @@ test("analytics debug event service records final daemon events from event strea
   assert.equal(subscribedTopic, "analytics.debug.reported");
   assert.deepEqual(service.getSnapshot(), [
     {
-      client_ts: 1749124800000,
+      clientTS: 1749124800000,
       name: "workspace.opened",
       params: {
         app_version: "0.0.0",

@@ -96,6 +96,7 @@ type appServerAdapterConfig struct {
 	authRequiredMessage  string
 	commandNetworkAccess bool
 	rateLimits           bool
+	nativeSessionFork    bool
 }
 
 // CodexAppServerAdapterOptions controls host-owned app-server execution policy
@@ -137,6 +138,8 @@ const defaultCodexAppServerGoalContinuationGraceWindow = 1500 * time.Millisecond
 // generation and must never inherit the session's latest desired Goal identity.
 const defaultCodexAppServerGoalProvenanceGraceWindow = 250 * time.Millisecond
 
+const codexAppServerExecutableBase = "codex"
+
 type CodexAppServerAdapter struct {
 	transport                  ProcessTransport
 	host                       HostMetadata
@@ -172,6 +175,14 @@ type CodexAppServerAdapter struct {
 	// per adapter instance (each instance owns one command).
 	cliVersionMu     sync.Mutex
 	cliVersionCached string
+	// forkCapabilityMu serializes historical initialize probes. The bounded LRU
+	// is keyed by a SHA-256 launch fingerprint (including the resolved
+	// executable identity), so it retains no prepared environment material;
+	// unverifiable wrapper launches are never cached. Live sessions always use
+	// their exact process user-agent.
+	forkCapabilityMu       sync.Mutex
+	forkCapabilityVersions map[string][3]int
+	forkCapabilityOrder    []string
 	// startupModelRetryBackoffs is the wait schedule between background model/list
 	// refetches when the initial probe came back empty; the slice length bounds
 	// the number of retries. Nil falls back to defaultStartupModelRetryBackoffs.
@@ -227,6 +238,10 @@ type codexAppServerSession struct {
 	// immutable operation identity is still current, so a newer set/clear
 	// invalidates delayed work without rebinding it to the latest Goal.
 	goalContinuationClaim *codexGoalContinuationClaim
+	// fencedGoalIdentities contains durable Host revocations restored whenever
+	// the runtime session resumes. Exact identity matching preserves later
+	// Owner-authored Goal generations and ordinary user turns.
+	fencedGoalIdentities map[goalOperationIdentity]struct{}
 	// provenanceDegraded is fail-closed for the lifetime of this provider
 	// session. Once bounded evidence can no longer preserve ambiguity, no later
 	// notification may rebuild a partial cache and become adoptable.

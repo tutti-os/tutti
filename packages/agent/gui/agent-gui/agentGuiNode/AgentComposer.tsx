@@ -47,6 +47,7 @@ import {
   agentComposerDraftPrompt
 } from "./model/agentComposerDraft";
 import type { AgentGUIComposerContentType } from "./engagement/agentGUIEngagement.types";
+import { projectAgentGUIComposerGateControls } from "./model/agentGuiComposerGate";
 import {
   groupAgentExternalPromptEntryInsertions,
   resolveAgentExternalPromptEntries
@@ -97,9 +98,10 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     hasCompactableContext = true,
     compactSupported = null,
     availableSkills = EMPTY_PROVIDER_SKILLS,
-    disabled,
+    gate,
+    presentationEditorDisabled,
     disabledReason,
-    submitDisabled,
+    presentationSubmitDisabled,
     tuttiModeActive = false,
     tuttiModeUpdating = false,
     tuttiModeOrchestrationIntensity = 50,
@@ -110,7 +112,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     handoffAgentTargets,
     providerSelectReadonly = false,
     onHandoffConversation,
-    canQueueWhileBusy,
     showStopButton,
     stopDisabled,
     activePrompt,
@@ -153,6 +154,15 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     onRequestGitBranches = null,
     referenceProvenanceFilters = null
   } = props;
+  const {
+    canQueueWhileBusy,
+    editorDisabled: disabled,
+    submissionDisabled: submitDisabled
+  } = projectAgentGUIComposerGateControls({
+    gate,
+    presentationEditorDisabled,
+    presentationSubmitDisabled
+  });
   const draftPrompt = agentComposerDraftPrompt(draftContent);
   const goalDraftObjective = canGoalControl
     ? goalDraftObjectiveFromPrompt(draftPrompt)
@@ -560,7 +570,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     composerControlsHardDisabled,
     isSelectedProjectMissing,
     disabled,
-    canQueueWhileBusy,
     onHandoffConversation,
     handoffLabel,
     handoffMenuLabel,

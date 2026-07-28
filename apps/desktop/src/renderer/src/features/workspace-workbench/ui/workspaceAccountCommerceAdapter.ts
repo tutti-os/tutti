@@ -52,3 +52,25 @@ export function projectWorkspaceAccountCommerce(input: {
     shouldRefresh: true
   };
 }
+
+export function formatWorkspaceAccountCreditsLabel(
+  value: number | string | null | undefined,
+  locale: string
+): string | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value)
+      ? new Intl.NumberFormat(locale).format(value)
+      : null;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const numeric = Number(trimmed);
+  return Number.isFinite(numeric)
+    ? new Intl.NumberFormat(locale).format(numeric)
+    : trimmed;
+}

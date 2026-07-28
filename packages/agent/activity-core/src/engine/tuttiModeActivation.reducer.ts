@@ -192,6 +192,7 @@ function settlePendingCreate(
         {
           agentSessionId: pending.agentSessionId,
           commandId: reconcileCommandId,
+          live: false,
           scope: "state",
           timeoutMs: UPDATE_TIMEOUT_MS,
           type: "session/reconcile",
@@ -321,6 +322,7 @@ function settleUpdate(
           {
             agentSessionId: entry.agentSessionId,
             commandId: `tutti-mode-reconcile:${entry.commandId}`,
+            live: false,
             scope: "state",
             timeoutMs: UPDATE_TIMEOUT_MS,
             type: "session/reconcile",

@@ -15,7 +15,7 @@ const ignoredDirectories = new Set([
   "out"
 ]);
 const ignoredFiles = new Set(["tools/scripts/check-ui-boundaries.mjs"]);
-const ignoredPathPrefixes = [];
+const ignoredPathPrefixes = ["apps/mobile/ios/Pods/"];
 const stagedOnly = process.argv.includes("--staged");
 
 const allowedUISystemSpecifiers = new Set([

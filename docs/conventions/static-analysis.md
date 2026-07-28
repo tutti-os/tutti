@@ -168,6 +168,9 @@ package logs under `.tmp/typecheck-runs`.
 TypeScript package `tsconfig.json` files must not use `baseUrl`; use explicit relative `paths` entries when aliases are needed so the configuration stays compatible with native TypeScript.
 
 The repository-specific UI boundary policy remains in `pnpm check:ui-boundaries`.
+Its full-repository walker excludes `apps/mobile/ios/Pods`, because that
+CocoaPods-generated tree can vendor JavaScript fixtures, SVGs, and icon imports
+that are not Tutti-authored UI source.
 
 Bounded raster UI assets are checked by
 `pnpm check:runtime-image-budgets`. The policy reads image headers and file

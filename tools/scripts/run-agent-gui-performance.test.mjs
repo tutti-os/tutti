@@ -17,6 +17,7 @@ import {
 } from "./agent-gui-window-performance-scenarios.mjs";
 import { summarizeProviderStatusFocusRefresh } from "./agent-provider-status-performance-scenario.mjs";
 import { buildAllProcessTimeProfileArgs } from "./all-process-time-profile.mjs";
+import { prepareConcurrentAgentStreamingWorkbenchSnapshot } from "./agent-gui-concurrent-streaming-performance-scenario.mjs";
 import {
   applyScenarioAssessment,
   findUnknownAgentTargetMigrationIDs,
@@ -194,6 +195,7 @@ test("performance scenario registry exposes renderer and window scenarios", () =
       "session-switch",
       "provider-session-cycle",
       "virtualized-streaming",
+      "concurrent-agent-streaming",
       "virtualized-scroll-locator",
       "virtualized-session-cycle",
       "virtualized-oversized-active-turn",
@@ -216,6 +218,51 @@ test("performance scenario registry exposes renderer and window scenarios", () =
     () => resolveAgentGuiPerformanceScenario("missing"),
     /unknown scenario: missing/
   );
+});
+
+test("concurrent streaming snapshot creates two visible session-scoped AgentGUI windows", () => {
+  const prepared = prepareConcurrentAgentStreamingWorkbenchSnapshot(
+    {
+      activeNodeId: "agent-source",
+      nodeStack: ["terminal-1", "agent-source"],
+      nodes: [
+        {
+          id: "terminal-1",
+          data: { typeId: "terminal" },
+          frame: { x: 0, y: 0, width: 800, height: 600 }
+        },
+        {
+          id: "agent-source",
+          data: {
+            instanceId: "source",
+            typeId: "agent-gui",
+            snapshotNodeState: { agentTargetId: "local:codex" }
+          },
+          frame: { x: 20, y: 30, width: 1400, height: 720 },
+          isMinimized: true
+        }
+      ]
+    },
+    ["session-1", "session-2"]
+  );
+  const agents = prepared.nodes.filter(
+    (node) => node.data.typeId === "agent-gui"
+  );
+
+  assert.equal(agents.length, 2);
+  assert.deepEqual(
+    agents.map((node) => node.data.snapshotNodeState.lastActiveAgentSessionId),
+    ["session-1", "session-2"]
+  );
+  assert.equal(
+    agents.every((node) => node.isMinimized === false),
+    true
+  );
+  assert.equal(
+    agents[0].frame.x + agents[0].frame.width < agents[1].frame.x,
+    true
+  );
+  assert.equal(prepared.activeNodeId, agents[1].id);
 });
 
 test("AgentGUI window stress snapshot creates exact unique mounted windows", () => {

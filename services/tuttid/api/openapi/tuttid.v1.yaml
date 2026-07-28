@@ -3648,6 +3648,125 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/fork:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/AgentSessionID"
+    post:
+      operationId: forkWorkspaceAgentSession
+      tags:
+        - agent-session
+      summary: Fork one workspace agent session at an exact canonical boundary
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForkWorkspaceAgentSessionRequest"
+      responses:
+        "200":
+          description: Terminal workspace agent session fork operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionForkOperationResponse"
+        "202":
+          description: Accepted workspace agent session fork operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionForkOperationResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          description: The source session or requested fork boundary is not forkable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-session-fork-operations/{operationID}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/SessionForkOperationID"
+    get:
+      operationId: getWorkspaceAgentSessionForkOperation
+      tags:
+        - agent-session
+      summary: Get one durable workspace agent session fork operation
+      responses:
+        "200":
+          description: Workspace agent session fork operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionForkOperationResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          description: Agent session fork operation was not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-session-fork-operations/{operationID}/acknowledge:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/SessionForkOperationID"
+    post:
+      operationId: acknowledgeWorkspaceAgentSessionForkOperation
+      tags:
+        - agent-session
+      summary: Acknowledge that a client observed one durable session fork operation
+      description: >
+        Records an explicit client-observed acknowledgement. Reading the
+        operation does not implicitly acknowledge it.
+      responses:
+        "200":
+          description: Acknowledged workspace agent session fork operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionForkOperationResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          description: Agent session fork operation was not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          description: Agent session fork operation cannot be acknowledged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/tutti-mode-activation:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -3842,16 +3961,12 @@ paths:
           name: afterVersion
           required: false
           schema:
-            type: integer
-            format: int64
-            minimum: 0
+            $ref: "#/components/schemas/WorkspaceAgentMessageCursor"
         - in: query
           name: beforeVersion
           required: false
           schema:
-            type: integer
-            format: int64
-            minimum: 0
+            $ref: "#/components/schemas/WorkspaceAgentMessageCursor"
         - in: query
           name: order
           required: false
@@ -5471,6 +5586,13 @@ components:
       schema:
         type: string
         minLength: 1
+    SessionForkOperationID:
+      name: operationID
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
     WorkspaceAppID:
       name: appID
       in: path
@@ -6527,6 +6649,7 @@ components:
             - agent_quick_prompt_not_found
             - agent_quick_prompt_conflict
             - agent_quick_prompt_operation_failed
+            - agent_session_fork_operation_not_found
             - agent_target_not_found
             - model_plan_not_found
             - model_plan_referenced
@@ -10570,6 +10693,166 @@ components:
       enum:
         - root
         - child
+    WorkspaceAgentMessageCursor:
+      type: integer
+      format: int64
+      minimum: 0
+      maximum: 9007199254740991
+      description: >-
+        Per-session durable message change cursor. The upper bound preserves
+        exact integer representation in JavaScript clients.
+    WorkspaceAgentSessionLifecycleCapabilities:
+      type: object
+      additionalProperties: false
+      required:
+        - fork
+        - forkThroughTurn
+      properties:
+        fork:
+          type: boolean
+          description: Whether this exact session can fork its latest settled state.
+        forkThroughTurn:
+          type: boolean
+          description: Whether this exact session can fork through a settled canonical Turn.
+        forkThroughTurnIds:
+          type: array
+          items:
+            type: string
+            minLength: 1
+          description: Canonical Turn ids currently verified against provider-native history.
+        forkThroughTurnIdsKnown:
+          type: boolean
+          description: Whether forkThroughTurnIds is an authoritative provider-history projection.
+    WorkspaceAgentSessionForkThroughTurnPoint:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - turnId
+      properties:
+        type:
+          type: string
+          enum:
+            - throughTurn
+        turnId:
+          type: string
+          minLength: 1
+          description: Exact canonical Turn id included as the final Turn in the fork.
+    WorkspaceAgentSessionForkPoint:
+      oneOf:
+        - $ref: "#/components/schemas/WorkspaceAgentSessionForkThroughTurnPoint"
+      discriminator:
+        propertyName: type
+        mapping:
+          throughTurn: "#/components/schemas/WorkspaceAgentSessionForkThroughTurnPoint"
+    WorkspaceAgentSessionForkLineage:
+      type: object
+      additionalProperties: false
+      required:
+        - sourceAgentSessionId
+        - sourceTurnId
+        - targetTurnId
+        - operationId
+        - forkedAtUnixMs
+      properties:
+        sourceAgentSessionId:
+          type: string
+          minLength: 1
+        sourceTurnId:
+          type: string
+          minLength: 1
+          description: Inclusive canonical Turn boundary in the source Session.
+        targetTurnId:
+          type: string
+          minLength: 1
+          description: Canonical Turn id of that inclusive boundary in the forked Session.
+        operationId:
+          type: string
+          minLength: 1
+        forkedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 1
+    WorkspaceAgentSessionForkOperationStatus:
+      type: string
+      enum:
+        - accepted
+        - committed
+        - failed
+        - unknown
+      description: >-
+        Public durable operation state. accepted collapses the internal
+        prepared, dispatching, and provider-accepted phases.
+    WorkspaceAgentSessionForkOperation:
+      type: object
+      additionalProperties: false
+      required:
+        - operationId
+        - requestId
+        - sourceAgentSessionId
+        - targetAgentSessionId
+        - point
+        - status
+        - session
+        - lineage
+        - error
+      properties:
+        operationId:
+          type: string
+          minLength: 1
+        requestId:
+          type: string
+          minLength: 1
+        sourceAgentSessionId:
+          type: string
+          minLength: 1
+        targetAgentSessionId:
+          type: string
+          minLength: 1
+        point:
+          $ref: "#/components/schemas/WorkspaceAgentSessionForkPoint"
+        status:
+          $ref: "#/components/schemas/WorkspaceAgentSessionForkOperationStatus"
+        session:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentSession"
+          nullable: true
+          description: Complete target Session projection when status is committed.
+        lineage:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentSessionForkLineage"
+          nullable: true
+          description: Durable lineage when status is committed.
+        error:
+          type: string
+          nullable: true
+          description: Durable failure diagnostic for failed or unknown outcomes.
+    WorkspaceAgentSessionForkOperationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - operation
+      properties:
+        operation:
+          $ref: "#/components/schemas/WorkspaceAgentSessionForkOperation"
+    ForkWorkspaceAgentSessionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - targetAgentSessionId
+        - requestId
+        - point
+      properties:
+        targetAgentSessionId:
+          type: string
+          format: uuid
+          description: Caller-stable identity reserved for the forked canonical session.
+        requestId:
+          type: string
+          minLength: 1
+          description: Caller-stable idempotency key for safe retries.
+        point:
+          $ref: "#/components/schemas/WorkspaceAgentSessionForkPoint"
     WorkspaceAgentSession:
       type: object
       additionalProperties: false
@@ -10584,6 +10867,7 @@ components:
         - agentTargetId
         - provider
         - providerSessionId
+        - messageVersion
         - cwd
         - railSectionKey
         - visible
@@ -10601,6 +10885,8 @@ components:
         - latestTurn
         - pendingInteractions
         - capabilities
+        - lifecycleCapabilities
+        - forkedFrom
         - usage
         - goal
         - tuttiModeActivation
@@ -10654,6 +10940,12 @@ components:
         providerSessionId:
           type: string
           nullable: true
+        messageVersion:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentMessageCursor"
+          description: >-
+            Latest accepted per-session message change cursor. This is a
+            high-water mark, not a count of materialized message rows.
         cwd:
           type: string
           nullable: true
@@ -10711,6 +11003,18 @@ components:
           description: >-
             Protocol v2. Daemon-issued capability descriptor; clients must
             branch on capabilities, never on provider identity.
+        lifecycleCapabilities:
+          $ref: "#/components/schemas/WorkspaceAgentSessionLifecycleCapabilities"
+          description: >-
+            Exact-session lifecycle capabilities. Clients must use these flags
+            for Session actions and must not infer support from provider identity.
+        forkedFrom:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentSessionForkLineage"
+          nullable: true
+          description: >-
+            Durable provenance for a user-initiated root Session fork. Null for
+            ordinary root Sessions and provider-native child Sessions.
         usage:
           allOf:
             - $ref: "#/components/schemas/WorkspaceAgentUsage"
@@ -11315,6 +11619,7 @@ components:
           type: integer
           format: int64
           minimum: 1
+          maximum: 9007199254740991
           description: >-
             Stable message presentation order assigned when the durable message
             row is first created. Updating the same message does not change this
@@ -11360,9 +11665,7 @@ components:
           type: integer
           format: int64
         version:
-          type: integer
-          format: int64
-          minimum: 0
+          $ref: "#/components/schemas/WorkspaceAgentMessageCursor"
     WorkspaceAgentSessionMessagesResponse:
       type: object
       additionalProperties: false
@@ -11380,9 +11683,7 @@ components:
           items:
             $ref: "#/components/schemas/WorkspaceAgentSessionMessage"
         latestVersion:
-          type: integer
-          format: int64
-          minimum: 0
+          $ref: "#/components/schemas/WorkspaceAgentMessageCursor"
         hasMore:
           type: boolean
     WorkspaceAgentGeneratedFileEntry:

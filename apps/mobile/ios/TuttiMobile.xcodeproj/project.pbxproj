@@ -19,6 +19,7 @@
 		A10000000000000000000006 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 		A10000000000000000000007 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000001 /* Localizable.strings */; };
 		A10000000000000000000008 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000002 /* InfoPlist.strings */; };
+		A10000000000000000000009 /* AppLifecycleModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* AppLifecycleModule.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -40,6 +41,7 @@
 		A20000000000000000000007 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "TuttiMobile/zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		A20000000000000000000008 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = TuttiMobile/en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A20000000000000000000009 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "TuttiMobile/zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		A20000000000000000000010 /* AppLifecycleModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppLifecycleModule.swift; path = TuttiMobile/AppLifecycleModule.swift; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -60,6 +62,7 @@
 			children = (
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				761780EC2CA45674006654EE /* AppDelegate.swift */,
+				A20000000000000000000010 /* AppLifecycleModule.swift */,
 				A20000000000000000000005 /* DeviceLinkModule.mm */,
 				A20000000000000000000002 /* MobileBrowserAuthBridge.swift */,
 				A20000000000000000000004 /* MobileNativeModules.m */,
@@ -273,6 +276,7 @@
 				A10000000000000000000002 /* MobileBrowserAuthBridge.swift in Sources */,
 				A10000000000000000000003 /* QRCodeScannerViewController.swift in Sources */,
 				A10000000000000000000004 /* MobileNativeModules.m in Sources */,
+				A10000000000000000000009 /* AppLifecycleModule.swift in Sources */,
 				A10000000000000000000005 /* DeviceLinkModule.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

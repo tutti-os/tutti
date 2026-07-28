@@ -123,6 +123,9 @@ export type {
   AgentGUITargetConnectionStatus,
   AgentGUIAgentTarget,
   AgentGUIAgentTargetBadge,
+  AgentGUIAgentTargetInfoRenderContext,
+  AgentGUIAgentTargetInfoRenderer,
+  AgentGUIAgentTargetInfoSurface,
   AgentGUIAgentTargetRef
 } from "./types";
 export {

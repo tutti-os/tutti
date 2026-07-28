@@ -192,6 +192,7 @@ export function conversationDetailSessionsEqual(
     left.workspaceId === right.workspaceId &&
     left.agentSessionId === right.agentSessionId &&
     left.userId === right.userId &&
+    left.kind === right.kind &&
     left.agentTargetId === right.agentTargetId &&
     left.provider === right.provider &&
     left.providerSessionId === right.providerSessionId &&
@@ -206,6 +207,21 @@ export function conversationDetailSessionsEqual(
     left.activeTurnId === right.activeTurnId &&
     left.activeTurn?.updatedAtUnixMs === right.activeTurn?.updatedAtUnixMs &&
     left.latestTurn?.updatedAtUnixMs === right.latestTurn?.updatedAtUnixMs &&
+    left.lifecycleCapabilities.fork === right.lifecycleCapabilities.fork &&
+    left.lifecycleCapabilities.forkThroughTurn ===
+      right.lifecycleCapabilities.forkThroughTurn &&
+    left.lifecycleCapabilities.forkThroughTurnIdsKnown ===
+      right.lifecycleCapabilities.forkThroughTurnIdsKnown &&
+    stringArraysEqual(
+      left.lifecycleCapabilities.forkThroughTurnIds,
+      right.lifecycleCapabilities.forkThroughTurnIds
+    ) &&
+    left.forkedFrom?.sourceAgentSessionId ===
+      right.forkedFrom?.sourceAgentSessionId &&
+    left.forkedFrom?.sourceTurnId === right.forkedFrom?.sourceTurnId &&
+    left.forkedFrom?.targetTurnId === right.forkedFrom?.targetTurnId &&
+    left.forkedFrom?.operationId === right.forkedFrom?.operationId &&
+    left.forkedFrom?.forkedAtUnixMs === right.forkedFrom?.forkedAtUnixMs &&
     left.pendingInteractions === right.pendingInteractions &&
     left.latestTurnInteractions === right.latestTurnInteractions
   );

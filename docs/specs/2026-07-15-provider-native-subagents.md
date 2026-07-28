@@ -440,14 +440,20 @@ Native concepts:
 - Root conversation: app-server `threadId` equal to
   `workspace_agent_sessions.provider_session_id`.
 - Child agent: child app-server `threadId`.
-- Spawn edge: `collabAgentToolCall` with `tool=spawnAgent` and
-  `receiverThreadIds`.
+- Spawn edge: either `collabAgentToolCall` with `tool=spawnAgent` and
+  `receiverThreadIds`, or `subAgentActivity` with `kind=started`,
+  `id=<parent tool call id>`, and `agentThreadId=<child thread id>`.
 - Control tools: `Wait` / `CloseAgent` style `collabAgentToolCall` entries.
 
 Mapping:
 
-- The spawn tool call creates one subordinate `WorkspaceAgentSession` per
-  receiver thread id and a submitted child turn owned by that session.
+- Either spawn representation creates the normalized parent delegation call,
+  one subordinate `WorkspaceAgentSession` per child thread id, and a submitted
+  child turn owned by that session. If app-server reports the same edge more
+  than once, registration and normalized events remain idempotent.
+- A `subAgentActivity` `started` item means the provider accepted the spawn, so
+  its normalized parent delegation call is completed. The child thread's own
+  events remain authoritative for the child turn lifecycle.
 - `threadId != root provider_session_id` events are child events only after
   the child thread has been registered from a spawn edge.
 - App-server server requests use the same `threadId` ownership rule as

@@ -488,7 +488,7 @@ export function IssueManagerSubtaskBoard({
   };
 
   return (
-    <div className="issue-manager-board-scroll min-w-0 overflow-x-auto pb-1">
+    <div className="board-scroll min-w-0 overflow-x-auto pb-1">
       <div
         className="grid min-w-[1560px] grid-cols-6 gap-3"
         ref={boardLayoutRef}

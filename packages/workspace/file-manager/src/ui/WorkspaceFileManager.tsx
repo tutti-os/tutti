@@ -74,6 +74,13 @@ export type {
   WorkspaceFileManagerPreviewActionsConfig
 } from "./workspaceFileManagerPreviewActionTypes.ts";
 
+export interface WorkspaceFileManagerLocationSidebarLayout {
+  contentMinWidth?: number;
+  defaultWidth?: number;
+  maxWidth?: number;
+  persistWidth?: boolean;
+}
+
 export interface WorkspaceFileManagerProps {
   className?: string;
   dateLocale?: TuttiDateLocale;
@@ -105,6 +112,7 @@ export interface WorkspaceFileManagerProps {
    */
   renderToolbarTrailingActions?: RenderWorkspaceFileManagerToolbarTrailingActions;
   i18n: WorkspaceFileManagerI18nRuntime;
+  locationSidebarLayout?: WorkspaceFileManagerLocationSidebarLayout;
   session: WorkspaceFileManagerSession;
   /**
    * When false, hide the locations sidebar even if the session has location
@@ -121,6 +129,7 @@ export function WorkspaceFileManager({
   dateLocale,
   entryDragMode,
   i18n,
+  locationSidebarLayout,
   onCopyEntry,
   onDirectoryExpanded,
   onEntryDragStart,
@@ -141,8 +150,14 @@ export function WorkspaceFileManager({
     startWidth: number;
     startX: number;
   } | null>(null);
-  const [sidebarWidth, setSidebarWidth] = useState(
-    readWorkspaceFileManagerSidebarWidth
+  const sidebarDefaultWidth =
+    locationSidebarLayout?.defaultWidth ??
+    workspaceFileManagerSidebarDefaultWidth;
+  const persistSidebarWidth = locationSidebarLayout?.persistWidth ?? true;
+  const [sidebarWidth, setSidebarWidth] = useState(() =>
+    persistSidebarWidth
+      ? readWorkspaceFileManagerSidebarWidth()
+      : sidebarDefaultWidth
   );
   const [containerWidth, setContainerWidth] = useState(0);
   const { arrangeMode, setArrangeMode } = useWorkspaceFileManagerArrangeMode();
@@ -160,28 +175,33 @@ export function WorkspaceFileManager({
   const hasLocationSidebar =
     showLocationSidebar &&
     rootView.locationSections.some((section) => section.locations.length > 0);
-  const sidebarContentMinWidth = showPreviewPanel
-    ? workspaceFileManagerContentMinWidth
-    : workspaceFileManagerContentWithoutPreviewMinWidth;
+  const sidebarContentMinWidth =
+    locationSidebarLayout?.contentMinWidth ??
+    (showPreviewPanel
+      ? workspaceFileManagerContentMinWidth
+      : workspaceFileManagerContentWithoutPreviewMinWidth);
+  const sidebarConfiguredMaxWidth = locationSidebarLayout?.maxWidth;
   const sidebarMaxWidth =
     containerWidth > 0
       ? resolveWorkspaceFileManagerSidebarMaxWidth(
           containerWidth,
-          sidebarContentMinWidth
+          sidebarContentMinWidth,
+          sidebarConfiguredMaxWidth
         )
-      : workspaceFileManagerSidebarDefaultWidth;
+      : sidebarDefaultWidth;
 
   const updateSidebarWidth = useCallback(
     (width: number): number => {
       const nextWidth = clampWorkspaceFileManagerSidebarWidth({
         containerWidth: rootRef.current?.getBoundingClientRect().width ?? 0,
         contentMinWidth: sidebarContentMinWidth,
+        maxWidth: sidebarConfiguredMaxWidth,
         width
       });
       setSidebarWidth(nextWidth);
       return nextWidth;
     },
-    [sidebarContentMinWidth]
+    [sidebarConfiguredMaxWidth, sidebarContentMinWidth]
   );
 
   useLayoutEffect(() => {
@@ -199,6 +219,7 @@ export function WorkspaceFileManager({
         clampWorkspaceFileManagerSidebarWidth({
           containerWidth: nextContainerWidth,
           contentMinWidth: sidebarContentMinWidth,
+          maxWidth: sidebarConfiguredMaxWidth,
           width: currentWidth
         })
       );
@@ -217,7 +238,7 @@ export function WorkspaceFileManager({
     return () => {
       observer.disconnect();
     };
-  }, [hasLocationSidebar, sidebarContentMinWidth]);
+  }, [hasLocationSidebar, sidebarConfiguredMaxWidth, sidebarContentMinWidth]);
 
   const handleSidebarResizePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -270,10 +291,12 @@ export function WorkspaceFileManager({
         return;
       }
       sidebarResizeRef.current = null;
-      writeWorkspaceFileManagerSidebarWidth(resize.currentWidth);
+      if (persistSidebarWidth) {
+        writeWorkspaceFileManagerSidebarWidth(resize.currentWidth);
+      }
       event.currentTarget.releasePointerCapture(event.pointerId);
     },
-    []
+    [persistSidebarWidth]
   );
 
   const handleSidebarResizeKeyDown = useCallback(
@@ -478,7 +501,7 @@ export function WorkspaceFileManager({
           aria-valuemax={sidebarMaxWidth}
           aria-valuemin={workspaceFileManagerSidebarMinWidth}
           aria-valuenow={sidebarWidth}
-          className="nodrag @max-[600px]/workspace-file-manager:hidden relative z-[1] -ml-1 -mr-1 h-full w-2 shrink-0 cursor-col-resize touch-none outline-none before:absolute before:left-1/2 before:h-full before:w-px before:-translate-x-1/2 before:bg-transparent hover:before:bg-[var(--border-focus)] focus-visible:before:bg-[var(--border-focus)]"
+          className="nodrag @max-[600px]/workspace-file-manager:hidden relative z-[1] -ml-1 -mr-1 h-full w-2 shrink-0 cursor-col-resize touch-none outline-none before:absolute before:left-1/2 before:h-full before:w-px before:-translate-x-1/2 before:bg-[var(--border-1)] hover:before:bg-[var(--border-focus)] focus-visible:before:bg-[var(--border-focus)]"
           role="separator"
           tabIndex={0}
           onKeyDown={handleSidebarResizeKeyDown}

@@ -5,9 +5,8 @@ import type {
   WorkbenchSize
 } from "../core/types.ts";
 
-export type WorkbenchMissionControlMode = "activate" | "layout";
-
 export interface WorkbenchMissionControlSnapshot<TData = unknown> {
+  isLayoutLocked: boolean;
   layoutConstraints: WorkbenchLayoutConstraints;
   surfaceSize: WorkbenchSize;
   visibleNodes: readonly WorkbenchNode<TData>[];
@@ -19,7 +18,7 @@ export interface WorkbenchMissionControlAdapter<TData = unknown> {
     preset: WorkbenchLayoutPreset,
     lock?: boolean
   ): void;
-  focusNode(nodeId: string): void;
   getSnapshot(): WorkbenchMissionControlSnapshot<TData>;
+  releaseLockedLayout(): void;
   subscribe(listener: () => void): () => void;
 }

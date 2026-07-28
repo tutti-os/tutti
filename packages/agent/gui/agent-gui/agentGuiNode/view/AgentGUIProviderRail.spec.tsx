@@ -2,6 +2,7 @@ import { createEvent, fireEvent, render, screen } from "@testing-library/react";
 import { TooltipProvider } from "@tutti-os/ui-system";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentGUIAgentTarget } from "../../../types";
+import { AgentTargetInfoRendererProvider } from "../../../shared/AgentTargetInfoRendererContext";
 import {
   AGENT_GUI_PROVIDER_RAIL_PREFERENCES_STORAGE_KEY,
   parseAgentGUIProviderRailPreferences
@@ -248,6 +249,45 @@ describe("AgentGUIProviderRail selection", () => {
 
     expect(badge).not.toBeNull();
     expect(badge?.querySelector('[data-slot="avatar"]')).not.toBeNull();
+  });
+
+  it("lazily renders exact Host target information for the hovered rail tile", async () => {
+    const sharedTarget = target({
+      agentTargetId: "agent:shared",
+      label: "Shared Codex",
+      ownerDeviceLabel: "Vector's MacBook Pro",
+      provider: "codex",
+      targetId: "shared:codex"
+    });
+    const renderAgentTargetInfo = vi.fn(({ surface, target }) => (
+      <div>{`${surface}:${target.agentTargetId}`}</div>
+    ));
+    render(
+      <TooltipProvider>
+        <AgentTargetInfoRendererProvider
+          agentTargets={[sharedTarget]}
+          renderer={renderAgentTargetInfo}
+        >
+          <AgentGUIProviderRail
+            {...providerRailProps({ agentTargets: [sharedTarget] })}
+          />
+        </AgentTargetInfoRendererProvider>
+      </TooltipProvider>
+    );
+
+    expect(renderAgentTargetInfo).not.toHaveBeenCalled();
+
+    fireEvent.pointerMove(screen.getByRole("tab", { name: "Shared Codex" }), {
+      pointerType: "mouse"
+    });
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "provider-rail:agent:shared"
+    );
+    expect(renderAgentTargetInfo).toHaveBeenLastCalledWith({
+      surface: "provider-rail",
+      target: sharedTarget
+    });
   });
 });
 

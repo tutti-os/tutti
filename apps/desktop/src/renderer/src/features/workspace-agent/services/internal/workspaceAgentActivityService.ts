@@ -898,8 +898,8 @@ export class WorkspaceAgentActivityService
         return activation;
       },
       cancelTurn: (input) => this.cancelTurn(input),
-      reconcileSession: (command) =>
-        this.executeSessionReconcileCommand(command),
+      reconcileSession: (command, signal) =>
+        this.executeSessionReconcileCommand(command, signal),
       runtimeApi: this.dependencies.runtimeApi,
       sendInput: async (input) => {
         const result = await this.sendInput(input);

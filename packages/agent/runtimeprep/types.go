@@ -9,6 +9,22 @@ type Preparer interface {
 	Cleanup(context.Context, CleanupInput) error
 }
 
+// SessionForkProviderStateBinder makes provider-native fork state available
+// from the target session's isolated runtime namespace.
+type SessionForkProviderStateBinder interface {
+	SupportsSessionForkProviderStateBinding(provider string) bool
+	BindSessionForkProviderState(context.Context, SessionForkProviderStateBindingInput) error
+}
+
+type SessionForkProviderStateBindingInput struct {
+	WorkspaceID             string
+	Provider                string
+	SourceAgentSessionID    string
+	TargetAgentSessionID    string
+	SourceProviderSessionID string
+	TargetProviderSessionID string
+}
+
 type SkillBundleRenderer interface {
 	RenderSkillBundle(context.Context, PrepareInput) (SkillBundle, error)
 }

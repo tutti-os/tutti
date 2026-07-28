@@ -51,14 +51,13 @@ export function useAgentGUIViewModel(
     [
       candidate.composer.availableCommands,
       candidate.composer.availableSkills,
-      candidate.composer.canQueueWhileBusy,
-      candidate.composer.canSubmit,
       candidate.composer.compactSupported,
       candidate.composer.composerSettings,
       candidate.composer.draftContent,
       candidate.composer.draftPrompt,
       candidate.composer.drainingQueuedPromptId,
       candidate.composer.goalPauseSupported,
+      candidate.composer.gate,
       candidate.composer.handoffAgentTargets,
       candidate.composer.isCancelPending,
       candidate.composer.isCreatingConversation,
@@ -77,7 +76,6 @@ export function useAgentGUIViewModel(
     () => candidate.interaction,
     [
       candidate.interaction.inlineNotice,
-      candidate.interaction.isRuntimeBlocked,
       candidate.interaction.isRespondingApproval,
       candidate.interaction.pendingApproval,
       candidate.interaction.pendingInteractivePrompt,
@@ -88,16 +86,14 @@ export function useAgentGUIViewModel(
     () => candidate.readiness,
     [
       candidate.readiness.activationError,
-      candidate.readiness.activeConversationBusy,
       candidate.readiness.activeLiveState,
-      candidate.readiness.providerReadinessGate,
-      candidate.readiness.sessionRuntimeBlocked,
-      candidate.readiness.sessionRuntimeBlockedReason
+      candidate.readiness.providerReadinessGate
     ]
   );
   const operations = useMemo(
     () => candidate.operations,
     [
+      candidate.operations.forkThroughTurnPendingTurnIds,
       candidate.operations.goalClearNoticeSequence,
       candidate.operations.isDeletingConversation,
       candidate.operations.isDeletingProjectConversations,

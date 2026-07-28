@@ -87,9 +87,11 @@ type claudeSDKAdapterSession struct {
 	goalClearControlTurns map[string]struct{}
 	// Durable goal identity associated with the arm/continuation lifecycle.
 	// It is deliberately independent of goalArmTurnID.
-	goalOperationID string
-	goalRevision    int64
-	goalRepairEpoch int64
+	goalOperationID      string
+	goalRevision         int64
+	goalRepairEpoch      int64
+	fencedGoalIdentities map[goalOperationIdentity]struct{}
+	fencedGoalTurns      map[string]struct{}
 }
 
 type claudeSDKCompactMessage struct {

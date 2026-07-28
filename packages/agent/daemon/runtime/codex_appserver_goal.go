@@ -544,7 +544,8 @@ func (a *CodexAppServerAdapter) beginGoalTurnHandoff(agentSessionID, providerTur
 		return false
 	}
 	pending := appSession.pendingGoalTurns[strings.TrimSpace(providerTurnID)]
-	if appSession.activeTurn != nil || pending == nil || pending.state != codexGoalTurnPending || appSession.provenanceDegraded {
+	if appSession.activeTurn != nil || pending == nil || pending.state != codexGoalTurnPending ||
+		appSession.provenanceDegraded || goalIdentityFencedLocked(appSession, identity) {
 		return false
 	}
 	pending.state = codexGoalTurnAdopting

@@ -146,6 +146,7 @@
   "controls": {
     "discontinuity": {
       "required": ["reason"],
+      "semanticReasons": ["session_deleted"],
       "properties": {
         "reason": "non-empty-string",
         "reconcileKeys": "reconcile-key-array"

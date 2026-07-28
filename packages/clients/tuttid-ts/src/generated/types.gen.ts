@@ -321,6 +321,7 @@ export type ApiErrorDetails = {
     | "agent_quick_prompt_not_found"
     | "agent_quick_prompt_conflict"
     | "agent_quick_prompt_operation_failed"
+    | "agent_session_fork_operation_not_found"
     | "agent_target_not_found"
     | "model_plan_not_found"
     | "model_plan_referenced"
@@ -2085,6 +2086,102 @@ export type UpdateTuttiModeActivationResponse = {
  */
 export type WorkspaceAgentSessionKind = "root" | "child";
 
+/**
+ * Per-session durable message change cursor. The upper bound preserves exact integer representation in JavaScript clients.
+ */
+export type WorkspaceAgentMessageCursor = number;
+
+export type WorkspaceAgentSessionLifecycleCapabilities = {
+  /**
+   * Whether this exact session can fork its latest settled state.
+   */
+  fork: boolean;
+  /**
+   * Whether this exact session can fork through a settled canonical Turn.
+   */
+  forkThroughTurn: boolean;
+  /**
+   * Canonical Turn ids currently verified against provider-native history.
+   */
+  forkThroughTurnIds?: Array<string>;
+  /**
+   * Whether forkThroughTurnIds is an authoritative provider-history projection.
+   */
+  forkThroughTurnIdsKnown?: boolean;
+};
+
+export type WorkspaceAgentSessionForkThroughTurnPoint = {
+  type: "throughTurn";
+  /**
+   * Exact canonical Turn id included as the final Turn in the fork.
+   */
+  turnId: string;
+};
+
+export type WorkspaceAgentSessionForkPoint = {
+  type: "throughTurn";
+} & WorkspaceAgentSessionForkThroughTurnPoint;
+
+export type WorkspaceAgentSessionForkLineage = {
+  sourceAgentSessionId: string;
+  /**
+   * Inclusive canonical Turn boundary in the source Session.
+   */
+  sourceTurnId: string;
+  /**
+   * Canonical Turn id of that inclusive boundary in the forked Session.
+   */
+  targetTurnId: string;
+  operationId: string;
+  forkedAtUnixMs: number;
+};
+
+/**
+ * Public durable operation state. accepted collapses the internal prepared, dispatching, and provider-accepted phases.
+ */
+export type WorkspaceAgentSessionForkOperationStatus =
+  | "accepted"
+  | "committed"
+  | "failed"
+  | "unknown";
+
+export type WorkspaceAgentSessionForkOperation = {
+  operationId: string;
+  requestId: string;
+  sourceAgentSessionId: string;
+  targetAgentSessionId: string;
+  point: WorkspaceAgentSessionForkPoint;
+  status: WorkspaceAgentSessionForkOperationStatus;
+  /**
+   * Complete target Session projection when status is committed.
+   */
+  session: WorkspaceAgentSession | null;
+  /**
+   * Durable lineage when status is committed.
+   */
+  lineage: WorkspaceAgentSessionForkLineage | null;
+  /**
+   * Durable failure diagnostic for failed or unknown outcomes.
+   */
+  error: string | null;
+};
+
+export type WorkspaceAgentSessionForkOperationResponse = {
+  operation: WorkspaceAgentSessionForkOperation;
+};
+
+export type ForkWorkspaceAgentSessionRequest = {
+  /**
+   * Caller-stable identity reserved for the forked canonical session.
+   */
+  targetAgentSessionId: string;
+  /**
+   * Caller-stable idempotency key for safe retries.
+   */
+  requestId: string;
+  point: WorkspaceAgentSessionForkPoint;
+};
+
 export type WorkspaceAgentSession = {
   id: string;
   kind: WorkspaceAgentSessionKind;
@@ -2114,6 +2211,10 @@ export type WorkspaceAgentSession = {
   agentTargetId: string | null;
   provider: WorkspaceAgentProvider;
   providerSessionId: string | null;
+  /**
+   * Latest accepted per-session message change cursor. This is a high-water mark, not a count of materialized message rows.
+   */
+  messageVersion: WorkspaceAgentMessageCursor;
   cwd: string | null;
   /**
    * Persisted conversation-rail membership key. Clients must use this exact key for section placement and must not infer membership from cwd or project paths.
@@ -2143,6 +2244,11 @@ export type WorkspaceAgentSession = {
    * Protocol v2. Daemon-issued capability descriptor; clients must branch on capabilities, never on provider identity.
    */
   capabilities: WorkspaceAgentCapabilities | null;
+  lifecycleCapabilities: WorkspaceAgentSessionLifecycleCapabilities;
+  /**
+   * Durable provenance for a user-initiated root Session fork. Null for ordinary root Sessions and provider-native child Sessions.
+   */
+  forkedFrom: WorkspaceAgentSessionForkLineage | null;
   /**
    * Protocol v2. Typed context-window and quota usage projected from provider runtime state.
    */
@@ -2439,13 +2545,13 @@ export type WorkspaceAgentSessionMessage = {
   completedAtUnixMs?: number;
   createdAtUnixMs?: number;
   updatedAtUnixMs?: number;
-  version: number;
+  version: WorkspaceAgentMessageCursor;
 };
 
 export type WorkspaceAgentSessionMessagesResponse = {
   agentSessionId: string;
   messages: Array<WorkspaceAgentSessionMessage>;
-  latestVersion: number;
+  latestVersion: WorkspaceAgentMessageCursor;
   hasMore: boolean;
 };
 
@@ -3954,6 +4060,8 @@ export type MobileRemotePairingListResponse = {
 export type CliCommandId = string;
 
 export type WorkspaceId = string;
+
+export type SessionForkOperationId = string;
 
 export type WorkspaceAppId = string;
 
@@ -9520,6 +9628,168 @@ export type GetWorkspaceAgentSessionResponses = {
 export type GetWorkspaceAgentSessionResponse =
   GetWorkspaceAgentSessionResponses[keyof GetWorkspaceAgentSessionResponses];
 
+export type ForkWorkspaceAgentSessionData = {
+  body: ForkWorkspaceAgentSessionRequest;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/fork";
+};
+
+export type ForkWorkspaceAgentSessionErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * The source session or requested fork boundary is not forkable
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ForkWorkspaceAgentSessionError =
+  ForkWorkspaceAgentSessionErrors[keyof ForkWorkspaceAgentSessionErrors];
+
+export type ForkWorkspaceAgentSessionResponses = {
+  /**
+   * Terminal workspace agent session fork operation
+   */
+  200: WorkspaceAgentSessionForkOperationResponse;
+  /**
+   * Accepted workspace agent session fork operation
+   */
+  202: WorkspaceAgentSessionForkOperationResponse;
+};
+
+export type ForkWorkspaceAgentSessionResponse =
+  ForkWorkspaceAgentSessionResponses[keyof ForkWorkspaceAgentSessionResponses];
+
+export type GetWorkspaceAgentSessionForkOperationData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    operationID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-session-fork-operations/{operationID}";
+};
+
+export type GetWorkspaceAgentSessionForkOperationErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Agent session fork operation was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetWorkspaceAgentSessionForkOperationError =
+  GetWorkspaceAgentSessionForkOperationErrors[keyof GetWorkspaceAgentSessionForkOperationErrors];
+
+export type GetWorkspaceAgentSessionForkOperationResponses = {
+  /**
+   * Workspace agent session fork operation
+   */
+  200: WorkspaceAgentSessionForkOperationResponse;
+};
+
+export type GetWorkspaceAgentSessionForkOperationResponse =
+  GetWorkspaceAgentSessionForkOperationResponses[keyof GetWorkspaceAgentSessionForkOperationResponses];
+
+export type AcknowledgeWorkspaceAgentSessionForkOperationData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    operationID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-session-fork-operations/{operationID}/acknowledge";
+};
+
+export type AcknowledgeWorkspaceAgentSessionForkOperationErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Agent session fork operation was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Agent session fork operation cannot be acknowledged
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type AcknowledgeWorkspaceAgentSessionForkOperationError =
+  AcknowledgeWorkspaceAgentSessionForkOperationErrors[keyof AcknowledgeWorkspaceAgentSessionForkOperationErrors];
+
+export type AcknowledgeWorkspaceAgentSessionForkOperationResponses = {
+  /**
+   * Acknowledged workspace agent session fork operation
+   */
+  200: WorkspaceAgentSessionForkOperationResponse;
+};
+
+export type AcknowledgeWorkspaceAgentSessionForkOperationResponse =
+  AcknowledgeWorkspaceAgentSessionForkOperationResponses[keyof AcknowledgeWorkspaceAgentSessionForkOperationResponses];
+
 export type GetWorkspaceAgentSessionTuttiModeActivationData = {
   body?: never;
   path: {
@@ -9754,8 +10024,8 @@ export type ListWorkspaceAgentSessionMessagesData = {
     agentSessionID: string;
   };
   query?: {
-    afterVersion?: number;
-    beforeVersion?: number;
+    afterVersion?: WorkspaceAgentMessageCursor;
+    beforeVersion?: WorkspaceAgentMessageCursor;
     order?: "asc" | "desc";
     limit?: number;
   };

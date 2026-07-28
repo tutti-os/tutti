@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerstatus"
 	"golang.org/x/sync/errgroup"
 
 	externalagentregistry "github.com/tutti-os/tutti/services/tuttid/service/externalagentregistry"
@@ -26,12 +27,12 @@ const (
 	AvailabilityUnknown      AvailabilityStatus = "unknown"
 )
 
-type AuthStatus string
+type AuthStatus = providerstatus.AuthStatus
 
 const (
-	AuthAuthenticated AuthStatus = "authenticated"
-	AuthRequired      AuthStatus = "required"
-	AuthUnknown       AuthStatus = "unknown"
+	AuthAuthenticated = providerstatus.AuthAuthenticated
+	AuthRequired      = providerstatus.AuthRequired
+	AuthUnknown       = providerstatus.AuthUnknown
 )
 
 type ActionKind string
@@ -209,11 +210,7 @@ type AdapterStatus struct {
 	RequiredVersion string
 }
 
-type AuthInfo struct {
-	Status       AuthStatus
-	AccountLabel string
-	AuthMethod   string
-}
+type AuthInfo = providerstatus.AuthInfo
 
 type Action struct {
 	ID      ActionID

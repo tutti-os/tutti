@@ -77,24 +77,62 @@ func TestMapRuntimeErrorKeepsTransportOutcomeUnknown(t *testing.T) {
 	}
 }
 
+func TestMapRuntimeErrorMapsDisconnectedSessionAcrossHostBoundary(t *testing.T) {
+	runtimeErr := fmt.Errorf("fence requires live provider: %w", agentruntime.ErrSessionDisconnected)
+	mapped := mapRuntimeError(runtimeErr)
+	if !errors.Is(mapped, host.ErrRuntimeSessionDisconnected) {
+		t.Fatalf("mapped error = %v, want Host disconnected sentinel", mapped)
+	}
+	if !errors.Is(mapped, agentruntime.ErrSessionDisconnected) {
+		t.Fatalf("mapped error = %v, want source runtime sentinel preserved", mapped)
+	}
+}
+
 func TestRuntimeControllerProjectsSessionWithoutAliasingMutableInputs(t *testing.T) {
 	runtimeContext := map[string]any{"mode": "plan"}
+	providerTargetRef := map[string]any{"agent": "codex"}
 	env := []string{"A=1"}
 	controller := &RuntimeController{CurrentUserID: func() string { return " user-1 " }}
 
 	projected := controller.fromSession(agentruntime.Session{
 		RoomID: "workspace-1", AgentSessionID: "session-1", AgentTargetID: "target-1",
 		Provider: "codex", Env: env, RuntimeContext: runtimeContext,
-		Settings: &agentruntime.SessionSettings{Model: "gpt-5.6", ReasoningEffort: "max", Speed: "standard"},
+		ProviderTargetRef: providerTargetRef,
+		Settings:          &agentruntime.SessionSettings{Model: "gpt-5.6", ReasoningEffort: "max", Speed: "standard"},
 	})
 	env[0] = "A=2"
 	runtimeContext["mode"] = "changed"
+	providerTargetRef["agent"] = "changed"
 
-	if projected.UserID != "user-1" || projected.Env[0] != "A=1" || projected.RuntimeContext["mode"] != "plan" {
+	if projected.UserID != "user-1" || projected.Env[0] != "A=1" ||
+		projected.RuntimeContext["mode"] != "plan" ||
+		projected.ProviderTargetRef["agent"] != "codex" {
 		t.Fatalf("projected session retained mutable input or identity whitespace: %#v", projected)
 	}
 	if projected.Settings == nil || projected.Settings.Model != "gpt-5.6" || projected.Settings.ReasoningEffort != "max" || projected.Settings.Speed != "standard" {
 		t.Fatalf("projected settings = %#v", projected.Settings)
+	}
+}
+
+func TestRuntimeSessionProjectsPreparedIdentityWithoutAliasing(t *testing.T) {
+	env := []string{"FORK_ENV=prepared"}
+	runtimeContext := map[string]any{"origin": "prepared"}
+	providerTargetRef := map[string]any{"agent": "codex"}
+	projected := runtimeSession(host.ProviderRuntimeSession{
+		ID: "session-1", WorkspaceID: "workspace-1", Provider: "codex",
+		Cwd: "/prepared", Env: env, RuntimeContext: runtimeContext,
+		ProviderTargetRef: providerTargetRef,
+		Settings:          &host.ComposerSettings{Model: "gpt-5.6"},
+	})
+	env[0] = "FORK_ENV=changed"
+	runtimeContext["origin"] = "changed"
+	providerTargetRef["agent"] = "changed"
+
+	if projected.CWD != "/prepared" || projected.Env[0] != "FORK_ENV=prepared" ||
+		projected.RuntimeContext["origin"] != "prepared" ||
+		projected.ProviderTargetRef["agent"] != "codex" ||
+		projected.Settings == nil || projected.Settings.Model != "gpt-5.6" {
+		t.Fatalf("projected prepared identity=%#v", projected)
 	}
 }
 

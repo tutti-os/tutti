@@ -75,12 +75,11 @@ export function WorkbenchHost({
       }),
     [contributions, dockEntries, dockEntryPresentationOverrides]
   );
-  const missionControlMode = missionControl?.mode ?? null;
+  const missionControlActive = missionControl?.active ?? false;
   const missionControlNodeIds = missionControl?.nodeIds;
   const missionControlClose = missionControl?.onRequestClose ?? noop;
-  const missionControlRequestMode = missionControl?.onRequestMode;
   const missionControlEnabled =
-    missionControlMode !== null || onMissionControlAdapterReady !== undefined;
+    missionControlActive || onMissionControlAdapterReady !== undefined;
   const {
     chromeContext,
     hostI18n,
@@ -125,11 +124,10 @@ export function WorkbenchHost({
     workspaceId
   });
   const missionControlState = useWorkbenchMissionControlState({
+    active: missionControlActive,
     adapter: missionControlAdapter,
-    mode: missionControlMode,
     nodeIds: missionControlNodeIds,
-    onRequestClose: missionControlClose,
-    onRequestMode: missionControlRequestMode
+    onRequestClose: missionControlClose
   });
   const missionControlPresence =
     useWorkbenchMissionControlPresence(missionControlState);

@@ -52,6 +52,33 @@ export function normalizeAgentActivitySession(
       modes: []
     },
     capabilities: source.capabilities ?? null,
+    lifecycleCapabilities: source.lifecycleCapabilities
+      ? {
+          fork: source.lifecycleCapabilities.fork === true,
+          forkThroughTurn:
+            source.lifecycleCapabilities.forkThroughTurn === true,
+          forkThroughTurnIds:
+            source.lifecycleCapabilities.forkThroughTurnIds
+              ?.map((turnId) => turnId.trim())
+              .filter(Boolean) ?? [],
+          forkThroughTurnIdsKnown:
+            source.lifecycleCapabilities.forkThroughTurnIdsKnown === true
+        }
+      : {
+          fork: false,
+          forkThroughTurn: false,
+          forkThroughTurnIds: [],
+          forkThroughTurnIdsKnown: false
+        },
+    forkedFrom: source.forkedFrom
+      ? {
+          sourceAgentSessionId: source.forkedFrom.sourceAgentSessionId.trim(),
+          sourceTurnId: source.forkedFrom.sourceTurnId.trim(),
+          targetTurnId: source.forkedFrom.targetTurnId.trim(),
+          operationId: source.forkedFrom.operationId.trim(),
+          forkedAtUnixMs: source.forkedFrom.forkedAtUnixMs
+        }
+      : null,
     usage: source.usage ?? null,
     goal: source.goal ?? null,
     tuttiModeActivation: source.tuttiModeActivation ?? null,

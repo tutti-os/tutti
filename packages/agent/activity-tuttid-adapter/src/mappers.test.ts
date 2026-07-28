@@ -16,13 +16,36 @@ test("session mapping requires and preserves the host-owned user identity", () =
     { currentUserId: "account-user-1" }
   );
   assert.equal(session.userId, "account-user-1");
+  assert.equal(session.messageVersion, 7);
+  assert.deepEqual(session.forkedFrom, {
+    forkedAtUnixMs: 9,
+    operationId: "operation-1",
+    sourceAgentSessionId: "source-1",
+    sourceTurnId: "turn-1",
+    targetTurnId: "target-turn-1"
+  });
+});
+
+test("session mapping rejects an invalid message cursor", () => {
+  assert.throws(
+    () =>
+      agentActivitySessionFromTuttidSession(
+        "workspace-1",
+        { ...createSession(), messageVersion: -1 },
+        { currentUserId: "account-user-1" }
+      ),
+    /messageVersion must be a non-negative safe integer/
+  );
 });
 
 test("session mapping rejects missing protocol-v2 fields", () => {
   for (const field of [
     "activeTurnId",
+    "forkedFrom",
     "latestTurnInteractions",
+    "lifecycleCapabilities",
     "pendingInteractions",
+    "messageVersion",
     "railSectionKey",
     "tuttiModeActivation"
   ] as const) {
@@ -98,6 +121,15 @@ function createSession(): WorkspaceAgentSession {
     kind: "root",
     latestTurn: null,
     latestTurnInteractions: [],
+    messageVersion: 7,
+    lifecycleCapabilities: { fork: false, forkThroughTurn: false },
+    forkedFrom: {
+      forkedAtUnixMs: 9,
+      operationId: "operation-1",
+      sourceAgentSessionId: "source-1",
+      sourceTurnId: "turn-1",
+      targetTurnId: "target-turn-1"
+    },
     parentAgentSessionId: null,
     parentToolCallId: null,
     parentTurnId: null,

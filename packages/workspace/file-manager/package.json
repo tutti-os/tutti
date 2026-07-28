@@ -37,6 +37,7 @@
   },
   "dependencies": {
     "@tutti-os/ui-i18n-runtime": "workspace:*",
+    "@tutti-os/ui-react-hooks": "workspace:*",
     "@tutti-os/ui-system": "workspace:*",
     "@tutti-os/workspace-file-preview": "workspace:*"
   },

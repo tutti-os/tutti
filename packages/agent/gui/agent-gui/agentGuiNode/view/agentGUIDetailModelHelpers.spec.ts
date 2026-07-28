@@ -3,7 +3,6 @@ import {
   buildAgentConversationHandoffPrompt,
   handoffProjectPathForConversation,
   isAgentGUITransportNoticeVisible,
-  resolveAgentGUIComposerDisabled,
   resolveAgentGUIHomeNoticeChrome,
   resolveAgentGUIStopControl,
   shouldShowAgentGUIStopButton
@@ -80,43 +79,6 @@ describe("shouldShowAgentGUIStopButton", () => {
         ...idle,
         isAuthBlocked: true,
         isCreatingConversation: true
-      })
-    ).toBe(false);
-  });
-});
-
-describe("resolveAgentGUIComposerDisabled", () => {
-  const idle = {
-    canQueueWhileBusy: false,
-    hasNonRetryableRecoveryFailure: false,
-    isCollaboratorConversation: false,
-    isCreatingConversation: false,
-    isInterrupting: false,
-    isSubmitting: false,
-    pendingApproval: false,
-    pendingInteractivePrompt: false,
-    runtimeBlocked: false
-  };
-
-  it("disables editing when the Session runtime capability is blocked", () => {
-    expect(
-      resolveAgentGUIComposerDisabled({
-        ...idle,
-        runtimeBlocked: true
-      })
-    ).toBe(true);
-  });
-
-  it("keeps an available idle Session editable", () => {
-    expect(resolveAgentGUIComposerDisabled(idle)).toBe(false);
-  });
-
-  it("preserves queue-while-busy editing when the runtime is available", () => {
-    expect(
-      resolveAgentGUIComposerDisabled({
-        ...idle,
-        canQueueWhileBusy: true,
-        isSubmitting: true
       })
     ).toBe(false);
   });
@@ -211,7 +173,7 @@ describe("transport availability presentation", () => {
         isInterrupting: false,
         isSubmitting: false,
         isUnavailable: false,
-        sessionRuntimeBlocked: true
+        runtimeCommandsBlocked: true
       })
     ).toEqual({ disabled: true, visible: true });
   });

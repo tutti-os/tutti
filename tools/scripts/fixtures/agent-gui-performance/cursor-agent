@@ -23,6 +23,7 @@ if (args.includes("about")) {
 function runACPFixture() {
   const input = readline.createInterface({ input: process.stdin });
   let canceled = false;
+  let activeSessionId = "tutti-perf-cursor-session";
   input.on("line", (line) => {
     void handleMessage(line).catch((error) => {
       process.stderr.write(`${error.stack ?? error.message}\n`);
@@ -41,13 +42,19 @@ function runACPFixture() {
         });
         return;
       case "session/new":
+        activeSessionId =
+          message.params?.sessionId?.trim?.() || activeSessionId;
         respond(message.id, {
           configOptions: [],
-          sessionId: "tutti-perf-cursor-session"
+          sessionId: activeSessionId
         });
         return;
       case "session/load":
       case "session/resume":
+        activeSessionId =
+          message.params?.sessionId?.trim?.() || activeSessionId;
+        respond(message.id, { configOptions: [] });
+        return;
       case "session/set_mode":
       case "session/set_config_option":
         respond(message.id, { configOptions: [] });
@@ -56,6 +63,8 @@ function runACPFixture() {
         canceled = true;
         return;
       case "session/prompt":
+        activeSessionId =
+          message.params?.sessionId?.trim?.() || activeSessionId;
         canceled = false;
         await streamPrompt(message.id);
         return;
@@ -84,7 +93,7 @@ function runACPFixture() {
     }
     for (let index = 0; index < 48 && !canceled; index += 1) {
       notify("session/update", {
-        sessionId: "tutti-perf-cursor-session",
+        sessionId: activeSessionId,
         update: {
           sessionUpdate: "agent_message_chunk",
           content: {
@@ -103,7 +112,7 @@ function runACPFixture() {
       const toolCallId = `tutti-perf-oversized-tool-${index}`;
       const title = `Inspect fixture path ${index + 1}`;
       notify("session/update", {
-        sessionId: "tutti-perf-cursor-session",
+        sessionId: activeSessionId,
         update: {
           sessionUpdate: "tool_call",
           toolCallId,
@@ -116,7 +125,7 @@ function runACPFixture() {
         }
       });
       notify("session/update", {
-        sessionId: "tutti-perf-cursor-session",
+        sessionId: activeSessionId,
         update: {
           sessionUpdate: "tool_call_update",
           toolCallId,

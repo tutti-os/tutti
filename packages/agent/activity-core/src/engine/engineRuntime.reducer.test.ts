@@ -171,6 +171,7 @@ test("successful workspace reconcile hydrates state for active root sessions", (
     {
       agentSessionId: "session-1",
       commandId: "session:reconcile:session-1:1",
+      live: false,
       scope: "state",
       timeoutMs: 30_000,
       type: "session/reconcile",

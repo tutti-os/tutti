@@ -23,6 +23,11 @@ daemon lifecycle  ──direct▶  merge common params  ──▶  best-effort H
 Renderer does not load or initialize any Tea SDK. It only sends raw event
 payloads to tuttid via a local HTTP call. tuttid is the sole Tea client.
 
+Shared renderer modules depend only on `@tutti-os/analytics` and receive an
+`IReporterService` from the host composition root. `TuttidClient`,
+`DesktopdAnalyticsClient`, event catalogs, and product-specific common
+parameters stay in their respective host adapters.
+
 ### Multi-window pageview ownership
 
 The desktop main process grants predefine pageview ownership to only the first
@@ -249,6 +254,24 @@ module. It is the reusable lower SDK for Tutti products such as TSH. Product
 repositories own their event catalog, HTTP contract, configuration, and
 business emission points; they must not copy the DataFinder adapter.
 
+## Shared Debug Panel
+
+`@tutti-os/analytics-debug` owns the bounded in-memory event store, redaction
+hook, and reusable React floating panel. It does not own daemon connections,
+availability flags, persisted preferences, or product translations.
+
+Tutti adapts the `analytics.debug.reported` event stream into the shared store
+after daemon common parameters have been applied. Other hosts provide their own
+event-source adapter and localized labels. Debug payloads are never persisted;
+hosts should supply a redactor when their event parameters may contain
+sensitive values.
+
+Tutti connects this stream only when the debug feature is available in a
+development build. It intentionally retains a bounded history from application
+startup so developers can inspect events emitted before opening the panel. The
+history is process-memory only, is discarded on exit, and contains the same
+final payload already sent to the configured analytics transport.
+
 ### Reporter interface
 
 ```go
@@ -308,6 +331,15 @@ container. Its local adapter implements `AnalyticsTransport` with
 `TuttidClient.trackEvents()`. Renderer business code depends on
 `IReporterService`, not on the low-level tuttid client method.
 
+Reusable business packages own the events whose trigger semantics are inside
+the package. They receive `Pick<IReporterService, "trackEvents">` from the host
+composition root and report their exact event contracts directly. For example,
+`@tutti-os/workspace-issue-manager` owns issue/task actions and converts its
+camel-case domain params to the analytics wire shape before reporting. A host
+must not redispatch those events through a product-local reporter switch.
+Host-only events such as pageviews and shell lifecycle events remain in the
+host.
+
 `ReporterService` owns renderer-side reporting behavior:
 
 - `track()` wraps one business event
@@ -318,6 +350,11 @@ container. Its local adapter implements `AnalyticsTransport` with
 - event `params` are copied before transport handoff
 - transport failures are swallowed because renderer analytics is best-effort
   and must not affect product flows
+
+Agent error codes and error normalization are Agent-domain policy rather than
+analytics-core policy. Renderer mappings live with `workspace-agent`; daemon
+codes live in `services/tuttid/biz/agentanalytics`. Typed analytics events
+consume those domain values without owning or redefining the mapping.
 
 ### `packages/clients/tuttid-ts`
 
@@ -335,6 +372,9 @@ The method calls the generated OpenAPI SDK and reuses generated request types.
 - Renderer must not initialize or reference any Tea SDK directly
 - Renderer business code must reuse `@tutti-os/analytics` and report through
   `IReporterService` rather than calling daemon clients directly
+- Shared modules own their internal event names, exact params, and trigger
+  timing; hosts only inject `IReporterService`
+- Agent error classification must stay in the Agent domain
 - `POST /v1/track` acknowledges local acceptance only; callers may await the
   local `202`, but must not wait for Tea/DataFinder delivery confirmation
 - `client_ts` must be set by the caller to the moment the event occurred, not

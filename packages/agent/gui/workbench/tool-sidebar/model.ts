@@ -52,8 +52,8 @@ export const agentToolPanelDefaultWidthById: Record<AgentToolPanelId, number> =
     apps: adjacentPanelDefaultWidth,
     browser: adjacentPanelDefaultWidth,
     files: adjacentPanelDefaultWidth,
-    messages: 440,
-    tasks: 860,
+    messages: adjacentPanelDefaultWidth,
+    tasks: adjacentPanelDefaultWidth,
     terminal: adjacentPanelDefaultWidth
   };
 

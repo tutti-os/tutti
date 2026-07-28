@@ -32,9 +32,12 @@ export interface WorkspaceConversationRailSnapshot {
   errorCode: "request_failed" | null;
   loadingMoreSectionId: string | null;
   sections: readonly WorkspaceConversationRailMembership[];
-  sessions: readonly WorkspaceAgentSession[];
   status: "idle" | "loading" | "ready";
 }
+
+type WorkspaceConversationRailSessionConsumer = (
+  sessions: readonly WorkspaceAgentSession[]
+) => void;
 
 export class WorkspaceConversationRailService extends ObservableService<WorkspaceConversationRailSnapshot> {
   readonly _serviceBrand: undefined;
@@ -43,11 +46,12 @@ export class WorkspaceConversationRailService extends ObservableService<Workspac
   private paused = false;
   private loadPromise: Promise<void> | null = null;
   private pollTask: { cancel(): void } | null = null;
+  private sessionConsumer: WorkspaceConversationRailSessionConsumer | null =
+    null;
   private snapshot: WorkspaceConversationRailSnapshot = {
     errorCode: null,
     loadingMoreSectionId: null,
     sections: [],
-    sessions: [],
     status: "idle"
   };
 
@@ -60,6 +64,20 @@ export class WorkspaceConversationRailService extends ObservableService<Workspac
   }
 
   getSnapshot = (): WorkspaceConversationRailSnapshot => this.snapshot;
+
+  attachSessionConsumer(
+    consumer: WorkspaceConversationRailSessionConsumer
+  ): () => void {
+    if (this.sessionConsumer && this.sessionConsumer !== consumer) {
+      throw new Error(
+        "mobile conversation rail already has a session consumer"
+      );
+    }
+    this.sessionConsumer = consumer;
+    return () => {
+      if (this.sessionConsumer === consumer) this.sessionConsumer = null;
+    };
+  }
 
   start(): Promise<void> {
     return this.refresh();
@@ -112,17 +130,14 @@ export class WorkspaceConversationRailService extends ObservableService<Workspac
           freshSections,
           this.snapshot.sections
         );
-        const freshSessions = uniqueSessions(freshSections, response);
+        const freshSessions = uniqueSessions(response);
         this.snapshot = {
           errorCode: null,
           loadingMoreSectionId: null,
           sections,
-          sessions: sessionsForMemberships(
-            sections,
-            mergeSessions(this.snapshot.sessions, freshSessions)
-          ),
           status: "ready"
         };
+        this.sessionConsumer?.(freshSessions);
         this.emitChange();
       })
       .catch(() => {
@@ -199,7 +214,6 @@ export class WorkspaceConversationRailService extends ObservableService<Workspac
               )
             ).section;
       if (this.disposed || this.paused) return;
-      const sessions = mergeSessions(this.snapshot.sessions, page.sessions);
       const sections = this.snapshot.sections.map((candidate) =>
         candidate.id === sectionId
           ? {
@@ -218,9 +232,9 @@ export class WorkspaceConversationRailService extends ObservableService<Workspac
         errorCode: null,
         loadingMoreSectionId: null,
         sections,
-        sessions,
         status: "ready"
       };
+      this.sessionConsumer?.(page.sessions);
     } catch {
       if (this.disposed) return;
       this.snapshot = {
@@ -267,6 +281,7 @@ export class WorkspaceConversationRailService extends ObservableService<Workspac
     this.pollTask?.cancel();
     this.pollTask = null;
     this.loadPromise = null;
+    this.sessionConsumer = null;
     this.clearListeners();
   }
 
@@ -315,13 +330,10 @@ function membershipFromPage(input: {
   };
 }
 
-function uniqueSessions(
-  sections: readonly WorkspaceConversationRailMembership[],
-  response: {
-    pinned: { sessions: readonly WorkspaceAgentSession[] };
-    sections: readonly WorkspaceAgentSessionSection[];
-  }
-): WorkspaceAgentSession[] {
+function uniqueSessions(response: {
+  pinned: { sessions: readonly WorkspaceAgentSession[] };
+  sections: readonly WorkspaceAgentSessionSection[];
+}): WorkspaceAgentSession[] {
   const sessionsById = new Map<string, WorkspaceAgentSession>();
   for (const session of response.pinned.sessions) {
     sessionsById.set(session.id, session);
@@ -331,11 +343,7 @@ function uniqueSessions(
       sessionsById.set(session.id, session);
     }
   }
-  const orderedIds = sections.flatMap((section) => section.sessionIds);
-  return orderedIds.flatMap((id) => {
-    const session = sessionsById.get(id);
-    return session ? [session] : [];
-  });
+  return [...sessionsById.values()];
 }
 
 function reconcileRefreshedMemberships(
@@ -370,30 +378,6 @@ function reconcileRefreshedMemberships(
       sessionIds
     };
   });
-}
-
-function sessionsForMemberships(
-  sections: readonly WorkspaceConversationRailMembership[],
-  sessions: readonly WorkspaceAgentSession[]
-): WorkspaceAgentSession[] {
-  const sessionsById = new Map(
-    sessions.map((session) => [session.id, session])
-  );
-  return sections.flatMap((section) =>
-    section.sessionIds.flatMap((sessionId) => {
-      const session = sessionsById.get(sessionId);
-      return session ? [session] : [];
-    })
-  );
-}
-
-function mergeSessions(
-  current: readonly WorkspaceAgentSession[],
-  next: readonly WorkspaceAgentSession[]
-): WorkspaceAgentSession[] {
-  const byId = new Map(current.map((session) => [session.id, session]));
-  for (const session of next) byId.set(session.id, session);
-  return [...byId.values()];
 }
 
 function uniqueIds(ids: readonly string[]): string[] {

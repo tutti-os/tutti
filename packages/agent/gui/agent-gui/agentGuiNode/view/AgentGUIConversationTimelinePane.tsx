@@ -27,11 +27,13 @@ interface AgentGUIConversationTimelinePaneProps {
   isLoadingOlderMessages: boolean;
   isVisible: boolean;
   followEndMode: AgentConversationFollowEndMode;
+  forkThroughTurnPendingTurnIds?: readonly string[];
   virtualScrollControllerRef: Ref<AgentTranscriptVirtualScrollController>;
   loadingLabel: string;
   empty: React.JSX.Element;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onAuthLogin?: (provider?: string | null) => void;
+  onForkThroughTurn?: (turnId: string) => void;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   labels: {
@@ -53,11 +55,13 @@ export const AgentGUIConversationTimelinePane = memo(
     isLoadingOlderMessages,
     isVisible,
     followEndMode,
+    forkThroughTurnPendingTurnIds,
     virtualScrollControllerRef,
     loadingLabel,
     empty,
     onLinkAction,
     onAuthLogin,
+    onForkThroughTurn,
     availableSkills,
     workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS,
     labels
@@ -87,6 +91,8 @@ export const AgentGUIConversationTimelinePane = memo(
           empty={empty}
           onLinkAction={onLinkAction}
           onAuthLogin={onAuthLogin}
+          onForkThroughTurn={onForkThroughTurn}
+          forkThroughTurnPendingTurnIds={forkThroughTurnPendingTurnIds}
           availableSkills={availableSkills}
           workspaceAppIcons={workspaceAppIcons}
           labels={labels}

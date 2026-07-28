@@ -31,7 +31,7 @@ describe("AgentToolSidebar", () => {
   });
 
   it("renders only the host-provided panel choices", async () => {
-    renderSidebar();
+    const { container } = renderSidebar();
 
     fireEvent.click(screen.getByLabelText("Open right panel"));
 
@@ -41,6 +41,14 @@ describe("AgentToolSidebar", () => {
     expect(screen.queryByText("Tasks")).not.toBeInTheDocument();
     expect(screen.queryByText("Apps")).not.toBeInTheDocument();
     expect(screen.queryByText("Messages")).not.toBeInTheDocument();
+
+    const sidebarHeader = container.querySelector(
+      '[data-agent-tool-sidebar-header="true"]'
+    );
+    expect(sidebarHeader).not.toHaveClass("border-b");
+
+    fireEvent.click(screen.getByText("Files"));
+    expect(sidebarHeader).toHaveClass("border-b");
   });
 
   it("hides the sidebar toggle when the host disables that entry", () => {

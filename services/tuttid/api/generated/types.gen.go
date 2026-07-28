@@ -714,28 +714,29 @@ func (e AgentTargetSource) Valid() bool {
 
 // Defines values for ApiErrorDetailsCode.
 const (
-	AgentQuickPromptConflict        ApiErrorDetailsCode = "agent_quick_prompt_conflict"
-	AgentQuickPromptNotFound        ApiErrorDetailsCode = "agent_quick_prompt_not_found"
-	AgentQuickPromptOperationFailed ApiErrorDetailsCode = "agent_quick_prompt_operation_failed"
-	AgentTargetNotFound             ApiErrorDetailsCode = "agent_target_not_found"
-	AutomationRuleNotFound          ApiErrorDetailsCode = "automation_rule_not_found"
-	CollaborationRunNotFound        ApiErrorDetailsCode = "collaboration_run_not_found"
-	InvalidRequest                  ApiErrorDetailsCode = "invalid_request"
-	MethodNotAllowed                ApiErrorDetailsCode = "method_not_allowed"
-	ModelPlanNotFound               ApiErrorDetailsCode = "model_plan_not_found"
-	ModelPlanReferenced             ApiErrorDetailsCode = "model_plan_referenced"
-	ModelPolicyReferenced           ApiErrorDetailsCode = "model_policy_referenced"
-	PreferencesOperationFailed      ApiErrorDetailsCode = "preferences_operation_failed"
-	ServiceUnavailable              ApiErrorDetailsCode = "service_unavailable"
-	Unauthorized                    ApiErrorDetailsCode = "unauthorized"
-	WorkspaceAgentNotFound          ApiErrorDetailsCode = "workspace_agent_not_found"
-	WorkspaceAppNotFound            ApiErrorDetailsCode = "workspace_app_not_found"
-	WorkspaceFileNotFound           ApiErrorDetailsCode = "workspace_file_not_found"
-	WorkspaceIssueResourceExists    ApiErrorDetailsCode = "workspace_issue_resource_exists"
-	WorkspaceIssueResourceNotFound  ApiErrorDetailsCode = "workspace_issue_resource_not_found"
-	WorkspaceNotFound               ApiErrorDetailsCode = "workspace_not_found"
-	WorkspaceOperationFailed        ApiErrorDetailsCode = "workspace_operation_failed"
-	WorkspaceTerminalNotFound       ApiErrorDetailsCode = "workspace_terminal_not_found"
+	AgentQuickPromptConflict          ApiErrorDetailsCode = "agent_quick_prompt_conflict"
+	AgentQuickPromptNotFound          ApiErrorDetailsCode = "agent_quick_prompt_not_found"
+	AgentQuickPromptOperationFailed   ApiErrorDetailsCode = "agent_quick_prompt_operation_failed"
+	AgentSessionForkOperationNotFound ApiErrorDetailsCode = "agent_session_fork_operation_not_found"
+	AgentTargetNotFound               ApiErrorDetailsCode = "agent_target_not_found"
+	AutomationRuleNotFound            ApiErrorDetailsCode = "automation_rule_not_found"
+	CollaborationRunNotFound          ApiErrorDetailsCode = "collaboration_run_not_found"
+	InvalidRequest                    ApiErrorDetailsCode = "invalid_request"
+	MethodNotAllowed                  ApiErrorDetailsCode = "method_not_allowed"
+	ModelPlanNotFound                 ApiErrorDetailsCode = "model_plan_not_found"
+	ModelPlanReferenced               ApiErrorDetailsCode = "model_plan_referenced"
+	ModelPolicyReferenced             ApiErrorDetailsCode = "model_policy_referenced"
+	PreferencesOperationFailed        ApiErrorDetailsCode = "preferences_operation_failed"
+	ServiceUnavailable                ApiErrorDetailsCode = "service_unavailable"
+	Unauthorized                      ApiErrorDetailsCode = "unauthorized"
+	WorkspaceAgentNotFound            ApiErrorDetailsCode = "workspace_agent_not_found"
+	WorkspaceAppNotFound              ApiErrorDetailsCode = "workspace_app_not_found"
+	WorkspaceFileNotFound             ApiErrorDetailsCode = "workspace_file_not_found"
+	WorkspaceIssueResourceExists      ApiErrorDetailsCode = "workspace_issue_resource_exists"
+	WorkspaceIssueResourceNotFound    ApiErrorDetailsCode = "workspace_issue_resource_not_found"
+	WorkspaceNotFound                 ApiErrorDetailsCode = "workspace_not_found"
+	WorkspaceOperationFailed          ApiErrorDetailsCode = "workspace_operation_failed"
+	WorkspaceTerminalNotFound         ApiErrorDetailsCode = "workspace_terminal_not_found"
 )
 
 // Valid indicates whether the value is a known member of the ApiErrorDetailsCode enum.
@@ -746,6 +747,8 @@ func (e ApiErrorDetailsCode) Valid() bool {
 	case AgentQuickPromptNotFound:
 		return true
 	case AgentQuickPromptOperationFailed:
+		return true
+	case AgentSessionForkOperationNotFound:
 		return true
 	case AgentTargetNotFound:
 		return true
@@ -2221,6 +2224,45 @@ func (e WorkspaceAgentSessionAttachmentResponseMimeType) Valid() bool {
 	}
 }
 
+// Defines values for WorkspaceAgentSessionForkOperationStatus.
+const (
+	WorkspaceAgentSessionForkOperationStatusAccepted  WorkspaceAgentSessionForkOperationStatus = "accepted"
+	WorkspaceAgentSessionForkOperationStatusCommitted WorkspaceAgentSessionForkOperationStatus = "committed"
+	WorkspaceAgentSessionForkOperationStatusFailed    WorkspaceAgentSessionForkOperationStatus = "failed"
+	WorkspaceAgentSessionForkOperationStatusUnknown   WorkspaceAgentSessionForkOperationStatus = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentSessionForkOperationStatus enum.
+func (e WorkspaceAgentSessionForkOperationStatus) Valid() bool {
+	switch e {
+	case WorkspaceAgentSessionForkOperationStatusAccepted:
+		return true
+	case WorkspaceAgentSessionForkOperationStatusCommitted:
+		return true
+	case WorkspaceAgentSessionForkOperationStatusFailed:
+		return true
+	case WorkspaceAgentSessionForkOperationStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAgentSessionForkThroughTurnPointType.
+const (
+	ThroughTurn WorkspaceAgentSessionForkThroughTurnPointType = "throughTurn"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentSessionForkThroughTurnPointType enum.
+func (e WorkspaceAgentSessionForkThroughTurnPointType) Valid() bool {
+	switch e {
+	case ThroughTurn:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkspaceAgentSessionGoalStatus.
 const (
 	Active        WorkspaceAgentSessionGoalStatus = "active"
@@ -3105,31 +3147,31 @@ func (e WorkspaceWorkflowPlanRevisionSchemaVersion) Valid() bool {
 
 // Defines values for WorkspaceWorkflowStatus.
 const (
-	WorkspaceWorkflowStatusAccepted      WorkspaceWorkflowStatus = "accepted"
-	WorkspaceWorkflowStatusCanceled      WorkspaceWorkflowStatus = "canceled"
-	WorkspaceWorkflowStatusCompleted     WorkspaceWorkflowStatus = "completed"
-	WorkspaceWorkflowStatusFailed        WorkspaceWorkflowStatus = "failed"
-	WorkspaceWorkflowStatusInProgress    WorkspaceWorkflowStatus = "in_progress"
-	WorkspaceWorkflowStatusPendingReview WorkspaceWorkflowStatus = "pending_review"
-	WorkspaceWorkflowStatusRejected      WorkspaceWorkflowStatus = "rejected"
+	Accepted      WorkspaceWorkflowStatus = "accepted"
+	Canceled      WorkspaceWorkflowStatus = "canceled"
+	Completed     WorkspaceWorkflowStatus = "completed"
+	Failed        WorkspaceWorkflowStatus = "failed"
+	InProgress    WorkspaceWorkflowStatus = "in_progress"
+	PendingReview WorkspaceWorkflowStatus = "pending_review"
+	Rejected      WorkspaceWorkflowStatus = "rejected"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceWorkflowStatus enum.
 func (e WorkspaceWorkflowStatus) Valid() bool {
 	switch e {
-	case WorkspaceWorkflowStatusAccepted:
+	case Accepted:
 		return true
-	case WorkspaceWorkflowStatusCanceled:
+	case Canceled:
 		return true
-	case WorkspaceWorkflowStatusCompleted:
+	case Completed:
 		return true
-	case WorkspaceWorkflowStatusFailed:
+	case Failed:
 		return true
-	case WorkspaceWorkflowStatusInProgress:
+	case InProgress:
 		return true
-	case WorkspaceWorkflowStatusPendingReview:
+	case PendingReview:
 		return true
-	case WorkspaceWorkflowStatusRejected:
+	case Rejected:
 		return true
 	default:
 		return false
@@ -4838,6 +4880,17 @@ type FixWorkspaceAppFactoryJobRequest struct {
 	Prompt string `json:"prompt"`
 }
 
+// ForkWorkspaceAgentSessionRequest defines model for ForkWorkspaceAgentSessionRequest.
+type ForkWorkspaceAgentSessionRequest struct {
+	Point WorkspaceAgentSessionForkPoint `json:"point"`
+
+	// RequestId Caller-stable idempotency key for safe retries.
+	RequestId string `json:"requestId"`
+
+	// TargetAgentSessionId Caller-stable identity reserved for the forked canonical session.
+	TargetAgentSessionId openapi_types.UUID `json:"targetAgentSessionId"`
+}
+
 // GetAgentProviderComposerOptionsRequest defines model for GetAgentProviderComposerOptionsRequest.
 type GetAgentProviderComposerOptionsRequest struct {
 	// AgentTargetId Agent target whose provider and runtime context the composer options resolve against. Optional; when omitted the provider path parameter is used directly.
@@ -6225,6 +6278,9 @@ type WorkspaceAgentInteractionKind string
 // WorkspaceAgentInteractionStatus defines model for WorkspaceAgentInteractionStatus.
 type WorkspaceAgentInteractionStatus string
 
+// WorkspaceAgentMessageCursor Per-session durable message change cursor. The upper bound preserves exact integer representation in JavaScript clients.
+type WorkspaceAgentMessageCursor = int64
+
 // WorkspaceAgentModelRef defines model for WorkspaceAgentModelRef.
 type WorkspaceAgentModelRef struct {
 	Model       *string `json:"model,omitempty"`
@@ -6290,6 +6346,9 @@ type WorkspaceAgentSession struct {
 	// EndedAtUnixMs Protocol v2. Unix milliseconds replacement for endedAt.
 	EndedAtUnixMs *int64 `json:"endedAtUnixMs"`
 
+	// ForkedFrom Durable provenance for a user-initiated root Session fork. Null for ordinary root Sessions and provider-native child Sessions.
+	ForkedFrom *WorkspaceAgentSessionForkLineage `json:"forkedFrom"`
+
 	// Goal Protocol v2. Explicit field extracted from runtimeContext.
 	Goal *WorkspaceAgentSessionGoal `json:"goal"`
 	Id   string                     `json:"id"`
@@ -6304,7 +6363,11 @@ type WorkspaceAgentSession struct {
 	LatestTurn *WorkspaceAgentTurn `json:"latestTurn"`
 
 	// LatestTurnInteractions Protocol v2. Read-only independent Interaction entity projections for latestTurn, including pending, answered, and superseded terminal states. These entities are not session-owned persistent state.
-	LatestTurnInteractions []WorkspaceAgentInteraction `json:"latestTurnInteractions"`
+	LatestTurnInteractions []WorkspaceAgentInteraction                `json:"latestTurnInteractions"`
+	LifecycleCapabilities  WorkspaceAgentSessionLifecycleCapabilities `json:"lifecycleCapabilities"`
+
+	// MessageVersion Latest accepted per-session message change cursor. This is a high-water mark, not a count of materialized message rows.
+	MessageVersion WorkspaceAgentMessageCursor `json:"messageVersion"`
 
 	// ParentAgentSessionId Direct parent session that created this child session. Null when kind is root.
 	ParentAgentSessionId *string `json:"parentAgentSessionId"`
@@ -6376,6 +6439,62 @@ type WorkspaceAgentSessionEventEnvelope struct {
 	Type           string                 `json:"type"`
 }
 
+// WorkspaceAgentSessionForkLineage defines model for WorkspaceAgentSessionForkLineage.
+type WorkspaceAgentSessionForkLineage struct {
+	ForkedAtUnixMs       int64  `json:"forkedAtUnixMs"`
+	OperationId          string `json:"operationId"`
+	SourceAgentSessionId string `json:"sourceAgentSessionId"`
+
+	// SourceTurnId Inclusive canonical Turn boundary in the source Session.
+	SourceTurnId string `json:"sourceTurnId"`
+
+	// TargetTurnId Canonical Turn id of that inclusive boundary in the forked Session.
+	TargetTurnId string `json:"targetTurnId"`
+}
+
+// WorkspaceAgentSessionForkOperation defines model for WorkspaceAgentSessionForkOperation.
+type WorkspaceAgentSessionForkOperation struct {
+	// Error Durable failure diagnostic for failed or unknown outcomes.
+	Error *string `json:"error"`
+
+	// Lineage Durable lineage when status is committed.
+	Lineage     *WorkspaceAgentSessionForkLineage `json:"lineage"`
+	OperationId string                            `json:"operationId"`
+	Point       WorkspaceAgentSessionForkPoint    `json:"point"`
+	RequestId   string                            `json:"requestId"`
+
+	// Session Complete target Session projection when status is committed.
+	Session              *WorkspaceAgentSession `json:"session"`
+	SourceAgentSessionId string                 `json:"sourceAgentSessionId"`
+
+	// Status Public durable operation state. accepted collapses the internal prepared, dispatching, and provider-accepted phases.
+	Status               WorkspaceAgentSessionForkOperationStatus `json:"status"`
+	TargetAgentSessionId string                                   `json:"targetAgentSessionId"`
+}
+
+// WorkspaceAgentSessionForkOperationResponse defines model for WorkspaceAgentSessionForkOperationResponse.
+type WorkspaceAgentSessionForkOperationResponse struct {
+	Operation WorkspaceAgentSessionForkOperation `json:"operation"`
+}
+
+// WorkspaceAgentSessionForkOperationStatus Public durable operation state. accepted collapses the internal prepared, dispatching, and provider-accepted phases.
+type WorkspaceAgentSessionForkOperationStatus string
+
+// WorkspaceAgentSessionForkPoint defines model for WorkspaceAgentSessionForkPoint.
+type WorkspaceAgentSessionForkPoint struct {
+	union json.RawMessage
+}
+
+// WorkspaceAgentSessionForkThroughTurnPoint defines model for WorkspaceAgentSessionForkThroughTurnPoint.
+type WorkspaceAgentSessionForkThroughTurnPoint struct {
+	// TurnId Exact canonical Turn id included as the final Turn in the fork.
+	TurnId string                                        `json:"turnId"`
+	Type   WorkspaceAgentSessionForkThroughTurnPointType `json:"type"`
+}
+
+// WorkspaceAgentSessionForkThroughTurnPointType defines model for WorkspaceAgentSessionForkThroughTurnPoint.Type.
+type WorkspaceAgentSessionForkThroughTurnPointType string
+
 // WorkspaceAgentSessionGitBranchesResponse defines model for WorkspaceAgentSessionGitBranchesResponse.
 type WorkspaceAgentSessionGitBranchesResponse struct {
 	Branches      []string `json:"branches"`
@@ -6440,6 +6559,21 @@ type WorkspaceAgentSessionGoalStateResponse struct {
 // WorkspaceAgentSessionKind Root sessions are user-visible conversations. Child sessions are provider-native agents reached through their immutable parent fields.
 type WorkspaceAgentSessionKind string
 
+// WorkspaceAgentSessionLifecycleCapabilities defines model for WorkspaceAgentSessionLifecycleCapabilities.
+type WorkspaceAgentSessionLifecycleCapabilities struct {
+	// Fork Whether this exact session can fork its latest settled state.
+	Fork bool `json:"fork"`
+
+	// ForkThroughTurn Whether this exact session can fork through a settled canonical Turn.
+	ForkThroughTurn bool `json:"forkThroughTurn"`
+
+	// ForkThroughTurnIds Canonical Turn ids currently verified against provider-native history.
+	ForkThroughTurnIds *[]string `json:"forkThroughTurnIds,omitempty"`
+
+	// ForkThroughTurnIdsKnown Whether forkThroughTurnIds is an authoritative provider-history projection.
+	ForkThroughTurnIdsKnown *bool `json:"forkThroughTurnIdsKnown,omitempty"`
+}
+
 // WorkspaceAgentSessionListResponse defines model for WorkspaceAgentSessionListResponse.
 type WorkspaceAgentSessionListResponse struct {
 	HasMore bool `json:"hasMore"`
@@ -6472,15 +6606,19 @@ type WorkspaceAgentSessionMessage struct {
 	// TurnId A non-empty turnId attaches a Turn-scoped message to a real persisted Turn. Null is valid only when kind is session_audit; empty strings are forbidden. Legacy stored turnless rows are read as compatibility data and are never assigned a guessed Turn.
 	TurnId          *string `json:"turnId"`
 	UpdatedAtUnixMs *int64  `json:"updatedAtUnixMs,omitempty"`
-	Version         int64   `json:"version"`
+
+	// Version Per-session durable message change cursor. The upper bound preserves exact integer representation in JavaScript clients.
+	Version WorkspaceAgentMessageCursor `json:"version"`
 }
 
 // WorkspaceAgentSessionMessagesResponse defines model for WorkspaceAgentSessionMessagesResponse.
 type WorkspaceAgentSessionMessagesResponse struct {
-	AgentSessionId string                         `json:"agentSessionId"`
-	HasMore        bool                           `json:"hasMore"`
-	LatestVersion  int64                          `json:"latestVersion"`
-	Messages       []WorkspaceAgentSessionMessage `json:"messages"`
+	AgentSessionId string `json:"agentSessionId"`
+	HasMore        bool   `json:"hasMore"`
+
+	// LatestVersion Per-session durable message change cursor. The upper bound preserves exact integer representation in JavaScript clients.
+	LatestVersion WorkspaceAgentMessageCursor    `json:"latestVersion"`
+	Messages      []WorkspaceAgentSessionMessage `json:"messages"`
 }
 
 // WorkspaceAgentSessionPage defines model for WorkspaceAgentSessionPage.
@@ -7287,6 +7425,9 @@ type ModelPlanID = string
 // ModelPolicyID defines model for ModelPolicyID.
 type ModelPolicyID = string
 
+// SessionForkOperationID defines model for SessionForkOperationID.
+type SessionForkOperationID = string
+
 // TerminalAfterSeq defines model for TerminalAfterSeq.
 type TerminalAfterSeq = int64
 
@@ -7497,8 +7638,8 @@ type ListWorkspaceAgentSessionsParams struct {
 
 // ListWorkspaceAgentSessionMessagesParams defines parameters for ListWorkspaceAgentSessionMessages.
 type ListWorkspaceAgentSessionMessagesParams struct {
-	AfterVersion  *int64                                        `form:"afterVersion,omitempty" json:"afterVersion,omitempty"`
-	BeforeVersion *int64                                        `form:"beforeVersion,omitempty" json:"beforeVersion,omitempty"`
+	AfterVersion  *WorkspaceAgentMessageCursor                  `form:"afterVersion,omitempty" json:"afterVersion,omitempty"`
+	BeforeVersion *WorkspaceAgentMessageCursor                  `form:"beforeVersion,omitempty" json:"beforeVersion,omitempty"`
 	Order         *ListWorkspaceAgentSessionMessagesParamsOrder `form:"order,omitempty" json:"order,omitempty"`
 	Limit         *int                                          `form:"limit,omitempty" json:"limit,omitempty"`
 }
@@ -7678,6 +7819,9 @@ type ScanWorkspaceExternalAgentSessionImportsJSONRequestBody = ExternalAgentImpo
 
 // SetAgentSessionAutomationRuleOverrideJSONRequestBody defines body for SetAgentSessionAutomationRuleOverride for application/json ContentType.
 type SetAgentSessionAutomationRuleOverrideJSONRequestBody = SetAgentSessionAutomationRuleOverrideRequest
+
+// ForkWorkspaceAgentSessionJSONRequestBody defines body for ForkWorkspaceAgentSession for application/json ContentType.
+type ForkWorkspaceAgentSessionJSONRequestBody = ForkWorkspaceAgentSessionRequest
 
 // GoalControlWorkspaceAgentSessionJSONRequestBody defines body for GoalControlWorkspaceAgentSession for application/json ContentType.
 type GoalControlWorkspaceAgentSessionJSONRequestBody = WorkspaceAgentSessionGoalControlRequest
@@ -8297,6 +8441,65 @@ func (t SendWorkspaceAgentSessionInputResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (t *SendWorkspaceAgentSessionInputResponse) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsWorkspaceAgentSessionForkThroughTurnPoint returns the union data inside the WorkspaceAgentSessionForkPoint as a WorkspaceAgentSessionForkThroughTurnPoint
+func (t WorkspaceAgentSessionForkPoint) AsWorkspaceAgentSessionForkThroughTurnPoint() (WorkspaceAgentSessionForkThroughTurnPoint, error) {
+	var body WorkspaceAgentSessionForkThroughTurnPoint
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromWorkspaceAgentSessionForkThroughTurnPoint overwrites any union data inside the WorkspaceAgentSessionForkPoint as the provided WorkspaceAgentSessionForkThroughTurnPoint
+func (t *WorkspaceAgentSessionForkPoint) FromWorkspaceAgentSessionForkThroughTurnPoint(v WorkspaceAgentSessionForkThroughTurnPoint) error {
+	v.Type = "throughTurn"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeWorkspaceAgentSessionForkThroughTurnPoint performs a merge with any union data inside the WorkspaceAgentSessionForkPoint, using the provided WorkspaceAgentSessionForkThroughTurnPoint
+func (t *WorkspaceAgentSessionForkPoint) MergeWorkspaceAgentSessionForkThroughTurnPoint(v WorkspaceAgentSessionForkThroughTurnPoint) error {
+	v.Type = "throughTurn"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t WorkspaceAgentSessionForkPoint) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"type"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t WorkspaceAgentSessionForkPoint) ValueByDiscriminator() (interface{}, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "throughTurn":
+		return t.AsWorkspaceAgentSessionForkThroughTurnPoint()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t WorkspaceAgentSessionForkPoint) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *WorkspaceAgentSessionForkPoint) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
 	return err
 }

@@ -72,6 +72,7 @@ func (a agentRuntimeAdapter) GoalControl(ctx context.Context, input agentservice
 		GoalRevision:       input.GoalRevision,
 		RepairEpoch:        input.RepairEpoch,
 		SubmissionMetadata: input.SubmissionMetadata,
+		RequireLive:        input.RequireLive,
 	})
 	if err != nil {
 		return agentservice.RuntimeGoalControlResult{}, mapAgentRuntimeError(err)
@@ -86,7 +87,7 @@ func (a agentRuntimeAdapter) GoalControl(ctx context.Context, input agentservice
 
 func (a agentRuntimeAdapter) ReconcileGoal(ctx context.Context, input agentservice.RuntimeGoalControlInput) (agentservice.RuntimeGoalReconcileResult, error) {
 	result, err := a.controller.ReconcileGoal(ctx, agentruntime.GoalReconcileInput{
-		RoomID: input.WorkspaceID, AgentSessionID: input.AgentSessionID,
+		RoomID: input.WorkspaceID, AgentSessionID: input.AgentSessionID, RequireLive: input.RequireLive,
 	})
 	if err != nil {
 		return agentservice.RuntimeGoalReconcileResult{}, mapAgentRuntimeError(err)

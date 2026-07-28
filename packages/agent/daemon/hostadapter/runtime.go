@@ -45,11 +45,19 @@ type RuntimeController struct {
 
 var (
 	_ host.RuntimeController                 = (*RuntimeController)(nil)
+	_ host.RuntimeSessionLiveness            = (*RuntimeController)(nil)
 	_ host.RuntimeSubmitProvenanceReporter   = (*RuntimeController)(nil)
+	_ host.SessionForkRuntime                = (*RuntimeController)(nil)
 	_ host.GoalRuntimeController             = (*RuntimeController)(nil)
 	_ host.GoalRuntimeReconciler             = (*RuntimeController)(nil)
 	_ host.GoalRuntimeRecoveryPolicyResolver = (*RuntimeController)(nil)
+	_ host.GoalRuntimeGenerationFencer       = (*RuntimeController)(nil)
 )
+
+type sessionForkRuntimeBackend interface {
+	ForkCapabilities(context.Context, agentruntime.Session) (agentruntime.SessionForkCapabilities, error)
+	Fork(context.Context, agentruntime.SessionForkInput) (agentruntime.SessionForkResult, error)
+}
 
 func (a *RuntimeController) Start(ctx context.Context, input host.RuntimeStartInput) (host.ProviderRuntimeSession, error) {
 	if err := a.requireBackend(); err != nil {
@@ -108,6 +116,16 @@ func (a *RuntimeController) Session(workspaceID, sessionID string) (host.Provide
 		return host.ProviderRuntimeSession{}, false
 	}
 	return a.sessionWithState(session), true
+}
+
+func (a *RuntimeController) RuntimeSessionLive(workspaceID, sessionID string) bool {
+	if a == nil || a.Backend == nil {
+		return false
+	}
+	liveness, ok := a.Backend.(interface {
+		HasLiveSession(string, string) bool
+	})
+	return ok && liveness.HasLiveSession(strings.TrimSpace(workspaceID), strings.TrimSpace(sessionID))
 }
 
 func (a *RuntimeController) CanResume(input host.RuntimeResumeInput) bool {
@@ -233,6 +251,88 @@ func (a *RuntimeController) Close(ctx context.Context, input host.RuntimeCloseIn
 	return mapRuntimeError(err)
 }
 
+func (a *RuntimeController) ResolveSessionFork(
+	ctx context.Context,
+	source host.ProviderRuntimeSession,
+) (host.SessionForkDriverDescriptor, error) {
+	if err := a.requireBackend(); err != nil {
+		return host.SessionForkDriverDescriptor{}, err
+	}
+	backend, ok := a.Backend.(sessionForkRuntimeBackend)
+	if !ok {
+		return host.SessionForkDriverDescriptor{}, nil
+	}
+	capabilities, err := backend.ForkCapabilities(ctx, runtimeSession(source))
+	if err != nil {
+		return host.SessionForkDriverDescriptor{}, mapRuntimeError(err)
+	}
+	if !capabilities.FullSession && !capabilities.ThroughTurn {
+		return host.SessionForkDriverDescriptor{}, nil
+	}
+	return host.SessionForkDriverDescriptor{
+		Kind:                         firstNonEmptyString(capabilities.DriverKind, "daemon-runtime-native"),
+		Version:                      firstNonEmptyString(capabilities.DriverVersion, "v1"),
+		StateBindingMode:             host.SessionForkStateBindingMode(firstNonEmptyString(capabilities.StateBindingMode, string(host.SessionForkStateBindingHostCopy))),
+		DeterministicTargetSessionID: capabilities.DeterministicTargetSessionID,
+		FullSession:                  capabilities.FullSession,
+		ThroughTurn:                  capabilities.ThroughTurn,
+		ThroughProviderTurnIDs:       append([]string(nil), capabilities.ThroughProviderTurnIDs...),
+		ThroughProviderTurnIDsKnown:  capabilities.ThroughProviderTurnIDsKnown,
+	}, nil
+}
+
+func (a *RuntimeController) ForkSession(
+	ctx context.Context,
+	input host.RuntimeSessionForkInput,
+) (host.RuntimeSessionForkResult, error) {
+	if err := a.requireBackend(); err != nil {
+		return host.RuntimeSessionForkResult{
+			DeliveryDisposition: host.SessionForkDeliveryNotStarted,
+		}, err
+	}
+	backend, ok := a.Backend.(sessionForkRuntimeBackend)
+	if !ok {
+		return host.RuntimeSessionForkResult{
+			DeliveryDisposition: host.SessionForkDeliveryNotStarted,
+		}, host.ErrSessionForkUnsupported
+	}
+	result, err := backend.Fork(ctx, agentruntime.SessionForkInput{
+		Source:                  runtimeSession(input.Source),
+		ProviderTurnID:          input.SourceProviderTurnID,
+		ProviderTurnIDs:         append([]string(nil), input.SourceProviderTurnIDs...),
+		TargetProviderSessionID: strings.TrimSpace(input.TargetProviderSessionID),
+		TargetTitle:             input.TargetTitle,
+	})
+	mapped := host.RuntimeSessionForkResult{
+		ProviderSessionID:     strings.TrimSpace(result.ProviderSessionID),
+		TargetProviderTurnIDs: append([]string(nil), result.TargetProviderTurnIDs...),
+		StateBindingMode:      host.SessionForkStateBindingMode(strings.TrimSpace(result.StateBindingMode)),
+		StateBindingReceipt:   strings.TrimSpace(result.StateBindingReceipt),
+		DeliveryDisposition: host.SessionForkDeliveryDisposition(
+			result.DeliveryDisposition,
+		),
+	}
+	if mapped.StateBindingMode == "" {
+		mapped.StateBindingMode = host.SessionForkStateBindingHostCopy
+	}
+	if err != nil {
+		if errors.Is(err, agentruntime.ErrSessionForkUnsupported) {
+			return mapped, host.ErrSessionForkUnsupported
+		}
+		return mapped, mapRuntimeError(err)
+	}
+	return mapped, nil
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 func (a *RuntimeController) GoalControl(ctx context.Context, input host.RuntimeGoalControlInput) (host.RuntimeGoalControlResult, error) {
 	if err := a.requireBackend(); err != nil {
 		return host.RuntimeGoalControlResult{}, err
@@ -241,7 +341,7 @@ func (a *RuntimeController) GoalControl(ctx context.Context, input host.RuntimeG
 		RoomID: input.WorkspaceID, AgentSessionID: input.AgentSessionID,
 		Action: agentruntime.GoalControlAction(input.Action), Objective: input.Objective,
 		OperationID: input.OperationID, GoalRevision: input.GoalRevision, RepairEpoch: input.RepairEpoch,
-		SubmissionMetadata: cloneMap(input.SubmissionMetadata),
+		SubmissionMetadata: cloneMap(input.SubmissionMetadata), RequireLive: input.RequireLive,
 	})
 	return host.RuntimeGoalControlResult{
 		AgentSessionID: result.AgentSessionID, Goal: cloneMap(result.Goal), Evidence: cloneMap(result.Evidence),
@@ -253,7 +353,9 @@ func (a *RuntimeController) ReconcileGoal(ctx context.Context, input host.Runtim
 	if err := a.requireBackend(); err != nil {
 		return host.RuntimeGoalReconcileResult{}, err
 	}
-	result, err := a.Backend.ReconcileGoal(ctx, agentruntime.GoalReconcileInput{RoomID: input.WorkspaceID, AgentSessionID: input.AgentSessionID})
+	result, err := a.Backend.ReconcileGoal(ctx, agentruntime.GoalReconcileInput{
+		RoomID: input.WorkspaceID, AgentSessionID: input.AgentSessionID, RequireLive: input.RequireLive,
+	})
 	return host.RuntimeGoalReconcileResult{
 		AgentSessionID: result.AgentSessionID, Goal: cloneMap(result.Goal), Evidence: cloneMap(result.Evidence),
 	}, mapRuntimeError(err)
@@ -269,6 +371,23 @@ func (a *RuntimeController) GoalRecoveryPolicy(ctx context.Context, input host.R
 	}, mapRuntimeError(err)
 }
 
+func (a *RuntimeController) FenceGoalGeneration(ctx context.Context, input host.RuntimeGoalGenerationFenceInput) error {
+	if err := a.requireBackend(); err != nil {
+		return err
+	}
+	fencer, ok := a.Backend.(interface {
+		FenceGoalGeneration(context.Context, agentruntime.GoalGenerationFenceRequest) error
+	})
+	if !ok {
+		return host.ErrGoalGenerationFenceUnavailable
+	}
+	return mapRuntimeError(fencer.FenceGoalGeneration(ctx, agentruntime.GoalGenerationFenceRequest{
+		RoomID: input.WorkspaceID, AgentSessionID: input.AgentSessionID,
+		OperationID: input.TargetOperationID, Revision: input.TargetRevision,
+		RepairEpoch: input.TargetRepairEpoch, Reason: input.Reason, RequireLive: input.RequireLive,
+	}))
+}
+
 func (a *RuntimeController) requireBackend() error {
 	if a == nil || a.Backend == nil {
 		return errors.New("agent runtime controller is unavailable")
@@ -279,6 +398,9 @@ func (a *RuntimeController) requireBackend() error {
 func mapRuntimeError(err error) error {
 	if err == nil {
 		return nil
+	}
+	if errors.Is(err, agentruntime.ErrSessionDisconnected) {
+		return errors.Join(host.ErrRuntimeSessionDisconnected, err)
 	}
 	var appErr *agentruntime.AppError
 	if errors.As(err, &appErr) && appErr != nil {
@@ -301,10 +423,31 @@ func (a *RuntimeController) fromSession(session agentruntime.Session) host.Provi
 		AgentTargetID: session.AgentTargetID, Provider: session.Provider, ProviderSessionID: session.ProviderSessionID,
 		Resumable: session.Resumable,
 		Cwd:       session.CWD, Env: append([]string(nil), session.Env...), Settings: settings,
-		RuntimeContext: cloneMap(session.RuntimeContext), Status: session.Status,
+		ProviderTargetRef: cloneMap(session.ProviderTargetRef),
+		RuntimeContext:    cloneMap(session.RuntimeContext), Status: session.Status,
 		TurnLifecycle: hostTurnLifecyclePointer(session.TurnLifecycle), SubmitAvailability: hostSubmitAvailability(session.SubmitAvailability),
 		Visible: session.Visible, Title: session.Title, InitialTitleEstablished: session.InitialTitleEstablished,
 		LastError: session.LastError, CreatedAtUnixMS: session.CreatedAtUnixMS, UpdatedAtUnixMS: session.UpdatedAtUnixMS,
+	}
+}
+
+func runtimeSession(session host.ProviderRuntimeSession) agentruntime.Session {
+	var settings *agentruntime.SessionSettings
+	if session.Settings != nil {
+		settings = runtimeSettings(*session.Settings)
+	}
+	return agentruntime.Session{
+		RoomID: session.WorkspaceID, AgentSessionID: session.ID,
+		AgentTargetID: session.AgentTargetID, Provider: session.Provider,
+		ProviderSessionID: session.ProviderSessionID, Resumable: session.Resumable,
+		CWD: session.Cwd, Env: append([]string(nil), session.Env...),
+		Status: session.Status, TurnLifecycle: runtimeTurnLifecyclePointer(session.TurnLifecycle),
+		SubmitAvailability: runtimeSubmitAvailability(session.SubmitAvailability),
+		Title:              session.Title, LastError: session.LastError, Visible: session.Visible,
+		RuntimeContext: cloneMap(session.RuntimeContext), ProviderTargetRef: cloneMap(session.ProviderTargetRef),
+		Settings:        settings,
+		CreatedAtUnixMS: session.CreatedAtUnixMS, UpdatedAtUnixMS: session.UpdatedAtUnixMS,
+		InitialTitleEstablished: session.InitialTitleEstablished,
 	}
 }
 
@@ -453,11 +596,34 @@ func hostTurnLifecycle(input agentruntime.TurnLifecycle) host.TurnLifecycle {
 	}
 }
 
+func runtimeTurnLifecyclePointer(input *host.TurnLifecycle) *agentruntime.TurnLifecycle {
+	if input == nil {
+		return nil
+	}
+	var completed *agentruntime.CompletedCommand
+	if input.CompletedCommand != nil {
+		completed = &agentruntime.CompletedCommand{
+			Kind: input.CompletedCommand.Kind, Status: input.CompletedCommand.Status,
+		}
+	}
+	return &agentruntime.TurnLifecycle{
+		ActiveTurnID: input.ActiveTurnID, Phase: input.Phase, Settling: input.Settling,
+		Outcome: input.Outcome, CompletedCommand: completed,
+	}
+}
+
 func hostSubmitAvailability(input *agentruntime.SubmitAvailability) *host.SubmitAvailability {
 	if input == nil {
 		return nil
 	}
 	return &host.SubmitAvailability{State: input.State, Reason: input.Reason}
+}
+
+func runtimeSubmitAvailability(input *host.SubmitAvailability) *agentruntime.SubmitAvailability {
+	if input == nil {
+		return nil
+	}
+	return &agentruntime.SubmitAvailability{State: input.State, Reason: input.Reason}
 }
 
 func cloneMap(input map[string]any) map[string]any {

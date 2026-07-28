@@ -85,6 +85,7 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - [Imported sessions trigger fresh-completion indicators](./agent-session-lifecycle.md#imported-sessions-trigger-fresh-completion-indicators)
 - [Realtime agent completion does not show unread attention](./agent-session-lifecycle.md#realtime-agent-completion-does-not-show-unread-attention)
 - [Completed agent session stays activating and disables the composer](./agent-session-lifecycle.md#completed-agent-session-stays-activating-and-disables-the-composer)
+- [Shared Agent composer stays disabled after the target connects](./agent-session-lifecycle.md#shared-agent-composer-stays-disabled-after-the-target-connects)
 - [Goal clear stays planning and leaves the session running](./agent-session-lifecycle.md#goal-clear-stays-planning-and-leaves-the-session-running)
 - [Cursor session/new is canceled before its 30-second timeout](./agent-session-lifecycle.md#cursor-sessionnew-is-canceled-before-its-30-second-timeout)
 - [Cursor auto-continue invents interrupted work after a network drop](./agent-session-lifecycle.md#cursor-auto-continue-invents-interrupted-work-after-a-network-drop)

@@ -1,9 +1,6 @@
-import {
-  AppState,
-  DeviceEventEmitter,
-  type AppStateStatus
-} from "react-native";
-import { deviceLink, mobileSecurity } from "./mobileNative";
+import { DeviceEventEmitter, NativeEventEmitter } from "react-native";
+import { createAppLifecyclePort } from "./appLifecyclePort";
+import { appLifecycle, deviceLink, mobileSecurity } from "./mobileNative";
 import {
   sendEmailCode,
   signInWithGitHub,
@@ -23,6 +20,7 @@ import { parseAgentLiveDeliveries } from "./agentLiveNativeBridge";
 import { accountBaseURL } from "../config";
 
 const AGENT_LIVE_EVENT_NAME = "TuttiDeviceLinkAgentLive";
+const appLifecycleEvents = new NativeEventEmitter(appLifecycle);
 
 export function createMobileServicePorts(): MobileServicePorts {
   return {
@@ -31,6 +29,7 @@ export function createMobileServicePorts(): MobileServicePorts {
       signInWithGitHub,
       verifyEmailCode
     },
+    appLifecycle: createAppLifecyclePort(appLifecycle, appLifecycleEvents),
     clock: {
       now: () => Date.now(),
       schedule(delayMs, callback) {
@@ -83,15 +82,6 @@ export function createMobileServicePorts(): MobileServicePorts {
     legacySessionCookie: {
       clear: () => mobileSecurity.clearLegacySessionCookie(accountBaseURL)
     },
-    lifecycle: {
-      subscribe(listener) {
-        listener(applicationVisibility(AppState.currentState));
-        const subscription = AppState.addEventListener("change", (state) => {
-          listener(applicationVisibility(state));
-        });
-        return () => subscription.remove();
-      }
-    },
     pairing: {
       claimPairing,
       connectPairedDevice,
@@ -111,14 +101,4 @@ export function createMobileServicePorts(): MobileServicePorts {
     sessionStorage: mobileSecurity,
     createRemoteClient: () => createRemoteTuttidClient(deviceLink)
   };
-}
-
-function applicationVisibility(
-  state: AppStateStatus
-): "active" | "background" | "inactive" {
-  return state === "active"
-    ? "active"
-    : state === "background"
-      ? "background"
-      : "inactive";
 }

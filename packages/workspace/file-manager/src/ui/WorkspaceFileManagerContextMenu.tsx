@@ -114,12 +114,11 @@ export function WorkspaceFileManagerContextMenu({
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
-        // Prefer the host CSS var when present; fall back to a stable stacking
-        // value so an unset var cannot invalidate the entire z-index declaration.
-        // Viewport menus need to clear typical workbench chrome (≈ z-10..50).
+        // A portaled viewport menu no longer inherits the file-manager-local
+        // overlay variable, so use the shared layer above `--z-panel`.
         zIndex:
           positionMode === "viewport"
-            ? "var(--workspace-file-manager-dialog-overlay-z-index, 10050)"
+            ? "var(--z-panel-popover)"
             : "var(--workspace-file-manager-dialog-overlay-z-index, 20)"
       }}
       onContextMenu={(event) => {
@@ -496,7 +495,7 @@ function ContextMenuSubmenu({
         role="menu"
         style={{
           width: submenuPosition.width,
-          zIndex: "calc(var(--z-panel-popover) + 200)"
+          zIndex: "calc(var(--z-panel-popover) + 1)"
         }}
         onPointerEnter={openSubmenu}
         onPointerLeave={scheduleClose}

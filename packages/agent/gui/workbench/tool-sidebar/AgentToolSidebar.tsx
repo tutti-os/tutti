@@ -165,7 +165,9 @@ export const AgentToolSidebar = forwardRef<
         isHostOwnedHeader
           ? "[-webkit-app-region:no-drag]"
           : "[-webkit-app-region:drag]",
-        isSidebarOpen && "border-b border-[var(--border-1)]"
+        isSidebarOpen &&
+          activePanel !== null &&
+          "border-b border-[var(--border-1)]"
       )}
       data-agent-tool-sidebar-drag-region="true"
       data-agent-tool-sidebar-header="true"

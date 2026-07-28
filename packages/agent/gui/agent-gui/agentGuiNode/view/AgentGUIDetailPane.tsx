@@ -110,11 +110,10 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     activePromptRequestId,
     bottomDockLiftedPrompt,
     bottomDockReplacementPrompt,
-    canQueueWhileBusy,
     chromeLabels,
     composerActivePrompt,
-    composerDisabled,
     composerDisabledReason,
+    composerGate,
     composerLabels,
     conversation,
     conversationFlowEmpty,
@@ -133,7 +132,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     showTimelineSkeleton,
     showUnavailableChatEmpty,
     slashStatus: derivedSlashStatus,
-    submitDisabled,
     timelineConversationId,
     timelineInteractionLocked
   } = useAgentGUIDetailModel({
@@ -148,6 +146,16 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const handleInterruptCurrentTurn = useCallback(() => {
     actions.interruptCurrentTurn(labels.noRunningResponse);
   }, [actions.interruptCurrentTurn, labels.noRunningResponse]);
+  const handleForkThroughTurn = useStableEventCallback((turnId: string) => {
+    const agentSessionId =
+      conversation?.sourceDetail.session.agentSessionId.trim() ?? "";
+    if (agentSessionId) {
+      void actions.forkConversationThroughTurn(agentSessionId, turnId);
+    }
+  });
+  const openForkSourceSession = useStableEventCallback(
+    actions.openForkSourceConversation
+  );
   const submitApprovalOption = useStableEventCallback(
     actions.submitApprovalOption
   );
@@ -283,7 +291,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const canSwitchComposerProvider = true;
   const isInteractionPending =
     viewModel.interaction.isRespondingApproval ||
-    viewModel.interaction.isRuntimeBlocked;
+    composerGate.runtime.status === "blocked";
   const homeComposerProviderTargets = homeTargetProjection.agentTargets;
   const selectedHomeComposerTarget = homeTargetProjection.selectedAgentTarget;
   const composerProviderTargets =
@@ -372,10 +380,10 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         viewModel.rail.activeConversationId === null
           ? selectHomeComposerAgentTargetAndFocus
           : undefined,
-      disabled: composerDisabled || timelineInteractionLocked,
+      gate: composerGate,
+      presentationEditorDisabled: timelineInteractionLocked,
       disabledReason: composerDisabledReason,
-      submitDisabled:
-        submitDisabled ||
+      presentationSubmitDisabled:
         timelineInteractionLocked ||
         tuttiWorkflowDock.phase?.kind === "materializing",
       tuttiModeActive: viewModel.composer.isTuttiModeActive,
@@ -387,7 +395,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       queuedPrompts: viewModel.composer.queuedPrompts,
       drainingQueuedPromptId: viewModel.composer.drainingQueuedPromptId,
       workspaceAppIcons,
-      canQueueWhileBusy,
       placeholder: viewModel.detail.hasSentUserMessage
         ? labels.followupPlaceholder
         : labels.initialPlaceholder,
@@ -464,12 +471,11 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onRequestGitBranches: stableRequestGitBranches
     }),
     [
-      canQueueWhileBusy,
       capabilityMenuState,
       capabilityControlsReadOnly,
       canSwitchComposerProvider,
-      composerDisabled,
       composerDisabledReason,
+      composerGate,
       composerFocusRequestSequence,
       composerEngagement,
       composerInputHistoryProps,
@@ -507,7 +513,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       showStopButton,
       stopDisabled,
       slashStatus,
-      submitDisabled,
       setTuttiModeActive,
       setTuttiModeOrchestrationIntensity,
       submitInteractivePrompt,
@@ -545,7 +550,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       viewModel.composer.isTuttiModeUpdating,
       viewModel.composer.tuttiModeOrchestrationIntensity,
       viewModel.interaction.isRespondingApproval,
-      viewModel.interaction.isRuntimeBlocked,
+      composerGate.runtime.status,
       viewModel.composer.promptImagesSupported,
       viewModel.composer.queueStatus,
       viewModel.composer.queuedPrompts,
@@ -662,6 +667,8 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       />
     )
   ) : null;
+  const forkedFrom =
+    viewModel.detail.conversationDetail?.session.forkedFrom ?? null;
   return (
     <main
       className={styles.detail}
@@ -681,6 +688,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         conversationFlowEmpty={conversationFlowEmpty}
         conversationFlowLabels={conversationFlowLabels}
         followEndMode={followEndMode}
+        forkedFrom={forkedFrom}
         hasActiveConversation={hasActiveConversation}
         homeContent={homeContent}
         isLoadingOlderMessages={viewModel.detail.isLoadingOlderMessages}
@@ -688,6 +696,11 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         isTimelineScrolledToTop={isTimelineScrolledToTop}
         labels={labels}
         onAuthLogin={authLogin}
+        onForkThroughTurn={handleForkThroughTurn}
+        onOpenForkSourceSession={openForkSourceSession}
+        forkThroughTurnPendingTurnIds={
+          viewModel.operations.forkThroughTurnPendingTurnIds
+        }
         onLinkAction={stableLinkAction}
         showTimelineSkeleton={showTimelineSkeleton}
         showUnavailableChatEmpty={showUnavailableChatEmpty}

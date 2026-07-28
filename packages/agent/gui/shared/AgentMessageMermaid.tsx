@@ -655,8 +655,18 @@ function resolveMermaidTheme(): MermaidTheme {
 function renderMermaid(source: string, theme: MermaidTheme): Promise<string> {
   mermaid.initialize({
     darkMode: theme === "dark",
+    htmlLabels: false,
     maxEdges: MERMAID_MAX_EDGES,
     maxTextSize: MERMAID_MAX_TEXT_SIZE,
+    secure: [
+      "secure",
+      "securityLevel",
+      "startOnLoad",
+      "maxTextSize",
+      "suppressErrorRendering",
+      "maxEdges",
+      "htmlLabels"
+    ],
     securityLevel: "strict",
     startOnLoad: false,
     suppressErrorRendering: true,

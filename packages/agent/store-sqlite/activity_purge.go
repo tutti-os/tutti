@@ -211,6 +211,7 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = ?
 		{"goal provenance", `DELETE FROM workspace_agent_goal_provenance_ledger WHERE workspace_id = ? AND agent_session_id = ?`},
 		{"goal reconcile inbox", `DELETE FROM workspace_agent_goal_reconcile_inbox WHERE workspace_id = ? AND agent_session_id = ?`},
 		{"goal repair incidents", `DELETE FROM workspace_agent_goal_repair_incidents WHERE workspace_id = ? AND agent_session_id = ?`},
+		{"goal generation fences", `DELETE FROM workspace_agent_goal_generation_fences WHERE workspace_id = ? AND agent_session_id = ?`},
 		{"goal operations", `DELETE FROM workspace_agent_goal_control_operations WHERE workspace_id = ? AND agent_session_id = ?`},
 		{"goal state", `DELETE FROM workspace_agent_session_goals WHERE workspace_id = ? AND agent_session_id = ?`},
 		{"interactions", `DELETE FROM workspace_agent_interactions WHERE workspace_id = ? AND agent_session_id = ?`},

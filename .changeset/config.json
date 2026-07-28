@@ -9,6 +9,7 @@
   "fixed": [
     [
       "@tutti-os/analytics",
+      "@tutti-os/analytics-debug",
       "@tutti-os/event-stream-core",
       "@tutti-os/workspace-file-manager",
       "@tutti-os/workspace-file-reference",

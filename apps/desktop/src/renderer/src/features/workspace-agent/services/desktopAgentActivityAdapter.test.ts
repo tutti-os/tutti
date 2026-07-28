@@ -7,6 +7,7 @@ import type {
   SendWorkspaceAgentSessionInputRequest,
   SendWorkspaceAgentSessionInputResponse,
   WorkspaceAgentSession,
+  WorkspaceAgentSessionForkOperation,
   WorkspaceAgentSessionMessage
 } from "@tutti-os/client-tuttid-ts";
 import { TuttidProtocolError } from "@tutti-os/client-tuttid-ts";
@@ -1714,6 +1715,243 @@ test("desktop agent activity adapter loads Claude options without mutating draft
   ]);
 });
 
+test("desktop agent activity adapter maps a committed fork operation", async () => {
+  const target = createSession({ id: "target-session" });
+  const operation = createForkOperation({
+    session: target,
+    status: "committed"
+  });
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async forkWorkspaceAgentSession() {
+        return operation;
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  const result = await adapter.forkSession({
+    requestId: "fork-request",
+    sourceAgentSessionId: "source-session",
+    targetAgentSessionId: "target-session",
+    turnId: "source-turn",
+    workspaceId
+  });
+
+  assert.equal(result.status, "committed");
+  assert.equal(result.operationId, "fork-operation");
+  assert.equal(result.session?.agentSessionId, "target-session");
+});
+
+test("desktop agent activity adapter preserves a recovered committed identity", async () => {
+  const target = createSession({
+    forkedFrom: {
+      forkedAtUnixMs: 10,
+      operationId: "original-operation",
+      sourceAgentSessionId: "source-session",
+      sourceTurnId: "source-turn",
+      targetTurnId: "target-turn"
+    },
+    id: "original-target"
+  });
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async forkWorkspaceAgentSession() {
+        return createForkOperation({
+          operationId: "original-operation",
+          requestId: "original-request",
+          session: target,
+          status: "committed",
+          targetAgentSessionId: "original-target"
+        });
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  const result = await adapter.forkSession({
+    requestId: "request-after-restart",
+    sourceAgentSessionId: "source-session",
+    targetAgentSessionId: "target-after-restart",
+    turnId: "source-turn",
+    workspaceId
+  });
+
+  assert.equal(result.status, "committed");
+  assert.equal(result.operationId, "original-operation");
+  assert.equal(result.requestId, "original-request");
+  assert.equal(result.targetAgentSessionId, "original-target");
+  assert.equal(result.session?.agentSessionId, "original-target");
+});
+
+test("desktop agent activity adapter reconciles an accepted fork operation", async () => {
+  const calls: string[] = [];
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async forkWorkspaceAgentSession() {
+        calls.push("fork");
+        return createForkOperation({ status: "accepted" });
+      },
+      async getWorkspaceAgentSessionForkOperation(_workspaceId, operationId) {
+        calls.push(`get:${operationId}`);
+        return createForkOperation({
+          error: "provider rejected fork",
+          status: "failed"
+        });
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  const result = await adapter.forkSession({
+    requestId: "fork-request",
+    sourceAgentSessionId: "source-session",
+    targetAgentSessionId: "target-session",
+    turnId: "source-turn",
+    workspaceId
+  });
+
+  assert.deepEqual(calls, ["fork", "get:fork-operation"]);
+  assert.equal(result.status, "failed");
+  assert.equal(result.error, "provider rejected fork");
+  assert.equal(result.session, null);
+});
+
+test("desktop agent activity adapter classifies an ambiguous POST failure as delivery unknown", async () => {
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async forkWorkspaceAgentSession() {
+        throw new TypeError("connection reset");
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  await assert.rejects(
+    adapter.forkSession({
+      requestId: "fork-request",
+      sourceAgentSessionId: "source-session",
+      targetAgentSessionId: "target-session",
+      turnId: "source-turn",
+      workspaceId
+    }),
+    (error: unknown) =>
+      error instanceof Error &&
+      (error as Error & { reason?: string }).reason ===
+        "agent_session_fork_delivery_unknown"
+  );
+});
+
+test("desktop agent activity adapter classifies an aborted POST as delivery unknown", async () => {
+  const controller = new AbortController();
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async forkWorkspaceAgentSession(
+        _workspaceId,
+        _agentSessionId,
+        _request,
+        options
+      ) {
+        controller.abort(new Error("caller cancelled"));
+        throw options?.signal?.reason;
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  await assert.rejects(
+    adapter.forkSession({
+      requestId: "fork-request",
+      signal: controller.signal,
+      sourceAgentSessionId: "source-session",
+      targetAgentSessionId: "target-session",
+      turnId: "source-turn",
+      workspaceId
+    }),
+    (error: unknown) =>
+      error instanceof Error &&
+      (error as Error & { reason?: string }).reason ===
+        "agent_session_fork_delivery_unknown"
+  );
+});
+
+test("desktop agent activity adapter classifies aborted accepted polling as delivery unknown", async () => {
+  const controller = new AbortController();
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async forkWorkspaceAgentSession() {
+        return createForkOperation({ status: "accepted" });
+      },
+      async getWorkspaceAgentSessionForkOperation() {
+        controller.abort(new Error("caller cancelled"));
+        throw controller.signal.reason;
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  await assert.rejects(
+    adapter.forkSession({
+      requestId: "fork-request",
+      signal: controller.signal,
+      sourceAgentSessionId: "source-session",
+      targetAgentSessionId: "target-session",
+      turnId: "source-turn",
+      workspaceId
+    }),
+    (error: unknown) =>
+      error instanceof Error &&
+      (error as Error & { reason?: string }).reason ===
+        "agent_session_fork_delivery_unknown"
+  );
+});
+
+test("desktop agent activity adapter correlates a recovered durable unknown to the current command", async () => {
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async forkWorkspaceAgentSession() {
+        return createForkOperation({
+          operationId: "original-operation",
+          requestId: "original-request",
+          status: "unknown",
+          targetAgentSessionId: "original-target"
+        });
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  const result = await adapter.forkSession({
+    requestId: "request-after-restart",
+    sourceAgentSessionId: "source-session",
+    targetAgentSessionId: "target-after-restart",
+    turnId: "source-turn",
+    workspaceId
+  });
+
+  assert.equal(result.status, "unknown");
+  assert.equal(result.operationId, "original-operation");
+  assert.equal(result.requestId, "request-after-restart");
+  assert.equal(result.targetAgentSessionId, "target-after-restart");
+});
+
+function createForkOperation(
+  overrides: Partial<WorkspaceAgentSessionForkOperation> = {}
+): WorkspaceAgentSessionForkOperation {
+  return {
+    error: null,
+    lineage: null,
+    operationId: "fork-operation",
+    point: { type: "throughTurn", turnId: "source-turn" },
+    requestId: "fork-request",
+    session: null,
+    sourceAgentSessionId: "source-session",
+    status: "accepted",
+    targetAgentSessionId: "target-session",
+    ...overrides
+  };
+}
+
 function createTuttidClient(
   overrides: Partial<TuttidClient> = {}
 ): TuttidClient {
@@ -1852,6 +2090,10 @@ function createSession(
   return {
     agentTargetId: null,
     capabilities: null,
+    lifecycleCapabilities: canonicalOverrides.lifecycleCapabilities ?? {
+      fork: false,
+      forkThroughTurn: false
+    },
     createdAtUnixMs,
     cwd: "/",
     endedAtUnixMs: endedAt ? Date.parse(endedAt) : null,
@@ -1873,6 +2115,8 @@ function createSession(
     usage: null,
     visible: true,
     ...canonicalOverrides,
+    messageVersion: canonicalOverrides.messageVersion ?? 0,
+    forkedFrom: canonicalOverrides.forkedFrom ?? null,
     tuttiModeActivation: canonicalOverrides.tuttiModeActivation ?? null,
     kind: canonicalOverrides.kind ?? "root",
     rootAgentSessionId: canonicalOverrides.rootAgentSessionId ?? null,

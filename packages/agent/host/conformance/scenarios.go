@@ -92,8 +92,18 @@ func GoalScenarios() []Scenario {
 		{Name: "duplicate goal client submit id", run: runDuplicateGoalClientSubmitID},
 		{Name: "goal reconcile observation", run: runGoalReconcileObservation},
 		{Name: "goal revision actor fence", run: runGoalRevisionActorFence},
+		{Name: "goal generation fence preserves newer goal", run: runGoalGenerationFencePreservesNewerGoal},
 		{Name: "accepted goal control waits without replay", run: runAcceptedGoalControlWaitsWithoutReplay},
 		{Name: "goal inbox consumer preflight", run: runGoalInboxConsumerPreflight},
+	}
+}
+
+// SessionForkScenarios covers the optional native fork capability without
+// weakening the base Driver contract for providers that do not implement it.
+func SessionForkScenarios() []SessionForkScenario {
+	return []SessionForkScenario{
+		{Name: "through-turn fork replay does not redispatch provider", run: runThroughTurnForkReplay},
+		{Name: "provider-accepted fork recovers local commit", run: runProviderAcceptedForkRecovery},
 	}
 }
 

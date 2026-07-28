@@ -15,6 +15,7 @@ import type {
 import type { AgentGUIAgentTarget } from "../../../types";
 import type { AgentGUIViewLabels } from "./AgentGUINodeView.types";
 import { conversationPlainTitle, stringValue } from "./agentGUIViewUtils";
+export { isDifferentKnownConversationOwner } from "../model/agentGuiComposerGate";
 
 export function commandAppSource(
   command: unknown
@@ -33,23 +34,6 @@ export function workspaceAppIconKey(
   workspaceId: string
 ): string {
   return `${workspaceId}\u0000${appId}`;
-}
-
-export function isDifferentKnownConversationOwner(input: {
-  conversationUserId?: string | null;
-  currentUserId?: string | null;
-}): boolean {
-  const conversationUserId = input.conversationUserId?.trim() ?? "";
-  const currentUserId = input.currentUserId?.trim() ?? "";
-  if (
-    !conversationUserId ||
-    !currentUserId ||
-    conversationUserId === "local" ||
-    currentUserId === "local"
-  ) {
-    return false;
-  }
-  return conversationUserId !== currentUserId;
 }
 
 export function isContextCanceledMessage(
@@ -284,36 +268,12 @@ export function resolveAgentGUIStopControl(input: {
   isInterrupting: boolean;
   isSubmitting: boolean;
   isUnavailable: boolean;
-  sessionRuntimeBlocked: boolean;
+  runtimeCommandsBlocked: boolean;
 }): { disabled: boolean; visible: boolean } {
   return {
-    disabled: input.sessionRuntimeBlocked,
+    disabled: input.runtimeCommandsBlocked,
     visible: shouldShowAgentGUIStopButton(input)
   };
-}
-
-export function resolveAgentGUIComposerDisabled(input: {
-  canQueueWhileBusy: boolean;
-  hasNonRetryableRecoveryFailure: boolean;
-  isCollaboratorConversation: boolean;
-  isCreatingConversation: boolean;
-  isInterrupting: boolean;
-  isSubmitting: boolean;
-  pendingApproval: boolean;
-  pendingInteractivePrompt: boolean;
-  runtimeBlocked: boolean;
-}): boolean {
-  return (
-    input.isCollaboratorConversation ||
-    input.runtimeBlocked ||
-    input.hasNonRetryableRecoveryFailure ||
-    (!input.canQueueWhileBusy &&
-      (input.pendingApproval ||
-        input.pendingInteractivePrompt ||
-        input.isSubmitting ||
-        input.isInterrupting ||
-        input.isCreatingConversation))
-  );
 }
 
 export function buildAgentConversationHandoffPrompt(input: {

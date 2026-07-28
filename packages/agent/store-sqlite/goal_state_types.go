@@ -24,9 +24,11 @@ const (
 )
 
 var (
-	ErrGoalOperationConflict = errors.New("goal control operation identity conflicts with existing state")
-	ErrGoalStateAbsent       = errors.New("agent session has no goal to update")
-	ErrGoalReconcileConflict = errors.New("goal observation reconcile fence conflicted with current state")
+	ErrGoalOperationConflict       = errors.New("goal control operation identity conflicts with existing state")
+	ErrGoalStateAbsent             = errors.New("agent session has no goal to update")
+	ErrGoalReconcileConflict       = errors.New("goal observation reconcile fence conflicted with current state")
+	ErrGoalGenerationFenceConflict = errors.New("goal generation fence identity conflicts with existing state")
+	ErrGoalGenerationSuperseded    = errors.New("goal generation was superseded before the conditional control")
 )
 
 type SessionGoalState struct {
@@ -81,12 +83,15 @@ type GoalControlOperation struct {
 }
 
 type GoalControlOperationPrepare struct {
-	OperationID      string
-	WorkspaceID      string
-	AgentSessionID   string
-	Action           string
-	Objective        string
-	ClientSubmitID   string
+	OperationID    string
+	WorkspaceID    string
+	AgentSessionID string
+	Action         string
+	Objective      string
+	ClientSubmitID string
+	// ExpectedRevision makes a control conditional on the exact Goal
+	// generation still being current. Zero preserves ordinary controls.
+	ExpectedRevision int64
 	OccurredAtUnixMS int64
 }
 
@@ -170,6 +175,74 @@ type GoalControlOperationEvidence struct {
 	OperationID      string
 	ProviderPhase    string
 	Evidence         map[string]any
+	OccurredAtUnixMS int64
+}
+
+const (
+	GoalGenerationFenceStatusPending    = "pending"
+	GoalGenerationFenceStatusProcessing = "processing"
+	GoalGenerationFenceStatusCompleted  = "completed"
+)
+
+// GoalGenerationFence permanently revokes one exact Goal operation
+// generation. Its presence is the durable admission fence; Status only tracks
+// delivery of quiesce/clear work and never re-authorizes the generation.
+type GoalGenerationFence struct {
+	FenceID              string
+	WorkspaceID          string
+	AgentSessionID       string
+	TargetOperationID    string
+	TargetRevision       int64
+	TargetRepairEpoch    int64
+	ClientSubmitID       string
+	Reason               string
+	Status               string
+	ClearOperationID     string
+	LeaseOwner           string
+	LeaseExpiresAtUnixMS int64
+	NextAttemptAtUnixMS  int64
+	Attempt              int
+	LastError            string
+	CreatedAtUnixMS      int64
+	UpdatedAtUnixMS      int64
+	CompletedAtUnixMS    int64
+}
+
+type GoalGenerationFencePrepare struct {
+	FenceID           string
+	WorkspaceID       string
+	AgentSessionID    string
+	TargetOperationID string
+	ClientSubmitID    string
+	Reason            string
+	OccurredAtUnixMS  int64
+}
+
+type ListClaimableGoalGenerationFencesInput struct {
+	NowUnixMS int64
+	Limit     int
+}
+
+type ClaimGoalGenerationFenceInput struct {
+	FenceID          string
+	LeaseOwner       string
+	NowUnixMS        int64
+	LeaseExpiresAtMS int64
+}
+
+type ReleaseGoalGenerationFenceInput struct {
+	FenceID          string
+	LeaseOwner       string
+	LastError        string
+	NowUnixMS        int64
+	NextAttemptAtMS  int64
+	ClearOperationID string
+}
+
+type CompleteGoalGenerationFenceInput struct {
+	FenceID          string
+	LeaseOwner       string
+	ClearOperationID string
 	OccurredAtUnixMS int64
 }
 

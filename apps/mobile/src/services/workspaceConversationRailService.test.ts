@@ -40,6 +40,7 @@ describe("WorkspaceConversationRailService", () => {
 
   test("keeps server section identity and loads the next exact page", async () => {
     const sectionQueries: Array<Record<string, unknown>> = [];
+    const receivedSessionPages: string[][] = [];
     const client = {
       listWorkspaceAgentPinnedSessionPage: async () => ({
         page: { hasMore: false, sessions: [], totalCount: 0 },
@@ -91,6 +92,9 @@ describe("WorkspaceConversationRailService", () => {
       client,
       new ManualClock()
     );
+    service.attachSessionConsumer((sessions) => {
+      receivedSessionPages.push(sessions.map((session) => session.id));
+    });
 
     await service.start();
     await service.loadMore("section:project:/repo");
@@ -108,9 +112,8 @@ describe("WorkspaceConversationRailService", () => {
       sessionIds: ["session-1", "session-2"],
       totalCount: 2
     });
-    expect(service.getSnapshot().sessions.map((session) => session.id)).toEqual(
-      ["session-1", "session-2"]
-    );
+    expect(receivedSessionPages).toEqual([["session-1"], ["session-2"]]);
+    expect(service.getSnapshot()).not.toHaveProperty("sessions");
 
     service.dispose();
   });
@@ -205,6 +208,48 @@ describe("WorkspaceConversationRailService", () => {
     expect(clock.activeDelays()).toEqual([2_000]);
     service.dispose();
   });
+
+  test("keeps canonical session entities out of rail state", async () => {
+    const session = createSession("session-1", 1);
+    const received: WorkspaceAgentSession[][] = [];
+    const client = {
+      listWorkspaceAgentSessionSections: async () => ({
+        pinned: { hasMore: false, sessions: [], totalCount: 0 },
+        sections: [
+          {
+            hasMore: false,
+            kind: "conversations" as const,
+            sectionKey: "conversations",
+            sessions: [session],
+            totalCount: 1
+          }
+        ],
+        workspaceId: workspace.id
+      })
+    } as unknown as TuttidClient;
+    const service = new WorkspaceConversationRailService(
+      workspace,
+      client,
+      new ManualClock()
+    );
+    service.attachSessionConsumer((sessions) => received.push([...sessions]));
+
+    await service.start();
+
+    expect(received).toEqual([[session]]);
+    expect(service.getSnapshot()).toEqual({
+      errorCode: null,
+      loadingMoreSectionId: null,
+      sections: [
+        expect.objectContaining({
+          sessionIds: ["session-1"],
+          totalCount: 1
+        })
+      ],
+      status: "ready"
+    });
+    service.dispose();
+  });
 });
 
 function createSession(
@@ -219,12 +264,15 @@ function createSession(
     createdAtUnixMs: 1,
     cwd: "/repo",
     endedAtUnixMs: null,
+    forkedFrom: null,
     goal: null,
     id,
     imported: false,
     kind: "root",
     latestTurn: null,
     latestTurnInteractions: [],
+    lifecycleCapabilities: { fork: false, forkThroughTurn: false },
+    messageVersion: 0,
     parentAgentSessionId: null,
     parentToolCallId: null,
     parentTurnId: null,

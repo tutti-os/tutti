@@ -358,6 +358,24 @@ func (c *codexAppServerClient) ThreadResume(
 	return caller.rawResult, nil
 }
 
+func (c *codexAppServerClient) ThreadFork(
+	ctx context.Context,
+	timeout time.Duration,
+	params map[string]any,
+	handler acpMessageHandler,
+) (json.RawMessage, error) {
+	typedParams, err := codexProtoParams[codexproto.ThreadForkParams](params)
+	if err != nil {
+		return nil, err
+	}
+	client, caller := c.typed(timeout, handler, false)
+	_, err = client.ThreadFork(ctx, typedParams)
+	if err != nil {
+		return nil, err
+	}
+	return caller.rawResult, nil
+}
+
 func (c *codexAppServerClient) TurnStart(
 	ctx context.Context,
 	timeout time.Duration,

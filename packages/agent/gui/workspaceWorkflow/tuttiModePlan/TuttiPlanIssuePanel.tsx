@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { ExternalLink, ListChecks, Square } from "lucide-react";
+import { ExternalLink, ListChecks, RotateCcw, Square } from "lucide-react";
 import {
+  Badge,
   Button,
   Card,
   CardContent,
@@ -207,8 +208,9 @@ export function TuttiPlanIssuePanel({
       : undefined;
   return (
     <Card
+      size="sm"
       className={cn(
-        "w-full",
+        "w-full pt-2!",
         embedded && "border-0 bg-transparent shadow-none"
       )}
       data-testid="tutti-plan-issue-panel"
@@ -251,7 +253,6 @@ export function TuttiPlanIssuePanel({
             {stopExecution ? (
               <Button
                 type="button"
-                size="sm"
                 variant="secondary"
                 className="text-[var(--state-danger)] hover:text-[var(--state-danger)]"
                 disabled={stopping}
@@ -265,7 +266,6 @@ export function TuttiPlanIssuePanel({
             {onOpenIssue ? (
               <Button
                 type="button"
-                size="sm"
                 variant="secondary"
                 data-testid="tutti-plan-issue-open"
                 onClick={onOpenIssue}
@@ -314,22 +314,24 @@ function TaskStructureChips({
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-1">
       {task.parallelizable ? (
-        <span className="shrink-0 rounded-full border border-[color-mix(in_srgb,var(--tutti-purple)_36%,transparent)] px-1.5 text-[10px] leading-4 text-[var(--tutti-purple)]">
+        <Badge variant="accent" size="sm">
           {labels.parallelizable}
-        </span>
+        </Badge>
       ) : null}
       {task.autoAccept ? (
-        <span className="shrink-0 rounded-full border border-[color-mix(in_srgb,var(--state-success)_42%,transparent)] px-1.5 text-[10px] leading-4 text-[var(--state-success)]">
+        <Badge variant="success" size="sm">
           {labels.autoAccept}
-        </span>
+        </Badge>
       ) : null}
       {dependencies.length > 0 ? (
-        <span
-          className="min-w-0 truncate rounded-full border border-[var(--line-2)] px-1.5 text-[10px] leading-4 text-muted-foreground"
+        <Badge
+          variant="secondary"
+          size="sm"
+          className="min-w-0 truncate"
           title={dependencies.join(", ")}
         >
           {labels.dependencies}: {dependencies.join(", ")}
-        </span>
+        </Badge>
       ) : null}
     </span>
   );
@@ -384,6 +386,7 @@ function TaskDecisionActions({
           decideTask(task.taskId, "rework");
         }}
       >
+        <RotateCcw aria-hidden className="size-3.5" />
         {labels.rework}
       </Button>
     </span>
@@ -414,7 +417,7 @@ function TuttiPlanIssueBoard({
       : true
   );
   return (
-    <div className="min-w-0 overflow-x-auto pb-1 [scrollbar-width:thin]">
+    <div className="board-scroll min-w-0 overflow-x-auto pb-1">
       <div
         className="grid gap-2"
         style={{
@@ -429,7 +432,7 @@ function TuttiPlanIssueBoard({
               className="min-h-[220px] min-w-0 rounded-lg border border-[var(--line-2)] bg-muted/30 px-2 py-2"
               data-testid={`tutti-plan-issue-column-${status}`}
             >
-              <div className="mb-1.5 flex items-center justify-between gap-2">
+              <div className="mx-1 mb-1.5 flex items-center justify-between gap-2">
                 <span className="flex min-w-0 items-center gap-1.5">
                   <span
                     aria-hidden
@@ -456,9 +459,8 @@ function TuttiPlanIssueBoard({
                       tabIndex={openable ? 0 : undefined}
                       data-testid={`tutti-plan-issue-task-${task.taskId}`}
                       className={cn(
-                        "min-w-0 overflow-hidden rounded-md bg-[var(--background-board-card)] px-2 py-1.5",
-                        openable &&
-                          "cursor-pointer transition-colors hover:bg-muted/60"
+                        "min-w-0 overflow-hidden rounded-md bg-[var(--background-board-card)] p-3",
+                        openable && "cursor-pointer"
                       )}
                       onClick={
                         openable ? () => void openTask(task.taskId) : undefined
@@ -476,7 +478,7 @@ function TuttiPlanIssueBoard({
                       <span className="line-clamp-2 text-[13px] font-medium text-foreground">
                         {task.title}
                       </span>
-                      <span className="mt-1 block empty:hidden">
+                      <span className="mt-2 block empty:hidden">
                         <TaskStructureChips labels={labels} task={task} />
                       </span>
                       <span className="mt-1.5 block empty:hidden">
@@ -544,8 +546,7 @@ function TuttiPlanIssueList({
                 data-testid={`tutti-plan-issue-row-${task.taskId}`}
                 className={cn(
                   "flex items-start justify-between gap-3 border-b border-[var(--line-2)] px-3 py-2 last:border-b-0",
-                  openable &&
-                    "cursor-pointer transition-colors hover:bg-muted/40"
+                  openable && "cursor-pointer"
                 )}
                 onClick={
                   openable ? () => void openTask(task.taskId) : undefined

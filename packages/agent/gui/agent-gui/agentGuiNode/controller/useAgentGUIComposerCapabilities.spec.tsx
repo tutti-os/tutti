@@ -1,11 +1,11 @@
 import { renderHook } from "@testing-library/react";
 import {
-  createEmptyAgentActivitySnapshot,
   normalizeAgentActivitySession,
   type CanonicalAgentSession
 } from "@tutti-os/agent-activity-core";
 import { describe, expect, it } from "vitest";
 import { useAgentGUIComposerCapabilities } from "./useAgentGUIComposerCapabilities";
+import { createTestAgentSessionEngine } from "../../../shared/testing/createTestAgentSessionEngine";
 
 describe("useAgentGUIComposerCapabilities", () => {
   function engineSession(input: {
@@ -54,7 +54,6 @@ describe("useAgentGUIComposerCapabilities", () => {
         activeConversationId: "session-1",
         activeEngineSession,
         activeSessionState: null,
-        agentActivitySnapshot: createEmptyAgentActivitySnapshot("workspace-1"),
         data,
         draftSettingsBySessionId: {},
         selectedComposerTargetData: {
@@ -62,7 +61,8 @@ describe("useAgentGUIComposerCapabilities", () => {
           data,
           provider: "opencode",
           targetId: "local:opencode"
-        }
+        },
+        sessionEngine: createTestAgentSessionEngine("workspace-1")
       })
     );
 
@@ -96,7 +96,6 @@ describe("useAgentGUIComposerCapabilities", () => {
         activeConversationId: activeEngineSession.agentSessionId,
         activeEngineSession,
         activeSessionState: null,
-        agentActivitySnapshot: createEmptyAgentActivitySnapshot("workspace-1"),
         data,
         draftSettingsBySessionId: {},
         selectedComposerTargetData: {
@@ -104,7 +103,8 @@ describe("useAgentGUIComposerCapabilities", () => {
           data,
           provider: "opencode",
           targetId: "local:opencode"
-        }
+        },
+        sessionEngine: createTestAgentSessionEngine("workspace-1")
       })
     );
 
@@ -147,7 +147,6 @@ describe("useAgentGUIComposerCapabilities", () => {
         activeConversationId: activeEngineSession.agentSessionId,
         activeEngineSession,
         activeSessionState: null,
-        agentActivitySnapshot: createEmptyAgentActivitySnapshot("workspace-1"),
         data,
         draftSettingsBySessionId: {},
         selectedComposerTargetData: {
@@ -155,7 +154,8 @@ describe("useAgentGUIComposerCapabilities", () => {
           data,
           provider: "opencode",
           targetId: "local:opencode"
-        }
+        },
+        sessionEngine: createTestAgentSessionEngine("workspace-1")
       })
     );
 

@@ -35,7 +35,7 @@ var (
 // NewPreparer returns the shared runtime preparer with Tutti account bootstrap
 // injected at the product boundary.
 func NewPreparer() runtimeprep.TuttiAgentPreparer {
-	return runtimeprep.TuttiAgentPreparer{BeforePrepare: bootstrapTuttiAgentUserAuth}
+	return runtimeprep.TuttiAgentPreparer{BeforePrepare: bootstrapTuttiAgentUserAuthForPrepare}
 }
 
 func PrepareHome(home string) error {
@@ -62,7 +62,13 @@ func tuttiAgentAccountBase() string {
 // failures leave the session in the auth-required state that the provider
 // status service already reports.
 func BootstrapTuttiAgentUserAuth(ctx context.Context) {
-	bootstrapTuttiAgentUserAuth(ctx, runtimeprep.PrepareInput{})
+	bootstrapTuttiAgentUserAuth(ctx, runtimeprep.PrepareInput{}, "")
+}
+
+// BootstrapTuttiAgentUserAuthWithBinary reconciles auth with the exact managed
+// runtime that passed provider readiness probing.
+func BootstrapTuttiAgentUserAuthWithBinary(ctx context.Context, binaryPath string) {
+	bootstrapTuttiAgentUserAuth(ctx, runtimeprep.PrepareInput{}, binaryPath)
 }
 
 // LogoutTuttiAgentUserAuth removes the local auth marker synchronously so
@@ -92,7 +98,11 @@ func logoutTuttiAgentUserAuth(ctx context.Context) error {
 
 // bootstrapTuttiAgentUserAuth is the provider-prepare variant that preserves
 // runtime prepare trace context when a real Tutti Agent session is starting.
-func bootstrapTuttiAgentUserAuth(ctx context.Context, input runtimeprep.PrepareInput) {
+func bootstrapTuttiAgentUserAuthForPrepare(ctx context.Context, input runtimeprep.PrepareInput) {
+	bootstrapTuttiAgentUserAuth(ctx, input, "")
+}
+
+func bootstrapTuttiAgentUserAuth(ctx context.Context, input runtimeprep.PrepareInput, binaryPath string) {
 	cookie, ok := tuttiAgentAccountSessionCookie()
 	if !ok {
 		if err := logoutTuttiAgentUserAuth(ctx); err != nil {
@@ -108,7 +118,7 @@ func bootstrapTuttiAgentUserAuth(ctx context.Context, input runtimeprep.PrepareI
 		ctx,
 		tuttiAgentSessionAuthorizer{cookie: cookie},
 		tuttiAgentUserCredentialStore{},
-		tuttiAgentLoginRunner{},
+		tuttiAgentLoginRunner{BinaryPath: binaryPath},
 		time.Now().UTC(),
 	)
 	if err != nil {
@@ -257,10 +267,12 @@ func (tuttiAgentUserCredentialStore) Remove(context.Context) error {
 	return nil
 }
 
-type tuttiAgentLoginRunner struct{}
+type tuttiAgentLoginRunner struct {
+	BinaryPath string
+}
 
-func (tuttiAgentLoginRunner) Login(ctx context.Context, bundle tuttiagentauth.TokenBundle) error {
-	return runTuttiAgentTokenLogin(ctx, bundle)
+func (r tuttiAgentLoginRunner) Login(ctx context.Context, bundle tuttiagentauth.TokenBundle) error {
+	return runTuttiAgentTokenLogin(ctx, r.BinaryPath, bundle)
 }
 
 type tuttiAgentLLMTokenIssueRejectedError struct {
@@ -383,10 +395,14 @@ func revokeTuttiAgentLLMToken(ctx context.Context, accountBaseURL string, refres
 	return nil
 }
 
-func runTuttiAgentTokenLogin(ctx context.Context, bundle tuttiAgentLLMTokenBundle) error {
-	binary, err := resolveTuttiAgentBinary()
-	if err != nil {
-		return err
+func runTuttiAgentTokenLogin(ctx context.Context, binaryPath string, bundle tuttiAgentLLMTokenBundle) error {
+	binary := strings.TrimSpace(binaryPath)
+	if binary == "" {
+		var err error
+		binary, err = resolveTuttiAgentBinary()
+		if err != nil {
+			return err
+		}
 	}
 	stdin, err := json.Marshal(bundle)
 	if err != nil {

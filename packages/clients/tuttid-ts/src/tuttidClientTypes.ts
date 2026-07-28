@@ -59,6 +59,8 @@ import type {
   ExternalAgentImportResultResponse,
   ExternalAgentImportScanRequest,
   ExternalAgentImportScanResponse,
+  ForkWorkspaceAgentSessionRequest,
+  WorkspaceAgentSessionForkOperation,
   FixWorkspaceAppFactoryJobRequest,
   HealthStatusResponse,
   InstallWorkspaceAppRequest,
@@ -311,6 +313,22 @@ export interface TuttidClient
     request: CreateWorkspaceAgentSessionRequest,
     requestOptions?: TuttidRequestOptions
   ): Promise<WorkspaceAgentSession>;
+  forkWorkspaceAgentSession(
+    workspaceID: string,
+    agentSessionID: string,
+    request: ForkWorkspaceAgentSessionRequest,
+    requestOptions?: TuttidRequestOptions
+  ): Promise<WorkspaceAgentSessionForkOperation>;
+  getWorkspaceAgentSessionForkOperation(
+    workspaceID: string,
+    operationID: string,
+    requestOptions?: TuttidRequestOptions
+  ): Promise<WorkspaceAgentSessionForkOperation>;
+  acknowledgeWorkspaceAgentSessionForkOperation(
+    workspaceID: string,
+    operationID: string,
+    requestOptions?: TuttidRequestOptions
+  ): Promise<WorkspaceAgentSessionForkOperation>;
   createWorkspaceTerminal(
     workspaceID: string,
     request?: CreateWorkspaceTerminalRequest
@@ -364,7 +382,8 @@ export interface TuttidClient
   getWorkspace(workspaceID: string): Promise<WorkspaceSummary>;
   getWorkspaceAgentSession(
     workspaceID: string,
-    agentSessionID: string
+    agentSessionID: string,
+    requestOptions?: TuttidRequestOptions
   ): Promise<WorkspaceAgentSessionDetailResponse>;
   getAgentProviderComposerOptions(
     provider: WorkspaceAgentProvider,
@@ -684,7 +703,8 @@ export interface TuttidClient
       beforeVersion?: number;
       order?: "asc" | "desc";
       limit?: number;
-    }
+    },
+    requestOptions?: TuttidRequestOptions
   ): Promise<WorkspaceAgentSessionMessagesResponse>;
   listWorkspaceFileDirectory(
     workspaceID: string,

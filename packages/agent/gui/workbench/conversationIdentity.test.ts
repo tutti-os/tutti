@@ -114,6 +114,59 @@ describe("resolveAgentGuiWorkbenchTitleDisplayPrompt", () => {
   });
 });
 
+describe("resolveAgentGuiWorkbenchConversationIdentity", () => {
+  it("preserves the exact Session Agent target for Host header presentation", () => {
+    const engine = createAgentSessionEngine({
+      clock: { nowUnixMs: () => 1 },
+      commandPort: { execute: async () => ({}) },
+      identity: { origin: "test", workspaceId: "workspace-1" },
+      scheduler: { schedule: () => ({ cancel() {} }) }
+    });
+    engine.dispatch({
+      type: "session/snapshotReceived",
+      sessions: [
+        {
+          activeTurnId: null,
+          agentSessionId: "session-1",
+          agentTargetId: "agent:shared",
+          createdAtUnixMs: 1,
+          cwd: "/workspace",
+          latestTurnInteractions: [],
+          pendingInteractions: [],
+          provider: "codex",
+          title: "Shared session",
+          updatedAtUnixMs: 1,
+          workspaceId: "workspace-1"
+        }
+      ]
+    });
+
+    expect(
+      resolveAgentGuiWorkbenchConversationIdentity({
+        agents: [
+          {
+            agentTargetId: "agent:shared",
+            availability: { status: "ready" },
+            iconUrl: "shared.png",
+            name: "Shared Codex",
+            provider: "codex"
+          }
+        ],
+        engineState: engine.getSnapshot(),
+        workbenchState: {
+          agentTargetId: "agent:sibling",
+          lastActiveAgentSessionId: "session-1"
+        }
+      })
+    ).toEqual(
+      expect.objectContaining({
+        agentTargetId: "agent:shared",
+        agentTitle: "Shared Codex"
+      })
+    );
+  });
+});
+
 function userMessage(prompt: string): AgentActivityMessage {
   return {
     agentSessionId: "session-1",

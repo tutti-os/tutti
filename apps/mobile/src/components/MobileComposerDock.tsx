@@ -21,7 +21,10 @@ import {
 import { t } from "../i18n";
 import type { MobileQuickPromptLibrarySnapshot } from "../services/mobileQuickPromptLibraryService";
 import type { WorkspaceActivitySnapshot } from "../services/workspaceActivityService";
-import { MobileComposerSettingsSheet } from "./MobileComposerSettingsSheet";
+import {
+  MobileComposerSettingsSheet,
+  type ComposerSettingMenu
+} from "./MobileComposerSettingsSheet";
 import {
   addMobileQuickPrompt,
   filterMobileQuickPrompts,
@@ -29,11 +32,15 @@ import {
   type MobileTextSelection
 } from "./mobileQuickPromptPresentation";
 
-type ComposerToolsMenu =
-  | "tools"
-  | "model"
-  | "permission"
-  | "quickPrompts"
+type ComposerToolsMenu = "tools" | "model" | "permission" | "quickPrompts";
+
+type ComposerOverlay =
+  | {
+      activationId: number;
+      kind: "settings";
+      menu: ComposerSettingMenu;
+    }
+  | { activationId: number; kind: "tools"; menu: ComposerToolsMenu }
   | null;
 
 export function MobileComposerDock({
@@ -55,9 +62,10 @@ export function MobileComposerDock({
 }) {
   const theme = useNativeTheme();
   const styles = createStyles(theme);
-  const [menu, setMenu] = useState<ComposerToolsMenu>(null);
+  const [overlay, setOverlay] = useState<ComposerOverlay>(null);
   const [quickPromptQuery, setQuickPromptQuery] = useState("");
   const inputRef = useRef<TextInput>(null);
+  const nextOverlayActivationIdRef = useRef(1);
   const selectionRef = useRef<MobileTextSelection | null>(null);
   const hasActiveTurn = Boolean(
     model.selectedSession?.activeTurnId && !model.creating
@@ -65,6 +73,7 @@ export function MobileComposerDock({
   const canSend = Boolean(
     model.draft.trim() &&
     (!model.creating || model.selectedAgentTargetId) &&
+    model.commandsAvailable &&
     !model.sending
   );
   const modelOptions = model.composerOptions?.models ?? [];
@@ -88,18 +97,60 @@ export function MobileComposerDock({
     permissionOptions.find(
       (option) => option.id === model.composerSettings.permissionModeId
     )?.label ?? t("defaultPermissions");
+  const settingsMenu = overlay?.kind === "settings" ? overlay.menu : null;
+  const toolsMenu = overlay?.kind === "tools" ? overlay.menu : null;
+  const settingsActivationId =
+    overlay?.kind === "settings" ? overlay.activationId : null;
+  const toolsActivationId =
+    overlay?.kind === "tools" ? overlay.activationId : null;
+  const setSettingsMenu = (menu: ComposerSettingMenu | null): void => {
+    if (menu !== null) {
+      const activationId = nextOverlayActivationIdRef.current++;
+      setOverlay((current) =>
+        current?.kind === "settings"
+          ? { ...current, menu }
+          : { activationId, kind: "settings", menu }
+      );
+      return;
+    }
+    setOverlay((current) =>
+      current?.kind === "settings" &&
+      current.activationId === settingsActivationId
+        ? null
+        : current
+    );
+  };
+  const setToolsMenu = (menu: ComposerToolsMenu | null): void => {
+    if (menu !== null) {
+      const activationId = nextOverlayActivationIdRef.current++;
+      setOverlay((current) =>
+        current?.kind === "tools"
+          ? { ...current, menu }
+          : { activationId, kind: "tools", menu }
+      );
+      return;
+    }
+    setOverlay((current) =>
+      current?.kind === "tools" && current.activationId === toolsActivationId
+        ? null
+        : current
+    );
+  };
+  useEffect(() => {
+    if (!model.commandsAvailable) setOverlay(null);
+  }, [model.commandsAvailable]);
   useEffect(() => {
     if (
-      menu === "quickPrompts" &&
+      toolsMenu === "quickPrompts" &&
       quickPromptLibrary.status !== "loading" &&
       !quickPromptLibrary.enabled
     ) {
       setQuickPromptQuery("");
-      setMenu("tools");
+      setToolsMenu("tools");
     }
-  }, [menu, quickPromptLibrary.enabled, quickPromptLibrary.status]);
+  }, [toolsMenu, quickPromptLibrary.enabled, quickPromptLibrary.status]);
   const openToolsMenu = (): void => {
-    setMenu("tools");
+    setToolsMenu("tools");
     void onRefreshQuickPrompts();
   };
   const selectQuickPrompt = (content: string): void => {
@@ -114,7 +165,7 @@ export function MobileComposerDock({
       start: added.caret
     };
     setQuickPromptQuery("");
-    setMenu(null);
+    setToolsMenu(null);
     requestAnimationFrame(() => {
       inputRef.current?.focus();
       inputRef.current?.setNativeProps({
@@ -125,19 +176,28 @@ export function MobileComposerDock({
 
   return (
     <View style={styles.dock}>
-      <MobileComposerSettingsSheet model={model} onUpdate={onUpdate} />
+      <MobileComposerSettingsSheet
+        activationId={settingsActivationId}
+        disabled={!model.commandsAvailable}
+        menu={settingsMenu}
+        model={model}
+        onMenuChange={setSettingsMenu}
+        onUpdate={onUpdate}
+      />
       <View style={styles.inputRow}>
         <NativeIconButton
           accessibilityLabel={t("moreActions")}
+          disabled={!model.commandsAvailable}
           icon={<Text style={styles.plus}>＋</Text>}
           onPress={openToolsMenu}
           style={styles.addButton}
+          testID="mobile-composer-tools"
           variant="secondary"
         />
         <View style={styles.inputPill}>
           <TextInput
             ref={inputRef}
-            editable={!model.sending}
+            editable={!model.sending && model.commandsAvailable}
             multiline
             onChangeText={onDraftChange}
             onSelectionChange={(
@@ -153,6 +213,7 @@ export function MobileComposerDock({
           {hasActiveTurn ? (
             <NativeIconButton
               accessibilityLabel={t("stop")}
+              disabled={!model.commandsAvailable}
               icon={<Text style={styles.actionIcon}>■</Text>}
               onPress={onStop}
               style={styles.actionButton}
@@ -176,24 +237,24 @@ export function MobileComposerDock({
 
       <Modal
         animationType="fade"
-        onRequestClose={() => setMenu(null)}
+        onRequestClose={() => setToolsMenu(null)}
         presentationStyle="overFullScreen"
         statusBarTranslucent
         transparent
-        visible={menu !== null}
+        visible={model.commandsAvailable && toolsMenu !== null}
       >
-        <Pressable onPress={() => setMenu(null)} style={styles.backdrop}>
+        <Pressable onPress={() => setToolsMenu(null)} style={styles.backdrop}>
           <Pressable
             onPress={(event) => event.stopPropagation()}
             style={styles.menu}
           >
-            {menu === "tools" ? (
+            {toolsMenu === "tools" ? (
               <>
                 {model.composerSettingsSupport.model &&
                 modelOptions.length > 0 ? (
                   <NativeListRow
                     description={selectedModelLabel}
-                    onPress={() => setMenu("model")}
+                    onPress={() => setToolsMenu("model")}
                     title={t("model")}
                     trailing={<Text style={styles.chevron}>›</Text>}
                   />
@@ -202,7 +263,7 @@ export function MobileComposerDock({
                 permissionOptions.length > 0 ? (
                   <NativeListRow
                     description={selectedPermissionLabel}
-                    onPress={() => setMenu("permission")}
+                    onPress={() => setToolsMenu("permission")}
                     title={t("permissions")}
                     trailing={<Text style={styles.chevron}>›</Text>}
                   />
@@ -218,7 +279,7 @@ export function MobileComposerDock({
                       onUpdate({
                         planMode: !model.composerSettings.planMode
                       });
-                      setMenu(null);
+                      setToolsMenu(null);
                     }}
                     selected={model.composerSettings.planMode === true}
                     title={t("planMode")}
@@ -233,7 +294,7 @@ export function MobileComposerDock({
                             count: quickPromptLibrary.prompts.length
                           })
                     }
-                    onPress={() => setMenu("quickPrompts")}
+                    onPress={() => setToolsMenu("quickPrompts")}
                     title={t("quickPrompts")}
                     trailing={<Text style={styles.chevron}>›</Text>}
                   />
@@ -264,18 +325,18 @@ export function MobileComposerDock({
                   <NativeIconButton
                     accessibilityLabel={t("cancel")}
                     icon={<Text style={styles.menuBackIcon}>←</Text>}
-                    onPress={() => setMenu("tools")}
+                    onPress={() => setToolsMenu("tools")}
                     style={styles.menuBackButton}
                   />
                   <Text style={styles.menuTitle}>
-                    {menu === "model"
+                    {toolsMenu === "model"
                       ? t("model")
-                      : menu === "permission"
+                      : toolsMenu === "permission"
                         ? t("permissions")
                         : t("quickPrompts")}
                   </Text>
                 </View>
-                {menu === "quickPrompts" ? (
+                {toolsMenu === "quickPrompts" ? (
                   <TextInput
                     accessibilityLabel={t("searchQuickPrompts")}
                     autoCapitalize="none"
@@ -292,13 +353,13 @@ export function MobileComposerDock({
                   showsVerticalScrollIndicator
                   style={styles.menuOptions}
                 >
-                  {menu === "model"
+                  {toolsMenu === "model"
                     ? modelOptions.map((option) => (
                         <NativeListRow
                           key={option.value}
                           onPress={() => {
                             onUpdate({ model: option.value });
-                            setMenu(null);
+                            setToolsMenu(null);
                           }}
                           selected={
                             option.value === model.composerSettings.model
@@ -307,14 +368,14 @@ export function MobileComposerDock({
                         />
                       ))
                     : null}
-                  {menu === "permission"
+                  {toolsMenu === "permission"
                     ? permissionOptions.map((option) => (
                         <NativeListRow
                           description={option.description}
                           key={option.id}
                           onPress={() => {
                             onUpdate({ permissionModeId: option.id });
-                            setMenu(null);
+                            setToolsMenu(null);
                           }}
                           selected={
                             option.id ===
@@ -324,7 +385,7 @@ export function MobileComposerDock({
                         />
                       ))
                     : null}
-                  {menu === "quickPrompts"
+                  {toolsMenu === "quickPrompts"
                     ? filteredQuickPrompts.map((prompt) => (
                         <NativeListRow
                           description={previewMobileQuickPromptContent(
@@ -336,7 +397,7 @@ export function MobileComposerDock({
                         />
                       ))
                     : null}
-                  {menu === "quickPrompts" &&
+                  {toolsMenu === "quickPrompts" &&
                   quickPromptLibrary.status === "error" ? (
                     <View style={styles.quickPromptStatus}>
                       <Text style={styles.errorText}>
@@ -348,7 +409,7 @@ export function MobileComposerDock({
                       />
                     </View>
                   ) : null}
-                  {menu === "quickPrompts" &&
+                  {toolsMenu === "quickPrompts" &&
                   quickPromptLibrary.status === "loading" ? (
                     <ActivityIndicator
                       color={theme.color.accent}
@@ -356,14 +417,14 @@ export function MobileComposerDock({
                       style={styles.loading}
                     />
                   ) : null}
-                  {menu === "quickPrompts" &&
+                  {toolsMenu === "quickPrompts" &&
                   quickPromptLibrary.status === "ready" &&
                   quickPromptLibrary.prompts.length === 0 ? (
                     <Text style={styles.emptyMenu}>
                       {t("emptyQuickPrompts")}
                     </Text>
                   ) : null}
-                  {menu === "quickPrompts" &&
+                  {toolsMenu === "quickPrompts" &&
                   quickPromptLibrary.status === "ready" &&
                   quickPromptLibrary.prompts.length > 0 &&
                   filteredQuickPrompts.length === 0 ? (
@@ -371,7 +432,7 @@ export function MobileComposerDock({
                       {t("noQuickPromptResults")}
                     </Text>
                   ) : null}
-                  {menu !== "quickPrompts" &&
+                  {toolsMenu !== "quickPrompts" &&
                   model.composerOptionsLoadStatus === "loading" ? (
                     <ActivityIndicator
                       color={theme.color.accent}

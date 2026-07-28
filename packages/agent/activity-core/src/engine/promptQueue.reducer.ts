@@ -433,6 +433,7 @@ function reconcileCommand(
   return {
     agentSessionId,
     commandId: `queue:reconcile:${intent.commandId}`,
+    live: false,
     scope: "state_and_messages",
     timeoutMs: 30_000,
     type: "session/reconcile",

@@ -10,6 +10,9 @@ import type {
   AcceptAgentSessionWorkData,
   AcceptAgentSessionWorkErrors,
   AcceptAgentSessionWorkResponses,
+  AcknowledgeWorkspaceAgentSessionForkOperationData,
+  AcknowledgeWorkspaceAgentSessionForkOperationErrors,
+  AcknowledgeWorkspaceAgentSessionForkOperationResponses,
   AddWorkspaceIssueContextRefsData,
   AddWorkspaceIssueContextRefsErrors,
   AddWorkspaceIssueContextRefsResponses,
@@ -187,6 +190,9 @@ import type {
   FixWorkspaceAppFactoryJobData,
   FixWorkspaceAppFactoryJobErrors,
   FixWorkspaceAppFactoryJobResponses,
+  ForkWorkspaceAgentSessionData,
+  ForkWorkspaceAgentSessionErrors,
+  ForkWorkspaceAgentSessionResponses,
   GetAccountLoginStatusData,
   GetAccountLoginStatusErrors,
   GetAccountLoginStatusResponses,
@@ -240,6 +246,9 @@ import type {
   GetWorkspaceAgentResponses,
   GetWorkspaceAgentSessionData,
   GetWorkspaceAgentSessionErrors,
+  GetWorkspaceAgentSessionForkOperationData,
+  GetWorkspaceAgentSessionForkOperationErrors,
+  GetWorkspaceAgentSessionForkOperationResponses,
   GetWorkspaceAgentSessionGoalData,
   GetWorkspaceAgentSessionGoalErrors,
   GetWorkspaceAgentSessionGoalResponses,
@@ -2884,6 +2893,68 @@ export const getWorkspaceAgentSession = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}",
+    ...options
+  });
+
+/**
+ * Fork one workspace agent session at an exact canonical boundary
+ */
+export const forkWorkspaceAgentSession = <ThrowOnError extends boolean = false>(
+  options: Options<ForkWorkspaceAgentSessionData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    ForkWorkspaceAgentSessionResponses,
+    ForkWorkspaceAgentSessionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/fork",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Get one durable workspace agent session fork operation
+ */
+export const getWorkspaceAgentSessionForkOperation = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetWorkspaceAgentSessionForkOperationData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetWorkspaceAgentSessionForkOperationResponses,
+    GetWorkspaceAgentSessionForkOperationErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-fork-operations/{operationID}",
+    ...options
+  });
+
+/**
+ * Acknowledge that a client observed one durable session fork operation
+ *
+ * Records an explicit client-observed acknowledgement. Reading the operation does not implicitly acknowledge it.
+ *
+ */
+export const acknowledgeWorkspaceAgentSessionForkOperation = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<
+    AcknowledgeWorkspaceAgentSessionForkOperationData,
+    ThrowOnError
+  >
+) =>
+  (options.client ?? client).post<
+    AcknowledgeWorkspaceAgentSessionForkOperationResponses,
+    AcknowledgeWorkspaceAgentSessionForkOperationErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-fork-operations/{operationID}/acknowledge",
     ...options
   });
 

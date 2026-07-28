@@ -1259,6 +1259,75 @@ test("closing a locked node drops the lock below two nodes", () => {
   assert.equal(state.lockedLayout, null);
 });
 
+test("closing a locked node re-fits the remaining windows to the grid", () => {
+  let state = createWorkbenchInitialState({
+    surfaceSize: { width: 1024, height: 720 },
+    nodes: [makeNode("a"), makeNode("b"), makeNode("c")]
+  });
+
+  state = reduceWorkbenchState(state, {
+    type: "applyLayoutPreset",
+    nodeIDs: ["a", "b", "c"],
+    preset: { kind: "row" },
+    lock: true
+  });
+  const threeWayFrames = ["a", "b"].map(
+    (id) => state.nodes.find((node) => node.id === id)!.frame
+  );
+
+  state = reduceWorkbenchState(state, { type: "closeNode", nodeID: "c" });
+
+  assert.deepEqual(state.lockedLayout, {
+    preset: { kind: "row" },
+    nodeIDs: ["a", "b"]
+  });
+  // The two remaining windows expand to the two-column row layout instead of
+  // leaving "c"'s slot empty.
+  const twoWayFrames = ["a", "b"].map(
+    (id) => state.nodes.find((node) => node.id === id)!.frame
+  );
+  assert.ok(
+    twoWayFrames[0]!.width > threeWayFrames[0]!.width,
+    "first window should widen after the third closes"
+  );
+  assert.ok(
+    twoWayFrames[1]!.width > threeWayFrames[1]!.width,
+    "second window should widen after the third closes"
+  );
+  assert.ok(
+    twoWayFrames[1]!.x > twoWayFrames[0]!.x,
+    "windows should stay ordered left to right"
+  );
+});
+
+test("closing an unlocked node keeps the locked grid untouched", () => {
+  let state = createWorkbenchInitialState({
+    surfaceSize: { width: 1024, height: 720 },
+    nodes: [makeNode("a"), makeNode("b"), makeNode("c")]
+  });
+
+  state = reduceWorkbenchState(state, {
+    type: "applyLayoutPreset",
+    nodeIDs: ["a", "b"],
+    preset: { kind: "row" },
+    lock: true
+  });
+  const lockedFrames = ["a", "b"].map(
+    (id) => state.nodes.find((node) => node.id === id)!.frame
+  );
+
+  state = reduceWorkbenchState(state, { type: "closeNode", nodeID: "c" });
+
+  assert.deepEqual(state.lockedLayout, {
+    preset: { kind: "row" },
+    nodeIDs: ["a", "b"]
+  });
+  assert.deepEqual(
+    ["a", "b"].map((id) => state.nodes.find((node) => node.id === id)!.frame),
+    lockedFrames
+  );
+});
+
 function makeNode(
   id: string,
   frame: WorkbenchNode["frame"] = { x: 32, y: 32, width: 320, height: 220 },

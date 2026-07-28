@@ -61,7 +61,7 @@ SOFTWARE.
 
 ----------------------------------------------------------------------
 
-The MessageSquareTextIcon and GripVerticalIcon paths in
+The MessageSquareTextIcon, QuoteIcon, and GripVerticalIcon paths in
 src/icons/system-icons.tsx are source-derived from Lucide
 (https://github.com/lucide-icons/lucide), revision
 658573b0171e693bc965c167592cc0b92d002a3e, used under the ISC License.

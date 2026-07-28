@@ -206,6 +206,8 @@ export const en = {
       copyUserIdSuccess: "User ID copied",
       copyUserIdFailed: "Couldn't copy user ID",
       openExternalFailed: "Couldn't open account link",
+      refresh: "Refresh",
+      refreshing: "Refreshing",
       loading: "Loading",
       unavailable: "--",
       dataUnavailable: "Some account data is unavailable",
@@ -1355,9 +1357,6 @@ export const en = {
         unavailableItem: "{{title}}, {{reason}}"
       },
       missionControl: {
-        activateShortcutDefault: "Ctrl + 1",
-        activateShortcutMac: "Cmd + 1",
-        activateTrigger: "Quick activate node",
         layoutShortcutDefault: "Ctrl + 2",
         layoutShortcutMac: "Cmd + 2",
         layoutTrigger: "Quick layout",

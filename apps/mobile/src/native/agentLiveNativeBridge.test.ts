@@ -92,6 +92,40 @@ describe("parseAgentLiveDeliveries", () => {
     ).toEqual([]);
   });
 
+  test("preserves canonical session deletion as a typed delivery", () => {
+    expect(
+      parseAgentLiveDeliveries(
+        "workspace-1",
+        JSON.stringify({
+          result: {
+            accepted: [
+              {
+                discontinuity: {
+                  reason: "session_deleted",
+                  reconcileKeys: [
+                    {
+                      agentSessionId: "session-1",
+                      kind: "session",
+                      workspaceId: "workspace-1"
+                    }
+                  ]
+                },
+                kind: "discontinuity"
+              }
+            ],
+            reconcileRequired: true
+          },
+          workspaceId: "workspace-1"
+        })
+      )
+    ).toEqual([
+      {
+        agentSessionId: "session-1",
+        kind: "session_deleted"
+      }
+    ]);
+  });
+
   test("preserves typed attachment recovery controls", () => {
     expect(
       parseAgentLiveDeliveries(

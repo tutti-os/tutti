@@ -53,9 +53,6 @@ type Props = Pick<
   AgentComposerProps,
   | "workspaceId"
   | "provider"
-  | "disabled"
-  | "submitDisabled"
-  | "canQueueWhileBusy"
   | "isSendingTurn"
   | "isSubmittingPrompt"
   | "showStopButton"
@@ -73,7 +70,11 @@ type Props = Pick<
   | "onSlashStatusClose"
   | "onPromptImagesUnsupported"
   | "onRequestGitBranches"
->;
+> & {
+  disabled: boolean;
+  submitDisabled: boolean;
+  canQueueWhileBusy: boolean;
+};
 
 interface UseComposerSlashActionsInput extends Props {
   onTuttiModeActivate?: () => void;

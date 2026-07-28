@@ -1,4 +1,4 @@
-export const CLAUDE_SDK_SIDECAR_PROTOCOL_VERSION = 2 as const;
+export const CLAUDE_SDK_SIDECAR_PROTOCOL_VERSION = 3 as const;
 
 export type ClaudeSDKSidecarRequestType =
   | "start"
@@ -9,6 +9,8 @@ export type ClaudeSDKSidecarRequestType =
   | "submit_interactive"
   | "interactive_disposition"
   | "apply_settings"
+  | "inspect_fork_checkpoints"
+  | "fork_session"
   | "close";
 
 export type ClaudeSDKSidecarRequest = {
@@ -76,6 +78,8 @@ const REQUEST_TYPES = new Set<ClaudeSDKSidecarRequestType>([
   "submit_interactive",
   "interactive_disposition",
   "apply_settings",
+  "inspect_fork_checkpoints",
+  "fork_session",
   "close"
 ]);
 

@@ -100,6 +100,12 @@ export function useAgentGUIControllerActions(
   const renameConversation = useStableControllerEventCallback(
     actions.renameConversation
   );
+  const forkConversationThroughTurn = useStableControllerEventCallback(
+    actions.forkConversationThroughTurn
+  );
+  const openForkSourceConversation = useStableControllerEventCallback(
+    actions.openForkSourceConversation
+  );
   const requestDeleteConversation = useStableControllerEventCallback(
     actions.requestDeleteConversation
   );
@@ -150,6 +156,8 @@ export function useAgentGUIControllerActions(
       toggleConversationPinned,
       markConversationUnread,
       renameConversation,
+      forkConversationThroughTurn,
+      openForkSourceConversation,
       requestDeleteConversation,
       retryActivation,
       continueInNewConversation,
@@ -173,6 +181,8 @@ export function useAgentGUIControllerActions(
       toggleProjectPinned,
       removeQueuedPrompt,
       renameConversation,
+      forkConversationThroughTurn,
+      openForkSourceConversation,
       requestDeleteConversation,
       retryActivation,
       selectConversation,

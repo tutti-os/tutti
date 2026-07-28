@@ -302,7 +302,9 @@ export function rootEngineReducer(
     intent,
     {
       deletedSessionIds: state.sessionLifecycle.deletedSessionIds,
-      sessionsById: state.sessionLifecycle.sessionsById
+      interactionsById: state.sessionLifecycle.interactionsById,
+      sessionsById: state.sessionLifecycle.sessionsById,
+      turnsById: state.sessionLifecycle.turnsById
     }
   );
   const sessionLifecycle = sessionLifecycleReducer(

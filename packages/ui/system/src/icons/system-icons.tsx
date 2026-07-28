@@ -143,6 +143,26 @@ export function MessageSquareTextIcon(props: IconProps) {
   );
 }
 
+/** Source-derived from Lucide `quote` (ISC). */
+export function QuoteIcon(props: IconProps) {
+  return (
+    <SvgIcon stroke="currentColor" {...props}>
+      <path
+        d="M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      />
+      <path
+        d="M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      />
+    </SvgIcon>
+  );
+}
+
 /** Source-derived from Lucide `grip-vertical` (ISC). */
 export function GripVerticalIcon(props: IconProps) {
   return (
@@ -568,6 +588,17 @@ export function AddLinedIcon(props: IconProps) {
     <FilledPathIcon {...props}>
       <path
         d="M12 2C12.5523 2 13 2.44772 13 3V11H21C21.5523 11 22 11.4477 22 12C22 12.5523 21.5523 13 21 13H13V21C13 21.5523 12.5523 22 12 22C11.4477 22 11 21.5523 11 21V13H3C2.44772 13 2 12.5523 2 12C2 11.4477 2.44772 11 3 11H11V3C11 2.44772 11.4477 2 12 2Z"
+        fill="currentColor"
+      />
+    </FilledPathIcon>
+  );
+}
+
+export function MinusLinedIcon(props: IconProps) {
+  return (
+    <FilledPathIcon {...props}>
+      <path
+        d="M3 11C2.44772 11 2 11.4477 2 12C2 12.5523 2.44772 13 3 13H21C21.5523 13 22 12.5523 22 12C22 11.4477 21.5523 11 21 11H3Z"
         fill="currentColor"
       />
     </FilledPathIcon>

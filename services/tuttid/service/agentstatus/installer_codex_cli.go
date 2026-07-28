@@ -129,6 +129,13 @@ func (s Service) runManagedNPMPackageAction(
 	registries := s.rankedManagedNPMRegistries(ctx, spec)
 	var result InstallCommandResult
 	binConflictRepaired := false
+	// npm can leave a sibling .<package>-<hash> staging directory when an
+	// install is interrupted (for example, when the desktop window that started
+	// the action closes). The next npm install then fails before doing any useful
+	// work with ENOTEMPTY while trying to rename the current package into that
+	// stale destination. Clean only this package's staging directories; the
+	// global prefix may contain unrelated user-installed packages.
+	cleanupManagedNPMStagingDirs(installPrefix, packageName)
 	for i, registry := range registries {
 		registryDisplay := displayNPMRegistry(registry)
 		setActiveAction(ctx, provider, ActiveAction{
@@ -189,6 +196,10 @@ func (s Service) runManagedNPMPackageAction(
 				return result, nil
 			}
 		}
+		cleanupManagedNPMStagingDirs(installPrefix, packageName)
+		if ctx.Err() != nil {
+			return result, err
+		}
 		if i < len(registries)-1 {
 			slog.Warn(
 				"agent provider managed npm install failed on registry, trying next",
@@ -201,6 +212,77 @@ func (s Service) runManagedNPMPackageAction(
 		}
 	}
 	return result, err
+}
+
+func cleanupManagedNPMStagingDirs(installPrefix, packageName string) {
+	packageDir, ok := managedNPMGlobalPackageDir(installPrefix, packageName)
+	if !ok {
+		return
+	}
+	parentDir := filepath.Dir(packageDir)
+	stagingPrefix := "." + filepath.Base(packageDir) + "-"
+	entries, err := os.ReadDir(parentDir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			slog.Warn(
+				"agent provider managed npm staging directory scan failed",
+				"path", parentDir,
+				"package", packageName,
+				"error", err,
+			)
+		}
+		return
+	}
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.Name(), stagingPrefix) {
+			continue
+		}
+		path := filepath.Join(parentDir, entry.Name())
+		if err := os.RemoveAll(path); err != nil {
+			slog.Warn(
+				"agent provider managed npm staging directory cleanup failed",
+				"path", path,
+				"package", packageName,
+				"error", err,
+			)
+			continue
+		}
+		slog.Info(
+			"agent provider managed npm staging directory cleaned",
+			"path", path,
+			"package", packageName,
+		)
+	}
+}
+
+func managedNPMGlobalPackageDir(installPrefix, packageName string) (string, bool) {
+	installPrefix = strings.TrimSpace(installPrefix)
+	packageName = strings.TrimSpace(packageName)
+	if installPrefix == "" || packageName == "" {
+		return "", false
+	}
+	parts := strings.Split(packageName, "/")
+	switch {
+	case strings.HasPrefix(packageName, "@"):
+		if len(parts) != 2 || !validManagedNPMPackagePathPart(parts[0]) || !validManagedNPMPackagePathPart(parts[1]) {
+			return "", false
+		}
+	case len(parts) != 1 || !validManagedNPMPackagePathPart(parts[0]):
+		return "", false
+	}
+	nodeModulesDir := filepath.Join(installPrefix, "lib", "node_modules")
+	if runtime.GOOS == "windows" {
+		nodeModulesDir = filepath.Join(installPrefix, "node_modules")
+	}
+	return filepath.Join(append([]string{nodeModulesDir}, parts...)...), true
+}
+
+func validManagedNPMPackagePathPart(part string) bool {
+	part = strings.TrimSpace(part)
+	return part != "" &&
+		part != "." &&
+		part != ".." &&
+		!strings.ContainsAny(part, `\/`)
 }
 
 func (s Service) repairManagedNPMBinEEXIST(

@@ -19,6 +19,7 @@ import type {
   AgentGUITargetConnectionSource,
   AgentGUIHomeSuggestionId,
   AgentGUIAgentTarget,
+  AgentGUIAgentTargetInfoRenderer,
   AgentGUIAgentOwnership,
   NodeFrame,
   Point
@@ -210,6 +211,11 @@ export interface AgentGUIAgentConfigMenuContext {
 }
 
 export interface AgentGUINodeRenderSlots {
+  /**
+   * Optional Host-owned information for an exact Agent target. AgentGUI owns
+   * tooltip mechanics and invokes this renderer lazily for supported surfaces.
+   */
+  agentTargetInfo?: AgentGUIAgentTargetInfoRenderer;
   /**
    * Optional Host chrome for the exact target's account/Commerce presentation.
    * Returning null preserves AgentGUI's provider account and quota content.
@@ -434,6 +440,7 @@ export function areAgentGUINodePropsEqual(
     pa.onEngagementEvent === na.onEngagementEvent &&
     pa.onConversationRailLayoutChange === na.onConversationRailLayoutChange &&
     ps.agentConfigAccount === ns.agentConfigAccount &&
+    ps.agentTargetInfo === ns.agentTargetInfo &&
     ps.providerRailEmpty === ns.providerRailEmpty &&
     ps.providerUnavailableState === ns.providerUnavailableState &&
     ps.projectDirectoryPickerHeaderActions ===

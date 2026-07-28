@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -31,6 +32,9 @@ type AgentSessionService interface {
 	ImportExternalSessions(context.Context, string, agentservice.ExternalImportInput) (agentservice.ExternalImportResult, error)
 	ExternalImportValidProjectPaths(context.Context, agentservice.ExternalImportInput) ([]string, error)
 	Create(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
+	Fork(context.Context, string, string, agentservice.ForkSessionInput) (agentservice.SessionForkOperation, error)
+	GetSessionForkOperation(context.Context, string, string) (agentservice.SessionForkOperation, error)
+	AcknowledgeSessionForkOperation(context.Context, string, string) (agentservice.SessionForkOperation, error)
 	Get(context.Context, string, string) (agentservice.Session, error)
 	GetDetail(context.Context, string, string) (agentservice.SessionDetail, error)
 	ReadAttachment(context.Context, string, string, string) (agentservice.PromptAttachment, error)
@@ -159,16 +163,18 @@ func (api DaemonAPI) ListWorkspaceAgentSessionMessages(ctx context.Context, requ
 	agentSessionID := string(request.AgentSessionID)
 	input := agentservice.ListMessagesInput{}
 	if request.Params.AfterVersion != nil {
-		if *request.Params.AfterVersion < 0 {
+		afterVersion, err := workspaceAgentMessageCursorFromRequest(*request.Params.AfterVersion)
+		if err != nil {
 			return writeListWorkspaceAgentSessionMessagesError(agentservice.ErrInvalidArgument), nil
 		}
-		input.AfterVersion = uint64(*request.Params.AfterVersion)
+		input.AfterVersion = afterVersion
 	}
 	if request.Params.BeforeVersion != nil {
-		if *request.Params.BeforeVersion < 0 {
+		beforeVersion, err := workspaceAgentMessageCursorFromRequest(*request.Params.BeforeVersion)
+		if err != nil {
 			return writeListWorkspaceAgentSessionMessagesError(agentservice.ErrInvalidArgument), nil
 		}
-		input.BeforeVersion = uint64(*request.Params.BeforeVersion)
+		input.BeforeVersion = beforeVersion
 	}
 	if request.Params.Order != nil {
 		switch *request.Params.Order {
@@ -216,6 +222,10 @@ func (api DaemonAPI) ListWorkspaceAgentSessionMessages(ctx context.Context, requ
 		return writeListWorkspaceAgentSessionMessagesError(err), nil
 	}
 	messages, err := generatedAgentSessionMessages(page.Messages)
+	var latestVersion int64
+	if err == nil {
+		latestVersion, err = generatedWorkspaceAgentSafeInteger("latest message version", page.LatestVersion)
+	}
 	if err != nil {
 		firstVersion, lastVersion := agentSessionMessageVersionRange(page.Messages)
 		slog.Warn("workspace agent session messages response transform failed",
@@ -255,7 +265,7 @@ func (api DaemonAPI) ListWorkspaceAgentSessionMessages(ctx context.Context, requ
 	return tuttigenerated.ListWorkspaceAgentSessionMessages200JSONResponse{
 		AgentSessionId: page.AgentSessionID,
 		HasMore:        page.HasMore,
-		LatestVersion:  int64(page.LatestVersion),
+		LatestVersion:  latestVersion,
 		Messages:       messages,
 	}, nil
 }
@@ -717,6 +727,26 @@ func generatedAgentSession(session agentservice.Session) (tuttigenerated.Workspa
 	if err != nil {
 		return tuttigenerated.WorkspaceAgentSession{}, err
 	}
+	messageVersion, err := generatedWorkspaceAgentSafeInteger("session message version", session.MessageVersion)
+	if err != nil {
+		return tuttigenerated.WorkspaceAgentSession{}, fmt.Errorf("project workspace agent session %q: %w", session.ID, err)
+	}
+	var forkedFrom *tuttigenerated.WorkspaceAgentSessionForkLineage
+	if session.ForkedFrom != nil {
+		forkedFrom = &tuttigenerated.WorkspaceAgentSessionForkLineage{
+			ForkedAtUnixMs:       session.ForkedFrom.ForkedAtUnixMS,
+			OperationId:          strings.TrimSpace(session.ForkedFrom.OperationID),
+			SourceAgentSessionId: strings.TrimSpace(session.ForkedFrom.SourceAgentSessionID),
+			SourceTurnId:         strings.TrimSpace(session.ForkedFrom.SourceTurnID),
+			TargetTurnId:         strings.TrimSpace(session.ForkedFrom.TargetTurnID),
+		}
+	}
+	forkThroughTurnIDs := append(
+		[]string(nil),
+		session.LifecycleCapabilities.ForkThroughTurnIDs...,
+	)
+	forkThroughTurnIDsKnown :=
+		session.LifecycleCapabilities.ForkThroughTurnIDsKnown
 	return tuttigenerated.WorkspaceAgentSession{
 		ActiveTurn:             activeTurn,
 		ActiveTurnId:           optionalStringPointer(strings.TrimSpace(session.ActiveTurnID)),
@@ -725,30 +755,38 @@ func generatedAgentSession(session agentservice.Session) (tuttigenerated.Workspa
 		CreatedAtUnixMs:        session.CreatedAt.UnixMilli(),
 		Cwd:                    stringPointer(strings.TrimSpace(session.Cwd)),
 		EndedAtUnixMs:          endedAtUnixMS,
+		ForkedFrom:             forkedFrom,
 		Goal:                   generatedAgentSessionGoal(session.Metadata.Goal),
 		Id:                     session.ID,
 		Imported:               session.Metadata.Imported,
 		Kind:                   tuttigenerated.WorkspaceAgentSessionKind(session.Kind),
 		LatestTurn:             latestTurn,
 		LatestTurnInteractions: latestTurnInteractions,
-		ParentAgentSessionId:   optionalStringPointer(strings.TrimSpace(session.ParentAgentSessionID)),
-		ParentToolCallId:       optionalStringPointer(strings.TrimSpace(session.ParentToolCallID)),
-		ParentTurnId:           optionalStringPointer(strings.TrimSpace(session.ParentTurnID)),
-		PendingInteractions:    pendingInteractions,
-		PermissionConfig:       generatedPermissionConfig(session.PermissionConfig),
-		Provider:               tuttigenerated.WorkspaceAgentProvider(session.Provider),
-		ProviderSessionId:      stringPointer(strings.TrimSpace(session.ProviderSessionID)),
-		PinnedAtUnixMs:         int64Pointer(session.PinnedAtUnixMS),
-		RailSectionKey:         strings.TrimSpace(session.RailSectionKey),
-		Resumable:              session.Resumable,
-		RootAgentSessionId:     optionalStringPointer(strings.TrimSpace(session.RootAgentSessionID)),
-		RootTurnId:             optionalStringPointer(strings.TrimSpace(session.RootTurnID)),
-		Settings:               generatedSettings,
-		Title:                  session.Title,
-		TuttiModeActivation:    tuttiModeActivation,
-		UpdatedAtUnixMs:        updatedAtUnixMS,
-		Usage:                  generatedAgentSessionUsage(session.Metadata.Usage),
-		Visible:                session.Visible,
+		MessageVersion:         messageVersion,
+		LifecycleCapabilities: tuttigenerated.WorkspaceAgentSessionLifecycleCapabilities{
+			Fork:                    session.LifecycleCapabilities.Fork,
+			ForkThroughTurn:         session.LifecycleCapabilities.ForkThroughTurn,
+			ForkThroughTurnIds:      &forkThroughTurnIDs,
+			ForkThroughTurnIdsKnown: &forkThroughTurnIDsKnown,
+		},
+		ParentAgentSessionId: optionalStringPointer(strings.TrimSpace(session.ParentAgentSessionID)),
+		ParentToolCallId:     optionalStringPointer(strings.TrimSpace(session.ParentToolCallID)),
+		ParentTurnId:         optionalStringPointer(strings.TrimSpace(session.ParentTurnID)),
+		PendingInteractions:  pendingInteractions,
+		PermissionConfig:     generatedPermissionConfig(session.PermissionConfig),
+		Provider:             tuttigenerated.WorkspaceAgentProvider(session.Provider),
+		ProviderSessionId:    stringPointer(strings.TrimSpace(session.ProviderSessionID)),
+		PinnedAtUnixMs:       int64Pointer(session.PinnedAtUnixMS),
+		RailSectionKey:       strings.TrimSpace(session.RailSectionKey),
+		Resumable:            session.Resumable,
+		RootAgentSessionId:   optionalStringPointer(strings.TrimSpace(session.RootAgentSessionID)),
+		RootTurnId:           optionalStringPointer(strings.TrimSpace(session.RootTurnID)),
+		Settings:             generatedSettings,
+		Title:                session.Title,
+		TuttiModeActivation:  tuttiModeActivation,
+		UpdatedAtUnixMs:      updatedAtUnixMS,
+		Usage:                generatedAgentSessionUsage(session.Metadata.Usage),
+		Visible:              session.Visible,
 	}, nil
 }
 

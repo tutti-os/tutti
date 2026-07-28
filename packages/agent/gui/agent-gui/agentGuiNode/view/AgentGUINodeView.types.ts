@@ -17,7 +17,8 @@ import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions"
 import type {
   AgentGUIProvider,
   AgentGUIProviderRailAllPresentation,
-  AgentGUIAgentTarget
+  AgentGUIAgentTarget,
+  AgentGUIAgentTargetInfoRenderer
 } from "../../../types";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
 import type { PlanIssueBudgetPreset } from "../../../shared/agentConversation/planImplementationPresentation";
@@ -216,6 +217,7 @@ export interface AgentGUIViewLabels {
   selectConversation: string;
   loadingConversations: string;
   loadingConversation: string;
+  continuedFromTask: string;
   scrollToBottom: string;
   searchNoConversations: string;
   searchFailed: string;
@@ -522,6 +524,8 @@ export interface AgentGUINodeViewProps {
   viewModel: AgentGUINodeViewModel;
   referenceProvenanceFilters?: AgentComposerReferenceProvenanceFilters | null;
   sessionInputHistoryEnabled?: boolean;
+  /** Host-owned presentation for exact Agent targets; tooltip behavior stays AgentGUI-owned. */
+  renderAgentTargetInfo?: AgentGUIAgentTargetInfoRenderer;
   renderProjectDirectoryPickerHeaderActions?: ReferenceSourcePickerProps["renderHeaderActions"];
   renderSidebarFooter?: AgentGUISidebarFooterRenderer;
   /** Renders the provider rail empty state in "exact" mode. See the type doc. */
@@ -646,6 +650,11 @@ export interface AgentGUINodeViewProps {
       agentSessionId: string,
       title: string
     ) => Promise<void>;
+    forkConversationThroughTurn: (
+      agentSessionId: string,
+      turnId: string
+    ) => Promise<void>;
+    openForkSourceConversation: (agentSessionId: string) => Promise<void>;
     removeProject: (path: string) => void;
     moveProject: (
       projectId: string,

@@ -537,11 +537,7 @@ export function WorkbenchWindowFrame<TData>({
       {presentationInteraction ? (
         <button
           aria-label={node.title}
-          aria-pressed={
-            presentationInteraction.mode === "layout"
-              ? isMissionControlSelected
-              : undefined
-          }
+          aria-pressed={isMissionControlSelected}
           className="absolute inset-0 z-10 block appearance-none rounded-lg border-0 bg-transparent p-0 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
           type="button"
           onClick={(event) => {
@@ -549,14 +545,12 @@ export function WorkbenchWindowFrame<TData>({
             presentationInteraction.onNodePress(node.id);
           }}
         >
-          {presentationInteraction.mode === "layout" &&
-          isMissionControlSelected ? (
+          {isMissionControlSelected ? (
             <div className="pointer-events-none absolute inset-0 rounded-lg border-2 border-[var(--tutti-purple)] transition-[border-color,transform] duration-150 ease-out" />
           ) : null}
         </button>
       ) : null}
-      {presentationInteraction?.mode === "layout" &&
-      isMissionControlSelected ? (
+      {presentationInteraction && isMissionControlSelected ? (
         <Checkbox
           aria-hidden="true"
           checked

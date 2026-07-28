@@ -2398,7 +2398,7 @@ export function WorkbenchHostDock({
               }
             }
             window.requestAnimationFrame(() => {
-              onMissionControlRequestOpen?.("activate", {
+              onMissionControlRequestOpen?.({
                 nodeIds: openDockContextMenuNodeIds,
                 trigger: "dock-context-menu"
               });

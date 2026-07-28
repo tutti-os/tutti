@@ -2,20 +2,9 @@ import { selectVisibleWorkbenchNodes } from "../core/selectors.ts";
 import { createDerivedSnapshotGetter } from "../store/createDerivedSnapshotGetter.ts";
 import type { WorkbenchController } from "../store/types.ts";
 import type { WorkbenchMissionControlAdapter } from "../mission-control/types.ts";
-import { workbenchFocusInputActivationType } from "./activations.ts";
-import type {
-  WorkbenchHostActivationTarget,
-  WorkbenchHostNodeData
-} from "./types.ts";
+import type { WorkbenchHostNodeData } from "./types.ts";
 
 export function createWorkbenchHostMissionControlAdapter(input: {
-  activateNode?: (
-    target: WorkbenchHostActivationTarget,
-    activation: {
-      payload?: unknown;
-      type: string;
-    }
-  ) => void;
   controller: WorkbenchController<WorkbenchHostNodeData>;
 }): WorkbenchMissionControlAdapter<WorkbenchHostNodeData> {
   const getSnapshot = createDerivedSnapshotGetter<
@@ -26,6 +15,7 @@ export function createWorkbenchHostMissionControlAdapter(input: {
   >({
     deriveSnapshot(controllerSnapshot) {
       return {
+        isLayoutLocked: controllerSnapshot.lockedLayout !== null,
         layoutConstraints: controllerSnapshot.layoutConstraints,
         surfaceSize: controllerSnapshot.surfaceSize,
         visibleNodes: selectVisibleWorkbenchNodes(controllerSnapshot)
@@ -40,17 +30,10 @@ export function createWorkbenchHostMissionControlAdapter(input: {
     applyLayoutPreset(nodeIds, preset, lock) {
       input.controller.commands.applyLayoutPreset(nodeIds, preset, lock);
     },
-    focusNode(nodeId) {
-      if (input.activateNode) {
-        input.activateNode(
-          { nodeId },
-          { type: workbenchFocusInputActivationType }
-        );
-        return;
-      }
-      input.controller.commands.focusNode(nodeId);
-    },
     getSnapshot,
+    releaseLockedLayout() {
+      input.controller.commands.releaseLockedLayout();
+    },
     subscribe(listener) {
       return input.controller.subscribe(listener);
     }

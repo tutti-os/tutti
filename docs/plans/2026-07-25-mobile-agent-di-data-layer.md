@@ -70,7 +70,9 @@ React bindings or decorator syntax in service modules.
   cursors, totals, and project labels. It uses the server's exact
   `railSectionKey` membership and never infers projects from `cwd`.
 - Rail Session DTOs and message pages are mapped into canonical activity
-  entities and dispatched into one workspace `AgentSessionEngine`.
+  entities and dispatched into one workspace `AgentSessionEngine`. The Rail
+  snapshot retains only membership, ordered ids, cursors, totals, and request
+  state; Session DTOs are transient input rather than a second entity cache.
 - Mobile consumes the DOM-free
   `@tutti-os/agent-gui/conversation-rail-projection` entry for the same title,
   provider, status, attention, pin, and sort semantics as Agent GUI, then

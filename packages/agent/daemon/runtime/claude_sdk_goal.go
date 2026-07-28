@@ -3,6 +3,7 @@ package agentruntime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -119,6 +120,32 @@ func (*ClaudeCodeSDKAdapter) GoalCapabilities() GoalAdapterCapabilities {
 		QuerySupported: false, ClearSupported: true, PauseSupported: false,
 		QuiesceGoalTurns: true, ReplaySetAfterRestart: false,
 	}
+}
+
+func (a *ClaudeCodeSDKAdapter) FenceGoalGeneration(
+	_ context.Context,
+	session Session,
+	input GoalGenerationFenceInput,
+) error {
+	identity := goalOperationIdentity{
+		operationID: strings.TrimSpace(input.OperationID),
+		revision:    input.Revision,
+		repairEpoch: input.RepairEpoch,
+	}
+	if !identity.valid() {
+		return errors.New("valid Goal generation fence identity is required")
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	adapterSession := a.sessions[strings.TrimSpace(session.AgentSessionID)]
+	if adapterSession == nil {
+		return ErrSessionDisconnected
+	}
+	if adapterSession.fencedGoalIdentities == nil {
+		adapterSession.fencedGoalIdentities = make(map[goalOperationIdentity]struct{})
+	}
+	adapterSession.fencedGoalIdentities[identity] = struct{}{}
+	return nil
 }
 
 func (a *ClaudeCodeSDKAdapter) ApplyGoal(
@@ -400,6 +427,7 @@ func (a *ClaudeCodeSDKAdapter) sendGoalCommandExec(
 	payload := map[string]any{
 		"agentSessionId": session.AgentSessionID,
 		"turnId":         turnID,
+		"providerTurnId": turnID,
 		"prompt":         command,
 		"content":        promptContentForClaudeSDK(nil, command),
 	}

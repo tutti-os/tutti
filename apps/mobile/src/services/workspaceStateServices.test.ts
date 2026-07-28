@@ -2,7 +2,7 @@ import { ComposerDraftService } from "./composerDraftService";
 import { WorkspaceNavigationService } from "./workspaceNavigationService";
 
 describe("workspace state services", () => {
-  test("reconciles the selected session without keeping a stale identity", () => {
+  test("keeps explicit route selection authoritative during reconciliation", () => {
     const service = new WorkspaceNavigationService();
     service.reconcileSessionIds(["session-1", "session-2"]);
     expect(service.getSnapshot().selectedAgentSessionId).toBe("session-1");
@@ -12,7 +12,7 @@ describe("workspace state services", () => {
     expect(service.getSnapshot().selectedAgentSessionId).toBe("session-2");
 
     service.reconcileSessionIds(["session-3"]);
-    expect(service.getSnapshot().selectedAgentSessionId).toBe("session-3");
+    expect(service.getSnapshot().selectedAgentSessionId).toBe("session-2");
   });
 
   test("keeps process-only drafts isolated by session identity", () => {

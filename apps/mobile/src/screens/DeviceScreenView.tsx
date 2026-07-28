@@ -63,9 +63,11 @@ export function DeviceScreenView({
           ? t("pairingFailed")
           : model.errorCode === "connection_failed"
             ? t("connectionFailed")
-            : model.errorCode
-              ? t("genericError")
-              : null;
+            : model.errorCode === "workspace_unavailable"
+              ? t("workspaceUnavailable")
+              : model.errorCode
+                ? t("genericError")
+                : null;
 
   return (
     <View style={styles.root}>
@@ -133,7 +135,11 @@ export function DeviceScreenView({
         })}
         {status ? (
           <View style={styles.status}>
-            <ActivityIndicator color={theme.color.accent} size="small" />
+            {model.pairingState === "waiting" ? (
+              <ActivityIndicator color={theme.color.accent} size="small" />
+            ) : (
+              <View style={styles.statusDot} />
+            )}
             <Text style={styles.statusText}>{status}</Text>
           </View>
         ) : null}

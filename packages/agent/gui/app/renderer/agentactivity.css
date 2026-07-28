@@ -600,6 +600,10 @@
   color: var(--text-primary);
 }
 
+[data-testid="workspace-agent-message-center"][data-presentation="embedded"] {
+  width: 100%;
+}
+
 [data-testid="workspace-agent-message-center"]
   .workspace-agent-message-center__copy-text,
 [data-testid="workspace-agent-message-center"]
@@ -4125,6 +4129,12 @@ aside.workspace-agents-status-panel
     transform 120ms ease;
 }
 
+.agent-gui-conversation__message-footer
+  > .agent-gui-conversation__message-copy-button
+  + .agent-gui-conversation__message-copy-button {
+  margin-left: -8px;
+}
+
 .agent-gui-conversation__message-group[data-agent-message-speaker="user"]
   > .agent-gui-conversation__message-footer {
   right: 0;
@@ -5466,6 +5476,19 @@ aside.workspace-agents-status-panel
   height: 20px;
   flex: 0 0 auto;
   border-radius: 5px;
+}
+
+.agent-gui-workbench-header__session-icon-info-trigger {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  border-radius: 5px;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+
+.agent-gui-workbench-header__session-icon-info-trigger:focus-visible {
+  outline: auto;
 }
 
 .agent-gui-workbench-header__session-icon--pending {

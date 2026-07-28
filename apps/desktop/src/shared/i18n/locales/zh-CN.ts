@@ -202,6 +202,8 @@ export const zhCN = {
       copyUserIdSuccess: "已复制用户 ID",
       copyUserIdFailed: "复制用户 ID 失败",
       openExternalFailed: "无法打开账户链接",
+      refresh: "刷新",
+      refreshing: "刷新中",
       loading: "加载中",
       unavailable: "--",
       dataUnavailable: "部分账号数据暂不可用",
@@ -1267,9 +1269,6 @@ export const zhCN = {
         unavailableItem: "{{title}}，{{reason}}"
       },
       missionControl: {
-        activateShortcutDefault: "Ctrl + 1",
-        activateShortcutMac: "Cmd + 1",
-        activateTrigger: "快速激活节点",
         layoutShortcutDefault: "Ctrl + 2",
         layoutShortcutMac: "Cmd + 2",
         layoutTrigger: "快速布局",

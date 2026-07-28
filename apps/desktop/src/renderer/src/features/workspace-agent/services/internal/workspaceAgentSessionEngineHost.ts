@@ -1,11 +1,12 @@
 import {
   AGENT_SESSION_ENGINE_LOCAL_ORIGIN,
   createAgentSessionEngine,
+  executeAgentActivityPromptCommand,
   type AgentActivityAdapter,
   type AgentActivitySendInput,
   type AgentSessionEngine,
   type PlanSubmitDecisionResult,
-  type PromptQueueSendCommand,
+  type SessionAcknowledgeForkObservedCommand,
   type SessionActivateCommand,
   type SessionReconcileCommand,
   type TuttiModeActivationUpdateCommand
@@ -33,7 +34,10 @@ interface CreateWorkspaceAgentSessionEngineHostInput {
     turnId: string;
     workspaceId: string;
   }): Promise<unknown>;
-  reconcileSession(command: SessionReconcileCommand): Promise<unknown>;
+  reconcileSession(
+    command: SessionReconcileCommand,
+    signal?: AbortSignal
+  ): Promise<unknown>;
   runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
   sendInput(input: AgentActivitySendInput): Promise<unknown>;
   submitInteractive: AgentActivityRuntime["submitInteractive"];
@@ -57,36 +61,12 @@ interface CreateWorkspaceAgentSessionEngineHostInput {
   workspaceId: string;
 }
 
-type WorkspaceAgentPromptCommandPort = Pick<
-  CreateWorkspaceAgentSessionEngineHostInput,
-  "sendInput" | "updateSessionSettings"
->;
-
-export async function executeWorkspaceAgentPromptSendCommand(
-  input: WorkspaceAgentPromptCommandPort,
-  command: PromptQueueSendCommand
-): Promise<unknown> {
-  if (command.requiredSettingsPatch) {
-    await input.updateSessionSettings({
-      agentSessionId: command.agentSessionId,
-      settings: { ...command.requiredSettingsPatch },
-      workspaceId: command.workspaceId
-    });
-  }
-  return input.sendInput({
-    agentSessionId: command.agentSessionId,
-    ...(command.capabilityRefs?.length
-      ? { capabilityRefs: command.capabilityRefs }
-      : {}),
-    clientSubmitId: command.clientSubmitId,
-    content: [...command.content],
-    displayPrompt: command.displayPrompt ?? null,
-    ...(command.guidance === true ? { guidance: true } : {}),
-    ...(command.submitDiagnostics
-      ? { submitDiagnostics: { ...command.submitDiagnostics } }
-      : {}),
-    workspaceId: command.workspaceId
-  });
+interface WorkspaceAgentForkObservationAckClient {
+  acknowledgeWorkspaceAgentSessionForkOperation(
+    workspaceId: string,
+    operationId: string,
+    options: { signal?: AbortSignal }
+  ): Promise<unknown>;
 }
 
 export function executeWorkspaceAgentTuttiModeUpdateCommand(
@@ -110,6 +90,18 @@ export function executeWorkspaceAgentTuttiModeUpdateCommand(
     status: command.status,
     workspaceId: command.workspaceId
   });
+}
+
+export function executeWorkspaceAgentForkObservedAckCommand(
+  client: WorkspaceAgentForkObservationAckClient,
+  command: SessionAcknowledgeForkObservedCommand,
+  signal?: AbortSignal
+): Promise<unknown> {
+  return client.acknowledgeWorkspaceAgentSessionForkOperation(
+    command.workspaceId,
+    command.operationId,
+    { ...(signal === undefined ? {} : { signal }) }
+  );
 }
 
 export function createWorkspaceAgentSessionEngineHost(
@@ -174,7 +166,13 @@ export function createWorkspaceAgentSessionEngineHost(
               workspaceId: command.workspaceId
             });
           case "queue/sendPrompt":
-            return executeWorkspaceAgentPromptSendCommand(input, command);
+            return executeAgentActivityPromptCommand(
+              {
+                sendInput: input.sendInput,
+                updateSessionSettings: input.updateSessionSettings
+              },
+              command
+            );
           case "interaction/respond":
             return input.submitInteractive({
               ...(command.action ? { action: command.action } : {}),
@@ -205,6 +203,21 @@ export function createWorkspaceAgentSessionEngineHost(
             });
             return { session };
           }
+          case "session/forkThroughTurn":
+            return adapter.forkSession({
+              requestId: command.requestId,
+              signal: options?.signal,
+              sourceAgentSessionId: command.sourceAgentSessionId,
+              targetAgentSessionId: command.targetAgentSessionId,
+              turnId: command.turnId,
+              workspaceId: command.workspaceId
+            });
+          case "session/ackForkObserved":
+            return executeWorkspaceAgentForkObservedAckCommand(
+              input.tuttidClient,
+              command,
+              options?.signal
+            );
           case "sessions/delete":
             return adapter.deleteSessions({
               agentSessionIds: command.agentSessionIds,
@@ -234,7 +247,7 @@ export function createWorkspaceAgentSessionEngineHost(
             return list;
           }
           case "session/reconcile":
-            return input.reconcileSession(command);
+            return input.reconcileSession(command, options?.signal);
           case "session/unactivate":
             return input.unactivateSession({
               agentSessionId: command.agentSessionId,

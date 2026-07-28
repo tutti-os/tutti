@@ -1,11 +1,15 @@
 import {
+  canonicalInteractionKey,
   selectRootAgentActivitySessions,
   selectRootAgentSessionIdsWithPendingInteractions,
   selectEngineTurnsForSession,
+  selectEngineInteractionResponse,
+  selectEngineSessionRuntimeAvailability,
   selectComposerOptions,
   selectComposerOptionsLoadStatus,
   type AgentActivitySessionSettings,
   selectSessionMutations,
+  selectWorkspaceAgentRootConversationSessions,
   type AgentActivitySnapshot,
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
@@ -109,6 +113,39 @@ export function projectWorkspaceActivitySnapshot({
     sessions.find(
       (session) => session.agentSessionId === navigation.selectedAgentSessionId
     ) ?? null;
+  const selectedConversation =
+    selectWorkspaceAgentRootConversationSessions(state).find(
+      (consumer) =>
+        consumer.session.agentSessionId === navigation.selectedAgentSessionId
+    ) ?? null;
+  const pendingInteractions = selectedConversation?.pendingInteractions ?? [];
+  const interactionStates = Object.fromEntries(
+    pendingInteractions.map((interaction) => {
+      const response = selectEngineInteractionResponse(
+        state,
+        interaction.agentSessionId,
+        interaction.turnId,
+        interaction.requestId
+      );
+      const runtimeAvailability = selectEngineSessionRuntimeAvailability(
+        state,
+        interaction.agentSessionId
+      );
+      return [
+        canonicalInteractionKey(
+          interaction.agentSessionId,
+          interaction.turnId,
+          interaction.requestId
+        ),
+        {
+          failed: response?.status === "failed",
+          runtimeAvailable: runtimeAvailability?.state !== "blocked",
+          submitting:
+            response?.status === "responding" || response?.status === "unknown"
+        }
+      ];
+    })
+  );
   const sending =
     Object.values(state.pendingIntents.submitsByClientSubmitId).some(
       (record) =>
@@ -182,6 +219,15 @@ export function projectWorkspaceActivitySnapshot({
       workspaceId
     }
   );
+  const selectedRuntimeAvailability = selectEngineSessionRuntimeAvailability(
+    state,
+    navigation.selectedAgentSessionId
+  );
+  const commandsAvailable = navigation.creating
+    ? state.engineRuntime.connection === "connected"
+    : Boolean(
+        selectedSession && selectedRuntimeAvailability?.state !== "blocked"
+      );
 
   return {
     activity,
@@ -190,11 +236,14 @@ export function projectWorkspaceActivitySnapshot({
     composerOptionsLoadStatus,
     composerSettings,
     composerSettingsSupport,
+    commandsAvailable,
     conversation,
     creating: navigation.creating,
     draft,
     errorCode: errorCode ?? rail.errorCode,
+    interactionStates,
     loading,
+    pendingInteractions,
     pinningSessionIds,
     railErrorCode: rail.errorCode,
     railSections: projectWorkspaceConversationRail({

@@ -26,7 +26,6 @@ import {
 import { useTranslation } from "@renderer/i18n";
 import type { WorkspaceAgentProvider } from "@tutti-os/client-tuttid-ts";
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences/ui/useDesktopPreferencesService";
-import { useAccountService } from "../../workspace-workbench/ui/useAccountService";
 import { useWorkspaceSettingsService } from "../../workspace-workbench/ui/useWorkspaceSettingsService";
 import { buildDesktopCommerceErrorPresentation } from "./desktopCommerceErrorPresentation";
 import { Toast } from "@renderer/lib/toast";
@@ -76,6 +75,7 @@ import { useDesktopAgentGUIWorkbenchEvents } from "./useDesktopAgentGUIWorkbench
 import { useStableDesktopAgentGUIHostProps } from "./useStableDesktopAgentGUIHostProps.ts";
 import { resolveDesktopAgentGUIEmbeddedDesktopSize } from "./desktopAgentGUIEmbeddedFrame.ts";
 import { scheduleDesktopAgentGUIWorkbenchHydration } from "./desktopAgentGUIWorkbenchHydration.ts";
+import { useDesktopAgentConfigCommerce } from "./useDesktopAgentConfigCommerce.tsx";
 import { IAgentEnvService } from "../services/agentEnvService.interface.ts";
 import { preloadDesktopAgentGuiMentionBrowse } from "../services/preloadDesktopAgentGuiMentionBrowse.ts";
 import { DESKTOP_AGENT_GUI_CURRENT_USER_ID } from "../services/desktopAgentGuiIdentity.ts";
@@ -126,8 +126,11 @@ function DesktopAgentGUISurfaceImpl({
 }: DesktopAgentGUISurfaceProps): JSX.Element {
   const agents = agentDirectory.agents;
   const { i18n, locale } = useTranslation();
-  const { state: accountState } = useAccountService();
   const { state: workspaceSettingsState } = useWorkspaceSettingsService();
+  const commerceEnabled =
+    workspaceSettingsState.tuttiAgentSwitchEnabled === true;
+  const { accountState, handleAgentConfigMenuOpen, renderAgentConfigAccount } =
+    useDesktopAgentConfigCommerce(commerceEnabled);
   const { service: desktopPreferencesService, state: desktopPreferencesState } =
     useDesktopPreferencesService();
   const rawWorkbenchState = normalizeDesktopAgentGUIWorkbenchState(
@@ -141,7 +144,7 @@ function DesktopAgentGUISurfaceImpl({
   const agentEnvService = useService(IAgentEnvService);
   const visibleErrorPresentationOverrides =
     useMemo<AgentVisibleErrorOverrides | null>(() => {
-      if (workspaceSettingsState.tuttiAgentSwitchEnabled !== true) {
+      if (!commerceEnabled) {
         return null;
       }
       const summary = accountState.productSummary;
@@ -170,11 +173,7 @@ function DesktopAgentGUISurfaceImpl({
           }
         }
       });
-    }, [
-      accountState.productSummary,
-      i18n,
-      workspaceSettingsState.tuttiAgentSwitchEnabled
-    ]);
+    }, [accountState.productSummary, i18n, commerceEnabled]);
   const {
     computerUseStatus,
     handleAgentProviderLogin,
@@ -646,6 +645,7 @@ function DesktopAgentGUISurfaceImpl({
     },
     hostActions: {
       onAgentEnvPanelOpen: handleAgentEnvPanelOpen,
+      onAgentConfigMenuOpen: handleAgentConfigMenuOpen,
       onAgentProviderLogin: agentProviderStatusService
         ? handleAgentProviderLogin
         : undefined,
@@ -663,6 +663,7 @@ function DesktopAgentGUISurfaceImpl({
         : handleOpenConversationWindow
     },
     renderSlots: {
+      agentConfigAccount: renderAgentConfigAccount,
       sidebarFooter: renderSidebarFooter
     }
   });

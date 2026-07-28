@@ -26,8 +26,11 @@ workspace catalog, Agent Target directory, navigation identity, drafts,
 polling, and command execution live in pure TypeScript services rather than
 screen effects. Workspace state is projected from one
 `AgentSessionEngine`; Desktop and Mobile share generated-tuttid DTO mapping
-through `@tutti-os/agent-activity-tuttid-adapter`. Conversation-list visual
-alignment remains the next UI milestone.
+through `@tutti-os/agent-activity-tuttid-adapter`, shared realtime-observation
+rules through `@tutti-os/agent-activity-core`, and DOM-free conversation and
+Rail projections through `@tutti-os/agent-gui`. Mobile Rail state contains only
+membership and pagination metadata; canonical Session entities remain in the
+Engine. Conversation-list visual alignment remains the next UI milestone.
 
 ## 1. 背景
 
@@ -89,29 +92,33 @@ MVP 从第一天复用行为、projection、状态语义和现有视觉语言。
 
 ## 5. 产品导航
 
-移动端包含四个导航层级：
+Tutti Personal 移动端包含四个导航层级：
 
 ```text
 登录页
 └─ 设备选择页
-   └─ Workspace / Room 选择页
-      └─ Workspace 工作页
-         ├─ 主视图：当前会话的对话流
-         └─ 左侧抽屉：会话列表与新建会话
+   └─ 会话列表页
+      └─ 会话详情页
 ```
 
 规则：
 
 - 未登录时停留在登录页。
-- 只有一台可用设备时自动跳过设备选择页。
-- 只有一个 workspace 时自动跳过 workspace 选择页。
-- Tutti Personal 单台设备通常只有一个 workspace，因此常见路径是登录后直接进入工作页。
+- 完成登录前，登录页是唯一可用路由；登录后设备选择页是固定首屏。
+- Device 是用户选择的远端电脑和 DeviceLink 连接上下文，因此保留独立页面。
+- Tutti Personal 约定每台 Device 恰好包含一个 workspace。`workspaceId` 仍是所有
+  Agent 请求的 canonical scope，但不建立 workspace 选择路由；返回零个或多个
+  workspace 时连接失败并显示明确错误，不静默选择。
 - TSH 的 `roomId` 在产品适配层一对一映射为 canonical `workspaceId`。
-- 进入 workspace 时优先恢复本机记录的上次会话；不存在时打开最近活跃会话；没有会话时显示新建会话空态。
-- Workspace 顶部始终展示当前设备和 workspace，并提供返回选择页的入口。
-- Android 返回键依次关闭抽屉、返回上一级页面，再按系统规则退出。
+- 进入唯一 workspace 后先展示会话列表；只有用户选择会话或新建会话时才进入详情路由。
+- 会话列表和会话详情是两个真实路由；会话详情顶部始终展示当前设备和 workspace。
+- 会话详情路由的 `agentSessionId` 是详情导航的唯一所有者；workspace activity 只消费该
+  选择，不得在 reconcile 时静默切换详情路由。当前会话失效时返回会话列表。
+- Android 返回键和边缘返回手势由原生导航栈处理：详情返回会话列表，会话列表返回
+  设备页并释放 DeviceLink，设备根页面再按系统规则退出。返回设备页时先同步失效旧
+  device/workspace scope，并在旧 DeviceLink 完成关闭前阻止新的连接操作。
 
-会话列表复用桌面当前的 membership、分组、排序、置顶和运行状态语义，但布局与信息密度由移动端独立设计。MVP 不做跨设备聚合会话列表；每次只展示当前设备、当前 workspace 下的会话。
+会话列表复用桌面当前的 membership、分组、排序、置顶和运行状态语义，但布局与信息密度由移动端独立设计。MVP 不做跨设备聚合会话列表；每次只展示当前设备唯一 workspace 下的会话。
 
 ## 6. 系统结构
 
@@ -428,6 +435,10 @@ MVP 支持：
 
 ## 13. 连接生命周期
 
+- Mobile application service 只消费平台原生提供的进程级前后台信号。
+  Android 由 `ProcessLifecycleOwner` 投影，iOS 由 `UIApplication` 投影；
+  React Activity 暂停、同进程扫码 Activity、授权 Activity 等页面切换不得解释为
+  App 进入后台。配对、DeviceLink 和会话服务不感知平台 Activity 类型。
 - 前台保持实时连接。
 - 进入后台后只做短时 best-effort 保活，随后主动断开；Android 系统可更早终止连接。
 - MVP 不使用常驻前台服务或推送唤醒。
@@ -544,26 +555,30 @@ allowlist 和 Android fetch adapter，并直接复用生成的
 `@tutti-os/client-tuttid-ts`；workspace、Agent Target catalog、Session
 list/get/create/send/cancel/Interaction 均沿用现有 HTTP contract。owner host 会在
 caller 获得 response-only STUN endpoints 并二次发布 ICE 后再认领 attempt，避免
-连接旧 fingerprint。Relay 和 event stream 尚未实现，当前消息更新使用前台增量
-snapshot polling。
+连接旧 fingerprint。Relay 尚未实现。direct lane 的 `agent_live` event stream
+已经接入：delta、Turn、Interaction 和 session audit 通过 framed live protocol
+进入 Mobile；canonical-only 更新由 Personal 的 `mobileremote` adapter 转为
+scoped discontinuity，再触发权威 snapshot reconcile。Session/Message poller
+仅在 event stream 未就绪或断开时作为降级路径。
 
 ### M4 — Mobile App shell（Android 首发）
 
 归属：`tutti`。
 
 - 建立 `apps/mobile` bare React Native 工程，Android 首发并保留未来 iOS 目录能力。
-- 接入账号登录、Android Keystore、设备列表、workspace 选择和导航恢复。
+- 接入账号登录、Android Keystore、设备列表、Personal 单 workspace 校验和导航恢复。
 - 接入前后台连接生命周期、连接状态和错误页。
-- 实现单设备/单 workspace 自动跳过。
+- 使用原生导航栈实现登录门禁、设备根页面和 Android 系统返回。
 - 建立移动端 i18n 与 Native theme mapping。
 
-完成条件：登录、配对、选设备、选 workspace、重连和撤销形成完整非 Agent UI 闭环。
+完成条件：登录、配对、选设备、解析唯一 workspace、重连和撤销形成完整非 Agent UI 闭环。
 
 当前进度：bare React Native 0.86 Android 工程、系统浏览器 GitHub 登录、邮箱验证码登录、Keystore
 Ed25519 identity、扫码/粘贴配对码、配对设备列表、Native DeviceLink bridge、移动端 i18n
 和 semantic theme mapping 已完成。账号、设备、workspace 和前后台生命周期已迁入
-纯 TypeScript DI service；页面只保留 binding 与 Native presentation。workspace
-选择、设备连接、Native 15 秒后台 grace 后断开也已接入。当前最低版本为 Android 13/API 33，
+纯 TypeScript DI service；页面只保留 binding 与 Native presentation。登录、
+设备、会话列表和会话详情使用类型安全的原生导航栈；连接 Device 后会校验并打开
+唯一 workspace，不建立 workspace 选择页。Native 15 秒后台 grace 后断开也已接入。当前最低版本为 Android 13/API 33，
 以使用系统 Ed25519 provider；prepare/connect 使用 native generation token
 隔离取消后晚到的连接任务。TypeScript/Jest、Metro、Kotlin/Java/CMake、
 四 ABI APK 构建，以及 Android 15 ARM64 模拟器安装启动均通过；前台自动重连和
@@ -582,25 +597,30 @@ Simulator 的相机路径明确使用现有手动配对码降级。真机与分�
 
 - 清理 `agent-conversation` 平台无关导出，阻止 DOM/Monaco 依赖进入 Native bundle。
 - 接入 workspace `AgentSessionEngine` 和 authoritative snapshot/event reconcile。
-- 实现会话抽屉、默认会话选择、新建和切换。
+- 实现独立会话列表页、默认会话选择、新建和切换。
 - 实现 Message、Reasoning、Tool、Approval、Question、Plan、Processing 和 unsupported fallback。
 - 实现纯文本 Composer、发送、停止、重试和 per-session 内存草稿。
 - 验证 Desktop 与 Mobile 同时操作及请求幂等。
 
 完成条件：达到第 17 节所有产品闭环验收项。
 
-当前进度：会话抽屉、动态 Agent Target 新建会话、切换、canonical message
+当前进度：独立会话列表页、动态 Agent Target 新建会话、切换、canonical message
 增量读取、纯文本 Composer、发送、停止，以及 Approval/Question/Plan
 Interaction 提交已接入。Mobile 已接入 workspace `AgentSessionEngine`；create、
 send、stop 和 Interaction response 统一通过 Engine intent/command port，Session
 和 Message 快照映射后进入同一 canonical state。Desktop 与 Mobile 的生成契约
-映射由 `@tutti-os/agent-activity-tuttid-adapter` 复用。当前 Native renderer 是
+映射、Session detail 聚合和事件 reconcile 判定分别由
+`@tutti-os/agent-activity-tuttid-adapter` 与
+`@tutti-os/agent-activity-core` 复用；Mobile Rail 只保存分组、Session id、游标
+和总数，实体页瞬时映射后直接 upsert 到 Engine。Interaction 提交中、失败状态和
+per-Session runtime availability 也由 Engine 投影，Native card 不维护第二套
+Promise 状态。当前 Native renderer 是
 `apps/mobile` 内的 MVP presentation adapter；它不定义 Session/Message DTO。
 Interaction answer payload 与原型安全的 question-id 读写已从
 `@tutti-os/agent-gui` 的无 DOM 子路径复用；轮询为 single-flight，超时重试保留
 原始 session/submit identity；不明确的写入会先做 workspace 权威校准，再使用同一
-identity 进入显式 Retry。事件流 reconcile、Markdown/code、unsupported fallback
-的完整视觉语义和会话列表视觉对齐仍是剩余项。
+identity 进入显式 Retry。Markdown/code、unsupported fallback 的完整视觉语义和
+会话列表视觉对齐仍是剩余项。
 
 ### M6 — 稳定性和第二阶段准备
 

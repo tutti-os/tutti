@@ -13,6 +13,8 @@ Scope:
 - `packages/agent/activity-core`: frontend workspace engine
 - `packages/agent/gui`: Agent GUI, Message Center, and conversation presentation
 - `apps/desktop`: Electron, Workbench, transport, and concrete host capabilities
+- `apps/mobile`: React Native presentation, DeviceLink transport adapter, and
+  mobile lifecycle integration
 
 Implementation progress belongs in Git history or an active spec. Debugging procedures belong in [Agent Runtime Troubleshooting](../conventions/troubleshooting/agent-runtime.md).
 
@@ -116,7 +118,7 @@ AgentGUI / Message Center / host surface
   -> typed intent or AgentActivityRuntime command
   -> workspace AgentSessionEngine
   -> injected command port
-  -> Desktop WorkspaceAgentActivityService / adapter
+  -> Desktop or Mobile workspace activity adapter
   -> tuttid HTTP and product adapter
   -> packages/agent/host
   -> canonical store transaction + provider runtime port
@@ -129,7 +131,7 @@ provider runtime observation
   -> packages/agent/host + store-sqlite canonical transaction
   -> CommittedDelta / CommitObserver
   -> tuttid ActivityProjection and event publication
-  -> Desktop event/reconcile bridge
+  -> Desktop business-event bridge or Mobile DeviceLink live lane
   -> workspace AgentSessionEngine reducer
   -> memoized AgentActivitySnapshot
   -> selectors / pure projections
@@ -138,17 +140,18 @@ provider runtime observation
 
 ### 2.3 Ownership map
 
-| Layer                           | Owns                                                                                       | Must not own                                |
-| ------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
-| `store-sqlite/canonical`        | canonical phase, outcome, origin, Interaction, capability vocabulary, and pure projections | HTTP, provider processes, React             |
-| `store-sqlite`                  | canonical transactions, SQLite repositories, durable tombstones/outbox participation       | product UI, transport policy                |
-| `packages/agent/host`           | create/resume/send/cancel, Interaction, Goal, operation, and recovery lifecycle            | HTTP DTOs, Electron, concrete provider wire |
-| `packages/agent/daemon`         | provider registry, runtime mechanics, wire normalization                                   | AgentGUI policy, cross-provider UI branches |
-| `services/tuttid/service/agent` | Host adapters, HTTP/query/composer/product policy, provider preparation                    | reimplementation of Host lifecycle          |
-| tuttid `ActivityProjection`     | canonical read projection, commit observation, event publication/repair                    | lifecycle decisions, React state            |
-| `agent-activity-core`           | workspace engine, canonical frontend entities, pending intents, queue, selectors           | HTTP, Electron, React                       |
-| `agent-gui`                     | runtime contract, projections, controllers, views, UI-local state                          | daemon truth, a second session store        |
-| `apps/desktop`                  | tuttid client, business-event WebSocket, preload, Workbench, windows, file/OS capabilities | a second Agent business core                |
+| Layer                           | Owns                                                                                          | Must not own                                      |
+| ------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `store-sqlite/canonical`        | canonical phase, outcome, origin, Interaction, capability vocabulary, and pure projections    | HTTP, provider processes, React                   |
+| `store-sqlite`                  | canonical transactions, SQLite repositories, durable tombstones/outbox participation          | product UI, transport policy                      |
+| `packages/agent/host`           | create/resume/send/cancel/fork, lineage, Interaction, Goal, operation, and recovery lifecycle | HTTP DTOs, Electron, concrete provider wire       |
+| `packages/agent/daemon`         | provider registry, runtime mechanics, wire normalization                                      | AgentGUI policy, cross-provider UI branches       |
+| `services/tuttid/service/agent` | Host adapters, HTTP/query/composer/product policy, provider preparation                       | reimplementation of Host lifecycle                |
+| tuttid `ActivityProjection`     | canonical read projection, commit observation, event publication/repair                       | lifecycle decisions, React state                  |
+| `agent-activity-core`           | workspace engine, canonical frontend entities, pending intents, queue, selectors              | HTTP, Electron, React                             |
+| `agent-gui`                     | runtime contract, projections, controllers, views, UI-local state                             | daemon truth, a second session store              |
+| `apps/desktop`                  | tuttid client, business-event WebSocket, preload, Workbench, windows, file/OS capabilities    | a second Agent business core                      |
+| `apps/mobile`                   | DeviceLink adapter, Native renderer, app lifecycle, navigation and drafts                     | a second Agent business core or Session DTO cache |
 
 `services/tuttid/api/openapi/tuttid.v1.yaml` is authoritative for HTTP request/response contracts. It projects the canonical domain; it does not replace `store-sqlite/canonical`.
 
@@ -238,6 +241,104 @@ Provider-native subagents use child Sessions:
 - `parentAgentSessionId` / `parentTurnId`: direct parent
 - `parentToolCallId`: delegation card correlation
 - child messages, Turns, and Interactions retain the child owner
+
+A provider adapter must normalize explicit spawn evidence into both the parent
+delegation call and the canonical child Session/Turn. AgentGUI attaches the
+child lane only through the immutable `parentToolCallId`; it must not parse
+provider-native spawn events, invent a missing parent card, or create a
+presentation-only child lane.
+
+User-initiated Fork creates a new root Session rather than a provider-native
+subagent. The child records durable lineage to the source Session and inclusive
+boundary Turn, but receives a caller-reserved canonical Session id and a
+provider-created Session id. Canonical Session, Turn, Message, and Interaction
+identities are session-scoped and are remapped during the atomic clone.
+
+### 3.1.1 Session Fork
+
+`throughTurn` means the boundary Turn and all earlier canonical history are
+included. AgentGUI emits only the canonical Turn id. Host resolves its durable
+provider root Turn id and invokes the exact provider adapter selected by the
+runtime registry; shared UI and Host code never branch on provider names.
+
+The projected Session capability is an exact, fail-closed provider/runtime
+conjunction:
+
+```text
+provider registry declares native Session Fork
+  AND the exact adapter/version attests throughTurn support
+  AND product-owned Session context can be transferred safely
+  AND provider state has an explicit host-copy or provider-owned binding mode
+```
+
+Only that conjunction projects `lifecycleCapabilities.forkThroughTurn=true`.
+The Codex adapter reads the initialized version from an exact live process when
+one exists. For a historical, detached, or newly forked Session it performs one
+cached short-lived initialize probe against the same resolved adapter/runtime;
+that probe neither resumes the provider thread nor creates a canonical Turn.
+AgentGUI renders an action only when the capability response contains a known
+canonical Turn-id allowlist and the settled root Turn is in that list; an
+unknown or absent list is fail-closed. Boundary availability is deliberately
+separate: execution
+transactionally rejects an unverified prefix, descendant lane, or
+session-scoped local attachment. This prevents a later unavailable Turn from
+hiding an earlier valid Turn while preserving a fail-closed commit.
+
+Tuttid currently rejects worktree-isolated sources at the Session capability
+layer. A provider-native thread Fork keeps the provider cwd; copying the
+source worktree ownership or silently selecting another checkout would be
+incorrect. Non-isolated stable runtime facts are frozen into the target
+snapshot. Session-scoped local attachments are also fail-closed until a
+versioned through-Turn resource manifest and atomic resource binding exist;
+the implementation never copies the whole source attachment directory.
+
+Fork is a durable Host-owned saga:
+
+```text
+prepared -> dispatching -> provider_accepted -> committed
+                  \-> unknown
+           \-------------------------> failed
+```
+
+`requestId` is the caller-stable replay identity and
+`targetAgentSessionId` is reserved at prepare. The prepared snapshot freezes
+the source provider Session, provider Turn boundary, driver kind/version, and
+canonical prefix proof. A source Fork fence prevents reporting, goal/runtime
+mutations, deletion, or another Fork from changing that source while provider
+and canonical state are being matched. The provider call begins only after the
+`dispatching` marker commits. Once provider acceptance is known, all
+checkpoints and the local clone use a detached bounded context so an HTTP
+disconnect cannot lose the child identity.
+
+Before `provider_accepted`, Host requires typed binding evidence. `host_copy`
+requires a configured binder that explicitly supports the source provider;
+otherwise capability is unavailable and a direct request is rejected before
+provider dispatch. A binder failure after provider acceptance is `unknown`,
+never an implicit success. Codex validates every JSONL record plus the accepted
+child `session_meta.id`, verifies source/target size and SHA-256, and atomically
+copies only that rollout from the source run-scoped `CODEX_HOME` into the
+target run-scoped `CODEX_HOME`. File and directory fsync make the rename
+crash-durable before the Host checkpoint where directory fsync is supported;
+Windows retains file fsync plus atomic rename because its portable filesystem
+API does not expose directory fsync. The target therefore owns resumable
+provider state independently of source cleanup. Claude uses `provider_owned`:
+the official SDK writes the child into its shared session store, and the
+short-lived sidecar proves it is independently readable with `getSessionInfo`
+and `getSessionMessages`. It returns a verification receipt plus the
+source-to-child provider Turn UUID mapping. Store persists that evidence at
+`provider_accepted` and rewrites cloned Turns to the child UUIDs in the
+canonical commit.
+Binding failure becomes `unknown`; Host neither commits the canonical child nor
+reissues `thread/fork`.
+
+`provider_accepted` recovery retries only the atomic local clone, never the
+provider call. A crash in `dispatching` becomes `unknown` and is never
+automatically redispatched. On startup, a `prepared` operation is safely marked
+failed because its durable state proves provider dispatch never began; this
+releases the abandoned source fence and target reservation without requiring a
+live runtime. Terminal `unknown`, `failed`, and `committed` states release the source fence.
+The canonical commit re-proves the frozen prefix, clones the inclusive history
+and lineage in one transaction, and emits the complete committed delta.
 
 ### 3.2 Turn
 
@@ -349,6 +450,13 @@ but disabled until the transport recovers. It must not reuse the engine-wide
 connection state for this case, because one remote Session losing its owner must
 not disable Local Agent or another remote Session.
 
+Mobile projects pending Interactions from the root conversation plus its child
+Sessions and reads each exact Engine response record for submitting/failure
+state. Native cards dispatch semantic response intents only; they do not keep a
+parallel Promise lifecycle. Missing provider-authored Plan options fail closed,
+and runtime unavailability disables the exact response without discarding
+composer drafts or Interaction identity.
+
 Device connection presentation is target-scoped rather than Session-scoped.
 The host exposes a target connection source keyed by `agentTargetId` with the
 current status and retry attempt, and AgentGUI reads the active conversation
@@ -370,9 +478,29 @@ the existing recovery, approval, or prompt chrome visible until the connection
 notice replaces it. Recovery removes the notice without a success banner. The
 notice does not offer a manual retry because transport recovery is host-owned.
 
+Session presentation derives one canonical Composer gate from target
+connection, Session runtime availability, provider readiness, ownership,
+activation, Interaction, and busy/queue facts. The gate is one atomic
+projection with separate editor, submission, and runtime-command decisions;
+AgentGUI must not place `canSubmit`, target-connection blocking, or
+Session-runtime blocking in independent memoized view slices and recombine them
+later. The editor, send action, keyboard submit paths, Stop availability, and
+Interaction submission consume that same gate snapshot. Busy work may project
+queue submission while keeping the editor editable. Draft emptiness, upload
+progress/failure, project existence, and other draft-local conditions may
+disable submission, but must not change editor editability.
+
 ### 4.1 Read/write rules
 
 - reads use exported selectors or memoized `AgentActivitySnapshot`
+- an engine subscriber notification is an invalidation signal, not a render
+  command. Concurrent AgentGUI surfaces subscribe through exact
+  Session-family or target selectors; a selector preserves its selected
+  reference when another root Session changes
+- whole-workspace `AgentActivitySnapshot` projections remain valid for bounded
+  aggregate reads, but do not belong in high-frequency AgentGUI render paths.
+  Event callbacks that need current canonical data read the engine snapshot at
+  event time instead of retaining a whole-workspace render snapshot
 - lifecycle writes use typed intents/commands
 - consumers do not read reducer maps directly
 - consumers do not create canonical session/message mirrors
@@ -388,8 +516,22 @@ notice does not offer a manual retry because transport recovery is host-owned.
 - an authoritative Session detail result enters through
   `session/detailSnapshotReceived`; `agent-activity-core` expands the root
   Session, Turns, child Sessions, and optional message coverage in one engine
-  drain and one subscriber notification. Desktop maps transport data into that
-  intent and must not dispatch each entity independently
+  drain and one subscriber notification. Desktop and Mobile use the same
+  `@tutti-os/agent-activity-tuttid-adapter` aggregate mapper and must not
+  dispatch each entity independently
+- Desktop and Mobile execute Engine-owned `session/reconcile` commands through
+  the same activity-core Session reconcile executor. The executor owns scope,
+  cursor/window, pagination, double-detail race closure, cancellation/deletion
+  fences, and atomic application; hosts own transport, DTO mapping, diagnostics,
+  polling, and presentation side effects
+- every daemon Session response carries the required `messageVersion`
+  high-water cursor. Daemon and renderer ship as one protocol unit, so the
+  shared adapter rejects a missing or invalid cursor instead of fabricating
+  zero or entering a compatibility read path
+- Desktop and Mobile use the same host-neutral event-observation helper to
+  decide whether normalized entities can apply inline and whether the exact
+  Session needs an authoritative state or message reconcile; partial parsing,
+  identity mismatch, count mismatch, or cursor disagreement always reconciles
 - message updates fold inline only when unseen versions are continuous
 - version gaps and reconnects trigger incremental message reconciliation for hydrated Sessions
 - Turn, Interaction, and legacy state invalidation trigger authoritative Session reconciliation
@@ -398,6 +540,27 @@ notice does not offer a manual retry because transport recovery is host-owned.
 ### 4.3 Root and child hydration
 
 Workspace lists show root Sessions only. A root detail read also returns nested child Sessions; the engine stores every entity, Rail selects roots, and timeline/Message Center selectors aggregate descendants.
+
+Child Session discovery does not require every host to prefetch child transcript
+pages. A surface that does not render child conversations keeps the hierarchy
+and pending Interaction state canonical without paying for unused child message
+history.
+
+The shared reconcile executor exposes an explicit message-hydration policy.
+Desktop selects Session-hierarchy hydration for its aggregate projections;
+Mobile selects requested-Session hydration while it does not render child
+transcripts. The first read remains a bounded newest-first page. Later detail
+reconciliation compares each hydrated Session's required `messageVersion` with
+the largest locally cached durable message version; an unchanged child performs
+no message request. Newly discovered children use the bounded newest-first
+read, while already hydrated children that advanced use incremental reads. A
+known empty child window is an authoritative durable cursor at zero, so its
+first later messages are drained incrementally from `afterVersion=0`; it is not
+treated as an unknown window. The second detail read catches a root or child
+that advances while the first message pass is in flight. Transient optimistic
+rows never advance this cursor. This child policy is separate from the root
+conversation's user-boundary repair policy, which may intentionally restart an
+incremental read at zero.
 
 A `waiting` Turn does not imply user action. Only a pending Interaction produces approval/question attention.
 
@@ -419,6 +582,13 @@ The busy-session prompt queue is ephemeral durable-intent coordination in the wo
 ### 4.5 Rail query and presentation state
 
 The Rail query cache stores section metadata, ordered Session IDs, cursors, and totals only. Session entities always come from the engine.
+
+Mobile follows the same ownership rule even though its Native Rail controller is
+host-owned: each first-page or pagination response passes Session DTOs
+transiently through the shared mapper into Engine upserts, while the Rail
+snapshot retains only memberships, ordered IDs, cursors, totals, and loading
+state. Refreshing a bounded Rail page is not deletion evidence and must not
+replace or prune canonical Engine entities.
 
 Cross-platform hosts may reuse the DOM-free canonical Rail summary projection
 from `@tutti-os/agent-gui/conversation-rail-projection`. They must still obtain
@@ -460,6 +630,14 @@ state local. Existing-session setting changes enter the engine as
 `session/settingsUpdateRequested`; new-session draft settings travel on the
 activation intent. A renderer must not call the settings endpoint from a
 component or invent a provider-specific settings schema.
+
+An activation intent's shared Session settings are not an HTTP create-field
+allowlist. Each host must construct a typed
+`CreateWorkspaceAgentSessionRequest` and forward only fields present in the
+generated contract. In particular, `computerUse` is a default-on runtime
+setting but is not currently a create-request field; Mobile must not add it as
+an extra property. Supporting an explicit first-Turn opt-out requires changing
+OpenAPI and the create adapter first.
 
 Hosts install the complete query/mutation cohort from
 `@tutti-os/agent-gui/conversation-rail-runtime`; the shared factory owns the
@@ -750,6 +928,12 @@ A controller may compose flows but cannot become a second lifecycle state machin
 
 Activation and existing-Session submit share a canonical prompt envelope. Submit eligibility includes text and renderable structured content; an individual composer does not redefine it.
 
+The canonical Composer gate belongs to the Session-presentation projection and
+travels through the Composer view-model slice as one object. View-local
+transition or workflow locks may layer on top as explicit presentation locks;
+they do not copy or reinterpret runtime, connection, provider, ownership, or
+queue readiness.
+
 The conversation composer area is a stable `AgentComposerRegion` with explicit
 floating-control, lifted-interaction, accessory, and primary-composer slots.
 Workflow features compose through the accessory slot instead of adding another
@@ -934,6 +1118,24 @@ chrome seam for the exact selected Agent Target. Its paired
 state without hiding workflow in the render slot. Returning no content keeps
 the provider account and quota block unchanged. AgentGUI never derives billing
 ownership from provider identity.
+
+Tutti Desktop fills this seam only for its self-owned local Tutti Agent target.
+The Desktop Account service remains the source of account, membership, credit,
+and Commerce-link state; opening the target menu asks that service to refresh,
+and the render slot stays request-free. Signed-out, shared, and non-Tutti
+targets return no Host content and retain AgentGUI's provider account and quota
+presentation.
+The optional `renderSlots.agentTargetInfo` seam enriches the exact target icon
+in the provider Rail and Conversation Rail. The same
+`AgentGUIAgentTargetInfoRenderer` may be passed to
+`AgentGuiWorkbenchHeader.renderAgentTargetInfo` with its exact
+`conversationAgentTarget`. AgentGUI owns Tooltip disclosure, positioning,
+focus behavior, and the built-in label fallback; the Host renderer receives
+only `{ target, surface }`, remains presentation-only, and is invoked lazily
+while the Tooltip content is mounted. Conversation rows resolve the target by
+canonical `agentTargetId` from the current Host directory and fail closed when
+it is absent. They do not copy owner, device, availability, or other target
+metadata into Session state.
 Host chrome that aligns to AgentGUI's internal layout must consume explicit
 package signals such as `hostActions.onConversationRailLayoutChange`; it must
 not observe package DOM, CSS variables, or class names with
@@ -1054,7 +1256,10 @@ WebGL scene readiness remains local presentation state; it must not enter
 
 The shared Workbench Header owns conversation-identity visibility. When no
 Conversation exists, it ignores conversation titles, Agent titles, primary
-icons, and fallback icons even if a host supplies them.
+icons, exact Agent targets, target-information renderers, and fallback icons
+even if a host supplies them. When target information is enabled, only the
+session icon becomes a no-drag Tooltip trigger; the surrounding title remains
+owned by the Header's existing drag and menu behavior.
 
 The reusable tool-sidebar contract lives in
 `packages/agent/gui/workbench/tool-sidebar`. Hosts provide the supported panel
@@ -1066,6 +1271,12 @@ entry. Hiding the entry does not duplicate or override sidebar behavior in the
 host.
 That layout carries the actions, open state, and reserved width into the one
 authoritative `AgentGuiWorkbenchHeader`.
+
+The standalone Files tool reuses the Desktop file-manager pane and its complete
+context menu. Its Open With submenu keeps Tutti's file viewer and in-app browser
+alongside system applications, default-browser handling, and the system
+application picker. Double-clicking a file still delegates to the desktop
+host's system-default opener; directories continue to navigate inside Files.
 
 Header ownership is explicit. A native standalone window selects the
 window-owned contract, so the shared sidebar composes the Workbench Header and

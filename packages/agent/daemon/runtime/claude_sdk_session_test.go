@@ -414,6 +414,43 @@ func TestClaudeCodeSDKAdapterStartSendsResumeCursor(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeSDKAdapterStartDropsResumeCursorFromForkSource(t *testing.T) {
+	conn := &scriptedClaudeSDKConnection{
+		frames: []ProcessFrame{{
+			Stdout: []byte(`{"type":"session_started","payload":{"providerSessionId":"provider-session-child"}}` + "\n"),
+		}},
+	}
+	adapter := NewClaudeCodeSDKAdapter(&recordingClaudeSDKTransport{conn: conn})
+	session := standardTestSession(ProviderClaudeCode)
+	session.ProviderSessionID = "provider-session-child"
+	session.RuntimeContext = map[string]any{
+		"resumeCursor": map[string]any{
+			"kind":            "claude-agent-sdk",
+			"version":         int64(1),
+			"resume":          "provider-session-source",
+			"resumeSessionAt": "source-assistant-1",
+			"turnCount":       int64(7),
+		},
+	}
+
+	if _, err := adapter.Start(t.Context(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	sent := conn.sentRequests()
+	if len(sent) != 1 || sent[0].Type != "start" {
+		t.Fatalf("sent requests = %#v, want start", sent)
+	}
+	if cursor := payloadMap(sent[0].Payload, "resumeCursor"); len(cursor) != 0 {
+		t.Fatalf("resume cursor payload = %#v, want stale source cursor removed", cursor)
+	}
+	if sent[0].Payload["providerSessionId"] != "provider-session-child" {
+		t.Fatalf(
+			"provider session id = %#v, want forked child",
+			sent[0].Payload["providerSessionId"],
+		)
+	}
+}
+
 func TestClaudeCodeSDKAdapterSessionStateUpdatesResumeCursor(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	session := standardTestSession(ProviderClaudeCode)
@@ -565,6 +602,13 @@ func TestClaudeCodeSDKAdapterExecSendsStructuredPromptContent(t *testing.T) {
 	}
 	if sent[0].Payload["prompt"] != "what is in this image?" {
 		t.Fatalf("exec prompt = %#v, want legacy text prompt", sent[0].Payload["prompt"])
+	}
+	providerTurnID := payloadString(sent[0].Payload, "providerTurnId")
+	if providerTurnID == "" || providerTurnID == "turn-image" {
+		t.Fatalf(
+			"exec provider turn id = %q, want a distinct SDK prompt UUID",
+			providerTurnID,
+		)
 	}
 	content, ok := sent[0].Payload["content"].([]any)
 	if !ok || len(content) != 2 {

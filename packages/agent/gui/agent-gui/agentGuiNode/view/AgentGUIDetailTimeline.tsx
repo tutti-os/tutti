@@ -1,10 +1,13 @@
 import {
   memo,
+  useMemo,
   type CSSProperties,
   type ReactNode,
   type RefObject
 } from "react";
+import { GitFork } from "lucide-react";
 import { ScrollArea } from "@tutti-os/ui-system/components";
+import type { AgentActivitySessionForkLineage } from "@tutti-os/agent-activity-core";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
 import type { AgentGUIProviderSkillOption } from "../model/agentGuiNodeTypes";
@@ -35,14 +38,19 @@ interface AgentGUIDetailTimelineProps {
   };
   hasActiveConversation: boolean;
   followEndMode: AgentConversationFollowEndMode;
+  forkedFrom?: AgentActivitySessionForkLineage | null;
+  forkThroughTurnPendingTurnIds?: readonly string[];
   homeContent: ReactNode;
   isLoadingOlderMessages: boolean;
   isVisible: boolean;
   isTimelineScrolledToTop: boolean;
   labels: {
     loadingConversation: string;
+    continuedFromTask: string;
   };
   onAuthLogin?: (provider?: string | null) => void;
+  onForkThroughTurn?: (turnId: string) => void;
+  onOpenForkSourceSession?: (agentSessionId: string) => void;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   showTimelineSkeleton: boolean;
   showUnavailableChatEmpty: boolean;
@@ -59,12 +67,16 @@ export const AgentGUIDetailTimeline = memo(function AgentGUIDetailTimeline({
   conversationFlowLabels,
   hasActiveConversation,
   followEndMode,
+  forkedFrom,
+  forkThroughTurnPendingTurnIds,
   homeContent,
   isLoadingOlderMessages,
   isVisible,
   isTimelineScrolledToTop,
   labels,
   onAuthLogin,
+  onForkThroughTurn,
+  onOpenForkSourceSession,
   onLinkAction,
   showTimelineSkeleton,
   showUnavailableChatEmpty,
@@ -74,6 +86,50 @@ export const AgentGUIDetailTimeline = memo(function AgentGUIDetailTimeline({
   workspaceAppIcons
 }: AgentGUIDetailTimelineProps): React.JSX.Element {
   "use memo";
+  const forkLineageAttachments = useMemo(
+    () =>
+      forkedFrom?.targetTurnId
+        ? [
+            {
+              id: `fork-lineage:${forkedFrom.operationId}`,
+              anchorTurnId: forkedFrom.targetTurnId,
+              missingAnchorBehavior: "hide" as const,
+              content: (
+                <div
+                  className="my-3 flex w-full items-center gap-3 text-[14px] font-medium text-[var(--tutti-purple)]"
+                  data-testid="agent-gui-fork-lineage"
+                >
+                  <span
+                    className="h-px min-w-0 flex-1 bg-[var(--line-2,var(--tutti-line-2))]"
+                    aria-hidden="true"
+                  />
+                  <button
+                    type="button"
+                    className="flex shrink-0 cursor-pointer items-center gap-2 rounded-md px-1 py-0.5 transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--tutti-purple)]"
+                    onClick={() =>
+                      onOpenForkSourceSession?.(forkedFrom.sourceAgentSessionId)
+                    }
+                  >
+                    <GitFork width={16} height={16} aria-hidden="true" />
+                    {labels.continuedFromTask}
+                  </button>
+                  <span
+                    className="h-px min-w-0 flex-1 bg-[var(--line-2,var(--tutti-line-2))]"
+                    aria-hidden="true"
+                  />
+                </div>
+              )
+            }
+          ]
+        : [],
+    [
+      forkedFrom?.operationId,
+      forkedFrom?.sourceAgentSessionId,
+      forkedFrom?.targetTurnId,
+      labels.continuedFromTask,
+      onOpenForkSourceSession
+    ]
+  );
   return (
     <ScrollArea
       scrollbarMode="native"
@@ -91,21 +147,26 @@ export const AgentGUIDetailTimeline = memo(function AgentGUIDetailTimeline({
       viewportContentStyle={TIMELINE_CONTENT_STYLE}
     >
       {hasActiveConversation ? (
-        <AgentGUIConversationTimelinePane
-          conversation={conversation}
-          followEndMode={followEndMode}
-          isLoading={showTimelineSkeleton}
-          isLoadingOlderMessages={isLoadingOlderMessages}
-          isVisible={isVisible}
-          loadingLabel={labels.loadingConversation}
-          empty={conversationFlowEmpty}
-          onLinkAction={onLinkAction}
-          onAuthLogin={onAuthLogin}
-          availableSkills={availableSkills}
-          workspaceAppIcons={workspaceAppIcons}
-          labels={conversationFlowLabels}
-          virtualScrollControllerRef={virtualScrollControllerRef}
-        />
+        <>
+          <AgentGUIConversationTimelinePane
+            conversation={conversation}
+            turnAttachments={forkLineageAttachments}
+            followEndMode={followEndMode}
+            isLoading={showTimelineSkeleton}
+            isLoadingOlderMessages={isLoadingOlderMessages}
+            isVisible={isVisible}
+            loadingLabel={labels.loadingConversation}
+            empty={conversationFlowEmpty}
+            onLinkAction={onLinkAction}
+            onAuthLogin={onAuthLogin}
+            onForkThroughTurn={onForkThroughTurn}
+            forkThroughTurnPendingTurnIds={forkThroughTurnPendingTurnIds}
+            availableSkills={availableSkills}
+            workspaceAppIcons={workspaceAppIcons}
+            labels={conversationFlowLabels}
+            virtualScrollControllerRef={virtualScrollControllerRef}
+          />
+        </>
       ) : (
         homeContent
       )}

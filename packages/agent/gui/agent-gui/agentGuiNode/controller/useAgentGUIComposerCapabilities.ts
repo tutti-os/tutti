@@ -1,9 +1,11 @@
 import {
   resolveAgentActivityCapability,
   resolveAgentActivityUsage,
+  selectComposerOptions,
+  selectComposerOptionsLoadStatus,
   type AgentActivityUsage,
-  type AgentActivitySnapshot,
-  type CanonicalAgentSession
+  type CanonicalAgentSession,
+  type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
 import { useMemo, useRef } from "react";
 import type {
@@ -15,23 +17,20 @@ import type { AgentGUINodeData } from "../../../types";
 import { composerSettingsSupportFromOptions } from "../model/composerSettingsSupport";
 import { normalizeOptionalText } from "./agentGuiController.promptHelpers";
 import {
-  composerOptionsForTarget,
-  composerOptionsLoadingForTarget
-} from "./agentGuiController.providerHelpers";
-import {
   composerTargetDataForConversation,
   type AgentGUIComposerTargetData
 } from "./agentGuiController.composerPresentation";
 import { resolvePromptImageSelectedModel } from "./agentGuiController.draftMessageHelpers";
+import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
 
 interface UseAgentGUIComposerCapabilitiesInput {
   activeConversationId: string | null;
   activeEngineSession: CanonicalAgentSession | null;
   activeSessionState: AgentSessionState | null;
-  agentActivitySnapshot: AgentActivitySnapshot;
   data: AgentGUINodeData;
   draftSettingsBySessionId: Record<string, AgentSessionComposerSettings>;
   selectedComposerTargetData: AgentGUIComposerTargetData;
+  sessionEngine: AgentSessionEngine;
 }
 
 export function useAgentGUIComposerCapabilities(
@@ -46,14 +45,20 @@ export function useAgentGUIComposerCapabilities(
     optimisticTarget: null,
     selectedTarget: input.selectedComposerTargetData
   });
-  const providerComposerOptions = composerOptionsForTarget({
-    snapshot: input.agentActivitySnapshot,
-    target: composerTargetData
-  });
-  const composerOptionsLoading = composerOptionsLoadingForTarget({
-    snapshot: input.agentActivitySnapshot,
-    target: composerTargetData
-  });
+  const composerTargetKey = composerTargetData.agentTargetId?.trim() ?? "";
+  const providerComposerOptions = useEngineSelector(
+    input.sessionEngine,
+    (state) => selectComposerOptions(state, composerTargetKey)
+  );
+  const composerOptionsLoadStatus = useEngineSelector(
+    input.sessionEngine,
+    (state) => selectComposerOptionsLoadStatus(state, composerTargetKey)
+  );
+  const composerOptionsLoading = Boolean(
+    composerTargetKey &&
+    !providerComposerOptions &&
+    composerOptionsLoadStatus === "loading"
+  );
   const defaultReasoningEffort: AgentSessionReasoningEffort | null = "high";
   const sessionCapabilities = input.activeEngineSession?.capabilities ?? null;
   const resolvedPromptImagesSupported =

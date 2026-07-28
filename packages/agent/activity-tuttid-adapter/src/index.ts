@@ -2,6 +2,8 @@ export {
   agentActivityMessageFromTuttidMessage,
   agentActivitySessionFromTuttidSession,
   agentActivityTuttiModeActivationFromTuttid,
-  agentActivityTurnFromTuttidTurn
+  agentActivityTurnFromTuttidTurn,
+  type AgentActivitySessionMappingOptions
 } from "./mappers.ts";
 export { agentActivityComposerOptionsFromTuttidResult } from "./composerOptions.ts";
+export { agentActivitySessionDetailFromTuttid } from "./sessionDetail.ts";

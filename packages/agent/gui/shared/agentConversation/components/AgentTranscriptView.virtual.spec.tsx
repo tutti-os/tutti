@@ -180,6 +180,82 @@ describe("AgentTranscriptView virtual rendering", () => {
     expect(screen.queryByText("turn 11 assistant row")).toBeNull();
   });
 
+  it("keeps exact Fork behavior inside a virtualized settled Turn", () => {
+    virtualizerMockState.virtualIndexes = [10];
+    const onForkThroughTurn = vi.fn();
+    const baseConversation = conversationWithCollapsibleTurns(40);
+    const conversation = {
+      ...baseConversation,
+      sourceDetail: {
+        ...baseConversation.sourceDetail,
+        session: normalizeAgentActivitySession({
+          ...baseConversation.sourceDetail.session,
+          lifecycleCapabilities: {
+            fork: false,
+            forkThroughTurn: true,
+            forkThroughTurnIds: ["turn-10"],
+            forkThroughTurnIdsKnown: true
+          }
+        })
+      }
+    };
+    const { rerender } = render(
+      <div
+        data-testid="agent-gui-timeline"
+        style={{ height: "480px", overflow: "auto" }}
+      >
+        <AgentTranscriptView
+          conversation={conversation}
+          labels={TRANSCRIPT_LABELS}
+          onForkThroughTurn={onForkThroughTurn}
+        />
+      </div>
+    );
+
+    const button = screen.getByRole("button", {
+      name: "agentHost.agentGui.forkThroughTurn"
+    });
+    fireEvent.click(button);
+    expect(onForkThroughTurn).toHaveBeenCalledWith("turn-10");
+
+    rerender(
+      <div
+        data-testid="agent-gui-timeline"
+        style={{ height: "480px", overflow: "auto" }}
+      >
+        <AgentTranscriptView
+          conversation={{
+            ...conversation,
+            sourceDetail: {
+              ...conversation.sourceDetail,
+              session: normalizeAgentActivitySession({
+                ...conversation.sourceDetail.session,
+                pendingInteractions: [
+                  {
+                    agentSessionId: "session-1",
+                    createdAtUnixMs: 4,
+                    kind: "question",
+                    requestId: "request-10",
+                    status: "pending",
+                    turnId: "turn-10",
+                    updatedAtUnixMs: 4
+                  }
+                ]
+              })
+            }
+          }}
+          labels={TRANSCRIPT_LABELS}
+          onForkThroughTurn={onForkThroughTurn}
+        />
+      </div>
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.forkThroughTurn"
+      })
+    ).toBeDisabled();
+  });
+
   it("disables virtualizer end anchoring while the user is detached", () => {
     virtualizerMockState.virtualIndexes = [10];
 
@@ -796,6 +872,63 @@ describe("AgentTranscriptView virtual rendering", () => {
     expect(virtualizerMockState.scrollToIndex).toHaveBeenCalledWith(20, {
       align: "center"
     });
+  });
+
+  it("hides and then positions a Fork boundary attachment in a virtualized Turn", async () => {
+    virtualizerMockState.virtualIndexes = [39];
+    const attachment = {
+      id: "fork-lineage:operation-1",
+      anchorTurnId: "turn-40",
+      missingAnchorBehavior: "hide" as const,
+      content: <div>Continued from task</div>
+    };
+    const rendered = render(
+      <div
+        data-testid="agent-gui-timeline"
+        style={{ height: "480px", overflow: "auto" }}
+      >
+        <AgentTranscriptView
+          conversation={conversationWithMultiRowTurns(40)}
+          turnAttachments={[attachment]}
+          labels={TRANSCRIPT_LABELS}
+        />
+      </div>
+    );
+
+    expect(screen.queryByText("Continued from task")).toBeNull();
+
+    virtualizerMockState.virtualIndexes = [40];
+    rendered.rerender(
+      <div
+        data-testid="agent-gui-timeline"
+        style={{ height: "480px", overflow: "auto" }}
+      >
+        <AgentTranscriptView
+          conversation={conversationWithMultiRowTurns(41)}
+          turnAttachments={[attachment]}
+          labels={TRANSCRIPT_LABELS}
+        />
+      </div>
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText("Continued from task")).toBeTruthy()
+    );
+    const virtualTurn = document.querySelector<HTMLElement>(
+      "[data-agent-transcript-virtual-turn='turn-40']"
+    );
+    const assistantRow = screen
+      .getByText("turn 40 assistant row")
+      .closest<HTMLElement>("[data-agent-transcript-row]");
+    const lineage = screen
+      .getByText("Continued from task")
+      .closest<HTMLElement>("[data-agent-transcript-attachment]");
+    expect(virtualTurn).toContainElement(assistantRow);
+    expect(virtualTurn).toContainElement(lineage);
+    expect(
+      assistantRow!.compareDocumentPosition(lineage!) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
   });
 
   it("keeps the timeline viewport bound across long-short-long switches", async () => {

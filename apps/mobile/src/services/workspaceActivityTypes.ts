@@ -1,6 +1,7 @@
 import type {
   AgentActivityComposerOptions,
   AgentActivityComposerOptionsLoadStatus,
+  AgentActivityInteraction,
   AgentActivitySession,
   AgentActivitySessionSettings,
   AgentActivitySnapshot
@@ -17,11 +18,23 @@ export interface WorkspaceActivitySnapshot {
   composerOptionsLoadStatus: AgentActivityComposerOptionsLoadStatus | null;
   composerSettings: AgentActivitySessionSettings;
   composerSettingsSupport: AgentComposerSettingsSupport;
+  commandsAvailable: boolean;
   conversation: AgentConversationVM | null;
   creating: boolean;
   draft: string;
   errorCode: "request_failed" | null;
   loading: boolean;
+  interactionStates: Readonly<
+    Record<
+      string,
+      {
+        failed: boolean;
+        submitting: boolean;
+        runtimeAvailable: boolean;
+      }
+    >
+  >;
+  pendingInteractions: readonly AgentActivityInteraction[];
   pinningSessionIds: readonly string[];
   railErrorCode: "request_failed" | null;
   railSections: readonly WorkspaceConversationRailSection[];

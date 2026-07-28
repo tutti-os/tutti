@@ -1,4 +1,4 @@
-import { memo, useCallback, type JSX } from "react";
+import { memo, useCallback, type JSX, type ReactNode } from "react";
 import type { WorkspaceLinkAction } from "../../../contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../AgentMessageMarkdown";
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
@@ -35,6 +35,7 @@ interface AgentTranscriptItemViewProps {
   toolGroupExpanded?: boolean;
   toolGroupExpansionKey?: string;
   onToolGroupExpandedChange?: (key: string, expanded: boolean) => void;
+  footerAction?: ReactNode;
 }
 
 export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
@@ -53,7 +54,8 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
   isActiveTurn = false,
   toolGroupExpanded,
   toolGroupExpansionKey,
-  onToolGroupExpandedChange
+  onToolGroupExpandedChange,
+  footerAction
 }: AgentTranscriptItemViewProps): JSX.Element {
   "use memo";
 
@@ -100,6 +102,7 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
           participantPresentation={participantPresentation}
           showParticipantHeader={showParticipantHeader}
           isActiveTurn={isActiveTurn}
+          footerAction={footerAction}
         />
       );
     case "tool-group":

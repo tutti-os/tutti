@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { selectPendingSessionForkThroughTurnIds } from "@tutti-os/agent-activity-core";
 import { useAgentGUIViewModel } from "../model/useAgentGUIViewModel";
 import type { AgentGUIProviderRailMode } from "../../../types";
 import type { AgentGUIDetailViewModel } from "../model/agentGuiNodeTypes";
@@ -16,6 +17,8 @@ import type { useAgentGUISessionDetailTransport } from "./useAgentGUISessionDeta
 import { resolveAgentGUIProviderReadinessGateForView } from "../model/agentGuiProviderReadiness";
 import type { useAgentGUITuttiModeActivation } from "./useAgentGUITuttiModeActivation";
 import { targetConnectionForAgentGUIView } from "./agentGuiController.providerHelpers";
+import { isAgentGUIAgentTargetComingSoon } from "../../../agentTargets";
+import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
 
 type ConversationPresentationInput = Parameters<
   typeof useAgentGUIConversationPresentation
@@ -40,6 +43,7 @@ type SessionPresentationInput = Omit<
   | "conversation"
   | "isInterrupting"
   | "pendingApproval"
+  | "providerReadinessGate"
   | "serverInteractivePrompt"
 >;
 type ProviderHomeInput = Parameters<typeof useAgentGUIProviderHome>[0];
@@ -77,6 +81,15 @@ type UseAgentGUIViewAssemblyInput = ConversationPresentationInput &
 export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
   const { activeConversation, visibleConversations } =
     useAgentGUIConversationPresentation(input);
+  const forkThroughTurnPendingTurnIds = useEngineSelector(
+    input.sessionEngine,
+    (state) =>
+      selectPendingSessionForkThroughTurnIds(state, {
+        sourceAgentSessionId: input.activeConversationId,
+        workspaceId: input.workspaceId
+      }),
+    equalStringArrays
+  );
   const targetConnection = useMemo(
     () =>
       targetConnectionForAgentGUIView({
@@ -118,10 +131,32 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
     ...input,
     activeConversation
   });
+  const providerReadinessGate = useMemo(
+    () =>
+      input.activeConversationId === null &&
+      isAgentGUIAgentTargetComingSoon(
+        input.effectiveSelectedProviderTarget,
+        input.normalizedComingSoonProviders
+      )
+        ? ({ status: "coming_soon" } as const)
+        : resolveAgentGUIProviderReadinessGateForView({
+            activeConversationId: input.activeConversationId,
+            providerReadinessGates: input.providerReadinessGates,
+            selectedProvider: input.effectiveSelectedProviderTarget.provider
+          }),
+    [
+      input.activeConversationId,
+      input.effectiveSelectedProviderTarget,
+      input.normalizedComingSoonProviders,
+      input.providerReadinessGates
+    ]
+  );
   const session = useAgentGUISessionPresentation({
     ...input,
     activeConversation,
+    currentUserId: input.currentUserId,
     ownerDeviceLabel: targetConnection.ownerDeviceLabel,
+    providerReadinessGate,
     targetConnectionAgentTargetId: targetConnection.agentTargetId,
     activeLiveState: detail.activeLiveState,
     activationError: detail.activationError,
@@ -147,11 +182,6 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
     input.activeConversationId === null
       ? input.selectedComposerTargetData.data
       : input.data;
-  const providerReadinessGate = resolveAgentGUIProviderReadinessGateForView({
-    activeConversationId: input.activeConversationId,
-    providerReadinessGates: input.providerReadinessGates,
-    selectedProvider: input.effectiveSelectedProviderTarget.provider
-  });
   const viewModel = useAgentGUIViewModel({
     shell: {
       nodeId: input.nodeId?.trim() || null,
@@ -200,7 +230,7 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       promptImagesSupported: input.promptImagesSupported,
       compactSupported: input.compactSupported,
       goalPauseSupported: input.goalPauseSupported,
-      canSubmit: session.canSubmit,
+      gate: session.composerGate,
       isTuttiModeActive: input.tuttiModeActivation.active,
       isTuttiModeUpdating: input.tuttiModeActivation.updatePending,
       tuttiModeOrchestrationIntensity:
@@ -209,12 +239,10 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       composerSettings: stableComposerSettings,
       queueStatus: detail.queueStatus,
       queuedPrompts: detail.queuedPrompts,
-      drainingQueuedPromptId: detail.drainingQueuedPromptId,
-      canQueueWhileBusy: session.canQueueWhileBusy
+      drainingQueuedPromptId: detail.drainingQueuedPromptId
     },
     interaction: {
       isRespondingApproval: session.isRespondingApproval,
-      isRuntimeBlocked: session.sessionRuntimeBlocked,
       pendingApproval: detail.pendingApproval,
       pendingInteractivePrompt: session.pendingInteractivePrompt,
       sessionChrome: session.sessionChrome,
@@ -230,13 +258,10 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
     readiness: {
       activeLiveState: detail.activeLiveState,
       activationError: detail.activationError,
-      activeConversationBusy: session.activeConversationBusy,
-      sessionRuntimeBlocked: session.sessionRuntimeBlocked,
-      sessionRuntimeBlockedReason: session.sessionRuntimeBlockedReason,
-      targetConnectionBlocked: session.targetConnectionBlocked,
       providerReadinessGate
     },
     operations: {
+      forkThroughTurnPendingTurnIds,
       goalClearNoticeSequence: input.goalClearNoticeSequence,
       isDeletingConversation: input.isDeletingConversation,
       isDeletingProjectConversations: input.isDeletingProjectConversations,
@@ -248,5 +273,15 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
   return useMemo(
     () => ({ viewModel, actions: controllerActions }),
     [controllerActions, viewModel]
+  );
+}
+
+function equalStringArrays(
+  previous: readonly string[],
+  next: readonly string[]
+): boolean {
+  return (
+    previous.length === next.length &&
+    previous.every((value, index) => value === next[index])
   );
 }

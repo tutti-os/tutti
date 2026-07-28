@@ -1,11 +1,14 @@
 package api
 
 import (
+	"fmt"
 	"strings"
 
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
+
+const maxWorkspaceAgentJSONSafeInteger = uint64(1<<53 - 1)
 
 func generatedAgentSessionMessages(messages []agentservice.SessionMessage) ([]tuttigenerated.WorkspaceAgentSessionMessage, error) {
 	result := make([]tuttigenerated.WorkspaceAgentSessionMessage, 0, len(messages))
@@ -17,21 +20,29 @@ func generatedAgentSessionMessages(messages []agentservice.SessionMessage) ([]tu
 		if trimmed := strings.TrimSpace(message.TurnID); trimmed != "" {
 			turnID = &trimmed
 		}
+		sequence, err := generatedWorkspaceAgentSafeInteger("message sequence", message.ID)
+		if err != nil {
+			return nil, fmt.Errorf("project workspace agent message %q: %w", message.MessageID, err)
+		}
+		version, err := generatedWorkspaceAgentSafeInteger("message version", message.Version)
+		if err != nil {
+			return nil, fmt.Errorf("project workspace agent message %q: %w", message.MessageID, err)
+		}
 		generated := tuttigenerated.WorkspaceAgentSessionMessage{
 			AgentSessionId:    strings.TrimSpace(message.AgentSessionID),
 			CompletedAtUnixMs: int64Pointer(message.CompletedAtUnixMS),
 			CreatedAtUnixMs:   int64Pointer(message.CreatedAtUnixMS),
 			Kind:              strings.TrimSpace(message.Kind),
 			MessageId:         strings.TrimSpace(message.MessageID),
-			OccurredAtUnixMs:  normalizedGeneratedMessageOccurredAtUnixMS(message),
+			OccurredAtUnixMs:  normalizedGeneratedMessageOccurredAtUnixMS(message, version),
 			Payload:           clonePayloadPointer(message.Payload),
 			Role:              strings.TrimSpace(message.Role),
-			Sequence:          int64(message.ID),
+			Sequence:          sequence,
 			StartedAtUnixMs:   int64Pointer(message.StartedAtUnixMS),
 			Status:            stringPointer(strings.TrimSpace(message.Status)),
 			TurnId:            turnID,
 			UpdatedAtUnixMs:   int64Pointer(message.UpdatedAtUnixMS),
-			Version:           int64(message.Version),
+			Version:           version,
 		}
 		if message.Semantics != nil {
 			userVisible := message.Semantics.UserVisibleAssistantResponse
@@ -46,6 +57,25 @@ func generatedAgentSessionMessages(messages []agentservice.SessionMessage) ([]tu
 		result = append(result, generated)
 	}
 	return result, nil
+}
+
+func generatedWorkspaceAgentSafeInteger(field string, value uint64) (int64, error) {
+	if value > maxWorkspaceAgentJSONSafeInteger {
+		return 0, fmt.Errorf(
+			"%s %d exceeds JavaScript safe integer maximum %d",
+			field,
+			value,
+			maxWorkspaceAgentJSONSafeInteger,
+		)
+	}
+	return int64(value), nil
+}
+
+func workspaceAgentMessageCursorFromRequest(value int64) (uint64, error) {
+	if value < 0 || uint64(value) > maxWorkspaceAgentJSONSafeInteger {
+		return 0, agentservice.ErrInvalidArgument
+	}
+	return uint64(value), nil
 }
 
 func agentSessionMessageVersionRange(messages []agentservice.SessionMessage) (uint64, uint64) {
@@ -76,14 +106,14 @@ func generatedAgentSessionMessageVersionRange(messages []tuttigenerated.Workspac
 	return first, last
 }
 
-func normalizedGeneratedMessageOccurredAtUnixMS(message agentservice.SessionMessage) int64 {
+func normalizedGeneratedMessageOccurredAtUnixMS(message agentservice.SessionMessage, version int64) int64 {
 	return firstPositiveInt64(
 		message.OccurredAtUnixMS,
 		message.StartedAtUnixMS,
 		message.CompletedAtUnixMS,
 		message.CreatedAtUnixMS,
 		message.UpdatedAtUnixMS,
-		int64(message.Version),
+		version,
 		1,
 	)
 }

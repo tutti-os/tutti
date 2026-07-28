@@ -1,4 +1,11 @@
 #import <React/RCTBridgeModule.h>
+#import <React/RCTEventEmitter.h>
+
+@interface RCT_EXTERN_MODULE(TuttiAppLifecycle, RCTEventEmitter)
+
+RCT_EXTERN__BLOCKING_SYNCHRONOUS_METHOD(isForeground)
+
+@end
 
 @interface RCT_EXTERN_MODULE(TuttiMobileSecurity, NSObject)
 

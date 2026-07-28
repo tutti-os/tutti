@@ -68,10 +68,19 @@ type ConfigOptionsUpdateSink func(AgentSessionConfigOptionsUpdate)
 type Adapter interface {
 	Provider() string
 	Start(context.Context, Session) ([]activityshared.Event, error)
+	// Resume reconnects provider context only. It must not initiate a Turn;
+	// execution remains gated on a later explicit Controller operation.
 	Resume(context.Context, Session) error
 	Close(context.Context, Session) error
 	Exec(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) ([]activityshared.Event, error)
 	Cancel(context.Context, Session, string) ([]activityshared.Event, error)
+}
+
+// SessionForkAdapter is an optional provider-native capability. Providers that
+// cannot prove an exact fork boundary do not implement it.
+type SessionForkAdapter interface {
+	ForkCapabilities(context.Context, Session) (SessionForkCapabilities, error)
+	Fork(context.Context, SessionForkInput) (SessionForkResult, error)
 }
 
 // TargetedCancelAdapter maps canonical root/child targets onto provider-native
@@ -239,6 +248,19 @@ type GoalAdapterCapabilities struct {
 	PauseSupported        bool
 	QuiesceGoalTurns      bool
 	ReplaySetAfterRestart bool
+}
+
+type GoalGenerationFenceInput struct {
+	OperationID string
+	Revision    int64
+	RepairEpoch int64
+	Reason      string
+}
+
+// GoalGenerationFencer installs an exact, idempotent admission fence for one
+// Goal generation. It must never retarget the session's current Turn.
+type GoalGenerationFencer interface {
+	FenceGoalGeneration(context.Context, Session, GoalGenerationFenceInput) error
 }
 
 type GoalAdapterResult struct {

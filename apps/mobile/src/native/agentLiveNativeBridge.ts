@@ -56,14 +56,27 @@ export function parseAgentLiveDeliveries(
         const discontinuity = isRecord(accepted.discontinuity)
           ? accepted.discontinuity
           : {};
+        const reason =
+          typeof discontinuity.reason === "string"
+            ? discontinuity.reason
+            : "stream_discontinuity";
+        const reconcileKeys = parseReconcileKeys(discontinuity.reconcileKeys);
         hasDiscontinuity = true;
+        const deletedSessionId =
+          reason === "session_deleted"
+            ? deletedSessionIdFromReconcileKeys(workspaceId, reconcileKeys)
+            : null;
+        if (deletedSessionId) {
+          deliveries.push({
+            agentSessionId: deletedSessionId,
+            kind: "session_deleted"
+          });
+          continue;
+        }
         deliveries.push({
           kind: "discontinuity",
-          reason:
-            typeof discontinuity.reason === "string"
-              ? discontinuity.reason
-              : "stream_discontinuity",
-          reconcileKeys: parseReconcileKeys(discontinuity.reconcileKeys)
+          reason,
+          reconcileKeys
         });
         continue;
       }
@@ -189,6 +202,16 @@ function parseReconcileKeys(value: unknown): AgentLiveReconcileKey[] {
       }
     ];
   });
+}
+
+function deletedSessionIdFromReconcileKeys(
+  workspaceId: string,
+  reconcileKeys: readonly AgentLiveReconcileKey[]
+): string | null {
+  if (reconcileKeys.length !== 1) return null;
+  const [key] = reconcileKeys;
+  if (key.kind !== "session" || key.workspaceId !== workspaceId) return null;
+  return nonEmptyString(key.agentSessionId);
 }
 
 function nonEmptyString(value: unknown): string | null {

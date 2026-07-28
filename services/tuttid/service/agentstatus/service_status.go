@@ -170,16 +170,12 @@ func (s Service) statusForSpec(
 			actions = append(actions, terminalAction(ActionLogin, loginCommandForRuntime(spec, runtimeResolution)))
 		}
 
-		// Claude Code can run in API Usage Billing mode — an API key, an auth
-		// token, or an apiKeyHelper — which bills usage to an API account and
-		// overrides any stored OAuth/subscription session. `claude auth status`
-		// only reflects the stored session, so it is blind to these env/settings
-		// credentials; detect them directly and prefer that signal over whatever
-		// the CLI reports, so the wizard shows "已配置 API 计费" instead of a
-		// stale OAuth label or "未登录". A bare custom endpoint without a
-		// credential is NOT API billing (the user may still be on an OAuth
-		// session), so it does not trigger this override.
-		if isClaudeStatusSpec(spec) && s.providerHasAPICredential(spec.Provider) {
+		// Codex and Claude Code can run in API Usage Billing mode. Their auth
+		// status commands report stored login sessions and may not reflect an API
+		// key, auth token, or apiKeyHelper, so explicit API billing credentials
+		// override the command result. A bare custom endpoint is not a credential.
+		if (isCodexStatusSpec(spec) || isClaudeStatusSpec(spec)) &&
+			s.providerHasAPICredential(spec.Provider) {
 			auth.Status = AuthAuthenticated
 			auth.AccountLabel = "API Usage Billing"
 			auth.AuthMethod = "apiKey"

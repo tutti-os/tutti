@@ -4,6 +4,10 @@ import {
   FileTextIcon,
   LoadingIcon,
   ScrollArea,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   VideoFileIcon,
   cn
 } from "@tutti-os/ui-system";
@@ -20,6 +24,7 @@ import type {
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
   ReactElement,
+  ReactNode,
   RefObject
 } from "react";
 import {
@@ -972,62 +977,101 @@ const EntryRow = memo(function EntryRow({
       onContextMenu(event, entry);
     }
   };
-  const nameCell = (
-    <span
+  const entryNameContent = (
+    <EntryNameCell
+      copy={copy}
+      contextLabel={contextLabel}
+      entry={entry}
+      iconUrlByCacheKey={iconUrlByCacheKey}
+      inlineRenameValidation={inlineRenameValidation}
+      isEnteringDirectory={isEnteringDirectory}
+      isExpanded={expanded}
+      isExpandable={expandable}
+      isInlineRenaming={isInlineRenaming}
+      isLoadingChildren={isLoadingChildren}
+      isRenaming={isRenaming}
+      treeDepth={depth}
+      onEntryIconViewportLeave={onEntryIconViewportLeave}
+      onEntryIconViewportEnter={onEntryIconViewportEnter}
+      onCancelInlineRename={onCancelInlineRename}
+      onClearInlineRenameValidation={onClearInlineRenameValidation}
+      onConfirmInlineRename={onConfirmInlineRename}
+      onToggleDirectoryExpanded={onToggleDirectoryExpanded}
+    />
+  );
+  const modifiedText = formatWorkspaceFileModifiedTime(
+    resolveWorkspaceFileEntryArrangeDateMs(entry, arrangeMode),
+    dateLocale
+  );
+  const sizeText =
+    entry.kind === "directory"
+      ? "--"
+      : formatWorkspaceFileBytes(entry.sizeBytes);
+  const interactiveFieldProps = {
+    onPointerDown: (event: ReactPointerEvent<HTMLElement>) => {
+      onPointerDown(entry, event);
+    },
+    onClick: () => {
+      onClick(entry);
+    }
+  };
+  const nameCell = isInlineRenaming ? (
+    <span className={cn("min-w-0 overflow-hidden", tableCellPaddingClassName)}>
+      {entryNameContent}
+    </span>
+  ) : (
+    <OverflowFieldTooltip
       className={cn(
-        "min-w-0 overflow-hidden",
-        !isInlineRenaming && "pointer-events-none relative z-[1]",
+        "relative z-[1] min-w-0 overflow-hidden",
         tableCellPaddingClassName
       )}
+      content={entry.name}
+      {...interactiveFieldProps}
     >
-      <EntryNameCell
-        copy={copy}
-        contextLabel={contextLabel}
-        entry={entry}
-        iconUrlByCacheKey={iconUrlByCacheKey}
-        inlineRenameValidation={inlineRenameValidation}
-        isEnteringDirectory={isEnteringDirectory}
-        isExpanded={expanded}
-        isExpandable={expandable}
-        isInlineRenaming={isInlineRenaming}
-        isLoadingChildren={isLoadingChildren}
-        isRenaming={isRenaming}
-        treeDepth={depth}
-        onEntryIconViewportLeave={onEntryIconViewportLeave}
-        onEntryIconViewportEnter={onEntryIconViewportEnter}
-        onCancelInlineRename={onCancelInlineRename}
-        onClearInlineRenameValidation={onClearInlineRenameValidation}
-        onConfirmInlineRename={onConfirmInlineRename}
-        onToggleDirectoryExpanded={onToggleDirectoryExpanded}
-      />
-    </span>
+      {entryNameContent}
+    </OverflowFieldTooltip>
   );
-  const modifiedCell = (
+  const modifiedCell = isInlineRenaming ? (
     <span
       className={cn(
         "truncate text-xs text-[var(--text-secondary)]",
-        !isInlineRenaming && "pointer-events-none relative z-[1]",
         tableCellPaddingClassName
       )}
     >
-      {formatWorkspaceFileModifiedTime(
-        resolveWorkspaceFileEntryArrangeDateMs(entry, arrangeMode),
-        dateLocale
-      )}
+      {modifiedText}
     </span>
+  ) : (
+    <OverflowFieldTooltip
+      className={cn(
+        "relative z-[1] truncate text-xs text-[var(--text-secondary)]",
+        tableCellPaddingClassName
+      )}
+      content={modifiedText}
+      {...interactiveFieldProps}
+    >
+      {modifiedText}
+    </OverflowFieldTooltip>
   );
-  const sizeCell = (
+  const sizeCell = isInlineRenaming ? (
     <span
       className={cn(
         "truncate text-xs text-[var(--text-secondary)]",
-        !isInlineRenaming && "pointer-events-none relative z-[1]",
         tableCellPaddingClassName
       )}
     >
-      {entry.kind === "directory"
-        ? "--"
-        : formatWorkspaceFileBytes(entry.sizeBytes)}
+      {sizeText}
     </span>
+  ) : (
+    <OverflowFieldTooltip
+      className={cn(
+        "relative z-[1] truncate text-xs text-[var(--text-secondary)]",
+        tableCellPaddingClassName
+      )}
+      content={sizeText}
+      {...interactiveFieldProps}
+    >
+      {sizeText}
+    </OverflowFieldTooltip>
   );
 
   if (isInlineRenaming) {
@@ -1076,6 +1120,60 @@ const EntryRow = memo(function EntryRow({
     </div>
   );
 });
+
+function OverflowFieldTooltip({
+  children,
+  className,
+  content,
+  onClick,
+  onPointerDown
+}: {
+  children: ReactNode;
+  className?: string;
+  content: string;
+  onClick?: () => void;
+  onPointerDown?: (event: ReactPointerEvent<HTMLElement>) => void;
+}): ReactElement {
+  const triggerRef = useRef<HTMLSpanElement | null>(null);
+  const [open, setOpen] = useState(false);
+
+  const handleOpenChange = useCallback((nextOpen: boolean): void => {
+    const trigger = triggerRef.current;
+    setOpen(nextOpen && trigger !== null && hasOverflowingContent(trigger));
+  }, []);
+
+  return (
+    <TooltipProvider delayDuration={350}>
+      <Tooltip open={open} onOpenChange={handleOpenChange}>
+        <TooltipTrigger asChild>
+          <span
+            className={className}
+            ref={triggerRef}
+            onClick={onClick}
+            onPointerDown={onPointerDown}
+          >
+            {children}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent
+          className="max-w-[360px] whitespace-normal [overflow-wrap:anywhere]"
+          side="top"
+        >
+          {content}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function hasOverflowingContent(element: HTMLElement): boolean {
+  if (element.scrollWidth > element.clientWidth) {
+    return true;
+  }
+  return [...element.querySelectorAll<HTMLElement>("*")].some(
+    (child) => child.scrollWidth > child.clientWidth
+  );
+}
 
 function MoveDragPreview({
   iconUrlByCacheKey,
@@ -1457,6 +1555,9 @@ function EntryNameCell({
               }
             }}
             onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing || event.keyCode === 229) {
+                return;
+              }
               if (event.key === "Enter") {
                 event.preventDefault();
                 void handleConfirm();

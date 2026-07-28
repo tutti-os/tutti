@@ -35,6 +35,9 @@ func (s *Store) PlanClearSessions(
 	if err != nil {
 		return DeleteSessionsPlan{}, err
 	}
+	if err := requireSessionForkDeleteAllowedTx(ctx, tx, workspaceID, sessionIDs); err != nil {
+		return DeleteSessionsPlan{}, err
+	}
 	return DeleteSessionsPlan{
 		WorkspaceID: workspaceID,
 		SessionIDs:  normalizedSessionIDs(sessionIDs),
@@ -60,6 +63,9 @@ func (s *Store) PlanDeleteSessions(
 	defer func() { _ = tx.Rollback() }()
 	resolved, err := expandSessionTreeIDsTx(ctx, tx, workspaceID, sessionIDs)
 	if err != nil {
+		return DeleteSessionsPlan{}, err
+	}
+	if err := requireSessionForkDeleteAllowedTx(ctx, tx, workspaceID, append(sessionIDs, resolved...)); err != nil {
 		return DeleteSessionsPlan{}, err
 	}
 	return DeleteSessionsPlan{WorkspaceID: workspaceID, SessionIDs: normalizedSessionIDs(resolved)}, nil
@@ -102,6 +108,9 @@ func (s *Store) DeleteSessionWithCommit(
 	now := unixMs(time.Now().UTC())
 	removedSessionIDs, err := expandSessionTreeIDsTx(ctx, tx, workspaceID, []string{agentSessionID})
 	if err != nil {
+		return DeleteSessionResult{}, err
+	}
+	if err := requireSessionForkDeleteAllowedTx(ctx, tx, workspaceID, append([]string{agentSessionID}, removedSessionIDs...)); err != nil {
 		return DeleteSessionResult{}, err
 	}
 	// Always clear exact provenance, including on an idempotent repeat. A
@@ -179,6 +188,9 @@ func (s *Store) DeleteSessionsBatchTx(ctx context.Context, tx *sql.Tx, input Del
 	if err != nil {
 		return DeleteSessionsBatchResult{}, err
 	}
+	if err := requireSessionForkDeleteAllowedTx(ctx, tx, workspaceID, append(sessionIDs, removedSessionIDs...)); err != nil {
+		return DeleteSessionsBatchResult{}, err
+	}
 	if expected := normalizedSessionIDs(input.ExpectedSessionIDs); len(expected) > 0 && !equalStrings(expected, normalizedSessionIDs(removedSessionIDs)) {
 		return DeleteSessionsBatchResult{}, ErrDeleteSessionsPlanChanged
 	}
@@ -252,6 +264,9 @@ func deleteGoalRecordsForSessionTx(ctx context.Context, tx *sql.Tx, workspaceID 
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_goal_repair_incidents WHERE workspace_id = ? AND agent_session_id = ?`, workspaceID, agentSessionID); err != nil {
 		return fmt.Errorf("delete workspace agent goal repair incidents: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_goal_generation_fences WHERE workspace_id = ? AND agent_session_id = ?`, workspaceID, agentSessionID); err != nil {
+		return fmt.Errorf("delete workspace agent goal generation fences: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_goal_control_operations WHERE workspace_id = ? AND agent_session_id = ?`, workspaceID, agentSessionID); err != nil {
 		return fmt.Errorf("delete workspace agent session goal operations: %w", err)
@@ -357,6 +372,9 @@ func (s *Store) clearSessionsTx(
 	if err != nil {
 		return ClearSessionsResult{}, err
 	}
+	if err := requireSessionForkDeleteAllowedTx(ctx, tx, workspaceID, removedSessionIDs); err != nil {
+		return ClearSessionsResult{}, err
+	}
 	messageResult, err := tx.ExecContext(ctx, `
 DELETE FROM workspace_agent_messages
 WHERE workspace_id = ?
@@ -383,6 +401,9 @@ WHERE workspace_id = ?
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_goal_repair_incidents WHERE workspace_id = ?`, workspaceID); err != nil {
 		return ClearSessionsResult{}, fmt.Errorf("clear workspace agent goal repair incidents: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_goal_generation_fences WHERE workspace_id = ?`, workspaceID); err != nil {
+		return ClearSessionsResult{}, fmt.Errorf("clear workspace agent goal generation fences: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_goal_control_operations WHERE workspace_id = ?`, workspaceID); err != nil {
 		return ClearSessionsResult{}, fmt.Errorf("clear workspace agent goal operations: %w", err)

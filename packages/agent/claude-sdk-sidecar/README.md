@@ -19,9 +19,15 @@ build step and no bundled entry point beyond the source files.
 ## Sidecar protocol
 
 The daemon and sidecar exchange newline-delimited JSON envelopes over standard
-input and output. Every request and event carries `"version": 2`; either side
+input and output. Every request and event carries `"version": 3`; either side
 rejects unsupported or missing versions instead of guessing compatibility.
 Protocol types and validation live in `src/protocol.ts`.
+
+`inspect_fork_checkpoints` and `fork_session` are stateless requests: they do
+not create a `SessionRuntime` or resume a query. They use the official SDK
+session APIs, verify the selected source prefix and the independently readable
+child transcript, and return identities plus a provider-owned binding receipt;
+prompt and tool content never cross this protocol boundary.
 
 Interactive responses use `(turnId, requestId)` identity. The sidecar keeps a
 bounded terminal disposition registry so `submit_interactive` is idempotent:

@@ -21,7 +21,15 @@ export type DeviceErrorCode =
   | "pairing_failed"
   | "request_failed"
   | "scanner_unavailable"
+  | "workspace_unavailable"
   | null;
+
+export class DeviceConnectionSetupError extends Error {
+  constructor(readonly errorCode: "workspace_unavailable") {
+    super(errorCode);
+    this.name = "DeviceConnectionSetupError";
+  }
+}
 
 export interface ConnectedDevice {
   name: string;
@@ -78,7 +86,13 @@ export class DeviceService extends ObservableService<DeviceSnapshot> {
   }
 
   async refresh(): Promise<void> {
-    if (this.disposed || this.snapshot.refreshing) return;
+    if (
+      this.disposed ||
+      !this.remoteOperationsEnabled ||
+      this.snapshot.refreshing
+    ) {
+      return;
+    }
     this.patch({
       errorCode:
         this.snapshot.errorCode === "request_failed"
@@ -197,7 +211,13 @@ export class DeviceService extends ObservableService<DeviceSnapshot> {
   }
 
   async connect(pairing: DevicePairing, device?: UserDevice): Promise<void> {
-    if (this.snapshot.connectingPairingId !== null) return;
+    if (
+      this.disposed ||
+      !this.remoteOperationsEnabled ||
+      this.snapshot.connectingPairingId !== null
+    ) {
+      return;
+    }
     const generation = ++this.connectionGeneration;
     this.patch({
       connectingPairingId: pairing.pairingId,
@@ -214,9 +234,14 @@ export class DeviceService extends ObservableService<DeviceSnapshot> {
         name: device?.displayName || device?.reportedName || "",
         pairingId: pairing.pairingId
       });
-    } catch {
+    } catch (cause) {
       if (this.isConnectionCurrent(generation)) {
-        this.patch({ errorCode: "connection_failed" });
+        this.patch({
+          errorCode:
+            cause instanceof DeviceConnectionSetupError
+              ? cause.errorCode
+              : "connection_failed"
+        });
       }
     } finally {
       if (this.isConnectionCurrent(generation)) {
@@ -266,6 +291,7 @@ export class DeviceService extends ObservableService<DeviceSnapshot> {
   private canStartPairing(): boolean {
     return (
       !this.disposed &&
+      this.remoteOperationsEnabled &&
       (this.snapshot.pairingState === "idle" ||
         this.snapshot.pairingState === "confirmed")
     );

@@ -27,6 +27,7 @@ func persistedSessionFromActivity(session agentactivitybiz.Session) PersistedSes
 		Metadata:               session.Metadata,
 		InternalRuntimeContext: clonePayload(session.InternalRuntimeContext),
 		Title:                  strings.TrimSpace(session.Title),
+		MessageVersion:         session.MessageVersion,
 		PinnedAtUnixMS:         session.PinnedAtUnixMS,
 		LastEventUnixMS:        session.LastEventUnixMS,
 		StartedAtUnixMS:        session.StartedAtUnixMS,

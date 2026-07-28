@@ -12,6 +12,17 @@ export interface WorkspaceConversationRailSection {
   totalCount: number;
 }
 
+export function selectWorkspaceConversationRailSessionIds(
+  memberships: readonly Pick<
+    WorkspaceConversationRailMembership,
+    "sessionIds"
+  >[]
+): string[] {
+  return [
+    ...new Set(memberships.flatMap((membership) => membership.sessionIds))
+  ];
+}
+
 export function projectWorkspaceConversationRail(input: {
   conversations: readonly AgentConversationRailSummary[];
   loadingMoreSectionId: string | null;

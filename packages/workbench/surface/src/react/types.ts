@@ -21,7 +21,6 @@ export interface WorkbenchSurfacePresentation {
 }
 
 export interface WorkbenchSurfacePresentationInteraction {
-  mode: "activate" | "layout";
   onBackdropPress: () => void;
   onNodePress(nodeId: string): void;
   selectedNodeIds: ReadonlySet<string>;

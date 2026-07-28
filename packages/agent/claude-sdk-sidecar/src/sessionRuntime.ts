@@ -179,6 +179,7 @@ export class SessionRuntime {
     this.goalExecQueue = new GoalExecQueue((input) =>
       this.dispatchExec(
         input.turnId,
+        input.providerTurnId,
         input.prompt,
         input.content,
         input.turnOrigin,
@@ -246,10 +247,11 @@ export class SessionRuntime {
     content?: unknown,
     turnOrigin?: string,
     goal?: GoalCommandDispatch,
-    hostContext = ""
+    hostContext = "",
+    providerTurnId = ""
   ): void {
     if (this.driver) {
-      this.driver.exec(turnId, prompt);
+      this.driver.exec(turnId, prompt, providerTurnId);
       return;
     }
     if (this.sessionClosed) {
@@ -265,6 +267,7 @@ export class SessionRuntime {
     if (goal?.operationId && goal.revision > 0) {
       this.goalExecQueue.accept({
         turnId,
+        providerTurnId,
         prompt,
         content,
         turnOrigin,
@@ -275,6 +278,7 @@ export class SessionRuntime {
     }
     this.dispatchExec(
       turnId,
+      providerTurnId,
       prompt,
       content,
       turnOrigin,
@@ -285,6 +289,7 @@ export class SessionRuntime {
 
   private dispatchExec(
     turnId: string,
+    providerTurnId: string | undefined,
     prompt: string,
     content?: unknown,
     turnOrigin?: string,
@@ -294,7 +299,7 @@ export class SessionRuntime {
     this.turns.closeSyntheticBeforeUserTurn();
     const turn: RuntimeTurn = {
       turnId,
-      promptUuid: crypto.randomUUID(),
+      promptUuid: providerTurnId?.trim() || crypto.randomUUID(),
       ...(turnOrigin ? { origin: turnOrigin } : {}),
       ...(goal
         ? {
@@ -327,11 +332,17 @@ export class SessionRuntime {
         ) as unknown as SDKUserMessage["message"]["content"];
         let outboundContent = sdkContent;
         if (hostContext.trim()) {
-          const hostContextBlock = { type: "text" as const, text: hostContext.trim() };
+          const hostContextBlock = {
+            type: "text" as const,
+            text: hostContext.trim()
+          };
           if (Array.isArray(sdkContent)) {
             sdkContent.unshift(hostContextBlock);
           } else {
-            outboundContent = [hostContextBlock, { type: "text" as const, text: sdkContent }];
+            outboundContent = [
+              hostContextBlock,
+              { type: "text" as const, text: sdkContent }
+            ];
           }
         }
         generation.expectPromptEcho(turn.promptUuid);

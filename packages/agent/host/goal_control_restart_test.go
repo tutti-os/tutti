@@ -21,6 +21,11 @@ func (r liveGoalRuntime) Session(workspaceID, agentSessionID string) (agenthost.
 	return r.session, workspaceID == r.session.WorkspaceID && agentSessionID == r.session.ID
 }
 
+func (r liveGoalRuntime) RuntimeSessionLive(workspaceID, agentSessionID string) bool {
+	_, live := r.Session(workspaceID, agentSessionID)
+	return live
+}
+
 type countingGoalRuntime struct {
 	mu    sync.Mutex
 	calls int

@@ -38,6 +38,55 @@ func TestClaudeCodeSDKAdapterMapsSyntheticTurnStarted(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeSDKAdapterCompletesCanonicalTurnByProviderIdentity(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{
+		session:   session,
+		liveState: newClaudeSDKLiveState(),
+	}
+	adapter.beginClaudeSDKRootTurn(
+		adapterSession,
+		"canonical-turn-1",
+		"provider-prompt-1",
+	)
+
+	var published []activityshared.Event
+	adapter.SetSessionEventSink(func(agentSessionID string, events []activityshared.Event) {
+		if agentSessionID == session.AgentSessionID {
+			published = append(published, events...)
+		}
+	})
+	adapter.dispatchClaudeSDKEvent(
+		session.AgentSessionID,
+		adapterSession,
+		claudeSDKSidecarEvent{
+			Type: "turn_completed",
+			Payload: map[string]any{
+				"turnId":         "canonical-turn-1",
+				"providerTurnId": "provider-prompt-1",
+				"stopReason":     "end_turn",
+			},
+		},
+	)
+
+	var completion *activityshared.Event
+	for index := range published {
+		if published[index].Type == activityshared.EventRootProviderTurnCompleted {
+			completion = &published[index]
+			break
+		}
+	}
+	if completion == nil ||
+		completion.Payload.TurnID != "canonical-turn-1" ||
+		completion.Payload.ProviderTurnID != "provider-prompt-1" {
+		t.Fatalf("published=%#v, want canonical/provider completion identities", published)
+	}
+	if adapter.consumeClaudeSDKRootProviderTurn(adapterSession, "provider-prompt-1") {
+		t.Fatal("provider turn identity remained live after terminal dispatch")
+	}
+}
+
 func TestClaudeCodeSDKAdapterUsesSidecarAssistantMessageID(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	session := standardTestSession(ProviderClaudeCode)

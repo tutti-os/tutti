@@ -65,11 +65,17 @@ const schemaMigrationWorkspaceAgentGoalStateV5 = "workspace_agent_goal_state_v5"
 const schemaMigrationWorkspaceAgentGoalStateV6 = "workspace_agent_goal_state_v6"
 const schemaMigrationWorkspaceAgentGoalStateV7 = "workspace_agent_goal_state_v7"
 const schemaMigrationWorkspaceAgentGoalProvenanceLedgerV1 = "workspace_agent_goal_provenance_ledger_v1"
+const schemaMigrationWorkspaceAgentGoalGenerationFencesV1 = "workspace_agent_goal_generation_fences_v1"
 const schemaMigrationWorkspaceAgentMessageSemanticsV1 = "workspace_agent_message_semantics_v1"
 const schemaMigrationWorkspaceAgentDeletedPurgeIndexV1 = "workspace_agent_deleted_purge_index_v1"
 const schemaMigrationWorkspaceAgentSessionTurnPageIndexV1 = "workspace_agent_session_turn_page_index_v1"
 const schemaMigrationWorkspaceAgentTurnCapabilityRefsV1 = "workspace_agent_turn_capability_refs_v1"
 const schemaMigrationWorkspaceAgentImportedTurnsV1 = "workspace_agent_imported_turns_v1"
+const schemaMigrationWorkspaceAgentSessionForkV1 = "workspace_agent_session_fork_v1"
+const schemaMigrationWorkspaceAgentSessionForkV2 = "workspace_agent_session_fork_v2"
+const schemaMigrationWorkspaceAgentSessionForkV3 = "workspace_agent_session_fork_v3"
+const schemaMigrationWorkspaceAgentSessionForkV4 = "workspace_agent_session_fork_v4"
+const schemaMigrationWorkspaceAgentSessionForkV5 = "workspace_agent_session_fork_v5"
 
 // claimableMigrationIDs are the migration IDs that may already be recorded
 // in the legacy tuttid ledger; the claim copies exactly these.
@@ -240,6 +246,9 @@ CREATE TABLE IF NOT EXISTS `+schemaMigrationsTable+` (
 	if err := s.applyWorkspaceAgentGoalProvenanceLedgerV1(ctx); err != nil {
 		return err
 	}
+	if err := s.applyWorkspaceAgentGoalGenerationFencesV1(ctx); err != nil {
+		return err
+	}
 	if err := s.applyWorkspaceAgentMessageSemanticsV1(ctx); err != nil {
 		return err
 	}
@@ -252,7 +261,22 @@ CREATE TABLE IF NOT EXISTS `+schemaMigrationsTable+` (
 	if err := s.applyWorkspaceAgentTurnCapabilityRefsV1(ctx); err != nil {
 		return err
 	}
-	return s.applyWorkspaceAgentImportedTurnsV1(ctx)
+	if err := s.applyWorkspaceAgentImportedTurnsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentSessionForkV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentSessionForkV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentSessionForkV3(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentSessionForkV4(ctx); err != nil {
+		return err
+	}
+	return s.applyWorkspaceAgentSessionForkV5(ctx)
 }
 
 // claimLegacyMigrations copies agent-store migration records that were

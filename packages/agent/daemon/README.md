@@ -78,6 +78,19 @@ The host daemon owns:
 - update metadata caching, source-ownership verification, and update actions
 - workspace attachment, runtime VM lifecycle, and product auth
 
+## Provider Authentication Status
+
+`providerregistry` owns each provider's auth status command and parser kind.
+Hosts execute that descriptor-owned command in their provider runtime, then use
+`providerstatus.ParseAuthStatusOutput` to interpret the output consistently.
+The same package exposes narrow helpers for explicit Codex and Claude API
+billing configuration. Credential-file or token presence must not be used as
+proof that an OAuth session is still authenticated.
+
+`providerstatus` returns an observation only. Each host remains responsible for
+runtime coordination, freshness, failure ordering, and projecting the result
+through its own authoritative provider-status registry.
+
 ## Live Session Recycling
 
 Agent sessions are durable controller records. For providers that support live

@@ -106,14 +106,7 @@ export async function prepareVirtualizedTranscriptSnapshot(
   context,
   options = {}
 ) {
-  const fixtureBinDirectory = join(context.runtimeDirectory, "state", "bin");
-  await mkdir(fixtureBinDirectory, { recursive: true });
-  const fixtureBinaryPath = join(fixtureBinDirectory, "cursor-agent");
-  await copyFile(
-    join(cursorFixtureDirectory, "cursor-agent"),
-    fixtureBinaryPath
-  );
-  await chmod(fixtureBinaryPath, 0o755);
+  const fixtureEnvironment = await installCursorPerformanceFixture(context);
   const workspaceID = await startupWorkspaceID(context);
   const richTextCandidateRequirement = options.richTextFixture
     ? "AND userTextMessageCount >= 4"
@@ -220,10 +213,22 @@ ${richTextFixtureUpdate}
       richTextParagraphsPerMessage: options.richTextFixture ? 8 : 0,
       workspaceID
     },
-    environment: {
-      PATH: `${fixtureBinDirectory}:${process.env.PATH ?? ""}`,
-      SHELL: fixtureBinaryPath
-    }
+    environment: fixtureEnvironment
+  };
+}
+
+export async function installCursorPerformanceFixture(context) {
+  const fixtureBinDirectory = join(context.runtimeDirectory, "state", "bin");
+  await mkdir(fixtureBinDirectory, { recursive: true });
+  const fixtureBinaryPath = join(fixtureBinDirectory, "cursor-agent");
+  await copyFile(
+    join(cursorFixtureDirectory, "cursor-agent"),
+    fixtureBinaryPath
+  );
+  await chmod(fixtureBinaryPath, 0o755);
+  return {
+    PATH: `${fixtureBinDirectory}:${process.env.PATH ?? ""}`,
+    SHELL: fixtureBinaryPath
   };
 }
 

@@ -77,6 +77,8 @@ export type AgentGUIRuntimeErrorPhase =
   | "submit_interactive"
   | "toggle_conversation_pinned"
   | "rename_conversation"
+  | "fork_conversation_through_turn"
+  | "open_fork_source_conversation"
   | "delete_conversation"
   | "update_session_settings"
   | "warmup_openclaw_gateway";

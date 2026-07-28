@@ -39,6 +39,18 @@ func (c *Controller) Session(roomID, agentSessionID string) (Session, bool) {
 	return c.get(strings.TrimSpace(roomID), strings.TrimSpace(agentSessionID))
 }
 
+// HasLiveSession reports provider-process liveness without starting or
+// resuming one. A Controller session can remain registered after its adapter
+// releases an idle provider connection.
+func (c *Controller) HasLiveSession(roomID, agentSessionID string) bool {
+	session, adapter, err := c.sessionAndAdapter(strings.TrimSpace(roomID), strings.TrimSpace(agentSessionID))
+	if err != nil {
+		return false
+	}
+	probe, ok := adapter.(LiveSessionProbeAdapter)
+	return !ok || probe.HasLiveSession(session)
+}
+
 func (c *Controller) CanResume(input ResumeInput) bool {
 	if c == nil {
 		return false

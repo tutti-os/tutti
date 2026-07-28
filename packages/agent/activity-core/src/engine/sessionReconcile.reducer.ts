@@ -49,6 +49,7 @@ export function sessionReconcileReducer(
           (intent.eventType !== "message_update" &&
             intent.eventType !== "session_audit") ||
           !intent.hasInlineMessages,
+        live: intent.eventType === "turn_update",
         workspaceId: intent.workspaceId
       });
     case "session/reconcileRequested":
@@ -128,6 +129,7 @@ function hydrateActiveRootSessions(
       agentSessionId: session.agentSessionId,
       needsMessages: false,
       needsState: true,
+      live: false,
       workspaceId: session.workspaceId
     });
     next = requested.state;
@@ -141,6 +143,7 @@ function requestReconcile(
   state: SessionReconcileState,
   input: {
     agentSessionId: string;
+    live?: boolean;
     needsMessages: boolean;
     needsState: boolean;
     workspaceId: string;
@@ -160,8 +163,10 @@ function requestReconcile(
     errorCode: null,
     errorMessage: null,
     inFlightCommandId: null,
+    inFlightLive: false,
     inFlightScope: null,
     messagesHydrated: false,
+    pendingLive: false,
     pendingMessages: false,
     pendingState: false,
     workspaceId
@@ -170,6 +175,7 @@ function requestReconcile(
     ...current,
     errorCode: null,
     errorMessage: null,
+    pendingLive: current.pendingLive || input.live === true,
     pendingMessages: current.pendingMessages || input.needsMessages,
     pendingState: current.pendingState || input.needsState
   };
@@ -198,12 +204,16 @@ function settleReconcile(
         ? null
         : intent.errorMessage?.trim() || null,
     inFlightCommandId: null,
+    inFlightLive: false,
     inFlightScope: null,
     messagesHydrated:
       record.messagesHydrated ||
       (intent.outcome === "succeeded" &&
         (record.inFlightScope === "messages" ||
-          record.inFlightScope === "state_and_messages"))
+          record.inFlightScope === "state_and_messages")),
+    pendingLive:
+      record.pendingLive ||
+      (intent.outcome !== "succeeded" && record.inFlightLive)
   };
   const next = replaceRecord(state, settled);
   return settled.pendingMessages || settled.pendingState
@@ -215,17 +225,20 @@ function startReconcile(
   state: SessionReconcileState,
   record: SessionReconcileRecord
 ): EngineReducerResult<SessionReconcileState> {
-  const scope = record.pendingState
+  const needsState = record.pendingState || record.pendingLive;
+  const scope = needsState
     ? record.pendingMessages
       ? "state_and_messages"
       : "state"
     : "messages";
   const commandId = `session:reconcile:${record.agentSessionId}:${state.nextCommandSequence}`;
+  const live = record.pendingLive;
   return {
     commands: [
       {
         agentSessionId: record.agentSessionId,
         commandId,
+        live,
         scope,
         timeoutMs: 30_000,
         type: "session/reconcile",
@@ -239,7 +252,9 @@ function startReconcile(
         errorCode: null,
         errorMessage: null,
         inFlightCommandId: commandId,
+        inFlightLive: live,
         inFlightScope: scope,
+        pendingLive: false,
         pendingMessages: false,
         pendingState: false
       }

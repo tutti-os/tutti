@@ -1,9 +1,7 @@
 import {
-  createAgentActivityOptimisticMessageOverlay,
-  parseAgentActivityMessageDeltaEvent,
+  createAgentActivityWorkspaceEventCoordinator,
   type AgentActivityLiveEvent,
   type AgentActivitySnapshot,
-  type AgentActivityTurn,
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
 import type {
@@ -23,19 +21,16 @@ interface WorkspaceAgentLiveLaneOptions {
   deviceLink?: DeviceLinkPort;
   engine: AgentSessionEngine;
   isAvailable(): boolean;
-  loadSelectedMessages(authoritative: boolean): Promise<void>;
   navigation: WorkspaceNavigationService;
   onActivityChanged(): void;
   onConnectionChanged(connected: boolean): void;
   rail: WorkspaceConversationRailService;
   readCanonicalActivity(): AgentActivitySnapshot;
-  reconcileWorkspace(): Promise<unknown>;
   workspaceId: string;
 }
 
 export class WorkspaceAgentLiveLane {
-  private readonly optimisticMessages =
-    createAgentActivityOptimisticMessageOverlay();
+  private readonly coordinator;
   private active = false;
   private connected = false;
   private retryTask: { cancel(): void } | null = null;
@@ -49,7 +44,13 @@ export class WorkspaceAgentLiveLane {
     caughtUp: boolean;
   } | null = null;
 
-  constructor(private readonly options: WorkspaceAgentLiveLaneOptions) {}
+  constructor(private readonly options: WorkspaceAgentLiveLaneOptions) {
+    this.coordinator = createAgentActivityWorkspaceEventCoordinator({
+      engine: options.engine,
+      readCanonicalSnapshot: options.readCanonicalActivity,
+      workspaceId: options.workspaceId
+    });
+  }
 
   start(): void {
     this.active = true;
@@ -64,6 +65,7 @@ export class WorkspaceAgentLiveLane {
   }
 
   stop(): void {
+    const wasActive = this.active;
     this.active = false;
     this.retryTask?.cancel();
     this.retryTask = null;
@@ -72,7 +74,17 @@ export class WorkspaceAgentLiveLane {
     this.subscription?.close();
     this.subscription = null;
     this.attachmentFence = null;
+    if (wasActive) {
+      this.coordinator.eventStreamConnectionChanged({
+        status: "disconnected"
+      });
+    }
     this.setConnected(false);
+  }
+
+  dispose(): void {
+    this.stop();
+    this.coordinator.dispose();
   }
 
   isConnected(): boolean {
@@ -80,48 +92,51 @@ export class WorkspaceAgentLiveLane {
   }
 
   project(canonical: AgentActivitySnapshot): AgentActivitySnapshot {
-    const selectedSessionId =
-      this.options.navigation.getSnapshot().selectedAgentSessionId;
-    const sessionIds = new Set([
-      ...Object.keys(canonical.sessionMessagesById),
-      ...(selectedSessionId ? [selectedSessionId] : [])
-    ]);
-    if (sessionIds.size === 0) return canonical;
-    const sessionMessagesById = { ...canonical.sessionMessagesById };
-    for (const agentSessionId of sessionIds) {
-      sessionMessagesById[agentSessionId] = this.optimisticMessages.project(
-        { workspaceId: this.options.workspaceId, agentSessionId },
-        canonical.sessionMessagesById[agentSessionId] ?? []
-      );
-    }
-    return { ...canonical, sessionMessagesById };
+    return this.coordinator.project(canonical);
   }
 
   reconcileMessages(agentSessionId: string): void {
-    const canonical =
-      this.options.readCanonicalActivity().sessionMessagesById[
-        agentSessionId
-      ] ?? [];
-    this.optimisticMessages.reconcile(
-      { workspaceId: this.options.workspaceId, agentSessionId },
-      canonical
-    );
+    this.coordinator.reconcileMessages(agentSessionId);
+  }
+
+  isSessionDeleted(agentSessionId: string): boolean {
+    return this.coordinator.isSessionDeleted(agentSessionId);
   }
 
   private handleDelivery(delivery: AgentLiveDelivery): void {
     if (!this.active || !this.options.isAvailable()) return;
     if (delivery.kind === "connection") {
       if (delivery.status === "connected") {
+        const selectedSessionId =
+          this.options.navigation.getSnapshot().selectedAgentSessionId;
+        this.coordinator.eventStreamConnectionChanged({
+          status: "connected",
+          ...(selectedSessionId
+            ? { prioritySessionIds: [selectedSessionId] }
+            : {})
+        });
         this.setConnected(true);
-        void this.options.reconcileWorkspace().catch(() => undefined);
-        void this.options.loadSelectedMessages(true);
         return;
       }
       this.subscription?.close();
       this.subscription = null;
       this.attachmentFence = null;
+      this.coordinator.eventStreamConnectionChanged({
+        status: "disconnected"
+      });
       this.setConnected(false);
       this.scheduleRetry();
+      return;
+    }
+    if (delivery.kind === "session_deleted") {
+      this.coordinator.removeSession(delivery.agentSessionId);
+      this.options.navigation.reconcileSessionIds(
+        this.coordinator
+          .project(this.options.readCanonicalActivity())
+          .sessions.map((session) => session.agentSessionId)
+      );
+      this.options.onActivityChanged();
+      this.scheduleRailReconcile();
       return;
     }
     if (delivery.kind === "discontinuity") {
@@ -176,6 +191,9 @@ export class WorkspaceAgentLiveLane {
     this.attachmentFence = null;
     this.subscription?.close();
     this.subscription = null;
+    this.coordinator.eventStreamConnectionChanged({
+      status: "disconnected"
+    });
     this.setConnected(false);
     this.reconcileDiscontinuity({
       kind: "discontinuity",
@@ -186,87 +204,25 @@ export class WorkspaceAgentLiveLane {
   }
 
   private applyEvent(event: AgentActivityLiveEvent): void {
-    if (
-      event.workspaceId !== this.options.workspaceId ||
-      !event.agentSessionId.trim()
-    ) {
-      this.reconcileDiscontinuity({
-        kind: "discontinuity",
-        reason: "identity_mismatch",
-        reconcileKeys: []
-      });
-      return;
+    const result = this.coordinator.ingestEvent(event);
+    if (result.optimisticMessage || result.inlineApplied) {
+      this.options.onActivityChanged();
     }
-    switch (event.eventType) {
-      case "message_delta": {
-        const parsed = parseAgentActivityMessageDeltaEvent(event);
-        if (!parsed) {
-          this.requestSessionReconcile(event.agentSessionId, true);
-          return;
-        }
-        const applied = this.optimisticMessages.apply(parsed);
-        if (applied.applied) this.options.onActivityChanged();
-        if (applied.needsReconcile) {
-          this.requestSessionReconcile(event.agentSessionId, true);
-        }
-        return;
-      }
-      case "turn_update":
-        this.options.engine.dispatch({
-          turn: agentActivityTurnFromLiveEvent(event),
-          type: "turn/upserted"
-        });
-        this.scheduleRailReconcile();
-        if (event.data.turn.phase === "settled") {
-          this.requestSessionReconcile(event.agentSessionId, true);
-        }
-        return;
-      case "interaction_update":
-        this.options.engine.dispatch({
-          interaction: event.data.interaction,
-          type: "interaction/upserted"
-        });
-        this.scheduleRailReconcile();
-        return;
-      case "session_audit":
-        this.requestSessionReconcile(event.agentSessionId, true);
-        this.scheduleRailReconcile();
+    if (result.accepted && event.eventType !== "message_delta") {
+      this.scheduleRailReconcile();
     }
   }
 
   private reconcileDiscontinuity(
     delivery: Extract<AgentLiveDelivery, { kind: "discontinuity" }>
   ): void {
-    const sessionIds = new Set(
-      delivery.reconcileKeys
-        .filter((key) => key.workspaceId === this.options.workspaceId)
-        .map((key) => key.agentSessionId?.trim())
-        .filter((value): value is string => Boolean(value))
-    );
-    if (sessionIds.size === 0) {
-      const selected = this.options.navigation
-        .getSnapshot()
-        .selectedAgentSessionId?.trim();
-      if (selected) sessionIds.add(selected);
-      void this.options.reconcileWorkspace().catch(() => undefined);
-    }
-    for (const agentSessionId of sessionIds) {
-      this.requestSessionReconcile(agentSessionId, true);
-    }
-    this.scheduleRailReconcile();
-  }
-
-  private requestSessionReconcile(
-    agentSessionId: string,
-    needsMessages: boolean
-  ): void {
-    this.options.engine.dispatch({
-      agentSessionId,
-      needsMessages,
-      needsState: true,
-      type: "session/reconcileRequested",
-      workspaceId: this.options.workspaceId
+    const selectedSessionId =
+      this.options.navigation.getSnapshot().selectedAgentSessionId;
+    this.coordinator.reconcileDiscontinuity({
+      fallbackSessionIds: selectedSessionId ? [selectedSessionId] : [],
+      reconcileKeys: delivery.reconcileKeys
     });
+    this.scheduleRailReconcile();
   }
 
   private scheduleRetry(): void {
@@ -312,16 +268,4 @@ function sameAttachmentControl(
     left.callerTurnId === right.callerTurnId &&
     left.attachmentRevision === right.attachmentRevision
   );
-}
-
-function agentActivityTurnFromLiveEvent(
-  event: Extract<AgentActivityLiveEvent, { eventType: "turn_update" }>
-): AgentActivityTurn {
-  return {
-    ...event.data.turn,
-    completedCommand: event.data.turn
-      .completedCommand as AgentActivityTurn["completedCommand"],
-    error: event.data.turn.error as AgentActivityTurn["error"],
-    fileChanges: event.data.turn.fileChanges as AgentActivityTurn["fileChanges"]
-  };
 }

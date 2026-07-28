@@ -9,7 +9,7 @@ import {
 } from "../../../../lib/agentDiagnosticsConsent.ts";
 import { AgentEnvDetectedReporter } from "../../../analytics/reporters/agent-env-detected/agentEnvDetectedReporter.ts";
 import { AgentEnvIssueReportedReporter } from "../../../analytics/reporters/agent-env-issue-reported/agentEnvIssueReportedReporter.ts";
-import { AgentAnalyticsErrorCode } from "../../../analytics/reporters/agent-error-fields.ts";
+import { AgentAnalyticsErrorCode } from "../../agentAnalyticsError.ts";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import {
   buildEnvDetectedParams,

@@ -47,34 +47,6 @@ func runCursorCLICommand(
 	return output, true
 }
 
-// parseCursorAuthStatusOutput interprets `cursor-agent status` output, which
-// reports the login state as human-readable text (e.g. "Logged in as
-// user@example.com" / "Not logged in. Run cursor-agent login").
-func parseCursorAuthStatusOutput(output []byte) (AuthInfo, bool) {
-	normalized := strings.ToLower(string(bytes.TrimSpace(output)))
-	if normalized == "" {
-		return AuthInfo{}, false
-	}
-	if strings.Contains(normalized, "not logged in") ||
-		strings.Contains(normalized, "logged out") ||
-		strings.Contains(normalized, "not authenticated") ||
-		strings.Contains(normalized, "unauthenticated") {
-		return AuthInfo{Status: AuthRequired}, true
-	}
-	if strings.Contains(normalized, "logged in") ||
-		strings.Contains(normalized, "authenticated") {
-		accountLabel := cursorAuthStatusAccountLabel(string(output))
-		if accountLabel == "" {
-			return AuthInfo{Status: AuthAuthenticated}, true
-		}
-		return AuthInfo{
-			Status:       AuthAuthenticated,
-			AccountLabel: accountLabel,
-		}, true
-	}
-	return AuthInfo{}, false
-}
-
 func parseCursorAboutOutput(output []byte) (AuthInfo, string, bool) {
 	trimmed := bytes.TrimSpace(output)
 	if len(trimmed) == 0 {
@@ -184,21 +156,6 @@ func cursorSubscriptionDisplayName(subscriptionTier string) string {
 	default:
 		return strings.TrimSpace(subscriptionTier)
 	}
-}
-
-func cursorAuthStatusAccountLabel(output string) string {
-	for _, line := range strings.Split(output, "\n") {
-		trimmed := strings.TrimSpace(line)
-		lower := strings.ToLower(trimmed)
-		const prefix = "logged in as "
-		if strings.HasPrefix(lower, prefix) {
-			email := strings.TrimSpace(trimmed[len(prefix):])
-			if email != "" && !isCursorUnauthenticatedEmail(email) {
-				return email
-			}
-		}
-	}
-	return ""
 }
 
 func isCursorUnauthenticatedEmail(email string) bool {

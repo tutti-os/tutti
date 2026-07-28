@@ -1,6 +1,11 @@
 package reporter
 
-import "context"
+import (
+	"context"
+	"fmt"
+	"path/filepath"
+	"strings"
+)
 
 // TeaReporter reports events through the DataFinder SDK.
 type TeaReporter struct {
@@ -15,6 +20,14 @@ func newTeaReporter(config Config) (*TeaReporter, error) {
 }
 
 func newTeaReporterWithSDK(config Config, sdk teaSDK) (*TeaReporter, error) {
+	sdkLogDir := strings.TrimSpace(config.SDKLogDir)
+	if sdkLogDir == "" {
+		stateDir := strings.TrimSpace(config.StateDir)
+		if stateDir == "" {
+			return nil, fmt.Errorf("analytics state directory or SDK log directory is required for DataFinder SDK logs")
+		}
+		sdkLogDir = filepath.Join(stateDir, "analytics", "sdk-logs")
+	}
 	common, err := newReporterCommon(config)
 	if err != nil {
 		return nil, err
@@ -23,7 +36,7 @@ func newTeaReporterWithSDK(config Config, sdk teaSDK) (*TeaReporter, error) {
 		AppID:         config.Analytics.AppID,
 		AppKey:        config.Analytics.AppKey,
 		ChannelDomain: config.Analytics.ChannelDomain,
-		StateDir:      config.StateDir,
+		LogDir:        sdkLogDir,
 	}); err != nil {
 		return nil, err
 	}

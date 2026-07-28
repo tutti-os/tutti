@@ -250,9 +250,27 @@ func publishAgentActivityEnvelope(
 			AgentSessionID: envelope.AgentSessionId,
 		})
 	}
+	reason := "canonical_update"
+	if envelope.EventType == "session_deleted" {
+		var deletionIdentity struct {
+			WorkspaceID    string `json:"workspaceId"`
+			AgentSessionID string `json:"agentSessionId"`
+			EventType      string `json:"eventType"`
+		}
+		if err := json.Unmarshal(rawFields["data"], &deletionIdentity); err != nil ||
+			strings.TrimSpace(deletionIdentity.WorkspaceID) != envelope.WorkspaceId ||
+			strings.TrimSpace(deletionIdentity.AgentSessionID) != envelope.AgentSessionId ||
+			strings.TrimSpace(deletionIdentity.EventType) != envelope.EventType {
+			return publishAgentLiveInput(stream, publisher, liveprotocol.PublishInput{
+				Discontinuity: &liveprotocol.Discontinuity{Reason: "invalid_event"},
+				Immediate:     true,
+			})
+		}
+		reason = "session_deleted"
+	}
 	return publishAgentLiveInput(stream, publisher, liveprotocol.PublishInput{
 		Discontinuity: &liveprotocol.Discontinuity{
-			Reason:        "canonical_update",
+			Reason:        reason,
 			ReconcileKeys: reconcileKeys,
 		},
 		Immediate: true,

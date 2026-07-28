@@ -10,6 +10,7 @@ class MobileNativePackage : ReactPackage {
         reactContext: ReactApplicationContext,
     ): List<NativeModule> =
         listOf(
+            AppLifecycleModule(reactContext),
             MobileSecurityModule(reactContext),
             DeviceLinkModule(reactContext),
         )

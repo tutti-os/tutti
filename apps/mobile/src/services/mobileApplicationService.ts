@@ -9,7 +9,11 @@ import {
 import type { AccountSession } from "./mobileDomain";
 import { AgentDirectoryService } from "./agentDirectoryService";
 import { ComposerDraftService } from "./composerDraftService";
-import { DeviceService, type ConnectedDevice } from "./deviceService";
+import {
+  DeviceConnectionSetupError,
+  DeviceService,
+  type ConnectedDevice
+} from "./deviceService";
 import { LoginService } from "./loginService";
 import {
   IAgentDirectoryService,
@@ -18,14 +22,13 @@ import {
   ILoginService,
   IMobileQuickPromptLibraryService,
   IWorkspaceActivityService,
-  IWorkspaceCatalogService,
   IWorkspaceConversationRailService,
   IWorkspaceMediaService,
   IWorkspaceNavigationService
 } from "./mobileServiceIdentifiers";
 import { ObservableService } from "./observableService";
 import { MobileQuickPromptLibraryService } from "./mobileQuickPromptLibraryService";
-import type { ApplicationVisibility, MobileServicePorts } from "./servicePorts";
+import type { AppLifecycleState, MobileServicePorts } from "./servicePorts";
 import { WorkspaceActivityService } from "./workspaceActivityService";
 import { WorkspaceCatalogService } from "./workspaceCatalogService";
 import { WorkspaceConversationRailService } from "./workspaceConversationRailService";
@@ -34,19 +37,13 @@ import { WorkspaceNavigationService } from "./workspaceNavigationService";
 const BACKGROUND_GRACE_MS = 15_000;
 
 export type MobileApplicationSnapshot =
-  | { route: "bootstrapping" }
-  | { route: "login" }
-  | { route: "devices"; session: AccountSession }
+  | { status: "bootstrapping" }
+  | { status: "unauthenticated" }
   | {
-      route: "workspaces";
-      device: ConnectedDevice;
+      status: "authenticated";
+      device: ConnectedDevice | null;
       session: AccountSession;
-    }
-  | {
-      route: "workspace";
-      device: ConnectedDevice;
-      session: AccountSession;
-      workspace: WorkspaceSummary;
+      workspace: WorkspaceSummary | null;
     };
 
 interface AuthenticatedScope {
@@ -71,7 +68,7 @@ interface WorkspaceScope {
 
 export class MobileApplicationService extends ObservableService<MobileApplicationSnapshot> {
   readonly _serviceBrand: undefined;
-  private snapshot: MobileApplicationSnapshot = { route: "bootstrapping" };
+  private snapshot: MobileApplicationSnapshot = { status: "bootstrapping" };
   private loginScope: {
     container: IInstantiationService;
     service: LoginService;
@@ -81,7 +78,9 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
   private workspaceCandidate: WorkspaceScope | null = null;
   private lifecycleDispose: (() => void) | null = null;
   private backgroundTask: { cancel(): void } | null = null;
-  private visibility: ApplicationVisibility = "active";
+  private deviceDisconnectTask: Promise<void> | null = null;
+  private deviceLinkCloseTask: Promise<void> | null = null;
+  private appForeground = true;
   private startPromise: Promise<void> | null = null;
   private workspaceGeneration = 0;
   private disposed = false;
@@ -103,10 +102,6 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
     return this.authenticatedScope?.deviceService ?? null;
   }
 
-  get workspaceCatalogService(): WorkspaceCatalogService | null {
-    return this.authenticatedScope?.workspaceCatalog ?? null;
-  }
-
   get quickPromptLibraryService(): MobileQuickPromptLibraryService | null {
     return this.authenticatedScope?.quickPrompts ?? null;
   }
@@ -117,8 +112,8 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
 
   start(): Promise<void> {
     if (this.startPromise) return this.startPromise;
-    this.lifecycleDispose = this.ports.lifecycle.subscribe((visibility) =>
-      this.handleLifecycle(visibility)
+    this.lifecycleDispose = this.ports.appLifecycle.subscribe((state) =>
+      this.handleAppLifecycle(state)
     );
     this.startPromise = this.ports.legacySessionCookie
       .clear()
@@ -139,7 +134,7 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
   }
 
   async signOut(): Promise<void> {
-    await this.ports.deviceLink.closeLink().catch(() => undefined);
+    await this.closeDeviceLink();
     await Promise.all([
       this.ports.sessionStorage.clearSession(),
       this.ports.legacySessionCookie.clear().catch(() => undefined)
@@ -148,33 +143,31 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
     this.enterUnauthenticated();
   }
 
-  async disconnectDevice(): Promise<void> {
-    await this.ports.deviceLink.closeLink().catch(() => undefined);
-    this.disposeWorkspaceScope();
+  disconnectDevice(): Promise<void> {
+    if (this.deviceDisconnectTask) return this.deviceDisconnectTask;
     const scope = this.authenticatedScope;
-    if (!scope) return;
-    scope.device = null;
-    scope.quickPrompts.reset();
-    this.publish({ route: "devices", session: scope.session });
-    if (this.visibility === "active") {
-      scope.deviceService.resumeRemoteOperations();
-    }
-  }
-
-  showWorkspacePicker(): void {
-    const scope = this.authenticatedScope;
-    if (!scope?.device) return;
-    this.disposeWorkspaceScope();
-    this.publish({
-      device: scope.device,
-      route: "workspaces",
-      session: scope.session
+    const task = this.closeDeviceLink().finally(() => {
+      if (this.deviceDisconnectTask === task) {
+        this.deviceDisconnectTask = null;
+      }
+      if (
+        scope &&
+        this.authenticatedScope === scope &&
+        scope.device === null &&
+        this.appForeground
+      ) {
+        scope.deviceService.resumeRemoteOperations();
+      }
     });
+    this.deviceDisconnectTask = task;
+    scope?.deviceService.suspendRemoteOperations();
+    if (scope) this.clearConnectedDevice(scope);
+    return task;
   }
 
-  async selectWorkspace(workspace: WorkspaceSummary): Promise<void> {
+  private async selectWorkspace(workspace: WorkspaceSummary): Promise<boolean> {
     const authenticated = this.authenticatedScope;
-    if (!authenticated?.device) return;
+    if (!authenticated?.device) return false;
     this.disposeWorkspaceScope();
     const generation = ++this.workspaceGeneration;
     const navigation = new WorkspaceNavigationService();
@@ -223,16 +216,17 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
           this.workspaceCandidate = null;
           candidate.container.dispose();
         }
-        return;
+        return false;
       }
       this.workspaceCandidate = null;
       this.workspaceScope = candidate;
       this.publish({
         device: authenticated.device,
-        route: "workspace",
         session: authenticated.session,
+        status: "authenticated",
         workspace
       });
+      return true;
     } catch {
       if (this.workspaceCandidate === candidate) {
         this.workspaceCandidate = null;
@@ -245,10 +239,12 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
       ) {
         this.publish({
           device: authenticated.device,
-          route: "workspaces",
-          session: authenticated.session
+          session: authenticated.session,
+          status: "authenticated",
+          workspace: null
         });
       }
+      return false;
     }
   }
 
@@ -283,7 +279,7 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
       container: this.rootContainer.createChild(services),
       service
     };
-    this.publish({ route: "login" });
+    this.publish({ status: "unauthenticated" });
   }
 
   private enterAuthenticated(session: AccountSession): void {
@@ -300,14 +296,13 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
       this.ports.clock,
       (device) => this.onDeviceConnected(device)
     );
-    if (this.visibility !== "active") {
+    if (!this.appForeground) {
       deviceService.suspendRemoteOperations();
     }
     const services = new ServiceCollection();
     services.set(IDeviceService, deviceService);
     services.set(IAgentDirectoryService, directory);
     services.set(IMobileQuickPromptLibraryService, quickPrompts);
-    services.set(IWorkspaceCatalogService, workspaceCatalog);
     const container = this.rootContainer.createChild(services);
     this.authenticatedScope = {
       client,
@@ -319,7 +314,12 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
       session,
       workspaceCatalog
     };
-    this.publish({ route: "devices", session });
+    this.publish({
+      device: null,
+      session,
+      status: "authenticated",
+      workspace: null
+    });
     deviceService.start();
   }
 
@@ -327,39 +327,57 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
     const scope = this.authenticatedScope;
     if (!scope) return;
     scope.device = device;
-    scope.deviceService.suspendRemoteOperations();
     void scope.directory.load();
     void scope.quickPrompts.refresh();
     this.publish({
       device,
-      route: "workspaces",
-      session: scope.session
+      session: scope.session,
+      status: "authenticated",
+      workspace: null
     });
     await scope.workspaceCatalog.start();
     if (this.authenticatedScope !== scope || scope.device !== device) return;
-    const workspaces = scope.workspaceCatalog.getSnapshot().workspaces;
-    if (workspaces.length === 1) {
-      await this.selectWorkspace(workspaces[0]!);
+    const catalog = scope.workspaceCatalog.getSnapshot();
+    if (
+      catalog.status !== "ready" ||
+      catalog.errorCode ||
+      catalog.workspaces.length !== 1
+    ) {
+      this.clearConnectedDevice(scope);
+      await this.closeDeviceLink();
+      throw new DeviceConnectionSetupError("workspace_unavailable");
+    }
+    if (!(await this.selectWorkspace(catalog.workspaces[0]!))) {
+      this.clearConnectedDevice(scope);
+      await this.closeDeviceLink();
+      throw new DeviceConnectionSetupError("workspace_unavailable");
     }
   }
 
-  private handleLifecycle(visibility: ApplicationVisibility): void {
-    this.visibility = visibility;
+  private handleAppLifecycle(state: AppLifecycleState): void {
+    const foreground = state === "foreground";
+    this.appForeground = foreground;
     this.ports.diagnostics.record({
-      name: "application.visibility_changed",
-      visibility
+      name: "application.lifecycle_changed",
+      state
     });
-    if (visibility === "active") {
+    if (foreground) {
+      const hadPendingGrace = this.backgroundTask !== null;
       this.backgroundTask?.cancel();
       this.backgroundTask = null;
-      this.workspaceScope?.activity.resume();
-      this.workspaceCandidate?.activity.resume();
-      if (this.snapshot.route === "devices") {
+      if (hadPendingGrace) {
+        this.workspaceScope?.activity.resume();
+        this.workspaceCandidate?.activity.resume();
+      }
+      if (
+        this.snapshot.status === "authenticated" &&
+        this.snapshot.device === null &&
+        this.deviceDisconnectTask === null
+      ) {
         this.authenticatedScope?.deviceService.resumeRemoteOperations();
       }
       return;
     }
-    if (visibility === "inactive") return;
     if (this.backgroundTask) return;
     this.workspaceScope?.activity.pause();
     this.workspaceCandidate?.activity.pause();
@@ -401,5 +419,32 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
   private publish(snapshot: MobileApplicationSnapshot): void {
     this.snapshot = snapshot;
     this.emitChange();
+  }
+
+  private clearConnectedDevice(scope: AuthenticatedScope): void {
+    if (this.authenticatedScope !== scope) return;
+    this.disposeWorkspaceScope();
+    scope.device = null;
+    scope.quickPrompts.reset();
+    this.publish({
+      device: null,
+      session: scope.session,
+      status: "authenticated",
+      workspace: null
+    });
+  }
+
+  private closeDeviceLink(): Promise<void> {
+    if (this.deviceLinkCloseTask) return this.deviceLinkCloseTask;
+    const task = Promise.resolve()
+      .then(() => this.ports.deviceLink.closeLink())
+      .catch(() => undefined)
+      .finally(() => {
+        if (this.deviceLinkCloseTask === task) {
+          this.deviceLinkCloseTask = null;
+        }
+      });
+    this.deviceLinkCloseTask = task;
+    return task;
   }
 }

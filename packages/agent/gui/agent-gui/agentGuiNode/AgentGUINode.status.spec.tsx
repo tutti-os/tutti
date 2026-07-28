@@ -496,8 +496,16 @@ function createViewModel(
     pendingInteractivePrompt: null,
     queuedPrompts: [],
     queueStatus: "active",
-    canSubmit: true,
-    canQueueWhileBusy: false,
+    gate: {
+      conversationBusy: false,
+      runtime: {
+        status: "ready",
+        reason: null,
+        sessionRuntimeReason: null
+      },
+      editor: { status: "editable", reason: null },
+      submission: { status: "ready", reason: null }
+    },
     isSubmitting: false,
     isInterrupting: false,
     promptImagesSupported: true,

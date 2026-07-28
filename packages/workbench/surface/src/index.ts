@@ -13,7 +13,6 @@ export type {
 } from "./react/dockPreviewCache.ts";
 export type {
   WorkbenchMissionControlAdapter,
-  WorkbenchMissionControlMode,
   WorkbenchMissionControlSnapshot
 } from "./mission-control/types.ts";
 export {
@@ -68,7 +67,6 @@ export type {
   WorkbenchHostLaunchRequest,
   WorkbenchHostLaunchResult,
   WorkbenchHostMissionControlProps,
-  WorkbenchHostMissionControlMode,
   WorkbenchHostMultiInstanceStrategy,
   WorkbenchHostNodeCloseDecision,
   WorkbenchHostNodeCloseRequest,

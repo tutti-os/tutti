@@ -15,6 +15,7 @@ var (
 	ErrSessionNotFound                  = errors.New("agent session not found")
 	ErrSessionSettingsRequireNewSession = errors.New("agent session settings update requires a new session to preserve context")
 	ErrSessionActiveTurn                = errors.New("agent session already has an active turn")
+	ErrSessionForkUnsupported           = errors.New("agent session fork is unsupported")
 )
 
 const defaultStreamingReportCoalesceWindow = 50 * time.Millisecond
@@ -36,6 +37,7 @@ type Controller struct {
 	configOptionsUpdates        map[string]AgentSessionConfigOptionsUpdate
 	pendingConfigOptionsUpdates map[string][]AgentSessionConfigOptionsUpdate
 	provisionalSessions         map[string]bool
+	goalGenerationFences        map[string]*controllerGoalGenerationFenceRegistry
 	startupLocks                map[startupLockKey]*controllerLifecycleLock
 	lifecycleLocks              map[string]*controllerLifecycleLock
 	hub                         *EventHub
@@ -147,6 +149,7 @@ func NewControllerWithAdapterResolver(adapters []Adapter, reporter DurableActivi
 		configOptionsUpdates:        make(map[string]AgentSessionConfigOptionsUpdate),
 		pendingConfigOptionsUpdates: make(map[string][]AgentSessionConfigOptionsUpdate),
 		provisionalSessions:         make(map[string]bool),
+		goalGenerationFences:        make(map[string]*controllerGoalGenerationFenceRegistry),
 		startupLocks:                make(map[startupLockKey]*controllerLifecycleLock),
 		lifecycleLocks:              make(map[string]*controllerLifecycleLock),
 		hub:                         NewEventHub(),

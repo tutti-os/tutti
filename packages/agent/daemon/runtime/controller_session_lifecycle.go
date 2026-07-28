@@ -51,6 +51,7 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 	if existing, ok := c.get(roomID, agentSessionID); ok {
 		return StartResult{Session: existing}, nil
 	}
+	c.deleteRetainedGoalGenerationFences(roomID, agentSessionID)
 	session := Session{
 		RoomID:                  roomID,
 		AgentSessionID:          agentSessionID,
@@ -185,6 +186,7 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 	if session.Settings != nil {
 		session.PermissionModeID = session.Settings.PermissionModeID
 	}
+	c.invalidateAppliedGoalGenerationFences(session)
 	if err := adapter.Resume(ctx, session); err != nil {
 		if !input.RecreateIfMissing || !isResumeRecreatableError(err) {
 			return Session{}, err
@@ -201,6 +203,9 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 			return refreshed, nil
 		}
 		return session, nil
+	}
+	if err := c.applyRetainedGoalGenerationFencesOrClose(ctx, session, adapter); err != nil {
+		return Session{}, err
 	}
 	session.Status = SessionStatusReady
 	c.store(session)
@@ -233,6 +238,7 @@ func (c *Controller) Close(ctx context.Context, input CloseInput) (CloseResult, 
 		delete(c.commands, key)
 		delete(c.pendingCommandSnapshots, session.AgentSessionID)
 		delete(c.pendingConfigOptionsUpdates, key)
+		delete(c.goalGenerationFences, key)
 	}
 	c.mu.Unlock()
 	if provisional {
@@ -253,6 +259,7 @@ func (c *Controller) Close(ctx context.Context, input CloseInput) (CloseResult, 
 	delete(c.pendingCommandSnapshots, session.AgentSessionID)
 	delete(c.pendingConfigOptionsUpdates, key)
 	delete(c.provisionalSessions, key)
+	delete(c.goalGenerationFences, key)
 	c.mu.Unlock()
 	return CloseResult{AgentSessionID: session.AgentSessionID, Disconnected: true}, nil
 }

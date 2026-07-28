@@ -37,7 +37,12 @@ func (h *Host) CancelTurn(ctx context.Context, input CancelTurnInput) (CancelTur
 	if turn.Phase == storesqlite.TurnPhaseSettled {
 		return CancelTurnResult{Canonical: canonical, Turn: &turn, State: CancelStateAlreadySettled, Settled: true, Outcome: turn.Outcome}, nil
 	}
-	route, err := h.resolveRuntimeControlRoute(ctx, input.WorkspaceID, input.AgentSessionID)
+	route, err := h.resolveRuntimeControlRouteWithPolicy(
+		ctx,
+		input.WorkspaceID,
+		input.AgentSessionID,
+		input.RequireLive,
+	)
 	if err != nil {
 		return CancelTurnResult{}, err
 	}
@@ -128,6 +133,15 @@ func (h *Host) SubmitInteractive(ctx context.Context, ref InteractionRef, input 
 }
 
 func (h *Host) resolveRuntimeControlRoute(ctx context.Context, workspaceID, agentSessionID string) (runtimeControlRoute, error) {
+	return h.resolveRuntimeControlRouteWithPolicy(ctx, workspaceID, agentSessionID, false)
+}
+
+func (h *Host) resolveRuntimeControlRouteWithPolicy(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	requireLive bool,
+) (runtimeControlRoute, error) {
 	target, found, err := h.store.GetSession(ctx, workspaceID, agentSessionID)
 	if err != nil {
 		return runtimeControlRoute{}, err
@@ -141,6 +155,12 @@ func (h *Host) resolveRuntimeControlRoute(ctx context.Context, workspaceID, agen
 	}
 	if rootAgentSessionID == "" {
 		return runtimeControlRoute{}, ErrSessionNotFound
+	}
+	if requireLive {
+		if !h.runtimeSessionLive(workspaceID, rootAgentSessionID) {
+			return runtimeControlRoute{}, ErrRuntimeSessionDisconnected
+		}
+		return runtimeControlRoute{RootAgentSessionID: rootAgentSessionID, TargetSession: target}, nil
 	}
 	if _, err := h.EnsureRuntimeSession(ctx, SessionRef{WorkspaceID: workspaceID, AgentSessionID: rootAgentSessionID}); err != nil {
 		return runtimeControlRoute{}, err

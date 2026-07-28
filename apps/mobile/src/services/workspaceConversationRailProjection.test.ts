@@ -1,5 +1,8 @@
 import type { AgentConversationRailSummary } from "@tutti-os/agent-gui/conversation-rail-projection";
-import { projectWorkspaceConversationRail } from "./workspaceConversationRailProjection";
+import {
+  projectWorkspaceConversationRail,
+  selectWorkspaceConversationRailSessionIds
+} from "./workspaceConversationRailProjection";
 import type { WorkspaceConversationRailMembership } from "./workspaceConversationRailService";
 
 describe("projectWorkspaceConversationRail", () => {
@@ -65,6 +68,15 @@ describe("projectWorkspaceConversationRail", () => {
     });
 
     expect(sections[0]?.items.map((item) => item.id)).toEqual(["new", "known"]);
+  });
+
+  test("deduplicates canonical navigation ids across Rail memberships", () => {
+    expect(
+      selectWorkspaceConversationRailSessionIds([
+        { sessionIds: ["session-1", "session-2"] },
+        { sessionIds: ["session-1", "session-3"] }
+      ])
+    ).toEqual(["session-1", "session-2", "session-3"]);
   });
 });
 

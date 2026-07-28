@@ -18,7 +18,7 @@ Use the focused runtime index or open one area directly:
   Includes Codex Model Plan Responses-to-Chat routing and extension
   command/Skill palette hydration failures.
   Also covers focus-driven provider CLI scans, repeated Extension Target version
-  probes, and CPU spikes.
+  probes, extension release refresh delaying daemon startup, and CPU spikes.
 - [Agent Sessions And Lifecycle](./agent-session-lifecycle.md): Turn state, activation, planning-mode classification, Tutti workflow response contracts, loading, cancel, goal controls, restore, file-change undo, rail projection, realtime completion provenance, event updates, imports, and performance.
   Includes shared-device recovery that looks terminal while the host is still retrying.
   Also covers new-conversation requests that silently fail after a Chats
@@ -53,6 +53,7 @@ React rendering, Workbench state, external stores, input composition, and UI per
 
 - [Renderer body requests fail with `ERR_H2_OR_QUIC_REQUIRED`](./workbench-renderer.md#renderer-body-requests-fail-with-err_h2_or_quic_required)
 - [Renderer `fetch()` rejects an Electron image protocol that `<img>` can load](./workbench-renderer.md#renderer-fetch-rejects-an-electron-image-protocol-that-img-can-load)
+- [AgentGUI Mermaid flowcharts render shapes without labels](./workbench-renderer.md#agentgui-mermaid-flowcharts-render-shapes-without-labels)
 - [AgentGUI carousel owner avatar stays a solid badge](./workbench-renderer.md#agentgui-carousel-owner-avatar-stays-a-solid-badge)
 - [Renderer tile memory warnings from hidden autoplay animation](./workbench-renderer.md#renderer-tile-memory-warnings-from-hidden-autoplay-animation)
 - [Standalone Agent dev window stays black during cold startup](./workbench-renderer.md#standalone-agent-dev-window-stays-black-during-cold-startup)
@@ -63,6 +64,7 @@ React rendering, Workbench state, external stores, input composition, and UI per
 - [Dock entry is open but its state indicator is missing](./workbench-renderer.md#dock-entry-is-open-but-its-state-indicator-is-missing)
 - [Dense list panel stutters when mounted or resized](./workbench-renderer.md#dense-list-panel-stutters-when-mounted-or-resized)
 - [Adjacent sidebar animation repeatedly reflows its content and message flow](./workbench-renderer.md#adjacent-sidebar-animation-repeatedly-reflows-its-content-and-message-flow)
+- [Header divider drifts from a resizable sidebar](./workbench-renderer.md#header-divider-drifts-from-a-resizable-sidebar)
 - [Effect cleanup leaves mounted refs false in React development](./workbench-renderer.md#effect-cleanup-leaves-mounted-refs-false-in-react-development)
 - [AgentGUI crashes while unmounting a Monaco diff](./workbench-renderer.md#agentgui-crashes-while-unmounting-a-monaco-diff)
 - [Workbench node body warns about updating WorkbenchNodeLayer during render](./workbench-renderer.md#workbench-node-body-warns-about-updating-workbenchnodelayer-during-render)
@@ -116,14 +118,15 @@ CLI behavior, CI, package assets, skills, Browser Node, and terminal input.
 
 Android app login, native bridge, secure identity, and mobile transport diagnostics.
 
+- [Android QR scan closes without advancing pairing](./mobile.md#android-qr-scan-closes-without-advancing-pairing)
 - [Android release bundling cannot resolve the JSX transform](./mobile.md#android-release-bundling-cannot-resolve-the-jsx-transform)
 - [Mobile quick prompts are missing from the plus menu](./mobile.md#mobile-quick-prompts-are-missing-from-the-plus-menu)
 - [Mobile composer model and permission controls are missing](./mobile.md#mobile-composer-model-and-permission-controls-are-missing)
 - [Mobile composer option chips do not open](./mobile.md#mobile-composer-option-chips-do-not-open)
 - [Browser login returns to the App but remains signed out](./mobile.md#browser-login-returns-to-the-app-but-remains-signed-out)
-- [Android scanner returns but pairing never starts](./mobile.md#android-scanner-returns-but-pairing-never-starts)
 - [Android DeviceLink opens a session and then repeatedly restarts](./mobile.md#android-devicelink-opens-a-session-and-then-repeatedly-restarts)
 - [iOS pod install intermittently reports pathname contains null byte](./mobile.md#ios-pod-install-intermittently-reports-pathname-contains-null-byte)
+- [Mobile Jest discovers tests inside iOS Pods](./mobile.md#mobile-jest-discovers-tests-inside-ios-pods)
 - [React Native Pressable rows stack their children vertically](./mobile.md#react-native-pressable-rows-stack-their-children-vertically)
 
 ## [Computer Use](./computer-use.md)

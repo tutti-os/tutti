@@ -28,17 +28,16 @@ test("workspace workbench shell runtime controller combines child snapshots", as
       wallpaperId: "default"
     })
   });
-  const modes: (string | null)[] = [];
+  const openStates: boolean[] = [];
   controller.subscribe(() => {
-    modes.push(controller.getSnapshot().missionControl.mode);
+    openStates.push(controller.getSnapshot().missionControl.isOpen);
   });
 
   controller.missionControl.setAdapter(createMissionControlAdapter(2));
-  controller.missionControl.open("activate");
+  controller.missionControl.open();
 
-  assert.equal(controller.getSnapshot().missionControl.mode, "activate");
   assert.equal(controller.getSnapshot().missionControl.isOpen, true);
-  assert.deepEqual(modes, [null, "activate"]);
+  assert.deepEqual(openStates, [false, true]);
 
   const confirmation = controller.closeDialog.requestConfirmation({
     cancelLabel: "Cancel",
@@ -136,7 +135,7 @@ test("workspace workbench shell runtime controller passes reporter to mission co
   });
 
   controller.missionControl.setAdapter(createMissionControlAdapter(2));
-  controller.missionControl.open("activate", "keyboard");
+  controller.missionControl.open("keyboard");
   now = 1749124800123;
   controller.missionControl.close();
 
@@ -146,7 +145,6 @@ test("workspace workbench shell runtime controller passes reporter to mission co
         clientTS: 1749124800000,
         name: "mission_control.activated",
         params: {
-          mode: "activate",
           trigger: "keyboard",
           window_count: 2
         }
@@ -182,17 +180,17 @@ test("workspace workbench shell runtime controller keeps subscriptions after dis
       wallpaperId: "default"
     })
   });
-  const modes: (string | null)[] = [];
+  const openStates: boolean[] = [];
   controller.subscribe(() => {
-    modes.push(controller.getSnapshot().missionControl.mode);
+    openStates.push(controller.getSnapshot().missionControl.isOpen);
   });
 
   controller.dispose();
   controller.missionControl.setAdapter(createMissionControlAdapter(2));
-  controller.missionControl.open("layout");
+  controller.missionControl.open();
 
-  assert.equal(controller.getSnapshot().missionControl.mode, "layout");
-  assert.deepEqual(modes, [null, "layout"]);
+  assert.equal(controller.getSnapshot().missionControl.isOpen, true);
+  assert.deepEqual(openStates, [false, true]);
 });
 
 test("workspace workbench shell runtime controller dispose cancels pending close confirmation", async () => {
@@ -423,9 +421,10 @@ function createMissionControlAdapter(
 ): WorkbenchMissionControlAdapter<WorkbenchHostNodeData> {
   return {
     applyLayoutPreset() {},
-    focusNode() {},
+    releaseLockedLayout() {},
     getSnapshot() {
       return {
+        isLayoutLocked: false,
         layoutConstraints: {
           minHeight: 160,
           minWidth: 280,

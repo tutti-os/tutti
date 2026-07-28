@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerstatus"
 	externalagentregistry "github.com/tutti-os/tutti/services/tuttid/service/externalagentregistry"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
@@ -193,33 +194,6 @@ func TestDefaultRegistryIncludesCursorSpec(t *testing.T) {
 	}
 }
 
-func TestParseCursorAuthStatusOutput(t *testing.T) {
-	for _, tt := range []struct {
-		output       string
-		status       AuthStatus
-		accountLabel string
-		ok           bool
-	}{
-		{output: "Logged in as user@example.com", status: AuthAuthenticated, accountLabel: "user@example.com", ok: true},
-		{output: "cursor-agent 2026.06.10\nStatus: Authenticated", status: AuthAuthenticated, ok: true},
-		{output: "Not logged in. Run cursor-agent login to sign in.", status: AuthRequired, ok: true},
-		{output: "You are currently logged out", status: AuthRequired, ok: true},
-		{output: "", ok: false},
-		{output: "unrecognized output", ok: false},
-	} {
-		auth, ok := parseCursorAuthStatusOutput([]byte(tt.output))
-		if ok != tt.ok {
-			t.Fatalf("parseCursorAuthStatusOutput(%q) ok = %v, want %v", tt.output, ok, tt.ok)
-		}
-		if ok && auth.Status != tt.status {
-			t.Fatalf("parseCursorAuthStatusOutput(%q) status = %q, want %q", tt.output, auth.Status, tt.status)
-		}
-		if ok && auth.AccountLabel != tt.accountLabel {
-			t.Fatalf("parseCursorAuthStatusOutput(%q) accountLabel = %q, want %q", tt.output, auth.AccountLabel, tt.accountLabel)
-		}
-	}
-}
-
 func TestParseCursorAboutJSON(t *testing.T) {
 	output := []byte(`{
 		"cliVersion": "2026.07.01-41b2de7",
@@ -264,31 +238,6 @@ User Email          user@example.com
 	}
 	if auth.AccountLabel != "Cursor Ultra · user@example.com" {
 		t.Fatalf("accountLabel = %q, want Cursor Ultra · user@example.com", auth.AccountLabel)
-	}
-}
-
-func TestParseOpenCodeAuthStatusOutput(t *testing.T) {
-	for _, tt := range []struct {
-		output string
-		status AuthStatus
-		ok     bool
-	}{
-		{output: "Logged in as user@example.com", status: AuthAuthenticated, ok: true},
-		{output: "Status: authenticated", status: AuthAuthenticated, ok: true},
-		{output: "Not authenticated. Run opencode auth login.", status: AuthRequired, ok: true},
-		{output: "No providers are authenticated", status: AuthRequired, ok: true},
-		{output: "\x1b[0m\n└  0 credentials", status: AuthRequired, ok: true},
-		{output: "\x1b[0m\n└  2 credentials", status: AuthAuthenticated, ok: true},
-		{output: "", ok: false},
-		{output: "unexpected opencode error", ok: false},
-	} {
-		auth, ok := parseOpenCodeAuthStatusOutput([]byte(tt.output))
-		if ok != tt.ok {
-			t.Fatalf("parseOpenCodeAuthStatusOutput(%q) ok = %v, want %v", tt.output, ok, tt.ok)
-		}
-		if ok && auth.Status != tt.status {
-			t.Fatalf("parseOpenCodeAuthStatusOutput(%q) status = %q, want %q", tt.output, auth.Status, tt.status)
-		}
 	}
 }
 
@@ -492,7 +441,7 @@ func TestServiceListUsesCodexLoginStatusCommand(t *testing.T) {
 		if binaryPath != "/usr/local/bin/codex" {
 			t.Fatalf("binaryPath = %q, want /usr/local/bin/codex", binaryPath)
 		}
-		return parseCodexAuthStatusOutput([]byte("Logged in using ChatGPT"))
+		return AuthInfo{Status: AuthAuthenticated}, true
 	}
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
@@ -509,6 +458,36 @@ func TestServiceListUsesCodexLoginStatusCommand(t *testing.T) {
 	}
 }
 
+func TestServiceListReportsCodexAPIKeyAsAuthenticatedWithoutLogin(t *testing.T) {
+	service := testService(func(name string) (string, error) {
+		return "/usr/local/bin/" + name, nil
+	}, map[string]bool{})
+	service.Environ = func() []string {
+		return []string{"OPENAI_API_KEY=sk-test"}
+	}
+	service.RunAuthStatusCommand = func(
+		context.Context,
+		ProviderSpec,
+		string,
+	) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthRequired}, true
+	}
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	status := onlyStatus(t, snapshot)
+	if status.Availability.Status != AvailabilityReady {
+		t.Fatalf("availability = %q, want %q", status.Availability.Status, AvailabilityReady)
+	}
+	if status.Auth.Status != AuthAuthenticated ||
+		status.Auth.AuthMethod != "apiKey" ||
+		status.Auth.AccountLabel != "API Usage Billing" {
+		t.Fatalf("auth = %#v, want API billing authentication", status.Auth)
+	}
+}
+
 func TestServiceListDoesNotUseCodexAuthMarkerAfterConfigError(t *testing.T) {
 	service := testService(func(name string) (string, error) {
 		return "/usr/local/bin/" + name, nil
@@ -517,7 +496,10 @@ func TestServiceListDoesNotUseCodexAuthMarkerAfterConfigError(t *testing.T) {
 		if spec.Provider != "codex" {
 			t.Fatalf("Provider = %q, want codex", spec.Provider)
 		}
-		return parseAuthStatusCommandOutput("codex", []byte("Error loading configuration: /home/test/.codex/config.toml:8:16: unknown variant `priority`, expected `fast` or `flex`"))
+		return providerstatus.ParseAuthStatusOutput(
+			spec.AuthOutputParserKind,
+			[]byte("Error loading configuration: /home/test/.codex/config.toml:8:16: unknown variant `priority`, expected `fast` or `flex`"),
+		)
 	}
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
@@ -2411,35 +2393,6 @@ func TestServiceListFallsBackToClaudeAuthMarkerWhenAuthStatusCommandIsUnrecogniz
 	)
 	if harness.calls != 2 {
 		t.Fatalf("auth status command calls = %d, want 2", harness.calls)
-	}
-}
-
-func TestParseClaudeAuthStatusOutputReportsAuthenticated(t *testing.T) {
-	auth, ok := parseClaudeAuthStatusOutput([]byte(`{"loggedIn":true,"authMethod":"oauth"}`))
-	if !ok {
-		t.Fatal("parseClaudeAuthStatusOutput ok = false, want true")
-	}
-	if auth.Status != AuthAuthenticated {
-		t.Fatalf("Status = %q, want %q", auth.Status, AuthAuthenticated)
-	}
-	if auth.AccountLabel != "oauth" {
-		t.Fatalf("AccountLabel = %q, want oauth", auth.AccountLabel)
-	}
-	if auth.AuthMethod != "oauth" {
-		t.Fatalf("AuthMethod = %q, want oauth", auth.AuthMethod)
-	}
-}
-
-func TestParseClaudeAuthStatusOutputReportsAuthMethodWhenNotLoggedIn(t *testing.T) {
-	auth, ok := parseClaudeAuthStatusOutput([]byte(`{"loggedIn":false,"authMethod":"apiKey"}`))
-	if !ok {
-		t.Fatal("parseClaudeAuthStatusOutput ok = false, want true")
-	}
-	if auth.Status != AuthRequired {
-		t.Fatalf("Status = %q, want %q", auth.Status, AuthRequired)
-	}
-	if auth.AuthMethod != "apiKey" {
-		t.Fatalf("AuthMethod = %q, want apiKey", auth.AuthMethod)
 	}
 }
 

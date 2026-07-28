@@ -35,6 +35,23 @@ export function resolvePendingSubmission(
   };
 }
 
+export function dismissPendingSubmission(
+  engine: AgentSessionEngine,
+  submission: PendingSubmission
+): void {
+  engine.dispatch(
+    submission.creating
+      ? {
+          requestId: submission.clientSubmitId,
+          type: "activation/dismissed"
+        }
+      : {
+          clientSubmitId: submission.clientSubmitId,
+          type: "submit/dismissed"
+        }
+  );
+}
+
 function createEntityId(): string {
   if (typeof globalThis.crypto?.randomUUID === "function") {
     return globalThis.crypto.randomUUID();
@@ -42,3 +59,4 @@ function createEntityId(): string {
   const fallbackHex = Math.random().toString(16).slice(2).padEnd(12, "0");
   return `00000000-0000-4000-8000-${fallbackHex.slice(0, 12)}`;
 }
+import type { AgentSessionEngine } from "@tutti-os/agent-activity-core";

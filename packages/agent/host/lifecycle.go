@@ -278,6 +278,16 @@ func (h *Host) ensureRuntimeSessionLocked(ctx context.Context, ref SessionRef) (
 			return ProviderRuntimeSession{}, ErrProviderSessionNotEstablished
 		}
 		live.Resumable = live.Resumable || evidence.Established
+		// Controller may retain the Session record after releasing an idle
+		// provider connection. Controller's registry handles connection
+		// replacement; clearing this Host marker additionally refreshes its
+		// retained set from the durable store before Ensure returns.
+		if !h.runtimeSessionLive(ref.WorkspaceID, ref.AgentSessionID) {
+			h.goalFencesRestored.Delete(ref.WorkspaceID + "\x00" + ref.AgentSessionID)
+		}
+		if err := h.restoreGoalGenerationFencesOnce(ctx, ref); err != nil {
+			return ProviderRuntimeSession{}, err
+		}
 		return live, nil
 	}
 	if !found || strings.TrimSpace(canonicalSession.Provider) == "" {
@@ -318,6 +328,10 @@ func (h *Host) ensureRuntimeSessionLocked(ctx context.Context, ref SessionRef) (
 	if err != nil {
 		return ProviderRuntimeSession{}, err
 	}
+	if err := h.restoreGoalGenerationFences(ctx, ref); err != nil {
+		return ProviderRuntimeSession{}, err
+	}
+	h.goalFencesRestored.Store(ref.WorkspaceID+"\x00"+ref.AgentSessionID, struct{}{})
 	return result, nil
 }
 

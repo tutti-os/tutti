@@ -199,13 +199,18 @@ export function mergeAgentGUITimelineItems(
 export function buildAgentGUIConversationDetail({
   timelineItems,
   conversation,
+  canonicalSession = null,
   workspaceRoot = null
 }: {
   timelineItems: readonly WorkspaceAgentActivityTimelineItem[];
   conversation: AgentGUIConversationProjectionSource;
+  canonicalSession?: AgentActivitySession | null;
   workspaceRoot?: string | null;
 }): WorkspaceAgentSessionDetailViewModel | null {
-  const session = timelineSessionFromItems(timelineItems, conversation);
+  const session =
+    canonicalSession?.agentSessionId === conversation.id
+      ? canonicalSession
+      : timelineSessionFromItems(timelineItems, conversation);
   const activity =
     buildWorkspaceAgentActivityListViewModel(
       {
@@ -241,6 +246,7 @@ export function buildAgentGUIConversationDetail({
 export function buildAgentGUIConversationModels({
   timelineItems,
   conversation,
+  canonicalSession = null,
   childSessions = [],
   childMessagesBySessionId = {},
   workspaceRoot = null,
@@ -248,6 +254,7 @@ export function buildAgentGUIConversationModels({
 }: {
   timelineItems: readonly WorkspaceAgentActivityTimelineItem[];
   conversation: AgentGUIConversationProjectionSource;
+  canonicalSession?: AgentActivitySession | null;
   childSessions?: readonly AgentActivitySession[];
   childMessagesBySessionId?: Readonly<
     Record<string, readonly AgentActivityMessage[] | undefined>
@@ -261,6 +268,7 @@ export function buildAgentGUIConversationModels({
   const detail = buildAgentGUIConversationDetail({
     timelineItems,
     conversation,
+    canonicalSession,
     workspaceRoot
   });
   if (!detail) {

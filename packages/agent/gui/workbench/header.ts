@@ -23,6 +23,11 @@ import {
 import { CreateChatIcon } from "@tutti-os/ui-system/icons";
 import openLinkLinedIconUrl from "../app/renderer/assets/icons/open-link-lined.svg";
 import { useAgentGuiWorkbenchBodyRenderError } from "./bodyRenderErrorRegistry.ts";
+import { AgentTargetInfoTooltip } from "../shared/AgentTargetInfoTooltip.tsx";
+import type {
+  AgentGUIAgentTarget,
+  AgentGUIAgentTargetInfoRenderer
+} from "../types.ts";
 import { AgentGuiWorkbenchSessionMenu } from "./AgentGuiWorkbenchSessionMenu.tsx";
 import type {
   AgentGuiWorkbenchSessionAction,
@@ -72,6 +77,7 @@ export interface AgentGuiWorkbenchHeaderProps extends HTMLAttributes<HTMLElement
   conversationRailWidthPx?: number | null;
   conversationIconUrl?: string | null;
   conversationIconFallbackUrl?: string | null;
+  conversationAgentTarget?: AgentGUIAgentTarget | null;
   hasConversation?: boolean;
   providerRailWidthPx?: number | null;
   primaryAccessory?: ReactNode;
@@ -86,6 +92,7 @@ export interface AgentGuiWorkbenchHeaderProps extends HTMLAttributes<HTMLElement
   onOpenDetachedWindow?: () => void;
   onSessionAction?: (action: AgentGuiWorkbenchSessionAction) => void;
   onToggleConversationRail: (nextCollapsed: boolean) => void;
+  renderAgentTargetInfo?: AgentGUIAgentTargetInfoRenderer;
   showAppTitle?: boolean;
   showConversationRailToggle?: boolean;
   showWindowControls?: boolean;
@@ -107,6 +114,7 @@ export function AgentGuiWorkbenchHeader({
   conversationRailWidthPx,
   conversationIconUrl,
   conversationIconFallbackUrl,
+  conversationAgentTarget = null,
   hasConversation = false,
   providerRailWidthPx,
   primaryAccessory,
@@ -121,6 +129,7 @@ export function AgentGuiWorkbenchHeader({
   onOpenDetachedWindow,
   onSessionAction,
   onToggleConversationRail,
+  renderAgentTargetInfo,
   showAppTitle = true,
   showConversationRailToggle = true,
   showWindowControls = true,
@@ -306,7 +315,9 @@ export function AgentGuiWorkbenchHeader({
               className: "agent-gui-workbench-header__session-title"
             },
             createSessionHeaderIconSlot({
+              agentTarget: conversationAgentTarget,
               fallbackSrc: sessionIconFallbackUrl,
+              renderAgentTargetInfo,
               src: sessionIconUrl,
               testId: "agent-gui-window-session-icon"
             }),
@@ -345,7 +356,9 @@ export function AgentGuiWorkbenchHeader({
                   "data-testid": "agent-gui-window-detail-title"
                 },
                 createSessionHeaderIconSlot({
+                  agentTarget: conversationAgentTarget,
                   fallbackSrc: sessionIconFallbackUrl,
+                  renderAgentTargetInfo,
                   src: sessionIconUrl,
                   testId: "agent-gui-window-detail-title-icon"
                 }),
@@ -538,31 +551,66 @@ function createNewConversationButton({
 }
 
 function createSessionHeaderIconSlot({
+  agentTarget,
   src,
   fallbackSrc,
+  renderAgentTargetInfo,
   testId
 }: {
+  agentTarget: AgentGUIAgentTarget | null;
   src: string;
   fallbackSrc: string;
+  renderAgentTargetInfo?: AgentGUIAgentTargetInfoRenderer;
   testId: string;
 }): ReactNode {
   // While the session's provider is still resolving (e.g. a freshly created
   // session) there is no icon URL yet. Render a neutral skeleton block rather
   // than flashing a wrong/default provider icon; it is replaced once the real
   // icon arrives.
-  if (!src) {
-    return createElement("span", {
-      "aria-hidden": "true",
-      className:
-        "agent-gui-workbench-header__session-icon agent-gui-workbench-header__session-icon--pending",
-      "data-testid": `${testId}-pending`
-    });
+  const icon = !src
+    ? createElement("span", {
+        "aria-hidden": "true",
+        className:
+          "agent-gui-workbench-header__session-icon agent-gui-workbench-header__session-icon--pending",
+        "data-testid": `${testId}-pending`
+      })
+    : createElement(SessionHeaderIcon, {
+        key: `${src}::${fallbackSrc}`,
+        fallbackSrc,
+        src,
+        testId
+      });
+
+  if (!agentTarget || !renderAgentTargetInfo) {
+    return icon;
   }
-  return createElement(SessionHeaderIcon, {
-    key: `${src}::${fallbackSrc}`,
-    fallbackSrc,
-    src,
-    testId
+
+  const trigger = createElement(
+    "span",
+    {
+      "aria-label": agentTarget.label,
+      className: "agent-gui-workbench-header__session-icon-info-trigger",
+      role: "img",
+      tabIndex: 0,
+      onDoubleClick: (event) => event.stopPropagation(),
+      onPointerDown: (event) => event.stopPropagation()
+    },
+    icon
+  );
+
+  return createElement(TooltipProvider, {
+    delayDuration: 0,
+    skipDelayDuration: 0,
+    children: createElement(AgentTargetInfoTooltip, {
+      align: "start",
+      fallbackLabel: agentTarget.label,
+      renderer: renderAgentTargetInfo,
+      side: "bottom",
+      sideOffset: 6,
+      surface: "workbench-header",
+      target: agentTarget,
+      children: trigger
+    })
   });
 }
 

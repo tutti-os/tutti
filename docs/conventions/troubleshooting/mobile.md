@@ -1,5 +1,40 @@
 # Mobile Troubleshooting
 
+## Android QR scan closes without advancing pairing
+
+- **Symptom:** The pairing scanner opens, reads a valid Desktop QR code, and
+  returns to the device page, but the App neither shows an error nor advances
+  to waiting or confirmed state.
+- **Quick checks:** Confirm Android launches and finishes the ZXing
+  `CaptureActivity`, then inspect events from `TuttiAppLifecycle`. A background
+  event during the in-process Activity handoff identifies a lifecycle-adapter
+  regression rather than a camera or QR parsing failure.
+- **Root cause:** Android presents the scanner as a child Activity. Pausing the
+  React Activity therefore looks like ordinary App backgrounding. If the
+  service invalidates every pairing generation on that transition, the native
+  scan promise can resolve successfully while its QR payload is silently
+  discarded as stale.
+- **Fix:** Own application visibility at the native platform boundary. Android
+  publishes `ProcessLifecycleOwner` state, so switching between Activities in
+  the same process remains foreground; iOS publishes `UIApplication`
+  foreground/background notifications. The TypeScript lifecycle port consumes
+  this one semantic signal, while pairing remains unaware of Activities and
+  scanners. A genuine process background suspends remote pairing operations
+  and starts the DeviceLink grace period. A claim already sent is reconciled
+  from challenge state after foreground recovery instead of being submitted
+  twice.
+- **Validation:** Verify the lifecycle adapter publishes its initial state,
+  deduplicates transitions, and disposes subscriptions. Verify the application
+  service applies background policy only after a real process background event.
+  Verify scanner cancellation, duplicate taps, permission failures, and
+  claim/poll reconciliation in the device service. Finally scan on Android and
+  confirm no background event is emitted during the
+  `MainActivity -> CaptureActivity -> MainActivity` sequence.
+- **References:**
+  `apps/mobile/android/app/src/main/java/dev/tutti/mobile/AppLifecycleModule.kt`,
+  `apps/mobile/ios/TuttiMobile/AppLifecycleModule.swift`,
+  `apps/mobile/src/native/appLifecyclePort.ts`
+
 ## Android release bundling cannot resolve the JSX transform
 
 - **Symptom:** `app:assembleRelease` reaches Metro bundling and fails
@@ -83,33 +118,44 @@
   `apps/mobile/src/services/workspaceActivityCommandAdapter.ts`,
   `apps/mobile/src/components/MobileComposerSettingsSheet.tsx`
 
-## Mobile composer option chips do not open
+## Mobile composer option sheets do not respond
 
 - **Symptom:** Model, reasoning, speed, and permission chips are visible and
   accessible above the composer, but tapping them does not show their option
-  sheet. The same model or permission options remain reachable through the `+`
-  menu.
+  sheet; or rapidly alternating between a chip and the `+` button leaves two
+  overlapping menus, with the lower menu visible but unable to receive taps.
 - **Quick checks:** Tap a chip on a real Android or iOS renderer and inspect the
   JavaScript log. Repeated `BottomSheetModal::handlePortalRender` entries,
-  followed by a maximum-update-depth error, identify the overlay path; a
-  missing composer-options response is a different problem covered above.
-- **Root cause:** `@gorhom/bottom-sheet` delegates `BottomSheetModal` rendering
-  through `@gorhom/portal`. Its portal update path is incompatible with the
+  followed by a maximum-update-depth error, identify the legacy overlay path.
+  Without that error, inspect the native window hierarchy: two simultaneous
+  composer `Modal` windows identify competing local overlay state rather than
+  a slow or missing press handler. A missing composer-options response is a
+  different problem covered above.
+- **Root causes:** `@gorhom/bottom-sheet` delegates `BottomSheetModal` rendering
+  through `@gorhom/portal`; its portal update path is incompatible with the
   current React 19 Native renderer and recursively republishes the modal node
-  instead of presenting it.
+  instead of presenting it. Separately, sibling composer controls must not own
+  independent window-level overlay state: queued taps can open both windows,
+  and the top window then intercepts input intended for the visible lower one.
 - **Fix:** Keep the shared compact `NativeSheet` on React Native's window-level
   `Modal`, with UI System scrim and panel tokens. Require a caller-localized
   close label, expose backdrop dismissal as an accessibility button, handle the
   iOS accessibility escape gesture, and represent an optional fixed height as
   one value rather than silently accepting multiple snap points. Reserve
   `@gorhom/bottom-sheet` for app-owned complex sheets that genuinely need its
-  gesture, keyboard, or multi-snap-point behavior.
+  gesture, keyboard, or multi-snap-point behavior. At composition boundaries
+  that offer multiple overlay entry points, keep one discriminated overlay
+  state in their nearest common owner and make child controls submit typed menu
+  intents.
 - **Validation:** Open and dismiss the model, speed, and permission sheets more
   than once, select the already active option without changing Session state,
-  and confirm there is no maximum-update-depth error. Also verify touch
-  backdrop, Android system-back, VoiceOver escape, and screen-reader close
-  button dismissal without hiding the sheet's interactive descendants.
+  and rapidly alternate between a settings chip and `+`; assert that no more
+  than one native modal is visible. Confirm there is no maximum-update-depth
+  error. Also verify touch backdrop, Android system-back, VoiceOver escape, and
+  screen-reader close button dismissal without hiding the sheet's interactive
+  descendants.
 - **References:** `packages/ui/system/src/native/sheet.tsx`,
+  `apps/mobile/src/components/MobileComposerDock.tsx`,
   `apps/mobile/src/components/MobileComposerSettingsSheet.tsx`
 
 ## Browser login returns to the App but remains signed out
@@ -138,44 +184,6 @@
   authorizes device-list requests.
 - **References:** `apps/mobile/src/services/accountClient.ts`,
   `apps/mobile/android/app/src/main/java/dev/tutti/mobile/MobileSecurityModule.kt`
-
-## Android scanner returns but pairing never starts
-
-- **Symptom:** Tapping “Scan pairing code” opens the camera and recognizes the
-  Desktop QR code, but the Mobile device page shows no result and the account
-  control-plane API never receives the pairing challenge claim.
-- **Quick checks:** Filter `ReactNativeJS` in logcat. A healthy sequence contains
-  `device_pairing.phase_changed` with `scanning`, an
-  `application.visibility_changed` event with `background`, then
-  `device_pairing.phase_changed` with `claiming` after the scanner returns.
-  These events contain no QR payload or secret. If the sequence ends after
-  `scanning`, inspect the application lifecycle boundary before the camera,
-  parser, or control-plane request.
-- **Root cause:** ZXing presents a separate Android `CaptureActivity`, so the
-  React Native host enters the background while the system scanner is visible.
-  A boolean lifecycle adapter previously treated that transition as a request
-  to cancel every device-page operation. It invalidated the pairing generation
-  while the scanner promise was pending, then silently discarded the valid
-  result before sending the claim.
-- **Fix:** Model `active`, `inactive`, and `background` explicitly. Keep QR
-  acquisition in a `scanning` phase that survives host background transitions,
-  and start the cancellable remote pairing generation only after parsing the
-  scanner result. If a claim POST is already in flight, settle it and resume
-  confirmation polling after returning active; its server-side effect cannot be
-  canceled safely. If the response is lost across that transition, read the
-  challenge state to reconcile the result instead of repeating the claim POST.
-  Keep manual form state in the screen rather than adding scanner-specific flags
-  to the global application lifecycle.
-- **Validation:** In a service regression test, start scanning, emit background
-  and active transitions, resolve the scanner once, and assert exactly one
-  claim followed by confirmation. Also cover duplicate taps, scanner
-  cancellation, permission denial, disposal while scanning, invalid manual
-  codes, and background suspension during a remote claim. Repeat the sequence
-  on a physical Android device and confirm the structured log contains no
-  pairing payload.
-- **References:** `apps/mobile/src/services/deviceService.ts`,
-  `apps/mobile/src/services/mobileApplicationService.ts`,
-  `apps/mobile/src/native/createMobileServicePorts.ts`
 
 ## Android DeviceLink opens a session and then repeatedly restarts
 
@@ -235,6 +243,25 @@ dev.tutti.mobile` and inspect a narrow logcat window for the Go fatal message.
 - **References:** `apps/mobile/ios/Podfile`,
   `apps/mobile/ios/cocoapods_pathname_workaround.rb`,
   [CocoaPods #12798](https://github.com/CocoaPods/CocoaPods/issues/12798)
+
+## Mobile Jest discovers tests inside iOS Pods
+
+- **Symptom:** `pnpm --filter @tutti-os/mobile test` starts hundreds of Hermes
+  or third-party suites under `apps/mobile/ios/Pods` after Pods are installed.
+  Project suites may pass, but the command fails on upstream fixtures, Flow
+  syntax, or snapshots.
+- **Quick checks:** Inspect the failing test paths. Paths below `ios/Pods`
+  identify test discovery crossing into CocoaPods output rather than a product
+  test failure.
+- **Root cause:** Jest recursively searches the package root. CocoaPods can
+  vendor JavaScript sources and tests, and generated native dependency
+  directories are not excluded by the default React Native preset.
+- **Fix:** Keep `/ios/Pods/` in the Mobile Jest `testPathIgnorePatterns`,
+  alongside the Android generated tree and `node_modules`. Do not adjust Babel
+  transforms to make vendored test suites run.
+- **Validation:** Install iOS Pods, run the Mobile test command, and confirm
+  Jest discovers only repository-owned suites.
+- **References:** `apps/mobile/jest.config.js`
 
 ## React Native Pressable rows stack their children vertically
 

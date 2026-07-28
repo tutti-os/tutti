@@ -70,6 +70,12 @@ Desktop + tsh-server + relay
 存储、网络变化或 DeviceLink bridge 才进入 Kotlin/Swift/Objective-C++；
 ICE/QUIC 问题进入 Go。
 
+移动端业务服务消费的是“整个 App 是否在前台”，不是某一个 React Activity 或
+ViewController 是否可见。Android 由 `TuttiAppLifecycle` 使用进程级 lifecycle
+投影该语义；同进程的扫码、授权等 Activity 切换仍属于前台。iOS 模块投影
+`UIApplication` 状态。禁止把 React Native `AppState` 直接接入 DeviceLink、
+配对或会话服务，也不要让这些业务服务识别平台 Activity 类型。
+
 ### 2.1 需要认识的 iOS 名词
 
 - **Simulator**：macOS 上的 iOS 模拟器。可以验证 React Native UI、键盘、安全区、
@@ -332,15 +338,14 @@ adb install -r path/to/app-debug.apk
 Native bridge 只导出原始 Ed25519 公钥和签名结果。
 
 扫码属于页面发起、Native 完成的本地系统交互，不属于远端配对操作。Android 打开
-ZXing `CaptureActivity` 时 React Native 宿主会进入 `background`，iOS 的系统过渡
-也可能先进入 `inactive`；生命周期 adapter 必须保留这两个状态，不能压缩成一个
-`active: boolean`。设备服务使用显式 `scanning` 阶段承接扫码结果，只有解析出配对码
-后才启动可被后台策略暂停的 claim/poll。应用进入后台可以中止正在进行的远端
-连接尝试并暂停配对的后续远端步骤，但不能仅因系统扫码界面覆盖宿主 Activity 就作废
-扫码结果。已经发出的 claim 必须在回到前台后按 challenge 状态对账，不能盲目重试
-可能已经成功的 POST；只读 poll 才可以在生命周期中断后安全重试。扫码 adapter 返回
-可取消 operation；设备服务销毁时必须关闭原生扫描界面，并在旧 scanner callback
-排空后才完成取消。手动输入框的展开和值属于 screen 临时状态，不进入设备服务快照。
+ZXing `CaptureActivity` 时 `MainActivity` 会暂停，但 App 进程仍在前台；
+`TuttiAppLifecycle` 因此不得发布后台事件。iOS 同样只向业务层投影整个
+`UIApplication` 的前后台语义，不暴露页面级过渡。设备服务使用显式 `scanning`
+阶段承接扫码结果，只有解析出配对码后才启动可被真实后台策略暂停的 claim/poll。
+已经发出的 claim 必须在回到前台后按 challenge 状态对账，不能盲目重试可能已经成功的
+POST；只读 poll 才可以在生命周期中断后安全重试。扫码 adapter 返回可取消
+operation；设备服务销毁时必须关闭原生扫描界面，并在旧 scanner callback 排空后才
+完成取消。手动输入框的展开和值属于 screen 临时状态，不进入设备服务快照。
 
 移动端为生命周期与配对阶段输出结构化 JavaScript 日志，只记录事件名、可枚举阶段、
 来源和脱敏错误码。禁止记录二维码、手动配对码、challenge id、secret 或 session。
@@ -412,20 +417,30 @@ Google Play 账号。以下事项等正式分发前再处理：
   Mobile 将 `message_delta` 投影到 activity-core optimistic overlay，直接应用
   Turn/Interaction 更新，并在 discontinuity、序列断点和重连时读取 canonical 数据；
 - workspace 前台已有 live stream 时不再运行一秒消息轮询和两秒会话轮询；长流断开或
-  协议不可用时才恢复单飞轮询，并以一秒退避自动重建 live stream；
+  协议不可用时才恢复轮询。`WorkspaceActivityMessagePageLoader` 单独负责 transport
+  page 请求、DTO 映射、Engine 应用和按 Session + 查询覆盖范围的 single-flight；
+  `WorkspaceActivityService` 只决定轮询时机和 authoritative/incremental 读取语义。
+  older/incremental 请求不会吞掉 live gap 所需的 authoritative newest-page 读取；
+  旧会话的慢请求也不会阻塞用户刚切换到的会话，并以一秒退避自动重建 live stream；
 - Android caller 已接入 create/get/update attempt、STUN 二次 gathering、真实
   DeviceLink request stream、端到端请求 deadline、prepare/connect generation
   fencing 和 Native 15 秒后台 grace period；
 - 移动端已直接复用 `@tutti-os/client-tuttid-ts`，并从
   `@tutti-os/agent-gui` 复用安全的 Interaction answer model、无 DOM 的会话摘要和
-  canonical 对话流 projection，完成 workspace 自动进入/选择、按置顶/项目/最近分组的
-  会话抽屉、可折叠 section、刷新/失败重试、section 分页、置顶、重命名、删除、增量
+  canonical 对话流 projection，完成 Personal 单 workspace 校验、按置顶/项目/最近分组的
+  独立会话列表、可折叠 section、刷新/失败重试、section 分页、置顶、重命名、删除、增量
   消息读取、新建/切换、发送、停止和结构化 Interaction 提交；Native 对话流遵循同一份
   消息合并、思考、工具活动、处理态和 Turn summary 语义，并复用 AgentGUI 的
   `following` / `detached` 末尾跟随状态机；Mobile 只负责原生手势、滚动执行与展开状态。
   切换会话会定位最新内容，流式更新只在 `following` 时跟随；主动上滑会在首个滚动帧前
   进入 `detached` 并提供回到底部入口，内容增长和近底部几何不能自行恢复跟随；加载历史
   消息时保持当前阅读锚点；
+- Rail service 只保存 section membership、Session id、cursor、total 和请求状态；
+  首屏与分页返回的 Session DTO 瞬时通过共享 mapper upsert 到 workspace Engine，
+  不在 Mobile 再维护一份实体缓存。root detail 的 Session、child Session 和 Turn
+  也通过一个原子 `session/detailSnapshotReceived` 进入 Engine；当前 Native
+  会话流不展示 child 对话，因此只分页读取选中 root Session 的消息，不预取没有消费方的
+  child transcript；
 - Agent 消息正文已接入 Fabric 原生 Markdown renderer，支持 GFM 标题、列表、代码块、
   表格、任务列表、流式尾部动画和系统文本选择；样式全部映射到 Native UI System
   token，Mobile 不再维护 Markdown AST 或另一份消息类型；
@@ -435,7 +450,16 @@ Google Play 账号。以下事项等正式分发前再处理：
 - Composer options 以 Agent Target 为 key 通过同一个 `AgentSessionEngine` 加载，复用
   AgentGUI 的纯 support/settings projection 和 activity-tuttid DTO mapper。Native
   sheet 只负责模型、推理、速度、权限和计划模式的本地展示；已有会话设置走 Engine
-  command，新建会话的目标设置作为 activation intent 一并提交；
+  command，新建会话的目标设置作为 activation intent 一并提交。settings sheet 与
+  tools modal 共享一个带 activation identity 的 overlay 状态，Native 延迟关闭回调
+  只能关闭自己所属的 activation，不能在 ABA 切换后关闭同类型的新 overlay；
+  `commandsAvailable` 为 false 时关闭现有 overlay，并统一禁用输入、工具入口、设置
+  chips 和 sheet 选项，避免展示可操作但会被 command adapter 拒绝的控件；
+- Mobile 与 Desktop 复用 activity-core 的 realtime observation 和 prompt command
+  executor。Interaction 的 submitting/failure、child 聚合和 per-Session runtime
+  availability 全部从 Engine 投影；前后台恢复会解锁 Engine 中全部已知 Session，
+  不依赖有界 Rail 页重新发现。Native card 不维护独立 Promise 状态，失败重试复用
+  Engine 保存的原始 response，不能修改后伪装成同一请求；
 - Go authenticated link、owner host、application frame、allowlist、race，以及
   TypeScript/Jest、Metro bundle、Kotlin/Java/CMake、四 ABI APK 均已有自动验证。
 - `apps/mobile/ios` 已建立 React Native 0.86/Fabric Simulator shell，并提供与
@@ -526,9 +550,9 @@ Mobile 也点击“使用 GitHub 登录”并在系统浏览器中完成登录�
 按顺序验证，每一步成功后再继续：
 
 1. Mobile 只显示当前手机 identity 拥有的同账号配对设备。
-2. 点击 Desktop 后成功建立 direct DeviceLink，只有一个 workspace 时自动进入；
-   多个 workspace 时先显示选择页。
-3. 会话抽屉可新建、切换会话，主页面正确显示历史对话流。
+2. 点击 Desktop 后成功建立 direct DeviceLink，并且仅在返回恰好一个 Personal
+   workspace 时进入会话列表；零个或多个 workspace 都明确失败。
+3. 会话列表可新建、切换会话，选择后进入独立详情页并正确显示历史对话流。
 4. 发送一条普通消息，Desktop 和 Mobile 最终显示同一个结果且没有重复消息。
 5. 在 Agent 运行时点击停止，两个端最终收敛到同一个 Turn 状态。
 6. 分别触发 Question、Approval 和 Plan 交互，并从 Mobile 提交一次。

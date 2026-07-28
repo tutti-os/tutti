@@ -128,9 +128,6 @@ export const workspaceWorkbenchDesktopI18nKeys = {
     unavailableItem: "launchpad.unavailableItem"
   },
   missionControl: {
-    activateShortcutDefault: "missionControl.activateShortcutDefault",
-    activateShortcutMac: "missionControl.activateShortcutMac",
-    activateTrigger: "missionControl.activateTrigger",
     layoutShortcutDefault: "missionControl.layoutShortcutDefault",
     layoutShortcutMac: "missionControl.layoutShortcutMac",
     layoutTrigger: "missionControl.layoutTrigger",

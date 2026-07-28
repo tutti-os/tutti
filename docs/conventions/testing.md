@@ -114,6 +114,7 @@ ownership, not a runtime call stack or proof of causation.
 
 The capture runner ships `provider-switch`, `session-switch`,
 `provider-session-cycle`, `virtualized-streaming`,
+`concurrent-agent-streaming`,
 `virtualized-scroll-locator`, `virtualized-session-cycle`,
 `virtualized-oversized-active-turn`, `browser-behind-agent-gui-pixels`,
 `rail-scope-reveal`, `composer-input`, `composer-overflow-resize`, `workbench-window-lifecycle`,
@@ -124,6 +125,14 @@ The capture runner ships `provider-switch`, `session-switch`,
 `--scenario <id>`. Scenario modules own preparation, completion conditions,
 semantic assertions, milestones, and metadata; runtime startup, trace capture,
 renderer analysis, and report rendering stay scenario-neutral.
+
+`concurrent-agent-streaming` selects two settled root Sessions, restores them
+into two non-overlapping visible AgentGUI windows, and routes each through an
+isolated fake Cursor ACP Session. Both Composer forms submit in one renderer
+task. The scenario requires both windows to enter working state, produce
+repeated transcript mutations, and settle before the trace tail. It reports
+the sampled conversation-projection and streaming-text functions without
+setting a cross-device timing threshold.
 
 `virtualized-streaming` and `virtualized-scroll-locator` require one root
 Session with at least thirty settled Turns. They change only the isolated copy

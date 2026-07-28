@@ -49,6 +49,7 @@ tasks.named("preBuild").configure {
 }
 
 dependencies {
+    implementation("androidx.lifecycle:lifecycle-process:2.6.2")
     implementation("com.facebook.react:react-android")
     implementation("com.facebook.react:hermes-android")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")

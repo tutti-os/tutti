@@ -33,6 +33,21 @@ export type {
 
 export type AgentActivitySessionKind = "root" | "child";
 
+export interface AgentActivitySessionLifecycleCapabilities {
+  fork: boolean;
+  forkThroughTurn: boolean;
+  forkThroughTurnIds?: string[];
+  forkThroughTurnIdsKnown?: boolean;
+}
+
+export interface AgentActivitySessionForkLineage {
+  sourceAgentSessionId: string;
+  sourceTurnId: string;
+  targetTurnId: string;
+  operationId: string;
+  forkedAtUnixMs: number;
+}
+
 export interface AgentActivitySession {
   workspaceId: string;
   agentSessionId: string;
@@ -60,6 +75,8 @@ export interface AgentActivitySession {
   settings: AgentActivitySessionSettings;
   permissionConfig: AgentActivitySessionPermissionConfig;
   capabilities: AgentActivitySessionCapabilities | null;
+  lifecycleCapabilities: AgentActivitySessionLifecycleCapabilities;
+  forkedFrom: AgentActivitySessionForkLineage | null;
   usage: AgentActivitySessionUsage | null;
   goal: AgentActivitySessionGoal | null;
   /**
@@ -71,6 +88,7 @@ export interface AgentActivitySession {
   imported: boolean;
   visible: boolean;
   resumable: boolean;
+  /** Latest accepted durable message change cursor. */
   messageVersion: number;
   lastEventUnixMs: number;
   startedAtUnixMs: number;

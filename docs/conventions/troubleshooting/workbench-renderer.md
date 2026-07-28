@@ -246,6 +246,34 @@
   [tuttiAssetProtocol.ts](../../../apps/desktop/src/main/host/tuttiAssetProtocol.ts)
   [workspaceFileIconProtocol.ts](../../../apps/desktop/src/main/host/workspaceFileIconProtocol.ts)
 
+### AgentGUI Mermaid flowcharts render shapes without labels
+
+- Symptom:
+  Mermaid flowcharts in AgentGUI show node borders and edges, but node and edge
+  labels are blank.
+- Quick checks:
+  Inspect Mermaid's raw SVG before the transcript sanitizer. If labels are
+  children of `<foreignObject>` while the sanitized SVG keeps shapes but has no
+  `<foreignObject>` or equivalent `<text>`, the missing content is an SVG/HTML
+  label-mode mismatch rather than a color or layout problem.
+- Root cause:
+  Mermaid enables HTML labels by default and renders them inside SVG
+  `<foreignObject>` elements. AgentGUI's defense-in-depth SVG sanitizer removes
+  those elements, including their text, while preserving native SVG shapes and
+  paths.
+- Fix:
+  Configure Mermaid to emit native SVG text with `htmlLabels: false`. Add
+  `htmlLabels` to Mermaid's secure configuration keys so diagram-level
+  directives cannot turn HTML labels back on. Keep the post-render SVG
+  sanitizer in place.
+- Validation:
+  Render a real flowchart containing multiline, CJK, decision, and edge labels,
+  including an `init` directive that requests HTML labels. Assert the sanitized
+  result contains every label as native SVG text and no `<foreignObject>`.
+- References:
+  [AgentMessageMermaid.tsx](../../../packages/agent/gui/shared/AgentMessageMermaid.tsx)
+  [AgentMessageMermaid.integration.spec.tsx](../../../packages/agent/gui/shared/AgentMessageMermaid.integration.spec.tsx)
+
 ### AgentGUI carousel owner avatar stays a solid badge
 
 - Symptom:
@@ -327,33 +355,39 @@
 ### IME composition breaks fuzzy search or controlled search inputs
 
 - Symptom:
-  Chinese, Japanese, or Korean input cannot be committed in a fuzzy search or
-  mention picker. Pressing Enter to accept an IME candidate may select a
-  highlighted result, submit a search, or clear/replace the partially composed
-  text.
+  Chinese, Japanese, or Korean input cannot be committed in a fuzzy search,
+  mention picker, or a controlled name dialog (for example Files → New folder /
+  New file). Pressing Enter to accept an IME candidate may select a highlighted
+  result, submit a search or create dialog, or clear/replace the partially
+  composed text.
 - Quick checks:
   Inspect any `keydown` handler that consumes `Enter` or `Tab` while a menu is
-  open. Also inspect controlled `input[type="search"]` fields whose `value`
-  comes from async search/controller state.
+  open. Also inspect controlled text/`input[type="search"]` fields whose
+  `value` comes from async search/controller or dialog store state and whose
+  `onChange` commits on every keystroke without composition handlers.
 - Root cause:
   IME candidate confirmation is delivered through composition-aware keyboard
   events. If menu shortcuts do not check `isComposing` or the `keyCode/which`
   `229` fallback, the app treats candidate confirmation as a command. If a
-  controlled search input pushes every composition update through async search
-  state, stale parent values can overwrite the local composing buffer.
+  controlled search or name input pushes every composition update through async
+  search/controller/dialog state, stale parent values can overwrite the local
+  composing buffer.
 - Fix:
   In fuzzy/menu key handlers, return before command handling when
   `event.isComposing`, `event.nativeEvent.isComposing`, `keyCode === 229`, or
-  `which === 229`. For controlled search inputs, keep a local value during
-  `compositionstart`/`compositionend`, commit to the controller on
-  `compositionend`, and ignore stale parent values until the parent catches up.
+  `which === 229`. For controlled search or name inputs, keep a local value
+  during `compositionstart`/`compositionend` (prefer
+  `useComposedInputValue`), commit to the controller on `compositionend`, and
+  ignore stale parent values until the parent catches up. Guard form submit
+  while composition is active.
 - Validation:
   Add a unit test for the IME guard or input sync state, then manually type a
-  Chinese query and confirm Enter accepts the candidate instead of selecting a
-  result or submitting the field.
+  Chinese query/name and confirm Enter accepts the candidate instead of
+  selecting a result or submitting the field.
 - References:
   [richTextIme.ts](../../../packages/ui/rich-text/src/editor/richTextIme.ts)
   [useComposedInputValue.ts](../../../packages/ui/react-hooks/src/useComposedInputValue.ts)
+  [WorkspaceFileManagerMenus.tsx](../../../packages/workspace/file-manager/src/ui/WorkspaceFileManagerMenus.tsx)
   [WorkspaceFileReferencePickerTree.tsx](../../../packages/workspace/file-reference/src/ui/internal/reference/WorkspaceFileReferencePickerTree.tsx)
   [IssueManagerSidebarSections.tsx](../../../packages/workspace/issue-manager/src/ui/internal/shell/IssueManagerSidebarSections.tsx)
 
@@ -920,6 +954,43 @@
 - References:
   [StandaloneAgentToolSidebar.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/StandaloneAgentToolSidebar.tsx)
   [standaloneAgentWindowBounds.ts](../../../apps/desktop/src/main/windows/standaloneAgentWindowBounds.ts)
+
+### Header divider drifts from a resizable sidebar
+
+- Symptom:
+  A Workbench node's custom header divides its chrome at the sidebar boundary,
+  but that divider moves ahead of or behind the body sidebar while the resize
+  handle is dragged.
+- Quick checks:
+  Identify where the header and body read their widths. If the body owns a
+  descendant CSS variable while an effect copies the value to a Workbench
+  ancestor for the header, there are two update paths. Also check whether
+  `grid-template-columns`, `width`, or the resize handle's position keeps a
+  transition active during pointer movement.
+- Root cause:
+  A CSS variable declared inside the body cannot inherit upward into a sibling
+  header. Copying React state to an ancestor in a passive effect makes the
+  header update in a different phase, while a persistent layout transition
+  makes one boundary chase each pointer position. Rapid pointer movement
+  exposes the divergence even when both paths eventually settle on the same
+  number.
+- Fix:
+  Put the live width variable on the lowest DOM scope shared by header and body,
+  and update that single variable directly from `pointermove`. Keep the
+  in-progress width in the interaction ref, update ARIA imperatively, and
+  commit React state when the resize ends. Mark the resize lifecycle explicitly
+  and disable layout and handle-position transitions until `pointerup`,
+  `pointercancel`, or lost pointer capture. A standalone surface without a
+  shared Workbench ancestor can own the same variable on its layout root.
+- Validation:
+  Unit-test that the layout publisher selects the shared Workbench scope,
+  updates it in place, and cleans it up. Run the owning package tests,
+  typecheck, and renderer/UI boundary checks, then visually drag in both
+  directions and confirm the header and body dividers remain coincident.
+- References:
+  [IssueManagerSidebarLayout.ts](../../../packages/workspace/issue-manager/src/ui/internal/shell/IssueManagerSidebarLayout.ts)
+  [useIssueManagerShellView.ts](../../../packages/workspace/issue-manager/src/ui/internal/shell/useIssueManagerShellView.ts)
+  [useAgentGUIConversationRailResizePointerMove.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/view/useAgentGUIConversationRailResizePointerMove.ts)
 
 ### Renderer services initialize twice and consume one event twice
 

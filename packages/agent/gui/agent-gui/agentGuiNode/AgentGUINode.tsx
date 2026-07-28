@@ -142,6 +142,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   } = hostActions;
   const {
     agentConfigAccount: renderAgentConfigAccount,
+    agentTargetInfo: renderAgentTargetInfo,
     projectDirectoryPickerHeaderActions:
       renderProjectDirectoryPickerHeaderActions,
     providerRailEmpty: renderProviderRailEmpty,
@@ -448,6 +449,7 @@ export const AgentGUINode = memo(function AgentGUINode({
           return (
             <AgentGUINodeView
               viewModel={viewModel}
+              renderAgentTargetInfo={renderAgentTargetInfo}
               renderSidebarFooter={renderSidebarFooter}
               renderProviderRailEmpty={renderProviderRailEmpty}
               renderProviderUnavailableState={renderProviderUnavailableState}

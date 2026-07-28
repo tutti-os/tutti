@@ -14,6 +14,7 @@ import {
   AgentTargetPresentationProvider,
   type AgentMessageMarkdownAgentTarget
 } from "../../shared/AgentTargetPresentationContext";
+import { AgentTargetInfoRendererProvider } from "../../shared/AgentTargetInfoRendererContext";
 import { AgentConversationClockProvider } from "../../shared/agentConversation/components/AgentConversationClock";
 import type { AgentGUINodeViewModel } from "./model/agentGuiNodeTypes";
 import {
@@ -81,6 +82,7 @@ export function AgentGUINodeView({
   viewModel,
   referenceProvenanceFilters = null,
   sessionInputHistoryEnabled = false,
+  renderAgentTargetInfo,
   renderProjectDirectoryPickerHeaderActions,
   renderSidebarFooter,
   renderProviderRailEmpty,
@@ -769,5 +771,14 @@ export function AgentGUINodeView({
       </AgentTargetSetupRoot>
     </AgentTargetPresentationProvider>
   );
-  return <TooltipProvider>{content}</TooltipProvider>;
+  return (
+    <TooltipProvider>
+      <AgentTargetInfoRendererProvider
+        agentTargets={viewModel.rail.agentTargets}
+        renderer={renderAgentTargetInfo}
+      >
+        {content}
+      </AgentTargetInfoRendererProvider>
+    </TooltipProvider>
+  );
 }

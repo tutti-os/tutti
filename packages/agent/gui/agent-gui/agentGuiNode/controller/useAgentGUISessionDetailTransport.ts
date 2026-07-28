@@ -1,7 +1,8 @@
 import {
   selectLatestActivationForSession,
+  selectSessionMessages,
+  selectSessionMessageWindow,
   type SessionReconcileScope,
-  type AgentActivitySnapshot,
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
 import type { RefObject } from "react";
@@ -21,14 +22,13 @@ import {
   useAgentConversationMessagePaging,
   windowHasTurnMissingUserPrompt
 } from "./useAgentConversationMessagePaging";
+import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
 
 export function useAgentGUISessionDetailTransport(input: {
   activeConversationId: string | null;
   activeConversationIdRef: RefObject<string | null>;
   agentActivityRuntime: AgentActivityRuntime;
   agentActivityRuntimeOrigin: string;
-  agentActivitySnapshot: AgentActivitySnapshot;
-  agentActivitySnapshotRef: RefObject<AgentActivitySnapshot>;
   dataRef: RefObject<AgentGUINodeData>;
   isMountedRef: RefObject<boolean>;
   reloadSelectedConversationRef: RefObject<
@@ -48,8 +48,6 @@ export function useAgentGUISessionDetailTransport(input: {
     activeConversationIdRef,
     agentActivityRuntime,
     agentActivityRuntimeOrigin,
-    agentActivitySnapshot,
-    agentActivitySnapshotRef,
     dataRef,
     isMountedRef,
     reloadSelectedConversationRef,
@@ -65,31 +63,35 @@ export function useAgentGUISessionDetailTransport(input: {
     }),
     [agentActivityRuntimeOrigin, workspaceId]
   );
+  const activeCanonicalMessages = useEngineSelector(
+    sessionEngine,
+    (engineState) => selectSessionMessages(engineState, activeConversationId)
+  );
+  const activeCanonicalWindow = useEngineSelector(
+    sessionEngine,
+    (engineState) =>
+      selectSessionMessageWindow(engineState, activeConversationId)
+  );
   const state = useAgentSessionControllerState(
     sessionViewRef(activeConversationId),
-    activeConversationId
-      ? (agentActivitySnapshot.sessionMessagesById[activeConversationId] ?? [])
-      : [],
-    activeConversationId
-      ? (agentActivitySnapshot.sessionMessageWindowsById?.[
-          activeConversationId
-        ] ?? null)
-      : null
+    activeCanonicalMessages,
+    activeCanonicalWindow
   );
   const resolveSessionMessages = useCallback(
     (agentSessionId: string | null | undefined) => {
       const normalized = agentSessionId?.trim() ?? "";
       if (!normalized) return EMPTY_AGENT_GUI_MESSAGES;
       const sessionView = state.getAgentSessionView(sessionViewRef(normalized));
-      const canonical =
-        agentActivitySnapshot.sessionMessagesById[normalized] ??
-        EMPTY_AGENT_GUI_MESSAGES;
+      const canonical = selectSessionMessages(
+        sessionEngine.getSnapshot(),
+        normalized
+      );
       const older = sessionView?.olderMessages ?? EMPTY_AGENT_GUI_MESSAGES;
       return older.length > 0
         ? mergeWorkspaceAgentMessages(older, canonical)
         : canonical;
     },
-    [agentActivitySnapshot.sessionMessagesById, sessionViewRef, state]
+    [sessionEngine, sessionViewRef, state]
   );
   const {
     loadSessionState,
@@ -144,8 +146,7 @@ export function useAgentGUISessionDetailTransport(input: {
     },
     getActiveSessionId: () => activeConversationIdRef.current,
     getCanonicalMessages: (agentSessionId) =>
-      agentActivitySnapshotRef.current.sessionMessagesById[agentSessionId] ??
-      EMPTY_AGENT_GUI_MESSAGES,
+      selectSessionMessages(sessionEngine.getSnapshot(), agentSessionId),
     isMounted: () => isMountedRef.current,
     projection: {
       maxVersion: maxFiniteMessageVersion,

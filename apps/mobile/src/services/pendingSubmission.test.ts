@@ -1,4 +1,9 @@
-import { resolvePendingSubmission } from "./pendingSubmission";
+import type { AgentSessionEngine } from "@tutti-os/agent-activity-core";
+import {
+  dismissPendingSubmission,
+  resolvePendingSubmission,
+  type PendingSubmission
+} from "./pendingSubmission";
 
 describe("resolvePendingSubmission", () => {
   it("reuses the exact identity when retrying an existing session submission", () => {
@@ -72,5 +77,42 @@ describe("resolvePendingSubmission", () => {
 
     expect(otherSession).not.toBe(first);
     expect(otherSession.agentSessionId).toBe("session-2");
+  });
+});
+
+describe("dismissPendingSubmission", () => {
+  it.each([
+    [
+      false,
+      {
+        clientSubmitId: "submit-1",
+        type: "submit/dismissed"
+      }
+    ],
+    [
+      true,
+      {
+        requestId: "submit-1",
+        type: "activation/dismissed"
+      }
+    ]
+  ])("dispatches the exact creating=%s dismissal", (creating, expected) => {
+    const intents: unknown[] = [];
+    const engine = {
+      dispatch(intent: unknown) {
+        intents.push(intent);
+      }
+    } as AgentSessionEngine;
+    const submission: PendingSubmission = {
+      agentSessionId: "session-1",
+      agentTargetId: creating ? "target-1" : null,
+      clientSubmitId: "submit-1",
+      creating,
+      text: "hello"
+    };
+
+    dismissPendingSubmission(engine, submission);
+
+    expect(intents).toEqual([expected]);
   });
 });

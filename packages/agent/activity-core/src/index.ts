@@ -1,7 +1,6 @@
 export type { AgentActivityAdapter } from "./adapter.ts";
 export { AGENT_ACTIVITY_LIVE_PROTOCOL_REVISION } from "./liveProtocolRevision.gen.ts";
 export type { AgentActivityLiveEvent } from "./liveEvent.types.ts";
-export { parseAgentActivityMessageDeltaEvent } from "./liveEventParsing.ts";
 export type { AgentActivityComposerModelConfiguration } from "./composerModelConfiguration.types.ts";
 export type { AgentActivityDisplayStatus } from "./displayStatus.types.ts";
 export type { AgentActivityRailPlacement } from "./railPlacement.types.ts";
@@ -31,12 +30,6 @@ export {
 export type { AgentActivitySessionMessageWindow } from "./messageWindow.types.ts";
 export { parseInlineActivityMessages } from "./inlineActivityMessages.ts";
 export {
-  createAgentActivityOptimisticMessageOverlay,
-  type AgentActivityOptimisticApplyResult,
-  type AgentActivityOptimisticMessageOverlay,
-  type AgentActivityOptimisticMessageScope
-} from "./optimisticMessageOverlay.ts";
-export {
   agentActivitySessionMessageWindowFromDescendingPage,
   loadAllAgentSessionMessages,
   type AgentActivityMessagePageLike,
@@ -56,6 +49,19 @@ export {
   type AgentActivityUsageInput
 } from "./usage.ts";
 export {
+  createAgentActivityWorkspaceEventCoordinator,
+  type AgentActivityWorkspaceEventInput
+} from "./workspaceEventCoordinator.ts";
+export {
+  createAgentActivitySessionReconcileExecutor,
+  type AgentActivityChildMessageHydration,
+  type AgentActivitySessionReconcileExecutor,
+  type AgentActivitySessionReconcilePort,
+  type AgentActivitySessionReconcileResult,
+  type AgentActivitySessionReconcileTrace,
+  type CreateAgentActivitySessionReconcileExecutorInput
+} from "./sessionReconcileExecutor.ts";
+export {
   createAgentSessionEngine,
   ENGINE_INTENT_BATCH_DELAY_MS,
   type CreateAgentSessionEngineInput
@@ -64,6 +70,10 @@ export type {
   EngineDiagnosticEvent,
   EngineDiagnosticSink
 } from "./engine/diagnostics.ts";
+export {
+  executeAgentActivityPromptCommand,
+  type AgentActivityPromptCommandPort
+} from "./engine/promptCommandExecution.ts";
 export type {
   AgentSessionEngine,
   AgentSessionEngineIdentity,
@@ -87,13 +97,26 @@ export type {
 } from "./engine/types.ts";
 export { AGENT_SESSION_ENGINE_LOCAL_ORIGIN } from "./engine/types.ts";
 export { selectWorkspaceReconcileState } from "./engine/engineRuntime.selectors.ts";
-export { dispatchSessionMutation } from "./engine/sessionMutationDispatch.ts";
 export {
+  dispatchSessionForkThroughTurn,
+  dispatchSessionMutation,
+  type DispatchSessionForkThroughTurnInput
+} from "./engine/sessionMutationDispatch.ts";
+export {
+  selectPendingSessionForkThroughTurnIds,
+  selectSessionForkThroughTurnMutation,
   selectSessionMutation,
-  selectSessionMutations
+  selectSessionMutations,
+  type SessionForkThroughTurnPendingSelectorInput,
+  type SessionForkThroughTurnMutationSelectorInput
 } from "./engine/sessionMutations.selectors.ts";
 export type {
   SessionDeleteMutationResult,
+  SessionAcknowledgeForkObservedCommand,
+  SessionForkObservationAckStatus,
+  SessionForkThroughTurnCommand,
+  SessionForkThroughTurnMutationRecord,
+  SessionForkThroughTurnRequestedIntent,
   SessionMutationCommand,
   SessionMutationRecord,
   SessionMutationStatus,
@@ -122,9 +145,14 @@ export {
   selectSessionAttention
 } from "./engine/attentionReadState.selectors.ts";
 export {
+  selectSessionMessageWindow,
   selectSessionMessages,
   selectSessionMessagesById
 } from "./engine/sessionMessages.selectors.ts";
+export {
+  createAgentSessionFamilySnapshotSelector,
+  type AgentSessionFamilySnapshot
+} from "./engine/sessionFamily.selectors.ts";
 export type { SessionMessagesState } from "./engine/sessionMessages.types.ts";
 export {
   selectComposerOptions,
@@ -266,6 +294,7 @@ export {
 } from "./engine/pendingIntents.selectors.ts";
 export type { SessionActivationPresentation } from "./engine/pendingIntents.selectors.ts";
 export type {
+  AgentActivitySessionDetailSnapshot,
   SessionActivityObservedIntent,
   SessionDetailSnapshotReceivedIntent,
   SessionReconcileCommand,
@@ -327,6 +356,7 @@ export type {
   AgentActivitySendInputResult,
   AgentActivitySetSessionPinnedInput,
   AgentActivitySession,
+  AgentActivitySessionForkLineage,
   AgentActivitySessionCapabilities,
   AgentActivitySessionGoal,
   AgentActivitySessionPermissionConfig,
@@ -356,4 +386,9 @@ export type {
   AgentActivityUpdatedApplyResult,
   AgentActivityUpdatedEvent
 } from "./types.ts";
+export type {
+  AgentActivityForkSessionOperationStatus,
+  AgentActivityForkSessionResult,
+  AgentActivityForkSessionThroughTurnInput
+} from "./sessionFork.types.ts";
 export { workspaceAgentSessionStatus } from "./workspaceAgentSessionProjection.ts";

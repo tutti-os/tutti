@@ -372,6 +372,7 @@ export function useAgentGUIViewLabels(input: {
         "agentHost.agentGui.sharedAgentOwnerSeparator"
       ),
       loadingConversation: t("agentHost.agentGui.loadingConversation"),
+      continuedFromTask: t("agentHost.agentGui.continuedFromTask"),
       scrollToBottom: t("agentHost.agentGui.scrollToBottom"),
       fallbackAgentTitle,
       untitledConversationTitle: t(

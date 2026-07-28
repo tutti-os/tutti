@@ -6,7 +6,6 @@ import {
   useState,
   type DragEvent
 } from "react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@tutti-os/ui-system";
 import {
   createDisabledPlaceholderAgentGUIAgentTarget,
   createLocalAgentGUIAgentTarget
@@ -45,6 +44,8 @@ import styles from "../AgentGUINode.styles";
 import { AgentGUIProviderManagerDialog } from "./AgentGUIProviderManagerDialog";
 import { useAgentGUIProviderRailPreferences } from "./useAgentGUIProviderRailPreferences";
 import { AgentGUIOwnerAvatar } from "../AgentGUIOwnerAvatar";
+import { AgentTargetInfoTooltip } from "../../../shared/AgentTargetInfoTooltip";
+import { useAgentTargetInfoRenderer } from "../../../shared/AgentTargetInfoRendererContext";
 
 const agentGUIProviderRailCatalog = [
   ...migratedAgentGUIProviderIdentityCatalog
@@ -215,6 +216,7 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
   } = useAgentGUIProviderRailPreferences();
   const [dragState, setDragState] =
     useState<AgentGUIProviderRailDragState | null>(null);
+  const renderAgentTargetInfo = useAgentTargetInfoRenderer();
   const dragStateRef = useRef<AgentGUIProviderRailDragState | null>(null);
   const setProviderRailDragState = useCallback(
     (nextDragState: AgentGUIProviderRailDragState | null) => {
@@ -756,12 +758,17 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
           );
 
           return (
-            <Tooltip key={`${target.provider}:${target.targetId}:tooltip`}>
-              <TooltipTrigger asChild>{tile}</TooltipTrigger>
-              <TooltipContent side="right" sideOffset={-4}>
-                {label}
-              </TooltipContent>
-            </Tooltip>
+            <AgentTargetInfoTooltip
+              key={`${target.provider}:${target.targetId}:tooltip`}
+              fallbackLabel={label}
+              renderer={renderAgentTargetInfo}
+              side="right"
+              sideOffset={-4}
+              surface="provider-rail"
+              target={target}
+            >
+              {tile}
+            </AgentTargetInfoTooltip>
           );
         })}
       </div>

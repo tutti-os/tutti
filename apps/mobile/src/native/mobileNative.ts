@@ -1,5 +1,6 @@
 import { NativeModules } from "react-native";
 import type { AccountSession, DeviceIdentity } from "../services/mobileDomain";
+import type { AppLifecycleNative } from "./appLifecyclePort";
 export type { AccountSession, DeviceIdentity } from "../services/mobileDomain";
 
 export interface BrowserLoginCompletion {
@@ -77,5 +78,7 @@ function requireNativeModule<T>(name: string): T {
 export const mobileSecurity = requireNativeModule<MobileSecurityNative>(
   "TuttiMobileSecurity"
 );
+export const appLifecycle =
+  requireNativeModule<AppLifecycleNative>("TuttiAppLifecycle");
 export const deviceLink =
   requireNativeModule<DeviceLinkNative>("TuttiDeviceLink");

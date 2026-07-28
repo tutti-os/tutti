@@ -12,6 +12,7 @@ import type { AgentProjectPathChangeMetadata } from "../AgentComposerSettingsMen
 import type { AgentSlashCommandCapability } from "../model/agentSlashCommandProviderPolicy";
 import type {
   AgentComposerDraft,
+  AgentGUIComposerGate,
   AgentGUIComposerSettingsVM,
   AgentGUIProviderSkillOption,
   AgentGUIQueueStatus,
@@ -85,9 +86,12 @@ export interface AgentComposerProps {
   hasCompactableContext?: boolean;
   compactSupported?: boolean | null;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
-  disabled: boolean;
+  gate: AgentGUIComposerGate;
+  /** View-local lock that does not redefine canonical Composer readiness. */
+  presentationEditorDisabled: boolean;
   disabledReason?: string | null;
-  submitDisabled: boolean;
+  /** Draft-independent view-local submission lock. */
+  presentationSubmitDisabled: boolean;
   /** Canonical engine projection of the independent TuttiModeActivation. */
   tuttiModeActive?: boolean;
   /** Blocks submission/removal while activation CAS or creation is unresolved. */
@@ -109,7 +113,6 @@ export interface AgentComposerProps {
     agentTargetId?: string | null;
   }) => void;
   onHandoffConversation?: (target: AgentGUIAgentTarget) => void;
-  canQueueWhileBusy: boolean;
   showStopButton: boolean;
   stopDisabled: boolean;
   activePrompt: AgentConversationPromptVM | null;

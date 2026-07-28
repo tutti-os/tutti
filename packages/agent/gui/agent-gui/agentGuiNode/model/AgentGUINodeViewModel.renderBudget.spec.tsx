@@ -16,6 +16,55 @@ describe("useAgentGUIViewModel render budgets", () => {
   it("keeps rail and detail references stable while typing in the composer", () => {
     assertIsolatedGroupUpdate("composer", ["detail", "rail"]);
   });
+
+  it("publishes the connecting-to-ready Composer gate as one snapshot", () => {
+    const initial = createViewModel();
+    const connectingGate: AgentGUINodeViewModel["composer"]["gate"] = {
+      conversationBusy: false,
+      runtime: {
+        status: "blocked",
+        reason: "target_connection",
+        sessionRuntimeReason: null
+      },
+      editor: { status: "blocked", reason: "runtime_blocked" },
+      submission: { status: "blocked", reason: "runtime_blocked" }
+    };
+    const readyGate: AgentGUINodeViewModel["composer"]["gate"] = {
+      conversationBusy: false,
+      runtime: {
+        status: "ready",
+        reason: null,
+        sessionRuntimeReason: null
+      },
+      editor: { status: "editable", reason: null },
+      submission: { status: "ready", reason: null }
+    };
+    const rendered = renderHook(
+      ({ candidate }) => useAgentGUIViewModel(candidate),
+      {
+        initialProps: {
+          candidate: {
+            ...initial,
+            composer: { ...initial.composer, gate: connectingGate }
+          }
+        }
+      }
+    );
+
+    rendered.rerender({
+      candidate: {
+        ...initial,
+        composer: { ...initial.composer, gate: readyGate }
+      }
+    });
+
+    expect(rendered.result.current.composer.gate).toBe(readyGate);
+    expect(rendered.result.current.composer.gate).toMatchObject({
+      runtime: { status: "ready" },
+      editor: { status: "editable" },
+      submission: { status: "ready" }
+    });
+  });
 });
 
 function assertIsolatedGroupUpdate(
@@ -114,7 +163,16 @@ function createViewModel(): AgentGUINodeViewModel {
       promptImagesSupported: false,
       compactSupported: false,
       goalPauseSupported: false,
-      canSubmit: false,
+      gate: {
+        conversationBusy: false,
+        runtime: {
+          status: "ready",
+          reason: null,
+          sessionRuntimeReason: null
+        },
+        editor: { status: "editable", reason: null },
+        submission: { status: "ready", reason: null }
+      },
       isTuttiModeActive: false,
       isTuttiModeUpdating: false,
       tuttiModeOrchestrationIntensity: 50,
@@ -123,8 +181,7 @@ function createViewModel(): AgentGUINodeViewModel {
         {} as AgentGUINodeViewModel["composer"]["composerSettings"],
       queuedPrompts: [],
       queueStatus: "active",
-      drainingQueuedPromptId: null,
-      canQueueWhileBusy: false
+      drainingQueuedPromptId: null
     },
     interaction: {} as AgentGUINodeViewModel["interaction"],
     readiness: {} as AgentGUINodeViewModel["readiness"],

@@ -17,6 +17,7 @@ The current fixed release group is:
 
 ```text
 @tutti-os/analytics
+@tutti-os/analytics-debug
 @tutti-os/event-stream-core
 @tutti-os/workspace-file-manager
 @tutti-os/workspace-file-reference
@@ -267,6 +268,9 @@ The stable package entrypoints are:
 
 ```text
 @tutti-os/agent-activity-core
+@tutti-os/analytics
+@tutti-os/analytics-debug
+@tutti-os/analytics-debug/react
 @tutti-os/agent-gui
 @tutti-os/agent-gui/agent-conversation
 @tutti-os/agent-gui/agent-env

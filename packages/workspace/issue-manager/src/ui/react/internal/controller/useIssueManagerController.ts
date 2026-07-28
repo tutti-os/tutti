@@ -49,6 +49,7 @@ import { createIssueManagerControllerBindings } from "./createIssueManagerContro
 import { resolveIssueManagerTopicDeleteErrorMessage } from "../../../../services/internal/controllerUtils.ts";
 import { useIssueManagerControllerRuntime } from "./useIssueManagerControllerRuntime.ts";
 import type { IssueManagerDiagnostics } from "../../../../internal/issueManagerDiagnostics.ts";
+import { trackIssueManagerAnalytics } from "../../../../services/internal/controllerAnalytics.ts";
 
 export type IssueManagerRichTextSurface = "issue" | "task";
 
@@ -359,12 +360,10 @@ export function useIssueManagerController({
         return;
       }
       if (nodeState.activeTopicId !== trimmedTopicId) {
-        void Promise.resolve(
-          feature.analytics?.track({
-            name: "issue_manager.topic_changed",
-            params: {}
-          })
-        ).catch(() => undefined);
+        trackIssueManagerAnalytics(feature, {
+          name: "issue_manager.topic_changed",
+          params: {}
+        });
       }
       controllerSession.updateNodeState((current) => ({
         ...current,

@@ -421,6 +421,38 @@ func (s *SQLiteStore) RequeueLeasedGoalControlOperationsOnStartup(ctx context.Co
 	return s.agentStore().RequeueLeasedGoalControlOperationsOnStartup(ctx, now)
 }
 
+func (s *SQLiteStore) PrepareGoalGenerationFence(ctx context.Context, input agentactivitybiz.GoalGenerationFencePrepare) (agentactivitybiz.GoalGenerationFence, bool, error) {
+	return s.agentStore().PrepareGoalGenerationFence(ctx, input)
+}
+
+func (s *SQLiteStore) GetGoalGenerationFence(ctx context.Context, workspaceID, fenceID string) (agentactivitybiz.GoalGenerationFence, bool, error) {
+	return s.agentReadStore().GetGoalGenerationFence(ctx, workspaceID, fenceID)
+}
+
+func (s *SQLiteStore) ListGoalGenerationFencesForSession(ctx context.Context, workspaceID, agentSessionID string) ([]agentactivitybiz.GoalGenerationFence, error) {
+	return s.agentReadStore().ListGoalGenerationFencesForSession(ctx, workspaceID, agentSessionID)
+}
+
+func (s *SQLiteStore) ListClaimableGoalGenerationFences(ctx context.Context, input agentactivitybiz.ListClaimableGoalGenerationFencesInput) ([]agentactivitybiz.GoalGenerationFence, error) {
+	return s.agentReadStore().ListClaimableGoalGenerationFences(ctx, input)
+}
+
+func (s *SQLiteStore) ClaimGoalGenerationFence(ctx context.Context, input agentactivitybiz.ClaimGoalGenerationFenceInput) (agentactivitybiz.GoalGenerationFence, bool, error) {
+	return s.agentStore().ClaimGoalGenerationFence(ctx, input)
+}
+
+func (s *SQLiteStore) ReleaseGoalGenerationFence(ctx context.Context, input agentactivitybiz.ReleaseGoalGenerationFenceInput) (agentactivitybiz.GoalGenerationFence, bool, error) {
+	return s.agentStore().ReleaseGoalGenerationFence(ctx, input)
+}
+
+func (s *SQLiteStore) CompleteGoalGenerationFence(ctx context.Context, input agentactivitybiz.CompleteGoalGenerationFenceInput) (agentactivitybiz.GoalGenerationFence, bool, error) {
+	return s.agentStore().CompleteGoalGenerationFence(ctx, input)
+}
+
+func (s *SQLiteStore) RequeueLeasedGoalGenerationFencesOnStartup(ctx context.Context, now int64) (int64, error) {
+	return s.agentStore().RequeueLeasedGoalGenerationFencesOnStartup(ctx, now)
+}
+
 func (s *SQLiteStore) PrepareSubmitClaim(ctx context.Context, input agentactivitybiz.SubmitClaimPrepare) (agentactivitybiz.SubmitClaim, bool, error) {
 	return s.agentStore().PrepareSubmitClaim(ctx, input)
 }

@@ -322,7 +322,7 @@
   `session_deleted` event does tombstone.
 - **References:**
   [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
-  [workspaceAgentActivityEventSubscriptions.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityEventSubscriptions.ts)
+  [workspaceEventCoordinator.ts](../../../packages/agent/activity-core/src/workspaceEventCoordinator.ts)
 
 ### A Tutti submission remains `delivery is still being confirmed`
 
@@ -2254,7 +2254,8 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   the session create and turn both succeeded while the presentation remains
   `activating` until `engine/intentExpired`, inspect which session intent
   reached the pending-activation reducer. Also check that a failed realtime
-  session fetch does not consume the live-reconcile marker before a retry.
+  session fetch preserves `live: true` on the Engine's pending reconcile
+  record before a retry.
 - Root cause:
   An engine migration introduced `session/upserted` for authoritative mutation
   and realtime results, while pending activation still confirmed only from the
@@ -2266,9 +2267,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   Confirm activation from both authoritative session intents. Preserve the
   semantic distinction only where it matters: historical snapshots remain
   neutral for unread attention, while realtime reconciliation additionally
-  emits the live turn update. Move a consumed realtime marker to an in-flight
-  state and restore it after fetch failure until a live session is applied or
-  the session is deleted.
+  emits the live turn update. Carry realtime provenance on the Engine-owned
+  reconcile command, merge it into in-flight demand, and restore it to pending
+  demand after fetch failure until a live session is applied or the session is
+  deleted. Hosts must not keep a parallel marker set.
 - Validation:
   Cover the reducer with a pending activation followed by `session/upserted`.
   At the desktop service boundary, run a real engine activation through the
@@ -2279,6 +2281,42 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [pendingIntents.reducer.ts](../../../packages/agent/activity-core/src/engine/pendingIntents.reducer.ts)
   [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
   [workspaceAgentActivityService.test.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityService.test.ts)
+
+### Shared Agent composer stays disabled after the target connects
+
+- Symptom:
+  A shared Agent target reaches `connected`, and diagnostics show submission
+  readiness has recovered, but the entire composer remains disabled and cannot
+  receive focus or input. This differs from an empty draft disabling only the
+  send button.
+- Quick checks:
+  Inspect one rendered Composer gate snapshot. Its runtime, editor, and
+  submission branches must agree: a ready submission cannot coexist with a
+  target-connection runtime block. If logs instead compare fields from separate
+  Composer and readiness projections, inspect view-model memoization before
+  debugging P2P transport.
+- Root cause:
+  Connection and submission facts were projected into independent memoized
+  slices. A missing dependency could retain the old target-connection block
+  while publishing the new submission-ready value, and a downstream detail
+  model then recombined those two render-time generations into a torn
+  `composerDisabled` decision.
+- Fix:
+  Derive the canonical Composer gate once at the Session-presentation boundary.
+  Keep editor editability, submission readiness/queue/blocking, and
+  runtime-command availability in that one object, then pass it through one
+  view-model slice to the editor, send button, shortcuts, Stop control, and
+  Interaction paths. Keep draft-empty and upload conditions submission-local.
+- Validation:
+  Drive an exact shared target from `connecting` to `connected` and assert the
+  same resulting snapshot reports runtime ready, editor editable, and
+  submission ready. Also cover busy queue behavior, collaborator read-only
+  behavior, and the invariant that submission ready never retains a runtime
+  connection block.
+- References:
+  [agentGuiComposerGate.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiComposerGate.ts)
+  [useAgentGUISessionPresentation.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUISessionPresentation.ts)
+  [useAgentGUIViewModel.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/useAgentGUIViewModel.ts)
 
 ### AgentGUI submit clears the composer but creates no session or turn
 
@@ -2691,6 +2729,45 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [workspaceAgentActivityReconcileMessages.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileMessages.ts)
   [agent-gui-node.md](../../architecture/agent-gui-node.md)
 
+### Root detail reconciliation repeatedly reloads unchanged child transcripts
+
+- Symptom:
+  Opening or reconciling one root conversation repeatedly issues message-list
+  requests for every known child Session, including assistant-only and
+  tool-only children whose durable messages have not changed.
+- Quick checks:
+  Compare each child Session's required `messageVersion` from both root-detail
+  reads with the largest cached message version that also has a durable
+  `sequence`. If the cache is current but the request still starts at zero,
+  inspect whether child reconciliation reused the root conversation's
+  user-message boundary heuristic.
+- Root cause:
+  The root heuristic intentionally returns zero when cached history has no user
+  message, so it can repair an incomplete root conversation. Applying that
+  heuristic to provider-native child Sessions makes ordinary assistant/tool
+  histories look permanently unhydrated and forces the same reads forever.
+- Fix:
+  Keep root and child cursor policies separate. For a child, derive the cursor
+  only from durable sequenced messages and skip its message request when that
+  cursor has reached the Session `messageVersion`. Preserve the bounded
+  newest-first initial read, but treat an existing empty child window as the
+  authoritative zero cursor and drain later messages from `afterVersion=0`.
+  After the first message pass, read root detail again and incrementally fetch
+  newly discovered children plus existing children whose `messageVersion`
+  advanced during the pass. Do not let optimistic/transient rows advance the
+  durable cursor, and do not add polling; later changes arrive through the
+  existing push-and-reconcile path.
+- Validation:
+  Cover assistant-only and tool-only child caches, a transient row with a higher
+  synthetic version, an unchanged child that performs no request, initial
+  newest-first hydration, an empty known child that gains more than one page,
+  and a child advancing between the two detail reads. Keep a root assistant-only
+  case proving its existing repair still reads from zero.
+- References:
+  [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
+  [workspaceAgentActivityReconcileMessages.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileMessages.ts)
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+
 ### AgentActivity replication repeatedly rejects message batches as invalid
 
 - Symptom:
@@ -2792,6 +2869,48 @@ convergence deadline`.
 - References:
   [goal_operation_worker.go](../../../packages/agent/host/goal_operation_worker.go)
   [goal_scenarios.go](../../../packages/agent/host/conformance/goal_scenarios.go)
+
+### Revoked shared Goal starts again after handoff or desktop restart
+
+- Symptom:
+  After a shared binding is revoked, the old Goal starts or resumes provider
+  work, may replace the Owner's newer Goal, or an unrelated active Turn is
+  canceled.
+- Quick checks:
+  Resolve the original Goal operation by its stable `clientSubmitId`. Inspect
+  `workspace_agent_goal_generation_fences` for the exact operation ID, revision,
+  and repair epoch. `pending` or `processing` means Host still owns delivery;
+  absence means the revocation was never durably accepted. For any canceled
+  Turn, compare all three immutable `source_goal_*` fields with the fence.
+- Root cause:
+  Revocation was treated as a one-shot notification, or code guessed that the
+  session's current active Turn belonged to the revoked binding. A failed
+  notification was lost on restart, and recovery could replay the old prepared
+  Goal before runtime learned the revocation.
+- Fix:
+  Persist an exact Goal-generation fence before provider delivery. Process
+  fences before Goal operations during startup and each worker tick. Restore
+  all durable fences when a provider session resumes, and retain the exact set
+  in the runtime Controller across idle connection release so a replacement
+  adapter is fenced before its first user operation. Never resume an offline
+  provider solely for background fence or cancel delivery. Prepare the local
+  clear with the target revision as a compare-and-swap guard, and call
+  `CancelTurn` only for a live canonical Turn whose operation ID, revision,
+  and repair epoch all match. Keep the fence pending after cancellation
+  acceptance until the Turn is canonically terminal.
+- Validation:
+  Cover failed delivery followed by restart, a pending target operation and
+  fence recovered together, a newer Owner Goal, repeated runtime ensure, and
+  matching versus unrelated active Turns. Simulate connection replacement and
+  prove fence reinstallation happens before provider dispatch. Simulate a
+  disconnect immediately before cancel and prove background recovery makes
+  zero provider Resume calls. Provider tests must prove that the exact
+  Codex/Claude generation never becomes canonical while later generations
+  remain admissible.
+- References:
+  [Agent Host contracts](../../../packages/agent/host/README.md)
+  [Agent Goal Control Design](../../specs/2026-07-15-agent-goal-control-design.md)
+  [goal_generation_fence.go](../../../packages/agent/host/goal_generation_fence.go)
 
 ### Initial Goal prompt disappears when the Agent starts responding
 

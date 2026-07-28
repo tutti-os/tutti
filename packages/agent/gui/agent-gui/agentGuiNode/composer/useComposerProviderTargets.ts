@@ -13,7 +13,6 @@ interface Input {
   composerControlsHardDisabled: boolean;
   isSelectedProjectMissing: boolean;
   disabled: boolean;
-  canQueueWhileBusy: boolean;
   onHandoffConversation?: (target: AgentGUIAgentTarget) => void;
   handoffLabel?: string;
   handoffMenuLabel?: string;
@@ -32,7 +31,6 @@ export function useComposerProviderTargets(input: Input) {
     composerControlsHardDisabled,
     isSelectedProjectMissing,
     disabled,
-    canQueueWhileBusy,
     onHandoffConversation,
     handoffLabel,
     handoffMenuLabel
@@ -94,8 +92,7 @@ export function useComposerProviderTargets(input: Input) {
     styles.composerInputShell,
     isHeroLayout && styles.composerInputShellHero
   );
-  const inputDisabled =
-    isSelectedProjectMissing || (disabled && !canQueueWhileBusy);
+  const inputDisabled = isSelectedProjectMissing || disabled;
   const providerSelectDisabled =
     providerSelectReadonly || composerControlsHardDisabled || inputDisabled;
   const handoffDisabled = resolveComposerHandoffDisabled({

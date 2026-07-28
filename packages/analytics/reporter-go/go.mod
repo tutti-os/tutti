@@ -3,6 +3,7 @@ module github.com/tutti-os/tutti/packages/analytics/reporter-go
 go 1.24.3
 
 require (
+	github.com/gofrs/flock v0.13.0
 	github.com/google/uuid v1.6.0
 	github.com/volcengine/datarangers-sdk-go v1.1.8
 )
@@ -30,6 +31,7 @@ require (
 	go.uber.org/zap v1.16.0 // indirect
 	golang.org/x/crypto v0.0.0-20220214200702-86341886e292 // indirect
 	golang.org/x/net v0.0.0-20220520000938-2e3eb7b945c2 // indirect
+	golang.org/x/sys v0.37.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )

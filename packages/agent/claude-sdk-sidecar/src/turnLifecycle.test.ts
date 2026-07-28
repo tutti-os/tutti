@@ -20,7 +20,11 @@ test("turn lifecycle activates and settles a queued turn", () => {
   assert.equal(settlements.count, 1);
   assert.deepEqual(events[0], {
     type: "turn_completed",
-    payload: { stopReason: "end_turn", turnId: "turn-1" }
+    payload: {
+      stopReason: "end_turn",
+      turnId: "turn-1",
+      providerTurnId: "prompt-1"
+    }
   });
 });
 

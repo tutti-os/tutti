@@ -7112,6 +7112,7 @@ type fakeRuntime struct {
 	goalReconcileCalls     []RuntimeGoalControlInput
 	goalReconcileHook      func(context.Context, RuntimeGoalControlInput) (RuntimeGoalReconcileResult, error)
 	goalRecoveryPolicyHook func(context.Context, RuntimeGoalControlInput) (RuntimeGoalRecoveryPolicy, error)
+	goalGenerationFences   []RuntimeGoalGenerationFenceInput
 	resumeCalls            []RuntimeResumeInput
 	sessions               map[string]ProviderRuntimeSession
 	submitInteractiveCalls []RuntimeSubmitInteractiveInput
@@ -7574,6 +7575,13 @@ func (f *fakeRuntime) GoalRecoveryPolicy(ctx context.Context, input RuntimeGoalC
 		return hook(ctx, input)
 	}
 	return RuntimeGoalRecoveryPolicy{QuerySupported: true, ReplaySetAfterRestart: true}, nil
+}
+
+func (f *fakeRuntime) FenceGoalGeneration(_ context.Context, input RuntimeGoalGenerationFenceInput) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.goalGenerationFences = append(f.goalGenerationFences, input)
+	return nil
 }
 
 func (f *fakeRuntime) Close(_ context.Context, input RuntimeCloseInput) error {

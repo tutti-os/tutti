@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	sdk "github.com/volcengine/datarangers-sdk-go"
 )
@@ -18,7 +19,7 @@ type teaSDKConfig struct {
 	AppID         int64
 	AppKey        string
 	ChannelDomain string
-	StateDir      string
+	LogDir        string
 }
 
 type teaSDKEvent struct {
@@ -30,19 +31,50 @@ type teaSDKEvent struct {
 type defaultTeaSDK struct{}
 
 func (defaultTeaSDK) Init(config teaSDKConfig) error {
-	logDir, err := ensureTeaSDKLogDir(config.StateDir)
+	logDir, err := ensureTeaSDKLogDir(config.LogDir)
 	if err != nil {
 		return err
 	}
-	return sdk.InitBySysConf(newTeaSDKSysConf(config, logDir))
+	config.LogDir = logDir
+	return defaultTeaSDKInitialization.init(config, func() error {
+		return sdk.InitBySysConf(newTeaSDKSysConf(config, logDir))
+	})
 }
 
-func ensureTeaSDKLogDir(stateDir string) (string, error) {
-	logDir := filepath.Join(stateDir, "analytics", "sdk-logs")
-	if err := os.MkdirAll(logDir, 0o755); err != nil {
+func ensureTeaSDKLogDir(logDir string) (string, error) {
+	if err := os.MkdirAll(logDir, 0o700); err != nil {
 		return "", fmt.Errorf("create analytics sdk log dir: %w", err)
 	}
+	if err := os.Chmod(logDir, 0o700); err != nil {
+		return "", fmt.Errorf("secure analytics sdk log dir: %w", err)
+	}
 	return logDir, nil
+}
+
+type teaSDKInitializationGuard struct {
+	mu          sync.Mutex
+	initialized bool
+	config      teaSDKConfig
+}
+
+var defaultTeaSDKInitialization teaSDKInitializationGuard
+
+func (g *teaSDKInitializationGuard) init(config teaSDKConfig, initialize func() error) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if g.initialized {
+		if g.config != config {
+			return fmt.Errorf("DataFinder SDK is already initialized with different analytics configuration")
+		}
+		return nil
+	}
+	if err := initialize(); err != nil {
+		return err
+	}
+	g.config = config
+	g.initialized = true
+	return nil
 }
 
 func newTeaSDKSysConf(config teaSDKConfig, logDir string) *sdk.SysConf {

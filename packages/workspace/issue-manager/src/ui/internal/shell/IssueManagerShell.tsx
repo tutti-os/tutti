@@ -231,12 +231,20 @@ export function IssueManagerShell({
 
   return (
     <div
-      className="relative grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] overflow-hidden bg-transparent transition-[grid-template-columns] duration-[180ms] ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none"
+      className={cn(
+        "relative grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] overflow-hidden bg-transparent motion-reduce:transition-none",
+        shellView.resizeHandle.isResizing
+          ? "transition-none"
+          : "transition-[grid-template-columns] duration-[180ms] ease-[cubic-bezier(0.4,0,0.2,1)]"
+      )}
       data-issue-manager-sidebar-auto-collapsed={
         shellView.sidebar.isAutoCollapsed ? "true" : undefined
       }
       data-issue-manager-sidebar-collapsed={
         shellView.sidebar.isCollapsed ? "true" : undefined
+      }
+      data-issue-manager-sidebar-resizing={
+        shellView.resizeHandle.isResizing ? "true" : undefined
       }
       ref={shellView.layoutRef}
       style={shellView.layoutStyle}
@@ -263,7 +271,10 @@ export function IssueManagerShell({
           aria-valuemin={shellView.resizeHandle.ariaValueMin}
           aria-valuenow={shellView.resizeHandle.ariaValueNow}
           className={cn(
-            "group absolute top-0 bottom-0 left-[calc(var(--issue-manager-sidebar-width)-6px)] z-20 w-3 cursor-col-resize touch-none opacity-100 transition-[left,opacity] duration-[180ms,120ms] ease-[cubic-bezier(0.4,0,0.2,1),ease] motion-reduce:transition-none",
+            "group absolute top-0 bottom-0 left-[calc(var(--issue-manager-sidebar-width,280px)-6px)] z-20 w-3 cursor-col-resize touch-none opacity-100 motion-reduce:transition-none",
+            shellView.resizeHandle.isResizing
+              ? "transition-none"
+              : "transition-[left,opacity] duration-[180ms,120ms] ease-[cubic-bezier(0.4,0,0.2,1),ease]",
             shellView.sidebar.isCollapsed &&
               "pointer-events-none left-[-6px] opacity-0"
           )}
@@ -274,6 +285,7 @@ export function IssueManagerShell({
           onPointerDown={shellView.resizeHandle.onPointerDown}
           onPointerMove={shellView.resizeHandle.onPointerMove}
           onPointerUp={shellView.resizeHandle.onPointerUp}
+          onLostPointerCapture={shellView.resizeHandle.onLostPointerCapture}
         >
           <span className="absolute top-0 bottom-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-[background-color,width] duration-150 group-hover:w-0.5 group-hover:bg-[color-mix(in_srgb,var(--border-focus)_40%,transparent)] group-focus-visible:w-0.5 group-focus-visible:bg-[color-mix(in_srgb,var(--border-focus)_40%,transparent)]" />
         </div>

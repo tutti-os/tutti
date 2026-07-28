@@ -79,6 +79,11 @@ func (s *Store) PrepareRuntimeOperation(ctx context.Context, input RuntimeOperat
 		}
 		return RuntimeOperation{}, false, ErrRuntimeOperationConflict
 	}
+	if err := requireSessionForkSourceWritableTx(
+		ctx, tx, input.WorkspaceID, input.AgentSessionID,
+	); err != nil {
+		return RuntimeOperation{}, false, err
+	}
 	if err := validateRuntimeOperationSubjectTx(ctx, tx, input); err != nil {
 		return RuntimeOperation{}, false, err
 	}

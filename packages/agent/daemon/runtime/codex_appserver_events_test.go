@@ -441,6 +441,79 @@ func TestCodexAppServerAdapterRoutesLinkedChildThreadEvents(t *testing.T) {
 	}
 }
 
+func TestCodexAppServerAdapterRegistersSubAgentActivityChild(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewCodexAppServerAdapter(nil)
+	session := Session{
+		AgentSessionID:    "agent-session-1",
+		Provider:          ProviderCodex,
+		ProviderSessionID: "parent-thread-1",
+		CWD:               "/workspace",
+	}
+	adapter.storeSession(session.AgentSessionID, &codexAppServerSession{threadID: session.ProviderSessionID})
+	reducer := newCodexAppServerReducer(adapter)
+	normalizer := newACPTurnNormalizer()
+	notification := acpMessage{
+		Method: appServerNotifyItemCompleted,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId": session.ProviderSessionID,
+			"turnId":   "parent-turn-1",
+			"item": map[string]any{
+				"type":          "subAgentActivity",
+				"id":            "spawn-child-1",
+				"agentThreadId": "child-thread-1",
+				"agentPath":     "/root/reviewer",
+				"kind":          "started",
+			},
+		}),
+	}
+
+	events := reducer.ReduceNotification(
+		nil,
+		session,
+		"parent-turn-1",
+		notification,
+		normalizer,
+		nil,
+	).Events
+	if len(events) != 2 {
+		t.Fatalf("subAgentActivity events = %#v, want child creation and completed parent tool call", events)
+	}
+	childStarted := events[0]
+	if childStarted.Type != activityshared.EventSessionStarted ||
+		childStarted.SessionKind != "child" ||
+		childStarted.ProviderSessionID != "child-thread-1" ||
+		childStarted.ParentToolCallID != "spawn-child-1" {
+		t.Fatalf("child start = %#v", childStarted)
+	}
+	parentCall := events[1]
+	parentCallInput := payloadMap(parentCall.Payload.Metadata, "input")
+	if parentCall.Type != activityshared.EventCallCompleted ||
+		parentCall.AgentSessionID != session.AgentSessionID ||
+		parentCall.Payload.CallID != "spawn-child-1" ||
+		parentCall.Payload.Name != "spawnAgent" ||
+		parentCallInput["agentName"] != "spawnAgent" {
+		t.Fatalf("parent spawn call = %#v", parentCall)
+	}
+	child, ok := adapter.appServerChildThread(session.AgentSessionID, "child-thread-1")
+	if !ok || child.parentItemID != "spawn-child-1" || child.parentAgentSessionID != session.AgentSessionID {
+		t.Fatalf("registered child = %#v (ok=%v)", child, ok)
+	}
+
+	duplicate := reducer.ReduceNotification(
+		nil,
+		session,
+		"parent-turn-1",
+		notification,
+		normalizer,
+		nil,
+	).Events
+	if len(duplicate) != 0 {
+		t.Fatalf("duplicate subAgentActivity events = %#v, want none", duplicate)
+	}
+}
+
 func TestCodexAppServerAdapterRoutesChildFileChangeApprovalWithChildInput(t *testing.T) {
 	t.Parallel()
 

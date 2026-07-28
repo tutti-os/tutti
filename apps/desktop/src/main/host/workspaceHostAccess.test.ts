@@ -199,6 +199,15 @@ function createTransportClient(
     async createWorkspaceAgentSession() {
       throw new Error("not used");
     },
+    async forkWorkspaceAgentSession() {
+      throw new Error("not used");
+    },
+    async getWorkspaceAgentSessionForkOperation() {
+      throw new Error("not used");
+    },
+    async acknowledgeWorkspaceAgentSessionForkOperation() {
+      throw new Error("not used");
+    },
     async updateWorkspaceAgentSessionVisibility() {
       throw new Error("not used");
     },

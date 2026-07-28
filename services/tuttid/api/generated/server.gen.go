@@ -158,6 +158,12 @@ type ServerInterface interface {
 	// Set or clear one agent target model binding
 	// (PUT /v1/workspaces/{workspaceID}/agent-model-bindings/{agentTargetID})
 	SetAgentModelBinding(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentTargetID string)
+	// Get one durable workspace agent session fork operation
+	// (GET /v1/workspaces/{workspaceID}/agent-session-fork-operations/{operationID})
+	GetWorkspaceAgentSessionForkOperation(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, operationID SessionForkOperationID)
+	// Acknowledge that a client observed one durable session fork operation
+	// (POST /v1/workspaces/{workspaceID}/agent-session-fork-operations/{operationID}/acknowledge)
+	AcknowledgeWorkspaceAgentSessionForkOperation(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, operationID SessionForkOperationID)
 	// List agent session rail sections for one workspace
 	// (GET /v1/workspaces/{workspaceID}/agent-session-sections)
 	ListWorkspaceAgentSessionSections(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, params ListWorkspaceAgentSessionSectionsParams)
@@ -209,6 +215,9 @@ type ServerInterface interface {
 	// Disable or select automation rules for one session
 	// (PUT /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/automation-rule-override)
 	SetAgentSessionAutomationRuleOverride(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID)
+	// Fork one workspace agent session at an exact canonical boundary
+	// (POST /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/fork)
+	ForkWorkspaceAgentSession(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID)
 	// List git branches for the agent session working directory
 	// (GET /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/git-branches)
 	ListWorkspaceAgentSessionGitBranches(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID)
@@ -1997,6 +2006,88 @@ func (siw *ServerInterfaceWrapper) SetAgentModelBinding(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// GetWorkspaceAgentSessionForkOperation operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkspaceAgentSessionForkOperation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "operationID" -------------
+	var operationID SessionForkOperationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "operationID", r.PathValue("operationID"), &operationID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "operationID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWorkspaceAgentSessionForkOperation(w, r, workspaceID, operationID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AcknowledgeWorkspaceAgentSessionForkOperation operation middleware
+func (siw *ServerInterfaceWrapper) AcknowledgeWorkspaceAgentSessionForkOperation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "operationID" -------------
+	var operationID SessionForkOperationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "operationID", r.PathValue("operationID"), &operationID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "operationID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AcknowledgeWorkspaceAgentSessionForkOperation(w, r, workspaceID, operationID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListWorkspaceAgentSessionSections operation middleware
 func (siw *ServerInterfaceWrapper) ListWorkspaceAgentSessionSections(w http.ResponseWriter, r *http.Request) {
 
@@ -2827,6 +2918,47 @@ func (siw *ServerInterfaceWrapper) SetAgentSessionAutomationRuleOverride(w http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetAgentSessionAutomationRuleOverride(w, r, workspaceID, agentSessionID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ForkWorkspaceAgentSession operation middleware
+func (siw *ServerInterfaceWrapper) ForkWorkspaceAgentSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "agentSessionID" -------------
+	var agentSessionID AgentSessionID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentSessionID", r.PathValue("agentSessionID"), &agentSessionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentSessionID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ForkWorkspaceAgentSession(w, r, workspaceID, agentSessionID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9204,6 +9336,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-generated-files", wrapper.ListWorkspaceAgentGeneratedFiles)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-model-bindings", wrapper.ListAgentModelBindings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-model-bindings/{agentTargetID}", wrapper.SetAgentModelBinding)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-session-fork-operations/{operationID}", wrapper.GetWorkspaceAgentSessionForkOperation)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-session-fork-operations/{operationID}/acknowledge", wrapper.AcknowledgeWorkspaceAgentSessionForkOperation)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-session-sections", wrapper.ListWorkspaceAgentSessionSections)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-session-sections/deletion-candidates", wrapper.ListWorkspaceAgentSessionSectionDeletionCandidates)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-session-sections/page", wrapper.ListWorkspaceAgentSessionSectionPage)
@@ -9221,6 +9355,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/attachments/{attachmentID}", wrapper.ReadWorkspaceAgentSessionAttachment)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/automation-rule-override", wrapper.GetAgentSessionAutomationRuleOverride)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/automation-rule-override", wrapper.SetAgentSessionAutomationRuleOverride)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/fork", wrapper.ForkWorkspaceAgentSession)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/git-branches", wrapper.ListWorkspaceAgentSessionGitBranches)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/goal", wrapper.GetWorkspaceAgentSessionGoal)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/goal", wrapper.GoalControlWorkspaceAgentSession)
@@ -13676,6 +13811,250 @@ func (response SetAgentModelBinding503JSONResponse) VisitSetAgentModelBindingRes
 	return err
 }
 
+type GetWorkspaceAgentSessionForkOperationRequestObject struct {
+	WorkspaceID WorkspaceID            `json:"workspaceID"`
+	OperationID SessionForkOperationID `json:"operationID"`
+}
+
+type GetWorkspaceAgentSessionForkOperationResponseObject interface {
+	VisitGetWorkspaceAgentSessionForkOperationResponse(w http.ResponseWriter) error
+}
+
+type GetWorkspaceAgentSessionForkOperation200JSONResponse WorkspaceAgentSessionForkOperationResponse
+
+func (response GetWorkspaceAgentSessionForkOperation200JSONResponse) VisitGetWorkspaceAgentSessionForkOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAgentSessionForkOperation400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response GetWorkspaceAgentSessionForkOperation400JSONResponse) VisitGetWorkspaceAgentSessionForkOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAgentSessionForkOperation401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response GetWorkspaceAgentSessionForkOperation401JSONResponse) VisitGetWorkspaceAgentSessionForkOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAgentSessionForkOperation404JSONResponse ApiErrorResponse
+
+func (response GetWorkspaceAgentSessionForkOperation404JSONResponse) VisitGetWorkspaceAgentSessionForkOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAgentSessionForkOperation405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response GetWorkspaceAgentSessionForkOperation405JSONResponse) VisitGetWorkspaceAgentSessionForkOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAgentSessionForkOperation502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response GetWorkspaceAgentSessionForkOperation502JSONResponse) VisitGetWorkspaceAgentSessionForkOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAgentSessionForkOperation503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response GetWorkspaceAgentSessionForkOperation503JSONResponse) VisitGetWorkspaceAgentSessionForkOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcknowledgeWorkspaceAgentSessionForkOperationRequestObject struct {
+	WorkspaceID WorkspaceID            `json:"workspaceID"`
+	OperationID SessionForkOperationID `json:"operationID"`
+}
+
+type AcknowledgeWorkspaceAgentSessionForkOperationResponseObject interface {
+	VisitAcknowledgeWorkspaceAgentSessionForkOperationResponse(w http.ResponseWriter) error
+}
+
+type AcknowledgeWorkspaceAgentSessionForkOperation200JSONResponse WorkspaceAgentSessionForkOperationResponse
+
+func (response AcknowledgeWorkspaceAgentSessionForkOperation200JSONResponse) VisitAcknowledgeWorkspaceAgentSessionForkOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcknowledgeWorkspaceAgentSessionForkOperation400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response AcknowledgeWorkspaceAgentSessionForkOperation400JSONResponse) VisitAcknowledgeWorkspaceAgentSessionForkOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcknowledgeWorkspaceAgentSessionForkOperation401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response AcknowledgeWorkspaceAgentSessionForkOperation401JSONResponse) VisitAcknowledgeWorkspaceAgentSessionForkOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcknowledgeWorkspaceAgentSessionForkOperation404JSONResponse ApiErrorResponse
+
+func (response AcknowledgeWorkspaceAgentSessionForkOperation404JSONResponse) VisitAcknowledgeWorkspaceAgentSessionForkOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcknowledgeWorkspaceAgentSessionForkOperation405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response AcknowledgeWorkspaceAgentSessionForkOperation405JSONResponse) VisitAcknowledgeWorkspaceAgentSessionForkOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcknowledgeWorkspaceAgentSessionForkOperation409JSONResponse ApiErrorResponse
+
+func (response AcknowledgeWorkspaceAgentSessionForkOperation409JSONResponse) VisitAcknowledgeWorkspaceAgentSessionForkOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcknowledgeWorkspaceAgentSessionForkOperation502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response AcknowledgeWorkspaceAgentSessionForkOperation502JSONResponse) VisitAcknowledgeWorkspaceAgentSessionForkOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcknowledgeWorkspaceAgentSessionForkOperation503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response AcknowledgeWorkspaceAgentSessionForkOperation503JSONResponse) VisitAcknowledgeWorkspaceAgentSessionForkOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListWorkspaceAgentSessionSectionsRequestObject struct {
 	WorkspaceID WorkspaceID `json:"workspaceID"`
 	Params      ListWorkspaceAgentSessionSectionsParams
@@ -15607,6 +15986,152 @@ type SetAgentSessionAutomationRuleOverride503JSONResponse struct {
 }
 
 func (response SetAgentSessionAutomationRuleOverride503JSONResponse) VisitSetAgentSessionAutomationRuleOverrideResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForkWorkspaceAgentSessionRequestObject struct {
+	WorkspaceID    WorkspaceID    `json:"workspaceID"`
+	AgentSessionID AgentSessionID `json:"agentSessionID"`
+	Body           *ForkWorkspaceAgentSessionJSONRequestBody
+}
+
+type ForkWorkspaceAgentSessionResponseObject interface {
+	VisitForkWorkspaceAgentSessionResponse(w http.ResponseWriter) error
+}
+
+type ForkWorkspaceAgentSession200JSONResponse WorkspaceAgentSessionForkOperationResponse
+
+func (response ForkWorkspaceAgentSession200JSONResponse) VisitForkWorkspaceAgentSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForkWorkspaceAgentSession202JSONResponse WorkspaceAgentSessionForkOperationResponse
+
+func (response ForkWorkspaceAgentSession202JSONResponse) VisitForkWorkspaceAgentSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForkWorkspaceAgentSession400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response ForkWorkspaceAgentSession400JSONResponse) VisitForkWorkspaceAgentSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForkWorkspaceAgentSession401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response ForkWorkspaceAgentSession401JSONResponse) VisitForkWorkspaceAgentSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForkWorkspaceAgentSession404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response ForkWorkspaceAgentSession404JSONResponse) VisitForkWorkspaceAgentSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForkWorkspaceAgentSession405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response ForkWorkspaceAgentSession405JSONResponse) VisitForkWorkspaceAgentSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForkWorkspaceAgentSession409JSONResponse ApiErrorResponse
+
+func (response ForkWorkspaceAgentSession409JSONResponse) VisitForkWorkspaceAgentSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForkWorkspaceAgentSession502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response ForkWorkspaceAgentSession502JSONResponse) VisitForkWorkspaceAgentSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForkWorkspaceAgentSession503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response ForkWorkspaceAgentSession503JSONResponse) VisitForkWorkspaceAgentSessionResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -32713,6 +33238,12 @@ type StrictServerInterface interface {
 	// Set or clear one agent target model binding
 	// (PUT /v1/workspaces/{workspaceID}/agent-model-bindings/{agentTargetID})
 	SetAgentModelBinding(ctx context.Context, request SetAgentModelBindingRequestObject) (SetAgentModelBindingResponseObject, error)
+	// Get one durable workspace agent session fork operation
+	// (GET /v1/workspaces/{workspaceID}/agent-session-fork-operations/{operationID})
+	GetWorkspaceAgentSessionForkOperation(ctx context.Context, request GetWorkspaceAgentSessionForkOperationRequestObject) (GetWorkspaceAgentSessionForkOperationResponseObject, error)
+	// Acknowledge that a client observed one durable session fork operation
+	// (POST /v1/workspaces/{workspaceID}/agent-session-fork-operations/{operationID}/acknowledge)
+	AcknowledgeWorkspaceAgentSessionForkOperation(ctx context.Context, request AcknowledgeWorkspaceAgentSessionForkOperationRequestObject) (AcknowledgeWorkspaceAgentSessionForkOperationResponseObject, error)
 	// List agent session rail sections for one workspace
 	// (GET /v1/workspaces/{workspaceID}/agent-session-sections)
 	ListWorkspaceAgentSessionSections(ctx context.Context, request ListWorkspaceAgentSessionSectionsRequestObject) (ListWorkspaceAgentSessionSectionsResponseObject, error)
@@ -32764,6 +33295,9 @@ type StrictServerInterface interface {
 	// Disable or select automation rules for one session
 	// (PUT /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/automation-rule-override)
 	SetAgentSessionAutomationRuleOverride(ctx context.Context, request SetAgentSessionAutomationRuleOverrideRequestObject) (SetAgentSessionAutomationRuleOverrideResponseObject, error)
+	// Fork one workspace agent session at an exact canonical boundary
+	// (POST /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/fork)
+	ForkWorkspaceAgentSession(ctx context.Context, request ForkWorkspaceAgentSessionRequestObject) (ForkWorkspaceAgentSessionResponseObject, error)
 	// List git branches for the agent session working directory
 	// (GET /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/git-branches)
 	ListWorkspaceAgentSessionGitBranches(ctx context.Context, request ListWorkspaceAgentSessionGitBranchesRequestObject) (ListWorkspaceAgentSessionGitBranchesResponseObject, error)
@@ -34539,6 +35073,60 @@ func (sh *strictHandler) SetAgentModelBinding(w http.ResponseWriter, r *http.Req
 	}
 }
 
+// GetWorkspaceAgentSessionForkOperation operation middleware
+func (sh *strictHandler) GetWorkspaceAgentSessionForkOperation(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, operationID SessionForkOperationID) {
+	var request GetWorkspaceAgentSessionForkOperationRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.OperationID = operationID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetWorkspaceAgentSessionForkOperation(ctx, request.(GetWorkspaceAgentSessionForkOperationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetWorkspaceAgentSessionForkOperation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetWorkspaceAgentSessionForkOperationResponseObject); ok {
+		if err := validResponse.VisitGetWorkspaceAgentSessionForkOperationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AcknowledgeWorkspaceAgentSessionForkOperation operation middleware
+func (sh *strictHandler) AcknowledgeWorkspaceAgentSessionForkOperation(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, operationID SessionForkOperationID) {
+	var request AcknowledgeWorkspaceAgentSessionForkOperationRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.OperationID = operationID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AcknowledgeWorkspaceAgentSessionForkOperation(ctx, request.(AcknowledgeWorkspaceAgentSessionForkOperationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AcknowledgeWorkspaceAgentSessionForkOperation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AcknowledgeWorkspaceAgentSessionForkOperationResponseObject); ok {
+		if err := validResponse.VisitAcknowledgeWorkspaceAgentSessionForkOperationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListWorkspaceAgentSessionSections operation middleware
 func (sh *strictHandler) ListWorkspaceAgentSessionSections(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, params ListWorkspaceAgentSessionSectionsParams) {
 	var request ListWorkspaceAgentSessionSectionsRequestObject
@@ -35035,6 +35623,42 @@ func (sh *strictHandler) SetAgentSessionAutomationRuleOverride(w http.ResponseWr
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetAgentSessionAutomationRuleOverrideResponseObject); ok {
 		if err := validResponse.VisitSetAgentSessionAutomationRuleOverrideResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ForkWorkspaceAgentSession operation middleware
+func (sh *strictHandler) ForkWorkspaceAgentSession(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID) {
+	var request ForkWorkspaceAgentSessionRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.AgentSessionID = agentSessionID
+
+	var body ForkWorkspaceAgentSessionJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ForkWorkspaceAgentSession(ctx, request.(ForkWorkspaceAgentSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ForkWorkspaceAgentSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ForkWorkspaceAgentSessionResponseObject); ok {
+		if err := validResponse.VisitForkWorkspaceAgentSessionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
