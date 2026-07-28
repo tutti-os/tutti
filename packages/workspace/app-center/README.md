@@ -63,3 +63,16 @@ Desktop owns the `showAppDeveloperSources` preference, persists it through the
 desktop-preferences service, and passes the resulting value into the App Center
 pane. Keep preference UI, daemon storage, and host-specific source links out of
 this package.
+
+## Visible App Tabs
+
+`AppCenterPanel` shows the recommended, community, and my-apps tabs by default.
+Hosts can restrict or reorder them with `visibleAppTabs`. For example, a host
+that only exposes the official catalog can render:
+
+```tsx
+<AppCenterPanel visibleAppTabs={["recommended"]} {...props} />
+```
+
+If the controlled active tab is not visible, the panel renders the first
+visible tab. An empty configuration falls back to the recommended tab.

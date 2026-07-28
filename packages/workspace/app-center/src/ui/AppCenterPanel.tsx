@@ -64,6 +64,11 @@ import {
   type AppCenterFactoryPermissionOption,
   type AppCenterHostActions
 } from "./AppCard.tsx";
+import {
+  resolveActiveAppCenterTab,
+  resolveVisibleAppCenterTabs,
+  type AppCenterAppTab
+} from "./appCenterTabs.ts";
 
 type FactoryTemplateID =
   | "lovart"
@@ -72,7 +77,7 @@ type FactoryTemplateID =
   | "system"
   | "news"
   | "gomoku";
-export type AppCenterAppTab = "recommended" | "community" | "my";
+export type { AppCenterAppTab } from "./appCenterTabs.ts";
 type RecommendedCategoryTabID =
   | "all"
   | "product-design"
@@ -162,6 +167,7 @@ export interface AppCenterPanelProps {
   readonly providerLoading?: boolean;
   readonly providerOptions?: readonly AppCenterFactoryProviderOption[];
   readonly showDeveloperSources?: boolean;
+  readonly visibleAppTabs?: readonly AppCenterAppTab[];
   readonly viewModel: AppCenterViewModel;
 }
 
@@ -181,6 +187,7 @@ export function AppCenterPanel({
   providerLoading = false,
   providerOptions = [],
   showDeveloperSources = false,
+  visibleAppTabs: configuredVisibleAppTabs,
   viewModel
 }: AppCenterPanelProps): ReactElement {
   const promptTextareaId = useId();
@@ -253,7 +260,14 @@ export function AppCenterPanel({
     useState<AppCenterAppTab>("recommended");
   const [activeRecommendedCategoryTab, setActiveRecommendedCategoryTab] =
     useState<RecommendedCategoryTabID>("all");
-  const activeAppTab = controlledActiveAppTab ?? uncontrolledActiveAppTab;
+  const visibleAppTabs = useMemo(
+    () => resolveVisibleAppCenterTabs(configuredVisibleAppTabs),
+    [configuredVisibleAppTabs]
+  );
+  const activeAppTab = resolveActiveAppCenterTab(
+    controlledActiveAppTab ?? uncontrolledActiveAppTab,
+    visibleAppTabs
+  );
   useEffect(() => {
     setSelectedProvider((current) =>
       resolveSelectedAppFactoryProvider(
@@ -602,20 +616,15 @@ export function AppCenterPanel({
             <SectionTabs
               ariaLabel={copy.t("labels.appList")}
               className="h-8"
-              tabs={[
-                {
-                  label: copy.t("labels.recommendedApps"),
-                  value: "recommended"
-                },
-                {
-                  label: copy.t("labels.communityApps"),
-                  value: "community"
-                },
-                {
-                  label: copy.t("labels.myApps"),
-                  value: "my"
-                }
-              ]}
+              tabs={visibleAppTabs.map((tab) => ({
+                label:
+                  tab === "recommended"
+                    ? copy.t("labels.recommendedApps")
+                    : tab === "community"
+                      ? copy.t("labels.communityApps")
+                      : copy.t("labels.myApps"),
+                value: tab
+              }))}
               value={activeAppTab}
               onValueChange={setActiveAppTab}
             />
