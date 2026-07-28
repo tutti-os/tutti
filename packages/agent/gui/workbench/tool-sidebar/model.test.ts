@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  agentToolPanelDefaultWidthById,
   clampAgentToolPanelWidth,
   createAgentToolSidebarState,
   filterAgentToolPanels,
   reduceAgentToolSidebarState,
   resolveAgentToolPanelExpansionTransfer,
+  shouldAutoCollapseAgentToolSidebar,
   type AgentToolPanelDefinition
 } from "./model.ts";
 
@@ -15,6 +17,11 @@ const panels: readonly AgentToolPanelDefinition[] = [
 ];
 
 describe("agent tool sidebar model", () => {
+  it("uses the shared 720px default for task and message panels", () => {
+    expect(agentToolPanelDefaultWidthById.tasks).toBe(720);
+    expect(agentToolPanelDefaultWidthById.messages).toBe(720);
+  });
+
   it("keeps only unique supported panels in host order", () => {
     expect(
       filterAgentToolPanels([
@@ -71,6 +78,23 @@ describe("agent tool sidebar model", () => {
         width: 900
       })
     ).toBe(620);
+  });
+
+  it("collapses a sidebar only after it crosses the main-content boundary", () => {
+    expect(
+      shouldAutoCollapseAgentToolSidebar({
+        containerWidth: 1470,
+        mainContentMinWidth: 750,
+        sidebarWidth: 720
+      })
+    ).toBe(false);
+    expect(
+      shouldAutoCollapseAgentToolSidebar({
+        containerWidth: 1469,
+        mainContentMinWidth: 750,
+        sidebarWidth: 720
+      })
+    ).toBe(true);
   });
 
   it("ensures a background panel without changing the active tab", () => {

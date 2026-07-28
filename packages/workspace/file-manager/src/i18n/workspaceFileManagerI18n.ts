@@ -66,7 +66,9 @@ const workspaceFileManagerEn = {
   revealInFileExplorerLabel: "Reveal in File Explorer",
   revealInFileManagerLabel: "Reveal in File Manager",
   revealInFinderLabel: "Reveal in Finder",
+  shareLabel: "Share",
   unknownErrorMessage: "Something went wrong. Please try again.",
+  previewActionsLabel: "File actions",
   previewBinary:
     "This file looks binary, so the preview stays read-only for now.",
   previewDecodeFailed:
@@ -152,7 +154,9 @@ const workspaceFileManagerZhCN = {
   revealInFileExplorerLabel: "在文件资源管理器中显示",
   revealInFileManagerLabel: "在文件管理器中显示",
   revealInFinderLabel: "在 Finder 中显示",
+  shareLabel: "分享",
   unknownErrorMessage: "出了点问题，请稍后再试。",
+  previewActionsLabel: "文件操作",
   previewBinary: "这个文件更像二进制内容，当前先保持只读占位。",
   previewDecodeFailed: "暂时无法按 UTF-8 文本解码这个文件。",
   previewDirectoryLabel: "文件夹",

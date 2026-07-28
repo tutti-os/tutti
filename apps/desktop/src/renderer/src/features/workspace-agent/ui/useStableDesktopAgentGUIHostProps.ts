@@ -22,8 +22,9 @@ export type DesktopAgentGUIHostProps = {
   hostCapabilities: Pick<
     AgentGUIProps["hostCapabilities"],
     | "referenceProvenanceFilterEnabled"
+    | "sessionInputHistoryEnabled"
     | "capabilityMenuState"
-    | "accountMenuState"
+    | "visibleErrorPresentationOverrides"
     | "comingSoonProviders"
     | "providerReadinessGates"
     | "defaultAgentTargetId"
@@ -33,6 +34,7 @@ export type DesktopAgentGUIHostProps = {
   >;
   hostActions: Pick<
     AgentGUIProps["hostActions"],
+    | "onAgentConfigMenuOpen"
     | "onAgentEnvPanelOpen"
     | "onAgentProviderLogin"
     | "onCapabilitySettingsRequest"
@@ -46,7 +48,10 @@ export type DesktopAgentGUIHostProps = {
     | "onEngagementEvent"
     | "onOpenConversationWindow"
   >;
-  renderSlots: Pick<AgentGUIProps["renderSlots"], "sidebarFooter">;
+  renderSlots: Pick<
+    AgentGUIProps["renderSlots"],
+    "agentConfigAccount" | "sidebarFooter"
+  >;
 };
 
 export function useStableDesktopAgentGUIHostProps({
@@ -95,8 +100,11 @@ export function useStableDesktopAgentGUIHostProps({
     hostCapabilities: {
       referenceProvenanceFilterEnabled:
         nextHostCapabilities.referenceProvenanceFilterEnabled,
+      sessionInputHistoryEnabled:
+        nextHostCapabilities.sessionInputHistoryEnabled,
       capabilityMenuState: nextHostCapabilities.capabilityMenuState,
-      accountMenuState: nextHostCapabilities.accountMenuState,
+      visibleErrorPresentationOverrides:
+        nextHostCapabilities.visibleErrorPresentationOverrides,
       comingSoonProviders: nextHostCapabilities.comingSoonProviders,
       providerReadinessGates: nextHostCapabilities.providerReadinessGates,
       defaultAgentTargetId: nextHostCapabilities.defaultAgentTargetId,
@@ -105,6 +113,7 @@ export function useStableDesktopAgentGUIHostProps({
       workspaceAppIcons: nextHostCapabilities.workspaceAppIcons
     },
     hostActions: {
+      onAgentConfigMenuOpen: nextHostActions.onAgentConfigMenuOpen,
       onAgentEnvPanelOpen: nextHostActions.onAgentEnvPanelOpen,
       onAgentProviderLogin: nextHostActions.onAgentProviderLogin,
       onCapabilitySettingsRequest: nextHostActions.onCapabilitySettingsRequest,
@@ -119,6 +128,7 @@ export function useStableDesktopAgentGUIHostProps({
       onOpenConversationWindow: nextHostActions.onOpenConversationWindow
     },
     renderSlots: {
+      agentConfigAccount: nextRenderSlots.agentConfigAccount,
       sidebarFooter: nextRenderSlots.sidebarFooter
     }
   };

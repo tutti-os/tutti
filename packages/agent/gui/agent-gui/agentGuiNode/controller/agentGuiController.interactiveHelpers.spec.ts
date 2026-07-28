@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { AgentActivityInteraction } from "@tutti-os/agent-activity-core";
 import type { AgentHostUserProjectsApi } from "../../../host/agentHostApi";
+import { normalizeAgentApprovalOptions } from "../../../shared/agentConversation/projection/agentApprovalProjection";
 import { projectConversationRailSectionsByExactKey } from "../model/agentGuiConversationRail";
 import {
   areAgentGUIUserProjectsEqual,
   interactiveApprovalFromInteraction,
+  interactivePromptFromInteraction,
   readAgentGUIUserProjectSnapshot,
   upsertAgentGUIUserProject
 } from "./agentGuiController.interactiveHelpers";
@@ -30,6 +32,66 @@ describe("interactiveApprovalFromInteraction", () => {
     expect(interactiveApprovalFromInteraction(interaction)).toMatchObject({
       approvalPurpose: "edit-files",
       requestId: "request-1"
+    });
+  });
+
+  it("uses the shared approval-option projection", () => {
+    expect(
+      normalizeAgentApprovalOptions([
+        {
+          description: "Apply this once",
+          optionId: "allow-once",
+          title: "Allow once"
+        }
+      ])
+    ).toEqual([
+      {
+        description: "Apply this once",
+        id: "allow-once",
+        kind: "",
+        label: "Allow once"
+      }
+    ]);
+  });
+});
+
+describe("interactivePromptFromInteraction", () => {
+  it("preserves runtime plan options and the keep-planning option id", () => {
+    const interaction: AgentActivityInteraction = {
+      agentSessionId: "session-1",
+      createdAtUnixMs: 1,
+      input: {
+        options: [
+          {
+            description: "Auto-approve edits",
+            id: "acceptEdits",
+            name: "Accept edits"
+          },
+          { id: "plan", name: "Keep planning" }
+        ],
+        toolCall: { kind: "switch_mode" }
+      },
+      kind: "plan",
+      requestId: "request-1",
+      status: "pending",
+      toolName: "ExitPlanMode",
+      turnId: "turn-1",
+      updatedAtUnixMs: 1
+    };
+
+    expect(interactivePromptFromInteraction(interaction)).toEqual({
+      keepPlanningOptionId: "plan",
+      kind: "exit-plan",
+      options: [
+        {
+          description: "Auto-approve edits",
+          id: "acceptEdits",
+          kind: "acceptEdits",
+          label: "Accept edits"
+        }
+      ],
+      requestId: "request-1",
+      title: "ExitPlanMode"
     });
   });
 });

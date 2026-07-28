@@ -1,5 +1,7 @@
 import { Avatar as AvatarPrimitive } from "radix-ui";
 import {
+  useEffect,
+  useRef,
   useState,
   type ComponentProps,
   type ComponentPropsWithoutRef,
@@ -28,6 +30,7 @@ interface AvatarProps extends Omit<
   children?: ReactNode;
   fallback?: AvatarFallback;
   fallbackColor?: string;
+  fallbackSrc?: string | null;
   imageClassName?: string;
   imageProps?: Omit<
     ComponentPropsWithoutRef<typeof AvatarPrimitive.Image>,
@@ -40,6 +43,7 @@ interface AvatarProps extends Omit<
   size?: AvatarSize;
   src?: string | null;
   surfaceClassName?: string;
+  transform?: boolean;
 }
 
 const sizeClassNames: Record<Exclude<AvatarSize, number>, string> = {
@@ -49,9 +53,69 @@ const sizeClassNames: Record<Exclude<AvatarSize, number>, string> = {
   lg: "size-10"
 };
 
+const sizePixels: Record<Exclude<AvatarSize, number>, number> = {
+  xs: 16,
+  sm: 24,
+  md: 32,
+  lg: 40
+};
+
+const avatarDeliveryBuckets = [32, 48, 64, 96, 128, 192, 256, 384, 512];
+
 function avatarInitial(label: string, initial?: string): string {
   const value = initial?.trim() || label.trim();
   return Array.from(value)[0]?.toLocaleUpperCase() || "?";
+}
+
+function avatarSizePixels(size: AvatarSize): number {
+  return typeof size === "number" && Number.isFinite(size) && size > 0
+    ? size
+    : typeof size === "number"
+      ? sizePixels.md
+      : sizePixels[size];
+}
+
+function avatarDeliveryDimension(value: number): number {
+  const desiredSize = Math.ceil(value * 2);
+  return (
+    avatarDeliveryBuckets.find((bucket) => bucket >= desiredSize) ??
+    avatarDeliveryBuckets.at(-1) ??
+    desiredSize
+  );
+}
+
+function avatarTransformUrl(
+  src: string,
+  dimensions: { height: number; width: number }
+): string {
+  let url: URL;
+
+  try {
+    url = new URL(src);
+  } catch {
+    return src;
+  }
+
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    return src;
+  }
+
+  const fragmentIndex = src.indexOf("#");
+  const sourceWithoutFragment =
+    fragmentIndex >= 0 ? src.slice(0, fragmentIndex) : src;
+  const fragment = fragmentIndex >= 0 ? src.slice(fragmentIndex) : "";
+  const separator = sourceWithoutFragment.includes("?")
+    ? sourceWithoutFragment.endsWith("?") || sourceWithoutFragment.endsWith("&")
+      ? ""
+      : "&"
+    : "?";
+  const transformQuery = new URLSearchParams({
+    width: String(avatarDeliveryDimension(dimensions.width)),
+    height: String(avatarDeliveryDimension(dimensions.height)),
+    format: "webp",
+    fit: "inside"
+  });
+  return `${sourceWithoutFragment}${separator}${transformQuery}${fragment}`;
 }
 
 function Avatar({
@@ -59,6 +123,7 @@ function Avatar({
   className,
   fallback = "initial",
   fallbackColor,
+  fallbackSrc,
   imageClassName,
   imageProps,
   initial,
@@ -68,10 +133,40 @@ function Avatar({
   src,
   style,
   surfaceClassName,
+  transform = false,
   ...rootProps
 }: AvatarProps): React.JSX.Element {
   const normalizedSrc = src?.trim() ?? "";
-  const effectiveImageSrc = loading ? "" : normalizedSrc;
+  const normalizedFallbackSrc = fallbackSrc?.trim() ?? "";
+  const initialSize = avatarSizePixels(size);
+  const surfaceRef = useRef<HTMLSpanElement>(null);
+  const [renderedDimensions, setRenderedDimensions] = useState<{
+    height: number;
+    width: number;
+  } | null>(null);
+  const [failedTransformUrl, setFailedTransformUrl] = useState("");
+  const [failedOriginalUrl, setFailedOriginalUrl] = useState("");
+  const transformedImageSrc = transform
+    ? avatarTransformUrl(
+        normalizedSrc,
+        renderedDimensions ?? { height: initialSize, width: initialSize }
+      )
+    : normalizedSrc;
+  const shouldRetryOriginal =
+    transformedImageSrc !== normalizedSrc &&
+    failedTransformUrl === transformedImageSrc;
+  const originalCandidateSrc = shouldRetryOriginal
+    ? normalizedSrc
+    : transformedImageSrc;
+  const shouldUseFallback =
+    normalizedSrc.length > 0 &&
+    originalCandidateSrc === normalizedSrc &&
+    failedOriginalUrl === normalizedSrc;
+  const effectiveImageSrc = loading
+    ? ""
+    : shouldUseFallback
+      ? normalizedFallbackSrc
+      : originalCandidateSrc;
   const [imageState, setImageState] = useState<{
     src: string;
     status: AvatarImageStatus;
@@ -102,6 +197,59 @@ function Avatar({
       ? { height: `${size}px`, width: `${size}px`, ...style }
       : style;
 
+  useEffect(() => {
+    setFailedTransformUrl("");
+    setFailedOriginalUrl("");
+  }, [normalizedFallbackSrc, normalizedSrc, transform]);
+
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface) {
+      return;
+    }
+
+    const updateDimensions = (width: number, height: number): void => {
+      if (width <= 0 || height <= 0) {
+        return;
+      }
+
+      setRenderedDimensions((current) =>
+        current?.width === width && current.height === height
+          ? current
+          : { height, width }
+      );
+    };
+    const rect = surface.getBoundingClientRect();
+    updateDimensions(rect.width, rect.height);
+
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) {
+        updateDimensions(entry.contentRect.width, entry.contentRect.height);
+      }
+    });
+    observer.observe(surface);
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  const markImageError = (): void => {
+    if (
+      transformedImageSrc !== normalizedSrc &&
+      effectiveImageSrc === transformedImageSrc &&
+      shouldRetryOriginal === false
+    ) {
+      setFailedTransformUrl(transformedImageSrc);
+    } else if (effectiveImageSrc === normalizedSrc) {
+      setFailedOriginalUrl(normalizedSrc);
+    }
+    setImageState({ src: effectiveImageSrc, status: "error" });
+  };
+
   return (
     <AvatarPrimitive.Root
       {...rootProps}
@@ -126,6 +274,7 @@ function Avatar({
           surfaceClassName
         )}
         data-slot="avatar-surface"
+        ref={surfaceRef}
         style={
           fallback === "initial" &&
           fallbackColor &&
@@ -143,13 +292,18 @@ function Avatar({
             "block size-full max-w-none object-cover",
             imageClassName
           )}
+          referrerPolicy={imageProps?.referrerPolicy ?? "no-referrer"}
           src={imageSrcForPrimitive}
           onError={(event) => {
-            setImageState({ src: effectiveImageSrc, status: "error" });
+            markImageError();
             imageProps?.onError?.(event);
           }}
           onLoadingStatusChange={(status) => {
-            setImageState({ src: effectiveImageSrc, status });
+            if (status === "error") {
+              markImageError();
+            } else {
+              setImageState({ src: effectiveImageSrc, status });
+            }
             imageProps?.onLoadingStatusChange?.(status);
           }}
         />

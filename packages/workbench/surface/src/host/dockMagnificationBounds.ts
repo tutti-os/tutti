@@ -1,10 +1,48 @@
-import type { DockMagnificationSlotRect } from "./dockMagnification.ts";
+import type { DockMagnificationSlotRect } from "./dockMagnificationGeometry.ts";
+
+const DOCK_MAGNIFICATION_CROSS_AXIS_PADDING = 8;
 
 export interface DockMagnificationHitBounds {
   crossEnd: number;
   crossStart: number;
   mainEnd: number;
   mainStart: number;
+}
+
+export function resolveDockMagnificationHitBounds(
+  slotRects: readonly DockMagnificationSlotRect[],
+  dockPlacement: "bottom" | "left",
+  crossAxisPadding = DOCK_MAGNIFICATION_CROSS_AXIS_PADDING
+): DockMagnificationHitBounds | null {
+  if (slotRects.length === 0) {
+    return null;
+  }
+
+  let mainStart = Number.POSITIVE_INFINITY;
+  let mainEnd = Number.NEGATIVE_INFINITY;
+  let crossStart = Number.POSITIVE_INFINITY;
+  let crossEnd = Number.NEGATIVE_INFINITY;
+
+  for (const rect of slotRects) {
+    if (dockPlacement === "left") {
+      mainStart = Math.min(mainStart, rect.top);
+      mainEnd = Math.max(mainEnd, rect.bottom);
+      crossStart = Math.min(crossStart, rect.left);
+      crossEnd = Math.max(crossEnd, rect.right);
+    } else {
+      mainStart = Math.min(mainStart, rect.left);
+      mainEnd = Math.max(mainEnd, rect.right);
+      crossStart = Math.min(crossStart, rect.top);
+      crossEnd = Math.max(crossEnd, rect.bottom);
+    }
+  }
+
+  return {
+    crossEnd: crossEnd + crossAxisPadding,
+    crossStart: crossStart - crossAxisPadding,
+    mainEnd,
+    mainStart
+  };
 }
 
 function resolveDockMagnificationViewportBounds(

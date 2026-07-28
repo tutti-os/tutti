@@ -126,13 +126,13 @@ func (s *Service) detectNativeSubscription(
 		case !result.InferenceAttempted:
 			inference.Status = modelplanbiz.StageFailed
 			inference.FailureReason = FailureInference
-			inference.Remedy = RemedyRetryAgentRuntime
+			inference.Remedy = RemedyRetryInference
 		case result.InferencePassed:
 			inference.Status = modelplanbiz.StagePassed
 		default:
 			inference.Status = modelplanbiz.StageFailed
 			inference.FailureReason = FailureInference
-			inference.Remedy = RemedyRetryAgentRuntime
+			inference.Remedy = RemedyRetryInference
 		}
 	}
 

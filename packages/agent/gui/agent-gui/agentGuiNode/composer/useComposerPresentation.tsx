@@ -324,7 +324,7 @@ export function useComposerPresentation(input: Input) {
       key={activePromptTip.id}
       ref={promptTipRef}
       className={styles.composerPromptTip}
-      data-rotating={promptTips.length > 1 ? "true" : undefined}
+      data-rotating={rotatingPromptTips.length > 1 ? "true" : undefined}
       data-testid="agent-gui-prompt-tip"
       style={promptTipStyle}
     >

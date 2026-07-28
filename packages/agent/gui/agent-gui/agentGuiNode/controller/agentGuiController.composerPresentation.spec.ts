@@ -4,7 +4,6 @@ import type { AgentGUINodeData } from "../../../types";
 import {
   composerTargetDataForConversation,
   effectiveComposerSettingsFromOptions,
-  enforceComposerModelBindingForCreate,
   enforceComposerModelBindingForHomeDefaults,
   isForegroundModelOptionsLoading,
   nodeDataMatchesComposerTarget,
@@ -427,34 +426,6 @@ describe("composer model binding enforcement", () => {
     ).toBe("verified");
   });
 
-  it("create gate only sends positively verified bare models", () => {
-    const bare = { model: "x-ai/grok-4.5", modelPlanId: null };
-    expect(
-      enforceComposerModelBindingForCreate(
-        bare,
-        options(["x-ai/grok-4.5"], {
-          effectiveSettings: { model: "x-ai/grok-4.5" }
-        })
-      )
-    ).toMatchObject({ model: null, modelPlanId: null });
-    expect(
-      enforceComposerModelBindingForCreate(bare, options([]))
-    ).toMatchObject({ model: null, modelPlanId: null });
-    expect(
-      enforceComposerModelBindingForCreate(
-        bare,
-        options(["x-ai/grok-4.5", "gpt-5.3-codex"])
-      )
-    ).toMatchObject({ model: "x-ai/grok-4.5" });
-    // A full pair travels untouched — the daemon validates plan membership.
-    expect(
-      enforceComposerModelBindingForCreate(
-        { model: "x-ai/grok-4.5", modelPlanId: "mp-relay" },
-        options([])
-      )
-    ).toMatchObject({ model: "x-ai/grok-4.5", modelPlanId: "mp-relay" });
-  });
-
   it("home defaults drop only positively rejected bare models", () => {
     const bare = { model: "x-ai/grok-4.5", modelPlanId: null };
     expect(
@@ -463,8 +434,7 @@ describe("composer model binding enforcement", () => {
         options(["gpt-5.3-codex"])
       )
     ).toMatchObject({ model: null, modelPlanId: null });
-    // Unverifiable windows must not destroy a stored default; the create
-    // gate is the one that refuses to send it.
+    // Unverifiable windows must not destroy a stored default.
     expect(enforceComposerModelBindingForHomeDefaults(bare, null)).toBe(bare);
     expect(enforceComposerModelBindingForHomeDefaults(bare, options([]))).toBe(
       bare

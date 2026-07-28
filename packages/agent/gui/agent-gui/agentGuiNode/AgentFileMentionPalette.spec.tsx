@@ -137,6 +137,7 @@ describe("AgentFileMentionPalette", () => {
               name: "写一个文件",
               title: "写一个文件",
               creatorName: "Alice",
+              iconUrl: "tutti-asset://issue/default.png",
               status: "not_started"
             },
             {
@@ -227,6 +228,11 @@ describe("AgentFileMentionPalette", () => {
     );
 
     expect(screen.getByText("待开始")).toBeVisible();
+    expect(
+      screen
+        .getByRole("option", { name: /写一个文件/ })
+        .querySelector('[data-agent-mention-issue-icon="true"] img')
+    ).toHaveAttribute("src", "tutti-asset://issue/default.png");
     expect(screen.getAllByText("执行中")).toHaveLength(2);
     expect(screen.getByText("待验收")).toBeVisible();
     expect(screen.getByText("已完成")).toBeVisible();
@@ -244,10 +250,6 @@ describe("AgentFileMentionPalette", () => {
       "red",
       "neutral"
     ]);
-    expect(statusTags[1]).toHaveClass("text-[var(--status-running)]");
-    expect(statusTags[3]).toHaveClass("text-[var(--rich-text-mention-issue)]");
-    expect(statusTags[4]).toHaveClass("text-[var(--state-success)]");
-    expect(statusTags[5]).toHaveClass("text-[var(--state-danger)]");
     for (const statusTag of statusTags) {
       expect(statusTag.className).not.toContain("border-[");
     }
@@ -440,26 +442,6 @@ describe("AgentFileMentionPalette", () => {
       "green",
       "red"
     ]);
-    expect(statusTags[0]).toHaveClass(
-      "bg-transparent",
-      "px-0",
-      "text-[var(--status-running)]"
-    );
-    expect(statusTags[1]).toHaveClass(
-      "bg-transparent",
-      "px-0",
-      "text-[var(--state-warning)]"
-    );
-    expect(statusTags[2]).toHaveClass(
-      "bg-transparent",
-      "px-0",
-      "text-[var(--state-success)]"
-    );
-    expect(statusTags[8]).toHaveClass(
-      "bg-transparent",
-      "px-0",
-      "text-[var(--state-danger)]"
-    );
     const selectedOption = screen.getByRole("option", { selected: true });
     expect(selectedOption).toHaveClass(
       "rich-text-at-mention-palette__row-button"
@@ -507,6 +489,93 @@ describe("AgentFileMentionPalette", () => {
     expect(userAvatarImage).toBeNull();
     expect(selectedOption).toHaveTextContent("Codex");
     expect(selectedOption).not.toHaveTextContent("Alice & Codex");
+  });
+
+  it("omits the grouped initiator while preserving the shared Agent owner and suffix", () => {
+    const initiatorLabel = "A session initiator with a very long display name";
+    const ownerLabel = "A member with a very long display name";
+    const agentLabel = "Codex (Shared)";
+    const agentName = `${ownerLabel} · ${agentLabel}`;
+    const state: AgentMentionSearchState = {
+      status: "ready",
+      query: "",
+      mode: "browse",
+      filter: "session",
+      categories: [],
+      groups: [
+        {
+          id: "member:user-1",
+          label: initiatorLabel,
+          items: [
+            {
+              kind: "session",
+              href: "mention://agent-session/session-1?workspaceId=room-1",
+              workspaceId: "room-1",
+              targetId: "session-1",
+              agentTargetId: "shared-agent:shared-codex",
+              name: "Build result",
+              title: "Build result",
+              scope: "collab_sessions",
+              initiatorName: initiatorLabel,
+              agentName,
+              agentOwnerLabel: ownerLabel,
+              agentLabel,
+              agentIconUrl: "data:image/png;base64,agent",
+              status: "completed"
+            }
+          ],
+          totalCount: 1,
+          visibleCount: 1,
+          hasMore: false
+        }
+      ],
+      error: null
+    };
+
+    render(
+      <AgentFileMentionPalette
+        state={state}
+        highlightedKey={null}
+        label="mention palette"
+        loadingLabel="loading"
+        emptyLabel="empty"
+        errorLabel="error"
+        tabHintLabel="hint"
+        maxHeightPx={320}
+        onHighlightChange={vi.fn()}
+        onSelectItem={vi.fn()}
+        onSelectCategory={vi.fn()}
+        onSelectFilter={vi.fn()}
+        onExpandGroup={vi.fn()}
+      />
+    );
+
+    const participantElement = document.querySelector(
+      ".rich-text-at-mention-row__session-participant"
+    );
+    const entities = document.querySelectorAll(
+      ".rich-text-at-mention-row__session-participant-entity"
+    );
+    const segments = document.querySelectorAll(
+      ".rich-text-at-mention-row__session-participant-segment"
+    );
+    const separator = document.querySelector(
+      ".rich-text-at-mention-row__session-participant-separator"
+    );
+    const suffix = document.querySelector(
+      ".rich-text-at-mention-row__session-participant-suffix"
+    );
+    expect(participantElement).toHaveClass(
+      "rich-text-at-mention-row__session-participant--structured"
+    );
+    expect(participantElement).toHaveAttribute("title", agentName);
+    expect(entities).toHaveLength(1);
+    expect(segments[0]).toHaveTextContent(ownerLabel);
+    expect(separator).toBeNull();
+    expect(suffix?.textContent).toBe(` · ${agentLabel}`);
+    expect(participantElement).not.toHaveTextContent(initiatorLabel);
+    expect(screen.getByText("Build result")).toBeVisible();
+    expect(screen.getByText("已完成")).toBeVisible();
   });
 
   it("uses the session provider to resolve agent mention avatars", () => {

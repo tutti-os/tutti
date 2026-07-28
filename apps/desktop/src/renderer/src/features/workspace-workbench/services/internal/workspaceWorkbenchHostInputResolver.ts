@@ -206,12 +206,15 @@ export class WorkspaceWorkbenchHostInputResolver {
       })
     );
 
+    const captureNodePreviewImages = createDesktopWorkspaceNodePreviewCapture(
+      this.dependencies.hostWindowApi,
+      this.dependencies.runtimeApi,
+      input.workspaceId
+    );
     const baseHostInput: WorkspaceWorkbenchHostInput = {
-      captureNodePreviewImage: createDesktopWorkspaceNodePreviewCapture(
-        this.dependencies.hostWindowApi,
-        this.dependencies.runtimeApi,
-        input.workspaceId
-      ),
+      captureNodePreviewImage: async (node) =>
+        (await captureNodePreviewImages(node))?.dockPreviewImageUrl ?? null,
+      captureNodePreviewImages,
       contributions: contributionRegistry.contributions,
       debugDiagnostics: createWorkspaceWorkbenchDebugDiagnostics(
         this.dependencies.runtimeApi,
@@ -341,7 +344,7 @@ function createDesktopWorkspaceNodePreviewCapture(
   hostWindowApi: DesktopHostWindowApi,
   runtimeApi: Pick<DesktopRuntimeApi, "logRendererDiagnostic">,
   workspaceId: string
-): NonNullable<WorkspaceWorkbenchHostInput["captureNodePreviewImage"]> {
+): NonNullable<WorkspaceWorkbenchHostInput["captureNodePreviewImages"]> {
   return async (node) => {
     if (node.isMinimized || document.visibilityState !== "visible") {
       logDockPreviewCaptureDiagnostic(runtimeApi, workspaceId, {
@@ -425,9 +428,9 @@ function createDesktopWorkspaceNodePreviewCapture(
       level: "info"
     });
 
-    let captureResult: DockPreviewCaptureResult;
+    let captureResult: PreviewImagesCaptureResult;
     try {
-      const capturePromise = hostWindowApi.capturePreview({
+      const capturePromise = hostWindowApi.capturePreviewImages({
         maxHeight: workspaceDockNativePreviewMaxHeightPx,
         maxWidth: workspaceDockNativePreviewMaxWidthPx,
         rect: {
@@ -438,7 +441,7 @@ function createDesktopWorkspaceNodePreviewCapture(
         }
       });
       capturePromise.catch(() => undefined);
-      captureResult = await resolveDockPreviewCaptureWithTimeout(
+      captureResult = await resolvePreviewImagesCaptureWithTimeout(
         capturePromise,
         workspaceDockNativePreviewTimeoutMs
       );
@@ -470,9 +473,9 @@ function createDesktopWorkspaceNodePreviewCapture(
       return null;
     }
 
-    const previewImageUrl = captureResult.previewImageUrl;
+    const previewImages = captureResult.previewImages;
 
-    if (!previewImageUrl) {
+    if (!previewImages) {
       logDockPreviewCaptureDiagnostic(runtimeApi, workspaceId, {
         details: {
           durationMs: Math.round(performance.now() - captureStartedAt),
@@ -491,7 +494,8 @@ function createDesktopWorkspaceNodePreviewCapture(
         details: {
           durationMs: Math.round(performance.now() - captureStartedAt),
           nodeId: node.id,
-          previewLength: previewImageUrl.length,
+          dockPreviewLength: previewImages.dockPreviewImageUrl.length,
+          genieImageLength: previewImages.genieImageUrl.length,
           typeId: node.data.typeId
         },
         event: "dock_preview_capture.succeeded",
@@ -499,7 +503,7 @@ function createDesktopWorkspaceNodePreviewCapture(
       });
     }
 
-    return previewImageUrl;
+    return previewImages;
   };
 }
 
@@ -524,21 +528,26 @@ function isForegroundWorkspaceNodeCaptureTarget(
   return windowElement.dataset.focused === "true";
 }
 
-type DockPreviewCaptureResult =
-  | { previewImageUrl: string | null; status: "resolved" }
+type PreviewImagesCaptureResult =
+  | {
+      previewImages: Awaited<
+        ReturnType<DesktopHostWindowApi["capturePreviewImages"]>
+      >;
+      status: "resolved";
+    }
   | { status: "timeout" };
 
-function resolveDockPreviewCaptureWithTimeout(
-  capturePromise: Promise<string | null>,
+function resolvePreviewImagesCaptureWithTimeout(
+  capturePromise: ReturnType<DesktopHostWindowApi["capturePreviewImages"]>,
   timeoutMs: number
-): Promise<DockPreviewCaptureResult> {
+): Promise<PreviewImagesCaptureResult> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<DockPreviewCaptureResult>((resolve) => {
+  const timeoutPromise = new Promise<PreviewImagesCaptureResult>((resolve) => {
     timeout = setTimeout(() => resolve({ status: "timeout" }), timeoutMs);
   });
   return Promise.race([
-    capturePromise.then((previewImageUrl) => ({
-      previewImageUrl,
+    capturePromise.then((previewImages) => ({
+      previewImages,
       status: "resolved" as const
     })),
     timeoutPromise

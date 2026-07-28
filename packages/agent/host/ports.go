@@ -11,14 +11,21 @@ type CanonicalSessionStore interface {
 	GetSession(context.Context, string, string) (storesqlite.Session, bool, error)
 	SessionDeleted(context.Context, string, string) (bool, error)
 	RollbackRuntimeSessionInitialization(context.Context, string, string) (bool, error)
-	InitializeRuntimeSession(context.Context, ProviderRuntimeSession) (storesqlite.Session, error)
+	InitializeRuntimeSession(context.Context, RuntimeSessionInitialization) (storesqlite.Session, error)
 	UpdateSessionTitle(context.Context, string, string, string) (storesqlite.Session, bool, error)
 	ListChildSessions(context.Context, string, string) ([]storesqlite.Session, error)
 }
 
+type RuntimeSessionInitialization struct {
+	Session       ProviderRuntimeSession
+	RailPlacement *RailPlacement
+}
+
 type CanonicalTurnStore interface {
 	GetTurn(context.Context, string, string, string) (storesqlite.Turn, bool, error)
+	GetProviderSessionResumeEvidence(context.Context, string, string) (storesqlite.ProviderSessionResumeEvidence, error)
 	FindTurnByClientSubmitID(context.Context, string, string, string) (string, bool, error)
+	ListSessionTurnSummaries(context.Context, storesqlite.ListSessionTurnSummariesInput) (storesqlite.SessionTurnSummaryPage, error)
 	ListLatestTurnInteractions(context.Context, string, []string) (map[string][]storesqlite.Interaction, error)
 	ListSessionInteractions(context.Context, storesqlite.ListSessionInteractionsInput) ([]storesqlite.Interaction, error)
 }
@@ -31,6 +38,73 @@ type CanonicalSubmitClaimStore interface {
 	PrepareSubmitClaim(context.Context, storesqlite.SubmitClaimPrepare) (storesqlite.SubmitClaim, bool, error)
 	AcceptSubmitClaim(context.Context, string, string, string, string, int64) (storesqlite.SubmitClaim, bool, error)
 	DeleteSubmitClaim(context.Context, string, string, string) (bool, error)
+}
+
+// SessionForkStore is an independent durable saga boundary. Provider dispatch
+// must never share a transaction with canonical history cloning.
+type SessionForkStore interface {
+	SessionForkTurnIdentityStore
+	GetSessionForkSource(context.Context, string, string) (storesqlite.Session, bool, error)
+	CheckSessionForkThroughTurn(context.Context, string, string, string) (storesqlite.SessionForkBoundary, bool, error)
+	PrepareSessionFork(context.Context, storesqlite.SessionForkPrepare) (storesqlite.SessionForkOperation, bool, error)
+	GetSessionForkOperation(context.Context, string, string) (storesqlite.SessionForkOperation, bool, error)
+	GetSessionForkOperationByRequest(context.Context, string, string) (storesqlite.SessionForkOperation, bool, error)
+	GetUnknownSessionForkOperation(context.Context, string, string, string, string) (storesqlite.SessionForkOperation, bool, error)
+	GetBlockingSessionForkOperation(context.Context, string, string, string, string) (storesqlite.SessionForkOperation, bool, error)
+	MarkSessionForkDispatching(context.Context, string, string, int64) (storesqlite.SessionForkOperation, bool, error)
+	RetryUnknownSessionFork(context.Context, string, string, int64) (storesqlite.SessionForkOperation, bool, error)
+	FailPreparedSessionFork(context.Context, string, string, string, int64) (storesqlite.SessionForkOperation, bool, error)
+	RecordSessionForkProviderResult(context.Context, storesqlite.SessionForkProviderResult) (storesqlite.SessionForkOperation, bool, error)
+	CommitSessionFork(context.Context, string, string, int64) (storesqlite.SessionForkCommitResult, error)
+	AcknowledgeSessionForkOperation(context.Context, string, string, int64) (storesqlite.SessionForkOperation, bool, bool, error)
+	GetSessionForkLineage(context.Context, string, string) (storesqlite.SessionForkLineage, bool, error)
+}
+
+type SessionForkTurnIdentityStore interface {
+	ListSessionForkTurnIdentities(
+		context.Context,
+		string,
+		string,
+	) ([]storesqlite.SessionForkTurnIdentity, error)
+}
+
+// SessionForkRecoveryStore is workspace-global because startup recovery must
+// enumerate operations without guessing product-owned workspace identities.
+type SessionForkRecoveryStore interface {
+	ListRecoverableSessionForkOperationsPage(
+		context.Context,
+		storesqlite.SessionForkRecoveryCursor,
+		int,
+	) ([]storesqlite.SessionForkOperation, error)
+}
+
+// SessionForkRuntime resolves and invokes the exact provider adapter selected
+// by a source runtime. Adapters without through-Turn support report it as
+// false, so Host never dispatches an emulated provider fork.
+type SessionForkRuntime interface {
+	ResolveSessionFork(context.Context, ProviderRuntimeSession) (SessionForkDriverDescriptor, error)
+	ForkSession(context.Context, RuntimeSessionForkInput) (RuntimeSessionForkResult, error)
+}
+
+// SessionForkContextPolicy decides whether host-owned session context can be
+// transferred safely and returns the exact target context to freeze at
+// prepare. Product-specific resource ownership (for example worktrees) stays
+// out of the provider adapter and the canonical store.
+type SessionForkContextPolicy interface {
+	PrepareSessionForkTargetContext(
+		context.Context,
+		storesqlite.Session,
+		ProviderRuntimeSession,
+	) (SessionForkTargetContext, error)
+}
+
+// SessionForkProviderStateBinder transfers only the accepted provider child
+// state needed by the target runtime namespace. A failure is delivery-unknown:
+// the provider mutation may already exist. Only a driver with an attested
+// deterministic target identity may reconcile it by replaying the same UUID.
+type SessionForkProviderStateBinder interface {
+	SupportsSessionForkProviderStateBinding(provider string) bool
+	BindSessionForkProviderState(context.Context, SessionForkProviderStateBinding) error
 }
 
 // CanonicalStore composes the session, turn, and submit-claim facts shared by
@@ -84,6 +158,14 @@ type RuntimeController interface {
 	SetTitle(context.Context, RuntimeSetTitleInput) (ProviderRuntimeSession, error)
 	SetVisible(context.Context, RuntimeSetVisibleInput) (ProviderRuntimeSession, error)
 	Close(context.Context, RuntimeCloseInput) error
+}
+
+// RuntimeSessionLiveness distinguishes a registered runtime Session from a
+// live provider connection. It is required when Goal generation fencing is
+// configured: background recovery must never guess liveness and reconnect an
+// idle/offline Session merely to deliver deferred control work.
+type RuntimeSessionLiveness interface {
+	RuntimeSessionLive(workspaceID, agentSessionID string) bool
 }
 
 type RuntimeSubmitProvenanceReporter interface {
@@ -163,6 +245,23 @@ type GoalRuntimeReconciler interface {
 
 type GoalRuntimeRecoveryPolicyResolver interface {
 	GoalRecoveryPolicy(context.Context, RuntimeGoalControlInput) (RuntimeGoalRecoveryPolicy, error)
+}
+
+// GoalRuntimeGenerationFencer installs an exact, idempotent provider-runtime
+// admission fence. It must not clear a newer Goal generation.
+type GoalRuntimeGenerationFencer interface {
+	FenceGoalGeneration(context.Context, RuntimeGoalGenerationFenceInput) error
+}
+
+type GoalGenerationFenceStore interface {
+	PrepareGoalGenerationFence(context.Context, storesqlite.GoalGenerationFencePrepare) (storesqlite.GoalGenerationFence, bool, error)
+	GetGoalGenerationFence(context.Context, string, string) (storesqlite.GoalGenerationFence, bool, error)
+	ListGoalGenerationFencesForSession(context.Context, string, string) ([]storesqlite.GoalGenerationFence, error)
+	ListClaimableGoalGenerationFences(context.Context, storesqlite.ListClaimableGoalGenerationFencesInput) ([]storesqlite.GoalGenerationFence, error)
+	ClaimGoalGenerationFence(context.Context, storesqlite.ClaimGoalGenerationFenceInput) (storesqlite.GoalGenerationFence, bool, error)
+	ReleaseGoalGenerationFence(context.Context, storesqlite.ReleaseGoalGenerationFenceInput) (storesqlite.GoalGenerationFence, bool, error)
+	CompleteGoalGenerationFence(context.Context, storesqlite.CompleteGoalGenerationFenceInput) (storesqlite.GoalGenerationFence, bool, error)
+	RequeueLeasedGoalGenerationFencesOnStartup(context.Context, int64) (int64, error)
 }
 
 type RuntimePreparationInput struct {

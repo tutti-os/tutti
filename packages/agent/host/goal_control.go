@@ -161,6 +161,7 @@ func (h *Host) goalControlSerialized(
 			op, state, created, err := h.goals.PrepareGoalControlOperation(actorCtx, storesqlite.GoalControlOperationPrepare{
 				OperationID: operationID, WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
 				Action: strings.TrimSpace(action), Objective: strings.TrimSpace(objective), ClientSubmitID: clientSubmitID,
+				ExpectedRevision: input.ExpectedRevision,
 				OccurredAtUnixMS: now.UnixMilli(),
 			})
 			if err != nil {

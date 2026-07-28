@@ -1,14 +1,10 @@
 import { memo, useCallback, useMemo, useRef } from "react";
 import { createWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { createWorkspaceFileManagerI18nRuntime } from "@tutti-os/workspace-file-manager";
-import { useReferenceProvenanceFilterCatalog } from "@tutti-os/workspace-file-reference/react";
-import type {
-  ReferenceProvenanceCatalog,
-  WorkspaceFileReference
-} from "@tutti-os/workspace-file-reference/contracts";
+import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
 import { useTranslation } from "../../i18n/index";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
-import type { AgentGUINodeData } from "../../types";
+import type { AgentGUIAgentTarget, AgentGUINodeData } from "../../types";
 import { resolveCanonicalNodeMinSize } from "../../utils/workspaceNodeSizing";
 import { WorkspaceNodeWindow } from "../shared/WorkspaceNodeWindow";
 import { CanvasNodeGhostIconButton } from "../shared/CanvasNodeGhostIconButton";
@@ -27,13 +23,15 @@ import {
   AGENT_GUI_CONVERSATION_RAIL_MIN_WIDTH_PX,
   AGENT_GUI_DETAIL_MIN_WIDTH_PX,
   clampAgentGUIConversationRailWidthPx,
+  resolveAgentGUIConversationRailPresentation,
   resolveAgentGUIExpandedWindowFrame,
   resolveNextAgentGUIConversationRailWidthPx,
-  resolveAgentGUIConversationRailMaxWidthPx,
-  shouldAutoCollapseAgentGUIConversationRail
+  resolveAgentGUIConversationRailMaxWidthPx
 } from "./model/agentGuiRailLayout";
-import { resolveAgentGUIReferenceProvenanceFilterCatalog } from "./model/agentReferenceProvenanceCatalog";
-import type { AgentGUINodeProps } from "./AgentGUINode.types";
+import type {
+  AgentGUIAgentConfigMenuContext,
+  AgentGUINodeProps
+} from "./AgentGUINode.types";
 import { areAgentGUINodePropsEqual } from "./AgentGUINode.types";
 import { AgentGUIMentionServiceBoundary } from "./AgentGUIMentionServiceBoundary";
 import {
@@ -41,14 +39,9 @@ import {
   useAgentGUIConversationRailLabels,
   useAgentGUIWorkspaceFileReferenceCopy
 } from "./AgentGUINode.labels";
+import { useAgentMentionProvenanceFilters } from "./composer/useAgentMentionProvenanceFilters";
 
 export type { AgentGUINodeProps } from "./AgentGUINode.types";
-
-const DISABLED_REFERENCE_PROVENANCE_CATALOG: ReferenceProvenanceCatalog = {
-  enabledDimensions: [],
-  agentOptions: [],
-  memberOptions: []
-};
 
 export const AgentGUINode = memo(function AgentGUINode({
   identity,
@@ -72,6 +65,8 @@ export const AgentGUINode = memo(function AgentGUINode({
     promptAssetLimit = null,
     projectDirectorySourceAggregator = null,
     referenceSourceAggregator = null,
+    resolveReferenceContentErrorAction:
+      resolveWorkspaceReferenceContentErrorAction,
     resolveReferenceEntryIconUrl: resolveWorkspaceReferenceEntryIconUrl,
     resolveMentionReferenceTarget = null,
     resolveReferenceInitialTarget:
@@ -87,12 +82,8 @@ export const AgentGUINode = memo(function AgentGUINode({
     isMaximized = false,
     isActive,
     isVisible = true,
-    embedded = false,
-    previewMode = false,
-    conversationRailAutoCollapseWidthPx = null
+    embedded = false
   } = frame;
-  const railAutoCollapseWidthPx =
-    conversationRailAutoCollapseWidthPx ?? undefined;
   const widthRef = useRef(width);
   widthRef.current = width;
   const {
@@ -107,7 +98,6 @@ export const AgentGUINode = memo(function AgentGUINode({
   const {
     capabilityMenuState,
     capabilityControlsReadOnly = false,
-    accountMenuState = null,
     agentTargets,
     agentTargetsLoading = false,
     handoffAgentTargets,
@@ -123,28 +113,21 @@ export const AgentGUINode = memo(function AgentGUINode({
     workspaceAppIcons,
     disabledHomeSuggestions,
     referenceProvenanceFilterCatalog: injectedReferenceProvenanceFilterCatalog,
-    referenceProvenanceFilterEnabled = false
+    referenceProvenanceFilterEnabled = false,
+    sessionInputHistoryEnabled = false
   } = hostCapabilities;
-  const referenceProvenanceFilterCatalog =
-    resolveAgentGUIReferenceProvenanceFilterCatalog({
-      agentTargets,
-      injectedCatalog: injectedReferenceProvenanceFilterCatalog,
-      legacyAgentFilterEnabled: referenceProvenanceFilterEnabled
-    });
-  const referenceProvenanceFilterBinding = useReferenceProvenanceFilterCatalog(
-    referenceProvenanceFilterCatalog ?? DISABLED_REFERENCE_PROVENANCE_CATALOG
-  );
-  const referenceProvenanceFilter =
-    referenceProvenanceFilterBinding.snapshot.catalog.enabledDimensions.length >
-    0
-      ? referenceProvenanceFilterBinding
-      : null;
+  const referenceProvenanceFilters = useAgentMentionProvenanceFilters({
+    agentTargets,
+    injectedCatalog: injectedReferenceProvenanceFilterCatalog,
+    legacyAgentFilterEnabled: referenceProvenanceFilterEnabled
+  });
   const {
     onLinkAction,
     onHandoffConversation,
     onCapabilitySettingsRequest,
     onAgentProviderLogin,
     onAgentEnvPanelOpen,
+    onAgentConfigMenuOpen: onHostAgentConfigMenuOpen,
     onOpenConversationWindow,
     onClose,
     onResize,
@@ -158,6 +141,10 @@ export const AgentGUINode = memo(function AgentGUINode({
     onConversationRailLayoutChange
   } = hostActions;
   const {
+    agentConfigAccount: renderAgentConfigAccount,
+    agentTargetInfo: renderAgentTargetInfo,
+    projectDirectoryPickerHeaderActions:
+      renderProjectDirectoryPickerHeaderActions,
     providerRailEmpty: renderProviderRailEmpty,
     providerUnavailableState: renderProviderUnavailableState,
     sidebarFooter: renderSidebarFooter
@@ -200,18 +187,12 @@ export const AgentGUINode = memo(function AgentGUINode({
   );
   const handleDataChange = useCallback(
     (updater: (current: AgentGUINodeData) => AgentGUINodeData) => {
-      if (previewMode) {
-        return;
-      }
       onUpdateNode(updater);
     },
-    [onUpdateNode, previewMode]
+    [onUpdateNode]
   );
   const handleConversationRailWidthChanged = useCallback(
     (widthPx: number) => {
-      if (previewMode) {
-        return;
-      }
       onUpdateNode((current) => {
         const nextWidthPx = resolveNextAgentGUIConversationRailWidthPx({
           currentWidthPx: current.conversationRailWidthPx,
@@ -228,14 +209,18 @@ export const AgentGUINode = memo(function AgentGUINode({
         };
       });
     },
-    [onUpdateNode, previewMode]
+    [onUpdateNode]
   );
-  const isConversationRailManuallyCollapsed =
-    state.conversationRailCollapsed === true;
+  const conversationRailPresentation =
+    resolveAgentGUIConversationRailPresentation({
+      autoCollapseMode: frame.conversationRailAutoCollapseMode,
+      containerWidthPx: width,
+      conversationRailCollapsed: state.conversationRailCollapsed,
+      conversationRailWidthPx: state.conversationRailWidthPx
+    });
   const isConversationRailAutoCollapsed =
-    shouldAutoCollapseAgentGUIConversationRail(width, railAutoCollapseWidthPx);
-  const isConversationRailCollapsed =
-    isConversationRailManuallyCollapsed || isConversationRailAutoCollapsed;
+    conversationRailPresentation.isAutoCollapsed;
+  const isConversationRailCollapsed = conversationRailPresentation.isCollapsed;
   const minSize = useMemo(
     () => ({
       ...resolveCanonicalNodeMinSize("agentGui"),
@@ -244,18 +229,12 @@ export const AgentGUINode = memo(function AgentGUINode({
     []
   );
   const toggleConversationRailCollapsed = useCallback(() => {
-    if (previewMode) {
-      return;
-    }
     onUpdateNode((current) => ({
       ...current,
       conversationRailCollapsed: current.conversationRailCollapsed !== true
     }));
-  }, [onUpdateNode, previewMode]);
+  }, [onUpdateNode]);
   const handleConversationRailToggle = useCallback(() => {
-    if (previewMode) {
-      return;
-    }
     if (!isConversationRailAutoCollapsed) {
       toggleConversationRailCollapsed();
       return;
@@ -286,7 +265,6 @@ export const AgentGUINode = memo(function AgentGUINode({
     onResize,
     onUpdateNode,
     position,
-    previewMode,
     state.conversationRailWidthPx,
     toggleConversationRailCollapsed,
     width
@@ -310,14 +288,13 @@ export const AgentGUINode = memo(function AgentGUINode({
     providerReadinessGates,
     targetConnectionSource,
     defaultAgentTargetId,
-    previewMode,
     onDataChange: handleDataChange,
     onRememberComposerDefaults,
     onShowMessage
   });
   const handleCreateConversation = useCallback(
     (...args: Parameters<typeof actions.createConversation>) => {
-      if (!previewMode) {
+      {
         onUpdateNode((current) =>
           current.lastActiveAgentSessionId === null
             ? current
@@ -329,7 +306,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       }
       actions.createConversation(...args);
     },
-    [actions, onUpdateNode, previewMode]
+    [actions, onUpdateNode]
   );
   const viewActions = useMemo(
     () => ({
@@ -363,7 +340,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     agentProbeLines,
     controllerRailStatus,
     handleAgentConfigMenuClose,
-    handleAgentConfigMenuOpen,
+    handleAgentConfigMenuOpen: handleStatusAgentConfigMenuOpen,
     handleAgentProbeInfoClose,
     handleAgentProbeInfoOpen,
     handleAgentUsageRefresh,
@@ -377,10 +354,22 @@ export const AgentGUINode = memo(function AgentGUINode({
   } = useAgentGUIStatus({
     activeProvider,
     agentStatusController,
-    previewMode,
     t,
     viewModel
   });
+  const agentConfigMenuContext =
+    viewModel.rail.conversationFilter.kind === "all"
+      ? null
+      : resolveAgentConfigMenuContext(viewModel.rail.selectedAgentTarget);
+  const handleAgentConfigMenuOpen = () => {
+    handleStatusAgentConfigMenuOpen();
+    if (agentConfigMenuContext) {
+      onHostAgentConfigMenuOpen?.(agentConfigMenuContext);
+    }
+  };
+  const agentConfigAccountContent = agentConfigMenuContext
+    ? (renderAgentConfigAccount?.(agentConfigMenuContext) ?? null)
+    : null;
 
   return (
     <AgentGUIMentionServiceBoundary service={mentionService}>
@@ -450,14 +439,17 @@ export const AgentGUINode = memo(function AgentGUINode({
           const renderedWidth = renderFrame.size.width;
           const isRenderedConversationRailCollapsed =
             isConversationRailCollapsed ||
-            shouldAutoCollapseAgentGUIConversationRail(
-              renderedWidth,
-              railAutoCollapseWidthPx
-            );
+            resolveAgentGUIConversationRailPresentation({
+              autoCollapseMode: frame.conversationRailAutoCollapseMode,
+              containerWidthPx: renderedWidth,
+              conversationRailCollapsed: state.conversationRailCollapsed,
+              conversationRailWidthPx: state.conversationRailWidthPx
+            }).isCollapsed;
 
           return (
             <AgentGUINodeView
               viewModel={viewModel}
+              renderAgentTargetInfo={renderAgentTargetInfo}
               renderSidebarFooter={renderSidebarFooter}
               renderProviderRailEmpty={renderProviderRailEmpty}
               renderProviderUnavailableState={renderProviderUnavailableState}
@@ -485,6 +477,7 @@ export const AgentGUINode = memo(function AgentGUINode({
               slashStatusLimitsResolvedEmpty={
                 controllerRailStatus?.resolvedEmpty ?? false
               }
+              agentConfigAccountContent={agentConfigAccountContent}
               providerAuthAccountLabels={providerAuthAccountLabels}
               onAgentConfigMenuClose={handleAgentConfigMenuClose}
               onAgentConfigMenuOpen={handleAgentConfigMenuOpen}
@@ -492,7 +485,6 @@ export const AgentGUINode = memo(function AgentGUINode({
               onSlashStatusOpen={handleSlashStatusOpen}
               onSlashStatusClose={handleSlashStatusClose}
               onSlashStatusRefresh={handleSlashStatusRefresh}
-              previewMode={previewMode}
               onLinkAction={handleLinkAction}
               onHandoffConversation={onHandoffConversation}
               capabilityMenuState={capabilityMenuState}
@@ -502,7 +494,6 @@ export const AgentGUINode = memo(function AgentGUINode({
                 onAgentProviderLogin ? handleAgentProviderLogin : undefined
               }
               onAgentEnvPanelOpen={onAgentEnvPanelOpen}
-              accountMenuState={accountMenuState}
               conversationRailCollapsed={isRenderedConversationRailCollapsed}
               conversationRailWidthPx={clampAgentGUIConversationRailWidthPx(
                 state.conversationRailWidthPx,
@@ -540,6 +531,9 @@ export const AgentGUINode = memo(function AgentGUINode({
                 projectDirectorySourceAggregator
               }
               referenceSourceAggregator={referenceSourceAggregator}
+              resolveReferenceContentErrorAction={
+                resolveWorkspaceReferenceContentErrorAction
+              }
               resolveWorkspaceReferenceEntryIconUrl={
                 resolveWorkspaceReferenceEntryIconUrl
               }
@@ -549,7 +543,11 @@ export const AgentGUINode = memo(function AgentGUINode({
               }
               workspaceFileReferenceCopy={workspaceFileReferenceCopy}
               workspaceAppIcons={workspaceAppIcons}
-              referenceProvenanceFilter={referenceProvenanceFilter}
+              referenceProvenanceFilters={referenceProvenanceFilters}
+              sessionInputHistoryEnabled={sessionInputHistoryEnabled}
+              renderProjectDirectoryPickerHeaderActions={
+                renderProjectDirectoryPickerHeaderActions
+              }
             />
           );
         }}
@@ -557,3 +555,19 @@ export const AgentGUINode = memo(function AgentGUINode({
     </AgentGUIMentionServiceBoundary>
   );
 }, areAgentGUINodePropsEqual);
+
+function resolveAgentConfigMenuContext(
+  target: AgentGUIAgentTarget
+): AgentGUIAgentConfigMenuContext | null {
+  const agentTargetId = target.agentTargetId?.trim() || target.targetId.trim();
+  const provider = target.provider.trim();
+  if (!agentTargetId || !provider) {
+    return null;
+  }
+  return {
+    agentTargetId,
+    provider,
+    label: target.label,
+    ...(target.ownership ? { ownership: target.ownership } : {})
+  };
+}

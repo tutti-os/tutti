@@ -68,6 +68,7 @@ func SplitSessionRuntimeContext(runtimeContext map[string]any) (SessionMetadata,
 }
 
 type SessionStateReport = agentstore.SessionStateReport
+type RailSection = agentstore.RailSection
 
 type StateReportResult = agentstore.StateReportResult
 
@@ -129,6 +130,12 @@ type ListClaimableGoalControlOperationsInput = agentstore.ListClaimableGoalContr
 type ClaimGoalControlOperationInput = agentstore.ClaimGoalControlOperationInput
 type ReleaseGoalControlOperationInput = agentstore.ReleaseGoalControlOperationInput
 type GoalControlOperationEvidence = agentstore.GoalControlOperationEvidence
+type GoalGenerationFence = agentstore.GoalGenerationFence
+type GoalGenerationFencePrepare = agentstore.GoalGenerationFencePrepare
+type ListClaimableGoalGenerationFencesInput = agentstore.ListClaimableGoalGenerationFencesInput
+type ClaimGoalGenerationFenceInput = agentstore.ClaimGoalGenerationFenceInput
+type ReleaseGoalGenerationFenceInput = agentstore.ReleaseGoalGenerationFenceInput
+type CompleteGoalGenerationFenceInput = agentstore.CompleteGoalGenerationFenceInput
 type WakeGoalControlOperationInput = agentstore.WakeGoalControlOperationInput
 type EnsureGoalRepairOperationInput = agentstore.EnsureGoalRepairOperationInput
 type GoalReconcileInboxItem = agentstore.GoalReconcileInboxItem
@@ -149,6 +156,8 @@ var (
 	ErrGoalOperationConflict            = agentstore.ErrGoalOperationConflict
 	ErrGoalStateAbsent                  = agentstore.ErrGoalStateAbsent
 	ErrGoalReconcileConflict            = agentstore.ErrGoalReconcileConflict
+	ErrGoalGenerationFenceConflict      = agentstore.ErrGoalGenerationFenceConflict
+	ErrGoalGenerationSuperseded         = agentstore.ErrGoalGenerationSuperseded
 )
 
 const (

@@ -38,6 +38,55 @@ func TestClaudeCodeSDKAdapterMapsSyntheticTurnStarted(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeSDKAdapterCompletesCanonicalTurnByProviderIdentity(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{
+		session:   session,
+		liveState: newClaudeSDKLiveState(),
+	}
+	adapter.beginClaudeSDKRootTurn(
+		adapterSession,
+		"canonical-turn-1",
+		"provider-prompt-1",
+	)
+
+	var published []activityshared.Event
+	adapter.SetSessionEventSink(func(agentSessionID string, events []activityshared.Event) {
+		if agentSessionID == session.AgentSessionID {
+			published = append(published, events...)
+		}
+	})
+	adapter.dispatchClaudeSDKEvent(
+		session.AgentSessionID,
+		adapterSession,
+		claudeSDKSidecarEvent{
+			Type: "turn_completed",
+			Payload: map[string]any{
+				"turnId":         "canonical-turn-1",
+				"providerTurnId": "provider-prompt-1",
+				"stopReason":     "end_turn",
+			},
+		},
+	)
+
+	var completion *activityshared.Event
+	for index := range published {
+		if published[index].Type == activityshared.EventRootProviderTurnCompleted {
+			completion = &published[index]
+			break
+		}
+	}
+	if completion == nil ||
+		completion.Payload.TurnID != "canonical-turn-1" ||
+		completion.Payload.ProviderTurnID != "provider-prompt-1" {
+		t.Fatalf("published=%#v, want canonical/provider completion identities", published)
+	}
+	if adapter.consumeClaudeSDKRootProviderTurn(adapterSession, "provider-prompt-1") {
+		t.Fatal("provider turn identity remained live after terminal dispatch")
+	}
+}
+
 func TestClaudeCodeSDKAdapterUsesSidecarAssistantMessageID(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	session := standardTestSession(ProviderClaudeCode)
@@ -73,6 +122,32 @@ func TestClaudeCodeSDKAdapterUsesSidecarAssistantMessageID(t *testing.T) {
 		messages[0].Payload.Content != "Before tool." ||
 		messages[1].Payload.Content != "After tool." {
 		t.Fatalf("assistant messages = %#v, want distinct ids and contents", messages)
+	}
+}
+
+func TestClaudeCodeSDKAdapterMapsAssistantSDKErrorToFailedMessage(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
+
+	events, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-auth", claudeSDKSidecarEvent{
+		Type: "assistant_failed",
+		Payload: map[string]any{
+			"turnId":    "turn-auth",
+			"messageId": "claude-sdk:assistant:auth-error:fallback:0",
+			"content":   "Failed to authenticate. API Error: 401",
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("assistant_failed err=%v terminal=%v", err, terminal)
+	}
+	if len(events) != 1 ||
+		events[0].Type != activityshared.EventMessageAppended ||
+		events[0].EventID != "claude-sdk:assistant:auth-error:fallback:0" ||
+		events[0].Payload.Role != activityshared.MessageRoleAssistant ||
+		events[0].Payload.Metadata["streamState"] != messageStreamStateFailed ||
+		events[0].Payload.Content != "Failed to authenticate. API Error: 401" {
+		t.Fatalf("assistant failed events = %#v", events)
 	}
 }
 

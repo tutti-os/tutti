@@ -173,7 +173,7 @@ describe("useAgentGUIPanelEngagement", () => {
     ]);
   });
 
-  it("does not expose previews, host-hidden panels, or low intersections", () => {
+  it("does not expose host-hidden panels or low intersections", () => {
     const { events, rerender } = renderHarness();
     act(() => TestIntersectionObserver.current?.emit(0.49));
     act(() => vi.advanceTimersByTime(AGENT_GUI_PANEL_EXPOSURE_DWELL_MS));
@@ -181,10 +181,6 @@ describe("useAgentGUIPanelEngagement", () => {
 
     rerender(<EngagementHarness events={events} isVisible={false} />);
     act(() => TestIntersectionObserver.current?.emit(1));
-    act(() => vi.advanceTimersByTime(AGENT_GUI_PANEL_EXPOSURE_DWELL_MS));
-    expect(events).toEqual([]);
-
-    rerender(<EngagementHarness events={events} previewMode />);
     act(() => vi.advanceTimersByTime(AGENT_GUI_PANEL_EXPOSURE_DWELL_MS));
     expect(events).toEqual([]);
   });
@@ -220,8 +216,7 @@ describe("useAgentGUIPanelEngagement", () => {
       isVisible: true,
       onEvent: (event: AgentGUIEngagementEvent) => {
         events.push(event);
-      },
-      previewMode: false
+      }
     };
     const controller = new AgentGUIPanelEngagementController({
       element: document.createElement("div"),
@@ -293,14 +288,12 @@ function EngagementHarness({
   context = contextFor(null),
   contextKey = "home:codex-local",
   events,
-  isVisible = true,
-  previewMode = false
+  isVisible = true
 }: {
   context?: AgentGUIEngagementContext;
   contextKey?: string;
   events: AgentGUIEngagementEvent[];
   isVisible?: boolean;
-  previewMode?: boolean;
 }) {
   const elementRef = useRef<HTMLDivElement | null>(null);
   const composerEngagement = useAgentGUIPanelEngagement({
@@ -311,8 +304,7 @@ function EngagementHarness({
     isVisible,
     onEvent: (event) => {
       events.push(event);
-    },
-    previewMode
+    }
   });
   return (
     <div ref={elementRef}>

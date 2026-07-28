@@ -72,3 +72,43 @@ test("serializes canonical workbench state back to canonical snapshot shape", ()
     tuttiWorkbenchInitialized: true
   });
 });
+
+test("serializes the surface layout basis with workbench state", () => {
+  const snapshot = createWorkbenchSnapshotFromState({
+    layoutConstraints: {
+      minWidth: 280,
+      minHeight: 160,
+      surfacePadding: 8,
+      safeArea: { top: 52, right: 12, bottom: 88, left: 12 }
+    },
+    nodeStack: [],
+    nodes: [],
+    surfaceSize: { width: 1512, height: 897 }
+  });
+
+  assert.deepEqual(snapshot.layoutBasis, {
+    surfaceSize: { width: 1512, height: 897 },
+    layoutConstraints: {
+      minWidth: 280,
+      minHeight: 160,
+      surfacePadding: 8,
+      safeArea: { top: 52, right: 12, bottom: 88, left: 12 }
+    }
+  });
+});
+
+test("omits the layout basis while the measured surface is collapsed", () => {
+  const snapshot = createWorkbenchSnapshotFromState({
+    layoutConstraints: {
+      minWidth: 280,
+      minHeight: 160,
+      surfacePadding: 8,
+      safeArea: { top: 52, right: 12, bottom: 88, left: 12 }
+    },
+    nodeStack: [],
+    nodes: [],
+    surfaceSize: { width: 0, height: 0 }
+  });
+
+  assert.equal(snapshot.layoutBasis, undefined);
+});

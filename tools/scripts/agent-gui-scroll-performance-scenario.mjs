@@ -23,9 +23,9 @@ const minimumViewportTravel = 8;
 const forbiddenProfileFunctions = [
   "EditorView",
   "hasSelection",
-  "selectionToDOM",
-  "updateStateInner"
+  "selectionToDOM"
 ];
+const diagnosticProfileFunctions = ["captureScrollAnchor", "updateStateInner"];
 
 export const virtualizedScrollLocatorScenario = {
   id: "virtualized-scroll-locator",
@@ -42,7 +42,10 @@ export const virtualizedScrollLocatorScenario = {
       marker: markers.stable
     }
   ],
-  profileFunctionNames: [...forbiddenProfileFunctions, "captureScrollAnchor"],
+  profileFunctionNames: [
+    ...forbiddenProfileFunctions,
+    ...diagnosticProfileFunctions
+  ],
   prepareSnapshot(context) {
     return prepareVirtualizedTranscriptSnapshot(context, {
       richTextFixture: true
@@ -139,6 +142,16 @@ export const virtualizedScrollLocatorScenario = {
           value: result.selectedIndexes.join(" → ") || "none"
         },
         {
+          label: "Selected index / scrollTop",
+          value:
+            result.selectedSnapshots
+              .map(
+                (snapshot) =>
+                  `${snapshot.index}@${Math.round(snapshot.scrollTop)}`
+              )
+              .join(" → ") || "none"
+        },
+        {
           label: "Expected final index",
           value: String(result.expectedSelectedIndex)
         },
@@ -208,6 +221,10 @@ export const virtualizedScrollLocatorScenario = {
         {
           label: "captureScrollAnchor CPU samples",
           value: String(profileSamples.captureScrollAnchor ?? 0)
+        },
+        {
+          label: "updateStateInner CPU samples",
+          value: String(profileSamples.updateStateInner ?? 0)
         }
       ]
     };
@@ -228,6 +245,7 @@ async function executeVirtualizedScrollLocator(context, _prepared, options) {
         maxMountedMentions: 0,
         maxStaticRichTextNodes: 0,
         selectedIndexes: [],
+        selectedSnapshots: [],
         stablePolls: 0,
         startVirtualTurnKeys: [...document.querySelectorAll('[data-agent-transcript-virtual-turn]')]
           .map((element) => element.getAttribute('data-agent-transcript-virtual-turn') ?? '')
@@ -278,6 +296,10 @@ async function executeVirtualizedScrollLocator(context, _prepared, options) {
         const index = readSelectedIndex();
         if (index >= 0 && state.selectedIndexes.at(-1) !== index) {
           state.selectedIndexes.push(index);
+          state.selectedSnapshots.push({
+            index,
+            scrollTop: timeline.scrollTop
+          });
         }
         return index;
       };
@@ -321,6 +343,9 @@ async function executeVirtualizedScrollLocator(context, _prepared, options) {
         frame += 1;
         const elapsedMs = performance.now() - startedAt;
         const progress = Math.min(elapsedMs / ${scrollDurationMs}, 1);
+        if (frame % 8 === 0) {
+          timeline.dispatchEvent(new WheelEvent('wheel', { deltaY: -100 }));
+        }
         timeline.scrollTop =
           startScrollTop + (targetScrollTop - startScrollTop) * progress;
         state.recordTranscriptMetrics();
@@ -357,7 +382,8 @@ async function executeVirtualizedScrollLocator(context, _prepared, options) {
         ready: selectedIndex >= 0 && state.stablePolls >= 5,
         expectedSelectedIndex: state.readExpectedSelectedIndex(),
         selectedIndex,
-        selectedIndexes: [...state.selectedIndexes]
+        selectedIndexes: [...state.selectedIndexes],
+        selectedSnapshots: [...state.selectedSnapshots]
       };
     })()`,
     options.timeoutMs,
@@ -370,6 +396,7 @@ async function executeVirtualizedScrollLocator(context, _prepared, options) {
     `(() => {
       const state = window.__tuttiPerfVirtualizedScrollLocator;
       const selectedIndexes = [...(state?.selectedIndexes ?? [])];
+      const selectedSnapshots = [...(state?.selectedSnapshots ?? [])];
       state?.observer?.disconnect();
       state?.transcriptObserver?.disconnect();
       let reversedTransitions = 0;
@@ -393,6 +420,7 @@ async function executeVirtualizedScrollLocator(context, _prepared, options) {
         reversedTransitions,
         returnedTransitions,
         selectedIndexes,
+        selectedSnapshots,
         startVirtualTurnKeys: [...(state?.startVirtualTurnKeys ?? [])],
         maxHistoricalInteractiveNodes: state?.maxHistoricalInteractiveNodes ?? 0,
         maxMountedMentions: state?.maxMountedMentions ?? 0,

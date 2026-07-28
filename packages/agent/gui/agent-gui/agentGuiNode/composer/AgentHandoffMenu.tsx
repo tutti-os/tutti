@@ -18,6 +18,7 @@ import {
   resolveComposerProviderTargetIconUrl
 } from "./AgentComposerChrome";
 import { resolveHandoffTargetOwnershipLabel } from "./handoffTargetPresentation";
+import { AgentGUIOwnerAvatar } from "../AgentGUIOwnerAvatar";
 
 export interface AgentHandoffMenuLabels {
   action: string;
@@ -207,11 +208,10 @@ export function AgentHandoffMenu({
                       src={resolveComposerProviderTargetIconUrl(target)}
                     />
                     {target.badge?.iconUrl ? (
-                      <img
-                        alt=""
-                        aria-hidden="true"
-                        className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border border-[var(--background-fronted)] bg-[var(--background-fronted)] object-cover"
-                        src={target.badge.iconUrl}
+                      <AgentGUIOwnerAvatar
+                        className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border border-[var(--background-fronted)] bg-[var(--background-fronted)] text-[7px] leading-none object-cover"
+                        iconUrl={target.badge.iconUrl}
+                        label={target.badge.label}
                       />
                     ) : null}
                   </span>

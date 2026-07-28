@@ -13,12 +13,20 @@ import (
 func (c *Controller) ensureLiveAdapterSession(ctx context.Context, session Session, adapter Adapter) error {
 	probe, ok := adapter.(LiveSessionProbeAdapter)
 	if !ok || probe.HasLiveSession(session) {
-		return nil
+		return c.applyRetainedGoalGenerationFencesOrClose(ctx, session, adapter)
 	}
 	if strings.TrimSpace(session.ProviderSessionID) == "" {
 		return ErrSessionDisconnected
 	}
+	c.invalidateAppliedGoalGenerationFences(session)
+	// Resume only reconnects provider context; it does not execute a Turn.
+	// Host startup separately settles stale pre-restart Turns as interrupted.
+	// Install retained admission fences before this Controller dispatches the
+	// user operation that requested the connection.
 	if err := adapter.Resume(ctx, session); err != nil {
+		return err
+	}
+	if err := c.applyRetainedGoalGenerationFencesOrClose(ctx, session, adapter); err != nil {
 		return err
 	}
 	session.Status = SessionStatusReady
@@ -140,6 +148,7 @@ func (c *Controller) releaseIdleLiveSession(
 		)
 		return result
 	}
+	c.invalidateAppliedGoalGenerationFences(refreshed)
 	result.Released = 1
 	return result
 }
@@ -262,6 +271,10 @@ func (c *Controller) recreateAdapterSession(ctx context.Context, session Session
 		return err
 	}
 	fresh = applySessionEvents(fresh, events)
+	c.invalidateAppliedGoalGenerationFences(fresh)
+	if err := c.applyRetainedGoalGenerationFencesOrClose(ctx, fresh, adapter); err != nil {
+		return err
+	}
 	fresh.Status = SessionStatusReady
 	fresh.UpdatedAtUnixMS = unixMS(now())
 	if notice, ok := sessionRecreatedNoticeEvent(fresh); ok {

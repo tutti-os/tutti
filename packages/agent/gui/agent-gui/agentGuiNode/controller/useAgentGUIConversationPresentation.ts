@@ -48,7 +48,6 @@ interface UseAgentGUIConversationPresentationInput {
   onDataChangeRef: CurrentValue<
     (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
   >;
-  previewMode: boolean;
   agentTargetsLoading: boolean;
   shouldUseStaticProviderTargets: boolean;
   transientConversation: AgentGUIConversationSummary | null;
@@ -210,11 +209,7 @@ export function useAgentGUIConversationPresentation(
   ]);
 
   useEffect(() => {
-    if (
-      input.previewMode ||
-      input.agentTargetsLoading ||
-      !input.activeConversationId
-    ) {
+    if (input.agentTargetsLoading || !input.activeConversationId) {
       return;
     }
     const summary = resolveConversationSummaryById(
@@ -297,7 +292,6 @@ export function useAgentGUIConversationPresentation(
     input.normalizedExplicitProviderTargets,
     input.normalizedProviderTargets,
     input.onDataChangeRef,
-    input.previewMode,
     input.agentTargetsLoading,
     input.shouldUseStaticProviderTargets,
     input.transientConversation

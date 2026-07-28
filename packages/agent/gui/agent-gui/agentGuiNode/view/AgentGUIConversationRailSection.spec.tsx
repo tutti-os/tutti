@@ -224,7 +224,6 @@ function renderProjectSectionElement(input: {
           isSectionCollapsed={false}
           labels={LABELS}
           pendingDeleteConversationId={null}
-          previewMode={false}
           projectDragging={false}
           projectDropIndicator={null}
           projectLabel={input.sectionKind === "conversations" ? "" : "Alpha"}

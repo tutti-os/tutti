@@ -25,6 +25,7 @@ export function createWorkbenchHostNodeBodyContext<
   externalState,
   externalStateSource,
   host,
+  isVisible,
   workspaceId
 }: {
   context: WorkbenchRenderNodeContext<WorkbenchHostNodeData>;
@@ -35,6 +36,7 @@ export function createWorkbenchHostNodeBodyContext<
   externalState?: WorkbenchHostExternalState;
   externalStateSource?: WorkbenchHostExternalStateSource;
   host: WorkbenchHostHandle;
+  isVisible: boolean;
   workspaceId: string;
 }): WorkbenchHostNodeBodyContext<TExternalNodeState, TExternalWorkspaceState> {
   const resolvedExternalState =
@@ -61,6 +63,7 @@ export function createWorkbenchHostNodeBodyContext<
     isFocused:
       selectFocusedWorkbenchNode(host.getSnapshot())?.id === context.node.id,
     isResizing: context.isResizing,
+    isVisible,
     presentationMode: context.layout.presentation?.mode ?? null,
     node: context.node,
     setNodeRuntimeState(state) {

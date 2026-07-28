@@ -171,8 +171,9 @@ export function createDesktopWorkspaceFileManagerContextMenu(input: {
         icon: createElement(CopyIcon, { className: "size-4" }),
         label: appI18n.t("workspaceFileManager.copyLabel"),
         onSelect: async () => {
-          await session.copyToClipboard(entry);
-          await onCopyEntry?.();
+          if (await session.copyToClipboard(entry)) {
+            await onCopyEntry?.();
+          }
         }
       });
     }

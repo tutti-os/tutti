@@ -15,6 +15,8 @@ This package ships:
 - `createWorkspaceFilePreviewController` for shared frontend loading lifecycle
   (readiness, cancellation, stale-request fencing, decoding, object-URL cleanup)
 - Built-in React preview shells for `image` / `video` / `text`
+- `WorkspaceImagePreviewSurface` for reusing the built-in image canvas while
+  keeping source loading, URL lifetime, and error policy in the host
 - Host renderer registry (by `previewKind`) and a resolve chain:
   host hook → text degradation → unsupported state
 - `toSurfaceState(controllerState, copy)` to project controller state into the

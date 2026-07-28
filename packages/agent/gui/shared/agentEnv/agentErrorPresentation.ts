@@ -24,6 +24,26 @@ export type AgentRunErrorCode =
   | "provider_error"
   | "unknown";
 
+export interface AgentVisibleErrorOverride {
+  message: string;
+  /** Provider ids for which this product-owned override is valid. */
+  providers: readonly string[];
+  action?: {
+    label: string;
+    url: string;
+  } | null;
+}
+
+/**
+ * Product-owned structured errors whose copy may be supplied by a Host.
+ * Environment/runtime errors remain canonical AgentGUI policy.
+ */
+export type AgentVisibleErrorOverrideCode = "insufficient_credits";
+
+export type AgentVisibleErrorOverrides = Partial<
+  Record<AgentVisibleErrorOverrideCode, AgentVisibleErrorOverride>
+>;
+
 export interface AgentErrorPresentation {
   /**
    * i18n key for the one human sentence shown in the card, or null to let the
@@ -99,10 +119,8 @@ const PRESENTATIONS: Record<AgentRunErrorCode, AgentErrorPresentation> = {
     ...NO_CTA
   },
   insufficient_credits: {
-    messageKey: "agentHost.agentGui.visibleErrorInsufficientCredits",
-    focus: null,
-    actionKey: "agentHost.agentGui.visibleErrorActionViewPlans",
-    externalUrl: "https://tutti.sh/profile/plan"
+    messageKey: "agentHost.agentGui.visibleErrorInsufficientCreditsUnknown",
+    ...NO_CTA
   },
   quota_or_rate_limit: {
     messageKey: "agentHost.agentGui.visibleErrorQuotaOrRateLimit",
@@ -220,19 +238,4 @@ export function classifyRecoverableAgentMessage(input: {
   return COMPLETED_AUTH_MESSAGE_PATTERN.test(input.body.trim())
     ? "auth_required"
     : null;
-}
-
-/** True when detail text is a provider plan/payment gate (not a generic quota). */
-export function isProviderPlanLimitMessage(
-  detail: string | null | undefined
-): boolean {
-  const normalized = detail?.trim().toLowerCase() ?? "";
-  if (!normalized) {
-    return false;
-  }
-  const markers =
-    FAILED_MESSAGE_CODE_MARKERS.find(
-      ([code]) => code === "quota_or_rate_limit"
-    )?.[1] ?? [];
-  return markers.some((marker) => normalized.includes(marker));
 }

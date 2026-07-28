@@ -41,6 +41,7 @@ type Service struct {
 	TurnSummaryReader              agentactivitybiz.SessionTurnSummaryReader
 	RuntimeOperationStore          RuntimeOperationStore
 	GoalStateStore                 GoalStateStore
+	GoalGenerationFenceStore       agenthost.GoalGenerationFenceStore
 	CommitObserver                 agenthost.CommitObserver
 	GoalReconcileInboxStore        GoalReconcileInboxStore
 	SubmitClaimStore               SubmitClaimStore
@@ -63,6 +64,7 @@ type Service struct {
 	WorkspaceIDs                   func(context.Context) ([]string, error)
 	PromptAttachmentStore          PromptAttachmentStore
 	RuntimePreparer                runtimeprep.Preparer
+	ModelGateway                   ModelGatewayRegistry
 	ComputerUseAvailable           func() bool
 	CapabilityLister               ComposerCapabilityLister
 	ExtensionComposerProfiles      ExtensionComposerProfileResolver
@@ -234,6 +236,7 @@ type Session struct {
 	Settings             *ComposerSettings
 	PermissionConfig     PermissionConfig
 	Title                *string
+	MessageVersion       uint64
 	PinnedAtUnixMS       int64
 	CreatedAt            time.Time
 	UpdatedAt            *time.Time
@@ -249,6 +252,28 @@ type Session struct {
 	LatestTurnInteractions []agentactivitybiz.Interaction
 	PendingInteractions    []agentactivitybiz.Interaction
 	TuttiModeActivation    *tuttimodeactivationbiz.Activation
+	LifecycleCapabilities  SessionLifecycleCapabilities
+	ForkedFrom             *SessionForkLineage
+}
+
+// SessionForkLineage is the durable provenance of a user-initiated root
+// Session fork. It is distinct from provider-native child-session ownership.
+type SessionForkLineage struct {
+	SourceAgentSessionID string
+	SourceTurnID         string
+	TargetTurnID         string
+	OperationID          string
+	ForkedAtUnixMS       int64
+}
+
+// SessionLifecycleCapabilities contains exact-session lifecycle operations.
+// These values are projected from canonical state and the attached runtime;
+// they are deliberately separate from provider/composer capabilities.
+type SessionLifecycleCapabilities struct {
+	Fork                    bool
+	ForkThroughTurn         bool
+	ForkThroughTurnIDs      []string
+	ForkThroughTurnIDsKnown bool
 }
 
 type SessionIsolation struct {
@@ -362,11 +387,14 @@ type PersistedSession struct {
 	Provider               string
 	ProviderSessionID      string
 	Cwd                    string
+	RailSectionKind        string
+	RailProjectPath        string
 	RailSectionKey         string
 	Settings               ComposerSettings
 	Metadata               agentactivitybiz.SessionMetadata
 	InternalRuntimeContext map[string]any
 	Title                  string
+	MessageVersion         uint64
 	PinnedAtUnixMS         int64
 	LastEventUnixMS        int64
 	StartedAtUnixMS        int64
@@ -414,7 +442,7 @@ type SessionPageReader interface {
 // every successful Create response must expose. In particular, it assigns the
 // immutable railSectionKey before the response leaves the daemon.
 type SessionInitializer interface {
-	InitializeRuntimeSession(context.Context, ProviderRuntimeSession) (PersistedSession, error)
+	InitializeRuntimeSession(context.Context, ProviderRuntimeSession, *agenthost.RailPlacement) (PersistedSession, error)
 }
 
 type ChildSessionReader interface {
@@ -505,12 +533,17 @@ type RuntimeGoalControlInput = agenthost.RuntimeGoalControlInput
 type RuntimeGoalControlResult = agenthost.RuntimeGoalControlResult
 type RuntimeGoalReconcileResult = agenthost.RuntimeGoalReconcileResult
 type RuntimeGoalRecoveryPolicy = agenthost.RuntimeGoalRecoveryPolicy
+type RuntimeGoalGenerationFenceInput = agenthost.RuntimeGoalGenerationFenceInput
 type RuntimeGoalRecoveryPolicyResolver interface {
 	GoalRecoveryPolicy(context.Context, RuntimeGoalControlInput) (RuntimeGoalRecoveryPolicy, error)
 }
 
 type RuntimeGoalReconciler interface {
 	ReconcileGoal(context.Context, RuntimeGoalControlInput) (RuntimeGoalReconcileResult, error)
+}
+
+type RuntimeGoalGenerationFencer interface {
+	FenceGoalGeneration(context.Context, RuntimeGoalGenerationFenceInput) error
 }
 
 type RuntimeCloseInput = agenthost.RuntimeCloseInput
@@ -604,6 +637,7 @@ type CreateSessionInput struct {
 	Speed                  *string
 	ConversationDetailMode string
 	Visible                *bool
+	RailPlacement          *agenthost.RailPlacement
 	ExtraSkills            []SessionSkillBundle
 	// ExternalRolloutSourcePath is the absolute path to the original provider
 	// CLI rollout/transcript file this session was imported from, when known.

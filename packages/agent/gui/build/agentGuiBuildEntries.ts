@@ -5,9 +5,14 @@ export const agentGUIBuildEntries = {
   agents: "agents.ts",
   "custom-mention": "custom-mention.ts",
   "dock-icons": "dockIcons.ts",
+  layout: "layout.ts",
   "mention-search": "agent-gui/agentGuiNode/AgentMentionSearchController.ts",
   "agent-message-center/index": "agent-message-center/index.ts",
   "agent-conversation/index": "agent-conversation/index.ts",
+  "agent-conversation/follow-end":
+    "shared/agentConversation/agentConversationFollowEndController.ts",
+  "agent-conversation/interactive-answer":
+    "shared/agentConversation/interactiveAnswerPayload.ts",
   "agent-env/index": "shared/agentEnv/index.ts",
   "agent-env/ui": "shared/agentEnv/ui.ts",
   "workspace-settings-panel":
@@ -32,6 +37,9 @@ export const agentGUIBuildEntries = {
   "workbench/types": "workbench/types.ts",
   "workspace-agent-generated-files": "shared/workspaceAgentGeneratedFiles.ts",
   "conversation-rail-runtime": "agentConversationRailRuntime.ts",
+  "conversation-rail-projection": "conversationRailProjection.ts",
+  "conversation-projection": "conversationProjection.ts",
+  "composer-projection": "composerProjection.ts",
   "workspace-query-cache": "shared/query/workspaceQueryCache.ts"
 } as const;
 
@@ -46,6 +54,8 @@ export const agentGUIDtsEntryGroups = [
     "mention-search",
     "agent-message-center/index",
     "agent-conversation/index",
+    "agent-conversation/follow-end",
+    "agent-conversation/interactive-answer",
     "context-mention-palette/index",
     "context-mention-provider"
   ],
@@ -61,10 +71,14 @@ export const agentGUIDtsEntryGroups = [
     "agent-title-text",
     "workspace-agent-generated-files",
     "conversation-rail-runtime",
+    "conversation-rail-projection",
+    "conversation-projection",
+    "composer-projection",
     "workspace-query-cache"
   ],
   [
     "dock-icons",
+    "layout",
     "workbench/index",
     "workbench/contribution",
     "workbench/launch",

@@ -23,6 +23,7 @@ if (args.includes("about")) {
 function runACPFixture() {
   const input = readline.createInterface({ input: process.stdin });
   let canceled = false;
+  let activeSessionId = "tutti-perf-cursor-session";
   input.on("line", (line) => {
     void handleMessage(line).catch((error) => {
       process.stderr.write(`${error.stack ?? error.message}\n`);
@@ -41,13 +42,19 @@ function runACPFixture() {
         });
         return;
       case "session/new":
+        activeSessionId =
+          message.params?.sessionId?.trim?.() || activeSessionId;
         respond(message.id, {
           configOptions: [],
-          sessionId: "tutti-perf-cursor-session"
+          sessionId: activeSessionId
         });
         return;
       case "session/load":
       case "session/resume":
+        activeSessionId =
+          message.params?.sessionId?.trim?.() || activeSessionId;
+        respond(message.id, { configOptions: [] });
+        return;
       case "session/set_mode":
       case "session/set_config_option":
         respond(message.id, { configOptions: [] });
@@ -56,6 +63,8 @@ function runACPFixture() {
         canceled = true;
         return;
       case "session/prompt":
+        activeSessionId =
+          message.params?.sessionId?.trim?.() || activeSessionId;
         canceled = false;
         await streamPrompt(message.id);
         return;
@@ -74,9 +83,17 @@ function runACPFixture() {
   }
 
   async function streamPrompt(promptID) {
+    const oversizedToolCallCount = Number.parseInt(
+      process.env.TUTTI_PERF_OVERSIZED_TOOL_CALLS ?? "",
+      10
+    );
+    if (Number.isFinite(oversizedToolCallCount) && oversizedToolCallCount > 0) {
+      await streamOversizedToolCalls(promptID, oversizedToolCallCount);
+      return;
+    }
     for (let index = 0; index < 48 && !canceled; index += 1) {
       notify("session/update", {
-        sessionId: "tutti-perf-cursor-session",
+        sessionId: activeSessionId,
         update: {
           sessionUpdate: "agent_message_chunk",
           content: {
@@ -86,6 +103,44 @@ function runACPFixture() {
         }
       });
       await new Promise((resolve) => setTimeout(resolve, 30));
+    }
+    respond(promptID, { stopReason: canceled ? "canceled" : "end_turn" });
+  }
+
+  async function streamOversizedToolCalls(promptID, toolCallCount) {
+    for (let index = 0; index < toolCallCount && !canceled; index += 1) {
+      const toolCallId = `tutti-perf-oversized-tool-${index}`;
+      const title = `Inspect fixture path ${index + 1}`;
+      notify("session/update", {
+        sessionId: activeSessionId,
+        update: {
+          sessionUpdate: "tool_call",
+          toolCallId,
+          title,
+          kind: "execute",
+          status: "pending",
+          rawInput: {
+            command: `printf oversized-tool-${index + 1}`
+          }
+        }
+      });
+      notify("session/update", {
+        sessionId: activeSessionId,
+        update: {
+          sessionUpdate: "tool_call_update",
+          toolCallId,
+          title,
+          kind: "execute",
+          status: "completed",
+          rawOutput: {
+            output: `oversized tool ${index + 1} completed`
+          }
+        }
+      });
+      await new Promise((resolve) => setTimeout(resolve, 12));
+    }
+    for (let index = 0; index < 100 && !canceled; index += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
     respond(promptID, { stopReason: canceled ? "canceled" : "end_turn" });
   }

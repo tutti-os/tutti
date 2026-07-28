@@ -105,14 +105,16 @@ function CompactQuickAnswerSurface({
                 })
               }
             >
-              <span className={styles.interactiveOptionTitle}>
-                {option.label}
-              </span>
-              {option.description ? (
-                <span className={styles.interactiveOptionDescription}>
-                  {option.description}
+              <span className={styles.interactiveOptionContent}>
+                <span className={styles.interactiveOptionTitle}>
+                  {option.label}
                 </span>
-              ) : null}
+                {option.description ? (
+                  <span className={styles.interactiveOptionDescription}>
+                    {option.description}
+                  </span>
+                ) : null}
+              </span>
             </button>
           ))}
         </div>
@@ -188,14 +190,16 @@ function AskUserAnswerFlowSurface({
                   disabled={isSubmitting}
                   onClick={() => flow.toggleOption(option.label)}
                 >
-                  <span className={styles.interactiveOptionTitle}>
-                    {option.label}
-                  </span>
-                  {option.description ? (
-                    <span className={styles.interactiveOptionDescription}>
-                      {option.description}
+                  <span className={styles.interactiveOptionContent}>
+                    <span className={styles.interactiveOptionTitle}>
+                      {option.label}
                     </span>
-                  ) : null}
+                    {option.description ? (
+                      <span className={styles.interactiveOptionDescription}>
+                        {option.description}
+                      </span>
+                    ) : null}
+                  </span>
                 </button>
               );
             })}

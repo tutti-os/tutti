@@ -1,3 +1,5 @@
+@import "./generated/renderer-theme.css";
+
 :root {
   --font-sans-system:
     "Lexend Variable", "Lexend", -apple-system, BlinkMacSystemFont,
@@ -17,15 +19,16 @@
 
   --radius: 0.625rem;
 
-  --background: oklch(0.986 0.004 84);
-  --background-panel: rgb(248 250 252);
+  --background: var(--renderer-background);
+  --background-panel: var(--renderer-background-panel);
+  --background-1: rgb(244 245 247);
   --background-session-flow: rgb(252 253 255);
   --background-session-sidepanel: rgb(244 245 247);
-  --background-fronted: rgb(255 255 255 / 1);
+  --background-fronted: var(--renderer-background-fronted);
   --background-soft: oklch(0.968 0.006 84);
   --background-board-card: rgb(255 255 255 / 1);
-  --foreground: oklch(0.248 0.016 258);
-  --text-primary: rgb(60 60 60);
+  --foreground: var(--renderer-foreground);
+  --text-primary: var(--renderer-text-primary);
   --text-primary-hover: rgb(60 60 60 / 90%);
   --text-tertiary: rgb(60 60 60 / 50%);
   --text-placeholder: rgb(60 60 60 / 30%);
@@ -48,7 +51,7 @@
   --secondary-foreground: oklch(0.314 0.018 258);
   --muted: oklch(0.958 0.005 84);
   --muted-foreground: oklch(0.528 0.013 258);
-  --text-secondary: rgb(60 60 60 / 70%);
+  --text-secondary: var(--renderer-text-secondary);
   --text-disabled: rgb(60 60 60 / 30%);
   --rich-text-mention-app: rgb(191, 90, 242);
   --rich-text-mention-issue: var(--tutti-purple);
@@ -56,7 +59,7 @@
   --folder: rgb(80, 175, 238);
   --rich-text-folder: rgb(80, 175, 238);
   --rich-text-mention-file: rgb(80, 175, 238);
-  --accent-codex: rgb(65 130 245);
+  --accent-codex: var(--renderer-accent);
   --accent: var(--accent-codex);
   --accent-codex-border: color-mix(
     in srgb,
@@ -79,13 +82,13 @@
   --accent-foreground: oklch(0.302 0.02 258);
   --destructive: oklch(0.62 0.21 25);
   --destructive-foreground: oklch(0.985 0.004 25);
-  --state-danger: rgb(220 38 38);
+  --state-danger: var(--renderer-danger);
   --state-danger-hover: color-mix(
     in srgb,
     var(--state-danger) 90%,
     transparent
   );
-  --state-success: rgb(34 197 94);
+  --state-success: var(--renderer-success);
   --state-warning: rgb(234 121 8);
   --on-danger: rgb(220 38 38 / 8%);
   --on-danger-hover: color-mix(
@@ -93,7 +96,7 @@
     var(--on-danger) 92%,
     var(--state-danger)
   );
-  --border: oklch(0.904 0.005 252);
+  --border: var(--renderer-border);
   --border-1: rgb(60 60 60 / 8%);
   --border-2: rgb(60 60 60 / 8%);
   --line-1: var(--border-1);
@@ -108,13 +111,13 @@
     var(--accent-codex) 12%
   );
 
-  --panel: oklch(0.975 0.004 84 / 92%);
+  --panel: var(--renderer-panel);
   --panel-foreground: var(--foreground);
   --success: oklch(0.642 0.124 158);
   --success-foreground: oklch(0.985 0.004 145);
   --warning: oklch(0.774 0.116 86);
   --warning-foreground: oklch(0.29 0.05 84);
-  --backdrop: rgb(0 0 0 / 60%);
+  --backdrop: var(--renderer-scrim);
 
   --shadow-soft: 0 10px 28px rgb(0 0 0 / 5%);
   --shadow-panel: 0 20px 44px rgb(0 0 0 / 8%);
@@ -206,15 +209,16 @@
 }
 
 :root[data-theme="dark"] {
-  --background: oklch(0.192 0.008 255);
-  --background-panel: rgb(42 42 43);
+  --background: var(--renderer-background);
+  --background-panel: var(--renderer-background-panel);
+  --background-1: rgb(24 24 24);
   --background-session-flow: rgb(24 24 24);
   --background-session-sidepanel: rgb(42 42 43);
-  --background-fronted: rgb(51 51 51 / 1);
+  --background-fronted: var(--renderer-background-fronted);
   --background-soft: oklch(0.224 0.01 255);
   --background-board-card: rgb(255 255 255 / 8%);
-  --foreground: oklch(0.955 0.004 84);
-  --text-primary: rgb(255 255 255);
+  --foreground: var(--renderer-foreground);
+  --text-primary: var(--renderer-text-primary);
   --text-primary-hover: rgb(255 255 255 / 90%);
   --text-tertiary: rgb(255 255 255 / 50%);
   --text-placeholder: rgb(255 255 255 / 30%);
@@ -237,7 +241,7 @@
   --secondary-foreground: var(--foreground);
   --muted: oklch(0.282 0.008 255);
   --muted-foreground: oklch(0.734 0.012 255);
-  --text-secondary: rgb(255 255 255 / 70%);
+  --text-secondary: var(--renderer-text-secondary);
   --text-disabled: rgb(255 255 255 / 30%);
   --rich-text-mention-app: rgb(191, 90, 242);
   --rich-text-mention-issue: var(--tutti-purple);
@@ -245,7 +249,7 @@
   --folder: rgb(80, 175, 238);
   --rich-text-folder: rgb(80, 175, 238);
   --rich-text-mention-file: rgb(80, 175, 238);
-  --accent-codex: rgb(79 143 255);
+  --accent-codex: var(--renderer-accent);
   --accent: var(--accent-codex);
   --accent-codex-border: color-mix(
     in srgb,
@@ -268,13 +272,13 @@
   --accent-foreground: var(--foreground);
   --destructive: oklch(0.672 0.172 25);
   --destructive-foreground: oklch(0.19 0.01 25);
-  --state-danger: rgb(244 91 91);
+  --state-danger: var(--renderer-danger);
   --state-danger-hover: color-mix(
     in srgb,
     var(--state-danger) 90%,
     transparent
   );
-  --state-success: rgb(74 222 128);
+  --state-success: var(--renderer-success);
   --state-warning: rgb(251 146 60);
   --on-danger: rgb(248 113 113 / 10%);
   --on-danger-hover: color-mix(
@@ -282,7 +286,7 @@
     var(--on-danger) 82%,
     var(--state-danger)
   );
-  --border: oklch(0.352 0.012 255);
+  --border: var(--renderer-border);
   --border-1: rgb(255 255 255 / 12%);
   --border-2: rgb(255 255 255 / 8%);
   --line-1: var(--border-1);
@@ -297,13 +301,13 @@
     var(--accent-codex) 12%
   );
 
-  --panel: oklch(0.236 0.009 255 / 92%);
+  --panel: var(--renderer-panel);
   --panel-foreground: var(--foreground);
   --success: oklch(0.702 0.124 158);
   --success-foreground: oklch(0.172 0.01 158);
   --warning: oklch(0.82 0.108 86);
   --warning-foreground: oklch(0.204 0.02 84);
-  --backdrop: rgb(0 0 0 / 60%);
+  --backdrop: var(--renderer-scrim);
 
   --shadow-soft: 0 14px 32px rgb(0 0 0 / 24%);
   --shadow-panel: 0 24px 52px rgb(0 0 0 / 34%);
@@ -385,15 +389,16 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --background: oklch(0.192 0.008 255);
-    --background-panel: rgb(42 42 43);
+    --background: var(--renderer-background);
+    --background-panel: var(--renderer-background-panel);
+    --background-1: rgb(24 24 24);
     --background-session-flow: rgb(24 24 24);
     --background-session-sidepanel: rgb(42 42 43);
-    --background-fronted: rgb(51 51 51 / 1);
+    --background-fronted: var(--renderer-background-fronted);
     --background-soft: oklch(0.224 0.01 255);
     --background-board-card: rgb(255 255 255 / 8%);
-    --foreground: oklch(0.955 0.004 84);
-    --text-primary: rgb(255 255 255);
+    --foreground: var(--renderer-foreground);
+    --text-primary: var(--renderer-text-primary);
     --text-primary-hover: rgb(255 255 255 / 90%);
     --text-tertiary: rgb(255 255 255 / 50%);
     --text-placeholder: rgb(255 255 255 / 30%);
@@ -416,7 +421,7 @@
     --secondary-foreground: var(--foreground);
     --muted: oklch(0.282 0.008 255);
     --muted-foreground: oklch(0.734 0.012 255);
-    --text-secondary: rgb(255 255 255 / 70%);
+    --text-secondary: var(--renderer-text-secondary);
     --text-disabled: rgb(255 255 255 / 30%);
     --rich-text-mention-app: rgb(191, 90, 242);
     --rich-text-mention-issue: var(--tutti-purple);
@@ -424,7 +429,7 @@
     --folder: rgb(80, 175, 238);
     --rich-text-folder: rgb(80, 175, 238);
     --rich-text-mention-file: rgb(80, 175, 238);
-    --accent-codex: rgb(79 143 255);
+    --accent-codex: var(--renderer-accent);
     --accent: var(--accent-codex);
     --accent-codex-border: color-mix(
       in srgb,
@@ -447,13 +452,13 @@
     --accent-foreground: var(--foreground);
     --destructive: oklch(0.672 0.172 25);
     --destructive-foreground: oklch(0.19 0.01 25);
-    --state-danger: rgb(244 91 91);
+    --state-danger: var(--renderer-danger);
     --state-danger-hover: color-mix(
       in srgb,
       var(--state-danger) 90%,
       transparent
     );
-    --state-success: rgb(74 222 128);
+    --state-success: var(--renderer-success);
     --state-warning: rgb(251 146 60);
     --on-danger: rgb(248 113 113 / 10%);
     --on-danger-hover: color-mix(
@@ -461,7 +466,7 @@
       var(--on-danger) 82%,
       var(--state-danger)
     );
-    --border: oklch(0.352 0.012 255);
+    --border: var(--renderer-border);
     --border-1: rgb(255 255 255 / 12%);
     --border-2: rgb(255 255 255 / 8%);
     --line-1: var(--border-1);
@@ -476,13 +481,13 @@
       var(--accent-codex) 12%
     );
 
-    --panel: oklch(0.236 0.009 255 / 92%);
+    --panel: var(--renderer-panel);
     --panel-foreground: var(--foreground);
     --success: oklch(0.702 0.124 158);
     --success-foreground: oklch(0.172 0.01 158);
     --warning: oklch(0.82 0.108 86);
     --warning-foreground: oklch(0.204 0.02 84);
-    --backdrop: rgb(0 0 0 / 60%);
+    --backdrop: var(--renderer-scrim);
 
     --shadow-soft: 0 14px 32px rgb(0 0 0 / 24%);
     --shadow-panel: 0 24px 52px rgb(0 0 0 / 34%);

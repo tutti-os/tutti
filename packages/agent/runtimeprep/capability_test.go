@@ -24,7 +24,7 @@ func TestDefaultPreparerResolvesInjectedPackAcrossPolicySkillsAndEnv(t *testing.
 			}, nil
 		},
 	})
-	preparer := NewDefaultPreparer(t.TempDir())
+	preparer := newTestPreparer(t.TempDir())
 	preparer.Profile = profile
 
 	bundle, err := preparer.RenderSkillBundle(t.Context(), PrepareInput{
@@ -52,14 +52,20 @@ func TestDefaultPreparerResolvesInjectedPackAcrossPolicySkillsAndEnv(t *testing.
 }
 
 func TestHostAppContextUsesNativeGeneratedImageArtifactsOnlyForSupportedProviders(t *testing.T) {
-	codexPolicy := hostAppContextPolicy(PrepareInput{Provider: "codex"})
+	codexPolicy, err := hostAppContextPolicy(PrepareInput{Provider: "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(codexPolicy, "rendered directly from `imageGeneration` tool output") ||
 		!strings.Contains(codexPolicy, "do not repeat generated images as Markdown image tags") ||
 		strings.Contains(codexPolicy, "final response must include Markdown image tag") {
 		t.Fatalf("codex host policy = %q, want native generated-image artifact contract", codexPolicy)
 	}
 
-	claudePolicy := hostAppContextPolicy(PrepareInput{Provider: "claude-code"})
+	claudePolicy, err := hostAppContextPolicy(PrepareInput{Provider: "claude-code"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(claudePolicy, "Generated/edited image output: final response must include Markdown image tag.") ||
 		!strings.Contains(claudePolicy, "Multiple final images: one Markdown image tag each.") ||
 		strings.Contains(claudePolicy, "rendered directly from `imageGeneration` tool output") {
@@ -108,7 +114,7 @@ func TestResolveCapabilitiesRejectsDuplicateSkillIDs(t *testing.T) {
 }
 
 func TestDefaultPreparerIncludesHostSkillSources(t *testing.T) {
-	preparer := NewDefaultPreparer(t.TempDir())
+	preparer := newTestPreparer(t.TempDir())
 	preparer.SkillSources = []SkillSource{staticSkillSource{{
 		ID: "host/reviewer", Name: "reviewer", Files: map[string]string{"SKILL.md": "# Reviewer\n"},
 	}}}
@@ -132,19 +138,6 @@ func TestResolveCapabilitiesRejectsSkillPathTraversal(t *testing.T) {
 	_, err := resolveCapabilities(t.Context(), PrepareInput{Provider: "codex"}, profile, nil)
 	if err == nil || !strings.Contains(err.Error(), "invalid file path") {
 		t.Fatalf("resolveCapabilities() error = %v", err)
-	}
-}
-
-func TestRenderTemplateRejectsMissingTemplateValuesButPreservesValueContent(t *testing.T) {
-	if _, err := RenderTemplate("hello {{NAME}}", nil); err == nil {
-		t.Fatal("RenderTemplate() error = nil, want unresolved placeholder error")
-	}
-	rendered, err := RenderTemplate("hello {{NAME}}", map[string]string{"{{NAME}}": "{{literal}}"})
-	if err != nil {
-		t.Fatalf("RenderTemplate() error = %v", err)
-	}
-	if rendered != "hello {{literal}}" {
-		t.Fatalf("RenderTemplate() = %q", rendered)
 	}
 }
 

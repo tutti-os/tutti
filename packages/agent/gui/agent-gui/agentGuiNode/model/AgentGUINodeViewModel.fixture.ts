@@ -69,7 +69,7 @@ export function groupAgentGUINodeViewModelFixture(
       promptImagesSupported: flat.promptImagesSupported,
       compactSupported: flat.compactSupported,
       goalPauseSupported: flat.goalPauseSupported,
-      canSubmit: flat.canSubmit,
+      gate: flat.gate,
       isTuttiModeActive: flat.isTuttiModeActive ?? false,
       isTuttiModeUpdating: flat.isTuttiModeUpdating ?? false,
       tuttiModeOrchestrationIntensity:
@@ -78,12 +78,10 @@ export function groupAgentGUINodeViewModelFixture(
       composerSettings: flat.composerSettings,
       queueStatus: flat.queueStatus,
       queuedPrompts: flat.queuedPrompts,
-      drainingQueuedPromptId: flat.drainingQueuedPromptId,
-      canQueueWhileBusy: flat.canQueueWhileBusy
+      drainingQueuedPromptId: flat.drainingQueuedPromptId
     },
     interaction: {
       isRespondingApproval: flat.isRespondingApproval,
-      isRuntimeBlocked: flat.isRuntimeBlocked,
       pendingApproval: flat.pendingApproval,
       pendingInteractivePrompt: flat.pendingInteractivePrompt,
       sessionChrome: flat.sessionChrome,
@@ -92,12 +90,10 @@ export function groupAgentGUINodeViewModelFixture(
     readiness: {
       activeLiveState: flat.activeLiveState,
       activationError: flat.activationError,
-      activeConversationBusy: flat.activeConversationBusy,
-      sessionRuntimeBlocked: flat.sessionRuntimeBlocked,
-      targetConnectionBlocked: flat.targetConnectionBlocked,
       providerReadinessGate: flat.providerReadinessGate
     },
     operations: {
+      forkThroughTurnPendingTurnIds: flat.forkThroughTurnPendingTurnIds ?? [],
       goalClearNoticeSequence: flat.goalClearNoticeSequence ?? 0,
       isDeletingConversation: flat.isDeletingConversation,
       isDeletingProjectConversations: flat.isDeletingProjectConversations,

@@ -253,6 +253,7 @@ func TestClaudeSDKExecPayloadKeepsTuttiContextSeparateFromUserInput(t *testing.T
 		ctx,
 		Session{AgentSessionID: "session-1"},
 		"turn-1",
+		"provider-turn-1",
 		content,
 		"what mode is active?",
 	)

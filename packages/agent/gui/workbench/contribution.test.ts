@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { normalizeAgentActivitySession } from "@tutti-os/agent-activity-core";
@@ -63,30 +61,23 @@ function readDockEntryIconImageSrcs(icon: ReactNode): string[] {
 function createTestAgentGuiWorkbenchContribution(
   input: Omit<
     Parameters<typeof createAgentGuiWorkbenchContribution>[0],
-    "agentDirectory" | "renderMinimizedPreview"
+    "agentDirectory"
   > & {
     agentDirectory?: AgentGUIAgentDirectoryPort;
     agents?: readonly AgentGUIAgent[];
     agentsLoading?: boolean;
-  } & Partial<
-      Pick<
-        Parameters<typeof createAgentGuiWorkbenchContribution>[0],
-        "renderMinimizedPreview"
-      >
-    >
+  }
 ) {
   const {
     agentDirectory,
     agents = [createAgent("codex")],
     agentsLoading = false,
-    renderMinimizedPreview = () => null,
     ...contributionInput
   } = input;
   return createAgentGuiWorkbenchContribution({
     ...contributionInput,
     agentDirectory:
-      agentDirectory ?? createTestAgentDirectory(agents, agentsLoading),
-    renderMinimizedPreview
+      agentDirectory ?? createTestAgentDirectory(agents, agentsLoading)
   });
 }
 
@@ -546,6 +537,10 @@ describe("agent GUI workbench contribution copy", () => {
 
     expect(contribution).toBe(contributionIdentity);
     expect(contribution.nodes?.[0]).toBe(nodeDefinition);
+    expect(nodeDefinition?.window?.header).toEqual({
+      border: "none",
+      layout: "overlay"
+    });
     expect(renderedAgentTargetIds).toEqual([
       ["local:codex"],
       ["local:claude-code"]
@@ -1315,14 +1310,9 @@ describe("agent GUI workbench contribution copy", () => {
     ).toBeNull();
   });
 
-  it("uses the host preview renderer for agent GUI dock popup previews", async () => {
+  it("leaves agent GUI dock popup previews to the host image capture", () => {
     const contribution = createTestAgentGuiWorkbenchContribution({
       renderBody: () => null,
-      renderPreview: () => "preview",
-      resolveDockPopupTitle: (state) =>
-        state?.lastActiveAgentSessionId === "session-1"
-          ? "Current session title"
-          : null,
       workspaceId: "workspace-1"
     });
     const dockEntry = contribution.dockEntries?.find(
@@ -1330,85 +1320,16 @@ describe("agent GUI workbench contribution copy", () => {
     );
     expect(dockEntry).toBeDefined();
 
-    const node = {
-      data: {
-        dockEntryId: agentGuiWorkbenchTypeId,
-        instanceId: "agent-gui:codex:panel:test-1",
-        typeId: agentGuiWorkbenchTypeId
-      },
-      displayMode: "floating",
-      frame: { height: 560, width: 1040, x: 0, y: 0 },
-      id: "agent-gui:agent-gui:codex:panel:test-1",
-      isMinimized: false,
-      restoreFrame: null,
-      title: "Codex"
-    };
-
-    const preview =
-      dockEntry?.providePopupItemPreview?.({
-        externalNodeState: {
-          lastActiveAgentSessionId: "session-1",
-          lastActiveConversationTitle: "Stale session title"
-        },
-        externalWorkspaceState: null,
-        host: {} as never,
-        isFocused: false,
-        isMinimized: false,
-        node: node as never
-      }) ?? null;
-    expect(preview?.kind).toBe("component");
-    expect(preview?.revision).toContain("Current session title");
-    expect(preview?.revision).not.toContain("Stale session title");
+    expect(dockEntry?.providePopupItemPreview).toBeUndefined();
   });
 
-  it("uses the host minimized preview renderer for agent GUI minimized slots", () => {
+  it("uses host snapshot capture for agent GUI minimized slots", () => {
     const contribution = createTestAgentGuiWorkbenchContribution({
       renderBody: () => null,
-      renderMinimizedPreview: () => "minimized-preview",
-      resolveDockPopupTitle: (state) =>
-        state?.lastActiveAgentSessionId === "session-1"
-          ? "Current session title"
-          : null,
       workspaceId: "workspace-1"
     });
     const minimizedDock = contribution.nodes?.[0]?.window?.minimizedDock;
-    expect(minimizedDock?.kind).toBe("component");
-    if (minimizedDock?.kind !== "component") {
-      throw new Error("expected component minimized preview");
-    }
-
-    const preview =
-      minimizedDock.providePreview({
-        externalNodeState: {
-          lastActiveAgentSessionId: "session-1",
-          lastActiveConversationTitle: "Stale session title"
-        },
-        externalWorkspaceState: null,
-        host: {} as never,
-        isFocused: false,
-        isMinimized: true,
-        node: {
-          data: {
-            dockEntryId: agentGuiWorkbenchTypeId,
-            instanceId: "agent-gui:codex:panel:test-1",
-            typeId: agentGuiWorkbenchTypeId
-          },
-          displayMode: "floating",
-          frame: { height: 560, width: 1040, x: 0, y: 0 },
-          id: "agent-gui:agent-gui:codex:panel:test-1",
-          isMinimized: true,
-          restoreFrame: null,
-          title: "Codex"
-        } as never
-      }) ?? null;
-
-    expect(preview?.kind).toBe("component");
-    if (preview?.kind !== "component") {
-      throw new Error("expected component preview content");
-    }
-    expect(preview.element).toBe("minimized-preview");
-    expect(preview.revision).toContain("Current session title");
-    expect(preview.revision).not.toContain("Stale session title");
+    expect(minimizedDock).toEqual({ kind: "snapshot" });
   });
 
   it("shows a new-session action when collapsed", () => {
@@ -1547,6 +1468,10 @@ describe("agent GUI workbench contribution copy", () => {
     expect(header).toHaveAttribute(
       "data-agent-gui-workbench-header-collapsed",
       "true"
+    );
+    expect(header).toHaveAttribute(
+      "data-agent-gui-workbench-header-body-error",
+      "false"
     );
     expect(primary).not.toHaveTextContent("Agent");
     expect(screen.queryByText("Agent")).toBeNull();
@@ -1925,225 +1850,6 @@ describe("agent GUI workbench contribution copy", () => {
         360 + agentGuiWorkbenchProviderRailWidthPx
       }px`
     });
-  });
-
-  it("draws a subtle divider below the workbench detail titlebar only for an active session", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /--agent-gui-workbench-header-divider:\s*color-mix\(\s*in srgb,\s*var\(--text-primary\)\s+4%,\s*transparent\s*\);/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-workbench-header\[data-agent-gui-workbench-header-has-session="true"\]::after\s*{[^}]*left:\s*var\(--agent-gui-workbench-header-rail-width\);[^}]*height:\s*1px;[^}]*background:\s*var\(--agent-gui-workbench-header-divider\);/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-workbench-header\[data-agent-gui-workbench-header-collapsed="true"\]::after\s*{[^}]*left:\s*0;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-workbench-header\[data-agent-gui-workbench-header-collapsed="true"\]\s*\.agent-gui-workbench-header__primary\s*{[^}]*grid-column:\s*1 \/ -1;[^}]*width:\s*100%;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-workbench-header\[data-agent-gui-workbench-header-collapsed="true"\]\s*\.agent-gui-workbench-header__secondary-accessory\s*{[^}]*padding-right:\s*0;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-workbench-header__detached-window\s*{\s*margin-left:\s*auto;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-workbench-header__detached-window\s*\+\s*\.agent-gui-workbench-header__rail-toggle\s*{[^}]*margin-left:\s*-4px;/s
-    );
-  });
-
-  it("keeps rich workbench titles on one aligned line", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-workbench-header__rich-title\s*{[^}]*display:\s*block;[^}]*width:\s*max-content;[^}]*max-width:\s*calc\(100% - 36px\);[^}]*height:\s*24px;[^}]*flex:\s*0 1 auto;[^}]*overflow:\s*hidden;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-workbench-header__rich-title > div,\s*\.agent-gui-workbench-header__rich-title \.ProseMirror\s*{[^}]*width:\s*100%;[^}]*height:\s*24px;[^}]*overflow:\s*visible;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-workbench-header__rich-title p\s*{[^}]*display:\s*flex;[^}]*width:\s*max-content;[^}]*min-width:\s*100%;[^}]*height:\s*24px;[^}]*align-items:\s*center;[^}]*overflow:\s*visible;[^}]*overflow-wrap:\s*normal;[^}]*line-height:\s*24px;[^}]*white-space:\s*nowrap;[^}]*word-break:\s*normal;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-workbench-header__rich-title \.agent-rich-text-mention-node,\s*\.agent-gui-workbench-header__rich-title \.tsh-agent-object-token--file,\s*\.agent-gui-workbench-header__rich-title \.tsh-agent-object-token--entity,\s*\.agent-gui-workbench-header__rich-title \[data-slot="mention-pill"\]\s*{[^}]*top:\s*0;[^}]*align-items:\s*center;[^}]*transform:\s*none;[^}]*vertical-align:\s*middle;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-workbench-header__rich-title\s+\.agent-rich-text-mention-node\[data-agent-custom-mention="true"\]\s*{[^}]*display:\s*inline-flex;[^}]*height:\s*24px;[^}]*align-items:\s*center;[^}]*transform:\s*translateY\(-1\.5px\);/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-workbench-header__rich-title \.tsh-agent-object-token--file\s*{[^}]*height:\s*24px;[^}]*min-height:\s*24px;[^}]*line-height:\s*24px;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-workbench-header__rich-title\s+\.tsh-agent-object-token--file\s+\.tsh-agent-object-token__main\s*{[^}]*transform:\s*translateY\(-1\.25px\);/s
-    );
-  });
-
-  it("keeps standalone tool actions pinned to the window edge when the conversation rail collapses", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-workbench-header\[data-agent-gui-standalone-window-header="true"\]\[data-agent-gui-workbench-header-collapsed="true"\]\s*\.agent-gui-workbench-header__primary\s*\{[^}]*width:\s*100%;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-workbench-header\[data-agent-gui-standalone-window-header="true"\]\s*\.agent-gui-workbench-header__secondary-accessory\s*\{[^}]*padding-right:\s*0;/s
-    );
-  });
-
-  it("anchors the standalone tool header to the same edge as the body panel", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-workbench-header\[data-agent-gui-standalone-window-header="true"\]\s*\.agent-gui-workbench-header__secondary-accessory:has\(\s*\[data-standalone-agent-tool-sidebar-header="true"\]\s*\)\s*\{[^}]*position:\s*absolute;[^}]*top:\s*0;[^}]*right:\s*0;[^}]*margin-left:\s*0;/s
-    );
-  });
-
-  it("keeps the image preview modal above standalone Agent window chrome", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.tsh-zoom-dialog\[data-rmiz-modal\]\s*{[^}]*z-index:\s*var\(--z-dialog\);/s
-    );
-    expect(css).toMatch(
-      /\.workbench-window:has\(\s*> \.workbench-window__header\s+\.agent-gui-workbench-header\[data-agent-gui-standalone-window-header="true"\]\s*\)\s*\.workbench-window__header\s*{[^}]*z-index:\s*calc\(var\(--z-panel\) \+ 1\);/s
-    );
-  });
-
-  it("only applies Agent window chrome when the Header occupies the window header slot", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.workbench-window:has\(\s*> \.workbench-window__header \[data-agent-gui-workbench-header="true"\]\s*\)\s*{/s
-    );
-    expect(css).not.toMatch(
-      /\.workbench-window:has\(\s*\[data-agent-gui-workbench-header="true"\]/s
-    );
-    expect(css).not.toMatch(
-      /\.workbench-window:has\(\s*\.agent-gui-workbench-header\[data-agent-gui-standalone-window-header="true"\]/s
-    );
-  });
-
-  it("keeps a lone provider settings footer clear of the window edge", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__provider-rail-config-footer:last-child\s*\{[^}]*padding-bottom:\s*12px;/s
-    );
-  });
-
-  it("separates the injected provider rail footer from settings", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__provider-rail-sidebar-footer\s*\+\s*\.agent-gui-node__provider-rail-config-footer\s*\{[^}]*margin-top:\s*8px;/s
-    );
-  });
-
-  it("lowers composer plain text without moving mention fields", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-area\s+textarea,\s*\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-textarea\s*{[^}]*padding-top:\s*12px;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-textarea\s+p:not\(\.agent-rich-text-placeholder-node\):not\(:empty\)\s*{[^}]*top:\s*0;[^}]*line-height:\s*var\(--agent-gui-composer-text-line-height\);/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-textarea\s+p:not\(\.agent-rich-text-placeholder-node\):not\(:empty\)\s+\.agent-rich-text-mention-node\s*{[^}]*transform:\s*translateY\(-2px\);/s
-    );
-  });
-
-  it("keeps slash mention fields aligned and transparent by default", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\[data-agent-mention-kind="skill"\]\.tsh-agent-object-token--entity\s+\.tsh-agent-object-token__main,\s*\[data-agent-mention-kind="capability"\]\.tsh-agent-object-token--entity\s+\.tsh-agent-object-token__main\s*{[^}]*background:\s*transparent;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-textarea\s+\[data-agent-mention-kind="skill"\]\.tsh-agent-object-token--entity\s+\.tsh-agent-object-token__main,\s*\.agent-gui-node__composer-textarea\s+\[data-agent-mention-kind="capability"\]\.tsh-agent-object-token--entity\s+\.tsh-agent-object-token__main\s*{[^}]*transform:\s*translateY\(-2px\);/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-textarea\s+\[data-agent-file-mention="true"\]\.tsh-agent-object-token:hover\s*{[^}]*background:\s*color-mix\(in srgb, currentColor 16%, transparent\);/s
-    );
-  });
-
-  it("lets compact custom mention chips keep the normal composer caret height", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-textarea\s+\.agent-rich-text-mention-node\[data-agent-custom-mention="true"\]\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*0;[^}]*line-height:\s*inherit;/s
-    );
-  });
-
-  it("keeps interactive feedback scrolling above the send button", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-conversation__interactive-feedback-composer\s*{[^}]*min-height:\s*80px;[^}]*overflow:\s*hidden;[^}]*padding-bottom:\s*44px;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__interactive-feedback-composer\s+\.agent-gui-conversation__interactive-prompt-textarea\s*{[^}]*min-height:\s*36px;[^}]*border:\s*0;[^}]*padding:\s*9px 10px;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__interactive-feedback-send-button\s+\.agent-gui-conversation__interactive-option-spinner\s*{[^}]*position:\s*static;[^}]*top:\s*auto;[^}]*right:\s*auto;[^}]*transform:\s*none;/s
-    );
-  });
-
-  it("keeps provider manager drag hit boxes stable while previewing insertion", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).not.toMatch(
-      /\.agent-gui-provider-manager-tile\[data-drag-over="(?:before|after)"\]\s*\{[^}]*margin-/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-provider-manager-tile\[data-drag-over="before"\]\s*>\s*:not\(\.agent-gui-provider-manager-drop-indicator\)\s*\{[^}]*translate:\s*8px 0;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-provider-manager-tile\[data-drag-over="after"\]\s*>\s*:not\(\.agent-gui-provider-manager-drop-indicator\)\s*\{[^}]*translate:\s*-8px 0;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-provider-manager-tile\[data-editing="true"\]\[data-drag-active="true"\]\s*\{[^}]*animation:\s*none;/s
-    );
-  });
-
-  it("anchors ready and gated empty homes to the same fixed frame", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-    const providerGateRule =
-      css.match(/\.agent-gui-node__empty-provider-gate\s*\{[^}]*\}/s)?.[0] ??
-      "";
-
-    expect(css).toMatch(
-      /\.agent-gui-node__empty-hero\s*\{[^}]*--agent-gui-empty-hero-anchor-block-size:\s*398px;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__empty-hero-body\s*\{[^}]*block-size:\s*var\(--agent-gui-empty-hero-anchor-block-size\);[^}]*align-content:\s*start;/s
-    );
-    expect(providerGateRule).not.toMatch(/(?:min-)?(?:block-size|height):/);
-  });
-
-  it("scales the empty-home vinyl carousel down for short AgentGUI windows", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__empty-hero-carousel-layer\s*\{[^}]*--agent-gui-hero-carousel-scale:\s*0\.8;[^}]*min-width:\s*320px;[^}]*transform:\s*translateX\(-50%\)\s*scale\(var\(--agent-gui-hero-carousel-scale\)\);/s
-    );
-    expect(css).toMatch(
-      /@media\s*\(max-height:\s*639px\)\s*\{\s*\.agent-gui-node__empty-hero-carousel-layer\s*\{[^}]*--agent-gui-hero-carousel-scale:\s*0\.64;[^}]*top:\s*calc\(\s*var\(--agent-gui-hero-carousel-slot-top,\s*calc\(50%\s*-\s*210px\)\)\s*-\s*16px\s*\);/s
-    );
-  });
-
-  it("scopes composer textarea resets to the primary prompt input", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).not.toMatch(
-      /\.agent-gui-node__composer(?:\[data-layout="dock"\])?\s+textarea/
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-prompt-input-area\s+textarea,\s*\.agent-gui-node__composer-textarea\s*\{[^}]*border:\s*0;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__interactive-prompt-textarea\s*\{[^}]*border:\s*1px solid var\(--line-2\);/s
-    );
   });
 });
 

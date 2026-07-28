@@ -57,7 +57,7 @@ export function createAgentCapabilityTokenExtension(
         "span",
         mergeAttributes(HTMLAttributes, {
           "aria-label": attrs.label,
-          contenteditable: "false",
+          contentEditable: "false",
           "data-agent-capability-token": "true",
           "data-agent-capability-trigger": attrs.trigger,
           "data-agent-mention-kind": "capability",

@@ -402,6 +402,12 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
   platform optional dependency versions. The daemon default chain intentionally
   excludes mirrors that only sync the aggregate package. Preserve
   `TUTTI_AGENT_NPM_REGISTRY` as an explicit single-registry pin with no fallback.
+  Before a managed global npm retry, remove only the selected package's sibling
+  staging directories (for example, `@tutti-os/.tutti-agent-<hash>`), and repeat
+  that cleanup after a failed or canceled attempt. Do not remove the global
+  `node_modules` tree because the selected prefix can contain unrelated
+  user-installed packages. This lets a later daemon restart recover from a
+  desktop-close cancellation instead of repeatedly failing with `ENOTEMPTY`.
 - Validation:
   Install into a temporary prefix/cache and verify the provider probe, not only
   npm's exit code. Confirm `tutti-agent app-server` can start far enough to pass
@@ -1138,6 +1144,43 @@ invalid_grant`. Search `tuttid.log` for
   [agentErrorPresentation.ts](../../../packages/agent/gui/shared/agentEnv/agentErrorPresentation.ts)
   [AgentMessageBlock.tsx](../../../packages/agent/gui/shared/agentConversation/components/AgentMessageBlock.tsx)
 
+### Model Plan check succeeds but Kimi Claude Code turns wait and then return 401
+
+- Symptom:
+  An Anthropic-protocol Model Plan using
+  `https://api.kimi.com/coding/` passes model discovery/inference checks, but a
+  custom Agent backed by Claude Code stays `running` for roughly three minutes
+  and then appends `Failed to authenticate. API Error: 401`.
+- Quick checks:
+  Confirm the submit claim is `accepted`, the user message exists, and the
+  runtime reached `runtime.turn_goroutine_started`. Inspect only environment
+  variable names and whether each is non-empty, never credential values. If
+  the child has a non-empty `ANTHROPIC_AUTH_TOKEN` but no non-empty
+  `ANTHROPIC_API_KEY`, the plan credential was injected with the wrong auth
+  shape.
+- Root cause:
+  Model Plan detection sends Anthropic requests with `x-api-key`. Runtime
+  preparation previously treated every non-`api.anthropic.com` endpoint as a
+  bearer-token relay and launched Claude Code with `ANTHROPIC_AUTH_TOKEN`.
+  Kimi Coding's Claude Code contract requires `ANTHROPIC_API_KEY`, so the same
+  valid credential passed detection and failed only in the real Agent process.
+- Fix:
+  Keep the existing bearer default for relay endpoints, but classify
+  `api.kimi.com` alongside the official Anthropic endpoint for
+  `ANTHROPIC_API_KEY` injection. Also preserve Claude SDK `assistant.error` and
+  `result.is_error` as failed message/turn state; a result subtype of `success`
+  is not authoritative when either error signal is present.
+- Validation:
+  Run `go test ./packages/agent/runtimeprep ./packages/agent/daemon/runtime`
+  and `pnpm --dir packages/agent/claude-sdk-sidecar test`. Verify a newly
+  created Kimi-backed session has a non-empty `ANTHROPIC_API_KEY`, an empty
+  `ANTHROPIC_AUTH_TOKEN`, and no 401. Existing running sessions retain their
+  launch environment and must be recreated.
+- References:
+  [Kimi Claude Code setup](https://www.kimi.com/code/docs/en/third-party-tools/claude-code.html)
+  [model_endpoint.go](../../../packages/agent/runtimeprep/model_endpoint.go)
+  [messageRouter.ts](../../../packages/agent/claude-sdk-sidecar/src/messageRouter.ts)
+
 ### Claude Code sessions fail with `effectiveSource: "none"` when CC-Switch or similar proxy tools are used
 
 - Symptom:
@@ -1719,3 +1762,98 @@ invalid_grant`. Search `tuttid.log` for
   [composer_commands.go](../../../services/tuttid/service/agent/composer_commands.go)
   [profiles.go](../../../services/tuttid/service/agentextension/profiles.go)
   [agentSlashCommandProviderPolicy.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentSlashCommandProviderPolicy.ts)
+
+### Codex Model Plan turns fail or stay waiting against a Chat-only endpoint
+
+- Symptom:
+  A Codex session bound to an OpenAI-protocol Model Plan fails immediately,
+  stays working without output, or loses tool-call messages. The Plan's
+  connection check can still pass because detection calls
+  `/v1/chat/completions` directly.
+- Quick checks:
+  Inspect the session-scoped Codex `config.toml`. The
+  `tutti-model-plan` provider must use a loopback `base_url`, a temporary
+  `TUTTI_MODEL_PLAN_API_KEY`, and `wire_api = "responses"`. Verify the upstream
+  server receives `/v1/chat/completions`, not `/v1/responses`. A direct
+  Chat-only Base URL paired with `wire_api = "responses"` is incomplete.
+- Root cause:
+  Current Codex emits Responses-shaped requests and requires terminal
+  Responses SSE events. A Chat-only provider neither owns `/v1/responses` nor
+  emits the `response.output_item.*` and `response.completed` state machine.
+  Renaming Chat deltas or changing only `wire_api` leaves Codex waiting or
+  discarding output. Current Codex can also advertise its built-in hosted
+  `web_search` tool by default, and later versions may advertise other hosted
+  tools that Chat Completions cannot execute. Codex also sends Responses
+  `developer` messages; Chat-compatible providers that only recognize
+  `system`/`user`/`assistant`/`tool` can reject the otherwise valid request
+  during tokenization.
+- Fix:
+  Keep Codex on `wire_api = "responses"` and route the session through
+  tuttid's loopback Model Gateway. The gateway authenticates the temporary
+  session token, converts supported Responses inputs to Chat Completions,
+  forwards with the daemon-held Plan credential, and reconstructs complete
+  Responses JSON/SSE output. The gateway filters non-translatable entries only
+  from the per-request tool registration list and removes orphaned
+  `tool_choice`/`parallel_tool_calls` controls. It still rejects explicit
+  selection of a filtered tool and hosted call/output history. This avoids
+  version-specific Codex config mutations while preserving fail-closed
+  semantics for requested or recorded tool use. Its Codex role normalization
+  matches cc-switch: `developer` becomes `system`, `latest_reminder` and
+  unknown internal roles become `user`, text-only content-part arrays are
+  newline-joined, and textual system messages are merged in order at message
+  index zero. This preserves instruction precedence without requiring newer
+  OpenAI-only roles or mid-conversation system roles from the upstream
+  tokenizer. OpenCode continues to use the Plan endpoint directly.
+- Validation:
+  Cover request/tool conversion, interleaved parallel tool arguments, UTF-8
+  and arbitrary SSE byte boundaries, large arguments, usage, upstream errors,
+  timeout/cancel/disconnect paths, route isolation, token replacement, cleanup,
+  immutable-revision resume, mixed supported/hosted registrations, future
+  unknown registration types, explicit hosted tool choices/history, and
+  internal-role normalization and system-message collapse. A real smoke test
+  must complete two Codex turns and one tool call while the upstream records
+  `/v1/chat/completions` without any upstream `developer` role or `system`
+  message after index zero.
+- References:
+  [model-access-plans.md](../../architecture/model-access-plans.md)
+  [gateway.go](../../../services/tuttid/service/modelgateway/gateway.go)
+  [stream_converter.go](../../../services/tuttid/service/modelgateway/stream_converter.go)
+  [model_endpoint.go](../../../packages/agent/runtimeprep/model_endpoint.go)
+
+### Enabled Agent Extensions delay every daemon startup
+
+- Symptom:
+  `tutti.parent_monitor.started` is followed by a multi-second silent gap before
+  `tutti.managed_runtime.profile_preload_started` and `tutti.listen`. The gap
+  grows as more Agent Extension feature flags are enabled.
+- Quick checks:
+  Compare the two timestamps and inspect `feature_flags_json` in the active
+  `desktop_preferences` row. Time each enabled source's signed
+  `versions.json`; the old startup path fetched the enabled indexes serially
+  before constructing the daemon API.
+- Root cause:
+  Agent Extension reconciliation combined two different jobs: restoring an
+  already verified local installation and checking its remote release index.
+  The daemon needed the first job before serving the Agent Target catalog, but
+  synchronously waited for the second job too. Multiple CloudFront TLS and
+  response waits therefore accumulated on every restart.
+- Fix:
+  Restore and verify cached active installations synchronously, register their
+  Targets, and move remote release refresh after successful daemon API
+  construction into the background. Keep synchronous reconciliation when an
+  enabled source has no usable local installation, and for explicit preference
+  activation changes, so the initial or newly enabled Target does not disappear
+  from the next catalog read. Release the reconciliation lock between background
+  source refreshes so a preference change does not wait for the complete remote
+  batch.
+- Validation:
+  Cover cached restore without any network request, missing-cache fallback to
+  synchronous reconciliation, disabled Target removal, offline fallback, and
+  preference-driven enable/disable. On a state root with cached enabled
+  extensions, verify `tutti.agent_extension.refresh_started` no longer delays
+  `tutti.listen` and later reaches
+  `tutti.agent_extension.refresh_completed`.
+- References:
+  [agent-extensions.md](../../architecture/agent-extensions.md)
+  [manager.go](../../../services/tuttid/service/agentextension/manager.go)
+  [wiring_daemon_api.go](../../../services/tuttid/wiring_daemon_api.go)

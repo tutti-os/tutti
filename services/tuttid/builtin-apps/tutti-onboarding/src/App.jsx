@@ -60,11 +60,11 @@ const taskControlTabs = [
 ];
 
 const sectionIcons = {
-  setup: "/assets/icon-electric-plug.webp",
-  collaboration: "/assets/icon-at.webp",
-  apps: "/assets/icon-toolbox.webp",
-  taskControl: "/assets/icon-clipboard.webp",
-  windowLayout: "/assets/icon-window-layout.webp"
+  setup: "/assets/icon-electric-plug.png",
+  collaboration: "/assets/icon-at.png",
+  apps: "/assets/icon-toolbox.png",
+  taskControl: "/assets/icon-clipboard.png",
+  windowLayout: "/assets/icon-window-layout.png"
 };
 
 function HtmlText({ as: Tag = "p", className, i18nKey }) {
@@ -82,7 +82,7 @@ function HtmlText({ as: Tag = "p", className, i18nKey }) {
               alt=""
               aria-hidden="true"
               className="title-wave"
-              src="/assets/tone-light.webp"
+              src="/assets/tone-light.png"
             />
           )
         }}
@@ -779,11 +779,7 @@ export default function App() {
         </section>
 
         <footer className="end">
-          <IconImage
-            alt="Tutti"
-            className="end-logo"
-            src="/assets/logo1.webp"
-          />
+          <IconImage alt="Tutti" className="end-logo" src="/assets/logo1.png" />
           <h2>{t("t_end")}</h2>
           <div className="btns center">
             {agentBound ? (

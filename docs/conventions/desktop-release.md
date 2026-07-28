@@ -90,6 +90,11 @@ Use beta for earlier development-branch packaging that should not affect RC vali
 
 Do not introduce nightly-only desktop version suffixes. Use `beta` or `rc` prereleases instead when a build should be published ahead of the next stable release.
 
+The Electron 43 desktop runtime supports macOS 12 and later. Release CI must
+run `pnpm --filter @tutti-os/desktop exec install-electron` after the frozen
+workspace install so packaging never relies on Electron's lazy runtime
+download.
+
 ## Artifacts
 
 Packaging is driven by:
@@ -113,6 +118,15 @@ Vendored Node bundles (`claude-sdk-sidecar`, `browser-mcp`) must stay free of pl
 ```text
 Contents/Resources/bin/tuttid
 ```
+
+The Electron `app.asar` file list is allowlisted to built `out/**` runtime
+outputs plus the package manifest. Do not package repository `src/**`, tests,
+scripts, or documentation into the application archive. Production
+`node_modules` dependencies remain managed by `electron-builder`.
+Assets served through `tutti-asset://` must be emitted explicitly into
+`out/renderer/assets/tutti-asset/<route>` and resolved by that exact route.
+Packaged builds must not depend on repository source paths or hashed filename
+prefix scans as a runtime fallback.
 
 On Windows the bundled daemon filename is `tuttid.exe`.
 

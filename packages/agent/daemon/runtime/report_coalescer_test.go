@@ -72,6 +72,43 @@ func TestStreamingReportCoalescerFlushesBeforeTerminalReport(t *testing.T) {
 	}
 }
 
+func TestStreamingReportCoalescerKeepsLatestToolOutputWithoutDroppingStartMetadata(t *testing.T) {
+	t.Parallel()
+
+	coalescer := newStreamingReportCoalescer(time.Hour)
+	defer coalescer.stop()
+
+	first := toolCallStreamingReport(1, map[string]any{
+		"input": map[string]any{"command": "pnpm test"},
+	})
+	first.MessageUpdates[0].StartedAtUnixMS = 10
+	if flushed := coalescer.add(reportRequest{ctx: context.Background(), report: first}); len(flushed) != 0 {
+		t.Fatalf("first tool snapshot flushed %#v, want pending", flushed)
+	}
+
+	latest := toolCallStreamingReport(2, map[string]any{
+		"output": map[string]any{"text": "tests passed"},
+	})
+	latest.MessageUpdates[0].StartedAtUnixMS = 20
+	if flushed := coalescer.add(reportRequest{ctx: context.Background(), report: latest}); len(flushed) != 0 {
+		t.Fatalf("latest tool snapshot flushed %#v, want pending", flushed)
+	}
+
+	flushed := coalescer.flushAll()
+	if len(flushed) != 1 || len(flushed[0].report.MessageUpdates) != 1 {
+		t.Fatalf("flushed reports = %#v, want one coalesced tool update", flushed)
+	}
+	update := flushed[0].report.MessageUpdates[0]
+	input, _ := update.Payload["input"].(map[string]any)
+	output, _ := update.Payload["output"].(map[string]any)
+	if update.Seq != 2 || input["command"] != "pnpm test" || output["text"] != "tests passed" {
+		t.Fatalf("tool update = %#v, want latest output with original input", update)
+	}
+	if update.StartedAtUnixMS != 10 {
+		t.Fatalf("tool startedAtUnixMs = %d, want earliest 10", update.StartedAtUnixMS)
+	}
+}
+
 func TestStreamingReportCoalescerNeverCoalescesSessionAudit(t *testing.T) {
 	t.Parallel()
 	coalescer := newStreamingReportCoalescer(time.Second)
@@ -92,6 +129,29 @@ func streamingReport(messageID string, seq uint64, content string) agentsessions
 
 func terminalReport(messageID string, seq uint64, content string) agentsessionstore.ReportActivityInput {
 	return messageReport(messageID, seq, messageStreamStateCompleted, content)
+}
+
+func toolCallStreamingReport(seq uint64, payload map[string]any) agentsessionstore.ReportActivityInput {
+	return agentsessionstore.ReportActivityInput{
+		WorkspaceID: "workspace-1",
+		Source: canonical.EventSource{
+			AgentID:       "agent-session-1",
+			SessionOrigin: agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		},
+		MessageUpdates: []agentsessionstore.WorkspaceAgentMessageUpdate{{
+			AgentSessionID:   "agent-session-1",
+			MessageID:        "tool-call-1",
+			Seq:              seq,
+			TurnID:           "turn-1",
+			Role:             "assistant",
+			Kind:             "tool_call",
+			Status:           "running",
+			CallID:           "call-1",
+			Title:            "Bash",
+			Payload:          payload,
+			OccurredAtUnixMS: int64(seq),
+		}},
+	}
 }
 
 func messageReport(messageID string, seq uint64, status string, content string) agentsessionstore.ReportActivityInput {

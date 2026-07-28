@@ -9,6 +9,22 @@ type Preparer interface {
 	Cleanup(context.Context, CleanupInput) error
 }
 
+// SessionForkProviderStateBinder makes provider-native fork state available
+// from the target session's isolated runtime namespace.
+type SessionForkProviderStateBinder interface {
+	SupportsSessionForkProviderStateBinding(provider string) bool
+	BindSessionForkProviderState(context.Context, SessionForkProviderStateBindingInput) error
+}
+
+type SessionForkProviderStateBindingInput struct {
+	WorkspaceID             string
+	Provider                string
+	SourceAgentSessionID    string
+	TargetAgentSessionID    string
+	SourceProviderSessionID string
+	TargetProviderSessionID string
+}
+
 type SkillBundleRenderer interface {
 	RenderSkillBundle(context.Context, PrepareInput) (SkillBundle, error)
 }
@@ -20,7 +36,6 @@ type PrepareInput struct {
 	Provider               string
 	Cwd                    string
 	CLICommand             string
-	CommandGuide           string
 	Title                  string
 	PermissionModeID       string
 	PlanMode               bool
@@ -45,8 +60,10 @@ type PrepareInput struct {
 	// endpoint when the agent target is bound to one. Nil keeps the
 	// provider's native credential source. Credentials must never reach
 	// logs, manifests, or generated instructions.
-	ModelEndpoint *ModelEndpointConfig
-	resolved      *resolvedCapabilities
+	ModelEndpoint       *ModelEndpointConfig
+	resolved            *resolvedCapabilities
+	hostFacts           HostFacts
+	commandCapabilities *CommandResolver
 	// ExternalRolloutSourcePath is the absolute path to the original provider
 	// CLI rollout/transcript file this session was imported from (Codex CLI's
 	// own on-disk conversation transcript under the user's real

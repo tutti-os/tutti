@@ -1,0 +1,180 @@
+import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import type { AgentActivityLiveEvent } from "@tutti-os/agent-activity-core";
+import type {
+  AccountSession,
+  DevicePairingChallenge,
+  DevicePairing,
+  DevicePairingPhase,
+  UserDevice
+} from "./mobileDomain";
+import type { PairingQRPayload } from "./pairingProtocol";
+
+export interface AccountPort {
+  sendEmailCode(email: string): Promise<void>;
+  signInWithGitHub(): Promise<AccountSession>;
+  verifyEmailCode(email: string, code: string): Promise<AccountSession>;
+}
+
+export interface SessionStoragePort {
+  clearSession(): Promise<void>;
+  loadSession(): Promise<AccountSession | null>;
+  saveSession(
+    sessionId: string,
+    userId: string,
+    email: string,
+    name: string
+  ): Promise<void>;
+}
+
+export interface LegacySessionCookiePort {
+  clear(): Promise<void>;
+}
+
+export interface QRCodeScanOperation {
+  cancel(): Promise<void>;
+  result: Promise<string>;
+}
+
+export interface QRCodeScannerPort {
+  start(): QRCodeScanOperation;
+}
+
+export const PAIRING_OPERATION_SUSPENDED = "PAIRING_OPERATION_SUSPENDED";
+
+export interface DeviceLinkPort {
+  closeLink(): Promise<void>;
+  requestAgentHTTP(
+    method: string,
+    path: string,
+    body: string,
+    timeoutMillis: number
+  ): Promise<{
+    body: string;
+    errorCode: string;
+    headers: Record<string, string[]>;
+    protocolEpoch: number;
+    status: number;
+  }>;
+  subscribeAgentLive(
+    workspaceId: string,
+    listener: (delivery: AgentLiveDelivery) => void
+  ): { close(): void };
+}
+
+export type AgentLiveDelivery =
+  | {
+      kind: "connection";
+      reason?: string;
+      status: "connected" | "disconnected";
+    }
+  | {
+      event: AgentActivityLiveEvent;
+      kind: "event";
+    }
+  | {
+      kind: "discontinuity";
+      reason: string;
+      reconcileKeys: readonly AgentLiveReconcileKey[];
+    }
+  | {
+      agentSessionId: string;
+      kind: "session_deleted";
+    }
+  | {
+      attachment: AgentLiveAttachmentControl;
+      kind: "attachment_changed";
+    }
+  | {
+      attachment: AgentLiveAttachmentControl;
+      kind: "attachment_caught_up";
+    };
+
+export interface AgentLiveAttachmentControl {
+  agentSessionId: string;
+  attachmentRevision: number;
+  bindingId: string;
+  callerTurnId?: string;
+  canonicalTurnId?: string;
+  workspaceId: string;
+}
+
+export interface AgentLiveReconcileKey {
+  agentSessionId?: string;
+  kind: string;
+  messageId?: string;
+  requestId?: string;
+  turnId?: string;
+  workspaceId: string;
+}
+
+export interface PairingPort {
+  claimPairing(
+    sessionId: string,
+    payload: PairingQRPayload,
+    isCurrent: () => boolean
+  ): Promise<DevicePairingChallenge>;
+  connectPairedDevice(
+    sessionId: string,
+    pairingId: string,
+    isCurrent: () => boolean
+  ): Promise<void>;
+  getPairingChallenge(
+    sessionId: string,
+    challengeId: string
+  ): Promise<DevicePairingChallenge>;
+  listDevices(sessionId: string): Promise<UserDevice[]>;
+  listPairings(sessionId: string): Promise<DevicePairing[]>;
+  registerCurrentDevice(sessionId: string): Promise<{ userDeviceId: string }>;
+}
+
+export type AppLifecycleState = "background" | "foreground";
+
+export interface AppLifecyclePort {
+  subscribe(listener: (state: AppLifecycleState) => void): () => void;
+}
+
+export type MobileDiagnosticEvent =
+  | {
+      name: "application.lifecycle_changed";
+      state: AppLifecycleState;
+    }
+  | {
+      name: "device_pairing.phase_changed";
+      phase: DevicePairingPhase;
+      source?: "manual" | "scanner";
+    }
+  | {
+      errorCode:
+        | "camera_permission_required"
+        | "pairing_failed"
+        | "scanner_unavailable"
+        | null;
+      name: "device_pairing.failed";
+      stage: "pairing" | "scanner";
+    }
+  | {
+      name: "device_pairing.remote_suspended";
+      phase: "claiming" | "waiting";
+    };
+
+export interface MobileDiagnosticsPort {
+  record(event: MobileDiagnosticEvent): void;
+}
+
+export interface ClockPort {
+  now(): number;
+  schedule(delayMs: number, callback: () => void): { cancel(): void };
+}
+
+export interface MobileServicePorts {
+  account: AccountPort;
+  appLifecycle: AppLifecyclePort;
+  clock: ClockPort;
+  deviceLink: DeviceLinkPort;
+  diagnostics: MobileDiagnosticsPort;
+  legacySessionCookie: LegacySessionCookiePort;
+  pairing: PairingPort;
+  qrCodeScanner: QRCodeScannerPort;
+  sessionStorage: SessionStoragePort;
+  createRemoteClient(): TuttidClient;
+}

@@ -15,11 +15,16 @@ recur and the repository now has implementation or debugging evidence for it.
 Use the focused runtime index or open one area directly:
 
 - [Agent Providers And Setup](./agent-provider-setup.md): Provider discovery, installation, authentication, models, configuration, and runtime reachability.
-  Includes extension command/Skill palette hydration failures.
+  Includes Codex Model Plan Responses-to-Chat routing and extension
+  command/Skill palette hydration failures.
   Also covers focus-driven provider CLI scans, repeated Extension Target version
-  probes, and CPU spikes.
+  probes, extension release refresh delaying daemon startup, and CPU spikes.
 - [Agent Sessions And Lifecycle](./agent-session-lifecycle.md): Turn state, activation, planning-mode classification, Tutti workflow response contracts, loading, cancel, goal controls, restore, file-change undo, rail projection, realtime completion provenance, event updates, imports, and performance.
   Includes shared-device recovery that looks terminal while the host is still retrying.
+  Also covers new-conversation requests that silently fail after a Chats
+  Session working directory is mistaken for a selected project, and one hung
+  provider startup blocking unrelated Agent sessions. Includes canonical
+  completion delayed behind a streaming activity-report backlog.
 - [Agent Approvals And Child Sessions](./agent-approvals-subagents.md): Approval gates, plan exits, root/parent/child event attribution, child sessions, and Message Center.
   Includes provider-native work that continues invisibly after root cancellation
   and late child creation racing the durable cancel boundary.
@@ -47,6 +52,9 @@ Electron startup, daemon supervision, macOS packaging, updates, and performance 
 React rendering, Workbench state, external stores, input composition, and UI performance.
 
 - [Renderer body requests fail with `ERR_H2_OR_QUIC_REQUIRED`](./workbench-renderer.md#renderer-body-requests-fail-with-err_h2_or_quic_required)
+- [Renderer `fetch()` rejects an Electron image protocol that `<img>` can load](./workbench-renderer.md#renderer-fetch-rejects-an-electron-image-protocol-that-img-can-load)
+- [AgentGUI Mermaid flowcharts render shapes without labels](./workbench-renderer.md#agentgui-mermaid-flowcharts-render-shapes-without-labels)
+- [AgentGUI carousel owner avatar stays a solid badge](./workbench-renderer.md#agentgui-carousel-owner-avatar-stays-a-solid-badge)
 - [Renderer tile memory warnings from hidden autoplay animation](./workbench-renderer.md#renderer-tile-memory-warnings-from-hidden-autoplay-animation)
 - [Standalone Agent dev window stays black during cold startup](./workbench-renderer.md#standalone-agent-dev-window-stays-black-during-cold-startup)
 - [IME composition breaks fuzzy search or controlled search inputs](./workbench-renderer.md#ime-composition-breaks-fuzzy-search-or-controlled-search-inputs)
@@ -56,7 +64,9 @@ React rendering, Workbench state, external stores, input composition, and UI per
 - [Dock entry is open but its state indicator is missing](./workbench-renderer.md#dock-entry-is-open-but-its-state-indicator-is-missing)
 - [Dense list panel stutters when mounted or resized](./workbench-renderer.md#dense-list-panel-stutters-when-mounted-or-resized)
 - [Adjacent sidebar animation repeatedly reflows its content and message flow](./workbench-renderer.md#adjacent-sidebar-animation-repeatedly-reflows-its-content-and-message-flow)
+- [Header divider drifts from a resizable sidebar](./workbench-renderer.md#header-divider-drifts-from-a-resizable-sidebar)
 - [Effect cleanup leaves mounted refs false in React development](./workbench-renderer.md#effect-cleanup-leaves-mounted-refs-false-in-react-development)
+- [AgentGUI crashes while unmounting a Monaco diff](./workbench-renderer.md#agentgui-crashes-while-unmounting-a-monaco-diff)
 - [Workbench node body warns about updating WorkbenchNodeLayer during render](./workbench-renderer.md#workbench-node-body-warns-about-updating-workbenchnodelayer-during-render)
 - [Renderer component repeatedly re-renders without visible changes](./workbench-renderer.md#renderer-component-repeatedly-re-renders-without-visible-changes)
 - [Renderer services initialize twice and consume one event twice](./workbench-renderer.md#renderer-services-initialize-twice-and-consume-one-event-twice)
@@ -64,6 +74,7 @@ React rendering, Workbench state, external stores, input composition, and UI per
 - [Dialog action reacts to Enter but ignores pointer clicks](./workbench-renderer.md#dialog-action-reacts-to-enter-but-ignores-pointer-clicks)
 - [Daemon validation error appears as untranslated developer text](./workbench-renderer.md#daemon-validation-error-appears-as-untranslated-developer-text)
 - [Mask-backed icon renders as a solid color block](./workbench-renderer.md#mask-backed-icon-renders-as-a-solid-color-block)
+- [Restored fullscreen window overflows after the host surface becomes smaller](./workbench-renderer.md#restored-fullscreen-window-overflows-after-the-host-surface-becomes-smaller)
 
 ## [Workspace Apps And Files](./workspace-apps-files.md)
 
@@ -85,6 +96,7 @@ App Center, workspace-app lifecycle, App Factory, file references, and File Mana
 CLI behavior, CI, package assets, skills, Browser Node, and terminal input.
 
 - [Go-only PR skips a repository contract that later fails](./toolchain-browser-terminal.md#go-only-pr-skips-a-repository-contract-that-later-fails)
+- [gomobile Android AAR fails after Go compilation succeeds](./toolchain-browser-terminal.md#gomobile-android-aar-fails-after-go-compilation-succeeds)
 - [Dynamic CLI input rejects plausible flags](./toolchain-browser-terminal.md#dynamic-cli-input-rejects-plausible-flags)
 - [GitHub Actions pnpm setup fails with ERR_PNPM_BAD_PM_VERSION](./toolchain-browser-terminal.md#github-actions-pnpm-setup-fails-with-errpnpmbadpmversion)
 - [Multi-entry tsup declaration build exhausts its worker heap](./toolchain-browser-terminal.md#multi-entry-tsup-declaration-build-exhausts-its-worker-heap)
@@ -101,6 +113,21 @@ CLI behavior, CI, package assets, skills, Browser Node, and terminal input.
 - [New release CDN namespace returns an S3 403](./toolchain-browser-terminal.md#new-release-cdn-namespace-returns-an-s3-403)
 - [Browser Node focus pings miss iframe-hosted editors](./toolchain-browser-terminal.md#browser-node-focus-pings-miss-iframe-hosted-editors)
 - [Temporary Git fixture turns a linked worktree bare](./toolchain-browser-terminal.md#temporary-git-fixture-turns-a-linked-worktree-bare)
+
+## [Mobile](./mobile.md)
+
+Android app login, native bridge, secure identity, and mobile transport diagnostics.
+
+- [Android QR scan closes without advancing pairing](./mobile.md#android-qr-scan-closes-without-advancing-pairing)
+- [Android release bundling cannot resolve the JSX transform](./mobile.md#android-release-bundling-cannot-resolve-the-jsx-transform)
+- [Mobile quick prompts are missing from the plus menu](./mobile.md#mobile-quick-prompts-are-missing-from-the-plus-menu)
+- [Mobile composer model and permission controls are missing](./mobile.md#mobile-composer-model-and-permission-controls-are-missing)
+- [Mobile composer option chips do not open](./mobile.md#mobile-composer-option-chips-do-not-open)
+- [Browser login returns to the App but remains signed out](./mobile.md#browser-login-returns-to-the-app-but-remains-signed-out)
+- [Android DeviceLink opens a session and then repeatedly restarts](./mobile.md#android-devicelink-opens-a-session-and-then-repeatedly-restarts)
+- [iOS pod install intermittently reports pathname contains null byte](./mobile.md#ios-pod-install-intermittently-reports-pathname-contains-null-byte)
+- [Mobile Jest discovers tests inside iOS Pods](./mobile.md#mobile-jest-discovers-tests-inside-ios-pods)
+- [React Native Pressable rows stack their children vertically](./mobile.md#react-native-pressable-rows-stack-their-children-vertically)
 
 ## [Computer Use](./computer-use.md)
 

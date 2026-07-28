@@ -171,11 +171,9 @@ export function formatApprovalToolPresentation(
 }
 
 export function PromptDetailValue({
-  detail,
-  previewMode
+  detail
 }: {
   detail: LabeledPromptToolDetail;
-  previewMode: boolean;
 }): JSX.Element {
   "use memo";
   if (detail.kind !== "command") {
@@ -189,7 +187,7 @@ export function PromptDetailValue({
     <CommandTextWithTooltip
       value={detail.value}
       testId="agent-interactive-command-detail"
-      tooltipsEnabled={!previewMode}
+      tooltipsEnabled
     />
   );
 }

@@ -1,4 +1,5 @@
 import type { DesktopLocale } from "../shared/i18n";
+import { app } from "electron";
 import {
   createDesktopHostPreferencesState,
   type DesktopHostPreferencesState
@@ -50,6 +51,7 @@ export async function createDesktopHostServices(
     tuttidClient: options.tuttidClient
   });
   const fileDialogs = createDesktopFileDialogAccess({
+    getDefaultPath: (name) => app.getPath(name),
     getLocale: () => preferences.getLocale()
   });
   const workspaceLaunch = createWorkspaceLaunch({

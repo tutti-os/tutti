@@ -30,7 +30,6 @@ import {
   type DesktopIssueManagerAgentGuiLaunchInput,
   type DesktopIssueManagerAgentSessionCreator
 } from "./internal/adapters/desktopIssueManagerAgentRunner.ts";
-import { createDesktopIssueManagerAnalytics } from "./internal/desktopIssueManagerAnalytics.ts";
 import { createDesktopIssueManagerBackend } from "./internal/adapters/desktopIssueManagerBackend.ts";
 import { createDesktopIssueManagerEventSource } from "./internal/adapters/desktopIssueManagerEventSource.ts";
 import { createDesktopIssueManagerFileAdapter } from "./internal/adapters/desktopIssueManagerFileAdapter.ts";
@@ -105,10 +104,7 @@ export function createDesktopIssueManagerFeature(input: {
       launchAgentGui: input.launchAgentGui,
       workspaceId: input.workspaceId
     }),
-    analytics: createDesktopIssueManagerAnalytics({
-      reporterNow: input.reporterNow,
-      reporterService: input.reporterService
-    }),
+    reporterService: input.reporterService,
     agentTargetOptions: input.agentTargetOptions,
     modelPlanOptions: input.modelPlanOptions,
     agentRunner: createDesktopIssueManagerAgentRunner({

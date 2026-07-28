@@ -13,6 +13,7 @@ import { createAnalyticsOpenedSourceParams } from "../../../analytics/reporters/
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import type { DesktopHostFilesApi } from "@preload/types";
 import { createWorkspaceFilePreviewWindowSaveRequestSource } from "../workspaceFilePreviewSaveRequests.ts";
+import { createWorkspaceFilePreviewWindowViewModeRequestSource } from "../workspaceFilePreviewViewModeRequests.ts";
 import { WorkspaceFilePreviewNodeBody } from "../../ui/WorkspaceFilePreviewNodeBody.tsx";
 import { WorkspaceFilePreviewNodeHeader } from "../../ui/WorkspaceFilePreviewNodeHeader.tsx";
 import {
@@ -99,6 +100,8 @@ function createWorkspaceFilePreviewNodeDefinition(input: {
   const saveRequestSource = createWorkspaceFilePreviewWindowSaveRequestSource(
     globalThis.window
   );
+  const viewModeRequestSource =
+    createWorkspaceFilePreviewWindowViewModeRequestSource(globalThis.window);
 
   return {
     frame: workspaceFilePreviewNodeFrame,
@@ -130,6 +133,7 @@ function createWorkspaceFilePreviewNodeDefinition(input: {
         i18n: input.i18n,
         tuttidClient: input.tuttidClient,
         saveRequestSource,
+        viewModeRequestSource,
         workspaceID: input.workspaceId
       }),
     renderHeader: (context) =>

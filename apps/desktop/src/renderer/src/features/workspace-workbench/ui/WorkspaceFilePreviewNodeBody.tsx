@@ -27,6 +27,7 @@ import {
   workspaceFilePreviewActivationType
 } from "../services/workspaceFilePreviewLaunch";
 import type { WorkspaceFilePreviewSaveRequestSource } from "../services/workspaceFilePreviewSaveRequests";
+import type { WorkspaceFilePreviewViewModeRequestSource } from "../services/workspaceFilePreviewViewModeRequests";
 import {
   createWorkspaceFilePreviewNodeController,
   type WorkspaceFilePreviewNodeController,
@@ -36,6 +37,7 @@ import {
   resolveWorkspaceFilePreviewNodeFile,
   workspaceFilePreviewNodeFileKey
 } from "./workspaceFilePreviewNodeState";
+import { WorkspaceMarkdownPreview } from "./WorkspaceMarkdownPreview";
 
 export function WorkspaceFilePreviewNodeBody({
   appI18n,
@@ -44,6 +46,7 @@ export function WorkspaceFilePreviewNodeBody({
   i18n,
   tuttidClient,
   saveRequestSource,
+  viewModeRequestSource,
   workspaceID
 }: {
   appI18n: I18nRuntime<string>;
@@ -55,6 +58,7 @@ export function WorkspaceFilePreviewNodeBody({
     "readWorkspaceFilePreview" | "writeWorkspaceFileText"
   >;
   saveRequestSource: WorkspaceFilePreviewSaveRequestSource;
+  viewModeRequestSource: WorkspaceFilePreviewViewModeRequestSource;
   workspaceID: string;
 }): React.JSX.Element {
   const contextRef = useRef(context);
@@ -144,9 +148,17 @@ export function WorkspaceFilePreviewNodeBody({
     [context.node.id, controller, saveRequestSource]
   );
 
+  useEffect(
+    () =>
+      viewModeRequestSource.subscribe(context.node.id, (mode) => {
+        controller.changeTextViewMode(mode);
+      }),
+    [context.node.id, controller, viewModeRequestSource]
+  );
+
   if (state.status === "text") {
     return (
-      <WorkspaceTextFileEditor
+      <WorkspaceTextFileContent
         onChange={(event) => {
           const draft = event.target.value;
           controller.changeDraft(draft);
@@ -228,7 +240,7 @@ function toWorkspaceFilePreviewSurfaceState(
         status: "error"
       };
     case "text":
-      // Text editing uses WorkspaceTextFileEditor; this branch is unreachable
+      // Text editing uses WorkspaceTextFileContent; this branch is unreachable
       // for the shared surface path above.
       return {
         content: state.content,
@@ -239,7 +251,7 @@ function toWorkspaceFilePreviewSurfaceState(
   }
 }
 
-function WorkspaceTextFileEditor({
+function WorkspaceTextFileContent({
   onChange,
   state
 }: {
@@ -257,14 +269,19 @@ function WorkspaceTextFileEditor({
           {saveError}
         </div>
       ) : null}
-      <textarea
-        aria-label={state.entry.name}
-        className="h-full min-h-0 min-w-0 resize-none overflow-auto border-0 bg-transparent p-3 font-[var(--tsh-font-mono)] text-[11px] leading-[18px] text-[var(--text-secondary)] outline-none"
-        disabled={isSaving}
-        onChange={onChange}
-        spellCheck={false}
-        value={state.draft}
-      />
+      {state.entry.previewKind === "markdown" &&
+      state.viewMode === "preview" ? (
+        <WorkspaceMarkdownPreview content={state.draft} />
+      ) : (
+        <textarea
+          aria-label={state.entry.name}
+          className="h-full min-h-0 min-w-0 resize-none overflow-auto border-0 bg-transparent p-3 font-[var(--tsh-font-mono)] text-[11px] leading-[18px] text-[var(--text-secondary)] outline-none"
+          disabled={isSaving}
+          onChange={onChange}
+          spellCheck={false}
+          value={state.draft}
+        />
+      )}
     </div>
   );
 }

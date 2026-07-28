@@ -314,6 +314,9 @@ function createWebHostApi(): DesktopHostApi {
       capturePreview() {
         return Promise.resolve(null);
       },
+      capturePreviewImages() {
+        return Promise.resolve(null);
+      },
       minimize() {
         return Promise.reject(electronDebugRequired("minimize"));
       },

@@ -491,6 +491,100 @@ test("mutations refresh the current directory after success", async () => {
   session.dispose();
 });
 
+test("copyToClipboard reports success and leaves no error behind", async () => {
+  const copyCalls: Array<{ paths: string[]; workspaceID: string }> = [];
+  const session = createSession({
+    host: {
+      async copyEntriesToClipboard(input) {
+        copyCalls.push(input);
+      }
+    }
+  });
+
+  await session.initialize();
+  const copied = await session.copyToClipboard(
+    createEntry("/Users/demo/project/deck.pptx")
+  );
+
+  assert.equal(copied, true);
+  assert.deepEqual(copyCalls, [
+    { paths: ["/Users/demo/project/deck.pptx"], workspaceID }
+  ]);
+  assert.equal(session.store.error, null);
+
+  session.dispose();
+});
+
+test("copyToClipboard surfaces host failures through the mutation error channel", async () => {
+  const failure = new Error("Clipboard is unavailable");
+  const messages: Array<{ actionKind: string; message: string }> = [];
+  const session = createSession({
+    host: {
+      async copyEntriesToClipboard() {
+        throw failure;
+      }
+    },
+    onMutationErrorMessage: (message) => {
+      messages.push({
+        actionKind: message.actionKind,
+        message: message.message
+      });
+      assert.equal(message.error, failure);
+      return true;
+    }
+  });
+
+  await session.initialize();
+  const copied = await session.copyToClipboard(
+    createEntry("/Users/demo/project/deck.pptx")
+  );
+
+  assert.equal(copied, false);
+  // Raw host errors stay internal; the package hands over its localized copy
+  // unless the host supplies resolveErrorMessage.
+  assert.deepEqual(messages, [
+    { actionKind: "copy", message: "Something went wrong. Please try again." }
+  ]);
+  // The host handled it, so the listing must not be replaced by an error state.
+  assert.equal(session.store.error, null);
+
+  session.dispose();
+});
+
+test("copyToClipboard falls back to the inline error when the host does not handle it", async () => {
+  const session = createSession({
+    host: {
+      async copyEntriesToClipboard() {
+        throw new Error("Clipboard is unavailable");
+      }
+    }
+  });
+
+  await session.initialize();
+  const copied = await session.copyToClipboard(
+    createEntry("/Users/demo/project/deck.pptx")
+  );
+
+  assert.equal(copied, false);
+  assert.equal(session.store.error, "Something went wrong. Please try again.");
+
+  session.dispose();
+});
+
+test("copyToClipboard reports false when the host cannot copy", async () => {
+  const session = createSession();
+
+  await session.initialize();
+  const copied = await session.copyToClipboard(
+    createEntry("/Users/demo/project/deck.pptx")
+  );
+
+  assert.equal(copied, false);
+  assert.equal(session.store.error, null);
+
+  session.dispose();
+});
+
 test("stale search results do not overwrite newer query results", async () => {
   const firstSearch = createDeferred<WorkspaceFileSearchResult>();
   const secondSearch = createDeferred<WorkspaceFileSearchResult>();
@@ -1463,6 +1557,49 @@ test("initialize preserves directory state already loaded by a reveal intent", a
   assert.deepEqual(listedPaths, ["/Users/demo/project/src"]);
   assert.equal(session.store.currentDirectoryPath, "/Users/demo/project/src");
   assert.equal(session.store.selectedPath, "/Users/demo/project/src/App.tsx");
+
+  session.dispose();
+});
+
+test("initialize still lists when only selectedPath is restored", async () => {
+  const listedPaths: string[] = [];
+  const session = createWorkspaceFileManagerService().createSession({
+    host: {
+      async listDirectory(input) {
+        listedPaths.push(input.path);
+        return {
+          directoryPath: "/Users/demo/project",
+          entries: [
+            {
+              hasChildren: false,
+              kind: "file",
+              mtimeMs: null,
+              name: "README.md",
+              path: "/Users/demo/project/README.md",
+              sizeBytes: 12
+            }
+          ],
+          root: "/Users/demo/project",
+          workspaceID: input.workspaceID
+        };
+      }
+    },
+    i18n: createTestI18nRuntime(),
+    initialDirectoryPath: "/Users/demo/project",
+    workspaceID: "workspace-1"
+  });
+  session.store.root = "/Users/demo/project";
+  session.store.currentDirectoryPath = "/Users/demo/project";
+  session.store.selectedPath = "/Users/demo/project/README.md";
+  session.store.entries = [];
+  session.store.isLoading = true;
+
+  await session.initialize();
+
+  assert.deepEqual(listedPaths, ["/Users/demo/project"]);
+  assert.equal(session.store.isLoading, false);
+  assert.equal(session.store.entries.length, 1);
+  assert.equal(session.store.entries[0]?.name, "README.md");
 
   session.dispose();
 });

@@ -46,7 +46,6 @@ export function useDesktopAgentGUIReadiness(input: {
   computerUseApi?: Pick<DesktopComputerUseApi, "checkStatus">;
   host: WorkbenchHostNodeBodyContext["host"];
   provider: AgentGUIProvider | null;
-  previewMode: boolean;
   providerStatusBootstrapSnapshot?: AgentProviderStatusSnapshot | null;
   trackAgentProviderChatReady?: (input: { provider: string }) => Promise<void>;
   workspaceId: string;
@@ -57,7 +56,6 @@ export function useDesktopAgentGUIReadiness(input: {
     computerUseApi,
     host,
     provider,
-    previewMode,
     providerStatusBootstrapSnapshot,
     trackAgentProviderChatReady,
     workspaceId
@@ -68,18 +66,18 @@ export function useDesktopAgentGUIReadiness(input: {
   const [computerUseStatus, setComputerUseStatus] =
     useState<DesktopComputerUseStatus | null>(null);
   useEffect(() => {
-    if (previewMode || !agentProviderStatusService || !provider) {
+    if (!agentProviderStatusService || !provider) {
       return;
     }
     void ensureDesktopManagedAgentProviderStatuses(agentProviderStatusService, [
       provider
     ]);
-  }, [agentProviderStatusService, previewMode, provider]);
+  }, [agentProviderStatusService, provider]);
   const providerStatusSnapshot = useSyncExternalStore(
-    agentProviderStatusService && !previewMode
+    agentProviderStatusService
       ? (listener) => agentProviderStatusService.subscribe(listener)
       : noopSubscribe,
-    agentProviderStatusService && !previewMode
+    agentProviderStatusService
       ? () => agentProviderStatusService.getSnapshot()
       : getEmptyProviderStatusSnapshot,
     getEmptyProviderStatusSnapshot
@@ -103,13 +101,12 @@ export function useDesktopAgentGUIReadiness(input: {
     useState<string | null>(null);
   const activeProviderRecheckGenerationRef = useRef(0);
   const suppressNotReadyProjection =
-    !previewMode &&
     shouldSuppressAgentProviderNotReadyProjection({
       recheckKey: activeProviderRecheckKey,
       settledRecheckKey: settledActiveProviderRecheckKey
     });
   useEffect(() => {
-    if (previewMode || !agentProviderStatusService || !provider) {
+    if (!agentProviderStatusService || !provider) {
       setSettledActiveProviderRecheckKey(null);
       return;
     }
@@ -133,7 +130,6 @@ export function useDesktopAgentGUIReadiness(input: {
   }, [
     activeProviderRecheckKey,
     agentProviderStatusService,
-    previewMode,
     provider,
     settledActiveProviderRecheckKey
   ]);
@@ -142,14 +138,12 @@ export function useDesktopAgentGUIReadiness(input: {
   // the composer is interactive. reportProviderReady (stage ②) can fire while
   // no agent surface is open; this fires only when the user is actually here.
   const isActiveAgentProviderChatReady =
-    !previewMode &&
     provider !== null &&
     agentProviderStatusService?.getStatus(provider)?.availability.status ===
       "ready";
   const chatReadyReportedProvidersRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (
-      previewMode ||
       !isActiveAgentProviderChatReady ||
       !trackAgentProviderChatReady ||
       !provider
@@ -161,17 +155,12 @@ export function useDesktopAgentGUIReadiness(input: {
     }
     chatReadyReportedProvidersRef.current.add(provider);
     void trackAgentProviderChatReady({ provider });
-  }, [
-    isActiveAgentProviderChatReady,
-    previewMode,
-    provider,
-    trackAgentProviderChatReady
-  ]);
+  }, [isActiveAgentProviderChatReady, provider, trackAgentProviderChatReady]);
   // When a turn fails authentication (a dropped login the daemon now flags), the
   // status is pull-based, so re-probe immediately to flip the dock/wizard to
   // "needs login" without the user having to re-detect manually.
   useEffect(() => {
-    if (previewMode || !agentProviderStatusService || !provider) {
+    if (!agentProviderStatusService || !provider) {
       return;
     }
     return agentActivityRuntime.subscribeSessionEvents(workspaceId, (event) => {
@@ -179,15 +168,9 @@ export function useDesktopAgentGUIReadiness(input: {
         void agentProviderStatusService.refresh([provider]);
       }
     });
-  }, [
-    agentActivityRuntime,
-    agentProviderStatusService,
-    previewMode,
-    provider,
-    workspaceId
-  ]);
+  }, [agentActivityRuntime, agentProviderStatusService, provider, workspaceId]);
   useEffect(() => {
-    if (previewMode || !computerUseApi) {
+    if (!computerUseApi) {
       setComputerUseStatus(null);
       return;
     }
@@ -238,7 +221,7 @@ export function useDesktopAgentGUIReadiness(input: {
       window.removeEventListener("focus", refreshOnVisibility);
       document.removeEventListener("visibilitychange", refreshOnVisibility);
     };
-  }, [computerUseApi, previewMode]);
+  }, [computerUseApi]);
   const handleAgentProviderLogin = useCallback(
     (
       loginProvider: Parameters<
@@ -296,9 +279,6 @@ export function useDesktopAgentGUIReadiness(input: {
     [agentProviderStatusService, host, workspaceId]
   );
   const providerReadinessGates = useMemo(() => {
-    if (previewMode) {
-      return null;
-    }
     const gates = projectDesktopAgentProviderReadinessGates({
       snapshot: effectiveProviderStatusSnapshot,
       onAction: handleProviderReadinessGateAction
@@ -314,7 +294,6 @@ export function useDesktopAgentGUIReadiness(input: {
   }, [
     effectiveProviderStatusSnapshot,
     handleProviderReadinessGateAction,
-    previewMode,
     provider,
     suppressNotReadyProjection
   ]);

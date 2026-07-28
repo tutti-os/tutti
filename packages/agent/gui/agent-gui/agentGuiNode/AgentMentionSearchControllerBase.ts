@@ -483,7 +483,6 @@ export class AgentMentionSearchControllerBase {
     providerId: string;
     workspaceId: string;
     currentUserId: string;
-    directoryPath?: string;
     query: string;
     limit?: number;
     sessionCwd?: string;
@@ -505,7 +504,6 @@ export class AgentMentionSearchControllerBase {
               provider,
               workspaceId: input.workspaceId,
               currentUserId: input.currentUserId,
-              directoryPath: input.directoryPath,
               query: input.query,
               limit: input.limit,
               sectionKey: input.sectionKey ?? this.currentSectionKey,

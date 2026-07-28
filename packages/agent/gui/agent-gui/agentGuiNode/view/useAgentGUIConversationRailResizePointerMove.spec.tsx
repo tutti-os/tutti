@@ -26,7 +26,6 @@ describe("useAgentGUIConversationRailResizePointerMove", () => {
         clampConversationRailWidth: (widthPx) => Math.min(280, widthPx),
         layoutElementRef: { current: layoutElement },
         onConversationRailLayoutChange,
-        previewMode: false,
         providerRailWidthPx: 52,
         railResizeInteractionRef
       })

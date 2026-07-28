@@ -86,11 +86,21 @@ func (h *Host) recoverGoalOperation(ctx context.Context, operation storesqlite.G
 			leased.Attempt-leased.DispatchedAttempt >= h.goalOperationMaxAttempts()) {
 		return h.failRecoveredGoalOperation(ctx, leased, "goal operation exceeded its delivery deadline")
 	}
-	_, err = h.EnsureRuntimeSession(ctx, SessionRef{WorkspaceID: leased.WorkspaceID, AgentSessionID: leased.AgentSessionID})
-	if err != nil {
-		return h.retryRecoveredGoalOperation(ctx, leased, err)
+	requireLive := goalGenerationFenceClearOperation(leased)
+	if requireLive {
+		if !h.runtimeSessionLive(leased.WorkspaceID, leased.AgentSessionID) {
+			return h.deferGoalOperation(ctx, leased, 5*time.Second)
+		}
+	} else {
+		_, err = h.EnsureRuntimeSession(ctx, SessionRef{WorkspaceID: leased.WorkspaceID, AgentSessionID: leased.AgentSessionID})
+		if err != nil {
+			return h.retryRecoveredGoalOperation(ctx, leased, err)
+		}
 	}
-	policy, err := ResolveRuntimeGoalRecoveryPolicy(ctx, h.goalRuntime, RuntimeGoalControlInput{WorkspaceID: leased.WorkspaceID, AgentSessionID: leased.AgentSessionID})
+	policy, err := ResolveRuntimeGoalRecoveryPolicy(ctx, h.goalRuntime, RuntimeGoalControlInput{
+		WorkspaceID: leased.WorkspaceID, AgentSessionID: leased.AgentSessionID,
+		RequireLive: requireLive,
+	})
 	if err != nil {
 		return h.retryRecoveredGoalOperation(ctx, leased, err)
 	}
@@ -114,6 +124,7 @@ func (h *Host) recoverGoalOperation(ctx context.Context, operation storesqlite.G
 		if reconciler, ok := h.goalRuntime.(GoalRuntimeReconciler); ok {
 			result, reconcileErr := reconciler.ReconcileGoal(ctx, RuntimeGoalControlInput{
 				WorkspaceID: leased.WorkspaceID, AgentSessionID: leased.AgentSessionID, Action: "reconcile",
+				RequireLive: requireLive,
 			})
 			if reconcileErr == nil {
 				evidence := clonePayload(result.Evidence)
@@ -190,6 +201,7 @@ func (h *Host) recoverGoalOperation(ctx context.Context, operation storesqlite.G
 		Action: leased.Action, Objective: leased.Objective,
 		OperationID: leased.OperationID, GoalRevision: leased.GoalRevision,
 		RepairEpoch: leased.RepairEpoch, SubmissionMetadata: goalControlSubmissionMetadata(leased.ClientSubmitID),
+		RequireLive: requireLive,
 	})
 	if err != nil {
 		return h.retryRecoveredGoalOperation(ctx, leased, err)
@@ -285,15 +297,48 @@ func (h *Host) goalOperationAttemptTimeout() time.Duration {
 }
 
 func (h *Host) RecoverGoalOperations(ctx context.Context) error {
-	if h.goals == nil {
+	if h.goals == nil && h.goalFences == nil {
 		return nil
 	}
 	recoveryCtx, cancel := context.WithTimeout(ctx, h.goalOperationRecoveryBudget())
 	defer cancel()
-	if _, err := h.goals.RequeueLeasedGoalControlOperationsOnStartup(recoveryCtx, h.goalOperationNow().UnixMilli()); err != nil {
-		return err
+	if h.goals != nil {
+		if _, err := h.goals.RequeueLeasedGoalControlOperationsOnStartup(recoveryCtx, h.goalOperationNow().UnixMilli()); err != nil {
+			return err
+		}
 	}
-	for {
+	if h.goalFences != nil {
+		if _, err := h.goalFences.RequeueLeasedGoalGenerationFencesOnStartup(recoveryCtx, h.goalOperationNow().UnixMilli()); err != nil {
+			return err
+		}
+	}
+	for h.goalFences != nil {
+		if recoveryCtx.Err() != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return nil
+		}
+		if err := h.StepGoalGenerationFenceWorker(recoveryCtx); err != nil {
+			if recoveryCtx.Err() != nil && ctx.Err() == nil {
+				return nil
+			}
+			return err
+		}
+		remaining, err := h.goalFences.ListClaimableGoalGenerationFences(recoveryCtx, storesqlite.ListClaimableGoalGenerationFencesInput{
+			NowUnixMS: h.goalOperationNow().UnixMilli(), Limit: 1,
+		})
+		if err != nil && recoveryCtx.Err() != nil && ctx.Err() == nil {
+			return nil
+		}
+		if err != nil || len(remaining) == 0 {
+			if err != nil {
+				return err
+			}
+			break
+		}
+	}
+	for h.goals != nil {
 		if recoveryCtx.Err() != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -316,6 +361,7 @@ func (h *Host) RecoverGoalOperations(ctx context.Context) error {
 			return err
 		}
 	}
+	return nil
 }
 
 func (h *Host) goalOperationRecoveryBudget() time.Duration {
@@ -351,6 +397,9 @@ func (h *Host) runGoalOperationWorker(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
+			if err := h.StepGoalGenerationFenceWorker(ctx); err != nil {
+				slog.Error("agent goal generation fence worker step failed", "event", "agent_goal_generation_fence.worker_step_failed", "error", err.Error())
+			}
 			if err := h.StepGoalOperationWorker(ctx, false); err != nil {
 				slog.Error("agent goal operation worker step failed", "event", "agent_goal_operation.worker_step_failed", "error", err.Error())
 			}

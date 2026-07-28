@@ -11,9 +11,12 @@
     "./agents": "./agents.ts",
     "./custom-mention": "./custom-mention.ts",
     "./dock-icons": "./dockIcons.ts",
+    "./layout": "./layout.ts",
     "./mention-search": "./agent-gui/agentGuiNode/AgentMentionSearchController.ts",
     "./agent-message-center": "./agent-message-center/index.ts",
     "./agent-conversation": "./agent-conversation/index.ts",
+    "./agent-conversation/follow-end": "./shared/agentConversation/agentConversationFollowEndController.ts",
+    "./agent-conversation/interactive-answer": "./shared/agentConversation/interactiveAnswerPayload.ts",
     "./agent-env": "./shared/agentEnv/index.ts",
     "./agent-env-ui": "./shared/agentEnv/ui.ts",
     "./workspace-settings-panel": "./shared/workspaceSettingsPanel/workspaceSettingsPanelStore.ts",
@@ -27,6 +30,9 @@
     "./agentGuiSessionProviderIconUrls": "./agentGuiSessionProviderIconUrls.ts",
     "./workspace-agent-generated-files": "./shared/workspaceAgentGeneratedFiles.ts",
     "./conversation-rail-runtime": "./agentConversationRailRuntime.ts",
+    "./conversation-rail-projection": "./conversationRailProjection.ts",
+    "./conversation-projection": "./conversationProjection.ts",
+    "./composer-projection": "./composerProjection.ts",
     "./workspace-query-cache": "./shared/query/workspaceQueryCache.ts",
     "./i18n": "./i18n/index.ts",
     "./workbench": "./workbench/index.ts",
@@ -56,8 +62,7 @@
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
-    "@monaco-editor/react": "^4.7.0",
-    "@tanstack/react-virtual": "^3.13.12",
+    "@tanstack/react-virtual": "^3.14.8",
     "@tutti-os/agent-activity-core": "workspace:*",
     "@tutti-os/browser-node": "workspace:*",
     "@tutti-os/ui-i18n-runtime": "workspace:*",
@@ -72,9 +77,12 @@
     "@tutti-os/workspace-issue-manager": "workspace:*",
     "@tutti-os/workspace-user-project": "workspace:*",
     "clsx": "^2.1.1",
+    "dompurify": "^3.4.12",
     "framer-motion": "^12.40.0",
     "lodash": "^4.17.21",
     "lucide-react": "^0.511.0",
+    "mermaid": "^11.16.0",
+    "monaco-editor": "^0.55.1",
     "react-markdown": "^10.1.0",
     "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1",
@@ -147,6 +155,10 @@
         "types": "./dist/dock-icons.d.ts",
         "import": "./dist/dock-icons.js"
       },
+      "./layout": {
+        "types": "./dist/layout.d.ts",
+        "import": "./dist/layout.js"
+      },
       "./mention-search": {
         "types": "./dist/mention-search.d.ts",
         "import": "./dist/mention-search.js"
@@ -158,6 +170,14 @@
       "./agent-conversation": {
         "types": "./dist/agent-conversation/index.d.ts",
         "import": "./dist/agent-conversation/index.js"
+      },
+      "./agent-conversation/follow-end": {
+        "types": "./dist/agent-conversation/follow-end.d.ts",
+        "import": "./dist/agent-conversation/follow-end.js"
+      },
+      "./agent-conversation/interactive-answer": {
+        "types": "./dist/agent-conversation/interactive-answer.d.ts",
+        "import": "./dist/agent-conversation/interactive-answer.js"
       },
       "./agent-env": {
         "types": "./dist/agent-env/index.d.ts",
@@ -202,6 +222,18 @@
       "./conversation-rail-runtime": {
         "types": "./dist/conversation-rail-runtime.d.ts",
         "import": "./dist/conversation-rail-runtime.js"
+      },
+      "./conversation-rail-projection": {
+        "types": "./dist/conversation-rail-projection.d.ts",
+        "import": "./dist/conversation-rail-projection.js"
+      },
+      "./conversation-projection": {
+        "types": "./dist/conversation-projection.d.ts",
+        "import": "./dist/conversation-projection.js"
+      },
+      "./composer-projection": {
+        "types": "./dist/composer-projection.d.ts",
+        "import": "./dist/composer-projection.js"
       },
       "./workspace-query-cache": {
         "types": "./dist/workspace-query-cache.d.ts",
@@ -270,11 +302,20 @@
         "dock-icons": [
           "./dist/dock-icons.d.ts"
         ],
+        "layout": [
+          "./dist/layout.d.ts"
+        ],
         "mention-search": [
           "./dist/mention-search.d.ts"
         ],
         "agent-conversation": [
           "./dist/agent-conversation/index.d.ts"
+        ],
+        "agent-conversation/follow-end": [
+          "./dist/agent-conversation/follow-end.d.ts"
+        ],
+        "agent-conversation/interactive-answer": [
+          "./dist/agent-conversation/interactive-answer.d.ts"
         ],
         "agent-env": [
           "./dist/agent-env/index.d.ts"
@@ -305,6 +346,15 @@
         ],
         "conversation-rail-runtime": [
           "./dist/conversation-rail-runtime.d.ts"
+        ],
+        "conversation-rail-projection": [
+          "./dist/conversation-rail-projection.d.ts"
+        ],
+        "conversation-projection": [
+          "./dist/conversation-projection.d.ts"
+        ],
+        "composer-projection": [
+          "./dist/composer-projection.d.ts"
         ],
         "workspace-query-cache": [
           "./dist/workspace-query-cache.d.ts"

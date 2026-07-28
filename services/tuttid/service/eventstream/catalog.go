@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/liveprotocol"
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 )
@@ -545,7 +546,7 @@ func validateAgentActivityUpdatedPayload(payload []byte) error {
 		return fmt.Errorf("agentSessionId is required")
 	}
 	switch strings.TrimSpace(decoded.EventType) {
-	case "session_reconcile_required", "session_deleted", "session_audit", "message_update", "turn_update", "interaction_update":
+	case "session_reconcile_required", "session_deleted", "session_audit", "message_delta", "message_update", "turn_update", "interaction_update":
 	default:
 		return fmt.Errorf("eventType is unsupported")
 	}
@@ -584,13 +585,25 @@ func decodeJSONStrict(payload []byte, target any) error {
 }
 
 func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error {
+	workspaceID := strings.TrimSpace(decoded.WorkspaceID)
+	agentSessionID := strings.TrimSpace(decoded.AgentSessionID)
+	eventType := strings.TrimSpace(decoded.EventType)
+	if eventType == "message_delta" {
+		if _, err := liveprotocol.MarshalEvent(liveprotocol.Event{
+			WorkspaceID:    workspaceID,
+			AgentSessionID: agentSessionID,
+			EventType:      liveprotocol.EventTypeMessageDelta,
+			Data:           decoded.Data,
+		}); err != nil {
+			return fmt.Errorf("decode message_delta data: %w", err)
+		}
+		return nil
+	}
+
 	var header agentActivityUpdatedDataHeader
 	if err := json.Unmarshal(decoded.Data, &header); err != nil {
 		return fmt.Errorf("decode data: %w", err)
 	}
-	workspaceID := strings.TrimSpace(decoded.WorkspaceID)
-	agentSessionID := strings.TrimSpace(decoded.AgentSessionID)
-	eventType := strings.TrimSpace(decoded.EventType)
 	if strings.TrimSpace(header.WorkspaceID) != workspaceID {
 		return fmt.Errorf("data.workspaceId must match workspaceId")
 	}

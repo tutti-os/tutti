@@ -1,5 +1,6 @@
 import type { AgentActivityInteraction, AgentActivityTurn } from "../types.ts";
 import { shouldUseIncomingInteraction } from "../interactionMonotonicity.ts";
+import { areJsonLikeValuesEqual } from "../merge.ts";
 import { normalizeAgentActivitySession } from "../sessionNormalization.ts";
 import type { AgentActivitySessionInput } from "../sessionNormalization.ts";
 import type {
@@ -30,9 +31,13 @@ export function replaceCanonicalSessionSnapshot(
     const current = state.sessionsById[id];
     const incomingSession = canonicalSession(source);
     const useIncoming = shouldUseIncomingSession(current, incomingSession);
-    sessionsById[id] = useIncoming
+    const candidateSession = useIncoming
       ? preserveLiveTurnOnTimestampTie(current, incomingSession)
       : current!;
+    sessionsById[id] =
+      current && areJsonLikeValuesEqual(current, candidateSession)
+        ? current
+        : candidateSession;
     operationBySessionId[id] =
       state.operationBySessionId[id] ?? createOperation();
     if (useIncoming) {
@@ -50,7 +55,11 @@ export function replaceCanonicalSessionSnapshot(
       ...source.pendingInteractions
     ]) {
       if (interaction.agentSessionId === id) {
-        mergeInteractionInto(interactionsById, interaction);
+        mergeInteractionInto(
+          interactionsById,
+          state.interactionsById,
+          interaction
+        );
       }
     }
   }
@@ -101,12 +110,33 @@ export function replaceCanonicalSessionSnapshot(
       interactionsById[key] = interaction;
     }
   }
+  const nextInteractionsById = reuseRecordIfShallowEqual(
+    state.interactionsById,
+    interactionsById
+  );
+  const nextOperationBySessionId = reuseRecordIfShallowEqual(
+    state.operationBySessionId,
+    operationBySessionId
+  );
+  const nextSessionsById = reuseRecordIfShallowEqual(
+    state.sessionsById,
+    sessionsById
+  );
+  const nextTurnsById = reuseRecordIfShallowEqual(state.turnsById, turnsById);
+  if (
+    nextInteractionsById === state.interactionsById &&
+    nextOperationBySessionId === state.operationBySessionId &&
+    nextSessionsById === state.sessionsById &&
+    nextTurnsById === state.turnsById
+  ) {
+    return state;
+  }
   return {
     ...state,
-    interactionsById,
-    operationBySessionId,
-    sessionsById,
-    turnsById
+    interactionsById: nextInteractionsById,
+    operationBySessionId: nextOperationBySessionId,
+    sessionsById: nextSessionsById,
+    turnsById: nextTurnsById
   };
 }
 
@@ -120,18 +150,28 @@ export function upsertCanonicalSession(
   const current = state.sessionsById[id];
   const incoming = canonicalSession(source);
   const useIncoming = shouldUseIncomingSession(current, incoming);
-  let next: SessionLifecycleState = {
-    ...state,
-    operationBySessionId: state.operationBySessionId[id]
-      ? state.operationBySessionId
-      : { ...state.operationBySessionId, [id]: createOperation() },
-    sessionsById: {
-      ...state.sessionsById,
-      [id]: useIncoming
-        ? preserveLiveTurnOnTimestampTie(current, incoming)
-        : current!
-    }
-  };
+  const candidateSession = useIncoming
+    ? preserveLiveTurnOnTimestampTie(current, incoming)
+    : current!;
+  const nextSession =
+    current && areJsonLikeValuesEqual(current, candidateSession)
+      ? current
+      : candidateSession;
+  const operationBySessionId = state.operationBySessionId[id]
+    ? state.operationBySessionId
+    : { ...state.operationBySessionId, [id]: createOperation() };
+  let next: SessionLifecycleState =
+    operationBySessionId === state.operationBySessionId &&
+    nextSession === current
+      ? state
+      : {
+          ...state,
+          operationBySessionId,
+          sessionsById:
+            nextSession === current
+              ? state.sessionsById
+              : { ...state.sessionsById, [id]: nextSession }
+        };
   if (useIncoming && source.activeTurn?.agentSessionId === id) {
     next = upsertCanonicalTurn(next, source.activeTurn);
   }
@@ -202,6 +242,7 @@ export function upsertCanonicalTurn(
   const current = state.turnsById[key];
   if (current && !shouldUseIncomingTurn(current, turn)) return state;
   const nextTurn = current ? preserveTurnProvenance(current, turn) : turn;
+  if (current && areJsonLikeValuesEqual(current, nextTurn)) return state;
   return {
     ...state,
     turnsById: { ...state.turnsById, [key]: { ...nextTurn } }
@@ -227,6 +268,7 @@ export function upsertCanonicalInteraction(
   );
   const current = state.interactionsById[key];
   if (!shouldUseIncomingInteraction(current, interaction)) return state;
+  if (current && areJsonLikeValuesEqual(current, interaction)) return state;
   return {
     ...state,
     interactionsById: {
@@ -238,6 +280,7 @@ export function upsertCanonicalInteraction(
 
 function mergeInteractionInto(
   target: Record<string, AgentActivityInteraction>,
+  existing: Readonly<Record<string, AgentActivityInteraction>>,
   interaction: AgentActivityInteraction
 ): void {
   const key = canonicalInteractionKey(
@@ -245,8 +288,12 @@ function mergeInteractionInto(
     interaction.turnId,
     interaction.requestId
   );
-  if (shouldUseIncomingInteraction(target[key], interaction)) {
-    target[key] = { ...interaction };
+  const current = target[key] ?? existing[key];
+  if (shouldUseIncomingInteraction(current, interaction)) {
+    target[key] =
+      current && areJsonLikeValuesEqual(current, interaction)
+        ? current
+        : { ...interaction };
   }
 }
 
@@ -327,10 +374,27 @@ function mergeTurnInto(
   const key = canonicalTurnKey(turn.agentSessionId, turn.turnId);
   const current = target[key] ?? existing[key];
   if (!current || shouldUseIncomingTurn(current, turn)) {
-    target[key] = {
-      ...(current ? preserveTurnProvenance(current, turn) : turn)
-    };
+    const candidate = current ? preserveTurnProvenance(current, turn) : turn;
+    target[key] =
+      current && areJsonLikeValuesEqual(current, candidate)
+        ? current
+        : { ...candidate };
   }
+}
+
+function reuseRecordIfShallowEqual<T>(
+  current: Readonly<Record<string, T>>,
+  next: Record<string, T>
+): Record<string, T> {
+  const currentKeys = Object.keys(current);
+  const nextKeys = Object.keys(next);
+  if (
+    currentKeys.length === nextKeys.length &&
+    nextKeys.every((key) => current[key] === next[key])
+  ) {
+    return current as Record<string, T>;
+  }
+  return next;
 }
 
 /**

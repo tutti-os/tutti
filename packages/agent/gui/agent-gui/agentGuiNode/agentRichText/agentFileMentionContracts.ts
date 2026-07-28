@@ -47,9 +47,14 @@ export interface AgentMentionSessionItem {
   name: string;
   title: string;
   scope: AgentMentionScope;
+  initiatorUserId?: string;
   initiatorName: string;
   initiatorAvatarUrl?: string;
   agentName: string;
+  /** Structured owner segment from the matching provenance Agent option. */
+  agentOwnerLabel?: string;
+  /** Structured Agent segment from the matching provenance Agent option. */
+  agentLabel?: string;
   agentIconUrl?: string;
   status?: string;
   inputPreview?: string;
@@ -66,6 +71,7 @@ export interface AgentMentionWorkspaceIssueItem {
   name: string;
   title: string;
   creatorName?: string;
+  iconUrl?: string;
   status?: string;
   contentPreview?: string;
   updatedAtUnixMs?: number;

@@ -246,6 +246,36 @@ export type AgentActivityUpdatedPayloadV1 =
   | {
       workspaceId: string;
       agentSessionId: string;
+      eventType: "message_delta";
+      data: {
+        workspaceId: string;
+        agentSessionId: string;
+        messageId: string;
+        turnId: string;
+        role: string;
+        kind: string;
+        occurredAtUnixMs: number;
+        content?: {
+          operation: "append_text" | "set";
+          text?: string;
+          value?: unknown;
+        };
+        toolOutput?: {
+          operation: "append_text" | "set";
+          text: string;
+          offsetBytes?: number;
+        };
+        payloadSet?: Record<string, unknown>;
+        payloadUnset?: readonly string[];
+        status?: string;
+        semantics?: Record<string, unknown>;
+        startedAtUnixMs?: number;
+        completedAtUnixMs?: number;
+      };
+    }
+  | {
+      workspaceId: string;
+      agentSessionId: string;
       eventType: "session_deleted";
       data: {
         workspaceId: string;

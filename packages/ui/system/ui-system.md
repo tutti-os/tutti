@@ -52,14 +52,22 @@ disabled, keyboard-focus, and overlay states.
 ## Avatar foundation
 
 `Avatar` is the single high-level identity-image primitive. It owns decorative
-image loading, broken-image fallback, initial or empty fallback modes, loading
-presentation, named or numeric sizing, and a caller-owned overlay slot through
-`children`. Consumers own identity resolution, image URLs, labels, fallback
-colors, presence semantics, and overlay content. The underlying Radix/shadcn
-parts are intentionally not public. `fallbackColor` is the narrow exception for
-caller-owned dynamic identity data; component defaults still use semantic
-tokens. Initial fallback content appears only when the image URL is absent or
-the image fails, never while a valid image URL is still loading.
+image loading, rendered-box-aware image transformation, broken-image fallback,
+initial or empty fallback modes, loading presentation, named or numeric sizing,
+and a caller-owned overlay slot through `children`. Sources are requested
+unchanged with a `no-referrer` request policy by default; callers may override
+that policy through `imageProps` for a source that requires it. When the caller
+passes `transform`, HTTP(S) sources
+request a bucketed two-times-size WebP variant with `fit=inside`, while
+preserving the original query string. A failed variant retries the original
+source once. Consumers own identity resolution, directly consumable image URLs,
+transformation capability, labels, fallback colors, presence semantics, and
+overlay content. They never pass buckets or object keys to the component.
+The underlying Radix/shadcn parts are intentionally not public. `fallbackColor`
+is the narrow exception for caller-owned dynamic identity data; component
+defaults still use semantic tokens. Initial fallback content appears only when
+both the delivered image and its original fallback are unavailable, never
+while a valid image URL is still loading.
 
 ## Current Package Role
 
@@ -84,6 +92,13 @@ The visual language that this package should serve is defined in [Desktop Visual
   Root runtime entry for shared primitives, icon components, and the small set of utility exports that primitives depend on
 - `@tutti-os/ui-system/styles.css`
   Shared stylesheet entry loaded by renderer shells
+- `@tutti-os/ui-system/native.css`
+  NativeWind stylesheet entry loaded once by React Native renderer shells
+- `@tutti-os/ui-system/native`
+  React Native primitive and semantic-token entry; this is separate from the
+  DOM component entry and must not be imported by desktop renderers. Native
+  consumers provide React Native; `react-dom` is optional for this
+  platform-specific entry.
 - `@tutti-os/ui-system/components`
   Stable component barrel for tooling and rare category-focused imports
 - `@tutti-os/ui-system/icons`
@@ -101,6 +116,11 @@ Default consumption rules:
 
 - application code should prefer importing primitives and icons from `@tutti-os/ui-system`
 - renderer entrypoints should import `@tutti-os/ui-system/styles.css` once
+- React Native renderer entrypoints should import
+  `@tutti-os/ui-system/native.css` once
+- React Native components and screens should import Native primitives and
+  semantic tokens from `@tutti-os/ui-system/native`, never from a private app
+  palette
 - shadcn monorepo aliases may target `@tutti-os/ui-system/components` and `@tutti-os/ui-system/utils`
 - application runtime code must not import `@tutti-os/ui-system/dev-vite`
 - consumers must not deep import `@tutti-os/ui-system/src/*` or component file
@@ -270,7 +290,21 @@ host-owned caller logic.
 
 ## Token Rules
 
-- CSS variables are the source of truth for theme values
+- `src/tokens/renderer-theme.json` is the single semantic-token manifest for
+  the shared Web/Native subset. It generates Web CSS renderer variables and
+  Native light/dark palettes; renderer-specific literal values may differ when
+  their color syntaxes or current visual languages require it. Do not duplicate
+  these values in application code.
+- `NativeThemeProvider` resolves the operating-system scheme by default, or a
+  caller-provided `"light" | "dark"` product preference. Native primitives and
+  Mobile composition consume `useNativeTheme()` rather than application-local
+  palettes. `nativeTheme` remains only as a dark compatibility value for
+  non-rendering callers; this does not yet promise full Desktop/Mobile visual
+  parity.
+- `pnpm check:ui-boundaries` verifies generated renderer-token outputs stay in
+  sync with the manifest. Regenerate them with
+  `node tools/scripts/check-ui-renderer-tokens.mjs --write` before formatting
+  and committing a manifest change.
 - Shared theme styles must support both host-managed
   `html[data-theme="light" | "dark"]` and workspace-app CSS
   `prefers-color-scheme`; explicit `data-theme` values should override system
@@ -280,6 +314,25 @@ host-owned caller logic.
 - keep tutti-specific token extensions additive and minimal
 - Build primitives for a calm workbench shell, not for marketing-card
   theatrics.
+
+### Native renderer review
+
+The DOM storyboard cannot render React Native primitives faithfully. Each
+public Native primitive must therefore have a concrete example in the Mobile
+development gallery and be reviewed on a Native renderer before it is promoted
+from experimental status. The gallery must import only the stable
+`@tutti-os/ui-system/native` entrypoint and render the primitive's public
+states; it is the Native counterpart of a DOM storyboard example, not a second
+component implementation.
+
+`NativeSheet` uses React Native's window-level `Modal` for its controlled
+overlay and does not require a portal provider. It owns the semantic scrim,
+bottom-aligned panel, system-back dismissal, screen-reader escape gesture,
+accessible backdrop dismissal, and optional fixed `height`. Callers must supply
+the localized `closeAccessibilityLabel`; one fixed height replaces the former
+single-value `snapPoints` usage. Keep `@gorhom/bottom-sheet` app-owned for
+genuinely complex gesture, keyboard, or multi-snap-point sheets rather than
+routing the shared compact sheet through its React 19-incompatible portal.
 
 For cross-surface stacking, use shared semantic `z-index` tokens instead of
 local magic numbers. Current global layer tokens live in

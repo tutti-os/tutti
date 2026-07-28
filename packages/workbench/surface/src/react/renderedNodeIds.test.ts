@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createRenderedWorkbenchNodeIDsSelector } from "./renderedNodeIds.ts";
+import {
+  createRenderedWorkbenchNodeIDsSelector,
+  createWorkbenchNodeLayerNodeIDsSelector
+} from "./renderedNodeIds.ts";
 import type { WorkbenchNode, WorkbenchState } from "../core/types.ts";
 
 test("rendered node id selector preserves identity across frame-only changes", () => {
@@ -35,6 +38,66 @@ test("rendered node id selector changes identity when visible membership changes
 
   assert.deepEqual(secondSelection, ["first"]);
   assert.notEqual(secondSelection, firstSelection);
+});
+
+test("node layer selector preserves group identities when node data changes", () => {
+  const selectNodeLayerNodeIDs = createWorkbenchNodeLayerNodeIDsSelector({
+    missionControl: false,
+    resolveWindowSurfaceLayer: ({ node }) =>
+      node.kind === "dialog" ? "dialog-popover" : "default"
+  });
+  const firstState = createState([
+    createNode("first", { x: 10, y: 10 }),
+    { ...createNode("dialog", { x: 40, y: 40 }), kind: "dialog" }
+  ]);
+  const firstSelection = selectNodeLayerNodeIDs(firstState);
+  const secondSelection = selectNodeLayerNodeIDs(
+    createState([
+      createNode("first", { x: 24, y: 32 }),
+      { ...createNode("dialog", { x: 72, y: 80 }), kind: "dialog" }
+    ])
+  );
+
+  assert.deepEqual(firstSelection, {
+    defaultNodeIDs: ["first"],
+    dialogPopoverNodeIDs: ["dialog"]
+  });
+  assert.equal(secondSelection, firstSelection);
+  assert.equal(secondSelection.defaultNodeIDs, firstSelection.defaultNodeIDs);
+  assert.equal(
+    secondSelection.dialogPopoverNodeIDs,
+    firstSelection.dialogPopoverNodeIDs
+  );
+});
+
+test("node layer selector changes only the affected group identity", () => {
+  const selectNodeLayerNodeIDs = createWorkbenchNodeLayerNodeIDsSelector({
+    missionControl: false,
+    resolveWindowSurfaceLayer: ({ node }) =>
+      node.kind === "dialog" ? "dialog-popover" : "default"
+  });
+  const firstSelection = selectNodeLayerNodeIDs(
+    createState([
+      createNode("first", { x: 10, y: 10 }),
+      { ...createNode("dialog", { x: 40, y: 40 }), kind: "dialog" }
+    ])
+  );
+  const secondSelection = selectNodeLayerNodeIDs(
+    createState([
+      createNode("first", { x: 10, y: 10 }, true),
+      { ...createNode("dialog", { x: 40, y: 40 }), kind: "dialog" }
+    ])
+  );
+
+  assert.notEqual(secondSelection, firstSelection);
+  assert.notEqual(
+    secondSelection.defaultNodeIDs,
+    firstSelection.defaultNodeIDs
+  );
+  assert.equal(
+    secondSelection.dialogPopoverNodeIDs,
+    firstSelection.dialogPopoverNodeIDs
+  );
 });
 
 function createState(nodes: WorkbenchNode[]): WorkbenchState {

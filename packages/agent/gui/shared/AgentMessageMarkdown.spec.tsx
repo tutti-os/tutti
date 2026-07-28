@@ -17,6 +17,10 @@ import {
   managedAgentRoundedIconUrl
 } from "./managedAgentIcons";
 import { RichTextMentionReadonly } from "@tutti-os/ui-rich-text/editor";
+import {
+  parsedDocumentCacheStatsForTests,
+  resetParsedDocumentCacheForTests
+} from "./parsedDocumentCache";
 
 describe("RichTextMentionReadonly compatibility", () => {
   it("uses the resolved label without adding the persisted trigger", () => {
@@ -41,6 +45,31 @@ describe("AgentMessageMarkdown", () => {
   afterEach(() => {
     vi.useRealTimers();
     resetCachedMarkdownImagesForTests();
+    resetParsedDocumentCacheForTests();
+  });
+
+  it("reuses the parsed document after a settled message remounts", () => {
+    resetParsedDocumentCacheForTests();
+    const first = render(
+      <AgentMessageMarkdown
+        content="A **settled** historical message"
+        documentCacheKey="message-1:version-1"
+      />
+    );
+    first.unmount();
+
+    render(
+      <AgentMessageMarkdown
+        content="A **settled** historical message"
+        documentCacheKey="message-1:version-1"
+      />
+    );
+
+    expect(parsedDocumentCacheStatsForTests()).toMatchObject({
+      entries: 1,
+      hits: 1,
+      misses: 1
+    });
   });
 
   it("renders a workspace-reference mention as one chip without a file-count badge", () => {
@@ -1025,6 +1054,23 @@ describe("AgentMessageMarkdown", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Zoom image/ }));
     const dialog = await screen.findByRole("dialog");
+    const toolbarActions = dialog.querySelector(
+      ".tsh-zoom-dialog__toolbar-actions"
+    );
+    expect(toolbarActions).toBeInstanceOf(HTMLElement);
+    const previewActionButtons = [
+      screen.getByRole("button", { name: "Copy image" }),
+      screen.getByRole("button", { name: "Download image" }),
+      screen.getByRole("button", { name: /Minimize image/ })
+    ];
+    expect(Array.from(toolbarActions?.children ?? [])).toEqual(
+      previewActionButtons
+    );
+    for (const button of previewActionButtons) {
+      expect(button).toHaveAttribute("data-size", "icon");
+      expect(button).toHaveAttribute("data-variant", "chrome");
+    }
+    expect(previewActionButtons[2]).not.toHaveAttribute("data-rmiz-btn-unzoom");
     fireEvent.click(screen.getByRole("button", { name: "Copy image" }));
     await waitFor(() => {
       expect(screen.getByRole("status")).toHaveTextContent("Copied");

@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 import type { AgentRuntimeStatus } from "./contexts/agent/domain/types";
 import type {
   AgentSettings,
@@ -227,6 +228,31 @@ export interface AgentGUIAgentTarget {
   disabled?: boolean;
   unavailableReason?: string;
 }
+
+/**
+ * Product-neutral surfaces where a Host may enrich an exact Agent target.
+ * AgentGUI owns the trigger, positioning, and interaction behavior; the Host
+ * owns only the rendered information.
+ */
+export type AgentGUIAgentTargetInfoSurface =
+  | "provider-rail"
+  | "conversation-rail"
+  | "workbench-header";
+
+export interface AgentGUIAgentTargetInfoRenderContext {
+  surface: AgentGUIAgentTargetInfoSurface;
+  target: AgentGUIAgentTarget;
+}
+
+/**
+ * Renders Host-owned presentation for an exact Agent target.
+ *
+ * AgentGUI invokes this renderer lazily only while its tooltip content is
+ * mounted. Returning null preserves the built-in target-label fallback.
+ */
+export type AgentGUIAgentTargetInfoRenderer = (
+  context: AgentGUIAgentTargetInfoRenderContext
+) => ReactElement | null;
 
 export type AgentGUITargetConnectionStatus =
   | "connected"

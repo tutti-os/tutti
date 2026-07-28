@@ -5,8 +5,11 @@ import {
   easeInOutCubic,
   easeInQuadratic,
   easeOutQuadratic,
+  isGenieTextureResolutionSufficient,
   lerpGenieValue,
-  renderGenieScanlines
+  renderGenieScanlines,
+  renderGenieWarmupFrames,
+  resolveGenieWarmupTextureSize
 } from "./genieAnimation.ts";
 
 test("keeps genie easing helpers clamped at key points", () => {
@@ -28,6 +31,22 @@ test("derives stable genie geometry primitives", () => {
       x: 30,
       y: 50
     }
+  );
+});
+
+test("rejects preview images that would be enlarged for a genie texture", () => {
+  const windowRect = { height: 709.4, width: 1_036.5 };
+
+  assert.equal(
+    isGenieTextureResolutionSufficient({ height: 170, width: 260 }, windowRect),
+    false
+  );
+  assert.equal(
+    isGenieTextureResolutionSufficient(
+      { height: 709, width: 1_037 },
+      windowRect
+    ),
+    true
   );
 });
 
@@ -64,4 +83,36 @@ test("maps small genie textures onto full destination rects without exposing sca
   assert.equal(firstDrawCall[4], 1);
   assert.ok(firstDrawCall[7] > 100);
   assert.ok(firstDrawCall[8] > 10);
+});
+
+test("warms the real genie scanline and glow paths with a representative texture", () => {
+  const drawCalls: unknown[][] = [];
+  const clearCalls: unknown[][] = [];
+  let gradientCalls = 0;
+  const context = {
+    clearRect(...args: unknown[]) {
+      clearCalls.push(args);
+    },
+    createRadialGradient() {
+      gradientCalls += 1;
+      return { addColorStop() {} };
+    },
+    drawImage(...args: unknown[]) {
+      drawCalls.push(args);
+    },
+    fillRect() {}
+  } as never as CanvasRenderingContext2D;
+  const size = resolveGenieWarmupTextureSize(1_920, 1_050);
+  const texture = {
+    height: size.height,
+    width: size.width
+  } as HTMLCanvasElement;
+
+  renderGenieWarmupFrames(context, 1_920, 1_050, texture);
+
+  assert.deepEqual(size, { height: 735, width: 1_248 });
+  assert.ok(drawCalls.length > 0);
+  assert.ok(drawCalls.every((call) => call[0] === texture));
+  assert.ok(gradientCalls > 0);
+  assert.deepEqual(clearCalls.at(-1), [0, 0, 1_920, 1_050]);
 });

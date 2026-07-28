@@ -129,6 +129,28 @@ describe("AgentGUINode memoization", () => {
     expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
   });
 
+  it("rerenders when Session input history is enabled", () => {
+    mockViewModel = createViewModel();
+    const props = createProps();
+    const { rerender } = render(<AgentGUINode {...props} />);
+
+    expect(agentGuiNodeViewSpy).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sessionInputHistoryEnabled: false })
+    );
+    agentGuiNodeViewSpy.mockClear();
+
+    rerender(
+      <AgentGUINode
+        {...props}
+        hostCapabilities={{ sessionInputHistoryEnabled: true }}
+      />
+    );
+
+    expect(agentGuiNodeViewSpy).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sessionInputHistoryEnabled: true })
+    );
+  });
+
   it("rerenders when per-target composer overrides change", () => {
     mockViewModel = createViewModel();
     const props = createProps({
@@ -185,6 +207,43 @@ describe("AgentGUINode memoization", () => {
     );
 
     expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes reference content error recovery through the memo boundary", () => {
+    mockViewModel = createViewModel();
+    const firstResolver = vi.fn();
+    const secondResolver = vi.fn();
+    const initial = createProps();
+    const props = {
+      ...initial,
+      workspace: {
+        ...initial.workspace,
+        resolveReferenceContentErrorAction: firstResolver
+      }
+    };
+    const { rerender } = render(<AgentGUINode {...props} />);
+
+    expect(
+      agentGuiNodeViewSpy.mock.calls.at(-1)?.[0]
+        .resolveReferenceContentErrorAction
+    ).toBe(firstResolver);
+
+    agentGuiNodeViewSpy.mockClear();
+    rerender(
+      <AgentGUINode
+        {...props}
+        workspace={{
+          ...props.workspace,
+          resolveReferenceContentErrorAction: secondResolver
+        }}
+      />
+    );
+
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+    expect(
+      agentGuiNodeViewSpy.mock.calls.at(-1)?.[0]
+        .resolveReferenceContentErrorAction
+    ).toBe(secondResolver);
   });
 
   it("keeps the rail resize callback stable and reads the latest frame width", () => {
@@ -276,6 +335,43 @@ describe("AgentGUINode memoization", () => {
     expect(secondViewProps?.onConversationRailLayoutChange).toBe(
       secondObserver
     );
+  });
+
+  it("passes project directory picker header actions through the memo boundary", () => {
+    mockViewModel = createViewModel();
+    const firstRenderer = vi.fn();
+    const secondRenderer = vi.fn();
+    const initial = createProps();
+    const props = {
+      ...initial,
+      renderSlots: {
+        ...initial.renderSlots,
+        projectDirectoryPickerHeaderActions: firstRenderer
+      }
+    };
+    const { rerender } = render(<AgentGUINode {...props} />);
+
+    expect(
+      agentGuiNodeViewSpy.mock.calls.at(-1)?.[0]
+        .renderProjectDirectoryPickerHeaderActions
+    ).toBe(firstRenderer);
+
+    agentGuiNodeViewSpy.mockClear();
+    rerender(
+      <AgentGUINode
+        {...props}
+        renderSlots={{
+          ...props.renderSlots,
+          projectDirectoryPickerHeaderActions: secondRenderer
+        }}
+      />
+    );
+
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+    expect(
+      agentGuiNodeViewSpy.mock.calls.at(-1)?.[0]
+        .renderProjectDirectoryPickerHeaderActions
+    ).toBe(secondRenderer);
   });
 
   it("keeps rail labels stable when provider-facing labels change", () => {
@@ -408,8 +504,16 @@ function createViewModel(
     pendingInteractivePrompt: null,
     queuedPrompts: [],
     queueStatus: "active",
-    canSubmit: true,
-    canQueueWhileBusy: false,
+    gate: {
+      conversationBusy: false,
+      runtime: {
+        status: "ready",
+        reason: null,
+        sessionRuntimeReason: null
+      },
+      editor: { status: "editable", reason: null },
+      submission: { status: "ready", reason: null }
+    },
     isSubmitting: false,
     isInterrupting: false,
     promptImagesSupported: true,

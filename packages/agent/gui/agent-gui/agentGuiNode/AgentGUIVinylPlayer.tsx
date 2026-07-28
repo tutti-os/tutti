@@ -4,6 +4,7 @@ import { isBetaAgentProvider } from "../../shared/managedAgentProviders";
 import chassisAssetUrl from "../../app/renderer/assets/icons/agent-vinyl-player-chassis.png";
 import tonearmAssetUrl from "../../app/renderer/assets/icons/agent-vinyl-tonearm.png";
 import betaTagAssetUrl from "../../app/renderer/assets/icons/agent-vinyl-beta-tag.svg";
+import { AgentGUIOwnerAvatar } from "./AgentGUIOwnerAvatar";
 
 interface AgentGUIVinylPlayerProps {
   selectedAgent: AgentGUIAgentAvatarPresentation | null;
@@ -48,10 +49,10 @@ export function AgentGUIVinylPlayer({
       </div>
       <div className="agent-gui-vinyl-player__platter">
         <div className="agent-gui-vinyl-player__platter-inner">
-          <motion.div
-            className="agent-gui-vinyl-player__record"
-            animate={{ rotate: isPlaying ? 360 : 0 }}
-            transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+          <div
+            className={`agent-gui-vinyl-player__record${
+              isPlaying ? " agent-gui-vinyl-player__record--playing" : ""
+            }`}
           >
             {Array.from({ length: 18 }, (_, index) => (
               <span
@@ -66,7 +67,7 @@ export function AgentGUIVinylPlayer({
                 <img src={selectedAgentCover} alt="" />
               ) : null}
             </span>
-          </motion.div>
+          </div>
         </div>
       </div>
       <img
@@ -86,12 +87,11 @@ export function AgentGUIVinylPlayer({
         <span>◦</span>
       </div>
       {selectedAgent?.badge?.iconUrl ? (
-        <span
+        <AgentGUIOwnerAvatar
           className="agent-gui-vinyl-player__owner-badge"
-          data-agent-owner-badge="true"
-        >
-          <img src={selectedAgent.badge.iconUrl} alt="" draggable={false} />
-        </span>
+          iconUrl={selectedAgent.badge.iconUrl}
+          label={selectedAgent.badge.label}
+        />
       ) : null}
     </div>
   );

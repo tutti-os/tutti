@@ -1,10 +1,15 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	eventprotocol "github.com/tutti-os/tutti/services/tuttid/api/events/generated"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
 )
@@ -246,4 +251,117 @@ func TestEventScopeFromGeneratedPreservesInvalidWhitespace(t *testing.T) {
 	if err == nil {
 		t.Fatal("Subscribe() error = nil, want invalid scope")
 	}
+}
+
+func TestForwardEventStreamEventsReportsUnexpectedSubscriptionClosure(t *testing.T) {
+	t.Parallel()
+
+	service := eventstreamservice.NewService(eventstreamservice.DefaultCatalog(), nil)
+	session := service.OpenSession()
+	outbound := make(chan any, 1)
+	subscriptionClosed := make(chan struct{}, 1)
+
+	go forwardEventStreamEvents(
+		context.Background(),
+		service,
+		session,
+		outbound,
+		func() { subscriptionClosed <- struct{}{} },
+	)
+	service.CloseSession(session)
+
+	select {
+	case <-subscriptionClosed:
+	case <-time.After(time.Second):
+		t.Fatal("subscription closure was not reported")
+	}
+}
+
+func TestForwardEventStreamEventsIgnoresClosureAfterContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	for range 100 {
+		service := eventstreamservice.NewService(eventstreamservice.DefaultCatalog(), nil)
+		session := service.OpenSession()
+		outbound := make(chan any, 1)
+		subscriptionClosed := make(chan struct{}, 1)
+		ctx, cancel := context.WithCancel(context.Background())
+		forwardingStopped := make(chan struct{})
+
+		go func() {
+			defer close(forwardingStopped)
+			forwardEventStreamEvents(
+				ctx,
+				service,
+				session,
+				outbound,
+				func() { subscriptionClosed <- struct{}{} },
+			)
+		}()
+		cancel()
+		service.CloseSession(session)
+		select {
+		case <-forwardingStopped:
+		case <-time.After(time.Second):
+			t.Fatal("forwarder did not stop after context cancellation")
+		}
+
+		select {
+		case <-subscriptionClosed:
+			t.Fatal("normal context cancellation reported an overflow")
+		default:
+		}
+	}
+}
+
+func TestEventStreamWebSocketClosesWhenFanoutSessionEnds(t *testing.T) {
+	t.Parallel()
+
+	eventService := &controlledEventStreamService{
+		Service: eventstreamservice.NewService(eventstreamservice.DefaultCatalog(), nil),
+		events:  make(chan eventstreamservice.PublishedEvent),
+	}
+	api := DaemonAPI{EventStreamService: eventService}
+	server := httptest.NewServer(http.HandlerFunc(api.attachEventStreamWebSocket))
+	t.Cleanup(server.Close)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	socketURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	connection, _, err := websocket.Dial(ctx, socketURL, nil)
+	if err != nil {
+		t.Fatalf("dial event stream: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = connection.Close(websocket.StatusNormalClosure, "test complete")
+	})
+
+	_, readyPayload, err := connection.Read(ctx)
+	if err != nil {
+		t.Fatalf("read ready frame: %v", err)
+	}
+	var ready eventprotocol.ServerReadyFrame
+	if err := json.Unmarshal(readyPayload, &ready); err != nil {
+		t.Fatalf("decode ready frame: %v", err)
+	}
+	if ready.Kind != "ready" {
+		t.Fatalf("ready kind = %q", ready.Kind)
+	}
+
+	close(eventService.events)
+	_, _, err = connection.Read(ctx)
+	if status := websocket.CloseStatus(err); status != websocket.StatusTryAgainLater {
+		t.Fatalf("close status = %d, want %d; error = %v", status, websocket.StatusTryAgainLater, err)
+	}
+}
+
+type controlledEventStreamService struct {
+	*eventstreamservice.Service
+	events chan eventstreamservice.PublishedEvent
+}
+
+func (s *controlledEventStreamService) Events(
+	*eventstreamservice.Session,
+) <-chan eventstreamservice.PublishedEvent {
+	return s.events
 }

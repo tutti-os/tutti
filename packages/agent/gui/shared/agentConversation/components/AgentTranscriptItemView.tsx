@@ -1,9 +1,10 @@
-import { memo, useCallback, type JSX } from "react";
+import { memo, useCallback, type JSX, type ReactNode } from "react";
 import type { WorkspaceLinkAction } from "../../../contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../AgentMessageMarkdown";
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 import { resolveAgentConversationLinkAction } from "../actions/agentConversationLinkActions";
 import type { AgentTranscriptRowVM } from "../contracts/agentTranscriptRowVM";
+import type { AgentConversationParticipantPresentation } from "../contracts/agentConversationParticipantPresentation";
 import { AgentGeneratedImageRow } from "./AgentGeneratedImageRow";
 import { AgentGoalControlRow } from "./AgentGoalControlRow";
 import { AgentMessageBlock } from "./AgentMessageBlock";
@@ -27,11 +28,14 @@ interface AgentTranscriptItemViewProps {
   provider?: string | null;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
-  previewMode?: boolean;
   showRawTimelineJson?: boolean;
+  participantPresentation?: AgentConversationParticipantPresentation;
+  showParticipantHeader?: boolean;
+  isActiveTurn?: boolean;
   toolGroupExpanded?: boolean;
   toolGroupExpansionKey?: string;
   onToolGroupExpandedChange?: (key: string, expanded: boolean) => void;
+  footerAction?: ReactNode;
 }
 
 export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
@@ -44,11 +48,14 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
   provider,
   availableSkills,
   workspaceAppIcons,
-  previewMode = false,
   showRawTimelineJson = false,
+  participantPresentation,
+  showParticipantHeader,
+  isActiveTurn = false,
   toolGroupExpanded,
   toolGroupExpansionKey,
-  onToolGroupExpandedChange
+  onToolGroupExpandedChange,
+  footerAction
 }: AgentTranscriptItemViewProps): JSX.Element {
   "use memo";
 
@@ -88,10 +95,14 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
           provider={provider}
           availableSkills={availableSkills}
           workspaceAppIcons={workspaceAppIcons}
-          previewMode={previewMode}
           thinkingLabel={labels.thinkingLabel}
+          toolCallsLabel={labels.toolCallsLabel}
           showRawTimelineJson={showRawTimelineJson}
           rawTimelineJsonLabel={labels.rawTimelineJson}
+          participantPresentation={participantPresentation}
+          showParticipantHeader={showParticipantHeader}
+          isActiveTurn={isActiveTurn}
+          footerAction={footerAction}
         />
       );
     case "tool-group":
@@ -101,7 +112,6 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
           label={labels.toolCallsLabel}
           thinkingLabel={labels.thinkingLabel}
           onLinkClick={handleLinkClick}
-          previewMode={previewMode}
           showRawTimelineJson={showRawTimelineJson}
           rawTimelineJsonLabel={labels.rawTimelineJson}
           expanded={row.grouped ? toolGroupExpanded : undefined}
@@ -117,7 +127,6 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
           basePath={basePath}
           label={labels.turnSummary}
           onLinkAction={onLinkAction}
-          previewMode={previewMode}
         />
       );
     case "processing":

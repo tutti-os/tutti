@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerstatus"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
@@ -150,9 +151,12 @@ func TestOpenCodeStatusHelpersDispatchFromDescriptorStrategy(t *testing.T) {
 	if got := providerCustomConfigEnvVars("open-code"); !reflect.DeepEqual(got, descriptor.Status.CustomConfigEnvVars) {
 		t.Fatalf("custom config env vars = %#v, want %#v", got, descriptor.Status.CustomConfigEnvVars)
 	}
-	auth, ok := parseAuthStatusCommandOutput("open-code", []byte("Not authenticated. Run opencode auth login."))
+	auth, ok := providerstatus.ParseAuthStatusOutput(
+		descriptor.Status.AuthOutputParserKind,
+		[]byte("Not authenticated. Run opencode auth login."),
+	)
 	if !ok || auth.Status != AuthRequired {
-		t.Fatalf("parseAuthStatusCommandOutput() = %#v, %v", auth, ok)
+		t.Fatalf("ParseAuthStatusOutput() = %#v, %v", auth, ok)
 	}
 }
 

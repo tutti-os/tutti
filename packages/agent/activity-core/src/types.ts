@@ -1,9 +1,24 @@
 import type { AgentActivityComposerModelConfiguration } from "./composerModelConfiguration.types.ts";
 import type {
+  AgentActivityDurableMessage,
+  AgentActivityMessage,
+  AgentActivityMessageDeltaEvent
+} from "./message.types.ts";
+import type { AgentActivitySessionMessageWindow } from "./messageWindow.types.ts";
+import type { AgentActivityRailPlacement } from "./railPlacement.types.ts";
+import type {
   AgentActivityCapabilityReference,
   AgentActivityInitialTuttiModeActivation,
   AgentActivityTuttiModeActivation
 } from "./tuttiMode.types.ts";
+
+export type {
+  AgentActivityDurableMessage,
+  AgentActivityMessage,
+  AgentActivityMessageDeltaEvent,
+  AgentActivityMessageSemantics,
+  AgentActivityTransientMessage
+} from "./message.types.ts";
 
 export type {
   AgentActivityCapabilityReference,
@@ -16,15 +31,22 @@ export type {
   AgentActivityUpdateTuttiModeActivationResult
 } from "./tuttiMode.types.ts";
 
-export type AgentActivityDisplayStatus =
-  | "working"
-  | "waiting"
-  | "idle"
-  | "completed"
-  | "canceled"
-  | "failed";
-
 export type AgentActivitySessionKind = "root" | "child";
+
+export interface AgentActivitySessionLifecycleCapabilities {
+  fork: boolean;
+  forkThroughTurn: boolean;
+  forkThroughTurnIds?: string[];
+  forkThroughTurnIdsKnown?: boolean;
+}
+
+export interface AgentActivitySessionForkLineage {
+  sourceAgentSessionId: string;
+  sourceTurnId: string;
+  targetTurnId: string;
+  operationId: string;
+  forkedAtUnixMs: number;
+}
 
 export interface AgentActivitySession {
   workspaceId: string;
@@ -53,6 +75,8 @@ export interface AgentActivitySession {
   settings: AgentActivitySessionSettings;
   permissionConfig: AgentActivitySessionPermissionConfig;
   capabilities: AgentActivitySessionCapabilities | null;
+  lifecycleCapabilities: AgentActivitySessionLifecycleCapabilities;
+  forkedFrom: AgentActivitySessionForkLineage | null;
   usage: AgentActivitySessionUsage | null;
   goal: AgentActivitySessionGoal | null;
   /**
@@ -64,6 +88,7 @@ export interface AgentActivitySession {
   imported: boolean;
   visible: boolean;
   resumable: boolean;
+  /** Latest accepted durable message change cursor. */
   messageVersion: number;
   lastEventUnixMs: number;
   startedAtUnixMs: number;
@@ -103,24 +128,6 @@ export interface AgentActivityInteractivePrompt {
   metadata?: Record<string, unknown>;
 }
 
-export interface AgentActivityMessage {
-  workspaceId?: string;
-  agentSessionId: string;
-  messageId: string;
-  version: number;
-  turnId: string | null;
-  role: string;
-  kind: string;
-  status?: string | null;
-  semantics?: AgentActivityMessageSemantics;
-  payload: Record<string, unknown>;
-  sequence?: number;
-  occurredAtUnixMs: number;
-  createdAtUnixMs?: number;
-  startedAtUnixMs?: number;
-  completedAtUnixMs?: number;
-}
-
 export interface AgentActivitySessionList {
   sessions: AgentActivitySession[];
   presences?: AgentActivityPresence[];
@@ -141,7 +148,7 @@ export interface AgentActivityPresence {
 }
 
 export interface AgentActivityMessagePage {
-  messages: AgentActivityMessage[];
+  messages: AgentActivityDurableMessage[];
   hasMore: boolean;
   latestVersion: number;
 }
@@ -317,11 +324,8 @@ export interface AgentActivitySnapshot {
   sessions: AgentActivitySession[];
   presences: AgentActivityPresence[];
   sessionMessagesById: Record<string, AgentActivityMessage[]>;
-  /**
-   * Composer options cache, keyed by the opaque targetKey passed to
-   * loadComposerOptions. Single key space: the key is round-tripped verbatim and
-   * never parsed or rewritten.
-   */
+  sessionMessageWindowsById?: Record<string, AgentActivitySessionMessageWindow>;
+  /** Composer options keyed by the opaque, verbatim loadComposerOptions targetKey. */
   composerOptionsByTargetKey?: Record<string, AgentActivityComposerOptions>;
   /** Request lifecycle for composer options, keyed by the same opaque target. */
   composerOptionsLoadStatusByTargetKey?: Record<
@@ -338,6 +342,7 @@ export type AgentActivityUpdatedEvent =
   | AgentActivitySessionReconcileRequiredEvent
   | AgentActivitySessionDeletedEvent
   | AgentActivitySessionAuditEvent
+  | AgentActivityMessageDeltaEvent
   | AgentActivityMessageUpdatedEvent
   | AgentActivityTurnUpdatedEvent
   | AgentActivityInteractionUpdatedEvent;
@@ -408,7 +413,7 @@ export interface AgentActivityEventMessage {
   version: number;
   turnId: string | null;
   status?: string;
-  sequence?: number;
+  sequence: number;
   occurredAtUnixMs: number;
   startedAtUnixMs?: number;
   completedAtUnixMs?: number;
@@ -481,6 +486,7 @@ export interface AgentActivityCreateSessionInput {
   noProject?: boolean | null;
   capabilityRefs?: readonly AgentActivityCapabilityReference[] | null;
   initialTuttiModeActivation?: AgentActivityInitialTuttiModeActivation | null;
+  railPlacement?: AgentActivityRailPlacement;
   initialContent?: AgentPromptContentBlock[] | null;
   /** 仅展示用的首轮文本(bundle 折叠成一个 chip);initialContent 仍带展开后的文件。 */
   initialDisplayPrompt?: string | null;
@@ -520,13 +526,6 @@ export interface AgentActivitySubmitDiagnostics {
   promptLength?: number;
   queued?: boolean;
   source?: string;
-}
-
-export interface AgentActivityMessageSemantics {
-  userVisibleAssistantResponse?: boolean;
-  turnSettling?: boolean;
-  noticeCommand?: "compact" | "review" | "undo" | "goal";
-  noticeCommandStatus?: "running" | "completed" | "failed" | "canceled";
 }
 
 export type AgentActivitySendInputResult =

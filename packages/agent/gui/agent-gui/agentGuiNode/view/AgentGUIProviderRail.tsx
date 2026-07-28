@@ -6,7 +6,6 @@ import {
   useState,
   type DragEvent
 } from "react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@tutti-os/ui-system";
 import {
   createDisabledPlaceholderAgentGUIAgentTarget,
   createLocalAgentGUIAgentTarget
@@ -44,6 +43,9 @@ import betaTagAssetUrl from "../../../app/renderer/assets/icons/agent-vinyl-beta
 import styles from "../AgentGUINode.styles";
 import { AgentGUIProviderManagerDialog } from "./AgentGUIProviderManagerDialog";
 import { useAgentGUIProviderRailPreferences } from "./useAgentGUIProviderRailPreferences";
+import { AgentGUIOwnerAvatar } from "../AgentGUIOwnerAvatar";
+import { AgentTargetInfoTooltip } from "../../../shared/AgentTargetInfoTooltip";
+import { useAgentTargetInfoRenderer } from "../../../shared/AgentTargetInfoRendererContext";
 
 const agentGUIProviderRailCatalog = [
   ...migratedAgentGUIProviderIdentityCatalog
@@ -164,7 +166,6 @@ interface AgentGUIProviderRailProps {
   labels: AgentGUIViewLabels;
   managerOpen: boolean;
   onManagerOpenChange: (open: boolean) => void;
-  previewMode: boolean;
   selectedAgentTarget: AgentGUINodeViewModel["rail"]["selectedAgentTarget"];
   agentTargets: AgentGUINodeViewModel["rail"]["agentTargets"];
   agentTargetsLoading: AgentGUINodeViewModel["rail"]["agentTargetsLoading"];
@@ -196,7 +197,6 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
   labels,
   managerOpen,
   onManagerOpenChange,
-  previewMode,
   selectedAgentTarget,
   agentTargets,
   agentTargetsLoading,
@@ -216,6 +216,7 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
   } = useAgentGUIProviderRailPreferences();
   const [dragState, setDragState] =
     useState<AgentGUIProviderRailDragState | null>(null);
+  const renderAgentTargetInfo = useAgentTargetInfoRenderer();
   const dragStateRef = useRef<AgentGUIProviderRailDragState | null>(null);
   const setProviderRailDragState = useCallback(
     (nextDragState: AgentGUIProviderRailDragState | null) => {
@@ -321,7 +322,7 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
       event: DragEvent<HTMLButtonElement>,
       target: AgentGUINodeViewModel["rail"]["agentTargets"][number]
     ) => {
-      if (previewMode || agentTargetsLoading) {
+      if (agentTargetsLoading) {
         event.preventDefault();
         return;
       }
@@ -333,14 +334,14 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
         position: null
       });
     },
-    [previewMode, agentTargetsLoading, setProviderRailDragState]
+    [agentTargetsLoading, setProviderRailDragState]
   );
   const handleProviderRailDragOver = useCallback(
     (
       event: DragEvent<HTMLButtonElement>,
       target: AgentGUINodeViewModel["rail"]["agentTargets"][number]
     ) => {
-      if (previewMode || agentTargetsLoading || !dragState) {
+      if (agentTargetsLoading || !dragState) {
         return;
       }
       event.preventDefault();
@@ -376,7 +377,7 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
         position
       });
     },
-    [dragState, previewMode, agentTargetsLoading, setProviderRailDragState]
+    [dragState, agentTargetsLoading, setProviderRailDragState]
   );
   const commitProviderRailDragDrop = useCallback(
     (event: DragEvent<HTMLElement>) => {
@@ -393,7 +394,7 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
               position: null
             }
           : null);
-      if (previewMode || agentTargetsLoading || !activeDragState) {
+      if (agentTargetsLoading || !activeDragState) {
         clearProviderRailDragState();
         return;
       }
@@ -467,7 +468,6 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
       clearProviderRailDragState,
       dragState,
       persistProviderRailPreferences,
-      previewMode,
       agentTargetsLoading,
       effectiveProviderRailPreferences,
       visibleProviderTiles
@@ -552,7 +552,7 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
   const handleProviderRailContainerDragOver = useCallback(
     (event: DragEvent<HTMLDivElement>) => {
       const activeDragState = dragStateRef.current ?? dragState;
-      if (!activeDragState || previewMode || agentTargetsLoading) {
+      if (!activeDragState || agentTargetsLoading) {
         return;
       }
       event.preventDefault();
@@ -601,7 +601,7 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
         position
       });
     },
-    [dragState, previewMode, agentTargetsLoading, setProviderRailDragState]
+    [dragState, agentTargetsLoading, setProviderRailDragState]
   );
   const providerManagerDialog = (
     <AgentGUIProviderManagerDialog
@@ -655,7 +655,6 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
           aria-selected={allTileSelected}
           className={styles.providerRailTile}
           data-selected={allTileSelected ? "true" : "false"}
-          disabled={previewMode}
           onClick={selectAllProviders}
         >
           <AgentGUIUnifiedProviderIcon
@@ -721,8 +720,7 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
               data-provider-tile="true"
               data-provider-target-id={target.targetId}
               data-selected={providerSelected ? "true" : "false"}
-              disabled={previewMode}
-              draggable={!previewMode && !agentTargetsLoading}
+              draggable={!agentTargetsLoading}
               onClick={() => selectAgentTargetTile(target)}
               onDragEnd={clearProviderRailDragState}
               onDragOver={(event) => handleProviderRailDragOver(event, target)}
@@ -740,14 +738,12 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
                   )}
                 />
                 {target.badge?.iconUrl ? (
-                  <span aria-hidden="true" className={styles.agentAvatarBadge}>
-                    <img
-                      alt=""
-                      className={styles.agentAvatarBadgeImage}
-                      draggable={false}
-                      src={target.badge.iconUrl}
-                    />
-                  </span>
+                  <AgentGUIOwnerAvatar
+                    className={styles.agentAvatarBadge}
+                    iconUrl={target.badge.iconUrl}
+                    imageClassName={styles.agentAvatarBadgeImage}
+                    label={target.badge.label}
+                  />
                 ) : null}
                 {providerSelected && isBetaAgentProvider(target.provider) ? (
                   <img
@@ -760,16 +756,19 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
               </span>
             </button>
           );
-          if (previewMode) {
-            return tile;
-          }
+
           return (
-            <Tooltip key={`${target.provider}:${target.targetId}:tooltip`}>
-              <TooltipTrigger asChild>{tile}</TooltipTrigger>
-              <TooltipContent side="right" sideOffset={-4}>
-                {label}
-              </TooltipContent>
-            </Tooltip>
+            <AgentTargetInfoTooltip
+              key={`${target.provider}:${target.targetId}:tooltip`}
+              fallbackLabel={label}
+              renderer={renderAgentTargetInfo}
+              side="right"
+              sideOffset={-4}
+              surface="provider-rail"
+              target={target}
+            >
+              {tile}
+            </AgentTargetInfoTooltip>
           );
         })}
       </div>

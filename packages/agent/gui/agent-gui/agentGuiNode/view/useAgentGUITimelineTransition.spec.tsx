@@ -13,10 +13,14 @@ afterEach(() => {
 describe("useAgentGUITimelineTransition", () => {
   it("keeps the previous timeline without flashing a skeleton for a fast load", () => {
     vi.useFakeTimers();
+    let renderCount = 0;
     const conversationA = conversation("conversation-a");
     const conversationB = conversation("conversation-b");
     const { result, rerender } = renderHook(
-      (input: TimelineTransitionInput) => useAgentGUITimelineTransition(input),
+      (input: TimelineTransitionInput) => {
+        renderCount += 1;
+        return useAgentGUITimelineTransition(input);
+      },
       {
         initialProps: {
           activeConversationId: "conversation-a",
@@ -47,6 +51,7 @@ describe("useAgentGUITimelineTransition", () => {
     expect(result.current.conversation).toBe(conversationB);
     expect(result.current.showTimelineSkeleton).toBe(false);
     expect(result.current.timelineConversationId).toBe("conversation-b");
+    expect(renderCount).toBe(3);
   });
 
   it("reveals the conversation skeleton after 300ms", () => {

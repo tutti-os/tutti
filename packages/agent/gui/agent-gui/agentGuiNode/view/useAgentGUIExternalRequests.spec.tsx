@@ -177,7 +177,6 @@ function baseProps(
     createConversationDisabled: true,
     labels: LABELS,
     newConversationRequestSequence: null,
-    previewMode: false,
     requestCreateConversation: vi.fn(),
     requestRenameConversation: vi.fn(),
     sessionActionRequest: null,

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useExternalStoreSnapshot } from "@tutti-os/ui-react-hooks";
 import {
   Button,
@@ -29,11 +29,6 @@ export interface AgentTargetSetupGateProps {
   gateVisible?: boolean;
 }
 
-const TERMINAL_LOGIN_POLL_MS = 3_000;
-const TERMINAL_LOGIN_TIMEOUT_MS = 10 * 60_000;
-
-type TerminalLoginPhase = "idle" | "waiting" | "error";
-
 export function AgentTargetSetupGate({
   children,
   carouselMountedExternally,
@@ -42,7 +37,6 @@ export function AgentTargetSetupGate({
 }: AgentTargetSetupGateProps): React.JSX.Element {
   const controller = useAgentTargetSetupController();
   const { t } = useTranslation();
-  const { terminalLogin } = useAgentHostApi();
   const state = useExternalStoreSnapshot(controller);
   const {
     agentTarget,
@@ -52,7 +46,10 @@ export function AgentTargetSetupGate({
     enabled,
     installPending,
     selectedAuthMethodId,
-    setup
+    setup,
+    terminalLoginAvailable,
+    terminalLoginError,
+    terminalLoginPhase
   } = state;
   const { snapshot, loading, failed } = setup;
   const authMethods = snapshot?.authMethods ?? [];
@@ -72,58 +69,6 @@ export function AgentTargetSetupGate({
       ? (effectiveAuthMethod.terminalCommand?.trim() ?? "") || null
       : null;
 
-  const [terminalLoginPhase, setTerminalLoginPhase] =
-    useState<TerminalLoginPhase>("idle");
-  const [terminalLoginError, setTerminalLoginError] = useState<string | null>(
-    null
-  );
-  const terminalLoginHandleRef = useRef<{ close(): void } | null>(null);
-  const terminalLoginPollRef = useRef<number | null>(null);
-  const terminalLoginDeadlineRef = useRef(0);
-
-  const stopTerminalLogin = useCallback((closeTerminal: boolean) => {
-    if (terminalLoginPollRef.current !== null) {
-      window.clearTimeout(terminalLoginPollRef.current);
-      terminalLoginPollRef.current = null;
-    }
-    if (closeTerminal) {
-      try {
-        terminalLoginHandleRef.current?.close();
-      } catch (error) {
-        // Closing the terminal node is best-effort.
-        console.warn("agent-gui: terminal login close failed", error);
-      }
-    }
-    terminalLoginHandleRef.current = null;
-  }, []);
-
-  const snapshotStatus = setup.snapshot?.status ?? null;
-
-  useEffect(() => {
-    if (terminalLoginPhase === "waiting" && snapshotStatus === "ready") {
-      stopTerminalLogin(true);
-      setTerminalLoginPhase("idle");
-      setTerminalLoginError(null);
-    }
-  }, [terminalLoginPhase, snapshotStatus, stopTerminalLogin]);
-
-  useEffect(
-    () => () => {
-      if (terminalLoginPollRef.current !== null) {
-        window.clearTimeout(terminalLoginPollRef.current);
-        terminalLoginPollRef.current = null;
-      }
-      try {
-        terminalLoginHandleRef.current?.close();
-      } catch (error) {
-        // Closing the terminal node is best-effort.
-        console.warn("agent-gui: terminal login close failed", error);
-      }
-      terminalLoginHandleRef.current = null;
-    },
-    []
-  );
-
   if (!enabled) {
     return <>{children}</>;
   }
@@ -139,52 +84,12 @@ export function AgentTargetSetupGate({
     await controller.authenticate(effectiveAuthMethodId);
   };
   const terminalLoginLaunchAvailable =
-    Boolean(terminalLogin) && Boolean(terminalLoginCommand);
+    terminalLoginAvailable && Boolean(terminalLoginCommand);
   const handleTerminalLoginStart = async () => {
-    if (!terminalLogin || !terminalLoginCommand) return;
-    setTerminalLoginPhase("waiting");
-    setTerminalLoginError(null);
-    try {
-      const handle = await terminalLogin.run({
-        command: terminalLoginCommand
-      });
-      terminalLoginHandleRef.current = handle ?? null;
-    } catch {
-      setTerminalLoginPhase("error");
-      setTerminalLoginError(
-        t("agentHost.agentGui.targetSetupTerminalLoginUnavailable")
-      );
-      return;
-    }
-    terminalLoginDeadlineRef.current = Date.now() + TERMINAL_LOGIN_TIMEOUT_MS;
-    const poll = async () => {
-      terminalLoginPollRef.current = null;
-      if (Date.now() > terminalLoginDeadlineRef.current) {
-        stopTerminalLogin(true);
-        setTerminalLoginPhase("error");
-        setTerminalLoginError(
-          t("agentHost.agentGui.targetSetupTerminalLoginTimedOut")
-        );
-        return;
-      }
-      await controller.refresh();
-      // timing: keep polling setup status until login completes or the deadline passes
-      terminalLoginPollRef.current = window.setTimeout(
-        () => void poll(),
-        TERMINAL_LOGIN_POLL_MS
-      );
-    };
-    // timing: schedule the first setup-status poll after opening the login terminal
-    terminalLoginPollRef.current = window.setTimeout(
-      () => void poll(),
-      TERMINAL_LOGIN_POLL_MS
-    );
+    if (!terminalLoginCommand) return;
+    await controller.startTerminalLogin(terminalLoginCommand);
   };
-  const handleTerminalLoginCancel = () => {
-    stopTerminalLogin(true);
-    setTerminalLoginPhase("idle");
-    setTerminalLoginError(null);
-  };
+  const handleTerminalLoginCancel = () => controller.cancelTerminalLogin();
   const actionRunning = isSetupActionRunning(snapshot?.action?.status);
   const actionFailed = isSetupActionFailed(snapshot?.action?.status);
   const installRetryAvailable =
@@ -382,7 +287,17 @@ export function AgentTargetSetupGate({
                 {terminalLoginCommand ? (
                   <TerminalLoginGuide
                     command={terminalLoginCommand}
-                    error={terminalLoginError}
+                    error={
+                      terminalLoginError === "timed_out"
+                        ? t(
+                            "agentHost.agentGui.targetSetupTerminalLoginTimedOut"
+                          )
+                        : terminalLoginError === "unavailable"
+                          ? t(
+                              "agentHost.agentGui.targetSetupTerminalLoginUnavailable"
+                            )
+                          : null
+                    }
                     onCancelLogin={
                       terminalLoginPhase === "waiting"
                         ? handleTerminalLoginCancel
@@ -459,13 +374,12 @@ function TerminalLoginGuide({
 }): React.JSX.Element {
   const { t } = useTranslation();
   const { clipboard } = useAgentHostApi();
-  const [copied, setCopied] = useState(false);
+  const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
+  const copied = copiedCommand === command;
   const handleCopy = async () => {
     try {
       await clipboard.writeText(command);
-      setCopied(true);
-      // timing: reset the copied indicator after a brief confirmation delay
-      window.setTimeout(() => setCopied(false), 2000);
+      setCopiedCommand(command);
     } catch (error) {
       // Clipboard unavailable; the command text remains selectable.
       console.warn("agent-gui: clipboard copy failed", error);

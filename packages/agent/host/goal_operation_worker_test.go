@@ -23,6 +23,14 @@ func (s goalCommandCanonicalStore) GetSession(context.Context, string, string) (
 	return s.session, true, nil
 }
 
+func (goalCommandCanonicalStore) GetProviderSessionResumeEvidence(
+	context.Context,
+	string,
+	string,
+) (storesqlite.ProviderSessionResumeEvidence, error) {
+	return storesqlite.ProviderSessionResumeEvidence{HasTurns: true, Established: true}, nil
+}
+
 type goalCommandRuntime struct {
 	RuntimeController
 	session ProviderRuntimeSession

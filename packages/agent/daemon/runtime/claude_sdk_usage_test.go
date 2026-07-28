@@ -6,10 +6,11 @@ import (
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
-func TestClaudeCodeSDKAdapterMapsUsageUpdatedIntoRuntimeContext(t *testing.T) {
+func TestClaudeCodeSDKAdapterWaitsForContextWindowBeforePublishingUsage(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	session := standardTestSession(ProviderClaudeCode)
 	adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
+	adapterSession.applyConfigOption("model", "opus")
 	adapter.storeSession(session.AgentSessionID, adapterSession)
 
 	events, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-1", claudeSDKSidecarEvent{
@@ -27,17 +28,12 @@ func TestClaudeCodeSDKAdapterMapsUsageUpdatedIntoRuntimeContext(t *testing.T) {
 	if err != nil || terminal {
 		t.Fatalf("usage_updated terminal=%v err=%v", terminal, err)
 	}
-	if len(events) != 1 || events[0].Type != activityshared.EventSessionUpdated {
-		t.Fatalf("usage events = %#v, want session.updated", events)
+	if len(events) != 0 {
+		t.Fatalf("usage events = %#v, want none before context window is known", events)
 	}
 	state := adapter.SessionState(session)
-	usage, _ := state.RuntimeContext["usage"].(map[string]any)
-	contextWindow, _ := usage["contextWindow"].(map[string]any)
-	if got, ok := int64Value(contextWindow["usedTokens"]); !ok || got != 130 {
-		t.Fatalf("usedTokens = %#v, want 130", contextWindow["usedTokens"])
-	}
-	if got, ok := int64Value(contextWindow["totalTokens"]); !ok || got != claudeSDKDefaultContextWindow {
-		t.Fatalf("totalTokens = %#v, want default context window", contextWindow["totalTokens"])
+	if usage := state.RuntimeContext["usage"]; usage != nil {
+		t.Fatalf("runtime usage = %#v, want unavailable before context window is known", usage)
 	}
 }
 
@@ -97,31 +93,13 @@ func TestClaudeCodeSDKContextWindowDoesNotBorrowAnotherModel(t *testing.T) {
 	}
 }
 
-// TestClaudeCodeSDKAdapterAssumes1MWindowForOneMillionModelAliasBeforeResult
-// reproduces the context-usage popover bug reported after PR #749: on a
-// "[1m]" (1M-context) model alias, every usage_updated delta streamed before
-// the turn's final result message (the only one carrying an authoritative
-// modelUsage.contextWindow) used to fall back to the flat 200k default,
-// so the popover showed e.g. "38,551 / 200,000 (19%)" for a model whose real
-// window is 1,000,000 — for the entire duration of the turn. Once the final
-// message with modelUsage landed, the total would jump to 1,000,000, only to
-// reset back to the wrong 200k default on the next turn/session. This test
-// pins the fix: even the very first, modelUsage-less delta on a "[1m]" alias
-// must assume the 1,000,000 window, not the flat 200k default.
-func TestClaudeCodeSDKAdapterAssumes1MWindowForOneMillionModelAliasBeforeResult(t *testing.T) {
+func TestClaudeCodeSDKAdapterPublishesFirstTurnUsageAfterModelWindowArrives(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	session := standardTestSession(ProviderClaudeCode)
 	adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
 	adapter.storeSession(session.AgentSessionID, adapterSession)
-	// Mirrors a user-configured custom model alias such as the reported
-	// "claude-fable-5[1m]", following the same "[1m]" suffix convention as
-	// the built-in "opus[1m]"/"sonnet[1m]" aliases.
-	adapterSession.applyConfigOption("model", "claude-fable-5[1m]")
+	adapterSession.applyConfigOption("model", "opus")
 
-	// First streamed usage delta of a brand-new turn/session: no
-	// modelUsage yet (previous.contextKnown is false), matching the
-	// "agent session Claude SDK usage update" log lines observed at
-	// current_context_known=false in the field report.
 	events, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-1", claudeSDKSidecarEvent{
 		Type: "usage_updated",
 		Payload: map[string]any{
@@ -135,19 +113,14 @@ func TestClaudeCodeSDKAdapterAssumes1MWindowForOneMillionModelAliasBeforeResult(
 	if err != nil || terminal {
 		t.Fatalf("usage_updated terminal=%v err=%v", terminal, err)
 	}
-	if len(events) != 1 || events[0].Type != activityshared.EventSessionUpdated {
-		t.Fatalf("usage events = %#v, want session.updated", events)
+	if len(events) != 0 {
+		t.Fatalf("usage events = %#v, want none before modelUsage arrives", events)
 	}
 	state := adapter.SessionState(session)
-	usage, _ := state.RuntimeContext["usage"].(map[string]any)
-	contextWindow, _ := usage["contextWindow"].(map[string]any)
-	if got, ok := int64Value(contextWindow["totalTokens"]); !ok || got != 1_000_000 {
-		t.Fatalf("totalTokens = %#v, want assumed 1,000,000 window for a [1m] model alias before modelUsage is known", contextWindow["totalTokens"])
+	if usage := state.RuntimeContext["usage"]; usage != nil {
+		t.Fatalf("runtime usage = %#v, want unavailable before modelUsage arrives", usage)
 	}
 
-	// The turn's final result message now reports the authoritative
-	// modelUsage window: it must agree with the assumed value, not flip
-	// the denominator mid-turn.
 	events, terminal, err = adapter.sidecarTurnEvents(adapterSession, session, "turn-1", claudeSDKSidecarEvent{
 		Type: "usage_updated",
 		Payload: map[string]any{
@@ -157,7 +130,7 @@ func TestClaudeCodeSDKAdapterAssumes1MWindowForOneMillionModelAliasBeforeResult(
 				"output_tokens": 8_859,
 			},
 			"modelUsage": map[string]any{
-				"claude-fable-5[1m]": map[string]any{
+				"claude-opus-4-6": map[string]any{
 					"contextWindow": 1_000_000,
 				},
 			},
@@ -170,8 +143,11 @@ func TestClaudeCodeSDKAdapterAssumes1MWindowForOneMillionModelAliasBeforeResult(
 		t.Fatalf("usage events (final) = %#v", events)
 	}
 	state = adapter.SessionState(session)
-	usage, _ = state.RuntimeContext["usage"].(map[string]any)
-	contextWindow, _ = usage["contextWindow"].(map[string]any)
+	usage, _ := state.RuntimeContext["usage"].(map[string]any)
+	contextWindow, _ := usage["contextWindow"].(map[string]any)
+	if got, ok := int64Value(contextWindow["usedTokens"]); !ok || got != 40_859 {
+		t.Fatalf("usedTokens (final) = %#v, want 40,859", contextWindow["usedTokens"])
+	}
 	if got, ok := int64Value(contextWindow["totalTokens"]); !ok || got != 1_000_000 {
 		t.Fatalf("totalTokens (final) = %#v, want 1,000,000 from modelUsage", contextWindow["totalTokens"])
 	}
@@ -230,17 +206,57 @@ func TestClaudeCodeSDKAdapterDoesNotCarryContextWindowAcrossModelChange(t *testi
 			},
 		},
 	})
-	if err != nil || terminal || len(events) != 1 {
-		t.Fatalf("haiku context usage events=%#v terminal=%v err=%v, want session.updated", events, terminal, err)
+	if err != nil || terminal {
+		t.Fatalf("haiku context usage terminal=%v err=%v", terminal, err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("haiku context usage events=%#v, want none before the new model window is known", events)
 	}
 	state := adapter.SessionState(session)
 	usage, _ := state.RuntimeContext["usage"].(map[string]any)
 	contextWindow, _ := usage["contextWindow"].(map[string]any)
-	if got, ok := int64Value(contextWindow["usedTokens"]); !ok || got != 29_538 {
-		t.Fatalf("usedTokens = %#v, want latest haiku context usage", contextWindow["usedTokens"])
+	if got, ok := int64Value(contextWindow["usedTokens"]); !ok || got != 36_103 {
+		t.Fatalf("usedTokens = %#v, want previous published usage until the new model window is known", contextWindow["usedTokens"])
 	}
-	if got, ok := int64Value(contextWindow["totalTokens"]); !ok || got != 200_000 {
-		t.Fatalf("totalTokens = %#v, want default context window after model switch", contextWindow["totalTokens"])
+	if got, ok := int64Value(contextWindow["totalTokens"]); !ok || got != 1_000_000 {
+		t.Fatalf("totalTokens = %#v, want previous published context window until the new model window is known", contextWindow["totalTokens"])
+	}
+}
+
+func TestClaudeCodeSDKAdapterReusesKnownContextWindowForSameModel(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
+	adapterSession.applyConfigOption("model", "opus")
+	adapterSession.liveState.usage = claudeSDKUsageState{
+		contextUsedTokens:   20_000,
+		contextWindowTokens: 1_000_000,
+		contextKnown:        true,
+		contextModel:        "opus",
+	}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+
+	events, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-2", claudeSDKSidecarEvent{
+		Type: "usage_updated",
+		Payload: map[string]any{
+			"turnId": "turn-2",
+			"usage": map[string]any{
+				"input_tokens":  30_000,
+				"output_tokens": 8_551,
+			},
+		},
+	})
+	if err != nil || terminal || len(events) != 1 {
+		t.Fatalf("usage events=%#v terminal=%v err=%v, want same-model session.updated", events, terminal, err)
+	}
+	state := adapter.SessionState(session)
+	usage, _ := state.RuntimeContext["usage"].(map[string]any)
+	contextWindow, _ := usage["contextWindow"].(map[string]any)
+	if got, ok := int64Value(contextWindow["usedTokens"]); !ok || got != 38_551 {
+		t.Fatalf("usedTokens = %#v, want 38,551", contextWindow["usedTokens"])
+	}
+	if got, ok := int64Value(contextWindow["totalTokens"]); !ok || got != 1_000_000 {
+		t.Fatalf("totalTokens = %#v, want retained same-model context window", contextWindow["totalTokens"])
 	}
 }
 

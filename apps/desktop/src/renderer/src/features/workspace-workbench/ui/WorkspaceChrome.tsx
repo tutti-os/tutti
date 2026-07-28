@@ -7,8 +7,7 @@ import type {
 import type {
   WorkbenchHostChromeRenderContext,
   WorkbenchController,
-  WorkbenchHostNodeData,
-  WorkbenchMissionControlMode
+  WorkbenchHostNodeData
 } from "@tutti-os/workbench-surface";
 import { AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT } from "@tutti-os/agent-gui/workbench/contribution";
 import { cn } from "@renderer/lib/format";
@@ -50,12 +49,10 @@ export function WorkspaceChrome({
   missionControl: {
     canOpen: boolean;
     close(): void;
+    isLayoutLocked: boolean;
     isOpen: boolean;
-    mode: WorkbenchMissionControlMode | null;
-    open(
-      mode: WorkbenchMissionControlMode,
-      trigger?: "button" | "keyboard"
-    ): void;
+    open(trigger?: "button" | "keyboard"): void;
+    unlockLayout(): void;
     visibleWindowCount: number;
   };
   onSelectWallpaper: (id: WorkspaceWallpaperId) => void;
@@ -170,7 +167,7 @@ export function WorkspaceChrome({
             selectedWallpaperID={selectedWallpaperID}
             workspace={workspace}
           />
-          <WorkspaceAccountMenu />
+          <WorkspaceAccountMenu workspaceId={workspace.id} />
         </div>
       </header>
       <ExternalAgentSessionImportPrompt

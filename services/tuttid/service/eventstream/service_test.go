@@ -641,6 +641,66 @@ func TestAgentActivityPublisherPublishesScopedUpdate(t *testing.T) {
 	}
 }
 
+func TestAgentActivityPublisherPublishesValidatedMessageDelta(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(DefaultCatalog(), nil)
+	session := service.OpenSession()
+	t.Cleanup(func() { service.CloseSession(session) })
+	if err := service.Subscribe(
+		session,
+		[]string{TopicAgentActivityUpdated},
+		EventScope{WorkspaceID: "workspace-1"},
+	); err != nil {
+		t.Fatal(err)
+	}
+	publisher := AgentActivityPublisher{Service: service}
+	valid := json.RawMessage(`{
+		"workspaceId":"workspace-1",
+		"agentSessionId":"agent-session-1",
+		"messageId":"message-1",
+		"turnId":"turn-1",
+		"role":"assistant",
+		"kind":"text",
+		"occurredAtUnixMs":100,
+		"content":{"operation":"set","value":"Hel"}
+	}`)
+	if err := publisher.PublishAgentActivityUpdatedJSON(
+		context.Background(),
+		"workspace-1",
+		"agent-session-1",
+		"message_delta",
+		valid,
+	); err != nil {
+		t.Fatalf("PublishAgentActivityUpdatedJSON() error = %v", err)
+	}
+	event := receiveEvent(t, session)
+	if event.Topic != TopicAgentActivityUpdated {
+		t.Fatalf("event topic = %q", event.Topic)
+	}
+
+	invalid := json.RawMessage(`{
+		"workspaceId":"workspace-1",
+		"agentSessionId":"agent-session-1",
+		"messageId":"message-1",
+		"turnId":"turn-1",
+		"role":"assistant",
+		"kind":"text",
+		"occurredAtUnixMs":101,
+		"content":{"operation":"append_text"}
+	}`)
+	err := publisher.PublishAgentActivityUpdatedJSON(
+		context.Background(),
+		"workspace-1",
+		"agent-session-1",
+		"message_delta",
+		invalid,
+	)
+	if err == nil || !strings.Contains(err.Error(), "append_text requires text") {
+		t.Fatalf("invalid message_delta error = %v", err)
+	}
+}
+
 func TestWorkspaceAppPublisherIncludesReferencesState(t *testing.T) {
 	t.Parallel()
 

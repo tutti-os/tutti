@@ -97,6 +97,7 @@ function createTerminalWorkbenchBodyTestContext({
     isDragging: false,
     isFocused,
     isResizing: false,
+    isVisible: true,
     node: {
       data,
       displayMode: "floating",

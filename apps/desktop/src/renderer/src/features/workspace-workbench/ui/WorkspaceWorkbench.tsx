@@ -65,10 +65,7 @@ import {
   registerWorkspaceBrowserLaunchHandler,
   type WorkspaceBrowserLaunchRequest
 } from "../services/workspaceBrowserLaunchCoordinator.ts";
-import {
-  isWorkspaceMissionControlActivateShortcut,
-  isWorkspaceMissionControlLayoutShortcut
-} from "../services/workspaceMissionControlShortcut.ts";
+import { isWorkspaceMissionControlLayoutShortcut } from "../services/workspaceMissionControlShortcut.ts";
 import {
   registerWorkspaceFilesLaunchHandler,
   workspaceFilesLaunchTypeId,
@@ -723,28 +720,17 @@ function ReadyWorkspaceWorkbenchWithSession({
     }
 
     const handleKeyDown = (event: KeyboardEvent): void => {
-      if (!isWorkspaceMissionControlActivateShortcut(event)) {
-        if (!isWorkspaceMissionControlLayoutShortcut(event)) {
-          return;
-        }
-
-        event.preventDefault();
-        if (runtime.missionControl.mode === "layout") {
-          runtime.missionControl.close();
-          return;
-        }
-
-        runtime.missionControl.open("layout", "keyboard");
+      if (!isWorkspaceMissionControlLayoutShortcut(event)) {
         return;
       }
 
       event.preventDefault();
-      if (runtime.missionControl.mode === "activate") {
+      if (runtime.missionControl.isOpen) {
         runtime.missionControl.close();
         return;
       }
 
-      runtime.missionControl.open("activate", "keyboard");
+      runtime.missionControl.open("keyboard");
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -821,6 +807,7 @@ function ReadyWorkspaceWorkbenchWithSession({
         <WorkspaceAppCenterIntegration workspaceId={state.workspace.id} />
         <WorkbenchHost
           captureNodePreviewImage={hostInput.captureNodePreviewImage}
+          captureNodePreviewImages={hostInput.captureNodePreviewImages}
           className="h-full"
           contributions={hostInput.contributions}
           debugDiagnostics={hostInput.debugDiagnostics}
@@ -833,10 +820,9 @@ function ReadyWorkspaceWorkbenchWithSession({
           i18n={runtime.appI18n}
           layoutConstraints={layoutConstraints}
           missionControl={{
-            mode: runtime.missionControl.mode,
+            active: runtime.missionControl.isOpen,
             nodeIds: runtime.missionControl.nodeIds ?? undefined,
-            onRequestClose: runtime.missionControl.close,
-            onRequestMode: (mode) => runtime.missionControl.open(mode, "button")
+            onRequestClose: runtime.missionControl.close
           }}
           minimizeAnimation={runtime.minimizeAnimation}
           nodes={hostInput.nodes}
@@ -845,9 +831,8 @@ function ReadyWorkspaceWorkbenchWithSession({
           onHandleReady={onWorkbenchHostHandleReady}
           onLaunchRequest={hostInput.onLaunchRequest}
           onMissionControlAdapterReady={runtime.onMissionControlAdapterReady}
-          onMissionControlRequestOpen={(mode, request) => {
+          onMissionControlRequestOpen={(request) => {
             runtime.missionControl.open(
-              mode,
               request
                 ? {
                     nodeIds: request.nodeIds,

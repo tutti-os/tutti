@@ -146,7 +146,45 @@ test("enters and exits fullscreen with restore frame", () => {
 
   state = reduceWorkbenchState(state, { type: "exitFullscreen", nodeID: "a" });
   assert.equal(state.nodes[0]?.displayMode, "floating");
-  assert.deepEqual(state.nodes[0]?.frame, originalFrame);
+  assert.deepEqual(state.nodes[0]?.frame, {
+    ...originalFrame,
+    y: 52
+  });
+});
+
+test("clamps a stale fullscreen restore frame when exiting fullscreen", () => {
+  let state = createWorkbenchInitialState({
+    surfaceSize: { width: 1210, height: 759 },
+    layoutConstraints: {
+      minWidth: 280,
+      minHeight: 160,
+      surfacePadding: 0,
+      safeArea: { top: 52, right: 0, bottom: 88, left: 0 }
+    },
+    nodes: [
+      {
+        ...makeNode("fullscreen"),
+        displayMode: "fullscreen",
+        frame: { x: 0, y: 52, width: 1210, height: 707 },
+        restoreFrame: { x: 221, y: 83, width: 1480, height: 792 }
+      }
+    ],
+    nodeStack: ["fullscreen"]
+  });
+
+  state = reduceWorkbenchState(state, {
+    type: "exitFullscreen",
+    nodeID: "fullscreen"
+  });
+
+  assert.equal(state.nodes[0]?.displayMode, "floating");
+  assert.deepEqual(state.nodes[0]?.frame, {
+    x: 0,
+    y: 52,
+    width: 1210,
+    height: 619
+  });
+  assert.equal(state.nodes[0]?.restoreFrame, null);
 });
 
 test("applies quick layouts as floating focused windows", () => {
@@ -1219,6 +1257,75 @@ test("closing a locked node drops the lock below two nodes", () => {
 
   state = reduceWorkbenchState(state, { type: "closeNode", nodeID: "b" });
   assert.equal(state.lockedLayout, null);
+});
+
+test("closing a locked node re-fits the remaining windows to the grid", () => {
+  let state = createWorkbenchInitialState({
+    surfaceSize: { width: 1024, height: 720 },
+    nodes: [makeNode("a"), makeNode("b"), makeNode("c")]
+  });
+
+  state = reduceWorkbenchState(state, {
+    type: "applyLayoutPreset",
+    nodeIDs: ["a", "b", "c"],
+    preset: { kind: "row" },
+    lock: true
+  });
+  const threeWayFrames = ["a", "b"].map(
+    (id) => state.nodes.find((node) => node.id === id)!.frame
+  );
+
+  state = reduceWorkbenchState(state, { type: "closeNode", nodeID: "c" });
+
+  assert.deepEqual(state.lockedLayout, {
+    preset: { kind: "row" },
+    nodeIDs: ["a", "b"]
+  });
+  // The two remaining windows expand to the two-column row layout instead of
+  // leaving "c"'s slot empty.
+  const twoWayFrames = ["a", "b"].map(
+    (id) => state.nodes.find((node) => node.id === id)!.frame
+  );
+  assert.ok(
+    twoWayFrames[0]!.width > threeWayFrames[0]!.width,
+    "first window should widen after the third closes"
+  );
+  assert.ok(
+    twoWayFrames[1]!.width > threeWayFrames[1]!.width,
+    "second window should widen after the third closes"
+  );
+  assert.ok(
+    twoWayFrames[1]!.x > twoWayFrames[0]!.x,
+    "windows should stay ordered left to right"
+  );
+});
+
+test("closing an unlocked node keeps the locked grid untouched", () => {
+  let state = createWorkbenchInitialState({
+    surfaceSize: { width: 1024, height: 720 },
+    nodes: [makeNode("a"), makeNode("b"), makeNode("c")]
+  });
+
+  state = reduceWorkbenchState(state, {
+    type: "applyLayoutPreset",
+    nodeIDs: ["a", "b"],
+    preset: { kind: "row" },
+    lock: true
+  });
+  const lockedFrames = ["a", "b"].map(
+    (id) => state.nodes.find((node) => node.id === id)!.frame
+  );
+
+  state = reduceWorkbenchState(state, { type: "closeNode", nodeID: "c" });
+
+  assert.deepEqual(state.lockedLayout, {
+    preset: { kind: "row" },
+    nodeIDs: ["a", "b"]
+  });
+  assert.deepEqual(
+    ["a", "b"].map((id) => state.nodes.find((node) => node.id === id)!.frame),
+    lockedFrames
+  );
 });
 
 function makeNode(

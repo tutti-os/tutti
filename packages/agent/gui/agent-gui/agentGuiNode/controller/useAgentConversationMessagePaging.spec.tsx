@@ -45,6 +45,64 @@ describe("useAgentConversationMessagePaging", () => {
     expect(reconcileDetail).toHaveBeenCalledWith("historical-session");
   });
 
+  it("does not page older messages from a high mutable message version alone", async () => {
+    const listSessionMessages = vi.fn();
+    const setOlderMessagesLoading = vi.fn();
+    const { result } = renderHook(() =>
+      useAgentConversationMessagePaging({
+        diagnostics: { error: vi.fn(), page: vi.fn() },
+        getActiveSessionId: () => "new-session",
+        getCanonicalMessages: () => [
+          {
+            agentSessionId: "new-session",
+            kind: "text",
+            messageId: "streamed-message",
+            occurredAtUnixMs: 1,
+            payload: {},
+            role: "assistant",
+            turnId: "turn-1",
+            version: 446
+          }
+        ],
+        isMounted: () => true,
+        projection: {
+          maxVersion: () => 446,
+          minVersion: () => 446,
+          windowHasTurnMissingUserPrompt: () => false
+        },
+        reload: {
+          getActivationStatus: () => "confirmed",
+          reconcileDetail: vi.fn(),
+          syncConversationList: vi.fn()
+        },
+        runtime: { listSessionMessages } as unknown as AgentActivityRuntime,
+        sessionViewRef: (agentSessionId) => ({
+          agentSessionId,
+          origin: "test",
+          workspaceId: "workspace-1"
+        }),
+        view: {
+          get: () => ({
+            hasOlderMessages: false,
+            isLoadingOlderMessages: false,
+            olderMessages: [],
+            oldestLoadedVersion: 446
+          }),
+          mergeOlder: vi.fn(),
+          setOlderMessagesLoading
+        },
+        workspaceId: "workspace-1"
+      })
+    );
+
+    await act(async () => {
+      await result.current.loadOlderMessages("new-session");
+    });
+
+    expect(listSessionMessages).not.toHaveBeenCalled();
+    expect(setOlderMessagesLoading).not.toHaveBeenCalled();
+  });
+
   it("clears older-message loading after a successful page", async () => {
     const mergeOlder = vi.fn();
     const setOlderMessagesLoading = vi.fn();
@@ -109,7 +167,7 @@ describe("useAgentConversationMessagePaging", () => {
         workspaceId: "workspace-1"
       },
       [],
-      { hasOlderMessages: false }
+      { hasOlderMessages: false, oldestLoadedVersion: 446 }
     );
     expect(setOlderMessagesLoading.mock.calls).toEqual([
       [

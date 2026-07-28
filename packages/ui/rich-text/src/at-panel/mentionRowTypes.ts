@@ -51,8 +51,14 @@ export interface MentionRowAppFactoryItem {
 
 export interface MentionRowSessionItem {
   kind: "session";
-  /** The "Initiator & Agent" participant line. */
+  /** The Agent participant line. */
   participant: string;
+  /** Participant entities that truncate independently before the fixed suffix. */
+  participantTruncatableSegments?: readonly string[] | null;
+  /** Fixed separator rendered between independently truncatable entities. */
+  participantSegmentSeparator?: string | null;
+  /** Optional fixed participant suffix, including its separator. */
+  participantFixedSuffix?: string | null;
   summary?: string | null;
   userAvatarUrl?: string | null;
   userAvatarPlaceholderUrl: string;
@@ -66,6 +72,7 @@ export interface MentionRowIssueItem {
   kind: "issue";
   title: string;
   creatorName?: string | null;
+  iconUrl?: string | null;
   statusTag?: MentionRowStatusTag | null;
 }
 

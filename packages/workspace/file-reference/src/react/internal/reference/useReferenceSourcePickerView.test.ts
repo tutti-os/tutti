@@ -378,7 +378,7 @@ test("reference source picker shows html source as text", async () => {
   }
 });
 
-test("reference source picker uses the source heading as root without a duplicate root group", async () => {
+test("single-selection picker uses the source heading as root and selects sidebar directories", async () => {
   const dom = new JSDOM('<!doctype html><div id="root"></div>');
   const previousWindow = globalThis.window;
   const previousDocument = globalThis.document;
@@ -412,6 +412,10 @@ test("reference source picker uses the source heading as root without a duplicat
         ]
       }
     );
+    aggregator.locateTarget = async (_scope, _sourceId, params) =>
+      params.path === documentsOnlyProject.ref.nodeId
+        ? [documentsOnlyProject.ref]
+        : null;
     let latestView: PickerView | null = null;
 
     function Harness() {
@@ -420,6 +424,7 @@ test("reference source picker uses the source heading as root without a duplicat
         onClose() {},
         onConfirm() {},
         open: true,
+        selectionMode: "single",
         workspaceId: "workspace-reference-root-group"
       });
       return null;
@@ -437,6 +442,7 @@ test("reference source picker uses the source heading as root without a duplicat
       ["proj-1", "proj-docs"]
     );
     assert.equal(view.selectedGroupKey, null);
+    assert.equal(view.selectionCount, 0);
     assert.deepEqual(
       view.currentEntries.map((entry) => entry.displayName),
       ["proj-1", "proj-docs", "notes.md", "photo.png"]
@@ -473,6 +479,8 @@ test("reference source picker uses the source heading as root without a duplicat
     });
     view = requireLatestView(latestView);
     assert.equal(view.currentNode?.displayName, "proj-1");
+    assert.equal(view.selectionCount, 1);
+    assert.deepEqual(view.selection, [project]);
 
     await act(async () => {
       view.selectSourceRoot("workspace-file");
@@ -485,6 +493,21 @@ test("reference source picker uses the source heading as root without a duplicat
       view.currentEntries.map((entry) => entry.displayName),
       ["proj-1", "photo.png"]
     );
+
+    let selectedUploadedDirectory = false;
+    await act(async () => {
+      selectedUploadedDirectory = await view.selectTarget({
+        sourceId: "workspace-file",
+        params: { path: documentsOnlyProject.ref.nodeId }
+      });
+    });
+    view = requireLatestView(latestView);
+    assert.equal(selectedUploadedDirectory, true);
+    assert.deepEqual(view.selection, [documentsOnlyProject]);
+    assert.deepEqual(view.activeFilters, []);
+    assert.equal(view.currentNode, documentsOnlyProject);
+    assert.equal(view.selectedGroupKey, nodeRefKey(documentsOnlyProject.ref));
+    assert.equal(view.focusedNode, null);
   } finally {
     if (root) {
       await act(async () => {

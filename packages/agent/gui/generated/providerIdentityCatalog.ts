@@ -108,7 +108,7 @@ export const generatedProviderIdentityCatalog = [
       installBootstrap: true,
       refreshOnAccountChange: true,
       unavailableDockOrderOffset: 0,
-      developerLogs: false,
+      developerLogs: true,
       defaultProviderEligible: false,
       defaultProviderPriority: 0
     }

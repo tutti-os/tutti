@@ -35,6 +35,7 @@
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
+    "@tutti-os/analytics": "workspace:*",
     "@tutti-os/ui-i18n-runtime": "workspace:*",
     "@tutti-os/ui-react-hooks": "workspace:*",
     "@tutti-os/ui-rich-text": "workspace:*",

@@ -46,14 +46,12 @@ import {
 export function AgentModelReasoningDropdown({
   composerSettings,
   disabled = false,
-  previewMode = false,
   labels,
   modelHistoryTargetId = null,
   onSettingsChange
 }: {
   composerSettings: AgentGUIComposerSettingsVM;
   disabled?: boolean;
-  previewMode?: boolean;
   labels: AgentComposerSettingsMenuLabels;
   /**
    * Stable per-target key for the recents/favorites localStorage chrome
@@ -183,10 +181,6 @@ export function AgentModelReasoningDropdown({
     </button>
   );
 
-  if (previewMode) {
-    return trigger;
-  }
-
   return (
     <DropdownMenu open={menuOpen} onOpenChange={handleMenuOpenChange}>
       {isModelLoading ? (
@@ -267,7 +261,7 @@ export function AgentModelReasoningDropdown({
                   options={menu.model.favoriteOptions}
                   selectedValue={menu.model.selectedValue}
                   descriptionPresentation={modelDescriptionPresentation}
-                  tooltipsEnabled={!previewMode}
+                  tooltipsEnabled
                   favoriteValues={favoriteValueSet}
                   onToggleFavorite={handleToggleFavoriteModel}
                   onSelect={applyModelSelection}
@@ -286,7 +280,7 @@ export function AgentModelReasoningDropdown({
                   options={menu.model.recentOptions}
                   selectedValue={menu.model.selectedValue}
                   descriptionPresentation={modelDescriptionPresentation}
-                  tooltipsEnabled={!previewMode}
+                  tooltipsEnabled
                   favoriteValues={favoriteValueSet}
                   onToggleFavorite={handleToggleFavoriteModel}
                   onSelect={applyModelSelection}
@@ -310,7 +304,7 @@ export function AgentModelReasoningDropdown({
                     options={group.options}
                     selectedValue={menu.model.selectedValue}
                     descriptionPresentation={modelDescriptionPresentation}
-                    tooltipsEnabled={!previewMode}
+                    tooltipsEnabled
                     favoriteValues={favoriteValueSet}
                     onToggleFavorite={handleToggleFavoriteModel}
                     onSelect={applyModelSelection}
@@ -322,7 +316,7 @@ export function AgentModelReasoningDropdown({
                 options={menu.model.options}
                 selectedValue={menu.model.selectedValue}
                 descriptionPresentation={modelDescriptionPresentation}
-                tooltipsEnabled={!previewMode}
+                tooltipsEnabled
                 favoriteValues={favoriteValueSet}
                 onToggleFavorite={handleToggleFavoriteModel}
                 onSelect={applyModelSelection}
@@ -363,7 +357,7 @@ export function AgentModelReasoningDropdown({
               <ComposerMenuOptionItems
                 options={menu.reasoning.options}
                 selectedValue={menu.reasoning.selectedValue}
-                tooltipsEnabled={!previewMode}
+                tooltipsEnabled
                 onSelect={(value) =>
                   applySettingsChange({ reasoningEffort: value })
                 }
@@ -392,7 +386,7 @@ export function AgentModelReasoningDropdown({
                 options={menu.speed.options}
                 selectedValue={menu.speed.selectedValue}
                 descriptionPresentation="inline"
-                tooltipsEnabled={!previewMode}
+                tooltipsEnabled
                 onSelect={(value) => applySettingsChange({ speed: value })}
               />
             </DropdownMenuSubContent>

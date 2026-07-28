@@ -1026,6 +1026,37 @@ test("desktop rich text @ service assembles agent target mentions", async () => 
   });
 });
 
+test("desktop rich text @ service uses daemon enabled state for Tutti Agent mentions", async () => {
+  const targets = [
+    createAgentTarget({
+      id: "local:tutti-agent",
+      name: "Tutti Agent",
+      provider: "tutti-agent",
+      sortOrder: 5
+    }),
+    createAgentTarget({
+      enabled: false,
+      id: "disabled:tutti-agent",
+      name: "Disabled Tutti Agent",
+      provider: "tutti-agent",
+      sortOrder: 6
+    })
+  ];
+  const service = new DesktopRichTextAtService({
+    agentsService: createAgentsService(targets),
+    tuttidClient: createTuttidClient()
+  });
+
+  const provider = getProvider(service, "agent-target");
+  const items = await queryProvider(provider);
+
+  assert.deepEqual(
+    items.map((item) => provider.getItemKey(item)),
+    ["local:tutti-agent"]
+  );
+  assert.equal(provider.getItemLabel(items[0]), "Tutti Agent");
+});
+
 test("desktop rich text @ service includes ready open-provider extension targets", async () => {
   const targets = [
     createAgentTarget({

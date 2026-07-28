@@ -44,11 +44,10 @@ const selectStatusSnapshot = (snapshot: AgentStatusControllerSnapshot) =>
 export function useAgentGUIStatus(input: {
   activeProvider: string;
   agentStatusController: RuntimeRequests["agentStatusController"];
-  previewMode: boolean;
   t: TranslateFn;
   viewModel: AgentGUIViewModel;
 }) {
-  const { agentStatusController, previewMode, t, viewModel } = input;
+  const { agentStatusController, t, viewModel } = input;
   const agentStatusSnapshot = useEngineSelector(
     agentStatusController ?? EMPTY_STATUS_STORE,
     selectStatusSnapshot
@@ -145,11 +144,11 @@ export function useAgentGUIStatus(input: {
       reason: AgentStatusRequestReason;
       forceRefresh?: boolean;
     }): void => {
-      if (!previewMode) {
+      {
         agentStatusController?.open(request);
       }
     },
-    [agentStatusController, previewMode]
+    [agentStatusController]
   );
   const closeStatus = useCallback(
     (reason: AgentStatusRequestReason): void => {

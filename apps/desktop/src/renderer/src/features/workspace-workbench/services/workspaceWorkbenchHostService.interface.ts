@@ -95,6 +95,7 @@ export type WorkspaceWorkbenchCapabilitySettingsTarget =
 
 export interface WorkspaceWorkbenchHostInput {
   readonly captureNodePreviewImage?: WorkbenchHostProps["captureNodePreviewImage"];
+  readonly captureNodePreviewImages?: WorkbenchHostProps["captureNodePreviewImages"];
   readonly contributions?: readonly WorkbenchContribution[];
   readonly debugDiagnostics?: WorkbenchDebugDiagnostics;
   readonly dockPreviewCache?: WorkbenchDockPreviewCache;

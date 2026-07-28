@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   classifyFailedAgentMessage,
   classifyRecoverableAgentMessage,
-  isProviderPlanLimitMessage,
   resolveAgentErrorPresentation
 } from "./agentErrorPresentation";
 
@@ -73,19 +72,6 @@ describe("classifyRecoverableAgentMessage", () => {
   });
 });
 
-describe("isProviderPlanLimitMessage", () => {
-  it("matches Cursor plan/payment gate copy only", () => {
-    expect(isProviderPlanLimitMessage("Upgrade your plan to continue")).toBe(
-      true
-    );
-    expect(isProviderPlanLimitMessage("Add a payment method to continue")).toBe(
-      true
-    );
-    expect(isProviderPlanLimitMessage("rate limit exceeded")).toBe(false);
-    expect(isProviderPlanLimitMessage("")).toBe(false);
-  });
-});
-
 describe("resolveAgentErrorPresentation", () => {
   it("routes env-fixable failures to the matching wizard step", () => {
     const expectations: Record<string, { focus: string; actionKey: string }> = {
@@ -135,13 +121,11 @@ describe("resolveAgentErrorPresentation", () => {
     }
   });
 
-  it("routes insufficient Tutti credits to the subscription plans page", () => {
-    const presentation = resolveAgentErrorPresentation("insufficient_credits");
-    expect(presentation).toMatchObject({
-      messageKey: "agentHost.agentGui.visibleErrorInsufficientCredits",
+  it("keeps insufficient-credit product semantics out of AgentGUI", () => {
+    expect(resolveAgentErrorPresentation("insufficient_credits")).toEqual({
+      messageKey: "agentHost.agentGui.visibleErrorInsufficientCreditsUnknown",
       focus: null,
-      actionKey: "agentHost.agentGui.visibleErrorActionViewPlans",
-      externalUrl: "https://tutti.sh/profile/plan"
+      actionKey: null
     });
   });
 

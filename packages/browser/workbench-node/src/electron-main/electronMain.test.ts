@@ -581,6 +581,11 @@ test("reloads only ordinary Browser nodes sharing the imported Electron Session"
     sessionMode: "profile",
     webContentsId: isolated.id
   });
+  sharedOne.currentUrl = "https://example.test/one";
+  sharedTwo.currentUrl = "https://example.test/two";
+  isolated.currentUrl = "https://example.test/isolated";
+  incognito.currentUrl = "https://example.test/incognito";
+  workspaceApp.currentUrl = "https://example.test/app";
 
   manager.reloadCookieImportSession(sharedSession);
   assert.equal(sharedOne.reloadCalls, 1);
@@ -681,6 +686,10 @@ test("Cookie imports refresh ordinary nodes across windows and exclude custom Se
     sessionMode: "profile",
     webContentsId: isolated.id
   });
+  first.currentUrl = "https://example.test/first";
+  second.currentUrl = "https://example.test/second";
+  custom.currentUrl = "https://example.test/custom";
+  isolated.currentUrl = "https://example.test/isolated";
 
   await handlers.get("browser:importCookies")?.(firstEvent, {
     nodeId: "first"
@@ -1493,6 +1502,133 @@ test("uses registerGuest URL before loading a newly attached guest", async () =>
   assert.equal(
     manager.debugDump({ nodeId: "browser-stale-desired" })?.desiredUrl,
     "http://127.0.0.1:51103/"
+  );
+});
+
+test("publishes committed navigation events when Electron getters lag behind loadURL", async () => {
+  const events: BrowserNodeEvent[] = [];
+  const contents = new MockBrowserGuestWebContents(22);
+  contents.currentUrl = "https://example.com/previous";
+  contents.title = "Previous page";
+  const manager = createBrowserGuestManager({
+    emit: (event) => events.push(event),
+    openExternal: () => undefined,
+    resolveWebContents: (id) => (id === contents.id ? contents : null)
+  });
+
+  await manager.registerGuest({
+    nodeId: "browser-lagging-getters",
+    profileId: null,
+    sessionMode: "shared",
+    webContentsId: 22
+  });
+  events.length = 0;
+
+  contents.loadURL = async (url: string): Promise<void> => {
+    contents.loading = true;
+    contents.emit("did-start-loading");
+    contents.emit("did-navigate", {}, url, 200, "OK");
+    contents.emit("page-title-updated", {}, "Committed page", true);
+    contents.loading = false;
+    contents.emit("did-stop-loading");
+  };
+
+  await manager.navigate({
+    nodeId: "browser-lagging-getters",
+    url: "https://example.com/committed"
+  });
+
+  assert.deepEqual(
+    events
+      .filter((event) => event.type === "state")
+      .map((event) => ({
+        isLoading: event.isLoading,
+        title: event.title,
+        url: event.url
+      })),
+    [
+      {
+        isLoading: true,
+        title: "Previous page",
+        url: "https://example.com/previous"
+      },
+      {
+        isLoading: true,
+        title: "Previous page",
+        url: "https://example.com/committed"
+      },
+      {
+        isLoading: true,
+        title: "Committed page",
+        url: "https://example.com/committed"
+      },
+      {
+        isLoading: false,
+        title: "Committed page",
+        url: "https://example.com/committed"
+      }
+    ]
+  );
+  assert.deepEqual(manager.debugDump({ nodeId: "browser-lagging-getters" }), {
+    canGoBack: false,
+    canGoForward: false,
+    currentUrl: "https://example.com/committed",
+    desiredUrl: "https://example.com/committed",
+    isAttachedToWindow: true,
+    isLoading: false,
+    lifecycle: "active",
+    nodeId: "browser-lagging-getters",
+    profileId: null,
+    sessionMode: "shared",
+    sessionPartition: null,
+    title: "Committed page",
+    userAgent: "MockBrowser/1.0",
+    webContentsDestroyed: false,
+    webContentsId: 22
+  });
+  assert.equal(contents.getURL(), "https://example.com/previous");
+  assert.equal(contents.getTitle(), "Previous page");
+});
+
+test("updates committed URLs only for main-frame in-page navigations", async () => {
+  const events: BrowserNodeEvent[] = [];
+  const contents = new MockBrowserGuestWebContents(23);
+  contents.currentUrl = "https://example.com/page";
+  const manager = createBrowserGuestManager({
+    emit: (event) => events.push(event),
+    openExternal: () => undefined,
+    resolveWebContents: (id) => (id === contents.id ? contents : null)
+  });
+
+  await manager.registerGuest({
+    nodeId: "browser-in-page-navigation",
+    profileId: null,
+    sessionMode: "shared",
+    webContentsId: 23
+  });
+  events.length = 0;
+
+  contents.emit(
+    "did-navigate-in-page",
+    {},
+    "https://example.com/page#main",
+    true
+  );
+  contents.emit(
+    "did-navigate-in-page",
+    {},
+    "https://example.com/iframe#child",
+    false
+  );
+  contents.emit("did-stop-loading");
+
+  assert.deepEqual(
+    events.filter((event) => event.type === "state").map((event) => event.url),
+    [
+      "https://example.com/page#main",
+      "https://example.com/page#main",
+      "https://example.com/page#main"
+    ]
   );
 });
 

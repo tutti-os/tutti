@@ -177,6 +177,11 @@ func typedDefault(fieldType reflect.Type, raw string) any {
 		if err == nil {
 			return value
 		}
+	case reflect.Float32, reflect.Float64:
+		value, err := strconv.ParseFloat(raw, 64)
+		if err == nil {
+			return value
+		}
 	}
 	return nil
 }
@@ -239,6 +244,18 @@ func setFieldValue(field reflect.Value, spec FieldSpec, raw any) error {
 			return invalidInputErrorWithReason(spec.Name, fmt.Sprintf("must be <= %d", *spec.Max))
 		}
 		field.SetInt(value)
+	case reflect.Float32, reflect.Float64:
+		value, err := parseFloat(raw)
+		if err != nil {
+			return invalidInputError(spec.Name)
+		}
+		if spec.Min != nil && value < float64(*spec.Min) {
+			return invalidInputErrorWithReason(spec.Name, fmt.Sprintf("must be >= %d", *spec.Min))
+		}
+		if spec.Max != nil && value > float64(*spec.Max) {
+			return invalidInputErrorWithReason(spec.Name, fmt.Sprintf("must be <= %d", *spec.Max))
+		}
+		field.SetFloat(value)
 	default:
 		return invalidInputError(spec.Name)
 	}
@@ -299,6 +316,23 @@ func parseInt(raw any) (int64, error) {
 		return strconv.ParseInt(strings.TrimSpace(value), 10, 64)
 	default:
 		return 0, fmt.Errorf("invalid integer")
+	}
+}
+
+func parseFloat(raw any) (float64, error) {
+	switch value := raw.(type) {
+	case int:
+		return float64(value), nil
+	case int64:
+		return float64(value), nil
+	case float32:
+		return float64(value), nil
+	case float64:
+		return value, nil
+	case string:
+		return strconv.ParseFloat(strings.TrimSpace(value), 64)
+	default:
+		return 0, fmt.Errorf("invalid number")
 	}
 }
 
@@ -381,6 +415,8 @@ func schemaType(typ reflect.Type) string {
 		return "boolean"
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return "integer"
+	case reflect.Float32, reflect.Float64:
+		return "number"
 	case reflect.Slice:
 		return "array"
 	default:

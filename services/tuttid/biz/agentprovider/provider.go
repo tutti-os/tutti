@@ -64,6 +64,13 @@ func ModelPlanModelAddressingProviderPrefixed(provider string) bool {
 	return ok && addressing == providerregistry.ModelPlanModelAddressingProviderPrefixed
 }
 
+// ModelPlanUsesResponsesToChatGateway reports whether the provider runtime
+// strategy requires the daemon's local Responses-to-Chat endpoint adapter.
+func ModelPlanUsesResponsesToChatGateway(provider string) bool {
+	adapter, ok := providerregistry.ResolveModelPlanEndpointAdapter(provider)
+	return ok && adapter == providerregistry.ModelPlanEndpointAdapterResponsesToChatGateway
+}
+
 func IsSupported(provider string) bool {
 	return Normalize(provider) != ""
 }

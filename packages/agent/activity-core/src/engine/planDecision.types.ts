@@ -80,3 +80,19 @@ export interface PlanSubmitDecisionCommand {
   turnId: string;
   workspaceId: string;
 }
+
+export interface PlanDecisionOperation {
+  agentSessionId: string;
+  error?: string | null;
+  idempotencyKey: string;
+  operationId: string;
+  requestId: string;
+  result?: string | null;
+  status: "prepared" | "leased" | "completed" | "failed";
+  turnId: string;
+  workspaceId: string;
+}
+
+export interface PlanSubmitDecisionResult {
+  operation: PlanDecisionOperation;
+}

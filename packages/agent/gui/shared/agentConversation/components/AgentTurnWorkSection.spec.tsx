@@ -229,6 +229,49 @@ describe("AgentTurnWorkSection", () => {
     expect(screen.queryByText("tools")).toBeNull();
   });
 
+  it("keeps the response-tail file diff panel visible when turn work is collapsed", () => {
+    const group = interleavedTurnGroup();
+    const summary: AgentTranscriptRowVM = {
+      kind: "turn-summary",
+      id: "file-diff",
+      turnId: "turn-1",
+      files: [],
+      fileCount: 0,
+      modifiedCount: 0,
+      createdCount: 0,
+      occurredAtUnixMs: 15_000
+    };
+    group.rows.push({ row: summary, rowIndex: group.rows.length });
+
+    const { container } = render(
+      <AgentTurnWorkSection
+        group={group}
+        sessionId="session-1"
+        turn={canonicalTurn({
+          phase: "settled",
+          outcome: "completed",
+          settledAtUnixMs: 15_000
+        })}
+        isActiveTurn={false}
+        disclosureStore={disclosureStore}
+        renderRow={(row) => (
+          <div key={row.id} data-test-row-id={row.id}>
+            {row.kind === "message" ? row.messages[0]?.body : row.id}
+          </div>
+        )}
+      />
+    );
+
+    expect(screen.queryByText("tools")).toBeNull();
+    expect(screen.getByText("Final answer")).toBeTruthy();
+    expect(screen.getByText("file-diff")).toBeTruthy();
+    expect(
+      [...container.querySelectorAll("[data-test-row-id]")].map(
+        (element) => element.textContent
+      )
+    ).toEqual(["First request", "Follow-up", "Final answer", "file-diff"]);
+  });
+
   it("makes the duration text part of the turn disclosure button", () => {
     const setExpandedOverride = vi.fn();
     render(

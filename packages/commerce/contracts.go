@@ -16,6 +16,15 @@ func (f RequestAuthorizerFunc) Authorize(request *http.Request) error {
 	return f(request)
 }
 
+type MembershipAccessState string
+
+const (
+	MembershipAccessFree     MembershipAccessState = "free"
+	MembershipAccessActive   MembershipAccessState = "active"
+	MembershipAccessInactive MembershipAccessState = "inactive"
+	MembershipAccessUnknown  MembershipAccessState = "unknown"
+)
+
 type MembershipSummary struct {
 	TierKey           string
 	DisplayName       string
@@ -49,6 +58,7 @@ type RegistrationCreditsReward struct {
 
 type ProductSummary struct {
 	Membership                *MembershipSummary
+	MembershipAccess          MembershipAccessState
 	Credits                   *CreditsSummary
 	RegistrationCreditsReward *RegistrationCreditsReward
 	PartialError              *ProductSummaryPartialError

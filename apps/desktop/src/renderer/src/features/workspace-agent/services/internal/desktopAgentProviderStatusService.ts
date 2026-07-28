@@ -20,7 +20,7 @@ import {
 import { translate } from "../../../../i18n/appRuntime.ts";
 import { getActiveLocale } from "../../../../i18n/runtime.ts";
 import { resolveDesktopErrorMessage } from "../../../../lib/desktopErrors.ts";
-import { AgentAnalyticsErrorCode } from "../../../analytics/reporters/agent-error-fields.ts";
+import { AgentAnalyticsErrorCode } from "../../agentAnalyticsError.ts";
 import { applyDesktopAgentProviderRuntimeProbeFallbacks } from "./desktopAgentProviderRuntimeProbeFallback.ts";
 import {
   DesktopAgentProviderLoginLifecycle,

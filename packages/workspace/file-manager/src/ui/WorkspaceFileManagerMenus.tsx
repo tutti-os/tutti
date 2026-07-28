@@ -1,3 +1,4 @@
+import { useComposedInputValue } from "@tutti-os/ui-react-hooks";
 import {
   Button,
   ConfirmationDialog,
@@ -33,6 +34,11 @@ export function WorkspaceFileManagerCreateDialog({
   onConfirm: () => void;
   onNameChange: (name: string) => void;
 }): ReactElement | null {
+  const nameInput = useComposedInputValue({
+    onCommit: onNameChange,
+    value: dialog?.name ?? ""
+  });
+
   if (!dialog) {
     return null;
   }
@@ -51,6 +57,9 @@ export function WorkspaceFileManagerCreateDialog({
           className="grid gap-3"
           onSubmit={(event) => {
             event.preventDefault();
+            if (busy || nameInput.isComposing) {
+              return;
+            }
             onConfirm();
           }}
         >
@@ -68,10 +77,11 @@ export function WorkspaceFileManagerCreateDialog({
                 ? copy.t("createDirectoryPlaceholder")
                 : copy.t("createFilePlaceholder")
             }
-            value={dialog.name}
-            onChange={(event) => {
-              onNameChange(event.currentTarget.value);
-            }}
+            value={nameInput.value}
+            onBlur={nameInput.onBlur}
+            onChange={nameInput.onChange}
+            onCompositionEnd={nameInput.onCompositionEnd}
+            onCompositionStart={nameInput.onCompositionStart}
           />
           {dialog.errorMessage ? (
             <p className="text-[13px] text-[var(--state-danger)]">

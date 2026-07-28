@@ -13,8 +13,10 @@ import type { AgentAskUserQuestionVM } from "./contracts/agentAskUserQuestionIte
  * this returns the answer-less base.
  */
 export function normalizeAskUserQuestions(
-  rawQuestions: unknown
+  rawQuestions: unknown,
+  options: { missingText?: string } = {}
 ): AgentAskUserQuestionVM[] {
+  const missingText = options.missingText ?? null;
   return arrayValue(rawQuestions).flatMap((value, index) => {
     const question = objectValue(value);
     if (!question) {
@@ -23,10 +25,14 @@ export function normalizeAskUserQuestions(
     return [
       {
         id: stringValue(question.id) ?? `question-${index + 1}`,
-        header: stringValue(question.header) ?? `Question ${index + 1}`,
+        header:
+          stringValue(question.header) ??
+          missingText ??
+          `Question ${index + 1}`,
         question:
           stringValue(question.question) ??
           stringValue(question.header) ??
+          missingText ??
           `Question ${index + 1}`,
         options: arrayValue(question.options).flatMap((optionValue) => {
           const option = objectValue(optionValue);

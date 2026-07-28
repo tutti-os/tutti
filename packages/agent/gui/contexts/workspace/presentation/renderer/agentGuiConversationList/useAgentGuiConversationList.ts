@@ -25,11 +25,8 @@ import {
   resolveAgentGUIConversationTitle,
   resolveAgentGUIProviderIdentity
 } from "../../../../../shared/agentConversationTitleProjection.ts";
-import {
-  createAgentGUIConversationRailTitlePromptSelector,
-  type AgentGUIConversationRailTitlePromptsBySessionId
-} from "../../../../../shared/agentConversationRailTitlePromptSelector.ts";
-import { resolveWorkspaceAgentSessionSortTimeUnixMs } from "../../../../../shared/workspaceAgentSessionSortTime.ts";
+import { createAgentGUIConversationRailTitlePromptSelector } from "../../../../../shared/agentConversationRailTitlePromptSelector.ts";
+import { projectCanonicalAgentGUIConversationSummaries } from "../../../../../shared/agentGUIConversationSummaryProjection.ts";
 
 export interface AgentGUIConversationListQuery {
   conversationFilter?: AgentGUIConversationFilter | null;
@@ -40,59 +37,6 @@ export interface AgentGUIConversationListQuery {
 }
 
 const EMPTY_AGENT_GUI_AGENT_TARGETS: readonly AgentGUIAgentTarget[] = [];
-
-export function projectCanonicalAgentGUIConversationSummaries(
-  sessions: ReturnType<typeof selectWorkspaceAgentConsumerSessions>,
-  firstUserDisplayPromptsBySessionId: AgentGUIConversationRailTitlePromptsBySessionId = {},
-  rootSessionIdsAwaitingUserAction?: ReadonlySet<string>
-): AgentGUIConversationSummary[] {
-  return sessions.map((item): AgentGUIConversationSummary => {
-    const provider = resolveAgentGUIProviderIdentity({
-      sessionProvider: item.session.provider
-    });
-    const { title: canonicalTitle } = resolveAgentGUIConversationTitle(
-      item.session.title
-    );
-    const firstUserDisplayPrompt =
-      firstUserDisplayPromptsBySessionId[item.session.agentSessionId];
-    const titleDisplayPrompt = resolveAgentGUIConversationTitleDisplayPrompt({
-      firstUserDisplayPrompt,
-      title: canonicalTitle
-    });
-    const { title, titleFallback } = resolveAgentGUIConversationTitle(
-      resolveAgentGUIConversationBrowserFreeTitle({
-        firstUserDisplayPrompt,
-        title: canonicalTitle
-      })
-    );
-    const canonicalUpdatedAtUnixMs =
-      item.session.updatedAtUnixMs ?? item.session.createdAtUnixMs ?? 0;
-    const titleLeadingMentionKind =
-      resolveAgentGUIConversationTitleLeadingMentionKind(titleDisplayPrompt);
-    return {
-      agentTargetId: item.session.agentTargetId ?? null,
-      cwd: item.session.cwd,
-      id: item.session.agentSessionId,
-      needsUserAction:
-        rootSessionIdsAwaitingUserAction?.has(item.session.agentSessionId) ??
-        item.pendingInteractions.length > 0,
-      pinnedAtUnixMs: item.session.pinnedAtUnixMs ?? null,
-      provider,
-      railSectionKey: item.session.railSectionKey,
-      resumable: item.session.resumable,
-      sortTimeUnixMs: resolveWorkspaceAgentSessionSortTimeUnixMs({
-        createdAtUnixMs: item.session.createdAtUnixMs,
-        latestTurn: item.latestTurn
-      }),
-      status: item.displayStatus === "idle" ? "ready" : item.displayStatus,
-      title,
-      titleLeadingMentionKind,
-      titleFallback,
-      updatedAtUnixMs: canonicalUpdatedAtUnixMs,
-      userId: item.session.userId?.trim() ?? ""
-    };
-  });
-}
 
 export function useAgentGuiConversationList(
   engine: AgentSessionEngine,

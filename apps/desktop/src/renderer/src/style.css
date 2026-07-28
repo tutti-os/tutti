@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @source "../../../../../packages/agent/gui";
+@source "../../../../../packages/analytics/debug/src";
 @source "../../../../../packages/browser/workbench-node/src";
 @source "../../../../../packages/ui/rich-text/src";
 @source "../../../../../packages/ui/system/src";
@@ -11,6 +12,7 @@
 @source "../../../../../packages/workspace/issue-manager/src";
 @source "../../../../../packages/workspace/terminal/src";
 @source "../../../../../packages/workspace/user-project/src";
+@source "../../../../../packages/commerce/web/src";
 @import "@tutti-os/ui-system/styles.css";
 @import "@tutti-os/workbench-surface/styles.css";
 @import "@tutti-os/workbench-launchpad/styles.css";

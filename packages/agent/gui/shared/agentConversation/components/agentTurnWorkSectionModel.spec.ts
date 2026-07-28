@@ -146,7 +146,8 @@ describe("agentTurnWorkSectionModel", () => {
     expect(model.sections.map((section) => section.kind)).toEqual([
       "work",
       "visible",
-      "work"
+      "work",
+      "visible"
     ]);
     expect(model.collapseEligible).toBe(true);
 
@@ -173,6 +174,9 @@ describe("agentTurnWorkSectionModel", () => {
         "epilogue"
       ]);
     }
+    expect(model.sections[3]?.rows.map(({ row }) => row.id)).toEqual([
+      "summary"
+    ]);
   });
 
   it("uses an explicit final-text marker instead of copy availability", () => {

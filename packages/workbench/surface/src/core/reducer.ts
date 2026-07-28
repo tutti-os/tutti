@@ -113,16 +113,31 @@ export function reduceWorkbenchState<TData>(
       return openedState;
     }
 
-    case "closeNode":
+    case "closeNode": {
       if (!state.nodes.some((node) => node.id === action.nodeID)) {
         return state;
       }
-      return {
+      const closedState: WorkbenchState<TData> = {
         ...state,
         nodes: state.nodes.filter((node) => node.id !== action.nodeID),
         nodeStack: removeFromWorkbenchStack(state.nodeStack, action.nodeID),
         lockedLayout: pruneLockedLayout(state.lockedLayout, action.nodeID)
       };
+      // Closing a locked window re-fits the remaining locked windows to the
+      // preset for the new window count, so no empty slot is left behind.
+      if (
+        closedState.lockedLayout !== null &&
+        closedState.lockedLayout !== state.lockedLayout
+      ) {
+        return applyLayoutPresetToNodes(
+          closedState,
+          closedState.lockedLayout.nodeIDs,
+          closedState.lockedLayout.preset,
+          { lock: true, reorderStack: false }
+        );
+      }
+      return closedState;
+    }
 
     case "focusNode": {
       const targetNode = state.nodes.find((node) => node.id === action.nodeID);
@@ -190,7 +205,12 @@ export function reduceWorkbenchState<TData>(
         return {
           ...node,
           displayMode: "floating",
-          frame: node.restoreFrame ?? node.frame,
+          frame: clampWorkbenchRect(
+            node.restoreFrame ?? node.frame,
+            state.surfaceSize,
+            state.layoutConstraints,
+            node.sizeConstraints
+          ),
           restoreFrame: null
         };
       });

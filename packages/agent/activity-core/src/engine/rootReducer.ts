@@ -302,7 +302,9 @@ export function rootEngineReducer(
     intent,
     {
       deletedSessionIds: state.sessionLifecycle.deletedSessionIds,
-      sessionsById: state.sessionLifecycle.sessionsById
+      interactionsById: state.sessionLifecycle.interactionsById,
+      sessionsById: state.sessionLifecycle.sessionsById,
+      turnsById: state.sessionLifecycle.turnsById
     }
   );
   const sessionLifecycle = sessionLifecycleReducer(
@@ -412,6 +414,10 @@ export function rootEngineReducer(
         composerOptions: composerOptions.state,
         tuttiModeActivation: tuttiModeActivation.state
       };
+  const followUpIntents = [
+    ...(sessionReconcile.followUpIntents ?? []),
+    ...(sessionMutations.followUpIntents ?? [])
+  ];
   return {
     commands: [
       ...attentionReadState.commands,
@@ -426,9 +432,7 @@ export function rootEngineReducer(
       ...composerOptions.commands,
       ...tuttiModeActivation.commands
     ],
-    ...(sessionMutations.followUpIntents
-      ? { followUpIntents: sessionMutations.followUpIntents }
-      : {}),
+    ...(followUpIntents.length > 0 ? { followUpIntents } : {}),
     state: nextState
   };
 }

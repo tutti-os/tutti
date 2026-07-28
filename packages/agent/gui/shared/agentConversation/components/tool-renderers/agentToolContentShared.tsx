@@ -1,10 +1,4 @@
-import {
-  createContext,
-  useContext,
-  useState,
-  type JSX,
-  type ReactNode
-} from "react";
+import { useState, type JSX, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { translate } from "../../../../i18n/index";
 import { AgentMessageMarkdown } from "../../../AgentMessageMarkdown";
@@ -23,24 +17,6 @@ import { fileRange } from "./AgentReadContent";
 export interface AgentToolRendererProps {
   call: AgentToolCallVM;
   onLinkClick?: (href: string) => void;
-  previewMode?: boolean;
-}
-
-const AgentToolPreviewModeContext = createContext(false);
-
-export function AgentToolPreviewModeProvider({
-  children,
-  previewMode
-}: {
-  children: ReactNode;
-  previewMode: boolean;
-}): JSX.Element {
-  "use memo";
-  return (
-    <AgentToolPreviewModeContext.Provider value={previewMode}>
-      {children}
-    </AgentToolPreviewModeContext.Provider>
-  );
 }
 
 export interface TaskStepView {
@@ -76,17 +52,13 @@ export function ToolSection({
 export function ToolMarkdownBlock({
   content,
   onLinkClick,
-  collapsible = false,
-  previewMode
+  collapsible = false
 }: {
   content: string;
   onLinkClick?: (href: string) => void;
   collapsible?: boolean;
-  previewMode?: boolean;
 }): JSX.Element | null {
   "use memo";
-  const contextPreviewMode = useContext(AgentToolPreviewModeContext);
-  const effectivePreviewMode = previewMode ?? contextPreviewMode;
   const normalized = content.trim();
   if (!normalized) {
     return null;
@@ -97,7 +69,6 @@ export function ToolMarkdownBlock({
       onLinkClick={onLinkClick}
       collapsible={collapsible}
       enableImageZoom
-      previewMode={effectivePreviewMode}
       className="workspace-agents-status-panel__detail-tool-markdown [&_ol]:text-[var(--text-secondary)] [&_ul]:text-[var(--text-secondary)]"
     />
   );

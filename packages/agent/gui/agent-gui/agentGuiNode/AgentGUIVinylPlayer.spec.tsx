@@ -1,8 +1,23 @@
 import { render } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentGUIVinylPlayer } from "./AgentGUIVinylPlayer";
 
 describe("AgentGUIVinylPlayer", () => {
+  beforeEach(() => {
+    vi.spyOn(window, "Image").mockImplementation(function MockImage() {
+      const image = document.createElement("img");
+      Object.defineProperties(image, {
+        complete: { configurable: true, value: true },
+        naturalWidth: { configurable: true, value: 1 }
+      });
+      return image;
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("renders the selected shared agent owner badge", () => {
     const { container } = render(
       <AgentGUIVinylPlayer

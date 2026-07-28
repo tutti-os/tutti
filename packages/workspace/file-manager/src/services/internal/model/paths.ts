@@ -138,6 +138,17 @@ export function buildWorkspaceFileBreadcrumbs(
 ): Array<{ label: string; path: string }> {
   const root = normalizeWorkspaceFilePath(rootPath);
   const current = normalizeWorkspaceFilePath(path, root);
+
+  // Package placeholder root is "/". Hosts like TSH keep logical paths under
+  // "/workspace" before listing.root arrives. Splitting "/workspace" under
+  // "/" yields a duplicate crumb: "workspace" / "workspace".
+  if (
+    root === workspaceFileManagerLogicalRoot &&
+    current !== workspaceFileManagerLogicalRoot
+  ) {
+    return [{ label: rootLabel, path: current }];
+  }
+
   const relative =
     current === root ? "" : current.slice(root.length).replace(/^\//, "");
   const breadcrumbs: Array<{ label: string; path: string }> = [

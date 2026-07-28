@@ -179,6 +179,14 @@ func (s *Store) UpdateSessionSettings(
 			_ = tx.Rollback()
 		}
 	}()
+	if err := requireSessionForkSourceWritableTx(
+		ctx,
+		tx,
+		workspaceID,
+		agentSessionID,
+	); err != nil {
+		return Session{}, false, err
+	}
 	result, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_sessions
 SET model = ?,

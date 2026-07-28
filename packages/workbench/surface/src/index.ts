@@ -13,12 +13,12 @@ export type {
 } from "./react/dockPreviewCache.ts";
 export type {
   WorkbenchMissionControlAdapter,
-  WorkbenchMissionControlMode,
   WorkbenchMissionControlSnapshot
 } from "./mission-control/types.ts";
 export {
   createWorkbenchNode,
   createWorkbenchNodeFromSnapshot,
+  createWorkbenchSnapshotLayoutBasis,
   createWorkbenchSnapshotFromState,
   createWorkbenchStateFromSnapshot,
   type CreateWorkbenchNodeInput,
@@ -67,7 +67,6 @@ export type {
   WorkbenchHostLaunchRequest,
   WorkbenchHostLaunchResult,
   WorkbenchHostMissionControlProps,
-  WorkbenchHostMissionControlMode,
   WorkbenchHostMultiInstanceStrategy,
   WorkbenchHostNodeCloseDecision,
   WorkbenchHostNodeCloseRequest,
@@ -94,13 +93,24 @@ export {
   type WorkbenchSurfaceWallpaperFit,
   type WorkbenchWindowManagementConfig
 } from "./react/WorkbenchSurface.tsx";
+export type {
+  WorkbenchNodePreviewImageCapture,
+  WorkbenchNodePreviewImages,
+  WorkbenchNodePreviewImagesCapture
+} from "./react/nodePreviewCapture.ts";
 export {
   WorkbenchDockComponentPreviewFrame,
   type WorkbenchDockComponentPreviewFrameProps
 } from "./react/WorkbenchDockComponentPreviewFrame.tsx";
 export { useWorkbenchSelector } from "./react/hooks/useWorkbenchSelector.ts";
+export { useWorkbenchVisualOcclusionPresentation } from "./react/WorkbenchWindowFrame.tsx";
 export { getWorkbenchLayoutFrame } from "./core/geometry.ts";
 export { selectFocusedWorkbenchNode } from "./core/selectors.ts";
+export {
+  selectVisuallyExposedWorkbenchNodeIDs,
+  selectWorkbenchNodeIsVisuallyExposed,
+  type WorkbenchVisualOcclusionPresentation
+} from "./core/visualOcclusion.ts";
 export {
   canCreateNewWindow,
   canCreateNewWindowInDockPopup,
@@ -146,9 +156,11 @@ export type {
   WorkbenchResolveFullscreenHeaderMode,
   WorkbenchResolveWindowChromeMode,
   WorkbenchResolveWindowChromeModeContext,
+  WorkbenchResolveWindowHeaderPresentation,
   WorkbenchSurfacePresentation,
   WorkbenchFullscreenHeaderMode,
   WorkbenchWindowActionContext,
   WorkbenchWindowChromeMode,
-  WorkbenchWindowHeaderContext
+  WorkbenchWindowHeaderContext,
+  WorkbenchWindowHeaderPresentation
 } from "./react/types.ts";

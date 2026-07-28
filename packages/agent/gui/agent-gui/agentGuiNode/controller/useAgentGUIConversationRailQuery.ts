@@ -15,11 +15,6 @@ export interface AgentGUIConversationRailInput {
   conversationFilter: AgentGUINodeViewModel["rail"]["conversationFilter"];
   conversationQuery: string;
   nodeId?: string | null;
-  previewMode: boolean;
-  /**
-   * Lets the host subtree observe this controller's interaction lock (e.g.
-   * so header-dispatched session actions honor the same lock as the rail).
-   */
   registerInteractionLockProbe?: (probe: (() => boolean) | null) => void;
   sectionAgentTargetFallbackId: string | null;
   userProjects: AgentGUINodeViewModel["rail"]["userProjects"];
@@ -31,7 +26,6 @@ export function useAgentGUIConversationRailQuery({
   conversationFilter,
   conversationQuery,
   nodeId,
-  previewMode,
   registerInteractionLockProbe,
   sectionAgentTargetFallbackId,
   userProjects,
@@ -84,7 +78,6 @@ export function useAgentGUIConversationRailQuery({
   useEffect(() => {
     controller.configure({
       conversationFilter,
-      previewMode,
       sectionAgentTargetFallbackId,
       userProjects
     });
@@ -93,7 +86,6 @@ export function useAgentGUIConversationRailQuery({
     controller,
     conversationFilter,
     conversationQuery,
-    previewMode,
     sectionAgentTargetFallbackId,
     userProjects
   ]);
@@ -107,13 +99,11 @@ export function useAgentGUIConversationRailQuery({
     () =>
       resolveConversationRailQueryScope(workspaceId, {
         conversationFilter,
-        previewMode,
         sectionAgentTargetFallbackId,
         userProjects
       }).scopeKey,
     [
       conversationFilter,
-      previewMode,
       sectionAgentTargetFallbackId,
       userProjects,
       workspaceId
@@ -122,7 +112,7 @@ export function useAgentGUIConversationRailQuery({
   return useMemo(
     () => ({
       ...querySnapshot,
-      batchDeletionAvailable: !previewMode && batchDeletionCapability.available,
+      batchDeletionAvailable: batchDeletionCapability.available,
       isInteractionLocked: controller.isInteractionLocked,
       loadMoreSectionConversations: controller.loadMoreSectionConversations,
       railSearch: {
@@ -138,7 +128,6 @@ export function useAgentGUIConversationRailQuery({
     [
       batchDeletionCapability.available,
       controller,
-      previewMode,
       querySnapshot,
       requestedRailScopeKey
     ]

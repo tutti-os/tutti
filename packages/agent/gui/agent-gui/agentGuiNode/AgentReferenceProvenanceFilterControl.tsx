@@ -21,13 +21,11 @@ export function AgentReferenceProvenanceFilterControl({
         filteredSources: translate(
           "agentHost.agentGui.provenanceFilterFilteredSources"
         ),
-        members: translate("agentHost.agentGui.provenanceFilterMembers"),
-        reset: translate("agentHost.agentGui.provenanceFilterReset")
+        members: translate("agentHost.agentGui.provenanceFilterMembers")
       }}
       memberOptions={filter.snapshot.catalog.memberOptions}
       popoverElevation={popoverElevation}
       value={filter.snapshot.value}
-      onReset={filter.controller.reset}
       onToggle={filter.controller.toggle}
       onToggleAll={filter.controller.toggleAll}
     />

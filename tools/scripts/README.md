@@ -11,7 +11,10 @@ Current examples include:
 
 - `dev-gui.sh` for checking local prerequisites, preparing workspace
   dependencies, downloading and building the development `tuttid` binary, and
-  launching the desktop GUI with `TUTTID_BIN`
+  launching the desktop GUI with `TUTTID_BIN`; the renderer dev server warms
+  its reachable module graph before Electron opens
+- `renderer-dev-warmup.mjs` for moving cold Vite and React Compiler transforms
+  ahead of the Electron launch during desktop development
 - `setup-dev.mjs` for checking local developer prerequisites such as pinned lint tooling
 - `setup-dev.mjs --install=golangci-lint` for installing the pinned Go lint tool
 - `generate-defaults.mjs` for generating shared Go and desktop TypeScript defaults from `config/tutti.defaults.json`

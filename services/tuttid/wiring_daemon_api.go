@@ -47,6 +47,7 @@ import (
 	managedcredentialsservice "github.com/tutti-os/tutti/services/tuttid/service/managedcredentials"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 	modelbindingservice "github.com/tutti-os/tutti/services/tuttid/service/modelbinding"
+	modelgatewayservice "github.com/tutti-os/tutti/services/tuttid/service/modelgateway"
 	modelplanservice "github.com/tutti-os/tutti/services/tuttid/service/modelplan"
 	modelpolicyservice "github.com/tutti-os/tutti/services/tuttid/service/modelpolicy"
 	preferencesservice "github.com/tutti-os/tutti/services/tuttid/service/preferences"
@@ -60,14 +61,29 @@ import (
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
-func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analyticsReporter reporterservice.Reporter, browserService *browsersvc.Service, computerService *computersvc.Service) (tuttiapi.DaemonAPI, *workspaceservice.AppCenterService, *agentdaemon.Runtime, *agentservice.ProviderAuthWatcher, error) {
+type workspaceAgentTargetResolverSetter interface {
+	SetWorkspaceAgentTargetResolver(agentservice.WorkspaceAgentTargetResolver)
+}
+
+func configureWorkspaceAgentResolution(
+	agentSessions *agentservice.Service,
+	activityProjection workspaceAgentTargetResolverSetter,
+	workspaceAgents *workspaceagentservice.Service,
+	workspaceAgentTargets agentservice.WorkspaceAgentTargetResolver,
+) {
+	agentSessions.WorkspaceAgentResolver = workspaceAgents
+	if workspaceAgentTargets != nil {
+		activityProjection.SetWorkspaceAgentTargetResolver(workspaceAgentTargets)
+	}
+}
+
+func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analyticsReporter reporterservice.Reporter, browserService *browsersvc.Service, computerService *computersvc.Service, modelGateway *modelgatewayservice.Gateway) (tuttiapi.DaemonAPI, *workspaceservice.AppCenterService, *agentdaemon.Runtime, *agentservice.ProviderAuthWatcher, error) {
 	workspaceStore, _ := store.(workspacedata.WorkbenchStore)
 	issueStore, _ := store.(workspaceissues.Store)
 	preferencesStore, _ := store.(workspacedata.PreferencesStore)
 	agentTargetStore, _ := store.(workspacedata.AgentTargetStore)
 	managedCredentialsStore, _ := store.(workspacedata.ManagedCredentialsStore)
 	modelPlansStore, _ := store.(workspacedata.ModelPlansStore)
-	modelPlanFirstUseStore, _ := store.(workspacedata.ModelPlanFirstUseStore)
 	agentActivityRepo, _ := store.(workspacedata.AgentActivityStore)
 	agentQuickPromptStore, _ := store.(workspacedata.AgentQuickPromptStore)
 	userProjectStore, _ := store.(workspacedata.UserProjectStore)
@@ -132,10 +148,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		Manager: agentExtensionManager, Workspaces: store, Targets: agentTargetStore,
 	}
 	agentTargets.AvailabilityResolver = agentExtensionManager
-	for _, reconcileErr := range agentExtensionManager.Reconcile(ctx) {
-		payload, _ := json.Marshal(map[string]string{"error": reconcileErr.Error()})
-		slog.Warn("agent_extension.reconcile_failed", "payload", string(payload))
-	}
+	refreshAgentExtensionsInBackground := restoreAgentExtensionsForStartup(ctx, agentExtensionManager)
 	managedCredentials := &managedcredentialsservice.Service{
 		Store: managedCredentialsStore,
 	}
@@ -174,8 +187,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		Publisher: eventstreamservice.AgentAutomationRulesPublisher{Service: events},
 	}
 	modelPlans := &modelplanservice.Service{
-		Store:         modelPlansStore,
-		FirstUseStore: modelPlanFirstUseStore,
+		Store: modelPlansStore,
 		// Plan deletion stays blocked while any consumer domain still points at
 		// the plan: agent model bindings, model usage policies, and workspace agents.
 		References: modelplanservice.CompositeReferenceResolver{modelBindings, modelPolicies, workspaceAgents},
@@ -220,6 +232,14 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		UpdateCache:          agentstatusservice.NewProviderUpdateCache(),
 	}
 	accountService := accountservice.NewService("")
+	mobileRemoteService, err := buildMobileRemoteService(
+		agentExtensionStateDir,
+		accountService,
+		events,
+	)
+	if err != nil {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, err
+	}
 	agentProcessTransport := agentdaemon.NewLocalProcessTransport()
 	agentHostMetadata := agentdaemon.HostMetadata{
 		ClientInfo:       agentdaemon.ClientInfo{Name: "tutti-desktop", Title: "Tutti", Version: "0.1.0"},
@@ -270,7 +290,11 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		Publisher: eventstreamservice.AgentQuickPromptPublisher{Service: events},
 	}
 	agentRuntimeController := newAgentRuntimeAdapter(agentRuntime.Controller())
+	agentRuntime.Controller().SetStreamEventObserver(agentRuntimeActivityEventBridge{
+		publisher: eventstreamservice.AgentActivityPublisher{Service: events},
+	})
 	agentSessionService := agentservice.NewService(agentRuntimeController)
+	agentSessionService.ModelGateway = modelGateway
 	if browserService != nil {
 		agentSessionService.AgentSessionResourceReleaser = browserService
 	}
@@ -280,9 +304,15 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentModelCatalog := agentservice.NewAgentModelCatalog()
 	agentModelCatalog.ModelCapabilities = agentModelCapabilities
 	agentSessionService.ModelCatalog = agentModelCatalog
-	agentSessionService.ConfigureModelPlanBinding(modelBindingsStore, modelPlansStore, modelPlans)
+	agentSessionService.ConfigureModelPlanBinding(modelBindingsStore, modelPlansStore)
 	agentSessionService.ModelCapabilities = agentModelCapabilities
 	agentSessionService.AgentTargetStore = agentTargetStore
+	configureWorkspaceAgentResolution(
+		agentSessionService,
+		agentActivityProjection,
+		workspaceAgents,
+		workspaceAgentsStore,
+	)
 	agentSessionService.AgentComposerDefaultsReader = preferences
 	preferences.AgentComposerDefaultsValidator = agentSessionService
 	agentSessionService.ExtensionComposerProfiles = agentExtensionComposerProfileResolver{
@@ -299,12 +329,10 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentSessionService.MessageReader = agentActivityProjection
 	agentSessionService.ExternalImportStore = agentActivityRepo
 	agentSessionService.TurnStore = agentActivityRepo
-	if err := agentSessionService.ReconcilePendingModelPlanFirstUses(ctx); err != nil {
-		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("reconcile model plan first use: %w", err)
-	}
 	agentSessionService.TurnSummaryReader = agentActivityRepo
 	agentSessionService.RuntimeOperationStore = agentActivityRepo
 	agentSessionService.GoalStateStore = agentActivityRepo
+	agentSessionService.GoalGenerationFenceStore = agentActivityRepo
 	agentSessionService.CommitObserver = agentActivityProjection
 	agentSessionService.SubmitClaimStore = agentActivityRepo
 	agentSessionService.RuntimeOperationEventPublisher = agentActivityProjection
@@ -368,9 +396,14 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		Observer:             agentActivityProjection,
 		InitializationPolicy: agentActivityProjection,
 	}
-	agentHost := agentservice.NewApplicationHostWithPorts(agentSessionService, canonicalHostStore, &agenthostadapter.RuntimeController{
-		Backend: agentRuntime.Controller(),
-	})
+	agentHost := agentservice.NewApplicationHostWithPorts(
+		agentSessionService,
+		canonicalHostStore,
+		canonicalStoreProvider.AgentCanonicalStore(),
+		&agenthostadapter.RuntimeController{
+			Backend: agentRuntime.Controller(),
+		},
+	)
 	agentSessionService.SetApplicationHost(agentHost)
 	// Host fixes startup order: durable runtime operations first, then goal
 	// operations and reconcile inbox work, and only then stale turns.
@@ -525,7 +558,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		Publisher:             eventstreamservice.WorkspaceAppFactoryPublisher{Service: events},
 	}
 	agentActivityProjection.SetSessionMessageObserver(appFactoryService)
-	agentActivityProjection.SetSessionStateObserver(agentservice.SessionStateObservers{appFactoryService, agentSessionService, modelPolicies, automationRules, issueExecutionCoordinator})
+	agentActivityProjection.SetSessionStateObserver(agentservice.SessionStateObservers{appFactoryService, modelPolicies, automationRules, issueExecutionCoordinator})
 	// Canonical root-turn settlements (root-provider aggregation, child-drain
 	// reconcile, cancel) fan out at-least-once to this dedicated opt-in list
 	// only. Automation rules and the Issue-run observer are the consumers
@@ -579,13 +612,14 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentRuntimePreparer.CommandCatalog = runtimePrepCommandCatalog{Catalog: cliRegistry}
 
 	terminalService := &workspaceservice.TerminalService{}
-	accountService.OnLoginCompleted = func(ctx context.Context) {
-		tuttiagentservice.BootstrapTuttiAgentUserAuth(ctx)
+	tuttiAgentReadiness := tuttiagentservice.NewReadinessCoordinator(&agentStatusService, agentTargets)
+	accountService.OnLoginCompleted = func(context.Context) {
+		tuttiAgentReadiness.Trigger("account_login_completed")
 	}
 	accountService.OnLogoutCompleted = func(ctx context.Context) {
 		tuttiagentservice.LogoutTuttiAgentUserAuth(ctx)
 	}
-	go tuttiagentservice.BootstrapTuttiAgentUserAuth(context.Background())
+	tuttiAgentReadiness.Trigger("daemon_started")
 
 	// External credential switchers (for example cc-switch) rewrite provider
 	// auth/config files without notifying tuttid. Watch those files so cached
@@ -614,8 +648,13 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	}
 	providerAuthWatcher.Start()
 
+	if refreshAgentExtensionsInBackground {
+		startAgentExtensionBackgroundRefresh(agentExtensionManager)
+	}
+
 	return tuttiapi.DaemonAPI{
 		AccountService:            accountService,
+		MobileRemoteService:       mobileRemoteService,
 		UserProjectService:        userProjectService,
 		AgentQuickPromptService:   agentQuickPromptService,
 		AgentTargetService:        agentTargets,
@@ -645,6 +684,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		},
 		AgentSessionService:        agentSessionService,
 		AgentStatusService:         &agentStatusService,
+		TuttiAgentReadiness:        tuttiAgentReadiness,
 		TerminalService:            terminalService,
 		IssueService:               issueService,
 		IssueExecutionService:      issueExecutionCoordinator,

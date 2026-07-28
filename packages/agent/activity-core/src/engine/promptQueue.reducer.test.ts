@@ -939,6 +939,7 @@ function messagesReceived(clientSubmitId: string, turnId: string | null) {
         occurredAtUnixMs: 4,
         payload: { clientSubmitId, text: clientSubmitId },
         role: "user",
+        sequence: 1,
         turnId,
         version: 1
       }

@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import type { AgentGUIProviderReadinessGate } from "../../../types";
 import { isAgentGUIAgentTargetComingSoon } from "../../../agentTargets";
 import { UnavailableChatIcon } from "../../../app/renderer/components/icons/UnavailableChatIcon";
 import { useProjectedAgentConversation } from "../../../shared/agentConversation/projection/useProjectedAgentConversation";
@@ -13,10 +12,7 @@ import type {
 import type { AgentGUIViewLabels } from "../AgentGUINodeView";
 import {
   isContextCanceledMessage,
-  isDifferentKnownConversationOwner,
   isAgentGUITransportNoticeVisible,
-  resolveActiveConversationBusyStatus,
-  resolveConversationDetailStatus,
   resolveAgentGUIHomeNoticeChrome,
   resolveAgentGUIStopControl,
   resolveSlashStatus,
@@ -84,9 +80,7 @@ export function useAgentGUIDetailModel(input: Input) {
     viewModel.rail.comingSoonProviders
   );
   const emptyProviderReadinessGate = !hasActiveConversation
-    ? selectedAgentTargetComingSoon
-      ? ({ status: "coming_soon" } satisfies AgentGUIProviderReadinessGate)
-      : viewModel.readiness.providerReadinessGate
+    ? viewModel.readiness.providerReadinessGate
     : null;
   const activePrompt =
     viewModel.interaction.pendingInteractivePrompt ??
@@ -220,53 +214,20 @@ export function useAgentGUIDetailModel(input: Input) {
       : activePrompt;
   const showUnavailableChatEmpty =
     hasActiveConversation && viewModel.detail.availability === "not_found";
-  const activeDetailStatus = resolveConversationDetailStatus(
-    viewModel.detail.conversationDetail
-  );
-  const derivedBusyStatus = resolveActiveConversationBusyStatus({
-    conversationStatus: viewModel.rail.activeConversation?.status,
-    detailStatus: activeDetailStatus,
-    conversation: targetConversation
-  });
-  const activeConversationTurnBusy =
-    viewModel.composer.isSubmitting ||
-    viewModel.readiness.activeConversationBusy ||
-    derivedBusyStatus !== null;
+  const activeConversationTurnBusy = viewModel.composer.gate.conversationBusy;
   const isComposerSending =
-    viewModel.composer.isSubmitting ||
     activeConversationTurnBusy ||
-    (!hasActiveConversation && viewModel.composer.isCreatingConversation);
-  const isCollaboratorConversation = isDifferentKnownConversationOwner({
-    conversationUserId: viewModel.rail.activeConversation?.userId,
-    currentUserId: viewModel.shell.currentUserId
-  });
-  const canQueueWhileBusy =
-    viewModel.composer.canQueueWhileBusy && !isCollaboratorConversation;
+    (!hasActiveConversation &&
+      viewModel.composer.gate.submission.status === "blocked" &&
+      viewModel.composer.gate.submission.reason === "creating_conversation");
+  const isCollaboratorConversation =
+    viewModel.composer.gate.editor.status === "blocked" &&
+    viewModel.composer.gate.editor.reason === "collaborator_read_only";
   const composerDisabledReason = isCollaboratorConversation
     ? labels.collaboratorSessionReadOnlyPlaceholder
     : null;
-  const hasNonRetryableRecoveryFailure =
-    (sessionChrome.recovery?.kind === "failed" &&
-      sessionChrome.recovery.canRetry === false) ||
-    sessionChrome.recovery?.kind === "resume-unavailable";
-  const runtimeBlocked =
-    viewModel.readiness.sessionRuntimeBlocked ||
-    viewModel.readiness.targetConnectionBlocked;
-  const submitDisabled =
-    hasNonRetryableRecoveryFailure ||
-    isCollaboratorConversation ||
-    runtimeBlocked ||
-    (!viewModel.composer.canSubmit && !canQueueWhileBusy);
-  const composerDisabled =
-    isCollaboratorConversation ||
-    (!runtimeBlocked &&
-      (hasNonRetryableRecoveryFailure ||
-        (!canQueueWhileBusy &&
-          (viewModel.interaction.pendingApproval !== null ||
-            viewModel.interaction.pendingInteractivePrompt !== null ||
-            viewModel.composer.isSubmitting ||
-            viewModel.composer.isInterrupting ||
-            viewModel.composer.isCreatingConversation))));
+  const runtimeCommandsBlocked =
+    viewModel.composer.gate.runtime.status === "blocked";
   const stopControl = resolveAgentGUIStopControl({
     hasPendingApproval: viewModel.interaction.pendingApproval !== null,
     hasPendingInteractivePrompt:
@@ -278,7 +239,7 @@ export function useAgentGUIDetailModel(input: Input) {
     isInterrupting: viewModel.composer.isInterrupting,
     isSubmitting: viewModel.composer.isSubmitting,
     isUnavailable: viewModel.readiness.activeLiveState === "failed",
-    sessionRuntimeBlocked: runtimeBlocked
+    runtimeCommandsBlocked
   });
   const showStopButton = stopControl.visible;
   const stopDisabled = stopControl.disabled;
@@ -466,8 +427,6 @@ export function useAgentGUIDetailModel(input: Input) {
       tuttiBudgetAgentCountCost: labels.tuttiBudgetAgentCountCost,
       tuttiBudgetAgentCountBalance: labels.tuttiBudgetAgentCountBalance,
       tuttiBudgetAgentCountPowerful: labels.tuttiBudgetAgentCountPowerful,
-      tuttiBudgetConfirm: labels.tuttiBudgetConfirm,
-      tuttiBudgetCancel: labels.tuttiBudgetCancel,
       planModeDescription: labels.planModeDescription,
       planModeOnLabel: labels.planModeOnLabel,
       planModeOffLabel: labels.planModeOffLabel,
@@ -537,6 +496,7 @@ export function useAgentGUIDetailModel(input: Input) {
       slashStatusContext: labels.slashStatusContext,
       slashStatusLimits: labels.slashStatusLimits,
       slashStatusAccount: labels.slashStatusAccount,
+      slashStatusProviderAccount: labels.slashStatusProviderAccount,
       slashStatusClose: labels.slashStatusClose,
       slashStatusContextValue: labels.slashStatusContextValue,
       slashStatusContextUnavailable: labels.slashStatusContextUnavailable,
@@ -634,8 +594,6 @@ export function useAgentGUIDetailModel(input: Input) {
       labels.tuttiBudgetAgentCountCost,
       labels.tuttiBudgetAgentCountBalance,
       labels.tuttiBudgetAgentCountPowerful,
-      labels.tuttiBudgetConfirm,
-      labels.tuttiBudgetCancel,
       labels.planModeDescription,
       labels.planModeOffLabel,
       labels.planModeOnLabel,
@@ -742,11 +700,10 @@ export function useAgentGUIDetailModel(input: Input) {
     activePromptRequestId,
     bottomDockLiftedPrompt,
     bottomDockReplacementPrompt,
-    canQueueWhileBusy,
     chromeLabels,
     composerActivePrompt,
-    composerDisabled,
     composerDisabledReason,
+    composerGate: viewModel.composer.gate,
     composerLabels,
     conversation,
     conversationFlowEmpty,
@@ -766,7 +723,6 @@ export function useAgentGUIDetailModel(input: Input) {
     showTimelineSkeleton,
     showUnavailableChatEmpty,
     slashStatus,
-    submitDisabled,
     timelineConversationId,
     timelineInteractionLocked: timelineTransitionPending
   };

@@ -291,6 +291,8 @@ type Session struct {
 	Metadata               SessionMetadata
 	InternalRuntimeContext map[string]any
 	Cwd                    string
+	RailSectionKind        string
+	RailProjectPath        string
 	RailSectionKey         string
 	Title                  string
 	// ActiveTurnID is the protocol v2 turn reference: the id of the turn
@@ -579,14 +581,17 @@ type SessionStateReport struct {
 	// ImportProjectPath is the canonical selected project for a historical
 	// import. The store accepts it only for imported, project-backed sessions.
 	ImportProjectPath string
-	Title             string
-	Status            string
-	CurrentPhase      string
-	LastError         string
-	OccurredAtUnixMS  int64
-	StartedAtUnixMS   int64
-	EndedAtUnixMS     int64
-	CreatedAtUnixMS   int64
+	// RailPlacement is an explicit caller-selected placement for a newly
+	// created session. The first accepted value is immutable.
+	RailPlacement    *RailSection
+	Title            string
+	Status           string
+	CurrentPhase     string
+	LastError        string
+	OccurredAtUnixMS int64
+	StartedAtUnixMS  int64
+	EndedAtUnixMS    int64
+	CreatedAtUnixMS  int64
 }
 
 type StateReportResult struct {
@@ -604,9 +609,10 @@ type SessionMessageReport struct {
 	AgentSessionID string
 	Origin         string
 	Provider       string
-	// HistoricalImport is an internal-only compatibility boundary for
-	// read-only external transcript imports that predate Turn identities. It
-	// must never be populated from runtime/API report payloads.
+	// HistoricalImport is the internal-only write boundary for read-only
+	// external transcripts. Messages with a trustworthy reconstructed TurnID
+	// create settled backfilled Turns; messages without one remain session
+	// scoped. It must never be populated from runtime/API report payloads.
 	HistoricalImport bool
 	Messages         []MessageUpdate
 }

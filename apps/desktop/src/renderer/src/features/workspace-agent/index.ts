@@ -1,5 +1,11 @@
 export { registerWorkspaceAgentServices } from "./services/registerWorkspaceAgentServices";
 export { startDesktopAgentAvailabilitySnapshotAnalytics } from "./desktopAgentAvailabilitySnapshotAnalytics.ts";
+export {
+  AgentAnalyticsErrorCode,
+  agentAnalyticsErrorFields,
+  agentAnalyticsSuccessFields
+} from "./agentAnalyticsError.ts";
+export type { AgentAnalyticsErrorFields } from "./agentAnalyticsError.ts";
 export { IAgentsService } from "./services/agentsService.interface";
 export { IAgentEnvService } from "./services/agentEnvService.interface";
 export { IAgentProviderStatusService } from "./services/agentProviderStatusService.interface";

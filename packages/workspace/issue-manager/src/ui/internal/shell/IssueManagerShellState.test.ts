@@ -206,6 +206,24 @@ test("subtask progress uses completed subtasks over total subtasks", () => {
   );
 });
 
+test("subtask summary progress counts review-ready subtasks without loaded issue detail", () => {
+  assert.deepEqual(
+    resolveIssueManagerSubtaskProgress(
+      createIssueSummary({
+        completedCount: 0,
+        issueId: "issue-1",
+        pendingAcceptanceCount: 5,
+        taskCount: 5
+      })
+    ),
+    {
+      completed: 5,
+      percent: 100,
+      total: 5
+    }
+  );
+});
+
 test("subtask progress from visible tasks is hidden when all subtasks are filtered out", () => {
   assert.equal(resolveIssueManagerSubtaskProgressFromTasks([]), null);
 });
@@ -319,13 +337,17 @@ function createIssueSummary(
   input: Pick<IssueManagerIssueSummary, "issueId"> &
     Partial<Pick<IssueManagerIssueSummary, "title">> &
     Partial<
-      Pick<IssueManagerIssueSummary, "completedCount" | "status" | "taskCount">
+      Pick<
+        IssueManagerIssueSummary,
+        "completedCount" | "pendingAcceptanceCount" | "status" | "taskCount"
+      >
     >
 ): IssueManagerIssueSummary {
   return {
     completedCount: input.completedCount,
     creatorUserId: "local",
     issueId: input.issueId,
+    pendingAcceptanceCount: input.pendingAcceptanceCount,
     status: input.status ?? "not_started",
     taskCount: input.taskCount,
     title: input.title ?? "Task",

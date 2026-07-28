@@ -6,8 +6,11 @@ import type { AgentGUIProviderSkillOption } from "../model/agentGuiNodeTypes";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
 import type {
   AgentTranscriptAttachmentLocator,
-  AgentTranscriptTurnAttachment
+  AgentTranscriptTurnAttachment,
+  AgentTranscriptVirtualScrollController
 } from "../../../shared/agentConversation/components/AgentTranscriptView";
+import { userScrollBehavior } from "./agentGUIDetailScrollHelpers";
+import type { AgentConversationFollowEndMode } from "../../../shared/agentConversation/agentConversationFollowEndController";
 
 const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
   [];
@@ -22,13 +25,17 @@ interface AgentGUIConversationTimelinePaneProps {
   ) => void;
   isLoading: boolean;
   isLoadingOlderMessages: boolean;
+  isVisible: boolean;
+  followEndMode: AgentConversationFollowEndMode;
+  forkThroughTurnPendingTurnIds?: readonly string[];
+  virtualScrollControllerRef: Ref<AgentTranscriptVirtualScrollController>;
   loadingLabel: string;
   empty: React.JSX.Element;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onAuthLogin?: (provider?: string | null) => void;
+  onForkThroughTurn?: (turnId: string) => void;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
-  previewMode?: boolean;
   labels: {
     thinkingLabel: string;
     toolCallsLabel: (count: number) => string;
@@ -46,13 +53,17 @@ export const AgentGUIConversationTimelinePane = memo(
     onTurnAttachmentVisibilityChange,
     isLoading,
     isLoadingOlderMessages,
+    isVisible,
+    followEndMode,
+    forkThroughTurnPendingTurnIds,
+    virtualScrollControllerRef,
     loadingLabel,
     empty,
     onLinkAction,
     onAuthLogin,
+    onForkThroughTurn,
     availableSkills,
     workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS,
-    previewMode = false,
     labels
   }: AgentGUIConversationTimelinePaneProps): React.JSX.Element {
     "use memo";
@@ -70,18 +81,23 @@ export const AgentGUIConversationTimelinePane = memo(
         ) : null}
         <AgentConversationFlow
           conversation={conversation}
+          followEndMode={followEndMode}
           turnAttachments={turnAttachments}
           turnAttachmentLocatorRef={turnAttachmentLocatorRef}
           onTurnAttachmentVisibilityChange={onTurnAttachmentVisibilityChange}
           isLoading={isLoading}
+          isVisible={isVisible}
           loadingLabel={loadingLabel}
           empty={empty}
           onLinkAction={onLinkAction}
           onAuthLogin={onAuthLogin}
+          onForkThroughTurn={onForkThroughTurn}
+          forkThroughTurnPendingTurnIds={forkThroughTurnPendingTurnIds}
           availableSkills={availableSkills}
           workspaceAppIcons={workspaceAppIcons}
-          previewMode={previewMode}
           labels={labels}
+          virtualListLayoutRevision={isLoadingOlderMessages ? 1 : 0}
+          virtualScrollControllerRef={virtualScrollControllerRef}
         />
       </>
     );
@@ -101,13 +117,10 @@ export function setTimelineScrollTopWithUserTransition(
   element: HTMLElement,
   top: number
 ): void {
-  const reducedMotion =
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   if (typeof element.scrollTo === "function") {
     element.scrollTo({
       top,
-      behavior: reducedMotion ? "auto" : "smooth"
+      behavior: userScrollBehavior()
     });
     return;
   }

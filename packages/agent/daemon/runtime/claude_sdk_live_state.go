@@ -430,15 +430,11 @@ func claudeSDKUsageUpdate(payload map[string]any, previous claudeSDKUsageState, 
 	}
 	if contextWindow := payloadMap(payload, "contextWindow"); len(contextWindow) > 0 {
 		if _, ok := firstInt64Value(contextWindow, "totalTokens", "total_tokens", "size", "limit", "max"); !ok {
-			total := int64(0)
-			if claudeSDKCanReusePreviousContextWindow(previous, contextModel) {
-				total = previous.contextWindowTokens
-			}
-			if total <= 0 {
-				total = claudeSDKAssumedContextWindow(contextModel)
+			if !claudeSDKCanReusePreviousContextWindow(previous, contextModel) {
+				return nil
 			}
 			contextWindow = clonePayload(contextWindow)
-			contextWindow["totalTokens"] = total
+			contextWindow["totalTokens"] = previous.contextWindowTokens
 		}
 		return map[string]any{
 			"sessionUpdate": "usage_update",
@@ -464,7 +460,7 @@ func claudeSDKUsageUpdate(payload map[string]any, previous claudeSDKUsageState, 
 		total = previous.contextWindowTokens
 	}
 	if total <= 0 {
-		total = claudeSDKAssumedContextWindow(contextModel)
+		return nil
 	}
 	return map[string]any{
 		"sessionUpdate": "usage_update",
@@ -473,25 +469,6 @@ func claudeSDKUsageUpdate(payload map[string]any, previous claudeSDKUsageState, 
 			"totalTokens": total,
 		},
 	}
-}
-
-// claudeSDKAssumedContextWindow picks the context-window size to assume when
-// the Claude Agent SDK hasn't yet reported an authoritative per-model window
-// for this turn (claudeSDKContextWindowTokens returns 0, e.g. every streamed
-// usage delta before the turn's final "result" message carries modelUsage)
-// and there's no matching previously-known window to carry forward
-// (claudeSDKCanReusePreviousContextWindow). Model IDs/aliases across the
-// Claude Code model aliases mark 1M-context variants with a "[1m]" suffix,
-// including the built-in "sonnet[1m]" alias and user-configured aliases such
-// as "claude-fable-5[1m]". Honor that
-// convention here too, so a brand-new session/turn on a 1M-context model
-// doesn't render the usage popover against the base 200k denominator for the
-// entire duration of the turn.
-func claudeSDKAssumedContextWindow(contextModel string) int64 {
-	if strings.Contains(strings.ToLower(claudeSDKCanonicalModel(contextModel)), "[1m]") {
-		return claudeSDK1MContextWindow
-	}
-	return claudeSDKDefaultContextWindow
 }
 
 func claudeSDKCanReusePreviousContextWindow(previous claudeSDKUsageState, contextModel string) bool {

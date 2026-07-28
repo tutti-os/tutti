@@ -75,6 +75,14 @@ type AgentActivityStore interface {
 	RecordGoalControlOperationEvidence(context.Context, agentactivitybiz.GoalControlOperationEvidence) (agentactivitybiz.GoalControlOperation, bool, error)
 	EnsureOrWakeGoalRepairOperation(context.Context, agentactivitybiz.EnsureGoalRepairOperationInput) (agentactivitybiz.GoalControlOperation, agentactivitybiz.SessionGoalState, bool, error)
 	RequeueLeasedGoalControlOperationsOnStartup(context.Context, int64) (int64, error)
+	PrepareGoalGenerationFence(context.Context, agentactivitybiz.GoalGenerationFencePrepare) (agentactivitybiz.GoalGenerationFence, bool, error)
+	GetGoalGenerationFence(context.Context, string, string) (agentactivitybiz.GoalGenerationFence, bool, error)
+	ListGoalGenerationFencesForSession(context.Context, string, string) ([]agentactivitybiz.GoalGenerationFence, error)
+	ListClaimableGoalGenerationFences(context.Context, agentactivitybiz.ListClaimableGoalGenerationFencesInput) ([]agentactivitybiz.GoalGenerationFence, error)
+	ClaimGoalGenerationFence(context.Context, agentactivitybiz.ClaimGoalGenerationFenceInput) (agentactivitybiz.GoalGenerationFence, bool, error)
+	ReleaseGoalGenerationFence(context.Context, agentactivitybiz.ReleaseGoalGenerationFenceInput) (agentactivitybiz.GoalGenerationFence, bool, error)
+	CompleteGoalGenerationFence(context.Context, agentactivitybiz.CompleteGoalGenerationFenceInput) (agentactivitybiz.GoalGenerationFence, bool, error)
+	RequeueLeasedGoalGenerationFencesOnStartup(context.Context, int64) (int64, error)
 	PrepareSubmitClaim(context.Context, agentactivitybiz.SubmitClaimPrepare) (agentactivitybiz.SubmitClaim, bool, error)
 	GetSubmitClaim(context.Context, string, string, string) (agentactivitybiz.SubmitClaim, bool, error)
 	AcceptSubmitClaim(context.Context, string, string, string, string, int64) (agentactivitybiz.SubmitClaim, bool, error)
@@ -111,13 +119,6 @@ type ModelPlansStore interface {
 	GetModelPlan(context.Context, string, string) (modelplanbiz.Plan, error)
 	ListModelPlans(context.Context, string) ([]modelplanbiz.Plan, error)
 	PutModelPlan(context.Context, modelplanbiz.Plan) error
-}
-
-type ModelPlanFirstUseStore interface {
-	DeleteModelPlanFirstUseCandidate(context.Context, string, string) error
-	GetModelPlanFirstUseCandidate(context.Context, string, string) (modelplanbiz.FirstUseCandidate, error)
-	ListModelPlanFirstUseCandidates(context.Context) ([]modelplanbiz.FirstUseCandidate, error)
-	PutModelPlanFirstUseCandidate(context.Context, modelplanbiz.FirstUseCandidate) error
 }
 
 type AgentModelBindingsStore interface {

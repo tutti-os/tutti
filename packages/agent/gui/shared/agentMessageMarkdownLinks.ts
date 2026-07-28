@@ -8,7 +8,7 @@ import {
   parseRichTextMentionHref
 } from "@tutti-os/ui-rich-text/core";
 import { managedAgentRoundedIconUrl } from "./managedAgentIcons";
-import { isDirectAgentGeneratedMediaPath } from "../actions/workspaceLinkActions";
+import { isDirectAgentGeneratedMediaPath } from "../actions/workspaceFilePathCandidate";
 import {
   resolveAgentTargetPresentation,
   type AgentMessageMarkdownAgentTarget

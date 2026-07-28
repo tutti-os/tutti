@@ -32,33 +32,32 @@ afterEach(() => {
 });
 
 describe("AgentGUIEmptyHeroCarouselStage", () => {
-  it("keeps CSS fallback alignment in preview mode", () => {
-    const { container } = render(
+  it("does not measure a fully occluded carousel", () => {
+    const getBoundingClientRect = vi.spyOn(
+      HTMLElement.prototype,
+      "getBoundingClientRect"
+    );
+
+    render(
       <AgentGUIEmptyHeroCarouselStage
+        isActive={false}
+        isVisible={false}
         items={items}
-        previewMode
         providerSelectLabel="Select provider"
       >
         <div data-carousel-placeholder />
       </AgentGUIEmptyHeroCarouselStage>
     );
 
-    const layer = container.querySelector<HTMLElement>(
-      ".agent-gui-node__empty-hero-carousel-layer"
-    );
-    expect(
-      layer?.style.getPropertyValue("--agent-gui-hero-carousel-slot-top")
-    ).toBe("");
-    expect(
-      layer?.style.getPropertyValue("--agent-gui-hero-carousel-slot-left")
-    ).toBe("");
+    expect(getBoundingClientRect).not.toHaveBeenCalled();
   });
 
-  it("measures live carousel alignment outside preview mode", () => {
+  it("measures live carousel alignment", () => {
     const { container } = render(
       <AgentGUIEmptyHeroCarouselStage
+        isActive={false}
+        isVisible
         items={items}
-        previewMode={false}
         providerSelectLabel="Select provider"
       >
         <div data-carousel-placeholder />
@@ -86,8 +85,9 @@ describe("AgentGUIEmptyHeroCarouselStage", () => {
     const view = render(
       <AgentGUIEmptyHeroCarouselStage
         activeAgentTargetId="codex"
+        isActive
+        isVisible
         items={items}
-        previewMode={false}
         providerSelectLabel="Select provider"
       >
         <div data-carousel-placeholder />
@@ -98,8 +98,9 @@ describe("AgentGUIEmptyHeroCarouselStage", () => {
     view.rerender(
       <AgentGUIEmptyHeroCarouselStage
         activeAgentTargetId="claude"
+        isActive
+        isVisible
         items={items}
-        previewMode={false}
         providerSelectLabel="Select provider"
       >
         <div data-carousel-placeholder />

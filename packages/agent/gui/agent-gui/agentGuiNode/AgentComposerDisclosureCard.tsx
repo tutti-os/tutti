@@ -10,16 +10,20 @@ import styles from "./AgentGUIChrome.styles";
  */
 export function AgentComposerDisclosureCard({
   actions,
+  bannerClassName,
   children,
   expanded,
   icon,
   labels,
   onExpandedChange,
+  panelClassName,
   summary,
   testId,
   title
 }: {
   actions?: ReactNode;
+  /** Extra class applied to the persistent banner card only. */
+  bannerClassName?: string;
   children: ReactNode;
   expanded: boolean;
   icon: ReactNode;
@@ -28,6 +32,8 @@ export function AgentComposerDisclosureCard({
     expand: string;
   };
   onExpandedChange(expanded: boolean): void;
+  /** Extra class applied to the expanded panel surface only. */
+  panelClassName?: string;
   summary: string;
   testId: string;
   title: string;
@@ -45,7 +51,7 @@ export function AgentComposerDisclosureCard({
         {expanded ? (
           <div
             id={panelId}
-            className={styles.composerDisclosurePanel}
+            className={cn(styles.composerDisclosurePanel, panelClassName)}
             data-testid={`${testId}-panel`}
           >
             {children}
@@ -55,7 +61,8 @@ export function AgentComposerDisclosureCard({
           className={cn(
             styles.chromeCard,
             styles.chromeCardMuted,
-            styles.composerDisclosureBanner
+            styles.composerDisclosureBanner,
+            bannerClassName
           )}
         >
           <button

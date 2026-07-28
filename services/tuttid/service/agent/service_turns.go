@@ -222,6 +222,12 @@ func (s *Service) projectSessionsForResponse(ctx context.Context, workspaceID st
 // session-associated TuttiModeActivation read projection is attached last.
 func (s *Service) withProtocolV2TurnState(ctx context.Context, workspaceID string, session Session) (Session, error) {
 	if s == nil || s.TurnStore == nil {
+		session = s.withSessionForkCapabilities(ctx, workspaceID, session)
+		var err error
+		session, err = s.withSessionForkLineage(ctx, workspaceID, session)
+		if err != nil {
+			return Session{}, err
+		}
 		return s.withTuttiModeActivation(ctx, workspaceID, session)
 	}
 	latestTurn, ok, err := s.TurnStore.GetLatestTurn(ctx, workspaceID, session.ID)
@@ -237,6 +243,11 @@ func (s *Service) withProtocolV2TurnState(ctx context.Context, workspaceID strin
 	} else {
 		session, err = s.withProtocolV2TurnStateProjection(ctx, workspaceID, session, &latestTurn, latestInteractionsBySessionID[session.ID])
 	}
+	if err != nil {
+		return Session{}, err
+	}
+	session = s.withSessionForkCapabilities(ctx, workspaceID, session)
+	session, err = s.withSessionForkLineage(ctx, workspaceID, session)
 	if err != nil {
 		return Session{}, err
 	}
@@ -320,7 +331,40 @@ func (s *Service) withProtocolV2TurnStates(ctx context.Context, workspaceID stri
 		}
 		session.PendingInteractions = pendingBySessionID[sessionID]
 		session.LatestTurnInteractions = latestInteractionsBySessionID[sessionID]
+		session, err = s.withSessionForkLineage(ctx, workspaceID, session)
+		if err != nil {
+			return nil, err
+		}
 		result[i] = session
 	}
 	return s.withTuttiModeActivations(ctx, workspaceID, result)
+}
+
+func (s *Service) withSessionForkLineage(
+	ctx context.Context,
+	workspaceID string,
+	session Session,
+) (Session, error) {
+	session.ForkedFrom = nil
+	if s == nil || strings.TrimSpace(workspaceID) == "" ||
+		strings.TrimSpace(session.ID) == "" ||
+		strings.TrimSpace(session.Kind) != agentactivitybiz.SessionKindRoot {
+		return session, nil
+	}
+	lineage, found, err := s.ApplicationHost().GetSessionForkLineage(
+		ctx,
+		strings.TrimSpace(workspaceID),
+		strings.TrimSpace(session.ID),
+	)
+	if err != nil || !found {
+		return session, err
+	}
+	session.ForkedFrom = &SessionForkLineage{
+		SourceAgentSessionID: strings.TrimSpace(lineage.SourceAgentSessionID),
+		SourceTurnID:         strings.TrimSpace(lineage.SourceTurnID),
+		TargetTurnID:         strings.TrimSpace(lineage.TargetTurnID),
+		OperationID:          strings.TrimSpace(lineage.OperationID),
+		ForkedAtUnixMS:       lineage.ForkedAtUnixMS,
+	}
+	return session, nil
 }

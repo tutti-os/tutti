@@ -15,7 +15,7 @@ const ignoredDirectories = new Set([
   "out"
 ]);
 const ignoredFiles = new Set(["tools/scripts/check-ui-boundaries.mjs"]);
-const ignoredPathPrefixes = [];
+const ignoredPathPrefixes = ["apps/mobile/ios/Pods/"];
 const stagedOnly = process.argv.includes("--staged");
 
 const allowedUISystemSpecifiers = new Set([
@@ -23,6 +23,8 @@ const allowedUISystemSpecifiers = new Set([
   "@tutti-os/ui-system/components",
   "@tutti-os/ui-system/icons",
   "@tutti-os/ui-system/metadata",
+  "@tutti-os/ui-system/native",
+  "@tutti-os/ui-system/native.css",
   "@tutti-os/ui-system/styles.css",
   "@tutti-os/ui-system/utils"
 ]);
@@ -104,6 +106,7 @@ if (violations.length > 0) {
 
   process.exitCode = 1;
 } else {
+  runRendererTokenCheck();
   runUIMetadataCheck();
   console.log("ui boundary check passed");
 }
@@ -602,8 +605,16 @@ function findRendererSourceEntryForPackage(styleSources, packageDirectoryPath) {
 }
 
 function runUIMetadataCheck() {
+  runCheck("tools/scripts/check-ui-metadata.mjs");
+}
+
+function runRendererTokenCheck() {
+  runCheck("tools/scripts/check-ui-renderer-tokens.mjs");
+}
+
+function runCheck(scriptPath) {
   try {
-    execFileSync(process.execPath, ["tools/scripts/check-ui-metadata.mjs"], {
+    execFileSync(process.execPath, [scriptPath], {
       cwd: workspaceRoot,
       stdio: "inherit"
     });

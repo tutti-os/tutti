@@ -5,25 +5,7 @@ import {
   type WorkspaceFileIconCacheStore
 } from "./workspaceFileIconCacheStore.ts";
 
-let schemeRegistered = false;
 let protocolHandled = false;
-
-export function registerWorkspaceFileIconProtocolScheme(): void {
-  if (schemeRegistered) {
-    return;
-  }
-  schemeRegistered = true;
-  protocol.registerSchemesAsPrivileged([
-    {
-      privileges: {
-        secure: true,
-        standard: true,
-        supportFetchAPI: true
-      },
-      scheme: workspaceFileIconProtocolScheme
-    }
-  ]);
-}
 
 export function registerWorkspaceFileIconProtocol(
   store: WorkspaceFileIconCacheStore

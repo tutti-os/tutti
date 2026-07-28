@@ -17,6 +17,50 @@ function mockRect(rect: {
 }
 
 describe("ComposerFloatingMenuSurface", () => {
+  it("keeps viewport coordinates when a workbench boundary requests a body portal", () => {
+    const boundary = document.createElement("div");
+    boundary.setAttribute("data-slot", "viewport-menu-boundary");
+    boundary.setAttribute("data-viewport-menu-portal-target", "body");
+    boundary.setAttribute("data-workbench-window-id", "node-1");
+    boundary.style.zIndex = "4";
+
+    const anchorRef = createRef<HTMLDivElement>();
+    const anchor = document.createElement("div");
+    anchor.getBoundingClientRect = vi.fn(() =>
+      mockRect({
+        bottom: 560,
+        height: 30,
+        left: 312,
+        right: 588,
+        top: 530,
+        width: 276
+      })
+    );
+    boundary.appendChild(anchor);
+    document.body.appendChild(boundary);
+    anchorRef.current = anchor;
+
+    render(
+      <ComposerFloatingMenuSurface
+        anchorRef={anchorRef}
+        maxHeight={320}
+        open
+        placement="fixed-height"
+        testId="composer-floating-menu-surface-workbench"
+      >
+        <div>menu content</div>
+      </ComposerFloatingMenuSurface>
+    );
+
+    const surface = screen.getByTestId(
+      "composer-floating-menu-surface-workbench"
+    );
+    expect(surface.parentElement).toBe(document.body);
+    expect(surface.style.left).toBe("312px");
+
+    boundary.remove();
+  });
+
   it("keeps a fixed-height menu clear of the workspace window's traffic-light header even when the anchor sits near the top of the viewport", () => {
     const anchorRef = createRef<HTMLDivElement>();
     const anchor = document.createElement("div");

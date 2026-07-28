@@ -8,6 +8,7 @@ export type MentionRowDataAttributeKey =
   | "fileEntryKind"
   | "fileThumb"
   | "fileVisualKind"
+  | "issueIcon"
   | "navigation"
   | "navigateInto"
   | "openReferences"
@@ -24,6 +25,7 @@ const MENTION_ROW_DATA_ATTRIBUTES: Record<
     fileEntryKind: "data-rich-text-at-mention-file-entry-kind",
     fileThumb: "data-rich-text-at-mention-file-thumb",
     fileVisualKind: "data-rich-text-at-mention-file-visual-kind",
+    issueIcon: "data-rich-text-at-mention-issue-icon",
     navigation: "data-rich-text-at-mention-navigation",
     navigateInto: "data-rich-text-at-mention-navigate-into",
     openReferences: "data-rich-text-at-mention-open-references",
@@ -36,6 +38,7 @@ const MENTION_ROW_DATA_ATTRIBUTES: Record<
     fileEntryKind: "data-agent-file-entry-kind",
     fileThumb: "data-agent-mention-file-thumb",
     fileVisualKind: "data-agent-file-visual-kind",
+    issueIcon: "data-agent-mention-issue-icon",
     navigation: "data-agent-mention-navigation",
     navigateInto: "data-agent-mention-navigate-into",
     openReferences: "data-agent-mention-open-references",

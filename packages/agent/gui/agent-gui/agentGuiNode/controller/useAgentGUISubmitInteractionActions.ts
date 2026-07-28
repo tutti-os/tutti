@@ -99,7 +99,6 @@ interface UseAgentGUISubmitInteractionActionsInput {
     feedback(value: string): void;
     skip(): void;
   }>;
-  previewMode: boolean;
   promptImagesSupported: boolean;
   optimisticGoalControl: AgentGUIOptimisticGoalControl | null;
   sessionEngine: AgentSessionEngine;
@@ -183,7 +182,6 @@ export function useAgentGUISubmitInteractionActions(
     isSessionMarkedNonResumable,
     persistActiveConversation,
     planActionsRef,
-    previewMode,
     promptImagesSupported,
     optimisticGoalControl,
     sessionEngine,
@@ -206,7 +204,6 @@ export function useAgentGUISubmitInteractionActions(
       draftByScopeKeyRef,
       isCurrentConversation,
       optimisticGoalControl,
-      previewMode,
       sessionEngine,
       setDetailError,
       setDraftByScopeKey,
@@ -454,9 +451,6 @@ export function useAgentGUISubmitInteractionActions(
       displayPrompt?: string,
       options?: AgentComposerSubmitOptions
     ) => {
-      if (previewMode) {
-        return;
-      }
       const agentSessionId = activeConversationIdRef.current;
       const normalizedContent = normalizeAgentPromptContentBlocks(content);
       if (normalizedContent.length === 0) {
@@ -589,7 +583,6 @@ export function useAgentGUISubmitInteractionActions(
       agentActivityRuntime,
       beginOptimisticGoalControl,
       conversationListQuery,
-      previewMode,
       promptImagesSupported,
       goalControl,
       persistActiveConversation,

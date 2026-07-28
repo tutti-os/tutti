@@ -31,6 +31,8 @@ const manifest: UISystemDevManifest = {
     ".": "src/index.ts",
     "./components": "src/components/index.ts",
     "./icons": "src/icons/index.ts",
+    "./native": "src/native/index.ts",
+    "./native.css": "src/styles/native.css",
     "./styles.css": "src/styles/index.css",
     "./utils": "src/lib/utils.ts"
   },

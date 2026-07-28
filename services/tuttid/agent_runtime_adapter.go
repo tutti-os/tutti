@@ -72,6 +72,7 @@ func (a agentRuntimeAdapter) GoalControl(ctx context.Context, input agentservice
 		GoalRevision:       input.GoalRevision,
 		RepairEpoch:        input.RepairEpoch,
 		SubmissionMetadata: input.SubmissionMetadata,
+		RequireLive:        input.RequireLive,
 	})
 	if err != nil {
 		return agentservice.RuntimeGoalControlResult{}, mapAgentRuntimeError(err)
@@ -86,7 +87,7 @@ func (a agentRuntimeAdapter) GoalControl(ctx context.Context, input agentservice
 
 func (a agentRuntimeAdapter) ReconcileGoal(ctx context.Context, input agentservice.RuntimeGoalControlInput) (agentservice.RuntimeGoalReconcileResult, error) {
 	result, err := a.controller.ReconcileGoal(ctx, agentruntime.GoalReconcileInput{
-		RoomID: input.WorkspaceID, AgentSessionID: input.AgentSessionID,
+		RoomID: input.WorkspaceID, AgentSessionID: input.AgentSessionID, RequireLive: input.RequireLive,
 	})
 	if err != nil {
 		return agentservice.RuntimeGoalReconcileResult{}, mapAgentRuntimeError(err)
@@ -127,6 +128,7 @@ func (a agentRuntimeAdapter) CanResume(input agentservice.RuntimeResumeInput) bo
 		AgentTargetID:     input.AgentTargetID,
 		Provider:          input.Provider,
 		ProviderSessionID: input.ProviderSessionID,
+		Resumable:         input.Resumable,
 		CWD:               input.Cwd,
 		Env:               append([]string(nil), input.Env...),
 		Title:             input.Title,
@@ -361,6 +363,7 @@ func (a agentRuntimeAdapter) Resume(ctx context.Context, input agentservice.Runt
 		AgentTargetID:     input.AgentTargetID,
 		Provider:          input.Provider,
 		ProviderSessionID: input.ProviderSessionID,
+		Resumable:         input.Resumable,
 		CWD:               input.Cwd,
 		Env:               append([]string(nil), input.Env...),
 		Title:             input.Title,
@@ -472,6 +475,7 @@ func agentRuntimeSession(session agentruntime.Session) agentservice.ProviderRunt
 		AgentTargetID:           session.AgentTargetID,
 		Provider:                session.Provider,
 		ProviderSessionID:       session.ProviderSessionID,
+		Resumable:               session.Resumable,
 		Cwd:                     session.CWD,
 		Env:                     append([]string(nil), session.Env...),
 		Settings:                agentRuntimeComposerSettings(session.Settings),
@@ -497,6 +501,7 @@ func (a agentRuntimeAdapter) runtimeSessionWithState(session agentruntime.Sessio
 	if state.ProviderSessionID != "" {
 		result.ProviderSessionID = state.ProviderSessionID
 	}
+	result.Resumable = result.Resumable || state.Resumable
 	if state.Status != "" {
 		result.Status = state.Status
 	}

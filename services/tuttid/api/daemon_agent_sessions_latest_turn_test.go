@@ -37,6 +37,7 @@ func TestGeneratedAgentSessionIncludesIndependentLatestTurnProjection(t *testing
 		Provider:               "codex",
 		RailSectionKey:         "project:repo-1",
 		CreatedAt:              time.UnixMilli(10),
+		MessageVersion:         11,
 		LatestTurn:             &latest,
 		LatestTurnInteractions: latestInteractions,
 		Metadata: agentactivitybiz.SessionMetadata{
@@ -51,6 +52,9 @@ func TestGeneratedAgentSessionIncludesIndependentLatestTurnProjection(t *testing
 	})
 	if err != nil {
 		t.Fatalf("generatedAgentSession() error = %v", err)
+	}
+	if generated.MessageVersion != 11 {
+		t.Fatalf("messageVersion = %#v, want 11", generated.MessageVersion)
 	}
 	if generated.ActiveTurn != nil || generated.ActiveTurnId != nil {
 		t.Fatalf("active turn = %#v id=%#v, want none", generated.ActiveTurn, generated.ActiveTurnId)

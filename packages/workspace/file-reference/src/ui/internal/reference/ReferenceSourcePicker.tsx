@@ -84,6 +84,13 @@ import {
 export interface ReferenceSourcePickerProps {
   aggregator: ReferenceSourceAggregator;
   copy: WorkspaceFileReferenceCopy;
+  renderHeaderActions?: (context: {
+    refresh: () => void;
+    selectTarget: (target: ReferenceLocateTarget) => Promise<boolean>;
+  }) => ReactNode;
+  resolveContentErrorAction?: (
+    error: Error
+  ) => ReferenceSourceContentErrorAction | null;
   /** 可选:打开时直达某事项/应用分组(展开并聚焦)。 */
   initialTarget?: ReferenceLocateTarget | null;
   isNodeSelectable?: (node: ReferenceNode) => boolean;
@@ -105,6 +112,10 @@ export interface ReferenceSourcePickerProps {
   open: boolean;
   purpose?: "directory" | "reference";
   workspaceId: string;
+}
+
+export interface ReferenceSourceContentErrorAction {
+  label: string;
 }
 
 /**
@@ -176,6 +187,8 @@ export function ReferenceSourcePicker({
   onConfirmBundles,
   open,
   purpose = "reference",
+  renderHeaderActions,
+  resolveContentErrorAction,
   resolveEntryIconUrl,
   resolveOpenWithApplicationIcon,
   workspaceId
@@ -207,6 +220,9 @@ export function ReferenceSourcePicker({
   const hasVisibleContent = view.isQuery
     ? view.searchResults.length > 0
     : view.currentEntries.length > 0;
+  const contentErrorAction = view.contentError
+    ? (resolveContentErrorAction?.(view.contentError) ?? null)
+    : null;
 
   // 文件类型筛选已下沉为查询参数(view.activeFilters);此处只做切换/清空的转发。
   const activeFilterSet = new Set(view.activeFilters);
@@ -566,16 +582,22 @@ export function ReferenceSourcePicker({
                   : "referencePicker.title"
               )}
             </CardTitle>
-            <Button
-              aria-label={copy.t("actions.cancel")}
-              disabled={view.isConfirming}
-              size="icon-sm"
-              type="button"
-              variant="ghost"
-              onClick={requestClose}
-            >
-              <CloseIcon size={16} />
-            </Button>
+            <div className="flex items-center gap-2">
+              {renderHeaderActions?.({
+                refresh: view.retryContent,
+                selectTarget: view.selectTarget
+              })}
+              <Button
+                aria-label={copy.t("actions.cancel")}
+                disabled={view.isConfirming}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+                onClick={requestClose}
+              >
+                <CloseIcon size={16} />
+              </Button>
+            </div>
           </div>
         </CardHeader>
 
@@ -699,7 +721,11 @@ export function ReferenceSourcePicker({
                           <Spinner size={16} />
                         </Feedback>
                       ) : view.contentError && !hasVisibleContent ? (
-                        <ContentError copy={copy} />
+                        <ContentError
+                          action={contentErrorAction}
+                          copy={copy}
+                          onAction={view.retryContent}
+                        />
                       ) : view.isQuery ? (
                         // 查询态(关键词或筛选):扁平结果
                         view.searchResults.length === 0 ? (
@@ -752,7 +778,12 @@ export function ReferenceSourcePicker({
                         ))
                       )}
                       {view.contentError && hasVisibleContent ? (
-                        <ContentError copy={copy} inline />
+                        <ContentError
+                          action={contentErrorAction}
+                          copy={copy}
+                          inline
+                          onAction={view.retryContent}
+                        />
                       ) : null}
                       {view.hasMore && (view.isQuery || hasSelectedGroup) ? (
                         <Button
@@ -1931,19 +1962,33 @@ function Feedback({ children }: { children: ReactNode }): JSX.Element {
 }
 
 function ContentError({
+  action,
   copy,
-  inline = false
+  inline = false,
+  onAction
 }: {
+  action?: ReferenceSourceContentErrorAction | null;
   copy: WorkspaceFileReferenceCopy;
   inline?: boolean;
+  onAction?: () => void;
 }): JSX.Element {
   const content = (
     <div
-      className="flex max-w-sm items-center gap-2 text-[var(--state-danger)]"
+      className={cn(
+        "flex max-w-sm gap-3",
+        inline ? "items-center" : "flex-col items-center"
+      )}
       role="alert"
     >
-      <WarningLinedIcon className="size-5 shrink-0" />
-      <span>{copy.t("referencePicker.loadError")}</span>
+      <div className="flex items-center gap-2 text-[var(--state-danger)]">
+        <WarningLinedIcon className="size-5 shrink-0" />
+        <span>{copy.t("referencePicker.loadError")}</span>
+      </div>
+      {action && onAction ? (
+        <Button size="sm" type="button" variant="secondary" onClick={onAction}>
+          {action.label}
+        </Button>
+      ) : null}
     </div>
   );
   if (inline) {

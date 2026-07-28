@@ -97,7 +97,6 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
   tuttiPlanIssuePanelLabels
 }: AgentGUIBottomDockPaneProps): React.JSX.Element {
   "use memo";
-  const previewMode = composerProps.previewMode === true;
 
   // Active thread goal rides the same runtimeContext channel as account /
   // rateLimits, so we read it straight off the session chrome's raw state.
@@ -144,7 +143,6 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
               embedded={true}
               edgeGlow={true}
               keyboardShortcuts={keyboardShortcutsEnabled}
-              previewMode={previewMode}
               isSubmitting={isRespondingApproval}
               onSubmit={onSubmitBottomDockInteractivePrompt}
               labels={promptLabels}
@@ -219,9 +217,7 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
                 agentCountBalance:
                   composerProps.labels.tuttiBudgetAgentCountBalance,
                 agentCountPowerful:
-                  composerProps.labels.tuttiBudgetAgentCountPowerful,
-                confirm: composerProps.labels.tuttiBudgetConfirm,
-                cancel: composerProps.labels.tuttiBudgetCancel
+                  composerProps.labels.tuttiBudgetAgentCountPowerful
               }}
               labels={tuttiWorkflowDockLabels}
               phase={workflowPhase}
@@ -250,7 +246,6 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
               embedded={true}
               edgeGlow={true}
               keyboardShortcuts={keyboardShortcutsEnabled}
-              previewMode={previewMode}
               isSubmitting={isRespondingApproval}
               onSubmit={onSubmitBottomDockInteractivePrompt}
               labels={promptLabels}

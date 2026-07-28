@@ -11,6 +11,7 @@ var (
 	_ = (*agenthost.Host).UpdatePin
 	_ = (*agenthost.Host).DeleteSession
 	_ = (*agenthost.Host).GetTurn
+	_ = (*agenthost.Host).ListSessionTurns
 	_ = (*agenthost.Host).FindTurnByClientSubmitID
 	_ = (*agenthost.Host).ListSessionMessages
 	_ = (*agenthost.Host).GetSessionInteractionSnapshot

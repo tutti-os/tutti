@@ -260,7 +260,8 @@ describe("AgentTargetSetupGate", () => {
   it("launches an in-app terminal for terminal sign-in and closes it once ready", async () => {
     const close = vi.fn();
     const run = vi.fn(async (_input: { command: string; cwd?: string }) => ({
-      close
+      close,
+      completion: new Promise<"ready" | "timed_out">(() => {})
     }));
     const setup = terminalLoginSetup();
     installHost(new Map([["extension:gemini", setup.watch]]), {
@@ -273,6 +274,7 @@ describe("AgentTargetSetupGate", () => {
     );
     await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
     expect(run.mock.calls[0]?.[0]).toEqual({
+      agentTargetId: "extension:gemini",
       command: "/opt/kimi-code/bin/kimi login"
     });
     expect(
@@ -286,7 +288,8 @@ describe("AgentTargetSetupGate", () => {
   it("cancels a waiting terminal sign-in and closes the terminal", async () => {
     const close = vi.fn();
     const run = vi.fn(async (_input: { command: string; cwd?: string }) => ({
-      close
+      close,
+      completion: new Promise<"ready" | "timed_out">(() => {})
     }));
     const setup = terminalLoginSetup();
     installHost(new Map([["extension:gemini", setup.watch]]), {
@@ -328,6 +331,29 @@ describe("AgentTargetSetupGate", () => {
       await screen.findByText(/could not be opened in this window/)
     ).toBeTruthy();
     expect(screen.getByText("/opt/kimi-code/bin/kimi login")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Copy command" })).toBeTruthy();
+  });
+
+  it("stops terminal sign-in and keeps the copy fallback after timeout", async () => {
+    let complete: ((result: "ready" | "timed_out") => void) | undefined;
+    const completion = new Promise<"ready" | "timed_out">((resolve) => {
+      complete = resolve;
+    });
+    const close = vi.fn();
+    const run = vi.fn(async () => ({ close, completion }));
+    const setup = terminalLoginSetup();
+    installHost(new Map([["extension:gemini", setup.watch]]), {
+      terminalLogin: { run }
+    });
+    render(<Harness openDialog target={geminiTarget} />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Start sign in" })
+    );
+    complete?.("timed_out");
+
+    expect(await screen.findByText(/Timed out waiting/)).toBeTruthy();
+    expect(close).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("button", { name: "Copy command" })).toBeTruthy();
   });
 

@@ -27,6 +27,7 @@ export type {
 export {
   createTuttidClient,
   type CreateTuttidClientInput,
+  type MobileRemoteAccessClient,
   type TuttidClient
 } from "./tuttidClient.ts";
 export {
@@ -51,7 +52,6 @@ export type {
   ModelPlan,
   ModelPlanDetection,
   ModelPlanDetectionStage,
-  ModelPlanFirstUse,
   ModelPlanModel,
   ModelPlanProtocol,
   ModelPlanReference,

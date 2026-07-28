@@ -36,6 +36,7 @@ func (p *ActivityProjection) NormalizeRuntimeSessionInitialization(
 func (p *ActivityProjection) InitializeRuntimeSession(
 	ctx context.Context,
 	session ProviderRuntimeSession,
+	railPlacement *agenthost.RailPlacement,
 ) (PersistedSession, error) {
 	if p == nil || p.repo == nil {
 		return PersistedSession{}, fmt.Errorf("agent activity repository is unavailable")
@@ -86,6 +87,7 @@ func (p *ActivityProjection) InitializeRuntimeSession(
 			Settings:          composerSettingsToStatePayload(settings),
 			RuntimeContext:    runtimeContext,
 			CWD:               strings.TrimSpace(session.Cwd),
+			RailPlacement:     canonicalRailPlacement(railPlacement),
 			Title:             strings.TrimSpace(session.Title),
 			LifecycleStatus:   runtimeSessionLifecycleStatus(session.Status),
 			CurrentPhase:      runtimeSessionCurrentPhase(session.Status),
@@ -109,6 +111,17 @@ func (p *ActivityProjection) InitializeRuntimeSession(
 		return PersistedSession{}, fmt.Errorf("initialized agent session has no rail section key")
 	}
 	return result, nil
+}
+
+func canonicalRailPlacement(placement *agenthost.RailPlacement) *canonical.RailPlacement {
+	if placement == nil {
+		return nil
+	}
+	return &canonical.RailPlacement{
+		Kind:        string(placement.Kind),
+		ProjectPath: placement.ProjectPath,
+		SectionKey:  placement.SectionKey,
+	}
 }
 
 func runtimeSessionLifecycleStatus(status string) string {

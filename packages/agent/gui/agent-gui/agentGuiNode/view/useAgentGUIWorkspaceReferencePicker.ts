@@ -15,7 +15,6 @@ import type { AgentGUINodeViewProps } from "./AgentGUINodeView.types";
 
 interface Input {
   onWorkspaceFileReferencesAdded: AgentGUINodeViewProps["onWorkspaceFileReferencesAdded"];
-  previewMode: boolean;
   projectDirectorySourceAggregator: AgentGUINodeViewProps["projectDirectorySourceAggregator"];
   referenceSourceAggregator: AgentGUINodeViewProps["referenceSourceAggregator"];
   resolveMentionReferenceTarget: AgentGUINodeViewProps["resolveMentionReferenceTarget"];
@@ -28,7 +27,6 @@ interface Input {
 export function useAgentGUIWorkspaceReferencePicker(input: Input) {
   const {
     onWorkspaceFileReferencesAdded,
-    previewMode,
     projectDirectorySourceAggregator,
     referenceSourceAggregator,
     resolveMentionReferenceTarget,
@@ -70,9 +68,6 @@ export function useAgentGUIWorkspaceReferencePicker(input: Input) {
     async (
       entity?: AgentContextMentionItem | null
     ): Promise<WorkspaceReferencePickResult> => {
-      if (previewMode) {
-        return emptyReferencePickResult;
-      }
       if (!workspaceFileReferenceAdapter && !referenceSourceAggregator) {
         return emptyReferencePickResult;
       }
@@ -101,7 +96,6 @@ export function useAgentGUIWorkspaceReferencePicker(input: Input) {
     },
     [
       emptyReferencePickResult,
-      previewMode,
       referenceSourceAggregator,
       resolveMentionReferenceTarget,
       resolveWorkspaceReferenceInitialTarget,
@@ -113,7 +107,7 @@ export function useAgentGUIWorkspaceReferencePicker(input: Input) {
     ]
   );
   const requestProjectDirectory = useCallback(async () => {
-    if (previewMode || !projectDirectorySourceAggregator) {
+    if (!projectDirectorySourceAggregator) {
       return null;
     }
     setWorkspaceReferencePickerTarget(null);
@@ -125,7 +119,7 @@ export function useAgentGUIWorkspaceReferencePicker(input: Input) {
       projectDirectoryPickerResolverRef.current?.(null);
       projectDirectoryPickerResolverRef.current = resolve;
     });
-  }, [emptyReferencePickResult, previewMode, projectDirectorySourceAggregator]);
+  }, [emptyReferencePickResult, projectDirectorySourceAggregator]);
   const closeWorkspaceReferencePicker = useCallback(() => {
     workspaceReferencePickerResolverRef.current?.(emptyReferencePickResult);
     workspaceReferencePickerResolverRef.current = null;

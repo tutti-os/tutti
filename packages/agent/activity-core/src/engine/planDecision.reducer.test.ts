@@ -63,6 +63,7 @@ test("pending plan decision is confirmed by its durable completed notice", () =>
             planTurnId: "plan-turn-1"
           },
           role: "system",
+          sequence: 1,
           status: "running",
           turnId: null,
           version: 1,
@@ -92,6 +93,7 @@ test("pending plan decision is confirmed by its durable completed notice", () =>
             planTurnId: "plan-turn-1"
           },
           role: "system",
+          sequence: 1,
           status: "completed",
           turnId: null,
           version: 2,
@@ -165,6 +167,7 @@ test("unrelated completed plan notice cannot confirm an unknown decision", () =>
             planTurnId: "plan-turn-1"
           },
           role: "system",
+          sequence: 1,
           turnId: null,
           version: 2,
           workspaceId: "workspace-1"

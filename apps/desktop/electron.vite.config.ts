@@ -1,14 +1,25 @@
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { PerfMonitorVitePlugin } from "@tutti-os/rrt-plugin-vite";
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 import type { PluginOption } from "vite";
+import { waitForRendererWarmupPlugin } from "../../tools/scripts/renderer-dev-warmup.mjs";
+import { tuttiAssetProtocolAssets } from "./src/main/host/tuttiAssetProtocolAssets.ts";
 
 const aliases = {
   "@app/renderer": resolve("../../packages/agent/gui/app/renderer"),
   "@contexts": resolve("../../packages/agent/gui/contexts"),
   "@main": resolve("src/main"),
+  "@tutti-os/workspace-file-manager/assets/workspace-archive-fallback.png":
+    resolve(
+      "../../packages/workspace/file-manager/src/assets/workspace-archive-fallback.png"
+    ),
+  "@tutti-os/workspace-file-manager/assets/workspace-folder-fallback.png":
+    resolve(
+      "../../packages/workspace/file-manager/src/assets/workspace-folder-fallback.png"
+    ),
   "@tutti-os/workspace-file-manager/services": resolve(
     "../../packages/workspace/file-manager/src/services/index.ts"
   ),
@@ -53,6 +64,7 @@ const externalizeRuntimeDeps = externalizeDepsPlugin({
     "@tutti-os/agent-gui",
     "@tutti-os/ui-i18n-runtime",
     "@tutti-os/ui-system",
+    "@tutti-os/workbench-electron",
     "@tutti-os/workspace-file-manager",
     "@tutti-os/workspace-external-core",
     "@tutti-os/workspace-file-preview",
@@ -71,6 +83,33 @@ const devServer = {
     host: "127.0.0.1"
   }
 };
+
+const rendererWarmupEntryUrls = [
+  "/src/main.tsx",
+  "/src/app/windows/workspace/createWorkspaceWindowContainer.ts",
+  "/src/app/windows/workspace/DefaultWorkspaceWindow.tsx",
+  "/src/features/workspace-workbench/ui/WorkspaceWorkbench.tsx",
+  "/src/app/windows/workspace/StandaloneAgentWorkspaceWindow.tsx"
+];
+
+function emitTuttiAssetProtocolAssetsPlugin(): PluginOption {
+  return {
+    name: "emit-tutti-asset-protocol-assets",
+    apply: "build",
+    async buildStart(): Promise<void> {
+      for (const [route, sourceRelativePath] of Object.entries(
+        tuttiAssetProtocolAssets
+      )) {
+        const source = await readFile(resolve(sourceRelativePath));
+        this.emitFile({
+          type: "asset",
+          fileName: `assets/tutti-asset/${route}`,
+          source
+        });
+      }
+    }
+  };
+}
 
 function envFlagEnabled(value: string | undefined): boolean {
   return /^(1|true|yes|on)$/iu.test(value?.trim() ?? "");
@@ -155,6 +194,10 @@ export default defineConfig({
   renderer: {
     server: devServer,
     plugins: [
+      emitTuttiAssetProtocolAssetsPlugin(),
+      waitForRendererWarmupPlugin({
+        entryUrls: rendererWarmupEntryUrls
+      }),
       react({
         babel: {
           plugins: [

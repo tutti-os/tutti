@@ -34,11 +34,10 @@ type managedModelGrantRefInput struct {
 }
 
 type managedModelCredentialInput struct {
-	Capability  string `json:"capability"`
-	GrantRef    string `json:"grantRef"`
-	Model       string `json:"model"`
-	ModelPlanID string `json:"modelPlanId"`
-	Provider    string `json:"provider"`
+	Capability string `json:"capability"`
+	GrantRef   string `json:"grantRef"`
+	Model      string `json:"model"`
+	Provider   string `json:"provider"`
 }
 
 func runManagedModel(ctx context.Context, commandName string, opts options, args []string, stdout io.Writer, stderr io.Writer) int {
@@ -106,9 +105,6 @@ func parseManagedModelInput(args []string) (string, map[string]any, error) {
 			"model":      input.Model,
 			"provider":   input.Provider,
 		})
-		if err == nil && strings.TrimSpace(input.ModelPlanID) != "" {
-			normalized["modelPlanId"] = strings.TrimSpace(input.ModelPlanID)
-		}
 		return commandID, normalized, err
 	default:
 		return "", nil, fmt.Errorf("unsupported managed-model command")

@@ -5,7 +5,10 @@ import type {
   AgentStatusSourceError,
   AgentStatusStreamObserver
 } from "@tutti-os/agent-gui";
-import { createDesktopAgentStatusSource } from "./createDesktopAgentStatusSource.ts";
+import {
+  createDesktopAgentStatusSource,
+  createDesktopWorkspaceAgentStatusSource
+} from "./createDesktopAgentStatusSource.ts";
 
 const agent = {
   agentTargetId: "local:codex",
@@ -124,6 +127,122 @@ test("desktop status fails closed before probing a cross-target session", () => 
   assert.equal(listCalled, false);
 });
 
+test("workspace status shares Provider refreshes while keeping per-session controller state", async () => {
+  let currentTime = 1_000;
+  const firstProbe = deferred<ReturnType<typeof probeSnapshot>>();
+  const secondProbe = deferred<ReturnType<typeof probeSnapshot>>();
+  const thirdProbe = deferred<ReturnType<typeof probeSnapshot>>();
+  const listCalls: unknown[] = [];
+  const responses = [
+    firstProbe.promise,
+    secondProbe.promise,
+    thirdProbe.promise
+  ];
+  const source = createDesktopWorkspaceAgentStatusSource(
+    {
+      agentActivityRuntime: runtimeWithSessions([
+        {
+          workspaceId: "workspace-1",
+          agentSessionId: "session-1",
+          agentTargetId: "local:codex",
+          provider: "codex",
+          usage: {
+            contextWindow: { usedTokens: 100, totalTokens: 1_000 },
+            quotas: []
+          }
+        },
+        {
+          workspaceId: "workspace-1",
+          agentSessionId: "session-2",
+          agentTargetId: "local:codex",
+          provider: "codex",
+          usage: {
+            contextWindow: { usedTokens: 200, totalTokens: 2_000 },
+            quotas: []
+          }
+        }
+      ]),
+      agents: () => [agent] as never,
+      workspaceAgentProbes: {
+        list: (input: unknown) => {
+          listCalls.push(input);
+          const response = responses.shift();
+          if (!response) throw new Error("unexpected probe");
+          return response;
+        }
+      } as never,
+      workspaceId: "workspace-1"
+    },
+    { now: () => currentTime }
+  );
+  const firstObserved = createObserver();
+  const secondObserved = createObserver();
+  const closeFirst = source.open(
+    statusQuery("session-1"),
+    firstObserved.observer
+  );
+  source.open(statusQuery("session-2"), secondObserved.observer);
+  await Promise.resolve();
+  assert.equal(listCalls.length, 1);
+
+  closeFirst();
+  firstProbe.resolve(probeSnapshot(500));
+  await secondObserved.completed;
+  assert.deepEqual(firstObserved.frames, []);
+  assert.deepEqual(secondObserved.frames[0]?.value.contextWindow, {
+    usedTokens: 200,
+    totalTokens: 2_000
+  });
+
+  const debouncedObserved = createObserver();
+  source.open(statusQuery("session-1"), debouncedObserved.observer);
+  await debouncedObserved.completed;
+  assert.deepEqual(
+    debouncedObserved.frames.map((frame) => frame.kind),
+    ["snapshot"]
+  );
+  assert.deepEqual(debouncedObserved.frames[0]?.value.contextWindow, {
+    usedTokens: 100,
+    totalTokens: 1_000
+  });
+  assert.equal(listCalls.length, 1);
+
+  currentTime += 5_000;
+  const revalidatingObserved = createObserver();
+  source.open(statusQuery("session-1"), revalidatingObserved.observer);
+  assert.deepEqual(
+    revalidatingObserved.frames.map((frame) => frame.kind),
+    ["snapshot"]
+  );
+  await Promise.resolve();
+  assert.equal(listCalls.length, 2);
+
+  secondProbe.resolve(probeSnapshot(600));
+  await revalidatingObserved.completed;
+  assert.deepEqual(
+    revalidatingObserved.frames.map((frame) => frame.kind),
+    ["snapshot", "refreshed"]
+  );
+  assert.equal(
+    revalidatingObserved.frames[1]?.value.limitsCapturedAtUnixMs,
+    600
+  );
+
+  currentTime += 60 * 60_000 + 1;
+  const expiredObserved = createObserver();
+  source.open(statusQuery("session-1"), expiredObserved.observer);
+  assert.equal(expiredObserved.frames.length, 0);
+  await Promise.resolve();
+  assert.equal(listCalls.length, 3);
+
+  thirdProbe.resolve(probeSnapshot(700));
+  await expiredObserved.completed;
+  assert.deepEqual(
+    expiredObserved.frames.map((frame) => frame.kind),
+    ["refreshed"]
+  );
+});
+
 function createObserver(): {
   completed: Promise<void>;
   errors: AgentStatusSourceError[];
@@ -152,4 +271,41 @@ function runtimeWithSessions(sessions: readonly unknown[]) {
   return {
     getSnapshot: () => ({ sessions })
   } as never;
+}
+
+function statusQuery(agentSessionId: string) {
+  return {
+    agentSessionId,
+    forceRefresh: true,
+    reason: "agent-info" as const,
+    scopeKey: "local:codex"
+  };
+}
+
+function probeSnapshot(capturedAtUnixMs: number) {
+  return {
+    capturedAtUnixMs,
+    providers: [
+      {
+        availability: { detailsVisible: false, status: "available" as const },
+        provider: "codex",
+        usage: {
+          capturedAtUnixMs,
+          quotas: [{ percentRemaining: 70, quotaType: "weekly" }]
+        }
+      }
+    ],
+    workspaceId: "workspace-1"
+  };
+}
+
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve(value: T): void;
+} {
+  let resolvePromise = (_value: T): void => undefined;
+  const promise = new Promise<T>((resolve) => {
+    resolvePromise = resolve;
+  });
+  return { promise, resolve: resolvePromise };
 }

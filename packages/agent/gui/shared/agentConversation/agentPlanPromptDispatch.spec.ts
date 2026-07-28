@@ -17,6 +17,20 @@ describe("dispatchAgentPlanPromptAction", () => {
       const engine = createAgentSessionEngine({
         clock: { nowUnixMs: () => 10 },
         commandPort: {
+          async executePlanDecision(command) {
+            executedTypes.push(command.type);
+            return {
+              operation: {
+                agentSessionId: command.agentSessionId,
+                idempotencyKey: command.idempotencyKey,
+                operationId: `operation:${command.commandId}`,
+                requestId: command.requestId,
+                status: "prepared",
+                turnId: command.turnId,
+                workspaceId: command.workspaceId
+              }
+            };
+          },
           async execute(command) {
             executedTypes.push(command.type);
           }

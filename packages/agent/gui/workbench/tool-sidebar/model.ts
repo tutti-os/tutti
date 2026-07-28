@@ -52,8 +52,8 @@ export const agentToolPanelDefaultWidthById: Record<AgentToolPanelId, number> =
     apps: adjacentPanelDefaultWidth,
     browser: adjacentPanelDefaultWidth,
     files: adjacentPanelDefaultWidth,
-    messages: 440,
-    tasks: 860,
+    messages: adjacentPanelDefaultWidth,
+    tasks: adjacentPanelDefaultWidth,
     terminal: adjacentPanelDefaultWidth
   };
 
@@ -347,6 +347,25 @@ export function shouldResizeAgentToolContainer(input: {
       input.lastResize?.requestedWidth === input.requestedWidth &&
       input.lastResize.actualWidth === input.currentWidth
     )
+  );
+}
+
+export function shouldAutoCollapseAgentToolSidebar(input: {
+  containerWidth: number;
+  mainContentMinWidth: number;
+  sidebarWidth: number;
+}): boolean {
+  if (
+    !Number.isFinite(input.containerWidth) ||
+    input.containerWidth <= 0 ||
+    !Number.isFinite(input.mainContentMinWidth) ||
+    !Number.isFinite(input.sidebarWidth)
+  ) {
+    return false;
+  }
+  return (
+    input.containerWidth <
+    Math.max(0, input.mainContentMinWidth) + Math.max(0, input.sidebarWidth)
   );
 }
 

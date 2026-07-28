@@ -1,5 +1,9 @@
 import { Extension, type Editor, type JSONContent } from "@tiptap/core";
-import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import {
+  DOMParser as ProseMirrorDOMParser,
+  DOMSerializer,
+  type Node as ProseMirrorNode
+} from "@tiptap/pm/model";
 import {
   Plugin,
   PluginKey,
@@ -23,6 +27,57 @@ export type AgentRichTextTextPasteKind =
   | "large-text"
   | "plain-text"
   | "structured-mention";
+
+export interface AgentRichTextClipboardPayload {
+  html: string;
+  text: string;
+}
+
+export function serializeAgentRichTextSelection(
+  editor: Editor
+): AgentRichTextClipboardPayload | null {
+  const selection = readPromptSelection(editor);
+  if (!selection.text) {
+    return null;
+  }
+  const slice = editor.state.doc.slice(selection.from, selection.to);
+  const wrapper = document.createElement("div");
+  wrapper.appendChild(
+    DOMSerializer.fromSchema(editor.schema).serializeFragment(slice.content)
+  );
+  return { html: wrapper.innerHTML, text: selection.text };
+}
+
+export function parseAgentRichTextClipboardHtml(
+  editor: Editor,
+  html: string
+): JSONContent[] | null {
+  if (!html.includes("data-agent-file-mention")) {
+    return null;
+  }
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = html;
+  const slice = ProseMirrorDOMParser.fromSchema(editor.schema).parseSlice(
+    wrapper,
+    { preserveWhitespace: true }
+  );
+  return slice.content.toJSON();
+}
+
+export function insertAgentRichTextClipboardHtml(
+  editor: Editor,
+  html: string
+): boolean {
+  if (!editor.isFocused) {
+    editor.commands.setTextSelection(editor.state.doc.content.size);
+  }
+  const content = parseAgentRichTextClipboardHtml(editor, html);
+  if (!content) {
+    return false;
+  }
+  editor.commands.insertContent(content);
+  return true;
+}
 
 export function classifyAgentRichTextTextPaste(
   text: string,

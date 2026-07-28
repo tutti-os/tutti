@@ -11,6 +11,12 @@ import { createServer as createNetServer } from "node:net";
 import { hostname } from "node:os";
 import { dirname } from "node:path";
 import {
+  buildBridgeResultUrl,
+  callbackErrorToError,
+  callbackErrorToSafeResultCode,
+  isTuttiAuthUserCancelledError
+} from "./node-login-result";
+import {
   type AccountEnvelope,
   AUTH_SERVER_BASE_PORT,
   AUTH_SERVER_HOST,
@@ -406,11 +412,15 @@ async function createLoginBridgeServer(
         return;
       }
       if (callbackError) {
-        const error = new Error(callbackError);
+        const error = callbackErrorToError(callbackError);
         complete(() => rejectCompletion(error));
         sendRedirect(
           res,
-          buildBridgeResultUrl(input, "error", "providerError")
+          buildBridgeResultUrl(
+            input,
+            "error",
+            callbackErrorToSafeResultCode(callbackError)
+          )
         );
         return;
       }
@@ -467,10 +477,15 @@ async function createLoginBridgeServer(
         return;
       }
       if (callbackError) {
-        const error = new Error(callbackError);
+        const error = callbackErrorToError(callbackError);
         sendJson(res, 400, {
           ok: false,
-          error: { code: "PROVIDER_CALLBACK_ERROR", message: error.message }
+          error: {
+            code: isTuttiAuthUserCancelledError(error)
+              ? "USER_CANCELLED"
+              : "PROVIDER_CALLBACK_ERROR",
+            message: error.message
+          }
         });
         complete(() => rejectCompletion(error));
         return;
@@ -732,61 +747,6 @@ function sendRedirect(res: ServerResponse, location: string): void {
   res.end();
 }
 
-function buildBridgeResultUrl(
-  input: PendingLogin,
-  status: string,
-  safeErrorCode?: string
-): string {
-  const url = new URL("/auth/login/callback", input.authOrigin);
-  url.searchParams.set("desktopBridgeStatus", status);
-  if (safeErrorCode) {
-    url.searchParams.set("desktopBridgeError", safeErrorCode);
-  }
-  const openAppUrl = buildSafeOpenAppUrl(
-    input.appCallbackUrl,
-    status,
-    safeErrorCode
-  );
-  if (openAppUrl) {
-    url.searchParams.set("openAppUrl", openAppUrl);
-  }
-  return url.toString();
-}
-
-function buildSafeOpenAppUrl(
-  rawUrl: string,
-  status: string,
-  safeErrorCode?: string
-): string | null {
-  try {
-    const url = new URL(rawUrl.trim());
-    if (!isAllowedAppCallbackProtocol(url.protocol)) {
-      return null;
-    }
-    url.search = "";
-    url.hash = "";
-    url.searchParams.set("desktopBridgeStatus", status);
-    if (safeErrorCode) {
-      url.searchParams.set("desktopBridgeError", safeErrorCode);
-    }
-    return url.toString();
-  } catch {
-    return null;
-  }
-}
-
-function isAllowedAppCallbackProtocol(protocol: string): boolean {
-  const legacyProtocol = `${DEFAULT_APP_ID}:`;
-  const legacyDevProtocol = `${DEFAULT_APP_ID}-dev:`;
-
-  return (
-    protocol === "tutti:" ||
-    protocol === "tutti-dev:" ||
-    protocol === legacyProtocol ||
-    protocol === legacyDevProtocol
-  );
-}
-
 function closeServer(server: Server): Promise<void> {
   return new Promise((resolve) => {
     const forceCloseTimer = setTimeout(() => {
@@ -824,4 +784,9 @@ function openUrlWithDefaultBrowser(url: string): Promise<void> {
   });
 }
 
+export {
+  isTuttiAuthUserCancelledError,
+  TuttiAuthError
+} from "./node-login-result";
+export type { TuttiAuthErrorCode } from "./node-login-result";
 export type { TuttiAuthSession, TuttiUserInfo } from "./shared";

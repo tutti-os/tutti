@@ -82,6 +82,20 @@
       "migrationHints": []
     },
     {
+      "id": "quote-lined-icon",
+      "layer": "base",
+      "name": "QuoteIcon",
+      "export": "QuoteIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "Source-derived Lucide quote icon.",
+      "useCases": ["Quote actions", "Quoted content affordances"],
+      "migrationHints": [],
+      "iconVariant": "lined"
+    },
+    {
       "id": "grip-vertical-icon",
       "layer": "base",
       "name": "GripVerticalIcon",
@@ -103,7 +117,7 @@
       "category": "primitive",
       "status": "stable",
       "source": "src/components/avatar/index.tsx",
-      "description": "High-level identity image primitive with initial, empty, loading, and broken-image fallback states.",
+      "description": "High-level identity image primitive with rendered-size-aware CloudFront delivery and resilient fallback states.",
       "propsType": "AvatarProps",
       "useCases": [
         "People and account identity",
@@ -112,6 +126,8 @@
       ],
       "migrationHints": [
         "Pass a stable label even when src is available so broken images have a meaningful fallback.",
+        "Pass a directly consumable CloudFront URL; Avatar defaults to a bucketed 2x WebP request and retries the original URL if delivery fails.",
+        "Sources are requested unchanged by default; pass transform only when the caller knows the URL supports image-delivery query parameters.",
         "Use children for caller-owned presence badges and other overlays."
       ],
       "storyboard": true
@@ -2046,6 +2062,20 @@
       "iconVariant": "filled"
     },
     {
+      "id": "message-center-filled-icon",
+      "layer": "base",
+      "name": "MessageCenterIcon",
+      "export": "MessageCenterIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "System icon for the agent message center entry point.",
+      "useCases": ["Message center trigger"],
+      "migrationHints": [],
+      "iconVariant": "filled"
+    },
+    {
       "id": "minimize-lined-icon",
       "layer": "base",
       "name": "MinimizeIcon",
@@ -2334,6 +2364,20 @@
       "iconVariant": "lined"
     },
     {
+      "id": "minus-lined-icon",
+      "layer": "base",
+      "name": "MinusLinedIcon",
+      "export": "MinusLinedIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "Slim system icon for minus or decrease actions.",
+      "useCases": ["Zoom controls", "Dense decrease controls"],
+      "migrationHints": [],
+      "iconVariant": "lined"
+    },
+    {
       "id": "import-lined-icon",
       "layer": "base",
       "name": "ImportLinedIcon",
@@ -2458,6 +2502,20 @@
       "useCases": ["Code file items"],
       "migrationHints": [],
       "iconVariant": "filled"
+    },
+    {
+      "id": "file-archive-lined-icon",
+      "layer": "base",
+      "name": "FileArchiveIcon",
+      "export": "FileArchiveIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "System icon for archive and compressed files.",
+      "useCases": ["Archive file items", "Compressed file previews"],
+      "migrationHints": [],
+      "iconVariant": "lined"
     },
     {
       "id": "terminal-lined-icon",
@@ -2680,6 +2738,20 @@
       "source": "src/icons/system-icons.tsx",
       "description": "System icon for download or export actions.",
       "useCases": ["Download buttons", "Export actions"],
+      "migrationHints": [],
+      "iconVariant": "lined"
+    },
+    {
+      "id": "share-lined-icon",
+      "layer": "base",
+      "name": "ShareLinedIcon",
+      "export": "ShareLinedIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "System icon for sharing a resource with other people or sessions.",
+      "useCases": ["Share buttons", "Share menu items"],
       "migrationHints": [],
       "iconVariant": "lined"
     },
@@ -3329,6 +3401,115 @@
       "description": "CSS entry point for UI system styles.",
       "useCases": ["Application style imports", "Design token styling"],
       "migrationHints": []
+    },
+    {
+      "id": "native-css",
+      "layer": "base",
+      "name": "./native.css",
+      "export": "./native.css",
+      "from": "@tutti-os/ui-system/native.css",
+      "category": "style-entry",
+      "status": "experimental",
+      "source": "src/styles/native.css",
+      "description": "React Native Tailwind entry point for Native UI System primitives.",
+      "useCases": [
+        "Mobile NativeWind bootstrap",
+        "Native UI System primitives"
+      ],
+      "migrationHints": []
+    },
+    {
+      "id": "native-theme",
+      "layer": "base",
+      "name": "nativeTheme",
+      "export": "nativeTheme",
+      "from": "@tutti-os/ui-system/native",
+      "category": "utility",
+      "status": "experimental",
+      "source": "src/native/tokens.ts",
+      "description": "Semantic color, radius, and spacing tokens for React Native renderers.",
+      "useCases": ["Native UI System primitives", "Mobile screen composition"],
+      "migrationHints": []
+    },
+    {
+      "id": "native-theme-provider",
+      "layer": "base",
+      "name": "NativeThemeProvider",
+      "export": "NativeThemeProvider",
+      "from": "@tutti-os/ui-system/native",
+      "category": "utility",
+      "status": "experimental",
+      "source": "src/native/theme-provider.tsx",
+      "propsType": "NativeThemeProviderProps",
+      "description": "Resolves a Native light or dark semantic theme for UI System primitives and application composition.",
+      "useCases": ["Native renderer roots", "Product theme preferences"],
+      "migrationHints": []
+    },
+    {
+      "id": "native-button",
+      "layer": "base",
+      "name": "NativeButton",
+      "export": "NativeButton",
+      "from": "@tutti-os/ui-system/native",
+      "category": "primitive",
+      "status": "experimental",
+      "source": "src/native/button.tsx",
+      "propsType": "NativeButtonProps",
+      "description": "Token-backed pressable button for React Native renderers.",
+      "useCases": [
+        "Primary actions",
+        "Secondary actions",
+        "Destructive actions"
+      ],
+      "migrationHints": [],
+      "nativePreview": true
+    },
+    {
+      "id": "native-icon-button",
+      "layer": "base",
+      "name": "NativeIconButton",
+      "export": "NativeIconButton",
+      "from": "@tutti-os/ui-system/native",
+      "category": "primitive",
+      "status": "experimental",
+      "source": "src/native/icon-button.tsx",
+      "propsType": "NativeIconButtonProps",
+      "description": "Accessible icon-only action composed from the Native Button primitive.",
+      "useCases": ["Compact toolbars", "Dismiss actions", "Row actions"],
+      "migrationHints": [],
+      "nativePreview": true
+    },
+    {
+      "id": "native-list-row",
+      "layer": "base",
+      "name": "NativeListRow",
+      "export": "NativeListRow",
+      "from": "@tutti-os/ui-system/native",
+      "category": "primitive",
+      "status": "experimental",
+      "source": "src/native/list-row.tsx",
+      "propsType": "NativeListRowProps",
+      "description": "Selectable token-backed list row with caller-owned leading and trailing content.",
+      "useCases": ["Session lists", "Settings lists", "Picker rows"],
+      "migrationHints": [],
+      "nativePreview": true
+    },
+    {
+      "id": "native-sheet",
+      "layer": "base",
+      "name": "NativeSheet",
+      "export": "NativeSheet",
+      "from": "@tutti-os/ui-system/native",
+      "category": "primitive",
+      "status": "experimental",
+      "source": "src/native/sheet.tsx",
+      "propsType": "NativeSheetProps",
+      "description": "Controlled compact sheet backed by React Native Modal with a token-backed scrim and panel.",
+      "useCases": ["Row actions", "Confirmation flows", "Compact forms"],
+      "migrationHints": [
+        "Provide a localized closeAccessibilityLabel and replace a single snapPoints value with height; keep multi-snap sheets app-owned."
+      ],
+      "nativePreview": true
     },
     {
       "id": "cn",

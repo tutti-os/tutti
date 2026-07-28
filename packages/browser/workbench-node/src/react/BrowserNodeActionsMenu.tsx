@@ -1,4 +1,5 @@
 import {
+  AddLinedIcon,
   ArrowRightIcon,
   Button,
   ChevronDownIcon,
@@ -11,6 +12,7 @@ import {
   LaunchIcon,
   LocateFolderIcon,
   MenuSurface,
+  MinusLinedIcon,
   MoreHorizontalIcon,
   PauseIcon,
   PlayIcon,
@@ -306,12 +308,10 @@ export function BrowserNodeActionsMenu({
                           setZoom(runtime.zoomFactor - browserZoomStep)
                         }
                       >
-                        <span
+                        <MinusLinedIcon
                           aria-hidden="true"
-                          className="text-base leading-none"
-                        >
-                          −
-                        </span>
+                          className="size-3.5"
+                        />
                       </Button>
                       <Button
                         className="min-w-14 px-1 text-[12px]"
@@ -334,12 +334,7 @@ export function BrowserNodeActionsMenu({
                           setZoom(runtime.zoomFactor + browserZoomStep)
                         }
                       >
-                        <span
-                          aria-hidden="true"
-                          className="text-base leading-none"
-                        >
-                          +
-                        </span>
+                        <AddLinedIcon aria-hidden="true" className="size-3.5" />
                       </Button>
                     </div>
                   </div>

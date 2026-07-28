@@ -32,12 +32,28 @@ func TestSessionFromPersistedPreservesRailSectionKey(t *testing.T) {
 	session := sessionFromPersisted(PersistedSession{
 		ID:             "session-1",
 		Kind:           agentactivitybiz.SessionKindRoot,
+		MessageVersion: 17,
 		Provider:       "codex",
 		RailSectionKey: " project:repo-1 ",
 	}, false)
 
 	if session.RailSectionKey != "project:repo-1" {
 		t.Fatalf("rail section key = %q, want project:repo-1", session.RailSectionKey)
+	}
+	if session.MessageVersion != 17 {
+		t.Fatalf("message version = %d, want 17", session.MessageVersion)
+	}
+}
+
+func TestPersistedSessionFromActivityPreservesMessageVersion(t *testing.T) {
+	t.Parallel()
+
+	session := persistedSessionFromActivity(agentactivitybiz.Session{
+		ID: "session-1", WorkspaceID: "workspace-1", MessageVersion: 23,
+	})
+
+	if session.MessageVersion != 23 {
+		t.Fatalf("message version = %d, want 23", session.MessageVersion)
 	}
 }
 
@@ -49,6 +65,7 @@ func TestServiceSessionResponseMergesPersistedRailSectionKey(t *testing.T) {
 		PersistedSession{
 			ID:             "session-1",
 			WorkspaceID:    "workspace-1",
+			MessageVersion: 19,
 			Provider:       "codex",
 			RailSectionKey: "project:repo-1",
 		},
@@ -57,5 +74,8 @@ func TestServiceSessionResponseMergesPersistedRailSectionKey(t *testing.T) {
 
 	if session.RailSectionKey != "project:repo-1" {
 		t.Fatalf("rail section key = %q, want project:repo-1", session.RailSectionKey)
+	}
+	if session.MessageVersion != 19 {
+		t.Fatalf("message version = %d, want 19", session.MessageVersion)
 	}
 }

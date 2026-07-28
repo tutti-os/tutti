@@ -3,6 +3,8 @@ export {
   type WorkspaceFilePreviewSurfaceCopy
 } from "./toSurfaceState.ts";
 export {
+  WorkspaceImagePreviewSurface,
+  type WorkspaceImagePreviewSurfaceProps,
   WorkspaceFilePreviewSurface,
   type WorkspaceFilePreviewHostRenderer,
   type WorkspaceFilePreviewHostRendererProps,

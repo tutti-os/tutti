@@ -484,11 +484,17 @@ function agentMentionItemToRowItem(
 
   if (item.kind === "session") {
     const isMySession = item.scope === "my_sessions";
+    const participantTruncatableSegments =
+      item.agentOwnerLabel && item.agentLabel ? [item.agentOwnerLabel] : null;
+    const participantFixedSuffix =
+      participantTruncatableSegments && item.agentLabel
+        ? ` · ${item.agentLabel}`
+        : null;
     return {
       kind: "session",
-      participant: isMySession
-        ? item.agentName
-        : `${item.initiatorName} & ${item.agentName}`,
+      participant: item.agentName,
+      participantTruncatableSegments,
+      participantFixedSuffix,
       summary: item.title,
       userAvatarUrl: isMySession ? null : (item.initiatorAvatarUrl ?? null),
       userAvatarPlaceholderUrl,
@@ -552,6 +558,7 @@ function agentMentionItemToRowItem(
     kind: "issue",
     title: item.title,
     creatorName: item.creatorName ?? null,
+    iconUrl: item.iconUrl ?? null,
     statusTag: agentIssueStatusTag(item.status)
   };
 }

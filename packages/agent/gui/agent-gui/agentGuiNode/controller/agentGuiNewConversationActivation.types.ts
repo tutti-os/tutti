@@ -49,10 +49,6 @@ export interface UseAgentGUINewConversationActivationInput {
   tuttiModeDraftKey: string;
   conversationListQuery: AgentGUIConversationListQuery | null;
   currentUserId: string | null | undefined;
-  persistActiveConversation: (
-    agentSessionId: string | null,
-    agentTargetId?: string | null
-  ) => void;
   requestRailReveal(
     agentSessionId: string,
     reason: AgentGUIConversationRailRevealReason

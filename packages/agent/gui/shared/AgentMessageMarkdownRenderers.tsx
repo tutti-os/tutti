@@ -1,4 +1,6 @@
 import {
+  Children,
+  isValidElement,
   useCallback,
   useRef,
   useState,
@@ -10,6 +12,7 @@ import { Check, Copy } from "lucide-react";
 import { translate } from "../i18n/index";
 import { cn } from "../app/renderer/lib/utils";
 import type { MarkdownDomProps } from "./AgentMessageMarkdown";
+import { AgentMessageMermaid } from "./AgentMessageMermaid";
 
 export function MarkdownCode({
   node: _node,
@@ -113,12 +116,26 @@ export function textFromReactNode(node: ReactNode): string {
 
 export function MarkdownPre({
   children,
+  mermaidEnabled = true,
+  node: _node,
+  streaming = false,
   ...props
-}: MarkdownDomProps<"pre">): JSX.Element {
+}: MarkdownDomProps<"pre"> & {
+  mermaidEnabled?: boolean;
+  streaming?: boolean;
+}): JSX.Element {
   "use memo";
   const preRef = useRef<HTMLPreElement>(null);
   const [copied, setCopied] = useState(false);
   const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mermaidSource = mermaidEnabled
+    ? resolveMermaidCodeBlockSource(children)
+    : null;
+  const streamingMermaidSource =
+    mermaidEnabled && streaming
+      ? resolveStreamingMermaidCodeBlockSource(children)
+      : null;
+  const effectiveMermaidSource = mermaidSource ?? streamingMermaidSource;
 
   const handleCopy = useCallback(() => {
     const text = preRef.current?.textContent?.trim();
@@ -135,7 +152,7 @@ export function MarkdownPre({
     });
   }, []);
 
-  return (
+  const codeBlock = (
     <div className="group relative">
       <button
         type="button"
@@ -156,4 +173,63 @@ export function MarkdownPre({
       </pre>
     </div>
   );
+
+  if (effectiveMermaidSource === null) {
+    return codeBlock;
+  }
+
+  return (
+    <AgentMessageMermaid
+      source={effectiveMermaidSource}
+      streaming={streaming}
+    />
+  );
+}
+
+export function resolveMermaidCodeBlockSource(
+  children: ReactNode
+): string | null {
+  return resolveMermaidCodeBlockSourceWithLanguage(children, (language) => {
+    return language === "mermaid";
+  });
+}
+
+function resolveStreamingMermaidCodeBlockSource(
+  children: ReactNode
+): string | null {
+  return resolveMermaidCodeBlockSourceWithLanguage(children, (language) => {
+    return (
+      language.length > 0 &&
+      language.length < "mermaid".length &&
+      "mermaid".startsWith(language)
+    );
+  });
+}
+
+function resolveMermaidCodeBlockSourceWithLanguage(
+  children: ReactNode,
+  acceptsLanguage: (language: string) => boolean
+): string | null {
+  const childElements = Children.toArray(children);
+  if (childElements.length !== 1 || !isValidElement(childElements[0])) {
+    return null;
+  }
+  const codeElement = childElements[0] as {
+    props: {
+      children?: ReactNode;
+      className?: unknown;
+    };
+  };
+  const className =
+    typeof codeElement.props.className === "string"
+      ? codeElement.props.className
+      : "";
+  const languageClass = className
+    .split(/\s+/)
+    .find((candidate) => candidate.toLowerCase().startsWith("language-"));
+  const language = languageClass?.slice("language-".length).toLowerCase() ?? "";
+  if (!acceptsLanguage(language)) {
+    return null;
+  }
+  return textFromReactNode(codeElement.props.children).replace(/\n$/, "");
 }

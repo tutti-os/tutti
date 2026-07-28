@@ -646,6 +646,9 @@ func TestClaudeSDKGoalArmTurnCarriesDurableGoalIdentity(t *testing.T) {
 		t.Fatalf("ApplyGoal set: %v", err)
 	}
 	turnID := payloadString(setRequest.Payload, "turnId")
+	if payloadString(setRequest.Payload, "providerTurnId") != turnID {
+		t.Fatalf("goal provider turn id != SDK prompt UUID: %#v", setRequest.Payload)
+	}
 	if payloadString(setRequest.Payload, "goalOperationId") != "goal-op-7" || payloadInt64(setRequest.Payload, "goalRevision") != 7 {
 		t.Fatalf("goal exec payload = %#v", setRequest.Payload)
 	}
@@ -794,6 +797,40 @@ func TestClaudeSDKDelayedOlderRepairEpochIsPreciselyCanceled(t *testing.T) {
 	sent := conn.sentRequests()
 	if len(sent) != 1 || sent[0].Type != "cancel" || payloadString(sent[0].Payload, "turnId") != "goal-turn-old" || payloadInt64(sent[0].Payload, "goalRepairEpoch") != 1 {
 		t.Fatalf("precise stale repair cancellation = %#v", sent)
+	}
+}
+
+func TestClaudeSDKFencedGoalGenerationNeverBecomesCanonical(t *testing.T) {
+	t.Parallel()
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	conn := newBlockingClaudeSDKConnection()
+	defer func() { _ = conn.Close() }()
+	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
+	if err := adapter.FenceGoalGeneration(context.Background(), session, GoalGenerationFenceInput{
+		OperationID: "goal-fenced", Revision: 7, RepairEpoch: 2, Reason: "binding_revoked",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	events, _, err := adapter.sidecarTurnEvents(adapterSession, session, "goal-turn-fenced", claudeSDKSidecarEvent{
+		Type: "turn_started",
+		Payload: map[string]any{
+			"turnId": "goal-turn-fenced", "turnOrigin": "goal_continuation",
+			"sourceGoalOperationId": "goal-fenced", "sourceGoalRevision": float64(7), "sourceGoalRepairEpoch": float64(2),
+		},
+	})
+	if err != nil || len(events) != 0 {
+		t.Fatalf("fenced turn events=%#v error=%v", events, err)
+	}
+	sent := conn.sentRequests()
+	if len(sent) != 1 || sent[0].Type != "cancel" ||
+		payloadString(sent[0].Payload, "turnId") != "goal-turn-fenced" {
+		t.Fatalf("fenced turn cancellation=%#v", sent)
+	}
+	events, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "goal-turn-fenced", claudeSDKSidecarEvent{
+		Type: "turn_canceled", Payload: map[string]any{"turnId": "goal-turn-fenced"},
+	})
+	if err != nil || !terminal || len(events) != 0 {
+		t.Fatalf("fenced terminal events=%#v terminal=%v error=%v", events, terminal, err)
 	}
 }
 

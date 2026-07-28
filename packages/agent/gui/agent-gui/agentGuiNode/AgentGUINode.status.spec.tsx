@@ -160,6 +160,56 @@ describe("AgentGUINode status controller integration", () => {
     ).toBe(true);
   });
 
+  it("gives Host account chrome the same exact target on config open", () => {
+    const target = {
+      ...createLocalAgentGUIAgentTarget("tutti-agent"),
+      ownership: "self" as const
+    };
+    mockViewModel = createViewModel({
+      selectedAgentTarget: target,
+      agentTargets: [target],
+      conversationFilter: {
+        kind: "agentTarget",
+        agentTargetId: target.agentTargetId ?? target.targetId
+      }
+    });
+    const onAgentConfigMenuOpen = vi.fn();
+    const renderAgentConfigAccount = vi.fn(() => (
+      <div data-testid="host-account">Host account</div>
+    ));
+    const props = createProps();
+    render(
+      <AgentGUINode
+        {...props}
+        hostActions={{
+          ...props.hostActions,
+          onAgentConfigMenuOpen
+        }}
+        renderSlots={{
+          agentConfigAccount: renderAgentConfigAccount
+        }}
+      />
+    );
+
+    expect(renderAgentConfigAccount).toHaveBeenCalledWith({
+      agentTargetId: "local:tutti-agent",
+      provider: "tutti-agent",
+      label: target.label,
+      ownership: "self"
+    });
+    expect(latestViewProps().agentConfigAccountContent).toBeTruthy();
+
+    act(() => latestViewProps().onAgentConfigMenuOpen?.());
+
+    expect(onAgentConfigMenuOpen).toHaveBeenCalledOnce();
+    expect(onAgentConfigMenuOpen).toHaveBeenCalledWith({
+      agentTargetId: "local:tutti-agent",
+      provider: "tutti-agent",
+      label: target.label,
+      ownership: "self"
+    });
+  });
+
   it("does not project status from the previous target after a target switch", () => {
     mockViewModel = createViewModel();
     let observer: AgentStatusStreamObserver | null = null;
@@ -321,6 +371,7 @@ describe("AgentGUINode status controller integration", () => {
 });
 
 interface CapturedViewProps {
+  agentConfigAccountContent?: React.ReactNode;
   onAgentConfigMenuOpen?: () => void;
   onAgentConfigMenuClose?: () => void;
   onSlashStatusOpen?: () => void;
@@ -445,8 +496,16 @@ function createViewModel(
     pendingInteractivePrompt: null,
     queuedPrompts: [],
     queueStatus: "active",
-    canSubmit: true,
-    canQueueWhileBusy: false,
+    gate: {
+      conversationBusy: false,
+      runtime: {
+        status: "ready",
+        reason: null,
+        sessionRuntimeReason: null
+      },
+      editor: { status: "editable", reason: null },
+      submission: { status: "ready", reason: null }
+    },
     isSubmitting: false,
     isInterrupting: false,
     promptImagesSupported: true,

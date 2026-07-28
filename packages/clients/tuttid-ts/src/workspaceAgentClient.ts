@@ -1,10 +1,13 @@
 import {
+  acknowledgeWorkspaceAgentSessionForkOperation,
   applyWorkspaceGitPatch,
   cancelWorkspaceAgentTurn,
   clearWorkspaceAgentSessions,
   createWorkspaceAgentSession,
   deleteWorkspaceAgentSession,
   deleteWorkspaceAgentSessionsBatch,
+  forkWorkspaceAgentSession,
+  getWorkspaceAgentSessionForkOperation,
   getWorkspaceAgentSession,
   getWorkspaceAgentSessionGoal,
   goalControlWorkspaceAgentSession,
@@ -36,12 +39,15 @@ import type { TuttidClient } from "./tuttidClientTypes.ts";
 
 type WorkspaceAgentClient = Pick<
   TuttidClient,
+  | "acknowledgeWorkspaceAgentSessionForkOperation"
   | "applyWorkspaceGitPatch"
   | "cancelWorkspaceAgentTurn"
   | "clearWorkspaceAgentSessions"
   | "createWorkspaceAgentSession"
   | "deleteWorkspaceAgentSession"
   | "deleteWorkspaceAgentSessionsBatch"
+  | "forkWorkspaceAgentSession"
+  | "getWorkspaceAgentSessionForkOperation"
   | "getWorkspaceAgentSession"
   | "getWorkspaceAgentSessionGoal"
   | "goalControlWorkspaceAgentSession"
@@ -72,6 +78,20 @@ export function createWorkspaceAgentClient(
   client: Client
 ): WorkspaceAgentClient {
   return {
+    async acknowledgeWorkspaceAgentSessionForkOperation(
+      workspaceID,
+      operationID,
+      requestOptions
+    ) {
+      return unwrapData(
+        await acknowledgeWorkspaceAgentSessionForkOperation({
+          client,
+          path: { operationID, workspaceID },
+          ...requestOptions
+        }),
+        "Acknowledge workspace agent session fork operation request failed."
+      ).operation;
+    },
     async createWorkspaceAgentSession(workspaceID, request, requestOptions) {
       const response = await createWorkspaceAgentSession({
         client,
@@ -83,6 +103,36 @@ export function createWorkspaceAgentClient(
         response,
         "Create workspace agent session request failed."
       ).session;
+    },
+    async forkWorkspaceAgentSession(
+      workspaceID,
+      agentSessionID,
+      request,
+      requestOptions
+    ) {
+      return unwrapData(
+        await forkWorkspaceAgentSession({
+          client,
+          body: request,
+          path: { agentSessionID, workspaceID },
+          ...requestOptions
+        }),
+        "Fork workspace agent session request failed."
+      ).operation;
+    },
+    async getWorkspaceAgentSessionForkOperation(
+      workspaceID,
+      operationID,
+      requestOptions
+    ) {
+      return unwrapData(
+        await getWorkspaceAgentSessionForkOperation({
+          client,
+          path: { operationID, workspaceID },
+          ...requestOptions
+        }),
+        "Get workspace agent session fork operation request failed."
+      ).operation;
     },
     async deleteWorkspaceAgentSession(workspaceID, agentSessionID) {
       return unwrapData(
@@ -114,11 +164,16 @@ export function createWorkspaceAgentClient(
         "Clear workspace agent sessions request failed."
       );
     },
-    async getWorkspaceAgentSession(workspaceID, agentSessionID) {
+    async getWorkspaceAgentSession(
+      workspaceID,
+      agentSessionID,
+      requestOptions
+    ) {
       return unwrapData(
         await getWorkspaceAgentSession({
           client,
-          path: { agentSessionID, workspaceID }
+          path: { agentSessionID, workspaceID },
+          ...requestOptions
         }),
         "Workspace agent session request failed."
       );
@@ -232,13 +287,15 @@ export function createWorkspaceAgentClient(
     async listWorkspaceAgentSessionMessages(
       workspaceID,
       agentSessionID,
-      request
+      request,
+      requestOptions
     ) {
       return unwrapData(
         await listWorkspaceAgentSessionMessages({
           client,
           path: { agentSessionID, workspaceID },
-          query: request
+          query: request,
+          ...requestOptions
         }),
         "Workspace agent session messages request failed."
       );

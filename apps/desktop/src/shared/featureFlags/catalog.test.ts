@@ -15,10 +15,12 @@ import {
   isFeatureEnabled,
   labFeatureDefinitions,
   LAB_ENABLED_FLAG,
+  LAB_AGENT_INPUT_HISTORY_FLAG,
   LAB_AUTOMATION_RULES_FLAG,
   LAB_MODEL_PLANS_FLAG,
   LAB_TUTTI_MODE_FLAG,
   LAB_WORKSPACE_AGENTS_FLAG,
+  MOBILE_REMOTE_ACCESS_SETTINGS_FLAG,
   resolveDesktopWorkspaceUiMode,
   withDesktopWorkspaceUiMode,
   WORKSPACE_STANDALONE_AGENT_MODE_FLAG
@@ -51,6 +53,7 @@ test("isFeatureEnabled falls back to catalog default when key absent", () => {
     false
   );
   assert.equal(isFeatureEnabled({}, AGENT_QUICK_PROMPT_LIBRARY_FLAG), false);
+  assert.equal(isFeatureEnabled({}, MOBILE_REMOTE_ACCESS_SETTINGS_FLAG), false);
   assert.equal(
     isFeatureEnabled(
       { [AGENT_QUICK_PROMPT_LIBRARY_FLAG]: false },
@@ -62,6 +65,13 @@ test("isFeatureEnabled falls back to catalog default when key absent", () => {
     isFeatureEnabled(
       { [AGENT_QUICK_PROMPT_LIBRARY_FLAG]: true },
       AGENT_QUICK_PROMPT_LIBRARY_FLAG
+    ),
+    true
+  );
+  assert.equal(
+    isFeatureEnabled(
+      { [MOBILE_REMOTE_ACCESS_SETTINGS_FLAG]: true },
+      MOBILE_REMOTE_ACCESS_SETTINGS_FLAG
     ),
     true
   );
@@ -78,6 +88,7 @@ test("labFeatureDefinitions excludes the master switch", () => {
 
 test("experimental Agent features require independent Lab opt-ins", () => {
   const flags = [
+    LAB_AGENT_INPUT_HISTORY_FLAG,
     LAB_TUTTI_MODE_FLAG,
     LAB_MODEL_PLANS_FLAG,
     LAB_WORKSPACE_AGENTS_FLAG,

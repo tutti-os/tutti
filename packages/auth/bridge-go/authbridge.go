@@ -38,6 +38,14 @@ const (
 	authJSONDirectoryFileMode = 0o755
 )
 
+// ErrUserCancelled identifies a desktop login that the user explicitly cancelled.
+var ErrUserCancelled = errors.New("user cancelled")
+
+// IsUserCancelled reports whether err represents an explicit user cancellation.
+func IsUserCancelled(err error) bool {
+	return errors.Is(err, ErrUserCancelled)
+}
+
 type Config struct {
 	AccountBaseURL   string
 	AppCallbackURL   string
@@ -152,7 +160,9 @@ func NewClient(config Config) (*Client, error) {
 	}
 	httpClient := normalized.HTTPClient
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		// This package is a standalone module and intentionally preserves the
+		// caller's process-wide default client customizations.
+		httpClient = http.DefaultClient //nolint:forbidigo
 	}
 	return &Client{config: normalized, http: httpClient}, nil
 }
@@ -226,6 +236,9 @@ func (c *Client) Login(ctx context.Context) (LoginResult, error) {
 	<-attempt.done
 	status := attempt.Status()
 	if status.Status != statusCompleted {
+		if attemptErr := attempt.resultError(); attemptErr != nil {
+			return LoginResult{}, attemptErr
+		}
 		if status.Error != "" {
 			return LoginResult{}, errors.New(status.Error)
 		}
@@ -327,6 +340,12 @@ func (a *LoginAttempt) Status() LoginStatus {
 	return out
 }
 
+func (a *LoginAttempt) resultError() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.err
+}
+
 func (a *LoginAttempt) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		if !a.allowedOrigin(r) || !a.allowedHost(r) {
@@ -403,8 +422,12 @@ func (a *LoginAttempt) handleComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if strings.TrimSpace(callbackError) != "" {
-		err := errors.New(strings.TrimSpace(callbackError))
-		sendBridgeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": map[string]string{"code": "PROVIDER_CALLBACK_ERROR", "message": err.Error()}})
+		err := callbackErrorValue(callbackError)
+		errorCode := "PROVIDER_CALLBACK_ERROR"
+		if IsUserCancelled(err) {
+			errorCode = "USER_CANCELLED"
+		}
+		sendBridgeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": map[string]string{"code": errorCode, "message": err.Error()}})
 		go a.fail(err)
 		return
 	}
@@ -435,8 +458,8 @@ func (a *LoginAttempt) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if callbackError != "" {
-		err := errors.New(callbackError)
-		redirectBridgeResult(w, r, a, "error", "providerError")
+		err := callbackErrorValue(callbackError)
+		redirectBridgeResult(w, r, a, "error", callbackErrorSafeResultCode(callbackError))
 		a.markFailed(err)
 		a.closeGracefully()
 		return
@@ -747,57 +770,6 @@ func decodeBridgeState(raw string) (bridgeState, error) {
 		return bridgeState{}, errors.New("invalid bridge state")
 	}
 	return state, nil
-}
-
-func buildLoginURL(authLoginURL string, state string) string {
-	u, _ := url.Parse(authLoginURL)
-	u.Path = "/auth/login"
-	u.RawQuery = ""
-	u.Fragment = ""
-	q := u.Query()
-	q.Set("state", state)
-	u.RawQuery = q.Encode()
-	return u.String()
-}
-
-func redirectBridgeResult(w http.ResponseWriter, r *http.Request, attempt *LoginAttempt, status string, safeErrorCode string) {
-	http.Redirect(w, r, buildBridgeResultURL(attempt.client.config, status, safeErrorCode), http.StatusFound)
-}
-
-func buildBridgeResultURL(config Config, status string, safeErrorCode string) string {
-	u, err := url.Parse(config.AuthLoginURL)
-	if err != nil {
-		return "/auth/login/callback"
-	}
-	u.Path = "/auth/login/callback"
-	u.RawQuery = ""
-	u.Fragment = ""
-	q := u.Query()
-	q.Set("desktopBridgeStatus", status)
-	if strings.TrimSpace(safeErrorCode) != "" {
-		q.Set("desktopBridgeError", strings.TrimSpace(safeErrorCode))
-	}
-	if openAppURL := buildSafeOpenAppURL(config.AppCallbackURL, status, safeErrorCode); openAppURL != "" {
-		q.Set("openAppUrl", openAppURL)
-	}
-	u.RawQuery = q.Encode()
-	return u.String()
-}
-
-func buildSafeOpenAppURL(raw string, status string, safeErrorCode string) string {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || !isAllowedAppCallbackScheme(u.Scheme) {
-		return ""
-	}
-	u.RawQuery = ""
-	u.Fragment = ""
-	q := u.Query()
-	q.Set("desktopBridgeStatus", status)
-	if strings.TrimSpace(safeErrorCode) != "" {
-		q.Set("desktopBridgeError", strings.TrimSpace(safeErrorCode))
-	}
-	u.RawQuery = q.Encode()
-	return u.String()
 }
 
 func isAllowedAppCallbackScheme(scheme string) bool {

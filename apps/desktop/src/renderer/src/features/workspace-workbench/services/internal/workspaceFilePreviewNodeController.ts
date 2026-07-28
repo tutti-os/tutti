@@ -13,6 +13,7 @@ import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { DesktopHostFilesApi } from "@preload/types";
 import type { WorkspaceWorkbenchDesktopI18nRuntime } from "@shared/i18n";
 import { workspaceWorkbenchDesktopI18nKeys } from "@shared/i18n";
+import type { WorkspaceFilePreviewTextViewMode } from "../workspaceFilePreviewViewModeRequests.ts";
 import {
   createWorkspaceFilePreviewNodeRuntimeState,
   createWorkspaceFilePreviewNodeSnapshotState,
@@ -37,6 +38,7 @@ export type WorkspaceFilePreviewNodeControllerState =
       message?: string;
       saveStatus: WorkspaceFilePreviewTextSaveStatus;
       status: "text";
+      viewMode: WorkspaceFilePreviewTextViewMode;
     }
   | {
       entry: WorkspaceFilePreviewTarget;
@@ -66,6 +68,7 @@ export type WorkspaceFilePreviewNodeControllerState =
 
 export interface WorkspaceFilePreviewNodeController {
   changeDraft(draft: string): void;
+  changeTextViewMode(mode: WorkspaceFilePreviewTextViewMode): void;
   dispose(): void;
   getSnapshot(): WorkspaceFilePreviewNodeControllerState;
   saveTextFile(): Promise<void>;
@@ -167,6 +170,16 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     );
   }
 
+  changeTextViewMode(mode: WorkspaceFilePreviewTextViewMode): void {
+    this.updateState((current) =>
+      current.status === "text" &&
+      current.entry.previewKind === "markdown" &&
+      current.viewMode !== mode
+        ? { ...current, viewMode: mode }
+        : current
+    );
+  }
+
   dispose(): void {
     this.disposed = true;
     this.unsubscribePreview();
@@ -259,7 +272,8 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
           draft: state.content,
           entry: state.entry,
           saveStatus: "idle",
-          status: "text"
+          status: "text",
+          viewMode: "edit"
         }));
         return;
       case "image":
@@ -392,16 +406,26 @@ function nodeStateKey(state: unknown): string {
 function resolveTextHeaderStateFromPreviewState(
   state: Exclude<WorkspaceFilePreviewNodeControllerState, { status: "empty" }>
 ): WorkspaceFilePreviewTextHeaderState {
+  const withMarkdownViewMode = (
+    headerState: WorkspaceFilePreviewTextHeaderState
+  ): WorkspaceFilePreviewTextHeaderState =>
+    state.entry.previewKind === "markdown"
+      ? {
+          ...headerState,
+          viewMode: state.status === "text" ? state.viewMode : "edit"
+        }
+      : headerState;
+
   if (state.status === "loading") {
-    return {
+    return withMarkdownViewMode({
       canSave: false,
       dirty: false,
       status: "loading"
-    };
+    });
   }
 
   if (state.status !== "text") {
-    return {
+    return withMarkdownViewMode({
       canSave: false,
       dirty: false,
       message:
@@ -411,37 +435,37 @@ function resolveTextHeaderStateFromPreviewState(
           ? state.message
           : undefined,
       status: "error"
-    };
+    });
   }
 
   const dirty = state.draft !== state.content;
   if (state.saveStatus === "saving") {
-    return {
+    return withMarkdownViewMode({
       canSave: true,
       dirty,
       status: "saving"
-    };
+    });
   }
   if (state.saveStatus === "error") {
-    return {
+    return withMarkdownViewMode({
       canSave: true,
       dirty,
       message: state.message,
       status: "error"
-    };
+    });
   }
   if (dirty) {
-    return {
+    return withMarkdownViewMode({
       canSave: true,
       dirty: true,
       status: "unsaved"
-    };
+    });
   }
-  return {
+  return withMarkdownViewMode({
     canSave: true,
     dirty: false,
     status: "saved"
-  };
+  });
 }
 
 function resolveReadonlyMessage(

@@ -1,4 +1,6 @@
+import { toAnalyticsProtocolParams } from "@tutti-os/analytics";
 import type { IssueManagerFileReference } from "../../contracts/index.ts";
+import type { IssueManagerAnalyticsEvent } from "../../contracts/index.ts";
 import {
   extractIssueManagerWorkspaceFileLinksFromContent,
   type IssueManagerFeature
@@ -6,9 +8,17 @@ import {
 
 export function trackIssueManagerAnalytics(
   feature: IssueManagerFeature,
-  event: Parameters<NonNullable<IssueManagerFeature["analytics"]>["track"]>[0]
+  event: IssueManagerAnalyticsEvent
 ): void {
-  void Promise.resolve(feature.analytics?.track(event)).catch(() => undefined);
+  const reporting = feature.reporterService
+    ? feature.reporterService.trackEvents([
+        {
+          name: event.name,
+          params: toAnalyticsProtocolParams(event.params)
+        }
+      ])
+    : feature.analytics?.track(event);
+  void Promise.resolve(reporting).catch(() => undefined);
 }
 
 export function trackIssueManagerContextRefsAdded(input: {

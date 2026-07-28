@@ -47,13 +47,13 @@
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
     "@types/ws": "^8.18.1",
-    "electron": "^35.7.5",
+    "electron": "^43.2.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "typescript": "^5.8.3"
   },
   "peerDependencies": {
-    "electron": "^35.7.5",
+    "electron": ">=35.7.5 <44",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },

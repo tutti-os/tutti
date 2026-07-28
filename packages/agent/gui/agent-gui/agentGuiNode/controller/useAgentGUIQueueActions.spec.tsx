@@ -56,7 +56,6 @@ describe("useAgentGUIQueueActions", () => {
           agentActivityRuntime: {
             readPromptAsset
           } as unknown as AgentActivityRuntime,
-          previewMode: false,
           sessionEngine,
           setDraftByScopeKey: setDrafts,
           workspaceId: "workspace-1"

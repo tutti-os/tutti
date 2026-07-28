@@ -10,6 +10,7 @@ import {
   type DeveloperLogsAppCenterSnapshot
 } from "./developerLogs.ts";
 import type { DeveloperLogsAgentSessionRecord } from "./developerLogsAgentSessions.ts";
+import { loadDeveloperLogsAgentSessionAttachments } from "./developerLogsAgentSessions.ts";
 import { getSystemDesktopLocale } from "./desktopLocale.ts";
 import type { DesktopHostPreferencesState } from "./desktopHostPreferences.ts";
 import { resolveDesktopDefaultsFromEnv } from "./defaults.ts";
@@ -23,6 +24,7 @@ export function createDesktopDeveloperLogsService(
     TuttidClient,
     | "listWorkspaceAgentSessionMessages"
     | "listWorkspaceAgentSessions"
+    | "readWorkspaceAgentSessionAttachment"
     | "listWorkspaceAppFactoryJobs"
     | "listWorkspaceApps"
     | "listWorkspaces"
@@ -55,6 +57,7 @@ export async function exportDesktopDeveloperLogsAndNotify(
     TuttidClient,
     | "listWorkspaceAgentSessionMessages"
     | "listWorkspaceAgentSessions"
+    | "readWorkspaceAgentSessionAttachment"
     | "listWorkspaceAppFactoryJobs"
     | "listWorkspaceApps"
     | "listWorkspaces"
@@ -84,6 +87,7 @@ async function listDeveloperLogsAgentSessions(
     TuttidClient,
     | "listWorkspaceAgentSessionMessages"
     | "listWorkspaceAgentSessions"
+    | "readWorkspaceAgentSessionAttachment"
     | "listWorkspaceAppFactoryJobs"
     | "listWorkspaceApps"
     | "listWorkspaces"
@@ -140,8 +144,18 @@ async function listDeveloperLogsAgentSessions(
         if (!messages) {
           return null;
         }
+        const attachments = await loadDeveloperLogsAgentSessionAttachments(
+          messages.messages,
+          (attachmentID) =>
+            tuttidClient.readWorkspaceAgentSessionAttachment(
+              session.workspaceID,
+              session.agentSessionID,
+              attachmentID
+            )
+        );
         return {
           ...session,
+          ...attachments,
           hasMoreMessages: messages.hasMore,
           latestMessageVersion: messages.latestVersion,
           messages: messages.messages

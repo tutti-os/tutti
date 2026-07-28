@@ -13,3 +13,15 @@ formats, renderer state, Electron, or VM paths. A host must provide:
 
 The host remains responsible for combining Commerce data with Account identity
 and for mapping the result into its local API and UI.
+
+`ProductSummary.MembershipAccess` is the stable behavior contract for hosts:
+
+- `free`: Commerce explicitly reports no paid membership;
+- `active`: paid membership access is explicitly active;
+- `inactive`: paid membership access is explicitly inactive;
+- `unknown`: membership data is missing, partial, or uses an unrecognized
+  status.
+
+Hosts must use this enum for upgrade/recharge behavior instead of parsing
+`TierKey`, `Status`, `AccessStatus`, or display labels. Unknown values fail
+closed to `unknown`.

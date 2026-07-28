@@ -18,6 +18,20 @@ The window model is intentionally simple:
 - keep Agent-only windows tied to the same workspace, preload, renderer
   bundle, daemon session, and persisted account state as the workspace window
 
+On Linux, the desktop currently requests X11/Xwayland explicitly. The
+Agent-only window contract depends on global source-window bounds,
+deterministic duplicate-window positioning, and programmatic content-width
+resizing, which native Wayland does not expose. Native Wayland must not be
+enabled until those interactions have a Wayland-specific product contract and
+fallback behavior. Agent-only windows also keep square native corners on Linux
+so Electron upgrades do not silently change the established frameless shell.
+
+Native file dialogs use product-semantic starting locations. Project
+directories start in Documents, while archive import/export, icon upload,
+browser downloads, and cookie import start in Downloads. A successful choice
+updates the matching starting directory for the remainder of the current app
+process; these locations are not persisted as user preferences.
+
 ## Current Window Types
 
 ### Dashboard Window
@@ -157,6 +171,15 @@ Agent-only windows toggle fullscreen because native zoom is disabled, while OS
 workspace windows toggle BrowserWindow maximize and unmaximize.
 The Agent-only shell places Browser and other desktop-owned auxiliary tools in
 a right sidebar, while Terminal opens in a bottom tray below the conversation.
+The sidebar projects a structured Header layout into the shared
+`AgentGuiWorkbenchHeader`; native Agent windows and embedded Workbench hosts
+therefore keep one authoritative Header row rather than moving open-panel
+controls into a second panel Header. Header owner and body layout are separate
+contract dimensions: both current surfaces use `overlay`, even though one is
+window-owned and the other is host-owned. Both surfaces also consume the one
+AgentGUI-owned Rail breakpoint and borderless Header presentation; Desktop does
+not provide a standalone-only collapse threshold or use window mode to select
+Header spacing and separators.
 When the sidebar is closed, its Apps and Message Center quick actions expose
 localized hover tooltips alongside the Tasks action.
 Opening a right-sidebar tool expands the native content width first so the
@@ -167,6 +190,14 @@ message flow narrows instead of being covered. Width added from the sidebar's
 left separator follows the same adjacent layout rule. Closing the sidebar
 restores the pre-panel native width. This sizing remains renderer/main window
 presentation state and never enters AgentGUI or workbench snapshots.
+Only the Agent-only standalone window enables the constrained-shrink contract.
+Its middle conversation content reserves 408px. During native window shrink,
+the right tool sidebar keeps its chosen width and closes directly when retaining
+it would cross the current AgentGUI minimum; continued shrink then closes the
+left conversation Rail directly before that Rail can be compressed. With both
+sidebars closed, the 52px provider Rail plus the middle-content minimum gives
+the Electron window a 460px minimum width. Embedded Workbench AgentGUI surfaces
+retain the shared default responsive behavior.
 An Agent-only right sidebar with no mounted tool uses a compact picker width at
 60% of the Files panel default. The picker lists Files, Terminal, Browser,
 Tasks, Apps, and Messages in the same tool hierarchy used by the panel header.
@@ -221,6 +252,12 @@ App Center preparation, it has no reversible pending attempt, and reporting
 failure would trigger a duplicate system fallback. When presentation fails, its
 fallback notification policy also comes from the registration that started the
 attempt, rather than a replacement registered while the attempt was in flight.
+The OS Workbench preview Node keeps text-family files in its editable source
+surface. Markdown targets additionally expose an Edit/Preview toggle in the
+node header. Preview mode renders the current draft, including unsaved changes,
+with sanitized GFM; switching modes does not replace the controller or reset
+dirty/save state. The selected mode is runtime-only node presentation state and
+is not written to the durable Workbench snapshot.
 
 The App Center contribution keeps the catalog and one app-specific Browser Node
 for every id in `openAppIds` mounted in both shells. The catalog is a permanent

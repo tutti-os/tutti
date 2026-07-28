@@ -26,7 +26,6 @@ const (
 	FailureNoModel          = "no_model_selected"
 	FailureModelRejected    = "model_rejected"
 	FailureInference        = "inference_failed"
-	FailureAgentRuntime     = "agent_runtime_failed"
 	FailureProviderRuntime  = "provider_runtime_unavailable"
 	FailureProviderAuth     = "provider_auth_required"
 	RemedyCheckNetwork      = "check_network_or_base_url"
@@ -36,7 +35,7 @@ const (
 	RemedyAddModelsManually = "add_models_manually"
 	RemedyCheckModelID      = "check_model_id"
 	RemedySelectModel       = "select_model"
-	RemedyRetryAgentRuntime = "retry_compatible_agent"
+	RemedyRetryInference    = "retry_inference"
 )
 
 var ErrDetectionInput = errors.New("invalid model plan detection input")
@@ -66,8 +65,7 @@ type DetectResult struct {
 }
 
 // Detect runs the daemon-verifiable stages in order: network, auth, model
-// discovery, minimal real inference. The agent_runtime stage stays pending
-// until the plan completes its first real agent call.
+// discovery, and minimal real inference.
 func (s *Service) Detect(ctx context.Context, input DetectInput) (DetectResult, error) {
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	planID := strings.TrimSpace(input.PlanID)
@@ -170,14 +168,6 @@ func (s *Service) Detect(ctx context.Context, input DetectInput) (DetectResult, 
 
 		snapshot.Stages = append(snapshot.Stages, authResult, discoveryResult, inferenceResult)
 	}
-
-	agentStage := modelplanbiz.StageResult{Stage: modelplanbiz.StageAgentRuntime, Status: modelplanbiz.StagePending, CheckedAt: now}
-	if hasStored {
-		if existing, ok := stored.Detection.StageOutcome(modelplanbiz.StageAgentRuntime); ok && existing.Status == modelplanbiz.StagePassed && stored.FirstUse.Status == modelplanbiz.FirstUseCompleted {
-			agentStage = existing
-		}
-	}
-	snapshot.Stages = append(snapshot.Stages, agentStage)
 
 	if hasStored {
 		stored.Detection = snapshot

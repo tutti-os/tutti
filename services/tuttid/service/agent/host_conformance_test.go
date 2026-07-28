@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -234,6 +235,7 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 	d.service.SessionReader = d.sessions
 	d.service.SessionPurgeStore = d.sessions
 	d.service.SessionInitializer = legacyHostConformanceSessionInitializer{sessions: d.sessions}
+	d.service.TurnSummaryReader = d.turns
 	canonicalStore := openAgentServiceSQLiteStore(d.t)
 	d.service.SubmitClaimStore = canonicalStore
 	d.service.RuntimeOperationStore = d.operationPort
@@ -243,6 +245,7 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 	d.goalStore = &conformanceGoalStateStore{GoalStateStore: canonicalStore, steps: &steps}
 	d.goalInbox = &conformanceGoalInboxStore{GoalReconcileInboxStore: canonicalStore, steps: &steps}
 	d.service.GoalStateStore = d.goalStore
+	d.service.GoalGenerationFenceStore = canonicalStore
 	d.service.GoalReconcileInboxStore = d.goalInbox
 	d.service.GoalOperationOwner = "host-goal-conformance-worker"
 	d.goalNowUnixMS = 1_000
@@ -336,7 +339,8 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 	persisted := PersistedSession{
 		ID: seed.AgentSessionID, WorkspaceID: seed.WorkspaceID, Kind: kind, Origin: seed.Origin,
 		Provider: seed.Provider, ProviderSessionID: seed.ProviderSessionID, Cwd: seed.Cwd,
-		RailSectionKey: "conversations", Settings: settings,
+		RailSectionKind: "conversations",
+		RailSectionKey:  "conversations", Settings: settings,
 		Metadata:               agentactivitybiz.SessionMetadata{Visible: true, Capabilities: []string{}},
 		InternalRuntimeContext: runtimeContext,
 		Title:                  seed.Title, ActiveTurnID: seed.ActiveTurnID,
@@ -356,7 +360,9 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		additionalKey := additional.WorkspaceID + ":" + additional.AgentSessionID
 		d.sessions.sessions[additionalKey] = PersistedSession{
 			ID: additional.AgentSessionID, WorkspaceID: additional.WorkspaceID, Kind: additionalKind,
-			Provider: additional.Provider, Cwd: additional.Cwd, RailSectionKey: "conversations",
+			Provider: additional.Provider, Cwd: additional.Cwd,
+			RailSectionKind: "conversations",
+			RailSectionKey:  "conversations",
 			Metadata:        agentactivitybiz.SessionMetadata{Visible: true, Capabilities: []string{}},
 			CreatedAtUnixMS: 1, UpdatedAtUnixMS: 2, LastEventUnixMS: 2,
 		}
@@ -407,6 +413,9 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		d.turns.turns[seed.AgentSessionID+":"+turn.TurnID] = agentactivitybiz.Turn{
 			WorkspaceID: seed.WorkspaceID, AgentSessionID: seed.AgentSessionID,
 			TurnID: turn.TurnID, Phase: turn.Phase, Outcome: turn.Outcome,
+			RootProviderTurnID:      turn.RootProviderTurnID,
+			FinalAssistantMessageID: turn.FinalAssistantMessageID,
+			StartedAtUnixMS:         turn.StartedAtUnixMS, SettledAtUnixMS: turn.SettledAtUnixMS, Origin: turn.Origin,
 		}
 		d.service.TurnStore = d.turns
 	}
@@ -414,6 +423,9 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		d.turns.turns[seed.AgentSessionID+":"+turn.TurnID] = agentactivitybiz.Turn{
 			WorkspaceID: seed.WorkspaceID, AgentSessionID: seed.AgentSessionID,
 			TurnID: turn.TurnID, Phase: turn.Phase, Outcome: turn.Outcome,
+			RootProviderTurnID:      turn.RootProviderTurnID,
+			FinalAssistantMessageID: turn.FinalAssistantMessageID,
+			StartedAtUnixMS:         turn.StartedAtUnixMS, SettledAtUnixMS: turn.SettledAtUnixMS, Origin: turn.Origin,
 		}
 		d.service.TurnStore = d.turns
 	}
@@ -482,6 +494,7 @@ func (d *legacyHostConformanceDriver) Create(
 		ProviderTargetRef: input.ProviderTargetRef, ReasoningEffort: input.ReasoningEffort,
 		RuntimeContext: input.RuntimeContext, Speed: input.Speed,
 		ConversationDetailMode: input.ConversationDetailMode, Visible: input.Visible,
+		RailPlacement: input.RailPlacement,
 	})
 	if err != nil {
 		return hostconformance.SessionObservation{}, "", err
@@ -664,6 +677,16 @@ func (d *legacyHostConformanceDriver) GetSession(ctx context.Context, ref agenth
 	return legacyHostSessionObservationWithLive(session, live), err
 }
 
+func (d *legacyHostConformanceDriver) ListSessionTurns(ctx context.Context, ref agenthost.SessionRef, query agenthost.SessionTurnQuery) (agenthost.SessionTurnSummaryPage, error) {
+	if d.directHost {
+		return d.service.ApplicationHost().ListSessionTurns(ctx, ref, query)
+	}
+	page, err := d.service.ListTurns(ctx, ref.WorkspaceID, ref.AgentSessionID, ListTurnsInput{
+		Before: query.Before, Limit: query.Limit,
+	})
+	return agenthost.SessionTurnSummaryPage{Turns: page.Turns, HasMore: page.HasMore}, err
+}
+
 func (d *legacyHostConformanceDriver) GetCanonicalSession(_ context.Context, ref agenthost.SessionRef) (hostconformance.SessionObservation, error) {
 	persisted, found := d.sessions.GetSession(ref.WorkspaceID, ref.AgentSessionID)
 	if !found {
@@ -725,13 +748,17 @@ func (d *legacyHostConformanceDriver) GoalControl(ctx context.Context, input age
 	if err != nil {
 		return hostconformance.GoalObservation{}, err
 	}
-	observation := hostconformance.GoalObservation{Goal: clonePayload(result.Goal), PendingOperationID: result.OperationID}
+	observation := hostconformance.GoalObservation{Goal: clonePayload(result.Goal), OperationID: result.OperationID, PendingOperationID: result.OperationID}
 	if result.GoalState != nil {
 		observation.Revision = result.GoalState.Revision
 		observation.PendingOperationID = result.GoalState.PendingOperationID
 		observation.SyncStatus = result.GoalState.SyncStatus
 	}
 	return observation, nil
+}
+
+func (d *legacyHostConformanceDriver) FenceGoalGeneration(ctx context.Context, input agenthost.FenceGoalGenerationInput) (agenthost.FenceGoalGenerationResult, error) {
+	return d.service.ApplicationHost().FenceGoalGeneration(ctx, input)
 }
 
 func (d *legacyHostConformanceDriver) GetGoalState(ctx context.Context, ref agenthost.SessionRef) (hostconformance.GoalObservation, error) {
@@ -764,7 +791,7 @@ func (d *legacyHostConformanceDriver) StepGoalOperations(ctx context.Context, no
 }
 
 func hostGoalControlObservation(result agenthost.GoalControlResult) hostconformance.GoalObservation {
-	observation := hostconformance.GoalObservation{Goal: clonePayload(result.Goal), PendingOperationID: result.OperationID}
+	observation := hostconformance.GoalObservation{Goal: clonePayload(result.Goal), OperationID: result.OperationID, PendingOperationID: result.OperationID}
 	if result.GoalState != nil {
 		observation.Revision = result.GoalState.Revision
 		observation.PendingOperationID = result.GoalState.PendingOperationID
@@ -917,8 +944,9 @@ type legacyHostConformanceSessionInitializer struct {
 func (i legacyHostConformanceSessionInitializer) InitializeRuntimeSession(
 	ctx context.Context,
 	session ProviderRuntimeSession,
+	railPlacement *agenthost.RailPlacement,
 ) (PersistedSession, error) {
-	persisted, err := (fakeSessionInitializer{}).InitializeRuntimeSession(ctx, session)
+	persisted, err := (fakeSessionInitializer{}).InitializeRuntimeSession(ctx, session, railPlacement)
 	if err == nil {
 		i.sessions.sessions[persisted.WorkspaceID+":"+persisted.ID] = persisted
 	}
@@ -958,6 +986,41 @@ func (s *legacyHostConformanceTurnStore) ListSessionTurns(_ context.Context, _ s
 		}
 	}
 	return result, nil
+}
+
+func (s *legacyHostConformanceTurnStore) ListSessionTurnSummaries(_ context.Context, input agentactivitybiz.ListSessionTurnSummariesInput) (agentactivitybiz.SessionTurnSummaryPage, error) {
+	turns := make([]agentactivitybiz.SessionTurnSummary, 0)
+	for _, turn := range s.turns {
+		if turn.WorkspaceID != input.WorkspaceID || turn.AgentSessionID != input.AgentSessionID {
+			continue
+		}
+		turns = append(turns, agentactivitybiz.SessionTurnSummary{
+			TurnID: turn.TurnID, Phase: turn.Phase, Outcome: turn.Outcome,
+			FinalAssistantMessageID: turn.FinalAssistantMessageID,
+			StartedAtUnixMS:         turn.StartedAtUnixMS, SettledAtUnixMS: turn.SettledAtUnixMS, Origin: turn.Origin,
+		})
+	}
+	sort.Slice(turns, func(left, right int) bool {
+		if turns[left].StartedAtUnixMS != turns[right].StartedAtUnixMS {
+			return turns[left].StartedAtUnixMS > turns[right].StartedAtUnixMS
+		}
+		return turns[left].TurnID > turns[right].TurnID
+	})
+	if input.Before != nil {
+		filtered := turns[:0]
+		for _, turn := range turns {
+			if turn.StartedAtUnixMS < input.Before.StartedAtUnixMS ||
+				(turn.StartedAtUnixMS == input.Before.StartedAtUnixMS && turn.TurnID < input.Before.TurnID) {
+				filtered = append(filtered, turn)
+			}
+		}
+		turns = filtered
+	}
+	hasMore := len(turns) > input.Limit
+	if hasMore {
+		turns = turns[:input.Limit]
+	}
+	return agentactivitybiz.SessionTurnSummaryPage{Turns: turns, HasMore: hasMore}, nil
 }
 
 func (s *legacyHostConformanceTurnStore) ListSessionInteractions(_ context.Context, input agentactivitybiz.ListSessionInteractionsInput) ([]agentactivitybiz.Interaction, error) {
@@ -1042,7 +1105,8 @@ func legacyHostSessionObservationWithLive(session Session, live bool) hostconfor
 	}
 	return hostconformance.SessionObservation{
 		SessionID: session.ID, ProviderSessionID: session.ProviderSessionID,
-		Title: value(session.Title), ActiveTurnID: session.ActiveTurnID, Resumable: session.Resumable,
+		RailSectionKey: session.RailSectionKey,
+		Title:          value(session.Title), ActiveTurnID: session.ActiveTurnID, Resumable: session.Resumable,
 		Settings: settings, Pinned: session.PinnedAtUnixMS > 0, Live: live,
 	}
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState, type JSX } from "react";
 import { CirclePause, CirclePlay, Pencil, Target, Trash2 } from "lucide-react";
 import { cn } from "../../app/renderer/lib/utils";
+import { useAgentConversationNowUnixMs } from "../../shared/agentConversation/components/AgentConversationClock";
 import styles from "./AgentGUIChrome.styles";
 
 export interface AgentGoalBannerLabels {
@@ -160,22 +161,38 @@ export function AgentGoalBanner({
       : isActive
         ? 0
         : null;
-  const [localElapsed, setLocalElapsed] = useState(0);
+  const [elapsedBaseline, setElapsedBaseline] = useState(() => ({
+    isActive,
+    serverSeconds,
+    startedAtUnixMs: Date.now()
+  }));
   useEffect(() => {
-    setLocalElapsed(0);
-    if (!isActive || serverSeconds === null) {
-      return;
-    }
-    const startedAtMs = Date.now();
-    const timer = window.setInterval(() => {
-      setLocalElapsed(Math.floor((Date.now() - startedAtMs) / 1000));
-    }, 1000);
-    return () => window.clearInterval(timer);
+    setElapsedBaseline((current) =>
+      current.isActive === isActive && current.serverSeconds === serverSeconds
+        ? current
+        : {
+            isActive,
+            serverSeconds,
+            startedAtUnixMs: Date.now()
+          }
+    );
   }, [isActive, serverSeconds]);
+  const nowUnixMs = useAgentConversationNowUnixMs(
+    isActive && serverSeconds !== null
+  );
+  const baselineMatches =
+    elapsedBaseline.isActive === isActive &&
+    elapsedBaseline.serverSeconds === serverSeconds;
   const elapsedSeconds =
     serverSeconds === null
       ? null
-      : serverSeconds + (isActive ? localElapsed : 0);
+      : isActive && nowUnixMs !== null && baselineMatches
+        ? serverSeconds +
+          Math.max(
+            0,
+            Math.floor((nowUnixMs - elapsedBaseline.startedAtUnixMs) / 1_000)
+          )
+        : serverSeconds;
 
   const title = goalStatusTitle(status, labels);
   const description = describeGoal({

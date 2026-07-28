@@ -8,6 +8,8 @@
   "commit": false,
   "fixed": [
     [
+      "@tutti-os/analytics",
+      "@tutti-os/analytics-debug",
       "@tutti-os/event-stream-core",
       "@tutti-os/workspace-file-manager",
       "@tutti-os/workspace-file-reference",
@@ -18,10 +20,12 @@
       "@tutti-os/workspace-terminal",
       "@tutti-os/agent-activity-core",
       "@tutti-os/agent-gui",
+      "@tutti-os/commerce",
       "@tutti-os/claude-sdk-sidecar",
       "@tutti-os/browser-node",
       "@tutti-os/workspace-file-preview",
       "@tutti-os/workbench-snapshot",
+      "@tutti-os/workbench-electron",
       "@tutti-os/workbench-host",
       "@tutti-os/workbench-launchpad",
       "@tutti-os/workbench-surface",

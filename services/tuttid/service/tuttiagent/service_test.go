@@ -147,7 +147,7 @@ func TestBootstrapTuttiAgentUserAuthIssuesTokenWhenExistingAccessTokenExpired(t 
 	t.Setenv("TUTTI_AGENT_LOGIN_CAPTURE", capturePath)
 	installFakeTuttiAgentBinary(t)
 
-	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{})
+	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{}, "")
 
 	select {
 	case <-issueRequests:
@@ -186,7 +186,7 @@ func TestBootstrapTuttiAgentUserAuthClearsAuthWithoutHostSession(t *testing.T) {
 	)
 	t.Setenv("TUTTI_STATE_DIR", t.TempDir())
 
-	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{})
+	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{}, "")
 
 	authPath := filepath.Join(home, ".tutti-agent", "auth.json")
 	if _, err := os.Stat(authPath); !os.IsNotExist(err) {
@@ -224,7 +224,7 @@ func TestBootstrapTuttiAgentUserAuthClearsAuthAfterUnauthorizedTokenIssue(t *tes
 	defer account.Close()
 	t.Setenv("TUTTI_ACCOUNT_BASE_URL", account.URL)
 
-	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{})
+	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{}, "")
 
 	authPath := filepath.Join(home, ".tutti-agent", "auth.json")
 	if _, err := os.Stat(authPath); !os.IsNotExist(err) {

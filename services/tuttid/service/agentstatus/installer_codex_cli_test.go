@@ -2,6 +2,7 @@ package agentstatus
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -47,6 +48,25 @@ func TestCodexNPMPrefixFromPackageDir(t *testing.T) {
 	for in, want := range cases {
 		if got := npmGlobalPrefixFromPackageDir(in); got != want {
 			t.Errorf("npmGlobalPrefixFromPackageDir(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestManagedNPMGlobalPackageDirRejectsUnsafePackageNames(t *testing.T) {
+	t.Parallel()
+
+	for _, packageName := range []string{
+		"",
+		".",
+		"..",
+		"../tutti-agent",
+		"@tutti-os",
+		"@tutti-os/../tutti-agent",
+		"@tutti-os/tutti-agent/extra",
+		`@tutti-os\tutti-agent`,
+	} {
+		if path, ok := managedNPMGlobalPackageDir("/safe/prefix", packageName); ok {
+			t.Errorf("managedNPMGlobalPackageDir(%q) = %q, want rejected", packageName, path)
 		}
 	}
 }
@@ -269,6 +289,118 @@ func TestRunManagedNPMPackageInstallerInstallsTuttiAgentWithManagedRuntime(t *te
 	}
 	if !slices.Contains(command.Env, "npm_config_registry=https://registry.example.test") {
 		t.Fatalf("Env = %#v, want selected npm registry", command.Env)
+	}
+}
+
+func TestRunManagedNPMPackageInstallerCleansOnlyOwnStaleStagingDirectories(t *testing.T) {
+	home := t.TempDir()
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	managedNPM := filepath.Join(runtimeRoot, "node", "bin", npmBinaryNameForTest())
+	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
+	managedNodeBinDir := filepath.Dir(managedNode)
+	installPrefix := filepath.Join(home, ".local")
+	packageDir, ok := managedNPMGlobalPackageDir(installPrefix, "@tutti-os/tutti-agent")
+	if !ok {
+		t.Fatal("managed npm package directory was not resolved")
+	}
+	staleDir := filepath.Join(filepath.Dir(packageDir), ".tutti-agent-8IDARXyS")
+	unrelatedStagingDir := filepath.Join(filepath.Dir(packageDir), ".other-package-12345678")
+	for _, dir := range []string{packageDir, staleDir, unrelatedStagingDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+
+	service := probeTestService(home)
+	service.HTTPClient = agentNPMRegistryProbeHTTPClient(nil)
+	service.Environ = func() []string {
+		return []string{"PATH=/usr/bin:/bin", agentNPMRegistryEnv + "=https://registry.example.test"}
+	}
+	service.ManagedRuntime = staticManagedRuntimeResolver{
+		runtime: managedruntime.ResolvedRuntime{
+			Root:    runtimeRoot,
+			Node:    managedNode,
+			NPM:     managedNPM,
+			BinDirs: []string{managedNodeBinDir},
+			EnvOverrides: []string{
+				"TUTTI_APP_RUNTIME_ROOT=" + runtimeRoot,
+				"TUTTI_APP_NODE=" + managedNode,
+				"TUTTI_APP_NPM=" + managedNPM,
+				"PATH=" + managedNodeBinDir + string(os.PathListSeparator) + "/usr/bin" + string(os.PathListSeparator) + "/bin",
+			},
+		},
+	}
+	service.IsExecutableFile = isTestExecutableUnderHome(home)
+	service.InstallCommand = func(_ context.Context, _ InstallCommandInput) (InstallCommandResult, error) {
+		if _, err := os.Stat(staleDir); !os.IsNotExist(err) {
+			t.Fatalf("stale package staging directory still exists before install: %v", err)
+		}
+		for _, path := range []string{packageDir, unrelatedStagingDir} {
+			if _, err := os.Stat(path); err != nil {
+				t.Fatalf("unrelated path %s was removed: %v", path, err)
+			}
+		}
+		return InstallCommandResult{ExitCode: 0, Stdout: "installed"}, nil
+	}
+
+	if _, err := service.runManagedNPMPackageInstaller(context.Background(), "tutti-agent", ManagedNPMPackageInstallerSpec{
+		PackageName:     "@tutti-os/tutti-agent",
+		BinaryName:      "tutti-agent",
+		IncludeOptional: true,
+	}, ""); err != nil {
+		t.Fatalf("runManagedNPMPackageInstaller() error = %v", err)
+	}
+}
+
+func TestRunManagedNPMPackageInstallerCleansStagingAfterInterruptedAttempt(t *testing.T) {
+	home := t.TempDir()
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	managedNPM := filepath.Join(runtimeRoot, "node", "bin", npmBinaryNameForTest())
+	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
+	managedNodeBinDir := filepath.Dir(managedNode)
+	installPrefix := filepath.Join(home, ".local")
+	packageDir, ok := managedNPMGlobalPackageDir(installPrefix, "@tutti-os/tutti-agent")
+	if !ok {
+		t.Fatal("managed npm package directory was not resolved")
+	}
+	staleDir := filepath.Join(filepath.Dir(packageDir), ".tutti-agent-canceled")
+
+	service := probeTestService(home)
+	service.HTTPClient = agentNPMRegistryProbeHTTPClient(nil)
+	service.Environ = func() []string {
+		return []string{"PATH=/usr/bin:/bin", agentNPMRegistryEnv + "=https://registry.example.test"}
+	}
+	service.ManagedRuntime = staticManagedRuntimeResolver{
+		runtime: managedruntime.ResolvedRuntime{
+			Root:    runtimeRoot,
+			Node:    managedNode,
+			NPM:     managedNPM,
+			BinDirs: []string{managedNodeBinDir},
+			EnvOverrides: []string{
+				"TUTTI_APP_RUNTIME_ROOT=" + runtimeRoot,
+				"TUTTI_APP_NODE=" + managedNode,
+				"TUTTI_APP_NPM=" + managedNPM,
+				"PATH=" + managedNodeBinDir + string(os.PathListSeparator) + "/usr/bin" + string(os.PathListSeparator) + "/bin",
+			},
+		},
+	}
+	service.IsExecutableFile = isTestExecutableUnderHome(home)
+	service.InstallCommand = func(_ context.Context, _ InstallCommandInput) (InstallCommandResult, error) {
+		if err := os.MkdirAll(staleDir, 0o755); err != nil {
+			t.Fatalf("mkdir stale staging directory: %v", err)
+		}
+		return InstallCommandResult{ExitCode: -1}, context.Canceled
+	}
+
+	if _, err := service.runManagedNPMPackageInstaller(context.Background(), "tutti-agent", ManagedNPMPackageInstallerSpec{
+		PackageName:     "@tutti-os/tutti-agent",
+		BinaryName:      "tutti-agent",
+		IncludeOptional: true,
+	}, ""); !errors.Is(err, context.Canceled) {
+		t.Fatalf("runManagedNPMPackageInstaller() error = %v, want context canceled", err)
+	}
+	if _, err := os.Stat(staleDir); !os.IsNotExist(err) {
+		t.Fatalf("stale staging directory remains after interrupted install: %v", err)
 	}
 }
 

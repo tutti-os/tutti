@@ -27,6 +27,7 @@ export interface UISystemComponentMetadata {
   description: string;
   useCases: string[];
   migrationHints: string[];
+  nativePreview?: boolean;
   storyboard?: boolean;
 }
 

@@ -7,8 +7,6 @@ type AgentGUITuttiModeLabels = Pick<
   | "tuttiBudgetAgentCountCost"
   | "tuttiBudgetAgentCountLabel"
   | "tuttiBudgetAgentCountPowerful"
-  | "tuttiBudgetCancel"
-  | "tuttiBudgetConfirm"
   | "tuttiBudgetIntensityLabel"
   | "tuttiBudgetModelStrengthBalance"
   | "tuttiBudgetModelStrengthCost"
@@ -81,8 +79,6 @@ export function agentGUITuttiModeLabels(
     tuttiBudgetAgentCountPowerful: t(
       "agentHost.agentGui.tuttiBudgetAgentCountPowerful"
     ),
-    tuttiBudgetConfirm: t("agentHost.agentGui.tuttiBudgetConfirm"),
-    tuttiBudgetCancel: t("agentHost.agentGui.tuttiBudgetCancel"),
     tuttiModeUpdateFailed: t("agentHost.agentGui.tuttiModeUpdateFailed"),
     tuttiModeUpdateUncertain: t("agentHost.agentGui.tuttiModeUpdateUncertain"),
     tuttiModePlanPanel: {

@@ -305,6 +305,22 @@ func appServerItemToolCallUpdate(item map[string]any, completed bool) (map[strin
 				)
 			}
 		}
+	case "subAgentActivity":
+		if asString(item["kind"]) != "started" {
+			return nil, false
+		}
+		childThreadID := strings.TrimSpace(asString(item["agentThreadId"]))
+		if childThreadID == "" {
+			return nil, false
+		}
+		update["sessionUpdate"] = "tool_call_update"
+		update["status"] = messageStreamStateCompleted
+		update["title"] = "spawnAgent"
+		update["kind"] = "execute"
+		update["rawInput"] = map[string]any{
+			"agentName":         "spawnAgent",
+			"receiverThreadIds": []any{childThreadID},
+		}
 	case "imageGeneration":
 		update["title"] = "Generate image"
 		update["kind"] = "other"
@@ -412,10 +428,11 @@ func appServerOutputText(value any) string {
 }
 
 type appServerNotificationRoute struct {
-	session    Session
-	child      *codexAppServerThreadContext
-	turnID     string
-	normalizer *acpTurnNormalizer
-	events     []activityshared.Event
-	drop       bool
+	session              Session
+	child                *codexAppServerThreadContext
+	turnID               string
+	normalizer           *acpTurnNormalizer
+	events               []activityshared.Event
+	registeredChildCount int
+	drop                 bool
 }

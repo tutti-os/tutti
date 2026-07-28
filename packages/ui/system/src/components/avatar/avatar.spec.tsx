@@ -22,6 +22,45 @@ class MockImage extends EventTarget {
 }
 
 let preloadedImages: MockImage[] = [];
+let resizeObservers: MockResizeObserver[] = [];
+
+class MockResizeObserver {
+  constructor(private callback: ResizeObserverCallback) {
+    resizeObservers.push(this);
+  }
+
+  disconnect(): void {}
+
+  observe(): void {}
+
+  resize(width: number, height: number): void {
+    this.callback(
+      [
+        {
+          contentRect: { height, width }
+        } as ResizeObserverEntry
+      ],
+      this as unknown as ResizeObserver
+    );
+  }
+
+  unobserve(): void {}
+}
+
+function expectDeliveryUrl(
+  source: string,
+  expected: {
+    format?: string;
+    height: string;
+    width: string;
+  }
+): void {
+  const url = new URL(source);
+  expect(url.searchParams.get("width")).toBe(expected.width);
+  expect(url.searchParams.get("height")).toBe(expected.height);
+  expect(url.searchParams.get("format")).toBe(expected.format ?? "webp");
+  expect(url.searchParams.get("fit")).toBe("inside");
+}
 
 function finishPreload(status: "error" | "loaded"): void {
   const image = preloadedImages.at(-1);
@@ -42,6 +81,7 @@ function finishPreload(status: "error" | "loaded"): void {
 describe("Avatar", () => {
   beforeEach(() => {
     preloadedImages = [];
+    resizeObservers = [];
     vi.stubGlobal(
       "Image",
       class extends MockImage {
@@ -51,6 +91,7 @@ describe("Avatar", () => {
         }
       }
     );
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
   });
 
   afterEach(() => {
@@ -92,7 +133,28 @@ describe("Avatar", () => {
     );
     expect(image).toHaveAttribute("alt", "");
     expect(image).toHaveClass("object-contain");
+    expect(image).toHaveAttribute("referrerpolicy", "no-referrer");
     expect(onLoad).toHaveBeenCalledOnce();
+  });
+
+  it("allows callers to override the default referrer policy", () => {
+    render(
+      <Avatar
+        imageProps={{
+          "data-testid": "avatar-image",
+          referrerPolicy: "origin"
+        }}
+        label="Jun Sun"
+        src="https://example.test/avatar.png"
+      />
+    );
+
+    finishPreload("loaded");
+
+    expect(screen.getByTestId("avatar-image")).toHaveAttribute(
+      "referrerpolicy",
+      "origin"
+    );
   });
 
   it("falls back to the requested initial when an image fails", () => {
@@ -164,6 +226,57 @@ describe("Avatar", () => {
     expect(screen.getByTestId("avatar")).toHaveTextContent("J");
     expect(screen.queryByTestId("avatar-image")).not.toBeInTheDocument();
     expect(onError).toHaveBeenCalledOnce();
+  });
+
+  it("uses an independent fallback after transformed and original delivery fail", () => {
+    render(
+      <Avatar
+        data-testid="avatar"
+        fallbackSrc="https://original.example.test/avatar.png"
+        label="Jun Sun"
+        src="https://images.example.test/capability?Policy=signed"
+        transform
+      />
+    );
+
+    expectDeliveryUrl(preloadedImages.at(-1)?.src ?? "", {
+      height: "64",
+      width: "64"
+    });
+    finishPreload("error");
+    expect(preloadedImages.at(-1)?.src).toBe(
+      "https://images.example.test/capability?Policy=signed"
+    );
+    finishPreload("error");
+    expect(preloadedImages.at(-1)?.src).toBe(
+      "https://original.example.test/avatar.png"
+    );
+    finishPreload("loaded");
+
+    expect(screen.getByTestId("avatar")).toHaveAttribute(
+      "data-avatar-state",
+      "image"
+    );
+  });
+
+  it("does not request the fallback image when no source was provided", () => {
+    render(
+      <Avatar
+        data-testid="avatar"
+        fallbackSrc="https://fallback.example.test/avatar.png"
+        initial="J"
+        label="Jun Sun"
+      />
+    );
+
+    expect(preloadedImages.map((image) => image.src)).not.toContain(
+      "https://fallback.example.test/avatar.png"
+    );
+    expect(screen.getByTestId("avatar")).toHaveAttribute(
+      "data-avatar-state",
+      "initial"
+    );
+    expect(screen.getByTestId("avatar")).toHaveTextContent("J");
   });
 
   it("supports an intentionally empty fallback and numeric sizing", () => {
@@ -239,6 +352,86 @@ describe("Avatar", () => {
     expect(screen.getByTestId("avatar-image")).toHaveAttribute(
       "src",
       "https://example.test/a.png"
+    );
+  });
+
+  it("requests a bucketed 2x WebP image and preserves the original query string", () => {
+    const original =
+      "https://cdn.example.test/avatar.png?Policy=a%2Bb&Signature=c%20d";
+
+    render(<Avatar label="Jun Sun" size="lg" src={original} transform />);
+
+    const source = preloadedImages.at(-1)?.src;
+    expect(source).toBeDefined();
+    expectDeliveryUrl(source ?? "", { height: "96", width: "96" });
+    expect(source?.startsWith(`${original}&`)).toBe(true);
+  });
+
+  it("updates transform dimensions from the rendered avatar box", () => {
+    render(
+      <Avatar
+        label="Jun Sun"
+        src="https://cdn.example.test/avatar.png"
+        transform
+      />
+    );
+
+    act(() => {
+      resizeObservers.at(-1)?.resize(88, 40);
+    });
+
+    expectDeliveryUrl(preloadedImages.at(-1)?.src ?? "", {
+      height: "96",
+      width: "192"
+    });
+  });
+
+  it("requests the original source by default", () => {
+    render(
+      <Avatar
+        label="Jun Sun"
+        src="https://cdn.example.test/avatar.png?token=preserved"
+      />
+    );
+
+    expect(preloadedImages.at(-1)?.src).toBe(
+      "https://cdn.example.test/avatar.png?token=preserved"
+    );
+  });
+
+  it("does not transform non-HTTP image sources", () => {
+    render(
+      <Avatar
+        label="Jun Sun"
+        src="data:image/png;base64,cHJldmlldw=="
+        transform
+      />
+    );
+
+    expect(preloadedImages.at(-1)?.src).toBe(
+      "data:image/png;base64,cHJldmlldw=="
+    );
+  });
+
+  it("retries the original URL when image delivery fails", () => {
+    render(
+      <Avatar
+        imageProps={{ "data-testid": "avatar-image" }}
+        label="Jun Sun"
+        src="https://cdn.example.test/avatar.png?token=preserved"
+        transform
+      />
+    );
+
+    finishPreload("error");
+    expect(preloadedImages.at(-1)?.src).toBe(
+      "https://cdn.example.test/avatar.png?token=preserved"
+    );
+    finishPreload("loaded");
+
+    expect(screen.getByTestId("avatar-image")).toHaveAttribute(
+      "src",
+      "https://cdn.example.test/avatar.png?token=preserved"
     );
   });
 

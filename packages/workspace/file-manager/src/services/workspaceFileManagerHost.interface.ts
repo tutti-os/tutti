@@ -16,7 +16,7 @@ import type {
 import type { WorkspaceFileManagerPersistedState } from "./workspaceFileManagerTypes.ts";
 
 export interface WorkspaceFileManagerMutationErrorMessage {
-  actionKind: "create" | "delete" | "move" | "rename";
+  actionKind: "copy" | "create" | "delete" | "move" | "rename";
   error: unknown;
   message: string;
 }

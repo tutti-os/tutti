@@ -184,6 +184,7 @@ export function useReferenceSourcePickerView({
       loading: false
     }
   );
+  const [filteredTreeRetrySequence, setFilteredTreeRetrySequence] = useState(0);
   const openWithApplicationsCache = useRef(
     new WorkspaceFileOpenWithApplicationsCache()
   );
@@ -309,9 +310,17 @@ export function useReferenceSourcePickerView({
       ? JSON.stringify([activeSourceId, recursiveFilters])
       : null;
   const recursiveFilterActive = recursiveFilterKey !== null;
+  const recursiveFilterRequestKey = recursiveFilterKey
+    ? `${recursiveFilterKey}:${filteredTreeRetrySequence}`
+    : null;
 
   useEffect(() => {
-    if (!open || !activeSourceId || !recursiveFilterKey) {
+    if (
+      !open ||
+      !activeSourceId ||
+      !recursiveFilterKey ||
+      !recursiveFilterRequestKey
+    ) {
       setFilteredTreeState({
         childrenByKey: {},
         error: null,
@@ -362,6 +371,7 @@ export function useReferenceSourcePickerView({
     aggregator,
     open,
     recursiveFilterKey,
+    recursiveFilterRequestKey,
     recursiveFilters,
     scope
   ]);
@@ -654,6 +664,15 @@ export function useReferenceSourcePickerView({
       if (!sourceId) {
         return;
       }
+      if (
+        selectionMode === "single" &&
+        (isNodeSelectable?.(node) ?? true) &&
+        !snapshot.selection.some(
+          (selected) => nodeRefKey(selected.ref) === nodeRefKey(node.ref)
+        )
+      ) {
+        controller.toggleSelection(node);
+      }
       const nextScopeNodeId =
         node.ref.nodeId === WORKSPACE_ROOT_GROUP_NODE_ID
           ? null
@@ -677,6 +696,9 @@ export function useReferenceSourcePickerView({
     },
     [
       controller,
+      isNodeSelectable,
+      selectionMode,
+      snapshot.selection,
       snapshot.activeSourceId,
       navigateToRoot,
       shouldRefreshChildrenOnEnter
@@ -941,6 +963,43 @@ export function useReferenceSourcePickerView({
     },
     loadMore: () =>
       isQuery ? controller.loadMoreSearch() : controller.loadMore(currentNode),
+    retryContent: () => {
+      if (isQuery) {
+        controller.setSearchQuery(
+          activeTabState?.searchQuery ?? "",
+          searchScopeNodeId
+        );
+        return;
+      }
+      if (recursiveFilterActive) {
+        setFilteredTreeRetrySequence((current) => current + 1);
+        return;
+      }
+      controller.refreshChildren(currentNode);
+    },
+    selectTarget: async (target: ReferenceLocateTarget): Promise<boolean> => {
+      const path = await controller.locatePath(target);
+      const targetNode = path.at(-1);
+      if (!targetNode || !isSelectable(targetNode)) {
+        return false;
+      }
+      const rootGroupNode = path[0] ?? null;
+      controller.setActiveSource(
+        target.sourceId,
+        rootGroupNode?.ref.nodeId ?? null
+      );
+      controller.setSearchQuery("", rootGroupNode?.ref.nodeId ?? null);
+      controller.setSearchFilters([], rootGroupNode?.ref.nodeId ?? null);
+      controller.clearSelection();
+      controller.toggleSelection(targetNode);
+      setBreadcrumbBySource((current) => ({
+        ...current,
+        [target.sourceId]: path
+      }));
+      controller.ensureChildren(targetNode);
+      setFocusedNode(null);
+      return true;
+    },
     isSelectable,
     isSelected,
     isOpeningReference,

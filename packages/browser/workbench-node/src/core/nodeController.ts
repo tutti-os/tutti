@@ -306,6 +306,20 @@ function reconcileBrowserNodeControllerState(
   }
 }
 
+function isSameOriginComparableBrowserUrl(
+  left: string | null,
+  right: string | null
+): boolean {
+  if (!left || !right) {
+    return false;
+  }
+  try {
+    return new URL(left).origin === new URL(right).origin;
+  } catch {
+    return false;
+  }
+}
+
 async function maybeActivateBrowserNodeDefaultUrl(
   entry: BrowserNodeControllerEntry
 ): Promise<void> {
@@ -325,10 +339,22 @@ async function maybeActivateBrowserNodeDefaultUrl(
     ? normalizeHostBrowserComparableUrl(entry.state.runtime.url)
     : null;
   const shouldActivateColdNode = entry.state.runtime.lifecycle === "cold";
+  // Host-driven sync must not fight same-origin guest redirects
+  // (e.g. example.com → example.com/dashboard after Cookie import).
+  // Runtime URL follows guest navigation; only cross-origin / missing
+  // runtime URLs (or hard errors) should force activate().
+  const runtimeNeedsHostNavigation =
+    entry.state.runtime.error !== null ||
+    comparableRuntimeUrl === null ||
+    !isSameOriginComparableBrowserUrl(
+      comparableRuntimeUrl,
+      comparableDefaultUrl
+    );
   const shouldSyncDefaultUrl =
     syncDefaultUrl &&
     entry.state.runtime.lifecycle !== "cold" &&
     comparableDefaultUrl !== null &&
+    runtimeNeedsHostNavigation &&
     (comparableRuntimeUrl !== comparableDefaultUrl ||
       entry.state.runtime.error !== null) &&
     entry.lastColdActivationUrl !== trimmedUrl;

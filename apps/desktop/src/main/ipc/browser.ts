@@ -11,7 +11,7 @@ import {
 } from "electron";
 import { randomUUID } from "node:crypto";
 import { readFile, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveBrowserSessionPartition } from "@tutti-os/browser-node";
 import { createMacosChromeCookieImportAdapter } from "@tutti-os/browser-node/chrome-cookie-import/macos";
@@ -118,6 +118,8 @@ export async function registerBrowserIpc(
     selectTarget: automationCoordinator.selectTarget
   });
   const preparedDownloadSessions = new WeakSet<Electron.Session>();
+  let lastBrowserDownloadDirectory = app.getPath("downloads");
+  let lastCookieImportDirectory = app.getPath("downloads");
   const chromeCookieImport = createMacosChromeCookieImportAdapter({
     isEnabled: () =>
       isFeatureEnabled(
@@ -141,9 +143,15 @@ export async function registerBrowserIpc(
     },
     async chooseDownloadDirectory(ownerWindow) {
       const result = await dialog.showOpenDialog(ownerWindow, {
+        defaultPath: lastBrowserDownloadDirectory,
         properties: ["openDirectory", "createDirectory"]
       });
-      return result.canceled ? null : (result.filePaths[0] ?? null);
+      const selectedPath = result.canceled
+        ? null
+        : (result.filePaths[0] ?? null);
+      lastBrowserDownloadDirectory =
+        selectedPath ?? lastBrowserDownloadDirectory;
+      return selectedPath;
     },
     getOwnerWindow(event) {
       return resolveOwnerWindowFromEvent(event as Electron.IpcMainInvokeEvent);
@@ -170,10 +178,14 @@ export async function registerBrowserIpc(
             : translator.t("browser.chromeImportNotification.completed", {
                 imported: result.imported
               });
-      new Notification({
+      const notification = new Notification({
         body,
         title: translator.t("browser.chromeImportNotification.title")
-      }).show();
+      });
+      notification.on("failed", (_event, error) => {
+        logger.warn("browser Chrome import notification failed", { error });
+      });
+      notification.show();
     },
     openDownloadedFile: async (path) => {
       const error = await shell.openPath(path);
@@ -242,12 +254,14 @@ export async function registerBrowserIpc(
     },
     async selectCookieImport(ownerWindow) {
       const result = await dialog.showOpenDialog(ownerWindow, {
+        defaultPath: lastCookieImportDirectory,
         properties: ["openFile"]
       });
       const filePath = result.canceled ? null : (result.filePaths[0] ?? null);
       if (!filePath) {
         return null;
       }
+      lastCookieImportDirectory = dirname(filePath);
       const metadata = await stat(filePath);
       if (!metadata.isFile() || metadata.size > maximumCookieImportBytes) {
         throw new Error("Browser Cookie import file is invalid or too large");

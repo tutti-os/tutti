@@ -77,16 +77,12 @@ import {
   createWorkspaceFeatureFlagSettings,
   type WorkspaceFeatureFlagSettings
 } from "./workspaceFeatureFlagSettings.ts";
-import {
-  WorkspaceModelPlansController,
-  type WorkspaceModelPlansControllerDependencies
-} from "./workspaceModelPlansController.ts";
+import { WorkspaceModelPlansController } from "./workspaceModelPlansController.ts";
 import { WorkspaceAgentsController } from "./workspaceAgentsController.ts";
 import { WorkspaceAutomationRulesController } from "./workspaceAutomationRulesController.ts";
 
 export interface WorkspaceSettingsServiceDependencies {
   client: DesktopWorkspaceSettingsClient;
-  launchAgentGui?: WorkspaceModelPlansControllerDependencies["launchAgentGui"];
   onAgentTargetsChanged?: () => void | Promise<void>;
   replaceWorkspaceWindow?: (input: {
     mode: "agent" | "os";
@@ -148,7 +144,6 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     this.reporterNow = reporterNow;
     this.modelPlans = new WorkspaceModelPlansController({
       client: dependencies.client,
-      launchAgentGui: dependencies.launchAgentGui,
       notifications,
       store: this.store
     });
@@ -177,7 +172,8 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     if (options?.pane === "managed-models" || requestedSection === "apps") {
       this.store.activeSection = "model";
     } else if (options?.section) {
-      this.store.activeSection = options.section;
+      this.store.activeSection =
+        options.section === "account" ? "connection" : options.section;
     }
     if (options?.anchor) {
       this.store.activeSection = "agent";
@@ -437,9 +433,6 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
 
   private applyTuttiAgentTargetEnabled(enabled: boolean): void {
     this.store.tuttiAgentSwitchEnabled = enabled;
-    if (!enabled && this.store.activeSection === "account") {
-      this.store.activeSection = "general";
-    }
   }
 
   private async refreshAgentTargetConsumers(): Promise<void> {
@@ -1002,11 +995,8 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
   }
 
-  // Model settings need Plans plus the Runtime catalog used by the explicit
-  // first-use launch. No legacy binding read or write participates here.
   private refreshModelPlansSurface(): void {
     void this.modelPlans.refresh();
-    void this.agents.refresh();
   }
 
   private reportSettingsOpened(): void {

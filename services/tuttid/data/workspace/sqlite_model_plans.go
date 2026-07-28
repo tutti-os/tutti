@@ -147,10 +147,9 @@ WHERE workspace_id = ? AND plan_id = ?
 	if err != nil {
 		return fmt.Errorf("marshal model plan detection: %w", err)
 	}
-	firstUseJSON, err := json.Marshal(plan.FirstUse)
-	if err != nil {
-		return fmt.Errorf("marshal model plan first use: %w", err)
-	}
+	// Keep the retired column populated for database downgrade compatibility.
+	// Current model-plan readiness ends at successful connection detection.
+	const retiredFirstUseJSON = `{"status":"completed"}`
 	ciphertext, err := encryptManagedCredential(plan.APIKey)
 	if err != nil {
 		return err
@@ -175,7 +174,7 @@ ON CONFLICT(workspace_id, plan_id) DO UPDATE SET
   first_use_json = excluded.first_use_json,
   updated_at_unix_ms = excluded.updated_at_unix_ms
 `, plan.WorkspaceID, plan.ID, plan.Revision, plan.Name, string(plan.TemplateKind), string(plan.Protocol), ciphertext,
-		plan.BaseURL, string(modelsJSON), plan.DefaultModel, boolInt(plan.Enabled), string(detectionJSON), string(firstUseJSON),
+		plan.BaseURL, string(modelsJSON), plan.DefaultModel, boolInt(plan.Enabled), string(detectionJSON), retiredFirstUseJSON,
 		unixMs(plan.CreatedAt), unixMs(plan.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("put model plan: %w", err)
@@ -188,7 +187,7 @@ INSERT INTO model_plan_revisions (
   recorded_at_unix_ms
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `, plan.WorkspaceID, plan.ID, plan.Revision, plan.Name, string(plan.TemplateKind), string(plan.Protocol), ciphertext,
-		plan.BaseURL, string(modelsJSON), plan.DefaultModel, boolInt(plan.Enabled), string(detectionJSON), string(firstUseJSON),
+		plan.BaseURL, string(modelsJSON), plan.DefaultModel, boolInt(plan.Enabled), string(detectionJSON), retiredFirstUseJSON,
 		unixMs(plan.CreatedAt), unixMs(plan.UpdatedAt), unixMs(time.Now().UTC()))
 	if err != nil {
 		return fmt.Errorf("put immutable model plan revision: %w", err)
@@ -232,11 +231,11 @@ func scanModelPlan(row managedProviderScanner) (modelplanbiz.Plan, error) {
 	var modelsJSON string
 	var enabled int
 	var detectionJSON string
-	var firstUseJSON string
+	var retiredFirstUseJSON string
 	var createdAtUnixMS int64
 	var updatedAtUnixMS int64
 	if err := row.Scan(&plan.WorkspaceID, &plan.ID, &revision, &plan.Name, &templateKind, &protocol, &ciphertext,
-		&plan.BaseURL, &modelsJSON, &plan.DefaultModel, &enabled, &detectionJSON, &firstUseJSON,
+		&plan.BaseURL, &modelsJSON, &plan.DefaultModel, &enabled, &detectionJSON, &retiredFirstUseJSON,
 		&createdAtUnixMS, &updatedAtUnixMS); err != nil {
 		return modelplanbiz.Plan{}, err
 	}
@@ -259,14 +258,6 @@ func scanModelPlan(row managedProviderScanner) (modelplanbiz.Plan, error) {
 		if err := json.Unmarshal([]byte(detectionJSON), &plan.Detection); err != nil {
 			return modelplanbiz.Plan{}, fmt.Errorf("decode model plan detection: %w", err)
 		}
-	}
-	if firstUseJSON != "" && firstUseJSON != "{}" {
-		if err := json.Unmarshal([]byte(firstUseJSON), &plan.FirstUse); err != nil {
-			return modelplanbiz.Plan{}, fmt.Errorf("decode model plan first use: %w", err)
-		}
-	}
-	if plan.FirstUse.Status == "" {
-		plan.FirstUse.Status = modelplanbiz.FirstUsePending
 	}
 	plan.CreatedAt = time.UnixMilli(createdAtUnixMS).UTC()
 	plan.UpdatedAt = time.UnixMilli(updatedAtUnixMS).UTC()

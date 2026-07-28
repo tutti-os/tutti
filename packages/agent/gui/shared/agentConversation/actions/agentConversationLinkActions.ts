@@ -5,6 +5,8 @@ import {
 } from "../../../contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
 
+export type { WorkspaceLinkAction, WorkspaceLinkActionSource };
+
 export function resolveAgentConversationLinkAction({
   workspaceRoot,
   basePath,

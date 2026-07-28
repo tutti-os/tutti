@@ -32,15 +32,13 @@ export function AgentCollaborationRow({
   workspaceRoot,
   basePath,
   onLinkAction,
-  workspaceAppIcons,
-  previewMode = false
+  workspaceAppIcons
 }: {
   collaboration: AgentCollaborationVM;
   workspaceRoot: string | null;
   basePath: string;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
-  previewMode?: boolean;
 }): JSX.Element {
   "use memo";
   const agentHostApi = useOptionalAgentHostApi();
@@ -55,8 +53,7 @@ export function AgentCollaborationRow({
   const canSubmitAdoption = Boolean(
     runtime?.setCollaborationAdoption &&
     collaboration.workspaceId &&
-    collaboration.agentSessionId &&
-    !previewMode
+    collaboration.agentSessionId
   );
   const showAdoptionControls =
     (collaboration.mode === "consult" || collaboration.mode === "delegate") &&
@@ -228,7 +225,6 @@ export function AgentCollaborationRow({
                 }}
                 workspaceAppIcons={workspaceAppIcons}
                 enableImageZoom
-                previewMode={previewMode}
               />
             </div>
           ) : null}

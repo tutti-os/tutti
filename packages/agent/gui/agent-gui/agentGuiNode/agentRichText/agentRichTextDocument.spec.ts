@@ -300,6 +300,31 @@ describe("agentRichTextDocument", () => {
     });
   });
 
+  it("does not build skill candidates for ordinary text", () => {
+    let iterationCount = 0;
+    const skills = new Proxy(
+      [
+        {
+          name: "caveman",
+          sourceKind: "personal" as const,
+          trigger: "$caveman"
+        }
+      ],
+      {
+        get(target, property, receiver) {
+          if (property === Symbol.iterator) {
+            iterationCount += 1;
+          }
+          return Reflect.get(target, property, receiver);
+        }
+      }
+    );
+
+    plainTextToAgentRichTextDoc("ordinary words without a token", { skills });
+
+    expect(iterationCount).toBe(0);
+  });
+
   it("hydrates known capability triggers into capability token nodes", () => {
     const prompt = "Use /browser and keep /compact";
     const richTextOptions = {

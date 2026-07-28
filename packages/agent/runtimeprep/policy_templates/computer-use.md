@@ -1,0 +1,1 @@
+- For desktop tasks — taking screenshots, clicking UI elements, typing, pressing keys, or scrolling on the macOS desktop — use `$computer-use` only; do not use provider-native computer-use tools or accessibility scripts.

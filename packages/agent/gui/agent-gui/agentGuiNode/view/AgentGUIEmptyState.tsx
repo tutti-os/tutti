@@ -1,11 +1,9 @@
-import { memo, useId, useMemo } from "react";
-import { Sparkles } from "lucide-react";
+import { memo, useMemo } from "react";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
-  Switch,
   cn
 } from "@tutti-os/ui-system";
 import { Button } from "../../../app/renderer/components/ui/button";
@@ -52,6 +50,7 @@ import {
   projectAgentGUIAgentTargetName
 } from "./AgentGUIAgentTargetName";
 import styles from "../AgentGUINode.styles";
+import { AgentGUIOwnerAvatar } from "../AgentGUIOwnerAvatar";
 
 export interface AgentGUIProviderIconPresentation {
   iconUrl: string;
@@ -92,6 +91,8 @@ export const EMPTY_HOME_SUGGESTIONS: readonly AgentHomeSuggestionCategory[] =
   Object.freeze([]);
 
 interface AgentGUIEmptyHomePaneProps {
+  isActive: boolean;
+  isVisible: boolean;
   provider: AgentGUINodeViewModel["shell"]["data"]["provider"];
   providerReadinessGate: AgentGUIProviderReadinessGate | null;
   showAllProviders: boolean;
@@ -100,7 +101,6 @@ interface AgentGUIEmptyHomePaneProps {
   onProviderSelect?: AgentGUINodeViewProps["actions"]["selectHomeComposerAgentTarget"];
   noticeChrome: AgentGUISessionChrome | null;
   isRespondingApproval: boolean;
-  previewMode: boolean;
   onSubmitApprovalOption: AgentGUINodeViewProps["actions"]["submitApprovalOption"];
   onAuthLogin?: (provider?: string | null) => void;
   onRetryActivation: AgentGUINodeViewProps["actions"]["retryActivation"];
@@ -115,24 +115,27 @@ interface AgentGUIEmptyHomePaneProps {
 }
 
 export const AgentGUIEmptyHomePane = memo(function AgentGUIEmptyHomePane({
+  isActive,
+  isVisible,
   provider,
   providerReadinessGate,
   showAllProviders,
   agentTargets,
   selectedAgentTarget,
   onProviderSelect,
-  previewMode,
   labels,
   ...heroProps
 }: AgentGUIEmptyHomePaneProps): React.JSX.Element {
   "use memo";
 
+  const presentedSelectedAgentTarget =
+    selectedAgentTarget?.ref.kind === "loading" ? null : selectedAgentTarget;
   const runtimeProviderLabel =
     labels.emptyProviderForProvider?.(provider) ?? labels.emptyProvider ?? "";
-  const providerLabel = selectedAgentTarget
+  const providerLabel = presentedSelectedAgentTarget
     ? projectAgentGUIAgentTargetName({
         ownerSeparator: labels.sharedAgentOwnerSeparator,
-        target: selectedAgentTarget
+        target: presentedSelectedAgentTarget
       }).fullLabel
     : runtimeProviderLabel;
   const baseLabel = labels.emptyForProvider?.(provider) ?? labels.empty;
@@ -143,26 +146,28 @@ export const AgentGUIEmptyHomePane = memo(function AgentGUIEmptyHomePane({
     () =>
       agentTargets.length
         ? agentTargets.map(projectAgentGUIAgentTargetAvatar)
-        : selectedAgentTarget
-          ? [projectAgentGUIAgentTargetAvatar(selectedAgentTarget)]
+        : presentedSelectedAgentTarget
+          ? [projectAgentGUIAgentTargetAvatar(presentedSelectedAgentTarget)]
           : [
               createFallbackAgentGUIAgentAvatar({
                 provider,
                 label: providerLabel
               })
             ],
-    [agentTargets, provider, providerLabel, selectedAgentTarget]
+    [agentTargets, presentedSelectedAgentTarget, provider, providerLabel]
   );
   const carouselMountedExternally = avatarPresentations.length > 1;
 
   return (
     <AgentGUIEmptyHeroCarouselStage
       activeAgentTargetId={
-        selectedAgentTarget?.agentTargetId ?? selectedAgentTarget?.targetId
+        presentedSelectedAgentTarget?.agentTargetId ??
+        presentedSelectedAgentTarget?.targetId
       }
+      isActive={isActive}
+      isVisible={isVisible}
       items={avatarPresentations}
       onProviderSelect={onProviderSelect}
-      previewMode={previewMode}
       providerSelectLabel={labels.providerSwitchLabel}
     >
       <AgentTargetSetupGate
@@ -170,6 +175,8 @@ export const AgentGUIEmptyHomePane = memo(function AgentGUIEmptyHomePane({
       >
         {providerReadinessGate ? (
           <AgentGUIProviderReadinessGatePane
+            isActive={isActive}
+            isVisible={isVisible}
             provider={provider}
             gate={providerReadinessGate}
             showAllProviders={showAllProviders}
@@ -180,12 +187,14 @@ export const AgentGUIEmptyHomePane = memo(function AgentGUIEmptyHomePane({
             onProviderSelect={onProviderSelect}
             providerLabel={providerLabel}
             providerSelectLabel={labels.providerSwitchLabel}
-            selectedAgentTarget={selectedAgentTarget}
+            selectedAgentTarget={presentedSelectedAgentTarget}
             labels={labels}
           />
         ) : (
           <AgentGUIEmptyHeroPane
             {...heroProps}
+            isActive={isActive}
+            isVisible={isVisible}
             provider={provider}
             emptyLabel={emptyLabel}
             emptyProvider={providerLabel}
@@ -193,7 +202,7 @@ export const AgentGUIEmptyHomePane = memo(function AgentGUIEmptyHomePane({
             carouselMountedExternally={carouselMountedExternally}
             onProviderSelect={onProviderSelect}
             agentTargets={agentTargets}
-            selectedAgentTarget={selectedAgentTarget}
+            selectedAgentTarget={presentedSelectedAgentTarget}
             providerSelectLabel={labels.providerSwitchLabel}
             sharedAgentOwnerSeparator={labels.sharedAgentOwnerSeparator}
           />
@@ -204,6 +213,8 @@ export const AgentGUIEmptyHomePane = memo(function AgentGUIEmptyHomePane({
 });
 
 interface AgentGUIEmptyHeroPaneProps {
+  isActive?: boolean;
+  isVisible?: boolean;
   provider: AgentGUINodeViewModel["shell"]["data"]["provider"];
   emptyLabel: string;
   emptyProvider: string;
@@ -229,6 +240,8 @@ interface AgentGUIEmptyHeroPaneProps {
 }
 
 export const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
+  isActive = true,
+  isVisible = true,
   provider,
   emptyLabel,
   emptyProvider,
@@ -284,7 +297,9 @@ export const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
                 selectedAgentTarget?.agentTargetId ??
                 selectedAgentTarget?.targetId
               }
+              isActive={isActive}
               items={heroAvatarPresentations}
+              isVisible={isVisible}
               onProviderSelect={onProviderSelect}
               providerSelectLabel={providerSelectLabel}
             />
@@ -319,7 +334,6 @@ export const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
           />
         ) : null}
         <AgentComposer {...composerProps} />
-        <AgentGUIEmptyHeroTuttiToggle composerProps={composerProps} />
         <AgentHomeSuggestions
           categories={suggestions}
           onSelectSuggestion={onSelectSuggestion}
@@ -331,76 +345,9 @@ export const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
   );
 });
 
-/**
- * Prominent Tutti mode entry on the new-conversation hero. It drives the same
- * pre-session draft path as the /tutti slash command (the composer badge
- * lights up in sync, and the first message carries the activation into the
- * created session), so this is purely an additional, discoverable switch.
- */
-export function AgentGUIEmptyHeroTuttiToggle({
-  composerProps
-}: {
-  composerProps: AgentComposerProps;
-}): React.JSX.Element | null {
-  const switchId = useId();
-  const onTuttiModeChange = composerProps.onTuttiModeChange;
-  // Same host gate as /tutti and the composer badge: omit or enabled:false
-  // must not show Tutti Mode chrome on Codex/VM or other shared AgentGUI hosts.
-  const tuttiModeEnabled =
-    composerProps.capabilityMenuState?.tuttiMode?.enabled === true;
-  if (!onTuttiModeChange || !tuttiModeEnabled) {
-    return null;
-  }
-  const active = composerProps.tuttiModeActive === true;
-  const updating = composerProps.tuttiModeUpdating === true;
-  const label = composerProps.labels.tuttiModeLabel;
-  const description = composerProps.labels.tuttiModeDescription;
-  return (
-    <label
-      className={cn(
-        "mx-auto flex w-full max-w-[560px] items-center gap-2.5 rounded-xl border px-3 py-2 transition-colors",
-        active
-          ? "border-[var(--tutti-purple)] bg-[color-mix(in_srgb,var(--tutti-purple)_8%,transparent)]"
-          : "border-[var(--line-2)] hover:border-[var(--tutti-purple)]",
-        updating ? "cursor-wait opacity-70" : "cursor-pointer"
-      )}
-      htmlFor={switchId}
-      title={description}
-      data-testid="agent-gui-hero-tutti-toggle"
-    >
-      <Sparkles
-        aria-hidden
-        className={cn(
-          "size-4 shrink-0",
-          active
-            ? "text-[var(--tutti-purple)]"
-            : "text-[var(--agent-gui-text-secondary)]"
-        )}
-      />
-      <span className="flex min-w-0 flex-1 flex-col text-left">
-        <span className="text-[13px] font-medium text-[var(--text-primary)]">
-          {label}
-        </span>
-        {description ? (
-          <span className="truncate text-[11px] text-[var(--agent-gui-text-tertiary)]">
-            {description}
-          </span>
-        ) : null}
-      </span>
-      <Switch
-        id={switchId}
-        size="sm"
-        checked={active}
-        disabled={updating}
-        aria-label={label}
-        data-testid="agent-gui-hero-tutti-toggle-switch"
-        onCheckedChange={(checked) => onTuttiModeChange(checked)}
-      />
-    </label>
-  );
-}
-
 interface AgentGUIProviderReadinessGatePaneProps {
+  isActive?: boolean;
+  isVisible?: boolean;
   provider: AgentGUINodeViewModel["shell"]["data"]["provider"];
   gate: AgentGUIProviderReadinessGate;
   showAllProviders?: boolean;
@@ -438,6 +385,8 @@ interface AgentGUIProviderReadinessGatePaneProps {
 
 export const AgentGUIProviderReadinessGatePane = memo(
   function AgentGUIProviderReadinessGatePane({
+    isActive = true,
+    isVisible = true,
     provider,
     gate,
     showAllProviders = false,
@@ -507,7 +456,9 @@ export const AgentGUIProviderReadinessGatePane = memo(
                 selectedAgentTarget?.agentTargetId ??
                 selectedAgentTarget?.targetId
               }
+              isActive={isActive}
               items={heroAvatarPresentations}
+              isVisible={isVisible}
               onProviderSelect={onProviderSelect}
               providerSelectLabel={providerSelectLabel}
             />
@@ -638,14 +589,12 @@ function AgentGUIAgentAvatarVisual({
         src={presentation.iconUrl}
       />
       {presentation.badge?.iconUrl ? (
-        <span className={styles.agentAvatarBadge}>
-          <img
-            alt=""
-            className={styles.agentAvatarBadgeImage}
-            draggable={false}
-            src={presentation.badge.iconUrl}
-          />
-        </span>
+        <AgentGUIOwnerAvatar
+          className={styles.agentAvatarBadge}
+          iconUrl={presentation.badge.iconUrl}
+          imageClassName={styles.agentAvatarBadgeImage}
+          label={presentation.badge.label}
+        />
       ) : null}
     </span>
   );

@@ -1,6 +1,6 @@
-import { memo, useCallback, useMemo } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { ExternalLink } from "lucide-react";
-import { IssueIcon, NewWorkspaceLinedIcon, cn } from "@tutti-os/ui-system";
+import { NewWorkspaceLinedIcon, cn } from "@tutti-os/ui-system";
 import { WorkspaceUserProjectSelect } from "@tutti-os/workspace-user-project/ui";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { BareIconButton } from "@tutti-os/ui-system/components";
@@ -14,6 +14,11 @@ import {
   resolveAgentTargetPresentation,
   useAgentTargetPresentations
 } from "../../../shared/AgentTargetPresentationContext";
+import {
+  useAgentTargetInfoRenderer,
+  useAgentTargetInfoTarget
+} from "../../../shared/AgentTargetInfoRendererContext";
+import { AgentTargetInfoTooltip } from "../../../shared/AgentTargetInfoTooltip";
 import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import type { AgentGUIViewLabels } from "../AgentGUINodeView";
@@ -59,12 +64,7 @@ function agentGUIConversationRailTitle(
   labels: AgentGUIConversationRailLabels,
   uiLanguage: UiLanguage
 ): string {
-  const title = conversationPlainTitle(item, labels, uiLanguage);
-  // Only the task kind renders a leading mention icon, so only its "@" prefix
-  // is dropped; every other kind (file included) keeps its plain "@" text.
-  return item.titleLeadingMentionKind === "task"
-    ? title.replace(/^@\s*/, "")
-    : title;
+  return conversationPlainTitle(item, labels, uiLanguage);
 }
 
 interface AgentGUIConversationRailItemProps {
@@ -74,7 +74,6 @@ interface AgentGUIConversationRailItemProps {
   isDeletingConversation: boolean;
   isRailInteractionLocked: () => boolean;
   labels: AgentGUIConversationRailLabels;
-  previewMode: boolean;
   uiLanguage: UiLanguage;
   workspaceId: string;
   registerItemElement: (itemId: string, element: HTMLDivElement | null) => void;
@@ -98,7 +97,6 @@ export const AgentGUIConversationRailItem = memo(
     isDeletingConversation,
     isRailInteractionLocked,
     labels,
-    previewMode,
     uiLanguage,
     workspaceId,
     registerItemElement,
@@ -113,13 +111,84 @@ export const AgentGUIConversationRailItem = memo(
   }: AgentGUIConversationRailItemProps): React.JSX.Element {
     "use memo";
     const pinned = (item.pinnedAtUnixMs ?? 0) > 0;
+    const [actionsActivated, setActionsActivated] = useState(false);
+    const [targetInfoOpen, setTargetInfoOpen] = useState(false);
     const agentTargets = useAgentTargetPresentations();
+    const renderAgentTargetInfo = useAgentTargetInfoRenderer();
+    const targetInfoTarget = useAgentTargetInfoTarget(item.agentTargetId);
+    const hasTargetInfo = Boolean(renderAgentTargetInfo && targetInfoTarget);
+    const targetInfoFocusedRef = useRef(false);
+    const targetInfoPointerOverIconRef = useRef(false);
+    const handleTargetInfoOpenChange = (open: boolean): void => {
+      if (
+        !open ||
+        targetInfoFocusedRef.current ||
+        targetInfoPointerOverIconRef.current
+      ) {
+        setTargetInfoOpen(open);
+      }
+    };
+    const handleTargetInfoIconPointerMove = (): void => {
+      targetInfoPointerOverIconRef.current = true;
+      setTargetInfoOpen(true);
+    };
+    const handleTargetInfoIconPointerLeave = (): void => {
+      targetInfoPointerOverIconRef.current = false;
+      if (!targetInfoFocusedRef.current) {
+        setTargetInfoOpen(false);
+      }
+    };
+    const handleTargetInfoFocus = (): void => {
+      targetInfoFocusedRef.current = true;
+      setTargetInfoOpen(true);
+    };
+    const handleTargetInfoBlur = (): void => {
+      targetInfoFocusedRef.current = false;
+      setTargetInfoOpen(false);
+    };
     const conversationIcon = agentGUIConversationIconPresentation(
       item.provider,
       item.agentTargetId,
       workspaceId,
       agentTargets
     );
+    const conversationIconNode =
+      conversationIcon?.kind === "mask" ? (
+        <span
+          aria-hidden="true"
+          className={cn(
+            styles.conversationProviderIcon,
+            styles.conversationProviderMaskIcon
+          )}
+          style={{
+            WebkitMaskImage: `url("${conversationIcon.url}")`,
+            maskImage: `url("${conversationIcon.url}")`
+          }}
+          onPointerLeave={
+            hasTargetInfo ? handleTargetInfoIconPointerLeave : undefined
+          }
+          onPointerMove={
+            hasTargetInfo ? handleTargetInfoIconPointerMove : undefined
+          }
+        />
+      ) : conversationIcon ? (
+        <img
+          alt=""
+          aria-hidden="true"
+          className={cn(
+            styles.conversationProviderIcon,
+            styles.conversationProviderImage
+          )}
+          draggable={false}
+          src={conversationIcon.url}
+          onPointerLeave={
+            hasTargetInfo ? handleTargetInfoIconPointerLeave : undefined
+          }
+          onPointerMove={
+            hasTargetInfo ? handleTargetInfoIconPointerMove : undefined
+          }
+        />
+      ) : null;
     const setItemElement = useCallback(
       (element: HTMLDivElement | null) => {
         registerItemElement(item.id, element);
@@ -163,7 +232,6 @@ export const AgentGUIConversationRailItem = memo(
       }
     };
     const canMarkUnread = Boolean(
-      !previewMode &&
       !item.hasUnreadCompletion &&
       item.isImported !== true &&
       (item.unreadCompletionKey ||
@@ -181,6 +249,45 @@ export const AgentGUIConversationRailItem = memo(
       onOpenConversationWindow,
       onRequestRenameConversation
     });
+    const conversationSelect = (
+      <button
+        type="button"
+        className={styles.conversationSelect}
+        onClick={handleSelect}
+        onBlur={hasTargetInfo ? handleTargetInfoBlur : undefined}
+        onDoubleClick={(event) => {
+          event.preventDefault();
+          handleRequestRename();
+        }}
+        onFocus={hasTargetInfo ? handleTargetInfoFocus : undefined}
+      >
+        <span className={styles.conversationTitleRow}>
+          {conversationIconNode}
+          <span className={styles.conversationTitle}>
+            {agentGUIConversationRailTitle(item, labels, uiLanguage)}
+          </span>
+        </span>
+        <AgentGUIConversationRailRelativeTime item={item} labels={labels} />
+      </button>
+    );
+    const conversationSelectWithTargetInfo =
+      renderAgentTargetInfo && targetInfoTarget ? (
+        <AgentTargetInfoTooltip
+          align="start"
+          fallbackLabel={targetInfoTarget.label}
+          onOpenChange={handleTargetInfoOpenChange}
+          open={targetInfoOpen}
+          renderer={renderAgentTargetInfo}
+          side="bottom"
+          sideOffset={6}
+          surface="conversation-rail"
+          target={targetInfoTarget}
+        >
+          {conversationSelect}
+        </AgentTargetInfoTooltip>
+      ) : (
+        conversationSelect
+      );
     const row = (
       <div
         ref={setItemElement}
@@ -193,62 +300,16 @@ export const AgentGUIConversationRailItem = memo(
           if (isRailInteractionLocked()) {
             event.preventDefault();
             event.stopPropagation();
+            return;
           }
+          setActionsActivated(true);
         }}
+        onFocusCapture={() => setActionsActivated(true)}
         onMouseLeave={handleMouseLeave}
+        onPointerEnter={() => setActionsActivated(true)}
       >
-        <button
-          type="button"
-          className={styles.conversationSelect}
-          onClick={handleSelect}
-          onDoubleClick={(event) => {
-            event.preventDefault();
-            handleRequestRename();
-          }}
-        >
-          <span className={styles.conversationTitleRow}>
-            {conversationIcon?.kind === "mask" ? (
-              <span
-                aria-hidden="true"
-                className={cn(
-                  styles.conversationProviderIcon,
-                  styles.conversationProviderMaskIcon
-                )}
-                style={{
-                  WebkitMaskImage: `url("${conversationIcon.url}")`,
-                  maskImage: `url("${conversationIcon.url}")`
-                }}
-              />
-            ) : conversationIcon ? (
-              <img
-                alt=""
-                aria-hidden="true"
-                className={cn(
-                  styles.conversationProviderIcon,
-                  styles.conversationProviderImage
-                )}
-                draggable={false}
-                src={conversationIcon.url}
-              />
-            ) : null}
-            {item.titleLeadingMentionKind === "task" ? (
-              <span
-                aria-hidden="true"
-                className={styles.conversationTitleMentionIcon}
-                data-agent-gui-conversation-title-mention-icon={
-                  item.titleLeadingMentionKind
-                }
-              >
-                <IssueIcon />
-              </span>
-            ) : null}
-            <span className={styles.conversationTitle}>
-              {agentGUIConversationRailTitle(item, labels, uiLanguage)}
-            </span>
-          </span>
-          <AgentGUIConversationRailRelativeTime item={item} labels={labels} />
-        </button>
-        {previewMode ? null : (
+        {conversationSelectWithTargetInfo}
+        {actionsActivated || isPendingDeleteConversation ? (
           <div className={styles.conversationActions}>
             {isPendingDeleteConversation ? (
               <button
@@ -338,12 +399,10 @@ export const AgentGUIConversationRailItem = memo(
               </>
             )}
           </div>
-        )}
+        ) : null}
       </div>
     );
-    if (previewMode) {
-      return row;
-    }
+
     return (
       <AgentGUIConversationActionsContextMenu menu={menu}>
         {row}

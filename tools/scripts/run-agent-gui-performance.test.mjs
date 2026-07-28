@@ -9,9 +9,15 @@ import {
   agentGuiPerformanceScenarios,
   resolveAgentGuiPerformanceScenario
 } from "./agent-gui-performance-scenarios.mjs";
+import { sessionSwitchScenario } from "./agent-gui-session-performance-scenarios.mjs";
 import { composerInputScenario } from "./agent-gui-composer-performance-scenarios.mjs";
+import {
+  assessWorkbenchWindowDragTrace,
+  prepareAgentGUIWindowStressSnapshot
+} from "./agent-gui-window-performance-scenarios.mjs";
 import { summarizeProviderStatusFocusRefresh } from "./agent-provider-status-performance-scenario.mjs";
 import { buildAllProcessTimeProfileArgs } from "./all-process-time-profile.mjs";
+import { prepareConcurrentAgentStreamingWorkbenchSnapshot } from "./agent-gui-concurrent-streaming-performance-scenario.mjs";
 import {
   applyScenarioAssessment,
   findUnknownAgentTargetMigrationIDs,
@@ -175,6 +181,12 @@ test("session switch target selection keeps active source and chooses another", 
   );
 });
 
+test("session switch profiles its timeline geometry choke point", () => {
+  assert.deepEqual(sessionSwitchScenario.profileFunctionNames, [
+    "readTimelineGeometry"
+  ]);
+});
+
 test("performance scenario registry exposes renderer and window scenarios", () => {
   assert.deepEqual(
     agentGuiPerformanceScenarios.map((scenario) => scenario.id),
@@ -183,10 +195,16 @@ test("performance scenario registry exposes renderer and window scenarios", () =
       "session-switch",
       "provider-session-cycle",
       "virtualized-streaming",
+      "concurrent-agent-streaming",
       "virtualized-scroll-locator",
+      "virtualized-session-cycle",
+      "virtualized-oversized-active-turn",
+      "browser-behind-agent-gui-pixels",
       "rail-scope-reveal",
       "composer-input",
       "composer-overflow-resize",
+      "workbench-fifty-window-stress",
+      "workbench-window-drag",
       "workbench-window-lifecycle",
       "desktop-window-state",
       "provider-status-focus-refresh"
@@ -199,6 +217,121 @@ test("performance scenario registry exposes renderer and window scenarios", () =
   assert.throws(
     () => resolveAgentGuiPerformanceScenario("missing"),
     /unknown scenario: missing/
+  );
+});
+
+test("concurrent streaming snapshot creates two visible session-scoped AgentGUI windows", () => {
+  const prepared = prepareConcurrentAgentStreamingWorkbenchSnapshot(
+    {
+      activeNodeId: "agent-source",
+      nodeStack: ["terminal-1", "agent-source"],
+      nodes: [
+        {
+          id: "terminal-1",
+          data: { typeId: "terminal" },
+          frame: { x: 0, y: 0, width: 800, height: 600 }
+        },
+        {
+          id: "agent-source",
+          data: {
+            instanceId: "source",
+            typeId: "agent-gui",
+            snapshotNodeState: { agentTargetId: "local:codex" }
+          },
+          frame: { x: 20, y: 30, width: 1400, height: 720 },
+          isMinimized: true
+        }
+      ]
+    },
+    ["session-1", "session-2"]
+  );
+  const agents = prepared.nodes.filter(
+    (node) => node.data.typeId === "agent-gui"
+  );
+
+  assert.equal(agents.length, 2);
+  assert.deepEqual(
+    agents.map((node) => node.data.snapshotNodeState.lastActiveAgentSessionId),
+    ["session-1", "session-2"]
+  );
+  assert.equal(
+    agents.every((node) => node.isMinimized === false),
+    true
+  );
+  assert.equal(
+    agents[0].frame.x + agents[0].frame.width < agents[1].frame.x,
+    true
+  );
+  assert.equal(prepared.activeNodeId, agents[1].id);
+});
+
+test("AgentGUI window stress snapshot creates exact unique mounted windows", () => {
+  const snapshot = prepareAgentGUIWindowStressSnapshot(
+    {
+      activeNodeId: "agent-gui:instance:source",
+      nodeStack: ["terminal:1", "agent-gui:instance:source"],
+      nodes: [
+        {
+          id: "terminal:1",
+          data: { typeId: "terminal" },
+          frame: { x: 0, y: 0, width: 800, height: 600 }
+        },
+        {
+          id: "agent-gui:instance:source",
+          data: {
+            instanceId: "instance:source",
+            instanceKey: null,
+            typeId: "agent-gui"
+          },
+          frame: { x: 100, y: 50, width: 1200, height: 800 },
+          isMinimized: true
+        }
+      ]
+    },
+    50
+  );
+  const agentGuiNodes = snapshot.nodes.filter(
+    (node) => node.data.typeId === "agent-gui"
+  );
+
+  assert.equal(agentGuiNodes.length, 50);
+  assert.equal(new Set(agentGuiNodes.map((node) => node.id)).size, 50);
+  assert.equal(new Set(snapshot.nodeStack).size, 51);
+  assert.equal(
+    agentGuiNodes.every((node) => !node.isMinimized),
+    true
+  );
+  assert.equal(snapshot.activeNodeId, agentGuiNodes.at(-1).id);
+  assert.equal(
+    snapshot.nodes.some((node) => node.id === "terminal:1"),
+    true
+  );
+});
+
+test("workbench drag trace bounds background animation work", () => {
+  assert.deepEqual(
+    assessWorkbenchWindowDragTrace({
+      inputEvents: { animationiteration: 20 },
+      timing: { maxLongTaskMs: 50 }
+    }).assertions,
+    [
+      { name: "drag animation iterations <= 20", passed: true },
+      { name: "renderer task <= 50 ms", passed: true }
+    ]
+  );
+  assert.equal(
+    assessWorkbenchWindowDragTrace({
+      inputEvents: { animationiteration: 21 },
+      timing: { maxLongTaskMs: 51 }
+    }).assertions[0].passed,
+    false
+  );
+  assert.equal(
+    assessWorkbenchWindowDragTrace({
+      inputEvents: { animationiteration: 20 },
+      timing: { maxLongTaskMs: 51 }
+    }).assertions[1].passed,
+    false
   );
 });
 

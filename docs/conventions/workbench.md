@@ -19,6 +19,8 @@ Current ownership:
   migrations, normalization, validation, and JSON Schema.
 - `packages/workbench/service` owns shared Go snapshot validation,
   canonicalization, and the storage-facing service contract.
+- `packages/workbench/electron` owns product-neutral Electron main-process Dock
+  preview capture and bounded filesystem cache mechanics.
 - `packages/workbench/surface` owns reusable Workbench mechanics:
   controller commands, host/session reconciliation, placement, stacking,
   dock rendering, window chrome, render context plumbing, and shell snapshot
@@ -37,10 +39,41 @@ Current ownership:
 
 Rules:
 
-- keep product-specific node bodies, daemon clients, preload calls, filesystem
-  access, and workflow policy out of shared Workbench packages
+- keep product-specific node bodies, daemon clients, preload calls, host path
+  selection, unrestricted filesystem access, and workflow policy out of shared
+  Workbench packages
+- let `@tutti-os/workbench-electron` accept a host-selected cache directory and
+  Electron `webContents`; IPC authorization, BrowserWindow ownership, product
+  logging, and `app.getPath("userData")` stay in the consuming desktop app
 - keep product-specific CSS selectors and host globals out of
   `@tutti-os/workbench-surface`
+- restore a minimized node from its in-memory Genie texture before launching
+  the mounted node when the cached texture and Dock anchor are usable; allow
+  that first texture frame to paint before host launch work begins
+- attempt the host-provided native Dock preview capture before cloning live DOM;
+  clone DOM only after native capture fails or exceeds the bounded wait, and
+  persist a late result's Dock image immediately but defer its full-size decode
+  until the active Genie animation settles and the browser is idle
+- for Electron hosts, derive the full-size Genie image and bounded Dock image
+  from one region capture; never upscale the Dock image into a Genie texture
+- bound retained Genie Canvas textures by both entry count and estimated RGBA
+  bytes; retain restored-node textures for later minimizes, and remove them
+  when their nodes no longer exist
+- publish Genie-hidden state through per-node subscriptions so changing one
+  window does not invalidate every mounted Workbench window
+- use per-node operation tokens for Genie hiding; global animation generation
+  may control the shared Canvas but must not block another node from becoming
+  visible
+- project normal-window visibility through the mounted body context; it is
+  false while minimized, Genie-hidden, or in Mission Control, so heavy child
+  presentation can wait without importing Workbench animation state
+- separate a node's own exposure from whether it may occlude lower nodes.
+  Scale restore, shell frame transitions, and onboarding entry keep their own
+  body visible but do not cover lower bodies until the matching DOM animation
+  or transition settles; overlapping transitions release independently
+- order geometric occlusion by rendered surface layer before normal window
+  stack order. A `dialog-popover` node remains above default-layer nodes even
+  when the normal focus stack changes
 - keep window chrome hit zones unambiguous; floating-window resize handles
   should render outside the clipped window surface so corner handles remain
   reachable and take precedence over header drag regions; interactive controls
@@ -75,6 +108,14 @@ Rules:
   `getSnapshotNodeState(...)`
 - snapshot sanitizers and session serialization must strip transient runtime
   render data before persistence
+- snapshot serialization must persist `layoutBasis` from the same Workbench
+  state as the frames. On initial restore, map `frame`, `restoreFrame`, space
+  frames, and reusable closed-window frames from that basis into the current
+  safe layout before exposing a restored floating frame
+- keep `layoutBasis` additive within schema version 1. Snapshots that predate it
+  remain valid and use conservative bounds normalization; do not invent a
+  historical surface size because that would turn unknown geometry into a
+  misleading proportional migration
 - adapter-specific durable state should remain behind generic contract fields
   unless the adapter detail is part of the shared snapshot contract
 - desktop-owned workspace Dock retention is product metadata in the workspace

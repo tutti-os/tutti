@@ -18,3 +18,19 @@ apply active constraints before pagination. The package does not fetch a
 catalog or infer product-specific membership itself. Disabled catalog options
 remain available to host logic but are hidden by the controlled filter view by
 default; a host can opt into rendering them with `showDisabledOptions`.
+
+## Content error recovery
+
+`ReferenceSourcePicker` accepts `resolveContentErrorAction` when a host can
+offer recovery for selected content errors. Return an action label for errors
+that should be retryable, or `null` to keep the default message-only state.
+Selecting the action reruns the failed browse, search, or filtered-tree request.
+
+```tsx
+<ReferenceSourcePicker
+  resolveContentErrorAction={(error) =>
+    isRecoverable(error) ? { label: copy.t("actions.retry") } : null
+  }
+  {...props}
+/>
+```

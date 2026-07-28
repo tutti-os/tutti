@@ -2,7 +2,8 @@ import { act, renderHook } from "@testing-library/react";
 import {
   createAgentSessionEngine,
   normalizeAgentActivitySession,
-  selectEngineSessionSettingsUpdate
+  selectEngineSessionSettingsUpdate,
+  type AgentActivityComposerOptions
 } from "@tutti-os/agent-activity-core";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
@@ -14,6 +15,112 @@ import type { useAgentGUIActivation } from "./useAgentGUIActivation";
 import { useAgentGUIComposerSettingsActions } from "./useAgentGUIComposerSettingsActions";
 
 describe("useAgentGUIComposerSettingsActions", () => {
+  it("retires a remembered model rejected by the authoritative target catalog", () => {
+    const sessionEngine = createAgentSessionEngine({
+      clock: { nowUnixMs: () => 1 },
+      commandPort: { execute: vi.fn() },
+      identity: { origin: "test", workspaceId: "workspace-1" },
+      scheduler: { schedule: () => ({ cancel() {} }) }
+    });
+    const data: AgentGUINodeData = {
+      agentTargetId: "local:codex",
+      lastActiveAgentSessionId: null,
+      provider: "codex"
+    };
+    const target = {
+      agentTargetId: "local:codex",
+      data,
+      provider: "codex" as const,
+      targetId: "local:codex"
+    };
+    const draftKey = "__agent_gui_node_defaults__:target:local:codex";
+    const draftSettingsBySessionIdRef: {
+      current: Record<string, AgentSessionComposerSettings>;
+    } = {
+      current: {
+        [draftKey]: { model: "gpt-5.6-sol" }
+      }
+    };
+    const onComposerDefaultsAuthorityReloadedRef =
+      createComposerDefaultsAuthorityReconcilerRef();
+    let persistedData = data;
+    const onDataChange = vi.fn(
+      (updater: (current: AgentGUINodeData) => AgentGUINodeData) => {
+        persistedData = updater(persistedData);
+      }
+    );
+    const setDraftSettingsBySessionId = vi.fn();
+    renderHook(() =>
+      useAgentGUIComposerSettingsActions({
+        activation: {
+          stateFor: vi.fn(() => "inactive" as const)
+        } as unknown as ReturnType<typeof useAgentGUIActivation>,
+        activeCanonicalComposerSettings: {},
+        activeConversationIdRef: { current: null },
+        activeEngineActiveTurn: null,
+        agentActivityRuntime: {
+          getSnapshot: () => ({})
+        } as unknown as AgentActivityRuntime,
+        composerSupportPermissionModeChangeDeferred: false,
+        dataRef: { current: data },
+        defaultReasoningEffort: null,
+        draftSettingsBySessionIdRef,
+        isMountedRef: { current: true },
+        loadDraftComposerOptions: vi.fn(),
+        onComposerDefaultsAuthorityReloadedRef,
+        onDataChangeRef: { current: onDataChange },
+        onRememberComposerDefaultsRef: { current: undefined },
+        onShowMessageRef: { current: vi.fn() },
+        reloadComposerOptionsForTarget: vi.fn(async () => {}),
+        selectedComposerTargetDataRef: { current: target },
+        sessionEngine,
+        setDraftSettingsBySessionId,
+        updateComposerSettingsRef: { current: vi.fn() },
+        workspaceId: "workspace-1"
+      })
+    );
+    const options: AgentActivityComposerOptions = {
+      provider: "codex",
+      capabilities: null,
+      models: [
+        { value: "glm-5", label: "GLM-5" },
+        {
+          value: "gpt-5.6-sol",
+          label: "GPT-5.6-Sol",
+          requested: true
+        }
+      ],
+      reasoningEfforts: [],
+      speeds: [],
+      modelConfigurable: true,
+      reasoningConfigurable: false,
+      skills: [],
+      behavior: {
+        collapseModelOptionsToLatest: false,
+        modelOptionsAuthoritative: true,
+        refreshModelOptionsAfterSettings: false,
+        prewarmDraftSession: false,
+        planModeExclusiveWithPermissionMode: false
+      },
+      loadedAtUnixMs: 1,
+      effectiveSettings: { model: "glm-5" }
+    };
+
+    act(() => {
+      onComposerDefaultsAuthorityReloadedRef.current.reconcileHomeDefaults(
+        target,
+        options
+      );
+    });
+
+    expect(draftSettingsBySessionIdRef.current[draftKey]?.model).toBeNull();
+    expect(setDraftSettingsBySessionId).toHaveBeenCalledOnce();
+    expect(
+      persistedData.composerOverridesByAgentTargetId?.["local:codex"]?.model
+    ).toBeNull();
+    expect(onDataChange).toHaveBeenCalledOnce();
+  });
+
   it("preserves all explicit home defaults across stale options, transient empty selects, and unrelated patches", () => {
     const sessionEngine = createAgentSessionEngine({
       clock: { nowUnixMs: () => 1 },
@@ -559,6 +666,7 @@ function createComposerDefaultsAuthorityReconcilerRef(): {
         receipt: null,
         settings
       })),
+      reconcileHomeDefaults: vi.fn(),
       reloaded: vi.fn()
     }
   };

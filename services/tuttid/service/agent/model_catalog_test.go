@@ -418,12 +418,24 @@ func TestDefaultTuttiAgentModelListerUsesTuttiHomeAndClearsCodexHome(t *testing.
 		t.Fatalf("catalog config missing: %v", err)
 	}
 	configText := string(config)
-	if !strings.Contains(configText, `model_provider = "tutti-llm"`) ||
-		!strings.Contains(configText, `model = "gpt-5.4"`) ||
-		!strings.Contains(configText, "[model_providers.tutti-llm]") ||
-		!strings.Contains(configText, "[model_providers.custom]") ||
-		strings.Contains(configText, `model_provider = "custom"`) {
-		t.Fatalf("catalog config = %q, want pinned tutti-llm root provider while preserving custom provider block", configText)
+	for _, expected := range []string{
+		`model_provider = "custom"`,
+		`model = "custom-model"`,
+		"[model_providers.custom]",
+		`base_url = "https://custom.example.test/v1"`,
+	} {
+		if !strings.Contains(configText, expected) {
+			t.Fatalf("catalog config = %q, want preserved user setting %q", configText, expected)
+		}
+	}
+	for _, unexpected := range []string{
+		`model_provider = "tutti-llm"`,
+		`model = "gpt-5.4"`,
+		"[model_providers.tutti-llm]",
+	} {
+		if strings.Contains(configText, unexpected) {
+			t.Fatalf("catalog config = %q, must not inject legacy setting %q", configText, unexpected)
+		}
 	}
 	userConfigAfterPrepare, err := os.ReadFile(filepath.Join(userAgentHome, "config.toml"))
 	if err != nil {

@@ -97,10 +97,12 @@ application; CDP-injected scenario input remains available.
 
 Reports and traces are written under
 `.tmp/perf/agent-gui/<scenario>/<timestamp>/`. Metric values are
-report-only by default; startup, scenario, capture, or analysis failures return
-a non-zero exit code. `virtualized-scroll-locator` is the narrow exception: its
-documented scenario thresholds fail the command. The command remains local
-diagnostics, not a CI performance gate or a stable cross-device benchmark.
+report-only unless the selected scenario declares explicit thresholds.
+Startup, semantic scenario assertions, capture, analysis, and declared
+threshold failures return a non-zero exit code. Current timing/trace gates are
+owned by `virtualized-scroll-locator`, `workbench-window-drag`, and
+`workbench-fifty-window-stress`. The command remains local diagnostics, not a
+CI performance gate or a stable cross-device benchmark.
 
 The report separates semantic scenario assertions from performance metrics. It
 shows start-to-selection, selection-to-stable, and settling phases; restricts
@@ -112,13 +114,25 @@ ownership, not a runtime call stack or proof of causation.
 
 The capture runner ships `provider-switch`, `session-switch`,
 `provider-session-cycle`, `virtualized-streaming`,
-`virtualized-scroll-locator`, `rail-scope-reveal`, `composer-input`,
-`composer-overflow-resize`, `workbench-window-lifecycle`, and
-`desktop-window-state`, and `provider-status-focus-refresh`. List them with
+`concurrent-agent-streaming`,
+`virtualized-scroll-locator`, `virtualized-session-cycle`,
+`virtualized-oversized-active-turn`, `browser-behind-agent-gui-pixels`,
+`rail-scope-reveal`, `composer-input`, `composer-overflow-resize`, `workbench-window-lifecycle`,
+`workbench-window-drag`, `workbench-fifty-window-stress`,
+`desktop-window-state`, and
+`provider-status-focus-refresh`. List them with
 `--list-scenarios`; select one with
 `--scenario <id>`. Scenario modules own preparation, completion conditions,
 semantic assertions, milestones, and metadata; runtime startup, trace capture,
 renderer analysis, and report rendering stay scenario-neutral.
+
+`concurrent-agent-streaming` selects two settled root Sessions, restores them
+into two non-overlapping visible AgentGUI windows, and routes each through an
+isolated fake Cursor ACP Session. Both Composer forms submit in one renderer
+task. The scenario requires both windows to enter working state, produce
+repeated transcript mutations, and settle before the trace tail. It reports
+the sampled conversation-projection and streaming-text functions without
+setting a cross-device timing threshold.
 
 `virtualized-streaming` and `virtualized-scroll-locator` require one root
 Session with at least thirty settled Turns. They change only the isolated copy
@@ -132,13 +146,35 @@ historical rows never gain `contenteditable="true"` or `role="textbox"`. Its tra
 requires at least 300 scroll dispatches, a maximum 50 ms scroll dispatch,
 at most 1200 ms total scroll-dispatch time, at most 500 ms `Layout`, at most
 1000 ms `UpdateLayoutTree`, and zero inclusive CPU samples for `EditorView`,
-`hasSelection`, `selectionToDOM`, and `updateStateInner`. CPU sample counts use
+`hasSelection`, and `selectionToDOM`. CPU sample counts use
 marker-bounded renderer-process `ProfileChunk` stacks; the gate also requires
 at least one CPU sample so missing profiler data cannot pass as zero.
-`captureScrollAnchor` is reported for diagnosis but is not itself a threshold.
+`captureScrollAnchor` and `updateStateInner` are reported for diagnosis but are
+not thresholds. The active Composer legitimately calls `updateStateInner`
+during React passive effects, so that generic ProseMirror function name cannot
+distinguish it from a historical message. The historical transcript DOM
+assertion remains the ownership gate.
 Neither scenario launches or sends input to a developer's installed Agent provider.
+`virtualized-session-cycle` uses the same isolated fixture preparation, pairs
+one virtualized long Session with one non-virtualized Session of at most three
+Turns (and at least one Turn), then performs two round trips. It asserts the exact active Session and
+expected virtualization mode after every switch.
+`virtualized-oversized-active-turn` retains eighteen settled Turns, then drives
+a nineteenth active Turn through the deterministic fake Cursor ACP executable.
+The isolated fixture reaches approximately 250 total tool calls, with at least
+forty in the active Turn. The trace ends while that Turn is still running and
+reports mounted virtual Turn/row counts plus DOM mutation batches. It remains a
+local diagnostic without fixed timing thresholds.
+`browser-behind-agent-gui-pixels` opens a high-contrast Browser webview, saves a
+Browser reference screenshot, then keeps that webview mounted behind a
+fullscreen virtualized AgentGUI while the transcript scrolls. It saves the
+composited `browser-behind-agent-gui.png` artifact for real-pixel inspection;
+its DOM assertions intentionally do not claim a pixel verdict.
 `rail-scope-reveal` asserts the exact active-row
 `scrollIntoView` call during a fresh Agent scope restore.
+`session-switch` also reports inclusive CPU samples for
+`readTimelineGeometry`; sample counts are diagnostic stack samples, not
+function-call counts.
 `composer-overflow-resize` maximizes the AgentGUI Workbench node, narrows the
 renderer viewport, asserts the hero prompt-tip's native `scrollWidth` and
 `clientWidth` getters were read after resize, then restores the original
@@ -153,6 +189,20 @@ the draft.
 
 `workbench-window-lifecycle` measures the internal AgentGUI Workbench node's
 minimize, restore, maximize, unmaximize, close, and reopen mechanics.
+`workbench-window-drag` requires at least three mounted AgentGUI Workbench
+windows. It drives 120 trusted pointer moves through Chromium and fails when the
+startup or drag emits a Chromium tile-memory warning, or when the drag records
+more than 20 CSS animation iterations. This catches background AgentGUI
+animations that retain too many compositor tiles while windows restore or move.
+Before the drag marker starts, the scenario waits for staged background-body
+hydration to finish and for the resulting DOM mutations and images to settle,
+so startup work is checked separately instead of leaking into the drag window.
+`workbench-fifty-window-stress` rewrites only the isolated performance snapshot
+to contain exactly 50 mounted AgentGUI nodes. It verifies startup, focuses an
+exposed background window without remounting its body, then drags that window.
+The scenario rejects tile-memory warnings, any geometrically exposed body that
+becomes hidden, more than 20 animation iterations, or a renderer task above
+50 ms.
 `desktop-window-state` measures the owning Electron window's minimize, restore,
 maximize, and unmaximize states through typed host-window APIs and is currently
 macOS-only because only that host emits typed minimize-state events. Native

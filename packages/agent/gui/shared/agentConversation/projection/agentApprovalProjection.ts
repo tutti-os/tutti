@@ -24,8 +24,8 @@ export function projectAgentApprovalItem(
   if (!requestId) {
     return null;
   }
-  const options = normalizeApprovalOptions(
-    arrayValue(input?.options) ?? arrayValue(call.payload?.options) ?? []
+  const options = normalizeAgentApprovalOptions(
+    input?.options ?? call.payload?.options
   );
   if (isExitPlanSwitchModeInput(input)) {
     return null;
@@ -56,9 +56,10 @@ export function projectAgentApprovalItem(
   };
 }
 
-function normalizeApprovalOptions(
-  values: readonly unknown[]
+export function normalizeAgentApprovalOptions(
+  value: unknown
 ): AgentApprovalOptionVM[] {
+  const values = arrayValue(value) ?? [];
   return values.flatMap((value) => {
     const option = objectValue(value);
     const id = stringValue(option?.optionId) ?? stringValue(option?.id);

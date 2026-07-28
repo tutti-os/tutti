@@ -16,8 +16,6 @@ const (
 	claudeSDKAppRuntimeCacheEnv    = "TUTTI_APP_RUNTIME_CACHE_ROOT"
 	claudeSDKSidecarAdapterName    = "claude-agent-sdk"
 	claudeSDKSidecarDefaultNodeArg = "--experimental-strip-types"
-	claudeSDKDefaultContextWindow  = int64(200000)
-	claudeSDK1MContextWindow       = int64(1000000)
 	claudeSDKAuthRefreshLogPrefix  = "CLAUDE_CODE_AUTH_REFRESH_DEBUG"
 )
 
@@ -89,9 +87,11 @@ type claudeSDKAdapterSession struct {
 	goalClearControlTurns map[string]struct{}
 	// Durable goal identity associated with the arm/continuation lifecycle.
 	// It is deliberately independent of goalArmTurnID.
-	goalOperationID string
-	goalRevision    int64
-	goalRepairEpoch int64
+	goalOperationID      string
+	goalRevision         int64
+	goalRepairEpoch      int64
+	fencedGoalIdentities map[goalOperationIdentity]struct{}
+	fencedGoalTurns      map[string]struct{}
 }
 
 type claudeSDKCompactMessage struct {

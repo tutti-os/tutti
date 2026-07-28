@@ -10,6 +10,12 @@ It owns the in-memory pub/sub registry, scope routing and session fan-out:
 - `Session[S]` — per-connection outbound event channel
 - the catalog **contract** (`Catalog`, `Direction`, `ValidationError`, …)
 
+Each Session has a bounded queue sized to absorb normal local producer bursts.
+The registry never blocks a business producer on a slow consumer and never
+grows the queue without bound. If the queue fills, the Session is closed; the
+product WebSocket adapter must surface that closure to its client so reconnect
+and authoritative reconciliation can recover any missed optimistic events.
+
 It is generic over the scope type `S` and depends only on an injected `Catalog`
 (minimal: `TopicVersion` / `ValidatePublish` / `ValidateSubscription`) plus a
 `ScopeNormalizer[S]`. It contains **no concrete topics**. Each product binds its

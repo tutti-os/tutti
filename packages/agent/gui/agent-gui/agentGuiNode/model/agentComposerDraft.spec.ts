@@ -481,6 +481,7 @@ describe("agentComposerDraft", () => {
     });
     expect(agentComposerDraftHasContent(draft)).toBe(true);
     expect(agentComposerDraftLargeTexts(draft)[0]).toMatchObject({
+      id: "restore-1:pasted-text:0",
       name: "pasted-text.txt",
       path: "/archive/aa/deadbeef.txt",
       sizeBytes: 22,

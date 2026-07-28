@@ -242,6 +242,7 @@ test("timed out new-session activation stays pending until canonical proof or ex
     {
       agentSessionId: "session-1",
       commandId: "tutti-mode-create-reconcile:activation-1",
+      live: false,
       scope: "state",
       timeoutMs: 15_000,
       type: "session/reconcile",
@@ -504,6 +505,7 @@ test("revision conflicts and timeouts request state reconciliation", () => {
       {
         agentSessionId: "session-1",
         commandId: "tutti-mode-reconcile:tutti-mode-1",
+        live: false,
         scope: "state",
         timeoutMs: 15_000,
         type: "session/reconcile",

@@ -1,12 +1,12 @@
 # @tutti-os/agent-activity-core
 
-Shared agent activity state, merge rules, and selectors for Tutti agent UIs.
+Shared agent activity state, orchestration rules, merge rules, and selectors for
+Tutti agent UIs.
 
-This package owns the frontend-side session snapshot model used by surfaces such
-as `@tutti-os/agent-gui` and the future message center. It does not know about
-Electron, HTTP, SSE, or daemon DTOs. Product-specific code provides an
-`AgentActivityAdapter`; the controller turns that adapter into a stable in-memory
-snapshot.
+This package owns the frontend-side workspace engine and activity snapshot model
+used by Desktop and Mobile surfaces. It does not know about Electron, React
+Native, HTTP, SSE, DeviceLink, or daemon DTOs. Product-specific adapters execute
+transport commands and normalize observations before they enter the engine.
 
 ## Package Boundary
 
@@ -17,13 +17,17 @@ snapshot.
 - can retain live session event streams with reference-counted subscription
   lifecycle when a host adapter exposes that optional capability
 - merges persisted and live messages with version-aware conflict handling
+- analyzes normalized activity events into one inline-observation intent plus
+  an explicit authoritative-reconcile requirement
+- executes the shared prompt command sequence, including required settings
+  persistence before send
 - exposes selectors such as `selectNeedsAttentionCount`
 
 It intentionally does not render UI, open network connections directly, persist
 state, or translate daemon/backend contracts. Those responsibilities belong to a
 host adapter such as the desktop renderer adapter.
 
-## Session Engine (skeleton)
+## Session Engine
 
 `createAgentSessionEngine` is the workspace-level orchestration loop described
 in `docs/architecture/agent-gui-refactor-plan.md` (section 3.3). It is
@@ -60,9 +64,10 @@ Engine rules:
   surfaces subscribe through the single `useEngineSelector` binding in
   `@tutti-os/agent-gui`.
 
-The current state tree carries only the skeleton `engineRuntime` domain;
-business domains (turn lifecycle, queue send, optimistic intents) land as
-sibling reducers in later refactor slices.
+The state tree includes lifecycle entities, message windows, prompt queue,
+pending intents, composer options, runtime availability, reconciliation, and
+attention/read state. Hosts must consume selectors or stable snapshot
+projections instead of reading reducer maps from UI components.
 
 ## Adapter Contract
 
@@ -174,7 +179,7 @@ unrelated Sessions sharing the engine.
 
 ## Event Shape
 
-Live streams emit `AgentActivitySessionEventEnvelope`:
+Canonical streams emit a versioned `message_update`:
 
 ```ts
 {
@@ -182,19 +187,45 @@ Live streams emit `AgentActivitySessionEventEnvelope`:
   agentSessionId: "session-1",
   eventType: "message_update",
   data: {
-    messageId: "message-1",
-    version: 12,
-    role: "assistant",
-    kind: "ask_user_question",
-    status: "waiting",
-    payload: { title: "Choose a plan" }
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "message_update",
+    latestVersion: 12,
+    acceptedCount: 1,
+    messages: [/* canonical message snapshots */]
   }
 }
 ```
 
-The retained controller stream accepts `message_update` and upserts the message
-into `sessionMessagesById`. The session engine's generated
-`AgentActivityUpdatedEvent` input additionally accepts:
+Normalized provider text/reasoning streams may precede that confirmation with
+an optimistic `message_delta`:
+
+```ts
+{
+  workspaceId: "workspace-1",
+  agentSessionId: "session-1",
+  eventType: "message_delta",
+  data: {
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    messageId: "message-1",
+    turnId: "turn-1",
+    role: "assistant",
+    kind: "text",
+    occurredAtUnixMs: 100,
+    content: { operation: "append_text", text: "hello" },
+    status: "streaming"
+  }
+}
+```
+
+Each host creates one
+`createAgentActivityWorkspaceEventCoordinator` per workspace and passes
+transport deliveries into it. The coordinator validates and cleans
+`message_delta`, owns its optimistic projection over canonical
+`sessionMessagesById`, and clears that projection after authoritative message
+reads or Session removal. The generated `AgentActivityUpdatedEvent` input also
+accepts:
 
 - `turn_update`: updates the canonical durable turn projection
 - `interaction_update`: updates the canonical durable interaction projection
@@ -203,6 +234,39 @@ into `sessionMessagesById`. The session engine's generated
 
 Events with a different `workspaceId` are ignored. Unknown event types are
 ignored.
+
+The coordinator owns inline-message continuity, Engine observation intents,
+Session tombstones, discontinuity reconciliation, and reconnect hydration.
+Desktop receives the full canonical event union. The paired-device live
+protocol carries only delta, Turn, Interaction, and audit variants; tuttid
+converts canonical message and reconcile-required events into scoped
+discontinuities. It preserves `session_deleted` as a typed deletion delivery so
+Mobile enters the same Engine tombstone flow as Desktop. Platform adapters
+retain socket/DeviceLink lifecycle, diagnostics, Rail invalidation, and
+navigation.
+
+`eventStreamConnectionChanged` describes only event-stream continuity and
+drives reconnect hydration. The host still owns `engine/connectionChanged`,
+which describes command-transport reachability. Desktop may derive both from
+one WebSocket connection. Mobile must derive Engine state from
+application/service command reachability and coordinator state from
+`stream_ready`/disconnect frames; it must not synthesize one from the other.
+
+For realtime Turn observations, the Engine carries `live: true` on the
+resulting `session/reconcile` command. Command adapters preserve that flag on
+`session/detailSnapshotReceived`; failed commands retain it for the next retry.
+This lets authoritative hydration replay the latest Turn only after Session
+identity exists, with identical attention semantics on Desktop and Mobile.
+
+## Prompt Command Execution
+
+`executeAgentActivityPromptCommand` is the shared command-port helper for an
+Engine `queue/sendPrompt` command. When the command includes a required settings
+patch, the helper waits for that exact settings write before sending the prompt.
+If the write fails, it does not send. It preserves capability references,
+structured content, display prompt, guidance mode, and submit diagnostics
+without interpreting provider policy. Activation, transport DTO mapping, retry,
+and command-result dispatch remain host responsibilities.
 
 ## Message Merge Rules
 

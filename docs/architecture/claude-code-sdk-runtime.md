@@ -66,6 +66,12 @@ New normalized session updates use `sessionUpdateKind`; the former ACP-named
 metadata key is accepted only while reading imported or durable historical
 events.
 
+Context usage is published only when the provider reports a context-window
+limit or the live Session already has a provider-reported limit for the same
+model. Token deltas from a new Session do not synthesize a 200k or 1M
+denominator from the model name; AgentGUI keeps usage hidden until the first
+authoritative window arrives.
+
 Claude credential-sensitive operations share the process-wide gate owned by
 `services/tuttid/service/claudecode`. Real session startup, hidden model
 discovery, and `claude auth status` acquire this same gate. The AgentGUI's

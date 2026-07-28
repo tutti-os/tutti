@@ -39,6 +39,23 @@ func TestWorkbenchSnapshotFromGeneratedPreservesCanonicalFields(t *testing.T) {
 			},
 		},
 	}
+	layoutBasis := tuttigenerated.WorkbenchLayoutBasis{
+		SurfaceSize: tuttigenerated.WorkbenchSize{
+			Width:  1440,
+			Height: 900,
+		},
+		LayoutConstraints: tuttigenerated.WorkbenchLayoutConstraints{
+			MinWidth:       280,
+			MinHeight:      160,
+			SurfacePadding: 0,
+			SafeArea: tuttigenerated.WorkbenchSafeArea{
+				Top:    52,
+				Right:  0,
+				Bottom: 88,
+				Left:   0,
+			},
+		},
+	}
 
 	snapshot := WorkbenchSnapshotFromGenerated(tuttigenerated.WorkbenchSnapshot{
 		SchemaVersion: 1,
@@ -64,6 +81,7 @@ func TestWorkbenchSnapshotFromGeneratedPreservesCanonicalFields(t *testing.T) {
 		ActiveNodeId:  &activeNodeID,
 		Spaces:        &spaces,
 		ActiveSpaceId: &activeSpaceID,
+		LayoutBasis:   &layoutBasis,
 		Metadata:      &metadata,
 	})
 
@@ -81,6 +99,9 @@ func TestWorkbenchSnapshotFromGeneratedPreservesCanonicalFields(t *testing.T) {
 	}
 	if snapshot.Metadata["initialized"] != true {
 		t.Fatalf("Metadata = %#v, want initialized=true", snapshot.Metadata)
+	}
+	if snapshot.LayoutBasis == nil || snapshot.LayoutBasis.SurfaceSize.Width != 1440 {
+		t.Fatalf("LayoutBasis = %#v, want surface width 1440", snapshot.LayoutBasis)
 	}
 	if len(snapshot.Nodes) != 1 {
 		t.Fatalf("nodes len = %d, want 1", len(snapshot.Nodes))

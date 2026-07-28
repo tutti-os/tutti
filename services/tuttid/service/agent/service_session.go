@@ -18,6 +18,7 @@ func runtimeResumeInputFromRuntimeSession(session ProviderRuntimeSession) Runtim
 		AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
 		Provider:          strings.TrimSpace(session.Provider),
 		ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
+		Resumable:         session.Resumable,
 		Cwd:               strings.TrimSpace(session.Cwd),
 		Env:               append([]string(nil), session.Env...),
 		Title:             strings.TrimSpace(session.Title),
@@ -139,11 +140,12 @@ func serviceSession(session ProviderRuntimeSession, resumable bool) Session {
 func (s *Service) initializeRuntimeSession(
 	ctx context.Context,
 	session ProviderRuntimeSession,
+	railPlacement *agenthost.RailPlacement,
 ) (PersistedSession, error) {
 	if s == nil || s.SessionInitializer == nil {
 		return PersistedSession{}, fmt.Errorf("initialize workspace agent session: session initializer is unavailable")
 	}
-	persisted, err := s.SessionInitializer.InitializeRuntimeSession(ctx, session)
+	persisted, err := s.SessionInitializer.InitializeRuntimeSession(ctx, session, railPlacement)
 	if err != nil {
 		return PersistedSession{}, fmt.Errorf("initialize workspace agent session: %w", err)
 	}
@@ -199,6 +201,7 @@ func sessionFromPersisted(session PersistedSession, resumable bool) Session {
 	result.ParentAgentSessionID = strings.TrimSpace(session.ParentAgentSessionID)
 	result.ParentTurnID = strings.TrimSpace(session.ParentTurnID)
 	result.ParentToolCallID = strings.TrimSpace(session.ParentToolCallID)
+	result.MessageVersion = session.MessageVersion
 	result.Metadata = session.Metadata
 	result.Isolation = sessionIsolationFromRuntimeContext(session.InternalRuntimeContext)
 	return result
@@ -245,6 +248,7 @@ func mergePersistedSessionState(session Session, persisted PersistedSession) Ses
 		session.Settings = &settings
 	}
 	session.PermissionConfig = composerPermissionConfig(session.Provider, permissionModeIDFromSettings(session.Settings), preferencesbiz.DefaultDesktopLocale)
+	session.MessageVersion = persisted.MessageVersion
 	session.PinnedAtUnixMS = persisted.PinnedAtUnixMS
 	if persisted.UpdatedAtUnixMS > 0 &&
 		(session.UpdatedAt == nil || persisted.UpdatedAtUnixMS > session.UpdatedAt.UnixMilli()) {

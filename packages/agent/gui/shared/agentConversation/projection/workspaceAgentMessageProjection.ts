@@ -1,4 +1,9 @@
-import type { AgentActivityMessage } from "@tutti-os/agent-activity-core";
+import type {
+  AgentActivityMessage,
+  AgentActivitySnapshot,
+  AgentActivityTurn
+} from "@tutti-os/agent-activity-core";
+import { buildWorkspaceAgentActivityListViewModel } from "../../workspaceAgentActivityListViewModel";
 import type { BuildWorkspaceAgentSessionDetailInput } from "../../workspaceAgentSessionDetailViewModel";
 import { buildCanonicalWorkspaceAgentDetailView } from "../../workspaceAgentTimelineCanonical";
 import { resolveWorkspaceAgentNoticeCommandSemantics } from "../../workspaceAgentSystemNoticeSemantics";
@@ -16,17 +21,52 @@ export interface ProjectWorkspaceAgentMessagesInput extends Omit<
   messages: AgentActivityMessage[];
 }
 
+export interface ProjectAgentActivitySessionConversationInput {
+  activitySnapshot: AgentActivitySnapshot;
+  agentSessionId: string;
+  sessionTurns?: readonly AgentActivityTurn[];
+  workspaceRoot?: string | null;
+}
+
+export function projectAgentActivitySessionToConversationVM({
+  activitySnapshot,
+  agentSessionId,
+  sessionTurns,
+  workspaceRoot
+}: ProjectAgentActivitySessionConversationInput): AgentConversationVM | null {
+  const session =
+    activitySnapshot.sessions.find(
+      (candidate) => candidate.agentSessionId === agentSessionId
+    ) ?? null;
+  if (!session) return null;
+  const messages = activitySnapshot.sessionMessagesById[agentSessionId] ?? [];
+  const activity =
+    buildWorkspaceAgentActivityListViewModel(activitySnapshot, {
+      sessionMessagesById: activitySnapshot.sessionMessagesById
+    }).activities.find(
+      (candidate) => candidate.sessionId === session.agentSessionId
+    ) ?? null;
+  if (!activity) return null;
+  return projectWorkspaceAgentMessagesToConversationVM({
+    activity,
+    messages,
+    session,
+    sessionTurns,
+    workspaceRoot
+  });
+}
+
 export function projectWorkspaceAgentMessagesToConversationVM(
   input: ProjectWorkspaceAgentMessagesInput,
   options: AgentConversationProjectionOptions = {}
 ): AgentConversationVM {
-  const timelineItems = projectWorkspaceAgentMessagesToTimelineItems(
-    input.messages
-  );
+  const { messages, ...detailInput } = input;
+  const timelineItems = projectWorkspaceAgentMessagesToTimelineItems(messages);
   const detail = buildCanonicalWorkspaceAgentDetailView({
-    activity: input.activity,
-    session: input.session,
-    workspaceRoot: input.workspaceRoot,
+    ...detailInput,
+    sessionTurns: detailInput.sessionTurns?.filter(
+      (turn) => turn.agentSessionId === detailInput.session.agentSessionId
+    ),
     timelineItems
   });
   return projectAgentConversationVM(detail, options);

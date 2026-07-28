@@ -68,6 +68,7 @@ export function AgentToolSidebarToolbar({
   panels,
   quickActionPanels = [],
   reminders = {},
+  showToggleButton = true,
   onAddPanel,
   onOpenPanel,
   onToggleExpansion,
@@ -80,6 +81,7 @@ export function AgentToolSidebarToolbar({
   panels: readonly AgentToolPanelDefinition[];
   quickActionPanels?: readonly AgentToolPanelId[];
   reminders?: AgentToolSidebarReminderCounts;
+  showToggleButton?: boolean;
   onAddPanel: (panel: AgentToolPanelId) => void;
   onOpenPanel: (panel: AgentToolPanelId) => void;
   onToggleExpansion: () => void;
@@ -99,7 +101,7 @@ export function AgentToolSidebarToolbar({
           "nodrag pointer-events-auto flex h-[var(--agent-gui-workbench-header-height,44px)] items-center gap-1 [-webkit-app-region:no-drag]",
           activePanel === null && isOpen && "ml-auto"
         )}
-        data-standalone-agent-tool-sidebar-toolbar="true"
+        data-agent-tool-sidebar-toolbar="true"
         onDoubleClick={(event) => event.stopPropagation()}
         onPointerDown={(event) => event.stopPropagation()}
       >
@@ -147,7 +149,7 @@ export function AgentToolSidebarToolbar({
                   aria-label={labelByPanel.get(panel) ?? panel}
                   aria-pressed={false}
                   className="relative text-[var(--text-secondary)]"
-                  data-standalone-agent-tool-sidebar-quick-action={panel}
+                  data-agent-tool-sidebar-quick-action={panel}
                   size="icon-sm"
                   type="button"
                   variant="chrome"
@@ -180,23 +182,27 @@ export function AgentToolSidebarToolbar({
             )}
           </Button>
         ) : null}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              aria-label={label}
-              aria-pressed={isOpen}
-              className="relative"
-              data-standalone-agent-tool-sidebar-toggle="true"
-              size="icon-sm"
-              type="button"
-              variant={isOpen && activePanel !== null ? "secondary" : "chrome"}
-              onClick={onToggleSidebar}
-            >
-              <PanelIcon aria-hidden className="size-[18px] -scale-x-100" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">{label}</TooltipContent>
-        </Tooltip>
+        {showToggleButton ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                aria-label={label}
+                aria-pressed={isOpen}
+                className="relative"
+                data-agent-tool-sidebar-toggle="true"
+                size="icon-sm"
+                type="button"
+                variant={
+                  isOpen && activePanel !== null ? "secondary" : "chrome"
+                }
+                onClick={onToggleSidebar}
+              >
+                <PanelIcon aria-hidden className="size-[18px] -scale-x-100" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{label}</TooltipContent>
+          </Tooltip>
+        ) : null}
       </nav>
     </TooltipProvider>
   );
@@ -220,7 +226,7 @@ function ToolbarQuickActionTooltip({
 function ReminderBadge({ count }: { count?: number }): ReactNode {
   const label = formatAgentToolReminderCount(count);
   return label ? (
-    <span className="absolute -top-1 -right-1 inline-flex min-w-4 items-center justify-center rounded-full bg-[var(--state-danger)] px-1 text-[9px] leading-4 font-semibold text-[var(--white-stationary)]">
+    <span className="absolute -top-1 -right-1 inline-flex min-w-4 items-center justify-center rounded-full bg-[var(--accent-codex)] px-1 text-[9px] leading-4 font-semibold text-[var(--white-stationary)]">
       {label}
     </span>
   ) : null;

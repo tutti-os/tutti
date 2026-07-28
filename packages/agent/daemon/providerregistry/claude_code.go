@@ -11,8 +11,9 @@ func claudeCodeDescriptor() ProviderDescriptor {
 	return ProviderDescriptor{
 		Identity: canonicalProviderIdentity(ClaudeCodeProviderID),
 		Runtime: RuntimeDescriptor{
-			Kind: RuntimeKindClaudeSDK,
-			Name: "claude-agent-sdk",
+			Kind:              RuntimeKindClaudeSDK,
+			Name:              "claude-agent-sdk",
+			NativeSessionFork: true,
 			Endpoint: RuntimeEndpointDescriptor{
 				BaseURLEnvVars: []string{
 					"ANTHROPIC_BASE_URL",

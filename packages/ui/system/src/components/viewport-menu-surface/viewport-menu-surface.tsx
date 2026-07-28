@@ -63,7 +63,7 @@ interface MenuBoundaryRect {
 }
 
 interface MenuBoundary {
-  element: Element | null;
+  portalTarget: Element | null;
   rect: MenuBoundaryRect;
 }
 
@@ -160,7 +160,7 @@ function resolveMenuBoundaryFromPoint(point: {
 }): MenuBoundary {
   if (typeof document === "undefined" || !document.elementsFromPoint) {
     return {
-      element: null,
+      portalTarget: null,
       rect: viewportBoundary()
     };
   }
@@ -170,14 +170,18 @@ function resolveMenuBoundaryFromPoint(point: {
     const boundaryElement = element.closest(selector);
     if (boundaryElement) {
       return {
-        element: boundaryElement,
+        portalTarget:
+          boundaryElement.getAttribute("data-viewport-menu-portal-target") ===
+          "body"
+            ? null
+            : boundaryElement,
         rect: rectToBoundary(boundaryElement.getBoundingClientRect())
       };
     }
   }
 
   return {
-    element: null,
+    portalTarget: null,
     rect: viewportBoundary()
   };
 }
@@ -373,7 +377,7 @@ const ViewportMenuSurface = React.forwardRef<
       );
       const menuSize = measuredSize ?? { width: 0, height: 0 };
       return {
-        portalTarget: boundary.element,
+        portalTarget: boundary.portalTarget,
         position:
           placement.constrainToBoundary === false
             ? {
@@ -409,7 +413,7 @@ const ViewportMenuSurface = React.forwardRef<
     });
 
     return {
-      portalTarget: boundary.element,
+      portalTarget: boundary.portalTarget,
       position: {
         left: boundary.rect.left + relativePosition.left,
         top: boundary.rect.top + relativePosition.top

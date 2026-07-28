@@ -38,7 +38,7 @@ import {
   visibleErrorFromPayload,
   withSourceTimelineItems
 } from "./workspaceAgentTimelineProjectionHelpers";
-import { projectCanonicalTurnErrors } from "./workspaceAgentTurnErrorProjection";
+import { enrichProjectedTurnsWithCanonicalErrors } from "./workspaceAgentTurnErrorProjection";
 import {
   normalizeToolName,
   shouldSuppressToolCall,
@@ -224,7 +224,7 @@ export function buildCanonicalWorkspaceAgentDetailView({
     }
   }
 
-  projectCanonicalTurnErrors({
+  enrichProjectedTurnsWithCanonicalErrors({
     turns,
     sessionTurns:
       sessionTurns.length > 0
@@ -465,17 +465,22 @@ function mergeBackgroundTerminalContinuations(
   }
 
   const removedCallIDs = new Set<string>();
+  const singleCallItems = turn.agentItems.filter(
+    (
+      item
+    ): item is Extract<
+      WorkspaceAgentSessionDetailAgentItem,
+      { kind: "tool-calls" }
+    > => item.kind === "tool-calls" && item.toolCalls.length === 1
+  );
+  const turnToolIndexByID = new Map(
+    turn.toolCalls.map((call, index) => [call.id, index])
+  );
 
-  for (let index = 0; index < turn.agentItems.length; index += 1) {
-    const item = turn.agentItems[index];
-    if (!item) {
-      continue;
-    }
-    if (item.kind !== "tool-calls" || item.toolCalls.length !== 1) {
-      continue;
-    }
-    const primaryCall = item.toolCalls[0];
-    if (!primaryCall) {
+  for (let index = 0; index < singleCallItems.length - 1; index += 1) {
+    const item = singleCallItems[index];
+    const primaryCall = item?.toolCalls[0];
+    if (!item || !primaryCall) {
       continue;
     }
     const terminalSessionID = backgroundTerminalSessionID(primaryCall);
@@ -483,50 +488,37 @@ function mergeBackgroundTerminalContinuations(
       continue;
     }
 
-    for (
-      let nextIndex = index + 1;
-      nextIndex < turn.agentItems.length;
-      nextIndex += 1
+    const continuationCall = singleCallItems[index + 1]?.toolCalls[0];
+    if (
+      !continuationCall ||
+      !isBackgroundTerminalContinuation(continuationCall, terminalSessionID)
     ) {
-      const nextItem = turn.agentItems[nextIndex];
-      if (!nextItem) {
-        continue;
-      }
-      if (nextItem.kind !== "tool-calls" || nextItem.toolCalls.length !== 1) {
-        continue;
-      }
-      const continuationCall = nextItem.toolCalls[0];
-      if (!continuationCall) {
-        continue;
-      }
-      if (
-        !isBackgroundTerminalContinuation(continuationCall, terminalSessionID)
-      ) {
-        break;
-      }
-
-      const mergedCall = mergeBackgroundTerminalCall(
-        primaryCall,
-        continuationCall
-      );
-      item.toolCalls[0] = mergedCall;
-      const turnToolIndex = turn.toolCalls.findIndex(
-        (existing) => existing.id === primaryCall.id
-      );
-      if (turnToolIndex >= 0) {
-        turn.toolCalls[turnToolIndex] = mergedCall;
-      }
-      refreshToolCallAgentItem(item);
-      removedCallIDs.add(continuationCall.id);
-      turn.agentItems.splice(nextIndex, 1);
-      break;
+      continue;
     }
+
+    const mergedCall = mergeBackgroundTerminalCall(
+      primaryCall,
+      continuationCall
+    );
+    item.toolCalls[0] = mergedCall;
+    const turnToolIndex = turnToolIndexByID.get(primaryCall.id);
+    if (turnToolIndex !== undefined) {
+      turn.toolCalls[turnToolIndex] = mergedCall;
+    }
+    refreshToolCallAgentItem(item);
+    removedCallIDs.add(continuationCall.id);
+    index += 1;
   }
 
   if (removedCallIDs.size === 0) {
     return;
   }
 
+  turn.agentItems = turn.agentItems.filter(
+    (item) =>
+      item.kind !== "tool-calls" ||
+      item.toolCalls.every((call) => !removedCallIDs.has(call.id))
+  );
   turn.toolCalls = turn.toolCalls.filter(
     (call) => !removedCallIDs.has(call.id)
   );

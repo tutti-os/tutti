@@ -37,6 +37,7 @@ export class SDKMessageRouter {
   private readonly compaction: CompactionTracker;
   private readonly emit: ClaudeSDKSidecarEventEmitter;
   private contextUsageGeneration = 0;
+  private activeRootAssistantError = "";
 
   constructor(options: {
     getProviderSessionId: () => string;
@@ -184,7 +185,11 @@ export class SDKMessageRouter {
         ...(stringValue(raw.tool_use_id)
           ? { toolUseId: stringValue(raw.tool_use_id) }
           : {}),
-        ...(stringValue(raw.status) ? { status: stringValue(raw.status) } : {})
+        ...(stringValue(raw.status) ? { status: stringValue(raw.status) } : {}),
+        ...(raw.is_error === true ? { sdkResultIsError: true } : {}),
+        ...(typeof raw.api_error_status === "number"
+          ? { sdkApiErrorStatus: raw.api_error_status }
+          : {})
       }
     });
   }
@@ -264,6 +269,12 @@ export class SDKMessageRouter {
     if (!this.turns.ensureActive("assistant")) {
       return;
     }
+    const assistantError = stringValue(
+      (message as unknown as Record<string, unknown>).error
+    );
+    if (assistantError) {
+      this.activeRootAssistantError = assistantError;
+    }
     const messageId = readSDKAssistantMessageID(message);
     const blocks = contentBlocksFromMessage(message);
     const usedAssistantSegmentIds = new Set<string>();
@@ -272,7 +283,8 @@ export class SDKMessageRouter {
         block,
         parentToolUseID,
         messageId,
-        usedAssistantSegmentIds
+        usedAssistantSegmentIds,
+        Boolean(assistantError)
       );
     }
     this.projection.emitGoalStatusFromBlocks(blocks);
@@ -320,6 +332,7 @@ export class SDKMessageRouter {
       this.turns.activeId !== activeTurnIdBefore
     ) {
       this.contextUsageGeneration += 1;
+      this.activeRootAssistantError = "";
     }
     const blocks = contentBlocksFromMessage(message);
     if (
@@ -348,6 +361,9 @@ export class SDKMessageRouter {
     const result = message as {
       subtype?: string;
       errors?: string[];
+      is_error?: boolean;
+      result?: string;
+      api_error_status?: number | null;
       usage?: unknown;
       modelUsage?: unknown;
       total_cost_usd?: unknown;
@@ -364,14 +380,28 @@ export class SDKMessageRouter {
     }
     const turnId = this.turns.activeId;
     const contextUsageGeneration = this.contextUsageGeneration;
+    const assistantError = this.activeRootAssistantError;
+    this.activeRootAssistantError = "";
     if (this.turns.cancelled) {
       this.turns.settleActive("turn_canceled");
       this.turns.clearCancelled();
-    } else if (result.subtype === "success") {
+    } else if (
+      result.subtype === "success" &&
+      result.is_error !== true &&
+      !assistantError
+    ) {
       this.turns.settleActive("turn_completed", { stopReason: "end_turn" });
     } else {
       this.turns.settleActive("turn_failed", {
-        error: result.errors?.[0] ?? "Claude SDK turn failed"
+        error:
+          result.errors?.[0] ||
+          (result.is_error ? result.result : "") ||
+          assistantError ||
+          "Claude SDK turn failed",
+        ...(assistantError ? { code: assistantError } : {}),
+        ...(typeof result.api_error_status === "number"
+          ? { apiErrorStatus: result.api_error_status }
+          : {})
       });
     }
     void this.emitResultUsage(turnId, contextUsageGeneration, result);

@@ -1,5 +1,5 @@
-import { linkifyPastedTextReferences } from "../../../agent-gui/agentGuiNode/model/agentComposerDraft";
 import type { WorkspaceAgentSessionDetailTurn } from "../../workspaceAgentSessionDetailViewModel";
+import { linkifyPastedTextReferences } from "../../pastedTextReferenceProjection";
 import type {
   AgentMessageContentVM,
   AgentMessageRowVM

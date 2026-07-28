@@ -11,6 +11,7 @@ import (
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	"github.com/tutti-os/tutti/services/tuttid/biz/agentanalytics"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 	agentnoderesult "github.com/tutti-os/tutti/services/tuttid/service/reporter/events/agent/node_result"
 )
@@ -252,6 +253,7 @@ func (p *ActivityProjection) reportSessionState(
 		Settings:          clonePayload(input.State.Settings),
 		RuntimeContext:    clonePayload(runtimeContext),
 		Cwd:               strings.TrimSpace(input.State.CWD),
+		RailPlacement:     canonicalRailSection(input.State.RailPlacement),
 		Title:             strings.TrimSpace(sessionStateTitle(input.State)),
 		Status:            strings.TrimSpace(input.State.LifecycleStatus),
 		CurrentPhase:      strings.TrimSpace(input.State.CurrentPhase),
@@ -288,6 +290,17 @@ func (p *ActivityProjection) reportSessionState(
 		agenthost.NotifyCommitted(ctx, p, agenthost.ActivityStateDelta(input, reply, activityResult))
 	}
 	return reply, nil
+}
+
+func canonicalRailSection(placement *canonical.RailPlacement) *agentactivitybiz.RailSection {
+	if placement == nil {
+		return nil
+	}
+	return &agentactivitybiz.RailSection{
+		Kind:        strings.TrimSpace(placement.Kind),
+		ProjectPath: strings.TrimSpace(placement.ProjectPath),
+		Key:         strings.TrimSpace(placement.SectionKey),
+	}
 }
 
 func (p *ActivityProjection) reportFailedRuntimeNodeResult(ctx context.Context, input canonical.ReportSessionStateInput) {
@@ -367,14 +380,14 @@ func classifyRuntimeNodeErrorCode(message string) string {
 		strings.Contains(normalized, "disconnected") ||
 		strings.Contains(normalized, "econnreset") ||
 		strings.Contains(normalized, "socket") {
-		return agentnoderesult.ErrorCodeRuntimeNetworkDisconnected
+		return agentanalytics.ErrorCodeRuntimeNetworkDisconnected
 	}
 	if strings.Contains(normalized, "process") ||
 		strings.Contains(normalized, "exit") ||
 		strings.Contains(normalized, "exited") {
-		return agentnoderesult.ErrorCodeRuntimeProcessExited
+		return agentanalytics.ErrorCodeRuntimeProcessExited
 	}
-	return agentnoderesult.ErrorCodeRuntimeExecFailed
+	return agentanalytics.ErrorCodeRuntimeExecFailed
 }
 
 func (p *ActivityProjection) ReportSessionMessages(

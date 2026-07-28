@@ -221,6 +221,7 @@ export function useAgentGUISessionEngineState(input: {
     ),
     activeSessionState,
     activeSessionDetailLoading,
+    activeSessionReconcileErrorCode: activeSessionReconcile?.errorCode ?? null,
     activeSessionReconcileError: activeSessionDetailHydrated
       ? null
       : (activeSessionReconcile?.errorMessage ?? null),

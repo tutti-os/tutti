@@ -125,6 +125,7 @@ export function resolveStandaloneAgentWindowOffsetBounds({
 
 export function resolveStandaloneAgentWindowContentWidth(input: {
   currentBounds: StandaloneAgentWindowContentBounds;
+  minWidth: number;
   requestedWidth: number;
   workArea: StandaloneAgentWindowWorkArea;
 }): StandaloneAgentWindowContentBounds {
@@ -132,7 +133,7 @@ export function resolveStandaloneAgentWindowContentWidth(input: {
     ? Math.round(input.requestedWidth)
     : input.currentBounds.width;
   const width = Math.min(
-    Math.max(1, requestedWidth),
+    Math.max(1, Math.round(input.minWidth), requestedWidth),
     Math.max(1, Math.round(input.workArea.width))
   );
   const minimumX = input.workArea.x;

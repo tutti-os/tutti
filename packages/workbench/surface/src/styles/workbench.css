@@ -111,8 +111,7 @@
   overflow: visible;
   transition:
     transform 0.18s ease,
-    left 0.22s cubic-bezier(0.4, 0, 0.2, 1),
-    top 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+    translate 0.22s cubic-bezier(0.4, 0, 0.2, 1),
     width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
     height 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -132,12 +131,14 @@
     scale: 1;
   }
 }
-.workbench-window-shell[data-launch-source="onboarding-auto"][data-presentation-mode="default"][data-genie-state="visible"] {
+.workbench-window-shell[data-launch-source="onboarding-auto"][data-presentation-mode="default"][data-genie-state="visible"]
+  > .workbench-window-shell__content {
   transform-origin: bottom center;
   animation: workbench-shell-enter 0.46s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 @media (prefers-reduced-motion: reduce) {
-  .workbench-window-shell[data-launch-source="onboarding-auto"] {
+  .workbench-window-shell[data-launch-source="onboarding-auto"]
+    > .workbench-window-shell__content {
     animation: none;
   }
 }
@@ -163,10 +164,13 @@
 .workbench-window-shell[data-window-resize-state="resizing"] {
   transition:
     transform 0.18s ease,
-    left 0ms linear,
-    top 0ms linear,
+    translate 0ms linear,
     width 0ms linear,
     height 0ms linear;
+}
+
+.workbench-window-shell[data-window-drag-state="dragging"] {
+  will-change: translate;
 }
 
 .workbench-window-shell__content {
@@ -190,10 +194,6 @@
   transition:
     border-color 0.14s ease,
     box-shadow 0.16s ease;
-}
-
-.workbench-window:has([data-workbench-custom-header-layout="browser-tabs"]) {
-  --workbench-header-height: 76px;
 }
 
 .workbench-window[data-display-mode="floating"] {
@@ -229,15 +229,13 @@
   user-select: auto;
 }
 
-.workbench-window__header--custom:has(
-  [data-workbench-custom-header-overflow="visible"]
-) {
+.workbench-window[data-window-header-overflow="visible"]
+  > .workbench-window__header--custom {
   overflow: visible;
 }
 
-.workbench-window__header--custom:has(
-  [data-workbench-custom-header-border="none"]
-) {
+.workbench-window[data-window-header-border="none"]
+  > .workbench-window__header--custom {
   border-bottom-color: transparent;
 }
 
@@ -624,7 +622,8 @@
 
 .desktop-dock-plate.workbench-mission-control__layout-dock {
   overflow: hidden;
-  padding: 4px 7px 5px;
+  width: max-content;
+  padding: 4px;
   border-radius: var(--radius-lg);
   border-color: color-mix(
     in srgb,
@@ -640,7 +639,6 @@
   box-shadow: none;
   pointer-events: auto;
   transition:
-    width 180ms cubic-bezier(0.22, 1, 0.36, 1),
     background-color 160ms ease,
     border-color 160ms ease;
 }
@@ -658,18 +656,6 @@
 .workbench-mission-control__layout-dock-button:disabled {
   opacity: 0.42;
   color: var(--text-disabled);
-}
-
-.workbench-mission-control__layout-mode-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 12px;
-  color: var(--text-primary);
-  font-size: 14px;
-  line-height: 20px;
-  white-space: nowrap;
 }
 
 .workbench-mission-control__layout-hint {
@@ -786,7 +772,7 @@
 }
 
 [data-dock-placement="left"] > .desktop-dock-plate,
-.desktop-dock-plate:has(.desktop-dock[data-dock-placement="left"]) {
+.desktop-dock-plate[data-dock-placement="left"] {
   width: auto;
   height: var(--desktop-dock-frame-size, auto);
   max-width: none;
@@ -841,7 +827,7 @@
   transition: none;
 }
 
-.desktop-dock-plate:has(.desktop-dock[data-dock-pointer-active="true"]) {
+.desktop-dock-plate[data-dock-pointer-active="true"] {
   transition: none;
 }
 

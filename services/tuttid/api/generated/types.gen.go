@@ -40,6 +40,30 @@ func (e AccountLoginStatusValue) Valid() bool {
 	}
 }
 
+// Defines values for AccountMembershipAccessState.
+const (
+	AccountMembershipAccessStateActive   AccountMembershipAccessState = "active"
+	AccountMembershipAccessStateFree     AccountMembershipAccessState = "free"
+	AccountMembershipAccessStateInactive AccountMembershipAccessState = "inactive"
+	AccountMembershipAccessStateUnknown  AccountMembershipAccessState = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the AccountMembershipAccessState enum.
+func (e AccountMembershipAccessState) Valid() bool {
+	switch e {
+	case AccountMembershipAccessStateActive:
+		return true
+	case AccountMembershipAccessStateFree:
+		return true
+	case AccountMembershipAccessStateInactive:
+		return true
+	case AccountMembershipAccessStateUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AccountProductSummaryPartialErrorScope.
 const (
 	AccountProductSummaryPartialErrorScopeCredits    AccountProductSummaryPartialErrorScope = "credits"
@@ -408,16 +432,16 @@ func (e AgentProviderSkillOptionSourceKind) Valid() bool {
 
 // Defines values for AgentProviderUpdateCapability.
 const (
-	Supported   AgentProviderUpdateCapability = "supported"
-	Unsupported AgentProviderUpdateCapability = "unsupported"
+	AgentProviderUpdateCapabilitySupported   AgentProviderUpdateCapability = "supported"
+	AgentProviderUpdateCapabilityUnsupported AgentProviderUpdateCapability = "unsupported"
 )
 
 // Valid indicates whether the value is a known member of the AgentProviderUpdateCapability enum.
 func (e AgentProviderUpdateCapability) Valid() bool {
 	switch e {
-	case Supported:
+	case AgentProviderUpdateCapabilitySupported:
 		return true
-	case Unsupported:
+	case AgentProviderUpdateCapabilityUnsupported:
 		return true
 	default:
 		return false
@@ -690,28 +714,29 @@ func (e AgentTargetSource) Valid() bool {
 
 // Defines values for ApiErrorDetailsCode.
 const (
-	AgentQuickPromptConflict        ApiErrorDetailsCode = "agent_quick_prompt_conflict"
-	AgentQuickPromptNotFound        ApiErrorDetailsCode = "agent_quick_prompt_not_found"
-	AgentQuickPromptOperationFailed ApiErrorDetailsCode = "agent_quick_prompt_operation_failed"
-	AgentTargetNotFound             ApiErrorDetailsCode = "agent_target_not_found"
-	AutomationRuleNotFound          ApiErrorDetailsCode = "automation_rule_not_found"
-	CollaborationRunNotFound        ApiErrorDetailsCode = "collaboration_run_not_found"
-	InvalidRequest                  ApiErrorDetailsCode = "invalid_request"
-	MethodNotAllowed                ApiErrorDetailsCode = "method_not_allowed"
-	ModelPlanNotFound               ApiErrorDetailsCode = "model_plan_not_found"
-	ModelPlanReferenced             ApiErrorDetailsCode = "model_plan_referenced"
-	ModelPolicyReferenced           ApiErrorDetailsCode = "model_policy_referenced"
-	PreferencesOperationFailed      ApiErrorDetailsCode = "preferences_operation_failed"
-	ServiceUnavailable              ApiErrorDetailsCode = "service_unavailable"
-	Unauthorized                    ApiErrorDetailsCode = "unauthorized"
-	WorkspaceAgentNotFound          ApiErrorDetailsCode = "workspace_agent_not_found"
-	WorkspaceAppNotFound            ApiErrorDetailsCode = "workspace_app_not_found"
-	WorkspaceFileNotFound           ApiErrorDetailsCode = "workspace_file_not_found"
-	WorkspaceIssueResourceExists    ApiErrorDetailsCode = "workspace_issue_resource_exists"
-	WorkspaceIssueResourceNotFound  ApiErrorDetailsCode = "workspace_issue_resource_not_found"
-	WorkspaceNotFound               ApiErrorDetailsCode = "workspace_not_found"
-	WorkspaceOperationFailed        ApiErrorDetailsCode = "workspace_operation_failed"
-	WorkspaceTerminalNotFound       ApiErrorDetailsCode = "workspace_terminal_not_found"
+	AgentQuickPromptConflict          ApiErrorDetailsCode = "agent_quick_prompt_conflict"
+	AgentQuickPromptNotFound          ApiErrorDetailsCode = "agent_quick_prompt_not_found"
+	AgentQuickPromptOperationFailed   ApiErrorDetailsCode = "agent_quick_prompt_operation_failed"
+	AgentSessionForkOperationNotFound ApiErrorDetailsCode = "agent_session_fork_operation_not_found"
+	AgentTargetNotFound               ApiErrorDetailsCode = "agent_target_not_found"
+	AutomationRuleNotFound            ApiErrorDetailsCode = "automation_rule_not_found"
+	CollaborationRunNotFound          ApiErrorDetailsCode = "collaboration_run_not_found"
+	InvalidRequest                    ApiErrorDetailsCode = "invalid_request"
+	MethodNotAllowed                  ApiErrorDetailsCode = "method_not_allowed"
+	ModelPlanNotFound                 ApiErrorDetailsCode = "model_plan_not_found"
+	ModelPlanReferenced               ApiErrorDetailsCode = "model_plan_referenced"
+	ModelPolicyReferenced             ApiErrorDetailsCode = "model_policy_referenced"
+	PreferencesOperationFailed        ApiErrorDetailsCode = "preferences_operation_failed"
+	ServiceUnavailable                ApiErrorDetailsCode = "service_unavailable"
+	Unauthorized                      ApiErrorDetailsCode = "unauthorized"
+	WorkspaceAgentNotFound            ApiErrorDetailsCode = "workspace_agent_not_found"
+	WorkspaceAppNotFound              ApiErrorDetailsCode = "workspace_app_not_found"
+	WorkspaceFileNotFound             ApiErrorDetailsCode = "workspace_file_not_found"
+	WorkspaceIssueResourceExists      ApiErrorDetailsCode = "workspace_issue_resource_exists"
+	WorkspaceIssueResourceNotFound    ApiErrorDetailsCode = "workspace_issue_resource_not_found"
+	WorkspaceNotFound                 ApiErrorDetailsCode = "workspace_not_found"
+	WorkspaceOperationFailed          ApiErrorDetailsCode = "workspace_operation_failed"
+	WorkspaceTerminalNotFound         ApiErrorDetailsCode = "workspace_terminal_not_found"
 )
 
 // Valid indicates whether the value is a known member of the ApiErrorDetailsCode enum.
@@ -722,6 +747,8 @@ func (e ApiErrorDetailsCode) Valid() bool {
 	case AgentQuickPromptNotFound:
 		return true
 	case AgentQuickPromptOperationFailed:
+		return true
+	case AgentSessionForkOperationNotFound:
 		return true
 	case AgentTargetNotFound:
 		return true
@@ -1605,7 +1632,6 @@ func (e IssueManagerTaskContextRefParentKind) Valid() bool {
 
 // Defines values for ModelPlanDetectionStage.
 const (
-	AgentRuntime   ModelPlanDetectionStage = "agent_runtime"
 	Auth           ModelPlanDetectionStage = "auth"
 	Inference      ModelPlanDetectionStage = "inference"
 	ModelDiscovery ModelPlanDetectionStage = "model_discovery"
@@ -1615,8 +1641,6 @@ const (
 // Valid indicates whether the value is a known member of the ModelPlanDetectionStage enum.
 func (e ModelPlanDetectionStage) Valid() bool {
 	switch e {
-	case AgentRuntime:
-		return true
 	case Auth:
 		return true
 	case Inference:
@@ -1624,24 +1648,6 @@ func (e ModelPlanDetectionStage) Valid() bool {
 	case ModelDiscovery:
 		return true
 	case Network:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ModelPlanFirstUseStatus.
-const (
-	ModelPlanFirstUseStatusCompleted ModelPlanFirstUseStatus = "completed"
-	ModelPlanFirstUseStatusPending   ModelPlanFirstUseStatus = "pending"
-)
-
-// Valid indicates whether the value is a known member of the ModelPlanFirstUseStatus enum.
-func (e ModelPlanFirstUseStatus) Valid() bool {
-	switch e {
-	case ModelPlanFirstUseStatusCompleted:
-		return true
-	case ModelPlanFirstUseStatusPending:
 		return true
 	default:
 		return false
@@ -1691,7 +1697,6 @@ func (e ModelPlanReferenceKind) Valid() bool {
 const (
 	ModelPlanStageStatusFailed  ModelPlanStageStatus = "failed"
 	ModelPlanStageStatusPassed  ModelPlanStageStatus = "passed"
-	ModelPlanStageStatusPending ModelPlanStageStatus = "pending"
 	ModelPlanStageStatusSkipped ModelPlanStageStatus = "skipped"
 )
 
@@ -1701,8 +1706,6 @@ func (e ModelPlanStageStatus) Valid() bool {
 	case ModelPlanStageStatusFailed:
 		return true
 	case ModelPlanStageStatusPassed:
-		return true
-	case ModelPlanStageStatusPending:
 		return true
 	case ModelPlanStageStatusSkipped:
 		return true
@@ -1715,7 +1718,6 @@ func (e ModelPlanStageStatus) Valid() bool {
 const (
 	DetectionFailed ModelPlanStatus = "detection_failed"
 	Disabled        ModelPlanStatus = "disabled"
-	PendingFirstUse ModelPlanStatus = "pending_first_use"
 	Ready           ModelPlanStatus = "ready"
 	Undetected      ModelPlanStatus = "undetected"
 )
@@ -1726,8 +1728,6 @@ func (e ModelPlanStatus) Valid() bool {
 	case DetectionFailed:
 		return true
 	case Disabled:
-		return true
-	case PendingFirstUse:
 		return true
 	case Ready:
 		return true
@@ -1998,13 +1998,13 @@ func (e TuttiModePlanTaskPriority) Valid() bool {
 
 // Defines values for WorkbenchSnapshotSchemaVersion.
 const (
-	N1 WorkbenchSnapshotSchemaVersion = 1
+	WorkbenchSnapshotSchemaVersionN1 WorkbenchSnapshotSchemaVersion = 1
 )
 
 // Valid indicates whether the value is a known member of the WorkbenchSnapshotSchemaVersion enum.
 func (e WorkbenchSnapshotSchemaVersion) Valid() bool {
 	switch e {
-	case N1:
+	case WorkbenchSnapshotSchemaVersionN1:
 		return true
 	default:
 		return false
@@ -2170,6 +2170,39 @@ func (e WorkspaceAgentPlanDecisionOperationStatus) Valid() bool {
 	}
 }
 
+// Defines values for WorkspaceAgentRailPlacementKind.
+const (
+	WorkspaceAgentRailPlacementKindConversations WorkspaceAgentRailPlacementKind = "conversations"
+	WorkspaceAgentRailPlacementKindProject       WorkspaceAgentRailPlacementKind = "project"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentRailPlacementKind enum.
+func (e WorkspaceAgentRailPlacementKind) Valid() bool {
+	switch e {
+	case WorkspaceAgentRailPlacementKindConversations:
+		return true
+	case WorkspaceAgentRailPlacementKindProject:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAgentRailPlacementVersion.
+const (
+	WorkspaceAgentRailPlacementVersionN1 WorkspaceAgentRailPlacementVersion = 1
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentRailPlacementVersion enum.
+func (e WorkspaceAgentRailPlacementVersion) Valid() bool {
+	switch e {
+	case WorkspaceAgentRailPlacementVersionN1:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkspaceAgentSessionAttachmentResponseMimeType.
 const (
 	WorkspaceAgentSessionAttachmentResponseMimeTypeImagejpeg WorkspaceAgentSessionAttachmentResponseMimeType = "image/jpeg"
@@ -2185,6 +2218,45 @@ func (e WorkspaceAgentSessionAttachmentResponseMimeType) Valid() bool {
 	case WorkspaceAgentSessionAttachmentResponseMimeTypeImagepng:
 		return true
 	case WorkspaceAgentSessionAttachmentResponseMimeTypeImagewebp:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAgentSessionForkOperationStatus.
+const (
+	WorkspaceAgentSessionForkOperationStatusAccepted  WorkspaceAgentSessionForkOperationStatus = "accepted"
+	WorkspaceAgentSessionForkOperationStatusCommitted WorkspaceAgentSessionForkOperationStatus = "committed"
+	WorkspaceAgentSessionForkOperationStatusFailed    WorkspaceAgentSessionForkOperationStatus = "failed"
+	WorkspaceAgentSessionForkOperationStatusUnknown   WorkspaceAgentSessionForkOperationStatus = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentSessionForkOperationStatus enum.
+func (e WorkspaceAgentSessionForkOperationStatus) Valid() bool {
+	switch e {
+	case WorkspaceAgentSessionForkOperationStatusAccepted:
+		return true
+	case WorkspaceAgentSessionForkOperationStatusCommitted:
+		return true
+	case WorkspaceAgentSessionForkOperationStatusFailed:
+		return true
+	case WorkspaceAgentSessionForkOperationStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAgentSessionForkThroughTurnPointType.
+const (
+	ThroughTurn WorkspaceAgentSessionForkThroughTurnPointType = "throughTurn"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentSessionForkThroughTurnPointType enum.
+func (e WorkspaceAgentSessionForkThroughTurnPointType) Valid() bool {
+	switch e {
+	case ThroughTurn:
 		return true
 	default:
 		return false
@@ -2295,16 +2367,16 @@ func (e WorkspaceAgentSessionKind) Valid() bool {
 
 // Defines values for WorkspaceAgentSessionSectionKind.
 const (
-	Conversations WorkspaceAgentSessionSectionKind = "conversations"
-	Project       WorkspaceAgentSessionSectionKind = "project"
+	WorkspaceAgentSessionSectionKindConversations WorkspaceAgentSessionSectionKind = "conversations"
+	WorkspaceAgentSessionSectionKindProject       WorkspaceAgentSessionSectionKind = "project"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceAgentSessionSectionKind enum.
 func (e WorkspaceAgentSessionSectionKind) Valid() bool {
 	switch e {
-	case Conversations:
+	case WorkspaceAgentSessionSectionKindConversations:
 		return true
-	case Project:
+	case WorkspaceAgentSessionSectionKindProject:
 		return true
 	default:
 		return false
@@ -3190,6 +3262,9 @@ type AccountLoginStatusResponse struct {
 // AccountLoginStatusValue defines model for AccountLoginStatusValue.
 type AccountLoginStatusValue string
 
+// AccountMembershipAccessState defines model for AccountMembershipAccessState.
+type AccountMembershipAccessState string
+
 // AccountMembershipSummary defines model for AccountMembershipSummary.
 type AccountMembershipSummary struct {
 	AccessStatus      *string `json:"access_status,omitempty"`
@@ -3223,6 +3298,7 @@ type AccountProductSummaryResponse struct {
 	Credits                   *AccountCreditsSummary             `json:"credits"`
 	Links                     AccountProductSummaryLinks         `json:"links"`
 	Membership                *AccountMembershipSummary          `json:"membership"`
+	MembershipAccess          AccountMembershipAccessState       `json:"membership_access"`
 	PartialError              *AccountProductSummaryPartialError `json:"partial_error,omitempty"`
 	RegistrationCreditsReward *AccountRegistrationCreditsReward  `json:"registration_credits_reward,omitempty"`
 	User                      *AccountUserInfo                   `json:"user"`
@@ -4377,14 +4453,15 @@ type CreateWorkspaceAgentSessionRequest struct {
 	Model                      *string                    `json:"model,omitempty"`
 
 	// NoProject Classifies a session that is intentionally not attached to a workspace project.
-	NoProject         *bool                   `json:"noProject,omitempty"`
-	PermissionModeId  *string                 `json:"permissionModeId,omitempty"`
-	PlanMode          *bool                   `json:"planMode,omitempty"`
-	ReasoningEffort   *string                 `json:"reasoningEffort,omitempty"`
-	Speed             *string                 `json:"speed,omitempty"`
-	SubmitDiagnostics *AgentSubmitDiagnostics `json:"submitDiagnostics,omitempty"`
-	Title             *string                 `json:"title,omitempty"`
-	Visible           *bool                   `json:"visible,omitempty"`
+	NoProject         *bool                        `json:"noProject,omitempty"`
+	PermissionModeId  *string                      `json:"permissionModeId,omitempty"`
+	PlanMode          *bool                        `json:"planMode,omitempty"`
+	RailPlacement     *WorkspaceAgentRailPlacement `json:"railPlacement,omitempty"`
+	ReasoningEffort   *string                      `json:"reasoningEffort,omitempty"`
+	Speed             *string                      `json:"speed,omitempty"`
+	SubmitDiagnostics *AgentSubmitDiagnostics      `json:"submitDiagnostics,omitempty"`
+	Title             *string                      `json:"title,omitempty"`
+	Visible           *bool                        `json:"visible,omitempty"`
 }
 
 // CreateWorkspaceAppFactoryJobRequest defines model for CreateWorkspaceAppFactoryJobRequest.
@@ -4807,6 +4884,17 @@ type ExternalAgentImportSession struct {
 // FixWorkspaceAppFactoryJobRequest defines model for FixWorkspaceAppFactoryJobRequest.
 type FixWorkspaceAppFactoryJobRequest struct {
 	Prompt string `json:"prompt"`
+}
+
+// ForkWorkspaceAgentSessionRequest defines model for ForkWorkspaceAgentSessionRequest.
+type ForkWorkspaceAgentSessionRequest struct {
+	Point WorkspaceAgentSessionForkPoint `json:"point"`
+
+	// RequestId Caller-stable idempotency key for safe retries.
+	RequestId string `json:"requestId"`
+
+	// TargetAgentSessionId Caller-stable identity reserved for the forked canonical session.
+	TargetAgentSessionId openapi_types.UUID `json:"targetAgentSessionId"`
 }
 
 // GetAgentProviderComposerOptionsRequest defines model for GetAgentProviderComposerOptionsRequest.
@@ -5278,6 +5366,55 @@ type LoadLocalWorkspaceAppRequest struct {
 	SourceDir      string `json:"sourceDir"`
 }
 
+// MobileRemoteDevicePairing defines model for MobileRemoteDevicePairing.
+type MobileRemoteDevicePairing struct {
+	ConfirmedAt            time.Time  `json:"confirmedAt"`
+	ControllerUserDeviceId string     `json:"controllerUserDeviceId"`
+	PairingId              string     `json:"pairingId"`
+	Revision               int64      `json:"revision"`
+	RevokedAt              *time.Time `json:"revokedAt,omitempty"`
+	State                  string     `json:"state"`
+	TargetUserDeviceId     string     `json:"targetUserDeviceId"`
+}
+
+// MobileRemotePairingChallenge defines model for MobileRemotePairingChallenge.
+type MobileRemotePairingChallenge struct {
+	ChallengeId            string    `json:"challengeId"`
+	ControllerUserDeviceId *string   `json:"controllerUserDeviceId,omitempty"`
+	ExpiresAt              time.Time `json:"expiresAt"`
+	PairingId              *string   `json:"pairingId,omitempty"`
+	Revision               int64     `json:"revision"`
+	State                  string    `json:"state"`
+	TargetUserDeviceId     string    `json:"targetUserDeviceId"`
+}
+
+// MobileRemotePairingChallengeResponse defines model for MobileRemotePairingChallengeResponse.
+type MobileRemotePairingChallengeResponse struct {
+	Challenge MobileRemotePairingChallenge `json:"challenge"`
+}
+
+// MobileRemotePairingConfirmResponse defines model for MobileRemotePairingConfirmResponse.
+type MobileRemotePairingConfirmResponse struct {
+	Challenge MobileRemotePairingChallenge `json:"challenge"`
+	Pairing   MobileRemoteDevicePairing    `json:"pairing"`
+}
+
+// MobileRemotePairingListResponse defines model for MobileRemotePairingListResponse.
+type MobileRemotePairingListResponse struct {
+	Pairings []MobileRemoteDevicePairing `json:"pairings"`
+}
+
+// MobileRemotePairingResponse defines model for MobileRemotePairingResponse.
+type MobileRemotePairingResponse struct {
+	Pairing MobileRemoteDevicePairing `json:"pairing"`
+}
+
+// MobileRemotePairingStartResponse defines model for MobileRemotePairingStartResponse.
+type MobileRemotePairingStartResponse struct {
+	Challenge MobileRemotePairingChallenge `json:"challenge"`
+	QrPayload string                       `json:"qrPayload"`
+}
+
 // ModelPlan Workspace-level model access plan. Credentials are stored daemon-side only; hasApiKey is the only credential signal in responses.
 type ModelPlan struct {
 	BaseUrl      *string            `json:"baseUrl,omitempty"`
@@ -5285,7 +5422,6 @@ type ModelPlan struct {
 	DefaultModel *string            `json:"defaultModel,omitempty"`
 	Detection    ModelPlanDetection `json:"detection"`
 	Enabled      bool               `json:"enabled"`
-	FirstUse     ModelPlanFirstUse  `json:"firstUse"`
 	HasApiKey    bool               `json:"hasApiKey"`
 	Id           string             `json:"id"`
 	Models       []ModelPlanModel   `json:"models"`
@@ -5295,7 +5431,7 @@ type ModelPlan struct {
 	Protocol ModelPlanProtocol `json:"protocol"`
 	Revision int64             `json:"revision"`
 
-	// Status Derived plan lifecycle status. pending_first_use means detection passed but no real agent call has completed yet; only ready plans are fully usable.
+	// Status Derived plan lifecycle status. A plan is ready when its latest connection detection passed.
 	Status ModelPlanStatus `json:"status"`
 
 	// TemplateKind Access-scheme template the plan was created from. Presentation and guidance hint; runtime behavior derives from protocol.
@@ -5315,18 +5451,6 @@ type ModelPlanDetection struct {
 
 // ModelPlanDetectionStage defines model for ModelPlanDetectionStage.
 type ModelPlanDetectionStage string
-
-// ModelPlanFirstUse defines model for ModelPlanFirstUse.
-type ModelPlanFirstUse struct {
-	AgentSessionId *string                 `json:"agentSessionId,omitempty"`
-	AgentTargetId  *string                 `json:"agentTargetId,omitempty"`
-	CompletedAt    *time.Time              `json:"completedAt,omitempty"`
-	Model          *string                 `json:"model,omitempty"`
-	Status         ModelPlanFirstUseStatus `json:"status"`
-}
-
-// ModelPlanFirstUseStatus defines model for ModelPlanFirstUse.Status.
-type ModelPlanFirstUseStatus string
 
 // ModelPlanModel defines model for ModelPlanModel.
 type ModelPlanModel struct {
@@ -5374,7 +5498,7 @@ type ModelPlanStageResult struct {
 // ModelPlanStageStatus defines model for ModelPlanStageStatus.
 type ModelPlanStageStatus string
 
-// ModelPlanStatus Derived plan lifecycle status. pending_first_use means detection passed but no real agent call has completed yet; only ready plans are fully usable.
+// ModelPlanStatus Derived plan lifecycle status. A plan is ready when its latest connection detection passed.
 type ModelPlanStatus string
 
 // ModelPlanTemplateKind Access-scheme template the plan was created from. Presentation and guidance hint; runtime behavior derives from protocol.
@@ -5957,10 +6081,39 @@ type WorkbenchFrame struct {
 	Y      float32 `json:"y"`
 }
 
+// WorkbenchLayoutBasis defines model for WorkbenchLayoutBasis.
+type WorkbenchLayoutBasis struct {
+	LayoutConstraints WorkbenchLayoutConstraints `json:"layoutConstraints"`
+	SurfaceSize       WorkbenchSize              `json:"surfaceSize"`
+}
+
+// WorkbenchLayoutConstraints defines model for WorkbenchLayoutConstraints.
+type WorkbenchLayoutConstraints struct {
+	MinHeight      float32           `json:"minHeight"`
+	MinWidth       float32           `json:"minWidth"`
+	SafeArea       WorkbenchSafeArea `json:"safeArea"`
+	SurfacePadding float32           `json:"surfacePadding"`
+}
+
+// WorkbenchSafeArea defines model for WorkbenchSafeArea.
+type WorkbenchSafeArea struct {
+	Bottom float32 `json:"bottom"`
+	Left   float32 `json:"left"`
+	Right  float32 `json:"right"`
+	Top    float32 `json:"top"`
+}
+
+// WorkbenchSize defines model for WorkbenchSize.
+type WorkbenchSize struct {
+	Height float32 `json:"height"`
+	Width  float32 `json:"width"`
+}
+
 // WorkbenchSnapshot defines model for WorkbenchSnapshot.
 type WorkbenchSnapshot struct {
 	ActiveNodeId  *string                        `json:"activeNodeId,omitempty"`
 	ActiveSpaceId *string                        `json:"activeSpaceId,omitempty"`
+	LayoutBasis   *WorkbenchLayoutBasis          `json:"layoutBasis,omitempty"`
 	Metadata      *map[string]interface{}        `json:"metadata,omitempty"`
 	NodeStack     *[]string                      `json:"nodeStack,omitempty"`
 	Nodes         []WorkbenchSnapshotNode        `json:"nodes"`
@@ -6131,6 +6284,9 @@ type WorkspaceAgentInteractionKind string
 // WorkspaceAgentInteractionStatus defines model for WorkspaceAgentInteractionStatus.
 type WorkspaceAgentInteractionStatus string
 
+// WorkspaceAgentMessageCursor Per-session durable message change cursor. The upper bound preserves exact integer representation in JavaScript clients.
+type WorkspaceAgentMessageCursor = int64
+
 // WorkspaceAgentModelRef defines model for WorkspaceAgentModelRef.
 type WorkspaceAgentModelRef struct {
 	Model       *string `json:"model,omitempty"`
@@ -6161,6 +6317,20 @@ type WorkspaceAgentPlanDecisionResponse struct {
 // WorkspaceAgentProvider defines model for WorkspaceAgentProvider.
 type WorkspaceAgentProvider = string
 
+// WorkspaceAgentRailPlacement defines model for WorkspaceAgentRailPlacement.
+type WorkspaceAgentRailPlacement struct {
+	Kind        WorkspaceAgentRailPlacementKind    `json:"kind"`
+	ProjectPath *string                            `json:"projectPath,omitempty"`
+	SectionKey  string                             `json:"sectionKey"`
+	Version     WorkspaceAgentRailPlacementVersion `json:"version"`
+}
+
+// WorkspaceAgentRailPlacementKind defines model for WorkspaceAgentRailPlacement.Kind.
+type WorkspaceAgentRailPlacementKind string
+
+// WorkspaceAgentRailPlacementVersion defines model for WorkspaceAgentRailPlacement.Version.
+type WorkspaceAgentRailPlacementVersion int
+
 // WorkspaceAgentSession defines model for WorkspaceAgentSession.
 type WorkspaceAgentSession struct {
 	// ActiveTurn Protocol v2. Embedded snapshot of the active turn; null when no turn is in flight.
@@ -6182,6 +6352,9 @@ type WorkspaceAgentSession struct {
 	// EndedAtUnixMs Protocol v2. Unix milliseconds replacement for endedAt.
 	EndedAtUnixMs *int64 `json:"endedAtUnixMs"`
 
+	// ForkedFrom Durable provenance for a user-initiated root Session fork. Null for ordinary root Sessions and provider-native child Sessions.
+	ForkedFrom *WorkspaceAgentSessionForkLineage `json:"forkedFrom"`
+
 	// Goal Protocol v2. Explicit field extracted from runtimeContext.
 	Goal *WorkspaceAgentSessionGoal `json:"goal"`
 	Id   string                     `json:"id"`
@@ -6196,7 +6369,11 @@ type WorkspaceAgentSession struct {
 	LatestTurn *WorkspaceAgentTurn `json:"latestTurn"`
 
 	// LatestTurnInteractions Protocol v2. Read-only independent Interaction entity projections for latestTurn, including pending, answered, and superseded terminal states. These entities are not session-owned persistent state.
-	LatestTurnInteractions []WorkspaceAgentInteraction `json:"latestTurnInteractions"`
+	LatestTurnInteractions []WorkspaceAgentInteraction                `json:"latestTurnInteractions"`
+	LifecycleCapabilities  WorkspaceAgentSessionLifecycleCapabilities `json:"lifecycleCapabilities"`
+
+	// MessageVersion Latest accepted per-session message change cursor. This is a high-water mark, not a count of materialized message rows.
+	MessageVersion WorkspaceAgentMessageCursor `json:"messageVersion"`
 
 	// ParentAgentSessionId Direct parent session that created this child session. Null when kind is root.
 	ParentAgentSessionId *string `json:"parentAgentSessionId"`
@@ -6268,6 +6445,62 @@ type WorkspaceAgentSessionEventEnvelope struct {
 	Type           string                 `json:"type"`
 }
 
+// WorkspaceAgentSessionForkLineage defines model for WorkspaceAgentSessionForkLineage.
+type WorkspaceAgentSessionForkLineage struct {
+	ForkedAtUnixMs       int64  `json:"forkedAtUnixMs"`
+	OperationId          string `json:"operationId"`
+	SourceAgentSessionId string `json:"sourceAgentSessionId"`
+
+	// SourceTurnId Inclusive canonical Turn boundary in the source Session.
+	SourceTurnId string `json:"sourceTurnId"`
+
+	// TargetTurnId Canonical Turn id of that inclusive boundary in the forked Session.
+	TargetTurnId string `json:"targetTurnId"`
+}
+
+// WorkspaceAgentSessionForkOperation defines model for WorkspaceAgentSessionForkOperation.
+type WorkspaceAgentSessionForkOperation struct {
+	// Error Durable failure diagnostic for failed or unknown outcomes.
+	Error *string `json:"error"`
+
+	// Lineage Durable lineage when status is committed.
+	Lineage     *WorkspaceAgentSessionForkLineage `json:"lineage"`
+	OperationId string                            `json:"operationId"`
+	Point       WorkspaceAgentSessionForkPoint    `json:"point"`
+	RequestId   string                            `json:"requestId"`
+
+	// Session Complete target Session projection when status is committed.
+	Session              *WorkspaceAgentSession `json:"session"`
+	SourceAgentSessionId string                 `json:"sourceAgentSessionId"`
+
+	// Status Public durable operation state. accepted collapses the internal prepared, dispatching, and provider-accepted phases.
+	Status               WorkspaceAgentSessionForkOperationStatus `json:"status"`
+	TargetAgentSessionId string                                   `json:"targetAgentSessionId"`
+}
+
+// WorkspaceAgentSessionForkOperationResponse defines model for WorkspaceAgentSessionForkOperationResponse.
+type WorkspaceAgentSessionForkOperationResponse struct {
+	Operation WorkspaceAgentSessionForkOperation `json:"operation"`
+}
+
+// WorkspaceAgentSessionForkOperationStatus Public durable operation state. accepted collapses the internal prepared, dispatching, and provider-accepted phases.
+type WorkspaceAgentSessionForkOperationStatus string
+
+// WorkspaceAgentSessionForkPoint defines model for WorkspaceAgentSessionForkPoint.
+type WorkspaceAgentSessionForkPoint struct {
+	union json.RawMessage
+}
+
+// WorkspaceAgentSessionForkThroughTurnPoint defines model for WorkspaceAgentSessionForkThroughTurnPoint.
+type WorkspaceAgentSessionForkThroughTurnPoint struct {
+	// TurnId Exact canonical Turn id included as the final Turn in the fork.
+	TurnId string                                        `json:"turnId"`
+	Type   WorkspaceAgentSessionForkThroughTurnPointType `json:"type"`
+}
+
+// WorkspaceAgentSessionForkThroughTurnPointType defines model for WorkspaceAgentSessionForkThroughTurnPoint.Type.
+type WorkspaceAgentSessionForkThroughTurnPointType string
+
 // WorkspaceAgentSessionGitBranchesResponse defines model for WorkspaceAgentSessionGitBranchesResponse.
 type WorkspaceAgentSessionGitBranchesResponse struct {
 	Branches      []string `json:"branches"`
@@ -6332,6 +6565,21 @@ type WorkspaceAgentSessionGoalStateResponse struct {
 // WorkspaceAgentSessionKind Root sessions are user-visible conversations. Child sessions are provider-native agents reached through their immutable parent fields.
 type WorkspaceAgentSessionKind string
 
+// WorkspaceAgentSessionLifecycleCapabilities defines model for WorkspaceAgentSessionLifecycleCapabilities.
+type WorkspaceAgentSessionLifecycleCapabilities struct {
+	// Fork Whether this exact session can fork its latest settled state.
+	Fork bool `json:"fork"`
+
+	// ForkThroughTurn Whether this exact session can fork through a settled canonical Turn.
+	ForkThroughTurn bool `json:"forkThroughTurn"`
+
+	// ForkThroughTurnIds Canonical Turn ids currently verified against provider-native history.
+	ForkThroughTurnIds *[]string `json:"forkThroughTurnIds,omitempty"`
+
+	// ForkThroughTurnIdsKnown Whether forkThroughTurnIds is an authoritative provider-history projection.
+	ForkThroughTurnIdsKnown *bool `json:"forkThroughTurnIdsKnown,omitempty"`
+}
+
 // WorkspaceAgentSessionListResponse defines model for WorkspaceAgentSessionListResponse.
 type WorkspaceAgentSessionListResponse struct {
 	HasMore bool `json:"hasMore"`
@@ -6364,15 +6612,19 @@ type WorkspaceAgentSessionMessage struct {
 	// TurnId A non-empty turnId attaches a Turn-scoped message to a real persisted Turn. Null is valid only when kind is session_audit; empty strings are forbidden. Legacy stored turnless rows are read as compatibility data and are never assigned a guessed Turn.
 	TurnId          *string `json:"turnId"`
 	UpdatedAtUnixMs *int64  `json:"updatedAtUnixMs,omitempty"`
-	Version         int64   `json:"version"`
+
+	// Version Per-session durable message change cursor. The upper bound preserves exact integer representation in JavaScript clients.
+	Version WorkspaceAgentMessageCursor `json:"version"`
 }
 
 // WorkspaceAgentSessionMessagesResponse defines model for WorkspaceAgentSessionMessagesResponse.
 type WorkspaceAgentSessionMessagesResponse struct {
-	AgentSessionId string                         `json:"agentSessionId"`
-	HasMore        bool                           `json:"hasMore"`
-	LatestVersion  int64                          `json:"latestVersion"`
-	Messages       []WorkspaceAgentSessionMessage `json:"messages"`
+	AgentSessionId string `json:"agentSessionId"`
+	HasMore        bool   `json:"hasMore"`
+
+	// LatestVersion Per-session durable message change cursor. The upper bound preserves exact integer representation in JavaScript clients.
+	LatestVersion WorkspaceAgentMessageCursor    `json:"latestVersion"`
+	Messages      []WorkspaceAgentSessionMessage `json:"messages"`
 }
 
 // WorkspaceAgentSessionPage defines model for WorkspaceAgentSessionPage.
@@ -7167,11 +7419,20 @@ type IssueManagerTopicID = string
 // IssueManagerTopicIDQuery defines model for IssueManagerTopicIDQuery.
 type IssueManagerTopicIDQuery = string
 
+// MobileRemoteChallengeID defines model for MobileRemoteChallengeID.
+type MobileRemoteChallengeID = string
+
+// MobileRemotePairingID defines model for MobileRemotePairingID.
+type MobileRemotePairingID = string
+
 // ModelPlanID defines model for ModelPlanID.
 type ModelPlanID = string
 
 // ModelPolicyID defines model for ModelPolicyID.
 type ModelPolicyID = string
+
+// SessionForkOperationID defines model for SessionForkOperationID.
+type SessionForkOperationID = string
 
 // TerminalAfterSeq defines model for TerminalAfterSeq.
 type TerminalAfterSeq = int64
@@ -7383,8 +7644,8 @@ type ListWorkspaceAgentSessionsParams struct {
 
 // ListWorkspaceAgentSessionMessagesParams defines parameters for ListWorkspaceAgentSessionMessages.
 type ListWorkspaceAgentSessionMessagesParams struct {
-	AfterVersion  *int64                                        `form:"afterVersion,omitempty" json:"afterVersion,omitempty"`
-	BeforeVersion *int64                                        `form:"beforeVersion,omitempty" json:"beforeVersion,omitempty"`
+	AfterVersion  *WorkspaceAgentMessageCursor                  `form:"afterVersion,omitempty" json:"afterVersion,omitempty"`
+	BeforeVersion *WorkspaceAgentMessageCursor                  `form:"beforeVersion,omitempty" json:"beforeVersion,omitempty"`
 	Order         *ListWorkspaceAgentSessionMessagesParamsOrder `form:"order,omitempty" json:"order,omitempty"`
 	Limit         *int                                          `form:"limit,omitempty" json:"limit,omitempty"`
 }
@@ -7564,6 +7825,9 @@ type ScanWorkspaceExternalAgentSessionImportsJSONRequestBody = ExternalAgentImpo
 
 // SetAgentSessionAutomationRuleOverrideJSONRequestBody defines body for SetAgentSessionAutomationRuleOverride for application/json ContentType.
 type SetAgentSessionAutomationRuleOverrideJSONRequestBody = SetAgentSessionAutomationRuleOverrideRequest
+
+// ForkWorkspaceAgentSessionJSONRequestBody defines body for ForkWorkspaceAgentSession for application/json ContentType.
+type ForkWorkspaceAgentSessionJSONRequestBody = ForkWorkspaceAgentSessionRequest
 
 // GoalControlWorkspaceAgentSessionJSONRequestBody defines body for GoalControlWorkspaceAgentSession for application/json ContentType.
 type GoalControlWorkspaceAgentSessionJSONRequestBody = WorkspaceAgentSessionGoalControlRequest
@@ -8183,6 +8447,65 @@ func (t SendWorkspaceAgentSessionInputResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (t *SendWorkspaceAgentSessionInputResponse) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsWorkspaceAgentSessionForkThroughTurnPoint returns the union data inside the WorkspaceAgentSessionForkPoint as a WorkspaceAgentSessionForkThroughTurnPoint
+func (t WorkspaceAgentSessionForkPoint) AsWorkspaceAgentSessionForkThroughTurnPoint() (WorkspaceAgentSessionForkThroughTurnPoint, error) {
+	var body WorkspaceAgentSessionForkThroughTurnPoint
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromWorkspaceAgentSessionForkThroughTurnPoint overwrites any union data inside the WorkspaceAgentSessionForkPoint as the provided WorkspaceAgentSessionForkThroughTurnPoint
+func (t *WorkspaceAgentSessionForkPoint) FromWorkspaceAgentSessionForkThroughTurnPoint(v WorkspaceAgentSessionForkThroughTurnPoint) error {
+	v.Type = "throughTurn"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeWorkspaceAgentSessionForkThroughTurnPoint performs a merge with any union data inside the WorkspaceAgentSessionForkPoint, using the provided WorkspaceAgentSessionForkThroughTurnPoint
+func (t *WorkspaceAgentSessionForkPoint) MergeWorkspaceAgentSessionForkThroughTurnPoint(v WorkspaceAgentSessionForkThroughTurnPoint) error {
+	v.Type = "throughTurn"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t WorkspaceAgentSessionForkPoint) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"type"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t WorkspaceAgentSessionForkPoint) ValueByDiscriminator() (interface{}, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "throughTurn":
+		return t.AsWorkspaceAgentSessionForkThroughTurnPoint()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t WorkspaceAgentSessionForkPoint) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *WorkspaceAgentSessionForkPoint) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
 	return err
 }

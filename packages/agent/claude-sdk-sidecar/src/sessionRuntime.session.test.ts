@@ -106,6 +106,84 @@ test("tutti host context shares one SDK prompt with unchanged user input", async
   }
 });
 
+test("SDK assistant authentication error fails the message and turn", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  const failure =
+    "Failed to authenticate. API Error: 401 The API Key appears to be invalid.";
+  try {
+    const session = new SessionRuntime(
+      "provider-session-auth",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "k3",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => ({
+        async *[Symbol.asyncIterator]() {
+          const iterator = prompt[Symbol.asyncIterator]();
+          const message = (await iterator.next()).value!;
+          yield {
+            ...message,
+            type: "user",
+            parent_tool_use_id: null,
+            session_id: "provider-session-auth"
+          } as never;
+          yield {
+            type: "assistant",
+            error: "authentication_failed",
+            message: {
+              id: "assistant-auth-error",
+              role: "assistant",
+              content: [{ type: "text", text: failure }]
+            },
+            parent_tool_use_id: null,
+            session_id: "provider-session-auth"
+          } as never;
+          yield {
+            type: "result",
+            subtype: "success",
+            is_error: true,
+            api_error_status: 401,
+            result: failure,
+            session_id: "provider-session-auth"
+          } as never;
+        },
+        close() {}
+      })
+    );
+
+    await session.start();
+    session.exec("turn-auth", "hello");
+    await waitForEvent(events, "turn_failed");
+
+    const failedMessage = events.find(
+      (event) => event.type === "assistant_failed"
+    );
+    assert.equal(failedMessage?.payload?.content, failure);
+    const failedTurn = events.find((event) => event.type === "turn_failed");
+    assert.equal(failedTurn?.payload?.turnId, "turn-auth");
+    assert.equal(failedTurn?.payload?.code, "authentication_failed");
+    assert.equal(failedTurn?.payload?.apiErrorStatus, 401);
+    assert.equal(
+      events.some((event) => event.type === "turn_completed"),
+      false
+    );
+  } finally {
+    restoreSink();
+  }
+});
+
 test("guidance prompt stays on the active SDK turn", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
   const prompts: string[] = [];

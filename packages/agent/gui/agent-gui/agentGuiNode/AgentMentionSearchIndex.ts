@@ -35,7 +35,6 @@ export interface AgentMentionProviderQueryInput {
   providerId: string;
   workspaceId: string;
   currentUserId: string;
-  directoryPath?: string;
   query: string;
   limit?: number;
   sessionCwd?: string;
@@ -223,7 +222,6 @@ export async function queryAgentMentionProviderItems(input: {
   provider: AgentContextMentionProvider;
   workspaceId: string;
   currentUserId: string;
-  directoryPath?: string;
   query: string;
   limit?: number;
   sessionCwd: string;
@@ -247,18 +245,52 @@ export async function queryAgentMentionProviderItems(input: {
       }
     }
   };
-  const items =
-    input.directoryPath && input.provider.queryDirectory
-      ? await input.provider.queryDirectory({
-          ...queryInput,
-          directoryPath: input.directoryPath
-        })
-      : await input.provider.query(queryInput);
+  const items = await input.provider.query(queryInput);
   if (input.abortSignal.aborted) {
     return [];
   }
   return mapProviderItemsToAgentMentionItems({
     ...input,
+    items
+  });
+}
+
+export async function queryAgentMentionProviderDirectoryItems(input: {
+  provider: AgentContextMentionProvider | undefined;
+  workspaceId: string;
+  currentUserId: string;
+  directoryPath: string;
+  sessionCwd: string;
+  sectionKey: string;
+  abortSignal: AbortSignal;
+  provenanceFilter: ReferenceProvenanceFilter | null;
+}): Promise<AgentContextMentionItem[]> {
+  const provider = input.provider;
+  if (!provider?.queryDirectory) {
+    throw new Error("Mention provider does not support directory browsing.");
+  }
+  const items = await provider.queryDirectory({
+    keyword: "",
+    abortSignal: input.abortSignal,
+    trigger: "@",
+    directoryPath: input.directoryPath,
+    context: {
+      metadata: {
+        currentUserId: input.currentUserId,
+        sectionKey: input.sectionKey || undefined,
+        sessionCwd: input.sessionCwd || undefined,
+        target: "agent-gui",
+        workspaceId: input.workspaceId,
+        referenceProvenanceFilter: input.provenanceFilter ?? undefined
+      }
+    }
+  });
+  if (input.abortSignal.aborted) {
+    return [];
+  }
+  return mapProviderItemsToAgentMentionItems({
+    ...input,
+    provider,
     items
   });
 }

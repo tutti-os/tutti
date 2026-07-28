@@ -243,6 +243,9 @@ export function createIssueManagerWorkbenchNodeDefinition<
     window: {
       closable: true,
       defaultOpen: false,
+      header: {
+        border: "none"
+      },
       minimizedDock: {
         kind: "snapshot"
       },

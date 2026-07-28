@@ -16,6 +16,7 @@ import (
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/managednpm"
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerstatus"
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 	claudecodeservice "github.com/tutti-os/tutti/services/tuttid/service/claudecode"
 )
@@ -450,7 +451,13 @@ func runAuthStatusCommand(ctx context.Context, spec ProviderSpec, binaryPath str
 	if isClaude {
 		logClaudeAuthStatusCommandOutput(err, time.Since(startedAt))
 	}
-	return parseAuthStatusCommandOutput(spec.Provider, output)
+	parserKind := spec.AuthOutputParserKind
+	if parserKind == "" {
+		if status, ok := migratedProviderStatus(spec.Provider); ok {
+			parserKind = status.AuthOutputParserKind
+		}
+	}
+	return providerstatus.ParseAuthStatusOutput(parserKind, output)
 }
 
 func logClaudeAuthStatusCommandOutput(commandErr error, duration time.Duration) {
@@ -482,109 +489,6 @@ func sleepContext(ctx context.Context, delay time.Duration) bool {
 	case <-ctx.Done():
 		return false
 	}
-}
-
-func parseAuthStatusCommandOutput(provider string, output []byte) (AuthInfo, bool) {
-	if auth, ok := parseAuthCommandConfigurationError(output); ok {
-		return auth, true
-	}
-	if status, ok := migratedProviderStatus(provider); ok {
-		switch status.AuthOutputParserKind {
-		case providerregistry.AuthOutputParserKindCodex:
-			return parseCodexAuthStatusOutput(output)
-		case providerregistry.AuthOutputParserKindOpenCode:
-			return parseOpenCodeAuthStatusOutput(output)
-		case providerregistry.AuthOutputParserKindClaude:
-			return parseClaudeAuthStatusOutput(output)
-		case providerregistry.AuthOutputParserKindCursor:
-			return parseCursorAuthStatusOutput(output)
-		}
-	}
-	return AuthInfo{}, false
-}
-
-func parseAuthCommandConfigurationError(output []byte) (AuthInfo, bool) {
-	normalized := strings.ToLower(string(bytes.TrimSpace(output)))
-	if strings.Contains(normalized, "error loading configuration") {
-		return AuthInfo{Status: AuthUnknown}, true
-	}
-	return AuthInfo{}, false
-}
-
-func parseCodexAuthStatusOutput(output []byte) (AuthInfo, bool) {
-	normalized := strings.ToLower(string(bytes.TrimSpace(output)))
-	if normalized == "" {
-		return AuthInfo{}, false
-	}
-	if strings.Contains(normalized, "not logged in") ||
-		strings.Contains(normalized, "logged out") {
-		return AuthInfo{Status: AuthRequired}, true
-	}
-	if strings.Contains(normalized, "logged in") {
-		return AuthInfo{Status: AuthAuthenticated}, true
-	}
-	return AuthInfo{}, false
-}
-
-func parseOpenCodeAuthStatusOutput(output []byte) (AuthInfo, bool) {
-	normalized := strings.ToLower(string(bytes.TrimSpace(output)))
-	if normalized == "" {
-		return AuthInfo{}, false
-	}
-	if match := openCodeCredentialCountPattern.FindStringSubmatch(normalized); len(match) == 2 {
-		if strings.TrimLeft(match[1], "0") == "" {
-			return AuthInfo{Status: AuthRequired}, true
-		}
-		return AuthInfo{Status: AuthAuthenticated}, true
-	}
-	if strings.Contains(normalized, "not logged in") ||
-		strings.Contains(normalized, "not authenticated") ||
-		strings.Contains(normalized, "no authenticated") ||
-		strings.Contains(normalized, "no providers") ||
-		strings.Contains(normalized, "unauthenticated") {
-		return AuthInfo{Status: AuthRequired}, true
-	}
-	if strings.Contains(normalized, "logged in") ||
-		strings.Contains(normalized, "authenticated") {
-		return AuthInfo{Status: AuthAuthenticated}, true
-	}
-	return AuthInfo{}, false
-}
-
-var openCodeCredentialCountPattern = regexp.MustCompile(`([0-9]+)\s+credentials?\b`)
-
-func parseClaudeAuthStatusOutput(output []byte) (AuthInfo, bool) {
-	output = bytes.TrimSpace(output)
-	if len(output) == 0 {
-		return AuthInfo{}, false
-	}
-	var payload struct {
-		AccountLabel string `json:"accountLabel"`
-		AuthMethod   string `json:"authMethod"`
-		Email        string `json:"email"`
-		LoggedIn     *bool  `json:"loggedIn"`
-	}
-	if err := json.Unmarshal(output, &payload); err == nil && payload.LoggedIn != nil {
-		if *payload.LoggedIn {
-			return AuthInfo{
-				AccountLabel: firstNonBlank(payload.AccountLabel, payload.Email, payload.AuthMethod),
-				AuthMethod:   payload.AuthMethod,
-				Status:       AuthAuthenticated,
-			}, true
-		}
-		return AuthInfo{Status: AuthRequired, AuthMethod: payload.AuthMethod}, true
-	}
-	normalized := strings.ToLower(string(output))
-	if strings.Contains(normalized, `"loggedin":false`) ||
-		strings.Contains(normalized, "not logged in") ||
-		strings.Contains(normalized, "logged out") {
-		return AuthInfo{Status: AuthRequired}, true
-	}
-	if strings.Contains(normalized, `"loggedin":true`) ||
-		strings.Contains(normalized, "logged in") {
-		return AuthInfo{Status: AuthAuthenticated}, true
-	}
-	return AuthInfo{}, false
 }
 
 func parseClaudeAuthMarkerFile(path string) (AuthInfo, bool) {

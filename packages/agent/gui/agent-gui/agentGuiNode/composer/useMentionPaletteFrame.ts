@@ -12,10 +12,10 @@ import {
   MENTION_PALETTE_MIN_HEIGHT_PX,
   MENTION_PALETTE_VIEWPORT_PADDING_PX,
   composerPaletteZIndex,
-  resolveMentionPalettePortalTarget,
   resolveMentionPaletteZIndex,
   type MentionPaletteFrame
 } from "./AgentComposerChrome";
+import { resolveComposerPortalTarget } from "./composerPortalTarget";
 
 export function useMentionPaletteFrame(
   inputShellRef: RefObject<HTMLDivElement | null>,
@@ -57,7 +57,7 @@ export function useMentionPaletteFrame(
     setMentionPaletteFrame({
       height,
       left,
-      portalTarget: resolveMentionPalettePortalTarget(anchor),
+      portalTarget: resolveComposerPortalTarget(anchor),
       top: Math.max(
         MENTION_PALETTE_VIEWPORT_PADDING_PX,
         Math.min(

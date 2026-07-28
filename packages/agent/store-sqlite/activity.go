@@ -323,6 +323,15 @@ func (s *Store) ReportSessionMessages(
 
 	result := MessageReportResult{}
 	allowLegacyTurnless := input.HistoricalImport
+	historicalTurnIDs := []string(nil)
+	if input.HistoricalImport {
+		historicalTurnIDs, err = ensureHistoricalImportTurnsTx(
+			ctx, tx, workspaceID, agentSessionID, input.Messages, now,
+		)
+		if err != nil {
+			return MessageReportResult{}, err
+		}
+	}
 	for _, message := range input.Messages {
 		message.MessageID = strings.TrimSpace(message.MessageID)
 		if message.MessageID == "" {
@@ -333,6 +342,12 @@ func (s *Store) ReportSessionMessages(
 			return MessageReportResult{}, err
 		}
 		if !accepted {
+			if input.HistoricalImport && strings.TrimSpace(message.TurnID) != "" {
+				return MessageReportResult{}, fmt.Errorf(
+					"historical import message %q was rejected",
+					message.MessageID,
+				)
+			}
 			continue
 		}
 		result.AcceptedCount++
@@ -340,7 +355,21 @@ func (s *Store) ReportSessionMessages(
 		result.Messages = append(result.Messages, acceptedMessage)
 	}
 
-	mutations := make([]TransactionMutation, 0, len(result.Messages))
+	historicalTurns := []Turn(nil)
+	if len(historicalTurnIDs) > 0 {
+		historicalTurns, err = refreshHistoricalImportTurnsTx(
+			ctx, tx, workspaceID, agentSessionID, historicalTurnIDs,
+		)
+		if err != nil {
+			return MessageReportResult{}, err
+		}
+	}
+	mutations := make([]TransactionMutation, 0, len(historicalTurns)+len(result.Messages))
+	for _, turn := range historicalTurns {
+		mutations = append(mutations, transactionMutation(
+			workspaceID, agentSessionID, MutationEntityTurn, turn.TurnID, "upsert", turn.UpdatedAtUnixMS,
+		))
+	}
 	for _, message := range result.Messages {
 		mutations = append(mutations, transactionMutation(workspaceID, agentSessionID, MutationEntityMessage, message.MessageID, "upsert", int64(message.Version)))
 	}

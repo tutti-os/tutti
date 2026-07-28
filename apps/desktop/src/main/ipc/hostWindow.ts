@@ -1,12 +1,17 @@
 import { screen } from "electron";
 import {
+  captureWorkbenchDockPreview,
+  captureWorkbenchPreviewImages,
+  type WorkbenchDockPreviewCaptureDiagnostic
+} from "@tutti-os/workbench-electron";
+import {
   desktopIpcChannels,
   type DesktopHostOpenAgentWindowInput,
   type DesktopHostWindowCapturePreviewInput
 } from "../../shared/contracts/ipc";
 import { createDesktopWindowAccess } from "../host/desktopWindowAccess";
 import type { WorkspaceLaunch } from "../host/workspaceLaunch";
-import { getDesktopLogger } from "../logging";
+import { getDesktopLogger, type DesktopLogger } from "../logging";
 import { registerDesktopIpcHandler } from "./handle";
 import { resolveOwnerWindowFromEvent } from "./ownerWindow";
 import { getWorkspaceWindowKind } from "../windows/workspaceWindow";
@@ -16,9 +21,7 @@ import {
 } from "../windows/standaloneAgentWindowBounds";
 import { toggleHostWindowMaximize } from "../windows/hostWindowMaximize";
 
-const maxCapturePreviewDimensionPx = 512;
 const capturePreviewTimeoutMs = 2_000;
-let capturePreviewQueue: Promise<void> = Promise.resolve();
 let capturePreviewSequence = 0;
 
 export interface HostWindowIpcDependencies {
@@ -50,94 +53,67 @@ export function registerHostWindowIpc(deps: HostWindowIpcDependencies): void {
       }
 
       const contentBounds = ownerWindow.getContentBounds();
-      const rect = sanitizeCaptureRect(input, {
-        height: contentBounds.height,
-        width: contentBounds.width
+      const captureId = ++capturePreviewSequence;
+
+      return captureWorkbenchDockPreview({
+        contentSize: {
+          height: contentBounds.height,
+          width: contentBounds.width
+        },
+        maxHeight: input.maxHeight,
+        maxWidth: input.maxWidth,
+        onDiagnostic: (diagnostic) => {
+          logCapturePreviewDiagnostic({
+            captureId,
+            contentBounds,
+            diagnostic,
+            input,
+            logger
+          });
+        },
+        rect: input.rect,
+        timeoutMs: capturePreviewTimeoutMs,
+        webContents: ownerWindow.webContents
       });
-      if (!rect) {
+    }
+  );
+
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.window.capturePreviewImages,
+    async (event, input) => {
+      const ownerWindow = resolveOwnerWindowFromEvent(event);
+      if (
+        !ownerWindow ||
+        ownerWindow.isDestroyed() ||
+        ownerWindow.webContents.isDestroyed()
+      ) {
         logger.warn("host window preview capture skipped", {
-          inputRect: input.rect,
-          ownerWindowHeight: contentBounds.height,
-          ownerWindowWidth: contentBounds.width,
-          reason: "invalid_rect"
+          reason: "owner_window_unavailable"
         });
         return null;
       }
 
+      const contentBounds = ownerWindow.getContentBounds();
       const captureId = ++capturePreviewSequence;
-
-      return enqueueCapturePreview(async () => {
-        if (
-          ownerWindow.isDestroyed() ||
-          ownerWindow.webContents.isDestroyed()
-        ) {
-          logger.warn("host window preview capture skipped", {
-            captureId,
-            reason: "owner_window_destroyed_before_capture"
-          });
-          return null;
-        }
-
-        let image: Electron.NativeImage;
-        try {
-          const capturedImage = await capturePageWithTimeout(
-            ownerWindow.webContents
-          );
-          if (!capturedImage) {
-            logger.warn("host window preview capture timed out", {
-              captureId,
-              reason: "capture_page_timeout",
-              timeoutMs: capturePreviewTimeoutMs
-            });
-            return null;
-          }
-          image = capturedImage;
-        } catch (error) {
-          logger.warn("host window preview capture failed", {
-            captureId,
-            error: error instanceof Error ? error.message : String(error),
-            reason: "capture_page_failed"
-          });
-          return null;
-        }
-        if (image.isEmpty()) {
-          logger.warn("host window preview capture returned empty image", {
-            captureId,
-            reason: "full_capture_empty"
-          });
-          return null;
-        }
-
-        const cropRect = scaleCaptureRectForImage(rect, image.getSize(), {
+      return captureWorkbenchPreviewImages({
+        contentSize: {
           height: contentBounds.height,
           width: contentBounds.width
-        });
-        const cropped = image.crop(cropRect);
-        if (cropped.isEmpty()) {
-          logger.warn("host window preview capture crop returned empty image", {
+        },
+        maxHeight: input.maxHeight,
+        maxWidth: input.maxWidth,
+        onDiagnostic: (diagnostic) => {
+          logCapturePreviewDiagnostic({
             captureId,
-            cropRect,
-            imageHeight: image.getSize().height,
-            imageWidth: image.getSize().width,
-            reason: "crop_empty",
-            requestedRect: rect
+            contentBounds,
+            diagnostic,
+            input,
+            logger
           });
-          return null;
-        }
-
-        const resized = resizeCapturePreviewImage(cropped, input);
-        if (resized.isEmpty()) {
-          logger.warn(
-            "host window preview capture resize returned empty image",
-            {
-              captureId,
-              reason: "resize_empty"
-            }
-          );
-          return null;
-        }
-        const dataUrl = resized.toDataURL();
-        return dataUrl;
+        },
+        rect: input.rect,
+        timeoutMs: capturePreviewTimeoutMs,
+        webContents: ownerWindow.webContents
       });
     }
   );
@@ -193,6 +169,7 @@ export function registerHostWindowIpc(deps: HostWindowIpcDependencies): void {
       ).workArea;
       const nextBounds = resolveStandaloneAgentWindowContentWidth({
         currentBounds,
+        minWidth: ownerWindow.getMinimumSize()[0] ?? 1,
         requestedWidth: input.width,
         workArea
       });
@@ -246,112 +223,62 @@ function normalizeAgentWindowInput(
   };
 }
 
-function capturePageWithTimeout(
-  webContents: Electron.WebContents
-): Promise<Electron.NativeImage | null> {
-  const capturePromise = webContents.capturePage();
-  capturePromise.catch(() => undefined);
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<null>((resolve) => {
-    timeout = setTimeout(() => resolve(null), capturePreviewTimeoutMs);
-  });
-  return Promise.race([capturePromise, timeoutPromise]).finally(() => {
-    if (timeout) {
-      clearTimeout(timeout);
-    }
-  });
-}
-
-function sanitizeCaptureRect(
-  input: DesktopHostWindowCapturePreviewInput,
-  bounds: { height: number; width: number }
-): {
-  height: number;
-  width: number;
-  x: number;
-  y: number;
-} | null {
-  const x = Math.max(0, Math.floor(input.rect.x));
-  const y = Math.max(0, Math.floor(input.rect.y));
-  const right = Math.min(
-    bounds.width,
-    Math.ceil(input.rect.x + input.rect.width)
-  );
-  const bottom = Math.min(
-    bounds.height,
-    Math.ceil(input.rect.y + input.rect.height)
-  );
-  const width = right - x;
-  const height = bottom - y;
-  if (
-    !Number.isFinite(x) ||
-    !Number.isFinite(y) ||
-    !Number.isFinite(width) ||
-    !Number.isFinite(height) ||
-    width <= 0 ||
-    height <= 0
-  ) {
-    return null;
-  }
-  return { height, width, x, y };
-}
-
-function enqueueCapturePreview(
-  task: () => Promise<string | null>
-): Promise<string | null> {
-  const result = capturePreviewQueue.then(task, task);
-  capturePreviewQueue = result.then(
-    () => undefined,
-    () => undefined
-  );
-  return result;
-}
-
-function scaleCaptureRectForImage(
-  rect: { height: number; width: number; x: number; y: number },
-  imageSize: { height: number; width: number },
-  contentSize: { height: number; width: number }
-): { height: number; width: number; x: number; y: number } {
-  const scaleX = imageSize.width / contentSize.width;
-  const scaleY = imageSize.height / contentSize.height;
-  const x = Math.max(0, Math.floor(rect.x * scaleX));
-  const y = Math.max(0, Math.floor(rect.y * scaleY));
-  const right = Math.min(
-    imageSize.width,
-    Math.ceil((rect.x + rect.width) * scaleX)
-  );
-  const bottom = Math.min(
-    imageSize.height,
-    Math.ceil((rect.y + rect.height) * scaleY)
-  );
-  return {
-    height: Math.max(1, bottom - y),
-    width: Math.max(1, right - x),
-    x,
-    y
+function logCapturePreviewDiagnostic(input: {
+  captureId: number;
+  contentBounds: { height: number; width: number };
+  diagnostic: WorkbenchDockPreviewCaptureDiagnostic;
+  input: DesktopHostWindowCapturePreviewInput;
+  logger: DesktopLogger;
+}): void {
+  const fields = {
+    captureId: input.captureId,
+    reason: input.diagnostic.reason
   };
-}
-
-function resizeCapturePreviewImage(
-  image: Electron.NativeImage,
-  input: DesktopHostWindowCapturePreviewInput
-): Electron.NativeImage {
-  const size = image.getSize();
-  const maxWidth = sanitizePreviewLimit(input.maxWidth);
-  const maxHeight = sanitizePreviewLimit(input.maxHeight);
-  const scale = Math.min(1, maxWidth / size.width, maxHeight / size.height);
-  if (!Number.isFinite(scale) || scale >= 1) {
-    return image;
+  switch (input.diagnostic.reason) {
+    case "invalid_rect":
+      input.logger.warn("host window preview capture skipped", {
+        ...fields,
+        inputRect: input.input.rect,
+        ownerWindowHeight: input.contentBounds.height,
+        ownerWindowWidth: input.contentBounds.width
+      });
+      return;
+    case "web_contents_destroyed_before_capture":
+      input.logger.warn("host window preview capture skipped", {
+        ...fields,
+        reason: "owner_window_destroyed_before_capture"
+      });
+      return;
+    case "capture_page_timeout":
+      input.logger.warn("host window preview capture timed out", {
+        ...fields,
+        timeoutMs: capturePreviewTimeoutMs
+      });
+      return;
+    case "capture_page_failed":
+      input.logger.warn("host window preview capture failed", {
+        ...fields,
+        error:
+          input.diagnostic.error instanceof Error
+            ? input.diagnostic.error.message
+            : String(input.diagnostic.error)
+      });
+      return;
+    case "capture_empty":
+      input.logger.warn("host window preview capture returned empty image", {
+        ...fields
+      });
+      return;
+    case "resize_empty":
+      input.logger.warn(
+        "host window preview capture resize returned empty image",
+        fields
+      );
+      return;
+    case "data_url_empty":
+      input.logger.warn(
+        "host window preview capture returned empty data URL",
+        fields
+      );
   }
-  return image.resize({
-    height: Math.max(1, Math.round(size.height * scale)),
-    width: Math.max(1, Math.round(size.width * scale))
-  });
-}
-
-function sanitizePreviewLimit(value: number | undefined): number {
-  if (value === undefined || !Number.isFinite(value) || value <= 0) {
-    return maxCapturePreviewDimensionPx;
-  }
-  return Math.min(maxCapturePreviewDimensionPx, Math.max(1, Math.round(value)));
 }

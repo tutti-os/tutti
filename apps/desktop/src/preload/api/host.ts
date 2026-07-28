@@ -193,6 +193,12 @@ export function createHostDesktopApi(): DesktopHostApi {
           input
         );
       },
+      capturePreviewImages(input) {
+        return invokeDesktopApi(
+          desktopIpcChannels.host.window.capturePreviewImages,
+          input
+        );
+      },
       minimize(): Promise<void> {
         return invokeDesktopApi(desktopIpcChannels.host.window.minimize);
       },

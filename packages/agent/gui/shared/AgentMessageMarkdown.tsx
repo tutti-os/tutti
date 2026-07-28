@@ -36,6 +36,7 @@ import {
   activateMarkdownLink,
   activateMarkdownLinkFromKey,
   activateMarkdownLinkFromPointer,
+  hasOpenPotentialMermaidFence,
   hashMarkdownProfilerContent,
   isLikelyLongerThanLineLimit,
   resolveMarkdownAnchorHref,
@@ -65,6 +66,7 @@ import {
 } from "./AgentMessageMarkdownRenderers";
 import { MarkdownMedia } from "./AgentMessageMarkdownMedia";
 import { remarkLiteralAutolinkBoundary } from "./remarkLiteralAutolinkBoundary";
+import { cachedMarkdownParser } from "./cachedMarkdownParser";
 export { resetCachedMarkdownImagesForTests } from "./AgentMessageMarkdownMedia";
 export type { StreamingMarkdownBlock } from "./agentMessageMarkdownRuntime";
 export { splitStreamingMarkdownBlocks } from "./agentMessageMarkdownRuntime";
@@ -107,6 +109,7 @@ export interface AgentMessageMarkdownWorkspaceLinkContext {
 
 interface AgentMessageMarkdownProps {
   content: string;
+  documentCacheKey?: string;
   onLinkClick?: (href: string) => void;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   workspaceLinkContext?: AgentMessageMarkdownWorkspaceLinkContext | null;
@@ -118,7 +121,6 @@ interface AgentMessageMarkdownProps {
   inline?: boolean;
   normalizePlainIssueMentionTitle?: boolean;
   enableImageZoom?: boolean;
-  previewMode?: boolean;
   streaming?: boolean;
 }
 
@@ -140,9 +142,13 @@ export type MarkdownDomProps<Tag extends keyof JSX.IntrinsicElements> =
 type ReactMarkdownComponents = ComponentPropsWithoutRef<
   typeof ReactMarkdown
 >["components"];
+type ReactMarkdownRemarkPlugins = NonNullable<
+  ComponentPropsWithoutRef<typeof ReactMarkdown>["remarkPlugins"]
+>;
 
 export function AgentMessageMarkdown({
   content,
+  documentCacheKey,
   onLinkClick,
   onLinkAction,
   workspaceLinkContext = null,
@@ -154,7 +160,6 @@ export function AgentMessageMarkdown({
   inline = false,
   normalizePlainIssueMentionTitle = false,
   enableImageZoom = false,
-  previewMode = false,
   streaming = false
 }: AgentMessageMarkdownProps): JSX.Element {
   "use memo";
@@ -174,6 +179,8 @@ export function AgentMessageMarkdown({
       }).content,
     [streaming, visibleContent]
   );
+  const mermaidStreaming =
+    streaming || hasOpenPotentialMermaidFence(visibleContent);
   const workspaceRoot = workspaceLinkContext?.workspaceRoot ?? null;
   const basePath = workspaceLinkContext?.basePath ?? null;
   const workspaceLinkSource = workspaceLinkContext?.source ?? null;
@@ -196,6 +203,20 @@ export function AgentMessageMarkdown({
         )
       ),
     [normalizePlainIssueMentionTitle, stabilizedContent]
+  );
+  const settledRemarkPlugins = useMemo<ReactMarkdownRemarkPlugins>(
+    () => [
+      remarkGfm,
+      remarkLiteralAutolinkBoundary,
+      [
+        cachedMarkdownParser,
+        {
+          cacheKey: documentCacheKey?.trim() || "content",
+          content: normalizedContent
+        }
+      ]
+    ],
+    [documentCacheKey, normalizedContent]
   );
   const isMentionOnly = isMentionOnlyMarkdownContent(normalizedContent);
   const handleLinkClick = useCallback(
@@ -236,7 +257,6 @@ export function AgentMessageMarkdown({
           onLinkClick={handleLinkClick}
           workspaceAppIcons={workspaceAppIcons}
           agentTargets={effectiveAgentTargets}
-          previewMode={previewMode}
         />
       ),
       code: (props: MarkdownDomProps<"code">) => <MarkdownCode {...props} />,
@@ -249,14 +269,20 @@ export function AgentMessageMarkdown({
       ul: MarkdownUnorderedList,
       ol: MarkdownOrderedList,
       li: MarkdownListItem,
-      pre: MarkdownPre
+      pre: (props: MarkdownDomProps<"pre">) => (
+        <MarkdownPre
+          {...props}
+          mermaidEnabled={!inline}
+          streaming={mermaidStreaming}
+        />
+      )
     }),
     [
       effectiveAgentTargets,
       enableImageZoom,
       handleLinkClick,
       inline,
-      previewMode,
+      mermaidStreaming,
       workspaceAppIcons
     ]
   );
@@ -306,7 +332,7 @@ export function AgentMessageMarkdown({
           />
         ) : (
           <ReactMarkdown
-            remarkPlugins={[remarkGfm, remarkLiteralAutolinkBoundary]}
+            remarkPlugins={settledRemarkPlugins}
             rehypePlugins={[[rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA]]}
             urlTransform={markdownUrlTransform}
             components={markdownComponents}
@@ -377,14 +403,12 @@ function MarkdownLink({
   onLinkClick,
   workspaceAppIcons,
   agentTargets,
-  previewMode,
   href,
   ...props
 }: MarkdownDomProps<"a"> & {
   onLinkClick?: (href: string) => void;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   agentTargets?: readonly AgentMessageMarkdownAgentTarget[];
-  previewMode?: boolean;
 }): JSX.Element {
   "use memo";
   const { t } = useTranslation();
@@ -405,7 +429,6 @@ function MarkdownLink({
         href={targetHref}
         mention={mention}
         onLinkClick={onLinkClick}
-        previewMode={previewMode === true}
       />
     );
   }
@@ -599,13 +622,11 @@ function MentionLink({
   onLinkClick,
   href,
   mention,
-  previewMode,
   ...props
 }: AnchorHTMLAttributes<HTMLAnchorElement> & {
   href: string;
   mention: ParsedMentionLink;
   onLinkClick?: (href: string) => void;
-  previewMode: boolean;
 }): JSX.Element {
   "use memo";
   const snapshot = useResolvedRichTextMention({
@@ -675,8 +696,8 @@ function MentionLink({
         kind={pillKind}
         label={<span className="tsh-agent-object-token__main">{label}</span>}
         removable={false}
-        tooltipEnabled={!previewMode}
-        withTooltipProvider={!previewMode}
+        tooltipEnabled
+        withTooltipProvider
       />
     </a>
   );

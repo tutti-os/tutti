@@ -248,6 +248,7 @@ export const desktopIpcChannels = {
     window: {
       approveClose: "host:window:approveClose",
       capturePreview: "host:window:capturePreview",
+      capturePreviewImages: "host:window:capturePreviewImages",
       closeRequest: "host:window:closeRequest",
       closeRequestResolved: "host:window:closeRequestResolved",
       layout: "host:window:layout",
@@ -288,6 +289,11 @@ export interface DesktopHostWindowCapturePreviewInput {
     x: number;
     y: number;
   };
+}
+
+export interface DesktopHostWindowPreviewImages {
+  dockPreviewImageUrl: string;
+  genieImageUrl: string;
 }
 
 export interface DesktopHostWindowResizeContentWidthInput {
@@ -577,6 +583,7 @@ export interface DesktopDockPreviewCacheKey {
   instanceId: string;
   instanceKey?: string | null;
   nodeId: string;
+  revision?: string | null;
   typeId: string;
   workspaceId: string;
 }
@@ -1061,6 +1068,8 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.host.window.approveClose]: undefined;
   [desktopIpcChannels.host.window
     .capturePreview]: DesktopHostWindowCapturePreviewInput;
+  [desktopIpcChannels.host.window
+    .capturePreviewImages]: DesktopHostWindowCapturePreviewInput;
   [desktopIpcChannels.host.window.minimize]: undefined;
   [desktopIpcChannels.host.window
     .openAgentWindow]: DesktopHostOpenAgentWindowInput;
@@ -1220,6 +1229,8 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.host.files.copyFilesToClipboard]: void;
   [desktopIpcChannels.host.window.approveClose]: void;
   [desktopIpcChannels.host.window.capturePreview]: string | null;
+  [desktopIpcChannels.host.window
+    .capturePreviewImages]: DesktopHostWindowPreviewImages | null;
   [desktopIpcChannels.host.window.minimize]: void;
   [desktopIpcChannels.host.window.openAgentWindow]: void;
   [desktopIpcChannels.host.window

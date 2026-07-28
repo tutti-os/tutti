@@ -43,6 +43,7 @@ type DaemonAPI struct {
 	CollaborationRunService    CollaborationRunService
 	AutomationRuleService      AutomationRuleService
 	AccountService             AccountService
+	MobileRemoteService        MobileRemoteService
 	EventStreamService         EventStreamService
 	WorkspaceService           workspaceapi.CatalogService
 	WorkbenchService           workspaceapi.WorkbenchService
@@ -51,6 +52,7 @@ type DaemonAPI struct {
 	FileService                workspaceapi.FileService
 	AgentSessionService        AgentSessionService
 	AgentStatusService         AgentProviderStatusService
+	TuttiAgentReadiness        TuttiAgentReadiness
 	TerminalService            workspaceapi.TerminalService
 	IssueService               workspaceapi.IssueManagerService
 	IssueExecutionService      workspaceapi.IssueExecutionService
@@ -58,6 +60,11 @@ type DaemonAPI struct {
 	TuttiModeActivationService TuttiModeActivationService
 	CLIRegistry                *cliservice.Registry
 	AnalyticsReporter          reporterservice.Reporter
+}
+
+type TuttiAgentReadiness interface {
+	Trigger(reason string)
+	ProviderActionCompleted(agentstatusservice.RunActionResult)
 }
 
 type AgentMaintenanceService interface {

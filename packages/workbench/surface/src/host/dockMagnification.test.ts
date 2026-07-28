@@ -12,6 +12,7 @@ import {
   isDockMagnificationSlotLayoutLocked,
   isDockMagnificationSpringSettled,
   mapDistanceToTargetSize,
+  projectDockMagnificationGeometry,
   resolveDockMagnificationHitBounds,
   resolveDockMagnificationSlotLayoutSize,
   resolveDockMagnificationSlotCenter,
@@ -30,6 +31,26 @@ function assertBoundsEqual(
   assert.ok(Math.abs(actual.crossStart - expected.crossStart) < 0.001);
   assert.ok(Math.abs(actual.mainEnd - expected.mainEnd) < 0.001);
   assert.ok(Math.abs(actual.mainStart - expected.mainStart) < 0.001);
+}
+
+function assertRectEqual(
+  actual: {
+    bottom: number;
+    left: number;
+    right: number;
+    top: number;
+  },
+  expected: {
+    bottom: number;
+    left: number;
+    right: number;
+    top: number;
+  }
+) {
+  assert.ok(Math.abs(actual.bottom - expected.bottom) < 0.001);
+  assert.ok(Math.abs(actual.left - expected.left) < 0.001);
+  assert.ok(Math.abs(actual.right - expected.right) < 0.001);
+  assert.ok(Math.abs(actual.top - expected.top) < 0.001);
 }
 
 class FakePointerTrackingTarget {
@@ -369,6 +390,64 @@ test("left dock magnification center ignores the slot's current magnified size",
   );
 
   assert.equal(restCenter, magnifiedCenter);
+});
+
+test("dock magnification projects centered flex reflow without DOM reads", () => {
+  const geometry = projectDockMagnificationGeometry({
+    appliedSizes: new Map([["a", 70]]),
+    dockPlacement: "bottom",
+    mainAxisStartAligned: false,
+    order: ["a", "b"],
+    restRects: new Map([
+      ["a", { bottom: 80, left: 100, right: 143.2, top: 36.8 }],
+      ["b", { bottom: 80, left: 160, right: 203.2, top: 36.8 }]
+    ])
+  });
+
+  assert.equal(geometry.slotRects.length, 2);
+  assertRectEqual(geometry.slotRects[0]!, {
+    bottom: 80,
+    left: 86.6,
+    right: 156.6,
+    top: 10
+  });
+  assertRectEqual(geometry.slotRects[1]!, {
+    bottom: 80,
+    left: 173.4,
+    right: 216.6,
+    top: 36.8
+  });
+  assert.ok(Math.abs(geometry.centers.get("a")! - 108.2) < 0.001);
+  assert.ok(Math.abs(geometry.centers.get("b")! - 195) < 0.001);
+});
+
+test("dock magnification projects start-aligned vertical flex reflow", () => {
+  const geometry = projectDockMagnificationGeometry({
+    appliedSizes: new Map([["a", 70]]),
+    dockPlacement: "left",
+    mainAxisStartAligned: true,
+    order: ["a", "b"],
+    restRects: new Map([
+      ["a", { bottom: 143.2, left: 20, right: 63.2, top: 100 }],
+      ["b", { bottom: 203.2, left: 20, right: 63.2, top: 160 }]
+    ])
+  });
+
+  assert.equal(geometry.slotRects.length, 2);
+  assertRectEqual(geometry.slotRects[0]!, {
+    bottom: 170,
+    left: 6.6,
+    right: 76.6,
+    top: 100
+  });
+  assertRectEqual(geometry.slotRects[1]!, {
+    bottom: 230,
+    left: 20,
+    right: 63.2,
+    top: 186.8
+  });
+  assert.ok(Math.abs(geometry.centers.get("a")! - 121.6) < 0.001);
+  assert.ok(Math.abs(geometry.centers.get("b")! - 208.4) < 0.001);
 });
 
 test("dock magnification spring settles on the target size", () => {

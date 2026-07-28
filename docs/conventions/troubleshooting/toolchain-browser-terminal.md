@@ -30,6 +30,65 @@
   [change-classification.mjs](../../../tools/scripts/change-classification.mjs)
   [testing.md](../testing.md)
 
+### gomobile Android AAR fails after Go compilation succeeds
+
+- Symptom:
+  `GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build ./...` succeeds, but
+  `gomobile bind` either reports `gobind was not found` after `gomobile init`,
+  or fails while linking `libgojni.so` with
+  `github.com/wlynxg/anet: invalid reference to net.zoneCache`.
+- Quick checks:
+  Confirm the module pins `golang.org/x/mobile` at a version compatible with the
+  repository Go baseline. Run `go mod why -m github.com/wlynxg/anet`; Pion ICE
+  reaches it through the Android network enumeration path. Check whether
+  `gobind` is actually present on `PATH` during the bind subprocess rather than
+  assuming `gomobile init` installed it globally.
+- Root cause:
+  `go tool gomobile` runs the pinned tool without installing its sibling
+  `gobind` executable. Separately, `anet` uses `go:linkname` for the Go network
+  zone cache, and Go 1.23 or newer rejects that internal reference unless the
+  linker compatibility flag is explicit. A no-CGO package compile does not
+  exercise the same shared-library link step as an AAR build.
+- Fix:
+  Build the module-selected `golang.org/x/mobile/cmd/gobind` into an isolated
+  temporary `GOBIN`, prepend that directory to `PATH` only for `gomobile bind`,
+  and pass `-ldflags=-checklinkname=0` only to that gomobile build. Pin the NDK
+  version through `ANDROID_NDK_HOME`; do not add a local `anet` fork or disable
+  linker checks for ordinary host builds.
+- Validation:
+  Run `make android-crosscompile`, `make android-bindings-check`, and
+  `make android-aar`. The final check must validate the Java binding and
+  `armeabi-v7a`, `arm64-v8a`, `x86`, and `x86_64` `libgojni.so` entries. A real
+  Android device or emulator is still required to execute the loopback probe.
+- References:
+  [DeviceLink Makefile](../../../packages/device-link/Makefile)
+  [DeviceLink README](../../../packages/device-link/README.md)
+
+### Android ICE probe gathers no candidates
+
+- Symptom:
+  A gomobile DeviceLink probe loads its JNI library and enters Go successfully,
+  but `LocalParams` reports that the ICE agent gathered no candidates even
+  when loopback candidates are enabled.
+- Quick checks:
+  Confirm the test or host app declares
+  `android.permission.INTERNET` in its manifest before changing ICE filters or
+  Android interface-enumeration code.
+- Root cause:
+  Android applies the `INTERNET` manifest permission to network sockets. A
+  minimal hand-built probe APK can omit it even though normal application
+  templates usually include it, leaving Pion unable to bind a UDP candidate.
+- Fix:
+  Add the `INTERNET` permission to the probe or product manifest. Do not add an
+  Android-only candidate fallback to the shared transport core for this case.
+- Validation:
+  Run the signed probe on an Android device or emulator and require a
+  `TuttiDeviceLinkProbe` log entry containing `PASS epoch=1` and the expected
+  echoed payload.
+- References:
+  [Probe manifest](../../../packages/device-link/mobile/androidprobe/AndroidManifest.xml)
+  [DeviceLink README](../../../packages/device-link/README.md)
+
 ### Temporary Git fixture turns a linked worktree bare
 
 - Symptom:
@@ -507,6 +566,13 @@ emitted before this method can be called`, especially after HMR, navigation,
   `dist/assets/...`. The same feature often works inside this monorepo because
   workspace source resolution or local build layout hides the packaging
   problem.
+  In Vite development mode the failing URL may instead point at
+  `node_modules/.vite/deps/assets/...`: dependency prebundling moved the
+  JavaScript module, then a preserved `new URL("./assets/...", import.meta.url)`
+  resolved relative to the optimizer cache.
+  A browser-only correction can surface as `Unknown file extension ".png"` in
+  Vitest when the test runner externalizes the published dependency and Node
+  evaluates its asset import directly.
 - Quick checks:
   If the failing package entrypoint renders a package-local image or icon,
   inspect whether the main runtime entrypoint still imports that asset directly
@@ -515,12 +581,17 @@ emitted before this method can be called`, especially after HMR, navigation,
   Run `pnpm release:pack:check` and confirm the packed tarball includes the
   exported asset file under `dist/assets/...`.
   Inspect the built `dist` entrypoint and confirm the main runtime code no
-  longer hard-depends on the asset unless the consumer imported it explicitly.
+  longer uses a module-relative asset URL. If the runtime intentionally imports
+  the asset, verify the public export has both a browser asset target and a
+  Node-executable target.
 - Root cause:
   The public runtime entrypoint owned a default asset dependency instead of
   exposing that asset as an explicit public subpath. The packed npm artifact
   either did not ship the matching file layout or forced every consumer to pay
   the asset cost even when the feature was unused.
+  A related failure occurs when a published bundle preserves a module-relative
+  `new URL(...)`: consumer dependency optimization can relocate that bundle
+  independently from its adjacent asset.
 - Fix:
   Move the image or icon out of the main runtime entrypoint and export it
   through an explicit package asset subpath such as
@@ -528,11 +599,22 @@ emitted before this method can be called`, especially after HMR, navigation,
   Let the business consumer import that asset only when it needs the default
   visual, and keep the package build rule that copies the asset into the packed
   `dist/assets` directory.
+  When the package runtime owns an always-available default icon, prefer a
+  code-owned UI-system SVG component so the runtime does not import an image at
+  all. Conditional asset exports are not sufficient for this case: a
+  browser-conditioned test environment can select the image target and then
+  externalize the package for Node execution, which still fails on `.png`.
+  Keep explicit public asset subpaths only for browser consumers that knowingly
+  opt into the artwork. Do not require every consumer to add a test alias for
+  the published package.
   Apply the same rule to every public runtime subpath in the package, not just
   the first failing icon.
 - Validation:
   Build the affected package, inspect the built runtime entrypoint for the
   absence of the old asset dependency, and rerun `pnpm release:pack:check`.
+  Import any intentionally supported packed asset subpath with Node and run a
+  real Vite dependency-prebundle fixture. The optimized root runtime must
+  contain the code-owned fallback icon and no fallback image dependency.
   If the package is consumed by desktop renderer code in this repo, also run
   the relevant desktop build to confirm the consumer bundler copies or emits
   the asset only when the business import is present.

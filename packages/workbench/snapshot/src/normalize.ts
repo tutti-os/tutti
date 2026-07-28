@@ -2,6 +2,7 @@ import { workbenchSnapshotLimits } from "./limits.ts";
 import {
   workbenchSnapshotSchemaVersion,
   type WorkbenchFrameV1,
+  type WorkbenchSnapshotLayoutBasisV1,
   type WorkbenchSnapshotNodeV1,
   type WorkbenchSnapshotSpaceV1,
   type WorkbenchSnapshotV1
@@ -44,6 +45,9 @@ export function normalizeWorkbenchSnapshot(
     activeNodeId,
     spaces,
     activeSpaceId,
+    layoutBasis: value.layoutBasis
+      ? normalizeLayoutBasis(value.layoutBasis)
+      : undefined,
     metadata: value.metadata
   });
 }
@@ -96,6 +100,30 @@ function normalizeFrame(frame: WorkbenchFrameV1): WorkbenchFrameV1 {
       workbenchSnapshotLimits.minFrameHeight,
       normalizeNumber(frame.height)
     )
+  };
+}
+
+function normalizeLayoutBasis(
+  layoutBasis: WorkbenchSnapshotLayoutBasisV1
+): WorkbenchSnapshotLayoutBasisV1 {
+  return {
+    surfaceSize: {
+      width: normalizeNumber(layoutBasis.surfaceSize.width),
+      height: normalizeNumber(layoutBasis.surfaceSize.height)
+    },
+    layoutConstraints: {
+      minWidth: normalizeNumber(layoutBasis.layoutConstraints.minWidth),
+      minHeight: normalizeNumber(layoutBasis.layoutConstraints.minHeight),
+      surfacePadding: normalizeNumber(
+        layoutBasis.layoutConstraints.surfacePadding
+      ),
+      safeArea: {
+        top: normalizeNumber(layoutBasis.layoutConstraints.safeArea.top),
+        right: normalizeNumber(layoutBasis.layoutConstraints.safeArea.right),
+        bottom: normalizeNumber(layoutBasis.layoutConstraints.safeArea.bottom),
+        left: normalizeNumber(layoutBasis.layoutConstraints.safeArea.left)
+      }
+    }
   };
 }
 

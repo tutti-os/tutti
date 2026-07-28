@@ -21,7 +21,6 @@ export interface WorkbenchSurfacePresentation {
 }
 
 export interface WorkbenchSurfacePresentationInteraction {
-  mode: "activate" | "layout";
   onBackdropPress: () => void;
   onNodePress(nodeId: string): void;
   selectedNodeIds: ReadonlySet<string>;
@@ -68,6 +67,13 @@ export type WorkbenchWindowChromeMode = "system" | "custom-header";
 
 export type WorkbenchFullscreenHeaderMode = "persistent";
 
+export interface WorkbenchWindowHeaderPresentation {
+  border?: "none";
+  heightPx?: number;
+  layout?: "overlay";
+  overflow?: "visible";
+}
+
 export interface WorkbenchResolveWindowChromeModeContext<TData = unknown> {
   node: WorkbenchNode<TData>;
   controller: WorkbenchController<TData>;
@@ -76,6 +82,10 @@ export interface WorkbenchResolveWindowChromeModeContext<TData = unknown> {
 export type WorkbenchResolveWindowChromeMode<TData = unknown> = (
   context: WorkbenchResolveWindowChromeModeContext<TData>
 ) => WorkbenchWindowChromeMode;
+
+export type WorkbenchResolveWindowHeaderPresentation<TData = unknown> = (
+  context: WorkbenchResolveWindowChromeModeContext<TData>
+) => WorkbenchWindowHeaderPresentation | undefined;
 
 export type WorkbenchWindowSurfaceLayer = "default" | "dialog-popover";
 

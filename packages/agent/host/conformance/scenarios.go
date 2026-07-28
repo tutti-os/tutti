@@ -3,6 +3,7 @@ package conformance
 var (
 	createEmptySessionScenario          = Scenario{Name: "create empty session", run: runCreateEmptySession}
 	createWithInitialContentScenario    = Scenario{Name: "create with initial content", run: runCreateWithInitialContent}
+	createWithRailPlacementScenario     = Scenario{Name: "create with explicit rail placement", run: runCreateWithRailPlacement}
 	resumePersistedSessionScenario      = Scenario{Name: "resume persisted session", run: runResumePersistedSession}
 	sendInputScenario                   = Scenario{Name: "send input", run: runSendInput}
 	duplicateClientSubmitIDScenario     = Scenario{Name: "duplicate client submit id", run: runDuplicateClientSubmitID}
@@ -13,6 +14,7 @@ var (
 	planDecisionScenario                = Scenario{Name: "plan decision", run: runPlanDecision}
 	initialTitleCASScenario             = Scenario{Name: "initial title cas", run: runInitialTitleCAS}
 	getSessionScenario                  = Scenario{Name: "get session", run: runGetSession}
+	listSessionTurnsScenario            = Scenario{Name: "list session turns", run: runListSessionTurns}
 	historicalAndLiveSettingsScenario   = Scenario{
 		Name: "historical and live settings",
 		run:  runHistoricalAndLiveSettings,
@@ -31,6 +33,7 @@ func Scenarios() []Scenario {
 	return []Scenario{
 		createEmptySessionScenario,
 		createWithInitialContentScenario,
+		createWithRailPlacementScenario,
 		resumePersistedSessionScenario,
 		sendInputScenario,
 		duplicateClientSubmitIDScenario,
@@ -41,6 +44,7 @@ func Scenarios() []Scenario {
 		planDecisionScenario,
 		initialTitleCASScenario,
 		getSessionScenario,
+		listSessionTurnsScenario,
 		historicalAndLiveSettingsScenario,
 		pinSessionScenario,
 		deleteSessionScenario,
@@ -51,6 +55,7 @@ func Scenarios() []Scenario {
 
 func ResumePolicyScenarios() []Scenario {
 	return []Scenario{
+		{Name: "reject provider session that never established", run: runRejectUnestablishedProviderSession},
 		{Name: "resume imported session by recreate policy", run: runResumeImportedSession},
 		{Name: "reject imported session without resume support", run: runRejectUnsupportedImport},
 		{Name: "reject child independent resume", run: runRejectChildResume},
@@ -87,8 +92,18 @@ func GoalScenarios() []Scenario {
 		{Name: "duplicate goal client submit id", run: runDuplicateGoalClientSubmitID},
 		{Name: "goal reconcile observation", run: runGoalReconcileObservation},
 		{Name: "goal revision actor fence", run: runGoalRevisionActorFence},
+		{Name: "goal generation fence preserves newer goal", run: runGoalGenerationFencePreservesNewerGoal},
 		{Name: "accepted goal control waits without replay", run: runAcceptedGoalControlWaitsWithoutReplay},
 		{Name: "goal inbox consumer preflight", run: runGoalInboxConsumerPreflight},
+	}
+}
+
+// SessionForkScenarios covers the optional native fork capability without
+// weakening the base Driver contract for providers that do not implement it.
+func SessionForkScenarios() []SessionForkScenario {
+	return []SessionForkScenario{
+		{Name: "through-turn fork replay does not redispatch provider", run: runThroughTurnForkReplay},
+		{Name: "provider-accepted fork recovers local commit", run: runProviderAcceptedForkRecovery},
 	}
 }
 
@@ -108,11 +123,13 @@ func ApplicationCoreScenarios() []Scenario {
 	return []Scenario{
 		createEmptySessionScenario,
 		createWithInitialContentScenario,
+		createWithRailPlacementScenario,
 		resumePersistedSessionScenario,
 		sendInputScenario,
 		duplicateClientSubmitIDScenario,
 		initialTitleCASScenario,
 		getSessionScenario,
+		listSessionTurnsScenario,
 		historicalAndLiveSettingsScenario,
 		pinSessionScenario,
 		deleteSessionScenario,

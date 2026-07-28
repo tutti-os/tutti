@@ -1,5 +1,5 @@
 import type { AnalyticsReporterParams } from "../baseReporter.ts";
-import type { AgentAnalyticsErrorCode } from "../agent-error-fields.ts";
+import type { AgentAnalyticsErrorCode } from "../../../workspace-agent/agentAnalyticsError.ts";
 
 export type AgentAnalyticsFlow =
   | "provider_setup"

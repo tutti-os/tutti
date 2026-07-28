@@ -34,7 +34,11 @@ export function useScopedProjectMissingState(
       if (identityRef.current !== identity) {
         return;
       }
-      setResult({ identity, isMissing });
+      setResult((current) =>
+        current.identity === identity && current.isMissing === isMissing
+          ? current
+          : { identity, isMissing }
+      );
     },
     [identity]
   );

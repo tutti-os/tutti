@@ -26,6 +26,7 @@ import type { WorkspaceSummary } from "@tutti-os/client-tuttid-ts";
 import type { WorkbenchHostChromeRenderContext } from "@tutti-os/workbench-surface";
 import {
   Button,
+  MessageCenterIcon,
   Tooltip,
   TooltipContent,
   TooltipTrigger
@@ -49,8 +50,6 @@ import { requestWorkspaceBrowserLaunch } from "../services/workspaceBrowserLaunc
 import { requestWorkspaceFilesLaunch } from "../services/workspaceFilesLaunchCoordinator";
 import { requestWorkspaceIssueManagerLaunch } from "../services/workspaceIssueManagerLaunchCoordinator";
 import { requestGroupChatLaunch } from "../services/groupChatLaunchCoordinator";
-import { resolveWorkspaceAgentStatusPetMood } from "../services/workspaceAgentStatusPetMood";
-import { WorkspaceAgentStatusPetIcon } from "./WorkspaceAgentStatusPetIcon";
 import { useWorkspaceAgentDecisionNotifications } from "./useWorkspaceAgentDecisionNotifications";
 
 const MESSAGE_CENTER_SUMMARY_MESSAGE_LIMIT = 20;
@@ -151,10 +150,6 @@ export function WorkspaceAgentMessageCenterAction({
     sessionEngine,
     workspaceId: workspace.id
   });
-  const triggerPetMood = useEngineSelector(
-    sessionEngine,
-    resolveWorkspaceAgentStatusPetMood
-  );
   const trigger = useMemo(
     () =>
       resolveWorkspaceAgentMessageCenterTrigger({
@@ -311,6 +306,7 @@ export function WorkspaceAgentMessageCenterAction({
         launchWorkspaceFiles: requestWorkspaceFilesLaunch,
         launchGroupChat: requestGroupChatLaunch,
         openBrowserUrl: requestWorkspaceBrowserLaunch,
+        openExternalUrl: (url) => workbenchHostService.openExternal(url),
         workspaceId: workspace.id
       });
     },
@@ -440,7 +436,7 @@ export function WorkspaceAgentMessageCenterAction({
                 })
               }
             >
-              <WorkspaceAgentStatusPetIcon mood={triggerPetMood} />
+              <MessageCenterIcon className="size-4 shrink-0" size={16} />
               <span className="text-[13px] font-semibold">{triggerLabel}</span>
             </Button>
           </span>

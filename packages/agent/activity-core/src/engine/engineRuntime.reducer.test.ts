@@ -171,6 +171,7 @@ test("successful workspace reconcile hydrates state for active root sessions", (
     {
       agentSessionId: "session-1",
       commandId: "session:reconcile:session-1:1",
+      live: false,
       scope: "state",
       timeoutMs: 30_000,
       type: "session/reconcile",
@@ -1235,6 +1236,7 @@ test("timeout message confirmation waits for exact-turn lifecycle reconcile", ()
         occurredAtUnixMs: 4,
         payload: { clientSubmitId: "submit-1", text: "submit-1" },
         role: "user",
+        sequence: 1,
         turnId: "turn-1",
         version: 1
       }

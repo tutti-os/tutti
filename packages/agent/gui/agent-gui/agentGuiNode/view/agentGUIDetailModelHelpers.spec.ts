@@ -173,7 +173,7 @@ describe("transport availability presentation", () => {
         isInterrupting: false,
         isSubmitting: false,
         isUnavailable: false,
-        sessionRuntimeBlocked: true
+        runtimeCommandsBlocked: true
       })
     ).toEqual({ disabled: true, visible: true });
   });
@@ -184,7 +184,8 @@ describe("handoffProjectPathForConversation", () => {
     expect(
       handoffProjectPathForConversation({
         cwd: "/workspace/fallback",
-        project: { path: " /workspace/project-a " }
+        project: { path: " /workspace/project-a " },
+        railSectionKey: "project:/workspace/project-a"
       } as never)
     ).toBe("/workspace/project-a");
   });
@@ -193,8 +194,19 @@ describe("handoffProjectPathForConversation", () => {
     expect(
       handoffProjectPathForConversation({
         cwd: " /workspace/project-b ",
-        project: null
+        project: null,
+        railSectionKey: "project:/workspace/project-b"
       } as never)
     ).toBe("/workspace/project-b");
+  });
+
+  it("omits the cwd when the source belongs to conversations", () => {
+    expect(
+      handoffProjectPathForConversation({
+        cwd: " /workspace/conversation ",
+        project: { path: " /workspace/stale-project " },
+        railSectionKey: " conversations "
+      } as never)
+    ).toBeNull();
   });
 });

@@ -174,3 +174,32 @@
     font-weight: 500;
   }
 }
+
+.board-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.board-scroll:hover {
+  scrollbar-color: var(--transparency-hover) transparent;
+}
+
+.board-scroll::-webkit-scrollbar {
+  display: block !important;
+  height: 8px !important;
+  width: 8px !important;
+}
+
+.board-scroll::-webkit-scrollbar-track,
+.board-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.board-scroll::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: transparent;
+}
+
+.board-scroll:hover::-webkit-scrollbar-thumb {
+  background: var(--transparency-hover);
+}

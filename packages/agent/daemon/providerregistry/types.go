@@ -58,6 +58,15 @@ const (
 	ModelPlanModelAddressingProviderPrefixed ModelPlanModelAddressing = "provider_prefixed"
 )
 
+// ModelPlanEndpointAdapter identifies a provider-owned transport adapter that
+// must wrap a bound plan endpoint before runtime preparation. The empty value
+// means the runtime can consume the plan endpoint directly.
+type ModelPlanEndpointAdapter string
+
+const (
+	ModelPlanEndpointAdapterResponsesToChatGateway ModelPlanEndpointAdapter = "responses_to_chat_gateway"
+)
+
 type RuntimeEndpointDescriptor struct {
 	BaseURLEnvVars    []string
 	ConfigKind        EndpointConfigKind
@@ -65,6 +74,9 @@ type RuntimeEndpointDescriptor struct {
 	// ModelPlanModelAddressing declares the composer/settings addressing for
 	// bound plan models; empty means raw plan model ids.
 	ModelPlanModelAddressing ModelPlanModelAddressing
+	// ModelPlanEndpointAdapter declares an additional provider-owned transport
+	// adapter required before the runtime receives a bound plan endpoint.
+	ModelPlanEndpointAdapter ModelPlanEndpointAdapter
 	// NativeSubscription marks the one local runtime that can validate an
 	// official subscription for this protocol without API credentials.
 	NativeSubscription bool
@@ -139,8 +151,12 @@ type RuntimeDescriptor struct {
 	Command             []string
 	ClientInfoName      string
 	AuthRequiredMessage string
-	Endpoint            RuntimeEndpointDescriptor
-	StandardACP         StandardACPRuntimeDescriptor
+	// NativeSessionFork marks runtimes whose provider strategy may expose a
+	// native session-fork primitive. The live adapter must still attest the
+	// exact protocol/version before advertising any fork capability.
+	NativeSessionFork bool
+	Endpoint          RuntimeEndpointDescriptor
+	StandardACP       StandardACPRuntimeDescriptor
 }
 
 type RuntimePermissionModeDescriptor struct {

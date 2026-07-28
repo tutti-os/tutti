@@ -90,6 +90,20 @@ test("provider source changes select catalog and strategy checks", () => {
   assert.ok(keys.includes("boundary:agent-provider-strategy"));
 });
 
+test("every DeviceLink package change selects the Android contract", () => {
+  for (const file of [
+    "packages/device-link/mobile/mobile.go",
+    "packages/device-link/Makefile",
+    "packages/device-link/mobile/androidprobe/AndroidManifest.xml"
+  ]) {
+    const checks = selectRepositoryChecks([file]);
+    assert.ok(
+      checks.some((check) => check.key === "contracts:device-link-android"),
+      `${file} should select the DeviceLink Android contract`
+    );
+  }
+});
+
 test("stylesheet and HTML changes select the backdrop-filter authoring policy", () => {
   for (const file of [
     "packages/workbench/launchpad/src/styles/workbench-launchpad.css",
@@ -102,4 +116,22 @@ test("stylesheet and HTML changes select the backdrop-filter authoring policy", 
       `${file} should select the backdrop-filter policy`
     );
   }
+});
+
+test("stylesheet changes select the CSS :has() performance policy", () => {
+  const checks = selectRepositoryChecks([
+    "packages/agent/gui/app/renderer/agentactivity.css"
+  ]);
+
+  assert.ok(checks.some((check) => check.key === "policy:css-has-performance"));
+});
+
+test("bounded runtime image changes select the image budget policy", () => {
+  const checks = selectRepositoryChecks([
+    "apps/desktop/src/renderer/src/assets/workspace-canvas/dock/default/codex.png"
+  ]);
+
+  assert.ok(
+    checks.some((check) => check.key === "policy:runtime-image-budgets")
+  );
 });

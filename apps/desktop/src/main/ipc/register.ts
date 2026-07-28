@@ -33,6 +33,7 @@ export interface IpcRegistrationDependencies {
     TuttidClient,
     | "listWorkspaceAgentSessionMessages"
     | "listWorkspaceAgentSessions"
+    | "readWorkspaceAgentSessionAttachment"
     | "listWorkspaceAppFactoryJobs"
     | "listWorkspaceApps"
     | "listWorkspaces"

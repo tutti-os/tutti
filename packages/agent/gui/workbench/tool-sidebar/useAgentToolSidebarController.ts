@@ -101,6 +101,19 @@ export function useAgentToolSidebarController({
     setIsSidebarOpen(true);
   }, []);
 
+  const collapseSidebarForContainerConstraint = useCallback(() => {
+    setIsEmptySidebarClosing(false);
+    setIsSidebarOpen(false);
+    dispatch({ type: "close" });
+    onActivePanelChange?.(null);
+    layout.resetPanelExpansion(null);
+    layout.resetContainerResizeBaseline();
+  }, [
+    layout.resetContainerResizeBaseline,
+    layout.resetPanelExpansion,
+    onActivePanelChange
+  ]);
+
   const markContentReady = useCallback((tabId: string) => {
     if (prefersReducedMotion()) {
       setContentReadyTabIds((current) =>
@@ -363,6 +376,7 @@ export function useAgentToolSidebarController({
     bindLayoutWidthProjection,
     bindLifecycle,
     closePanel,
+    collapseSidebarForContainerConstraint,
     closePanelTab,
     contentReadyTabIds,
     ensurePanel,

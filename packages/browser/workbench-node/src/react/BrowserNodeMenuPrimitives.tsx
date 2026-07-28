@@ -26,7 +26,7 @@ export function BrowserNodeMenuItem({
     >
       <span className="min-w-0 flex-1 text-left">{children}</span>
       {endAdornment ? (
-        <span className="ml-auto text-[var(--text-tertiary)]">
+        <span className="ml-auto flex-none! text-[var(--text-tertiary)]">
           {endAdornment}
         </span>
       ) : null}

@@ -3,7 +3,7 @@
 Model access plans are daemon-owned, per-workspace configurations for routing
 supported agent runtimes through a named model endpoint. A plan owns its wire
 protocol, endpoint, encrypted credential, model catalog, default model,
-detection state, enabled state, and first-successful-use state.
+detection state, and enabled state.
 
 This slice owns Plans. `WorkspaceAgent` is the user-facing configuration seam
 that combines one Harness AgentTarget with an optional Plan/default model and
@@ -18,22 +18,26 @@ configuration.
 - `services/tuttid/data/workspace` owns Plan persistence and retains legacy
   binding persistence during the compatibility window.
 - `services/tuttid/service/modelplan` owns CRUD, staged endpoint detection,
-  deletion protection, and first-use projection state.
+  and deletion protection.
 - `services/tuttid/service/workspaceagent` owns every new Harness-to-Plan
   mapping. `services/tuttid/service/modelbinding` is a legacy adapter and
   reference source; Desktop no longer calls its write routes.
 - `packages/agent/daemon/providerregistry` declares whether a provider runtime
-  accepts a model-plan endpoint and which protocol it consumes.
+  accepts a model-plan endpoint, which protocol it consumes, and whether it
+  requires the Codex Responses-to-Chat gateway adapter.
 - `packages/agent/runtimeprep` contains the provider-specific endpoint
-  adapters. Codex and Tutti Agent receive a session-scoped Codex provider
-  configuration; Claude Code receives its supported environment contract;
-  OpenCode receives a session-scoped `opencode.json` provider block via
-  `OPENCODE_CONFIG` (credential travels only as `TUTTI_MODEL_PLAN_API_KEY`
-  with an `{env:…}` reference in the file).
-- `services/tuttid/service/agent` resolves the WorkspaceAgent, supplies its
-  Plan endpoint to runtime preparation, and projects the first completed turn
-  back to the Plan service. Unsnapshotted historical sessions may still use
-  the isolated legacy-binding fallback.
+  adapters. Codex receives a session-scoped Responses provider configuration
+  pointed at the daemon's loopback Model Gateway; Claude Code receives its
+  supported environment contract; OpenCode receives a session-scoped
+  `opencode.json` provider block via `OPENCODE_CONFIG` (credential travels only
+  as `TUTTI_MODEL_PLAN_API_KEY` with an `{env:…}` reference in the file).
+- `services/tuttid/service/modelgateway` owns the Codex-only local
+  `Responses API ↔ Chat Completions API` transport adapter. It does not define
+  session lifecycle, expose a public daemon API, or act as a general
+  multi-provider protocol IR.
+- `services/tuttid/service/agent` resolves the WorkspaceAgent and supplies its
+  Plan endpoint to runtime preparation. Unsnapshotted historical sessions may
+  still use the isolated legacy-binding fallback.
 - Desktop settings and AgentGUI composer surfaces consume the daemon APIs
   behind the `lab.modelPlans` gate; they do not own plan credentials or
   detection state.
@@ -47,22 +51,19 @@ resolves protocols through the catalog instead of provider-identity switches.
 
 ## Request And Runtime Flow
 
-1. A client creates and detects a Plan through the OpenAPI-defined daemon
-   routes.
+1. A client creates a Plan through the OpenAPI-defined daemon route. Saving
+   does not require or trigger detection; the user may explicitly run the
+   connection check on any saved Plan.
 2. The user explicitly creates a WorkspaceAgent by choosing one Harness and,
    optionally, one Plan/default model. Saving a Plan never creates the Harness
    × Plan Cartesian product.
 3. Before a new session starts, tuttid resolves that WorkspaceAgent and
    validates its requested model against the Plan catalog.
 4. Runtime preparation injects the endpoint and credential only into the
-   session-scoped provider environment/configuration. Credentials are never
-   returned by the API or written into generated instructions and manifests.
-5. Before Host starts the provider runtime, tuttid durably records the
-   session-to-plan attribution. After the first completed runtime turn, tuttid
-   records the plan's first-use projection and removes that attribution.
-   Failed turns do not complete it. Startup reconciliation replays any
-   attribution whose completed canonical turn was committed before an
-   observer failure or process shutdown.
+   session-scoped provider environment/configuration. Codex receives a
+   temporary gateway token instead of the upstream Plan credential.
+   Credentials are never returned by the API or written into generated
+   instructions and manifests.
 
 Disabling a plan prevents new sessions from using it; existing running
 sessions are not interrupted. Deleting a plan is rejected while any consumer
@@ -85,25 +86,24 @@ gates the Custom Agents tab under Agent.
 
 - Plan credentials are AES-256-GCM encrypted at rest in `model_plans`
   (`api_key_ciphertext`), sharing the managed-credential key derivation.
-- API responses expose only `hasApiKey`. The credential leaves the daemon in
-  exactly two shapes: the session process environment
-  (`TUTTI_MODEL_PLAN_API_KEY`, `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN`) and
-  the legacy workspace-app grant broker.
+- API responses expose only `hasApiKey`. For Codex, the upstream credential
+  remains in daemon memory and only a random 256-bit gateway token enters
+  `TUTTI_MODEL_PLAN_API_KEY`. Other supported runtimes continue to receive
+  their provider-specific session environment, and the legacy workspace-app
+  grant broker remains a separate credential egress.
 - Credentials must never appear in logs, events, timeline payloads, detection
   results, or generated provider instructions. `runtimeprep` writes the Codex
-  provider table with `env_key`, never the key value.
+  provider table with `env_key`, never the key value. The gateway also redacts
+  the exact upstream credential from forwarded error bodies.
 
-## Staged Detection And First Use
+## Staged Detection
 
 `modelplan.Service.Detect` runs four daemon-verifiable stages in order —
 `network → auth → model_discovery → inference` — each with a machine-readable
-`failureReason`/`remedy` code that UI layers localize. The fifth stage,
-`agent_runtime`, stays `pending` until the first real agent call through the
-plan completes; a plan therefore reads `pending_first_use` after a successful
-save+detect and becomes `ready` only after
-`modelplan.Service.MarkFirstUse` fires. That marker is driven by the agent
-service session-state observer when a plan-bound session settles a turn with a
-completed outcome. Saving is never "fully usable"; only real use is.
+`failureReason`/`remedy` code. A Plan becomes `ready` when all four stages pass
+or are explicitly skipped. Saving a new or changed Plan never runs this check
+and never blocks on its result: a new Plan starts `undetected`, and connection
+changes reset it to `undetected` until the user runs the saved-row check.
 
 Providers without a `/models` catalog (404 on every candidate) keep working:
 discovery is `skipped` when manual models exist and the inference stage
@@ -129,7 +129,10 @@ path.
 WorkspaceAgent primary Plan/default model
   -> agent.Service.resolveModelPlanEndpoint (Create + prepareRuntime)
   -> runtimeprep.PrepareInput.ModelEndpoint
-  -> CodexPreparer: session config.toml [model_providers.tutti-model-plan] + env_key
+  -> Codex:
+     agent.Service registers workspace/session route in loopback Model Gateway
+     -> CodexPreparer writes local /v1 + temporary env_key + wire_api=responses
+     -> gateway translates POST /v1/responses to upstream /v1/chat/completions
      ClaudeCodePreparer: ANTHROPIC_BASE_URL + ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN
      OpenCodePreparer: session opencode.json provider block via OPENCODE_CONFIG
   -> provider runtime speaks to the plan endpoint for the whole session
@@ -141,16 +144,51 @@ Rules:
   `openai` plans, `claude-code` consumes `anthropic` plans. Cursor keeps
   provider-native credentials (no endpoint injection) — no fake UI entry
   points.
+- Anthropic-protocol credential injection follows the endpoint's Claude Code
+  contract, not a blanket “official versus relay” rule. `api.anthropic.com`
+  and Kimi Coding (`api.kimi.com`) require `ANTHROPIC_API_KEY`/`x-api-key`;
+  other relay-style endpoints keep the bearer `ANTHROPIC_AUTH_TOKEN` default.
+  Runtime preparation explicitly blanks the opposite credential variable so
+  inherited shell or Claude settings cannot override the Plan's auth shape.
+  Detection and the launched Agent must use equivalent authentication shapes,
+  or a plan can pass inference detection while every real Agent turn gets 401.
 - Model addressing is a second registry strategy
   (`ModelPlanModelAddressing`): OpenCode declares `provider_prefixed`, so its
   composer/settings values carry the injected `tutti-model-plan/<model>`
   namespace resolved against the session-scoped provider block. Other providers
-  consume raw plan model ids; validation and first-use markers strip the
-  namespace back to plan-domain ids.
+  consume raw plan model ids; validation strips the namespace back to
+  plan-domain ids.
 - Disabled or protocol-mismatched plans fall back to the provider-native
   credential source with a structured log, never a broken session.
 - A plan-bound session validates requested models against the plan's model
   list (`validateModelAgainstPlan`), not provider catalogs.
+- Codex routes are in-memory runtime resources keyed by workspace/session.
+  Create failure, deletion, legacy cleanup paths, and resume replacement revoke
+  the previous token. Resume resolves the immutable Model Plan revision from
+  the session runtime snapshot before registering the replacement route.
+- The Codex gateway is bound to `127.0.0.1:0` on its own listener and serves
+  only authenticated `POST /v1/responses`. It is not mounted on the public
+  tuttid HTTP router, so no daemon OpenAPI change is involved.
+- Gateway v1 supports messages, text/image input, function calls and outputs,
+  function tools (including Codex namespace containers, with collision-safe
+  Chat names restored on Responses output), reasoning effort/content
+  extensions, Chat JSON/SSE, usage, cancellation, and bounded timeouts.
+  Responses roles follow the Codex-to-Chat normalization used by cc-switch:
+  `developer` becomes `system`, `latest_reminder` and unknown internal roles
+  become `user`, text-only content-part arrays are joined with newlines, and
+  all textual system instructions are merged in original order into the first
+  Chat message. This preserves instruction precedence while supporting
+  upstreams that only tokenize the portable role set or only allow `system` at
+  message index zero.
+  At the request boundary, the gateway intersects tool registrations with this
+  translatable set: non-translatable hosted or future tool declarations are
+  omitted before forwarding to Chat. If filtering leaves no tools, it also
+  omits `tool_choice` and `parallel_tool_calls`. Explicit selection of a
+  filtered tool, `required` with no remaining tool, and hosted tool call/output
+  history remain hard errors because dropping them would change requested or
+  already-recorded conversation semantics. Background Responses,
+  Conversations, Realtime/WebSocket, `/responses/compact`, and non-empty
+  `previous_response_id` are also rejected instead of dropped.
 - Composer options for a bound target replace provider-native model options
   with the plan's models (`applyModelPlanComposerOverlay`); each option carries
   the source plan name and `runtimeContext.modelPlan = {id, name, protocol}`.
@@ -182,10 +220,6 @@ points, runtime commands, or timeline cards for it. The composer's `@` panel
 may still list enabled plan models as `workspace-model` mentions for prompt
 context; that chip is presentation-only and must not imply a consult runtime.
 
-Desktop first-use for a `pending_first_use` plan launches Agent GUI against a
-protocol-compatible harness target with the plan/model prefilled
-(`launchFirstUse` + `compatibleWorkspaceModelPlanFirstUseTargets`).
-
 ## Migration
 
 `model_plans_v1` backfills every legacy `managed_model_provider_credentials`
@@ -194,6 +228,11 @@ as-is. The WorkspaceAgent migration deterministically materializes legacy
 AgentTarget bindings as `source=legacy_binding` Agents. Legacy binding rows
 stay for rollback and pre-snapshot session recovery; new renderer writes are
 forbidden and the migration must remain idempotent.
+
+The retired `first_use_json` column and
+`model_plan_first_use_candidates_v1` table migration remain in the SQLite
+schema for downgrade compatibility. Current code does not expose, write, or
+reconcile first-use state.
 
 ## Reference Protection
 
@@ -211,6 +250,9 @@ policy.
 - Do not add a "global current model" or a second AgentTarget binding editor.
   New model selection is owned by explicit WorkspaceAgents.
 - Do not surface plan credentials to the renderer, tests, or snapshots.
+- Do not point Codex directly at a Chat-only Plan while declaring
+  `wire_api = "responses"`; the loopback Model Gateway is the protocol
+  boundary.
 - Do not advertise `modelPlanBinding` for providers without a real injection
   path.
 - Do not let automated review close work; the ladder tops out at

@@ -7,7 +7,7 @@
  * Ownership rules: packages/workspace/file-preview/CONTRACT.md
  */
 
-import type { ReactElement, ReactNode } from "react";
+import type { ImgHTMLAttributes, ReactElement, ReactNode } from "react";
 import type { WorkspaceFilePreviewKind } from "../core/workspaceFilePreviewKinds.ts";
 
 export type WorkspaceFilePreviewSurfaceState<TEntry> =
@@ -66,6 +66,41 @@ export type WorkspaceFilePreviewSurfaceVariant =
   | "canvas"
   | "compact"
   | "detail";
+
+/**
+ * Host-neutral image canvas shared by workspace previews and other file-backed
+ * surfaces. The caller owns the source URL lifecycle and error-state policy.
+ */
+export interface WorkspaceImagePreviewSurfaceProps {
+  alt: string;
+  draggable?: boolean;
+  onError?: ImgHTMLAttributes<HTMLImageElement>["onError"];
+  src: string;
+  variant: WorkspaceFilePreviewSurfaceVariant;
+}
+
+export function WorkspaceImagePreviewSurface({
+  alt,
+  draggable,
+  onError,
+  src,
+  variant
+}: WorkspaceImagePreviewSurfaceProps): ReactElement {
+  const styles = workspaceFilePreviewSurfaceStyles[variant];
+  return (
+    <WorkspaceFilePreviewFrame
+      className={joinClassNames(styles.frame, styles.imageFrame)}
+    >
+      <img
+        alt={alt}
+        className={styles.image}
+        draggable={draggable}
+        onError={onError}
+        src={src}
+      />
+    </WorkspaceFilePreviewFrame>
+  );
+}
 
 export interface WorkspaceFilePreviewHostRendererProps<TEntry> {
   entry: TEntry;
@@ -154,15 +189,11 @@ export function WorkspaceFilePreviewSurface<TEntry>({
       );
     case "image":
       return (
-        <WorkspaceFilePreviewFrame
-          className={joinClassNames(styles.frame, styles.imageFrame)}
-        >
-          <img
-            alt={imageAlt(state.entry)}
-            className={styles.image}
-            src={state.objectUrl}
-          />
-        </WorkspaceFilePreviewFrame>
+        <WorkspaceImagePreviewSurface
+          alt={imageAlt(state.entry)}
+          src={state.objectUrl}
+          variant={variant}
+        />
       );
     case "text":
       return (

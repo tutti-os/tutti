@@ -10,6 +10,7 @@ export default defineConfig({
     "icons/index": "src/icons/index.ts",
     index: "src/index.ts",
     "metadata/index": "src/metadata/index.ts",
+    native: "src/native/index.ts",
     utils: "src/lib/utils.ts"
   },
   format: ["esm"],

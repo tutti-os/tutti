@@ -124,6 +124,7 @@ export function StandaloneAgentIssueManagerToolPanel({
     isDragging: false,
     isFocused: active,
     isResizing: false,
+    isVisible: true,
     node,
     setNodeRuntimeState: () => undefined,
     setSnapshotNodeState: () => undefined

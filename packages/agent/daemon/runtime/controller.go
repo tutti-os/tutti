@@ -15,6 +15,7 @@ var (
 	ErrSessionNotFound                  = errors.New("agent session not found")
 	ErrSessionSettingsRequireNewSession = errors.New("agent session settings update requires a new session to preserve context")
 	ErrSessionActiveTurn                = errors.New("agent session already has an active turn")
+	ErrSessionForkUnsupported           = errors.New("agent session fork is unsupported")
 )
 
 const defaultStreamingReportCoalesceWindow = 50 * time.Millisecond
@@ -24,9 +25,10 @@ const interactiveDenyFollowUpPollInterval = 25 * time.Millisecond
 type execMetadataContextKey struct{}
 
 type Controller struct {
-	startMu                     sync.Mutex
 	mu                          sync.Mutex
+	streamObserverMu            sync.RWMutex
 	sessions                    map[string]Session
+	sessionAvailabilityWaiters  map[string]*sessionAvailabilityWaiter
 	adapters                    map[string]Adapter
 	adapterResolver             AdapterResolver
 	turns                       map[string]activeTurn
@@ -35,16 +37,45 @@ type Controller struct {
 	configOptionsUpdates        map[string]AgentSessionConfigOptionsUpdate
 	pendingConfigOptionsUpdates map[string][]AgentSessionConfigOptionsUpdate
 	provisionalSessions         map[string]bool
-	lifecycleLocks              map[string]*sessionLifecycleLock
+	goalGenerationFences        map[string]*controllerGoalGenerationFenceRegistry
+	startupLocks                map[startupLockKey]*controllerLifecycleLock
+	lifecycleLocks              map[string]*controllerLifecycleLock
 	hub                         *EventHub
 	reporter                    DurableActivityReporter
 	reportQueue                 *reportRequestQueue
 	terminalInteractions        terminalInteractiveDispositionStore
+	streamObserver              RuntimeStreamEventObserver
 }
 
-type sessionLifecycleLock struct {
+// RuntimeStreamEventObserver receives the ordered precommit stream projection
+// synchronously with the per-session EventHub fan-out. Implementations must
+// remain lightweight: the ordering guarantee prevents a durable terminal
+// confirmation from overtaking its preceding optimistic deltas.
+type RuntimeStreamEventObserver interface {
+	ObserveRuntimeStreamEvents(
+		context.Context,
+		string,
+		string,
+		[]StreamEvent,
+	) error
+}
+
+type controllerLifecycleLock struct {
 	gate chan struct{}
 	refs int
+}
+
+// startupLockKey uses agentSessionID for normal Host calls. Provider is set
+// only for the legacy path that asks Controller.Start to allocate the ID.
+type startupLockKey struct {
+	roomID         string
+	agentSessionID string
+	provider       string
+}
+
+type sessionAvailabilityWaiter struct {
+	changed chan struct{}
+	refs    int
 }
 
 type activeTurn struct {
@@ -109,6 +140,7 @@ func NewControllerWithAdapterResolver(adapters []Adapter, reporter DurableActivi
 	}
 	controller := &Controller{
 		sessions:                    make(map[string]Session),
+		sessionAvailabilityWaiters:  make(map[string]*sessionAvailabilityWaiter),
 		adapters:                    byProvider,
 		adapterResolver:             resolver,
 		turns:                       make(map[string]activeTurn),
@@ -117,7 +149,9 @@ func NewControllerWithAdapterResolver(adapters []Adapter, reporter DurableActivi
 		configOptionsUpdates:        make(map[string]AgentSessionConfigOptionsUpdate),
 		pendingConfigOptionsUpdates: make(map[string][]AgentSessionConfigOptionsUpdate),
 		provisionalSessions:         make(map[string]bool),
-		lifecycleLocks:              make(map[string]*sessionLifecycleLock),
+		goalGenerationFences:        make(map[string]*controllerGoalGenerationFenceRegistry),
+		startupLocks:                make(map[startupLockKey]*controllerLifecycleLock),
+		lifecycleLocks:              make(map[string]*controllerLifecycleLock),
 		hub:                         NewEventHub(),
 		reporter:                    reporter,
 	}

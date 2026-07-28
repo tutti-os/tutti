@@ -1,5 +1,5 @@
 import { type ReactNode } from "react";
-import { ListChecks, Sparkles, Target, X } from "lucide-react";
+import { ListChecks, Target, X } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -33,7 +33,7 @@ import {
   workspaceReferenceSelectValue
 } from "./AgentComposerChrome";
 import { AgentHandoffMenu } from "./AgentHandoffMenu";
-import { TuttiBudgetPopover } from "./TuttiBudgetPopover";
+import { ComposerTuttiModeChip } from "./ComposerTuttiModeChip";
 
 interface Props {
   workspaceId: string;
@@ -41,7 +41,6 @@ interface Props {
   provider: AgentComposerProps["provider"];
   composerSettings: AgentComposerProps["composerSettings"];
   usage: AgentComposerUsage | null;
-  previewMode: boolean;
   compactSupported: boolean | null;
   hasCompactableContext: boolean;
   composerControlsHardDisabled: boolean;
@@ -54,7 +53,8 @@ interface Props {
   isPlanModeActive: boolean;
   isTuttiModeActive: boolean;
   isTuttiModeUpdating: boolean;
-  tuttiModeOrchestrationIntensity: number;
+  tuttiModeSupported: boolean;
+  onTuttiModeChange?: (active: boolean) => void;
   composerActionButton: ReactNode;
   quickPromptControl?: ReactNode;
   showHandoffSelect: boolean;
@@ -79,8 +79,6 @@ interface Props {
   onClearGoalMode: () => void;
   draftPrompt: string;
   onClearPlanMode: () => void;
-  onClearTuttiMode: () => void;
-  onTuttiModeOrchestrationIntensityChange: (value: number) => void;
 }
 
 export function ComposerFooter({
@@ -89,7 +87,6 @@ export function ComposerFooter({
   provider,
   composerSettings,
   usage,
-  previewMode,
   compactSupported,
   hasCompactableContext,
   composerControlsHardDisabled,
@@ -102,7 +99,8 @@ export function ComposerFooter({
   isPlanModeActive,
   isTuttiModeActive,
   isTuttiModeUpdating,
-  tuttiModeOrchestrationIntensity,
+  tuttiModeSupported,
+  onTuttiModeChange,
   composerActionButton,
   quickPromptControl,
   showHandoffSelect,
@@ -126,9 +124,7 @@ export function ComposerFooter({
   onSubmit,
   onClearGoalMode: clearGoalModeBadge,
   draftPrompt: _draftPrompt,
-  onClearPlanMode,
-  onClearTuttiMode,
-  onTuttiModeOrchestrationIntensityChange
+  onClearPlanMode
 }: Props) {
   const showSettingsLoadingPlaceholders = composerSettings.isSettingsLoading;
   return (
@@ -136,31 +132,7 @@ export function ComposerFooter({
       <div className={styles.composerFooter}>
         <div className={composerStyles.footerGroup}>
           <div className="inline-flex shrink-0 items-center gap-1">
-            {previewMode ? (
-              <TooltipProvider delayDuration={120}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label={labels.referenceWorkspaceFiles}
-                      className={cn(
-                        styles.composerMenuTrigger,
-                        styles.composerReferenceTrigger,
-                        "group w-auto justify-center text-[var(--agent-gui-text-secondary)]"
-                      )}
-                    >
-                      <AgentComposerMaskIcon
-                        iconUrl={addLinedIconUrl}
-                        marker="reference-add"
-                      />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">
-                    {labels.addContent}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            ) : (
+            {
               <Select
                 open={false}
                 value={workspaceReferenceSelectValue}
@@ -204,7 +176,7 @@ export function ComposerFooter({
                   </Tooltip>
                 </TooltipProvider>
               </Select>
-            )}
+            }
             <TooltipProvider delayDuration={120}>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -223,7 +195,7 @@ export function ComposerFooter({
                   >
                     <span
                       aria-hidden
-                      className="inline-block size-3.5 bg-current transition-colors"
+                      className="inline-block size-4 bg-current transition-colors"
                       style={{
                         WebkitMaskImage: `url("${atLinedIconUrl}")`,
                         WebkitMaskPosition: "center",
@@ -243,6 +215,14 @@ export function ComposerFooter({
               </Tooltip>
             </TooltipProvider>
           </div>
+          <ComposerTuttiModeChip
+            active={isTuttiModeActive}
+            updating={isTuttiModeUpdating}
+            label={labels.tuttiModeLabel}
+            description={labels.tuttiModeDescription}
+            tuttiModeSupported={tuttiModeSupported}
+            onTuttiModeChange={onTuttiModeChange}
+          />
           {showHandoffSelect ? (
             <AgentHandoffMenu
               disabled={handoffDisabled}
@@ -348,69 +328,6 @@ export function ComposerFooter({
               </span>
             </button>
           ) : null}
-          {isTuttiModeActive ? (
-            <span className="inline-flex shrink-0 items-center gap-0.5">
-              <TuttiBudgetPopover
-                intensity={tuttiModeOrchestrationIntensity}
-                labels={{
-                  title: labels.tuttiBudgetTitle,
-                  intensityLabel: labels.tuttiBudgetIntensityLabel,
-                  previewTitle: labels.tuttiBudgetPreviewTitle,
-                  previewHint: labels.tuttiBudgetPreviewHint,
-                  previewCost: labels.tuttiBudgetPreviewCost,
-                  previewBalance: labels.tuttiBudgetPreviewBalance,
-                  previewPowerful: labels.tuttiBudgetPreviewPowerful,
-                  modelStrengthLabel: labels.tuttiBudgetModelStrengthLabel,
-                  modelStrengthCost: labels.tuttiBudgetModelStrengthCost,
-                  modelStrengthBalance: labels.tuttiBudgetModelStrengthBalance,
-                  modelStrengthPowerful:
-                    labels.tuttiBudgetModelStrengthPowerful,
-                  agentCountLabel: labels.tuttiBudgetAgentCountLabel,
-                  agentCountCost: labels.tuttiBudgetAgentCountCost,
-                  agentCountBalance: labels.tuttiBudgetAgentCountBalance,
-                  agentCountPowerful: labels.tuttiBudgetAgentCountPowerful,
-                  confirm: labels.tuttiBudgetConfirm,
-                  cancel: labels.tuttiBudgetCancel
-                }}
-                onConfirm={onTuttiModeOrchestrationIntensityChange}
-              >
-                <button
-                  type="button"
-                  disabled={isTuttiModeUpdating}
-                  aria-label={labels.tuttiModeLabel}
-                  title={labels.tuttiModeDescription}
-                  data-agent-tutti-mode-badge="true"
-                  className={cn(
-                    styles.composerMenuTrigger,
-                    "group w-auto",
-                    "disabled:cursor-not-allowed disabled:opacity-60"
-                  )}
-                >
-                  <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
-                    <Sparkles aria-hidden className="size-3.5 shrink-0" />
-                    <span className="min-w-0 truncate">
-                      {labels.tuttiModeLabel}
-                    </span>
-                  </span>
-                </button>
-              </TuttiBudgetPopover>
-              <button
-                type="button"
-                disabled={isTuttiModeUpdating}
-                aria-label={labels.tuttiModeRemove}
-                title={labels.tuttiModeRemove}
-                data-agent-tutti-mode-remove="true"
-                className={cn(
-                  styles.composerMenuTrigger,
-                  "group w-auto justify-center",
-                  "disabled:cursor-not-allowed disabled:opacity-60"
-                )}
-                onClick={onClearTuttiMode}
-              >
-                <X aria-hidden className="size-3" strokeWidth={3} />
-              </button>
-            </span>
-          ) : null}
           {isGoalModeActive ? (
             <button
               type="button"
@@ -452,7 +369,7 @@ export function ComposerFooter({
               percentUsed={usage.percentUsed}
               usedTokens={usage.usedTokens}
               totalTokens={usage.totalTokens}
-              tooltipsEnabled={!previewMode}
+              tooltipsEnabled
               compactSupported={compactSupported ?? false}
               // Only guard against compacting mid-turn: isSendingTurn is
               // the narrow "a turn is actively executing right now"
@@ -486,7 +403,6 @@ export function ComposerFooter({
                   : undefined
               }
               onLinkAction={onLinkAction}
-              previewMode={previewMode}
               provider={provider}
               labels={{
                 permissionLabel: labels.permissionLabel,
@@ -501,7 +417,6 @@ export function ComposerFooter({
             <AgentModelReasoningDropdown
               composerSettings={composerSettings}
               disabled={settingsControlsDisabled}
-              previewMode={previewMode}
               labels={{
                 modelLabel: labels.modelLabel,
                 modelSelectionLabel: labels.modelSelectionLabel,

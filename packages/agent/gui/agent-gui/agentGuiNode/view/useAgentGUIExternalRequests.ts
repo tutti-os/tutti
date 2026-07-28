@@ -62,7 +62,6 @@ export function useAgentGUIExternalRequests(input: {
     | "untitledConversationTitle"
   >;
   newConversationRequestSequence: number | null;
-  previewMode: boolean;
   requestCreateConversation: (options?: { source?: string }) => void;
   requestRenameConversation: (conversation: Conversation) => void;
   sessionActionRequest: SessionActionRequest | null;
@@ -75,7 +74,6 @@ export function useAgentGUIExternalRequests(input: {
     createConversationDisabled,
     labels,
     newConversationRequestSequence,
-    previewMode,
     requestCreateConversation,
     requestRenameConversation,
     sessionActionRequest,
@@ -112,8 +110,7 @@ export function useAgentGUIExternalRequests(input: {
     if (
       sessionActionRequest &&
       handledSessionActionRequestSequenceRef.current !==
-        sessionActionRequest.sequence &&
-      !previewMode
+        sessionActionRequest.sequence
     ) {
       handledSessionActionRequestSequenceRef.current =
         sessionActionRequest.sequence;
@@ -141,7 +138,6 @@ export function useAgentGUIExternalRequests(input: {
     createConversationDisabled,
     labels,
     newConversationRequestSequence,
-    previewMode,
     requestCreateConversation,
     requestRenameConversation,
     sessionActionRequest,

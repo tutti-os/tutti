@@ -13,6 +13,10 @@ const runtimeTabSource = readFileSync(
   resolve(directory, "WorkspaceAgentsSettingsTab.tsx"),
   "utf8"
 );
+const connectionSectionSource = readFileSync(
+  resolve(directory, "WorkspaceConnectionSettingsSection.tsx"),
+  "utf8"
+);
 
 test("workspace settings gives Model an independent Plan-only section", () => {
   assert.match(panelSource, /id: "model" as const/);
@@ -39,4 +43,24 @@ test("workspace settings makes Custom Agents the third Agent tab", () => {
     /agentTab === "customAgents"[\s\S]{0,220}<WorkspaceAgentsSection \/>/
   );
   assert.doesNotMatch(runtimeTabSource, /WorkspaceAgentsSection/);
+});
+
+test("workspace settings shows Connection with mobile remote access settings", () => {
+  assert.match(
+    panelSource,
+    /\.\.\.\(mobileRemoteAccessSettingsEnabled[\s\S]{0,220}id: "connection" as const/
+  );
+  assert.match(
+    panelSource,
+    /activeSection === "connection"[\s\S]{0,220}<WorkspaceConnectionSettingsSection/
+  );
+  assert.match(
+    panelSource,
+    /!mobileRemoteAccessSettingsEnabled[\s\S]{0,120}activeSection === "connection"[\s\S]{0,120}selectSection\("general"\)/
+  );
+  assert.match(connectionSectionSource, /accountService\.refreshUserInfo\(\)/);
+  assert.match(
+    connectionSectionSource,
+    /user && mobileRemoteAccessSettingsEnabled[\s\S]{0,120}<WorkspaceMobileRemoteSettingsSection/
+  );
 });

@@ -18,6 +18,11 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 	if h == nil || h.runtime == nil || h.store == nil || workspaceID == "" || input.AgentSessionID == "" || input.Provider == "" {
 		return CreateSessionResult{}, ErrInvalidArgument
 	}
+	var err error
+	input.RailPlacement, err = normalizeRailPlacement(input.RailPlacement)
+	if err != nil {
+		return CreateSessionResult{}, err
+	}
 	ref := SessionRef{WorkspaceID: workspaceID, AgentSessionID: input.AgentSessionID}
 	normalized, promptText, err := normalizeOptionalPromptContent(input.InitialContent)
 	if err != nil {
@@ -48,6 +53,9 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 		canonicalSession, _, readErr := h.store.GetSession(ctx, workspaceID, input.AgentSessionID)
 		if readErr != nil {
 			return CreateSessionResult{}, readErr
+		}
+		if !railPlacementMatchesSession(input.RailPlacement, canonicalSession) {
+			return CreateSessionResult{}, ErrRailPlacementConflict
 		}
 		runtimeSession, _ := h.runtime.Session(workspaceID, input.AgentSessionID)
 		return CreateSessionResult{Session: runtimeSession, Canonical: canonicalSession, TurnID: claim.TurnID}, nil
@@ -111,7 +119,10 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 	}
 	h.observeStep(ctx, "session_create", "runtime_started", session.ID, session.Provider, startedAt, nil)
 	startedAt = h.now()
-	canonicalSession, err := h.store.InitializeRuntimeSession(ctx, session)
+	canonicalSession, err := h.store.InitializeRuntimeSession(ctx, RuntimeSessionInitialization{
+		Session:       session,
+		RailPlacement: input.RailPlacement,
+	})
 	if err != nil {
 		h.observeStep(ctx, "session_create", "session_persisted", session.ID, session.Provider, startedAt, err)
 		return CreateSessionResult{}, cleanup(err, true, false)
@@ -120,6 +131,11 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 		identityErr := fmt.Errorf("initialize workspace agent session: persisted session identity mismatch")
 		h.observeStep(ctx, "session_create", "session_persisted", session.ID, session.Provider, startedAt, identityErr)
 		return CreateSessionResult{}, cleanup(identityErr, true, true)
+	}
+	if !railPlacementMatchesSession(input.RailPlacement, canonicalSession) {
+		placementErr := ErrRailPlacementConflict
+		h.observeStep(ctx, "session_create", "session_persisted", session.ID, session.Provider, startedAt, placementErr)
+		return CreateSessionResult{}, cleanup(placementErr, true, true)
 	}
 	h.observeStep(ctx, "session_create", "session_persisted", session.ID, session.Provider, startedAt, nil)
 	if len(normalized) == 0 && !isTypedGoal {
@@ -243,16 +259,45 @@ func (h *Host) ensureRuntimeSessionLocked(ctx context.Context, ref SessionRef) (
 	if found && ResolveResumePolicy(canonicalSession).Mode == ResumeModeReject {
 		return ProviderRuntimeSession{}, ErrSessionNotFound
 	}
+	policy := ResolveResumePolicy(canonicalSession)
+	evidence := storesqlite.ProviderSessionResumeEvidence{}
+	if found && policy.Mode != ResumeModeRecreate {
+		evidence, err = h.store.GetProviderSessionResumeEvidence(ctx, ref.WorkspaceID, ref.AgentSessionID)
+		if err != nil {
+			return ProviderRuntimeSession{}, err
+		}
+	}
 	if live, ok := h.runtime.Session(ref.WorkspaceID, ref.AgentSessionID); ok {
 		if !ExternalImportResumeSupported(live.RuntimeContext) {
 			return ProviderRuntimeSession{}, ErrSessionNotFound
+		}
+		if policy.Mode != ResumeModeRecreate &&
+			!runtimeSessionHasActiveTurn(live) &&
+			strings.TrimSpace(canonicalSession.ActiveTurnID) == "" &&
+			evidence.HasSettledTurn && !evidence.Established {
+			return ProviderRuntimeSession{}, ErrProviderSessionNotEstablished
+		}
+		live.Resumable = live.Resumable || evidence.Established
+		// Controller may retain the Session record after releasing an idle
+		// provider connection. Controller's registry handles connection
+		// replacement; clearing this Host marker additionally refreshes its
+		// retained set from the durable store before Ensure returns.
+		if !h.runtimeSessionLive(ref.WorkspaceID, ref.AgentSessionID) {
+			h.goalFencesRestored.Delete(ref.WorkspaceID + "\x00" + ref.AgentSessionID)
+		}
+		if err := h.restoreGoalGenerationFencesOnce(ctx, ref); err != nil {
+			return ProviderRuntimeSession{}, err
 		}
 		return live, nil
 	}
 	if !found || strings.TrimSpace(canonicalSession.Provider) == "" {
 		return ProviderRuntimeSession{}, ErrSessionNotFound
 	}
-	policy := ResolveResumePolicy(canonicalSession)
+	if policy.Mode != ResumeModeRecreate &&
+		!evidence.Established &&
+		(!evidence.HasTurns || evidence.HasSettledTurn) {
+		return ProviderRuntimeSession{}, ErrProviderSessionNotEstablished
+	}
 	prepared := PreparedRuntime{Cwd: strings.TrimSpace(canonicalSession.Cwd)}
 	settings := composerSettingsFromMap(canonicalSession.Settings)
 	if h.preparation != nil {
@@ -272,7 +317,7 @@ func (h *Host) ensureRuntimeSessionLocked(ctx context.Context, ref SessionRef) (
 	result, err := h.runtime.Resume(ctx, RuntimeResumeInput{
 		WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID,
 		AgentTargetID: strings.TrimSpace(canonicalSession.AgentTargetID), Provider: strings.TrimSpace(canonicalSession.Provider),
-		ProviderSessionID: strings.TrimSpace(canonicalSession.ProviderSessionID), Cwd: prepared.Cwd,
+		ProviderSessionID: strings.TrimSpace(canonicalSession.ProviderSessionID), Resumable: evidence.Established, Cwd: prepared.Cwd,
 		Env: append([]string(nil), prepared.Env...), Title: strings.TrimSpace(canonicalSession.Title),
 		Status: persistedRuntimeStatus(canonicalSession.ActiveTurnID), Settings: settings,
 		CreatedAtUnixMS: canonicalSession.CreatedAtUnixMS, UpdatedAtUnixMS: canonicalSession.UpdatedAtUnixMS,
@@ -283,7 +328,17 @@ func (h *Host) ensureRuntimeSessionLocked(ctx context.Context, ref SessionRef) (
 	if err != nil {
 		return ProviderRuntimeSession{}, err
 	}
+	if err := h.restoreGoalGenerationFences(ctx, ref); err != nil {
+		return ProviderRuntimeSession{}, err
+	}
+	h.goalFencesRestored.Store(ref.WorkspaceID+"\x00"+ref.AgentSessionID, struct{}{})
 	return result, nil
+}
+
+func runtimeSessionHasActiveTurn(session ProviderRuntimeSession) bool {
+	return session.TurnLifecycle != nil &&
+		session.TurnLifecycle.ActiveTurnID != nil &&
+		strings.TrimSpace(*session.TurnLifecycle.ActiveTurnID) != ""
 }
 
 func (h *Host) SendInput(ctx context.Context, ref SessionRef, input SendInput) (SendInputResult, error) {

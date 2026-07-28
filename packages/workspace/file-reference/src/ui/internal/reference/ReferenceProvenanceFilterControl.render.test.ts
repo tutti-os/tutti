@@ -73,12 +73,10 @@ test("provenance filter handles row clicks and disabled option visibility", asyn
         members: "Members",
         allMembers: "All members",
         allSources: "All sources",
-        filteredSources: "Filtered sources",
-        reset: "Reset"
+        filteredSources: "Filtered sources"
       },
       memberOptions: [{ id: "member-1", label: longMemberLabel }],
       popoverElevation: "panel",
-      onReset() {},
       onToggle(_dimension, id) {
         calls.push(id);
       },
@@ -109,22 +107,15 @@ test("provenance filter handles row clicks and disabled option visibility", asyn
     });
 
     assert.doesNotMatch(dom.window.document.body.textContent ?? "", /Cursor/);
-    const resetButton = [
-      ...dom.window.document.querySelectorAll<HTMLButtonElement>("button")
-    ].find((element) => element.textContent === "Reset");
+    assert.doesNotMatch(dom.window.document.body.textContent ?? "", /Reset/);
     const filterTrigger = dom.window.document.querySelector<HTMLButtonElement>(
       'button[aria-label="Filtered sources"]'
     );
-    assert.ok(resetButton);
     assert.ok(filterTrigger);
     assert.match(filterTrigger.className, /(?:^|\s)border-0(?:\s|$)/);
     assert.doesNotMatch(
       filterTrigger.className,
       /border-\[var\(--border-focus\)\]/
-    );
-    assert.ok(
-      resetButton.compareDocumentPosition(filterTrigger) &
-        dom.window.Node.DOCUMENT_POSITION_FOLLOWING
     );
     const popover = dom.window.document.querySelector<HTMLElement>(".nodrag");
     assert.ok(popover);
@@ -270,6 +261,7 @@ function buildFilterControlRenderModule(tempDir: string): string {
           side,
           sideOffset,
           size,
+          segments,
           tabs,
           value,
           variant,
@@ -318,6 +310,20 @@ function buildFilterControlRenderModule(tempDir: string): string {
           }, tab.label)
         ));
       }
+      export function Checkbox(props = {}) {
+        return h("span", cleanProps(props));
+      }
+      export function SegmentBar(props = {}) {
+        return h("div", { role: "tablist" }, props.segments.map((segment) =>
+          h("button", {
+            key: segment.value,
+            "aria-selected": props.value === segment.value,
+            role: "tab",
+            type: "button",
+            onClick: () => props.onValueChange(segment.value)
+          }, segment.label)
+        ));
+      }
     `
   );
   const coreUrl = writeMock(
@@ -330,6 +336,18 @@ function buildFilterControlRenderModule(tempDir: string): string {
       export function referenceProvenanceFilterIsActive(value) {
         return value.agentTargetIds !== null || value.memberIds !== null;
       }
+      export function resolveReferenceProvenanceAgentLabelParts(
+        option,
+        memberOptionsById
+      ) {
+        if (!option.parentMemberId) return null;
+        const ownerLabel = memberOptionsById.get(option.parentMemberId)?.label;
+        if (!ownerLabel) return null;
+        const prefix = \`\${ownerLabel} · \`;
+        if (!option.label.startsWith(prefix)) return null;
+        const agentLabel = option.label.slice(prefix.length);
+        return agentLabel ? { agentLabel, ownerLabel } : null;
+      }
     `
   );
 
@@ -341,13 +359,14 @@ function buildFilterControlRenderModule(tempDir: string): string {
       /import \{\s*Button,[\s\S]*?\} from "@tutti-os\/ui-system";/,
       `import {
         Button,
+        Checkbox,
         ChevronDownIcon,
         DropdownMenu,
         DropdownMenuCheckboxItem,
         DropdownMenuContent,
         DropdownMenuGroup,
         DropdownMenuTrigger,
-        UnderlineTabs,
+        SegmentBar,
         cn
       } from "${uiSystemUrl}";`
     )
@@ -355,7 +374,8 @@ function buildFilterControlRenderModule(tempDir: string): string {
       /import \{\s*referenceProvenanceFilterIds,[\s\S]*?\} from "\.\.\/\.\.\/\.\.\/core\/referenceProvenance\.ts";/,
       `import {
         referenceProvenanceFilterIds,
-        referenceProvenanceFilterIsActive
+        referenceProvenanceFilterIsActive,
+        resolveReferenceProvenanceAgentLabelParts
       } from "${coreUrl}";`
     );
 

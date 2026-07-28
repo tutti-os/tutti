@@ -40,6 +40,7 @@ import {
   classifyAgentRichTextTextPaste,
   createAgentRichTextCaretAnchorExtension,
   createAgentRichTextPlaceholderExtension,
+  insertAgentRichTextClipboardHtml,
   isAgentRichTextLargeTextPaste,
   isPromptVisualLineStart,
   readEditorDomSelectionRange,
@@ -47,6 +48,7 @@ import {
   readPromptSelection,
   readPromptTextRange,
   readSelectedPlainText,
+  serializeAgentRichTextSelection,
   scrollEditorSelectionIntoView,
   writePlainTextToClipboard
 } from "./agentRichTextEditorSupport";
@@ -58,6 +60,12 @@ import {
   isAgentRichTextUserContentInsertion,
   markAgentRichTextPointerFocus
 } from "./agentRichTextEngagement";
+import {
+  createAgentRichTextControlledValueTracker,
+  recordAgentRichTextLocalEdit,
+  shouldApplyAgentRichTextControlledValue
+} from "./agentRichTextControlledValue";
+import { createAgentRichTextMentionSuggestionSuppression } from "./agentRichTextMentionSuggestionSuppression";
 
 export type {
   AgentRichTextEditorHandle,
@@ -70,6 +78,7 @@ export const AgentRichTextEditor = forwardRef<
 >(function AgentRichTextEditor(
   {
     value,
+    contentScopeKey = "default",
     disabled,
     placeholder,
     removeMentionLabel,
@@ -85,6 +94,7 @@ export const AgentRichTextEditor = forwardRef<
     submitOnEnter = true,
     enableFileMentionSuggestions = true,
     onKeyDownForPalette,
+    onHistoryNavigation,
     onFileMentionSuggestionChange,
     onFileMentionSuggestionKeyDown,
     onLinkClick,
@@ -100,7 +110,9 @@ export const AgentRichTextEditor = forwardRef<
   "use memo";
   const { t } = useTranslation();
   const lastEmittedPromptRef = useRef<string | null>(value);
-  const pendingLocalPromptEchoesRef = useRef(new Set<string>());
+  const controlledValueTrackerRef = useRef(
+    createAgentRichTextControlledValueTracker(contentScopeKey)
+  );
   const editorRef = useRef<Editor | null>(null);
   const onChangeRef = useRef(onChange);
   const onContentLayoutInvalidatedRef = useRef(onContentLayoutInvalidated);
@@ -110,6 +122,7 @@ export const AgentRichTextEditor = forwardRef<
   const onSubmitRef = useRef(onSubmit);
   const onSubmitGuidanceRef = useRef(onSubmitGuidance);
   const onKeyDownForPaletteRef = useRef(onKeyDownForPalette);
+  const onHistoryNavigationRef = useRef(onHistoryNavigation);
   const onFileMentionSuggestionChangeRef = useRef(
     onFileMentionSuggestionChange
   );
@@ -127,7 +140,9 @@ export const AgentRichTextEditor = forwardRef<
   const removeMentionLabelRef = useRef(removeMentionLabel);
   const availableSkillsRef = useRef(availableSkills);
   const availableCapabilitiesRef = useRef(availableCapabilities);
-  const suppressPastedAtSuggestionRef = useRef(false);
+  const [mentionSuggestionSuppression] = useState(() =>
+    createAgentRichTextMentionSuggestionSuppression(value)
+  );
   const scrollFrameRef = useRef<number | null>(null);
   const [contextMenu, setContextMenu] =
     useState<AgentRichTextContextMenuState | null>(null);
@@ -145,11 +160,7 @@ export const AgentRichTextEditor = forwardRef<
       onPasteLargeTextRef.current(text);
       return;
     }
-    suppressPastedAtSuggestionRef.current =
-      text.includes("@") && !text.endsWith("@");
-    if (suppressPastedAtSuggestionRef.current) {
-      releasePastedAtSuggestionSuppression(suppressPastedAtSuggestionRef);
-    }
+    mentionSuggestionSuppression.suppressTextInsertion(text);
     currentEditor
       .chain()
       .focus()
@@ -254,7 +265,7 @@ export const AgentRichTextEditor = forwardRef<
           onSuggestionKeyDown: (event) =>
             onFileMentionSuggestionKeyDownRef.current?.(event) ?? false,
           removeActionAriaLabel: removeMentionLabelRef.current,
-          shouldSuppressSuggestion: () => suppressPastedAtSuggestionRef.current
+          shouldSuppressSuggestion: mentionSuggestionSuppression.isSuppressed
         },
         { skills: availableSkillsRef.current },
         { capabilities: availableCapabilitiesRef.current }
@@ -272,6 +283,7 @@ export const AgentRichTextEditor = forwardRef<
   onSubmitRef.current = onSubmit;
   onSubmitGuidanceRef.current = onSubmitGuidance;
   onKeyDownForPaletteRef.current = onKeyDownForPalette;
+  onHistoryNavigationRef.current = onHistoryNavigation;
   onFileMentionSuggestionChangeRef.current = onFileMentionSuggestionChange;
   onFileMentionSuggestionKeyDownRef.current = onFileMentionSuggestionKeyDown;
   onLinkClickRef.current = onLinkClick;
@@ -362,11 +374,12 @@ export const AgentRichTextEditor = forwardRef<
           ) {
             return false;
           }
-          const selection = readPromptSelection(currentEditor);
-          if (!selection.text) {
+          const clipboard = serializeAgentRichTextSelection(currentEditor);
+          if (!clipboard) {
             return false;
           }
-          event.clipboardData.setData("text/plain", selection.text);
+          event.clipboardData.setData("text/plain", clipboard.text);
+          event.clipboardData.setData("text/html", clipboard.html);
           event.preventDefault();
           return true;
         },
@@ -381,10 +394,12 @@ export const AgentRichTextEditor = forwardRef<
             return false;
           }
           const selection = readPromptSelection(currentEditor);
-          if (!selection.text) {
+          const clipboard = serializeAgentRichTextSelection(currentEditor);
+          if (!clipboard) {
             return false;
           }
-          event.clipboardData.setData("text/plain", selection.text);
+          event.clipboardData.setData("text/plain", clipboard.text);
+          event.clipboardData.setData("text/html", clipboard.html);
           event.preventDefault();
           currentEditor.commands.deleteRange({
             from: selection.from,
@@ -434,7 +449,15 @@ export const AgentRichTextEditor = forwardRef<
             return true;
           }
           if (textPasteKind === "structured-mention") {
-            return false;
+            event.preventDefault();
+            const currentEditor = editorRef.current;
+            if (!currentEditor) {
+              return true;
+            }
+            if (insertAgentRichTextClipboardHtml(currentEditor, html)) {
+              mentionSuggestionSuppression.suppressTextInsertion(text);
+            }
+            return true;
           }
           event.preventDefault();
           const currentEditor = editorRef.current;
@@ -446,11 +469,7 @@ export const AgentRichTextEditor = forwardRef<
               currentEditor.state.doc.content.size
             );
           }
-          suppressPastedAtSuggestionRef.current =
-            text.includes("@") && !text.endsWith("@");
-          if (suppressPastedAtSuggestionRef.current) {
-            releasePastedAtSuggestionSuppression(suppressPastedAtSuggestionRef);
-          }
+          mentionSuggestionSuppression.suppressTextInsertion(text);
           currentEditor.commands.insertContent(
             plainTextToAgentRichTextInlineContent(text, {
               capabilities: availableCapabilitiesRef.current,
@@ -634,7 +653,10 @@ export const AgentRichTextEditor = forwardRef<
         return;
       }
       lastEmittedPromptRef.current = nextPrompt;
-      pendingLocalPromptEchoesRef.current.add(nextPrompt);
+      recordAgentRichTextLocalEdit(
+        controlledValueTrackerRef.current,
+        nextPrompt
+      );
       if (isAgentRichTextUserContentInsertion(transaction)) {
         onUserContentChangeRef.current?.(nextPrompt);
       }
@@ -662,10 +684,12 @@ export const AgentRichTextEditor = forwardRef<
   const handleKeyDownCapture = (
     event: ReactKeyboardEvent<HTMLDivElement>
   ): void => {
+    mentionSuggestionSuppression.releaseForContentEditingKey(event);
     handleAgentRichTextKeyDownCapture(event, {
       disabled,
       editorRef,
       onKeyDownForPaletteRef,
+      onHistoryNavigationRef,
       onSubmitGuidanceRef,
       onSubmitRef,
       submitOnEnter
@@ -730,20 +754,21 @@ export const AgentRichTextEditor = forwardRef<
     if (!editor || editor.isDestroyed) {
       return;
     }
-    if (pendingLocalPromptEchoesRef.current.has(value)) {
-      if (value === lastEmittedPromptRef.current) {
-        pendingLocalPromptEchoesRef.current.clear();
-      }
+    if (
+      !shouldApplyAgentRichTextControlledValue({
+        lastEmittedValue: lastEmittedPromptRef.current,
+        scopeKey: contentScopeKey,
+        tracker: controlledValueTrackerRef.current,
+        value
+      })
+    ) {
       return;
     }
-    if (value === lastEmittedPromptRef.current) {
-      return;
-    }
-    pendingLocalPromptEchoesRef.current.clear();
     const nextDoc = plainTextToAgentRichTextDoc(value, {
       capabilities: availableCapabilities,
       skills: availableSkills
     });
+    mentionSuggestionSuppression.setRestoredValue(value);
     if (JSON.stringify(editor.getJSON()) === JSON.stringify(nextDoc)) {
       lastEmittedPromptRef.current = value;
       return;
@@ -752,7 +777,7 @@ export const AgentRichTextEditor = forwardRef<
     editor.commands.setTextSelection(editor.state.doc.content.size);
     lastEmittedPromptRef.current = value;
     onContentLayoutInvalidatedRef.current?.();
-  }, [availableCapabilities, availableSkills, editor, value]);
+  }, [availableCapabilities, availableSkills, contentScopeKey, editor, value]);
 
   return (
     <AgentRichTextEditorSurface
@@ -772,10 +797,3 @@ export const AgentRichTextEditor = forwardRef<
     />
   );
 });
-
-function releasePastedAtSuggestionSuppression(ref: { current: boolean }): void {
-  // timing: keep suppression through the synchronous editor insertion only.
-  window.setTimeout(() => {
-    ref.current = false;
-  }, 0);
-}

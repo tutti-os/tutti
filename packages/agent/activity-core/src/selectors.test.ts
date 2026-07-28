@@ -201,6 +201,7 @@ function message(
     version: 1,
     turnId: "turn-1",
     role: "assistant",
+    sequence: overrides.version ?? 1,
     kind: "tool_call",
     status: "waiting_input",
     payload: {},

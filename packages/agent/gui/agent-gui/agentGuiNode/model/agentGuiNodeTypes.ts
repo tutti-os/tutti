@@ -1,7 +1,8 @@
 import type {
   AgentActivitySessionGoal,
   AgentActivityUsage,
-  CanonicalAgentSession
+  CanonicalAgentSession,
+  SessionRuntimeAvailability
 } from "@tutti-os/agent-activity-core";
 import type {
   AgentGUINodeData,
@@ -380,6 +381,80 @@ export interface AgentGUIDetailViewModel {
   conversationDetail: WorkspaceAgentSessionDetailViewModel | null;
 }
 
+export type AgentGUIRuntimeBlockedReason = Extract<
+  SessionRuntimeAvailability,
+  { state: "blocked" }
+>["reason"];
+
+export type AgentGUIComposerRuntimeGate =
+  | {
+      status: "ready";
+      reason: null;
+      sessionRuntimeReason: null;
+    }
+  | {
+      status: "blocked";
+      reason: "target_connection";
+      sessionRuntimeReason: null;
+    }
+  | {
+      status: "blocked";
+      reason: "session_runtime";
+      sessionRuntimeReason: AgentGUIRuntimeBlockedReason;
+    };
+
+export type AgentGUIComposerEditorBlockedReason =
+  | "collaborator_read_only"
+  | "creating_conversation"
+  | "interrupting"
+  | "non_retryable_recovery"
+  | "pending_approval"
+  | "pending_interactive_prompt"
+  | "provider_readiness"
+  | "runtime_blocked"
+  | "submitting";
+
+export type AgentGUIComposerSubmissionBlockedReason =
+  | AgentGUIComposerEditorBlockedReason
+  | "activation_failed"
+  | "activation_pending"
+  | "agent_targets_loading"
+  | "authentication_required"
+  | "conversation_busy"
+  | "resume_unavailable";
+
+export interface AgentGUIComposerGate {
+  /** Canonical busy projection captured with the same gate snapshot. */
+  conversationBusy: boolean;
+  /**
+   * Runtime-dependent command availability used by Composer-adjacent
+   * controls such as Stop and interactive responses.
+   */
+  runtime: AgentGUIComposerRuntimeGate;
+  editor:
+    | {
+        status: "editable";
+        reason: null;
+      }
+    | {
+        status: "blocked";
+        reason: AgentGUIComposerEditorBlockedReason;
+      };
+  submission:
+    | {
+        status: "ready";
+        reason: null;
+      }
+    | {
+        status: "queue";
+        reason: "conversation_busy";
+      }
+    | {
+        status: "blocked";
+        reason: AgentGUIComposerSubmissionBlockedReason;
+      };
+}
+
 export interface AgentGUIComposerViewModel {
   handoffAgentTargets: readonly AgentGUIAgentTarget[];
   availableCommands: AgentSessionCommand[];
@@ -394,7 +469,7 @@ export interface AgentGUIComposerViewModel {
   compactSupported: boolean | null;
   /** Provider goal exposes a real paused state and pause/resume controls. */
   goalPauseSupported: boolean;
-  canSubmit: boolean;
+  gate: AgentGUIComposerGate;
   isTuttiModeActive: boolean;
   isTuttiModeUpdating: boolean;
   /** Effective Tutti orchestration intensity (0-100) for the budget popup. */
@@ -409,12 +484,10 @@ export interface AgentGUIComposerViewModel {
   queuedPrompts: AgentGUIQueuedPromptVM[];
   queueStatus: AgentGUIQueueStatus;
   drainingQueuedPromptId: string | null;
-  canQueueWhileBusy: boolean;
 }
 
 export interface AgentGUIInteractionViewModel {
   isRespondingApproval: boolean;
-  isRuntimeBlocked: boolean;
   pendingApproval: AgentGUIApprovalRequest | null;
   pendingInteractivePrompt: AgentGUIInteractivePrompt | null;
   sessionChrome: AgentGUISessionChrome;
@@ -424,13 +497,11 @@ export interface AgentGUIInteractionViewModel {
 export interface AgentGUIReadinessViewModel {
   activeLiveState: "inactive" | "activating" | "active" | "failed";
   activationError: string | null;
-  activeConversationBusy: boolean;
-  sessionRuntimeBlocked: boolean;
-  targetConnectionBlocked: boolean;
   providerReadinessGate: AgentGUIProviderReadinessGate | null;
 }
 
 export interface AgentGUIOperationsViewModel {
+  forkThroughTurnPendingTurnIds: readonly string[];
   goalClearNoticeSequence: number;
   isDeletingConversation: boolean;
   isDeletingProjectConversations: boolean;

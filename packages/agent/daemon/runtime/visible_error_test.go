@@ -168,6 +168,19 @@ func TestVisibleFailureContentDescribesTuttiInsufficientCredits(t *testing.T) {
 	}
 }
 
+func TestVisibleFailureCodeDoesNotMisclassifyStructuredProviderFailuresAsAuth(t *testing.T) {
+	tests := map[string]string{
+		`HTTP 403: {"error":{"code":"model_not_allowed","message":"authorization denied for model"}}`:                     "model_not_allowed",
+		`MCP client for codex_apps failed: HTTP 451: {"message":"no_biscuit_no_service"} authentication transport failed`: "plugin_unavailable",
+		`HTTP 451: {"message":"no_biscuit_no_service"} authentication transport failed`:                                   "provider_error",
+	}
+	for detail, want := range tests {
+		if got := visibleFailureCode(detail); got != want {
+			t.Fatalf("visibleFailureCode(%q) = %q, want %q", detail, got, want)
+		}
+	}
+}
+
 func TestVisibleFailureContentDescribesInterruptedSession(t *testing.T) {
 	got := visibleFailureContent(ProviderCodex, "turn", "session_interrupted")
 	want := "Codex stopped unexpectedly before it finished responding. Try again."

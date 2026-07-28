@@ -358,7 +358,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	if catalogProjectionOK {
 		modelOptions = s.enrichModelCapabilityOptions(ctx, provider, catalogProjection.ModelOptions)
 		runtimeContext["modelCatalogSource"] = catalogProjection.Source
-		if len(catalogProjection.ReasoningProfiles) > 0 {
+		if composerProfileFor(provider).ReasoningEffort && len(catalogProjection.ReasoningProfiles) > 0 {
 			reasoningOptionsByModel = composerModelReasoningOptionsByModel(
 				provider,
 				locale,
@@ -366,7 +366,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 			)
 		}
 		selection := catalogProjection.Selection
-		if selection.ReasoningEffortsAdvertised {
+		if composerProfileFor(provider).ReasoningEffort && selection.ReasoningEffortsAdvertised {
 			effectiveSettings.ReasoningEffort = resolveAdvertisedReasoningEffort(
 				provider,
 				settings.ReasoningEffort,
@@ -381,7 +381,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 			)
 			runtimeContext["reasoningEffort"] = nullableString(effectiveSettings.ReasoningEffort)
 		}
-		if selection.SpeedsAdvertised {
+		if composerProfileFor(provider).Speed && selection.SpeedsAdvertised {
 			effectiveSettings.Speed = resolveAdvertisedSpeed(
 				settings.Speed,
 				selection.DefaultSpeed,

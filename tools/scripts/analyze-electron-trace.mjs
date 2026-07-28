@@ -290,6 +290,7 @@ export async function analyzeElectronTrace(input) {
       prePaintInclusiveMs: inclusiveDurationForNames(renderer.eventStats, [
         "PrePaint"
       ]),
+      paintEventCount: countEventsForNames(renderer.eventStats, ["Paint"]),
       paintInclusiveMs: inclusiveDurationForNames(renderer.eventStats, [
         "Paint"
       ]),
@@ -351,6 +352,7 @@ export function renderElectronTraceMarkdown(summary, options = {}) {
     `- UpdateLayoutTree inclusive: ${summary.timing.updateLayoutTreeInclusiveMs} ms`,
     `- Layout inclusive: ${summary.timing.layoutInclusiveMs} ms`,
     `- PrePaint inclusive: ${summary.timing.prePaintInclusiveMs} ms`,
+    `- Paint events: ${summary.timing.paintEventCount.toLocaleString("en-US")}`,
     `- Paint inclusive: ${summary.timing.paintInclusiveMs} ms`,
     "",
     "## Input event timing",
@@ -699,6 +701,13 @@ function inclusiveDurationForNames(values, names) {
     0
   );
   return round(totalUs / 1_000);
+}
+
+function countEventsForNames(values, names) {
+  return names.reduce(
+    (total, name) => total + (values.get(name)?.count ?? 0),
+    0
+  );
 }
 
 function finiteNumber(value) {

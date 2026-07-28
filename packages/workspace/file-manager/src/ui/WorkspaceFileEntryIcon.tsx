@@ -1,6 +1,8 @@
 import {
+  FileArchiveIcon,
   FileCodeIcon,
   FileTextIcon,
+  FolderFilledIcon,
   ImageFileIcon,
   LoadingIcon,
   VideoFileIcon,
@@ -13,10 +15,6 @@ import {
   resolveWorkspaceFileVisualKind
 } from "@tutti-os/workspace-file-preview";
 import type { WorkspaceFileEntry } from "../services/workspaceFileManagerTypes.ts";
-import {
-  workspaceArchiveFallbackIconUrl,
-  workspaceFolderFallbackIconUrl
-} from "../workspaceFileFallbackAssets.ts";
 import {
   resolveWorkspaceFileEntryIconCacheKey,
   isWorkspaceApplicationBundle,
@@ -237,14 +235,7 @@ export function WorkspaceFolderFallbackIcon({
   className: string;
 }): ReactElement {
   return (
-    <img
-      alt=""
-      aria-hidden="true"
-      className={cn("object-contain", className)}
-      decoding="async"
-      draggable={false}
-      src={workspaceFolderFallbackIconUrl}
-    />
+    <FolderFilledIcon className={vectorFallbackIconClassName(className)} />
   );
 }
 
@@ -253,16 +244,7 @@ export function WorkspaceArchiveFallbackIcon({
 }: {
   className: string;
 }): ReactElement {
-  return (
-    <img
-      alt=""
-      aria-hidden="true"
-      className={cn("object-contain", className)}
-      decoding="async"
-      draggable={false}
-      src={workspaceArchiveFallbackIconUrl}
-    />
-  );
+  return <FileArchiveIcon className={vectorFallbackIconClassName(className)} />;
 }
 
 export function WorkspaceImageFallbackIcon({

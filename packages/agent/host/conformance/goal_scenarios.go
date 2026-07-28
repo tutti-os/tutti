@@ -144,6 +144,45 @@ func runGoalRevisionActorFence(ctx context.Context, driver Driver) error {
 	return nil
 }
 
+func runGoalGenerationFencePreservesNewerGoal(ctx context.Context, driver Driver) error {
+	if err := driver.Reset(ctx, liveSessionFixture("session-goal-generation-fence", "")); err != nil {
+		return err
+	}
+	target, err := driver.GoalControl(ctx, agenthost.GoalControlInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-goal-generation-fence",
+		Action: "set", Objective: "shared work", ClientSubmitID: "shared-goal",
+		SubmissionMetadata: map[string]any{"clientSubmitId": "shared-goal"},
+	})
+	if err != nil || target.OperationID == "" {
+		return fmt.Errorf("prepare shared Goal operation: result=%#v error=%w", target, err)
+	}
+	if _, err := driver.GoalControl(ctx, agenthost.GoalControlInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-goal-generation-fence",
+		Action: "set", Objective: "owner work", ClientSubmitID: "owner-goal",
+		SubmissionMetadata: map[string]any{"clientSubmitId": "owner-goal"},
+	}); err != nil {
+		return fmt.Errorf("prepare owner Goal operation: %w", err)
+	}
+	fenced, err := driver.FenceGoalGeneration(ctx, agenthost.FenceGoalGenerationInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-goal-generation-fence",
+		TargetOperationID: target.OperationID, ClientSubmitID: "binding-revoked",
+		Reason: "binding_revoked",
+	})
+	if err != nil || !fenced.IntentAccepted || !fenced.Settled {
+		return fmt.Errorf("fence result=%#v error=%w", fenced, err)
+	}
+	state, err := driver.GetGoalState(ctx, agenthost.SessionRef{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-goal-generation-fence",
+	})
+	if err != nil {
+		return err
+	}
+	if state.Revision != 2 || metadataString(state.Goal, "objective") != "owner work" {
+		return fmt.Errorf("generation fence changed newer owner Goal: %#v", state)
+	}
+	return nil
+}
+
 func runAcceptedGoalControlWaitsWithoutReplay(ctx context.Context, driver Driver) error {
 	fixture := liveSessionFixture("session-goal-accepted", "")
 	fixture.AcceptGoalControlsOnly = true

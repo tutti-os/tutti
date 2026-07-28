@@ -40,6 +40,7 @@ export function writeWorkspaceFileManagerPreviewWidth(width: number): void {
 export function clampWorkspaceFileManagerSidebarWidth(input: {
   containerWidth: number;
   contentMinWidth?: number;
+  maxWidth?: number;
   width: number;
 }): number {
   const contentMinWidth = resolveWorkspaceFileManagerContentMinWidth(
@@ -48,9 +49,10 @@ export function clampWorkspaceFileManagerSidebarWidth(input: {
   const containerWidth = Number.isFinite(input.containerWidth)
     ? input.containerWidth
     : workspaceFileManagerSidebarMinWidth + contentMinWidth;
-  const maxWidth = Math.max(
-    workspaceFileManagerSidebarMinWidth,
-    containerWidth - contentMinWidth
+  const maxWidth = resolveWorkspaceFileManagerSidebarMaxWidth(
+    containerWidth,
+    contentMinWidth,
+    input.maxWidth
   );
   const width = Number.isFinite(input.width)
     ? input.width
@@ -63,19 +65,25 @@ export function clampWorkspaceFileManagerSidebarWidth(input: {
 
 export function resolveWorkspaceFileManagerSidebarMaxWidth(
   containerWidth: number,
-  contentMinWidth?: number
+  contentMinWidth?: number,
+  configuredMaxWidth?: number
 ): number {
   const resolvedContentMinWidth =
     resolveWorkspaceFileManagerContentMinWidth(contentMinWidth);
   const resolvedContainerWidth = Number.isFinite(containerWidth)
     ? containerWidth
     : workspaceFileManagerSidebarMinWidth + resolvedContentMinWidth;
-  return Math.round(
-    Math.max(
-      workspaceFileManagerSidebarMinWidth,
-      resolvedContainerWidth - resolvedContentMinWidth
-    )
+  const availableMaxWidth = Math.max(
+    workspaceFileManagerSidebarMinWidth,
+    resolvedContainerWidth - resolvedContentMinWidth
   );
+  const resolvedConfiguredMaxWidth =
+    typeof configuredMaxWidth === "number" &&
+    Number.isFinite(configuredMaxWidth) &&
+    configuredMaxWidth > 0
+      ? Math.max(workspaceFileManagerSidebarMinWidth, configuredMaxWidth)
+      : availableMaxWidth;
+  return Math.round(Math.min(availableMaxWidth, resolvedConfiguredMaxWidth));
 }
 
 function resolveWorkspaceFileManagerContentMinWidth(

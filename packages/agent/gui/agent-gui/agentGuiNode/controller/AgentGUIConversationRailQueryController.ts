@@ -235,7 +235,6 @@ export class AgentGUIConversationRailQueryController {
   ): void => {
     const scopeKey = this.railSectionQueryKey;
     if (
-      this.scope?.previewMode ||
       !scopeKey ||
       this.publicationBlocked() ||
       this.queryState.pending ||
@@ -705,13 +704,11 @@ export class AgentGUIConversationRailQueryController {
   }
   private runtimeSectionsEnabled(): boolean {
     return Boolean(
-      !this.scope?.previewMode &&
-      this.runtime.listSessionSections &&
-      this.runtime.listSessionSectionPage
+      this.runtime.listSessionSections && this.runtime.listSessionSectionPage
     );
   }
   private searchEnabled(): boolean {
-    return Boolean(!this.scope?.previewMode && this.runtime.listSessionsPage);
+    return Boolean(this.runtime.listSessionsPage);
   }
   private publishIfReady(
     state: AgentSessionEngineState = this.engine.getSnapshot(),

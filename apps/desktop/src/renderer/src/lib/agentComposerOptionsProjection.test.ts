@@ -1,6 +1,34 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { agentActivityComposerOptionsFromTuttidResult } from "./agentComposerOptionsProjection.ts";
+import type { AgentProviderComposerOptionsResponse } from "@tutti-os/client-tuttid-ts";
+import { agentActivityComposerOptionsFromTuttidResult as projectAgentActivityComposerOptionsFromTuttidResult } from "./agentComposerOptionsProjection.ts";
+
+function agentActivityComposerOptionsFromTuttidResult(
+  provider: string,
+  value: Record<string, unknown>
+) {
+  const fixture = {
+    behavior: {
+      collapseModelOptionsToLatest: false,
+      modelOptionsAuthoritative: false,
+      planModeExclusiveWithPermissionMode: false,
+      prewarmDraftSession: false,
+      refreshModelOptionsAfterSettings: false
+    },
+    capabilityCatalog: [],
+    commands: [],
+    effectiveSettings: {},
+    modelConfig: { configurable: false, options: [] },
+    permissionConfig: { configurable: false, modes: [] },
+    provider,
+    reasoningConfig: { configurable: false, options: [] },
+    reasoningOptionsByModel: {},
+    runtimeContext: {},
+    skills: [],
+    ...value
+  } as AgentProviderComposerOptionsResponse;
+  return projectAgentActivityComposerOptionsFromTuttidResult(provider, fixture);
+}
 
 test("agent composer options keep SDK fast speed configurable after reload", () => {
   const options = agentActivityComposerOptionsFromTuttidResult("claude-code", {

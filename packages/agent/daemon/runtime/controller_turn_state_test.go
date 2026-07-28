@@ -30,6 +30,30 @@ func TestSubmittedTurnActivityEventProjectsCapabilityReferences(t *testing.T) {
 	}
 }
 
+func TestProviderRootTurnStartMakesSessionResumable(t *testing.T) {
+	t.Parallel()
+	controller := &Controller{}
+	session := Session{Provider: ProviderCodex, AgentSessionID: "agent-1", RoomID: "room-1"}
+
+	session = controller.foldTurnSessionEvents(session, []activityshared.Event{
+		newTurnActivityEvent(session, string(activityshared.EventTurnStarted), "turn-1", SessionStatusWorking, "", "", nil),
+	}, "turn-1")
+	if session.Resumable {
+		t.Fatal("canonical turn start made provider session resumable")
+	}
+
+	eventContext, ok := activityEventContext(session, newID(), "turn-1")
+	if !ok {
+		t.Fatal("provider root turn event context is invalid")
+	}
+	session = controller.foldTurnSessionEvents(session, []activityshared.Event{
+		activityshared.NewRootProviderTurnStarted(eventContext, "turn-1", "provider-turn-1"),
+	}, "turn-1")
+	if !session.Resumable {
+		t.Fatal("provider root turn start did not make session resumable")
+	}
+}
+
 func TestGuidanceCapabilityReferencePatchDoesNotClaimTurnLifecycle(t *testing.T) {
 	t.Parallel()
 	activeTurnID := "turn-1"

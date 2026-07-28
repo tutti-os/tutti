@@ -25,11 +25,32 @@ export const repositoryCheckDefinitions = [
     matches: isBackdropFilterAuthoringRelevant
   },
   {
+    group: "policy",
+    key: "policy:css-has-performance",
+    label: "CSS :has() performance policy",
+    script: "check:css-has-performance",
+    matches: isCssHasPerformanceRelevant
+  },
+  {
+    group: "policy",
+    key: "policy:runtime-image-budgets",
+    label: "runtime image budgets",
+    script: "check:runtime-image-budgets",
+    matches: isRuntimeImageBudgetRelevant
+  },
+  {
     group: "contracts",
     key: "contracts:tool-tests",
     label: "repository tool contracts",
     script: "test:tools",
     matches: isToolContractRelevant
+  },
+  {
+    group: "contracts",
+    key: "contracts:device-link-android",
+    label: "DeviceLink Android contract",
+    script: "check:device-link-android",
+    matches: (file) => file.startsWith("packages/device-link/")
   },
   {
     group: "generated",
@@ -51,6 +72,13 @@ export const repositoryCheckDefinitions = [
     label: "generated event protocol",
     script: "check:event-protocol-generated",
     matches: isEventProtocolContractRelevant
+  },
+  {
+    group: "generated",
+    key: "generated:agent-live-protocol",
+    label: "generated Agent live protocol",
+    script: "check:agent-live-protocol-generated",
+    matches: isAgentLiveProtocolContractRelevant
   },
   {
     group: "generated",
@@ -183,6 +211,41 @@ function isBackdropFilterAuthoringRelevant(file) {
   );
 }
 
+function isCssHasPerformanceRelevant(file) {
+  return (
+    (/^(?:apps|packages|services)\//u.test(file) && file.endsWith(".css")) ||
+    file === "tools/scripts/check-css-has-performance.mjs" ||
+    file === "tools/scripts/css-has-performance-policy.mjs" ||
+    file === "tools/scripts/css-has-performance-policy.test.mjs"
+  );
+}
+
+function isRuntimeImageBudgetRelevant(file) {
+  return (
+    file.startsWith(
+      "apps/desktop/src/renderer/src/assets/workspace-canvas/dock/"
+    ) ||
+    file.startsWith(
+      "apps/desktop/src/renderer/src/features/app-update/assets/"
+    ) ||
+    file ===
+      "apps/desktop/src/renderer/src/assets/account-plans/reward-toast-bg.png" ||
+    file.startsWith("packages/agent/gui/app/renderer/assets/icons/") ||
+    file ===
+      "packages/browser/workbench-node/src/assets/workspace-dock-website.png" ||
+    file ===
+      "packages/workspace/issue-manager/src/assets/workspace-dock-task.png" ||
+    file ===
+      "packages/workspace/file-manager/src/assets/workspace-archive-fallback.png" ||
+    file.startsWith("packages/commerce/web/src/assets/") ||
+    file.startsWith(
+      "services/tuttid/builtin-apps/tutti-onboarding/public/assets/"
+    ) ||
+    file === "tools/scripts/check-runtime-image-budgets.mjs" ||
+    file === "tools/scripts/check-runtime-image-budgets.test.mjs"
+  );
+}
+
 function isDefaultsContractRelevant(file) {
   return (
     file === "config/tutti.defaults.json" ||
@@ -215,6 +278,20 @@ function isEventProtocolContractRelevant(file) {
     file === "packages/configs/prettier/base.mjs" ||
     file === "tools/scripts/generate-event-protocol.mjs" ||
     file === "tools/scripts/check-agent-protocol-enums.mjs"
+  );
+}
+
+function isAgentLiveProtocolContractRelevant(file) {
+  return (
+    file ===
+      "packages/agent/daemon/liveprotocol/schema/agent-activity-live-event.schema.json" ||
+    file ===
+      "packages/agent/daemon/liveprotocol/schema/agent-activity-live-wire-contract.json" ||
+    file === "packages/agent/daemon/liveprotocol/protocol_revision.gen.go" ||
+    file === "packages/agent/activity-core/src/liveProtocolRevision.gen.ts" ||
+    file ===
+      "packages/events/protocol/definitions/agent/activity.updated.event.json" ||
+    file === "tools/scripts/generate-agent-live-protocol.mjs"
   );
 }
 
@@ -319,6 +396,9 @@ function isAgentGuiDegradationRelevant(file) {
   return (
     file.startsWith("packages/agent/") ||
     file.startsWith("tools/degradation-baseline/") ||
+    file === "tools/scripts/agent-gui-presentation-performance-policy.mjs" ||
+    file ===
+      "tools/scripts/agent-gui-presentation-performance-policy.test.mjs" ||
     file === "tools/scripts/check-agent-gui-degradation.mjs" ||
     file === "tools/scripts/check-agent-gui-degradation.test.mjs"
   );

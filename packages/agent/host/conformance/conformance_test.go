@@ -12,13 +12,13 @@ func TestPublishedScenarioCatalogsHaveUniqueNames(t *testing.T) {
 		scenarios []Scenario
 		wantCount int
 	}{
-		{name: "adapter lifecycle", scenarios: Scenarios(), wantCount: 17},
-		{name: "application core", scenarios: ApplicationCoreScenarios(), wantCount: 12},
-		{name: "resume policy", scenarios: ResumePolicyScenarios(), wantCount: 4},
+		{name: "adapter lifecycle", scenarios: Scenarios(), wantCount: 19},
+		{name: "application core", scenarios: ApplicationCoreScenarios(), wantCount: 14},
+		{name: "resume policy", scenarios: ResumePolicyScenarios(), wantCount: 5},
 		{name: "submission fence", scenarios: SubmissionFenceScenarios(), wantCount: 1},
 		{name: "title policy", scenarios: TitlePolicyScenarios(), wantCount: 1},
 		{name: "coordinator", scenarios: CoordinatorScenarios(), wantCount: 7},
-		{name: "goal", scenarios: GoalScenarios(), wantCount: 7},
+		{name: "goal", scenarios: GoalScenarios(), wantCount: 8},
 		{name: "commit observer", scenarios: CommitObserverScenarios(), wantCount: 2},
 	}
 	for _, catalog := range catalogs {
@@ -47,11 +47,13 @@ func TestScenarioOwnershipIsExplicit(t *testing.T) {
 	wantApplicationCore := []string{
 		"create empty session",
 		"create with initial content",
+		"create with explicit rail placement",
 		"resume persisted session",
 		"send input",
 		"duplicate client submit id",
 		"initial title cas",
 		"get session",
+		"list session turns",
 		"historical and live settings",
 		"pin session",
 		"delete session",

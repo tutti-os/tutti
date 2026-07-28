@@ -4,13 +4,20 @@ import type {
   WorkspaceAgentSessionDetailTurn
 } from "./workspaceAgentSessionDetailViewModel";
 
-export function projectCanonicalTurnErrors({
+/**
+ * Enriches Turns that the hydrated transcript has already projected.
+ *
+ * `sessionTurns` can describe the full session while `turns` contains only the
+ * current message window. Canonical lifecycle metadata therefore must not
+ * create transcript membership or alter transcript order.
+ */
+export function enrichProjectedTurnsWithCanonicalErrors({
   turns,
   sessionTurns,
   provider,
   agentSessionId
 }: {
-  turns: Map<string, WorkspaceAgentSessionDetailTurn>;
+  turns: ReadonlyMap<string, WorkspaceAgentSessionDetailTurn>;
   sessionTurns: readonly AgentActivityTurn[];
   provider: string;
   agentSessionId: string;
@@ -27,7 +34,10 @@ export function projectCanonicalTurnErrors({
       continue;
     }
 
-    const turn = getOrCreateTurn(turns, canonicalTurn.turnId);
+    const turn = turns.get(canonicalTurn.turnId);
+    if (!turn) {
+      continue;
+    }
     if (turn.agentMessages.some((message) => message.visibleError)) {
       continue;
     }
@@ -58,28 +68,6 @@ export function projectCanonicalTurnErrors({
     turn.agentMessages.push(message);
     turn.agentItems.push({ kind: "message", message });
   }
-}
-
-function getOrCreateTurn(
-  turns: Map<string, WorkspaceAgentSessionDetailTurn>,
-  turnId: string
-): WorkspaceAgentSessionDetailTurn {
-  const existing = turns.get(turnId);
-  if (existing) {
-    return existing;
-  }
-  const turn: WorkspaceAgentSessionDetailTurn = {
-    id: turnId,
-    userMessage: null,
-    userMessages: [],
-    agentMessages: [],
-    toolCalls: [],
-    toolCallCount: 0,
-    hasFailedToolCall: false,
-    agentItems: []
-  };
-  turns.set(turnId, turn);
-  return turn;
 }
 
 function visibleErrorFromCanonicalTurn(

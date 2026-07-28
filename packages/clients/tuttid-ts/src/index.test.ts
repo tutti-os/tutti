@@ -503,6 +503,66 @@ test("shared tuttid client creates workspace agent sessions with bearer auth", a
   });
 });
 
+test("shared tuttid client returns and reads durable agent session fork operations", async () => {
+  const operation = {
+    operationId: "operation-1",
+    requestId: "request-1",
+    sourceAgentSessionId: "source-1",
+    targetAgentSessionId: "11111111-1111-4111-8111-111111111111",
+    point: { type: "throughTurn" as const, turnId: "turn-7" },
+    status: "accepted" as const,
+    session: null,
+    lineage: null,
+    error: null
+  };
+  const { client, requests } = captureClient(jsonResponse({ operation }, 202));
+
+  assert.deepEqual(
+    await client.forkWorkspaceAgentSession("ws-1", "source-1", {
+      targetAgentSessionId: "11111111-1111-4111-8111-111111111111",
+      requestId: "request-1",
+      point: { type: "throughTurn", turnId: "turn-7" }
+    }),
+    operation
+  );
+  assert.deepEqual(
+    await client.getWorkspaceAgentSessionForkOperation("ws-1", "operation-1"),
+    operation
+  );
+  assert.deepEqual(
+    await client.acknowledgeWorkspaceAgentSessionForkOperation(
+      "ws-1",
+      "operation-1"
+    ),
+    operation
+  );
+  assertRequest(requests[0]!, {
+    authorization: null,
+    body: {
+      targetAgentSessionId: "11111111-1111-4111-8111-111111111111",
+      requestId: "request-1",
+      point: { type: "throughTurn", turnId: "turn-7" }
+    },
+    method: "POST",
+    path: "/v1/workspaces/ws-1/agent-sessions/source-1/fork",
+    query: {}
+  });
+  assertRequest(requests[1]!, {
+    authorization: null,
+    body: null,
+    method: "GET",
+    path: "/v1/workspaces/ws-1/agent-session-fork-operations/operation-1",
+    query: {}
+  });
+  assertRequest(requests[2]!, {
+    authorization: null,
+    body: null,
+    method: "POST",
+    path: "/v1/workspaces/ws-1/agent-session-fork-operations/operation-1/acknowledge",
+    query: {}
+  });
+});
+
 test("shared tuttid client sends workspace agent input diagnostics in the HTTP body", async () => {
   let requestPath = "";
   let requestBody: unknown;

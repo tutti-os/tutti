@@ -25,10 +25,12 @@ export type AgentHostClipboardApi = {
 
 export type AgentHostTerminalLoginHandle = {
   close: () => void;
+  completion: Promise<"ready" | "timed_out">;
 };
 
 export type AgentHostTerminalLoginApi = {
   run: (input: {
+    agentTargetId: string;
     command: string;
     cwd?: string;
   }) => AgentHostAsyncResult<AgentHostTerminalLoginHandle | void>;

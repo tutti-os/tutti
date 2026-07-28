@@ -172,6 +172,12 @@ export class DesktopAgentsService implements IAgentsService {
           resolveAgentTargetIconUrl: this.dependencies.resolveAgentTargetIconUrl
         }
       );
+      const daemonAgentTargetIconUrls = new Map(
+        daemonAgentTargets.map((target) => [
+          target.agentTargetId,
+          target.iconUrl
+        ])
+      );
       const agentTargets = daemonAgentTargets;
       // Built-in Harness targets and explicit workspace Agents coexist in the
       // AgentGUI directory: built-ins keep their placement and workspace
@@ -185,7 +191,13 @@ export class DesktopAgentsService implements IAgentsService {
         {
           isAgentTargetProviderGated:
             this.dependencies.isAgentTargetProviderGated,
-          resolveAgentTargetIconUrl: this.dependencies.resolveAgentTargetIconUrl
+          resolveAgentTargetIconUrl: ({ agentTargetId, iconKey, provider }) =>
+            daemonAgentTargetIconUrls.get(agentTargetId)?.trim() ||
+            this.dependencies.resolveAgentTargetIconUrl?.({
+              iconKey,
+              provider
+            }) ||
+            ""
         }
       );
       const agents = dedupeAgentsByAgentTargetId([
@@ -350,6 +362,7 @@ export function mapWorkspaceAgentsToAgents(
   options: {
     isAgentTargetProviderGated?: (provider: string) => boolean;
     resolveAgentTargetIconUrl?: (identity: {
+      agentTargetId: string;
       iconKey: string | null;
       provider: string;
     }) => string;
@@ -373,6 +386,7 @@ export function mapWorkspaceAgentsToAgents(
         description: agent.description || null,
         iconUrl:
           options.resolveAgentTargetIconUrl?.({
+            agentTargetId: agent.harness.agentTargetId,
             iconKey: agent.harness.iconKey?.trim() || null,
             provider
           }) ?? "",

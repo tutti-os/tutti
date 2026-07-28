@@ -32,10 +32,12 @@ Current behavior:
 
 - `pnpm exec lint-staged`
 - `pnpm check:backdrop-filter-authoring:staged`
+- `pnpm check:css-has-performance:staged`
 - `pnpm check:electron-runtime-boundaries:staged`
 - `pnpm check:ui-boundaries:staged`
 - `pnpm check:renderer-boundaries:staged`
 - `pnpm check:agent-gui-degradation:staged`
+- `pnpm check:runtime-image-budgets:staged`
 
 Rules:
 
@@ -82,6 +84,7 @@ machine-readable task results and log paths are recorded in
 That full validation currently includes:
 
 - `pnpm check:backdrop-filter-authoring`
+- `pnpm check:css-has-performance`
 - `pnpm check:defaults-generated`
 - `pnpm check:agent-gui-provider-catalog-generated`
 - `pnpm check:api-generated`
@@ -97,6 +100,7 @@ That full validation currently includes:
 - `pnpm check:agent-host-boundary`
 - `pnpm check:agent-provider-strategy-boundaries`
 - `pnpm check:agent-gui-degradation`
+- `pnpm check:runtime-image-budgets`
 - `pnpm lint`
 - `pnpm typecheck`
 - `pnpm test:ts`
@@ -223,13 +227,29 @@ The agent GUI degradation ratchet is enforced in two modes:
 - `pnpm check:agent-gui-degradation:staged` for `pre-commit`, blocking new
   degradation patterns (uncommented timers, swallowed catches, stores created
   in component files, new provider behavior branches, direct
-  `useSyncExternalStore` calls, module-level mutable globals) on staged added
-  lines under `packages/agent/gui` and `packages/agent/activity-core`
+  `useSyncExternalStore` calls, module-level mutable globals, unexplained
+  presentation schedulers/inline compositor hints, unreviewed CSS infinite
+  animations/compositor hints, and `transition: all`) on staged added lines
+  under `packages/agent/gui` and `packages/agent/activity-core`; changes to the
+  AgentGUI stylesheet also preserve the required hidden/inactive pruning rules
 - `pnpm check:agent-gui-degradation` for `check:full`, pull-request CI, and a
   `check:changed` lane selected when files under `packages/agent/` or
   `tools/degradation-baseline/` change; it compares entropy metrics against
-  the committed baseline and fails on any increase, and on any decrease that
-  is not locked in by updating the baseline in the same change
+  the committed baseline and fails on any increase, on any decrease that is
+  not locked in by updating the baseline in the same change, or when an exact
+  CSS presentation-hint fingerprint lacks a reviewed lifecycle reason
 
 Details of the metrics and baseline mechanism live in
 [Static Analysis](static-analysis.md).
+
+## Runtime Image Budget Enforcement
+
+Bounded runtime raster assets are enforced in two modes:
+
+- `pnpm check:runtime-image-budgets:staged` for `pre-commit`
+- `pnpm check:runtime-image-budgets` for `check:full`, pull-request CI, and the
+  `check:changed` lane selected by governed runtime assets
+
+The check reads PNG dimensions directly, so it stays fast and does not depend
+on a platform image tool. Pixel and byte ceilings are documented in
+[Runtime Image Assets](runtime-image-assets.md).

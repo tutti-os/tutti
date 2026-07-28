@@ -12,7 +12,6 @@ export function useAgentGUINodeEngagement(input: {
   isActive: boolean;
   isVisible: boolean;
   onEvent?: AgentGUIEngagementEventSink;
-  previewMode: boolean;
   viewModel: AgentGUINodeViewModel;
 }): {
   composerEngagement: AgentGUIComposerEngagement | undefined;
@@ -29,8 +28,7 @@ export function useAgentGUINodeEngagement(input: {
       elementRef: layoutElementRef,
       isActive: input.isActive,
       isVisible: input.isVisible,
-      onEvent: input.onEvent,
-      previewMode: input.previewMode
+      onEvent: input.onEvent
     }),
     layoutElementRef
   };

@@ -15,6 +15,7 @@ import test from "node:test";
 import {
   aggregateMetrics,
   checkStagedFile,
+  checkStagedPresentationCssFile,
   compareWithBaseline,
   countEffects,
   countLines,
@@ -25,6 +26,7 @@ import {
   countStoreCreations,
   countSwallowedCatches,
   isScannedSourceFile,
+  isScannedPresentationCssFile,
   isComponentModule,
   isTimerForbiddenFile,
   measureFileMetrics,
@@ -147,6 +149,16 @@ test("skips test, generated, and dist files from scanning", () => {
   );
   assert.equal(isScannedSourceFile("packages/agent/gui/types.d.ts"), false);
   assert.equal(isScannedSourceFile("packages/agent/gui/README.md"), false);
+  assert.equal(
+    isScannedPresentationCssFile(
+      "packages/agent/gui/app/renderer/agentactivity.css"
+    ),
+    true
+  );
+  assert.equal(
+    isScannedPresentationCssFile("apps/desktop/src/renderer/app.css"),
+    false
+  );
 });
 
 test("separates component modules from TSX read hooks", () => {
@@ -315,6 +327,77 @@ test("staged check rejects timers in timer-forbidden paths despite comments", ()
   assert.equal(violations[0].rule, "no-sync-timer");
 });
 
+test("staged check requires lifecycle reasons for presentation schedulers", () => {
+  const stagedContent = [
+    "// presentation-work: one visible-frame commit while dragging",
+    "requestAnimationFrame(commitVisibleDrag);",
+    "const observer = new ResizeObserver(measureEverything);"
+  ].join("\n");
+  const violations = checkStagedFile({
+    addedLines: [
+      { content: "requestAnimationFrame(commitVisibleDrag);", line: 2 },
+      {
+        content: "const observer = new ResizeObserver(measureEverything);",
+        line: 3
+      }
+    ],
+    identityExemptFiles: [],
+    relativePath: "packages/agent/gui/agent-gui/View.tsx",
+    stagedContent
+  });
+
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].rule, "presentation-scheduler-lifecycle");
+  assert.equal(violations[0].line, 3);
+});
+
+test("staged check requires lifecycle reasons for inline compositor hints", () => {
+  const line = 'const style = { willChange: "transform" };';
+  const violations = checkStagedFile({
+    addedLines: [{ content: line, line: 1 }],
+    identityExemptFiles: [],
+    relativePath: "packages/agent/gui/agent-gui/View.tsx",
+    stagedContent: line
+  });
+
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].rule, "inline-compositor-lifecycle");
+});
+
+test("staged CSS requires exact reasons and rejects transition all", () => {
+  const stagedContent = [
+    ".viewer {",
+    "  will-change: transform;",
+    "  transition: all 180ms ease;",
+    "}"
+  ].join("\n");
+  const withoutReason = checkStagedPresentationCssFile({
+    addedLines: [
+      { content: "  will-change: transform;", line: 2 },
+      { content: "  transition: all 180ms ease;", line: 3 }
+    ],
+    presentationHintReasons: {},
+    relativePath: "packages/agent/gui/view.css",
+    stagedContent
+  });
+  assert.deepEqual(withoutReason.map(({ rule }) => rule).sort(), [
+    "no-transition-all",
+    "presentation-hint-lifecycle"
+  ]);
+
+  const fingerprint =
+    "packages/agent/gui/view.css | .viewer | will-change: transform";
+  const withReason = checkStagedPresentationCssFile({
+    addedLines: [{ content: "  will-change: transform;", line: 2 }],
+    presentationHintReasons: {
+      [fingerprint]: "Viewer exists only while its modal is open"
+    },
+    relativePath: "packages/agent/gui/view.css",
+    stagedContent: ".viewer {\n  will-change: transform;\n}"
+  });
+  assert.deepEqual(withReason, []);
+});
+
 test("staged check flags new provider branches outside identity-exempt files", () => {
   const line = 'if (provider === "codex") { enablePlanMode(); }';
   const flagged = checkStagedFile({
@@ -458,6 +541,69 @@ test("full mode generates a baseline and then detects regressions", async () => 
   assert.match(improvement.stderr, /--update-baseline/);
 });
 
+test("full mode refuses to baseline presentation hints without lifecycle reasons", async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), "agent-gui-degradation-"));
+  const stylesheetPath = join(
+    workspaceRoot,
+    "packages/agent/gui/app/renderer/agentactivity.css"
+  );
+  await mkdir(dirname(stylesheetPath), { recursive: true });
+  await writeFile(
+    stylesheetPath,
+    `
+.viewer {
+  will-change: transform;
+}
+.agent-gui-node__layout[data-agent-gui-visible="false"]
+  :where(*, *::before, *::after) {
+  animation-play-state: paused !important;
+}
+.agent-gui-node__layout[data-agent-gui-visible="false"] {
+  content-visibility: hidden;
+}
+.agent-gui-node__layout[data-agent-gui-active="false"]
+  .agent-gui-node__composer-prompt-tip-track,
+.agent-gui-node__layout[data-agent-gui-active="false"]
+  .agent-gui-node__composer-prompt-tip-item {
+  animation: none;
+  will-change: auto;
+}
+`
+  );
+  const baselinePath = join(workspaceRoot, "baseline/agent-gui.json");
+  await mkdir(dirname(baselinePath), { recursive: true });
+  await writeFile(
+    baselinePath,
+    `${JSON.stringify({
+      identityExemptFiles: [],
+      metrics: {},
+      presentationHintReasons: {}
+    })}\n`
+  );
+
+  const missingReason = runScript(workspaceRoot, baselinePath, [
+    "--update-baseline"
+  ]);
+  assert.notEqual(missingReason.status, 0);
+  assert.match(missingReason.stderr, /missing reason/);
+
+  await writeFile(
+    baselinePath,
+    `${JSON.stringify({
+      identityExemptFiles: [],
+      metrics: {},
+      presentationHintReasons: {
+        "packages/agent/gui/app/renderer/agentactivity.css | .viewer | will-change: transform":
+          "Viewer is mounted only while its modal is open"
+      }
+    })}\n`
+  );
+  const update = runScript(workspaceRoot, baselinePath, ["--update-baseline"]);
+  assert.equal(update.status, 0, update.stderr || update.stdout);
+  const pass = runScript(workspaceRoot, baselinePath, []);
+  assert.equal(pass.status, 0, pass.stderr || pass.stdout);
+});
+
 test("staged mode flags violations on staged added lines end to end", async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), "agent-gui-degradation-"));
   runFixtureGit(workspaceRoot, ["init", "--quiet"]);
@@ -500,6 +646,88 @@ test("staged mode flags violations on staged added lines end to end", async () =
   const pass = runScript(workspaceRoot, baselinePath, ["--staged"]);
   assert.equal(pass.status, 0, pass.stderr || pass.stdout);
   assert.doesNotMatch(pass.stderr, /fatal:/u);
+});
+
+test("staged mode accepts a CSS hint reason only after the baseline is staged", async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), "agent-gui-degradation-"));
+  runFixtureGit(workspaceRoot, ["init", "--quiet"]);
+  await assertFixtureGitRoot(workspaceRoot);
+
+  const stylesheetPath = join(
+    workspaceRoot,
+    "packages/agent/gui/app/renderer/agentactivity.css"
+  );
+  const baselinePath = join(
+    workspaceRoot,
+    "tools/degradation-baseline/agent-gui.json"
+  );
+  await mkdir(dirname(stylesheetPath), { recursive: true });
+  await mkdir(dirname(baselinePath), { recursive: true });
+  const requiredCss = `
+.agent-gui-node__layout[data-agent-gui-visible="false"]
+  :where(*, *::before, *::after) {
+  animation-play-state: paused !important;
+}
+.agent-gui-node__layout[data-agent-gui-visible="false"] {
+  content-visibility: hidden;
+}
+.agent-gui-node__layout[data-agent-gui-active="false"]
+  .agent-gui-node__composer-prompt-tip-track,
+.agent-gui-node__layout[data-agent-gui-active="false"]
+  .agent-gui-node__composer-prompt-tip-item {
+  animation: none;
+  will-change: auto;
+}
+`;
+  await writeFile(stylesheetPath, requiredCss);
+  await writeFile(
+    baselinePath,
+    `${JSON.stringify({
+      identityExemptFiles: [],
+      metrics: {},
+      presentationHintReasons: {}
+    })}\n`
+  );
+  runFixtureGit(workspaceRoot, ["add", "."]);
+  runFixtureGit(workspaceRoot, [
+    "-c",
+    "user.email=test@example.com",
+    "-c",
+    "user.name=Test",
+    "commit",
+    "--quiet",
+    "-m",
+    "init"
+  ]);
+
+  await writeFile(
+    stylesheetPath,
+    `${requiredCss}\n.viewer {\n  will-change: transform;\n}\n`
+  );
+  await writeFile(
+    baselinePath,
+    `${JSON.stringify({
+      identityExemptFiles: [],
+      metrics: {},
+      presentationHintReasons: {
+        "packages/agent/gui/app/renderer/agentactivity.css | .viewer | will-change: transform":
+          "Viewer is mounted only while its modal is open"
+      }
+    })}\n`
+  );
+  runFixtureGit(workspaceRoot, ["add", stylesheetPath]);
+
+  const unstagedReason = runScript(workspaceRoot, baselinePath, ["--staged"]);
+  assert.notEqual(unstagedReason.status, 0);
+  assert.match(unstagedReason.stderr, /presentation-hint-lifecycle/);
+
+  runFixtureGit(workspaceRoot, ["add", baselinePath]);
+  const stagedReason = runScript(workspaceRoot, baselinePath, ["--staged"]);
+  assert.equal(
+    stagedReason.status,
+    0,
+    stagedReason.stderr || stagedReason.stdout
+  );
 });
 
 test("full mode fails with instructions when the baseline is missing", async () => {

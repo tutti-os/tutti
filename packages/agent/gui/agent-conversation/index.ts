@@ -32,6 +32,13 @@ export type {
 } from "../shared/workspaceAgentSessionDetailViewModel";
 
 export type { AgentConversationVM } from "../shared/agentConversation/contracts/agentConversationVM";
+export type {
+  AgentConversationParticipantIdentity,
+  AgentConversationParticipantPresentation
+} from "../shared/agentConversation/contracts/agentConversationParticipantPresentation";
+export type { AgentConversationFlowProps } from "../shared/agentConversation/components/AgentConversationFlow";
+export type { AgentTranscriptViewProps } from "../shared/agentConversation/components/AgentTranscriptView";
+export type { WorkspaceAgentSessionDetailProps } from "../shared/WorkspaceAgentSessionDetail";
 export type { WorkspaceAgentActivityTimelineItem } from "../shared/workspaceAgentTimelineTypes";
 export type { WorkspaceAgentActivityCard } from "../shared/workspaceAgentActivityListViewModel";
 

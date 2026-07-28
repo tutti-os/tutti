@@ -17,15 +17,17 @@ func codexDescriptor() ProviderDescriptor {
 			Command:             []string{"codex", "app-server"},
 			ClientInfoName:      "codex_cli_rs",
 			AuthRequiredMessage: "Codex requires authentication. Run `codex login` on the host (or sync Codex credentials), then retry this session.",
+			NativeSessionFork:   true,
 			Endpoint: RuntimeEndpointDescriptor{
 				BaseURLEnvVars: []string{
 					"OPENAI_BASE_URL",
 					"OPENAI_API_BASE_URL",
 					"OPENAI_API_BASE",
 				},
-				ConfigKind:         EndpointConfigKindCodexCLI,
-				ModelPlanProtocol:  ModelPlanProtocolOpenAI,
-				NativeSubscription: true,
+				ConfigKind:               EndpointConfigKindCodexCLI,
+				ModelPlanProtocol:        ModelPlanProtocolOpenAI,
+				ModelPlanEndpointAdapter: ModelPlanEndpointAdapterResponsesToChatGateway,
+				NativeSubscription:       true,
 			},
 		},
 		Status: StatusDescriptor{

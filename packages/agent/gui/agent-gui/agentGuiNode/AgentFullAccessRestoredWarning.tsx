@@ -11,13 +11,11 @@ import {
 export function AgentFullAccessRestoredWarning({
   isSettingsLoading,
   permissionModeId,
-  previewMode,
   provider,
   visibleOnHome
 }: {
   isSettingsLoading: boolean;
   permissionModeId: string | null | undefined;
-  previewMode: boolean;
   provider: string;
   visibleOnHome: boolean;
 }): React.JSX.Element | null {
@@ -27,7 +25,6 @@ export function AgentFullAccessRestoredWarning({
   const normalizedPermissionModeId = permissionModeId?.trim() ?? "";
   const shouldShow =
     visibleOnHome &&
-    !previewMode &&
     !isSettingsLoading &&
     !dismissedForCurrentOpen &&
     !acknowledged &&

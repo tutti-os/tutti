@@ -22,15 +22,18 @@ Repository entrypoints:
 
 - `pnpm setup:dev`
 - `pnpm check:backdrop-filter-authoring`
+- `pnpm check:css-has-performance`
 - `pnpm check:golangci-version`
 - `pnpm lint`
 - `pnpm lint:ts`
 - `pnpm lint:go`
 - `pnpm typecheck`
 - `pnpm check:codexproto-generated`
+- `pnpm check:agent-live-protocol-generated`
 - `pnpm check:agent-gui-provider-catalog-generated`
 - `pnpm check:agent-host-boundary`
 - `pnpm check:agent-provider-strategy-boundaries`
+- `pnpm check:runtime-image-budgets`
 
 `pnpm check:full` remains the full local validation command and includes
 linting, typechecking, repository checks, and blocking tests. PR CI selects the
@@ -57,6 +60,11 @@ Validation runners that spawn nested pnpm commands should read the root
 `packageManager` field and invoke that pinned version through Corepack. Do not
 let runner-spawned lanes resolve a bare `pnpm` from `PATH`, because local
 package-manager shims can differ from the repository pin.
+
+Changed-aware lane fingerprints include base, staged, working-tree, and
+untracked content for each lane. Git subprocess buffers must accommodate large
+binary or generated diffs; the runner uses a bounded 128 MiB buffer so a normal
+large pull request does not fail before its validation lanes start.
 
 Tests and checks that create temporary Git repositories must also isolate
 repository-local Git environment variables before invoking Git. In particular,
@@ -94,6 +102,15 @@ The codexproto generator runs during `pnpm check:full` alongside full-repository
 boundary scanners. Generator scratch files must stay outside the repository
 tree, even when they are removed before the generator exits, so parallel checks
 cannot observe transient files and fail nondeterministically.
+
+The optimistic AgentGUI live fast lane is schema-backed separately from the
+canonical cloud event. `pnpm check:agent-live-protocol-generated` hashes the
+live `message_delta` schema, the declarative protobuf-wire/control contract,
+and the reused canonical `turn_update`, `interaction_update`, and
+`session_audit` variants. It also generates the Go wire field and delivery-kind
+constants and checks the committed Go and TypeScript revision outputs. Change
+either contract and run `pnpm generate:agent-live-protocol`; do not hand-edit
+the generated revision or wire-constant files.
 
 The Agent GUI provider identity catalog under
 `packages/agent/gui/generated/providerIdentityCatalog.ts` is generated from the
@@ -151,6 +168,15 @@ package logs under `.tmp/typecheck-runs`.
 TypeScript package `tsconfig.json` files must not use `baseUrl`; use explicit relative `paths` entries when aliases are needed so the configuration stays compatible with native TypeScript.
 
 The repository-specific UI boundary policy remains in `pnpm check:ui-boundaries`.
+Its full-repository walker excludes `apps/mobile/ios/Pods`, because that
+CocoaPods-generated tree can vendor JavaScript fixtures, SVGs, and icon imports
+that are not Tutti-authored UI source.
+
+Bounded raster UI assets are checked by
+`pnpm check:runtime-image-budgets`. The policy reads image headers and file
+sizes without decoding pixels or invoking platform tools. It excludes design
+masters and window-sized media; the governed paths and resolution rationale
+are documented in [Runtime Image Assets](runtime-image-assets.md).
 
 ## Backdrop Filter Build Contract
 
@@ -167,6 +193,27 @@ followed by the standard property; it rejects prefix-only output, reversed
 ordering, and a launchpad dismiss layer without a non-`none` standard filter.
 The React `WebkitBackdropFilter` inline-style property is outside this stylesheet
 optimization boundary and is not rejected by the authoring check.
+
+## CSS Relational Selector Performance
+
+`pnpm check:css-has-performance` scans production CSS under `apps/`,
+`packages/`, and `services/`. It rejects `:has()` when the selector subject is
+the document root, a Workbench window/surface, an AgentGUI root layout,
+timeline, transcript row, or another listed large dynamic surface.
+
+Those subjects contain editors, streamed transcript content, dock animation, or
+other frequently mutating descendants. Relational matching there can make the
+entire subject subtree a style-invalidation candidate. Project the semantic
+state onto the subject with a class or data attribute instead.
+
+The check intentionally permits bounded local subjects such as buttons, icons,
+dialogs, and individual conversation rows. Add a subject to the policy only
+when its descendant scope or mutation frequency makes relational invalidation
+structurally unsafe; do not turn this into a blanket ban on `:has()`.
+
+The staged form runs in `pre-commit`. The full form is selected by
+`check:changed` for production CSS or policy implementation changes and is part
+of `check:full`.
 
 Renderer feature implementation boundaries are checked by `pnpm check:renderer-boundaries`.
 That check also enforces the Workbench-specific rule that
@@ -258,11 +305,13 @@ is protected by a degradation ratchet:
   over the business limit, package-wide effect totals, per-component
   memoization overages, render-time ref mirrors/caches, provider behavior
   branches, timers, swallowed catch blocks, view-embedded stores, direct
-  `useSyncExternalStore` calls, module-level mutable globals, and daemon Go
-  file-length exemptions) and compares them against the committed baseline in
-  `tools/degradation-baseline/agent-gui.json`. Render-mirror counting also
-  covers Desktop's `DesktopAgentGUIWorkbenchBody` host boundary because
-  unstable host callbacks can invalidate the entire Agent GUI subtree.
+  `useSyncExternalStore` calls, module-level mutable globals, presentation
+  schedulers, inline compositor hints, CSS infinite animations/compositor
+  hints, and daemon Go file-length exemptions) and compares them against the
+  committed baseline in `tools/degradation-baseline/agent-gui.json`.
+  Render-mirror counting also covers Desktop's
+  `DesktopAgentGUIWorkbenchBody` host boundary because unstable host callbacks
+  can invalidate the entire Agent GUI subtree.
 - Effect counts remain package-wide because hooks move with a vertical module
   during decomposition. Memoization follows the architecture boundary instead:
   `.tsx` component modules have a five-call budget, while controller/read hooks
@@ -279,6 +328,24 @@ is protected by a degradation ratchet:
   separate bucket. The list may only shrink, and the checker rejects entries
   whose files no longer exist so removed seams cannot leave permanent stale
   exemptions.
+- CSS `will-change`, `translateZ`/`translate3d`,
+  `backface-visibility: hidden`, and infinite animations are tracked by exact
+  stylesheet selector/property/value fingerprints. Every fingerprint requires
+  a non-empty `presentationHintReasons` entry describing its bounded mounted,
+  visible, active, loading, or interaction lifetime. New hints cannot be
+  accepted by running `--update-baseline` alone; add the reviewed reason first.
+  Stale reasons fail after a hint is removed.
+- The same CSS policy rejects `transition: all` and requires the root
+  `data-agent-gui-visible="false"` animation pause and
+  `content-visibility: hidden` declarations. It also requires the
+  `data-agent-gui-active="false"` prompt-tip animation and `will-change`
+  release declarations. These are behavior contracts, not baselined debt, so
+  deleting them always fails.
+- Raw `requestAnimationFrame`, `requestIdleCallback`, and `ResizeObserver`
+  calls, plus inline `willChange` and `translateZ`/`translate3d` hints, are
+  counted per production file. A newly added call or hint must carry a
+  `// presentation-work: <visible/active/lifetime reason>` comment on the same
+  or previous line. Ordinary two-dimensional transforms are not banned.
 - `pnpm check:agent-gui-degradation:staged` runs in `pre-commit` and blocks
   new degradation patterns on staged added lines: uncommented timers (a
   `// timing: <reason>` comment is required outside engine/reducer/selector
@@ -286,10 +353,13 @@ is protected by a degradation ratchet:
   component memoization beyond budget, render-time ref mirrors/caches, store
   creation in component files, new provider behavior branches, direct
   `useSyncExternalStore` calls outside the single engine binding file, and new
-  module-level mutable globals. Ref-mirror and component-cache diagnostics
-  explicitly route business state to the engine/controller and stable
-  projections to selectors/read hooks; refs remain valid for imperative DOM,
-  timer, abort, and external-lifecycle handles.
+  module-level mutable globals, unexplained presentation schedulers/inline
+  compositor hints, unreviewed CSS presentation hints, `transition: all`, and
+  removal of the visibility/active pruning declarations. Ref-mirror and
+  component-cache diagnostics explicitly route business state to the
+  engine/controller and stable projections to selectors/read hooks; refs
+  remain valid for imperative DOM, timer, abort, and external-lifecycle
+  handles.
 - During a merge commit, staged mode compares the resolved index with
   `MERGE_HEAD` instead of treating every incoming-parent line as newly added.
   This keeps the hook focused on branch-authored degradation while the full
@@ -304,13 +374,6 @@ Render budget tests are the companion mechanism for performance work: the
 probe utility in `packages/agent/gui/shared/testing/renderBudget.tsx` asserts
 React commit counts for typical interactions, and budget test cases are
 delivered with each feature-module slice.
-
-Fix-scope is soft-gated in pull-request CI by
-`tools/scripts/check-fix-scope.mjs`: a fix-titled PR changing more than 300
-implementation lines must answer "what is the root cause" and "why can this
-not be fixed at a lower layer" in the PR description. The count excludes docs,
-tests, fixtures, snapshots, and generated artifacts so the gate stays focused
-on production fix surface area.
 
 Electron `main` and `preload` runtime import graphs are checked by `pnpm check:electron-runtime-boundaries`.
 That script is intentionally narrow: it ignores type-only imports and test files, then follows reachable runtime imports to catch React/TSX leaks and Electron-externalized workspace packages that still resolve to raw source files.
@@ -375,6 +438,7 @@ The current root entrypoint runs the linter from:
 - `packages/agent/host`
 - `packages/agent/store-sqlite/canonical`
 - `packages/appcli/core`
+- `packages/device-link`
 - `packages/agent/runtimeprep`
 - `packages/workspace/files`
 - `packages/workbench/service`
@@ -393,10 +457,37 @@ Changed-aware Go validation includes the nested
 `packages/agent/activity-replication`, `packages/agent/daemon`,
 `packages/agent/host`,
 `packages/agent/runtimeprep`, `packages/agent/store-sqlite`, and
-`packages/agent/store-sqlite/canonical` modules.
+`packages/agent/store-sqlite/canonical`, and `packages/device-link` modules.
 Codex app-server protocol changes should also run
 `pnpm check:codexproto-generated` when schema, generator, or generated protocol
 files are touched.
+
+Every change under `packages/device-link/**`, including Makefiles, Java probe
+sources, and Android manifests, also selects
+`pnpm check:device-link-android`. That contract runs the Go suite, Android
+arm64 cross-compile, and the transport-only Java gomobile binding generation.
+`pnpm mobile:check` separately generates the Mobile-owned composite binding
+surface for DeviceLink plus the Agent live Subscriber without requiring an
+Android SDK. The Mobile package's composite `pnpm check` also runs
+`check:ios-bindings`, which uses Go's Objective-C binding generator to verify
+the DeviceLink and live Subscriber headers and expected exported symbols. This
+binding check needs the repository Go toolchain and macOS Command Line Tools,
+but not the full iOS SDK; building the XCFramework still requires full Xcode.
+AAR assembly remains an explicit Android-SDK validation locally.
+The manually dispatched Mobile Internal Build workflow accepts `android`,
+`ios`, or `all`. Its Android job installs the pinned SDK/NDK versions,
+assembles the Mobile composite AAR and internal mobile APK, and uploads a
+private validation artifact. It validates the DeviceLink consumer build but
+does not publish Go module tags; the stable package release workflow owns those
+tags. Its iOS job runs on the pinned macOS 26 runner, assembles the same Mobile
+binding surface as an XCFramework, archives the React Native app, and uses the
+repository App Store Connect API key plus the `IOS_DEVELOPMENT_TEAM` repository
+variable for Xcode-managed cloud signing. It loads the Mobile Podfile's pnpm
+path compatibility shim before generating the Pods project, then ensures the
+device configured by the `IOS_TEST_DEVICE_UDID` Actions secret is registered
+before exporting a development IPA as a 14-day private validation artifact
+rather than creating a GitHub Release. Both jobs remain manual so pull request
+code does not receive mobile signing credentials automatically.
 
 Local runs resolve `golangci-lint` from `$(go env GOPATH)/bin` first and fall
 back to `PATH`. This matches the repository install command without requiring a

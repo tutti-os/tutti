@@ -17,7 +17,7 @@ func (c *Controller) PublishStreamEvent(roomID, agentSessionID string, event Str
 	if c == nil || roomID == "" || agentSessionID == "" || event.EventType == "" {
 		return
 	}
-	c.hub.Publish(roomID, agentSessionID, []StreamEvent{event})
+	c.publishStreamEvents(roomID, agentSessionID, []StreamEvent{event})
 }
 
 func (c *Controller) publishSessionStatePatch(session Session, patch agentsessionstore.WorkspaceAgentStatePatch) {
@@ -29,7 +29,7 @@ func (c *Controller) publishSessionStatePatch(session Session, patch agentsessio
 	if roomID == "" || agentSessionID == "" || strings.TrimSpace(patch.AgentSessionID) == "" {
 		return
 	}
-	c.hub.Publish(roomID, agentSessionID, []StreamEvent{{
+	c.publishStreamEvents(roomID, agentSessionID, []StreamEvent{{
 		EventType: StreamEventStatePatch,
 		Data:      patch,
 	}})
@@ -37,6 +37,18 @@ func (c *Controller) publishSessionStatePatch(session Session, patch agentsessio
 
 func (c *Controller) Session(roomID, agentSessionID string) (Session, bool) {
 	return c.get(strings.TrimSpace(roomID), strings.TrimSpace(agentSessionID))
+}
+
+// HasLiveSession reports provider-process liveness without starting or
+// resuming one. A Controller session can remain registered after its adapter
+// releases an idle provider connection.
+func (c *Controller) HasLiveSession(roomID, agentSessionID string) bool {
+	session, adapter, err := c.sessionAndAdapter(strings.TrimSpace(roomID), strings.TrimSpace(agentSessionID))
+	if err != nil {
+		return false
+	}
+	probe, ok := adapter.(LiveSessionProbeAdapter)
+	return !ok || probe.HasLiveSession(session)
 }
 
 func (c *Controller) CanResume(input ResumeInput) bool {
@@ -210,7 +222,7 @@ func (c *Controller) acquireLifecycleLockContext(ctx context.Context, roomID, ag
 	c.mu.Lock()
 	lock := c.lifecycleLocks[key]
 	if lock == nil {
-		lock = &sessionLifecycleLock{gate: make(chan struct{}, 1)}
+		lock = &controllerLifecycleLock{gate: make(chan struct{}, 1)}
 		lock.gate <- struct{}{}
 		c.lifecycleLocks[key] = lock
 	}
@@ -234,11 +246,63 @@ func (c *Controller) acquireLifecycleLockContext(ctx context.Context, roomID, ag
 	}, nil
 }
 
-func (c *Controller) releaseLifecycleLockReference(key string, lock *sessionLifecycleLock) {
+func (c *Controller) releaseLifecycleLockReference(key string, lock *controllerLifecycleLock) {
 	c.mu.Lock()
 	lock.refs--
 	if lock.refs <= 0 && c.lifecycleLocks[key] == lock {
 		delete(c.lifecycleLocks, key)
+	}
+	c.mu.Unlock()
+}
+
+func (c *Controller) acquireStartupLockContext(
+	ctx context.Context,
+	roomID string,
+	agentSessionID string,
+	provider string,
+) (func(), error) {
+	if c == nil {
+		return func() {}, nil
+	}
+	key := startupLockKey{
+		roomID:         strings.TrimSpace(roomID),
+		agentSessionID: strings.TrimSpace(agentSessionID),
+	}
+	if key.agentSessionID == "" {
+		key.provider = strings.TrimSpace(provider)
+	}
+	c.mu.Lock()
+	lock := c.startupLocks[key]
+	if lock == nil {
+		lock = &controllerLifecycleLock{gate: make(chan struct{}, 1)}
+		lock.gate <- struct{}{}
+		c.startupLocks[key] = lock
+	}
+	lock.refs++
+	c.mu.Unlock()
+
+	select {
+	case <-ctx.Done():
+		c.releaseStartupLockReference(key, lock)
+		return func() {}, ctx.Err()
+	case <-lock.gate:
+	}
+	if err := ctx.Err(); err != nil {
+		lock.gate <- struct{}{}
+		c.releaseStartupLockReference(key, lock)
+		return func() {}, err
+	}
+	return func() {
+		lock.gate <- struct{}{}
+		c.releaseStartupLockReference(key, lock)
+	}, nil
+}
+
+func (c *Controller) releaseStartupLockReference(key startupLockKey, lock *controllerLifecycleLock) {
+	c.mu.Lock()
+	lock.refs--
+	if lock.refs <= 0 && c.startupLocks[key] == lock {
+		delete(c.startupLocks, key)
 	}
 	c.mu.Unlock()
 }
@@ -319,8 +383,19 @@ func (c *Controller) store(session Session) {
 		return
 	}
 	c.mu.Lock()
-	c.sessions[sessionKey(session.RoomID, session.AgentSessionID)] = session
+	key := sessionKey(session.RoomID, session.AgentSessionID)
+	c.sessions[key] = session
+	c.notifySessionAvailableLocked(key)
 	c.mu.Unlock()
+}
+
+func (c *Controller) notifySessionAvailableLocked(key string) {
+	waiter := c.sessionAvailabilityWaiters[key]
+	if waiter == nil {
+		return
+	}
+	delete(c.sessionAvailabilityWaiters, key)
+	close(waiter.changed)
 }
 
 func (c *Controller) publishPendingConfigOptionsUpdates(session Session) {
@@ -348,7 +423,7 @@ func (c *Controller) publishPendingConfigOptionsUpdates(session Session) {
 		c.recordConfigOptionsUpdate(session, update)
 		events = append(events, configOptionsUpdateStreamEvent(update))
 	}
-	c.hub.Publish(roomID, agentSessionID, events)
+	c.publishStreamEvents(roomID, agentSessionID, events)
 	c.enqueueSessionSnapshotReport(context.Background(), session)
 }
 
@@ -369,7 +444,7 @@ func (c *Controller) publish(session Session, events []activityshared.Event) {
 		"projected_event_count", len(projected),
 		"projected_event_type_counts", streamEventTypeCounts(projected),
 	)
-	c.hub.Publish(session.RoomID, session.AgentSessionID, projected)
+	c.publishStreamEvents(session.RoomID, session.AgentSessionID, projected)
 }
 
 func streamEventTypeCounts(events []StreamEvent) []string {
@@ -435,7 +510,7 @@ func (c *Controller) applyCommandSnapshot(session Session, snapshot AgentSession
 	}
 	c.commands[key] = snapshot
 	c.mu.Unlock()
-	c.hub.Publish(roomID, agentSessionID, []StreamEvent{commandSnapshotStreamEvent(snapshot)})
+	c.publishStreamEvents(roomID, agentSessionID, []StreamEvent{commandSnapshotStreamEvent(snapshot)})
 }
 
 func (c *Controller) applyTurnCommandSnapshot(session Session, turnID string, snapshot AgentSessionCommandSnapshot) {
@@ -463,7 +538,7 @@ func (c *Controller) applyTurnCommandSnapshot(session Session, turnID string, sn
 	}
 	c.commands[key] = snapshot
 	c.mu.Unlock()
-	c.hub.Publish(roomID, agentSessionID, []StreamEvent{commandSnapshotStreamEvent(snapshot)})
+	c.publishStreamEvents(roomID, agentSessionID, []StreamEvent{commandSnapshotStreamEvent(snapshot)})
 }
 
 func (c *Controller) applyCommandSnapshotByAgentSessionID(snapshot AgentSessionCommandSnapshot) {
@@ -624,7 +699,7 @@ func (c *Controller) applyConfigOptionsUpdateByAgentSessionID(update AgentSessio
 	c.mu.Unlock()
 	update = c.completeConfigOptionsUpdate(session, update)
 	c.recordConfigOptionsUpdate(session, update)
-	c.hub.Publish(session.RoomID, session.AgentSessionID, []StreamEvent{
+	c.publishStreamEvents(session.RoomID, session.AgentSessionID, []StreamEvent{
 		configOptionsUpdateStreamEvent(update),
 	})
 	c.enqueueSessionSnapshotReport(context.Background(), session)

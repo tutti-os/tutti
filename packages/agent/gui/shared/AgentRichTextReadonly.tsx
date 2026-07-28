@@ -13,6 +13,7 @@ import {
   useAgentTargetPresentations,
   type AgentMessageMarkdownAgentTarget
 } from "./AgentTargetPresentationContext";
+import { readParsedDocumentCache } from "./parsedDocumentCache";
 
 const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
   [];
@@ -20,6 +21,7 @@ const EMPTY_SKILLS: readonly AgentGUIProviderSkillOption[] = [];
 
 interface AgentRichTextReadonlyProps {
   value: string;
+  documentCacheKey?: string;
   className?: string;
   editorClassName?: string;
   onLinkClick?: (href: string) => void;
@@ -30,6 +32,7 @@ interface AgentRichTextReadonlyProps {
 
 export function AgentRichTextReadonly({
   value,
+  documentCacheKey,
   className,
   editorClassName,
   onLinkClick,
@@ -40,15 +43,29 @@ export function AgentRichTextReadonly({
   "use memo";
   const contextAgentTargets = useAgentTargetPresentations();
   const effectiveAgentTargets = agentTargets ?? contextAgentTargets;
+  const skillsCacheSource = useMemo(
+    () => JSON.stringify(availableSkills),
+    [availableSkills]
+  );
+  const parsedDoc = useMemo(
+    () =>
+      readParsedDocumentCache({
+        namespace: "rich-text",
+        identity: documentCacheKey?.trim() || "content",
+        source: `${value}\u0000${skillsCacheSource}`,
+        create: () =>
+          plainTextToAgentRichTextDoc(value, { skills: availableSkills })
+      }),
+    [availableSkills, documentCacheKey, skillsCacheSource, value]
+  );
   const contentDoc = useMemo(
     () =>
-      plainTextToAgentRichTextDocWithMentionPresentations(
-        value,
-        availableSkills,
+      hydrateAgentRichTextMentionPresentations(
+        parsedDoc,
         workspaceAppIcons,
         effectiveAgentTargets
       ),
-    [availableSkills, effectiveAgentTargets, value, workspaceAppIcons]
+    [effectiveAgentTargets, parsedDoc, workspaceAppIcons]
   );
   const isMentionOnly = isMentionOnlyRichTextDoc(contentDoc);
   const extensions = useMemo(
@@ -135,13 +152,12 @@ function isMentionOnlyRichTextDoc(doc: JSONContent): boolean {
   );
 }
 
-function plainTextToAgentRichTextDocWithMentionPresentations(
-  value: string,
-  availableSkills: readonly AgentGUIProviderSkillOption[],
+function hydrateAgentRichTextMentionPresentations(
+  parsedDoc: JSONContent,
   workspaceAppIcons: readonly AgentMessageMarkdownWorkspaceAppIcon[],
   agentTargets: readonly AgentMessageMarkdownAgentTarget[]
 ): JSONContent {
-  let doc = plainTextToAgentRichTextDoc(value, { skills: availableSkills });
+  let doc = parsedDoc;
   if (workspaceAppIcons.length > 0) {
     doc = hydrateWorkspaceAppMentionIcons(doc, workspaceAppIcons);
   }

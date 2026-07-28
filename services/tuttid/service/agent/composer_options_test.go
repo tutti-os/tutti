@@ -180,9 +180,10 @@ func TestNormalizeComposerSettingsClampsByProviderSupport(t *testing.T) {
 	tuttiAgent := normalizeComposerSettingsForProvider("tutti-agent", ComposerSettings{
 		Model:           "gpt-5.4",
 		ReasoningEffort: "high",
+		Speed:           "fast",
 	})
-	if tuttiAgent.Model != "gpt-5.4" || tuttiAgent.ReasoningEffort != "high" {
-		t.Fatalf("tutti-agent settings clamped unexpectedly: %+v", tuttiAgent)
+	if tuttiAgent.Model != "gpt-5.4" || tuttiAgent.ReasoningEffort != "" || tuttiAgent.Speed != "" {
+		t.Fatalf("tutti-agent provider-wide hidden settings were not clamped: %+v", tuttiAgent)
 	}
 	opencode := normalizeComposerSettingsForProvider("opencode", ComposerSettings{
 		Model:           "openai/gpt-5.3-codex-spark",
@@ -302,7 +303,7 @@ func TestComposerConfigConfigurableTruthTable(t *testing.T) {
 	}{
 		{"claude-code", false, true, true},
 		{"codex", true, true, true},
-		{"tutti-agent", true, true, true},
+		{"tutti-agent", true, false, true},
 		{"cursor", true, false, true},
 		{"opencode", true, false, true},
 		{"hermes", false, false, false},
@@ -365,7 +366,7 @@ func TestNormalizeObservedComposerSettingsUsesProviderReasoningPolicy(t *testing
 		want     string
 	}{
 		{provider: "codex", selected: "none", want: "none"},
-		{provider: "tutti-agent", selected: "minimal", want: "minimal"},
+		{provider: "tutti-agent", selected: "minimal", want: ""},
 		{provider: "opencode", selected: "none", want: "none"},
 	} {
 		t.Run(tc.provider, func(t *testing.T) {

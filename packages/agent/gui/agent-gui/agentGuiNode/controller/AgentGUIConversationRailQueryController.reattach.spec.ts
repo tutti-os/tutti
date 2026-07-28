@@ -65,7 +65,6 @@ describe("AgentGUIConversationRailQueryController reattach", () => {
     });
     controller.configure({
       conversationFilter: { kind: "all" },
-      previewMode: false,
       sectionAgentTargetFallbackId: null,
       userProjects: []
     });

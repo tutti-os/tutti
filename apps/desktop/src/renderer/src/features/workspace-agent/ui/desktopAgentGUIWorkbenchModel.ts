@@ -6,7 +6,8 @@ import type {
   AgentGUIComposerAppendRequest,
   AgentGUIAgentsEmptyRenderer,
   AgentGUIProps,
-  AgentHostInputApi
+  AgentHostInputApi,
+  AgentStatusSource
 } from "@tutti-os/agent-gui";
 import type { AgentContextMentionProvider } from "@tutti-os/agent-gui/context-mention-provider";
 import {
@@ -40,6 +41,7 @@ export type DesktopAgentGUIConversationRailToggleDetail =
 
 export interface DesktopAgentGUISurfaceContext {
   activation: WorkbenchHostNodeBodyContext["activation"];
+  conversationRailAutoCollapseMode?: "preserve-middle-content";
   displayMode: WorkbenchHostNodeBodyContext["displayMode"];
   frame: WorkbenchHostNodeBodyContext["node"]["frame"];
   host: WorkbenchHostNodeBodyContext["host"];
@@ -48,6 +50,7 @@ export interface DesktopAgentGUISurfaceContext {
   isFocused: boolean;
   isMinimized: boolean;
   isResizing: boolean;
+  isVisible: boolean;
   nodeId: string;
   nodeTitle: string;
   presentationMode: WorkbenchHostNodeBodyContext["presentationMode"];
@@ -57,6 +60,7 @@ export interface DesktopAgentGUISurfaceContext {
 export interface DesktopAgentGUIWorkbenchBodyProps {
   agentActivityRuntime: AgentActivityRuntime;
   agentHostApi: AgentHostInputApi;
+  agentStatusSource?: AgentStatusSource;
   tuttiModePlanReviewRuntime: NonNullable<
     AgentGUIProps["tuttiModePlanReviewRuntime"]
   >;
@@ -65,7 +69,6 @@ export interface DesktopAgentGUIWorkbenchBodyProps {
   context: WorkbenchHostNodeBodyContext;
   computerUseApi?: Pick<DesktopComputerUseApi, "checkStatus">;
   composerAppendRequest?: AgentGUIComposerAppendRequest | null;
-  conversationRailAutoCollapseWidthPx?: number | null;
   dockPreviewCache: WorkbenchDockPreviewCache;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onCapabilitySettingsRequest?: AgentGUIProps["hostActions"]["onCapabilitySettingsRequest"];
@@ -77,7 +80,6 @@ export interface DesktopAgentGUIWorkbenchBodyProps {
   }) => Promise<void> | void;
   onStateChange: (state: DesktopAgentGUIWorkbenchState) => void;
   prefillPromptBootstrapRequest?: DesktopAgentGUIPrefillPromptRequest | null;
-  previewMode?: boolean;
   providerStatusBootstrapSnapshot?: AgentProviderStatusSnapshot | null;
   agentDirectory: AgentGUIAgentDirectorySnapshot;
   allAgentsPresentation?: AgentGUIAllAgentsPresentation | null;
@@ -158,13 +160,12 @@ export function areDesktopAgentGUIWorkbenchBodyPropsEqual(
   return (
     previous.agentActivityRuntime === next.agentActivityRuntime &&
     previous.agentHostApi === next.agentHostApi &&
+    previous.agentStatusSource === next.agentStatusSource &&
     previous.tuttiModePlanReviewRuntime === next.tuttiModePlanReviewRuntime &&
     previous.appCenterService === next.appCenterService &&
     previous.agentProviderStatusService === next.agentProviderStatusService &&
     previous.computerUseApi === next.computerUseApi &&
     previous.composerAppendRequest === next.composerAppendRequest &&
-    previous.conversationRailAutoCollapseWidthPx ===
-      next.conversationRailAutoCollapseWidthPx &&
     previous.dockPreviewCache === next.dockPreviewCache &&
     previous.onLinkAction === next.onLinkAction &&
     previous.onCapabilitySettingsRequest === next.onCapabilitySettingsRequest &&
@@ -172,7 +173,6 @@ export function areDesktopAgentGUIWorkbenchBodyPropsEqual(
       next.onOpenAgentConversationWindow &&
     previous.prefillPromptBootstrapRequest ===
       next.prefillPromptBootstrapRequest &&
-    previous.previewMode === next.previewMode &&
     previous.providerStatusBootstrapSnapshot ===
       next.providerStatusBootstrapSnapshot &&
     previous.agentDirectory === next.agentDirectory &&
@@ -221,6 +221,7 @@ export function areDesktopAgentGUIWorkbenchBodyContextsEqual(
       previous.isDragging === next.isDragging &&
       previous.isFocused === next.isFocused &&
       previous.isResizing === next.isResizing &&
+      previous.isVisible === next.isVisible &&
       previous.presentationMode === next.presentationMode &&
       previous.node.id === next.node.id &&
       previous.node.isMinimized === next.node.isMinimized &&

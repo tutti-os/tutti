@@ -172,7 +172,11 @@ test("controller does not notify a historical settled turn hydrated after baseli
 function createTestEngine(): AgentSessionEngine {
   return createAgentSessionEngine({
     clock: { nowUnixMs: () => 1 },
-    commandPort: { execute: () => Promise.resolve(undefined) },
+    commandPort: {
+      execute: () => Promise.resolve(undefined),
+      executePlanDecision: () =>
+        Promise.reject(new Error("unexpected plan decision command"))
+    },
     identity: {
       origin: AGENT_SESSION_ENGINE_LOCAL_ORIGIN,
       workspaceId: "ws-1"

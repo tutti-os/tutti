@@ -4,6 +4,10 @@ import {
   FileTextIcon,
   LoadingIcon,
   ScrollArea,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   VideoFileIcon,
   cn
 } from "@tutti-os/ui-system";
@@ -11,6 +15,8 @@ import type { TuttiDateLocale } from "@tutti-os/ui-system/date-format";
 import { resolveWorkspaceFileVisualKind } from "@tutti-os/workspace-file-preview";
 import { WorkspaceFilePreviewSurface as SharedWorkspaceFilePreviewSurface } from "@tutti-os/workspace-file-preview/react";
 import type { WorkspaceFileManagerI18nRuntime } from "../i18n/workspaceFileManagerI18n.ts";
+import { WorkspaceFileManagerPreviewActionBar } from "./WorkspaceFileManagerPreviewActionBar.tsx";
+import type { WorkspaceFileManagerPreviewAction } from "./workspaceFileManagerPreviewActionTypes.ts";
 import type {
   CSSProperties,
   DragEvent as ReactDragEvent,
@@ -18,9 +24,11 @@ import type {
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
   ReactElement,
+  ReactNode,
   RefObject
 } from "react";
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -99,6 +107,7 @@ export function WorkspaceFileManagerPanels({
   isRenaming,
   layoutMode,
   pendingDirectoryPath,
+  previewActions,
   previewState,
   onEntryIconViewportLeave,
   onEntryIconViewportEnter,
@@ -132,6 +141,7 @@ export function WorkspaceFileManagerPanels({
   isRenaming: boolean;
   layoutMode: WorkspaceFileManagerLayoutMode;
   pendingDirectoryPath: string | null;
+  previewActions?: readonly WorkspaceFileManagerPreviewAction[];
   previewState: WorkspaceFilePreviewState;
   onEntryIconViewportLeave?: (entry: WorkspaceFileEntry) => void;
   onEntryIconViewportEnter?: (entry: WorkspaceFileEntry) => void;
@@ -740,6 +750,7 @@ export function WorkspaceFileManagerPanels({
         copy={copy}
         dateLocale={dateLocale}
         entry={selectedEntry}
+        previewActions={previewActions}
         previewState={previewState}
       />
     </aside>
@@ -850,7 +861,7 @@ function resolveWorkspaceFileManagerDateColumnLabel(
   }
 }
 
-function EntryRow({
+const EntryRow = memo(function EntryRow({
   arrangeMode,
   canMove,
   contextMenuActive,
@@ -944,7 +955,7 @@ function EntryRow({
   }, [selected]);
 
   const rowClassName = cn(
-    "grid min-h-10 w-full items-center gap-x-6 border-b border-[var(--border-1)] px-0 text-left transition-colors",
+    "relative grid min-h-10 w-full items-center gap-x-6 border-b border-[var(--border-1)] px-0 text-left transition-colors",
     gridClassName,
     isInlineRenaming
       ? "cursor-default"
@@ -959,68 +970,118 @@ function EntryRow({
     moveDragActive && !moveDragSource && !moveDragTarget && "opacity-90"
   );
   const rowProps = {
-    "aria-label": entry.name,
     className: rowClassName,
     "data-workspace-file-entry-path": entry.path,
-    draggable: isInlineRenaming ? false : draggable,
     style: gridStyle,
     onContextMenu: (event: ReactMouseEvent<HTMLElement>) => {
       onContextMenu(event, entry);
     }
   };
-  const nameCell = (
+  const entryNameContent = (
+    <EntryNameCell
+      copy={copy}
+      contextLabel={contextLabel}
+      entry={entry}
+      iconUrlByCacheKey={iconUrlByCacheKey}
+      inlineRenameValidation={inlineRenameValidation}
+      isEnteringDirectory={isEnteringDirectory}
+      isExpanded={expanded}
+      isExpandable={expandable}
+      isInlineRenaming={isInlineRenaming}
+      isLoadingChildren={isLoadingChildren}
+      isRenaming={isRenaming}
+      treeDepth={depth}
+      onEntryIconViewportLeave={onEntryIconViewportLeave}
+      onEntryIconViewportEnter={onEntryIconViewportEnter}
+      onCancelInlineRename={onCancelInlineRename}
+      onClearInlineRenameValidation={onClearInlineRenameValidation}
+      onConfirmInlineRename={onConfirmInlineRename}
+      onToggleDirectoryExpanded={onToggleDirectoryExpanded}
+    />
+  );
+  const modifiedText = formatWorkspaceFileModifiedTime(
+    resolveWorkspaceFileEntryArrangeDateMs(entry, arrangeMode),
+    dateLocale
+  );
+  const sizeText =
+    entry.kind === "directory"
+      ? "--"
+      : formatWorkspaceFileBytes(entry.sizeBytes);
+  const interactiveFieldProps = {
+    onPointerDown: (event: ReactPointerEvent<HTMLElement>) => {
+      onPointerDown(entry, event);
+    },
+    onClick: () => {
+      onClick(entry);
+    }
+  };
+  const nameCell = isInlineRenaming ? (
     <span className={cn("min-w-0 overflow-hidden", tableCellPaddingClassName)}>
-      <EntryNameCell
-        copy={copy}
-        contextLabel={contextLabel}
-        entry={entry}
-        iconUrlByCacheKey={iconUrlByCacheKey}
-        inlineRenameValidation={inlineRenameValidation}
-        isEnteringDirectory={isEnteringDirectory}
-        isExpanded={expanded}
-        isExpandable={expandable}
-        isInlineRenaming={isInlineRenaming}
-        isLoadingChildren={isLoadingChildren}
-        isRenaming={isRenaming}
-        treeDepth={depth}
-        onEntryIconViewportLeave={onEntryIconViewportLeave}
-        onEntryIconViewportEnter={onEntryIconViewportEnter}
-        onCancelInlineRename={onCancelInlineRename}
-        onClearInlineRenameValidation={onClearInlineRenameValidation}
-        onConfirmInlineRename={onConfirmInlineRename}
-        onToggleDirectoryExpanded={onToggleDirectoryExpanded}
-      />
+      {entryNameContent}
     </span>
+  ) : (
+    <OverflowFieldTooltip
+      className={cn(
+        "relative z-[1] min-w-0 overflow-hidden",
+        tableCellPaddingClassName
+      )}
+      content={entry.name}
+      {...interactiveFieldProps}
+    >
+      {entryNameContent}
+    </OverflowFieldTooltip>
   );
-  const modifiedCell = (
+  const modifiedCell = isInlineRenaming ? (
     <span
       className={cn(
         "truncate text-xs text-[var(--text-secondary)]",
         tableCellPaddingClassName
       )}
     >
-      {formatWorkspaceFileModifiedTime(
-        resolveWorkspaceFileEntryArrangeDateMs(entry, arrangeMode),
-        dateLocale
-      )}
+      {modifiedText}
     </span>
+  ) : (
+    <OverflowFieldTooltip
+      className={cn(
+        "relative z-[1] truncate text-xs text-[var(--text-secondary)]",
+        tableCellPaddingClassName
+      )}
+      content={modifiedText}
+      {...interactiveFieldProps}
+    >
+      {modifiedText}
+    </OverflowFieldTooltip>
   );
-  const sizeCell = (
+  const sizeCell = isInlineRenaming ? (
     <span
       className={cn(
         "truncate text-xs text-[var(--text-secondary)]",
         tableCellPaddingClassName
       )}
     >
-      {entry.kind === "directory"
-        ? "--"
-        : formatWorkspaceFileBytes(entry.sizeBytes)}
+      {sizeText}
     </span>
+  ) : (
+    <OverflowFieldTooltip
+      className={cn(
+        "relative z-[1] truncate text-xs text-[var(--text-secondary)]",
+        tableCellPaddingClassName
+      )}
+      content={sizeText}
+      {...interactiveFieldProps}
+    >
+      {sizeText}
+    </OverflowFieldTooltip>
   );
 
   if (isInlineRenaming) {
     return (
-      <div {...rowProps} ref={divRowRef}>
+      <div
+        {...rowProps}
+        aria-label={entry.name}
+        draggable={false}
+        ref={divRowRef}
+      >
         {nameCell}
         {modifiedCell}
         {sizeCell}
@@ -1029,10 +1090,10 @@ function EntryRow({
   }
 
   return (
-    <button
+    <div
       {...rowProps}
-      ref={buttonRowRef}
-      type="button"
+      draggable={draggable}
+      ref={divRowRef}
       onDragStart={(event: ReactDragEvent<HTMLElement>) => {
         if (!draggable) {
           event.preventDefault();
@@ -1040,17 +1101,77 @@ function EntryRow({
         }
         onDragStart?.(entry, event.dataTransfer);
       }}
-      onPointerDown={(event) => {
-        onPointerDown(entry, event);
-      }}
-      onClick={() => {
-        onClick(entry);
-      }}
     >
+      <button
+        aria-label={entry.name}
+        className="absolute inset-0 z-0"
+        ref={buttonRowRef}
+        type="button"
+        onPointerDown={(event) => {
+          onPointerDown(entry, event);
+        }}
+        onClick={() => {
+          onClick(entry);
+        }}
+      />
       {nameCell}
       {modifiedCell}
       {sizeCell}
-    </button>
+    </div>
+  );
+});
+
+function OverflowFieldTooltip({
+  children,
+  className,
+  content,
+  onClick,
+  onPointerDown
+}: {
+  children: ReactNode;
+  className?: string;
+  content: string;
+  onClick?: () => void;
+  onPointerDown?: (event: ReactPointerEvent<HTMLElement>) => void;
+}): ReactElement {
+  const triggerRef = useRef<HTMLSpanElement | null>(null);
+  const [open, setOpen] = useState(false);
+
+  const handleOpenChange = useCallback((nextOpen: boolean): void => {
+    const trigger = triggerRef.current;
+    setOpen(nextOpen && trigger !== null && hasOverflowingContent(trigger));
+  }, []);
+
+  return (
+    <TooltipProvider delayDuration={350}>
+      <Tooltip open={open} onOpenChange={handleOpenChange}>
+        <TooltipTrigger asChild>
+          <span
+            className={className}
+            ref={triggerRef}
+            onClick={onClick}
+            onPointerDown={onPointerDown}
+          >
+            {children}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent
+          className="max-w-[360px] whitespace-normal [overflow-wrap:anywhere]"
+          side="top"
+        >
+          {content}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function hasOverflowingContent(element: HTMLElement): boolean {
+  if (element.scrollWidth > element.clientWidth) {
+    return true;
+  }
+  return [...element.querySelectorAll<HTMLElement>("*")].some(
+    (child) => child.scrollWidth > child.clientWidth
   );
 }
 
@@ -1260,7 +1381,7 @@ function DirectoryDisclosureButton({
         expanded ? "collapseFolderLabel" : "expandFolderLabel"
       )}
       aria-expanded={expanded}
-      className="grid size-5 shrink-0 place-items-center rounded text-[var(--text-tertiary)] transition-colors hover:bg-transparency-block hover:text-[var(--text-primary)]"
+      className="pointer-events-auto grid size-5 shrink-0 place-items-center rounded text-[var(--text-tertiary)] transition-colors hover:bg-transparency-block hover:text-[var(--text-primary)]"
       disabled={isLoading}
       type="button"
       onClick={(event) => {
@@ -1434,6 +1555,9 @@ function EntryNameCell({
               }
             }}
             onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing || event.keyCode === 229) {
+                return;
+              }
               if (event.key === "Enter") {
                 event.preventDefault();
                 void handleConfirm();
@@ -1529,11 +1653,13 @@ function PreviewPane({
   copy,
   dateLocale,
   entry,
+  previewActions,
   previewState
 }: {
   copy: WorkspaceFileManagerI18nRuntime;
   dateLocale?: TuttiDateLocale;
   entry: WorkspaceFileEntry | null;
+  previewActions?: readonly WorkspaceFileManagerPreviewAction[];
   previewState: WorkspaceFilePreviewState;
 }): ReactElement {
   if (!entry || previewState.status === "empty") {
@@ -1549,6 +1675,10 @@ function PreviewPane({
   return (
     <>
       <PreviewSurface copy={copy} previewState={previewState} />
+      <WorkspaceFileManagerPreviewActionBar
+        actions={previewActions ?? []}
+        label={copy.t("previewActionsLabel")}
+      />
       <div className="flex min-w-0 flex-col gap-[14px]">
         <div className="flex min-w-0 flex-col gap-[3px]">
           <strong className="min-w-0 truncate text-[15px] font-semibold text-[var(--text-primary)]">

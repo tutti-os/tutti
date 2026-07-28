@@ -216,6 +216,12 @@ func (c *Controller) foldTurnSessionEvents(session Session, events []activitysha
 	if len(events) == 0 {
 		return session
 	}
+	for _, event := range events {
+		if event.Type == activityshared.EventRootProviderTurnStarted {
+			session.Resumable = true
+			break
+		}
+	}
 	previousStatus := session.Status
 	if session.LifecycleAuthority || eventsCarryAdapterLifecycleSnapshot(events) {
 		session = applySessionEventsBase(session, events)

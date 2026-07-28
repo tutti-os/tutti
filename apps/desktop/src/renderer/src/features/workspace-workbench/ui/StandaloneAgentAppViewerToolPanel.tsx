@@ -92,6 +92,7 @@ export function StandaloneAgentAppViewerToolPanel({
     isDragging: false,
     isFocused: active,
     isResizing: false,
+    isVisible: true,
     node,
     setNodeRuntimeState: () => undefined,
     setSnapshotNodeState: () => undefined

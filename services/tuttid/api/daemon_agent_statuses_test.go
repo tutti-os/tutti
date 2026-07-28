@@ -124,7 +124,7 @@ func TestDaemonAPIRoutesAgentProviderStatuses(t *testing.T) {
 		t.Fatalf("activeAction.log = %#v, want split installer stdout", activeAction.Log)
 	}
 	update := response.Providers[0].Update
-	if update.Capability != tuttigenerated.Supported || update.Source == nil || *update.Source != tuttigenerated.AgentProviderUpdateSourceNpm ||
+	if update.Capability != tuttigenerated.AgentProviderUpdateCapabilitySupported || update.Source == nil || *update.Source != tuttigenerated.AgentProviderUpdateSourceNpm ||
 		update.CurrentVersion == nil || *update.CurrentVersion != "1.0.0" || update.LatestVersion == nil || *update.LatestVersion != "1.1.0" ||
 		update.UpdateAvailable == nil || !*update.UpdateAvailable || update.LastCheckedAt == nil {
 		t.Fatalf("update = %#v", update)
@@ -329,6 +329,7 @@ func TestDaemonAPIRoutesRunAgentProviderAction(t *testing.T) {
 func TestDaemonAPIRoutesRunAgentProviderUpdateAction(t *testing.T) {
 	completedAt := time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
 	mux := http.NewServeMux()
+	var readinessTrigger string
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{
 		AgentStatusService: stubAgentStatusService{
 			runActionFn: func(_ context.Context, input agentstatusservice.RunActionInput) (agentstatusservice.RunActionResult, error) {
@@ -343,6 +344,13 @@ func TestDaemonAPIRoutesRunAgentProviderUpdateAction(t *testing.T) {
 				}, nil
 			},
 		},
+		TuttiAgentReadiness: stubTuttiAgentReadiness{
+			providerActionCompletedFn: func(result agentstatusservice.RunActionResult) {
+				if result.Provider == "tutti-agent" && result.Status == agentstatusservice.RunActionCompleted {
+					readinessTrigger = "provider_action_completed"
+				}
+			},
+		},
 	}))
 
 	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/agent-providers/tutti-agent/actions/update/run", nil)
@@ -353,5 +361,8 @@ func TestDaemonAPIRoutesRunAgentProviderUpdateAction(t *testing.T) {
 	decodeGeneratedRouteResponse(t, recorder, &response)
 	if response.ActionID != tuttigenerated.AgentProviderActionIDUpdate || response.Status != tuttigenerated.AgentProviderActionRunStatusCompleted {
 		t.Fatalf("response = %#v", response)
+	}
+	if readinessTrigger != "provider_action_completed" {
+		t.Fatalf("readiness trigger = %q, want provider_action_completed", readinessTrigger)
 	}
 }

@@ -12,10 +12,7 @@ import type {
   WorkbenchSize,
   WorkbenchState
 } from "../core/types.ts";
-import type {
-  WorkbenchMissionControlAdapter,
-  WorkbenchMissionControlMode
-} from "../mission-control/types.ts";
+import type { WorkbenchMissionControlAdapter } from "../mission-control/types.ts";
 import type {
   WorkbenchController,
   WorkbenchDebugDiagnostics
@@ -27,11 +24,16 @@ import type {
 import type {
   WorkbenchDockPlacement,
   WorkbenchMinimizeAnimation,
+  WorkbenchWindowHeaderPresentation,
   WorkbenchSurfacePresentation,
   WorkbenchWindowSurfaceLayer,
   WorkbenchWindowHeaderDragHandleProps
 } from "../react/types.ts";
 import type { WorkbenchDockPreviewCache } from "../react/dockPreviewCache.ts";
+import type {
+  WorkbenchNodePreviewImageCapture,
+  WorkbenchNodePreviewImagesCapture
+} from "../react/nodePreviewCapture.ts";
 
 export interface WorkbenchHostActivation<TPayload = unknown> {
   payload?: TPayload;
@@ -351,6 +353,7 @@ export interface WorkbenchHostNodeWindowCapabilities {
   defaultOpen?: boolean;
   fullscreenHeaderMode?: "persistent";
   fullscreenable?: boolean;
+  header?: WorkbenchWindowHeaderPresentation;
   keepMountedWhenMinimized?:
     | boolean
     | ((node: WorkbenchNode<WorkbenchHostNodeData>) => boolean);
@@ -405,6 +408,11 @@ export interface WorkbenchHostNodeBodyContext<
   isFocused: boolean;
   /** True while the host is interactively resizing this node. */
   isResizing: boolean;
+  /**
+   * True only while the normal Workbench window presentation is visible.
+   * False while minimized, Genie-hidden, or inside Mission Control.
+   */
+  isVisible: boolean;
   /** Current host presentation mode; null for the normal window layout. */
   presentationMode?: WorkbenchSurfacePresentation["mode"] | null;
   node: WorkbenchNode<WorkbenchHostNodeData>;
@@ -463,8 +471,6 @@ export interface WorkbenchHostNodeHeaderContext<
   surfaceSize: WorkbenchSize;
   windowActions: WorkbenchHostNodeHeaderWindowActions;
 }
-
-export type WorkbenchHostMissionControlMode = WorkbenchMissionControlMode;
 
 type WorkbenchHostBodyRenderer<
   TExternalNodeState = unknown,
@@ -622,10 +628,9 @@ export interface WorkbenchHostChromeRenderContext {
 }
 
 export interface WorkbenchHostMissionControlProps {
-  mode: WorkbenchMissionControlMode | null;
+  active: boolean;
   nodeIds?: readonly string[];
   onRequestClose: () => void;
-  onRequestMode?: (mode: WorkbenchMissionControlMode) => void;
 }
 
 export interface WorkbenchHostMissionControlOpenRequest {
@@ -664,9 +669,8 @@ export interface WorkbenchContribution {
 }
 
 export interface WorkbenchHostProps {
-  captureNodePreviewImage?: (
-    node: WorkbenchNode<WorkbenchHostNodeData>
-  ) => Promise<string | null> | string | null;
+  captureNodePreviewImage?: WorkbenchNodePreviewImageCapture<WorkbenchHostNodeData>;
+  captureNodePreviewImages?: WorkbenchNodePreviewImagesCapture<WorkbenchHostNodeData>;
   className?: string;
   contributions?: readonly WorkbenchContribution[];
   debugDiagnostics?: WorkbenchDebugDiagnostics;
@@ -702,7 +706,6 @@ export interface WorkbenchHostProps {
     adapter: WorkbenchMissionControlAdapter<WorkbenchHostNodeData> | null
   ) => void;
   onMissionControlRequestOpen?: (
-    mode: WorkbenchMissionControlMode,
     request?: WorkbenchHostMissionControlOpenRequest
   ) => void;
   onNodeCloseRequest?: (

@@ -258,6 +258,34 @@ better matches product-owned dock organization.
 
 Dock interaction should follow stable, entry-level rules.
 
+Dock magnification snapshots viewport and slot geometry once when a pointer
+session starts. Later animation frames derive centered or overflow-aligned slot
+positions from that snapshot and the sizes already written by the spring. They
+must not interleave per-frame `getBoundingClientRect()` reads with slot size
+writes. Resetting the interaction or changing slot membership invalidates the
+snapshot.
+
+Native popup previews pass the clamped target rectangle to Electron capture;
+they must not capture the whole `webContents` and crop afterward. A native
+region capture is valid only for the foreground node represented by those
+composited pixels. Background and minimized nodes must not use a fresh DOM
+snapshot because their bodies may be unhydrated or their imperative resources
+may be inactive. They reuse the last successful memory or persistent image
+instead. A failed capture is terminal only for the mounted popup; it must not
+be retained across popup lifetimes because the node may be foreground the next
+time. Popup capture effects are keyed by preview identity and revision, not
+transient item arrays or callback references. Cleanup may fence stale UI
+writes, but it must retain the pending marker for a native capture that has
+already started until that capture settles, because Electron capture cannot be
+canceled. Skeletons represent in-flight capture only; a terminally unavailable
+preview uses a non-loading static placeholder.
+
+Dock popup responsibilities stay split by lifecycle: `WorkbenchHostDockPopup`
+owns portal/layout and dismissal, `WorkbenchHostDockPopupPresentation` owns
+cards and context-menu rendering, and
+`useWorkbenchHostDockPopupPreviewCapture` owns capture, pending-operation
+fencing, and preview caches.
+
 ### Matching
 
 For each dock entry, the host resolves matching nodes using:

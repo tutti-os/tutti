@@ -1,0 +1,39 @@
+# Resolve React Native's Pod helpers through Node so pnpm hoisting is supported.
+require Pod::Executable.execute_command('node', ['-p',
+  'require.resolve(
+    "react-native/scripts/react_native_pods.rb",
+    {paths: [process.argv[1]]},
+  )', __dir__]).strip
+require_relative './cocoapods_pathname_workaround'
+
+platform :ios, min_ios_version_supported
+prepare_react_native_project!
+
+target 'TuttiMobile' do
+  config = use_native_modules!
+
+  pod 'TuttiMobileGo', :path => '.'
+
+  use_react_native!(
+    :path => config[:reactNativePath],
+    :app_path => "#{Pod::Config.instance.installation_root}/.."
+  )
+
+  post_install do |installer|
+    react_native_post_install(
+      installer,
+      config[:reactNativePath],
+      :mac_catalyst_enabled => false
+    )
+
+    # React Native resolves pnpm symlinks to an absolute store path during
+    # installation. Keep the user project portable across workspaces.
+    installer.aggregate_targets.map(&:user_project).compact.uniq.each do |project|
+      project.build_configurations.each do |build_configuration|
+        build_configuration.build_settings['REACT_NATIVE_PATH'] =
+          '${SRCROOT}/../node_modules/react-native'
+      end
+      project.save
+    end
+  end
+end

@@ -104,7 +104,19 @@ export function createEngineEffectExecutor({
         timeoutTasks.add(timeoutTask);
       }
 
-      commandPort.execute(command, { signal: abortController.signal }).then(
+      const execution =
+        command.type === "plan/submitDecision"
+          ? commandPort.executePlanDecision
+            ? commandPort.executePlanDecision(command, {
+                signal: abortController.signal
+              })
+            : Promise.reject(
+                new Error(
+                  "EngineCommandPort.executePlanDecision is not configured"
+                )
+              )
+          : commandPort.execute(command, { signal: abortController.signal });
+      execution.then(
         (value) => {
           if (settled) {
             diagnosticSink?.({

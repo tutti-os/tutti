@@ -52,12 +52,12 @@ function hasInlineOverflow(element: HTMLElement | null): boolean {
 }
 
 interface UseComposerLayoutInput {
+  isActive: boolean;
   isHeroLayout: boolean;
   inputDisabled: boolean;
   projectMissingProbeEnabled: boolean;
   showFileMentionPalette: boolean;
   showFloatingCommandMenu: boolean;
-  previewMode: boolean;
   promptTips: readonly { id: string; label: string; prompt: string }[];
   promptTipsPrefix: string;
   composerSettings: AgentGUIComposerSettingsVM;
@@ -72,12 +72,12 @@ interface UseComposerLayoutInput {
 }
 
 export function useComposerLayout({
+  isActive,
   isHeroLayout,
   inputDisabled,
   projectMissingProbeEnabled,
   showFileMentionPalette,
   showFloatingCommandMenu,
-  previewMode,
   promptTips,
   promptTipsPrefix,
   composerSettings,
@@ -92,7 +92,7 @@ export function useComposerLayout({
 }: UseComposerLayoutInput) {
   const composerMeasurementFrameRef = useRef<number | null>(null);
   const labels = { promptTipsPrefix };
-  const showEdgeGlow = isHeroLayout && !inputDisabled;
+  const showEdgeGlow = isActive && isHeroLayout && !inputDisabled;
   const showPromptTips = isHeroLayout && promptTips.length > 0;
   const activePromptTip = showPromptTips ? (promptTips[0] ?? null) : null;
   const showHeroProjectSelector = isHeroLayout;
@@ -109,26 +109,22 @@ export function useComposerLayout({
   const activePromptTipText = activePromptTip
     ? `${labels.promptTipsPrefix}${activePromptTip.label} · ${activePromptTip.prompt}`
     : "";
+  const shouldRotatePromptTips = isActive && promptTips.length > 1;
   const rotatingPromptTips =
-    activePromptTip && promptTips.length > 1
+    activePromptTip && shouldRotatePromptTips
       ? [...promptTips, activePromptTip]
       : activePromptTip
         ? [activePromptTip]
         : [];
-  const promptTipStyle =
-    promptTips.length > 1
-      ? ({
-          "--agent-gui-prompt-tip-count": promptTips.length,
-          "--agent-gui-prompt-tip-cycle-duration": `${
-            promptTips.length * PROMPT_TIP_CYCLE_STEP_MS
-          }ms`
-        } as CSSProperties)
-      : undefined;
+  const promptTipStyle = shouldRotatePromptTips
+    ? ({
+        "--agent-gui-prompt-tip-count": promptTips.length,
+        "--agent-gui-prompt-tip-cycle-duration": `${
+          promptTips.length * PROMPT_TIP_CYCLE_STEP_MS
+        }ms`
+      } as CSSProperties)
+    : undefined;
   useLayoutEffect(() => {
-    if (previewMode) {
-      setIsPromptTipOverflowing(false);
-      return;
-    }
     if (!activePromptTipId) {
       setIsPromptTipOverflowing(false);
       return;
@@ -155,7 +151,7 @@ export function useComposerLayout({
     return () => {
       resizeObserver?.disconnect();
     };
-  }, [activePromptTipId, activePromptTipText, previewMode]);
+  }, [activePromptTipId, activePromptTipText]);
   const measureDockComposer = useCallback((): void => {
     composerMeasurementFrameRef.current = null;
     if (isHeroLayout) {

@@ -46,7 +46,6 @@ interface AgentGUIConversationRailSectionHeaderProps {
   onRequestBatchDeletion: () => void;
   onToggleCollapsed: () => void;
   onToggleProjectPinned: () => void;
-  previewMode: boolean;
   projectPinned: boolean;
   sectionLabel: string;
 }
@@ -147,14 +146,12 @@ interface CreateActionProps {
   createConversationDisabled: boolean;
   createConversationLabel: string;
   onCreateConversation: () => void;
-  previewMode: boolean;
 }
 
 const CreateAction = memo(function CreateAction({
   createConversationDisabled,
   createConversationLabel,
-  onCreateConversation,
-  previewMode
+  onCreateConversation
 }: CreateActionProps): React.JSX.Element {
   "use memo";
   const button = (
@@ -169,14 +166,6 @@ const CreateAction = memo(function CreateAction({
       <CreateChatIcon aria-hidden="true" />
     </BareIconButton>
   );
-
-  if (previewMode) {
-    return (
-      <span className={styles.conversationSectionActionTooltipWrap}>
-        {button}
-      </span>
-    );
-  }
 
   return (
     <Tooltip>
@@ -198,7 +187,6 @@ const CreateAction = memo(function CreateAction({
 
 interface ProjectMenuTriggerProps {
   labels: AgentGUIConversationRailLabels;
-  previewMode: boolean;
 }
 
 type ProjectMenuButtonProps = Omit<
@@ -234,20 +222,9 @@ const ProjectMenuButton = forwardRef<HTMLButtonElement, ProjectMenuButtonProps>(
 ProjectMenuButton.displayName = "ProjectMenuButton";
 
 function ProjectMenuTrigger({
-  labels,
-  previewMode
+  labels
 }: ProjectMenuTriggerProps): React.JSX.Element {
   const accessibleName = labels.projectSectionMoreActions;
-
-  if (previewMode) {
-    return (
-      <DropdownMenuTrigger asChild>
-        <span className={styles.conversationSectionActionTooltipWrap}>
-          <ProjectMenuButton accessibleName={accessibleName} />
-        </span>
-      </DropdownMenuTrigger>
-    );
-  }
 
   return (
     <Tooltip>
@@ -334,7 +311,6 @@ function ProjectMenuContent({
 interface ProjectMenuProps extends ProjectMenuContentProps {
   onOpenChange: (open: boolean) => void;
   open: boolean;
-  previewMode: boolean;
 }
 
 const ProjectMenu = memo(function ProjectMenu({
@@ -346,13 +322,12 @@ const ProjectMenu = memo(function ProjectMenu({
   onRequestBatchDeletion,
   onToggleProjectPinned,
   open,
-  previewMode,
   projectPinned
 }: ProjectMenuProps): React.JSX.Element {
   "use memo";
   return (
     <DropdownMenu onOpenChange={onOpenChange}>
-      <ProjectMenuTrigger labels={labels} previewMode={previewMode} />
+      <ProjectMenuTrigger labels={labels} />
       {open ? (
         <ProjectMenuContent
           hasProjectId={hasProjectId}
@@ -370,31 +345,12 @@ const ProjectMenu = memo(function ProjectMenu({
 
 interface ConversationMenuTriggerProps {
   labels: AgentGUIConversationRailLabels;
-  previewMode: boolean;
 }
 
 function ConversationMenuTrigger({
-  labels,
-  previewMode
+  labels
 }: ConversationMenuTriggerProps): React.JSX.Element {
   const accessibleName = labels.conversationsSectionMoreActions;
-
-  if (previewMode) {
-    return (
-      <DropdownMenuTrigger asChild>
-        <span className={styles.conversationSectionActionTooltipWrap}>
-          <BareIconButton
-            className={styles.conversationSectionMoreButton}
-            aria-label={accessibleName}
-            size="sm"
-            title=""
-          >
-            <MoreHorizontalIcon aria-hidden="true" />
-          </BareIconButton>
-        </span>
-      </DropdownMenuTrigger>
-    );
-  }
 
   return (
     <Tooltip>
@@ -455,19 +411,17 @@ function ConversationMenuContent({
 interface ConversationMenuProps extends ConversationMenuContentProps {
   onOpenChange: (open: boolean) => void;
   open: boolean;
-  previewMode: boolean;
 }
 
 function ConversationMenu({
   labels,
   onOpenChange,
   onRequestBatchDeletion,
-  open,
-  previewMode
+  open
 }: ConversationMenuProps): React.JSX.Element {
   return (
     <DropdownMenu onOpenChange={onOpenChange}>
-      <ConversationMenuTrigger labels={labels} previewMode={previewMode} />
+      <ConversationMenuTrigger labels={labels} />
       {open ? (
         <ConversationMenuContent
           labels={labels}
@@ -497,7 +451,6 @@ export const AgentGUIConversationRailSectionHeader = memo(
     onRequestBatchDeletion,
     onToggleCollapsed,
     onToggleProjectPinned,
-    previewMode,
     projectPinned,
     sectionLabel
   }: AgentGUIConversationRailSectionHeaderProps): React.JSX.Element {
@@ -536,7 +489,6 @@ export const AgentGUIConversationRailSectionHeader = memo(
               createConversationDisabled={createConversationDisabled}
               createConversationLabel={createConversationLabel}
               onCreateConversation={onCreateConversation}
-              previewMode={previewMode}
             />
             {hasProjectPath ? (
               <ProjectMenu
@@ -548,7 +500,6 @@ export const AgentGUIConversationRailSectionHeader = memo(
                 onRequestBatchDeletion={onRequestBatchDeletion}
                 onToggleProjectPinned={onToggleProjectPinned}
                 open={projectMenuOpen}
-                previewMode={previewMode}
                 projectPinned={projectPinned}
               />
             ) : null}
@@ -558,7 +509,6 @@ export const AgentGUIConversationRailSectionHeader = memo(
                 onOpenChange={setConversationMenuOpen}
                 onRequestBatchDeletion={onRequestBatchDeletion}
                 open={conversationMenuOpen}
-                previewMode={previewMode}
               />
             ) : null}
           </div>

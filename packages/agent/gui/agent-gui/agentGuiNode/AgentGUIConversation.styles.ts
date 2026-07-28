@@ -13,6 +13,8 @@ const styles = {
   interactiveOptionDisplay:
     "agent-gui-conversation__interactive-option-display",
   interactiveOptionButton: "agent-gui-conversation__interactive-option-button",
+  interactiveOptionContent:
+    "agent-gui-conversation__interactive-option-content",
   interactiveOptionTitle: "agent-gui-conversation__interactive-option-title",
   interactiveOptionDescription:
     "agent-gui-conversation__interactive-option-description",
@@ -35,6 +37,14 @@ const styles = {
     "agent-gui-conversation__interactive-prompt-actions",
   userMessageFlow: "agent-gui-conversation__user-message-flow",
   assistantMessageFlow: "agent-gui-conversation__assistant-message-flow",
+  participantMessageLayout:
+    "agent-gui-conversation__participant-message-layout",
+  participantMessageHeader:
+    "agent-gui-conversation__participant-message-header",
+  participantName: "agent-gui-conversation__participant-name",
+  participantMessageContent:
+    "agent-gui-conversation__participant-message-content",
+  participantAvatar: "agent-gui-conversation__participant-avatar",
   messageGroup: "agent-gui-conversation__message-group",
   messageFooter: "agent-gui-conversation__message-footer",
   messageTimestamp: "agent-gui-conversation__message-timestamp",

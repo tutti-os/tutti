@@ -11,6 +11,9 @@ export function handleAgentRichTextKeyDownCapture(
     onKeyDownForPaletteRef: RefObject<
       ((event: KeyboardEvent) => boolean) | undefined
     >;
+    onHistoryNavigationRef: RefObject<
+      ((direction: "older" | "newer") => boolean) | undefined
+    >;
     onSubmitGuidanceRef: RefObject<(() => void) | undefined>;
     onSubmitRef: RefObject<() => void>;
     submitOnEnter: boolean;
@@ -26,6 +29,32 @@ export function handleAgentRichTextKeyDownCapture(
     event.preventDefault();
     event.stopPropagation();
     return;
+  }
+  if (
+    (event.key === "ArrowUp" || event.key === "ArrowDown") &&
+    !event.shiftKey &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.altKey
+  ) {
+    const currentEditor = input.editorRef.current;
+    const selection = currentEditor?.state.selection;
+    const documentSize = currentEditor?.state.doc.content.size ?? 0;
+    const isAtDocumentBoundary =
+      Boolean(selection?.empty) &&
+      (selection?.from === 1 || selection?.to === documentSize - 1);
+    if (
+      currentEditor &&
+      !currentEditor.isDestroyed &&
+      isAtDocumentBoundary &&
+      input.onHistoryNavigationRef.current?.(
+        event.key === "ArrowUp" ? "older" : "newer"
+      )
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
   }
   if (
     (event.key === "ArrowLeft" || event.key === "ArrowRight") &&

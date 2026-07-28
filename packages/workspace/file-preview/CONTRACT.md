@@ -141,6 +141,12 @@ to:
 - `text` (including the text-degradation path for `markdown` / `json` / `csv` /
   `html` / `code` when no host hook is registered)
 
+The public `WorkspaceImagePreviewSurface` is the reusable image-only canvas.
+Callers provide the image source and own its loading, URL lifetime, and error
+policy. `WorkspaceFilePreviewSurface` delegates its built-in image branch to
+this component so hosts can reuse the same visual implementation without
+adopting the workspace file controller.
+
 `audio`, `pdf`, `markdown` (rich), Office kinds (`docx` / `xlsx` / `pptx`), and
 other rich viewers are **hook-only** unless a later contract revision promotes a
 kind into the built-in set.

@@ -31,6 +31,7 @@ import type {
   ConfigureAppUpdatesInput,
   DesktopWorkspaceAppFolderKind,
   DesktopHostWindowCapturePreviewInput,
+  DesktopHostWindowPreviewImages,
   DesktopHostOpenAgentWindowInput,
   DesktopHostWindowCloseRequestPayload,
   DesktopHostWindowCloseRequestResolutionPayload,
@@ -126,6 +127,9 @@ export interface DesktopHostWindowApi {
   capturePreview(
     input: DesktopHostWindowCapturePreviewInput
   ): Promise<string | null>;
+  capturePreviewImages(
+    input: DesktopHostWindowCapturePreviewInput
+  ): Promise<DesktopHostWindowPreviewImages | null>;
   minimize(): Promise<void>;
   openAgentWindow(input: DesktopHostOpenAgentWindowInput): Promise<void>;
   onCloseRequest(

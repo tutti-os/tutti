@@ -9,6 +9,15 @@ import {
 } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  analyzeAgentGuiPresentationCss,
+  countInlineCompositorHints,
+  countPresentationSchedulers,
+  hasPresentationWorkReason,
+  isInlineCompositorHintLine,
+  isPresentationSchedulerLine,
+  validatePresentationHintReasons
+} from "./agent-gui-presentation-performance-policy.mjs";
 
 // Degradation ratchet for the agent GUI refactor
 // (docs/architecture/agent-gui-refactor-plan.md, sections 4.1 step 0 and 5.2).
@@ -107,6 +116,13 @@ export function isScannedSourceFile(relativePath) {
     return false;
   }
   return !ignoredFilenamePatterns.some((pattern) => pattern.test(relativePath));
+}
+
+export function isScannedPresentationCssFile(relativePath) {
+  return (
+    relativePath.startsWith("packages/agent/gui/") &&
+    relativePath.endsWith(".css")
+  );
 }
 
 export function isInScanRoots(relativePath) {
@@ -380,6 +396,8 @@ export function measureFileMetrics(relativePath, source, identityExemptFiles) {
     lineCount: countLines(source),
     memoCount: countMemoization(source),
     moduleMutableGlobals: countModuleMutableGlobals(source),
+    inlineCompositorHints: countInlineCompositorHints(source),
+    presentationSchedulerCalls: countPresentationSchedulers(source),
     providerBranches: isIdentityExempt ? 0 : providerBranches,
     renderMirrorRefs: countRenderMirrorRefs(source),
     setTimeoutCount: countTimerCalls(source),
@@ -398,9 +416,12 @@ export function aggregateMetrics(fileMetricsByPath) {
     fileLines: {},
     goFileLengthExemptions: 0,
     identityProviderBranches: 0,
+    inlineCompositorHints: {},
     moduleMutableGlobals: 0,
     overlayStores: 0,
     providerBranches: 0,
+    presentationHints: {},
+    presentationSchedulerCalls: {},
     renderMirrorRefs: 0,
     setTimeoutCount: 0,
     swallowedCatch: 0,
@@ -421,9 +442,16 @@ export function aggregateMetrics(fileMetricsByPath) {
     // stable projections without consuming the view budget.
     metrics.effectCount += file.effectCount;
     metrics.identityProviderBranches += file.identityProviderBranches;
+    if (file.inlineCompositorHints > 0) {
+      metrics.inlineCompositorHints[path] = file.inlineCompositorHints;
+    }
     metrics.moduleMutableGlobals += file.moduleMutableGlobals;
     metrics.overlayStores += file.storeCreations;
     metrics.providerBranches += file.providerBranches;
+    if (file.presentationSchedulerCalls > 0) {
+      metrics.presentationSchedulerCalls[path] =
+        file.presentationSchedulerCalls;
+    }
     metrics.renderMirrorRefs += file.renderMirrorRefs;
     metrics.setTimeoutCount += file.setTimeoutCount;
     metrics.swallowedCatch += file.swallowedCatches;
@@ -585,6 +613,30 @@ export function checkStagedFile({
     }
 
     if (
+      isPresentationSchedulerLine(content) &&
+      !hasPresentationWorkReason(contentLines, line)
+    ) {
+      violations.push({
+        line,
+        message:
+          "new requestAnimationFrame/requestIdleCallback/ResizeObserver work must carry a `// presentation-work: <visible/active/lifetime reason>` comment on the same or previous line",
+        rule: "presentation-scheduler-lifecycle"
+      });
+    }
+
+    if (
+      isInlineCompositorHintLine(content) &&
+      !hasPresentationWorkReason(contentLines, line)
+    ) {
+      violations.push({
+        line,
+        message:
+          "new inline willChange/translateZ/translate3d hints must carry a `// presentation-work: <bounded lifetime reason>` comment on the same or previous line",
+        rule: "inline-compositor-lifecycle"
+      });
+    }
+
+    if (
       !identityExempt &&
       (providerLiteralComparisonPattern().test(content) ||
         providerCaseClausePattern().test(content))
@@ -648,6 +700,43 @@ export function checkStagedFile({
   return violations;
 }
 
+export function checkStagedPresentationCssFile({
+  relativePath,
+  stagedContent,
+  addedLines,
+  presentationHintReasons
+}) {
+  const report = analyzeAgentGuiPresentationCss(relativePath, stagedContent);
+  const addedLineNumbers = new Set(addedLines.map((added) => added.line));
+  const violations = report.violations
+    .filter(({ line }) => addedLineNumbers.has(line))
+    .map((violation) => ({ ...violation }));
+
+  for (const hint of report.hints) {
+    if (
+      !addedLineNumbers.has(hint.line) ||
+      presentationHintReasons[hint.fingerprint]?.trim()
+    ) {
+      continue;
+    }
+    violations.push({
+      line: hint.line,
+      message:
+        "new persistent compositor hints and infinite animations require an exact `presentationHintReasons` entry in tools/degradation-baseline/agent-gui.json",
+      rule: "presentation-hint-lifecycle"
+    });
+  }
+
+  for (const required of report.missingRequiredDeclarations) {
+    violations.push({
+      line: 1,
+      message: `required AgentGUI pruning declaration is missing: ${required.selector} { ${required.property}: ${required.value}; }`,
+      rule: "presentation-pruning-contract"
+    });
+  }
+  return violations;
+}
+
 function hasTimerReasonComment(contentLines, lineNumber) {
   const line = contentLines[lineNumber - 1] ?? "";
   const previousLine = contentLines[lineNumber - 2] ?? "";
@@ -659,6 +748,7 @@ function hasTimerReasonComment(contentLines, lineNumber) {
 
 export function collectMetrics({ workspaceRoot, identityExemptFiles }) {
   const fileMetricsByPath = {};
+  const presentationHints = {};
   for (const rootPrefix of scanRootPrefixes) {
     const absoluteRoot = join(workspaceRoot, rootPrefix);
     if (!existsSync(absoluteRoot)) {
@@ -666,6 +756,15 @@ export function collectMetrics({ workspaceRoot, identityExemptFiles }) {
     }
     for (const filePath of walk(absoluteRoot)) {
       const relativePath = toPosixPath(relative(workspaceRoot, filePath));
+      if (isScannedPresentationCssFile(relativePath)) {
+        const source = readFileSync(filePath, "utf8");
+        for (const hint of analyzeAgentGuiPresentationCss(relativePath, source)
+          .hints) {
+          presentationHints[hint.fingerprint] =
+            (presentationHints[hint.fingerprint] ?? 0) + 1;
+        }
+        continue;
+      }
       if (!isScannedSourceFile(relativePath)) {
         continue;
       }
@@ -678,6 +777,7 @@ export function collectMetrics({ workspaceRoot, identityExemptFiles }) {
     }
   }
   const metrics = aggregateMetrics(fileMetricsByPath);
+  metrics.presentationHints = presentationHints;
   for (const relativePath of renderBoundaryFiles) {
     const absolutePath = join(workspaceRoot, relativePath);
     if (!existsSync(absolutePath)) continue;
@@ -687,6 +787,38 @@ export function collectMetrics({ workspaceRoot, identityExemptFiles }) {
   }
   metrics.goFileLengthExemptions = countGoFileLengthExemptions(workspaceRoot);
   return metrics;
+}
+
+function collectPresentationCssViolations(workspaceRoot) {
+  const violations = [];
+  for (const rootPrefix of scanRootPrefixes) {
+    const absoluteRoot = join(workspaceRoot, rootPrefix);
+    if (!existsSync(absoluteRoot)) {
+      continue;
+    }
+    for (const filePath of walk(absoluteRoot)) {
+      const relativePath = toPosixPath(relative(workspaceRoot, filePath));
+      if (!isScannedPresentationCssFile(relativePath)) {
+        continue;
+      }
+      const report = analyzeAgentGuiPresentationCss(
+        relativePath,
+        readFileSync(filePath, "utf8")
+      );
+      for (const violation of report.violations) {
+        violations.push({ file: relativePath, ...violation });
+      }
+      for (const required of report.missingRequiredDeclarations) {
+        violations.push({
+          file: relativePath,
+          line: 1,
+          message: `required AgentGUI pruning declaration is missing: ${required.selector} { ${required.property}: ${required.value}; }`,
+          rule: "presentation-pruning-contract"
+        });
+      }
+    }
+  }
+  return violations;
 }
 
 function countGoFileLengthExemptions(workspaceRoot) {
@@ -769,11 +901,52 @@ function runFullMode({ workspaceRoot, baselinePath, updateBaseline }) {
   if (reportStaleIdentityExemptFiles(workspaceRoot, identityExemptFiles)) {
     return 1;
   }
+  if (!existingBaseline && !updateBaseline) {
+    console.error(
+      "agent-gui degradation baseline is missing. Generate it with:\n" +
+        "  node tools/scripts/check-agent-gui-degradation.mjs --update-baseline"
+    );
+    return 1;
+  }
   const metrics = collectMetrics({ identityExemptFiles, workspaceRoot });
+  const cssViolations = collectPresentationCssViolations(workspaceRoot);
+  if (cssViolations.length > 0) {
+    console.error("agent-gui presentation CSS policy failed:");
+    for (const violation of cssViolations) {
+      console.error(
+        `- [${violation.rule}] ${violation.file}:${violation.line} ${violation.message}`
+      );
+    }
+    return 1;
+  }
+  const presentationHintReasons =
+    existingBaseline?.presentationHintReasons ?? {};
+  const hintReasonState = validatePresentationHintReasons(
+    Object.keys(metrics.presentationHints).map((fingerprint) => ({
+      fingerprint
+    })),
+    presentationHintReasons
+  );
+  if (hintReasonState.missing.length > 0 || hintReasonState.stale.length > 0) {
+    console.error(
+      "agent-gui presentation hint lifecycle reasons are out of date:"
+    );
+    for (const fingerprint of hintReasonState.missing) {
+      console.error(`- missing reason: ${fingerprint}`);
+    }
+    for (const fingerprint of hintReasonState.stale) {
+      console.error(`- stale reason: ${fingerprint}`);
+    }
+    console.error(
+      "\nAdd or remove exact `presentationHintReasons` entries in tools/degradation-baseline/agent-gui.json, then update the baseline."
+    );
+    return 1;
+  }
 
   if (updateBaseline) {
     writeBaseline(baselinePath, {
       identityExemptFiles,
+      presentationHintReasons,
       metrics
     });
     console.log(
@@ -782,14 +955,6 @@ function runFullMode({ workspaceRoot, baselinePath, updateBaseline }) {
       )}`
     );
     return 0;
-  }
-
-  if (!existingBaseline) {
-    console.error(
-      "agent-gui degradation baseline is missing. Generate it with:\n" +
-        "  node tools/scripts/check-agent-gui-degradation.mjs --update-baseline"
-    );
-    return 1;
   }
 
   const { improvements, regressions } = compareWithBaseline(
@@ -828,8 +993,10 @@ function runFullMode({ workspaceRoot, baselinePath, updateBaseline }) {
 }
 
 function runStagedMode({ workspaceRoot, baselinePath }) {
-  const existingBaseline = readBaseline(baselinePath);
+  const existingBaseline = readStagedBaseline(workspaceRoot, baselinePath);
   const identityExemptFiles = existingBaseline?.identityExemptFiles ?? [];
+  const presentationHintReasons =
+    existingBaseline?.presentationHintReasons ?? {};
   if (reportStaleIdentityExemptFiles(workspaceRoot, identityExemptFiles)) {
     return 1;
   }
@@ -846,9 +1013,12 @@ function runStagedMode({ workspaceRoot, baselinePath }) {
 
   for (const [relativePath, addedLines] of addedLinesByFile) {
     if (
-      !isScannedSourceFile(relativePath) ||
-      !isInStagedScanRoots(relativePath)
+      !isScannedSourceFile(relativePath) &&
+      !isScannedPresentationCssFile(relativePath)
     ) {
+      continue;
+    }
+    if (!isInStagedScanRoots(relativePath)) {
       continue;
     }
     let stagedContent;
@@ -859,6 +1029,17 @@ function runStagedMode({ workspaceRoot, baselinePath }) {
         maxBuffer: 64 * 1024 * 1024
       });
     } catch {
+      continue;
+    }
+    if (isScannedPresentationCssFile(relativePath)) {
+      for (const violation of checkStagedPresentationCssFile({
+        addedLines,
+        presentationHintReasons,
+        relativePath,
+        stagedContent
+      })) {
+        violations.push({ file: relativePath, ...violation });
+      }
       continue;
     }
     for (const violation of checkStagedFile({
@@ -886,6 +1067,25 @@ function runStagedMode({ workspaceRoot, baselinePath }) {
 
   console.log("agent-gui degradation staged check passed");
   return 0;
+}
+
+function readStagedBaseline(workspaceRoot, baselinePath) {
+  const relativePath = toPosixPath(relative(workspaceRoot, baselinePath));
+  if (relativePath === ".." || relativePath.startsWith("../")) {
+    return readBaseline(baselinePath);
+  }
+  try {
+    return JSON.parse(
+      execFileSync("git", ["show", `:${relativePath}`], {
+        cwd: workspaceRoot,
+        encoding: "utf8",
+        maxBuffer: 64 * 1024 * 1024,
+        stdio: ["ignore", "pipe", "ignore"]
+      })
+    );
+  } catch {
+    return readBaseline(baselinePath);
+  }
 }
 
 export function stagedDiffArgs(mergeHead = null) {

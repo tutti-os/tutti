@@ -25,14 +25,18 @@ import {
   queryAgentMentionProviderWithDiagnostics,
   type AgentMentionProviderQueryDiagnostic
 } from "./agentMentionSearchDiagnostics";
-import { queryAgentMentionProviderGroupPage } from "./AgentMentionSearchIndex";
+import {
+  queryAgentMentionProviderDirectoryItems,
+  queryAgentMentionProviderGroupPage
+} from "./AgentMentionSearchIndex";
 import { AgentMentionSearchControllerBase } from "./AgentMentionSearchControllerBase";
+import { AgentMentionDirectoryRequestLifecycle } from "./AgentMentionDirectoryRequestLifecycle";
 import type {
   ReferenceProvenanceCatalog,
   ReferenceProvenanceFilter
 } from "@tutti-os/workspace-file-reference/contracts";
-import { referenceProvenanceFilterCacheKey } from "@tutti-os/workspace-file-reference/core";
 import { presentWorkspaceFileDirectoryMentionItems } from "./agentMentionWorkspaceFilesPresentation";
+import { AgentMentionProvenanceFilterState } from "./AgentMentionProvenanceFilterState";
 
 export type {
   AgentMentionBrowseCategory,
@@ -48,6 +52,9 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     string,
     { abortController: AbortController; token: symbol }
   >();
+  private readonly directoryRequestLifecycle =
+    new AgentMentionDirectoryRequestLifecycle();
+  private readonly provenanceFilters = new AgentMentionProvenanceFilterState();
 
   setProvenanceCatalog(catalog: ReferenceProvenanceCatalog | null): void {
     if (this.currentProvenanceCatalog === catalog) return;
@@ -64,16 +71,13 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     });
   }
 
-  setProvenanceFilter(filter: ReferenceProvenanceFilter | null): void {
-    const previousKey = this.currentProvenanceFilter
-      ? referenceProvenanceFilterCacheKey(this.currentProvenanceFilter)
-      : "disabled";
-    const nextKey = filter
-      ? referenceProvenanceFilterCacheKey(filter)
-      : "disabled";
-    if (previousKey === nextKey) return;
+  setProvenanceFilters(
+    filters: Record<AgentMentionFilterId, ReferenceProvenanceFilter | null>
+  ): void {
+    const next = this.provenanceFilters.replace(filters, this.currentFilter);
+    if (!next.changed) return;
     this.cancelPendingPreload();
-    this.currentProvenanceFilter = filter;
+    this.currentProvenanceFilter = next.value;
     this.updateQuery({
       workspaceId: this.activeWorkspaceId,
       currentUserId: this.currentUserId,
@@ -108,6 +112,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     this.currentQuery = normalizeQuery(input.query);
     this.clearTimer();
     this.abortActiveRequest();
+    this.directoryRequestLifecycle.cancel();
     this.cancelIssueLoadMoreRequests();
     const requestId = ++this.requestId;
     this.resetAgentGeneratedBrowsePath();
@@ -164,8 +169,10 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       return;
     }
     this.currentFilter = filter;
+    this.currentProvenanceFilter = this.provenanceFilters.value(filter);
     this.clearTimer();
     this.abortActiveRequest();
+    this.directoryRequestLifecycle.cancel();
     this.cancelIssueLoadMoreRequests();
     const requestId = ++this.requestId;
     this.resetAgentGeneratedBrowsePath();
@@ -406,6 +413,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       this.loadWorkspaceFileDirectory(parentPath);
       return true;
     }
+    this.directoryRequestLifecycle.cancel();
     this.startBrowseModeFetch("file");
     return true;
   }
@@ -414,8 +422,10 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     this.clearTimer();
     this.abortActiveRequest();
     this.cancelIssueLoadMoreRequests();
-    const requestId = ++this.requestId;
+    this.requestId += 1;
     const workspaceId = this.activeWorkspaceId;
+    const provider = this.contextMentionProviders.get(FILE_PROVIDER_ID);
+    const directoryRequest = this.directoryRequestLifecycle.start();
     this.setState({
       status: "loading",
       query: "",
@@ -425,25 +435,32 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       groups: this.groupsFromRawGroups(),
       error: null
     });
-    const abortSignal = this.beginActiveRequest();
-    const diagnostics: AgentMentionProviderQueryDiagnostic[] = [];
-    void this.queryProviderMentionItemsById({
-      abortSignal,
-      diagnostics,
+    void queryAgentMentionProviderDirectoryItems({
+      abortSignal: directoryRequest.abortSignal,
+      provider,
       directoryPath,
-      providerId: FILE_PROVIDER_ID,
       workspaceId,
       currentUserId: this.currentUserId,
-      query: "",
+      sectionKey: this.currentSectionKey,
+      sessionCwd: this.currentSessionCwd,
       provenanceFilter: this.currentProvenanceFilter
     })
       .then((items) => {
         if (
-          !this.canApply(requestId, workspaceId, "", "file") ||
-          this.workspaceFileBrowsePaths.at(-1) !== directoryPath
+          !this.directoryRequestLifecycle.canApply({
+            activeDirectoryPath: this.workspaceFileBrowsePaths.at(-1),
+            activeWorkspaceId: this.activeWorkspaceId,
+            directoryPath,
+            disposed: this.disposed,
+            filter: this.currentFilter,
+            query: this.currentQuery,
+            requestId: directoryRequest.requestId,
+            workspaceId
+          })
         ) {
           return;
         }
+        this.directoryRequestLifecycle.finish(directoryRequest.requestId);
         this.rawGroups.opened_files = presentWorkspaceFileDirectoryMentionItems(
           {
             browsePath: directoryPath,
@@ -463,11 +480,20 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       })
       .catch((error) => {
         if (
-          !this.canApply(requestId, workspaceId, "", "file") ||
-          this.workspaceFileBrowsePaths.at(-1) !== directoryPath
+          !this.directoryRequestLifecycle.canApply({
+            activeDirectoryPath: this.workspaceFileBrowsePaths.at(-1),
+            activeWorkspaceId: this.activeWorkspaceId,
+            directoryPath,
+            disposed: this.disposed,
+            filter: this.currentFilter,
+            query: this.currentQuery,
+            requestId: directoryRequest.requestId,
+            workspaceId
+          })
         ) {
           return;
         }
+        this.directoryRequestLifecycle.finish(directoryRequest.requestId);
         this.setState({
           status: "error",
           query: "",
@@ -559,6 +585,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
   close(): void {
     this.clearTimer();
     this.abortActiveRequest();
+    this.directoryRequestLifecycle.cancel();
     this.cancelIssueLoadMoreRequests();
     this.requestId += 1;
     this.currentFilter = DEFAULT_AGENT_MENTION_FILTER;
@@ -583,6 +610,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     this.disposed = true;
     this.clearTimer();
     this.abortActiveRequest();
+    this.directoryRequestLifecycle.cancel();
     this.cancelIssueLoadMoreRequests();
     this.cancelPendingPreload();
     this.listeners.clear();
@@ -749,13 +777,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
   }
 }
 
-// Warm the shared browse cache without a mounted controller — e.g. from an app
-// startup flow, so the first time the @ palette opens its results are already
-// cached. Spins up a transient controller (no listeners, default limits/ttl) so
-// the produced cacheKey matches a live composer controller built with the same
-// providers; the global cache + in-flight dedup are reused, so this never
-// double-fetches against a focus-driven preload. The instance holds no timers
-// after the idle warm runs, so it is garbage-collected.
+// A transient controller warms the shared cache and leaves no timer behind.
 export function preloadAgentMentionBrowse(input: {
   workspaceId: string;
   currentUserId?: string | null;

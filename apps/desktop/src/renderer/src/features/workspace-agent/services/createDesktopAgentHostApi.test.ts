@@ -36,7 +36,13 @@ test("desktop agent host api projects the optional quick prompts capability", ()
 });
 
 test("desktop agent host api routes terminal login through the launch coordinator", async () => {
-  const api = createAgentHostApi();
+  const api = createAgentHostApi({
+    tuttidClient: createTuttidClient({
+      async getAgentTargetSetup(_workspaceId, agentTargetId) {
+        return readyAgentTargetSetup(agentTargetId);
+      }
+    })
+  });
   const closeCalls: string[] = [];
   const requests: Array<{
     command: string;
@@ -56,11 +62,13 @@ test("desktop agent host api routes terminal login through the launch coordinato
   );
   try {
     const handle = await api.terminalLogin?.run({
+      agentTargetId: "extension:kimi-code",
       command: "/opt/kimi/bin/kimi login"
     });
     assert.deepEqual(requests, [
       { command: "/opt/kimi/bin/kimi login", cwd: undefined, workspaceId }
     ]);
+    assert.equal(await handle?.completion, "ready");
     handle?.close();
     assert.deepEqual(closeCalls, ["close"]);
   } finally {
@@ -69,8 +77,10 @@ test("desktop agent host api routes terminal login through the launch coordinato
 
   await assert.rejects(
     () =>
-      api.terminalLogin?.run({ command: "/opt/kimi/bin/kimi login" }) ??
-      Promise.reject(new Error("missing terminalLogin")),
+      api.terminalLogin?.run({
+        agentTargetId: "extension:kimi-code",
+        command: "/opt/kimi/bin/kimi login"
+      }) ?? Promise.reject(new Error("missing terminalLogin")),
     /Terminal login is unavailable/
   );
 });
@@ -1020,4 +1030,21 @@ function createTuttidClient(
     },
     ...overrides
   } as unknown as TuttidClient;
+}
+
+function readyAgentTargetSetup(
+  agentTargetId: string
+): AgentTargetSetupSnapshot {
+  return {
+    account: null,
+    action: null,
+    agentTargetId,
+    authMethods: [],
+    plan: null,
+    reason: null,
+    runtimeSource: "managed",
+    runtimeVersion: "1.0.0",
+    status: "ready",
+    workspaceId
+  };
 }

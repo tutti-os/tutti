@@ -12,21 +12,41 @@ reference handle into its artifact files so you can read them as context. Use in
 
 ## Mention Contract
 
-Treat the `mention://workspace-reference/...` link as the machine-readable source of truth. Parse:
+Treat the `mention://workspace-reference/...` link as the machine-readable source of truth.
 
-- URL path: the entity id — `appId` when `source=app`, `topicId` when `source=task`.
-- `source`: one of `app`, `task`.
-- `workspaceId`: required scope.
-- `groupId`: optional sub-scope — an app group when `source=app`, an `issueId` when `source=task`.
-  Absent means the whole app / the whole topic.
+{{if has "references.task.list"}}
+
+- URL path: referenced task id.
+- `source`: must be `task`.
+- `workspaceId`: workspace scope supplied by the trusted runtime context.
+- optional `groupId`: topic/group scope when present.
+  {{else if has "references.reference.list"}}
+- URL path: referenced entity id.
+- `source`: use only a value accepted by the current command schema: {{range inputValues "references.reference.list" "source"}}`{{.}}` {{end}}
+- `workspaceId`: workspace scope supplied by the trusted runtime context.
+- optional `groupId`: group scope when present.
+  {{else if has "reference.list"}}
+- URL path: referenced entity id.
+- `source`: use only a value accepted by the current command schema: {{range inputValues "reference.list" "source"}}`{{.}}` {{end}}
+- `workspaceId`: workspace scope supplied by the trusted runtime context.
+- optional `groupId`: group scope when present.
+  {{else}}
+  The current Host does not advertise reference resolution. Parse the URI as data, but do not guess a `reference` command.
+  {{end}}
 
 Do not infer the file set from the mention label.
 
 ## Resolve
 
-Run exactly one command to list the referenced files:
-
-`{{CLI_COMMAND}} reference list --source <source> --id <id> [--group-id <groupId>] --json`
+{{if has "references.task.list"}}
+Run `{{command "references.task.list" (args "source" "task" "id" "<id>")}}`, then read returned paths.
+{{else if has "references.reference.list"}}
+Run `{{command "references.reference.list" (args "source" "<source>" "id" "<id>")}}`, then read returned paths.
+{{else if has "reference.list"}}
+Run `{{command "reference.list" (args "source" "<source>" "id" "<id>")}}`, then read returned paths.
+{{else}}
+Reference resolution is unavailable in the current Host command snapshot. Do not invent a fallback command.
+{{end}}
 
 The JSON result is `{ "items": [ { "path", "displayName", "sizeBytes", "mediaType" } ] }`,
 already flattened. Then read the paths you need with your normal file tools.

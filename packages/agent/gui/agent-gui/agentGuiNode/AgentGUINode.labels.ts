@@ -1,6 +1,10 @@
 import { useMemo } from "react";
 import type { WorkspaceFileReferenceCopy } from "@tutti-os/workspace-file-reference/contracts";
 import type { TranslateFn } from "../../i18n/index";
+import {
+  agentGUIProviderIdentityDisplayName,
+  resolveAgentGUIProviderCatalogIdentity
+} from "../../providerIdentityCatalog";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../shared/AgentMessageMarkdown";
 import type { AgentGUIHomeSuggestionId } from "../../types";
 import { resolveAgentGUIProviderDisplayLabel } from "./model/agentGuiProviderIdentity";
@@ -272,6 +276,15 @@ export function useAgentGUIViewLabels(input: {
       slashStatusContext: t("agentHost.agentGui.slashStatusContext"),
       slashStatusLimits: t("agentHost.agentGui.slashStatusLimits"),
       slashStatusAccount: t("agentHost.agentGui.slashStatusAccount"),
+      slashStatusProviderAccount: (provider: string) => {
+        const identity = resolveAgentGUIProviderCatalogIdentity(provider);
+        if (!identity) {
+          return null;
+        }
+        return t("agentHost.agentGui.slashStatusProviderAccount", {
+          provider: agentGUIProviderIdentityDisplayName(identity, t)
+        });
+      },
       slashStatusClose: t("agentHost.agentGui.slashStatusClose"),
       slashStatusContextValue: (input: {
         percentLeft: number;
@@ -343,33 +356,6 @@ export function useAgentGUIViewLabels(input: {
       emptyProviderForProvider: (provider: string) =>
         resolveAgentGUIProviderDisplayLabel(provider, fallbackAgentTitle),
       conversations: t("agentHost.agentGui.conversations"),
-      accountMenuTitle: t("agentHost.agentGui.accountMenuTitle"),
-      accountMenuMember: t("agentHost.agentGui.accountMenuMember"),
-      accountMenuUpgrade: t("agentHost.agentGui.accountMenuUpgrade"),
-      accountMenuCreditsBalance: t(
-        "agentHost.agentGui.accountMenuCreditsBalance"
-      ),
-      accountMenuAccountCenter: t(
-        "agentHost.agentGui.accountMenuAccountCenter"
-      ),
-      accountMenuSettings: t("agentHost.agentGui.accountMenuSettings"),
-      accountMenuFree: t("agentHost.agentGui.accountMenuFree"),
-      accountMenuSignIn: t("agentHost.agentGui.accountMenuSignIn"),
-      accountMenuSignOut: t("agentHost.agentGui.accountMenuSignOut"),
-      accountMenuCopyUserId: t("agentHost.agentGui.accountMenuCopyUserId"),
-      accountMenuLoading: t("agentHost.agentGui.accountMenuLoading"),
-      accountMenuUnavailable: t("agentHost.agentGui.accountMenuUnavailable"),
-      accountMenuDataUnavailable: t(
-        "agentHost.agentGui.accountMenuDataUnavailable"
-      ),
-      accountRewardToastTitle: t("agentHost.agentGui.accountRewardToastTitle"),
-      accountRewardToastCreditsUnit: t(
-        "agentHost.agentGui.accountRewardToastCreditsUnit"
-      ),
-      accountRewardToastDescription: t(
-        "agentHost.agentGui.accountRewardToastDescription"
-      ),
-      accountRewardToastClose: t("agentHost.agentGui.accountRewardToastClose"),
       agentConfig: t("agentHost.agentGui.agentConfig"),
       agentSettingsMenu: t("agentHost.agentGui.agentSettingsMenu"),
       agentEnvSetup: t("agentHost.agentGui.agentEnvSetup"),
@@ -386,6 +372,7 @@ export function useAgentGUIViewLabels(input: {
         "agentHost.agentGui.sharedAgentOwnerSeparator"
       ),
       loadingConversation: t("agentHost.agentGui.loadingConversation"),
+      continuedFromTask: t("agentHost.agentGui.continuedFromTask"),
       scrollToBottom: t("agentHost.agentGui.scrollToBottom"),
       fallbackAgentTitle,
       untitledConversationTitle: t(

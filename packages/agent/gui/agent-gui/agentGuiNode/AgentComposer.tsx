@@ -47,10 +47,12 @@ import {
   agentComposerDraftPrompt
 } from "./model/agentComposerDraft";
 import type { AgentGUIComposerContentType } from "./engagement/agentGUIEngagement.types";
+import { projectAgentGUIComposerGateControls } from "./model/agentGuiComposerGate";
 import {
   groupAgentExternalPromptEntryInsertions,
   resolveAgentExternalPromptEntries
 } from "./model/agentExternalPromptEntries";
+import { useComposerInputHistory } from "./composer/useComposerInputHistory";
 
 export { formatSlashStatusTokenCount };
 
@@ -67,6 +69,7 @@ export type {
   AgentComposerGitBranches,
   AgentComposerPromptTip,
   AgentComposerReferenceProvenanceFilter,
+  AgentComposerReferenceProvenanceFilters,
   AgentComposerProps,
   AgentComposerSlashStatus,
   AgentComposerSlashStatusLimit,
@@ -79,6 +82,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   "use memo";
   const {
     workspaceId,
+    agentSessionId = null,
     workspacePath,
     currentUserId,
     provider,
@@ -86,13 +90,18 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     draftContent,
     engagement,
     draftScopeKey = "current",
+    inputHistory = [],
+    inputHistoryHasOlderPage = false,
+    inputHistoryIsLoadingOlderPage = false,
+    onRequestOlderInputHistoryPage,
     availableCommands,
     hasCompactableContext = true,
     compactSupported = null,
     availableSkills = EMPTY_PROVIDER_SKILLS,
-    disabled,
+    gate,
+    presentationEditorDisabled,
     disabledReason,
-    submitDisabled,
+    presentationSubmitDisabled,
     tuttiModeActive = false,
     tuttiModeUpdating = false,
     tuttiModeOrchestrationIntensity = 50,
@@ -103,7 +112,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     handoffAgentTargets,
     providerSelectReadonly = false,
     onHandoffConversation,
-    canQueueWhileBusy,
     showStopButton,
     stopDisabled,
     activePrompt,
@@ -114,7 +122,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     projectMissingProbeEnabled = true,
     uiLanguage = "en",
     isActive = true,
-    previewMode = false,
     workspaceReferencePickerOpen = false,
     promptImagesSupported = true,
     canGoalControl = true,
@@ -145,8 +152,17 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     prepareExternalPromptFiles = null,
     promptAssetLimit = null,
     onRequestGitBranches = null,
-    referenceProvenanceFilter = null
+    referenceProvenanceFilters = null
   } = props;
+  const {
+    canQueueWhileBusy,
+    editorDisabled: disabled,
+    submissionDisabled: submitDisabled
+  } = projectAgentGUIComposerGateControls({
+    gate,
+    presentationEditorDisabled,
+    presentationSubmitDisabled
+  });
   const draftPrompt = agentComposerDraftPrompt(draftContent);
   const goalDraftObjective = canGoalControl
     ? goalDraftObjectiveFromPrompt(draftPrompt)
@@ -220,15 +236,15 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   );
   const [fileMentionSuggestion, setFileMentionSuggestion] =
     useState<AgentFileMentionSuggestionState | null>(null);
+  const selectedProjectPath =
+    composerSettings.selectedProjectPath?.trim() ?? "";
   const [isSelectedProjectMissing, setIsSelectedProjectMissing] =
-    useScopedProjectMissingState(draftScopeKey);
+    useScopedProjectMissingState(selectedProjectPath);
   const [isSlashStatusPanelOpen, setIsSlashStatusPanelOpen] = useState(false);
   const slashStatusAgentSessionId = slashStatus?.agentSessionId ?? null;
   const previousSlashStatusAgentSessionIdRef = useRef<string | null>(
     slashStatusAgentSessionId
   );
-  const selectedProjectPath =
-    composerSettings.selectedProjectPath?.trim() ?? "";
   const selectedProjectSectionKey =
     composerSettings.selectedProjectSectionKey?.trim() ?? "";
   const previousSelectedProjectPathRef = useRef(selectedProjectPath);
@@ -245,9 +261,26 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     [draftScopeKey]: draftContent
   });
   draftByScopeKeyRef.current[draftScopeKey] = draftContent;
+  const {
+    disposeInputHistory,
+    onHistoryNavigation,
+    settlePendingInputHistory
+  } = useComposerInputHistory({
+    agentSessionId,
+    currentDraft: draftContent,
+    draftByScopeKeyRef,
+    draftScopeKey,
+    entries: inputHistory,
+    hasOlderPage: inputHistoryHasOlderPage,
+    isLoadingOlderPage: inputHistoryIsLoadingOlderPage,
+    onDraftContentChange,
+    onRequestOlderPage: onRequestOlderInputHistoryPage,
+    runtime: agentActivityRuntime,
+    workspaceId
+  });
   const promptTipRef = useRef<HTMLSpanElement | null>(null);
   const { mentionControllerRef, mentionSearchState } =
-    useAgentMentionSearchController(referenceProvenanceFilter);
+    useAgentMentionSearchController(referenceProvenanceFilters);
   const editorHandleRef = useRef<AgentRichTextEditorHandle | null>(null);
   const wasActiveRef = useRef(isActive);
   const lastComposerFocusRequestRef = useRef<number | null>(null);
@@ -358,6 +391,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     const isExternalDraftReplacement = draftPromptRef.current !== draftPrompt;
     draftPromptRef.current = draftPrompt;
     setPaletteDraftPrompt(goalDraftObjective ?? draftPrompt);
+    settlePendingInputHistory();
     if (isExternalDraftReplacement && draftPrompt) {
       window.requestAnimationFrame(() => {
         window.requestAnimationFrame(() => {
@@ -367,17 +401,23 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
         });
       });
     }
-  }, [draftContent, draftPrompt, goalDraftObjective]);
+  }, [
+    draftContent,
+    draftPrompt,
+    goalDraftObjective,
+    settlePendingInputHistory
+  ]);
 
   useEffect(() => {
     if (
       previousSlashStatusAgentSessionIdRef.current === slashStatusAgentSessionId
     ) {
-      return;
+      return disposeInputHistory;
     }
     previousSlashStatusAgentSessionIdRef.current = slashStatusAgentSessionId;
     setIsSlashStatusPanelOpen(false);
-  }, [slashStatusAgentSessionId]);
+    return disposeInputHistory;
+  }, [disposeInputHistory, draftScopeKey, slashStatusAgentSessionId]);
 
   const slashActions = useComposerSlashActions({
     workspaceId,
@@ -392,7 +432,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     availableSkills,
     composerSettings,
     // Host-gated product capability: omit or enabled:false must hide Tutti Mode
-    // entries (hero toggle, badge activation, /tutti). Fail closed like other
+    // entries (footer chip, badge activation, /tutti). Fail closed like other
     // unsupported host capabilities — do not treat a missing flag as enabled.
     tuttiModeSupported: capabilityMenuState?.tuttiMode?.enabled === true,
     capabilityControlsReadOnly,
@@ -522,7 +562,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
 
   const providerState = useComposerProviderTargets({
     layoutMode,
-    previewMode,
     provider,
     agentTargets,
     handoffAgentTargets,
@@ -531,7 +570,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     composerControlsHardDisabled,
     isSelectedProjectMissing,
     disabled,
-    canQueueWhileBusy,
     onHandoffConversation,
     handoffLabel,
     handoffMenuLabel,
@@ -576,12 +614,12 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   });
   const { fileDropOverlayActive, fileDropOverlayHost } = focusAndDrop;
   const layout = useComposerLayout({
+    isActive,
     isHeroLayout,
     inputDisabled,
     projectMissingProbeEnabled,
     showFileMentionPalette,
     showFloatingCommandMenu,
-    previewMode,
     promptTips,
     promptTipsPrefix: labels.promptTipsPrefix,
     composerSettings,
@@ -677,6 +715,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
         onTuttiModeOrchestrationIntensityChange
       }
       isPromptTipOverflowing={isPromptTipOverflowing}
+      onHistoryNavigation={onHistoryNavigation}
     />
   );
 }

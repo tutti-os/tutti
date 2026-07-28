@@ -42,6 +42,12 @@ export type AccountMembershipSummary = {
   cancel_at_period_end?: boolean | null;
 };
 
+export type AccountMembershipAccessState =
+  | "free"
+  | "active"
+  | "inactive"
+  | "unknown";
+
 export type AccountCreditsSummary = {
   available_credits: string | null;
   expiring_credits_within_24h?: string | null;
@@ -71,6 +77,7 @@ export type AccountRegistrationCreditsReward = {
 export type AccountProductSummaryResponse = {
   user: AccountUserInfo | null;
   membership: AccountMembershipSummary | null;
+  membership_access: AccountMembershipAccessState;
   credits: AccountCreditsSummary | null;
   partial_error?: AccountProductSummaryPartialError | null;
   registration_credits_reward?: AccountRegistrationCreditsReward | null;
@@ -314,6 +321,7 @@ export type ApiErrorDetails = {
     | "agent_quick_prompt_not_found"
     | "agent_quick_prompt_conflict"
     | "agent_quick_prompt_operation_failed"
+    | "agent_session_fork_operation_not_found"
     | "agent_target_not_found"
     | "model_plan_not_found"
     | "model_plan_referenced"
@@ -768,23 +776,21 @@ export type ModelPlanTemplateKind =
   | "custom";
 
 /**
- * Derived plan lifecycle status. pending_first_use means detection passed but no real agent call has completed yet; only ready plans are fully usable.
+ * Derived plan lifecycle status. A plan is ready when its latest connection detection passed.
  */
 export type ModelPlanStatus =
   | "disabled"
   | "undetected"
   | "detection_failed"
-  | "pending_first_use"
   | "ready";
 
 export type ModelPlanDetectionStage =
   | "network"
   | "auth"
   | "model_discovery"
-  | "inference"
-  | "agent_runtime";
+  | "inference";
 
-export type ModelPlanStageStatus = "passed" | "failed" | "skipped" | "pending";
+export type ModelPlanStageStatus = "passed" | "failed" | "skipped";
 
 export type ModelPlanStageResult = {
   stage: ModelPlanDetectionStage;
@@ -811,14 +817,6 @@ export type ModelPlanDetection = {
   model?: string | null;
 };
 
-export type ModelPlanFirstUse = {
-  status: "pending" | "completed";
-  agentTargetId?: string | null;
-  agentSessionId?: string | null;
-  model?: string | null;
-  completedAt?: string | null;
-};
-
 export type ModelPlanModel = {
   id: string;
   name: string;
@@ -842,7 +840,6 @@ export type ModelPlan = {
   enabled: boolean;
   status: ModelPlanStatus;
   detection: ModelPlanDetection;
-  firstUse: ModelPlanFirstUse;
   createdAt: string;
   updatedAt: string;
 };
@@ -2097,6 +2094,102 @@ export type UpdateTuttiModeActivationResponse = {
  */
 export type WorkspaceAgentSessionKind = "root" | "child";
 
+/**
+ * Per-session durable message change cursor. The upper bound preserves exact integer representation in JavaScript clients.
+ */
+export type WorkspaceAgentMessageCursor = number;
+
+export type WorkspaceAgentSessionLifecycleCapabilities = {
+  /**
+   * Whether this exact session can fork its latest settled state.
+   */
+  fork: boolean;
+  /**
+   * Whether this exact session can fork through a settled canonical Turn.
+   */
+  forkThroughTurn: boolean;
+  /**
+   * Canonical Turn ids currently verified against provider-native history.
+   */
+  forkThroughTurnIds?: Array<string>;
+  /**
+   * Whether forkThroughTurnIds is an authoritative provider-history projection.
+   */
+  forkThroughTurnIdsKnown?: boolean;
+};
+
+export type WorkspaceAgentSessionForkThroughTurnPoint = {
+  type: "throughTurn";
+  /**
+   * Exact canonical Turn id included as the final Turn in the fork.
+   */
+  turnId: string;
+};
+
+export type WorkspaceAgentSessionForkPoint = {
+  type: "throughTurn";
+} & WorkspaceAgentSessionForkThroughTurnPoint;
+
+export type WorkspaceAgentSessionForkLineage = {
+  sourceAgentSessionId: string;
+  /**
+   * Inclusive canonical Turn boundary in the source Session.
+   */
+  sourceTurnId: string;
+  /**
+   * Canonical Turn id of that inclusive boundary in the forked Session.
+   */
+  targetTurnId: string;
+  operationId: string;
+  forkedAtUnixMs: number;
+};
+
+/**
+ * Public durable operation state. accepted collapses the internal prepared, dispatching, and provider-accepted phases.
+ */
+export type WorkspaceAgentSessionForkOperationStatus =
+  | "accepted"
+  | "committed"
+  | "failed"
+  | "unknown";
+
+export type WorkspaceAgentSessionForkOperation = {
+  operationId: string;
+  requestId: string;
+  sourceAgentSessionId: string;
+  targetAgentSessionId: string;
+  point: WorkspaceAgentSessionForkPoint;
+  status: WorkspaceAgentSessionForkOperationStatus;
+  /**
+   * Complete target Session projection when status is committed.
+   */
+  session: WorkspaceAgentSession | null;
+  /**
+   * Durable lineage when status is committed.
+   */
+  lineage: WorkspaceAgentSessionForkLineage | null;
+  /**
+   * Durable failure diagnostic for failed or unknown outcomes.
+   */
+  error: string | null;
+};
+
+export type WorkspaceAgentSessionForkOperationResponse = {
+  operation: WorkspaceAgentSessionForkOperation;
+};
+
+export type ForkWorkspaceAgentSessionRequest = {
+  /**
+   * Caller-stable identity reserved for the forked canonical session.
+   */
+  targetAgentSessionId: string;
+  /**
+   * Caller-stable idempotency key for safe retries.
+   */
+  requestId: string;
+  point: WorkspaceAgentSessionForkPoint;
+};
+
 export type WorkspaceAgentSession = {
   id: string;
   kind: WorkspaceAgentSessionKind;
@@ -2126,6 +2219,10 @@ export type WorkspaceAgentSession = {
   agentTargetId: string | null;
   provider: WorkspaceAgentProvider;
   providerSessionId: string | null;
+  /**
+   * Latest accepted per-session message change cursor. This is a high-water mark, not a count of materialized message rows.
+   */
+  messageVersion: WorkspaceAgentMessageCursor;
   cwd: string | null;
   /**
    * Persisted conversation-rail membership key. Clients must use this exact key for section placement and must not infer membership from cwd or project paths.
@@ -2155,6 +2252,11 @@ export type WorkspaceAgentSession = {
    * Protocol v2. Daemon-issued capability descriptor; clients must branch on capabilities, never on provider identity.
    */
   capabilities: WorkspaceAgentCapabilities | null;
+  lifecycleCapabilities: WorkspaceAgentSessionLifecycleCapabilities;
+  /**
+   * Durable provenance for a user-initiated root Session fork. Null for ordinary root Sessions and provider-native child Sessions.
+   */
+  forkedFrom: WorkspaceAgentSessionForkLineage | null;
   /**
    * Protocol v2. Typed context-window and quota usage projected from provider runtime state.
    */
@@ -2451,13 +2553,13 @@ export type WorkspaceAgentSessionMessage = {
   completedAtUnixMs?: number;
   createdAtUnixMs?: number;
   updatedAtUnixMs?: number;
-  version: number;
+  version: WorkspaceAgentMessageCursor;
 };
 
 export type WorkspaceAgentSessionMessagesResponse = {
   agentSessionId: string;
   messages: Array<WorkspaceAgentSessionMessage>;
-  latestVersion: number;
+  latestVersion: WorkspaceAgentMessageCursor;
   hasMore: boolean;
 };
 
@@ -2715,6 +2817,7 @@ export type CreateWorkspaceAgentSessionRequest = {
    * Classifies a session that is intentionally not attached to a workspace project.
    */
   noProject?: boolean | null;
+  railPlacement?: WorkspaceAgentRailPlacement;
   speed?: string | null;
   planMode?: boolean | null;
   browserUse?: boolean | null;
@@ -2727,6 +2830,13 @@ export type CreateWorkspaceAgentSessionRequest = {
    */
   initialTuttiModeActivation?: TuttiModeActivationIntent | null;
   visible?: boolean | null;
+};
+
+export type WorkspaceAgentRailPlacement = {
+  version: 1;
+  kind: "conversations" | "project";
+  projectPath?: string;
+  sectionKey: string;
 };
 
 export type SendWorkspaceAgentSessionInputRequest = {
@@ -3122,6 +3232,30 @@ export type PreflightUploadWorkspaceFilesResponse = {
   conflicts: Array<WorkspaceFileUploadConflict>;
 };
 
+export type WorkbenchSize = {
+  width: number;
+  height: number;
+};
+
+export type WorkbenchSafeArea = {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+};
+
+export type WorkbenchLayoutConstraints = {
+  minWidth: number;
+  minHeight: number;
+  surfacePadding: number;
+  safeArea: WorkbenchSafeArea;
+};
+
+export type WorkbenchLayoutBasis = {
+  surfaceSize: WorkbenchSize;
+  layoutConstraints: WorkbenchLayoutConstraints;
+};
+
 export type WorkbenchFrame = {
   x: number;
   y: number;
@@ -3159,6 +3293,7 @@ export type WorkbenchSnapshot = {
   activeNodeId?: string | null;
   spaces?: Array<WorkbenchSnapshotSpace>;
   activeSpaceId?: string | null;
+  layoutBasis?: WorkbenchLayoutBasis;
   metadata?: {
     [key: string]: unknown;
   };
@@ -3888,9 +4023,53 @@ export type CancelIssueManagerExecutionResponse = {
   canceledRunCount: number;
 };
 
+export type MobileRemotePairingChallenge = {
+  challengeId: string;
+  targetUserDeviceId: string;
+  controllerUserDeviceId?: string;
+  state: string;
+  pairingId?: string;
+  revision: number;
+  expiresAt: string;
+};
+
+export type MobileRemoteDevicePairing = {
+  pairingId: string;
+  controllerUserDeviceId: string;
+  targetUserDeviceId: string;
+  state: string;
+  revision: number;
+  confirmedAt: string;
+  revokedAt?: string;
+};
+
+export type MobileRemotePairingStartResponse = {
+  challenge: MobileRemotePairingChallenge;
+  qrPayload: string;
+};
+
+export type MobileRemotePairingChallengeResponse = {
+  challenge: MobileRemotePairingChallenge;
+};
+
+export type MobileRemotePairingResponse = {
+  pairing: MobileRemoteDevicePairing;
+};
+
+export type MobileRemotePairingConfirmResponse = {
+  pairing: MobileRemoteDevicePairing;
+  challenge: MobileRemotePairingChallenge;
+};
+
+export type MobileRemotePairingListResponse = {
+  pairings: Array<MobileRemoteDevicePairing>;
+};
+
 export type CliCommandId = string;
 
 export type WorkspaceId = string;
+
+export type SessionForkOperationId = string;
 
 export type WorkspaceAppId = string;
 
@@ -3969,6 +4148,10 @@ export type IssueManagerStatusFilter2 = IssueManagerStatusFilter;
  * Case-insensitive substring search over the visible title only.
  */
 export type IssueManagerSearchQuery = string;
+
+export type MobileRemoteChallengeId = string;
+
+export type MobileRemotePairingId = string;
 
 export type GetHealthData = {
   body?: never;
@@ -9453,6 +9636,168 @@ export type GetWorkspaceAgentSessionResponses = {
 export type GetWorkspaceAgentSessionResponse =
   GetWorkspaceAgentSessionResponses[keyof GetWorkspaceAgentSessionResponses];
 
+export type ForkWorkspaceAgentSessionData = {
+  body: ForkWorkspaceAgentSessionRequest;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/fork";
+};
+
+export type ForkWorkspaceAgentSessionErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * The source session or requested fork boundary is not forkable
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ForkWorkspaceAgentSessionError =
+  ForkWorkspaceAgentSessionErrors[keyof ForkWorkspaceAgentSessionErrors];
+
+export type ForkWorkspaceAgentSessionResponses = {
+  /**
+   * Terminal workspace agent session fork operation
+   */
+  200: WorkspaceAgentSessionForkOperationResponse;
+  /**
+   * Accepted workspace agent session fork operation
+   */
+  202: WorkspaceAgentSessionForkOperationResponse;
+};
+
+export type ForkWorkspaceAgentSessionResponse =
+  ForkWorkspaceAgentSessionResponses[keyof ForkWorkspaceAgentSessionResponses];
+
+export type GetWorkspaceAgentSessionForkOperationData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    operationID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-session-fork-operations/{operationID}";
+};
+
+export type GetWorkspaceAgentSessionForkOperationErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Agent session fork operation was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetWorkspaceAgentSessionForkOperationError =
+  GetWorkspaceAgentSessionForkOperationErrors[keyof GetWorkspaceAgentSessionForkOperationErrors];
+
+export type GetWorkspaceAgentSessionForkOperationResponses = {
+  /**
+   * Workspace agent session fork operation
+   */
+  200: WorkspaceAgentSessionForkOperationResponse;
+};
+
+export type GetWorkspaceAgentSessionForkOperationResponse =
+  GetWorkspaceAgentSessionForkOperationResponses[keyof GetWorkspaceAgentSessionForkOperationResponses];
+
+export type AcknowledgeWorkspaceAgentSessionForkOperationData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    operationID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-session-fork-operations/{operationID}/acknowledge";
+};
+
+export type AcknowledgeWorkspaceAgentSessionForkOperationErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Agent session fork operation was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Agent session fork operation cannot be acknowledged
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type AcknowledgeWorkspaceAgentSessionForkOperationError =
+  AcknowledgeWorkspaceAgentSessionForkOperationErrors[keyof AcknowledgeWorkspaceAgentSessionForkOperationErrors];
+
+export type AcknowledgeWorkspaceAgentSessionForkOperationResponses = {
+  /**
+   * Acknowledged workspace agent session fork operation
+   */
+  200: WorkspaceAgentSessionForkOperationResponse;
+};
+
+export type AcknowledgeWorkspaceAgentSessionForkOperationResponse =
+  AcknowledgeWorkspaceAgentSessionForkOperationResponses[keyof AcknowledgeWorkspaceAgentSessionForkOperationResponses];
+
 export type GetWorkspaceAgentSessionTuttiModeActivationData = {
   body?: never;
   path: {
@@ -9687,8 +10032,8 @@ export type ListWorkspaceAgentSessionMessagesData = {
     agentSessionID: string;
   };
   query?: {
-    afterVersion?: number;
-    beforeVersion?: number;
+    afterVersion?: WorkspaceAgentMessageCursor;
+    beforeVersion?: WorkspaceAgentMessageCursor;
     order?: "asc" | "desc";
     limit?: number;
   };
@@ -13847,3 +14192,196 @@ export type CompleteWorkspaceIssueTaskRunResponses = {
 
 export type CompleteWorkspaceIssueTaskRunResponse =
   CompleteWorkspaceIssueTaskRunResponses[keyof CompleteWorkspaceIssueTaskRunResponses];
+
+export type StartMobileRemotePairingData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/mobile-remote-access/pairing-challenges";
+};
+
+export type StartMobileRemotePairingErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type StartMobileRemotePairingError =
+  StartMobileRemotePairingErrors[keyof StartMobileRemotePairingErrors];
+
+export type StartMobileRemotePairingResponses = {
+  /**
+   * Pairing challenge created
+   */
+  200: MobileRemotePairingStartResponse;
+};
+
+export type StartMobileRemotePairingResponse =
+  StartMobileRemotePairingResponses[keyof StartMobileRemotePairingResponses];
+
+export type GetMobileRemotePairingChallengeData = {
+  body?: never;
+  path: {
+    challengeID: string;
+  };
+  query?: never;
+  url: "/v1/mobile-remote-access/pairing-challenges/{challengeID}";
+};
+
+export type GetMobileRemotePairingChallengeErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetMobileRemotePairingChallengeError =
+  GetMobileRemotePairingChallengeErrors[keyof GetMobileRemotePairingChallengeErrors];
+
+export type GetMobileRemotePairingChallengeResponses = {
+  /**
+   * Current pairing challenge
+   */
+  200: MobileRemotePairingChallengeResponse;
+};
+
+export type GetMobileRemotePairingChallengeResponse =
+  GetMobileRemotePairingChallengeResponses[keyof GetMobileRemotePairingChallengeResponses];
+
+export type ConfirmMobileRemotePairingData = {
+  body?: never;
+  path: {
+    challengeID: string;
+  };
+  query?: never;
+  url: "/v1/mobile-remote-access/pairing-challenges/{challengeID}/confirm";
+};
+
+export type ConfirmMobileRemotePairingErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ConfirmMobileRemotePairingError =
+  ConfirmMobileRemotePairingErrors[keyof ConfirmMobileRemotePairingErrors];
+
+export type ConfirmMobileRemotePairingResponses = {
+  /**
+   * Pairing confirmed
+   */
+  200: MobileRemotePairingConfirmResponse;
+};
+
+export type ConfirmMobileRemotePairingResponse =
+  ConfirmMobileRemotePairingResponses[keyof ConfirmMobileRemotePairingResponses];
+
+export type ListMobileRemotePairingsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/mobile-remote-access/pairings";
+};
+
+export type ListMobileRemotePairingsErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListMobileRemotePairingsError =
+  ListMobileRemotePairingsErrors[keyof ListMobileRemotePairingsErrors];
+
+export type ListMobileRemotePairingsResponses = {
+  /**
+   * Pairings for this desktop device
+   */
+  200: MobileRemotePairingListResponse;
+};
+
+export type ListMobileRemotePairingsResponse =
+  ListMobileRemotePairingsResponses[keyof ListMobileRemotePairingsResponses];
+
+export type RevokeMobileRemotePairingData = {
+  body?: never;
+  path: {
+    pairingID: string;
+  };
+  query?: never;
+  url: "/v1/mobile-remote-access/pairings/{pairingID}";
+};
+
+export type RevokeMobileRemotePairingErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type RevokeMobileRemotePairingError =
+  RevokeMobileRemotePairingErrors[keyof RevokeMobileRemotePairingErrors];
+
+export type RevokeMobileRemotePairingResponses = {
+  /**
+   * Pairing revoked
+   */
+  200: MobileRemotePairingResponse;
+};
+
+export type RevokeMobileRemotePairingResponse =
+  RevokeMobileRemotePairingResponses[keyof RevokeMobileRemotePairingResponses];

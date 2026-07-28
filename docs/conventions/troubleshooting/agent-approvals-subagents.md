@@ -113,6 +113,25 @@ session-level child summaries.
 - Validate: inject root, known-child, and unknown-thread notifications in one
   run; assert three distinct routing outcomes.
 
+### Codex subagents ran but AgentGUI shows no child lanes
+
+- Symptom: Codex rollout data contains child threads, but the canonical store
+  has no child sessions and AgentGUI shows only the root conversation.
+- Check: compare `thread/read(includeTurns=true)` spawn items with
+  `workspace_agent_sessions`. A current Codex app-server may report a spawn as
+  `subAgentActivity(kind=started, id, agentThreadId)` instead of
+  `collabAgentToolCall(tool=spawnAgent, receiverThreadIds)`.
+- Cause: the adapter recognized only one provider-native spawn representation,
+  so it persisted neither the parent delegation card nor the child
+  Session/Turn. This is an adapter normalization gap, not an AgentGUI lane
+  projection bug.
+- Fix: normalize both explicit representations into the same parent call and
+  canonical child relation. Keep duplicate notifications idempotent and retain
+  the existing post-cancel interrupt boundary.
+- Validate: replay the exact observed item shape; assert parent call plus child
+  Session/Turn creation, duplicate suppression, and late-child interruption
+  after root cancellation.
+
 ### Claude SDK child events overwrite or complete the root turn
 
 - Symptom: a child result replaces the root answer, the root completes while a

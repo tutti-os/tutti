@@ -15,7 +15,6 @@ export const AgentGUIConversationRailController = memo(
       conversationFilter: props.conversationFilter,
       conversationQuery,
       nodeId: props.nodeId,
-      previewMode: props.previewMode,
       registerInteractionLockProbe: props.registerInteractionLockProbe,
       sectionAgentTargetFallbackId: props.sectionAgentTargetFallbackId,
       userProjects: props.userProjects,

@@ -44,9 +44,16 @@ func (*Store) upsertAgentMessageTx(
 	allowLegacyTurnless bool,
 	protectExisting bool,
 ) (Message, bool, error) {
+	if err := requireSessionForkSourceWritableTx(ctx, tx, workspaceID, agentSessionID); err != nil {
+		return Message{}, false, err
+	}
 	existing, ok, err := getAgentMessageForUpdate(ctx, tx, workspaceID, agentSessionID, input.MessageID)
 	if err != nil {
 		return Message{}, false, err
+	}
+	normalizedPayload, err := normalizeJSONMap(input.Payload)
+	if err != nil {
+		return Message{}, false, fmt.Errorf("normalize workspace agent message payload: %w", err)
 	}
 	message, accepted := agentactivityprojection.ProjectMessageUpdate(
 		messageProjectionSnapshot(existing),
@@ -58,7 +65,7 @@ func (*Store) upsertAgentMessageTx(
 			Kind:              input.Kind,
 			Status:            input.Status,
 			ContentDelta:      input.ContentDelta,
-			Payload:           input.Payload,
+			Payload:           normalizedPayload,
 			OccurredAtUnixMS:  input.OccurredAtUnixMS,
 			StartedAtUnixMS:   input.StartedAtUnixMS,
 			CompletedAtUnixMS: input.CompletedAtUnixMS,

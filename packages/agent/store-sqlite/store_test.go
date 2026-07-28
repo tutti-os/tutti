@@ -186,7 +186,7 @@ FROM agent_targets WHERE id = ?
 		codex.Name != "Codex" || codex.IconKey != "codex" ||
 		codex.IconURL != "tutti-asset://agent/codex.png" ||
 		codex.MaskIconURL != "tutti-asset://agent/codex-mask.svg" ||
-		codex.HeroImageURL != "" || !codex.Enabled || codex.SortOrder != 10 {
+		codex.HeroImageURL != "" || codex.Enabled || codex.SortOrder != 10 {
 		t.Fatalf("refreshed system target = %#v", codex)
 	}
 	if codex.CreatedAtUnixMS != 7 || codex.Source != systemTargetSource || codex.UpdatedAtUnixMS == 8 {
@@ -214,6 +214,48 @@ FROM agent_targets WHERE id = ?
 		custom.IconKey != "custom" || custom.Enabled || custom.Source != "user" || custom.SortOrder != 777 ||
 		custom.CreatedAtUnixMS != 9 || custom.UpdatedAtUnixMS != 10 {
 		t.Fatalf("custom target was overwritten = %#v", custom)
+	}
+}
+
+func TestStoreMigratePreservesEnabledSystemTargetWithDisabledDefault(t *testing.T) {
+	t.Parallel()
+
+	opts := testOptions(&staticProjectPaths{})
+	opts.SeedSystemTargets = func(now int64) []Target {
+		targets := testSeedTargets(now)
+		targets[0].Enabled = false
+		return targets
+	}
+	store := openTestStore(t, opts)
+	ctx := context.Background()
+
+	target, err := store.GetAgentTarget(ctx, testTargetIDCodex)
+	if err != nil {
+		t.Fatalf("GetAgentTarget() error = %v", err)
+	}
+	if target.Enabled {
+		t.Fatalf("fresh system target enabled = true, want descriptor default false")
+	}
+	target.Enabled = true
+	target, err = store.PutAgentTarget(ctx, target)
+	if err != nil {
+		t.Fatalf("PutAgentTarget() error = %v", err)
+	}
+	enabledAt := target.UpdatedAtUnixMS
+
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	target, err = store.GetAgentTarget(ctx, testTargetIDCodex)
+	if err != nil {
+		t.Fatalf("GetAgentTarget() after Migrate error = %v", err)
+	}
+	if !target.Enabled {
+		t.Fatalf("system target enabled = false after Migrate, want persisted user value true")
+	}
+	if target.UpdatedAtUnixMS != enabledAt {
+		t.Fatalf("system target updated_at_ms = %d after enabled-only descriptor mismatch, want %d", target.UpdatedAtUnixMS, enabledAt)
 	}
 }
 
@@ -487,6 +529,54 @@ func TestHistoricalImportCompatibilityCannotBeForgedByOrigin(t *testing.T) {
 	}
 }
 
+func TestHistoricalImportPersistsTrustworthyTurnBoundaries(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	result, err := store.ReportSessionMessages(ctx, SessionMessageReport{
+		WorkspaceID:      "ws-import-turns",
+		AgentSessionID:   "session-import",
+		Origin:           "WORKSPACE_AGENT_SESSION_ORIGIN_IMPORTED",
+		HistoricalImport: true,
+		Messages: []MessageUpdate{
+			{MessageID: "user-1", TurnID: "imported-turn-1", Role: "user", Kind: "text", Status: "completed", OccurredAtUnixMS: 10, StartedAtUnixMS: 10, CompletedAtUnixMS: 10},
+			{MessageID: "tool-1", TurnID: "imported-turn-1", Role: "assistant", Kind: "tool_call", Status: "completed", OccurredAtUnixMS: 20, StartedAtUnixMS: 20, CompletedAtUnixMS: 30},
+			{MessageID: "assistant-1", TurnID: "imported-turn-1", Role: "assistant", Kind: "text", Status: "completed", OccurredAtUnixMS: 40, StartedAtUnixMS: 40, CompletedAtUnixMS: 40},
+			{MessageID: "user-2", TurnID: "imported-turn-2", Role: "user", Kind: "text", Status: "completed", OccurredAtUnixMS: 50, StartedAtUnixMS: 50, CompletedAtUnixMS: 50},
+			{MessageID: "assistant-2", TurnID: "imported-turn-2", Role: "assistant", Kind: "text", Status: "completed", OccurredAtUnixMS: 60, StartedAtUnixMS: 60, CompletedAtUnixMS: 60},
+		},
+	})
+	if err != nil || result.AcceptedCount != 5 {
+		t.Fatalf("historical import result=%#v error=%v", result, err)
+	}
+	for _, expected := range []struct {
+		turnID                string
+		startedAtUnixMS       int64
+		settledAtUnixMS       int64
+		finalAssistantMessage string
+	}{
+		{turnID: "imported-turn-1", startedAtUnixMS: 10, settledAtUnixMS: 40, finalAssistantMessage: "assistant-1"},
+		{turnID: "imported-turn-2", startedAtUnixMS: 50, settledAtUnixMS: 60, finalAssistantMessage: "assistant-2"},
+	} {
+		turn, ok, err := store.GetTurn(ctx, "ws-import-turns", "session-import", expected.turnID)
+		if err != nil || !ok {
+			t.Fatalf("GetTurn(%s) ok=%v error=%v", expected.turnID, ok, err)
+		}
+		if turn.Phase != TurnPhaseSettled || turn.Outcome != TurnOutcomeCompleted ||
+			!turn.Backfilled || turn.Origin != TurnOriginUserPrompt {
+			t.Fatalf("turn %s = %#v, want settled completed user-prompt backfill", expected.turnID, turn)
+		}
+		if turn.StartedAtUnixMS != expected.startedAtUnixMS || turn.SettledAtUnixMS != expected.settledAtUnixMS {
+			t.Fatalf("turn %s timestamps = %d..%d, want %d..%d", expected.turnID,
+				turn.StartedAtUnixMS, turn.SettledAtUnixMS, expected.startedAtUnixMS, expected.settledAtUnixMS)
+		}
+		if !turn.FinalAssistantMessageResolved || turn.FinalAssistantMessageID != expected.finalAssistantMessage {
+			t.Fatalf("turn %s final assistant = resolved:%v id:%q, want %q",
+				expected.turnID, turn.FinalAssistantMessageResolved, turn.FinalAssistantMessageID, expected.finalAssistantMessage)
+		}
+	}
+}
+
 func TestStoreMessageSemanticsRoundTrip(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
@@ -622,6 +712,12 @@ func TestStoreClearSessionsDeletesGoalSagaWithForeignKeysDisabledAndSessionIDReu
 	}); err != nil || !created || state.Revision != 1 {
 		t.Fatalf("prepare old goal state=%#v created=%v error=%v", state, created, err)
 	}
+	if _, created, err := store.PrepareGoalGenerationFence(ctx, GoalGenerationFencePrepare{
+		FenceID: "old-goal-fence", WorkspaceID: "ws-clear-goal", AgentSessionID: "session-reused",
+		TargetOperationID: "old-goal-op", ClientSubmitID: "old-binding-revoke", OccurredAtUnixMS: 21,
+	}); err != nil || !created {
+		t.Fatalf("prepare old goal fence created=%v error=%v", created, err)
+	}
 	if _, err := store.db.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
 		t.Fatalf("disable foreign keys: %v", err)
 	}
@@ -630,7 +726,7 @@ func TestStoreClearSessionsDeletesGoalSagaWithForeignKeysDisabledAndSessionIDReu
 	if err != nil || result.RemovedSessions != 1 {
 		t.Fatalf("ClearSessions() result=%#v error=%v", result, err)
 	}
-	for _, table := range []string{"workspace_agent_runtime_operation_events", "workspace_agent_runtime_operations", "workspace_agent_goal_control_operations", "workspace_agent_session_goals"} {
+	for _, table := range []string{"workspace_agent_runtime_operation_events", "workspace_agent_runtime_operations", "workspace_agent_goal_generation_fences", "workspace_agent_goal_control_operations", "workspace_agent_session_goals"} {
 		var count int
 		if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table+` WHERE workspace_id = ?`, "ws-clear-goal").Scan(&count); err != nil || count != 0 {
 			t.Fatalf("%s count=%d error=%v, want empty", table, count, err)
@@ -692,11 +788,18 @@ func TestStoreSessionDeleteVariantsExplicitlyDeleteGoalSagaWithForeignKeysDisabl
 			}); err != nil {
 				t.Fatal(err)
 			}
+			goalOperationID := "goal-op-" + tc.name
 			if _, _, _, err := store.PrepareGoalControlOperation(ctx, GoalControlOperationPrepare{
-				OperationID: "goal-op-" + tc.name, WorkspaceID: "ws-delete-goal", AgentSessionID: "session-1",
+				OperationID: goalOperationID, WorkspaceID: "ws-delete-goal", AgentSessionID: "session-1",
 				Action: "set", Objective: "objective", OccurredAtUnixMS: 20,
 			}); err != nil {
 				t.Fatal(err)
+			}
+			if _, created, err := store.PrepareGoalGenerationFence(ctx, GoalGenerationFencePrepare{
+				FenceID: "goal-fence-" + tc.name, WorkspaceID: "ws-delete-goal", AgentSessionID: "session-1",
+				TargetOperationID: goalOperationID, ClientSubmitID: "binding-revoke-" + tc.name, OccurredAtUnixMS: 21,
+			}); err != nil || !created {
+				t.Fatalf("prepare goal fence created=%v error=%v", created, err)
 			}
 			if _, err := store.db.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
 				t.Fatal(err)
@@ -705,7 +808,7 @@ func TestStoreSessionDeleteVariantsExplicitlyDeleteGoalSagaWithForeignKeysDisabl
 			if err := tc.remove(ctx, store); err != nil {
 				t.Fatal(err)
 			}
-			for _, table := range []string{"workspace_agent_runtime_operation_events", "workspace_agent_runtime_operations", "workspace_agent_goal_control_operations", "workspace_agent_session_goals"} {
+			for _, table := range []string{"workspace_agent_runtime_operation_events", "workspace_agent_runtime_operations", "workspace_agent_goal_generation_fences", "workspace_agent_goal_control_operations", "workspace_agent_session_goals"} {
 				var count int
 				if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table+` WHERE workspace_id = ?`, "ws-delete-goal").Scan(&count); err != nil || count != 0 {
 					t.Fatalf("%s count=%d error=%v", table, count, err)

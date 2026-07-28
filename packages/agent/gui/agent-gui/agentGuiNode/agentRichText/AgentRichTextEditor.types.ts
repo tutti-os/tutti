@@ -11,6 +11,8 @@ import type { AgentGUIComposerFocusMethod } from "../engagement/agentGUIEngageme
 
 export interface AgentRichTextEditorProps {
   value: string;
+  /** Stable owner of the controlled draft, such as a session draft scope. */
+  contentScopeKey?: string;
   disabled: boolean;
   placeholder: string;
   removeMentionLabel?: string;
@@ -26,6 +28,7 @@ export interface AgentRichTextEditorProps {
   submitOnEnter?: boolean;
   enableFileMentionSuggestions?: boolean;
   onKeyDownForPalette?: (event: KeyboardEvent) => boolean;
+  onHistoryNavigation?: (direction: "older" | "newer") => boolean;
   onFileMentionSuggestionChange?: (
     state: AgentFileMentionSuggestionState | null
   ) => void;

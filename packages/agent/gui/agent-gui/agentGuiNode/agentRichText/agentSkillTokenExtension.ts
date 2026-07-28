@@ -53,7 +53,7 @@ export function createAgentSkillTokenExtension(
         "span",
         mergeAttributes(HTMLAttributes, {
           "aria-label": attrs.label,
-          contenteditable: "false",
+          contentEditable: "false",
           "data-agent-skill-token": "true",
           "data-agent-skill-trigger": attrs.trigger,
           "data-agent-mention-kind": "skill",
@@ -90,6 +90,9 @@ export function parseAgentSkillToken(
   skills: readonly AgentGUIProviderSkillOption[] = []
 ): AgentSkillTokenMatch | null {
   if (!isSkillTokenBoundary(text[start - 1] ?? "")) {
+    return null;
+  }
+  if (text[start] !== "$" && text[start] !== "/") {
     return null;
   }
   for (const candidate of skillTokenCandidates(skills)) {

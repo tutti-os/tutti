@@ -129,6 +129,7 @@ export async function main(argv) {
     );
     const context = {
       browserClient,
+      outputDirectory,
       pageClient,
       scenarioData: scenarioSnapshot?.data ?? null,
       targetID: targetIDFromWebSocket(pageWebSocket)

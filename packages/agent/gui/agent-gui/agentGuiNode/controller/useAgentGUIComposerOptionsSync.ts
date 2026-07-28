@@ -1,7 +1,3 @@
-import {
-  selectLatestActivationForSession,
-  type AgentSessionEngine
-} from "@tutti-os/agent-activity-core";
 import type { RefObject } from "react";
 import { useCallback, useEffect, useRef } from "react";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
@@ -18,6 +14,7 @@ import {
 } from "./agentGuiController.composerPresentation";
 import {
   composerDefaultsPatchFromSettings,
+  composerOptionsForTarget,
   mergeAgentModelCatalogInvalidationEvents,
   withoutAcknowledgedComposerDefaults
 } from "./agentGuiController.providerHelpers";
@@ -42,24 +39,17 @@ export function useAgentGUIComposerOptionsSync(input: {
   loadDraftComposerOptionsRef: RefObject<() => void>;
   loadSessionState(agentSessionId: string, cause?: unknown): void;
   onComposerDefaultsAuthorityReloadedRef: RefObject<AgentGUIComposerDefaultsAuthorityReconciler>;
-  previewMode: boolean;
   providerComposerOptions:
     | { behavior?: { prewarmDraftSession?: boolean } | null }
     | null
     | undefined;
-  reloadSelectedConversation(
-    agentSessionId: string,
-    options: { reloadConversations: boolean; reloadDetail: boolean }
-  ): void;
   selectedComposerTargetDataRef: RefObject<AgentGUIComposerTargetData>;
   selectedProjectPath: string | null;
   selectedProjectPathRef: RefObject<string | null>;
-  sessionEngine: AgentSessionEngine;
   syncConversationListProjection(agentSessionId?: string | null): Promise<void>;
   workspaceId: string;
   workspacePath: string;
 }) {
-  const previousActiveConversationIdRef = useRef(input.activeConversationId);
   const previousIsCreatingConversationRef = useRef(
     input.isCreatingConversation
   );
@@ -116,6 +106,16 @@ export function useAgentGUIComposerOptionsSync(input: {
           settings: requestSettings
         })
       ).then(() => {
+        const loadedOptions = composerOptionsForTarget({
+          snapshot: input.agentActivityRuntime.getSnapshot(input.workspaceId),
+          target: targetData
+        });
+        if (loadedOptions) {
+          input.onComposerDefaultsAuthorityReloadedRef.current.reconcileHomeDefaults(
+            targetData,
+            loadedOptions
+          );
+        }
         if (options?.reconcileAcknowledgedDefaults) {
           input.onComposerDefaultsAuthorityReloadedRef.current.reloaded(
             authorityRead.receipt
@@ -172,7 +172,6 @@ export function useAgentGUIComposerOptionsSync(input: {
   input.loadDraftComposerOptionsRef.current = loadDraftComposerOptions;
 
   useEffect(() => {
-    if (input.previewMode) return undefined;
     return subscribeCoalesced(
       "agent-model-catalog-invalidated",
       {
@@ -203,10 +202,9 @@ export function useAgentGUIComposerOptionsSync(input: {
         });
       }
     );
-  }, [input.loadSessionState, input.previewMode, loadDraftComposerOptions]);
+  }, [input.loadSessionState, loadDraftComposerOptions]);
 
   useEffect(() => {
-    if (input.previewMode) return undefined;
     return subscribe("agent-composer-defaults-invalidated", (event) => {
       const selectedTarget = composerTargetDataForConversation({
         activeConversationId: input.activeConversationIdRef.current,
@@ -236,27 +234,20 @@ export function useAgentGUIComposerOptionsSync(input: {
   }, [
     input.defaultReasoningEffort,
     input.onComposerDefaultsAuthorityReloadedRef,
-    input.previewMode,
     loadComposerOptionsForTarget
   ]);
 
   useEffect(() => {
-    if (input.previewMode) return;
     // Session creation can finish after an earlier request cached the
-    // provider's selected-model-only fallback. Once activation or creation
-    // settles, bypass request-signature deduplication so runtime-discovered
+    // provider's selected-model-only fallback. Once creation settles, bypass
+    // request-signature deduplication so runtime-discovered
     // model options replace that bootstrap snapshot.
-    const conversationActivated =
-      input.activeConversationId !== null &&
-      previousActiveConversationIdRef.current !== input.activeConversationId;
     const conversationCreationSettled =
       previousIsCreatingConversationRef.current &&
       !input.isCreatingConversation;
-    previousActiveConversationIdRef.current = input.activeConversationId;
     previousIsCreatingConversationRef.current = input.isCreatingConversation;
     loadDraftComposerOptions(
-      conversationActivated ||
-        conversationCreationSettled ||
+      conversationCreationSettled ||
         (input.providerComposerOptions?.behavior?.prewarmDraftSession ===
           true &&
           input.isComposerHome)
@@ -269,14 +260,13 @@ export function useAgentGUIComposerOptionsSync(input: {
     input.composerTargetData.provider,
     input.isComposerHome,
     input.isCreatingConversation,
-    input.previewMode,
     input.providerComposerOptions?.behavior?.prewarmDraftSession,
     input.selectedProjectPath,
     loadDraftComposerOptions
   ]);
 
   useEffect(() => {
-    if (!input.previewMode) {
+    {
       void input.syncConversationListProjection(
         input.dataRef.current.lastActiveAgentSessionId
       );
@@ -285,33 +275,7 @@ export function useAgentGUIComposerOptionsSync(input: {
     input.conversationFilter,
     input.currentUserId,
     input.data.provider,
-    input.previewMode,
     input.syncConversationListProjection
-  ]);
-
-  useEffect(() => {
-    if (input.previewMode || !input.activeConversationId) return;
-    const activation = selectLatestActivationForSession(
-      input.sessionEngine.getSnapshot(),
-      input.activeConversationId
-    );
-    if (
-      activation?.status === "failed" ||
-      activation?.status === "canceled" ||
-      activation?.status === "requested" ||
-      activation?.status === "uncertain"
-    ) {
-      return;
-    }
-    input.reloadSelectedConversation(input.activeConversationId, {
-      reloadConversations: false,
-      reloadDetail: true
-    });
-  }, [
-    input.activeConversationId,
-    input.previewMode,
-    input.reloadSelectedConversation,
-    input.sessionEngine
   ]);
 
   return { loadDraftComposerOptions, reloadComposerOptionsForTarget };

@@ -35,6 +35,8 @@ Provider discovery, installation, authentication, models, configuration, and run
 - [Claude SDK rejects live bypassPermissions mode](./agent-provider-setup.md#claude-sdk-rejects-live-bypasspermissions-mode)
 - [Claude Code logs out after sending a message (invalid_grant, credentials wiped)](./agent-provider-setup.md#claude-code-logs-out-after-sending-a-message-invalidgrant-credentials-wiped)
 - [Claude Code `Not logged in` renders as a file link instead of sign-in guidance](./agent-provider-setup.md#claude-code-not-logged-in-renders-as-a-file-link-instead-of-sign-in-guidance)
+- [Model Plan check succeeds but Kimi Claude Code turns wait and then return 401](./agent-provider-setup.md#model-plan-check-succeeds-but-kimi-claude-code-turns-wait-and-then-return-401)
+- [Codex Model Plan turns fail or stay waiting against a Chat-only endpoint](./agent-provider-setup.md#codex-model-plan-turns-fail-or-stay-waiting-against-a-chat-only-endpoint)
 - [Claude Code sessions fail with `effectiveSource: "none"` when CC-Switch or similar proxy tools are used](./agent-provider-setup.md#claude-code-sessions-fail-with-effectivesource-none-when-cc-switch-or-similar-proxy-tools-are-used)
 - [Tutti Agent retries a 402 and shows generic provider setup](./agent-provider-setup.md#tutti-agent-retries-a-402-and-shows-generic-provider-setup)
 - [OpenCode effort changes fail with `effort not found`](./agent-provider-setup.md#opencode-effort-changes-fail-with-effort-not-found)
@@ -47,6 +49,7 @@ Provider discovery, installation, authentication, models, configuration, and run
 Turn state, loading, cancel, restore, rail projection, event updates, imports, and performance.
 
 - [AgentGUI turn actions return plain-text route 404s](./agent-session-lifecycle.md#agentgui-turn-actions-return-plain-text-route-404s)
+- [One hung provider startup blocks unrelated Agent sessions](./agent-session-lifecycle.md#one-hung-provider-startup-blocks-unrelated-agent-sessions)
 - [AgentGUI rail shows a failed Turn but the detail has no error](./agent-session-lifecycle.md#agentgui-rail-shows-a-failed-turn-but-the-detail-has-no-error)
 - [AgentGUI Stop reports no active turn after cancel succeeds](./agent-session-lifecycle.md#agentgui-stop-reports-no-active-turn-after-cancel-succeeds)
 - [AgentGUI send blocked by active_turn after settled snapshot](./agent-session-lifecycle.md#agentgui-send-blocked-by-activeturn-after-settled-snapshot)
@@ -61,6 +64,8 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - [AgentGUI Batch delete sessions does nothing](./agent-session-lifecycle.md#agentgui-batch-delete-sessions-does-nothing)
 - [Agent GUI provider tab shows fused or stale conversations](./agent-session-lifecycle.md#agent-gui-provider-tab-shows-fused-or-stale-conversations)
 - [Agent GUI sessions appear under the wrong user project](./agent-session-lifecycle.md#agent-gui-sessions-appear-under-the-wrong-user-project)
+- [AgentGUI new conversation does nothing after leaving a Chats session](./agent-session-lifecycle.md#agentgui-new-conversation-does-nothing-after-leaving-a-chats-session)
+- [AgentGUI restores a provisional conversation after creation fails](./agent-session-lifecycle.md#agentgui-restores-a-provisional-conversation-after-creation-fails)
 - [Agent GUI context usage is absent or has the wrong total](./agent-session-lifecycle.md#agent-gui-context-usage-is-absent-or-has-the-wrong-total)
 - [Extension history becomes non-resumable after daemon restart](./agent-session-lifecycle.md#extension-history-becomes-non-resumable-after-daemon-restart)
 - [Agent session restore breaks when durable snapshot ownership is split](./agent-session-lifecycle.md#agent-session-restore-breaks-when-durable-snapshot-ownership-is-split)
@@ -80,6 +85,7 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - [Imported sessions trigger fresh-completion indicators](./agent-session-lifecycle.md#imported-sessions-trigger-fresh-completion-indicators)
 - [Realtime agent completion does not show unread attention](./agent-session-lifecycle.md#realtime-agent-completion-does-not-show-unread-attention)
 - [Completed agent session stays activating and disables the composer](./agent-session-lifecycle.md#completed-agent-session-stays-activating-and-disables-the-composer)
+- [Shared Agent composer stays disabled after the target connects](./agent-session-lifecycle.md#shared-agent-composer-stays-disabled-after-the-target-connects)
 - [Goal clear stays planning and leaves the session running](./agent-session-lifecycle.md#goal-clear-stays-planning-and-leaves-the-session-running)
 - [Cursor session/new is canceled before its 30-second timeout](./agent-session-lifecycle.md#cursor-sessionnew-is-canceled-before-its-30-second-timeout)
 - [Cursor auto-continue invents interrupted work after a network drop](./agent-session-lifecycle.md#cursor-auto-continue-invents-interrupted-work-after-a-network-drop)

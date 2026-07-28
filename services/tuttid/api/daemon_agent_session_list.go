@@ -190,9 +190,9 @@ func (api DaemonAPI) DeleteWorkspaceAgentSessionsBatch(ctx context.Context, requ
 	}
 	return tuttigenerated.DeleteWorkspaceAgentSessionsBatch200JSONResponse{
 		RemovedMessages:         result.RemovedMessages,
-		RemovedSessionIds:       result.RemovedSessionIDs,
+		RemovedSessionIds:       append([]string{}, result.RemovedSessionIDs...),
 		RemovedSessions:         result.RemovedSessions,
-		CleanupFailedSessionIds: result.CleanupFailedSessionIDs,
+		CleanupFailedSessionIds: append([]string{}, result.CleanupFailedSessionIDs...),
 	}, nil
 }
 

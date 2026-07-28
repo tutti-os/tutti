@@ -1,9 +1,11 @@
 package agentruntime
 
 import (
+	"encoding/json"
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/daemon/liveprotocol"
 )
 
 // ApplyStreamingThinkingSnapshot replaces the open thinking segment with a full
@@ -22,9 +24,13 @@ func (n *acpTurnNormalizer) ApplyStreamingThinkingSnapshot(
 		n.thinkingMessageID = firstNonEmpty(strings.TrimSpace(messageID), newID())
 		n.thinkingSegmentCompleted = false
 	}
-	n.thinkingContent.Reset()
-	_, _ = n.thinkingContent.WriteString(text)
-	return []activityshared.Event{n.thinkingSnapshotEvent(session, turnID, messageStreamStateStreaming)}
+	operation := mergeTextSnapshot(&n.thinkingContent, text)
+	if operation == nil {
+		return nil
+	}
+	event := n.thinkingSnapshotEvent(session, turnID, messageStreamStateStreaming)
+	attachTextLiveOperation(&event, operation, RoleAssistantThinking, "reasoning")
+	return []activityshared.Event{event}
 }
 
 // CompleteThinkingSnapshot finalizes thinking from an authoritative full-text
@@ -70,9 +76,42 @@ func (n *acpTurnNormalizer) ApplyStreamingAssistantSnapshot(
 		n.assistantMessageID = firstNonEmpty(strings.TrimSpace(messageID), newID())
 		n.assistantSegmentCompleted = false
 	}
-	n.assistantContent.Reset()
-	_, _ = n.assistantContent.WriteString(text)
-	return []activityshared.Event{n.assistantSnapshotEvent(session, turnID, messageStreamStateStreaming)}
+	operation := mergeTextSnapshot(&n.assistantContent, text)
+	if operation == nil {
+		return nil
+	}
+	event := n.assistantSnapshotEvent(session, turnID, messageStreamStateStreaming)
+	attachTextLiveOperation(&event, operation, RoleAssistant, "text")
+	return []activityshared.Event{event}
+}
+
+// mergeTextSnapshot keeps cumulative provider snapshots semantic at the
+// normalizer boundary. A monotonic snapshot becomes a suffix append; only the
+// first snapshot or a real rewrite/backtrack carries the full replacement.
+func mergeTextSnapshot(
+	content *strings.Builder,
+	next string,
+) *liveprotocol.MessageContentOperation {
+	if content == nil || next == "" {
+		return nil
+	}
+	current := content.String()
+	if next == current {
+		return nil
+	}
+	content.Reset()
+	_, _ = content.WriteString(next)
+	if current != "" && strings.HasPrefix(next, current) {
+		return &liveprotocol.MessageContentOperation{
+			Operation: "append_text",
+			Text:      strings.TrimPrefix(next, current),
+		}
+	}
+	value, _ := json.Marshal(next)
+	return &liveprotocol.MessageContentOperation{
+		Operation: "set",
+		Value:     value,
+	}
 }
 
 // CompleteAssistantSnapshot finalizes assistant text from an authoritative

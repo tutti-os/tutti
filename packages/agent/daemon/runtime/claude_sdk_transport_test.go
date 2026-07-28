@@ -2,12 +2,14 @@ package agentruntime
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/daemon/liveprotocol"
 )
 
 func TestClaudeCodeSDKAdapterExecWithSidecarTestDriver(t *testing.T) {
@@ -62,6 +64,7 @@ func TestClaudeCodeSDKAdapterExecWithSidecarTestDriver(t *testing.T) {
 	var sawUser bool
 	var assistantText string
 	var completed bool
+	var startedProviderTurnID, completedProviderTurnID string
 	for _, event := range events {
 		if event.Type == activityshared.EventMessageAppended &&
 			event.Payload.Role == activityshared.MessageRoleUser &&
@@ -75,6 +78,10 @@ func TestClaudeCodeSDKAdapterExecWithSidecarTestDriver(t *testing.T) {
 		if event.Type == activityshared.EventRootProviderTurnCompleted &&
 			event.Payload.TurnOutcome == string(activityshared.TurnOutcomeCompleted) {
 			completed = true
+			completedProviderTurnID = event.Payload.ProviderTurnID
+		}
+		if event.Type == activityshared.EventRootProviderTurnStarted {
+			startedProviderTurnID = event.Payload.ProviderTurnID
 		}
 	}
 	if !sawUser {
@@ -85,6 +92,15 @@ func TestClaudeCodeSDKAdapterExecWithSidecarTestDriver(t *testing.T) {
 	}
 	if !completed {
 		t.Fatalf("events missing root provider completion: %#v", events)
+	}
+	if startedProviderTurnID == "" ||
+		startedProviderTurnID == "turn-sdk-1" ||
+		completedProviderTurnID != startedProviderTurnID {
+		t.Fatalf(
+			"provider turn lifecycle start=%q complete=%q, want one real SDK prompt UUID",
+			startedProviderTurnID,
+			completedProviderTurnID,
+		)
 	}
 }
 
@@ -565,6 +581,21 @@ func TestClaudeCodeSDKAdapterControllerPublishesUIActivityWithSidecarTestDriver(
 	for !sawUserStream || !sawAssistantStream {
 		select {
 		case event := <-events:
+			if event.EventType == StreamEventMessageDelta {
+				liveEvent, ok := event.Data.(liveprotocol.Event)
+				if !ok {
+					continue
+				}
+				var delta liveprotocol.MessageDeltaData
+				if json.Unmarshal(liveEvent.Data, &delta) == nil &&
+					delta.Role == "assistant" &&
+					delta.Content != nil &&
+					(delta.Content.Text == "Echo: say hello" ||
+						strings.Contains(string(delta.Content.Value), "Echo: say hello")) {
+					sawAssistantStream = true
+				}
+				continue
+			}
 			update, ok := event.Data.(agentsessionstore.WorkspaceAgentMessageUpdate)
 			if !ok || event.EventType != StreamEventMessageUpdate {
 				continue

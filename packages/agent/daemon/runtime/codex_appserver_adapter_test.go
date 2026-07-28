@@ -75,6 +75,15 @@ type scriptedAppServerConnection struct {
 	closed chan struct{}
 
 	modelList                       []any
+	userAgent                       string
+	forkChildThreadID               string
+	forkedFromThreadID              string
+	omitForkedFromThreadID          bool
+	emptyForkedFromThreadID         bool
+	forkResponseLastTurnID          string
+	forkResponseTurnIDs             []string
+	threadReadTurnIDs               []string
+	forkRPCError                    bool
 	requiresAuth                    bool
 	collaborationModeUnsupported    bool
 	emitPlanItem                    bool
@@ -286,7 +295,7 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			c.sendJSON(map[string]any{
 				"id": message.ID,
 				"result": map[string]any{
-					"userAgent":      "codex/0.137.0",
+					"userAgent":      firstNonEmpty(c.userAgent, "codex/0.137.0"),
 					"codexHome":      "/home/user/.codex",
 					"platformOs":     "macos",
 					"platformFamily": "unix",
@@ -440,6 +449,53 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 					"approvalPolicy":  "on-request",
 					"sandbox":         map[string]any{"type": "workspaceWrite"},
 					"modelProvider":   "openai",
+				},
+			})
+		case appServerMethodThreadFork:
+			if c.forkRPCError {
+				c.sendJSON(map[string]any{
+					"id": message.ID,
+					"error": map[string]any{
+						"code":    -32602,
+						"message": "invalid lastTurnId",
+					},
+				})
+				continue
+			}
+			childThreadID := firstNonEmpty(c.forkChildThreadID, "codex-thread-fork")
+			forkedFromThreadID := firstNonEmpty(
+				c.forkedFromThreadID,
+				asString(message.Params["threadId"]),
+			)
+			lastTurnID := firstNonEmpty(
+				c.forkResponseLastTurnID,
+				asString(message.Params["lastTurnId"]),
+			)
+			turnIDs := append([]string(nil), c.forkResponseTurnIDs...)
+			if len(turnIDs) == 0 {
+				turnIDs = []string{lastTurnID}
+			}
+			turns := make([]any, 0, len(turnIDs))
+			for _, turnID := range turnIDs {
+				turns = append(turns, map[string]any{
+					"id": turnID, "status": "completed",
+				})
+			}
+			thread := map[string]any{
+				"id":    childThreadID,
+				"turns": turns,
+			}
+			if !c.omitForkedFromThreadID {
+				if c.emptyForkedFromThreadID {
+					thread["forkedFromId"] = ""
+				} else {
+					thread["forkedFromId"] = forkedFromThreadID
+				}
+			}
+			c.sendJSON(map[string]any{
+				"id": message.ID,
+				"result": map[string]any{
+					"thread": thread,
 				},
 			})
 		case appServerMethodTurnStart:
@@ -652,10 +708,24 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 		case appServerMethodThreadRead:
 			c.mu.Lock()
 			nickname := c.childNicknames[asString(message.Params["threadId"])]
+			turnIDs := append([]string(nil), c.threadReadTurnIDs...)
 			c.mu.Unlock()
 			thread := map[string]any{"id": message.Params["threadId"]}
 			if nickname != "" {
 				thread["agentNickname"] = nickname
+			}
+			includeTurns, _ := message.Params["includeTurns"].(bool)
+			if includeTurns {
+				if len(turnIDs) == 0 {
+					turnIDs = []string{"provider-turn-1", "provider-turn-2"}
+				}
+				turns := make([]any, 0, len(turnIDs))
+				for _, turnID := range turnIDs {
+					turns = append(turns, map[string]any{
+						"id": turnID, "status": "completed",
+					})
+				}
+				thread["turns"] = turns
 			}
 			c.sendJSON(map[string]any{"id": message.ID, "result": map[string]any{"thread": thread}})
 		case appServerMethodTurnInterrupt:
@@ -1348,6 +1418,38 @@ func TestCodexAppServerAdapterStartAppliesSettingsAndPermissionMode(t *testing.T
 func TestCodexAppServerAdapterCommandNetworkAccessPreservesPermissionModes(t *testing.T) {
 	t.Parallel()
 
+	testAppServerAdapterCommandNetworkAccessPreservesPermissionModes(
+		t,
+		func(transport ProcessTransport) *CodexAppServerAdapter {
+			return NewCodexAppServerAdapterWithHostMetadataAndOptions(
+				transport,
+				LegacyHostMetadata(),
+				CodexAppServerAdapterOptions{CommandNetworkAccess: true},
+			)
+		},
+	)
+}
+
+func TestTuttiAgentAppServerAdapterCommandNetworkAccessPreservesPermissionModes(t *testing.T) {
+	t.Parallel()
+
+	testAppServerAdapterCommandNetworkAccessPreservesPermissionModes(
+		t,
+		func(transport ProcessTransport) *CodexAppServerAdapter {
+			return NewTuttiAgentAppServerAdapterWithHostMetadataAndOptions(
+				transport,
+				LegacyHostMetadata(),
+				CodexAppServerAdapterOptions{CommandNetworkAccess: true},
+			)
+		},
+	)
+}
+
+func testAppServerAdapterCommandNetworkAccessPreservesPermissionModes(
+	t *testing.T,
+	newAdapter func(ProcessTransport) *CodexAppServerAdapter,
+) {
+	t.Helper()
 	tests := []struct {
 		mode              string
 		threadSandbox     string
@@ -1381,11 +1483,7 @@ func TestCodexAppServerAdapterCommandNetworkAccessPreservesPermissionModes(t *te
 			t.Parallel()
 
 			transport := newScriptedAppServerTransport()
-			adapter := NewCodexAppServerAdapterWithHostMetadataAndOptions(
-				transport,
-				LegacyHostMetadata(),
-				CodexAppServerAdapterOptions{CommandNetworkAccess: true},
-			)
+			adapter := newAdapter(transport)
 			session := testAppServerSession()
 			session.PermissionModeID = test.mode
 			session.Settings = &SessionSettings{PermissionModeID: test.mode}
@@ -1428,6 +1526,28 @@ func TestCodexAppServerAdapterDefaultCommandNetworkAccessRemainsDisabled(t *test
 
 	transport := newScriptedAppServerTransport()
 	adapter := NewCodexAppServerAdapter(transport)
+	session := testAppServerSession()
+	session.PermissionModeID = "read-only"
+	session.Settings = &SessionSettings{PermissionModeID: "read-only"}
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := adapter.Exec(context.Background(), session, textPrompt("go"), "", "turn-local-1", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	turnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
+	policy, _ := turnStart["sandboxPolicy"].(map[string]any)
+	if _, ok := policy["networkAccess"]; ok {
+		t.Fatalf("turn/start sandboxPolicy = %#v, want legacy network default", policy)
+	}
+}
+
+func TestTuttiAgentAppServerAdapterDefaultCommandNetworkAccessRemainsDisabled(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	adapter := NewTuttiAgentAppServerAdapterWithHostMetadata(transport, LegacyHostMetadata())
 	session := testAppServerSession()
 	session.PermissionModeID = "read-only"
 	session.Settings = &SessionSettings{PermissionModeID: "read-only"}
@@ -2633,38 +2753,62 @@ func TestCodexAppServerAdapterCancelInterruptsLateUnownedRootTurn(t *testing.T) 
 }
 
 func TestCodexAppServerAdapterCancelInterruptsLateChildWithoutCreatingSession(t *testing.T) {
-	adapter, transport, session := startedAppServerAdapter(t)
-	adapter.markRootTurnCanceled(session.AgentSessionID, "root-turn-1")
-	appSession := adapter.getSession(session.AgentSessionID)
-
-	reduction := newCodexAppServerReducer(adapter).ReduceNotification(appSession.client, session, "root-turn-1", acpMessage{
-		Method: appServerNotifyItemCompleted,
-		Params: mustJSONRawMessage(t, map[string]any{
-			"threadId": session.ProviderSessionID,
-			"turnId":   "provider-turn-1",
-			"item": map[string]any{
+	items := []struct {
+		name string
+		item map[string]any
+	}{
+		{
+			name: "collaboration tool call",
+			item: map[string]any{
 				"type":              "collabAgentToolCall",
 				"id":                "spawn-after-cancel",
 				"tool":              "spawnAgent",
 				"status":            "completed",
 				"receiverThreadIds": []any{"child-after-cancel"},
 			},
-		}),
-	}, newACPTurnNormalizer(), nil)
-	if len(reduction.Events) != 0 {
-		t.Fatalf("late child events = %#v, want none", reduction.Events)
+		},
+		{
+			name: "sub-agent activity",
+			item: map[string]any{
+				"type":          "subAgentActivity",
+				"id":            "spawn-after-cancel",
+				"agentThreadId": "child-after-cancel",
+				"agentPath":     "/root/reviewer",
+				"kind":          "started",
+			},
+		},
 	}
-	if _, ok := adapter.appServerChildThread(session.AgentSessionID, "child-after-cancel"); ok {
-		t.Fatal("late child received a canonical child session context")
-	}
-	waitForCondition(t, func() bool {
-		for _, request := range appServerRequestParamsList(t, transport.conn, appServerMethodTurnInterrupt) {
-			if asString(request["threadId"]) == "child-after-cancel" {
-				return true
+
+	for _, test := range items {
+		t.Run(test.name, func(t *testing.T) {
+			adapter, transport, session := startedAppServerAdapter(t)
+			adapter.markRootTurnCanceled(session.AgentSessionID, "root-turn-1")
+			appSession := adapter.getSession(session.AgentSessionID)
+
+			reduction := newCodexAppServerReducer(adapter).ReduceNotification(appSession.client, session, "root-turn-1", acpMessage{
+				Method: appServerNotifyItemCompleted,
+				Params: mustJSONRawMessage(t, map[string]any{
+					"threadId": session.ProviderSessionID,
+					"turnId":   "provider-turn-1",
+					"item":     test.item,
+				}),
+			}, newACPTurnNormalizer(), nil)
+			if len(reduction.Events) != 0 {
+				t.Fatalf("late child events = %#v, want none", reduction.Events)
 			}
-		}
-		return false
-	})
+			if _, ok := adapter.appServerChildThread(session.AgentSessionID, "child-after-cancel"); ok {
+				t.Fatal("late child received a canonical child session context")
+			}
+			waitForCondition(t, func() bool {
+				for _, request := range appServerRequestParamsList(t, transport.conn, appServerMethodTurnInterrupt) {
+					if asString(request["threadId"]) == "child-after-cancel" {
+						return true
+					}
+				}
+				return false
+			})
+		})
+	}
 }
 
 func TestCodexAppServerAdapterNewCanonicalTurnClearsCancelBoundary(t *testing.T) {
@@ -5256,6 +5400,44 @@ func TestCodexGoalProvenanceDurableLedgerSurvivesRestartAndAdoptsDelayedGenerati
 	}
 }
 
+func TestCodexFencedGoalGenerationIsPreciselyInterruptedBeforeAdoption(t *testing.T) {
+	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.SetGoalProvenanceDurableSink(&memoryGoalProvenanceLedger{bindings: make(map[string]GoalProvenanceBinding)})
+	identity := goalOperationIdentity{operationID: "goal-fenced", revision: 4, repairEpoch: 1}
+	goal := map[string]any{
+		"threadId": session.ProviderSessionID, "objective": "old shared work",
+		"status": "active", "createdAt": int64(10), "updatedAt": int64(11),
+	}
+	adapter.replaceGoalOperationIdentity(session.AgentSessionID, identity.operationID, identity.revision, identity.repairEpoch)
+	if err := adapter.bindGoalGeneration(context.Background(), session, goal, identity); err != nil {
+		t.Fatal(err)
+	}
+	if err := adapter.FenceGoalGeneration(context.Background(), session, GoalGenerationFenceInput{
+		OperationID: identity.operationID, Revision: identity.revision,
+		RepairEpoch: identity.repairEpoch, Reason: "binding_revoked",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	adapter.queueGoalTurnForProvenance(session, "provider-turn-fenced")
+	adapter.observeGoalTurnGeneration(session, "provider-turn-fenced", goal)
+	waitForCondition(t, func() bool {
+		transport.conn.mu.Lock()
+		defer transport.conn.mu.Unlock()
+		for _, turnID := range transport.conn.interruptAttempts {
+			if turnID == "provider-turn-fenced" {
+				return true
+			}
+		}
+		return false
+	})
+	adapter.mu.Lock()
+	active := adapter.sessions[session.AgentSessionID].activeTurn
+	adapter.mu.Unlock()
+	if active != nil {
+		t.Fatalf("fenced provider turn was adopted: %#v", active)
+	}
+}
+
 func TestCodexGoalProvenanceUsesLiveThreadIDForPreStartCapturedSession(t *testing.T) {
 	adapter, _, session := startedAppServerAdapter(t)
 	ledger := &memoryGoalProvenanceLedger{bindings: make(map[string]GoalProvenanceBinding)}
@@ -5755,6 +5937,61 @@ func TestCodexAppServerAdapterStartRestoresGoal(t *testing.T) {
 	session := testAppServerSession()
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
+	}
+	waitForCondition(t, func() bool {
+		return asString(adapter.sessionGoal(session.AgentSessionID)["status"]) == "active"
+	})
+	goalGet := appServerRequestParams(t, transport.conn, appServerMethodThreadGoalGet)
+	if asString(goalGet["threadId"]) != "codex-thread-1" {
+		t.Fatalf("goal/get params = %#v", goalGet)
+	}
+}
+
+func TestTuttiAgentAppServerAdapterStartRestoresGoalWithoutMetadataFetch(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	adapter := NewTuttiAgentAppServerAdapterWithHostMetadata(transport, LegacyHostMetadata())
+	adapter.SetSessionEventSink(func(string, []activityshared.Event) {})
+	transport.conn.mu.Lock()
+	transport.conn.goal = map[string]any{
+		"threadId":  "codex-thread-1",
+		"objective": "finish it",
+		"status":    "active",
+	}
+	transport.conn.mu.Unlock()
+	session := testAppServerSession()
+	session.Provider = ProviderTuttiAgent
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	waitForCondition(t, func() bool {
+		return asString(adapter.sessionGoal(session.AgentSessionID)["status"]) == "active"
+	})
+	goalGet := appServerRequestParams(t, transport.conn, appServerMethodThreadGoalGet)
+	if asString(goalGet["threadId"]) != "codex-thread-1" {
+		t.Fatalf("goal/get params = %#v", goalGet)
+	}
+}
+
+func TestTuttiAgentAppServerAdapterResumeRestoresGoalWithoutMetadataFetch(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	adapter := NewTuttiAgentAppServerAdapterWithHostMetadata(transport, LegacyHostMetadata())
+	adapter.SetSessionEventSink(func(string, []activityshared.Event) {})
+	transport.conn.mu.Lock()
+	transport.conn.goal = map[string]any{
+		"threadId":  "codex-thread-1",
+		"objective": "finish it",
+		"status":    "active",
+	}
+	transport.conn.mu.Unlock()
+	session := testAppServerSession()
+	session.Provider = ProviderTuttiAgent
+	session.ProviderSessionID = "codex-thread-1"
+	if err := adapter.Resume(context.Background(), session); err != nil {
+		t.Fatalf("Resume: %v", err)
 	}
 	waitForCondition(t, func() bool {
 		return asString(adapter.sessionGoal(session.AgentSessionID)["status"]) == "active"

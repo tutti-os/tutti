@@ -26,7 +26,8 @@ export interface WorkspaceFileManagerCommands {
   confirmDeleteDialog(): Promise<void>;
   clearInlineRenameValidation(): void;
   confirmInlineRename(newName: string): Promise<boolean>;
-  copyToClipboard(entry: WorkspaceFileEntry): Promise<void>;
+  /** Resolves true when the entry reached the clipboard, false when it did not. */
+  copyToClipboard(entry: WorkspaceFileEntry): Promise<boolean>;
   createDirectory(path: string): Promise<void>;
   createFile(path: string): Promise<void>;
   deleteSelected(): Promise<void>;

@@ -23,6 +23,7 @@ import type {
 } from "@preload/types";
 import { pathFromFileReadPayload } from "./internal/desktopAgentHostProjection.ts";
 import { createDesktopAgentTargetSetupWatch } from "./internal/desktopAgentTargetSetupWatch.ts";
+import { createDesktopTerminalLoginReadinessMonitor } from "./internal/desktopTerminalLoginReadinessMonitor.ts";
 import {
   DesktopWorkspaceUserProjectService,
   type IWorkspaceUserProjectService
@@ -147,6 +148,31 @@ export function createDesktopAgentHostApi({
         }
       )
     );
+  const getAgentTargetSetupWatch = (
+    requestedAgentTargetId: string
+  ): AgentHostAgentTargetSetupWatch => {
+    const agentTargetId = requestedAgentTargetId.trim();
+    const existing = agentTargetSetupWatches.get(agentTargetId);
+    if (existing) return existing;
+    const watch = createDesktopAgentTargetSetupWatch({
+      agentTargetId,
+      get: () => getAgentTargetSetup({ agentTargetId }),
+      install: ({ planDigest, clientActionId }) =>
+        installAgentTargetRuntime({
+          agentTargetId,
+          planDigest,
+          clientActionId
+        }),
+      authenticate: ({ methodId, clientActionId }) =>
+        authenticateAgentTargetRuntime({
+          agentTargetId,
+          methodId,
+          clientActionId
+        })
+    });
+    agentTargetSetupWatches.set(agentTargetId, watch);
+    return watch;
+  };
   const api = {
     ...(agentQuickPromptService
       ? { quickPrompts: agentQuickPromptService }
@@ -171,16 +197,32 @@ export function createDesktopAgentHostApi({
       writeText: (text: string) => navigator.clipboard.writeText(text)
     },
     terminalLogin: {
-      run: async (input: { command: string; cwd?: string }) => {
-        const handle = await requestWorkspaceTerminalLoginLaunch({
+      run: async (input: {
+        agentTargetId: string;
+        command: string;
+        cwd?: string;
+      }) => {
+        const launchHandle = await requestWorkspaceTerminalLoginLaunch({
           command: input.command,
           cwd: input.cwd,
           workspaceId
         });
-        if (!handle) {
+        if (!launchHandle) {
           throw new Error("Terminal login is unavailable in this window.");
         }
-        return handle;
+        const readinessMonitor = createDesktopTerminalLoginReadinessMonitor({
+          watch: getAgentTargetSetupWatch(input.agentTargetId)
+        });
+        let closed = false;
+        return {
+          close: () => {
+            if (closed) return;
+            closed = true;
+            readinessMonitor.cancel();
+            launchHandle.close();
+          },
+          completion: readinessMonitor.completion
+        };
       }
     },
     debug: {
@@ -211,29 +253,8 @@ export function createDesktopAgentHostApi({
       batchGetUserInfo: () => Promise.resolve({ users: [] })
     },
     agentTargetSetup: {
-      watch: (payload: { agentTargetId: string }) => {
-        const agentTargetId = payload.agentTargetId.trim();
-        const existing = agentTargetSetupWatches.get(agentTargetId);
-        if (existing) return existing;
-        const watch = createDesktopAgentTargetSetupWatch({
-          agentTargetId,
-          get: () => getAgentTargetSetup({ agentTargetId }),
-          install: ({ planDigest, clientActionId }) =>
-            installAgentTargetRuntime({
-              agentTargetId,
-              planDigest,
-              clientActionId
-            }),
-          authenticate: ({ methodId, clientActionId }) =>
-            authenticateAgentTargetRuntime({
-              agentTargetId,
-              methodId,
-              clientActionId
-            })
-        });
-        agentTargetSetupWatches.set(agentTargetId, watch);
-        return watch;
-      }
+      watch: (payload: { agentTargetId: string }) =>
+        getAgentTargetSetupWatch(payload.agentTargetId)
     },
     workspaceAgentProbes: {
       list: (payload: AgentProviderProbeListInput) =>

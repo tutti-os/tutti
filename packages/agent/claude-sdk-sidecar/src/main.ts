@@ -12,6 +12,10 @@ import {
 import { booleanValue, envObject, stringValue } from "./runtimeValues.ts";
 import { sidecarSessionSettings } from "./sessionSettings.ts";
 import { SessionRuntime } from "./sessionRuntime.ts";
+import {
+  forkClaudeSession,
+  inspectClaudeForkCheckpoints
+} from "./sessionFork.ts";
 
 const sessions = new Map<string, SessionRuntime>();
 
@@ -65,9 +69,34 @@ export async function handleRequest(
                 action: stringValue(payload.goalAction) as "set" | "clear"
               }
             : undefined,
-          stringValue(payload.hostContext)
+          stringValue(payload.hostContext),
+          stringValue(payload.providerTurnId)
         );
         emit({ id, type: "ok" });
+        return;
+      }
+      case "inspect_fork_checkpoints": {
+        const payload = request.payload ?? {};
+        const result = await inspectClaudeForkCheckpoints({
+          sessionId: stringValue(payload.providerSessionId),
+          cwd: stringValue(payload.cwd)
+        });
+        emit({ id, type: "ok", payload: result });
+        return;
+      }
+      case "fork_session": {
+        const payload = request.payload ?? {};
+        const result = await forkClaudeSession({
+          sessionId: stringValue(payload.providerSessionId),
+          providerTurnId: stringValue(payload.providerTurnId),
+          providerTurnIds: Array.isArray(payload.providerTurnIds)
+            ? payload.providerTurnIds.map(stringValue)
+            : [],
+          targetSessionId: stringValue(payload.targetProviderSessionId),
+          cwd: stringValue(payload.cwd),
+          title: stringValue(payload.title)
+        });
+        emit({ id, type: "ok", payload: result });
         return;
       }
       case "guide": {
@@ -149,7 +178,13 @@ export async function handleRequest(
       id,
       type: "error",
       payload: {
-        error: errorMessage(error)
+        error: errorMessage(error),
+        ...(error &&
+        typeof error === "object" &&
+        "deliveryDisposition" in error &&
+        typeof error.deliveryDisposition === "string"
+          ? { deliveryDisposition: error.deliveryDisposition }
+          : {})
       }
     });
   }

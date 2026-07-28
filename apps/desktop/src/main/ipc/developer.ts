@@ -21,6 +21,7 @@ export function registerDeveloperIpc(
     TuttidClient,
     | "listWorkspaceAgentSessionMessages"
     | "listWorkspaceAgentSessions"
+    | "readWorkspaceAgentSessionAttachment"
     | "listWorkspaceAppFactoryJobs"
     | "listWorkspaceApps"
     | "listWorkspaces"

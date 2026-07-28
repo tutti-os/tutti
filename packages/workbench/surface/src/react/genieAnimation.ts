@@ -20,14 +20,11 @@ export interface WorkbenchGenieScanlineFrame {
   textureRect: WorkbenchGenieViewportRect;
 }
 
-export interface WorkbenchGenieMeaningfulElementClone {
-  clone: HTMLElement;
-  images: WorkbenchGenieMeaningfulImageClone[];
-}
-
 export interface WorkbenchGenieMeaningfulImageClone {
   displayHeight: number;
   displayWidth: number;
+  naturalHeight: number;
+  naturalWidth: number;
   url: string | null;
 }
 
@@ -36,6 +33,10 @@ const genieVerticalRowStagger = 0.2;
 const genieDockGlowRadius = 55;
 const genieScanlineStrideThresholdPx = 640;
 const genieMaxScanlineStride = 3;
+const genieWarmupTextureWidthRatio = 0.65;
+const genieWarmupTextureHeightRatio = 0.7;
+const genieWarmupTextureMaxWidth = 1_280;
+const genieWarmupTextureMaxHeight = 800;
 
 export function clampGenieProgress(value: number): number {
   return Math.max(0, Math.min(1, value));
@@ -80,6 +81,18 @@ export function viewportRectFromElement(
 
 export function isUsableGenieRect(rect: WorkbenchGenieViewportRect): boolean {
   return rect.width > 0 && rect.height > 0;
+}
+
+export function isGenieTextureResolutionSufficient(
+  source: { height: number; width: number },
+  target: Pick<WorkbenchGenieViewportRect, "height" | "width">
+): boolean {
+  return (
+    Number.isFinite(source.width) &&
+    Number.isFinite(source.height) &&
+    source.width >= Math.max(1, Math.round(target.width)) &&
+    source.height >= Math.max(1, Math.round(target.height))
+  );
 }
 
 export function centerPointFromRect(
@@ -186,176 +199,6 @@ function resolveGenieRowTargetY({
   return direction === "minimize"
     ? lerpGenieValue(textureRect.top + sourceY, dockPoint.y, verticalEase)
     : lerpGenieValue(dockPoint.y, textureRect.top + sourceY, verticalEase);
-}
-
-function canInlineComputedStyle(
-  element: Element
-): element is HTMLElement | SVGElement {
-  return (
-    element instanceof HTMLElement ||
-    (typeof SVGElement !== "undefined" && element instanceof SVGElement)
-  );
-}
-
-function isHiddenForGenieTexture(computed: CSSStyleDeclaration): boolean {
-  return (
-    computed.display === "none" ||
-    computed.visibility === "hidden" ||
-    computed.visibility === "collapse" ||
-    Number.parseFloat(computed.opacity || "1") <= 0
-  );
-}
-
-function rectsIntersect(
-  a: WorkbenchGenieViewportRect,
-  b: WorkbenchGenieViewportRect
-): boolean {
-  return (
-    a.left < b.left + b.width &&
-    a.left + a.width > b.left &&
-    a.top < b.top + b.height &&
-    a.top + a.height > b.top
-  );
-}
-
-type WorkbenchGenieElementSkipReason =
-  | "hidden"
-  | "offscreen"
-  | "unsupported"
-  | "zero-size";
-
-function resolveElementSkipReasonForGenieTexture(
-  element: Element,
-  rootRect: WorkbenchGenieViewportRect,
-  computed: CSSStyleDeclaration
-): WorkbenchGenieElementSkipReason | null {
-  if (isHiddenForGenieTexture(computed)) {
-    return "hidden";
-  }
-  const tagName = element.tagName.toLowerCase();
-  if (tagName === "script" || tagName === "style" || tagName === "template") {
-    return "unsupported";
-  }
-  const rect = element.getBoundingClientRect();
-  if (rect.width <= 0 || rect.height <= 0) {
-    return "zero-size";
-  }
-  return rectsIntersect(
-    {
-      height: rect.height,
-      left: rect.left,
-      top: rect.top,
-      width: rect.width
-    },
-    rootRect
-  )
-    ? null
-    : "offscreen";
-}
-
-function hasMeaningfulTextNode(node: Node): boolean {
-  return node.textContent?.trim() ? true : false;
-}
-
-function cloneMeaningfulGenieNode(
-  source: Node,
-  rootRect: WorkbenchGenieViewportRect,
-  images: WorkbenchGenieMeaningfulImageClone[],
-  forceInclude = false
-): Node | null {
-  if (source.nodeType === Node.TEXT_NODE) {
-    if (!hasMeaningfulTextNode(source)) {
-      return null;
-    }
-    return source.cloneNode(false);
-  }
-  if (source.nodeType !== Node.ELEMENT_NODE) {
-    return null;
-  }
-
-  const sourceElement = source as Element;
-  if (!canInlineComputedStyle(sourceElement)) {
-    return null;
-  }
-  const computed = window.getComputedStyle(sourceElement);
-  const skipReason = resolveElementSkipReasonForGenieTexture(
-    sourceElement,
-    rootRect,
-    computed
-  );
-  const includeSelf = forceInclude || skipReason === null;
-  if (!includeSelf && skipReason === "hidden") {
-    return null;
-  }
-
-  const clone = sourceElement.cloneNode(false) as Element;
-  copyGenieComputedStyle(sourceElement, clone, computed);
-
-  for (const child of Array.from(source.childNodes)) {
-    const childClone = cloneMeaningfulGenieNode(child, rootRect, images);
-    if (childClone) {
-      clone.appendChild(childClone);
-    }
-  }
-
-  if (!includeSelf && clone.childNodes.length === 0) {
-    return null;
-  }
-
-  if (sourceElement instanceof HTMLImageElement) {
-    const rect = sourceElement.getBoundingClientRect();
-    images.push({
-      displayHeight: rect.height,
-      displayWidth: rect.width,
-      url:
-        sourceElement.currentSrc ||
-        sourceElement.src ||
-        sourceElement.getAttribute("src") ||
-        null
-    });
-  }
-  return clone;
-}
-
-function copyGenieComputedStyle(
-  source: Element,
-  clone: Element,
-  computed = window.getComputedStyle(source)
-): void {
-  if (!canInlineComputedStyle(source) || !canInlineComputedStyle(clone)) {
-    return;
-  }
-  if (computed.cssText) {
-    clone.style.cssText = computed.cssText;
-  } else {
-    for (let index = 0; index < computed.length; index += 1) {
-      const propertyName = computed.item(index);
-      if (!propertyName) {
-        continue;
-      }
-      clone.style.setProperty(
-        propertyName,
-        computed.getPropertyValue(propertyName),
-        computed.getPropertyPriority(propertyName)
-      );
-    }
-  }
-  clone.style.animation = "none";
-  clone.style.opacity = "1";
-  clone.style.transition = "none";
-  clone.style.visibility = "visible";
-}
-
-export function cloneMeaningfulGenieElement(
-  source: HTMLElement,
-  rootRect: WorkbenchGenieViewportRect
-): WorkbenchGenieMeaningfulElementClone | null {
-  const images: WorkbenchGenieMeaningfulImageClone[] = [];
-  const clone = cloneMeaningfulGenieNode(source, rootRect, images, true);
-  if (!(clone instanceof HTMLElement)) {
-    return null;
-  }
-  return { clone, images };
 }
 
 export function renderGenieScanlines(
@@ -476,4 +319,67 @@ export function renderGenieScanlines(
     dirtyRect.width,
     dirtyRect.height
   );
+}
+
+export function resolveGenieWarmupTextureSize(
+  viewportWidth: number,
+  viewportHeight: number
+): { height: number; width: number } {
+  return {
+    height: Math.max(
+      1,
+      Math.min(
+        genieWarmupTextureMaxHeight,
+        Math.round(viewportHeight * genieWarmupTextureHeightRatio)
+      )
+    ),
+    width: Math.max(
+      1,
+      Math.min(
+        genieWarmupTextureMaxWidth,
+        Math.round(viewportWidth * genieWarmupTextureWidthRatio)
+      )
+    )
+  };
+}
+
+export function renderGenieWarmupFrames(
+  context: CanvasRenderingContext2D,
+  viewportWidth: number,
+  viewportHeight: number,
+  texture: HTMLCanvasElement
+): void {
+  const textureRect = {
+    height: texture.height,
+    left: (viewportWidth - texture.width) / 2,
+    top: (viewportHeight - texture.height) / 2,
+    width: texture.width
+  };
+  const dockPoint = {
+    x: viewportWidth / 2,
+    y: Math.max(0, viewportHeight - 24)
+  };
+
+  renderGenieScanlines(context, viewportWidth, viewportHeight, {
+    direction: "minimize",
+    dockPoint,
+    progress: 0,
+    texture,
+    textureRect
+  });
+  renderGenieScanlines(context, viewportWidth, viewportHeight, {
+    direction: "minimize",
+    dockPoint,
+    progress: 0.5,
+    texture,
+    textureRect
+  });
+  renderGenieScanlines(context, viewportWidth, viewportHeight, {
+    direction: "open",
+    dockPoint,
+    progress: 0,
+    texture,
+    textureRect
+  });
+  context.clearRect(0, 0, viewportWidth, viewportHeight);
 }

@@ -1,15 +1,21 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { TooltipProvider } from "@tutti-os/ui-system";
 import { describe, expect, it, vi } from "vitest";
+import type {
+  AgentGUIAgentTarget,
+  AgentGUIAgentTargetInfoRenderer
+} from "../../../types";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import {
   AgentTargetPresentationProvider,
   type AgentMessageMarkdownAgentTarget
 } from "../../../shared/AgentTargetPresentationContext";
+import { AgentTargetInfoRendererProvider } from "../../../shared/AgentTargetInfoRendererContext";
 import type { AgentGUIViewLabels } from "./AgentGUINodeView.types";
 import { AgentGUIConversationRailItem } from "./AgentGUIConversationRailItem";
 
 describe("AgentGUIConversationRailItem interaction lock", () => {
-  it("keeps the provider icon and plain title while adding a monochrome task icon", () => {
+  it("keeps the provider icon and plain @ title without a task icon", () => {
     const { container } = renderRailItem({
       isRailInteractionLocked: () => false,
       item: {
@@ -23,11 +29,10 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
     ).not.toBeNull();
     expect(
       container.querySelector(
-        '[data-agent-gui-conversation-title-mention-icon="task"]'
+        "[data-agent-gui-conversation-title-mention-icon]"
       )
-    ).not.toBeNull();
-    expect(container.textContent).toContain("看看最新的代码提交 111");
-    expect(container.textContent).not.toContain("@看看最新的代码提交 111");
+    ).toBeNull();
+    expect(container.textContent).toContain("@看看最新的代码提交 111");
     expect(container.querySelector(".agent-rich-text-readonly")).toBeNull();
   });
 
@@ -170,6 +175,96 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
     ).toBeNull();
   });
 
+  it("opens exact Host target information from icon hover and row keyboard focus", async () => {
+    const exactTarget: AgentGUIAgentTarget = {
+      agentTargetId: "agent:shared",
+      iconUrl: "data:image/png;base64,shared",
+      label: "Shared Codex",
+      ownerDeviceLabel: "Vector's MacBook Pro",
+      provider: "codex",
+      ref: { kind: "shared", provider: "codex" },
+      targetId: "shared:codex"
+    };
+    const siblingTarget: AgentGUIAgentTarget = {
+      ...exactTarget,
+      agentTargetId: "agent:sibling",
+      label: "Sibling Codex",
+      targetId: "shared:sibling"
+    };
+    const renderAgentTargetInfo = vi.fn(({ surface, target }) => (
+      <div>{`${surface}:${target.label}`}</div>
+    ));
+    const { container } = renderRailItem({
+      agentTargets: [
+        {
+          agentTargetId: exactTarget.agentTargetId!,
+          iconUrl: exactTarget.iconUrl,
+          provider: exactTarget.provider,
+          workspaceId: "workspace-1"
+        }
+      ],
+      isRailInteractionLocked: () => false,
+      item: { agentTargetId: exactTarget.agentTargetId },
+      renderAgentTargetInfo,
+      targetInfoTargets: [siblingTarget, exactTarget]
+    });
+
+    expect(renderAgentTargetInfo).not.toHaveBeenCalled();
+
+    fireEvent.pointerMove(
+      container.querySelector(".agent-gui-node__conversation-provider-image")!,
+      { pointerType: "mouse" }
+    );
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "conversation-rail:Shared Codex"
+    );
+    expect(renderAgentTargetInfo).toHaveBeenLastCalledWith({
+      surface: "conversation-rail",
+      target: exactTarget
+    });
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
+
+    const conversationButton = screen.getByRole("button", {
+      name: /Session 1/
+    });
+    fireEvent.focus(conversationButton);
+    const focusTooltip = await screen.findByRole("tooltip");
+    expect(focusTooltip).toHaveTextContent("conversation-rail:Shared Codex");
+    expect(conversationButton).toHaveAttribute(
+      "aria-describedby",
+      focusTooltip.id
+    );
+
+    fireEvent.blur(conversationButton);
+    await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
+  });
+
+  it("fails closed when a session target is missing from the exact directory", () => {
+    const renderAgentTargetInfo = vi.fn(() => <div>Should not render</div>);
+    renderRailItem({
+      agentTargets: [
+        {
+          agentTargetId: "agent:missing",
+          iconUrl: "data:image/png;base64,missing",
+          provider: "codex",
+          workspaceId: "workspace-1"
+        }
+      ],
+      isRailInteractionLocked: () => false,
+      item: { agentTargetId: "agent:missing" },
+      renderAgentTargetInfo,
+      targetInfoTargets: []
+    });
+
+    fireEvent.focus(screen.getByRole("button", { name: /Session 1/ }));
+
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    expect(renderAgentTargetInfo).not.toHaveBeenCalled();
+  });
+
   it("blocks the div context-menu trigger while rail reconciliation is pending", () => {
     const onSelectConversation = vi.fn();
     renderRailItem({
@@ -208,6 +303,10 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
   it("keeps pin and delete as direct row actions outside the menu", () => {
     renderRailItem({ isRailInteractionLocked: () => false });
 
+    expect(screen.queryByRole("button", { name: "Pin" })).toBeNull();
+    fireEvent.pointerEnter(
+      screen.getByTestId("agent-gui-conversation-item-session-1")
+    );
     expect(screen.getByRole("button", { name: "Pin" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Delete" })).toBeTruthy();
   });
@@ -215,6 +314,9 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
   it("uses the same shared actions for the more button and context menu", async () => {
     renderRailItem({ isRailInteractionLocked: () => false });
 
+    fireEvent.pointerEnter(
+      screen.getByTestId("agent-gui-conversation-item-session-1")
+    );
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "More actions" }),
       { button: 0 }
@@ -266,6 +368,18 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
     await waitFor(() => expect(screen.queryByRole("menuitem")).toBeNull());
   });
 
+  it("mounts row actions before keyboard focus advances past the row", () => {
+    renderRailItem({ isRailInteractionLocked: () => false });
+
+    expect(screen.queryByRole("button", { name: "Pin" })).toBeNull();
+    fireEvent.focus(screen.getByRole("button", { name: /Session 1/ }));
+
+    expect(screen.getByRole("button", { name: "Pin" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "More actions" })
+    ).toBeInTheDocument();
+  });
+
   it("runs an unlocked action before lazy menu content unmounts", async () => {
     const onRequestRenameConversation = vi.fn();
     renderRailItem({
@@ -294,6 +408,8 @@ function renderRailItem(overrides: {
     conversation: AgentGUIConversationSummary
   ) => void;
   onSelectConversation?: (agentSessionId: string) => void;
+  renderAgentTargetInfo?: AgentGUIAgentTargetInfoRenderer;
+  targetInfoTargets?: readonly AgentGUIAgentTarget[];
 }) {
   const item = (
     <AgentGUIConversationRailItem
@@ -311,7 +427,6 @@ function renderRailItem(overrides: {
         ...overrides.item
       }}
       labels={RAIL_ITEM_LABELS}
-      previewMode={false}
       registerItemElement={() => {}}
       uiLanguage="en"
       workspaceId="workspace-1"
@@ -326,14 +441,22 @@ function renderRailItem(overrides: {
       onMarkConversationUnread={() => {}}
     />
   );
+  const withTargetPresentation = overrides.agentTargets ? (
+    <AgentTargetPresentationProvider agentTargets={overrides.agentTargets}>
+      {item}
+    </AgentTargetPresentationProvider>
+  ) : (
+    item
+  );
   return render(
-    overrides.agentTargets ? (
-      <AgentTargetPresentationProvider agentTargets={overrides.agentTargets}>
-        {item}
-      </AgentTargetPresentationProvider>
-    ) : (
-      item
-    )
+    <TooltipProvider>
+      <AgentTargetInfoRendererProvider
+        agentTargets={overrides.targetInfoTargets ?? []}
+        renderer={overrides.renderAgentTargetInfo}
+      >
+        {withTargetPresentation}
+      </AgentTargetInfoRendererProvider>
+    </TooltipProvider>
   );
 }
 

@@ -493,6 +493,14 @@ active installation remains available. If no verified installation exists,
 the source is not registered and `tuttid` logs one
 `agent_extension.reconcile_failed` record with a JSON payload.
 
+Daemon startup restores and verifies every enabled source's local active
+installation before serving Agent Target reads. When every enabled source has
+a usable local installation, release-index refresh runs in the background and
+does not delay the daemon listener. If any enabled source has no usable local
+installation, startup keeps the synchronous reconcile path so that a first
+installation is registered before the daemon serves its initial Target
+catalog. Preference-driven activation changes also remain synchronous.
+
 Agent Target catalog reads continue to verify the installed extension package
 and managed runtime integrity before reporting availability. Successful runtime
 version probes are reused only while the resolved executable fingerprint,

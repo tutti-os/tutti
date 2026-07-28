@@ -2,6 +2,32 @@
 
 [Agent runtime index](./agent-runtime.md) · [All troubleshooting](./README.md)
 
+### One hung provider startup blocks unrelated Agent sessions
+
+- **Symptom:** One provider process starts but never reaches runtime-ready, then
+  new or resumed Sessions for other providers also wait without starting their
+  own provider processes.
+- **Quick checks:** Order `agent_session.process.start.sent` with Host
+  `runtime_started` and `runtime_session_ready` lifecycle steps. If later,
+  unrelated Sessions accumulate wait time before their own process-start event,
+  inspect Controller startup-lock ownership separately from the provider that
+  first stopped making progress.
+- **Root cause:** The runtime Controller held one process-wide `startMu` across
+  `Adapter.Start` and `Adapter.Resume`. A slow or unbounded provider handshake
+  therefore formed a lock convoy across every room, Session, and provider.
+- **Fix:** Serialize explicit startup requests by `(roomID, agentSessionID)`.
+  Keep the legacy no-ID start path idempotent with a narrower room-and-provider
+  key, and let startup-lock waiters return when their context is canceled.
+  Provider credential coordination remains a separate Host gate.
+- **Validation:** Block each of `Start` and `Resume` for one provider and prove
+  both operations still complete for an independent provider. Also verify all
+  same-Session combinations remain serialized, anonymous start replay reuses
+  one Session, canceled waiters release their lock references, and repeated
+  shuffled race runs stay clean.
+- **References:**
+  [controller_session_lifecycle.go](../../../packages/agent/daemon/runtime/controller_session_lifecycle.go),
+  [controller_test.go](../../../packages/agent/daemon/runtime/controller_test.go)
+
 ### A shared-device connection banner looks terminal while the host is still retrying
 
 - **Symptom:** AgentGUI keeps showing a strong connection-lost notice for a
@@ -207,6 +233,36 @@
   order without deadlocking. Unsupported capability/source values must fail at
   HTTP ingress and event publication without changing activation.
 
+### Codex finishes but AgentGUI keeps showing the Session as working
+
+- **Symptom:** Codex has emitted its final assistant message, but AgentGUI keeps
+  showing a busy spinner and the Session still has an active Turn. The UI may
+  settle several minutes later without a restart.
+- **Quick checks:** Search `tuttid.log` for
+  `agent_session.activity_report.queue_backlog` and compare its `queue_depth`
+  with the final message's `occurredAtUnixMs` and canonical
+  `updatedAtUnixMs`. A large gap means provider completion reached the runtime
+  before canonical persistence. When prod and dev are both running, identify
+  them by listener, PID, state, and workspace paths; a shared log file alone
+  does not prove they share a database.
+- **Root cause:** Streaming text, reasoning, and tool-output snapshots entered
+  the unbounded report FIFO before coalescing. When the single reporter was
+  slower than producers, thousands of superseded snapshots accumulated ahead
+  of the same Session's terminal report. Tool-call output snapshots were not
+  eligible for coalescing at all.
+- **Fix:** Coalesce pending streaming snapshots by Session and message while
+  they are enqueued. Preserve the latest cumulative tool output, original tool
+  input, and earliest start time. Keep terminal and submit-provenance reports
+  as same-Session FIFO barriers.
+- **Validation:** Enqueue at least 2048 text and tool-output snapshots and prove
+  each pending Session occupies one queue slot. Verify the latest snapshot is
+  retained, terminal and submit-provenance barriers stay ordered, reporter
+  re-entry remains non-blocking, and focused race tests pass.
+- **References:**
+  [controller_report_queue.go](../../../packages/agent/daemon/runtime/controller_report_queue.go),
+  [report_coalescer.go](../../../packages/agent/daemon/runtime/report_coalescer.go),
+  [controller_report_queue_test.go](../../../packages/agent/daemon/runtime/controller_report_queue_test.go)
+
 ### Tutti mode is active in the composer but disappears after the first submit
 
 - **Symptom:** The home composer shows Tutti enabled and the submit trace records
@@ -266,7 +322,7 @@
   `session_deleted` event does tombstone.
 - **References:**
   [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
-  [workspaceAgentActivityEventSubscriptions.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityEventSubscriptions.ts)
+  [workspaceEventCoordinator.ts](../../../packages/agent/activity-core/src/workspaceEventCoordinator.ts)
 
 ### A Tutti submission remains `delivery is still being confirmed`
 
@@ -278,14 +334,22 @@
   workspace, Session, and `clientSubmitId`. Compare its immutable
   `canonical_turn_id` with `tutti_mode_turn_snapshots.turn_id` and with the
   Turn found by durable message provenance for that `clientSubmitId`. Do not
-  change the claim to a runtime-returned mismatched Turn ID.
+  change the claim to a runtime-returned mismatched Turn ID. If the barrier
+  reports `conflicts with durable submit provenance`, compare the JSON-encoded
+  existing and projected message payloads as well as their Go container types.
+  Identical JSON with `[]any` on the SQLite-decoded side and
+  `[]map[string]any` on the fresh-report side is an in-memory normalization
+  defect, not conflicting submit evidence.
 - **Root cause:** Provider handoff crossed an ambiguity boundary: the daemon
   reserved and snapshotted a canonical Turn before dispatch, but did not
   durably confirm the exact accepted Turn. The ordinary reporter may have
   persisted its Session/Turn state while the atomic client-submit message
   barrier failed, or the process may have stopped around that barrier. A host
   wired only to the compatibility `ActivityReporter` cannot satisfy the
-  runtime's required `DurableActivityReporter` contract. Retrying the provider
+  runtime's required `DurableActivityReporter` contract. The barrier can also
+  falsely reject an ordinary message replay when a fresh JSON payload retains
+  typed Go slices but the same payload decoded from SQLite uses `[]any`, and
+  idempotency compares those concrete types directly. Retrying the provider
   call would risk duplicate work.
 - **Fix:** Preserve the prepared submit claim, Tutti snapshot, activation, and
   Session. Ensure the host supplies `DurableActivityReporter`; decorators
@@ -293,6 +357,10 @@
   probing an optional capability. Its provenance barrier must run outside the
   Session lifecycle lock, after earlier same-FIFO reports, and atomically write
   the stable user message against an existing Turn.
+  Normalize every incoming message payload through the durable JSON
+  representation before projection, merge, and idempotency comparison so
+  fresh reports and SQLite-decoded rows share one in-memory shape. Do not
+  special-case individual typed slices or bypass genuine payload conflicts.
   Reconcile only from exact durable `clientSubmitId` provenance. If it resolves
   to the reserved Turn, idempotently accept the snapshot and claim; if it is
   absent or resolves elsewhere, keep delivery unknown and never re-dispatch
@@ -302,6 +370,9 @@
   and claim acceptance failures, message-write rollback, process interruption
   after snapshot binding, reporter re-entry, duplicate replay without a new
   message version, and multiple guidance submissions sharing one active Turn.
+  Include an ordinary-message-first replay whose payload contains nested typed
+  slices and integer values; assert the provenance barrier reuses the existing
+  message version while a real content change still conflicts.
   Assert the unknown paths execute the provider zero additional times and never
   close the provisional Session or delete its activation.
 - **References:**
@@ -311,40 +382,90 @@
 
 Turn state, loading, cancel, restore, file-change undo, rail projection, event updates, imports, and performance.
 
-### AgentGUI rail shows a failed Turn but the detail has no error
+### AgentGUI restores a provisional conversation after creation fails
+
+- Symptom:
+  A new conversation fails to start, but a renderer reload selects the same
+  Session ID again. The Rail may show an optimistic row while the canonical
+  store has no matching Session.
+- Quick checks:
+  Correlate the activation request, Workbench
+  `lastActiveAgentSessionId`, renderer reload, and canonical Session lookup by
+  exact ID. If navigation persistence precedes canonical activation
+  confirmation and the lookup returns typed `session.not_found`, this is a
+  provisional-selection leak. A bounded Rail page that omits the Session is
+  not enough evidence.
+- Root cause:
+  The new-conversation controller persisted its generated Session ID when it
+  selected the optimistic row. A crash or reload could therefore restore that
+  ID before Host committed a canonical Session. Reconcile errors also lost
+  their typed code in the frontend engine, so AgentGUI could not distinguish a
+  proven missing Session from a transient read failure.
+- Fix:
+  Keep provisional selection in mounted UI only. Persist it after the engine
+  confirms activation from canonical Session state. Preserve reconcile
+  `errorCode`; clear only the exact global and per-target navigation memories
+  when the active reconcile settles with `session.not_found`. Preserve them
+  for timeout, transport failure, and bounded-list absence.
+- Validation:
+  Verify a requested activation performs no persistence, canonical
+  confirmation writes once, create failure plus reload cannot restore the
+  provisional ID, typed `session.not_found` clears only the matching memories,
+  and a transient reconcile error keeps the selection.
+- References:
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+  [sessionReconcile.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionReconcile.reducer.ts)
+  [useAgentGUIConversationSelectionController.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIConversationSelectionController.ts)
+
+### AgentGUI detail misses or misplaces a canonical Turn error
 
 - Symptom:
   The AgentGUI rail marks a conversation failed, but opening the conversation
   shows only the preceding tool or assistant rows. Reloading the session does
-  not reveal why the Turn failed.
+  not reveal why the Turn failed. A related symptom is a failure from a much
+  older Turn appearing at the bottom of the currently loaded conversation,
+  immediately before current processing UI.
 - Quick checks:
   Inspect the canonical Turn snapshot before debugging React state. Confirm the
   owning Turn is terminal with `outcome = failed` or `interrupted` and has a
   non-empty `error.message`. Then inspect that Turn's timeline messages for a
   structured `visibleError` or a plain assistant message with the same error
-  text.
+  text. Finally, distinguish the session-wide Turn list from the hydrated
+  message window: check whether any currently loaded timeline item has the
+  exact owning `turnId` and whether older message pages remain.
 - Root cause:
   Turn outcome and error are durable canonical state, while provider transcript
   messages are optional evidence. If detail rendering only projects transcript
   messages, a runtime that settles `AgentActivityTurn.error` without emitting a
   visible-error message leaves the rail and detail inconsistent. Reading only
   the active Turn also loses the error as soon as settlement clears
-  `activeTurnId`.
+  `activeTurnId`. Conversely, treating the session-wide Turn list as transcript
+  membership manufactures an empty Turn for an error whose messages are outside
+  the current page, appends it after newer Turns, and makes an old failure look
+  current.
 - Fix:
   Reconcile terminal `AgentActivityTurn.error` in the shared transcript
-  projection by exact `turnId`. Reuse a structured visible error, upgrade a
-  matching plain assistant failure, or synthesize one view-only row with a
-  stable `(agentSessionId, turnId)` identity. Do not restore session
-  `lastError`, let session-operation selectors fall back to Turn errors,
-  reinterpret a successful attach as activation failure, persist a duplicate
-  message, or add component-local failure state.
+  projection by exact `turnId`, but only when that Turn already exists in the
+  hydrated transcript projection. Reuse a structured visible error, upgrade a
+  matching plain assistant failure, or add one view-only row with a stable
+  `(agentSessionId, turnId)` identity. If the owning Turn is outside the message
+  window, skip it until an older page supplies an anchor. Do not manufacture an
+  empty transcript Turn, restore session `lastError`, let session-operation
+  selectors fall back to Turn errors, reinterpret a successful attach as
+  activation failure, persist a duplicate message, or add component-local
+  failure state.
 - Validation:
   Cover a failed Turn with no provider error message, a matching plain failure,
   and an existing structured visible error. The first must render one fallback
-  row and the latter two must remain single rows. Verify the result from both a
-  live snapshot and rebuilt session history.
+  row when its Turn is loaded, and the latter two must remain single rows. With
+  a full canonical Turn list and a newest-page-only transcript window, an older
+  failed or interrupted Turn must not create a row or change Turn order. After
+  prepending the older page, its error must appear exactly once on the owning
+  Turn. Also cover a failed Turn with zero hydrated transcript items and a
+  newer active Turn whose processing ownership remains current.
 - References:
   [workspaceAgentTurnErrorProjection.ts](../../../packages/agent/gui/shared/workspaceAgentTurnErrorProjection.ts)
+  [workspaceAgentTurnErrorProjection.spec.ts](../../../packages/agent/gui/shared/workspaceAgentTurnErrorProjection.spec.ts)
   [workspaceAgentTimelineCanonical.ts](../../../packages/agent/gui/shared/workspaceAgentTimelineCanonical.ts)
   [agent-gui-node.md](../../architecture/agent-gui-node.md)
 
@@ -1500,6 +1621,44 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [agentGuiConversationProjectResolver.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationProjectResolver.ts)
   [useAgentGuiConversationList.ts](../../../packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList.ts)
 
+### AgentGUI new conversation does nothing after leaving a Chats session
+
+- Symptom:
+  After using an ordinary Chats Session, the toolbar new-conversation action
+  opens the home composer but submitting by Enter or the send button creates no
+  visible Session and produces no `session/activate` command. Enabling Tutti
+  Mode before submitting can make the problem look mode-specific even though
+  activation is blocked before provider or Tutti Mode execution starts.
+- Quick checks:
+  Inspect the active conversation projection before the new-conversation
+  request. If `railSectionKey` is `conversations` while `cwd` is a generated
+  runtime directory, confirm that directory is not copied into the home
+  composer's selected project. A subsequent activation that resolves the path
+  against user projects and returns no placement explains the missing
+  `session/activate`.
+- Root cause:
+  Composer presentation intentionally exposes the active Session `cwd` for
+  file mentions, Git operations, and missing-directory checks. Treating that
+  presentation field as the user's home project selection conflates runtime
+  working directory with rail placement. The generated Chats directory then
+  enters project resolution and fails closed because it has no canonical
+  project section.
+- Fix:
+  Normalize default project selection at the AgentGUI controller's
+  new-conversation command. Explicit section actions remain authoritative; an
+  active Chats Session replaces the home selection with no project, an active
+  project Session keeps its working directory, and an action already on Home
+  preserves the user's explicit selection. Views forward the intent without
+  interpreting composer presentation fields.
+- Validation:
+  Cover the command through final `session/activate` for three P0 scenarios:
+  active Chats clears a generated cwd, active Project preserves its cwd and
+  canonical placement, and Home preserves an explicit project selection.
+- References:
+  [agentGuiNewConversationRequest.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/agentGuiNewConversationRequest.ts)
+  [useAgentGUIOperationActions.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIOperationActions.ts)
+  [agentGuiNewConversationRequest.spec.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/agentGuiNewConversationRequest.spec.tsx)
+
 ### Extension history becomes non-resumable after daemon restart
 
 - Symptom:
@@ -1542,6 +1701,42 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [agent_runtime_adapter.go](../../../services/tuttid/agent_runtime_adapter.go)
   [service_session.go](../../../services/tuttid/service/agent/service_session.go)
   [agent-extensions.md](../../architecture/agent-extensions.md)
+
+### An authorized observer loops unavailable while a session is resuming
+
+- Symptom:
+  A remote or local observer has a durable Agent session ID and passes
+  authorization, but immediately receives `session not found` or
+  `Unavailable`. Its caller reconnects rapidly even though Agent Host restores
+  the provider session shortly afterward.
+- Quick checks:
+  Separate durable identity from the Controller registry. Confirm the session
+  exists in canonical persistence while `Controller.Session` is temporarily
+  absent, then correlate the observer attempt with the later Host
+  `EnsureRuntimeSession`, runtime `Start`, or runtime `Resume`. If observation
+  itself launches the provider, lifecycle authority is inverted.
+- Root cause:
+  A durable session record proves that work may be resumed; it does not prove a
+  live provider or runtime registry entry exists after daemon restart. A
+  one-shot `Controller.Subscribe` therefore turns a normal restore race into a
+  transport failure, and caller reconnect loops cannot know when the local
+  lifecycle owner has finished restoring ACP.
+- Fix:
+  Use `Controller.SubscribeWhenAvailable` when the consumer already has an
+  authorized durable session identity and must observe the next live runtime.
+  It waits on a per-session Controller notification and atomically subscribes
+  with the initial state snapshot once `Start` or `Resume` registers the
+  session. Keep provider launch and resume in Agent Host; the observation
+  method must never call those lifecycle operations.
+- Validation:
+  Start the observation against a missing runtime, assert that it neither
+  returns nor creates a session, then perform a real Controller `Resume` and
+  verify the observer receives the initial state snapshot. Also cancel a
+  missing-session wait and verify no waiter or runtime session remains, and
+  cover concurrent observers under the race detector.
+- References:
+  [controller_stream.go](../../../packages/agent/daemon/runtime/controller_stream.go)
+  [controller_stream_wait_test.go](../../../packages/agent/daemon/runtime/controller_stream_wait_test.go)
 
 ### Agent session restore breaks when durable snapshot ownership is split
 
@@ -1948,6 +2143,39 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [ExternalAgentSessionImportWizard.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/ExternalAgentSessionImportWizard.tsx)
   [service_session.go](../../../services/tuttid/service/agent/service_session.go)
 
+### Imported long Turns show one disclosure per tool call
+
+- Symptom:
+  A long imported Codex or Claude Code execution shows many adjacent
+  `1 tool call` disclosures instead of one grouped Turn, especially after
+  opening or paging into the middle of the conversation.
+- Quick checks:
+  Inspect the affected `workspace_agent_messages` rows without printing
+  payload text. If the user/tool/assistant rows all have `turn_id = NULL`, then
+  compare the loaded page with the source transcript. A page that starts after
+  the initiating user message cannot recover the Turn boundary locally.
+- Root cause:
+  The external importer historically used the turnless compatibility path for
+  every message. AgentGUI can make a temporary presentation group when the
+  leading user row is loaded, but that grouping cannot survive a page boundary;
+  assigning each orphan row from its current page position would manufacture
+  lifecycle identity in the renderer.
+- Fix:
+  At the provider transcript boundary, start a stable historical Turn from each
+  retained real user message and carry it through following assistant and tool
+  messages. Persist the messages with settled backfilled Turns atomically.
+  The forward-only store migration repairs existing imported rows, while a
+  later re-import applies the same identity to any still-turnless rows. Content
+  before the first trustworthy user boundary remains turnless.
+- Validation:
+  Run `go test ./packages/agent/store-sqlite -run HistoricalImport`, then
+  `cd services/tuttid && go test ./service/agent -run
+'ServiceImportsExternalAgentSessionsByProject|ServiceReimportRepairsLegacyTurnlessExternalMessages'`.
+- References:
+  [external_import.go](../../../services/tuttid/service/agent/external_import.go)
+  [activity_historical_import_turns.go](../../../packages/agent/store-sqlite/activity_historical_import_turns.go)
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+
 ### Imported sessions trigger fresh-completion indicators
 
 - Symptom:
@@ -2026,7 +2254,8 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   the session create and turn both succeeded while the presentation remains
   `activating` until `engine/intentExpired`, inspect which session intent
   reached the pending-activation reducer. Also check that a failed realtime
-  session fetch does not consume the live-reconcile marker before a retry.
+  session fetch preserves `live: true` on the Engine's pending reconcile
+  record before a retry.
 - Root cause:
   An engine migration introduced `session/upserted` for authoritative mutation
   and realtime results, while pending activation still confirmed only from the
@@ -2038,9 +2267,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   Confirm activation from both authoritative session intents. Preserve the
   semantic distinction only where it matters: historical snapshots remain
   neutral for unread attention, while realtime reconciliation additionally
-  emits the live turn update. Move a consumed realtime marker to an in-flight
-  state and restore it after fetch failure until a live session is applied or
-  the session is deleted.
+  emits the live turn update. Carry realtime provenance on the Engine-owned
+  reconcile command, merge it into in-flight demand, and restore it to pending
+  demand after fetch failure until a live session is applied or the session is
+  deleted. Hosts must not keep a parallel marker set.
 - Validation:
   Cover the reducer with a pending activation followed by `session/upserted`.
   At the desktop service boundary, run a real engine activation through the
@@ -2051,6 +2281,42 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [pendingIntents.reducer.ts](../../../packages/agent/activity-core/src/engine/pendingIntents.reducer.ts)
   [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
   [workspaceAgentActivityService.test.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityService.test.ts)
+
+### Shared Agent composer stays disabled after the target connects
+
+- Symptom:
+  A shared Agent target reaches `connected`, and diagnostics show submission
+  readiness has recovered, but the entire composer remains disabled and cannot
+  receive focus or input. This differs from an empty draft disabling only the
+  send button.
+- Quick checks:
+  Inspect one rendered Composer gate snapshot. Its runtime, editor, and
+  submission branches must agree: a ready submission cannot coexist with a
+  target-connection runtime block. If logs instead compare fields from separate
+  Composer and readiness projections, inspect view-model memoization before
+  debugging P2P transport.
+- Root cause:
+  Connection and submission facts were projected into independent memoized
+  slices. A missing dependency could retain the old target-connection block
+  while publishing the new submission-ready value, and a downstream detail
+  model then recombined those two render-time generations into a torn
+  `composerDisabled` decision.
+- Fix:
+  Derive the canonical Composer gate once at the Session-presentation boundary.
+  Keep editor editability, submission readiness/queue/blocking, and
+  runtime-command availability in that one object, then pass it through one
+  view-model slice to the editor, send button, shortcuts, Stop control, and
+  Interaction paths. Keep draft-empty and upload conditions submission-local.
+- Validation:
+  Drive an exact shared target from `connecting` to `connected` and assert the
+  same resulting snapshot reports runtime ready, editor editable, and
+  submission ready. Also cover busy queue behavior, collaborator read-only
+  behavior, and the invariant that submission ready never retains a runtime
+  connection block.
+- References:
+  [agentGuiComposerGate.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiComposerGate.ts)
+  [useAgentGUISessionPresentation.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUISessionPresentation.ts)
+  [useAgentGUIViewModel.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/useAgentGUIViewModel.ts)
 
 ### AgentGUI submit clears the composer but creates no session or turn
 
@@ -2463,6 +2729,45 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [workspaceAgentActivityReconcileMessages.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileMessages.ts)
   [agent-gui-node.md](../../architecture/agent-gui-node.md)
 
+### Root detail reconciliation repeatedly reloads unchanged child transcripts
+
+- Symptom:
+  Opening or reconciling one root conversation repeatedly issues message-list
+  requests for every known child Session, including assistant-only and
+  tool-only children whose durable messages have not changed.
+- Quick checks:
+  Compare each child Session's required `messageVersion` from both root-detail
+  reads with the largest cached message version that also has a durable
+  `sequence`. If the cache is current but the request still starts at zero,
+  inspect whether child reconciliation reused the root conversation's
+  user-message boundary heuristic.
+- Root cause:
+  The root heuristic intentionally returns zero when cached history has no user
+  message, so it can repair an incomplete root conversation. Applying that
+  heuristic to provider-native child Sessions makes ordinary assistant/tool
+  histories look permanently unhydrated and forces the same reads forever.
+- Fix:
+  Keep root and child cursor policies separate. For a child, derive the cursor
+  only from durable sequenced messages and skip its message request when that
+  cursor has reached the Session `messageVersion`. Preserve the bounded
+  newest-first initial read, but treat an existing empty child window as the
+  authoritative zero cursor and drain later messages from `afterVersion=0`.
+  After the first message pass, read root detail again and incrementally fetch
+  newly discovered children plus existing children whose `messageVersion`
+  advanced during the pass. Do not let optimistic/transient rows advance the
+  durable cursor, and do not add polling; later changes arrive through the
+  existing push-and-reconcile path.
+- Validation:
+  Cover assistant-only and tool-only child caches, a transient row with a higher
+  synthetic version, an unchanged child that performs no request, initial
+  newest-first hydration, an empty known child that gains more than one page,
+  and a child advancing between the two detail reads. Keep a root assistant-only
+  case proving its existing repair still reads from zero.
+- References:
+  [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
+  [workspaceAgentActivityReconcileMessages.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileMessages.ts)
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+
 ### AgentActivity replication repeatedly rejects message batches as invalid
 
 - Symptom:
@@ -2564,6 +2869,48 @@ convergence deadline`.
 - References:
   [goal_operation_worker.go](../../../packages/agent/host/goal_operation_worker.go)
   [goal_scenarios.go](../../../packages/agent/host/conformance/goal_scenarios.go)
+
+### Revoked shared Goal starts again after handoff or desktop restart
+
+- Symptom:
+  After a shared binding is revoked, the old Goal starts or resumes provider
+  work, may replace the Owner's newer Goal, or an unrelated active Turn is
+  canceled.
+- Quick checks:
+  Resolve the original Goal operation by its stable `clientSubmitId`. Inspect
+  `workspace_agent_goal_generation_fences` for the exact operation ID, revision,
+  and repair epoch. `pending` or `processing` means Host still owns delivery;
+  absence means the revocation was never durably accepted. For any canceled
+  Turn, compare all three immutable `source_goal_*` fields with the fence.
+- Root cause:
+  Revocation was treated as a one-shot notification, or code guessed that the
+  session's current active Turn belonged to the revoked binding. A failed
+  notification was lost on restart, and recovery could replay the old prepared
+  Goal before runtime learned the revocation.
+- Fix:
+  Persist an exact Goal-generation fence before provider delivery. Process
+  fences before Goal operations during startup and each worker tick. Restore
+  all durable fences when a provider session resumes, and retain the exact set
+  in the runtime Controller across idle connection release so a replacement
+  adapter is fenced before its first user operation. Never resume an offline
+  provider solely for background fence or cancel delivery. Prepare the local
+  clear with the target revision as a compare-and-swap guard, and call
+  `CancelTurn` only for a live canonical Turn whose operation ID, revision,
+  and repair epoch all match. Keep the fence pending after cancellation
+  acceptance until the Turn is canonically terminal.
+- Validation:
+  Cover failed delivery followed by restart, a pending target operation and
+  fence recovered together, a newer Owner Goal, repeated runtime ensure, and
+  matching versus unrelated active Turns. Simulate connection replacement and
+  prove fence reinstallation happens before provider dispatch. Simulate a
+  disconnect immediately before cancel and prove background recovery makes
+  zero provider Resume calls. Provider tests must prove that the exact
+  Codex/Claude generation never becomes canonical while later generations
+  remain admissible.
+- References:
+  [Agent Host contracts](../../../packages/agent/host/README.md)
+  [Agent Goal Control Design](../../specs/2026-07-15-agent-goal-control-design.md)
+  [goal_generation_fence.go](../../../packages/agent/host/goal_generation_fence.go)
 
 ### Initial Goal prompt disappears when the Agent starts responding
 

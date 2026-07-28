@@ -401,6 +401,12 @@ export function parseAgentMentionHTMLElementAttrs(
     node.getAttribute("name") ||
     (node.textContent ?? "").replace(/^@+/, "").trim();
   const parsedItem = href ? parseMentionItemFromHref({ name, href }) : null;
+  if (
+    node.getAttribute("data-agent-mention-kind") === "custom" &&
+    parsedItem?.kind !== "custom"
+  ) {
+    return false;
+  }
   const parsedAttrs = parsedItem ? mentionItemToAttrs(parsedItem) : {};
   const iconUrl = node.getAttribute("data-agent-mention-icon-url") || "";
   const fileCount = node.getAttribute("data-agent-mention-file-count") || "";

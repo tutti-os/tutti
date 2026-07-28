@@ -122,6 +122,17 @@ export interface EngineScheduleExpiryCommand {
   dueAtUnixMs: number;
 }
 
+/**
+ * Schedules an expiry relative to command application time. This keeps
+ * reducer-owned retry backoff pure: reducers describe a delay while the
+ * Engine clock resolves the absolute deadline.
+ */
+export interface EngineScheduleExpiryAfterCommand {
+  type: "engine/scheduleExpiryAfter";
+  expiryId: string;
+  delayMs: number;
+}
+
 export interface EngineCancelExpiryCommand {
   type: "engine/cancelExpiry";
   expiryId: string;
@@ -151,6 +162,7 @@ export interface EngineReconcileWorkspaceCommand extends EngineExternalCommandBa
 
 export type EngineExpiryCommand =
   | EngineCancelExpiryCommand
+  | EngineScheduleExpiryAfterCommand
   | EngineScheduleExpiryCommand;
 
 export type EngineInternalCommand =
@@ -173,6 +185,11 @@ export type EngineExternalCommand =
   | ComposerOptionsCommand
   | TuttiModeActivationCommand;
 
+export type EngineExternalCommandExceptPlanDecision = Exclude<
+  EngineExternalCommand,
+  PlanSubmitDecisionCommand
+>;
+
 export type EngineCommand = EngineExternalCommand | EngineInternalCommand;
 
 export function isEngineInternalCommand(
@@ -181,6 +198,7 @@ export function isEngineInternalCommand(
   return (
     command.type === "engine/abortExternalCommand" ||
     command.type === "engine/cancelExpiry" ||
+    command.type === "engine/scheduleExpiryAfter" ||
     command.type === "engine/scheduleExpiry"
   );
 }
@@ -259,9 +277,13 @@ export interface EngineClock {
 /** Transport adapter surface: executes external command descriptions. */
 export interface EngineCommandPort {
   execute(
-    command: EngineExternalCommand,
+    command: EngineExternalCommandExceptPlanDecision,
     options?: { signal?: AbortSignal }
   ): Promise<unknown>;
+  executePlanDecision?(
+    command: PlanSubmitDecisionCommand,
+    options?: { signal?: AbortSignal }
+  ): Promise<PlanSubmitDecisionResult>;
 }
 
 // ---------------------------------------------------------------------------
@@ -319,7 +341,8 @@ import type {
 import type {
   PlanDecisionIntent,
   PlanDecisionState,
-  PlanSubmitDecisionCommand
+  PlanSubmitDecisionCommand,
+  PlanSubmitDecisionResult
 } from "./planDecision.types.ts";
 import type {
   SessionCommandsIntent,

@@ -149,6 +149,10 @@ export function createBrowserNodeDefinition({
     window: {
       closable: true,
       defaultOpen: false,
+      header: {
+        heightPx: 76,
+        overflow: "visible"
+      },
       minimizedDock: {
         capturePreview: ({ node }) =>
           feature.hostApi.capturePreview?.({

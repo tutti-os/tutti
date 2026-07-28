@@ -1,6 +1,10 @@
 package node_result
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/tutti-os/tutti/services/tuttid/biz/agentanalytics"
+)
 
 type NodeResultInput struct {
 	AgentSessionID string
@@ -22,10 +26,10 @@ func BuildParams(input NodeResultInput) Params {
 	errorMessage := strings.TrimSpace(input.ErrorMessage)
 	success := status == "success"
 	if success {
-		errorCode = ErrorCodeNone
+		errorCode = agentanalytics.ErrorCodeNone
 		errorMessage = ""
 	} else if errorCode == "" {
-		errorCode = ErrorCodeUnknown
+		errorCode = agentanalytics.ErrorCodeUnknown
 	}
 	var duration any
 	if input.DurationMS != nil {

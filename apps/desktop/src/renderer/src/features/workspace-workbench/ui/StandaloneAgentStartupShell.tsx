@@ -26,6 +26,8 @@ export function StandaloneAgentStartupShell({
       data-agent-gui-standalone-window="true"
       data-agent-gui-startup-shell="window"
       data-display-mode="floating"
+      data-window-header-border="none"
+      data-window-header-layout="overlay"
       style={{
         border: 0,
         borderRadius: 0,

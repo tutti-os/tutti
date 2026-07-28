@@ -54,8 +54,37 @@ export function buildDeveloperLogsRuntimeContext(
       release: process.release.name,
       sessionId: process.env.TUTTI_SESSION_ID
     },
-    transport: input.transportSnapshot
+    transport: sanitizeDeveloperLogsTransportSnapshot(input.transportSnapshot)
   };
+}
+
+const developerLogsTransportFields = [
+  "boundAddr",
+  "listenerInfoPath",
+  "pidPath",
+  "requestedAddr"
+] as const;
+
+export function sanitizeDeveloperLogsTransportSnapshot(
+  snapshot: unknown
+): Record<string, string | null> | null {
+  if (
+    snapshot === null ||
+    typeof snapshot !== "object" ||
+    Array.isArray(snapshot)
+  ) {
+    return null;
+  }
+
+  const source = snapshot as Record<string, unknown>;
+  const safeSnapshot: Record<string, string | null> = {};
+  for (const field of developerLogsTransportFields) {
+    const value = source[field];
+    if (typeof value === "string" || value === null) {
+      safeSnapshot[field] = value;
+    }
+  }
+  return safeSnapshot;
 }
 
 function collectRuntimeOverrides(): Record<string, string> {

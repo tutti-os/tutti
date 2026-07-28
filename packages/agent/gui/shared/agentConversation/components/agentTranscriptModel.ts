@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
 import { agentTranscriptRowHasPresentationKind } from "../projection/agentTranscriptPresentation";
 import { normalizeAgentTitleText } from "../../utils/agentTitleText.ts";
@@ -19,6 +19,11 @@ export interface AgentMessageLocatorItem {
   turnGroupIndex: number;
   rowIndex: number;
   summary: string;
+}
+
+export interface AgentParticipantTurnProjection {
+  dividerRowIndexes: ReadonlySet<number>;
+  turnIndexByRowIndex: ReadonlyMap<number, number>;
 }
 
 export function useEnteringTranscriptRows(
@@ -216,4 +221,102 @@ export function findTurnDividerRowIndexes(
   });
 
   return dividerRowIndexes;
+}
+
+/**
+ * Participant-header presentation (Agent board session detail): a presentation
+ * turn starts at each user message and continues until the next user message.
+ * Canonical Turn ids deliberately do not participate because recovery or
+ * provider continuation may split one visible reply across multiple Turns.
+ */
+export function buildAgentParticipantTurnProjection(
+  rows: ReadonlyArray<AgentConversationVM["rows"][number]>
+): AgentParticipantTurnProjection {
+  const dividerRowIndexes = new Set<number>();
+  const turnIndexByRowIndex = new Map<number, number>();
+  let turnIndex = 0;
+
+  rows.forEach((row, rowIndex) => {
+    if (rowIndex > 0 && row.kind === "message" && row.speaker === "user") {
+      turnIndex += 1;
+      dividerRowIndexes.add(rowIndex);
+    }
+    turnIndexByRowIndex.set(rowIndex, turnIndex);
+  });
+
+  return {
+    dividerRowIndexes,
+    turnIndexByRowIndex
+  };
+}
+
+/**
+ * Participant-header presentation: standalone tool-group rows belong to the
+ * work that produced the NEXT assistant message, so they attach to that
+ * message (rendered inside its block) instead of sitting after the previous
+ * one. Trailing tool rows with no following assistant message stay standalone.
+ */
+export function attachLeadingToolRowsToFollowingMessages(
+  rows: ReadonlyArray<AgentConversationVM["rows"][number]>
+): AgentConversationVM["rows"] {
+  const result: AgentConversationVM["rows"] = [];
+  let pendingToolRows: Extract<
+    AgentConversationVM["rows"][number],
+    { kind: "tool-group" }
+  >[] = [];
+  for (const row of rows) {
+    if (row.kind === "tool-group") {
+      pendingToolRows.push(row);
+      continue;
+    }
+    if (row.kind === "message" && row.speaker === "assistant") {
+      if (pendingToolRows.length > 0) {
+        result.push({
+          ...row,
+          leadingToolRows: [...(row.leadingToolRows ?? []), ...pendingToolRows]
+        });
+        pendingToolRows = [];
+        continue;
+      }
+      result.push(row);
+      continue;
+    }
+    if (pendingToolRows.length > 0) {
+      result.push(...pendingToolRows);
+      pendingToolRows = [];
+    }
+    result.push(row);
+  }
+  result.push(...pendingToolRows);
+  return result;
+}
+
+/**
+ * Read hook owning the display-row projection for the transcript view: in
+ * participant-header mode tool-group rows attach to the following assistant
+ * message, presentation turns start at user messages, and row keys derive from
+ * the same pass. Keeping the memoization in this model module (next to
+ * `useEnteringTranscriptRows`) keeps the view component within the
+ * degradation-check memoization budget.
+ */
+export function useAgentTranscriptDisplayRows(
+  rows: ReadonlyArray<AgentConversationVM["rows"][number]>,
+  participantHeadersEnabled: boolean
+): {
+  rows: ReadonlyArray<AgentConversationVM["rows"][number]>;
+  rowKeys: string[];
+  participantTurnProjection: AgentParticipantTurnProjection | null;
+} {
+  return useMemo(() => {
+    const displayRows = participantHeadersEnabled
+      ? attachLeadingToolRowsToFollowingMessages(rows)
+      : rows;
+    return {
+      rows: displayRows,
+      rowKeys: displayRows.map(transcriptRowKey),
+      participantTurnProjection: participantHeadersEnabled
+        ? buildAgentParticipantTurnProjection(displayRows)
+        : null
+    };
+  }, [rows, participantHeadersEnabled]);
 }

@@ -206,7 +206,14 @@ export class TurnLifecycle {
     }
     turn.settled = true;
     this.completedTurnCount += 1;
-    this.emit({ type, payload: { ...payload, turnId: turn.turnId } });
+    this.emit({
+      type,
+      payload: {
+        ...payload,
+        turnId: turn.turnId,
+        ...(turn.promptUuid ? { providerTurnId: turn.promptUuid } : {})
+      }
+    });
     this.clearContinuationStartTimer();
     this.active = undefined;
     this.activeIdValue = "";
@@ -299,6 +306,7 @@ export class TurnLifecycle {
         type: "goal_command_started",
         payload: {
           turnId: turn.turnId,
+          ...(turn.promptUuid ? { providerTurnId: turn.promptUuid } : {}),
           operationId: turn.goalOperationId,
           revision: turn.goalRevision,
           repairEpoch: turn.goalRepairEpoch ?? 0,
@@ -352,7 +360,14 @@ export class TurnLifecycle {
       return;
     }
     turn.settled = true;
-    this.emit({ type, payload: { ...payload, turnId: turn.turnId } });
+    this.emit({
+      type,
+      payload: {
+        ...payload,
+        turnId: turn.turnId,
+        ...(turn.promptUuid ? { providerTurnId: turn.promptUuid } : {})
+      }
+    });
   }
 
   private compactQueue(): void {
