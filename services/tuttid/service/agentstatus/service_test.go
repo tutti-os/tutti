@@ -766,15 +766,10 @@ func TestServiceListReportsCodexReadyWhenAppServerOmitsJSONRPCVersion(t *testing
 	pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
 	writePackageManifest(t, pkgDir, "@openai/codex", MinSupportedCodexVersion)
 	codexPath := filepath.Join(pkgDir, "bin", "codex")
-	writeExecutable(t, codexPath, "#!/bin/sh\n"+
-		"if [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\n"+
-		"case \"$*\" in\n"+
-		// Deliberately omits "jsonrpc" (this test's whole point) but still
-		// reads stdin and echoes back the real request id, since the probe
-		// now generates an unpredictable id per run.
-		"*app-server*) read -r line; id=$(printf '%s' \"$line\" | sed -n 's/.*\"id\":\\([0-9]*\\).*/\\1/p'); echo '{\"id\":'\"$id\"',\"result\":{}}'; exit 0 ;;\n"+
-		"esac\n"+
-		"exit 0\n")
+	// codexAppServerFakeScript omits "jsonrpc" (this test's whole point) but
+	// still reads stdin and echoes back the real request id.
+	writeExecutable(t, codexPath, codexAppServerFakeScript(
+		"if [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nexit 0\n"))
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir bin dir: %v", err)
 	}
@@ -2976,7 +2971,10 @@ func probeTestService(home string) Service {
 			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
 		},
 		ProbeReadyAfter: 200 * time.Millisecond,
-		ProbeTimeout:    time.Second,
+		// Match production defaultProbeTimeout (3s). 1s was too tight for the
+		// real ACP initialize round-trip in fake shell scripts under parallel
+		// `go test` load and caused flaky acp_adapter_launch_failed failures.
+		ProbeTimeout: defaultProbeTimeout,
 	}
 }
 
@@ -3016,7 +3014,7 @@ func assertProviderCheck(t *testing.T, checks []ProviderCheck, name string, pass
 // run specifically so a canned response (one that never reads stdin) cannot
 // pass as a real handshake reply; a fake that wants to look "ready" has to
 // genuinely round-trip the id.
-const codexAppServerHandshakeOKCase = `*app-server*) read -r line; id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9]*\).*/\1/p'); echo '{"id":'"$id"',"result":{}}'; exit 0 ;;`
+const codexAppServerHandshakeOKCase = `*app-server*) read -r line; id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9]*\).*/\1/p'); printf '{"id":%s,"result":{}}\n' "$id"; exit 0 ;;`
 
 // codexAppServerFakeScript builds a POSIX shell fake CLI that answers the
 // real ACP handshake probe for any invocation whose args contain
@@ -3030,7 +3028,7 @@ func codexAppServerFakeScript(extraBody string) string {
 // standardACPHandshakeOKCase is the Standard ACP equivalent of
 // codexAppServerHandshakeOKCase: it reads the `initialize` request from
 // stdin and echoes back the id it was sent, rather than a hardcoded value.
-const standardACPHandshakeOKCase = `*acp*) read -r line; id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9]*\).*/\1/p'); echo '{"jsonrpc":"2.0","id":'"$id"',"result":{}}'; exit 0 ;;`
+const standardACPHandshakeOKCase = `*acp*) read -r line; id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9]*\).*/\1/p'); printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id"; exit 0 ;;`
 
 // standardACPFakeScript builds a POSIX shell fake CLI that answers the real
 // ACP handshake probe for any invocation whose args contain "acp" (matching
