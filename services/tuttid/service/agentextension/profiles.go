@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
@@ -356,7 +358,7 @@ func validateComposerProfile(profile ComposerProfile) error {
 	if profile.Skills.Invocation != "textTrigger" && profile.Skills.Invocation != "promptItem" {
 		return errors.New("composer skill invocation is unsupported")
 	}
-	if profile.Skills.TriggerPrefix != "/" && profile.Skills.TriggerPrefix != "$" {
+	if !isSupportedComposerSkillTriggerPrefix(profile.Skills.TriggerPrefix) {
 		return errors.New("composer skill triggerPrefix is unsupported")
 	}
 	if len(profile.Skills.Roots) == 0 {
@@ -372,6 +374,16 @@ func validateComposerProfile(profile ComposerProfile) error {
 		}
 	}
 	return nil
+}
+
+func isSupportedComposerSkillTriggerPrefix(prefix string) bool {
+	if prefix == "" || prefix != strings.TrimSpace(prefix) || utf8.RuneCountInString(prefix) > 8 {
+		return false
+	}
+	if !strings.HasPrefix(prefix, "/") && !strings.HasPrefix(prefix, "$") {
+		return false
+	}
+	return !strings.ContainsFunc(prefix, unicode.IsSpace)
 }
 
 func validateComposerPermissionModes(modes []ComposerPermissionMode) error {

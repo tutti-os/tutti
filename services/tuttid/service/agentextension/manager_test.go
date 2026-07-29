@@ -583,7 +583,7 @@ func TestValidateComposerProfileAcceptsDeclarativeSkillRoots(t *testing.T) {
 		"schemaVersion":"tutti.agent.composer.v1",
 		"skills":{
 			"invocation":"textTrigger",
-			"triggerPrefix":"/",
+			"triggerPrefix":"/skill:",
 			"roots":[
 				{"scope":"workspace","path":".gemini/skills"},
 				{"scope":"user","path":".agents/skills"}
@@ -598,6 +598,11 @@ func TestValidateComposerProfileAcceptsDeclarativeSkillRoots(t *testing.T) {
 	profile.Skills.Roots[0].Path = "../outside"
 	if err := validateComposerProfile(profile); err == nil {
 		t.Fatal("validateComposerProfile() error = nil, want unsafe path rejection")
+	}
+	profile.Skills.Roots[0].Path = ".gemini/skills"
+	profile.Skills.TriggerPrefix = "skill:"
+	if err := validateComposerProfile(profile); err == nil {
+		t.Fatal("validateComposerProfile() error = nil, want non-composer trigger prefix rejection")
 	}
 }
 

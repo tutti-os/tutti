@@ -41,7 +41,7 @@ description: Review any project.
 	service.ExtensionComposerProfiles = extensionComposerProfileResolverStub{
 		profile: ExtensionComposerProfile{Skills: &ExtensionComposerSkillProfile{
 			Invocation:    "textTrigger",
-			TriggerPrefix: "/",
+			TriggerPrefix: "/skill:",
 			Roots: []ExtensionComposerSkillRoot{
 				{Scope: "workspace", Path: ".gemini/skills"},
 				{Scope: "user", Path: ".agents/skills"},
@@ -55,7 +55,7 @@ description: Review any project.
 		nil,
 		map[string]any{"kind": "agent_extension", "extensionInstallationId": "gemini@1.0.1"},
 	)
-	if got := composerSkillOptionTriggers(options); !slices.Equal(got, []string{"/project-review", "/personal-review"}) {
+	if got := composerSkillOptionTriggers(options); !slices.Equal(got, []string{"/skill:project-review", "/skill:personal-review"}) {
 		t.Fatalf("extension skill triggers = %#v", got)
 	}
 	for _, option := range options {

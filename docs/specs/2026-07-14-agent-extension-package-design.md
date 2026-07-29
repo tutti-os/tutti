@@ -818,8 +818,10 @@ shared host behaviors.
 `skills.roots` 是扩展拥有的声明式 Skill discovery contract。`scope` 只能是
 `workspace` 或 `user`，`path` 必须是安全的相对路径；host 分别从当前工作目录的
 祖先和用户目录解析，扩展不能声明任意绝对路径。`invocation` 与
-`triggerPrefix` 决定 composer 如何生成可执行 token，不能根据开放 provider ID
-在 Tutti 内置表中补规则。
+`triggerPrefix` 决定 composer 如何生成可执行 token。前缀必须以 `/` 或 `$`
+开头、不能包含空白且最多 8 个字符；它可以是 `/skill:` 这类 provider-native
+复合前缀。Tutti 必须原样拼接此前缀与 skill 名称，不能根据开放 provider ID
+在内置表中补规则。
 
 Runtime 返回的 model、mode、reasoning 和 command labels 优先使用 ACP 自带 label。扩展 locale 用于 Tutti-owned presentation copy，不能用 raw provider value 代替用户可见标签。
 
