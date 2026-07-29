@@ -7,6 +7,7 @@ const domTypeScriptTests = [
   "agent-gui/agentGuiNode/agentGuiNodeViewConversation.spec.ts",
   "agent-gui/agentGuiNode/agentRichText/agentFileMentionExtension.spec.ts",
   "agent-gui/agentGuiNode/composer/composerPortalTarget.spec.ts",
+  "agent-gui/agentGuiNode/controller/useAgentGUIContinueConversation.spec.ts",
   "agent-gui/agentGuiNode/controller/useAgentGUIConversationSelectionController.spec.ts",
   "agent-gui/agentGuiNode/controller/useAgentGUISubmitInteractionActions.spec.ts",
   "agent-gui/agentGuiNode/model/agentGuiComposerGate.spec.ts",

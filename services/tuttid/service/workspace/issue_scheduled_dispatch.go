@@ -165,7 +165,7 @@ func (s IssueManagerService) projectReviewedSettlementSubjectForSchedule(
 	return projected
 }
 
-func (s IssueManagerService) validateTuttiModeScheduleIsolation(
+func (IssueManagerService) validateTuttiModeScheduleIsolation(
 	issue workspaceissues.Issue,
 	tasks []workspaceissues.Task,
 	taskIDs []string,
@@ -229,7 +229,7 @@ func (s IssueManagerService) validateTuttiModeScheduleIsolation(
 	return nil
 }
 
-func (s IssueManagerService) prepareTuttiModeScheduleRuns(
+func (IssueManagerService) prepareTuttiModeScheduleRuns(
 	issue workspaceissues.Issue,
 	tasks []workspaceissues.Task,
 	taskIDs []string,
