@@ -293,7 +293,8 @@ type Service struct {
 	// the production app-server transport and formal initialize handshake.
 	CodexProtocolProbe func(context.Context, []string, []string) CodexProbeEvidence
 	// CodexRuntimeSelectionStore persists only an explicit Codex launcher
-	// choice. A missing selection always means automatic validated selection.
+	// choice. A missing selection permits only one uniquely ready candidate;
+	// multiple ready candidates require the user to choose one.
 	CodexRuntimeSelectionStore CodexRuntimeSelectionStore
 }
 
@@ -562,10 +563,10 @@ func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result
 	})
 	defer clearActiveAction(installCtx, spec.Provider)
 	runtimeResolution := s.resolveProviderRuntime(ctx, spec)
-	if isCodexStatusSpec(spec) && runtimeResolution.CodexSelectionExplicit && strings.TrimSpace(runtimeResolution.AdapterPath) == "" {
+	if isCodexStatusSpec(spec) && codexRuntimeSelectionNeedsUserInput(runtimeResolution) {
 		result.Status = RunActionFailed
-		result.ReasonCode = firstNonBlank(runtimeResolution.ReasonCode, "codex_runtime_selection_unavailable")
-		result.Message = "The selected Codex runtime is unavailable; choose another runtime or restore automatic selection"
+		result.ReasonCode = runtimeResolution.ReasonCode
+		result.Message = "Choose a valid Codex runtime before installing or repairing it"
 		return result, nil
 	}
 	if isCodexStatusSpec(spec) && strings.TrimSpace(runtimeResolution.CLIPath) != "" {

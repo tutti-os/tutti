@@ -80,16 +80,12 @@ func (api DaemonAPI) SetAgentProviderRuntimeSelection(ctx context.Context, reque
 	if request.Body == nil {
 		return tuttigenerated.SetAgentProviderRuntimeSelection400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.EmptyBody(apierrors.WithDeveloperMessage("empty body")))}, nil
 	}
-	if !request.Body.Mode.Valid() {
-		return tuttigenerated.SetAgentProviderRuntimeSelection400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.MalformedRequest(apierrors.WithDeveloperMessage("mode must be auto or explicit")))}, nil
-	}
 	input := agentstatusservice.SetCodexRuntimeSelectionInput{
-		Mode:        agentstatusservice.CodexRuntimeSelectionMode(request.Body.Mode),
-		CandidateID: runtimeSelectionStringValue(request.Body.CandidateId),
-		Revision:    runtimeSelectionStringValue(request.Body.Revision),
+		CandidateID: strings.TrimSpace(request.Body.CandidateId),
+		Revision:    strings.TrimSpace(request.Body.Revision),
 	}
-	if input.Mode == agentstatusservice.CodexRuntimeSelectionExplicit && (input.CandidateID == "" || input.Revision == "") {
-		return tuttigenerated.SetAgentProviderRuntimeSelection400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.MalformedRequest(apierrors.WithDeveloperMessage("candidateId and revision are required for explicit runtime selection")))}, nil
+	if input.CandidateID == "" || input.Revision == "" {
+		return tuttigenerated.SetAgentProviderRuntimeSelection400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.MalformedRequest(apierrors.WithDeveloperMessage("candidateId and revision are required for runtime selection")))}, nil
 	}
 	catalog, err := api.AgentStatusService.SetCodexRuntimeSelection(ctx, input)
 	if err != nil {
@@ -278,18 +274,10 @@ func generatedAgentProviderRuntimeCatalog(catalog agentstatusservice.CodexRuntim
 		Selection: tuttigenerated.AgentProviderRuntimeSelection{
 			CandidateId:  stringPointerIfNotBlank(catalog.Selection.CandidateID),
 			LauncherPath: stringPointerIfNotBlank(catalog.Selection.LauncherPath),
-			Mode:         tuttigenerated.AgentProviderRuntimeSelectionMode(catalog.Selection.Mode),
 			State:        tuttigenerated.AgentProviderRuntimeSelectionState(catalog.Selection.State),
 			UpdatedAt:    catalog.Selection.UpdatedAt,
 		},
 	}
-}
-
-func runtimeSelectionStringValue(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return strings.TrimSpace(*value)
 }
 
 func generatedAgentProviderActionRun(result agentstatusservice.RunActionResult) tuttigenerated.AgentProviderActionRunResponse {

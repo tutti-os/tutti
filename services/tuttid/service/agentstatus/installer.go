@@ -29,6 +29,7 @@ type providerRuntimeResolution struct {
 	Env                    []string
 	CodexRepairPlan        *CodexRepairPlan
 	CodexSelectionExplicit bool
+	CodexSelectionState    CodexRuntimeSelectionState
 }
 
 type installerExecutionSummary struct {
@@ -36,6 +37,11 @@ type installerExecutionSummary struct {
 	Stdout   []string
 	Stderr   []string
 	ExitCode *int
+}
+
+func codexRuntimeSelectionNeedsUserInput(runtime providerRuntimeResolution) bool {
+	return runtime.CodexSelectionState == CodexRuntimeSelectionSelectionRequired ||
+		runtime.CodexSelectionState == CodexRuntimeSelectionStale
 }
 
 func (s Service) resolveProviderRuntime(ctx context.Context, spec ProviderSpec) providerRuntimeResolution {
@@ -59,6 +65,7 @@ func (s Service) resolveProviderRuntime(ctx context.Context, spec ProviderSpec) 
 		}
 		result.ReasonCode = selection.ReasonCode
 		result.CodexSelectionExplicit = selection.Explicit
+		result.CodexSelectionState = selection.State
 		candidate, found := selection.candidate()
 		if !found {
 			return result

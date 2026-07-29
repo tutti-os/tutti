@@ -13,6 +13,8 @@ import type {
   IAgentEnvService
 } from "../agentEnvService.interface.ts";
 import type { IAgentProviderStatusService } from "../agentProviderStatusService.interface.ts";
+import { getActiveLocale } from "../../../../i18n/runtime.ts";
+import { resolveDesktopErrorMessage } from "../../../../lib/desktopErrors.ts";
 import {
   AGENT_ENV_REVEAL_ALL,
   AGENT_ENV_REVEAL_STEP_MS,
@@ -58,6 +60,7 @@ export class AgentEnvService implements IAgentEnvService {
   private hostBinding: { host: WorkbenchHostHandle; token: symbol } | null =
     null;
   private revealTimer: number | null = null;
+  private runtimeCatalogRequestSequence = 0;
   private disposed = false;
   private orchestrating = false;
 
@@ -124,6 +127,73 @@ export class AgentEnvService implements IAgentEnvService {
       .catch((error) =>
         logDetachedActionError("redetect", snapshot.provider, error)
       );
+    this.loadRuntimeCatalog(snapshot.provider, snapshot.requestSequence);
+  }
+
+  async selectCodexRuntime(candidateId: string): Promise<void> {
+    const snapshot = this.controller.getSnapshot();
+    const catalog = snapshot.runtimeCatalog;
+    if (
+      snapshot.provider !== "codex" ||
+      !catalog ||
+      !candidateId ||
+      snapshot.runtimeSelectionPendingId
+    ) {
+      return;
+    }
+    const requestSequence = snapshot.requestSequence;
+    // A selection supersedes any in-flight discovery snapshot. The server
+    // validates the submitted revision, while this fence keeps a late older
+    // response from overwriting the newly selected catalog in the panel.
+    const selectionCatalogRequestID = this.runtimeCatalogRequestSequence + 1;
+    this.runtimeCatalogRequestSequence = selectionCatalogRequestID;
+    this.controller.setRuntimeSelectionPendingId(candidateId);
+    this.controller.setRuntimeSelectionError(null);
+    this.emit();
+    try {
+      const updatedCatalog =
+        await this.dependencies.providerStatusService.selectRuntime(
+          snapshot.provider,
+          candidateId,
+          catalog.revision
+        );
+      if (
+        !this.isCurrentRuntimeCatalogRequest(
+          snapshot.provider,
+          requestSequence,
+          selectionCatalogRequestID
+        )
+      ) {
+        return;
+      }
+      this.controller.applyRuntimeCatalog(updatedCatalog);
+      await this.dependencies.providerStatusService.refresh([
+        snapshot.provider
+      ]);
+    } catch (error) {
+      if (
+        this.isCurrentRuntimeCatalogRequest(
+          snapshot.provider,
+          requestSequence,
+          selectionCatalogRequestID
+        )
+      ) {
+        this.controller.setRuntimeSelectionError(
+          resolveDesktopErrorMessage(error, getActiveLocale())
+        );
+      }
+    } finally {
+      if (
+        this.isCurrentRuntimeCatalogRequest(
+          snapshot.provider,
+          requestSequence,
+          selectionCatalogRequestID
+        )
+      ) {
+        this.controller.setRuntimeSelectionPendingId(null);
+        this.emit();
+      }
+    }
   }
 
   async runStageAction(actionId: StageActionId): Promise<void> {
@@ -216,6 +286,7 @@ export class AgentEnvService implements IAgentEnvService {
         void detection.catch((error) =>
           logDetachedActionError("detect", snapshot.provider, error)
         );
+        this.loadRuntimeCatalog(snapshot.provider, snapshot.requestSequence);
       }
     }
     this.syncProviderStatus();
@@ -266,7 +337,10 @@ export class AgentEnvService implements IAgentEnvService {
         stageLabels: ORCHESTRATION_LABELS
       });
 
-      if (!this.controller.hasAcceptedAutoAction()) {
+      if (
+        !this.controller.hasAcceptedAutoAction() &&
+        !codexRuntimeSelectionNeedsUserInput(snapshot)
+      ) {
         const action = resolveWizardAutoStartAction({
           focus: this.controller.getFocus(),
           detected: !snapshot.isLoading && snapshot.status !== null,
@@ -324,6 +398,62 @@ export class AgentEnvService implements IAgentEnvService {
     }
   }
 
+  private loadRuntimeCatalog(provider: string, requestSequence: number): void {
+    if (this.disposed || provider !== "codex") {
+      return;
+    }
+    const requestID = this.runtimeCatalogRequestSequence + 1;
+    this.runtimeCatalogRequestSequence = requestID;
+    this.controller.setRuntimeCatalogLoading(true);
+    this.controller.setRuntimeSelectionError(null);
+    this.emit();
+    void this.dependencies.providerStatusService
+      .getRuntimeCatalog("codex")
+      .then((catalog) => {
+        if (
+          !this.isCurrentRuntimeCatalogRequest(
+            provider,
+            requestSequence,
+            requestID
+          )
+        ) {
+          return;
+        }
+        this.controller.applyRuntimeCatalog(catalog);
+        this.emit();
+      })
+      .catch((error) => {
+        if (
+          this.isCurrentRuntimeCatalogRequest(
+            provider,
+            requestSequence,
+            requestID
+          )
+        ) {
+          this.controller.setRuntimeSelectionError(
+            resolveDesktopErrorMessage(error, getActiveLocale())
+          );
+          this.emit();
+        }
+      });
+  }
+
+  private isCurrentRuntimeCatalogRequest(
+    provider: string,
+    requestSequence: number,
+    requestID?: number
+  ): boolean {
+    const snapshot = this.controller.getSnapshot();
+    return (
+      !this.disposed &&
+      snapshot.open &&
+      snapshot.provider === provider &&
+      snapshot.requestSequence === requestSequence &&
+      (requestID === undefined ||
+        requestID === this.runtimeCatalogRequestSequence)
+    );
+  }
+
   private clearRevealTimer(): void {
     if (this.revealTimer === null) {
       return;
@@ -337,6 +467,19 @@ export class AgentEnvService implements IAgentEnvService {
       listener();
     }
   }
+}
+
+function codexRuntimeSelectionNeedsUserInput(
+  snapshot: AgentEnvSnapshot
+): boolean {
+  if (snapshot.provider !== "codex") {
+    return false;
+  }
+  return (
+    snapshot.status?.availability.reasonCode ===
+      "codex_runtime_selection_required" ||
+    snapshot.status?.availability.reasonCode === "codex_runtime_selection_stale"
+  );
 }
 
 function logDetachedActionError(

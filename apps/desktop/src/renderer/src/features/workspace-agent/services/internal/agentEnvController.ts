@@ -1,5 +1,6 @@
 import type { AgentEnvPanelFocus } from "@tutti-os/agent-gui/agent-env";
 import type {
+  AgentProviderRuntimeCatalogResponse,
   AgentProviderStatus,
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
@@ -45,6 +46,10 @@ export class AgentEnvController {
     reportState: "idle",
     requestSequence: 0,
     revealIndex: AGENT_ENV_REVEAL_ALL,
+    runtimeCatalog: null,
+    runtimeCatalogLoading: false,
+    runtimeSelectionError: null,
+    runtimeSelectionPendingId: null,
     status: null,
     updatePending: false
   };
@@ -81,6 +86,10 @@ export class AgentEnvController {
             loginPending: false,
             reportState: "idle" as const,
             revealIndex: request.focus === "detect" ? 0 : AGENT_ENV_REVEAL_ALL,
+            runtimeCatalog: null,
+            runtimeCatalogLoading: false,
+            runtimeSelectionError: null,
+            runtimeSelectionPendingId: null,
             status: null,
             updatePending: false
           }
@@ -94,6 +103,31 @@ export class AgentEnvController {
 
   applyStatus(input: AgentEnvControllerStatusInput): void {
     this.snapshot = { ...this.snapshot, ...input };
+  }
+
+  setRuntimeCatalogLoading(runtimeCatalogLoading: boolean): void {
+    this.snapshot = { ...this.snapshot, runtimeCatalogLoading };
+  }
+
+  applyRuntimeCatalog(catalog: AgentProviderRuntimeCatalogResponse): void {
+    this.snapshot = {
+      ...this.snapshot,
+      runtimeCatalog: catalog,
+      runtimeCatalogLoading: false,
+      runtimeSelectionError: null
+    };
+  }
+
+  setRuntimeSelectionPendingId(runtimeSelectionPendingId: string | null): void {
+    this.snapshot = { ...this.snapshot, runtimeSelectionPendingId };
+  }
+
+  setRuntimeSelectionError(runtimeSelectionError: string | null): void {
+    this.snapshot = {
+      ...this.snapshot,
+      runtimeCatalogLoading: false,
+      runtimeSelectionError
+    };
   }
 
   hasAcceptedAutoAction(): boolean {

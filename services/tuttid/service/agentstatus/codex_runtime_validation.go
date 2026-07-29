@@ -20,7 +20,7 @@ const (
 // codexRuntimeCandidateValidation keeps runtime facts separate from the
 // selection decision. A successful app-server handshake establishes runtime
 // capability; the version policy determines whether that candidate is eligible
-// for automatic selection.
+// for use.
 type codexRuntimeCandidateValidation struct {
 	Candidate        codexRuntimeCandidate
 	Version          string
@@ -113,26 +113,53 @@ func (s Service) probeCodexRuntimeCandidate(ctx context.Context, launcherPath st
 	return s.probeCodexAppServer(ctx, []string{launcherPath, "app-server"}, env)
 }
 
-type codexRuntimeAutoSelection struct {
+type codexRuntimeImplicitSelection struct {
 	CandidateIndex int
 	Launchable     bool
 	ReasonCode     string
+	State          CodexRuntimeSelectionState
 }
 
-// selectCodexRuntimeAutomatically keeps the current resolver ordering as the
-// tie-breaker, but skips a broken or unsupported shadowing installation. It is
-// deliberately pure so the persisted explicit-selection policy can layer on
-// top without duplicating health ranking.
-func selectCodexRuntimeAutomatically(
+// decideCodexRuntimeImplicitSelection decides only when no user choice is
+// persisted. Discovery order deliberately has no authority here: one healthy
+// installation is safe to use implicitly, but two healthy installations require
+// an explicit user choice so that PATH, Bun, npm, pnpm, or Homebrew precedence
+// never becomes an accidental product policy.
+func decideCodexRuntimeImplicitSelection(
 	candidates []codexRuntimeCandidateValidation,
-) codexRuntimeAutoSelection {
+) codexRuntimeImplicitSelection {
+	readyIndex := -1
 	for index, candidate := range candidates {
-		if candidate.State == codexRuntimeCandidateValidationReady {
-			return codexRuntimeAutoSelection{CandidateIndex: index, Launchable: true, ReasonCode: "first_ready_candidate"}
+		if candidate.State != codexRuntimeCandidateValidationReady {
+			continue
+		}
+		if readyIndex >= 0 {
+			return codexRuntimeImplicitSelection{
+				CandidateIndex: -1,
+				ReasonCode:     "codex_runtime_selection_required",
+				State:          CodexRuntimeSelectionSelectionRequired,
+			}
+		}
+		readyIndex = index
+	}
+	if readyIndex >= 0 {
+		return codexRuntimeImplicitSelection{
+			CandidateIndex: readyIndex,
+			Launchable:     true,
+			ReasonCode:     "codex_runtime_unique_ready_candidate",
+			State:          CodexRuntimeSelectionImplicitUnique,
 		}
 	}
 	if len(candidates) == 0 {
-		return codexRuntimeAutoSelection{CandidateIndex: -1, ReasonCode: "cli_not_found"}
+		return codexRuntimeImplicitSelection{
+			CandidateIndex: -1,
+			ReasonCode:     "cli_not_found",
+			State:          CodexRuntimeSelectionUnavailable,
+		}
 	}
-	return codexRuntimeAutoSelection{CandidateIndex: 0, ReasonCode: "no_ready_candidate"}
+	return codexRuntimeImplicitSelection{
+		CandidateIndex: 0,
+		ReasonCode:     "no_ready_candidate",
+		State:          CodexRuntimeSelectionUnavailable,
+	}
 }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type {
+  AgentProviderRuntimeCatalogResponse,
   AgentProviderStatus,
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
@@ -30,11 +31,29 @@ class FakeProviderStatusService implements IAgentProviderStatusService {
   readonly refreshInputs: Array<
     Parameters<IAgentProviderStatusService["refresh"]>
   > = [];
+  readonly runtimeCatalogCalls: WorkspaceAgentProvider[] = [];
+  readonly runtimeSelectionCalls: Array<{
+    candidateId: string;
+    provider: WorkspaceAgentProvider;
+    revision: string;
+  }> = [];
   refreshCalls = 0;
   ensureLoadedCalls = 0;
   reportCalls = 0;
   consent = false;
   snapshot: AgentProviderStatusSnapshot;
+  runtimeCatalog: AgentProviderRuntimeCatalogResponse = {
+    capturedAt: "2026-07-18T00:00:00Z",
+    provider: "codex",
+    revision: "revision",
+    selection: {
+      candidateId: null,
+      launcherPath: null,
+      state: "unavailable",
+      updatedAt: null
+    },
+    candidates: []
+  };
 
   constructor(status: AgentProviderStatus) {
     this.snapshot = {
@@ -57,6 +76,33 @@ class FakeProviderStatusService implements IAgentProviderStatusService {
     return (
       this.snapshot.statuses.find((item) => item.provider === provider) ?? null
     );
+  }
+
+  async getRuntimeCatalog(
+    provider: WorkspaceAgentProvider
+  ): Promise<AgentProviderRuntimeCatalogResponse> {
+    this.runtimeCatalogCalls.push(provider);
+    return { ...this.runtimeCatalog, provider };
+  }
+
+  async selectRuntime(
+    provider: WorkspaceAgentProvider,
+    candidateId: string,
+    revision: string
+  ): Promise<AgentProviderRuntimeCatalogResponse> {
+    this.runtimeSelectionCalls.push({ candidateId, provider, revision });
+    this.runtimeCatalog = {
+      ...this.runtimeCatalog,
+      provider,
+      revision,
+      selection: {
+        candidateId,
+        launcherPath: "/codex",
+        state: "selected",
+        updatedAt: "2026-07-18T00:00:00Z"
+      }
+    };
+    return this.runtimeCatalog;
   }
   isActionPending(provider: WorkspaceAgentProvider, actionId: string): boolean {
     return this.snapshot.pendingActions.some(
@@ -165,6 +211,43 @@ function anomalyStatus(): AgentProviderStatus {
   } as AgentProviderStatus;
 }
 
+function codexSelectionRequiredStatus(): AgentProviderStatus {
+  return {
+    provider: "codex",
+    availability: {
+      status: "unknown",
+      reasonCode: "codex_runtime_selection_required"
+    },
+    cli: {
+      installed: false,
+      version: null,
+      binaryPath: null,
+      minVersion: "0.126.0"
+    },
+    adapter: {
+      installed: false,
+      command: [],
+      version: null,
+      requiredVersion: null,
+      binaryPath: null
+    },
+    auth: { status: "unknown", accountLabel: null },
+    update: {
+      capability: "unsupported",
+      source: null,
+      currentVersion: null,
+      latestVersion: null,
+      updateAvailable: null,
+      unsupportedReason: null,
+      lastCheckedAt: null,
+      reasonCode: null
+    },
+    actions: [],
+    network: null,
+    activeAction: null
+  } as AgentProviderStatus;
+}
+
 function createHarness(
   status: AgentProviderStatus,
   focus: OpenAgentEnvPanelInput["focus"]
@@ -252,6 +335,81 @@ test("manual stage actions are marked as user-originated", async () => {
     "user"
   );
   harness.service.dispose();
+});
+
+test("multiple ready Codex installations never trigger the automatic install action", async () => {
+  const harness = createHarness(codexSelectionRequiredStatus(), "install");
+  await flushAsyncWork();
+
+  assert.equal(harness.providerStatusService.actionCalls.length, 0);
+  assert.deepEqual(harness.providerStatusService.runtimeCatalogCalls, [
+    "codex"
+  ]);
+  harness.service.dispose();
+});
+
+test("selecting a Codex runtime persists the catalog candidate then refreshes readiness", async () => {
+  const providerStatusService = new FakeProviderStatusService(
+    codexSelectionRequiredStatus()
+  );
+  providerStatusService.runtimeCatalog = {
+    capturedAt: "2026-07-18T00:00:00Z",
+    provider: "codex",
+    revision: "revision-2",
+    selection: {
+      candidateId: null,
+      launcherPath: null,
+      state: "selection_required",
+      updatedAt: null
+    },
+    candidates: [
+      {
+        id: "bun",
+        launcherPath: "/bun/bin/codex",
+        packageRoot: "/bun/install/global/node_modules/@openai/codex",
+        sources: ["bun_global"],
+        version: "0.142.0",
+        state: "ready",
+        reasonCode: null,
+        appServerReady: true,
+        packageLayoutOk: true
+      },
+      {
+        id: "npm",
+        launcherPath: "/npm/bin/codex",
+        packageRoot: "/npm/lib/node_modules/@openai/codex",
+        sources: ["npm_global"],
+        version: "0.142.0",
+        state: "ready",
+        reasonCode: null,
+        appServerReady: true,
+        packageLayoutOk: true
+      }
+    ]
+  };
+  const service = new AgentEnvService({
+    clipboard: { writeText: async () => {} },
+    providerStatusService,
+    scheduler: {
+      clearTimeout: () => {},
+      setTimeout: () => 1
+    },
+    workspaceId: "workspace-1"
+  });
+  service.open({ provider: "codex" });
+  await flushAsyncWork();
+
+  await service.selectCodexRuntime("bun");
+
+  assert.deepEqual(providerStatusService.runtimeSelectionCalls, [
+    { candidateId: "bun", provider: "codex", revision: "revision-2" }
+  ]);
+  assert.equal(providerStatusService.refreshCalls, 1);
+  assert.equal(
+    service.getSnapshot().runtimeCatalog?.selection.candidateId,
+    "bun"
+  );
+  service.dispose();
 });
 
 test("environment setup owns update discovery, pending state, and execution", async () => {

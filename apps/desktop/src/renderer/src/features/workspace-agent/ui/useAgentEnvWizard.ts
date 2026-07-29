@@ -7,6 +7,7 @@ import {
 } from "@tutti-os/agent-gui/agent-env";
 import { useService } from "@tutti-os/infra/di";
 import type { WorkspaceAgentProvider } from "@tutti-os/client-tuttid-ts";
+import type { AgentProviderRuntimeCatalogResponse } from "@tutti-os/client-tuttid-ts";
 import { useTranslation } from "@renderer/i18n";
 import {
   IAgentEnvService,
@@ -15,6 +16,7 @@ import {
 
 export interface AgentEnvWizardActions {
   redetect(): void;
+  selectCodexRuntime(candidateId: string): void;
   runStageAction(actionId: StageActionId): void;
   confirmReport(): void;
   dismissReport(): void;
@@ -31,6 +33,11 @@ export function useAgentEnvWizard(): {
   reportState: AgentEnvReportState;
   copied: boolean;
   logExpanded: boolean;
+  runtimeCatalog: AgentProviderRuntimeCatalogResponse | null;
+  runtimeCatalogLoading: boolean;
+  runtimeSelectionNeeded: boolean;
+  runtimeSelectionError: string | null;
+  runtimeSelectionPendingId: string | null;
   actions: AgentEnvWizardActions;
 } {
   const service = useService(IAgentEnvService);
@@ -75,8 +82,26 @@ export function useAgentEnvWizard(): {
     reportState: snapshot.reportState,
     copied: snapshot.copied,
     logExpanded: snapshot.logExpanded,
+    runtimeCatalog: snapshot.runtimeCatalog,
+    runtimeCatalogLoading: snapshot.runtimeCatalogLoading,
+    runtimeSelectionNeeded:
+      snapshot.provider === "codex" &&
+      (snapshot.status?.availability.reasonCode ===
+        "codex_runtime_selection_required" ||
+        snapshot.status?.availability.reasonCode ===
+          "codex_runtime_selection_stale"),
+    runtimeSelectionError: snapshot.runtimeSelectionError,
+    runtimeSelectionPendingId: snapshot.runtimeSelectionPendingId,
     actions: {
       redetect: () => service.redetect(),
+      selectCodexRuntime: (candidateId) => {
+        void service.selectCodexRuntime(candidateId).catch((error) => {
+          console.warn(
+            `[agent-env] selectCodexRuntime(${candidateId}) failed`,
+            error
+          );
+        });
+      },
       runStageAction: (actionId) => {
         void service.runStageAction(actionId).catch((error) => {
           console.warn(

@@ -64,6 +64,25 @@ func (s Service) statusForSpec(
 	runtimeResolutionStartedAt := time.Now()
 	runtimeResolution := s.resolveProviderRuntime(ctx, spec)
 	runtimeResolutionDuration = time.Since(runtimeResolutionStartedAt)
+	if isCodexStatusSpec(spec) && codexRuntimeSelectionNeedsUserInput(runtimeResolution) {
+		return ProviderStatus{
+			Provider: spec.Provider,
+			Availability: Availability{
+				CheckedAt:  &now,
+				ReasonCode: runtimeResolution.ReasonCode,
+				Status:     AvailabilityUnknown,
+			},
+			CLI: CLIStatus{
+				Installed:  strings.TrimSpace(runtimeResolution.CLIPath) != "",
+				BinaryPath: runtimeResolution.CLIPath,
+				MinVersion: spec.MinVersion,
+			},
+			Adapter: AdapterStatus{
+				BinaryPath: runtimeResolution.AdapterPath,
+				Command:    cloneStrings(runtimeResolution.AdapterCommand),
+			},
+		}
+	}
 	installed := strings.TrimSpace(runtimeResolution.CLIPath) != ""
 	adapterInstalled := strings.TrimSpace(runtimeResolution.AdapterPath) != ""
 	adapterReady := adapterInstalled && adapterPackageRequirementSatisfied(spec.AdapterPackage, runtimeResolution.AdapterVersion)

@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestValidateCodexRuntimeCandidatesSelectsHealthyCandidateAfterBrokenPathCandidate(t *testing.T) {
+func TestValidateCodexRuntimeCandidatesImplicitlyUsesOnlyReadyCandidate(t *testing.T) {
 	home := t.TempDir()
 	broken := filepath.Join(home, "broken", "codex")
 	healthy := filepath.Join(home, "healthy", "codex")
@@ -31,8 +31,8 @@ func TestValidateCodexRuntimeCandidatesSelectsHealthyCandidateAfterBrokenPathCan
 	if got := validations[1].State; got != codexRuntimeCandidateValidationReady {
 		t.Fatalf("healthy candidate state = %q, want ready", got)
 	}
-	selection := selectCodexRuntimeAutomatically(validations)
-	if selection.CandidateIndex != 1 || !selection.Launchable || selection.ReasonCode != "first_ready_candidate" {
+	selection := decideCodexRuntimeImplicitSelection(validations)
+	if selection.CandidateIndex != 1 || !selection.Launchable || selection.State != CodexRuntimeSelectionImplicitUnique {
 		t.Fatalf("selection = %#v, want healthy second candidate", selection)
 	}
 }
@@ -56,18 +56,29 @@ func TestValidateCodexRuntimeCandidatesSkipsUnsupportedCandidate(t *testing.T) {
 	if got := validations[1].State; got != codexRuntimeCandidateValidationReady {
 		t.Fatalf("current candidate state = %q, want ready", got)
 	}
-	if selection := selectCodexRuntimeAutomatically(validations); selection.CandidateIndex != 1 || !selection.Launchable {
+	if selection := decideCodexRuntimeImplicitSelection(validations); selection.CandidateIndex != 1 || !selection.Launchable || selection.State != CodexRuntimeSelectionImplicitUnique {
 		t.Fatalf("selection = %#v, want current candidate", selection)
 	}
 }
 
-func TestSelectCodexRuntimeAutomaticallyRetainsFirstCandidateForDiagnosticsWhenNoneReady(t *testing.T) {
-	selection := selectCodexRuntimeAutomatically([]codexRuntimeCandidateValidation{
+func TestDecideCodexRuntimeImplicitSelectionRetainsFirstCandidateForDiagnosticsWhenNoneReady(t *testing.T) {
+	selection := decideCodexRuntimeImplicitSelection([]codexRuntimeCandidateValidation{
 		{State: codexRuntimeCandidateValidationFailed},
 		{State: codexRuntimeCandidateValidationUnsupported},
 	})
-	if selection.CandidateIndex != 0 || selection.Launchable || selection.ReasonCode != "no_ready_candidate" {
+	if selection.CandidateIndex != 0 || selection.Launchable || selection.ReasonCode != "no_ready_candidate" || selection.State != CodexRuntimeSelectionUnavailable {
 		t.Fatalf("selection = %#v, want first diagnostic candidate without launch permission", selection)
+	}
+}
+
+func TestDecideCodexRuntimeImplicitSelectionRequiresAUserChoiceForMultipleReadyCandidates(t *testing.T) {
+	selection := decideCodexRuntimeImplicitSelection([]codexRuntimeCandidateValidation{
+		{State: codexRuntimeCandidateValidationReady},
+		{State: codexRuntimeCandidateValidationReady},
+		{State: codexRuntimeCandidateValidationFailed},
+	})
+	if selection.CandidateIndex != -1 || selection.Launchable || selection.ReasonCode != "codex_runtime_selection_required" || selection.State != CodexRuntimeSelectionSelectionRequired {
+		t.Fatalf("selection = %#v, want a blocked multi-runtime selection", selection)
 	}
 }
 

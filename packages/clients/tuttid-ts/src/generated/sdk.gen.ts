@@ -3247,7 +3247,7 @@ export const getAgentProviderRuntimeCandidates = <
   });
 
 /**
- * Select one currently discovered runtime candidate or restore automatic selection
+ * Select one currently discovered runtime candidate
  */
 export const setAgentProviderRuntimeSelection = <
   ThrowOnError extends boolean = false

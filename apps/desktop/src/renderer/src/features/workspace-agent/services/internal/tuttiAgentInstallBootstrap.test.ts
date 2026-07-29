@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type {
+  AgentProviderRuntimeCatalogResponse,
   AgentProviderStatus,
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
@@ -173,6 +174,19 @@ function createService(
       statuses: [status]
     }),
     getStatus: () => status,
+    getRuntimeCatalog:
+      async (): Promise<AgentProviderRuntimeCatalogResponse> => ({
+        capturedAt: "2026-07-06T00:00:00.000Z",
+        provider: "codex",
+        revision: "revision",
+        selection: {
+          candidateId: null,
+          launcherPath: null,
+          state: "unavailable",
+          updatedAt: null
+        },
+        candidates: []
+      }),
     hydrate: () => {},
     isActionPending: () => false,
     isCheckingUpdates: () => false,
@@ -185,6 +199,18 @@ function createService(
       hooks.runAction?.();
     },
     setDiagnosticsConsent: () => {},
+    selectRuntime: async (): Promise<AgentProviderRuntimeCatalogResponse> => ({
+      capturedAt: "2026-07-06T00:00:00.000Z",
+      provider: "codex",
+      revision: "revision",
+      selection: {
+        candidateId: null,
+        launcherPath: null,
+        state: "unavailable",
+        updatedAt: null
+      },
+      candidates: []
+    }),
     subscribe: () => () => {}
   };
 }

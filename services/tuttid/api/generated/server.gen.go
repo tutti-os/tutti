@@ -56,7 +56,7 @@ type ServerInterface interface {
 	// Discover and validate local runtime candidates for an agent provider
 	// (GET /v1/agent-providers/{provider}/runtime-candidates)
 	GetAgentProviderRuntimeCandidates(w http.ResponseWriter, r *http.Request, provider WorkspaceAgentProvider)
-	// Select one currently discovered runtime candidate or restore automatic selection
+	// Select one currently discovered runtime candidate
 	// (PUT /v1/agent-providers/{provider}/runtime-selection)
 	SetAgentProviderRuntimeSelection(w http.ResponseWriter, r *http.Request, provider WorkspaceAgentProvider)
 	// List device-local Agent quick prompts
@@ -36095,7 +36095,7 @@ type StrictServerInterface interface {
 	// Discover and validate local runtime candidates for an agent provider
 	// (GET /v1/agent-providers/{provider}/runtime-candidates)
 	GetAgentProviderRuntimeCandidates(ctx context.Context, request GetAgentProviderRuntimeCandidatesRequestObject) (GetAgentProviderRuntimeCandidatesResponseObject, error)
-	// Select one currently discovered runtime candidate or restore automatic selection
+	// Select one currently discovered runtime candidate
 	// (PUT /v1/agent-providers/{provider}/runtime-selection)
 	SetAgentProviderRuntimeSelection(ctx context.Context, request SetAgentProviderRuntimeSelectionRequestObject) (SetAgentProviderRuntimeSelectionResponseObject, error)
 	// List device-local Agent quick prompts

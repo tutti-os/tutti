@@ -1,5 +1,6 @@
 import { createDecorator } from "@tutti-os/infra/di";
 import type {
+  AgentProviderRuntimeCatalogResponse,
   AgentProviderStatus,
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
@@ -27,6 +28,10 @@ export interface AgentEnvSnapshot {
   reportState: AgentEnvReportState;
   requestSequence: number;
   revealIndex: number;
+  runtimeCatalog: AgentProviderRuntimeCatalogResponse | null;
+  runtimeCatalogLoading: boolean;
+  runtimeSelectionError: string | null;
+  runtimeSelectionPendingId: string | null;
   status: AgentProviderStatus | null;
   updatePending: boolean;
 }
@@ -40,6 +45,7 @@ export interface IAgentEnvService {
   open(input?: OpenAgentEnvPanelInput): void;
   close(): void;
   redetect(): void;
+  selectCodexRuntime(candidateId: string): Promise<void>;
   runStageAction(actionId: StageActionId): Promise<void>;
   confirmReport(): void;
   dismissReport(): void;

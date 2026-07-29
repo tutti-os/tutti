@@ -64,7 +64,7 @@ func TestDaemonAPIMapsCodexRuntimeCatalog(t *testing.T) {
 				CapturedAt: capturedAt,
 				Provider:   "codex",
 				Revision:   "catalog-revision",
-				Selection:  agentstatusservice.CodexRuntimeSelection{Mode: agentstatusservice.CodexRuntimeSelectionAuto, State: agentstatusservice.CodexRuntimeSelectionAutomatic},
+				Selection:  agentstatusservice.CodexRuntimeSelection{State: agentstatusservice.CodexRuntimeSelectionSelectionRequired},
 				Candidates: []agentstatusservice.CodexRuntimeCatalogCandidate{{
 					ID: "candidate", LauncherPath: "/opt/bun/bin/codex", Sources: []string{"bun_global"}, State: "ready", AppServerReady: true, PackageLayoutOK: true,
 				}},
@@ -81,22 +81,21 @@ func TestDaemonAPIMapsCodexRuntimeCatalog(t *testing.T) {
 	}
 }
 
-func TestDaemonAPIForwardsExplicitCodexRuntimeSelection(t *testing.T) {
+func TestDaemonAPIForwardsCodexRuntimeSelection(t *testing.T) {
 	api := DaemonAPI{AgentStatusService: stubAgentStatusService{
 		selectionFn: func(_ context.Context, input agentstatusservice.SetCodexRuntimeSelectionInput) (agentstatusservice.CodexRuntimeCatalog, error) {
-			if input.Mode != agentstatusservice.CodexRuntimeSelectionExplicit || input.CandidateID != "candidate" || input.Revision != "revision" {
+			if input.CandidateID != "candidate" || input.Revision != "revision" {
 				t.Fatalf("input = %#v", input)
 			}
-			return agentstatusservice.CodexRuntimeCatalog{Provider: "codex", Revision: "revision", Selection: agentstatusservice.CodexRuntimeSelection{Mode: agentstatusservice.CodexRuntimeSelectionExplicit, State: agentstatusservice.CodexRuntimeSelectionSelected}}, nil
+			return agentstatusservice.CodexRuntimeCatalog{Provider: "codex", Revision: "revision", Selection: agentstatusservice.CodexRuntimeSelection{State: agentstatusservice.CodexRuntimeSelectionSelected}}, nil
 		},
 	}}
 	candidateID, revision := "candidate", "revision"
 	response, err := api.SetAgentProviderRuntimeSelection(context.Background(), tuttigenerated.SetAgentProviderRuntimeSelectionRequestObject{
 		Provider: "codex",
 		Body: &tuttigenerated.SetAgentProviderRuntimeSelectionJSONRequestBody{
-			Mode:        tuttigenerated.AgentProviderRuntimeSelectionModeExplicit,
-			CandidateId: &candidateID,
-			Revision:    &revision,
+			CandidateId: candidateID,
+			Revision:    revision,
 		},
 	})
 	if err != nil {

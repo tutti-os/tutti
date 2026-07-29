@@ -448,39 +448,27 @@ func (e AgentProviderRuntimeCandidateState) Valid() bool {
 	}
 }
 
-// Defines values for AgentProviderRuntimeSelectionMode.
-const (
-	AgentProviderRuntimeSelectionModeAuto     AgentProviderRuntimeSelectionMode = "auto"
-	AgentProviderRuntimeSelectionModeExplicit AgentProviderRuntimeSelectionMode = "explicit"
-)
-
-// Valid indicates whether the value is a known member of the AgentProviderRuntimeSelectionMode enum.
-func (e AgentProviderRuntimeSelectionMode) Valid() bool {
-	switch e {
-	case AgentProviderRuntimeSelectionModeAuto:
-		return true
-	case AgentProviderRuntimeSelectionModeExplicit:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for AgentProviderRuntimeSelectionState.
 const (
-	AgentProviderRuntimeSelectionStateAutomatic AgentProviderRuntimeSelectionState = "automatic"
-	AgentProviderRuntimeSelectionStateSelected  AgentProviderRuntimeSelectionState = "selected"
-	AgentProviderRuntimeSelectionStateStale     AgentProviderRuntimeSelectionState = "stale"
+	AgentProviderRuntimeSelectionStateImplicitUnique    AgentProviderRuntimeSelectionState = "implicit_unique"
+	AgentProviderRuntimeSelectionStateSelected          AgentProviderRuntimeSelectionState = "selected"
+	AgentProviderRuntimeSelectionStateSelectionRequired AgentProviderRuntimeSelectionState = "selection_required"
+	AgentProviderRuntimeSelectionStateStale             AgentProviderRuntimeSelectionState = "stale"
+	AgentProviderRuntimeSelectionStateUnavailable       AgentProviderRuntimeSelectionState = "unavailable"
 )
 
 // Valid indicates whether the value is a known member of the AgentProviderRuntimeSelectionState enum.
 func (e AgentProviderRuntimeSelectionState) Valid() bool {
 	switch e {
-	case AgentProviderRuntimeSelectionStateAutomatic:
+	case AgentProviderRuntimeSelectionStateImplicitUnique:
 		return true
 	case AgentProviderRuntimeSelectionStateSelected:
 		return true
+	case AgentProviderRuntimeSelectionStateSelectionRequired:
+		return true
 	case AgentProviderRuntimeSelectionStateStale:
+		return true
+	case AgentProviderRuntimeSelectionStateUnavailable:
 		return true
 	default:
 		return false
@@ -4055,13 +4043,9 @@ type AgentProviderRuntimeCatalogResponse struct {
 type AgentProviderRuntimeSelection struct {
 	CandidateId  *string                            `json:"candidateId"`
 	LauncherPath *string                            `json:"launcherPath"`
-	Mode         AgentProviderRuntimeSelectionMode  `json:"mode"`
 	State        AgentProviderRuntimeSelectionState `json:"state"`
 	UpdatedAt    *time.Time                         `json:"updatedAt"`
 }
-
-// AgentProviderRuntimeSelectionMode defines model for AgentProviderRuntimeSelectionMode.
-type AgentProviderRuntimeSelectionMode string
 
 // AgentProviderRuntimeSelectionState defines model for AgentProviderRuntimeSelectionState.
 type AgentProviderRuntimeSelectionState string
@@ -6372,12 +6356,11 @@ type SetAgentModelBindingRequest struct {
 
 // SetAgentProviderRuntimeSelectionRequest defines model for SetAgentProviderRuntimeSelectionRequest.
 type SetAgentProviderRuntimeSelectionRequest struct {
-	// CandidateId Required when mode is explicit; ignored when mode is auto
-	CandidateId *string                           `json:"candidateId,omitempty"`
-	Mode        AgentProviderRuntimeSelectionMode `json:"mode"`
+	// CandidateId Opaque identifier from the current runtime candidate catalog
+	CandidateId string `json:"candidateId"`
 
-	// Revision Required when mode is explicit and must match the catalog that supplied candidateId
-	Revision *string `json:"revision,omitempty"`
+	// Revision Must match the catalog revision that supplied candidateId
+	Revision string `json:"revision"`
 }
 
 // SetAgentSessionAutomationRuleOverrideRequest defines model for SetAgentSessionAutomationRuleOverrideRequest.

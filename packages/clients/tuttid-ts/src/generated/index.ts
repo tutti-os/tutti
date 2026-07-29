@@ -314,7 +314,6 @@ export type {
   AgentProviderRuntimeCandidateState,
   AgentProviderRuntimeCatalogResponse,
   AgentProviderRuntimeSelection,
-  AgentProviderRuntimeSelectionMode,
   AgentProviderRuntimeSelectionState,
   AgentProviderSkillOption,
   AgentProviderStatus,

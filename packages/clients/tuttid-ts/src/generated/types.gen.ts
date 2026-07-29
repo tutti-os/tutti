@@ -2051,10 +2051,10 @@ export type AgentProviderRuntimeCandidateState =
   | "unsupported"
   | "failed";
 
-export type AgentProviderRuntimeSelectionMode = "auto" | "explicit";
-
 export type AgentProviderRuntimeSelectionState =
-  | "automatic"
+  | "unavailable"
+  | "implicit_unique"
+  | "selection_required"
   | "selected"
   | "stale";
 
@@ -2076,7 +2076,6 @@ export type AgentProviderRuntimeCandidate = {
 };
 
 export type AgentProviderRuntimeSelection = {
-  mode: AgentProviderRuntimeSelectionMode;
   state: AgentProviderRuntimeSelectionState;
   candidateId: string | null;
   launcherPath: string | null;
@@ -2092,15 +2091,14 @@ export type AgentProviderRuntimeCatalogResponse = {
 };
 
 export type SetAgentProviderRuntimeSelectionRequest = {
-  mode: AgentProviderRuntimeSelectionMode;
   /**
-   * Required when mode is explicit; ignored when mode is auto
+   * Opaque identifier from the current runtime candidate catalog
    */
-  candidateId?: string | null;
+  candidateId: string;
   /**
-   * Required when mode is explicit and must match the catalog that supplied candidateId
+   * Must match the catalog revision that supplied candidateId
    */
-  revision?: string | null;
+  revision: string;
 };
 
 export type TuttiModeActivationStatus = "active" | "inactive";

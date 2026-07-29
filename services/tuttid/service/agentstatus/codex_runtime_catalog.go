@@ -11,19 +11,14 @@ import (
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
-type CodexRuntimeSelectionMode string
-
-const (
-	CodexRuntimeSelectionAuto     CodexRuntimeSelectionMode = "auto"
-	CodexRuntimeSelectionExplicit CodexRuntimeSelectionMode = "explicit"
-)
-
 type CodexRuntimeSelectionState string
 
 const (
-	CodexRuntimeSelectionAutomatic CodexRuntimeSelectionState = "automatic"
-	CodexRuntimeSelectionSelected  CodexRuntimeSelectionState = "selected"
-	CodexRuntimeSelectionStale     CodexRuntimeSelectionState = "stale"
+	CodexRuntimeSelectionUnavailable       CodexRuntimeSelectionState = "unavailable"
+	CodexRuntimeSelectionImplicitUnique    CodexRuntimeSelectionState = "implicit_unique"
+	CodexRuntimeSelectionSelectionRequired CodexRuntimeSelectionState = "selection_required"
+	CodexRuntimeSelectionSelected          CodexRuntimeSelectionState = "selected"
+	CodexRuntimeSelectionStale             CodexRuntimeSelectionState = "stale"
 )
 
 type CodexRuntimeCatalog struct {
@@ -47,7 +42,6 @@ type CodexRuntimeCatalogCandidate struct {
 }
 
 type CodexRuntimeSelection struct {
-	Mode         CodexRuntimeSelectionMode
 	State        CodexRuntimeSelectionState
 	CandidateID  string
 	LauncherPath string
@@ -55,7 +49,6 @@ type CodexRuntimeSelection struct {
 }
 
 type SetCodexRuntimeSelectionInput struct {
-	Mode        CodexRuntimeSelectionMode
 	CandidateID string
 	Revision    string
 }
@@ -67,6 +60,7 @@ type codexRuntimeResolvedSelection struct {
 	Index       int
 	Launchable  bool
 	ReasonCode  string
+	State       CodexRuntimeSelectionState
 }
 
 var ErrRuntimeCatalogRevisionConflict = errors.New("codex runtime catalog revision conflicts with current discovery")
@@ -102,17 +96,7 @@ func (s Service) SetCodexRuntimeSelection(ctx context.Context, input SetCodexRun
 	if err != nil {
 		return CodexRuntimeCatalog{}, err
 	}
-	if input.Mode == CodexRuntimeSelectionAuto {
-		if err := s.CodexRuntimeSelectionStore.DeleteAgentProviderRuntimeSelection(ctx, agentproviderbiz.Codex); err != nil {
-			return CodexRuntimeCatalog{}, err
-		}
-		s.invalidateProviderStatus(agentproviderbiz.Codex)
-		return s.GetCodexRuntimeCatalog(ctx, agentproviderbiz.Codex)
-	}
-	if input.Mode != CodexRuntimeSelectionExplicit {
-		return CodexRuntimeCatalog{}, errors.New("codex runtime selection mode must be auto or explicit")
-	}
-	if strings.TrimSpace(input.Revision) == "" || input.Revision != catalog.Revision {
+	if strings.TrimSpace(input.CandidateID) == "" || strings.TrimSpace(input.Revision) == "" || input.Revision != catalog.Revision {
 		return CodexRuntimeCatalog{}, ErrRuntimeCatalogRevisionConflict
 	}
 	for _, candidate := range catalog.Candidates {
@@ -142,8 +126,8 @@ func (s Service) resolveCodexRuntimeSelection(ctx context.Context, spec Provider
 	validations := s.validateCodexRuntimeCandidates(ctx, spec, s.discoverCodexRuntimeCandidates(ctx, spec))
 	result := codexRuntimeResolvedSelection{Selection: selection, Explicit: explicit, Validations: validations, Index: -1}
 	if !explicit {
-		auto := selectCodexRuntimeAutomatically(validations)
-		result.Index, result.Launchable, result.ReasonCode = auto.CandidateIndex, auto.Launchable, auto.ReasonCode
+		implicit := decideCodexRuntimeImplicitSelection(validations)
+		result.Index, result.Launchable, result.ReasonCode, result.State = implicit.CandidateIndex, implicit.Launchable, implicit.ReasonCode, implicit.State
 		return result, nil
 	}
 	for index, validation := range validations {
@@ -153,13 +137,16 @@ func (s Service) resolveCodexRuntimeSelection(ctx context.Context, spec Provider
 		result.Index = index
 		result.Launchable = validation.State == codexRuntimeCandidateValidationReady
 		if result.Launchable {
-			result.ReasonCode = "explicit_ready_candidate"
+			result.ReasonCode = "codex_runtime_selected_candidate"
+			result.State = CodexRuntimeSelectionSelected
 		} else {
-			result.ReasonCode = firstNonBlank(validation.ReasonCode, "codex_runtime_selection_unavailable")
+			result.ReasonCode = "codex_runtime_selection_stale"
+			result.State = CodexRuntimeSelectionStale
 		}
 		return result, nil
 	}
 	result.ReasonCode = "codex_runtime_selection_stale"
+	result.State = CodexRuntimeSelectionStale
 	return result, nil
 }
 
@@ -216,7 +203,7 @@ func codexRuntimePackageLayoutOK(layout CodexPackageLayoutEvidence) bool {
 
 func codexRuntimeCatalogSelection(candidates []CodexRuntimeCatalogCandidate, resolved codexRuntimeResolvedSelection) CodexRuntimeSelection {
 	if !resolved.Explicit {
-		result := CodexRuntimeSelection{Mode: CodexRuntimeSelectionAuto, State: CodexRuntimeSelectionAutomatic}
+		result := CodexRuntimeSelection{State: resolved.State}
 		if resolved.Launchable && resolved.Index >= 0 && resolved.Index < len(candidates) {
 			result.CandidateID = candidates[resolved.Index].ID
 			result.LauncherPath = candidates[resolved.Index].LauncherPath
@@ -224,7 +211,6 @@ func codexRuntimeCatalogSelection(candidates []CodexRuntimeCatalogCandidate, res
 		return result
 	}
 	result := CodexRuntimeSelection{
-		Mode:         CodexRuntimeSelectionExplicit,
 		State:        CodexRuntimeSelectionStale,
 		LauncherPath: resolved.Selection.LauncherPath,
 		UpdatedAt:    &resolved.Selection.UpdatedAt,
