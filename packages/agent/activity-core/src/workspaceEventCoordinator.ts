@@ -15,6 +15,8 @@ import type {
   EngineConnectionStatus
 } from "./engine/types.ts";
 
+const EMPTY_MESSAGES: readonly AgentActivityMessage[] = [];
+
 export interface AgentActivityWorkspaceReconcileKey {
   agentSessionId?: string;
   workspaceId: string;
@@ -177,7 +179,7 @@ export function createAgentActivityWorkspaceEventCoordinator({
     for (const agentSessionId of sessionIds) {
       sessionMessagesById[agentSessionId] = overlay.project(
         { agentSessionId, workspaceId: normalizedWorkspaceId },
-        canonical.sessionMessagesById[agentSessionId] ?? []
+        canonical.sessionMessagesById[agentSessionId] ?? EMPTY_MESSAGES
       );
     }
     const projected = { ...canonical, sessionMessagesById };
