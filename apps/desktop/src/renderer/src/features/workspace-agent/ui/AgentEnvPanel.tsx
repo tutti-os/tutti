@@ -11,6 +11,7 @@ import { useTranslation } from "@renderer/i18n";
 import { useAgentEnvWizard } from "./useAgentEnvWizard";
 import { AgentEnvSetupTrack } from "./AgentEnvSetupTrack";
 import { AgentEnvReportConsent } from "./AgentEnvReportConsent";
+import { CodexRuntimePicker } from "./CodexRuntimePicker";
 import { resolveProviderLabel } from "./agentEnvPanelText";
 
 export function AgentEnvPanel(): JSX.Element | null {
@@ -23,6 +24,11 @@ export function AgentEnvPanel(): JSX.Element | null {
     reportState,
     copied,
     logExpanded,
+    runtimeCatalog,
+    runtimeCatalogLoading,
+    runtimeSelectionNeeded,
+    runtimeSelectionError,
+    runtimeSelectionPendingId,
     actions
   } = useAgentEnvWizard();
   const providerLabel = resolveProviderLabel(provider);
@@ -99,14 +105,26 @@ export function AgentEnvPanel(): JSX.Element | null {
           {t("workspace.agentEnv.providerUnsupported")}
         </p>
       ) : (
-        <AgentEnvSetupTrack
-          viewModel={viewModel}
-          providerLabel={providerLabel}
-          copied={copied}
-          logExpanded={logExpanded}
-          actions={actions}
-          t={t}
-        />
+        <>
+          <CodexRuntimePicker
+            catalog={runtimeCatalog}
+            loading={runtimeCatalogLoading}
+            pendingCandidateId={runtimeSelectionPendingId}
+            selectionError={runtimeSelectionError}
+            onSelect={actions.selectCodexRuntime}
+            t={t}
+          />
+          {runtimeSelectionNeeded ? null : (
+            <AgentEnvSetupTrack
+              viewModel={viewModel}
+              providerLabel={providerLabel}
+              copied={copied}
+              logExpanded={logExpanded}
+              actions={actions}
+              t={t}
+            />
+          )}
+        </>
       )}
     </AgentSetupDialog>
   );

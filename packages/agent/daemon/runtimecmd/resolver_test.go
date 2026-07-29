@@ -3,6 +3,7 @@ package runtimecmd
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -96,6 +97,59 @@ func TestResolverPrefersExistingPathOverScannedNVMFallback(t *testing.T) {
 	want := filepath.Join(activeBinDir, "codex")
 	if got := resolver.Resolve("codex", env); got != want {
 		t.Fatalf("Resolve() = %q, want active PATH codex %q", got, want)
+	}
+}
+
+func TestResolverResolveAllReturnsEveryExecutableMatchInPathOrder(t *testing.T) {
+	home := t.TempDir()
+	firstDir := filepath.Join(home, "first")
+	secondDir := filepath.Join(home, "second")
+	for _, dir := range []string{firstDir, secondDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+		writeExecutable(t, filepath.Join(dir, "codex"))
+	}
+
+	resolver := Resolver{IsExecutableFile: func(path string) bool {
+		info, err := os.Stat(path)
+		return err == nil && !info.IsDir() && info.Mode().Perm()&0o111 != 0
+	}}
+	env := []string{"PATH=" + strings.Join([]string{firstDir, secondDir, firstDir}, string(os.PathListSeparator))}
+
+	got := resolver.ResolveAll("codex", env)
+	want := []string{filepath.Join(firstDir, "codex"), filepath.Join(secondDir, "codex")}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ResolveAll() = %#v, want %#v", got, want)
+	}
+	if selected := resolver.Resolve("codex", env); selected != want[0] {
+		t.Fatalf("Resolve() = %q, want first candidate %q", selected, want[0])
+	}
+}
+
+func TestResolverResolveAllNamesKeepsDirectoryOrderBeforeLauncherVariant(t *testing.T) {
+	home := t.TempDir()
+	firstDir := filepath.Join(home, "first")
+	secondDir := filepath.Join(home, "second")
+	for _, path := range []string{
+		filepath.Join(firstDir, "codex.cmd"),
+		filepath.Join(secondDir, "codex.exe"),
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", filepath.Dir(path), err)
+		}
+		writeExecutable(t, path)
+	}
+	resolver := Resolver{IsExecutableFile: func(path string) bool {
+		info, err := os.Stat(path)
+		return err == nil && !info.IsDir() && info.Mode().Perm()&0o111 != 0
+	}}
+	env := []string{"PATH=" + strings.Join([]string{firstDir, secondDir}, string(os.PathListSeparator))}
+
+	got := resolver.ResolveAllNames([]string{"codex.exe", "codex.cmd"}, env)
+	want := []string{filepath.Join(firstDir, "codex.cmd"), filepath.Join(secondDir, "codex.exe")}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ResolveAllNames() = %#v, want %#v", got, want)
 	}
 }
 
@@ -222,6 +276,41 @@ func TestResolverPrefersFnmNodeBinOverExistingPathNode(t *testing.T) {
 	env := resolver.Env(nil)
 	if got := resolver.Resolve("node", env); got != fnmNodePath {
 		t.Fatalf("Resolve() = %q, want %q", got, fnmNodePath)
+	}
+}
+
+func TestResolverPrefersInheritedPathOverBunInstallBin(t *testing.T) {
+	home := t.TempDir()
+	bunInstall := filepath.Join(home, "custom-bun")
+	bunBinDir := filepath.Join(bunInstall, "bin")
+	pathBinDir := filepath.Join(home, "path-bin")
+	for _, dir := range []string{bunBinDir, pathBinDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir bin dir: %v", err)
+		}
+	}
+	writeExecutable(t, filepath.Join(bunBinDir, "claude"))
+	pathClaude := filepath.Join(pathBinDir, "claude")
+	writeExecutable(t, pathClaude)
+
+	resolver := Resolver{
+		Environ: func() []string {
+			return []string{
+				"PATH=" + pathBinDir + string(os.PathListSeparator) + "/usr/bin:/bin",
+				"BUN_INSTALL=" + bunInstall,
+			}
+		},
+		HomeDir: func() (string, error) {
+			return home, nil
+		},
+		LookPath: func(string) (string, error) {
+			return "", os.ErrNotExist
+		},
+	}
+
+	env := resolver.Env(nil)
+	if got := resolver.Resolve("claude", env); got != pathClaude {
+		t.Fatalf("Resolve() = %q, want inherited PATH claude %q", got, pathClaude)
 	}
 }
 

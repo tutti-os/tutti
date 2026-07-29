@@ -52,4 +52,19 @@ describe("agentCapabilityUseSubmit", () => {
       "/computer 点击确认"
     );
   });
+
+  it("builds native browser plugin prompt when plugin skill is available", () => {
+    const prompt = buildAgentCapabilityUseSubmitPrompt(
+      "browserUse",
+      "open localhost",
+      {
+        name: "Browser",
+        path: "plugin://browser@openai-bundled",
+        trigger: "$browser"
+      }
+    );
+    expect(prompt).toContain("$browser");
+    expect(prompt).toContain("plugin://browser@openai-bundled");
+    expect(prompt).not.toContain("tutti browser");
+  });
 });

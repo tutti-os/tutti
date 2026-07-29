@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/google/uuid"
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
@@ -164,6 +165,7 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 		ConversationDetailMode: p.composerConversationDetailMode(ctx),
 		Isolation:              input.Isolation,
 		RailPlacement:          launchContext.railPlacement,
+		ClientSubmitID:         uuid.NewString(),
 	})
 	if err != nil {
 		return nil, err
@@ -348,8 +350,9 @@ func (p Provider) runSend(ctx context.Context, invoke framework.InvokeContext, i
 	}
 	waitAfterVersion := messagePage.LatestVersion
 	result, err := p.sessions.SendInput(ctx, invoke.WorkspaceID, input.SessionID, agentservice.SendInput{
-		Content:  content,
-		Guidance: input.Guidance,
+		Content:        content,
+		Guidance:       input.Guidance,
+		ClientSubmitID: uuid.NewString(),
 	})
 	if err != nil {
 		return nil, err

@@ -105,6 +105,7 @@ func buildDaemonAPI(
 	modelPlansStore, _ := store.(workspacedata.ModelPlansStore)
 	agentActivityRepo, _ := store.(workspacedata.AgentActivityStore)
 	agentQuickPromptStore, _ := store.(workspacedata.AgentQuickPromptStore)
+	agentProviderRuntimeSelectionStore, _ := store.(workspacedata.AgentProviderRuntimeSelectionStore)
 	userProjectStore, _ := store.(workspacedata.UserProjectStore)
 	appStore, _ := store.(workspacedata.AppStore)
 	appFactoryStore, _ := store.(workspacedata.AppFactoryStore)
@@ -224,20 +225,15 @@ func buildDaemonAPI(
 		agentActivityProjection.SetAgentTargetResolver(agentTargetResolver)
 	}
 	managedRuntimeResolver := managedruntime.DefaultResolver{}
+	agentStatusService := agentstatusservice.NewService(agentstatusservice.ServiceDependencies{
+		AnalyticsReporter:          analyticsReporter,
+		ManagedRuntime:             managedRuntimeResolver,
+		ClaudeCodeRuntimeDir:       filepath.Join(agentRuntimeDir, "claude-code"),
+		CodexRuntimeSelectionStore: agentProviderRuntimeSelectionStore,
+	})
 	// Shared so a runtime auth failure (reporter side) surfaces in the status
 	// probe (List side) — see agentRunOutcomeReporter.
-	runOutcomes := agentstatusservice.NewRunOutcomeStore()
-	agentStatusService := agentstatusservice.Service{
-		AnalyticsReporter:    analyticsReporter,
-		ManagedRuntime:       managedRuntimeResolver,
-		ClaudeCodeRuntimeDir: filepath.Join(agentRuntimeDir, "claude-code"),
-		RunOutcomes:          runOutcomes,
-		StatusCache:          agentstatusservice.NewProviderStatusCache(),
-		CLIVersionCache:      agentstatusservice.NewCLIVersionCache(),
-		AdapterProbeCache:    agentstatusservice.NewAdapterProbeCache(),
-		DetectionCommands:    agentstatusservice.NewDetectionCommandLimiter(4),
-		UpdateCache:          agentstatusservice.NewProviderUpdateCache(),
-	}
+	runOutcomes := agentStatusService.RunOutcomes
 	accountService := accountservice.NewService("")
 	mobileRemoteService, err := buildMobileRemoteService(
 		agentExtensionStateDir,

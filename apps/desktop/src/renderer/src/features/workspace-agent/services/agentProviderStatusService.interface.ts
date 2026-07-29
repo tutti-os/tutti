@@ -1,5 +1,6 @@
 import { createDecorator } from "@tutti-os/infra/di";
 import type {
+  AgentProviderRuntimeCatalogResponse,
   AgentProviderStatus,
   AgentProviderStatusListResponse,
   AgentProviderTerminalCommand,
@@ -54,6 +55,16 @@ export interface IAgentProviderStatusService {
   isActionPending(provider: WorkspaceAgentProvider, actionId: string): boolean;
   isCheckingUpdates(): boolean;
   getStatus(provider: WorkspaceAgentProvider): AgentProviderStatus | null;
+  /** Discover the current local Codex runtime candidates without mutating the status snapshot. */
+  getRuntimeCatalog(
+    provider: WorkspaceAgentProvider
+  ): Promise<AgentProviderRuntimeCatalogResponse>;
+  /** Persist one candidate from the supplied catalog revision, then let callers refresh readiness. */
+  selectRuntime(
+    provider: WorkspaceAgentProvider,
+    candidateId: string,
+    revision: string
+  ): Promise<AgentProviderRuntimeCatalogResponse>;
   /**
    * Seeds the snapshot from another window's already-captured status (e.g. a
    * detached agent window bootstrapping from the main window's snapshot at

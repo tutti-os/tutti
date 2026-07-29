@@ -156,6 +156,7 @@ func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (Prep
 		result.Cwd = cwd
 	}
 	result.Env = append(defaultRuntimeEnv(input, p.StateDir), result.Env...)
+	result.Env = FilterEnvForNativeCapabilityPlan(result.Env, result.NativeCapabilityPlan)
 	logRuntimePrepareTrace("runtime_prepare.env_prepared", input, map[string]any{
 		"env_count": len(result.Env),
 	})

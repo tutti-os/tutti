@@ -2,7 +2,6 @@ package agentstatus
 
 import (
 	"path/filepath"
-	"runtime"
 	"strings"
 )
 
@@ -66,40 +65,6 @@ func codexPlatformTargetTriple(goos, goarch string) (string, bool) {
 	return "", false
 }
 
-func codexPlatformBinaryCandidatePaths(codexPkgDir, goos, goarch string) []string {
-	binName := "codex"
-	if goos == "windows" {
-		binName = "codex.exe"
-	}
-	dir, dirOK := codexNpmPlatformDir(goos, goarch)
-	if !dirOK {
-		return nil
-	}
-	targetTriple, ok := codexPlatformTargetTriple(goos, goarch)
-	if !ok {
-		return nil
-	}
-	return []string{
-		filepath.Join(codexPkgDir, "node_modules", "@openai", dir, "vendor", targetTriple, "bin", binName),
-	}
-}
-
-// codexPlatformBinaryComplete reports whether the platform-specific codex
-// binary is present and executable inside the given @openai/codex package
-// directory. It returns the resolved binary path alongside the verdict.
-func (s Service) codexPlatformBinaryComplete(codexPkgDir, goos, goarch string) (string, bool) {
-	paths := codexPlatformBinaryCandidatePaths(codexPkgDir, goos, goarch)
-	if len(paths) == 0 {
-		return "", false
-	}
-	for _, path := range paths {
-		if s.executableFile(path) {
-			return path, true
-		}
-	}
-	return paths[0], false
-}
-
 func codexPackageDirForBinary(binaryPath string) string {
 	packageJSONPath := findAdapterPackageJSON(binaryPath, "@openai/codex")
 	if packageJSONPath == "" {
@@ -132,27 +97,4 @@ func npmGlobalPrefixFromPackageDir(pkgDir string) string {
 		return ""
 	}
 	return parent
-}
-
-// codexPlatformPackageMissingPath returns the platform-specific binary path we
-// expected to exist but didn't, for diagnostics. Returns empty when the codex
-// package directory cannot be located or the platform is unsupported.
-func (s Service) codexPlatformPackageMissingPath(binaryPath string) string {
-	binaryPath = strings.TrimSpace(binaryPath)
-	if binaryPath == "" {
-		return ""
-	}
-	pkgDir := codexPackageDirForBinary(binaryPath)
-	if pkgDir == "" {
-		return ""
-	}
-	paths := codexPlatformBinaryCandidatePaths(pkgDir, runtime.GOOS, runtime.GOARCH)
-	if len(paths) == 0 {
-		return ""
-	}
-	expectedPath := paths[0]
-	if s.executableFile(expectedPath) {
-		return ""
-	}
-	return expectedPath
 }

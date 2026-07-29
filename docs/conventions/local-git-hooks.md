@@ -160,6 +160,11 @@ concurrently, prints compact summaries, and stores full logs under
 architecture boundaries come from `tools/scripts/repository-checks.mjs`; PR CI
 uses the same selectors.
 
+Lanes that write the same generated artifact are serialized while unrelated
+lanes remain parallel. In particular, Tutti daemon Go tests and `build:go`
+cannot concurrently rewrite builtin app assets, which prevents `go:embed`
+from reading a ZIP while it changes.
+
 `pnpm check:changed -- --push-ready` is the `pre-push` mode. In addition to the
 normal changed-aware lanes, it schedules Go or package builds when the changed
 surface requires them. Package lanes receive the exact public-package subset

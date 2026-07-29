@@ -86,6 +86,7 @@ const schemaMigrationWorkspaceTuttiModeLegacyRepairV5 = "workspace_tutti_mode_le
 const schemaMigrationWorkspaceTuttiModeLegacyRecoveryCleanupV6 = "workspace_tutti_mode_legacy_recovery_cleanup_v6"
 const schemaMigrationAgentSessionReplayV1 = "agent_session_replay_v1"
 const schemaMigrationAgentSessionReplayV2 = "agent_session_replay_v2"
+const schemaMigrationAgentProviderRuntimeSelectionsV1 = "agent_provider_runtime_selections_v1"
 
 func (s *SQLiteStore) Migrate(ctx context.Context) error {
 	if s == nil || s.writeDB == nil {
@@ -380,7 +381,33 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	if err := s.applyAgentSessionReplayV2(ctx); err != nil {
 		return err
 	}
+	if err := s.applyAgentProviderRuntimeSelectionsV1(ctx); err != nil {
+		return err
+	}
 	return s.openReadPool(ctx)
+}
+
+func (s *SQLiteStore) applyAgentProviderRuntimeSelectionsV1(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationAgentProviderRuntimeSelectionsV1)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+	_, err = s.writeDB.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS agent_provider_runtime_selections (
+  provider TEXT PRIMARY KEY,
+  launcher_path TEXT NOT NULL,
+  updated_at_unix_ms INTEGER NOT NULL
+);
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationAgentProviderRuntimeSelectionsV1, unixMs(time.Now().UTC()))
+	if err != nil {
+		return fmt.Errorf("migrate agent provider runtime selections: %w", err)
+	}
+	return nil
 }
 
 func (s *SQLiteStore) applyWorkspacesV2(ctx context.Context) error {

@@ -168,6 +168,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     selectCapability,
     selectCapabilitySettings,
     selectCommand,
+    selectPluginSettings,
     selectSkill,
     settingsControlsDisabled,
     submit,
@@ -540,6 +541,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
                 onSelect={selectCommand}
                 onSelectCapability={selectCapability}
                 onSelectCapabilitySettings={selectCapabilitySettings}
+                onSelectPluginSettings={selectPluginSettings}
                 onSelectSkill={selectSkill}
               />
             </ComposerFloatingMenuSurface>

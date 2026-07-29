@@ -14,6 +14,7 @@ describe("provider identity catalog", () => {
       displayName: "Codex",
       iconKey: "codex",
       localeKey: "agentHost.agentGui.conversationFilterCodex",
+      statusKind: "codex_cli",
       target: {
         id: "local:codex",
         launchRefType: "local_cli",

@@ -266,6 +266,7 @@ function buildChangedLanes() {
       addLane({
         key: "build:go",
         label: "build:go",
+        serialGroup: "tuttid-builtin-assets",
         command: [...pnpmCommand, "run", "build:go"],
         inputFiles: changedFiles.filter(isGoValidationInput)
       });
@@ -364,6 +365,7 @@ function readLatestSummary() {
 
 export async function runLanes(inputLanes, runDirectory) {
   const results = [];
+  const serialGroups = new Map();
   let nextIndex = 0;
   const workerCount = Math.max(1, Math.min(maxParallel, inputLanes.length));
 
@@ -372,12 +374,32 @@ export async function runLanes(inputLanes, runDirectory) {
       while (nextIndex < inputLanes.length) {
         const laneIndex = nextIndex++;
         const lane = inputLanes[laneIndex];
-        results.push(await runLane(lane, laneIndex, runDirectory));
+        results.push(
+          await runLaneInSerialGroup(
+            lane,
+            laneIndex,
+            runDirectory,
+            serialGroups
+          )
+        );
       }
     })
   );
 
   return results.sort((left, right) => left.index - right.index);
+}
+
+function runLaneInSerialGroup(lane, index, runDirectory, serialGroups) {
+  if (!lane.serialGroup) {
+    return runLane(lane, index, runDirectory);
+  }
+  const previous = serialGroups.get(lane.serialGroup) ?? Promise.resolve();
+  const current = previous.then(() => runLane(lane, index, runDirectory));
+  serialGroups.set(
+    lane.serialGroup,
+    current.catch(() => undefined)
+  );
+  return current;
 }
 
 function runLane(lane, index, runDirectory) {

@@ -1798,6 +1798,7 @@ export type AgentProviderComposerBehavior = {
   refreshModelOptionsAfterSettings: boolean;
   prewarmDraftSession: boolean;
   planModeExclusiveWithPermissionMode: boolean;
+  nativePluginCatalogAuthoritative?: boolean;
 };
 
 export type AgentSlashCommandEffect =
@@ -1852,6 +1853,10 @@ export type AgentProviderCapabilityOption = {
   toolName?: string;
   trigger?: string;
   path?: string;
+  /**
+   * Stable provider-native presentation and interaction key. It does not identify an executable, filesystem path, or provider wire implementation.
+   */
+  semantic?: "sites" | "browserUse" | "computerUse";
   invocation: "promptItem" | "textTrigger" | "none";
 };
 
@@ -2044,6 +2049,61 @@ export type AgentProviderStatusListResponse = {
   capturedAt: string;
   defaultProvider: WorkspaceAgentProvider;
   providers: Array<AgentProviderStatus>;
+};
+
+export type AgentProviderRuntimeCandidateState =
+  | "ready"
+  | "unsupported"
+  | "failed";
+
+export type AgentProviderRuntimeSelectionState =
+  | "unavailable"
+  | "implicit_unique"
+  | "selection_required"
+  | "selected"
+  | "stale";
+
+export type AgentProviderRuntimeCandidate = {
+  /**
+   * Opaque identifier valid only for the enclosing catalog revision
+   */
+  id: string;
+  launcherPath: string;
+  packageRoot: string | null;
+  sources: Array<
+    "path" | "bun_global" | "pnpm_global" | "npm_global" | "homebrew"
+  >;
+  version: string | null;
+  state: AgentProviderRuntimeCandidateState;
+  reasonCode: string | null;
+  appServerReady: boolean;
+  packageLayoutOk: boolean;
+};
+
+export type AgentProviderRuntimeSelection = {
+  state: AgentProviderRuntimeSelectionState;
+  candidateId: string | null;
+  launcherPath: string | null;
+  updatedAt: string | null;
+};
+
+export type AgentProviderRuntimeCatalogResponse = {
+  capturedAt: string;
+  provider: WorkspaceAgentProvider;
+  revision: string;
+  selection: AgentProviderRuntimeSelection;
+  candidates: Array<AgentProviderRuntimeCandidate>;
+};
+
+export type SetAgentProviderRuntimeSelectionRequest = {
+  /**
+   * Opaque identifier from the current runtime candidate catalog
+   */
+  candidateId: string;
+  /**
+   * Must match the catalog revision that supplied candidateId
+   */
+  revision: string;
 };
 
 export type TuttiModeActivationStatus = "active" | "inactive";
@@ -10278,6 +10338,88 @@ export type GetAgentProviderComposerOptionsResponses = {
 
 export type GetAgentProviderComposerOptionsResponse =
   GetAgentProviderComposerOptionsResponses[keyof GetAgentProviderComposerOptionsResponses];
+
+export type GetAgentProviderRuntimeCandidatesData = {
+  body?: never;
+  path: {
+    provider: WorkspaceAgentProvider;
+  };
+  query?: never;
+  url: "/v1/agent-providers/{provider}/runtime-candidates";
+};
+
+export type GetAgentProviderRuntimeCandidatesErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetAgentProviderRuntimeCandidatesError =
+  GetAgentProviderRuntimeCandidatesErrors[keyof GetAgentProviderRuntimeCandidatesErrors];
+
+export type GetAgentProviderRuntimeCandidatesResponses = {
+  /**
+   * Current runtime candidates and selection policy
+   */
+  200: AgentProviderRuntimeCatalogResponse;
+};
+
+export type GetAgentProviderRuntimeCandidatesResponse =
+  GetAgentProviderRuntimeCandidatesResponses[keyof GetAgentProviderRuntimeCandidatesResponses];
+
+export type SetAgentProviderRuntimeSelectionData = {
+  body: SetAgentProviderRuntimeSelectionRequest;
+  path: {
+    provider: WorkspaceAgentProvider;
+  };
+  query?: never;
+  url: "/v1/agent-providers/{provider}/runtime-selection";
+};
+
+export type SetAgentProviderRuntimeSelectionErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type SetAgentProviderRuntimeSelectionError =
+  SetAgentProviderRuntimeSelectionErrors[keyof SetAgentProviderRuntimeSelectionErrors];
+
+export type SetAgentProviderRuntimeSelectionResponses = {
+  /**
+   * Updated runtime candidate catalog and selection policy
+   */
+  200: AgentProviderRuntimeCatalogResponse;
+};
+
+export type SetAgentProviderRuntimeSelectionResponse =
+  SetAgentProviderRuntimeSelectionResponses[keyof SetAgentProviderRuntimeSelectionResponses];
 
 export type ProbeAgentProviderData = {
   body?: never;

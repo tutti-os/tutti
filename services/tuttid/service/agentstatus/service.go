@@ -12,6 +12,7 @@ import (
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerstatus"
 	"golang.org/x/sync/errgroup"
 
+	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	externalagentregistry "github.com/tutti-os/tutti/services/tuttid/service/externalagentregistry"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
@@ -112,15 +113,20 @@ type Snapshot struct {
 }
 
 type ProbeResult struct {
-	Provider   string
-	Status     ProbeStatus
-	CheckedAt  time.Time
-	ReasonCode string
-	Message    string
-	BinaryPath string
-	Command    []string
-	Checks     []ProviderCheck
-	LastError  *ProviderLastError
+	Provider            string
+	Status              ProbeStatus
+	CheckedAt           time.Time
+	ReasonCode          string
+	Message             string
+	BinaryPath          string
+	Command             []string
+	Checks              []ProviderCheck
+	LastError           *ProviderLastError
+	CommandStarted      bool
+	ProtocolReady       bool
+	CommandCategory     string
+	ProtocolCategory    string
+	ProtocolPackageName string
 }
 
 type RunActionResult struct {
@@ -270,17 +276,60 @@ type Service struct {
 	// readiness probes run once per provider instead of once per caller/window.
 	StatusCache    *ProviderStatusCache
 	StatusCacheTTL time.Duration
-	// CLIVersionCache and AdapterProbeCache keep stable executable facts across
-	// forced auth refreshes. DetectionCommands bounds actual subprocess fan-out
-	// across concurrent requests.
-	CLIVersionCache   *CLIVersionCache
-	AdapterProbeCache *AdapterProbeCache
-	DetectionCommands *DetectionCommandLimiter
+	// CLIVersionCache, AdapterProbeCache and global-bin caches keep stable
+	// executable facts across forced auth refreshes. DetectionCommands bounds
+	// actual subprocess fan-out across concurrent requests.
+	CLIVersionCache         *CLIVersionCache
+	AdapterProbeCache       *AdapterProbeCache
+	BunGlobalBinCache       *BunGlobalBinCache
+	GlobalBinDiscoveryCache *GlobalBinDiscoveryCache
+	DetectionCommands       *DetectionCommandLimiter
 	// UpdateCache is separate from readiness caching because remote release
 	// discovery is opt-in and must never make ordinary local status reads touch
 	// the network.
 	UpdateCache    *ProviderUpdateCache
 	UpdateCacheTTL time.Duration
+	// CodexProtocolProbe is injectable for deterministic status tests. Nil uses
+	// the production app-server transport and formal initialize handshake.
+	CodexProtocolProbe func(context.Context, []string, []string) CodexProbeEvidence
+	// CodexRuntimeSelectionStore persists only an explicit Codex launcher
+	// choice. A missing selection permits only one uniquely ready candidate;
+	// multiple ready candidates require the user to choose one.
+	CodexRuntimeSelectionStore CodexRuntimeSelectionStore
+}
+
+// ServiceDependencies are the daemon-owned dependencies required to construct
+// a production provider status service. Probe caches and other implementation
+// details remain owned by Service so callers cannot accidentally omit them.
+type ServiceDependencies struct {
+	AnalyticsReporter          reporterservice.Reporter
+	ManagedRuntime             managedruntime.Resolver
+	ClaudeCodeRuntimeDir       string
+	CodexRuntimeSelectionStore CodexRuntimeSelectionStore
+}
+
+// NewService constructs the production provider status service with its shared
+// caches, bounded detection command fan-out, and runtime auth outcome store.
+func NewService(dependencies ServiceDependencies) Service {
+	return Service{
+		AnalyticsReporter:          dependencies.AnalyticsReporter,
+		ManagedRuntime:             dependencies.ManagedRuntime,
+		ClaudeCodeRuntimeDir:       dependencies.ClaudeCodeRuntimeDir,
+		RunOutcomes:                NewRunOutcomeStore(),
+		StatusCache:                NewProviderStatusCache(),
+		CLIVersionCache:            NewCLIVersionCache(),
+		AdapterProbeCache:          NewAdapterProbeCache(),
+		BunGlobalBinCache:          NewBunGlobalBinCache(),
+		GlobalBinDiscoveryCache:    NewGlobalBinDiscoveryCache(),
+		DetectionCommands:          NewDetectionCommandLimiter(4),
+		UpdateCache:                NewProviderUpdateCache(),
+		CodexRuntimeSelectionStore: dependencies.CodexRuntimeSelectionStore,
+	}
+}
+
+type CodexRuntimeSelectionStore interface {
+	GetAgentProviderRuntimeSelection(context.Context, string) (agentproviderbiz.RuntimeSelection, bool, error)
+	PutAgentProviderRuntimeSelection(context.Context, agentproviderbiz.RuntimeSelection) (agentproviderbiz.RuntimeSelection, error)
 }
 
 const authStatusCommandTimeout = 5 * time.Second
@@ -446,6 +495,14 @@ func (s Service) cachedStatusForSpec(ctx context.Context, spec ProviderSpec, for
 		status := s.detectStatusForSpec(ctx, spec, forceRefresh)
 		completedAt := s.now()
 		status.Availability.CheckedAt = &completedAt
+		// Codex repair authorization is deliberately derived from a fresh failed
+		// protocol probe plus a fresh layout scan. Keep the application cache
+		// positive-only for Codex so a previous failure cannot keep presenting a
+		// stale RepairPlan to either the renderer or a later action request.
+		if isCodexStatusSpec(spec) && status.Availability.Status != AvailabilityReady && status.Availability.Status != AvailabilityAuthRequired {
+			cache.invalidate(spec.Provider)
+			return status, nil
+		}
 		cache.set(spec.Provider, completedAt, s.providerCredentialFingerprint(spec), status)
 		return status, nil
 	})
@@ -484,60 +541,6 @@ func (s Service) invalidateProviderStatus(provider string) {
 // real runtime proves that cached launch assumptions are no longer reliable.
 func (s Service) Invalidate(provider string) {
 	s.invalidateProviderStatus(strings.TrimSpace(provider))
-}
-
-func (s Service) Probe(ctx context.Context, input ProbeInput) (ProbeResult, error) {
-	now := s.now()
-	specs, err := s.selectProviderSpecs(ctx, []string{input.Provider}, true)
-	if err != nil {
-		return ProbeResult{}, err
-	}
-	spec := specs[0]
-	if result, ok := unsupportedProviderProbeResult(spec, now); ok {
-		return result, nil
-	}
-	runtimeResolution := s.resolveProviderRuntime(ctx, spec)
-	status := s.statusForSpec(ctx, spec, now, statusDetectionOptions{
-		forceRefresh:     true,
-		skipAdapterProbe: true,
-	})
-	result := ProbeResult{
-		Provider:   spec.Provider,
-		CheckedAt:  now,
-		BinaryPath: status.Adapter.BinaryPath,
-		Command:    cloneStrings(spec.AdapterCommand),
-		Checks:     cloneProviderChecks(status.Checks),
-		LastError:  cloneProviderLastError(status.LastError),
-	}
-	if !status.CLI.Installed {
-		result.Status = ProbeFailed
-		result.ReasonCode = "cli_not_found"
-		result.Message = "CLI binary not found"
-		return result, nil
-	}
-	if !status.Adapter.Installed {
-		if status.Availability.ReasonCode == "acp_adapter_launch_failed" {
-			return s.probeAdapterRuntimeCommand(ctx, spec, runtimeResolution, now), nil
-		}
-		result.Status = ProbeFailed
-		result.ReasonCode = firstNonBlank(status.Availability.ReasonCode, "acp_adapter_not_found")
-		result.Message = agentProviderProbeAdapterUnavailableMessage(result.ReasonCode)
-		return result, nil
-	}
-	if isCodexStatusSpec(spec) && status.LastError != nil {
-		result.Status = ProbeFailed
-		result.ReasonCode = codexReasonCodeFromErrorCode(status.LastError.Code)
-		result.Message = status.LastError.Message
-		return result, nil
-	}
-	if !providerCLIVersionMeetsMinimum(spec, status.CLI.Version) {
-		result.Status = ProbeFailed
-		result.ReasonCode = providerCLIVersionUnsupportedReasonCode(spec)
-		result.Message = "CLI version is below " + spec.MinVersion
-		return result, nil
-	}
-
-	return s.probeAdapterRuntimeCommand(ctx, spec, runtimeResolution, now), nil
 }
 
 func (s Service) RunAction(ctx context.Context, input RunActionInput) (RunActionResult, error) {
@@ -588,6 +591,44 @@ func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result
 	})
 	defer clearActiveAction(installCtx, spec.Provider)
 	runtimeResolution := s.resolveProviderRuntime(ctx, spec)
+	if isCodexStatusSpec(spec) && codexRuntimeSelectionNeedsUserInput(runtimeResolution) {
+		result.Status = RunActionFailed
+		result.ReasonCode = runtimeResolution.ReasonCode
+		result.Message = "Choose a valid Codex runtime before installing or repairing it"
+		return result, nil
+	}
+	if isCodexStatusSpec(spec) && strings.TrimSpace(runtimeResolution.CLIPath) != "" {
+		probe := s.probeAdapterRuntimeCommand(installCtx, spec, runtimeResolution, s.now())
+		if probe.Status == ProbeReady && !s.providerCLIRequiresInstall(spec, runtimeResolution) {
+			result.Probe = &probe
+			result.Status = RunActionCompleted
+			s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
+				Node:      "install_post_probe",
+				Provider:  spec.Provider,
+				Result:    RunActionResult{Status: RunActionCompleted},
+				StartedAt: s.now(),
+			})
+			return result, nil
+		}
+		if probe.Status == ProbeReady {
+			// A present, protocol-capable Codex below Tutti's support floor needs
+			// an upgrade decision, never an install/repair action that could
+			// overwrite a user-managed Bun, pnpm, Homebrew, or standalone runtime.
+			result.Probe = &probe
+			result.Status = RunActionFailed
+			result.ReasonCode = "codex_version_unsupported"
+			result.Message = "Codex CLI version is below the supported version; upgrade it before retrying"
+			return result, nil
+		}
+		if probe.Status == ProbeFailed {
+			runtimeResolution.ReasonCode = firstNonBlank(probe.ReasonCode, "acp_adapter_launch_failed")
+			assessment := s.assessCodexRuntime(spec, runtimeResolution.CLIPath, probe, true, false)
+			if assessment.RepairPlan.Allowed {
+				plan := assessment.RepairPlan
+				runtimeResolution.CodexRepairPlan = &plan
+			}
+		}
+	}
 	summary, updatedRuntime, err := s.installMissingProviderRuntime(installCtx, spec, runtimeResolution)
 	result = applyInstallerExecutionSummary(result, summary)
 	if err != nil {
@@ -608,19 +649,21 @@ func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result
 		}
 		result.Probe = &probe
 		if probe.Status == ProbeFailed {
-			repairStatus := s.statusForSpec(ctx, spec, s.now(), statusDetectionOptions{
-				forceRefresh: true,
-			})
-			if repairStatus.Availability.ReasonCode == "acp_adapter_launch_failed" {
-				runtimeResolution.ReasonCode = "acp_adapter_launch_failed"
-				summary, updatedRuntime, err = s.installMissingProviderRuntime(installCtx, spec, runtimeResolution)
-				result = applyInstallerExecutionSummary(result, summary)
-				result.Probe = nil
-				if err != nil {
-					return installActionErrorResult(result, err, s.installTimeout(), spec.Install), nil
-				}
-				if len(summary.Commands) > 0 {
-					goto postInstallProbe
+			if !isCodexStatusSpec(spec) {
+				repairStatus := s.statusForSpec(ctx, spec, s.now(), statusDetectionOptions{
+					forceRefresh: true,
+				})
+				if repairStatus.Availability.ReasonCode == "acp_adapter_launch_failed" {
+					runtimeResolution.ReasonCode = "acp_adapter_launch_failed"
+					summary, updatedRuntime, err = s.installMissingProviderRuntime(installCtx, spec, runtimeResolution)
+					result = applyInstallerExecutionSummary(result, summary)
+					result.Probe = nil
+					if err != nil {
+						return installActionErrorResult(result, err, s.installTimeout(), spec.Install), nil
+					}
+					if len(summary.Commands) > 0 {
+						goto postInstallProbe
+					}
 				}
 			}
 			result.Status = RunActionFailed

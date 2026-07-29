@@ -352,6 +352,27 @@ func (e AgentProviderCapabilityOptionKind) Valid() bool {
 	}
 }
 
+// Defines values for AgentProviderCapabilityOptionSemantic.
+const (
+	BrowserUse  AgentProviderCapabilityOptionSemantic = "browserUse"
+	ComputerUse AgentProviderCapabilityOptionSemantic = "computerUse"
+	Sites       AgentProviderCapabilityOptionSemantic = "sites"
+)
+
+// Valid indicates whether the value is a known member of the AgentProviderCapabilityOptionSemantic enum.
+func (e AgentProviderCapabilityOptionSemantic) Valid() bool {
+	switch e {
+	case BrowserUse:
+		return true
+	case ComputerUse:
+		return true
+	case Sites:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AgentProviderCapabilityOptionStatus.
 const (
 	AgentProviderCapabilityOptionStatusAuthRequired  AgentProviderCapabilityOptionStatus = "authRequired"
@@ -394,6 +415,81 @@ func (e AgentProviderProbeStatus) Valid() bool {
 	case AgentProviderProbeStatusReady:
 		return true
 	case AgentProviderProbeStatusSkipped:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentProviderRuntimeCandidateSources.
+const (
+	AgentProviderRuntimeCandidateSourceBunGlobal  AgentProviderRuntimeCandidateSources = "bun_global"
+	AgentProviderRuntimeCandidateSourceHomebrew   AgentProviderRuntimeCandidateSources = "homebrew"
+	AgentProviderRuntimeCandidateSourceNpmGlobal  AgentProviderRuntimeCandidateSources = "npm_global"
+	AgentProviderRuntimeCandidateSourcePath       AgentProviderRuntimeCandidateSources = "path"
+	AgentProviderRuntimeCandidateSourcePnpmGlobal AgentProviderRuntimeCandidateSources = "pnpm_global"
+)
+
+// Valid indicates whether the value is a known member of the AgentProviderRuntimeCandidateSources enum.
+func (e AgentProviderRuntimeCandidateSources) Valid() bool {
+	switch e {
+	case AgentProviderRuntimeCandidateSourceBunGlobal:
+		return true
+	case AgentProviderRuntimeCandidateSourceHomebrew:
+		return true
+	case AgentProviderRuntimeCandidateSourceNpmGlobal:
+		return true
+	case AgentProviderRuntimeCandidateSourcePath:
+		return true
+	case AgentProviderRuntimeCandidateSourcePnpmGlobal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentProviderRuntimeCandidateState.
+const (
+	AgentProviderRuntimeCandidateStateFailed      AgentProviderRuntimeCandidateState = "failed"
+	AgentProviderRuntimeCandidateStateReady       AgentProviderRuntimeCandidateState = "ready"
+	AgentProviderRuntimeCandidateStateUnsupported AgentProviderRuntimeCandidateState = "unsupported"
+)
+
+// Valid indicates whether the value is a known member of the AgentProviderRuntimeCandidateState enum.
+func (e AgentProviderRuntimeCandidateState) Valid() bool {
+	switch e {
+	case AgentProviderRuntimeCandidateStateFailed:
+		return true
+	case AgentProviderRuntimeCandidateStateReady:
+		return true
+	case AgentProviderRuntimeCandidateStateUnsupported:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentProviderRuntimeSelectionState.
+const (
+	AgentProviderRuntimeSelectionStateImplicitUnique    AgentProviderRuntimeSelectionState = "implicit_unique"
+	AgentProviderRuntimeSelectionStateSelected          AgentProviderRuntimeSelectionState = "selected"
+	AgentProviderRuntimeSelectionStateSelectionRequired AgentProviderRuntimeSelectionState = "selection_required"
+	AgentProviderRuntimeSelectionStateStale             AgentProviderRuntimeSelectionState = "stale"
+	AgentProviderRuntimeSelectionStateUnavailable       AgentProviderRuntimeSelectionState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the AgentProviderRuntimeSelectionState enum.
+func (e AgentProviderRuntimeSelectionState) Valid() bool {
+	switch e {
+	case AgentProviderRuntimeSelectionStateImplicitUnique:
+		return true
+	case AgentProviderRuntimeSelectionStateSelected:
+		return true
+	case AgentProviderRuntimeSelectionStateSelectionRequired:
+		return true
+	case AgentProviderRuntimeSelectionStateStale:
+		return true
+	case AgentProviderRuntimeSelectionStateUnavailable:
 		return true
 	default:
 		return false
@@ -3800,11 +3896,14 @@ type AgentProviderCapabilityOption struct {
 	Name        string                                  `json:"name"`
 	Path        *string                                 `json:"path,omitempty"`
 	PluginName  *string                                 `json:"pluginName,omitempty"`
-	ServerName  *string                                 `json:"serverName,omitempty"`
-	Source      *string                                 `json:"source,omitempty"`
-	Status      AgentProviderCapabilityOptionStatus     `json:"status"`
-	ToolName    *string                                 `json:"toolName,omitempty"`
-	Trigger     *string                                 `json:"trigger,omitempty"`
+
+	// Semantic Stable provider-native presentation and interaction key. It does not identify an executable, filesystem path, or provider wire implementation.
+	Semantic   *AgentProviderCapabilityOptionSemantic `json:"semantic,omitempty"`
+	ServerName *string                                `json:"serverName,omitempty"`
+	Source     *string                                `json:"source,omitempty"`
+	Status     AgentProviderCapabilityOptionStatus    `json:"status"`
+	ToolName   *string                                `json:"toolName,omitempty"`
+	Trigger    *string                                `json:"trigger,omitempty"`
 }
 
 // AgentProviderCapabilityOptionInvocation defines model for AgentProviderCapabilityOption.Invocation.
@@ -3812,6 +3911,9 @@ type AgentProviderCapabilityOptionInvocation string
 
 // AgentProviderCapabilityOptionKind defines model for AgentProviderCapabilityOption.Kind.
 type AgentProviderCapabilityOptionKind string
+
+// AgentProviderCapabilityOptionSemantic Stable provider-native presentation and interaction key. It does not identify an executable, filesystem path, or provider wire implementation.
+type AgentProviderCapabilityOptionSemantic string
 
 // AgentProviderCapabilityOptionStatus defines model for AgentProviderCapabilityOption.Status.
 type AgentProviderCapabilityOptionStatus string
@@ -3828,11 +3930,12 @@ type AgentProviderCliStatus struct {
 
 // AgentProviderComposerBehavior defines model for AgentProviderComposerBehavior.
 type AgentProviderComposerBehavior struct {
-	CollapseModelOptionsToLatest        bool `json:"collapseModelOptionsToLatest"`
-	ModelOptionsAuthoritative           bool `json:"modelOptionsAuthoritative"`
-	PlanModeExclusiveWithPermissionMode bool `json:"planModeExclusiveWithPermissionMode"`
-	PrewarmDraftSession                 bool `json:"prewarmDraftSession"`
-	RefreshModelOptionsAfterSettings    bool `json:"refreshModelOptionsAfterSettings"`
+	CollapseModelOptionsToLatest        bool  `json:"collapseModelOptionsToLatest"`
+	ModelOptionsAuthoritative           bool  `json:"modelOptionsAuthoritative"`
+	NativePluginCatalogAuthoritative    *bool `json:"nativePluginCatalogAuthoritative,omitempty"`
+	PlanModeExclusiveWithPermissionMode bool  `json:"planModeExclusiveWithPermissionMode"`
+	PrewarmDraftSession                 bool  `json:"prewarmDraftSession"`
+	RefreshModelOptionsAfterSettings    bool  `json:"refreshModelOptionsAfterSettings"`
 }
 
 // AgentProviderComposerCommandOption defines model for AgentProviderComposerCommandOption.
@@ -3933,6 +4036,47 @@ type AgentProviderProbeResponse struct {
 
 // AgentProviderProbeStatus defines model for AgentProviderProbeStatus.
 type AgentProviderProbeStatus string
+
+// AgentProviderRuntimeCandidate defines model for AgentProviderRuntimeCandidate.
+type AgentProviderRuntimeCandidate struct {
+	AppServerReady bool `json:"appServerReady"`
+
+	// Id Opaque identifier valid only for the enclosing catalog revision
+	Id              string                                 `json:"id"`
+	LauncherPath    string                                 `json:"launcherPath"`
+	PackageLayoutOk bool                                   `json:"packageLayoutOk"`
+	PackageRoot     *string                                `json:"packageRoot"`
+	ReasonCode      *string                                `json:"reasonCode"`
+	Sources         []AgentProviderRuntimeCandidateSources `json:"sources"`
+	State           AgentProviderRuntimeCandidateState     `json:"state"`
+	Version         *string                                `json:"version"`
+}
+
+// AgentProviderRuntimeCandidateSources defines model for AgentProviderRuntimeCandidate.Sources.
+type AgentProviderRuntimeCandidateSources string
+
+// AgentProviderRuntimeCandidateState defines model for AgentProviderRuntimeCandidateState.
+type AgentProviderRuntimeCandidateState string
+
+// AgentProviderRuntimeCatalogResponse defines model for AgentProviderRuntimeCatalogResponse.
+type AgentProviderRuntimeCatalogResponse struct {
+	Candidates []AgentProviderRuntimeCandidate `json:"candidates"`
+	CapturedAt time.Time                       `json:"capturedAt"`
+	Provider   WorkspaceAgentProvider          `json:"provider"`
+	Revision   string                          `json:"revision"`
+	Selection  AgentProviderRuntimeSelection   `json:"selection"`
+}
+
+// AgentProviderRuntimeSelection defines model for AgentProviderRuntimeSelection.
+type AgentProviderRuntimeSelection struct {
+	CandidateId  *string                            `json:"candidateId"`
+	LauncherPath *string                            `json:"launcherPath"`
+	State        AgentProviderRuntimeSelectionState `json:"state"`
+	UpdatedAt    *time.Time                         `json:"updatedAt"`
+}
+
+// AgentProviderRuntimeSelectionState defines model for AgentProviderRuntimeSelectionState.
+type AgentProviderRuntimeSelectionState string
 
 // AgentProviderSkillOption defines model for AgentProviderSkillOption.
 type AgentProviderSkillOption struct {
@@ -6238,6 +6382,15 @@ type SetAgentModelBindingRequest struct {
 	ModelPolicyId *string `json:"modelPolicyId,omitempty"`
 }
 
+// SetAgentProviderRuntimeSelectionRequest defines model for SetAgentProviderRuntimeSelectionRequest.
+type SetAgentProviderRuntimeSelectionRequest struct {
+	// CandidateId Opaque identifier from the current runtime candidate catalog
+	CandidateId string `json:"candidateId"`
+
+	// Revision Must match the catalog revision that supplied candidateId
+	Revision string `json:"revision"`
+}
+
 // SetAgentSessionAutomationRuleOverrideRequest defines model for SetAgentSessionAutomationRuleOverrideRequest.
 type SetAgentSessionAutomationRuleOverrideRequest struct {
 	Disabled bool     `json:"disabled"`
@@ -8361,6 +8514,9 @@ type DismissAccountRegistrationCreditsRewardJSONRequestBody = DismissAccountRegi
 
 // GetAgentProviderComposerOptionsJSONRequestBody defines body for GetAgentProviderComposerOptions for application/json ContentType.
 type GetAgentProviderComposerOptionsJSONRequestBody = GetAgentProviderComposerOptionsRequest
+
+// SetAgentProviderRuntimeSelectionJSONRequestBody defines body for SetAgentProviderRuntimeSelection for application/json ContentType.
+type SetAgentProviderRuntimeSelectionJSONRequestBody = SetAgentProviderRuntimeSelectionRequest
 
 // CreateAgentQuickPromptJSONRequestBody defines body for CreateAgentQuickPrompt for application/json ContentType.
 type CreateAgentQuickPromptJSONRequestBody = CreateAgentQuickPromptRequest
