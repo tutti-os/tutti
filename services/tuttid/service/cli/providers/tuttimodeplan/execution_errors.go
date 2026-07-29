@@ -180,7 +180,11 @@ func rejectionHint(
 	case executionbiz.RejectionDependencyUnsatisfied:
 		return "run " + get + " and schedule only tasks whose ready field is true"
 	case executionbiz.RejectionDispatchPaused:
-		return "resume dispatch through the supported Issue control before scheduling"
+		return "run `tutti plan issue resume --issue-id " +
+			issueIDPlaceholder(issueID) +
+			" --json`; a source Session whose frozen command snapshot predates resume may use " +
+			"`tutti issue update --issue-id " + issueIDPlaceholder(issueID) +
+			" --dispatch-paused=false --json`; then retry with the same active checkpoint and graph revision"
 	case executionbiz.RejectionBudgetUnavailable:
 		return "the Issue budget is not active; report the blocker instead of retrying"
 	case executionbiz.RejectionCapacityExhausted:

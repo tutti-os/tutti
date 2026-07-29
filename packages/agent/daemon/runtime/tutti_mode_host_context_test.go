@@ -125,6 +125,8 @@ func TestRenderTuttiModeHostContextCarriesWorkedWorkflowExamples(t *testing.T) {
 		"the first task must initialize one (`git init` plus an initial commit)",
 		"this conversation becomes the plan's orchestrator",
 		"stopping this conversation stops every running task",
+		"A dispatch-paused Issue must stay quiet",
+		"`tutti plan issue resume --issue-id <issueId> --json`",
 		"all tasks becoming terminal starts Goal Review",
 		"`tutti plan issue complete --issue-id <issueId> --checkpoint-id <checkpointId>",
 		"review whether the user's goal is actually satisfied",

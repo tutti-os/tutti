@@ -154,10 +154,7 @@ export function WorkspaceAgentEditor({
               ) : null}
               {harnessOptions.map((target) => (
                 <SelectItem key={target.id} value={target.id}>
-                  {target.name} · {target.provider}
-                  {!target.enabled
-                    ? ` · ${t("workspace.settings.apps.agents.disabled")}`
-                    : ""}
+                  {target.name}
                 </SelectItem>
               ))}
             </SelectContent>

@@ -870,15 +870,13 @@ export const zhCN = {
           deleteConfirm: "删除这个 Agent？",
           deleteFailed: "Agent 删除失败，请重试",
           deleting: "删除中...",
-          description:
-            "将 Agent Runtime 与模型方案、指令组合成具名的 Agent 选项",
-          disabled: "已停用",
+          description: "选择 Agent Runtime、模型和指令，创建可重复使用的 Agent",
           edit: "编辑",
           editTitle: "编辑 {{agent}}",
           editorDescription: "保存后，它会成为新会话中可选择的一个 Agent",
           emptyDescription:
-            "添加 Agent，把 Agent Runtime 和模型方案映射成可复用的会话选项",
-          emptyTitle: "还没有工作区 Agent",
+            "添加一个 Agent，为它选择 Agent Runtime、模型和工作指令",
+          emptyTitle: "还没有自定义 Agent",
           ready: "可用",
           harnessLabel: "Agent Runtime",
           harnessUnavailable: "Agent Runtime 不可用",
@@ -971,8 +969,7 @@ export const zhCN = {
           deleteConfirm: "删除此方案？",
           deleteFailed: "删除失败，请重试",
           deleting: "删除中...",
-          description:
-            "配置具名的模型接入方案——官方订阅、Coding Plan、国内模型、中转服务或自定义接口，供工作区的 Agent 和应用使用",
+          description: "配置模型接口及可用模型，供工作区的 Agent 和应用使用",
           confirmModelRangeImpact: "确认影响并保存",
           detect: "检测连接",
           detectFailed: "连接检测失败，请重试",
@@ -982,7 +979,7 @@ export const zhCN = {
           edit: "编辑",
           editTitle: "编辑 {{plan}}",
           emptyDescription:
-            "点「添加方案」用你的 API 密钥接入订阅、中转或自定义接口",
+            "点「添加方案」，填写接口协议、Base URL、API 密钥和可用模型",
           emptyTitle: "还没有模型方案",
           enabled: "启用 {{plan}}",
           fetchModels: "拉取模型",
@@ -990,7 +987,6 @@ export const zhCN = {
           fetchModelsFailed: "拉取模型失败，请检查凭证与 Base URL 后重试",
           fetchModelsResult: "已拉取 {{count}} 个可选模型",
           fetchingModels: "拉取中...",
-          getApiKey: "获取 {{provider}} API 密钥",
           hideApiKey: "隐藏密钥",
           keepExistingKey: "留空则继续使用已保存的密钥",
           lastDetectedAt: "上次检测 {{time}}",
@@ -1010,23 +1006,6 @@ export const zhCN = {
           nameLabel: "名称",
           namePlaceholder: "我的模型方案",
           neverDetected: "尚未检测",
-          presetLabel: "服务商预设",
-          presets: {
-            agnes: "Agnes",
-            anthropicOfficial: "Anthropic (Claude)",
-            codingPlanAnthropic: "Claude Coding Plan",
-            codingPlanCustom: "其他 Coding Plan",
-            customAnthropic: "自定义 Anthropic 兼容接口",
-            customOpenai: "自定义 OpenAI 兼容接口",
-            deepseekAnthropic: "DeepSeek - Anthropic",
-            deepseekOpenai: "DeepSeek - OpenAI",
-            mimoAnthropic: "MiMo (Xiaomi) - Anthropic",
-            mimoOpenai: "MiMo (Xiaomi) - OpenAI",
-            minimaxAnthropic: "MiniMax - Anthropic",
-            minimaxOpenai: "MiniMax - OpenAI",
-            openaiOfficial: "OpenAI 官方",
-            relayCustom: "中转接入点"
-          },
           protocolLabel: "接口协议",
           protocols: {
             anthropic: "Anthropic 兼容",
@@ -1059,8 +1038,9 @@ export const zhCN = {
               label: "Coding Plan"
             },
             custom: {
-              guidance: "使用你自己的密钥接入任意 OpenAI 或 Anthropic 兼容接口",
-              label: "自定义兼容接口"
+              guidance:
+                "填写 OpenAI 或 Anthropic 兼容接口的 Base URL、API 密钥和模型",
+              label: "模型接口"
             },
             domestic: {
               guidance: "接入 DeepSeek、MiniMax、MiMo 等国内模型服务",
@@ -1075,7 +1055,6 @@ export const zhCN = {
               label: "中转服务"
             }
           },
-          templatePickerTitle: "选择接入方式",
           title: "模型方案",
           toggleFailed: "状态更新失败，请重试"
         }

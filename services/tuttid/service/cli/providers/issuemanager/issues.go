@@ -3,7 +3,9 @@ package issuemanager
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	workflowbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceworkflow"
@@ -393,7 +395,47 @@ func (p Provider) runIssueUpdate(ctx context.Context, invoke framework.InvokeCon
 	if input.DispatchPaused != nil {
 		update.DispatchPaused = *input.DispatchPaused
 	}
-	return p.issues.UpdateIssue(ctx, invoke.WorkspaceID, input.IssueID, update)
+	issue, err := p.issues.UpdateIssue(
+		ctx, invoke.WorkspaceID, input.IssueID, update,
+	)
+	if err == nil {
+		return issue, nil
+	}
+	var managed *workspaceissues.ManagedIssueMutationError
+	resumer, canResume := p.issues.(interface {
+		ResumeTuttiModeIssueExecution(
+			context.Context,
+			string,
+			string,
+			string,
+		) (workspaceissues.Issue, error)
+	})
+	if !errors.As(err, &managed) ||
+		!canResume ||
+		input.DispatchPaused == nil ||
+		*input.DispatchPaused ||
+		input.Title != nil ||
+		input.Content != nil ||
+		input.Status != nil ||
+		input.ReasoningIntensity != nil ||
+		input.OrchestrationIntensity != nil ||
+		input.BudgetMode != nil ||
+		input.TokenBudget != nil ||
+		input.QuotaWaterlinePercent != nil {
+		return nil, err
+	}
+	sourceSessionID := strings.TrimSpace(
+		invoke.Request.Context.AgentSessionID,
+	)
+	if sourceSessionID == "" {
+		return nil, err
+	}
+	return resumer.ResumeTuttiModeIssueExecution(
+		ctx,
+		invoke.WorkspaceID,
+		input.IssueID,
+		sourceSessionID,
+	)
 }
 
 func (p Provider) runIssueDelete(ctx context.Context, invoke framework.InvokeContext, input issueGetInput) (any, error) {

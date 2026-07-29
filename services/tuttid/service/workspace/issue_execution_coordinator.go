@@ -9,6 +9,7 @@ import (
 	"time"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
+	executionbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeexecution"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
 	tuttimodeexecutionservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeexecution"
 )
@@ -226,6 +227,64 @@ func (s IssueManagerService) pauseTuttiModeIssueExecution(
 		}
 	}
 	return running, nil
+}
+
+// ResumeTuttiModeIssueExecution is the source-scoped counterpart to the
+// product-authorized pause path. Generic Issue mutation stays forbidden for a
+// Tutti-owned graph; only its original source Agent may reopen dispatch.
+func (s IssueManagerService) ResumeTuttiModeIssueExecution(
+	ctx context.Context,
+	workspaceID string,
+	issueID string,
+	sourceSessionID string,
+) (workspaceissues.Issue, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	issueID = strings.TrimSpace(issueID)
+	sourceSessionID = strings.TrimSpace(sourceSessionID)
+	if workspaceID == "" || issueID == "" || sourceSessionID == "" {
+		return workspaceissues.Issue{}, workspaceissues.ErrInvalidArgument
+	}
+	issue, changed, err := func() (workspaceissues.Issue, bool, error) {
+		unlock := s.MutationLocks.Lock(workspaceID, issueID)
+		defer unlock()
+
+		detail, err := s.domainService().GetIssueDetail(ctx, workspaceID, issueID)
+		if err != nil {
+			return workspaceissues.Issue{}, false, err
+		}
+		if detail.Issue.PlanningSource != workspaceissues.PlanningSourceTuttiModePlan {
+			return workspaceissues.Issue{}, false, workspaceissues.ErrInvalidArgument
+		}
+		if strings.TrimSpace(detail.Issue.SourceSessionID) != sourceSessionID {
+			return workspaceissues.Issue{}, false, executionbiz.Reject(
+				executionbiz.ErrScheduleRejected,
+				executionbiz.RejectionWrongSourceSession,
+				"",
+			)
+		}
+		if !detail.Issue.DispatchPaused {
+			return detail.Issue, false, nil
+		}
+		issue := detail.Issue
+		issue.DispatchPaused = false
+		issue.UpdatedAtUnixMS = time.Now().UTC().UnixMilli()
+		issue, err = s.Store.UpdateIssue(ctx, issue)
+		if err != nil {
+			return workspaceissues.Issue{}, false, err
+		}
+		return issue, true, nil
+	}()
+	if err != nil {
+		return workspaceissues.Issue{}, err
+	}
+	if changed {
+		s.publishWorkspaceIssueUpdated(ctx, eventstreamservice.WorkspaceIssueUpdate{
+			WorkspaceID: issue.WorkspaceID,
+			IssueID:     issue.IssueID,
+			ChangeKind:  eventstreamservice.WorkspaceIssueChangeIssueUpdated,
+		})
+	}
+	return issue, nil
 }
 
 // CancelIssueExecutionForSourceSession durably archives every nonterminal

@@ -74,6 +74,14 @@ Plans live in an independent top-level Model tab. Custom Agents is the only
 new writable Harness × Plan mapping surface. The legacy Agent binding editor
 must not be mounted elsewhere.
 
+New Model Plans use one endpoint configuration surface: protocol, Base URL,
+API key, and available models. Coding-plan, domestic-provider, relay, and
+custom categories are not separate creation choices, and provider-native
+official subscriptions are not offered when creating a Plan. Historical
+`templateKind` values remain readable so existing Plans retain their display
+and native-login behavior; every new draft is endpoint-backed with `custom`
+compatibility metadata.
+
 Every Agent update increments `revision`. The Desktop `AgentsService` loads
 the current workspace directory and projects each Agent whose Harness is
 available into an `AgentGUIAgent` using the Agent id unchanged. Multiple

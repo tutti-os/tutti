@@ -15,6 +15,10 @@ type issueGetInput struct {
 	IssueID string `cli:"issue-id" validate:"required" description:"Tutti-owned Issue id."`
 }
 
+type issueResumeInput struct {
+	IssueID string `cli:"issue-id" validate:"required" description:"Paused Tutti-owned Issue id."`
+}
+
 func (p Provider) newIssueGetCommand() cliservice.Command {
 	return framework.Register(framework.CommandSpec[issueGetInput]{
 		ID:          appID + ".plan.issue.get",
@@ -28,6 +32,22 @@ func (p Provider) newIssueGetCommand() cliservice.Command {
 		Inputs:      framework.FromStruct[issueGetInput](),
 		Output:      planJSONOutput(framework.ViewDetail),
 		Run:         p.runIssueGet,
+	})
+}
+
+func (p Provider) newIssueResumeCommand() cliservice.Command {
+	return framework.Register(framework.CommandSpec[issueResumeInput]{
+		ID:          appID + ".plan.issue.resume",
+		Path:        []string{"plan", "issue", "resume"},
+		Summary:     "Resume a paused Tutti Mode Issue",
+		Description: "Reopen dispatch for a paused Tutti-owned Issue. Caller authority comes from the invoking source Agent session; generic managed-Issue mutation remains forbidden.",
+		Kind:        framework.KindAction,
+		Visibility:  cliservice.CapabilityVisibilityPublic,
+		Workspace:   framework.WorkspaceRequired,
+		Workspaces:  p.workspaces,
+		Inputs:      framework.FromStruct[issueResumeInput](),
+		Output:      planJSONOutput(framework.ViewSummary),
+		Run:         p.runIssueResume,
 	})
 }
 
@@ -63,6 +83,29 @@ func (p Provider) runIssueGet(
 	return issueExecutionSnapshotJSON(aggregate, detail), nil
 }
 
+func (p Provider) runIssueResume(
+	ctx context.Context,
+	invoke framework.InvokeContext,
+	input issueResumeInput,
+) (any, error) {
+	if err := p.requireResumes(); err != nil {
+		return nil, err
+	}
+	sessionID, err := callerAgentSessionID(invoke)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.resumes.ResumeTuttiModeIssueExecution(
+		ctx,
+		invoke.WorkspaceID,
+		strings.TrimSpace(input.IssueID),
+		sessionID,
+	); err != nil {
+		return nil, agentScheduleError(err, input.IssueID)
+	}
+	return p.runIssueGet(ctx, invoke, issueGetInput(input))
+}
+
 func issueExecutionSnapshotJSON(
 	aggregate executionbiz.Aggregate,
 	detail workspaceissues.IssueDetail,
@@ -90,9 +133,11 @@ func issueExecutionSnapshotJSON(
 		aggregate.Checkpoints,
 		detail.Tasks,
 		len(readyTaskIDs) > 0,
+		detail.Issue.DispatchPaused,
 	)
 	return map[string]any{
-		"issueId": aggregate.Execution.IssueID,
+		"issueId":        aggregate.Execution.IssueID,
+		"dispatchPaused": detail.Issue.DispatchPaused,
 		"execution": map[string]any{
 			"executionId":        aggregate.Execution.ID,
 			"status":             string(aggregate.Execution.Status),
@@ -106,7 +151,11 @@ func issueExecutionSnapshotJSON(
 		"tasks":            tasks,
 		"readyTaskIds":     readyTaskIDs,
 		"allowedActions":   allowedActions,
-		"recoveryHint":     executionRecoveryHint(activeCheckpoint),
+		"recoveryHint": executionRecoveryHint(
+			activeCheckpoint,
+			aggregate.Execution.IssueID,
+			detail.Issue.DispatchPaused,
+		),
 	}
 }
 
@@ -202,6 +251,7 @@ func executionAllowedActions(
 	checkpoints []executionbiz.Checkpoint,
 	tasks []workspaceissues.Task,
 	hasReadyTasks bool,
+	dispatchPaused bool,
 ) []string {
 	if activeCheckpoint == nil ||
 		execution.Status == executionbiz.StatusCompleted ||
@@ -210,31 +260,40 @@ func executionAllowedActions(
 		return []string{}
 	}
 	kind := executionbiz.CheckpointKind(activeCheckpoint["kind"].(string))
+	var actions []string
 	switch kind {
 	case executionbiz.CheckpointKindAllTasksTerminal:
-		return []string{
+		actions = []string{
 			"plan issue complete",
 			"plan issue mutate",
 			"plan issue stop",
 		}
 	case executionbiz.CheckpointKindInitialSchedule:
-		return executionWorkActions(hasReadyTasks)
+		actions = executionWorkActions(hasReadyTasks)
 	case executionbiz.CheckpointKindTaskSettled,
 		executionbiz.CheckpointKindTaskFailed,
 		executionbiz.CheckpointKindTaskCanceled:
-		actions := executionWorkActions(hasReadyTasks)
+		actions = executionWorkActions(hasReadyTasks)
 		if executionCanAcknowledge(checkpoints, tasks) {
 			actions = append(actions, "plan issue acknowledge")
 		}
-		return actions
 	default:
-		actions := executionWorkActions(hasReadyTasks)
+		actions = executionWorkActions(hasReadyTasks)
 		if kind == executionbiz.CheckpointKindWatchdog &&
 			executionCanAcknowledge(checkpoints, tasks) {
 			actions = append(actions, "plan issue acknowledge")
 		}
+	}
+	if !dispatchPaused {
 		return actions
 	}
+	pausedActions := make([]string, 0, len(actions)+1)
+	for _, action := range actions {
+		if action != "plan issue schedule" {
+			pausedActions = append(pausedActions, action)
+		}
+	}
+	return append(pausedActions, "plan issue resume")
 }
 
 func executionWorkActions(hasReadyTasks bool) []string {
@@ -262,9 +321,20 @@ func executionCanAcknowledge(
 	return false
 }
 
-func executionRecoveryHint(activeCheckpoint map[string]any) string {
+func executionRecoveryHint(
+	activeCheckpoint map[string]any,
+	issueID string,
+	dispatchPaused bool,
+) string {
 	if activeCheckpoint == nil {
 		return "No active checkpoint accepts a source-Agent command"
+	}
+	if dispatchPaused {
+		return "Resume dispatch with `tutti plan issue resume --issue-id " +
+			strings.TrimSpace(issueID) +
+			" --json` (or `tutti issue update --issue-id " +
+			strings.TrimSpace(issueID) +
+			" --dispatch-paused=false --json` for a source Session whose frozen command snapshot predates resume), then use this checkpoint without guessing a new revision"
 	}
 	switch executionbiz.CheckpointKind(activeCheckpoint["kind"].(string)) {
 	case executionbiz.CheckpointKindTaskFailed,

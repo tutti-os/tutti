@@ -73,6 +73,15 @@ type IssueDetails interface {
 	) (workspaceissues.IssueDetail, error)
 }
 
+type IssueResumes interface {
+	ResumeTuttiModeIssueExecution(
+		context.Context,
+		string,
+		string,
+		string,
+	) (workspaceissues.Issue, error)
+}
+
 type IssueExecutionReads interface {
 	GetByIssue(
 		context.Context,
@@ -92,6 +101,7 @@ type Provider struct {
 	acknowledgements IssueAcknowledgements
 	completions      IssueCompletions
 	archives         IssueArchives
+	resumes          IssueResumes
 }
 
 func NewProvider(
@@ -157,6 +167,9 @@ func NewProviderWithExecutionSnapshot(
 	)
 	provider.issueDetails = issueDetails
 	provider.executionReads = executionReads
+	if resumes, ok := issueDetails.(IssueResumes); ok {
+		provider.resumes = resumes
+	}
 	return provider
 }
 
@@ -180,6 +193,9 @@ func (p Provider) Commands() []cliservice.Command {
 	}
 	if p.issueDetails != nil && p.executionReads != nil {
 		commands = append(commands, p.newIssueGetCommand())
+	}
+	if p.resumes != nil {
+		commands = append(commands, p.newIssueResumeCommand())
 	}
 	return commands
 }
@@ -222,6 +238,13 @@ func (p Provider) requireAcknowledgements() error {
 func (p Provider) requirePlans() error {
 	if p.plans == nil {
 		return cliservice.ServiceUnavailableError("Tutti Mode Plan service is unavailable", nil)
+	}
+	return nil
+}
+
+func (p Provider) requireResumes() error {
+	if p.resumes == nil {
+		return cliservice.ServiceUnavailableError("Tutti Mode execution service is unavailable", nil)
 	}
 	return nil
 }

@@ -61,6 +61,7 @@ type controlledClock struct {
 type recordingAutomationTurnCanceller struct {
 	mu            sync.Mutex
 	cancellations []tuttimodeexecutionconformance.AutomationTurnCancellation
+	failNext      bool
 }
 
 func (canceller *recordingAutomationTurnCanceller) CancelAutomationTurn(
@@ -71,6 +72,10 @@ func (canceller *recordingAutomationTurnCanceller) CancelAutomationTurn(
 ) error {
 	canceller.mu.Lock()
 	defer canceller.mu.Unlock()
+	if canceller.failNext {
+		canceller.failNext = false
+		return errors.New("injected automation Turn cancellation failure")
+	}
 	canceller.cancellations = append(
 		canceller.cancellations,
 		tuttimodeexecutionconformance.AutomationTurnCancellation{
@@ -78,6 +83,12 @@ func (canceller *recordingAutomationTurnCanceller) CancelAutomationTurn(
 		},
 	)
 	return nil
+}
+
+func (driver *sqliteConformanceDriver) FailNextAutomationTurnCancellation() {
+	driver.automationTurns.mu.Lock()
+	defer driver.automationTurns.mu.Unlock()
+	driver.automationTurns.failNext = true
 }
 
 func (clock *controlledClock) Now() time.Time {

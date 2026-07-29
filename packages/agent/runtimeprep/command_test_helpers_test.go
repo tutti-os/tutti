@@ -77,6 +77,7 @@ func testCommandCapabilities() []CommandCapability {
 		command("issue-manager.issue.task.run.complete", []string{"issue", "task", "run", "complete"}, []string{"issue-id", "task-id", "run-id", "status"}, []string{"summary", "outputs"}),
 		command("issue-manager.issue.topic.list", []string{"issue", "topic", "list"}, []string{"issue-id"}, nil),
 		command("tutti-mode-plan.plan.issue.get", []string{"plan", "issue", "get"}, []string{"issue-id"}, nil),
+		command("tutti-mode-plan.plan.issue.resume", []string{"plan", "issue", "resume"}, []string{"issue-id"}, nil),
 		command("workspace-apps.app.open", []string{"app", "open"}, []string{"app-id"}, nil),
 		command("references.task.list", []string{"reference", "list"}, []string{"source", "id"}, []string{"group-id"}),
 		command("agent-context.agent.list", []string{"agent", "list"}, nil, []string{"agent-id"}),
