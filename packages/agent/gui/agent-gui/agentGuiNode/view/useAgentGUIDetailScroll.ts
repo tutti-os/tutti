@@ -324,6 +324,7 @@ export function useAgentGUIDetailScroll(input: Input) {
       }
       const measuredSafeArea = readBottomDockSafeArea(bottomDock);
       if (
+        forceMeasurement &&
         cachedSafeArea?.bottomDock === bottomDock &&
         cachedSafeArea.timelineOverflowHeight ===
           measuredSafeArea.timelineOverflowHeight &&
