@@ -2756,11 +2756,17 @@ export type WorkspaceAgentSessionPageResponse = {
   page: WorkspaceAgentSessionPage;
 };
 
+/**
+ * Selects which provider data-export archive format to parse. Omit for backward compatibility with clients that only send archivePath; the daemon then defaults to the Claude data-export format.
+ */
+export type ExternalAgentImportArchiveKind = "claude" | "chatgpt";
+
 export type ExternalAgentImportScanRequest = {
   /**
    * Absolute path to a supported provider data-export ZIP archive. When supplied, scan the archive instead of local CLI history.
    */
   archivePath?: string;
+  archiveKind?: ExternalAgentImportArchiveKind;
   providers?: Array<WorkspaceAgentProvider>;
   /**
    * Limit the scan to conversations updated within the last N days. Omit or 0 for the default 30-day window; a negative value scans all available history.
@@ -2790,7 +2796,7 @@ export type ExternalAgentImportSession = {
   id: string;
   projectPath: string;
   provider: WorkspaceAgentProvider;
-  sourcePath: string;
+  sourcePath?: string | null;
   title: string;
   messageCount: number;
   lastUpdatedAtUnixMs?: number | null;
@@ -2823,6 +2829,7 @@ export type ImportExternalAgentSessionsRequest = {
    * Absolute path to the same provider data-export ZIP archive used for the preceding scan. The daemon revalidates and rereads the archive before importing the selected conversations.
    */
   archivePath?: string;
+  archiveKind?: ExternalAgentImportArchiveKind;
   projects: Array<ExternalAgentImportProjectSelection>;
   registerUserProjects?: boolean;
   importSessions?: boolean;

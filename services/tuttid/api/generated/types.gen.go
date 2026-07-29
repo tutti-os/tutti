@@ -1681,6 +1681,24 @@ func (e DesktopWorkbenchWindowSnappingShortcutPreset) Valid() bool {
 	}
 }
 
+// Defines values for ExternalAgentImportArchiveKind.
+const (
+	Chatgpt ExternalAgentImportArchiveKind = "chatgpt"
+	Claude  ExternalAgentImportArchiveKind = "claude"
+)
+
+// Valid indicates whether the value is a known member of the ExternalAgentImportArchiveKind enum.
+func (e ExternalAgentImportArchiveKind) Valid() bool {
+	switch e {
+	case Chatgpt:
+		return true
+	case Claude:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatusResponseStatus.
 const (
 	Ok HealthStatusResponseStatus = "ok"
@@ -5400,6 +5418,9 @@ type ExportWorkspaceAppResponse struct {
 	WorkspaceId       string `json:"workspaceId"`
 }
 
+// ExternalAgentImportArchiveKind Selects which provider data-export archive format to parse. Omit for backward compatibility with clients that only send archivePath; the daemon then defaults to the Claude data-export format.
+type ExternalAgentImportArchiveKind string
+
 // ExternalAgentImportError defines model for ExternalAgentImportError.
 type ExternalAgentImportError struct {
 	Message    string                  `json:"message"`
@@ -5445,6 +5466,9 @@ type ExternalAgentImportResultResponse struct {
 
 // ExternalAgentImportScanRequest defines model for ExternalAgentImportScanRequest.
 type ExternalAgentImportScanRequest struct {
+	// ArchiveKind Selects which provider data-export archive format to parse. Omit for backward compatibility with clients that only send archivePath; the daemon then defaults to the Claude data-export format.
+	ArchiveKind *ExternalAgentImportArchiveKind `json:"archiveKind,omitempty"`
+
 	// ArchivePath Absolute path to a supported provider data-export ZIP archive. When supplied, scan the archive instead of local CLI history.
 	ArchivePath *string `json:"archivePath,omitempty"`
 
@@ -5471,7 +5495,7 @@ type ExternalAgentImportSession struct {
 	MessageCount        int                    `json:"messageCount"`
 	ProjectPath         string                 `json:"projectPath"`
 	Provider            WorkspaceAgentProvider `json:"provider"`
-	SourcePath          string                 `json:"sourcePath"`
+	SourcePath          *string                `json:"sourcePath,omitempty"`
 	Title               string                 `json:"title"`
 }
 
@@ -5527,6 +5551,9 @@ type HealthStatusResponseStatus string
 
 // ImportExternalAgentSessionsRequest defines model for ImportExternalAgentSessionsRequest.
 type ImportExternalAgentSessionsRequest struct {
+	// ArchiveKind Selects which provider data-export archive format to parse. Omit for backward compatibility with clients that only send archivePath; the daemon then defaults to the Claude data-export format.
+	ArchiveKind *ExternalAgentImportArchiveKind `json:"archiveKind,omitempty"`
+
 	// ArchivePath Absolute path to the same provider data-export ZIP archive used for the preceding scan. The daemon revalidates and rereads the archive before importing the selected conversations.
 	ArchivePath          *string                               `json:"archivePath,omitempty"`
 	ImportSessions       *bool                                 `json:"importSessions,omitempty"`

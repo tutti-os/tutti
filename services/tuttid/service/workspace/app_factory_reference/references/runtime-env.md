@@ -150,7 +150,7 @@ const uploaded = await window.tuttiExternal?.files?.upload?.(file, {
   onProgress(progress) {
     console.log(progress.loadedBytes, progress.totalBytes, progress.ratio);
   },
-  signal: abortController.signal,
+  signal: abortController.signal
 });
 ```
 
@@ -170,7 +170,7 @@ When a workspace app runs inside Tutti Desktop, prefer writing browser-side diag
 window.tuttiExternal?.logs?.write?.({
   event: "page.loaded",
   level: "info",
-  details: { route: location.pathname },
+  details: { route: location.pathname }
 });
 ```
 

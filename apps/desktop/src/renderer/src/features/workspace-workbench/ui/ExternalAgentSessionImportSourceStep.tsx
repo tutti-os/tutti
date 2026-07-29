@@ -1,4 +1,7 @@
-import type { WorkspaceAgentProvider } from "@tutti-os/client-tuttid-ts";
+import type {
+  ExternalAgentImportArchiveKind,
+  WorkspaceAgentProvider
+} from "@tutti-os/client-tuttid-ts";
 import { Button, Checkbox, UploadIcon } from "@tutti-os/ui-system";
 import { useTranslation } from "@renderer/i18n";
 import { resolveWorkspaceAgentGuiLabel } from "../services/workspaceAgentProviderCatalog";
@@ -17,7 +20,7 @@ export function ExternalAgentSessionImportSourceStep({
   selectedProviders
 }: {
   disabled: boolean;
-  onSelectArchive: () => void;
+  onSelectArchive: (archiveKind: ExternalAgentImportArchiveKind) => void;
   onToggle: (provider: WorkspaceAgentProvider, checked: boolean) => void;
   providers: WorkspaceAgentProvider[];
   selectedProviders: Set<WorkspaceAgentProvider>;
@@ -54,26 +57,59 @@ export function ExternalAgentSessionImportSourceStep({
           })}
         </div>
       </div>
-      <div className="flex items-center gap-4 rounded-[8px] border border-[var(--border-1)] bg-[var(--transparency-block)] p-3">
-        <div className="min-w-0 flex-1">
-          <strong className="block text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.externalImport.archiveOptionTitle")}
-          </strong>
-          <p className="mb-0 mt-1 text-[12px] leading-[1.4] text-[var(--text-secondary)]">
-            {t("workspace.externalImport.archiveOptionDescription")}
-          </p>
-        </div>
-        <Button
+      <div className="flex flex-col gap-2">
+        <ExternalImportArchiveCard
           disabled={disabled}
-          size="sm"
-          type="button"
-          variant="secondary"
-          onClick={onSelectArchive}
-        >
-          <UploadIcon className="size-4" />
-          {t("workspace.externalImport.chooseArchive")}
-        </Button>
+          title={t("workspace.externalImport.archiveOptionTitle")}
+          description={t("workspace.externalImport.archiveOptionDescription")}
+          buttonLabel={t("workspace.externalImport.chooseArchive")}
+          onSelect={() => onSelectArchive("claude")}
+        />
+        <ExternalImportArchiveCard
+          disabled={disabled}
+          title={t("workspace.externalImport.chatgptOptionTitle")}
+          description={t("workspace.externalImport.chatgptOptionDescription")}
+          buttonLabel={t("workspace.externalImport.chooseChatgptArchive")}
+          onSelect={() => onSelectArchive("chatgpt")}
+        />
       </div>
+    </div>
+  );
+}
+
+function ExternalImportArchiveCard({
+  buttonLabel,
+  description,
+  disabled,
+  onSelect,
+  title
+}: {
+  buttonLabel: string;
+  description: string;
+  disabled: boolean;
+  onSelect: () => void;
+  title: string;
+}) {
+  return (
+    <div className="flex items-center gap-4 rounded-[8px] border border-[var(--border-1)] bg-[var(--transparency-block)] p-3">
+      <div className="min-w-0 flex-1">
+        <strong className="block text-[13px] font-semibold text-[var(--text-primary)]">
+          {title}
+        </strong>
+        <p className="mb-0 mt-1 text-[12px] leading-[1.4] text-[var(--text-secondary)]">
+          {description}
+        </p>
+      </div>
+      <Button
+        disabled={disabled}
+        size="sm"
+        type="button"
+        variant="secondary"
+        onClick={onSelect}
+      >
+        <UploadIcon className="size-4" />
+        {buttonLabel}
+      </Button>
     </div>
   );
 }
