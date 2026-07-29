@@ -9,8 +9,8 @@ const (
 	CursorTargetID               = "local:cursor"
 	TuttiAgentProviderID         = canonical.TuttiAgentProviderID
 	TuttiAgentTargetID           = "local:tutti-agent"
-	TuttiAgentMinVersion         = "0.0.8"
-	TuttiAgentRecommendedVersion = "0.0.8"
+	TuttiAgentMinVersion         = "0.0.10"
+	TuttiAgentRecommendedVersion = "0.0.10"
 	NexightProviderID            = canonical.NexightProviderID
 	NexightTargetID              = "local:nexight"
 	OpenClawProviderID           = canonical.OpenClawProviderID
