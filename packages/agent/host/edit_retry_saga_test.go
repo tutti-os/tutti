@@ -83,6 +83,38 @@ func TestEditRetrySagaDoesNotRedispatchAmbiguousRollback(t *testing.T) {
 	}
 }
 
+func TestEditRetryFenceBlocksOrdinarySendButAllowsTypedGoalControl(t *testing.T) {
+	host, _, runtime := newHostEditRetryFixture(t)
+	runtime.mu.Lock()
+	runtime.rollbackUnknown = true
+	runtime.mu.Unlock()
+	ref := agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"}
+	if _, err := host.EditRetry(t.Context(), ref, "turn-original", agenthost.EditRetryInput{
+		EditedText: "edited prompt", ClientOperationID: "edit-fence", ExpectedHistoryRevision: 0,
+	}); !errors.Is(err, agenthost.ErrEditRetryInProgress) {
+		t.Fatalf("EditRetry() error = %v, want ErrEditRetryInProgress", err)
+	}
+	if _, err := host.SendInput(t.Context(), ref, agenthost.SendInput{
+		Content: []agenthost.PromptContentBlock{{Type: "text", Text: "ordinary send"}},
+	}); !errors.Is(err, agenthost.ErrEditRetryInProgress) {
+		t.Fatalf("ordinary SendInput() error = %v, want ErrEditRetryInProgress", err)
+	}
+	result, err := host.SendInput(t.Context(), ref, agenthost.SendInput{
+		Content: []agenthost.PromptContentBlock{{Type: "text", Text: "/goal pause"}},
+	})
+	if err != nil {
+		t.Fatalf("typed goal SendInput() error = %v", err)
+	}
+	if result.Kind != "goalControl" || result.GoalControl == nil {
+		t.Fatalf("typed goal SendInput() result = %#v", result)
+	}
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	if runtime.goalControlCalls != 1 {
+		t.Fatalf("goal-control calls = %d, want 1", runtime.goalControlCalls)
+	}
+}
+
 func TestEditRetrySagaReconcilesAcceptedReplacementAfterResponseLoss(t *testing.T) {
 	host, _, runtime := newHostEditRetryFixture(t)
 	runtime.mu.Lock()
@@ -372,7 +404,7 @@ func newHostEditRetryFixture(t *testing.T) (*agenthost.Host, *storesqlite.Store,
 	host := agenthost.New(agenthost.Config{
 		CanonicalStore:  sqliteCanonicalStore{Store: store},
 		TurnSubmissions: store, EffectiveHistory: store, RuntimeOperations: store,
-		Runtime: runtime, HistoryRuntime: runtime, OperationOwner: "worker-1",
+		Runtime: runtime, HistoryRuntime: runtime, GoalRuntime: runtime, OperationOwner: "worker-1",
 	})
 	return host, store, runtime
 }
@@ -389,6 +421,7 @@ type hostEditRetryRuntime struct {
 	execOutcomeUnknownAccepted  bool
 	execNotDispatchedBeforeTurn bool
 	reconcileAcceptanceCalls    int
+	goalControlCalls            int
 	content                     []agenthost.PromptContentBlock
 }
 
@@ -510,6 +543,12 @@ func (r *hostEditRetryRuntime) ReconcileProviderTurnAcceptance(
 }
 func (*hostEditRetryRuntime) ValidatePromptContent(context.Context, agenthost.RuntimeExecInput) error {
 	return nil
+}
+func (r *hostEditRetryRuntime) GoalControl(context.Context, agenthost.RuntimeGoalControlInput) (agenthost.RuntimeGoalControlResult, error) {
+	r.mu.Lock()
+	r.goalControlCalls++
+	r.mu.Unlock()
+	return agenthost.RuntimeGoalControlResult{}, nil
 }
 func (*hostEditRetryRuntime) Cancel(context.Context, agenthost.RuntimeCancelInput) (agenthost.RuntimeCancelResult, error) {
 	return agenthost.RuntimeCancelResult{}, nil

@@ -356,9 +356,6 @@ func (h *Host) SendInput(ctx context.Context, ref SessionRef, input SendInput) (
 	if h == nil || h.runtime == nil || h.store == nil || ref.WorkspaceID == "" || ref.AgentSessionID == "" {
 		return SendInputResult{}, ErrInvalidArgument
 	}
-	if err := h.requireSendAllowedByEffectiveHistory(ctx, ref); err != nil {
-		return SendInputResult{}, err
-	}
 	normalized, promptText, err := normalizePromptContent(input.Content)
 	if err != nil {
 		return SendInputResult{}, err
