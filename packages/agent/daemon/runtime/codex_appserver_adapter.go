@@ -248,9 +248,13 @@ type codexAppServerSession struct {
 	provenanceDegraded bool
 	// goalMutationMu is the provider-side half of the Host goal mutation lane. It serializes
 	// direct control, reconcile and delayed continuation nudges for this thread.
-	goalMutationMu         sync.Mutex
-	models                 []map[string]any
-	startupModelsReady     bool
+	goalMutationMu     sync.Mutex
+	models             []map[string]any
+	startupModelsReady bool
+	// startupModelsFallback is true while the session is advertising the local
+	// ChatGPT-subscription catalog because live model/list has not resolved yet.
+	// Background refresh keeps running until a live catalog replaces it.
+	startupModelsFallback  bool
 	startupRateLimitsReady bool
 	// lifecycleSeq numbers the adapter's TurnLifecycle snapshots (ADR 0008):
 	// monotonically increasing per session so consumers receiving snapshots

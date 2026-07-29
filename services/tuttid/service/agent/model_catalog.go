@@ -16,8 +16,9 @@ import (
 )
 
 const (
-	codexModelCacheTTL      = 30 * time.Second
-	codexModelErrorCacheTTL = 5 * time.Second
+	codexModelCacheTTL         = 30 * time.Second
+	codexModelErrorCacheTTL    = 5 * time.Second
+	codexModelFallbackCacheTTL = 5 * time.Second
 )
 
 type AgentModelOption = modelcatalog.ModelOption
@@ -112,16 +113,18 @@ func agentModelCatalogSpecFromDescriptor(descriptor providerregistry.ProviderDes
 			return agentModelCatalogSpec{}, false, err
 		}
 		return agentModelCatalogSpec{
-			source: string(descriptor.ComposerProfile.ModelCatalog),
-			ttl:    codexModelCacheTTL,
-			errTTL: codexModelErrorCacheTTL,
+			source:      string(descriptor.ComposerProfile.ModelCatalog),
+			ttl:         codexModelCacheTTL,
+			errTTL:      codexModelErrorCacheTTL,
+			fallbackTTL: codexModelFallbackCacheTTL,
 			lister: func(c *CachedAgentModelCatalog, _ AgentModelCatalogInput) AgentModelLister {
 				if c.Codex != nil {
 					return c.Codex
 				}
 				return CodexCLIModelLister{
-					Command: command[0],
-					Args:    append([]string(nil), command[1:]...),
+					Command:            command[0],
+					Args:               append([]string(nil), command[1:]...),
+					UseChatGPTFallback: true,
 				}
 			},
 			configuredDefaultModel:    readCodexConfiguredDefaultModel,
@@ -222,6 +225,10 @@ func (c *CachedAgentModelCatalog) ListModels(ctx context.Context, input AgentMod
 	configuredDefaultModel := spec.configuredDefaultModel()
 	models := applyConfiguredDefaultModel(listResult.Models, configuredDefaultModel, spec.missingDefaultDescription)
 	source := spec.source
+	if listResult.IsFallback {
+		source = modelcatalog.CodexChatGPTFallbackSource
+		err = nil
+	}
 	if configuredDefaultModel != "" && spec.configuredModelOnly != nil && spec.configuredModelOnly(listResult.Models, configuredDefaultModel) {
 		models = []AgentModelOption{{
 			ID:          configuredDefaultModel,

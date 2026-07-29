@@ -58,6 +58,28 @@ func codexAppServerNeedsSynchronousModels(session Session) bool {
 		strings.TrimSpace(settings.ReasoningEffort) != ""
 }
 
+func isCodexChatGPTAccount(account map[string]any) bool {
+	return strings.EqualFold(strings.TrimSpace(asString(account["type"])), "chatgpt")
+}
+
+// resolveCodexStartupModels prefers a live model/list catalog. For ChatGPT
+// subscription accounts, an empty/slow live result falls back to the local
+// bundled subscription catalog so the picker is usable immediately while
+// background refresh continues.
+func resolveCodexStartupModels(account map[string]any, models []map[string]any) (resolved []map[string]any, usedFallback bool) {
+	if len(models) > 0 {
+		return models, false
+	}
+	if !isCodexChatGPTAccount(account) {
+		return nil, false
+	}
+	fallback := modelcatalog.CodexChatGPTFallbackAppServerModels()
+	if len(fallback) == 0 {
+		return nil, false
+	}
+	return fallback, true
+}
+
 func codexAppServerSessionDefaultModel(session Session, models []map[string]any) string {
 	return firstNonEmpty(strings.TrimSpace(session.SettingsValue().Model), codexAppServerDefaultModel(models))
 }
@@ -119,6 +141,16 @@ func (a *CodexAppServerAdapter) applyStartupModels(
 	threadResult json.RawMessage,
 	models []map[string]any,
 ) bool {
+	return a.applyStartupModelsWithFallback(agentSessionID, session, threadResult, models, false)
+}
+
+func (a *CodexAppServerAdapter) applyStartupModelsWithFallback(
+	agentSessionID string,
+	session Session,
+	threadResult json.RawMessage,
+	models []map[string]any,
+	fallback bool,
+) bool {
 	if len(models) == 0 {
 		return false
 	}
@@ -138,7 +170,21 @@ func (a *CodexAppServerAdapter) applyStartupModels(
 	appSession.models = cloneCodexAppServerModels(models)
 	appSession.defaultModel = codexAppServerSessionDefaultModel(effectiveSession, models)
 	appSession.startupModelsReady = true
+	appSession.startupModelsFallback = fallback
 	return true
+}
+
+func (a *CodexAppServerAdapter) startupModelsNeedLiveRefresh(agentSessionID string) bool {
+	if a == nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if appSession == nil {
+		return false
+	}
+	return !appSession.startupModelsReady || appSession.startupModelsFallback
 }
 
 func codexAppServerConfigOptionDescriptors(

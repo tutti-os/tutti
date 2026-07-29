@@ -125,6 +125,7 @@ type codexAppServerSessionStateSnapshot struct {
 	account                map[string]any
 	rateLimits             map[string]any
 	startupModelsReady     bool
+	startupModelsFallback  bool
 	startupRateLimitsReady bool
 	goal                   map[string]any
 	authState              string
@@ -156,6 +157,7 @@ func (a *CodexAppServerAdapter) snapshotSessionState(agentSessionID string) (cod
 		account:                clonePayload(appSession.account),
 		rateLimits:             clonePayload(appSession.rateLimits),
 		startupModelsReady:     appSession.startupModelsReady,
+		startupModelsFallback:  appSession.startupModelsFallback,
 		startupRateLimitsReady: appSession.startupRateLimitsReady,
 		goal:                   clonePayload(appSession.goal),
 		authState:              strings.TrimSpace(appSession.authState),

@@ -346,12 +346,11 @@ func (a *CodexAppServerAdapter) refreshStartupMetadataAsync(
 	}()
 }
 
-// retryStartupModels re-fetches the codex model/list until it returns a
-// non-empty list (and the startup state resolves to "ready"), the session is
+// retryStartupModels re-fetches the codex model/list until a live non-empty
+// catalog arrives (clearing any ChatGPT subscription fallback), the session is
 // torn down, the context is canceled, or the bounded backoff budget is
-// exhausted. A single transient empty/slow response therefore no longer pins
-// the composer's model options at "loading" forever — the previous code fetched
-// exactly once and silently left the state stuck on failure.
+// exhausted. Fallback catalogs keep the picker usable immediately, but this
+// loop continues until a live model/list replaces them.
 func (a *CodexAppServerAdapter) retryStartupModels(
 	ctx context.Context,
 	agentSessionID string,
@@ -372,11 +371,22 @@ func (a *CodexAppServerAdapter) retryStartupModels(
 			return false
 		}
 		models := fetch(ctx)
+		if len(models) == 0 {
+			if attempt == len(backoffs) {
+				break
+			}
+			if sleep != nil && !sleep(ctx, backoffs[attempt]) {
+				return false
+			}
+			continue
+		}
+		wasFallback := a.startupModelsNeedLiveRefresh(agentSessionID)
 		if a.applyStartupModels(agentSessionID, session, threadResult, models) {
-			if attempt > 0 {
+			if attempt > 0 || wasFallback {
 				slog.Info("agent session app-server model list resolved after retry",
 					"agent_session_id", agentSessionID,
 					"attempts", attempt+1,
+					"replaced_fallback", wasFallback,
 				)
 			}
 			return true

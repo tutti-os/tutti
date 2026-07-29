@@ -71,8 +71,16 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 	if codexAppServerNeedsSynchronousModels(session) {
 		models = a.fetchModels(ctx, client, session, trace)
 	}
+	models, usedFallback := resolveCodexStartupModels(account, models)
+	hasExplicitModel := strings.TrimSpace(session.SettingsValue().Model) != ""
 	if len(models) > 0 {
 		effectiveSettings := codexAppServerEffectiveSettings(models, session, nil)
+		if usedFallback && !hasExplicitModel {
+			// Fallback catalog defaults must not become the thread/start model
+			// override. Keep Model empty so the provider picks its live default
+			// until model/list resolves.
+			effectiveSettings.Model = ""
+		}
 		session.Settings = &effectiveSettings
 	}
 	planModeMask, defaultModeMask := a.fetchCollaborationModeMasks(ctx, client, session, trace)
@@ -125,6 +133,14 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 		"agent_session_id", session.AgentSessionID,
 		"provider_session_id", threadID,
 	)
+	if usedFallback {
+		slog.Info("agent session app-server using chatgpt model list fallback",
+			"event", "agent_session.app_server.models.fallback",
+			"provider", a.config.provider,
+			"agent_session_id", session.AgentSessionID,
+			"model_count", len(models),
+		)
+	}
 
 	liveState := newACPLiveState()
 	liveState.currentMode = codexACPEffectiveModeID(session)
@@ -134,6 +150,10 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 
 	started = true
 	keepSession = true
+	storedDefaultModel := codexAppServerSessionDefaultModel(session, models)
+	if usedFallback && !hasExplicitModel {
+		storedDefaultModel = ""
+	}
 	a.storeSession(session.AgentSessionID, &codexAppServerSession{
 		client:                 client,
 		threadID:               threadID,
@@ -141,15 +161,16 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 		account:                account,
 		models:                 cloneCodexAppServerModels(models),
 		startupModelsReady:     len(models) > 0,
+		startupModelsFallback:  usedFallback,
 		startupRateLimitsReady: false,
 		planModeMask:           planModeMask,
 		defaultModeMask:        defaultModeMask,
-		defaultModel:           codexAppServerSessionDefaultModel(session, models),
+		defaultModel:           storedDefaultModel,
 		authState:              "authenticated",
 		acpLiveState:           liveState,
 		pendingRequests:        make(map[string]*pendingInteractiveRequest),
 	})
-	a.refreshStartupMetadataAsync(session, threadResult, len(models) == 0, a.config.rateLimits, trace)
+	a.refreshStartupMetadataAsync(session, threadResult, len(models) == 0 || usedFallback, a.config.rateLimits, trace)
 	a.emitCommandSnapshot(AgentSessionCommandSnapshot{
 		AgentSessionID: strings.TrimSpace(session.AgentSessionID),
 		Commands:       codexAppServerCommands(),
@@ -218,6 +239,7 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) (er
 	if codexAppServerNeedsSynchronousModels(session) {
 		models = a.fetchModels(ctx, client, session, trace)
 	}
+	models, usedFallback := resolveCodexStartupModels(account, models)
 	if len(models) > 0 && strings.TrimSpace(session.SettingsValue().ReasoningEffort) != "" {
 		hasExplicitModel := strings.TrimSpace(session.SettingsValue().Model) != ""
 		effectiveSettings := codexAppServerEffectiveSettings(models, session, nil)
@@ -283,6 +305,7 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) (er
 		account:                account,
 		models:                 cloneCodexAppServerModels(models),
 		startupModelsReady:     len(models) > 0,
+		startupModelsFallback:  usedFallback,
 		startupRateLimitsReady: false,
 		planModeMask:           planModeMask,
 		defaultModeMask:        defaultModeMask,
@@ -291,7 +314,7 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) (er
 		acpLiveState:           liveState,
 		pendingRequests:        make(map[string]*pendingInteractiveRequest),
 	})
-	a.refreshStartupMetadataAsync(session, threadResult, len(models) == 0, a.config.rateLimits, trace)
+	a.refreshStartupMetadataAsync(session, threadResult, len(models) == 0 || usedFallback, a.config.rateLimits, trace)
 	// Mirror Start: push the command snapshot so a resumed session advertises
 	// review/compact/undo to the GUI (otherwise the slash palette and the
 	// review picker only work on freshly created sessions).

@@ -5,6 +5,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/modelcatalog"
 )
 
 func startupModelsTestSession(adapter *CodexAppServerAdapter) Session {
@@ -22,6 +24,89 @@ func startupModelsReadyFlag(adapter *CodexAppServerAdapter, agentSessionID strin
 		return appSession.startupModelsReady
 	}
 	return false
+}
+
+func startupModelsFallbackFlag(adapter *CodexAppServerAdapter, agentSessionID string) bool {
+	adapter.mu.Lock()
+	defer adapter.mu.Unlock()
+	if appSession := adapter.sessions[agentSessionID]; appSession != nil {
+		return appSession.startupModelsFallback
+	}
+	return false
+}
+
+func TestResolveCodexStartupModelsUsesChatGPTFallback(t *testing.T) {
+	t.Parallel()
+
+	live := []map[string]any{{"id": "live-model", "model": "live-model"}}
+	resolved, fallback := resolveCodexStartupModels(map[string]any{"type": "chatgpt"}, live)
+	if fallback {
+		t.Fatal("expected live models to skip fallback")
+	}
+	if len(resolved) != 1 || asString(resolved[0]["id"]) != "live-model" {
+		t.Fatalf("resolved = %#v", resolved)
+	}
+
+	resolved, fallback = resolveCodexStartupModels(map[string]any{"type": "apiKey"}, nil)
+	if fallback || len(resolved) != 0 {
+		t.Fatalf("apiKey empty list = %#v fallback=%v", resolved, fallback)
+	}
+
+	resolved, fallback = resolveCodexStartupModels(map[string]any{"type": "chatgpt"}, nil)
+	if !fallback {
+		t.Fatal("expected chatgpt empty list to use fallback")
+	}
+	want := modelcatalog.CodexChatGPTFallbackAppServerModels()
+	if len(resolved) != len(want) || len(resolved) == 0 {
+		t.Fatalf("fallback count = %d, want %d", len(resolved), len(want))
+	}
+}
+
+func TestRetryStartupModelsReplacesChatGPTFallback(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewCodexAppServerAdapter(newScriptedAppServerTransport())
+	adapter.startupModelRetryBackoffs = []time.Duration{0, 0, 0}
+	session := startupModelsTestSession(adapter)
+	fallback := modelcatalog.CodexChatGPTFallbackAppServerModels()
+	if !adapter.applyStartupModelsWithFallback(session.AgentSessionID, session, nil, fallback, true) {
+		t.Fatal("apply fallback = false, want true")
+	}
+	if !startupModelsFallbackFlag(adapter, session.AgentSessionID) {
+		t.Fatal("startupModelsFallback = false after seeding fallback")
+	}
+
+	calls := 0
+	fetch := func(context.Context) []map[string]any {
+		calls++
+		if calls < 2 {
+			return nil
+		}
+		return []map[string]any{{"id": "gpt-5.6-terra", "model": "gpt-5.6-terra", "displayName": "GPT-5.6 Terra"}}
+	}
+	resolved := adapter.retryStartupModels(
+		context.Background(),
+		session.AgentSessionID,
+		session,
+		nil,
+		fetch,
+		func(context.Context, time.Duration) bool { return true },
+	)
+	if !resolved {
+		t.Fatal("retryStartupModels = false, want true after live models arrive")
+	}
+	if calls != 2 {
+		t.Fatalf("fetch calls = %d, want 2", calls)
+	}
+	if startupModelsFallbackFlag(adapter, session.AgentSessionID) {
+		t.Fatal("startupModelsFallback still true after live refresh")
+	}
+	adapter.mu.Lock()
+	models := adapter.sessions[session.AgentSessionID].models
+	adapter.mu.Unlock()
+	if len(models) != 1 || asString(models[0]["id"]) != "gpt-5.6-terra" {
+		t.Fatalf("models after refresh = %#v", models)
+	}
 }
 
 // A single transient empty/slow model/list response must not pin the session at

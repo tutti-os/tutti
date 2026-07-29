@@ -34,6 +34,9 @@ type CodexCLIModelLister struct {
 	HomeDir          func() (string, error)
 	IsExecutableFile func(string) bool
 	LookPath         func(string) (string, error)
+	// UseChatGPTFallback serves the bundled ChatGPT-subscription catalog when
+	// live model/list is empty or fails. Enable only for the Codex provider.
+	UseChatGPTFallback bool
 }
 
 type truncatingBuffer struct {
@@ -124,8 +127,20 @@ func (l CodexCLIModelLister) ListModels(ctx context.Context) (AgentModelListResu
 	}()
 
 	models, err := requestCodexModelList(stdin, stdout, l.clientName())
-	if err == nil {
+	if err == nil && len(models) > 0 {
 		return AgentModelListResult{Models: models}, nil
+	}
+	if l.UseChatGPTFallback {
+		if fallback := modelcatalog.CodexChatGPTFallbackModelOptions(); len(fallback) > 0 {
+			// ChatGPT subscription model/list often times out (~5s in Codex).
+			// Serve the bundled subscription catalog immediately so the
+			// composer stays usable; CachedAgentModelCatalog refreshes after
+			// fallbackTTL.
+			return AgentModelListResult{Models: fallback, IsFallback: true}, nil
+		}
+	}
+	if err == nil {
+		return AgentModelListResult{}, errors.New("codex app-server model/list returned no models")
 	}
 	if processCtx.Err() != nil {
 		return AgentModelListResult{}, fmt.Errorf("codex app-server model/list timed out: %w", processCtx.Err())

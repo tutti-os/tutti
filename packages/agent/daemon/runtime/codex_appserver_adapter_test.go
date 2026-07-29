@@ -14,6 +14,7 @@ import (
 	"time"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/daemon/modelcatalog"
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
 
@@ -6392,9 +6393,77 @@ func TestCodexAppServerAdapterStartSkipsSlowStartupProbesWhenReasoningNeedsNoVal
 	if !containsString(values, "gpt-5.3-codex-spark") {
 		t.Fatalf("model option values = %#v, want explicit model", values)
 	}
+	// ChatGPT subscription sessions advertise the local fallback catalog
+	// immediately so the picker is usable; rate limits still load async and
+	// live model/list still refreshes in the background.
 	startup, _ := state.RuntimeContext["appServerStartup"].(map[string]any)
-	if asString(startup["models"]) != "loading" || asString(startup["rateLimits"]) != "loading" {
-		t.Fatalf("appServerStartup = %#v, want startup probes loading", startup)
+	if asString(startup["models"]) != "ready" || asString(startup["rateLimits"]) != "loading" {
+		t.Fatalf("appServerStartup = %#v, want models ready via fallback and rateLimits loading", startup)
+	}
+	adapter.mu.Lock()
+	fallback := adapter.sessions[session.AgentSessionID].startupModelsFallback
+	adapter.mu.Unlock()
+	if !fallback {
+		t.Fatal("startupModelsFallback = false, want true before live model/list")
+	}
+}
+
+func TestCodexAppServerAdapterStartOmitsChatGPTFallbackDefaultFromThreadStart(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	transport.conn.modelList = []any{}
+	adapter := NewCodexAppServerAdapter(transport)
+	session := testAppServerSession()
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if requests := appServerRequestParamsList(t, transport.conn, appServerMethodModelList); len(requests) != 1 {
+		t.Fatalf("model/list requests = %d, want 1 when no explicit model", len(requests))
+	}
+	threadStart := appServerRequestParams(t, transport.conn, appServerMethodThreadStart)
+	if _, ok := threadStart["model"]; ok {
+		t.Fatalf("thread/start params = %#v, want no model override on ChatGPT fallback without explicit model", threadStart)
+	}
+	fallbackDefault := ""
+	for _, model := range modelcatalog.CodexChatGPTFallbackAppServerModels() {
+		if model["isDefault"] == true {
+			fallbackDefault = asString(model["id"])
+			break
+		}
+	}
+	if fallbackDefault == "" {
+		t.Fatal("fallback catalog missing default model")
+	}
+	if got := asString(threadStart["model"]); got == fallbackDefault {
+		t.Fatalf("thread/start model = %q, want omitted instead of fallback default", got)
+	}
+
+	adapter.mu.Lock()
+	appSession := adapter.sessions[session.AgentSessionID]
+	fallback := appSession.startupModelsFallback
+	defaultModel := appSession.defaultModel
+	adapter.mu.Unlock()
+	if !fallback {
+		t.Fatal("startupModelsFallback = false, want true before live model/list")
+	}
+	if defaultModel != "" {
+		t.Fatalf("defaultModel = %q, want empty when fallback without explicit model", defaultModel)
+	}
+
+	state := adapter.SessionState(session)
+	options, _ := state.RuntimeContext["configOptions"].([]map[string]any)
+	modelOption := configOptionByID(options, "model")
+	if modelOption == nil {
+		t.Fatalf("missing model config option: %#v", options)
+	}
+	values := configOptionValues(modelOption)
+	if !containsString(values, fallbackDefault) {
+		t.Fatalf("model option values = %#v, want fallback catalog models in picker", values)
+	}
+	startup, _ := state.RuntimeContext["appServerStartup"].(map[string]any)
+	if asString(startup["models"]) != "ready" {
+		t.Fatalf("appServerStartup = %#v, want models ready via fallback", startup)
 	}
 }
 

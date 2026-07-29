@@ -12,6 +12,76 @@ import (
 	"time"
 )
 
+func TestCodexCLIModelListerFallsBackWhenModelListEmpty(t *testing.T) {
+	scriptPath := filepath.Join(t.TempDir(), "codex")
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"initialize"'*)
+      echo '{"id":"1","result":{}}'
+      ;;
+    *model/list*)
+      echo '{"id":"2","result":{"data":[]}}'
+      exit 0
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake codex script: %v", err)
+	}
+
+	result, err := (CodexCLIModelLister{
+		Command:            scriptPath,
+		Timeout:            5 * time.Second,
+		UseChatGPTFallback: true,
+	}).ListModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListModels returned error: %v", err)
+	}
+	if !result.IsFallback {
+		t.Fatal("IsFallback = false, want true")
+	}
+	if len(result.Models) == 0 {
+		t.Fatal("fallback models empty")
+	}
+}
+
+func TestCodexCLIModelListerFallsBackWhenModelListTimesOut(t *testing.T) {
+	scriptPath := filepath.Join(t.TempDir(), "codex")
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"initialize"'*)
+      echo '{"id":"1","result":{}}'
+      ;;
+    *model/list*)
+      sleep 10
+      exit 0
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake codex script: %v", err)
+	}
+
+	result, err := (CodexCLIModelLister{
+		Command:            scriptPath,
+		Timeout:            200 * time.Millisecond,
+		UseChatGPTFallback: true,
+	}).ListModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListModels returned error: %v", err)
+	}
+	if !result.IsFallback {
+		t.Fatal("IsFallback = false, want true")
+	}
+	if len(result.Models) == 0 {
+		t.Fatal("fallback models empty")
+	}
+}
+
 func TestCodexCLIModelListerCompletesInitializeHandshakeBeforeModelList(t *testing.T) {
 	scriptPath := filepath.Join(t.TempDir(), "codex")
 	script := `#!/bin/sh
