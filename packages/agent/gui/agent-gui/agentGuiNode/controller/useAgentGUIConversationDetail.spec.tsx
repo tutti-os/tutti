@@ -42,6 +42,7 @@ function conversationDetailInput(
     draftByScopeKey: {},
     errorFor: () => null,
     providerComposerOptions: null,
+    projectedSessionMessagesById: {},
     selectedComposerTargetData: {
       agentTargetId: null,
       data: {

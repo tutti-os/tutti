@@ -598,6 +598,10 @@ disable submission, but must not change editor editability.
   command. Concurrent AgentGUI surfaces subscribe through exact
   Session-family or target selectors; a selector preserves its selected
   reference when another root Session changes
+- AgentGUI transcript presentation subscribes to projected messages for only
+  the selected root Session and its current child Sessions. This projection
+  includes optimistic `message_delta` text before durable confirmation, while
+  preserving message-array references for every unrelated Session
 - whole-workspace `AgentActivitySnapshot` projections remain valid for bounded
   aggregate reads, but do not belong in high-frequency AgentGUI render paths.
   Event callbacks that need current canonical data read the engine snapshot at
@@ -621,6 +625,9 @@ disable submission, but must not change editor editability.
 - newest-to-oldest reads attach their authoritative message-window coverage to
   the same snapshot intent; incremental/realtime updates preserve that coverage
 - realtime authoritative entities use upsert intents
+- optimistic `message_delta` updates invalidate the exact Session projection;
+  they do not write an unconfirmed message into canonical Engine state.
+  Terminal `message_update` reconciliation replaces that optimistic projection
 - an authoritative Session detail result enters through
   `session/detailSnapshotReceived`; `agent-activity-core` expands the root
   Session, Turns, child Sessions, and optional message coverage in one engine

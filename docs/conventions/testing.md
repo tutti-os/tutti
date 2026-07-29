@@ -150,10 +150,12 @@ renderer analysis, and report rendering stay scenario-neutral.
 `concurrent-agent-streaming` selects two settled root Sessions, restores them
 into two non-overlapping visible AgentGUI windows, and routes each through an
 isolated fake Cursor ACP Session. Both Composer forms submit in one renderer
-task. The scenario requires both windows to enter working state, produce
-repeated transcript mutations, and settle before the trace tail. It reports
-the sampled conversation-projection and streaming-text functions without
-setting a cross-device timing threshold.
+task. The scenario requires both windows to enter working state, render at
+least three distinct intermediate assistant-text lengths, reach the final
+fixture chunk, and settle before the trace tail. Generic status or spinner DOM
+mutations do not satisfy the streaming assertion. It reports the sampled
+conversation-projection and streaming-text functions without setting a
+cross-device timing threshold.
 
 `virtualized-streaming` and `virtualized-scroll-locator` require one root
 Session with at least thirty settled Turns. They change only the isolated copy

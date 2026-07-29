@@ -1,6 +1,7 @@
 import {
   createContext,
   useContext,
+  useMemo,
   useSyncExternalStore,
   type JSX,
   type PropsWithChildren
@@ -11,6 +12,7 @@ import type {
   AgentActivityComposerOptions,
   AgentActivityGoalControlInput,
   AgentActivityGoalControlResult,
+  AgentActivityMessage,
   AgentActivityCreateSessionInput,
   AgentActivityDeleteSessionInput,
   AgentActivityDeleteSessionResult,
@@ -50,6 +52,13 @@ import type {
   AgentConversationRailSessionsPageResult,
   AgentConversationRailUserProject
 } from "./agentConversationRailContracts";
+import { useEngineSelector } from "./shared/engine/useEngineSelector";
+
+const EMPTY_SESSION_MESSAGES: readonly AgentActivityMessage[] = [];
+
+export type AgentActivitySessionMessages = Readonly<
+  Record<string, readonly AgentActivityMessage[]>
+>;
 
 export interface AgentActivityRuntimeUpdateSessionSettingsResult {
   agentSessionId: string;
@@ -475,6 +484,35 @@ export function useAgentActivitySnapshot(
   );
 }
 
+export function useAgentActivitySessionMessages(
+  workspaceId: string,
+  agentSessionIds: readonly (string | null | undefined)[]
+): AgentActivitySessionMessages {
+  const runtime = useAgentActivityRuntime();
+  const normalizedWorkspaceId = workspaceId.trim();
+  const sessionIdsKey = agentSessionIds
+    .map((agentSessionId) => agentSessionId?.trim() ?? "")
+    .filter(Boolean)
+    .join("\u0000");
+  const normalizedSessionIds = useMemo(
+    () => [...new Set(sessionIdsKey.split("\u0000").filter(Boolean))],
+    [sessionIdsKey]
+  );
+  const workspaceStore = useMemo(
+    () => ({
+      getSnapshot: () => runtime.getSnapshot(normalizedWorkspaceId),
+      subscribe: (listener: () => void) =>
+        runtime.subscribe(normalizedWorkspaceId, listener)
+    }),
+    [normalizedWorkspaceId, runtime]
+  );
+  const selectMessages = useMemo(
+    () => createSessionMessagesSelector(normalizedSessionIds),
+    [normalizedSessionIds]
+  );
+  return useEngineSelector(workspaceStore, selectMessages);
+}
+
 export function resetAgentActivityRuntimeForTests(): void {
   if (process.env.NODE_ENV === "test") {
     testAgentActivityRuntimeHolder.set(null);
@@ -487,6 +525,30 @@ export function setAgentActivityRuntimeForTests(
   if (process.env.NODE_ENV === "test") {
     testAgentActivityRuntimeHolder.set(runtime);
   }
+}
+
+function createSessionMessagesSelector(
+  agentSessionIds: readonly string[]
+): (snapshot: AgentActivitySnapshot) => AgentActivitySessionMessages {
+  let previous: AgentActivitySessionMessages = {};
+  return (snapshot) => {
+    const next = Object.fromEntries(
+      agentSessionIds.map((agentSessionId) => [
+        agentSessionId,
+        snapshot.sessionMessagesById[agentSessionId] ?? EMPTY_SESSION_MESSAGES
+      ])
+    );
+    if (
+      Object.keys(previous).length === agentSessionIds.length &&
+      agentSessionIds.every(
+        (agentSessionId) => previous[agentSessionId] === next[agentSessionId]
+      )
+    ) {
+      return previous;
+    }
+    previous = next;
+    return previous;
+  };
 }
 
 function getTestAgentActivityRuntime(): AgentActivityRuntime | null {

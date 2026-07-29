@@ -176,12 +176,14 @@ export {
   AgentActivityRuntimeProvider,
   resetAgentActivityRuntimeForTests,
   setAgentActivityRuntimeForTests,
+  useAgentActivitySessionMessages,
   useAgentActivitySnapshot,
   useAgentActivityRuntime,
   useOptionalAgentActivityRuntime
 } from "./agentActivityRuntime";
 export type {
   AgentActivityRuntime,
+  AgentActivitySessionMessages,
   AgentActivityRuntimeListSessionMessagesInput,
   AgentActivityRuntimeProviderProps,
   AgentActivityRuntimePromptContentBlock,

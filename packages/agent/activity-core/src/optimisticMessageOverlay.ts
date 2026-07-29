@@ -60,16 +60,28 @@ interface OptimisticEntry {
   explicitlyTerminal: boolean;
 }
 
+interface ProjectionCacheEntry {
+  canonicalMessages: readonly AgentActivityMessage[];
+  projectedMessages: AgentActivityMessage[];
+  revision: number;
+}
+
 export function createAgentActivityOptimisticMessageOverlay(): AgentActivityOptimisticMessageOverlay {
   const optimistic = new Map<string, OptimisticEntry>();
   const canonical = new Map<string, AgentActivityMessage>();
+  const projectionCache = new Map<string, ProjectionCacheEntry>();
+  const scopeRevisions = new Map<string, number>();
 
   return {
     apply(event) {
       if (event.eventType !== "message_delta") {
         return { applied: false, needsReconcile: false };
       }
-      return applyMessageDelta(event);
+      const result = applyMessageDelta(event);
+      if (result.applied) {
+        markScopeChanged(event);
+      }
+      return result;
     },
 
     reconcile(scope, messages) {
@@ -93,21 +105,31 @@ export function createAgentActivityOptimisticMessageOverlay(): AgentActivityOpti
           optimistic.delete(key);
         }
       }
+      markScopeChanged(scope);
     },
 
     reset(scope) {
       const prefix = scopePrefix(scope);
       deleteScopeEntries(optimistic, prefix);
       deleteScopeEntries(canonical, prefix);
+      markScopeChanged(scope);
     },
 
     project(scope, messages) {
+      const prefix = scopePrefix(scope);
+      const revision = scopeRevisions.get(prefix) ?? 0;
+      const cached = projectionCache.get(prefix);
+      if (
+        cached?.canonicalMessages === messages &&
+        cached.revision === revision
+      ) {
+        return cached.projectedMessages;
+      }
       const normalized = normalizeCanonicalMessages(scope, messages);
       const byKey = new Map<string, AgentActivityMessage>();
       for (const message of normalized) {
         byKey.set(messageKey(message), cloneMessage(message));
       }
-      const prefix = scopePrefix(scope);
       for (const [key, entry] of optimistic) {
         if (!key.startsWith(prefix)) {
           continue;
@@ -120,9 +142,23 @@ export function createAgentActivityOptimisticMessageOverlay(): AgentActivityOpti
             : cloneMessage(entry.message)
         );
       }
-      return [...byKey.values()].sort(compareAgentActivityMessages);
+      const projectedMessages = [...byKey.values()].sort(
+        compareAgentActivityMessages
+      );
+      projectionCache.set(prefix, {
+        canonicalMessages: messages,
+        projectedMessages,
+        revision
+      });
+      return projectedMessages;
     }
   };
+
+  function markScopeChanged(scope: AgentActivityOptimisticMessageScope): void {
+    const prefix = scopePrefix(scope);
+    scopeRevisions.set(prefix, (scopeRevisions.get(prefix) ?? 0) + 1);
+    projectionCache.delete(prefix);
+  }
 
   function applyMessageDelta(
     event: AgentActivityMessageDeltaEvent
