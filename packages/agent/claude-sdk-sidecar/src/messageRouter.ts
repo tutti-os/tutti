@@ -421,16 +421,23 @@ export class SDKMessageRouter {
       void this.emitResultUsage(turnId, contextUsageGeneration, result);
       return;
     }
+    const pendingBackgroundContinuation =
+      succeeded && this.activities.hasPendingBackgroundContinuation();
     const completedSyntheticContinuation =
-      succeeded &&
-      this.turns.activeTurn?.synthetic === true &&
-      this.activities.hasPendingBackgroundContinuation();
+      pendingBackgroundContinuation &&
+      this.turns.activeTurn?.synthetic === true;
+    // When the background level or task notifications already proved that
+    // follow-up output is pending, a successful root result is only the end of
+    // that provider response—not the canonical turn. Keep the original turn
+    // live until session idle instead of emitting a terminal/start pair that
+    // can settle durable state between the two events.
+    const retainRootForBackgroundContinuation =
+      pendingBackgroundContinuation &&
+      this.turns.activeTurn?.synthetic !== true;
     if (this.turns.cancelled) {
       this.turns.settleActive("turn_canceled");
       this.turns.clearCancelled();
-    } else if (succeeded) {
-      this.turns.settleActive("turn_completed", { stopReason: "end_turn" });
-    } else {
+    } else if (!succeeded) {
       this.turns.settleActive("turn_failed", {
         error:
           result.errors?.[0] ||
@@ -442,6 +449,8 @@ export class SDKMessageRouter {
           ? { apiErrorStatus: result.api_error_status }
           : {})
       });
+    } else if (!retainRootForBackgroundContinuation) {
+      this.turns.settleActive("turn_completed", { stopReason: "end_turn" });
     }
     if (completedSyntheticContinuation) {
       this.activities.clearBackgroundContinuation();

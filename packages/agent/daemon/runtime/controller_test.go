@@ -5679,6 +5679,56 @@ func TestControllerFinishParentTurnDoesNotOverwriteSyntheticLifecycle(t *testing
 	}
 }
 
+func TestControllerStoreTurnSessionRejectsOlderAdapterLifecycle(t *testing.T) {
+	t.Parallel()
+
+	controller := NewController(nil, nil)
+	turnID := "parent-turn-1"
+	current := Session{
+		RoomID:             "room-1",
+		AgentSessionID:     "agent-session-1",
+		Provider:           ProviderClaudeCode,
+		Status:             SessionStatusWorking,
+		LifecycleAuthority: true,
+		LifecycleSeq:       3,
+		TurnLifecycle: &TurnLifecycle{
+			ActiveTurnID: &turnID,
+			Phase:        "running",
+		},
+		SubmitAvailability: blockedSubmitAvailability("active_turn"),
+	}
+	controller.store(current)
+	controller.mu.Lock()
+	controller.turns[sessionKey("room-1", "agent-session-1")] = activeTurn{turnID: turnID}
+	controller.mu.Unlock()
+
+	outcome := "completed"
+	stale := current
+	stale.Status = SessionStatusReady
+	stale.LifecycleSeq = 2
+	stale.TurnLifecycle = &TurnLifecycle{
+		Phase:   "settled",
+		Outcome: &outcome,
+	}
+	stale.SubmitAvailability = availableSubmitAvailability()
+
+	if controller.storeTurnSession(stale, turnID) {
+		t.Fatal("older adapter lifecycle overwrote current session")
+	}
+	stored, ok := controller.get("room-1", "agent-session-1")
+	if !ok {
+		t.Fatal("stored session missing")
+	}
+	if stored.LifecycleSeq != current.LifecycleSeq ||
+		stored.Status != SessionStatusWorking ||
+		stored.TurnLifecycle == nil ||
+		stored.TurnLifecycle.ActiveTurnID == nil ||
+		*stored.TurnLifecycle.ActiveTurnID != turnID ||
+		stored.TurnLifecycle.Phase != "running" {
+		t.Fatalf("stored session = %#v, want newer running lifecycle preserved", stored)
+	}
+}
+
 func TestControllerFinishTurnDoesNotRestoreClosedSession(t *testing.T) {
 	t.Parallel()
 

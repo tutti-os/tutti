@@ -391,6 +391,58 @@ test("parallel delegated notifications keep the original turn open until session
   }
 });
 
+test("root success before delegated continuation keeps the original turn open until session idle", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) =>
+        fakeParallelDelegatedTaskContinuationQuery(prompt, {
+          rootResultBeforeContinuations: true
+        })
+    );
+
+    await session.start();
+    session.exec("turn-1", "delegate parallel tasks");
+    await waitForEvent(events, "turn_completed");
+
+    assert.deepEqual(
+      events
+        .filter((event) => event.type === "turn_completed")
+        .map((event) => ({
+          turnId: event.payload?.turnId,
+          stopReason: event.payload?.stopReason
+        })),
+      [{ turnId: "turn-1", stopReason: "background_agent_idle" }]
+    );
+    assert.equal(
+      events.some(
+        (event) =>
+          event.type === "turn_started" && event.payload?.synthetic === true
+      ),
+      false
+    );
+  } finally {
+    restoreSink();
+  }
+});
+
 test("session idle settles coalesced delegated notifications without result-count pairing", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
   const restoreSink = withSidecarEventSinkForTest((event) =>

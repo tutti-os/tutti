@@ -26,7 +26,11 @@ Protocol types and validation live in `src/protocol.ts`.
 Protocol version 6 adds background-task level and continuation diagnostics.
 `background_tasks_changed` is a full replace-set of currently running SDK
 background tasks, not a terminal root-turn signal. When the set becomes empty,
-the sidecar reserves a synthetic continuation. Results whose
+the sidecar records a pending continuation. If the ordinary root result arrives
+while that continuation is already pending, the original turn stays active
+until session idle; no terminal/start pair is emitted. A synthetic continuation
+is reserved only when the pending signal arrives after the root already
+settled. Results whose
 `origin.kind` is `task-notification` confirm background follow-up output without
 assuming one result per notification. The SDK's `session_state_changed: idle`
 event authoritatively settles the continuation after its background loop

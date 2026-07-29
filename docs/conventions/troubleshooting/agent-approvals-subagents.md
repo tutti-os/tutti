@@ -167,6 +167,11 @@ session-level child summaries.
   - Identify background follow-up results from
     `origin.kind=task-notification`. Do not compare task-notification and result
     counts: the SDK may coalesce queued follow-ups.
+  - If the background level or task notifications make continuation pending
+    before the ordinary root result, retain the original root Turn until
+    session idle. Do not emit `turn_completed(root)` followed by
+    `turn_started(synthetic)`: with every child already terminal, durable state
+    can settle between those events and must reject the late provider start.
   - Settle normally on `session_state_changed: idle`, after the SDK has flushed
     its held-back result and exited the background-agent loop. Do not start a
     post-result settlement timeout: queued follow-ups may begin several seconds

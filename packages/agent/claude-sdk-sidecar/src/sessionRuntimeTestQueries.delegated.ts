@@ -166,7 +166,8 @@ export function fakeDelegatedTaskQuery(
 }
 
 export function fakeParallelDelegatedTaskContinuationQuery(
-  prompt: AsyncIterable<SDKUserMessage>
+  prompt: AsyncIterable<SDKUserMessage>,
+  options: { rootResultBeforeContinuations?: boolean } = {}
 ): AsyncIterable<SDKMessage> {
   return {
     async *[Symbol.asyncIterator]() {
@@ -211,6 +212,12 @@ export function fakeParallelDelegatedTaskContinuationQuery(
           task_id: `task-${index}`,
           status: "completed",
           summary: `Result ${index}`
+        } as unknown as SDKMessage;
+      }
+      if (options.rootResultBeforeContinuations) {
+        yield {
+          type: "result",
+          subtype: "success"
         } as unknown as SDKMessage;
       }
       for (const index of [1, 2]) {

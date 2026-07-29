@@ -153,8 +153,11 @@ current generation without creating a resumable successor.
 Background-task lifecycle uses the SDK's `background_tasks_changed` system
 message as a level signal. Its `tasks` array fully replaces the previous live
 set. An empty set means the background children have quiesced; it does not mean
-the root Turn is complete. If the root result already settled, the sidecar
-reserves a synthetic continuation. It remains in the existing running phase,
+the root Turn is complete. When a successful ordinary root result arrives while
+a background continuation is already pending, the sidecar retains the original
+root Turn until session idle instead of emitting a terminal/start pair. If the
+root result already settled before the pending signal, the sidecar reserves a
+synthetic continuation. It remains in the existing running phase,
 and results with `origin.kind = task-notification` confirm background
 follow-up output without settling it by notification/result count. The SDK's
 `session_state_changed: idle` event is the authoritative turn-over edge after
