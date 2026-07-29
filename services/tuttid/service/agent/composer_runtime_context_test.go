@@ -136,7 +136,7 @@ func TestMergeRuntimeComposerContextFailsClosedWithoutExactCapabilityEvidence(t 
 			if err != nil {
 				t.Fatalf("mergeRuntimeComposerContextForComposerOptions error = %v", err)
 			}
-			options = applyExtensionComposerCapabilities(options, profile)
+			options = applyExtensionComposerCapabilities(options, profile, false)
 			if got := options.Capabilities; len(got) != 0 {
 				t.Fatalf("capabilities = %#v, want fail-closed result for mismatched %s identity", got, tt.name)
 			}
