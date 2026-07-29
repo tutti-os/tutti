@@ -64,6 +64,17 @@ export function sessionReconcileReducer(
         live: intent.eventType === "turn_update",
         workspaceId: intent.workspaceId
       });
+    case "turn/projectionReceived":
+      if (context.deletedSessionIds[intent.turn.agentSessionId.trim()]) {
+        return unchanged(state);
+      }
+      return requestReconcile(state, {
+        agentSessionId: intent.turn.agentSessionId,
+        needsMessages: intent.turn.phase === "settled",
+        needsState: true,
+        live: true,
+        workspaceId: intent.workspaceId
+      });
     case "session/reconcileRequested":
       if (context.deletedSessionIds[intent.agentSessionId.trim()]) {
         return unchanged(state);

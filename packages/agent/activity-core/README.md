@@ -237,7 +237,8 @@ transport deliveries into it. The coordinator validates and cleans
 reads or Session removal. The generated `AgentActivityUpdatedEvent` input also
 accepts:
 
-- `turn_update`: updates the canonical durable turn projection
+- `turn_update`: atomically updates the canonical Turn and the cached Session's
+  active-Turn reference
 - `interaction_update`: updates the canonical durable interaction projection
 - `session_reconcile_required`: asks the engine transport to reload the session
 - `session_deleted`: removes the session through the engine tombstone flow
@@ -262,11 +263,21 @@ one WebSocket connection. Mobile must derive Engine state from
 application/service command reachability and coordinator state from
 `stream_ready`/disconnect frames; it must not synthesize one from the other.
 
-For realtime Turn observations, the Engine carries `live: true` on the
-resulting `session/reconcile` command. Command adapters preserve that flag on
-`session/detailSnapshotReceived`; failed commands retain it for the next retry.
-This lets authoritative hydration replay the latest Turn only after Session
-identity exists, with identical attention semantics on Desktop and Mobile.
+The coordinator validates each realtime Turn projection and dispatches it as
+one Engine intent. The lifecycle reducer applies the Turn, the owning Session's
+`activeTurnId`, and downstream lifecycle decisions in one state transition. A
+settled Turn may clear only its own active reference, so a delayed completion
+cannot clear a newer active Turn. Cached canonical Turn versions fence stale
+Session snapshots without copying event-envelope time into Session timestamps.
+Invalid projections are not partially applied, and attention observes only the
+Turn accepted by canonical lifecycle monotonicity.
+
+The same intent requests a state-only `session/reconcile` with `live: true`.
+Command adapters preserve that flag on `session/detailSnapshotReceived`; failed
+commands retain it for the next retry. Reconciliation fills fields outside the
+realtime projection and establishes Session identity when the Session was not
+cached. It is a convergence path, not a prerequisite for keeping a cached Turn
+and Session reference consistent.
 
 ## Typed Effect Execution
 

@@ -2644,10 +2644,15 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   must not acquire attention merely because their snapshot was loaded.
 - Quick checks:
   Trace the event path into the activity engine. A realtime `turn_update`
-  should trigger an authoritative session fetch and reduce `session/upserted`
-  before `turn/upserted`. Initial, restored, and imported history should enter
-  through `session/snapshotReceived` only. Also confirm the projected desktop
-  session carries the shared local Agent GUI user id used by read-state actions.
+  should enter as one atomic Turn projection. When the Session is cached, the
+  same Engine transition must update the Turn and update or clear
+  `Session.activeTurnId` without rewriting Session timestamps from the event
+  envelope. Attention must observe the post-lifecycle canonical Turn, not the
+  raw event. A delayed settled event may clear only the matching active Turn.
+  The event should also request a state-only session reconcile with realtime
+  provenance. Initial, restored, and imported history should enter through
+  `session/snapshotReceived` only. Also confirm the projected desktop session
+  carries the shared local Agent GUI user id used by read-state actions.
 - Root cause:
   Realtime and historical data lost their provenance when both were folded into
   a mutable controller snapshot and re-emitted as `session/snapshotReceived`.
@@ -2656,11 +2661,17 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   update with the same completion key could no longer recover the transition.
 - Fix:
   Keep the activity engine as the single mutable owner. Feed pull/bootstrap
-  results through `session/snapshotReceived`, feed authoritative realtime
-  reconciliation through `session/upserted` followed by `turn/upserted`, and
-  use inline message events only for message deltas. Preserve the realtime
-  marker outside the fetched snapshot, and use one shared local identity for
-  session projection and read-state commands.
+  results through `session/snapshotReceived`, and feed each realtime
+  `turn_update` through one intent that atomically projects the Turn and cached
+  Session reference. Reject a projection whose live/settled phase disagrees
+  with `activeTurnId`; reconcile instead of applying half of the wire fact.
+  Fence stale Session snapshots with canonical Turn versions rather than
+  event-envelope time, and let attention consume only a Turn that the lifecycle
+  reducer accepted.
+  Keep the realtime marker on the follow-up reconcile so an uncached Session
+  can hydrate and replay the latest Turn with live attention semantics. Use
+  inline message events only for message deltas and one shared local identity
+  for session projection and read-state commands.
 - Validation:
   Run
   `pnpm --filter @tutti-os/desktop test -- workspaceAgentActivityService.test.ts`

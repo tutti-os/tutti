@@ -38,7 +38,9 @@ export function AgentCopyableMessageGroup({
 }): JSX.Element {
   "use memo";
   const timestamp = formatAgentMessageTimestamp(occurredAtUnixMs);
-  const hasFooter = Boolean(timestamp || copyText || editAction || footerAction);
+  const hasFooter = Boolean(
+    timestamp || copyText || editAction || footerAction
+  );
 
   return (
     <div

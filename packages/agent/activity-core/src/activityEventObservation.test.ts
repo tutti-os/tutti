@@ -105,7 +105,7 @@ test("message updates fail closed when acceptedCount disagrees with the payload"
   assert.equal(observation.intent.inlineApplied, false);
 });
 
-test("turn and interaction observations require canonical state reconciliation", () => {
+test("reconcile-required observations request canonical state reconciliation", () => {
   const event: Extract<
     AgentActivityUpdatedEvent,
     { eventType: "session_reconcile_required" }

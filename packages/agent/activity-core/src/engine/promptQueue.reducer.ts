@@ -682,7 +682,10 @@ function affectedSessionIds(
   if (intent.type === "session/upserted") {
     ids.push(intent.session.agentSessionId.trim());
   }
-  if (intent.type === "turn/upserted") {
+  if (
+    intent.type === "turn/projectionReceived" ||
+    intent.type === "turn/upserted"
+  ) {
     ids.push(intent.turn.agentSessionId.trim());
   }
   if (intent.type === "interaction/upserted") {

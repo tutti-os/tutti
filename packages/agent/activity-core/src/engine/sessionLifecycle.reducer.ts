@@ -20,11 +20,13 @@ import {
   type SessionOperationState
 } from "./sessionLifecycle.types.ts";
 import {
+  patchCanonicalSessionMetadata,
   removeCanonicalSession,
   replaceCanonicalSessionSnapshot,
   upsertCanonicalInteraction,
   upsertCanonicalSession,
-  upsertCanonicalTurn
+  upsertCanonicalTurn,
+  upsertCanonicalTurnProjection
 } from "./sessionEntities.reducer.ts";
 import { replaceAuthoritativeSessionHistory } from "./sessionLifecycle.authoritativeHistory.ts";
 import {
@@ -100,7 +102,13 @@ export function sessionLifecycleReducer(
       );
     }
     case "session/metadataPatched":
-      return patchSessionMetadata(state, intent.agentSessionId, intent.patch);
+      return result(
+        patchCanonicalSessionMetadata(
+          state,
+          intent.agentSessionId,
+          intent.patch
+        )
+      );
     case "session/runtimeAvailabilityChanged":
       return changeRuntimeAvailability(
         state,
@@ -111,6 +119,11 @@ export function sessionLifecycleReducer(
       return reconcilePendingCancels(
         state,
         upsertCanonicalTurn(state, intent.turn)
+      );
+    case "turn/projectionReceived":
+      return reconcilePendingCancels(
+        state,
+        upsertCanonicalTurnProjection(state, intent)
       );
     case "interaction/upserted":
       return result(
@@ -413,26 +426,6 @@ function replaceInteractionResponse(
       [key]: response
     }
   };
-}
-
-function patchSessionMetadata(
-  state: SessionLifecycleState,
-  rawId: string,
-  patch: Extract<EngineIntent, { type: "session/metadataPatched" }>["patch"]
-): EngineReducerResult<SessionLifecycleState> {
-  const id = rawId.trim();
-  const session = state.sessionsById[id];
-  if (!session) return unchanged(state);
-  const next = { ...session, ...patch };
-  const changed = Object.entries(patch).some(
-    ([key, value]) => session[key as keyof typeof session] !== value
-  );
-  return changed
-    ? result({
-        ...state,
-        sessionsById: { ...state.sessionsById, [id]: next }
-      })
-    : unchanged(state);
 }
 
 function requestCancel(

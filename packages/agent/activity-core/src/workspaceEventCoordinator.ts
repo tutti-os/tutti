@@ -38,6 +38,7 @@ export interface AgentActivityWorkspaceEventResult {
     | "deleted"
     | "identity_mismatch"
     | "invalid_delta"
+    | "invalid_turn"
     | "tombstoned";
 }
 
@@ -123,15 +124,18 @@ export function createAgentActivityWorkspaceEventCoordinator({
     for (const listener of listeners) listener();
   };
 
-  const requestSessionReconcile = (
-    agentSessionId: string,
-    needsMessages: boolean,
-    needsState: boolean
-  ): void => {
-    const normalizedSessionId = agentSessionId.trim();
+  const requestSessionReconcile = (input: {
+    agentSessionId: string;
+    live?: boolean;
+    needsMessages: boolean;
+    needsState: boolean;
+  }): void => {
+    const normalizedSessionId = input.agentSessionId.trim();
+    const { live = false, needsMessages, needsState } = input;
     if (!normalizedSessionId || (!needsMessages && !needsState)) return;
     engine.dispatch({
       agentSessionId: normalizedSessionId,
+      live,
       needsMessages,
       needsState,
       type: "session/reconcileRequested",
@@ -206,7 +210,11 @@ export function createAgentActivityWorkspaceEventCoordinator({
         input.prioritySessionIds ?? []
       );
       for (const agentSessionId of prioritySessionIds) {
-        requestSessionReconcile(agentSessionId, true, true);
+        requestSessionReconcile({
+          agentSessionId,
+          needsMessages: true,
+          needsState: true
+        });
       }
       if (!recovered) return;
 
@@ -222,11 +230,11 @@ export function createAgentActivityWorkspaceEventCoordinator({
         ...overlaySessionIds
       ])) {
         if (prioritySet.has(agentSessionId)) continue;
-        requestSessionReconcile(
+        requestSessionReconcile({
           agentSessionId,
-          true,
-          !hasCachedSession(canonical, agentSessionId)
-        );
+          needsMessages: true,
+          needsState: !hasCachedSession(canonical, agentSessionId)
+        });
       }
     },
     dispose() {
@@ -249,7 +257,11 @@ export function createAgentActivityWorkspaceEventCoordinator({
           event.workspaceId.trim() === normalizedWorkspaceId &&
           agentSessionId
         ) {
-          requestSessionReconcile(agentSessionId, true, true);
+          requestSessionReconcile({
+            agentSessionId,
+            needsMessages: true,
+            needsState: true
+          });
         }
         return eventResult(eventType, false, "identity_mismatch");
       }
@@ -257,11 +269,14 @@ export function createAgentActivityWorkspaceEventCoordinator({
       if (event.eventType === "message_delta") {
         const parsed = parseAgentActivityMessageDeltaEvent(event);
         if (!parsed) {
-          requestSessionReconcile(
+          requestSessionReconcile({
             agentSessionId,
-            true,
-            !hasCachedSession(readCanonicalSnapshot(), agentSessionId)
-          );
+            needsMessages: true,
+            needsState: !hasCachedSession(
+              readCanonicalSnapshot(),
+              agentSessionId
+            )
+          });
           return eventResult(eventType, false, "invalid_delta");
         }
         if (
@@ -277,11 +292,14 @@ export function createAgentActivityWorkspaceEventCoordinator({
           markChanged();
         }
         if (applied.needsReconcile) {
-          requestSessionReconcile(
+          requestSessionReconcile({
             agentSessionId,
-            true,
-            !hasCachedSession(readCanonicalSnapshot(), agentSessionId)
-          );
+            needsMessages: true,
+            needsState: !hasCachedSession(
+              readCanonicalSnapshot(),
+              agentSessionId
+            )
+          });
         }
         const optimisticMessage = applied.applied
           ? (project(readCanonicalSnapshot()).sessionMessagesById[
@@ -296,7 +314,11 @@ export function createAgentActivityWorkspaceEventCoordinator({
       }
 
       if (!agentActivityEventEnvelopeIsConsistent(event)) {
-        requestSessionReconcile(agentSessionId, true, true);
+        requestSessionReconcile({
+          agentSessionId,
+          needsMessages: true,
+          needsState: true
+        });
         return eventResult(eventType, false, "identity_mismatch");
       }
       if (event.eventType === "session_deleted") {
@@ -308,6 +330,24 @@ export function createAgentActivityWorkspaceEventCoordinator({
       ) {
         return eventResult(eventType, false, "tombstoned");
       }
+      if (event.eventType === "turn_update") {
+        const projection = agentActivityTurnProjectionFromEvent(event);
+        if (!projection) {
+          requestSessionReconcile({
+            agentSessionId,
+            live: true,
+            needsMessages: false,
+            needsState: true
+          });
+          return eventResult(eventType, false, "invalid_turn");
+        }
+        engine.dispatch({
+          ...projection,
+          type: "turn/projectionReceived",
+          workspaceId: normalizedWorkspaceId
+        });
+        return eventResult(eventType, true, "applied");
+      }
 
       const canonical = readCanonicalSnapshot();
       const cachedMessages =
@@ -317,10 +357,7 @@ export function createAgentActivityWorkspaceEventCoordinator({
         event,
         hasCachedSession: hasCachedSession(canonical, agentSessionId)
       });
-      if (event.eventType === "turn_update") {
-        const turn = agentActivityTurnFromEvent(event);
-        if (turn) engine.dispatch({ turn, type: "turn/upserted" });
-      } else if (event.eventType === "interaction_update") {
+      if (event.eventType === "interaction_update") {
         if (isRecord(event.data.interaction)) {
           engine.dispatch({
             interaction: event.data
@@ -391,7 +428,11 @@ export function createAgentActivityWorkspaceEventCoordinator({
         ...(sessionIds.length === 0 ? (input.fallbackSessionIds ?? []) : [])
       ]);
       for (const agentSessionId of targets) {
-        requestSessionReconcile(agentSessionId, true, true);
+        requestSessionReconcile({
+          agentSessionId,
+          needsMessages: true,
+          needsState: true
+        });
       }
     },
     reconcileMessages(agentSessionId, canonicalMessages) {
@@ -466,16 +507,37 @@ function normalizedSessionIds(values: readonly string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
-function agentActivityTurnFromEvent(
+function agentActivityTurnProjectionFromEvent(
   event: Extract<AgentActivityUpdatedEvent, { eventType: "turn_update" }>
-): AgentActivityTurn | null {
+): {
+  activeTurnId: string | null;
+  turn: AgentActivityTurn;
+} | null {
   if (!isRecord(event.data.turn)) return null;
-  return {
+  const activeTurnId =
+    typeof event.data.activeTurnId === "string"
+      ? event.data.activeTurnId.trim()
+      : event.data.activeTurnId;
+  const turn: AgentActivityTurn = {
     ...event.data.turn,
     completedCommand: event.data.turn
       .completedCommand as AgentActivityTurn["completedCommand"],
     error: event.data.turn.error as AgentActivityTurn["error"],
     fileChanges: event.data.turn.fileChanges as AgentActivityTurn["fileChanges"]
+  };
+  if (
+    !turn.turnId.trim() ||
+    !Number.isSafeInteger(event.data.occurredAtUnixMs) ||
+    event.data.occurredAtUnixMs < 0 ||
+    (turn.phase === "settled"
+      ? activeTurnId !== null
+      : activeTurnId !== turn.turnId.trim())
+  ) {
+    return null;
+  }
+  return {
+    activeTurnId,
+    turn
   };
 }
 
