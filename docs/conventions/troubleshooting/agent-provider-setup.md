@@ -565,6 +565,55 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
   [codex.go](../../../packages/agent/runtimeprep/codex.go)
   [preparer_test.go](../../../packages/agent/runtimeprep/preparer_test.go)
 
+### Codex session startup stalls after a CLI update or cold plugin restore
+
+- Symptom:
+  A new Codex session reaches `initialize`, but `model/list` or `thread/start`
+  waits until its RPC timeout. The failure often appears after Codex Desktop
+  and Tutti have used different CLI versions, or when a run-scoped
+  `CODEX_HOME` has no plugin packages yet.
+- Quick checks:
+  Inspect
+  `<temporary-directory>/tutti-codex-appserver-startup.jsonl`. Correlate the
+  `runtime.diagnostics` record with the following `rpc.succeeded` /
+  `rpc.failed` records. Relevant fields include `cli_version`,
+  `prepared_cli_version`, `cli_version_changed_after_prepare`,
+  `models_cache_strategy`, `models_cache_reason`,
+  `models_cache_client_version`, `plugin_cache_strategy`,
+  `plugin_cache_populated`, `plugin_sync_status`,
+  `plugin_sync_discovered`, `plugin_sync_installed`,
+  `plugin_sync_failed`, and `plugin_sync_duration_ms`. Do not attach account
+  credentials, prompts, or absolute user paths to an issue.
+- Root cause:
+  `models_cache.json` and installed plugin packages are writable provider
+  state, not stable cross-version contracts. A CLI can reject a cache schema
+  written by another version. Separately, an empty plugin package cache forces
+  marketplace enumeration and installation into the startup path; without a
+  bounded preflight, that network or filesystem work is indistinguishable from
+  an app-server RPC hang.
+- Fix:
+  Resolve the exact managed command used for app-server launch before the
+  process starts. Share model caches only by exact CLI version plus the
+  current config/auth/catalog authority. Share plugin package caches only by
+  exact CLI version. Keep plugin `data` shared and `.plugin-appserver`
+  run-local. Use the official CLI `plugin list --available --json` and
+  `plugin add <id> --json` under a version-cache lock. Bound list,
+  per-install, and total timeouts; record failures and continue with a plain
+  Codex startup instead of failing an unrelated session.
+  Revalidate the actual CLI version immediately before spawning app-server.
+- Validation:
+  Cover same-version warm reuse, 0.144.6/0.145.0 cache separation, unknown
+  version fallback, config/catalog authority separation, concurrent lock
+  cancellation, cold enabled-plugin restore, disabled-plugin omission,
+  partial/failing restore diagnostics. With real CLIs, start old then new then
+  old again and verify each
+  run links only to its own `model-caches` and `plugin-caches` version.
+- References:
+  [codex_models_cache.go](../../../packages/agent/runtimeprep/codex_models_cache.go)
+  [codex_plugin_cache.go](../../../packages/agent/runtimeprep/codex_plugin_cache.go)
+  [codex_runtime_bootstrap.go](../../../packages/agent/runtimeprep/codex_runtime_bootstrap.go)
+  [codex_appserver_runtime_diagnostics.go](../../../packages/agent/daemon/runtime/codex_appserver_runtime_diagnostics.go)
+
 ### Cursor sessions create project `.cursor/skills` or `AGENTS.md` changes
 
 - Symptom:

@@ -14,16 +14,19 @@ const (
 	codexProjectRootMarkersDisabledConfig = `project_root_markers = []`
 )
 
-type CodexPreparer struct{}
+type CodexPreparer struct {
+	ResolveCLI CodexCLIResolver
+}
 
 func (CodexPreparer) Provider() string {
 	return "codex"
 }
 
-func (CodexPreparer) Prepare(_ context.Context, input ProviderPrepareInput) (ProviderPrepareResult, error) {
+func (p CodexPreparer) Prepare(ctx context.Context, input ProviderPrepareInput) (ProviderPrepareResult, error) {
 	codexHome := filepath.Join(input.RuntimeRoot, "codex-home")
 	logRuntimePrepareTrace("runtime_prepare.codex.entered", input.PrepareInput, nil)
-	if err := prepareCodexHome(codexHome, input.PrepareInput); err != nil {
+	bootstrap, err := prepareCodexHome(ctx, codexHome, input.PrepareInput, p.ResolveCLI)
+	if err != nil {
 		return ProviderPrepareResult{}, err
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.home_prepared", input.PrepareInput, nil)
@@ -48,6 +51,7 @@ func (CodexPreparer) Prepare(_ context.Context, input ProviderPrepareInput) (Pro
 	env := []string{
 		"CODEX_HOME=" + codexHome,
 	}
+	env = append(env, bootstrap.Env()...)
 	if input.ModelEndpoint.supportsCodex() {
 		env = append(env, codexModelPlanAPIKeyEnv+"="+input.ModelEndpoint.APIKey)
 	}
@@ -57,46 +61,64 @@ func (CodexPreparer) Prepare(_ context.Context, input ProviderPrepareInput) (Pro
 	}, nil
 }
 
-func prepareCodexHome(codexHome string, input PrepareInput) error {
+func prepareCodexHome(
+	ctx context.Context,
+	codexHome string,
+	input PrepareInput,
+	resolveCLI CodexCLIResolver,
+) (CodexRuntimeBootstrapStatus, error) {
 	logRuntimePrepareTrace("runtime_prepare.codex.home_dir_requested", input, nil)
 	if err := os.MkdirAll(codexHome, 0o700); err != nil {
-		return fmt.Errorf("create codex home: %w", err)
+		return CodexRuntimeBootstrapStatus{}, fmt.Errorf("create codex home: %w", err)
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.home_dir_resolved", input, nil)
 	logRuntimePrepareTrace("runtime_prepare.codex.user_files_requested", input, nil)
 	if err := exposeUserCodexFiles(codexHome); err != nil {
-		return err
+		return CodexRuntimeBootstrapStatus{}, err
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.user_files_resolved", input, nil)
 	logRuntimePrepareTrace("runtime_prepare.codex.imported_rollout_requested", input, nil)
 	if err := exposeCodexImportedRolloutFile(codexHome, input.ExternalRolloutSourcePath); err != nil {
-		return err
+		return CodexRuntimeBootstrapStatus{}, err
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.imported_rollout_resolved", input, nil)
 	logRuntimePrepareTrace("runtime_prepare.codex.session_config_requested", input, nil)
 	if err := ensureCodexSessionConfig(filepath.Join(codexHome, "config.toml"), input); err != nil {
-		return err
+		return CodexRuntimeBootstrapStatus{}, err
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.session_config_resolved", input, nil)
+
+	bootstrap := PrepareCodexRuntimeForLaunch(ctx, CodexRuntimeBootstrapInput{
+		CodexHome:  codexHome,
+		ResolveCLI: resolveCLI,
+	})
+	logRuntimePrepareTrace("runtime_prepare.codex.runtime_bootstrap", input, bootstrap.TraceFields())
+	for _, outcome := range bootstrap.PluginSync.Outcomes {
+		logRuntimePrepareTrace("runtime_prepare.codex.plugin_sync."+outcome.Status, input, map[string]any{
+			"plugin_id":   outcome.PluginID,
+			"duration_ms": outcome.DurationMS,
+			"reason":      outcome.Reason,
+		})
+	}
 	logRuntimePrepareTrace("runtime_prepare.codex.user_skills_requested", input, nil)
 	if err := exposeUserCodexSkillFolders(filepath.Join(codexHome, "skills"), input); err != nil {
-		return err
+		return CodexRuntimeBootstrapStatus{}, err
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.user_skills_resolved", input, nil)
 	logRuntimePrepareTrace("runtime_prepare.codex.native_skills_requested", input, nil)
 	skillPaths, err := installProviderNativeSkills(filepath.Join(codexHome, "skills"), input)
 	if err != nil {
-		return err
+		return CodexRuntimeBootstrapStatus{}, err
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.native_skills_resolved", input, map[string]any{
 		"skill_count": len(skillPaths),
 	})
 	logRuntimePrepareTrace("runtime_prepare.codex.approval_rules_requested", input, nil)
 	if err := installCodexApprovalRules(codexHome, input); err != nil {
-		return err
+		return CodexRuntimeBootstrapStatus{}, err
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.approval_rules_resolved", input, nil)
-	return nil
+	return bootstrap, nil
 }
 
 func installCodexApprovalRules(codexHome string, input PrepareInput) error {
@@ -168,9 +190,6 @@ func exposeUserCodexFiles(codexHome string) error {
 			}
 		}
 	}
-	if err := exposeUserCodexModelsCache(codexHome, userCodexHome); err != nil {
-		return err
-	}
 	if err := exposeUserCodexPluginState(codexHome, userCodexHome); err != nil {
 		return err
 	}
@@ -236,11 +255,7 @@ func exposeCodexImportedRolloutFile(codexHome string, sourcePath string) error {
 }
 
 func exposeUserCodexPluginState(codexHome string, userCodexHome string) error {
-	for _, rel := range []string{
-		filepath.Join("plugins", "cache"),
-		filepath.Join("plugins", "data"),
-		filepath.Join("plugins", ".plugin-appserver"),
-	} {
+	for _, rel := range []string{filepath.Join("plugins", "data")} {
 		source := filepath.Join(userCodexHome, rel)
 		if _, err := os.Stat(source); err != nil {
 			continue

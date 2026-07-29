@@ -51,6 +51,16 @@ func (p *DefaultPreparer) RegisterProvider(provider ProviderPreparer) {
 	p.providers[providerID] = provider
 }
 
+// SetCodexCLIResolver supplies the exact host-managed Codex command used for
+// versioned cache selection and plugin bootstrap. Call it during composition,
+// before concurrent Prepare calls.
+func (p *DefaultPreparer) SetCodexCLIResolver(resolver CodexCLIResolver) {
+	if p == nil {
+		return
+	}
+	p.RegisterProvider(CodexPreparer{ResolveCLI: resolver})
+}
+
 func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (PreparedRuntime, error) {
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	agentSessionID := strings.TrimSpace(input.AgentSessionID)

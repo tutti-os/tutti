@@ -7,6 +7,8 @@ import (
 	"time"
 
 	agentdaemon "github.com/tutti-os/tutti/packages/agent/daemon"
+	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
+	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	tuttiapi "github.com/tutti-os/tutti/services/tuttid/api"
 	accountservice "github.com/tutti-os/tutti/services/tuttid/service/account"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
@@ -123,6 +125,17 @@ func agentProviderCommandResolver(
 		}
 		return agentdaemon.ProviderCommand{Command: resolved.Command, Env: resolved.Env}, nil
 	}
+}
+
+func configureReplayAwareCodexRuntimePreparer(
+	preparer *runtimeprep.DefaultPreparer,
+	replay bool,
+	resolver agentdaemon.ProviderCommandResolver,
+) {
+	if preparer == nil || replay || resolver == nil {
+		return
+	}
+	preparer.SetCodexCLIResolver(agentruntime.NewCodexCLIResolver(resolver))
 }
 
 func applyAgentReplayRuntimeComposition(

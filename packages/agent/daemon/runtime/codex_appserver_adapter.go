@@ -11,6 +11,8 @@ import (
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
+	"github.com/tutti-os/tutti/packages/agent/runtimeprep"
 )
 
 // Codex app-server JSON-RPC methods used by the adapter. The app-server
@@ -140,6 +142,8 @@ const defaultCodexAppServerGoalProvenanceGraceWindow = 250 * time.Millisecond
 
 const codexAppServerExecutableBase = "codex"
 
+const codexCLIVersionProbeTimeout = 5 * time.Second
+
 type CodexAppServerAdapter struct {
 	transport                  ProcessTransport
 	host                       HostMetadata
@@ -172,10 +176,6 @@ type CodexAppServerAdapter struct {
 	// turnSteerTimeout bounds turn/steer guidance delivery. Zero falls back to
 	// the default.
 	turnSteerTimeout time.Duration
-	// cliVersionMu/cliVersionCached memoize the served CLI's --version result
-	// per adapter instance (each instance owns one command).
-	cliVersionMu     sync.Mutex
-	cliVersionCached string
 	// forkCapabilityMu serializes historical initialize probes. The bounded LRU
 	// is keyed by a SHA-256 launch fingerprint (including the resolved
 	// executable identity), so it retains no prepared environment material;
@@ -470,19 +470,29 @@ func newAppServerAdapter(
 
 // resolveCLIVersion returns the version of the binary that serves the
 // app-server (e.g. "0.142.1"), resolved with the same env (PATH) the
-// app-server is spawned with so the two agree. The result is cached per
-// adapter after the first successful lookup; an empty string signals
+// app-server is spawned with so the two agree. Each process launch probes its
+// exact resolved command because provider updates can replace or switch the
+// served CLI while the adapter remains alive. An empty string signals
 // "unknown" so callers can fall back.
-func (a *CodexAppServerAdapter) resolveCLIVersion(env []string) string {
-	a.cliVersionMu.Lock()
-	defer a.cliVersionMu.Unlock()
-	if a.cliVersionCached != "" {
-		return a.cliVersionCached
+func resolveCodexCLIVersion(
+	ctx context.Context,
+	command []string,
+	overrides []string,
+) string {
+	prefix := codexAppServerCLICommandPrefix(command)
+	if len(prefix) == 0 || strings.TrimSpace(prefix[0]) == "" {
+		return ""
 	}
-	cmd := exec.Command(a.config.command[0], "--version")
-	if len(env) > 0 {
-		cmd.Env = env
-	}
+	resolver := runtimecmd.Resolver{}
+	env := resolver.Env(overrides)
+	probeCtx, cancel := context.WithTimeout(ctx, codexCLIVersionProbeTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(
+		probeCtx,
+		resolver.Resolve(prefix[0], env),
+		append(prefix[1:], "--version")...,
+	)
+	cmd.Env = env
 	out, err := cmd.Output()
 	if err != nil {
 		return ""
@@ -492,18 +502,36 @@ func (a *CodexAppServerAdapter) resolveCLIVersion(env []string) string {
 	if len(fields) == 0 {
 		return ""
 	}
-	a.cliVersionCached = strings.TrimSpace(fields[len(fields)-1])
-	return a.cliVersionCached
+	return strings.TrimSpace(fields[len(fields)-1])
+}
+
+// NewCodexCLIResolver adapts the runtime's provider-owned command resolver
+// for the run-scoped Codex preparation boundary.
+func NewCodexCLIResolver(resolver ProviderCommandResolver) runtimeprep.CodexCLIResolver {
+	return func(ctx context.Context) (runtimeprep.CodexCLICommand, error) {
+		command, err := resolver(ctx, providerregistry.CodexProviderID)
+		if err != nil {
+			return runtimeprep.CodexCLICommand{}, err
+		}
+		return runtimeprep.CodexCLICommand{
+			Command: append([]string(nil), command.Command...),
+			Env:     append([]string(nil), command.Env...),
+		}, nil
+	}
+}
+
+func codexAppServerCLICommandPrefix(command []string) []string {
+	command = append([]string(nil), command...)
+	if len(command) > 0 && strings.TrimSpace(command[len(command)-1]) == "app-server" {
+		command = command[:len(command)-1]
+	}
+	return command
 }
 
 // clientInfoParams builds the app-server initialize clientInfo. The served
 // CLI derives its outbound originator/User-Agent from clientInfo.name, so the
 // name comes from the adapter config: the official Codex originator for the
 // codex provider, the Tutti identity for tutti-agent.
-func (a *CodexAppServerAdapter) clientInfoParams(env []string) map[string]any {
-	return clientInfoParamsForVersion(a.host, a.config.clientInfoName, a.resolveCLIVersion(env))
-}
-
 func clientInfoParamsForVersion(host HostMetadata, name string, version string) map[string]any {
 	if strings.TrimSpace(version) == "" {
 		version = strings.TrimSpace(host.ClientInfo.Version)

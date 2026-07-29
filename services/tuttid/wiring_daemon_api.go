@@ -263,6 +263,7 @@ func buildDaemonAPI(
 	agentTargetSetup.Actions = agentextensiondata.NewFileSetupActionStore(agentExtensionStateDir)
 	agentTargetSetup.Discovery = agentSetupDiscovery
 	agentTargetSetup.AuthInvalidation = runOutcomes
+	providerCommandResolver := agentProviderCommandResolver(&agentStatusService)
 	agentRuntimeConfig := agentdaemon.Config{
 		Reporter: agentRunOutcomeReporter{
 			DurableActivityReporter: agentActivityProjection,
@@ -273,7 +274,7 @@ func buildDaemonAPI(
 		AdapterResolver: agentextensionservice.RuntimeResolver{
 			Manager: agentExtensionManager, Transport: sessionRecordingTransport, Host: agentHostMetadata,
 		},
-		ProviderCommandResolver:    agentProviderCommandResolver(&agentStatusService),
+		ProviderCommandResolver:    providerCommandResolver,
 		CommandNetworkAccessPolicy: tuttiDesktopCommandNetworkAccessPolicy,
 	}
 	agentRuntimeConfig = applyAgentReplayRuntimeComposition(agentRuntimeConfig, replayComposition)
@@ -282,6 +283,7 @@ func buildDaemonAPI(
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("create agent runtime: %w", err)
 	}
 	agentRuntimePreparer := runtimeprep.NewDefaultPreparer(tuttitypes.DefaultStateDir())
+	configureReplayAwareCodexRuntimePreparer(agentRuntimePreparer, replayComposition, providerCommandResolver)
 	agentRuntimePreparer.RegisterProvider(tuttiagentservice.NewPreparer())
 	agentRuntimePreparer.ComputerUseAvailable = func() bool {
 		return runtimeprep.ComputerUseDefaultEnabled() && computersvc.CheckReady() == nil
