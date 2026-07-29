@@ -8,9 +8,9 @@ import type { AgentAskUserQuestionVM } from "./contracts/agentAskUserQuestionIte
  * exact class of bug that left the message-center card without its options).
  *
  * Input shape (codex / ACP): each entry may carry `id`, `header`, `question`,
- * `multiSelect`, and `options: [{ label, description }]`. Answers are layered on
- * by the caller (the live projection knows them; a pending prompt has none), so
- * this returns the answer-less base.
+ * `multiSelect`, `allowFreeText`, and `options: [{ label, description }]`.
+ * Answers are layered on by the caller (the live projection knows them; a
+ * pending prompt has none), so this returns the answer-less base.
  */
 export function normalizeAskUserQuestions(
   rawQuestions: unknown,
@@ -47,7 +47,11 @@ export function normalizeAskUserQuestions(
             }
           ];
         }),
-        multiSelect: Boolean(question.multiSelect)
+        multiSelect: Boolean(question.multiSelect),
+        ...(question.allowFreeText === false ||
+        question.allow_free_text === false
+          ? { allowFreeText: false }
+          : {})
       }
     ];
   });

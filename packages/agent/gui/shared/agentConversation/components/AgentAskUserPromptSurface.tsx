@@ -205,13 +205,15 @@ function AskUserAnswerFlowSurface({
             })}
           </div>
         ) : null}
-        <textarea
-          value={flow.freeText}
-          placeholder={labels.answerPlaceholder}
-          disabled={isSubmitting}
-          className={styles.interactivePromptTextarea}
-          onChange={(event) => flow.setFreeText(event.currentTarget.value)}
-        />
+        {question.allowFreeText !== false ? (
+          <textarea
+            value={flow.freeText}
+            placeholder={labels.answerPlaceholder}
+            disabled={isSubmitting}
+            className={styles.interactivePromptTextarea}
+            onChange={(event) => flow.setFreeText(event.currentTarget.value)}
+          />
+        ) : null}
         <div className={styles.interactivePromptActions}>
           {prompt.questions.length > 1 ? (
             <Button

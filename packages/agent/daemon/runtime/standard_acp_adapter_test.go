@@ -1916,6 +1916,15 @@ func TestStandardACPAdapterJoinsKimiAskUserQuestionInputAfterPermission(t *testi
 
 	transport := newStandardACPTransport("Kimi Code", "kimi-session-interactive-1")
 	transport.conn.promptKind = "ask-user-after-permission"
+	toolUpdateGate := make(chan struct{})
+	transport.conn.pauseBeforeAskUserToolUpdate = toolUpdateGate
+	var releaseToolUpdate sync.Once
+	release := func() {
+		releaseToolUpdate.Do(func() {
+			close(toolUpdateGate)
+		})
+	}
+	defer release()
 	adapter := newHermesExtensionTestAdapter(transport)
 	session := standardTestSession(hermesExtensionTestProvider)
 	session.Provider = "acp:kimi-code"
@@ -1926,6 +1935,7 @@ func TestStandardACPAdapterJoinsKimiAskUserQuestionInputAfterPermission(t *testi
 
 	var mu sync.Mutex
 	var emittedActivity []activityshared.Event
+	permissionStarted := make(chan struct{}, 1)
 	requested := make(chan activityshared.Event, 1)
 	execDone := make(chan error, 1)
 	go func() {
@@ -1934,6 +1944,13 @@ func TestStandardACPAdapterJoinsKimiAskUserQuestionInputAfterPermission(t *testi
 			emittedActivity = append(emittedActivity, events...)
 			mu.Unlock()
 			for _, event := range events {
+				if event.Type == activityshared.EventCallStarted &&
+					event.Payload.CallID == "interactive-ask-1" {
+					select {
+					case permissionStarted <- struct{}{}:
+					default:
+					}
+				}
 				if event.Type == activityshared.EventInteractionRequested {
 					select {
 					case requested <- event:
@@ -1944,6 +1961,25 @@ func TestStandardACPAdapterJoinsKimiAskUserQuestionInputAfterPermission(t *testi
 		}, nil)
 		execDone <- err
 	}()
+
+	select {
+	case <-permissionStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Kimi permission request was not observed before the tool update")
+	}
+	if snapshot := adapter.SessionState(session); snapshot.PendingInteractive != nil {
+		t.Fatalf(
+			"pending interactive before tool input = %#v, want incomplete prompt hidden from SessionState",
+			snapshot.PendingInteractive,
+		)
+	}
+	mu.Lock()
+	prematureRequested := eventsOfType(emittedActivity, activityshared.EventInteractionRequested)
+	mu.Unlock()
+	if len(prematureRequested) != 0 {
+		t.Fatalf("premature interaction.requested events = %#v, want none before tool input", prematureRequested)
+	}
+	release()
 
 	var interaction activityshared.Event
 	select {
@@ -1956,9 +1992,11 @@ func TestStandardACPAdapterJoinsKimiAskUserQuestionInputAfterPermission(t *testi
 	}
 	questions := payloadArray(interaction.Payload.Interaction.Input["questions"])
 	if len(questions) != 1 ||
+		asString(questions[0]["id"]) != "question-1" ||
 		asString(questions[0]["question"]) != "你今天心情怎么样？" ||
-		len(payloadArray(questions[0]["options"])) != 3 {
-		t.Fatalf("interaction questions = %#v, want the complete Kimi question and options", questions)
+		len(payloadArray(questions[0]["options"])) != 3 ||
+		questions[0]["allowFreeText"] != false {
+		t.Fatalf("interaction questions = %#v, want one normalized option-only Kimi question", questions)
 	}
 
 	snapshot := adapter.SessionState(session)
@@ -2031,6 +2069,185 @@ func TestStandardACPAdapterJoinsKimiAskUserQuestionInputAfterPermission(t *testi
 	localAnswers, _ := localPayload["answers"].([]any)
 	if len(localAnswers) != 1 || asString(localAnswers[0]) != "很好" {
 		t.Fatalf("local completed output = %#v, want the canonical answer preserved", callCompletedOutput)
+	}
+	localAnswersByQuestionID := payloadObject(localPayload["answersByQuestionId"])
+	if len(localAnswersByQuestionID) != 1 || asString(localAnswersByQuestionID["question-1"]) != "很好" {
+		t.Fatalf("local completed output = %#v, want the canonical per-question answer preserved", callCompletedOutput)
+	}
+}
+
+func TestStandardACPAdapterRejectsUnsupportedKimiAskUserQuestionBeforePublication(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		promptKind string
+		wantError  string
+	}{
+		{
+			name:       "multiple questions",
+			promptKind: "ask-user-after-permission-multi-question",
+			wantError:  "exactly one question",
+		},
+		{
+			name:       "multi select",
+			promptKind: "ask-user-after-permission-multi-select",
+			wantError:  "does not support multi-select",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			transport := newStandardACPTransport("Kimi Code", "kimi-session-unsupported-"+strings.ReplaceAll(tt.name, " ", "-"))
+			transport.conn.promptKind = tt.promptKind
+			adapter := newHermesExtensionTestAdapter(transport)
+			session := standardTestSession(hermesExtensionTestProvider)
+			session.Provider = "acp:kimi-code"
+			if _, err := adapter.Start(context.Background(), session); err != nil {
+				t.Fatalf("Start: %v", err)
+			}
+			session.ProviderSessionID = transport.conn.sessionID
+
+			var mu sync.Mutex
+			var emittedActivity []activityshared.Event
+			execDone := make(chan error, 1)
+			go func() {
+				_, err := adapter.Exec(context.Background(), session, textPrompt("ask unsupported question"), "", "turn-kimi-unsupported", func(events []activityshared.Event) {
+					mu.Lock()
+					emittedActivity = append(emittedActivity, events...)
+					mu.Unlock()
+				}, nil)
+				execDone <- err
+			}()
+
+			select {
+			case err := <-execDone:
+				if err != nil {
+					t.Fatalf("Exec after unsupported question rejection: %v", err)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("Exec did not finish after rejecting the unsupported Kimi question")
+			}
+
+			mu.Lock()
+			requested := eventsOfType(emittedActivity, activityshared.EventInteractionRequested)
+			superseded := eventsOfType(emittedActivity, activityshared.EventInteractionSuperseded)
+			completed := eventsOfType(emittedActivity, activityshared.EventCallCompleted)
+			failed := eventsOfType(emittedActivity, activityshared.EventCallFailed)
+			mu.Unlock()
+			if len(requested) != 0 {
+				t.Fatalf("interaction.requested events = %#v, want none for unsupported provider shape", requested)
+			}
+			if len(superseded) != 0 {
+				t.Fatalf("interaction.superseded events = %#v, want no canonical Interaction before publication", superseded)
+			}
+			for _, event := range completed {
+				if event.Payload.CallID == "interactive-ask-1" {
+					t.Fatalf("unsupported AskUserQuestion completed locally: %#v", event)
+				}
+			}
+			if len(failed) == 0 {
+				t.Fatal("unsupported AskUserQuestion did not emit call.failed")
+			}
+			responseErr := transport.conn.interactiveError()
+			if responseErr == nil || !strings.Contains(responseErr.Message, tt.wantError) {
+				t.Fatalf("provider response error = %#v, want containing %q", responseErr, tt.wantError)
+			}
+			if snapshot := adapter.SessionState(session); snapshot.PendingInteractive != nil {
+				t.Fatalf("pending interactive = %#v, want unsupported request removed", snapshot.PendingInteractive)
+			}
+		})
+	}
+}
+
+func TestStandardACPAdapterRejectsNonCanonicalKimiAskUserAnswer(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Kimi Code", "kimi-session-invalid-answer")
+	transport.conn.promptKind = "ask-user-after-permission"
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
+	session.Provider = "acp:kimi-code"
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "kimi-session-invalid-answer"
+
+	var mu sync.Mutex
+	var emittedActivity []activityshared.Event
+	requested := make(chan struct{}, 1)
+	execDone := make(chan error, 1)
+	go func() {
+		_, err := adapter.Exec(context.Background(), session, textPrompt("ask how I feel"), "", "turn-kimi-invalid-answer", func(events []activityshared.Event) {
+			mu.Lock()
+			emittedActivity = append(emittedActivity, events...)
+			mu.Unlock()
+			for _, event := range events {
+				if event.Type == activityshared.EventInteractionRequested {
+					select {
+					case requested <- struct{}{}:
+					default:
+					}
+				}
+			}
+		}, nil)
+		execDone <- err
+	}()
+
+	select {
+	case <-requested:
+	case <-time.After(2 * time.Second):
+		t.Fatal("supported Kimi question was not published")
+	}
+	result, err := adapter.SubmitInteractive(context.Background(), session, SubmitInteractiveInput{
+		RoomID:         session.RoomID,
+		AgentSessionID: session.AgentSessionID,
+		TurnID:         "turn-kimi-invalid-answer",
+		RequestID:      "permission-1",
+		Action:         "submit",
+		Payload: map[string]any{
+			"answers": []any{"很好", "一般"},
+			"answersByQuestionId": map[string]any{
+				"question-1": "很好",
+				"question-2": "一般",
+			},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "exactly one canonical answer") {
+		t.Fatalf("SubmitInteractive error = %v, want canonical-answer rejection", err)
+	}
+	if result.Disposition != InteractiveDispositionSuperseded {
+		t.Fatalf("SubmitInteractive disposition = %q, want superseded", result.Disposition)
+	}
+	select {
+	case err := <-execDone:
+		if err != nil {
+			t.Fatalf("Exec after invalid answer rejection: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Exec did not finish after invalid answer rejection")
+	}
+
+	mu.Lock()
+	completed := eventsOfType(emittedActivity, activityshared.EventCallCompleted)
+	failed := eventsOfType(emittedActivity, activityshared.EventCallFailed)
+	superseded := eventsOfType(emittedActivity, activityshared.EventInteractionSuperseded)
+	mu.Unlock()
+	for _, event := range completed {
+		if event.Payload.CallID == "interactive-ask-1" {
+			t.Fatalf("invalid AskUser answer completed locally: %#v", event)
+		}
+	}
+	if len(failed) == 0 || len(superseded) == 0 {
+		t.Fatalf("failed events = %d, superseded events = %d, want both", len(failed), len(superseded))
+	}
+	if responseErr := transport.conn.interactiveError(); responseErr == nil ||
+		!strings.Contains(responseErr.Message, "exactly one canonical answer") {
+		t.Fatalf("provider response error = %#v, want canonical-answer rejection", responseErr)
+	}
+	if disposition := adapter.InteractiveDisposition(session, "turn-kimi-invalid-answer", "permission-1"); disposition != InteractiveDispositionSuperseded {
+		t.Fatalf("terminal disposition = %q, want superseded", disposition)
 	}
 }
 
@@ -3612,9 +3829,11 @@ type standardACPConnection struct {
 	promptKind                    string
 	pauseBeforePromptResult       chan struct{}
 	pauseBeforeToolCallCompletion chan struct{}
+	pauseBeforeAskUserToolUpdate  chan struct{}
 	pendingPermissionCallID       json.RawMessage
 	selectedPermissionOption      string
 	selectedInteractiveResult     map[string]any
+	selectedInteractiveError      *acpError
 	appliedModeID                 string
 	lastSetModeParamsSnapshot     map[string]any
 	lastAuthenticatedMethodID     string
@@ -3983,7 +4202,10 @@ func (c *standardACPConnection) Send(data []byte) error {
 						"options":  options,
 					},
 				})
-				if c.promptKind == "ask-user-after-permission" {
+				if strings.HasPrefix(c.promptKind, "ask-user-after-permission") {
+					if c.pauseBeforeAskUserToolUpdate != nil {
+						<-c.pauseBeforeAskUserToolUpdate
+					}
 					c.sendJSON(map[string]any{
 						"jsonrpc": "2.0",
 						"method":  acpMethodUpdate,
@@ -3995,15 +4217,7 @@ func (c *standardACPConnection) Send(data []byte) error {
 								"title":         "AskUserQuestion",
 								"status":        "pending",
 								"rawInput": map[string]any{
-									"questions": []any{map[string]any{
-										"header":   "心情",
-										"question": "你今天心情怎么样？",
-										"options": []any{
-											map[string]any{"label": "很好", "description": "精神饱满，充满活力"},
-											map[string]any{"label": "一般", "description": "状态平稳，可以正常进行工作"},
-											map[string]any{"label": "不太好", "description": "有些疲惫或注意力分散，需要调整"},
-										},
-									}},
+									"questions": c.askUserQuestionsAfterPermission(),
 								},
 							},
 						},
@@ -4015,6 +4229,7 @@ func (c *standardACPConnection) Send(data []byte) error {
 		default:
 			if (c.promptPermission || c.promptKind != "") && acpRequestID(message.ID) == "permission-1" {
 				var response struct {
+					Error  *acpError `json:"error"`
 					Result struct {
 						Outcome struct {
 							OptionID string         `json:"optionId"`
@@ -4031,6 +4246,7 @@ func (c *standardACPConnection) Send(data []byte) error {
 					"optionId": response.Result.Outcome.OptionID,
 					"payload":  clonePayload(response.Result.Outcome.Payload),
 				}
+				c.selectedInteractiveError = response.Error
 				promptID := append(json.RawMessage(nil), c.pendingPermissionCallID...)
 				c.mu.Unlock()
 				c.streamPromptResult(promptID)
@@ -4242,6 +4458,16 @@ func (c *standardACPConnection) interactiveOutcome() map[string]any {
 	return clonePayload(c.selectedInteractiveResult)
 }
 
+func (c *standardACPConnection) interactiveError() *acpError {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.selectedInteractiveError == nil {
+		return nil
+	}
+	copied := *c.selectedInteractiveError
+	return &copied
+}
+
 func (c *standardACPConnection) promptRequest() (map[string]any, []map[string]any) {
 	switch c.promptKind {
 	case "ask-user":
@@ -4260,7 +4486,9 @@ func (c *standardACPConnection) promptRequest() (map[string]any, []map[string]an
 				}},
 			},
 		}, nil
-	case "ask-user-after-permission":
+	case "ask-user-after-permission",
+		"ask-user-after-permission-multi-question",
+		"ask-user-after-permission-multi-select":
 		return map[string]any{
 				"toolCallId": "interactive-ask-1",
 				"title":      "AskUserQuestion",
@@ -4287,6 +4515,28 @@ func (c *standardACPConnection) promptRequest() (map[string]any, []map[string]an
 				{"optionId": "reject", "label": "Reject", "kind": "reject_once"},
 			}
 	}
+}
+
+func (c *standardACPConnection) askUserQuestionsAfterPermission() []any {
+	first := map[string]any{
+		"header":      "心情",
+		"question":    "你今天心情怎么样？",
+		"multiSelect": c.promptKind == "ask-user-after-permission-multi-select",
+		"options": []any{
+			map[string]any{"label": "很好", "description": "精神饱满，充满活力"},
+			map[string]any{"label": "一般", "description": "状态平稳，可以正常进行工作"},
+			map[string]any{"label": "不太好", "description": "有些疲惫或注意力分散，需要调整"},
+		},
+	}
+	questions := []any{first}
+	if c.promptKind == "ask-user-after-permission-multi-question" {
+		questions = append(questions, map[string]any{
+			"header":   "安排",
+			"question": "接下来做什么？",
+			"options":  []any{map[string]any{"label": "继续"}, map[string]any{"label": "休息"}},
+		})
+	}
+	return questions
 }
 
 func (c *standardACPConnection) lastModeID() string {

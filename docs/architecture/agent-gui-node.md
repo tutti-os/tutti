@@ -474,7 +474,12 @@ request across ordered wire frames—for example permission identity and options
 first, then the matching question body in a tool update—the adapter correlates
 them by exact Turn and tool-call identity and delays Interaction publication
 until the input is complete. A later transcript tool update cannot repair an
-already-persisted incomplete Interaction.
+already-persisted incomplete Interaction. The adapter must also validate that
+the provider wire can represent every answer allowed by the published surface;
+an unsupported shape fails before publication instead of exposing a lossy
+Interaction. This publication gate applies equally to emitted events and
+`SessionState.PendingInteractive`; a snapshot must not leak the incomplete
+request while the adapter waits for the later frame.
 
 A child Interaction may appear in the root conversation, but submission carries the exact `(agentSessionId, turnId, requestId)` tuple.
 
@@ -1641,11 +1646,24 @@ that wait, the adapter keeps reading and joins them before publishing the
 canonical Interaction. When the answer is delivered, local call resolution is
 serialized ahead of provider terminal messages caused by that answer.
 When a standard ACP provider bridges a structured question through
-`session/request_permission`, the adapter preserves the canonical answer
-payload for local projection but translates the chosen label back to the
-provider's opaque option ID. The wire response must remain ACP-native
-(`outcome=selected` plus `optionId`); renderer actions such as `submit` are not
-provider outcome values.
+one `session/request_permission` as the complete question transaction, one
+selected permission option is that bridge's entire response capacity. The
+one-shot adapter therefore publishes only an exact single-question,
+single-select mapping whose question labels correspond one-to-one with the
+provider's non-rejection options. It marks that surface as option-only,
+rejects multi-question, multi-select, free-text, duplicate, or
+malformed/mismatched shapes before canonical Interaction publication, and
+never records them as answered. On submission, only the single scalar value
+in `answersByQuestionId` is authoritative; the flat `answers` list is display
+data and must not select a provider outcome. The adapter preserves the
+accepted canonical answer payload for local projection but translates its
+chosen label back to the provider's opaque option ID. The wire response
+remains ACP-native (`outcome=selected` plus `optionId`); renderer actions such
+as `submit` are not provider outcome values. A provider may model richer
+questions as a correlated sequence of permission requests, but Tutti must
+implement that sequence as an explicit transaction before publishing the
+richer surface; it must not batch answers into request ids that have not
+arrived.
 Non-DOM hosts such as React Native reuse the pure
 `agent-conversation/interactive-answer` entrypoint for canonical ask-user
 payload construction and own-property-safe question-id access. Presentation

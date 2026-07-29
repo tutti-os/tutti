@@ -61,6 +61,28 @@ describe("normalizeAskUserQuestions", () => {
     ]);
   });
 
+  it("preserves an option-only answer surface", () => {
+    expect(
+      normalizeAskUserQuestions([
+        {
+          id: "question-1",
+          question: "Pick one",
+          options: [{ label: "A" }],
+          allowFreeText: false
+        }
+      ])
+    ).toEqual([
+      {
+        id: "question-1",
+        header: "Question 1",
+        question: "Pick one",
+        options: [{ label: "A", description: "" }],
+        multiSelect: false,
+        allowFreeText: false
+      }
+    ]);
+  });
+
   it("ignores non-array input and non-object entries", () => {
     expect(normalizeAskUserQuestions(null)).toEqual([]);
     expect(normalizeAskUserQuestions("nope")).toEqual([]);

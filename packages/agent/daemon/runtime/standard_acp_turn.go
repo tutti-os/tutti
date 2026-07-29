@@ -413,12 +413,14 @@ func (a *standardACPAdapter) SubmitInteractive(ctx context.Context, session Sess
 		return SubmitInteractiveResult{}, err
 	}
 	if pending.kind == "ask-user" && len(pending.options) > 0 {
-		resolvedOptionID, ok := acpAskUserPermissionOptionID(pending, optionID, action, payload)
-		if !ok {
-			return SubmitInteractiveResult{}, fmt.Errorf(
-				"ask-user answer does not match an available provider option for request %q",
-				requestID,
-			)
+		resolvedOptionID, err := acpAskUserPermissionOptionID(pending, optionID, action, payload)
+		if err != nil {
+			pending.supersede(err)
+			return SubmitInteractiveResult{
+				AgentSessionID: session.AgentSessionID,
+				RequestID:      requestID,
+				Disposition:    InteractiveDispositionSuperseded,
+			}, err
 		}
 		optionID = resolvedOptionID
 		result = acpPermissionResponseResult(resolvedOptionID)

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -550,6 +551,11 @@ func (*standardACPAdapter) respondACPPermissionRequest(
 	if err != nil {
 		pending.finish(pendingInteractiveRequestStateInterrupted)
 		resolved := normalizedPermissionResolvedEvents(session, turnID, pending, pendingInteractiveResponse{}, err)
+		if pending.kind == "ask-user" && !pending.interactionRequested {
+			resolved = slices.DeleteFunc(resolved, func(event activityshared.Event) bool {
+				return event.Type == activityshared.EventInteractionSuperseded
+			})
+		}
 		// The shared error path emits only call.failed; append the
 		// back-to-running turn.updated so the lifecycle cannot strand in
 		// waiting_approval when a request is rejected or canceled.

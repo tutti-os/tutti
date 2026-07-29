@@ -387,8 +387,27 @@ func standardACPPermissionRequested(
 		options:         params.Options,
 		response:        make(chan pendingInteractiveResponse, 1),
 	}
-	pending.interactionRequested = !standardACPAskUserQuestionInputMissing(pending)
+	pending.interactionRequested = true
+	var bridgeErr error
+	if pending.kind == "ask-user" && len(pending.options) > 0 {
+		_, bridgeState, err := normalizeACPAskUserPermissionBridge(pending)
+		switch bridgeState {
+		case acpAskUserPermissionBridgeSupported:
+			pending.interactionRequested = true
+		case acpAskUserPermissionBridgeIncomplete:
+			pending.interactionRequested = false
+		case acpAskUserPermissionBridgeUnsupported:
+			pending.interactionRequested = false
+			bridgeErr = err
+		}
+	}
+	if pending.callType == "interactive" {
+		payload["input"] = clonePayload(pending.input)
+	}
 	adapter.storePendingApproval(pending)
+	if bridgeErr != nil {
+		pending.supersede(bridgeErr)
+	}
 	events := []activityshared.Event{
 		newTurnActivityEvent(session, EventTurnUpdated, turnID, SessionStatusWaiting, "", "", map[string]any{
 			"phase":     string(activityshared.TurnPhaseWaitingApproval),
@@ -424,23 +443,11 @@ func standardACPInteractiveToolCallWithKnownInput(toolCall map[string]any, known
 	return result
 }
 
-func standardACPAskUserQuestionInputMissing(pending *pendingInteractiveRequest) bool {
-	if pending == nil || pending.kind != "ask-user" {
-		return false
-	}
-	for _, question := range payloadArray(pending.input["questions"]) {
-		if firstNonEmpty(asString(question["question"]), asString(question["header"])) != "" {
-			return false
-		}
-	}
-	return true
-}
-
 // standardACPDeferredInteractionRequestedEvents joins providers that emit
 // session/request_permission before the matching tool_call input. The
-// Interaction is published only once its immutable canonical input contains a
-// renderable question, matching the complete user_input_requested event emitted
-// by the Claude Code SDK adapter.
+// Interaction is published only once its immutable canonical input contains
+// exactly one provider-representable single-select question. Unsupported
+// shapes reject the provider request without publishing actionable state.
 func (a *standardACPAdapter) standardACPDeferredInteractionRequestedEvents(
 	session Session,
 	turnID string,
@@ -474,11 +481,14 @@ func (a *standardACPAdapter) standardACPDeferredInteractionRequestedEvents(
 	}
 
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	acpSession := a.sessions[strings.TrimSpace(session.AgentSessionID)]
 	if acpSession == nil {
+		a.mu.Unlock()
 		return nil
 	}
+	var requested activityshared.Event
+	var rejected *pendingInteractiveRequest
+	var rejectionErr error
 	for _, pending := range acpSession.pendingApprovals {
 		if pending == nil ||
 			pending.interactionRequested ||
@@ -500,11 +510,26 @@ func (a *standardACPAdapter) standardACPDeferredInteractionRequestedEvents(
 		if pending.prompt != nil {
 			pending.prompt.Input = clonePayload(mergedInput)
 		}
-		if standardACPAskUserQuestionInputMissing(pending) {
+		_, bridgeState, err := normalizeACPAskUserPermissionBridge(pending)
+		if bridgeState == acpAskUserPermissionBridgeIncomplete {
 			continue
 		}
+		if bridgeState == acpAskUserPermissionBridgeUnsupported {
+			rejected = pending
+			rejectionErr = err
+			break
+		}
 		pending.interactionRequested = true
-		return []activityshared.Event{normalizedInteractionRequestedEvent(session, turnID, pending)}
+		requested = normalizedInteractionRequestedEvent(session, turnID, pending)
+		break
+	}
+	a.mu.Unlock()
+	if rejected != nil {
+		rejected.supersede(rejectionErr)
+		return nil
+	}
+	if requested.Type != "" {
+		return []activityshared.Event{requested}
 	}
 	return nil
 }

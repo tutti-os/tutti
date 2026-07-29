@@ -595,6 +595,12 @@ func (a *standardACPAdapter) SessionState(session Session) SessionStateSnapshot 
 	promptImage := acpSession.promptImage
 	var prompt *SessionInteractivePrompt
 	for _, pending := range acpSession.pendingApprovals {
+		// SessionState is another canonical publication path. Do not expose a
+		// split-frame AskUserQuestion here before the matching tool update has
+		// completed and validated the immutable Interaction input.
+		if pending == nil || !pending.interactionRequested {
+			continue
+		}
 		if candidate := pending.snapshotPrompt(); candidate != nil {
 			prompt = candidate
 			break

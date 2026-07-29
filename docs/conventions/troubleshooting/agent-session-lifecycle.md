@@ -2,6 +2,34 @@
 
 [Agent runtime index](./agent-runtime.md) · [All troubleshooting](./README.md)
 
+### Older extension session fails because its launch identity is incomplete
+
+- **Symptom:** Sending a new message to a previously created extension session
+  fails with `session runtime snapshot is unavailable: launch identity is
+incomplete`, while a newly created session can still launch.
+- **Quick checks:** Compare the persisted Session provider with
+  `internal_runtime_context.sessionRuntimeSnapshot.provider`. The historical
+  defect has an open extension provider such as `acp:kimi-code` on the Session,
+  an empty provider in the snapshot, and a provider-native fingerprint produced
+  with the same empty provider. An intermediate build may retain the provider
+  field while still carrying that legacy empty-provider fingerprint.
+- **Root cause:** Registered-only provider normalization was used when writing
+  the snapshot and its provider-native model fingerprint. Extension-owned ACP
+  provider IDs were therefore collapsed to empty even though the durable
+  Session retained the correct provider.
+- **Fix:** Persist and fingerprint provider-native configurations with open
+  provider normalization. For existing records, recover only when the Session
+  carries a valid extension-owned provider and the snapshot exactly matches the
+  legacy empty-provider fingerprint; keep malformed, registered-provider, plan,
+  and fingerprint-mismatched snapshots fail-closed.
+- **Validation:** Prove a newly written extension snapshot binds its provider,
+  the exact historical shape resumes through its current enabled Agent Target,
+  a strict context-only read still rejects the incomplete identity, and altered
+  fingerprints or registered-provider fallbacks remain unavailable.
+- **References:**
+  [session_runtime_snapshot.go](../../../services/tuttid/service/agent/session_runtime_snapshot.go),
+  [model_plan_binding.go](../../../services/tuttid/service/agent/model_plan_binding.go)
+
 ### One hung provider startup blocks unrelated Agent sessions
 
 - **Symptom:** One provider process starts but never reaches runtime-ready, then

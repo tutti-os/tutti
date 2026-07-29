@@ -263,6 +263,7 @@ function messageCenterAskUserQuestionsEqual(
       question.header === rightQuestion.header &&
       question.question === rightQuestion.question &&
       question.multiSelect === rightQuestion.multiSelect &&
+      question.allowFreeText === rightQuestion.allowFreeText &&
       messageCenterAnswerEqual(
         question.answer ?? null,
         rightQuestion.answer ?? null

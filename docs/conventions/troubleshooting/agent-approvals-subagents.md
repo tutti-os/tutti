@@ -110,16 +110,31 @@ session-level child summaries.
   canonical GUI answer labels are not themselves a valid permission response.
 - Fix: keep the ACP reader active while the provider waits, correlate the two
   frames by exact Turn and `toolCallId`, and publish `interaction.requested`
-  only after the question input is complete. Keep response delivery and local
-  call resolution ahead of the provider terminal caused by that response.
-  Preserve the canonical answer payload locally, resolve its chosen label
-  against the request's permission options, and send ACP
-  `outcome=selected` with the matching `optionId`.
+  only after the question input is complete. Hide the same incomplete request
+  from `SessionState.PendingInteractive`; otherwise session-state reconciliation
+  can persist an immutable partial Interaction before the event is ready. Keep
+  response delivery and local call resolution ahead of the provider terminal
+  caused by that response.
+  For Kimi Code 0.29.x's one-shot question bridge, require exactly one
+  single-select question whose labels map one-to-one to the request's
+  non-rejection permission options; mark it option-only and fail the provider
+  request for multi-question, multi-select, free-text, malformed, duplicate,
+  or mismatched shapes. Preserve the accepted canonical answer payload
+  locally, resolve the single scalar `answersByQuestionId[questionId]` value
+  against the request's permission options, and send ACP `outcome=selected`
+  with the matching `optionId`. Never use the display-oriented flat `answers`
+  list as a routing fallback. Do not generalize this one-shot limit to ACP
+  providers that emit a correlated sequence of question permission requests;
+  those require an explicit multi-request transaction before Tutti may expose
+  a richer question surface.
 - Validate: replay permission-before-tool-input ordering, assert exactly one
   question Interaction with the complete question/options, submit an answer,
   assert the provider receives `selected` with the expected opaque option ID,
-  and assert `call.completed` precedes the provider Turn terminal. Repeat
-  under the Go race detector.
+  and assert `call.completed` precedes the provider Turn terminal. Also replay
+  multi-question and multi-select inputs and assert no
+  `interaction.requested` is published, plus submit an ambiguous canonical
+  answer and assert the Interaction is superseded rather than completed.
+  Repeat under the Go race detector.
 - References:
   [acp_pending.go](../../../packages/agent/daemon/runtime/acp_pending.go),
   [standard_acp_turn.go](../../../packages/agent/daemon/runtime/standard_acp_turn.go),

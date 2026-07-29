@@ -70,6 +70,7 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - [AgentGUI new conversation does nothing after leaving a Chats session](./agent-session-lifecycle.md#agentgui-new-conversation-does-nothing-after-leaving-a-chats-session)
 - [AgentGUI restores a provisional conversation after creation fails](./agent-session-lifecycle.md#agentgui-restores-a-provisional-conversation-after-creation-fails)
 - [Agent GUI context usage is absent or has the wrong total](./agent-session-lifecycle.md#agent-gui-context-usage-is-absent-or-has-the-wrong-total)
+- [Older extension session fails because its launch identity is incomplete](./agent-session-lifecycle.md#older-extension-session-fails-because-its-launch-identity-is-incomplete)
 - [Extension history becomes non-resumable after daemon restart](./agent-session-lifecycle.md#extension-history-becomes-non-resumable-after-daemon-restart)
 - [Agent session restore breaks when durable snapshot ownership is split](./agent-session-lifecycle.md#agent-session-restore-breaks-when-durable-snapshot-ownership-is-split)
 - [Agent activity live updates fail after event schema changes](./agent-session-lifecycle.md#agent-activity-live-updates-fail-after-event-schema-changes)
