@@ -77,6 +77,13 @@ committing, fetching, or checking out. A temporary cwd alone is not isolation
 because `GIT_DIR` takes precedence and can redirect `git init` and later
 commands into a caller's linked-worktree metadata.
 
+Repository validation lane runners must remove the same inherited repository
+selectors before spawning checks or tests. Git hooks export repository-local
+environment variables, so a pre-push validation run otherwise gives every
+child test authority over the caller's linked-worktree metadata. Spawned lanes
+rediscover the intended repository from their cwd; temporary Git fixtures still
+apply their own per-command environment and ceiling.
+
 ## TypeScript Baseline
 
 TypeScript linting uses Oxlint.
