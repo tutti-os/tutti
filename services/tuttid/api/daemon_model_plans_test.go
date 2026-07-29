@@ -8,7 +8,6 @@ import (
 
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
-	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	modelplanservice "github.com/tutti-os/tutti/services/tuttid/service/modelplan"
 )
 
@@ -115,8 +114,7 @@ func TestSetModelPlanEnabledRejectsMissingEnabled(t *testing.T) {
 
 	service := &modelPlanServiceStub{}
 	api := DaemonAPI{
-		ModelPlanService:   service,
-		PreferencesService: gateTestPreferences(map[string]bool{preferencesbiz.LabFlagModelPlans: true}, nil),
+		ModelPlanService: service,
 	}
 	response, err := api.SetModelPlanEnabled(context.Background(), tuttigenerated.SetModelPlanEnabledRequestObject{
 		WorkspaceID: "ws",
@@ -139,8 +137,7 @@ func TestSetModelPlanEnabledAcceptsExplicitFalse(t *testing.T) {
 
 	service := &modelPlanServiceStub{}
 	api := DaemonAPI{
-		ModelPlanService:   service,
-		PreferencesService: gateTestPreferences(map[string]bool{preferencesbiz.LabFlagModelPlans: true}, nil),
+		ModelPlanService: service,
 	}
 	enabled := false
 	response, err := api.SetModelPlanEnabled(context.Background(), tuttigenerated.SetModelPlanEnabledRequestObject{

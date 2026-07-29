@@ -4,9 +4,6 @@ import "testing"
 
 func TestLabFlagRegistryKeysAndDefaults(t *testing.T) {
 	keys := []string{
-		LabFlagTuttiMode,
-		LabFlagModelPlans,
-		LabFlagWorkspaceAgents,
 		LabFlagAutomationRules,
 		LabFlagPreviewAgents,
 	}
@@ -37,9 +34,6 @@ func TestIsLabFlagRejectsUnregisteredKeys(t *testing.T) {
 
 func TestIsLabFlagEnabledFailsClosed(t *testing.T) {
 	for _, key := range []string{
-		LabFlagTuttiMode,
-		LabFlagModelPlans,
-		LabFlagWorkspaceAgents,
 		LabFlagAutomationRules,
 		LabFlagPreviewAgents,
 	} {
@@ -56,7 +50,7 @@ func TestIsLabFlagEnabledFailsClosed(t *testing.T) {
 }
 
 func TestIsLabFlagEnabledStoredValueWins(t *testing.T) {
-	if IsLabFlagEnabled(map[string]bool{LabFlagTuttiMode: false}, LabFlagTuttiMode) {
+	if IsLabFlagEnabled(map[string]bool{LabFlagAutomationRules: false}, LabFlagAutomationRules) {
 		t.Fatalf("stored false must win over registry default")
 	}
 	// Matches the renderer catalog resolution: a stored value wins even for

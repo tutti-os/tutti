@@ -301,25 +301,23 @@
 - **Symptom:** The home composer shows Tutti enabled and the submit trace records
   `tutti_mode_active=true`, but the created Session has no activation and its
   first `tutti_mode_turn_snapshots` row is `inactive`.
-- **Quick checks:** Confirm `lab.tuttiMode` is enabled first. Then trace
-  `initialTuttiModeActivation` at the composer submit, controller activation,
-  desktop activity service, renderer HTTP adapter, and daemon create ingress.
-  Log only a presence boolean at each boundary. Compare the Session export with
-  the durable activation and Turn snapshot rows; `capabilityRefs` do not prove
-  current activation.
+- **Quick checks:** Trace `initialTuttiModeActivation` at the composer submit,
+  controller activation, desktop activity service, renderer HTTP adapter, and
+  daemon create ingress. Log only a presence boolean at each boundary. Compare
+  the Session export with the durable activation and Turn snapshot rows;
+  `capabilityRefs` do not prove current activation.
 - **Root cause:** Session creation crosses several adapters that reconstruct
   object literals. A manually projected create input can omit
   `initialTuttiModeActivation` or its Tutti `capabilityRefs` even when the
   upstream type carries them. Reading mutable draft state after submit can also
-  lose the exact composer selection. Separately, allowing `/tutti` while the lab
-  flag is disabled produces renderer state that the daemon must reject. AgentGUI
-  must therefore treat `capabilityMenuState.tuttiMode.enabled === true` as the
-  sole opt-in for the hero toggle, badge activation, and `/tutti` (omit or
-  `enabled: false` fails closed).
+  lose the exact composer selection. AgentGUI treats
+  `capabilityMenuState.tuttiMode.enabled === true` as the host capability for
+  the hero toggle, badge activation, and `/tutti`; Tutti Desktop always supplies
+  it, while hosts that omit it or set `enabled: false` fail closed.
 - **Fix:** Snapshot active/inactive state and orchestration intensity atomically
   with the composer submit. Preserve both activation and capability provenance
-  through every create projection, and gate slash actions with the same host
-  capability flag as the visible control.
+  through every create projection, and use the same host capability as the
+  visible control for slash actions.
 - **Validation:** Keep boundary tests for the service, engine host, and HTTP
   adapter. In a real development launch, submit once with Tutti enabled and
   verify the HTTP boundary sees the activation, the activation revision is

@@ -86,8 +86,7 @@ import {
   AGENT_SESSION_RECORDING_FLAG,
   AGENT_REFERENCE_PROVENANCE_FILTER_FLAG,
   isFeatureEnabled,
-  LAB_AGENT_INPUT_HISTORY_FLAG,
-  LAB_TUTTI_MODE_FLAG
+  LAB_AGENT_INPUT_HISTORY_FLAG
 } from "../../../../../shared/featureFlags/catalog.ts";
 
 function DesktopAgentGUISurfaceImpl({
@@ -562,17 +561,10 @@ function DesktopAgentGUISurfaceImpl({
         installed: computerUseStatus?.installed ?? null
       },
       tuttiMode: {
-        enabled: isFeatureEnabled(
-          desktopPreferencesState.featureFlags,
-          LAB_TUTTI_MODE_FLAG
-        )
+        enabled: true
       }
     }),
-    [
-      computerUseStatus,
-      desktopPreferencesState.browserUseConnectionMode,
-      desktopPreferencesState.featureFlags
-    ]
+    [computerUseStatus, desktopPreferencesState.browserUseConnectionMode]
   );
   const handleAgentEnvPanelOpen = useCallback<
     NonNullable<AgentGUIProps["hostActions"]["onAgentEnvPanelOpen"]>

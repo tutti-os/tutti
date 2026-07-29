@@ -23,7 +23,8 @@ interface WorkspaceAgentActivityMutationCommandTarget {
 export interface WorkspaceAgentActivityMutationOperationsDependencies {
   getSession(
     workspaceId: string,
-    agentSessionId: string
+    agentSessionId: string,
+    signal?: AbortSignal
   ): Promise<AgentActivitySession>;
   hostFilesApi?: Pick<
     DesktopHostFilesApi,
@@ -208,7 +209,8 @@ export class WorkspaceAgentActivityMutationOperations {
     if (input.mode === "existing") {
       session = await this.dependencies.getSession(
         workspaceId,
-        requestedAgentSessionId
+        requestedAgentSessionId,
+        input.signal
       );
     } else {
       reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
@@ -320,16 +322,25 @@ export class WorkspaceAgentActivityMutationOperations {
 
   async cancelTurn(input: {
     agentSessionId: string;
+    signal?: AbortSignal;
     turnId: string;
     workspaceId: string;
   }): Promise<
     import("@tutti-os/agent-activity-core").AgentActivityTurnCancelResponse
   > {
-    return this.dependencies.tuttidClient.cancelWorkspaceAgentTurn(
-      normalizeWorkspaceId(input.workspaceId),
-      input.agentSessionId,
-      input.turnId
-    );
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    return input.signal
+      ? this.dependencies.tuttidClient.cancelWorkspaceAgentTurn(
+          workspaceId,
+          input.agentSessionId,
+          input.turnId,
+          { signal: input.signal }
+        )
+      : this.dependencies.tuttidClient.cancelWorkspaceAgentTurn(
+          workspaceId,
+          input.agentSessionId,
+          input.turnId
+        );
   }
 
   async goalControl(
@@ -406,15 +417,23 @@ export class WorkspaceAgentActivityMutationOperations {
 
   async updateSessionSettings(input: {
     agentSessionId: string;
+    signal?: AbortSignal;
     settings: Parameters<typeof normalizeComposerSettings>[0];
     workspaceId: string;
   }): ReturnType<IWorkspaceAgentActivityService["updateSessionSettings"]> {
-    const session =
-      await this.dependencies.tuttidClient.updateWorkspaceAgentSessionSettings(
-        input.workspaceId,
-        input.agentSessionId,
-        normalizeComposerSettings(input.settings)
-      );
+    const settingsInput = normalizeComposerSettings(input.settings);
+    const session = input.signal
+      ? await this.dependencies.tuttidClient.updateWorkspaceAgentSessionSettings(
+          input.workspaceId,
+          input.agentSessionId,
+          settingsInput,
+          { signal: input.signal }
+        )
+      : await this.dependencies.tuttidClient.updateWorkspaceAgentSessionSettings(
+          input.workspaceId,
+          input.agentSessionId,
+          settingsInput
+        );
     const settings = session.settings
       ? normalizeComposerSettings(session.settings)
       : normalizeComposerSettings(input.settings);

@@ -353,11 +353,18 @@ export function createDesktopAgentActivityAdapter({
         ReturnType<TuttidClient["sendWorkspaceAgentSessionInput"]>
       >;
       try {
-        result = await tuttidClient.sendWorkspaceAgentSessionInput(
-          input.workspaceId,
-          input.agentSessionId,
-          request
-        );
+        result = input.signal
+          ? await tuttidClient.sendWorkspaceAgentSessionInput(
+              input.workspaceId,
+              input.agentSessionId,
+              request,
+              { signal: input.signal }
+            )
+          : await tuttidClient.sendWorkspaceAgentSessionInput(
+              input.workspaceId,
+              input.agentSessionId,
+              request
+            );
       } catch (error) {
         reportDesktopAgentSubmitTrace(runtimeApi, {
           agentSessionId: input.agentSessionId,
@@ -456,17 +463,26 @@ export function createDesktopAgentActivityAdapter({
       };
     },
     async submitInteractive(input) {
-      const session = await tuttidClient.submitWorkspaceAgentInteractive(
-        input.workspaceId,
-        input.agentSessionId,
-        input.requestId,
-        {
-          turnId: input.turnId,
-          action: input.action ?? null,
-          optionId: input.optionId ?? null,
-          payload: input.payload ?? null
-        }
-      );
+      const request = {
+        turnId: input.turnId,
+        action: input.action ?? null,
+        optionId: input.optionId ?? null,
+        payload: input.payload ?? null
+      };
+      const session = input.signal
+        ? await tuttidClient.submitWorkspaceAgentInteractive(
+            input.workspaceId,
+            input.agentSessionId,
+            input.requestId,
+            request,
+            { signal: input.signal }
+          )
+        : await tuttidClient.submitWorkspaceAgentInteractive(
+            input.workspaceId,
+            input.agentSessionId,
+            input.requestId,
+            request
+          );
       return {
         session: agentActivitySessionFromTuttidSession(
           input.workspaceId,
@@ -505,7 +521,8 @@ export function createDesktopAgentActivityAdapter({
       const session = await tuttidClient.updateWorkspaceAgentSessionPin(
         input.workspaceId,
         input.agentSessionId,
-        { pinned: input.pinned }
+        { pinned: input.pinned },
+        { signal: input.signal }
       );
       return agentActivitySessionFromTuttidSession(input.workspaceId, session);
     },

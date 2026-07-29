@@ -10,7 +10,6 @@ import (
 
 	workflowbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceworkflow"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
-	tuttimodeactivation "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeactivation"
 )
 
 func TestServiceProposePersistsPlanRevisionAndSingleTaskReviewCheckpoint(t *testing.T) {
@@ -2203,60 +2202,14 @@ func TestServiceRetireConfigurationReviewWorkflowsCancelsLegacyPending(t *testin
 	}
 }
 
-func TestWritesRejectedWhenTuttiModeFlagDisabled(t *testing.T) {
+func TestWritesValidateWithoutAFeatureGate(t *testing.T) {
 	t.Parallel()
 
 	now := time.UnixMilli(1_700_000_000_000).UTC()
 	store := newMemoryWorkflowStore()
 	service := newTestService(t, store, now, "id-1")
-	service.FeatureFlags = func(context.Context) (map[string]bool, error) {
-		return map[string]bool{}, nil
-	}
 
-	if _, err := service.Propose(context.Background(), ProposeInput{}); !errors.Is(err, ErrTuttiModeDisabled) {
-		t.Fatalf("Propose() with flag off error = %v, want ErrTuttiModeDisabled", err)
-	}
-	if _, err := service.Revise(context.Background(), ReviseInput{}); !errors.Is(err, ErrTuttiModeDisabled) {
-		t.Fatalf("Revise() with flag off error = %v, want ErrTuttiModeDisabled", err)
-	}
-	if _, err := service.Decide(context.Background(), DecideInput{}); !errors.Is(err, ErrTuttiModeDisabled) {
-		t.Fatalf("Decide() with flag off error = %v, want ErrTuttiModeDisabled", err)
-	}
-
-	// Reads stay available while writes are gated.
-	if _, err := service.ListBySourceSession(context.Background(), "workspace-1", "session-1"); err != nil {
-		t.Fatalf("ListBySourceSession() with flag off error = %v, want nil", err)
-	}
-}
-
-func TestWritesAllowedWhenTuttiModeFlagEnabled(t *testing.T) {
-	t.Parallel()
-
-	now := time.UnixMilli(1_700_000_000_000).UTC()
-	store := newMemoryWorkflowStore()
-	service := newTestService(t, store, now, "id-1")
-	service.FeatureFlags = func(context.Context) (map[string]bool, error) {
-		return map[string]bool{tuttimodeactivation.TuttiModeFeatureFlag: true}, nil
-	}
-
-	// The gate passes; validation then rejects the empty input as usual.
 	if _, err := service.Propose(context.Background(), ProposeInput{}); !errors.Is(err, ErrInvalidInput) {
-		t.Fatalf("Propose() with flag on error = %v, want ErrInvalidInput", err)
-	}
-}
-
-func TestWritesFailClosedWhenFeatureFlagReadFails(t *testing.T) {
-	t.Parallel()
-
-	now := time.UnixMilli(1_700_000_000_000).UTC()
-	store := newMemoryWorkflowStore()
-	service := newTestService(t, store, now, "id-1")
-	service.FeatureFlags = func(context.Context) (map[string]bool, error) {
-		return nil, errors.New("preferences read failed")
-	}
-
-	_, err := service.Decide(context.Background(), DecideInput{})
-	if err == nil || errors.Is(err, ErrTuttiModeDisabled) {
-		t.Fatalf("Decide() with flag read failure error = %v, want wrapped read error", err)
+		t.Fatalf("Propose() error = %v, want ErrInvalidInput", err)
 	}
 }

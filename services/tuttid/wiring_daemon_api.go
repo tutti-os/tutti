@@ -114,20 +114,9 @@ func buildDaemonAPI(
 
 	events := eventstreamservice.NewService(eventstreamservice.DefaultCatalog(), nil)
 	preferencesPublisher := eventstreamservice.DesktopPreferencesPublisher{Service: events}
-	tuttiModeFeatureFlags := func(ctx context.Context) (map[string]bool, error) {
-		if preferencesStore == nil {
-			return map[string]bool{}, nil
-		}
-		preferences, err := preferencesStore.GetDesktopPreferences(ctx)
-		if err != nil {
-			return nil, err
-		}
-		return preferences.FeatureFlags, nil
-	}
 	tuttiModeActivations := &tuttimodeactivationservice.Service{
-		Store:        tuttiModeActivationStore,
-		Publisher:    eventstreamservice.TuttiModeActivationPublisher{Service: events},
-		FeatureFlags: tuttiModeFeatureFlags,
+		Store:     tuttiModeActivationStore,
+		Publisher: eventstreamservice.TuttiModeActivationPublisher{Service: events},
 	}
 	preferences := &preferencesservice.Service{
 		Store:                          preferencesStore,
@@ -512,7 +501,6 @@ func buildDaemonAPI(
 		Revisions:         workspacedata.WorkflowRevisionFiles{StateDir: tuttitypes.DefaultStateDir()},
 		Publisher:         eventstreamservice.WorkspaceWorkflowPublisher{Service: events},
 		IssueMaterializer: tuttimodeplanservice.WorkspaceIssueMaterializer{Issues: &issueService},
-		FeatureFlags:      tuttiModeFeatureFlags,
 		FeedbackDispatcher: &tuttiModePlanFeedbackDispatcher{
 			Agents:    agentSessionService,
 			TurnLinks: workflowStore,

@@ -39,8 +39,7 @@ configuration.
   Plan endpoint to runtime preparation. Unsnapshotted historical sessions may
   still use the isolated legacy-binding fallback.
 - Desktop settings and AgentGUI composer surfaces consume the daemon APIs
-  behind the `lab.modelPlans` gate; they do not own plan credentials or
-  detection state.
+  directly; they do not own plan credentials or detection state.
 
 Provider support is fail-closed. A provider may advertise
 `modelPlanBinding` only when its registry descriptor declares a protocol and a
@@ -74,13 +73,12 @@ each carrying the consumer's role (bindings report `default`; policies report
 policy is rejected while any agent binding still references it; rebind or clear
 those bindings first.
 
-## Rollout Gate
+## Product Availability
 
-Model Plan write routes require the device-global `lab.modelPlans` preference.
-Reads and historical runtime compatibility continue to work when the flag is
-off. Missing or unreadable preferences fail closed for writes. Desktop exposes
-Plans in an independent top-level Model tab; `lab.workspaceAgents` separately
-gates the Custom Agents tab under Agent.
+Model Plan reads and writes are generally available and do not depend on
+desktop preferences. Desktop always exposes Plans in an independent top-level
+Model tab and Custom Agents under Agent. Historical `lab.modelPlans` and
+`lab.workspaceAgents` preference values are ignored.
 
 ## Credential Ownership
 

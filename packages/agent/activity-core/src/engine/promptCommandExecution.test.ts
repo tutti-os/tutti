@@ -57,6 +57,28 @@ test("does not send when the required settings patch fails", async () => {
   assert.equal(sendCalls, 0);
 });
 
+test("does not send when execution is aborted after the settings precondition", async () => {
+  const controller = new AbortController();
+  const expected = new Error("command timed out");
+  let sendCalls = 0;
+  const port: AgentActivityPromptCommandPort = {
+    async updateSessionSettings() {
+      controller.abort(expected);
+    },
+    async sendInput() {
+      sendCalls += 1;
+    }
+  };
+
+  await assert.rejects(
+    executeAgentActivityPromptCommand(port, createCommand(), {
+      signal: controller.signal
+    }),
+    expected
+  );
+  assert.equal(sendCalls, 0);
+});
+
 test("sends immediately when the command has no settings precondition", async () => {
   let settingsCalls = 0;
   let sendCalls = 0;

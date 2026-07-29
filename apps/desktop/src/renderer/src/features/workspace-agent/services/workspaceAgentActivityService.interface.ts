@@ -179,7 +179,8 @@ export interface IWorkspaceAgentActivityService {
   ): Promise<AgentActivityDeleteSessionResult>;
   getSession(
     workspaceId: string,
-    agentSessionId: string
+    agentSessionId: string,
+    signal?: AbortSignal
   ): Promise<AgentActivitySession>;
   getComposerOptions(input: {
     agentTargetId: string;
@@ -192,6 +193,7 @@ export interface IWorkspaceAgentActivityService {
   }): Promise<AgentActivityComposerOptions>;
   updateSessionSettings(input: {
     agentSessionId: string;
+    signal?: AbortSignal;
     settings: AgentHostAgentSessionComposerSettings;
     workspaceId: string;
   }): Promise<AgentActivityRuntimeUpdateSessionSettingsResult>;
