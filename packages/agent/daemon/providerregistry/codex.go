@@ -149,7 +149,7 @@ func codexDescriptor() ProviderDescriptor {
 			TurnLifecycleProjection: TurnLifecycleProjectionExplicit,
 		},
 		Sidecar: SidecarDescriptor{ExecutionEnvironment: SidecarExecutionEnvironmentCodexSandbox},
-		Desktop: DesktopIntegrationDescriptor{Managed: true, ManagedOrder: 2, StatusProbePriority: 1, UsageProbeKind: DesktopUsageProbeCodex, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 1},
+		Desktop: DesktopIntegrationDescriptor{Managed: true, ManagedOrder: 2, StatusProbePriority: 1, UsageProbeKind: DesktopUsageProbeCodex, CommandNetworkAccess: true, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 1},
 		ExternalImport: ExternalImportDescriptor{
 			Enabled:                  true,
 			RootEnvVar:               "CODEX_HOME",

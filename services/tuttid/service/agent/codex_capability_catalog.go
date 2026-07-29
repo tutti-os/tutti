@@ -6,9 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os/exec"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
@@ -94,8 +92,6 @@ func (l CodexCLICapabilityLister) List(ctx context.Context, cwd string) ([]Compo
 	if timeout <= 0 {
 		timeout = codexAppServerCapabilityListTimeout
 	}
-	processCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 
 	command := strings.TrimSpace(l.Command)
 	if command == "" {
@@ -110,51 +106,30 @@ func (l CodexCLICapabilityLister) List(ctx context.Context, cwd string) ([]Compo
 	processEnv := resolver.Env(nil)
 	command = resolver.Resolve(command, processEnv)
 	args := append([]string{}, l.Args...)
-	cmd := exec.CommandContext(processCtx, command, args...)
-	cmd.Env = processEnv
-	cmd.WaitDelay = codexAppServerShutdownWaitDelay
-	stdin, err := cmd.StdinPipe()
+	processCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	process, err := startCodexAppServerProcess(processCtx, command, args, processEnv)
 	if err != nil {
-		return nil, fmt.Errorf("open codex app-server stdin: %w", err)
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, fmt.Errorf("open codex app-server stdout: %w", err)
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return nil, fmt.Errorf("open codex app-server stderr: %w", err)
-	}
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start codex app-server: %w", err)
-	}
-
-	stderrBuf := &truncatingBuffer{max: codexModelListMaxStderrBytes}
-	var stderrWG sync.WaitGroup
-	stderrWG.Add(1)
-	go func() {
-		defer stderrWG.Done()
-		_, _ = io.Copy(stderrBuf, stderr)
-	}()
-
-	defer func() {
-		_ = stdin.Close()
-		cancel()
-		_ = cmd.Wait()
-		stderrWG.Wait()
-	}()
-
-	if err := writeCodexCapabilityListRequests(stdin, cwd); err != nil {
 		return nil, err
 	}
-	options, err := readCodexCapabilityListResponses(stdout)
+	if err := writeCodexCapabilityListRequests(process.stdin, cwd); err != nil {
+		processErr := processCtx.Err()
+		_ = process.stop(cancel)
+		if processErr != nil {
+			return nil, fmt.Errorf("codex app-server capability discovery timed out: %w", processErr)
+		}
+		return nil, err
+	}
+	options, err := readCodexCapabilityListResponses(process.stdout)
+	processErr := processCtx.Err()
+	_ = process.stop(cancel)
 	if err == nil {
 		return options, nil
 	}
-	if processCtx.Err() != nil {
-		return nil, fmt.Errorf("codex app-server capability discovery timed out: %w", processCtx.Err())
+	if processErr != nil {
+		return nil, fmt.Errorf("codex app-server capability discovery timed out: %w", processErr)
 	}
-	if stderr := strings.TrimSpace(stderrBuf.String()); stderr != "" {
+	if stderr := strings.TrimSpace(process.stderr.String()); stderr != "" {
 		return nil, fmt.Errorf("%w: %s", err, stderr)
 	}
 	return nil, err

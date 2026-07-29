@@ -64,6 +64,7 @@ func TestTuttiCLIPolicyUsesPreparedCLIAndProviderRules(t *testing.T) {
 		"tutti-dev agent start --agent-id <agent-id> --prompt <prompt> --show --json",
 		"tutti-dev agent wait --session-id <session-id> --json",
 		"tutti-dev app open --app-id <appId> --json",
+		"Run it normally first",
 		"sandbox_permissions=require_escalated",
 		"# Host App Context",
 	} {

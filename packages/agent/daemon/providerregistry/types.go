@@ -575,12 +575,15 @@ const (
 )
 
 type DesktopIntegrationDescriptor struct {
-	Managed                    bool
-	ManagedOrder               int
-	StatusProbePriority        int
-	UsageProbeKind             DesktopUsageProbeKind
-	VisibilityGate             DesktopVisibilityGate
-	RuntimeProbeFallback       DesktopRuntimeProbeFallback
+	Managed              bool
+	ManagedOrder         int
+	StatusProbePriority  int
+	UsageProbeKind       DesktopUsageProbeKind
+	VisibilityGate       DesktopVisibilityGate
+	RuntimeProbeFallback DesktopRuntimeProbeFallback
+	// CommandNetworkAccess explicitly opts a Codex-compatible app-server into
+	// command networking when it runs under the Tutti Desktop host.
+	CommandNetworkAccess       bool
 	InstallBootstrap           bool
 	RefreshOnAccountChange     bool
 	UnavailableDockOrderOffset int

@@ -214,7 +214,12 @@ func NewDefaultControllerWithOptions(
 	options ControllerOptions,
 ) *Controller {
 	host := options.HostMetadata
-	adapters := newMigratedProviderAdapters(transport, host, options.ProviderCommandResolver)
+	adapters := newMigratedProviderAdapters(
+		transport,
+		host,
+		options.ProviderCommandResolver,
+		options.CommandNetworkAccessPolicy,
+	)
 	setProviderLaunchPreparer(adapters, options.ProviderLaunchPreparer)
 	return NewControllerWithAdapterResolver(adapters, reporter, options.AdapterResolver)
 }

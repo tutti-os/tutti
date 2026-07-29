@@ -22,11 +22,17 @@ type HostMetadata struct {
 	OpenClawSessionKeyPrefix string
 }
 
+// CommandNetworkAccessPolicy returns whether the host explicitly allows a
+// provider's commands and subprocesses to use the network. A nil policy denies
+// command network access.
+type CommandNetworkAccessPolicy func(provider string) bool
+
 type ControllerOptions struct {
-	HostMetadata            HostMetadata
-	ProviderCommandResolver ProviderCommandResolver
-	ProviderLaunchPreparer  ProviderLaunchPreparer
-	AdapterResolver         AdapterResolver
+	HostMetadata               HostMetadata
+	ProviderCommandResolver    ProviderCommandResolver
+	ProviderLaunchPreparer     ProviderLaunchPreparer
+	AdapterResolver            AdapterResolver
+	CommandNetworkAccessPolicy CommandNetworkAccessPolicy
 }
 
 type AdapterResolveInput struct {

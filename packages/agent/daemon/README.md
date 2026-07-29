@@ -54,11 +54,15 @@ or start error.
 
 Hosts that need unrestricted command networking while retaining a
 Codex-compatible provider's permission-mode filesystem sandbox and approval UX
-can construct the Codex or Tutti Agent adapter with
-`CodexAppServerAdapterOptions{CommandNetworkAccess: true}`. The option sets
-`sandboxPolicy.networkAccess` on read-only and workspace-write turns. It does
-not change `approvalPolicy`, `approvalsReviewer`, writable roots, or
-network-proxy policy. Full-access turns remain unrestricted by definition.
+can set `Config.CommandNetworkAccessPolicy` when using the default adapters.
+The host policy receives canonical provider IDs and should explicitly allow
+only providers that require command networking. A nil policy denies command
+network access. Hosts that construct adapters directly can instead use
+`CodexAppServerAdapterOptions{CommandNetworkAccess: true}`.
+
+Both forms set `sandboxPolicy.networkAccess` on read-only and workspace-write
+turns. They do not change `approvalPolicy`, `approvalsReviewer`, writable roots,
+or network-proxy policy. Full-access turns remain unrestricted by definition.
 
 ## Process Cassette Transport
 

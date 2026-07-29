@@ -45,16 +45,18 @@ type ProviderLaunchPrepareResult = agentruntime.ProviderLaunchPrepareResult
 type ProviderLaunchPreparer = agentruntime.ProviderLaunchPreparer
 type ProviderLaunchPreparerAdapter = agentruntime.ProviderLaunchPreparerAdapter
 type AdapterResolver = agentruntime.AdapterResolver
+type CommandNetworkAccessPolicy = agentruntime.CommandNetworkAccessPolicy
 
 type Config struct {
-	Reporter                DurableActivityReporter
-	ProcessTransport        ProcessTransport
-	HostMetadata            HostMetadata
-	ProviderCommandResolver ProviderCommandResolver
-	ProviderLaunchPreparer  ProviderLaunchPreparer
-	AdapterResolver         AdapterResolver
-	Adapters                []Adapter
-	LiveSessionReaper       LiveSessionReaperConfig
+	Reporter                   DurableActivityReporter
+	ProcessTransport           ProcessTransport
+	HostMetadata               HostMetadata
+	ProviderCommandResolver    ProviderCommandResolver
+	ProviderLaunchPreparer     ProviderLaunchPreparer
+	AdapterResolver            AdapterResolver
+	CommandNetworkAccessPolicy CommandNetworkAccessPolicy
+	Adapters                   []Adapter
+	LiveSessionReaper          LiveSessionReaperConfig
 }
 
 type LiveSessionReaperConfig struct {
@@ -87,10 +89,11 @@ func NewRuntime(config Config) (*Runtime, error) {
 			config.Reporter,
 			config.ProcessTransport,
 			agentruntime.ControllerOptions{
-				HostMetadata:            config.HostMetadata,
-				ProviderCommandResolver: config.ProviderCommandResolver,
-				ProviderLaunchPreparer:  config.ProviderLaunchPreparer,
-				AdapterResolver:         config.AdapterResolver,
+				HostMetadata:               config.HostMetadata,
+				ProviderCommandResolver:    config.ProviderCommandResolver,
+				ProviderLaunchPreparer:     config.ProviderLaunchPreparer,
+				AdapterResolver:            config.AdapterResolver,
+				CommandNetworkAccessPolicy: config.CommandNetworkAccessPolicy,
 			},
 		)
 	}

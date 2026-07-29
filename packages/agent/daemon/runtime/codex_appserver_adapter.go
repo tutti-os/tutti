@@ -397,6 +397,7 @@ func NewCodexAppServerAdapterWithHostMetadataAndCommandResolver(
 		transport,
 		host,
 		commandResolver,
+		providerAdapterOptions{},
 	)
 	codexAdapter, ok := adapter.(*CodexAppServerAdapter)
 	if !ok {
@@ -433,7 +434,13 @@ func newTuttiAgentAppServerAdapterWithHostMetadata(
 	if !ok {
 		panic("tutti-agent provider descriptor is missing")
 	}
-	adapter := newAdapterFromProviderDescriptor(descriptor, transport, host, nil)
+	adapter := newAdapterFromProviderDescriptor(
+		descriptor,
+		transport,
+		host,
+		nil,
+		providerAdapterOptions{},
+	)
 	appServerAdapter, ok := adapter.(*CodexAppServerAdapter)
 	if !ok {
 		panic(fmt.Sprintf("Tutti Agent provider descriptor constructed %T", adapter))

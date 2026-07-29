@@ -1,6 +1,6 @@
 {{if eq .Provider "codex"}}
 
-- Codex: `{{.CLICommand}}` needs localhost/IPC. When running `{{.CLICommand}}` from a sandboxed exec tool, set `sandbox_permissions=require_escalated`. If `{{.CLICommand}}` reports `daemon is not reachable from this agent execution environment`, rerun once with `sandbox_permissions=require_escalated`.
+- Codex: `{{.CLICommand}}` needs localhost/IPC. Run it normally first because the Tutti Desktop host grants command networking to its built-in Codex app-server. If `{{.CLICommand}}` reports `daemon is not reachable from this agent execution environment`, rerun once with `sandbox_permissions=require_escalated` for hosts that do not grant command networking.
   {{else if or (eq .Provider "claude") (eq .Provider "claude-code")}}
 - Claude Code `Monitor` tool is disabled. Poll async Tutti jobs with one bounded shell/script.
 - Claude Code: run `{{.CLICommand}}` only from a shell environment that can reach localhost/IPC. If the provider runtime cannot reach the local Tutti daemon, report that limitation; do not invent Codex `sandbox_permissions`.

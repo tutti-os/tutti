@@ -455,35 +455,50 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
 ### Agent sandbox cannot reach local daemon
 
 - Symptom:
-  An AgentGUI-backed Codex turn runs a dynamic Tutti CLI command such as
-  `tutti-dev automation --help` and gets `daemon is not reachable`, while
-  `~/.tutti-dev/run/tuttid.listener.json` exists and the desktop daemon is
-  running.
+  An AgentGUI-backed Codex-compatible turn runs a dynamic Tutti CLI command
+  such as `tutti agent get --session-id <id>` and gets
+  `reasonCode=daemon_unavailable` or `daemon is not reachable`, while the
+  listener file exists and the desktop daemon is serving other requests.
 - Quick checks:
   Inspect the turn context in the provider session JSONL. If
   `network_access=false`, a plain `exec_command` cannot reach localhost/IPC.
-  For Codex sessions, also confirm the command was not rerun with
+  Identify the executing provider from that same session instead of inferring
+  it from a queried session ID. For Codex sessions, also confirm the command
+  was not rerun with
   `sandbox_permissions=require_escalated`. Other providers need their own
   local-daemon-capable shell/runtime path, not Codex-specific sandbox syntax.
 - Root cause:
   Dynamic CLI scopes fetch command capabilities from the local daemon before
   printing scope help. In a sandboxed provider command environment, localhost
-  access can be blocked even though the daemon is reachable from the host.
+  access can be blocked even though the daemon is reachable from the host. For
+  a Codex-compatible app-server, omitting
+  `sandboxPolicy.networkAccess=true` from a `readOnly` or `workspaceWrite` turn
+  creates this exact split between successful host requests and failed
+  in-sandbox CLI requests.
 - Fix:
-  In agent environments, keep the CLI's transport failure message explicit
-  about the sandbox but provider-neutral. Put provider-specific recovery steps
-  in the injected runtime policy: Codex can use
-  `sandbox_permissions=require_escalated`, while ACP providers should be told to
-  use an execution environment with localhost/IPC access and not to invent Codex
+  Keep the CLI's transport failure message explicit about the sandbox but
+  provider-neutral. The Tutti Desktop host explicitly enables command network
+  access for the built-in `codex` and `tutti-agent` app-servers through
+  `agentdaemon.Config.CommandNetworkAccessPolicy`. Keep this an explicit
+  provider-registry Desktop opt-in instead of branching on provider identity or
+  granting every future app-server network access. This preserves the
+  permission-mode filesystem sandbox and approval policy. Codex should run the
+  CLI normally first and use `sandbox_permissions=require_escalated` only as a
+  fallback for hosts that do not grant command networking. ACP providers should
+  use an execution environment with localhost/IPC access and not invent Codex
   flags.
 - Validation:
-  Add CLI daemon-client coverage that non-agent failures keep the plain
-  `daemon is not reachable` message, while agent failures include the
-  localhost/IPC execution-environment hint. Add provider policy coverage so only
-  Codex receives `sandbox_permissions=require_escalated`.
+  Verify the default adapter policy enables
+  `sandboxPolicy.networkAccess=true` for Codex and `tutti-agent` read-only and
+  workspace-write turns. Verify the Desktop host policy rejects Claude Code,
+  external ACP IDs, and empty provider IDs. Retain CLI daemon-client coverage
+  for provider-neutral agent hints and Codex fallback coverage for
+  `sandbox_permissions=require_escalated`.
 - References:
   [client.go](../../../apps/cli/internal/daemon/client.go)
   [run.go](../../../apps/cli/internal/app/run.go)
+  [agent daemon runtime.go](../../../packages/agent/daemon/runtime.go)
+  [tuttid command network policy](../../../services/tuttid/agent_command_network_policy.go)
 
 ### Codex provider install fails with missing npm
 
@@ -760,6 +775,44 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
 - References:
   [codex_model_catalog.go](../../../services/tuttid/service/agent/codex_model_catalog.go)
   [codex_model_catalog_test.go](../../../services/tuttid/service/agent/codex_model_catalog_test.go)
+
+### Codex composer model and reasoning selectors stay loading
+
+- Symptom:
+  The empty Codex composer shows loading placeholders for both model and
+  reasoning, even though provider status reports Codex as ready.
+- Quick checks:
+  Correlate a ready Codex provider snapshot in `tuttid.log` with
+  `agent.composer_options.load` in `tutti-desktop.log`. A duration near 15
+  seconds with `errorCode=ETIMEDOUT` means the Desktop request deadline expired
+  before Composer Options returned. If tuttid later logs
+  `superfluous response.WriteHeader`, or a detached `codex app-server` remains
+  after the request, the canceled handler did not finish cleaning up its
+  discovery subprocess.
+- Root cause:
+  Codex Composer Options needs both `model/list` and the app-server capability
+  catalog. Running those independent, individually bounded probes in series
+  can exceed the Desktop's aggregate request deadline. A second failure mode
+  occurs when timeout kills only the JavaScript launcher: its native child
+  inherits stdout, the response scanner never receives EOF, and deferred
+  `Wait` cannot run because it sits behind that scanner.
+- Fix:
+  Start model-catalog loading before capability discovery so the two independent
+  app-server exchanges overlap. Run every short-lived Codex app-server in its
+  own process group, begin process reaping immediately, and make timeout cancel
+  the entire group. Keep the Desktop deadline unchanged so a genuinely stuck
+  daemon request still fails closed.
+- Validation:
+  Block both catalog fixtures and assert both start before either is released.
+  Use a fake app-server whose child retains stdout and assert model and
+  capability timeouts return promptly with no surviving child. Finally, time a
+  cold Composer Options request and confirm it completes within the Desktop
+  deadline.
+- References:
+  [composer_options.go](../../../services/tuttid/service/agent/composer_options.go)
+  [codex_appserver_process.go](../../../services/tuttid/service/agent/codex_appserver_process.go)
+  [codex_model_catalog.go](../../../services/tuttid/service/agent/codex_model_catalog.go)
+  [codex_capability_catalog.go](../../../services/tuttid/service/agent/codex_capability_catalog.go)
 
 ### Codex custom model_provider mixes models, duplicates replies, or shows metadata warnings
 

@@ -30,6 +30,39 @@
   [change-classification.mjs](../../../tools/scripts/change-classification.mjs)
   [testing.md](../testing.md)
 
+### Goal recovery Go tests fail only in the full workspace lane
+
+- Symptom:
+  `services/tuttid/service/agent` goal recovery tests pass alone but fail in the
+  pull-request Go workspace job with `recover goal operation ...: context
+deadline exceeded`. The failing test can take several seconds even though its
+  fake provider timeout is configured for 20–25 milliseconds.
+- Quick checks:
+  Inspect whether the test uses a small real
+  `GoalOperationAttemptTimeout` around the entire worker step. Compare the CI
+  duration with the configured timeout and check whether the fake provider hook
+  was reached before changing Host retry or lease semantics.
+- Root cause:
+  The attempt context also covers actor acquisition and SQLite work before the
+  fake provider call. Under concurrent Go workspace load, the runner may not
+  schedule that work within a 20–25 millisecond test window. The context then
+  expires before the intended fake deadline path, so the worker reports an
+  infrastructure timeout instead of exercising retry persistence.
+- Fix:
+  For deadline classification and retry-budget tests, return
+  `context.DeadlineExceeded` directly from the fake provider. Use a
+  test-controlled deadline context when cancellation propagation and detached
+  lease persistence are the behavior under test. Reserve real wall-clock
+  deadlines for end-to-end budget tests and give those assertions enough
+  scheduling margin for the full workspace lane. Do not add retries or change
+  production lifecycle timeouts to mask the test race.
+- Validation:
+  Run the affected goal tests repeatedly with shuffled order, then run the full
+  agent-service package and changed-aware validation.
+- References:
+  [service_test.go](../../../services/tuttid/service/agent/service_test.go)
+  [Testing](../testing.md)
+
 ### gomobile Android AAR fails after Go compilation succeeds
 
 - Symptom:

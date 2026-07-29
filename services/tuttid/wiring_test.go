@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	workspaceagentbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceagent"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
@@ -159,6 +160,30 @@ func TestResolveAnalyticsDebugPublisherSkipsDisabledAnalytics(t *testing.T) {
 
 	if got != nil {
 		t.Fatalf("debug publisher = %T, want nil", got)
+	}
+}
+
+func TestTuttiDesktopCommandNetworkAccessPolicyAllowsOptedInAppServers(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		provider string
+		want     bool
+	}{
+		{provider: providerregistry.TuttiAgentProviderID, want: true},
+		{provider: providerregistry.CodexProviderID, want: true},
+		{provider: providerregistry.ClaudeCodeProviderID, want: false},
+		{provider: "acp:custom-agent", want: false},
+		{provider: "", want: false},
+	} {
+		if got := tuttiDesktopCommandNetworkAccessPolicy(test.provider); got != test.want {
+			t.Fatalf(
+				"tuttiDesktopCommandNetworkAccessPolicy(%q) = %t, want %t",
+				test.provider,
+				got,
+				test.want,
+			)
+		}
 	}
 }
 
