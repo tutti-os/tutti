@@ -10777,6 +10777,8 @@ components:
           type: boolean
         planModeExclusiveWithPermissionMode:
           type: boolean
+        nativePluginCatalogAuthoritative:
+          type: boolean
     AgentSlashCommandEffect:
       type: string
       enum:

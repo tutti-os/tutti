@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/mod/semver"
 )
 
 // Codex native bundled plugin IDs that Tutti authenticates end-to-end.
@@ -569,6 +571,7 @@ func locateCodexPluginInstall(codexHome, pluginID string) (string, bool) {
 		return "", false
 	}
 	var latest string
+	var latestVersion string
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -577,14 +580,42 @@ func locateCodexPluginInstall(codexHome, pluginID string) (string, bool) {
 		if _, err := os.Stat(filepath.Join(candidate, ".codex-plugin", "plugin.json")); err != nil {
 			continue
 		}
-		if latest == "" || entry.Name() > filepath.Base(latest) {
+		if latest == "" || compareCodexPluginCacheVersions(entry.Name(), latestVersion) > 0 {
 			latest = candidate
+			latestVersion = entry.Name()
 		}
 	}
 	if latest == "" {
 		return "", false
 	}
 	return latest, true
+}
+
+func compareCodexPluginCacheVersions(left, right string) int {
+	leftVersion, leftValid := normalizedCodexPluginCacheSemver(left)
+	rightVersion, rightValid := normalizedCodexPluginCacheSemver(right)
+	switch {
+	case leftValid && rightValid:
+		if comparison := semver.Compare(leftVersion, rightVersion); comparison != 0 {
+			return comparison
+		}
+	case leftValid:
+		return 1
+	case rightValid:
+		return -1
+	}
+	return strings.Compare(left, right)
+}
+
+func normalizedCodexPluginCacheSemver(version string) (string, bool) {
+	version = strings.TrimSpace(version)
+	if version == "" {
+		return "", false
+	}
+	if !strings.HasPrefix(version, "v") {
+		version = "v" + version
+	}
+	return version, semver.IsValid(version)
 }
 
 func splitCodexPluginID(pluginID string) (name, marketplace string) {

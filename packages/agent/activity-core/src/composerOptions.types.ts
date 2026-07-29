@@ -101,6 +101,11 @@ export interface AgentActivityComposerBehavior {
   refreshModelOptionsAfterSettings: boolean;
   prewarmDraftSession: boolean;
   planModeExclusiveWithPermissionMode: boolean;
+  /**
+   * When true, Composer must use the semantic native-plugin catalog as its
+   * complete plugin surface instead of falling back to ordinary skills.
+   */
+  nativePluginCatalogAuthoritative?: boolean;
 }
 
 export interface AgentActivityComposerOptions {

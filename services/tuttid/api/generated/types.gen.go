@@ -3855,11 +3855,12 @@ type AgentProviderCliStatus struct {
 
 // AgentProviderComposerBehavior defines model for AgentProviderComposerBehavior.
 type AgentProviderComposerBehavior struct {
-	CollapseModelOptionsToLatest        bool `json:"collapseModelOptionsToLatest"`
-	ModelOptionsAuthoritative           bool `json:"modelOptionsAuthoritative"`
-	PlanModeExclusiveWithPermissionMode bool `json:"planModeExclusiveWithPermissionMode"`
-	PrewarmDraftSession                 bool `json:"prewarmDraftSession"`
-	RefreshModelOptionsAfterSettings    bool `json:"refreshModelOptionsAfterSettings"`
+	CollapseModelOptionsToLatest        bool  `json:"collapseModelOptionsToLatest"`
+	ModelOptionsAuthoritative           bool  `json:"modelOptionsAuthoritative"`
+	NativePluginCatalogAuthoritative    *bool `json:"nativePluginCatalogAuthoritative,omitempty"`
+	PlanModeExclusiveWithPermissionMode bool  `json:"planModeExclusiveWithPermissionMode"`
+	PrewarmDraftSession                 bool  `json:"prewarmDraftSession"`
+	RefreshModelOptionsAfterSettings    bool  `json:"refreshModelOptionsAfterSettings"`
 }
 
 // AgentProviderComposerCommandOption defines model for AgentProviderComposerCommandOption.

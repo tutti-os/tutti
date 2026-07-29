@@ -208,6 +208,67 @@ BROWSER_USE_AVAILABLE_BACKENDS = "iab"
 	}
 }
 
+func TestLocateCodexPluginInstallPrefersLatestSemver(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name    string
+		ready   []string
+		unready []string
+		want    string
+	}{
+		{
+			name:  "compares numeric semver components",
+			ready: []string{"1.0.9", "1.0.10"},
+			want:  "1.0.10",
+		},
+		{
+			name:  "prefers stable releases over prereleases",
+			ready: []string{"1.0.0-beta.2", "1.0.0"},
+			want:  "1.0.0",
+		},
+		{
+			name:  "prefers valid semver over invalid cache directories",
+			ready: []string{"preview", "1.2.0"},
+			want:  "1.2.0",
+		},
+		{
+			name:  "uses a stable fallback for invalid cache directories",
+			ready: []string{"preview", "canary"},
+			want:  "preview",
+		},
+		{
+			name:    "ignores incomplete newer cache directories",
+			ready:   []string{"1.0.9"},
+			unready: []string{"1.0.10"},
+			want:    "1.0.9",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			codexHome := t.TempDir()
+			cacheRoot := filepath.Join(codexHome, "plugins", "cache", "openai-bundled", "browser")
+			for _, version := range test.ready {
+				installPath := filepath.Join(cacheRoot, version)
+				mustMkdir(t, filepath.Join(installPath, ".codex-plugin"))
+				mustWrite(t, filepath.Join(installPath, ".codex-plugin", "plugin.json"), `{}`)
+			}
+			for _, version := range test.unready {
+				mustMkdir(t, filepath.Join(cacheRoot, version))
+			}
+
+			installPath, ok := locateCodexPluginInstall(codexHome, CodexNativePluginBrowser)
+			if !ok {
+				t.Fatal("locateCodexPluginInstall = not found")
+			}
+			if got := filepath.Base(installPath); got != test.want {
+				t.Fatalf("selected version = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func mustMkdir(t *testing.T, path string) {
 	t.Helper()
 	if err := os.MkdirAll(path, 0o755); err != nil {

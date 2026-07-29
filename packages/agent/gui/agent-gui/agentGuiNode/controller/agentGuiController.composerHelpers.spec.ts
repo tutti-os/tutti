@@ -47,6 +47,8 @@ describe("slash command policy equality", () => {
 describe("descriptor-backed skill invocation", () => {
   it("does not apply invocation metadata from unavailable capabilities", () => {
     const options = {
+      provider: "claude-code",
+      behavior: { nativePluginCatalogAuthoritative: false },
       skills: [
         {
           name: "example",
@@ -66,13 +68,71 @@ describe("descriptor-backed skill invocation", () => {
       ]
     } as unknown as AgentActivityComposerOptions;
 
-    expect(
-      providerSkillsFromComposerOptions(options)[0]?.invocation
-    ).toBeUndefined();
+    expect(providerSkillsFromComposerOptions(options)).toEqual([
+      {
+        name: "example",
+        trigger: "/example",
+        sourceKind: "plugin"
+      }
+    ]);
+  });
+
+  it("keeps non-Codex skills and connector prompt items in the Composer", () => {
+    const options = {
+      provider: "claude-code",
+      behavior: { nativePluginCatalogAuthoritative: false },
+      skills: [
+        {
+          name: "review",
+          trigger: "$review",
+          sourceKind: "plugin"
+        }
+      ],
+      capabilityCatalog: [
+        {
+          name: "review",
+          label: "Review",
+          kind: "skill",
+          status: "available",
+          trigger: "$review",
+          invocation: "promptItem"
+        },
+        {
+          name: "linear",
+          label: "Linear",
+          kind: "connector",
+          status: "available",
+          trigger: "$linear",
+          invocation: "promptItem",
+          path: "connector://linear",
+          description: "Search Linear issues"
+        }
+      ]
+    } as unknown as AgentActivityComposerOptions;
+
+    expect(providerSkillsFromComposerOptions(options)).toEqual([
+      {
+        name: "review",
+        trigger: "$review",
+        sourceKind: "plugin",
+        invocation: "promptItem"
+      },
+      {
+        name: "Linear",
+        trigger: "$linear",
+        invocation: "promptItem",
+        sourceKind: "connector",
+        kind: "connector",
+        path: "connector://linear",
+        description: "Search Linear issues"
+      }
+    ]);
   });
 
   it("projects semantic native plugins into the Composer without unrelated skills", () => {
     const options = {
+      provider: "codex",
+      behavior: { nativePluginCatalogAuthoritative: true },
       skills: [
         {
           name: "imagegen",
@@ -114,6 +174,8 @@ describe("descriptor-backed skill invocation", () => {
 
   it("keeps a setup-required native Computer plugin visible for the setup action", () => {
     const options = {
+      provider: "codex",
+      behavior: { nativePluginCatalogAuthoritative: true },
       skills: [],
       capabilityCatalog: [
         {

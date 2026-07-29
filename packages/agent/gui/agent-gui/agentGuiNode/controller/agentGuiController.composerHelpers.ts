@@ -208,11 +208,59 @@ export function providerSkillsFromComposerOptions(
   if (!options) {
     return [];
   }
-  // The Codex capability catalog is a discovery surface, not a request to put
-  // every Skill, MCP server, connector, or marketplace entry in Composer. The
-  // daemon exposes only native-plugin descriptors with a semantic key here.
-  // Keep the legacy function name because its result continues through the
-  // prompt-item submission path, but it now contains native plugins only.
+
+  if (!options.behavior?.nativePluginCatalogAuthoritative) {
+    const invocationByTrigger = new Map(
+      (options.capabilityCatalog ?? []).flatMap((capability) =>
+        capability.trigger &&
+        capability.status === "available" &&
+        (capability.invocation === "promptItem" ||
+          capability.invocation === "textTrigger")
+          ? [[capability.trigger, capability.invocation] as const]
+          : []
+      )
+    );
+    return dedupeProviderSkills([
+      ...options.skills.map((skill) => ({
+        ...skill,
+        ...(invocationByTrigger.get(skill.trigger)
+          ? { invocation: invocationByTrigger.get(skill.trigger) }
+          : {})
+      })),
+      ...(options.capabilityCatalog ?? [])
+        .filter(
+          (capability) =>
+            capability.invocation === "promptItem" &&
+            (capability.kind === "skill" || capability.kind === "connector") &&
+            capability.status === "available" &&
+            Boolean(capability.trigger) &&
+            Boolean(capability.path)
+        )
+        .map((capability): AgentGUIProviderSkillOption => {
+          const isConnector = capability.kind === "connector";
+          return {
+            name: isConnector ? capability.label : capability.name,
+            trigger: capability.trigger!,
+            invocation: "promptItem",
+            sourceKind: isConnector ? "connector" : "plugin",
+            kind: isConnector ? "connector" : "skill",
+            ...(capability.description
+              ? { description: capability.description }
+              : {}),
+            ...(capability.pluginName
+              ? { pluginName: capability.pluginName }
+              : {}),
+            ...(capability.path ? { path: capability.path } : {})
+          };
+        })
+    ]);
+  }
+
+  // A native-plugin catalog is a discovery surface, not a request to put every
+  // Skill, MCP server, connector, or marketplace entry in Composer. The daemon
+  // exposes only native-plugin descriptors with a semantic key here. Keep the
+  // legacy function name because its result continues through the prompt-item
+  // submission path, but it now contains native plugins only.
   return dedupeProviderSkills(
     (options.capabilityCatalog ?? [])
       .filter(

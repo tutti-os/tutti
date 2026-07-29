@@ -183,7 +183,7 @@ function composerBehaviorFromValue(
   value: unknown
 ): AgentActivityComposerOptions["behavior"] {
   const behavior = recordValue(value);
-  return {
+  const composerBehavior = {
     collapseModelOptionsToLatest:
       behavior.collapseModelOptionsToLatest === true,
     modelOptionsAuthoritative: behavior.modelOptionsAuthoritative === true,
@@ -193,6 +193,9 @@ function composerBehaviorFromValue(
     planModeExclusiveWithPermissionMode:
       behavior.planModeExclusiveWithPermissionMode === true
   };
+  return behavior.nativePluginCatalogAuthoritative === true
+    ? { ...composerBehavior, nativePluginCatalogAuthoritative: true }
+    : composerBehavior;
 }
 
 function composerSettingsFromValue(

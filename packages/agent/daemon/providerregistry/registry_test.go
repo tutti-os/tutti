@@ -25,6 +25,16 @@ func TestMigratedProviderIdentityAndPlanStrategyMatchCanonicalContract(t *testin
 	}
 }
 
+func TestCodexNativePluginCatalogIsDescriptorAuthoritative(t *testing.T) {
+	descriptor, ok := Find(CodexProviderID)
+	if !ok {
+		t.Fatal("Find(codex) = false")
+	}
+	if !descriptor.ComposerProfile.Behavior.NativePluginCatalogAuthoritative {
+		t.Fatalf("codex composer behavior = %#v", descriptor.ComposerProfile.Behavior)
+	}
+}
+
 func TestMigratedProviderUpdateSupportMatrixIsDescriptorDriven(t *testing.T) {
 	want := map[string]UpdateDescriptor{
 		CodexProviderID:      {Capability: UpdateCapabilitySupported, Source: UpdateSourceNPM, Strategy: UpdateStrategyManagedNPM, PackageName: "@openai/codex", BinaryName: "codex", IncludeOptional: true},

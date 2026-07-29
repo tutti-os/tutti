@@ -1790,6 +1790,7 @@ export type AgentProviderComposerBehavior = {
   refreshModelOptionsAfterSettings: boolean;
   prewarmDraftSession: boolean;
   planModeExclusiveWithPermissionMode: boolean;
+  nativePluginCatalogAuthoritative?: boolean;
 };
 
 export type AgentSlashCommandEffect =

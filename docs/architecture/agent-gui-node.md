@@ -1044,7 +1044,10 @@ presentation, setup actions, and structured mentions without branching on a
 provider id or reading local plugin icon paths. For Codex, `$` is the native
 plugin surface while `/` remains commands and product capabilities. A
 session-scoped runtime-preparation plan remains authoritative for whether a
-selected native plugin can actually run.
+selected native plugin can actually run. The provider descriptor carries
+`behavior.nativePluginCatalogAuthoritative` to say that this native catalog is
+the complete Composer plugin surface, including when it is empty; other
+providers retain the ordinary Skills and connector projection.
 
 ### 5.3 Agent Directory and setup
 
