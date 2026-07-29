@@ -2037,6 +2037,14 @@ func TestDefaultPreparerCodexRejectsMissingModelInstructionsFile(t *testing.T) {
 	if !strings.Contains(err.Error(), "model_instructions_file") {
 		t.Fatalf("Prepare() error = %v, want error mentioning model_instructions_file", err)
 	}
+	var dependencyErr *ConfigDependencyUnavailableError
+	if !errors.As(err, &dependencyErr) {
+		t.Fatalf("Prepare() error = %T %v, want ConfigDependencyUnavailableError", err, err)
+	}
+	if dependencyErr.FailureKind != ConfigDependencyFailureMissing ||
+		dependencyErr.DependencyPath != "missing-instructions.md" {
+		t.Fatalf("dependency error = %#v", dependencyErr)
+	}
 }
 
 func TestDefaultPreparerCodexPreservesAbsoluteModelInstructionsFile(t *testing.T) {
@@ -2078,6 +2086,39 @@ func TestDefaultPreparerCodexPreservesAbsoluteModelInstructionsFile(t *testing.T
 	// Absolute paths are not materialized; they're readable from host filesystem.
 	if _, err := os.Stat(filepath.Join(codexHome, "absolute-instructions.md")); !os.IsNotExist(err) {
 		t.Fatalf("absolute instructions file should not be materialized into sandbox, err = %v", err)
+	}
+}
+
+func TestDefaultPreparerCodexRejectsMissingAbsoluteModelInstructionsFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	userCodexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	missingPath := filepath.Join(t.TempDir(), "missing-absolute-instructions.md")
+	config := `model_instructions_file = "` + missingPath + `"` + "\n"
+	if err := os.WriteFile(filepath.Join(userCodexHome, "config.toml"), []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := newTestPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-missing-absolute-instructions",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            t.TempDir(),
+	})
+	var dependencyErr *ConfigDependencyUnavailableError
+	if !errors.As(err, &dependencyErr) {
+		t.Fatalf("Prepare() error = %T %v, want ConfigDependencyUnavailableError", err, err)
+	}
+	if dependencyErr.FailureKind != ConfigDependencyFailureMissing ||
+		dependencyErr.DependencyPath != filepath.Base(missingPath) {
+		t.Fatalf("dependency error = %#v", dependencyErr)
+	}
+	if strings.Contains(err.Error(), filepath.Dir(missingPath)) {
+		t.Fatalf("public error leaks absolute parent path: %q", err.Error())
 	}
 }
 

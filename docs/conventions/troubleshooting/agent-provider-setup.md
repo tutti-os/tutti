@@ -716,9 +716,10 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
   After copying `config.toml`, resolve top-level `model_catalog_json` and
   `model_instructions_file`. For relative paths under `~/.codex`, symlink (or
   copy) the file into the run-scoped `CODEX_HOME` at the same relative path.
-  Absolute paths need no mirror. Missing or unreadable
-  `model_instructions_file` values should fail preparation before provider
-  startup with a clear diagnostic. Do not mutate the user's global config.
+  Absolute paths need no mirror but must be validated in place. Missing,
+  unreadable, non-regular, or illegal dependencies should fail preparation
+  before provider startup with a safe `agent.config_dependency_unavailable`
+  diagnostic. Do not mutate the user's global config.
 - Validation:
   Add or update `runtimeprep` tests that set relative catalog and instruction
   files beside `config.toml` and assert the sandbox exposes them. Run

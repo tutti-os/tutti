@@ -1,22 +1,40 @@
 package runtimeprep
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-// materializeCodexConfigRelativeFile reads a top-level string key from
-// codexHome/config.toml. When the value is a relative path the referenced file
-// is materialized into the run-scoped CODEX_HOME so Codex can resolve it at
-// startup. Absolute paths are left as-is (readable from the host filesystem).
-//
-// When requireFile is true, a missing, unreadable, or illegal relative
-// dependency stops preparation with a diagnostic error. When false the
-// function silently skips missing sources (backward-compatible with the
-// existing model_catalog_json behavior).
-func materializeCodexConfigRelativeFile(codexHome, userCodexHome, key string, requireFile bool) error {
+const (
+	ConfigDependencyFailureInvalid           = "invalid"
+	ConfigDependencyFailureMissing           = "missing"
+	ConfigDependencyFailureMaterializeFailed = "materialize_failed"
+)
+
+// ConfigDependencyUnavailableError describes a provider configuration file
+// reference that cannot be preserved inside a run-scoped provider home.
+// DependencyPath is safe to expose over the local API and never contains the
+// parent directory of an absolute user path.
+type ConfigDependencyUnavailableError struct {
+	Provider       string
+	ConfigKey      string
+	DependencyPath string
+	FailureKind    string
+	cause          error
+}
+
+func (e *ConfigDependencyUnavailableError) Error() string {
+	return fmt.Sprintf("%s configuration dependency %s is unavailable", e.Provider, e.ConfigKey)
+}
+
+func (e *ConfigDependencyUnavailableError) Unwrap() error {
+	return e.cause
+}
+
+func materializeCodexConfigRelativeFile(codexHome, userCodexHome, key string) error {
 	configPath := filepath.Join(codexHome, "config.toml")
 	contentBytes, err := os.ReadFile(configPath)
 	if err != nil {
@@ -34,71 +52,145 @@ func materializeCodexConfigRelativeFile(codexHome, userCodexHome, key string, re
 		if strings.HasPrefix(trimmed, "[") {
 			break
 		}
-		value, ok := codexConfigStringAssignmentValue(trimmed, key)
-		if !ok {
+		if !codexConfigLineHasKey(trimmed, key) {
 			continue
 		}
-		value = strings.TrimSpace(value)
-		if value == "" || filepath.IsAbs(value) {
-			return nil
+		value, ok := codexConfigStringAssignmentValue(trimmed, key)
+		if !ok {
+			return codexConfigDependencyError(key, "", ConfigDependencyFailureInvalid, nil)
 		}
-		cleanRel := filepath.Clean(value)
-		if cleanRel == "." || cleanRel == ".." || strings.HasPrefix(cleanRel, ".."+string(filepath.Separator)) {
-			if requireFile {
-				return fmt.Errorf("codex config %s: illegal relative path %q", key, value)
-			}
-			return nil
-		}
-		source := filepath.Join(userCodexHome, cleanRel)
-		if info, err := os.Stat(source); err != nil || info.IsDir() {
-			if requireFile {
-				if err != nil {
-					return fmt.Errorf("codex config %s: %q not found or unreadable: %w", key, value, err)
-				}
-				return fmt.Errorf("codex config %s: %q is a directory, not a file", key, value)
-			}
-			return nil
-		}
-		target := filepath.Join(codexHome, cleanRel)
-		if _, err := os.Lstat(target); err == nil {
-			return nil
-		} else if !os.IsNotExist(err) {
-			return fmt.Errorf("inspect codex %s: %w", key, err)
-		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-			return fmt.Errorf("create codex %s parent: %w", key, err)
-		}
-		if err := os.Symlink(source, target); err != nil {
-			if copyErr := copyFile(source, target, 0o600); copyErr != nil {
-				return fmt.Errorf("expose codex %s %s: symlink failed: %v; copy failed: %w", key, cleanRel, err, copyErr)
-			}
-		}
-		return nil
+		return materializeCodexConfigDependency(codexHome, userCodexHome, key, value)
 	}
 	return nil
 }
 
-// exposeUserCodexModelCatalog mirrors a relative model_catalog_json path into
-// the run-scoped CODEX_HOME. Tutti copies config.toml alone; tools such as
-// CC Switch write model_catalog_json = "cc-switch-model-catalog.json", which
-// Codex resolves against CODEX_HOME. Without the catalog file, thread/start
-// fails with ENOENT and Tutti surfaces "agent session is not connected".
-//
-// Absolute catalog paths stay readable from the host filesystem and need no
-// mirror. Missing keys or missing source files are no-ops (backward-compatible
-// behavior; CC Switch may write catalog paths before the file is populated).
-func exposeUserCodexModelCatalog(codexHome string, userCodexHome string) error {
-	return materializeCodexConfigRelativeFile(codexHome, userCodexHome, "model_catalog_json", false)
+func materializeCodexConfigDependency(codexHome, userCodexHome, key, rawPath string) error {
+	rawPath = strings.TrimSpace(rawPath)
+	if rawPath == "" || strings.ContainsAny(rawPath, "\x00\r\n") {
+		return codexConfigDependencyError(key, rawPath, ConfigDependencyFailureInvalid, nil)
+	}
+	if filepath.IsAbs(rawPath) {
+		if err := validateCodexConfigDependencyFile(rawPath); err != nil {
+			return codexConfigDependencyFileError(key, rawPath, err)
+		}
+		return nil
+	}
+	cleanPath := filepath.Clean(rawPath)
+	if cleanPath == "." || codexConfigDependencyPathHasTraversal(rawPath) {
+		return codexConfigDependencyError(key, rawPath, ConfigDependencyFailureInvalid, nil)
+	}
+	sourcePath := filepath.Join(userCodexHome, cleanPath)
+	if err := validateCodexConfigDependencyFile(sourcePath); err != nil {
+		return codexConfigDependencyFileError(key, rawPath, err)
+	}
+	targetPath := filepath.Join(codexHome, cleanPath)
+	if !codexConfigDependencyPathWithinRoot(codexHome, targetPath) {
+		return codexConfigDependencyError(key, rawPath, ConfigDependencyFailureInvalid, nil)
+	}
+	if err := exposeCodexConfigDependencyFile(sourcePath, targetPath); err != nil {
+		return codexConfigDependencyError(key, rawPath, ConfigDependencyFailureMaterializeFailed, err)
+	}
+	return nil
 }
 
-// exposeUserCodexInstructionsFile mirrors a relative model_instructions_file
-// path into the run-scoped CODEX_HOME. Like model_catalog_json, Codex resolves
-// relative paths against CODEX_HOME, so a user-configured instructions file
-// must be materialized together with config.toml.
-//
-// Unlike model_catalog_json this requires the file to exist: the user
-// explicitly configured it and a missing or unreadable file is a diagnosable
-// configuration error rather than a transient tool state.
-func exposeUserCodexInstructionsFile(codexHome string, userCodexHome string) error {
-	return materializeCodexConfigRelativeFile(codexHome, userCodexHome, "model_instructions_file", true)
+func codexConfigDependencyPathHasTraversal(path string) bool {
+	for _, segment := range strings.Split(filepath.ToSlash(path), "/") {
+		if segment == "." || segment == ".." {
+			return true
+		}
+	}
+	return false
+}
+
+func codexConfigDependencyPathWithinRoot(root, path string) bool {
+	rel, err := filepath.Rel(root, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+var errCodexConfigDependencyNotRegular = errors.New("configuration dependency is not a regular file")
+
+func validateCodexConfigDependencyFile(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return errCodexConfigDependencyNotRegular
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	return file.Close()
+}
+
+func exposeCodexConfigDependencyFile(source, target string) error {
+	if info, err := os.Lstat(target); err == nil {
+		if info.Mode()&os.ModeSymlink == 0 {
+			return validateCodexConfigDependencyFile(target)
+		}
+		linkTarget, readErr := os.Readlink(target)
+		if readErr != nil {
+			return readErr
+		}
+		if !filepath.IsAbs(linkTarget) {
+			linkTarget = filepath.Join(filepath.Dir(target), linkTarget)
+		}
+		if filepath.Clean(linkTarget) == filepath.Clean(source) {
+			return nil
+		}
+		if err := os.Remove(target); err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+		return err
+	}
+	if err := os.Symlink(source, target); err != nil {
+		if copyErr := copyFile(source, target, 0o600); copyErr != nil {
+			return fmt.Errorf("symlink failed: %v; copy failed: %w", err, copyErr)
+		}
+	}
+	return nil
+}
+
+func codexConfigDependencyFileError(key, rawPath string, err error) error {
+	failureKind := ConfigDependencyFailureMaterializeFailed
+	if os.IsNotExist(err) {
+		failureKind = ConfigDependencyFailureMissing
+	} else if errors.Is(err, errCodexConfigDependencyNotRegular) {
+		failureKind = ConfigDependencyFailureInvalid
+	}
+	return codexConfigDependencyError(key, rawPath, failureKind, err)
+}
+
+func codexConfigDependencyError(key, rawPath, failureKind string, cause error) error {
+	return &ConfigDependencyUnavailableError{
+		Provider:       "codex",
+		ConfigKey:      strings.TrimSpace(key),
+		DependencyPath: safeCodexConfigDependencyPath(rawPath),
+		FailureKind:    failureKind,
+		cause:          cause,
+	}
+}
+
+func safeCodexConfigDependencyPath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	if filepath.IsAbs(path) {
+		return filepath.Base(filepath.Clean(path))
+	}
+	return filepath.Clean(path)
+}
+
+func exposeUserCodexModelCatalog(codexHome, userCodexHome string) error {
+	return materializeCodexConfigRelativeFile(codexHome, userCodexHome, "model_catalog_json")
+}
+
+func exposeUserCodexInstructionsFile(codexHome, userCodexHome string) error {
+	return materializeCodexConfigRelativeFile(codexHome, userCodexHome, "model_instructions_file")
 }
