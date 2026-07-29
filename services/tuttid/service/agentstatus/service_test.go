@@ -671,9 +671,9 @@ func TestServiceListReportsCodexNotReadyWhenAppServerRejectsInitialize(t *testin
 // parsed our `initialize` request, let alone learned the unpredictable id
 // this probe run generated for it) but still races to print a
 // response-shaped line before exiting. Every case below hardcodes id 1,
-// which newCodexHandshakeRequestID never generates (see its doc comment),
-// so these can never accidentally match by chance; the handshake match must
-// still reject them for the reasons in each case's name. Unlike Standard
+// which the one-shot runtime probe deliberately never generates, so these
+// can never accidentally match by chance; the handshake match must still
+// reject them for the reasons in each case's name. Unlike Standard
 // ACP, this deliberately does NOT test a missing "jsonrpc" field: the real
 // codex app-server wire format omits that field too (see
 // TestServiceListReportsCodexReadyWhenAppServerOmitsJSONRPCVersion), so
@@ -1356,6 +1356,7 @@ func TestServiceProbeReportsReadyWhenAdapterStarts(t *testing.T) {
 	writeExecutable(t, adapterPath, "#!/bin/sh\nsleep 5\n")
 
 	service := probeTestService(home)
+	service.CodexProtocolProbe = codexProtocolReadyFixture
 	service.Registry = Registry{Specs: []ProviderSpec{specWithSeparateAdapter()}}
 	result, err := service.Probe(context.Background(), ProbeInput{Provider: "codex"})
 	if err != nil {
@@ -2506,6 +2507,7 @@ func TestServiceRunActionStartsInstallTimeoutAfterLockAcquisition(t *testing.T) 
 		t.Fatalf("mkdir bin dir: %v", err)
 	}
 	service := probeTestService(home)
+	service.CodexProtocolProbe = codexProtocolReadyFixture
 	service.InstallTimeout = installTimeout
 	service.Registry = Registry{Specs: []ProviderSpec{{
 		Provider:           "codex",
@@ -3013,8 +3015,7 @@ func probeTestService(home string) Service {
 		// Match production defaultProbeTimeout (3s). 1s was too tight for the
 		// real ACP initialize round-trip in fake shell scripts under parallel
 		// `go test` load and caused flaky acp_adapter_launch_failed failures.
-		ProbeTimeout:       defaultProbeTimeout,
-		CodexProtocolProbe: codexProtocolReadyFixture,
+		ProbeTimeout: defaultProbeTimeout,
 	}
 }
 
@@ -3073,14 +3074,14 @@ func firstAction(t *testing.T, actions []Action) Action {
 	return actions[0]
 }
 
-// codexAppServerHandshakeOKCase is a POSIX `case` arm that answers
-// probeCodexAppServerHandshake's `initialize` request by actually reading
-// the request line from stdin, extracting the id the probe generated for
-// this run, and echoing it back. The probe now uses an unpredictable id per
-// run specifically so a canned response (one that never reads stdin) cannot
-// pass as a real handshake reply; a fake that wants to look "ready" has to
-// genuinely round-trip the id.
-const codexAppServerHandshakeOKCase = `*app-server*) read -r line; id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9]*\).*/\1/p'); printf '{"id":%s,"result":{}}\n' "$id"; exit 0 ;;`
+// codexAppServerHandshakeOKCase is a POSIX `case` arm that answers the Codex
+// runtime probe's `initialize` request by actually reading the request line
+// from stdin, extracting the id the probe generated for this run, and echoing
+// it back. It then consumes the formal `initialized` notification before
+// exiting. The probe uses an unpredictable id per run specifically so a
+// canned response (one that never reads stdin) cannot pass as a real
+// handshake reply.
+const codexAppServerHandshakeOKCase = `*app-server*) read -r line; id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9]*\).*/\1/p'); printf '{"id":%s,"result":{}}\n' "$id"; read -r initialized; exit 0 ;;`
 
 // codexAppServerFakeScript builds a POSIX shell fake CLI that answers the
 // real ACP handshake probe for any invocation whose args contain

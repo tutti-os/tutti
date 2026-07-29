@@ -45,6 +45,7 @@ func TestValidateCodexRuntimeCandidatesSkipsUnsupportedCandidate(t *testing.T) {
 	writeCodexVersionFixture(t, current, "0.142.0")
 
 	service := probeTestService(home)
+	service.CodexProtocolProbe = codexProtocolReadyFixture
 	validations := service.validateCodexRuntimeCandidates(context.Background(), ProviderSpec{
 		Provider:   "codex",
 		MinVersion: MinSupportedCodexVersion,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"strings"
 	"time"
 )
@@ -135,6 +136,10 @@ func ProbeCodexAppServer(ctx context.Context, input CodexAppServerProbeInput) (r
 	handshakeCtx, cancelHandshake := context.WithTimeout(ctx, handshakeTimeout)
 	defer cancelHandshake()
 	client = newCodexAppServerClient(conn)
+	// A probe must prove that the server read this specific initialize request.
+	// Keep normal session IDs deterministic, but seed this one-shot client so a
+	// launcher that prints a canned response for id 1 cannot appear healthy.
+	client.raw.nextID.Store(rand.Int64N(1_000_000) + 1)
 	client.SetMessageHandler(func(context.Context, acpMessage) error { return nil })
 	host := normalizeHostMetadata(input.Host)
 	_, err = client.Initialize(handshakeCtx, handshakeTimeout, map[string]any{

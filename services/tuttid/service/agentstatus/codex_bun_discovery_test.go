@@ -36,6 +36,7 @@ func TestCodexDiscoveryUsesBunConfiguredGlobalBinForStatusAndLaunch(t *testing.T
 		"exit 1\n")
 
 	service := probeTestService(home)
+	service.CodexProtocolProbe = codexProtocolReadyFixture
 	service.Environ = func() []string {
 		return []string{
 			"PATH=/usr/bin:/bin",
