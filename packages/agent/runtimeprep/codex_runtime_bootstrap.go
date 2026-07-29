@@ -368,9 +368,45 @@ func runCodexCLICommand(
 	if len(prefix) == 0 {
 		return nil, errors.New("codex CLI command is unavailable")
 	}
-	cmd := exec.CommandContext(ctx, prefix[0], append(prefix[1:], args...)...)
-	cmd.Env = mergedCodexProcessEnv(command.Env, codexHome)
+	env := mergedCodexProcessEnv(command.Env, codexHome)
+	path, err := resolveCodexCLIExecutable(prefix[0], env)
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.CommandContext(ctx, path, append(prefix[1:], args...)...)
+	cmd.Env = env
 	return cmd.Output()
+}
+
+// resolveCodexCLIExecutable deliberately resolves bare commands against the
+// exact environment passed to the child. exec.CommandContext otherwise calls
+// LookPath against this process's environment before cmd.Env takes effect.
+func resolveCodexCLIExecutable(command string, env []string) (string, error) {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return "", errors.New("codex CLI command is unavailable")
+	}
+	if strings.ContainsAny(command, `/\\`) {
+		return command, nil
+	}
+	for _, dir := range filepath.SplitList(codexEnvValue(env, "PATH")) {
+		candidate := filepath.Join(dir, command)
+		info, err := os.Stat(candidate)
+		if err == nil && !info.IsDir() && info.Mode().Perm()&0o111 != 0 {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("resolve codex CLI %q against launch PATH: executable not found", command)
+}
+
+func codexEnvValue(env []string, key string) string {
+	for index := len(env) - 1; index >= 0; index-- {
+		candidateKey, value, ok := strings.Cut(env[index], "=")
+		if ok && strings.EqualFold(candidateKey, key) {
+			return value
+		}
+	}
+	return ""
 }
 
 func mergedCodexProcessEnv(overrides []string, codexHome string) []string {

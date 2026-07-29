@@ -73,6 +73,41 @@ func TestPrepareCodexRuntimeForLaunchSynchronizesEnabledPlugins(t *testing.T) {
 	}
 }
 
+func TestPrepareCodexRuntimeForLaunchResolvesBareCLIFromCommandEnv(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	userCodexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userCodexHome, "config.toml"), []byte(""), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	parentCLI := fakeCodexPluginCLI(t, "0.144.6", false)
+	launchCLI := fakeCodexPluginCLI(t, "0.145.0", false)
+	t.Setenv("PATH", strings.Join([]string{filepath.Dir(parentCLI), "/bin"}, string(os.PathListSeparator)))
+	codexHome := preparedCodexBootstrapHome(t, userCodexHome)
+
+	status := PrepareCodexRuntimeForLaunch(t.Context(), CodexRuntimeBootstrapInput{
+		CodexHome: codexHome,
+		ResolveCLI: func(context.Context) (CodexCLICommand, error) {
+			return CodexCLICommand{
+				Command: []string{"codex", "app-server"},
+				Env: []string{
+					"PATH=" + strings.Join([]string{filepath.Dir(launchCLI), "/bin"}, string(os.PathListSeparator)),
+				},
+			}, nil
+		},
+	})
+	if status.CLIVersion != "0.145.0" {
+		t.Fatalf("CLI version = %q, want launch PATH version", status.CLIVersion)
+	}
+	if status.PluginSync.Status != "succeeded" || status.PluginSync.Installed != 2 {
+		t.Fatalf("plugin sync = %#v", status.PluginSync)
+	}
+}
+
 func TestDefaultPreparerCarriesPluginBootstrapDiagnostics(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
