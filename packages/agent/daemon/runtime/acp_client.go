@@ -476,7 +476,9 @@ func (c *acpClient) readLoop() {
 func (c *acpClient) setStderrTail(tail []byte) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.stderrTail = append(c.stderrTail[:0], tail...)
+	// Process frames can split UTF-8 runes. Diagnostics must remain valid text
+	// even after the bounded tail discards a prefix.
+	c.stderrTail = []byte(strings.ToValidUTF8(string(tail), "�"))
 }
 
 func (c *acpClient) setStdoutTail(tail []byte) {

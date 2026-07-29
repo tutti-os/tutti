@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -351,6 +351,37 @@ test("runLanes preserves lane indexes without relying on outer scope", async () 
     results.map((result) => result.key),
     ["lane-b", "lane-a"]
   );
+});
+
+test("runLanes serializes lanes that write the same generated assets", async () => {
+  const runDirectory = mkdtempSync(join(tmpdir(), "run-check-changed-"));
+  const markerPath = join(runDirectory, "marker.txt");
+  const firstProgram =
+    'const fs=require("node:fs"); fs.appendFileSync(process.argv[1], "first-start\\n"); setTimeout(() => { fs.appendFileSync(process.argv[1], "first-end\\n"); }, 30);';
+  const secondProgram =
+    'const fs=require("node:fs"); if (!fs.readFileSync(process.argv[1], "utf8").includes("first-end")) process.exit(1);';
+  const lanes = [
+    {
+      key: "generate:builtin-apps",
+      label: "generate:builtin-apps",
+      serialGroup: "tuttid-builtin-assets",
+      command: [process.execPath, "-e", firstProgram, markerPath]
+    },
+    {
+      key: "build:go",
+      label: "build:go",
+      serialGroup: "tuttid-builtin-assets",
+      command: [process.execPath, "-e", secondProgram, markerPath]
+    }
+  ];
+
+  const results = await runLanes(lanes, runDirectory);
+
+  assert.deepEqual(
+    results.map((result) => result.exitCode),
+    [0, 0]
+  );
+  assert.equal(readFileSync(markerPath, "utf8"), "first-start\nfirst-end\n");
 });
 
 test("printSummary includes rerun hint for failures", () => {

@@ -284,6 +284,21 @@ export const en = {
       actionRelogin: "Sign in again",
       actionLogin: "Sign in",
       actionRetry: "Retry",
+      runtimeTitle: "Choose Codex CLI",
+      runtimeDiscovering: "Checking local Codex CLI installations…",
+      runtimeSelectionRequiredDescription:
+        "More than one working Codex CLI was found. Choose the one Tutti should use.",
+      runtimeStaleDescription:
+        "The Codex CLI you chose is no longer available. Choose another working installation.",
+      runtimeChangeDescription:
+        "Choose which working Codex CLI Tutti should use.",
+      runtimeSelected: "In use",
+      runtimeUnavailableTitle: "Other detected installations",
+      runtimeSourceBun: "Bun",
+      runtimeSourcePnpm: "pnpm",
+      runtimeSourceNpm: "npm",
+      runtimeSourceHomebrew: "Homebrew",
+      runtimeSourcePath: "PATH",
       stepCli: "{{provider}} CLI",
       stepVersion: "Supported version",
       stepAuth: "Signed in",
@@ -414,7 +429,25 @@ export const en = {
       archiveSelectDescription:
         "Search and check the Claude conversations to import",
       back: "Back",
+      chatgptEmpty:
+        "No supported conversations were found in this ChatGPT export",
+      chatgptGroupLabel: "ChatGPT chats",
+      chatgptOptionDescription:
+        "Choose the ZIP file downloaded from ChatGPT's data export",
+      chatgptOptionTitle: "Import ChatGPT export data",
+      chatgptPickFailed: "We couldn't open the ChatGPT export file picker.",
+      chatgptResult:
+        "Imported {{sessions}} conversations and {{messages}} messages from the ChatGPT export",
+      chatgptScanFailed:
+        "This ZIP could not be read as a supported ChatGPT data export.",
+      chatgptScanning: "Reading ChatGPT export conversations...",
+      chatgptSearchPlaceholder: "Search ChatGPT conversations",
+      chatgptSelectDescription:
+        "Search and check the ChatGPT conversations to import",
+      chatgptSelectionReady:
+        "ChatGPT export scan complete. {{count}} conversations are ready to review.",
       chooseArchive: "Choose ZIP",
+      chooseChatgptArchive: "Choose ZIP",
       description:
         "Import local Codex and Claude Code history or a Claude data export",
       done: "Done",

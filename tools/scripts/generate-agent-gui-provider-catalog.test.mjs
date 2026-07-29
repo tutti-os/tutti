@@ -13,6 +13,7 @@ const catalog = [
     iconKey: "example-icon",
     localeKey: "example",
     modelPlanProtocol: "openai",
+    statusKind: "generic_cli",
     aliases: ["example-alias"],
     target: {
       id: "local:example",
@@ -44,6 +45,7 @@ test("renders every registry identity and target field", async () => {
   assert.match(source, /iconKey: "example-icon"/u);
   assert.match(source, /localeKey: "example"/u);
   assert.match(source, /modelPlanProtocol: "openai"/u);
+  assert.match(source, /statusKind: "generic_cli"/u);
   assert.match(source, /id: "local:example"/u);
   assert.match(source, /launchRefType: "local_cli"/u);
   assert.match(source, /usageProbeKind: "example"/u);

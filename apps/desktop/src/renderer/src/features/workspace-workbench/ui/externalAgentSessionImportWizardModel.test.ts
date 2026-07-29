@@ -14,21 +14,46 @@ import {
   shouldAllowExternalImportDialogOpenChange
 } from "./externalAgentSessionImportWizardModel.ts";
 
-test("archive source keeps the same path for scan and disables project registration", () => {
+test("archive source keeps the same path and kind for scan and disables project registration", () => {
   assert.equal(isExternalImportArchiveMode(" /tmp/claude-export.zip "), true);
   const source = externalImportScanSource({
+    archiveKind: "claude",
     archivePath: " /tmp/claude-export.zip ",
     days: -1,
     providers: ["codex", "claude-code"]
   });
   assert.deepEqual(externalImportScanRequest(source), {
     archivePath: "/tmp/claude-export.zip",
+    archiveKind: "claude",
     days: -1
   });
   assert.deepEqual(
-    externalImportRequestSource(" /tmp/claude-export.zip ", true),
+    externalImportRequestSource(" /tmp/claude-export.zip ", "claude", true),
     {
       archivePath: "/tmp/claude-export.zip",
+      archiveKind: "claude",
+      registerUserProjects: false
+    }
+  );
+});
+
+test("chatgpt archive source threads its kind through scan and import requests", () => {
+  const source = externalImportScanSource({
+    archiveKind: "chatgpt",
+    archivePath: "/tmp/chatgpt-export.zip",
+    days: -1,
+    providers: []
+  });
+  assert.deepEqual(externalImportScanRequest(source), {
+    archivePath: "/tmp/chatgpt-export.zip",
+    archiveKind: "chatgpt",
+    days: -1
+  });
+  assert.deepEqual(
+    externalImportRequestSource("/tmp/chatgpt-export.zip", "chatgpt", true),
+    {
+      archivePath: "/tmp/chatgpt-export.zip",
+      archiveKind: "chatgpt",
       registerUserProjects: false
     }
   );
@@ -39,6 +64,7 @@ test("local source keeps providers and the project registration preference", () 
   assert.deepEqual(
     externalImportScanRequest(
       externalImportScanSource({
+        archiveKind: "claude",
         archivePath: null,
         days: 30,
         providers: ["codex"]
@@ -46,7 +72,7 @@ test("local source keeps providers and the project registration preference", () 
     ),
     { days: 30, providers: ["codex"] }
   );
-  assert.deepEqual(externalImportRequestSource(null, false), {
+  assert.deepEqual(externalImportRequestSource(null, null, false), {
     registerUserProjects: false
   });
 });
@@ -62,6 +88,7 @@ test("completed scan is usable only for its exact source identity", () => {
     skippedSessions: 0
   };
   const source = externalImportScanSource({
+    archiveKind: "claude",
     archivePath: "/tmp/claude-export-a.zip",
     days: -1,
     providers: ["codex", "claude-code"]
@@ -77,6 +104,7 @@ test("completed scan is usable only for its exact source identity", () => {
     externalImportUsableScan(
       state,
       externalImportScanSource({
+        archiveKind: "claude",
         archivePath: "/tmp/claude-export-b.zip",
         days: -1,
         providers: ["codex", "claude-code"]
@@ -88,6 +116,20 @@ test("completed scan is usable only for its exact source identity", () => {
     externalImportUsableScan(
       state,
       externalImportScanSource({
+        archiveKind: "chatgpt",
+        archivePath: "/tmp/claude-export-a.zip",
+        days: -1,
+        providers: ["codex", "claude-code"]
+      })
+    ),
+    null,
+    "same path but a different archive kind must not reuse the scan"
+  );
+  assert.equal(
+    externalImportUsableScan(
+      state,
+      externalImportScanSource({
+        archiveKind: "claude",
         archivePath: null,
         days: -1,
         providers: ["codex", "claude-code"]
@@ -108,6 +150,7 @@ test("starting, failing, or changing source clears the completed scan", () => {
     skippedSessions: 0
   };
   const source = externalImportScanSource({
+    archiveKind: "claude",
     archivePath: "/tmp/claude-export.zip",
     days: -1,
     providers: []

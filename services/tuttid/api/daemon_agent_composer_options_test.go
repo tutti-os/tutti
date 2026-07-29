@@ -6,6 +6,21 @@ import (
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
 
+func TestGeneratedAgentProviderCapabilityOptionsPreservesNativeSemantic(t *testing.T) {
+	options := generatedAgentProviderCapabilityOptions([]agentservice.ComposerCapabilityOption{{
+		ID:         "plugin:browser@openai-bundled",
+		Kind:       "plugin",
+		Name:       "browser",
+		Label:      "Browser",
+		Status:     "available",
+		Invocation: "promptItem",
+		Semantic:   "browserUse",
+	}})
+	if len(options) != 1 || options[0].Semantic == nil || string(*options[0].Semantic) != "browserUse" {
+		t.Fatalf("capability semantic = %#v", options)
+	}
+}
+
 // Requested-origin model entries (warm-catalog append of the requested model,
 // bootstrap echo) must keep their provenance across the API projection so
 // clients can exclude them from catalog testimony; catalog entries omit the

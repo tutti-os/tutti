@@ -183,7 +183,7 @@ function composerBehaviorFromValue(
   value: unknown
 ): AgentActivityComposerOptions["behavior"] {
   const behavior = recordValue(value);
-  return {
+  const composerBehavior = {
     collapseModelOptionsToLatest:
       behavior.collapseModelOptionsToLatest === true,
     modelOptionsAuthoritative: behavior.modelOptionsAuthoritative === true,
@@ -193,6 +193,9 @@ function composerBehaviorFromValue(
     planModeExclusiveWithPermissionMode:
       behavior.planModeExclusiveWithPermissionMode === true
   };
+  return behavior.nativePluginCatalogAuthoritative === true
+    ? { ...composerBehavior, nativePluginCatalogAuthoritative: true }
+    : composerBehavior;
 }
 
 function composerSettingsFromValue(
@@ -459,6 +462,7 @@ function capabilityOptionsFromValue(
     const toolName = normalizeText(record.toolName);
     const trigger = normalizeText(record.trigger);
     const path = normalizeText(record.path);
+    const semantic = normalizeCapabilitySemantic(record.semantic);
     options.push({
       id,
       kind,
@@ -472,10 +476,25 @@ function capabilityOptionsFromValue(
       ...(serverName ? { serverName } : {}),
       ...(toolName ? { toolName } : {}),
       ...(trigger ? { trigger } : {}),
-      ...(path ? { path } : {})
+      ...(path ? { path } : {}),
+      ...(semantic ? { semantic } : {})
     });
   }
   return options;
+}
+
+function normalizeCapabilitySemantic(
+  value: unknown
+): AgentActivityComposerCapabilityOption["semantic"] | null {
+  const normalized = normalizeText(value);
+  switch (normalized) {
+    case "sites":
+    case "browserUse":
+    case "computerUse":
+      return normalized;
+    default:
+      return null;
+  }
 }
 
 function normalizeCapabilityKind(

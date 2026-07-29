@@ -187,3 +187,27 @@ func TestProviderStatusCacheInvalidatesWhenCredentialsChange(t *testing.T) {
 		t.Fatalf("auth probes after credential change = %d, want 2", got)
 	}
 }
+
+func TestProviderStatusCacheDoesNotCacheFailedCodexRepairEvidence(t *testing.T) {
+	home := t.TempDir()
+	writeCodexBunInstall(t, home, codexBunReadyLauncher)
+	service := probeTestService(home)
+	service.StatusCache = NewProviderStatusCache()
+	var probes atomic.Int32
+	service.CodexProtocolProbe = func(context.Context, []string, []string) CodexProbeEvidence {
+		probes.Add(1)
+		return CodexProbeEvidence{CommandStarted: true, Category: "handshake_timeout"}
+	}
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+
+	for range 2 {
+		if _, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}}); err != nil {
+			t.Fatalf("List() error = %v", err)
+		}
+	}
+	if got := probes.Load(); got != 2 {
+		t.Fatalf("failed Codex probes = %d, want fresh probe for each List", got)
+	}
+}

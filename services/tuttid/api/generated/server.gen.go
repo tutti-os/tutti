@@ -53,6 +53,12 @@ type ServerInterface interface {
 	// Probe whether tuttid can start a local agent provider runtime command
 	// (POST /v1/agent-providers/{provider}/probe)
 	ProbeAgentProvider(w http.ResponseWriter, r *http.Request, provider WorkspaceAgentProvider)
+	// Discover and validate local runtime candidates for an agent provider
+	// (GET /v1/agent-providers/{provider}/runtime-candidates)
+	GetAgentProviderRuntimeCandidates(w http.ResponseWriter, r *http.Request, provider WorkspaceAgentProvider)
+	// Select one currently discovered runtime candidate
+	// (PUT /v1/agent-providers/{provider}/runtime-selection)
+	SetAgentProviderRuntimeSelection(w http.ResponseWriter, r *http.Request, provider WorkspaceAgentProvider)
 	// List device-local Agent quick prompts
 	// (GET /v1/agent-quick-prompts)
 	ListAgentQuickPrompts(w http.ResponseWriter, r *http.Request)
@@ -1079,6 +1085,70 @@ func (siw *ServerInterfaceWrapper) ProbeAgentProvider(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ProbeAgentProvider(w, r, provider)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAgentProviderRuntimeCandidates operation middleware
+func (siw *ServerInterfaceWrapper) GetAgentProviderRuntimeCandidates(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "provider" -------------
+	var provider WorkspaceAgentProvider
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider", r.PathValue("provider"), &provider, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAgentProviderRuntimeCandidates(w, r, provider)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetAgentProviderRuntimeSelection operation middleware
+func (siw *ServerInterfaceWrapper) SetAgentProviderRuntimeSelection(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "provider" -------------
+	var provider WorkspaceAgentProvider
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider", r.PathValue("provider"), &provider, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetAgentProviderRuntimeSelection(w, r, provider)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -10330,6 +10400,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-providers/{provider}/actions/{actionID}/run", wrapper.RunAgentProviderAction)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-providers/{provider}/composer-options", wrapper.GetAgentProviderComposerOptions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-providers/{provider}/probe", wrapper.ProbeAgentProvider)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-providers/{provider}/runtime-candidates", wrapper.GetAgentProviderRuntimeCandidates)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/agent-providers/{provider}/runtime-selection", wrapper.SetAgentProviderRuntimeSelection)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-quick-prompts", wrapper.ListAgentQuickPrompts)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-quick-prompts", wrapper.CreateAgentQuickPrompt)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-quick-prompts/move", wrapper.MoveAgentQuickPrompt)
@@ -11501,6 +11573,179 @@ type ProbeAgentProvider503JSONResponse struct {
 }
 
 func (response ProbeAgentProvider503JSONResponse) VisitProbeAgentProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentProviderRuntimeCandidatesRequestObject struct {
+	Provider WorkspaceAgentProvider `json:"provider"`
+}
+
+type GetAgentProviderRuntimeCandidatesResponseObject interface {
+	VisitGetAgentProviderRuntimeCandidatesResponse(w http.ResponseWriter) error
+}
+
+type GetAgentProviderRuntimeCandidates200JSONResponse AgentProviderRuntimeCatalogResponse
+
+func (response GetAgentProviderRuntimeCandidates200JSONResponse) VisitGetAgentProviderRuntimeCandidatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentProviderRuntimeCandidates400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response GetAgentProviderRuntimeCandidates400JSONResponse) VisitGetAgentProviderRuntimeCandidatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentProviderRuntimeCandidates405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response GetAgentProviderRuntimeCandidates405JSONResponse) VisitGetAgentProviderRuntimeCandidatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentProviderRuntimeCandidates502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response GetAgentProviderRuntimeCandidates502JSONResponse) VisitGetAgentProviderRuntimeCandidatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentProviderRuntimeCandidates503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response GetAgentProviderRuntimeCandidates503JSONResponse) VisitGetAgentProviderRuntimeCandidatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAgentProviderRuntimeSelectionRequestObject struct {
+	Provider WorkspaceAgentProvider `json:"provider"`
+	Body     *SetAgentProviderRuntimeSelectionJSONRequestBody
+}
+
+type SetAgentProviderRuntimeSelectionResponseObject interface {
+	VisitSetAgentProviderRuntimeSelectionResponse(w http.ResponseWriter) error
+}
+
+type SetAgentProviderRuntimeSelection200JSONResponse AgentProviderRuntimeCatalogResponse
+
+func (response SetAgentProviderRuntimeSelection200JSONResponse) VisitSetAgentProviderRuntimeSelectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAgentProviderRuntimeSelection400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response SetAgentProviderRuntimeSelection400JSONResponse) VisitSetAgentProviderRuntimeSelectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAgentProviderRuntimeSelection405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response SetAgentProviderRuntimeSelection405JSONResponse) VisitSetAgentProviderRuntimeSelectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAgentProviderRuntimeSelection502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response SetAgentProviderRuntimeSelection502JSONResponse) VisitSetAgentProviderRuntimeSelectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAgentProviderRuntimeSelection503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response SetAgentProviderRuntimeSelection503JSONResponse) VisitSetAgentProviderRuntimeSelectionResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -36249,6 +36494,12 @@ type StrictServerInterface interface {
 	// Probe whether tuttid can start a local agent provider runtime command
 	// (POST /v1/agent-providers/{provider}/probe)
 	ProbeAgentProvider(ctx context.Context, request ProbeAgentProviderRequestObject) (ProbeAgentProviderResponseObject, error)
+	// Discover and validate local runtime candidates for an agent provider
+	// (GET /v1/agent-providers/{provider}/runtime-candidates)
+	GetAgentProviderRuntimeCandidates(ctx context.Context, request GetAgentProviderRuntimeCandidatesRequestObject) (GetAgentProviderRuntimeCandidatesResponseObject, error)
+	// Select one currently discovered runtime candidate
+	// (PUT /v1/agent-providers/{provider}/runtime-selection)
+	SetAgentProviderRuntimeSelection(ctx context.Context, request SetAgentProviderRuntimeSelectionRequestObject) (SetAgentProviderRuntimeSelectionResponseObject, error)
 	// List device-local Agent quick prompts
 	// (GET /v1/agent-quick-prompts)
 	ListAgentQuickPrompts(ctx context.Context, request ListAgentQuickPromptsRequestObject) (ListAgentQuickPromptsResponseObject, error)
@@ -37238,6 +37489,67 @@ func (sh *strictHandler) ProbeAgentProvider(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ProbeAgentProviderResponseObject); ok {
 		if err := validResponse.VisitProbeAgentProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAgentProviderRuntimeCandidates operation middleware
+func (sh *strictHandler) GetAgentProviderRuntimeCandidates(w http.ResponseWriter, r *http.Request, provider WorkspaceAgentProvider) {
+	var request GetAgentProviderRuntimeCandidatesRequestObject
+
+	request.Provider = provider
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAgentProviderRuntimeCandidates(ctx, request.(GetAgentProviderRuntimeCandidatesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAgentProviderRuntimeCandidates")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAgentProviderRuntimeCandidatesResponseObject); ok {
+		if err := validResponse.VisitGetAgentProviderRuntimeCandidatesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetAgentProviderRuntimeSelection operation middleware
+func (sh *strictHandler) SetAgentProviderRuntimeSelection(w http.ResponseWriter, r *http.Request, provider WorkspaceAgentProvider) {
+	var request SetAgentProviderRuntimeSelectionRequestObject
+
+	request.Provider = provider
+
+	var body SetAgentProviderRuntimeSelectionJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetAgentProviderRuntimeSelection(ctx, request.(SetAgentProviderRuntimeSelectionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetAgentProviderRuntimeSelection")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetAgentProviderRuntimeSelectionResponseObject); ok {
+		if err := validResponse.VisitSetAgentProviderRuntimeSelectionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

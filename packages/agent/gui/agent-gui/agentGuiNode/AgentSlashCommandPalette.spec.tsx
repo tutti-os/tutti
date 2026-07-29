@@ -454,4 +454,71 @@ describe("AgentSlashCommandPalette", () => {
     );
     expect(screen.queryByText("Skills")).toBeNull();
   });
+
+  it("renders native plugins with an icon and routes unavailable Computer to setup", () => {
+    const onSelectSkill = vi.fn();
+    const onSelectPluginSettings = vi.fn();
+    render(
+      <AgentSlashCommandPalette
+        label="Plugins"
+        commandsGroupLabel="Commands"
+        capabilitiesGroupLabel="Capabilities"
+        skillsGroupLabel="Skills"
+        pluginsGroupLabel="Plugins"
+        connectorsGroupLabel="Connectors"
+        mcpGroupLabel="MCP"
+        highlightedIndex={0}
+        entries={[
+          {
+            type: "plugin",
+            key: "plugin:sites",
+            label: "Sites",
+            description: "Build and deploy websites with Sites",
+            selectAction: "insert",
+            plugin: {
+              name: "Sites",
+              trigger: "$sites",
+              invocation: "promptItem",
+              sourceKind: "plugin",
+              kind: "plugin",
+              status: "available",
+              semantic: "sites"
+            }
+          },
+          {
+            type: "plugin",
+            key: "plugin:computer",
+            label: "电脑",
+            description: "Control Mac apps from ChatGPT",
+            selectAction: "settings",
+            plugin: {
+              name: "电脑",
+              trigger: "",
+              sourceKind: "plugin",
+              kind: "plugin",
+              status: "setupRequired",
+              semantic: "computerUse"
+            }
+          }
+        ]}
+        onHighlightChange={vi.fn()}
+        onSelect={vi.fn()}
+        onSelectCapability={vi.fn()}
+        onSelectPluginSettings={onSelectPluginSettings}
+        onSelectSkill={onSelectSkill}
+      />
+    );
+
+    const sites = screen.getByRole("option", { name: /Sites/i });
+    expect(sites.querySelector("svg")).not.toBeNull();
+    sites.click();
+    expect(onSelectSkill).toHaveBeenCalledWith(
+      expect.objectContaining({ semantic: "sites" })
+    );
+
+    screen.getByRole("option", { name: /电脑/i }).click();
+    expect(onSelectPluginSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ semantic: "computerUse" })
+    );
+  });
 });

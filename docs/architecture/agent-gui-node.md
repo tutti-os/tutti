@@ -1093,12 +1093,29 @@ provider ID
 
 An unknown provider produces explicit unsupported behavior. Provider adapters normalize their own wire; shared renderers consume canonical message/tool/notice contracts only.
 
+Desktop managed-provider setup reads the generated provider catalog's
+`statusKind` strategy before requesting a provider-specific runtime candidate
+catalog. The setup service and view must not keep a second provider-id list or
+branch directly on provider names.
+
 Skill invocation follows the same boundary. Filesystem and runtime adapters
 discover skill identity, source, and plugin ownership; `providerregistry`
 projects the provider-authored trigger and invocation strategy. Composer and
 host adapters consume that projection and must not rebuild `$` versus `/`,
 plugin namespaces, or prompt-item versus text-trigger behavior from provider
 names.
+
+Native Composer plugins are a separate projection from Skills and MCP
+discovery. The daemon issues a small descriptor with a stable `semantic`,
+status, trigger, and `plugin://` path; AgentGUI uses that descriptor for
+presentation, setup actions, and structured mentions without branching on a
+provider id or reading local plugin icon paths. For Codex, `$` is the native
+plugin surface while `/` remains commands and product capabilities. A
+session-scoped runtime-preparation plan remains authoritative for whether a
+selected native plugin can actually run. The provider descriptor carries
+`behavior.nativePluginCatalogAuthoritative` to say that this native catalog is
+the complete Composer plugin surface, including when it is empty; other
+providers retain the ordinary Skills and connector projection.
 
 ### 5.3 Agent Directory and setup
 

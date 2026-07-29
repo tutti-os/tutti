@@ -35,6 +35,12 @@ const openapiProviderSchemaNames = [
   "DesktopAgentGuiConversationRailCollapsedByProvider"
 ];
 const openProviderIDPattern = "^[a-z][a-z0-9._:-]*$";
+const providerStatusKinds = [
+  "codex_cli",
+  "claude_cli",
+  "opencode_cli",
+  "generic_cli"
+];
 
 if (isMainModule()) {
   const catalog = readRegistryCatalog();
@@ -142,6 +148,11 @@ export function validateRegistryCatalog(catalog) {
     if (!["", "anthropic", "openai"].includes(entry.modelPlanProtocol)) {
       throw new TypeError(
         `invalid model plan protocol for provider: ${entry.providerId}`
+      );
+    }
+    if (!providerStatusKinds.includes(entry.statusKind)) {
+      throw new TypeError(
+        `invalid status kind for provider: ${entry.providerId}`
       );
     }
     if (!Array.isArray(entry.aliases)) {

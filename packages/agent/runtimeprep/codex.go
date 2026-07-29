@@ -23,13 +23,15 @@ func (CodexPreparer) Provider() string {
 func (CodexPreparer) Prepare(_ context.Context, input ProviderPrepareInput) (ProviderPrepareResult, error) {
 	codexHome := filepath.Join(input.RuntimeRoot, "codex-home")
 	logRuntimePrepareTrace("runtime_prepare.codex.entered", input.PrepareInput, nil)
-	if err := prepareCodexHome(codexHome, input.PrepareInput); err != nil {
+	prepareInput := input.PrepareInput
+	plan, err := prepareCodexHome(codexHome, &prepareInput)
+	if err != nil {
 		return ProviderPrepareResult{}, err
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.home_prepared", input.PrepareInput, nil)
 	instructionsPath := filepath.Join(codexHome, "AGENTS.md")
 	logRuntimePrepareTrace("runtime_prepare.codex.instructions_write_requested", input.PrepareInput, nil)
-	policy, err := tuttiCLIPolicy(input.PrepareInput)
+	policy, err := tuttiCLIPolicy(prepareInput)
 	if err != nil {
 		return ProviderPrepareResult{}, err
 	}
@@ -51,52 +53,90 @@ func (CodexPreparer) Prepare(_ context.Context, input ProviderPrepareInput) (Pro
 	if input.ModelEndpoint.supportsCodex() {
 		env = append(env, codexModelPlanAPIKeyEnv+"="+input.ModelEndpoint.APIKey)
 	}
+	logRuntimePrepareTrace("runtime_prepare.codex.native_capability_plan", prepareInput, map[string]any{
+		"entries": len(plan.Entries),
+	})
 	return ProviderPrepareResult{
-		Cwd: input.Cwd,
-		Env: env,
+		Cwd:                  input.Cwd,
+		Env:                  env,
+		NativeCapabilityPlan: &plan,
 	}, nil
 }
 
-func prepareCodexHome(codexHome string, input PrepareInput) error {
-	logRuntimePrepareTrace("runtime_prepare.codex.home_dir_requested", input, nil)
+func prepareCodexHome(codexHome string, input *PrepareInput) (NativeCapabilityPlan, error) {
+	if input == nil {
+		return NativeCapabilityPlan{}, fmt.Errorf("prepare input is required")
+	}
+	logRuntimePrepareTrace("runtime_prepare.codex.home_dir_requested", *input, nil)
 	if err := os.MkdirAll(codexHome, 0o700); err != nil {
-		return fmt.Errorf("create codex home: %w", err)
+		return NativeCapabilityPlan{}, fmt.Errorf("create codex home: %w", err)
 	}
-	logRuntimePrepareTrace("runtime_prepare.codex.home_dir_resolved", input, nil)
-	logRuntimePrepareTrace("runtime_prepare.codex.user_files_requested", input, nil)
+	logRuntimePrepareTrace("runtime_prepare.codex.home_dir_resolved", *input, nil)
+	logRuntimePrepareTrace("runtime_prepare.codex.user_files_requested", *input, nil)
 	if err := exposeUserCodexFiles(codexHome); err != nil {
-		return err
+		return NativeCapabilityPlan{}, err
 	}
-	logRuntimePrepareTrace("runtime_prepare.codex.user_files_resolved", input, nil)
-	logRuntimePrepareTrace("runtime_prepare.codex.imported_rollout_requested", input, nil)
+	logRuntimePrepareTrace("runtime_prepare.codex.user_files_resolved", *input, nil)
+	logRuntimePrepareTrace("runtime_prepare.codex.imported_rollout_requested", *input, nil)
 	if err := exposeCodexImportedRolloutFile(codexHome, input.ExternalRolloutSourcePath); err != nil {
-		return err
+		return NativeCapabilityPlan{}, err
 	}
-	logRuntimePrepareTrace("runtime_prepare.codex.imported_rollout_resolved", input, nil)
-	logRuntimePrepareTrace("runtime_prepare.codex.session_config_requested", input, nil)
-	if err := ensureCodexSessionConfig(filepath.Join(codexHome, "config.toml"), input); err != nil {
-		return err
+	logRuntimePrepareTrace("runtime_prepare.codex.imported_rollout_resolved", *input, nil)
+	logRuntimePrepareTrace("runtime_prepare.codex.session_config_requested", *input, nil)
+	if err := ensureCodexSessionConfig(filepath.Join(codexHome, "config.toml"), *input); err != nil {
+		return NativeCapabilityPlan{}, err
 	}
-	logRuntimePrepareTrace("runtime_prepare.codex.session_config_resolved", input, nil)
-	logRuntimePrepareTrace("runtime_prepare.codex.user_skills_requested", input, nil)
-	if err := exposeUserCodexSkillFolders(filepath.Join(codexHome, "skills"), input); err != nil {
-		return err
+	logRuntimePrepareTrace("runtime_prepare.codex.session_config_resolved", *input, nil)
+
+	logRuntimePrepareTrace("runtime_prepare.codex.native_computer_requested", *input, nil)
+	computerAuth := input.AuthorizeCodexNativeComputerUse ||
+		normalizeCapabilityBackendPreference(input.ComputerBackendPreference) == CapabilityBackendPreferenceNative
+	if _, err := prepareCodexNativeComputerUse(codexHome, computerAuth); err != nil {
+		return NativeCapabilityPlan{}, err
 	}
-	logRuntimePrepareTrace("runtime_prepare.codex.user_skills_resolved", input, nil)
-	logRuntimePrepareTrace("runtime_prepare.codex.native_skills_requested", input, nil)
-	skillPaths, err := installProviderNativeSkills(filepath.Join(codexHome, "skills"), input)
+	logRuntimePrepareTrace("runtime_prepare.codex.native_computer_resolved", *input, nil)
+	logRuntimePrepareTrace("runtime_prepare.codex.native_browser_requested", *input, nil)
+	if _, err := prepareCodexNativeBrowser(codexHome); err != nil {
+		return NativeCapabilityPlan{}, err
+	}
+	logRuntimePrepareTrace("runtime_prepare.codex.native_browser_resolved", *input, nil)
+	logRuntimePrepareTrace("runtime_prepare.codex.native_sites_requested", *input, nil)
+	if _, err := prepareCodexNativeSites(codexHome); err != nil {
+		return NativeCapabilityPlan{}, err
+	}
+	logRuntimePrepareTrace("runtime_prepare.codex.native_sites_resolved", *input, nil)
+
+	plan, err := BuildCodexNativeCapabilityPlan(codexHome, NativeCapabilityResolveInput{
+		BrowserPreference:  input.BrowserBackendPreference,
+		ComputerPreference: input.ComputerBackendPreference,
+		SitesPreference:    input.SitesBackendPreference,
+		TuttiBrowserOK:     input.BrowserUse && BrowserUseDefaultEnabled(),
+		TuttiComputerOK:    input.ComputerUse && ComputerUseDefaultEnabled(),
+	})
 	if err != nil {
-		return err
+		return NativeCapabilityPlan{}, err
 	}
-	logRuntimePrepareTrace("runtime_prepare.codex.native_skills_resolved", input, map[string]any{
+	ApplyNativeCapabilityExclusivity(input, plan)
+
+	logRuntimePrepareTrace("runtime_prepare.codex.user_skills_requested", *input, nil)
+	if err := exposeUserCodexSkillFolders(filepath.Join(codexHome, "skills"), *input); err != nil {
+		return NativeCapabilityPlan{}, err
+	}
+	logRuntimePrepareTrace("runtime_prepare.codex.user_skills_resolved", *input, nil)
+	logRuntimePrepareTrace("runtime_prepare.codex.native_skills_requested", *input, nil)
+	skillPaths, err := installProviderNativeSkills(filepath.Join(codexHome, "skills"), *input)
+	if err != nil {
+		return NativeCapabilityPlan{}, err
+	}
+	logRuntimePrepareTrace("runtime_prepare.codex.native_skills_resolved", *input, map[string]any{
 		"skill_count": len(skillPaths),
 	})
-	logRuntimePrepareTrace("runtime_prepare.codex.approval_rules_requested", input, nil)
-	if err := installCodexApprovalRules(codexHome, input); err != nil {
-		return err
+	logRuntimePrepareTrace("runtime_prepare.codex.approval_rules_requested", *input, nil)
+	if err := installCodexApprovalRules(codexHome, *input); err != nil {
+		return NativeCapabilityPlan{}, err
 	}
-	logRuntimePrepareTrace("runtime_prepare.codex.approval_rules_resolved", input, nil)
-	return nil
+	logRuntimePrepareTrace("runtime_prepare.codex.approval_rules_resolved", *input, nil)
+	return plan, nil
 }
 
 func installCodexApprovalRules(codexHome string, input PrepareInput) error {

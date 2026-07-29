@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
@@ -1054,6 +1055,9 @@ func TestStartCommandPassesDisplayPrompt(t *testing.T) {
 	}
 	if sessions.createInput.AgentTargetID != agenttargetbiz.IDLocalCodex {
 		t.Fatalf("agent target id = %q, want %s", sessions.createInput.AgentTargetID, agenttargetbiz.IDLocalCodex)
+	}
+	if _, err := uuid.Parse(sessions.createInput.ClientSubmitID); err != nil {
+		t.Fatalf("client submit id = %q, want UUID: %v", sessions.createInput.ClientSubmitID, err)
 	}
 	if output.Value["turnId"] != "turn-new" {
 		t.Fatalf("output turnId = %#v, want turn-new", output.Value["turnId"])
@@ -2302,6 +2306,9 @@ func TestSendCommandConvertsImageFilesToPromptContentBlocks(t *testing.T) {
 	}
 	if !sessions.sendInput.Guidance {
 		t.Fatalf("send guidance = false, want true")
+	}
+	if _, err := uuid.Parse(sessions.sendInput.ClientSubmitID); err != nil {
+		t.Fatalf("client submit id = %q, want UUID: %v", sessions.sendInput.ClientSubmitID, err)
 	}
 	content := sessions.sendInput.Content
 	if len(content) != 2 {

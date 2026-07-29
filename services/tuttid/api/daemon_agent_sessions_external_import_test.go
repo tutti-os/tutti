@@ -70,6 +70,97 @@ func TestImportExternalSessionsForwardsArchivePath(t *testing.T) {
 	}
 }
 
+func TestScanExternalImportForwardsArchiveKind(t *testing.T) {
+	archivePath := "/tmp/chatgpt-export.zip"
+	archiveKind := tuttigenerated.Chatgpt
+	var captured agentservice.ExternalImportScanInput
+	api := DaemonAPI{AgentSessionService: stubAgentSessionService{
+		scanExternalFn: func(_ context.Context, input agentservice.ExternalImportScanInput) (agentservice.ExternalImportScanResult, error) {
+			captured = input
+			return agentservice.ExternalImportScanResult{}, nil
+		},
+	}}
+
+	response, err := api.ScanWorkspaceExternalAgentSessionImports(context.Background(), tuttigenerated.ScanWorkspaceExternalAgentSessionImportsRequestObject{
+		WorkspaceID: "ws-1",
+		Body: &tuttigenerated.ExternalAgentImportScanRequest{
+			ArchivePath: &archivePath,
+			ArchiveKind: &archiveKind,
+		},
+	})
+	if err != nil {
+		t.Fatalf("ScanWorkspaceExternalAgentSessionImports error = %v", err)
+	}
+	if _, ok := response.(tuttigenerated.ScanWorkspaceExternalAgentSessionImports200JSONResponse); !ok {
+		t.Fatalf("response = %T, want 200", response)
+	}
+	if captured.ArchiveKind != string(tuttigenerated.Chatgpt) {
+		t.Fatalf("archive kind = %q, want %q", captured.ArchiveKind, tuttigenerated.Chatgpt)
+	}
+}
+
+func TestScanExternalImportRejectsUnknownArchiveKind(t *testing.T) {
+	archivePath := "/tmp/chatgpt-export.zip"
+	invalidKind := tuttigenerated.ExternalAgentImportArchiveKind("gemini")
+	scanned := false
+	api := DaemonAPI{AgentSessionService: stubAgentSessionService{
+		scanExternalFn: func(_ context.Context, _ agentservice.ExternalImportScanInput) (agentservice.ExternalImportScanResult, error) {
+			scanned = true
+			return agentservice.ExternalImportScanResult{}, nil
+		},
+	}}
+
+	response, err := api.ScanWorkspaceExternalAgentSessionImports(context.Background(), tuttigenerated.ScanWorkspaceExternalAgentSessionImportsRequestObject{
+		WorkspaceID: "ws-1",
+		Body: &tuttigenerated.ExternalAgentImportScanRequest{
+			ArchivePath: &archivePath,
+			ArchiveKind: &invalidKind,
+		},
+	})
+	if err != nil {
+		t.Fatalf("ScanWorkspaceExternalAgentSessionImports error = %v", err)
+	}
+	if _, ok := response.(tuttigenerated.ScanWorkspaceExternalAgentSessionImports400JSONResponse); !ok {
+		t.Fatalf("response = %T, want 400 for an unknown archive kind", response)
+	}
+	if scanned {
+		t.Fatalf("scan service must not run for an invalid archive kind")
+	}
+}
+
+func TestImportExternalSessionsForwardsArchiveKind(t *testing.T) {
+	archivePath := "/tmp/chatgpt-export.zip"
+	archiveKind := tuttigenerated.Chatgpt
+	var captured agentservice.ExternalImportInput
+	api := DaemonAPI{AgentSessionService: stubAgentSessionService{
+		importExternalFn: func(_ context.Context, _ string, input agentservice.ExternalImportInput) (agentservice.ExternalImportResult, error) {
+			captured = input
+			return agentservice.ExternalImportResult{}, nil
+		},
+	}}
+
+	response, err := api.ImportWorkspaceExternalAgentSessions(context.Background(), tuttigenerated.ImportWorkspaceExternalAgentSessionsRequestObject{
+		WorkspaceID: "ws-1",
+		Body: &tuttigenerated.ImportExternalAgentSessionsRequest{
+			ArchivePath: &archivePath,
+			ArchiveKind: &archiveKind,
+			Projects: []tuttigenerated.ExternalAgentImportProjectSelection{{
+				Path:       "/Users/demo",
+				SessionIds: &[]string{"session-1"},
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ImportWorkspaceExternalAgentSessions error = %v", err)
+	}
+	if _, ok := response.(tuttigenerated.ImportWorkspaceExternalAgentSessions200JSONResponse); !ok {
+		t.Fatalf("response = %T, want 200", response)
+	}
+	if captured.ArchiveKind != string(tuttigenerated.Chatgpt) {
+		t.Fatalf("archive kind = %q, want %q", captured.ArchiveKind, tuttigenerated.Chatgpt)
+	}
+}
+
 func TestRegisterExternalImportUserProjectsPreservesInputOrderInLastUsedTimes(t *testing.T) {
 	var input userprojectservice.UseManyInput
 	api := DaemonAPI{

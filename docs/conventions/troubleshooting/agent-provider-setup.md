@@ -327,6 +327,66 @@ provider-status-focus-refresh --all-process-time-profile` on macOS when a
   [main.test.ts](../../../packages/agent/claude-sdk-sidecar/src/main.test.ts)
   [claude_sdk_adapter.go](../../../packages/agent/daemon/runtime/claude_sdk_adapter.go)
 
+### Bun-installed Codex works in a terminal but Tutti cannot use it
+
+- Symptom:
+  `codex --version` works in an interactive terminal after `bun add -g
+@openai/codex`, while the desktop reports `cli_not_found`,
+  `codex_platform_pkg_incomplete`, or a generic app-server launch failure.
+- Quick checks:
+  Compare the terminal's `command -v codex` and `bun pm bin -g` with the
+  daemon's effective PATH. Then run the exact resolved command with
+  `app-server` and verify the formal `initialize` response followed by the
+  `initialized` notification. Do not infer runtime failure from the absence of
+  npm's nested `@openai/codex/node_modules/@openai/codex-<platform>` path:
+  inspect the package root and ancestor `node_modules` directories as well.
+- Root cause:
+  Desktop processes do not source interactive shell startup files. Bun's
+  default global binary directory is `~/.bun/bin`, `BUN_INSTALL` can relocate
+  the Bun installation, and `globalBinDir` can point somewhere else entirely.
+  Bun may also hoist the Codex platform package or place it behind an isolated
+  `.bun` store, so an npm-nested-only check can reject a working CLI. Finally,
+  the actionable missing-optional-dependency message is written to stderr after
+  the app-server process starts; classifying only the protocol error loses that
+  evidence.
+- Fix:
+  Resolve Codex from the effective PATH, `BUN_INSTALL/bin`, the default
+  `~/.bun/bin`, and, only when those fail, a bounded `bun pm bin -g` discovery.
+  Cache a successful configured-bin result by the Bun executable fingerprint.
+  Rewrite the provider command to the resolved absolute Codex launcher and pass
+  the same environment to status probes and real sessions. Treat a completed
+  app-server initialize handshake as the readiness source of truth. Scan the
+  package from the resolved launcher using Node-style ancestor `node_modules`
+  lookup across npm, Bun, and pnpm layouts; layout evidence must never override
+  a successful protocol probe. Classify the current platform package from
+  bounded stderr even when the message says `Missing optional dependency`
+  without an `ENOENT` token. Preserve Bun/pnpm provenance and never run npm
+  repair in those package-manager-owned directories.
+- Validation:
+  Use a minimal GUI PATH (`/usr/bin:/bin`) and cover default `~/.bun/bin`,
+  `BUN_INSTALL/bin`, and a custom `bun pm bin -g` result. Include a real
+  single-process initialize/initialized handshake, Bun hoisted and isolated
+  package layouts, missing optional-dependency stderr without `ENOENT`,
+  unsupported `app-server`, and a broken Bun install that must not invoke npm.
+- Multiple installations:
+  Do not stop at the first PATH result. Enumerate PATH, Bun, pnpm, npm, and
+  Homebrew launchers; deduplicate logical package roots; then validate each
+  launcher's version, package layout, and app-server handshake. A single ready
+  candidate is used implicitly. Two or more ready candidates are not ranked by
+  PATH or package-manager order: Tutti blocks startup and asks the user to
+  choose one in the Agent environment panel. Persist that choice as its absolute
+  launcher path (not an ephemeral list id), selected from the current catalog
+  revision. A stale, broken, or unsupported saved choice also requires a new
+  user selection; never silently fall back to another installation or run an
+  installer. Read `GET /v1/agent-providers/codex/runtime-candidates` before
+  changing it with `PUT /v1/agent-providers/codex/runtime-selection`.
+- References:
+  [resolver.go](../../../packages/agent/daemon/runtimecmd/resolver.go)
+  [codex_bun_discovery.go](../../../services/tuttid/service/agentstatus/codex_bun_discovery.go)
+  [codex_layout_scan.go](../../../services/tuttid/service/agentstatus/codex_layout_scan.go)
+  [codex_protocol_probe.go](../../../services/tuttid/service/agentstatus/codex_protocol_probe.go)
+  [codex_appserver_probe.go](../../../packages/agent/daemon/runtime/codex_appserver_probe.go)
+
 ### Codex npm install misses the platform package
 
 - Symptom:
@@ -364,9 +424,14 @@ provider-status-focus-refresh --all-process-time-profile` on macOS when a
   `TUTTI_APP_NPM`, managed `PATH`) when user Node is missing. Ensure the Codex
   app-server adapter consumes that provider command resolution; otherwise status
   probes can pass while session startup still fails with `env: node: No such
-file or directory`. If the CLI path exists but `codex app-server` cannot
-  launch, treat the failed probe as a repair trigger so the install action does
-  not clear immediately without running an installer.
+file or directory`. A failed `codex app-server` probe is diagnostic evidence,
+  not repair authorization by itself. Require a fresh, platform-specific
+  missing-dependency classification plus a package-relative scan that confirms
+  the same package or binary is missing. Keep npm repair limited to npm-owned
+  layouts; Bun and pnpm installations must be repaired by their owning package
+  manager rather than overwritten in place by npm. If the supported CLI and
+  platform binary are complete but the formal protocol handshake still fails,
+  report a runtime bug and do not reinstall.
 - Validation:
   Reproduce in a temporary prefix/cache using the Tutti-managed npm. Confirm
   `codex --version`, the platform package metadata and vendor binary, and a
@@ -1965,3 +2030,49 @@ invalid_grant`. Search `tuttid.log` for
   [agent-extensions.md](../../architecture/agent-extensions.md)
   [manager.go](../../../services/tuttid/service/agentextension/manager.go)
   [wiring_daemon_api.go](../../../services/tuttid/wiring_daemon_api.go)
+
+### Codex composer Plugins list is empty for Browser, Sites, or Computer Use
+
+- Symptom:
+  Codex sessions show no bundled plugins in the composer Plugins group, or only
+  plugin-derived skills appear while `browser@openai-bundled` / `sites@openai-bundled`
+  / `computer-use@openai-bundled` never surface as selectable entries. The
+  composer may stay on Loading when cold discovery approaches the desktop
+  request deadline.
+- Quick checks:
+  Run `codex app-server`, complete `initialize` / `initialized`, then call
+  `plugin/list` with `{"cwds":[<workspace>]}`. Confirm the response uses
+  `marketplaces[].plugins[]`, not a top-level `data[]` array. Inspect tuttid logs
+  for `plugin/list failed` or `plugin marketplace load failed` soft errors; those
+  responses must not be cached as an empty success catalog. Composer Options
+  should project exactly three semantic native plugins in this order: Sites,
+  Browser, Computer Use. `$` must not show Skills, MCP servers, connectors, or
+  other marketplace entries.
+- Root cause:
+  Older tuttid catalog code sent unsupported `plugin/list` params, skipped the
+  initialize handshake, and parsed the legacy `data[]` shape. Valid plugin RPC
+  answers were discarded, and partial failures could be cached for 30 seconds.
+  The Agent GUI also previously treated every discovered Skill, connector, and
+  plugin as one interchangeable palette candidate. That made the native entry
+  points hard to find and let `$` and `/` manufacture aliases for each other.
+  Marketplace catalogs can contain thousands of remote entries, so projecting
+  them directly also inflates the bootstrap snapshot.
+- Fix:
+  Use the current `codex_capability_catalog` handshake and marketplace parser,
+  surface RPC/marketplace errors without caching failed results, then project
+  only `sites@openai-bundled`, `browser@openai-bundled`, and
+  `computer-use@openai-bundled` as semantic native plugins. Keep Computer Use
+  visible as `setupRequired` when it is not installed; selecting it must open
+  explicit setup and must never silently install or authorize it. Use semantic
+  UI icons rather than app-server absolute icon paths. `$` selects native
+  plugins and inserts a `plugin://<plugin.id>` mention only when available;
+  `/` stays a command/capability surface. Allow the desktop cold request enough
+  time for bounded discovery. Native-first routing and Tutti fallback live in
+  `packages/agent/runtimeprep` (`NativeCapabilityPlan` + exclusivity).
+- Validation:
+  `go test ./service/agent -run 'TestCodexNative.*Plugin|TestParseCodexPluginCapabilities'`
+  `pnpm --filter @tutti-os/agent-gui test -- agentGuiNode/controller/agentGuiController.composerHelpers.spec.ts agentGuiNode/AgentSlashCommandPalette.spec.tsx`
+- References:
+  [codex_capability_catalog.go](../../../services/tuttid/service/agent/codex_capability_catalog.go)
+  [agentGuiController.composerHelpers.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/agentGuiController.composerHelpers.ts)
+  [codex_native_capability.go](../../../packages/agent/runtimeprep/codex_native_capability.go)

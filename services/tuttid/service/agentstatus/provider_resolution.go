@@ -53,6 +53,22 @@ func (s Service) ResolveProviderCommand(ctx context.Context, provider string) (P
 		return ProviderCommandResolution{}, ErrInvalidProvider
 	}
 	spec := specs[0]
+	if isCodexStatusSpec(spec) && s.CodexRuntimeSelectionStore != nil {
+		selection, err := s.resolveCodexRuntimeSelection(ctx, spec)
+		if err != nil {
+			return ProviderCommandResolution{}, err
+		}
+		candidate, found := selection.candidate()
+		if !found || !selection.Launchable {
+			return ProviderCommandResolution{}, fmt.Errorf("%s", firstNonBlank(selection.ReasonCode, "codex_runtime_selection_unavailable"))
+		}
+		command := cloneStrings(spec.AdapterCommand)
+		if len(command) == 0 {
+			return ProviderCommandResolution{}, fmt.Errorf("acp_adapter_not_found")
+		}
+		command[0] = candidate.Candidate.LauncherPath
+		return ProviderCommandResolution{Command: command, Env: s.adapterCommandEnv(ctx, spec)}, nil
+	}
 	if len(spec.AdapterCommand) == 0 || strings.TrimSpace(spec.AdapterCommand[0]) == "" {
 		reason := firstNonBlank(spec.AdapterUnavailableReasonCode, "acp_adapter_not_found")
 		return ProviderCommandResolution{}, fmt.Errorf("%s", reason)
@@ -179,17 +195,17 @@ func (s Service) resolveStaticProviderSpec(ctx context.Context, spec ProviderSpe
 		return spec
 	}
 	if s.userNodeRuntimeAvailable(spec.AdapterEnv) {
-		return spec
+		return s.resolveCodexProviderSpec(ctx, spec)
 	}
 	appRuntime, ok := s.resolveManagedNodeRuntimeForProvider(ctx, requireManagedRuntime)
 	if !ok {
 		if requireManagedRuntime {
 			spec.AdapterUnavailableReasonCode = ReasonManagedRuntimeUnavailable
 		}
-		return spec
+		return s.resolveCodexProviderSpec(ctx, spec)
 	}
 	spec.AdapterEnv = append(s.managedRuntimeAdapterEnv(appRuntime), spec.AdapterEnv...)
-	return spec
+	return s.resolveCodexProviderSpec(ctx, spec)
 }
 
 func (s Service) userNodeRuntimeAvailable(overrides []string) bool {

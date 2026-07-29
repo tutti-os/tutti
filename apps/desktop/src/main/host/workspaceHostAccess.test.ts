@@ -328,6 +328,12 @@ function createTransportClient(
     async getAgentProviderStatuses() {
       throw new Error("not used");
     },
+    async getAgentProviderRuntimeCandidates() {
+      throw new Error("not used");
+    },
+    async setAgentProviderRuntimeSelection() {
+      throw new Error("not used");
+    },
     async probeAgentProvider() {
       throw new Error("not used");
     },

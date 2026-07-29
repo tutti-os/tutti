@@ -60,8 +60,8 @@ type standardACPHandshakeResponse struct {
 // message routing, auth handling) which this one-shot detection probe does
 // not need and should not depend on. The request shape below is a minimal,
 // locally-defined subset of the real ACP `initialize` params, independent
-// from probeCodexAppServerHandshake so the two probes cannot regress each
-// other.
+// from the Codex app-server runtime probe so the two protocols cannot regress
+// each other.
 func (s Service) probeStandardACPHandshake(
 	ctx context.Context,
 	result ProbeResult,

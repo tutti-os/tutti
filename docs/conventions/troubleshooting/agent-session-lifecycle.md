@@ -300,6 +300,32 @@
   order without deadlocking. Unsupported capability/source values must fail at
   HTTP ingress and event publication without changing activation.
 
+### `tutti agent send` reports unknown delivery after Codex accepted the prompt
+
+- **Symptom:** `tutti agent send` returns
+  `agent_submit_delivery_unknown` with an error saying the workspace, Session,
+  Turn, and client submit IDs are required. The prompt and attachment may still
+  appear in the transcript and Codex may complete the Turn, so retrying the
+  command can duplicate the work.
+- **Quick checks:** Correlate the command timestamp with the target Session in
+  the durable store and runtime logs. If the user message, provider Turn, and
+  assistant response exist but the submission provenance has no
+  `clientSubmitId`, the runtime accepted the command and only the
+  post-dispatch delivery confirmation failed.
+- **Root cause:** The Agent service requires a caller-stable client submit ID to
+  reconcile ambiguous delivery after runtime dispatch. The CLI Agent provider
+  populated workspace and Session context but omitted the typed
+  `ClientSubmitID` on both SendInput and initial Session creation.
+- **Fix:** Generate one UUID per CLI command invocation and pass it through the
+  typed `ClientSubmitID` field. Keep Turn ID allocation in Agent Host; the CLI
+  identity exists only to make one semantic submission idempotent and
+  recoverable.
+- **Validation:** Exercise both `agent start` and `agent send` through the CLI
+  provider and assert each service input contains a valid UUID client submit
+  identity.
+- **References:**
+  [session_commands.go](../../../services/tuttid/service/cli/providers/agentcontext/session_commands.go)
+
 ### Codex finishes but AgentGUI keeps showing the Session as working
 
 - **Symptom:** Codex has emitted its final assistant message, but AgentGUI keeps

@@ -436,8 +436,9 @@ func agentSessionIDOrNew(agentSessionID string) string {
 }
 
 type preparedRuntime struct {
-	Cwd string
-	Env []string
+	Cwd                  string
+	Env                  []string
+	NativeCapabilityPlan *runtimeprep.NativeCapabilityPlan
 }
 
 func (s *Service) prepareRuntime(ctx context.Context, workspaceID string, cwd string, input CreateSessionInput, endpoints ...*runtimeprep.ModelEndpointConfig) (preparedRuntime, error) {
@@ -541,8 +542,9 @@ func (s *Service) prepareRuntimeWithModelEndpoint(
 		prepared.Cwd = cwd
 	}
 	return preparedRuntime{
-		Cwd: prepared.Cwd,
-		Env: append([]string(nil), prepared.Env...),
+		Cwd:                  prepared.Cwd,
+		Env:                  append([]string(nil), prepared.Env...),
+		NativeCapabilityPlan: prepared.NativeCapabilityPlan,
 	}, nil
 }
 

@@ -559,6 +559,34 @@ describe("agentComposerDraft", () => {
     ]);
   });
 
+  it("adds plugin:// mention blocks for referenced Codex plugins", () => {
+    expect(
+      agentComposerDraftToPromptContent({
+        draft: buildAgentComposerDraft({
+          prompt: "$browser open localhost"
+        }),
+        skills: [
+          {
+            name: "Browser",
+            trigger: "$browser",
+            invocation: "promptItem",
+            sourceKind: "plugin",
+            path: "plugin://browser@openai-bundled",
+            kind: "plugin",
+            pluginName: "browser"
+          }
+        ]
+      })
+    ).toEqual([
+      { type: "text", text: "$browser open localhost" },
+      {
+        type: "mention",
+        name: "Browser",
+        path: "plugin://browser@openai-bundled"
+      }
+    ]);
+  });
+
   it("converts image-only drafts into prompt content", () => {
     expect(
       agentComposerDraftToPromptContent({
