@@ -140,6 +140,45 @@ test("turn and interaction observations require canonical state reconciliation",
   });
 });
 
+test("settled turn observations request terminal reconciliation", () => {
+  const event: Extract<
+    AgentActivityUpdatedEvent,
+    { eventType: "turn_update" }
+  > = {
+    agentSessionId: "session-1",
+    data: {
+      activeTurnId: null,
+      agentSessionId: "session-1",
+      eventType: "turn_update",
+      occurredAtUnixMs: 10,
+      turn: {
+        agentSessionId: "session-1",
+        completedCommand: null,
+        error: null,
+        fileChanges: null,
+        origin: "user_prompt",
+        outcome: "completed",
+        phase: "settled",
+        settledAtUnixMs: 10,
+        startedAtUnixMs: 1,
+        turnId: "turn-1",
+        updatedAtUnixMs: 10
+      },
+      workspaceId: "workspace-1"
+    },
+    eventType: "turn_update",
+    workspaceId: "workspace-1"
+  };
+
+  const observation = analyzeAgentActivityEventObservation({
+    cachedMessages: [],
+    event,
+    hasCachedSession: true
+  });
+
+  assert.equal(observation.intent.terminalTurn, true);
+});
+
 function message(version: number): AgentActivityMessage {
   return {
     workspaceId: "workspace-1",
