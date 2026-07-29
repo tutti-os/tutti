@@ -20,14 +20,14 @@ type recordingIssueRunAgentSessionCreator struct {
 	input       agentservice.CreateSessionInput
 }
 
-func (r *recordingIssueRunAgentSessionCreator) Create(
+func (r *recordingIssueRunAgentSessionCreator) CreateWithResult(
 	_ context.Context,
 	workspaceID string,
 	input agentservice.CreateSessionInput,
-) (agentservice.Session, error) {
+) (agentservice.CreateSessionResult, error) {
 	r.workspaceID = workspaceID
 	r.input = input
-	return agentservice.Session{}, nil
+	return agentservice.CreateSessionResult{}, nil
 }
 
 func TestIssueRunAgentLauncherForwardsSourceRailPlacement(t *testing.T) {
@@ -36,6 +36,7 @@ func TestIssueRunAgentLauncherForwardsSourceRailPlacement(t *testing.T) {
 
 	err := launcher.Launch(context.Background(), workspaceservice.IssueRunLaunch{
 		WorkspaceID:        "workspace-1",
+		ClientSubmitID:     "issue-run:run-1",
 		AgentSessionID:     "delegate-1",
 		AgentTargetID:      "local-codex",
 		RunID:              "run-1",
