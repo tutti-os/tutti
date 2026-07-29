@@ -255,7 +255,6 @@ function requestReconcile(
       current.pendingMessages ||
       input.needsMessages ||
       authoritativeDemandArrivedWhileInFlight,
-    pendingLive: current.pendingLive || input.live === true,
     pendingState: current.pendingState || input.needsState,
     requiredHistoryRevision:
       requiredHistoryRevision === null
@@ -324,7 +323,7 @@ function startReconcile(
     record.authoritativeMessagesRequired || historyRevisionIsPending(record);
   const scope = requiresAuthoritativeMessages
     ? "state_and_messages"
-    : record.pendingState || record.pendingLive
+    : needsState
       ? record.pendingMessages
         ? "state_and_messages"
         : "state"
@@ -388,8 +387,10 @@ function applyHistoryCheckpoint(
     errorCode: null,
     errorMessage: null,
     inFlightCommandId: null,
+    inFlightLive: false,
     inFlightScope: null,
     messagesHydrated: false,
+    pendingLive: false,
     pendingMessages: false,
     pendingState: false,
     requiredHistoryRevision: null,

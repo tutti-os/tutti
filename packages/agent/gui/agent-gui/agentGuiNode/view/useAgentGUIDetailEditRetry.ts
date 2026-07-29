@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { translate } from "../../../i18n";
-import type { AgentTranscriptEditRetryControl } from "../../../shared/agentConversation/components/AgentTranscriptView";
+import type { AgentTranscriptEditRetryControl } from "../../../shared/agentConversation/components/useAgentTranscriptEditRetryProjection";
 import { useAgentGUIEditRetryController } from "../controller/useAgentGUIEditRetryController";
 
 export function useAgentGUIDetailEditRetry(input: {

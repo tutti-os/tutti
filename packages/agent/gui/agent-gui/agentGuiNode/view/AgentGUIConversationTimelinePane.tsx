@@ -6,10 +6,10 @@ import type { AgentGUIProviderSkillOption } from "../model/agentGuiNodeTypes";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
 import type {
   AgentTranscriptAttachmentLocator,
-  AgentTranscriptEditRetryControl,
   AgentTranscriptTurnAttachment,
   AgentTranscriptVirtualScrollController
 } from "../../../shared/agentConversation/components/AgentTranscriptView";
+import type { AgentTranscriptEditRetryControl } from "../../../shared/agentConversation/components/useAgentTranscriptEditRetryProjection";
 import { userScrollBehavior } from "./agentGUIDetailScrollHelpers";
 import type { AgentConversationFollowEndMode } from "../../../shared/agentConversation/agentConversationFollowEndController";
 

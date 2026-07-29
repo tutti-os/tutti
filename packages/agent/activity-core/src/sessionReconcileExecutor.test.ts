@@ -38,6 +38,26 @@ test("state reconcile applies one mapped aggregate without reading messages", as
   );
 });
 
+test("state reconcile retries one transient detail-read failure", async () => {
+  const detail = sessionDetail(session("root-1"));
+  let detailReads = 0;
+  const harness = createHarness({
+    getSessionDetail: async () => {
+      detailReads += 1;
+      if (detailReads === 1) {
+        throw new Error("temporary detail read failure");
+      }
+      return detail;
+    },
+    listSessionMessages: rejectUnexpectedMessageRead
+  });
+
+  const result = await harness.execute("state", true);
+
+  assert.equal(result.status, "applied");
+  assert.equal(detailReads, 2);
+});
+
 test("authoritative history reconcile replaces effective messages and cleans the optimistic overlay", async () => {
   const effectiveMessage = message({
     messageId: "replacement-message",
@@ -73,6 +93,21 @@ test("authoritative history reconcile replaces effective messages and cleans the
     }
   ]);
   assert.deepEqual(harness.reconciledOverlays, []);
+});
+
+test("authoritative history reconciliation rejects a partial scope before reading", async () => {
+  const harness = createHarness({
+    getSessionDetail: rejectUnexpectedDetailRead,
+    listSessionMessages: rejectUnexpectedMessageRead
+  });
+
+  await assert.rejects(
+    harness.executor.execute({
+      ...command("messages"),
+      authoritativeMessages: true
+    }),
+    /authoritative messages require state_and_messages scope/
+  );
 });
 
 test("messages reconcile uses newest-page and records its server boundary", async () => {

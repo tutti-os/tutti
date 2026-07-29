@@ -179,6 +179,33 @@ test("settled turn observations request terminal reconciliation", () => {
   assert.equal(observation.intent.terminalTurn, true);
 });
 
+test("turn observations with a missing turn payload do not throw or claim terminal state", () => {
+  const event: Extract<
+    AgentActivityUpdatedEvent,
+    { eventType: "turn_update" }
+  > = {
+    agentSessionId: "session-1",
+    data: {
+      activeTurnId: null,
+      agentSessionId: "session-1",
+      eventType: "turn_update",
+      occurredAtUnixMs: 10,
+      turn: undefined as never,
+      workspaceId: "workspace-1"
+    },
+    eventType: "turn_update",
+    workspaceId: "workspace-1"
+  };
+
+  const observation = analyzeAgentActivityEventObservation({
+    cachedMessages: [],
+    event,
+    hasCachedSession: true
+  });
+
+  assert.equal(observation.intent.terminalTurn, undefined);
+});
+
 function message(version: number): AgentActivityMessage {
   return {
     workspaceId: "workspace-1",

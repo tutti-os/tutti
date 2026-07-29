@@ -144,8 +144,9 @@ func TestControllerHistoryReplacementReturnsDurableDirectReceipt(t *testing.T) {
 		result, err := controller.Exec(t.Context(), ExecInput{
 			RoomID: "room-edit-retry", AgentSessionID: sessionID,
 			TurnID: "replacement-turn-1", ClientSubmitID: "replacement-submit-1",
-			Content:            textPrompt("replacement"),
-			HistoryReplacement: true,
+			CanonicalSubmitOccurredAtUnixMS: 1_001,
+			Content:                         textPrompt("replacement"),
+			HistoryReplacement:              true,
 		})
 		completed <- execOutcome{result: result, err: err}
 	}()
@@ -230,8 +231,9 @@ func TestControllerHistoryReplacementAckTimeoutIsOutcomeUnknown(t *testing.T) {
 	result, err := controller.Exec(t.Context(), ExecInput{
 		RoomID: "room-edit-retry", AgentSessionID: sessionID,
 		TurnID: "replacement-turn-timeout", ClientSubmitID: "replacement-submit-timeout",
-		Content:            textPrompt("replacement"),
-		HistoryReplacement: true,
+		CanonicalSubmitOccurredAtUnixMS: 1_002,
+		Content:                         textPrompt("replacement"),
+		HistoryReplacement:              true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -285,7 +287,8 @@ func TestControllerOrdinarySendStillReturnsBeforeTurnStartAck(t *testing.T) {
 	result, err := controller.Exec(t.Context(), ExecInput{
 		RoomID: "room-edit-retry", AgentSessionID: sessionID,
 		TurnID: "ordinary-turn-1", ClientSubmitID: "ordinary-submit-1",
-		Content: textPrompt("ordinary"),
+		CanonicalSubmitOccurredAtUnixMS: 1_004,
+		Content:                         textPrompt("ordinary"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -317,8 +320,9 @@ func TestControllerHistoryReplacementNeverUsesSlashFallback(t *testing.T) {
 	result, err := controller.Exec(t.Context(), ExecInput{
 		RoomID: "room-edit-retry", AgentSessionID: sessionID,
 		TurnID: "replacement-slash", ClientSubmitID: "replacement-slash-submit",
-		Content:            textPrompt("/compact"),
-		HistoryReplacement: true,
+		CanonicalSubmitOccurredAtUnixMS: 1_003,
+		Content:                         textPrompt("/compact"),
+		HistoryReplacement:              true,
 	})
 	if err != nil {
 		t.Fatal(err)

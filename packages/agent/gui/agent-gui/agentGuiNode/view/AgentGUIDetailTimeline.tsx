@@ -17,7 +17,7 @@ import { AgentGUIConversationTimelinePane } from "./AgentGUIConversationTimeline
 import styles from "../AgentGUINode.styles";
 import type { AgentTranscriptVirtualScrollController } from "../../../shared/agentConversation/components/AgentTranscriptView";
 import type { AgentConversationFollowEndMode } from "../../../shared/agentConversation/agentConversationFollowEndController";
-import type { AgentTranscriptEditRetryControl } from "../../../shared/agentConversation/components/AgentTranscriptView";
+import type { AgentTranscriptEditRetryControl } from "../../../shared/agentConversation/components/useAgentTranscriptEditRetryProjection";
 import type { AgentActivityEditRetryRecoveryAction } from "@tutti-os/agent-activity-core";
 import type { AgentGUIEditRetryPresentation } from "../model/agentGUIEditRetryModel";
 import { AgentGUIEditRetryStatus } from "./AgentGUIEditRetryStatus";

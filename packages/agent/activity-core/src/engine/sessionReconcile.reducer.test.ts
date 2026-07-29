@@ -380,6 +380,32 @@ test("required history revision stays pending until a composite authoritative sn
   assert.equal(result.commands.length, 0);
 });
 
+test("a history checkpoint initializes a complete inactive reconcile record", () => {
+  const result = reduce(createInitialSessionReconcileState(), {
+    agentSessionId: "session-1",
+    historyRevision: 4,
+    type: "session/historyRevisionObserved",
+    workspaceId: "workspace-1"
+  });
+
+  assert.deepEqual(result.state.recordsBySessionId["session-1"], {
+    agentSessionId: "session-1",
+    appliedHistoryRevision: 4,
+    authoritativeMessagesRequired: false,
+    errorCode: null,
+    errorMessage: null,
+    inFlightCommandId: null,
+    inFlightLive: false,
+    inFlightScope: null,
+    messagesHydrated: false,
+    pendingLive: false,
+    pendingMessages: false,
+    pendingState: false,
+    requiredHistoryRevision: null,
+    workspaceId: "workspace-1"
+  });
+});
+
 test("authoritative demand arriving during an ordinary read retries exactly once after failure", () => {
   let result = reduce(createInitialSessionReconcileState(), {
     type: "session/reconcileRequested",

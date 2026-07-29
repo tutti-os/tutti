@@ -15,7 +15,6 @@ import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNod
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
 import type { AgentConversationParticipantPresentation } from "../contracts/agentConversationParticipantPresentation";
 import type { AgentConversationFollowEndMode } from "../agentConversationFollowEndController";
-import type { AgentUserMessageEditRetryControl } from "./AgentUserMessageEditRetry";
 import { AgentTranscriptItemView } from "./AgentTranscriptItemView";
 import {
   AgentForkThroughTurnButton,
@@ -40,6 +39,7 @@ import {
   buildTurnGroupIndexByRowIndex,
   buildUserMessageLocatorItems,
   escapeCssString,
+  findLastMessageRowIndex,
   findTurnDividerRowIndexes,
   transcriptRowKey,
   useAgentTranscriptDisplayRows,
@@ -57,41 +57,21 @@ import {
   useAgentTranscriptVirtualizer,
   type AgentTranscriptVirtualScrollController
 } from "./useAgentTranscriptVirtualizer";
-import { useAgentTranscriptEditRetryRowId } from "./useAgentTranscriptEditRetryProjection";
+import {
+  editRetryControlsEqual,
+  type AgentTranscriptEditRetryControl,
+  useAgentTranscriptEditRetryProjection
+} from "./useAgentTranscriptEditRetryProjection";
 
 const AGENT_TRANSCRIPT_DISCLOSURE_TURN_GAP_PX = 24;
 const AGENT_TRANSCRIPT_LEGACY_TURN_GAP_PX = 12;
 const AGENT_TRANSCRIPT_FALLBACK_TURN_COUNT = 3;
-
-function findLastMessageRowIndex(
-  rows: readonly {
-    row: AgentConversationVM["rows"][number];
-    rowIndex: number;
-  }[]
-): number | null {
-  for (let index = rows.length - 1; index >= 0; index -= 1) {
-    const entry = rows[index];
-    if (
-      entry?.row.kind === "message" &&
-      entry.row.speaker === "assistant" &&
-      entry.row.messages.length > 0
-    ) {
-      return entry.rowIndex;
-    }
-  }
-  return null;
-}
 
 export type {
   AgentTranscriptAttachmentLocator,
   AgentTranscriptTurnAttachment
 } from "./useAgentTranscriptTurnAttachments";
 export type { AgentTranscriptVirtualScrollController } from "./useAgentTranscriptVirtualizer";
-export interface AgentTranscriptEditRetryControl extends AgentUserMessageEditRetryControl {
-  agentSessionId: string;
-  eligibleTurnId: string;
-}
-
 export interface AgentTranscriptViewProps {
   conversation: AgentConversationVM;
   isVisible?: boolean;
@@ -290,22 +270,6 @@ export function areAgentTranscriptViewPropsEqual(
   );
 }
 
-function editRetryControlsEqual(
-  previous: AgentTranscriptViewProps["editRetry"],
-  next: AgentTranscriptViewProps["editRetry"]
-): boolean {
-  return (
-    previous === next ||
-    (previous?.agentSessionId === next?.agentSessionId &&
-      previous?.eligibleTurnId === next?.eligibleTurnId &&
-      previous?.pending === next?.pending &&
-      previous?.onSubmit === next?.onSubmit &&
-      previous?.labels.edit === next?.labels.edit &&
-      previous?.labels.cancel === next?.labels.cancel &&
-      previous?.labels.submit === next?.labels.submit)
-  );
-}
-
 export const AgentTranscriptView = memo(function AgentTranscriptView({
   conversation,
   isVisible = true,
@@ -340,11 +304,6 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
     setVirtualListOffsetFromScrollOrigin
   ] = useState(0);
   const participantHeadersEnabled = participantPresentation?.enabled === true;
-  const scopedEditRetry =
-    editRetry?.agentSessionId.trim() ===
-    conversation.sourceDetail.session.agentSessionId.trim()
-      ? editRetry
-      : undefined;
   // Participant-header presentation (Agent board session detail): tool-group
   // rows attach to the assistant message that follows them instead of sitting
   // after the previous message, and presentation turns key off user messages.
@@ -357,10 +316,12 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
   );
   const displayRows = transcriptRowSet.rows;
   const rowKeys = transcriptRowSet.rowKeys;
-  const editableUserMessageRowId = useAgentTranscriptEditRetryRowId(
-    displayRows,
-    scopedEditRetry?.eligibleTurnId
-  );
+  const { editableUserMessageRowId, scopedEditRetry } =
+    useAgentTranscriptEditRetryProjection(
+      displayRows,
+      conversation.sourceDetail.session.agentSessionId,
+      editRetry
+    );
   const participantTurnProjection = transcriptRowSet.participantTurnProjection;
   const turnGroups = useMemo(
     () => buildAgentTranscriptTurnGroups(displayRows, rowKeys),

@@ -206,6 +206,47 @@ test("reconnect hydrates the workspace, priority session, and cached messages", 
   harness.engine.dispose();
 });
 
+test("settled turn updates request a combined reconcile even without inline messages", () => {
+  const harness = createHarness();
+
+  harness.coordinator.ingestEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "turn_update",
+    data: {
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      eventType: "turn_update",
+      occurredAtUnixMs: 10,
+      activeTurnId: null,
+      turn: {
+        agentSessionId: "session-1",
+        completedCommand: null,
+        error: null,
+        fileChanges: null,
+        origin: "user_prompt",
+        outcome: "completed",
+        phase: "settled",
+        startedAtUnixMs: 1,
+        settledAtUnixMs: 10,
+        turnId: "turn-1",
+        updatedAtUnixMs: 10
+      }
+    }
+  });
+
+  assert.ok(
+    harness.commands.some(
+      (command) =>
+        command.type === "session/reconcile" &&
+        command.agentSessionId === "session-1" &&
+        command.scope === "state_and_messages"
+    )
+  );
+  harness.coordinator.dispose();
+  harness.engine.dispose();
+});
+
 test("invalid wire delta stays inside the coordinator and requests reconcile", () => {
   const harness = createHarness();
   const result = harness.coordinator.ingestEvent({

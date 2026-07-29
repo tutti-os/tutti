@@ -7,11 +7,11 @@ import type { AgentConversationFollowEndMode } from "../agentConversationFollowE
 import { AgentTranscriptSkeleton } from "./AgentTranscriptSkeleton";
 import {
   AgentTranscriptView,
-  type AgentTranscriptEditRetryControl,
   type AgentTranscriptAttachmentLocator,
   type AgentTranscriptTurnAttachment,
   type AgentTranscriptVirtualScrollController
 } from "./AgentTranscriptView";
+import type { AgentTranscriptEditRetryControl } from "./useAgentTranscriptEditRetryProjection";
 import { AgentTurnDisclosureProvider } from "./AgentTurnDisclosureContext";
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 

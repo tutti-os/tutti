@@ -97,6 +97,10 @@ export function executeWorkspaceActivityExtensionCommand(
     case "session/forkThroughTurn":
     case "session/unactivate":
     case "tuttiMode/update":
+    // Mobile does not expose edit and retry yet. Keep this explicit so the
+    // shared Engine command union cannot silently reach the exhaustive case.
+    case "turn/editRetry":
+    case "turn/recoverEditRetry":
       return Promise.reject(
         new Error(`unsupported mobile agent command: ${command.type}`)
       );

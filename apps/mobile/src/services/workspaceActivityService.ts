@@ -165,6 +165,12 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
       isSessionDeleted: (agentSessionId) =>
         this.liveLane.isSessionDeleted(agentSessionId),
       mapping: this.mapping,
+      reconcileAuthoritativeHistory: (agentSessionId, messages, turns) =>
+        this.liveLane.reconcileAuthoritativeHistory(
+          agentSessionId,
+          messages,
+          turns
+        ),
       reconcileOptimisticMessages: (agentSessionId) =>
         this.liveLane.reconcileMessages(agentSessionId),
       workspaceId: this.workspace.id

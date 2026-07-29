@@ -2,6 +2,7 @@ import { canonicalInteractionKey } from "@tutti-os/agent-activity-core";
 import type {
   TuttidClient,
   WorkspaceAgentInteraction,
+  WorkspaceAgentEditRetryAvailability,
   WorkspaceAgentSession,
   WorkspaceAgentSessionDetailResponse,
   WorkspaceAgentSessionMessage,
@@ -22,9 +23,20 @@ const workspace: WorkspaceSummary = {
 };
 
 const fullSessionDetailProjection = {
+  editRetry: createEditRetryAvailability(),
   lifecycleCapabilitiesProjected: true,
   projection: "full"
 } as const;
+
+function createEditRetryAvailability(): WorkspaceAgentEditRetryAvailability {
+  return {
+    availableActions: [],
+    eligible: false,
+    historyRevision: 0,
+    recoveryState: "completed",
+    supported: false
+  };
+}
 
 describe("WorkspaceActivityService", () => {
   test("disposes the conversation Rail it owns", () => {

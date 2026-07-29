@@ -731,20 +731,21 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				thread["agentNickname"] = nickname
 			}
 			includeTurns, _ := message.Params["includeTurns"].(bool)
-			if includeTurns && len(historyTurns) == 0 {
-				if len(turnIDs) == 0 {
-					turnIDs = []string{"provider-turn-1", "provider-turn-2"}
-				}
-				turns := make([]any, 0, len(turnIDs))
-				for _, turnID := range turnIDs {
-					turns = append(turns, map[string]any{
-						"id": turnID, "status": "completed",
-					})
-				}
-				thread["turns"] = turns
-			}
 			if includeTurns {
-				thread["turns"] = historyTurns
+				if len(historyTurns) > 0 {
+					thread["turns"] = historyTurns
+				} else {
+					if len(turnIDs) == 0 {
+						turnIDs = []string{"provider-turn-1", "provider-turn-2"}
+					}
+					turns := make([]any, 0, len(turnIDs))
+					for _, turnID := range turnIDs {
+						turns = append(turns, map[string]any{
+							"id": turnID, "status": "completed",
+						})
+					}
+					thread["turns"] = turns
+				}
 			}
 			c.sendJSON(map[string]any{"id": message.ID, "result": map[string]any{"thread": thread}})
 		case appServerMethodTurnInterrupt:

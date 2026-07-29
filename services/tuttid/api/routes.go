@@ -491,6 +491,7 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 	})
 
 	registerWorkspaceAgentSessionRoutes(mux, wrapper)
+	registerAgentEditRetryRoutes(mux, wrapper)
 	registerAgentSessionRecordingRoutes(mux, wrapper)
 	registerAgentSessionReplayRunRoutes(mux, wrapper)
 

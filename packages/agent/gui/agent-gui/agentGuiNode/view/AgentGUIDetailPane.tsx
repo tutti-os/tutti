@@ -213,7 +213,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const handleHomeSuggestionAction = useCallback(
     (action: AgentHomeSuggestionAction) => {
       if (action === "import-session") {
-        // The host chrome owns the external-agent import wizard; let it open.
         window.dispatchEvent(
           new CustomEvent(AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT)
         );
@@ -432,7 +431,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         tuttiWorkflowComposer.tuttiExecutionStopping,
       workspaceReferencePickerOpen,
       referenceProvenanceFilters,
-      // Plan decisions replace the composer; approval / ask-user embed here.
       activePrompt: composerActivePrompt,
       activePromptKeyboardShortcutsEnabled: isActive,
       promptTips: labels.promptTips,
@@ -648,11 +646,9 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     viewModel.composer.drainingQueuedPromptId ?? "",
     isInteractionPending ? "1" : "0"
   ].join("|");
-
   useEffect(() => {
     setBottomDockDismissedPromptRequestId(null);
   }, [activePromptRequestId]);
-
   const {
     followEndMode,
     isTimelineScrolledToBottom,

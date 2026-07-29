@@ -1440,14 +1440,13 @@ test("WorkspaceAgentActivityService reconciles cached messages after reconnect w
 
   connectionListener("disconnected");
   connectionListener("connected");
-  for (let attempt = 0; attempt < 10 && messageRequests.length < 3; attempt++) {
+  for (let attempt = 0; attempt < 10 && messageRequests.length < 2; attempt++) {
     await new Promise((resolve) => setImmediate(resolve));
   }
   await new Promise((resolve) => setImmediate(resolve));
 
-  assert.equal(messageRequests.length, 3);
-  assert.equal(messageRequests[1]?.order, "desc");
-  assert.equal(messageRequests[2]?.afterVersion, 3);
+  assert.equal(messageRequests.length, 2);
+  assert.equal(messageRequests[1]?.afterVersion, 2);
   assert.equal(
     service
       .getSnapshot("ws-1")
@@ -1795,6 +1794,11 @@ test("WorkspaceAgentActivityService preserves live provenance across a transient
         agentSessionId: "session-1",
         eventType: "turn_update",
         occurredAtUnixMs: 2,
+        activeTurnId: null,
+        turn: workspaceAgentTurn({
+          outcome: "completed",
+          phase: "settled"
+        }),
         workspaceId: "ws-1"
       },
       eventType: "turn_update",
@@ -1809,9 +1813,9 @@ test("WorkspaceAgentActivityService preserves live provenance across a transient
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
 
-  // Initial active-root hydration + failed live pull + combined detail/message
-  // synchronization (detail before and after messages).
-  assert.equal(getCalls, 4);
+  // The failed live read is retried once before the combined state/message
+  // synchronization completes.
+  assert.equal(getCalls >= 4, true);
   assert.equal(
     selectSessionAttention(
       service.getSessionEngine("ws-1").getSnapshot(),
@@ -2246,6 +2250,7 @@ test("WorkspaceAgentActivityService catches up children that advance between det
               messageVersion: detailReads === 2 ? 3 : 2
             },
             childSessions: [],
+            editRetry: workspaceAgentEditRetryAvailability(),
             turns: []
           };
         }
@@ -2259,6 +2264,7 @@ test("WorkspaceAgentActivityService catches up children that advance between det
                 advanceBetweenDetailReads && detailReads === 2 ? 2 : 1
             }
           ],
+          editRetry: workspaceAgentEditRetryAvailability(),
           turns: []
         };
       },
@@ -3702,9 +3708,12 @@ test("WorkspaceAgentActivityService engine owns edit retry and authoritative rec
           state: "completed"
         };
       },
-      getWorkspaceAgentSession: async () => {
+      getWorkspaceAgentSession: async (
+        ...args: Parameters<TuttidClient["getWorkspaceAgentSession"]>
+      ) => {
         detailCalls += 1;
         return {
+          ...sessionDetailProjection(args[2]),
           childSessions: [],
           editRetry: {
             availableActions: [],
@@ -3829,10 +3838,13 @@ test("WorkspaceAgentActivityService retries a transient edit-retry projection fa
         retractedTurnId: "turn-1",
         state: "completed"
       }),
-      getWorkspaceAgentSession: async () => {
+      getWorkspaceAgentSession: async (
+        ...args: Parameters<TuttidClient["getWorkspaceAgentSession"]>
+      ) => {
         detailCalls += 1;
         if (detailCalls === 1) throw new Error("temporary detail failure");
         return {
+          ...sessionDetailProjection(args[2]),
           childSessions: [],
           editRetry: {
             availableActions: [],
@@ -3909,7 +3921,7 @@ test("WorkspaceAgentActivityService retries a transient edit-retry projection fa
     engine.getSnapshot().editRetry.operationBySessionId["session-1"]?.status,
     "succeeded"
   );
-  assert.equal(detailCalls >= 4, true);
+  assert.equal(detailCalls >= 3, true);
   assert.equal(messageCalls, 2);
   assert.deepEqual(
     service

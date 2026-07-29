@@ -1,7 +1,9 @@
 import {
   createAgentActivityWorkspaceEventCoordinator,
+  type AgentActivityDurableMessage,
   type AgentActivityLiveEvent,
   type AgentActivitySnapshot,
+  type AgentActivityTurn,
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
 import type {
@@ -97,6 +99,18 @@ export class WorkspaceAgentLiveLane {
 
   reconcileMessages(agentSessionId: string): void {
     this.coordinator.reconcileMessages(agentSessionId);
+  }
+
+  reconcileAuthoritativeHistory(
+    agentSessionId: string,
+    canonicalMessages: readonly AgentActivityDurableMessage[],
+    effectiveTurns: readonly AgentActivityTurn[]
+  ): void {
+    this.coordinator.reconcileAuthoritativeHistory(
+      agentSessionId,
+      canonicalMessages,
+      effectiveTurns
+    );
   }
 
   isSessionDeleted(agentSessionId: string): boolean {
