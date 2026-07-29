@@ -15,7 +15,11 @@ import {
   filterSlashCommands,
   labelForSlashCommand
 } from "../model/agentSlashCommands";
-import { skillDescriptionForDisplay } from "../model/agentSkillOptions";
+import {
+  labelForProviderSkill,
+  skillDescriptionForDisplay,
+  skillTriggerForPrefix
+} from "../model/agentSkillOptions";
 import {
   filterProviderSkillsForTrigger,
   getAgentComposerTriggerQueryMatch,
@@ -233,17 +237,29 @@ export function useComposerPaletteCatalog({
       });
     const skillEntries: AgentSlashPaletteEntry[] = filteredSkills.map(
       (skill) => {
+        if (skill.kind === "plugin" && skill.semantic !== undefined) {
+          return {
+            type: "plugin",
+            key: `plugin:${skill.semantic ?? skill.pluginName ?? skill.name}`,
+            label: nativePluginLabel(skill, labels),
+            ...(skillDescriptionForDisplay(skill.description)
+              ? { description: skillDescriptionForDisplay(skill.description) }
+              : {}),
+            selectAction: skill.status === "available" ? "insert" : "settings",
+            disabled:
+              skill.status !== "available" && skill.semantic !== "computerUse",
+            plugin: skill
+          };
+        }
+        const trigger = skillTriggerForPrefix(skill, skillQueryMatch?.prefix);
         return {
-          type: "plugin",
-          key: `plugin:${skill.semantic ?? skill.pluginName ?? skill.name}`,
-          label: nativePluginLabel(skill, labels),
+          type: "skill",
+          key: `skill:${trigger}`,
+          label: labelForProviderSkill(skill, skillQueryMatch?.prefix),
           ...(skillDescriptionForDisplay(skill.description)
             ? { description: skillDescriptionForDisplay(skill.description) }
             : {}),
-          selectAction: skill.status === "available" ? "insert" : "settings",
-          disabled:
-            skill.status !== "available" && skill.semantic !== "computerUse",
-          plugin: skill
+          skill
         };
       }
     );
