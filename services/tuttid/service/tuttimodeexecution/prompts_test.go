@@ -1,11 +1,46 @@
 package tuttimodeexecution
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
 	executionbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeexecution"
 )
+
+func TestMainWakePromptLeadsWithParsableCheckpointMarker(t *testing.T) {
+	prompt := MainWakePrompt(executionbiz.Wake{
+		IssueID: "issue-1", CheckpointID: "checkpoint-1",
+		CheckpointKind:     executionbiz.CheckpointKindTaskSettled,
+		CheckpointRevision: 7,
+	})
+	firstLine := prompt
+	if idx := strings.IndexByte(prompt, '\n'); idx >= 0 {
+		firstLine = prompt[:idx]
+	}
+	if !strings.HasPrefix(firstLine, MainWakeMarkerPrefix) ||
+		!strings.HasSuffix(firstLine, mainWakeMarkerSuffix) {
+		t.Fatalf("first line is not the checkpoint-wake marker: %q", firstLine)
+	}
+	payload := strings.TrimSuffix(
+		strings.TrimPrefix(firstLine, MainWakeMarkerPrefix),
+		mainWakeMarkerSuffix,
+	)
+	var decoded mainWakeMarker
+	if err := json.Unmarshal([]byte(payload), &decoded); err != nil {
+		t.Fatalf("marker payload is not valid JSON: %v (%q)", err, payload)
+	}
+	if decoded.Version != 1 || decoded.Kind != "task_settled" ||
+		decoded.IssueID != "issue-1" || decoded.CheckpointID != "checkpoint-1" ||
+		decoded.GraphRevision != 7 {
+		t.Fatalf("unexpected marker payload: %+v", decoded)
+	}
+	// The full prompt body must remain intact after the marker so the agent
+	// contract is unchanged.
+	if !strings.Contains(prompt, "A durable Tutti Mode execution checkpoint requires your review.") {
+		t.Fatalf("marker replaced the prompt body instead of prefixing it:\n%s", prompt)
+	}
+}
 
 func TestReviewerPromptCarriesExactFencedVerdictCommand(t *testing.T) {
 	review := executionbiz.GoalReview{

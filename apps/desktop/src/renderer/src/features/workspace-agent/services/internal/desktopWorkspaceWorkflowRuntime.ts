@@ -377,24 +377,31 @@ function createPlanIssueSource(
           topicId: detail.issue.topicId,
           title: detail.issue.title,
           dispatchPaused: detail.issue.dispatchPaused,
-          tasks: detail.tasks.map((task) => ({
-            taskId: task.taskId,
-            title: task.title,
-            content: task.content,
-            status: task.status,
-            sortIndex: task.sortIndex,
-            parallelizable: task.parallelizable === true,
-            autoAccept: task.autoAccept === true,
-            // The daemon omits empty arrays, so dependencyTaskIds arrives
-            // undefined for any task with no dependencies (e.g. the first task
-            // of every plan) despite the generated type declaring it required.
-            // Spreading undefined throws, which rejected getSessionPlanIssue
-            // and left the embedded panel permanently empty. Coalesce before
-            // spread.
-            dependencyTaskIds: task.dependencyTaskIds
-              ? [...task.dependencyTaskIds]
-              : []
-          }))
+          // Superseded tasks are logically removed from the active graph: a
+          // reworked task keeps its old copy for history (supersededAtUnix set)
+          // but must not appear in the live plan. The Issue Manager drops them
+          // via resolveIssueManagerVisibleSubtasks; this embedded panel has to
+          // match, otherwise a reworked task's stale copy lingers as residue.
+          tasks: detail.tasks
+            .filter((task) => (task.supersededAtUnix ?? 0) <= 0)
+            .map((task) => ({
+              taskId: task.taskId,
+              title: task.title,
+              content: task.content,
+              status: task.status,
+              sortIndex: task.sortIndex,
+              parallelizable: task.parallelizable === true,
+              autoAccept: task.autoAccept === true,
+              // The daemon omits empty arrays, so dependencyTaskIds arrives
+              // undefined for any task with no dependencies (e.g. the first task
+              // of every plan) despite the generated type declaring it required.
+              // Spreading undefined throws, which rejected getSessionPlanIssue
+              // and left the embedded panel permanently empty. Coalesce before
+              // spread.
+              dependencyTaskIds: task.dependencyTaskIds
+                ? [...task.dependencyTaskIds]
+                : []
+            }))
         }
       };
     },

@@ -13,10 +13,28 @@ export interface AgentMessageContentVM {
   presentationKind: AgentTranscriptPresentationKind;
   copyText?: string | null;
   statusKind?: ToolCallStatusKind | null;
-  contentKind?: "text" | "image-grid" | "plan" | "collaboration";
+  contentKind?:
+    | "text"
+    | "image-grid"
+    | "plan"
+    | "collaboration"
+    | "tutti-checkpoint-wake"
+    | "tutti-plan-issue-link";
   isTurnFinalText?: true;
   /** Typed payload for `contentKind: "collaboration"` rows. */
   collaboration?: AgentCollaborationVM | null;
+  /**
+   * Typed payload for `contentKind: "tutti-checkpoint-wake"` rows: a daemon
+   * checkpoint-wake prompt injected into the source agent. `body` carries the
+   * full prompt (minus the sentinel line) for the expand-to-full affordance.
+   */
+  checkpointWake?: AgentTuttiModeCheckpointWakeVM | null;
+  /**
+   * Typed payload for `contentKind: "tutti-plan-issue-link"` rows: the durable
+   * plan→Issue reverse link the daemon writes when the user accepts a Tutti
+   * Mode plan (messageId "plan-issue:<issueID>").
+   */
+  planIssueLink?: AgentTuttiPlanIssueLinkVM | null;
   images?: AgentMessageImageVM[];
   occurredAtUnixMs: number | null;
   visibleError?: {
@@ -37,6 +55,22 @@ export interface AgentMessageContentVM {
     retryable: boolean | null;
   } | null;
   sourceTimelineItems?: WorkspaceAgentActivityTimelineItem[];
+}
+
+export interface AgentTuttiModeCheckpointWakeVM {
+  /** Wire kind, e.g. "task_settled" | "task_failed" | "all_tasks_terminal". */
+  kind: string;
+  issueId: string;
+  checkpointId: string;
+  graphRevision: number | null;
+}
+
+export interface AgentTuttiPlanIssueLinkVM {
+  issueId: string;
+  /** Issue title with markdown escapes removed; falls back to the issue id. */
+  title: string;
+  /** The original single-mention markdown, rendered as the issue chip. */
+  mentionMarkdown: string;
 }
 
 export interface AgentMessageImageVM {

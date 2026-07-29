@@ -227,6 +227,9 @@ func (p Provider) runPropose(ctx context.Context, invoke framework.InvokeContext
 	if err != nil {
 		return nil, err
 	}
+	if err := p.requireTuttiModeActive(ctx, invoke.WorkspaceID, sessionID); err != nil {
+		return nil, err
+	}
 	markdown, err := readPlanFile(input.File)
 	if err != nil {
 		return nil, err
@@ -250,6 +253,9 @@ func (p Provider) runRevise(ctx context.Context, invoke framework.InvokeContext,
 	}
 	sessionID, err := callerAgentSessionID(invoke)
 	if err != nil {
+		return nil, err
+	}
+	if err := p.requireTuttiModeActive(ctx, invoke.WorkspaceID, sessionID); err != nil {
 		return nil, err
 	}
 	markdown, err := readPlanFile(input.File)
@@ -298,6 +304,9 @@ func (p Provider) runIssueSchedule(
 	if err != nil {
 		return nil, err
 	}
+	if err := p.requireTuttiModeActive(ctx, invoke.WorkspaceID, sessionID); err != nil {
+		return nil, err
+	}
 	var taskIDs []string
 	if err := json.Unmarshal([]byte(input.TaskIDsJSON), &taskIDs); err != nil || len(taskIDs) == 0 {
 		return nil, cliservice.InvalidInputKeyError("task-ids-json")
@@ -336,6 +345,9 @@ func (p Provider) runIssueMutate(
 	}
 	sessionID, err := callerAgentSessionID(invoke)
 	if err != nil {
+		return nil, err
+	}
+	if err := p.requireTuttiModeActive(ctx, invoke.WorkspaceID, sessionID); err != nil {
 		return nil, err
 	}
 	operations, err := parseMutationOperationsJSON(input.OperationsJSON)

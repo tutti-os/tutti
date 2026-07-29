@@ -375,50 +375,57 @@ export function useAgentGUITuttiWorkflow(input: {
   if (materializingWorkflowSettled) {
     setMaterializingPlan(null);
   }
+  // The bottom workflow dock mirrors the live Tutti Mode toggle. Turning the
+  // mode off hides the banner immediately, even while a materialized Issue, a
+  // pending checkpoint, or an in-flight materialization still exists in the
+  // daemon: only project a dock phase while the mode is active.
+  const tuttiModeActive = viewModel.composer.isTuttiModeActive;
   let workflowDockPhase: TuttiWorkflowDockPhase | null = null;
-  if (
-    pendingPlanPanel &&
-    (!materializingCurrentCheckpoint ||
-      (tuttiModePlanPanels.error !== null && !pendingPlanSubmitting))
-  ) {
-    workflowDockPhase = {
-      kind: "review",
-      panel: pendingPlanPanel,
-      submitting: pendingPlanSubmitting,
-      effect: viewModel.composer.tuttiModeEffect,
-      speed: viewModel.composer.tuttiModeSpeed,
-      preferencesDiverged: planReviewPreferencesDiverged
-    };
-  } else if (materializationFailure) {
-    workflowDockPhase = {
-      kind: "error",
-      message: labels.tuttiModePlanIssueCreateFailed(
-        materializationFailure.errorMessage ?? labels.tuttiModePlanLoadFailed
-      ),
-      retryable: false
-    };
-  } else if (planIssue) {
-    workflowDockPhase = { kind: "execution", issue: planIssue };
-  } else if (materializingCurrentSession && materializingPlan) {
-    workflowDockPhase = {
-      kind: "materializing",
-      title: materializingPlan.title
-    };
-  } else if (tuttiModePlanPanels.error !== null) {
-    workflowDockPhase = {
-      kind: "error",
-      message: labels.tuttiModePlanLoadFailed,
-      retryable: true
-    };
-  } else if (pendingPlanPanel) {
-    workflowDockPhase = {
-      kind: "review",
-      panel: pendingPlanPanel,
-      submitting: pendingPlanSubmitting,
-      effect: viewModel.composer.tuttiModeEffect,
-      speed: viewModel.composer.tuttiModeSpeed,
-      preferencesDiverged: planReviewPreferencesDiverged
-    };
+  if (tuttiModeActive) {
+    if (
+      pendingPlanPanel &&
+      (!materializingCurrentCheckpoint ||
+        (tuttiModePlanPanels.error !== null && !pendingPlanSubmitting))
+    ) {
+      workflowDockPhase = {
+        kind: "review",
+        panel: pendingPlanPanel,
+        submitting: pendingPlanSubmitting,
+        effect: viewModel.composer.tuttiModeEffect,
+        speed: viewModel.composer.tuttiModeSpeed,
+        preferencesDiverged: planReviewPreferencesDiverged
+      };
+    } else if (materializationFailure) {
+      workflowDockPhase = {
+        kind: "error",
+        message: labels.tuttiModePlanIssueCreateFailed(
+          materializationFailure.errorMessage ?? labels.tuttiModePlanLoadFailed
+        ),
+        retryable: false
+      };
+    } else if (planIssue) {
+      workflowDockPhase = { kind: "execution", issue: planIssue };
+    } else if (materializingCurrentSession && materializingPlan) {
+      workflowDockPhase = {
+        kind: "materializing",
+        title: materializingPlan.title
+      };
+    } else if (tuttiModePlanPanels.error !== null) {
+      workflowDockPhase = {
+        kind: "error",
+        message: labels.tuttiModePlanLoadFailed,
+        retryable: true
+      };
+    } else if (pendingPlanPanel) {
+      workflowDockPhase = {
+        kind: "review",
+        panel: pendingPlanPanel,
+        submitting: pendingPlanSubmitting,
+        effect: viewModel.composer.tuttiModeEffect,
+        speed: viewModel.composer.tuttiModeSpeed,
+        preferencesDiverged: planReviewPreferencesDiverged
+      };
+    }
   }
   return {
     composer: {

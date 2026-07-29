@@ -126,7 +126,11 @@ function failure(
 
 function viewModel(
   activeConversationId: string,
-  options: { activeTurn?: boolean; activeTurnGuidance?: boolean } = {}
+  options: {
+    activeTurn?: boolean;
+    activeTurnGuidance?: boolean;
+    tuttiModeActive?: boolean;
+  } = {}
 ): AgentGUINodeViewModel {
   return {
     shell: {
@@ -148,6 +152,7 @@ function viewModel(
     },
     composer: {
       draftContent: buildAgentComposerDraft({ prompt: "" }),
+      isTuttiModeActive: options.tuttiModeActive ?? true,
       tuttiModeEffect: 50,
       tuttiModeSpeed: 50
     }
@@ -168,6 +173,7 @@ function renderWorkflow(
   options: {
     activeTurn?: boolean;
     activeTurnGuidance?: boolean;
+    tuttiModeActive?: boolean;
     cancelPlanIssueExecution?: (() => Promise<void>) | null;
   } = {}
 ) {
@@ -430,5 +436,30 @@ describe("useAgentGUITuttiWorkflow execution composer", () => {
     settle?.();
     await act(async () => firstStop);
     expect(rendered.result.current.composer.tuttiExecutionStopping).toBe(false);
+  });
+});
+
+describe("useAgentGUITuttiWorkflow Tutti Mode dock gate", () => {
+  const executionProjection = (): PlanPanelsProjection => ({
+    ...emptyProjection(),
+    planIssue: issue("workflow-a", { taskStatus: "running" })
+  });
+
+  it("hides the dock while Tutti Mode is off despite a live plan Issue", () => {
+    const off = renderWorkflow(executionProjection(), {
+      tuttiModeActive: false
+    });
+    expect(off.result.current.workflowDock.phase).toBeNull();
+    off.unmount();
+
+    const on = renderWorkflow(executionProjection(), { tuttiModeActive: true });
+    expect(on.result.current.workflowDock.phase?.kind).toBe("execution");
+  });
+
+  it("hides a pending plan review while Tutti Mode is off", () => {
+    const rendered = renderWorkflow(reviewProjection(), {
+      tuttiModeActive: false
+    });
+    expect(rendered.result.current.workflowDock.phase).toBeNull();
   });
 });

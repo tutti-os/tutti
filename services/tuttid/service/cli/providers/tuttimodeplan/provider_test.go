@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
+	activationbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeactivation"
 	executionbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeexecution"
 	workflowbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceworkflow"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
@@ -1321,4 +1322,108 @@ func TestAgentPlanScopeMismatchIsReportedAsNotFoundInput(t *testing.T) {
 
 func configurationMarkdownFixture() []byte {
 	return []byte("---\nschema: tutti-mode-plan/v1\nphase: configuration\ntitle: Proposal\ntopicId: topic-1\n---\nBody\n")
+}
+
+type stubActivationReader struct {
+	activation *activationbiz.Activation
+	err        error
+	calls      int
+}
+
+func (r *stubActivationReader) Get(_ context.Context, _, _ string) (*activationbiz.Activation, error) {
+	r.calls++
+	return r.activation, r.err
+}
+
+func activeActivation() *activationbiz.Activation {
+	return &activationbiz.Activation{
+		ID: "activation-1",
+		CurrentRevision: activationbiz.Revision{
+			Revision: 1, State: activationbiz.StateActive, Source: activationbiz.SourceAgentCommand,
+		},
+	}
+}
+
+func TestTuttiModeGateRejectsInactiveSessionsAndAllowsActive(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "proposal.md")
+	if err := os.WriteFile(path, configurationMarkdownFixture(), 0o600); err != nil {
+		t.Fatalf("write proposal: %v", err)
+	}
+	invoke := framework.InvokeContext{
+		WorkspaceID: "workspace-1",
+		Request:     cliservice.InvokeRequest{Context: cliservice.InvokeContext{AgentSessionID: "session-1"}},
+	}
+
+	// A never-activated (nil) session is rejected before the plan service runs.
+	inactivePlans := &recordingPlans{}
+	inactiveReader := &stubActivationReader{activation: nil}
+	_, err := NewProvider(nil, inactivePlans, nil).
+		WithTuttiModeActivations(inactiveReader).
+		runPropose(context.Background(), invoke, proposeInput{File: path, RequestID: "request-1"})
+	if !errors.Is(err, cliservice.ErrInvalidInput) || !strings.Contains(err.Error(), "Tutti Mode is not active") {
+		t.Fatalf("inactive propose error = %v, want tutti-mode-inactive invalid input", err)
+	}
+	if inactivePlans.proposeInput.RequestID != "" {
+		t.Fatalf("inactive session reached plan service: %#v", inactivePlans.proposeInput)
+	}
+	if inactiveReader.calls != 1 {
+		t.Fatalf("activation reader calls = %d, want 1", inactiveReader.calls)
+	}
+
+	// An active session proceeds to the plan service.
+	activePlans := &recordingPlans{}
+	_, err = NewProvider(nil, activePlans, nil).
+		WithTuttiModeActivations(&stubActivationReader{activation: activeActivation()}).
+		runPropose(context.Background(), invoke, proposeInput{File: path, RequestID: "request-2"})
+	if err != nil {
+		t.Fatalf("active propose error = %v", err)
+	}
+	if activePlans.proposeInput.RequestID != "request-2" {
+		t.Fatalf("active session did not reach plan service: %#v", activePlans.proposeInput)
+	}
+
+	// An unwired reader leaves the gate open (best-effort semantics).
+	openPlans := &recordingPlans{}
+	if _, err := NewProvider(nil, openPlans, nil).
+		runPropose(context.Background(), invoke, proposeInput{File: path, RequestID: "request-3"}); err != nil {
+		t.Fatalf("unwired gate error = %v", err)
+	}
+	if openPlans.proposeInput.RequestID != "request-3" {
+		t.Fatalf("unwired gate blocked propose: %#v", openPlans.proposeInput)
+	}
+}
+
+func TestTuttiModeGateAppliesToExecutionDrivingCommands(t *testing.T) {
+	invoke := framework.InvokeContext{
+		WorkspaceID: "workspace-1",
+		Request:     cliservice.InvokeRequest{Context: cliservice.InvokeContext{AgentSessionID: "session-1"}},
+	}
+	provider := NewProviderWithExecutionSnapshot(
+		nil, &recordingPlans{}, nil,
+		&recordingIssueScheduler{}, &recordingIssueMutator{}, &recordingIssueAcknowledger{},
+		&recordingIssueDetails{}, &recordingExecutionReads{},
+	).WithTuttiModeActivations(&stubActivationReader{activation: nil})
+
+	scheduleErr := func() error {
+		_, err := provider.runIssueSchedule(context.Background(), invoke, issueScheduleInput{
+			IssueID: "issue-1", CheckpointID: "checkpoint-1", ExpectedGraphRevision: 1,
+			TaskIDsJSON: `["task-1"]`, RequestID: "request-1",
+		})
+		return err
+	}
+	mutateErr := func() error {
+		_, err := provider.runIssueMutate(context.Background(), invoke, issueMutateInput{
+			IssueID: "issue-1", CheckpointID: "checkpoint-1", ExpectedGraphRevision: 1,
+			OperationsJSON: `[{"kind":"supersede","taskId":"task-1"}]`, RequestID: "request-1",
+		})
+		return err
+	}
+	for name, run := range map[string]func() error{"schedule": scheduleErr, "mutate": mutateErr} {
+		t.Run(name, func(t *testing.T) {
+			if err := run(); !errors.Is(err, cliservice.ErrInvalidInput) ||
+				!strings.Contains(err.Error(), "Tutti Mode is not active") {
+				t.Fatalf("%s inactive error = %v, want tutti-mode-inactive invalid input", name, err)
+			}
+		})
+	}
 }
