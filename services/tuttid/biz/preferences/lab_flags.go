@@ -6,15 +6,17 @@ package preferences
 // apps/desktop/src/shared/featureFlags/catalog.ts and must carry identical
 // keys and defaults. See docs/conventions/feature-flags.md.
 const (
-	LabFlagAutomationRules = "lab.automationRules"
+	LabFlagAutomationRules  = "lab.automationRules"
+	LabFlagAgentSessionFork = "lab.agentSessionFork"
 	// Durable key for Early Access agent-integration visibility (Agents directory).
 	LabFlagPreviewAgents = "lab.previewAgents"
 )
 
 // labFlagDefaults is fail-closed: every Lab flag defaults to off.
 var labFlagDefaults = map[string]bool{
-	LabFlagAutomationRules: false,
-	LabFlagPreviewAgents:   false,
+	LabFlagAutomationRules:  false,
+	LabFlagAgentSessionFork: false,
+	LabFlagPreviewAgents:    false,
 }
 
 // IsLabFlag reports whether key is a registered Lab flag.

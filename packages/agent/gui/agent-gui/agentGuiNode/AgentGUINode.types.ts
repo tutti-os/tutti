@@ -128,6 +128,8 @@ export interface AgentGUINodeHostCapabilities {
   referenceProvenanceFilterEnabled?: boolean;
   /** Host-owned experimental opt-in for current-Session composer history. */
   sessionInputHistoryEnabled?: boolean;
+  /** Host-owned experimental opt-in for creating Session forks. */
+  sessionForkEnabled?: boolean;
   capabilityMenuState?: AgentComposerCapabilityMenuState;
   /**
    * Keeps owner-supported Browser/Computer capability entries visible while
@@ -390,6 +392,7 @@ export function areAgentGUINodePropsEqual(
     pc.referenceProvenanceFilterEnabled ===
       nc.referenceProvenanceFilterEnabled &&
     pc.sessionInputHistoryEnabled === nc.sessionInputHistoryEnabled &&
+    pc.sessionForkEnabled === nc.sessionForkEnabled &&
     agentGuiStateEquals(previous.state, next.state) &&
     pf.position.x === nf.position.x &&
     pf.position.y === nf.position.y &&

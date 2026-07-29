@@ -1233,6 +1233,9 @@ export const en = {
         agentInputHistoryDescription:
           "Use Up and Down in Agent input to recall earlier prompts from the current session.",
         agentInputHistoryLabel: "Agent input history",
+        agentSessionForkDescription:
+          "Allow branching a new Agent conversation from a supported completed turn.",
+        agentSessionForkLabel: "Agent session fork",
         backLabel: "Back",
         automationRulesDescription:
           "Shows Automation Rule configuration and session overrides.",

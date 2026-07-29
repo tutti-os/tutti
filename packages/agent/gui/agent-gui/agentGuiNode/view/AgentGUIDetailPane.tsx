@@ -45,6 +45,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   homeTargetProjection,
   referenceProvenanceFilters = null,
   sessionInputHistoryEnabled = false,
+  sessionForkEnabled = false,
   composerEngagement,
   actions,
   labels,
@@ -153,6 +154,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       void actions.forkConversationThroughTurn(agentSessionId, turnId);
     }
   });
+  const forkHandler = sessionForkEnabled ? handleForkThroughTurn : undefined;
   const openForkSourceSession = useStableEventCallback(
     actions.openForkSourceConversation
   );
@@ -750,7 +752,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         isTimelineScrolledToTop={isTimelineScrolledToTop}
         labels={labels}
         onAuthLogin={authLogin}
-        onForkThroughTurn={handleForkThroughTurn}
+        onForkThroughTurn={forkHandler}
         onOpenForkSourceSession={openForkSourceSession}
         forkThroughTurnPendingTurnIds={
           viewModel.operations.forkThroughTurnPendingTurnIds

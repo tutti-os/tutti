@@ -378,6 +378,12 @@ transactionally rejects an unverified prefix, descendant lane, or
 session-scoped local attachment. This prevents a later unavailable Turn from
 hiding an earlier valid Turn while preserving a fail-closed commit.
 
+Session Fork is also a default-off Lab capability. Desktop maps
+`lab.agentSessionFork` to an explicit AgentGUI host opt-in, so provider support
+alone does not expose the action. Tuttid independently enforces the same flag
+on new Fork writes; disabling it leaves existing lineage, operation reads, and
+operation acknowledgements available.
+
 Tuttid currently rejects worktree-isolated sources at the Session capability
 layer. A provider-native thread Fork keeps the provider cwd; copying the
 source worktree ownership or silently selecting another checkout would be
