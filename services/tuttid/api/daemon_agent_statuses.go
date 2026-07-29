@@ -81,6 +81,7 @@ func (api DaemonAPI) SetAgentProviderRuntimeSelection(ctx context.Context, reque
 		return tuttigenerated.SetAgentProviderRuntimeSelection400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.EmptyBody(apierrors.WithDeveloperMessage("empty body")))}, nil
 	}
 	input := agentstatusservice.SetCodexRuntimeSelectionInput{
+		Provider:    string(request.Provider),
 		CandidateID: strings.TrimSpace(request.Body.CandidateId),
 		Revision:    strings.TrimSpace(request.Body.Revision),
 	}

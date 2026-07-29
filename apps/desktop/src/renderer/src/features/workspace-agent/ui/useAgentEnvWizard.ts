@@ -13,6 +13,7 @@ import {
   IAgentEnvService,
   type AgentEnvReportState
 } from "../services/agentEnvService.interface.ts";
+import { supportsRuntimeCandidateCatalog } from "../services/internal/desktopManagedAgentProviders.ts";
 
 export interface AgentEnvWizardActions {
   redetect(): void;
@@ -85,7 +86,7 @@ export function useAgentEnvWizard(): {
     runtimeCatalog: snapshot.runtimeCatalog,
     runtimeCatalogLoading: snapshot.runtimeCatalogLoading,
     runtimeSelectionNeeded:
-      snapshot.provider === "codex" &&
+      supportsRuntimeCandidateCatalog(snapshot.provider) &&
       (snapshot.status?.availability.reasonCode ===
         "codex_runtime_selection_required" ||
         snapshot.status?.availability.reasonCode ===

@@ -142,6 +142,7 @@ func TestCodexRuntimeSelectionPersistsOnlyAReadyCandidateFromTheCurrentCatalog(t
 		t.Fatalf("catalog = %#v; want two candidates and a required selection", catalog)
 	}
 	selected, err := service.SetCodexRuntimeSelection(context.Background(), SetCodexRuntimeSelectionInput{
+		Provider:    agentproviderbiz.Codex,
 		CandidateID: catalog.Candidates[1].ID,
 		Revision:    catalog.Revision,
 	})
@@ -160,6 +161,7 @@ func TestCodexRuntimeSelectionPersistsOnlyAReadyCandidateFromTheCurrentCatalog(t
 	}
 
 	if _, err := service.SetCodexRuntimeSelection(context.Background(), SetCodexRuntimeSelectionInput{
+		Provider:    agentproviderbiz.Codex,
 		CandidateID: catalog.Candidates[0].ID,
 		Revision:    "stale-revision",
 	}); err != ErrRuntimeCatalogRevisionConflict {

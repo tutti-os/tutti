@@ -21,6 +21,7 @@ import {
   AgentEnvController,
   type AgentEnvPanelRequest
 } from "./agentEnvController.ts";
+import { supportsRuntimeCandidateCatalog } from "./desktopManagedAgentProviders.ts";
 
 const ORCHESTRATION_LABELS: AgentSetupStageLabels = {
   detect: "",
@@ -134,7 +135,7 @@ export class AgentEnvService implements IAgentEnvService {
     const snapshot = this.controller.getSnapshot();
     const catalog = snapshot.runtimeCatalog;
     if (
-      snapshot.provider !== "codex" ||
+      !supportsRuntimeCandidateCatalog(snapshot.provider) ||
       !catalog ||
       !candidateId ||
       snapshot.runtimeSelectionPendingId
@@ -398,8 +399,11 @@ export class AgentEnvService implements IAgentEnvService {
     }
   }
 
-  private loadRuntimeCatalog(provider: string, requestSequence: number): void {
-    if (this.disposed || provider !== "codex") {
+  private loadRuntimeCatalog(
+    provider: AgentEnvSnapshot["provider"],
+    requestSequence: number
+  ): void {
+    if (this.disposed || !supportsRuntimeCandidateCatalog(provider)) {
       return;
     }
     const requestID = this.runtimeCatalogRequestSequence + 1;
@@ -408,7 +412,7 @@ export class AgentEnvService implements IAgentEnvService {
     this.controller.setRuntimeSelectionError(null);
     this.emit();
     void this.dependencies.providerStatusService
-      .getRuntimeCatalog("codex")
+      .getRuntimeCatalog(provider)
       .then((catalog) => {
         if (
           !this.isCurrentRuntimeCatalogRequest(
@@ -472,7 +476,7 @@ export class AgentEnvService implements IAgentEnvService {
 function codexRuntimeSelectionNeedsUserInput(
   snapshot: AgentEnvSnapshot
 ): boolean {
-  if (snapshot.provider !== "codex") {
+  if (!supportsRuntimeCandidateCatalog(snapshot.provider)) {
     return false;
   }
   return (

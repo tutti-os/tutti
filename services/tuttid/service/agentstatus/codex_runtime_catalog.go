@@ -49,6 +49,7 @@ type CodexRuntimeSelection struct {
 }
 
 type SetCodexRuntimeSelectionInput struct {
+	Provider    string
 	CandidateID string
 	Revision    string
 }
@@ -72,18 +73,15 @@ var ErrRuntimeSelectionStoreUnavailable = errors.New("codex runtime selection st
 // Codex installation. It is intentionally independent from status caching: a
 // user choosing a local executable must see the current filesystem state.
 func (s Service) GetCodexRuntimeCatalog(ctx context.Context, provider string) (CodexRuntimeCatalog, error) {
-	if agentproviderbiz.Normalize(provider) != agentproviderbiz.Codex {
-		return CodexRuntimeCatalog{}, ErrInvalidProvider
-	}
-	specs, err := s.registry().Select([]string{agentproviderbiz.Codex})
-	if err != nil || len(specs) == 0 {
+	specs, err := s.registry().Select([]string{provider})
+	if err != nil || len(specs) != 1 || !isCodexStatusSpec(specs[0]) {
 		return CodexRuntimeCatalog{}, ErrInvalidProvider
 	}
 	resolved, err := s.resolveCodexRuntimeSelection(ctx, specs[0])
 	if err != nil {
 		return CodexRuntimeCatalog{}, err
 	}
-	catalog := codexRuntimeCatalogFromValidations(resolved.Validations)
+	catalog := codexRuntimeCatalogFromValidations(specs[0].Provider, resolved.Validations)
 	catalog.Selection = codexRuntimeCatalogSelection(catalog.Candidates, resolved)
 	return catalog, nil
 }
@@ -92,7 +90,7 @@ func (s Service) SetCodexRuntimeSelection(ctx context.Context, input SetCodexRun
 	if s.CodexRuntimeSelectionStore == nil {
 		return CodexRuntimeCatalog{}, ErrRuntimeSelectionStoreUnavailable
 	}
-	catalog, err := s.GetCodexRuntimeCatalog(ctx, agentproviderbiz.Codex)
+	catalog, err := s.GetCodexRuntimeCatalog(ctx, input.Provider)
 	if err != nil {
 		return CodexRuntimeCatalog{}, err
 	}
@@ -107,19 +105,19 @@ func (s Service) SetCodexRuntimeSelection(ctx context.Context, input SetCodexRun
 			return CodexRuntimeCatalog{}, ErrRuntimeCandidateNotLaunchable
 		}
 		if _, err := s.CodexRuntimeSelectionStore.PutAgentProviderRuntimeSelection(ctx, agentproviderbiz.RuntimeSelection{
-			Provider:     agentproviderbiz.Codex,
+			Provider:     catalog.Provider,
 			LauncherPath: candidate.LauncherPath,
 		}); err != nil {
 			return CodexRuntimeCatalog{}, err
 		}
-		s.invalidateProviderStatus(agentproviderbiz.Codex)
-		return s.GetCodexRuntimeCatalog(ctx, agentproviderbiz.Codex)
+		s.invalidateProviderStatus(catalog.Provider)
+		return s.GetCodexRuntimeCatalog(ctx, catalog.Provider)
 	}
 	return CodexRuntimeCatalog{}, ErrRuntimeCandidateNotFound
 }
 
 func (s Service) resolveCodexRuntimeSelection(ctx context.Context, spec ProviderSpec) (codexRuntimeResolvedSelection, error) {
-	selection, explicit, err := s.codexRuntimeSelection(ctx)
+	selection, explicit, err := s.codexRuntimeSelection(ctx, spec.Provider)
 	if err != nil {
 		return codexRuntimeResolvedSelection{}, err
 	}
@@ -157,14 +155,14 @@ func (selection codexRuntimeResolvedSelection) candidate() (codexRuntimeCandidat
 	return selection.Validations[selection.Index], true
 }
 
-func (s Service) codexRuntimeSelection(ctx context.Context) (agentproviderbiz.RuntimeSelection, bool, error) {
+func (s Service) codexRuntimeSelection(ctx context.Context, provider string) (agentproviderbiz.RuntimeSelection, bool, error) {
 	if s.CodexRuntimeSelectionStore == nil {
 		return agentproviderbiz.RuntimeSelection{}, false, ErrRuntimeSelectionStoreUnavailable
 	}
-	return s.CodexRuntimeSelectionStore.GetAgentProviderRuntimeSelection(ctx, agentproviderbiz.Codex)
+	return s.CodexRuntimeSelectionStore.GetAgentProviderRuntimeSelection(ctx, provider)
 }
 
-func codexRuntimeCatalogFromValidations(validations []codexRuntimeCandidateValidation) CodexRuntimeCatalog {
+func codexRuntimeCatalogFromValidations(provider string, validations []codexRuntimeCandidateValidation) CodexRuntimeCatalog {
 	candidates := make([]CodexRuntimeCatalogCandidate, 0, len(validations))
 	for _, validation := range validations {
 		candidate := validation.Candidate
@@ -182,7 +180,7 @@ func codexRuntimeCatalogFromValidations(validations []codexRuntimeCandidateValid
 	}
 	return CodexRuntimeCatalog{
 		CapturedAt: time.Now().UTC(),
-		Provider:   agentproviderbiz.Codex,
+		Provider:   provider,
 		Revision:   codexRuntimeCatalogRevision(candidates),
 		Candidates: candidates,
 	}

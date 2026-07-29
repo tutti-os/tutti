@@ -1036,6 +1036,11 @@ provider ID
 
 An unknown provider produces explicit unsupported behavior. Provider adapters normalize their own wire; shared renderers consume canonical message/tool/notice contracts only.
 
+Desktop managed-provider setup reads the generated provider catalog's
+`statusKind` strategy before requesting a provider-specific runtime candidate
+catalog. The setup service and view must not keep a second provider-id list or
+branch directly on provider names.
+
 Skill invocation follows the same boundary. Filesystem and runtime adapters
 discover skill identity, source, and plugin ownership; `providerregistry`
 projects the provider-authored trigger and invocation strategy. Composer and

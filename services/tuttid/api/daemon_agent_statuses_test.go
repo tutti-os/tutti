@@ -84,7 +84,7 @@ func TestDaemonAPIMapsCodexRuntimeCatalog(t *testing.T) {
 func TestDaemonAPIForwardsCodexRuntimeSelection(t *testing.T) {
 	api := DaemonAPI{AgentStatusService: stubAgentStatusService{
 		selectionFn: func(_ context.Context, input agentstatusservice.SetCodexRuntimeSelectionInput) (agentstatusservice.CodexRuntimeCatalog, error) {
-			if input.CandidateID != "candidate" || input.Revision != "revision" {
+			if input.Provider != "codex" || input.CandidateID != "candidate" || input.Revision != "revision" {
 				t.Fatalf("input = %#v", input)
 			}
 			return agentstatusservice.CodexRuntimeCatalog{Provider: "codex", Revision: "revision", Selection: agentstatusservice.CodexRuntimeSelection{State: agentstatusservice.CodexRuntimeSelectionSelected}}, nil

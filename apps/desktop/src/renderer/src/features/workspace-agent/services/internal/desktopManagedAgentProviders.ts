@@ -3,7 +3,10 @@ import type {
   AgentProviderStatusListResponse,
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
-import { migratedAgentGUIProviderIdentityCatalog } from "@tutti-os/agent-gui/provider-catalog";
+import {
+  migratedAgentGUIProviderIdentityCatalog,
+  resolveAgentGUIProviderCatalogIdentity
+} from "@tutti-os/agent-gui/provider-catalog";
 import type { IAgentProviderStatusService } from "../agentProviderStatusService.interface";
 
 const desktopManagedAgentCatalog =
@@ -134,5 +137,13 @@ export function isDesktopManagedAgentProvider(
 ): value is WorkspaceAgentProvider {
   return desktopManagedAgentProviders.includes(
     value as (typeof desktopManagedAgentProviders)[number]
+  );
+}
+
+export function supportsRuntimeCandidateCatalog(
+  provider: WorkspaceAgentProvider
+): boolean {
+  return (
+    resolveAgentGUIProviderCatalogIdentity(provider)?.statusKind === "codex_cli"
   );
 }
