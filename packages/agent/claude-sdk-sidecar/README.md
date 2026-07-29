@@ -19,9 +19,32 @@ build step and no bundled entry point beyond the source files.
 ## Sidecar protocol
 
 The daemon and sidecar exchange newline-delimited JSON envelopes over standard
-input and output. Every request and event carries `"version": 2`; either side
+input and output. Every request and event carries `"version": 5`; either side
 rejects unsupported or missing versions instead of guessing compatibility.
 Protocol types and validation live in `src/protocol.ts`.
+
+`inspect_fork_checkpoints` and `fork_session` are stateless requests: they do
+not create a `SessionRuntime` or resume a query. They use the official SDK
+session APIs, verify the selected source prefix and the independently readable
+child transcript, and return identities plus a provider-owned binding receipt;
+prompt and tool content never cross this protocol boundary.
+
+`fork_session` calls the official `forkSession(..., {upToMessageId, title})`
+mutation directly. Claude allocates the provider child UUID, while Host keeps
+the canonical target Agent Session ID deterministic. The driver therefore does
+not attest deterministic provider identity: after mutation starts, any SDK or
+verification failure is `unknown` and must never be replayed. A trailing system
+message may be present in the provider-owned child file but hidden by
+`getSessionMessages()` until a later message extends the chain, so verification
+compares the SDK-observable prefix while the source checkpoint receipt still
+binds the full inclusive prefix.
+
+For live Turns, the UUID supplied on the outbound SDK user message is a
+`promptCorrelationId` only because Claude Code may rewrite it in the durable
+transcript. `SessionRuntime` causally binds the next expected root prompt echo
+to its canonical Turn, takes provider identity from the observed root
+user-message UUID, and emits `provider_turn_started`; the daemon persists only
+that observed identity.
 
 Interactive responses use `(turnId, requestId)` identity. The sidecar keeps a
 bounded terminal disposition registry so `submit_interactive` is idempotent:

@@ -64,6 +64,7 @@ func TestClaudeCodeSDKAdapterExecWithSidecarTestDriver(t *testing.T) {
 	var sawUser bool
 	var assistantText string
 	var completed bool
+	var startedProviderTurnID, completedProviderTurnID string
 	for _, event := range events {
 		if event.Type == activityshared.EventMessageAppended &&
 			event.Payload.Role == activityshared.MessageRoleUser &&
@@ -77,6 +78,10 @@ func TestClaudeCodeSDKAdapterExecWithSidecarTestDriver(t *testing.T) {
 		if event.Type == activityshared.EventRootProviderTurnCompleted &&
 			event.Payload.TurnOutcome == string(activityshared.TurnOutcomeCompleted) {
 			completed = true
+			completedProviderTurnID = event.Payload.ProviderTurnID
+		}
+		if event.Type == activityshared.EventRootProviderTurnStarted {
+			startedProviderTurnID = event.Payload.ProviderTurnID
 		}
 	}
 	if !sawUser {
@@ -87,6 +92,15 @@ func TestClaudeCodeSDKAdapterExecWithSidecarTestDriver(t *testing.T) {
 	}
 	if !completed {
 		t.Fatalf("events missing root provider completion: %#v", events)
+	}
+	if startedProviderTurnID == "" ||
+		startedProviderTurnID == "turn-sdk-1" ||
+		completedProviderTurnID != startedProviderTurnID {
+		t.Fatalf(
+			"provider turn lifecycle start=%q complete=%q, want one observed provider user-message UUID",
+			startedProviderTurnID,
+			completedProviderTurnID,
+		)
 	}
 }
 

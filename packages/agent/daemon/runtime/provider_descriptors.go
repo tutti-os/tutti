@@ -51,6 +51,7 @@ func newAdapterFromProviderDescriptor(
 				clientInfoName:      descriptor.Runtime.ClientInfoName,
 				authRequiredMessage: descriptor.Runtime.AuthRequiredMessage,
 				rateLimits:          providerDescriptorHasCapability(descriptor, CapabilityRateLimits),
+				nativeSessionFork:   descriptor.Runtime.NativeSessionFork,
 			},
 			commandResolver,
 		)

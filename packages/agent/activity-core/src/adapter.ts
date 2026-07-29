@@ -21,6 +21,10 @@ import type {
   AgentActivityUpdateTuttiModeActivationInput,
   AgentActivityUpdateTuttiModeActivationResult
 } from "./types.ts";
+import type {
+  AgentActivityForkSessionResult,
+  AgentActivityForkSessionThroughTurnInput
+} from "./sessionFork.types.ts";
 
 export interface AgentActivityAdapter {
   listSessions(input: {
@@ -69,4 +73,7 @@ export interface AgentActivityAdapter {
   setSessionPinned(
     input: AgentActivitySetSessionPinnedInput
   ): Promise<AgentActivitySession>;
+  forkSession(
+    input: AgentActivityForkSessionThroughTurnInput
+  ): Promise<AgentActivityForkSessionResult>;
 }

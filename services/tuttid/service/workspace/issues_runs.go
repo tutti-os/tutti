@@ -2,14 +2,15 @@ package workspace
 
 import (
 	"context"
-	"strings"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
+	executionbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeexecution"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
+	tuttimodeexecutionservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeexecution"
 )
 
-// Run lifecycle: create, settle, and the planning-conversation notifications
-// that hand orchestration back to the source session.
+// Run lifecycle: create and settle. Tutti-mode checkpoint wakes are durable
+// execution-service operations, not Issue-service notifications.
 
 func (s IssueManagerService) ListRuns(ctx context.Context, workspaceID string, issueID string, taskID string) ([]workspaceissues.Run, error) {
 	s.reconcileWorkspaceRunsBestEffort(ctx, workspaceID)
@@ -75,22 +76,16 @@ func (s IssueManagerService) CompleteRun(ctx context.Context, workspaceID string
 }
 
 type issueRunCompletionEffects struct {
-	alreadySettled bool
-	autoAccepted   bool
+	autoAccepted bool
+	tuttiManaged bool
 }
 
 func (s IssueManagerService) completeRunLocked(ctx context.Context, workspaceID string, issueID string, taskID string, runID string, input CompleteIssueManagerRunInput) (workspaceissues.RunDetail, issueRunCompletionEffects, error) {
-	// An idempotent replay of an already-terminal run must not re-fire the
-	// planning-conversation notifications: their in-process dedupe does not
-	// survive a daemon restart, and a stale wake would misreport a long-settled
-	// run as fresh news.
-	alreadySettled := false
-	if runDetail, err := s.domainService().GetRunDetail(ctx, workspaceID, issueID, taskID, runID); err == nil {
-		switch runDetail.Run.Status {
-		case workspaceissues.StatusCompleted, workspaceissues.StatusFailed, workspaceissues.StatusCanceled:
-			alreadySettled = true
-		}
+	issue, issueErr := s.domainService().GetIssueDetail(ctx, workspaceID, issueID)
+	if issueErr != nil {
+		return workspaceissues.RunDetail{}, issueRunCompletionEffects{}, issueErr
 	}
+	tuttiManaged := issue.Issue.PlanningSource == workspaceissues.PlanningSourceTuttiModePlan
 	run, outputs, err := s.domainService().CompleteRun(ctx, workspaceissues.CompleteRunInput{
 		RunID:                    runID,
 		TaskID:                   taskID,
@@ -116,23 +111,49 @@ func (s IssueManagerService) completeRunLocked(ctx context.Context, workspaceID 
 	// next instead of the daemon silently chaining tasks.
 	if run.Status == workspaceissues.StatusCompleted {
 		autoAccepted := false
-		if taskDetail, taskErr := s.domainService().GetTaskDetail(ctx, workspaceID, issueID, taskID); taskErr == nil &&
-			taskDetail.Task.AutoAccept && taskDetail.Task.Status == workspaceissues.StatusPendingAcceptance {
-			if _, acceptErr := s.updateTaskLocked(ctx, workspaceID, issueID, taskID, UpdateIssueManagerTaskInput{
-				Status:    string(workspaceissues.StatusCompleted),
-				HasStatus: true,
-			}); acceptErr == nil {
-				autoAccepted = true
+		if !tuttiManaged {
+			if taskDetail, taskErr := s.domainService().GetTaskDetail(ctx, workspaceID, issueID, taskID); taskErr == nil &&
+				taskDetail.Task.AutoAccept && taskDetail.Task.Status == workspaceissues.StatusPendingAcceptance {
+				if _, acceptErr := s.updateTaskLocked(ctx, workspaceID, issueID, taskID, UpdateIssueManagerTaskInput{
+					Status:    string(workspaceissues.StatusCompleted),
+					HasStatus: true,
+				}); acceptErr == nil {
+					autoAccepted = true
+				}
 			}
 		}
+		if err := s.ensureTuttiModeRunSettlement(ctx, run, tuttiManaged); err != nil {
+			return workspaceissues.RunDetail{}, issueRunCompletionEffects{}, err
+		}
 		return workspaceissues.RunDetail{Run: run, Outputs: outputs}, issueRunCompletionEffects{
-			alreadySettled: alreadySettled,
-			autoAccepted:   autoAccepted,
+			autoAccepted: autoAccepted,
+			tuttiManaged: tuttiManaged,
 		}, nil
 	}
+	if err := s.ensureTuttiModeRunSettlement(ctx, run, tuttiManaged); err != nil {
+		return workspaceissues.RunDetail{}, issueRunCompletionEffects{}, err
+	}
 	return workspaceissues.RunDetail{Run: run, Outputs: outputs}, issueRunCompletionEffects{
-		alreadySettled: alreadySettled,
+		tuttiManaged: tuttiManaged,
 	}, nil
+}
+
+func (s IssueManagerService) ensureTuttiModeRunSettlement(
+	ctx context.Context,
+	run workspaceissues.Run,
+	tuttiManaged bool,
+) error {
+	if !tuttiManaged {
+		return nil
+	}
+	if s.TuttiModeExecutions == nil {
+		return tuttimodeexecutionservice.ErrServiceUnavailable
+	}
+	_, _, err := s.TuttiModeExecutions.EnsureRunSettlement(ctx, executionbiz.RunSettlement{
+		WorkspaceID: run.WorkspaceID, IssueID: run.IssueID,
+		TaskID: run.TaskID, RunID: run.RunID, Status: run.Status,
+	})
+	return err
 }
 
 // applyRunCompletionEffects performs every cross-domain or potentially
@@ -145,6 +166,12 @@ func (s IssueManagerService) applyRunCompletionEffects(ctx context.Context, run 
 		RunID:       run.RunID,
 		ChangeKind:  eventstreamservice.WorkspaceIssueChangeRunCompleted,
 	})
+	if effects.tuttiManaged {
+		// Durable checkpoint/wake workers own Tutti-mode orchestration. Never
+		// enter the generic auto-dispatch or in-memory notifier paths.
+		s.enqueueWorkspaceRunReconcile(run.WorkspaceID)
+		return
+	}
 	if run.Status == workspaceissues.StatusCompleted {
 		if effects.autoAccepted {
 			s.publishWorkspaceIssueUpdated(ctx, eventstreamservice.WorkspaceIssueUpdate{
@@ -154,81 +181,11 @@ func (s IssueManagerService) applyRunCompletionEffects(ctx context.Context, run 
 				ChangeKind:  eventstreamservice.WorkspaceIssueChangeTaskUpdated,
 			})
 			s.dispatchEligibleIssueTasks(ctx, run.WorkspaceID, run.IssueID)
-			s.notifyTuttiPlanIssueCompletedBestEffort(ctx, run.WorkspaceID, run.IssueID)
 		}
-		if !effects.alreadySettled {
-			s.notifyTuttiPlanIssueTaskSettledBestEffort(ctx, run.WorkspaceID, run.IssueID, run.TaskID, run, !effects.autoAccepted)
-		}
-	} else if run.Status == workspaceissues.StatusFailed && !effects.alreadySettled {
-		// A failed run freezes the dispatch frontier; the planning conversation
-		// must hear about it instead of waiting in silence.
-		s.notifyTuttiPlanIssueTaskFailedBestEffort(ctx, run.WorkspaceID, run.IssueID, run.TaskID, run)
 	}
 	// Parallel Issues keep their bounded workspace slots full as independent
 	// runs settle. Sequential successors still remain gated on user acceptance.
 	if !effects.autoAccepted {
 		s.dispatchEligibleIssueTasks(ctx, run.WorkspaceID, run.IssueID)
-	}
-}
-
-// notifyTuttiPlanIssueTaskSettledBestEffort wakes the planning conversation
-// with one settled task result. It stays silent when the whole Issue just
-// finished — the dedicated completion notification already hands control back
-// — so the source session never receives two messages for one event.
-func (s IssueManagerService) notifyTuttiPlanIssueTaskSettledBestEffort(
-	ctx context.Context,
-	workspaceID string,
-	issueID string,
-	taskID string,
-	run workspaceissues.Run,
-	decisionNeeded bool,
-) {
-	if s.CompletionNotifier == nil {
-		return
-	}
-	detail, err := s.domainService().GetIssueDetail(ctx, workspaceID, issueID)
-	if err != nil ||
-		detail.Issue.PlanningSource != workspaceissues.PlanningSourceTuttiModePlan ||
-		strings.TrimSpace(detail.Issue.SourceSessionID) == "" {
-		return
-	}
-	allDone := len(detail.Tasks) > 0
-	var settled *workspaceissues.Task
-	for index, task := range detail.Tasks {
-		if task.TaskID == taskID {
-			settled = &detail.Tasks[index]
-		}
-		if task.Status == workspaceissues.StatusCanceled {
-			continue
-		}
-		if task.Status != workspaceissues.StatusCompleted ||
-			task.AcceptanceState != workspaceissues.AcceptanceUserAccepted {
-			allDone = false
-		}
-	}
-	if settled == nil || allDone {
-		return
-	}
-	s.CompletionNotifier.NotifyTuttiPlanIssueTaskSettled(ctx, workspaceID, detail.Issue, *settled, run, detail.Tasks, decisionNeeded)
-}
-
-// notifyTuttiPlanIssueTaskFailedBestEffort reports a failed run of a
-// tutti-mode-plan Issue task back to the source conversation. The notifier
-// dedupes per run, so reconcile replays cannot spam the session.
-func (s IssueManagerService) notifyTuttiPlanIssueTaskFailedBestEffort(ctx context.Context, workspaceID string, issueID string, taskID string, run workspaceissues.Run) {
-	if s.CompletionNotifier == nil {
-		return
-	}
-	detail, err := s.domainService().GetIssueDetail(ctx, workspaceID, issueID)
-	if err != nil ||
-		detail.Issue.PlanningSource != workspaceissues.PlanningSourceTuttiModePlan ||
-		strings.TrimSpace(detail.Issue.SourceSessionID) == "" {
-		return
-	}
-	for _, task := range detail.Tasks {
-		if task.TaskID == taskID {
-			s.CompletionNotifier.NotifyTuttiPlanIssueTaskFailed(ctx, workspaceID, detail.Issue, task, run)
-			return
-		}
 	}
 }

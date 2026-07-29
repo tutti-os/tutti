@@ -12,11 +12,12 @@ func TestPublishedScenarioCatalogsHaveUniqueNames(t *testing.T) {
 		scenarios []Scenario
 		wantCount int
 	}{
-		{name: "adapter lifecycle", scenarios: Scenarios(), wantCount: 19},
-		{name: "application core", scenarios: ApplicationCoreScenarios(), wantCount: 14},
+		{name: "adapter lifecycle", scenarios: Scenarios(), wantCount: 22},
+		{name: "application core", scenarios: ApplicationCoreScenarios(), wantCount: 17},
 		{name: "resume policy", scenarios: ResumePolicyScenarios(), wantCount: 5},
 		{name: "submission fence", scenarios: SubmissionFenceScenarios(), wantCount: 1},
 		{name: "title policy", scenarios: TitlePolicyScenarios(), wantCount: 1},
+		{name: "deletion admission", scenarios: DeletionAdmissionScenarios(), wantCount: 3},
 		{name: "coordinator", scenarios: CoordinatorScenarios(), wantCount: 7},
 		{name: "goal", scenarios: GoalScenarios(), wantCount: 8},
 		{name: "commit observer", scenarios: CommitObserverScenarios(), wantCount: 2},
@@ -44,6 +45,30 @@ func TestPublishedScenarioCatalogsHaveUniqueNames(t *testing.T) {
 
 func TestScenarioOwnershipIsExplicit(t *testing.T) {
 	t.Parallel()
+	wantAdapterLifecycle := []string{
+		"create empty session",
+		"create with initial content",
+		"create with explicit rail placement",
+		"resume persisted session",
+		"send input",
+		"duplicate client submit id",
+		"exact turn cancel",
+		"interactive response",
+		"interactive response reuses provider request id across turns",
+		"interactive response race",
+		"plan decision",
+		"initial title cas",
+		"get session",
+		"list session turns",
+		"historical and live settings",
+		"pin session",
+		"delete session",
+		"delete live session before canonical report",
+		"delete admission rejection has no canonical side effects",
+		"delete admission receives exact canonical closure",
+		"delete admission guards changed closure before additional runtime close",
+		"purge deleted sessions",
+	}
 	wantApplicationCore := []string{
 		"create empty session",
 		"create with initial content",
@@ -58,6 +83,9 @@ func TestScenarioOwnershipIsExplicit(t *testing.T) {
 		"pin session",
 		"delete session",
 		"delete live session before canonical report",
+		"delete admission rejection has no canonical side effects",
+		"delete admission receives exact canonical closure",
+		"delete admission guards changed closure before additional runtime close",
 		"purge deleted sessions",
 	}
 	wantCoordinator := []string{
@@ -68,6 +96,9 @@ func TestScenarioOwnershipIsExplicit(t *testing.T) {
 		"plan decision",
 		"recover operations before stale turns and worktree sweep",
 		"worktree sweep failure propagates",
+	}
+	if got := scenarioNames(Scenarios()); !slices.Equal(got, wantAdapterLifecycle) {
+		t.Fatalf("adapter lifecycle scenarios=%v, want %v", got, wantAdapterLifecycle)
 	}
 	if got := scenarioNames(ApplicationCoreScenarios()); !slices.Equal(got, wantApplicationCore) {
 		t.Fatalf("application core scenarios=%v, want %v", got, wantApplicationCore)

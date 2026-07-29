@@ -133,7 +133,11 @@ function createController(
   }
 ): Pick<
   IssueManagerController,
-  "copy" | "taskDetail" | "taskDraft" | "taskEditorMode"
+  | "copy"
+  | "isTuttiModePlanIssue"
+  | "taskDetail"
+  | "taskDraft"
+  | "taskEditorMode"
 > {
   return {
     copy: {
@@ -141,6 +145,7 @@ function createController(
         return key;
       }
     } as IssueManagerController["copy"],
+    isTuttiModePlanIssue: false,
     taskDraft: {
       content: "",
       priority: "medium",

@@ -50,12 +50,6 @@ type Store interface {
 	ListPendingConfigurationReviewCheckpoints(context.Context) ([]workspacedata.PendingConfigurationReviewCheckpoint, error)
 }
 
-// SourceSessionDeletionStore executes a service-authorized transaction
-// command without owning the workflow cancellation policy.
-type SourceSessionDeletionStore interface {
-	ExecuteSourceSessionDeletion(context.Context, workspacedata.SourceSessionDeletionCommand) (workspacedata.SourceSessionDeletionResult, error)
-}
-
 type Publisher interface {
 	PublishWorkspaceWorkflowUpdated(context.Context, workflowbiz.Update) error
 }
@@ -85,6 +79,7 @@ type MaterializeIssueInput struct {
 	TopicID         string
 	Execution       PlanExecution
 	Budget          PlanBudget
+	Review          PlanReview
 	ActionableItems []ActionableItem
 }
 
@@ -105,12 +100,11 @@ type PlanRevisionFeedbackInput struct {
 }
 
 type Service struct {
-	Store                  Store
-	SourceSessionDeletions SourceSessionDeletionStore
-	Revisions              RevisionContentStore
-	Publisher              Publisher
-	IssueMaterializer      IssueMaterializer
-	FeedbackDispatcher     FeedbackDispatcher
+	Store              Store
+	Revisions          RevisionContentStore
+	Publisher          Publisher
+	IssueMaterializer  IssueMaterializer
+	FeedbackDispatcher FeedbackDispatcher
 	// FeatureFlags reads the desktop preferences feature-flag map. Nil keeps
 	// every write allowed; when set, Propose/Revise/Decide are rejected with
 	// ErrTuttiModeDisabled unless lab.tuttiMode is true.

@@ -2,6 +2,7 @@ import {
   authenticateAgentTargetRuntime,
   addWorkspaceIssueContextRefs,
   addWorkspaceIssueTaskContextRefs,
+  cancelTuttiModeExecution,
   cancelWorkspaceIssueExecution,
   checkUserProjectPath,
   completeWorkspaceIssueRun,
@@ -829,6 +830,16 @@ export function createTuttidClient(
       return unwrapData(
         response,
         "Cancel workspace issue execution request failed."
+      );
+    },
+    async cancelTuttiModeExecution(workspaceID, issueID) {
+      const response = await cancelTuttiModeExecution({
+        client,
+        path: { issueID, workspaceID }
+      });
+      return unwrapData(
+        response,
+        "Cancel Tutti mode execution request failed."
       );
     },
     async putWorkspaceWorkbench(workspaceID, snapshot) {

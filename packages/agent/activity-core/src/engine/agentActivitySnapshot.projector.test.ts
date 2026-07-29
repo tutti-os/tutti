@@ -98,6 +98,8 @@ function session(): AgentActivitySession {
     parentToolCallId: null,
     agentTargetId: "agent-1",
     capabilities: null,
+    lifecycleCapabilities: { fork: false, forkThroughTurn: false },
+    forkedFrom: null,
     createdAtUnixMs: 1,
     cwd: "/workspace",
     endedAtUnixMs: null,

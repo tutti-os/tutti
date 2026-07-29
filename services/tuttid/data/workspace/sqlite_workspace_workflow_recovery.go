@@ -28,6 +28,19 @@ JOIN workspace_workflow_checkpoints c
 WHERE w.status = 'accepted'
   AND c.kind = 'task_review' AND c.status = 'accepted'
   AND o.kind = 'create_issue' AND o.status IN ('pending', 'failed')
+  AND NOT EXISTS (
+    SELECT 1
+    FROM workspace_tutti_source_activity_inbox activity
+    JOIN workspace_agent_turns source_turn
+      ON source_turn.workspace_id = activity.workspace_id
+     AND source_turn.agent_session_id = activity.agent_session_id
+     AND source_turn.turn_id = activity.entity_id
+    WHERE activity.workspace_id = w.workspace_id
+      AND activity.agent_session_id = w.source_session_id
+      AND activity.entity_kind = 'turn'
+      AND source_turn.phase = 'settled'
+      AND source_turn.outcome = 'canceled'
+  )
 ORDER BY o.created_at_unix_ms ASC, o.workspace_id ASC, o.workflow_id ASC, o.operation_id ASC
 `)
 	if err != nil {

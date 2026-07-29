@@ -838,6 +838,18 @@ function createDependenciesStub(): {
       copyFilesToClipboard: fail
     },
     tuttidClient: {
+      appendAgentSessionRecordingActivityEvents: fail,
+      listAgentSessionRecordings: async () => [],
+      startAgentSessionRecording: fail,
+      getAgentSessionRecording: fail,
+      renameAgentSessionRecording: fail,
+      completeAgentSessionRecording: fail,
+      cancelAgentSessionRecording: fail,
+      prepareAgentSessionReplayRun: fail,
+      listAgentSessionReplayRuns: fail,
+      markAgentSessionReplayRunRunning: fail,
+      completeAgentSessionReplayRun: fail,
+      failAgentSessionReplayRun: fail,
       createAgentQuickPrompt: fail,
       deleteAgentQuickPrompt: fail,
       listAgentQuickPrompts: fail,
@@ -887,6 +899,9 @@ function createDependenciesStub(): {
       createWorkspaceIssueRun: fail,
       createWorkspace: fail,
       createWorkspaceAgentSession: fail,
+      forkWorkspaceAgentSession: fail,
+      getWorkspaceAgentSessionForkOperation: fail,
+      acknowledgeWorkspaceAgentSessionForkOperation: fail,
       updateWorkspaceAgentSessionVisibility: fail,
       createWorkspaceAppFactoryJob: fail,
       createWorkspaceFile: fail,
@@ -1005,7 +1020,8 @@ function createDependenciesStub(): {
       listPendingWorkspaceWorkflows: fail,
       listWorkspaceWorkflows: fail,
       decideWorkspaceWorkflowCheckpoint: fail,
-      cancelWorkspaceIssueExecution: fail
+      cancelWorkspaceIssueExecution: fail,
+      cancelTuttiModeExecution: fail
     },
     platformApi: {
       homeDirectory: "/Users/local",

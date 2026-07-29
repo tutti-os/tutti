@@ -69,6 +69,7 @@ export interface UseAgentGUINodeControllerInput {
   onDataChange: (
     updater: (current: AgentGUINodeData) => AgentGUINodeData
   ) => void;
+  onComposerAppendHandled?: (sequence: number) => void;
   onRememberComposerDefaults?: (
     input: AgentGUIRememberComposerDefaultsInput
   ) => void | Promise<AgentGUIRememberComposerDefaultsResult>;

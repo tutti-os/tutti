@@ -21,6 +21,11 @@ export type SidecarConfigOption = {
   category?: string;
   type?: string;
   currentValue?: string;
+  /**
+   * Provider-resolved runtime value. This stays separate from currentValue so
+   * an inherited `default` selection is not rewritten into a pinned model.
+   */
+  effectiveValue?: string;
   options: Array<{
     value: string;
     name: string;

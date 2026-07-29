@@ -22,12 +22,14 @@ import {
   virtualizedSessionCycleScenario
 } from "./agent-gui-virtualization-performance-scenarios.mjs";
 import { providerStatusFocusRefreshScenario } from "./agent-provider-status-performance-scenario.mjs";
+import { concurrentAgentStreamingScenario } from "./agent-gui-concurrent-streaming-performance-scenario.mjs";
 
 export const agentGuiPerformanceScenarios = [
   providerSwitchScenario,
   sessionSwitchScenario,
   providerSessionCycleScenario,
   virtualizedStreamingScenario,
+  concurrentAgentStreamingScenario,
   virtualizedScrollLocatorScenario,
   virtualizedSessionCycleScenario,
   virtualizedOversizedActiveTurnScenario,

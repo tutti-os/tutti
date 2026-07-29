@@ -7,12 +7,14 @@ describe("useAgentConversationSelection", () => {
   it("reconciles detail when a selected rail session has no cached messages", () => {
     const active = { current: "recent-session" as string | null };
     const markPending = vi.fn();
-    const reload = vi.fn();
+    const ensureHydrated = vi.fn();
     const setLoading = vi.fn();
     const requestReveal = vi.fn();
+    const hasConversationListQuery = vi.fn(() => true);
     const { result } = renderHook(() =>
       useAgentConversationSelection({
         activation: {
+          canReload: () => true,
           forget: vi.fn(),
           isPending: () => false
         },
@@ -21,12 +23,12 @@ describe("useAgentConversationSelection", () => {
           contains: () => true
         },
         detail: {
+          ensureHydrated,
           isHydrated: () => false,
           markPending,
-          reload,
           setLoading
         },
-        hasConversationListQuery: () => true,
+        hasConversationListQuery,
         isMounted: () => true,
         onMissingConversationListQuery: vi.fn(),
         persistence: { update: vi.fn() },
@@ -54,10 +56,8 @@ describe("useAgentConversationSelection", () => {
 
     expect(markPending).toHaveBeenCalledWith("historical-session");
     expect(setLoading).not.toHaveBeenCalled();
-    expect(reload).toHaveBeenCalledWith("historical-session", {
-      reloadConversations: true,
-      reloadDetail: true
-    });
+    expect(hasConversationListQuery).toHaveBeenCalledOnce();
+    expect(ensureHydrated).toHaveBeenCalledWith("historical-session");
     expect(requestReveal).toHaveBeenCalledWith(
       "historical-session",
       "external-open"
@@ -67,7 +67,7 @@ describe("useAgentConversationSelection", () => {
   it("reuses cached detail when selecting another hydrated session", () => {
     const active = { current: "session-1" as string | null };
     const markPending = vi.fn();
-    const reload = vi.fn();
+    const ensureHydrated = vi.fn();
     const setLoading = vi.fn();
     const data: AgentGUINodeData = {
       agentTargetId: null,
@@ -77,6 +77,7 @@ describe("useAgentConversationSelection", () => {
     const { result } = renderHook(() =>
       useAgentConversationSelection({
         activation: {
+          canReload: () => true,
           forget: vi.fn(),
           isPending: () => false
         },
@@ -85,9 +86,9 @@ describe("useAgentConversationSelection", () => {
           contains: () => true
         },
         detail: {
+          ensureHydrated,
           isHydrated: () => true,
           markPending,
-          reload,
           setLoading
         },
         hasConversationListQuery: () => true,
@@ -118,20 +119,18 @@ describe("useAgentConversationSelection", () => {
 
     expect(setLoading).toHaveBeenCalledWith(false);
     expect(markPending).not.toHaveBeenCalled();
-    expect(reload).toHaveBeenCalledWith("session-2", {
-      reloadConversations: true,
-      reloadDetail: false
-    });
+    expect(ensureHydrated).not.toHaveBeenCalled();
   });
 
   it("selects an optimistic pending session without reloading durable detail", () => {
     const active = { current: "session-b" as string | null };
-    const reload = vi.fn();
+    const ensureHydrated = vi.fn();
     const setLoading = vi.fn();
     const setIntent = vi.fn();
     const { result } = renderHook(() =>
       useAgentConversationSelection({
         activation: {
+          canReload: () => true,
           forget: vi.fn(),
           isPending: (agentSessionId) => agentSessionId === "session-a"
         },
@@ -140,9 +139,9 @@ describe("useAgentConversationSelection", () => {
           contains: () => true
         },
         detail: {
+          ensureHydrated,
           isHydrated: () => false,
           markPending: vi.fn(),
-          reload,
           setLoading
         },
         hasConversationListQuery: () => true,
@@ -173,6 +172,53 @@ describe("useAgentConversationSelection", () => {
       id: "session-a"
     });
     expect(setLoading).toHaveBeenCalledWith(false);
-    expect(reload).not.toHaveBeenCalled();
+    expect(ensureHydrated).not.toHaveBeenCalled();
+  });
+
+  it("does not reload Rail or detail for an activation that cannot reload", () => {
+    const active = { current: "session-b" as string | null };
+    const hasConversationListQuery = vi.fn(() => true);
+    const ensureHydrated = vi.fn();
+    const { result } = renderHook(() =>
+      useAgentConversationSelection({
+        activation: {
+          canReload: () => false,
+          forget: vi.fn(),
+          isPending: () => false
+        },
+        conversations: {
+          agentTargetIdFor: () => "local:codex",
+          contains: () => true
+        },
+        detail: {
+          ensureHydrated,
+          isHydrated: () => false,
+          markPending: vi.fn(),
+          setLoading: vi.fn()
+        },
+        hasConversationListQuery,
+        isMounted: () => true,
+        onMissingConversationListQuery: vi.fn(),
+        persistence: { update: vi.fn() },
+        rail: {
+          clearRevealRequest: vi.fn(),
+          requestReveal: vi.fn()
+        },
+        selection: {
+          clearDetailError: vi.fn(),
+          getActiveSessionId: () => active.current,
+          setActiveSessionId: (agentSessionId) => {
+            active.current = agentSessionId;
+          },
+          setComposerHome: vi.fn(),
+          setIntent: vi.fn()
+        }
+      })
+    );
+
+    act(() => result.current.selectConversation("session-a"));
+
+    expect(hasConversationListQuery).not.toHaveBeenCalled();
+    expect(ensureHydrated).not.toHaveBeenCalled();
   });
 });

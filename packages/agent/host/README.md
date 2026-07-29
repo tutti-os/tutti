@@ -3,10 +3,18 @@
 `packages/agent/host` is the provider-neutral application boundary for
 canonical agent session and turn lifecycle orchestration. The package now owns
 the create, resume, send, durable submit-claim, canonical title, session read,
-settings, pin, delete, cancel,
+settings, pin, delete, cancel, session fork,
 interactive response, plan decision, durable runtime-operation, and complete
 goal-control/reconcile application core. `tuttid` routes those commands through
 `Host`; transport and HTTP shapes remain unchanged.
+
+Tutti Mode turn snapshots use `PreferenceVersion` to separate the current
+`Effect`/`Speed` pair from the deprecated single-axis
+`OrchestrationIntensity`. Current writers set
+`TuttiModePreferenceVersionEffectSpeed` and populate the legacy alias with the
+effect value. Runtime readers treat version zero as a legacy snapshot, mapping
+its intensity to effect and using balanced speed (`50`). This is an upgrade
+read path, not support for connecting a new client to an older daemon.
 
 The module owns:
 
@@ -18,6 +26,8 @@ The module owns:
 - the direct and typed goal-control saga, revision actor, durable operation and
   reconcile-inbox workers, exact Goal-generation fences, provider evidence
   repair, and goal recovery policy;
+- the provider-neutral Session Fork saga, source mutation fence, exact
+  capability resolution, durable lineage, and startup recovery policy;
 - typed conformance scenarios under `conformance`.
 
 `CreateSession` has two explicit modes: an empty session, or one command with
@@ -93,7 +103,12 @@ snapshot contains every interaction on the latest turn and derives its pending
 subset from that same read; older-turn pending rows can never become current
 actionable state. `CreateSessionInput.ClientSubmitID` and
 `SendInput.ClientSubmitID` are the typed idempotency identities and override
-the legacy metadata value when both are present.
+the legacy metadata value when both are present. The matching durable submit
+claim's immutable `CreatedAtUnixMS` is the canonical occurrence of that user
+message. Host passes it to both runtime execution and durable submit-provenance
+reporting; adapters must derive the same message sequence from that occurrence
+regardless of which report reaches storage first. `ClientSubmitID` identifies
+the submission but is not itself an ordering value.
 Runtime adapters preserve explicit downstream failures as `ProviderError` so
 Host consumers can distinguish provider-owned rejection from preparation,
 canonical-store, timeout, and other local failures with `errors.As`. The
@@ -114,8 +129,14 @@ metadata only.
 canonical store first resolves the complete root/child closure; Host acquires
 the shared session-mutation actor and session locks in stable order, closes
 every live runtime in that closure, and commits only if the store resolves the
-same closure inside the write transaction. A changed child tree is replanned
-before any tombstone is written. A requested runtime that is live before its
+same closure inside the write transaction. An optional provider-neutral
+`SessionDeletionGuard` receives that exact Host-owned closure before any
+runtime close or canonical delete. A rejected admission returns with no
+canonical lifecycle side effects. Every admitted attempt is reported as
+completed or failed; reporting is observational and cannot change the command
+result. A changed child tree is reported as a failed attempt, replanned, and
+re-admitted with its new exact closure before Host closes any newly discovered
+runtime or writes a tombstone. A requested runtime that is live before its
 first canonical report is still closed and cleaned up by the same coordinator;
 the empty canonical plan simply skips the tombstone transaction, so deleting an
 already absent session is a successful no-op and batch responses retain empty
@@ -139,6 +160,74 @@ orphaned by maintenance. Purge results expose only content-free session
 descriptors and aggregate message/payload counts. The shared conformance
 scenario verifies live and too-new preservation, exact-cutoff removal, and
 idempotent replay through Host.
+
+`ForkSession` creates a new root Session from an inclusive canonical
+`ThroughTurnID`. Host resolves that Turn to its durable provider root Turn id,
+pins the exact provider Session and runtime driver descriptor, and reserves the
+caller-supplied target Session id before invoking provider code. Provider
+support is advertised at Session scope only when the exact adapter/version
+attests native `throughTurn` support and the product context policy can safely
+transfer Host-owned runtime facts. A live adapter supplies its initialized
+version directly; a historical Codex Session uses one cached, short-lived
+initialize probe and does not create a canonical Turn or register a live
+Session. Historical capability and dispatch probes pass through the same
+`RuntimePreparation` contract as resume so cwd, env, provider target, settings,
+and runtime context match the runtime that would be resumed. One Fork attempt
+freezes that prepared observation across driver attestation and provider
+dispatch; an existing live observation bypasses preparation. Consumers hide
+settled Turn actions when that capability is absent.
+Boundary validity remains a separate transactional proof, so an unavailable
+latest Turn does not suppress an earlier valid boundary.
+Every fail-closed boundary rejection retains a stable, content-free reason
+through Host. HTTP adapters may project it as structured diagnostic metadata
+while preserving their existing coarse conflict reason; transcript payloads
+and attachment contents never enter that reason.
+
+Fork uses a durable `prepared -> dispatching -> provider_accepted -> committed`
+saga. `RequestID` is the replay key. A source fence serializes the snapshot
+with report, Goal/runtime mutation, deletion, and competing Fork writes.
+An accepted provider child is not checkpointed as `provider_accepted` until a
+provider-state binder has made the exact child state independently discoverable
+from the target Session runtime namespace. Binding failure is delivery-unknown,
+because the provider mutation may already exist.
+Provider dispatch starts only after its marker commits. Provider acceptance is
+checkpointed with a detached bounded context and recovery retries only the
+atomic canonical prefix clone; a crash with an indeterminate provider result
+becomes `unknown`. Drivers are never blindly redispatched. A driver may
+explicitly attest deterministic target identity: Host then derives the provider
+child UUID from the durable operation id, requires the returned identity to
+match, and may reconcile `dispatching` or `unknown` by repeating the same
+request. The provider adapter must first verify an existing child at that UUID
+and create it only when absent. Drivers without that attestation keep the
+fail-closed `unknown` behavior. A later request for the same source boundary
+recovers the durable operation. A committed operation also retains the boundary
+barrier until the Engine explicitly acknowledges that its authoritative child
+Session has entered canonical UI state. Thus, losing a committed HTTP response
+and restarting with fresh request/target ids returns the original operation and
+child instead of creating another provider identity. The ACK is committed-only
+and idempotent; it releases the barrier so a later explicit action may create
+another branch from the same Turn. `unknown` cannot be acknowledged. Startup
+marks abandoned `prepared` work failed—its marker proves provider dispatch
+never began—and releases its source fence and target reservation without
+requiring a live runtime.
+Public adapters keep the operation as the response once its durable row
+exists: internal `prepared`, `dispatching`, and `provider_accepted` phases
+collapse to `accepted`, while `committed`, `failed`, and `unknown` remain
+terminal results. Operation lookup by id returns the same snapshot; committed
+results reconstruct the fully projected target Session and durable lineage
+from the immutable operation snapshot even after the canonical child is
+deleted.
+The commit re-proves the frozen prefix and provider identity, remaps
+session-scoped canonical ids, persists lineage, and emits the complete
+transaction delta.
+The target cwd and runtime context are produced from the same prepared runtime
+identity used for provider attestation and dispatch, validated by
+`SessionForkContextPolicy`, and frozen at prepare together with settings. Tutti
+currently rejects worktree-isolated sources
+instead of copying their ownership. Prefixes with session-scoped attachment
+references fail closed until an immutable resource-manifest binding exists;
+copying an entire Session attachment namespace is forbidden because it can
+cross the selected Turn boundary.
 
 Interactive responses establish their winner at the canonical interaction
 transition, not in a GUI or CLI adapter. Preparing an interactive runtime
@@ -204,6 +293,9 @@ Coordinator, goal, and commit-observer scenario groups extend the same driver
 with recovery ordering through the worktree sweep, recovery failure
 propagation, post-commit failure semantics, and exact-tombstone permanent
 removal semantics.
+Deletion-admission scenarios are required members of both the standard adapter
+and application-core catalogs; the focused deletion-admission catalog reuses
+those same scenario values rather than defining a second behavior suite.
 
 The conformance package keeps its shared fixture and driver contract in
 `conformance.go`, explicit scenario membership in `scenarios.go`, and scenario

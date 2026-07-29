@@ -18,6 +18,17 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	if err != nil {
 		return ExecResult{}, err
 	}
+	canonicalSubmit, err := newCanonicalSubmitFact(
+		input.ClientSubmitID,
+		input.CanonicalSubmitOccurredAtUnixMS,
+	)
+	if err != nil {
+		return ExecResult{}, err
+	}
+	if canonicalSubmit.occurredAtUnixMS > 0 {
+		observeEventUnixMS(canonicalSubmit.occurredAtUnixMS)
+		ctx = withCanonicalSubmitFact(ctx, canonicalSubmit)
+	}
 	metadata := cloneExecMetadata(input.Metadata)
 	delete(metadata, "clientSubmitId")
 	if clientSubmitID := strings.TrimSpace(input.ClientSubmitID); clientSubmitID != "" {
@@ -78,6 +89,7 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	if len(metadata) > 0 {
 		runCtx = context.WithValue(runCtx, execMetadataContextKey{}, metadata)
 	}
+	runCtx = withCanonicalSubmitFact(runCtx, canonicalSubmit)
 	tuttiModeSnapshot := normalizeTuttiModeTurnSnapshot(input.TuttiModeSnapshot)
 	runCtx = withTuttiModeTurnSnapshot(runCtx, tuttiModeSnapshot)
 	// beginTurn returns the zero session on failure; keep the real session

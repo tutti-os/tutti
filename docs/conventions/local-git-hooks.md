@@ -61,6 +61,15 @@ selects only the relevant validation lanes, and adds build lanes for changed Go
 or package surfaces that require push-time build confidence. Unrelated
 TypeScript, Go, package, and boundary lanes do not run.
 
+Published-package validation is package-scoped. Runtime source, build config,
+published documentation, and runtime asset changes build the affected public
+package with its workspace dependencies and inspect only that package's
+tarball. Root manifests, lockfiles, workspace or Changesets config, package
+additions/removals, publish-relevant package manifest changes, and release-tool
+changes retain the full public-package gate. Test files, Vitest support files,
+and package manifests whose only changes are `test` scripts do not schedule a
+package build or tarball check.
+
 `check:full` remains the stable root command for explicit local full validation.
 It is no longer the default gate for every push; PR CI selects affected lanes
 from the same repository check registry used by `check:changed`.
@@ -153,7 +162,8 @@ uses the same selectors.
 
 `pnpm check:changed -- --push-ready` is the `pre-push` mode. In addition to the
 normal changed-aware lanes, it schedules Go or package builds when the changed
-surface requires them.
+surface requires them. Package lanes receive the exact public-package subset
+from the shared change classifier; pull-request CI consumes the same subset.
 
 Failure output prints an 80-line tail by default. Use
 `pnpm check:changed -- --tail-lines <n>` when a larger or smaller tail is more

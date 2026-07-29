@@ -1457,6 +1457,34 @@ function createRuntimeApi(
   } = {}
 ): DesktopRuntimeApi {
   return {
+    async getAgentSessionReplayPlayback() {
+      return {
+        active: false,
+        paused: false,
+        speed: 1,
+        timingMode: "realtime"
+      };
+    },
+    async getAgentSessionReplayStatus() {
+      return { active: false };
+    },
+    async launchAgentSessionReplay() {
+      return { runId: "replay-run-1" };
+    },
+    async setAgentSessionReplayPlayback() {
+      return {
+        active: false,
+        paused: false,
+        speed: 1,
+        timingMode: "realtime"
+      };
+    },
+    async sendAgentSessionReplayControl() {
+      return;
+    },
+    async waitForAgentSessionReplay() {
+      return { runId: "replay-run-1" };
+    },
     async getBackendConfig() {
       return {
         accessToken: "token-1",
@@ -1673,7 +1701,7 @@ function createWorkspaceAgentActivityService(
       return {
         effectiveSettings: input.settings ?? {},
         provider: input.provider ?? "codex"
-      };
+      } as never;
     },
     async updateSessionSettings(input) {
       calls.push(

@@ -26,6 +26,7 @@ import { useTranslation } from "@renderer/i18n";
 import { useAccountService } from "./useAccountService";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import {
+  formatWorkspaceAccountCreditsLabel,
   projectWorkspaceAccountCommerce,
   projectWorkspaceAccountMenuComposition
 } from "./workspaceAccountCommerceAdapter";
@@ -155,7 +156,7 @@ function useWorkspaceAccountMenuState(
     const membershipTierKey =
       summary?.membership?.tier_key?.trim() ||
       (summary?.membership_access === "free" ? "free" : null);
-    const creditsLabel = formatCreditsLabel(
+    const creditsLabel = formatWorkspaceAccountCreditsLabel(
       summary?.credits?.available_credits,
       locale
     );
@@ -530,28 +531,6 @@ function WorkspaceAccountMenuDivider(): React.JSX.Element {
       className="h-4 w-px shrink-0 bg-[color-mix(in_srgb,var(--workbench-chrome-foreground)_24%,transparent)]"
     />
   );
-}
-
-function formatCreditsLabel(
-  value: number | string | null | undefined,
-  locale: string
-): string | null {
-  if (typeof value === "number") {
-    return Number.isFinite(value)
-      ? new Intl.NumberFormat(locale).format(value)
-      : null;
-  }
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-  const numeric = Number(trimmed);
-  return Number.isFinite(numeric)
-    ? new Intl.NumberFormat(locale).format(numeric)
-    : trimmed;
 }
 
 function readDebugRegistrationCreditsToastEnabled(): boolean {

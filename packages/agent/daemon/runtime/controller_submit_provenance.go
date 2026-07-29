@@ -26,6 +26,13 @@ func (c *Controller) DurablyReportSubmitProvenance(ctx context.Context, input Su
 	if input.RoomID == "" || input.AgentSessionID == "" || input.TurnID == "" || input.ClientSubmitID == "" {
 		return errors.New("workspace id, agent session id, turn id, and client submit id are required")
 	}
+	canonicalSubmit, err := newCanonicalSubmitFact(
+		input.ClientSubmitID,
+		input.CanonicalSubmitOccurredAtUnixMS,
+	)
+	if err != nil {
+		return err
+	}
 	session, ok := c.get(input.RoomID, input.AgentSessionID)
 	if !ok {
 		return ErrSessionNotFound
@@ -37,23 +44,20 @@ func (c *Controller) DurablyReportSubmitProvenance(ctx context.Context, input Su
 
 	messageID := userPromptActivityMessageIDFromClientSubmitID(input.ClientSubmitID)
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, input.DisplayPrompt)
-	message := newTurnActivityEventWithID(
+	message := newUserPromptActivityEventWithFact(
 		session,
-		messageID,
-		EventMessage,
-		input.TurnID,
-		"",
-		RoleUser,
+		content,
+		explicitDisplayPrompt,
 		visibleText,
-		userPromptActivityPayload(content, explicitDisplayPrompt, map[string]any{
-			"clientSubmitId": input.ClientSubmitID,
-			"messageId":      messageID,
-		}),
+		input.TurnID,
+		canonicalSubmit,
+		nil,
 	)
-	// Do not replay a submitted lifecycle patch here. The original submitted
-	// report is ahead of this barrier in the same FIFO; this atomic write then
-	// requires that exact turn to exist. A fast provider may already have moved
-	// it to running or settled, which this barrier must never regress.
+	// Do not replay a submitted lifecycle patch here. Exec durably committed
+	// that patch before provider dispatch. The adapter's user-message report may
+	// race this barrier, so both paths reconstruct it from the same canonical
+	// submit occurrence. This atomic write requires the exact turn to exist
+	// without regressing a fast provider that already moved it onward.
 	report := reportActivityInput(session, []activityshared.Event{message})
 	c.enrichReportWithSessionSnapshot(session, &report)
 	if len(report.StatePatches) != 1 || len(report.MessageUpdates) != 1 {

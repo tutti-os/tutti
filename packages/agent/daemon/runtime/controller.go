@@ -15,6 +15,7 @@ var (
 	ErrSessionNotFound                  = errors.New("agent session not found")
 	ErrSessionSettingsRequireNewSession = errors.New("agent session settings update requires a new session to preserve context")
 	ErrSessionActiveTurn                = errors.New("agent session already has an active turn")
+	ErrSessionForkUnsupported           = errors.New("agent session fork is unsupported")
 )
 
 const defaultStreamingReportCoalesceWindow = 50 * time.Millisecond

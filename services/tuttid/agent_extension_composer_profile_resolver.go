@@ -27,6 +27,7 @@ func (r agentExtensionComposerProfileResolver) ResolveExtensionComposerProfile(
 	result := agentservice.ExtensionComposerProfile{
 		Capabilities:           capabilities,
 		PermissionModeIDPolicy: agentservice.ExtensionPermissionModeIDPolicyRuntime,
+		RuntimePrep:            profile.RuntimePrep,
 	}
 	result.ModelConfigOptionID, result.PermissionConfigOptionID, result.ReasoningConfigOptionID = profile.ACPConfigOptionIDs()
 	if launchPermission := profile.LaunchPermissionSetting(); launchPermission != nil {

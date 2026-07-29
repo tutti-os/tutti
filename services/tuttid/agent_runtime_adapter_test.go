@@ -193,7 +193,8 @@ func TestAgentRuntimeAdapterDelegatesTypedDurableSubmitProvenance(t *testing.T) 
 	if err := adapter.DurablyReportSubmitProvenance(context.Background(), agentservice.RuntimeSubmitProvenanceInput{
 		WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: "turn-1",
 		ClientSubmitID: "submit-1", Content: agentservice.TextPromptContent("hello"),
-		DisplayPrompt: "Visible hello",
+		CanonicalSubmitOccurredAtUnixMS: 1_234,
+		DisplayPrompt:                   "Visible hello",
 	}); err != nil {
 		t.Fatalf("DurablyReportSubmitProvenance() error = %v", err)
 	}
@@ -202,7 +203,8 @@ func TestAgentRuntimeAdapterDelegatesTypedDurableSubmitProvenance(t *testing.T) 
 		t.Fatalf("provenance report = %#v", got)
 	}
 	message := got.MessageUpdates[0]
-	if message.TurnID != "turn-1" || message.Payload["clientSubmitId"] != "submit-1" || message.Payload["displayPrompt"] != "Visible hello" {
+	if message.TurnID != "turn-1" || message.Seq != 1_234 || message.OccurredAtUnixMS != 1_234 ||
+		message.Payload["clientSubmitId"] != "submit-1" || message.Payload["displayPrompt"] != "Visible hello" {
 		t.Fatalf("provenance message = %#v", message)
 	}
 }

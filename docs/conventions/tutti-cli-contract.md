@@ -44,6 +44,18 @@ An obsolete persisted default is ignored while reading Composer Options so the
 caller can recover by selecting a current advertised id. The same obsolete id,
 when explicitly supplied in the current invocation, remains invalid input.
 
+Tutti execution commands use stable rejection reasons such as
+`wrong_source_session`, `inactive_execution`, `inactive_checkpoint`,
+`stale_graph_revision`, `task_not_found`, `task_not_started`,
+`task_superseded`, `missing_agent_target`, `dependency_unsatisfied`,
+`dispatch_paused`, `budget_unavailable`, `capacity_exhausted`,
+`parallelism_rejected`, `duplicate_task`, `invalid_task_graph`, and
+`invalid_mutation_operation`. Their message must include one action-specific
+recovery hint. A fence rejection directs the caller to the source-scoped
+execution snapshot; a task rejection identifies the affected task. Callers
+must not infer a new revision, cycle through unrelated commands, or inspect the
+backing database.
+
 Exit codes stay intentionally small and stable: `0` means success, `2` means
 the command invocation or input was invalid, and `1` means authentication,
 transport, domain, or runtime failure. A daemon HTTP 400 response is invalid
@@ -385,9 +397,26 @@ The public command set is deliberately narrow:
   body plus the full task graph in the `tasks` frontmatter (at least one task
   is required). `phase` may be omitted; it defaults to `task_graph`.
   Configuration-only documents are rejected. When the Tutti Host Context is
-  active, read its `orchestrationIntensity` (0-100) to choose decomposition
-  granularity: low values mean few coarse tasks, high values mean many
-  fine-grained tasks;
+  active, combine its `effect` and `speed` preferences without averaging them:
+  effect raises the model-capability floor and the required task-verification
+  breadth; speed selects the fastest model that still clears that floor and
+  supplies the bounded parallel target `0-24 -> 1`, `25-49 -> 2`,
+  `50-74 -> 3`, `75-100 -> 4`. Encode the original preferences in the additive
+  `execution.effect` and `execution.speed` snapshots. The existing v1
+  `execution.reasoningIntensity` and `execution.orchestrationIntensity` fields
+  retain their provider-reasoning and Issue
+  decomposition/dependency/review/retry meanings; speed must not be written
+  into `orchestrationIntensity`. A legacy v1 document without explicit
+  preference snapshots maps `orchestrationIntensity` to effect and uses the
+  balanced speed default. The injected `$tutti-model-allocation` skill owns the
+  C0-C3 assignment rubric and model-family routing priors: intersect its tier table
+  with the current target's `composer-options` output, use effect to establish
+  the capability and verification floor, then let speed rank only the models
+  that clear that floor and shape real independent workstreams toward its
+  parallel target. The table never proves model availability. The target is an
+  upper planning bound, not a promise: task count and actual parallelism still
+  follow dependency, ownership, safe-isolation, budget, readiness, and
+  workspace-capacity boundaries;
 - `tutti plan revise --workflow-id <id> --file <absolute-path> --request-id
 <stable-id>` appends a complete replacement plan document (narrative plus full
   task graph) after the user requests changes. When the user rejects the
@@ -395,17 +424,84 @@ The public command set is deliberately narrow:
   session instructing the Agent to revise, so the Agent does not have to poll;
 - `tutti plan get --workflow-id <id>` returns the caller-session-scoped
   authoritative snapshot;
-- `tutti plan wait --workflow-id <id> --checkpoint-id <id>` performs a bounded
-  wait for a durable user decision or operation outcome.
+- `tutti plan issue get --issue-id <id>` returns the source-session-scoped
+  authoritative execution snapshot: execution status, active checkpoint,
+  graph revision, visible pending checkpoints, task launch settings,
+  supersession and dependency facts, per-task readiness blockers, ready task
+  IDs, allowed actions, and a checkpoint-specific recovery hint. It is the
+  only supported refresh operation after a fenced execution command is
+  rejected;
+- `tutti plan issue schedule --issue-id <id> --checkpoint-id <id>
+--expected-graph-revision <revision> --task-ids-json <json-array>
+--request-id <stable-id>` resolves the active execution checkpoint by
+  atomically admitting exactly the requested ready task set. Caller authority
+  comes only from the daemon-provided Agent session context; there is no caller
+  session flag;
+- `tutti plan issue mutate --issue-id <id> --checkpoint-id <id>
+--expected-graph-revision <revision> --operations-json <json-array>
+--request-id <stable-id>` atomically applies one or more `add`, `update`,
+  `rework`, or `supersede` operations to the active Issue graph. The checkpoint
+  and graph revision fence the entire operation set; success increments the
+  graph revision and rebinds the checkpoint to that revision. Every operation
+  object uses the `kind` key (`op` is invalid): `add` carries `task`, `update`
+  carries `taskId` plus `task`, `rework` carries `taskId` plus its replacement
+  `task` (`replacement` is invalid), and `supersede` carries `taskId`. A
+  new task must include `agentTargetId`. `update` and `rework` are
+  presence-aware: omitted fields are preserved, while explicit empty strings,
+  empty arrays, `false`, and zero values remain distinguishable and are applied
+  when the field is clearable. Required task invariants such as a nonempty
+  title and Agent target still fail closed. A sparse `rework` inherits omitted
+  launch settings, execution directory, and dependencies from the superseded
+  task; explicit replacement values override those defaults. A successful
+  `rework` also redirects every active, not-started task dependency from the
+  superseded task ID to the replacement task ID in the same transaction.
+  Rework is rejected if that redirect would require changing a task that has
+  already started;
+- `tutti plan issue acknowledge --issue-id <id> --checkpoint-id <id>
+--expected-graph-revision <revision> --request-id <stable-id>` resolves a
+  reviewed `task_settled`, `task_failed`, or `task_canceled` checkpoint without
+  scheduling a successor. It is allowed only while another Run is active or a
+  later checkpoint is queued; `all_tasks_terminal` always requires the
+  dedicated Goal-review flow and is rejected here;
+- `tutti plan issue complete --issue-id <id> --checkpoint-id <id>
+--expected-graph-revision <revision> --request-id <stable-id>
+--decision goal_satisfied [--disagreement-reason <reason>]` completes the
+  exact active Goal Review. The source Session comes from trusted invoke
+  context. A disagreement reason is required when the source Agent overrides a
+  negative or inconclusive independent verdict;
+- `tutti plan issue stop --issue-id <id> --checkpoint-id <id>
+--expected-graph-revision <revision> --reason <reason>
+--request-id <stable-id>` stops an Issue that was replaced or should no longer
+  continue. The daemon derives the source Session from trusted invoke context,
+  fences the stop against the active checkpoint and graph revision, then uses
+  the recoverable archive path to cancel open Runs and close pending
+  checkpoints and wakes. The reason is retained as audit evidence.
+
+The active checkpoint defines the legal action set:
+
+| Checkpoint                     | Legal recovery                                                                                                                                                           |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `initial_schedule`             | schedule an exact ready set, mutate, or stop                                                                                                                             |
+| `task_settled`                 | schedule or mutate; acknowledge only when another Run is active or a later checkpoint is pending; or stop                                                                |
+| `task_failed`, `task_canceled` | rework the terminal task with a new task ID, then schedule the replacement with the mutation result revision; acknowledge only under the same backlog condition; or stop |
+| `all_tasks_terminal`           | complete Goal Review, or mutate and schedule exact follow-up work; or stop                                                                                               |
+
+The source Agent refreshes `plan issue get` at most once for an
+`inactive_checkpoint` or `stale_graph_revision` rejection and retries the
+intended command at most once with the returned fence. It reads mutation help
+at most once for `invalid_mutation_operation`. Repeating the same rejection
+after that bounded recovery is reported verbatim instead of triggering tool
+exploration or backing-store access.
 
 Tasks may carry optional `agentTargetId`, `modelPlanId`, `model`,
 `permissionModeId`, and `reasoningEffort` assignments. The user can override
 these per task in the review panel; overrides are recorded with the accepted
 decision and win over the document values at Issue materialization.
 
-There is no Agent CLI approval command. Accept, reject, feedback, and cancel
-remain user-owned daemon interactions. The Agent may only observe the committed
-result and continue with the returned next action.
+There is no Agent CLI plan-approval command. Accept, reject, feedback, and
+cancel remain user-owned daemon interactions. After acceptance, execution
+commands are source-Agent-owned and checkpoint/revision fenced; a schedule
+rejection never admits a subset of the requested tasks.
 
 `propose` and `revise` require caller-generated request IDs because response
 loss must not cause an unintentional second mutation. The durable identity is
@@ -415,6 +511,43 @@ workflow, revision, and checkpoint and reports `replayed: true`. Reusing that
 key with different bytes is a conflict. A new request ID is an intentional new
 mutation even when the bytes and content-addressed file are identical; a
 content digest is integrity evidence, not user intent.
+
+Schedule mutations use the corresponding durable identity
+`(workspace, source session, schedule, Issue, request ID)`. Replaying the same
+identity and payload returns the original execution/checkpoint/revision and Run
+IDs. Reusing it with a different checkpoint, revision, or ordered task-ID set
+fails closed. External Agent launch occurs only after the admission transaction
+commits and is recovered from a durable launch intent using
+`issue-run:<runID>` as the deterministic submit identity. The persisted
+launch-intent value, not a delivery-adapter reconstruction, is passed unchanged
+to Agent Host. The delivery owner renews its durable lease while the external
+launch is in flight; normal replay cannot steal it, and startup recovery
+requeues only expired ownership before retrying. The periodic Issue Run
+reconciliation pass repeats the same expired-owner recovery, so a pre-expiry
+restart cannot strand the intent after its final lease later expires.
+
+Graph mutations use
+`(workspace, source session, mutate, Issue, request ID)` as their durable
+identity. The payload digest binds the exact checkpoint, expected graph
+revision, and normalized ordered operation list. Replaying the same identity
+and payload returns the original execution, checkpoint, new graph revision,
+and affected task IDs with `replayed: true`; changing any bound field or
+operation fails closed.
+
+Acknowledge mutations use
+`(workspace, source session, acknowledge, Issue, request ID)` and bind the
+exact checkpoint plus expected graph revision into the payload digest.
+Same-payload replay returns the original result with `replayed: true`;
+conflicting reuse fails closed. A successful acknowledge resolves only the
+active settlement checkpoint and promotes the oldest queued checkpoint. It
+does not infer or dispatch a successor.
+
+Goal Review completion mutations use
+`(workspace, source session, complete, Issue, request ID)` and bind the exact
+checkpoint, expected graph revision, `goal_satisfied` decision, and optional
+disagreement reason into the payload digest. Same-payload replay returns the
+original completion result with `replayed: true`; a different actor or payload
+under the same durable identity fails closed.
 
 Workflow lookup is isolated to the Agent session supplied by the daemon CLI
 runtime context. A workflow created by another source session is reported as

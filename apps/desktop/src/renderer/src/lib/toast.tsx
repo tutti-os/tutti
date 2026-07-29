@@ -9,6 +9,7 @@ import {
   Toaster
 } from "@tutti-os/ui-system";
 import {
+  desktopToastMountKey,
   enqueueDesktopToast,
   type DesktopToastItem,
   type DesktopToastTone
@@ -126,11 +127,11 @@ export function DesktopToastProvider({
       />
       {snapshot.map((toast) => (
         <ToastRoot
-          key={toast.id}
+          key={desktopToastMountKey(toast)}
           busy={toast.busy}
           // A busy toast never auto-dismisses; once settle() flips busy to
-          // false it re-renders with the provider's default duration, which
-          // Radix picks up and restarts the auto-dismiss timer from there.
+          // false the key changes, remounting Radix with the default duration
+          // so its auto-dismiss timer starts from the settled state.
           duration={toast.busy ? Infinity : undefined}
           variant={toast.tone}
           onOpenChange={(open) => {

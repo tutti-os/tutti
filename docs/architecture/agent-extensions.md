@@ -83,6 +83,14 @@ describe an official vendor install location without adding provider-specific
 filesystem code to `tuttid`. It never loads JavaScript, React, Go plugins, or
 native modules from the extension.
 
+Composer skill roots remain declarative runtime inputs. Workspace roots must be
+safe relative paths at both installation validation and service consumption
+boundaries; absolute and parent-traversing paths are ignored before runtime
+preparation or discovery. Tutti materializes only its managed skills into those
+roots and replaces the same managed directories on repeated preparation, so a
+persistent workspace cannot accumulate suffixed copies. User-owned colliding
+directories are never replaced.
+
 The generic adapter applies declarative tool aliases before canonical activity
 normalization and maps composer permission semantics onto runtime permission
 IDs. Standard ACP content diffs continue through the shared ACP diff
@@ -462,6 +470,14 @@ removed. When an enabled source cannot reach its index, a previously verified
 active installation remains available. If no verified installation exists,
 the source is not registered and `tuttid` logs one
 `agent_extension.reconcile_failed` record with a JSON payload.
+
+Daemon startup restores and verifies every enabled source's local active
+installation before serving Agent Target reads. When every enabled source has
+a usable local installation, release-index refresh runs in the background and
+does not delay the daemon listener. If any enabled source has no usable local
+installation, startup keeps the synchronous reconcile path so that a first
+installation is registered before the daemon serves its initial Target
+catalog. Preference-driven activation changes also remain synchronous.
 
 Agent Target catalog reads continue to verify the installed extension package
 and managed runtime integrity before reporting availability. Successful runtime

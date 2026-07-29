@@ -3,6 +3,7 @@ import type { AgentSessionEngine } from "@tutti-os/agent-activity-core";
 import { useRef, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
+import { createTestAgentSessionEngine } from "../../../shared/testing/createTestAgentSessionEngine";
 import type { AgentGUINodeData } from "../../../types";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import {
@@ -82,9 +83,9 @@ describe("clearRolledBackAgentGUISelection", () => {
         isComposerHomeRef,
         isMountedRef: { current: true },
         loadDraftComposerOptions: vi.fn(),
+        loadSelectedConversationMessages: vi.fn(async () => undefined),
         markSelectedConversationDetailPending: vi.fn(() => null),
         onDataChangeRef: { current: onDataChange },
-        reloadSelectedConversationRef: { current: vi.fn() },
         sessionEngine: {
           dispatch: vi.fn(),
           getSnapshot: vi.fn(() => ({
@@ -96,6 +97,7 @@ describe("clearRolledBackAgentGUISelection", () => {
         setIntent,
         setIsComposerHome,
         setIsLoadingMessages: vi.fn(),
+        setActiveMessageSession: vi.fn(),
         clearRailRevealRequest: vi.fn(),
         requestRailReveal: vi.fn(),
         transientConversation: null,
@@ -191,9 +193,9 @@ describe("clearRolledBackAgentGUISelection", () => {
         isComposerHomeRef,
         isMountedRef: { current: true },
         loadDraftComposerOptions: vi.fn(),
+        loadSelectedConversationMessages: vi.fn(async () => undefined),
         markSelectedConversationDetailPending: vi.fn(() => null),
         onDataChangeRef: { current: onDataChange },
-        reloadSelectedConversationRef: { current: vi.fn() },
         sessionEngine: {
           dispatch: vi.fn(),
           getSnapshot: vi.fn(() => ({
@@ -205,6 +207,7 @@ describe("clearRolledBackAgentGUISelection", () => {
         setIntent,
         setIsComposerHome,
         setIsLoadingMessages: vi.fn(),
+        setActiveMessageSession: vi.fn(),
         clearRailRevealRequest: vi.fn(),
         requestRailReveal: vi.fn(),
         transientConversation: null,
@@ -307,9 +310,9 @@ describe("clearRolledBackAgentGUISelection", () => {
         isComposerHomeRef,
         isMountedRef: { current: true },
         loadDraftComposerOptions: vi.fn(),
+        loadSelectedConversationMessages: vi.fn(async () => undefined),
         markSelectedConversationDetailPending: vi.fn(() => null),
         onDataChangeRef: { current: onDataChange },
-        reloadSelectedConversationRef: { current: vi.fn() },
         sessionEngine: {
           dispatch: vi.fn(),
           getSnapshot: vi.fn(() => ({
@@ -323,6 +326,7 @@ describe("clearRolledBackAgentGUISelection", () => {
           setIsComposerHome(next);
         },
         setIsLoadingMessages: vi.fn(),
+        setActiveMessageSession: vi.fn(),
         clearRailRevealRequest: vi.fn(),
         requestRailReveal: vi.fn(),
         transientConversation,
@@ -367,6 +371,80 @@ describe("clearRolledBackAgentGUISelection", () => {
     });
     expect(onDataChange).toHaveBeenCalledOnce();
     expect(routeSelections).not.toHaveBeenCalled();
+  });
+});
+
+describe("conversation reload ownership", () => {
+  it("ensures message hydration without turning selection into a forced refresh", () => {
+    const sessionEngine = createTestAgentSessionEngine("workspace-1");
+    const loadSelectedConversationMessages = vi.fn(async () => undefined);
+    const data: AgentGUINodeData = {
+      lastActiveAgentSessionId: "session-previous",
+      provider: "codex"
+    };
+
+    const { result } = renderHook(() => {
+      const [activeConversationId, setActiveConversationId] = useState<
+        string | null
+      >("session-previous");
+      const [intent, setIntent] = useState<ConversationIntent>({
+        tag: "active",
+        id: "session-previous"
+      });
+      const [, setIsComposerHome] = useState(false);
+      const activeConversationIdRef = useRef<string | null>("session-previous");
+      const isComposerHomeRef = useRef(false);
+      const dataRef = useRef(data);
+
+      return useAgentGUIConversationSelectionController({
+        activation: {
+          clearFailure: vi.fn(),
+          unactivate: vi.fn(async () => undefined)
+        } as unknown as ReturnType<typeof useAgentGUIActivation>,
+        activeConversationId,
+        activeConversationIdRef,
+        activePendingActivation: null,
+        activeSessionReconcileErrorCode: null,
+        agentActivityRuntime: {} as AgentActivityRuntime,
+        attentionReadRecordsBySessionId: {},
+        conversationIdsRef: { current: new Set(["session-next"]) },
+        conversationsRef: { current: [] },
+        conversationListQuery: {},
+        currentUserId: null,
+        data,
+        dataRef,
+        intent,
+        isComposerHomeRef,
+        isMountedRef: { current: true },
+        loadDraftComposerOptions: vi.fn(),
+        loadSelectedConversationMessages,
+        markSelectedConversationDetailPending: (agentSessionId) =>
+          agentSessionId,
+        onDataChangeRef: {
+          current: (updater) => {
+            dataRef.current = updater(dataRef.current);
+          }
+        },
+        sessionEngine,
+        setActiveConversationId,
+        setDetailError: vi.fn(),
+        setIntent,
+        setIsComposerHome,
+        setIsLoadingMessages: vi.fn(),
+        setActiveMessageSession: vi.fn(),
+        clearRailRevealRequest: vi.fn(),
+        requestRailReveal: vi.fn(),
+        transientConversation: null,
+        workspaceId: "workspace-1"
+      });
+    });
+
+    act(() => result.current.selectConversation("session-next"));
+
+    expect(loadSelectedConversationMessages).toHaveBeenCalledWith(
+      "session-next"
+    );
+    sessionEngine.dispose();
   });
 });
 

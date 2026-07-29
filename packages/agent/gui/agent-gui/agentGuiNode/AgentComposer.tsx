@@ -104,7 +104,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     presentationSubmitDisabled,
     tuttiModeActive = false,
     tuttiModeUpdating = false,
-    tuttiModeOrchestrationIntensity = 50,
+    tuttiModeEffect = 50,
+    tuttiModeSpeed = 50,
     placeholder,
     composerSettings,
     selectedAgentTarget = null,
@@ -113,6 +114,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     providerSelectReadonly = false,
     onHandoffConversation,
     showStopButton,
+    draftOverridesStopButton = false,
     stopDisabled,
     activePrompt,
     promptTips = EMPTY_PROMPT_TIPS,
@@ -134,7 +136,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     onDraftContentChange,
     onSettingsChange,
     onTuttiModeChange = () => {},
-    onTuttiModeOrchestrationIntensityChange = () => {},
+    onTuttiModeEffectChange = () => {},
+    onTuttiModeSpeedChange = () => {},
     capabilityMenuState,
     capabilityControlsReadOnly = false,
     onSubmit,
@@ -204,7 +207,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
       withAgentComposerTuttiModeSnapshot({
         options,
         active: tuttiModeActive,
-        orchestrationIntensity: tuttiModeOrchestrationIntensity
+        effect: tuttiModeEffect,
+        speed: tuttiModeSpeed
       })
     );
   };
@@ -637,6 +641,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     draftContent,
     canQueueWhileBusy,
     showStopButton,
+    draftOverridesStopButton,
     stopDisabled,
     isInterrupting,
     isSendingTurn,
@@ -708,12 +713,12 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
       isPlanModeActive={composerSettings.draftSettings.planMode}
       isTuttiModeActive={tuttiModeActive}
       isTuttiModeUpdating={tuttiModeUpdating}
-      tuttiModeOrchestrationIntensity={tuttiModeOrchestrationIntensity}
+      tuttiModeEffect={tuttiModeEffect}
+      tuttiModeSpeed={tuttiModeSpeed}
       onClearPlanMode={() => onSettingsChange({ planMode: false })}
       onClearTuttiMode={() => onTuttiModeChange(false)}
-      onTuttiModeOrchestrationIntensityChange={
-        onTuttiModeOrchestrationIntensityChange
-      }
+      onTuttiModeEffectChange={onTuttiModeEffectChange}
+      onTuttiModeSpeedChange={onTuttiModeSpeedChange}
       isPromptTipOverflowing={isPromptTipOverflowing}
       onHistoryNavigation={onHistoryNavigation}
     />

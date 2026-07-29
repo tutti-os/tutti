@@ -140,7 +140,9 @@ describe("dispatchAgentPlanPromptAction", () => {
             currentRevision: {
               activationId: "tutti-1",
               createdAtUnixMs: 1,
+              effect: 50,
               orchestrationIntensity: 50,
+              speed: 50,
               revision: 1,
               source: "slash_command",
               status: "active"

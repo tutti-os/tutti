@@ -42,7 +42,6 @@
       "packages/agent/gui/agent-gui/agentGuiNode/AgentGUINodeView.tsx": 9,
       "packages/agent/gui/agent-gui/agentGuiNode/agentRichText/AgentRichTextEditor.tsx": 6,
       "packages/agent/gui/agent-gui/agentGuiNode/composer/AgentComposerChrome.tsx": 8,
-      "packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIDetailPane.tsx": 6,
       "packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIProviderRail.tsx": 12,
       "packages/agent/gui/agent-message-center/WorkspaceAgentMessageCenterPanel.tsx": 22,
       "packages/agent/gui/app/renderer/components/ZoomableImage.tsx": 9,
@@ -121,7 +120,7 @@
       "packages/agent/gui/workbench/browser-element-context/browserElementContextSelectionController.ts": 1,
       "packages/agent/gui/workbench/tool-sidebar/useAgentToolSidebarController.ts": 3
     },
-    "renderMirrorRefs": 8,
+    "renderMirrorRefs": 7,
     "setTimeoutCount": 36,
     "swallowedCatch": 3,
     "useSyncExternalStoreCount": 4

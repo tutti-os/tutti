@@ -17,6 +17,7 @@ export function createWorkspaceAgentOutcomeForegroundNotificationPresenter(): Wo
       toast.custom(
         (id) => (
           <WorkspaceAgentOutcomeToast
+            agentSessionId={notification.agentSessionId}
             agentIconUrl={managedAgentRoundedIconUrl(notification.provider)}
             agentName={notification.agentName}
             body={notification.body}
@@ -48,6 +49,7 @@ export function createWorkspaceAgentOutcomeForegroundNotificationPresenter(): Wo
 }
 
 function WorkspaceAgentOutcomeToast({
+  agentSessionId,
   agentIconUrl,
   agentName,
   body,
@@ -58,6 +60,7 @@ function WorkspaceAgentOutcomeToast({
   onClose,
   onOpen
 }: {
+  agentSessionId: string;
   agentIconUrl: string;
   agentName: string;
   body: string;
@@ -73,7 +76,11 @@ function WorkspaceAgentOutcomeToast({
   const tone = level === "success" ? "green" : "red";
 
   return (
-    <article className="relative w-full min-w-0 overflow-visible rounded-[12px] border border-[var(--tutti-purple-border)] bg-[var(--tutti-purple-bg)] p-3.5">
+    <article
+      className="relative w-full min-w-0 overflow-visible rounded-[12px] border border-[var(--tutti-purple-border)] bg-[var(--tutti-purple-bg)] p-3.5"
+      data-agent-session-id={agentSessionId}
+      data-workspace-agent-outcome-toast="true"
+    >
       <span
         aria-hidden="true"
         className="workspace-agent-decision-toast__edge-glow agent-gui-edge-glow pointer-events-none inset-0 rounded-[12px]"

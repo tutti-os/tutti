@@ -24,6 +24,7 @@ interface AgentTurnWorkSectionProps {
     active: boolean,
     anchorElement?: HTMLElement | null
   ) => void;
+  footer?: ReactNode;
   renderRow: (
     row: AgentTurnWorkSectionRow["row"],
     rowIndex: number,
@@ -38,7 +39,8 @@ export function AgentTurnWorkSection({
   showDivider = false,
   disclosureStore,
   onDisclosureMotionChange,
-  renderRow
+  renderRow,
+  footer
 }: AgentTurnWorkSectionProps): JSX.Element {
   const { t } = useTranslation();
   const disclosureKey = `${sessionId}:${turnKey}`;
@@ -159,6 +161,7 @@ export function AgentTurnWorkSection({
           </CollapsibleReveal>
         );
       })}
+      {footer}
     </div>
   );
 }

@@ -206,6 +206,39 @@
   failure, second-scan non-duplication, and outcome-write failure stopping
   startup.
 
+### Many stopped Tutti Mode conversations start again when the app opens
+
+- **Symptom:** Starting the desktop app makes several old Tutti Mode source
+  conversations begin new Turns even though their tasks were previously
+  stopped or already terminal.
+- **Quick checks:** Correlate the startup time with
+  `workspace_tutti_mode_legacy_repair_v5`, listener-ready wake recovery, and
+  new canonical Turns. In the execution tables, look for a migration
+  checkpoint whose `creation_reason` is
+  `legacy_execution_startup_repair`, an idle execution changed to
+  `awaiting_main`, and a prepared or dispatched main wake. Do not attribute the
+  behavior to generic Agent Host resume unless the exact Session already had a
+  recoverable active Turn.
+- **Root cause:** The former V5 legacy backfill treated ambiguous idle plans as
+  live executions and created a durable main wake. Listener readiness later
+  delivered those historical wakes into the source conversations. Startup Run
+  settlement repair could also create another checkpoint for an execution
+  that was already terminal.
+- **Fix:** Make legacy migration side-effect-free: keep an execution running
+  only when an authoritative Run is running, classify idle history as
+  `completed`, and create no migration wake. Suppress settlement checkpoints
+  for terminal/orphaned executions. For databases that already applied V5,
+  run the exact-fingerprint V6 cleanup to cancel the old recovery chain and
+  normalize execution status from current Runs.
+- **Validation:** Cover fresh idle and running legacy fixtures with zero
+  migration wakes, a V5-corrupted idle fixture repaired to `completed`, a
+  V5-corrupted running fixture retained as `running`, and terminal settlement
+  replay producing no checkpoint or wake. Re-run V6 to prove idempotency.
+- **References:**
+  [issue-execution.md](../../architecture/issue-execution.md),
+  [migrations_tutti_mode_legacy.go](../../../services/tuttid/data/workspace/migrations_tutti_mode_legacy.go),
+  [sqlite_tutti_mode_settlement.go](../../../services/tuttid/data/workspace/sqlite_tutti_mode_settlement.go)
+
 ### Tutti capability audit persistence races the first Turn projection
 
 - **Symptom:** Create or SendInput fails with `sql: no rows in result set`
@@ -292,34 +325,35 @@
   verify the HTTP boundary sees the activation, the activation revision is
   `active`, and the first Turn snapshot retains its source and intensity.
 
-### A new Tutti conversation becomes unavailable immediately after submit
+### A new Tutti conversation briefly reports session not found after submit
 
-- **Symptom:** The optimistic conversation appears after the first submit, then
-  immediately changes to `Conversation unavailable` even though the provider
-  starts and the durable Session and Turn complete normally.
+- **Symptom:** The optimistic conversation appears after the first submit and
+  briefly shows `workspace agent session not found`, then recovers after the
+  provider starts and the durable Session and Turn complete normally.
 - **Quick checks:** Correlate the Session ID across desktop and daemon submit
   traces. The characteristic order is
   `renderer_adapter.create.http_requested`, then
-  `agent.activity.reconcile_session_missing`, then
+  `agent.activity.reconcile_session_absent`, then
   `renderer_adapter.create.resolved` and `api.create.completed`. Confirm the
   missing reconcile occurs while the engine still has a requested or uncertain
   new-session activation.
 - **Root cause:** Initial Tutti activation can publish
   `workspace.tuttimode.updated` before the create transaction is query-visible
   or its HTTP response returns. The renderer treats the event as a reconcile
-  hint, receives a transient 404, and mistakes it for authoritative deletion.
-  The resulting Session tombstone rejects the later successful create upsert.
-- **Fix:** Treat reconcile not-found as absence, not deletion evidence, and do
-  not create a tombstone from it. Let an authoritative create result or later
-  event upsert the Session. Tombstone only from explicit deletion evidence such
-  as `session_deleted` or a successful delete command, so real deletions remain
-  final.
+  hint and exposes its transient 404 as a detail failure even though the
+  independent create command is still in flight.
+- **Fix:** Ignore only this Tutti update hint when the exact Session has no
+  canonical record and its latest new-session activation is still requested or
+  uncertain. Let the authoritative create result confirm the Session. Do not
+  broadly swallow reconcile 404s: existing Sessions and other reconcile
+  sources still report their real failures. Tombstone only from explicit
+  deletion evidence such as `session_deleted` or a successful delete command.
 - **Validation:** Hold create in flight, publish
-  `workspace.tuttimode.updated`, return not-found from the Session read, and
-  verify the pending Session is not tombstoned. Then resolve create and verify
-  the canonical Session and active activation are present. Also prove an
-  ordinary reconcile 404 remains untombstoned while an explicit
-  `session_deleted` event does tombstone.
+  `workspace.tuttimode.updated`, and verify the Session read is not called and
+  no reconcile error is recorded. Then resolve create and verify the canonical
+  Session and active activation are present. Also prove the same event still
+  reconciles an existing Session and preserves its not-found diagnostic, while
+  an explicit `session_deleted` event tombstones it.
 - **References:**
   [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
   [workspaceEventCoordinator.ts](../../../packages/agent/activity-core/src/workspaceEventCoordinator.ts)
@@ -337,9 +371,14 @@
   change the claim to a runtime-returned mismatched Turn ID. If the barrier
   reports `conflicts with durable submit provenance`, compare the JSON-encoded
   existing and projected message payloads as well as their Go container types.
+  In particular, compare `payload.seq` and `occurred_at_unix_ms` from the
+  ordinary runtime report and the durable provenance report for the same
+  `clientSubmitId`.
   Identical JSON with `[]any` on the SQLite-decoded side and
   `[]map[string]any` on the fresh-report side is an in-memory normalization
-  defect, not conflicting submit evidence.
+  defect, not conflicting submit evidence. Different sequence values for the
+  same canonical message mean the two report paths reconstructed its occurrence
+  independently.
 - **Root cause:** Provider handoff crossed an ambiguity boundary: the daemon
   reserved and snapshotted a canonical Turn before dispatch, but did not
   durably confirm the exact accepted Turn. The ordinary reporter may have
@@ -350,7 +389,12 @@
   falsely reject an ordinary message replay when a fresh JSON payload retains
   typed Go slices but the same payload decoded from SQLite uses `[]any`, and
   idempotency compares those concrete types directly. Retrying the provider
-  call would risk duplicate work.
+  call would risk duplicate work. Separately, the runtime adapter and durable
+  provenance barrier can construct the same user message on different
+  goroutines. If each path samples its own transient event timestamp, whichever
+  path reaches SQLite second carries a different derived `payload.seq`; the
+  strict provenance guard correctly rejects it. Scheduling determines whether
+  the ordinary report exists before the barrier, so this form is intermittent.
 - **Fix:** Preserve the prepared submit claim, Tutti snapshot, activation, and
   Session. Ensure the host supplies `DurableActivityReporter`; decorators
   should embed or otherwise preserve that required interface instead of
@@ -361,6 +405,12 @@
   representation before projection, merge, and idempotency comparison so
   fresh reports and SQLite-decoded rows share one in-memory shape. Do not
   special-case individual typed slices or bypass genuine payload conflicts.
+  For the two canonical user-message paths, preserve the durable submit claim's
+  immutable creation time through the typed Host and Runtime inputs and derive
+  both reports' occurrence and sequence from it. Use `clientSubmitId` only as
+  the idempotency identity, not as a numeric sequence. Build both messages with
+  the shared canonical user-message constructor; do not weaken the store's
+  exact-payload conflict check.
   Reconcile only from exact durable `clientSubmitId` provenance. If it resolves
   to the reserved Turn, idempotently accept the snapshot and claim; if it is
   absent or resolves elsewhere, keep delivery unknown and never re-dispatch
@@ -373,6 +423,10 @@
   Include an ordinary-message-first replay whose payload contains nested typed
   slices and integer values; assert the provenance barrier reuses the existing
   message version while a real content change still conflicts.
+  Exercise both runtime-message-first and provenance-first orderings and assert
+  their complete message updates, occurrence times, and derived payload
+  sequences are identical. Reopen the submit-claim store and prove an
+  idempotent retry retains the original claim creation time.
   Assert the unknown paths execute the provider zero additional times and never
   close the provisional Session or delete its activation.
 - **References:**
@@ -530,6 +584,47 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [codex_appserver_event_params.go](../../../packages/agent/daemon/runtime/codex_appserver_event_params.go)
   [codex_appserver_adapter_test.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter_test.go)
   [agent-gui-node.md](../../architecture/agent-gui-node.md)
+
+### Opening a historical Codex session starts two short provider processes
+
+- Symptom:
+  Selecting one settled Codex conversation logs two process starts, each with
+  `initialize` followed by `thread/read`, even though no turn was resumed.
+- Quick checks:
+  Confirm neither sequence contains `thread/resume`. Enable reconcile trace
+  diagnostics temporarily and count complete `state_and_messages` commands.
+  Two discovery/message/final sequences indicate two reconciles; one sequence
+  with two probes indicates that both detail projections resolved capabilities.
+- Root cause:
+  There are two independent boundaries to verify. Combined reconciliation
+  intentionally reads detail twice to close races while messages load, but its
+  discovery read only needs hierarchy and `messageVersion`; using the full
+  Session projection there adds an accidental provider-history capability
+  probe. Separately, automatic selection restoration can be replayed while the
+  first reconcile is running. Treating that ordinary selection as
+  `force: true` appends a second complete reconcile, whose final detail read
+  launches another probe.
+- Fix:
+  Preserve the two-read race fence. Send the first request with the
+  `messageHydration` projection and the final request with `full`; only the
+  latter resolves provider-backed lifecycle capabilities. Model automatic
+  selection as idempotent “ensure hydrated” work, leaving force refresh as an
+  explicit intent. Do not mask either symptom with a TTL cache, single-flight
+  delay, or by removing the final read.
+- Validation:
+  Select a historical root-only Codex Session with no child hierarchy through
+  `make dev-gui`. One combined reconcile should issue two detail requests and
+  one message-list request, but only the final detail request should emit the short
+  `initialize`/`thread/read` capability probe. Replaying the same selection
+  while that reconcile is pending must not start another combined reconcile.
+  Sessions with child hierarchy or additional message pages may issue more than
+  one message-list request; each request must still follow the shared executor's
+  Session and cursor policy.
+- References:
+  [sessionReconcileExecutor.ts](../../../packages/agent/activity-core/src/sessionReconcileExecutor.ts)
+  [useAgentConversationSelection.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentConversationSelection.ts)
+  [service_turns.go](../../../services/tuttid/service/agent/service_turns.go)
+  [codex_appserver_fork.go](../../../packages/agent/daemon/runtime/codex_appserver_fork.go)
 
 ### Codex turn stays working before any reply or tool activity
 
@@ -1664,13 +1759,26 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
 - Symptom:
   An Agent Extension conversation works until `tuttid` restarts. Its history
   remains visible, but AgentGUI says it cannot resume on this device and only
-  offers continuing through an `@` mention.
+  offers continuing through an `@` mention. In an affected live extension
+  session, the `tutti` shim can be present on `PATH` while many public commands,
+  including `tutti agent list`, return `command_not_found`. After restart,
+  sending to the same session can fail with
+  `session runtime snapshot is unavailable: launch identity is incomplete`.
 - Quick checks:
   Confirm the persisted session still has `provider_session_id` and
   `agent_target_id`. If the Target remains enabled and names a fixed extension
   installation, compare list-time `resumable` calculation with the actual
   Resume path. An empty process-local adapter registry after restart is not
   evidence that the session cannot be restored.
+  For the CLI variant, first distinguish discovery from routing: look for
+  `tutti cli shim ready` in Desktop logs and `path_contains_tutti_bin=true` in
+  the provider process diagnostics. If both are present but the provider tool
+  reports `unknown command`, compare
+  `workspace_agent_sessions.provider` with
+  `internal_runtime_context_json.$.sessionRuntimeSnapshot.provider`. An
+  extension provider such as `acp:<name>` beside an empty snapshot provider,
+  followed by `launch identity is incomplete`, identifies the durable snapshot
+  path rather than a PATH or listener failure.
 - Root cause:
   Dynamic Agent Extension adapters are created on demand and cached only for
   the daemon lifetime. Computing `resumable` from that cache maps restart state
@@ -1678,7 +1786,14 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   The same false result occurs when an adapter rebuilds the runtime resume input
   but drops `agentTargetId`: the fixed Target ref then fails the controller's
   complete binding check even though persistence and Target resolution are
-  correct.
+  correct. A separate snapshot variant occurs when provider-neutral metadata
+  uses the closed built-in-provider normalizer for an open extension identity.
+  The writer then persists an empty provider and fingerprints the
+  provider-native configuration with that empty value. Session-scoped CLI
+  capability projection validates the snapshot before returning the command
+  catalog; validation failure collapses discovery to an empty catalog, so
+  otherwise valid commands appear unknown. Runtime resume rejects the same
+  incomplete identity after daemon restart.
 - Fix:
   At the service boundary, re-derive `ProviderTargetRef` from the persisted
   session's enabled `agentTargetId`. At the runtime boundary, validate the
@@ -1691,15 +1806,27 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   preserve `agentTargetId` and `ProviderTargetRef` together. Cover the complete
   service-to-adapter-to-controller path instead of testing each endpoint with
   independently constructed valid inputs.
+  Persist and compare snapshot provider metadata with the open provider
+  normalizer; launch authority still comes exclusively from the exact enabled
+  Agent Target. For already-written empty-provider extension snapshots, recover
+  only when the canonical session provider is a valid unregistered open
+  identity, the snapshot declares provider-native configuration, and its
+  fingerprint exactly matches the historical empty-provider payload. Keep
+  every other malformed or mismatched snapshot fail-closed, and do not rewrite
+  the database merely to make discovery succeed.
 - Validation:
   Start from a controller with no cached extension adapter. Assert a persisted
   Target-bound session is resumable, malformed or mismatched bindings fail
   closed, and the eligibility check does not launch the provider. Then run
   `go test ./packages/agent/daemon/runtime ./services/tuttid/service/agent`.
+  Also cover new extension snapshots preserving `acp:*`, verified legacy
+  empty-provider recovery, registered-provider fallback rejection, CLI command
+  projection for the recovered session, and runtime preparation after restart.
 - References:
   [controller_session_registry.go](../../../packages/agent/daemon/runtime/controller_session_registry.go)
   [agent_runtime_adapter.go](../../../services/tuttid/agent_runtime_adapter.go)
   [service_session.go](../../../services/tuttid/service/agent/service_session.go)
+  [session_runtime_snapshot.go](../../../services/tuttid/service/agent/session_runtime_snapshot.go)
   [agent-extensions.md](../../architecture/agent-extensions.md)
 
 ### An authorized observer loops unavailable while a session is resuming
@@ -1910,6 +2037,121 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
 - References:
   [controller.go](../../../packages/agent/daemon/runtime/controller.go)
   [controller_test.go](../../../packages/agent/daemon/runtime/controller_test.go)
+
+### Claude Code completes but the Turn has no Fork entry
+
+- Symptom:
+  A Claude Code Turn is settled and has assistant output, but AgentGUI does not
+  offer Fork. The session capability reports `forkThroughTurn=false`, or its
+  supported provider Turn list is empty even though the Claude transcript is
+  readable.
+- Quick checks:
+  Compare the canonical Turn's `root_provider_turn_id` with the UUID of the
+  matching root user message returned by the official Claude SDK
+  `getSessionMessages` API. If they differ, inspect the live sidecar event
+  sequence for `provider_turn_started`. Do not infer identity from transcript
+  position or substitute the canonical Tutti Turn ID.
+- Root cause:
+  The outbound user-message UUID is only a prompt correlation value. Claude
+  Code may rewrite that UUID before persisting the transcript. Publishing the
+  caller-generated value as canonical provider identity makes strict prefix
+  verification correctly reject the Turn, which removes the Fork capability.
+- Fix:
+  Mark the next root prompt echo as causally expected before submitting it.
+  Bind provider Turn identity from that observed root user-message UUID, emit
+  `provider_turn_started`, and only then persist the root provider lifecycle.
+  Keep historical Turns without observed provider identity fail-closed rather
+  than guessing or backfilling them.
+- Validation:
+  Cover a query whose root user echo rewrites the outbound UUID. Assert
+  `provider_turn_started` and terminal events both carry the persisted UUID,
+  then verify the daemon stores the same identity and the fork capability
+  accepts it. Restart the daemon/sidecar before manually checking a newly
+  completed Claude Code Turn; historical affected Turns remain intentionally
+  non-forkable.
+- References:
+  [sessionRuntime.ts](../../../packages/agent/claude-sdk-sidecar/src/sessionRuntime.ts)
+  [turnLifecycle.ts](../../../packages/agent/claude-sdk-sidecar/src/turnLifecycle.ts)
+  [claude_sdk_execution.go](../../../packages/agent/daemon/runtime/claude_sdk_execution.go)
+  [claude_sdk_events.go](../../../packages/agent/daemon/runtime/claude_sdk_events.go)
+
+### Claude Code Fork fails after the action is clicked
+
+- Symptom:
+  Fork is available for a completed Claude Code Turn, but clicking it produces
+  a failed operation. The durable operation becomes `unknown`, no target
+  canonical Session is committed, and the target provider Session is absent.
+- Quick checks:
+  Inspect the latest `workspace_agent_session_fork_operations` row and query the
+  target UUID with the official SDK `getSessionInfo` and
+  `getSessionMessages`. If both are empty, check whether the sidecar used
+  `query({forkSession: true})` with an empty prompt and treated
+  `initializationResult()` as provider mutation completion.
+- Root cause:
+  Query initialization only completes the SDK/CLI handshake. Without a prompt,
+  it does not durably create the requested child transcript. Unit tests can
+  hide the defect if their fake marks the child created inside
+  `initializationResult()`. A catch that replaces the original exception with
+  a generic Fork error also erases whether failure occurred during source
+  validation, provider mutation, or child verification.
+- Fix:
+  Use the official `forkSession(source, {upToMessageId, title})` transcript
+  mutation. Accept its provider-generated child UUID, advertise the driver as
+  non-deterministic, and let Host keep only the canonical target Session ID
+  deterministic. Preserve the failure stage and original SDK reason.
+  After provider mutation starts, any failure is `unknown` and must never be
+  replayed.
+- Validation:
+  Exercise the official SDK with an in-memory SessionStore, including a Turn
+  whose inclusive checkpoint ends in a system message. Verify the provider
+  child is independently readable, root user UUIDs are remapped, the canonical
+  child resumes by the returned provider Session ID, and a second Fork from
+  that child succeeds. Cover pre-mutation `not_started`, post-mutation
+  `unknown`, and Host's no-replay behavior for non-deterministic drivers.
+- References:
+  [sessionFork.ts](../../../packages/agent/claude-sdk-sidecar/src/sessionFork.ts)
+  [sessionFork.test.ts](../../../packages/agent/claude-sdk-sidecar/src/sessionFork.test.ts)
+  [claude_sdk_fork.go](../../../packages/agent/daemon/runtime/claude_sdk_fork.go)
+  [session_fork.go](../../../packages/agent/host/session_fork.go)
+
+### Fork reports only `agent_session_fork_conflict`
+
+- Symptom:
+  A through-Turn Fork returns HTTP 409 before any provider `thread/fork`
+  request. Desktop diagnostics contain only
+  `reason=agent_session_fork_conflict` or a developer-message length, so
+  provenance, attachment, descendant-lane, and provider-Turn failures are
+  indistinguishable.
+- Quick checks:
+  Read `error.params.forkBoundaryReason` from the 409 response or the promoted
+  Desktop diagnostic `reason`. For example,
+  `agent_session_fork_turn_sequence_unverified` means the selected Turn has
+  unverified sequence provenance, while
+  `agent_session_fork_prefix_sequence_unverified` identifies an earlier Turn
+  in the inclusive prefix. The developer message carries the observed phase,
+  provenance, sequence, or identity condition without message content.
+- Root cause:
+  `CheckSessionForkThroughTurn` collapsed every fail-closed boundary branch to
+  `supported=false`; Host replaced it with one generic Turn-state error, and
+  the service formatted the nested error with `%v`, which discarded the error
+  chain before transport classification.
+- Fix:
+  Preserve one stable boundary rejection reason from the Store through Host
+  and Service. Keep the public 409 reason
+  `agent_session_fork_conflict` for compatibility, add the exact stable code
+  as `error.params.forkBoundaryReason`, and promote that code only for Desktop
+  diagnostics. Do not log transcript payloads or attachment contents.
+- Validation:
+  Cover unverified selected/prefix sequences, duplicate provider Turn IDs,
+  descendant lanes, and session-local attachments at the Store. Verify Service
+  wrapping preserves both the generic conflict and typed boundary error, the
+  API includes the structured parameter, and Desktop promotes it to the
+  diagnostic reason.
+- References:
+  [session_fork.go](../../../packages/agent/store-sqlite/session_fork.go)
+  [session_fork_types.go](../../../packages/agent/store-sqlite/session_fork_types.go)
+  [daemon_agent_session_fork.go](../../../services/tuttid/api/daemon_agent_session_fork.go)
+  [desktopAgentActivityAdapter.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/desktopAgentActivityAdapter.ts)
 
 ### Claude Code cancel leaves Write/tool cards or thinking stuck in progress
 
@@ -2974,3 +3216,89 @@ convergence deadline`.
 - References:
   [agentTranscriptModel.ts](../../../packages/agent/gui/shared/agentConversation/components/agentTranscriptModel.ts)
   [AgentTranscriptView.tsx](../../../packages/agent/gui/shared/agentConversation/components/AgentTranscriptView.tsx)
+
+### Cassette replay loses the provider session before the second stimulus
+
+- Symptom:
+  Replay reaches checkpoint 1, then a later `session.send` fails with
+  `provider session was never established`. The replay error also reports that
+  an outbound write arrived while a recorded stdout chunk was next.
+- Quick checks:
+  Inspect `provider/frames.jsonl` around the reported chunk. If a provider
+  notification immediately follows a successful request response and precedes
+  the next outbound request, compare the reader and writer goroutine timing.
+- Root cause:
+  The process cassette encoded the provider byte-stream order, but replay
+  treated that order as a required Go goroutine schedule. A writer could run
+  before the reader consumed an already-recorded notification, so normal
+  concurrency was rejected as a transport mismatch and provider startup was
+  torn down.
+- Fix:
+  When the next recorded chunk is inbound, block the replay write until the
+  receive path consumes it. Continue strict payload validation when the next
+  recorded outbound chunk becomes current.
+- Validation:
+  Start a replay stream with `outbound -> stdout -> outbound`. Launch the
+  second send before receiving stdout; it must wait, then succeed after the
+  receive. Keep mismatch, pause, fast-forward, close, and full runtime tests
+  passing.
+- References:
+  [process_transport_replay.go](../../../packages/agent/daemon/runtime/process_transport_replay.go)
+  [process_transport_cassette_test.go](../../../packages/agent/daemon/runtime/process_transport_cassette_test.go)
+
+### Cassette replay reports a false final Session state mismatch
+
+- Symptom:
+  Every recorded stimulus succeeds, but final replay validation reports that
+  `workspace_agent_sessions` or `workspace_agent_turns` differs. The isolated
+  replay database contains the same child Sessions and Turns under new ids.
+- Quick checks:
+  Compare child Sessions by provider, provider Session id, target, and Session
+  kind instead of the generated Tutti id. Then compare each Session's Turns in
+  order. If those normalized rows match, the cassette state is not corrupt.
+- Root cause:
+  Replay creates new Tutti ids for provider-discovered child Sessions and their
+  canonical Turns. A validator that maps only the root Session and submitted
+  root Turns queries child rows with recorded ids, then mistakes missing rows
+  for durable state drift.
+- Fix:
+  Normalize child Session ids by an unambiguous stable provider identity before
+  querying final fixtures. Map remaining Turn ids by order within the already
+  mapped Session. Do not guess when either side has duplicate stable identities
+  or mismatched Turn counts.
+- Validation:
+  Cover regenerated child Session and Turn ids, ambiguous provider identities,
+  and the original multi-child cassette. The unambiguous cassette must pass;
+  ambiguous or count-mismatched fixtures must still fail closed.
+- References:
+  [run-agent-session-replay.mjs](../../../tools/scripts/run-agent-session-replay.mjs)
+  [run-agent-session-replay.test.mjs](../../../tools/scripts/run-agent-session-replay.test.mjs)
+
+### Cassette replay times out before a recorded queued Turn
+
+- Symptom:
+  Replay stops on `timed out waiting for renderer effect queue/sendPrompt`,
+  leaves later activity events untouched, and consumes only the provider frames
+  before a long-running Turn settles. The cassette itself contains the missing
+  intent, effect, and final Turn.
+- Quick checks:
+  Compare adjacent `activity-events.jsonl` timestamps. If the effect was
+  recorded more than the renderer effect timeout after its intent, check
+  whether replay dispatched both events immediately instead of waiting for
+  their recorded interval.
+- Root cause:
+  Provider frames followed the daemon playback clock, but the runner iterated
+  activity events as fast as JavaScript completed them. Effect verification
+  therefore began while the recorded Turn was still running and expired before
+  the effect could exist.
+- Fix:
+  Advance activity events by relative `occurredAtUnixMs` using the daemon's
+  playback state. Pause freezes the activity clock, speed scales it, and
+  checkpoint fast-forward skips its remaining wait.
+- Validation:
+  Cover normal recorded delay, processing time between events, pause/resume,
+  selected speed, and fast-forward. Then replay the failing cassette and require
+  the final checkpoint, all provider frames, and every expected Turn to pass.
+- References:
+  [run-agent-session-replay.mjs](../../../tools/scripts/run-agent-session-replay.mjs)
+  [run-agent-session-replay.test.mjs](../../../tools/scripts/run-agent-session-replay.test.mjs)

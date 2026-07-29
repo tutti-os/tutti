@@ -55,16 +55,18 @@ describe("resolveInitialTuttiModeActivation", () => {
     expect(
       resolveInitialTuttiModeActivation({
         submitOptions: {
-          tuttiMode: { active: true, orchestrationIntensity: 81 }
+          tuttiMode: { active: true, effect: 81, speed: 72 }
         },
         draftActive: false,
-        draftOrchestrationIntensity: 50
+        draftEffect: 50,
+        draftSpeed: 50
       })
     ).toEqual({
       activation: {
         source: "slash_command",
         status: "active",
-        orchestrationIntensity: 81
+        effect: 81,
+        speed: 72
       },
       source: "composer_submit"
     });
@@ -75,7 +77,8 @@ describe("resolveInitialTuttiModeActivation", () => {
       resolveInitialTuttiModeActivation({
         submitOptions: { tuttiMode: { active: false } },
         draftActive: true,
-        draftOrchestrationIntensity: 50
+        draftEffect: 50,
+        draftSpeed: 50
       })
     ).toBeNull();
   });
@@ -84,13 +87,15 @@ describe("resolveInitialTuttiModeActivation", () => {
     expect(
       resolveInitialTuttiModeActivation({
         draftActive: true,
-        draftOrchestrationIntensity: 64
+        draftEffect: 64,
+        draftSpeed: 75
       })
     ).toEqual({
       activation: {
         source: "slash_command",
         status: "active",
-        orchestrationIntensity: 64
+        effect: 64,
+        speed: 75
       },
       source: "engine_draft"
     });

@@ -8,22 +8,7 @@ import (
 )
 
 func issueAutomaticBudgetSlots(issue workspaceissues.Issue, activeRunCount int) int {
-	if !workspaceissues.IssueBudgetAllowsNextAutomaticRun(issue) {
-		return 0
-	}
-	if issue.Budget.TokenLimit <= 0 {
-		return maxWorkspaceParallelIssueRuns
-	}
-	allowance := workspaceissues.CompileEstimatedRunTokenBudget(issue.ExecutionProfile)
-	remaining := issue.Budget.TokenLimit - issue.Budget.ConsumedTokens
-	if allowance <= 0 || remaining < allowance {
-		return 0
-	}
-	slots := int(remaining/allowance) - activeRunCount
-	if slots < 0 {
-		return 0
-	}
-	return slots
+	return workspaceissues.IssueAutomaticBudgetSlots(issue, activeRunCount)
 }
 
 func (s IssueManagerService) markIssueBudgetSoftLimited(ctx context.Context, issue workspaceissues.Issue) {

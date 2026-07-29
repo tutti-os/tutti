@@ -152,6 +152,7 @@ export function createWorkspaceAgentGuiContribution(input: {
       },
       launchGroupChat: requestGroupChatLaunch,
       openBrowserUrl: requestWorkspaceBrowserLaunch,
+      openExternalUrl: (url) => input.hostFilesApi.openExternal(url),
       workspaceId: input.workspaceId
     });
   };
@@ -166,6 +167,10 @@ export function createWorkspaceAgentGuiContribution(input: {
     return createElement(DesktopWorkspaceAgentGUIWorkbenchBody, {
       agentActivityRuntime: agentGUIWorkbenchHostInput.agentActivityRuntime,
       agentHostApi: agentGUIWorkbenchHostInput.agentHostApi,
+      agentSessionActivityReplay:
+        agentGUIWorkbenchHostInput.agentSessionActivityReplay,
+      agentSessionReplayService:
+        agentGUIWorkbenchHostInput.agentSessionReplayService,
       agentStatusSource: workspaceAgentStatusSource,
       tuttiModePlanReviewRuntime:
         agentGUIWorkbenchHostInput.tuttiModePlanReviewRuntime,

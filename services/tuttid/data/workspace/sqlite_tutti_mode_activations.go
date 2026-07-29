@@ -51,7 +51,7 @@ func (s *SQLiteStore) ListTuttiModeActivations(ctx context.Context, workspaceID 
 	}
 	rows, err := s.writeDB.QueryContext(ctx, `
 SELECT a.agent_session_id, a.activation_id, a.created_at_unix_ms, a.updated_at_unix_ms,
-       r.revision_id, r.revision, r.state, r.source, r.orchestration_intensity, r.created_at_unix_ms
+       r.revision_id, r.revision, r.state, r.source, r.orchestration_intensity, r.speed, r.created_at_unix_ms
 FROM tutti_mode_activations a
 JOIN tutti_mode_activation_revisions r
   ON r.workspace_id = a.workspace_id
@@ -71,7 +71,7 @@ WHERE a.workspace_id = ? AND a.agent_session_id IN (`+placeholders+`)
 			&value.AgentSessionID, &value.ID, &createdAt, &updatedAt,
 			&value.CurrentRevision.ID, &value.CurrentRevision.Revision,
 			&value.CurrentRevision.State, &value.CurrentRevision.Source,
-			&value.CurrentRevision.OrchestrationIntensity, &revisionCreatedAt,
+			&value.CurrentRevision.Effect, &value.CurrentRevision.Speed, &revisionCreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan Tutti mode activation list: %w", err)
 		}
@@ -104,12 +104,19 @@ func (s *SQLiteStore) SetTuttiModeActivation(ctx context.Context, input SetTutti
 	if input.WorkspaceID == "" || input.AgentSessionID == "" || input.RevisionID == "" || input.ChangedAt.IsZero() {
 		return activationbiz.Activation{}, false, activationbiz.ErrInvalidActivation
 	}
-	if input.OrchestrationIntensity != nil && !activationbiz.IsOrchestrationIntensity(*input.OrchestrationIntensity) {
-		return activationbiz.Activation{}, false, fmt.Errorf("%w: orchestration intensity must be between 0 and 100", activationbiz.ErrInvalidActivation)
+	effect := input.Effect
+	if effect == nil {
+		effect = input.OrchestrationIntensity
+	}
+	if effect != nil && !activationbiz.IsPreference(*effect) ||
+		input.Speed != nil && !activationbiz.IsPreference(*input.Speed) {
+		return activationbiz.Activation{}, false, fmt.Errorf("%w: effect and speed must be between 0 and 100", activationbiz.ErrInvalidActivation)
 	}
 	if _, err := activationbiz.NormalizeRevision(activationbiz.Revision{
 		ID: input.RevisionID, ActivationID: firstNonBlank(input.ActivationID, "pending"), Revision: 1,
-		State: input.State, Source: input.Source, CreatedAt: input.ChangedAt,
+		State: input.State, Source: input.Source,
+		Effect: activationbiz.DefaultEffect, Speed: activationbiz.DefaultSpeed,
+		CreatedAt: input.ChangedAt,
 	}); err != nil {
 		return activationbiz.Activation{}, false, err
 	}
@@ -133,15 +140,21 @@ func (s *SQLiteStore) SetTuttiModeActivation(ctx context.Context, input SetTutti
 			return activationbiz.Activation{}, false, ErrTuttiModeActivationRevisionConflict
 		}
 	}
-	effectiveIntensity := activationbiz.DefaultOrchestrationIntensity
+	effectiveEffect := activationbiz.DefaultEffect
+	effectiveSpeed := activationbiz.DefaultSpeed
 	if exists {
-		effectiveIntensity = current.CurrentRevision.OrchestrationIntensity
+		effectiveEffect = current.CurrentRevision.Effect
+		effectiveSpeed = current.CurrentRevision.Speed
 	}
-	if input.OrchestrationIntensity != nil {
-		effectiveIntensity = *input.OrchestrationIntensity
+	if effect != nil {
+		effectiveEffect = *effect
+	}
+	if input.Speed != nil {
+		effectiveSpeed = *input.Speed
 	}
 	if exists && current.CurrentRevision.State == input.State && current.CurrentRevision.Source == input.Source &&
-		current.CurrentRevision.OrchestrationIntensity == effectiveIntensity {
+		current.CurrentRevision.Effect == effectiveEffect &&
+		current.CurrentRevision.Speed == effectiveSpeed {
 		return current, false, nil
 	}
 	if !exists && input.State == activationbiz.StateInactive {
@@ -182,17 +195,17 @@ INSERT INTO tutti_mode_activations (
 	revision := activationbiz.Revision{
 		ID: input.RevisionID, ActivationID: input.ActivationID, Revision: nextRevision,
 		State: input.State, Source: input.Source,
-		OrchestrationIntensity: effectiveIntensity, CreatedAt: input.ChangedAt,
+		Effect: effectiveEffect, Speed: effectiveSpeed, CreatedAt: input.ChangedAt,
 	}
 	if _, err := activationbiz.NormalizeRevision(revision); err != nil {
 		return activationbiz.Activation{}, false, err
 	}
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO tutti_mode_activation_revisions (
-  workspace_id, activation_id, revision_id, revision, state, source, orchestration_intensity, created_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  workspace_id, activation_id, revision_id, revision, state, source, orchestration_intensity, speed, created_at_unix_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `, input.WorkspaceID, input.ActivationID, input.RevisionID, nextRevision,
-		string(input.State), string(input.Source), effectiveIntensity, unixMs(input.ChangedAt)); err != nil {
+		string(input.State), string(input.Source), effectiveEffect, effectiveSpeed, unixMs(input.ChangedAt)); err != nil {
 		return activationbiz.Activation{}, false, fmt.Errorf("insert Tutti mode activation revision: %w", err)
 	}
 	if exists {
@@ -228,7 +241,7 @@ func getTuttiModeActivation(ctx context.Context, q tuttiModeActivationRowQuerier
 	var createdAt, updatedAt, revisionCreatedAt int64
 	err := q.QueryRowContext(ctx, `
 SELECT a.activation_id, a.created_at_unix_ms, a.updated_at_unix_ms,
-       r.revision_id, r.revision, r.state, r.source, r.orchestration_intensity, r.created_at_unix_ms
+       r.revision_id, r.revision, r.state, r.source, r.orchestration_intensity, r.speed, r.created_at_unix_ms
 FROM tutti_mode_activations a
 JOIN tutti_mode_activation_revisions r
   ON r.workspace_id = a.workspace_id
@@ -240,7 +253,7 @@ WHERE a.workspace_id = ? AND a.agent_session_id = ?
 		&value.ID, &createdAt, &updatedAt,
 		&value.CurrentRevision.ID, &value.CurrentRevision.Revision,
 		&value.CurrentRevision.State, &value.CurrentRevision.Source,
-		&value.CurrentRevision.OrchestrationIntensity, &revisionCreatedAt,
+		&value.CurrentRevision.Effect, &value.CurrentRevision.Speed, &revisionCreatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return activationbiz.Activation{}, false, nil
@@ -267,12 +280,12 @@ func (s *SQLiteStore) GetTuttiModeTurnSnapshot(ctx context.Context, workspaceID,
 	}
 	var value activationbiz.TurnSnapshot
 	err := s.writeDB.QueryRowContext(ctx, `
-SELECT activation_id, revision_id, revision, state, source, orchestration_intensity
+SELECT activation_id, revision_id, revision, state, source, orchestration_intensity, speed
 FROM tutti_mode_turn_snapshots
 WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ?
 `, strings.TrimSpace(workspaceID), strings.TrimSpace(agentSessionID), strings.TrimSpace(turnID)).Scan(
 		&value.ActivationID, &value.RevisionID, &value.Revision, &value.State, &value.Source,
-		&value.OrchestrationIntensity,
+		&value.Effect, &value.Speed,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return activationbiz.TurnSnapshot{}, false, nil
@@ -306,11 +319,11 @@ func (s *SQLiteStore) PutTuttiModeTurnSnapshot(ctx context.Context, workspaceID,
 	_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO tutti_mode_turn_snapshots (
   workspace_id, agent_session_id, turn_id, activation_id, revision_id,
-  revision, state, source, orchestration_intensity, created_at_unix_ms, dispatch_state
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'prepared')
+  revision, state, source, orchestration_intensity, speed, created_at_unix_ms, dispatch_state
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'prepared')
 `, workspaceID, agentSessionID, turnID, normalized.ActivationID, normalized.RevisionID,
 		normalized.Revision, string(normalized.State), string(normalized.Source),
-		normalized.OrchestrationIntensity, unixMs(createdAt))
+		normalized.Effect, normalized.Speed, unixMs(createdAt))
 	if err != nil {
 		if existing, ok, readErr := s.GetTuttiModeTurnSnapshot(ctx, workspaceID, agentSessionID, turnID); readErr == nil && ok {
 			return existing, false, nil
@@ -378,10 +391,10 @@ DELETE FROM tutti_mode_turn_snapshots
 WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ?
   AND dispatch_state = 'prepared'
   AND activation_id = ? AND revision_id = ? AND revision = ? AND state = ? AND source = ?
-  AND orchestration_intensity = ?
+  AND orchestration_intensity = ? AND speed = ?
 `, workspaceID, agentSessionID, turnID, normalized.ActivationID, normalized.RevisionID,
 		normalized.Revision, string(normalized.State), string(normalized.Source),
-		normalized.OrchestrationIntensity)
+		normalized.Effect, normalized.Speed)
 	if err != nil {
 		return false, fmt.Errorf("abandon Tutti mode turn snapshot: %w", err)
 	}

@@ -11,6 +11,7 @@ import (
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	"github.com/tutti-os/tutti/services/tuttid/biz/agentanalytics"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 	agentnoderesult "github.com/tutti-os/tutti/services/tuttid/service/reporter/events/agent/node_result"
 )
@@ -379,14 +380,14 @@ func classifyRuntimeNodeErrorCode(message string) string {
 		strings.Contains(normalized, "disconnected") ||
 		strings.Contains(normalized, "econnreset") ||
 		strings.Contains(normalized, "socket") {
-		return agentnoderesult.ErrorCodeRuntimeNetworkDisconnected
+		return agentanalytics.ErrorCodeRuntimeNetworkDisconnected
 	}
 	if strings.Contains(normalized, "process") ||
 		strings.Contains(normalized, "exit") ||
 		strings.Contains(normalized, "exited") {
-		return agentnoderesult.ErrorCodeRuntimeProcessExited
+		return agentanalytics.ErrorCodeRuntimeProcessExited
 	}
-	return agentnoderesult.ErrorCodeRuntimeExecFailed
+	return agentanalytics.ErrorCodeRuntimeExecFailed
 }
 
 func (p *ActivityProjection) ReportSessionMessages(

@@ -491,6 +491,62 @@ test("mutations refresh the current directory after success", async () => {
   session.dispose();
 });
 
+test("create dialog rejects names over 255 UTF-8 bytes before calling the host", async () => {
+  let createDirectoryCalls = 0;
+  const session = createSession({
+    host: {
+      async createDirectory(input) {
+        createDirectoryCalls += 1;
+        return createEntry(input.path, {
+          kind: "directory",
+          sizeBytes: null
+        });
+      }
+    }
+  });
+
+  session.openCreateDirectoryDialog();
+  session.updateCreateDialogName("你".repeat(86));
+  await session.confirmCreateDialog();
+
+  assert.equal(createDirectoryCalls, 0);
+  assert.equal(
+    session.store.createDialog?.errorMessage,
+    "Names must be 255 UTF-8 bytes or fewer"
+  );
+  assert.equal(session.store.error, null);
+
+  session.dispose();
+});
+
+test("inline rename rejects names over 255 UTF-8 bytes before calling the host", async () => {
+  let renameCalls = 0;
+  const entry = createEntry("/Users/demo/project/notes.txt");
+  const session = createSession({
+    host: {
+      async listDirectory(input) {
+        return createDirectoryListing(input.path, [entry]);
+      },
+      async renameEntry(input) {
+        renameCalls += 1;
+        return createEntry(input.path);
+      }
+    }
+  });
+
+  await session.initialize();
+  session.startInlineRename(entry);
+  const confirmed = await session.confirmInlineRename("a".repeat(256));
+
+  assert.equal(confirmed, false);
+  assert.equal(renameCalls, 0);
+  assert.equal(session.store.inlineRenameEntryPath, entry.path);
+  assert.equal(session.store.inlineRenameValidation, "tooLong");
+  assert.equal(session.store.error, null);
+
+  session.dispose();
+});
+
 test("copyToClipboard reports success and leaves no error behind", async () => {
   const copyCalls: Array<{ paths: string[]; workspaceID: string }> = [];
   const session = createSession({

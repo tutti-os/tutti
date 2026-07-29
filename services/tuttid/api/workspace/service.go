@@ -114,4 +114,5 @@ type IssueManagerService interface {
 
 type IssueExecutionService interface {
 	CancelIssueExecution(context.Context, string, string) (int, error)
+	CancelTuttiModeIssueExecution(context.Context, string, string) (int, error)
 }

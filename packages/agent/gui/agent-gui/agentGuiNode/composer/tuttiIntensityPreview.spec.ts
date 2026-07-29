@@ -1,48 +1,60 @@
 import { describe, expect, it } from "vitest";
-import { projectTuttiIntensityPreview } from "./tuttiIntensityPreview";
+import { projectTuttiPreferencePreview } from "./tuttiIntensityPreview";
 
-describe("projectTuttiIntensityPreview", () => {
+describe("projectTuttiPreferencePreview", () => {
+  it("projects effect into model capability and internal verification", () => {
+    expect(projectTuttiPreferencePreview(20, 50)).toMatchObject({
+      effectTier: "cost",
+      modelPreference: "economical",
+      verificationPreference: "focused",
+      parallelTarget: 3
+    });
+    expect(projectTuttiPreferencePreview(80, 50)).toMatchObject({
+      effectTier: "powerful",
+      modelPreference: "mostCapable",
+      verificationPreference: "thorough",
+      parallelTarget: 3
+    });
+  });
+
+  it("uses speed for the fastest suitable model and a bounded parallel target", () => {
+    expect(projectTuttiPreferencePreview(80, 80)).toMatchObject({
+      effectTier: "powerful",
+      speedTier: "powerful",
+      modelPreference: "fastestSuitable",
+      verificationPreference: "thorough",
+      parallelTarget: 4
+    });
+  });
+
   it.each([
-    [0, "cost"],
-    [33, "cost"],
-    [34, "balance"],
-    [66, "balance"],
-    [67, "powerful"],
-    [100, "powerful"]
-  ] as const)("maps intensity %s to the %s tendency", (intensity, tier) => {
-    expect(projectTuttiIntensityPreview(intensity)).toMatchObject({
-      intensity,
-      tier
-    });
+    [0, 1],
+    [24, 1],
+    [25, 2],
+    [49, 2],
+    [50, 3],
+    [74, 3],
+    [75, 4],
+    [100, 4]
+  ])("maps speed %d to parallel target %d", (speed, parallelTarget) => {
+    expect(projectTuttiPreferencePreview(50, speed).parallelTarget).toBe(
+      parallelTarget
+    );
   });
 
-  it("projects semantic model and Agent-count tendencies", () => {
-    expect(projectTuttiIntensityPreview(20)).toMatchObject({
-      modelStrength: "economical",
-      agentCount: "single"
+  it("normalizes each preference independently", () => {
+    expect(projectTuttiPreferencePreview(-20, 120)).toMatchObject({
+      effect: 0,
+      speed: 100,
+      effectTier: "cost",
+      speedTier: "powerful",
+      parallelTarget: 4
     });
-    expect(projectTuttiIntensityPreview(50)).toMatchObject({
-      modelStrength: "balanced",
-      agentCount: "smallGroup"
-    });
-    expect(projectTuttiIntensityPreview(80)).toMatchObject({
-      modelStrength: "mostCapable",
-      agentCount: "maxParallel"
-    });
-  });
-
-  it("normalizes values before projecting the preview", () => {
-    expect(projectTuttiIntensityPreview(-20)).toMatchObject({
-      intensity: 0,
-      tier: "cost"
-    });
-    expect(projectTuttiIntensityPreview(120)).toMatchObject({
-      intensity: 100,
-      tier: "powerful"
-    });
-    expect(projectTuttiIntensityPreview(Number.NaN)).toMatchObject({
-      intensity: 50,
-      tier: "balance"
-    });
+    expect(projectTuttiPreferencePreview(Number.NaN, Number.NaN)).toMatchObject(
+      {
+        effect: 50,
+        speed: 50
+      }
+    );
   });
 });

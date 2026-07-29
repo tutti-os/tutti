@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
+	tuttimodeexecutionservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeexecution"
 )
 
 // IssueExecutionCoordinator is the product-owned seam between durable Issue
@@ -19,6 +21,7 @@ type IssueExecutionCoordinator struct {
 	Issues              *IssueManagerService
 	RunSessionCanceller IssueRunSessionCanceller
 	SettlementReader    IssueRunSettlementReader
+	Clock               func() time.Time
 }
 
 // CancelIssueExecution stops an Issue's execution as one user intent: it
@@ -35,6 +38,31 @@ func (c *IssueExecutionCoordinator) CancelIssueExecution(ctx context.Context, wo
 	if err != nil {
 		return 0, err
 	}
+	return c.cancelIssueRuns(ctx, workspaceID, issueID, running)
+}
+
+// CancelTuttiModeIssueExecution is the product-authorized stop path for an
+// Issue already proven to be owned by a Tutti execution. Generic Issue
+// cancellation remains rejected for managed graphs.
+func (c *IssueExecutionCoordinator) CancelTuttiModeIssueExecution(
+	ctx context.Context, workspaceID string, issueID string,
+) (int, error) {
+	if c == nil || c.Issues == nil {
+		return 0, workspaceissues.ErrInvalidArgument
+	}
+	running, err := c.Issues.pauseTuttiModeIssueExecution(ctx, workspaceID, issueID)
+	if err != nil {
+		return 0, err
+	}
+	return c.cancelIssueRuns(ctx, workspaceID, issueID, running)
+}
+
+func (c *IssueExecutionCoordinator) cancelIssueRuns(
+	ctx context.Context,
+	workspaceID string,
+	issueID string,
+	running []workspaceissues.Run,
+) (int, error) {
 	canceled := 0
 	cancelErrors := make([]error, 0)
 	for _, run := range running {
@@ -45,11 +73,20 @@ func (c *IssueExecutionCoordinator) CancelIssueExecution(ctx context.Context, wo
 		}
 		var result IssueRunCancelResult
 		if c.RunSessionCanceller != nil && strings.TrimSpace(run.AgentSessionID) != "" {
+			clientSubmitID, identityErr := c.Issues.issueRunClientSubmitID(ctx, run)
+			if identityErr != nil {
+				cancelErrors = append(cancelErrors, fmt.Errorf(
+					"resolve cancel identity for run %s: %w", run.RunID, identityErr,
+				))
+				c.Issues.enqueueWorkspaceRunReconcile(workspaceID)
+				continue
+			}
 			var cancelErr error
 			result, cancelErr = c.RunSessionCanceller.RequestRunCancellation(ctx, IssueRunCancellationRequest{
 				WorkspaceID:    workspaceID,
 				AgentSessionID: run.AgentSessionID,
 				RunID:          run.RunID,
+				ClientSubmitID: clientSubmitID,
 			})
 			if cancelErr != nil {
 				slog.Warn("cancel Issue run agent session failed",
@@ -84,10 +121,18 @@ func (c *IssueExecutionCoordinator) CancelIssueExecution(ctx context.Context, wo
 					continue
 				}
 			case IssueRunCancelNotFound:
-				// The launch gate now owns the pending intent. If launch has
-				// not begun it will be skipped; if it is in flight, completion
-				// performs exact-turn compensation.
-				continue
+				if launching {
+					// The in-flight launch gate owns exact-turn compensation
+					// once canonical delivery becomes observable.
+					continue
+				}
+				// No launch owns this prepared Run, so the product can settle
+				// it immediately instead of leaving archive recovery blocked
+				// on a Run that never acquired a canonical Agent Turn.
+				result.Settlement = &IssueRunSettlement{
+					WorkspaceID: workspaceID, AgentSessionID: run.AgentSessionID,
+					Status: workspaceissues.StatusCanceled,
+				}
 			default:
 				cancelErrors = append(cancelErrors, fmt.Errorf("cancel run %s: unsupported cancellation result %q", run.RunID, result.State))
 				continue
@@ -136,6 +181,9 @@ func (s IssueManagerService) pauseIssueExecution(ctx context.Context, workspaceI
 	if err != nil {
 		return nil, err
 	}
+	if err := workspaceissues.RejectManagedIssueMutation(detail.Issue); err != nil {
+		return nil, err
+	}
 	if !detail.Issue.DispatchPaused {
 		issue := detail.Issue
 		issue.DispatchPaused = true
@@ -143,73 +191,68 @@ func (s IssueManagerService) pauseIssueExecution(ctx context.Context, workspaceI
 			return nil, err
 		}
 	}
-	allRunning, err := s.domainService().ListRunningRuns(ctx, workspaceID, defaultIssueRunReconcileLimit)
-	if err != nil {
-		return nil, err
-	}
-	running := make([]workspaceissues.Run, 0, len(allRunning))
-	for _, run := range allRunning {
-		if run.IssueID == issueID {
+	running := make([]workspaceissues.Run, 0, len(detail.RecentRuns))
+	for _, run := range detail.RecentRuns {
+		if run.Status == workspaceissues.StatusRunning {
 			running = append(running, run)
 		}
 	}
 	return running, nil
 }
 
-// CancelIssueExecutionForSourceSession stops every running tutti-mode-plan
-// Issue that the given planning session created. It backs the user's stop
-// gesture on the planning conversation: stopping the orchestrator stops all
-// work in flight.
+func (s IssueManagerService) pauseTuttiModeIssueExecution(
+	ctx context.Context, workspaceID string, issueID string,
+) ([]workspaceissues.Run, error) {
+	unlock := s.MutationLocks.Lock(workspaceID, issueID)
+	defer unlock()
+	detail, err := s.domainService().GetIssueDetail(ctx, workspaceID, issueID)
+	if err != nil {
+		return nil, err
+	}
+	if detail.Issue.PlanningSource != workspaceissues.PlanningSourceTuttiModePlan {
+		return nil, workspaceissues.ErrInvalidArgument
+	}
+	if !detail.Issue.DispatchPaused {
+		issue := detail.Issue
+		issue.DispatchPaused = true
+		if _, err := s.Store.UpdateIssue(ctx, issue); err != nil {
+			return nil, err
+		}
+	}
+	running := make([]workspaceissues.Run, 0, len(detail.RecentRuns))
+	for _, run := range detail.RecentRuns {
+		if run.Status == workspaceissues.StatusRunning {
+			running = append(running, run)
+		}
+	}
+	return running, nil
+}
+
+// CancelIssueExecutionForSourceSession durably archives every nonterminal
+// Tutti execution owned by the planning session. Archive is the product's
+// terminal stop boundary: it fences future dispatch before canceling Runs,
+// main wakes, reviewers, checkpoints, and workflow recovery.
 func (c *IssueExecutionCoordinator) CancelIssueExecutionForSourceSession(ctx context.Context, workspaceID string, agentSessionID string) (int, error) {
-	if c == nil || c.Issues == nil {
+	if c == nil || c.Issues == nil || c.Issues.TuttiModeExecutions == nil {
 		return 0, workspaceissues.ErrInvalidArgument
 	}
 	agentSessionID = strings.TrimSpace(agentSessionID)
 	if agentSessionID == "" {
 		return 0, nil
 	}
-	running, err := c.Issues.domainService().ListRunningRuns(ctx, workspaceID, defaultIssueRunReconcileLimit)
-	if err != nil {
-		return 0, err
-	}
-	issueIDs := make([]string, 0, len(running))
-	seen := make(map[string]struct{}, len(running))
-	for _, run := range running {
-		if _, exists := seen[run.IssueID]; exists {
-			continue
-		}
-		seen[run.IssueID] = struct{}{}
-		issueIDs = append(issueIDs, run.IssueID)
-	}
-	canceled := 0
-	for _, issueID := range issueIDs {
-		detail, err := c.Issues.domainService().GetIssueDetail(ctx, workspaceID, issueID)
-		if err != nil ||
-			detail.Issue.PlanningSource != workspaceissues.PlanningSourceTuttiModePlan ||
-			strings.TrimSpace(detail.Issue.SourceSessionID) != agentSessionID {
-			continue
-		}
-		count, cancelErr := c.CancelIssueExecution(ctx, workspaceID, issueID)
-		if cancelErr != nil {
-			slog.Warn("cancel Issue execution for source session failed",
-				"event", "workspace_issue.source_session_cancel_failed",
-				"workspace_id", workspaceID,
-				"issue_id", issueID,
-				"agent_session_id", agentSessionID,
-				"error", cancelErr,
-			)
-			continue
-		}
-		canceled += count
-	}
-	return canceled, nil
+	return c.Issues.TuttiModeExecutions.StopSourceSession(
+		ctx,
+		tuttimodeexecutionservice.StopSourceSessionInput{
+			WorkspaceID: workspaceID, SourceSessionID: agentSessionID,
+			RequestID: "source-session-stop", Reason: "source_turn_canceled",
+		},
+	)
 }
 
 // ObserveUserTurnCanceled implements the agent service's turn-cancel
-// observer: a user stopping the planning conversation stops every running
-// task of the plans that conversation orchestrates. Sessions that are not a
-// tutti-mode-plan source are a no-op, so cascaded child-session cancels
-// cannot loop.
+// observer: a user stopping the planning conversation enters the durable
+// source-session stop boundary. Sessions that are not a Tutti plan source are
+// a no-op, so cascaded child-session cancels cannot loop.
 func (c *IssueExecutionCoordinator) ObserveUserTurnCanceled(ctx context.Context, workspaceID string, agentSessionID string) {
 	if _, err := c.CancelIssueExecutionForSourceSession(ctx, workspaceID, agentSessionID); err != nil {
 		slog.Warn("issue execution cascade on turn cancel failed",

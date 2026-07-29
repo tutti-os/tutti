@@ -49,13 +49,23 @@ type CommandCapability struct {
 }
 
 type CommandContext struct {
-	Source                string
-	WorkspaceID           string
-	SkipCapabilityFilters bool
+	Source                         string
+	WorkspaceID                    string
+	SkipCapabilityFilters          bool
+	IncludeIntegrationCapabilities bool
 }
 
 type CommandCatalog interface {
 	Capabilities(context.Context, CommandContext) []CommandCapability
+}
+
+type CommandCapabilityProjection struct {
+	// AllowedIDs switches the projection to an exact capability allowlist when
+	// non-empty. It includes both public and promoted integration capabilities.
+	// Empty preserves the legacy public-by-default projection.
+	AllowedIDs            []string
+	IncludeIntegrationIDs []string
+	ExcludeIDs            []string
 }
 
 func resolveCommandCapabilities(
@@ -63,20 +73,104 @@ func resolveCommandCapabilities(
 	catalog CommandCatalog,
 	workspaceID string,
 	cliName string,
+	projections ...*CommandCapabilityProjection,
 ) (*CommandResolver, error) {
 	if catalog == nil {
 		return nil, errors.New("agent runtime preparation requires a command catalog")
 	}
-	return newCommandResolver(cliName, catalog.Capabilities(ctx, CommandContext{
+	capabilities := catalog.Capabilities(ctx, CommandContext{
 		Source:                "agent-runtime",
 		WorkspaceID:           strings.TrimSpace(workspaceID),
 		SkipCapabilityFilters: true,
-	}))
+		IncludeIntegrationCapabilities: projectionRequestsIntegration(
+			projections,
+		),
+	})
+	var projection *CommandCapabilityProjection
+	if len(projections) > 0 {
+		projection = projections[0]
+	}
+	projected, err := projectCommandCapabilities(capabilities, projection)
+	if err != nil {
+		return nil, err
+	}
+	return newCommandResolver(cliName, projected)
+}
+
+func projectionRequestsIntegration(
+	projections []*CommandCapabilityProjection,
+) bool {
+	return len(projections) > 0 &&
+		projections[0] != nil &&
+		len(normalizedCommandCapabilityIDs(
+			projections[0].IncludeIntegrationIDs,
+		)) > 0
 }
 
 func commandVisibleToAgent(capability CommandCapability) bool {
 	visibility := strings.TrimSpace(capability.Visibility)
 	return visibility == "" || visibility == "public"
+}
+
+func projectCommandCapabilities(
+	capabilities []CommandCapability,
+	projection *CommandCapabilityProjection,
+) ([]CommandCapability, error) {
+	if projection == nil {
+		return capabilities, nil
+	}
+	included := normalizedCommandCapabilityIDs(projection.IncludeIntegrationIDs)
+	excluded := normalizedCommandCapabilityIDs(projection.ExcludeIDs)
+	allowed := normalizedCommandCapabilityIDs(projection.AllowedIDs)
+	foundIncluded := make(map[string]struct{}, len(included))
+	foundAllowed := make(map[string]struct{}, len(allowed))
+	projected := make([]CommandCapability, 0, len(capabilities))
+	for _, capability := range capabilities {
+		id := strings.TrimSpace(capability.ID)
+		if len(allowed) > 0 {
+			if _, accepted := allowed[id]; !accepted {
+				continue
+			}
+		}
+		if _, denied := excluded[id]; denied {
+			continue
+		}
+		if _, requested := included[id]; requested {
+			capability.Visibility = "public"
+			foundIncluded[id] = struct{}{}
+		}
+		projected = append(projected, capability)
+		if _, required := allowed[id]; required {
+			foundAllowed[id] = struct{}{}
+		}
+	}
+	for id := range allowed {
+		if _, found := foundAllowed[id]; !found {
+			return nil, fmt.Errorf(
+				"agent command capability projection requires unavailable allowed command %q",
+				id,
+			)
+		}
+	}
+	for id := range included {
+		if _, found := foundIncluded[id]; !found {
+			return nil, fmt.Errorf(
+				"agent command capability projection requires unavailable command %q",
+				id,
+			)
+		}
+	}
+	return projected, nil
+}
+
+func normalizedCommandCapabilityIDs(values []string) map[string]struct{} {
+	normalized := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			normalized[value] = struct{}{}
+		}
+	}
+	return normalized
 }
 
 // Wait execution adds a wrapper-owned timeout input. It is part of the

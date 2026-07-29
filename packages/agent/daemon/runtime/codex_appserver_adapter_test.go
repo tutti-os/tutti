@@ -75,6 +75,15 @@ type scriptedAppServerConnection struct {
 	closed chan struct{}
 
 	modelList                       []any
+	userAgent                       string
+	forkChildThreadID               string
+	forkedFromThreadID              string
+	omitForkedFromThreadID          bool
+	emptyForkedFromThreadID         bool
+	forkResponseLastTurnID          string
+	forkResponseTurnIDs             []string
+	threadReadTurnIDs               []string
+	forkRPCError                    bool
 	requiresAuth                    bool
 	collaborationModeUnsupported    bool
 	emitPlanItem                    bool
@@ -286,7 +295,7 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			c.sendJSON(map[string]any{
 				"id": message.ID,
 				"result": map[string]any{
-					"userAgent":      "codex/0.137.0",
+					"userAgent":      firstNonEmpty(c.userAgent, "codex/0.137.0"),
 					"codexHome":      "/home/user/.codex",
 					"platformOs":     "macos",
 					"platformFamily": "unix",
@@ -440,6 +449,53 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 					"approvalPolicy":  "on-request",
 					"sandbox":         map[string]any{"type": "workspaceWrite"},
 					"modelProvider":   "openai",
+				},
+			})
+		case appServerMethodThreadFork:
+			if c.forkRPCError {
+				c.sendJSON(map[string]any{
+					"id": message.ID,
+					"error": map[string]any{
+						"code":    -32602,
+						"message": "invalid lastTurnId",
+					},
+				})
+				continue
+			}
+			childThreadID := firstNonEmpty(c.forkChildThreadID, "codex-thread-fork")
+			forkedFromThreadID := firstNonEmpty(
+				c.forkedFromThreadID,
+				asString(message.Params["threadId"]),
+			)
+			lastTurnID := firstNonEmpty(
+				c.forkResponseLastTurnID,
+				asString(message.Params["lastTurnId"]),
+			)
+			turnIDs := append([]string(nil), c.forkResponseTurnIDs...)
+			if len(turnIDs) == 0 {
+				turnIDs = []string{lastTurnID}
+			}
+			turns := make([]any, 0, len(turnIDs))
+			for _, turnID := range turnIDs {
+				turns = append(turns, map[string]any{
+					"id": turnID, "status": "completed",
+				})
+			}
+			thread := map[string]any{
+				"id":    childThreadID,
+				"turns": turns,
+			}
+			if !c.omitForkedFromThreadID {
+				if c.emptyForkedFromThreadID {
+					thread["forkedFromId"] = ""
+				} else {
+					thread["forkedFromId"] = forkedFromThreadID
+				}
+			}
+			c.sendJSON(map[string]any{
+				"id": message.ID,
+				"result": map[string]any{
+					"thread": thread,
 				},
 			})
 		case appServerMethodTurnStart:
@@ -652,10 +708,24 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 		case appServerMethodThreadRead:
 			c.mu.Lock()
 			nickname := c.childNicknames[asString(message.Params["threadId"])]
+			turnIDs := append([]string(nil), c.threadReadTurnIDs...)
 			c.mu.Unlock()
 			thread := map[string]any{"id": message.Params["threadId"]}
 			if nickname != "" {
 				thread["agentNickname"] = nickname
+			}
+			includeTurns, _ := message.Params["includeTurns"].(bool)
+			if includeTurns {
+				if len(turnIDs) == 0 {
+					turnIDs = []string{"provider-turn-1", "provider-turn-2"}
+				}
+				turns := make([]any, 0, len(turnIDs))
+				for _, turnID := range turnIDs {
+					turns = append(turns, map[string]any{
+						"id": turnID, "status": "completed",
+					})
+				}
+				thread["turns"] = turns
 			}
 			c.sendJSON(map[string]any{"id": message.ID, "result": map[string]any{"thread": thread}})
 		case appServerMethodTurnInterrupt:

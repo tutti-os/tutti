@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import type {
   WorkbenchContribution,
@@ -11,6 +12,22 @@ import {
   createStandaloneAgentToolSnapshotRepository,
   resolveStandaloneAgentToolContribution
 } from "./standaloneAgentToolWorkbench.ts";
+
+const standaloneAgentToolSidebarPanelSource = readFileSync(
+  new URL("./StandaloneAgentToolSidebarPanel.tsx", import.meta.url),
+  "utf8"
+);
+
+test("standalone Agent Files keeps the complete Open With menu", () => {
+  assert.match(
+    standaloneAgentToolSidebarPanelSource,
+    /<LazyWorkspaceFileManagerPane[\s\S]*?showInternalOpenWithActions(?:=\{true\})?/
+  );
+  assert.doesNotMatch(
+    standaloneAgentToolSidebarPanelSource,
+    /showInternalOpenWithActions=\{false\}/
+  );
+});
 
 test("standalone Agent terminal contribution keeps the real renderer and opens fullscreen without a dock", async () => {
   const renderBody = () => null;

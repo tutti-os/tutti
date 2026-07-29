@@ -1,26 +1,12 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach, beforeEach } from "vitest";
-import {
-  resetAgentHostApiForTests,
-  setAgentHostApiForTests
-} from "./agentActivityHost";
+import { setAgentHostApiForTests } from "./agentActivityHost";
 import type {
   AgentHostInputApi,
   AgentHostRuntimeApi
 } from "./host/agentHostApi";
-import { installReactRenderLoopConsoleTrap } from "./test/reactRenderLoopConsoleTrap";
-
-// Vitest 4 runs with NODE_ENV=development; agent test harnesses gate on "test".
-process.env.NODE_ENV = "test";
-
-const originalConsoleInfo = console.info.bind(console);
-console.info = (...args: unknown[]) => {
-  if (isSuppressedAgentGuiDiagnostic(args)) {
-    return;
-  }
-  originalConsoleInfo(...args);
-};
+import { createTestAgentHostApi } from "./vitest.shared.setup";
 
 class TestResizeObserver implements ResizeObserver {
   observe(): void {}
@@ -111,37 +97,14 @@ Object.defineProperty(window, "localStorage", {
   value: testLocalStorage
 });
 
-let restoreReactRenderLoopConsoleTrap: (() => void) | null = null;
-
 beforeEach(() => {
-  restoreReactRenderLoopConsoleTrap?.();
-  restoreReactRenderLoopConsoleTrap = installReactRenderLoopConsoleTrap({
-    console
-  });
-  resetAgentHostApiForTests();
-  resetMentionSearchBrowseCacheForTests();
   testLocalStorage.clear();
   installTestAgentHostApi();
 });
 
 afterEach(() => {
-  try {
-    cleanup();
-    resetAgentHostApiForTests();
-    resetMentionSearchBrowseCacheForTests();
-  } finally {
-    restoreReactRenderLoopConsoleTrap?.();
-    restoreReactRenderLoopConsoleTrap = null;
-  }
+  cleanup();
 });
-
-function resetMentionSearchBrowseCacheForTests(): void {
-  (
-    globalThis as typeof globalThis & {
-      __tuttiResetAgentMentionSearchBrowseCacheForTests?: () => void;
-    }
-  ).__tuttiResetAgentMentionSearchBrowseCacheForTests?.();
-}
 
 function installTestAgentHostApi(): void {
   const windowWithAgentHost = window as unknown as Window & {
@@ -153,13 +116,8 @@ function installTestAgentHostApi(): void {
     setAgentHostApiForTests(windowWithAgentHost.agentHostApi ?? null);
     return;
   }
-  let testAgentHostApi: AgentHostInputApi | AgentHostRuntimeApi | null = {
-    account: {},
-    clipboard: {},
-    debug: {},
-    filesystem: {},
-    workspace: {}
-  } as unknown as AgentHostRuntimeApi;
+  let testAgentHostApi: AgentHostInputApi | AgentHostRuntimeApi | null =
+    createTestAgentHostApi();
   Object.defineProperty(windowWithAgentHost, "agentHostApi", {
     configurable: true,
     get() {
@@ -171,12 +129,4 @@ function installTestAgentHostApi(): void {
     }
   });
   setAgentHostApiForTests(testAgentHostApi);
-}
-
-function isSuppressedAgentGuiDiagnostic(args: readonly unknown[]): boolean {
-  const [prefix] = args;
-  return (
-    prefix === "[agent-gui] mention-lifecycle" ||
-    prefix === "[agent-gui] mention-search"
-  );
 }

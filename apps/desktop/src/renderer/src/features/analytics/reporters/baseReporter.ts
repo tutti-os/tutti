@@ -1,70 +1,32 @@
-import type {
-  IReporterService,
-  ReporterEventParams
-} from "../services/reporterService.interface";
-import { agentAnalyticsSuccessFields } from "./agent-error-fields.ts";
-import { toAnalyticsParamName } from "./paramNames.ts";
-
-export type AnalyticsReporterParamValue =
-  | string
-  | number
-  | boolean
-  | null
-  | readonly string[]
-  | readonly number[]
-  | readonly boolean[];
-
-export type AnalyticsReporterParams = Record<
-  string,
-  AnalyticsReporterParamValue
->;
-
-export interface AnalyticsReporterDependencies {
-  reporterService: Pick<IReporterService, "trackEvents">;
-  now?: () => number;
-}
+import {
+  BaseAnalyticsReporter as SharedBaseAnalyticsReporter,
+  toAnalyticsProtocolParams,
+  type AnalyticsReporterDependencies,
+  type AnalyticsReporterParams,
+  type AnalyticsReporterParamValue
+} from "@tutti-os/analytics";
+import type { ReporterEventParams } from "../services/reporterService.interface";
+import { agentAnalyticsSuccessFields } from "../../workspace-agent/agentAnalyticsError.ts";
 
 export abstract class BaseAnalyticsReporter<
   TParams extends AnalyticsReporterParams
-> {
-  protected abstract readonly eventName: string;
-
-  private readonly params: TParams;
-  private readonly reporterService: Pick<IReporterService, "trackEvents">;
-  private readonly now: () => number;
-
-  protected constructor(
-    params: TParams,
-    dependencies: AnalyticsReporterDependencies
-  ) {
-    this.params = params;
-    this.reporterService = dependencies.reporterService;
-    this.now = dependencies.now ?? Date.now;
-  }
-
-  async report(): Promise<void> {
-    await this.reporterService.trackEvents([
-      {
-        clientTS: this.now(),
-        name: this.eventName,
-        params: this.toProtocolParams()
-      }
-    ]);
-  }
-
-  private toProtocolParams(): ReporterEventParams {
-    const result: ReporterEventParams = {};
+> extends SharedBaseAnalyticsReporter<TParams> {
+  protected override toProtocolParams(): ReporterEventParams {
     if (isAgentAnalyticsEvent(this.eventName)) {
-      for (const [key, value] of Object.entries(agentAnalyticsSuccessFields)) {
-        result[toAnalyticsParamName(key)] = value;
-      }
+      return {
+        ...toAnalyticsProtocolParams(agentAnalyticsSuccessFields),
+        ...super.toProtocolParams()
+      };
     }
-    for (const [key, value] of Object.entries(this.params)) {
-      result[toAnalyticsParamName(key)] = value;
-    }
-    return result;
+    return super.toProtocolParams();
   }
 }
+
+export type {
+  AnalyticsReporterDependencies,
+  AnalyticsReporterParams,
+  AnalyticsReporterParamValue
+};
 
 function isAgentAnalyticsEvent(eventName: string): boolean {
   return (

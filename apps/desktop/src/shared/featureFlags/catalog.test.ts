@@ -12,6 +12,7 @@ import {
   AGENT_EXTENSION_QWEN_FLAG,
   AGENT_REFERENCE_PROVENANCE_FILTER_FLAG,
   AGENT_QUICK_PROMPT_LIBRARY_FLAG,
+  AGENT_SESSION_RECORDING_FLAG,
   isFeatureEnabled,
   labFeatureDefinitions,
   LAB_ENABLED_FLAG,
@@ -53,6 +54,7 @@ test("isFeatureEnabled falls back to catalog default when key absent", () => {
     false
   );
   assert.equal(isFeatureEnabled({}, AGENT_QUICK_PROMPT_LIBRARY_FLAG), false);
+  assert.equal(isFeatureEnabled({}, AGENT_SESSION_RECORDING_FLAG), false);
   assert.equal(isFeatureEnabled({}, MOBILE_REMOTE_ACCESS_SETTINGS_FLAG), false);
   assert.equal(
     isFeatureEnabled(
@@ -65,6 +67,13 @@ test("isFeatureEnabled falls back to catalog default when key absent", () => {
     isFeatureEnabled(
       { [AGENT_QUICK_PROMPT_LIBRARY_FLAG]: true },
       AGENT_QUICK_PROMPT_LIBRARY_FLAG
+    ),
+    true
+  );
+  assert.equal(
+    isFeatureEnabled(
+      { [AGENT_SESSION_RECORDING_FLAG]: true },
+      AGENT_SESSION_RECORDING_FLAG
     ),
     true
   );

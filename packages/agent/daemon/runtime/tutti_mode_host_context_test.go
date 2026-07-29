@@ -16,21 +16,75 @@ func testActiveTuttiModeSnapshot() *TuttiModeTurnSnapshot {
 		Revision:               7,
 		State:                  TuttiModeStateActive,
 		Source:                 "slash_command",
+		PreferenceVersion:      TuttiModePreferenceVersionEffectSpeed,
+		Effect:                 80,
+		Speed:                  70,
 		OrchestrationIntensity: 80,
 	}
 }
 
-func TestRenderTuttiModeHostContextCarriesOrchestrationIntensity(t *testing.T) {
+func TestRenderTuttiModeHostContextCarriesEffectAndSpeed(t *testing.T) {
 	t.Parallel()
 	contextText := renderTuttiModeHostContextForCLI(testActiveTuttiModeSnapshot(), "tutti")
 	for _, expected := range []string{
-		`"orchestrationIntensity":80`,
-		"drives both decomposition and model choice",
+		`"effect":80`,
+		`"speed":70`,
+		`"parallelTarget":3`,
+		"Effect drives outcome quality",
+		"Speed drives completion latency",
+		"parallel Agent target",
 		"`tutti plan propose` shell command",
-		"Scale both the task count and the model tier with the intensity",
+		"Combine them rather than averaging them",
+		"`$tutti-model-allocation` skill",
+		"C0-C3 capability ladder",
 	} {
 		if !strings.Contains(contextText, expected) {
 			t.Fatalf("host context = %q, want %q", contextText, expected)
+		}
+	}
+}
+
+func TestTuttiModeParallelTargetUsesFourSpeedBands(t *testing.T) {
+	t.Parallel()
+	for _, testCase := range []struct {
+		speed int
+		want  int
+	}{
+		{speed: 0, want: 1},
+		{speed: 24, want: 1},
+		{speed: 25, want: 2},
+		{speed: 49, want: 2},
+		{speed: 50, want: 3},
+		{speed: 74, want: 3},
+		{speed: 75, want: 4},
+		{speed: 100, want: 4},
+	} {
+		if got := tuttiModeParallelTarget(testCase.speed); got != testCase.want {
+			t.Fatalf(
+				"tuttiModeParallelTarget(%d) = %d, want %d",
+				testCase.speed, got, testCase.want,
+			)
+		}
+	}
+}
+
+func TestRenderTuttiModeHostContextReadsLegacyIntensitySnapshot(t *testing.T) {
+	t.Parallel()
+	snapshot := testActiveTuttiModeSnapshot()
+	snapshot.PreferenceVersion = 0
+	snapshot.Effect = 0
+	snapshot.Speed = 0
+	snapshot.OrchestrationIntensity = 73
+
+	contextText := renderTuttiModeHostContextForCLI(snapshot, "tutti")
+	for _, expected := range []string{
+		`"effect":73`,
+		`"speed":50`,
+		`"parallelTarget":3`,
+		`"orchestrationIntensity":73`,
+	} {
+		if !strings.Contains(contextText, expected) {
+			t.Fatalf("legacy host context = %q, want %q", contextText, expected)
 		}
 	}
 }
@@ -46,24 +100,35 @@ func TestRenderTuttiModeHostContextCarriesWorkedWorkflowExamples(t *testing.T) {
 		"tutti plan propose --file /abs/path/plan.md --request-id plan-faq-v1",
 		"complete launch configuration: agentTargetId, model, and permissionModeId",
 		"never invent these ids",
+		"model table is a tiering prior, never an availability source",
 		"semantic is \"full-access\" (codex: full-access, claude-code: bypassPermissions)",
 		"the user approves once at plan review",
-		"Always set execution.reasoningIntensity explicitly",
+		"Set execution.reasoningIntensity for the plan's actual provider reasoning strength",
 		"schema: tutti-mode-plan/v1",
 		"topicId: default",
-		"reasoningIntensity: 60",
+		"effect: 80",
+		"speed: 60",
+		"reasoningIntensity: 80",
 		"dependsOn: [task-1]",
 		"permissionModeId: bypassPermissions",
 		"parallelizable: true",
 		"Identify independent workstreams and shape them as parallel groups",
+		"parallelTarget",
 		"each runs in an isolated git worktree branched from the shared checkout",
 		"follow every parallel group with an integration task",
-		"autoAccept: true",
-		"Set `autoAccept: true` on every task by default",
-		"Omit autoAccept only on a task whose outcome the user personally must inspect",
+		"No task starts automatically after plan acceptance",
+		"`autoAccept` is retained only for compatibility and has no dispatch authority",
+		"`tutti plan issue schedule --issue-id <issueId>",
+		"schedule exactly the task IDs you selected",
+		"unsafe concurrent set is rejected",
+		"schedule those tasks one at a time",
 		"the first task must initialize one (`git init` plus an initial commit)",
 		"this conversation becomes the plan's orchestrator",
 		"stopping this conversation stops every running task",
+		"all tasks becoming terminal starts Goal Review",
+		"`tutti plan issue complete --issue-id <issueId> --checkpoint-id <checkpointId>",
+		"review whether the user's goal is actually satisfied",
+		"never infer completion from task counts",
 		"end the turn as soon as propose returns a workflowId",
 		"`tutti plan revise --workflow-id <workflowId> --file <absolute path> --request-id <new id>`",
 		"`tutti issue topic list --json`",
@@ -73,7 +138,15 @@ func TestRenderTuttiModeHostContextCarriesWorkedWorkflowExamples(t *testing.T) {
 			t.Fatalf("host context = %q, want %q", contextText, expected)
 		}
 	}
-	for _, forbidden := range []string{"plan wait", "plan-wait"} {
+	for _, forbidden := range []string{
+		"plan wait",
+		"plan-wait",
+		"dispatches the tasks",
+		"Set `autoAccept: true` on every task by default so accepted plans run unattended",
+		"adjust the remaining graph through `tutti issue` commands",
+		"autoAccept: true",
+		"silently degrades to one-at-a-time execution",
+	} {
 		if strings.Contains(contextText, forbidden) {
 			t.Fatalf("host context = %q, must not instruct a wait command (%q)", contextText, forbidden)
 		}
@@ -108,12 +181,12 @@ func TestTuttiCLICommandNameFollowsEnvironment(t *testing.T) {
 	}
 }
 
-func TestRenderTuttiModeHostContextRejectsOutOfRangeOrchestrationIntensity(t *testing.T) {
+func TestRenderTuttiModeHostContextRejectsOutOfRangePreference(t *testing.T) {
 	t.Parallel()
 	snapshot := testActiveTuttiModeSnapshot()
-	snapshot.OrchestrationIntensity = 101
+	snapshot.Speed = 101
 	if got := renderTuttiModeHostContext(snapshot); got != "" {
-		t.Fatalf("host context = %q, want empty for out-of-range intensity", got)
+		t.Fatalf("host context = %q, want empty for out-of-range preference", got)
 	}
 }
 
@@ -253,6 +326,7 @@ func TestClaudeSDKExecPayloadKeepsTuttiContextSeparateFromUserInput(t *testing.T
 		ctx,
 		Session{AgentSessionID: "session-1"},
 		"turn-1",
+		"provider-turn-1",
 		content,
 		"what mode is active?",
 	)

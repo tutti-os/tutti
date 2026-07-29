@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { selectPendingSessionForkThroughTurnIds } from "@tutti-os/agent-activity-core";
 import { useAgentGUIViewModel } from "../model/useAgentGUIViewModel";
 import type { AgentGUIProviderRailMode } from "../../../types";
 import type { AgentGUIDetailViewModel } from "../model/agentGuiNodeTypes";
@@ -17,6 +18,7 @@ import { resolveAgentGUIProviderReadinessGateForView } from "../model/agentGuiPr
 import type { useAgentGUITuttiModeActivation } from "./useAgentGUITuttiModeActivation";
 import { targetConnectionForAgentGUIView } from "./agentGuiController.providerHelpers";
 import { isAgentGUIAgentTargetComingSoon } from "../../../agentTargets";
+import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
 
 type ConversationPresentationInput = Parameters<
   typeof useAgentGUIConversationPresentation
@@ -79,6 +81,15 @@ type UseAgentGUIViewAssemblyInput = ConversationPresentationInput &
 export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
   const { activeConversation, visibleConversations } =
     useAgentGUIConversationPresentation(input);
+  const forkThroughTurnPendingTurnIds = useEngineSelector(
+    input.sessionEngine,
+    (state) =>
+      selectPendingSessionForkThroughTurnIds(state, {
+        sourceAgentSessionId: input.activeConversationId,
+        workspaceId: input.workspaceId
+      }),
+    equalStringArrays
+  );
   const targetConnection = useMemo(
     () =>
       targetConnectionForAgentGUIView({
@@ -100,15 +111,15 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
               hasOlderMessages: input.activeSessionView.hasOlderMessages,
               isLoadingOlderMessages:
                 input.activeSessionView.isLoadingOlderMessages,
-              olderMessageCount: input.activeSessionView.olderMessages.length,
+              olderMessageCount: input.activeMessages.length,
               oldestLoadedVersion: input.activeSessionView.oldestLoadedVersion
             }
           : null,
       [
         input.activeSessionView?.hasOlderMessages,
         input.activeSessionView?.isLoadingOlderMessages,
-        input.activeSessionView?.olderMessages.length,
-        input.activeSessionView?.oldestLoadedVersion
+        input.activeSessionView?.oldestLoadedVersion,
+        input.activeMessages.length
       ]
     );
   const detail = useAgentGUIConversationDetail({
@@ -162,8 +173,8 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
     loadOlderConversationMessages: input.loadOlderConversationMessages,
     selectConversation: input.selectConversation,
     setTuttiModeActive: input.tuttiModeActivation.setActive,
-    setTuttiModeOrchestrationIntensity:
-      input.tuttiModeActivation.setOrchestrationIntensity,
+    setTuttiModeEffect: input.tuttiModeActivation.setEffect,
+    setTuttiModeSpeed: input.tuttiModeActivation.setSpeed,
     retryTuttiModeActivation: input.tuttiModeActivation.retry,
     updateSelectedProjectPath: input.updateSelectedProjectPath
   });
@@ -222,8 +233,10 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       gate: session.composerGate,
       isTuttiModeActive: input.tuttiModeActivation.active,
       isTuttiModeUpdating: input.tuttiModeActivation.updatePending,
-      tuttiModeOrchestrationIntensity:
+      tuttiModeEffect:
+        input.tuttiModeActivation.effect ??
         input.tuttiModeActivation.orchestrationIntensity,
+      tuttiModeSpeed: input.tuttiModeActivation.speed ?? 50,
       tuttiModeUpdateStatus: input.tuttiModeActivation.updateStatus,
       composerSettings: stableComposerSettings,
       queueStatus: detail.queueStatus,
@@ -250,6 +263,7 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       providerReadinessGate
     },
     operations: {
+      forkThroughTurnPendingTurnIds,
       goalClearNoticeSequence: input.goalClearNoticeSequence,
       isDeletingConversation: input.isDeletingConversation,
       isDeletingProjectConversations: input.isDeletingProjectConversations,
@@ -261,5 +275,15 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
   return useMemo(
     () => ({ viewModel, actions: controllerActions }),
     [controllerActions, viewModel]
+  );
+}
+
+function equalStringArrays(
+  previous: readonly string[],
+  next: readonly string[]
+): boolean {
+  return (
+    previous.length === next.length &&
+    previous.every((value, index) => value === next[index])
   );
 }

@@ -121,8 +121,14 @@ export function StandaloneAgentToolSidebarPanel({
       >
         <LazyWorkspaceFileManagerPane
           className="h-full"
+          locationSidebarLayout={{
+            contentMinWidth: 480,
+            defaultWidth: 280,
+            maxWidth: 320,
+            persistWidth: false
+          }}
           revealIntent={fileOpenRequest}
-          showInternalOpenWithActions={false}
+          showInternalOpenWithActions
           showPreviewPanel={false}
           workspaceID={workspaceId}
         />

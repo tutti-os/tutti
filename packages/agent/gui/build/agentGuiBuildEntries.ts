@@ -36,11 +36,12 @@ export const agentGUIBuildEntries = {
   "workbench/tool-sidebar/index": "workbench/tool-sidebar/index.ts",
   "workbench/types": "workbench/types.ts",
   "workspace-agent-generated-files": "shared/workspaceAgentGeneratedFiles.ts",
+  "conversation-message-controller": "agentConversationMessageController.ts",
+  "conversation-rail-controller": "agentConversationRailController.ts",
   "conversation-rail-runtime": "agentConversationRailRuntime.ts",
   "conversation-rail-projection": "conversationRailProjection.ts",
   "conversation-projection": "conversationProjection.ts",
-  "composer-projection": "composerProjection.ts",
-  "workspace-query-cache": "shared/query/workspaceQueryCache.ts"
+  "composer-projection": "composerProjection.ts"
 } as const;
 
 type AgentGUIBuildEntry = keyof typeof agentGUIBuildEntries;
@@ -70,11 +71,12 @@ export const agentGUIDtsEntryGroups = [
     "mention-file-presentation",
     "agent-title-text",
     "workspace-agent-generated-files",
+    "conversation-message-controller",
+    "conversation-rail-controller",
     "conversation-rail-runtime",
     "conversation-rail-projection",
     "conversation-projection",
-    "composer-projection",
-    "workspace-query-cache"
+    "composer-projection"
   ],
   [
     "dock-icons",

@@ -70,12 +70,13 @@ func (api DaemonAPI) UpdateWorkspaceAgentSessionTuttiModeActivation(ctx context.
 		return writeUpdateTuttiModeActivationError(err), nil
 	}
 	result, err := api.TuttiModeActivationService.Set(ctx, tuttimodeactivationservice.SetInput{
-		WorkspaceID:            workspaceID,
-		AgentSessionID:         agentSessionID,
-		State:                  tuttimodeactivationbiz.State(request.Body.Status),
-		Source:                 tuttimodeactivationbiz.Source(request.Body.Source),
-		OrchestrationIntensity: request.Body.OrchestrationIntensity,
-		ExpectedRevision:       request.Body.ExpectedRevision,
+		WorkspaceID:      workspaceID,
+		AgentSessionID:   agentSessionID,
+		State:            tuttimodeactivationbiz.State(request.Body.Status),
+		Source:           tuttimodeactivationbiz.Source(request.Body.Source),
+		Effect:           firstPreference(request.Body.Effect, request.Body.OrchestrationIntensity),
+		Speed:            request.Body.Speed,
+		ExpectedRevision: request.Body.ExpectedRevision,
 	})
 	if err != nil {
 		return writeUpdateTuttiModeActivationError(err), nil
@@ -116,6 +117,8 @@ func generatedTuttiModeActivation(value *tuttimodeactivationbiz.Activation) (*tu
 	if err != nil {
 		return nil, err
 	}
+	effect := value.CurrentRevision.Effect
+	speed := value.CurrentRevision.Speed
 	return &tuttigenerated.TuttiModeActivation{
 		Id:              activationID,
 		WorkspaceId:     value.WorkspaceID,
@@ -129,10 +132,19 @@ func generatedTuttiModeActivation(value *tuttimodeactivationbiz.Activation) (*tu
 			Revision:               value.CurrentRevision.Revision,
 			Status:                 tuttigenerated.TuttiModeActivationStatus(value.CurrentRevision.State),
 			Source:                 tuttigenerated.TuttiModeActivationSource(value.CurrentRevision.Source),
-			OrchestrationIntensity: value.CurrentRevision.OrchestrationIntensity,
+			Effect:                 &effect,
+			Speed:                  &speed,
+			OrchestrationIntensity: effect,
 			CreatedAtUnixMs:        value.CurrentRevision.CreatedAt.UnixMilli(),
 		},
 	}, nil
+}
+
+func firstPreference(primary, legacy *int) *int {
+	if primary != nil {
+		return primary
+	}
+	return legacy
 }
 
 func parseTuttiModeUUID(field string, value string) (uuid.UUID, error) {

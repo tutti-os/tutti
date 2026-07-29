@@ -2,9 +2,22 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { AccountProductSummaryResponse } from "@tutti-os/client-tuttid-ts";
 import {
+  formatWorkspaceAccountCreditsLabel,
   projectWorkspaceAccountCommerce,
   projectWorkspaceAccountMenuComposition
 } from "./workspaceAccountCommerceAdapter.ts";
+
+test("workspace Account formats numeric Commerce credits for the active locale", () => {
+  assert.equal(
+    formatWorkspaceAccountCreditsLabel("233749", "en-US"),
+    "233,749"
+  );
+  assert.equal(formatWorkspaceAccountCreditsLabel(233749, "zh-CN"), "233,749");
+  assert.equal(
+    formatWorkspaceAccountCreditsLabel("unlimited", "en-US"),
+    "unlimited"
+  );
+});
 
 const summary = {
   user: null,

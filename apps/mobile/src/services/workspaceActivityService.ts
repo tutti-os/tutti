@@ -3,20 +3,26 @@ import {
   createAgentActivitySnapshotProjector,
   createAgentSessionEngine,
   dispatchSessionMutation,
+  selectEngineSessionRuntimeAvailability,
   type AgentActivitySessionSettings,
   type AgentActivityInteraction,
-  type AgentActivitySession,
+  type AgentActivitySessionReconcileExecutor,
   type AgentSessionEngine,
-  type EngineExternalCommand
+  type EngineExternalCommand,
+  type SessionReconcileCommand
 } from "@tutti-os/agent-activity-core";
-import { type AgentActivitySessionDetailSnapshot } from "@tutti-os/agent-activity-tuttid-adapter";
 import type {
   TuttidClient,
   WorkspaceSummary
 } from "@tutti-os/client-tuttid-ts";
+import {
+  createAgentConversationMessageController,
+  type AgentConversationMessageController
+} from "@tutti-os/agent-gui/conversation-message-controller";
 import type { AgentDirectoryService } from "./agentDirectoryService";
 import type { ComposerDraftService } from "./composerDraftService";
 import { createMobileAgentActivityMapping } from "./mobileAgentActivityMapping";
+import { createMobileAgentActivityReconcileExecutor } from "./mobileAgentActivityReconcileExecutor";
 import { ObservableService } from "./observableService";
 import {
   dismissPendingSubmission,
@@ -29,12 +35,11 @@ import {
   projectWorkspaceActivitySnapshot,
   resolveWorkspaceComposerTarget
 } from "./workspaceActivityProjection";
-import type { WorkspaceConversationRailService } from "./workspaceConversationRailService";
+import { WorkspaceConversationRailService } from "./workspaceConversationRailService";
 import { createMobileActivityCommandId } from "./workspaceActivityCommandSupport";
 import { requestWorkspaceActivityInteractionResponse } from "./workspaceActivityInteractionCommand";
 import type { WorkspaceActivitySnapshot } from "./workspaceActivityTypes";
 import { WorkspaceAgentLiveLane } from "./workspaceAgentLiveLane";
-import { WorkspaceActivityMessagePageLoader } from "./workspaceActivityMessagePageLoader";
 import { selectWorkspaceConversationRailSessionIds } from "./workspaceConversationRailProjection";
 import type { WorkspaceNavigationService } from "./workspaceNavigationService";
 import { WorkspaceMediaService } from "./workspaceMediaService";
@@ -44,15 +49,16 @@ export type { WorkspaceActivitySnapshot } from "./workspaceActivityTypes";
 const MESSAGE_POLL_MS = 1_000;
 const COMMAND_TIMEOUT_MS = 30_000;
 const PENDING_EXPIRY_MS = 60_000;
-const MESSAGE_PAGE_SIZE = 100;
 
 export class WorkspaceActivityService extends ObservableService<WorkspaceActivitySnapshot> {
   readonly _serviceBrand: undefined;
   readonly media: WorkspaceMediaService;
+  readonly rail: WorkspaceConversationRailService;
   private readonly engine: AgentSessionEngine;
   private readonly liveLane: WorkspaceAgentLiveLane;
-  private readonly messagePages: WorkspaceActivityMessagePageLoader;
+  private readonly messages: AgentConversationMessageController;
   private readonly mapping: ReturnType<typeof createMobileAgentActivityMapping>;
+  private readonly sessionReconcileExecutor: AgentActivitySessionReconcileExecutor;
   private readonly projectActivity: (
     state: ReturnType<AgentSessionEngine["getSnapshot"]>
   ) => WorkspaceActivitySnapshot["activity"];
@@ -79,7 +85,6 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
     private readonly directory: AgentDirectoryService,
     private readonly navigation: WorkspaceNavigationService,
     private readonly drafts: ComposerDraftService,
-    private readonly rail: WorkspaceConversationRailService,
     private readonly clock: ClockPort,
     currentUserId: string,
     deviceLink?: DeviceLinkPort
@@ -105,6 +110,12 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
         schedule: (delayMs, task) => this.clock.schedule(delayMs, task)
       }
     });
+    this.rail = new WorkspaceConversationRailService(workspace, client, clock, {
+      engine: this.engine,
+      getActiveConversationId: () =>
+        this.navigation.getSnapshot().selectedAgentSessionId,
+      mapSession: this.mapping.mapSession
+    });
     this.liveLane = new WorkspaceAgentLiveLane({
       clock: this.clock,
       deviceLink,
@@ -125,23 +136,54 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
         this.projectActivity(this.engine.getSnapshot()),
       workspaceId: this.workspace.id
     });
-    this.messagePages = new WorkspaceActivityMessagePageLoader({
+    this.sessionReconcileExecutor = createMobileAgentActivityReconcileExecutor({
       client: this.client,
       engine: this.engine,
       isAvailable: () => !this.disposed && !this.paused,
-      onPageApplied: (agentSessionId) => {
+      isSessionDeleted: (agentSessionId) =>
+        this.liveLane.isSessionDeleted(agentSessionId),
+      mapping: this.mapping,
+      reconcileOptimisticMessages: (agentSessionId) =>
+        this.liveLane.reconcileMessages(agentSessionId),
+      workspaceId: this.workspace.id
+    });
+    this.messages = createAgentConversationMessageController({
+      engine: this.engine,
+      isAvailable: () => !this.disposed && !this.paused,
+      listSessionMessages: async ({
+        agentSessionId,
+        beforeVersion,
+        limit,
+        order,
+        signal
+      }) => {
+        const page = await this.client.listWorkspaceAgentSessionMessages(
+          this.workspace.id,
+          agentSessionId,
+          { beforeVersion, limit, order },
+          { signal }
+        );
+        return {
+          ...page,
+          messages: page.messages.map(this.mapping.mapMessage)
+        };
+      },
+      onOlderPageApplied: (agentSessionId) => {
         this.liveLane.reconcileMessages(agentSessionId);
         this.errorCode = null;
       },
-      onRequestFailed: () => {
+      onOlderPageFailed: () => {
         if (!this.disposed) this.errorCode = "request_failed";
       },
-      onRequestSettled: () => {
+      onOlderPageSettled: () => {
         this.onDependencyChanged();
         this.scheduleMessagesPoll();
       },
       workspaceId: this.workspace.id
     });
+    this.messages.setActiveSession(
+      this.navigation.getSnapshot().selectedAgentSessionId
+    );
     this.disposables.push(
       this.engine.subscribe(() => this.onDependencyChanged()),
       this.navigation.subscribe(() => {
@@ -150,18 +192,18 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
         const selectionChanged =
           selectedSessionId !== this.observedSelectedSessionId;
         this.observedSelectedSessionId = selectedSessionId;
+        this.messages.setActiveSession(selectedSessionId);
         this.onDependencyChanged();
         if (selectionChanged) void this.loadSelectedMessages(true);
         this.loadComposerOptions();
       }),
       this.drafts.subscribe(() => this.onDependencyChanged()),
-      this.rail.attachSessionConsumer((sessions) => {
-        if (this.disposed || this.paused) return;
-        this.applyRailSessionPage(sessions.map(this.mapping.mapSession));
-      }),
       this.rail.subscribe(() => {
         const rail = this.rail.getSnapshot();
         if (rail.status === "ready" && !this.disposed && !this.paused) {
+          this.markRailSessionsAvailable(
+            selectWorkspaceConversationRailSessionIds(rail.sections)
+          );
           this.navigation.reconcileSessionIds(
             selectWorkspaceConversationRailSessionIds(rail.sections)
           );
@@ -457,27 +499,13 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
   }
 
   async loadOlderMessages(): Promise<void> {
-    const selected = this.navigation.getSnapshot().selectedAgentSessionId;
-    if (!selected || this.paused || this.disposed) return;
-    const window = this.projectActivity(this.engine.getSnapshot())
-      .sessionMessageWindowsById?.[selected];
-    if (!window?.hasOlderMessages || window.oldestLoadedVersion === null)
-      return;
-    try {
-      await this.messagePages.loadPage(selected, {
-        beforeVersion: window.oldestLoadedVersion,
-        limit: MESSAGE_PAGE_SIZE,
-        order: "desc"
-      });
-    } catch {
-      // The message page loader records the presentation error; paging
-      // remains explicitly retryable through the same action.
-    }
+    await this.messages.loadOlder();
   }
 
   pause(): void {
     if (this.paused || this.disposed) return;
     this.paused = true;
+    this.messages.cancel();
     this.liveLane.stop();
     this.cancelPolls();
     this.rail.pause();
@@ -538,9 +566,11 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.messages.dispose();
     this.liveLane.dispose();
     this.cancelPolls();
     for (const dispose of this.disposables.splice(0)) dispose();
+    this.rail.dispose();
     this.pendingSubmissionsByDraftKey.clear();
     this.ambiguousDraftKeys.clear();
     this.engine.dispose();
@@ -564,23 +594,11 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
     agentSessionId: string,
     authoritative: boolean
   ): Promise<void> {
-    const activity = this.projectActivity(this.engine.getSnapshot());
-    const messages = activity.sessionMessagesById[agentSessionId] ?? [];
-    const latestVersion = messages.reduce(
-      (latest, message) => Math.max(latest, message.version),
-      0
-    );
-    if (authoritative || latestVersion === 0) {
-      await this.messagePages.loadPage(agentSessionId, {
-        limit: MESSAGE_PAGE_SIZE,
-        order: "desc"
-      });
+    if (authoritative) {
+      this.messages.requestInitial(agentSessionId);
       return;
     }
-    await this.messagePages.loadPage(agentSessionId, {
-      afterVersion: latestVersion,
-      order: "asc"
-    });
+    this.messages.requestLatest(agentSessionId);
   }
 
   private executeCommand(
@@ -594,8 +612,11 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
         loadComposerOptions: (options) => this.loadComposerOptions(options),
         mapSession: this.mapping.mapSession,
         mapSessionDetail: this.mapping.mapSessionDetail,
-        reconcileSession: (agentSessionId, scope, live) =>
-          this.reconcileSession(agentSessionId, scope, live),
+        reconcileSession: (reconcileCommand, reconcileSignal) =>
+          this.executeSessionReconcileCommand(
+            reconcileCommand,
+            reconcileSignal
+          ),
         reconcileWorkspace: () => this.reconcileWorkspace()
       },
       command,
@@ -614,29 +635,29 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
     };
   }
 
-  private async reconcileSession(
-    agentSessionId: string,
-    scope: "messages" | "state" | "state_and_messages",
-    live: boolean
+  private async executeSessionReconcileCommand(
+    command: SessionReconcileCommand,
+    signal?: AbortSignal
   ): Promise<unknown> {
-    let mapped: AgentActivitySessionDetailSnapshot | null = null;
-    if (scope !== "messages") {
-      const detail = await this.client.getWorkspaceAgentSession(
-        this.workspace.id,
-        agentSessionId
-      );
-      mapped = this.mapping.mapSessionDetail(agentSessionId, detail);
-      this.engine.dispatch({
-        ...mapped,
-        ...(live ? { live: true } : {}),
-        type: "session/detailSnapshotReceived",
-        workspaceId: this.workspace.id
+    const reconcilesMessages = command.scope !== "state";
+    try {
+      const result = await this.sessionReconcileExecutor.execute(command, {
+        signal
       });
+      if (reconcilesMessages) {
+        this.errorCode = null;
+        this.onDependencyChanged();
+        this.scheduleMessagesPoll();
+      }
+      return result;
+    } catch (error: unknown) {
+      if (reconcilesMessages && !this.disposed && !this.paused) {
+        this.errorCode = "request_failed";
+        this.onDependencyChanged();
+        this.scheduleMessagesPoll();
+      }
+      throw error;
     }
-    if (scope !== "state") {
-      await this.loadSessionMessages(agentSessionId, true);
-    }
-    return mapped ? { session: mapped.session } : {};
   }
 
   private loadComposerOptions(options?: { force?: boolean }): void {
@@ -679,25 +700,23 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
     this.messagePollTask = null;
   }
 
-  private applyRailSessionPage(
-    sessions: readonly AgentActivitySession[]
-  ): void {
-    if (sessions.length === 0) return;
-    this.engine.dispatch({
-      sessions,
-      type: "session/snapshotReceived"
-    });
-    for (const session of sessions) {
-      if (!this.paused) {
-        this.engine.dispatch(
-          {
-            agentSessionId: session.agentSessionId,
-            availability: { state: "available" },
-            type: "session/runtimeAvailabilityChanged"
-          },
-          { batch: true }
-        );
+  private markRailSessionsAvailable(agentSessionIds: readonly string[]): void {
+    const state = this.engine.getSnapshot();
+    for (const agentSessionId of agentSessionIds) {
+      if (
+        selectEngineSessionRuntimeAvailability(state, agentSessionId)?.state ===
+        "available"
+      ) {
+        continue;
       }
+      this.engine.dispatch(
+        {
+          agentSessionId,
+          availability: { state: "available" },
+          type: "session/runtimeAvailabilityChanged"
+        },
+        { batch: true }
+      );
     }
   }
 

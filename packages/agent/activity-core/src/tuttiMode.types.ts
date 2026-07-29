@@ -13,6 +13,21 @@ export interface AgentActivityTuttiModeActivationRevision {
   revision: number;
   status: AgentActivityTuttiModeActivationStatus;
   source: AgentActivityTuttiModeActivationSource;
+  /**
+   * Outcome-quality preference. Optional while legacy revision producers are
+   * supported; consumers fall back to orchestrationIntensity.
+   */
+  effect?: number;
+  /**
+   * Completion-speed preference. Optional while legacy revision producers are
+   * supported; consumers use the balanced default when absent.
+   */
+  speed?: number;
+  /**
+   * Legacy single-axis alias of effect.
+   *
+   * @deprecated Use effect and speed.
+   */
   orchestrationIntensity: number;
   createdAtUnixMs: number;
 }
@@ -30,6 +45,13 @@ export interface AgentActivityTuttiModeActivation {
 export interface AgentActivityInitialTuttiModeActivation {
   status: "active";
   source: "slash_command";
+  effect?: number | null;
+  speed?: number | null;
+  /**
+   * Legacy single-axis alias of effect. Ignored when effect is present.
+   *
+   * @deprecated Use effect and speed.
+   */
   orchestrationIntensity?: number | null;
 }
 
@@ -38,6 +60,13 @@ export interface AgentActivityUpdateTuttiModeActivationInput {
   agentSessionId: string;
   status: AgentActivityTuttiModeActivationStatus;
   source: AgentActivityTuttiModeActivationSource;
+  effect?: number | null;
+  speed?: number | null;
+  /**
+   * Legacy single-axis alias of effect. Ignored when effect is present.
+   *
+   * @deprecated Use effect and speed.
+   */
   orchestrationIntensity?: number | null;
   expectedRevision?: number | null;
   signal?: AbortSignal;

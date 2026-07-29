@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
@@ -78,6 +79,51 @@ func TestListCliCapabilitiesCanIncludeIntegrationCapabilities(t *testing.T) {
 	}
 }
 
+func TestListCliCapabilitiesAppliesPersistedAgentSessionProjection(t *testing.T) {
+	agentSessionID := "review-session-1"
+	workspaceID := "workspace-1"
+	registry := newTestFilteredCLIRegistry(t)
+	registry.AgentSessionCapabilities = apiAgentSessionCapabilityResolver{}
+	api := DaemonAPI{CLIRegistry: registry}
+
+	response, err := api.ListCliCapabilities(
+		context.Background(),
+		tuttigenerated.ListCliCapabilitiesRequestObject{
+			Params: tuttigenerated.ListCliCapabilitiesParams{
+				WorkspaceID:    &workspaceID,
+				AgentSessionID: &agentSessionID,
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("ListCliCapabilities: %v", err)
+	}
+	commands := response.(tuttigenerated.ListCliCapabilities200JSONResponse).Commands
+	if got, want := generatedCommandIDs(commands), []string{
+		"diagnostics.internal",
+	}; !equalStringSlices(got, want) {
+		t.Fatalf("projected command ids = %#v, want %#v", got, want)
+	}
+}
+
+type apiAgentSessionCapabilityResolver struct{}
+
+func (apiAgentSessionCapabilityResolver) ResolveAgentSessionCapabilityProjection(
+	_ context.Context,
+	workspaceID string,
+	sessionID string,
+) (cliservice.AgentSessionCapabilityProjection, error) {
+	if workspaceID != "workspace-1" || sessionID != "review-session-1" {
+		return cliservice.AgentSessionCapabilityProjection{}, errors.New(
+			"unexpected agent session identity",
+		)
+	}
+	return cliservice.AgentSessionCapabilityProjection{
+		IncludeIntegrationIDs: []string{"diagnostics.internal"},
+		ExcludeIDs:            []string{"diagnostics.visible"},
+	}, nil
+}
+
 func TestGeneratedCliWaitContractPreservesExecutionAndContinuation(t *testing.T) {
 	capability := generatedCliCapability(cliservice.Capability{
 		ID:               "app.workflow.runs.wait",
@@ -102,6 +148,22 @@ func TestGeneratedCliWaitContractPreservesExecutionAndContinuation(t *testing.T)
 	if output.Continuation == nil || output.Continuation.State != tuttigenerated.CliCommandContinuationStatePending ||
 		output.Continuation.RetryAfterMs != 500 {
 		t.Fatalf("output = %#v", output)
+	}
+}
+
+func TestWriteInvokeCliCommandErrorPreservesStableInvalidInputReason(t *testing.T) {
+	response := writeInvokeCliCommandError(cliservice.InvalidInputReasonError(
+		"stale_graph_revision",
+		"schedule rejected. Hint: refresh the execution snapshot",
+		nil,
+	))
+	rejected, ok := response.(tuttigenerated.InvokeCliCommand400JSONResponse)
+	if !ok {
+		t.Fatalf("writeInvokeCliCommandError() = %#v", response)
+	}
+	payload := tuttigenerated.ApiErrorResponse(rejected.InvalidRequestErrorJSONResponse)
+	if payload.Error.Reason == nil || *payload.Error.Reason != "stale_graph_revision" {
+		t.Fatalf("error.reason = %#v", payload.Error.Reason)
 	}
 }
 

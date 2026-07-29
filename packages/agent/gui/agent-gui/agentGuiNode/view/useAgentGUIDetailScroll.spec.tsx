@@ -95,6 +95,23 @@ describe("useAgentGUIDetailScroll", () => {
     expect(harness.scrollTopWriteCount()).toBe(0);
   });
 
+  it("positions a virtualized conversation when its controller becomes ready after layout", () => {
+    const harness = createHarness({ scrollHeight: 5_000 });
+    const controller = virtualScrollController("conversation-virtualized");
+    const { result } = renderHook(() =>
+      useAgentGUIDetailScroll(
+        harness.input({
+          activeConversationId: "conversation-virtualized",
+          showTimelineSkeleton: false
+        })
+      )
+    );
+
+    act(() => result.current.setVirtualScrollController(controller));
+
+    expect(controller.scrollToEnd).toHaveBeenCalledWith({ behavior: "auto" });
+  });
+
   it("does not use a previous Session virtual controller", () => {
     const harness = createHarness({ scrollHeight: 5_000 });
     const staleController = virtualScrollController("conversation-previous");
@@ -694,6 +711,7 @@ describe("useAgentGUIDetailScroll", () => {
 
   it("prefetches older messages from the initialized anchor without rereading scrollTop", () => {
     const harness = createHarness({ scrollHeight: 100 });
+    harness.renderTranscriptRow();
 
     renderHook(() =>
       useAgentGUIDetailScroll(
@@ -715,6 +733,7 @@ describe("useAgentGUIDetailScroll", () => {
 
   it("waits for the timeline skeleton to resolve before filling the viewport", () => {
     const harness = createHarness({ scrollHeight: 100 });
+    harness.renderTranscriptRow();
     const { rerender } = renderHook(
       ({ showTimelineSkeleton }) =>
         useAgentGUIDetailScroll(
@@ -1242,6 +1261,11 @@ function createHarness(input: { scrollHeight: number }) {
     },
     resetScrollTopWriteCount() {
       scrollTopWriteCount = 0;
+    },
+    renderTranscriptRow() {
+      const row = document.createElement("div");
+      row.dataset.agentTranscriptRow = "row";
+      timelineContent.append(row);
     },
     scrollTopWriteCount() {
       return scrollTopWriteCount;

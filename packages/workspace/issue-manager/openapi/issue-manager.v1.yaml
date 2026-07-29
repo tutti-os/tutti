@@ -352,6 +352,8 @@ paths:
           $ref: "#/components/responses/WorkspaceIssueResourceNotFoundError"
         "405":
           $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          $ref: "#/components/responses/WorkspaceIssueResourceExistsError"
         "502":
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
@@ -376,6 +378,8 @@ paths:
           $ref: "#/components/responses/WorkspaceIssueResourceNotFoundError"
         "405":
           $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          $ref: "#/components/responses/WorkspaceIssueResourceExistsError"
         "502":
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
@@ -441,6 +445,8 @@ paths:
           $ref: "#/components/responses/WorkspaceIssueResourceNotFoundError"
         "405":
           $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          $ref: "#/components/responses/WorkspaceIssueResourceExistsError"
         "502":
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
@@ -470,6 +476,8 @@ paths:
           $ref: "#/components/responses/WorkspaceIssueResourceNotFoundError"
         "405":
           $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          $ref: "#/components/responses/WorkspaceIssueResourceExistsError"
         "502":
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
@@ -749,6 +757,8 @@ paths:
           $ref: "#/components/responses/WorkspaceIssueResourceNotFoundError"
         "405":
           $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          $ref: "#/components/responses/WorkspaceIssueResourceExistsError"
         "502":
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
@@ -773,6 +783,8 @@ paths:
           $ref: "#/components/responses/WorkspaceIssueResourceNotFoundError"
         "405":
           $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          $ref: "#/components/responses/WorkspaceIssueResourceExistsError"
         "502":
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
@@ -840,6 +852,8 @@ paths:
           $ref: "#/components/responses/WorkspaceIssueResourceNotFoundError"
         "405":
           $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          $ref: "#/components/responses/WorkspaceIssueResourceExistsError"
         "502":
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
@@ -1052,7 +1066,7 @@ components:
                   reason: workspace_issue_not_found
                   developerMessage: workspace issue-manager resource not found
     WorkspaceIssueResourceExistsError:
-      description: Workspace issue-manager resource already exists
+      description: Workspace issue-manager resource conflicts with durable state
       content:
         application/json:
           schema:
@@ -1064,6 +1078,16 @@ components:
                   code: workspace_issue_resource_exists
                   reason: workspace_issue_resource_exists
                   developerMessage: workspace issue-manager resource already exists
+            tuttiIssueManaged:
+              value:
+                error:
+                  code: workspace_issue_resource_exists
+                  reason: tutti_issue_managed
+                  params:
+                    issueId: issue-1
+                    sourceSessionId: session-1
+                    recommendedAction: open_source_session
+                  developerMessage: Tutti owns this Issue graph; modify it in the source conversation
   schemas:
     IssueManagerStatus:
       type: string
@@ -1312,6 +1336,7 @@ components:
         - sourceSessionId
         - sequentialExecution
         - parallelExecution
+        - dispatchPaused
         - executionProfile
         - budget
         - taskCount
@@ -1350,6 +1375,9 @@ components:
         parallelExecution:
           type: boolean
           description: When true, the daemon dispatches every dependency-ready task whose execution directory is isolated; dependencies still require user acceptance.
+        dispatchPaused:
+          type: boolean
+          description: When true, automatic task dispatch is durably paused and no successor task may launch.
         executionProfile:
           $ref: "#/components/schemas/IssueManagerExecutionProfile"
         budget:
@@ -1411,6 +1439,8 @@ components:
         - autoAccept
         - acceptanceState
         - acceptanceSummary
+        - supersededAtUnix
+        - supersededByTaskId
         - creatorUserId
         - creatorDisplayName
         - creatorAvatarUrl
@@ -1470,6 +1500,17 @@ components:
           $ref: "#/components/schemas/IssueManagerAcceptanceState"
         acceptanceSummary:
           type: string
+        supersededAtUnix:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >-
+            Logical supersession timestamp. Zero means the task remains in the
+            active graph; non-zero preserves the task and its execution history
+            while excluding it from future scheduling.
+        supersededByTaskId:
+          type: string
+          description: Replacement task ID when supersession introduced one.
         creatorUserId:
           type: string
         creatorDisplayName:

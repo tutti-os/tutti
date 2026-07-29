@@ -272,6 +272,7 @@ describe("AgentVisibleErrorMessage", () => {
     fireEvent.click(getByText("Recharge credits"));
     expect(onLinkAction).toHaveBeenCalledWith(
       expect.objectContaining({
+        source: "agent-external-action",
         type: "open-url",
         url: "https://example.test/credits"
       })

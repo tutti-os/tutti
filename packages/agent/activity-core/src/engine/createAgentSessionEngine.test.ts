@@ -7,6 +7,7 @@ import type {
   EngineClock,
   EngineCommandPort,
   EngineExternalCommand,
+  EngineIntent,
   EngineScheduler
 } from "./types.ts";
 import type { AgentActivityTurn } from "../types.ts";
@@ -129,7 +130,11 @@ function createManualCommandPort(): ManualCommandPort {
   };
 }
 
-function createHarness(input?: { origin?: string; workspaceId?: string }) {
+function createHarness(input?: {
+  intentObserver?: (intent: EngineIntent) => void;
+  origin?: string;
+  workspaceId?: string;
+}) {
   const timer = createManualTimer();
   const commandPort = createManualCommandPort();
   const diagnosticEvents: EngineDiagnosticEvent[] = [];
@@ -144,6 +149,7 @@ function createHarness(input?: { origin?: string; workspaceId?: string }) {
       origin: input?.origin ?? "local-tuttid",
       workspaceId: input?.workspaceId ?? "ws-1"
     },
+    ...(input?.intentObserver ? { intentObserver: input.intentObserver } : {}),
     scheduler: timer.scheduler
   });
   engine.subscribe((state) => {
@@ -217,6 +223,47 @@ test("immediate dispatch reduces synchronously and notifies once per drain", () 
   assert.equal(engine.getSnapshot().engineRuntime.connection, "connected");
   assert.equal(engine.getSnapshot().engineRuntime.processedIntentCount, 1);
   assert.equal(notifiedStates.length, 1);
+});
+
+test("intent observer sees scoped dispatches including command results", async () => {
+  const observed: EngineIntent[] = [];
+  const harness = createHarness({
+    intentObserver: (intent) => observed.push(intent)
+  });
+  harness.engine.dispatch({
+    probeId: "p-observed",
+    type: "engine/probeRequested"
+  });
+  harness.commandPort.succeed("p-observed", { ok: true });
+  await flushMicrotasks();
+  assert.deepEqual(
+    observed.map((intent) => intent.type),
+    ["engine/probeRequested", "engine/commandResult"]
+  );
+});
+
+test("throwing intent observer is diagnostic-only", () => {
+  const observerError = new Error("observer exploded");
+  const harness = createHarness({
+    intentObserver: () => {
+      throw observerError;
+    }
+  });
+  harness.engine.dispatch({
+    status: "connected",
+    type: "engine/connectionChanged"
+  });
+  assert.equal(
+    harness.engine.getSnapshot().engineRuntime.connection,
+    "connected"
+  );
+  assert.deepEqual(harness.diagnosticEvents, [
+    {
+      error: observerError,
+      intentType: "engine/connectionChanged",
+      type: "intentObserverError"
+    }
+  ]);
 });
 
 test("batched intents coalesce into one frame and one notification", () => {

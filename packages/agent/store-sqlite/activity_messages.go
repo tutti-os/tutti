@@ -44,6 +44,9 @@ func (*Store) upsertAgentMessageTx(
 	allowLegacyTurnless bool,
 	protectExisting bool,
 ) (Message, bool, error) {
+	if err := requireSessionForkSourceWritableTx(ctx, tx, workspaceID, agentSessionID); err != nil {
+		return Message{}, false, err
+	}
 	existing, ok, err := getAgentMessageForUpdate(ctx, tx, workspaceID, agentSessionID, input.MessageID)
 	if err != nil {
 		return Message{}, false, err

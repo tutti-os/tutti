@@ -132,6 +132,25 @@ export function createWorkspaceIssueManagerContribution(input: {
         throw new Error("issue_manager.agent_gui_launch_unavailable");
       }
     },
+    managedIssueActions: {
+      openSourceSession: async (request) => {
+        const sourceSession =
+          await input.workspaceAgentActivityService.getSession(
+            request.workspaceId,
+            request.sourceSessionId
+          );
+        const launched = await requestWorkspaceAgentGuiLaunch({
+          agentSessionId: request.sourceSessionId,
+          agentTargetId: sourceSession.agentTargetId,
+          draftPrompt: request.draftPrompt,
+          provider: normalizeDesktopAgentGUIProvider(sourceSession.provider),
+          workspaceId: request.workspaceId
+        });
+        if (!launched) {
+          throw new Error("issue_manager.managed_source_session_unavailable");
+        }
+      }
+    },
     mentionActionHandler: {
       openMention: async ({ mention }) => {
         const href = createRichTextMentionHref({

@@ -14,12 +14,18 @@ jobs:
     name: PR Change Classification
     runs-on: ubuntu-latest
     outputs:
+      pack_all: ${{ steps.changed-files.outputs.pack_all }}
+      pack_packages: ${{ steps.changed-files.outputs.pack_packages }}
       run_boundaries: ${{ steps.changed-files.outputs.run_boundaries }}
       run_contracts: ${{ steps.changed-files.outputs.run_contracts }}
       run_generated: ${{ steps.changed-files.outputs.run_generated }}
       run_go: ${{ steps.changed-files.outputs.run_go }}
       run_pack: ${{ steps.changed-files.outputs.run_pack }}
       run_ts: ${{ steps.changed-files.outputs.run_ts }}
+      run_ts_tests: ${{ steps.changed-files.outputs.run_ts_tests }}
+      test_all: ${{ steps.changed-files.outputs.test_all }}
+      test_packages: ${{ steps.changed-files.outputs.test_packages }}
+      test_shards: ${{ steps.changed-files.outputs.test_shards }}
 
     steps:
       - name: Checkout repository
@@ -171,11 +177,15 @@ jobs:
       - name: Run workspace typecheck
         run: pnpm typecheck
 
-  ts-tests:
-    name: TypeScript Tests
+  ts-test-shards:
+    name: TypeScript Test Shard ${{ matrix.shard }}
     needs: changes
-    if: needs.changes.outputs.run_ts == 'true'
+    if: needs.changes.outputs.run_ts_tests == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.changes.outputs.test_shards) }}
 
     steps:
       - name: Checkout repository
@@ -195,7 +205,40 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run TypeScript tests
-        run: pnpm test:ts
+        env:
+          TEST_ALL: ${{ needs.changes.outputs.test_all }}
+          TEST_PACKAGES: ${{ needs.changes.outputs.test_packages }}
+          TEST_SHARD: ${{ matrix.shard }}
+        run: >-
+          if [ "${TEST_ALL}" = "true" ]; then
+            pnpm test:ts -- --shard "${TEST_SHARD}";
+          else
+            pnpm test:ts -- --packages-json "${TEST_PACKAGES}" --shard "${TEST_SHARD}";
+          fi
+
+  ts-tests:
+    name: TypeScript Tests
+    needs:
+      - changes
+      - ts-test-shards
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Require change classification
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+        run: test "${CHANGES_RESULT}" = "success"
+
+      - name: Require selected test shards
+        if: needs.changes.outputs.run_ts_tests == 'true'
+        env:
+          SHARDS_RESULT: ${{ needs.ts-test-shards.result }}
+        run: test "${SHARDS_RESULT}" = "success"
+
+      - name: No workspace package tests selected
+        if: needs.changes.outputs.run_ts_tests != 'true'
+        run: echo "No workspace package tests selected"
 
   npm-package-packs:
     name: npm Package Pack Check
@@ -221,7 +264,15 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Validate package tarballs
-        run: pnpm release:pack:check
+        env:
+          PACK_ALL: ${{ needs.changes.outputs.pack_all }}
+          PACK_PACKAGES: ${{ needs.changes.outputs.pack_packages }}
+        run: >-
+          if [ "${PACK_ALL}" = "true" ]; then
+            pnpm release:pack:check;
+          else
+            pnpm release:pack:check -- --packages-json "${PACK_PACKAGES}";
+          fi
 
   go-tests:
     name: Go Tests

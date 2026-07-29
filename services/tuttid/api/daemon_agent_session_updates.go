@@ -31,6 +31,9 @@ func (api DaemonAPI) UpdateWorkspaceAgentSessionSettings(ctx context.Context, re
 	if err != nil {
 		return writeUpdateWorkspaceAgentSessionSettingsError(err), nil
 	}
+	api.recordAgentStimulus(ctx, "session.settings.update", string(request.WorkspaceID), string(request.AgentSessionID), map[string]any{
+		"settings": *request.Body,
+	})
 	return tuttigenerated.UpdateWorkspaceAgentSessionSettings200JSONResponse{
 		Session: generatedSession,
 	}, nil

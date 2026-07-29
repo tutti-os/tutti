@@ -43,14 +43,15 @@ func (*ClaudeCodeSDKAdapter) applySidecarSessionEvent(adapterSession *claudeSDKA
 
 func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapterSession, session Session, turnID string, event claudeSDKSidecarEvent) ([]activityshared.Event, bool, error) {
 	adapterSession.applySessionPayload(&session, event.Payload)
-	providerTurnID := strings.TrimSpace(turnID)
 	eventTurnID := firstNonEmptyString(payloadString(event.Payload, "turnId"), payloadString(event.Payload, "turnID"))
-	if eventTurnID != "" && providerTurnID != "" && eventTurnID != providerTurnID {
+	if eventTurnID != "" && strings.TrimSpace(turnID) != "" && eventTurnID != strings.TrimSpace(turnID) {
 		return nil, false, nil
 	}
-	if providerTurnID == "" {
-		providerTurnID = eventTurnID
-	}
+	providerTurnID := firstNonEmptyString(
+		payloadString(event.Payload, "providerTurnId"),
+		strings.TrimSpace(turnID),
+		eventTurnID,
+	)
 	a.mu.Lock()
 	_, fencedGoalTurn := adapterSession.fencedGoalTurns[providerTurnID]
 	if fencedGoalTurn && isClaudeSDKTerminalEvent(event.Type) {
@@ -74,6 +75,17 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 		return nil, false, nil
 	case "session_state":
 		return []activityshared.Event{newSessionActivityEvent(session, EventSessionUpdated, firstNonEmpty(session.Status, SessionStatusReady), claudeSDKRuntimeContext(session, adapterSession))}, false, nil
+	case "provider_turn_started":
+		if eventTurnID == "" || providerTurnID == "" {
+			return nil, false, errors.New("claude SDK provider turn start omitted identity")
+		}
+		a.beginClaudeSDKRootTurn(adapterSession, eventTurnID, providerTurnID)
+		return []activityshared.Event{claudeSDKRootProviderTurnStartedEvent(
+			session,
+			eventTurnID,
+			providerTurnID,
+			map[string]any{"adapter": claudeSDKSidecarAdapterName},
+		)}, false, nil
 	case "turn_started":
 		metadata := map[string]any{
 			"adapter": claudeSDKSidecarAdapterName,
@@ -525,7 +537,11 @@ func (a *ClaudeCodeSDKAdapter) dispatchClaudeSDKEvent(agentSessionID string, ada
 	}
 	waiter := a.claudeSDKTurnWaiter(adapterSession, turnID)
 	if claudeSDKSidecarTurnTerminal(event.Type) {
-		known := a.consumeClaudeSDKRootProviderTurn(adapterSession, turnID)
+		providerTurnID := firstNonEmptyString(
+			payloadString(event.Payload, "providerTurnId"),
+			turnID,
+		)
+		known := a.consumeClaudeSDKRootProviderTurn(adapterSession, providerTurnID)
 		goalClearControlTurn := a.isGoalClearControlTurn(adapterSession, turnID)
 		if waiter == nil && !known && !goalClearControlTurn {
 			return

@@ -17,8 +17,7 @@ import type {
   WorkbenchHostCloseDialogRequest,
   WorkbenchHostHandle,
   WorkbenchHostNodeData,
-  WorkbenchMissionControlAdapter,
-  WorkbenchMissionControlMode
+  WorkbenchMissionControlAdapter
 } from "@tutti-os/workbench-surface";
 import type { WorkspaceAppCenterApp } from "@tutti-os/workspace-app-center";
 import {
@@ -91,15 +90,15 @@ export interface WorkspaceWorkbenchShellRuntime {
   missionControl: {
     canOpen: boolean;
     close: () => void;
+    isLayoutLocked: boolean;
     isOpen: boolean;
-    mode: WorkbenchMissionControlMode | null;
     nodeIds: readonly string[] | null;
     open: (
-      mode: WorkbenchMissionControlMode,
       request?:
         | WorkspaceMissionControlOpenRequest
         | WorkspaceMissionControlTrigger
     ) => void;
+    unlockLayout: () => void;
     visibleWindowCount: number;
   };
   onMissionControlAdapterReady: (
@@ -466,10 +465,11 @@ export function useWorkspaceWorkbenchShellRuntime({
     missionControl: {
       canOpen: shellRuntimeSnapshot.missionControl.canOpen,
       close: shellRuntimeController.missionControl.close,
+      isLayoutLocked: shellRuntimeSnapshot.missionControl.isLayoutLocked,
       isOpen: shellRuntimeSnapshot.missionControl.isOpen,
-      mode: shellRuntimeSnapshot.missionControl.mode,
       nodeIds: shellRuntimeSnapshot.missionControl.nodeIds,
       open: shellRuntimeController.missionControl.open,
+      unlockLayout: shellRuntimeController.missionControl.unlockLayout,
       visibleWindowCount: shellRuntimeSnapshot.missionControl.visibleWindowCount
     },
     minimizeAnimation: desktopPreferencesState.minimizeAnimation,

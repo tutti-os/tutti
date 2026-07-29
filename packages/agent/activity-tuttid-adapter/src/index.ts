@@ -6,7 +6,4 @@ export {
   type AgentActivitySessionMappingOptions
 } from "./mappers.ts";
 export { agentActivityComposerOptionsFromTuttidResult } from "./composerOptions.ts";
-export {
-  agentActivitySessionDetailFromTuttid,
-  type AgentActivitySessionDetailSnapshot
-} from "./sessionDetail.ts";
+export { agentActivitySessionDetailFromTuttid } from "./sessionDetail.ts";

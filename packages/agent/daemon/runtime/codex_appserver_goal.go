@@ -36,10 +36,10 @@ func (a *CodexAppServerAdapter) steerActiveTurn(
 		return nil, err
 	}
 	events := []activityshared.Event{
-		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, displayPrompt, userPromptActivityPayload(content, explicitDisplayPrompt, userPromptActivityPayloadExtraFromExecMetadata(ctx, map[string]any{
+		newUserPromptActivityEvent(ctx, session, content, explicitDisplayPrompt, displayPrompt, turnID, map[string]any{
 			"guidance": true,
 			"steered":  true,
-		}))),
+		}),
 	}
 	if emit != nil {
 		emit(events)

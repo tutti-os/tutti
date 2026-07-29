@@ -60,6 +60,40 @@ can construct the Codex or Tutti Agent adapter with
 not change `approvalPolicy`, `approvalsReviewer`, writable roots, or
 network-proxy policy. Full-access turns remain unrestricted by definition.
 
+## Process Cassette Transport
+
+`NewRecordingProcessTransport` decorates an existing `ProcessTransport` and
+writes one versioned cassette manifest plus a JSONL stream of successful
+outbound writes and observed stdout, stderr, and exit frames.
+`NewReplayProcessTransport` loads a complete cassette and exposes the same
+`ProcessConnection` contract without starting a provider process. Replay waits
+for each expected outbound write before releasing later inbound frames and
+waits for already-recorded inbound frames to be consumed before validating the
+next outbound write. This preserves the recorded stream order without treating
+normal reader/writer goroutine scheduling as a mismatch. Replay
+fails closed on missing, additional, reordered, or different outbound JSON.
+Its playback controller can pause before the next inbound frame, resume from
+the same virtual time, or fast-forward recorded waits. Fast-forward never skips
+frames or outbound assertions. It may temporarily pass a paused barrier for
+checkpoint seeking; disabling fast-forward restores the requested paused state.
+
+`SessionRecordingProcessTransport` keeps lightweight wrappers around live
+provider connections, so `continue-session` capture can attach after a process
+has started. It also captures later root, parallel child, and nested child
+connections in the same SessionGraph. Each connection is keyed by recorded
+Session identity, provider, and Session-local launch ordinal; global sequence is
+diagnostic only. Provider probes and setup commands use the normal local
+transport. A complete manifest records the exact frame count, decoded payload
+bytes, stored bytes, largest frame, per-kind byte distribution, and SHA-256 of
+`frames.jsonl`, so deletion or mutation fails before replay starts. Recording
+fails before writing a decoded payload above 8 MiB or a tape above 256 MiB;
+provider traffic is a protocol stream, not a bulk-file archive.
+`Runtime.Close` closes live
+provider sessions first and then finalizes a transport that exposes
+`Finalize() error`, ensuring recording manifests are marked complete only after
+connection shutdown and replay verifies every recorded connection and chunk
+was consumed.
+
 ## Package Ownership
 
 This package owns:

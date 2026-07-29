@@ -67,6 +67,8 @@ export interface TuttiModePlanExecution {
   mode: "sequential" | "parallel";
   reasoningIntensity: number;
   orchestrationIntensity: number;
+  effect?: number | null;
+  speed?: number | null;
 }
 
 export interface TuttiModePlanBudget {

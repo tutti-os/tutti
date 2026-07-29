@@ -69,6 +69,19 @@ func TestGeneratedIssueManagerStatusCountsFromDomainOmitsLegacyInProgress(t *tes
 	}
 }
 
+func TestGeneratedIssueManagerIssueFromDomainProjectsDispatchPause(t *testing.T) {
+	t.Parallel()
+
+	generated := GeneratedIssueManagerIssueFromDomain(workspaceissues.Issue{
+		IssueID:        "issue-1",
+		WorkspaceID:    "workspace-1",
+		DispatchPaused: true,
+	})
+	if !generated.DispatchPaused {
+		t.Fatal("DispatchPaused = false, want durable execution pause")
+	}
+}
+
 func generatedContextRefPayload(
 	t *testing.T,
 	ref workspaceissues.ContextRef,

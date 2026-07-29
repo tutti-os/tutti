@@ -4,7 +4,7 @@ import {
   isPendingActivationViable,
   selectLatestActivationForSession,
   selectTuttiModeDraftIsActive,
-  selectTuttiModeDraftOrchestrationIntensity
+  selectTuttiModeDraftPreferences
 } from "@tutti-os/agent-activity-core";
 import { useCallback } from "react";
 import { translate } from "../../../i18n/index";
@@ -44,7 +44,8 @@ interface ResolvedInitialTuttiModeActivation {
   activation: {
     source: "slash_command";
     status: "active";
-    orchestrationIntensity?: number;
+    effect?: number;
+    speed?: number;
   };
   source: "composer_submit" | "engine_draft";
 }
@@ -52,25 +53,28 @@ interface ResolvedInitialTuttiModeActivation {
 export function resolveInitialTuttiModeActivation(input: {
   submitOptions?: AgentComposerSubmitOptions;
   draftActive: boolean;
-  draftOrchestrationIntensity: number | null;
+  draftEffect: number | null;
+  draftSpeed: number | null;
 }): ResolvedInitialTuttiModeActivation | null {
   const submitSnapshot = input.submitOptions?.tuttiMode;
   const active = submitSnapshot?.active ?? input.draftActive;
   if (!active) return null;
-  const orchestrationIntensity = normalizeOrchestrationIntensity(
-    submitSnapshot?.orchestrationIntensity ?? input.draftOrchestrationIntensity
+  const effect = normalizePreference(
+    submitSnapshot?.effect ?? input.draftEffect
   );
+  const speed = normalizePreference(submitSnapshot?.speed ?? input.draftSpeed);
   return {
     activation: {
       source: "slash_command",
       status: "active",
-      ...(orchestrationIntensity === null ? {} : { orchestrationIntensity })
+      ...(effect === null ? {} : { effect }),
+      ...(speed === null ? {} : { speed })
     },
     source: submitSnapshot ? "composer_submit" : "engine_draft"
   };
 }
 
-function normalizeOrchestrationIntensity(value: number | null | undefined) {
+function normalizePreference(value: number | null | undefined) {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
   return Math.min(100, Math.max(0, Math.round(value)));
 }
@@ -131,10 +135,6 @@ export function useAgentGUINewConversationActivation(
     currentUserId,
     data,
     defaultReasoningEffort,
-    syncConversationListProjection,
-    loadSelectedConversationMessages,
-    loadSessionState,
-    refreshMessagesFromSnapshot,
     requestRailReveal,
     setActiveConversationId,
     setIntent,
@@ -242,16 +242,18 @@ export function useAgentGUINewConversationActivation(
         content: snapshotAgentComposerDraft(submittedDraft)
       };
       const engineSnapshot = sessionEngine.getSnapshot();
+      const draftPreferences = selectTuttiModeDraftPreferences(
+        engineSnapshot,
+        tuttiModeDraftKey
+      );
       const initialTuttiMode = resolveInitialTuttiModeActivation({
         submitOptions,
         draftActive: selectTuttiModeDraftIsActive(
           engineSnapshot,
           tuttiModeDraftKey
         ),
-        draftOrchestrationIntensity: selectTuttiModeDraftOrchestrationIntensity(
-          engineSnapshot,
-          tuttiModeDraftKey
-        )
+        draftEffect: draftPreferences.effect,
+        draftSpeed: draftPreferences.speed
       });
       reportAgentSubmitTraceDiagnostic({
         event: "activation.requested",
@@ -307,10 +309,6 @@ export function useAgentGUINewConversationActivation(
       currentUserId,
       data,
       defaultReasoningEffort,
-      syncConversationListProjection,
-      loadSelectedConversationMessages,
-      loadSessionState,
-      refreshMessagesFromSnapshot,
       requestRailReveal,
       activation,
       conversationListQuery,

@@ -6,6 +6,11 @@ import (
 	"strings"
 )
 
+// MaxWorkspaceParallelRuns is the shared admission ceiling for Issue task
+// Runs, regardless of whether the generic dispatcher or Tutti execution
+// admits them.
+const MaxWorkspaceParallelRuns = 4
+
 const (
 	DefaultReasoningIntensity     = 50
 	DefaultOrchestrationIntensity = 50
@@ -154,6 +159,95 @@ func IssueBudgetAllowsNextAutomaticRun(issue Issue) bool {
 	}
 	remaining := issue.Budget.TokenLimit - issue.Budget.ConsumedTokens
 	return remaining >= CompileEstimatedRunTokenBudget(issue.ExecutionProfile)
+}
+
+// IssueAutomaticBudgetSlots reserves one estimated allowance for every
+// already-active Run before admitting more work for the same Issue.
+func IssueAutomaticBudgetSlots(issue Issue, activeRunCount int) int {
+	if !IssueBudgetAllowsNextAutomaticRun(issue) {
+		return 0
+	}
+	if issue.Budget.TokenLimit <= 0 {
+		return MaxWorkspaceParallelRuns
+	}
+	allowance := CompileEstimatedRunTokenBudget(issue.ExecutionProfile)
+	remaining := issue.Budget.TokenLimit - issue.Budget.ConsumedTokens
+	if allowance <= 0 || remaining < allowance {
+		return 0
+	}
+	slots := int(remaining/allowance) - activeRunCount
+	if slots < 0 {
+		return 0
+	}
+	return slots
+}
+
+// IssueAutomaticRunAdmissionSlots is the shared concurrency and budget policy
+// for every automatic Issue Run admission path. Persistence adapters supply
+// authoritative counts, then compare-and-set the selected Runs atomically.
+func IssueAutomaticRunAdmissionSlots(issue Issue, workspaceActiveRunCount int, issueActiveRunCount int) int {
+	workspaceSlots := MaxWorkspaceParallelRuns - workspaceActiveRunCount
+	if workspaceSlots < 0 {
+		workspaceSlots = 0
+	}
+	return min(workspaceSlots, IssueAutomaticBudgetSlots(issue, issueActiveRunCount))
+}
+
+type TaskRunBlocker string
+
+const (
+	TaskRunBlockerSuperseded            TaskRunBlocker = "task_superseded"
+	TaskRunBlockerNotStarted            TaskRunBlocker = "task_not_started"
+	TaskRunBlockerMissingAgentTarget    TaskRunBlocker = "missing_agent_target"
+	TaskRunBlockerDependencyUnsatisfied TaskRunBlocker = "dependency_unsatisfied"
+)
+
+// IssueTaskRunBlocker is the shared task/dependency predicate used by generic
+// dispatch, source-Agent exact-set scheduling, and execution diagnostics.
+func IssueTaskRunBlocker(task Task, tasksByID map[string]Task) TaskRunBlocker {
+	if task.IsSuperseded() {
+		return TaskRunBlockerSuperseded
+	}
+	if task.Status != StatusNotStarted {
+		return TaskRunBlockerNotStarted
+	}
+	if strings.TrimSpace(task.AgentTargetID) == "" {
+		return TaskRunBlockerMissingAgentTarget
+	}
+	for _, dependencyID := range task.DependencyTaskIDs {
+		dependency, ok := tasksByID[dependencyID]
+		if !ok || dependency.IsSuperseded() ||
+			dependency.Status != StatusCompleted ||
+			dependency.AcceptanceState != AcceptanceUserAccepted {
+			return TaskRunBlockerDependencyUnsatisfied
+		}
+	}
+	return ""
+}
+
+// IssueTaskEligibleForRun preserves the boolean admission interface for
+// existing dispatch callers while diagnostics retain the exact blocker.
+func IssueTaskEligibleForRun(task Task, tasksByID map[string]Task) bool {
+	return IssueTaskRunBlocker(task, tasksByID) == ""
+}
+
+// ProjectReviewedSettlementTaskForRun applies the acceptance fact that an
+// exact-set schedule commits when it advances from a task_settled checkpoint.
+// The returned copy is for admission/readiness evaluation only.
+func ProjectReviewedSettlementTaskForRun(task Task) Task {
+	if task.Status == StatusPendingAcceptance {
+		task.Status = StatusCompleted
+		task.AcceptanceState = AcceptanceUserAccepted
+	}
+	return task
+}
+
+func IssueRunClientSubmitID(runID string) string {
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return ""
+	}
+	return "issue-run:" + runID
 }
 
 // CompileAutoTokenBudgetWithHistory blends the deterministic scale/intensity

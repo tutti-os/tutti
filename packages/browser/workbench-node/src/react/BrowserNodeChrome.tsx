@@ -1,5 +1,5 @@
 import {
-  AddIcon,
+  AddLinedIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
   Button,
@@ -209,7 +209,7 @@ export function BrowserNodeChrome({
           variant="chrome"
           onClick={() => feature.tabsStore.addTab(surfaceNodeId)}
         >
-          <AddIcon className="size-4" />
+          <AddLinedIcon className="size-3.5" />
         </Button>
         <div className="min-w-8 flex-1 self-stretch" aria-hidden="true" />
       </div>
@@ -355,7 +355,7 @@ function BrowserNodeTabButton({
   return (
     <div
       className={cn(
-        "group flex h-7 min-w-[104px] max-w-[220px] items-center gap-1.5 rounded-md border px-2 text-xs transition-colors",
+        "group flex h-7 min-w-[104px] max-w-[220px] items-center gap-1.5 rounded-md border pl-2 pr-1 text-xs transition-colors",
         active
           ? "border-[var(--line-2)] bg-[var(--background-fronted)] text-[var(--text-primary)]"
           : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)]"

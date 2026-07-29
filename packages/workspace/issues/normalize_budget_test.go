@@ -29,3 +29,49 @@ func TestNormalizeBudgetRejectsNonFinitePercentages(t *testing.T) {
 		})
 	}
 }
+
+func TestIssueAutomaticRunAdmissionSlotsCombinesWorkspaceAndIssueLimits(t *testing.T) {
+	t.Parallel()
+
+	issue := Issue{
+		Budget: Budget{
+			Status:     BudgetStatusActive,
+			TokenLimit: CompileEstimatedRunTokenBudget(ExecutionProfile{}) * 4,
+		},
+	}
+	if got := IssueAutomaticRunAdmissionSlots(issue, 3, 1); got != 1 {
+		t.Fatalf("IssueAutomaticRunAdmissionSlots() = %d, want workspace-limited 1", got)
+	}
+	if got := IssueAutomaticRunAdmissionSlots(issue, 2, 2); got != 2 {
+		t.Fatalf("IssueAutomaticRunAdmissionSlots() = %d, want budget-limited 2", got)
+	}
+}
+
+func TestIssueTaskEligibleForRunRequiresAcceptedDependencies(t *testing.T) {
+	t.Parallel()
+
+	dependency := Task{
+		TaskID:          "dependency",
+		Status:          StatusCompleted,
+		AcceptanceState: AcceptanceUserAccepted,
+	}
+	task := Task{
+		TaskID:            "task",
+		Status:            StatusNotStarted,
+		AgentTargetID:     "local:codex",
+		DependencyTaskIDs: []string{dependency.TaskID},
+	}
+	byID := map[string]Task{dependency.TaskID: dependency, task.TaskID: task}
+	if !IssueTaskEligibleForRun(task, byID) {
+		t.Fatal("IssueTaskEligibleForRun() = false, want accepted dependency eligible")
+	}
+	dependency.AcceptanceState = AcceptanceAgentClaimed
+	byID[dependency.TaskID] = dependency
+	if IssueTaskEligibleForRun(task, byID) {
+		t.Fatal("IssueTaskEligibleForRun() = true, want unaccepted dependency rejected")
+	}
+	delete(byID, dependency.TaskID)
+	if IssueTaskEligibleForRun(task, byID) {
+		t.Fatal("IssueTaskEligibleForRun() = true, want missing dependency rejected")
+	}
+}

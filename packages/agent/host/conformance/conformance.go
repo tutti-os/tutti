@@ -61,6 +61,8 @@ type Fixture struct {
 	AcceptGoalControlsOnly bool
 	FailCommitObserver     bool
 	WorktreeGCSweepErr     error
+	DeleteAdmissionErr     error
+	DeleteSessionPlans     [][]string
 }
 
 type SessionObservation struct {
@@ -131,6 +133,10 @@ type Metrics struct {
 	LastInitialTitle         string
 	LastResumeRecreate       bool
 	RecoverySteps            []string
+	DeleteAdmissionPlans     []agenthost.DeleteSessionsPlan
+	DeleteReports            []agenthost.DeleteSessionsReport
+	CanonicalDeleteCalls     int
+	DeletionEvents           []string
 }
 
 // Driver adapts one host implementation to the shared lifecycle scenarios.
@@ -152,6 +158,7 @@ type Driver interface {
 	UpdateSettings(context.Context, agenthost.UpdateSettingsInput) (SessionObservation, error)
 	UpdatePin(context.Context, agenthost.UpdatePinInput) (SessionObservation, error)
 	DeleteSession(context.Context, agenthost.SessionRef) (agenthost.DeleteSessionResult, error)
+	DeleteSessions(context.Context, agenthost.DeleteSessionsInput) (agenthost.DeleteSessionsResult, error)
 	PurgeDeletedSessions(context.Context, agenthost.PurgeDeletedSessionsInput) (agenthost.PurgeDeletedSessionsResult, error)
 	GoalControl(context.Context, agenthost.GoalControlInput) (GoalObservation, error)
 	FenceGoalGeneration(context.Context, agenthost.FenceGoalGenerationInput) (agenthost.FenceGoalGenerationResult, error)
@@ -167,12 +174,54 @@ type Scenario struct {
 	run  func(context.Context, Driver) error
 }
 
+// SessionForkFixture describes fault and recovery states at the public Host
+// boundary. Implementations may seed those states using their own test-only
+// canonical/runtime adapters.
+type SessionForkFixture struct {
+	FailFirstLocalCommit    bool
+	RecoverProviderAccepted bool
+}
+
+type SessionForkMetrics struct {
+	ProviderForkCalls int
+}
+
+// SessionForkDriver is separate from Driver so existing Host consumers can
+// adopt the new lifecycle capability explicitly rather than gaining fake
+// support through the base session contract.
+type SessionForkDriver interface {
+	ResetSessionFork(context.Context, SessionForkFixture) error
+	ForkSession(context.Context, agenthost.ForkSessionInput) (agenthost.ForkSessionResult, error)
+	GetSessionForkOperation(context.Context, string, string) (agenthost.ForkSessionResult, bool, error)
+	RecoverSessionForks(context.Context) error
+	SessionForkMetrics() SessionForkMetrics
+}
+
+type SessionForkScenario struct {
+	Name string
+	run  func(context.Context, SessionForkDriver) error
+}
+
 func Run(ctx context.Context, driver Driver, scenario Scenario) error {
 	if driver == nil {
 		return fmt.Errorf("agent host conformance driver is required")
 	}
 	if scenario.run == nil {
 		return fmt.Errorf("agent host conformance scenario %q has no runner", scenario.Name)
+	}
+	return scenario.run(ctx, driver)
+}
+
+func RunSessionFork(
+	ctx context.Context,
+	driver SessionForkDriver,
+	scenario SessionForkScenario,
+) error {
+	if driver == nil {
+		return fmt.Errorf("agent host session fork conformance driver is required")
+	}
+	if scenario.run == nil {
+		return fmt.Errorf("agent host session fork conformance scenario %q has no runner", scenario.Name)
 	}
 	return scenario.run(ctx, driver)
 }

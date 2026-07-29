@@ -128,8 +128,18 @@ after reconciliation and publish readiness from that authoritative probe.
 The same auth bootstrap runs once when the daemon starts and before each Tutti
 Agent runtime preparation. These fallback entry points cover a login completed
 before callback wiring, a transient token failure, or a stale provider auth
-home. When no host account session exists, preparation removes stale Tutti Agent
-auth instead of reporting the provider ready.
+home. A missing, unreadable, or malformed host account file is only an
+observation failure: preparation retains existing Tutti Agent auth. A rejected
+token issue also retains existing provider auth. Reconciliation and explicit
+logout serialize with Tutti Agent refresh through the shared
+`auth.json.refresh.lock`; if token issue, validation, provider login, or
+verification fails, the daemon safely restores the previous auth bytes. Both
+implementations resolve a symlinked `auth.json` to its final target before
+choosing the sibling lock path, so restoration does not replace the symlink.
+The Go `flock` and Rust `fs2` libraries use the same OS advisory file-lock
+primitive on a local filesystem; this coordination is not a distributed lock.
+Only the completed account logout callback authorizes local deletion and
+background token revocation.
 
 `TUTTI_ACCOUNT_BASE_URL` overrides the account service used for token issue and
 revoke. `TUTTI_AGENT_LLM_APP_ID` overrides the LLM application id for controlled
@@ -160,8 +170,8 @@ refresh so setup UI can move between `not_installed`, `auth_required`, and
   the same proactive install path as a missing CLI.
 - Desktop account credentials and Tutti LLM tokens never pass through renderer
   component state.
-- Logout removes the local provider auth marker before the renderer observes the
-  completed logout.
+- Only a completed account logout removes the local provider auth marker, and
+  it does so before the renderer observes the completed logout.
 - User-visible setup and login copy goes through desktop i18n.
 
 ## Validation
@@ -173,7 +183,9 @@ The durable test surface covers:
 - managed prefix selection, optional dependencies, repair, and post-install
   probing;
 - proactive install gating, coalescing, success refresh, and failure backoff;
-- account token issue, provider login, stale-auth cleanup, and logout revocation;
+- account token issue, provider login, safe auth restoration after failed
+  reconciliation, shared refresh-lock serialization, and explicit logout
+  cleanup and revocation;
 - desktop routing of Tutti Agent login actions to the account service.
 
 Related documents:

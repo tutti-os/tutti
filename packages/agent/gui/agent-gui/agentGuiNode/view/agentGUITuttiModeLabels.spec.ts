@@ -15,8 +15,11 @@ describe("agentGUITuttiModeLabels", () => {
     expect(labels.tuttiBudgetPreviewPowerful).toBe(
       "agentHost.agentGui.tuttiBudgetPreviewPowerful"
     );
-    expect(labels.tuttiBudgetAgentCountPowerful).toBe(
-      "agentHost.agentGui.tuttiBudgetAgentCountPowerful"
+    expect(labels.tuttiBudgetParallelismLabel).toBe(
+      "agentHost.agentGui.tuttiBudgetParallelismLabel"
+    );
+    expect(labels.tuttiBudgetParallelismValue(4)).toBe(
+      "agentHost.agentGui.tuttiBudgetParallelismValue"
     );
     expect(labels.tuttiWorkflowDock.reviewTitle).toBe(
       "agentHost.agentGui.tuttiModePlan.taskReview"
@@ -32,6 +35,12 @@ describe("agentGUITuttiModeLabels", () => {
     );
     expect(labels.tuttiModePlanLoadFailed).toBe(
       "agentHost.agentGui.tuttiModePlan.loadFailed"
+    );
+    expect(labels.tuttiModePlanIssueAcceptPrompt("Task A")).toBe(
+      "agentHost.agentGui.tuttiModePlan.issueAcceptPrompt"
+    );
+    expect(labels.tuttiModePlanIssueReworkPrompt("Task A")).toBe(
+      "agentHost.agentGui.tuttiModePlan.issueReworkPrompt"
     );
   });
 });

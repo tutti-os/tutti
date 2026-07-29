@@ -594,6 +594,17 @@ export function AddLinedIcon(props: IconProps) {
   );
 }
 
+export function MinusLinedIcon(props: IconProps) {
+  return (
+    <FilledPathIcon {...props}>
+      <path
+        d="M3 11C2.44772 11 2 11.4477 2 12C2 12.5523 2.44772 13 3 13H21C21.5523 13 22 12.5523 22 12C22 11.4477 21.5523 11 21 11H3Z"
+        fill="currentColor"
+      />
+    </FilledPathIcon>
+  );
+}
+
 export function ImportLinedIcon(props: IconProps) {
   return (
     <FilledPathIcon {...props}>

@@ -10,7 +10,6 @@ import type { TuttiPlanIssueSnapshot } from "../workspaceWorkflowRuntime";
 
 const labels: TuttiPlanIssuePanelLabels = {
   openIssue: "Open Issue",
-  stopExecution: "Stop",
   listView: "List",
   boardView: "Board",
   parallelizable: "Parallel",
@@ -36,6 +35,7 @@ const issue: TuttiPlanIssueSnapshot = {
   issueId: "tutti-mode-plan-wf-1",
   topicId: "default",
   title: "Neon chase MVP",
+  dispatchPaused: false,
   tasks: [
     {
       taskId: "p1",
@@ -180,7 +180,7 @@ describe("TuttiPlanIssuePanel", () => {
     expect(onOpenIssue).toHaveBeenCalledTimes(1);
   });
 
-  it("offers stop only while runs are live and forwards the cascade", async () => {
+  it("does not expose a panel-local stop while runs are live", () => {
     const liveTask = {
       taskId: "live",
       title: "Working",
@@ -195,20 +195,10 @@ describe("TuttiPlanIssuePanel", () => {
       ...issue,
       tasks: [liveTask]
     };
-    const onCancelExecution = vi.fn().mockResolvedValue(undefined);
     const { rerender } = render(
-      <TuttiPlanIssuePanel
-        issue={runningIssue}
-        labels={labels}
-        onCancelExecution={onCancelExecution}
-      />
+      <TuttiPlanIssuePanel issue={runningIssue} labels={labels} />
     );
-    fireEvent.click(screen.getByTestId("tutti-plan-issue-stop"));
-    expect(onCancelExecution).toHaveBeenCalledTimes(1);
-    await waitFor(() =>
-      expect(screen.getByTestId("tutti-plan-issue-stop")).toBeEnabled()
-    );
-    // Once nothing runs anymore the stop affordance disappears.
+    expect(screen.queryByTestId("tutti-plan-issue-stop")).toBeNull();
     rerender(
       <TuttiPlanIssuePanel
         issue={{
@@ -216,7 +206,6 @@ describe("TuttiPlanIssuePanel", () => {
           tasks: [{ ...liveTask, status: "canceled" }]
         }}
         labels={labels}
-        onCancelExecution={onCancelExecution}
       />
     );
     expect(screen.queryByTestId("tutti-plan-issue-stop")).toBeNull();
@@ -259,13 +248,13 @@ describe("TuttiPlanIssuePanel", () => {
       ]
     };
     const onOpenTask = vi.fn();
-    const onDecideTask = vi.fn().mockResolvedValue(undefined);
+    const onTaskAction = vi.fn().mockResolvedValue(undefined);
     render(
       <TuttiPlanIssuePanel
         issue={launchedIssue}
         labels={labels}
         onOpenTask={onOpenTask}
-        onDecideTask={onDecideTask}
+        onTaskAction={onTaskAction}
       />
     );
     fireEvent.click(screen.getByTestId("tutti-plan-issue-task-live"));
@@ -273,9 +262,9 @@ describe("TuttiPlanIssuePanel", () => {
     // A task that never launched has no conversation to jump into.
     fireEvent.click(screen.getByTestId("tutti-plan-issue-task-later"));
     expect(onOpenTask).toHaveBeenCalledTimes(1);
-    // The acceptance buttons stay decisions: they must not also open the card.
+    // Prompt actions must not also open the delegate task conversation.
     fireEvent.click(screen.getByTestId("tutti-plan-issue-accept-gate"));
-    expect(onDecideTask).toHaveBeenCalledWith("gate", "accept");
+    expect(onTaskAction).toHaveBeenCalledWith("gate", "accept");
     expect(onOpenTask).toHaveBeenCalledTimes(1);
   });
 
@@ -290,7 +279,7 @@ describe("TuttiPlanIssuePanel", () => {
     expect(screen.getAllByText("Auto-accept").length).toBeGreaterThan(0);
   });
 
-  it("settles the acceptance gate inline for pending tasks", async () => {
+  it("requests source-Agent prompts for pending task actions", async () => {
     const pendingIssue: TuttiPlanIssueSnapshot = {
       ...issue,
       tasks: [
@@ -306,28 +295,28 @@ describe("TuttiPlanIssuePanel", () => {
         }
       ]
     };
-    const onDecideTask = vi.fn().mockResolvedValue(undefined);
+    const onTaskAction = vi.fn().mockResolvedValue(undefined);
     render(
       <TuttiPlanIssuePanel
         issue={pendingIssue}
         labels={labels}
-        onDecideTask={onDecideTask}
+        onTaskAction={onTaskAction}
       />
     );
 
     fireEvent.click(screen.getByTestId("tutti-plan-issue-accept-gate"));
-    expect(onDecideTask).toHaveBeenCalledWith("gate", "accept");
-    // In-flight decision disables both buttons until the promise settles.
+    expect(onTaskAction).toHaveBeenCalledWith("gate", "accept");
+    // In-flight prompt preparation disables both buttons until it settles.
     expect(screen.getByTestId("tutti-plan-issue-rework-gate")).toBeDisabled();
     await waitFor(() =>
       expect(screen.getByTestId("tutti-plan-issue-rework-gate")).toBeEnabled()
     );
 
     fireEvent.click(screen.getByTestId("tutti-plan-issue-rework-gate"));
-    expect(onDecideTask).toHaveBeenCalledWith("gate", "rework");
+    expect(onTaskAction).toHaveBeenCalledWith("gate", "rework");
   });
 
-  it("offers only rework on a failed task to re-open dispatch", () => {
+  it("offers only a rework prompt action on a failed task", () => {
     const failedIssue: TuttiPlanIssueSnapshot = {
       ...issue,
       tasks: [
@@ -343,22 +332,22 @@ describe("TuttiPlanIssuePanel", () => {
         }
       ]
     };
-    const onDecideTask = vi.fn().mockResolvedValue(undefined);
+    const onTaskAction = vi.fn().mockResolvedValue(undefined);
     render(
       <TuttiPlanIssuePanel
         issue={failedIssue}
         labels={labels}
-        onDecideTask={onDecideTask}
+        onTaskAction={onTaskAction}
       />
     );
     expect(
       screen.queryByTestId("tutti-plan-issue-accept-boom")
     ).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId("tutti-plan-issue-rework-boom"));
-    expect(onDecideTask).toHaveBeenCalledWith("boom", "rework");
+    expect(onTaskAction).toHaveBeenCalledWith("boom", "rework");
   });
 
-  it("keeps pending tasks display-only without a decision callback", () => {
+  it("keeps pending tasks display-only without a prompt callback", () => {
     const pendingIssue: TuttiPlanIssueSnapshot = {
       ...issue,
       tasks: [

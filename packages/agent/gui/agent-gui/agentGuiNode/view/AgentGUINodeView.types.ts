@@ -48,6 +48,7 @@ import type {
   TuttiPlanIssuePanelLabels
 } from "../../../workspaceWorkflow";
 import type { TuttiWorkflowDockLabels } from "../TuttiWorkflowDock";
+import type { AgentGUIComposerFooterAccessoryRenderer } from "./AgentGUIComposerFooterAccessory.types";
 
 export type AgentMentionReferenceTargetResolver = (
   item: AgentContextMentionItem
@@ -138,31 +139,38 @@ export interface AgentGUIViewLabels {
   tuttiModeDescription: string;
   tuttiModeRemove: string;
   tuttiBudgetTitle: string;
-  tuttiBudgetIntensityLabel: string;
+  tuttiBudgetEffectLabel: string;
+  tuttiBudgetSpeedLabel: string;
   tuttiBudgetPreviewTitle: string;
   tuttiBudgetPreviewHint: string;
   tuttiBudgetPreviewCost: string;
   tuttiBudgetPreviewBalance: string;
   tuttiBudgetPreviewPowerful: string;
-  tuttiBudgetModelStrengthLabel: string;
-  tuttiBudgetModelStrengthCost: string;
-  tuttiBudgetModelStrengthBalance: string;
-  tuttiBudgetModelStrengthPowerful: string;
-  tuttiBudgetAgentCountLabel: string;
-  tuttiBudgetAgentCountCost: string;
-  tuttiBudgetAgentCountBalance: string;
-  tuttiBudgetAgentCountPowerful: string;
+  tuttiBudgetModelPreferenceLabel: string;
+  tuttiBudgetModelPreferenceCost: string;
+  tuttiBudgetModelPreferenceBalance: string;
+  tuttiBudgetModelPreferencePowerful: string;
+  tuttiBudgetModelPreferenceFastestSuitable: string;
+  tuttiBudgetParallelismLabel: string;
+  tuttiBudgetParallelismValue: (count: number) => string;
   tuttiModeUpdateFailed: string;
   tuttiModeUpdateUncertain: string;
   tuttiModePlanPanel: TuttiModePlanPanelLabels;
   tuttiWorkflowDock: TuttiWorkflowDockLabels;
   tuttiModePlanIssuePanel: TuttiPlanIssuePanelLabels;
+  tuttiModePlanIssueAcceptPrompt: (reference: string) => string;
+  tuttiModePlanIssueReworkPrompt: (reference: string) => string;
   tuttiModePlanSendAccept: string;
   tuttiModePlanSendRequestChanges: string;
-  /** Auto feedback for an empty send after the intensity diverged. */
-  tuttiModePlanReplanFeedback: (from: string, to: string) => string;
-  /** Appended to typed feedback when the intensity diverged. */
-  tuttiModePlanReplanFeedbackSuffix: (to: string) => string;
+  /** Auto feedback for an empty send after either preference diverged. */
+  tuttiModePlanReplanFeedback: (
+    fromEffect: string,
+    fromSpeed: string,
+    toEffect: string,
+    toSpeed: string
+  ) => string;
+  /** Appended to typed feedback when either preference diverged. */
+  tuttiModePlanReplanFeedbackSuffix: (effect: string, speed: string) => string;
   tuttiModePlanLoadFailed: string;
   tuttiModePlanRetry: string;
   /** Accepted plan whose Issue creation durably failed; message is the cause. */
@@ -217,6 +225,7 @@ export interface AgentGUIViewLabels {
   selectConversation: string;
   loadingConversations: string;
   loadingConversation: string;
+  continuedFromTask: string;
   scrollToBottom: string;
   searchNoConversations: string;
   searchFailed: string;
@@ -631,7 +640,8 @@ export interface AgentGUINodeViewProps {
     /** Re-issues the composer-options load after a terminal error state. */
     retryComposerOptions: () => void;
     setTuttiModeActive: (active: boolean) => void;
-    setTuttiModeOrchestrationIntensity: (value: number) => void;
+    setTuttiModeEffect: (value: number) => void;
+    setTuttiModeSpeed: (value: number) => void;
     retryTuttiModeActivation: () => void;
     updatePlanIssueBudgetPreset: (preset: PlanIssueBudgetPreset) => void;
     selectHomeComposerAgentTarget: (input: {
@@ -649,6 +659,11 @@ export interface AgentGUINodeViewProps {
       agentSessionId: string,
       title: string
     ) => Promise<void>;
+    forkConversationThroughTurn: (
+      agentSessionId: string,
+      turnId: string
+    ) => Promise<void>;
+    openForkSourceConversation: (agentSessionId: string) => Promise<void>;
     removeProject: (path: string) => void;
     moveProject: (
       projectId: string,
@@ -698,6 +713,7 @@ export interface AgentGUINodeViewProps {
   resolveMentionReferenceTarget?: AgentMentionReferenceTargetResolver | null;
   resolveWorkspaceReferenceInitialTarget?: AgentWorkspaceReferenceInitialTargetResolver | null;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+  renderComposerFooterAccessory?: AgentGUIComposerFooterAccessoryRenderer;
 }
 
 export interface AgentGUIDetailPaneProps {
@@ -746,6 +762,7 @@ export interface AgentGUIDetailPaneProps {
   onRequestComposerFocus: () => void;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   renderProviderUnavailableState?: AgentGUIProviderUnavailableStateRenderer;
+  renderComposerFooterAccessory?: AgentGUIComposerFooterAccessoryRenderer;
 }
 
 export interface AgentGUISidebarFooterContext {

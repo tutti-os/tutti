@@ -219,7 +219,7 @@ describe("buildComposerModelMenuModel", () => {
     });
   });
 
-  it("preserves Claude Code model descriptions", () => {
+  it("presents Default with the provider-resolved Claude model", () => {
     const menu = buildComposerModelMenuModel(
       vm({
         draftSettings: {
@@ -230,6 +230,7 @@ describe("buildComposerModelMenuModel", () => {
           permissionModeId: "preset"
         },
         selectedModelValue: "default",
+        effectiveModelValue: "claude-sonnet-4-6",
         availableModels: [
           {
             value: "default",
@@ -253,17 +254,17 @@ describe("buildComposerModelMenuModel", () => {
       labels
     );
 
-    expect(menu.trigger.modelLabel).toBe("Default");
+    expect(menu.trigger.modelLabel).toBe("Default (Sonnet)");
     expect(menu.model.options).toEqual([
       {
         value: "default",
-        label: "Default",
-        description: "Opus 4.8 with 1M context · Most capable for complex work",
-        summary: ["1M"],
+        label: "Default (Sonnet)",
+        description: "Sonnet 4.6 · Best for everyday tasks · medium effort",
+        summary: ["Medium"],
         tooltip: {
-          contextWindow: "1M context window",
-          description: "Most capable for complex work",
-          title: "Opus 4.8"
+          description: "Best for everyday tasks",
+          title: "Sonnet 4.6",
+          version: "Version: medium effort"
         }
       },
       {
@@ -289,6 +290,41 @@ describe("buildComposerModelMenuModel", () => {
         }
       }
     ]);
+  });
+
+  it("does not present the catalog's static Default description as runtime truth", () => {
+    const menu = buildComposerModelMenuModel(
+      vm({
+        draftSettings: {
+          model: "default",
+          reasoningEffort: "high",
+          speed: "standard",
+          planMode: false,
+          permissionModeId: "preset"
+        },
+        selectedModelValue: "default",
+        availableModels: [
+          {
+            value: "default",
+            label: "Sonnet 5",
+            description: "Efficient for routine tasks"
+          },
+          {
+            value: "opus",
+            label: "Opus 4.8",
+            description: "Most capable"
+          }
+        ]
+      }),
+      labels
+    );
+
+    expect(menu.trigger.modelLabel).toBe("Default");
+    expect(menu.model.options[0]).toEqual({
+      value: "default",
+      label: "Default",
+      description: undefined
+    });
   });
 
   it("injects the selected value when missing from the advertised options", () => {

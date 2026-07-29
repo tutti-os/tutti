@@ -37,10 +37,11 @@ type PermissionConfig struct {
 }
 
 type ComposerConfigOption struct {
-	Configurable bool
-	CurrentValue string
-	DefaultValue string
-	Options      []ComposerConfigOptionValue
+	Configurable   bool
+	CurrentValue   string
+	EffectiveValue string
+	DefaultValue   string
+	Options        []ComposerConfigOptionValue
 }
 
 type ComposerConfigOptionValue struct {
@@ -429,7 +430,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		if err != nil {
 			return ComposerOptions{}, err
 		}
-		options = applyExtensionComposerCapabilities(options, extensionProfile)
+		options = applyExtensionComposerCapabilities(options, extensionProfile, s.computerUseAvailable())
 	}
 	options = applyResolvedModelPlanComposerOverlay(options, modelPlanResolution)
 	return options, nil
@@ -548,51 +549,6 @@ func composerSlashCommandPolicy(provider string) *providerregistry.SlashCommandP
 			policy.CommandEffects...,
 		),
 	}
-}
-
-func composerConfigOptions(
-	provider string,
-	settings ComposerSettings,
-	modelOptions []ComposerConfigOptionValue,
-	reasoningOptions []ComposerConfigOptionValue,
-	speedOptions []ComposerConfigOptionValue,
-) []map[string]any {
-	profile := composerProfileFor(provider)
-	if !profile.ModelSelection && !profile.ReasoningEffort && !profile.Speed {
-		return []map[string]any{}
-	}
-	if modelOptions == nil {
-		modelOptions = composerSelectedModelOptions(settings.Model)
-	}
-	options := make([]map[string]any, 0, 3)
-	if profile.ModelSelection && len(modelOptions) > 0 {
-		configOptionID := strings.TrimSpace(profile.ModelConfigOptionID)
-		if configOptionID == "" {
-			configOptionID = "model"
-		}
-		options = append(options, map[string]any{
-			"currentValue": nullableString(settings.Model),
-			"id":           configOptionID,
-			"options":      composerConfigOptionValuesToRuntimeModelOptions(modelOptions),
-		})
-	}
-	if profile.ReasoningEffort && profile.ReasoningEffortOptions != providerregistry.ReasoningEffortOptionsStrictModelCatalog {
-		if len(reasoningOptions) > 0 {
-			options = append(options, map[string]any{
-				"currentValue": nullableString(settings.ReasoningEffort),
-				"id":           reasoningConfigOptionID(provider),
-				"options":      composerConfigOptionValuesToRuntimeOptions(reasoningOptions),
-			})
-		}
-	}
-	if profile.Speed {
-		options = append(options, map[string]any{
-			"currentValue": nullableString(settings.Speed),
-			"id":           speedConfigOptionID(provider),
-			"options":      composerConfigOptionValuesToRuntimeOptions(speedOptions),
-		})
-	}
-	return options
 }
 
 func composerPermissionConfig(provider string, selectedModeID string, locale string) PermissionConfig {

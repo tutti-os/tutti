@@ -175,21 +175,31 @@
   }
 }
 
-.issue-manager-board-scroll {
+.board-scroll {
   scrollbar-width: thin;
-  scrollbar-color: var(--transparency-block) transparent;
+  scrollbar-color: transparent transparent;
 }
 
-.issue-manager-board-scroll::-webkit-scrollbar {
-  height: 8px;
-  width: 8px;
+.board-scroll:hover {
+  scrollbar-color: var(--transparency-hover) transparent;
 }
 
-.issue-manager-board-scroll::-webkit-scrollbar-track {
+.board-scroll::-webkit-scrollbar {
+  display: block !important;
+  height: 8px !important;
+  width: 8px !important;
+}
+
+.board-scroll::-webkit-scrollbar-track,
+.board-scroll::-webkit-scrollbar-corner {
   background: transparent;
 }
 
-.issue-manager-board-scroll::-webkit-scrollbar-thumb {
+.board-scroll::-webkit-scrollbar-thumb {
   border-radius: 9999px;
-  background: var(--transparency-block);
+  background: transparent;
+}
+
+.board-scroll:hover::-webkit-scrollbar-thumb {
+  background: var(--transparency-hover);
 }

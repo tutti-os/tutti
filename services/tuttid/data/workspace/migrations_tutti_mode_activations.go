@@ -180,6 +180,58 @@ VALUES (?, ?)
 	return nil
 }
 
+func (s *SQLiteStore) applyTuttiModeEffectSpeedV4(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationTuttiModeEffectSpeedV4)
+	if err != nil || applied {
+		return err
+	}
+	tx, err := s.writeDB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin Tutti mode effect and speed v4 migration: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	// The existing orchestration_intensity column is deliberately retained as
+	// effect storage so upgrades preserve the user's old preference without a
+	// destructive table rebuild. Only speed needs a new column.
+	for _, table := range []string{"tutti_mode_activation_revisions", "tutti_mode_turn_snapshots"} {
+		exists, err := tuttiModeColumnExistsTx(ctx, tx, table, "speed")
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
+		defaultValue := 50
+		if table == "tutti_mode_turn_snapshots" {
+			defaultValue = 0
+		}
+		if _, err := tx.ExecContext(ctx, fmt.Sprintf(`
+ALTER TABLE %s
+  ADD COLUMN speed INTEGER NOT NULL DEFAULT %d
+  CHECK (speed BETWEEN 0 AND 100)`, table, defaultValue)); err != nil {
+			return fmt.Errorf("add Tutti mode speed to %s: %w", table, err)
+		}
+		if table == "tutti_mode_turn_snapshots" {
+			if _, err := tx.ExecContext(ctx, `
+UPDATE tutti_mode_turn_snapshots
+SET speed = 50
+WHERE activation_id != ''`); err != nil {
+				return fmt.Errorf("backfill Tutti mode turn snapshot speed: %w", err)
+			}
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+VALUES (?, ?)
+`, schemaMigrationTuttiModeEffectSpeedV4, unixMs(time.Now().UTC())); err != nil {
+		return fmt.Errorf("record Tutti mode effect and speed v4 migration: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit Tutti mode effect and speed v4 migration: %w", err)
+	}
+	return nil
+}
+
 func tuttiModeColumnExistsTx(ctx context.Context, tx *sql.Tx, tableName, columnName string) (bool, error) {
 	var count int
 	if err := tx.QueryRowContext(ctx, `

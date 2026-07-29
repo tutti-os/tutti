@@ -50,6 +50,44 @@ describe("AgentRichTextEditor file paste", () => {
     );
   });
 
+  it("routes pasted images through file preparation when prompt images are unsupported", async () => {
+    const onPasteFiles = vi.fn();
+    const onPasteImages = vi.fn();
+    const onPromptImagesUnsupported = vi.fn();
+    const image = new File(["image"], "screen.png", { type: "image/png" });
+    const rendered = render(
+      <AgentRichTextEditor
+        value=""
+        disabled={false}
+        placeholder="Prompt"
+        promptImagesSupported={false}
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onPasteFiles={onPasteFiles}
+        onPasteImages={onPasteImages}
+        onPromptImagesUnsupported={onPromptImagesUnsupported}
+      />
+    );
+
+    const editor = await waitFor(() => {
+      const element = rendered.container.querySelector<HTMLElement>(
+        '[contenteditable="true"]'
+      );
+      expect(element).not.toBeNull();
+      return element!;
+    });
+    fireEvent.paste(editor, {
+      clipboardData: {
+        files: [image],
+        getData: () => ""
+      }
+    });
+
+    expect(onPasteFiles).toHaveBeenCalledWith([image]);
+    expect(onPasteImages).not.toHaveBeenCalled();
+    expect(onPromptImagesUnsupported).not.toHaveBeenCalled();
+  });
+
   it("inserts, updates, and removes a composer file inside the editor", async () => {
     const ref = createRef<AgentRichTextEditorHandle>();
     const onChange = vi.fn();

@@ -36,6 +36,7 @@ import type {
   AgentGUISidebarFooterContext,
   AgentGUIConversationRailLayout,
   AgentGUIAgentsEmptyRenderer,
+  AgentGUIComposerFooterAccessoryRenderer,
   AgentGUIProviderUnavailableStateRenderer,
   AgentMentionReferenceTargetResolver,
   AgentWorkspaceReferenceInitialTargetResolver
@@ -158,6 +159,8 @@ export interface AgentGUINodeHostCapabilities {
 }
 
 export interface AgentGUINodeHostActions {
+  /** Confirms that AgentGUI applied one host-issued composer append request. */
+  onComposerAppendHandled?: (sequence: number) => void;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onHandoffConversation?: (input: {
     agentTargetId?: string | null;
@@ -211,6 +214,8 @@ export interface AgentGUIAgentConfigMenuContext {
 }
 
 export interface AgentGUINodeRenderSlots {
+  /** Host-owned controls appended to the composer footer. */
+  composerFooterAccessory?: AgentGUIComposerFooterAccessoryRenderer;
   /**
    * Optional Host-owned information for an exact Agent target. AgentGUI owns
    * tooltip mechanics and invokes this renderer lazily for supported surfaces.
@@ -428,6 +433,7 @@ export function areAgentGUINodePropsEqual(
     pa.onAgentProviderLogin === na.onAgentProviderLogin &&
     pa.onAgentEnvPanelOpen === na.onAgentEnvPanelOpen &&
     pa.onAgentConfigMenuOpen === na.onAgentConfigMenuOpen &&
+    pa.onComposerAppendHandled === na.onComposerAppendHandled &&
     pa.onOpenConversationWindow === na.onOpenConversationWindow &&
     pa.onClose === na.onClose &&
     pa.onResize === na.onResize &&
@@ -441,6 +447,7 @@ export function areAgentGUINodePropsEqual(
     pa.onConversationRailLayoutChange === na.onConversationRailLayoutChange &&
     ps.agentConfigAccount === ns.agentConfigAccount &&
     ps.agentTargetInfo === ns.agentTargetInfo &&
+    ps.composerFooterAccessory === ns.composerFooterAccessory &&
     ps.providerRailEmpty === ns.providerRailEmpty &&
     ps.providerUnavailableState === ns.providerUnavailableState &&
     ps.projectDirectoryPickerHeaderActions ===

@@ -44,6 +44,9 @@ importers:
       tsup:
         specifier: 8.5.1
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.15)(tsx@4.22.3)(typescript@5.9.3)(yaml@2.9.0)
+      vite:
+        specifier: ^6.3.5
+        version: 6.4.2(@types/node@24.12.4)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(tsx@4.22.3)(yaml@2.9.0)
       yaml:
         specifier: ^2.9.0
         version: 2.9.0
@@ -78,6 +81,9 @@ importers:
       "@tutti-os/analytics":
         specifier: workspace:*
         version: link:../../packages/analytics/core
+      "@tutti-os/analytics-debug":
+        specifier: workspace:*
+        version: link:../../packages/analytics/debug
       "@tutti-os/browser-node":
         specifier: workspace:*
         version: link:../../packages/browser/workbench-node
@@ -618,6 +624,37 @@ importers:
       "@types/node":
         specifier: ^24.0.1
         version: 24.12.4
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
+  packages/analytics/debug:
+    dependencies:
+      "@tutti-os/analytics":
+        specifier: workspace:*
+        version: link:../core
+      "@tutti-os/ui-system":
+        specifier: workspace:*
+        version: link:../../ui/system
+    devDependencies:
+      "@tutti-os/config-tsconfig":
+        specifier: workspace:*
+        version: link:../../configs/tsconfig
+      "@types/node":
+        specifier: ^24.0.1
+        version: 24.12.4
+      "@types/react":
+        specifier: ^19.1.6
+        version: 19.2.15
+      "@types/react-dom":
+        specifier: ^19.1.5
+        version: 19.2.3(@types/react@19.2.15)
+      react:
+        specifier: ^19.1.0
+        version: 19.2.6
+      react-dom:
+        specifier: ^19.1.0
+        version: 19.2.6(react@19.2.6)
       typescript:
         specifier: ^5.8.3
         version: 5.9.3
@@ -1237,6 +1274,9 @@ importers:
 
   packages/workspace/issue-manager:
     dependencies:
+      "@tutti-os/analytics":
+        specifier: workspace:*
+        version: link:../../analytics/core
       "@tutti-os/ui-i18n-runtime":
         specifier: workspace:*
         version: link:../../ui/i18n-runtime

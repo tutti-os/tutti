@@ -1,4 +1,9 @@
 import type {
+  AgentSessionEngine,
+  EngineExternalCommand,
+  EngineIntent
+} from "@tutti-os/agent-activity-core";
+import type {
   AgentActivityRuntime,
   AgentGUIProps,
   AgentHostInputApi,
@@ -56,10 +61,19 @@ import { createDesktopAgentGeneratedFileMentionProvider } from "./internal/creat
 import { createDesktopAgentExternalPromptFilePreparer } from "./internal/prepareDesktopAgentExternalPromptFiles.ts";
 import { createDesktopAgentExternalPromptEntryResolver } from "./internal/resolveDesktopAgentExternalPromptEntries.ts";
 import { createDesktopTuttiModePlanReviewRuntime } from "./internal/desktopWorkspaceWorkflowRuntime.ts";
+import { AgentSessionReplayService } from "../../agent-session-replay/services/agentSessionReplayService.ts";
 
 export interface DesktopAgentGUIWorkbenchHostInput {
   agentActivityRuntime: AgentActivityRuntime;
   agentHostApi: AgentHostInputApi;
+  agentSessionReplayService: AgentSessionReplayService;
+  agentSessionActivityReplay: {
+    addObserver(observer: {
+      observeCommand(command: EngineExternalCommand): void;
+      observeIntent(intent: EngineIntent): void;
+    }): () => void;
+    engine: AgentSessionEngine;
+  };
   tuttiModePlanReviewRuntime: TuttiModePlanReviewRuntime;
   contextMentionProviders: readonly AgentContextMentionProvider[];
   trackAgentProviderChatReady: (input: { provider: string }) => Promise<void>;
@@ -258,10 +272,51 @@ export function createDesktopAgentGUIWorkbenchHostInput({
     });
   const resolveExternalPromptEntries =
     createDesktopAgentExternalPromptEntryResolver({ platformApi });
+  const agentSessionReplayService = new AgentSessionReplayService({
+    armNextSessionRecording: (recordingId) =>
+      workspaceAgentActivityService.armNextSessionRecording?.(
+        workspaceId,
+        recordingId
+      ),
+    clearNextSessionRecording: (recordingId) =>
+      workspaceAgentActivityService.clearNextSessionRecording?.(
+        workspaceId,
+        recordingId
+      ),
+    discardActivityEventRecording: (recordingId) =>
+      workspaceAgentActivityService.discardSessionActivityEventRecording?.(
+        workspaceId,
+        recordingId
+      ),
+    sealActivityEventRecording: (recordingId) =>
+      workspaceAgentActivityService.sealSessionActivityEventRecording?.(
+        workspaceId,
+        recordingId
+      ) ?? Promise.resolve(),
+    startActivityEventRecording: (recordingId) =>
+      workspaceAgentActivityService.startSessionActivityEventRecording?.(
+        workspaceId,
+        recordingId
+      ),
+    tuttidClient,
+    workspaceId
+  });
   return {
     agentActivityRuntime,
     agentHostApi: resolvedAgentHostApi,
+    agentSessionActivityReplay: {
+      addObserver: (observer) =>
+        workspaceAgentActivityService.addSessionEngineActivityObserver?.(
+          workspaceId,
+          observer
+        ) ?? (() => {}),
+      get engine() {
+        return workspaceAgentActivityService.getSessionEngine(workspaceId);
+      }
+    },
+    agentSessionReplayService,
     tuttiModePlanReviewRuntime: createDesktopTuttiModePlanReviewRuntime({
+      composerOptionsRuntime: agentActivityRuntime,
       tuttidClient,
       eventStreamClient
     }),

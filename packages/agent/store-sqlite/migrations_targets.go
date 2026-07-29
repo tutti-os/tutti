@@ -126,6 +126,9 @@ func (s *Store) seedSystemAgentTargets(ctx context.Context, now int64) error {
 		return err
 	}
 	hasIconColumns := hasIconURL && hasMaskIconURL && hasHeroImageURL
+	// System descriptors own target identity and presentation metadata. Enabled
+	// is user-controlled: descriptor defaults initialize new rows but must never
+	// overwrite an existing preference during daemon startup migrations.
 	for _, target := range s.opts.SeedSystemTargets(now) {
 		if !hasIconColumns {
 			if err := s.seedSystemAgentTargetWithoutIconColumns(ctx, target, now); err != nil {
@@ -165,7 +168,6 @@ SET provider = ?,
     icon_url = ?,
     mask_icon_url = ?,
     hero_image_url = ?,
-    enabled = ?,
     sort_order = ?,
     updated_at_ms = ?
 WHERE id = ?
@@ -178,7 +180,6 @@ WHERE id = ?
     COALESCE(icon_url, '') != ? OR
     COALESCE(mask_icon_url, '') != ? OR
     COALESCE(hero_image_url, '') != ? OR
-    enabled != ? OR
     sort_order != ?
   )
 `,
@@ -189,7 +190,6 @@ WHERE id = ?
 			target.IconURL,
 			target.MaskIconURL,
 			target.HeroImageURL,
-			target.Enabled,
 			target.SortOrder,
 			now,
 			target.ID,
@@ -201,7 +201,6 @@ WHERE id = ?
 			target.IconURL,
 			target.MaskIconURL,
 			target.HeroImageURL,
-			target.Enabled,
 			target.SortOrder,
 		); err != nil {
 			return fmt.Errorf("refresh system agent target %q: %w", target.ID, err)
@@ -237,7 +236,6 @@ SET provider = ?,
     launch_ref_json = ?,
     name = ?,
     icon_key = ?,
-    enabled = ?,
     sort_order = ?,
     updated_at_ms = ?
 WHERE id = ?
@@ -247,7 +245,6 @@ WHERE id = ?
     launch_ref_json != ? OR
     name != ? OR
     COALESCE(icon_key, '') != ? OR
-    enabled != ? OR
     sort_order != ?
   )
 `,
@@ -255,7 +252,6 @@ WHERE id = ?
 		target.LaunchRefJSON,
 		target.Name,
 		target.IconKey,
-		target.Enabled,
 		target.SortOrder,
 		now,
 		target.ID,
@@ -264,7 +260,6 @@ WHERE id = ?
 		target.LaunchRefJSON,
 		target.Name,
 		target.IconKey,
-		target.Enabled,
 		target.SortOrder,
 	); err != nil {
 		return fmt.Errorf("refresh system agent target %q: %w", target.ID, err)

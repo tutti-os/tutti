@@ -6,11 +6,19 @@ export interface TuttiModeActivationPresentation {
   active: boolean;
   errorCode: string | null;
   errorMessage: string | null;
+  effect?: number;
+  speed?: number;
+  /** @deprecated Use effect and speed. */
   orchestrationIntensity: number;
   updateStatus: "idle" | "pending_create" | "updating" | "failed" | "uncertain";
 }
 
-const DEFAULT_ORCHESTRATION_INTENSITY = 50;
+export interface ResolvedTuttiModeActivationPresentation extends TuttiModeActivationPresentation {
+  effect: number;
+  speed: number;
+}
+
+const DEFAULT_PREFERENCE = 50;
 
 export function selectTuttiModeDraftIsActive(
   state: AgentSessionEngineState,
@@ -21,33 +29,43 @@ export function selectTuttiModeDraftIsActive(
   );
 }
 
+export function selectTuttiModeDraftPreferences(
+  state: AgentSessionEngineState,
+  draftKey: string
+): { effect: number | null; speed: number | null } {
+  const draft = state.tuttiModeActivation.draftsByKey[draftKey.trim()];
+  return {
+    effect: draft?.effect ?? draft?.orchestrationIntensity ?? null,
+    speed: draft?.speed ?? null
+  };
+}
+
+/**
+ * @deprecated Use selectTuttiModeDraftPreferences.
+ */
 export function selectTuttiModeDraftOrchestrationIntensity(
   state: AgentSessionEngineState,
   draftKey: string
 ): number | null {
-  return (
-    state.tuttiModeActivation.draftsByKey[draftKey.trim()]
-      ?.orchestrationIntensity ?? null
-  );
+  return selectTuttiModeDraftPreferences(state, draftKey).effect;
 }
 
 export function selectTuttiModeActivationPresentation(
   state: AgentSessionEngineState,
   agentSessionId: string | null | undefined,
   draftKey: string
-): TuttiModeActivationPresentation {
+): ResolvedTuttiModeActivationPresentation {
   const sessionId = agentSessionId?.trim() ?? "";
-  const draftIntensity = selectTuttiModeDraftOrchestrationIntensity(
-    state,
-    draftKey
-  );
+  const draftPreferences = selectTuttiModeDraftPreferences(state, draftKey);
   if (!sessionId) {
     return {
       activation: null,
       active: selectTuttiModeDraftIsActive(state, draftKey),
       errorCode: null,
       errorMessage: null,
-      orchestrationIntensity: draftIntensity ?? DEFAULT_ORCHESTRATION_INTENSITY,
+      effect: draftPreferences.effect ?? DEFAULT_PREFERENCE,
+      speed: draftPreferences.speed ?? DEFAULT_PREFERENCE,
+      orchestrationIntensity: draftPreferences.effect ?? DEFAULT_PREFERENCE,
       updateStatus: "idle"
     };
   }
@@ -63,11 +81,23 @@ export function selectTuttiModeActivationPresentation(
           : update.status === "active",
       errorCode: update.errorCode,
       errorMessage: update.errorMessage,
-      orchestrationIntensity:
+      effect:
+        update.effect ??
         update.orchestrationIntensity ??
-        activation?.currentRevision.orchestrationIntensity ??
-        draftIntensity ??
-        DEFAULT_ORCHESTRATION_INTENSITY,
+        activationEffect(activation) ??
+        draftPreferences.effect ??
+        DEFAULT_PREFERENCE,
+      speed:
+        update.speed ??
+        activationSpeed(activation) ??
+        draftPreferences.speed ??
+        DEFAULT_PREFERENCE,
+      orchestrationIntensity:
+        update.effect ??
+        update.orchestrationIntensity ??
+        activationEffect(activation) ??
+        draftPreferences.effect ??
+        DEFAULT_PREFERENCE,
       updateStatus:
         update.updateStatus === "inFlight" ? "updating" : update.updateStatus
     };
@@ -80,11 +110,23 @@ export function selectTuttiModeActivationPresentation(
       active: pending.initialActivation.status === "active",
       errorCode: null,
       errorMessage: null,
-      orchestrationIntensity:
+      effect:
+        pending.initialActivation.effect ??
         pending.initialActivation.orchestrationIntensity ??
-        activation?.currentRevision.orchestrationIntensity ??
-        draftIntensity ??
-        DEFAULT_ORCHESTRATION_INTENSITY,
+        activationEffect(activation) ??
+        draftPreferences.effect ??
+        DEFAULT_PREFERENCE,
+      speed:
+        pending.initialActivation.speed ??
+        activationSpeed(activation) ??
+        draftPreferences.speed ??
+        DEFAULT_PREFERENCE,
+      orchestrationIntensity:
+        pending.initialActivation.effect ??
+        pending.initialActivation.orchestrationIntensity ??
+        activationEffect(activation) ??
+        draftPreferences.effect ??
+        DEFAULT_PREFERENCE,
       updateStatus: "pending_create"
     };
   }
@@ -93,12 +135,37 @@ export function selectTuttiModeActivationPresentation(
     active: activation?.status === "active",
     errorCode: null,
     errorMessage: null,
+    effect:
+      activationEffect(activation) ??
+      draftPreferences.effect ??
+      DEFAULT_PREFERENCE,
+    speed:
+      activationSpeed(activation) ??
+      draftPreferences.speed ??
+      DEFAULT_PREFERENCE,
     orchestrationIntensity:
-      activation?.currentRevision.orchestrationIntensity ??
-      draftIntensity ??
-      DEFAULT_ORCHESTRATION_INTENSITY,
+      activationEffect(activation) ??
+      draftPreferences.effect ??
+      DEFAULT_PREFERENCE,
     updateStatus: "idle"
   };
+}
+
+function activationEffect(
+  activation: AgentActivityTuttiModeActivation | null
+): number | null {
+  return activation
+    ? (activation.currentRevision.effect ??
+        activation.currentRevision.orchestrationIntensity)
+    : null;
+}
+
+function activationSpeed(
+  activation: AgentActivityTuttiModeActivation | null
+): number | null {
+  return activation
+    ? (activation.currentRevision.speed ?? DEFAULT_PREFERENCE)
+    : null;
 }
 
 export function tuttiModeActivationPresentationsEqual(
@@ -109,6 +176,8 @@ export function tuttiModeActivationPresentationsEqual(
     left.active === right.active &&
     left.errorCode === right.errorCode &&
     left.errorMessage === right.errorMessage &&
+    left.effect === right.effect &&
+    left.speed === right.speed &&
     left.orchestrationIntensity === right.orchestrationIntensity &&
     left.updateStatus === right.updateStatus &&
     activationIdentity(left.activation) === activationIdentity(right.activation)

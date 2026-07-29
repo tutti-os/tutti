@@ -19,13 +19,14 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 	providerSessionID := firstNonEmpty(strings.TrimSpace(session.ProviderSessionID), newID())
 	session.ProviderSessionID = providerSessionID
 	spec, cleanup, err := prepareProviderLaunch(ctx, a.preparer, session, ProcessSpec{
-		Provider:       ProviderClaudeCode,
-		AgentSessionID: session.AgentSessionID,
-		RoomID:         session.RoomID,
-		CWD:            session.CWD,
-		Command:        claudeSDKSidecarCommand(session.Env),
-		Env:            claudeSDKSidecarEnv(session),
-		DirectStart:    true,
+		Provider:           ProviderClaudeCode,
+		AgentSessionID:     session.AgentSessionID,
+		RootAgentSessionID: session.RootAgentSessionID,
+		RoomID:             session.RoomID,
+		CWD:                session.CWD,
+		Command:            claudeSDKSidecarCommand(session.Env),
+		Env:                claudeSDKSidecarEnv(session),
+		DirectStart:        true,
 	})
 	if err != nil {
 		return nil, err

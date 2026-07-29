@@ -17,6 +17,7 @@ The current fixed release group is:
 
 ```text
 @tutti-os/analytics
+@tutti-os/analytics-debug
 @tutti-os/event-stream-core
 @tutti-os/workspace-file-manager
 @tutti-os/workspace-file-reference
@@ -230,6 +231,19 @@ Use this command to inspect publish contents:
 pnpm release:pack:check
 ```
 
+Without arguments the command builds and inspects every configured public npm
+package. Repository-managed changed-file gates may pass a validated package
+subset:
+
+```bash
+pnpm release:pack:check -- --packages-json '["@tutti-os/agent-gui"]'
+```
+
+The subset build includes the selected packages' workspace dependencies, but
+only the selected package tarballs are inspected. Use the unfiltered command
+for release infrastructure, workspace dependency, lockfile, Changesets, or
+fixed release-group changes.
+
 Before publishing a package that exposes runtime assets, verify all of the
 following:
 
@@ -267,6 +281,9 @@ The stable package entrypoints are:
 
 ```text
 @tutti-os/agent-activity-core
+@tutti-os/analytics
+@tutti-os/analytics-debug
+@tutti-os/analytics-debug/react
 @tutti-os/agent-gui
 @tutti-os/agent-gui/agent-conversation
 @tutti-os/agent-gui/agent-env

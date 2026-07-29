@@ -1,19 +1,10 @@
-import type {
-  AgentActivitySession,
-  AgentActivityTurn
-} from "@tutti-os/agent-activity-core";
+import type { AgentActivitySessionDetailSnapshot } from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentSessionDetailResponse } from "@tutti-os/client-tuttid-ts";
 import {
   agentActivitySessionFromTuttidSession,
   agentActivityTurnFromTuttidTurn,
   type AgentActivitySessionMappingOptions
 } from "./mappers.ts";
-
-export interface AgentActivitySessionDetailSnapshot {
-  session: AgentActivitySession;
-  childSessions: readonly AgentActivitySession[];
-  turns: readonly AgentActivityTurn[];
-}
 
 /**
  * Maps one authoritative tuttid detail response without performing transport
@@ -29,6 +20,9 @@ export function agentActivitySessionDetailFromTuttid(
 ): AgentActivitySessionDetailSnapshot {
   assertTuttidSessionDetailContract(expectedAgentSessionId, detail);
   return {
+    projection:
+      detail.projection === "full" ? "authoritative" : "message_hydration",
+    lifecycleCapabilitiesProjected: detail.lifecycleCapabilitiesProjected,
     session: agentActivitySessionFromTuttidSession(
       workspaceId,
       detail.session,
@@ -45,6 +39,20 @@ function assertTuttidSessionDetailContract(
   expectedAgentSessionId: string,
   detail: WorkspaceAgentSessionDetailResponse
 ): void {
+  if (
+    detail.projection !== "full" &&
+    detail.projection !== "messageHydration"
+  ) {
+    throw detailContractError(
+      `projection ${JSON.stringify(detail.projection)} is invalid`
+    );
+  }
+  const capabilitiesShouldBeProjected = detail.projection === "full";
+  if (detail.lifecycleCapabilitiesProjected !== capabilitiesShouldBeProjected) {
+    throw detailContractError(
+      `lifecycle capability projection does not match detail projection ${JSON.stringify(detail.projection)}`
+    );
+  }
   const expectedId = trimmedString(expectedAgentSessionId);
   const rootId = trimmedString(detail.session?.id);
   if (!expectedId || rootId !== expectedId) {

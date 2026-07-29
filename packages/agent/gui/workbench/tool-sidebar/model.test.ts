@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  agentToolPanelDefaultWidthById,
   clampAgentToolPanelWidth,
   createAgentToolSidebarState,
   filterAgentToolPanels,
@@ -16,6 +17,11 @@ const panels: readonly AgentToolPanelDefinition[] = [
 ];
 
 describe("agent tool sidebar model", () => {
+  it("uses the shared 720px default for task and message panels", () => {
+    expect(agentToolPanelDefaultWidthById.tasks).toBe(720);
+    expect(agentToolPanelDefaultWidthById.messages).toBe(720);
+  });
+
   it("keeps only unique supported panels in host order", () => {
     expect(
       filterAgentToolPanels([

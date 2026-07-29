@@ -60,17 +60,8 @@ export interface UseAgentGUINewConversationActivationInput {
   activation: ReturnType<typeof useAgentGUIActivation>;
   isCurrentConversation: (agentSessionId: string) => boolean;
   isConversationStale: (agentSessionId: string) => boolean;
-  loadSelectedConversationMessages: (agentSessionId: string) => Promise<void>;
-  loadSessionState: (
-    agentSessionId: string,
-    cause?: { source: string; eventType?: string; force?: boolean }
-  ) => void;
-  syncConversationListProjection: (
-    _preferredSessionId?: string | null
-  ) => Promise<void>;
   data: AgentGUINodeData;
   defaultReasoningEffort: string;
-  refreshMessagesFromSnapshot: (agentSessionId: string) => void;
 }
 
 export interface AgentGUINewConversationActivationResult {

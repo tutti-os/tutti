@@ -24,7 +24,12 @@ import {
   resolveGoModuleRoot,
   resolveGoValidationTargets
 } from "./run-check-changed-targets.mjs";
-import { classifyChangedFiles } from "./change-classification.mjs";
+import {
+  classifyChangedFiles,
+  createPackageManifestPackRelevance,
+  createRootManifestTestRelevance,
+  isPackagePackRelevantPath
+} from "./change-classification.mjs";
 import {
   selectRepositoryCheckInputs,
   selectRepositoryChecks
@@ -148,7 +153,17 @@ export async function main() {
 
 function buildChangedLanes() {
   const changedFiles = listChangedFiles(baseRef);
-  const classification = classifyChangedFiles(changedFiles);
+  const isPackageManifestPackRelevant = createPackageManifestPackRelevance({
+    baseRef,
+    root: workspaceRoot
+  });
+  const classification = classifyChangedFiles(changedFiles, {
+    isPackageManifestPackRelevant,
+    isRootManifestTestRelevant: createRootManifestTestRelevance({
+      baseRef,
+      root: workspaceRoot
+    })
+  });
   const lanesByKey = new Map();
   const addLane = (lane) => {
     const normalizedInputs = Array.from(new Set(lane.inputFiles)).sort();
@@ -310,9 +325,11 @@ function buildChangedLanes() {
 
     if (
       pushReady &&
-      !classification.runPack &&
+      !classification.packPackages.includes(packageInfo.name) &&
       packageInfo.scripts.build &&
-      packageFiles.some(isBuildRelevant)
+      packageFiles.some((file) =>
+        isPackageBuildRelevant(file, isPackageManifestPackRelevant)
+      )
     ) {
       addLane({
         key: `${packageInfo.name}:build`,
@@ -324,10 +341,13 @@ function buildChangedLanes() {
   }
 
   if (pushReady && classification.runPack) {
+    const packageArgs = classification.packAll
+      ? []
+      : ["--", "--packages-json", JSON.stringify(classification.packPackages)];
     addLane({
       key: "pack:npm",
       label: "npm package pack",
-      command: [...pnpmCommand, "run", "release:pack:check"],
+      command: [...pnpmCommand, "run", "release:pack:check", ...packageArgs],
       inputFiles: changedFiles
     });
   }
@@ -639,7 +659,16 @@ function isPackageValidationRelevant(file) {
   );
 }
 
-function isBuildRelevant(file) {
+export function isPackageBuildRelevant(file, isPackageManifestPackRelevant) {
+  if (!isPackagePackRelevantPath(file)) {
+    return false;
+  }
+  if (
+    /(?:^|\/)package\.json$/u.test(file) &&
+    !isPackageManifestPackRelevant(file)
+  ) {
+    return false;
+  }
   return (
     isPackageValidationRelevant(file) ||
     /(?:^|\/)(assets|public|style|styles)\//u.test(file) ||

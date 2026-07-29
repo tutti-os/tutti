@@ -246,6 +246,41 @@ receive it through `CODEX_HOME`; Tutti Agent sessions use `tutti-agent-home`
 and receive it through `TUTTI_AGENT_HOME`. `agent/attachments` stores persisted
 prompt attachments by agent session.
 
+## Developer Agent Session Cassettes
+
+The daemon keeps mutable Recording, Cassette catalog, and Replay Run metadata in
+SQLite. It writes a Recording candidate under
+`<TUTTI_STATE_DIR>/agent-session-recordings/<recording-id>/candidate/`.
+A recording is a capture window over one
+recursive SessionGraph. `create-session` starts with no seed.
+`continue-session` exports the selected root graph's canonical and workflow
+dependency closure to `seed/state.jsonl`. Explicit stop writes
+`expected/state.jsonl`, finalizes the provider tape, assigns a distinct
+Cassette id, audits the candidate, and atomically publishes it under
+`<TUTTI_STATE_DIR>/agent-session-cassettes/<cassette-id>`. Recording metadata
+does not enter the published Cassette. Canceling removes the candidate. Turn
+settlement does not stop recording. A daemon restart marks an active recording
+incomplete and discards its candidate.
+
+`pnpm e2e:agent-gui -- --record <directory>` exercises that UI flow in an
+isolated runtime and copies the completed recording to the requested directory.
+The isolated daemon database and Electron `userData` live under the repository
+`.tmp` root and are removed unless `--keep-runtime` is set.
+
+The cassette contains `scenario.json`, `environment.json`, `stimuli.jsonl`,
+optional `seed/state.jsonl`, `provider/{manifest.json,frames.jsonl}`,
+`expected/state.jsonl`, content-addressed `blobs/`, and `cassette.json`.
+Publication rejects every unrecognized file, including logs, screenshots,
+databases, credentials, unrelated Sessions, and Workspace copies. Provider
+payloads are capped at 8 MiB per frame and 256 MiB stored per tape; referenced
+blobs are capped at 20 MiB each; the full audited file set is capped at 384 MiB.
+The manifests report per-kind and per-file byte counts and hashes. Provider
+frames and selected blobs may still contain private prompts, output, and files.
+The blob manifest selects persisted prompt attachments explicitly referenced by
+SessionGraph messages; replay verifies their SHA-256 and restores them into the
+isolated attachment store. It does not scan the Workspace. Do not commit,
+upload, or share a cassette without reviewing those scoped artifacts.
+
 ## Deleted Agent Conversation Retention
 
 Soft-deleted Agent conversations remain recoverable canonical tombstones until

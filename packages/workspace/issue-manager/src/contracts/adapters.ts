@@ -23,6 +23,20 @@ import type {
   IssueManagerTaskSummary
 } from "./domain.ts";
 
+export interface IssueManagerManagedIssueSourceRequest {
+  draftPrompt: string;
+  issueId: string;
+  sourceSessionId: string;
+  taskId?: string;
+  workspaceId: string;
+}
+
+export interface IssueManagerManagedIssueActionsAdapter {
+  openSourceSession(
+    request: IssueManagerManagedIssueSourceRequest
+  ): Promise<void> | void;
+}
+
 export interface IssueManagerIdentityProfile {
   avatarUrl?: string | null;
   displayName?: string | null;

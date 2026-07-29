@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
@@ -222,7 +223,7 @@ func runtimeConfigOptionMatchesID(option map[string]any, id string) bool {
 		strings.TrimSpace(stringFromAny(option["runtimeId"])) == id
 }
 
-func applyExtensionComposerCapabilities(options ComposerOptions, profile ExtensionComposerProfile) ComposerOptions {
+func applyExtensionComposerCapabilities(options ComposerOptions, profile ExtensionComposerProfile, computerUseAvailable bool) ComposerOptions {
 	runtimeCapabilities := stringSliceFromAny(options.RuntimeContext["capabilities"])
 	allowed := make(map[string]struct{}, len(profile.Capabilities))
 	for _, capability := range profile.Capabilities {
@@ -237,6 +238,12 @@ func applyExtensionComposerCapabilities(options ComposerOptions, profile Extensi
 		if _, ok := allowed[capability]; !ok {
 			continue
 		}
+		if capability == providerregistry.CapabilityBrowserUse && !runtimeprep.BrowserUseDefaultEnabled() {
+			continue
+		}
+		if capability == providerregistry.CapabilityComputerUse && (!computerUseAvailable || !runtimeprep.ComputerUseDefaultEnabled()) {
+			continue
+		}
 		if _, ok := seen[capability]; ok {
 			continue
 		}
@@ -246,6 +253,16 @@ func applyExtensionComposerCapabilities(options ComposerOptions, profile Extensi
 	if _, declared := allowed[providerregistry.CapabilitySkills]; declared && len(options.Skills) > 0 {
 		if _, exists := seen[providerregistry.CapabilitySkills]; !exists {
 			effective = append(effective, providerregistry.CapabilitySkills)
+		}
+	}
+	if _, declared := allowed[providerregistry.CapabilityBrowserUse]; declared && runtimeprep.BrowserUseDefaultEnabled() {
+		if _, exists := seen[providerregistry.CapabilityBrowserUse]; !exists {
+			effective = append(effective, providerregistry.CapabilityBrowserUse)
+		}
+	}
+	if _, declared := allowed[providerregistry.CapabilityComputerUse]; declared && computerUseAvailable && runtimeprep.ComputerUseDefaultEnabled() {
+		if _, exists := seen[providerregistry.CapabilityComputerUse]; !exists {
+			effective = append(effective, providerregistry.CapabilityComputerUse)
 		}
 	}
 	options.Capabilities = effective

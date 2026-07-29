@@ -32,7 +32,7 @@ describe("useAgentGUITuttiModeActivation", () => {
     ).toBe(true);
   });
 
-  it("stores a confirmed home intensity in the engine-owned Tutti draft", () => {
+  it("stores confirmed home preferences in the engine-owned Tutti draft", () => {
     const { engine } = createTestEngine();
     const draftKey = resolveAgentGUITuttiModeDraftKey("node-1");
     const { result } = renderHook(() =>
@@ -44,15 +44,20 @@ describe("useAgentGUITuttiModeActivation", () => {
       })
     );
 
-    act(() => result.current.setOrchestrationIntensity(73));
+    act(() => {
+      result.current.setEffect(73);
+      result.current.setSpeed(61);
+    });
 
     expect(result.current.active).toBe(true);
-    expect(result.current.orchestrationIntensity).toBe(73);
+    expect(result.current.effect).toBe(73);
+    expect(result.current.speed).toBe(61);
     expect(
       engine.getSnapshot().tuttiModeActivation.draftsByKey[draftKey]
     ).toMatchObject({
       active: true,
-      orchestrationIntensity: 73
+      effect: 73,
+      speed: 61
     });
   });
 
@@ -176,7 +181,9 @@ describe("useAgentGUITuttiModeActivation", () => {
           currentRevision: {
             activationId: "activation-1",
             createdAtUnixMs: 1,
+            effect: 50,
             orchestrationIntensity: 50,
+            speed: 50,
             revision: 1,
             source: "slash_command",
             status: "active"

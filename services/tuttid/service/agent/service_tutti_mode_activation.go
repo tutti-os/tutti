@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	tuttimodeactivationbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeactivation"
 	tuttimodeactivationservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeactivation"
 )
@@ -39,11 +40,12 @@ func (s *Service) applyInitialTuttiModeActivation(ctx context.Context, workspace
 		return fmt.Errorf("%w: Tutti mode activation service is unavailable", ErrInvalidArgument)
 	}
 	_, err := s.TuttiModeActivations.Set(ctx, tuttimodeactivationservice.SetInput{
-		WorkspaceID:            workspaceID,
-		AgentSessionID:         agentSessionID,
-		State:                  tuttimodeactivationbiz.State(strings.TrimSpace(intent.State)),
-		Source:                 tuttimodeactivationbiz.Source(strings.TrimSpace(intent.Source)),
-		OrchestrationIntensity: intent.OrchestrationIntensity,
+		WorkspaceID:    workspaceID,
+		AgentSessionID: agentSessionID,
+		State:          tuttimodeactivationbiz.State(strings.TrimSpace(intent.State)),
+		Source:         tuttimodeactivationbiz.Source(strings.TrimSpace(intent.Source)),
+		Effect:         intent.Effect,
+		Speed:          intent.Speed,
 	})
 	return err
 }
@@ -207,7 +209,10 @@ func runtimeTuttiModeTurnSnapshot(snapshot tuttimodeactivationbiz.TurnSnapshot) 
 		Revision:               snapshot.Revision,
 		State:                  string(snapshot.State),
 		Source:                 string(snapshot.Source),
-		OrchestrationIntensity: snapshot.OrchestrationIntensity,
+		PreferenceVersion:      agenthost.TuttiModePreferenceVersionEffectSpeed,
+		Effect:                 snapshot.Effect,
+		Speed:                  snapshot.Speed,
+		OrchestrationIntensity: snapshot.Effect,
 	}
 }
 

@@ -351,7 +351,7 @@ func (a serviceHostGoalRuntime) FenceGoalGeneration(ctx context.Context, input a
 
 func newApplicationHost(s *Service, worktreeGC agenthost.WorktreeGarbageCollector) *agenthost.Host {
 	store := serviceHostStore{service: s}
-	return composeApplicationHost(s, worktreeGC, store, store, store, serviceHostRuntime{service: s}, serviceHostGoalRuntime{service: s})
+	return composeApplicationHost(s, worktreeGC, store, store, store, nil, serviceHostRuntime{service: s}, serviceHostGoalRuntime{service: s})
 }
 
 func configureTestApplicationHost(s *Service) {

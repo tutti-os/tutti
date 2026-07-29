@@ -3,6 +3,7 @@ import {
   collapseModelOptionsToLatest,
   groupModelOptionsByVendor
 } from "./modelFamilies";
+import { effectiveDefaultModelOption } from "./effectiveDefaultModel";
 
 // Labels for the composer settings menus. Lives here (next to the pure menu
 // model) so the model + the presentational component share one source; the
@@ -171,7 +172,15 @@ export function buildComposerModelMenuModel(
     selectedComposerReasoningValue(composerSettings) ?? "";
   const selectedSpeedValue = selectedComposerSpeedValue(composerSettings) ?? "";
 
-  const modelLabel = resolveSelectedModelLabel(composerSettings, labels);
+  const effectiveDefaultModel = effectiveDefaultModelOption(
+    composerSettings,
+    modelItems
+  );
+  const modelLabel = resolveSelectedModelLabel(
+    composerSettings,
+    labels,
+    effectiveDefaultModel
+  );
   // Only surface an effort label when the reasoning control is actually shown.
   // Providers such as Cursor keep a stale/default draft effort ("high") even
   // though reasoning is not configurable; showing it next to the model name
@@ -198,7 +207,7 @@ export function buildComposerModelMenuModel(
     },
     model: (() => {
       const allOptions = modelItems.map((option) =>
-        modelMenuOptionFromSettingOption(option, labels)
+        modelMenuOptionFromSettingOption(option, labels, effectiveDefaultModel)
       );
       const searchEnabled = allOptions.length > COMPOSER_MODEL_SEARCH_THRESHOLD;
       const searchQuery = searchEnabled
@@ -303,10 +312,29 @@ export function filterComposerModelMenuOptions(
 
 function modelMenuOptionFromSettingOption(
   option: AgentGUIComposerSettingsVM["availableModels"][number],
-  labels: AgentComposerSettingsMenuLabels
+  labels: AgentComposerSettingsMenuLabels,
+  effectiveDefaultModel:
+    | AgentGUIComposerSettingsVM["availableModels"][number]
+    | null
 ): ComposerMenuOption {
-  const displayLabel = formatModelDisplayLabel(option.label);
-  const description = resolveModelDescription(option.description, labels);
+  const resolvedOption =
+    option.value === "default" ? effectiveDefaultModel : null;
+  const defaultLabel = shortModelDisplayLabel(labels.defaultModel);
+  const resolvedLabel = resolvedOption
+    ? shortModelDisplayLabel(resolvedOption.label)
+    : "";
+  const displayLabel =
+    option.value === "default"
+      ? resolvedLabel
+        ? `${defaultLabel} (${resolvedLabel})`
+        : defaultLabel
+      : formatModelDisplayLabel(option.label);
+  const description = resolveModelDescription(
+    option.value === "default"
+      ? resolvedOption?.description
+      : option.description,
+    labels
+  );
   const presentation = modelOptionPresentation({
     description,
     label: displayLabel,
@@ -314,7 +342,7 @@ function modelMenuOptionFromSettingOption(
   });
   return {
     value: option.value,
-    label: presentation.label,
+    label: option.value === "default" ? displayLabel : presentation.label,
     ...(description ? { description } : {}),
     ...(presentation.summary.length > 0
       ? { summary: presentation.summary }
@@ -548,13 +576,25 @@ function resolveSelectedModelLabel(
   labels: Pick<
     AgentComposerSettingsMenuLabels,
     "defaultModel" | "inheritedUnavailable" | "loadingOptions"
-  >
+  >,
+  effectiveDefaultModel:
+    | AgentGUIComposerSettingsVM["availableModels"][number]
+    | null
 ): string {
   const selectedValue = selectedComposerModelValue(composerSettings);
   const selected = modelOptionsWithSelectedValue(composerSettings).find(
     (option) => option.value === selectedValue
   );
   if (selected) {
+    if (selected.value === "default") {
+      const defaultLabel = shortModelDisplayLabel(labels.defaultModel);
+      const effectiveLabel = effectiveDefaultModel
+        ? shortModelDisplayLabel(effectiveDefaultModel.label)
+        : "";
+      return effectiveLabel
+        ? `${defaultLabel} (${effectiveLabel})`
+        : defaultLabel;
+    }
     return shortModelDisplayLabel(selected.label);
   }
   // While composer options load, show a clear loading placeholder rather than

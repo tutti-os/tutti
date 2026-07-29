@@ -10,6 +10,9 @@ export interface TuttiModeDraftIntentRecord {
   draftKey: string;
   occurredAtUnixMs: number;
   /** null = 未选择,交给 daemon 默认值。 */
+  effect?: number | null;
+  speed?: number | null;
+  /** @deprecated Use effect and speed. */
   orchestrationIntensity: number | null;
   source: "slash_command";
 }
@@ -34,6 +37,9 @@ export interface TuttiModeActivationUpdateRecord {
   errorCode: string | null;
   errorMessage: string | null;
   expectedRevision: number | null;
+  effect?: number | null;
+  speed?: number | null;
+  /** @deprecated Use effect and speed. */
   orchestrationIntensity: number | null;
   reconcileCommandId: string | null;
   requestedAtUnixMs: number;
@@ -59,6 +65,9 @@ export interface TuttiModeDraftSetIntent {
   active: boolean;
   draftKey: string;
   occurredAtUnixMs: number;
+  effect?: number | null;
+  speed?: number | null;
+  /** @deprecated Use effect and speed. */
   orchestrationIntensity?: number | null;
 }
 
@@ -66,6 +75,9 @@ export interface TuttiModeActivationUpdateRequestedIntent {
   type: "tuttiMode/updateRequested";
   agentSessionId: string;
   commandId: string;
+  effect?: number | null;
+  speed?: number | null;
+  /** @deprecated Use effect and speed. */
   orchestrationIntensity?: number | null;
   requestedAtUnixMs: number;
   source: AgentActivityTuttiModeActivationSource;
@@ -82,6 +94,9 @@ export interface TuttiModeActivationUpdateCommand {
   agentSessionId: string;
   commandId: string;
   expectedRevision?: number;
+  effect?: number;
+  speed?: number;
+  /** @deprecated Use effect and speed. */
   orchestrationIntensity?: number;
   source: AgentActivityTuttiModeActivationSource;
   status: AgentActivityTuttiModeActivationStatus;

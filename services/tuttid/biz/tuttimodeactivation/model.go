@@ -12,15 +12,28 @@ import (
 
 var ErrInvalidActivation = errors.New("invalid Tutti mode activation")
 
-// DefaultOrchestrationIntensity mirrors the Issue-domain default so an
-// activation without an explicit slider interaction still carries a usable
-// planning strength.
-const DefaultOrchestrationIntensity = 50
+const (
+	// DefaultEffect gives a new activation a balanced outcome-quality preference.
+	DefaultEffect = 50
+	// DefaultSpeed gives a new activation a balanced completion-speed preference.
+	DefaultSpeed = 50
+	// DefaultOrchestrationIntensity is the deprecated single-axis default.
+	//
+	// Deprecated: use DefaultEffect and DefaultSpeed.
+	DefaultOrchestrationIntensity = DefaultEffect
+)
 
-// IsOrchestrationIntensity reports whether the value is inside the inclusive
+// IsPreference reports whether the value is inside the inclusive
 // 0-100 slider range.
-func IsOrchestrationIntensity(value int) bool {
+func IsPreference(value int) bool {
 	return value >= 0 && value <= 100
+}
+
+// IsOrchestrationIntensity is the deprecated single-axis validator.
+//
+// Deprecated: use IsPreference.
+func IsOrchestrationIntensity(value int) bool {
+	return IsPreference(value)
 }
 
 type State string
@@ -51,10 +64,11 @@ type Revision struct {
 	Revision     int64
 	State        State
 	Source       Source
-	// OrchestrationIntensity is the session-scoped planning strength captured
-	// with this revision. It evolves through ordinary activation revisions.
-	OrchestrationIntensity int
-	CreatedAt              time.Time
+	// Effect favors stronger models and stronger task verification.
+	Effect int
+	// Speed favors faster suitable models.
+	Speed     int
+	CreatedAt time.Time
 }
 
 type Activation struct {
@@ -75,9 +89,10 @@ type TurnSnapshot struct {
 	Revision     int64
 	State        State
 	Source       Source
-	// OrchestrationIntensity is copied from the exact activation revision the
-	// turn observed. The canonical unconfigured snapshot uses zero.
-	OrchestrationIntensity int
+	// Effect and Speed are copied from the exact activation revision the turn
+	// observed. The canonical unconfigured snapshot uses zero for both.
+	Effect int
+	Speed  int
 }
 
 type ChangeKind string
@@ -136,8 +151,8 @@ func NormalizeRevision(value Revision) (Revision, error) {
 	if value.State == StateInactive && value.Source != SourceBadgeRemove {
 		return Revision{}, fmt.Errorf("%w: inactive state must originate from badge removal", ErrInvalidActivation)
 	}
-	if !IsOrchestrationIntensity(value.OrchestrationIntensity) {
-		return Revision{}, fmt.Errorf("%w: orchestration intensity must be between 0 and 100", ErrInvalidActivation)
+	if !IsPreference(value.Effect) || !IsPreference(value.Speed) {
+		return Revision{}, fmt.Errorf("%w: effect and speed must be between 0 and 100", ErrInvalidActivation)
 	}
 	value.CreatedAt = value.CreatedAt.UTC()
 	return value, nil
@@ -149,7 +164,7 @@ func NormalizeTurnSnapshot(value TurnSnapshot) (TurnSnapshot, error) {
 	value.State = State(strings.TrimSpace(string(value.State)))
 	value.Source = Source(strings.TrimSpace(string(value.Source)))
 	if value.ActivationID == "" && value.RevisionID == "" && value.Revision == 0 {
-		if value.State == StateInactive && value.Source == "" && value.OrchestrationIntensity == 0 {
+		if value.State == StateInactive && value.Source == "" && value.Effect == 0 && value.Speed == 0 {
 			return value, nil
 		}
 		return TurnSnapshot{}, fmt.Errorf("%w: unconfigured snapshot must be explicitly inactive", ErrInvalidActivation)
@@ -166,8 +181,8 @@ func NormalizeTurnSnapshot(value TurnSnapshot) (TurnSnapshot, error) {
 	if value.State == StateInactive && value.Source != SourceBadgeRemove {
 		return TurnSnapshot{}, fmt.Errorf("%w: inactive snapshot must originate from badge removal", ErrInvalidActivation)
 	}
-	if !IsOrchestrationIntensity(value.OrchestrationIntensity) {
-		return TurnSnapshot{}, fmt.Errorf("%w: orchestration intensity must be between 0 and 100", ErrInvalidActivation)
+	if !IsPreference(value.Effect) || !IsPreference(value.Speed) {
+		return TurnSnapshot{}, fmt.Errorf("%w: effect and speed must be between 0 and 100", ErrInvalidActivation)
 	}
 	return value, nil
 }
@@ -177,11 +192,12 @@ func SnapshotFromActivation(value *Activation) TurnSnapshot {
 		return TurnSnapshot{State: StateInactive}
 	}
 	return TurnSnapshot{
-		ActivationID:           value.ID,
-		RevisionID:             value.CurrentRevision.ID,
-		Revision:               value.CurrentRevision.Revision,
-		State:                  value.CurrentRevision.State,
-		Source:                 value.CurrentRevision.Source,
-		OrchestrationIntensity: value.CurrentRevision.OrchestrationIntensity,
+		ActivationID: value.ID,
+		RevisionID:   value.CurrentRevision.ID,
+		Revision:     value.CurrentRevision.Revision,
+		State:        value.CurrentRevision.State,
+		Source:       value.CurrentRevision.Source,
+		Effect:       value.CurrentRevision.Effect,
+		Speed:        value.CurrentRevision.Speed,
 	}
 }

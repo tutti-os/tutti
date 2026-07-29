@@ -122,6 +122,17 @@ export interface EngineScheduleExpiryCommand {
   dueAtUnixMs: number;
 }
 
+/**
+ * Schedules an expiry relative to command application time. This keeps
+ * reducer-owned retry backoff pure: reducers describe a delay while the
+ * Engine clock resolves the absolute deadline.
+ */
+export interface EngineScheduleExpiryAfterCommand {
+  type: "engine/scheduleExpiryAfter";
+  expiryId: string;
+  delayMs: number;
+}
+
 export interface EngineCancelExpiryCommand {
   type: "engine/cancelExpiry";
   expiryId: string;
@@ -151,6 +162,7 @@ export interface EngineReconcileWorkspaceCommand extends EngineExternalCommandBa
 
 export type EngineExpiryCommand =
   | EngineCancelExpiryCommand
+  | EngineScheduleExpiryAfterCommand
   | EngineScheduleExpiryCommand;
 
 export type EngineInternalCommand =
@@ -186,6 +198,7 @@ export function isEngineInternalCommand(
   return (
     command.type === "engine/abortExternalCommand" ||
     command.type === "engine/cancelExpiry" ||
+    command.type === "engine/scheduleExpiryAfter" ||
     command.type === "engine/scheduleExpiry"
   );
 }
@@ -289,6 +302,8 @@ export interface EngineDispatchOptions {
 export type AgentSessionEngineListener = (
   state: AgentSessionEngineState
 ) => void;
+
+export type AgentSessionEngineIntentObserver = (intent: EngineIntent) => void;
 
 export interface AgentSessionEngine {
   readonly identity: AgentSessionEngineIdentity;

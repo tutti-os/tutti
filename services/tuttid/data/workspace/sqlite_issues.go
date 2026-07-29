@@ -33,7 +33,8 @@ priority, sort_index, due_at_unix_ms, agent_target_id, model_plan_id, model,
 permission_mode_id, reasoning_effort,
 execution_directory, dependency_task_ids_json, parallelizable, auto_accept,
 acceptance_state, acceptance_summary, creator_user_id, creator_display_name,
-creator_avatar_url, latest_run_id, created_at_unix_ms, updated_at_unix_ms`
+creator_avatar_url, latest_run_id, superseded_at_unix_ms, superseded_by_task_id,
+created_at_unix_ms, updated_at_unix_ms`
 
 // workspaceIssueExecer abstracts the write handle (direct connection or
 // in-flight transaction) used by issue and task insert helpers.
@@ -364,7 +365,12 @@ func (s *SQLiteStore) RecalculateIssueProjection(ctx context.Context, workspaceI
 		return workspaceissues.Issue{}, err
 	}
 
-	counts, err := s.countIssueStatuses(ctx, "workspace_issue_tasks", "workspace_id = ? AND issue_id = ?", []any{workspaceID, issueID})
+	counts, err := s.countIssueStatuses(
+		ctx,
+		"workspace_issue_tasks",
+		"workspace_id = ? AND issue_id = ? AND superseded_at_unix_ms = 0",
+		[]any{workspaceID, issueID},
+	)
 	if err != nil {
 		return workspaceissues.Issue{}, err
 	}

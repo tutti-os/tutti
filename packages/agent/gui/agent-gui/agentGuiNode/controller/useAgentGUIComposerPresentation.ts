@@ -260,6 +260,8 @@ export function useAgentGUIComposerPresentation(
         supportsPermissionMode &&
         selectedPermissionModeValue === null,
       selectedModelValue: presentedModel,
+      effectiveModelValue:
+        input.providerComposerOptions?.effectiveModel ?? null,
       selectedReasoningEffortValue: presentedReasoningEffort,
       selectedSpeedValue: presentedSpeed,
       selectedPermissionModeValue: presentedPermissionMode,

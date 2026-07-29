@@ -62,6 +62,18 @@ export function permissionModeAssignmentTone(
   }
 }
 
+export function assignmentOptionLabel(
+  options: readonly { label: string; value: string }[],
+  value: string | null | undefined
+): string | null {
+  const normalizedValue = value?.trim() ?? "";
+  if (!normalizedValue) return null;
+  return (
+    options.find((option) => option.value === normalizedValue)?.label ??
+    normalizedValue
+  );
+}
+
 /**
  * Per-task assignment selectors for the single review checkpoint, rendered as
  * one composer-styled row. Option catalogs are agent-scoped and supplied by
@@ -164,10 +176,7 @@ export function TuttiModePlanTaskAssignmentEditor({
         disabled={disabled || !agentValue || detailPending}
         fieldLabel={labels.model}
         notSpecifiedLabel={labels.notSpecified}
-        options={modelOptions.map((model) => ({
-          label: model,
-          value: model
-        }))}
+        options={modelOptions}
         pending={detailPending}
         pendingLabel={labels.assignmentOptionsLoading}
         value={modelValue}
@@ -191,10 +200,7 @@ export function TuttiModePlanTaskAssignmentEditor({
         disabled={disabled || !agentValue || detailPending}
         fieldLabel={labels.reasoningEffort}
         notSpecifiedLabel={labels.notSpecified}
-        options={(agentDetail?.reasoningEfforts ?? []).map((effort) => ({
-          label: effort,
-          value: effort
-        }))}
+        options={agentDetail?.reasoningEfforts ?? []}
         pending={detailPending}
         pendingLabel={labels.assignmentOptionsLoading}
         value={effortValue}
@@ -341,9 +347,7 @@ function AssignmentValueSelect({
   value: string;
 }): React.JSX.Element {
   const known = options.some((option) => option.value === value);
-  const selectedLabel = value
-    ? (options.find((option) => option.value === value)?.label ?? value)
-    : null;
+  const selectedLabel = assignmentOptionLabel(options, value);
   return (
     <Select
       disabled={disabled}

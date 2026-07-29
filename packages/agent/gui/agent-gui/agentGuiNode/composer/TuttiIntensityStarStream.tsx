@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import type { TuttiIntensityTier } from "./tuttiIntensityPreview";
+import type { TuttiPreferenceTier } from "./tuttiIntensityPreview";
 
 /**
  * Decorative star stream for the Tutti intensity slider: stars pour out of
@@ -73,7 +73,7 @@ export function TuttiIntensityStarStream({
 }: {
   /** Current draft intensity (0-100). */
   intensity: number;
-  tier: TuttiIntensityTier;
+  tier: TuttiPreferenceTier;
 }) {
   const activeCount = activeStarCount(intensity);
   const baseDuration = baseDurationSeconds(intensity);

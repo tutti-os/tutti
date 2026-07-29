@@ -93,6 +93,41 @@ describe("appendAgentGUIComposerPrompt", () => {
 });
 
 describe("resolveAgentGUIComposerAppendRequest", () => {
+  it("waits for the exact target session before appending a routed prompt", () => {
+    const request: AgentGUIComposerAppendRequest = {
+      agentSessionId: "source-session",
+      prompt: "Modify the managed issue",
+      sequence: 8
+    };
+
+    expect(
+      resolveAgentGUIComposerAppendRequest({
+        activeConversationId: "other-session",
+        draftByScopeKey: {
+          "session:other-session": buildAgentComposerDraft({
+            prompt: "Keep this draft"
+          })
+        },
+        handledSequence: null,
+        request
+      })
+    ).toBeNull();
+
+    const resolved = resolveAgentGUIComposerAppendRequest({
+      activeConversationId: "source-session",
+      draftByScopeKey: {
+        "session:source-session": buildAgentComposerDraft({
+          prompt: "Existing source draft"
+        })
+      },
+      handledSequence: null,
+      request
+    });
+    expect(agentComposerDraftPrompt(resolved!.nextDraft)).toBe(
+      "Existing source draft Modify the managed issue "
+    );
+  });
+
   it("keeps legacy external file requests as draft attachments", () => {
     const request: AgentGUIComposerAppendRequest = {
       files: [archivedContextFile],

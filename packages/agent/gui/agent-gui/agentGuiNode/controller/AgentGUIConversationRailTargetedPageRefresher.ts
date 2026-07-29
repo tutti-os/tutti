@@ -1,10 +1,8 @@
-import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
+import type { AgentConversationRailRuntimePort } from "../../../agentConversationRailContracts";
 import type { ConversationRailRefreshedPage } from "./agentGuiConversationRailQueryCache";
 
-const SECTION_PAGE_SIZE = 5;
-
 type TargetedPageRuntime = Pick<
-  AgentActivityRuntime,
+  AgentConversationRailRuntimePort,
   "listPinnedSessionsPage" | "listSessionSectionPage"
 >;
 
@@ -17,6 +15,7 @@ export class AgentGUIConversationRailTargetedPageRefresher {
     private readonly input: {
       onFailed?(): void;
       onResolved(pages: readonly ConversationRailRefreshedPage[]): void;
+      pageSize: number;
       runtime: TargetedPageRuntime;
       workspaceId: string;
     }
@@ -38,7 +37,7 @@ export class AgentGUIConversationRailTargetedPageRefresher {
           ? [
               listPage({
                 agentTargetId: input.agentTargetId || undefined,
-                limit: SECTION_PAGE_SIZE,
+                limit: this.input.pageSize,
                 signal: abortController.signal,
                 workspaceId: this.input.workspaceId
               }).then(
@@ -55,7 +54,7 @@ export class AgentGUIConversationRailTargetedPageRefresher {
         ? [
             listPage({
               agentTargetId: input.agentTargetId || undefined,
-              limit: SECTION_PAGE_SIZE,
+              limit: this.input.pageSize,
               sectionKey: id,
               signal: abortController.signal,
               workspaceId: this.input.workspaceId

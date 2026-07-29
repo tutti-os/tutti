@@ -169,6 +169,11 @@ func TestResolveCommandCapabilitiesFiltersIntegrationAndAddsWaitTimeout(t *testi
 			Path:       []string{"browser", "navigate"},
 			Visibility: "integration",
 		},
+		{
+			ID:         "agent-context.agent.start",
+			Path:       []string{"agent", "start"},
+			Visibility: "public",
+		},
 	}
 	resolver, err := resolveCommandCapabilities(context.Background(), catalog, "workspace-1", "tutti")
 	if err != nil {
@@ -182,6 +187,79 @@ func TestResolveCommandCapabilitiesFiltersIntegrationAndAddsWaitTimeout(t *testi
 	}
 	if _, err := resolveCommandCapabilities(context.Background(), nil, "workspace-1", "tutti"); err == nil {
 		t.Fatal("nil command catalog did not fail")
+	}
+}
+
+func TestResolveCommandCapabilitiesProjectsDedicatedSessionScope(t *testing.T) {
+	catalog := staticCommandCatalog{
+		{
+			ID:         "issue-manager.issue.get",
+			Path:       []string{"issue", "get"},
+			Visibility: "public",
+		},
+		{
+			ID:         "tutti-mode-plan.plan.issue.complete",
+			Path:       []string{"plan", "issue", "complete"},
+			Visibility: "public",
+		},
+		{
+			ID:         "tutti-goal-review.goal-review.verdict",
+			Path:       []string{"goal-review", "verdict"},
+			Visibility: "integration",
+		},
+		{
+			ID:         "browser.hidden",
+			Path:       []string{"browser", "navigate"},
+			Visibility: "integration",
+		},
+		{
+			ID:         "agent-context.agent.start",
+			Path:       []string{"agent", "start"},
+			Visibility: "public",
+		},
+	}
+	resolver, err := resolveCommandCapabilities(
+		context.Background(),
+		catalog,
+		"workspace-1",
+		"tutti",
+		&CommandCapabilityProjection{
+			AllowedIDs: []string{
+				"issue-manager.issue.get",
+				"tutti-goal-review.goal-review.verdict",
+			},
+			IncludeIntegrationIDs: []string{
+				"tutti-goal-review.goal-review.verdict",
+			},
+			ExcludeIDs: []string{
+				"tutti-mode-plan.plan.issue.complete",
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !resolver.Has("issue-manager.issue.get") ||
+		!resolver.Has("tutti-goal-review.goal-review.verdict") {
+		t.Fatalf("dedicated projection omitted allowed commands: %#v", resolver.commands)
+	}
+	if resolver.Has("tutti-mode-plan.plan.issue.complete") ||
+		resolver.Has("browser.hidden") ||
+		resolver.Has("agent-context.agent.start") {
+		t.Fatalf("dedicated projection leaked excluded commands: %#v", resolver.commands)
+	}
+
+	_, err = resolveCommandCapabilities(
+		context.Background(),
+		catalog,
+		"workspace-1",
+		"tutti",
+		&CommandCapabilityProjection{
+			AllowedIDs: []string{"issue-manager.issue.missing"},
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "unavailable allowed command") {
+		t.Fatalf("missing exact allowed command error = %v", err)
 	}
 }
 

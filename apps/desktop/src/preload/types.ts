@@ -38,6 +38,14 @@ import type {
   DesktopHostWindowLayoutPayload,
   DesktopHostWindowResizeContentWidthInput,
   DesktopHostWindowResizeContentWidthResult,
+  DesktopLaunchAgentSessionReplayInput,
+  DesktopLaunchAgentSessionReplayResult,
+  DesktopAgentSessionReplayPlayback,
+  DesktopAgentSessionReplayStatus,
+  DesktopSendAgentSessionReplayControlInput,
+  DesktopSetAgentSessionReplayPlaybackInput,
+  DesktopWaitAgentSessionReplayInput,
+  DesktopWaitAgentSessionReplayResult,
   DesktopRendererDiagnosticPayload,
   DesktopTerminalDiagnosticPayload,
   DesktopTerminalStreamUrlRequest,
@@ -55,8 +63,22 @@ import type {
 import type { BrowserNodeHostApi } from "@tutti-os/browser-node";
 
 export interface DesktopRuntimeApi {
+  getAgentSessionReplayPlayback(): Promise<DesktopAgentSessionReplayPlayback>;
+  getAgentSessionReplayStatus(): Promise<DesktopAgentSessionReplayStatus>;
   getBackendConfig(): Promise<DesktopBackendConfig>;
   getBusinessEventStreamUrl(): Promise<string>;
+  launchAgentSessionReplay(
+    input: DesktopLaunchAgentSessionReplayInput
+  ): Promise<DesktopLaunchAgentSessionReplayResult>;
+  setAgentSessionReplayPlayback(
+    input: DesktopSetAgentSessionReplayPlaybackInput
+  ): Promise<DesktopAgentSessionReplayPlayback>;
+  sendAgentSessionReplayControl(
+    input: DesktopSendAgentSessionReplayControlInput
+  ): Promise<void>;
+  waitForAgentSessionReplay(
+    input: DesktopWaitAgentSessionReplayInput
+  ): Promise<DesktopWaitAgentSessionReplayResult>;
   listWorkspaceAgentProbes(
     input: AgentProviderProbeListInput
   ): Promise<AgentProviderProbeListResult>;

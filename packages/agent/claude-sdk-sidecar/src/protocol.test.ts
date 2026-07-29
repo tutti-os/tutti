@@ -34,6 +34,19 @@ test("sidecar protocol accepts stop_task requests", () => {
   );
 });
 
+test("sidecar protocol accepts stateless session fork requests", () => {
+  for (const type of ["inspect_fork_checkpoints", "fork_session"] as const) {
+    assert.equal(
+      parseClaudeSDKSidecarRequest({
+        version: CLAUDE_SDK_SIDECAR_PROTOCOL_VERSION,
+        type,
+        payload: { providerSessionId: "provider-session-1" }
+      }).type,
+      type
+    );
+  }
+});
+
 test("sidecar protocol rejects missing and unknown versions", () => {
   assert.throws(
     () => parseClaudeSDKSidecarRequest({ type: "exec" }),

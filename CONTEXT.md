@@ -77,3 +77,45 @@ surfaces inside a desktop workspace. The Browser Node owns browser lifecycle,
 navigation state, session/profile behavior, guest bridge mechanics, and webview
 security policy. Product-specific actions exposed to guest pages are host
 adapters, not Browser Node business logic.
+
+### Agent Session Recording
+
+A mutable capture task over one root Agent Session graph. A Recording produces
+at most one Agent Session Cassette; failed or canceled Recordings produce none.
+Its state is independent of any toolbar lifetime.
+_Avoid_: UI recording, composer recording
+
+### Agent Session Replay Run
+
+One isolated execution of exactly one Agent Session Cassette. A Cassette may
+have many Replay Runs. A Replay Run owns execution status and verification
+outcome; its operational state may be discarded after the run is closed.
+_Avoid_: replay terminal, replay button
+
+### Agent Session Cassette
+
+The minimal, immutable, portable output of a completed Agent Session Recording,
+containing only the selected SessionGraph baseline, accepted external stimuli,
+required provider tape, explicitly referenced blobs, and expected state. It
+does not depend on the recording machine's database and never contains
+unreferenced Workspace, Session, credential, log, or runtime data.
+_Avoid_: recording state, replay state
+
+### Agent Session Checkpoint
+
+A stable Replay Run position that can be restored without inventing Agent,
+provider, or canonical state. It is not an arbitrary UI cursor offset.
+
+### Agent Session Replay Surface
+
+An isolated developer surface that presents at most one active Agent Session
+Replay Run. Restarting, moving backward, or switching Cassette replaces the
+active Run instead of rewinding it.
+_Avoid_: Replay Run window, replay terminal
+
+### Agent Session Replay Playback State
+
+The temporary playing, paused, seeking, or verifying state of an active Agent
+Session Replay Run. It is not the Run's durable execution status or verification
+outcome.
+_Avoid_: Replay Run status, Agent Session status

@@ -31,6 +31,7 @@ interface Input {
   draftContent: AgentComposerDraft;
   canQueueWhileBusy: boolean;
   showStopButton: boolean;
+  draftOverridesStopButton: boolean;
   stopDisabled: boolean;
   isInterrupting: boolean;
   isSendingTurn: boolean;
@@ -65,11 +66,25 @@ interface Input {
   promptImagesSupported: boolean;
 }
 
+export function shouldShowAgentComposerStopButton(input: {
+  draftOverridesStopButton: boolean;
+  hasDraftContent: boolean;
+  isQueueMode: boolean;
+  showStopButton: boolean;
+}): boolean {
+  return (
+    input.showStopButton &&
+    !input.isQueueMode &&
+    !(input.draftOverridesStopButton && input.hasDraftContent)
+  );
+}
+
 export function useComposerPresentation(input: Input) {
   const {
     draftContent,
     canQueueWhileBusy,
     showStopButton,
+    draftOverridesStopButton,
     stopDisabled,
     isInterrupting,
     isSendingTurn,
@@ -117,7 +132,12 @@ export function useComposerPresentation(input: Input) {
     (item) => item.uploadError
   );
   const isQueueMode = canQueueWhileBusy && hasDraftContent;
-  const shouldShowStopButton = showStopButton && !isQueueMode;
+  const shouldShowStopButton = shouldShowAgentComposerStopButton({
+    draftOverridesStopButton,
+    hasDraftContent,
+    isQueueMode,
+    showStopButton
+  });
   const sendButtonState = isQueueMode
     ? "queue"
     : shouldShowStopButton

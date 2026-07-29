@@ -99,6 +99,10 @@ export class WorkspaceAgentLiveLane {
     this.coordinator.reconcileMessages(agentSessionId);
   }
 
+  isSessionDeleted(agentSessionId: string): boolean {
+    return this.coordinator.isSessionDeleted(agentSessionId);
+  }
+
   private handleDelivery(delivery: AgentLiveDelivery): void {
     if (!this.active || !this.options.isAvailable()) return;
     if (delivery.kind === "connection") {

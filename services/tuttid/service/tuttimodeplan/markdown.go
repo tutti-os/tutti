@@ -37,6 +37,7 @@ type PlanDocument struct {
 	TopicID   string        `yaml:"topicId"`
 	Execution PlanExecution `yaml:"execution"`
 	Budget    PlanBudget    `yaml:"budget"`
+	Review    PlanReview    `yaml:"review"`
 	Tasks     []PlanTask    `yaml:"tasks"`
 	Body      string        `yaml:"-"`
 }
@@ -45,12 +46,21 @@ type PlanExecution struct {
 	Mode                   string `yaml:"mode"`
 	ReasoningIntensity     int    `yaml:"reasoningIntensity"`
 	OrchestrationIntensity int    `yaml:"orchestrationIntensity"`
+	// Effect and Speed are optional Tutti Mode preference snapshots. Keeping
+	// them separate preserves the original v1 execution-field semantics.
+	Effect *int `yaml:"effect"`
+	Speed  *int `yaml:"speed"`
 }
 
 type PlanBudget struct {
 	Mode                  string  `yaml:"mode"`
 	TokenLimit            int64   `yaml:"tokenLimit"`
 	QuotaWaterlinePercent float64 `yaml:"quotaWaterlinePercent"`
+}
+
+type PlanReview struct {
+	Mode          string `yaml:"mode"`
+	AgentTargetID string `yaml:"agentTargetId"`
 }
 
 type PlanTask struct {
@@ -104,6 +114,7 @@ func ParsePlanMarkdown(raw []byte) (PlanDocument, error) {
 			TokenLimit:            budget.TokenLimit,
 			QuotaWaterlinePercent: budget.QuotaWaterlinePercent,
 		},
+		Review: PlanReview{Mode: "self"},
 	}
 	decoder := yaml.NewDecoder(strings.NewReader(remainder[:closing]))
 	decoder.KnownFields(true)
@@ -169,6 +180,11 @@ func normalizeAndValidatePlanDocument(document *PlanDocument) error {
 	}
 	document.Execution.Mode = strings.ToLower(strings.TrimSpace(document.Execution.Mode))
 	document.Budget.Mode = strings.ToLower(strings.TrimSpace(document.Budget.Mode))
+	document.Review.Mode = strings.ToLower(strings.TrimSpace(document.Review.Mode))
+	document.Review.AgentTargetID = strings.TrimSpace(document.Review.AgentTargetID)
+	if document.Review.Mode == "" {
+		document.Review.Mode = "self"
+	}
 	if document.Title == "" || document.TopicID == "" || strings.TrimSpace(document.Body) == "" {
 		return fmt.Errorf("%w: title, topicId, and body are required", ErrInvalidPlanMarkdown)
 	}
@@ -193,12 +209,28 @@ func normalizeAndValidatePlanDocument(document *PlanDocument) error {
 	}); !ok {
 		return fmt.Errorf("%w: execution intensities must be between 0 and 100", ErrInvalidPlanMarkdown)
 	}
+	if !isOptionalPlanPreference(document.Execution.Effect) ||
+		!isOptionalPlanPreference(document.Execution.Speed) {
+		return fmt.Errorf("%w: execution effect and speed must be between 0 and 100", ErrInvalidPlanMarkdown)
+	}
 	if _, ok := workspaceissues.NormalizeBudget(workspaceissues.Budget{
 		Mode:                  workspaceissues.BudgetMode(document.Budget.Mode),
 		TokenLimit:            document.Budget.TokenLimit,
 		QuotaWaterlinePercent: document.Budget.QuotaWaterlinePercent,
 	}); !ok {
 		return fmt.Errorf("%w: budget is invalid", ErrInvalidPlanMarkdown)
+	}
+	switch document.Review.Mode {
+	case "self":
+		if document.Review.AgentTargetID != "" {
+			return fmt.Errorf("%w: self review cannot set agentTargetId", ErrInvalidPlanMarkdown)
+		}
+	case "independent":
+		if document.Review.AgentTargetID == "" {
+			return fmt.Errorf("%w: independent review requires agentTargetId", ErrInvalidPlanMarkdown)
+		}
+	default:
+		return fmt.Errorf("%w: review mode must be self or independent", ErrInvalidPlanMarkdown)
 	}
 
 	graph := make([]workspaceissues.Task, 0, len(document.Tasks))
@@ -237,4 +269,8 @@ func normalizeAndValidatePlanDocument(document *PlanDocument) error {
 		return ErrInvalidTaskGraph
 	}
 	return nil
+}
+
+func isOptionalPlanPreference(value *int) bool {
+	return value == nil || *value >= 0 && *value <= 100
 }

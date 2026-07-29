@@ -17,6 +17,11 @@ import type { AgentTranscriptTurnGroup } from "./agentTranscriptModel";
 export interface AgentTranscriptTurnAttachment {
   id: string;
   anchorTurnId: string | null;
+  /**
+   * Anchored timeline chrome should stay absent until its Turn page is loaded.
+   * Existing workflow attachments retain the historical trailing fallback.
+   */
+  missingAnchorBehavior?: "trailing" | "hide";
   content: ReactNode;
 }
 
@@ -51,7 +56,9 @@ export function useAgentTranscriptTurnAttachments(input: {
         ? lastGroupIndexByTurnId.get(attachment.anchorTurnId)
         : undefined;
       if (groupIndex === undefined) {
-        trailing.push(attachment);
+        if (attachment.missingAnchorBehavior !== "hide") {
+          trailing.push(attachment);
+        }
         continue;
       }
       const groupAttachments = byGroupIndex.get(groupIndex) ?? [];

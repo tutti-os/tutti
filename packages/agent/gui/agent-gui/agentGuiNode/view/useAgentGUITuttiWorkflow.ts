@@ -1,18 +1,21 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
 import {
   mergeTaskAssignmentDraft,
   taskAssignmentInputsFromDrafts,
+  tuttiModePlanTaskActionPrompt,
+  tuttiPlanIssueExecutionIsActive,
   useTuttiModePlanPanels,
   type TuttiModePlanAssignmentCatalog,
   type TuttiModePlanTaskAssignmentDraft,
   type TuttiModePlanTaskAssignmentDrafts,
-  type TuttiPlanIssueTaskDecision
+  type TuttiPlanIssueTaskAction
 } from "../../../workspaceWorkflow";
 import {
   agentPromptContentDisplayText,
   updateAgentComposerDraft
 } from "../model/agentComposerDraft";
+import { appendAgentGUIComposerPrompt } from "../controller/useAgentGUIComposerAppendRequest";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import type {
   AgentGUINodeViewProps,
@@ -23,9 +26,12 @@ import type { TuttiWorkflowDockPhase } from "../TuttiWorkflowDock";
 
 export interface AgentGUITuttiWorkflowComposerController {
   planReviewSendActive: boolean;
-  planReviewIntensityDiverged: boolean;
+  tuttiExecutionActive: boolean;
+  tuttiExecutionStopping: boolean;
+  planReviewPreferencesDiverged: boolean;
   acceptPendingPlan: () => void;
   setTuttiModeActiveAndSettleReview: (active: boolean) => void;
+  stopTuttiExecution: () => Promise<void>;
   submitPromptOrDecidePlan: (
     ...args: Parameters<AgentGUINodeViewProps["actions"]["submitPrompt"]>
   ) => void;
@@ -34,12 +40,12 @@ export interface AgentGUITuttiWorkflowComposerController {
 export interface AgentGUITuttiWorkflowDockController {
   assignmentCatalog: TuttiModePlanAssignmentCatalog;
   assignmentDrafts: TuttiModePlanTaskAssignmentDrafts;
-  cancelExecution?: () => Promise<void>;
   cancelReview: () => void;
-  changeIntensity: (value: number) => void;
-  decideTask?: (
+  changeEffect: (value: number) => void;
+  changeSpeed: (value: number) => void;
+  taskAction?: (
     taskId: string,
-    decision: TuttiPlanIssueTaskDecision
+    action: TuttiPlanIssueTaskAction
   ) => Promise<void>;
   openIssue?: () => void;
   openTask?: (taskId: string) => Promise<void>;
@@ -66,7 +72,7 @@ interface MaterializingPlan {
 /**
  * Everything the detail pane needs for the Tutti plan review flow and the
  * materialized plan Issue embed: composer-integrated review decisions (empty
- * send accepts, typed send requests changes, intensity divergence re-plans),
+ * send accepts, typed send requests changes, preference divergence re-plans),
  * per-task assignment drafts, the embedded issue panel data plus its inline
  * acceptance decisions, and the single bottom-dock workflow projection.
  */
@@ -75,9 +81,13 @@ export function useAgentGUITuttiWorkflow(input: {
   labels: AgentGUIViewLabels;
   stableLinkAction: ((action: WorkspaceLinkAction) => void) | undefined;
   setTuttiModeActive: (active: boolean) => void;
-  setTuttiModeOrchestrationIntensity: (value: number) => void;
+  setTuttiModeEffect: (value: number) => void;
+  setTuttiModeSpeed: (value: number) => void;
   updateDraftContent: AgentGUINodeViewProps["actions"]["updateDraftContent"];
   submitPromptPassthrough: (
+    ...args: Parameters<AgentGUINodeViewProps["actions"]["submitPrompt"]>
+  ) => void;
+  submitGuidancePromptPassthrough: (
     ...args: Parameters<AgentGUINodeViewProps["actions"]["submitPrompt"]>
   ) => void;
 }): AgentGUITuttiWorkflowController {
@@ -86,9 +96,11 @@ export function useAgentGUITuttiWorkflow(input: {
     labels,
     stableLinkAction,
     setTuttiModeActive,
-    setTuttiModeOrchestrationIntensity,
+    setTuttiModeEffect,
+    setTuttiModeSpeed,
     updateDraftContent,
-    submitPromptPassthrough
+    submitPromptPassthrough,
+    submitGuidancePromptPassthrough
   } = input;
   const tuttiModePlanPanels = useTuttiModePlanPanels({
     enabled: true,
@@ -106,6 +118,8 @@ export function useAgentGUITuttiWorkflow(input: {
   // Dock shell through that handoff; accepted plan content remains daemon-owned.
   const [materializingPlan, setMaterializingPlan] =
     useState<MaterializingPlan | null>(null);
+  const [stoppingIssueId, setStoppingIssueId] = useState<string | null>(null);
+  const stoppingIssueIdRef = useRef<string | null>(null);
   const handlePlanAssignmentDraftChange = useStableEventCallback(
     (
       panelId: string,
@@ -138,13 +152,18 @@ export function useAgentGUITuttiWorkflow(input: {
   );
   const planReviewSendActive =
     pendingPlanPanel !== null && !pendingPlanSubmitting;
-  // Once the session intensity diverges from the plan's snapshot, an empty
-  // send means "re-plan at the new intensity" instead of accepting; matching
-  // values (including adjusting back) restore accept semantics.
-  const planReviewIntensityDiverged =
+  // Current v1 documents carry explicit preference snapshots. Documents from
+  // the legacy single-axis window use orchestrationIntensity as effect and the
+  // balanced speed default without changing that field's execution meaning.
+  const pendingPlanEffect =
+    pendingPlanPanel?.execution.effect ??
+    pendingPlanPanel?.execution.orchestrationIntensity ??
+    50;
+  const pendingPlanSpeed = pendingPlanPanel?.execution.speed ?? 50;
+  const planReviewPreferencesDiverged =
     pendingPlanPanel !== null &&
-    viewModel.composer.tuttiModeOrchestrationIntensity !==
-      pendingPlanPanel.execution.orchestrationIntensity;
+    (viewModel.composer.tuttiModeEffect !== pendingPlanEffect ||
+      viewModel.composer.tuttiModeSpeed !== pendingPlanSpeed);
   const decidePendingPlan = useStableEventCallback(
     (decision: "accepted" | "rejected" | "canceled", reason?: string): void => {
       if (!pendingPlanPanel || pendingPlanSubmitting) return;
@@ -168,12 +187,14 @@ export function useAgentGUITuttiWorkflow(input: {
     }
   );
   const acceptPendingPlan = useStableEventCallback((): void => {
-    if (planReviewIntensityDiverged && pendingPlanPanel) {
+    if (planReviewPreferencesDiverged && pendingPlanPanel) {
       decidePendingPlan(
         "rejected",
         labels.tuttiModePlanReplanFeedback(
-          String(pendingPlanPanel.execution.orchestrationIntensity),
-          String(viewModel.composer.tuttiModeOrchestrationIntensity)
+          String(pendingPlanEffect),
+          String(pendingPlanSpeed),
+          String(viewModel.composer.tuttiModeEffect),
+          String(viewModel.composer.tuttiModeSpeed)
         )
       );
       return;
@@ -217,9 +238,10 @@ export function useAgentGUITuttiWorkflow(input: {
         // Slash commands (e.g. the usage chip's "/compact") are never plan
         // feedback — let them flow through the normal submit path.
         if (feedback && !feedback.startsWith("/")) {
-          if (planReviewIntensityDiverged) {
+          if (planReviewPreferencesDiverged) {
             feedback += labels.tuttiModePlanReplanFeedbackSuffix(
-              String(viewModel.composer.tuttiModeOrchestrationIntensity)
+              String(viewModel.composer.tuttiModeEffect),
+              String(viewModel.composer.tuttiModeSpeed)
             );
           }
           decidePendingPlan("rejected", feedback);
@@ -231,24 +253,74 @@ export function useAgentGUITuttiWorkflow(input: {
           return;
         }
       }
+      const sourceSession = viewModel.detail.conversationDetail?.session;
+      const activeTurn = sourceSession?.activeTurn;
+      if (
+        tuttiPlanIssueExecutionIsActive(tuttiModePlanPanels.planIssue) &&
+        activeTurn &&
+        activeTurn.phase !== "settled" &&
+        sourceSession.capabilities?.activeTurnGuidance === true
+      ) {
+        submitGuidancePromptPassthrough(...args);
+        return;
+      }
       submitPromptPassthrough(...args);
     }
   );
-  // Embedded issue panel view for the materialized plan issue; the acceptance
-  // gate (accept / rework on pending tasks) settles inline here.
+  // Embedded issue panel actions are source-Agent instructions. They append a
+  // draft for user review instead of impersonating Agent CLI authority or
+  // mutating the managed Issue through a generic Task endpoint.
   const planIssue = tuttiModePlanPanels.planIssue;
-  const decidePlanIssueTask = useStableEventCallback(
-    (taskId: string, decision: TuttiPlanIssueTaskDecision): Promise<void> =>
-      tuttiModePlanPanels.decidePlanIssueTask
-        ? tuttiModePlanPanels.decidePlanIssueTask(taskId, decision)
-        : Promise.resolve()
+  const tuttiExecutionActive = tuttiPlanIssueExecutionIsActive(planIssue);
+  const preparePlanIssueTaskPrompt = useStableEventCallback(
+    (taskId: string, action: TuttiPlanIssueTaskAction): Promise<void> => {
+      if (!planIssue) {
+        return Promise.resolve();
+      }
+      const prompt = tuttiModePlanTaskActionPrompt({
+        action,
+        issue: planIssue,
+        labels: {
+          accept: labels.tuttiModePlanIssueAcceptPrompt,
+          rework: labels.tuttiModePlanIssueReworkPrompt
+        },
+        taskId,
+        workspaceId: viewModel.shell.workspaceId
+      });
+      if (!prompt) {
+        return Promise.resolve();
+      }
+      updateDraftContent(
+        appendAgentGUIComposerPrompt(viewModel.composer.draftContent, prompt)
+      );
+      return Promise.resolve();
+    }
   );
   const cancelPlanIssueExecution = useStableEventCallback(
-    (): Promise<void> =>
-      tuttiModePlanPanels.cancelPlanIssueExecution
-        ? tuttiModePlanPanels.cancelPlanIssueExecution()
-        : Promise.resolve()
+    async (): Promise<void> => {
+      const issueId = planIssue?.issueId ?? "";
+      if (
+        !tuttiExecutionActive ||
+        !issueId ||
+        stoppingIssueIdRef.current === issueId ||
+        !tuttiModePlanPanels.cancelPlanIssueExecution
+      ) {
+        return;
+      }
+      stoppingIssueIdRef.current = issueId;
+      setStoppingIssueId(issueId);
+      try {
+        await tuttiModePlanPanels.cancelPlanIssueExecution();
+      } finally {
+        if (stoppingIssueIdRef.current === issueId) {
+          stoppingIssueIdRef.current = null;
+        }
+        setStoppingIssueId((current) => (current === issueId ? null : current));
+      }
+    }
   );
+  const tuttiExecutionStopping =
+    tuttiExecutionActive && stoppingIssueId === planIssue?.issueId;
   // Clicking a task card jumps into the delegate conversation that ran it.
   const openPlanIssueTaskSession = useStableEventCallback(
     async (taskId: string): Promise<void> => {
@@ -313,8 +385,9 @@ export function useAgentGUITuttiWorkflow(input: {
       kind: "review",
       panel: pendingPlanPanel,
       submitting: pendingPlanSubmitting,
-      intensity: viewModel.composer.tuttiModeOrchestrationIntensity,
-      intensityDiverged: planReviewIntensityDiverged
+      effect: viewModel.composer.tuttiModeEffect,
+      speed: viewModel.composer.tuttiModeSpeed,
+      preferencesDiverged: planReviewPreferencesDiverged
     };
   } else if (materializationFailure) {
     workflowDockPhase = {
@@ -342,16 +415,20 @@ export function useAgentGUITuttiWorkflow(input: {
       kind: "review",
       panel: pendingPlanPanel,
       submitting: pendingPlanSubmitting,
-      intensity: viewModel.composer.tuttiModeOrchestrationIntensity,
-      intensityDiverged: planReviewIntensityDiverged
+      effect: viewModel.composer.tuttiModeEffect,
+      speed: viewModel.composer.tuttiModeSpeed,
+      preferencesDiverged: planReviewPreferencesDiverged
     };
   }
   return {
     composer: {
       acceptPendingPlan,
-      planReviewIntensityDiverged,
+      planReviewPreferencesDiverged,
       planReviewSendActive,
       setTuttiModeActiveAndSettleReview,
+      stopTuttiExecution: cancelPlanIssueExecution,
+      tuttiExecutionActive,
+      tuttiExecutionStopping,
       submitPromptOrDecidePlan
     },
     workflowDock: {
@@ -360,16 +437,10 @@ export function useAgentGUITuttiWorkflow(input: {
         workflowDockPhase?.kind === "review"
           ? (planAssignmentDrafts[workflowDockPhase.panel.id] ?? {})
           : {},
-      cancelExecution:
-        tuttiModePlanPanels.cancelPlanIssueExecution !== null
-          ? cancelPlanIssueExecution
-          : undefined,
       cancelReview: cancelPendingPlan,
-      changeIntensity: setTuttiModeOrchestrationIntensity,
-      decideTask:
-        tuttiModePlanPanels.decidePlanIssueTask !== null
-          ? decidePlanIssueTask
-          : undefined,
+      changeEffect: setTuttiModeEffect,
+      changeSpeed: setTuttiModeSpeed,
+      taskAction: planIssue ? preparePlanIssueTaskPrompt : undefined,
       openIssue: stableLinkAction ? openPlanIssue : undefined,
       openTask: stableLinkAction ? openPlanIssueTaskSession : undefined,
       phase: workflowDockPhase,

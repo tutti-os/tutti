@@ -108,6 +108,7 @@ func runDynamic(ctx context.Context, commandName string, opts options, args []st
 	invokeContext := cliInvokeContextFromEnv()
 	capabilities, err := client.ListCapabilitiesForWorkspaceWithOptions(ctx, invokeContext.WorkspaceID, daemon.CapabilityListOptions{
 		IncludeIntegration: includeIntegrationCapabilitiesFromEnv(),
+		AgentSessionID:     invokeContext.AgentSessionID,
 	})
 	if err != nil {
 		return writeCLIError(stdout, stderr, opts.json, invocationPrefix, reasonDaemonRequestFailed, err, daemonErrorExitCode(err))
@@ -116,6 +117,7 @@ func runDynamic(ctx context.Context, commandName string, opts options, args []st
 	if !ok && legacyAgentCompatibilityInvocation(args) && !includeIntegrationCapabilitiesFromEnv() {
 		compatibilities, listErr := client.ListCapabilitiesForWorkspaceWithOptions(ctx, invokeContext.WorkspaceID, daemon.CapabilityListOptions{
 			IncludeIntegration: true,
+			AgentSessionID:     invokeContext.AgentSessionID,
 		})
 		if listErr == nil {
 			command, commandArgs, ok = matchCapability(compatibilities.Commands, args)
@@ -187,6 +189,7 @@ func runHelp(ctx context.Context, commandName string, stdout io.Writer) int {
 		invokeContext := cliInvokeContextFromEnv()
 		capabilities, listErr := client.ListCapabilitiesForWorkspaceWithOptions(ctx, invokeContext.WorkspaceID, daemon.CapabilityListOptions{
 			IncludeIntegration: includeIntegrationCapabilitiesFromEnv(),
+			AgentSessionID:     invokeContext.AgentSessionID,
 		})
 		if listErr == nil {
 			commands = capabilities.Commands

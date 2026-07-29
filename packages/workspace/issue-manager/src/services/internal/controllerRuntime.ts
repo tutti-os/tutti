@@ -18,6 +18,7 @@ import {
   type IssueManagerDiagnostics
 } from "../../internal/issueManagerDiagnostics.ts";
 import { resolveIssueManagerErrorMessage } from "./controllerUtils.ts";
+import { trackIssueManagerAnalytics } from "./controllerAnalytics.ts";
 import {
   applyIssueManagerIssueDetailResultToNodeState,
   applyIssueManagerIssueListResultToNodeState,
@@ -321,15 +322,13 @@ export function createIssueManagerControllerRuntime(
     if (!query) {
       return;
     }
-    void Promise.resolve(
-      input.feature.analytics?.track({
-        name: "issue_manager.task_searched",
-        params: {
-          queryLength: query.length,
-          resultCount
-        }
-      })
-    ).catch(() => undefined);
+    trackIssueManagerAnalytics(input.feature, {
+      name: "issue_manager.task_searched",
+      params: {
+        queryLength: query.length,
+        resultCount
+      }
+    });
   };
 
   const flushPendingIssueSearchAnalytics = (
@@ -692,14 +691,10 @@ export function createIssueManagerControllerRuntime(
       retained = true;
       if (!hasReportedOpened) {
         hasReportedOpened = true;
-        void Promise.resolve(
-          input.feature.analytics?.track({
-            name: "issue_manager.opened",
-            params: createIssueManagerOpenedParams(
-              input.openSource ?? "restore"
-            )
-          })
-        ).catch(() => undefined);
+        trackIssueManagerAnalytics(input.feature, {
+          name: "issue_manager.opened",
+          params: createIssueManagerOpenedParams(input.openSource ?? "restore")
+        });
       }
       retainIssueUpdates();
       void loadTopics();

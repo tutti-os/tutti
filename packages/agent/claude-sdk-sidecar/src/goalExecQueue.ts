@@ -9,6 +9,7 @@ export type GoalCommandDispatch = {
 
 export type GoalExecInput = {
   turnId: string;
+  promptCorrelationId?: string;
   prompt: string;
   content?: unknown;
   turnOrigin?: string;

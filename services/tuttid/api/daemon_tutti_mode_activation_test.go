@@ -59,6 +59,49 @@ func TestUpdateTuttiModeActivationReturnsRevisionConflict(t *testing.T) {
 	}
 }
 
+func TestUpdateTuttiModeActivationMapsPreferencesAndLegacyEffectAlias(t *testing.T) {
+	t.Parallel()
+	effect, speed, legacy := 80, 70, 20
+	var received tuttimodeactivationservice.SetInput
+	api := DaemonAPI{
+		AgentSessionService: stubAgentSessionService{},
+		TuttiModeActivationService: &stubTuttiModeActivationService{setFn: func(_ context.Context, input tuttimodeactivationservice.SetInput) (tuttimodeactivationservice.SetResult, error) {
+			received = input
+			return tuttimodeactivationservice.SetResult{}, nil
+		}},
+	}
+	_, err := api.UpdateWorkspaceAgentSessionTuttiModeActivation(context.Background(), tuttigenerated.UpdateWorkspaceAgentSessionTuttiModeActivationRequestObject{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+		Body: &tuttigenerated.UpdateTuttiModeActivationRequest{
+			Status: tuttigenerated.TuttiModeActivationStatusActive,
+			Source: tuttigenerated.TuttiModeActivationSourceSlashCommand,
+			Effect: &effect, Speed: &speed, OrchestrationIntensity: &legacy,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if received.Effect == nil || *received.Effect != effect || received.Speed == nil || *received.Speed != speed {
+		t.Fatalf("Set input = %#v, want effect=%d speed=%d", received, effect, speed)
+	}
+
+	received = tuttimodeactivationservice.SetInput{}
+	_, err = api.UpdateWorkspaceAgentSessionTuttiModeActivation(context.Background(), tuttigenerated.UpdateWorkspaceAgentSessionTuttiModeActivationRequestObject{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+		Body: &tuttigenerated.UpdateTuttiModeActivationRequest{
+			Status:                 tuttigenerated.TuttiModeActivationStatusActive,
+			Source:                 tuttigenerated.TuttiModeActivationSourceSlashCommand,
+			OrchestrationIntensity: &legacy,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if received.Effect == nil || *received.Effect != legacy || received.Speed != nil {
+		t.Fatalf("legacy Set input = %#v, want effect=%d and omitted speed", received, legacy)
+	}
+}
+
 func TestUpdateTuttiModeActivationRejectsNegativeExpectedRevisionAtTransportBoundary(t *testing.T) {
 	t.Parallel()
 	api := DaemonAPI{
@@ -221,14 +264,15 @@ func TestGeneratedTuttiModeActivationProjectsCurrentRevision(t *testing.T) {
 		CreatedAt: now, UpdatedAt: now.Add(time.Second),
 		CurrentRevision: tuttimodeactivationbiz.Revision{
 			ID: "1ca08e98-728d-4fe9-8fd4-a2362698aeac", ActivationID: "32bb4e49-5d37-423d-a087-c2f1b5881284",
-			Revision: 2, State: tuttimodeactivationbiz.StateInactive, Source: tuttimodeactivationbiz.SourceBadgeRemove, CreatedAt: now.Add(time.Second),
+			Revision: 2, State: tuttimodeactivationbiz.StateInactive, Source: tuttimodeactivationbiz.SourceBadgeRemove,
+			Effect: 80, Speed: 70, CreatedAt: now.Add(time.Second),
 		},
 	}
 	generated, err := generatedTuttiModeActivation(activation)
 	if err != nil {
 		t.Fatalf("generatedTuttiModeActivation() error = %v", err)
 	}
-	if generated == nil || generated.WorkspaceId != activation.WorkspaceID || generated.Status != tuttigenerated.TuttiModeActivationStatusInactive || generated.CurrentRevision.Revision != 2 || generated.CurrentRevision.Status != tuttigenerated.TuttiModeActivationStatusInactive || generated.CurrentRevision.Source != tuttigenerated.TuttiModeActivationSourceBadgeRemove {
+	if generated == nil || generated.WorkspaceId != activation.WorkspaceID || generated.Status != tuttigenerated.TuttiModeActivationStatusInactive || generated.CurrentRevision.Revision != 2 || generated.CurrentRevision.Status != tuttigenerated.TuttiModeActivationStatusInactive || generated.CurrentRevision.Source != tuttigenerated.TuttiModeActivationSourceBadgeRemove || generated.CurrentRevision.Effect == nil || *generated.CurrentRevision.Effect != 80 || generated.CurrentRevision.Speed == nil || *generated.CurrentRevision.Speed != 70 || generated.CurrentRevision.OrchestrationIntensity != 80 {
 		t.Fatalf("generated = %#v", generated)
 	}
 }
@@ -293,15 +337,26 @@ func TestGeneratedAgentSessionPropagatesInvalidTuttiModeIdentity(t *testing.T) {
 
 func TestInitialTuttiModeActivationIsIndependentFromCapabilityRefs(t *testing.T) {
 	t.Parallel()
+	effect, speed, legacy := 82, 68, 20
 	intent, err := tuttiModeActivationIntentFromGenerated(&tuttigenerated.TuttiModeActivationIntent{
 		Status: tuttigenerated.TuttiModeActivationStatusActive,
 		Source: tuttigenerated.TuttiModeActivationSourceSlashCommand,
+		Effect: &effect, Speed: &speed, OrchestrationIntensity: &legacy,
 	})
 	if err != nil {
 		t.Fatalf("tuttiModeActivationIntentFromGenerated() error = %v", err)
 	}
-	if intent == nil || intent.State != "active" || intent.Source != "slash_command" {
+	if intent == nil || intent.State != "active" || intent.Source != "slash_command" ||
+		intent.Effect == nil || *intent.Effect != effect || intent.Speed == nil || *intent.Speed != speed {
 		t.Fatalf("intent = %#v", intent)
+	}
+	legacyIntent, err := tuttiModeActivationIntentFromGenerated(&tuttigenerated.TuttiModeActivationIntent{
+		Status:                 tuttigenerated.TuttiModeActivationStatusActive,
+		Source:                 tuttigenerated.TuttiModeActivationSourceSlashCommand,
+		OrchestrationIntensity: &legacy,
+	})
+	if err != nil || legacyIntent == nil || legacyIntent.Effect == nil || *legacyIntent.Effect != legacy || legacyIntent.Speed != nil {
+		t.Fatalf("legacy intent = %#v error=%v", legacyIntent, err)
 	}
 	missing, err := tuttiModeActivationIntentFromGenerated(nil)
 	if err != nil || missing != nil {

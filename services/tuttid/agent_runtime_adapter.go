@@ -164,18 +164,19 @@ func (a agentRuntimeAdapter) Exec(ctx context.Context, input agentservice.Runtim
 		"content_block_count": len(input.Content),
 	})
 	result, err := a.controller.Exec(ctx, agentruntime.ExecInput{
-		RoomID:            input.WorkspaceID,
-		AgentSessionID:    input.AgentSessionID,
-		TurnID:            input.TurnID,
-		ClientSubmitID:    input.ClientSubmitID,
-		CapabilityRefs:    runtimeCapabilityReferencesFromService(input.CapabilityRefs),
-		Content:           runtimePromptContentFromService(input.Content),
-		DisplayPrompt:     input.DisplayPrompt,
-		InitialTitle:      input.InitialTitle,
-		InitialTitleBase:  input.InitialTitleBase,
-		Guidance:          input.Guidance,
-		Metadata:          cloneRuntimeContext(input.Metadata),
-		TuttiModeSnapshot: runtimeTuttiModeSnapshotFromService(input.TuttiModeSnapshot),
+		RoomID:                          input.WorkspaceID,
+		AgentSessionID:                  input.AgentSessionID,
+		TurnID:                          input.TurnID,
+		ClientSubmitID:                  input.ClientSubmitID,
+		CanonicalSubmitOccurredAtUnixMS: input.CanonicalSubmitOccurredAtUnixMS,
+		CapabilityRefs:                  runtimeCapabilityReferencesFromService(input.CapabilityRefs),
+		Content:                         runtimePromptContentFromService(input.Content),
+		DisplayPrompt:                   input.DisplayPrompt,
+		InitialTitle:                    input.InitialTitle,
+		InitialTitleBase:                input.InitialTitleBase,
+		Guidance:                        input.Guidance,
+		Metadata:                        cloneRuntimeContext(input.Metadata),
+		TuttiModeSnapshot:               runtimeTuttiModeSnapshotFromService(input.TuttiModeSnapshot),
 	})
 	if err != nil {
 		agentservice.LogSubmitTrace("runtime_adapter.exec.failed", input.WorkspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{
@@ -204,13 +205,14 @@ func (a agentRuntimeAdapter) DurablyReportSubmitProvenance(
 	input agentservice.RuntimeSubmitProvenanceInput,
 ) error {
 	err := a.controller.DurablyReportSubmitProvenance(ctx, agentruntime.SubmitProvenanceInput{
-		RoomID:         input.WorkspaceID,
-		AgentSessionID: input.AgentSessionID,
-		TurnID:         input.TurnID,
-		ClientSubmitID: input.ClientSubmitID,
-		Content:        runtimePromptContentFromService(input.Content),
-		DisplayPrompt:  input.DisplayPrompt,
-		Guidance:       input.Guidance,
+		RoomID:                          input.WorkspaceID,
+		AgentSessionID:                  input.AgentSessionID,
+		TurnID:                          input.TurnID,
+		ClientSubmitID:                  input.ClientSubmitID,
+		CanonicalSubmitOccurredAtUnixMS: input.CanonicalSubmitOccurredAtUnixMS,
+		Content:                         runtimePromptContentFromService(input.Content),
+		DisplayPrompt:                   input.DisplayPrompt,
+		Guidance:                        input.Guidance,
 	})
 	if err != nil {
 		return mapAgentRuntimeError(err)
@@ -224,13 +226,17 @@ func runtimeTuttiModeSnapshotFromService(
 	if snapshot == nil {
 		return nil
 	}
+	legacyOrchestrationIntensity := snapshot.OrchestrationIntensity //nolint:staticcheck // Compatibility bridge preserves version-zero snapshots.
 	return &agentruntime.TuttiModeTurnSnapshot{
 		ActivationID:           snapshot.ActivationID,
 		RevisionID:             snapshot.RevisionID,
 		Revision:               snapshot.Revision,
 		State:                  snapshot.State,
 		Source:                 snapshot.Source,
-		OrchestrationIntensity: snapshot.OrchestrationIntensity,
+		PreferenceVersion:      snapshot.PreferenceVersion,
+		Effect:                 snapshot.Effect,
+		Speed:                  snapshot.Speed,
+		OrchestrationIntensity: legacyOrchestrationIntensity,
 	}
 }
 

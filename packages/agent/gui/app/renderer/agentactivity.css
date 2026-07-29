@@ -600,6 +600,10 @@
   color: var(--text-primary);
 }
 
+[data-testid="workspace-agent-message-center"][data-presentation="embedded"] {
+  width: 100%;
+}
+
 [data-testid="workspace-agent-message-center"]
   .workspace-agent-message-center__copy-text,
 [data-testid="workspace-agent-message-center"]
@@ -4123,6 +4127,12 @@ aside.workspace-agents-status-panel
   transition:
     opacity 120ms ease,
     transform 120ms ease;
+}
+
+.agent-gui-conversation__message-footer
+  > .agent-gui-conversation__message-copy-button
+  + .agent-gui-conversation__message-copy-button {
+  margin-left: -8px;
 }
 
 .agent-gui-conversation__message-group[data-agent-message-speaker="user"]

@@ -299,7 +299,7 @@ ALTER TABLE tutti_mode_turn_snapshots DROP COLUMN accepted_at_unix_ms;
 	}
 }
 
-func TestSQLiteStoreTuttiModeActivationOrchestrationIntensityRevisions(t *testing.T) {
+func TestSQLiteStoreTuttiModeActivationPreferenceRevisions(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	store := openTestSQLiteStore(t)
@@ -308,60 +308,72 @@ func TestSQLiteStoreTuttiModeActivationOrchestrationIntensityRevisions(t *testin
 	}
 	now := time.UnixMilli(1_700_000_000_000).UTC()
 
-	// First activation without an explicit slider value adopts the default.
+	// First activation without explicit preferences adopts both defaults.
 	first, changed, err := store.SetTuttiModeActivation(ctx, SetTuttiModeActivationInput{
 		WorkspaceID: "ws-intensity", AgentSessionID: "session-1",
 		ActivationID: "activation-1", RevisionID: "revision-1",
 		State: activationbiz.StateActive, Source: activationbiz.SourceSlashCommand, ChangedAt: now,
 	})
-	if err != nil || !changed || first.CurrentRevision.OrchestrationIntensity != activationbiz.DefaultOrchestrationIntensity {
+	if err != nil || !changed || first.CurrentRevision.Effect != activationbiz.DefaultEffect || first.CurrentRevision.Speed != activationbiz.DefaultSpeed {
 		t.Fatalf("first SetTuttiModeActivation() activation=%#v changed=%v err=%v", first, changed, err)
 	}
 
-	// An intensity-only change appends a new revision while state stays active.
+	// An effect-only change appends a new revision and preserves speed.
 	eighty := 80
 	second, changed, err := store.SetTuttiModeActivation(ctx, SetTuttiModeActivationInput{
 		WorkspaceID: "ws-intensity", AgentSessionID: "session-1",
 		ActivationID: "unused", RevisionID: "revision-2",
 		State: activationbiz.StateActive, Source: activationbiz.SourceSlashCommand,
-		OrchestrationIntensity: &eighty, ChangedAt: now.Add(time.Second),
+		Effect: &eighty, ChangedAt: now.Add(time.Second),
 	})
-	if err != nil || !changed || second.CurrentRevision.Revision != 2 || second.CurrentRevision.OrchestrationIntensity != 80 {
-		t.Fatalf("intensity SetTuttiModeActivation() activation=%#v changed=%v err=%v", second, changed, err)
+	if err != nil || !changed || second.CurrentRevision.Revision != 2 || second.CurrentRevision.Effect != 80 || second.CurrentRevision.Speed != 50 {
+		t.Fatalf("effect SetTuttiModeActivation() activation=%#v changed=%v err=%v", second, changed, err)
 	}
 
-	// The same intensity again is an idempotent no-op.
+	// The same effect again is an idempotent no-op.
 	repeat, changed, err := store.SetTuttiModeActivation(ctx, SetTuttiModeActivationInput{
 		WorkspaceID: "ws-intensity", AgentSessionID: "session-1",
 		ActivationID: "unused", RevisionID: "revision-3",
 		State: activationbiz.StateActive, Source: activationbiz.SourceSlashCommand,
-		OrchestrationIntensity: &eighty, ChangedAt: now.Add(2 * time.Second),
+		Effect: &eighty, ChangedAt: now.Add(2 * time.Second),
 	})
 	if err != nil || changed || repeat.CurrentRevision.Revision != 2 {
 		t.Fatalf("repeat SetTuttiModeActivation() activation=%#v changed=%v err=%v", repeat, changed, err)
 	}
 
-	// Omitting the intensity keeps the last persisted value across a state flip.
-	inactive, changed, err := store.SetTuttiModeActivation(ctx, SetTuttiModeActivationInput{
+	// Speed changes independently while effect is retained.
+	ninety := 90
+	faster, changed, err := store.SetTuttiModeActivation(ctx, SetTuttiModeActivationInput{
 		WorkspaceID: "ws-intensity", AgentSessionID: "session-1",
 		ActivationID: "unused", RevisionID: "revision-4",
-		State: activationbiz.StateInactive, Source: activationbiz.SourceBadgeRemove, ChangedAt: now.Add(3 * time.Second),
+		State: activationbiz.StateActive, Source: activationbiz.SourceSlashCommand,
+		Speed: &ninety, ChangedAt: now.Add(3 * time.Second),
 	})
-	if err != nil || !changed || inactive.CurrentRevision.OrchestrationIntensity != 80 {
+	if err != nil || !changed || faster.CurrentRevision.Effect != 80 || faster.CurrentRevision.Speed != 90 {
+		t.Fatalf("speed SetTuttiModeActivation() activation=%#v changed=%v err=%v", faster, changed, err)
+	}
+
+	// Omitting both preferences keeps their values across a state flip.
+	inactive, changed, err := store.SetTuttiModeActivation(ctx, SetTuttiModeActivationInput{
+		WorkspaceID: "ws-intensity", AgentSessionID: "session-1",
+		ActivationID: "unused", RevisionID: "revision-5",
+		State: activationbiz.StateInactive, Source: activationbiz.SourceBadgeRemove, ChangedAt: now.Add(4 * time.Second),
+	})
+	if err != nil || !changed || inactive.CurrentRevision.Effect != 80 || inactive.CurrentRevision.Speed != 90 {
 		t.Fatalf("inactive SetTuttiModeActivation() activation=%#v changed=%v err=%v", inactive, changed, err)
 	}
 
-	// The bound turn snapshot carries the exact revision intensity.
+	// The bound turn snapshot carries both exact revision preferences.
 	snapshot, created, err := store.PutTuttiModeTurnSnapshot(ctx, "ws-intensity", "session-1", "turn-1", activationbiz.TurnSnapshot{
-		ActivationID: "activation-1", RevisionID: "revision-2", Revision: 2,
+		ActivationID: "activation-1", RevisionID: "revision-4", Revision: 3,
 		State: activationbiz.StateActive, Source: activationbiz.SourceSlashCommand,
-		OrchestrationIntensity: 80,
-	}, now.Add(4*time.Second))
-	if err != nil || !created || snapshot.OrchestrationIntensity != 80 {
+		Effect: 80, Speed: 90,
+	}, now.Add(5*time.Second))
+	if err != nil || !created || snapshot.Effect != 80 || snapshot.Speed != 90 {
 		t.Fatalf("PutTuttiModeTurnSnapshot() snapshot=%#v created=%v err=%v", snapshot, created, err)
 	}
 	read, found, err := store.GetTuttiModeTurnSnapshot(ctx, "ws-intensity", "session-1", "turn-1")
-	if err != nil || !found || read.OrchestrationIntensity != 80 {
+	if err != nil || !found || read.Effect != 80 || read.Speed != 90 {
 		t.Fatalf("GetTuttiModeTurnSnapshot() snapshot=%#v found=%v err=%v", read, found, err)
 	}
 
@@ -369,9 +381,9 @@ func TestSQLiteStoreTuttiModeActivationOrchestrationIntensityRevisions(t *testin
 	invalid := 101
 	if _, _, err := store.SetTuttiModeActivation(ctx, SetTuttiModeActivationInput{
 		WorkspaceID: "ws-intensity", AgentSessionID: "session-1",
-		ActivationID: "unused", RevisionID: "revision-5",
+		ActivationID: "unused", RevisionID: "revision-6",
 		State: activationbiz.StateActive, Source: activationbiz.SourceSlashCommand,
-		OrchestrationIntensity: &invalid, ChangedAt: now.Add(5 * time.Second),
+		Speed: &invalid, ChangedAt: now.Add(6 * time.Second),
 	}); err == nil {
 		t.Fatal("SetTuttiModeActivation(101) error = nil, want validation failure")
 	}

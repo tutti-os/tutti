@@ -540,7 +540,21 @@ func newTurnActivityEvent(session Session, eventType string, turnID string, stat
 }
 
 func newTurnActivityEventWithID(session Session, eventID string, eventType string, turnID string, status string, role string, content string, payload map[string]any) activityshared.Event {
-	ctx, ok := activityEventContext(session, eventID, turnID)
+	return newTurnActivityEventWithIDAt(session, eventID, eventType, turnID, status, role, content, payload, 0)
+}
+
+func newTurnActivityEventWithIDAt(
+	session Session,
+	eventID string,
+	eventType string,
+	turnID string,
+	status string,
+	role string,
+	content string,
+	payload map[string]any,
+	occurredAtUnixMS int64,
+) activityshared.Event {
+	ctx, ok := activityEventContextAt(session, eventID, turnID, occurredAtUnixMS)
 	if !ok {
 		return activityshared.Event{}
 	}

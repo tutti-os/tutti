@@ -59,6 +59,7 @@
     "dev:desktop": "pnpm --filter @tutti-os/desktop dev",
     "dev:web": "node ./tools/scripts/dev-web.mjs",
     "dev:ui-storyboard": "pnpm --filter @tutti-os/ui-storyboard dev",
+    "e2e:agent-gui": "node ./tools/scripts/run-agent-session-replay.mjs",
     "preview:desktop": "pnpm --filter @tutti-os/desktop preview",
     "perf:agent-gui": "node ./tools/scripts/run-agent-gui-performance.mjs",
     "push:checked": "node ./tools/scripts/push-checked.mjs",
@@ -88,7 +89,7 @@
     "release:beta": "node ./tools/scripts/release-beta.mjs",
     "release:packages:apply-version": "node ./tools/scripts/apply-ci-package-release-version.mjs",
     "release:packages:next-version": "node ./tools/scripts/next-package-release-version.mjs",
-    "release:pack:check": "pnpm build:npm-packages && node ./tools/scripts/check-package-packs.mjs",
+    "release:pack:check": "node ./tools/scripts/run-package-pack-check.mjs",
     "release:packages": "node ./tools/scripts/publish-packages.mjs",
     "review:architecture": "node ./.codex/skills/tutti-architecture-review/scripts/plan-review.mjs --format summary",
     "review:architecture:package": "node ./.codex/skills/tutti-architecture-review/scripts/plan-review.mjs --format json --output-temp",
@@ -129,6 +130,7 @@
     "oxlint": "1.70.0",
     "prettier": "^3.8.3",
     "tsup": "8.5.1",
+    "vite": "^6.3.5",
     "yaml": "^2.9.0"
   }
 }

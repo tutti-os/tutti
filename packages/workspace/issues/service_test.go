@@ -152,6 +152,278 @@ func TestServiceUpdateIssueStatus(t *testing.T) {
 	}
 }
 
+type managedMutationDetails interface {
+	error
+	ManagedIssueID() string
+	ManagedSourceSessionID() string
+}
+
+func TestServiceRejectsEveryGenericManagedIssueMutation(t *testing.T) {
+	ctx := context.Background()
+	testCases := []struct {
+		name   string
+		mutate func(Service, *fakeStore, Issue, Task) error
+	}{
+		{
+			name: "issue update",
+			mutate: func(service Service, _ *fakeStore, issue Issue, _ Task) error {
+				_, err := service.UpdateIssue(ctx, UpdateIssueInput{
+					WorkspaceID: issue.WorkspaceID, IssueID: issue.IssueID,
+					ActorUserID: "user-1", Title: "changed", HasTitle: true,
+				})
+				return err
+			},
+		},
+		{
+			name: "issue dispatch mutation",
+			mutate: func(service Service, _ *fakeStore, issue Issue, _ Task) error {
+				_, err := service.UpdateIssue(ctx, UpdateIssueInput{
+					WorkspaceID: issue.WorkspaceID, IssueID: issue.IssueID,
+					ActorUserID: "user-1", DispatchPaused: true, HasDispatchPaused: true,
+				})
+				return err
+			},
+		},
+		{
+			name: "issue execution profile mutation",
+			mutate: func(service Service, _ *fakeStore, issue Issue, _ Task) error {
+				_, err := service.UpdateIssue(ctx, UpdateIssueInput{
+					WorkspaceID: issue.WorkspaceID, IssueID: issue.IssueID,
+					ActorUserID: "user-1", HasExecutionProfile: true,
+					ExecutionProfile: ExecutionProfile{
+						ReasoningIntensity: 2, OrchestrationIntensity: 2,
+					},
+				})
+				return err
+			},
+		},
+		{
+			name: "issue budget mutation",
+			mutate: func(service Service, _ *fakeStore, issue Issue, _ Task) error {
+				_, err := service.UpdateIssue(ctx, UpdateIssueInput{
+					WorkspaceID: issue.WorkspaceID, IssueID: issue.IssueID,
+					ActorUserID: "user-1", HasBudget: true, Budget: DefaultBudget(),
+				})
+				return err
+			},
+		},
+		{
+			name: "issue delete",
+			mutate: func(service Service, _ *fakeStore, issue Issue, _ Task) error {
+				_, err := service.DeleteIssue(ctx, issue.WorkspaceID, issue.IssueID, "user-1")
+				return err
+			},
+		},
+		{
+			name: "task create",
+			mutate: func(service Service, _ *fakeStore, issue Issue, _ Task) error {
+				_, err := service.CreateTask(ctx, CreateTaskInput{
+					WorkspaceID: issue.WorkspaceID, IssueID: issue.IssueID,
+					ActorUserID: "user-1", Title: "new task",
+				})
+				return err
+			},
+		},
+		{
+			name: "task batch create",
+			mutate: func(service Service, _ *fakeStore, issue Issue, _ Task) error {
+				_, err := service.CreateTasks(ctx, CreateTasksInput{
+					WorkspaceID: issue.WorkspaceID, IssueID: issue.IssueID,
+					ActorUserID: "user-1",
+					Tasks:       []CreateTaskItemInput{{TaskID: "task-new", Title: "new task"}},
+				})
+				return err
+			},
+		},
+		{
+			name: "task update",
+			mutate: func(service Service, _ *fakeStore, issue Issue, task Task) error {
+				_, err := service.UpdateTask(ctx, UpdateTaskInput{
+					WorkspaceID: issue.WorkspaceID, IssueID: issue.IssueID,
+					TaskID: task.TaskID, ActorUserID: "user-1",
+					Title: "changed", HasTitle: true,
+				})
+				return err
+			},
+		},
+		{
+			name: "task reorder",
+			mutate: func(service Service, _ *fakeStore, issue Issue, task Task) error {
+				_, err := service.UpdateTask(ctx, UpdateTaskInput{
+					WorkspaceID: issue.WorkspaceID, IssueID: issue.IssueID,
+					TaskID: task.TaskID, ActorUserID: "user-1",
+					SortIndex: 2, HasSortIndex: true,
+				})
+				return err
+			},
+		},
+		{
+			name: "task accept",
+			mutate: func(service Service, _ *fakeStore, issue Issue, task Task) error {
+				_, err := service.UpdateTask(ctx, UpdateTaskInput{
+					WorkspaceID: issue.WorkspaceID, IssueID: issue.IssueID,
+					TaskID: task.TaskID, ActorUserID: "user-1",
+					Status: string(StatusCompleted), HasStatus: true,
+				})
+				return err
+			},
+		},
+		{
+			name: "task rework",
+			mutate: func(service Service, _ *fakeStore, issue Issue, task Task) error {
+				_, err := service.UpdateTask(ctx, UpdateTaskInput{
+					WorkspaceID: issue.WorkspaceID, IssueID: issue.IssueID,
+					TaskID: task.TaskID, ActorUserID: "user-1",
+					Status: string(StatusNotStarted), HasStatus: true,
+					AcceptanceState:    string(AcceptanceAgentClaimed),
+					HasAcceptanceState: true,
+				})
+				return err
+			},
+		},
+		{
+			name: "task delete",
+			mutate: func(service Service, _ *fakeStore, issue Issue, task Task) error {
+				_, err := service.DeleteTask(
+					ctx, issue.WorkspaceID, issue.IssueID, task.TaskID, "user-1",
+				)
+				return err
+			},
+		},
+		{
+			name: "issue context add",
+			mutate: func(service Service, _ *fakeStore, issue Issue, _ Task) error {
+				_, err := service.AddContextRefs(ctx, AddContextRefsInput{
+					WorkspaceID: issue.WorkspaceID, IssueID: issue.IssueID,
+					ParentKind: string(ContextRefParentIssue),
+					Refs:       []AddContextRefInput{{Path: "/tmp/context"}},
+				})
+				return err
+			},
+		},
+		{
+			name: "task context add",
+			mutate: func(service Service, _ *fakeStore, issue Issue, task Task) error {
+				_, err := service.AddContextRefs(ctx, AddContextRefsInput{
+					WorkspaceID: issue.WorkspaceID, IssueID: issue.IssueID,
+					TaskID: task.TaskID, ParentKind: string(ContextRefParentTask),
+					Refs: []AddContextRefInput{{Path: "/tmp/context"}},
+				})
+				return err
+			},
+		},
+		{
+			name: "issue context remove",
+			mutate: func(service Service, store *fakeStore, issue Issue, _ Task) error {
+				_, _ = store.AddContextRefs(ctx, []ContextRef{{
+					ContextRefID: "ref-1", WorkspaceID: issue.WorkspaceID,
+					IssueID: issue.IssueID, ParentKind: ContextRefParentIssue,
+				}})
+				_, err := service.RemoveContextRef(ctx, RemoveContextRefInput{
+					WorkspaceID: issue.WorkspaceID, IssueID: issue.IssueID,
+					ParentKind: string(ContextRefParentIssue), ContextRefID: "ref-1",
+				})
+				return err
+			},
+		},
+		{
+			name: "task context remove",
+			mutate: func(service Service, store *fakeStore, issue Issue, task Task) error {
+				_, _ = store.AddContextRefs(ctx, []ContextRef{{
+					ContextRefID: "ref-1", WorkspaceID: issue.WorkspaceID,
+					IssueID: issue.IssueID, TaskID: task.TaskID,
+					ParentKind: ContextRefParentTask,
+				}})
+				_, err := service.RemoveContextRef(ctx, RemoveContextRefInput{
+					WorkspaceID: issue.WorkspaceID, IssueID: issue.IssueID,
+					TaskID: task.TaskID, ParentKind: string(ContextRefParentTask),
+					ContextRefID: "ref-1",
+				})
+				return err
+			},
+		},
+		{
+			name: "run create",
+			mutate: func(service Service, _ *fakeStore, issue Issue, task Task) error {
+				_, err := service.CreateRun(ctx, CreateRunInput{
+					WorkspaceID: issue.WorkspaceID, IssueID: issue.IssueID,
+					TaskID: task.TaskID, ActorUserID: "user-1",
+					AgentTargetID: "local:codex",
+				})
+				return err
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			store := newFakeStore()
+			service := testService(store)
+			issue := Issue{
+				IssueID: "managed-issue", WorkspaceID: "workspace-1",
+				TopicID: DefaultTopicID, Title: "Managed",
+				PlanningSource:  PlanningSourceTuttiModePlan,
+				SourceSessionID: "source-session",
+			}
+			if _, err := store.CreateIssue(ctx, issue); err != nil {
+				t.Fatalf("CreateIssue fixture error = %v", err)
+			}
+			task := Task{
+				TaskID: "task-1", IssueID: issue.IssueID, WorkspaceID: issue.WorkspaceID,
+				Title: "Task", Status: StatusNotStarted, Priority: PriorityMedium,
+				AcceptanceState: AcceptanceAgentClaimed,
+			}
+			tasks, err := store.AppendTasks(ctx, []Task{task})
+			if err != nil {
+				t.Fatalf("AppendTasks fixture error = %v", err)
+			}
+			err = testCase.mutate(service, store, issue, tasks[0])
+			if err == nil {
+				t.Fatal("generic managed mutation error = nil")
+			}
+			var details managedMutationDetails
+			if !errors.As(err, &details) {
+				t.Fatalf("generic managed mutation error = %T %v, want typed details", err, err)
+			}
+			if details.ManagedIssueID() != issue.IssueID ||
+				details.ManagedSourceSessionID() != issue.SourceSessionID {
+				t.Fatalf("managed mutation details = (%q, %q)",
+					details.ManagedIssueID(), details.ManagedSourceSessionID())
+			}
+		})
+	}
+}
+
+func TestServiceLeavesManualAndTraditionalIssueMutationBehaviorUnchanged(t *testing.T) {
+	ctx := context.Background()
+	for _, source := range []PlanningSource{
+		PlanningSourceManual,
+		PlanningSourceTraditionalPlan,
+	} {
+		t.Run(string(source), func(t *testing.T) {
+			store := newFakeStore()
+			service := testService(store)
+			issue, err := store.CreateIssue(ctx, Issue{
+				IssueID: "issue-" + string(source), WorkspaceID: "workspace-1",
+				TopicID: DefaultTopicID, Title: "Mutable", PlanningSource: source,
+			})
+			if err != nil {
+				t.Fatalf("CreateIssue fixture error = %v", err)
+			}
+			updated, err := service.UpdateIssue(ctx, UpdateIssueInput{
+				WorkspaceID: issue.WorkspaceID, IssueID: issue.IssueID,
+				ActorUserID: "user-1", Title: "changed", HasTitle: true,
+			})
+			if err != nil {
+				t.Fatalf("UpdateIssue() error = %v", err)
+			}
+			if updated.Title != "changed" {
+				t.Fatalf("updated title = %q", updated.Title)
+			}
+		})
+	}
+}
+
 func TestServiceDeleteTopic(t *testing.T) {
 	store := newFakeStore()
 	service := testService(store)

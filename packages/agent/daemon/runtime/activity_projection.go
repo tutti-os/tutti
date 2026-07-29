@@ -160,9 +160,16 @@ func eventSourceFromSession(session Session) canonical.EventSource {
 }
 
 func activityEventContext(session Session, eventID string, turnID string) (activityshared.EventContext, bool) {
+	return activityEventContextAt(session, eventID, turnID, 0)
+}
+
+func activityEventContextAt(session Session, eventID string, turnID string, occurredAtUnixMS int64) (activityshared.EventContext, bool) {
 	provider, ok := activityshared.NormalizeProvider(session.Provider)
 	if !ok {
 		return activityshared.EventContext{}, false
+	}
+	if occurredAtUnixMS <= 0 {
+		occurredAtUnixMS = nextEventUnixMS()
 	}
 	return activityshared.EventContext{
 		EventID:           strings.TrimSpace(eventID),
@@ -172,7 +179,7 @@ func activityEventContext(session Session, eventID string, turnID string) (activ
 		TurnID:            strings.TrimSpace(turnID),
 		CWD:               strings.TrimSpace(session.CWD),
 		Title:             strings.TrimSpace(session.Title),
-		OccurredAtUnixMS:  nextEventUnixMS(),
+		OccurredAtUnixMS:  occurredAtUnixMS,
 	}, true
 }
 

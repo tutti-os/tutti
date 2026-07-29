@@ -1,13 +1,11 @@
 import {
+  createAgentSessionFamilySnapshotSelector,
   selectEngineSessionIsRespondingToInteraction,
   selectWorkspaceAgentConsumerSessions
 } from "@tutti-os/agent-activity-core";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAgentHostApi } from "../../../agentActivityHost";
-import {
-  useAgentActivityRuntime,
-  useAgentActivitySnapshot
-} from "../../../agentActivityRuntime";
+import { useAgentActivityRuntime } from "../../../agentActivityRuntime";
 import { useAccountStore } from "../../../host/agentHostAccountStore";
 import type { AgentHostUserProject } from "../../../host/agentHostApi";
 import type { AgentSessionComposerSettings } from "../../../shared/agentSessionTypes";
@@ -128,6 +126,7 @@ export function useAgentGUINodeController({
   openSessionRequest = null,
   prefillPromptRequest = null,
   onDataChange,
+  onComposerAppendHandled,
   onRememberComposerDefaults,
   onShowMessage
 }: UseAgentGUINodeControllerInput) {
@@ -148,7 +147,6 @@ export function useAgentGUINodeController({
   }, [agentActivityRuntime, agentActivityRuntimeOrigin, workspaceId]);
   // Stable runtime identity isolates conversation queries and session-view refs.
   const agentHostApi = useAgentHostApi();
-  const agentActivitySnapshot = useAgentActivitySnapshot(workspaceId);
   const providerCatalogSelection = useAgentGUIProviderCatalogSelection({
     comingSoonProviders,
     data,
@@ -245,23 +243,16 @@ export function useAgentGUINodeController({
     activeSessionState,
     isCreatingConversation
   } = sessionEngineState;
-  const activeRelatedPendingInteractions = useMemo(() => {
-    if (!activeConversationId) return [];
-    return agentActivitySnapshot.sessions
-      .filter(
-        (session) =>
-          session.agentSessionId === activeConversationId ||
-          (session.kind === "child" &&
-            session.rootAgentSessionId === activeConversationId)
-      )
-      .flatMap((session) => session.pendingInteractions)
-      .sort(
-        (left, right) =>
-          left.createdAtUnixMs - right.createdAtUnixMs ||
-          left.agentSessionId.localeCompare(right.agentSessionId) ||
-          left.requestId.localeCompare(right.requestId)
-      );
-  }, [activeConversationId, agentActivitySnapshot.sessions]);
+  const selectActiveSessionFamily = useMemo(
+    () => createAgentSessionFamilySnapshotSelector(activeConversationId),
+    [activeConversationId]
+  );
+  const activeSessionFamily = useEngineSelector(
+    sessionEngine,
+    selectActiveSessionFamily
+  );
+  const activeRelatedPendingInteractions =
+    activeSessionFamily.pendingInteractions;
   const activeRelatedIsRespondingToInteraction = useEngineSelector(
     sessionEngine,
     (state) =>
@@ -289,10 +280,10 @@ export function useAgentGUINodeController({
     activeConversationId,
     activeEngineSession,
     activeSessionState,
-    agentActivitySnapshot,
     data,
     draftSettingsBySessionId,
-    selectedComposerTargetData
+    selectedComposerTargetData,
+    sessionEngine
   });
   const {
     composerSupport,
@@ -306,7 +297,6 @@ export function useAgentGUINodeController({
   );
   const controllerRefs = useAgentGUIControllerRefs({
     activeConversationId,
-    agentActivitySnapshot,
     conversations,
     data,
     draftByScopeKey,
@@ -327,7 +317,6 @@ export function useAgentGUINodeController({
   });
   const {
     activeConversationIdRef,
-    agentActivitySnapshotRef,
     conversationIdsRef,
     conversationsRef,
     dataRef,
@@ -339,10 +328,8 @@ export function useAgentGUINodeController({
     onDataChangeRef,
     onComposerDefaultsAuthorityReloadedRef,
     pendingOpenSessionRequestRef,
-    reloadSelectedConversationRef,
     selectedComposerTargetDataRef,
     selectedProjectPathRef,
-    syncConversationListProjectionRef,
     userProjectsLoadSeqRef,
     userProjectsRef
   } = controllerRefs;
@@ -351,19 +338,17 @@ export function useAgentGUINodeController({
     activeConversationIdRef,
     agentActivityRuntime,
     agentActivityRuntimeOrigin,
-    agentActivitySnapshot,
-    agentActivitySnapshotRef,
     dataRef,
     isMountedRef,
-    reloadSelectedConversationRef,
     sessionEngine,
-    syncConversationListProjectionRef,
     workspaceId
   });
   const {
+    loadSelectedConversationMessages,
     loadSessionState,
     markSelectedConversationDetailPending,
-    resolveSessionMessages
+    resolveSessionMessages,
+    setActiveMessageSession
   } = sessionDetailTransport;
   const storedActiveMessages = activeConversationId
     ? resolveSessionMessages(activeConversationId)
@@ -499,9 +484,9 @@ export function useAgentGUINodeController({
     isComposerHomeRef,
     isMountedRef,
     loadDraftComposerOptions: () => loadDraftComposerOptionsRef.current(),
+    loadSelectedConversationMessages,
     markSelectedConversationDetailPending,
     onDataChangeRef,
-    reloadSelectedConversationRef,
     sessionEngine,
     requestRailReveal,
     setActiveConversationId,
@@ -509,6 +494,7 @@ export function useAgentGUINodeController({
     setIntent,
     setIsComposerHome,
     setIsLoadingMessages,
+    setActiveMessageSession,
     transientConversation,
     workspaceId
   });
@@ -517,7 +503,6 @@ export function useAgentGUINodeController({
   const selectConversation = conversationSelection.selectConversation;
   const syncConversationListProjection =
     conversationSelection.syncConversationListProjection;
-  syncConversationListProjectionRef.current = syncConversationListProjection;
 
   const updateSelectedProjectPath = useCallback(
     (
@@ -597,6 +582,7 @@ export function useAgentGUINodeController({
 
   const { loadDraftComposerOptions, reloadComposerOptionsForTarget } =
     useAgentGUIComposerOptionsSync({
+      activeAgentTargetId: activeEngineSession?.agentTargetId ?? null,
       activeConversationId,
       activeConversationIdRef,
       agentActivityRuntime,
@@ -637,6 +623,7 @@ export function useAgentGUINodeController({
     agentHostApi,
     composerTargetDataFromProviderTarget,
     composerAppendRequest,
+    onComposerAppendHandled,
     composerSupportPermissionModeChangeDeferred:
       composerSupport.permissionModeChangeDeferred,
     currentProvider: data.provider,
@@ -691,8 +678,8 @@ export function useAgentGUINodeController({
     activeLatestPendingSubmitTurnId:
       sessionEngineState.activeLatestPendingSubmit?.turnId ?? null,
     activeMessages,
+    activeSessionFamily,
     activeTimelineItems,
-    agentActivitySnapshot,
     activeEngineHasPendingInteractions:
       activeRelatedPendingInteractions.length > 0,
     isRespondingToInteraction: activeRelatedIsRespondingToInteraction,

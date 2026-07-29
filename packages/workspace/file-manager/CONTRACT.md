@@ -121,6 +121,8 @@ keep truly product-specific flows outside the shared session.
   `locationSections`
 - Search query/results projection when `canSearch`
 - Mutation busy state and shared error projection helpers
+- Entry-name validation for create and rename operations before host mutation;
+  one name segment is limited to 255 UTF-8 bytes
 - Preview projection into `previewState` via the preview package controller
 - Activation orchestration that calls host `activateFile` / open / reveal APIs
 - Persisted navigation/location snapshot via

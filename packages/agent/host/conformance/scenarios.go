@@ -25,7 +25,19 @@ var (
 		Name: "delete live session before canonical report",
 		run:  runDeleteLiveSessionBeforeCanonicalReport,
 	}
-	purgeDeletedSessionsScenario = Scenario{Name: "purge deleted sessions", run: runPurgeDeletedSessions}
+	purgeDeletedSessionsScenario     = Scenario{Name: "purge deleted sessions", run: runPurgeDeletedSessions}
+	deleteAdmissionRejectionScenario = Scenario{
+		Name: "delete admission rejection has no canonical side effects",
+		run:  runDeleteAdmissionRejection,
+	}
+	deleteAdmissionExactClosureScenario = Scenario{
+		Name: "delete admission receives exact canonical closure",
+		run:  runDeleteAdmissionExactClosure,
+	}
+	deleteAdmissionReplanScenario = Scenario{
+		Name: "delete admission guards changed closure before additional runtime close",
+		run:  runDeleteAdmissionReplan,
+	}
 )
 
 // Scenarios returns the lifecycle surface that every host adapter must support.
@@ -49,6 +61,9 @@ func Scenarios() []Scenario {
 		pinSessionScenario,
 		deleteSessionScenario,
 		deleteLiveOnlySessionScenario,
+		deleteAdmissionRejectionScenario,
+		deleteAdmissionExactClosureScenario,
+		deleteAdmissionReplanScenario,
 		purgeDeletedSessionsScenario,
 	}
 }
@@ -69,6 +84,16 @@ func SubmissionFenceScenarios() []Scenario {
 
 func TitlePolicyScenarios() []Scenario {
 	return []Scenario{{Name: "clear canonical title", run: runClearCanonicalTitle}}
+}
+
+// DeletionAdmissionScenarios verifies the provider-neutral guard around the
+// exact canonical closure owned and replanned by Host.
+func DeletionAdmissionScenarios() []Scenario {
+	return []Scenario{
+		deleteAdmissionRejectionScenario,
+		deleteAdmissionExactClosureScenario,
+		deleteAdmissionReplanScenario,
+	}
 }
 
 // CoordinatorScenarios covers commands and recovery behavior owned by the Host
@@ -95,6 +120,15 @@ func GoalScenarios() []Scenario {
 		{Name: "goal generation fence preserves newer goal", run: runGoalGenerationFencePreservesNewerGoal},
 		{Name: "accepted goal control waits without replay", run: runAcceptedGoalControlWaitsWithoutReplay},
 		{Name: "goal inbox consumer preflight", run: runGoalInboxConsumerPreflight},
+	}
+}
+
+// SessionForkScenarios covers the optional native fork capability without
+// weakening the base Driver contract for providers that do not implement it.
+func SessionForkScenarios() []SessionForkScenario {
+	return []SessionForkScenario{
+		{Name: "through-turn fork replay does not redispatch provider", run: runThroughTurnForkReplay},
+		{Name: "provider-accepted fork recovers local commit", run: runProviderAcceptedForkRecovery},
 	}
 }
 
@@ -125,6 +159,9 @@ func ApplicationCoreScenarios() []Scenario {
 		pinSessionScenario,
 		deleteSessionScenario,
 		deleteLiveOnlySessionScenario,
+		deleteAdmissionRejectionScenario,
+		deleteAdmissionExactClosureScenario,
+		deleteAdmissionReplanScenario,
 		purgeDeletedSessionsScenario,
 	}
 }

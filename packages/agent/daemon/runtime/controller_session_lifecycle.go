@@ -55,6 +55,7 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 	session := Session{
 		RoomID:                  roomID,
 		AgentSessionID:          agentSessionID,
+		RootAgentSessionID:      agentSessionID,
 		AgentTargetID:           strings.TrimSpace(input.AgentTargetID),
 		Provider:                provider,
 		ProviderSessionID:       "",
@@ -163,6 +164,7 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 	session := Session{
 		RoomID:                  roomID,
 		AgentSessionID:          agentSessionID,
+		RootAgentSessionID:      agentSessionID,
 		AgentTargetID:           strings.TrimSpace(input.AgentTargetID),
 		Provider:                provider,
 		ProviderSessionID:       providerSessionID,

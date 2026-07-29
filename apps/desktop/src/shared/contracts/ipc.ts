@@ -198,12 +198,18 @@ export const desktopIpcChannels = {
     openLogFile: "developer:openLogFile"
   },
   runtime: {
+    getAgentSessionReplayPlayback: "runtime:getAgentSessionReplayPlayback",
+    getAgentSessionReplayStatus: "runtime:getAgentSessionReplayStatus",
     getBackendConfig: "runtime:getBackendConfig",
     getBusinessEventStreamUrl: "runtime:getBusinessEventStreamUrl",
+    launchAgentSessionReplay: "runtime:launchAgentSessionReplay",
     listWorkspaceAgentProbes: "runtime:listWorkspaceAgentProbes",
     logRendererDiagnostic: "runtime:logRendererDiagnostic",
+    sendAgentSessionReplayControl: "runtime:sendAgentSessionReplayControl",
     getTerminalStreamUrl: "runtime:getTerminalStreamUrl",
-    logTerminalDiagnostic: "runtime:logTerminalDiagnostic"
+    logTerminalDiagnostic: "runtime:logTerminalDiagnostic",
+    setAgentSessionReplayPlayback: "runtime:setAgentSessionReplayPlayback",
+    waitForAgentSessionReplay: "runtime:waitForAgentSessionReplay"
   },
   update: {
     check: "update:check",
@@ -558,6 +564,85 @@ export interface DesktopWorkspaceAppOpenFileResolvedPayload {
 export interface DesktopBackendConfig {
   accessToken: string;
   baseUrl: string;
+}
+
+export interface DesktopLaunchAgentSessionReplayInput {
+  cassetteId: string;
+  cassetteDirectory: string;
+  runId: string;
+  workspaceId: string;
+}
+
+export interface DesktopLaunchAgentSessionReplayResult {
+  runId: string;
+}
+
+export type DesktopAgentSessionReplayPlaybackSpeed = 0.25 | 0.5 | 1 | 2 | 4;
+
+export interface DesktopAgentSessionReplayPlayback {
+  active: boolean;
+  paused: boolean;
+  speed: DesktopAgentSessionReplayPlaybackSpeed;
+  timingMode: DesktopAgentSessionReplayTimingMode;
+}
+
+export type DesktopAgentSessionReplayTimingMode = "realtime" | "fast-forward";
+
+export type DesktopAgentSessionReplayPhase =
+  | "replaying"
+  | "verifying"
+  | "complete"
+  | "failed";
+
+export interface DesktopAgentSessionReplayStatus {
+  active: boolean;
+  cassetteId?: string;
+  cassettes?: Array<{
+    id: string;
+    name: string;
+  }>;
+  currentCheckpoint?: number;
+  errorMessage?: string;
+  paused?: boolean;
+  phase?: DesktopAgentSessionReplayPhase;
+  targetCheckpoint?: number | null;
+  timingMode?: DesktopAgentSessionReplayTimingMode;
+  totalCheckpoints?: number;
+}
+
+export type DesktopSetAgentSessionReplayPlaybackInput =
+  | {
+      command: "set-speed";
+      speed: DesktopAgentSessionReplayPlaybackSpeed;
+    }
+  | {
+      command: "pause" | "resume";
+    }
+  | {
+      command: "set-timing-mode";
+      timingMode: DesktopAgentSessionReplayTimingMode;
+    };
+
+export type DesktopSendAgentSessionReplayControlInput =
+  | {
+      command:
+        | "next-checkpoint"
+        | "pause"
+        | "previous-checkpoint"
+        | "restart"
+        | "resume";
+    }
+  | {
+      cassetteId: string;
+      command: "switch-cassette";
+    };
+
+export interface DesktopWaitAgentSessionReplayInput {
+  runId: string;
+}
+
+export interface DesktopWaitAgentSessionReplayResult {
+  runId: string;
 }
 
 export interface DesktopCustomWallpaperImage {
@@ -1011,12 +1096,22 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.developer.openLogFile]: DesktopDeveloperLogKind;
   [desktopIpcChannels.runtime.getBackendConfig]: undefined;
   [desktopIpcChannels.runtime.getBusinessEventStreamUrl]: undefined;
+  [desktopIpcChannels.runtime.getAgentSessionReplayPlayback]: undefined;
+  [desktopIpcChannels.runtime.getAgentSessionReplayStatus]: undefined;
+  [desktopIpcChannels.runtime
+    .launchAgentSessionReplay]: DesktopLaunchAgentSessionReplayInput;
+  [desktopIpcChannels.runtime
+    .waitForAgentSessionReplay]: DesktopWaitAgentSessionReplayInput;
   [desktopIpcChannels.runtime
     .listWorkspaceAgentProbes]: AgentProviderProbeListInput;
   [desktopIpcChannels.runtime
     .getTerminalStreamUrl]: DesktopTerminalStreamUrlRequest;
   [desktopIpcChannels.runtime
     .logRendererDiagnostic]: DesktopRendererDiagnosticPayload;
+  [desktopIpcChannels.runtime
+    .setAgentSessionReplayPlayback]: DesktopSetAgentSessionReplayPlaybackInput;
+  [desktopIpcChannels.runtime
+    .sendAgentSessionReplayControl]: DesktopSendAgentSessionReplayControlInput;
   [desktopIpcChannels.runtime
     .logTerminalDiagnostic]: DesktopTerminalDiagnosticPayload;
   [desktopIpcChannels.update.check]: undefined;
@@ -1189,9 +1284,20 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.runtime.getBackendConfig]: DesktopBackendConfig;
   [desktopIpcChannels.runtime.getBusinessEventStreamUrl]: string;
   [desktopIpcChannels.runtime
+    .getAgentSessionReplayPlayback]: DesktopAgentSessionReplayPlayback;
+  [desktopIpcChannels.runtime
+    .getAgentSessionReplayStatus]: DesktopAgentSessionReplayStatus;
+  [desktopIpcChannels.runtime
+    .launchAgentSessionReplay]: DesktopLaunchAgentSessionReplayResult;
+  [desktopIpcChannels.runtime
+    .waitForAgentSessionReplay]: DesktopWaitAgentSessionReplayResult;
+  [desktopIpcChannels.runtime
     .listWorkspaceAgentProbes]: AgentProviderProbeListResult;
   [desktopIpcChannels.runtime.getTerminalStreamUrl]: string;
   [desktopIpcChannels.runtime.logRendererDiagnostic]: void;
+  [desktopIpcChannels.runtime
+    .setAgentSessionReplayPlayback]: DesktopAgentSessionReplayPlayback;
+  [desktopIpcChannels.runtime.sendAgentSessionReplayControl]: void;
   [desktopIpcChannels.runtime.logTerminalDiagnostic]: void;
   [desktopIpcChannels.update.check]: AppUpdateState;
   [desktopIpcChannels.update.configure]: AppUpdateState;

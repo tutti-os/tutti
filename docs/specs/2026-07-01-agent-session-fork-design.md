@@ -1,6 +1,7 @@
 # Agent Session Fork Design
 
-Status: draft for review
+Status: superseded by
+[2026-07-27 Agent Session Fork Design](./2026-07-27-agent-session-fork-design.md)
 
 Date: 2026-07-01
 

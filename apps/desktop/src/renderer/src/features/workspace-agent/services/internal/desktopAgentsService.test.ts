@@ -186,6 +186,7 @@ test("desktop agents service maps enabled daemon targets into the AgentGUI agent
       maskIconUrl: "data:image/svg+xml;base64,mask",
       heroImageUrl: "data:image/jpeg;base64,hero",
       name: "Codex",
+      ownership: "self",
       provider: "codex"
     }
   ]);

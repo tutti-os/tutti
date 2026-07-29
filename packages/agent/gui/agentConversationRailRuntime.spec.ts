@@ -1,29 +1,28 @@
 import { describe, expect, it, vi } from "vitest";
+import * as conversationRailRuntimeModule from "./agentConversationRailRuntime";
 import {
-  AGENT_CONVERSATION_RAIL_RUNTIME_METHODS,
   createAgentConversationRailRuntime,
-  inspectAgentConversationBatchDeletionCapability,
   type AgentConversationRailRuntimeSource
 } from "./agentConversationRailRuntime";
 
 describe("createAgentConversationRailRuntime", () => {
+  it("publishes only the host runtime factory as a JavaScript value", () => {
+    expect(Object.keys(conversationRailRuntimeModule)).toEqual([
+      "createAgentConversationRailRuntime"
+    ]);
+  });
+
   it("exposes one complete conversation rail capability cohort", () => {
     const runtime = createAgentConversationRailRuntime(createSource());
 
-    for (const method of AGENT_CONVERSATION_RAIL_RUNTIME_METHODS) {
-      expect(runtime[method], method).toBeTypeOf("function");
-    }
-  });
-
-  it("owns normalized workspace query caches outside mounted rail controllers", () => {
-    const runtime = createAgentConversationRailRuntime(createSource());
-
-    const first = runtime.getSessionSectionsQueryCache("workspace-1");
-    const same = runtime.getSessionSectionsQueryCache(" workspace-1 ");
-    const other = runtime.getSessionSectionsQueryCache("workspace-2");
-
-    expect(first).toBe(same);
-    expect(first).not.toBe(other);
+    expect(Object.keys(runtime).sort()).toEqual([
+      "deleteSessionsBatch",
+      "listPinnedSessionsPage",
+      "listSessionSectionDeletionCandidates",
+      "listSessionSectionPage",
+      "listSessionSections",
+      "listSessionsPage"
+    ]);
   });
 
   it("forwards exact query and mutation inputs to the host source", async () => {
@@ -47,44 +46,6 @@ describe("createAgentConversationRailRuntime", () => {
       candidateInput
     );
     expect(source.deleteSessionsBatch).toHaveBeenCalledWith(deleteInput);
-  });
-});
-
-describe("inspectAgentConversationBatchDeletionCapability", () => {
-  it("enables batch deletion only when both runtime methods exist", () => {
-    expect(
-      inspectAgentConversationBatchDeletionCapability({
-        deleteSessionsBatch: vi.fn(),
-        listSessionSectionDeletionCandidates: vi.fn()
-      })
-    ).toEqual({
-      available: true,
-      missingMethods: [],
-      partial: false
-    });
-  });
-
-  it("fails closed when only one half of the batch deletion contract exists", () => {
-    expect(
-      inspectAgentConversationBatchDeletionCapability({
-        deleteSessionsBatch: vi.fn()
-      })
-    ).toEqual({
-      available: false,
-      missingMethods: ["listSessionSectionDeletionCandidates"],
-      partial: true
-    });
-  });
-
-  it("treats hosts without the optional capability as unavailable, not partial", () => {
-    expect(inspectAgentConversationBatchDeletionCapability({})).toEqual({
-      available: false,
-      missingMethods: [
-        "deleteSessionsBatch",
-        "listSessionSectionDeletionCandidates"
-      ],
-      partial: false
-    });
   });
 });
 

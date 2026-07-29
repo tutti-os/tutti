@@ -59,6 +59,7 @@ type CommandExecution struct {
 type CapabilityListOptions struct {
 	IncludeHidden      bool
 	IncludeIntegration bool
+	AgentSessionID     string
 }
 
 type CapabilitySource struct {
@@ -161,6 +162,9 @@ func (client *Client) ListCapabilitiesForWorkspaceWithOptions(ctx context.Contex
 	query := url.Values{}
 	if strings.TrimSpace(workspaceID) != "" {
 		query.Set("workspaceID", strings.TrimSpace(workspaceID))
+	}
+	if strings.TrimSpace(options.AgentSessionID) != "" {
+		query.Set("agentSessionID", strings.TrimSpace(options.AgentSessionID))
 	}
 	if options.IncludeHidden {
 		query.Set("includeHidden", "true")

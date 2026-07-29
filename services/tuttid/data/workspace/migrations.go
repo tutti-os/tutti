@@ -27,6 +27,7 @@ const schemaMigrationWorkspaceIssuesV13 = "workspace_issue_tasks_parallelizable_
 const schemaMigrationWorkspaceIssuesV14 = "workspace_issues_plan_origin_v1"
 const schemaMigrationWorkspaceIssuesV15 = "workspace_issues_execution_lifecycle_v1"
 const schemaMigrationWorkspaceIssuesV16 = "workspace_issue_tasks_auto_accept_v1"
+const schemaMigrationWorkspaceIssuesV17 = "workspace_issue_tasks_supersession_v1"
 const schemaMigrationDesktopPreferencesV1 = "desktop_preferences_v1"
 const schemaMigrationDesktopPreferencesAgentDockLayoutV1 = "desktop_preferences_agent_dock_layout_v1"
 const schemaMigrationDesktopPreferencesSleepPreventionModeV1 = "desktop_preferences_sleep_prevention_mode_v1"
@@ -75,7 +76,16 @@ const schemaMigrationWorkspaceWorkflowRevisionPathReuseV3 = "workspace_workflow_
 const schemaMigrationTuttiModeActivationsV1 = "tutti_mode_activations_v1"
 const schemaMigrationTuttiModeTurnDispatchV2 = "tutti_mode_turn_dispatch_v2"
 const schemaMigrationTuttiModeOrchestrationIntensityV3 = "tutti_mode_orchestration_intensity_v3"
+const schemaMigrationTuttiModeEffectSpeedV4 = "tutti_mode_effect_speed_v4"
 const schemaMigrationWorkspaceWorkflowTaskAssignmentsV4 = "workspace_workflow_task_assignments_v4"
+const schemaMigrationWorkspaceTuttiModeExecutionV1 = "workspace_tutti_mode_execution_v1"
+const schemaMigrationWorkspaceTuttiModeRunCancelCompensationV2 = "workspace_tutti_mode_run_cancel_compensation_v2"
+const schemaMigrationWorkspaceTuttiModeSourceActivityInboxV3 = "workspace_tutti_mode_source_activity_inbox_v3"
+const schemaMigrationWorkspaceTuttiModeGoalReviewV4 = "workspace_tutti_mode_goal_review_v4"
+const schemaMigrationWorkspaceTuttiModeLegacyRepairV5 = "workspace_tutti_mode_legacy_repair_v5"
+const schemaMigrationWorkspaceTuttiModeLegacyRecoveryCleanupV6 = "workspace_tutti_mode_legacy_recovery_cleanup_v6"
+const schemaMigrationAgentSessionReplayV1 = "agent_session_replay_v1"
+const schemaMigrationAgentSessionReplayV2 = "agent_session_replay_v2"
 
 func (s *SQLiteStore) Migrate(ctx context.Context) error {
 	if s == nil || s.writeDB == nil {
@@ -154,6 +164,9 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 	if err := s.applyWorkspaceIssuesV16(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceIssuesV17(ctx); err != nil {
 		return err
 	}
 
@@ -337,7 +350,34 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	if err := s.applyTuttiModeOrchestrationIntensityV3(ctx); err != nil {
 		return err
 	}
+	if err := s.applyTuttiModeEffectSpeedV4(ctx); err != nil {
+		return err
+	}
 	if err := s.applyWorkspaceWorkflowTaskAssignmentsV4(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceTuttiModeExecutionV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceTuttiModeRunCancelCompensationV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceTuttiModeSourceActivityInboxV3(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceTuttiModeGoalReviewV4(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceTuttiModeLegacyRepairV5(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceTuttiModeLegacyRecoveryCleanupV6(ctx); err != nil {
+		return err
+	}
+	if err := s.applyAgentSessionReplayV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyAgentSessionReplayV2(ctx); err != nil {
 		return err
 	}
 	return s.openReadPool(ctx)
@@ -766,35 +806,6 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationWorkspaceIssuesV12, unixMs(time.Now().UTC())); err != nil {
 		return fmt.Errorf("record workspace issue task launch overrides migration: %w", err)
-	}
-	return nil
-}
-
-// applyWorkspaceIssuesV13 records the per-task parallel opt-in from the Tutti
-// Mode plan review. Sequential stays the default: false means the task waits
-// for its predecessors, true lets it run alongside other ready tasks.
-func (s *SQLiteStore) applyWorkspaceIssuesV13(ctx context.Context) error {
-	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceIssuesV13)
-	if err != nil {
-		return err
-	}
-	if applied {
-		return nil
-	}
-	hasColumn, err := s.hasColumn(ctx, "workspace_issue_tasks", "parallelizable")
-	if err != nil {
-		return err
-	}
-	if !hasColumn {
-		if _, err := s.writeDB.ExecContext(ctx, "ALTER TABLE workspace_issue_tasks ADD COLUMN parallelizable INTEGER NOT NULL DEFAULT 0;"); err != nil {
-			return fmt.Errorf("add workspace_issue_tasks.parallelizable: %w", err)
-		}
-	}
-	if _, err := s.writeDB.ExecContext(ctx, `
-INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
-  VALUES (?, ?);
-`, schemaMigrationWorkspaceIssuesV13, unixMs(time.Now().UTC())); err != nil {
-		return fmt.Errorf("record workspace issue task parallelizable migration: %w", err)
 	}
 	return nil
 }

@@ -6,6 +6,8 @@ export type WorkspaceLinkActionSource =
   | "agent-file-change"
   | string;
 
+export const AGENT_EXTERNAL_LINK_ACTION_SOURCE = "agent-external-action";
+
 export interface OpenWorkspaceUrlLinkAction {
   type: "open-url";
   url: string;

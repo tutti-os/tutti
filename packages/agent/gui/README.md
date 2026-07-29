@@ -110,6 +110,28 @@ accepted for host capabilities that are not agent activity data:
 AgentGUI has no host-API activity fallback. A host must inject the runtime and
 the grouped `AgentGUINodeProps` responsibility objects.
 
+## Headless Conversation Message Controller
+
+`@tutti-os/agent-gui/conversation-message-controller` is the renderer-neutral
+query controller for one focused conversation. Desktop AgentGUI and Native
+Mobile both use it for initial detail hydration, latest-message reconciliation,
+and explicit older-page loading.
+
+Initial and latest reads enter the workspace Engine as semantic Session
+reconcile commands. Older-page reads use only the Engine's authoritative
+message-window cursor, share one in-flight/retry/stale-request state machine,
+and apply the mapped durable page back to that same Engine. A high mutable
+message version without an authoritative window is never treated as evidence
+of older history.
+
+Hosts supply the mapped message transport and retain lifecycle concerns such as
+Mobile foreground/background behavior, disconnected polling, DOM or Native
+scrolling, and diagnostics enrichment. The controller does not own navigation,
+rendering, localization, or transport authorization. Desktop selection owns
+activation guards and Rail projection coordination, then requests initial or
+forced message hydration through this controller; it must not add a parallel
+messages-only Engine reconcile path.
+
 ## Reference Picker Error Recovery
 
 Hosts may provide `workspace.resolveReferenceContentErrorAction` to map a
@@ -222,6 +244,27 @@ messages.
 Runtime identity is explicit: each consumer resolves the injected engine and
 verifies its `(workspaceId, origin)` identity. Module-global runtime slots and
 hidden origin registries are forbidden.
+
+The `@tutti-os/agent-gui/conversation-rail-runtime` subpath exposes the
+host-neutral Rail query/mutation cohort through
+`createAgentConversationRailRuntime` and its runtime/source types. Method-name
+manifests and UI capability inspection remain package-internal; hosts use the
+typed factory instead of importing test helpers. The sibling
+`@tutti-os/agent-gui/conversation-rail-controller` subpath exposes the canonical
+`createAgentGUIConversationRailQueryController` factory and controller
+interface used by Desktop and Native Mobile. The headless implementation owns
+Rail query scope, first-page and cursor pagination, cache and stale-request
+handling, membership refresh, and canonical Engine ingestion. Hosts supply
+transport and Session mapping, then retain only host lifecycle, availability,
+polling, diagnostic context, and presentation policy. Do not instantiate the
+internal controller, create a host-local second Rail state machine, or export
+its internal query helpers as public API.
+Its public snapshot is presentation-free; Desktop derives localized
+conversation summaries from that snapshot plus Engine state in its adapter.
+The factory owns resolved-query cache reuse per workspace Engine; cache access
+is not a runtime or host capability and has no published package entrypoint.
+In-flight first-page results are fenced to the attached controller generation
+so stale mounts cannot mutate the Engine or cache.
 
 Run this boundary check after changing AgentGUI data flow:
 

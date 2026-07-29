@@ -261,6 +261,10 @@
 
 ### W3④-1 編排強度落點：activation revision + Turn 快照 + Host Context 注入
 
+> 2026-07-28 更新：單一 `orchestrationIntensity` 已由獨立的 `effect` 與
+> `speed` 取代；舊持久化值遷移為 `effect`，`speed` 預設 50。下列內容保留為
+> 當時決策記錄，目前契約以架構文件為準。
+
 - 問題：spec 4-1 允許「注入 Host Context 與/或 propose 時記到 proposal 上」兩種落點。
 - 決策：持久化在 `TuttiModeActivation` 的 revision 上（`orchestrationIntensity`
   0-100，預設 50），隨每次滑桿確認 append 新 revision；Turn 派發時凍結進

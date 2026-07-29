@@ -72,8 +72,8 @@ export function groupAgentGUINodeViewModelFixture(
       gate: flat.gate,
       isTuttiModeActive: flat.isTuttiModeActive ?? false,
       isTuttiModeUpdating: flat.isTuttiModeUpdating ?? false,
-      tuttiModeOrchestrationIntensity:
-        flat.tuttiModeOrchestrationIntensity ?? 50,
+      tuttiModeEffect: flat.tuttiModeEffect ?? 50,
+      tuttiModeSpeed: flat.tuttiModeSpeed ?? 50,
       tuttiModeUpdateStatus: flat.tuttiModeUpdateStatus ?? "idle",
       composerSettings: flat.composerSettings,
       queueStatus: flat.queueStatus,
@@ -93,6 +93,7 @@ export function groupAgentGUINodeViewModelFixture(
       providerReadinessGate: flat.providerReadinessGate
     },
     operations: {
+      forkThroughTurnPendingTurnIds: flat.forkThroughTurnPendingTurnIds ?? [],
       goalClearNoticeSequence: flat.goalClearNoticeSequence ?? 0,
       isDeletingConversation: flat.isDeletingConversation,
       isDeletingProjectConversations: flat.isDeletingProjectConversations,

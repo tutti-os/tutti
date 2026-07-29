@@ -122,6 +122,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     legacyAgentFilterEnabled: referenceProvenanceFilterEnabled
   });
   const {
+    onComposerAppendHandled,
     onLinkAction,
     onHandoffConversation,
     onCapabilitySettingsRequest,
@@ -143,6 +144,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   const {
     agentConfigAccount: renderAgentConfigAccount,
     agentTargetInfo: renderAgentTargetInfo,
+    composerFooterAccessory: renderComposerFooterAccessory,
     projectDirectoryPickerHeaderActions:
       renderProjectDirectoryPickerHeaderActions,
     providerRailEmpty: renderProviderRailEmpty,
@@ -289,6 +291,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     targetConnectionSource,
     defaultAgentTargetId,
     onDataChange: handleDataChange,
+    onComposerAppendHandled,
     onRememberComposerDefaults,
     onShowMessage
   });
@@ -548,6 +551,7 @@ export const AgentGUINode = memo(function AgentGUINode({
               renderProjectDirectoryPickerHeaderActions={
                 renderProjectDirectoryPickerHeaderActions
               }
+              renderComposerFooterAccessory={renderComposerFooterAccessory}
             />
           );
         }}

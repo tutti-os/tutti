@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
+	executionbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeexecution"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
 )
 
@@ -14,7 +16,22 @@ type recordingWorkspaceIssueTarget struct {
 	input       workspaceservice.CreateIssueManagerIssueFromPlanInput
 	createErr   error
 	existing    workspaceissues.IssueDetail
+	execution   executionbiz.Aggregate
 	getErr      error
+}
+
+func (target *recordingWorkspaceIssueTarget) GetTuttiModeExecutionByIssue(
+	_ context.Context,
+	_ string,
+	_ string,
+) (executionbiz.Aggregate, error) {
+	if target.getErr != nil {
+		return executionbiz.Aggregate{}, target.getErr
+	}
+	if target.execution.Execution.ID == "" {
+		return executionbiz.Aggregate{}, executionbiz.ErrExecutionNotFound
+	}
+	return target.execution, nil
 }
 
 func (target *recordingWorkspaceIssueTarget) CreateIssueFromPlan(
@@ -91,6 +108,9 @@ func TestWorkspaceIssueMaterializerMapsAcceptedProjectionIntoIssueDomain(t *test
 	if !issue.TuttiModeWorkflowOwned {
 		t.Fatal("materialized issue did not carry internal workflow authority")
 	}
+	if issue.TuttiModeWorkflowID != "workflow-1" {
+		t.Fatalf("materialized workflow id = %q, want workflow-1", issue.TuttiModeWorkflowID)
+	}
 	if issue.SourceSessionID != "session-1" || issue.ExecutionProfile.ReasoningIntensity != 70 || issue.Budget.TokenLimit != 120_000 {
 		t.Fatalf("materialized issue settings = %#v", issue)
 	}
@@ -123,11 +143,31 @@ func TestWorkspaceIssueMaterializerAcceptsOnlyStrictlyMatchingRetry(t *testing.T
 	t.Parallel()
 	input := materializeIssueFixture()
 	existing := materializedIssueDetailFixture(input)
-	target := &recordingWorkspaceIssueTarget{createErr: workspaceissues.ErrIssueAlreadyExists, existing: existing}
+	target := &recordingWorkspaceIssueTarget{
+		createErr: workspaceissues.ErrIssueAlreadyExists,
+		existing:  existing,
+		execution: materializedExecutionFixture(t, input),
+	}
 
 	issueID, err := (WorkspaceIssueMaterializer{Issues: target}).MaterializeIssue(context.Background(), input)
 	if err != nil || issueID != "tutti-mode-plan-workflow-1" {
 		t.Fatalf("MaterializeIssue() issueID=%q error=%v", issueID, err)
+	}
+
+	target.execution.Execution.Status = executionbiz.StatusRunning
+	target.execution.Execution.GraphRevision = 2
+	target.execution.Checkpoints[0].Status = executionbiz.CheckpointStatusResolved
+	target.execution.Checkpoints = append(target.execution.Checkpoints, executionbiz.Checkpoint{
+		ID:            target.execution.Execution.ID + ":checkpoint:watchdog:2",
+		ExecutionID:   target.execution.Execution.ID,
+		Kind:          executionbiz.CheckpointKindWatchdog,
+		Status:        executionbiz.CheckpointStatusActive,
+		Sequence:      2,
+		GraphRevision: 2,
+	})
+	target.execution.Execution.ActiveCheckpointID = target.execution.Checkpoints[1].ID
+	if advancedIssueID, advancedErr := (WorkspaceIssueMaterializer{Issues: target}).MaterializeIssue(context.Background(), input); advancedErr != nil || advancedIssueID != issueID {
+		t.Fatalf("MaterializeIssue(advanced replay) issueID=%q error=%v", advancedIssueID, advancedErr)
 	}
 
 	target.existing.Tasks[0].Content = "preempted content"
@@ -159,10 +199,30 @@ func TestWorkspaceIssueMaterializerRejectsRetryWithDifferentTaskOrder(t *testing
 		DependencyTaskIDs: []string{"task-1"},
 		SortIndex:         1,
 	})
-	target := &recordingWorkspaceIssueTarget{createErr: workspaceissues.ErrIssueAlreadyExists, existing: existing}
+	target := &recordingWorkspaceIssueTarget{
+		createErr: workspaceissues.ErrIssueAlreadyExists,
+		existing:  existing,
+		execution: materializedExecutionFixture(t, input),
+	}
 
 	if _, err := (WorkspaceIssueMaterializer{Issues: target}).MaterializeIssue(context.Background(), input); !errors.Is(err, ErrIssueMaterializationConflict) {
 		t.Fatalf("MaterializeIssue() reordered retry error = %v, want ErrIssueMaterializationConflict", err)
+	}
+}
+
+func TestWorkspaceIssueMaterializerRejectsRetryWithConflictingExecution(t *testing.T) {
+	t.Parallel()
+	input := materializeIssueFixture()
+	execution := materializedExecutionFixture(t, input)
+	execution.Execution.SourceSessionID = "different-session"
+	target := &recordingWorkspaceIssueTarget{
+		createErr: workspaceissues.ErrIssueAlreadyExists,
+		existing:  materializedIssueDetailFixture(input),
+		execution: execution,
+	}
+
+	if _, err := (WorkspaceIssueMaterializer{Issues: target}).MaterializeIssue(context.Background(), input); !errors.Is(err, ErrIssueMaterializationConflict) {
+		t.Fatalf("MaterializeIssue() conflicting execution error = %v, want ErrIssueMaterializationConflict", err)
 	}
 }
 
@@ -240,4 +300,19 @@ func materializedIssueDetailFixture(input MaterializeIssueInput) workspaceissues
 			SortIndex:          input.ActionableItems[0].Ordinal,
 		}},
 	}
+}
+
+func materializedExecutionFixture(t *testing.T, input MaterializeIssueInput) executionbiz.Aggregate {
+	t.Helper()
+	aggregate, err := executionbiz.NewInitialAggregate(
+		input.WorkspaceID,
+		"tutti-mode-plan-"+input.WorkflowID,
+		input.WorkflowID,
+		input.SourceSessionID,
+		time.UnixMilli(1_700_000_000_000).UTC(),
+	)
+	if err != nil {
+		t.Fatalf("NewInitialAggregate() error = %v", err)
+	}
+	return aggregate
 }

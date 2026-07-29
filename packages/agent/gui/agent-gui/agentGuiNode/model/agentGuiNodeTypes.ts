@@ -300,6 +300,8 @@ export interface AgentGUIComposerSettingsVM {
   speedUnavailable: boolean;
   permissionModeUnavailable?: boolean;
   selectedModelValue?: string | null;
+  /** Actual provider-resolved model while selectedModelValue remains inherited. */
+  effectiveModelValue?: string | null;
   selectedReasoningEffortValue?: AgentSessionReasoningEffort | null;
   selectedSpeedValue?: AgentSessionSpeed | null;
   selectedPermissionModeValue?: string | null;
@@ -472,8 +474,9 @@ export interface AgentGUIComposerViewModel {
   gate: AgentGUIComposerGate;
   isTuttiModeActive: boolean;
   isTuttiModeUpdating: boolean;
-  /** Effective Tutti orchestration intensity (0-100) for the budget popup. */
-  tuttiModeOrchestrationIntensity: number;
+  /** Effective Tutti outcome-quality and completion-speed preferences. */
+  tuttiModeEffect: number;
+  tuttiModeSpeed: number;
   tuttiModeUpdateStatus:
     | "idle"
     | "pending_create"
@@ -501,6 +504,7 @@ export interface AgentGUIReadinessViewModel {
 }
 
 export interface AgentGUIOperationsViewModel {
+  forkThroughTurnPendingTurnIds: readonly string[];
   goalClearNoticeSequence: number;
   isDeletingConversation: boolean;
   isDeletingProjectConversations: boolean;

@@ -26,6 +26,7 @@ import (
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
+	agentstatusservice "github.com/tutti-os/tutti/services/tuttid/service/agentstatus"
 	agenttargetservice "github.com/tutti-os/tutti/services/tuttid/service/agenttarget"
 	preferencesservice "github.com/tutti-os/tutti/services/tuttid/service/preferences"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
@@ -90,37 +91,41 @@ type stubAppCenterService struct {
 }
 
 type stubAgentSessionService struct {
-	cancelTurnFn                    func(context.Context, string, string, string) (agentservice.CancelTurnResult, error)
-	clearFn                         func(context.Context, string) (agentservice.ClearSessionsResult, error)
-	composerOptionsFn               func(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
-	createFn                        func(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
-	getDetailFn                     func(context.Context, string, string) (agentservice.SessionDetail, error)
-	getFn                           func(context.Context, string, string) (agentservice.Session, error)
-	deleteFn                        func(context.Context, string, string) (agentservice.DeleteSessionResult, error)
-	listSectionDeletionCandidatesFn func(context.Context, string, agentservice.ListSessionSectionDeletionCandidatesInput) (agentservice.SessionSectionDeletionCandidates, error)
-	deleteSessionsBatchFn           func(context.Context, string, agentservice.DeleteSessionsBatchInput) (agentservice.DeleteSessionsBatchResult, error)
-	importExternalFn                func(context.Context, string, agentservice.ExternalImportInput) (agentservice.ExternalImportResult, error)
-	validImportPathsFn              func(context.Context, agentservice.ExternalImportInput) ([]string, error)
-	listFn                          func(context.Context, string, agentservice.ListSessionsInput) ([]agentservice.Session, error)
-	listPageFn                      func(context.Context, string, agentservice.ListSessionsInput) (agentservice.SessionListPage, error)
-	listSessionSectionsFn           func(context.Context, string, agentservice.ListSessionSectionsInput) (agentservice.SessionSectionsPage, error)
-	listSessionSectionPageFn        func(context.Context, string, agentservice.ListSessionSectionPageInput) (agentservice.SessionSection, error)
-	listPinnedSessionPageFn         func(context.Context, string, agentservice.ListPinnedSessionPageInput) (agentservice.SessionPage, error)
-	listGeneratedFilesFn            func(context.Context, string, agentservice.ListGeneratedFilesInput) (agentservice.GeneratedFileList, error)
-	listMessagesFn                  func(context.Context, string, string, agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error)
-	readAttachmentFn                func(context.Context, string, string, string) (agentservice.PromptAttachment, error)
-	scanExternalFn                  func(context.Context, agentservice.ExternalImportScanInput) (agentservice.ExternalImportScanResult, error)
-	sendInputFn                     func(context.Context, string, string, agentservice.SendInput) (agentservice.SendInputResult, error)
-	listGitBranchesFn               func(context.Context, string, string) (agentservice.GitBranches, error)
-	listGitBranchesForPathFn        func(context.Context, string, string) (agentservice.GitBranches, error)
-	resolveGitPatchSupportForPathFn func(context.Context, string, string) (agentservice.GitPatchSupport, error)
-	applyGitPatchForPathFn          func(context.Context, string, agentservice.ApplyGitPatchInput) (agentservice.ApplyGitPatchResult, error)
-	updatePinFn                     func(context.Context, string, string, bool) (agentservice.Session, error)
-	updateTitleFn                   func(context.Context, string, string, string) (agentservice.Session, error)
-	updateVisibleFn                 func(context.Context, string, string, bool) (agentservice.Session, error)
-	updateSettingsFn                func(context.Context, string, string, agentservice.ComposerSettingsPatch) (agentservice.Session, error)
-	submitInteractiveFn             func(context.Context, agenthost.InteractionRef, agenthost.SubmitInteractiveInput) (agentservice.Session, error)
-	planDecisionFn                  func(context.Context, string, string, string, string, agentservice.SubmitPlanDecisionInput) (agentactivitybiz.RuntimeOperation, error)
+	cancelTurnFn                      func(context.Context, string, string, string) (agentservice.CancelTurnResult, error)
+	clearFn                           func(context.Context, string) (agentservice.ClearSessionsResult, error)
+	composerOptionsFn                 func(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
+	createFn                          func(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
+	forkFn                            func(context.Context, string, string, agentservice.ForkSessionInput) (agentservice.SessionForkOperation, error)
+	getSessionForkOperationFn         func(context.Context, string, string) (agentservice.SessionForkOperation, error)
+	acknowledgeSessionForkOperationFn func(context.Context, string, string) (agentservice.SessionForkOperation, error)
+	getDetailFn                       func(context.Context, string, string) (agentservice.SessionDetail, error)
+	getDetailWithProjectionFn         func(context.Context, string, string, agentservice.SessionDetailProjection) (agentservice.SessionDetail, error)
+	getFn                             func(context.Context, string, string) (agentservice.Session, error)
+	deleteFn                          func(context.Context, string, string) (agentservice.DeleteSessionResult, error)
+	listSectionDeletionCandidatesFn   func(context.Context, string, agentservice.ListSessionSectionDeletionCandidatesInput) (agentservice.SessionSectionDeletionCandidates, error)
+	deleteSessionsBatchFn             func(context.Context, string, agentservice.DeleteSessionsBatchInput) (agentservice.DeleteSessionsBatchResult, error)
+	importExternalFn                  func(context.Context, string, agentservice.ExternalImportInput) (agentservice.ExternalImportResult, error)
+	validImportPathsFn                func(context.Context, agentservice.ExternalImportInput) ([]string, error)
+	listFn                            func(context.Context, string, agentservice.ListSessionsInput) ([]agentservice.Session, error)
+	listPageFn                        func(context.Context, string, agentservice.ListSessionsInput) (agentservice.SessionListPage, error)
+	listSessionSectionsFn             func(context.Context, string, agentservice.ListSessionSectionsInput) (agentservice.SessionSectionsPage, error)
+	listSessionSectionPageFn          func(context.Context, string, agentservice.ListSessionSectionPageInput) (agentservice.SessionSection, error)
+	listPinnedSessionPageFn           func(context.Context, string, agentservice.ListPinnedSessionPageInput) (agentservice.SessionPage, error)
+	listGeneratedFilesFn              func(context.Context, string, agentservice.ListGeneratedFilesInput) (agentservice.GeneratedFileList, error)
+	listMessagesFn                    func(context.Context, string, string, agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error)
+	readAttachmentFn                  func(context.Context, string, string, string) (agentservice.PromptAttachment, error)
+	scanExternalFn                    func(context.Context, agentservice.ExternalImportScanInput) (agentservice.ExternalImportScanResult, error)
+	sendInputFn                       func(context.Context, string, string, agentservice.SendInput) (agentservice.SendInputResult, error)
+	listGitBranchesFn                 func(context.Context, string, string) (agentservice.GitBranches, error)
+	listGitBranchesForPathFn          func(context.Context, string, string) (agentservice.GitBranches, error)
+	resolveGitPatchSupportForPathFn   func(context.Context, string, string) (agentservice.GitPatchSupport, error)
+	applyGitPatchForPathFn            func(context.Context, string, agentservice.ApplyGitPatchInput) (agentservice.ApplyGitPatchResult, error)
+	updatePinFn                       func(context.Context, string, string, bool) (agentservice.Session, error)
+	updateTitleFn                     func(context.Context, string, string, string) (agentservice.Session, error)
+	updateVisibleFn                   func(context.Context, string, string, bool) (agentservice.Session, error)
+	updateSettingsFn                  func(context.Context, string, string, agentservice.ComposerSettingsPatch) (agentservice.Session, error)
+	submitInteractiveFn               func(context.Context, agenthost.InteractionRef, agenthost.SubmitInteractiveInput) (agentservice.Session, error)
+	planDecisionFn                    func(context.Context, string, string, string, string, agentservice.SubmitPlanDecisionInput) (agentactivitybiz.RuntimeOperation, error)
 }
 
 func (s stubAgentSessionService) SubmitPlanDecision(ctx context.Context, workspaceID, agentSessionID, turnID, requestID string, input agentservice.SubmitPlanDecisionInput) (agentactivitybiz.RuntimeOperation, error) {
@@ -348,6 +353,33 @@ func (s stubAgentSessionService) Create(ctx context.Context, workspaceID string,
 	return s.createFn(ctx, workspaceID, input)
 }
 
+func (s stubAgentSessionService) Fork(ctx context.Context, workspaceID, agentSessionID string, input agentservice.ForkSessionInput) (agentservice.SessionForkOperation, error) {
+	if s.forkFn == nil {
+		return agentservice.SessionForkOperation{}, nil
+	}
+	return s.forkFn(ctx, workspaceID, agentSessionID, input)
+}
+
+func (s stubAgentSessionService) GetSessionForkOperation(
+	ctx context.Context,
+	workspaceID, operationID string,
+) (agentservice.SessionForkOperation, error) {
+	if s.getSessionForkOperationFn == nil {
+		return agentservice.SessionForkOperation{}, nil
+	}
+	return s.getSessionForkOperationFn(ctx, workspaceID, operationID)
+}
+
+func (s stubAgentSessionService) AcknowledgeSessionForkOperation(
+	ctx context.Context,
+	workspaceID, operationID string,
+) (agentservice.SessionForkOperation, error) {
+	if s.acknowledgeSessionForkOperationFn == nil {
+		return agentservice.SessionForkOperation{}, nil
+	}
+	return s.acknowledgeSessionForkOperationFn(ctx, workspaceID, operationID)
+}
+
 func (s stubAgentSessionService) Get(ctx context.Context, workspaceID, agentSessionID string) (agentservice.Session, error) {
 	if s.getFn == nil {
 		return agentservice.Session{}, nil
@@ -360,6 +392,22 @@ func (s stubAgentSessionService) GetDetail(ctx context.Context, workspaceID, age
 		return s.getDetailFn(ctx, workspaceID, agentSessionID)
 	}
 	return agentservice.SessionDetail{ChildSessions: []agentservice.Session{}}, nil
+}
+
+func (s stubAgentSessionService) GetDetailWithProjection(
+	ctx context.Context,
+	workspaceID, agentSessionID string,
+	projection agentservice.SessionDetailProjection,
+) (agentservice.SessionDetail, error) {
+	if s.getDetailWithProjectionFn != nil {
+		return s.getDetailWithProjectionFn(
+			ctx,
+			workspaceID,
+			agentSessionID,
+			projection,
+		)
+	}
+	return s.GetDetail(ctx, workspaceID, agentSessionID)
 }
 
 func (s stubAgentSessionService) ReadAttachment(ctx context.Context, workspaceID string, agentSessionID string, attachmentID string) (agentservice.PromptAttachment, error) {
@@ -686,6 +734,23 @@ func (s stubPreferencesService) Put(ctx context.Context, input preferencesservic
 type stubAgentTargetService struct {
 	listFn       func(context.Context) ([]agenttargetbiz.Target, error)
 	setEnabledFn func(context.Context, agenttargetservice.SetEnabledInput) (agenttargetbiz.Target, error)
+}
+
+type stubTuttiAgentReadiness struct {
+	triggerFn                 func(string)
+	providerActionCompletedFn func(agentstatusservice.RunActionResult)
+}
+
+func (s stubTuttiAgentReadiness) Trigger(reason string) {
+	if s.triggerFn != nil {
+		s.triggerFn(reason)
+	}
+}
+
+func (s stubTuttiAgentReadiness) ProviderActionCompleted(result agentstatusservice.RunActionResult) {
+	if s.providerActionCompletedFn != nil {
+		s.providerActionCompletedFn(result)
+	}
 }
 
 func (s stubAgentTargetService) List(ctx context.Context) ([]agenttargetbiz.Target, error) {
@@ -2766,6 +2831,7 @@ func TestDaemonAPIGeneratedRoutesListAgentTargets(t *testing.T) {
 func TestDaemonAPIGeneratedRoutesSetSystemAgentTargetEnabled(t *testing.T) {
 	mux := http.NewServeMux()
 	var captured agenttargetservice.SetEnabledInput
+	var readinessTrigger string
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{
 		AgentTargetService: stubAgentTargetService{
 			setEnabledFn: func(_ context.Context, input agenttargetservice.SetEnabledInput) (agenttargetbiz.Target, error) {
@@ -2782,6 +2848,11 @@ func TestDaemonAPIGeneratedRoutesSetSystemAgentTargetEnabled(t *testing.T) {
 				return target, nil
 			},
 		},
+		TuttiAgentReadiness: stubTuttiAgentReadiness{
+			triggerFn: func(reason string) {
+				readinessTrigger = reason
+			},
+		},
 	}))
 
 	recorder := performGeneratedRouteRequest(
@@ -2796,6 +2867,9 @@ func TestDaemonAPIGeneratedRoutesSetSystemAgentTargetEnabled(t *testing.T) {
 	}
 	if captured.ID != agenttargetbiz.IDLocalTuttiAgent || captured.Enabled {
 		t.Fatalf("captured input = %#v", captured)
+	}
+	if readinessTrigger != "target_enabled_changed" {
+		t.Fatalf("readiness trigger = %q, want target_enabled_changed", readinessTrigger)
 	}
 	var response tuttigenerated.AgentTarget
 	decodeGeneratedRouteResponse(t, recorder, &response)

@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   collectWorkspaceRuntimeDependencyNames,
   isPublicReleaseWorkspacePackage,
+  parseReleasePackageFilters,
+  selectReleasePackageNames,
   validateReleasePackageSelection
 } from "./npm-release-packages.mjs";
 
@@ -171,5 +173,43 @@ test("accepts a complete fixed release group", () => {
       "@tutti-os/ui-i18n-runtime",
       "@tutti-os/ui-system"
     ])
+  );
+});
+
+test("parses an explicit release package subset", () => {
+  assert.deepEqual(
+    parseReleasePackageFilters([
+      "--",
+      "--packages-json",
+      '["@tutti-os/agent-gui","@tutti-os/ui-system"]'
+    ]),
+    ["@tutti-os/agent-gui", "@tutti-os/ui-system"]
+  );
+  assert.equal(parseReleasePackageFilters([]), null);
+  assert.throws(
+    () => parseReleasePackageFilters(["--package", "@tutti-os/agent-gui"]),
+    /accepts only --packages-json/u
+  );
+  assert.throws(
+    () => parseReleasePackageFilters(["--packages-json", "[]"]),
+    /non-empty string array/u
+  );
+});
+
+test("rejects package filters outside the fixed release group", () => {
+  assert.deepEqual(
+    selectReleasePackageNames(
+      ["@tutti-os/agent-gui", "@tutti-os/ui-system"],
+      ["@tutti-os/agent-gui"]
+    ),
+    ["@tutti-os/agent-gui"]
+  );
+  assert.throws(
+    () =>
+      selectReleasePackageNames(
+        ["@tutti-os/agent-gui"],
+        ["@tutti-os/not-released"]
+      ),
+    /Unknown npm release package filter/u
   );
 });

@@ -298,9 +298,11 @@ function IconTileRenameInput({
   const validationMessage =
     inlineRenameValidation === "required"
       ? copy.t("createNameRequired")
-      : inlineRenameValidation === "invalid"
-        ? copy.t("createNameInvalid")
-        : null;
+      : inlineRenameValidation === "tooLong"
+        ? copy.t("createNameTooLong")
+        : inlineRenameValidation === "invalid"
+          ? copy.t("createNameInvalid")
+          : null;
 
   return (
     <span className="flex w-full min-w-0 flex-col gap-0.5">

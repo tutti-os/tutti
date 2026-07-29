@@ -262,7 +262,7 @@ export async function main(argv) {
   }
 }
 
-async function snapshotSQLiteDatabase(sourcePath, destinationPath) {
+export async function snapshotSQLiteDatabase(sourcePath, destinationPath) {
   const escapedDestination = destinationPath.replaceAll("'", "''");
   await runCommand("sqlite3", [
     sourcePath,
@@ -462,7 +462,7 @@ export function performanceRunFailureReasons(summary) {
   return [];
 }
 
-async function buildDaemon(outputPath) {
+export async function buildDaemon(outputPath) {
   log("building isolated tuttid");
   await runCommand(
     "go",
@@ -471,10 +471,15 @@ async function buildDaemon(outputPath) {
   );
 }
 
-function startDesktop(input) {
-  log(`starting headless isolated Desktop on CDP ${input.cdpPort}`);
+export function startDesktop(input) {
+  const headless = input.headless !== false;
+  const command = input.command ?? "pnpm";
+  const args = input.args ?? ["dev:desktop"];
+  log(
+    `starting ${headless ? "headless " : ""}isolated Desktop on CDP ${input.cdpPort}`
+  );
   const logStream = createWriteStream(input.desktopLogPath, { flags: "w" });
-  const child = spawn("pnpm", ["dev:desktop"], {
+  const child = spawn(command, args, {
     cwd: workspaceRoot,
     detached: process.platform !== "win32",
     env: {
@@ -482,7 +487,7 @@ function startDesktop(input) {
       ...input.environment,
       TUTTI_ANALYTICS_DISABLED: "1",
       TUTTI_DESKTOP_LOG_OUTPUT: "tee",
-      TUTTI_DESKTOP_PERFORMANCE_HEADLESS: "1",
+      ...(headless ? { TUTTI_DESKTOP_PERFORMANCE_HEADLESS: "1" } : {}),
       TUTTI_DESKTOP_USER_DATA_DIR: input.userDataDirectory,
       TUTTI_ELECTRON_JS_FLAGS: "--max-old-space-size=8192",
       TUTTI_ELECTRON_REMOTE_DEBUGGING_PORT: String(input.cdpPort),
@@ -508,7 +513,7 @@ function startDesktop(input) {
   return child;
 }
 
-async function waitForPageWebSocket(port, child, timeoutMs) {
+export async function waitForPageWebSocket(port, child, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   let lastError;
   while (Date.now() < deadline) {
@@ -579,7 +584,7 @@ function runCommand(command, args, cwd = workspaceRoot) {
   });
 }
 
-async function reservePort() {
+export async function reservePort() {
   const server = createServer();
   await new Promise((resolveListen, rejectListen) => {
     server.once("error", rejectListen);
@@ -592,7 +597,7 @@ async function reservePort() {
   return port;
 }
 
-async function stopProcessTree(child) {
+export async function stopProcessTree(child) {
   if (child.exitCode !== null || child.signalCode !== null) return;
   if (process.platform !== "win32") {
     try {

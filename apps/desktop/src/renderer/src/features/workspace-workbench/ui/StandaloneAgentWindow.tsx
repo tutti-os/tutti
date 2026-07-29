@@ -828,6 +828,12 @@ export function StandaloneAgentWindow({
             <DesktopAgentGUISurface
               agentActivityRuntime={agentGuiHostInput.agentActivityRuntime}
               agentHostApi={agentGuiHostInput.agentHostApi}
+              agentSessionReplayService={
+                agentGuiHostInput.agentSessionReplayService
+              }
+              agentSessionActivityReplay={
+                agentGuiHostInput.agentSessionActivityReplay
+              }
               tuttiModePlanReviewRuntime={
                 agentGuiHostInput.tuttiModePlanReviewRuntime
               }

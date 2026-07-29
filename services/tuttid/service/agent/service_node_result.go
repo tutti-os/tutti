@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tutti-os/tutti/services/tuttid/biz/agentanalytics"
 	agentnoderesult "github.com/tutti-os/tutti/services/tuttid/service/reporter/events/agent/node_result"
 )
 
@@ -77,30 +78,30 @@ func (s *Service) reportAgentServiceNodeFailure(ctx context.Context, agentSessio
 
 func classifyAgentServiceNodeErrorCode(node string, err error) string {
 	if err == nil {
-		return agentnoderesult.ErrorCodeNone
+		return agentanalytics.ErrorCodeNone
 	}
 	switch strings.TrimSpace(node) {
 	case "content_normalized":
-		return agentnoderesult.ErrorCodePromptNormalizeFailed
+		return agentanalytics.ErrorCodePromptNormalizeFailed
 	case "provider_runtime_checked":
-		return agentnoderesult.ErrorCodeProviderStatusFailed
+		return agentanalytics.ErrorCodeProviderStatusFailed
 	case "model_validated", "cwd_resolved":
-		return agentnoderesult.ErrorCodeSessionCreateFailed
+		return agentanalytics.ErrorCodeSessionCreateFailed
 	case "runtime_session_ready":
-		return agentnoderesult.ErrorCodeSessionResumeFailed
+		return agentanalytics.ErrorCodeSessionResumeFailed
 	case "runtime_prepared":
-		return agentnoderesult.ErrorCodeRuntimePrepareFailed
+		return agentanalytics.ErrorCodeRuntimePrepareFailed
 	case "runtime_started":
-		return agentnoderesult.ErrorCodeRuntimeStartFailed
+		return agentanalytics.ErrorCodeRuntimeStartFailed
 	case "prompt_validated":
-		return agentnoderesult.ErrorCodePromptValidateFailed
+		return agentanalytics.ErrorCodePromptValidateFailed
 	case "prompt_prepared":
-		return agentnoderesult.ErrorCodePromptPrepareFailed
+		return agentanalytics.ErrorCodePromptPrepareFailed
 	case "runtime_exec":
 		return classifyRuntimeNodeErrorCode(err.Error())
 	case "session_refreshed":
-		return agentnoderesult.ErrorCodeActivityReconcileFailed
+		return agentanalytics.ErrorCodeActivityReconcileFailed
 	default:
-		return agentnoderesult.ErrorCodeUnknown
+		return agentanalytics.ErrorCodeUnknown
 	}
 }

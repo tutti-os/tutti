@@ -4,6 +4,16 @@ import { invokeDesktopApi } from "./invoke";
 
 export function createRuntimeDesktopApi(): DesktopRuntimeApi {
   return {
+    getAgentSessionReplayPlayback() {
+      return invokeDesktopApi(
+        desktopIpcChannels.runtime.getAgentSessionReplayPlayback
+      );
+    },
+    getAgentSessionReplayStatus() {
+      return invokeDesktopApi(
+        desktopIpcChannels.runtime.getAgentSessionReplayStatus
+      );
+    },
     getBackendConfig() {
       return invokeDesktopApi(desktopIpcChannels.runtime.getBackendConfig);
     },
@@ -15,6 +25,30 @@ export function createRuntimeDesktopApi(): DesktopRuntimeApi {
     listWorkspaceAgentProbes(input) {
       return invokeDesktopApi(
         desktopIpcChannels.runtime.listWorkspaceAgentProbes,
+        input
+      );
+    },
+    launchAgentSessionReplay(input) {
+      return invokeDesktopApi(
+        desktopIpcChannels.runtime.launchAgentSessionReplay,
+        input
+      );
+    },
+    setAgentSessionReplayPlayback(input) {
+      return invokeDesktopApi(
+        desktopIpcChannels.runtime.setAgentSessionReplayPlayback,
+        input
+      );
+    },
+    sendAgentSessionReplayControl(input) {
+      return invokeDesktopApi(
+        desktopIpcChannels.runtime.sendAgentSessionReplayControl,
+        input
+      );
+    },
+    waitForAgentSessionReplay(input) {
+      return invokeDesktopApi(
+        desktopIpcChannels.runtime.waitForAgentSessionReplay,
         input
       );
     },

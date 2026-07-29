@@ -86,6 +86,50 @@ func (m *Manager) Reconcile(ctx context.Context) []error {
 	return m.reconcile(ctx, featureFlags)
 }
 
+// RestoreActive registers verified local installations without contacting
+// extension release indexes. The boolean result reports whether an enabled
+// source has no usable local installation and therefore still needs a
+// synchronous reconcile before the daemon starts serving requests.
+func (m *Manager) RestoreActive(ctx context.Context) (bool, []error) {
+	m.reconcileMu.Lock()
+	defer m.reconcileMu.Unlock()
+
+	featureFlags := map[string]bool{}
+	if m.Preferences != nil {
+		preferences, err := m.Preferences.GetDesktopPreferences(ctx)
+		if err != nil {
+			return true, []error{fmt.Errorf("read agent extension feature flags: %w", err)}
+		}
+		featureFlags = preferences.FeatureFlags
+	}
+
+	requiresSynchronousReconcile := false
+	var errs []error
+	for _, source := range m.Sources {
+		if !sourceEnabled(source, featureFlags) {
+			if m.Store != nil {
+				if err := m.Store.DeleteAgentTarget(ctx, targetID(source.Key)); err != nil {
+					errs = append(errs, fmt.Errorf("disable extension %s target: %w", source.Key, err))
+				}
+			}
+			continue
+		}
+
+		installation, err := m.loadActive(source.Key)
+		if err != nil {
+			requiresSynchronousReconcile = true
+			if !errors.Is(err, os.ErrNotExist) {
+				errs = append(errs, fmt.Errorf("restore active agent extension %s: %w", source.Key, err))
+			}
+			continue
+		}
+		if err := m.registerTarget(ctx, installation); err != nil {
+			errs = append(errs, fmt.Errorf("register active agent extension %s: %w", source.Key, err))
+		}
+	}
+	return requiresSynchronousReconcile, errs
+}
+
 func (m *Manager) ReconcileDesktopPreferencesChange(ctx context.Context, previous, current preferencesbiz.DesktopPreferences) []error {
 	if !m.sourceActivationChanged(previous.FeatureFlags, current.FeatureFlags) {
 		return nil
@@ -101,30 +145,7 @@ func (m *Manager) ReconcileDesktopPreferencesChange(ctx context.Context, previou
 func (m *Manager) reconcile(ctx context.Context, featureFlags map[string]bool) []error {
 	var errs []error
 	for _, source := range m.Sources {
-		if !sourceEnabled(source, featureFlags) {
-			if m.Store != nil {
-				if err := m.Store.DeleteAgentTarget(ctx, targetID(source.Key)); err != nil {
-					errs = append(errs, fmt.Errorf("disable extension %s target: %w", source.Key, err))
-				}
-			}
-			continue
-		}
-		installation, reconcileErr := m.reconcileSource(ctx, source)
-		if reconcileErr != nil {
-			var fallbackErr error
-			installation, fallbackErr = m.loadActive(source.Key)
-			if fallbackErr != nil {
-				errs = append(errs, fmt.Errorf(
-					"reconcile agent extension %s: %w",
-					source.Key,
-					errors.Join(reconcileErr, fmt.Errorf("load active installation fallback: %w", fallbackErr)),
-				))
-				continue
-			}
-		}
-		if err := m.registerTarget(ctx, installation); err != nil {
-			errs = append(errs, fmt.Errorf("register agent extension %s: %w", source.Key, err))
-		}
+		errs = append(errs, m.reconcileConfiguredSource(ctx, source, featureFlags)...)
 	}
 	return errs
 }

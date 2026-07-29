@@ -1,4 +1,3 @@
-import type { AgentActivitySnapshot } from "@tutti-os/agent-activity-core";
 import { useRef } from "react";
 import type { AgentHostUserProject } from "../../../host/agentHostApi";
 import type { AgentSessionComposerSettings } from "../../../shared/agentSessionTypes";
@@ -17,7 +16,6 @@ import type { AgentGUIComposerDefaultsAuthorityReconciler } from "./agentGuiComp
 
 interface UseAgentGUIControllerRefsInput {
   activeConversationId: string | null;
-  agentActivitySnapshot: AgentActivitySnapshot;
   conversations: AgentGUIConversationSummary[];
   data: AgentGUINodeData;
   draftByScopeKey: Record<string, AgentComposerDraft>;
@@ -55,7 +53,6 @@ export function useAgentGUIControllerRefs(
   const userProjectsLoadSeqRef = useRef(0);
   const conversationsRef = useRef(input.conversations);
   const isMountedRef = useRef(true);
-  const agentActivitySnapshotRef = useRef(input.agentActivitySnapshot);
   const dataRef = useRef(input.data);
   const selectedAgentTargetRef = useRef(input.effectiveSelectedProviderTarget);
   const selectedAgentTargetIsExplicitRef = useRef(
@@ -115,15 +112,6 @@ export function useAgentGUIControllerRefs(
       options?: AgentComposerSubmitOptions
     ) => void
   >(() => {});
-  const reloadSelectedConversationRef = useRef<
-    (
-      agentSessionId: string,
-      options: { reloadConversations: boolean; reloadDetail: boolean }
-    ) => void
-  >(() => {});
-  const syncConversationListProjectionRef = useRef<
-    (agentSessionId?: string | null) => Promise<void>
-  >(async () => {});
   const isComposerHomeRef = useRef(input.isComposerHome);
   const isCreatingConversationRef = useRef(input.isCreatingConversation);
 
@@ -132,7 +120,6 @@ export function useAgentGUIControllerRefs(
   userProjectsRef.current = input.userProjects;
   isNoProjectPathRef.current = input.isNoProjectPath;
   conversationsRef.current = input.conversations;
-  agentActivitySnapshotRef.current = input.agentActivitySnapshot;
   dataRef.current = input.data;
   selectedAgentTargetRef.current = input.effectiveSelectedProviderTarget;
   selectedAgentTargetIsExplicitRef.current = input.homeComposerTargetOverride
@@ -153,7 +140,6 @@ export function useAgentGUIControllerRefs(
 
   return {
     activeConversationIdRef,
-    agentActivitySnapshotRef,
     conversationIdsRef,
     conversationsRef,
     dataRef,
@@ -175,13 +161,11 @@ export function useAgentGUIControllerRefs(
     onShowMessageRef,
     pendingOpenSessionRequestRef,
     agentTargetsProvidedRef,
-    reloadSelectedConversationRef,
     selectedComposerTargetDataRef,
     selectedProjectPathRef,
     selectedAgentTargetIsExplicitRef,
     selectedAgentTargetRef,
     submitPromptRef,
-    syncConversationListProjectionRef,
     userProjectsLoadSeqRef,
     userProjectsRef
   };

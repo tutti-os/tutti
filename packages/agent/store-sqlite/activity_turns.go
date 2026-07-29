@@ -66,6 +66,9 @@ func (*Store) recordTurnTransitionTx(
 	if workspaceID == "" || agentSessionID == "" || turnID == "" {
 		return Turn{}, false, errors.New("workspace id, agent session id, and turn id are required")
 	}
+	if err := requireSessionForkSourceWritableTx(ctx, tx, workspaceID, agentSessionID); err != nil {
+		return Turn{}, false, err
+	}
 	metadataOnly := phase == "" && len(capabilityRefs) > 0
 	if !metadataOnly && !isKnownTurnPhase(phase) {
 		return Turn{}, false, fmt.Errorf("unknown workspace agent turn phase %q", phase)
@@ -162,6 +165,18 @@ ON CONFLICT(workspace_id, agent_session_id, turn_id) DO UPDATE SET
 		merged.CreatedAtUnixMS, merged.UpdatedAtUnixMS, merged.Origin,
 		nullString(merged.SourceGoalOperationID), nullInt64(merged.SourceGoalRevision), nullInt64WhenAbsent(merged.SourceGoalRepairEpoch, merged.SourceGoalOperationID != "")); err != nil {
 		return Turn{}, false, fmt.Errorf("upsert workspace agent turn: %w", err)
+	}
+	// A fresh canonical Turn is appended under the store's single-live-Turn
+	// invariant, so its trigger-assigned position is trustworthy. Migration
+	// and imported/backfilled paths establish their proof independently.
+	if !hasExisting && !merged.Backfilled {
+		if _, err := tx.ExecContext(ctx, `
+UPDATE workspace_agent_turn_sequences
+SET provenance = 'verified'
+WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ?
+`, workspaceID, agentSessionID, turnID); err != nil {
+			return Turn{}, false, fmt.Errorf("verify workspace agent turn sequence: %w", err)
+		}
 	}
 	if merged.Phase == TurnPhaseSettled {
 		if _, err := tx.ExecContext(ctx, `
@@ -588,6 +603,9 @@ func (*Store) upsertInteractionTx(
 	status := strings.TrimSpace(upsert.Status)
 	if workspaceID == "" || agentSessionID == "" || requestID == "" || turnID == "" {
 		return Interaction{}, InteractionTransitionConflict, errors.New("workspace id, agent session id, request id, and turn id are required")
+	}
+	if err := requireSessionForkSourceWritableTx(ctx, tx, workspaceID, agentSessionID); err != nil {
+		return Interaction{}, InteractionTransitionConflict, err
 	}
 	if !isKnownInteractionKind(kind) {
 		return Interaction{}, InteractionTransitionConflict, fmt.Errorf("unknown workspace agent interaction kind %q", kind)

@@ -1,4 +1,5 @@
 import { createContext, useContext, type JSX, type ReactNode } from "react";
+import type { AgentActivityComposerSettingOption } from "@tutti-os/agent-activity-core";
 import type { TuttiModePlanReviewSnapshot } from "./tuttiModePlan/tuttiModePlanPanelProjection";
 
 export interface TuttiModePlanReviewUpdate {
@@ -31,10 +32,18 @@ export interface TuttiModePlanReviewSessionSettled {
   sourceSessionId: string;
 }
 
+/** Cached assignment catalogs changed for exact Agent Targets. */
+export interface TuttiModePlanAssignmentOptionsInvalidated {
+  kind: "assignment_options_invalidated";
+  workspaceId: string;
+  agentTargetIds: readonly string[];
+}
+
 export type TuttiModePlanReviewInvalidation =
   | TuttiModePlanReviewUpdate
   | TuttiModePlanReviewConnectionRestored
-  | TuttiModePlanReviewSessionSettled;
+  | TuttiModePlanReviewSessionSettled
+  | TuttiModePlanAssignmentOptionsInvalidated;
 
 export interface TuttiModePlanTaskAssignmentInput {
   taskId: string;
@@ -65,14 +74,14 @@ export interface TuttiModePlanAssignmentAgentOption {
 
 export interface TuttiModePlanAssignmentAgentDetail {
   /** Provider-native models usable without a model plan. */
-  models: readonly string[];
+  models: readonly AgentActivityComposerSettingOption[];
   modelPlans: readonly {
     modelPlanId: string;
     label: string;
-    models: readonly string[];
+    models: readonly AgentActivityComposerSettingOption[];
   }[];
   permissionModes: readonly { id: string; label: string }[];
-  reasoningEfforts: readonly string[];
+  reasoningEfforts: readonly AgentActivityComposerSettingOption[];
 }
 
 export interface TuttiPlanIssueTaskSnapshot {
@@ -93,6 +102,8 @@ export interface TuttiPlanIssueSnapshot {
   issueId: string;
   topicId: string;
   title: string;
+  /** Durable Issue execution gate; paused graphs are not active work. */
+  dispatchPaused: boolean;
   tasks: TuttiPlanIssueTaskSnapshot[];
 }
 
@@ -114,9 +125,11 @@ export type TuttiPlanIssueQueryResult =
   | null;
 
 /**
- * Read-only source for the embedded plan-issue panel in the conversation.
- * The host resolves "the Issue this session's accepted plan created" and
- * relays live issue updates; all mutations stay in the Issue Manager.
+ * Source for the embedded plan-issue panel in the conversation.
+ * The host resolves "the Issue this session's accepted plan created", relays
+ * live issue updates, and exposes only daemon-owned product commands. Task
+ * accept/rework actions remain source-Agent prompts rather than generic Issue
+ * mutations.
  */
 export interface TuttiPlanIssueSource {
   getSessionPlanIssue(input: {
@@ -127,18 +140,6 @@ export interface TuttiPlanIssueSource {
     workspaceId: string,
     listener: (update: { issueId: string }) => void
   ): () => void;
-  /** Accepts a pending-acceptance task (the human gate) from the embed. */
-  acceptTask(input: {
-    workspaceId: string;
-    issueId: string;
-    taskId: string;
-  }): Promise<void>;
-  /** Sends a pending-acceptance task back to rework (re-dispatch). */
-  rejectTask(input: {
-    workspaceId: string;
-    issueId: string;
-    taskId: string;
-  }): Promise<void>;
   /**
    * Stops the Issue's execution: pauses future dispatch and cancels every
    * running task run. Idempotent; the daemon owns the cascade.
@@ -165,9 +166,24 @@ export interface TuttiPlanIssueSource {
  * hardcodes providers or modes.
  */
 export interface TuttiModePlanAssignmentOptionsSource {
+  /**
+   * Returns the last successful workspace directory, including stale data.
+   * Hosts may omit this when they do not retain a query cache.
+   */
+  readAgents?(input: {
+    workspaceId: string;
+  }): readonly TuttiModePlanAssignmentAgentOption[] | null;
   listAgents(input: {
     workspaceId: string;
   }): Promise<readonly TuttiModePlanAssignmentAgentOption[]>;
+  /**
+   * Returns the last successful target catalog, including stale data, so a
+   * refresh never replaces usable selectors with a loading placeholder.
+   */
+  readAgentOptions?(input: {
+    workspaceId: string;
+    agentTargetId: string;
+  }): TuttiModePlanAssignmentAgentDetail | null;
   loadAgentOptions(input: {
     workspaceId: string;
     agentTargetId: string;

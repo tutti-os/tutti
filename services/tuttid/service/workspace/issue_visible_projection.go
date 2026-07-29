@@ -54,7 +54,7 @@ func countVisibleIssueSubtaskStatuses(issue workspaceissues.Issue, tasks []works
 	hiddenTaskID := hiddenIssueRunTaskID(issue, tasks, latestRun)
 	var counts workspaceissues.StatusCounts
 	for _, task := range tasks {
-		if task.TaskID == hiddenTaskID {
+		if task.TaskID == hiddenTaskID || task.IsSuperseded() {
 			continue
 		}
 		incrementIssueManagerStatusCount(&counts, task.Status)

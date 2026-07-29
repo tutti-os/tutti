@@ -1,4 +1,9 @@
 import type {
+  AgentSessionEngine,
+  EngineExternalCommand,
+  EngineIntent
+} from "@tutti-os/agent-activity-core";
+import type {
   AgentActivityRuntime,
   AgentGUIAgentDirectorySnapshot,
   AgentGUIAllAgentsPresentation,
@@ -32,6 +37,7 @@ import type {
   DesktopAgentGUIWorkbenchState
 } from "../desktopAgentGUINodeState";
 import type { DesktopAgentGUIPrefillPromptRequest } from "../services/desktopAgentGUIPrefillPromptActivation.ts";
+import type { AgentSessionReplayService } from "../../agent-session-replay/services/agentSessionReplayService.ts";
 
 export const DESKTOP_AGENT_GUI_CONVERSATION_RAIL_TOGGLE_EVENT =
   AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT;
@@ -60,6 +66,14 @@ export interface DesktopAgentGUISurfaceContext {
 export interface DesktopAgentGUIWorkbenchBodyProps {
   agentActivityRuntime: AgentActivityRuntime;
   agentHostApi: AgentHostInputApi;
+  agentSessionReplayService: AgentSessionReplayService;
+  agentSessionActivityReplay: {
+    addObserver(observer: {
+      observeCommand(command: EngineExternalCommand): void;
+      observeIntent(intent: EngineIntent): void;
+    }): () => void;
+    engine: AgentSessionEngine;
+  };
   agentStatusSource?: AgentStatusSource;
   tuttiModePlanReviewRuntime: NonNullable<
     AgentGUIProps["tuttiModePlanReviewRuntime"]
@@ -87,7 +101,16 @@ export interface DesktopAgentGUIWorkbenchBodyProps {
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
   defaultAgentTargetId?: string | null;
   contextMentionProviders: readonly AgentContextMentionProvider[];
-  runtimeApi?: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
+  runtimeApi?: Pick<
+    DesktopRuntimeApi,
+    | "getAgentSessionReplayPlayback"
+    | "getAgentSessionReplayStatus"
+    | "launchAgentSessionReplay"
+    | "logTerminalDiagnostic"
+    | "sendAgentSessionReplayControl"
+    | "setAgentSessionReplayPlayback"
+    | "waitForAgentSessionReplay"
+  >;
   trackAgentProviderChatReady?: (input: { provider: string }) => Promise<void>;
   onEngagementEvent?: AgentGUIProps["hostActions"]["onEngagementEvent"];
   trackWorkspaceFileReferences?: AgentGUIProps["workspace"]["onFileReferencesAdded"];

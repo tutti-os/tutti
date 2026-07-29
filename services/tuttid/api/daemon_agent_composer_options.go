@@ -147,6 +147,9 @@ func generatedComposerConfigOption(config agentservice.ComposerConfigOption) tut
 	if strings.TrimSpace(config.CurrentValue) != "" {
 		result.CurrentValue = optionalStringPointer(config.CurrentValue)
 	}
+	if strings.TrimSpace(config.EffectiveValue) != "" {
+		result.EffectiveValue = optionalStringPointer(config.EffectiveValue)
+	}
 	if strings.TrimSpace(config.DefaultValue) != "" {
 		result.DefaultValue = optionalStringPointer(config.DefaultValue)
 	}

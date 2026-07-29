@@ -1,7 +1,13 @@
-import type {
-  AgentActivityRuntimeSessionPage,
-  AgentActivityRuntimeSessionSection
-} from "../../../agentActivityRuntime";
+import type { ConversationRailSectionMembership } from "../controller/agentConversationRailQueryModel";
+export type {
+  ConversationRailQueryState,
+  ConversationRailSectionMembership,
+  ConversationRailSectionPageState
+} from "../controller/agentConversationRailQueryModel";
+export {
+  mergeConversationRailSessionIds,
+  projectRuntimeSectionsToConversationRailMemberships
+} from "../controller/agentConversationRailQueryModel";
 import type { AgentGUINodeViewModel } from "./agentGuiNodeTypes";
 import type { ConversationSection } from "../agentGuiNodeViewConversation";
 import { resolveAgentGUIConversationSortTimeUnixMs } from "./agentGuiConversationModel";
@@ -16,28 +22,6 @@ export function normalizeConversationRailProjectPath(
   path: string | null | undefined
 ): string {
   return normalizeAgentGUIProjectPath(path);
-}
-
-export interface ConversationRailSectionPageState {
-  hasMore: boolean;
-  isLoading: boolean;
-  nextCursor: string | null;
-  totalCount: number;
-}
-
-export interface ConversationRailSectionMembership {
-  id: string;
-  kind: ConversationSection["kind"];
-  project: ConversationSection["project"];
-  sessionIds: readonly string[];
-}
-
-export interface ConversationRailQueryState {
-  pending: boolean;
-  reconcilingSessionIds: readonly string[];
-  resolvedScopeKey: string | null;
-  sectionPageStates: ReadonlyMap<string, ConversationRailSectionPageState>;
-  sections: ConversationRailSectionMembership[] | null;
 }
 
 export {
@@ -474,57 +458,6 @@ export function projectConversationRailSectionsByExactKey(input: {
     sections,
     includeEmptySections: true
   });
-}
-
-export function mergeConversationRailSessionIds(
-  base: readonly string[],
-  loaded: readonly string[]
-): readonly string[] {
-  const ids = new Set(base);
-  const merged = [...base];
-  for (const rawId of loaded) {
-    const id = rawId.trim();
-    if (!id || ids.has(id)) continue;
-    ids.add(id);
-    merged.push(id);
-  }
-  return merged;
-}
-
-export function projectRuntimeSectionsToConversationRailMemberships(input: {
-  pinned?: AgentActivityRuntimeSessionPage;
-  sections: readonly AgentActivityRuntimeSessionSection[];
-}): ConversationRailSectionMembership[] {
-  const result: ConversationRailSectionMembership[] = [];
-  if (input.pinned && input.pinned.sessions.length > 0) {
-    result.push({
-      id: "pinned",
-      kind: "pinned",
-      project: null,
-      sessionIds: input.pinned.sessions.map((session) => session.agentSessionId)
-    });
-  }
-  for (const section of input.sections) {
-    const project = section.userProject
-      ? {
-          createdAtUnixMs: section.userProject.createdAtUnixMs,
-          id: section.userProject.id,
-          label: section.userProject.label,
-          lastUsedAtUnixMs: section.userProject.lastUsedAtUnixMs,
-          path: section.userProject.path,
-          pinnedAtUnixMs: section.userProject.pinnedAtUnixMs,
-          sectionKey: section.userProject.sectionKey,
-          updatedAtUnixMs: section.userProject.updatedAtUnixMs
-        }
-      : null;
-    result.push({
-      id: section.sectionKey,
-      kind: section.kind,
-      project,
-      sessionIds: section.sessions.map((session) => session.agentSessionId)
-    });
-  }
-  return result;
 }
 
 export function projectConversationRailMemberships(input: {

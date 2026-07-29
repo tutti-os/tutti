@@ -170,8 +170,16 @@ type Task struct {
 	AutoAccept        bool
 	AcceptanceState   AcceptanceState
 	AcceptanceSummary string
-	CreatedAtUnixMS   int64
-	UpdatedAtUnixMS   int64
+	// SupersededAtUnixMS logically removes an obsolete task from the active
+	// graph without deleting its Runs, outputs, or audit history.
+	SupersededAtUnixMS int64
+	SupersededByTaskID string
+	CreatedAtUnixMS    int64
+	UpdatedAtUnixMS    int64
+}
+
+func (task Task) IsSuperseded() bool {
+	return task.SupersededAtUnixMS > 0
 }
 
 type Run struct {

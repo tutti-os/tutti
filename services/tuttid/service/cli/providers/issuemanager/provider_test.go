@@ -41,6 +41,21 @@ type fakeIssueManager struct {
 	completed   workspaceservice.CompleteIssueManagerRunInput
 }
 
+type managedConflictIssueManager struct {
+	*fakeIssueManager
+}
+
+func (*managedConflictIssueManager) UpdateIssue(
+	context.Context,
+	string,
+	string,
+	workspaceservice.UpdateIssueManagerIssueInput,
+) (workspaceissues.Issue, error) {
+	return workspaceissues.Issue{}, &workspaceissues.ManagedIssueMutationError{
+		IssueID: "ISS-managed", SourceSessionID: "SESSION-source",
+	}
+}
+
 func (*fakeIssueManager) ListTopics(context.Context, string) (workspaceissues.TopicList, error) {
 	return workspaceissues.TopicList{Items: []workspaceissues.Topic{
 		{TopicID: workspaceissues.DefaultTopicID, WorkspaceID: "workspace-1", Title: "Default", IsDefault: true},
@@ -473,6 +488,24 @@ func TestIssueUpdateTracksStatus(t *testing.T) {
 	}
 	if output.Value["issue"].(map[string]any)["status"] != "completed" {
 		t.Fatalf("output = %#v", output.Value)
+	}
+}
+
+func TestIssueUpdatePreservesManagedConflictDetails(t *testing.T) {
+	command := NewProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		&managedConflictIssueManager{fakeIssueManager: &fakeIssueManager{}},
+		nil,
+	).newIssueUpdateCommand()
+
+	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"issue-id": "ISS-managed", "title": "changed"},
+	})
+	var managed *workspaceissues.ManagedIssueMutationError
+	if !errors.As(err, &managed) ||
+		managed.ManagedIssueID() != "ISS-managed" ||
+		managed.ManagedSourceSessionID() != "SESSION-source" {
+		t.Fatalf("managed conflict = %T %v", err, err)
 	}
 }
 

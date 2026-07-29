@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workflowbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceworkflow"
 )
@@ -831,6 +832,84 @@ func TestSQLiteStoreListsOnlyRecoverableAcceptedCreateIssueOperations(t *testing
 	recoverable, err = store.ListRecoverableCreateIssueOperations(ctx)
 	if err != nil || len(recoverable) != 1 || recoverable[0].Operation.Status != workflowbiz.OperationStatusFailed {
 		t.Fatalf("recoverable failed operations = %#v error=%v", recoverable, err)
+	}
+}
+
+func TestCanceledSourceTurnFencesWorkflowRecoveryBeforeInboxDrain(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := openTestSQLiteStore(t)
+	const workspaceID = "ws-canceled-source-workflow"
+	createWorkflowTestWorkspace(t, store, workspaceID)
+	now := time.UnixMilli(1_700_000_100_000).UTC()
+	createWorkflowProposalFixture(
+		t, store, workspaceID, "workflow-canceled-source", now,
+	)
+	appendInput := workflowAppendFixture(
+		workspaceID, "workflow-canceled-source", now.Add(time.Second),
+	)
+	if err := store.AppendWorkspaceWorkflowPlanRevision(ctx, appendInput); err != nil {
+		t.Fatal(err)
+	}
+	operation := workflowbiz.WorkflowOperation{
+		ID: "operation-canceled-source", WorkflowID: "workflow-canceled-source",
+		Kind: workflowbiz.OperationKindCreateIssue, Status: workflowbiz.OperationStatusPending,
+		RevisionID: "revision-2", CreatedAt: now.Add(2 * time.Second),
+		UpdatedAt: now.Add(2 * time.Second),
+	}
+	if _, changed, err := store.DecideWorkspaceWorkflowCheckpoint(
+		ctx,
+		DecideWorkspaceWorkflowCheckpointInput{
+			WorkspaceID: workspaceID, WorkflowID: "workflow-canceled-source",
+			CheckpointID:              "checkpoint-2",
+			ExpectedStatus:            workflowbiz.CheckpointStatusPending,
+			ExpectedCurrentRevisionID: "revision-2",
+			ExpectedWorkflowStatus:    workflowbiz.WorkflowStatusPendingReview,
+			Decision:                  workflowbiz.CheckpointStatusAccepted,
+			DecidedBy:                 "user", DecidedAt: now.Add(2 * time.Second),
+			WorkflowStatus: workflowbiz.WorkflowStatusAccepted,
+			Operation:      &operation,
+		},
+	); err != nil || !changed {
+		t.Fatalf("accept workflow changed=%v error=%v", changed, err)
+	}
+	if _, err := store.ReportActivityState(
+		ctx,
+		agentactivitybiz.ActivityStateReport{
+			Session: agentactivitybiz.SessionStateReport{
+				WorkspaceID: workspaceID, AgentSessionID: "source-session",
+				Kind: agentactivitybiz.SessionKindRoot, Origin: "runtime",
+				Provider: "codex", Status: "idle",
+				OccurredAtUnixMS: now.Add(3 * time.Second).UnixMilli(),
+			},
+			Turn: &agentactivitybiz.TurnTransition{
+				WorkspaceID: workspaceID, AgentSessionID: "source-session",
+				TurnID: "turn-canceled-source", Origin: agentactivitybiz.TurnOriginUserPrompt,
+				Phase:            agentactivitybiz.TurnPhaseSettled,
+				Outcome:          agentactivitybiz.TurnOutcomeCanceled,
+				StartedAtUnixMS:  now.UnixMilli(),
+				SettledAtUnixMS:  now.Add(3 * time.Second).UnixMilli(),
+				OccurredAtUnixMS: now.Add(3 * time.Second).UnixMilli(),
+			},
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+	recoverable, err := store.ListRecoverableCreateIssueOperations(ctx)
+	if err != nil || len(recoverable) != 0 {
+		t.Fatalf("recoverable operations after canonical Stop=%#v error=%v", recoverable, err)
+	}
+	if err := store.DrainTuttiModeSourceActivityInbox(ctx, workspaceID); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := store.GetWorkspaceWorkflowSnapshot(
+		ctx, workspaceID, "workflow-canceled-source",
+	)
+	if err != nil || snapshot.Workflow.Status != workflowbiz.WorkflowStatusCanceled ||
+		len(snapshot.Operations) != 1 ||
+		snapshot.Operations[0].Status != workflowbiz.OperationStatusCanceled {
+		t.Fatalf("workflow after Stop=%#v error=%v", snapshot, err)
 	}
 }
 

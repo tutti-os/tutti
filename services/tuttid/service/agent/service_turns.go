@@ -155,10 +155,12 @@ func (s *Service) CancelTurn(ctx context.Context, workspaceID string, agentSessi
 	if result.Canceled {
 		result.Reason = CancelTurnReasonTurnCanceled
 		if s.TurnCancelObserver != nil {
-			// Cascade asynchronously so cancel latency never depends on how many
-			// delegate runs are in flight; the cascade is a no-op for sessions
-			// that do not orchestrate an Issue.
-			go s.TurnCancelObserver.ObserveUserTurnCanceled(context.WithoutCancel(ctx), workspaceID, agentSessionID)
+			// Enter the product's durable stop boundary before returning. The
+			// canonical canceled Turn and source-activity inbox marker remain
+			// the crash-recovery fallback if this callback is interrupted.
+			s.TurnCancelObserver.ObserveUserTurnCanceled(
+				context.WithoutCancel(ctx), workspaceID, agentSessionID,
+			)
 		}
 	}
 	return result, nil
@@ -221,7 +223,29 @@ func (s *Service) projectSessionsForResponse(ctx context.Context, workspaceID st
 // projection; it is never persisted on the session row. The Tutti-owned,
 // session-associated TuttiModeActivation read projection is attached last.
 func (s *Service) withProtocolV2TurnState(ctx context.Context, workspaceID string, session Session) (Session, error) {
+	return s.withProtocolV2TurnStateProjectionOptions(
+		ctx,
+		workspaceID,
+		session,
+		true,
+	)
+}
+
+func (s *Service) withProtocolV2TurnStateProjectionOptions(
+	ctx context.Context,
+	workspaceID string,
+	session Session,
+	resolveProviderCapabilities bool,
+) (Session, error) {
 	if s == nil || s.TurnStore == nil {
+		if resolveProviderCapabilities {
+			session = s.withSessionForkCapabilities(ctx, workspaceID, session)
+		}
+		var err error
+		session, err = s.withSessionForkLineage(ctx, workspaceID, session)
+		if err != nil {
+			return Session{}, err
+		}
 		return s.withTuttiModeActivation(ctx, workspaceID, session)
 	}
 	latestTurn, ok, err := s.TurnStore.GetLatestTurn(ctx, workspaceID, session.ID)
@@ -237,6 +261,13 @@ func (s *Service) withProtocolV2TurnState(ctx context.Context, workspaceID strin
 	} else {
 		session, err = s.withProtocolV2TurnStateProjection(ctx, workspaceID, session, &latestTurn, latestInteractionsBySessionID[session.ID])
 	}
+	if err != nil {
+		return Session{}, err
+	}
+	if resolveProviderCapabilities {
+		session = s.withSessionForkCapabilities(ctx, workspaceID, session)
+	}
+	session, err = s.withSessionForkLineage(ctx, workspaceID, session)
 	if err != nil {
 		return Session{}, err
 	}
@@ -320,7 +351,40 @@ func (s *Service) withProtocolV2TurnStates(ctx context.Context, workspaceID stri
 		}
 		session.PendingInteractions = pendingBySessionID[sessionID]
 		session.LatestTurnInteractions = latestInteractionsBySessionID[sessionID]
+		session, err = s.withSessionForkLineage(ctx, workspaceID, session)
+		if err != nil {
+			return nil, err
+		}
 		result[i] = session
 	}
 	return s.withTuttiModeActivations(ctx, workspaceID, result)
+}
+
+func (s *Service) withSessionForkLineage(
+	ctx context.Context,
+	workspaceID string,
+	session Session,
+) (Session, error) {
+	session.ForkedFrom = nil
+	if s == nil || strings.TrimSpace(workspaceID) == "" ||
+		strings.TrimSpace(session.ID) == "" ||
+		strings.TrimSpace(session.Kind) != agentactivitybiz.SessionKindRoot {
+		return session, nil
+	}
+	lineage, found, err := s.ApplicationHost().GetSessionForkLineage(
+		ctx,
+		strings.TrimSpace(workspaceID),
+		strings.TrimSpace(session.ID),
+	)
+	if err != nil || !found {
+		return session, err
+	}
+	session.ForkedFrom = &SessionForkLineage{
+		SourceAgentSessionID: strings.TrimSpace(lineage.SourceAgentSessionID),
+		SourceTurnID:         strings.TrimSpace(lineage.SourceTurnID),
+		TargetTurnID:         strings.TrimSpace(lineage.TargetTurnID),
+		OperationID:          strings.TrimSpace(lineage.OperationID),
+		ForkedAtUnixMS:       lineage.ForkedAtUnixMS,
+	}
+	return session, nil
 }

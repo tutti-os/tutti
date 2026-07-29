@@ -134,6 +134,57 @@ func (s *Service) liveModelOptionsFromRunningSessionForScope(scope composerLiveM
 	return nil, hasProviderSession
 }
 
+func (s *Service) effectiveModelFromRunningSessionForScope(
+	scope composerLiveModelScope,
+) string {
+	effectiveModel := ""
+	selectedUnixMS := int64(-1)
+	selectedSessionID := ""
+	selectedSession := false
+	invalidatedAtUnixMS := s.liveModelInvalidatedAtUnixMSForProvider(scope.provider)
+	for _, session := range s.controller().Sessions(scope.workspaceID) {
+		if agentprovider.NormalizeOpen(session.Provider) != scope.provider {
+			continue
+		}
+		if scope.agentTargetID != "" && strings.TrimSpace(session.AgentTargetID) != scope.agentTargetID {
+			continue
+		}
+		if !scope.matchesExtensionRuntimeContext(session.RuntimeContext) {
+			continue
+		}
+		sessionUnixMS := firstNonZeroInt64(session.UpdatedAtUnixMS, session.CreatedAtUnixMS)
+		if invalidatedAtUnixMS > 0 && sessionUnixMS <= invalidatedAtUnixMS {
+			continue
+		}
+		if len(extractModelOptionsFromRuntimeContext(
+			session.RuntimeContext,
+			scope.modelConfigOptionID,
+		)) == 0 ||
+			sessionUnixMS < selectedUnixMS ||
+			(sessionUnixMS == selectedUnixMS && session.ID <= selectedSessionID) {
+			continue
+		}
+		effectiveModel = extractEffectiveModelFromRuntimeContext(
+			session.RuntimeContext,
+			scope.modelConfigOptionID,
+		)
+		selectedUnixMS = sessionUnixMS
+		selectedSessionID = session.ID
+		selectedSession = true
+	}
+	if selectedSession {
+		return effectiveModel
+	}
+	runtimeContext, ok := s.getComposerRuntimeContextForScope(scope, time.Now().UTC())
+	if !ok {
+		return ""
+	}
+	return extractEffectiveModelFromRuntimeContext(
+		runtimeContext,
+		scope.modelConfigOptionID,
+	)
+}
+
 func (s *Service) liveModelInvalidatedAtUnixMSForProvider(provider string) int64 {
 	normalized := agentprovider.NormalizeOpen(provider)
 	if normalized == "" {
@@ -288,6 +339,9 @@ func (s *Service) discoverLiveComposerModelsUncachedForScope(
 		isExtension,
 		scope.modelConfigOptionID,
 	)
+	if len(runtimeContext) > 0 {
+		s.setComposerRuntimeContextForScope(scope, time.Now().UTC(), runtimeContext)
+	}
 	if isExtension {
 		runtimeContext = stampAgentExtensionComposerScope(runtimeContext, providerTargetRef, scope.cwd, settings)
 		if len(runtimeContext) > 0 {
@@ -524,6 +578,7 @@ func (s *Service) mergeLiveComposerModelsForComposerOptions(
 	}
 	if len(liveModels) > 0 {
 		liveModels = s.enrichModelCapabilityOptions(ctx, provider, liveModels)
+		effectiveModel := s.effectiveModelFromRunningSessionForScope(scope)
 		logClaudeModelCatalogInvalidationDebug("composer_options_model_source_selected", map[string]any{
 			"workspaceId":       input.WorkspaceID,
 			"cwd":               input.Cwd,
@@ -531,7 +586,12 @@ func (s *Service) mergeLiveComposerModelsForComposerOptions(
 			"modelOptionCount":  len(liveModels),
 			"modelOptionValues": composerConfigOptionValuesDebugValues(liveModels),
 		})
-		return mergeComposerModelsIntoComposerOptions(options, liveModels, modelSource), nil
+		return mergeComposerModelsIntoComposerOptions(
+			options,
+			liveModels,
+			modelSource,
+			effectiveModel,
+		), nil
 	}
 	if !isClaudeSDKLiveModelProvider(provider) {
 		// Without a live list there is nothing trustworthy to offer beyond
@@ -548,7 +608,7 @@ func (s *Service) mergeLiveComposerModelsForComposerOptions(
 			"modelOptionCount":  len(staticModels),
 			"modelOptionValues": composerConfigOptionValuesDebugValues(staticModels),
 		})
-		return mergeComposerModelsIntoComposerOptions(options, staticModels, modelSource), nil
+		return mergeComposerModelsIntoComposerOptions(options, staticModels, modelSource, ""), nil
 	}
 	return clearUnverifiedLiveComposerModel(options), nil
 }
@@ -569,10 +629,15 @@ func composerConfigOptionValuesDebugValues(options []ComposerConfigOptionValue) 
 }
 
 func mergeLiveModelsIntoComposerOptions(options ComposerOptions, liveModels []ComposerConfigOptionValue) ComposerOptions {
-	return mergeComposerModelsIntoComposerOptions(options, liveModels, runtimeLiveModelCatalogSource)
+	return mergeComposerModelsIntoComposerOptions(options, liveModels, runtimeLiveModelCatalogSource, "")
 }
 
-func mergeComposerModelsIntoComposerOptions(options ComposerOptions, liveModels []ComposerConfigOptionValue, modelSource string) ComposerOptions {
+func mergeComposerModelsIntoComposerOptions(
+	options ComposerOptions,
+	liveModels []ComposerConfigOptionValue,
+	modelSource string,
+	effectiveModel string,
+) ComposerOptions {
 	normalized := normalizeLiveComposerModelOptions(liveModels)
 	if len(normalized) == 0 {
 		return options
@@ -580,12 +645,19 @@ func mergeComposerModelsIntoComposerOptions(options ComposerOptions, liveModels 
 	selected := liveComposerSelectedModel(options.EffectiveSettings.Model, normalized)
 	options.EffectiveSettings.Model = selected
 	options.ModelConfig = ComposerConfigOption{
-		Configurable: true,
-		CurrentValue: selected,
-		DefaultValue: selected,
-		Options:      cloneComposerConfigOptionValues(normalized),
+		Configurable:   true,
+		CurrentValue:   selected,
+		EffectiveValue: strings.TrimSpace(effectiveModel),
+		DefaultValue:   selected,
+		Options:        cloneComposerConfigOptionValues(normalized),
 	}
-	options.RuntimeContext = mergeLiveModelsIntoRuntimeContext(options.RuntimeContext, selected, normalized, modelSource)
+	options.RuntimeContext = mergeLiveModelsIntoRuntimeContext(
+		options.RuntimeContext,
+		selected,
+		effectiveModel,
+		normalized,
+		modelSource,
+	)
 	options = applyLiveModelReasoningOptions(options, selected, normalized)
 	return options
 }
@@ -676,6 +748,7 @@ func liveComposerSelectedModel(selectedModel string, liveModels []ComposerConfig
 func mergeLiveModelsIntoRuntimeContext(
 	runtimeContext map[string]any,
 	selectedModel string,
+	effectiveModel string,
 	liveModels []ComposerConfigOptionValue,
 	modelSource string,
 ) map[string]any {
@@ -686,6 +759,9 @@ func mergeLiveModelsIntoRuntimeContext(
 		"id":           "model",
 		"currentValue": nullableString(selectedModel),
 		"options":      composerConfigOptionValuesToRuntimeModelOptions(liveModels),
+	}
+	if effectiveModel = strings.TrimSpace(effectiveModel); effectiveModel != "" {
+		modelOption["effectiveValue"] = effectiveModel
 	}
 	configOptions := make([]map[string]any, 0, 4)
 	configOptions = append(configOptions, modelOption)

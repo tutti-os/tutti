@@ -10,9 +10,15 @@ import type { IssueManagerI18nRuntime } from "../../i18n/issueManagerI18n.ts";
 export type IssueManagerEditorMode = "read" | "create" | "edit";
 
 export function isIssueManagerTuttiModePlanIssue(
-  issue: Pick<IssueManagerIssueSummary, "planningSource"> | null | undefined
+  issue:
+    | Pick<IssueManagerIssueSummary, "planningSource" | "sourceSessionId">
+    | null
+    | undefined
 ): boolean {
-  return issue?.planningSource === "tutti_mode_plan";
+  return (
+    issue?.planningSource === "tutti_mode_plan" &&
+    (issue.sourceSessionId?.trim() ?? "") !== ""
+  );
 }
 
 export type IssueManagerReferenceTarget =

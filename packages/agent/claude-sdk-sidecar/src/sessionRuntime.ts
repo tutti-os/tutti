@@ -179,6 +179,7 @@ export class SessionRuntime {
     this.goalExecQueue = new GoalExecQueue((input) =>
       this.dispatchExec(
         input.turnId,
+        input.promptCorrelationId,
         input.prompt,
         input.content,
         input.turnOrigin,
@@ -193,6 +194,11 @@ export class SessionRuntime {
       },
       onAssistantUuid: (value) => {
         this.lastAssistantUuid = value;
+      },
+      onRuntimeModel: (value) => {
+        if (this.configuration.applyRuntimeModel(value)) {
+          this.emitSessionState();
+        }
       },
       onSessionState: () => this.emitSessionState(),
       onMaybeTitle: (shouldEmit) =>
@@ -233,6 +239,13 @@ export class SessionRuntime {
         resumeCursor: this.currentResumeCursor()
       }
     });
+    const generation = this.queryGeneration;
+    if (generation && this.isQueryGenerationActive(generation)) {
+      // The SDK publishes its per-user resolved model in system/init before it
+      // needs the first prompt. Keep the iterator alive from session start so
+      // Default never has to be inferred from the advertised catalog label.
+      this.consume(generation);
+    }
     this.logAuthRefresh("session_start.succeeded", {
       restore: this.restore,
       initialized: this.initialized,
@@ -246,10 +259,11 @@ export class SessionRuntime {
     content?: unknown,
     turnOrigin?: string,
     goal?: GoalCommandDispatch,
-    hostContext = ""
+    hostContext = "",
+    promptCorrelationId = ""
   ): void {
     if (this.driver) {
-      this.driver.exec(turnId, prompt);
+      this.driver.exec(turnId, prompt, promptCorrelationId);
       return;
     }
     if (this.sessionClosed) {
@@ -265,6 +279,7 @@ export class SessionRuntime {
     if (goal?.operationId && goal.revision > 0) {
       this.goalExecQueue.accept({
         turnId,
+        promptCorrelationId,
         prompt,
         content,
         turnOrigin,
@@ -275,6 +290,7 @@ export class SessionRuntime {
     }
     this.dispatchExec(
       turnId,
+      promptCorrelationId,
       prompt,
       content,
       turnOrigin,
@@ -285,6 +301,7 @@ export class SessionRuntime {
 
   private dispatchExec(
     turnId: string,
+    promptCorrelationId: string | undefined,
     prompt: string,
     content?: unknown,
     turnOrigin?: string,
@@ -294,7 +311,7 @@ export class SessionRuntime {
     this.turns.closeSyntheticBeforeUserTurn();
     const turn: RuntimeTurn = {
       turnId,
-      promptUuid: crypto.randomUUID(),
+      promptUuid: promptCorrelationId?.trim() || crypto.randomUUID(),
       ...(turnOrigin ? { origin: turnOrigin } : {}),
       ...(goal
         ? {
@@ -327,14 +344,21 @@ export class SessionRuntime {
         ) as unknown as SDKUserMessage["message"]["content"];
         let outboundContent = sdkContent;
         if (hostContext.trim()) {
-          const hostContextBlock = { type: "text" as const, text: hostContext.trim() };
+          const hostContextBlock = {
+            type: "text" as const,
+            text: hostContext.trim()
+          };
           if (Array.isArray(sdkContent)) {
             sdkContent.unshift(hostContextBlock);
           } else {
-            outboundContent = [hostContextBlock, { type: "text" as const, text: sdkContent }];
+            outboundContent = [
+              hostContextBlock,
+              { type: "text" as const, text: sdkContent }
+            ];
           }
         }
         generation.expectPromptEcho(turn.promptUuid);
+        this.turns.expectProviderTurnIdentity(turn.turnId);
         generation.promptQueue.push({
           uuid: turn.promptUuid,
           type: "user",

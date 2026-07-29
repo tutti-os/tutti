@@ -4,7 +4,8 @@ import { createTestAgentSessionEngine } from "../../../shared/testing/createTest
 import {
   EMPTY_CONVERSATION_SEARCH_QUERY_STATE,
   createConversationRailQuerySnapshotSelector
-} from "./agentGuiConversationRailQuerySnapshot";
+} from "./agentConversationRailQuerySnapshot";
+import { createConversationRailConversationsSelector } from "./agentGuiConversationRailQuerySnapshot";
 
 describe("createConversationRailQuerySnapshotSelector", () => {
   it("projects only rail-owned sessions and preserves unchanged identities", () => {
@@ -14,37 +15,44 @@ describe("createConversationRailQuerySnapshotSelector", () => {
     );
     engine.dispatch({ sessions, type: "session/snapshotReceived" });
 
-    const selectSnapshot = createConversationRailQuerySnapshotSelector();
-    const input = {
-      engineState: engine.getSnapshot(),
-      queryState: {
-        pending: false,
-        reconcilingSessionIds: ["session-2"],
-        resolvedScopeKey: "all",
-        sectionPageStates: new Map(),
-        sections: [
-          {
-            id: "conversations",
-            kind: "conversations" as const,
-            project: null,
-            sessionIds: ["session-0", "session-1"]
-          }
-        ]
+    const querySnapshot = createConversationRailQuerySnapshotSelector()(
+      {
+        queryState: {
+          pending: false,
+          reconcilingSessionIds: ["session-2"],
+          resolvedScopeKey: "all",
+          sectionPageStates: new Map(),
+          sections: [
+            {
+              id: "conversations",
+              kind: "conversations" as const,
+              project: null,
+              sessionIds: ["session-0", "session-1"]
+            }
+          ]
+        },
+        runtimeRailFailed: false,
+        runtimeSectionsEnabled: true,
+        searchEnabled: true,
+        searchQuery: "session",
+        searchRequestKey: "search:session",
+        searchState: {
+          ...EMPTY_CONVERSATION_SEARCH_QUERY_STATE,
+          requestKey: "search:session",
+          resolvedQuery: "session",
+          sessionIds: ["session-3"]
+        }
       },
-      runtimeSectionsEnabled: true,
-      searchEnabled: true,
-      searchQuery: "session",
-      searchRequestKey: "search:session",
-      searchState: {
-        ...EMPTY_CONVERSATION_SEARCH_QUERY_STATE,
-        requestKey: "search:session",
-        resolvedQuery: "session",
-        sessionIds: ["session-3"]
-      }
-    };
-    const first = selectSnapshot(input, undefined);
+      undefined
+    );
+    const selectConversations = createConversationRailConversationsSelector();
+    const first = selectConversations({
+      engineState: engine.getSnapshot(),
+      interactionLocked: false,
+      querySnapshot
+    });
 
-    expect(first.runtimeRailConversations.map(({ id }) => id)).toEqual([
+    expect(first.map(({ id }) => id)).toEqual([
       "session-0",
       "session-1",
       "session-2",
@@ -55,8 +63,12 @@ describe("createConversationRailQuerySnapshotSelector", () => {
       session: createSession("session-175", "Unrelated update", 1_000),
       type: "session/upserted"
     });
-    const afterUnrelatedUpdate = selectSnapshot(
-      { ...input, engineState: engine.getSnapshot() },
+    const afterUnrelatedUpdate = selectConversations(
+      {
+        engineState: engine.getSnapshot(),
+        interactionLocked: false,
+        querySnapshot
+      },
       first
     );
     expect(afterUnrelatedUpdate).toBe(first);
@@ -65,27 +77,21 @@ describe("createConversationRailQuerySnapshotSelector", () => {
       session: createSession("session-1", "Changed title", 2_000),
       type: "session/upserted"
     });
-    const afterVisibleUpdate = selectSnapshot(
-      { ...input, engineState: engine.getSnapshot() },
+    const afterVisibleUpdate = selectConversations(
+      {
+        engineState: engine.getSnapshot(),
+        interactionLocked: false,
+        querySnapshot
+      },
       afterUnrelatedUpdate
     );
 
     expect(afterVisibleUpdate).not.toBe(first);
-    expect(afterVisibleUpdate.runtimeRailConversations[0]).toBe(
-      first.runtimeRailConversations[0]
-    );
-    expect(afterVisibleUpdate.runtimeRailConversations[1]).not.toBe(
-      first.runtimeRailConversations[1]
-    );
-    expect(afterVisibleUpdate.runtimeRailConversations[1]?.title).toBe(
-      "Changed title"
-    );
-    expect(afterVisibleUpdate.runtimeRailConversations[2]).toBe(
-      first.runtimeRailConversations[2]
-    );
-    expect(afterVisibleUpdate.runtimeRailConversations[3]).toBe(
-      first.runtimeRailConversations[3]
-    );
+    expect(afterVisibleUpdate[0]).toBe(first[0]);
+    expect(afterVisibleUpdate[1]).not.toBe(first[1]);
+    expect(afterVisibleUpdate[1]?.title).toBe("Changed title");
+    expect(afterVisibleUpdate[2]).toBe(first[2]);
+    expect(afterVisibleUpdate[3]).toBe(first[3]);
 
     engine.dispose();
   });

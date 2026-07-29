@@ -301,6 +301,7 @@ export function IssueManagerSubtaskSection({
   onCreate,
   onMoveTask,
   onSelectTask,
+  readOnly = false,
   selectedTaskId,
   tasks
 }: {
@@ -309,6 +310,7 @@ export function IssueManagerSubtaskSection({
   onCreate: () => void;
   onMoveTask: IssueManagerController["moveTask"];
   onSelectTask: (taskId: string | null) => void;
+  readOnly?: boolean;
   selectedTaskId: string | null;
   tasks: readonly IssueManagerTaskSummary[];
 }): JSX.Element {
@@ -336,27 +338,31 @@ export function IssueManagerSubtaskSection({
           {copy.t("labels.subtasks")}
         </h3>
         <div className="flex items-center gap-2">
-          <IssueManagerSubtaskViewModeSwitch
-            copy={copy}
-            value={viewMode}
-            onChange={setViewMode}
-          />
-          <Button
-            size="dialog"
-            type="button"
-            variant="ghost"
-            onClick={onCreate}
-          >
-            <FileCreateIcon size={14} />
-            {copy.t("actions.add")}
-          </Button>
+          {!readOnly ? (
+            <>
+              <IssueManagerSubtaskViewModeSwitch
+                copy={copy}
+                value={viewMode}
+                onChange={setViewMode}
+              />
+              <Button
+                size="dialog"
+                type="button"
+                variant="ghost"
+                onClick={onCreate}
+              >
+                <FileCreateIcon size={14} />
+                {copy.t("actions.add")}
+              </Button>
+            </>
+          ) : null}
         </div>
       </div>
       {tasks.length === 0 ? (
         <p className="text-[13px] font-normal leading-6 text-[var(--text-secondary)]">
           {copy.t("messages.noSubtasksForIssue")}
         </p>
-      ) : viewMode === "board" ? (
+      ) : viewMode === "board" && !readOnly ? (
         <IssueManagerSubtaskBoard
           copy={copy}
           tasks={tasks}

@@ -9,6 +9,10 @@ export interface DesktopToastItem {
   tone: DesktopToastTone;
 }
 
+export function desktopToastMountKey(toast: DesktopToastItem): string {
+  return `${toast.id}:${toast.busy ? "busy" : "settled"}`;
+}
+
 export function enqueueDesktopToast(
   current: DesktopToastItem[],
   next: DesktopToastItem,

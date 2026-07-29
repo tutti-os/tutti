@@ -71,6 +71,11 @@ const schemaMigrationWorkspaceAgentDeletedPurgeIndexV1 = "workspace_agent_delete
 const schemaMigrationWorkspaceAgentSessionTurnPageIndexV1 = "workspace_agent_session_turn_page_index_v1"
 const schemaMigrationWorkspaceAgentTurnCapabilityRefsV1 = "workspace_agent_turn_capability_refs_v1"
 const schemaMigrationWorkspaceAgentImportedTurnsV1 = "workspace_agent_imported_turns_v1"
+const schemaMigrationWorkspaceAgentSessionForkV1 = "workspace_agent_session_fork_v1"
+const schemaMigrationWorkspaceAgentSessionForkV2 = "workspace_agent_session_fork_v2"
+const schemaMigrationWorkspaceAgentSessionForkV3 = "workspace_agent_session_fork_v3"
+const schemaMigrationWorkspaceAgentSessionForkV4 = "workspace_agent_session_fork_v4"
+const schemaMigrationWorkspaceAgentSessionForkV5 = "workspace_agent_session_fork_v5"
 
 // claimableMigrationIDs are the migration IDs that may already be recorded
 // in the legacy tuttid ledger; the claim copies exactly these.
@@ -256,7 +261,22 @@ CREATE TABLE IF NOT EXISTS `+schemaMigrationsTable+` (
 	if err := s.applyWorkspaceAgentTurnCapabilityRefsV1(ctx); err != nil {
 		return err
 	}
-	return s.applyWorkspaceAgentImportedTurnsV1(ctx)
+	if err := s.applyWorkspaceAgentImportedTurnsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentSessionForkV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentSessionForkV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentSessionForkV3(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentSessionForkV4(ctx); err != nil {
+		return err
+	}
+	return s.applyWorkspaceAgentSessionForkV5(ctx)
 }
 
 // claimLegacyMigrations copies agent-store migration records that were

@@ -29,6 +29,7 @@ export function resolveConversationSummaryById(
 
 interface AgentConversationSelectionInput {
   activation: {
+    canReload(agentSessionId: string): boolean;
     forget(agentSessionId: string): void;
     isPending(agentSessionId: string): boolean;
   };
@@ -37,12 +38,9 @@ interface AgentConversationSelectionInput {
     contains(agentSessionId: string): boolean;
   };
   detail: {
+    ensureHydrated(agentSessionId: string): void;
     isHydrated(agentSessionId: string): boolean;
     markPending(agentSessionId: string): void;
-    reload(
-      agentSessionId: string,
-      options: { reloadConversations: boolean; reloadDetail: boolean }
-    ): void;
     setLoading(loading: boolean): void;
   };
   hasConversationListQuery(): boolean;
@@ -90,6 +88,23 @@ export function useAgentConversationSelection(
     []
   );
 
+  const syncConversationListProjection = useCallback(
+    async (_preferredSessionId?: string | null) => {
+      const current = inputRef.current;
+      if (current.hasConversationListQuery()) return;
+      const previous = current.selection.getActiveSessionId();
+      current.onMissingConversationListQuery(previous);
+      current.selection.setIntent({ tag: "home" });
+      current.selection.setComposerHome(true);
+      current.selection.setActiveSessionId(null);
+      current.detail.setLoading(false);
+      current.selection.clearDetailError();
+      current.rail.clearRevealRequest();
+      persistActiveConversation(null);
+    },
+    [persistActiveConversation]
+  );
+
   const selectConversation = useCallback(
     (
       agentSessionId: string,
@@ -122,32 +137,17 @@ export function useAgentConversationSelection(
       } else {
         current.rail.clearRevealRequest();
       }
-      if (!activationPending) {
-        current.detail.reload(normalized, {
-          reloadConversations,
-          reloadDetail: previous === normalized || !detailHydrated
-        });
+      if (!activationPending && current.activation.canReload(normalized)) {
+        if (reloadConversations) {
+          void syncConversationListProjection(normalized);
+        }
+        if (!detailHydrated) {
+          current.detail.ensureHydrated(normalized);
+        }
       }
       persistActiveConversation(normalized);
     },
-    [persistActiveConversation]
-  );
-
-  const syncConversationListProjection = useCallback(
-    async (_preferredSessionId?: string | null) => {
-      const current = inputRef.current;
-      if (current.hasConversationListQuery()) return;
-      const previous = current.selection.getActiveSessionId();
-      current.onMissingConversationListQuery(previous);
-      current.selection.setIntent({ tag: "home" });
-      current.selection.setComposerHome(true);
-      current.selection.setActiveSessionId(null);
-      current.detail.setLoading(false);
-      current.selection.clearDetailError();
-      current.rail.clearRevealRequest();
-      persistActiveConversation(null);
-    },
-    [persistActiveConversation]
+    [persistActiveConversation, syncConversationListProjection]
   );
 
   const isCurrentConversation = useCallback(

@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 )
+
+var errDeleteAdmissionRejected = errors.New("delete admission rejected")
 
 func runInitialTitleCAS(ctx context.Context, driver Driver) error {
 	if err := driver.Reset(ctx, Fixture{}); err != nil {
@@ -242,4 +245,132 @@ func runDeleteLiveSessionBeforeCanonicalReport(ctx context.Context, driver Drive
 		return fmt.Errorf("get deleted live-only session error=%v", err)
 	}
 	return nil
+}
+
+func runDeleteAdmissionRejection(ctx context.Context, driver Driver) error {
+	fixture := liveSessionFixture("root-delete-rejected", "")
+	fixture.AdditionalSessions = []SessionSeed{{
+		WorkspaceID: "workspace-1", AgentSessionID: "child-delete-rejected",
+		Provider: "codex", ParentAgentSessionID: "root-delete-rejected", Live: true,
+	}}
+	fixture.DeleteSessionPlans = [][]string{{"child-delete-rejected", "root-delete-rejected"}}
+	fixture.DeleteAdmissionErr = errDeleteAdmissionRejected
+	if err := driver.Reset(ctx, fixture); err != nil {
+		return err
+	}
+
+	_, err := driver.DeleteSessions(ctx, agenthost.DeleteSessionsInput{
+		WorkspaceID: "workspace-1", SessionIDs: []string{"root-delete-rejected"},
+	})
+	if !errors.Is(err, errDeleteAdmissionRejected) {
+		return fmt.Errorf("delete rejection error=%v", err)
+	}
+	metrics := driver.Metrics()
+	wantPlan := agenthost.DeleteSessionsPlan{
+		WorkspaceID: "workspace-1", SessionIDs: []string{"child-delete-rejected", "root-delete-rejected"},
+	}
+	if metrics.CloseCalls != 0 || metrics.CanonicalDeleteCalls != 0 || len(metrics.DeleteReports) != 0 ||
+		len(metrics.DeleteAdmissionPlans) != 1 || !equalDeleteSessionsPlan(metrics.DeleteAdmissionPlans[0], wantPlan) {
+		return fmt.Errorf("delete rejection metrics=%#v", metrics)
+	}
+	for _, sessionID := range wantPlan.SessionIDs {
+		session, getErr := driver.GetSession(ctx, agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: sessionID})
+		if getErr != nil || !session.Live {
+			return fmt.Errorf("session %q after rejection=%#v error=%v", sessionID, session, getErr)
+		}
+	}
+	return nil
+}
+
+func runDeleteAdmissionExactClosure(ctx context.Context, driver Driver) error {
+	fixture := liveSessionFixture("root-delete-exact", "")
+	fixture.AdditionalSessions = []SessionSeed{{
+		WorkspaceID: "workspace-1", AgentSessionID: "child-delete-exact",
+		Provider: "codex", ParentAgentSessionID: "root-delete-exact", Live: true,
+	}}
+	fixture.DeleteSessionPlans = [][]string{{"child-delete-exact", "root-delete-exact"}}
+	if err := driver.Reset(ctx, fixture); err != nil {
+		return err
+	}
+
+	result, err := driver.DeleteSessions(ctx, agenthost.DeleteSessionsInput{
+		WorkspaceID: "workspace-1", SessionIDs: []string{"root-delete-exact"},
+	})
+	if err != nil {
+		return fmt.Errorf("delete exact closure: %w", err)
+	}
+	wantPlan := agenthost.DeleteSessionsPlan{
+		WorkspaceID: "workspace-1", SessionIDs: []string{"child-delete-exact", "root-delete-exact"},
+	}
+	metrics := driver.Metrics()
+	if len(metrics.DeleteAdmissionPlans) != 1 || !equalDeleteSessionsPlan(metrics.DeleteAdmissionPlans[0], wantPlan) {
+		return fmt.Errorf("delete admission plans=%#v, want %#v", metrics.DeleteAdmissionPlans, wantPlan)
+	}
+	if len(metrics.DeleteReports) != 1 || metrics.DeleteReports[0].Err != nil ||
+		!equalDeleteSessionsPlan(metrics.DeleteReports[0].Plan, wantPlan) ||
+		!slices.Equal(metrics.DeleteReports[0].Result.RemovedSessionIDs, result.RemovedSessionIDs) {
+		return fmt.Errorf("delete reports=%#v result=%#v", metrics.DeleteReports, result)
+	}
+	return nil
+}
+
+func runDeleteAdmissionReplan(ctx context.Context, driver Driver) error {
+	fixture := liveSessionFixture("root-delete-replan", "")
+	fixture.AdditionalSessions = []SessionSeed{{
+		WorkspaceID: "workspace-1", AgentSessionID: "child-delete-replan",
+		Provider: "codex", ParentAgentSessionID: "root-delete-replan", Live: true,
+	}}
+	fixture.DeleteSessionPlans = [][]string{
+		{"root-delete-replan"},
+		{"child-delete-replan", "root-delete-replan"},
+	}
+	if err := driver.Reset(ctx, fixture); err != nil {
+		return err
+	}
+
+	result, err := driver.DeleteSessions(ctx, agenthost.DeleteSessionsInput{
+		WorkspaceID: "workspace-1", SessionIDs: []string{"root-delete-replan"},
+	})
+	if err != nil {
+		return fmt.Errorf("delete changed closure: %w", err)
+	}
+	first := agenthost.DeleteSessionsPlan{WorkspaceID: "workspace-1", SessionIDs: []string{"root-delete-replan"}}
+	second := agenthost.DeleteSessionsPlan{
+		WorkspaceID: "workspace-1", SessionIDs: []string{"child-delete-replan", "root-delete-replan"},
+	}
+	metrics := driver.Metrics()
+	if len(metrics.DeleteAdmissionPlans) != 2 ||
+		!equalDeleteSessionsPlan(metrics.DeleteAdmissionPlans[0], first) ||
+		!equalDeleteSessionsPlan(metrics.DeleteAdmissionPlans[1], second) {
+		return fmt.Errorf("replanned delete admissions=%#v", metrics.DeleteAdmissionPlans)
+	}
+	if len(metrics.DeleteReports) != 2 ||
+		metrics.DeleteReports[0].Err == nil ||
+		!equalDeleteSessionsPlan(metrics.DeleteReports[0].Plan, first) ||
+		!slices.Equal(metrics.DeleteReports[0].Result.RuntimeClosedIDs, []string{"root-delete-replan"}) ||
+		metrics.DeleteReports[1].Err != nil ||
+		!equalDeleteSessionsPlan(metrics.DeleteReports[1].Plan, second) {
+		return fmt.Errorf("replanned delete reports=%#v", metrics.DeleteReports)
+	}
+	if !slices.Equal(result.RuntimeClosedIDs, []string{"child-delete-replan", "root-delete-replan"}) {
+		return fmt.Errorf("replanned runtime closes=%#v", result.RuntimeClosedIDs)
+	}
+	wantEvents := []string{
+		"admit:root-delete-replan",
+		"close:root-delete-replan",
+		"delete:root-delete-replan",
+		"report-failure:root-delete-replan",
+		"admit:child-delete-replan,root-delete-replan",
+		"close:child-delete-replan",
+		"delete:child-delete-replan,root-delete-replan",
+		"report-success:child-delete-replan,root-delete-replan",
+	}
+	if !slices.Equal(metrics.DeletionEvents, wantEvents) {
+		return fmt.Errorf("replanned deletion events=%#v, want %#v", metrics.DeletionEvents, wantEvents)
+	}
+	return nil
+}
+
+func equalDeleteSessionsPlan(left, right agenthost.DeleteSessionsPlan) bool {
+	return left.WorkspaceID == right.WorkspaceID && slices.Equal(left.SessionIDs, right.SessionIDs)
 }

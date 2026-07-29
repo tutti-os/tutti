@@ -12,10 +12,7 @@ import type {
   WorkbenchSize,
   WorkbenchState
 } from "../core/types.ts";
-import type {
-  WorkbenchMissionControlAdapter,
-  WorkbenchMissionControlMode
-} from "../mission-control/types.ts";
+import type { WorkbenchMissionControlAdapter } from "../mission-control/types.ts";
 import type {
   WorkbenchController,
   WorkbenchDebugDiagnostics
@@ -475,8 +472,6 @@ export interface WorkbenchHostNodeHeaderContext<
   windowActions: WorkbenchHostNodeHeaderWindowActions;
 }
 
-export type WorkbenchHostMissionControlMode = WorkbenchMissionControlMode;
-
 type WorkbenchHostBodyRenderer<
   TExternalNodeState = unknown,
   TExternalWorkspaceState = unknown
@@ -633,10 +628,9 @@ export interface WorkbenchHostChromeRenderContext {
 }
 
 export interface WorkbenchHostMissionControlProps {
-  mode: WorkbenchMissionControlMode | null;
+  active: boolean;
   nodeIds?: readonly string[];
   onRequestClose: () => void;
-  onRequestMode?: (mode: WorkbenchMissionControlMode) => void;
 }
 
 export interface WorkbenchHostMissionControlOpenRequest {
@@ -712,7 +706,6 @@ export interface WorkbenchHostProps {
     adapter: WorkbenchMissionControlAdapter<WorkbenchHostNodeData> | null
   ) => void;
   onMissionControlRequestOpen?: (
-    mode: WorkbenchMissionControlMode,
     request?: WorkbenchHostMissionControlOpenRequest
   ) => void;
   onNodeCloseRequest?: (

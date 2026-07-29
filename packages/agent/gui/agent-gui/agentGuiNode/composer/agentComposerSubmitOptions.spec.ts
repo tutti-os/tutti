@@ -2,15 +2,16 @@ import { describe, expect, it } from "vitest";
 import { withAgentComposerTuttiModeSnapshot } from "./agentComposerSubmitOptions";
 
 describe("withAgentComposerTuttiModeSnapshot", () => {
-  it("captures active Tutti state and intensity with its audit reference", () => {
+  it("captures active Tutti preferences with their audit reference", () => {
     expect(
       withAgentComposerTuttiModeSnapshot({
         active: true,
-        orchestrationIntensity: 73
+        effect: 73,
+        speed: 61
       })
     ).toEqual({
       capabilityRefs: [{ capability: "tutti", source: "slash_command" }],
-      tuttiMode: { active: true, orchestrationIntensity: 73 }
+      tuttiMode: { active: true, effect: 73, speed: 61 }
     });
   });
 
@@ -18,7 +19,8 @@ describe("withAgentComposerTuttiModeSnapshot", () => {
     expect(
       withAgentComposerTuttiModeSnapshot({
         active: false,
-        orchestrationIntensity: 50
+        effect: 50,
+        speed: 50
       })
     ).toEqual({ tuttiMode: { active: false } });
   });

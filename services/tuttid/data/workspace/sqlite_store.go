@@ -15,18 +15,23 @@ import (
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
-	_ "modernc.org/sqlite"
+	sqlitedriver "modernc.org/sqlite"
 )
 
 const defaultSQLiteBusyTimeoutMillisec = 5000
 const defaultSQLiteReaderConnections = 4
 
 type SQLiteStore struct {
-	dbPath      string
-	writeDB     *sql.DB
-	readDB      *sql.DB
-	agentWriter *agentstore.Store
-	agentReader *agentstore.Store
+	dbPath                 string
+	writeDB                *sql.DB
+	readDB                 *sql.DB
+	agentWriter            *agentstore.Store
+	agentReader            *agentstore.Store
+	sourceActivityRowsHook func(tuttiModeSourceActivityRows) tuttiModeSourceActivityRows
+}
+
+type sqliteOnlineBackuper interface {
+	NewBackup(string) (*sqlitedriver.Backup, error)
 }
 
 func OpenSQLiteStore(dbPath string) (*SQLiteStore, error) {
@@ -73,6 +78,68 @@ func (s *SQLiteStore) Close() error {
 		writeErr = s.writeDB.Close()
 	}
 	return errors.Join(readErr, writeErr)
+}
+
+func (s *SQLiteStore) BackupTo(ctx context.Context, destination string) error {
+	if s == nil || s.writeDB == nil {
+		return errors.New("workspace database is not initialized")
+	}
+	destination = filepath.Clean(strings.TrimSpace(destination))
+	if destination == "." || destination == "" {
+		return errors.New("workspace database backup destination is empty")
+	}
+	if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
+		return fmt.Errorf("create workspace database backup directory: %w", err)
+	}
+	if err := os.Remove(destination); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("replace workspace database backup: %w", err)
+	}
+	connection, err := s.writeDB.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("open workspace database backup connection: %w", err)
+	}
+	defer func() { _ = connection.Close() }()
+	if err := connection.Raw(func(driverConnection any) error {
+		backuper, ok := driverConnection.(sqliteOnlineBackuper)
+		if !ok {
+			return errors.New("sqlite online backup is unavailable")
+		}
+		backup, err := backuper.NewBackup(destination)
+		if err != nil {
+			return err
+		}
+		more := true
+		for more {
+			if err := ctx.Err(); err != nil {
+				_ = backup.Finish()
+				return err
+			}
+			more, err = backup.Step(256)
+			if err != nil {
+				_ = backup.Finish()
+				return err
+			}
+		}
+		return backup.Finish()
+	}); err != nil {
+		_ = os.Remove(destination)
+		return fmt.Errorf("backup workspace database: %w", err)
+	}
+	if err := os.Chmod(destination, 0o600); err != nil {
+		return fmt.Errorf("protect workspace database backup: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) DatabaseSizeBytes() (int64, error) {
+	if s == nil || strings.TrimSpace(s.dbPath) == "" {
+		return 0, errors.New("workspace database is not initialized")
+	}
+	info, err := os.Stat(s.dbPath)
+	if err != nil {
+		return 0, fmt.Errorf("stat workspace database: %w", err)
+	}
+	return info.Size(), nil
 }
 
 func sqliteWriterDSN(dbPath string) string {

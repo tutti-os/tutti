@@ -33,6 +33,42 @@ func TestSQLiteStoreListEmptyDatabase(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreBackupToCreatesConsistentReadableSnapshot(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "workspace-1", Name: "Recorded"}); err != nil {
+		t.Fatal(err)
+	}
+	destination := filepath.Join(t.TempDir(), "baseline.db")
+	if err := store.BackupTo(ctx, destination); err != nil {
+		t.Fatal(err)
+	}
+	backup, err := OpenSQLiteStore(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = backup.Close() })
+	if err := backup.openReadPool(ctx); err != nil {
+		t.Fatal(err)
+	}
+	items, err := backup.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].ID != "workspace-1" {
+		t.Fatalf("backup workspaces = %#v", items)
+	}
+	info, err := os.Stat(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		t.Fatalf("backup permissions = %o, want private", info.Mode().Perm())
+	}
+}
+
 func TestSQLiteStoreConfiguresSeparateReadAndWritePools(t *testing.T) {
 	t.Parallel()
 

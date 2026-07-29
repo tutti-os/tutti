@@ -103,8 +103,10 @@ describe("AgentMessageMermaid", () => {
     });
     expect(mermaidMocks.initialize).toHaveBeenCalledWith(
       expect.objectContaining({
+        htmlLabels: false,
         maxEdges: 500,
         maxTextSize: 50_000,
+        secure: expect.arrayContaining(["htmlLabels", "securityLevel"]),
         securityLevel: "strict",
         startOnLoad: false,
         suppressErrorRendering: true,

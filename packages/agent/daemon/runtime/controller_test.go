@@ -1888,11 +1888,12 @@ func TestControllerExecGuidanceDuringActiveTurn(t *testing.T) {
 	adapter.waitForPrompt(t, "first prompt")
 
 	result, err := controller.Exec(ctx, ExecInput{
-		RoomID:         started.Session.RoomID,
-		AgentSessionID: started.Session.AgentSessionID,
-		Content:        textPrompt("guide current turn"),
-		Guidance:       true,
-		ClientSubmitID: "guidance-submit-1",
+		RoomID:                          started.Session.RoomID,
+		AgentSessionID:                  started.Session.AgentSessionID,
+		Content:                         textPrompt("guide current turn"),
+		Guidance:                        true,
+		ClientSubmitID:                  "guidance-submit-1",
+		CanonicalSubmitOccurredAtUnixMS: 1_234,
 	})
 	if err != nil {
 		t.Fatalf("guidance Exec: %v", err)

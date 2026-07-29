@@ -232,6 +232,35 @@ test("generated tuttid client surfaces structured protocol errors", async () => 
   } satisfies ApiErrorResponse);
 });
 
+test("shared tuttid client calls the managed Tutti execution cancel route", async () => {
+  let requestMethod = "";
+  let requestPath = "";
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      requestMethod = request.method;
+      requestPath = new URL(request.url).pathname;
+      return new Response(JSON.stringify({ canceledRunCount: 2 }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    }
+  });
+
+  const response = await client.cancelTuttiModeExecution(
+    "workspace-1",
+    "issue-1"
+  );
+
+  assert.equal(requestMethod, "POST");
+  assert.equal(
+    requestPath,
+    "/v1/workspaces/workspace-1/tutti-executions/issue-1/cancel-execution"
+  );
+  assert.deepEqual(response, { canceledRunCount: 2 });
+});
+
 test("shared tuttid client unwraps workspace list responses", async () => {
   const client = createTuttidClient({
     fetch: async () =>
@@ -503,6 +532,66 @@ test("shared tuttid client creates workspace agent sessions with bearer auth", a
   });
 });
 
+test("shared tuttid client returns and reads durable agent session fork operations", async () => {
+  const operation = {
+    operationId: "operation-1",
+    requestId: "request-1",
+    sourceAgentSessionId: "source-1",
+    targetAgentSessionId: "11111111-1111-4111-8111-111111111111",
+    point: { type: "throughTurn" as const, turnId: "turn-7" },
+    status: "accepted" as const,
+    session: null,
+    lineage: null,
+    error: null
+  };
+  const { client, requests } = captureClient(jsonResponse({ operation }, 202));
+
+  assert.deepEqual(
+    await client.forkWorkspaceAgentSession("ws-1", "source-1", {
+      targetAgentSessionId: "11111111-1111-4111-8111-111111111111",
+      requestId: "request-1",
+      point: { type: "throughTurn", turnId: "turn-7" }
+    }),
+    operation
+  );
+  assert.deepEqual(
+    await client.getWorkspaceAgentSessionForkOperation("ws-1", "operation-1"),
+    operation
+  );
+  assert.deepEqual(
+    await client.acknowledgeWorkspaceAgentSessionForkOperation(
+      "ws-1",
+      "operation-1"
+    ),
+    operation
+  );
+  assertRequest(requests[0]!, {
+    authorization: null,
+    body: {
+      targetAgentSessionId: "11111111-1111-4111-8111-111111111111",
+      requestId: "request-1",
+      point: { type: "throughTurn", turnId: "turn-7" }
+    },
+    method: "POST",
+    path: "/v1/workspaces/ws-1/agent-sessions/source-1/fork",
+    query: {}
+  });
+  assertRequest(requests[1]!, {
+    authorization: null,
+    body: null,
+    method: "GET",
+    path: "/v1/workspaces/ws-1/agent-session-fork-operations/operation-1",
+    query: {}
+  });
+  assertRequest(requests[2]!, {
+    authorization: null,
+    body: null,
+    method: "POST",
+    path: "/v1/workspaces/ws-1/agent-session-fork-operations/operation-1/acknowledge",
+    query: {}
+  });
+});
+
 test("shared tuttid client sends workspace agent input diagnostics in the HTTP body", async () => {
   let requestPath = "";
   let requestBody: unknown;
@@ -611,6 +700,59 @@ test("shared tuttid client lists workspace agent sessions with query params", as
     limit: "30",
     sectionKey: "project:/workspace/project"
   });
+});
+
+test("shared tuttid client requests the message hydration session projection", async () => {
+  const response = {
+    childSessions: [],
+    lifecycleCapabilitiesProjected: false,
+    projection: "messageHydration",
+    session: {},
+    turns: []
+  };
+  const { client, requests } = captureClient(jsonResponse(response));
+  const controller = new AbortController();
+
+  assert.deepEqual(
+    await client.getWorkspaceAgentSession(
+      "workspace-1",
+      "session-1",
+      "messageHydration",
+      { signal: controller.signal }
+    ),
+    response
+  );
+  assertRequest(requests[0]!, {
+    authorization: null,
+    body: null,
+    method: "GET",
+    path: "/v1/workspaces/workspace-1/agent-sessions/session-1",
+    query: { projection: "messageHydration" }
+  });
+  assert.equal(requests[0]!.signal?.aborted, false);
+  controller.abort();
+  assert.equal(requests[0]!.signal?.aborted, true);
+});
+
+test("shared tuttid client rejects a mismatched session detail projection", async () => {
+  const { client } = captureClient(
+    jsonResponse({
+      childSessions: [],
+      lifecycleCapabilitiesProjected: true,
+      projection: "full",
+      session: {},
+      turns: []
+    })
+  );
+
+  await assert.rejects(
+    client.getWorkspaceAgentSession(
+      "workspace-1",
+      "session-1",
+      "messageHydration"
+    ),
+    /projection mismatch/
+  );
 });
 
 test("shared tuttid client forwards AbortSignal for issue topic and issue list requests", async () => {

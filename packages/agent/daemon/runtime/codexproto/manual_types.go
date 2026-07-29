@@ -23,9 +23,20 @@ type CollaborationModeListResponse struct {
 	Data []CollaborationModeMask `json:"data"`
 }
 
-// Thread represents a minimal thread descriptor used in thread responses.
+// Thread represents the subset of a thread descriptor needed by session
+// lifecycle and fork responses.
 type Thread struct {
-	ID string `json:"id,omitempty"`
+	ID           string       `json:"id,omitempty"`
+	ForkedFromID *string      `json:"forkedFromId,omitempty"`
+	ThreadSource *string      `json:"threadSource,omitempty"`
+	Turns        []ThreadTurn `json:"turns,omitempty"`
+}
+
+// ThreadTurn represents the stable turn identity and status needed to verify a
+// provider-native fork boundary. Items remain owned by canonical history copy.
+type ThreadTurn struct {
+	ID     string          `json:"id"`
+	Status json.RawMessage `json:"status,omitempty"`
 }
 
 // ThreadResponse is the shared shape for thread/start and thread/resume responses.
@@ -39,6 +50,9 @@ type ThreadStartResponse = ThreadResponse
 
 // ThreadResumeResponse is the response payload for thread/resume.
 type ThreadResumeResponse = ThreadResponse
+
+// ThreadForkResponse is the response payload for thread/fork.
+type ThreadForkResponse = ThreadResponse
 
 // ThreadStartParams is maintained manually because the raw schema currently
 // exceeds the generator's capabilities.
@@ -72,6 +86,7 @@ type ThreadResumeParams struct {
 // exceeds the generator's capabilities.
 type ThreadForkParams struct {
 	ThreadID              string          `json:"threadId"`
+	LastTurnID            *string         `json:"lastTurnId,omitempty"`
 	Ephemeral             *bool           `json:"ephemeral,omitempty"`
 	Model                 *string         `json:"model,omitempty"`
 	ModelProvider         *string         `json:"modelProvider,omitempty"`
@@ -82,6 +97,7 @@ type ThreadForkParams struct {
 	Config                *map[string]any `json:"config,omitempty"`
 	BaseInstructions      *string         `json:"baseInstructions,omitempty"`
 	DeveloperInstructions *string         `json:"developerInstructions,omitempty"`
+	ThreadSource          *string         `json:"threadSource,omitempty"`
 }
 
 // TurnStartParamsInputElem is maintained manually because turn input entries are

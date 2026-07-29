@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
@@ -11,6 +12,22 @@ import (
 type runtimePrepCatalogStub struct {
 	context      cliservice.InvokeContext
 	capabilities []cliservice.Capability
+}
+
+type agentSessionProjectionStub struct {
+	workspaceID string
+	sessionID   string
+	projection  *runtimeprep.CommandCapabilityProjection
+}
+
+func (stub *agentSessionProjectionStub) AgentSessionCommandCapabilityProjection(
+	_ context.Context,
+	workspaceID string,
+	sessionID string,
+) (*runtimeprep.CommandCapabilityProjection, error) {
+	stub.workspaceID = workspaceID
+	stub.sessionID = sessionID
+	return stub.projection, nil
 }
 
 func (stub *runtimePrepCatalogStub) Capabilities(_ context.Context, input cliservice.InvokeContext) []cliservice.Capability {
@@ -41,13 +58,15 @@ func TestRuntimePrepCommandCatalogPreservesAgentFacingMetadata(t *testing.T) {
 		},
 	}}}
 	capabilities := (runtimePrepCommandCatalog{Catalog: stub}).Capabilities(t.Context(), runtimeprep.CommandContext{
-		Source:                "agent-runtime",
-		WorkspaceID:           "workspace-1",
-		SkipCapabilityFilters: true,
+		Source:                         "agent-runtime",
+		WorkspaceID:                    "workspace-1",
+		SkipCapabilityFilters:          true,
+		IncludeIntegrationCapabilities: true,
 	})
 	if stub.context.Source != "agent-runtime" ||
 		stub.context.WorkspaceID != "workspace-1" ||
-		!stub.context.SkipCapabilityFilters {
+		!stub.context.SkipCapabilityFilters ||
+		!stub.context.IncludeIntegrationCapabilities {
 		t.Fatalf("catalog context = %#v", stub.context)
 	}
 	if len(capabilities) != 1 {
@@ -64,5 +83,41 @@ func TestRuntimePrepCommandCatalogPreservesAgentFacingMetadata(t *testing.T) {
 		got.Source.Kind != runtimeprep.CommandSourceApp ||
 		got.Source.AppID != "jobs" {
 		t.Fatalf("mapped capability = %#v", got)
+	}
+}
+
+func TestAgentSessionCLIProjectionResolverMapsCanonicalSnapshot(t *testing.T) {
+	stub := &agentSessionProjectionStub{
+		projection: &runtimeprep.CommandCapabilityProjection{
+			AllowedIDs: []string{
+				"issue-manager.issue.get",
+				"tutti-goal-review.goal-review.verdict",
+			},
+			IncludeIntegrationIDs: []string{
+				"tutti-goal-review.goal-review.verdict",
+			},
+			ExcludeIDs: []string{"issue-manager.issue.update"},
+		},
+	}
+	projection, err := (agentSessionCLIProjectionResolver{
+		Sessions: stub,
+	}).ResolveAgentSessionCapabilityProjection(
+		t.Context(), " workspace-1 ", " review-session-1 ",
+	)
+	if err != nil {
+		t.Fatalf("ResolveAgentSessionCapabilityProjection() error = %v", err)
+	}
+	if stub.workspaceID != "workspace-1" ||
+		stub.sessionID != "review-session-1" ||
+		!reflect.DeepEqual(projection.AllowedIDs, []string{
+			"issue-manager.issue.get",
+			"tutti-goal-review.goal-review.verdict",
+		}) ||
+		len(projection.IncludeIntegrationIDs) != 1 ||
+		projection.IncludeIntegrationIDs[0] !=
+			"tutti-goal-review.goal-review.verdict" ||
+		len(projection.ExcludeIDs) != 1 ||
+		projection.ExcludeIDs[0] != "issue-manager.issue.update" {
+		t.Fatalf("projection = %#v stub=%#v", projection, stub)
 	}
 }

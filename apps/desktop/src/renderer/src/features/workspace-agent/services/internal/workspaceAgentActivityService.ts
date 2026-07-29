@@ -2,11 +2,14 @@ import {
   agentActivitySessionMessageWindowFromDescendingPage,
   dispatchSessionMutation,
   type AgentActivityAdapter,
+  type AgentActivityComposerOptions,
   type AgentActivityGoalControlResult,
   type AgentActivityMessagePage,
   type AgentActivitySession,
   type AgentSessionEngine,
-  type AgentActivitySnapshot
+  type AgentActivitySnapshot,
+  type EngineExternalCommand,
+  type EngineIntent
 } from "@tutti-os/agent-activity-core";
 import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
 import type {
@@ -49,6 +52,11 @@ import { WorkspaceAgentActivityQueryOperations } from "./workspaceAgentActivityQ
 import { WorkspaceAgentActivityImportOperations } from "./workspaceAgentActivityImportOperations.ts";
 import { loadWorkspaceAgentComposerOptions } from "./workspaceAgentComposerOptions.ts";
 import { WorkspaceAgentActivityMutationOperations } from "./workspaceAgentActivityMutationOperations.ts";
+import { AgentSessionRecordingBinding } from "../../../agent-session-replay/services/agentSessionRecordingBinding.ts";
+import {
+  AgentSessionActivityEventRecorder,
+  createTuttidAgentSessionActivityEventAppender
+} from "../../../agent-session-replay/services/agentSessionActivityEventRecorder.ts";
 
 function waitForPromiseWithSignal<T>(
   promise: Promise<T>,
@@ -115,6 +123,18 @@ export class WorkspaceAgentActivityService
     string,
     Promise<AgentActivitySnapshot>
   >();
+  private readonly sessionRecordingBinding = new AgentSessionRecordingBinding();
+  private readonly sessionActivityEventRecorders = new Map<
+    string,
+    AgentSessionActivityEventRecorder
+  >();
+  private readonly sessionEngineActivityObservers = new Map<
+    string,
+    Set<{
+      observeCommand(command: EngineExternalCommand): void;
+      observeIntent(intent: EngineIntent): void;
+    }>
+  >();
   private composerOptionsCommandSequence = 1;
   private sessionMutationSequence = 1;
   // Collaboration-run/model-plan requests are not part of the TuttidClient
@@ -162,6 +182,78 @@ export class WorkspaceAgentActivityService
         this.upsertAuthoritativeSession(session, source),
       workspaceUserProjectService: dependencies.workspaceUserProjectService
     });
+  }
+
+  armNextSessionRecording(workspaceId: string, recordingId: string): void {
+    this.sessionRecordingBinding.arm(workspaceId, recordingId);
+  }
+
+  clearNextSessionRecording(workspaceId: string, recordingId?: string): void {
+    this.sessionRecordingBinding.clear(workspaceId, recordingId);
+  }
+
+  startSessionActivityEventRecording(
+    workspaceId: string,
+    recordingId: string
+  ): void {
+    const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+    this.sessionActivityEventRecorder(normalizedWorkspaceId).start({
+      recordingId,
+      scopeId: normalizedWorkspaceId
+    });
+  }
+
+  sealSessionActivityEventRecording(
+    workspaceId: string,
+    recordingId: string
+  ): Promise<void> {
+    return this.sessionActivityEventRecorder(
+      normalizeWorkspaceId(workspaceId)
+    ).seal(recordingId);
+  }
+
+  discardSessionActivityEventRecording(
+    workspaceId: string,
+    recordingId: string
+  ): void {
+    this.sessionActivityEventRecorder(
+      normalizeWorkspaceId(workspaceId)
+    ).discard(recordingId);
+  }
+
+  addSessionEngineActivityObserver(
+    workspaceId: string,
+    observer: {
+      observeCommand(command: EngineExternalCommand): void;
+      observeIntent(intent: EngineIntent): void;
+    }
+  ): () => void {
+    const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+    let observers = this.sessionEngineActivityObservers.get(
+      normalizedWorkspaceId
+    );
+    if (!observers) {
+      observers = new Set();
+      this.sessionEngineActivityObservers.set(normalizedWorkspaceId, observers);
+    }
+    observers.add(observer);
+    return () => {
+      observers?.delete(observer);
+      if (observers?.size === 0) {
+        this.sessionEngineActivityObservers.delete(normalizedWorkspaceId);
+      }
+    };
+  }
+
+  private takeNextSessionRecording(workspaceId: string): string | null {
+    return this.sessionRecordingBinding.take(workspaceId);
+  }
+
+  private restoreNextSessionRecording(
+    workspaceId: string,
+    recordingId: string
+  ): void {
+    this.sessionRecordingBinding.restore(workspaceId, recordingId);
   }
 
   getSnapshot(workspaceId: string): AgentActivitySnapshot {
@@ -825,7 +917,7 @@ export class WorkspaceAgentActivityService
     signal?: AbortSignal;
     settings?: Parameters<typeof normalizeComposerSettings>[0] | null;
     workspaceId: string;
-  }): Promise<unknown> {
+  }): Promise<AgentActivityComposerOptions> {
     const provider = resolveDesktopAgentGUIProvider(input.provider);
     const workspaceId = normalizeWorkspaceId(input.workspaceId);
     const entry = this.entry(workspaceId);
@@ -892,15 +984,39 @@ export class WorkspaceAgentActivityService
 
   protected createEntry(workspaceId: string): WorkspaceAgentActivityEntry {
     return createWorkspaceAgentSessionEngineHost({
+      activityEventObserver: {
+        observeCommand: (command) => {
+          this.sessionActivityEventRecorder(workspaceId).observeCommand(
+            command
+          );
+          this.notifySessionEngineActivityObservers(
+            workspaceId,
+            "observeCommand",
+            command
+          );
+        },
+        observeIntent: (intent) => {
+          this.sessionActivityEventRecorder(workspaceId).observeIntent(intent);
+          this.notifySessionEngineActivityObservers(
+            workspaceId,
+            "observeIntent",
+            intent
+          );
+        }
+      },
       activateSession: async (input) => {
         const activation = await this.activateSession(input);
         this.analytics.trackEngineActivation(input, activation);
         return activation;
       },
       cancelTurn: (input) => this.cancelTurn(input),
-      reconcileSession: (command) =>
-        this.executeSessionReconcileCommand(command),
+      reconcileSession: (command, signal) =>
+        this.executeSessionReconcileCommand(command, signal),
       runtimeApi: this.dependencies.runtimeApi,
+      takePendingSessionRecording: (workspaceId) =>
+        this.takeNextSessionRecording(workspaceId),
+      restorePendingSessionRecording: (workspaceId, recordingId) =>
+        this.restoreNextSessionRecording(workspaceId, recordingId),
       sendInput: async (input) => {
         const result = await this.sendInput(input);
         this.analytics.trackEngineSend(input, result);
@@ -917,6 +1033,51 @@ export class WorkspaceAgentActivityService
         this.updateTuttiModeActivation(input),
       workspaceId
     });
+  }
+
+  private sessionActivityEventRecorder(
+    workspaceId: string
+  ): AgentSessionActivityEventRecorder {
+    const existing = this.sessionActivityEventRecorders.get(workspaceId);
+    if (existing) return existing;
+    const recorder = new AgentSessionActivityEventRecorder({
+      appender: createTuttidAgentSessionActivityEventAppender({
+        tuttidClient: this.dependencies.tuttidClient,
+        workspaceId
+      })
+    });
+    this.sessionActivityEventRecorders.set(workspaceId, recorder);
+    return recorder;
+  }
+
+  private notifySessionEngineActivityObservers(
+    workspaceId: string,
+    method: "observeCommand",
+    value: EngineExternalCommand
+  ): void;
+  private notifySessionEngineActivityObservers(
+    workspaceId: string,
+    method: "observeIntent",
+    value: EngineIntent
+  ): void;
+  private notifySessionEngineActivityObservers(
+    workspaceId: string,
+    method: "observeCommand" | "observeIntent",
+    value: EngineExternalCommand | EngineIntent
+  ): void {
+    const observers = this.sessionEngineActivityObservers.get(workspaceId);
+    if (!observers) return;
+    for (const observer of observers) {
+      try {
+        if (method === "observeCommand") {
+          observer.observeCommand(value as EngineExternalCommand);
+        } else {
+          observer.observeIntent(value as EngineIntent);
+        }
+      } catch {
+        // Replay instrumentation cannot block the product command path.
+      }
+    }
   }
 
   private nextSessionMutationId(kind: "delete" | "pin"): string {

@@ -156,7 +156,7 @@ func TestDefaultRegistryUsesTuttiAgentManagedNPMInstaller(t *testing.T) {
 }
 
 func TestServiceListUsesDescriptorOwnedDaemonLoginAction(t *testing.T) {
-	service, _ := updateTestService(t, "0.0.7")
+	service, _ := updateTestService(t, "0.0.8")
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"tutti-agent"}})
 	if err != nil {
@@ -1584,6 +1584,74 @@ func TestServiceResolveProviderCommandFallsBackToManagedNodeForCodex(t *testing.
 	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
 	if !slices.Contains(result.Env, "TUTTI_APP_NODE="+managedNode) {
 		t.Fatalf("Env = %#v, want managed node fallback", result.Env)
+	}
+}
+
+func TestServiceResolveProviderCommandFallsBackToManagedNodeForTuttiAgent(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	writeExecutable(t, filepath.Join(binDir, "tutti-agent"), "#!/usr/bin/env node\n")
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+
+	service := probeTestService(home)
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir}
+	}
+	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
+
+	result, err := service.ResolveProviderCommand(context.Background(), "tutti-agent")
+	if err != nil {
+		t.Fatalf("ResolveProviderCommand() error = %v", err)
+	}
+	if !slices.Equal(result.Command, []string{"tutti-agent", "app-server"}) {
+		t.Fatalf("Command = %#v, want tutti-agent app-server", result.Command)
+	}
+	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
+	if !slices.Contains(result.Env, "TUTTI_APP_NODE="+managedNode) {
+		t.Fatalf("Env = %#v, want managed node fallback", result.Env)
+	}
+	pathValue := managedruntime.EnvValue(result.Env, "PATH")
+	if !slices.Contains(filepath.SplitList(pathValue), filepath.Dir(managedNode)) {
+		t.Fatalf("PATH = %q, want managed node directory", pathValue)
+	}
+}
+
+func TestServiceListUsesManagedNodeForTuttiAgentVersionProbe(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	writeExecutable(t, filepath.Join(binDir, "tutti-agent"), "#!/usr/bin/env node\n")
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	writeExecutable(
+		t,
+		filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest()),
+		"#!/bin/sh\necho 'tutti-agent 0.0.8'\n",
+	)
+
+	service := probeTestService(home)
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir}
+	}
+	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+
+	snapshot, err := service.List(context.Background(), ListInput{
+		Providers:    []string{"tutti-agent"},
+		ForceRefresh: true,
+	})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	status := onlyStatus(t, snapshot)
+	if status.CLI.Version != "0.0.8" {
+		t.Fatalf("CLI.Version = %q, want 0.0.8", status.CLI.Version)
+	}
+	if status.Availability.Status != AvailabilityReady {
+		t.Fatalf(
+			"Availability = %#v, want ready with managed Node version probe",
+			status.Availability,
+		)
 	}
 }
 

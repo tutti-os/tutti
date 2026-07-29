@@ -116,6 +116,8 @@ export interface IssueManagerTaskSummary {
   parallelizable?: boolean;
   acceptanceState?: IssueManagerAcceptanceState;
   acceptanceSummary?: string;
+  supersededAtUnix?: number;
+  supersededByTaskId?: string;
   createdAtUnix?: number;
   updatedAtUnix?: number;
 }

@@ -147,6 +147,43 @@ func TestRuntimeCloseForceClosesLiveProviderSessions(t *testing.T) {
 	}
 }
 
+func TestRuntimeCloseFinalizesProcessTransport(t *testing.T) {
+	t.Parallel()
+
+	transport := &runtimeFinalizerTestTransport{}
+	runtime, err := NewRuntime(Config{
+		Adapters:         []agentruntime.Adapter{testAdapter{provider: "test-agent"}},
+		ProcessTransport: transport,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.Close()
+	if transport.finalizeCalls != 1 {
+		t.Fatalf("Finalize() calls = %d, want 1", transport.finalizeCalls)
+	}
+	runtime.Close()
+	if transport.finalizeCalls != 1 {
+		t.Fatalf("Finalize() calls after second close = %d, want 1", transport.finalizeCalls)
+	}
+}
+
+type runtimeFinalizerTestTransport struct {
+	finalizeCalls int
+}
+
+func (*runtimeFinalizerTestTransport) Start(
+	context.Context,
+	agentruntime.ProcessSpec,
+) (agentruntime.ProcessConnection, error) {
+	return nil, errors.New("unexpected process start")
+}
+
+func (t *runtimeFinalizerTestTransport) Finalize() error {
+	t.finalizeCalls++
+	return nil
+}
+
 func testHostMetadata() HostMetadata {
 	return HostMetadata{
 		ClientInfo: ClientInfo{

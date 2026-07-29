@@ -54,6 +54,13 @@ func TestMigratedTuttiAgentDescriptorRequiresRefreshCapableVersion(t *testing.T)
 	if descriptor.Status.MinVersion != TuttiAgentMinVersion {
 		t.Fatalf("Status.MinVersion = %q, want %q", descriptor.Status.MinVersion, TuttiAgentMinVersion)
 	}
+	if descriptor.Status.StaticSpecResolverKind != StaticSpecResolverKindManagedNode {
+		t.Fatalf(
+			"Status.StaticSpecResolverKind = %q, want %q",
+			descriptor.Status.StaticSpecResolverKind,
+			StaticSpecResolverKindManagedNode,
+		)
+	}
 	if descriptor.Status.Install.PackageName != "@tutti-os/tutti-agent" ||
 		descriptor.Status.Install.BinaryName != "tutti-agent" ||
 		descriptor.Status.Install.RecommendedVersion != TuttiAgentRecommendedVersion ||

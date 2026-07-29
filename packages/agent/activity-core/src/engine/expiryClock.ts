@@ -49,11 +49,16 @@ export function createEngineExpiryClock({
       }
       // Rescheduling the same expiry id replaces the previous deadline.
       cancelExpiry(command.expiryId);
-      const delayMs = Math.max(0, command.dueAtUnixMs - clock.nowUnixMs());
+      const nowUnixMs = clock.nowUnixMs();
+      const dueAtUnixMs =
+        command.type === "engine/scheduleExpiryAfter"
+          ? nowUnixMs + Math.max(0, command.delayMs)
+          : command.dueAtUnixMs;
+      const delayMs = Math.max(0, dueAtUnixMs - nowUnixMs);
       const task = scheduler.schedule(delayMs, () => {
         tasksByExpiryId.delete(command.expiryId);
         onExpired({
-          dueAtUnixMs: command.dueAtUnixMs,
+          dueAtUnixMs,
           expiryId: command.expiryId,
           type: "engine/intentExpired"
         });

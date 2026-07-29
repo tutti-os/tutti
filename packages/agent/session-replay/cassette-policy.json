@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 3,
+  "blobManifestSchemaVersion": 1,
+  "limits": {
+    "maxProviderPayloadBytes": 8388608,
+    "maxProviderTapeBytes": 268435456,
+    "maxCassetteBytes": 402653184,
+    "maxPortableBlobBytes": 20971520
+  },
+  "files": {
+    "scenario": {
+      "path": "scenario.json",
+      "role": "scenario",
+      "required": true
+    },
+    "environment": {
+      "path": "environment.json",
+      "role": "portable-environment",
+      "required": true
+    },
+    "activityEvents": {
+      "path": "activity-events.jsonl",
+      "role": "activity-events",
+      "required": true
+    },
+    "checkpoints": {
+      "path": "checkpoints.jsonl",
+      "role": "stable-replay-checkpoints",
+      "required": true
+    },
+    "seedFixture": {
+      "path": "seed/state.jsonl",
+      "role": "seed-session-graph",
+      "required": false
+    },
+    "providerManifest": {
+      "path": "provider/manifest.json",
+      "role": "provider-tape-manifest",
+      "required": true
+    },
+    "providerFrames": {
+      "path": "provider/frames.jsonl",
+      "role": "provider-tape-frames",
+      "required": true
+    },
+    "expectedFixture": {
+      "path": "expected/state.jsonl",
+      "role": "expected-session-graph",
+      "required": true
+    },
+    "blobManifest": {
+      "path": "blobs/manifest.json",
+      "role": "referenced-blob-manifest",
+      "required": true
+    },
+    "cassetteManifest": {
+      "path": "cassette.json",
+      "role": "cassette-manifest",
+      "required": false,
+      "inventory": false
+    }
+  }
+}

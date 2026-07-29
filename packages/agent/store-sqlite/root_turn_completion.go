@@ -37,6 +37,11 @@ func (s *Store) applyRootProviderTurnTransitionTx(
 			return Turn{}, false, fmt.Errorf("unknown root provider turn outcome %q", outcome)
 		}
 	}
+	if err := requireSessionForkSourceWritableTx(
+		ctx, tx, workspaceID, rootAgentSessionID,
+	); err != nil {
+		return Turn{}, false, err
+	}
 
 	var sessionKind string
 	err := tx.QueryRowContext(ctx, `

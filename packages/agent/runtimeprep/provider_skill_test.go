@@ -121,14 +121,59 @@ func TestRenderSkillBundleIncludesGuideAndOptionalSkills(t *testing.T) {
 	if bundle.SchemaVersion != 2 || bundle.CLICommand != "tutti-dev" {
 		t.Fatalf("bundle metadata = %#v", bundle)
 	}
-	wantSlugs := "tutti-cli,tutti-handoff,issue-manager,workspace-app,reference,browser-use,computer-use"
+	wantSlugs := "tutti-cli,tutti-handoff,tutti-model-allocation,issue-manager,workspace-app,reference,browser-use,computer-use"
 	if got := strings.Join(skillBundleSlugs(bundle.Skills), ","); got != wantSlugs {
 		t.Fatalf("skill slugs = %q", got)
 	}
 	tuttiSkill := skillBundleRecord(bundle.Skills, tuttiSkillName)
+	for _, expected := range []string{
+		"Never inspect or modify `~/.tutti*/*.db`",
+		"tutti-dev plan issue get --issue-id <issue-id> --json",
+		"`task_failed` or `task_canceled`",
+		"Rework it with a new `taskId`",
+		"Recovery is bounded",
+		"On `inactive_checkpoint` or `stale_graph_revision`",
+	} {
+		if !strings.Contains(tuttiSkill.Content, expected) {
+			t.Fatalf("tutti skill missing recovery rule %q: %q", expected, tuttiSkill.Content)
+		}
+	}
 	guide, ok := skillBundleFileContent(tuttiSkill, commandGuideReferencePath)
 	if !ok || !strings.Contains(guide, "tutti-dev issue get --issue-id <issue-id> --json") {
 		t.Fatalf("command guide = %q", guide)
+	}
+	modelAllocation := skillBundleRecord(bundle.Skills, tuttiModelAllocationSkillName)
+	if !strings.Contains(modelAllocation.Content, "The required tier is `max(task tier, effect floor)`") {
+		t.Fatalf("model allocation skill = %q", modelAllocation.Content)
+	}
+	if !strings.Contains(modelAllocation.Content, "parallel target") ||
+		!strings.Contains(modelAllocation.Content, "| 75-100 | 4") {
+		t.Fatalf("model allocation parallel policy = %q", modelAllocation.Content)
+	}
+	modelTiers, ok := skillBundleFileContent(modelAllocation, tuttiModelAllocationReferencePath)
+	for _, expected := range []string{
+		"`gpt-5.6-luna`",
+		"`gpt-5.6-terra`",
+		"`gpt-5.6-sol`",
+		"`gpt-5.6-sol-pro`",
+		"`composer-2.5`",
+		"`grok-4.5`",
+		"`kimi-k3`",
+		"`moonshotai/kimi-k3`",
+		"`anthropic/claude-opus-4.8`",
+	} {
+		if !ok || !strings.Contains(modelTiers, expected) {
+			t.Fatalf("model tier reference missing %q: %q", expected, modelTiers)
+		}
+	}
+	for _, expected := range []string{
+		"Compare joint `(agentTargetId, model, reasoningEffort, permissionModeId)`",
+		"receive no suitability bonus",
+		"prefer a non-planning target",
+	} {
+		if !strings.Contains(modelAllocation.Content, expected) {
+			t.Fatalf("model allocation skill missing anti-affinity rule %q: %q", expected, modelAllocation.Content)
+		}
 	}
 	browser := skillBundleRecord(bundle.Skills, browserUseSkillName).Content
 	computer := skillBundleRecord(bundle.Skills, computerUseSkillName).Content

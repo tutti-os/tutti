@@ -19,6 +19,73 @@ import {
 } from "./sessionRuntimeTestQueries.session.ts";
 import { waitForEvent } from "./sessionRuntimeTestQueries.nested.ts";
 
+test("Claude-persisted user UUID becomes the provider Turn identity", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-identity",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => ({
+        async *[Symbol.asyncIterator]() {
+          const iterator = prompt[Symbol.asyncIterator]();
+          const outbound = await iterator.next();
+          yield {
+            ...outbound.value,
+            uuid: "persisted-claude-user-uuid",
+            type: "user",
+            parent_tool_use_id: null,
+            session_id: "provider-session-identity"
+          } as never;
+          yield { type: "result", subtype: "success" } as never;
+        },
+        close() {}
+      })
+    );
+
+    await session.start();
+    session.exec(
+      "turn-identity",
+      "hello",
+      undefined,
+      undefined,
+      undefined,
+      "",
+      "outbound-correlation-id"
+    );
+    await waitForEvent(events, "turn_completed");
+
+    const providerStarted = events.find(
+      (event) => event.type === "provider_turn_started"
+    );
+    const completed = events.find((event) => event.type === "turn_completed");
+    assert.equal(
+      providerStarted?.payload?.providerTurnId,
+      "persisted-claude-user-uuid"
+    );
+    assert.equal(
+      completed?.payload?.providerTurnId,
+      "persisted-claude-user-uuid"
+    );
+  } finally {
+    restoreSink();
+  }
+});
+
 test("tutti host context shares one SDK prompt with unchanged user input", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
   const messages: Array<{
@@ -424,6 +491,126 @@ test("session start emits SDK model config options from initialization", async (
       ]
     );
   } finally {
+    restoreSink();
+  }
+});
+
+test("session start publishes the per-user model reported by SDK system init", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  let session: SessionRuntime | undefined;
+  try {
+    session = new SessionRuntime(
+      "provider-session-effective-model",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "default",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => ({
+        async initializationResult() {
+          return {
+            models: [
+              {
+                value: "default",
+                displayName: "Sonnet 5",
+                description: "Efficient for routine tasks"
+              },
+              {
+                value: "haiku",
+                displayName: "Haiku 4.5",
+                description: "Small and fast"
+              }
+            ]
+          };
+        },
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: "system",
+            subtype: "init",
+            model: "claude-haiku-4-5-20251001",
+            session_id: "provider-session-effective-model"
+          } as never;
+          for await (const message of prompt) {
+            yield {
+              ...message,
+              type: "user",
+              parent_tool_use_id: null,
+              session_id: "provider-session-effective-model"
+            } as never;
+            yield {
+              type: "assistant",
+              message: {
+                id: "assistant-effective-model",
+                model: "claude-opus-4-8",
+                role: "assistant",
+                content: [{ type: "text", text: "Done." }]
+              },
+              parent_tool_use_id: null,
+              session_id: "provider-session-effective-model"
+            } as never;
+            yield {
+              type: "result",
+              subtype: "success",
+              session_id: "provider-session-effective-model"
+            } as never;
+          }
+        },
+        close() {}
+      })
+    );
+
+    await session.start();
+    await waitForCondition(
+      () =>
+        events.some((event) => {
+          if (event.type !== "session_state") {
+            return false;
+          }
+          const configOptions = event.payload?.configOptions as
+            | Array<Record<string, unknown>>
+            | undefined;
+          return configOptions?.some(
+            (option) =>
+              option.id === "model" &&
+              option.currentValue === "default" &&
+              option.effectiveValue === "claude-haiku-4-5-20251001"
+          );
+        }),
+      "effective model session state"
+    );
+
+    session.exec("turn-effective-model", "Which model are you?");
+    await waitForCondition(
+      () =>
+        events.some((event) => {
+          if (event.type !== "session_state") {
+            return false;
+          }
+          const configOptions = event.payload?.configOptions as
+            | Array<Record<string, unknown>>
+            | undefined;
+          return configOptions?.some(
+            (option) =>
+              option.id === "model" &&
+              option.currentValue === "default" &&
+              option.effectiveValue === "claude-opus-4-8"
+          );
+        }),
+      "assistant-reconciled effective model session state"
+    );
+  } finally {
+    await session?.close();
     restoreSink();
   }
 });

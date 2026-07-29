@@ -138,6 +138,8 @@ func writeRemoveWorkspaceIssueContextRefError(err error) tuttigenerated.RemoveWo
 		return tuttigenerated.RemoveWorkspaceIssueContextRef400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr)}
 	case tuttigenerated.WorkspaceIssueResourceNotFound:
 		return tuttigenerated.RemoveWorkspaceIssueContextRef404JSONResponse{WorkspaceIssueResourceNotFoundErrorJSONResponse: workspaceIssueResourceNotFoundError(protocolErr)}
+	case tuttigenerated.WorkspaceIssueResourceExists:
+		return tuttigenerated.RemoveWorkspaceIssueContextRef409JSONResponse{WorkspaceIssueResourceExistsErrorJSONResponse: workspaceIssueResourceExistsError(protocolErr)}
 	case tuttigenerated.ServiceUnavailable:
 		return tuttigenerated.RemoveWorkspaceIssueContextRef503JSONResponse{ServiceUnavailableErrorJSONResponse: serviceUnavailableError(protocolErr)}
 	default:
@@ -152,6 +154,8 @@ func writeCancelWorkspaceIssueExecutionError(err error) tuttigenerated.CancelWor
 		return tuttigenerated.CancelWorkspaceIssueExecution400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr)}
 	case tuttigenerated.WorkspaceIssueResourceNotFound:
 		return tuttigenerated.CancelWorkspaceIssueExecution404JSONResponse{WorkspaceIssueResourceNotFoundErrorJSONResponse: workspaceIssueResourceNotFoundError(protocolErr)}
+	case tuttigenerated.WorkspaceIssueResourceExists:
+		return tuttigenerated.CancelWorkspaceIssueExecution409JSONResponse{WorkspaceIssueResourceExistsErrorJSONResponse: workspaceIssueResourceExistsError(protocolErr)}
 	case tuttigenerated.ServiceUnavailable:
 		return tuttigenerated.CancelWorkspaceIssueExecution503JSONResponse{ServiceUnavailableErrorJSONResponse: serviceUnavailableError(protocolErr)}
 	default:
@@ -166,6 +170,8 @@ func writeRemoveWorkspaceIssueTaskContextRefError(err error) tuttigenerated.Remo
 		return tuttigenerated.RemoveWorkspaceIssueTaskContextRef400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr)}
 	case tuttigenerated.WorkspaceIssueResourceNotFound:
 		return tuttigenerated.RemoveWorkspaceIssueTaskContextRef404JSONResponse{WorkspaceIssueResourceNotFoundErrorJSONResponse: workspaceIssueResourceNotFoundError(protocolErr)}
+	case tuttigenerated.WorkspaceIssueResourceExists:
+		return tuttigenerated.RemoveWorkspaceIssueTaskContextRef409JSONResponse{WorkspaceIssueResourceExistsErrorJSONResponse: workspaceIssueResourceExistsError(protocolErr)}
 	case tuttigenerated.ServiceUnavailable:
 		return tuttigenerated.RemoveWorkspaceIssueTaskContextRef503JSONResponse{ServiceUnavailableErrorJSONResponse: serviceUnavailableError(protocolErr)}
 	default:
@@ -180,6 +186,8 @@ func writeDeleteWorkspaceIssueError(err error) tuttigenerated.DeleteWorkspaceIss
 		return tuttigenerated.DeleteWorkspaceIssue400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr)}
 	case tuttigenerated.WorkspaceIssueResourceNotFound:
 		return tuttigenerated.DeleteWorkspaceIssue404JSONResponse{WorkspaceIssueResourceNotFoundErrorJSONResponse: workspaceIssueResourceNotFoundError(protocolErr)}
+	case tuttigenerated.WorkspaceIssueResourceExists:
+		return tuttigenerated.DeleteWorkspaceIssue409JSONResponse{WorkspaceIssueResourceExistsErrorJSONResponse: workspaceIssueResourceExistsError(protocolErr)}
 	case tuttigenerated.ServiceUnavailable:
 		return tuttigenerated.DeleteWorkspaceIssue503JSONResponse{ServiceUnavailableErrorJSONResponse: serviceUnavailableError(protocolErr)}
 	default:
@@ -208,6 +216,8 @@ func writeUpdateWorkspaceIssueError(err error) tuttigenerated.UpdateWorkspaceIss
 		return tuttigenerated.UpdateWorkspaceIssue400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr)}
 	case tuttigenerated.WorkspaceIssueResourceNotFound:
 		return tuttigenerated.UpdateWorkspaceIssue404JSONResponse{WorkspaceIssueResourceNotFoundErrorJSONResponse: workspaceIssueResourceNotFoundError(protocolErr)}
+	case tuttigenerated.WorkspaceIssueResourceExists:
+		return tuttigenerated.UpdateWorkspaceIssue409JSONResponse{WorkspaceIssueResourceExistsErrorJSONResponse: workspaceIssueResourceExistsError(protocolErr)}
 	case tuttigenerated.ServiceUnavailable:
 		return tuttigenerated.UpdateWorkspaceIssue503JSONResponse{ServiceUnavailableErrorJSONResponse: serviceUnavailableError(protocolErr)}
 	default:
@@ -284,6 +294,8 @@ func writeDeleteWorkspaceIssueTaskError(err error) tuttigenerated.DeleteWorkspac
 		return tuttigenerated.DeleteWorkspaceIssueTask400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr)}
 	case tuttigenerated.WorkspaceIssueResourceNotFound:
 		return tuttigenerated.DeleteWorkspaceIssueTask404JSONResponse{WorkspaceIssueResourceNotFoundErrorJSONResponse: workspaceIssueResourceNotFoundError(protocolErr)}
+	case tuttigenerated.WorkspaceIssueResourceExists:
+		return tuttigenerated.DeleteWorkspaceIssueTask409JSONResponse{WorkspaceIssueResourceExistsErrorJSONResponse: workspaceIssueResourceExistsError(protocolErr)}
 	case tuttigenerated.ServiceUnavailable:
 		return tuttigenerated.DeleteWorkspaceIssueTask503JSONResponse{ServiceUnavailableErrorJSONResponse: serviceUnavailableError(protocolErr)}
 	default:
@@ -312,6 +324,8 @@ func writeUpdateWorkspaceIssueTaskError(err error) tuttigenerated.UpdateWorkspac
 		return tuttigenerated.UpdateWorkspaceIssueTask400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr)}
 	case tuttigenerated.WorkspaceIssueResourceNotFound:
 		return tuttigenerated.UpdateWorkspaceIssueTask404JSONResponse{WorkspaceIssueResourceNotFoundErrorJSONResponse: workspaceIssueResourceNotFoundError(protocolErr)}
+	case tuttigenerated.WorkspaceIssueResourceExists:
+		return tuttigenerated.UpdateWorkspaceIssueTask409JSONResponse{WorkspaceIssueResourceExistsErrorJSONResponse: workspaceIssueResourceExistsError(protocolErr)}
 	case tuttigenerated.ServiceUnavailable:
 		return tuttigenerated.UpdateWorkspaceIssueTask503JSONResponse{ServiceUnavailableErrorJSONResponse: serviceUnavailableError(protocolErr)}
 	default:

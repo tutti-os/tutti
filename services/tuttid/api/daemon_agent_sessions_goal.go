@@ -55,6 +55,10 @@ func (api DaemonAPI) GoalControlWorkspaceAgentSession(ctx context.Context, reque
 			response.Goal = &goal
 		}
 	}
+	api.recordAgentStimulus(ctx, "goal.control", string(request.WorkspaceID), string(request.AgentSessionID), map[string]any{
+		"action":    request.Body.Action,
+		"objective": request.Body.Objective,
+	})
 	return response, nil
 }
 

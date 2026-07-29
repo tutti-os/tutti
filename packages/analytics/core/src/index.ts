@@ -1,4 +1,16 @@
 export {
+  BaseAnalyticsReporter,
+  toAnalyticsParamName,
+  toAnalyticsProtocolParams,
+  type AnalyticsReporterDependencies,
+  type AnalyticsReporterParams,
+  type AnalyticsReporterParamValue
+} from "./baseReporter.ts";
+export {
+  NoopReporterService,
+  noopReporterService
+} from "./noopReporterService.ts";
+export {
   IReporterService,
   ReporterService,
   type AnalyticsTransport,

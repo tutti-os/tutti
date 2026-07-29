@@ -1,11 +1,12 @@
-import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
-import type { ConversationRailQueryState } from "../model/agentGuiConversationRail";
+import type { AgentConversationRailRuntimePort } from "../../../agentConversationRailContracts";
+import type { ConversationRailQueryState } from "./agentConversationRailQueryModel";
 import type { CachedConversationRailQuery } from "./agentGuiConversationRailQueryCache";
 
 export const CONVERSATION_RAIL_SLOW_DIAGNOSTIC_THRESHOLD_MS = 250;
 
 export type ConversationRailRefreshReason =
   | "attach"
+  | "manual"
   | "membership_change"
   | "scope_change";
 
@@ -518,7 +519,7 @@ export function emitConversationRailFirstPagesDiagnostic(input: {
 }
 
 export function createConversationRailDiagnosticLogger(
-  runtime: Pick<AgentActivityRuntime, "reportDiagnostic">
+  runtime: Pick<AgentConversationRailRuntimePort, "reportDiagnostic">
 ): ConversationRailDiagnosticLogger {
   return (payload) => {
     const reportDiagnostic = runtime.reportDiagnostic;

@@ -22,6 +22,11 @@ export type EngineDiagnosticEvent =
       intentType: EngineIntent["type"];
     }
   | {
+      type: "intentObserverError";
+      error: unknown;
+      intentType: EngineIntent["type"];
+    }
+  | {
       type: "listenerError";
       error: unknown;
     };

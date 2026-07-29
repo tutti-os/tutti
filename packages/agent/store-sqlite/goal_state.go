@@ -75,6 +75,14 @@ func (s *Store) PrepareGoalControlOperation(ctx context.Context, input GoalContr
 		committed = true
 		return existing, state, false, nil
 	}
+	if err := requireSessionForkSourceWritableTx(
+		ctx,
+		tx,
+		input.WorkspaceID,
+		input.AgentSessionID,
+	); err != nil {
+		return GoalControlOperation{}, SessionGoalState{}, false, err
+	}
 
 	state, found, err := getSessionGoalStateTx(ctx, tx, input.WorkspaceID, input.AgentSessionID)
 	if err != nil {

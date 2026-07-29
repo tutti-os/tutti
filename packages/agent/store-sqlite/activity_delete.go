@@ -35,6 +35,9 @@ func (s *Store) PlanClearSessions(
 	if err != nil {
 		return DeleteSessionsPlan{}, err
 	}
+	if err := requireSessionForkDeleteAllowedTx(ctx, tx, workspaceID, sessionIDs); err != nil {
+		return DeleteSessionsPlan{}, err
+	}
 	return DeleteSessionsPlan{
 		WorkspaceID: workspaceID,
 		SessionIDs:  normalizedSessionIDs(sessionIDs),
@@ -60,6 +63,9 @@ func (s *Store) PlanDeleteSessions(
 	defer func() { _ = tx.Rollback() }()
 	resolved, err := expandSessionTreeIDsTx(ctx, tx, workspaceID, sessionIDs)
 	if err != nil {
+		return DeleteSessionsPlan{}, err
+	}
+	if err := requireSessionForkDeleteAllowedTx(ctx, tx, workspaceID, append(sessionIDs, resolved...)); err != nil {
 		return DeleteSessionsPlan{}, err
 	}
 	return DeleteSessionsPlan{WorkspaceID: workspaceID, SessionIDs: normalizedSessionIDs(resolved)}, nil
@@ -102,6 +108,9 @@ func (s *Store) DeleteSessionWithCommit(
 	now := unixMs(time.Now().UTC())
 	removedSessionIDs, err := expandSessionTreeIDsTx(ctx, tx, workspaceID, []string{agentSessionID})
 	if err != nil {
+		return DeleteSessionResult{}, err
+	}
+	if err := requireSessionForkDeleteAllowedTx(ctx, tx, workspaceID, append([]string{agentSessionID}, removedSessionIDs...)); err != nil {
 		return DeleteSessionResult{}, err
 	}
 	// Always clear exact provenance, including on an idempotent repeat. A
@@ -177,6 +186,9 @@ func (s *Store) DeleteSessionsBatchTx(ctx context.Context, tx *sql.Tx, input Del
 	}
 	removedSessionIDs, err := expandSessionTreeIDsTx(ctx, tx, workspaceID, sessionIDs)
 	if err != nil {
+		return DeleteSessionsBatchResult{}, err
+	}
+	if err := requireSessionForkDeleteAllowedTx(ctx, tx, workspaceID, append(sessionIDs, removedSessionIDs...)); err != nil {
 		return DeleteSessionsBatchResult{}, err
 	}
 	if expected := normalizedSessionIDs(input.ExpectedSessionIDs); len(expected) > 0 && !equalStrings(expected, normalizedSessionIDs(removedSessionIDs)) {
@@ -358,6 +370,9 @@ func (s *Store) clearSessionsTx(
 
 	removedSessionIDs, err := listAgentSessionIDsTx(ctx, tx, workspaceID)
 	if err != nil {
+		return ClearSessionsResult{}, err
+	}
+	if err := requireSessionForkDeleteAllowedTx(ctx, tx, workspaceID, removedSessionIDs); err != nil {
 		return ClearSessionsResult{}, err
 	}
 	messageResult, err := tx.ExecContext(ctx, `

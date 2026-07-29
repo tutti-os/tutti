@@ -149,6 +149,42 @@ export const zhCN = {
       switchWorkspaceUnavailable: "暂时无法加载工作区列表。"
     },
     agentGui: {
+      sessionReplay: {
+        empty: "暂无录制",
+        failed: "会话录制或回放失败",
+        list: "录制列表",
+        record: {
+          cancel: "取消录制",
+          rename: "重命名录制",
+          renameCancel: "取消重命名",
+          renameFailed: "无法重命名录制",
+          renameSave: "保存录制名称",
+          start: "开始录制",
+          stop: "停止并保存录制"
+        },
+        replay: {
+          cassette: "回放 Cassette",
+          checkpoint: "Checkpoint {{current}} / {{total}}",
+          complete: "校验通过",
+          controlFailed: "无法控制回放",
+          failed: "校验失败",
+          launching: "正在启动独立回放窗口",
+          next: "下一个 checkpoint",
+          opened: "独立回放窗口已打开",
+          pause: "暂停回放",
+          play: "播放回放",
+          previous: "上一个 checkpoint",
+          replaying: "正在回放",
+          restart: "从头回放",
+          speed: "回放速度",
+          speedFailed: "无法修改回放速度",
+          stateMismatch: "回放最终状态与录制状态不一致：{{table}}",
+          toolbar: "回放控制",
+          validationComplete: "回放校验通过",
+          validationFailed: "回放校验失败",
+          verifying: "正在校验"
+        }
+      },
       collapseConversationRail: "隐藏侧边栏",
       expandConversationRail: "显示侧边栏",
       fallbackAgentLabel: "Agent",
@@ -202,6 +238,8 @@ export const zhCN = {
       copyUserIdSuccess: "已复制用户 ID",
       copyUserIdFailed: "复制用户 ID 失败",
       openExternalFailed: "无法打开账户链接",
+      refresh: "刷新",
+      refreshing: "刷新中",
       loading: "加载中",
       unavailable: "--",
       dataUnavailable: "部分账号数据暂不可用",
@@ -1107,6 +1145,9 @@ export const zhCN = {
         openDesktopLog: "打开 desktop 日志",
         openLogsDirectory: "打开日志目录",
         addFileDefaultOpener: "添加",
+        agentSessionRecordingDescription:
+          "在 Agent 首页显示会话录制与回放开发入口",
+        agentSessionRecordingLabel: "Agent 会话录制",
         removeFileDefaultOpener: "移除 .{{extension}}",
         releaseChannelDescription: "选择稳定版更新；需要提前验收时可切到预览版",
         releaseChannelLabel: "发布渠道",
@@ -1267,9 +1308,6 @@ export const zhCN = {
         unavailableItem: "{{title}}，{{reason}}"
       },
       missionControl: {
-        activateShortcutDefault: "Ctrl + 1",
-        activateShortcutMac: "Cmd + 1",
-        activateTrigger: "快速激活节点",
         layoutShortcutDefault: "Ctrl + 2",
         layoutShortcutMac: "Cmd + 2",
         layoutTrigger: "快速布局",

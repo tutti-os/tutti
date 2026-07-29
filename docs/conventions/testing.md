@@ -5,6 +5,9 @@ This document defines the repository-managed test discovery and gate policy.
 ## Commands
 
 - `pnpm test:ts`: all TypeScript/JavaScript workspace package tests
+- `pnpm test:ts -- --packages-json '["@tutti-os/agent-gui"]'`: tests for an
+  explicit validated workspace package subset
+- `pnpm test:ts -- --shard 1/3`: the first deterministic package shard
 - `pnpm test:tools`: repository tool tests only
 - `pnpm test:go`: generate builtin app assets, then run the blocking Go workspace test set
 - `pnpm test:go:prepared`: run the blocking Go workspace test set when builtin app assets are already prepared
@@ -57,10 +60,28 @@ TypeScript and JavaScript package tests are discovered from workspace
 `package.json` files. Every workspace package with a `test` script is included
 automatically; do not add package names to a root test whitelist.
 
+Pull-request CI keeps the stable `TypeScript Tests` required-check context but
+uses changed-file classification to select package lanes. Package-local changes
+run the owning package and transitive workspace dependents' tests; tool-only
+changes keep the context as a passing no-op because repository tool tests belong
+to `Tooling Consistency`. Lockfile, workspace, shared test configuration, runner,
+deleted-package, and relevant root manifest changes run all package tests.
+Selected packages are greedily balanced across at most three runner shards by
+their discovered test file counts; packages inside each runner remain serial so
+their own test workers do not oversubscribe the runner.
+
 A package that declares a `test` script must contain at least one package-local
 `*.test.*` or `*.spec.*` file. The root runner rejects zero-test scripts so an
 empty glob cannot be reported as a passing test suite. Remove a stale script or
 add a real package test.
+
+AgentGUI splits its Vitest suite by required runtime. Plain TypeScript tests run
+in Node; TSX tests and the exact TypeScript files listed in
+`packages/agent/gui/vitest.config.ts` run in JSDOM. Add a TypeScript test to that
+explicit list only when it requires browser globals or DOM behavior. Do not
+restore package-wide JSDOM, because most AgentGUI tests exercise DOM-free
+models and controllers. The package uses four Vitest threads so its worker pool
+matches the public Linux CI runner without stacking package-level concurrency.
 
 Repository tool tests are discovered from `tools/scripts/*.test.mjs`. Tool
 tests that exercise package release helpers remain tool-owned instead of being
@@ -114,6 +135,7 @@ ownership, not a runtime call stack or proof of causation.
 
 The capture runner ships `provider-switch`, `session-switch`,
 `provider-session-cycle`, `virtualized-streaming`,
+`concurrent-agent-streaming`,
 `virtualized-scroll-locator`, `virtualized-session-cycle`,
 `virtualized-oversized-active-turn`, `browser-behind-agent-gui-pixels`,
 `rail-scope-reveal`, `composer-input`, `composer-overflow-resize`, `workbench-window-lifecycle`,
@@ -124,6 +146,14 @@ The capture runner ships `provider-switch`, `session-switch`,
 `--scenario <id>`. Scenario modules own preparation, completion conditions,
 semantic assertions, milestones, and metadata; runtime startup, trace capture,
 renderer analysis, and report rendering stay scenario-neutral.
+
+`concurrent-agent-streaming` selects two settled root Sessions, restores them
+into two non-overlapping visible AgentGUI windows, and routes each through an
+isolated fake Cursor ACP Session. Both Composer forms submit in one renderer
+task. The scenario requires both windows to enter working state, produce
+repeated transcript mutations, and settle before the trace tail. It reports
+the sampled conversation-projection and streaming-text functions without
+setting a cross-device timing threshold.
 
 `virtualized-streaming` and `virtualized-scroll-locator` require one root
 Session with at least thirty settled Turns. They change only the isolated copy
@@ -215,6 +245,77 @@ opened by a newer checkout with incompatible Agent target migrations, the
 command fails before Desktop startup and lists them; use a compatible checkout
 or pass a compatible snapshot with `--source-db`. The runner never attempts to
 downgrade or rewrite the source database.
+
+## Agent Session Record And Replay
+
+The developer-only runner records and replays an Agent SessionGraph capture
+window:
+
+```sh
+pnpm e2e:agent-gui -- --record .tmp/cassettes/codex-three-turns
+pnpm e2e:agent-gui -- --replay .tmp/cassettes/codex-three-turns
+```
+
+Record mode starts from a newly migrated empty database, creates one temporary
+Workspace, and submits three Turns by default. Existing Sessions use
+`continue-session`: recording resolves the canonical root and exports only
+that recursive SessionGraph dependency closure to `seed/state.jsonl`. New
+Sessions use `create-session` and have no seed rows. Turn settlement and child
+creation never stop capture. The user presses the square stop control, then
+finalization exports `expected/state.jsonl`.
+
+External inputs are an ordered `stimuli.jsonl` stream. They include Session
+create/send/guidance, Turn cancel, interactive response, plan decision, Goal
+control, and Session settings changes. Provider-created child Sessions, Goal
+continuation Turns, and Host worker activity are state changes, not stimuli,
+and are never executed twice.
+
+`provider/manifest.json` identifies each connection by recorded Session,
+provider, and Session-local launch ordinal. `provider/frames.jsonl` carries
+connection-local and diagnostic global sequence numbers; the manifest records
+the final frame count and SHA-256 digest. Replay matches by that identity
+instead of global launch order. It maps only declared runtime identities and
+path fields, and fails on changed outbound bytes, missing inbound frames, extra
+connections, leftover frames, or tape-integrity mismatch. Replay compares the
+normalized full SessionGraph fixture, not only assistant text.
+Inbound provider frames honor their recorded elapsed time at the Replay
+surface's selected speed. Matching an outbound frame advances the playback
+clock to that recorded boundary, so time spent typing or waiting before a user
+action is not replayed. Final verification waits for every scheduled provider
+frame to drain after canonical Session settlement; Session idle alone is not
+proof that trailing diagnostics were consumed.
+
+The ordered activity stream also honors the relative `occurredAtUnixMs`
+timeline. Its runner clock reads the same daemon playback state as provider
+transport, so pause, selected speed, and checkpoint fast-forward cannot move
+queue, steer, or their effects out of sync with provider frames.
+
+Persisted prompt attachments explicitly referenced by graph messages are copied
+to `blobs/sha256/<digest>` and described in `blobs/manifest.json`. Replay
+verifies their size and digest, then restores only those attachment targets
+under its isolated state directory. Recording never scans or copies the whole
+Workspace.
+
+The cassette has no `baseline.db`, `action.json`, single Turn field, or copied
+Workspace. Replay migrates a new database, imports the optional seed, performs
+stimuli, and does not read the source user database. See [Local State
+Storage](./local-state-storage.md#developer-agent-session-cassettes).
+For a project-backed Session, Replay seeds the isolated User Project catalog
+from the recorded `cwd` and rail placement before starting Electron. The
+cassette remains read-only. CDP drives surface navigation and verification;
+recorded business stimuli use the isolated daemon HTTP API.
+
+`TUTTI_AGENT_CASSETTE_MODE` and `TUTTI_AGENT_CASSETTE_PATH` remain
+developer-only static transport controls used by replay and lower-level
+diagnostics. UI recording does not set them. Dynamic capture covers live and
+future connections in the selected root SessionGraph; provider probes and
+setup processes continue through the local transport.
+
+With the developer recording feature enabled, Desktop injects recording and
+replay controls through AgentGUI's generic composer-footer accessory slot.
+AgentGUI contains no recording/replay domain state or copy. Playing a completed
+recording prepares a daemon-owned Replay Run and opens a separate managed
+Electron instance without a terminal.
 
 ## Agent Daemon Blocking Gate
 

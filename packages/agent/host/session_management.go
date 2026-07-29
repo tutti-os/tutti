@@ -166,6 +166,7 @@ func (h *Host) DeleteSessions(ctx context.Context, input DeleteSessionsInput) (D
 	}
 	runtimeClosedIDs := make([]string, 0, len(sessionIDs))
 	var deleted storesqlite.DeleteSessionsBatchResult
+	var admittedPlan DeleteSessionsPlan
 	for {
 		plan, err := h.sessionBatchManagement.PlanDeleteSessions(ctx, storesqlite.DeleteSessionsBatchInput{
 			WorkspaceID: workspaceID,
@@ -173,6 +174,15 @@ func (h *Host) DeleteSessions(ctx context.Context, input DeleteSessionsInput) (D
 		})
 		if err != nil {
 			return DeleteSessionsResult{}, err
+		}
+		admittedPlan = DeleteSessionsPlan{
+			WorkspaceID: workspaceID,
+			SessionIDs:  copySessionIDs(plan.SessionIDs),
+		}
+		if h.sessionDeletionGuard != nil {
+			if err := h.sessionDeletionGuard.AdmitDeleteSessions(ctx, copyDeleteSessionsPlan(admittedPlan)); err != nil {
+				return DeleteSessionsResult{}, err
+			}
 		}
 		// Requested sessions can be live before their first canonical report is
 		// committed (for example, short-lived hidden discovery sessions). Keep
@@ -211,6 +221,15 @@ func (h *Host) DeleteSessions(ctx context.Context, input DeleteSessionsInput) (D
 			})
 			return deleteErr
 		})
+		if err != nil && h.sessionDeletionGuard != nil {
+			h.sessionDeletionGuard.ReportDeleteSessions(ctx, DeleteSessionsReport{
+				Plan: copyDeleteSessionsPlan(admittedPlan),
+				Result: DeleteSessionsResult{
+					RuntimeClosedIDs: copySessionIDs(runtimeClosedIDs),
+				},
+				Err: err,
+			})
+		}
 		if errors.Is(err, storesqlite.ErrDeleteSessionsPlanChanged) {
 			if ctx.Err() != nil {
 				return DeleteSessionsResult{}, ctx.Err()
@@ -242,13 +261,20 @@ func (h *Host) DeleteSessions(ctx context.Context, input DeleteSessionsInput) (D
 			cleanupFailedIDs = append(cleanupFailedIDs, sessionID)
 		}
 	}
-	return DeleteSessionsResult{
+	result := DeleteSessionsResult{
 		RemovedSessionIDs: copySessionIDs(deleted.RemovedSessionIDs),
 		RemovedSessions:   deleted.RemovedSessions,
 		RemovedMessages:   deleted.RemovedMessages,
 		RuntimeClosedIDs:  copySessionIDs(runtimeClosedIDs),
 		CleanupFailedIDs:  copySessionIDs(cleanupFailedIDs),
-	}, nil
+	}
+	if h.sessionDeletionGuard != nil {
+		h.sessionDeletionGuard.ReportDeleteSessions(ctx, DeleteSessionsReport{
+			Plan:   copyDeleteSessionsPlan(admittedPlan),
+			Result: copyDeleteSessionsResult(result),
+		})
+	}
+	return result, nil
 }
 
 // ClearSessions routes workspace-wide removal through the same runtime-close,
@@ -287,6 +313,20 @@ func copySessionIDs(values []string) []string {
 		return []string{}
 	}
 	return append([]string(nil), values...)
+}
+
+func copyDeleteSessionsPlan(plan DeleteSessionsPlan) DeleteSessionsPlan {
+	return DeleteSessionsPlan{
+		WorkspaceID: plan.WorkspaceID,
+		SessionIDs:  copySessionIDs(plan.SessionIDs),
+	}
+}
+
+func copyDeleteSessionsResult(result DeleteSessionsResult) DeleteSessionsResult {
+	result.RemovedSessionIDs = copySessionIDs(result.RemovedSessionIDs)
+	result.RuntimeClosedIDs = copySessionIDs(result.RuntimeClosedIDs)
+	result.CleanupFailedIDs = copySessionIDs(result.CleanupFailedIDs)
+	return result
 }
 
 func normalizedUniqueSessionIDs(values []string) []string {

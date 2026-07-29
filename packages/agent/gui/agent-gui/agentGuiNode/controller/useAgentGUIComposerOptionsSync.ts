@@ -21,6 +21,7 @@ import {
 import type { AgentGUIComposerDefaultsAuthorityReconciler } from "./agentGuiComposerDefaultsReconciliation";
 
 export function useAgentGUIComposerOptionsSync(input: {
+  activeAgentTargetId: string | null;
   activeConversationId: string | null;
   activeConversationIdRef: RefObject<string | null>;
   agentActivityRuntime: AgentActivityRuntime;
@@ -37,7 +38,7 @@ export function useAgentGUIComposerOptionsSync(input: {
   isComposerHomeRef: RefObject<boolean>;
   isCreatingConversation: boolean;
   loadDraftComposerOptionsRef: RefObject<() => void>;
-  loadSessionState(agentSessionId: string, cause?: unknown): void;
+  loadSessionState(agentSessionId: string): void;
   onComposerDefaultsAuthorityReloadedRef: RefObject<AgentGUIComposerDefaultsAuthorityReconciler>;
   providerComposerOptions:
     | { behavior?: { prewarmDraftSession?: boolean } | null }
@@ -135,6 +136,7 @@ export function useAgentGUIComposerOptionsSync(input: {
     (options?: { force?: boolean }) => {
       void loadComposerOptionsForTarget(
         composerTargetDataForConversation({
+          activeAgentTargetId: input.activeAgentTargetId,
           activeConversationId: input.activeConversationIdRef.current,
           data: input.dataRef.current,
           optimisticTarget: null,
@@ -150,6 +152,7 @@ export function useAgentGUIComposerOptionsSync(input: {
     },
     [
       input.activeConversationIdRef,
+      input.activeAgentTargetId,
       input.dataRef,
       input.isComposerHomeRef,
       input.selectedComposerTargetDataRef,
@@ -181,6 +184,7 @@ export function useAgentGUIComposerOptionsSync(input: {
       },
       (event) => {
         const provider = composerTargetDataForConversation({
+          activeAgentTargetId: input.activeAgentTargetId,
           activeConversationId: input.activeConversationIdRef.current,
           data: input.dataRef.current,
           optimisticTarget: null,
@@ -196,10 +200,7 @@ export function useAgentGUIComposerOptionsSync(input: {
         ) {
           return;
         }
-        input.loadSessionState(activeId, {
-          source: "settings-update",
-          force: true
-        });
+        input.loadSessionState(activeId);
       }
     );
   }, [input.loadSessionState, loadDraftComposerOptions]);
@@ -207,6 +208,7 @@ export function useAgentGUIComposerOptionsSync(input: {
   useEffect(() => {
     return subscribe("agent-composer-defaults-invalidated", (event) => {
       const selectedTarget = composerTargetDataForConversation({
+        activeAgentTargetId: input.activeAgentTargetId,
         activeConversationId: input.activeConversationIdRef.current,
         data: input.dataRef.current,
         optimisticTarget: null,
@@ -233,6 +235,7 @@ export function useAgentGUIComposerOptionsSync(input: {
     });
   }, [
     input.defaultReasoningEffort,
+    input.activeAgentTargetId,
     input.onComposerDefaultsAuthorityReloadedRef,
     loadComposerOptionsForTarget
   ]);

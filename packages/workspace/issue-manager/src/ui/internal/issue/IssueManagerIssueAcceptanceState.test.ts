@@ -200,3 +200,30 @@ test("issue subtask list keeps the issue-level execution task hidden while anoth
     ["task-selected"]
   );
 });
+
+test("issue subtask list excludes superseded tasks from the current board", () => {
+  const supersededTask = createTaskSummary({
+    issueId: "issue-1",
+    status: "pending_acceptance",
+    supersededAtUnix: 1_785_256_990_598,
+    supersededByTaskId: "task-replacement",
+    taskId: "task-original",
+    title: "Original task"
+  });
+  const replacementTask = createTaskSummary({
+    issueId: "issue-1",
+    status: "pending_acceptance",
+    taskId: "task-replacement",
+    title: "Replacement task"
+  });
+
+  const tasks = resolveIssueManagerVisibleSubtasks({
+    hiddenIssueRunTaskId: null,
+    tasks: [supersededTask, replacementTask]
+  });
+
+  assert.deepEqual(
+    tasks.map((task) => task.taskId),
+    ["task-replacement"]
+  );
+});

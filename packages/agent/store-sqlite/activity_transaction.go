@@ -55,9 +55,27 @@ func (s *Store) upsertAgentSessionTx(
 	}
 	input.WorkspaceID = workspaceID
 	input.AgentSessionID = agentSessionID
+	if err := requireSessionForkSourceWritableTx(ctx, tx, workspaceID, agentSessionID); err != nil {
+		return false, false, 0, Session{}, err
+	}
 	existing, hasExisting, err := getAgentSessionForUpdate(ctx, tx, workspaceID, agentSessionID)
 	if err != nil {
 		return false, false, 0, Session{}, err
+	}
+	if !hasExisting {
+		var reserved int
+		if err := tx.QueryRowContext(ctx, `
+SELECT EXISTS(
+  SELECT 1
+  FROM workspace_agent_session_fork_target_reservations
+  WHERE workspace_id = ? AND target_agent_session_id = ?
+)
+`, workspaceID, agentSessionID).Scan(&reserved); err != nil {
+			return false, false, 0, Session{}, fmt.Errorf("read workspace agent session fork target reservation: %w", err)
+		}
+		if reserved != 0 {
+			return false, false, 0, Session{}, ErrSessionForkTargetReserved
+		}
 	}
 	if err := prepareSessionRelation(&input, existing, hasExisting); err != nil {
 		return false, false, 0, Session{}, err

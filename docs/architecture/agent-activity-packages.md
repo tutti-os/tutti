@@ -162,6 +162,14 @@ tombstone deletes.
 `agent-activity-core` is host-agnostic and must not import React, Electron,
 desktop preload APIs, or the generated `tuttid` client.
 
+The published Tutti Mode activation contract retains
+`orchestrationIntensity` as a deprecated effect alias during the
+effect/speed migration. New fields take precedence when both forms are
+present; presentations and daemon responses continue to emit the alias with
+the normalized effect value. The tuttid adapter also accepts an older response
+that contains only the alias and assigns balanced speed (`50`). Removing the
+alias or its selector requires an explicit breaking package/API release.
+
 It owns:
 
 - agent activity contracts used by UI packages and host adapters
@@ -172,6 +180,9 @@ It owns:
   contract
 - message merge, immutable presentation-sequence ordering, mutable version
   cursor handling, and duplicate handling
+- authoritative Session reconcile execution: scope selection, mapped detail
+  aggregation, message cursor/window policy, bounded page draining, the
+  discovery/detail race fence, and atomic Engine application
 - selectors for reusable derived state
 - `selectNeedsAttentionCount`
 - `selectNeedsAttentionItems`
@@ -276,23 +287,41 @@ sections come from current user projects and session membership comes from
 persisted `rail_section_key`, not frontend cwd grouping or project-root
 filters.
 The published `@tutti-os/agent-gui/conversation-rail-runtime` entrypoint owns
-the complete host-neutral rail capability cohort and its workspace-scoped query
-caches. Product hosts provide one source implementing the six canonical rail
-queries and mutations, then install the result of
-`createAgentConversationRailRuntime` on `AgentActivityRuntime`; they must not
-copy the forwarding methods or cache lifetime into renderer composition code.
+the host-neutral Rail query/mutation cohort. Its stable host surface is the
+typed `createAgentConversationRailRuntime` factory plus the runtime/source
+types; method-name manifests and UI capability inspection are package-internal.
+Downstream hosts such as tsh compose the typed factory and do not import those
+test or presentation helpers. The sibling
+`@tutti-os/agent-gui/conversation-rail-controller` entrypoint owns the
+controller interface, workspace-Engine-scoped query caches, and
+`createAgentGUIConversationRailQueryController` factory. Product hosts provide
+the canonical Rail queries and construct the controller with their workspace
+Engine through that factory; they must not instantiate the package-internal
+implementation or copy query scope, first-page refresh, cursor pagination,
+stale-request fencing, membership reconciliation, Engine ingestion, forwarding
+methods, or cache lifetime into app or renderer composition code.
 Transport adapters still own HTTP/IPC DTO mapping, authorization, and protocol
 errors. In particular, `listSessionSectionDeletionCandidates` and
 `deleteSessionsBatch` are one atomic batch-deletion capability. AgentGUI disables
 the action and reports
 `agent.gui.conversation_batch_delete.capability_incomplete` when a host exposes
 only one half, instead of accepting a click that cannot complete.
-Native Mobile currently owns a narrower Rail controller, but it obeys the same
-entity boundary: the controller retains only section membership, ordered
-Session ids, cursors, totals, and request state. Generated Session DTOs from
-first-page and pagination responses are transient adapter input and are
-immediately upserted into the workspace Engine; they are never retained in a
-second Mobile Rail entity store.
+Desktop and Native Mobile use the same headless Rail controller. Generated
+Session DTOs from first-page and pagination responses are transient adapter
+input and are immediately upserted into the workspace Engine; they are never
+retained in a second host Rail entity store. Hosts retain only transport
+mapping, runtime-availability policy, surface lifecycle, presentation, and
+host-specific refresh cadence such as Mobile disconnected polling.
+The pure Rail contracts are the canonical source for both the controller and
+the compatibility-named `AgentActivityRuntime` Rail aliases. The public
+controller snapshot exposes memberships, ordered ids, pagination, search, and
+request state only; Desktop joins it with Engine state for localized
+conversation summaries outside the headless entrypoint. Resolved cache entries
+are shared by controllers created for the same workspace Engine; the factory,
+not `AgentActivityRuntime` or a host adapter, owns that registry. The cache
+implementation has no published AgentGUI subpath. In-flight first-page entity
+payloads stay scoped to one attached controller generation so an obsolete mount
+cannot ingest or cache them.
 Every daemon `WorkspaceAgentSession` response carries the persisted membership
 as required `railSectionKey`. The desktop adapter rejects a missing or blank
 value as a protocol contract error; it must not manufacture `conversations` or
@@ -349,11 +378,13 @@ Activating a conversation must not by itself call `listSessionSections` again.
 Likewise, active detail provider changes should not reload section first pages.
 Page sessions must be upserted into the workspace engine, while the rail query
 cache retains only ordered session ids, cursors, totals, and section metadata.
-Desktop keeps that cache on the workspace-scoped runtime rather than a mounted
-AgentGUI controller. Fresh first pages are reused for 30 seconds across panel
-remounts and repeated target switches; stale pages remain visible while one
-coalesced background request revalidates the scope. The cache never owns session
-entities, titles, lifecycle, or interaction state.
+The shared conversation-Rail controller factory keeps resolved cache entries
+per workspace `AgentSessionEngine`, rather than exposing cache ownership through
+a host runtime or mounted controller. Fresh first pages are reused for 30
+seconds across controller remounts and repeated target switches. In-flight
+request coalescing remains controller-local; the factory shares only resolved
+entries across controllers. The cache never owns session entities, titles,
+lifecycle, or interaction state.
 Pin and delete are engine mutations, not direct runtime calls from AgentGUI.
 The engine records the pending mutation, emits one semantic command, and feeds
 the command result back through its reducer loop. Successful pin results and
@@ -363,13 +394,15 @@ port is the only transport executor. Settled mutation records use a bounded
 window; they are workflow evidence, not an unbounded history store.
 When one of those canonical commits changes page membership, the rail query
 controller reloads only the affected first pages. Its public snapshot contains
-both derived engine conversations and daemon membership. The snapshot itself is
-the committed value: the controller keeps it unchanged while draft page requests
-are pending, then rebuilds and publishes it once from the latest engine state and
-resolved membership. The controller does not inspect engine mutation records.
-The view has no independent engine subscription or stale-page cache. A failed
-targeted read leaves the committed snapshot visible and locks
-membership-sensitive actions until an authoritative scoped refresh succeeds.
+daemon membership and query publication state, not derived Engine
+conversations. The controller keeps committed membership visible while draft
+page requests are pending, then publishes the resolved membership once. The
+Desktop adapter independently subscribes to the Engine and joins that canonical
+state with the headless snapshot to derive localized conversations; it does not
+own a second Session or Rail query cache. The controller does not inspect Engine
+mutation records. A failed targeted read leaves committed membership visible
+and locks membership-sensitive actions until an authoritative scoped refresh
+succeeds.
 Attach compares current canonical membership with the last observed membership
 and invalidates interrupted draft work before bootstrap, so changes completed
 while every panel is closed are revalidated without mutation-history coupling.
@@ -463,6 +496,12 @@ publish duplicate deletion events.
 
 Before a session exists, composer options carry the same typed capability
 descriptor. The active session descriptor takes precedence once available.
+Model composer options keep the selected value and provider-resolved value as
+separate facts. An inherited `default` remains the selected value used for
+future mutations; `effectiveModel` is presentation-only runtime evidence for
+describing what Default currently resolves to. Activity adapters and AgentGUI
+must not replace the selection with that resolved value or infer it from the
+catalog's Default entry.
 An omitted pre-session descriptor means the connected daemon predates the
 typed composer capability contract and must remain an unknown/loading state.
 Core capability booleans must not be reconstructed from private
@@ -956,6 +995,47 @@ hosts to assemble independently. Mobile does not widen its four-variant framed
 live protocol to mirror Desktop: canonical `message_update` and
 `session_reconcile_required` events converge through scoped discontinuities,
 while `session_deleted` retains typed deletion semantics across the adapter.
+
+Desktop and Mobile also call the same
+`AgentActivitySessionReconcileExecutor` for authoritative Session reads. The
+executor accepts only mapped activity-core detail aggregates and message pages;
+it owns the three reconcile scopes, cancellation and deletion fences,
+conversation-versus-durable cursors, pagination, the two-detail race closure,
+and atomic Engine dispatch. A host selects either requested-Session or
+Session-hierarchy message hydration according to the transcript surface it
+renders. The executor labels its first combined read as `message_hydration`;
+tuttid serves that projection without resolving provider-backed lifecycle
+capabilities. The final read remains authoritative and resolves those
+capabilities once. Hosts must preserve this distinction: caching provider
+capabilities or removing the final race-closing read can return stale actions,
+while using the full projection for discovery can launch an otherwise unused
+provider capability probe. Each HTTP response echoes its projection and whether
+lifecycle capability projection ran; clients fail closed on a mismatch, and
+values from a deliberately unprojected hydration response must never clear
+authoritative actions. Full projection remains fail-closed when a provider
+probe fails, preserving existing detail availability while making the action
+unavailable for that response. HTTP execution, generated DTO mapping,
+absent/error interpretation, logging, polling, and legacy event fanout stay in
+the host. The canonical detail aggregate type belongs to activity-core; the
+tuttid adapter only maps the generated response into it.
+
+Focused transcript paging is the adjacent AgentGUI application boundary.
+Desktop and Mobile construct the same
+`@tutti-os/agent-gui/conversation-message-controller`. It routes initial and
+latest hydration through Engine reconcile intents, reads older history only
+from the canonical Engine message window, fences in-flight pages when focus or
+host availability changes, and dispatches accepted mapped pages into that
+Engine. Mobile's disconnected poller and app lifecycle, Desktop diagnostics
+and WebSocket integration, and both renderers' scroll behavior remain host
+concerns. Hosts must not add a second older-message store or a host-local
+cursor/retry state machine. Desktop conversation selection owns activation
+guards and Rail projection coordination, then asks this controller to ensure
+initial detail hydration. Automatic selection restoration is idempotent: it
+must not reinterpret a repeated selection as a forced refresh or enqueue a
+second reconcile while the first is pending. Explicit refresh remains a
+separate command. Message paging adapters do not call back into selection or
+Rail orchestration, and hosts do not maintain a second messages-only reconcile
+entrypoint.
 
 Event-stream continuity and command reachability are separate host facts.
 `eventStreamConnectionChanged` belongs to the coordinator and triggers

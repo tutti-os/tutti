@@ -186,7 +186,10 @@ export interface WorkspaceFileManagerCreateDialogState {
   name: string;
 }
 
-export type WorkspaceFileManagerInlineRenameValidation = "invalid" | "required";
+export type WorkspaceFileManagerInlineRenameValidation =
+  | "invalid"
+  | "required"
+  | "tooLong";
 
 export interface WorkspaceFileManagerDeleteDialogState {
   entryPath: string;

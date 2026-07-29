@@ -43,6 +43,7 @@ export interface AgentGUIPrefillPromptRequest {
 }
 
 export interface UseAgentGUIConversationHomeInput {
+  activeConversationId: string | null;
   activeConversationIdRef: RefObject<string | null>;
   activePendingActivation: PendingActivationIntentRecord | null;
   agentActivityRuntime: AgentActivityRuntime;
@@ -69,6 +70,7 @@ export interface UseAgentGUIConversationHomeInput {
   onDataChangeRef: RefObject<
     (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
   >;
+  onComposerAppendHandled?: (sequence: number) => void;
   submitPrefillPrompt: (prompt: string) => void;
   persistActiveConversation: (agentSessionId: string | null) => void;
   prefillPromptRequest: AgentGUIPrefillPromptRequest | null;
@@ -102,6 +104,7 @@ export interface UseAgentGUIConversationHomeInput {
 
 /** Owns transitions from an active conversation back to the home composer. */
 export function useAgentGUIConversationHome({
+  activeConversationId,
   activeConversationIdRef,
   activePendingActivation,
   agentActivityRuntime,
@@ -119,6 +122,7 @@ export function useAgentGUIConversationHome({
   normalizedExplicitProviderTargets,
   normalizedProviderTargets,
   onDataChangeRef,
+  onComposerAppendHandled,
   submitPrefillPrompt,
   persistActiveConversation,
   prefillPromptRequest,
@@ -242,7 +246,7 @@ export function useAgentGUIConversationHome({
 
   useEffect(() => {
     const resolvedAppendRequest = resolveAgentGUIComposerAppendRequest({
-      activeConversationId: activeConversationIdRef.current,
+      activeConversationId,
       draftByScopeKey: draftByScopeKeyRef.current,
       handledSequence: handledComposerAppendSequenceRef.current,
       request: composerAppendRequest
@@ -257,6 +261,7 @@ export function useAgentGUIConversationHome({
         ...current,
         [resolvedAppendRequest.draftKey]: resolvedAppendRequest.nextDraft
       }));
+      onComposerAppendHandled?.(resolvedAppendRequest.sequence);
     }
     if (
       !prefillPromptRequest ||
@@ -351,6 +356,7 @@ export function useAgentGUIConversationHome({
     persistActiveConversation(null);
     loadDraftComposerOptions();
   }, [
+    activeConversationId,
     dataRef,
     draftByScopeKeyRef,
     composerAppendRequest,
@@ -361,6 +367,7 @@ export function useAgentGUIConversationHome({
     loadDraftComposerOptions,
     normalizedExplicitProviderTargets,
     normalizedProviderTargets,
+    onComposerAppendHandled,
     onDataChangeRef,
     persistActiveConversation,
     prefillPromptRequest,

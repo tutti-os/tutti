@@ -13,7 +13,10 @@ import { AgentPlanCard } from "./AgentPlanCard";
 import { AgentCollaborationRow } from "./AgentCollaborationRow";
 import { translate } from "../../../i18n/index";
 import { useOptionalAgentHostApi } from "../../../agentActivityHost";
-import type { WorkspaceLinkAction } from "../../../contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
+import {
+  AGENT_EXTERNAL_LINK_ACTION_SOURCE,
+  type WorkspaceLinkAction
+} from "../../../contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
 import {
   AgentMessageMarkdown,
   type AgentMessageMarkdownWorkspaceAppIcon
@@ -71,6 +74,7 @@ interface AgentMessageBlockProps {
   participantPresentation?: AgentConversationParticipantPresentation;
   showParticipantHeader?: boolean;
   isActiveTurn?: boolean;
+  footerAction?: ReactNode;
 }
 
 export function AgentMessageBlock({
@@ -88,7 +92,8 @@ export function AgentMessageBlock({
   rawTimelineJsonLabel = "",
   participantPresentation,
   showParticipantHeader = true,
-  isActiveTurn = false
+  isActiveTurn = false,
+  footerAction
 }: AgentMessageBlockProps): JSX.Element {
   "use memo";
   const agentHostApi = useOptionalAgentHostApi();
@@ -100,6 +105,20 @@ export function AgentMessageBlock({
         basePath,
         href,
         source: "agent-markdown"
+      });
+      if (action) {
+        onLinkAction?.(action);
+      }
+    },
+    [basePath, onLinkAction, workspaceRoot]
+  );
+  const handleExternalLinkClick = useCallback(
+    (href: string): void => {
+      const action = resolveAgentConversationLinkAction({
+        workspaceRoot,
+        basePath,
+        href,
+        source: AGENT_EXTERNAL_LINK_ACTION_SOURCE
       });
       if (action) {
         onLinkAction?.(action);
@@ -161,7 +180,9 @@ export function AgentMessageBlock({
         ))
       : null;
 
-  const messageContent = row.messages.map((message) => {
+  const messageContent = row.messages.map((message, messageIndex) => {
+    const messageFooterAction =
+      messageIndex === row.messages.length - 1 ? footerAction : null;
     const rawTimelineJson =
       showRawTimelineJson &&
       rawTimelineJsonLabel &&
@@ -195,13 +216,13 @@ export function AgentMessageBlock({
         <AgentVisibleErrorMessage
           message={message}
           onAuthLogin={onAuthLogin}
-          onExternalLink={handleLinkClick}
+          onExternalLink={handleExternalLinkClick}
         />
       ) : recoveredError ? (
         <AgentVisibleErrorMessage
           message={recoveredError}
           onAuthLogin={onAuthLogin}
-          onExternalLink={handleLinkClick}
+          onExternalLink={handleExternalLinkClick}
         />
       ) : message.systemNotice ? (
         <AgentSystemNoticeMessage message={message} />
@@ -250,6 +271,7 @@ export function AgentMessageBlock({
           occurredAtUnixMs={message.occurredAtUnixMs}
           speaker={row.speaker}
           onCopyMessageText={handleCopyMessageText}
+          footerAction={messageFooterAction}
         >
           {content}
           {rawTimelineJson}
@@ -266,6 +288,22 @@ export function AgentMessageBlock({
           occurredAtUnixMs={message.occurredAtUnixMs}
           speaker={row.speaker}
           onCopyMessageText={handleCopyMessageText}
+          footerAction={messageFooterAction}
+        >
+          {content}
+        </AgentCopyableMessageGroup>
+      );
+    }
+
+    if (messageFooterAction) {
+      return (
+        <AgentCopyableMessageGroup
+          key={message.id}
+          copyText={null}
+          occurredAtUnixMs={message.occurredAtUnixMs}
+          speaker={row.speaker}
+          onCopyMessageText={handleCopyMessageText}
+          footerAction={messageFooterAction}
         >
           {content}
         </AgentCopyableMessageGroup>
@@ -405,17 +443,19 @@ function AgentCopyableMessageGroup({
   copyText,
   occurredAtUnixMs,
   onCopyMessageText,
-  speaker
+  speaker,
+  footerAction
 }: {
   children: ReactNode;
   copyText: string | null;
   occurredAtUnixMs: number | null;
   onCopyMessageText: (text: string) => Promise<boolean>;
   speaker: AgentMessageRowVM["speaker"];
+  footerAction?: ReactNode;
 }): JSX.Element {
   "use memo";
   const timestamp = formatAgentMessageTimestamp(occurredAtUnixMs);
-  const hasFooter = Boolean(timestamp || copyText);
+  const hasFooter = Boolean(timestamp || copyText || footerAction);
 
   return (
     <div
@@ -435,6 +475,7 @@ function AgentCopyableMessageGroup({
               onCopyMessageText={onCopyMessageText}
             />
           ) : null}
+          {footerAction}
         </div>
       ) : null}
     </div>

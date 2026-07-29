@@ -3,6 +3,7 @@ import type {
   IssueManagerRun,
   IssueManagerTaskSummary
 } from "../../../contracts/index.ts";
+import { isIssueManagerTuttiModePlanIssue } from "../../../services/controllerModel.ts";
 
 export function resolveIssueManagerIssueAcceptanceTaskId(input: {
   latestRun: IssueManagerRun | null;
@@ -11,6 +12,7 @@ export function resolveIssueManagerIssueAcceptanceTaskId(input: {
   tasks: readonly IssueManagerTaskSummary[];
 }): string | null {
   if (
+    isIssueManagerTuttiModePlanIssue(input.selectedIssue) ||
     input.selectedIssue?.status !== "pending_acceptance" ||
     input.latestRun?.status !== "completed" ||
     input.selectedTaskId
@@ -54,11 +56,10 @@ export function resolveIssueManagerVisibleSubtasks(input: {
   tasks: readonly IssueManagerTaskSummary[];
 }): IssueManagerTaskSummary[] {
   const hiddenTaskId = input.hiddenIssueRunTaskId?.trim() ?? "";
-  if (!hiddenTaskId) {
-    return [...input.tasks];
-  }
-
   return input.tasks.filter((task) => {
-    return task.taskId !== hiddenTaskId;
+    return (
+      (task.supersededAtUnix ?? 0) <= 0 &&
+      (!hiddenTaskId || task.taskId !== hiddenTaskId)
+    );
   });
 }

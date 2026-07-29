@@ -217,7 +217,9 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
         errorMessage:
           validation === "required"
             ? this.copy.t("createNameRequired")
-            : this.copy.t("createNameInvalid")
+            : validation === "tooLong"
+              ? this.copy.t("createNameTooLong")
+              : this.copy.t("createNameInvalid")
       };
       return;
     }

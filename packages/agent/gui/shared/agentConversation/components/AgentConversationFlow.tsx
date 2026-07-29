@@ -29,11 +29,13 @@ export interface AgentConversationFlowProps {
   empty: ReactNode;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onAuthLogin?: (provider?: string | null) => void;
+  onForkThroughTurn?: (turnId: string) => void;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   showRawTimelineJson?: boolean;
   participantPresentation?: AgentConversationParticipantPresentation;
   followEndMode?: AgentConversationFollowEndMode;
+  forkThroughTurnPendingTurnIds?: readonly string[];
   virtualListLayoutRevision?: number;
   virtualScrollControllerRef?: Ref<AgentTranscriptVirtualScrollController>;
   labels: {
@@ -58,11 +60,13 @@ export const AgentConversationFlow = memo(function AgentConversationFlow({
   empty,
   onLinkAction,
   onAuthLogin,
+  onForkThroughTurn,
   availableSkills,
   workspaceAppIcons,
   showRawTimelineJson = false,
   participantPresentation,
   followEndMode,
+  forkThroughTurnPendingTurnIds,
   virtualListLayoutRevision,
   virtualScrollControllerRef,
   labels
@@ -89,6 +93,8 @@ export const AgentConversationFlow = memo(function AgentConversationFlow({
         onTurnAttachmentVisibilityChange={onTurnAttachmentVisibilityChange}
         onLinkAction={onLinkAction}
         onAuthLogin={onAuthLogin}
+        onForkThroughTurn={onForkThroughTurn}
+        forkThroughTurnPendingTurnIds={forkThroughTurnPendingTurnIds}
         availableSkills={availableSkills}
         workspaceAppIcons={workspaceAppIcons}
         labels={labels}

@@ -12,15 +12,16 @@ import (
 )
 
 const (
-	MutationEntitySession          = string(activityreplication.EntitySession)
-	MutationEntityTurn             = string(activityreplication.EntityTurn)
-	MutationEntityInteraction      = string(activityreplication.EntityInteraction)
-	MutationEntityMessage          = string(activityreplication.EntityMessage)
-	MutationEntityRuntimeOperation = string(activityreplication.EntityRuntimeOperation)
-	MutationEntityRuntimeEvent     = string(activityreplication.EntityRuntimeOperationEvent)
-	MutationEntityGoalState        = "goal_state"
-	MutationEntityGoalOperation    = "goal_operation"
-	MutationEntityGoalInbox        = "goal_reconcile_inbox"
+	MutationEntitySession              = string(activityreplication.EntitySession)
+	MutationEntityTurn                 = string(activityreplication.EntityTurn)
+	MutationEntityInteraction          = string(activityreplication.EntityInteraction)
+	MutationEntityMessage              = string(activityreplication.EntityMessage)
+	MutationEntityRuntimeOperation     = string(activityreplication.EntityRuntimeOperation)
+	MutationEntityRuntimeEvent         = string(activityreplication.EntityRuntimeOperationEvent)
+	MutationEntityGoalState            = "goal_state"
+	MutationEntityGoalOperation        = "goal_operation"
+	MutationEntityGoalInbox            = "goal_reconcile_inbox"
+	MutationEntitySessionForkOperation = "session_fork_operation"
 )
 
 // TransactionWriter is the intentionally narrow store-adapter seam for

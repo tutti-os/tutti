@@ -159,7 +159,7 @@ func agentModelCatalogSpecFromDescriptor(descriptor providerregistry.ProviderDes
 				if c.TuttiAgent != nil {
 					return c.TuttiAgent
 				}
-				return defaultTuttiAgentModelLister()
+				return defaultTuttiAgentModelLister(descriptor.Identity.ID, c.ProviderCommands)
 			},
 			configuredDefaultModel: func() string { return "" },
 		}, true, nil
@@ -188,6 +188,7 @@ type CachedAgentModelCatalog struct {
 	TuttiAgent        AgentModelLister
 	OpenCode          AgentModelLister
 	ModelCapabilities ModelCapabilitiesResolver
+	ProviderCommands  ProviderCommandResolver
 	Now               func() time.Time
 
 	mu    sync.Mutex
@@ -262,19 +263,21 @@ func codexCustomProviderRequiresConfiguredModelOnly(models []AgentModelOption, c
 	return true
 }
 
-func defaultTuttiAgentModelLister() CodexCLIModelLister {
+func defaultTuttiAgentModelLister(provider string, providerCommands ProviderCommandResolver) CodexCLIModelLister {
 	return CodexCLIModelLister{
-		Command:    "tutti-agent",
-		ClientName: "tutti_agent",
-		PrepareEnv: prepareTuttiAgentModelListEnv,
+		Command:          "tutti-agent",
+		ClientName:       "tutti_agent",
+		Provider:         provider,
+		ProviderCommands: providerCommands,
+		PrepareEnv:       prepareTuttiAgentModelListEnv,
 	}
 }
 
-func prepareTuttiAgentModelListEnv(env []string) ([]string, error) {
+func prepareTuttiAgentModelListEnv(ctx context.Context, env []string) ([]string, error) {
 	env = append([]string(nil), env...)
 	env = withoutEnvKeys(env, "TUTTI_AGENT_HOME", "CODEX_HOME")
 	tuttiAgentHome := filepath.Join(tuttitypes.DefaultStateDir(), "agent-model-catalog", "tutti-agent-home")
-	tuttiagentservice.BootstrapTuttiAgentUserAuth(context.Background())
+	tuttiagentservice.BootstrapTuttiAgentUserAuth(ctx)
 	if err := tuttiagentservice.PrepareHome(tuttiAgentHome); err != nil {
 		return nil, err
 	}

@@ -2,9 +2,11 @@ package agent
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	tuttimodeactivationbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeactivation"
@@ -15,6 +17,11 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 	if input.ClientSubmitID == "" {
 		legacyClientSubmitID, _ := input.Metadata["clientSubmitId"].(string)
 		input.ClientSubmitID = strings.TrimSpace(legacyClientSubmitID)
+	}
+	if input.ClientSubmitID == "" {
+		// 同 CreateWithResult：调用方未提供提交幂等标识时生成一个，满足下游
+		// submit provenance 对 ClientSubmitID 非空的要求。
+		input.ClientSubmitID = uuid.NewString()
 	}
 	logAgentSubmitTrace("service.send.entered", workspaceID, agentSessionID, input.ClientSubmitID, input.Metadata, nil)
 	nodeStartedAt := time.Now()
@@ -102,6 +109,10 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 		return SendInputResult{}, err
 	}
 	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "session_refreshed", provider, nodeStartedAt)
+	s.observeTuttiModeSourceUserTurn(
+		ctx, workspaceID, agentSessionID,
+		input.ClientSubmitID, input.Metadata, turn,
+	)
 	return SendInputResult{
 		Session:            session,
 		Kind:               "turn",
@@ -110,6 +121,93 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 		TurnLifecycle:      hostResult.TurnLifecycle,
 		SubmitAvailability: hostResult.SubmitAvailability,
 	}, nil
+}
+
+func (s *Service) observeTuttiModeSourceUserTurn(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	clientSubmitID string,
+	metadata map[string]any,
+	turn *agentactivitybiz.Turn,
+) {
+	if s == nil || s.TuttiModeSourceActivity == nil || turn == nil ||
+		strings.TrimSpace(turn.TurnID) == "" {
+		return
+	}
+	internalWake, _ := metadata["tuttiModeExecutionWake"].(bool)
+	if internalWake {
+		return
+	}
+	message, ok := s.canonicalSubmittedUserMessage(
+		workspaceID, agentSessionID, turn.TurnID, clientSubmitID, metadata,
+	)
+	if !ok || message.OccurredAtUnixMS <= 0 {
+		return
+	}
+	if err := s.TuttiModeSourceActivity.ObserveTuttiModeSourceActivity(
+		ctx,
+		TuttiModeSourceActivity{
+			WorkspaceID:      strings.TrimSpace(workspaceID),
+			SessionID:        strings.TrimSpace(agentSessionID),
+			Kind:             "user_turn",
+			ActivityID:       strings.TrimSpace(message.MessageID),
+			OccurredAtUnixMS: message.OccurredAtUnixMS,
+		},
+	); err != nil {
+		slog.WarnContext(
+			ctx,
+			"observe Tutti mode source user Turn failed",
+			"event", "tutti_mode_execution.source_user_turn_observation_failed",
+			"workspaceId", workspaceID,
+			"agentSessionId", agentSessionID,
+			"error", err,
+		)
+	}
+}
+
+func (s *Service) canonicalSubmittedUserMessage(
+	workspaceID string,
+	agentSessionID string,
+	turnID string,
+	clientSubmitID string,
+	metadata map[string]any,
+) (SessionMessage, bool) {
+	if s == nil || s.MessageReader == nil {
+		return SessionMessage{}, false
+	}
+	clientSubmitID = strings.TrimSpace(clientSubmitID)
+	if clientSubmitID == "" {
+		legacyClientSubmitID, _ := metadata["clientSubmitId"].(string)
+		clientSubmitID = strings.TrimSpace(legacyClientSubmitID)
+	}
+	page, ok := s.MessageReader.ListSessionMessages(
+		agentactivitybiz.ListSessionMessagesInput{
+			WorkspaceID:    strings.TrimSpace(workspaceID),
+			AgentSessionID: strings.TrimSpace(agentSessionID),
+			TurnID:         strings.TrimSpace(turnID),
+			Limit:          defaultListMessagesLimit,
+			Order:          agentactivitybiz.MessageOrderDesc,
+		},
+	)
+	if !ok {
+		return SessionMessage{}, false
+	}
+	for _, message := range page.Messages {
+		if strings.TrimSpace(message.TurnID) != strings.TrimSpace(turnID) ||
+			strings.TrimSpace(message.Role) != "user" ||
+			message.OccurredAtUnixMS <= 0 {
+			continue
+		}
+		if clientSubmitID != "" {
+			messageClientSubmitID, _ := message.Payload["clientSubmitId"].(string)
+			if strings.TrimSpace(messageClientSubmitID) != clientSubmitID {
+				continue
+			}
+		}
+		return message, true
+	}
+	return SessionMessage{}, false
 }
 
 func (s *Service) exactSubmittedTurn(

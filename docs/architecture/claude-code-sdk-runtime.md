@@ -72,6 +72,16 @@ model. Token deltas from a new Session do not synthesize a 200k or 1M
 denominator from the model name; AgentGUI keeps usage hidden until the first
 authoritative window arrives.
 
+Model selection preserves requested and resolved state separately. The model
+config option's `currentValue` remains the user's selection, including
+`default`, while `effectiveValue` is the concrete model reported by the
+per-user SDK runtime. The sidecar begins consuming the Query after
+`session_started` so the SDK's `system/init.model` can publish that fact before
+the first prompt; root assistant messages continuously reconcile it. A live
+switch back to `default` clears the previous effective value until the SDK
+reports the newly resolved model. Hosts and renderers must not derive the
+effective model from the advertised Default option's label or description.
+
 Claude credential-sensitive operations share the process-wide gate owned by
 `services/tuttid/service/claudecode`. Real session startup, hidden model
 discovery, and `claude auth status` acquire this same gate. The AgentGUI's

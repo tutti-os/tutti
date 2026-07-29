@@ -136,6 +136,42 @@ func TestRunHelpDoesNotIncludeIntegrationCapabilitiesWithoutAppCLIContract(t *te
 	}
 }
 
+func TestAgentSessionDiscoversAndInvokesProjectedIntegrationCapability(t *testing.T) {
+	var invoked bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			if r.URL.Query().Get("workspaceID") != "workspace-1" ||
+				r.URL.Query().Get("agentSessionID") != "review-session-1" {
+				t.Fatalf("capability query = %q", r.URL.RawQuery)
+			}
+			_, _ = w.Write([]byte(`{"commands":[{"id":"tutti-goal-review.goal-review.verdict","path":["goal-review","verdict"],"summary":"Submit verdict","visibility":"integration","inputSchema":{"type":"object","properties":{"issue-id":{"type":"string"}},"required":["issue-id"]},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}}]}`))
+		case "/v1/cli/commands/tutti-goal-review.goal-review.verdict/invoke":
+			invoked = true
+			_, _ = w.Write([]byte(`{"ok":true,"output":{"kind":"json","value":{"verdict":"goal_satisfied"}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+	t.Setenv("TUTTI_WORKSPACE_ID", "workspace-1")
+	t.Setenv("TUTTI_AGENT_SESSION_ID", "review-session-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runDefaultProgram(t, []string{
+		"--json", "goal-review", "verdict", "--issue-id", "issue-1",
+	}, &stdout, &stderr); code != 0 {
+		t.Fatalf("code = %d stderr = %q", code, stderr.String())
+	}
+	if !invoked || !strings.Contains(stdout.String(), "goal_satisfied") {
+		t.Fatalf("invoked = %v stdout = %q", invoked, stdout.String())
+	}
+}
+
 func TestRunExactLegacyAgentCommandRetriesIntegrationDiscovery(t *testing.T) {
 	capabilityRequests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

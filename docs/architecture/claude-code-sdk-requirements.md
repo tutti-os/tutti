@@ -55,7 +55,7 @@ Claude Code 只有一条运行链路：`tuttid` 启动 `@tutti-os/claude-sdk-sid
 ### Tutti 扩展能力
 
 - 每会话在 run-scoped 目录生成 system prompt、Claude plugin、skills、manifest 和托管临时文件，不修改用户项目或用户 `.claude` 内容。
-- 注入 `tutti-cli`、`tutti-handoff`、`issue-manager`、`workspace-app` 和 `reference`，按能力注入 browser/computer skill。
+- 注入 `tutti-cli`、`tutti-handoff`、`tutti-model-allocation`、`issue-manager`、`workspace-app` 和 `reference`，按能力注入 browser/computer skill。
 - Claude Code 可通过 Tutti CLI 访问 Workspace、Agent、Issue、Workspace App 和 reference bundle。
 - Browser 由 daemon-owned `tutti browser` 路由；Computer 仅在开关、driver 和系统权限均满足时启用，启动时 fail fast 且不擅自弹授权框。
 

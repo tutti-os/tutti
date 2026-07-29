@@ -7,13 +7,12 @@ import type {
 export function withAgentComposerTuttiModeSnapshot(input: {
   options?: AgentComposerSubmitOptions;
   active: boolean;
-  orchestrationIntensity: number;
+  effect: number;
+  speed: number;
 }): AgentComposerSubmitOptions {
   const tuttiMode: AgentComposerTuttiModeSubmitSnapshot = {
     active: input.active,
-    ...(input.active
-      ? { orchestrationIntensity: input.orchestrationIntensity }
-      : {})
+    ...(input.active ? { effect: input.effect, speed: input.speed } : {})
   };
   return {
     ...input.options,

@@ -2,7 +2,10 @@ import "@testing-library/jest-dom/vitest";
 import { StrictMode } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { useTuttiModePlanPanels } from "./useTuttiModePlanPanels";
+import {
+  tuttiPlanIssueExecutionIsActive,
+  useTuttiModePlanPanels
+} from "./useTuttiModePlanPanels";
 import {
   TuttiModePlanReviewRuntimeProvider,
   type TuttiModePlanReviewRuntime,
@@ -18,6 +21,7 @@ function snapshotFor(sessionId: string): TuttiPlanIssueSnapshot {
     issueId: `tutti-mode-plan-${sessionId}`,
     topicId: "default",
     title: `Issue for ${sessionId}`,
+    dispatchPaused: false,
     tasks: [
       {
         taskId: "task-1",
@@ -32,6 +36,38 @@ function snapshotFor(sessionId: string): TuttiPlanIssueSnapshot {
     ]
   };
 }
+
+describe("tuttiPlanIssueExecutionIsActive", () => {
+  it.each(["not_started", "running", "pending_acceptance"])(
+    "treats %s work as active while dispatch is open",
+    (status) => {
+      const issue = snapshotFor("session-1");
+      expect(
+        tuttiPlanIssueExecutionIsActive({
+          ...issue,
+          tasks: [{ ...issue.tasks[0]!, status }]
+        })
+      ).toBe(true);
+    }
+  );
+
+  it("ends aggregate work when dispatch is paused or every task is terminal", () => {
+    const issue = snapshotFor("session-1");
+    expect(
+      tuttiPlanIssueExecutionIsActive({ ...issue, dispatchPaused: true })
+    ).toBe(false);
+    expect(
+      tuttiPlanIssueExecutionIsActive({
+        ...issue,
+        tasks: ["completed", "failed", "canceled"].map((status, index) => ({
+          ...issue.tasks[0]!,
+          taskId: `task-${index}`,
+          status
+        }))
+      })
+    ).toBe(false);
+  });
+});
 
 interface DeferredLoad {
   sessionId: string;
@@ -60,8 +96,6 @@ function createHarness(): {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    acceptTask: vi.fn().mockResolvedValue(undefined),
-    rejectTask: vi.fn().mockResolvedValue(undefined),
     cancelExecution: vi.fn().mockResolvedValue(undefined),
     resolveTaskSession: vi.fn().mockResolvedValue(null)
   };

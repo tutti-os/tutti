@@ -1,4 +1,5 @@
 import type { AgentSessionCommand } from "../../../shared/agentSessionTypes";
+import type { ReactNode } from "react";
 import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings";
 import type { AgentConversationPromptVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
@@ -58,7 +59,8 @@ export interface AgentComposerSubmitOptions {
 
 export interface AgentComposerTuttiModeSubmitSnapshot {
   active: boolean;
-  orchestrationIntensity?: number;
+  effect?: number;
+  speed?: number;
 }
 
 export interface AgentComposerCapabilityReference {
@@ -96,8 +98,9 @@ export interface AgentComposerProps {
   tuttiModeActive?: boolean;
   /** Blocks submission/removal while activation CAS or creation is unresolved. */
   tuttiModeUpdating?: boolean;
-  /** Effective Tutti orchestration intensity (0-100) captured on submit. */
-  tuttiModeOrchestrationIntensity?: number;
+  /** Effective Tutti outcome-quality and completion-speed preferences. */
+  tuttiModeEffect?: number;
+  tuttiModeSpeed?: number;
   placeholder: string;
   composerSettings: AgentGUIComposerSettingsVM;
   queueStatus?: AgentGUIQueueStatus;
@@ -105,6 +108,7 @@ export interface AgentComposerProps {
   drainingQueuedPromptId: string | null;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   selectedAgentTarget?: AgentGUIAgentTarget | null;
+  footerAccessory?: ReactNode;
   agentTargets?: readonly AgentGUIAgentTarget[];
   handoffAgentTargets?: readonly AgentGUIAgentTarget[];
   providerSelectReadonly?: boolean;
@@ -114,6 +118,8 @@ export interface AgentComposerProps {
   }) => void;
   onHandoffConversation?: (target: AgentGUIAgentTarget) => void;
   showStopButton: boolean;
+  /** Lets typed input replace an aggregate-work Stop control with Send. */
+  draftOverridesStopButton?: boolean;
   stopDisabled: boolean;
   activePrompt: AgentConversationPromptVM | null;
   activePromptKeyboardShortcutsEnabled?: boolean;
@@ -185,20 +191,20 @@ export interface AgentComposerProps {
     tuttiModeDescription: string;
     tuttiModeRemove: string;
     tuttiBudgetTitle: string;
-    tuttiBudgetIntensityLabel: string;
+    tuttiBudgetEffectLabel: string;
+    tuttiBudgetSpeedLabel: string;
     tuttiBudgetPreviewTitle: string;
     tuttiBudgetPreviewHint: string;
     tuttiBudgetPreviewCost: string;
     tuttiBudgetPreviewBalance: string;
     tuttiBudgetPreviewPowerful: string;
-    tuttiBudgetModelStrengthLabel: string;
-    tuttiBudgetModelStrengthCost: string;
-    tuttiBudgetModelStrengthBalance: string;
-    tuttiBudgetModelStrengthPowerful: string;
-    tuttiBudgetAgentCountLabel: string;
-    tuttiBudgetAgentCountCost: string;
-    tuttiBudgetAgentCountBalance: string;
-    tuttiBudgetAgentCountPowerful: string;
+    tuttiBudgetModelPreferenceLabel: string;
+    tuttiBudgetModelPreferenceCost: string;
+    tuttiBudgetModelPreferenceBalance: string;
+    tuttiBudgetModelPreferencePowerful: string;
+    tuttiBudgetModelPreferenceFastestSuitable: string;
+    tuttiBudgetParallelismLabel: string;
+    tuttiBudgetParallelismValue: (count: number) => string;
     planModeDescription?: string;
     planModeOnLabel: string;
     planModeOffLabel: string;
@@ -357,8 +363,8 @@ export interface AgentComposerProps {
     permissionModeId?: string | null;
   }) => void;
   onTuttiModeChange?: (active: boolean) => void;
-  /** Commits a confirmed Tutti budget popup orchestration-intensity draft. */
-  onTuttiModeOrchestrationIntensityChange?: (value: number) => void;
+  onTuttiModeEffectChange?: (value: number) => void;
+  onTuttiModeSpeedChange?: (value: number) => void;
   capabilityMenuState?: AgentComposerCapabilityMenuState;
   capabilityControlsReadOnly?: boolean;
   onCapabilitySettingsRequest?: (

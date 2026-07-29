@@ -1,9 +1,11 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { AgentActivityMessage } from "@tutti-os/agent-activity-core";
 import { isWorkspaceAgentActivityOptimisticMessage } from "../../../shared/workspaceAgentMessageOverlay";
-import type { AgentSessionViewRef } from "../../../contexts/workspace/presentation/renderer/agentSessions/useAgentSessionTransport";
-import { AgentConversationOlderPagingState } from "./AgentConversationOlderPagingState";
+import {
+  createAgentConversationMessageController,
+  type AgentConversationMessageController
+} from "../../../agentConversationMessageController";
 
 const PAGE_SIZE = 100;
 
@@ -157,35 +159,6 @@ export function sessionHasRenderableMessages(input: {
   return (input.snapshotMessagesById[normalized]?.length ?? 0) > 0;
 }
 
-interface MessagePageView {
-  olderMessages: AgentActivityMessage[];
-  hasOlderMessages: boolean;
-  isLoadingOlderMessages: boolean;
-  oldestLoadedVersion: number | null;
-}
-
-export interface ConversationMessagePagingViewPort {
-  get(ref: AgentSessionViewRef): MessagePageView | null;
-  mergeOlder(
-    ref: AgentSessionViewRef,
-    messages: readonly AgentActivityMessage[],
-    options?: {
-      hasOlderMessages?: boolean;
-      oldestLoadedVersion?: number | null;
-    }
-  ): void;
-  setOlderMessagesLoading(ref: AgentSessionViewRef, loading: boolean): void;
-}
-
-export interface ConversationMessagePagingProjectionPort {
-  maxVersion(messages: readonly AgentActivityMessage[]): number | null;
-  minVersion(messages: readonly AgentActivityMessage[]): number | null;
-  windowHasTurnMissingUserPrompt(
-    messages: readonly AgentActivityMessage[],
-    latestVersion: number | null
-  ): boolean;
-}
-
 export interface ConversationMessagePagingDiagnosticsPort {
   error(input: {
     agentSessionId: string;
@@ -205,17 +178,10 @@ export interface ConversationMessagePagingDiagnosticsPort {
 export interface AgentConversationMessagePagingInput {
   diagnostics: ConversationMessagePagingDiagnosticsPort;
   getActiveSessionId(): string | null;
-  getCanonicalMessages(agentSessionId: string): readonly AgentActivityMessage[];
   isMounted(): boolean;
-  projection: ConversationMessagePagingProjectionPort;
-  reload: {
-    getActivationStatus(agentSessionId: string): string | null;
-    reconcileDetail(agentSessionId: string): void;
-    syncConversationList(agentSessionId: string): void;
-  };
+  onOlderPageLoadingChanged(loading: boolean): void;
   runtime: AgentActivityRuntime;
-  sessionViewRef(agentSessionId: string): AgentSessionViewRef;
-  view: ConversationMessagePagingViewPort;
+  sessionEngine: import("@tutti-os/agent-activity-core").AgentSessionEngine;
   workspaceId: string;
 }
 
@@ -224,193 +190,94 @@ export function useAgentConversationMessagePaging(
 ) {
   const inputRef = useRef(input);
   inputRef.current = input;
-  const olderPagingState = useMemo(
-    () => new AgentConversationOlderPagingState(),
-    []
+  const controller = useMemo(
+    () =>
+      createAgentConversationMessageController({
+        diagnostics: {
+          error: ({ agentSessionId, beforeVersion, error }) =>
+            inputRef.current.diagnostics.error({
+              agentSessionId,
+              context: { beforeVersion },
+              error,
+              phase: "load_session_messages"
+            }),
+          page: (event) => inputRef.current.diagnostics.page(event)
+        },
+        engine: input.sessionEngine,
+        isAvailable: (agentSessionId) =>
+          inputRef.current.isMounted() &&
+          (!agentSessionId ||
+            inputRef.current.getActiveSessionId()?.trim() === agentSessionId),
+        listSessionMessages: ({
+          agentSessionId,
+          beforeVersion,
+          limit,
+          order,
+          signal,
+          workspaceId
+        }) =>
+          inputRef.current.runtime.listSessionMessages({
+            agentSessionId,
+            beforeVersion,
+            cache: false,
+            limit,
+            order,
+            signal,
+            workspaceId
+          }),
+        onSnapshotChanged: (snapshot) =>
+          inputRef.current.onOlderPageLoadingChanged(
+            snapshot.olderPagePhase === "loading"
+          ),
+        workspaceId: input.workspaceId
+      }),
+    [input.sessionEngine, input.workspaceId]
   );
+  const controllerLifetimeRef = useRef<{
+    controller: AgentConversationMessageController;
+    generation: number;
+  } | null>(null);
+  if (controllerLifetimeRef.current?.controller !== controller) {
+    controllerLifetimeRef.current = { controller, generation: 0 };
+  }
+  const controllerLifetime = controllerLifetimeRef.current;
+  useEffect(() => {
+    const generation = ++controllerLifetime.generation;
+    return () => {
+      // React development Strict Mode and Fast Refresh may immediately replay
+      // an effect cleanup/setup pair against the same memoized controller.
+      // Delay permanent disposal for one microtask so a replay can renew the
+      // ownership generation; real unmounts and controller replacements still
+      // dispose the abandoned instance.
+      queueMicrotask(() => {
+        if (controllerLifetime.generation === generation) {
+          controller.dispose();
+        }
+      });
+    };
+  }, [controller, controllerLifetime]);
 
   const loadInitialMessages = useCallback(
-    async (agentSessionId: string) => {
+    async (agentSessionId: string, options?: { force?: boolean }) => {
       const normalized = agentSessionId.trim();
       if (!normalized) return;
-      olderPagingState.reset(normalized);
-      const current = inputRef.current;
-      current.reload.reconcileDetail(normalized);
+      controller.requestInitial(normalized, options);
     },
-    [olderPagingState]
+    [controller]
   );
 
   const loadOlderMessages = useCallback(
     async (agentSessionId?: string | null) => {
       const current = inputRef.current;
-      const normalized = (
-        agentSessionId ??
-        current.getActiveSessionId() ??
-        ""
-      ).trim();
-      if (!normalized) return;
-      const ref = current.sessionViewRef(normalized);
-      const view = current.view.get(ref);
-      const oldestLoadedVersion =
-        view?.oldestLoadedVersion ??
-        current.projection.minVersion(current.getCanonicalMessages(normalized));
-      const hasOlderMessages = view?.hasOlderMessages === true;
-      if (
-        !hasOlderMessages ||
-        view?.isLoadingOlderMessages === true ||
-        oldestLoadedVersion === null ||
-        current.getActiveSessionId() !== normalized
-      ) {
-        current.diagnostics.page({
-          agentSessionId: normalized,
-          details: {
-            activeConversationId: current.getActiveSessionId(),
-            hasOlderMessages,
-            isLoadingOlderMessages: view?.isLoadingOlderMessages ?? null,
-            oldestLoadedVersion
-          },
-          event: "agent.gui.messages.older.skipped",
-          level: "debug"
-        });
-        return;
-      }
-      const beforeVersion = oldestLoadedVersion;
-      const beginResult = olderPagingState.begin(normalized, beforeVersion);
-      if (beginResult.kind === "suppressed") {
-        const { entry } = beginResult;
-        const suppression =
-          entry.phase === "in_flight"
-            ? {
-                details: {
-                  beforeVersion,
-                  inFlightBeforeVersion: entry.beforeVersion,
-                  inFlightRequestId: entry.requestId,
-                  reason: "in_flight_request"
-                },
-                event: "agent.gui.messages.older.suppressed_in_flight",
-                level: undefined
-              }
-            : entry.phase === "exhausted"
-              ? {
-                  details: { beforeVersion, reason: "exhausted_cursor" },
-                  event: "agent.gui.messages.older.suppressed_exhausted_cursor",
-                  level: undefined
-                }
-              : {
-                  details: { beforeVersion, reason: "previous_cursor_error" },
-                  event: "agent.gui.messages.older.suppressed_after_error",
-                  level: "warn" as const
-                };
-        current.diagnostics.page({
-          agentSessionId: normalized,
-          details: suppression.details,
-          event: suppression.event,
-          level: suppression.level
-        });
-        return;
-      }
-      const { request } = beginResult;
-      current.view.setOlderMessagesLoading(ref, true);
-      try {
-        current.diagnostics.page({
-          agentSessionId: normalized,
-          details: {
-            beforeVersion,
-            limit: PAGE_SIZE,
-            order: "desc",
-            requestId: request.requestId
-          },
-          event: "agent.gui.messages.older.requested"
-        });
-        const page = await current.runtime.listSessionMessages({
-          workspaceId: current.workspaceId,
-          agentSessionId: normalized,
-          beforeVersion,
-          cache: false,
-          limit: PAGE_SIZE,
-          order: "desc"
-        });
-        if (
-          !current.isMounted() ||
-          current.getActiveSessionId() !== normalized
-        ) {
-          if (olderPagingState.abandon(request)) {
-            current.view.setOlderMessagesLoading(ref, false);
-          }
-          return;
-        }
-        current.diagnostics.page({
-          agentSessionId: normalized,
-          details: {
-            beforeVersion,
-            hasMore: page.hasMore,
-            latestVersion: page.latestVersion,
-            requestId: request.requestId
-          },
-          event: "agent.gui.messages.older.resolved",
-          messages: page.messages
-        });
-        if (
-          !olderPagingState.resolve(
-            request,
-            !page.hasMore || page.messages.length === 0
-          )
-        ) {
-          return;
-        }
-        current.view.mergeOlder(ref, page.messages, {
-          hasOlderMessages: page.hasMore && page.messages.length > 0,
-          oldestLoadedVersion:
-            current.projection.minVersion(page.messages) ?? oldestLoadedVersion
-        });
-        current.view.setOlderMessagesLoading(ref, false);
-      } catch (error) {
-        if (
-          !current.isMounted() ||
-          current.getActiveSessionId() !== normalized
-        ) {
-          if (olderPagingState.abandon(request)) {
-            current.view.setOlderMessagesLoading(ref, false);
-          }
-          return;
-        }
-        if (!olderPagingState.fail(request)) return;
-        current.diagnostics.error({
-          agentSessionId: normalized,
-          context: { beforeVersion, requestId: request.requestId },
-          error,
-          phase: "load_session_messages"
-        });
-        current.view.setOlderMessagesLoading(ref, false);
-      }
+      controller.setActiveSession(current.getActiveSessionId());
+      await controller.loadOlder(agentSessionId);
     },
-    [olderPagingState]
+    [controller]
   );
 
-  const reloadSelectedConversation = useCallback(
-    (
-      agentSessionId: string,
-      options: { reloadConversations: boolean; reloadDetail: boolean }
-    ) => {
-      if (!agentSessionId) return;
-      const current = inputRef.current;
-      const activationStatus =
-        current.reload.getActivationStatus(agentSessionId);
-      if (
-        activationStatus === "failed" ||
-        activationStatus === "canceled" ||
-        activationStatus === "requested" ||
-        activationStatus === "uncertain"
-      )
-        return;
-      if (options.reloadConversations) {
-        current.reload.syncConversationList(agentSessionId);
-      }
-      if (!options.reloadDetail) return;
-      void loadInitialMessages(agentSessionId.trim());
-    },
-    [loadInitialMessages]
-  );
-
-  return { loadInitialMessages, loadOlderMessages, reloadSelectedConversation };
+  return {
+    loadInitialMessages,
+    loadOlderMessages,
+    setActiveSession: controller.setActiveSession
+  };
 }

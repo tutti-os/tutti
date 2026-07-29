@@ -72,6 +72,7 @@ func (s *Service) executeDecisionOperation(
 		TopicID:         current.Document.TopicID,
 		Execution:       current.Document.Execution,
 		Budget:          current.Document.Budget,
+		Review:          current.Document.Review,
 		ActionableItems: append([]ActionableItem(nil), view.ActionableItems...),
 	})
 	now := s.now()

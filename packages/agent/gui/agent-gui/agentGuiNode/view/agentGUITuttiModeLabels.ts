@@ -3,27 +3,29 @@ import type { AgentGUIViewLabels } from "../AgentGUINodeView";
 
 type AgentGUITuttiModeLabels = Pick<
   AgentGUIViewLabels,
-  | "tuttiBudgetAgentCountBalance"
-  | "tuttiBudgetAgentCountCost"
-  | "tuttiBudgetAgentCountLabel"
-  | "tuttiBudgetAgentCountPowerful"
-  | "tuttiBudgetIntensityLabel"
-  | "tuttiBudgetModelStrengthBalance"
-  | "tuttiBudgetModelStrengthCost"
-  | "tuttiBudgetModelStrengthLabel"
-  | "tuttiBudgetModelStrengthPowerful"
+  | "tuttiBudgetEffectLabel"
+  | "tuttiBudgetSpeedLabel"
+  | "tuttiBudgetModelPreferenceBalance"
+  | "tuttiBudgetModelPreferenceCost"
+  | "tuttiBudgetModelPreferenceFastestSuitable"
+  | "tuttiBudgetModelPreferenceLabel"
+  | "tuttiBudgetModelPreferencePowerful"
   | "tuttiBudgetPreviewBalance"
   | "tuttiBudgetPreviewCost"
   | "tuttiBudgetPreviewHint"
   | "tuttiBudgetPreviewPowerful"
   | "tuttiBudgetPreviewTitle"
   | "tuttiBudgetTitle"
+  | "tuttiBudgetParallelismLabel"
+  | "tuttiBudgetParallelismValue"
   | "tuttiModeDescription"
   | "tuttiModeLabel"
   | "tuttiModeRemove"
   | "tuttiWorkflowDock"
   | "tuttiModePlanIssueCreateFailed"
+  | "tuttiModePlanIssueAcceptPrompt"
   | "tuttiModePlanIssuePanel"
+  | "tuttiModePlanIssueReworkPrompt"
   | "tuttiModePlanLoadFailed"
   | "tuttiModePlanPanel"
   | "tuttiModePlanRetry"
@@ -43,9 +45,8 @@ export function agentGUITuttiModeLabels(
     tuttiModeDescription: t("agentHost.agentGui.tuttiModeDescription"),
     tuttiModeRemove: t("agentHost.agentGui.tuttiModeRemove"),
     tuttiBudgetTitle: t("agentHost.agentGui.tuttiBudgetTitle"),
-    tuttiBudgetIntensityLabel: t(
-      "agentHost.agentGui.tuttiBudgetIntensityLabel"
-    ),
+    tuttiBudgetEffectLabel: t("agentHost.agentGui.tuttiBudgetEffectLabel"),
+    tuttiBudgetSpeedLabel: t("agentHost.agentGui.tuttiBudgetSpeedLabel"),
     tuttiBudgetPreviewTitle: t("agentHost.agentGui.tuttiBudgetPreviewTitle"),
     tuttiBudgetPreviewHint: t("agentHost.agentGui.tuttiBudgetPreviewHint"),
     tuttiBudgetPreviewCost: t("agentHost.agentGui.tuttiBudgetPreviewCost"),
@@ -55,30 +56,26 @@ export function agentGUITuttiModeLabels(
     tuttiBudgetPreviewPowerful: t(
       "agentHost.agentGui.tuttiBudgetPreviewPowerful"
     ),
-    tuttiBudgetModelStrengthLabel: t(
-      "agentHost.agentGui.tuttiBudgetModelStrengthLabel"
+    tuttiBudgetModelPreferenceLabel: t(
+      "agentHost.agentGui.tuttiBudgetModelPreferenceLabel"
     ),
-    tuttiBudgetModelStrengthCost: t(
-      "agentHost.agentGui.tuttiBudgetModelStrengthCost"
+    tuttiBudgetModelPreferenceCost: t(
+      "agentHost.agentGui.tuttiBudgetModelPreferenceCost"
     ),
-    tuttiBudgetModelStrengthBalance: t(
-      "agentHost.agentGui.tuttiBudgetModelStrengthBalance"
+    tuttiBudgetModelPreferenceBalance: t(
+      "agentHost.agentGui.tuttiBudgetModelPreferenceBalance"
     ),
-    tuttiBudgetModelStrengthPowerful: t(
-      "agentHost.agentGui.tuttiBudgetModelStrengthPowerful"
+    tuttiBudgetModelPreferencePowerful: t(
+      "agentHost.agentGui.tuttiBudgetModelPreferencePowerful"
     ),
-    tuttiBudgetAgentCountLabel: t(
-      "agentHost.agentGui.tuttiBudgetAgentCountLabel"
+    tuttiBudgetModelPreferenceFastestSuitable: t(
+      "agentHost.agentGui.tuttiBudgetModelPreferenceFastestSuitable"
     ),
-    tuttiBudgetAgentCountCost: t(
-      "agentHost.agentGui.tuttiBudgetAgentCountCost"
+    tuttiBudgetParallelismLabel: t(
+      "agentHost.agentGui.tuttiBudgetParallelismLabel"
     ),
-    tuttiBudgetAgentCountBalance: t(
-      "agentHost.agentGui.tuttiBudgetAgentCountBalance"
-    ),
-    tuttiBudgetAgentCountPowerful: t(
-      "agentHost.agentGui.tuttiBudgetAgentCountPowerful"
-    ),
+    tuttiBudgetParallelismValue: (count) =>
+      t("agentHost.agentGui.tuttiBudgetParallelismValue", { count }),
     tuttiModeUpdateFailed: t("agentHost.agentGui.tuttiModeUpdateFailed"),
     tuttiModeUpdateUncertain: t("agentHost.agentGui.tuttiModeUpdateUncertain"),
     tuttiModePlanPanel: {
@@ -113,6 +110,16 @@ export function agentGUITuttiModeLabels(
       collapse: t("agentHost.agentGui.tuttiModePlan.collapse"),
       cancel: t("agentHost.agentGui.tuttiModePlan.cancel"),
       retry: t("agentHost.agentGui.tuttiModePlan.retry"),
+      switchToSelfReview: t(
+        "agentHost.agentGui.tuttiModePlan.switchToSelfReview"
+      ),
+      switchingToSelfReview: t(
+        "agentHost.agentGui.tuttiModePlan.switchingToSelfReview"
+      ),
+      selfReviewEnabled: t(
+        "agentHost.agentGui.tuttiModePlan.selfReviewEnabled"
+      ),
+      selfReviewFailed: t("agentHost.agentGui.tuttiModePlan.selfReviewFailed"),
       issueRunning: (count) =>
         t("agentHost.agentGui.tuttiModePlan.issueStripRunning", { count }),
       issuePendingAcceptance: (count) =>
@@ -126,13 +133,20 @@ export function agentGUITuttiModeLabels(
     tuttiModePlanSendRequestChanges: t(
       "agentHost.agentGui.tuttiModePlan.sendRequestChanges"
     ),
-    tuttiModePlanReplanFeedback: (from, to) =>
-      t("agentHost.agentGui.tuttiModePlan.replanFeedback", { from, to }),
-    tuttiModePlanReplanFeedbackSuffix: (to) =>
-      t("agentHost.agentGui.tuttiModePlan.replanFeedbackSuffix", { to }),
+    tuttiModePlanReplanFeedback: (fromEffect, fromSpeed, toEffect, toSpeed) =>
+      t("agentHost.agentGui.tuttiModePlan.replanFeedback", {
+        fromEffect,
+        fromSpeed,
+        toEffect,
+        toSpeed
+      }),
+    tuttiModePlanReplanFeedbackSuffix: (effect, speed) =>
+      t("agentHost.agentGui.tuttiModePlan.replanFeedbackSuffix", {
+        effect,
+        speed
+      }),
     tuttiModePlanIssuePanel: {
       openIssue: t("agentHost.agentGui.tuttiModePlan.issueOpen"),
-      stopExecution: t("agentHost.agentGui.tuttiModePlan.issueStopExecution"),
       listView: t("agentHost.agentGui.tuttiModePlan.issueListView"),
       boardView: t("agentHost.agentGui.tuttiModePlan.issueBoardView"),
       parallelizable: t("agentHost.agentGui.tuttiModePlan.parallelizable"),
@@ -166,6 +180,10 @@ export function agentGUITuttiModeLabels(
       statusFailed: t("agentHost.agentGui.tuttiModePlan.issueStatusFailed"),
       statusCanceled: t("agentHost.agentGui.tuttiModePlan.issueStatusCanceled")
     },
+    tuttiModePlanIssueAcceptPrompt: (reference) =>
+      t("agentHost.agentGui.tuttiModePlan.issueAcceptPrompt", { reference }),
+    tuttiModePlanIssueReworkPrompt: (reference) =>
+      t("agentHost.agentGui.tuttiModePlan.issueReworkPrompt", { reference }),
     tuttiModePlanLoadFailed: t("agentHost.agentGui.tuttiModePlan.loadFailed"),
     tuttiModePlanRetry: t("agentHost.agentGui.tuttiModePlan.retry"),
     tuttiModePlanIssueCreateFailed: (message) =>

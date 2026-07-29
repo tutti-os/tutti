@@ -1,4 +1,4 @@
-import { act, renderHook } from "@testing-library/react";
+import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { AgentActivityMessage } from "@tutti-os/agent-activity-core";
 import { useAgentSessionControllerState } from "./useAgentSessionControllerState";
@@ -43,22 +43,28 @@ describe("useAgentSessionControllerState", () => {
     });
   });
 
-  it("keeps a terminal older page authoritative over the bounded canonical window", () => {
-    const { result } = renderHook(() =>
-      useAgentSessionControllerState(ACTIVE_REF, [message(446)], {
-        hasOlderMessages: true,
-        oldestLoadedVersion: 446
-      })
+  it("reads terminal older-page coverage from the canonical Engine window", () => {
+    const { result, rerender } = renderHook(
+      ({ hasOlderMessages, messages, oldestLoadedVersion }) =>
+        useAgentSessionControllerState(ACTIVE_REF, messages, {
+          hasOlderMessages,
+          oldestLoadedVersion
+        }),
+      {
+        initialProps: {
+          hasOlderMessages: true,
+          messages: [message(446)],
+          oldestLoadedVersion: 446
+        }
+      }
     );
 
     expect(result.current.activeSessionView?.hasOlderMessages).toBe(true);
 
-    act(() => {
-      result.current.mergeAgentSessionViewOlderMessages(
-        ACTIVE_REF,
-        [message(1)],
-        { hasOlderMessages: false }
-      );
+    rerender({
+      hasOlderMessages: false,
+      messages: [message(1), message(446)],
+      oldestLoadedVersion: 1
     });
 
     expect(result.current.activeSessionView).toMatchObject({

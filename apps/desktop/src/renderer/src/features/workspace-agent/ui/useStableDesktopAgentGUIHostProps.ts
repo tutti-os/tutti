@@ -34,6 +34,8 @@ export type DesktopAgentGUIHostProps = {
   >;
   hostActions: Pick<
     AgentGUIProps["hostActions"],
+    | "onComposerAppendHandled"
+    | "onAgentConfigMenuOpen"
     | "onAgentEnvPanelOpen"
     | "onAgentProviderLogin"
     | "onCapabilitySettingsRequest"
@@ -47,7 +49,10 @@ export type DesktopAgentGUIHostProps = {
     | "onEngagementEvent"
     | "onOpenConversationWindow"
   >;
-  renderSlots: Pick<AgentGUIProps["renderSlots"], "sidebarFooter">;
+  renderSlots: Pick<
+    AgentGUIProps["renderSlots"],
+    "agentConfigAccount" | "composerFooterAccessory" | "sidebarFooter"
+  >;
 };
 
 export function useStableDesktopAgentGUIHostProps({
@@ -109,6 +114,8 @@ export function useStableDesktopAgentGUIHostProps({
       workspaceAppIcons: nextHostCapabilities.workspaceAppIcons
     },
     hostActions: {
+      onComposerAppendHandled: nextHostActions.onComposerAppendHandled,
+      onAgentConfigMenuOpen: nextHostActions.onAgentConfigMenuOpen,
       onAgentEnvPanelOpen: nextHostActions.onAgentEnvPanelOpen,
       onAgentProviderLogin: nextHostActions.onAgentProviderLogin,
       onCapabilitySettingsRequest: nextHostActions.onCapabilitySettingsRequest,
@@ -123,6 +130,8 @@ export function useStableDesktopAgentGUIHostProps({
       onOpenConversationWindow: nextHostActions.onOpenConversationWindow
     },
     renderSlots: {
+      agentConfigAccount: nextRenderSlots.agentConfigAccount,
+      composerFooterAccessory: nextRenderSlots.composerFooterAccessory,
       sidebarFooter: nextRenderSlots.sidebarFooter
     }
   };

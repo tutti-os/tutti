@@ -358,6 +358,7 @@ func (a *standardACPAdapter) startInitializedClient(
 	spec, cleanup, err := prepareProviderLaunch(ctx, a.preparer, session, ProcessSpec{
 		Provider:           a.config.provider,
 		AgentSessionID:     session.AgentSessionID,
+		RootAgentSessionID: session.RootAgentSessionID,
 		RoomID:             session.RoomID,
 		CWD:                session.CWD,
 		Command:            command,

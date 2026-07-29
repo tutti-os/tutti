@@ -34,6 +34,10 @@ type ClientInfo = agentruntime.ClientInfo
 type Controller = agentruntime.Controller
 type HostMetadata = agentruntime.HostMetadata
 type ProcessTransport = agentruntime.ProcessTransport
+type RecordingProcessTransport = agentruntime.RecordingProcessTransport
+type ReplayPlaybackState = agentruntime.ReplayPlaybackState
+type ReplayProcessTransport = agentruntime.ReplayProcessTransport
+type SessionRecordingProcessTransport = agentruntime.SessionRecordingProcessTransport
 type ProviderCommand = agentruntime.ProviderCommand
 type ProviderCommandResolver = agentruntime.ProviderCommandResolver
 type ProviderLaunchPrepareInput = agentruntime.ProviderLaunchPrepareInput
@@ -60,10 +64,11 @@ type LiveSessionReaperConfig struct {
 }
 
 type Runtime struct {
-	controller *Controller
-	cancel     context.CancelFunc
-	done       chan struct{}
-	closeOnce  sync.Once
+	controller       *Controller
+	processTransport ProcessTransport
+	cancel           context.CancelFunc
+	done             chan struct{}
+	closeOnce        sync.Once
 }
 
 func NewRuntime(config Config) (*Runtime, error) {
@@ -89,13 +94,33 @@ func NewRuntime(config Config) (*Runtime, error) {
 			},
 		)
 	}
-	runtime := &Runtime{controller: controller}
+	runtime := &Runtime{
+		controller:       controller,
+		processTransport: config.ProcessTransport,
+	}
 	runtime.startLiveSessionReaper(config.LiveSessionReaper)
 	return runtime, nil
 }
 
 func NewLocalProcessTransport() ProcessTransport {
 	return agentruntime.NewLocalProcessTransport()
+}
+
+func NewRecordingProcessTransport(
+	base ProcessTransport,
+	directory string,
+) (*RecordingProcessTransport, error) {
+	return agentruntime.NewRecordingProcessTransport(base, directory)
+}
+
+func NewReplayProcessTransport(directory string) (*ReplayProcessTransport, error) {
+	return agentruntime.NewReplayProcessTransport(directory)
+}
+
+func NewSessionRecordingProcessTransport(
+	base ProcessTransport,
+) (*SessionRecordingProcessTransport, error) {
+	return agentruntime.NewSessionRecordingProcessTransport(base)
 }
 
 func MustRuntime(config Config) *Runtime {
@@ -119,6 +144,15 @@ func (r *Runtime) Close() {
 	}
 	r.closeOnce.Do(func() {
 		r.closeAllLiveSessions()
+		if finalizer, ok := r.processTransport.(interface{ Finalize() error }); ok {
+			if err := finalizer.Finalize(); err != nil {
+				slog.Error(
+					"agent process transport finalization failed",
+					"event", "agent_session.process_transport.finalize_failed",
+					"error", err,
+				)
+			}
+		}
 		if r.cancel != nil {
 			r.cancel()
 		}

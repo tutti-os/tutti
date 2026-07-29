@@ -35,6 +35,9 @@ func (api DaemonAPI) CancelWorkspaceAgentTurn(ctx context.Context, request tutti
 		turn := generatedWorkspaceAgentTurn(*result.Turn)
 		response.Turn = &turn
 	}
+	api.recordAgentStimulus(ctx, "turn.cancel", string(request.WorkspaceID), string(request.AgentSessionID), map[string]any{
+		"turnId": string(request.TurnID),
+	})
 	return response, nil
 }
 

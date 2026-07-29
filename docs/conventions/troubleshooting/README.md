@@ -18,16 +18,37 @@ Use the focused runtime index or open one area directly:
   Includes Codex Model Plan Responses-to-Chat routing and extension
   command/Skill palette hydration failures.
   Also covers focus-driven provider CLI scans, repeated Extension Target version
-  probes, and CPU spikes.
+  probes, extension release refresh delaying daemon startup, and CPU spikes.
 - [Agent Sessions And Lifecycle](./agent-session-lifecycle.md): Turn state, activation, planning-mode classification, Tutti workflow response contracts, loading, cancel, goal controls, restore, file-change undo, rail projection, realtime completion provenance, event updates, imports, and performance.
   Includes shared-device recovery that looks terminal while the host is still retrying.
   Also covers new-conversation requests that silently fail after a Chats
   Session working directory is mistaken for a selected project, and one hung
-  provider startup blocking unrelated Agent sessions. Includes canonical
-  completion delayed behind a streaming activity-report backlog.
+  provider startup blocking unrelated Agent sessions. Extension snapshot
+  failures that erase the Agent's Tutti CLI command catalog or block restart
+  resume are covered here as well. Includes cassette replay
+  startup that fails when concurrent provider input and output are treated as a
+  strict scheduling order, false final-state mismatches caused by replay-generated
+  child identities, and canonical completion delayed behind a streaming activity-report
+  backlog. It also covers stopped Tutti Mode conversations revived by legacy
+  startup wakes, provider-completed submissions reported as delivery unknown
+  after canonical message provenance conflicts, completed Claude Code Turns
+  that lack a Fork entry because provider identity was not observed from the
+  durable transcript, and Claude Fork operations that fail because an empty SDK
+  query never creates a durable provider child.
 - [Agent Approvals And Child Sessions](./agent-approvals-subagents.md): Approval gates, plan exits, root/parent/child event attribution, child sessions, and Message Center.
   Includes provider-native work that continues invisibly after root cancellation
   and late child creation racing the durable cancel boundary.
+
+## [Issue Execution](./issue-execution.md)
+
+Issue dispatch, Run cancellation, Agent settlement, and stop coordination.
+
+- [Managed task deletion is reported as a stale checkpoint](./issue-execution.md#managed-task-deletion-is-reported-as-a-stale-checkpoint)
+- [Reworked task scheduling is reported as a stale checkpoint](./issue-execution.md#reworked-task-scheduling-is-reported-as-a-stale-checkpoint)
+- [Settled checkpoint keeps reopening the source Session](./issue-execution.md#settled-checkpoint-keeps-reopening-the-source-session)
+- [Tutti composer stays busy after every task Turn settles](./issue-execution.md#tutti-composer-stays-busy-after-every-task-turn-settles)
+- [Stopping a Tutti source Turn leaves automation recoverable](./issue-execution.md#stopping-a-tutti-source-turn-leaves-automation-recoverable)
+- [Stop remains pending while the Agent Turn is already canceled](./issue-execution.md#stop-remains-pending-while-the-agent-turn-is-already-canceled)
 
 ## [Desktop And Release](./desktop-release.md)
 
@@ -53,6 +74,7 @@ React rendering, Workbench state, external stores, input composition, and UI per
 
 - [Renderer body requests fail with `ERR_H2_OR_QUIC_REQUIRED`](./workbench-renderer.md#renderer-body-requests-fail-with-err_h2_or_quic_required)
 - [Renderer `fetch()` rejects an Electron image protocol that `<img>` can load](./workbench-renderer.md#renderer-fetch-rejects-an-electron-image-protocol-that-img-can-load)
+- [AgentGUI Mermaid flowcharts render shapes without labels](./workbench-renderer.md#agentgui-mermaid-flowcharts-render-shapes-without-labels)
 - [AgentGUI carousel owner avatar stays a solid badge](./workbench-renderer.md#agentgui-carousel-owner-avatar-stays-a-solid-badge)
 - [Renderer tile memory warnings from hidden autoplay animation](./workbench-renderer.md#renderer-tile-memory-warnings-from-hidden-autoplay-animation)
 - [Standalone Agent dev window stays black during cold startup](./workbench-renderer.md#standalone-agent-dev-window-stays-black-during-cold-startup)

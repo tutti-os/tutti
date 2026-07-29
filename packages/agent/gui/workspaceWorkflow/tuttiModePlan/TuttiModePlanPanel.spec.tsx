@@ -95,16 +95,25 @@ function assignmentCatalog(
     ],
     optionsByAgentId: {
       "codex-agent": {
-        models: ["gpt-5.6-sol"],
+        models: [
+          { value: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
+          {
+            value: "composer-2.5[fast=true]",
+            label: "composer-2.5"
+          }
+        ],
         modelPlans: [
           {
             modelPlanId: "model-plan-pro",
             label: "Pro plan",
-            models: ["gpt-5.6-sol"]
+            models: [{ value: "gpt-5.6-sol", label: "GPT-5.6 Sol" }]
           }
         ],
         permissionModes: [{ id: "acceptEdits", label: "Accept edits" }],
-        reasoningEfforts: ["low", "high"]
+        reasoningEfforts: [
+          { value: "low", label: "Low" },
+          { value: "high", label: "High" }
+        ]
       }
     },
     loadAgentOptions: vi.fn(),
@@ -186,6 +195,30 @@ describe("TuttiModePlanPanel", () => {
     expect(parallelSwitch).toHaveAttribute("aria-checked", "true");
   });
 
+  it("renders the canonical model label instead of the provider-native value", () => {
+    render(
+      <TuttiModePlanPanel
+        assignmentCatalog={assignmentCatalog()}
+        assignmentDrafts={{}}
+        labels={labels}
+        panel={{
+          ...panel,
+          tasks: [
+            {
+              ...panel.tasks[0]!,
+              model: "composer-2.5[fast=true]"
+            }
+          ]
+        }}
+        submitting={false}
+        onAssignmentDraftChange={vi.fn()}
+      />
+    );
+
+    expect(screen.getByLabelText("Model")).toHaveTextContent("composer-2.5");
+    expect(screen.getByLabelText("Model")).not.toHaveTextContent("[fast=true]");
+  });
+
   it("stays read-only without a host-owned draft store", () => {
     render(
       <TuttiModePlanPanel
@@ -216,5 +249,10 @@ describe("TuttiModePlanPanel", () => {
     expect(
       screen.queryByTestId("tutti-plan-task-assignment-implement")
     ).not.toBeInTheDocument();
+    expect(screen.getByTitle("Model")).toHaveTextContent("GPT-5.6 Sol");
+    expect(screen.getByTitle("Permission mode")).toHaveTextContent(
+      "Accept edits"
+    );
+    expect(screen.getByTitle("Reasoning effort")).toHaveTextContent("High");
   });
 });

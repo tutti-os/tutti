@@ -186,7 +186,7 @@ FROM agent_targets WHERE id = ?
 		codex.Name != "Codex" || codex.IconKey != "codex" ||
 		codex.IconURL != "tutti-asset://agent/codex.png" ||
 		codex.MaskIconURL != "tutti-asset://agent/codex-mask.svg" ||
-		codex.HeroImageURL != "" || !codex.Enabled || codex.SortOrder != 10 {
+		codex.HeroImageURL != "" || codex.Enabled || codex.SortOrder != 10 {
 		t.Fatalf("refreshed system target = %#v", codex)
 	}
 	if codex.CreatedAtUnixMS != 7 || codex.Source != systemTargetSource || codex.UpdatedAtUnixMS == 8 {
@@ -214,6 +214,48 @@ FROM agent_targets WHERE id = ?
 		custom.IconKey != "custom" || custom.Enabled || custom.Source != "user" || custom.SortOrder != 777 ||
 		custom.CreatedAtUnixMS != 9 || custom.UpdatedAtUnixMS != 10 {
 		t.Fatalf("custom target was overwritten = %#v", custom)
+	}
+}
+
+func TestStoreMigratePreservesEnabledSystemTargetWithDisabledDefault(t *testing.T) {
+	t.Parallel()
+
+	opts := testOptions(&staticProjectPaths{})
+	opts.SeedSystemTargets = func(now int64) []Target {
+		targets := testSeedTargets(now)
+		targets[0].Enabled = false
+		return targets
+	}
+	store := openTestStore(t, opts)
+	ctx := context.Background()
+
+	target, err := store.GetAgentTarget(ctx, testTargetIDCodex)
+	if err != nil {
+		t.Fatalf("GetAgentTarget() error = %v", err)
+	}
+	if target.Enabled {
+		t.Fatalf("fresh system target enabled = true, want descriptor default false")
+	}
+	target.Enabled = true
+	target, err = store.PutAgentTarget(ctx, target)
+	if err != nil {
+		t.Fatalf("PutAgentTarget() error = %v", err)
+	}
+	enabledAt := target.UpdatedAtUnixMS
+
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	target, err = store.GetAgentTarget(ctx, testTargetIDCodex)
+	if err != nil {
+		t.Fatalf("GetAgentTarget() after Migrate error = %v", err)
+	}
+	if !target.Enabled {
+		t.Fatalf("system target enabled = false after Migrate, want persisted user value true")
+	}
+	if target.UpdatedAtUnixMS != enabledAt {
+		t.Fatalf("system target updated_at_ms = %d after enabled-only descriptor mismatch, want %d", target.UpdatedAtUnixMS, enabledAt)
 	}
 }
 

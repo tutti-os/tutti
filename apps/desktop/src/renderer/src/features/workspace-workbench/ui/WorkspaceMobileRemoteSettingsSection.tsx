@@ -63,7 +63,7 @@ export function WorkspaceMobileRemoteSettingsSection() {
       : t("workspace.settings.account.mobileRemote.waitingForScan");
 
   return (
-    <section className="flex flex-col gap-4 border-t border-[var(--border-subtle)] pt-5">
+    <section className="flex flex-col gap-4 border-t border-[var(--line-2)] pt-5">
       <div className="flex items-start justify-between gap-4 max-[560px]:flex-col">
         <div className="min-w-0">
           <h3 className="m-0 text-[14px] font-semibold text-[var(--text-primary)]">

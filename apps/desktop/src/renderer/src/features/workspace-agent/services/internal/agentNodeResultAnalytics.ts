@@ -3,7 +3,7 @@ import {
   agentAnalyticsErrorFields,
   agentAnalyticsSuccessFields,
   type AgentAnalyticsErrorFields
-} from "../../../analytics/reporters/agent-error-fields.ts";
+} from "../../agentAnalyticsError.ts";
 import { AgentNodeResultReporter } from "../../../analytics/reporters/agent-node-result/agentNodeResultReporter.ts";
 import type {
   AgentAnalyticsFlow,
@@ -13,7 +13,7 @@ import type {
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import { createOptionalReporterService } from "./agentMessageSentAnalytics.ts";
 
-export { AgentAnalyticsErrorCode } from "../../../analytics/reporters/agent-error-fields.ts";
+export { AgentAnalyticsErrorCode } from "../../agentAnalyticsError.ts";
 export type {
   AgentAnalyticsFlow,
   AgentAnalyticsNode

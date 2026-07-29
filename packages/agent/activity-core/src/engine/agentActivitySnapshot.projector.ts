@@ -30,7 +30,7 @@ export function createAgentActivitySnapshotProjector(
       state.sessionLifecycle === previousState.sessionLifecycle
         ? previousSnapshot.sessions
         : selectAllWorkspaceAgentConsumerSessions(state).map((item) =>
-            projectSession(
+            projectAgentActivitySession(
               item.session,
               item.activeTurn,
               item.latestTurn,
@@ -108,7 +108,7 @@ export function createEmptyAgentActivitySnapshot(
   };
 }
 
-function projectSession(
+export function projectAgentActivitySession(
   session: Omit<
     AgentActivitySession,
     | "activeTurn"

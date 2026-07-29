@@ -83,15 +83,19 @@ function setDraft(
     return { commands: NO_COMMANDS, state: { ...state, draftsByKey } };
   }
   const current = state.draftsByKey[draftKey];
-  // undefined 保留既有强度;显式 null/非法值归一化为 null(daemon 默认)。
-  const orchestrationIntensity =
-    intent.orchestrationIntensity === undefined
-      ? (current?.orchestrationIntensity ?? null)
-      : normalizeOrchestrationIntensity(intent.orchestrationIntensity);
-  if (
-    current?.active &&
-    current.orchestrationIntensity === orchestrationIntensity
-  ) {
+  // undefined 保留既有偏好;显式 null/非法值归一化为 null(daemon 默认)。
+  const effect =
+    intent.effect === undefined && intent.orchestrationIntensity === undefined
+      ? (current?.effect ?? current?.orchestrationIntensity ?? null)
+      : normalizePreferenceWithLegacy(
+          intent.effect,
+          intent.orchestrationIntensity
+        );
+  const speed =
+    intent.speed === undefined
+      ? (current?.speed ?? null)
+      : normalizePreference(intent.speed);
+  if (current?.active && current.effect === effect && current.speed === speed) {
     return unchanged(state);
   }
   return {
@@ -104,7 +108,9 @@ function setDraft(
           active: true,
           draftKey,
           occurredAtUnixMs: intent.occurredAtUnixMs,
-          orchestrationIntensity,
+          effect,
+          speed,
+          orchestrationIntensity: effect,
           source: "slash_command"
         }
       }
@@ -127,11 +133,16 @@ function trackPendingCreate(
   const draftKey = intent.tuttiModeDraftKey.trim();
   const draft = state.draftsByKey[draftKey];
   if (!agentSessionId || !draft) return unchanged(state);
-  // Intent 自带的强度优先;缺省时把 draft 上暂存的强度带进 create 意图。
-  const orchestrationIntensity =
-    normalizeOrchestrationIntensity(
+  // Intent 自带的偏好优先;缺省时把 draft 上暂存的偏好带进 create 意图。
+  const effect =
+    normalizePreferenceWithLegacy(
+      intent.initialTuttiModeActivation.effect,
       intent.initialTuttiModeActivation.orchestrationIntensity
-    ) ?? draft.orchestrationIntensity;
+    ) ??
+    draft.effect ??
+    draft.orchestrationIntensity;
+  const speed =
+    normalizePreference(intent.initialTuttiModeActivation.speed) ?? draft.speed;
   return {
     commands: NO_COMMANDS,
     state: {
@@ -143,7 +154,9 @@ function trackPendingCreate(
           draftKey,
           initialActivation: {
             ...intent.initialTuttiModeActivation,
-            orchestrationIntensity
+            effect,
+            speed,
+            orchestrationIntensity: effect
           },
           reconcileCommandId: null,
           requestId: intent.requestId,
@@ -236,14 +249,15 @@ function requestUpdate(
     return unchanged(state);
   }
   const activation = state.activationsBySessionId[agentSessionId] ?? null;
-  const orchestrationIntensity = normalizeOrchestrationIntensity(
+  const effect = normalizePreferenceWithLegacy(
+    intent.effect,
     intent.orchestrationIntensity
   );
+  const speed = normalizePreference(intent.speed);
   if (
     activation?.status === intent.status &&
-    (orchestrationIntensity === null ||
-      orchestrationIntensity ===
-        activation.currentRevision.orchestrationIntensity)
+    (effect === null || effect === activationRevisionEffect(activation)) &&
+    (speed === null || speed === activationRevisionSpeed(activation))
   ) {
     return clearUpdate(state, agentSessionId);
   }
@@ -254,7 +268,9 @@ function requestUpdate(
     errorCode: null,
     errorMessage: null,
     expectedRevision,
-    orchestrationIntensity,
+    effect,
+    speed,
+    orchestrationIntensity: effect,
     reconcileCommandId: null,
     requestedAtUnixMs: intent.requestedAtUnixMs,
     source: intent.source,
@@ -268,7 +284,9 @@ function requestUpdate(
         agentSessionId,
         commandId,
         ...(expectedRevision === null ? {} : { expectedRevision }),
-        ...(orchestrationIntensity === null ? {} : { orchestrationIntensity }),
+        ...(effect === null ? {} : { effect }),
+        ...(effect === null ? {} : { orchestrationIntensity: effect }),
+        ...(speed === null ? {} : { speed }),
         source: intent.source,
         status: intent.status,
         timeoutMs: UPDATE_TIMEOUT_MS,
@@ -522,9 +540,10 @@ function updateSemanticallyApplied(
     activation.status === update.status &&
     activation.currentRevision.status === update.status &&
     activation.currentRevision.revision > (update.expectedRevision ?? 0) &&
-    (update.orchestrationIntensity === null ||
-      activation.currentRevision.orchestrationIntensity ===
-        update.orchestrationIntensity)
+    (updateEffect(update) === null ||
+      activationRevisionEffect(activation) === updateEffect(update)) &&
+    (update.speed == null ||
+      activationRevisionSpeed(activation) === update.speed)
   );
 }
 
@@ -591,9 +610,9 @@ function validUpdateResult(
     candidate.status === entry.status &&
     candidate.currentRevision?.status === entry.status &&
     Number.isInteger(candidate.currentRevision?.revision) &&
-    (entry.orchestrationIntensity === null ||
-      candidate.currentRevision?.orchestrationIntensity ===
-        entry.orchestrationIntensity)
+    (updateEffect(entry) === null ||
+      activationRevisionEffect(candidate) === updateEffect(entry)) &&
+    (entry.speed == null || activationRevisionSpeed(candidate) === entry.speed)
     ? { activation: candidate }
     : null;
 }
@@ -620,9 +639,15 @@ function activationFromCreateResult(
 function cloneActivation(
   activation: NonNullable<AgentActivitySession["tuttiModeActivation"]>
 ): NonNullable<AgentActivitySession["tuttiModeActivation"]> {
+  const effect = activationRevisionEffect(activation);
   return {
     ...activation,
-    currentRevision: { ...activation.currentRevision }
+    currentRevision: {
+      ...activation.currentRevision,
+      effect,
+      speed: activationRevisionSpeed(activation),
+      orchestrationIntensity: effect
+    }
   };
 }
 
@@ -638,15 +663,43 @@ function sameActivation(
   );
 }
 
-function normalizeOrchestrationIntensity(
-  value: number | null | undefined
-): number | null {
+function normalizePreference(value: number | null | undefined): number | null {
   return typeof value === "number" &&
     Number.isInteger(value) &&
     value >= 0 &&
     value <= 100
     ? value
     : null;
+}
+
+function activationRevisionEffect(
+  activation: NonNullable<AgentActivitySession["tuttiModeActivation"]>
+): number {
+  return (
+    normalizePreference(activation.currentRevision.effect) ??
+    normalizePreference(activation.currentRevision.orchestrationIntensity) ??
+    50
+  );
+}
+
+function activationRevisionSpeed(
+  activation: NonNullable<AgentActivitySession["tuttiModeActivation"]>
+): number {
+  return normalizePreference(activation.currentRevision.speed) ?? 50;
+}
+
+function updateEffect(update: TuttiModeActivationUpdateRecord): number | null {
+  return (
+    normalizePreference(update.effect) ??
+    normalizePreference(update.orchestrationIntensity)
+  );
+}
+
+function normalizePreferenceWithLegacy(
+  value: number | null | undefined,
+  legacyValue: number | null | undefined
+): number | null {
+  return normalizePreference(value === undefined ? legacyValue : value);
 }
 
 function unchanged(

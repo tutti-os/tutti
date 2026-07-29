@@ -306,6 +306,7 @@ export function WorkspaceAgentMessageCenterAction({
         launchWorkspaceFiles: requestWorkspaceFilesLaunch,
         launchGroupChat: requestGroupChatLaunch,
         openBrowserUrl: requestWorkspaceBrowserLaunch,
+        openExternalUrl: (url) => workbenchHostService.openExternal(url),
         workspaceId: workspace.id
       });
     },

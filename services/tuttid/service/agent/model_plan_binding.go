@@ -126,7 +126,7 @@ type modelConfigurationFingerprintPayload struct {
 
 func newProviderNativeModelConfiguration(provider string, agentTargetID string) modelConfigurationRuntimeContext {
 	payload := modelConfigurationFingerprintPayload{
-		Provider:      agentprovider.Normalize(provider),
+		Provider:      agentprovider.NormalizeOpen(provider),
 		AgentTargetID: strings.TrimSpace(agentTargetID),
 		Source:        modelConfigurationSourceProviderNative,
 	}
@@ -245,7 +245,7 @@ func (s *Service) resolveModelPlanEndpoint(ctx context.Context, workspaceID stri
 // for composer reconciliation. Unsupported, missing, disabled, and
 // protocol-mismatched bindings all resolve to provider-native configuration.
 func (s *Service) resolveModelPlan(ctx context.Context, workspaceID string, agentTargetID string, provider string, requestedModel string) modelPlanResolution {
-	provider = agentprovider.Normalize(provider)
+	provider = agentprovider.NormalizeOpen(provider)
 	agentTargetID = strings.TrimSpace(agentTargetID)
 	providerNative := modelPlanResolution{
 		ModelConfiguration: newProviderNativeModelConfiguration(provider, agentTargetID),

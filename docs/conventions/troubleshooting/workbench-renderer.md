@@ -246,6 +246,34 @@
   [tuttiAssetProtocol.ts](../../../apps/desktop/src/main/host/tuttiAssetProtocol.ts)
   [workspaceFileIconProtocol.ts](../../../apps/desktop/src/main/host/workspaceFileIconProtocol.ts)
 
+### AgentGUI Mermaid flowcharts render shapes without labels
+
+- Symptom:
+  Mermaid flowcharts in AgentGUI show node borders and edges, but node and edge
+  labels are blank.
+- Quick checks:
+  Inspect Mermaid's raw SVG before the transcript sanitizer. If labels are
+  children of `<foreignObject>` while the sanitized SVG keeps shapes but has no
+  `<foreignObject>` or equivalent `<text>`, the missing content is an SVG/HTML
+  label-mode mismatch rather than a color or layout problem.
+- Root cause:
+  Mermaid enables HTML labels by default and renders them inside SVG
+  `<foreignObject>` elements. AgentGUI's defense-in-depth SVG sanitizer removes
+  those elements, including their text, while preserving native SVG shapes and
+  paths.
+- Fix:
+  Configure Mermaid to emit native SVG text with `htmlLabels: false`. Add
+  `htmlLabels` to Mermaid's secure configuration keys so diagram-level
+  directives cannot turn HTML labels back on. Keep the post-render SVG
+  sanitizer in place.
+- Validation:
+  Render a real flowchart containing multiline, CJK, decision, and edge labels,
+  including an `init` directive that requests HTML labels. Assert the sanitized
+  result contains every label as native SVG text and no `<foreignObject>`.
+- References:
+  [AgentMessageMermaid.tsx](../../../packages/agent/gui/shared/AgentMessageMermaid.tsx)
+  [AgentMessageMermaid.integration.spec.tsx](../../../packages/agent/gui/shared/AgentMessageMermaid.integration.spec.tsx)
+
 ### AgentGUI carousel owner avatar stays a solid badge
 
 - Symptom:
@@ -651,7 +679,10 @@
   Opening a workbench node shows React's warning that
   `WorkbenchNodeLayer` is updated while rendering a different node body
   component. The node may stay on a loading surface even though the backing
-  request succeeds.
+  request succeeds. A retained request controller can also work for the
+  restored item but silently ignore later selections: for example, AgentGUI
+  shows the conversation rail while every newly selected conversation has a
+  blank timeline and the daemon receives no message-list request.
 - Quick checks:
   Inspect controller construction paths called from React render or `useMemo`.
   If the constructor calls `setActiveFile`, subscribes with an immediate
@@ -676,9 +707,12 @@
 - Validation:
   Verify construction does not call host state publishers, then run the
   affected desktop tests and open the node in development with DevTools visible.
+  For request-owning controllers, switch between at least two uncached items
+  after the initial render and confirm that each selection reaches the backend.
 - References:
   [workspaceFilePreviewNodeController.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/internal/workspaceFilePreviewNodeController.ts)
   [WorkspaceFilePreviewNodeBody.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/WorkspaceFilePreviewNodeBody.tsx)
+  [useAgentConversationMessagePaging.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentConversationMessagePaging.ts)
 
 ### Renderer component repeatedly re-renders without visible changes
 

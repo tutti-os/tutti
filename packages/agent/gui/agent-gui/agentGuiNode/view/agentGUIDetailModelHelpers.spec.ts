@@ -3,6 +3,7 @@ import {
   buildAgentConversationHandoffPrompt,
   handoffProjectPathForConversation,
   isAgentGUITransportNoticeVisible,
+  resolveAgentGUITuttiStopTargets,
   resolveAgentGUIHomeNoticeChrome,
   resolveAgentGUIStopControl,
   shouldShowAgentGUIStopButton
@@ -81,6 +82,35 @@ describe("shouldShowAgentGUIStopButton", () => {
         isCreatingConversation: true
       })
     ).toBe(false);
+  });
+});
+
+describe("resolveAgentGUITuttiStopTargets", () => {
+  it("stops only the Issue cascade when aggregate work outlives the source Turn", () => {
+    expect(
+      resolveAgentGUITuttiStopTargets({
+        executionActive: true,
+        sourceHasStoppableWork: false
+      })
+    ).toEqual({ stopExecution: true, stopSession: false });
+  });
+
+  it("stops both the Issue cascade and a live source Turn", () => {
+    expect(
+      resolveAgentGUITuttiStopTargets({
+        executionActive: true,
+        sourceHasStoppableWork: true
+      })
+    ).toEqual({ stopExecution: true, stopSession: true });
+  });
+
+  it("preserves ordinary Session stop outside Tutti execution", () => {
+    expect(
+      resolveAgentGUITuttiStopTargets({
+        executionActive: false,
+        sourceHasStoppableWork: false
+      })
+    ).toEqual({ stopExecution: false, stopSession: true });
   });
 });
 

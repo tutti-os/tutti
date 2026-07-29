@@ -622,7 +622,8 @@
 
 .desktop-dock-plate.workbench-mission-control__layout-dock {
   overflow: hidden;
-  padding: 4px 7px 5px;
+  width: max-content;
+  padding: 4px;
   border-radius: var(--radius-lg);
   border-color: color-mix(
     in srgb,
@@ -638,7 +639,6 @@
   box-shadow: none;
   pointer-events: auto;
   transition:
-    width 180ms cubic-bezier(0.22, 1, 0.36, 1),
     background-color 160ms ease,
     border-color 160ms ease;
 }
@@ -656,18 +656,6 @@
 .workbench-mission-control__layout-dock-button:disabled {
   opacity: 0.42;
   color: var(--text-disabled);
-}
-
-.workbench-mission-control__layout-mode-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 12px;
-  color: var(--text-primary);
-  font-size: 14px;
-  line-height: 20px;
-  white-space: nowrap;
 }
 
 .workbench-mission-control__layout-hint {

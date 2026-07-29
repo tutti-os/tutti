@@ -14,8 +14,10 @@ import (
 	canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	executionbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeexecution"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
+	tuttimodeexecutionservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeexecution"
 )
 
 type sequentialSessionCreatorRecorder struct {
@@ -35,7 +37,7 @@ func createSessionInputFromLaunch(launch IssueRunLaunch) agentservice.CreateSess
 		AgentTargetID:        launch.AgentTargetID,
 		ReasoningIntensity:   &reasoningIntensity,
 		InitialContent:       []agentservice.PromptContentBlock{{Type: "text", Text: launch.Prompt}},
-		ClientSubmitID:       "issue-run:" + launch.RunID,
+		ClientSubmitID:       launch.ClientSubmitID,
 		Title:                optionalTrimmedTestString(launch.Title),
 		Cwd:                  optionalTrimmedTestString(launch.ExecutionDirectory),
 		Model:                optionalTrimmedTestString(launch.Model),
@@ -1029,36 +1031,11 @@ func TestReworkFromPendingAcceptanceRedispatchesSequentialHead(t *testing.T) {
 	}
 }
 
-type tuttiPlanNotifierRecorder struct {
-	completedIssueIDs     []string
-	failedRunIDs          []string
-	settledRunIDs         []string
-	settledDecisionsByRun map[string]bool
-	settledTaskIDs        []string
-}
-
-func (r *tuttiPlanNotifierRecorder) NotifyTuttiPlanIssueCompleted(_ context.Context, _ string, issue workspaceissues.Issue, _ []workspaceissues.Task) {
-	r.completedIssueIDs = append(r.completedIssueIDs, issue.IssueID)
-}
-
-func (r *tuttiPlanNotifierRecorder) NotifyTuttiPlanIssueTaskFailed(_ context.Context, _ string, _ workspaceissues.Issue, _ workspaceissues.Task, run workspaceissues.Run) {
-	r.failedRunIDs = append(r.failedRunIDs, run.RunID)
-}
-
-func (r *tuttiPlanNotifierRecorder) NotifyTuttiPlanIssueTaskSettled(_ context.Context, _ string, _ workspaceissues.Issue, task workspaceissues.Task, run workspaceissues.Run, _ []workspaceissues.Task, decisionNeeded bool) {
-	r.settledRunIDs = append(r.settledRunIDs, run.RunID)
-	r.settledTaskIDs = append(r.settledTaskIDs, task.TaskID)
-	if r.settledDecisionsByRun == nil {
-		r.settledDecisionsByRun = map[string]bool{}
-	}
-	r.settledDecisionsByRun[run.RunID] = decisionNeeded
-}
-
-func TestTaskSettleWakesPlanningConversation(t *testing.T) {
+func TestTuttiModePlanInitialScheduleMaterializationIsInert(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	store := openIssueServiceStore(t)
-	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-settle-wake", Name: "Settle wake"}); err != nil {
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-inert-tutti", Name: "Inert Tutti"}); err != nil {
 		t.Fatalf("Create() workspace error = %v", err)
 	}
 	for _, target := range agenttargetbiz.DefaultSystemTargets(time.Now().UnixMilli()) {
@@ -1066,88 +1043,60 @@ func TestTaskSettleWakesPlanningConversation(t *testing.T) {
 			t.Fatalf("PutAgentTarget(%q) error = %v", target.ID, err)
 		}
 	}
+	now := time.UnixMilli(1_700_000_000_000).UTC()
+	createIssueManagerTuttiWorkflowFixture(t, store, "ws-inert-tutti", "inert-tutti", "planning-session", now)
 	creator := &sequentialSessionCreatorRecorder{}
-	notifier := &tuttiPlanNotifierRecorder{}
-	service := IssueManagerService{
-		RunLauncher:        creator,
-		CompletionNotifier: notifier,
-		Store:              store,
-		AgentTargetReader:  store,
+	executions := &tuttimodeexecutionservice.Service{
+		Store: store,
+		Clock: func() time.Time { return now },
 	}
-	detail, err := service.CreateIssueFromPlan(ctx, "ws-settle-wake", CreateIssueManagerIssueFromPlanInput{
+	service := IssueManagerService{
+		RunLauncher:         creator,
+		Store:               store,
+		AgentTargetReader:   store,
+		TuttiModeExecutions: executions,
+	}
+	detail, err := service.CreateIssueFromPlan(ctx, "ws-inert-tutti", CreateIssueManagerIssueFromPlanInput{
 		Issue: CreateIssueManagerIssueInput{
-			IssueID:                "tutti-mode-plan-settle-wake",
+			IssueID:                "tutti-mode-plan-inert-tutti",
 			TopicID:                workspaceissues.DefaultTopicID,
-			Title:                  "Settle wake issue",
+			Title:                  "Inert Tutti issue",
 			PlanningSource:         string(workspaceissues.PlanningSourceTuttiModePlan),
 			SourceSessionID:        "planning-session",
 			SequentialExecution:    true,
 			TuttiModeWorkflowOwned: true,
+			TuttiModeWorkflowID:    "inert-tutti",
 		},
 		Tasks: []CreateIssueManagerTaskItemInput{
-			{TaskID: "task-1", Title: "Auto", AgentTargetID: agenttargetbiz.IDLocalCodex, AutoAccept: true},
-			{TaskID: "task-2", Title: "Gated", AgentTargetID: agenttargetbiz.IDLocalCodex, DependencyTaskIDs: []string{"task-1"}},
-			{TaskID: "task-3", Title: "Last", AgentTargetID: agenttargetbiz.IDLocalCodex, DependencyTaskIDs: []string{"task-2"}, AutoAccept: true},
+			{TaskID: "task-1", Title: "First", AgentTargetID: agenttargetbiz.IDLocalCodex, AutoAccept: true},
+			{TaskID: "task-2", Title: "Second", AgentTargetID: agenttargetbiz.IDLocalCodex, DependencyTaskIDs: []string{"task-1"}},
 		},
 	})
 	if err != nil {
 		t.Fatalf("CreateIssueFromPlan() error = %v", err)
 	}
-	// Auto-accepted task: the planning conversation is woken with a progress
-	// report (no decision needed) and dispatch advances mechanically.
-	first := detail.Tasks[0]
-	if _, err := service.CompleteRun(ctx, "ws-settle-wake", detail.Issue.IssueID, first.TaskID, first.LatestRunID, CompleteIssueManagerRunInput{
-		Status: string(workspaceissues.StatusCompleted),
-	}); err != nil {
-		t.Fatalf("CompleteRun(task-1) error = %v", err)
+	if len(creator.inputs) != 0 {
+		t.Fatalf("initial dispatches = %d, want 0", len(creator.inputs))
 	}
-	if len(notifier.settledRunIDs) != 1 || notifier.settledTaskIDs[0] != "task-1" {
-		t.Fatalf("settle notifications after task-1 = %#v, want task-1", notifier.settledTaskIDs)
+	for _, task := range detail.Tasks {
+		if task.Status != workspaceissues.StatusNotStarted || task.LatestRunID != "" {
+			t.Fatalf("materialized task = %#v, want inert not_started task", task)
+		}
 	}
-	if notifier.settledDecisionsByRun[first.LatestRunID] {
-		t.Fatalf("auto-accepted settle reported decisionNeeded = true, want false")
+	runs, err := service.ListRuns(ctx, "ws-inert-tutti", detail.Issue.IssueID, "")
+	if err != nil || len(runs) != 0 {
+		t.Fatalf("materialized runs = %#v error=%v, want none", runs, err)
 	}
-	// Non-autoAccept task: the wake carries the acceptance decision.
-	updated, err := service.GetIssueDetail(ctx, "ws-settle-wake", detail.Issue.IssueID)
+	aggregate, err := executions.GetByIssue(ctx, "ws-inert-tutti", detail.Issue.IssueID)
 	if err != nil {
-		t.Fatalf("GetIssueDetail() error = %v", err)
+		t.Fatalf("GetByIssue() error = %v", err)
 	}
-	second := updated.Tasks[1]
-	if second.Status != workspaceissues.StatusRunning {
-		t.Fatalf("task-2 status = %q, want running", second.Status)
-	}
-	if _, err := service.CompleteRun(ctx, "ws-settle-wake", detail.Issue.IssueID, second.TaskID, second.LatestRunID, CompleteIssueManagerRunInput{
-		Status: string(workspaceissues.StatusCompleted),
-	}); err != nil {
-		t.Fatalf("CompleteRun(task-2) error = %v", err)
-	}
-	if len(notifier.settledRunIDs) != 2 || notifier.settledTaskIDs[1] != "task-2" {
-		t.Fatalf("settle notifications after task-2 = %#v, want task-1, task-2", notifier.settledTaskIDs)
-	}
-	if !notifier.settledDecisionsByRun[second.LatestRunID] {
-		t.Fatalf("gated settle reported decisionNeeded = false, want true")
-	}
-	// Acceptance re-opens the frontier; the final auto-accepted task completes
-	// the whole issue, so only the dedicated completion notification fires.
-	acceptIssueTask(t, service, "ws-settle-wake", detail.Issue.IssueID, "task-2")
-	updated, err = service.GetIssueDetail(ctx, "ws-settle-wake", detail.Issue.IssueID)
-	if err != nil {
-		t.Fatalf("GetIssueDetail() error = %v", err)
-	}
-	last := updated.Tasks[2]
-	if last.Status != workspaceissues.StatusRunning {
-		t.Fatalf("task-3 status = %q, want running", last.Status)
-	}
-	if _, err := service.CompleteRun(ctx, "ws-settle-wake", detail.Issue.IssueID, last.TaskID, last.LatestRunID, CompleteIssueManagerRunInput{
-		Status: string(workspaceissues.StatusCompleted),
-	}); err != nil {
-		t.Fatalf("CompleteRun(task-3) error = %v", err)
-	}
-	if len(notifier.settledRunIDs) != 2 {
-		t.Fatalf("settle notifications after final task = %#v, want no extra settle wake", notifier.settledTaskIDs)
-	}
-	if len(notifier.completedIssueIDs) != 1 || notifier.completedIssueIDs[0] != detail.Issue.IssueID {
-		t.Fatalf("completion notifications = %#v, want exactly the issue", notifier.completedIssueIDs)
+	if aggregate.Execution.Status != executionbiz.StatusAwaitingSchedule ||
+		aggregate.Execution.GraphRevision != 1 ||
+		len(aggregate.Checkpoints) != 1 ||
+		aggregate.Checkpoints[0].Kind != executionbiz.CheckpointKindInitialSchedule ||
+		aggregate.Checkpoints[0].Status != executionbiz.CheckpointStatusActive {
+		t.Fatalf("initial execution aggregate = %#v", aggregate)
 	}
 }
 
@@ -1191,7 +1140,7 @@ func (r *reentrantRunSessionCanceller) RequestRunCancellation(ctx context.Contex
 	return IssueRunCancelResult{State: IssueRunCancelAccepted}, nil
 }
 
-func TestStopOnPlanningSessionCancelsAllRunningIssueRuns(t *testing.T) {
+func TestCancelIssueExecutionCancelsAllRunningTraditionalPlanRuns(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	store := openIssueServiceStore(t)
@@ -1214,13 +1163,12 @@ func TestStopOnPlanningSessionCancelsAllRunningIssueRuns(t *testing.T) {
 	coordinator := IssueExecutionCoordinator{Issues: &service, RunSessionCanceller: canceller}
 	detail, err := service.CreateIssueFromPlan(ctx, "ws-stop-cascade", CreateIssueManagerIssueFromPlanInput{
 		Issue: CreateIssueManagerIssueInput{
-			IssueID:                "tutti-mode-plan-stop-cascade",
-			TopicID:                workspaceissues.DefaultTopicID,
-			Title:                  "Stop cascade issue",
-			PlanningSource:         string(workspaceissues.PlanningSourceTuttiModePlan),
-			SourceSessionID:        "planning-session",
-			SequentialExecution:    true,
-			TuttiModeWorkflowOwned: true,
+			IssueID:             "traditional-plan-stop-cascade",
+			TopicID:             workspaceissues.DefaultTopicID,
+			Title:               "Stop cascade issue",
+			PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
+			SourceSessionID:     "planning-session",
+			SequentialExecution: true,
 		},
 		Tasks: []CreateIssueManagerTaskItemInput{
 			{TaskID: "task-1", Title: "First", AgentTargetID: agenttargetbiz.IDLocalCodex},
@@ -1233,14 +1181,11 @@ func TestStopOnPlanningSessionCancelsAllRunningIssueRuns(t *testing.T) {
 	if len(creator.inputs) != 1 {
 		t.Fatalf("initial dispatches = %d, want 1", len(creator.inputs))
 	}
-	// A stop on an unrelated session must not touch this issue.
-	coordinator.ObserveUserTurnCanceled(ctx, "ws-stop-cascade", "some-other-session")
-	if len(canceller.canceledSessionIDs) != 0 {
-		t.Fatalf("unrelated session cancel cascaded = %v, want none", canceller.canceledSessionIDs)
+	// Explicit Issue cancellation settles the live run and durably pauses
+	// traditional Plan dispatch.
+	if _, err := coordinator.CancelIssueExecution(ctx, "ws-stop-cascade", detail.Issue.IssueID); err != nil {
+		t.Fatalf("CancelIssueExecution() error = %v", err)
 	}
-	// The planning session's stop cancels the live run, settles it canceled,
-	// and durably pauses dispatch.
-	coordinator.ObserveUserTurnCanceled(ctx, "ws-stop-cascade", "planning-session")
 	if len(canceller.canceledSessionIDs) != 1 {
 		t.Fatalf("canceled sessions = %v, want the running run's session", canceller.canceledSessionIDs)
 	}
@@ -1537,7 +1482,7 @@ func TestIssueStopFencesInFlightLaunchBeforeCancelingSession(t *testing.T) {
 	}
 }
 
-func TestFailedRunNotifiesPlanningConversationAndReworkRedispatches(t *testing.T) {
+func TestTraditionalPlanFailedRunCanBeReworkedAndRedispatched(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	store := openIssueServiceStore(t)
@@ -1550,22 +1495,19 @@ func TestFailedRunNotifiesPlanningConversationAndReworkRedispatches(t *testing.T
 		}
 	}
 	creator := &sequentialSessionCreatorRecorder{}
-	notifier := &tuttiPlanNotifierRecorder{}
 	service := IssueManagerService{
-		RunLauncher:        creator,
-		CompletionNotifier: notifier,
-		Store:              store,
-		AgentTargetReader:  store,
+		RunLauncher:       creator,
+		Store:             store,
+		AgentTargetReader: store,
 	}
 	detail, err := service.CreateIssueFromPlan(ctx, "workspace-fail-notify", CreateIssueManagerIssueFromPlanInput{
 		Issue: CreateIssueManagerIssueInput{
-			IssueID:                "tutti-mode-plan-fail-notify",
-			TopicID:                workspaceissues.DefaultTopicID,
-			Title:                  "Fail notify issue",
-			PlanningSource:         string(workspaceissues.PlanningSourceTuttiModePlan),
-			SourceSessionID:        "planning-session",
-			SequentialExecution:    true,
-			TuttiModeWorkflowOwned: true,
+			IssueID:             "traditional-plan-fail-rework",
+			TopicID:             workspaceissues.DefaultTopicID,
+			Title:               "Fail rework issue",
+			PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
+			SourceSessionID:     "planning-session",
+			SequentialExecution: true,
 		},
 		Tasks: []CreateIssueManagerTaskItemInput{
 			{TaskID: "task-1", Title: "Only", AgentTargetID: agenttargetbiz.IDLocalCodex},
@@ -1580,12 +1522,6 @@ func TestFailedRunNotifiesPlanningConversationAndReworkRedispatches(t *testing.T
 		ErrorMessage: "Agent session ended without reporting run completion.",
 	}); err != nil {
 		t.Fatalf("CompleteRun(failed) error = %v", err)
-	}
-	if len(notifier.failedRunIDs) != 1 || notifier.failedRunIDs[0] != first.LatestRunID {
-		t.Fatalf("failure notifications = %#v, want the failed run reported once", notifier.failedRunIDs)
-	}
-	if len(notifier.completedIssueIDs) != 0 {
-		t.Fatalf("completion notifications = %#v, want none", notifier.completedIssueIDs)
 	}
 	if _, err := service.UpdateTask(ctx, "workspace-fail-notify", detail.Issue.IssueID, first.TaskID, UpdateIssueManagerTaskInput{
 		Status:    string(workspaceissues.StatusNotStarted),
@@ -1673,6 +1609,33 @@ func TestIntegrationTaskPromptCarriesDependencyWorktreeBranches(t *testing.T) {
 		!strings.Contains(prompt, "branch tutti/task/p2-") ||
 		!strings.Contains(prompt, "git merge") {
 		t.Fatalf("integration prompt lacks dependency branch pointers: %q", prompt)
+	}
+}
+
+func TestTuttiModeTaskPromptScalesValidationWithEffect(t *testing.T) {
+	t.Parallel()
+	task := workspaceissues.Task{Title: "Implement preferences", Content: "Wire both values"}
+	for _, testCase := range []struct {
+		effect int
+		want   string
+	}{
+		{effect: 20, want: "at least one focused check"},
+		{effect: 50, want: "relevant tests plus an integration check"},
+		{effect: 90, want: "edge or variant case"},
+	} {
+		issue := workspaceissues.Issue{
+			Title:          "Tutti preferences",
+			Content:        "Implement the plan",
+			PlanningSource: workspaceissues.PlanningSourceTuttiModePlan,
+			ExecutionProfile: workspaceissues.ExecutionProfile{
+				ReasoningIntensity: testCase.effect,
+			},
+		}
+		prompt := issueTaskPrompt(issue, task, ".", "", "", nil)
+		if !strings.Contains(prompt, fmt.Sprintf("Tutti effect preference: %d/100", testCase.effect)) ||
+			!strings.Contains(prompt, testCase.want) {
+			t.Fatalf("effect %d prompt = %q, want validation guidance containing %q", testCase.effect, prompt, testCase.want)
+		}
 	}
 }
 

@@ -17,6 +17,7 @@ func GeneratedIssueManagerIssueFromDomain(item workspaceissues.Issue) tuttigener
 		SourceSessionId:     item.SourceSessionID,
 		SequentialExecution: item.SequentialExecution,
 		ParallelExecution:   item.ParallelExecution,
+		DispatchPaused:      item.DispatchPaused,
 		ExecutionProfile: tuttigenerated.IssueManagerExecutionProfile{
 			ReasoningIntensity:     item.ExecutionProfile.ReasoningIntensity,
 			OrchestrationIntensity: item.ExecutionProfile.OrchestrationIntensity,
@@ -150,6 +151,8 @@ func GeneratedIssueManagerTaskFromDomain(item workspaceissues.Task) tuttigenerat
 		AutoAccept:         item.AutoAccept,
 		AcceptanceState:    tuttigenerated.IssueManagerAcceptanceState(item.AcceptanceState),
 		AcceptanceSummary:  item.AcceptanceSummary,
+		SupersededAtUnix:   unixSecondsFromMillis(item.SupersededAtUnixMS),
+		SupersededByTaskId: item.SupersededByTaskID,
 		CreatedAtUnix:      unixSecondsFromMillis(item.CreatedAtUnixMS),
 		UpdatedAtUnix:      unixSecondsFromMillis(item.UpdatedAtUnixMS),
 	}

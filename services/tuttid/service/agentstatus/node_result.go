@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tutti-os/tutti/services/tuttid/biz/agentanalytics"
 	agentnoderesult "github.com/tutti-os/tutti/services/tuttid/service/reporter/events/agent/node_result"
 )
 
@@ -53,18 +54,18 @@ func (s Service) reportProviderSetupNodeResult(ctx context.Context, input provid
 
 func providerSetupErrorCode(reasonCode string, err error) string {
 	if err != nil {
-		return agentnoderesult.ErrorCodeInstallFailed
+		return agentanalytics.ErrorCodeInstallFailed
 	}
 	switch strings.TrimSpace(reasonCode) {
 	case "":
-		return agentnoderesult.ErrorCodeNone
+		return agentanalytics.ErrorCodeNone
 	case "install_timed_out":
-		return agentnoderesult.ErrorCodeInstallTimeout
+		return agentanalytics.ErrorCodeInstallTimeout
 	case "install_canceled":
-		return agentnoderesult.ErrorCodeInstallCanceled
+		return agentanalytics.ErrorCodeInstallCanceled
 	case "post_install_probe_failed":
-		return agentnoderesult.ErrorCodeInstallProbeFailed
+		return agentanalytics.ErrorCodeInstallProbeFailed
 	default:
-		return agentnoderesult.ErrorCodeInstallFailed
+		return agentanalytics.ErrorCodeInstallFailed
 	}
 }

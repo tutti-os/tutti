@@ -9,6 +9,7 @@ import {
   isEngineInternalCommand,
   type AgentSessionEngine,
   type AgentSessionEngineIdentity,
+  type AgentSessionEngineIntentObserver,
   type AgentSessionEngineListener,
   type AgentSessionEngineState,
   type EngineClock,
@@ -40,6 +41,7 @@ export interface CreateAgentSessionEngineInput {
   commandPort: EngineCommandPort;
   diagnosticSink?: EngineDiagnosticSink;
   identity: AgentSessionEngineIdentity;
+  intentObserver?: AgentSessionEngineIntentObserver;
   scheduler: EngineScheduler;
 }
 
@@ -49,6 +51,7 @@ export function createAgentSessionEngine({
   commandPort,
   diagnosticSink,
   identity,
+  intentObserver,
   scheduler
 }: CreateAgentSessionEngineInput): AgentSessionEngine {
   if (identity.workspaceId.trim().length === 0) {
@@ -174,6 +177,17 @@ export function createAgentSessionEngine({
         type: "intentDroppedForIdentityMismatch"
       });
       return;
+    }
+    if (intentObserver) {
+      try {
+        intentObserver(scopedIntent);
+      } catch (error) {
+        diagnosticSink?.({
+          error,
+          intentType: scopedIntent.type,
+          type: "intentObserverError"
+        });
+      }
     }
     if (options?.batch === true) {
       batchedIntents.push(scopedIntent);

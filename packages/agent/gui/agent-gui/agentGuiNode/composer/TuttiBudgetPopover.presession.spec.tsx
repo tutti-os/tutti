@@ -10,22 +10,23 @@ import {
 import { TuttiBudgetPopover } from "./TuttiBudgetPopover";
 
 const labels = {
-  title: "Tutti orchestration",
-  intensityLabel: "Orchestration intensity",
-  previewTitle: "Planner tendency",
+  title: "Tutti preferences",
+  effectLabel: "Effect",
+  speedLabel: "Speed",
+  previewTitle: "Expected behavior",
   previewHint:
     "The exact model, total task count, and safe parallelism are inferred from the request and selected Skills.",
   previewCost: "Economical",
   previewBalance: "Balanced",
   previewPowerful: "Powerful",
-  modelStrengthLabel: "Model strength",
-  modelStrengthCost: "Economical",
-  modelStrengthBalance: "Balanced",
-  modelStrengthPowerful: "Powerful",
-  agentCountLabel: "Parallel Agents",
-  agentCountCost: "1",
-  agentCountBalance: "2–3",
-  agentCountPowerful: "Up to 4"
+  modelPreferenceLabel: "Model choice",
+  modelPreferenceCost: "Economical",
+  modelPreferenceBalance: "Balanced",
+  modelPreferencePowerful: "Most capable",
+  modelPreferenceFastestSuitable: "Fastest suitable",
+  parallelismLabel: "Parallel target",
+  parallelismValue: (count: number) =>
+    count === 1 ? "1 agent" : `Up to ${count} agents`
 };
 
 function createTestEngine() {
@@ -50,9 +51,11 @@ function PreSessionHarness({
   });
   return (
     <TuttiBudgetPopover
-      intensity={tuttiMode.orchestrationIntensity}
+      effect={tuttiMode.effect}
+      speed={tuttiMode.speed}
       labels={labels}
-      onChange={tuttiMode.setOrchestrationIntensity}
+      onEffectChange={tuttiMode.setEffect}
+      onSpeedChange={tuttiMode.setSpeed}
     >
       <button className="nodrag" type="button">
         Tutti
@@ -80,7 +83,7 @@ describe("TuttiBudgetPopover pre-session loop", () => {
     expect(popover?.classList.contains("nodrag")).toBe(true);
 
     const slider = screen.getByRole("slider", {
-      name: "Orchestration intensity"
+      name: "Effect"
     });
     fireEvent.click(slider);
     fireEvent.keyDown(slider, { key: "ArrowRight" });
@@ -89,40 +92,41 @@ describe("TuttiBudgetPopover pre-session loop", () => {
     const draftKey = resolveAgentGUITuttiModeDraftKey("node-1");
     expect(
       engine.getSnapshot().tuttiModeActivation.draftsByKey[draftKey]
-    ).toMatchObject({ active: true, orchestrationIntensity: 51 });
+    ).toMatchObject({ active: true, effect: 51, speed: null });
     expect(
       document.querySelector("[data-agent-tutti-budget-popover]")
     ).not.toBeNull();
   });
 
-  it("keeps a committed pre-session intensity and preview across reopen", () => {
+  it("keeps a committed pre-session effect and preview across reopen", () => {
     const engine = createTestEngine();
     render(<PreSessionHarness engine={engine} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Tutti" }));
     const slider = screen.getByRole("slider", {
-      name: "Orchestration intensity"
+      name: "Effect"
     });
     expect(slider).toHaveAttribute("aria-valuenow", "50");
 
     slider.focus();
     fireEvent.keyDown(slider, { key: "End" });
     expect(
-      document.querySelector("[data-agent-tutti-budget-preview]")
-    ).toHaveAttribute("data-agent-tutti-budget-preview", "powerful");
+      document.querySelector("[data-agent-tutti-effect-tier]")
+    ).toHaveAttribute("data-agent-tutti-effect-tier", "powerful");
 
     const draftKey = resolveAgentGUITuttiModeDraftKey("node-1");
     expect(
       engine.getSnapshot().tuttiModeActivation.draftsByKey[draftKey]
-    ).toMatchObject({ active: true, orchestrationIntensity: 100 });
+    ).toMatchObject({ active: true, effect: 100, speed: null });
 
     fireEvent.keyDown(document.body, { key: "Escape" });
     fireEvent.click(screen.getByRole("button", { name: "Tutti" }));
+    expect(screen.getByRole("slider", { name: "Effect" })).toHaveAttribute(
+      "aria-valuenow",
+      "100"
+    );
     expect(
-      screen.getByRole("slider", { name: "Orchestration intensity" })
-    ).toHaveAttribute("aria-valuenow", "100");
-    expect(
-      document.querySelector("[data-agent-tutti-budget-preview]")
-    ).toHaveAttribute("data-agent-tutti-budget-preview", "powerful");
+      document.querySelector("[data-agent-tutti-effect-tier]")
+    ).toHaveAttribute("data-agent-tutti-effect-tier", "powerful");
   });
 });

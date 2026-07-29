@@ -138,6 +138,14 @@ func CoreSkillsPack() CapabilityPack {
 		if err != nil {
 			return CapabilityContribution{}, err
 		}
+		modelAllocation, err := tuttiModelAllocationSkill(input)
+		if err != nil {
+			return CapabilityContribution{}, err
+		}
+		modelTiers, err := tuttiModelAllocationReference(input)
+		if err != nil {
+			return CapabilityContribution{}, err
+		}
 		issueManager, err := issueManagerSkill(input)
 		if err != nil {
 			return CapabilityContribution{}, err
@@ -157,6 +165,7 @@ func CoreSkillsPack() CapabilityPack {
 		return CapabilityContribution{Enabled: true, Skills: []SkillSpec{
 			{ID: "tutti/tutti-cli", Name: tuttiSkillName, Files: map[string]string{"SKILL.md": tuttiCLI, commandGuideReferencePath: commandGuide}},
 			{ID: "tutti/tutti-handoff", Name: tuttiHandoffSkillName, Files: map[string]string{"SKILL.md": handoff}},
+			{ID: "tutti/tutti-model-allocation", Name: tuttiModelAllocationSkillName, Files: map[string]string{"SKILL.md": modelAllocation, tuttiModelAllocationReferencePath: modelTiers}},
 			{ID: "tutti/issue-manager", Name: issueManagerSkillName, Files: map[string]string{"SKILL.md": issueManager}},
 			{ID: "tutti/workspace-app", Name: workspaceAppSkillName, Files: map[string]string{"SKILL.md": workspaceApp}},
 			{ID: "tutti/reference", Name: referenceSkillName, Files: map[string]string{"SKILL.md": reference}},

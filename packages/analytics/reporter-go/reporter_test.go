@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -54,8 +55,11 @@ func TestNewSelectsNoopReporter(t *testing.T) {
 	tests := []AnalyticsConfig{
 		{Disabled: true},
 		{AppKey: "key", ChannelDomain: "https://example.test"},
+		{AppID: -1, AppKey: "key", ChannelDomain: "https://example.test"},
 		{AppID: 1, ChannelDomain: "https://example.test"},
+		{AppID: 1, AppKey: "  ", ChannelDomain: "https://example.test"},
 		{AppID: 1, AppKey: "key"},
+		{AppID: 1, AppKey: "key", ChannelDomain: "  "},
 	}
 	for _, analytics := range tests {
 		got, err := New(Config{Analytics: analytics, StateDir: t.TempDir()})
@@ -114,6 +118,7 @@ func TestDebugReporterUsesProvidedDeviceIDAndProtectsCommonParams(t *testing.T) 
 
 func TestTeaReporterPersistsIdentityAndSendsSanitizedEvents(t *testing.T) {
 	sdk := &fakeTeaSDK{}
+	publisher := &fakeDebugPublisher{}
 	stateDir := t.TempDir()
 	reporter, err := newTeaReporterWithSDK(Config{
 		Analytics: AnalyticsConfig{
@@ -122,7 +127,8 @@ func TestTeaReporterPersistsIdentityAndSendsSanitizedEvents(t *testing.T) {
 			ChannelDomain: "https://example.test",
 			AppVersion:    "0.0.0",
 		},
-		StateDir: stateDir,
+		DebugPublisher: publisher,
+		StateDir:       stateDir,
 		CommonParams: map[string]any{
 			"product_variant": "tutti",
 		},
@@ -135,7 +141,8 @@ func TestTeaReporterPersistsIdentityAndSendsSanitizedEvents(t *testing.T) {
 	reporter.Track(context.Background(),
 		Event{},
 		Event{
-			Name: "workspace.opened",
+			Name:     "workspace.opened",
+			ClientTS: -1,
 			Params: map[string]any{
 				"source":          "dashboard",
 				"session_id":      "spoofed",
@@ -155,6 +162,9 @@ func TestTeaReporterPersistsIdentityAndSendsSanitizedEvents(t *testing.T) {
 	if len(send.events) != 1 {
 		t.Fatalf("events = %d, want 1", len(send.events))
 	}
+	if sdk.initConfig.LogDir != filepath.Join(stateDir, "analytics", "sdk-logs") {
+		t.Fatalf("SDK log directory = %q, want default beneath state directory", sdk.initConfig.LogDir)
+	}
 	if send.events[0].ClientTS < before || send.events[0].ClientTS > after {
 		t.Fatalf("client timestamp = %d, want between %d and %d", send.events[0].ClientTS, before, after)
 	}
@@ -168,6 +178,15 @@ func TestTeaReporterPersistsIdentityAndSendsSanitizedEvents(t *testing.T) {
 	}
 	if send.uuid == "" || send.common["device_id"] != send.uuid {
 		t.Fatalf("device ID common=%v uuid=%q", send.common["device_id"], send.uuid)
+	}
+	if len(publisher.events) != 1 {
+		t.Fatalf("debug events = %d, want 1", len(publisher.events))
+	}
+	if publisher.events[0].Params["session_id"] != send.common["session_id"] {
+		t.Fatalf("debug session ID = %v, want final common value", publisher.events[0].Params["session_id"])
+	}
+	if publisher.events[0].Params["source"] != "dashboard" {
+		t.Fatalf("debug source = %v, want dashboard", publisher.events[0].Params["source"])
 	}
 	content, err := os.ReadFile(filepath.Join(stateDir, "device_id"))
 	if err != nil {
@@ -192,5 +211,99 @@ func TestReporterRequiresIdentitySourceWhenEnabled(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "state directory") {
 		t.Fatalf("New() error = %v, want missing state directory", err)
+	}
+}
+
+func TestTeaReporterRequiresStateDirectoryForSDKLogs(t *testing.T) {
+	_, err := newTeaReporterWithSDK(Config{
+		Analytics: AnalyticsConfig{
+			AppID:         20004092,
+			AppKey:        "app-key",
+			ChannelDomain: "https://example.test",
+		},
+		DeviceID: "host-device",
+	}, &fakeTeaSDK{})
+	if err == nil || !strings.Contains(err.Error(), "SDK logs") {
+		t.Fatalf("newTeaReporterWithSDK() error = %v, want missing SDK log directory", err)
+	}
+}
+
+func TestTeaReporterAcceptsHostSDKLogDirectory(t *testing.T) {
+	sdk := &fakeTeaSDK{}
+	logDir := filepath.Join(t.TempDir(), "existing", "sdk-logs")
+	_, err := newTeaReporterWithSDK(Config{
+		Analytics: AnalyticsConfig{
+			AppID:         20004092,
+			AppKey:        "app-key",
+			ChannelDomain: "https://example.test",
+		},
+		DeviceID:  "host-device",
+		SDKLogDir: logDir,
+	}, sdk)
+	if err != nil {
+		t.Fatalf("newTeaReporterWithSDK() error = %v", err)
+	}
+	if sdk.initConfig.LogDir != logDir {
+		t.Fatalf("SDK log directory = %q, want %q", sdk.initConfig.LogDir, logDir)
+	}
+}
+
+func TestLoadOrCreateDeviceIDIsStableUnderConcurrentCreation(t *testing.T) {
+	stateDir := t.TempDir()
+	const callers = 16
+	results := make(chan string, callers)
+	errors := make(chan error, callers)
+	var group sync.WaitGroup
+
+	for range callers {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			deviceID, err := loadOrCreateDeviceID(stateDir)
+			if err != nil {
+				errors <- err
+				return
+			}
+			results <- deviceID
+		}()
+	}
+	group.Wait()
+	close(results)
+	close(errors)
+
+	for err := range errors {
+		t.Fatalf("loadOrCreateDeviceID() error = %v", err)
+	}
+	var first string
+	for deviceID := range results {
+		if first == "" {
+			first = deviceID
+		}
+		if deviceID != first {
+			t.Fatalf("device ID = %q, want stable %q", deviceID, first)
+		}
+	}
+}
+
+func TestLoadOrCreateDeviceIDRepairsEmptyIdentityFile(t *testing.T) {
+	stateDir := t.TempDir()
+	path := filepath.Join(stateDir, "device_id")
+	if err := os.WriteFile(path, []byte(" \n"), 0o600); err != nil {
+		t.Fatalf("write empty device ID: %v", err)
+	}
+
+	deviceID, err := loadOrCreateDeviceID(stateDir)
+	if err != nil {
+		t.Fatalf("loadOrCreateDeviceID() error = %v", err)
+	}
+	if strings.TrimSpace(deviceID) == "" {
+		t.Fatal("loadOrCreateDeviceID() returned an empty identity")
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read repaired device ID: %v", err)
+	}
+	if persisted := strings.TrimSpace(string(content)); persisted != deviceID {
+		t.Fatalf("persisted device ID = %q, want %q", persisted, deviceID)
 	}
 }

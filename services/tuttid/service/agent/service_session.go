@@ -288,6 +288,7 @@ func (s *Service) projectHostSessionResult(
 	runtime ProviderRuntimeSession,
 	live bool,
 	requireRailSection bool,
+	resolveProviderCapabilities bool,
 ) (Session, error) {
 	persisted := persistedSessionFromHost(canonical)
 	if requireRailSection && s.SessionReader != nil {
@@ -305,7 +306,12 @@ func (s *Service) projectHostSessionResult(
 	} else {
 		result = sessionFromPersisted(persisted, s.persistedSessionCanResume(ctx, persisted))
 	}
-	return s.withProtocolV2TurnState(ctx, canonical.WorkspaceID, result)
+	return s.withProtocolV2TurnStateProjectionOptions(
+		ctx,
+		canonical.WorkspaceID,
+		result,
+		resolveProviderCapabilities,
+	)
 }
 
 func persistedSessionIsNewerThanRuntime(persisted PersistedSession, session ProviderRuntimeSession) bool {

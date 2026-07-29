@@ -63,7 +63,29 @@ Use this protocol for every Tutti CLI command:
 5. Use IDs from mention URIs, prior command output, or list/get commands. {{if has "agent-context.agent.list"}}Before an Agent start, use `{{command "agent-context.agent.list"}}`. {{end}}Do not invent workspace ids, app scopes, issue ids, task ids, run ids, agent ids, provider names, or session ids.
 6. If a required input is missing, ask the user or run the relevant discovery command. Follow daemon recovery hints when an error includes one.
 7. Treat unknown-input or invalid-input errors as a signal to re-read current command help or the guide, not to retry with guessed flags.
+8. Treat the Tutti daemon and CLI as the only supported control plane. Never inspect or modify `~/.tutti*/*.db` or another backing SQLite database to recover state or bypass a rejected command. If the current CLI snapshot and documented recovery command do not resolve an error, report the exact command error instead.
 
+{{if has "tutti-mode-plan.plan.issue.get"}}
+
+## Tutti Mode Execution Recovery
+
+The `plan issue ...` scope is the source Agent's execution control plane. At every durable wake, first run `{{command "tutti-mode-plan.plan.issue.get" (args "issue-id" "<issue-id>")}}` once. Use only its `activeCheckpoint`, `graphRevision`, `readyTaskIds`, `blockerReason`, and `allowedActions`; do not reuse a revision from an older wake or infer the next revision.
+
+Checkpoint actions:
+
+- `initial_schedule`: schedule an exact ready task set, mutate the graph, or stop. Do not acknowledge.
+- `task_settled`: schedule or mutate follow-up work. Acknowledge only when another Run is active or a later checkpoint is pending.
+- `task_failed` or `task_canceled`: never update or reschedule the terminal task. Rework it with a new `taskId`; omitted launch settings and dependencies inherit from the old task. Then schedule the replacement with the `graphRevision` returned by the successful mutation.
+- `all_tasks_terminal`: complete Goal Review when satisfied, or mutate and schedule exact follow-up work. Do not acknowledge.
+
+Recovery is bounded:
+
+1. On `inactive_checkpoint` or `stale_graph_revision`, refresh with `plan issue get` once and retry the intended command once with the returned fence.
+2. On `invalid_mutation_operation`, read `tutti plan issue mutate --help` once, correct the documented `kind`/`taskId`/`task` schema, and retry once.
+3. On task, dependency, target, capacity, budget, or dispatch rejection, follow the returned hint and snapshot. Do not cycle through unrelated commands.
+4. If the same reason remains after the bounded retry, report the exact reason and hint. Do not inspect SQLite or mutate backing state.
+
+{{end}}
 App window opening:
 
 {{if has "workspace-apps.app.open"}}

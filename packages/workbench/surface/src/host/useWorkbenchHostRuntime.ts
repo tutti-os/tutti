@@ -85,7 +85,6 @@ export function useWorkbenchHostRuntime({
     () =>
       missionControlEnabled && !isHydrating
         ? createWorkbenchHostMissionControlAdapter({
-            activateNode: hostSession.activateNode.bind(hostSession),
             controller: hostSession.controller
           })
         : null,

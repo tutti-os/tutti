@@ -6,7 +6,8 @@ import type {
 } from "@tutti-os/client-tuttid-ts";
 import {
   agentActivityMessageFromTuttidMessage,
-  agentActivitySessionFromTuttidSession
+  agentActivitySessionFromTuttidSession,
+  agentActivityTuttiModeActivationFromTuttid
 } from "./index.ts";
 
 test("session mapping requires and preserves the host-owned user identity", () => {
@@ -17,6 +18,13 @@ test("session mapping requires and preserves the host-owned user identity", () =
   );
   assert.equal(session.userId, "account-user-1");
   assert.equal(session.messageVersion, 7);
+  assert.deepEqual(session.forkedFrom, {
+    forkedAtUnixMs: 9,
+    operationId: "operation-1",
+    sourceAgentSessionId: "source-1",
+    sourceTurnId: "turn-1",
+    targetTurnId: "target-turn-1"
+  });
 });
 
 test("session mapping rejects an invalid message cursor", () => {
@@ -34,7 +42,9 @@ test("session mapping rejects an invalid message cursor", () => {
 test("session mapping rejects missing protocol-v2 fields", () => {
   for (const field of [
     "activeTurnId",
+    "forkedFrom",
     "latestTurnInteractions",
+    "lifecycleCapabilities",
     "pendingInteractions",
     "messageVersion",
     "railSectionKey",
@@ -52,6 +62,30 @@ test("session mapping rejects missing protocol-v2 fields", () => {
       new RegExp(`Protocol v2 contract error:.*${field}`)
     );
   }
+});
+
+test("Tutti mode activation mapping reads the legacy single-axis response", () => {
+  const activation = agentActivityTuttiModeActivationFromTuttid({
+    agentSessionId: "session-1",
+    createdAtUnixMs: 1,
+    currentRevision: {
+      activationId: "activation-1",
+      createdAtUnixMs: 2,
+      id: "revision-1",
+      orchestrationIntensity: 73,
+      revision: 1,
+      source: "slash_command",
+      status: "active"
+    },
+    id: "activation-1",
+    status: "active",
+    updatedAtUnixMs: 2,
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(activation.currentRevision.effect, 73);
+  assert.equal(activation.currentRevision.speed, 50);
+  assert.equal(activation.currentRevision.orchestrationIntensity, 73);
 });
 
 test("message mapping preserves durable sequence and normalizes timestamps", () => {
@@ -113,6 +147,14 @@ function createSession(): WorkspaceAgentSession {
     latestTurn: null,
     latestTurnInteractions: [],
     messageVersion: 7,
+    lifecycleCapabilities: { fork: false, forkThroughTurn: false },
+    forkedFrom: {
+      forkedAtUnixMs: 9,
+      operationId: "operation-1",
+      sourceAgentSessionId: "source-1",
+      sourceTurnId: "turn-1",
+      targetTurnId: "target-turn-1"
+    },
     parentAgentSessionId: null,
     parentToolCallId: null,
     parentTurnId: null,

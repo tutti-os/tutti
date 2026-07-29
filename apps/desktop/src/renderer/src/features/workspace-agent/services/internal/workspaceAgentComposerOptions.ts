@@ -1,4 +1,5 @@
 import type {
+  AgentActivityComposerOptions,
   AgentActivityComposerSettings,
   AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
@@ -13,7 +14,7 @@ export function loadWorkspaceAgentComposerOptions(input: {
   settings: AgentActivityComposerSettings;
   signal?: AbortSignal;
   workspaceId: string;
-}): Promise<unknown> {
+}): Promise<AgentActivityComposerOptions> {
   input.engine.dispatch({
     commandId: input.commandId,
     type: "composerOptions/loadRequested",
@@ -32,7 +33,9 @@ export function loadWorkspaceAgentComposerOptions(input: {
     };
   };
   const current = readResult();
-  if (current.status === "ready") return Promise.resolve(current.options);
+  if (current.status === "ready" && current.options) {
+    return Promise.resolve(current.options);
+  }
   if (current.status === "error") {
     return Promise.reject(new Error("composer_options_load_failed"));
   }
@@ -46,11 +49,11 @@ export function loadWorkspaceAgentComposerOptions(input: {
     };
     const settle = () => {
       const result = readResult();
-      if (result.status === "ready") {
+      if (result.status === "ready" && result.options) {
         unsubscribe();
         input.signal?.removeEventListener("abort", onAbort);
         resolve(result.options);
-      } else if (result.status === "error") {
+      } else if (result.status === "ready" || result.status === "error") {
         unsubscribe();
         input.signal?.removeEventListener("abort", onAbort);
         reject(new Error("composer_options_load_failed"));

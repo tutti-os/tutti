@@ -158,6 +158,19 @@ test("agent composer options project the typed slash command policy", () => {
   });
 });
 
+test("agent composer options keep fallback slash commands when effects are absent", () => {
+  const options = agentActivityComposerOptionsFromTuttidResult("acp:hermes", {
+    slashCommandPolicy: {
+      fallbackCommands: ["compact", "help"]
+    }
+  });
+
+  assert.deepEqual(options.slashCommandPolicy, {
+    fallbackCommands: ["compact", "help"],
+    commandEffects: []
+  });
+});
+
 test("agent composer options restore commands advertised by a running ACP session", () => {
   const options = agentActivityComposerOptionsFromTuttidResult("acp:gemini", {
     commands: [

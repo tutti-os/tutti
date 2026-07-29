@@ -79,15 +79,15 @@ export function useAgentGUITuttiModeActivation({
     if (presentation.updateStatus !== "failed") return;
     setActive(!presentation.active);
   }, [presentation.active, presentation.updateStatus, setActive]);
-  const setOrchestrationIntensity = useCallback(
-    (value: number): void => {
+  const setPreference = useCallback(
+    (preference: "effect" | "speed", value: number): void => {
       const agentSessionId = activeConversationId?.trim() ?? "";
       if (!agentSessionId) {
         engine.dispatch({
           active: true,
           draftKey,
           occurredAtUnixMs: Date.now(),
-          orchestrationIntensity: value,
+          [preference]: value,
           type: "tuttiMode/draftSet"
         });
         return;
@@ -97,7 +97,7 @@ export function useAgentGUITuttiModeActivation({
       engine.dispatch({
         agentSessionId,
         commandId: `tutti-mode:${workspaceId}:${agentSessionId}:${requestedAtUnixMs}:${commandSequenceRef.current}`,
-        orchestrationIntensity: value,
+        [preference]: value,
         requestedAtUnixMs,
         source: "slash_command",
         status: "active",
@@ -107,16 +107,27 @@ export function useAgentGUITuttiModeActivation({
     },
     [activeConversationId, draftKey, engine, workspaceId]
   );
+  const setEffect = useCallback(
+    (value: number): void => setPreference("effect", value),
+    [setPreference]
+  );
+  const setSpeed = useCallback(
+    (value: number): void => setPreference("speed", value),
+    [setPreference]
+  );
 
   return useMemo(
     () => ({
       ...presentation,
+      effect: presentation.effect ?? presentation.orchestrationIntensity,
+      speed: presentation.speed ?? 50,
       retry,
       setActive,
-      setOrchestrationIntensity,
+      setEffect,
+      setSpeed,
       updatePending
     }),
-    [presentation, retry, setActive, setOrchestrationIntensity, updatePending]
+    [presentation, retry, setActive, setEffect, setSpeed, updatePending]
   );
 }
 

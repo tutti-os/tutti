@@ -65,15 +65,13 @@ interface UseAgentGUIConversationSelectionControllerInput {
   isComposerHomeRef: RefObject<boolean>;
   isMountedRef: RefObject<boolean>;
   loadDraftComposerOptions(): void;
+  loadSelectedConversationMessages(
+    agentSessionId: string,
+    options?: { force?: boolean }
+  ): Promise<void>;
   markSelectedConversationDetailPending(agentSessionId: string): string | null;
   onDataChangeRef: RefObject<
     (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
-  >;
-  reloadSelectedConversationRef: RefObject<
-    (
-      agentSessionId: string,
-      options: { reloadConversations: boolean; reloadDetail: boolean }
-    ) => void
   >;
   sessionEngine: AgentSessionEngine;
   setActiveConversationId: Dispatch<SetStateAction<string | null>>;
@@ -81,6 +79,7 @@ interface UseAgentGUIConversationSelectionControllerInput {
   setIntent: Dispatch<SetStateAction<ConversationIntent>>;
   setIsComposerHome: Dispatch<SetStateAction<boolean>>;
   setIsLoadingMessages: Dispatch<SetStateAction<boolean>>;
+  setActiveMessageSession(agentSessionId: string | null): void;
   clearRailRevealRequest(): void;
   requestRailReveal(
     agentSessionId: string,
@@ -148,15 +147,16 @@ export function useAgentGUIConversationSelectionController(
     isComposerHomeRef,
     isMountedRef,
     loadDraftComposerOptions,
+    loadSelectedConversationMessages,
     markSelectedConversationDetailPending,
     onDataChangeRef,
-    reloadSelectedConversationRef,
     sessionEngine,
     setActiveConversationId,
     setDetailError,
     setIntent,
     setIsComposerHome,
     setIsLoadingMessages,
+    setActiveMessageSession,
     clearRailRevealRequest,
     requestRailReveal,
     transientConversation,
@@ -165,25 +165,42 @@ export function useAgentGUIConversationSelectionController(
   const previousAttentionActiveConversationIdRef = useRef<string | null>(null);
   const rolledBackSelectionSessionIdRef = useRef<string | null>(null);
   const persistedConfirmedActivationRequestIdRef = useRef<string | null>(null);
+  const attentionHydrationRef = useRef<{
+    engine: AgentSessionEngine;
+    key: string;
+  } | null>(null);
 
   useEffect(() => {
     const userId = currentUserId?.trim() ?? "";
     const normalizedWorkspaceId = workspaceId.trim();
-    if (!normalizedWorkspaceId || !userId) return;
-    sessionEngine.dispatch({
-      type: "attention/hydrateRequested",
-      commandId: `attention-hydrate:${normalizedWorkspaceId}:${userId}`,
-      userId,
-      workspaceId: normalizedWorkspaceId
-    });
-  }, [currentUserId, sessionEngine, workspaceId]);
-
-  useEffect(() => {
+    const attentionHydrationKey =
+      normalizedWorkspaceId && userId
+        ? `${normalizedWorkspaceId}:${userId}`
+        : "";
+    if (!attentionHydrationKey) {
+      attentionHydrationRef.current = null;
+    } else if (
+      attentionHydrationRef.current?.engine !== sessionEngine ||
+      attentionHydrationRef.current.key !== attentionHydrationKey
+    ) {
+      attentionHydrationRef.current = {
+        engine: sessionEngine,
+        key: attentionHydrationKey
+      };
+      sessionEngine.dispatch({
+        type: "attention/hydrateRequested",
+        commandId: `attention-hydrate:${attentionHydrationKey}`,
+        userId,
+        workspaceId: normalizedWorkspaceId
+      });
+    }
+    setActiveMessageSession(activeConversationId);
     const rollbackSelection = (
       agentSessionId: string,
       errorMessage: string | null
     ) => {
       rolledBackSelectionSessionIdRef.current = agentSessionId;
+      setActiveMessageSession(null);
       activeConversationIdRef.current = null;
       setActiveConversationId(null);
       isComposerHomeRef.current = true;
@@ -274,7 +291,9 @@ export function useAgentGUIConversationSelectionController(
     attentionReadRecordsBySessionId,
     clearRailRevealRequest,
     currentUserId,
-    sessionEngine
+    sessionEngine,
+    setActiveMessageSession,
+    workspaceId
   ]);
 
   useEffect(() => {
@@ -319,6 +338,7 @@ export function useAgentGUIConversationSelectionController(
       setIntent({ tag: "home" });
       isComposerHomeRef.current = true;
       setIsComposerHome(true);
+      setActiveMessageSession(null);
       activeConversationIdRef.current = null;
       setActiveConversationId(null);
       setIsLoadingMessages(false);
@@ -345,6 +365,19 @@ export function useAgentGUIConversationSelectionController(
   }, [data.lastActiveAgentSessionId]);
   const selection = useAgentConversationSelection({
     activation: {
+      canReload: (agentSessionId) => {
+        const status =
+          selectLatestActivationForSession(
+            sessionEngine.getSnapshot(),
+            agentSessionId
+          )?.status ?? null;
+        return (
+          status !== "failed" &&
+          status !== "canceled" &&
+          status !== "requested" &&
+          status !== "uncertain"
+        );
+      },
       forget: activation.clearFailure,
       isPending: (agentSessionId) =>
         isPendingNewConversationActivation(
@@ -379,14 +412,15 @@ export function useAgentGUIConversationSelectionController(
         conversationIdsRef.current.has(agentSessionId)
     },
     detail: {
+      ensureHydrated: (agentSessionId) => {
+        void loadSelectedConversationMessages(agentSessionId);
+      },
       isHydrated: (agentSessionId) =>
         selectEngineSessionDetailHydrated(
           sessionEngine.getSnapshot(),
           agentSessionId
         ),
       markPending: markSelectedConversationDetailPending,
-      reload: (agentSessionId, options) =>
-        reloadSelectedConversationRef.current(agentSessionId, options),
       setLoading: setIsLoadingMessages
     },
     hasConversationListQuery: () => Boolean(conversationListQuery),
@@ -433,6 +467,7 @@ export function useAgentGUIConversationSelectionController(
       clearDetailError: () => setDetailError(null),
       getActiveSessionId: () => activeConversationIdRef.current,
       setActiveSessionId: (agentSessionId) => {
+        setActiveMessageSession(agentSessionId);
         activeConversationIdRef.current = agentSessionId;
         setActiveConversationId(agentSessionId);
       },

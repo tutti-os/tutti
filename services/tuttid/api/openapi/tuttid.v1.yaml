@@ -210,6 +210,12 @@ paths:
           schema:
             type: string
           description: Optional workspace context. When omitted, the daemon uses the startup workspace.
+        - name: agentSessionID
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional canonical Agent Session identity. When present, discovery is constrained by that Session's persisted command capability projection.
         - name: includeHidden
           in: query
           required: false
@@ -3077,6 +3083,532 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-session-recordings:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: listAgentSessionRecordings
+      tags:
+        - agent-session
+      summary: List developer Agent Session recordings for one workspace
+      responses:
+        "200":
+          description: Agent Session recordings ordered by latest update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSessionRecordingListResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    post:
+      operationId: startAgentSessionRecording
+      tags:
+        - agent-session
+      summary: Start one developer Agent Session recording
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartAgentSessionRecordingRequest"
+      responses:
+        "201":
+          description: Agent Session recording prepared or recording
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSessionRecording"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "409":
+          description: Another recording is active
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-session-recordings/{recordingID}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - name: recordingID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getAgentSessionRecording
+      tags:
+        - agent-session
+      summary: Get one developer Agent Session recording
+      responses:
+        "200":
+          description: Agent Session recording
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSessionRecording"
+        "404":
+          description: Recording not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    patch:
+      operationId: renameAgentSessionRecording
+      tags:
+        - agent-session
+      summary: Rename one developer Agent Session recording and its Cassette
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenameAgentSessionRecordingRequest"
+      responses:
+        "200":
+          description: Agent Session recording renamed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSessionRecording"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          description: Recording not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-session-recordings/{recordingID}/complete:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - name: recordingID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: completeAgentSessionRecording
+      tags:
+        - agent-session
+      summary: Complete one active developer Agent Session recording
+      responses:
+        "200":
+          description: Agent Session recording completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSessionRecording"
+        "404":
+          description: Recording not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "409":
+          description: Recording cannot complete in its current state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-session-recordings/{recordingID}/activity-events:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - name: recordingID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: appendAgentSessionRecordingActivityEvents
+      tags:
+        - agent-session
+      summary: Append an ordered batch of renderer Agent Activity events
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AppendAgentSessionRecordingActivityEventsRequest"
+      responses:
+        "200":
+          description: Activity events persisted through the returned Cassette sequence
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppendAgentSessionRecordingActivityEventsResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          description: Recording not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "409":
+          description: Recording cannot accept Activity events in its current state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-session-recordings/{recordingID}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - name: recordingID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: cancelAgentSessionRecording
+      tags:
+        - agent-session
+      summary: Cancel one active developer Agent Session recording
+      responses:
+        "200":
+          description: Agent Session recording canceled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSessionRecording"
+        "404":
+          description: Recording not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-session-cassettes:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: listAgentSessionCassettes
+      tags:
+        - agent-session
+      summary: List immutable Agent Session Cassettes for one workspace
+      responses:
+        "200":
+          description: Cassettes ordered by creation time
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSessionCassetteListResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-session-cassettes/{cassetteID}/replay-runs:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - name: cassetteID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: listAgentSessionReplayRuns
+      tags:
+        - agent-session
+      summary: List replay runs for one immutable Agent Session Cassette
+      responses:
+        "200":
+          description: Replay runs ordered by latest update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSessionReplayRunListResponse"
+        "404":
+          description: Cassette not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    post:
+      operationId: prepareAgentSessionReplayRun
+      tags:
+        - agent-session
+      summary: Validate one Cassette and prepare an isolated replay run
+      responses:
+        "201":
+          description: Replay run and portable Cassette launch handoff
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSessionReplayLaunch"
+        "404":
+          description: Cassette not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "409":
+          description: Cassette is corrupt or cannot be replayed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-session-replay-runs/{runID}/running:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - name: runID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: markAgentSessionReplayRunRunning
+      tags:
+        - agent-session
+      summary: Mark a prepared replay run accepted by its runtime adapter
+      responses:
+        "200":
+          description: Replay run is running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSessionReplayRun"
+        "404":
+          description: Replay run not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "409":
+          description: Replay run cannot start in its current state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-session-replay-runs/{runID}/checkpoint:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - name: runID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: advanceAgentSessionReplayRunCheckpoint
+      tags:
+        - agent-session
+      summary: Persist a stable checkpoint reached by one replay run
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdvanceAgentSessionReplayRunCheckpointRequest"
+      responses:
+        "200":
+          description: Replay run checkpoint advanced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSessionReplayRun"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          description: Replay run not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "409":
+          description: Replay run checkpoint cannot advance in its current state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-session-replay-runs/{runID}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - name: runID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: cancelAgentSessionReplayRun
+      tags:
+        - agent-session
+      summary: Cancel one active replay run
+      responses:
+        "200":
+          description: Replay run canceled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSessionReplayRun"
+        "404":
+          description: Replay run not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "409":
+          description: Replay run cannot cancel in its current state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-session-replay-runs/{runID}/complete:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - name: runID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: completeAgentSessionReplayRun
+      tags:
+        - agent-session
+      summary: Complete a replay run after transport and final-state verification
+      responses:
+        "200":
+          description: Replay run completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSessionReplayRun"
+        "404":
+          description: Replay run not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "409":
+          description: Replay run cannot complete in its current state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-session-replay-runs/{runID}/fail:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - name: runID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: failAgentSessionReplayRun
+      tags:
+        - agent-session
+      summary: Persist an explicit replay runtime or verification failure
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FailAgentSessionReplayRunRequest"
+      responses:
+        "200":
+          description: Replay run failed with diagnostic evidence
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSessionReplayRun"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          description: Replay run not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "409":
+          description: Replay run cannot fail in its current state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/agent-session-replay/transport/verify:
+    post:
+      operationId: verifyAgentSessionReplayTransport
+      tags:
+        - agent-session
+      summary: Verify that the isolated replay transport consumed its complete Cassette
+      responses:
+        "204":
+          description: Replay transport consumed every recorded connection and frame
+        "409":
+          description: Replay transport mismatch or incomplete consumption
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/agent-session-replay/transport/playback:
+    get:
+      operationId: getAgentSessionReplayTransportPlayback
+      tags:
+        - agent-session
+      summary: Read playback timing for the isolated replay transport
+      responses:
+        "200":
+          description: Current replay playback timing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSessionReplayTransportPlayback"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    post:
+      operationId: updateAgentSessionReplayTransportPlayback
+      tags:
+        - agent-session
+      summary: Update playback timing for the isolated replay transport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAgentSessionReplayTransportPlaybackRequest"
+      responses:
+        "200":
+          description: Updated replay playback timing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSessionReplayTransportPlayback"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/agent-sessions:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -3148,6 +3680,8 @@ paths:
           $ref: "#/components/responses/InvalidRequestError"
         "404":
           $ref: "#/components/responses/WorkspaceNotFoundError"
+        "409":
+          $ref: "#/components/responses/TuttiExecutionActiveError"
         "405":
           $ref: "#/components/responses/MethodNotAllowedError"
         "502":
@@ -3211,6 +3745,8 @@ paths:
           $ref: "#/components/responses/InvalidRequestError"
         "404":
           $ref: "#/components/responses/WorkspaceNotFoundError"
+        "409":
+          $ref: "#/components/responses/TuttiExecutionActiveError"
         "405":
           $ref: "#/components/responses/MethodNotAllowedError"
         "502":
@@ -3605,6 +4141,14 @@ paths:
       tags:
         - agent-session
       summary: Get one workspace agent session
+      parameters:
+        - name: projection
+          in: query
+          required: false
+          description: Selects the detail projection. messageHydration preserves the session hierarchy and message cursors used by reconciliation discovery without resolving provider-backed lifecycle capabilities.
+          schema:
+            $ref: "#/components/schemas/WorkspaceAgentSessionDetailProjection"
+            default: full
       responses:
         "200":
           description: Workspace agent session
@@ -3642,8 +4186,234 @@ paths:
           $ref: "#/components/responses/InvalidRequestError"
         "404":
           $ref: "#/components/responses/WorkspaceNotFoundError"
+        "409":
+          $ref: "#/components/responses/TuttiExecutionActiveError"
         "405":
           $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/tutti-executions/{issueID}/cancel-execution:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - name: issueID
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+    post:
+      operationId: cancelTuttiModeExecution
+      tags:
+        - workspace-workflow
+      summary: Stop one active Tutti execution without archiving it
+      responses:
+        "200":
+          description: Tutti execution stopped
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CancelIssueManagerExecutionResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceIssueResourceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/tutti-executions/{issueID}/archive:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - name: issueID
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+    post:
+      operationId: archiveTuttiModeExecution
+      tags:
+        - workspace-workflow
+      summary: Stop and durably archive one Tutti execution
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArchiveTuttiModeExecutionRequest"
+      responses:
+        "200":
+          description: Current durable archive operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TuttiModeArchiveOperation"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceIssueResourceNotFoundError"
+        "409":
+          $ref: "#/components/responses/TuttiModeArchiveConflictError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    get:
+      operationId: getTuttiModeArchiveOperation
+      tags:
+        - workspace-workflow
+      summary: Get the current archive operation for one Tutti execution
+      parameters:
+        - name: operationId
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Current durable archive operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TuttiModeArchiveOperation"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceIssueResourceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/fork:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/AgentSessionID"
+    post:
+      operationId: forkWorkspaceAgentSession
+      tags:
+        - agent-session
+      summary: Fork one workspace agent session at an exact canonical boundary
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForkWorkspaceAgentSessionRequest"
+      responses:
+        "200":
+          description: Terminal workspace agent session fork operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionForkOperationResponse"
+        "202":
+          description: Accepted workspace agent session fork operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionForkOperationResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          description: The source session or requested fork boundary is not forkable. Boundary validation failures keep reason `agent_session_fork_conflict` and include the stable rejection code in `error.params.forkBoundaryReason`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-session-fork-operations/{operationID}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/SessionForkOperationID"
+    get:
+      operationId: getWorkspaceAgentSessionForkOperation
+      tags:
+        - agent-session
+      summary: Get one durable workspace agent session fork operation
+      responses:
+        "200":
+          description: Workspace agent session fork operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionForkOperationResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          description: Agent session fork operation was not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-session-fork-operations/{operationID}/acknowledge:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/SessionForkOperationID"
+    post:
+      operationId: acknowledgeWorkspaceAgentSessionForkOperation
+      tags:
+        - agent-session
+      summary: Acknowledge that a client observed one durable session fork operation
+      description: >
+        Records an explicit client-observed acknowledgement. Reading the
+        operation does not implicitly acknowledge it.
+      responses:
+        "200":
+          description: Acknowledged workspace agent session fork operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionForkOperationResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          description: Agent session fork operation was not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          description: Agent session fork operation cannot be acknowledged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
         "502":
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
@@ -4696,6 +5466,46 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/issues/{issueID}/tutti-mode-review/self:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/IssueID"
+    post:
+      operationId: switchTuttiModeGoalReviewToSelf
+      tags:
+        - workspace
+      summary: Switch a failed independent Tutti Mode Goal Review to self review
+      description: >-
+        Performs the explicit audited fallback for one failed independent
+        reviewer operation. The authenticated local actor is resolved by the
+        daemon and cannot be supplied in the request body.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SwitchTuttiModeGoalReviewToSelfRequest"
+      responses:
+        "200":
+          description: Goal Review switched to self review, or an idempotent replay
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SwitchTuttiModeGoalReviewToSelfResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/TuttiModeGoalReviewNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          $ref: "#/components/responses/TuttiModeGoalReviewConflictError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/files/recent:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -5467,6 +6277,20 @@ components:
       schema:
         type: string
         minLength: 1
+    SessionForkOperationID:
+      name: operationID
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    IssueID:
+      name: issueID
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
     WorkspaceAppID:
       name: appID
       in: path
@@ -5677,6 +6501,25 @@ components:
                   code: invalid_request
                   reason: missing_workspace_id
                   developerMessage: workspace id is required
+    TuttiExecutionActiveError:
+      description: One or more source sessions own a nonterminal Tutti execution
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+          examples:
+            protectedSource:
+              value:
+                error:
+                  code: tutti_execution_active
+                  reason: tutti_execution_active
+                  params:
+                    workspaceId: workspace-1
+                    protectedIssues:
+                      - issueId: issue-1
+                        executionId: execution-1
+                        sourceSessionId: session-1
+                        status: running
     MethodNotAllowedError:
       description: HTTP method is not supported on this route
       content:
@@ -5851,7 +6694,86 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ApiErrorResponse"
+    TuttiModeGoalReviewNotFoundError:
+      description: Tutti Mode execution or Goal Review was not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+          examples:
+            goalReviewNotFound:
+              value:
+                error:
+                  code: tutti_mode_goal_review_not_found
+                  reason: tutti_goal_review_not_found
+    TuttiModeGoalReviewConflictError:
+      description: Goal Review fallback conflicts with current durable state or request history
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+          examples:
+            goalReviewConflict:
+              value:
+                error:
+                  code: tutti_mode_goal_review_conflict
+                  reason: tutti_goal_review_conflict
+    TuttiModeArchiveConflictError:
+      description: Archive request id conflicts with a different durable archive request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+          examples:
+            archiveRequestConflict:
+              value:
+                error:
+                  code: tutti_mode_archive_conflict
+                  reason: tutti_archive_request_conflict
   schemas:
+    SwitchTuttiModeGoalReviewToSelfRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - checkpointId
+        - expectedGraphRevision
+        - requestId
+        - reason
+      properties:
+        checkpointId:
+          type: string
+          minLength: 1
+        expectedGraphRevision:
+          type: integer
+          format: int64
+          minimum: 1
+        requestId:
+          type: string
+          minLength: 1
+        reason:
+          type: string
+          minLength: 1
+    SwitchTuttiModeGoalReviewToSelfResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - executionId
+        - reviewId
+        - reviewMode
+        - replayed
+      properties:
+        executionId:
+          type: string
+          minLength: 1
+        reviewId:
+          type: string
+          minLength: 1
+        reviewMode:
+          type: string
+          enum:
+            - self
+        replayed:
+          type: boolean
     HealthStatusResponse:
       type: object
       additionalProperties: false
@@ -6523,6 +7445,7 @@ components:
             - agent_quick_prompt_not_found
             - agent_quick_prompt_conflict
             - agent_quick_prompt_operation_failed
+            - agent_session_fork_operation_not_found
             - agent_target_not_found
             - model_plan_not_found
             - model_plan_referenced
@@ -6530,6 +7453,12 @@ components:
             - workspace_agent_not_found
             - collaboration_run_not_found
             - automation_rule_not_found
+            - tutti_mode_goal_review_not_found
+            - tutti_mode_goal_review_conflict
+            - tutti_mode_goal_review_operation_failed
+            - tutti_mode_goal_review_service_unavailable
+            - tutti_mode_archive_conflict
+            - tutti_execution_active
         reason:
           type: string
         params:
@@ -9700,6 +10629,11 @@ components:
           type: boolean
         currentValue:
           type: string
+        effectiveValue:
+          type: string
+          description: >-
+            Provider-resolved runtime value. This may differ from currentValue
+            when the current selection inherits a provider default.
         defaultValue:
           type: string
         options:
@@ -10443,14 +11377,29 @@ components:
           $ref: "#/components/schemas/TuttiModeActivationStatus"
         source:
           $ref: "#/components/schemas/TuttiModeActivationSource"
+        effect:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 100
+          description: >-
+            Session-scoped outcome-quality preference captured with this
+            activation revision. Higher values favor stronger models and
+            stronger task verification.
+        speed:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 100
+          description: >-
+            Session-scoped completion-speed preference captured with this
+            activation revision. Higher values favor faster suitable models.
         orchestrationIntensity:
           type: integer
           minimum: 0
           maximum: 100
-          description: >-
-            Session-scoped orchestration intensity captured with this
-            activation revision. Higher values ask the planning agent for
-            finer-grained task decomposition.
+          deprecated: true
+          description: Legacy single-axis alias of effect. New clients use effect and speed.
         createdAtUnixMs:
           type: integer
           format: int64
@@ -10499,14 +11448,30 @@ components:
           $ref: "#/components/schemas/TuttiModeActivationStatus"
         source:
           $ref: "#/components/schemas/TuttiModeActivationSource"
-        orchestrationIntensity:
+        effect:
           type: integer
           nullable: true
           minimum: 0
           maximum: 100
           description: >-
-            Optional orchestration intensity carried with the initial
+            Optional outcome-quality preference carried with the initial
             activation. Omitted uses the daemon default.
+        speed:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 100
+          description: >-
+            Optional completion-speed preference carried with the initial
+            activation. Omitted uses the daemon default.
+        orchestrationIntensity:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 100
+          deprecated: true
+          description: >-
+            Legacy single-axis alias of effect. Ignored when effect is present.
     TuttiModeActivationResponse:
       type: object
       additionalProperties: false
@@ -10529,15 +11494,32 @@ components:
           $ref: "#/components/schemas/TuttiModeActivationStatus"
         source:
           $ref: "#/components/schemas/TuttiModeActivationSource"
-        orchestrationIntensity:
+        effect:
           type: integer
           nullable: true
           minimum: 0
           maximum: 100
           description: >-
-            Optional orchestration intensity persisted with the appended
+            Optional outcome-quality preference persisted with the appended
             activation revision. Omitted keeps the current value, or the
             daemon default for the first revision.
+        speed:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 100
+          description: >-
+            Optional completion-speed preference persisted with the appended
+            activation revision. Omitted keeps the current value, or the
+            daemon default for the first revision.
+        orchestrationIntensity:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 100
+          deprecated: true
+          description: >-
+            Legacy single-axis alias of effect. Ignored when effect is present.
         expectedRevision:
           type: integer
           format: int64
@@ -10574,6 +11556,167 @@ components:
       description: >-
         Per-session durable message change cursor. The upper bound preserves
         exact integer representation in JavaScript clients.
+    WorkspaceAgentSessionDetailProjection:
+      type: string
+      enum:
+        - full
+        - messageHydration
+      description: >-
+        Projection applied to a Session detail response. messageHydration
+        preserves hierarchy and message cursors but leaves provider-backed
+        lifecycle capabilities unresolved.
+    WorkspaceAgentSessionLifecycleCapabilities:
+      type: object
+      additionalProperties: false
+      required:
+        - fork
+        - forkThroughTurn
+      properties:
+        fork:
+          type: boolean
+          description: Whether this exact session can fork its latest settled state.
+        forkThroughTurn:
+          type: boolean
+          description: Whether this exact session can fork through a settled canonical Turn.
+        forkThroughTurnIds:
+          type: array
+          items:
+            type: string
+            minLength: 1
+          description: Canonical Turn ids currently verified against provider-native history.
+        forkThroughTurnIdsKnown:
+          type: boolean
+          description: Whether forkThroughTurnIds is an authoritative provider-history projection.
+    WorkspaceAgentSessionForkThroughTurnPoint:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - turnId
+      properties:
+        type:
+          type: string
+          enum:
+            - throughTurn
+        turnId:
+          type: string
+          minLength: 1
+          description: Exact canonical Turn id included as the final Turn in the fork.
+    WorkspaceAgentSessionForkPoint:
+      oneOf:
+        - $ref: "#/components/schemas/WorkspaceAgentSessionForkThroughTurnPoint"
+      discriminator:
+        propertyName: type
+        mapping:
+          throughTurn: "#/components/schemas/WorkspaceAgentSessionForkThroughTurnPoint"
+    WorkspaceAgentSessionForkLineage:
+      type: object
+      additionalProperties: false
+      required:
+        - sourceAgentSessionId
+        - sourceTurnId
+        - targetTurnId
+        - operationId
+        - forkedAtUnixMs
+      properties:
+        sourceAgentSessionId:
+          type: string
+          minLength: 1
+        sourceTurnId:
+          type: string
+          minLength: 1
+          description: Inclusive canonical Turn boundary in the source Session.
+        targetTurnId:
+          type: string
+          minLength: 1
+          description: Canonical Turn id of that inclusive boundary in the forked Session.
+        operationId:
+          type: string
+          minLength: 1
+        forkedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 1
+    WorkspaceAgentSessionForkOperationStatus:
+      type: string
+      enum:
+        - accepted
+        - committed
+        - failed
+        - unknown
+      description: >-
+        Public durable operation state. accepted collapses the internal
+        prepared, dispatching, and provider-accepted phases.
+    WorkspaceAgentSessionForkOperation:
+      type: object
+      additionalProperties: false
+      required:
+        - operationId
+        - requestId
+        - sourceAgentSessionId
+        - targetAgentSessionId
+        - point
+        - status
+        - session
+        - lineage
+        - error
+      properties:
+        operationId:
+          type: string
+          minLength: 1
+        requestId:
+          type: string
+          minLength: 1
+        sourceAgentSessionId:
+          type: string
+          minLength: 1
+        targetAgentSessionId:
+          type: string
+          minLength: 1
+        point:
+          $ref: "#/components/schemas/WorkspaceAgentSessionForkPoint"
+        status:
+          $ref: "#/components/schemas/WorkspaceAgentSessionForkOperationStatus"
+        session:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentSession"
+          nullable: true
+          description: Complete target Session projection when status is committed.
+        lineage:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentSessionForkLineage"
+          nullable: true
+          description: Durable lineage when status is committed.
+        error:
+          type: string
+          nullable: true
+          description: Durable failure diagnostic for failed or unknown outcomes.
+    WorkspaceAgentSessionForkOperationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - operation
+      properties:
+        operation:
+          $ref: "#/components/schemas/WorkspaceAgentSessionForkOperation"
+    ForkWorkspaceAgentSessionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - targetAgentSessionId
+        - requestId
+        - point
+      properties:
+        targetAgentSessionId:
+          type: string
+          format: uuid
+          description: Caller-stable identity reserved for the forked canonical session.
+        requestId:
+          type: string
+          minLength: 1
+          description: Caller-stable idempotency key for safe retries.
+        point:
+          $ref: "#/components/schemas/WorkspaceAgentSessionForkPoint"
     WorkspaceAgentSession:
       type: object
       additionalProperties: false
@@ -10606,6 +11749,8 @@ components:
         - latestTurn
         - pendingInteractions
         - capabilities
+        - lifecycleCapabilities
+        - forkedFrom
         - usage
         - goal
         - tuttiModeActivation
@@ -10722,6 +11867,18 @@ components:
           description: >-
             Protocol v2. Daemon-issued capability descriptor; clients must
             branch on capabilities, never on provider identity.
+        lifecycleCapabilities:
+          $ref: "#/components/schemas/WorkspaceAgentSessionLifecycleCapabilities"
+          description: >-
+            Exact-session lifecycle capabilities. Clients must use these flags
+            for Session actions and must not infer support from provider identity.
+        forkedFrom:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentSessionForkLineage"
+          nullable: true
+          description: >-
+            Durable provenance for a user-initiated root Session fork. Null for
+            ordinary root Sessions and provider-native child Sessions.
         usage:
           allOf:
             - $ref: "#/components/schemas/WorkspaceAgentUsage"
@@ -10794,7 +11951,20 @@ components:
         - session
         - childSessions
         - turns
+        - projection
+        - lifecycleCapabilitiesProjected
       properties:
+        projection:
+          $ref: "#/components/schemas/WorkspaceAgentSessionDetailProjection"
+        lifecycleCapabilitiesProjected:
+          type: boolean
+          description: >-
+            Whether provider-backed lifecycle capability projection ran for
+            session and childSessions. A full projection reports true even
+            when a provider probe fails closed, because false then means the
+            action is unavailable for this response. When false, projection
+            was intentionally skipped and capability values must not be
+            applied as authoritative.
         session:
           $ref: "#/components/schemas/WorkspaceAgentSession"
         childSessions:
@@ -11774,6 +12944,83 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ExternalAgentImportError"
+    ArchiveTuttiModeExecutionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - requestId
+        - reason
+      properties:
+        requestId:
+          type: string
+          minLength: 1
+        reason:
+          type: string
+          minLength: 1
+    TuttiModeArchiveOperation:
+      type: object
+      additionalProperties: false
+      required:
+        - workspaceId
+        - executionId
+        - issueId
+        - operationId
+        - requestId
+        - status
+        - requestedBy
+        - reason
+        - attemptCount
+        - lastError
+        - createdAtUnixMs
+        - updatedAtUnixMs
+        - completedAtUnixMs
+      properties:
+        workspaceId:
+          type: string
+          minLength: 1
+        executionId:
+          type: string
+          minLength: 1
+        issueId:
+          type: string
+          minLength: 1
+        operationId:
+          type: string
+          minLength: 1
+        requestId:
+          type: string
+          minLength: 1
+        status:
+          type: string
+          enum:
+            - requested
+            - canceling_runs
+            - archiving
+            - completed
+            - failed
+        requestedBy:
+          type: string
+          minLength: 1
+        reason:
+          type: string
+          minLength: 1
+        attemptCount:
+          type: integer
+          minimum: 0
+        lastError:
+          type: string
+        createdAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        updatedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        completedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
     DeleteWorkspaceAgentSessionResponse:
       type: object
       additionalProperties: false
@@ -12009,6 +13256,11 @@ components:
         clientSubmitId:
           type: string
           minLength: 1
+        recordingId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Developer create-session scenario waiting for this root Session.
         submitDiagnostics:
           $ref: "#/components/schemas/AgentSubmitDiagnostics"
         initialContent:
@@ -12064,6 +13316,389 @@ components:
         visible:
           type: boolean
           nullable: true
+    StartAgentSessionRecordingRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - agentTargetId
+      properties:
+        agentTargetId:
+          type: string
+          minLength: 1
+        agentSessionId:
+          type: string
+          minLength: 1
+          nullable: true
+          description: Existing Session selecting continue-session mode. Omit for create-session mode.
+    RenameAgentSessionRecordingRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+    AgentSessionRecordingActivityEventInput:
+      type: object
+      additionalProperties: false
+      required:
+        - eventId
+        - kind
+        - type
+        - occurredAtUnixMs
+      properties:
+        eventId:
+          type: string
+          minLength: 1
+        kind:
+          type: string
+          enum:
+            - intent
+            - effect
+            - direct-stimulus
+        type:
+          type: string
+          minLength: 1
+        correlationId:
+          type: string
+          minLength: 1
+          nullable: true
+        causedByEventId:
+          type: string
+          minLength: 1
+          nullable: true
+        agentSessionId:
+          type: string
+          minLength: 1
+          nullable: true
+        payload:
+          type: object
+          additionalProperties: true
+        occurredAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+    AppendAgentSessionRecordingActivityEventsRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - events
+      properties:
+        events:
+          type: array
+          minItems: 1
+          maxItems: 256
+          items:
+            $ref: "#/components/schemas/AgentSessionRecordingActivityEventInput"
+    AppendAgentSessionRecordingActivityEventsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - acceptedThroughSequence
+      properties:
+        acceptedThroughSequence:
+          type: integer
+          format: int64
+          minimum: 0
+    AgentSessionRecording:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - workspaceId
+        - agentTargetId
+        - mode
+        - status
+        - directory
+        - createdAtUnixMs
+        - updatedAtUnixMs
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: Mutable name stored in the portable Cassette manifest after completion.
+        cassetteId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Immutable Cassette produced by a completed Recording.
+        workspaceId:
+          type: string
+          minLength: 1
+        agentTargetId:
+          type: string
+          minLength: 1
+        mode:
+          type: string
+          enum:
+            - create-session
+            - continue-session
+        rootAgentSessionId:
+          type: string
+          minLength: 1
+          nullable: true
+        status:
+          type: string
+          enum:
+            - preparing
+            - ready
+            - recording
+            - finalizing
+            - complete
+            - failed
+            - canceled
+            - incomplete
+        directory:
+          type: string
+          minLength: 1
+        errorCode:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        createdAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        updatedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+    AgentSessionRecordingListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - recordings
+      properties:
+        recordings:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentSessionRecording"
+    AgentSessionReplayRun:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - cassetteId
+        - status
+        - checkpoint
+        - createdAtUnixMs
+        - updatedAtUnixMs
+      properties:
+        id:
+          type: string
+          format: uuid
+        cassetteId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - starting
+            - running
+            - complete
+            - failed
+            - canceled
+        checkpoint:
+          type: integer
+          format: int64
+          minimum: 0
+        errorCode:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        createdAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        startedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+        completedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+        updatedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+    AgentSessionReplayLaunch:
+      type: object
+      additionalProperties: false
+      required:
+        - run
+        - cassetteDirectory
+      properties:
+        run:
+          $ref: "#/components/schemas/AgentSessionReplayRun"
+        cassetteDirectory:
+          type: string
+          minLength: 1
+    AgentSessionReplayRunListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - runs
+      properties:
+        runs:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentSessionReplayRun"
+    AdvanceAgentSessionReplayRunCheckpointRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - checkpoint
+      properties:
+        checkpoint:
+          type: integer
+          format: int64
+          minimum: 0
+    AgentSessionCassette:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - sourceRecordingId
+        - workspaceId
+        - agentTargetId
+        - rootAgentSessionId
+        - mode
+        - totalBytes
+        - createdAtUnixMs
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        sourceRecordingId:
+          type: string
+          format: uuid
+        workspaceId:
+          type: string
+          minLength: 1
+        agentTargetId:
+          type: string
+          minLength: 1
+        rootAgentSessionId:
+          type: string
+          minLength: 1
+        mode:
+          type: string
+          enum:
+            - create-session
+            - continue-session
+        totalBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        createdAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+    AgentSessionCassetteListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - cassettes
+      properties:
+        cassettes:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentSessionCassette"
+    AgentSessionReplayTransportPlayback:
+      type: object
+      additionalProperties: false
+      required:
+        - drained
+        - paused
+        - playbackElapsedMs
+        - speed
+        - timingMode
+      properties:
+        drained:
+          type: boolean
+        paused:
+          type: boolean
+        playbackElapsedMs:
+          type: number
+          format: double
+          minimum: 0
+        speed:
+          type: number
+          format: double
+          enum:
+            - 0.25
+            - 0.5
+            - 1
+            - 2
+            - 4
+        timingMode:
+          type: string
+          enum:
+            - realtime
+            - fast-forward
+    UpdateAgentSessionReplayTransportPlaybackRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - command
+      properties:
+        command:
+          type: string
+          enum:
+            - set-speed
+            - pause
+            - resume
+            - set-timing-mode
+        speed:
+          type: number
+          format: double
+          enum:
+            - 0.25
+            - 0.5
+            - 1
+            - 2
+            - 4
+        timingMode:
+          type: string
+          enum:
+            - realtime
+            - fast-forward
+    FailAgentSessionReplayRunRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - errorCode
+        - errorMessage
+      properties:
+        checkpoint:
+          type: integer
+          format: int64
+          minimum: 0
+        errorCode:
+          type: string
+          minLength: 1
+        errorMessage:
+          type: string
+          minLength: 1
     WorkspaceAgentRailPlacement:
       type: object
       additionalProperties: false
@@ -13433,6 +15068,27 @@ components:
           type: integer
           minimum: 0
           maximum: 100
+          description: >-
+            Issue-owned decomposition, dependency, review, and retry strength.
+            This legacy v1 field keeps its original meaning and is not the
+            Tutti Mode speed preference.
+        effect:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 100
+          description: >-
+            Optional Tutti Mode outcome-quality preference snapshot. Omitted
+            documents use orchestrationIntensity as the legacy single-axis
+            effect and use the balanced default for speed.
+        speed:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 100
+          description: >-
+            Optional Tutti Mode completion-speed preference snapshot. Omitted
+            documents use the balanced default.
     TuttiModePlanBudget:
       type: object
       additionalProperties: false

@@ -68,7 +68,8 @@ export function useAgentGUIViewModel(
       candidate.composer.promptImagesSupported,
       candidate.composer.queueStatus,
       candidate.composer.queuedPrompts,
-      candidate.composer.tuttiModeOrchestrationIntensity,
+      candidate.composer.tuttiModeEffect,
+      candidate.composer.tuttiModeSpeed,
       candidate.composer.tuttiModeUpdateStatus
     ]
   );
@@ -93,6 +94,7 @@ export function useAgentGUIViewModel(
   const operations = useMemo(
     () => candidate.operations,
     [
+      candidate.operations.forkThroughTurnPendingTurnIds,
       candidate.operations.goalClearNoticeSequence,
       candidate.operations.isDeletingConversation,
       candidate.operations.isDeletingProjectConversations,

@@ -72,7 +72,7 @@ export async function registerIpcHandlers(
   registerComputerUseIpc();
   registerDockPreviewCacheIpc();
   registerDeveloperIpc(deps.preferences, deps.tuttidClient);
-  registerRuntimeIpc(deps.daemonEndpoint, deps.logger);
+  const runtime = registerRuntimeIpc(deps.daemonEndpoint, deps.logger);
   registerUpdateIpc(deps.updateService);
   registerWallpaperIpc();
   registerHostIpc({
@@ -81,5 +81,5 @@ export async function registerIpcHandlers(
     workspaceFileIconCache: deps.workspaceFileIconCache,
     workspaceLaunch: deps.workspaceLaunch
   });
-  return [browserAutomation];
+  return [browserAutomation, runtime];
 }

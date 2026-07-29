@@ -20,6 +20,10 @@ var (
 	ErrGoalConsumerUnavailable           = errors.New("agent goal reconcile consumer is unavailable")
 	ErrGoalGenerationFenceUnavailable    = errors.New("agent goal generation fence consumer is unavailable")
 	ErrRuntimeSessionLivenessUnavailable = errors.New("agent runtime session liveness is unavailable")
+	ErrSessionForkUnsupported            = errors.New("agent session through-turn fork is unsupported")
+	ErrSessionForkInProgress             = errors.New("agent session fork is in progress")
+	ErrSessionForkDeliveryUnknown        = errors.New("agent session fork provider delivery is unknown")
+	ErrSessionForkFailed                 = errors.New("agent session fork failed")
 )
 
 // ProviderError preserves a provider-owned failure across the runtime adapter

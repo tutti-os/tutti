@@ -291,7 +291,8 @@ func claudeSDKResumeCursorFromSession(session Session) map[string]any {
 		return nil
 	}
 	resume := strings.TrimSpace(asString(cursor["resume"]))
-	if resume == "" {
+	providerSessionID := strings.TrimSpace(session.ProviderSessionID)
+	if resume == "" || providerSessionID == "" || resume != providerSessionID {
 		return nil
 	}
 	return clonePayload(cursor)

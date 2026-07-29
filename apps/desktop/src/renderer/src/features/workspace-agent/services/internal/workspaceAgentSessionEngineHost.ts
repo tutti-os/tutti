@@ -5,7 +5,10 @@ import {
   type AgentActivityAdapter,
   type AgentActivitySendInput,
   type AgentSessionEngine,
+  type EngineExternalCommand,
+  type EngineIntent,
   type PlanSubmitDecisionResult,
+  type SessionAcknowledgeForkObservedCommand,
   type SessionActivateCommand,
   type SessionReconcileCommand,
   type TuttiModeActivationUpdateCommand
@@ -26,15 +29,29 @@ export interface WorkspaceAgentSessionEngineHost {
   dispose(): void;
 }
 
+export interface WorkspaceAgentSessionEngineActivityObserver {
+  observeCommand(command: EngineExternalCommand): void;
+  observeIntent(intent: EngineIntent): void;
+}
+
 interface CreateWorkspaceAgentSessionEngineHostInput {
+  activityEventObserver?: WorkspaceAgentSessionEngineActivityObserver;
   activateSession: AgentActivityRuntime["activateSession"];
   cancelTurn(input: {
     agentSessionId: string;
     turnId: string;
     workspaceId: string;
   }): Promise<unknown>;
-  reconcileSession(command: SessionReconcileCommand): Promise<unknown>;
+  reconcileSession(
+    command: SessionReconcileCommand,
+    signal?: AbortSignal
+  ): Promise<unknown>;
   runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
+  takePendingSessionRecording(workspaceId: string): string | null;
+  restorePendingSessionRecording(
+    workspaceId: string,
+    recordingId: string
+  ): void;
   sendInput(input: AgentActivitySendInput): Promise<unknown>;
   submitInteractive: AgentActivityRuntime["submitInteractive"];
   submitPlanDecision(input: {
@@ -57,6 +74,14 @@ interface CreateWorkspaceAgentSessionEngineHostInput {
   workspaceId: string;
 }
 
+interface WorkspaceAgentForkObservationAckClient {
+  acknowledgeWorkspaceAgentSessionForkOperation(
+    workspaceId: string,
+    operationId: string,
+    options: { signal?: AbortSignal }
+  ): Promise<unknown>;
+}
+
 export function executeWorkspaceAgentTuttiModeUpdateCommand(
   input: Pick<
     CreateWorkspaceAgentSessionEngineHostInput,
@@ -70,9 +95,13 @@ export function executeWorkspaceAgentTuttiModeUpdateCommand(
     ...(command.expectedRevision === undefined
       ? {}
       : { expectedRevision: command.expectedRevision }),
-    ...(command.orchestrationIntensity === undefined
+    ...(command.effect === undefined &&
+    command.orchestrationIntensity === undefined
       ? {}
-      : { orchestrationIntensity: command.orchestrationIntensity }),
+      : {
+          effect: command.effect ?? command.orchestrationIntensity
+        }),
+    ...(command.speed === undefined ? {} : { speed: command.speed }),
     signal,
     source: command.source,
     status: command.status,
@@ -80,18 +109,36 @@ export function executeWorkspaceAgentTuttiModeUpdateCommand(
   });
 }
 
+export function executeWorkspaceAgentForkObservedAckCommand(
+  client: WorkspaceAgentForkObservationAckClient,
+  command: SessionAcknowledgeForkObservedCommand,
+  signal?: AbortSignal
+): Promise<unknown> {
+  return client.acknowledgeWorkspaceAgentSessionForkOperation(
+    command.workspaceId,
+    command.operationId,
+    { ...(signal === undefined ? {} : { signal }) }
+  );
+}
+
 export function createWorkspaceAgentSessionEngineHost(
   input: CreateWorkspaceAgentSessionEngineHostInput
 ): WorkspaceAgentSessionEngineHost {
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: input.tuttidClient,
-    runtimeApi: input.runtimeApi
+    runtimeApi: input.runtimeApi,
+    takePendingSessionRecording: input.takePendingSessionRecording,
+    restorePendingSessionRecording: input.restorePendingSessionRecording
   });
   const engine = createAgentSessionEngine({
     clock: { nowUnixMs: () => Date.now() },
     commandPort: {
-      executePlanDecision: (command) =>
-        input.submitPlanDecision({
+      executePlanDecision: (command) => {
+        observeWorkspaceAgentEngineCommand(
+          input.activityEventObserver,
+          command
+        );
+        return input.submitPlanDecision({
           action: command.action,
           agentSessionId: command.agentSessionId,
           idempotencyKey: command.idempotencyKey,
@@ -99,8 +146,13 @@ export function createWorkspaceAgentSessionEngineHost(
           requestId: command.requestId,
           turnId: command.turnId,
           workspaceId: command.workspaceId
-        }),
+        });
+      },
       execute: async (command, options) => {
+        observeWorkspaceAgentEngineCommand(
+          input.activityEventObserver,
+          command
+        );
         switch (command.type) {
           case "attention/readState/read":
             return readDesktopWorkspaceAgentReadState({
@@ -179,6 +231,21 @@ export function createWorkspaceAgentSessionEngineHost(
             });
             return { session };
           }
+          case "session/forkThroughTurn":
+            return adapter.forkSession({
+              requestId: command.requestId,
+              signal: options?.signal,
+              sourceAgentSessionId: command.sourceAgentSessionId,
+              targetAgentSessionId: command.targetAgentSessionId,
+              turnId: command.turnId,
+              workspaceId: command.workspaceId
+            });
+          case "session/ackForkObserved":
+            return executeWorkspaceAgentForkObservedAckCommand(
+              input.tuttidClient,
+              command,
+              options?.signal
+            );
           case "sessions/delete":
             return adapter.deleteSessions({
               agentSessionIds: command.agentSessionIds,
@@ -208,7 +275,7 @@ export function createWorkspaceAgentSessionEngineHost(
             return list;
           }
           case "session/reconcile":
-            return input.reconcileSession(command);
+            return input.reconcileSession(command, options?.signal);
           case "session/unactivate":
             return input.unactivateSession({
               agentSessionId: command.agentSessionId,
@@ -221,6 +288,13 @@ export function createWorkspaceAgentSessionEngineHost(
       origin: AGENT_SESSION_ENGINE_LOCAL_ORIGIN,
       workspaceId: input.workspaceId
     },
+    ...(input.activityEventObserver
+      ? {
+          intentObserver: input.activityEventObserver.observeIntent.bind(
+            input.activityEventObserver
+          )
+        }
+      : {}),
     scheduler: {
       schedule(delayMs, task) {
         const timer = setTimeout(task, delayMs);
@@ -258,6 +332,18 @@ export function createWorkspaceAgentSessionEngineHost(
       engine.dispose();
     }
   };
+}
+
+function observeWorkspaceAgentEngineCommand(
+  observer: WorkspaceAgentSessionEngineActivityObserver | undefined,
+  command: EngineExternalCommand
+): void {
+  try {
+    observer?.observeCommand(command);
+  } catch {
+    // Recording is optional developer instrumentation. It must not block the
+    // command that owns the actual product behavior.
+  }
 }
 
 function activationInput(

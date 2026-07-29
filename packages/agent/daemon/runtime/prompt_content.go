@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 var ErrPromptImageUnsupported = errors.New("agent prompt image input is unsupported")
@@ -18,6 +20,47 @@ var ErrPromptImageUnsupported = errors.New("agent prompt image input is unsuppor
 const clientSubmitUserMessageIDPrefix = "client-submit:user:"
 
 const maxProviderPromptImageBytes int64 = 20 << 20
+
+type canonicalSubmitFactContextKey struct{}
+
+type canonicalSubmitFact struct {
+	clientSubmitID   string
+	messageID        string
+	occurredAtUnixMS int64
+}
+
+func newCanonicalSubmitFact(clientSubmitID string, occurredAtUnixMS int64) (canonicalSubmitFact, error) {
+	clientSubmitID = strings.TrimSpace(clientSubmitID)
+	if clientSubmitID == "" {
+		if occurredAtUnixMS > 0 {
+			return canonicalSubmitFact{}, errors.New("canonical submit occurrence requires a client submit id")
+		}
+		return canonicalSubmitFact{}, nil
+	}
+	if occurredAtUnixMS <= 0 {
+		return canonicalSubmitFact{}, errors.New("canonical submit occurrence time is required")
+	}
+	return canonicalSubmitFact{
+		clientSubmitID:   clientSubmitID,
+		messageID:        userPromptActivityMessageIDFromClientSubmitID(clientSubmitID),
+		occurredAtUnixMS: occurredAtUnixMS,
+	}, nil
+}
+
+func withCanonicalSubmitFact(ctx context.Context, fact canonicalSubmitFact) context.Context {
+	if fact.clientSubmitID == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, canonicalSubmitFactContextKey{}, fact)
+}
+
+func canonicalSubmitFactFromContext(ctx context.Context) canonicalSubmitFact {
+	if ctx == nil {
+		return canonicalSubmitFact{}
+	}
+	fact, _ := ctx.Value(canonicalSubmitFactContextKey{}).(canonicalSubmitFact)
+	return fact
+}
 
 func normalizeRuntimePromptContent(content []PromptContentBlock) []PromptContentBlock {
 	out := make([]PromptContentBlock, 0, len(content))
@@ -195,6 +238,61 @@ func userPromptActivityPayload(content []PromptContentBlock, displayPrompt strin
 		payload["displayPrompt"] = explicitDisplayPrompt
 	}
 	return payload
+}
+
+func newUserPromptActivityEvent(
+	ctx context.Context,
+	session Session,
+	content []PromptContentBlock,
+	explicitDisplayPrompt string,
+	visibleText string,
+	turnID string,
+	extra map[string]any,
+) activityshared.Event {
+	payloadExtra := userPromptActivityPayloadExtraFromExecMetadata(ctx, extra)
+	return newUserPromptActivityEventWithFact(
+		session,
+		content,
+		explicitDisplayPrompt,
+		visibleText,
+		turnID,
+		canonicalSubmitFactFromContext(ctx),
+		payloadExtra,
+	)
+}
+
+func newUserPromptActivityEventWithFact(
+	session Session,
+	content []PromptContentBlock,
+	explicitDisplayPrompt string,
+	visibleText string,
+	turnID string,
+	fact canonicalSubmitFact,
+	extra map[string]any,
+) activityshared.Event {
+	eventID := newID()
+	occurredAtUnixMS := int64(0)
+	if fact.clientSubmitID != "" {
+		eventID = fact.messageID
+		occurredAtUnixMS = fact.occurredAtUnixMS
+		extra = clonePayload(extra)
+		if extra == nil {
+			extra = map[string]any{}
+		}
+		extra["clientSubmitId"] = fact.clientSubmitID
+		extra["messageId"] = fact.messageID
+	}
+	return newTurnActivityEventWithIDAt(
+		session,
+		eventID,
+		EventMessage,
+		turnID,
+		"",
+		RoleUser,
+		visibleText,
+		userPromptActivityPayload(content, explicitDisplayPrompt, extra),
+		occurredAtUnixMS,
+	)
 }
 
 func userPromptActivityPayloadExtraFromExecMetadata(ctx context.Context, extra map[string]any) map[string]any {

@@ -2,14 +2,14 @@ import {
   workspaceAgentSessionStatus,
   type AgentActivityAdapter,
   type AgentActivitySession,
+  type AgentActivitySessionDetailSnapshot,
   type AgentPromptContentBlock
 } from "@tutti-os/agent-activity-core";
 import {
   agentActivityMessageFromTuttidMessage,
   agentActivitySessionDetailFromTuttid as mapAgentActivitySessionDetailFromTuttid,
   agentActivitySessionFromTuttidSession as mapAgentActivitySessionFromTuttidSession,
-  agentActivityTuttiModeActivationFromTuttid,
-  type AgentActivitySessionDetailSnapshot
+  agentActivityTuttiModeActivationFromTuttid
 } from "@tutti-os/agent-activity-tuttid-adapter";
 export {
   agentActivityMessageFromTuttidMessage,
@@ -23,7 +23,12 @@ import type {
   SendWorkspaceAgentSessionInputRequest,
   WorkspaceAgentSession,
   WorkspaceAgentSessionDetailResponse,
+  WorkspaceAgentSessionForkOperation,
   WorkspaceAgentProvider
+} from "@tutti-os/client-tuttid-ts";
+import {
+  isTuttidProtocolError,
+  TuttidProtocolError
 } from "@tutti-os/client-tuttid-ts";
 import type { DesktopRuntimeApi } from "@preload/types";
 import { getActiveLocale } from "../../../i18n/runtime.ts";
@@ -36,6 +41,11 @@ export interface CreateDesktopAgentActivityAdapterInput {
   composerOptionsRequestTimeoutMs?: number;
   tuttidClient: TuttidClient;
   runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
+  takePendingSessionRecording?: (workspaceId: string) => string | null;
+  restorePendingSessionRecording?: (
+    workspaceId: string,
+    recordingId: string
+  ) => void;
 }
 
 const defaultComposerOptionsRequestTimeoutMs = 15_000;
@@ -68,7 +78,9 @@ export function agentActivitySessionDetailFromTuttid(
 export function createDesktopAgentActivityAdapter({
   composerOptionsRequestTimeoutMs = defaultComposerOptionsRequestTimeoutMs,
   tuttidClient,
-  runtimeApi
+  runtimeApi,
+  takePendingSessionRecording,
+  restorePendingSessionRecording
 }: CreateDesktopAgentActivityAdapterInput): AgentActivityAdapter {
   return {
     async listSessions(input) {
@@ -101,7 +113,8 @@ export function createDesktopAgentActivityAdapter({
             beforeVersion: input.beforeVersion,
             order: input.order,
             limit: input.limit
-          }
+          },
+          { signal: input.signal }
         );
         const messages = response.messages.map((message) =>
           agentActivityMessageFromTuttidMessage(input.workspaceId, message)
@@ -195,6 +208,7 @@ export function createDesktopAgentActivityAdapter({
         submitDiagnostics: input.submitDiagnostics,
         workspaceId: input.workspaceId
       });
+      let recordingId: string | null = null;
       try {
         const agentSessionId =
           input.agentSessionId?.trim() || createDesktopAgentActivitySessionId();
@@ -211,9 +225,11 @@ export function createDesktopAgentActivityAdapter({
           }
         });
         const agentTargetId = requiredAgentTargetId(input.agentTargetId);
+        recordingId = takePendingSessionRecording?.(input.workspaceId) ?? null;
         const request: CreateWorkspaceAgentSessionRequest = {
           agentSessionId,
           agentTargetId,
+          ...(recordingId ? { recordingId } : {}),
           ...(input.capabilityRefs?.length
             ? {
                 capabilityRefs: input.capabilityRefs.map(
@@ -230,7 +246,13 @@ export function createDesktopAgentActivityAdapter({
           ...(input.initialTuttiModeActivation
             ? {
                 initialTuttiModeActivation: {
-                  ...input.initialTuttiModeActivation
+                  effect:
+                    input.initialTuttiModeActivation.effect ??
+                    input.initialTuttiModeActivation.orchestrationIntensity ??
+                    null,
+                  source: input.initialTuttiModeActivation.source,
+                  speed: input.initialTuttiModeActivation.speed,
+                  status: input.initialTuttiModeActivation.status
                 }
               }
             : {}),
@@ -273,6 +295,9 @@ export function createDesktopAgentActivityAdapter({
           session
         );
       } catch (error) {
+        if (recordingId) {
+          restorePendingSessionRecording?.(input.workspaceId, recordingId);
+        }
         reportDesktopAgentSubmitTrace(runtimeApi, {
           agentSessionId: input.agentSessionId?.trim() ?? null,
           clientSubmitId: input.clientSubmitId,
@@ -389,9 +414,13 @@ export function createDesktopAgentActivityAdapter({
             ...(input.expectedRevision === undefined
               ? {}
               : { expectedRevision: input.expectedRevision }),
-            ...(input.orchestrationIntensity === undefined
+            ...(input.effect === undefined &&
+            input.orchestrationIntensity === undefined
               ? {}
-              : { orchestrationIntensity: input.orchestrationIntensity }),
+              : {
+                  effect: input.effect ?? input.orchestrationIntensity
+                }),
+            ...(input.speed === undefined ? {} : { speed: input.speed }),
             source: input.source,
             status: input.status
           },
@@ -479,7 +508,157 @@ export function createDesktopAgentActivityAdapter({
         { pinned: input.pinned }
       );
       return agentActivitySessionFromTuttidSession(input.workspaceId, session);
+    },
+    async forkSession(input) {
+      let startedOperation: WorkspaceAgentSessionForkOperation;
+      try {
+        startedOperation = await tuttidClient.forkWorkspaceAgentSession(
+          input.workspaceId,
+          input.sourceAgentSessionId,
+          {
+            point: { type: "throughTurn", turnId: input.turnId },
+            requestId: input.requestId,
+            targetAgentSessionId: input.targetAgentSessionId
+          },
+          { signal: input.signal }
+        );
+      } catch (error) {
+        if (isTuttidProtocolError(error)) {
+          throw sessionForkProtocolError(error);
+        }
+        throw sessionForkDeliveryUnknownError(error);
+      }
+      const operation = await waitForWorkspaceAgentSessionForkOperation(
+        tuttidClient,
+        input.workspaceId,
+        startedOperation,
+        input.signal
+      );
+      const result = agentActivityForkSessionResult(
+        input.workspaceId,
+        operation
+      );
+      if (result.status === "committed") {
+        // A committed, unacknowledged operation recovered by boundary owns the
+        // real child identity. The Engine must adopt that durable request and
+        // target instead of manufacturing the caller's new target locally.
+        return result;
+      }
+      return {
+        ...result,
+        // Unknown recovery has no canonical child to adopt. Keep transport
+        // correlation scoped to the current Engine record while operationId
+        // identifies the original durable attempt.
+        requestId: input.requestId,
+        sourceAgentSessionId: input.sourceAgentSessionId,
+        targetAgentSessionId: input.targetAgentSessionId,
+        turnId: input.turnId
+      };
     }
+  };
+}
+
+async function waitForWorkspaceAgentSessionForkOperation(
+  client: TuttidClient,
+  workspaceId: string,
+  startedOperation: WorkspaceAgentSessionForkOperation,
+  signal?: AbortSignal
+): Promise<WorkspaceAgentSessionForkOperation> {
+  let operation = startedOperation;
+  while (operation.status === "accepted") {
+    if (signal?.aborted) {
+      throw sessionForkDeliveryUnknownError(
+        signal.reason ?? new Error("session fork polling aborted")
+      );
+    }
+    try {
+      operation = await client.getWorkspaceAgentSessionForkOperation(
+        workspaceId,
+        operation.operationId,
+        { signal }
+      );
+    } catch (error) {
+      throw sessionForkDeliveryUnknownError(error);
+    }
+    if (operation.status === "accepted") {
+      try {
+        await waitForSessionForkPoll(signal);
+      } catch (error) {
+        throw sessionForkDeliveryUnknownError(error);
+      }
+    }
+  }
+  return operation;
+}
+
+function waitForSessionForkPoll(signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason ?? new Error("session fork polling aborted"));
+      return;
+    }
+    const timeout = setTimeout(finish, 500);
+    function finish(): void {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    }
+    function abort(): void {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", abort);
+      reject(signal?.reason ?? new Error("session fork polling aborted"));
+    }
+    signal?.addEventListener("abort", abort, { once: true });
+  });
+}
+
+function sessionForkDeliveryUnknownError(error: unknown): Error {
+  return Object.assign(
+    new Error(
+      error instanceof Error
+        ? error.message
+        : "Unable to reconcile session fork operation."
+    ),
+    { reason: "agent_session_fork_delivery_unknown" }
+  );
+}
+
+function sessionForkProtocolError(
+  error: TuttidProtocolError
+): TuttidProtocolError {
+  const boundaryReason = error.params.forkBoundaryReason;
+  if (
+    typeof boundaryReason !== "string" ||
+    !boundaryReason.trim() ||
+    error.reason !== "agent_session_fork_conflict"
+  ) {
+    return error;
+  }
+  return new TuttidProtocolError({
+    code: error.code,
+    correlationId: error.correlationId,
+    developerMessage: error.developerMessage,
+    params: error.params,
+    reason: boundaryReason.trim(),
+    retryable: error.retryable,
+    statusCode: error.statusCode
+  });
+}
+
+function agentActivityForkSessionResult(
+  workspaceId: string,
+  operation: WorkspaceAgentSessionForkOperation
+) {
+  return {
+    error: operation.error,
+    operationId: operation.operationId,
+    requestId: operation.requestId,
+    session: operation.session
+      ? agentActivitySessionFromTuttidSession(workspaceId, operation.session)
+      : null,
+    sourceAgentSessionId: operation.sourceAgentSessionId,
+    status: operation.status,
+    targetAgentSessionId: operation.targetAgentSessionId,
+    turnId: operation.point.turnId
   };
 }
 

@@ -40,6 +40,73 @@ type CanonicalSubmitClaimStore interface {
 	DeleteSubmitClaim(context.Context, string, string, string) (bool, error)
 }
 
+// SessionForkStore is an independent durable saga boundary. Provider dispatch
+// must never share a transaction with canonical history cloning.
+type SessionForkStore interface {
+	SessionForkTurnIdentityStore
+	GetSessionForkSource(context.Context, string, string) (storesqlite.Session, bool, error)
+	CheckSessionForkThroughTurn(context.Context, string, string, string) (storesqlite.SessionForkBoundary, bool, error)
+	PrepareSessionFork(context.Context, storesqlite.SessionForkPrepare) (storesqlite.SessionForkOperation, bool, error)
+	GetSessionForkOperation(context.Context, string, string) (storesqlite.SessionForkOperation, bool, error)
+	GetSessionForkOperationByRequest(context.Context, string, string) (storesqlite.SessionForkOperation, bool, error)
+	GetUnknownSessionForkOperation(context.Context, string, string, string, string) (storesqlite.SessionForkOperation, bool, error)
+	GetBlockingSessionForkOperation(context.Context, string, string, string, string) (storesqlite.SessionForkOperation, bool, error)
+	MarkSessionForkDispatching(context.Context, string, string, int64) (storesqlite.SessionForkOperation, bool, error)
+	RetryUnknownSessionFork(context.Context, string, string, int64) (storesqlite.SessionForkOperation, bool, error)
+	FailPreparedSessionFork(context.Context, string, string, string, int64) (storesqlite.SessionForkOperation, bool, error)
+	RecordSessionForkProviderResult(context.Context, storesqlite.SessionForkProviderResult) (storesqlite.SessionForkOperation, bool, error)
+	CommitSessionFork(context.Context, string, string, int64) (storesqlite.SessionForkCommitResult, error)
+	AcknowledgeSessionForkOperation(context.Context, string, string, int64) (storesqlite.SessionForkOperation, bool, bool, error)
+	GetSessionForkLineage(context.Context, string, string) (storesqlite.SessionForkLineage, bool, error)
+}
+
+type SessionForkTurnIdentityStore interface {
+	ListSessionForkTurnIdentities(
+		context.Context,
+		string,
+		string,
+	) ([]storesqlite.SessionForkTurnIdentity, error)
+}
+
+// SessionForkRecoveryStore is workspace-global because startup recovery must
+// enumerate operations without guessing product-owned workspace identities.
+type SessionForkRecoveryStore interface {
+	ListRecoverableSessionForkOperationsPage(
+		context.Context,
+		storesqlite.SessionForkRecoveryCursor,
+		int,
+	) ([]storesqlite.SessionForkOperation, error)
+}
+
+// SessionForkRuntime resolves and invokes the exact provider adapter selected
+// by a source runtime. Adapters without through-Turn support report it as
+// false, so Host never dispatches an emulated provider fork.
+type SessionForkRuntime interface {
+	ResolveSessionFork(context.Context, ProviderRuntimeSession) (SessionForkDriverDescriptor, error)
+	ForkSession(context.Context, RuntimeSessionForkInput) (RuntimeSessionForkResult, error)
+}
+
+// SessionForkContextPolicy decides whether host-owned session context can be
+// transferred safely and returns the exact target context to freeze at
+// prepare. Product-specific resource ownership (for example worktrees) stays
+// out of the provider adapter and the canonical store.
+type SessionForkContextPolicy interface {
+	PrepareSessionForkTargetContext(
+		context.Context,
+		storesqlite.Session,
+		ProviderRuntimeSession,
+	) (SessionForkTargetContext, error)
+}
+
+// SessionForkProviderStateBinder transfers only the accepted provider child
+// state needed by the target runtime namespace. A failure is delivery-unknown:
+// the provider mutation may already exist. Only a driver with an attested
+// deterministic target identity may reconcile it by replaying the same UUID.
+type SessionForkProviderStateBinder interface {
+	SupportsSessionForkProviderStateBinding(provider string) bool
+	BindSessionForkProviderState(context.Context, SessionForkProviderStateBinding) error
+}
+
 // CanonicalStore composes the session, turn, and submit-claim facts shared by
 // lifecycle commands. Runtime-operation and goal saga stores stay separate so
 // adapters cannot accidentally substitute one durability boundary for another.
@@ -66,6 +133,15 @@ type SessionBatchManagementStore interface {
 	PlanClearSessions(context.Context, string) (storesqlite.DeleteSessionsPlan, error)
 	PlanDeleteSessions(context.Context, storesqlite.DeleteSessionsBatchInput) (storesqlite.DeleteSessionsPlan, error)
 	DeleteSessionsBatch(context.Context, storesqlite.DeleteSessionsBatchInput) (storesqlite.DeleteSessionsBatchResult, error)
+}
+
+// SessionDeletionGuard lets a host adapter enforce product policy around the
+// provider-neutral canonical closure. Admission is authoritative and occurs
+// before runtime or canonical side effects. Reporting is observational and
+// cannot change the Host command result.
+type SessionDeletionGuard interface {
+	AdmitDeleteSessions(context.Context, DeleteSessionsPlan) error
+	ReportDeleteSessions(context.Context, DeleteSessionsReport)
 }
 
 // SessionPurgeStore is the narrow permanent-removal boundary. Retention and

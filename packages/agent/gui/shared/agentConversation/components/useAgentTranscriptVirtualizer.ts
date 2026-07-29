@@ -53,10 +53,7 @@ export function useAgentTranscriptVirtualizer({
     [agentSessionId, turnGroups]
   );
   const rowVirtualizer = useVirtualizer<HTMLElement, Element>({
-    anchorTo:
-      shouldVirtualize && (hasMovingTurnDisclosure || !followsEnd)
-        ? "start"
-        : "end",
+    anchorTo: shouldVirtualize && hasMovingTurnDisclosure ? "start" : "end",
     count: turnGroups.length,
     directDomUpdates: true,
     directDomUpdatesMode: "transform",

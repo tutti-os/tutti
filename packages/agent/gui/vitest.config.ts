@@ -1,7 +1,21 @@
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 const rootDir = fileURLToPath(new URL(".", import.meta.url));
+const domTypeScriptTests = [
+  "agent-gui/agentGuiNode/agentGuiHeroCarouselScene.spec.ts",
+  "agent-gui/agentGuiNode/agentGuiNodeViewConversation.spec.ts",
+  "agent-gui/agentGuiNode/agentRichText/agentFileMentionExtension.spec.ts",
+  "agent-gui/agentGuiNode/composer/composerPortalTarget.spec.ts",
+  "agent-gui/agentGuiNode/controller/useAgentGUIConversationSelectionController.spec.ts",
+  "agent-gui/agentGuiNode/controller/useAgentGUISubmitInteractionActions.spec.ts",
+  "agent-gui/agentGuiNode/model/agentGuiComposerGate.spec.ts",
+  "agent-message-center/messageCenterFilterPreferences.spec.ts",
+  "build/cssSafeSvgDataUrl.spec.ts",
+  "shared/agentConversation/lib/copyImageToClipboard.spec.ts",
+  "workbench/contribution.test.ts",
+  "workbench/sessionActions.spec.ts"
+];
 
 export default defineConfig({
   resolve: {
@@ -13,7 +27,28 @@ export default defineConfig({
     }
   },
   test: {
-    environment: "jsdom",
-    setupFiles: ["./vitest.setup.ts"]
+    maxWorkers: 4,
+    pool: "threads",
+    projects: [
+      {
+        extends: true,
+        test: {
+          environment: "node",
+          exclude: [...configDefaults.exclude, ...domTypeScriptTests],
+          include: ["**/*.{spec,test}.ts"],
+          name: "node",
+          setupFiles: ["./vitest.shared.setup.ts"]
+        }
+      },
+      {
+        extends: true,
+        test: {
+          environment: "jsdom",
+          include: ["**/*.{spec,test}.tsx", ...domTypeScriptTests],
+          name: "dom",
+          setupFiles: ["./vitest.shared.setup.ts", "./vitest.setup.ts"]
+        }
+      }
+    ]
   }
 });

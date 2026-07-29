@@ -187,7 +187,8 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 	}
 	execResult, err := h.runtime.Exec(ctx, RuntimeExecInput{
 		WorkspaceID: workspaceID, AgentSessionID: session.ID, TurnID: turnID,
-		ClientSubmitID: input.ClientSubmitID, CapabilityRefs: append([]CapabilityReference(nil), input.CapabilityRefs...), Content: content,
+		ClientSubmitID: claim.ClientSubmitID, CanonicalSubmitOccurredAtUnixMS: claim.CreatedAtUnixMS,
+		CapabilityRefs: append([]CapabilityReference(nil), input.CapabilityRefs...), Content: content,
 		DisplayPrompt: displayPrompt, InitialTitle: initialTitle, InitialTitleBase: session.Title,
 		Metadata: cloneMap(metadata), TuttiModeSnapshot: input.TuttiModeSnapshot,
 	})
@@ -207,7 +208,8 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 	if reporter, ok := h.runtime.(RuntimeSubmitProvenanceReporter); ok {
 		if err := reporter.DurablyReportSubmitProvenance(ctx, RuntimeSubmitProvenanceInput{
 			WorkspaceID: workspaceID, AgentSessionID: session.ID, TurnID: turnID,
-			ClientSubmitID: input.ClientSubmitID, Content: content, DisplayPrompt: displayPrompt,
+			ClientSubmitID: claim.ClientSubmitID, CanonicalSubmitOccurredAtUnixMS: claim.CreatedAtUnixMS,
+			Content: content, DisplayPrompt: displayPrompt,
 		}); err != nil {
 			// Provider acceptance is already possible. Keep the runtime, canonical
 			// session, and prepared claim intact so a retry cannot dispatch twice.
@@ -430,8 +432,9 @@ func (h *Host) SendInput(ctx context.Context, ref SessionRef, input SendInput) (
 		}
 		return h.runtime.Exec(ctx, RuntimeExecInput{
 			WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID,
-			TurnID: turnID, ClientSubmitID: input.ClientSubmitID,
-			CapabilityRefs: append([]CapabilityReference(nil), input.CapabilityRefs...), Content: content,
+			TurnID: turnID, ClientSubmitID: claim.ClientSubmitID,
+			CanonicalSubmitOccurredAtUnixMS: claim.CreatedAtUnixMS,
+			CapabilityRefs:                  append([]CapabilityReference(nil), input.CapabilityRefs...), Content: content,
 			DisplayPrompt: displayPrompt, InitialTitle: initialTitle, InitialTitleBase: session.Title,
 			Guidance: input.Guidance, Metadata: cloneMap(metadata), TuttiModeSnapshot: input.TuttiModeSnapshot,
 		})
@@ -458,7 +461,8 @@ func (h *Host) SendInput(ctx context.Context, ref SessionRef, input SendInput) (
 	if reporter, ok := h.runtime.(RuntimeSubmitProvenanceReporter); ok {
 		if err := reporter.DurablyReportSubmitProvenance(ctx, RuntimeSubmitProvenanceInput{
 			WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID, TurnID: turnID,
-			ClientSubmitID: input.ClientSubmitID, Content: content, DisplayPrompt: displayPrompt, Guidance: input.Guidance,
+			ClientSubmitID: claim.ClientSubmitID, CanonicalSubmitOccurredAtUnixMS: claim.CreatedAtUnixMS,
+			Content: content, DisplayPrompt: displayPrompt, Guidance: input.Guidance,
 		}); err != nil {
 			claimPending = false
 			return SendInputResult{}, errors.Join(ErrSubmitDeliveryUnknown, err)

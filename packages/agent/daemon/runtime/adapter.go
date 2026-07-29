@@ -12,6 +12,7 @@ var ErrLiveSessionBusy = errors.New("agent live session is busy")
 type ProcessSpec struct {
 	Provider           string
 	AgentSessionID     string
+	RootAgentSessionID string
 	RoomID             string
 	CWD                string
 	Command            []string
@@ -74,6 +75,13 @@ type Adapter interface {
 	Close(context.Context, Session) error
 	Exec(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) ([]activityshared.Event, error)
 	Cancel(context.Context, Session, string) ([]activityshared.Event, error)
+}
+
+// SessionForkAdapter is an optional provider-native capability. Providers that
+// cannot prove an exact fork boundary do not implement it.
+type SessionForkAdapter interface {
+	ForkCapabilities(context.Context, Session) (SessionForkCapabilities, error)
+	Fork(context.Context, SessionForkInput) (SessionForkResult, error)
 }
 
 // TargetedCancelAdapter maps canonical root/child targets onto provider-native

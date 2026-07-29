@@ -15,6 +15,10 @@ const packageManifest = JSON.parse(
     exports: Record<string, unknown>;
   };
 };
+const packageRootSource = readFileSync(
+  resolve(process.cwd(), "index.ts"),
+  "utf8"
+);
 
 describe("Agent GUI declaration build groups", () => {
   it("cover every runtime entry exactly once", () => {
@@ -47,6 +51,49 @@ describe("Agent GUI declaration build groups", () => {
       types: "./dist/conversation-rail-runtime.d.ts",
       import: "./dist/conversation-rail-runtime.js"
     });
+  });
+
+  it("builds and publishes the headless conversation rail controller", () => {
+    expect(agentGUIBuildEntries["conversation-rail-controller"]).toBe(
+      "agentConversationRailController.ts"
+    );
+    expect(
+      packageManifest.publishConfig.exports["./conversation-rail-controller"]
+    ).toEqual({
+      types: "./dist/conversation-rail-controller.d.ts",
+      import: "./dist/conversation-rail-controller.js"
+    });
+  });
+
+  it("builds and publishes the headless conversation message controller", () => {
+    expect(agentGUIBuildEntries["conversation-message-controller"]).toBe(
+      "agentConversationMessageController.ts"
+    );
+    expect(
+      packageManifest.publishConfig.exports["./conversation-message-controller"]
+    ).toEqual({
+      types: "./dist/conversation-message-controller.d.ts",
+      import: "./dist/conversation-message-controller.js"
+    });
+  });
+
+  it("keeps conversation rail seams off the package root", () => {
+    expect(packageRootSource).not.toContain(
+      'from "./agentConversationRailController"'
+    );
+    expect(packageRootSource).not.toContain(
+      'from "./agentConversationRailRuntime"'
+    );
+    expect(packageRootSource).not.toContain(
+      'from "./agentConversationMessageController"'
+    );
+  });
+
+  it("keeps the workspace query cache package-internal", () => {
+    expect(agentGUIBuildEntries).not.toHaveProperty("workspace-query-cache");
+    expect(
+      packageManifest.publishConfig.exports["./workspace-query-cache"]
+    ).toBeUndefined();
   });
 
   it("builds and publishes the DOM-free conversation rail projection", () => {

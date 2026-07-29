@@ -22,6 +22,7 @@ export type ConfigurableClaudeQuery = {
 export class SessionConfiguration {
   readonly settings: SidecarSessionSettings;
   private configOptions: SidecarConfigOption[] = [];
+  private effectiveModel = "";
   private pendingFlagSettings: PendingFlagSettings = {};
   private readonly getQuery: () => ConfigurableClaudeQuery | undefined;
   private readonly testDriver: boolean;
@@ -121,9 +122,27 @@ export class SessionConfiguration {
         category: "model",
         type: "select",
         currentValue: currentModel || "default",
+        ...(this.effectiveModel ? { effectiveValue: this.effectiveModel } : {}),
         options: modelOptions
       }
     ];
+  }
+
+  applyRuntimeModel(model: string): boolean {
+    const effectiveModel = stringValue(model);
+    if (
+      !effectiveModel ||
+      effectiveModel.toLowerCase() === "default" ||
+      effectiveModel === this.effectiveModel
+    ) {
+      return false;
+    }
+    this.effectiveModel = effectiveModel;
+    this.updateModelConfigOption((option) => ({
+      ...option,
+      effectiveValue: effectiveModel
+    }));
+    return true;
   }
 
   sessionStatePayload(): Record<string, unknown> {
@@ -164,6 +183,15 @@ export class SessionConfiguration {
   private async applyModel(model: string): Promise<void> {
     const resolvedModel = this.resolveModelOptionValue(model);
     this.settings.model = resolvedModel;
+    this.effectiveModel = "";
+    this.updateModelConfigOption((option) => {
+      const next = {
+        ...option,
+        currentValue: resolvedModel || "default"
+      };
+      delete next.effectiveValue;
+      return next;
+    });
     const query = this.getQuery();
     if (this.testDriver || !query) {
       return;
@@ -178,7 +206,6 @@ export class SessionConfiguration {
         ? undefined
         : resolvedModel
     );
-    this.updateConfigOptionCurrentValue("model", resolvedModel || "default");
   }
 
   private async applyEffort(effort: string): Promise<void> {
@@ -219,9 +246,11 @@ export class SessionConfiguration {
     return matched?.value ?? requested;
   }
 
-  private updateConfigOptionCurrentValue(id: string, value: string): void {
+  private updateModelConfigOption(
+    update: (option: SidecarConfigOption) => SidecarConfigOption
+  ): void {
     this.configOptions = this.configOptions.map((option) =>
-      option.id === id ? { ...option, currentValue: value } : option
+      option.id === "model" ? update(option) : option
     );
   }
 

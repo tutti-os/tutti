@@ -31,6 +31,39 @@ func TestClaudeCodeSDKAdapterMapsSessionTitleUpdated(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeSDKAdapterPreservesResolvedModelDescriptor(t *testing.T) {
+	adapterSession := &claudeSDKAdapterSession{
+		liveState: newClaudeSDKLiveState(),
+	}
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession.applySessionPayload(&session, map[string]any{
+		"model": "default",
+		"configOptions": []any{map[string]any{
+			"id":             "model",
+			"currentValue":   "default",
+			"effectiveValue": "claude-opus-4-8",
+			"options": []any{
+				map[string]any{"name": "Default", "value": "default"},
+				map[string]any{"name": "Opus 4.8", "value": "opus"},
+			},
+		}},
+	})
+
+	configOptions, ok := claudeSDKRuntimeContext(
+		session,
+		adapterSession,
+	)["configOptions"].([]map[string]any)
+	if !ok || len(configOptions) == 0 {
+		t.Fatal("runtime config options empty")
+	}
+	if got := asString(configOptions[0]["effectiveValue"]); got != "claude-opus-4-8" {
+		t.Fatalf("effective model = %q, want claude-opus-4-8", got)
+	}
+	if got := asString(configOptions[0]["currentValue"]); got != "default" {
+		t.Fatalf("current model = %q, want inherited default", got)
+	}
+}
+
 func TestClaudeCodeSDKAdapterMirrorsGoalSlashPromptIntoRuntimeContext(t *testing.T) {
 	t.Parallel()
 

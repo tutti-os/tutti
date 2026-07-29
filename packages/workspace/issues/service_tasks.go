@@ -78,6 +78,9 @@ func (s Service) CreateTasks(ctx context.Context, input CreateTasksInput) ([]Tas
 	if err != nil {
 		return nil, err
 	}
+	if err := RejectManagedIssueMutation(issue); err != nil {
+		return nil, err
+	}
 	tasks, err := s.buildTasks(issue, actorUserID, input.Tasks)
 	if err != nil {
 		return nil, err
@@ -169,6 +172,9 @@ func (s Service) UpdateTask(ctx context.Context, input UpdateTaskInput) (Task, e
 	}
 	issue, err := store.GetIssue(ctx, workspaceID, issueID)
 	if err != nil {
+		return Task{}, err
+	}
+	if err := RejectManagedIssueMutation(issue); err != nil {
 		return Task{}, err
 	}
 	task, err := store.GetTask(ctx, workspaceID, issueID, taskID)
@@ -335,6 +341,9 @@ func (s Service) DeleteTask(ctx context.Context, workspaceID string, issueID str
 	}
 	issue, err := store.GetIssue(ctx, workspaceID, issueID)
 	if err != nil {
+		return false, err
+	}
+	if err := RejectManagedIssueMutation(issue); err != nil {
 		return false, err
 	}
 	removed, err := store.DeleteTask(ctx, workspaceID, issueID, taskID, actorUserID)

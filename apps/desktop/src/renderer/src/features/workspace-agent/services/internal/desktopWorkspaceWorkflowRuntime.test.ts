@@ -6,7 +6,56 @@ import type {
   WorkspaceWorkflowSnapshot,
   WorkspaceWorkflowUpdatedEventV1
 } from "@tutti-os/client-tuttid-ts";
-import { createDesktopTuttiModePlanReviewRuntime } from "./desktopWorkspaceWorkflowRuntime.ts";
+import {
+  createDesktopTuttiModePlanReviewRuntime as createRuntimeUnderTest,
+  type DesktopTuttiModePlanReviewRuntimeInput
+} from "./desktopWorkspaceWorkflowRuntime.ts";
+
+type TestRuntimeInput = Omit<
+  DesktopTuttiModePlanReviewRuntimeInput,
+  "composerOptionsRuntime"
+> & {
+  composerOptionsRuntime?: DesktopTuttiModePlanReviewRuntimeInput["composerOptionsRuntime"];
+};
+
+function createDesktopTuttiModePlanReviewRuntime(
+  input: TestRuntimeInput
+): ReturnType<typeof createRuntimeUnderTest> {
+  return createRuntimeUnderTest({
+    ...input,
+    composerOptionsRuntime: input.composerOptionsRuntime ?? {
+      async getComposerOptions() {
+        throw new Error("composer options are not used by this test");
+      }
+    }
+  });
+}
+
+interface AgentModelCatalogInvalidatedEvent {
+  id: string;
+  version: 1;
+  topic: "agent.model.catalog.invalidated";
+  emittedAt: string;
+  payload: {
+    providers: readonly string[];
+    occurredAtUnixMs: number;
+  };
+}
+
+interface AgentModelConfigurationChangedEvent {
+  id: string;
+  version: 1;
+  topic: "agent.model.configuration.changed";
+  emittedAt: string;
+  scope?: { workspaceId?: string };
+  payload: {
+    workspaceId: string;
+    agentTargetIds: readonly string[];
+    defaultModels: Record<string, string>;
+    resetComposerModel: boolean;
+    occurredAtUnixMs: number;
+  };
+}
 
 const snapshot: WorkspaceWorkflowSnapshot = {
   workflow: {
@@ -211,6 +260,21 @@ test("desktop workflow runtime pulls pending state and forwards user decisions",
 
 test("desktop workflow runtime builds agent-scoped assignment option catalogs", async () => {
   const runtime = createDesktopTuttiModePlanReviewRuntime({
+    composerOptionsRuntime: {
+      async getComposerOptions(input) {
+        assert.equal(input.provider, "codex");
+        assert.equal(input.agentTargetId, "workspace-agent:openrouter");
+        return {
+          provider: "codex",
+          models: [{ value: "gpt-5.4", label: "GPT-5.4" }],
+          permissionConfig: {
+            configurable: true,
+            modes: [{ id: "auto", label: "Auto", semantic: "auto" }]
+          },
+          reasoningEfforts: [{ value: "high", label: "High" }]
+        } as never;
+      }
+    },
     tuttidClient: {
       async listPendingWorkspaceWorkflows() {
         return [];
@@ -323,27 +387,6 @@ test("desktop workflow runtime builds agent-scoped assignment option catalogs", 
           ]
         } as never;
       },
-      async getAgentProviderComposerOptions(
-        provider: string,
-        request?: { agentTargetId?: string }
-      ) {
-        assert.equal(provider, "codex");
-        assert.equal(request?.agentTargetId, "workspace-agent:openrouter");
-        return {
-          modelConfig: {
-            configurable: true,
-            options: [{ id: "gpt", value: "gpt-5.4", label: "GPT-5.4" }]
-          },
-          permissionConfig: {
-            configurable: true,
-            modes: [{ id: "auto", label: "Auto", semantic: "auto" }]
-          },
-          reasoningConfig: {
-            configurable: true,
-            options: [{ id: "high", value: "high", label: "High" }]
-          }
-        } as never;
-      },
       async listModelPlans(workspaceId: string) {
         assert.equal(workspaceId, "workspace-1");
         return {
@@ -393,12 +436,16 @@ test("desktop workflow runtime builds agent-scoped assignment option catalogs", 
     workspaceId: "workspace-1",
     agentTargetId: "workspace-agent:openrouter"
   });
-  assert.deepEqual(detail.models, ["gpt-5.4"]);
+  assert.deepEqual(detail.models, [{ value: "gpt-5.4", label: "GPT-5.4" }]);
   assert.deepEqual(detail.modelPlans, [
-    { modelPlanId: "plan-openai", label: "OpenAI plan", models: ["gpt-5.4"] }
+    {
+      modelPlanId: "plan-openai",
+      label: "OpenAI plan",
+      models: [{ value: "gpt-5.4", label: "GPT-5.4" }]
+    }
   ]);
   assert.deepEqual(detail.permissionModes, [{ id: "auto", label: "Auto" }]);
-  assert.deepEqual(detail.reasoningEfforts, ["high"]);
+  assert.deepEqual(detail.reasoningEfforts, [{ value: "high", label: "High" }]);
 
   const unknown = await runtime.assignmentOptions!.loadAgentOptions({
     workspaceId: "workspace-1",
@@ -421,6 +468,10 @@ function createRecordingEventStreamClient(): {
   subscribedScopes: ReadonlyMap<string, unknown>;
   emitWorkflowEvent: (event: WorkspaceWorkflowUpdatedEventV1) => void;
   emitActivityEvent: (event: AgentActivityUpdatedEventV1) => void;
+  emitModelCatalogEvent: (event: AgentModelCatalogInvalidatedEvent) => void;
+  emitModelConfigurationEvent: (
+    event: AgentModelConfigurationChangedEvent
+  ) => void;
 } {
   let connectCount = 0;
   const subscribedScopes = new Map<string, unknown>();
@@ -458,9 +509,158 @@ function createRecordingEventStreamClient(): {
           | ((event: AgentActivityUpdatedEventV1) => void)
           | undefined
       )?.(event);
+    },
+    emitModelCatalogEvent: (event) => {
+      (
+        listenersByTopic.get("agent.model.catalog.invalidated") as
+          | ((event: AgentModelCatalogInvalidatedEvent) => void)
+          | undefined
+      )?.(event);
+    },
+    emitModelConfigurationEvent: (event) => {
+      (
+        listenersByTopic.get("agent.model.configuration.changed") as
+          | ((event: AgentModelConfigurationChangedEvent) => void)
+          | undefined
+      )?.(event);
     }
   };
 }
+
+test("assignment option cache deduplicates loads and fences invalidated results", async () => {
+  const stream = createRecordingEventStreamClient();
+  let composerLoadCount = 0;
+  const composerOptions = (model: string) => ({
+    provider: "codex",
+    models: [{ value: model, label: model.toUpperCase() }],
+    permissionConfig: {
+      configurable: true,
+      modes: [{ id: "auto", label: "Auto", semantic: "auto" }]
+    },
+    reasoningEfforts: [{ value: "high", label: "High" }]
+  });
+  let resolveFirstComposerLoad:
+    | ((value: ReturnType<typeof composerOptions>) => void)
+    | undefined;
+  let markFirstComposerLoadStarted: (() => void) | undefined;
+  const firstComposerLoadStarted = new Promise<void>((resolve) => {
+    markFirstComposerLoadStarted = resolve;
+  });
+  const firstComposerLoad = new Promise<ReturnType<typeof composerOptions>>(
+    (resolve) => {
+      resolveFirstComposerLoad = resolve;
+    }
+  );
+  const runtime = createDesktopTuttiModePlanReviewRuntime({
+    composerOptionsRuntime: {
+      async getComposerOptions() {
+        composerLoadCount += 1;
+        if (composerLoadCount === 1) {
+          markFirstComposerLoadStarted?.();
+          return firstComposerLoad as never;
+        }
+        return composerOptions(`gpt-${composerLoadCount}`) as never;
+      }
+    },
+    tuttidClient: {
+      async listAgentTargets() {
+        return {
+          defaultAgentTargetId: "codex",
+          targets: [
+            {
+              id: "codex",
+              provider: "codex",
+              launchRef: { type: "builtin", value: "codex" },
+              name: "Codex",
+              enabled: true,
+              source: "system",
+              sortOrder: 1,
+              createdAtUnixMs: 1,
+              updatedAtUnixMs: 1
+            }
+          ]
+        } as never;
+      },
+      async listWorkspaceAgents() {
+        return { agents: [] } as never;
+      },
+      async listModelPlans() {
+        return { plans: [] } as never;
+      }
+    } as never,
+    eventStreamClient: stream.eventStreamClient
+  });
+  const invalidations: unknown[] = [];
+  runtime.subscribe("workspace-1", (update) => invalidations.push(update));
+
+  const loadInput = {
+    workspaceId: "workspace-1",
+    agentTargetId: "codex"
+  };
+  const first = runtime.assignmentOptions!.loadAgentOptions(loadInput);
+  const duplicate = runtime.assignmentOptions!.loadAgentOptions(loadInput);
+  await firstComposerLoadStarted;
+  assert.equal(composerLoadCount, 1);
+
+  stream.emitModelConfigurationEvent({
+    id: "model-configuration-1",
+    version: 1,
+    topic: "agent.model.configuration.changed",
+    emittedAt: "2026-07-28T00:00:00.000Z",
+    scope: { workspaceId: "workspace-1" },
+    payload: {
+      workspaceId: "workspace-1",
+      agentTargetIds: ["codex"],
+      defaultModels: { codex: "gpt-2" },
+      resetComposerModel: false,
+      occurredAtUnixMs: 1
+    }
+  });
+  const afterInvalidation =
+    runtime.assignmentOptions!.loadAgentOptions(loadInput);
+  resolveFirstComposerLoad?.(composerOptions("stale"));
+
+  const results = await Promise.all([first, duplicate, afterInvalidation]);
+  assert.equal(composerLoadCount, 2);
+  for (const result of results) {
+    assert.deepEqual(result.models, [{ value: "gpt-2", label: "GPT-2" }]);
+  }
+  assert.deepEqual(
+    runtime.assignmentOptions!.readAgentOptions?.(loadInput)?.models,
+    [{ value: "gpt-2", label: "GPT-2" }]
+  );
+  assert.deepEqual(invalidations, [
+    {
+      kind: "assignment_options_invalidated",
+      workspaceId: "workspace-1",
+      agentTargetIds: ["codex"]
+    }
+  ]);
+
+  await runtime.assignmentOptions!.loadAgentOptions(loadInput);
+  assert.equal(composerLoadCount, 2, "fresh detail should be reused");
+
+  stream.emitModelCatalogEvent({
+    id: "model-catalog-1",
+    version: 1,
+    topic: "agent.model.catalog.invalidated",
+    emittedAt: "2026-07-28T00:01:00.000Z",
+    payload: {
+      providers: ["codex"],
+      occurredAtUnixMs: 2
+    }
+  });
+  assert.deepEqual(
+    runtime.assignmentOptions!.readAgentOptions?.(loadInput)?.models,
+    [{ value: "gpt-2", label: "GPT-2" }],
+    "stale data remains readable while the refresh is pending"
+  );
+  assert.deepEqual(
+    (await runtime.assignmentOptions!.loadAgentOptions(loadInput)).models,
+    [{ value: "gpt-3", label: "GPT-3" }]
+  );
+  assert.equal(composerLoadCount, 3);
+});
 
 test("desktop workflow runtime scopes workflow events to the workspace", async () => {
   const stream = createRecordingEventStreamClient();
@@ -506,6 +706,10 @@ test("desktop workflow runtime scopes workflow events to the workspace", async (
   assert.deepEqual(stream.subscribedScopes.get("agent.activity.updated"), {
     workspaceId: "workspace-1"
   });
+  assert.deepEqual(
+    stream.subscribedScopes.get("agent.model.configuration.changed"),
+    { workspaceId: "workspace-1" }
+  );
   assert.deepEqual(updates, [
     {
       kind: "workflow_updated",
@@ -619,7 +823,8 @@ test("plan issue source tolerates the daemon omitting empty dependency arrays", 
           issue: {
             issueId: "tutti-mode-plan-1",
             topicId: "default",
-            title: "Plan issue"
+            title: "Plan issue",
+            dispatchPaused: true
           },
           tasks: [
             // No dependencyTaskIds field at all — the exact daemon shape.
@@ -660,6 +865,7 @@ test("plan issue source tolerates the daemon omitting empty dependency arrays", 
   assert.equal(issue.workflowId, "workflow-1");
   assert.equal(issue.sourceTurnId, "turn-1");
   assert.equal(issue.issueId, "tutti-mode-plan-1");
+  assert.equal(issue.dispatchPaused, true);
   assert.deepEqual(
     issue.tasks.map((task) => task.dependencyTaskIds),
     [[], ["task-1"]]
@@ -712,6 +918,26 @@ test("plan issue source surfaces a durably failed create_issue operation", async
     sourceTurnId: "turn-1",
     errorMessage: "issue manager argument is invalid"
   });
+});
+
+test("plan issue source stops execution through the Tutti-specific contract", async () => {
+  const calls: unknown[] = [];
+  const runtime = createDesktopTuttiModePlanReviewRuntime({
+    tuttidClient: {
+      async cancelTuttiModeExecution(workspaceId: string, issueId: string) {
+        calls.push([workspaceId, issueId]);
+        return { canceledRunCount: 2 };
+      }
+    } as never,
+    eventStreamClient: null
+  });
+
+  await runtime.planIssues!.cancelExecution({
+    workspaceId: "workspace-1",
+    issueId: "tutti-mode-plan-1"
+  });
+
+  assert.deepEqual(calls, [["workspace-1", "tutti-mode-plan-1"]]);
 });
 
 test("desktop workflow runtime invalidates current scopes on every connected state", async () => {

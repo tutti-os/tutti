@@ -40,6 +40,7 @@ func newAgentStore(db *sql.DB) *agentstore.Store {
 			legacyIDLocalClaudeCode: agenttargetbiz.IDLocalClaudeCode,
 		},
 		TargetIDBackfillByProvider: defaultTargetIDBackfillByProvider(),
+		TransactionParticipant:     tuttiModeSourceActivityParticipant{},
 	})
 }
 

@@ -62,8 +62,11 @@ export function useAgentGUIControllerActions(
   const setTuttiModeActive = useStableControllerEventCallback(
     actions.setTuttiModeActive
   );
-  const setTuttiModeOrchestrationIntensity = useStableControllerEventCallback(
-    actions.setTuttiModeOrchestrationIntensity
+  const setTuttiModeEffect = useStableControllerEventCallback(
+    actions.setTuttiModeEffect
+  );
+  const setTuttiModeSpeed = useStableControllerEventCallback(
+    actions.setTuttiModeSpeed
   );
   const retryTuttiModeActivation = useStableControllerEventCallback(
     actions.retryTuttiModeActivation
@@ -99,6 +102,12 @@ export function useAgentGUIControllerActions(
   );
   const renameConversation = useStableControllerEventCallback(
     actions.renameConversation
+  );
+  const forkConversationThroughTurn = useStableControllerEventCallback(
+    actions.forkConversationThroughTurn
+  );
+  const openForkSourceConversation = useStableControllerEventCallback(
+    actions.openForkSourceConversation
   );
   const requestDeleteConversation = useStableControllerEventCallback(
     actions.requestDeleteConversation
@@ -136,7 +145,8 @@ export function useAgentGUIControllerActions(
       updateComposerSettings,
       retryComposerOptions,
       setTuttiModeActive,
-      setTuttiModeOrchestrationIntensity,
+      setTuttiModeEffect,
+      setTuttiModeSpeed,
       retryTuttiModeActivation,
       updatePlanIssueBudgetPreset,
       sendQueuedPromptNext,
@@ -150,6 +160,8 @@ export function useAgentGUIControllerActions(
       toggleConversationPinned,
       markConversationUnread,
       renameConversation,
+      forkConversationThroughTurn,
+      openForkSourceConversation,
       requestDeleteConversation,
       retryActivation,
       continueInNewConversation,
@@ -173,6 +185,8 @@ export function useAgentGUIControllerActions(
       toggleProjectPinned,
       removeQueuedPrompt,
       renameConversation,
+      forkConversationThroughTurn,
+      openForkSourceConversation,
       requestDeleteConversation,
       retryActivation,
       selectConversation,
@@ -188,7 +202,8 @@ export function useAgentGUIControllerActions(
       updateComposerSettings,
       retryComposerOptions,
       setTuttiModeActive,
-      setTuttiModeOrchestrationIntensity,
+      setTuttiModeEffect,
+      setTuttiModeSpeed,
       retryTuttiModeActivation,
       updatePlanIssueBudgetPreset,
       updateConversationFilter,

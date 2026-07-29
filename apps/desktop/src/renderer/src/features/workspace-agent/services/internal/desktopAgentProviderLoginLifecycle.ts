@@ -9,7 +9,7 @@ import {
   AgentAnalyticsErrorCode,
   agentAnalyticsErrorFields,
   agentAnalyticsSuccessFields
-} from "../../../analytics/reporters/agent-error-fields.ts";
+} from "../../agentAnalyticsError.ts";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import type { AgentProviderActionOrigin } from "../agentProviderStatusService.interface";
 import type { AgentProviderTerminalCommandHandle } from "../agentProviderStatusService.interface";

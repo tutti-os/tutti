@@ -350,6 +350,7 @@ export function mapAgentTargetPresentationsToAgents(
       ...(target.maskIconUrl ? { maskIconUrl: target.maskIconUrl } : {}),
       ...(target.heroImageUrl ? { heroImageUrl: target.heroImageUrl } : {}),
       availability: target.availability,
+      ownership: "self" as const,
       provider: target.provider as AgentGUIProvider,
       ...(target.launchRefType === "agent_extension"
         ? { setupKind: "target_runtime" as const }

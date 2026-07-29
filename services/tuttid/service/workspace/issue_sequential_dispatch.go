@@ -14,7 +14,7 @@ import (
 // Keep automatic parallelism finite even when a plan contains many independent
 // roots. The limit is workspace-wide across Issue runs; in-flight work is
 // counted before every dispatch pass.
-const maxWorkspaceParallelIssueRuns = 4
+const maxWorkspaceParallelIssueRuns = workspaceissues.MaxWorkspaceParallelRuns
 
 // claimEligibleIssueRunsLocked advances the Issue's execution frontier and
 // returns durable launch claims; the caller holds the Issue mutation lock.
@@ -30,7 +30,10 @@ func (s IssueManagerService) claimEligibleIssueRunsLocked(ctx context.Context, w
 		return nil
 	}
 	detail, err := s.domainService().GetIssueDetail(ctx, workspaceID, issueID)
-	if err != nil || (!detail.Issue.SequentialExecution && !detail.Issue.ParallelExecution) || detail.Issue.DispatchPaused {
+	if err != nil ||
+		detail.Issue.PlanningSource == workspaceissues.PlanningSourceTuttiModePlan ||
+		(!detail.Issue.SequentialExecution && !detail.Issue.ParallelExecution) ||
+		detail.Issue.DispatchPaused {
 		return nil
 	}
 	if detail.Issue.Budget.Status != workspaceissues.BudgetStatusActive {
@@ -65,7 +68,11 @@ func (s IssueManagerService) claimEligibleIssueRunsLocked(ctx context.Context, w
 		s.markIssueBudgetSoftLimited(ctx, detail.Issue)
 		return nil
 	}
-	concurrentSlots := min(maxWorkspaceParallelIssueRuns-len(running), budgetSlots)
+	concurrentSlots := workspaceissues.IssueAutomaticRunAdmissionSlots(
+		detail.Issue,
+		len(running),
+		activeIssueRuns,
+	)
 	if detail.Issue.ParallelExecution && concurrentSlots <= 0 {
 		return nil
 	}
@@ -83,18 +90,7 @@ func (s IssueManagerService) claimEligibleIssueRunsLocked(ctx context.Context, w
 	launches := make([]IssueRunLaunch, 0)
 	launchedConcurrent := 0
 	for _, task := range tasks {
-		if task.Status != workspaceissues.StatusNotStarted || strings.TrimSpace(task.AgentTargetID) == "" {
-			continue
-		}
-		ready := true
-		for _, dependencyID := range task.DependencyTaskIDs {
-			dependency, ok := byID[dependencyID]
-			if !ok || dependency.Status != workspaceissues.StatusCompleted || dependency.AcceptanceState != workspaceissues.AcceptanceUserAccepted {
-				ready = false
-				break
-			}
-		}
-		if !ready {
+		if !workspaceissues.IssueTaskEligibleForRun(task, byID) {
 			continue
 		}
 		if detail.Issue.SequentialExecution {
@@ -211,6 +207,7 @@ func (s IssueManagerService) claimIssueTaskRunLocked(
 	}
 	return IssueRunLaunch{
 		WorkspaceID:        issue.WorkspaceID,
+		ClientSubmitID:     workspaceissues.IssueRunClientSubmitID(run.RunID),
 		AgentSessionID:     agentSessionID,
 		AgentTargetID:      task.AgentTargetID,
 		RunID:              run.RunID,
@@ -231,46 +228,97 @@ func (s IssueManagerService) claimIssueTaskRunLocked(
 
 func (s IssueManagerService) launchClaimedIssueRuns(ctx context.Context, launches []IssueRunLaunch) {
 	for _, launch := range launches {
-		gate := s.runLaunchGate()
-		if !gate.begin(launch.WorkspaceID, launch.RunID) {
-			gate.clear(launch.WorkspaceID, launch.RunID)
-			_, _ = s.CompleteRun(ctx, launch.WorkspaceID, launch.IssueID, launch.TaskID, launch.RunID, CompleteIssueManagerRunInput{
-				Status: string(workspaceissues.StatusCanceled),
-			})
-			continue
-		}
-		decision := s.issueRunLaunchDecision(ctx, launch)
-		if decision != issueRunLaunch {
-			gate.finish(launch.WorkspaceID, launch.RunID)
-			if decision == issueRunCancelClaim {
+		s.deliverIssueRunLaunch(ctx, launch, issueRunLaunchDeliveryOutcomes{
+			onGateBusy: func() {
+				s.runLaunchGate().clear(launch.WorkspaceID, launch.RunID)
 				_, _ = s.CompleteRun(ctx, launch.WorkspaceID, launch.IssueID, launch.TaskID, launch.RunID, CompleteIssueManagerRunInput{
 					Status: string(workspaceissues.StatusCanceled),
 				})
-			}
-			continue
-		}
-		var err error
-		if launch.WorktreeBase != "" {
-			_, _, err = s.createIssueTaskRunWorktree(ctx, launch.WorktreeBase, launch.IssueID, launch.TaskID, launch.RunID)
-		}
-		if err == nil {
-			err = s.RunLauncher.Launch(ctx, launch)
-		}
-		cancelRequested := gate.finish(launch.WorkspaceID, launch.RunID)
-		if err == nil {
-			if cancelRequested {
-				s.cancelIssueRunAfterLaunch(ctx, launch)
-			}
-			continue
-		}
-		_, _ = s.CompleteRun(ctx, launch.WorkspaceID, launch.IssueID, launch.TaskID, launch.RunID, CompleteIssueManagerRunInput{
-			Status:       string(workspaceissues.StatusFailed),
-			ErrorMessage: err.Error(),
+			},
+			onRejected: func(decision issueRunLaunchDecision) {
+				if decision == issueRunCancelClaim {
+					_, _ = s.CompleteRun(ctx, launch.WorkspaceID, launch.IssueID, launch.TaskID, launch.RunID, CompleteIssueManagerRunInput{
+						Status: string(workspaceissues.StatusCanceled),
+					})
+				}
+			},
+			onFailure: func(err error) {
+				_, _ = s.CompleteRun(ctx, launch.WorkspaceID, launch.IssueID, launch.TaskID, launch.RunID, CompleteIssueManagerRunInput{
+					Status:       string(workspaceissues.StatusFailed),
+					ErrorMessage: err.Error(),
+				})
+			},
 		})
 	}
 }
 
+type issueRunLaunchDeliveryOutcomes struct {
+	onGateBusy  func()
+	onRejected  func(issueRunLaunchDecision)
+	onFailure   func(error)
+	onDelivered func()
+}
+
+// deliverIssueRunLaunch is the single deep delivery seam for generic and
+// Tutti-owned Run claims. Claim persistence and terminal outcome policy stay
+// strategy-specific; gate fencing, durable revalidation, worktree creation,
+// Agent delivery, and post-launch cancellation are shared.
+func (s IssueManagerService) deliverIssueRunLaunch(
+	ctx context.Context,
+	launch IssueRunLaunch,
+	outcomes issueRunLaunchDeliveryOutcomes,
+) {
+	gate := s.runLaunchGate()
+	if !gate.begin(launch.WorkspaceID, launch.RunID) {
+		if outcomes.onGateBusy != nil {
+			outcomes.onGateBusy()
+		}
+		return
+	}
+	decision := s.issueRunLaunchDecision(ctx, launch)
+	if decision != issueRunLaunch {
+		gate.finish(launch.WorkspaceID, launch.RunID)
+		if outcomes.onRejected != nil {
+			outcomes.onRejected(decision)
+		}
+		return
+	}
+	var err error
+	if launch.WorktreeBase != "" {
+		_, _, err = s.createIssueTaskRunWorktree(
+			ctx,
+			launch.WorktreeBase,
+			launch.IssueID,
+			launch.TaskID,
+			launch.RunID,
+		)
+	}
+	if err == nil {
+		err = s.RunLauncher.Launch(ctx, launch)
+	}
+	if err != nil {
+		if outcomes.onFailure != nil {
+			outcomes.onFailure(err)
+		}
+		cancelRequested := gate.finish(launch.WorkspaceID, launch.RunID)
+		if cancelRequested {
+			s.cancelIssueRunAfterLaunch(ctx, launch)
+		}
+		return
+	}
+	if outcomes.onDelivered != nil {
+		outcomes.onDelivered()
+	}
+	cancelRequested := gate.finish(launch.WorkspaceID, launch.RunID)
+	if cancelRequested {
+		s.cancelIssueRunAfterLaunch(ctx, launch)
+	}
+}
+
 func (s IssueManagerService) cancelIssueRunAfterLaunch(ctx context.Context, launch IssueRunLaunch) {
+	if s.prepareAndRecoverTuttiModeRunCancelCompensation(ctx, launch) {
+		return
+	}
 	if s.RunCancellationRequester == nil {
 		s.enqueueWorkspaceRunReconcile(launch.WorkspaceID)
 		return
@@ -279,6 +327,7 @@ func (s IssueManagerService) cancelIssueRunAfterLaunch(ctx context.Context, laun
 		WorkspaceID:    launch.WorkspaceID,
 		AgentSessionID: launch.AgentSessionID,
 		RunID:          launch.RunID,
+		ClientSubmitID: launch.ClientSubmitID,
 	})
 	if err != nil {
 		s.enqueueWorkspaceRunReconcile(launch.WorkspaceID)
@@ -335,6 +384,21 @@ func (s IssueManagerService) issueRunLaunchDecision(ctx context.Context, launch 
 	return issueRunLaunch
 }
 
+func (s IssueManagerService) issueRunIsTerminal(
+	ctx context.Context,
+	launch IssueRunLaunch,
+) (bool, error) {
+	unlockIssue := s.MutationLocks.Lock(launch.WorkspaceID, launch.IssueID)
+	defer unlockIssue()
+	run, err := s.domainService().GetRunDetail(
+		ctx, launch.WorkspaceID, launch.IssueID, launch.TaskID, launch.RunID,
+	)
+	if err != nil {
+		return false, err
+	}
+	return run.Run.Status != workspaceissues.StatusRunning, nil
+}
+
 func issueTaskPrompt(issue workspaceissues.Issue, task workspaceissues.Task, executionDirectory string, worktreeBase string, worktreeBranch string, dependencyOutputs []issueTaskDependencyOutput) string {
 	prompt := fmt.Sprintf(`Execute this Issue task and report a concise result with validation evidence.
 
@@ -373,7 +437,26 @@ Isolation: your working directory is a dedicated git worktree of %s on branch %s
 Dependency outputs: these prerequisite tasks ran in isolated worktrees, so their results are NOT in your working tree yet. Merge each branch below (same repository, e.g. `+"`git merge <branch>`"+`) and resolve any overlaps before building on their results:
 %s`, strings.Join(lines, "\n"))
 	}
+	if issue.PlanningSource == workspaceissues.PlanningSourceTuttiModePlan {
+		prompt += fmt.Sprintf(`
+
+Tutti effect preference: %d/100. %s`,
+			issue.ExecutionProfile.ReasoningIntensity,
+			tuttiEffectValidationGuidance(issue.ExecutionProfile.ReasoningIntensity),
+		)
+	}
 	return prompt
+}
+
+func tuttiEffectValidationGuidance(effect int) string {
+	switch {
+	case effect <= 33:
+		return "Run at least one focused check that directly covers this task, and report the evidence."
+	case effect <= 66:
+		return "Run the relevant tests plus an integration check when applicable, and report the evidence."
+	default:
+		return "Run broad relevant tests, cover an edge or variant case, perform a final review, and report the evidence."
+	}
 }
 
 func firstNonEmptyText(values ...string) string {

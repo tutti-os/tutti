@@ -117,6 +117,7 @@ func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentS
 		if err := s.validateSessionModelAgainstRuntimeSnapshot(
 			ctx,
 			strings.TrimSpace(workspaceID),
+			provider,
 			runtimeContext,
 			strings.TrimSpace(*settings.Model),
 		); err != nil {
@@ -156,5 +157,12 @@ func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentS
 	if err != nil {
 		return Session{}, err
 	}
-	return s.projectHostSessionResult(ctx, result.Canonical, result.Session, result.Live, result.Live)
+	return s.projectHostSessionResult(
+		ctx,
+		result.Canonical,
+		result.Session,
+		result.Live,
+		result.Live,
+		true,
+	)
 }

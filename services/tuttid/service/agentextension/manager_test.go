@@ -244,6 +244,76 @@ func TestManagerReconcileSnapshotsDevelopmentLocalPackage(t *testing.T) {
 	}
 }
 
+func TestManagerRestoreActiveRegistersCachedInstallationWithoutNetwork(t *testing.T) {
+	sourceDir := t.TempDir()
+	if err := extractPackage(testPackageZIP(t), sourceDir); err != nil {
+		t.Fatal(err)
+	}
+	stateDir := t.TempDir()
+	installationStore := agentextensiondata.NewFileInstallationStore(stateDir)
+	seedManager := Manager{
+		Installations: installationStore,
+		Store:         &targetStoreStub{targets: map[string]agenttargetbiz.Target{}},
+		Sources: []tuttitypes.AgentExtensionSource{{
+			Key: "gemini", LocalPackageDir: sourceDir, Enabled: true,
+		}},
+	}
+	if errs := seedManager.Reconcile(context.Background()); len(errs) != 0 {
+		t.Fatalf("seed Reconcile() errors = %v", errs)
+	}
+
+	requestCount := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requestCount++
+	}))
+	defer server.Close()
+	targets := &targetStoreStub{targets: map[string]agenttargetbiz.Target{}}
+	manager := Manager{
+		Installations: installationStore,
+		Store:         targets,
+		Client:        server.Client(),
+		Sources: []tuttitypes.AgentExtensionSource{{
+			Key: "gemini", ReleaseIndexURL: server.URL + "/versions.json", Enabled: true,
+		}},
+	}
+
+	requiresSynchronousReconcile, errs := manager.RestoreActive(context.Background())
+	if len(errs) != 0 {
+		t.Fatalf("RestoreActive() errors = %v", errs)
+	}
+	if requiresSynchronousReconcile {
+		t.Fatal("RestoreActive() unexpectedly requires a synchronous reconcile")
+	}
+	if requestCount != 0 {
+		t.Fatalf("RestoreActive() network requests = %d, want 0", requestCount)
+	}
+	if target := targets.targets["extension:gemini"]; target.Provider != "acp:gemini" {
+		t.Fatalf("restored target = %#v", target)
+	}
+}
+
+func TestManagerRestoreActiveRequiresSynchronousReconcileWithoutCachedInstallation(t *testing.T) {
+	targets := &targetStoreStub{targets: map[string]agenttargetbiz.Target{}}
+	manager := Manager{
+		Installations: agentextensiondata.NewFileInstallationStore(t.TempDir()),
+		Store:         targets,
+		Sources: []tuttitypes.AgentExtensionSource{{
+			Key: "gemini", Enabled: true,
+		}},
+	}
+
+	requiresSynchronousReconcile, errs := manager.RestoreActive(context.Background())
+	if len(errs) != 0 {
+		t.Fatalf("RestoreActive() errors = %v", errs)
+	}
+	if !requiresSynchronousReconcile {
+		t.Fatal("RestoreActive() did not require a synchronous reconcile")
+	}
+	if len(targets.targets) != 0 {
+		t.Fatalf("RestoreActive() targets = %#v, want none", targets.targets)
+	}
+}
+
 func TestManagerResolveRuntimeUsesSignedUserSearchPath(t *testing.T) {
 	homeDir := t.TempDir()
 	binDir := filepath.Join(homeDir, ".kimi-code", "bin")
@@ -436,7 +506,7 @@ func TestManagerInstallAtomicallyReplacesDifferentExistingVersionBytes(t *testin
 	}
 }
 
-func TestManagerReconcileUsesDesktopAgentExtensionFeatureFlag(t *testing.T) {
+func TestManagerStartupAndPreferenceReconcileUseDesktopAgentExtensionFeatureFlag(t *testing.T) {
 	sourceDir := t.TempDir()
 	if err := extractPackage(testPackageZIP(t), sourceDir); err != nil {
 		t.Fatal(err)
@@ -454,8 +524,12 @@ func TestManagerReconcileUsesDesktopAgentExtensionFeatureFlag(t *testing.T) {
 		}},
 	}
 
-	if errs := manager.Reconcile(context.Background()); len(errs) != 0 {
-		t.Fatalf("disabled Reconcile() errors = %v", errs)
+	requiresSynchronousReconcile, errs := manager.RestoreActive(context.Background())
+	if len(errs) != 0 {
+		t.Fatalf("disabled RestoreActive() errors = %v", errs)
+	}
+	if requiresSynchronousReconcile {
+		t.Fatal("disabled RestoreActive() unexpectedly requires a synchronous reconcile")
 	}
 	if _, ok := store.targets["extension:gemini"]; ok {
 		t.Fatal("disabled source target was not removed")
@@ -524,6 +598,43 @@ func TestValidateComposerProfileAcceptsDeclarativeSkillRoots(t *testing.T) {
 	profile.Skills.Roots[0].Path = "../outside"
 	if err := validateComposerProfile(profile); err == nil {
 		t.Fatal("validateComposerProfile() error = nil, want unsafe path rejection")
+	}
+}
+
+func TestValidateComposerProfileAcceptsDeclarativeRuntimePrep(t *testing.T) {
+	var profile ComposerProfile
+	if err := json.Unmarshal([]byte(`{
+		"schemaVersion":"tutti.agent.composer.v1",
+		"runtimePrep":{
+			"instructionsFile":"AGENTS.md",
+			"home":{
+				"envVar":"HERMES_HOME",
+				"dirName":"hermes",
+				"sourceEnvVar":"HERMES_HOME",
+				"sourceDefaultRel":".hermes",
+				"copyFiles":["config.yaml","auth.json",".env"],
+				"configFile":"config.yaml",
+				"configFormat":"yaml",
+				"externalDirsKey":["skills","external_dirs"],
+				"userHomeSkillDir":"skills",
+				"includeSkillRoots":true,
+				"includeUserHomeDir":true
+			}
+		}
+	}`), &profile); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateComposerProfile(profile); err != nil {
+		t.Fatalf("validateComposerProfile() error = %v", err)
+	}
+	profile.RuntimePrep.Home.EnvVar = "Hermes Home"
+	if err := validateComposerProfile(profile); err == nil {
+		t.Fatal("validateComposerProfile() error = nil, want unsafe env rejection")
+	}
+	profile.RuntimePrep.Home.EnvVar = "HERMES_HOME"
+	profile.RuntimePrep.Home.CopyFiles[0] = "../config.yaml"
+	if err := validateComposerProfile(profile); err == nil {
+		t.Fatal("validateComposerProfile() error = nil, want unsafe copy file rejection")
 	}
 }
 

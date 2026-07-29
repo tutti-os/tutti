@@ -29,11 +29,12 @@
     "./provider-icons": "./provider-icons.ts",
     "./agentGuiSessionProviderIconUrls": "./agentGuiSessionProviderIconUrls.ts",
     "./workspace-agent-generated-files": "./shared/workspaceAgentGeneratedFiles.ts",
+    "./conversation-message-controller": "./agentConversationMessageController.ts",
+    "./conversation-rail-controller": "./agentConversationRailController.ts",
     "./conversation-rail-runtime": "./agentConversationRailRuntime.ts",
     "./conversation-rail-projection": "./conversationRailProjection.ts",
     "./conversation-projection": "./conversationProjection.ts",
     "./composer-projection": "./composerProjection.ts",
-    "./workspace-query-cache": "./shared/query/workspaceQueryCache.ts",
     "./i18n": "./i18n/index.ts",
     "./workbench": "./workbench/index.ts",
     "./workbench/contribution": "./workbench/contribution.ts",
@@ -58,7 +59,7 @@
   },
   "scripts": {
     "build": "tsup --config tsup.config.ts && tsup --config tsup.dts.config.ts && node ../../../tools/scripts/copy-package-assets.mjs app/renderer/agentactivity.css dist/app/renderer/agentactivity.css app/renderer/assets/icons dist/app/renderer/assets/icons",
-    "test": "vitest run --environment jsdom --maxWorkers=3",
+    "test": "vitest run",
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
@@ -219,6 +220,14 @@
         "types": "./dist/workspace-agent-generated-files.d.ts",
         "import": "./dist/workspace-agent-generated-files.js"
       },
+      "./conversation-message-controller": {
+        "types": "./dist/conversation-message-controller.d.ts",
+        "import": "./dist/conversation-message-controller.js"
+      },
+      "./conversation-rail-controller": {
+        "types": "./dist/conversation-rail-controller.d.ts",
+        "import": "./dist/conversation-rail-controller.js"
+      },
       "./conversation-rail-runtime": {
         "types": "./dist/conversation-rail-runtime.d.ts",
         "import": "./dist/conversation-rail-runtime.js"
@@ -234,10 +243,6 @@
       "./composer-projection": {
         "types": "./dist/composer-projection.d.ts",
         "import": "./dist/composer-projection.js"
-      },
-      "./workspace-query-cache": {
-        "types": "./dist/workspace-query-cache.d.ts",
-        "import": "./dist/workspace-query-cache.js"
       },
       "./i18n": {
         "types": "./dist/i18n/index.d.ts",
@@ -344,6 +349,12 @@
         "workspace-agent-generated-files": [
           "./dist/workspace-agent-generated-files.d.ts"
         ],
+        "conversation-message-controller": [
+          "./dist/conversation-message-controller.d.ts"
+        ],
+        "conversation-rail-controller": [
+          "./dist/conversation-rail-controller.d.ts"
+        ],
         "conversation-rail-runtime": [
           "./dist/conversation-rail-runtime.d.ts"
         ],
@@ -355,9 +366,6 @@
         ],
         "composer-projection": [
           "./dist/composer-projection.d.ts"
-        ],
-        "workspace-query-cache": [
-          "./dist/workspace-query-cache.d.ts"
         ],
         "i18n": [
           "./dist/i18n/index.d.ts"

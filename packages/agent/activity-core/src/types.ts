@@ -1,4 +1,7 @@
-import type { AgentActivityComposerModelConfiguration } from "./composerModelConfiguration.types.ts";
+import type {
+  AgentActivityComposerOptions,
+  AgentActivityComposerOptionsLoadStatus
+} from "./composerOptions.types.ts";
 import type {
   AgentActivityDurableMessage,
   AgentActivityMessage,
@@ -6,6 +9,7 @@ import type {
 } from "./message.types.ts";
 import type { AgentActivitySessionMessageWindow } from "./messageWindow.types.ts";
 import type { AgentActivityRailPlacement } from "./railPlacement.types.ts";
+import type { AgentActivitySessionCapabilities } from "./sessionCapabilities.types.ts";
 import type {
   AgentActivityCapabilityReference,
   AgentActivityInitialTuttiModeActivation,
@@ -31,7 +35,40 @@ export type {
   AgentActivityUpdateTuttiModeActivationResult
 } from "./tuttiMode.types.ts";
 
+export type {
+  AgentActivityComposerBehavior,
+  AgentActivityComposerCapabilityOption,
+  AgentActivityComposerCommandOption,
+  AgentActivityComposerOptions,
+  AgentActivityComposerOptionsLoadStatus,
+  AgentActivityComposerPermissionConfig,
+  AgentActivityComposerPermissionModeOption,
+  AgentActivityComposerSettingOption,
+  AgentActivityComposerSettings,
+  AgentActivityComposerSkillOption,
+  AgentActivityLoadComposerOptionsInput,
+  AgentActivitySlashCommandEffect,
+  AgentActivitySlashCommandPolicy
+} from "./composerOptions.types.ts";
+
+export type { AgentActivitySessionCapabilities } from "./sessionCapabilities.types.ts";
+
 export type AgentActivitySessionKind = "root" | "child";
+
+export interface AgentActivitySessionLifecycleCapabilities {
+  fork: boolean;
+  forkThroughTurn: boolean;
+  forkThroughTurnIds?: string[];
+  forkThroughTurnIdsKnown?: boolean;
+}
+
+export interface AgentActivitySessionForkLineage {
+  sourceAgentSessionId: string;
+  sourceTurnId: string;
+  targetTurnId: string;
+  operationId: string;
+  forkedAtUnixMs: number;
+}
 
 export interface AgentActivitySession {
   workspaceId: string;
@@ -60,6 +97,8 @@ export interface AgentActivitySession {
   settings: AgentActivitySessionSettings;
   permissionConfig: AgentActivitySessionPermissionConfig;
   capabilities: AgentActivitySessionCapabilities | null;
+  lifecycleCapabilities: AgentActivitySessionLifecycleCapabilities;
+  forkedFrom: AgentActivitySessionForkLineage | null;
   usage: AgentActivitySessionUsage | null;
   goal: AgentActivitySessionGoal | null;
   /**
@@ -137,170 +176,6 @@ export interface AgentActivityMessagePage {
 }
 
 export type AgentActivityMessageOrder = "asc" | "desc";
-
-export interface AgentActivityComposerSettingOption {
-  value: string;
-  label: string;
-  description?: string;
-  supportsImageInput?: boolean;
-  /** True when the entry mirrors the requested/current selection, not the provider catalog. */
-  requested?: boolean;
-}
-
-export interface AgentActivityComposerCommandOption {
-  name: string;
-  description?: string;
-  inputHint?: string;
-}
-
-export interface AgentActivityComposerSkillOption {
-  name: string;
-  trigger: string;
-  invocation?: "promptItem" | "textTrigger";
-  sourceKind:
-    | "project"
-    | "personal"
-    | "bundled"
-    | "plugin"
-    | "system"
-    | "tutti-injected"
-    | "connector";
-  description?: string;
-  pluginName?: string;
-  path?: string;
-  kind?: "skill" | "connector";
-}
-
-export interface AgentActivityComposerCapabilityOption {
-  id: string;
-  kind: "skill" | "plugin" | "connector" | "mcpServer" | "mcpTool";
-  name: string;
-  label: string;
-  status:
-    | "available"
-    | "disabled"
-    | "authRequired"
-    | "setupRequired"
-    | "unsupported";
-  invocation: "promptItem" | "textTrigger" | "none";
-  description?: string;
-  source?: string;
-  pluginName?: string;
-  serverName?: string;
-  toolName?: string;
-  trigger?: string;
-  path?: string;
-}
-
-export interface AgentActivityComposerPermissionModeOption {
-  id: string;
-  label?: string;
-  description?: string;
-  semantic?: string;
-}
-
-export interface AgentActivityComposerPermissionConfig {
-  configurable: boolean;
-  defaultValue?: string | null;
-  modes: AgentActivityComposerPermissionModeOption[];
-}
-
-export interface AgentActivityComposerSettings {
-  model?: string | null;
-  reasoningEffort?: string | null;
-  speed?: string | null;
-  planMode?: boolean | null;
-  permissionModeId?: string | null;
-}
-
-export type AgentActivitySlashCommandEffect =
-  | "submitImmediate"
-  | "showReviewPicker"
-  | "activateGoalMode"
-  | "togglePlanMode"
-  | "showStatus"
-  | "toggleSpeed";
-
-export interface AgentActivitySlashCommandPolicy {
-  fallbackCommands: readonly string[];
-  commandCatalogAuthoritative?: boolean;
-  commandEffects: readonly {
-    command: string;
-    effect: AgentActivitySlashCommandEffect;
-  }[];
-}
-
-export interface AgentActivityComposerBehavior {
-  collapseModelOptionsToLatest: boolean;
-  modelOptionsAuthoritative: boolean;
-  refreshModelOptionsAfterSettings: boolean;
-  prewarmDraftSession: boolean;
-  planModeExclusiveWithPermissionMode: boolean;
-}
-
-export interface AgentActivityComposerOptions {
-  provider: string;
-  /** Typed capabilities available before a session exists. */
-  capabilities: AgentActivitySessionCapabilities | null;
-  models: AgentActivityComposerSettingOption[];
-  reasoningEfforts: AgentActivityComposerSettingOption[];
-  reasoningOptionsByModel?: Record<
-    string,
-    {
-      defaultValue?: string | null;
-      options: AgentActivityComposerSettingOption[];
-    }
-  >;
-  /** Orthogonal speed tiers (e.g. standard/fast); empty when unsupported. */
-  speeds: AgentActivityComposerSettingOption[];
-  /** Mirrors tuttid modelConfig.configurable; false when absent. */
-  modelConfigurable?: boolean;
-  /** Mirrors tuttid reasoningConfig.configurable; false when absent. */
-  reasoningConfigurable?: boolean;
-  /** Mirrors tuttid speedConfig.configurable; false when absent. */
-  speedConfigurable?: boolean;
-  /** Effective pre-session settings paired with this options snapshot. */
-  effectiveSettings?: AgentActivityComposerSettings | null;
-  permissionConfig?: AgentActivityComposerPermissionConfig | null;
-  draftAgentSessionId?: string | null;
-  modelOptionsLoading?: boolean;
-  skills: AgentActivityComposerSkillOption[];
-  /** Commands advertised by the live provider session and reusable after event replay gaps. */
-  commands?: readonly AgentActivityComposerCommandOption[];
-  capabilityCatalog?: AgentActivityComposerCapabilityOption[];
-  behavior: AgentActivityComposerBehavior;
-  slashCommandPolicy?: AgentActivitySlashCommandPolicy | null;
-  /** Credential-free model-plan identity projected from daemon runtime context. */
-  modelPlan?: {
-    id: string;
-    name: string;
-    protocol?: string | null;
-  } | null;
-  /** Authoritative model default identity for the selected agent target. */
-  modelConfiguration?: AgentActivityComposerModelConfiguration | null;
-  loadedAtUnixMs: number;
-}
-
-export interface AgentActivityLoadComposerOptionsInput {
-  /**
-   * Agent target id — the daemon-facing identity of the composer target.
-   * activity-core treats it as an opaque targetKey. This field name reflects
-   * that to the daemon it is an agent target id. Optional at the adapter
-   * boundary to mirror the daemon's optional request field; the engine command
-   * port always supplies a non-empty value.
-   */
-  agentTargetId?: string | null;
-  workspaceId: string;
-  provider: string;
-  cwd?: string | null;
-  settings?: AgentActivityComposerSettings | null;
-  signal?: AbortSignal;
-}
-
-export type AgentActivityComposerOptionsLoadStatus =
-  | "loading"
-  | "ready"
-  | "error";
 
 export interface AgentActivitySnapshot {
   workspaceId: string;
@@ -712,28 +587,6 @@ export interface AgentActivitySessionPermissionConfig {
   configurable: boolean;
   defaultValue?: string;
   modes: AgentActivitySessionPermissionModeOption[];
-}
-
-export interface AgentActivitySessionCapabilities {
-  imageInput: boolean;
-  modelImageInputRequired: boolean;
-  modelPlanBinding: boolean;
-  skills: boolean;
-  compact: boolean;
-  tokenUsage: boolean;
-  rateLimits: boolean;
-  planMode: boolean;
-  interrupt: boolean;
-  modelSwitch: boolean;
-  activeTurnGuidance: boolean;
-  browserUse: boolean;
-  computerUse: boolean;
-  goalPause: boolean;
-  planImplementation: boolean;
-  permissionModeChangeDuringTurn: boolean;
-  permissionModeChangeDeferred: boolean;
-  review: boolean;
-  resumeRunningTurn: boolean;
 }
 
 export interface AgentActivitySessionGoal {

@@ -4,7 +4,53 @@ import (
 	"strings"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/modelcatalog"
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
+
+func composerConfigOptions(
+	provider string,
+	settings ComposerSettings,
+	modelOptions []ComposerConfigOptionValue,
+	reasoningOptions []ComposerConfigOptionValue,
+	speedOptions []ComposerConfigOptionValue,
+) []map[string]any {
+	profile := composerProfileFor(provider)
+	if !profile.ModelSelection && !profile.ReasoningEffort && !profile.Speed {
+		return []map[string]any{}
+	}
+	if modelOptions == nil {
+		modelOptions = composerSelectedModelOptions(settings.Model)
+	}
+	options := make([]map[string]any, 0, 3)
+	if profile.ModelSelection && len(modelOptions) > 0 {
+		configOptionID := strings.TrimSpace(profile.ModelConfigOptionID)
+		if configOptionID == "" {
+			configOptionID = "model"
+		}
+		options = append(options, map[string]any{
+			"currentValue": nullableString(settings.Model),
+			"id":           configOptionID,
+			"options":      composerConfigOptionValuesToRuntimeModelOptions(modelOptions),
+		})
+	}
+	if profile.ReasoningEffort && profile.ReasoningEffortOptions != providerregistry.ReasoningEffortOptionsStrictModelCatalog {
+		if len(reasoningOptions) > 0 {
+			options = append(options, map[string]any{
+				"currentValue": nullableString(settings.ReasoningEffort),
+				"id":           reasoningConfigOptionID(provider),
+				"options":      composerConfigOptionValuesToRuntimeOptions(reasoningOptions),
+			})
+		}
+	}
+	if profile.Speed {
+		options = append(options, map[string]any{
+			"currentValue": nullableString(settings.Speed),
+			"id":           speedConfigOptionID(provider),
+			"options":      composerConfigOptionValuesToRuntimeOptions(speedOptions),
+		})
+	}
+	return options
+}
 
 func extractModelOptionsFromRuntimeContext(runtimeContext map[string]any, optionIDs ...string) []ComposerConfigOptionValue {
 	if len(runtimeContext) == 0 {
@@ -22,6 +68,26 @@ func extractModelOptionsFromRuntimeContext(runtimeContext map[string]any, option
 		return nil
 	}
 	return composerModelOptionsFromCanonicalCatalog(models)
+}
+
+func extractEffectiveModelFromRuntimeContext(
+	runtimeContext map[string]any,
+	optionIDs ...string,
+) string {
+	if len(runtimeContext) == 0 {
+		return ""
+	}
+	modelOptionID := "model"
+	if len(optionIDs) > 0 && strings.TrimSpace(optionIDs[0]) != "" {
+		modelOptionID = strings.TrimSpace(optionIDs[0])
+	}
+	for _, option := range runtimeConfigOptionsAsMapSlice(runtimeContext["configOptions"]) {
+		if strings.TrimSpace(stringFromAny(option["id"])) != modelOptionID {
+			continue
+		}
+		return strings.TrimSpace(stringFromAny(option["effectiveValue"]))
+	}
+	return ""
 }
 
 func composerModelOptionsFromCanonicalCatalog(models []modelcatalog.ModelOption) []ComposerConfigOptionValue {

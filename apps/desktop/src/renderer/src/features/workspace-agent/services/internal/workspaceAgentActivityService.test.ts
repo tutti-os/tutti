@@ -16,6 +16,16 @@ import {
 import type { ReporterEventInput } from "../../../analytics/services/reporterService.interface.ts";
 import { WorkspaceAgentActivityService } from "./workspaceAgentActivityService.ts";
 
+function sessionDetailProjection(
+  projection: Parameters<TuttidClient["getWorkspaceAgentSession"]>[2]
+) {
+  const resolved = projection ?? "full";
+  return {
+    lifecycleCapabilitiesProjected: resolved === "full",
+    projection: resolved
+  };
+}
+
 test("WorkspaceAgentActivityService starts one canonical workspace load when the shared engine is created", async () => {
   let listCalls = 0;
   const service = new WorkspaceAgentActivityService({
@@ -51,7 +61,10 @@ test("WorkspaceAgentActivityService applies authoritative Session detail in one 
   };
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
-      getWorkspaceAgentSession: async () => ({
+      getWorkspaceAgentSession: async (
+        ...args: Parameters<TuttidClient["getWorkspaceAgentSession"]>
+      ) => ({
+        ...sessionDetailProjection(args[2]),
         childSessions: [childSession],
         session: rootSession,
         turns: [workspaceAgentTurn()]
@@ -210,7 +223,8 @@ test("WorkspaceAgentActivityService.activateSession creates target-backed sessio
     cwd: "/workspace",
     initialContent: [{ type: "text", text: "hello" }],
     initialTuttiModeActivation: {
-      orchestrationIntensity: 73,
+      effect: 73,
+      speed: 61,
       source: "slash_command",
       status: "active"
     },
@@ -232,7 +246,8 @@ test("WorkspaceAgentActivityService.activateSession creates target-backed sessio
       initialContent: [{ type: "text", text: "hello" }],
       initialDisplayPrompt: null,
       initialTuttiModeActivation: {
-        orchestrationIntensity: 73,
+        effect: 73,
+        speed: 61,
         source: "slash_command",
         status: "active"
       },
@@ -394,7 +409,8 @@ test("WorkspaceAgentActivityService confirms engine activation from the realtime
     expiresAtUnixMs: requestedAtUnixMs + 45_000,
     mode: "new",
     initialTuttiModeActivation: {
-      orchestrationIntensity: 73,
+      effect: 73,
+      speed: 61,
       source: "slash_command",
       status: "active"
     },
@@ -413,7 +429,8 @@ test("WorkspaceAgentActivityService confirms engine activation from the realtime
     initialContent: [],
     initialDisplayPrompt: null,
     initialTuttiModeActivation: {
-      orchestrationIntensity: 73,
+      effect: 73,
+      speed: 61,
       source: "slash_command",
       status: "active"
     },
@@ -683,7 +700,10 @@ test("WorkspaceAgentActivityService reads existing session settings from the dae
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
       createWorkspaceAgentSession: async () => createdSession,
-      getWorkspaceAgentSession: async () => ({
+      getWorkspaceAgentSession: async (
+        ...args: Parameters<TuttidClient["getWorkspaceAgentSession"]>
+      ) => ({
+        ...sessionDetailProjection(args[2]),
         session: loadedSession,
         childSessions: [],
         turns: []
@@ -725,7 +745,10 @@ test("WorkspaceAgentActivityService does not reinterpret a failed Turn as activa
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
       createWorkspaceAgentSession: async () => failedSession,
-      getWorkspaceAgentSession: async () => ({
+      getWorkspaceAgentSession: async (
+        ...args: Parameters<TuttidClient["getWorkspaceAgentSession"]>
+      ) => ({
+        ...sessionDetailProjection(args[2]),
         childSessions: [],
         session: failedSession,
         turns: []
@@ -1007,7 +1030,10 @@ test("WorkspaceAgentActivityService starts session-event streams and forwards ca
       subscribeConnectionState: () => () => {}
     } as never,
     tuttidClient: {
-      getWorkspaceAgentSession: async () => ({
+      getWorkspaceAgentSession: async (
+        ...args: Parameters<TuttidClient["getWorkspaceAgentSession"]>
+      ) => ({
+        ...sessionDetailProjection(args[2]),
         session: workspaceAgentSession({
           currentPhase: "idle",
           status: "completed",
@@ -1154,7 +1180,10 @@ test("WorkspaceAgentActivityService reconciles a realtime message version gap be
       subscribeConnectionState: () => () => {}
     } as never,
     tuttidClient: {
-      getWorkspaceAgentSession: async () => ({
+      getWorkspaceAgentSession: async (
+        ...args: Parameters<TuttidClient["getWorkspaceAgentSession"]>
+      ) => ({
+        ...sessionDetailProjection(args[2]),
         session,
         childSessions: [],
         turns: []
@@ -1311,7 +1340,10 @@ test("WorkspaceAgentActivityService reconciles cached messages after reconnect w
       }
     } as never,
     tuttidClient: {
-      getWorkspaceAgentSession: async () => ({
+      getWorkspaceAgentSession: async (
+        ...args: Parameters<TuttidClient["getWorkspaceAgentSession"]>
+      ) => ({
+        ...sessionDetailProjection(args[2]),
         session,
         childSessions: [],
         turns: []
@@ -1555,7 +1587,10 @@ test("WorkspaceAgentActivityService preserves realtime turn provenance for atten
       subscribeConnectionState: () => () => {}
     } as never,
     tuttidClient: {
-      getWorkspaceAgentSession: async () => ({
+      getWorkspaceAgentSession: async (
+        ...args: Parameters<TuttidClient["getWorkspaceAgentSession"]>
+      ) => ({
+        ...sessionDetailProjection(args[2]),
         session: settled,
         childSessions: [],
         turns: []
@@ -1642,7 +1677,9 @@ test("WorkspaceAgentActivityService preserves live provenance across a transient
       subscribeConnectionState: () => () => {}
     } as never,
     tuttidClient: {
-      getWorkspaceAgentSession: async () => {
+      getWorkspaceAgentSession: async (
+        ...args: Parameters<TuttidClient["getWorkspaceAgentSession"]>
+      ) => {
         getCalls += 1;
         if (getCalls === 2) {
           throw new TuttidProtocolError({
@@ -1653,6 +1690,7 @@ test("WorkspaceAgentActivityService preserves live provenance across a transient
           });
         }
         return {
+          ...sessionDetailProjection(args[2]),
           session: getCalls === 1 ? running : settled,
           childSessions: [],
           turns: []
@@ -1870,9 +1908,12 @@ test("WorkspaceAgentActivityService fetches detail before combined message recon
   });
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
-      getWorkspaceAgentSession: async () => {
+      getWorkspaceAgentSession: async (
+        ...args: Parameters<TuttidClient["getWorkspaceAgentSession"]>
+      ) => {
         calls.push("getSession");
         return {
+          ...sessionDetailProjection(args[2]),
           session: messagesResolved ? finalSession : staleSession,
           childSessions: [],
           turns: []
@@ -1974,7 +2015,10 @@ test("WorkspaceAgentActivityService reconciles child sessions and their messages
   }> = [];
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
-      getWorkspaceAgentSession: async () => ({
+      getWorkspaceAgentSession: async (
+        ...args: Parameters<TuttidClient["getWorkspaceAgentSession"]>
+      ) => ({
+        ...sessionDetailProjection(args[2]),
         session: root,
         childSessions: [child],
         turns: [
@@ -2113,11 +2157,13 @@ test("WorkspaceAgentActivityService catches up children that advance between det
     tuttidClient: {
       getWorkspaceAgentSession: async (
         _workspaceId: string,
-        requestedSessionId: string
+        requestedSessionId: string,
+        projection?: Parameters<TuttidClient["getWorkspaceAgentSession"]>[2]
       ) => {
         detailReads += 1;
         if (requestedSessionId === "child-1") {
           return {
+            ...sessionDetailProjection(projection),
             session: {
               ...child,
               messageVersion: detailReads === 2 ? 3 : 2
@@ -2127,6 +2173,7 @@ test("WorkspaceAgentActivityService catches up children that advance between det
           };
         }
         return {
+          ...sessionDetailProjection(projection),
           session: root,
           childSessions: [
             {
@@ -2235,7 +2282,10 @@ test("WorkspaceAgentActivityService loads the newest history page first", async 
   const session = workspaceAgentSession({ status: "ready" });
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
-      getWorkspaceAgentSession: async () => ({
+      getWorkspaceAgentSession: async (
+        ...args: Parameters<TuttidClient["getWorkspaceAgentSession"]>
+      ) => ({
+        ...sessionDetailProjection(args[2]),
         session,
         childSessions: [],
         turns: []
@@ -2313,7 +2363,10 @@ test("WorkspaceAgentActivityService drains child incremental pages from its dura
   });
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
-      getWorkspaceAgentSession: async () => ({
+      getWorkspaceAgentSession: async (
+        ...args: Parameters<TuttidClient["getWorkspaceAgentSession"]>
+      ) => ({
+        ...sessionDetailProjection(args[2]),
         session,
         childSessions: [],
         turns: []
@@ -2374,12 +2427,23 @@ test("WorkspaceAgentActivityService drains child incremental pages from its dura
   requests.length = 0;
   await (
     service as unknown as {
-      reconcileAgentSessionMessages(
-        workspaceId: string,
-        agentSessionId: string
-      ): Promise<unknown>;
+      executeSessionReconcileCommand(command: {
+        agentSessionId: string;
+        commandId: string;
+        live: boolean;
+        scope: "messages";
+        type: "session/reconcile";
+        workspaceId: string;
+      }): Promise<unknown>;
     }
-  ).reconcileAgentSessionMessages("ws-1", "session-1");
+  ).executeSessionReconcileCommand({
+    agentSessionId: "session-1",
+    commandId: "test-child-incremental",
+    live: false,
+    scope: "messages",
+    type: "session/reconcile",
+    workspaceId: "ws-1"
+  });
 
   assert.deepEqual(
     requests.map((request) => request.afterVersion),
@@ -2981,6 +3045,7 @@ test("WorkspaceAgentActivityService does not tombstone a missing reconcile witho
 test("WorkspaceAgentActivityService preserves a pending new session when the Tutti event races create visibility", async (t) => {
   const diagnostics: unknown[] = [];
   const listenersByTopic = new Map<string, (event: unknown) => void>();
+  let getSessionCalls = 0;
   let resolveCreate!: (value: Record<string, unknown>) => void;
   let resolveActivation!: () => void;
   const createResult = new Promise<Record<string, unknown>>((resolve) => {
@@ -3003,6 +3068,7 @@ test("WorkspaceAgentActivityService preserves a pending new session when the Tut
     tuttidClient: {
       createWorkspaceAgentSession: async () => createResult,
       getWorkspaceAgentSession: async () => {
+        getSessionCalls += 1;
         throw new TuttidProtocolError({
           code: "workspace_not_found",
           developerMessage: "workspace agent session not found",
@@ -3065,15 +3131,17 @@ test("WorkspaceAgentActivityService preserves a pending new session when the Tut
     engine.getSnapshot().sessionLifecycle.deletedSessionIds["session-1"],
     undefined
   );
-  assert.deepEqual(diagnostics.at(-1), {
-    details: {
-      agentSessionId: "session-1",
-      error: "workspace agent session not found"
-    },
-    event: "agent.activity.reconcile_session_absent",
-    level: "info",
-    workspaceId: "ws-1"
-  });
+  assert.equal(getSessionCalls, 0);
+  assert.equal(
+    diagnostics.some(
+      (entry) =>
+        entry &&
+        typeof entry === "object" &&
+        "event" in entry &&
+        entry.event === "agent.activity.reconcile_session_absent"
+    ),
+    false
+  );
 
   resolveCreate({
     ...workspaceAgentSession({ status: "working" }),
@@ -3094,6 +3162,71 @@ test("WorkspaceAgentActivityService preserves a pending new session when the Tut
       ?.status,
     "active"
   );
+});
+
+test("WorkspaceAgentActivityService still reconciles a Tutti update for an existing session", async (t) => {
+  const diagnostics: unknown[] = [];
+  const listenersByTopic = new Map<string, (event: unknown) => void>();
+  let getSessionCalls = 0;
+  const service = new WorkspaceAgentActivityService({
+    eventStreamClient: {
+      connect: async () => {},
+      dispose: () => {},
+      publishIntent: async () => {},
+      subscribe: (topic: string, listener: (event: unknown) => void) => {
+        listenersByTopic.set(topic, listener);
+        return () => {};
+      },
+      subscribeConnectionState: () => () => {}
+    } as never,
+    tuttidClient: {
+      getWorkspaceAgentSession: async () => {
+        getSessionCalls += 1;
+        throw new TuttidProtocolError({
+          code: "workspace_not_found",
+          developerMessage: "workspace agent session not found",
+          reason: "workspace_agent_session_not_found",
+          statusCode: 404
+        });
+      },
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [workspaceAgentSession({ status: "ready" })],
+        workspaceId: "ws-1"
+      })
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async (payload) => {
+        diagnostics.push(payload);
+      }
+    }
+  });
+  t.after(() => service.dispose());
+  const engine = service.getSessionEngine("ws-1");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(selectEngineSession(engine.getSnapshot(), "session-1"));
+
+  const tuttiModeUpdated = listenersByTopic.get("workspace.tuttimode.updated");
+  assert.ok(tuttiModeUpdated);
+  tuttiModeUpdated({
+    payload: {
+      agentSessionId: "session-1",
+      workspaceId: "ws-1"
+    }
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(getSessionCalls, 1);
+  assert.deepEqual(diagnostics.at(-1), {
+    details: {
+      agentSessionId: "session-1",
+      error: "workspace agent session not found"
+    },
+    event: "agent.activity.reconcile_session_absent",
+    level: "info",
+    workspaceId: "ws-1"
+  });
 });
 
 test("WorkspaceAgentActivityService tombstones an explicit session deletion event", async () => {
@@ -3222,6 +3355,7 @@ function workspaceAgentSession(overrides: {
     capabilities: null,
     createdAtUnixMs: Date.parse("2026-06-16T00:00:00.000Z"),
     endedAtUnixMs: null,
+    forkedFrom: null,
     goal: null,
     id: "session-1",
     imported: false,
@@ -3237,6 +3371,7 @@ function workspaceAgentSession(overrides: {
     latestTurn,
     latestTurnInteractions: [],
     messageVersion: overrides.messageVersion ?? 0,
+    lifecycleCapabilities: { fork: false, forkThroughTurn: false },
     pendingInteractions: [],
     permissionConfig: { configurable: false, modes: [] },
     pinnedAtUnixMs: null,

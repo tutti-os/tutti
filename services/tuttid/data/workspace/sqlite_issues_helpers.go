@@ -320,7 +320,8 @@ func scanWorkspaceIssueTask(scanner issueScanner) (workspaceissues.Task, error) 
 		&item.ExecutionDirectory, &dependencyTaskIDsJSON, &item.Parallelizable,
 		&item.AutoAccept, &acceptanceState, &item.AcceptanceSummary,
 		&item.CreatorUserID, &item.CreatorDisplayName, &item.CreatorAvatarURL,
-		&item.LatestRunID, &item.CreatedAtUnixMS, &item.UpdatedAtUnixMS,
+		&item.LatestRunID, &item.SupersededAtUnixMS, &item.SupersededByTaskID,
+		&item.CreatedAtUnixMS, &item.UpdatedAtUnixMS,
 	)
 	item.ID = uint64(id)
 	item.Status = workspaceissues.Status(status)

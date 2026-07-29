@@ -1,5 +1,8 @@
 # Agent Session Fork Implementation Plan
 
+Status: superseded by
+[2026-07-27 Agent Session Fork Design](./2026-07-27-agent-session-fork-design.md)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build provider-backed Codex agent session fork in Tutti, with durable fork lineage, child session history, API/client integration, and Agent GUI entry points.

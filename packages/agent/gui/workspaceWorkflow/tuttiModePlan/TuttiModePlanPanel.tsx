@@ -17,6 +17,7 @@ import type {
 } from "./tuttiModePlanPanelProjection";
 import type { TuttiModePlanAssignmentCatalog } from "./useTuttiModePlanPanels";
 import {
+  assignmentOptionLabel,
   TuttiModePlanTaskAssignmentEditor,
   permissionModeAssignmentTone
 } from "./TuttiModePlanTaskAssignmentEditor";
@@ -134,7 +135,11 @@ export function TuttiModePlanPanel({
                       }
                     />
                   ) : (
-                    <TaskAssignmentSummary labels={labels} task={task} />
+                    <TaskAssignmentSummary
+                      assignmentCatalog={assignmentCatalog}
+                      labels={labels}
+                      task={task}
+                    />
                   )}
                 </li>
               ))}
@@ -151,25 +156,56 @@ export function TuttiModePlanPanel({
  * single line, showing only the assignments the plan actually specifies.
  */
 function TaskAssignmentSummary({
+  assignmentCatalog,
   labels,
   task
 }: {
+  assignmentCatalog?: TuttiModePlanAssignmentCatalog | null;
   labels: TuttiModePlanPanelLabels;
   task: TuttiModePlanPanelTaskViewModel;
 }): React.JSX.Element | null {
+  const agentDetail = task.agentTargetId
+    ? assignmentCatalog?.optionsByAgentId[task.agentTargetId]
+    : null;
+  const modelOptions = [
+    ...(agentDetail?.models ?? []),
+    ...(agentDetail?.modelPlans.flatMap((plan) => plan.models) ?? [])
+  ];
   const chips: {
     label: string;
     tone?: "accent" | "success" | "warning" | undefined;
     value: string | null;
   }[] = [
-    { label: labels.agentTarget, value: task.agentTargetId },
-    { label: labels.model, value: task.model },
+    {
+      label: labels.agentTarget,
+      value: task.agentTargetId
+        ? (assignmentCatalog?.agents?.find(
+            (agent) => agent.agentTargetId === task.agentTargetId
+          )?.label ?? task.agentTargetId)
+        : null
+    },
+    {
+      label: labels.model,
+      value: assignmentOptionLabel(modelOptions, task.model)
+    },
     {
       label: labels.permissionMode,
       tone: permissionModeAssignmentTone(task.permissionModeId),
-      value: task.permissionModeId
+      value: assignmentOptionLabel(
+        (agentDetail?.permissionModes ?? []).map((mode) => ({
+          label: mode.label,
+          value: mode.id
+        })),
+        task.permissionModeId
+      )
     },
-    { label: labels.reasoningEffort, value: task.reasoningEffort },
+    {
+      label: labels.reasoningEffort,
+      value: assignmentOptionLabel(
+        agentDetail?.reasoningEfforts ?? [],
+        task.reasoningEffort
+      )
+    },
     {
       label: labels.parallelizable,
       tone: "accent" as const,

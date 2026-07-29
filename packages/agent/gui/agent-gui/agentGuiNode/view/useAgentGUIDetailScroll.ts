@@ -94,6 +94,23 @@ export function useAgentGUIDetailScroll(input: Input) {
   const userScrollDirectionRef = useRef<"away" | "toward-end" | null>(null);
   const lastShowTimelineSkeletonRef = useRef(showTimelineSkeleton);
   const bottomDockSafeAreaRef = useRef<BottomDockSafeArea | null>(null);
+  const [virtualScrollControllerRevision, setVirtualScrollControllerRevision] =
+    useState(0);
+  const setVirtualScrollController = useCallback(
+    (controller: AgentTranscriptVirtualScrollController | null) => {
+      if (virtualScrollControllerRef.current === controller) {
+        return;
+      }
+      virtualScrollControllerRef.current = controller;
+      if (controller) {
+        setVirtualScrollControllerRevision((revision) => revision + 1);
+      }
+    },
+    [virtualScrollControllerRef]
+  );
+  const lastVirtualScrollControllerRevisionRef = useRef(
+    virtualScrollControllerRevision
+  );
   useLayoutEffect(() => {
     if (!isVisible) {
       return;
@@ -140,15 +157,21 @@ export function useAgentGUIDetailScroll(input: Input) {
       submittedPromptScrollConversationRef.current === activeConversationId;
     const shouldRestorePrependAnchor =
       prependAnchor?.conversationId === activeConversationId;
+    const virtualScrollControllerChanged =
+      lastVirtualScrollControllerRevisionRef.current !==
+      virtualScrollControllerRevision;
     if (conversationChanged && showTimelineSkeleton) {
       setIsTimelineScrolledToTop(true);
       return;
     }
+    lastVirtualScrollControllerRevisionRef.current =
+      virtualScrollControllerRevision;
     if (
       !conversationChanged &&
       !shouldScrollSubmittedPromptToBottom &&
       !shouldRestorePrependAnchor &&
-      !timelineSkeletonChanged
+      !timelineSkeletonChanged &&
+      !virtualScrollControllerChanged
     ) {
       return;
     }
@@ -157,7 +180,12 @@ export function useAgentGUIDetailScroll(input: Input) {
       activeConversationId
     );
     if (virtualScrollController) {
-      if (conversationChanged || shouldScrollSubmittedPromptToBottom) {
+      if (
+        conversationChanged ||
+        shouldScrollSubmittedPromptToBottom ||
+        (virtualScrollControllerChanged &&
+          followEndController.getSnapshot() === "following")
+      ) {
         if (shouldScrollSubmittedPromptToBottom) {
           dispatchFollowEnd("prompt-submitted");
         }
@@ -251,6 +279,7 @@ export function useAgentGUIDetailScroll(input: Input) {
     isVisible,
     showTimelineSkeleton,
     timelineConversationId,
+    virtualScrollControllerRevision,
     viewModel.rail.activeConversationId,
     viewModel.detail.isLoadingOlderMessages
   ]);
@@ -424,7 +453,16 @@ export function useAgentGUIDetailScroll(input: Input) {
       clientHeight: number
     ): void => {
       const bottomLocked = followEndController.getSnapshot() === "following";
-      const needsMoreContentToFillViewport = scrollHeight <= clientHeight;
+      const virtualScrollController = matchingVirtualScrollController(
+        virtualScrollControllerRef,
+        activeConversationId
+      );
+      const transcriptGeometryIsReady =
+        timelineContent?.querySelector("[data-agent-transcript-row]") !== null;
+      const needsMoreContentToFillViewport =
+        !virtualScrollController &&
+        transcriptGeometryIsReady &&
+        scrollHeight <= clientHeight;
       if (
         activeConversationId === viewModel.rail.activeConversationId &&
         viewModel.detail.hasOlderMessages &&
@@ -718,6 +756,7 @@ export function useAgentGUIDetailScroll(input: Input) {
     followEndMode,
     isTimelineScrolledToBottom: followEndMode === "following",
     isTimelineScrolledToTop,
+    setVirtualScrollController,
     scrollTimelineToBottom
   };
 }

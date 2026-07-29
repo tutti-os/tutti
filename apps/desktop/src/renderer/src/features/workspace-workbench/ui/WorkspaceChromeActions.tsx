@@ -1,10 +1,10 @@
 import { useEffect, useRef } from "react";
 import type * as React from "react";
 import type { WorkspaceSummary } from "@tutti-os/client-tuttid-ts";
-import type { WorkbenchMissionControlMode } from "@tutti-os/workbench-surface";
 import {
   AppWindowIcon,
   Button,
+  LockLayoutLinedIcon,
   SettingsIcon,
   ShortcutBadge,
   Tooltip,
@@ -29,30 +29,42 @@ export function WorkspaceMissionControlActions({
   missionControl: {
     canOpen: boolean;
     close(): void;
+    isLayoutLocked: boolean;
     isOpen: boolean;
-    mode: WorkbenchMissionControlMode | null;
-    open(
-      mode: WorkbenchMissionControlMode,
-      trigger?: "button" | "keyboard"
-    ): void;
+    open(trigger?: "button" | "keyboard"): void;
+    unlockLayout(): void;
     visibleWindowCount: number;
   };
   platform: NodeJS.Platform;
 }) {
   const { t } = useTranslation();
   const isDarwin = platform === "darwin";
+  const TriggerIcon = missionControl.isLayoutLocked
+    ? LockLayoutLinedIcon
+    : AppWindowIcon;
+  // A locked layout must be released before the overview can open, so the
+  // first click on the locked entry unlocks and the second click opens.
+  const unlockFirst = missionControl.isLayoutLocked && !missionControl.isOpen;
 
   return (
     <div className="flex items-center gap-1">
       <WorkspaceMissionControlAction
         active={missionControl.isOpen}
         disabled={!missionControl.canOpen}
-        label={t("workspace.workbenchDesktop.missionControl.layoutTrigger")}
-        shortcutLabel={t(
-          isDarwin
-            ? "workspace.workbenchDesktop.missionControl.activateShortcutMac"
-            : "workspace.workbenchDesktop.missionControl.activateShortcutDefault"
+        label={t(
+          unlockFirst
+            ? "workspace.workbenchDesktop.missionControl.unlockLayoutTrigger"
+            : "workspace.workbenchDesktop.missionControl.layoutTrigger"
         )}
+        shortcutLabel={
+          unlockFirst
+            ? undefined
+            : t(
+                isDarwin
+                  ? "workspace.workbenchDesktop.missionControl.layoutShortcutMac"
+                  : "workspace.workbenchDesktop.missionControl.layoutShortcutDefault"
+              )
+        }
         unavailableLabel={t(
           "workspace.workbenchDesktop.missionControl.unavailableTrigger"
         )}
@@ -61,10 +73,14 @@ export function WorkspaceMissionControlActions({
             missionControl.close();
             return;
           }
-          missionControl.open("activate", "button");
+          if (missionControl.isLayoutLocked) {
+            missionControl.unlockLayout();
+            return;
+          }
+          missionControl.open("button");
         }}
       >
-        <AppWindowIcon className="size-4" />
+        <TriggerIcon className="size-4" />
       </WorkspaceMissionControlAction>
     </div>
   );
@@ -84,7 +100,7 @@ function WorkspaceMissionControlAction({
   disabled: boolean;
   label: string;
   onClick: () => void;
-  shortcutLabel: string;
+  shortcutLabel?: string;
   unavailableLabel: string;
 }) {
   const button = (
@@ -123,7 +139,9 @@ function WorkspaceMissionControlAction({
         ) : (
           <>
             <span>{label}</span>
-            <ShortcutBadge>{shortcutLabel}</ShortcutBadge>
+            {shortcutLabel ? (
+              <ShortcutBadge>{shortcutLabel}</ShortcutBadge>
+            ) : null}
           </>
         )}
       </TooltipContent>

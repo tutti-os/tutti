@@ -63,6 +63,28 @@ test("workspace file manager lets locations grow when the detail panel is hidden
   );
 });
 
+test("workspace file manager can cap locations width for a host-specific layout", () => {
+  assert.equal(
+    clampWorkspaceFileManagerSidebarWidth({
+      containerWidth: 840,
+      contentMinWidth: 480,
+      maxWidth: 320,
+      width: 460
+    }),
+    320
+  );
+  assert.equal(
+    clampWorkspaceFileManagerSidebarWidth({
+      containerWidth: 720,
+      contentMinWidth: 480,
+      maxWidth: 320,
+      width: 280
+    }),
+    240
+  );
+  assert.equal(resolveWorkspaceFileManagerSidebarMaxWidth(840, 480, 320), 320);
+});
+
 test("workspace file manager persists both adjustable pane widths", () => {
   const storage = new Map<string, string>();
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");

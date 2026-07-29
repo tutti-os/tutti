@@ -368,8 +368,8 @@ func (h *Host) RecoverRuntimeOperations(ctx context.Context) error {
 }
 
 // Recover fixes startup order as durable runtime operations, goal operations,
-// the durable goal reconcile inbox, unrecoverable stale turns, and finally the
-// adapter-specific worktree-isolation sweep.
+// the durable goal reconcile inbox, session Forks, unrecoverable stale turns,
+// and finally the adapter-specific worktree-isolation sweep.
 func (h *Host) Recover(ctx context.Context) error {
 	if err := h.validateRecoveryConfiguration(); err != nil {
 		return err
@@ -381,6 +381,9 @@ func (h *Host) Recover(ctx context.Context) error {
 		return err
 	}
 	if err := h.RecoverGoalReconcileInbox(ctx); err != nil {
+		return err
+	}
+	if err := h.RecoverSessionForks(ctx); err != nil {
 		return err
 	}
 	if h != nil && h.staleTurns != nil {

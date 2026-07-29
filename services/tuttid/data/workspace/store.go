@@ -199,8 +199,14 @@ type SetTuttiModeActivationInput struct {
 	ExpectedRevision *int64
 	State            activationbiz.State
 	Source           activationbiz.Source
-	// OrchestrationIntensity is optional. Nil keeps the current revision's
-	// value, or the default planning strength for a first revision.
+	// Effect and Speed are optional. Nil keeps the current revision's value,
+	// or the balanced default for a first revision.
+	Effect *int
+	Speed  *int
+	// OrchestrationIntensity is the deprecated single-axis alias of Effect.
+	// Effect takes precedence when both are present.
+	//
+	// Deprecated: use Effect and Speed.
 	OrchestrationIntensity *int
 	ChangedAt              time.Time
 }

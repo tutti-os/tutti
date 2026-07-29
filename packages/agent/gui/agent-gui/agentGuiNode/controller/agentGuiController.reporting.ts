@@ -6,7 +6,6 @@ import type {
 } from "@tutti-os/agent-activity-core";
 import { toast } from "@tutti-os/ui-system";
 import { type AgentActivityRuntime } from "../../../agentActivityRuntime";
-import type { AgentConversationBatchDeletionCapability } from "../../../agentConversationRailRuntime";
 import type { AgentHostToastApi } from "../../../host/agentHostApi";
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
 import type { AgentSessionState } from "../../../shared/agentSessionTypes";
@@ -27,6 +26,7 @@ import {
   getAgentGUIErrorCode,
   normalizeAgentGUIDiagnosticError
 } from "./agentGuiController.errors";
+import type { AgentConversationBatchDeletionCapability } from "./agentConversationBatchDeletionCapability";
 export {
   normalizePermissionModeSemantic,
   permissionConfigFromComposerOptions,
@@ -77,6 +77,8 @@ export type AgentGUIRuntimeErrorPhase =
   | "submit_interactive"
   | "toggle_conversation_pinned"
   | "rename_conversation"
+  | "fork_conversation_through_turn"
+  | "open_fork_source_conversation"
   | "delete_conversation"
   | "update_session_settings"
   | "warmup_openclaw_gateway";

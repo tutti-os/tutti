@@ -12,6 +12,8 @@ test("detail mapping preserves the authoritative root, children, and Turns", () 
     "workspace-1",
     "root-1",
     {
+      projection: "full",
+      lifecycleCapabilitiesProjected: true,
       session: createSession({
         id: "root-1",
         kind: "root"
@@ -60,6 +62,38 @@ test("detail mapping preserves the authoritative root, children, and Turns", () 
   );
 });
 
+test("detail mapping keeps unresolved capability projections out of authoritative reads", () => {
+  const detail = {
+    projection: "messageHydration",
+    lifecycleCapabilitiesProjected: false,
+    session: createSession({ id: "root-1", kind: "root" }),
+    childSessions: [],
+    turns: []
+  } satisfies WorkspaceAgentSessionDetailResponse;
+
+  assert.doesNotThrow(() =>
+    agentActivitySessionDetailFromTuttid("workspace-1", "root-1", detail, {
+      currentUserId: "account-user-1"
+    })
+  );
+  const inconsistent = {
+    ...detail,
+    lifecycleCapabilitiesProjected: true
+  };
+  assert.throws(
+    () =>
+      agentActivitySessionDetailFromTuttid(
+        "workspace-1",
+        "root-1",
+        inconsistent,
+        {
+          currentUserId: "account-user-1"
+        }
+      ),
+    /lifecycle capability projection does not match detail projection/
+  );
+});
+
 test("detail mapping fails the entire aggregate when a child violates protocol v2", () => {
   const child = createSession({
     id: "child-1",
@@ -76,6 +110,8 @@ test("detail mapping fails the entire aggregate when a child violates protocol v
         "workspace-1",
         "root-1",
         {
+          projection: "full",
+          lifecycleCapabilitiesProjected: true,
           session: createSession({ id: "root-1", kind: "root" }),
           childSessions: [malformedChild as WorkspaceAgentSession],
           turns: []
@@ -93,6 +129,8 @@ test("detail mapping rejects a response for a different requested Session", () =
         "workspace-1",
         "requested-1",
         {
+          projection: "full",
+          lifecycleCapabilitiesProjected: true,
           session: createSession({ id: "other-1", kind: "root" }),
           childSessions: [],
           turns: []
@@ -110,6 +148,8 @@ test("detail mapping rejects children outside the requested hierarchy", () => {
         "workspace-1",
         "root-1",
         {
+          projection: "full",
+          lifecycleCapabilitiesProjected: true,
           session: createSession({ id: "root-1", kind: "root" }),
           childSessions: [
             createSession({
@@ -132,6 +172,8 @@ test("detail mapping accepts descendants below a requested child Session", () =>
     "workspace-1",
     "child-1",
     {
+      projection: "full",
+      lifecycleCapabilitiesProjected: true,
       session: createSession({
         id: "child-1",
         kind: "child",
@@ -166,6 +208,8 @@ test("detail mapping rejects malformed or foreign Turns atomically", () => {
           "workspace-1",
           "root-1",
           {
+            projection: "full",
+            lifecycleCapabilitiesProjected: true,
             session: createSession({ id: "root-1", kind: "root" }),
             childSessions: [],
             turns: [turn]
@@ -188,12 +232,14 @@ function createSession(
     createdAtUnixMs: 1,
     cwd: "/workspace",
     endedAtUnixMs: null,
+    forkedFrom: null,
     goal: null,
     id: "session-1",
     imported: false,
     kind: "root",
     latestTurn: null,
     latestTurnInteractions: [],
+    lifecycleCapabilities: { fork: false, forkThroughTurn: false },
     messageVersion: 0,
     parentAgentSessionId: null,
     parentToolCallId: null,

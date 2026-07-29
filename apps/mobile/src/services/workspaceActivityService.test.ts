@@ -13,7 +13,6 @@ import { ComposerDraftService } from "./composerDraftService";
 import type { ClockPort } from "./servicePorts";
 import type { AgentLiveDelivery, DeviceLinkPort } from "./servicePorts";
 import { WorkspaceActivityService } from "./workspaceActivityService";
-import { WorkspaceConversationRailService } from "./workspaceConversationRailService";
 import { WorkspaceNavigationService } from "./workspaceNavigationService";
 
 const workspace: WorkspaceSummary = {
@@ -22,7 +21,23 @@ const workspace: WorkspaceSummary = {
   name: "Workspace"
 };
 
+const fullSessionDetailProjection = {
+  lifecycleCapabilitiesProjected: true,
+  projection: "full"
+} as const;
+
 describe("WorkspaceActivityService", () => {
+  test("disposes the conversation Rail it owns", () => {
+    const service = createService(
+      createClient({ listMessages: emptyMessagePage })
+    );
+    const disposeRail = jest.spyOn(service.rail, "dispose");
+
+    service.dispose();
+
+    expect(disposeRail).toHaveBeenCalledTimes(1);
+  });
+
   test("projects canonical session identity and authoritative message paging", async () => {
     const messageQueries: Array<Record<string, unknown>> = [];
     const client = createClient({
@@ -596,6 +611,7 @@ describe("WorkspaceActivityService", () => {
       detail: async () => {
         detailReads += 1;
         return {
+          ...fullSessionDetailProjection,
           childSessions: [],
           session: createSession(),
           turns: []
@@ -629,6 +645,7 @@ describe("WorkspaceActivityService", () => {
 
     await service.start();
     await flushAsyncWork();
+    const detailReadsAfterInitialHydration = detailReads;
     liveListener!({
       event: {
         agentSessionId: "session-1",
@@ -658,7 +675,8 @@ describe("WorkspaceActivityService", () => {
           (message) => message.messageId
         )
     ).toEqual(["message-1", "audit-1"]);
-    expect(detailReads).toBe(0);
+    expect(detailReadsAfterInitialHydration).toBe(2);
+    expect(detailReads).toBe(detailReadsAfterInitialHydration);
 
     service.dispose();
   });
@@ -670,6 +688,7 @@ describe("WorkspaceActivityService", () => {
     const queries: Array<Record<string, unknown>> = [];
     const client = createClient({
       detail: async () => ({
+        ...fullSessionDetailProjection,
         childSessions: [],
         session: createSession(),
         turns: []
@@ -704,7 +723,7 @@ describe("WorkspaceActivityService", () => {
     expect(queries).toEqual([
       { limit: 100, order: "desc" },
       { beforeVersion: 5, limit: 100, order: "desc" },
-      { limit: 100, order: "desc" }
+      { afterVersion: 0, order: "asc" }
     ]);
     expect(
       service
@@ -719,7 +738,7 @@ describe("WorkspaceActivityService", () => {
     service.dispose();
   });
 
-  test("runs an authoritative live reconcile while incremental polling is in flight", async () => {
+  test("queues authoritative live reconcile behind in-flight incremental polling", async () => {
     const clock = new RecordingClock();
     let liveListener: ((delivery: AgentLiveDelivery) => void) | null = null;
     let resolveIncremental:
@@ -728,13 +747,14 @@ describe("WorkspaceActivityService", () => {
     const queries: Array<Record<string, unknown>> = [];
     const client = createClient({
       detail: async () => ({
+        ...fullSessionDetailProjection,
         childSessions: [],
         session: createSession(),
         turns: []
       }),
       listMessages: async (_workspaceId, agentSessionId, query) => {
         queries.push(query);
-        if ("afterVersion" in query) {
+        if (query.afterVersion === 0 && queries.length === 2) {
           return new Promise((resolve) => {
             resolveIncremental = resolve;
           });
@@ -759,8 +779,15 @@ describe("WorkspaceActivityService", () => {
 
     expect(queries).toEqual([
       { limit: 100, order: "desc" },
-      { afterVersion: 5, order: "asc" },
-      { limit: 100, order: "desc" }
+      { afterVersion: 0, order: "asc" }
+    ]);
+    resolveIncremental!(messagePage("session-1", "message-6", 6));
+    await flushAsyncWork();
+
+    expect(queries).toEqual([
+      { limit: 100, order: "desc" },
+      { afterVersion: 0, order: "asc" },
+      { afterVersion: 0, order: "asc" }
     ]);
     expect(
       service
@@ -770,8 +797,50 @@ describe("WorkspaceActivityService", () => {
         )
     ).toBe(true);
 
-    resolveIncremental!(messagePage("session-1", "message-6", 6));
+    service.dispose();
+  });
+
+  test("surfaces and clears authoritative message reconcile failures", async () => {
+    let liveListener: ((delivery: AgentLiveDelivery) => void) | null = null;
+    let failReconcile = true;
+    let messageVersion = 1;
+    const client = createClient({
+      detail: async () => ({
+        ...fullSessionDetailProjection,
+        childSessions: [],
+        session: createSession(),
+        turns: []
+      }),
+      listMessages: async (_workspaceId, agentSessionId, query) => {
+        if ("afterVersion" in query && failReconcile) {
+          throw new Error("message reconcile failed");
+        }
+        messageVersion += 1;
+        return messagePage(
+          agentSessionId,
+          `message-${messageVersion}`,
+          messageVersion
+        );
+      }
+    });
+    const service = createService(client, {
+      deviceLink: createLiveDeviceLink((listener) => {
+        liveListener = listener;
+      })
+    });
+
+    await service.start();
     await flushAsyncWork();
+    liveListener!(sessionDiscontinuity());
+    await flushAsyncWork();
+    expect(service.getSnapshot().errorCode).toBe("request_failed");
+
+    failReconcile = false;
+    service.pause();
+    service.resume();
+    await flushAsyncWork();
+    expect(service.getSnapshot().errorCode).toBeNull();
+
     service.dispose();
   });
 
@@ -834,6 +903,7 @@ describe("WorkspaceActivityService", () => {
     };
     const client = createClient({
       detail: async () => ({
+        ...fullSessionDetailProjection,
         childSessions: [child],
         session: root,
         turns: [createTurn(root.id, "turn-root-1")]
@@ -872,6 +942,7 @@ describe("WorkspaceActivityService", () => {
         }
       ]
     });
+    await flushAsyncWork();
     await flushAsyncWork();
 
     expect(
@@ -1004,7 +1075,6 @@ function createService(
     new AgentDirectoryService(client),
     new WorkspaceNavigationService(),
     new ComposerDraftService(),
-    new WorkspaceConversationRailService(workspace, client, clock),
     clock,
     "account-user-1",
     options.deviceLink
@@ -1077,21 +1147,83 @@ function createClient(options: {
     name: string;
   }>;
 }): TuttidClient {
+  const railSessions = () =>
+    options.sessions?.() ??
+    (() => {
+      const session =
+        options.session === undefined ? createSession() : options.session();
+      return session ? [session] : [];
+    })();
   return {
     createWorkspaceAgentSession: options.create,
     deleteWorkspaceAgentSessionsBatch: options.deleteBatch,
     getAgentProviderComposerOptions: options.composerOptions,
-    getWorkspaceAgentSession: options.detail,
+    getWorkspaceAgentSession: async (
+      ...args: Parameters<NonNullable<TuttidClient["getWorkspaceAgentSession"]>>
+    ) => {
+      const detail = options.detail
+        ? await options.detail(args[0], args[1])
+        : await (async () => {
+            const session = railSessions().find(
+              (candidate) => candidate.id === args[1]
+            );
+            if (!session) throw new Error("session not found");
+            return {
+              ...fullSessionDetailProjection,
+              childSessions: [],
+              session,
+              turns: session.latestTurn ? [session.latestTurn] : []
+            };
+          })();
+      const projection = args[2] ?? "full";
+      return {
+        ...detail,
+        lifecycleCapabilitiesProjected: projection === "full",
+        projection
+      };
+    },
     listAgentTargets: async () => ({ targets: options.targets ?? [] }),
     listWorkspaceAgentSessionMessages: options.listMessages,
+    listWorkspaceAgentPinnedSessionPage: async () => {
+      const sessions = railSessions().filter(
+        (session) => session.pinnedAtUnixMs != null
+      );
+      return {
+        page: {
+          hasMore: false,
+          sessions,
+          totalCount: sessions.length
+        },
+        workspaceId: workspace.id
+      };
+    },
+    listWorkspaceAgentSessionSectionPage: async (
+      _workspaceId: string,
+      request: Parameters<
+        NonNullable<TuttidClient["listWorkspaceAgentSessionSectionPage"]>
+      >[1]
+    ) => {
+      const sessions = railSessions().filter(
+        (session) =>
+          session.pinnedAtUnixMs == null &&
+          session.railSectionKey === request.sectionKey
+      );
+      return {
+        section: {
+          hasMore: false,
+          kind:
+            request.sectionKey === "conversations"
+              ? ("conversations" as const)
+              : ("project" as const),
+          sectionKey: request.sectionKey,
+          sessions,
+          totalCount: sessions.length
+        },
+        workspaceId: workspace.id
+      };
+    },
     listWorkspaceAgentSessionSections: async () => {
-      const sessions =
-        options.sessions?.() ??
-        (() => {
-          const session =
-            options.session === undefined ? createSession() : options.session();
-          return session ? [session] : [];
-        })();
+      const sessions = railSessions();
       if (sessions.length === 0) {
         return {
           pinned: { hasMore: false, sessions: [], totalCount: 0 },
@@ -1175,12 +1307,14 @@ function createSession(): WorkspaceAgentSession {
     createdAtUnixMs: 1,
     cwd: "/",
     endedAtUnixMs: null,
+    forkedFrom: null,
     goal: null,
     id: "session-1",
     imported: false,
     kind: "root",
     latestTurn: null,
     latestTurnInteractions: [],
+    lifecycleCapabilities: { fork: false, forkThroughTurn: false },
     messageVersion: 0,
     parentAgentSessionId: null,
     parentToolCallId: null,
@@ -1290,9 +1424,9 @@ function messagePage(
 }
 
 async function flushAsyncWork(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
+  for (let turn = 0; turn < 24; turn += 1) {
+    await Promise.resolve();
+  }
 }
 
 class ManualClock implements ClockPort {

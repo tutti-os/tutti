@@ -4,6 +4,7 @@ import {
   resolveSlashCommandSelectionEffect,
   resolveSlashCommandSubmitEffect
 } from "./agentSlashCommandProviderPolicy";
+import type { AgentSlashCommandPolicy } from "./agentSlashCommandProviderPolicy";
 
 const CODEX_POLICY = {
   fallbackCommands: ["compact", "status", "fast", "goal", "review"],
@@ -657,6 +658,21 @@ describe("agentSlashCommandProviderPolicy", () => {
         commands: [{ name: "compact" }]
       })
     ).toEqual([{ name: "compact" }]);
+  });
+
+  it("shows extension fallback commands when command effects are absent", () => {
+    const policy = {
+      fallbackCommands: ["compact", "status"],
+      commandCatalogAuthoritative: true
+    } as unknown as AgentSlashCommandPolicy;
+
+    expect(
+      resolveSlashCommandsForProvider({
+        provider: "acp:hermes",
+        policy,
+        commands: []
+      })
+    ).toEqual([{ name: "compact" }, { name: "status" }]);
   });
 
   it("keeps non-plan advertised Claude Code controls provider-native", () => {

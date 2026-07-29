@@ -194,40 +194,41 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
             <TuttiWorkflowDock
               assignmentCatalog={tuttiWorkflowDock.assignmentCatalog}
               assignmentDrafts={tuttiWorkflowDock.assignmentDrafts}
-              intensityPopoverLabels={{
+              preferencePopoverLabels={{
                 title: composerProps.labels.tuttiBudgetTitle,
-                intensityLabel: composerProps.labels.tuttiBudgetIntensityLabel,
+                effectLabel: composerProps.labels.tuttiBudgetEffectLabel,
+                speedLabel: composerProps.labels.tuttiBudgetSpeedLabel,
                 previewTitle: composerProps.labels.tuttiBudgetPreviewTitle,
                 previewHint: composerProps.labels.tuttiBudgetPreviewHint,
                 previewCost: composerProps.labels.tuttiBudgetPreviewCost,
                 previewBalance: composerProps.labels.tuttiBudgetPreviewBalance,
                 previewPowerful:
                   composerProps.labels.tuttiBudgetPreviewPowerful,
-                modelStrengthLabel:
-                  composerProps.labels.tuttiBudgetModelStrengthLabel,
-                modelStrengthCost:
-                  composerProps.labels.tuttiBudgetModelStrengthCost,
-                modelStrengthBalance:
-                  composerProps.labels.tuttiBudgetModelStrengthBalance,
-                modelStrengthPowerful:
-                  composerProps.labels.tuttiBudgetModelStrengthPowerful,
-                agentCountLabel:
-                  composerProps.labels.tuttiBudgetAgentCountLabel,
-                agentCountCost: composerProps.labels.tuttiBudgetAgentCountCost,
-                agentCountBalance:
-                  composerProps.labels.tuttiBudgetAgentCountBalance,
-                agentCountPowerful:
-                  composerProps.labels.tuttiBudgetAgentCountPowerful
+                modelPreferenceLabel:
+                  composerProps.labels.tuttiBudgetModelPreferenceLabel,
+                modelPreferenceCost:
+                  composerProps.labels.tuttiBudgetModelPreferenceCost,
+                modelPreferenceBalance:
+                  composerProps.labels.tuttiBudgetModelPreferenceBalance,
+                modelPreferencePowerful:
+                  composerProps.labels.tuttiBudgetModelPreferencePowerful,
+                modelPreferenceFastestSuitable:
+                  composerProps.labels
+                    .tuttiBudgetModelPreferenceFastestSuitable,
+                parallelismLabel:
+                  composerProps.labels.tuttiBudgetParallelismLabel,
+                parallelismValue:
+                  composerProps.labels.tuttiBudgetParallelismValue
               }}
               labels={tuttiWorkflowDockLabels}
               phase={workflowPhase}
               planPanelLabels={tuttiPlanPanelLabels}
               planIssuePanelLabels={tuttiPlanIssuePanelLabels}
               onAssignmentDraftChange={tuttiWorkflowDock.updateAssignment}
-              onCancelExecution={tuttiWorkflowDock.cancelExecution}
               onCancelReview={tuttiWorkflowDock.cancelReview}
-              onDecideTask={tuttiWorkflowDock.decideTask}
-              onIntensityChange={tuttiWorkflowDock.changeIntensity}
+              onTaskAction={tuttiWorkflowDock.taskAction}
+              onEffectChange={tuttiWorkflowDock.changeEffect}
+              onSpeedChange={tuttiWorkflowDock.changeSpeed}
               onOpenIssue={tuttiWorkflowDock.openIssue}
               onOpenTask={tuttiWorkflowDock.openTask}
               onRetry={tuttiWorkflowDock.retry}

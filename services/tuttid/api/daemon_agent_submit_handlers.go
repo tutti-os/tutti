@@ -10,6 +10,7 @@ import (
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	"github.com/tutti-os/tutti/services/tuttid/apierrors"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
+	agentsessionreplay "github.com/tutti-os/tutti/services/tuttid/service/agentsessionreplay"
 )
 
 func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tuttigenerated.CreateWorkspaceAgentSessionRequestObject) (tuttigenerated.CreateWorkspaceAgentSessionResponseObject, error) {
@@ -53,6 +54,27 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 	}
 	clientSubmitID := strings.TrimSpace(request.Body.ClientSubmitId)
 	metadata := agentSubmitMetadata(request.Body.SubmitDiagnostics)
+	var recordingID string
+	if request.Body.RecordingId != nil {
+		if api.AgentSessionRecordingService == nil {
+			return tuttigenerated.CreateWorkspaceAgentSession503JSONResponse{
+				ServiceUnavailableErrorJSONResponse: agentSessionRecordingUnavailableError(),
+			}, nil
+		}
+		recordingID = request.Body.RecordingId.String()
+		if _, err := api.AgentSessionRecordingService.Bind(ctx, agentsessionreplay.BindInput{
+			RecordingID:    recordingID,
+			WorkspaceID:    string(request.WorkspaceID),
+			AgentTargetID:  agentTargetID,
+			AgentSessionID: agentSessionID,
+		}); err != nil {
+			return tuttigenerated.CreateWorkspaceAgentSession400JSONResponse{
+				InvalidRequestErrorJSONResponse: invalidRequestError(
+					apierrors.MalformedRequest(apierrors.WithCause(err)),
+				),
+			}, nil
+		}
+	}
 	logCreateAgentSubmitTrace("api.create.received", string(request.WorkspaceID), agentSessionID, clientSubmitID, metadata, "", "", nil)
 	session, err := api.AgentSessionService.Create(ctx, string(request.WorkspaceID), agentservice.CreateSessionInput{
 		AgentSessionID:             agentSessionID,
@@ -77,6 +99,9 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 		ConversationDetailMode:     api.agentConversationDetailMode(ctx),
 	})
 	if err != nil {
+		if recordingID != "" {
+			_, _ = api.AgentSessionRecordingService.Cancel(ctx, recordingID)
+		}
 		logCreateAgentSubmitTrace("api.create.failed", string(request.WorkspaceID), agentSessionID, clientSubmitID, metadata, "", "", err)
 		return writeCreateWorkspaceAgentSessionError(err), nil
 	}
@@ -85,9 +110,57 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 		return writeCreateWorkspaceAgentSessionError(err), nil
 	}
 	logCreateAgentSubmitTrace("api.create.completed", string(request.WorkspaceID), agentSessionID, clientSubmitID, metadata, session.Provider, agentSessionTurnPhase(session), nil)
+	if recordingID != "" {
+		stimulusPayload := map[string]any{
+			"agentTargetId":              agentTargetID,
+			"browserUse":                 request.Body.BrowserUse,
+			"capabilityRefs":             request.Body.CapabilityRefs,
+			"clientSubmitId":             clientSubmitID,
+			"content":                    request.Body.InitialContent,
+			"cwd":                        request.Body.Cwd,
+			"displayPrompt":              request.Body.InitialDisplayPrompt,
+			"initialTuttiModeActivation": request.Body.InitialTuttiModeActivation,
+			"model":                      request.Body.Model,
+			"noProject":                  request.Body.NoProject,
+			"permissionModeId":           request.Body.PermissionModeId,
+			"planMode":                   request.Body.PlanMode,
+			"railPlacement":              request.Body.RailPlacement,
+			"reasoningEffort":            request.Body.ReasoningEffort,
+			"speed":                      request.Body.Speed,
+			"submitDiagnostics":          request.Body.SubmitDiagnostics,
+			"title":                      request.Body.Title,
+			"visible":                    request.Body.Visible,
+		}
+		applyEffectiveCreateSessionLaunch(stimulusPayload, session)
+		api.recordAgentStimulus(
+			ctx,
+			"session.create",
+			string(request.WorkspaceID),
+			agentSessionID,
+			stimulusPayload,
+		)
+	}
 	return tuttigenerated.CreateWorkspaceAgentSession201JSONResponse{
 		Session: generatedSession,
 	}, nil
+}
+
+func applyEffectiveCreateSessionLaunch(payload map[string]any, session agentservice.Session) {
+	if payload == nil {
+		return
+	}
+	if cwd := strings.TrimSpace(session.Cwd); cwd != "" {
+		payload["cwd"] = cwd
+	}
+	if session.Settings == nil {
+		return
+	}
+	payload["browserUse"] = session.Settings.BrowserUse
+	payload["model"] = session.Settings.Model
+	payload["permissionModeId"] = session.Settings.PermissionModeID
+	payload["planMode"] = session.Settings.PlanMode
+	payload["reasoningEffort"] = session.Settings.ReasoningEffort
+	payload["speed"] = session.Settings.Speed
 }
 
 func tuttiModeActivationIntentFromGenerated(input *tuttigenerated.TuttiModeActivationIntent) (*agentservice.TuttiModeActivationIntent, *apierrors.ProtocolError) {
@@ -98,9 +171,10 @@ func tuttiModeActivationIntentFromGenerated(input *tuttigenerated.TuttiModeActiv
 		return nil, err
 	}
 	return &agentservice.TuttiModeActivationIntent{
-		State:                  string(input.Status),
-		Source:                 string(input.Source),
-		OrchestrationIntensity: input.OrchestrationIntensity,
+		State:  string(input.Status),
+		Source: string(input.Source),
+		Effect: firstPreference(input.Effect, input.OrchestrationIntensity),
+		Speed:  input.Speed,
 	}, nil
 }
 
@@ -160,6 +234,23 @@ func (api DaemonAPI) SendWorkspaceAgentSessionInput(ctx context.Context, request
 		return writeSendWorkspaceAgentSessionInputError(err), nil
 	}
 	logSendAgentSubmitTrace("api.send.completed", string(request.WorkspaceID), string(request.AgentSessionID), clientSubmitID, metadata, agentSessionTurnPhase(result.Session), result.TurnID, result.TurnLifecycle.Phase, nil)
+	// Desktop AgentGUI submissions are recorded from the workspace activity
+	// engine so queue and steer semantics survive replay. Transport callers
+	// without renderer submit diagnostics remain direct stimuli.
+	if api.AgentSessionRecordingService != nil && shouldRecordDirectSessionSend(request.Body.SubmitDiagnostics) {
+		api.recordAgentStimulus(
+			ctx,
+			"session.send",
+			string(request.WorkspaceID),
+			string(request.AgentSessionID),
+			map[string]any{
+				"clientSubmitId": clientSubmitID,
+				"content":        request.Body.Content,
+				"displayPrompt":  request.Body.DisplayPrompt,
+				"guidance":       request.Body.Guidance,
+			},
+		)
+	}
 	var response tuttigenerated.SendWorkspaceAgentSessionInputResponse
 	if result.Kind == "goalControl" && result.GoalControl != nil {
 		goalResult := result.GoalControl
@@ -199,6 +290,12 @@ func (api DaemonAPI) SendWorkspaceAgentSessionInput(ctx context.Context, request
 		return nil, err
 	}
 	return tuttigenerated.SendWorkspaceAgentSessionInput200JSONResponse(response), nil
+}
+
+func shouldRecordDirectSessionSend(
+	diagnostics *tuttigenerated.AgentSubmitDiagnostics,
+) bool {
+	return diagnostics == nil
 }
 
 func capabilityReferencesFromGenerated(input *[]tuttigenerated.WorkspaceAgentCapabilityReference) ([]agentservice.CapabilityReference, *apierrors.ProtocolError) {

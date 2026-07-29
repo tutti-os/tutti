@@ -57,6 +57,7 @@ interface Props {
   onTuttiModeChange?: (active: boolean) => void;
   composerActionButton: ReactNode;
   quickPromptControl?: ReactNode;
+  footerAccessory?: ReactNode;
   showHandoffSelect: boolean;
   handoffDisabled: boolean;
   effectiveHandoffLabel: string;
@@ -103,6 +104,7 @@ export function ComposerFooter({
   onTuttiModeChange,
   composerActionButton,
   quickPromptControl,
+  footerAccessory,
   showHandoffSelect,
   handoffDisabled,
   effectiveHandoffLabel,
@@ -306,6 +308,7 @@ export function ComposerFooter({
             </Select>
           ) : null}
           {quickPromptControl}
+          {footerAccessory}
           {composerSettings.supportsPlanMode && isPlanModeActive ? (
             <button
               type="button"

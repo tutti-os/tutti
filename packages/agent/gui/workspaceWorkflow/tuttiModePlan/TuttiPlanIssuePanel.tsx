@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { ExternalLink, ListChecks, Square } from "lucide-react";
+import { ExternalLink, ListChecks, RotateCcw } from "lucide-react";
 import {
+  Badge,
   Button,
   Card,
   CardContent,
@@ -12,10 +13,10 @@ import type {
   TuttiPlanIssueSnapshot,
   TuttiPlanIssueTaskSnapshot
 } from "../workspaceWorkflowRuntime";
+import type { TuttiModePlanTaskPromptAction } from "./tuttiModePlanPromptActions";
 
 export interface TuttiPlanIssuePanelLabels {
   openIssue: string;
-  stopExecution: string;
   listView: string;
   boardView: string;
   parallelizable: string;
@@ -126,8 +127,8 @@ export function groupTuttiPlanIssueTasksIntoStages(
   return stages;
 }
 
-/** The acceptance decision the embedded panel can settle on one task. */
-export type TuttiPlanIssueTaskDecision = "accept" | "rework";
+/** A task action that the source conversation turns into an Agent draft. */
+export type TuttiPlanIssueTaskAction = TuttiModePlanTaskPromptAction;
 
 /** A task that has launched has a delegate conversation to jump into. */
 function taskHasConversation(task: TuttiPlanIssueTaskSnapshot): boolean {
@@ -137,45 +138,41 @@ function taskHasConversation(task: TuttiPlanIssueTaskSnapshot): boolean {
 /**
  * Embedded "issue panel view" for the source conversation: once the accepted
  * plan materialized an Issue, the conversation shows its subtasks as a live
- * board/list. The acceptance gate closes here too — pending tasks offer
- * accept/rework inline — while all other mutations stay in the Issue Manager;
- * a jump into the full Issue surface remains one click away.
+ * board/list. Pending and failed tasks can prepare accept/rework instructions
+ * in the source Agent composer; the panel itself does not mutate the managed
+ * Issue. A jump into the full Issue surface remains one click away.
  */
 export function TuttiPlanIssuePanel({
   embedded = false,
   issue,
   labels,
   onOpenIssue,
-  onDecideTask,
-  onCancelExecution,
+  onTaskAction,
   onOpenTask
 }: {
   embedded?: boolean;
   issue: TuttiPlanIssueSnapshot;
   labels: TuttiPlanIssuePanelLabels;
   onOpenIssue?: () => void;
-  onDecideTask?: (
+  onTaskAction?: (
     taskId: string,
-    decision: TuttiPlanIssueTaskDecision
+    action: TuttiPlanIssueTaskAction
   ) => Promise<void>;
-  onCancelExecution?: () => Promise<void>;
   /** Jump into the delegate conversation of a task that has launched. */
   onOpenTask?: (taskId: string) => void | Promise<void>;
 }): React.JSX.Element {
   const [viewMode, setViewMode] = useState<TuttiPlanIssueViewMode>("board");
   const [decidingTaskIds, setDecidingTaskIds] = useState<readonly string[]>([]);
-  const [stopping, setStopping] = useState(false);
-  const decideTask = onDecideTask
-    ? (taskId: string, decision: TuttiPlanIssueTaskDecision): void => {
+  const requestTaskAction = onTaskAction
+    ? (taskId: string, action: TuttiPlanIssueTaskAction): void => {
         setDecidingTaskIds((current) =>
           current.includes(taskId) ? current : [...current, taskId]
         );
-        void onDecideTask(taskId, decision)
+        void onTaskAction(taskId, action)
           .catch((error: unknown) => {
-            // Best-effort mutation; the live issue stream re-syncs status and
-            // the buttons return for a retry. Keep the failure observable —
-            // a swallowed transport error otherwise reads as a dead button.
-            console.error("tutti plan issue task decision failed", error);
+            // Keep prompt preparation failures observable; otherwise a rejected
+            // host callback would read as a dead button.
+            console.error("tutti plan issue task prompt action failed", error);
           })
           .finally(() => {
             setDecidingTaskIds((current) =>
@@ -188,27 +185,11 @@ export function TuttiPlanIssuePanel({
   const running = issue.tasks.filter(
     (task) => task.status === "running"
   ).length;
-  const stopExecution =
-    onCancelExecution && running > 0
-      ? (): void => {
-          setStopping(true);
-          void onCancelExecution()
-            .catch((error: unknown) => {
-              // Best-effort; the live issue stream re-syncs and the button
-              // returns for a retry while runs remain live. Keep the failure
-              // observable — a swallowed transport error (e.g. an unregistered
-              // daemon route answering 404) otherwise reads as a dead button.
-              console.error("tutti plan issue stop failed", error);
-            })
-            .finally(() => {
-              setStopping(false);
-            });
-        }
-      : undefined;
   return (
     <Card
+      size="sm"
       className={cn(
-        "w-full",
+        "w-full pt-2!",
         embedded && "border-0 bg-transparent shadow-none"
       )}
       data-testid="tutti-plan-issue-panel"
@@ -248,24 +229,9 @@ export function TuttiPlanIssuePanel({
               value={viewMode}
               onValueChange={setViewMode}
             />
-            {stopExecution ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                className="text-[var(--state-danger)] hover:text-[var(--state-danger)]"
-                disabled={stopping}
-                data-testid="tutti-plan-issue-stop"
-                onClick={stopExecution}
-              >
-                <Square aria-hidden className="size-3.5" />
-                {labels.stopExecution}
-              </Button>
-            ) : null}
             {onOpenIssue ? (
               <Button
                 type="button"
-                size="sm"
                 variant="secondary"
                 data-testid="tutti-plan-issue-open"
                 onClick={onOpenIssue}
@@ -282,7 +248,7 @@ export function TuttiPlanIssuePanel({
           <TuttiPlanIssueBoard
             issue={issue}
             labels={labels}
-            decideTask={decideTask}
+            requestTaskAction={requestTaskAction}
             decidingTaskIds={decidingTaskIds}
             openTask={onOpenTask}
           />
@@ -290,7 +256,7 @@ export function TuttiPlanIssuePanel({
           <TuttiPlanIssueList
             issue={issue}
             labels={labels}
-            decideTask={decideTask}
+            requestTaskAction={requestTaskAction}
             decidingTaskIds={decidingTaskIds}
             openTask={onOpenTask}
           />
@@ -314,43 +280,48 @@ function TaskStructureChips({
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-1">
       {task.parallelizable ? (
-        <span className="shrink-0 rounded-full border border-[color-mix(in_srgb,var(--tutti-purple)_36%,transparent)] px-1.5 text-[10px] leading-4 text-[var(--tutti-purple)]">
+        <Badge variant="accent" size="sm">
           {labels.parallelizable}
-        </span>
+        </Badge>
       ) : null}
       {task.autoAccept ? (
-        <span className="shrink-0 rounded-full border border-[color-mix(in_srgb,var(--state-success)_42%,transparent)] px-1.5 text-[10px] leading-4 text-[var(--state-success)]">
+        <Badge variant="success" size="sm">
           {labels.autoAccept}
-        </span>
+        </Badge>
       ) : null}
       {dependencies.length > 0 ? (
-        <span
-          className="min-w-0 truncate rounded-full border border-[var(--line-2)] px-1.5 text-[10px] leading-4 text-muted-foreground"
+        <Badge
+          variant="secondary"
+          size="sm"
+          className="min-w-0 truncate"
           title={dependencies.join(", ")}
         >
           {labels.dependencies}: {dependencies.join(", ")}
-        </span>
+        </Badge>
       ) : null}
     </span>
   );
 }
 
-function TaskDecisionActions({
+function TaskPromptActions({
   labels,
   task,
-  decideTask,
+  requestTaskAction,
   deciding
 }: {
   labels: TuttiPlanIssuePanelLabels;
   task: TuttiPlanIssueTaskSnapshot;
-  decideTask?: (taskId: string, decision: TuttiPlanIssueTaskDecision) => void;
+  requestTaskAction?: (
+    taskId: string,
+    action: TuttiPlanIssueTaskAction
+  ) => void;
   deciding: boolean;
 }): React.JSX.Element | null {
-  // pending_acceptance is the human gate (accept or rework); a failed task
-  // freezes dispatch, so it offers rework to re-open the frontier inline.
+  // These buttons only prepare source-Agent instructions. The Agent remains
+  // responsible for inspecting the authoritative execution before acting.
   const canAccept = task.status === "pending_acceptance";
   const canRework = canAccept || task.status === "failed";
-  if (!decideTask || !canRework) {
+  if (!requestTaskAction || !canRework) {
     return null;
   }
   return (
@@ -363,10 +334,10 @@ function TaskDecisionActions({
           disabled={deciding}
           data-testid={`tutti-plan-issue-accept-${task.taskId}`}
           onClick={(event) => {
-            // The card itself jumps into the conversation; a decision stays a
-            // decision.
+            // The card itself jumps into the delegate conversation; preparing
+            // a source-Agent instruction must not trigger that navigation.
             event.stopPropagation();
-            decideTask(task.taskId, "accept");
+            requestTaskAction(task.taskId, "accept");
           }}
         >
           {labels.accept}
@@ -381,9 +352,10 @@ function TaskDecisionActions({
         data-testid={`tutti-plan-issue-rework-${task.taskId}`}
         onClick={(event) => {
           event.stopPropagation();
-          decideTask(task.taskId, "rework");
+          requestTaskAction(task.taskId, "rework");
         }}
       >
+        <RotateCcw aria-hidden className="size-3.5" />
         {labels.rework}
       </Button>
     </span>
@@ -393,13 +365,16 @@ function TaskDecisionActions({
 function TuttiPlanIssueBoard({
   issue,
   labels,
-  decideTask,
+  requestTaskAction,
   decidingTaskIds,
   openTask
 }: {
   issue: TuttiPlanIssueSnapshot;
   labels: TuttiPlanIssuePanelLabels;
-  decideTask?: (taskId: string, decision: TuttiPlanIssueTaskDecision) => void;
+  requestTaskAction?: (
+    taskId: string,
+    action: TuttiPlanIssueTaskAction
+  ) => void;
   decidingTaskIds: readonly string[];
   openTask?: (taskId: string) => void | Promise<void>;
 }): React.JSX.Element {
@@ -414,7 +389,7 @@ function TuttiPlanIssueBoard({
       : true
   );
   return (
-    <div className="min-w-0 overflow-x-auto pb-1 [scrollbar-width:thin]">
+    <div className="board-scroll min-w-0 overflow-x-auto pb-1">
       <div
         className="grid gap-2"
         style={{
@@ -429,7 +404,7 @@ function TuttiPlanIssueBoard({
               className="min-h-[220px] min-w-0 rounded-lg border border-[var(--line-2)] bg-muted/30 px-2 py-2"
               data-testid={`tutti-plan-issue-column-${status}`}
             >
-              <div className="mb-1.5 flex items-center justify-between gap-2">
+              <div className="mx-1 mb-1.5 flex items-center justify-between gap-2">
                 <span className="flex min-w-0 items-center gap-1.5">
                   <span
                     aria-hidden
@@ -456,9 +431,8 @@ function TuttiPlanIssueBoard({
                       tabIndex={openable ? 0 : undefined}
                       data-testid={`tutti-plan-issue-task-${task.taskId}`}
                       className={cn(
-                        "min-w-0 overflow-hidden rounded-md bg-[var(--background-board-card)] px-2 py-1.5",
-                        openable &&
-                          "cursor-pointer transition-colors hover:bg-muted/60"
+                        "min-w-0 overflow-hidden rounded-md bg-[var(--background-board-card)] p-3",
+                        openable && "cursor-pointer"
                       )}
                       onClick={
                         openable ? () => void openTask(task.taskId) : undefined
@@ -476,14 +450,14 @@ function TuttiPlanIssueBoard({
                       <span className="line-clamp-2 text-[13px] font-medium text-foreground">
                         {task.title}
                       </span>
-                      <span className="mt-1 block empty:hidden">
+                      <span className="mt-2 block empty:hidden">
                         <TaskStructureChips labels={labels} task={task} />
                       </span>
                       <span className="mt-1.5 block empty:hidden">
-                        <TaskDecisionActions
+                        <TaskPromptActions
                           labels={labels}
                           task={task}
-                          decideTask={decideTask}
+                          requestTaskAction={requestTaskAction}
                           deciding={decidingTaskIds.includes(task.taskId)}
                         />
                       </span>
@@ -502,13 +476,16 @@ function TuttiPlanIssueBoard({
 function TuttiPlanIssueList({
   issue,
   labels,
-  decideTask,
+  requestTaskAction,
   decidingTaskIds,
   openTask
 }: {
   issue: TuttiPlanIssueSnapshot;
   labels: TuttiPlanIssuePanelLabels;
-  decideTask?: (taskId: string, decision: TuttiPlanIssueTaskDecision) => void;
+  requestTaskAction?: (
+    taskId: string,
+    action: TuttiPlanIssueTaskAction
+  ) => void;
   decidingTaskIds: readonly string[];
   openTask?: (taskId: string) => void | Promise<void>;
 }): React.JSX.Element {
@@ -544,8 +521,7 @@ function TuttiPlanIssueList({
                 data-testid={`tutti-plan-issue-row-${task.taskId}`}
                 className={cn(
                   "flex items-start justify-between gap-3 border-b border-[var(--line-2)] px-3 py-2 last:border-b-0",
-                  openable &&
-                    "cursor-pointer transition-colors hover:bg-muted/40"
+                  openable && "cursor-pointer"
                 )}
                 onClick={
                   openable ? () => void openTask(task.taskId) : undefined
@@ -574,10 +550,10 @@ function TuttiPlanIssueList({
                   ) : null}
                 </div>
                 <span className="flex shrink-0 items-center gap-2">
-                  <TaskDecisionActions
+                  <TaskPromptActions
                     labels={labels}
                     task={task}
-                    decideTask={decideTask}
+                    requestTaskAction={requestTaskAction}
                     deciding={decidingTaskIds.includes(task.taskId)}
                   />
                   <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">

@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import {
   getNpmReleasePackages,
+  parseReleasePackageFilters,
   workspaceRoot
 } from "./npm-release-packages.mjs";
 import {
@@ -31,7 +32,8 @@ const forbiddenPrefixes = [
 // `node --experimental-strip-types src/main.ts`, so it ships src/ on purpose.
 const sourcePublishingPackages = new Set(["@tutti-os/claude-sdk-sidecar"]);
 
-const packages = await getNpmReleasePackages();
+const packageNames = parseReleasePackageFilters(process.argv.slice(2));
+const packages = await getNpmReleasePackages({ packageNames });
 const tempDirectory = await mkdtemp(join(tmpdir(), "tutti-pack-check-"));
 
 try {

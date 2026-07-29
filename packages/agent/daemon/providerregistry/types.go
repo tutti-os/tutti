@@ -151,8 +151,12 @@ type RuntimeDescriptor struct {
 	Command             []string
 	ClientInfoName      string
 	AuthRequiredMessage string
-	Endpoint            RuntimeEndpointDescriptor
-	StandardACP         StandardACPRuntimeDescriptor
+	// NativeSessionFork marks runtimes whose provider strategy may expose a
+	// native session-fork primitive. The live adapter must still attest the
+	// exact protocol/version before advertising any fork capability.
+	NativeSessionFork bool
+	Endpoint          RuntimeEndpointDescriptor
+	StandardACP       StandardACPRuntimeDescriptor
 }
 
 type RuntimePermissionModeDescriptor struct {

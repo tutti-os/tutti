@@ -27,6 +27,7 @@ use (
 	./packages/agent/daemon
 	./packages/agent/host
 	./packages/agent/runtimeprep
+	./packages/agent/session-replay
 	./packages/agent/store-sqlite
 	./packages/agent/store-sqlite/canonical
 	./packages/appcli/core

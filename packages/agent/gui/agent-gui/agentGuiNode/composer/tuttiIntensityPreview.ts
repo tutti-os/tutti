@@ -1,51 +1,67 @@
-export type TuttiIntensityTier = "cost" | "balance" | "powerful";
-export type TuttiModelStrengthTendency =
+export type TuttiPreferenceTier = "cost" | "balance" | "powerful";
+export type TuttiModelPreference =
   | "economical"
   | "balanced"
-  | "mostCapable";
-export type TuttiAgentCountTendency = "single" | "smallGroup" | "maxParallel";
+  | "mostCapable"
+  | "fastestSuitable";
+export type TuttiVerificationPreference = "focused" | "relevant" | "thorough";
 
-export interface TuttiIntensityPreview {
-  /** Clamped, rounded intensity used by the slider and marker. */
-  intensity: number;
-  /** Qualitative planning tendency shown to the user. */
-  tier: TuttiIntensityTier;
-  /** Label lookup key for the model-strength tendency. */
-  modelStrength: TuttiModelStrengthTendency;
-  /** Label lookup key for the expected parallel Agent count. */
-  agentCount: TuttiAgentCountTendency;
+export interface TuttiPreferencePreview {
+  effect: number;
+  speed: number;
+  effectTier: TuttiPreferenceTier;
+  speedTier: TuttiPreferenceTier;
+  modelPreference: TuttiModelPreference;
+  verificationPreference: TuttiVerificationPreference;
+  parallelTarget: number;
+}
+
+function normalizePreference(value: number): number {
+  return Number.isFinite(value)
+    ? Math.min(100, Math.max(0, Math.round(value)))
+    : 50;
+}
+
+function preferenceTier(value: number): TuttiPreferenceTier {
+  return value <= 33 ? "cost" : value <= 66 ? "balance" : "powerful";
 }
 
 /**
- * Projects the continuous Tutti intensity into three equal qualitative bands.
+ * Projects the two continuous Tutti preferences into qualitative guidance.
  *
- * This is presentation guidance, not execution authority. The planning Agent
- * still derives the exact model, task graph, and parallelism from the request,
- * selected Skills, available model catalog, and the workspace-wide limit.
+ * Effect raises the model capability floor and verification breadth. Speed
+ * asks the planner to choose the fastest model that still clears that floor
+ * and sets a 1-4 parallel Agent target. Actual concurrency remains bounded by
+ * dependencies, safe isolation, budget, and workspace capacity.
  */
-export function projectTuttiIntensityPreview(
-  intensity: number
-): TuttiIntensityPreview {
-  const normalized = Number.isFinite(intensity)
-    ? Math.min(100, Math.max(0, Math.round(intensity)))
-    : 50;
-  const tier: TuttiIntensityTier =
-    normalized <= 33 ? "cost" : normalized <= 66 ? "balance" : "powerful";
+export function projectTuttiPreferencePreview(
+  effect: number,
+  speed: number
+): TuttiPreferencePreview {
+  const normalizedEffect = normalizePreference(effect);
+  const normalizedSpeed = normalizePreference(speed);
+  const effectTier = preferenceTier(normalizedEffect);
+  const speedTier = preferenceTier(normalizedSpeed);
 
   return {
-    intensity: normalized,
-    tier,
-    modelStrength:
-      tier === "cost"
-        ? "economical"
-        : tier === "balance"
-          ? "balanced"
-          : "mostCapable",
-    agentCount:
-      tier === "cost"
-        ? "single"
-        : tier === "balance"
-          ? "smallGroup"
-          : "maxParallel"
+    effect: normalizedEffect,
+    speed: normalizedSpeed,
+    effectTier,
+    speedTier,
+    modelPreference:
+      speedTier === "powerful"
+        ? "fastestSuitable"
+        : effectTier === "powerful"
+          ? "mostCapable"
+          : effectTier === "cost"
+            ? "economical"
+            : "balanced",
+    verificationPreference:
+      effectTier === "powerful"
+        ? "thorough"
+        : effectTier === "cost"
+          ? "focused"
+          : "relevant",
+    parallelTarget: Math.min(4, Math.floor(normalizedSpeed / 25) + 1)
   };
 }

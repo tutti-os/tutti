@@ -80,6 +80,10 @@ func writeListWorkspaceAgentSessionSectionDeletionCandidatesError(err error) tut
 func writeDeleteWorkspaceAgentSessionsBatchError(err error) tuttigenerated.DeleteWorkspaceAgentSessionsBatchResponseObject {
 	protocolErr := apierrors.Classify(err)
 	switch protocolErr.Code {
+	case tuttigenerated.TuttiExecutionActive:
+		return tuttigenerated.DeleteWorkspaceAgentSessionsBatch409JSONResponse{
+			TuttiExecutionActiveErrorJSONResponse: tuttiExecutionActiveError(protocolErr),
+		}
 	case tuttigenerated.WorkspaceNotFound:
 		return tuttigenerated.DeleteWorkspaceAgentSessionsBatch404JSONResponse{
 			WorkspaceNotFoundErrorJSONResponse: workspaceNotFoundError(protocolErr),
@@ -116,6 +120,10 @@ func writeListWorkspaceAgentPinnedSessionPageError(err error) tuttigenerated.Lis
 func writeClearWorkspaceAgentSessionsError(err error) tuttigenerated.ClearWorkspaceAgentSessionsResponseObject {
 	protocolErr := apierrors.Classify(err)
 	switch protocolErr.Code {
+	case tuttigenerated.TuttiExecutionActive:
+		return tuttigenerated.ClearWorkspaceAgentSessions409JSONResponse{
+			TuttiExecutionActiveErrorJSONResponse: tuttiExecutionActiveError(protocolErr),
+		}
 	case tuttigenerated.WorkspaceNotFound:
 		return tuttigenerated.ClearWorkspaceAgentSessions404JSONResponse{
 			WorkspaceNotFoundErrorJSONResponse: workspaceNotFoundError(protocolErr),
@@ -220,6 +228,10 @@ func writeGetWorkspaceAgentSessionError(err error) tuttigenerated.GetWorkspaceAg
 func writeDeleteWorkspaceAgentSessionError(err error) tuttigenerated.DeleteWorkspaceAgentSessionResponseObject {
 	protocolErr := apierrors.Classify(err)
 	switch protocolErr.Code {
+	case tuttigenerated.TuttiExecutionActive:
+		return tuttigenerated.DeleteWorkspaceAgentSession409JSONResponse{
+			TuttiExecutionActiveErrorJSONResponse: tuttiExecutionActiveError(protocolErr),
+		}
 	case tuttigenerated.WorkspaceNotFound:
 		return tuttigenerated.DeleteWorkspaceAgentSession404JSONResponse{
 			WorkspaceNotFoundErrorJSONResponse: workspaceNotFoundError(protocolErr),

@@ -76,6 +76,9 @@ func (api DaemonAPI) RunAgentProviderAction(ctx context.Context, request tuttige
 	if err != nil {
 		return writeRunAgentProviderActionError(err), nil
 	}
+	if api.TuttiAgentReadiness != nil {
+		api.TuttiAgentReadiness.ProviderActionCompleted(result)
+	}
 	return tuttigenerated.RunAgentProviderAction200JSONResponse(
 		generatedAgentProviderActionRun(result),
 	), nil

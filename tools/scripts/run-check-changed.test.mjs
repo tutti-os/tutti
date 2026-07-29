@@ -12,6 +12,7 @@ import {
   selectFailedOnlyLanes
 } from "./run-check-changed-cache.mjs";
 import {
+  isPackageBuildRelevant,
   parseCliArgs,
   printSummary,
   runLanes,
@@ -56,6 +57,34 @@ test("parseCliArgs accepts pnpm separators and explicit values", () => {
       tailLines: 40,
       verbose: false
     }
+  );
+});
+
+test("package builds exclude test-only inputs", () => {
+  const manifestIsNotRelevant = () => false;
+
+  for (const file of [
+    "packages/agent/gui/controller.spec.ts",
+    "packages/agent/gui/vitest.config.ts",
+    "packages/agent/gui/vitest.shared.setup.ts",
+    "packages/agent/gui/package.json"
+  ]) {
+    assert.equal(
+      isPackageBuildRelevant(file, manifestIsNotRelevant),
+      false,
+      file
+    );
+  }
+  assert.equal(
+    isPackageBuildRelevant(
+      "packages/agent/gui/index.ts",
+      manifestIsNotRelevant
+    ),
+    true
+  );
+  assert.equal(
+    isPackageBuildRelevant("packages/agent/gui/package.json", () => true),
+    true
   );
 });
 
