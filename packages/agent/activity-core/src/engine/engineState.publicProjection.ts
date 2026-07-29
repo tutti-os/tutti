@@ -13,6 +13,7 @@ export function projectPublicAgentSessionEngineState(
   const projected: AgentSessionEngineState = {
     attentionReadState: state.attentionReadState,
     composerOptions: state.composerOptions,
+    editRetry: state.editRetry,
     engineRuntime: state.engineRuntime,
     pendingIntents: state.pendingIntents,
     planDecisions: state.planDecisions,
