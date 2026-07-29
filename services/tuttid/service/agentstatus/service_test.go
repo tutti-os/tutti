@@ -156,7 +156,7 @@ func TestDefaultRegistryUsesTuttiAgentManagedNPMInstaller(t *testing.T) {
 }
 
 func TestServiceListUsesDescriptorOwnedDaemonLoginAction(t *testing.T) {
-	service, _ := updateTestService(t, "0.0.8")
+	service, _ := updateTestService(t, "0.0.10")
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"tutti-agent"}})
 	if err != nil {
@@ -1999,7 +1999,7 @@ func TestServiceListUsesManagedNodeForTuttiAgentVersionProbe(t *testing.T) {
 	writeExecutable(
 		t,
 		filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest()),
-		"#!/bin/sh\necho 'tutti-agent 0.0.8'\n",
+		"#!/bin/sh\necho 'tutti-agent 0.0.10'\n",
 	)
 
 	service := probeTestService(home)
@@ -2019,8 +2019,8 @@ func TestServiceListUsesManagedNodeForTuttiAgentVersionProbe(t *testing.T) {
 		t.Fatalf("List() error = %v", err)
 	}
 	status := onlyStatus(t, snapshot)
-	if status.CLI.Version != "0.0.8" {
-		t.Fatalf("CLI.Version = %q, want 0.0.8", status.CLI.Version)
+	if status.CLI.Version != "0.0.10" {
+		t.Fatalf("CLI.Version = %q, want 0.0.10", status.CLI.Version)
 	}
 	if status.Availability.Status != AvailabilityReady {
 		t.Fatalf(
