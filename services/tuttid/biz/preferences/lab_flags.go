@@ -6,9 +6,6 @@ package preferences
 // apps/desktop/src/shared/featureFlags/catalog.ts and must carry identical
 // keys and defaults. See docs/conventions/feature-flags.md.
 const (
-	LabFlagTuttiMode       = "lab.tuttiMode"
-	LabFlagModelPlans      = "lab.modelPlans"
-	LabFlagWorkspaceAgents = "lab.workspaceAgents"
 	LabFlagAutomationRules = "lab.automationRules"
 	// Durable key for Early Access agent-integration visibility (Agents directory).
 	LabFlagPreviewAgents = "lab.previewAgents"
@@ -16,9 +13,6 @@ const (
 
 // labFlagDefaults is fail-closed: every Lab flag defaults to off.
 var labFlagDefaults = map[string]bool{
-	LabFlagTuttiMode:       false,
-	LabFlagModelPlans:      false,
-	LabFlagWorkspaceAgents: false,
 	LabFlagAutomationRules: false,
 	LabFlagPreviewAgents:   false,
 }

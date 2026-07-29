@@ -18,9 +18,6 @@ import {
   LAB_ENABLED_FLAG,
   LAB_AGENT_INPUT_HISTORY_FLAG,
   LAB_AUTOMATION_RULES_FLAG,
-  LAB_MODEL_PLANS_FLAG,
-  LAB_TUTTI_MODE_FLAG,
-  LAB_WORKSPACE_AGENTS_FLAG,
   MOBILE_REMOTE_ACCESS_SETTINGS_FLAG,
   resolveDesktopWorkspaceUiMode,
   withDesktopWorkspaceUiMode,
@@ -96,17 +93,25 @@ test("labFeatureDefinitions excludes the master switch", () => {
 });
 
 test("experimental Agent features require independent Lab opt-ins", () => {
-  const flags = [
-    LAB_AGENT_INPUT_HISTORY_FLAG,
-    LAB_TUTTI_MODE_FLAG,
-    LAB_MODEL_PLANS_FLAG,
-    LAB_WORKSPACE_AGENTS_FLAG,
-    LAB_AUTOMATION_RULES_FLAG
-  ];
+  const flags = [LAB_AGENT_INPUT_HISTORY_FLAG, LAB_AUTOMATION_RULES_FLAG];
 
   for (const flag of flags) {
     assert.equal(isFeatureEnabled({}, flag), false);
     assert.equal(isFeatureEnabled({ [flag]: true }, flag), true);
+  }
+});
+
+test("graduated Agent features are not registered as Lab flags", () => {
+  const definitions = labFeatureDefinitions();
+  for (const retiredKey of [
+    "lab.tuttiMode",
+    "lab.modelPlans",
+    "lab.workspaceAgents"
+  ]) {
+    assert.equal(
+      definitions.some((definition) => definition.key === retiredKey),
+      false
+    );
   }
 });
 

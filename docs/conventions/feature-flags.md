@@ -31,6 +31,12 @@ already generic (`DesktopPreferences.FeatureFlags`,
 `NormalizeDesktopFeatureFlags`, preferences eventstream updates), so a new
 flag only needs registry entries and copy.
 
+When a feature graduates, remove its registry entries and every owning-feature
+gate in the same change. Historical stored values may remain in generic
+preferences for compatibility, but graduated features must not consult them;
+this makes the feature available to existing profiles even when their old
+value was `false`.
+
 Resolution rule on both sides: a stored value wins; absent keys fall back to
 the registry default; absent unregistered keys resolve to `false`
 (`IsLabFlagEnabled` in Go, `isFeatureEnabled` in TS).

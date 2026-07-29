@@ -9,7 +9,6 @@ import (
 
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	modelpolicybiz "github.com/tutti-os/tutti/services/tuttid/biz/modelpolicy"
-	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	modelpolicyservice "github.com/tutti-os/tutti/services/tuttid/service/modelpolicy"
 )
@@ -89,7 +88,6 @@ func TestDeleteModelPolicyReferencedReturnsConflict(t *testing.T) {
 	ctx := context.Background()
 
 	api := DaemonAPI{
-		PreferencesService: gateTestPreferences(map[string]bool{preferencesbiz.LabFlagModelPlans: true}, nil),
 		ModelPolicyService: referencedModelPolicyService{},
 	}
 	response, err := api.DeleteModelPolicy(ctx, tuttigenerated.DeleteModelPolicyRequestObject{
@@ -144,10 +142,7 @@ func TestWriteModelPolicyNotFoundReturnsNotFoundCode(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	// Writes require the model-plans lab flag; enable it so the handler reaches
-	// the not-found branch instead of the write gate.
 	api := DaemonAPI{
-		PreferencesService: gateTestPreferences(map[string]bool{preferencesbiz.LabFlagModelPlans: true}, nil),
 		ModelPolicyService: notFoundModelPolicyService{},
 	}
 

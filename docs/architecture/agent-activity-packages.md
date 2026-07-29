@@ -189,8 +189,17 @@ It owns:
 - the workspace session engine (`createAgentSessionEngine` under
   `src/engine/`): intent dispatch loop, domain-composed pure reducers,
   command-description effect executor, expiry-intent clock, and intent frame
-  batching, with scheduler/clock/command ports injected by the host (see
+  batching, with scheduler/clock/command ports injected by the host
+- the typed frontend effect seam for activation, prompt send, settings update,
+  turn cancellation, Interaction response, pin, and batch delete, including
+  lossless command projection and required-settings-before-send ordering; hosts
+  retain transport, DTO mapping, AbortSignal propagation, and product-specific
+  command extensions (see
   [Agent GUI Node](./agent-gui-node.md#4-workspace-frontend-engine))
+
+The public seam is `AgentSessionEffectPort`. Prompt precondition ordering and
+its helper port are Engine implementation details and are not exported from the
+package root.
 
 It does not own:
 

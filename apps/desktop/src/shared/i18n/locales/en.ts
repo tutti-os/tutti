@@ -1258,8 +1258,6 @@ export const en = {
           "Shows Automation Rule configuration and session overrides.",
         automationRulesLabel: "Automation Rules",
         clearShortcutLabel: "Clear {{label}}",
-        modelPlansDescription: "Shows Model settings for configuring plans.",
-        modelPlansLabel: "Model plans",
         newAgentConversationShortcutLabel: "New Agent conversation",
         newSameTypeWindowShortcutLabel: "New same-type window",
         preferencesSaveFailed: "We couldn't update Lab preferences.",
@@ -1267,16 +1265,10 @@ export const en = {
           "Show agent integrations that Tutti is still testing and validating.",
         previewAgentsLabel: "Early access agent integrations",
         shortcutUnbound: "Unbound",
-        tuttiModeDescription:
-          "Enables Tutti Mode planning and orchestration controls in Agent conversations.",
-        tuttiModeLabel: "Tutti Mode",
         workbenchShortcutsDescription:
           "Enables configurable workbench shortcut actions.",
         workbenchShortcutsLabel: "Workbench shortcuts",
-        workbenchShortcutsManageLabel: "Configure keyboard shortcuts",
-        workspaceAgentsDescription:
-          "Shows Custom Agent creation and configuration.",
-        workspaceAgentsLabel: "Custom Agents"
+        workbenchShortcutsManageLabel: "Configure keyboard shortcuts"
       },
       title: "Settings",
       trigger: "Settings"

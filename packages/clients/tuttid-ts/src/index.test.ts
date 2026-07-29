@@ -795,6 +795,60 @@ test("shared tuttid client forwards AbortSignal for issue topic and issue list r
   );
 });
 
+test("shared tuttid client forwards AbortSignal for Agent effect writes", async () => {
+  const { client, requests } = captureClient((request) => {
+    if (request.path.endsWith("/cancel")) {
+      return jsonResponse({
+        cancel: { canceled: true, reason: "turn_canceled" }
+      });
+    }
+    if (request.path.endsWith("/input")) {
+      return jsonResponse({
+        session: {},
+        turn: {},
+        turnId: "turn-1"
+      });
+    }
+    return jsonResponse({ session: {} });
+  });
+  const abortController = new AbortController();
+  const options = { signal: abortController.signal };
+
+  await client.cancelWorkspaceAgentTurn("ws-1", "session-1", "turn-1", options);
+  await client.sendWorkspaceAgentSessionInput(
+    "ws-1",
+    "session-1",
+    { clientSubmitId: "submit-1", content: [] },
+    options
+  );
+  await client.updateWorkspaceAgentSessionSettings(
+    "ws-1",
+    "session-1",
+    { model: "model-1" },
+    options
+  );
+  await client.submitWorkspaceAgentInteractive(
+    "ws-1",
+    "session-1",
+    "request-1",
+    { turnId: "turn-1" },
+    options
+  );
+  await client.updateWorkspaceAgentSessionPin(
+    "ws-1",
+    "session-1",
+    { pinned: true },
+    options
+  );
+
+  abortController.abort();
+  assert.equal(requests.length, 5);
+  assert.equal(
+    requests.every((request) => request.signal.aborted),
+    true
+  );
+});
+
 test("shared tuttid client lists section deletion candidates with pinned exclusion", async () => {
   let requestPath = "";
   let requestQueryEntries: Record<string, string> = {};

@@ -41,11 +41,6 @@ func (api DaemonAPI) ListModelPolicies(ctx context.Context, request tuttigenerat
 }
 
 func (api DaemonAPI) CreateModelPolicy(ctx context.Context, request tuttigenerated.CreateModelPolicyRequestObject) (tuttigenerated.CreateModelPolicyResponseObject, error) {
-	if !api.modelPlansWritesEnabled(ctx) {
-		return tuttigenerated.CreateModelPolicy400JSONResponse{
-			InvalidRequestErrorJSONResponse: modelPlansWriteDisabledError(),
-		}, nil
-	}
 	if api.ModelPolicyService == nil {
 		return tuttigenerated.CreateModelPolicy503JSONResponse{ServiceUnavailableErrorJSONResponse: modelPolicyServiceUnavailable()}, nil
 	}
@@ -85,11 +80,6 @@ func (api DaemonAPI) GetModelPolicy(ctx context.Context, request tuttigenerated.
 }
 
 func (api DaemonAPI) UpdateModelPolicy(ctx context.Context, request tuttigenerated.UpdateModelPolicyRequestObject) (tuttigenerated.UpdateModelPolicyResponseObject, error) {
-	if !api.modelPlansWritesEnabled(ctx) {
-		return tuttigenerated.UpdateModelPolicy400JSONResponse{
-			InvalidRequestErrorJSONResponse: modelPlansWriteDisabledError(),
-		}, nil
-	}
 	if api.ModelPolicyService == nil {
 		return tuttigenerated.UpdateModelPolicy503JSONResponse{ServiceUnavailableErrorJSONResponse: modelPolicyServiceUnavailable()}, nil
 	}
@@ -121,11 +111,6 @@ func (api DaemonAPI) UpdateModelPolicy(ctx context.Context, request tuttigenerat
 }
 
 func (api DaemonAPI) DeleteModelPolicy(ctx context.Context, request tuttigenerated.DeleteModelPolicyRequestObject) (tuttigenerated.DeleteModelPolicyResponseObject, error) {
-	if !api.modelPlansWritesEnabled(ctx) {
-		return tuttigenerated.DeleteModelPolicy400JSONResponse{
-			InvalidRequestErrorJSONResponse: modelPlansWriteDisabledError(),
-		}, nil
-	}
 	if api.ModelPolicyService == nil {
 		return tuttigenerated.DeleteModelPolicy503JSONResponse{ServiceUnavailableErrorJSONResponse: modelPolicyServiceUnavailable()}, nil
 	}
@@ -164,11 +149,6 @@ func (api DaemonAPI) GetAgentSessionModelPolicyOverride(ctx context.Context, req
 }
 
 func (api DaemonAPI) SetAgentSessionModelPolicyOverride(ctx context.Context, request tuttigenerated.SetAgentSessionModelPolicyOverrideRequestObject) (tuttigenerated.SetAgentSessionModelPolicyOverrideResponseObject, error) {
-	if !api.modelPlansWritesEnabled(ctx) {
-		return tuttigenerated.SetAgentSessionModelPolicyOverride400JSONResponse{
-			InvalidRequestErrorJSONResponse: modelPlansWriteDisabledError(),
-		}, nil
-	}
 	if api.ModelPolicyService == nil {
 		return tuttigenerated.SetAgentSessionModelPolicyOverride503JSONResponse{ServiceUnavailableErrorJSONResponse: modelPolicyServiceUnavailable()}, nil
 	}
@@ -218,11 +198,6 @@ func (api DaemonAPI) GetAgentSessionAcceptance(ctx context.Context, request tutt
 }
 
 func (api DaemonAPI) AcceptAgentSessionWork(ctx context.Context, request tuttigenerated.AcceptAgentSessionWorkRequestObject) (tuttigenerated.AcceptAgentSessionWorkResponseObject, error) {
-	if !api.modelPlansWritesEnabled(ctx) {
-		return tuttigenerated.AcceptAgentSessionWork400JSONResponse{
-			InvalidRequestErrorJSONResponse: modelPlansWriteDisabledError(),
-		}, nil
-	}
 	if api.ModelPolicyService == nil {
 		return tuttigenerated.AcceptAgentSessionWork503JSONResponse{ServiceUnavailableErrorJSONResponse: modelPolicyServiceUnavailable()}, nil
 	}

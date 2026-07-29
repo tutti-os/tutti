@@ -4,30 +4,12 @@ import {
   EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG,
   LAB_AGENT_INPUT_HISTORY_FLAG,
   LAB_AUTOMATION_RULES_FLAG,
-  LAB_MODEL_PLANS_FLAG,
-  LAB_TUTTI_MODE_FLAG,
   LAB_WORKBENCH_SHORTCUTS_FLAG,
-  LAB_WORKSPACE_AGENTS_FLAG,
   isFeatureEnabled
 } from "../../../../../shared/featureFlags/catalog.ts";
 import type { DesktopFeatureFlags } from "../../../../../shared/preferences/index.ts";
 
 const featureGateRows = [
-  {
-    key: LAB_TUTTI_MODE_FLAG,
-    labelKey: "workspace.settings.lab.tuttiModeLabel" as const,
-    descriptionKey: "workspace.settings.lab.tuttiModeDescription" as const
-  },
-  {
-    key: LAB_MODEL_PLANS_FLAG,
-    labelKey: "workspace.settings.lab.modelPlansLabel" as const,
-    descriptionKey: "workspace.settings.lab.modelPlansDescription" as const
-  },
-  {
-    key: LAB_WORKSPACE_AGENTS_FLAG,
-    labelKey: "workspace.settings.lab.workspaceAgentsLabel" as const,
-    descriptionKey: "workspace.settings.lab.workspaceAgentsDescription" as const
-  },
   {
     key: LAB_AUTOMATION_RULES_FLAG,
     labelKey: "workspace.settings.lab.automationRulesLabel" as const,

@@ -8,9 +8,21 @@ import (
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	automationrulebiz "github.com/tutti-os/tutti/services/tuttid/biz/automationrule"
 	collabrunbiz "github.com/tutti-os/tutti/services/tuttid/biz/collabrun"
+	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	automationruleservice "github.com/tutti-os/tutti/services/tuttid/service/automationrule"
 	collabrunservice "github.com/tutti-os/tutti/services/tuttid/service/collabrun"
 )
+
+func gateTestPreferences(flags map[string]bool, err error) stubPreferencesService {
+	return stubPreferencesService{
+		getFn: func(context.Context) (preferencesbiz.DesktopPreferences, error) {
+			if err != nil {
+				return preferencesbiz.DesktopPreferences{}, err
+			}
+			return preferencesbiz.DesktopPreferences{FeatureFlags: flags}, nil
+		},
+	}
+}
 
 type gateStubAutomationRuleService struct{}
 

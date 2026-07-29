@@ -8,7 +8,6 @@ import {
   type AgentActivityInteraction,
   type AgentActivitySessionReconcileExecutor,
   type AgentSessionEngine,
-  type EngineExternalCommand,
   type SessionReconcileCommand
 } from "@tutti-os/agent-activity-core";
 import type {
@@ -30,7 +29,10 @@ import {
   type PendingSubmission
 } from "./pendingSubmission";
 import type { ClockPort, DeviceLinkPort } from "./servicePorts";
-import { executeWorkspaceActivityCommand } from "./workspaceActivityCommandAdapter";
+import {
+  createWorkspaceActivityEffectPort,
+  executeWorkspaceActivityExtensionCommand
+} from "./workspaceActivityEngineCommandPort";
 import {
   projectWorkspaceActivitySnapshot,
   resolveWorkspaceComposerTarget
@@ -96,11 +98,31 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
       workspaceId: workspace.id
     });
     this.projectActivity = createAgentActivitySnapshotProjector(workspace.id);
+    const commandContext = () => ({
+      client: this.client,
+      engine: this.engine,
+      loadComposerOptions: (options?: { force?: boolean }) =>
+        this.loadComposerOptions(options),
+      mapSession: this.mapping.mapSession,
+      mapSessionDetail: this.mapping.mapSessionDetail,
+      reconcileSession: (
+        reconcileCommand: SessionReconcileCommand,
+        reconcileSignal?: AbortSignal
+      ) =>
+        this.executeSessionReconcileCommand(reconcileCommand, reconcileSignal),
+      reconcileWorkspace: () => this.reconcileWorkspace()
+    });
     this.engine = createAgentSessionEngine({
       clock: { nowUnixMs: () => this.clock.now() },
       commandPort: {
-        execute: (command, options) =>
-          this.executeCommand(command, options?.signal)
+        kind: "typed",
+        effects: createWorkspaceActivityEffectPort(commandContext),
+        execute: (command, options): Promise<unknown> =>
+          executeWorkspaceActivityExtensionCommand(
+            commandContext(),
+            command,
+            options
+          )
       },
       identity: {
         origin: AGENT_SESSION_ENGINE_LOCAL_ORIGIN,
@@ -599,29 +621,6 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
       return;
     }
     this.messages.requestLatest(agentSessionId);
-  }
-
-  private executeCommand(
-    command: EngineExternalCommand,
-    signal?: AbortSignal
-  ): Promise<unknown> {
-    return executeWorkspaceActivityCommand(
-      {
-        client: this.client,
-        engine: this.engine,
-        loadComposerOptions: (options) => this.loadComposerOptions(options),
-        mapSession: this.mapping.mapSession,
-        mapSessionDetail: this.mapping.mapSessionDetail,
-        reconcileSession: (reconcileCommand, reconcileSignal) =>
-          this.executeSessionReconcileCommand(
-            reconcileCommand,
-            reconcileSignal
-          ),
-        reconcileWorkspace: () => this.reconcileWorkspace()
-      },
-      command,
-      signal
-    );
   }
 
   private async reconcileWorkspace(): Promise<unknown> {
