@@ -15,11 +15,7 @@ import {
   filterSlashCommands,
   labelForSlashCommand
 } from "../model/agentSlashCommands";
-import {
-  labelForProviderSkill,
-  skillDescriptionForDisplay,
-  skillTriggerForPrefix
-} from "../model/agentSkillOptions";
+import { skillDescriptionForDisplay } from "../model/agentSkillOptions";
 import {
   filterProviderSkillsForTrigger,
   getAgentComposerTriggerQueryMatch,
@@ -82,7 +78,11 @@ export function useComposerPaletteCatalog({
   const promptBeforeSelection =
     editorHandleRef.current?.getPromptTextBeforeSelection() ?? "";
   const skillQueryDraft = promptBeforeSelection || paletteDraftPrompt;
-  const skillQueryMatch = getAgentComposerTriggerQueryMatch(skillQueryDraft);
+  const triggerQueryMatch = getAgentComposerTriggerQueryMatch(skillQueryDraft);
+  // `$` is reserved for native Composer plugins. `/` remains the command and
+  // capability surface; do not synthesize a plugin alias into it.
+  const skillQueryMatch =
+    triggerQueryMatch?.prefix === "$" ? triggerQueryMatch : null;
   const resolvedSlashCommands = useMemo(
     () =>
       resolveSlashCommandsForProvider({
@@ -126,7 +126,7 @@ export function useComposerPaletteCatalog({
         : filterProviderSkillsForTrigger({
             skills: availableSkills,
             query: skillQueryMatch.query,
-            triggerPrefix: skillQueryMatch.prefix
+            triggerPrefix: "$"
           }),
     [availableSkills, skillQueryMatch]
   );
@@ -233,15 +233,17 @@ export function useComposerPaletteCatalog({
       });
     const skillEntries: AgentSlashPaletteEntry[] = filteredSkills.map(
       (skill) => {
-        const trigger = skillTriggerForPrefix(skill, skillQueryMatch?.prefix);
         return {
-          type: "skill",
-          key: `skill:${trigger}`,
-          label: labelForProviderSkill(skill, skillQueryMatch?.prefix),
+          type: "plugin",
+          key: `plugin:${skill.semantic ?? skill.pluginName ?? skill.name}`,
+          label: nativePluginLabel(skill, labels),
           ...(skillDescriptionForDisplay(skill.description)
             ? { description: skillDescriptionForDisplay(skill.description) }
             : {}),
-          skill
+          selectAction: skill.status === "available" ? "insert" : "settings",
+          disabled:
+            skill.status !== "available" && skill.semantic !== "computerUse",
+          plugin: skill
         };
       }
     );
@@ -298,4 +300,18 @@ export function useComposerPaletteCatalog({
     slashCommandPolicy,
     promptBeforeSelection
   };
+}
+
+function nativePluginLabel(
+  plugin: AgentGUIProviderSkillOption,
+  labels: AgentComposerProps["labels"]
+): string {
+  switch (plugin.semantic) {
+    case "browserUse":
+      return labels.browserUseCapabilityLabel;
+    case "computerUse":
+      return labels.computerUseCapabilityLabel;
+    default:
+      return plugin.name;
+  }
 }

@@ -1037,6 +1037,15 @@ host adapters consume that projection and must not rebuild `$` versus `/`,
 plugin namespaces, or prompt-item versus text-trigger behavior from provider
 names.
 
+Native Composer plugins are a separate projection from Skills and MCP
+discovery. The daemon issues a small descriptor with a stable `semantic`,
+status, trigger, and `plugin://` path; AgentGUI uses that descriptor for
+presentation, setup actions, and structured mentions without branching on a
+provider id or reading local plugin icon paths. For Codex, `$` is the native
+plugin surface while `/` remains commands and product capabilities. A
+session-scoped runtime-preparation plan remains authoritative for whether a
+selected native plugin can actually run.
+
 ### 5.3 Agent Directory and setup
 
 The host provides a complete, ordered Agent Directory with this load lifecycle:

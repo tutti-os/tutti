@@ -109,6 +109,10 @@ type ComposerCapabilityOption struct {
 	Trigger     string
 	Path        string
 	Invocation  string
+	// Semantic is a stable presentation and interaction key for a
+	// provider-native capability. It deliberately does not expose provider
+	// implementation identifiers or filesystem-owned icon paths to clients.
+	Semantic string
 }
 
 type ComposerCommandOption struct {

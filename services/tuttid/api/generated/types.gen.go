@@ -352,6 +352,27 @@ func (e AgentProviderCapabilityOptionKind) Valid() bool {
 	}
 }
 
+// Defines values for AgentProviderCapabilityOptionSemantic.
+const (
+	BrowserUse  AgentProviderCapabilityOptionSemantic = "browserUse"
+	ComputerUse AgentProviderCapabilityOptionSemantic = "computerUse"
+	Sites       AgentProviderCapabilityOptionSemantic = "sites"
+)
+
+// Valid indicates whether the value is a known member of the AgentProviderCapabilityOptionSemantic enum.
+func (e AgentProviderCapabilityOptionSemantic) Valid() bool {
+	switch e {
+	case BrowserUse:
+		return true
+	case ComputerUse:
+		return true
+	case Sites:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AgentProviderCapabilityOptionStatus.
 const (
 	AgentProviderCapabilityOptionStatusAuthRequired  AgentProviderCapabilityOptionStatus = "authRequired"
@@ -3800,11 +3821,14 @@ type AgentProviderCapabilityOption struct {
 	Name        string                                  `json:"name"`
 	Path        *string                                 `json:"path,omitempty"`
 	PluginName  *string                                 `json:"pluginName,omitempty"`
-	ServerName  *string                                 `json:"serverName,omitempty"`
-	Source      *string                                 `json:"source,omitempty"`
-	Status      AgentProviderCapabilityOptionStatus     `json:"status"`
-	ToolName    *string                                 `json:"toolName,omitempty"`
-	Trigger     *string                                 `json:"trigger,omitempty"`
+
+	// Semantic Stable provider-native presentation and interaction key. It does not identify an executable, filesystem path, or provider wire implementation.
+	Semantic   *AgentProviderCapabilityOptionSemantic `json:"semantic,omitempty"`
+	ServerName *string                                `json:"serverName,omitempty"`
+	Source     *string                                `json:"source,omitempty"`
+	Status     AgentProviderCapabilityOptionStatus    `json:"status"`
+	ToolName   *string                                `json:"toolName,omitempty"`
+	Trigger    *string                                `json:"trigger,omitempty"`
 }
 
 // AgentProviderCapabilityOptionInvocation defines model for AgentProviderCapabilityOption.Invocation.
@@ -3812,6 +3836,9 @@ type AgentProviderCapabilityOptionInvocation string
 
 // AgentProviderCapabilityOptionKind defines model for AgentProviderCapabilityOption.Kind.
 type AgentProviderCapabilityOptionKind string
+
+// AgentProviderCapabilityOptionSemantic Stable provider-native presentation and interaction key. It does not identify an executable, filesystem path, or provider wire implementation.
+type AgentProviderCapabilityOptionSemantic string
 
 // AgentProviderCapabilityOptionStatus defines model for AgentProviderCapabilityOption.Status.
 type AgentProviderCapabilityOptionStatus string

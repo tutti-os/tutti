@@ -153,7 +153,14 @@ func withServicePreparedRuntime(ctx context.Context, service *Service, prepared 
 
 func (a serviceHostPreparation) Prepare(ctx context.Context, input agenthost.RuntimePreparationInput) (agenthost.PreparedRuntime, error) {
 	if override, ok := ctx.Value(servicePreparedRuntimeContextKey{}).(servicePreparedRuntimeContext); ok && override.service == a.service {
-		return agenthost.PreparedRuntime{Cwd: override.prepared.Cwd, Env: append([]string(nil), override.prepared.Env...)}, nil
+		return agenthost.PreparedRuntime{
+			Cwd: override.prepared.Cwd,
+			Env: append([]string(nil), override.prepared.Env...),
+			RuntimeContext: mergeRuntimeContext(
+				nil,
+				nativeCapabilityPlanRuntimeContext(override.prepared.NativeCapabilityPlan),
+			),
+		}, nil
 	}
 	settings := input.Settings
 	persisted := PersistedSession{
@@ -183,7 +190,10 @@ func (a serviceHostPreparation) Prepare(ctx context.Context, input agenthost.Run
 	return agenthost.PreparedRuntime{
 		Cwd: prepared.Cwd, Env: append([]string(nil), prepared.Env...),
 		ProviderTargetRef: clonePayload(targetRef), Settings: &settings,
-		RuntimeContext: persistedSessionRuntimeContext(persisted),
+		RuntimeContext: mergeRuntimeContext(
+			persistedSessionRuntimeContext(persisted),
+			nativeCapabilityPlanRuntimeContext(prepared.NativeCapabilityPlan),
+		),
 	}, nil
 }
 

@@ -24,7 +24,17 @@ test("maps daemon composer options into the canonical activity contract", () => 
     runtimeContext: {},
     commands: [],
     skills: [],
-    capabilityCatalog: [],
+    capabilityCatalog: [
+      {
+        id: "plugin:browser@openai-bundled",
+        kind: "plugin",
+        name: "browser",
+        label: "Browser",
+        status: "available",
+        invocation: "promptItem",
+        semantic: "browserUse"
+      }
+    ],
     provider: "codex"
   } satisfies AgentProviderComposerOptionsResponse);
 
@@ -33,6 +43,17 @@ test("maps daemon composer options into the canonical activity contract", () => 
   assert.equal(options.effectiveModel, "claude-haiku-4-5-20251001");
   assert.deepEqual(options.models, [{ label: "GPT-5", value: "gpt-5" }]);
   assert.equal(options.effectiveSettings?.model, "gpt-5");
+  assert.deepEqual(options.capabilityCatalog, [
+    {
+      id: "plugin:browser@openai-bundled",
+      kind: "plugin",
+      name: "browser",
+      label: "Browser",
+      status: "available",
+      invocation: "promptItem",
+      semantic: "browserUse"
+    }
+  ]);
 });
 
 test("keeps fallback slash commands when effects are absent", () => {

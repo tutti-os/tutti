@@ -459,6 +459,7 @@ function capabilityOptionsFromValue(
     const toolName = normalizeText(record.toolName);
     const trigger = normalizeText(record.trigger);
     const path = normalizeText(record.path);
+    const semantic = normalizeCapabilitySemantic(record.semantic);
     options.push({
       id,
       kind,
@@ -472,10 +473,25 @@ function capabilityOptionsFromValue(
       ...(serverName ? { serverName } : {}),
       ...(toolName ? { toolName } : {}),
       ...(trigger ? { trigger } : {}),
-      ...(path ? { path } : {})
+      ...(path ? { path } : {}),
+      ...(semantic ? { semantic } : {})
     });
   }
   return options;
+}
+
+function normalizeCapabilitySemantic(
+  value: unknown
+): AgentActivityComposerCapabilityOption["semantic"] | null {
+  const normalized = normalizeText(value);
+  switch (normalized) {
+    case "sites":
+    case "browserUse":
+    case "computerUse":
+      return normalized;
+    default:
+      return null;
+  }
 }
 
 function normalizeCapabilityKind(

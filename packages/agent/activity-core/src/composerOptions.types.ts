@@ -53,6 +53,8 @@ export interface AgentActivityComposerCapabilityOption {
   toolName?: string;
   trigger?: string;
   path?: string;
+  /** Provider-native presentation and interaction descriptor. */
+  semantic?: "sites" | "browserUse" | "computerUse";
 }
 
 export interface AgentActivityComposerPermissionModeOption {

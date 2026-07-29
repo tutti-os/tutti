@@ -70,6 +70,78 @@ describe("descriptor-backed skill invocation", () => {
       providerSkillsFromComposerOptions(options)[0]?.invocation
     ).toBeUndefined();
   });
+
+  it("projects semantic native plugins into the Composer without unrelated skills", () => {
+    const options = {
+      skills: [
+        {
+          name: "imagegen",
+          trigger: "$imagegen",
+          sourceKind: "bundled"
+        }
+      ],
+      capabilityCatalog: [
+        {
+          name: "browser",
+          label: "Browser",
+          kind: "plugin",
+          status: "available",
+          trigger: "$browser",
+          path: "plugin://browser@openai-bundled",
+          pluginName: "browser",
+          invocation: "promptItem",
+          description: "Control the in-app browser",
+          semantic: "browserUse"
+        }
+      ]
+    } as unknown as AgentActivityComposerOptions;
+
+    expect(providerSkillsFromComposerOptions(options)).toEqual([
+      {
+        name: "Browser",
+        trigger: "$browser",
+        invocation: "promptItem",
+        sourceKind: "plugin",
+        kind: "plugin",
+        pluginName: "browser",
+        path: "plugin://browser@openai-bundled",
+        description: "Control the in-app browser",
+        semantic: "browserUse",
+        status: "available"
+      }
+    ]);
+  });
+
+  it("keeps a setup-required native Computer plugin visible for the setup action", () => {
+    const options = {
+      skills: [],
+      capabilityCatalog: [
+        {
+          name: "computer-use",
+          label: "Computer Use",
+          kind: "plugin",
+          status: "setupRequired",
+          invocation: "none",
+          path: "plugin://computer-use@openai-bundled",
+          pluginName: "computer-use",
+          semantic: "computerUse"
+        }
+      ]
+    } as unknown as AgentActivityComposerOptions;
+
+    expect(providerSkillsFromComposerOptions(options)).toEqual([
+      {
+        name: "Computer Use",
+        trigger: "",
+        sourceKind: "plugin",
+        kind: "plugin",
+        status: "setupRequired",
+        semantic: "computerUse",
+        pluginName: "computer-use",
+        path: "plugin://computer-use@openai-bundled"
+      }
+    ]);
+  });
 });
 
 describe("permissionModeOptions", () => {

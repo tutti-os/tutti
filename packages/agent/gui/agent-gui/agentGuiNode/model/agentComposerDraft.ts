@@ -549,7 +549,10 @@ function promptItemBlocksForProviderSkills(input: {
       continue;
     }
     result.push({
-      type: skill.kind === "connector" ? "mention" : "skill",
+      type:
+        skill.kind === "connector" || skill.kind === "plugin"
+          ? "mention"
+          : "skill",
       name: skill.name,
       path
     });

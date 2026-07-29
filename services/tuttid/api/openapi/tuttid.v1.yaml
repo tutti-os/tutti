@@ -10891,6 +10891,16 @@ components:
           type: string
         path:
           type: string
+        semantic:
+          type: string
+          description: >-
+            Stable provider-native presentation and interaction key. It does
+            not identify an executable, filesystem path, or provider wire
+            implementation.
+          enum:
+            - sites
+            - browserUse
+            - computerUse
         invocation:
           type: string
           enum:

@@ -4,6 +4,7 @@ import {
   Globe,
   Info,
   ListChecks,
+  PanelsTopLeft,
   Minimize2,
   Monitor,
   Search,
@@ -42,6 +43,15 @@ export type AgentSlashPaletteEntry =
       label: string;
       description?: string;
       skill: AgentGUIProviderSkillOption;
+    }
+  | {
+      type: "plugin";
+      key: string;
+      label: string;
+      description?: string;
+      selectAction: "insert" | "settings";
+      disabled?: boolean;
+      plugin: AgentGUIProviderSkillOption;
     };
 
 interface AgentSlashCommandPaletteProps {
@@ -63,6 +73,7 @@ interface AgentSlashCommandPaletteProps {
     capability: AgentSlashCommandCapability
   ) => void;
   onSelectSkill: (skill: AgentGUIProviderSkillOption) => void;
+  onSelectPluginSettings?: (plugin: AgentGUIProviderSkillOption) => void;
 }
 
 const paletteStyles = {
@@ -71,6 +82,7 @@ const paletteStyles = {
   option:
     "nodrag relative flex h-7 min-h-7 w-full min-w-0 cursor-pointer select-none items-center gap-2 overflow-hidden rounded-[6px] border-0 bg-transparent px-2.5 py-0 text-left text-[13px] text-[var(--text-primary)] outline-hidden transition-colors duration-200 [-webkit-app-region:no-drag] hover:bg-[var(--transparency-block)] focus-visible:bg-[var(--transparency-block)] focus-visible:outline-none active:bg-[var(--transparency-active)] data-[highlighted]:bg-[var(--transparency-block)] data-[highlighted]:text-[var(--text-primary)] [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   icon: "flex w-4 shrink-0 items-center justify-center self-center text-[var(--text-secondary)]",
+  nativePluginIcon: "text-[var(--accent)]",
   copy: "flex min-w-0 flex-1 items-center gap-[8px] overflow-hidden leading-[16px]",
   name: "flex min-w-0 max-w-[48%] shrink-0 items-center gap-[8px] overflow-hidden",
   primaryName:
@@ -106,7 +118,8 @@ export function AgentSlashCommandPalette({
   onSelect,
   onSelectCapability,
   onSelectCapabilitySettings,
-  onSelectSkill
+  onSelectSkill,
+  onSelectPluginSettings
 }: AgentSlashCommandPaletteProps): React.JSX.Element | null {
   "use memo";
   const highlightedOptionRef = useRef<HTMLDivElement | null>(null);
@@ -168,7 +181,8 @@ export function AgentSlashCommandPalette({
       {entries.map((entry, index) => {
         const isHighlighted = index === highlightedIndex;
         const isDisabled =
-          entry.type === "capability" && entry.disabled === true;
+          (entry.type === "capability" && entry.disabled === true) ||
+          (entry.type === "plugin" && entry.disabled === true);
         const groupType = entryGroupType(entry);
         const entryIcon = slashPaletteEntryIcon(entry);
         const groupHeader =
@@ -228,11 +242,25 @@ export function AgentSlashCommandPalette({
                   onSelectCapability(entry.capability);
                   return;
                 }
+                if (entry.type === "plugin") {
+                  if (entry.selectAction === "settings") {
+                    onSelectPluginSettings?.(entry.plugin);
+                    return;
+                  }
+                  onSelectSkill(entry.plugin);
+                  return;
+                }
                 onSelectSkill(entry.skill);
               }}
             >
               {entryIcon ? (
-                <span aria-hidden="true" className={paletteStyles.icon}>
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    paletteStyles.icon,
+                    entry.type === "plugin" && paletteStyles.nativePluginIcon
+                  )}
+                >
                   {entryIcon}
                 </span>
               ) : null}
@@ -312,7 +340,9 @@ function capabilityLoadingIndex(
   if (lastCapabilityIndex >= 0) {
     return lastCapabilityIndex + 1;
   }
-  const firstSkillIndex = entries.findIndex((entry) => entry.type === "skill");
+  const firstSkillIndex = entries.findIndex(
+    (entry) => entry.type === "skill" || entry.type === "plugin"
+  );
   return firstSkillIndex >= 0 ? firstSkillIndex : entries.length;
 }
 
@@ -366,6 +396,16 @@ function labelForEntryGroupType(
 const SLASH_PALETTE_ICON_CLASS = "size-4";
 
 function slashPaletteEntryIcon(entry: AgentSlashPaletteEntry): ReactNode {
+  if (entry.type === "plugin") {
+    switch (entry.plugin.semantic) {
+      case "sites":
+        return <PanelsTopLeft className={SLASH_PALETTE_ICON_CLASS} />;
+      case "browserUse":
+        return <Globe className={SLASH_PALETTE_ICON_CLASS} />;
+      case "computerUse":
+        return <Monitor className={SLASH_PALETTE_ICON_CLASS} />;
+    }
+  }
   if (entry.type === "capability") {
     return entry.capability.capability === "computerUse" ? (
       <Monitor className={SLASH_PALETTE_ICON_CLASS} />

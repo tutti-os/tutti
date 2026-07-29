@@ -1844,6 +1844,10 @@ export type AgentProviderCapabilityOption = {
   toolName?: string;
   trigger?: string;
   path?: string;
+  /**
+   * Stable provider-native presentation and interaction key. It does not identify an executable, filesystem path, or provider wire implementation.
+   */
+  semantic?: "sites" | "browserUse" | "computerUse";
   invocation: "promptItem" | "textTrigger" | "none";
 };
 

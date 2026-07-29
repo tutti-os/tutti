@@ -208,40 +208,28 @@ export function providerSkillsFromComposerOptions(
   if (!options) {
     return [];
   }
-  const invocationByTrigger = new Map(
-    (options.capabilityCatalog ?? []).flatMap((capability) =>
-      capability.trigger &&
-      capability.status === "available" &&
-      (capability.invocation === "promptItem" ||
-        capability.invocation === "textTrigger")
-        ? [[capability.trigger, capability.invocation] as const]
-        : []
-    )
-  );
-  return dedupeProviderSkills([
-    ...options.skills.map((skill) => ({
-      ...skill,
-      ...(invocationByTrigger.get(skill.trigger)
-        ? { invocation: invocationByTrigger.get(skill.trigger) }
-        : {})
-    })),
-    ...(options.capabilityCatalog ?? [])
+  // The Codex capability catalog is a discovery surface, not a request to put
+  // every Skill, MCP server, connector, or marketplace entry in Composer. The
+  // daemon exposes only native-plugin descriptors with a semantic key here.
+  // Keep the legacy function name because its result continues through the
+  // prompt-item submission path, but it now contains native plugins only.
+  return dedupeProviderSkills(
+    (options.capabilityCatalog ?? [])
       .filter(
         (capability) =>
-          capability.invocation === "promptItem" &&
-          (capability.kind === "skill" || capability.kind === "connector") &&
-          capability.status === "available" &&
-          Boolean(capability.trigger) &&
-          Boolean(capability.path)
+          capability.kind === "plugin" && capability.semantic !== undefined
       )
-      .map((capability): AgentGUIProviderSkillOption => {
-        const isConnector = capability.kind === "connector";
-        return {
-          name: isConnector ? capability.label : capability.name,
-          trigger: capability.trigger!,
-          invocation: "promptItem",
-          sourceKind: isConnector ? "connector" : "plugin",
-          kind: isConnector ? "connector" : "skill",
+      .map(
+        (capability): AgentGUIProviderSkillOption => ({
+          name: capability.label,
+          trigger: capability.trigger ?? "",
+          sourceKind: "plugin",
+          kind: "plugin",
+          status: capability.status,
+          semantic: capability.semantic,
+          ...(capability.invocation === "promptItem"
+            ? { invocation: "promptItem" as const }
+            : {}),
           ...(capability.description
             ? { description: capability.description }
             : {}),
@@ -249,9 +237,9 @@ export function providerSkillsFromComposerOptions(
             ? { pluginName: capability.pluginName }
             : {}),
           ...(capability.path ? { path: capability.path } : {})
-        };
-      })
-  ]);
+        })
+      )
+  );
 }
 
 export function areProviderSkillOptionsEqual(
@@ -266,7 +254,9 @@ export function areProviderSkillOptionsEqual(
     left.description === right.description &&
     left.pluginName === right.pluginName &&
     left.path === right.path &&
-    left.kind === right.kind
+    left.kind === right.kind &&
+    left.semantic === right.semantic &&
+    left.status === right.status
   );
 }
 

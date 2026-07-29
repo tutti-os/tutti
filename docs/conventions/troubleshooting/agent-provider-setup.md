@@ -1957,3 +1957,49 @@ invalid_grant`. Search `tuttid.log` for
   [agent-extensions.md](../../architecture/agent-extensions.md)
   [manager.go](../../../services/tuttid/service/agentextension/manager.go)
   [wiring_daemon_api.go](../../../services/tuttid/wiring_daemon_api.go)
+
+### Codex composer Plugins list is empty for Browser, Sites, or Computer Use
+
+- Symptom:
+  Codex sessions show no bundled plugins in the composer Plugins group, or only
+  plugin-derived skills appear while `browser@openai-bundled` / `sites@openai-bundled`
+  / `computer-use@openai-bundled` never surface as selectable entries. The
+  composer may stay on Loading when cold discovery approaches the desktop
+  request deadline.
+- Quick checks:
+  Run `codex app-server`, complete `initialize` / `initialized`, then call
+  `plugin/list` with `{"cwds":[<workspace>]}`. Confirm the response uses
+  `marketplaces[].plugins[]`, not a top-level `data[]` array. Inspect tuttid logs
+  for `plugin/list failed` or `plugin marketplace load failed` soft errors; those
+  responses must not be cached as an empty success catalog. Composer Options
+  should project exactly three semantic native plugins in this order: Sites,
+  Browser, Computer Use. `$` must not show Skills, MCP servers, connectors, or
+  other marketplace entries.
+- Root cause:
+  Older tuttid catalog code sent unsupported `plugin/list` params, skipped the
+  initialize handshake, and parsed the legacy `data[]` shape. Valid plugin RPC
+  answers were discarded, and partial failures could be cached for 30 seconds.
+  The Agent GUI also previously treated every discovered Skill, connector, and
+  plugin as one interchangeable palette candidate. That made the native entry
+  points hard to find and let `$` and `/` manufacture aliases for each other.
+  Marketplace catalogs can contain thousands of remote entries, so projecting
+  them directly also inflates the bootstrap snapshot.
+- Fix:
+  Use the current `codex_capability_catalog` handshake and marketplace parser,
+  surface RPC/marketplace errors without caching failed results, then project
+  only `sites@openai-bundled`, `browser@openai-bundled`, and
+  `computer-use@openai-bundled` as semantic native plugins. Keep Computer Use
+  visible as `setupRequired` when it is not installed; selecting it must open
+  explicit setup and must never silently install or authorize it. Use semantic
+  UI icons rather than app-server absolute icon paths. `$` selects native
+  plugins and inserts a `plugin://<plugin.id>` mention only when available;
+  `/` stays a command/capability surface. Allow the desktop cold request enough
+  time for bounded discovery. Native-first routing and Tutti fallback live in
+  `packages/agent/runtimeprep` (`NativeCapabilityPlan` + exclusivity).
+- Validation:
+  `go test ./service/agent -run 'TestCodexNative.*Plugin|TestParseCodexPluginCapabilities'`
+  `pnpm --filter @tutti-os/agent-gui test -- agentGuiNode/controller/agentGuiController.composerHelpers.spec.ts agentGuiNode/AgentSlashCommandPalette.spec.tsx`
+- References:
+  [codex_capability_catalog.go](../../../services/tuttid/service/agent/codex_capability_catalog.go)
+  [agentGuiController.composerHelpers.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/agentGuiController.composerHelpers.ts)
+  [codex_native_capability.go](../../../packages/agent/runtimeprep/codex_native_capability.go)
