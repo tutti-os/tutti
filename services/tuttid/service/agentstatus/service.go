@@ -301,7 +301,6 @@ type Service struct {
 type CodexRuntimeSelectionStore interface {
 	GetAgentProviderRuntimeSelection(context.Context, string) (agentproviderbiz.RuntimeSelection, bool, error)
 	PutAgentProviderRuntimeSelection(context.Context, agentproviderbiz.RuntimeSelection) (agentproviderbiz.RuntimeSelection, error)
-	DeleteAgentProviderRuntimeSelection(context.Context, string) error
 }
 
 const authStatusCommandTimeout = 5 * time.Second

@@ -112,7 +112,8 @@ type PreferencesStore interface {
 }
 
 // AgentProviderRuntimeSelectionStore persists an explicit local runtime choice.
-// No value means the daemon must select a validated runtime automatically.
+// No value permits only a uniquely ready runtime; multiple ready runtimes
+// require an explicit user choice.
 type AgentProviderRuntimeSelectionStore interface {
 	GetAgentProviderRuntimeSelection(context.Context, string) (agentproviderbiz.RuntimeSelection, bool, error)
 	PutAgentProviderRuntimeSelection(context.Context, agentproviderbiz.RuntimeSelection) (agentproviderbiz.RuntimeSelection, error)

@@ -105,6 +105,7 @@ func buildDaemonAPI(
 	modelPlansStore, _ := store.(workspacedata.ModelPlansStore)
 	agentActivityRepo, _ := store.(workspacedata.AgentActivityStore)
 	agentQuickPromptStore, _ := store.(workspacedata.AgentQuickPromptStore)
+	agentProviderRuntimeSelectionStore, _ := store.(workspacedata.AgentProviderRuntimeSelectionStore)
 	userProjectStore, _ := store.(workspacedata.UserProjectStore)
 	appStore, _ := store.(workspacedata.AppStore)
 	appFactoryStore, _ := store.(workspacedata.AppFactoryStore)
@@ -239,7 +240,7 @@ func buildDaemonAPI(
 		GlobalBinDiscoveryCache:    agentstatusservice.NewGlobalBinDiscoveryCache(),
 		DetectionCommands:          agentstatusservice.NewDetectionCommandLimiter(4),
 		UpdateCache:                agentstatusservice.NewProviderUpdateCache(),
-		CodexRuntimeSelectionStore: store,
+		CodexRuntimeSelectionStore: agentProviderRuntimeSelectionStore,
 	}
 	accountService := accountservice.NewService("")
 	mobileRemoteService, err := buildMobileRemoteService(

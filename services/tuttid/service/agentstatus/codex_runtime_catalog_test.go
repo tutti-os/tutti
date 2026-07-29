@@ -22,11 +22,6 @@ func (s *memoryCodexRuntimeSelectionStore) PutAgentProviderRuntimeSelection(_ co
 	return selection, nil
 }
 
-func (s *memoryCodexRuntimeSelectionStore) DeleteAgentProviderRuntimeSelection(_ context.Context, _ string) error {
-	s.selection, s.found = agentproviderbiz.RuntimeSelection{}, false
-	return nil
-}
-
 func TestCodexRuntimeCatalogSelectionMarksMissingExplicitRuntimeStale(t *testing.T) {
 	selection := agentproviderbiz.RuntimeSelection{LauncherPath: "/missing/codex"}
 	got := codexRuntimeCatalogSelection([]CodexRuntimeCatalogCandidate{{ID: "candidate", LauncherPath: "/bin/codex"}}, codexRuntimeResolvedSelection{Selection: selection, Explicit: true})
