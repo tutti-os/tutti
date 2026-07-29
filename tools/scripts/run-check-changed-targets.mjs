@@ -129,6 +129,8 @@ export function buildGoTestLane({
   return {
     key: `test:go:${sanitizeLaneKey(moduleRoot)}`,
     label: `test:go (${moduleRoot})`,
+    serialGroup:
+      moduleRoot === "services/tuttid" ? "tuttid-builtin-assets" : undefined,
     command: [
       "bash",
       "-lc",
