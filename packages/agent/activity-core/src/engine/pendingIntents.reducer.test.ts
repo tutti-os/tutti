@@ -470,13 +470,13 @@ test("confirmed activation emits its request-scoped pending settings command onc
     sessions: [{ ...session("session-new"), createdAtUnixMs: 1 }],
     type: "session/snapshotReceived"
   });
-  assert.deepEqual(attached.commands, [
+  assert.deepEqual(attached.commands, []);
+  assert.deepEqual(attached.followUpIntents, [
     {
       agentSessionId: "session-new",
       commandId: "activation-settings:activation-1",
-      correlationId: "activation-1",
       settings: { model: "model-2" },
-      type: "session/updateSettings",
+      type: "session/settingsActivationRequested",
       workspaceId: "workspace-1"
     }
   ]);
@@ -484,13 +484,13 @@ test("confirmed activation emits its request-scoped pending settings command onc
     reduce(attached.state, {
       sessions: [{ ...session("session-new"), createdAtUnixMs: 1 }],
       type: "session/snapshotReceived"
-    }).commands,
-    []
+    }).followUpIntents,
+    undefined
   );
   const settingsSucceeded = reduce(attached.state, {
     commandId: "activation-settings:activation-1",
     commandType: "session/updateSettings",
-    correlationId: "activation-1",
+    correlationId: "session-new",
     outcome: "succeeded",
     type: "engine/commandResult",
     value: {
@@ -527,11 +527,14 @@ test("settings update failure remains request-scoped and retryable without doubl
     sessions: [{ ...session("session-new"), createdAtUnixMs: 1 }],
     type: "session/snapshotReceived"
   });
-  assert.equal(attached.commands[0]?.type, "session/updateSettings");
+  assert.equal(
+    attached.followUpIntents?.[0]?.type,
+    "session/settingsActivationRequested"
+  );
   const failed = reduce(attached.state, {
     commandId: "activation-settings:activation-1",
     commandType: "session/updateSettings",
-    correlationId: "activation-1",
+    correlationId: "session-new",
     errorMessage: "settings failed",
     outcome: "failed",
     type: "engine/commandResult"
@@ -549,11 +552,14 @@ test("settings update failure remains request-scoped and retryable without doubl
     settings: { model: "model-3" },
     type: "activation/settingsPatched"
   });
-  assert.equal(retried.commands[0]?.type, "session/updateSettings");
+  assert.equal(
+    retried.followUpIntents?.[0]?.type,
+    "session/settingsActivationRequested"
+  );
   const timedOut = reduce(retried.state, {
     commandId: "activation-settings:activation-1",
     commandType: "session/updateSettings",
-    correlationId: "activation-1",
+    correlationId: "session-new",
     outcome: "timedOut",
     type: "engine/commandResult"
   });
@@ -736,8 +742,13 @@ function reduce(
       intent.commandType === "session/updateSettings" &&
       intent.outcome === "succeeded"
         ? (() => {
-            const activation =
-              state.activationsByRequestId[intent.correlationId?.trim() ?? ""];
+            const agentSessionId = intent.correlationId?.trim() ?? "";
+            const activation = Object.values(state.activationsByRequestId).find(
+              (candidate) =>
+                candidate.agentSessionId === agentSessionId &&
+                intent.commandId ===
+                  `activation-settings:${candidate.requestId}`
+            );
             return validateScopedSessionResult(
               intent.value,
               activation

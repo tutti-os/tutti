@@ -1,4 +1,5 @@
 import type { EngineDiagnosticSink } from "./diagnostics.ts";
+import type { AgentActivitySendInput } from "../types.ts";
 import type {
   AgentSessionActivateEffectInput,
   EngineCommandPort,
@@ -8,7 +9,6 @@ import type {
   EngineScheduler,
   EngineTypedCommandPort
 } from "./types.ts";
-import { executeAgentActivityPromptCommand } from "./promptCommandExecution.ts";
 
 // Effect executor: performs external command descriptions through the
 // injected command port and feeds every settlement (success, failure,
@@ -162,6 +162,16 @@ function executeCommand(
   command: EngineExternalCommand,
   signal: AbortSignal
 ): Promise<unknown> {
+  if (
+    command.type === "queue/sendPrompt" &&
+    command.requiredSettingsPatch !== undefined
+  ) {
+    return Promise.reject(
+      new Error(
+        "queue/sendPrompt settings preconditions must be resolved by the Engine before execution"
+      )
+    );
+  }
   if (command.type === "plan/submitDecision") {
     return commandPort.executePlanDecision
       ? commandPort.executePlanDecision(command, { signal })
@@ -179,22 +189,7 @@ function executeCommand(
         signal
       });
     case "queue/sendPrompt":
-      return executeAgentActivityPromptCommand(
-        {
-          sendInput: (input) => effects.sendInput(input, { signal }),
-          updateSessionSettings: (input) =>
-            effects.updateSessionSettings(
-              {
-                ...input,
-                commandId: command.commandId,
-                correlationId: command.correlationId ?? command.commandId
-              },
-              { signal }
-            )
-        },
-        command,
-        { signal }
-      );
+      return effects.sendInput(promptInput(command), { signal });
     case "session/updateSettings":
       return effects.updateSessionSettings(
         {
@@ -248,6 +243,25 @@ function executeCommand(
     default:
       return commandPort.execute(command, { signal });
   }
+}
+
+function promptInput(
+  command: Extract<EngineExternalCommand, { type: "queue/sendPrompt" }>
+): AgentActivitySendInput {
+  return {
+    agentSessionId: command.agentSessionId,
+    ...(command.capabilityRefs?.length
+      ? { capabilityRefs: command.capabilityRefs }
+      : {}),
+    clientSubmitId: command.clientSubmitId,
+    content: [...command.content],
+    displayPrompt: command.displayPrompt ?? null,
+    ...(command.guidance === true ? { guidance: true } : {}),
+    ...(command.submitDiagnostics
+      ? { submitDiagnostics: { ...command.submitDiagnostics } }
+      : {}),
+    workspaceId: command.workspaceId
+  };
 }
 
 function activationInput(

@@ -1,4 +1,9 @@
-import type { AgentActivityComposerOptions } from "../types.ts";
+import type {
+  AgentActivityComposerOptions,
+  AgentActivityComposerSettings,
+  AgentActivitySession
+} from "../types.ts";
+import type { ScopedSessionResultValidation } from "./commandResult.validation.ts";
 import type {
   EngineCommand,
   EngineIntent,
@@ -23,7 +28,10 @@ export function createInitialComposerOptionsState(): ComposerOptionsState {
 
 export function composerOptionsReducer(
   state: ComposerOptionsState,
-  intent: EngineIntent
+  intent: EngineIntent,
+  context: {
+    settingsResultValidation?: ScopedSessionResultValidation | null;
+  } = {}
 ): EngineReducerResult<ComposerOptionsState> {
   switch (intent.type) {
     case "composerOptions/loadRequested":
@@ -31,12 +39,63 @@ export function composerOptionsReducer(
     case "composerOptions/invalidated":
       return invalidate(state, intent.providers, intent.targetKeys);
     case "engine/commandResult":
-      return intent.commandType === "composerOptions/load"
-        ? settleLoad(state, intent)
+      if (intent.commandType === "composerOptions/load") {
+        return settleLoad(state, intent);
+      }
+      return intent.commandType === "session/updateSettings"
+        ? refreshAfterSettings(
+            state,
+            intent.commandId,
+            context.settingsResultValidation ?? null
+          )
         : unchanged(state);
     default:
       return unchanged(state);
   }
+}
+
+function refreshAfterSettings(
+  state: ComposerOptionsState,
+  settingsCommandId: string,
+  validation: ScopedSessionResultValidation | null
+): EngineReducerResult<ComposerOptionsState> {
+  if (validation?.kind !== "valid") return unchanged(state);
+  const session = validation.session;
+  const targetKey = session.agentTargetId?.trim() ?? "";
+  const current = state.optionsByTargetKey[targetKey];
+  if (
+    !targetKey ||
+    current?.behavior.refreshModelOptionsAfterSettings !== true
+  ) {
+    return unchanged(state);
+  }
+  return requestLoad(state, {
+    commandId: `composer-options:after-settings:${settingsCommandId}`,
+    cwd: session.cwd,
+    force: true,
+    provider: session.provider,
+    settings: composerSettingsFromSession(session),
+    targetKey,
+    type: "composerOptions/loadRequested",
+    workspaceId: session.workspaceId
+  });
+}
+
+function composerSettingsFromSession(
+  session: AgentActivitySession
+): AgentActivityComposerSettings {
+  const settings = session.settings;
+  return {
+    ...(settings.model !== undefined ? { model: settings.model } : {}),
+    ...(settings.permissionModeId !== undefined
+      ? { permissionModeId: settings.permissionModeId }
+      : {}),
+    ...(settings.planMode !== undefined ? { planMode: settings.planMode } : {}),
+    ...(settings.reasoningEffort !== undefined
+      ? { reasoningEffort: settings.reasoningEffort }
+      : {}),
+    ...(settings.speed !== undefined ? { speed: settings.speed } : {})
+  };
 }
 
 function requestLoad(

@@ -77,9 +77,17 @@ test("queued capability settings and diagnostics survive delivery", () => {
     turnUpserted(settledTurn("turn-1", 2)),
     canonicalLifecycle("settled", 2)
   );
-  assert.deepEqual(send(sending.commands[0]).requiredSettingsPatch, {
-    computerUse: true
-  });
+  assert.deepEqual(sending.commands, []);
+  const execution = sending.followUpIntents?.[0];
+  assert.equal(execution?.type, "prompt/executionRequested");
+  assert.deepEqual(
+    execution?.type === "prompt/executionRequested"
+      ? execution.command.requiredSettingsPatch
+      : null,
+    {
+      computerUse: true
+    }
+  );
 });
 
 test("immediate submit bypasses queue storage and preserves diagnostics", () => {

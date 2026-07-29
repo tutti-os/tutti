@@ -187,9 +187,8 @@ describe("createWorkspaceActivityEffectPort", () => {
     );
   });
 
-  test("keeps mobile settings projection and composer refresh in the host", async () => {
+  test("returns authoritative settings data without host-owned projection", async () => {
     const dispatch = jest.fn();
-    const loadComposerOptions = jest.fn();
     const updateWorkspaceAgentSessionSettings = jest.fn().mockResolvedValue({});
     const activitySession = {
       agentSessionId: "session-1",
@@ -215,7 +214,6 @@ describe("createWorkspaceActivityEffectPort", () => {
         updateWorkspaceAgentSessionSettings
       } as unknown as TuttidClient,
       engine,
-      loadComposerOptions,
       mapSession: () => activitySession,
       mapSessionDetail() {
         throw new Error("unexpected detail mapping");
@@ -239,12 +237,12 @@ describe("createWorkspaceActivityEffectPort", () => {
       { model: "model-1" },
       { signal: controller.signal }
     );
-    expect(dispatch).toHaveBeenCalledWith({
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      agentSessionId: "session-1",
       session: activitySession,
-      type: "session/upserted"
+      settings: activitySession.settings
     });
-    expect(loadComposerOptions).toHaveBeenCalledWith({ force: true });
-    expect(result).toEqual({ session: activitySession });
   });
 
   test("forwards cancellation to cancel and interactive transports", async () => {

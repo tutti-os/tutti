@@ -92,6 +92,10 @@ export interface EngineIntentExpiredIntent {
   dueAtUnixMs: number;
 }
 
+/**
+ * Host-dispatchable and host-observable Engine input. Reducer-only
+ * continuations belong to the private root-reducer contract.
+ */
 export type EngineIntent =
   | AttentionReadIntent
   | EngineCommandResultIntent
@@ -243,6 +247,10 @@ export interface EngineRuntimeState {
   };
 }
 
+/**
+ * Host-observable Engine snapshot. Reducer execution ledgers are deliberately
+ * omitted from this public state contract.
+ */
 export interface AgentSessionEngineState {
   attentionReadState: AttentionReadState;
   engineRuntime: EngineRuntimeState;
