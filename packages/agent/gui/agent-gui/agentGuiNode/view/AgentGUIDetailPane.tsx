@@ -186,7 +186,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const retryComposerOptions = useStableEventCallback(
     actions.retryComposerOptions
   );
-  const setTuttiModeActive = useStableEventCallback(actions.setTuttiModeActive);
   const setTuttiModeEffect = useStableEventCallback(actions.setTuttiModeEffect);
   const setTuttiModeSpeed = useStableEventCallback(actions.setTuttiModeSpeed);
   const updatePlanIssueBudgetPreset = useStableEventCallback(
@@ -462,9 +461,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onProjectPathChange: updateSelectedProjectPath,
       onSettingsChange: updateComposerSettings,
       onRetryComposerOptions: retryComposerOptions,
-      // Only wire Tutti Mode callbacks when the host explicitly enables the
-      // capability. Composer footer chip keys off callback presence; slash/badge
-      // use capabilityMenuState.tuttiMode.enabled === true (fail closed).
       onTuttiModeChange:
         capabilityMenuState?.tuttiMode?.enabled === true
           ? tuttiWorkflowComposer.setTuttiModeActiveAndSettleReview
@@ -547,7 +543,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       showStopButton,
       stopDisabled,
       slashStatus,
-      setTuttiModeActive,
       setTuttiModeEffect,
       setTuttiModeSpeed,
       submitInteractivePrompt,
