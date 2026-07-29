@@ -22,6 +22,14 @@ export function createIsolatedGitEnvironment(
   fixtureRoot,
   inheritedEnvironment = process.env
 ) {
+  const env = createGitDiscoveryEnvironment(inheritedEnvironment);
+  env.GIT_CEILING_DIRECTORIES = fixtureRoot;
+  return env;
+}
+
+export function createGitDiscoveryEnvironment(
+  inheritedEnvironment = process.env
+) {
   const env = { ...inheritedEnvironment };
   for (const name of Object.keys(env)) {
     const normalizedName = name.toUpperCase();
@@ -32,6 +40,5 @@ export function createIsolatedGitEnvironment(
       delete env[name];
     }
   }
-  env.GIT_CEILING_DIRECTORIES = fixtureRoot;
   return env;
 }
