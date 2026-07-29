@@ -124,29 +124,15 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		t.Fatalf("codex auth not exposed: %v", err)
 	}
 	modelsCachePath := filepath.Join(codexHome, "models_cache.json")
-	modelsCacheInfo, err := os.Lstat(modelsCachePath)
-	if err != nil {
-		t.Fatalf("codex models cache not exposed: %v", err)
+	if _, err := os.Lstat(modelsCachePath); !os.IsNotExist(err) {
+		t.Fatalf("models cache should remain local until CLI identity is known, err = %v", err)
 	}
-	if modelsCacheInfo.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("codex models cache should be a symlink, got mode %v", modelsCacheInfo.Mode())
-	}
-	modelsCacheTarget, err := os.Readlink(modelsCachePath)
+	legacyModelsCache, err := os.ReadFile(filepath.Join(userCodexHome, "models_cache.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := filepath.Join(userCodexHome, "models_cache.json"); modelsCacheTarget != want {
-		t.Fatalf("codex models cache symlink target = %q, want %q", modelsCacheTarget, want)
-	}
-	if err := os.WriteFile(modelsCachePath, []byte(`{"models":["refreshed"]}`), 0o600); err != nil {
-		t.Fatalf("refresh run-scoped codex models cache: %v", err)
-	}
-	sharedModelsCache, err := os.ReadFile(filepath.Join(userCodexHome, "models_cache.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got, want := string(sharedModelsCache), `{"models":["refreshed"]}`; got != want {
-		t.Fatalf("shared codex models cache = %q, want %q", got, want)
+	if got, want := string(legacyModelsCache), `{"models":["cached"]}`; got != want {
+		t.Fatalf("legacy codex models cache = %q, want preserved %q", got, want)
 	}
 	secondPrepared, err := newTestPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
@@ -159,12 +145,8 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		t.Fatalf("prepare second Codex session: %v", err)
 	}
 	secondModelsCachePath := filepath.Join(envValue(secondPrepared.Env, "CODEX_HOME"), "models_cache.json")
-	secondModelsCache, err := os.ReadFile(secondModelsCachePath)
-	if err != nil {
-		t.Fatalf("read second session Codex models cache: %v", err)
-	}
-	if got, want := string(secondModelsCache), `{"models":["refreshed"]}`; got != want {
-		t.Fatalf("second session Codex models cache = %q, want %q", got, want)
+	if _, err := os.Lstat(secondModelsCachePath); !os.IsNotExist(err) {
+		t.Fatalf("second session exposed a cache before CLI identity, err = %v", err)
 	}
 	catalogLink, err := os.Lstat(filepath.Join(codexHome, "cc-switch-model-catalog.json"))
 	if err != nil {
@@ -173,18 +155,16 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if catalogLink.Mode()&os.ModeSymlink == 0 {
 		t.Fatalf("codex model catalog should be a symlink, got mode %v", catalogLink.Mode())
 	}
-	for _, rel := range []string{
-		filepath.Join("plugins", "cache"),
-		filepath.Join("plugins", "data"),
-		filepath.Join("plugins", ".plugin-appserver"),
-	} {
-		info, err := os.Lstat(filepath.Join(codexHome, rel))
-		if err != nil {
-			t.Fatalf("codex plugin state %s not exposed: %v", rel, err)
-		}
-		if info.Mode()&os.ModeSymlink == 0 {
-			t.Fatalf("codex plugin state %s should be exposed as symlink", rel)
-		}
+	pluginCacheInfo, err := os.Lstat(filepath.Join(codexHome, "plugins", "cache"))
+	if err != nil || !pluginCacheInfo.IsDir() || pluginCacheInfo.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("plugin cache should be empty and run-local without CLI identity: info=%#v err=%v", pluginCacheInfo, err)
+	}
+	pluginDataInfo, err := os.Lstat(filepath.Join(codexHome, "plugins", "data"))
+	if err != nil || pluginDataInfo.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("plugin data should remain shared: info=%#v err=%v", pluginDataInfo, err)
+	}
+	if _, err := os.Lstat(filepath.Join(codexHome, "plugins", ".plugin-appserver")); !os.IsNotExist(err) {
+		t.Fatalf("plugin app-server state should remain run-local and lazy, err=%v", err)
 	}
 	if _, err := os.Stat(filepath.Join(cwd, ".tutti-codex-root")); !os.IsNotExist(err) {
 		t.Fatalf("codex preparer should not create project root marker in cwd, err = %v", err)
@@ -443,13 +423,20 @@ func TestDefaultPreparerCodexDedicatedProjectionNarrowsAutomaticCLIApproval(t *t
 	}
 }
 
-func TestExposeUserCodexModelsCacheSharesFirstRefreshAcrossSessions(t *testing.T) {
+func TestPrepareCodexModelsCacheSharesFirstRefreshForSameVersionAndAuthority(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	userCodexHome := filepath.Join(home, ".codex")
-	firstCodexHome := t.TempDir()
-	if err := exposeUserCodexModelsCache(firstCodexHome, userCodexHome); err != nil {
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
 		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userCodexHome, "config.toml"), []byte(`model = "gpt-5.6"`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	firstCodexHome := t.TempDir()
+	first := prepareCodexModelsCacheForLaunch(firstCodexHome, userCodexHome, "0.145.0")
+	if first.Strategy != codexModelsCacheStrategyShared {
+		t.Fatalf("first strategy = %q, want %q", first.Strategy, codexModelsCacheStrategyShared)
 	}
 
 	firstCachePath := filepath.Join(firstCodexHome, "models_cache.json")
@@ -460,22 +447,20 @@ func TestExposeUserCodexModelsCacheSharesFirstRefreshAcrossSessions(t *testing.T
 	if info.Mode()&os.ModeSymlink == 0 {
 		t.Fatalf("first session models cache mode = %v, want symlink", info.Mode())
 	}
-	if _, err := os.Stat(filepath.Join(userCodexHome, "models_cache.json")); !os.IsNotExist(err) {
-		t.Fatalf("shared models cache should not exist before first provider refresh, err = %v", err)
-	}
-	if err := os.WriteFile(firstCachePath, []byte(`{"models":["first-refresh"]}`), 0o600); err != nil {
+	if err := os.WriteFile(firstCachePath, []byte(`{"client_version":"0.145.0","models":["first-refresh"]}`), 0o600); err != nil {
 		t.Fatalf("write first session models cache: %v", err)
 	}
 
 	secondCodexHome := t.TempDir()
-	if err := exposeUserCodexModelsCache(secondCodexHome, userCodexHome); err != nil {
-		t.Fatal(err)
+	second := prepareCodexModelsCacheForLaunch(secondCodexHome, userCodexHome, "0.145.0")
+	if second.Strategy != codexModelsCacheStrategyShared {
+		t.Fatalf("second strategy = %q, want %q", second.Strategy, codexModelsCacheStrategyShared)
 	}
 	secondCache, err := os.ReadFile(filepath.Join(secondCodexHome, "models_cache.json"))
 	if err != nil {
 		t.Fatalf("read second session models cache: %v", err)
 	}
-	if got, want := string(secondCache), `{"models":["first-refresh"]}`; got != want {
+	if got, want := string(secondCache), `{"client_version":"0.145.0","models":["first-refresh"]}`; got != want {
 		t.Fatalf("second session models cache = %q, want %q", got, want)
 	}
 }
@@ -587,7 +572,7 @@ func TestDefaultPreparerCodexRemovesRunConfigWhenUserConfigDisappears(t *testing
 	}
 }
 
-func TestExposeUserCodexModelsCacheDropsUnfencedRunCache(t *testing.T) {
+func TestPrepareCodexModelsCacheQuarantinesIncompatibleRunCache(t *testing.T) {
 	userCodexHome := filepath.Join(t.TempDir(), ".codex")
 	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
 		t.Fatal(err)
@@ -595,33 +580,29 @@ func TestExposeUserCodexModelsCacheDropsUnfencedRunCache(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(userCodexHome, "config.toml"), []byte(`model_provider = "custom"`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(userCodexHome, "models_cache.json"), []byte(`{"models":["shared-stale"]}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	codexHome := t.TempDir()
 	target := filepath.Join(codexHome, "models_cache.json")
-	if err := os.WriteFile(target, []byte(`{"models":["session-local"]}`), 0o600); err != nil {
+	if err := os.WriteFile(target, []byte(`{"client_version":"0.144.6","models":["session-local"]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := exposeUserCodexModelsCache(codexHome, userCodexHome); err != nil {
-		t.Fatal(err)
+	status := prepareCodexModelsCacheForLaunch(codexHome, userCodexHome, "0.145.0")
+	if status.Strategy != codexModelsCacheStrategyShared {
+		t.Fatalf("strategy = %q, want %q", status.Strategy, codexModelsCacheStrategyShared)
 	}
 	info, err := os.Lstat(target)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if info.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("run cache mode = %v, want authority-scoped shared-cache symlink", info.Mode())
+		t.Fatalf("run cache mode = %v, want version-and-authority shared-cache symlink", info.Mode())
 	}
-	if _, err := os.Stat(filepath.Join(userCodexHome, "models_cache.json")); !os.IsNotExist(err) {
-		t.Fatalf("unfenced shared cache should be removed, err = %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(userCodexHome, codexModelsCacheAuthorityFile)); err != nil {
-		t.Fatalf("models cache authority fence missing: %v", err)
+	matches, err := filepath.Glob(target + ".incompatible-*")
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("quarantined caches = %#v, err = %v", matches, err)
 	}
 }
 
-func TestExposeUserCodexModelsCacheInvalidatesWhenGlobalConfigChanges(t *testing.T) {
+func TestPrepareCodexModelsCacheSeparatesCLIAndConfigAuthorities(t *testing.T) {
 	userCodexHome := filepath.Join(t.TempDir(), ".codex")
 	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
 		t.Fatal(err)
@@ -632,10 +613,15 @@ func TestExposeUserCodexModelsCacheInvalidatesWhenGlobalConfigChanges(t *testing
 	}
 
 	firstCodexHome := t.TempDir()
-	if err := exposeUserCodexModelsCache(firstCodexHome, userCodexHome); err != nil {
+	first := prepareCodexModelsCacheForLaunch(firstCodexHome, userCodexHome, "0.144.6")
+	if first.Strategy != codexModelsCacheStrategyShared {
+		t.Fatalf("first strategy = %q", first.Strategy)
+	}
+	firstLink, err := os.Readlink(filepath.Join(firstCodexHome, "models_cache.json"))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(firstCodexHome, "models_cache.json"), []byte(`{"models":["first"]}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(firstCodexHome, "models_cache.json"), []byte(`{"client_version":"0.144.6","models":["first"]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -643,18 +629,36 @@ func TestExposeUserCodexModelsCacheInvalidatesWhenGlobalConfigChanges(t *testing
 		t.Fatal(err)
 	}
 	secondCodexHome := t.TempDir()
-	if err := exposeUserCodexModelsCache(secondCodexHome, userCodexHome); err != nil {
+	second := prepareCodexModelsCacheForLaunch(secondCodexHome, userCodexHome, "0.144.6")
+	if second.Strategy != codexModelsCacheStrategyShared {
+		t.Fatalf("second strategy = %q", second.Strategy)
+	}
+	secondLink, err := os.Readlink(filepath.Join(secondCodexHome, "models_cache.json"))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(userCodexHome, "models_cache.json")); !os.IsNotExist(err) {
-		t.Fatalf("cache from previous global config should be removed, err = %v", err)
+	if firstLink == secondLink {
+		t.Fatalf("config authority change reused cache %q", firstLink)
 	}
-	if info, err := os.Lstat(filepath.Join(secondCodexHome, "models_cache.json")); err != nil || info.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("second run cache link missing after config invalidation: info=%#v err=%v", info, err)
+	if _, err := os.Stat(firstLink); err != nil {
+		t.Fatalf("previous authority cache was not preserved: %v", err)
+	}
+
+	thirdCodexHome := t.TempDir()
+	third := prepareCodexModelsCacheForLaunch(thirdCodexHome, userCodexHome, "0.145.0")
+	if third.Strategy != codexModelsCacheStrategyShared {
+		t.Fatalf("third strategy = %q", third.Strategy)
+	}
+	thirdLink, err := os.Readlink(filepath.Join(thirdCodexHome, "models_cache.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if thirdLink == secondLink {
+		t.Fatalf("CLI version change reused cache %q", thirdLink)
 	}
 }
 
-func TestExposeUserCodexModelsCacheInvalidatesWhenGlobalCatalogChanges(t *testing.T) {
+func TestPrepareCodexModelsCacheSeparatesCatalogAuthorities(t *testing.T) {
 	home := t.TempDir()
 	userCodexHome := filepath.Join(home, ".codex")
 	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
@@ -670,15 +674,15 @@ func TestExposeUserCodexModelsCacheInvalidatesWhenGlobalCatalogChanges(t *testin
 	}
 
 	firstCodexHome := t.TempDir()
-	if err := exposeUserCodexModelsCache(firstCodexHome, userCodexHome); err != nil {
-		t.Fatal(err)
+	if status := prepareCodexModelsCacheForLaunch(firstCodexHome, userCodexHome, "0.145.0"); status.Strategy != codexModelsCacheStrategyShared {
+		t.Fatalf("first strategy = %q", status.Strategy)
 	}
 	firstCache := filepath.Join(firstCodexHome, "models_cache.json")
-	if err := os.WriteFile(firstCache, []byte(`{"models":["first"]}`), 0o600); err != nil {
+	firstLink, err := os.Readlink(firstCache)
+	if err != nil {
 		t.Fatal(err)
 	}
-	firstFence, err := os.ReadFile(filepath.Join(userCodexHome, codexModelsCacheAuthorityFile))
-	if err != nil {
+	if err := os.WriteFile(firstCache, []byte(`{"client_version":"0.145.0","models":["first"]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -686,21 +690,30 @@ func TestExposeUserCodexModelsCacheInvalidatesWhenGlobalCatalogChanges(t *testin
 		t.Fatal(err)
 	}
 	secondCodexHome := t.TempDir()
-	if err := exposeUserCodexModelsCache(secondCodexHome, userCodexHome); err != nil {
-		t.Fatal(err)
+	if status := prepareCodexModelsCacheForLaunch(secondCodexHome, userCodexHome, "0.145.0"); status.Strategy != codexModelsCacheStrategyShared {
+		t.Fatalf("second strategy = %q", status.Strategy)
 	}
-	if _, err := os.Stat(filepath.Join(userCodexHome, "models_cache.json")); !os.IsNotExist(err) {
-		t.Fatalf("cache from previous global catalog should be removed, err = %v", err)
-	}
-	secondFence, err := os.ReadFile(filepath.Join(userCodexHome, codexModelsCacheAuthorityFile))
+	secondLink, err := os.Readlink(filepath.Join(secondCodexHome, "models_cache.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(firstFence) == string(secondFence) {
-		t.Fatalf("models cache authority fence did not change after global catalog update")
+	if firstLink == secondLink {
+		t.Fatalf("catalog authority change reused cache %q", firstLink)
 	}
-	if info, err := os.Lstat(filepath.Join(secondCodexHome, "models_cache.json")); err != nil || info.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("second run cache link missing after invalidation: info=%#v err=%v", info, err)
+	if _, err := os.Stat(firstLink); err != nil {
+		t.Fatalf("previous catalog cache was not preserved: %v", err)
+	}
+}
+
+func TestPrepareCodexModelsCacheUnknownVersionStaysLocal(t *testing.T) {
+	userCodexHome := filepath.Join(t.TempDir(), ".codex")
+	codexHome := t.TempDir()
+	status := prepareCodexModelsCacheForLaunch(codexHome, userCodexHome, "")
+	if status.Strategy != "session_local" || status.Reason != "cli_version_unknown" {
+		t.Fatalf("status = %#v", status)
+	}
+	if _, err := os.Lstat(filepath.Join(codexHome, codexModelsCacheFileName)); !os.IsNotExist(err) {
+		t.Fatalf("unknown version exposed shared cache, err = %v", err)
 	}
 }
 

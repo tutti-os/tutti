@@ -19,6 +19,13 @@ preparer.Profile = runtimeprep.StandardProfile()
 preparer.CommandCatalog = commandCatalogAdapter
 preparer.ComputerUseAvailable = computerReadinessCheck
 preparer.SkillSources = []runtimeprep.SkillSource{pluginSkillSource}
+preparer.SetCodexCLIResolver(func(ctx context.Context) (runtimeprep.CodexCLICommand, error) {
+    resolved, err := hostProviderCommandResolver(ctx, "codex")
+    return runtimeprep.CodexCLICommand{
+        Command: resolved.Command,
+        Env: resolved.Env,
+    }, err
+})
 
 prepared, err := preparer.Prepare(ctx, runtimeprep.PrepareInput{
     WorkspaceID:    workspaceID,
@@ -47,12 +54,30 @@ closed on invalid or incompatible config instead of maintaining provider-specifi
 line parsers.
 
 Codex preparation keeps session state isolated under the run-scoped
-`CODEX_HOME`, while linking its writable `models_cache.json` to the provider
-user's process-default `~/.codex/models_cache.json`. The link may initially be
-dangling: the first Codex refresh creates the shared VM- or host-local cache,
-and later sessions reuse it. Hosts must therefore run preparation with `HOME`
-set to the provider user's stable local Home, never a session runtime directory
-or a remote filesystem projection.
+`CODEX_HOME`. The host supplies the same exact managed CLI command used by the
+app-server launch. Runtime preparation probes that command's version before
+native capability inspection, then selects:
+
+- `~/.codex/model-caches/<cli-version>/<authority>/models_cache.json`, where
+  `authority` is derived from the current config, auth, and referenced model
+  catalog;
+- `~/.codex/plugin-caches/<cli-version>/cache` for installed plugin packages.
+
+Unknown CLI versions use run-local caches. The legacy
+`~/.codex/models_cache.json` is never deleted or overwritten; it is copied
+once only when its authority fence and `client_version` both match. Plugin
+`data` remains shared because it is user/plugin state, while
+`.plugin-appserver` remains run-local generated state.
+
+Before preparation continues, it asks the exact CLI for
+`plugin list --available --json` and installs missing enabled packages with
+`plugin add <id> --json`. A version-cache lock serializes concurrent runs.
+List, per-plugin, and total timeouts are bounded. Plugin synchronization is
+fail-open for a plain Codex session: failure is recorded in preparation and
+app-server startup diagnostics, then native capability inspection selects a
+safe fallback or unavailable state. Hosts must run preparation with `HOME` set
+to the provider user's stable local Home, never a session runtime directory or
+a remote filesystem projection.
 
 `TuttiAgentPreparer.ResolveAuthSource` lets a host expose one explicit absolute
 credential authority into the session-scoped `TUTTI_AGENT_HOME`. When omitted,

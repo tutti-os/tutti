@@ -400,6 +400,8 @@ func (a *CodexAppServerAdapter) startInitializedClientPrepared(
 	spec ProcessSpec,
 	cleanup func(context.Context),
 ) (*codexAppServerClient, json.RawMessage, error) {
+	cliVersion := resolveCodexCLIVersion(ctx, spec.Command, spec.Env)
+	trace.Log("runtime.diagnostics", codexAppServerRuntimeDiagnostics(spec.Env, cliVersion))
 	trace.Log("process.start.begin", map[string]any{
 		"command": strings.Join(spec.Command, " "),
 		"cwd":     spec.CWD,
@@ -453,7 +455,11 @@ func (a *CodexAppServerAdapter) startInitializedClientPrepared(
 
 	initializeResult, err := trace.TypedCall(acpStartCallTimeout, appServerMethodInitialize, func() (json.RawMessage, error) {
 		return client.Initialize(ctx, acpStartCallTimeout, map[string]any{
-			"clientInfo": a.clientInfoParams(spec.Env),
+			"clientInfo": clientInfoParamsForVersion(
+				a.host,
+				a.config.clientInfoName,
+				cliVersion,
+			),
 			"capabilities": map[string]any{
 				"experimentalApi": true,
 			},
