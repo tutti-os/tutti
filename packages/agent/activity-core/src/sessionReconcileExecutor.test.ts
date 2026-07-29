@@ -16,7 +16,8 @@ import type {
   AgentActivityDurableMessage,
   AgentActivityMessage,
   AgentActivityMessagePage,
-  AgentActivitySession
+  AgentActivitySession,
+  AgentActivityTurn
 } from "./types.ts";
 
 const WORKSPACE_ID = "workspace-1";
@@ -93,6 +94,52 @@ test("authoritative history reconcile replaces effective messages and cleans the
     }
   ]);
   assert.deepEqual(harness.reconciledOverlays, []);
+});
+
+test("authoritative history passes only root turns to the root overlay", async () => {
+  const root = session("root-1", { messageVersion: 2 });
+  const child = session("child-1", {
+    kind: "child",
+    parentAgentSessionId: "root-1",
+    rootAgentSessionId: "root-1"
+  });
+  const rootTurn = turn("root-1", "root-turn");
+  const childTurn = turn("child-1", "child-turn");
+  const harness = createHarness({
+    getSessionDetail: async () => ({
+      ...sessionDetail(root, [child]),
+      turns: [rootTurn, childTurn]
+    }),
+    listSessionMessages: async (input) =>
+      input.order === "desc"
+        ? page([message({ turnId: rootTurn.turnId, version: 2 })], false, 2)
+        : page([], false, 2)
+  });
+
+  const result = await harness.executor.execute({
+    ...command("state_and_messages"),
+    authoritativeMessages: true
+  });
+
+  assert.equal(result.status, "applied");
+  assert.deepEqual(result.affectedSessionIds, ["root-1", "child-1"]);
+  assert.deepEqual(harness.reconciledAuthoritativeHistories, [
+    {
+      agentSessionId: "root-1",
+      messageIds: ["message-1"],
+      turnIds: ["root-turn"]
+    }
+  ]);
+  assert.ok(
+    harness.engine.getSnapshot().sessionLifecycle.sessionsById["child-1"]
+  );
+  assert.ok(
+    Object.values(harness.engine.getSnapshot().sessionLifecycle.turnsById).some(
+      (candidate) =>
+        candidate.agentSessionId === "child-1" &&
+        candidate.turnId === "child-turn"
+    )
+  );
 });
 
 test("authoritative history reconciliation rejects a partial scope before reading", async () => {
@@ -644,6 +691,19 @@ function message(
     version: 1,
     workspaceId: WORKSPACE_ID,
     ...overrides
+  };
+}
+
+function turn(agentSessionId: string, turnId: string): AgentActivityTurn {
+  return {
+    agentSessionId,
+    origin: "user_prompt",
+    phase: "settled",
+    outcome: "completed",
+    settledAtUnixMs: 1,
+    startedAtUnixMs: 1,
+    turnId,
+    updatedAtUnixMs: 1
   };
 }
 

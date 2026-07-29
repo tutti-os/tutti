@@ -513,10 +513,13 @@ export function createAgentActivitySessionReconcileExecutor(
             status: "applied",
             type: "detailApply"
           });
+          const scopedTurns = filtered.turns.filter(
+            (turn) => turn.agentSessionId === agentSessionId
+          );
           input.reconcileAuthoritativeHistory(
             agentSessionId,
             page.messages,
-            filtered.turns
+            scopedTurns
           );
           return {
             affectedSessionIds: detailSessionIds(filtered),
