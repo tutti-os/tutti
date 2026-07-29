@@ -16,6 +16,8 @@ automation are updated together.
 The current fixed release group is:
 
 ```text
+@tutti-os/analytics
+@tutti-os/analytics-debug
 @tutti-os/event-stream-core
 @tutti-os/workspace-file-manager
 @tutti-os/workspace-file-reference
@@ -26,10 +28,12 @@ The current fixed release group is:
 @tutti-os/workspace-terminal
 @tutti-os/agent-activity-core
 @tutti-os/agent-gui
+@tutti-os/commerce
 @tutti-os/claude-sdk-sidecar
 @tutti-os/browser-node
 @tutti-os/workspace-file-preview
 @tutti-os/workbench-snapshot
+@tutti-os/workbench-electron
 @tutti-os/workbench-host
 @tutti-os/workbench-launchpad
 @tutti-os/workbench-surface
@@ -124,6 +128,12 @@ package release tag sequence. Do not add package Go modules that require an
 independent release cadence unless this convention and the release automation
 are updated together.
 
+`packages/device-link` participates in the same stable Go module tag sequence
+after the Personal Android/Desktop path validated its authenticated connection
+lifecycle and AAR consumer build. TSH and other consumers must install its
+released cohort version; do not consume a pseudo-version or add a workspace
+replacement.
+
 ## Local Beta Releases
 
 Use local beta releases for temporary cross-repository or external integration
@@ -155,6 +165,7 @@ pnpm add @tutti-os/workspace-file-manager@beta
 pnpm add @tutti-os/workspace-issue-manager@beta
 pnpm add @tutti-os/workspace-app-center@beta
 pnpm add @tutti-os/workspace-terminal@beta
+pnpm add @tutti-os/workbench-electron@beta
 pnpm add @tutti-os/workbench-host@beta
 pnpm add @tutti-os/workbench-surface@beta
 pnpm add @tutti-os/workbench-snapshot@beta
@@ -191,6 +202,20 @@ Published packages should not include:
 - package-local build config
 - generated junk files
 
+Packages that expose Tiptap runtime objects or types must declare their shared
+Tiptap runtime packages as peer dependencies, with the same ranges repeated as
+development dependencies for workspace builds. Tiptap packages require exact
+peer versions, so component-internal extensions must be bundled from development
+dependencies rather than resolved independently in the consumer. A
+package-private copy of the shared runtime can make structurally identical
+extensions type-incompatible in consumers.
+
+Platform-specific peers used only by an optional public subpath must remain
+peer dependencies and set `peerDependenciesMeta.<name>.optional` to `true`.
+The platform app that imports that subpath must declare the concrete runtime
+dependency itself. This keeps web and desktop consumers from installing
+unused native dependency chains.
+
 Runtime assets that are rendered or referenced by public entrypoints must also
 survive the packed package shape. When a public runtime entrypoint such as
 `./workbench` or `./ui` renders a package-local image, icon bitmap, schema, or
@@ -206,6 +231,19 @@ Use this command to inspect publish contents:
 pnpm release:pack:check
 ```
 
+Without arguments the command builds and inspects every configured public npm
+package. Repository-managed changed-file gates may pass a validated package
+subset:
+
+```bash
+pnpm release:pack:check -- --packages-json '["@tutti-os/agent-gui"]'
+```
+
+The subset build includes the selected packages' workspace dependencies, but
+only the selected package tarballs are inspected. Use the unfiltered command
+for release infrastructure, workspace dependency, lockfile, Changesets, or
+fixed release-group changes.
+
 Before publishing a package that exposes runtime assets, verify all of the
 following:
 
@@ -216,6 +254,26 @@ following:
   unless that dependency is an intentional part of the public contract
 - a consumer-facing build emits or copies the asset only when the consumer
   explicitly imports the asset subpath
+- packed JavaScript does not contain raw XML SVG data URLs or bare relative SVG
+  strings; SVGs interpolated into runtime CSS `url(...)` values must use a
+  CSS-safe data URL or an absolute URL constructed relative to the module
+- every asset referenced through `new URL(relativePath, import.meta.url)` exists
+  at that exact module-relative location inside the packed tarball
+- published code that may be dependency-prebundled must import fallback images
+  through explicit public asset subpaths; do not leave
+  `new URL("./assets/...", import.meta.url)` in a bundled runtime entrypoint,
+  because a consumer optimizer may relocate the JavaScript without relocating
+  the adjacent asset
+
+Emitting an SVG next to a bundled JavaScript file is not sufficient when the
+bundle only exports a string such as `./icon-HASH.svg`. CSS resolves that value
+relative to the consuming page, and consumer bundlers cannot discover the
+runtime string as an asset dependency.
+
+Do not use a workspace application build as the only validation for asset
+changes. Workspace exports can point at source while published exports point at
+`dist`, so the two paths may apply different asset transforms. The packed
+tarball is the consumer contract.
 
 ## Package Entrypoints
 
@@ -223,19 +281,35 @@ The stable package entrypoints are:
 
 ```text
 @tutti-os/agent-activity-core
+@tutti-os/analytics
+@tutti-os/analytics-debug
+@tutti-os/analytics-debug/react
 @tutti-os/agent-gui
 @tutti-os/agent-gui/agent-conversation
 @tutti-os/agent-gui/agent-env
+@tutti-os/agent-gui/agent-env-ui
 @tutti-os/agent-gui/agent-message-center
 @tutti-os/agent-gui/context-mention-palette
 @tutti-os/agent-gui/i18n
 @tutti-os/agent-gui/styles.css
 @tutti-os/agent-gui/workbench
+@tutti-os/agent-gui/workbench/browser-element-context
+@tutti-os/agent-gui/workbench/tool-sidebar
+@tutti-os/agent-gui/workspace-settings-panel
+@tutti-os/commerce
+@tutti-os/commerce/react
+@tutti-os/commerce/assets/star-free.png
+@tutti-os/commerce/assets/star-lite.png
+@tutti-os/commerce/assets/star-pro.png
+@tutti-os/commerce/assets/star-ultra.png
+@tutti-os/commerce/assets/registration-credits-bg.png
 @tutti-os/browser-node
 @tutti-os/browser-node/assets/workspace-dock-website.png
 @tutti-os/browser-node/bridge
+@tutti-os/browser-node/chrome-cookie-import/macos
 @tutti-os/browser-node/electron-main
 @tutti-os/browser-node/electron-preload
+@tutti-os/browser-node/electron-renderer
 @tutti-os/browser-node/i18n
 @tutti-os/browser-node/react
 @tutti-os/browser-node/workbench
@@ -256,6 +330,8 @@ The stable package entrypoints are:
 @tutti-os/workspace-file-preview/core
 @tutti-os/workspace-file-preview/react
 @tutti-os/workspace-file-manager
+@tutti-os/workspace-file-manager/assets/workspace-archive-fallback.png
+@tutti-os/workspace-file-manager/assets/workspace-folder-fallback.png
 @tutti-os/workspace-file-manager/services
 @tutti-os/workspace-file-reference
 @tutti-os/workspace-file-reference/contracts
@@ -284,6 +360,7 @@ The stable package entrypoints are:
 @tutti-os/workspace-terminal/workbench
 @tutti-os/workbench-snapshot
 @tutti-os/workbench-snapshot/schema.json
+@tutti-os/workbench-electron
 @tutti-os/workbench-host
 @tutti-os/workbench-host/conformance
 @tutti-os/workbench-surface
@@ -373,6 +450,13 @@ selectors, keyframes, or structure that is awkward to express through primitives
 and Tailwind utilities. When package-local CSS is necessary, it must use UI
 system tokens and must not contain app-specific product styling or user-visible
 copy.
+
+Published stylesheet sources use standard CSS properties. In particular,
+author `backdrop-filter` without a handwritten `-webkit-backdrop-filter` pair.
+The consuming application's CSS build owns browser-target prefix generation;
+the packed stylesheet does not promise a second, package-owned legacy-browser
+prefixing pass. Consumer production builds should assert that optimization did
+not leave prefix-only declarations.
 
 Do not add a public `./styles.css` export for a reusable package unless that CSS
 is genuinely part of the package's stable contract. If the same need would help

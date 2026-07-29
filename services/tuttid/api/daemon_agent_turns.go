@@ -5,7 +5,6 @@ import (
 
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	"github.com/tutti-os/tutti/services/tuttid/apierrors"
-	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
 
 // CancelWorkspaceAgentTurn is the protocol v2 turn-scoped cancel. Idempotent
@@ -33,9 +32,12 @@ func (api DaemonAPI) CancelWorkspaceAgentTurn(ctx context.Context, request tutti
 		},
 	}
 	if result.Turn != nil {
-		turn := agentservice.GeneratedWorkspaceAgentTurn(*result.Turn)
+		turn := generatedWorkspaceAgentTurn(*result.Turn)
 		response.Turn = &turn
 	}
+	api.recordAgentStimulus(ctx, "turn.cancel", string(request.WorkspaceID), string(request.AgentSessionID), map[string]any{
+		"turnId": string(request.TurnID),
+	})
 	return response, nil
 }
 

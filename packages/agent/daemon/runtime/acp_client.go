@@ -87,6 +87,9 @@ func (e *acpCallError) AuthRequired() bool {
 		return false
 	}
 	haystack := strings.ToLower(e.Err.Message + " " + string(e.Err.Data))
+	if structuredProviderFailureCode(haystack) != "" {
+		return false
+	}
 	return strings.Contains(haystack, "auth")
 }
 
@@ -222,7 +225,7 @@ func (c *acpClient) CallWithTimeout(
 	defer cancel()
 	result, err := c.callLocked(callCtx, method, params, handler)
 	if errors.Is(err, context.DeadlineExceeded) {
-		return nil, fmt.Errorf("acp %s timed out after %s", method, timeout)
+		return nil, &acpCallTimeoutError{Method: method, Timeout: timeout}
 	}
 	return result, err
 }
@@ -352,7 +355,7 @@ func (c *acpClient) CallNoHandlerWithTimeout(
 	defer cancel()
 	result, err := c.CallNoHandler(callCtx, method, params)
 	if errors.Is(err, context.DeadlineExceeded) {
-		return nil, fmt.Errorf("acp %s timed out after %s", method, timeout)
+		return nil, &acpCallTimeoutError{Method: method, Timeout: timeout}
 	}
 	return result, err
 }
@@ -500,7 +503,7 @@ func (c *acpClient) dispatchLine(line []byte) {
 		}
 		if benignACPStdoutLine(line) {
 			c.resetStdoutProtocolErrors()
-			slog.Warn("agent session ACP stdout ignored provider log line",
+			slog.Debug("agent session ACP stdout ignored provider log line",
 				"event", "agent_session.acp.stdout.provider_log",
 				"message", truncateACPLogValue(string(line), 1200),
 			)
@@ -515,7 +518,7 @@ func (c *acpClient) dispatchLine(line []byte) {
 		return
 	}
 	c.resetStdoutProtocolErrors()
-	slog.Info("agent session ACP stdout",
+	slog.Debug("agent session ACP stdout",
 		"event", "agent_session.acp.stdout",
 		"method", message.Method,
 		"id", strings.TrimSpace(string(message.ID)),
@@ -614,7 +617,7 @@ func benignACPStdoutLine(line []byte) bool {
 }
 
 func (c *acpClient) dispatchMessage(message acpMessage) {
-	slog.Info("agent session ACP message received",
+	slog.Debug("agent session ACP message received",
 		"event", "agent_session.acp.message.received",
 		"method", message.Method,
 		"id", strings.TrimSpace(string(message.ID)),
@@ -731,6 +734,11 @@ func acpErrorSummary(err *acpError) string {
 		message = fmt.Sprintf("code %d", err.Code)
 	}
 	data := strings.TrimSpace(string(err.Data))
+	// A JSON null payload carries no information; rendering it as
+	// "data: null" only adds noise to user-visible error text.
+	if data == "null" {
+		data = ""
+	}
 	if data != "" {
 		return fmt.Sprintf("%s (code %d, data: %s)", message, err.Code, truncateACPLogValue(data, 1200))
 	}

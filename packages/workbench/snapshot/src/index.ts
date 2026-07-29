@@ -12,10 +12,14 @@ export {
   type WorkbenchFrameV1,
   type WorkbenchSnapshot,
   type WorkbenchSnapshotDisplayModeV1,
+  type WorkbenchSnapshotLayoutBasisV1,
+  type WorkbenchSnapshotLayoutConstraintsV1,
   type WorkbenchSnapshotNode,
   type WorkbenchSnapshotNodeAdapterStateV1,
   type WorkbenchSnapshotNodeV1,
+  type WorkbenchSnapshotSafeAreaV1,
   type WorkbenchSnapshotSchemaVersion,
+  type WorkbenchSnapshotSizeV1,
   type WorkbenchSnapshotSpaceV1,
   type WorkbenchSnapshotV1
 } from "./types.ts";

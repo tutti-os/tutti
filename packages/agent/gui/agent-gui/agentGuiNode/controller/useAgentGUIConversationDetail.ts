@@ -3,7 +3,7 @@ import {
   selectEngineTurnsForSession,
   type AgentActivityInteraction,
   type AgentActivityMessage,
-  type AgentActivitySnapshot,
+  type AgentSessionFamilySnapshot,
   type AgentActivityTurn,
   type AgentSessionEngine,
   type EngineQueuedPrompt,
@@ -44,10 +44,7 @@ import {
   EMPTY_AGENT_COMPOSER_DRAFT,
   readAgentComposerDraftContent
 } from "./agentGuiController.draftMessageHelpers";
-import {
-  maxFiniteMessageVersion,
-  minFiniteMessageVersion
-} from "./useAgentConversationMessagePaging";
+import { minFiniteMessageVersion } from "./useAgentConversationMessagePaging";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
 import { agentComposerDraftPrompt } from "../model/agentComposerDraft";
 
@@ -62,7 +59,7 @@ interface UseAgentGUIConversationDetailInput {
   activeQueuedPromptInFlight: PromptQueueInFlightCommand | null;
   activeQueuedPrompts: readonly EngineQueuedPrompt[];
   activeQueueStatus: AgentGUIQueueStatus;
-  agentActivitySnapshot: AgentActivitySnapshot;
+  activeSessionFamily: AgentSessionFamilySnapshot;
   activeSessionReconcileError: string | null;
   activeSessionView: {
     hasOlderMessages: boolean;
@@ -98,8 +95,10 @@ export function useAgentGUIConversationDetail(
   const activeCanonicalLiveTurn = Boolean(
     input.activeTurn && input.activeTurn.phase !== "settled"
   );
-  const sessionTurns = useEngineSelector(input.sessionEngine, (state) =>
-    selectEngineTurnsForSession(state, input.activeConversationId)
+  const sessionTurns = useEngineSelector(
+    input.sessionEngine,
+    (state) => selectEngineTurnsForSession(state, input.activeConversationId),
+    referenceArrayEqual
   );
   const projectionConversation =
     useMemo<AgentGUIConversationProjectionSource | null>(() => {
@@ -170,23 +169,20 @@ export function useAgentGUIConversationDetail(
     if (!projectionConversation) {
       return { conversation: null, detail: null };
     }
-    const rootSessionId = projectionConversation.id.trim();
-    const childSessions = input.agentActivitySnapshot.sessions.filter(
-      (session) =>
-        session.kind === "child" && session.rootAgentSessionId === rootSessionId
-    );
     return buildAgentGUIConversationModels({
       timelineItems: input.activeTimelineItems,
       conversation: projectionConversation,
-      childSessions,
-      childMessagesBySessionId: input.agentActivitySnapshot.sessionMessagesById,
+      canonicalSession: input.activeSessionFamily.rootSession,
+      childSessions: input.activeSessionFamily.childSessions,
+      childMessagesBySessionId: input.activeSessionFamily.messagesBySessionId,
       workspaceRoot: input.workspacePath,
       avoidGroupingEdits: input.avoidGroupingEdits
     });
   }, [
     input.activeTimelineItems,
-    input.agentActivitySnapshot.sessionMessagesById,
-    input.agentActivitySnapshot.sessions,
+    input.activeSessionFamily.childSessions,
+    input.activeSessionFamily.messagesBySessionId,
+    input.activeSessionFamily.rootSession,
     input.avoidGroupingEdits,
     input.workspacePath,
     projectionConversation
@@ -218,7 +214,6 @@ export function useAgentGUIConversationDetail(
       return;
     }
     const firstVersion = minFiniteMessageVersion(input.activeMessages);
-    const lastVersion = maxFiniteMessageVersion(input.activeMessages);
     const diagnosticKey = [
       input.activeConversationId,
       input.activeMessages.length,
@@ -226,7 +221,6 @@ export function useAgentGUIConversationDetail(
       conversation.sourceDetail.turns.length,
       conversation.rows.length,
       firstVersion ?? "",
-      lastVersion ?? "",
       input.activeSessionView?.hasOlderMessages ? "1" : "0",
       input.activeSessionView?.isLoadingOlderMessages ? "1" : "0"
     ].join(":");
@@ -331,4 +325,14 @@ export function useAgentGUIConversationDetail(
       ? null
       : rawPendingInteractivePrompt
   };
+}
+
+function referenceArrayEqual<T>(
+  left: readonly T[],
+  right: readonly T[]
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
 }

@@ -43,6 +43,45 @@ export function resolveAgentGUIProviderRailTargetSelection(input: {
     : "open-home-composer";
 }
 
+export function agentTargetForConversation(
+  conversation: AgentGUIConversationSummary | null,
+  targets: readonly AgentGUIAgentTarget[]
+): AgentGUIAgentTarget | null {
+  const agentTargetId = conversation?.agentTargetId?.trim() ?? "";
+  if (!agentTargetId) return null;
+  return (
+    targets.find((target) => target.agentTargetId === agentTargetId) ?? null
+  );
+}
+
+export function ownerDeviceLabelForConversation(
+  conversation: AgentGUIConversationSummary | null,
+  targets: readonly AgentGUIAgentTarget[]
+): string | null {
+  return (
+    agentTargetForConversation(
+      conversation,
+      targets
+    )?.ownerDeviceLabel?.trim() || null
+  );
+}
+
+export function targetConnectionForAgentGUIView(input: {
+  activeConversation: AgentGUIConversationSummary | null;
+  selectedTarget: AgentGUIAgentTarget | null;
+  targets: readonly AgentGUIAgentTarget[];
+}): { agentTargetId: string | null; ownerDeviceLabel: string | null } {
+  const presentationTarget = input.activeConversation
+    ? agentTargetForConversation(input.activeConversation, input.targets)
+    : input.selectedTarget;
+  return {
+    agentTargetId: input.activeConversation
+      ? input.activeConversation.agentTargetId?.trim() || null
+      : (presentationTarget?.agentTargetId?.trim() ?? null),
+    ownerDeviceLabel: presentationTarget?.ownerDeviceLabel?.trim() || null
+  };
+}
+
 export function agentActivityInteractionListsEqual(
   left: readonly AgentActivityInteraction[],
   right: readonly AgentActivityInteraction[]
@@ -95,6 +134,14 @@ export const rememberComposerDefaultsFields = [
   "speed"
 ] as const;
 
+export type AgentGUIComposerDefaultsField =
+  (typeof rememberComposerDefaultsFields)[number];
+
+export interface AgentGUIRememberComposerDefaultsResult {
+  acknowledgedFields: AgentGUIComposerDefaultsField[];
+  supersededFields: AgentGUIComposerDefaultsField[];
+}
+
 export function composerDefaultsPatchFromSettings(
   touched: Partial<AgentSessionComposerSettings>,
   finalSettings: AgentSessionComposerSettings
@@ -103,11 +150,44 @@ export function composerDefaultsPatchFromSettings(
   for (const field of rememberComposerDefaultsFields) {
     if (touched[field] === undefined) continue;
     const touchedValue = normalizeOptionalText(touched[field]);
+    if (touchedValue === null) continue;
     const finalValue = normalizeOptionalText(finalSettings[field]);
-    if (touchedValue !== null && finalValue === null) continue;
+    if (finalValue === null) continue;
     patch[field] = finalValue;
   }
   return Object.keys(patch).length > 0 ? patch : null;
+}
+
+export function overlayComposerDefaults(
+  base: AgentSessionComposerSettings,
+  optimistic: AgentSessionComposerSettings | null | undefined
+): AgentSessionComposerSettings {
+  if (!optimistic) return base;
+  const result = { ...base };
+  for (const field of rememberComposerDefaultsFields) {
+    const value = normalizeOptionalText(optimistic[field]);
+    if (value !== null) {
+      Object.assign(result, { [field]: value });
+    }
+  }
+  return result;
+}
+
+export function withoutAcknowledgedComposerDefaults(
+  settings: AgentSessionComposerSettings,
+  acknowledged: AgentGUIComposerDefaults
+): AgentSessionComposerSettings {
+  const result = { ...settings };
+  for (const field of rememberComposerDefaultsFields) {
+    const acknowledgedValue = normalizeOptionalText(acknowledged[field]);
+    if (
+      acknowledgedValue !== null &&
+      normalizeOptionalText(result[field]) === acknowledgedValue
+    ) {
+      delete result[field];
+    }
+  }
+  return result;
 }
 
 export function composerTargetDataFromProviderTarget(input: {

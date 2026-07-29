@@ -181,7 +181,6 @@ type ThreadApproveGuardianDeniedActionResponse interface{}
 type ThreadArchiveResponse interface{}
 type ThreadCompactStartResponse interface{}
 type ThreadDeleteResponse interface{}
-type ThreadForkResponse interface{}
 type ThreadInjectItemsResponse interface{}
 type ThreadListResponse interface{}
 type ThreadMetadataUpdateResponse interface{}

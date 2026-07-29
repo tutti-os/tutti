@@ -9,11 +9,6 @@ func stringFromAny(input any) string {
 	return ""
 }
 
-func boolFromAny(input any) (bool, bool) {
-	value, ok := input.(bool)
-	return value, ok
-}
-
 func composerConfigOptionValuesToRuntimeModelOptions(options []ComposerConfigOptionValue) []map[string]any {
 	if len(options) == 0 {
 		return []map[string]any{}
@@ -32,14 +27,45 @@ func composerConfigOptionValuesToRuntimeModelOptions(options []ComposerConfigOpt
 			"name":  label,
 			"value": value,
 		}
-		// Carry the per-model description through to RuntimeContext. The desktop
-		// composer projection prefers this live model list over ModelConfig.Options,
-		// so dropping the description here removes the model hover detail.
+		// Preserve descriptions in the internal runtime snapshot so a later
+		// typed ModelConfig projection can retain model hover detail.
 		if description := strings.TrimSpace(option.Description); description != "" {
 			entry["description"] = description
 		}
 		if option.SupportsImageInput != nil {
 			entry["supportsImageInput"] = *option.SupportsImageInput
+		}
+		if option.SupportsReasoningEffort != nil {
+			entry["supportsReasoningEffort"] = *option.SupportsReasoningEffort
+		}
+		if reasoningEffort := strings.TrimSpace(option.ReasoningEffort); reasoningEffort != "" {
+			entry["reasoningEffort"] = reasoningEffort
+		}
+		if option.ReasoningEffortsAdvertised {
+			efforts := make([]map[string]any, 0, len(option.ReasoningEfforts))
+			for _, effort := range option.ReasoningEfforts {
+				value := strings.TrimSpace(effort.Value)
+				if value == "" {
+					continue
+				}
+				item := map[string]any{"value": value}
+				if label := strings.TrimSpace(effort.Label); label != "" {
+					item["label"] = label
+				}
+				if description := strings.TrimSpace(effort.Description); description != "" {
+					item["description"] = description
+				}
+				if effort.Default {
+					item["default"] = true
+				}
+				efforts = append(efforts, item)
+			}
+			entry["reasoningEfforts"] = efforts
+		}
+		// Provenance for requested-origin entries (warm-catalog append,
+		// bootstrap echo): clients must not count them as catalog testimony.
+		if option.Requested {
+			entry["requested"] = true
 		}
 		result = append(result, entry)
 	}

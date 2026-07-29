@@ -15,6 +15,7 @@ interface CollapsibleRevealProps {
   children: ReactNode;
   className?: string;
   innerClassName?: string;
+  onHeightTransitionEnd?: () => void;
   preMountOnIdle?: boolean;
 }
 
@@ -23,6 +24,7 @@ export function CollapsibleReveal({
   children,
   className,
   innerClassName,
+  onHeightTransitionEnd,
   preMountOnIdle = false
 }: CollapsibleRevealProps): JSX.Element | null {
   "use memo";
@@ -34,6 +36,22 @@ export function CollapsibleReveal({
   const heightRef = useRef(height);
   const measuredHeightRef = useRef<number | null>(null);
   const previousExpandedRef = useRef(expanded);
+  const heightTransitionPendingRef = useRef(false);
+
+  const setRootRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (
+        rootRef.current !== null &&
+        node === null &&
+        heightTransitionPendingRef.current
+      ) {
+        heightTransitionPendingRef.current = false;
+        onHeightTransitionEnd?.();
+      }
+      rootRef.current = node;
+    },
+    [onHeightTransitionEnd]
+  );
 
   const setRevealHeight = useCallback((nextHeight: string) => {
     heightRef.current = nextHeight;
@@ -48,11 +66,18 @@ export function CollapsibleReveal({
       setMounted(true);
       return undefined;
     }
+    let mountFrameStarted = false;
     const animationFrame = requestAnimationFrame(() => {
+      mountFrameStarted = true;
       setMounted(true);
     });
-    return () => cancelAnimationFrame(animationFrame);
-  }, [expanded, mounted, preMountOnIdle]);
+    return () => {
+      cancelAnimationFrame(animationFrame);
+      if (!mountFrameStarted) {
+        onHeightTransitionEnd?.();
+      }
+    };
+  }, [expanded, mounted, onHeightTransitionEnd, preMountOnIdle]);
 
   useEffect(() => {
     if (!preMountOnIdle || mounted || expanded) {
@@ -88,6 +113,7 @@ export function CollapsibleReveal({
       if (wasExpanded && visible && height === "auto") {
         return undefined;
       }
+      heightTransitionPendingRef.current = true;
       setVisible(false);
       setRevealHeight("0px");
       const animationFrame = requestAnimationFrame(() => {
@@ -99,6 +125,7 @@ export function CollapsibleReveal({
     }
 
     if (!wasExpanded) {
+      heightTransitionPendingRef.current = false;
       setVisible(false);
       setRevealHeight("0px");
       return undefined;
@@ -109,6 +136,7 @@ export function CollapsibleReveal({
     const measuredHeight =
       renderedHeight > 0 ? renderedHeight : (cachedHeight ?? root.scrollHeight);
     measuredHeightRef.current = measuredHeight;
+    heightTransitionPendingRef.current = true;
     setRevealHeight(`${measuredHeight}px`);
     setVisible(false);
     const animationFrame = requestAnimationFrame(() => {
@@ -178,10 +206,12 @@ export function CollapsibleReveal({
     }
     if (visible) {
       setRevealHeight("auto");
-      return;
-    }
-    if (!expanded && !preMountOnIdle) {
+    } else if (!expanded && !preMountOnIdle) {
       setMounted(false);
+    }
+    if (heightTransitionPendingRef.current) {
+      heightTransitionPendingRef.current = false;
+      onHeightTransitionEnd?.();
     }
   };
 
@@ -189,7 +219,7 @@ export function CollapsibleReveal({
 
   return (
     <div
-      ref={rootRef}
+      ref={setRootRef}
       className={["agent-collapsible-reveal", className ?? ""]
         .filter(Boolean)
         .join(" ")}

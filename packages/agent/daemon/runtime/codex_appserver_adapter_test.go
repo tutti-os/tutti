@@ -56,6 +56,7 @@ func newScriptedAppServerTransport() *scriptedAppServerTransport {
 func newScriptedAppServerConnection() *scriptedAppServerConnection {
 	return &scriptedAppServerConnection{
 		recv:                     make(chan ProcessFrame, 128),
+		closed:                   make(chan struct{}),
 		goalCompletionAfterTurns: 1,
 	}
 }
@@ -68,11 +69,21 @@ func (t *scriptedAppServerTransport) Start(_ context.Context, spec ProcessSpec) 
 }
 
 type scriptedAppServerConnection struct {
-	mu   sync.Mutex
-	sent [][]byte
-	recv chan ProcessFrame
+	mu     sync.Mutex
+	sent   [][]byte
+	recv   chan ProcessFrame
+	closed chan struct{}
 
 	modelList                       []any
+	userAgent                       string
+	forkChildThreadID               string
+	forkedFromThreadID              string
+	omitForkedFromThreadID          bool
+	emptyForkedFromThreadID         bool
+	forkResponseLastTurnID          string
+	forkResponseTurnIDs             []string
+	threadReadTurnIDs               []string
+	forkRPCError                    bool
 	requiresAuth                    bool
 	collaborationModeUnsupported    bool
 	emitPlanItem                    bool
@@ -88,6 +99,8 @@ type scriptedAppServerConnection struct {
 	childNicknames                  map[string]string // thread/read agentNickname responses by threadId
 	turnStartEntered                chan struct{}
 	turnStartRelease                chan struct{}
+	hangTurnStart                   bool
+	hangSteer                       bool
 	threadName                      string
 	commandApproval                 bool
 	userInputRequest                bool
@@ -115,11 +128,48 @@ type scriptedAppServerConnection struct {
 }
 
 func (c *scriptedAppServerConnection) sendJSON(value map[string]any) {
+	c.sendJSONWithWaitSignal(value, nil)
+}
+
+// sendJSONBatch mirrors stdio coalescing adjacent JSON-RPC lines into one
+// frame, so response/request ordering cannot depend on goroutine scheduling.
+func (c *scriptedAppServerConnection) sendJSONBatch(values ...map[string]any) {
+	var raw []byte
+	for _, value := range values {
+		line, err := json.Marshal(value)
+		if err != nil {
+			return
+		}
+		raw = append(raw, line...)
+		raw = append(raw, '\n')
+	}
+	select {
+	case <-c.closed:
+		return
+	case c.recv <- ProcessFrame{Stdout: raw}:
+	}
+}
+
+func (c *scriptedAppServerConnection) sendJSONWithWaitSignal(value map[string]any, waitEntered chan<- struct{}) {
 	raw, err := json.Marshal(value)
 	if err != nil {
 		return
 	}
-	c.recv <- ProcessFrame{Stdout: append(raw, '\n')}
+	select {
+	case <-c.closed:
+		return
+	default:
+	}
+	for {
+		select {
+		case <-c.closed:
+			return
+		case c.recv <- ProcessFrame{Stdout: append(raw, '\n')}:
+			return
+		case waitEntered <- struct{}{}:
+			waitEntered = nil
+		}
+	}
 }
 
 func (c *scriptedAppServerConnection) notify(method string, params map[string]any) {
@@ -127,19 +177,79 @@ func (c *scriptedAppServerConnection) notify(method string, params map[string]an
 }
 
 func (c *scriptedAppServerConnection) Recv() (ProcessFrame, error) {
-	frame, ok := <-c.recv
-	if !ok {
+	return c.recvWithWaitSignal(nil)
+}
+
+func (c *scriptedAppServerConnection) recvWithWaitSignal(waitEntered chan<- struct{}) (ProcessFrame, error) {
+	select {
+	case <-c.closed:
 		return ProcessFrame{}, io.EOF
+	default:
 	}
-	return frame, nil
+	for {
+		select {
+		case <-c.closed:
+			return ProcessFrame{}, io.EOF
+		case frame := <-c.recv:
+			return frame, nil
+		case waitEntered <- struct{}{}:
+			waitEntered = nil
+		}
+	}
 }
 
 func (c *scriptedAppServerConnection) Close() error {
 	c.mu.Lock()
 	c.closeCount++
 	c.mu.Unlock()
-	c.closeOnce.Do(func() { close(c.recv) })
+	c.closeOnce.Do(func() { close(c.closed) })
 	return nil
+}
+
+func TestScriptedAppServerConnectionCloseUnblocksSendAndReceive(t *testing.T) {
+	t.Run("send", func(t *testing.T) {
+		connection := newScriptedAppServerConnection()
+		for index := 0; index < cap(connection.recv); index++ {
+			connection.sendJSON(map[string]any{"index": index})
+		}
+		waitEntered := make(chan struct{})
+		sendReturned := make(chan struct{})
+		go func() {
+			connection.sendJSONWithWaitSignal(map[string]any{"afterBuffer": true}, waitEntered)
+			close(sendReturned)
+		}()
+		<-waitEntered
+		if err := connection.Close(); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-sendReturned:
+		case <-time.After(time.Second):
+			t.Fatal("connection close did not unblock a pending scripted send")
+		}
+	})
+
+	t.Run("receive", func(t *testing.T) {
+		connection := newScriptedAppServerConnection()
+		waitEntered := make(chan struct{})
+		receiveReturned := make(chan error, 1)
+		go func() {
+			_, err := connection.recvWithWaitSignal(waitEntered)
+			receiveReturned <- err
+		}()
+		<-waitEntered
+		if err := connection.Close(); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case err := <-receiveReturned:
+			if !errors.Is(err, io.EOF) {
+				t.Fatalf("receive after close error = %v", err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("connection close did not unblock a pending scripted receive")
+		}
+	})
 }
 
 // completePendingTurn finishes the in-flight turn the way the real
@@ -185,7 +295,7 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			c.sendJSON(map[string]any{
 				"id": message.ID,
 				"result": map[string]any{
-					"userAgent":      "codex/0.137.0",
+					"userAgent":      firstNonEmpty(c.userAgent, "codex/0.137.0"),
 					"codexHome":      "/home/user/.codex",
 					"platformOs":     "macos",
 					"platformFamily": "unix",
@@ -341,6 +451,53 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 					"modelProvider":   "openai",
 				},
 			})
+		case appServerMethodThreadFork:
+			if c.forkRPCError {
+				c.sendJSON(map[string]any{
+					"id": message.ID,
+					"error": map[string]any{
+						"code":    -32602,
+						"message": "invalid lastTurnId",
+					},
+				})
+				continue
+			}
+			childThreadID := firstNonEmpty(c.forkChildThreadID, "codex-thread-fork")
+			forkedFromThreadID := firstNonEmpty(
+				c.forkedFromThreadID,
+				asString(message.Params["threadId"]),
+			)
+			lastTurnID := firstNonEmpty(
+				c.forkResponseLastTurnID,
+				asString(message.Params["lastTurnId"]),
+			)
+			turnIDs := append([]string(nil), c.forkResponseTurnIDs...)
+			if len(turnIDs) == 0 {
+				turnIDs = []string{lastTurnID}
+			}
+			turns := make([]any, 0, len(turnIDs))
+			for _, turnID := range turnIDs {
+				turns = append(turns, map[string]any{
+					"id": turnID, "status": "completed",
+				})
+			}
+			thread := map[string]any{
+				"id":    childThreadID,
+				"turns": turns,
+			}
+			if !c.omitForkedFromThreadID {
+				if c.emptyForkedFromThreadID {
+					thread["forkedFromId"] = ""
+				} else {
+					thread["forkedFromId"] = forkedFromThreadID
+				}
+			}
+			c.sendJSON(map[string]any{
+				"id": message.ID,
+				"result": map[string]any{
+					"thread": thread,
+				},
+			})
 		case appServerMethodTurnStart:
 			c.mu.Lock()
 			hold := c.holdTurn
@@ -351,12 +508,16 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			foreignThreadNoise := c.foreignThreadNoise
 			turnStartEntered := c.turnStartEntered
 			turnStartRelease := c.turnStartRelease
+			hangTurnStart := c.hangTurnStart
 			c.mu.Unlock()
 			if turnStartEntered != nil {
 				close(turnStartEntered)
 			}
 			if turnStartRelease != nil {
 				<-turnStartRelease
+			}
+			if hangTurnStart {
+				continue
 			}
 			if steered {
 				// Mirror real codex steering (live-verified against codex
@@ -367,26 +528,90 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				// turn/started ever fires for the stub id and the only
 				// terminal notification is the running turn's turn/completed
 				// (sent by the test via completePendingTurn).
-				c.sendJSON(map[string]any{
+				turnStartResponse := map[string]any{
 					"id": message.ID,
 					"result": map[string]any{
 						"turn": map[string]any{"id": "turn-steer-stub", "status": "inProgress", "items": []any{}},
 					},
-				})
+				}
+				if approval {
+					c.sendJSONBatch(
+						turnStartResponse,
+						map[string]any{
+							"id":     "approval-1",
+							"method": appServerMethodCommandApproval,
+							"params": map[string]any{
+								"threadId":    "codex-thread-1",
+								"turnId":      "turn-1",
+								"itemId":      "item-cmd",
+								"command":     "rm -rf build",
+								"cwd":         "/workspace",
+								"reason":      "cleanup",
+								"startedAtMs": 1750000000000,
+							},
+						},
+					)
+					continue
+				}
+				c.sendJSON(turnStartResponse)
 				continue
 			}
-			// Mirror the real app-server: the RPC responds immediately with
-			// the inProgress turn; output streams as notifications.
-			c.sendJSON(map[string]any{
+			turnStartResponse := map[string]any{
 				"id": message.ID,
 				"result": map[string]any{
 					"turn": map[string]any{"id": "turn-1", "status": "inProgress", "items": []any{}},
 				},
-			})
-			c.notify(appServerNotifyTurnStarted, map[string]any{
-				"threadId": "codex-thread-1",
-				"turn":     map[string]any{"id": "turn-1", "status": "inProgress", "items": []any{}},
-			})
+			}
+			turnStartedNotification := map[string]any{
+				"method": appServerNotifyTurnStarted,
+				"params": map[string]any{
+					"threadId": "codex-thread-1",
+					"turn":     map[string]any{"id": "turn-1", "status": "inProgress", "items": []any{}},
+				},
+			}
+			if approval {
+				c.sendJSONBatch(
+					turnStartResponse,
+					turnStartedNotification,
+					map[string]any{
+						"id":     "approval-1",
+						"method": appServerMethodCommandApproval,
+						"params": map[string]any{
+							"threadId":    "codex-thread-1",
+							"turnId":      "turn-1",
+							"itemId":      "item-cmd",
+							"command":     "rm -rf build",
+							"cwd":         "/workspace",
+							"reason":      "cleanup",
+							"startedAtMs": 1750000000000,
+						},
+					},
+				)
+				continue
+			}
+			if userInput {
+				c.sendJSONBatch(
+					turnStartResponse,
+					turnStartedNotification,
+					map[string]any{
+						"id":     "question-1",
+						"method": appServerMethodRequestUserInput,
+						"params": map[string]any{
+							"threadId": "codex-thread-1",
+							"turnId":   "turn-1",
+							"itemId":   "item-question",
+							"questions": []any{
+								map[string]any{"id": "q1", "question": "Which database?"},
+							},
+						},
+					},
+				)
+				continue
+			}
+			// Mirror the real app-server: the RPC responds immediately with
+			// the inProgress turn; output streams as notifications.
+			c.sendJSON(turnStartResponse)
+			c.sendJSON(turnStartedNotification)
 			if foreignThreadNoise {
 				c.notify(appServerNotifyAgentMessageDelta, map[string]any{
 					"threadId": "foreign-thread-1", "turnId": "foreign-turn-1", "itemId": "foreign-msg",
@@ -408,37 +633,6 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 						},
 					},
 				})
-			}
-			if approval {
-				c.sendJSON(map[string]any{
-					"id":     "approval-1",
-					"method": appServerMethodCommandApproval,
-					"params": map[string]any{
-						"threadId":    "codex-thread-1",
-						"turnId":      "turn-1",
-						"itemId":      "item-cmd",
-						"command":     "rm -rf build",
-						"cwd":         "/workspace",
-						"reason":      "cleanup",
-						"startedAtMs": 1750000000000,
-					},
-				})
-				continue
-			}
-			if userInput {
-				c.sendJSON(map[string]any{
-					"id":     "question-1",
-					"method": appServerMethodRequestUserInput,
-					"params": map[string]any{
-						"threadId": "codex-thread-1",
-						"turnId":   "turn-1",
-						"itemId":   "item-question",
-						"questions": []any{
-							map[string]any{"id": "q1", "question": "Which database?"},
-						},
-					},
-				})
-				continue
 			}
 			if emitPlan {
 				c.notify(appServerNotifyItemCompleted, map[string]any{
@@ -514,10 +708,24 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 		case appServerMethodThreadRead:
 			c.mu.Lock()
 			nickname := c.childNicknames[asString(message.Params["threadId"])]
+			turnIDs := append([]string(nil), c.threadReadTurnIDs...)
 			c.mu.Unlock()
 			thread := map[string]any{"id": message.Params["threadId"]}
 			if nickname != "" {
 				thread["agentNickname"] = nickname
+			}
+			includeTurns, _ := message.Params["includeTurns"].(bool)
+			if includeTurns {
+				if len(turnIDs) == 0 {
+					turnIDs = []string{"provider-turn-1", "provider-turn-2"}
+				}
+				turns := make([]any, 0, len(turnIDs))
+				for _, turnID := range turnIDs {
+					turns = append(turns, map[string]any{
+						"id": turnID, "status": "completed",
+					})
+				}
+				thread["turns"] = turns
 			}
 			c.sendJSON(map[string]any{"id": message.ID, "result": map[string]any{"thread": thread}})
 		case appServerMethodTurnInterrupt:
@@ -563,6 +771,12 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				c.completePendingTurn()
 			}
 		case appServerMethodTurnSteer:
+			c.mu.Lock()
+			hang := c.hangSteer
+			c.mu.Unlock()
+			if hang {
+				continue
+			}
 			c.sendJSON(map[string]any{"id": message.ID, "result": map[string]any{"turnId": "turn-1"}})
 		case appServerMethodThreadCompact:
 			c.sendJSON(map[string]any{"id": message.ID, "result": map[string]any{}})
@@ -1201,6 +1415,156 @@ func TestCodexAppServerAdapterStartAppliesSettingsAndPermissionMode(t *testing.T
 	}
 }
 
+func TestCodexAppServerAdapterCommandNetworkAccessPreservesPermissionModes(t *testing.T) {
+	t.Parallel()
+
+	testAppServerAdapterCommandNetworkAccessPreservesPermissionModes(
+		t,
+		func(transport ProcessTransport) *CodexAppServerAdapter {
+			return NewCodexAppServerAdapterWithHostMetadataAndOptions(
+				transport,
+				LegacyHostMetadata(),
+				CodexAppServerAdapterOptions{CommandNetworkAccess: true},
+			)
+		},
+	)
+}
+
+func TestTuttiAgentAppServerAdapterCommandNetworkAccessPreservesPermissionModes(t *testing.T) {
+	t.Parallel()
+
+	testAppServerAdapterCommandNetworkAccessPreservesPermissionModes(
+		t,
+		func(transport ProcessTransport) *CodexAppServerAdapter {
+			return NewTuttiAgentAppServerAdapterWithHostMetadataAndOptions(
+				transport,
+				LegacyHostMetadata(),
+				CodexAppServerAdapterOptions{CommandNetworkAccess: true},
+			)
+		},
+	)
+}
+
+func testAppServerAdapterCommandNetworkAccessPreservesPermissionModes(
+	t *testing.T,
+	newAdapter func(ProcessTransport) *CodexAppServerAdapter,
+) {
+	t.Helper()
+	tests := []struct {
+		mode              string
+		threadSandbox     string
+		turnSandbox       string
+		approvalPolicy    string
+		approvalsReviewer string
+	}{
+		{
+			mode:              "read-only",
+			threadSandbox:     "read-only",
+			turnSandbox:       "readOnly",
+			approvalPolicy:    "on-request",
+			approvalsReviewer: "user",
+		},
+		{
+			mode:              "auto",
+			threadSandbox:     "workspace-write",
+			turnSandbox:       "workspaceWrite",
+			approvalPolicy:    "on-request",
+			approvalsReviewer: "auto_review",
+		},
+		{
+			mode:           "full-access",
+			threadSandbox:  "danger-full-access",
+			turnSandbox:    "dangerFullAccess",
+			approvalPolicy: "never",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.mode, func(t *testing.T) {
+			t.Parallel()
+
+			transport := newScriptedAppServerTransport()
+			adapter := newAdapter(transport)
+			session := testAppServerSession()
+			session.PermissionModeID = test.mode
+			session.Settings = &SessionSettings{PermissionModeID: test.mode}
+
+			if _, err := adapter.Start(context.Background(), session); err != nil {
+				t.Fatalf("Start: %v", err)
+			}
+			threadStart := appServerRequestParams(t, transport.conn, appServerMethodThreadStart)
+			if got := asString(threadStart["sandbox"]); got != test.threadSandbox {
+				t.Fatalf("thread/start sandbox = %q, want %q", got, test.threadSandbox)
+			}
+			if got := asString(threadStart["approvalPolicy"]); got != test.approvalPolicy {
+				t.Fatalf("thread/start approvalPolicy = %q, want %q", got, test.approvalPolicy)
+			}
+			if got := asString(threadStart["approvalsReviewer"]); got != test.approvalsReviewer {
+				t.Fatalf("thread/start approvalsReviewer = %q, want %q", got, test.approvalsReviewer)
+			}
+
+			if _, err := adapter.Exec(context.Background(), session, textPrompt("go"), "", "turn-local-1", nil, nil); err != nil {
+				t.Fatalf("Exec: %v", err)
+			}
+			turnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
+			policy, _ := turnStart["sandboxPolicy"].(map[string]any)
+			if got := asString(policy["type"]); got != test.turnSandbox {
+				t.Fatalf("turn/start sandboxPolicy = %#v, want type %q", policy, test.turnSandbox)
+			}
+			if test.mode == "full-access" {
+				if _, ok := policy["networkAccess"]; ok {
+					t.Fatalf("turn/start sandboxPolicy = %#v, want implicit full-access networking", policy)
+				}
+			} else if enabled, _ := policy["networkAccess"].(bool); !enabled {
+				t.Fatalf("turn/start sandboxPolicy = %#v, want networkAccess=true", policy)
+			}
+		})
+	}
+}
+
+func TestCodexAppServerAdapterDefaultCommandNetworkAccessRemainsDisabled(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	adapter := NewCodexAppServerAdapter(transport)
+	session := testAppServerSession()
+	session.PermissionModeID = "read-only"
+	session.Settings = &SessionSettings{PermissionModeID: "read-only"}
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := adapter.Exec(context.Background(), session, textPrompt("go"), "", "turn-local-1", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	turnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
+	policy, _ := turnStart["sandboxPolicy"].(map[string]any)
+	if _, ok := policy["networkAccess"]; ok {
+		t.Fatalf("turn/start sandboxPolicy = %#v, want legacy network default", policy)
+	}
+}
+
+func TestTuttiAgentAppServerAdapterDefaultCommandNetworkAccessRemainsDisabled(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	adapter := NewTuttiAgentAppServerAdapterWithHostMetadata(transport, LegacyHostMetadata())
+	session := testAppServerSession()
+	session.PermissionModeID = "read-only"
+	session.Settings = &SessionSettings{PermissionModeID: "read-only"}
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := adapter.Exec(context.Background(), session, textPrompt("go"), "", "turn-local-1", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	turnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
+	policy, _ := turnStart["sandboxPolicy"].(map[string]any)
+	if _, ok := policy["networkAccess"]; ok {
+		t.Fatalf("turn/start sandboxPolicy = %#v, want legacy network default", policy)
+	}
+}
+
 func TestCodexAppServerReasoningEffortValuePreservesCatalogValues(t *testing.T) {
 	t.Parallel()
 
@@ -1618,6 +1982,8 @@ func TestCodexAppServerTurnStartKeepsLargePromptInInputOnly(t *testing.T) {
 		nil,
 		nil,
 		"",
+		"",
+		false,
 	)
 	if _, ok := params["responsesapiClientMetadata"]; ok {
 		t.Fatalf("responsesapiClientMetadata = %#v, want omitted", params["responsesapiClientMetadata"])
@@ -1767,6 +2133,31 @@ func TestCodexAppServerAdapterExecImagePrompt(t *testing.T) {
 	image := payloadObject(input[1])
 	if asString(image["type"]) != "image" || asString(image["url"]) != "data:image/png;base64,aGk=" {
 		t.Fatalf("image input = %#v", image)
+	}
+}
+
+func TestCodexAppServerAdapterExecMaterializesRemoteImageAtProviderBoundary(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	imageURL, materializer := testRemotePromptImageMaterializer(t)
+	adapter.promptImageMaterializer = materializer
+
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{
+		{Type: "text", Text: "look at this"},
+		{Type: "image", MimeType: "image/png", URL: imageURL},
+	}, "", "turn-remote-image", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	turnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
+	input, _ := turnStart["input"].([]any)
+	if len(input) != 2 {
+		t.Fatalf("turn/start input = %#v, want text+image", turnStart["input"])
+	}
+	image := payloadObject(input[1])
+	if got := asString(image["url"]); got != "data:image/png;base64,aGk=" {
+		t.Fatalf("turn/start image URL = %q, want inline data URL", got)
 	}
 }
 
@@ -1976,6 +2367,54 @@ func TestCodexAppServerAdapterExecSteeredTurnSettlesOnRunningTurnCompletion(t *t
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatalf("Exec never settled: turn/completed for the running turn was dropped by the provider-turn-id guard")
+	}
+}
+
+func TestCodexAppServerAdapterQueuedSteerKeepsApprovalAlive(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.steeredTurnStart = true
+	transport.conn.commandApproval = true
+
+	execDone := make(chan []activityshared.Event, 1)
+	go func() {
+		events, _ := adapter.Exec(
+			context.Background(),
+			session,
+			textPrompt("change direction"),
+			"",
+			"turn-local-2",
+			func([]activityshared.Event) {},
+			nil,
+		)
+		execDone <- events
+	}()
+
+	waitForCondition(t, func() bool {
+		return adapter.getPendingRequest(session.AgentSessionID, "turn-local-2", "approval-1") != nil
+	})
+	result, err := adapter.SubmitInteractive(context.Background(), session, SubmitInteractiveInput{
+		TurnID:    "turn-local-2",
+		RequestID: "approval-1",
+		OptionID:  "approve",
+	})
+	if err != nil {
+		t.Fatalf("SubmitInteractive: %v", err)
+	}
+	if !result.Accepted || result.Disposition != InteractiveDispositionAnswered {
+		t.Fatalf("submit result = %#v, want answered approval", result)
+	}
+
+	select {
+	case events := <-execDone:
+		completed := eventsOfType(events, activityshared.EventRootProviderTurnCompleted)
+		if len(completed) != 1 ||
+			completed[0].Payload.TurnOutcome != string(activityshared.TurnOutcomeCompleted) {
+			t.Fatalf("queued steer terminal events = %#v, want one completed outcome", events)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("queued steer did not settle after its approval response")
 	}
 }
 
@@ -2339,38 +2778,62 @@ func TestCodexAppServerAdapterCancelInterruptsLateUnownedRootTurn(t *testing.T) 
 }
 
 func TestCodexAppServerAdapterCancelInterruptsLateChildWithoutCreatingSession(t *testing.T) {
-	adapter, transport, session := startedAppServerAdapter(t)
-	adapter.markRootTurnCanceled(session.AgentSessionID, "root-turn-1")
-	appSession := adapter.getSession(session.AgentSessionID)
-
-	reduction := newCodexAppServerReducer(adapter).ReduceNotification(appSession.client, session, "root-turn-1", acpMessage{
-		Method: appServerNotifyItemCompleted,
-		Params: mustJSONRawMessage(t, map[string]any{
-			"threadId": session.ProviderSessionID,
-			"turnId":   "provider-turn-1",
-			"item": map[string]any{
+	items := []struct {
+		name string
+		item map[string]any
+	}{
+		{
+			name: "collaboration tool call",
+			item: map[string]any{
 				"type":              "collabAgentToolCall",
 				"id":                "spawn-after-cancel",
 				"tool":              "spawnAgent",
 				"status":            "completed",
 				"receiverThreadIds": []any{"child-after-cancel"},
 			},
-		}),
-	}, newACPTurnNormalizer(), nil)
-	if len(reduction.Events) != 0 {
-		t.Fatalf("late child events = %#v, want none", reduction.Events)
+		},
+		{
+			name: "sub-agent activity",
+			item: map[string]any{
+				"type":          "subAgentActivity",
+				"id":            "spawn-after-cancel",
+				"agentThreadId": "child-after-cancel",
+				"agentPath":     "/root/reviewer",
+				"kind":          "started",
+			},
+		},
 	}
-	if _, ok := adapter.appServerChildThread(session.AgentSessionID, "child-after-cancel"); ok {
-		t.Fatal("late child received a canonical child session context")
-	}
-	waitForCondition(t, func() bool {
-		for _, request := range appServerRequestParamsList(t, transport.conn, appServerMethodTurnInterrupt) {
-			if asString(request["threadId"]) == "child-after-cancel" {
-				return true
+
+	for _, test := range items {
+		t.Run(test.name, func(t *testing.T) {
+			adapter, transport, session := startedAppServerAdapter(t)
+			adapter.markRootTurnCanceled(session.AgentSessionID, "root-turn-1")
+			appSession := adapter.getSession(session.AgentSessionID)
+
+			reduction := newCodexAppServerReducer(adapter).ReduceNotification(appSession.client, session, "root-turn-1", acpMessage{
+				Method: appServerNotifyItemCompleted,
+				Params: mustJSONRawMessage(t, map[string]any{
+					"threadId": session.ProviderSessionID,
+					"turnId":   "provider-turn-1",
+					"item":     test.item,
+				}),
+			}, newACPTurnNormalizer(), nil)
+			if len(reduction.Events) != 0 {
+				t.Fatalf("late child events = %#v, want none", reduction.Events)
 			}
-		}
-		return false
-	})
+			if _, ok := adapter.appServerChildThread(session.AgentSessionID, "child-after-cancel"); ok {
+				t.Fatal("late child received a canonical child session context")
+			}
+			waitForCondition(t, func() bool {
+				for _, request := range appServerRequestParamsList(t, transport.conn, appServerMethodTurnInterrupt) {
+					if asString(request["threadId"]) == "child-after-cancel" {
+						return true
+					}
+				}
+				return false
+			})
+		})
+	}
 }
 
 func TestCodexAppServerAdapterNewCanonicalTurnClearsCancelBoundary(t *testing.T) {
@@ -2702,6 +3165,48 @@ func TestCodexAppServerAdapterGuideActiveTurnUsesTurnSteer(t *testing.T) {
 	}
 }
 
+func TestCodexAppServerAdapterGuideMaterializesRemoteImageAtProviderBoundary(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	imageURL, materializer := testRemotePromptImageMaterializer(t)
+	adapter.promptImageMaterializer = materializer
+	transport.conn.holdTurn = true
+
+	execDone := make(chan struct{})
+	go func() {
+		_, _ = adapter.Exec(context.Background(), session, textPrompt("long task"), "", "turn-local-1", nil, nil)
+		close(execDone)
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+
+	if _, err := adapter.GuideActiveTurn(context.Background(), session, []PromptContentBlock{
+		{Type: "text", Text: "use this screenshot"},
+		{Type: "image", MimeType: "image/png", URL: imageURL},
+	}, "", "turn-guidance", nil, nil); err != nil {
+		t.Fatalf("GuideActiveTurn: %v", err)
+	}
+
+	steer := appServerRequestParams(t, transport.conn, appServerMethodTurnSteer)
+	input, _ := steer["input"].([]any)
+	if len(input) != 2 {
+		t.Fatalf("turn/steer input = %#v, want text+image", steer["input"])
+	}
+	image := payloadObject(input[1])
+	if got := asString(image["url"]); got != "data:image/png;base64,aGk=" {
+		t.Fatalf("turn/steer image URL = %q, want inline data URL", got)
+	}
+
+	transport.conn.completePendingTurn()
+	select {
+	case <-execDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Exec did not finish after guidance")
+	}
+}
+
 func TestCodexAppServerAdapterGuidanceStartsProviderContinuationOnSameRootTurn(t *testing.T) {
 	t.Parallel()
 
@@ -2765,6 +3270,217 @@ func TestCodexAppServerAdapterGuidanceStartsProviderContinuationOnSameRootTurn(t
 	})
 	if requests := appServerRequestParamsList(t, transport.conn, appServerMethodTurnStart); len(requests) < 2 {
 		t.Fatalf("turn/start requests = %#v, want initial turn and same-root continuation", requests)
+	}
+}
+
+func TestCodexAppServerAdapterGuidanceContinuationMaterializationFailureClosesProvisionalProviderTurn(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	if _, err := adapter.Exec(context.Background(), session, textPrompt("delegate work"), "", "root-turn-1", nil, nil); err != nil {
+		t.Fatalf("initial Exec: %v", err)
+	}
+	_, childEvents := adapter.rememberAppServerChildThreads(
+		session,
+		session.ProviderSessionID,
+		session.AgentSessionID,
+		"root-turn-1",
+		session.AgentSessionID,
+		"root-turn-1",
+		map[string]any{
+			"type":              "collabAgentToolCall",
+			"id":                "spawn-child-1",
+			"tool":              "spawnAgent",
+			"receiverThreadIds": []any{"child-thread-1"},
+		},
+	)
+	if len(childEvents) != 1 || childEvents[0].Type != activityshared.EventSessionStarted {
+		t.Fatalf("child creation events = %#v", childEvents)
+	}
+	adapter.promptImageMaterializer = func(context.Context, []PromptContentBlock) ([]PromptContentBlock, error) {
+		return nil, errors.New("signed image expired")
+	}
+
+	var mu sync.Mutex
+	var streamed []activityshared.Event
+	returned, err := adapter.GuideActiveTurn(
+		context.Background(),
+		session,
+		[]PromptContentBlock{
+			{Type: "text", Text: "include this image"},
+			{Type: "image", MimeType: "image/png", URL: "https://public.example/image.png"},
+		},
+		"",
+		"root-turn-1",
+		func(events []activityshared.Event) {
+			mu.Lock()
+			streamed = append(streamed, events...)
+			mu.Unlock()
+		},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("GuideActiveTurn: %v", err)
+	}
+	if len(returned) != 1 || returned[0].Type != activityshared.EventRootProviderTurnStarted {
+		t.Fatalf("guidance return events = %#v, want provisional provider continuation", returned)
+	}
+	attemptID := returned[0].Payload.ProviderTurnID
+	waitForCondition(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, event := range streamed {
+			if event.Type == activityshared.EventRootProviderTurnCompleted &&
+				event.Payload.ProviderTurnID == attemptID &&
+				event.Payload.TurnOutcome == string(activityshared.TurnOutcomeFailed) {
+				return true
+			}
+		}
+		return false
+	})
+	if requests := appServerRequestParamsList(t, transport.conn, appServerMethodTurnStart); len(requests) != 1 {
+		t.Fatalf("turn/start requests = %#v, want no continuation provider request", requests)
+	}
+}
+
+func TestCodexAppServerAdapterConcurrentGuidancePublishesSingleProvisionalContinuation(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	if _, err := adapter.Exec(context.Background(), session, textPrompt("delegate work"), "", "root-turn-1", nil, nil); err != nil {
+		t.Fatalf("initial Exec: %v", err)
+	}
+	_, childEvents := adapter.rememberAppServerChildThreads(
+		session,
+		session.ProviderSessionID,
+		session.AgentSessionID,
+		"root-turn-1",
+		session.AgentSessionID,
+		"root-turn-1",
+		map[string]any{
+			"type":              "collabAgentToolCall",
+			"id":                "spawn-child-1",
+			"tool":              "spawnAgent",
+			"receiverThreadIds": []any{"child-thread-1"},
+		},
+	)
+	if len(childEvents) != 1 || childEvents[0].Type != activityshared.EventSessionStarted {
+		t.Fatalf("child creation events = %#v", childEvents)
+	}
+	transport.conn.holdTurn = true
+
+	type guidanceCallResult struct {
+		events []activityshared.Event
+		err    error
+	}
+	var streamedMu sync.Mutex
+	var streamed []activityshared.Event
+	emit := func(events []activityshared.Event) {
+		streamedMu.Lock()
+		defer streamedMu.Unlock()
+		streamed = append(streamed, events...)
+	}
+	start := make(chan struct{})
+	results := make(chan guidanceCallResult, 2)
+	for index := 0; index < 2; index++ {
+		index := index
+		go func() {
+			<-start
+			events, err := adapter.GuideActiveTurn(
+				context.Background(),
+				session,
+				textPrompt(fmt.Sprintf("guidance %d", index)),
+				"",
+				"root-turn-1",
+				emit,
+				nil,
+			)
+			results <- guidanceCallResult{events: events, err: err}
+		}()
+	}
+	close(start)
+
+	provisionalStarts := 0
+	for index := 0; index < 2; index++ {
+		select {
+		case result := <-results:
+			for _, event := range result.events {
+				if event.Type == activityshared.EventRootProviderTurnStarted &&
+					strings.HasPrefix(event.Payload.ProviderTurnID, "continuation:") {
+					provisionalStarts++
+				}
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for concurrent guidance")
+		}
+	}
+	if provisionalStarts != 1 {
+		t.Fatalf("provisional provider starts = %d, want exactly 1", provisionalStarts)
+	}
+	waitForCondition(t, func() bool {
+		streamedMu.Lock()
+		defer streamedMu.Unlock()
+		started := 0
+		for _, event := range streamed {
+			if event.Type == activityshared.EventTurnStarted {
+				started++
+			}
+		}
+		return started >= 1
+	})
+	streamedMu.Lock()
+	started := 0
+	for _, event := range streamed {
+		if event.Type == activityshared.EventTurnStarted {
+			started++
+		}
+	}
+	streamedMu.Unlock()
+	if started != 1 {
+		t.Fatalf("streamed turn starts = %d, want exactly 1 admitted continuation", started)
+	}
+
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) != ""
+	})
+	transport.conn.completePendingTurn()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == ""
+	})
+}
+
+func TestCodexAppServerAdapterRejectedContinuationAdmissionEmitsNoTurnStart(t *testing.T) {
+	t.Parallel()
+
+	adapter, _, session := startedAppServerAdapter(t)
+	blockingTurn := &codexAppServerActiveTurn{turnID: "blocking-turn"}
+	if !adapter.beginActiveTurn(session.AgentSessionID, blockingTurn) {
+		t.Fatal("failed to reserve blocking turn")
+	}
+	defer adapter.endActiveTurn(session.AgentSessionID, blockingTurn)
+
+	var streamed []activityshared.Event
+	continuation := newCodexGuidanceContinuationAdmission("continuation:rejected")
+	events, err := adapter.execBlocking(
+		context.Background(),
+		session,
+		textPrompt("guidance"),
+		"",
+		"root-turn-1",
+		func(next []activityshared.Event) {
+			streamed = append(streamed, next...)
+		},
+		nil,
+		continuation,
+	)
+	if !errors.Is(err, ErrSessionActiveTurn) {
+		t.Fatalf("execBlocking error = %v, want ErrSessionActiveTurn", err)
+	}
+	if admittedErr := <-continuation.admitted; !errors.Is(admittedErr, ErrSessionActiveTurn) {
+		t.Fatalf("admission error = %v, want ErrSessionActiveTurn", admittedErr)
+	}
+	if len(events) != 0 || len(streamed) != 0 {
+		t.Fatalf("rejected continuation events = %#v, streamed = %#v; want none", events, streamed)
 	}
 }
 
@@ -4962,6 +5678,44 @@ func TestCodexGoalProvenanceDurableLedgerSurvivesRestartAndAdoptsDelayedGenerati
 	}
 }
 
+func TestCodexFencedGoalGenerationIsPreciselyInterruptedBeforeAdoption(t *testing.T) {
+	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.SetGoalProvenanceDurableSink(&memoryGoalProvenanceLedger{bindings: make(map[string]GoalProvenanceBinding)})
+	identity := goalOperationIdentity{operationID: "goal-fenced", revision: 4, repairEpoch: 1}
+	goal := map[string]any{
+		"threadId": session.ProviderSessionID, "objective": "old shared work",
+		"status": "active", "createdAt": int64(10), "updatedAt": int64(11),
+	}
+	adapter.replaceGoalOperationIdentity(session.AgentSessionID, identity.operationID, identity.revision, identity.repairEpoch)
+	if err := adapter.bindGoalGeneration(context.Background(), session, goal, identity); err != nil {
+		t.Fatal(err)
+	}
+	if err := adapter.FenceGoalGeneration(context.Background(), session, GoalGenerationFenceInput{
+		OperationID: identity.operationID, Revision: identity.revision,
+		RepairEpoch: identity.repairEpoch, Reason: "binding_revoked",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	adapter.queueGoalTurnForProvenance(session, "provider-turn-fenced")
+	adapter.observeGoalTurnGeneration(session, "provider-turn-fenced", goal)
+	waitForCondition(t, func() bool {
+		transport.conn.mu.Lock()
+		defer transport.conn.mu.Unlock()
+		for _, turnID := range transport.conn.interruptAttempts {
+			if turnID == "provider-turn-fenced" {
+				return true
+			}
+		}
+		return false
+	})
+	adapter.mu.Lock()
+	active := adapter.sessions[session.AgentSessionID].activeTurn
+	adapter.mu.Unlock()
+	if active != nil {
+		t.Fatalf("fenced provider turn was adopted: %#v", active)
+	}
+}
+
 func TestCodexGoalProvenanceUsesLiveThreadIDForPreStartCapturedSession(t *testing.T) {
 	adapter, _, session := startedAppServerAdapter(t)
 	ledger := &memoryGoalProvenanceLedger{bindings: make(map[string]GoalProvenanceBinding)}
@@ -5461,6 +6215,61 @@ func TestCodexAppServerAdapterStartRestoresGoal(t *testing.T) {
 	session := testAppServerSession()
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
+	}
+	waitForCondition(t, func() bool {
+		return asString(adapter.sessionGoal(session.AgentSessionID)["status"]) == "active"
+	})
+	goalGet := appServerRequestParams(t, transport.conn, appServerMethodThreadGoalGet)
+	if asString(goalGet["threadId"]) != "codex-thread-1" {
+		t.Fatalf("goal/get params = %#v", goalGet)
+	}
+}
+
+func TestTuttiAgentAppServerAdapterStartRestoresGoalWithoutMetadataFetch(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	adapter := NewTuttiAgentAppServerAdapterWithHostMetadata(transport, LegacyHostMetadata())
+	adapter.SetSessionEventSink(func(string, []activityshared.Event) {})
+	transport.conn.mu.Lock()
+	transport.conn.goal = map[string]any{
+		"threadId":  "codex-thread-1",
+		"objective": "finish it",
+		"status":    "active",
+	}
+	transport.conn.mu.Unlock()
+	session := testAppServerSession()
+	session.Provider = ProviderTuttiAgent
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	waitForCondition(t, func() bool {
+		return asString(adapter.sessionGoal(session.AgentSessionID)["status"]) == "active"
+	})
+	goalGet := appServerRequestParams(t, transport.conn, appServerMethodThreadGoalGet)
+	if asString(goalGet["threadId"]) != "codex-thread-1" {
+		t.Fatalf("goal/get params = %#v", goalGet)
+	}
+}
+
+func TestTuttiAgentAppServerAdapterResumeRestoresGoalWithoutMetadataFetch(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	adapter := NewTuttiAgentAppServerAdapterWithHostMetadata(transport, LegacyHostMetadata())
+	adapter.SetSessionEventSink(func(string, []activityshared.Event) {})
+	transport.conn.mu.Lock()
+	transport.conn.goal = map[string]any{
+		"threadId":  "codex-thread-1",
+		"objective": "finish it",
+		"status":    "active",
+	}
+	transport.conn.mu.Unlock()
+	session := testAppServerSession()
+	session.Provider = ProviderTuttiAgent
+	session.ProviderSessionID = "codex-thread-1"
+	if err := adapter.Resume(context.Background(), session); err != nil {
+		t.Fatalf("Resume: %v", err)
 	}
 	waitForCondition(t, func() bool {
 		return asString(adapter.sessionGoal(session.AgentSessionID)["status"]) == "active"
@@ -6085,6 +6894,22 @@ func TestCodexAppServerAdapterApplySessionSettingsRefreshesModelReasoningOptions
 	}
 	state := adapter.SessionState(session)
 	options, _ := state.RuntimeContext["configOptions"].([]map[string]any)
+	modelConfig := configOptionByID(options, "model")
+	modelOptions := configOptionEntries(modelConfig["options"])
+	if len(modelOptions) != 2 {
+		t.Fatalf("model options = %#v, want two capability-bearing models", modelOptions)
+	}
+	firstModelEfforts := configOptionEntries(modelOptions[0]["reasoningEfforts"])
+	gotModelEfforts := make([]string, 0, len(firstModelEfforts))
+	for _, effort := range firstModelEfforts {
+		gotModelEfforts = append(gotModelEfforts, asString(effort["value"]))
+	}
+	if !slices.Equal(gotModelEfforts, []string{"low", "medium", "high", "xhigh", "max", "ultra"}) {
+		t.Fatalf("first model reasoning options = %#v, want full Sol profile; raw=%#v", gotModelEfforts, firstModelEfforts)
+	}
+	if modelOptions[0]["supportsReasoningEffort"] != true || asString(modelOptions[0]["reasoningEffort"]) != "low" {
+		t.Fatalf("first model reasoning metadata = %#v", modelOptions[0])
+	}
 	reasoning := configOptionByID(options, "reasoning_effort")
 	if got := configOptionValues(reasoning); !slices.Equal(got, []string{"low", "medium", "high", "xhigh", "max"}) {
 		t.Fatalf("reasoning options = %#v, want Luna efforts without ultra", got)
@@ -6454,7 +7279,17 @@ func TestCodexAppServerAdapterApplyPermissionModeUpdatesState(t *testing.T) {
 func TestCodexAppServerAdapterApplyPermissionModeSucceedsMidTurnAndAppliesNextTurn(t *testing.T) {
 	t.Parallel()
 
-	adapter, transport, session := startedAppServerAdapter(t)
+	transport := newScriptedAppServerTransport()
+	adapter := NewCodexAppServerAdapterWithHostMetadataAndOptions(
+		transport,
+		LegacyHostMetadata(),
+		CodexAppServerAdapterOptions{CommandNetworkAccess: true},
+	)
+	session := testAppServerSession()
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "codex-thread-1"
 	session.PermissionModeID = "read-only"
 	transport.conn.holdTurn = true
 
@@ -6472,6 +7307,13 @@ func TestCodexAppServerAdapterApplyPermissionModeSucceedsMidTurnAndAppliesNextTu
 	firstTurnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
 	if asString(firstTurnStart["approvalPolicy"]) != "on-request" {
 		t.Fatalf("first turn/start approvalPolicy = %#v, want on-request", firstTurnStart["approvalPolicy"])
+	}
+	firstPolicy, _ := firstTurnStart["sandboxPolicy"].(map[string]any)
+	if asString(firstPolicy["type"]) != "readOnly" {
+		t.Fatalf("first turn/start sandboxPolicy = %#v, want readOnly", firstPolicy)
+	}
+	if enabled, _ := firstPolicy["networkAccess"].(bool); !enabled {
+		t.Fatalf("first turn/start sandboxPolicy = %#v, want networkAccess=true", firstPolicy)
 	}
 
 	session.PermissionModeID = "full-access"
@@ -6501,6 +7343,13 @@ func TestCodexAppServerAdapterApplyPermissionModeSucceedsMidTurnAndAppliesNextTu
 	}
 	if asString(turnStarts[1]["approvalPolicy"]) != "never" {
 		t.Fatalf("second turn/start approvalPolicy = %#v, want never", turnStarts[1]["approvalPolicy"])
+	}
+	secondPolicy, _ := turnStarts[1]["sandboxPolicy"].(map[string]any)
+	if asString(secondPolicy["type"]) != "dangerFullAccess" {
+		t.Fatalf("second turn/start sandboxPolicy = %#v, want dangerFullAccess", secondPolicy)
+	}
+	if _, ok := secondPolicy["networkAccess"]; ok {
+		t.Fatalf("second turn/start sandboxPolicy = %#v, want implicit full-access networking", secondPolicy)
 	}
 }
 

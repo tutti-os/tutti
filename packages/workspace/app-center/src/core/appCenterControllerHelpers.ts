@@ -123,9 +123,14 @@ export function normalizeWorkspaceAppCenterViewState(
       ? value.activeAppTab
       : "recommended";
   const openAppId = value?.openAppId?.trim() || null;
+  const openAppIds = normalizeWorkspaceAppIds(value?.openAppIds);
+  if (openAppId && !openAppIds.includes(openAppId)) {
+    openAppIds.push(openAppId);
+  }
   return {
     activeAppTab,
-    openAppId
+    openAppId,
+    openAppIds
   };
 }
 
@@ -135,8 +140,28 @@ export function areWorkspaceAppCenterViewStatesEqual(
 ): boolean {
   return (
     left.activeAppTab === right.activeAppTab &&
-    (left.openAppId?.trim() || null) === (right.openAppId?.trim() || null)
+    (left.openAppId?.trim() || null) === (right.openAppId?.trim() || null) &&
+    areStringArraysEqual(
+      normalizeWorkspaceAppIds(left.openAppIds),
+      normalizeWorkspaceAppIds(right.openAppIds)
+    )
   );
+}
+
+function normalizeWorkspaceAppIds(
+  values: readonly string[] | null | undefined
+): string[] {
+  const appIds: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values ?? []) {
+    const appId = value.trim();
+    if (!appId || seen.has(appId)) {
+      continue;
+    }
+    seen.add(appId);
+    appIds.push(appId);
+  }
+  return appIds;
 }
 
 function areWorkspaceAppCenterLocalizationsEqual(

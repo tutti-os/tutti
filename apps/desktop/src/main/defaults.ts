@@ -51,6 +51,11 @@ export function resolveDesktopUserDataPath(options: {
   appDataDir: string;
   appName: string;
 }): string | null {
+  const override = process.env.TUTTI_DESKTOP_USER_DATA_DIR?.trim();
+  if (override) {
+    return override;
+  }
+
   if (resolveTuttiEnv() !== "development") {
     return null;
   }
@@ -68,6 +73,13 @@ export function resolveDesktopDevelopmentAppName(
 
   const safeAppName = appName.trim() || "Tutti";
   return `${safeAppName} Dev`;
+}
+
+export function resolveDesktopPerformanceHeadless(): boolean {
+  return (
+    resolveTuttiEnv() === "development" &&
+    process.env.TUTTI_DESKTOP_PERFORMANCE_HEADLESS?.trim() === "1"
+  );
 }
 
 export function resolveDesktopLoginProtocolScheme(): "tutti" | "tutti-dev" {

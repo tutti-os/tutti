@@ -4,8 +4,7 @@ import type {
   WorkbenchHostCloseDialogRequest,
   WorkbenchHostHandle,
   WorkbenchHostNodeData,
-  WorkbenchMissionControlAdapter,
-  WorkbenchMissionControlMode
+  WorkbenchMissionControlAdapter
 } from "@tutti-os/workbench-surface";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type {
@@ -50,8 +49,8 @@ export interface WorkspaceWorkbenchShellCloseDialogSnapshot {
 
 export interface WorkspaceWorkbenchShellMissionControlSnapshot {
   canOpen: boolean;
+  isLayoutLocked: boolean;
   isOpen: boolean;
-  mode: WorkbenchMissionControlMode | null;
   nodeIds: readonly string[] | null;
   shortcutsEnabled: boolean;
   visibleWindowCount: number;
@@ -96,7 +95,6 @@ export interface WorkspaceWorkbenchShellRuntimeController {
   missionControl: {
     close: () => void;
     open: (
-      mode: WorkbenchMissionControlMode,
       request?:
         | WorkspaceMissionControlOpenRequest
         | WorkspaceMissionControlTrigger
@@ -104,6 +102,7 @@ export interface WorkspaceWorkbenchShellRuntimeController {
     setAdapter: (
       adapter: WorkbenchMissionControlAdapter<WorkbenchHostNodeData> | null
     ) => void;
+    unlockLayout: () => void;
   };
   requestWindowClose: (
     input?: Pick<
@@ -211,7 +210,8 @@ export function createWorkspaceWorkbenchShellRuntimeController(input: {
     missionControl: {
       close: missionControl.close,
       open: missionControl.open,
-      setAdapter: missionControl.setAdapter
+      setAdapter: missionControl.setAdapter,
+      unlockLayout: missionControl.unlockLayout
     },
     requestWindowClose: (input = { reason: "window-close" }) =>
       windowCloseRequestController.requestClose(input),

@@ -1,7 +1,4 @@
-import type {
-  WorkspaceFileManagerHostFallbackAction,
-  WorkspaceFileManagerHostActionResult
-} from "../workspaceFileManagerHostTypes.ts";
+import type { WorkspaceFileManagerHostFallbackAction } from "../workspaceFileManagerHostTypes.ts";
 import type {
   WorkspaceFileEntry,
   WorkspaceFileLocationSection,
@@ -14,7 +11,7 @@ import type { WorkspaceFileManagerI18nRuntime } from "../../i18n/workspaceFileMa
 export interface WorkspaceFileManagerCommands {
   applyRevealIntent(
     intent: {
-      mode?: "reveal" | "open-directory";
+      mode?: "select" | "open";
       path: string;
       requestID: string;
     } | null
@@ -25,24 +22,21 @@ export interface WorkspaceFileManagerCommands {
   cancelInlineRename(): void;
   closeTransientUi(): void;
   closeUnsupportedDialog(): void;
-  closeImportConflictDialog(): void;
   confirmCreateDialog(): Promise<void>;
   confirmDeleteDialog(): Promise<void>;
   clearInlineRenameValidation(): void;
   confirmInlineRename(newName: string): Promise<boolean>;
-  copyToClipboard(entry: WorkspaceFileEntry): Promise<void>;
-  confirmImportConflict(): Promise<void>;
+  /** Resolves true when the entry reached the clipboard, false when it did not. */
+  copyToClipboard(entry: WorkspaceFileEntry): Promise<boolean>;
   createDirectory(path: string): Promise<void>;
   createFile(path: string): Promise<void>;
   deleteSelected(): Promise<void>;
-  decrementDragDepth(): void;
   goBack(): Promise<void>;
   goForward(): Promise<void>;
   getPersistedState(): WorkspaceFileManagerPersistedState;
   handleActivationFallbackAction(
     action: WorkspaceFileManagerHostFallbackAction
   ): Promise<void>;
-  incrementDragDepth(): void;
   initialize(): Promise<void>;
   loadDirectory(path?: string): Promise<void>;
   openContextMenu(input: WorkspaceFileManagerContextMenuState): void;
@@ -68,23 +62,12 @@ export interface WorkspaceFileManagerCommands {
   openFileInSystemDefault(entry: WorkspaceFileEntry): Promise<void>;
   openFileWithOtherApplication(entry: WorkspaceFileEntry): Promise<void>;
   revealEntry(entry: WorkspaceFileEntry): Promise<void>;
-  exportEntry(
-    entry: WorkspaceFileEntry
-  ): Promise<WorkspaceFileManagerHostActionResult>;
-  importDroppedFiles(
-    dataTransfer: Pick<DataTransfer, "files" | "items">,
-    targetDirectoryPath: string
-  ): Promise<WorkspaceFileManagerHostActionResult>;
-  importFiles(
-    targetDirectoryPath: string
-  ): Promise<WorkspaceFileManagerHostActionResult>;
   moveEntry(
     entry: WorkspaceFileEntry,
     targetDirectoryPath: string
   ): Promise<void>;
   refresh(): Promise<void>;
   revealPath(path: string): Promise<void>;
-  resetDragDepth(): void;
   search(query: string): Promise<void>;
   select(path: string | null): void;
   selectLocation(locationId: string): Promise<void>;

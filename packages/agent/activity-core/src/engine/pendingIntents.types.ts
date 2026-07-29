@@ -1,10 +1,15 @@
 import type {
+  AgentActivityCapabilityReference,
+  AgentActivityInitialGoalControl,
+  AgentActivityInitialTuttiModeActivation,
   AgentActivityMessage,
   AgentActivitySessionSettings,
   AgentActivitySubmitDiagnostics,
   AgentActivitySubmitSettingsPatch,
   AgentPromptContentBlock
 } from "../types.ts";
+import type { AgentActivitySessionMessageWindow } from "../messageWindow.types.ts";
+import type { AgentActivityRailPlacement } from "../railPlacement.types.ts";
 
 export type PendingActivationStatus =
   | "requested"
@@ -27,6 +32,7 @@ export function isPendingActivationViable(
 
 interface PendingActivationIntentRecordBase {
   agentSessionId: string;
+  capabilityRefs?: readonly AgentActivityCapabilityReference[];
   content: readonly AgentPromptContentBlock[];
   displayPrompt?: string;
   cwd: string;
@@ -34,6 +40,9 @@ interface PendingActivationIntentRecordBase {
   errorMessage: string | null;
   expiresAtUnixMs: number;
   initialTurnExpected: boolean;
+  initialGoalControl?: Readonly<AgentActivityInitialGoalControl>;
+  railSectionKey?: string;
+  railPlacement?: AgentActivityRailPlacement;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   pendingSettingsPatch?: Readonly<Record<string, unknown>>;
   settingsUpdateStatus?: "failed" | "inFlight" | "unknown";
@@ -43,6 +52,8 @@ interface PendingActivationIntentRecordBase {
   status: PendingActivationStatus;
   title: string | null;
   workspaceId: string;
+  initialTuttiModeActivation?: AgentActivityInitialTuttiModeActivation;
+  tuttiModeDraftKey?: string;
 }
 
 export type PendingActivationIntentRecord =
@@ -70,6 +81,7 @@ export interface PendingSubmitIntentRecord {
   acceptedSessionVersion: number | null;
   agentSessionId: string;
   clientSubmitId: string;
+  capabilityRefs?: readonly AgentActivityCapabilityReference[];
   content: readonly AgentPromptContentBlock[];
   displayPrompt?: string;
   errorCode: string | null;
@@ -93,10 +105,14 @@ export interface PendingIntentsState {
 interface SessionActivationRequestedIntentBase {
   type: "activation/requested";
   agentSessionId: string;
+  capabilityRefs?: readonly AgentActivityCapabilityReference[];
   content?: readonly AgentPromptContentBlock[];
   cwd?: string;
   expiresAtUnixMs: number;
   initialTurnExpected?: boolean;
+  initialGoalControl?: Readonly<AgentActivityInitialGoalControl>;
+  railSectionKey?: string;
+  railPlacement?: AgentActivityRailPlacement;
   initialDisplayPrompt?: string;
   runtimeContent?: readonly AgentPromptContentBlock[];
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
@@ -106,6 +122,8 @@ interface SessionActivationRequestedIntentBase {
   title?: string;
   visible?: boolean;
   workspaceId: string;
+  initialTuttiModeActivation?: AgentActivityInitialTuttiModeActivation;
+  tuttiModeDraftKey?: string;
 }
 
 export type SessionActivationRequestedIntent =
@@ -158,11 +176,15 @@ export interface SessionUnactivationRequestedIntent {
 interface SessionActivateCommandBase {
   type: "session/activate";
   agentSessionId: string;
+  capabilityRefs?: readonly AgentActivityCapabilityReference[];
   commandId: string;
   correlationId: string;
   cwd?: string;
   initialContent?: readonly AgentPromptContentBlock[];
   initialDisplayPrompt?: string;
+  initialGoalControl?: Readonly<AgentActivityInitialGoalControl>;
+  initialTuttiModeActivation?: AgentActivityInitialTuttiModeActivation;
+  railPlacement?: AgentActivityRailPlacement;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   settings?: AgentActivitySessionSettings;
   timeoutMs?: number;
@@ -203,6 +225,7 @@ export interface SubmitRequestedIntent {
   type: "submit/requested";
   agentSessionId: string;
   clientSubmitId: string;
+  capabilityRefs?: readonly AgentActivityCapabilityReference[];
   content: readonly AgentPromptContentBlock[];
   displayPrompt?: string;
   expiresAtUnixMs: number;
@@ -228,6 +251,9 @@ export interface SubmitCanceledIntent {
 export interface ActivityMessagesReceivedIntent {
   type: "message/snapshotReceived";
   messages: readonly AgentActivityMessage[];
+  sessionMessageWindows?: readonly (AgentActivitySessionMessageWindow & {
+    agentSessionId: string;
+  })[];
   workspaceId?: string;
 }
 

@@ -1,6 +1,7 @@
 package agenttarget
 
 import (
+	"strings"
 	"testing"
 
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
@@ -26,5 +27,18 @@ func TestGeneratedListAgentTargetsResponseFromBizSkipsInvalidTargets(t *testing.
 	}
 	if response.Targets[0].Id != agenttargetbiz.IDLocalCodex {
 		t.Fatalf("response target id = %q, want %s", response.Targets[0].Id, agenttargetbiz.IDLocalCodex)
+	}
+}
+
+func TestGeneratedAgentTargetFromBizProjectsMaskIconURL(t *testing.T) {
+	target := agenttargetbiz.DefaultSystemTargets(0)[0]
+	target.MaskIconURL = " data:image/svg+xml;base64,mask "
+
+	generated, err := GeneratedAgentTargetFromBiz(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if generated.MaskIconUrl == nil || *generated.MaskIconUrl != strings.TrimSpace(target.MaskIconURL) {
+		t.Fatalf("generated mask icon URL = %#v", generated.MaskIconUrl)
 	}
 }

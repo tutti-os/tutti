@@ -1,12 +1,14 @@
-import { useState, type CSSProperties } from "react";
+import { useMemo, useState } from "react";
 import {
   Button,
   Checkbox,
   ChevronDownIcon,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-  cn
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuTrigger,
+  SegmentBar
 } from "@tutti-os/ui-system";
 import type {
   ReferenceProvenanceDimension,
@@ -15,7 +17,8 @@ import type {
 } from "../../../contracts/referenceProvenance.ts";
 import {
   referenceProvenanceFilterIds,
-  referenceProvenanceFilterIsActive
+  referenceProvenanceFilterIsActive,
+  resolveReferenceProvenanceAgentLabelParts
 } from "../../../core/referenceProvenance.ts";
 
 export interface ReferenceProvenanceFilterLabels {
@@ -25,7 +28,6 @@ export interface ReferenceProvenanceFilterLabels {
   agents: string;
   filteredSources: string;
   members: string;
-  reset: string;
 }
 
 export interface ReferenceProvenanceFilterControlProps {
@@ -37,9 +39,55 @@ export interface ReferenceProvenanceFilterControlProps {
   /** Disabled options stay in the injected catalog but are hidden by default. */
   showDisabledOptions?: boolean;
   value: ReferenceProvenanceFilter;
-  onReset: () => void;
   onToggle: (dimension: ReferenceProvenanceDimension, id: string) => void;
   onToggleAll: (dimension: ReferenceProvenanceDimension) => void;
+}
+
+function ReferenceProvenanceOptionLabel({
+  dimension,
+  memberOptionsById,
+  option
+}: {
+  dimension: ReferenceProvenanceDimension;
+  memberOptionsById: ReadonlyMap<string, ReferenceProvenanceOption>;
+  option: ReferenceProvenanceOption;
+}) {
+  const structuredAgentLabel =
+    dimension === "agent"
+      ? resolveReferenceProvenanceAgentLabelParts(option, memberOptionsById)
+      : null;
+
+  return (
+    <span
+      className="flex min-w-0 flex-1 items-baseline"
+      data-slot="reference-provenance-option-label"
+      title={option.label}
+    >
+      {structuredAgentLabel ? (
+        <>
+          <span
+            className="min-w-0 shrink truncate"
+            data-slot="reference-provenance-option-owner"
+          >
+            {structuredAgentLabel.ownerLabel}
+          </span>
+          <span
+            className="shrink-0 whitespace-pre"
+            data-slot="reference-provenance-option-agent"
+          >
+            {` · ${structuredAgentLabel.agentLabel}`}
+          </span>
+        </>
+      ) : (
+        <span
+          className="block min-w-0 flex-1 truncate"
+          data-slot="reference-provenance-option-text"
+        >
+          {option.label}
+        </span>
+      )}
+    </span>
+  );
 }
 
 export function ReferenceProvenanceFilterControl({
@@ -50,12 +98,15 @@ export function ReferenceProvenanceFilterControl({
   popoverElevation = "default",
   showDisabledOptions = false,
   value,
-  onReset,
   onToggle,
   onToggleAll
 }: ReferenceProvenanceFilterControlProps) {
   const [dimension, setDimension] = useState<ReferenceProvenanceDimension>(
     enabledDimensions[0] ?? "agent"
+  );
+  const memberOptionsById = useMemo(
+    () => new Map(memberOptions.map((option) => [option.id, option])),
+    [memberOptions]
   );
   const activeDimension = enabledDimensions.includes(dimension)
     ? dimension
@@ -73,63 +124,48 @@ export function ReferenceProvenanceFilterControl({
   if (enabledDimensions.length === 0) return null;
 
   return (
-    <div className="flex shrink-0 items-center gap-1.5">
-      <Popover>
-        <PopoverTrigger asChild>
+    <div className="flex shrink-0 items-center">
+      <DropdownMenu modal={false}>
+        <DropdownMenuTrigger asChild>
           <Button
             aria-label={active ? labels.filteredSources : labels.allSources}
-            className={cn(
-              "h-7 gap-1.5 px-2 text-xs",
-              active &&
-                "border-[var(--border-focus)] text-[var(--text-primary)]"
-            )}
+            className="h-7 gap-1.5 border-0 px-2 text-xs hover:bg-transparent aria-expanded:bg-transparent"
             size="sm"
             type="button"
-            variant="outline"
+            variant="ghost"
           >
             {active ? labels.filteredSources : labels.allSources}
             <ChevronDownIcon
               aria-hidden="true"
-              className="size-3 text-[var(--text-tertiary)]"
+              className="size-3 text-[var(--text-tertiary)] transition-transform in-data-[state=open]:rotate-180"
             />
           </Button>
-        </PopoverTrigger>
-        <PopoverContent
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
           align="end"
-          className="nodrag w-60 p-0"
+          className="nodrag w-60 overflow-hidden p-0"
           style={
             popoverElevation === "panel"
-              ? ({ zIndex: "var(--z-panel-popover)" } as CSSProperties)
+              ? { zIndex: "var(--z-panel-popover)" }
               : undefined
           }
         >
           {enabledDimensions.length > 1 ? (
-            <div
-              className="flex border-b border-[var(--line-1)] px-1"
-              role="tablist"
-            >
-              {enabledDimensions.map((item) => (
-                <Button
-                  key={item}
-                  aria-selected={activeDimension === item}
-                  className={cn(
-                    "flex-1 border-b-2 border-transparent px-2 py-2 text-xs text-[var(--text-secondary)]",
-                    activeDimension === item &&
-                      "border-[var(--border-focus)] text-[var(--text-primary)]"
-                  )}
-                  role="tab"
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setDimension(item)}
-                >
-                  {item === "agent" ? labels.agents : labels.members}
-                </Button>
-              ))}
+            <div className="px-1 pt-1">
+              <SegmentBar
+                ariaLabel={labels.allSources}
+                className="w-full rounded-[6px] [&_[data-slot='segment-bar-indicator']]:rounded-[4px] [&_[data-slot='segment-bar-segment']]:flex-1 [&_[data-slot='segment-bar-segment']]:rounded-[6px]"
+                segments={enabledDimensions.map((item) => ({
+                  label: item === "agent" ? labels.agents : labels.members,
+                  value: item
+                }))}
+                value={activeDimension}
+                onValueChange={setDimension}
+              />
             </div>
           ) : null}
-          <div className="max-h-72 overflow-y-auto py-1">
-            <OptionRow
+          <DropdownMenuGroup className="max-h-72 gap-0.5 overflow-y-auto p-1">
+            <DropdownMenuCheckboxItem
               checked={
                 allSelected
                   ? true
@@ -137,82 +173,56 @@ export function ReferenceProvenanceFilterControl({
                     ? "indeterminate"
                     : false
               }
-              label={allLabel}
+              className="min-h-7 rounded-md py-1 pr-2 text-xs [&_[data-slot='dropdown-menu-checkbox-item-indicator']]:hidden"
               onCheckedChange={() => onToggleAll(activeDimension)}
-            />
+              onSelect={(event) => event.preventDefault()}
+            >
+              <span className="min-w-0 flex-1 truncate">{allLabel}</span>
+              <Checkbox
+                aria-hidden="true"
+                checked={
+                  allSelected
+                    ? true
+                    : selected.length > 0
+                      ? "indeterminate"
+                      : false
+                }
+                className="pointer-events-none size-4 data-[state=checked]:border-[var(--tutti-purple)] data-[state=checked]:bg-[var(--tutti-purple)] data-[state=indeterminate]:border-[var(--tutti-purple)] data-[state=indeterminate]:bg-[var(--tutti-purple)] [&_[data-slot='checkbox-indicator']>svg]:size-2.5"
+                tabIndex={-1}
+              />
+            </DropdownMenuCheckboxItem>
             {visibleOptions.map((option) => (
-              <OptionRow
+              <DropdownMenuCheckboxItem
                 key={option.id}
                 checked={allSelected || selected.includes(option.id)}
+                className="min-h-7 rounded-md py-1 pr-2 text-xs [&_[data-slot='dropdown-menu-checkbox-item-indicator']]:hidden"
                 disabled={option.disabled}
-                iconUrl={option.iconUrl}
-                label={option.label}
                 onCheckedChange={() => onToggle(activeDimension, option.id)}
-              />
+                onSelect={(event) => event.preventDefault()}
+              >
+                {option.iconUrl ? (
+                  <img
+                    alt=""
+                    className="size-5 rounded-md object-cover"
+                    src={option.iconUrl}
+                  />
+                ) : null}
+                <ReferenceProvenanceOptionLabel
+                  dimension={activeDimension}
+                  memberOptionsById={memberOptionsById}
+                  option={option}
+                />
+                <Checkbox
+                  aria-hidden="true"
+                  checked={allSelected || selected.includes(option.id)}
+                  className="pointer-events-none size-4 data-[state=checked]:border-[var(--tutti-purple)] data-[state=checked]:bg-[var(--tutti-purple)] [&_[data-slot='checkbox-indicator']>svg]:size-2.5"
+                  tabIndex={-1}
+                />
+              </DropdownMenuCheckboxItem>
             ))}
-          </div>
-        </PopoverContent>
-      </Popover>
-      {active ? (
-        <Button
-          className="h-7 px-2 text-xs"
-          size="sm"
-          type="button"
-          variant="ghost"
-          onClick={onReset}
-        >
-          {labels.reset}
-        </Button>
-      ) : null}
-    </div>
-  );
-}
-
-function OptionRow({
-  checked,
-  disabled,
-  iconUrl,
-  label,
-  onCheckedChange
-}: {
-  checked: boolean | "indeterminate";
-  disabled?: boolean;
-  iconUrl?: string | null;
-  label: string;
-  onCheckedChange: () => void;
-}) {
-  const toggle = () => {
-    if (!disabled) onCheckedChange();
-  };
-
-  return (
-    <div
-      aria-checked={checked === "indeterminate" ? "mixed" : checked}
-      aria-disabled={disabled || undefined}
-      className={cn(
-        "flex cursor-pointer items-center gap-2 px-3 py-2 text-xs hover:bg-[var(--transparency-hover)]",
-        disabled && "cursor-not-allowed opacity-50"
-      )}
-      role="checkbox"
-      tabIndex={disabled ? -1 : 0}
-      onClick={toggle}
-      onKeyDown={(event) => {
-        if (event.key !== " " && event.key !== "Enter") return;
-        event.preventDefault();
-        toggle();
-      }}
-    >
-      <Checkbox
-        aria-hidden="true"
-        checked={checked}
-        className="pointer-events-none"
-        disabled={disabled}
-        tabIndex={-1}
-      />
-      {iconUrl ? (
-        <img alt="" className="size-5 rounded-md object-cover" src={iconUrl} />
-      ) : null}
-      <span className="min-w-0 flex-1 truncate">{label}</span>
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

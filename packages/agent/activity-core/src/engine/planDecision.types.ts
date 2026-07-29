@@ -41,6 +41,7 @@ export interface PlanDecisionRequestedIntent {
 export interface PlanFeedbackRequestedIntent {
   type: "plan/feedbackRequested";
   agentSessionId: string;
+  capabilityRefs?: readonly import("../types.ts").AgentActivityCapabilityReference[];
   clientSubmitId: string;
   content: readonly import("../types.ts").AgentPromptContentBlock[];
   displayPrompt?: string;
@@ -78,4 +79,20 @@ export interface PlanSubmitDecisionCommand {
   timeoutMs?: number;
   turnId: string;
   workspaceId: string;
+}
+
+export interface PlanDecisionOperation {
+  agentSessionId: string;
+  error?: string | null;
+  idempotencyKey: string;
+  operationId: string;
+  requestId: string;
+  result?: string | null;
+  status: "prepared" | "leased" | "completed" | "failed";
+  turnId: string;
+  workspaceId: string;
+}
+
+export interface PlanSubmitDecisionResult {
+  operation: PlanDecisionOperation;
 }

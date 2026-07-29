@@ -11,6 +11,11 @@ import (
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
+const (
+	wantGoalReconcileInboxLease       = 5 * time.Minute
+	wantGoalReconcileInboxMaxAttempts = 24
+)
+
 type goalReconcileInboxWorkerStore struct {
 	item    agentactivitybiz.GoalReconcileInboxItem
 	items   []agentactivitybiz.GoalReconcileInboxItem
@@ -47,14 +52,14 @@ func TestGoalReconcileInboxWorkerRefreshesClockAndLeaseCoversHandlerTimeout(t *t
 	service.GoalStateStore = &goalEvidenceFenceStore{recordingGoalStateStore: &recordingGoalStateStore{}, state: agentactivitybiz.SessionGoalState{WorkspaceID: "ws", AgentSessionID: "session", Revision: 1}, operations: map[string]agentactivitybiz.GoalControlOperation{}}
 	now := time.UnixMilli(1_000)
 	service.GoalOperationClock = func() time.Time { current := now; now = now.Add(10 * time.Minute); return current }
-	if err := service.StepGoalReconcileInboxWorker(context.Background()); err != nil {
+	if err := service.ApplicationHost().StepGoalReconcileInboxWorker(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if len(store.claims) != 2 {
 		t.Fatalf("claims=%#v", store.claims)
 	}
 	for _, claim := range store.claims {
-		if claim.LeaseExpiresAtMS-claim.NowUnixMS != goalReconcileInboxLease.Milliseconds() {
+		if claim.LeaseExpiresAtMS-claim.NowUnixMS != wantGoalReconcileInboxLease.Milliseconds() {
 			t.Fatalf("lease=%#v", claim)
 		}
 	}
@@ -75,13 +80,13 @@ func (*goalReconcileInboxWorkerStore) RequeueLeasedGoalReconcileInboxOnStartup(c
 
 func TestGoalReconcileInboxWorkerExhaustionBecomesDurableTerminal(t *testing.T) {
 	store := &goalReconcileInboxWorkerStore{item: agentactivitybiz.GoalReconcileInboxItem{
-		RequestID: "request", WorkspaceID: "ws", AgentSessionID: "session", Attempt: goalReconcileInboxMaxAttempts - 1,
+		RequestID: "request", WorkspaceID: "ws", AgentSessionID: "session", Attempt: wantGoalReconcileInboxMaxAttempts - 1,
 		PayloadError: "corrupt durable payload",
 	}}
 	service := newIsolatedAgentService(newFakeRuntime())
 	service.GoalReconcileInboxStore = store
 	service.GoalStateStore = &goalEvidenceFenceStore{recordingGoalStateStore: &recordingGoalStateStore{}, state: agentactivitybiz.SessionGoalState{WorkspaceID: "ws", AgentSessionID: "session", Revision: 1}, operations: map[string]agentactivitybiz.GoalControlOperation{}}
-	if err := service.StepGoalReconcileInboxWorker(context.Background()); err != nil {
+	if err := service.ApplicationHost().StepGoalReconcileInboxWorker(context.Background()); err != nil {
 		t.Fatalf("worker: %v", err)
 	}
 	if !store.release.Fail || store.release.RequestID != "request" || store.release.LastError == "" {
@@ -109,11 +114,11 @@ func TestGoalReconcileInboxWorkerExhaustionPersistsRevisionTerminalFence(t *test
 	if _, err := goalStore.ReconcileSessionGoalObservation(ctx, storesqlite.GoalObservationReconcile{WorkspaceID: "ws", AgentSessionID: "session", Observed: map[string]any{"objective": "ship"}, Evidence: map[string]any{"confidence": "authoritative"}, OccurredAtUnixMS: 3}); err != nil {
 		t.Fatal(err)
 	}
-	inbox := &goalReconcileInboxWorkerStore{item: agentactivitybiz.GoalReconcileInboxItem{RequestID: "request-exhausted", WorkspaceID: "ws", AgentSessionID: "session", Attempt: goalReconcileInboxMaxAttempts - 1, PayloadError: "corrupt durable payload"}}
+	inbox := &goalReconcileInboxWorkerStore{item: agentactivitybiz.GoalReconcileInboxItem{RequestID: "request-exhausted", WorkspaceID: "ws", AgentSessionID: "session", Attempt: wantGoalReconcileInboxMaxAttempts - 1, PayloadError: "corrupt durable payload"}}
 	service := newIsolatedAgentService(newFakeRuntime())
 	service.GoalStateStore = goalStore
 	service.GoalReconcileInboxStore = inbox
-	if err := service.StepGoalReconcileInboxWorker(ctx); err != nil {
+	if err := service.ApplicationHost().StepGoalReconcileInboxWorker(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if !inbox.release.Fail {
@@ -127,7 +132,7 @@ func TestGoalReconcileInboxWorkerExhaustionPersistsRevisionTerminalFence(t *test
 
 func TestGoalReconcileInboxWorkerExhaustionTerminatesRevisionZeroState(t *testing.T) {
 	store := &goalReconcileInboxWorkerStore{item: agentactivitybiz.GoalReconcileInboxItem{
-		RequestID: "request-zero", WorkspaceID: "ws", AgentSessionID: "session", Attempt: goalReconcileInboxMaxAttempts - 1,
+		RequestID: "request-zero", WorkspaceID: "ws", AgentSessionID: "session", Attempt: wantGoalReconcileInboxMaxAttempts - 1,
 		PayloadError: "corrupt durable payload",
 	}}
 	goalStore := &goalEvidenceFenceStore{
@@ -138,7 +143,7 @@ func TestGoalReconcileInboxWorkerExhaustionTerminatesRevisionZeroState(t *testin
 	service := newIsolatedAgentService(newFakeRuntime())
 	service.GoalReconcileInboxStore = store
 	service.GoalStateStore = goalStore
-	if err := service.StepGoalReconcileInboxWorker(context.Background()); err != nil {
+	if err := service.ApplicationHost().StepGoalReconcileInboxWorker(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if !store.release.Fail || len(goalStore.reconcileInputs) != 1 || !goalStore.reconcileInputs[0].ForceSyncUnknown || goalStore.reconcileInputs[0].LastError == "" {

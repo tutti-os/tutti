@@ -7,12 +7,29 @@ import (
 
 func GeneratedIssueManagerIssueFromDomain(item workspaceissues.Issue) tuttigenerated.IssueManagerIssue {
 	return tuttigenerated.IssueManagerIssue{
-		IssueId:                item.IssueID,
-		WorkspaceId:            item.WorkspaceID,
-		TopicId:                item.TopicID,
-		Title:                  item.Title,
-		Content:                item.Content,
-		Status:                 tuttigenerated.IssueManagerStatus(item.Status),
+		IssueId:             item.IssueID,
+		WorkspaceId:         item.WorkspaceID,
+		TopicId:             item.TopicID,
+		Title:               item.Title,
+		Content:             item.Content,
+		Status:              tuttigenerated.IssueManagerStatus(item.Status),
+		PlanningSource:      tuttigenerated.IssueManagerPlanningSource(item.PlanningSource),
+		SourceSessionId:     item.SourceSessionID,
+		SequentialExecution: item.SequentialExecution,
+		ParallelExecution:   item.ParallelExecution,
+		DispatchPaused:      item.DispatchPaused,
+		ExecutionProfile: tuttigenerated.IssueManagerExecutionProfile{
+			ReasoningIntensity:     item.ExecutionProfile.ReasoningIntensity,
+			OrchestrationIntensity: item.ExecutionProfile.OrchestrationIntensity,
+		},
+		Budget: tuttigenerated.IssueManagerBudget{
+			Mode:                  tuttigenerated.IssueManagerBudgetMode(item.Budget.Mode),
+			TokenLimit:            item.Budget.TokenLimit,
+			ConsumedTokens:        item.Budget.ConsumedTokens,
+			QuotaWaterlinePercent: item.Budget.QuotaWaterlinePercent,
+			RemainingQuotaPercent: issueManagerRemainingQuotaPercent(item.Budget),
+			Status:                tuttigenerated.IssueManagerBudgetStatus(item.Budget.Status),
+		},
 		TaskCount:              item.TaskCount,
 		NotStartedCount:        item.NotStartedCount,
 		RunningCount:           item.RunningCount,
@@ -26,6 +43,14 @@ func GeneratedIssueManagerIssueFromDomain(item workspaceissues.Issue) tuttigener
 		CreatedAtUnix:          unixSecondsFromMillis(item.CreatedAtUnixMS),
 		UpdatedAtUnix:          unixSecondsFromMillis(item.UpdatedAtUnixMS),
 	}
+}
+
+func issueManagerRemainingQuotaPercent(budget workspaceissues.Budget) *float64 {
+	if !budget.HasRemainingQuota {
+		return nil
+	}
+	value := budget.RemainingQuotaPercent
+	return &value
 }
 
 func GeneratedIssueManagerTopicFromDomain(item workspaceissues.Topic) tuttigenerated.IssueManagerTopic {
@@ -117,6 +142,17 @@ func GeneratedIssueManagerTaskFromDomain(item workspaceissues.Task) tuttigenerat
 		CreatorDisplayName: item.CreatorDisplayName,
 		CreatorAvatarUrl:   item.CreatorAvatarURL,
 		LatestRunId:        item.LatestRunID,
+		AgentTargetId:      item.AgentTargetID,
+		ModelPlanId:        item.ModelPlanID,
+		Model:              item.Model,
+		ExecutionDirectory: item.ExecutionDirectory,
+		DependencyTaskIds:  append([]string(nil), item.DependencyTaskIDs...),
+		Parallelizable:     item.Parallelizable,
+		AutoAccept:         item.AutoAccept,
+		AcceptanceState:    tuttigenerated.IssueManagerAcceptanceState(item.AcceptanceState),
+		AcceptanceSummary:  item.AcceptanceSummary,
+		SupersededAtUnix:   unixSecondsFromMillis(item.SupersededAtUnixMS),
+		SupersededByTaskId: item.SupersededByTaskID,
 		CreatedAtUnix:      unixSecondsFromMillis(item.CreatedAtUnixMS),
 		UpdatedAtUnix:      unixSecondsFromMillis(item.UpdatedAtUnixMS),
 	}

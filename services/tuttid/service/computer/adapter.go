@@ -3,6 +3,7 @@ package computer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -26,31 +27,33 @@ type windowStatePayload struct {
 
 var accessibilityWindowLinePattern = regexp.MustCompile(`^- (.+) \(pid (\d+)\)(?: "(.*)"| \(no title\)) \[window_id: (\d+)\]$`)
 
-// adaptToolCall translates legacy tutti computer CLI tool names and arguments
-// to the cua-driver 0.5.x MCP API (pid/window_id scoped actions).
+// adaptToolCall implements Tutti's explicitly supported stable aliases over
+// cua-driver. Native discovery/invocation uses the separate policy-enforced
+// Service methods and never falls through this switch.
 func (s *computerSession) adaptToolCall(ctx context.Context, tool string, args map[string]any) (ToolResult, error) {
 	switch tool {
 	case "screenshot":
-		return s.adaptScreenshot(ctx)
+		return s.adaptScreenshot(ctx, args)
 	case "left_click":
-		return s.adaptPointerAction(ctx, "click", args)
-	case "double_click", "right_click":
-		return s.adaptPointerAction(ctx, tool, args)
+		return s.adaptWindowTargetedTool(ctx, "click", args)
+	case "double_click":
+		return s.adaptWindowTargetedTool(ctx, "click", withToolArg(args, "count", 2))
+	case "right_click":
+		return s.adaptWindowTargetedTool(ctx, "click", withToolArg(args, "button", "right"))
+	case "click", "scroll":
+		return s.adaptWindowTargetedTool(ctx, tool, args)
 	case "press_key":
 		return s.adaptPressKey(ctx, args)
-	case "type_text", "scroll":
+	case "type_text":
 		return s.adaptPIDRequiredTool(ctx, tool, args)
-	default:
+	case "move_cursor":
 		return s.callTool(ctx, tool, args)
+	default:
+		return ToolResult{}, fmt.Errorf("unsupported stable computer tool %q", tool)
 	}
 }
 
-func (s *computerSession) adaptScreenshot(ctx context.Context) (ToolResult, error) {
-	target, err := s.resolveFrontmostWindow(ctx)
-	if err != nil {
-		return ToolResult{}, err
-	}
-
+func (s *computerSession) adaptScreenshot(ctx context.Context, args map[string]any) (ToolResult, error) {
 	file, err := os.CreateTemp("", "tutti-computer-*.png")
 	if err != nil {
 		return ToolResult{}, err
@@ -58,6 +61,11 @@ func (s *computerSession) adaptScreenshot(ctx context.Context) (ToolResult, erro
 	path := file.Name()
 	_ = file.Close()
 
+	target, targetErr := s.resolveWindowTarget(ctx, args)
+	if targetErr != nil {
+		_ = os.Remove(path)
+		return ToolResult{}, targetErr
+	}
 	raw, err := s.callTool(ctx, "get_window_state", map[string]any{
 		"pid":                 target.PID,
 		"window_id":           target.WindowID,
@@ -73,25 +81,27 @@ func (s *computerSession) adaptScreenshot(ctx context.Context) (ToolResult, erro
 		return ToolResult{}, fmt.Errorf("screenshot file missing after capture: %w (tool output: %s)", statErr, truncateForError(raw.Text))
 	}
 
-	return ToolResult{Text: fmt.Sprintf("Screenshot saved to %s", path)}, nil
+	structured := cloneStructuredContent(raw.StructuredContent)
+	structured["screenshot_file_path"] = path
+	return ToolResult{Text: fmt.Sprintf("Screenshot saved to %s", path), StructuredContent: structured}, nil
 }
 
-func (s *computerSession) adaptPointerAction(ctx context.Context, tool string, args map[string]any) (ToolResult, error) {
-	target, err := s.resolveFrontmostWindow(ctx)
+func (s *computerSession) adaptWindowTargetedTool(ctx context.Context, tool string, args map[string]any) (ToolResult, error) {
+	out := cloneToolArgs(args)
+	delete(out, "scope")
+	if tool == "scroll" {
+		if amount, ok := numericArg(out, "amount"); ok {
+			out["amount"] = int(amount)
+		} else {
+			out["amount"] = 3
+		}
+	}
+	target, err := s.resolveWindowTarget(ctx, args)
 	if err != nil {
 		return ToolResult{}, err
 	}
-
-	out := map[string]any{
-		"pid":       target.PID,
-		"window_id": target.WindowID,
-	}
-	if x, ok := numericArg(args, "x"); ok {
-		out["x"] = x
-	}
-	if y, ok := numericArg(args, "y"); ok {
-		out["y"] = y
-	}
+	out["pid"] = target.PID
+	out["window_id"] = target.WindowID
 	return s.callTool(ctx, tool, out)
 }
 
@@ -101,7 +111,7 @@ func (s *computerSession) adaptPressKey(ctx context.Context, args map[string]any
 		return ToolResult{}, fmt.Errorf("missing required string field: key")
 	}
 
-	target, err := s.resolveFrontmostWindow(ctx)
+	target, err := s.resolveWindowTarget(ctx, args)
 	if err != nil {
 		return ToolResult{}, err
 	}
@@ -109,56 +119,102 @@ func (s *computerSession) adaptPressKey(ctx context.Context, args map[string]any
 	parts := splitKeySpec(keySpec)
 	if len(parts) > 1 {
 		return s.callTool(ctx, "hotkey", map[string]any{
-			"pid":  target.PID,
-			"keys": parts,
+			"pid":       target.PID,
+			"window_id": target.WindowID,
+			"keys":      parts,
 		})
 	}
 
 	return s.callTool(ctx, "press_key", map[string]any{
-		"pid": target.PID,
-		"key": parts[0],
+		"pid":       target.PID,
+		"window_id": target.WindowID,
+		"key":       parts[0],
 	})
 }
 
 func (s *computerSession) adaptPIDRequiredTool(ctx context.Context, tool string, args map[string]any) (ToolResult, error) {
-	target, err := s.resolveFrontmostWindow(ctx)
+	target, err := s.resolveWindowTarget(ctx, args)
 	if err != nil {
 		return ToolResult{}, err
 	}
 
-	out := map[string]any{"pid": target.PID}
+	out := map[string]any{"pid": target.PID, "window_id": target.WindowID}
 	for key, value := range args {
 		switch key {
-		case "x", "y":
+		case "x", "y", "scope", "pid", "window_id":
 			continue
-		case "amount":
-			if amount, ok := numericArg(args, "amount"); ok {
-				out["amount"] = int(amount)
-			}
 		default:
 			out[key] = value
-		}
-	}
-	if tool == "scroll" {
-		if _, ok := out["amount"]; !ok {
-			out["amount"] = 3
 		}
 	}
 	return s.callTool(ctx, tool, out)
 }
 
 func (s *computerSession) resolveFrontmostWindow(ctx context.Context) (windowRecord, error) {
-	raw, err := s.callTool(ctx, "get_accessibility_tree", nil)
+	raw, listErr := s.callTool(ctx, "list_windows", map[string]any{"on_screen_only": true})
+	var structuredErr error
+	if listErr == nil {
+		payload, decodeErr := structuredPayload[struct {
+			Windows []windowRecord `json:"windows"`
+		}](raw.StructuredContent)
+		if decodeErr == nil {
+			window, selectErr := selectAutomationWindow(payload.Windows)
+			if selectErr == nil {
+				return window, nil
+			}
+			structuredErr = selectErr
+		} else {
+			structuredErr = decodeErr
+		}
+	}
+
+	legacy, legacyErr := s.callTool(ctx, "get_accessibility_tree", nil)
+	if legacyErr != nil {
+		return windowRecord{}, errors.Join(listErr, structuredErr, legacyErr)
+	}
+	windows, err := parseAccessibilityTreeWindows(legacy.Text)
 	if err != nil {
 		return windowRecord{}, err
 	}
 
-	windows, err := parseAccessibilityTreeWindows(raw.Text)
-	if err != nil {
-		return windowRecord{}, err
-	}
+	return selectAutomationWindow(windows)
+}
 
-	return windows[0], nil
+func (s *computerSession) resolveWindowTarget(ctx context.Context, args map[string]any) (windowRecord, error) {
+	pid, hasPID := integerArg(args, "pid")
+	windowID, hasWindowID := integerArg(args, "window_id")
+	if hasPID != hasWindowID {
+		return windowRecord{}, fmt.Errorf("pid and window_id must be provided together")
+	}
+	if hasPID {
+		return windowRecord{PID: pid, WindowID: windowID}, nil
+	}
+	return s.resolveFrontmostWindow(ctx)
+}
+
+func selectAutomationWindow(windows []windowRecord) (windowRecord, error) {
+	candidates := make([]windowRecord, 0, len(windows))
+	desktopPID, _ := strconv.Atoi(strings.TrimSpace(os.Getenv("TUTTI_DESKTOP_PARENT_PID")))
+	for _, window := range windows {
+		if !window.IsOnScreen && window.ZIndex != 0 {
+			continue
+		}
+		name := strings.ToLower(strings.TrimSpace(window.AppName))
+		if name == "cua driver" || strings.Contains(name, "tutti") || desktopPID > 0 && window.PID == desktopPID {
+			continue
+		}
+		if window.PID <= 0 || window.WindowID <= 0 {
+			continue
+		}
+		candidates = append(candidates, window)
+	}
+	if len(candidates) == 0 {
+		return windowRecord{}, fmt.Errorf("no eligible visible windows found")
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return candidates[i].ZIndex > candidates[j].ZIndex
+	})
+	return candidates[0], nil
 }
 
 func parseAccessibilityTreeWindows(text string) ([]windowRecord, error) {
@@ -285,6 +341,51 @@ func numericArg(args map[string]any, key string) (float64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func integerArg(args map[string]any, key string) (int, bool) {
+	value, ok := numericArg(args, key)
+	if !ok || value != float64(int(value)) {
+		return 0, false
+	}
+	return int(value), true
+}
+
+func withToolArg(args map[string]any, key string, value any) map[string]any {
+	out := cloneToolArgs(args)
+	out[key] = value
+	return out
+}
+
+func cloneToolArgs(args map[string]any) map[string]any {
+	out := make(map[string]any, len(args))
+	for key, value := range args {
+		out[key] = value
+	}
+	return out
+}
+
+func cloneStructuredContent(content map[string]any) map[string]any {
+	out := make(map[string]any, len(content)+2)
+	for key, value := range content {
+		out[key] = value
+	}
+	return out
+}
+
+func structuredPayload[T any](content map[string]any) (T, error) {
+	var zero T
+	if len(content) == 0 {
+		return zero, fmt.Errorf("structured tool result is empty")
+	}
+	data, err := json.Marshal(content)
+	if err != nil {
+		return zero, fmt.Errorf("encode structured tool result: %w", err)
+	}
+	if err := json.Unmarshal(data, &zero); err != nil {
+		return zero, fmt.Errorf("decode structured tool result: %w", err)
+	}
+	return zero, nil
 }
 
 func truncateForError(text string) string {

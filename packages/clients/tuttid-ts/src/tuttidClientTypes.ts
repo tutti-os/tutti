@@ -1,5 +1,10 @@
 import type {
   AddIssueManagerContextRefsRequest,
+  AppendAgentSessionRecordingActivityEventsRequest,
+  AppendAgentSessionRecordingActivityEventsResponse,
+  AgentSessionRecording,
+  AgentSessionReplayLaunch,
+  AgentSessionReplayRun,
   AccountLoginStartResponse,
   AccountLoginStatusResponse,
   AccountProductSummaryResponse,
@@ -13,6 +18,11 @@ import type {
   AppReferenceSearchRequest,
   AppReferenceSearchResponse,
   AgentProviderStatusListResponse,
+  AgentQuickPrompt,
+  AgentQuickPromptListResponse,
+  AgentTargetSetupSnapshot,
+  AuthenticateAgentTargetRuntimeRequest,
+  InstallAgentTargetRuntimeRequest,
   WorkspaceAgentTurnCancelResponse,
   ClearWorkspaceAgentSessionsResponse,
   GoalControlWorkspaceAgentSessionResponse,
@@ -29,8 +39,12 @@ import type {
   CreateIssueManagerRunRequest,
   CreateIssueManagerTaskRequest,
   CreateIssueManagerTasksRequest,
+  CancelIssueManagerExecutionResponse,
   CreateIssueManagerTopicRequest,
+  CreateAgentQuickPromptRequest,
   CreateWorkspaceAgentSessionRequest,
+  StartAgentSessionRecordingRequest,
+  FailAgentSessionReplayRunRequest,
   CreateWorkspaceAppFactoryJobRequest,
   CreateWorkspaceTerminalRequest,
   DeleteWorkspaceAgentSessionResponse,
@@ -44,12 +58,16 @@ import type {
   DeleteWorkspaceResponse,
   DeleteWorkspaceAppResponse,
   DeleteUserProjectRequest,
+  DeleteAgentQuickPromptRequest,
   DesktopPreferencesStateResponse,
+  DeletedAgentConversationPurgeResult,
   ExportWorkspaceAppRequest,
   ExportWorkspaceAppResponse,
   ExternalAgentImportResultResponse,
   ExternalAgentImportScanRequest,
   ExternalAgentImportScanResponse,
+  ForkWorkspaceAgentSessionRequest,
+  WorkspaceAgentSessionForkOperation,
   FixWorkspaceAppFactoryJobRequest,
   HealthStatusResponse,
   InstallWorkspaceAppRequest,
@@ -73,9 +91,18 @@ import type {
   ListAgentTargetsResponse,
   AgentTarget,
   ListWorkspacesResponse,
+  MobileRemoteDevicePairing,
+  MobileRemotePairingChallengeResponse,
+  MobileRemotePairingConfirmResponse,
+  MobileRemotePairingListResponse,
+  MobileRemotePairingStartResponse,
   CopyWorkspaceFileEntryRequest,
   MoveWorkspaceFileEntryRequest,
+  MoveUserProjectRequest,
+  MoveAgentQuickPromptRequest,
+  PinUserProjectRequest,
   RenameWorkspaceFileEntryRequest,
+  RenameAgentSessionRecordingRequest,
   PrepareWorkspaceAppUploadRequest,
   PrepareWorkspaceAppUploadResponse,
   PreflightUploadWorkspaceFilesResponse,
@@ -93,6 +120,9 @@ import type {
   UpdateWorkspaceAgentSessionPinRequest,
   UpdateWorkspaceAgentSessionTitleRequest,
   UpdateWorkspaceAgentSessionVisibilityRequest,
+  UpdateAgentQuickPromptRequest,
+  UpdateTuttiModeActivationRequest,
+  UpdateTuttiModeActivationResponse,
   WorkspaceGitPatchRequest,
   WorkspaceGitPatchResponse,
   UpdateIssueManagerIssueRequest,
@@ -102,7 +132,11 @@ import type {
   UseUserProjectRequest,
   WriteWorkspaceFileTextRequest,
   WorkbenchSnapshot,
+  WorkspaceWorkflowSnapshot,
+  DecideWorkspaceWorkflowCheckpointRequest,
   WorkspaceAgentSession,
+  WorkspaceAgentSessionDetailProjection,
+  TuttiModeActivation,
   WorkspaceAgentSessionDetailResponse,
   WorkspaceAgentPlanDecisionResponse,
   WorkspaceAgentProvider,
@@ -139,6 +173,8 @@ import type {
   UserProjectListResponse,
   UserProjectPathCheckResponse
 } from "./generated/index.ts";
+import type { WorkspaceAgentConfigurationClient } from "./workspaceAgentConfigurationClient.ts";
+import type { WorkspaceIssueOrchestrationClient } from "./workspaceIssueOrchestrationClient.ts";
 
 export type TuttidRequestOptions = Omit<
   RequestInit,
@@ -148,12 +184,56 @@ export type TuttidRequestOptions = Omit<
 export type TuttidTrackEvent = TrackEvent;
 export type TuttidTrackEventsRequest = TrackEventsRequest;
 
-export interface TuttidClient {
+export interface MobileRemoteAccessClient {
+  startMobileRemotePairing(): Promise<MobileRemotePairingStartResponse>;
+  getMobileRemotePairingChallenge(
+    challengeID: string
+  ): Promise<MobileRemotePairingChallengeResponse>;
+  confirmMobileRemotePairing(
+    challengeID: string
+  ): Promise<MobileRemotePairingConfirmResponse>;
+  listMobileRemotePairings(): Promise<MobileRemotePairingListResponse>;
+  revokeMobileRemotePairing(
+    pairingID: string
+  ): Promise<MobileRemoteDevicePairing>;
+}
+
+export interface TuttidClient
+  extends WorkspaceAgentConfigurationClient, WorkspaceIssueOrchestrationClient {
+  listAgentQuickPrompts(): Promise<AgentQuickPromptListResponse>;
+  createAgentQuickPrompt(
+    request: CreateAgentQuickPromptRequest
+  ): Promise<AgentQuickPrompt>;
+  updateAgentQuickPrompt(
+    promptID: string,
+    request: UpdateAgentQuickPromptRequest
+  ): Promise<AgentQuickPrompt>;
+  deleteAgentQuickPrompt(
+    promptID: string,
+    request: DeleteAgentQuickPromptRequest
+  ): Promise<void>;
+  moveAgentQuickPrompt(
+    request: MoveAgentQuickPromptRequest
+  ): Promise<AgentQuickPromptListResponse>;
   listAgentTargets(): Promise<ListAgentTargetsResponse>;
   setSystemAgentTargetEnabled(
     agentTargetID: string,
     enabled: boolean
   ): Promise<AgentTarget>;
+  getAgentTargetSetup(
+    workspaceID: string,
+    agentTargetID: string
+  ): Promise<AgentTargetSetupSnapshot>;
+  installAgentTargetRuntime(
+    workspaceID: string,
+    agentTargetID: string,
+    request: InstallAgentTargetRuntimeRequest
+  ): Promise<AgentTargetSetupSnapshot>;
+  authenticateAgentTargetRuntime(
+    workspaceID: string,
+    agentTargetID: string,
+    request: AuthenticateAgentTargetRuntimeRequest
+  ): Promise<AgentTargetSetupSnapshot>;
   startAccountLogin(): Promise<AccountLoginStartResponse>;
   getAccountLoginStatus(attemptID: string): Promise<AccountLoginStatusResponse>;
   getAccountUserInfo(): Promise<AccountUserInfo | null>;
@@ -242,6 +322,72 @@ export interface TuttidClient {
     request: CreateWorkspaceAgentSessionRequest,
     requestOptions?: TuttidRequestOptions
   ): Promise<WorkspaceAgentSession>;
+  forkWorkspaceAgentSession(
+    workspaceID: string,
+    agentSessionID: string,
+    request: ForkWorkspaceAgentSessionRequest,
+    requestOptions?: TuttidRequestOptions
+  ): Promise<WorkspaceAgentSessionForkOperation>;
+  getWorkspaceAgentSessionForkOperation(
+    workspaceID: string,
+    operationID: string,
+    requestOptions?: TuttidRequestOptions
+  ): Promise<WorkspaceAgentSessionForkOperation>;
+  acknowledgeWorkspaceAgentSessionForkOperation(
+    workspaceID: string,
+    operationID: string,
+    requestOptions?: TuttidRequestOptions
+  ): Promise<WorkspaceAgentSessionForkOperation>;
+  appendAgentSessionRecordingActivityEvents(
+    workspaceID: string,
+    recordingID: string,
+    request: AppendAgentSessionRecordingActivityEventsRequest
+  ): Promise<AppendAgentSessionRecordingActivityEventsResponse>;
+  startAgentSessionRecording(
+    workspaceID: string,
+    request: StartAgentSessionRecordingRequest
+  ): Promise<AgentSessionRecording>;
+  listAgentSessionRecordings(
+    workspaceID: string
+  ): Promise<AgentSessionRecording[]>;
+  getAgentSessionRecording(
+    workspaceID: string,
+    recordingID: string
+  ): Promise<AgentSessionRecording>;
+  renameAgentSessionRecording(
+    workspaceID: string,
+    recordingID: string,
+    request: RenameAgentSessionRecordingRequest
+  ): Promise<AgentSessionRecording>;
+  completeAgentSessionRecording(
+    workspaceID: string,
+    recordingID: string
+  ): Promise<AgentSessionRecording>;
+  cancelAgentSessionRecording(
+    workspaceID: string,
+    recordingID: string
+  ): Promise<AgentSessionRecording>;
+  prepareAgentSessionReplayRun(
+    workspaceID: string,
+    cassetteID: string
+  ): Promise<AgentSessionReplayLaunch>;
+  listAgentSessionReplayRuns(
+    workspaceID: string,
+    cassetteID: string
+  ): Promise<AgentSessionReplayRun[]>;
+  markAgentSessionReplayRunRunning(
+    workspaceID: string,
+    runID: string
+  ): Promise<AgentSessionReplayRun>;
+  completeAgentSessionReplayRun(
+    workspaceID: string,
+    runID: string
+  ): Promise<AgentSessionReplayRun>;
+  failAgentSessionReplayRun(
+    workspaceID: string,
+    runID: string,
+    request: FailAgentSessionReplayRunRequest
+  ): Promise<AgentSessionReplayRun>;
   createWorkspaceTerminal(
     workspaceID: string,
     request?: CreateWorkspaceTerminalRequest
@@ -289,12 +435,15 @@ export interface TuttidClient {
     request: CopyWorkspaceFileEntryRequest
   ): Promise<WorkspaceFileEntryResponse>;
   getDesktopPreferences(): Promise<DesktopPreferencesStateResponse>;
+  purgeDeletedAgentConversations(): Promise<DeletedAgentConversationPurgeResult>;
   getHealth(): Promise<HealthStatusResponse>;
   getStartupWorkspace(): Promise<WorkspaceSummary | null>;
   getWorkspace(workspaceID: string): Promise<WorkspaceSummary>;
   getWorkspaceAgentSession(
     workspaceID: string,
-    agentSessionID: string
+    agentSessionID: string,
+    projection?: WorkspaceAgentSessionDetailProjection,
+    requestOptions?: TuttidRequestOptions
   ): Promise<WorkspaceAgentSessionDetailResponse>;
   getAgentProviderComposerOptions(
     provider: WorkspaceAgentProvider,
@@ -309,8 +458,18 @@ export interface TuttidClient {
      * agent-env wizard's network diagnostic sets this.
      */
     includeNetwork?: boolean;
-    /** Bypass the daemon provider-readiness cache. */
+    /**
+     * Opt into cached remote provider CLI update discovery. Off by default so
+     * ordinary readiness reads remain local.
+     */
+    includeUpdates?: boolean;
+    /** Bypass only the daemon provider-readiness cache. */
     refresh?: boolean;
+    /**
+     * Bypass only cached update metadata when includeUpdates is true. This
+     * does not refresh local readiness.
+     */
+    refreshUpdates?: boolean;
   }): Promise<AgentProviderStatusListResponse>;
   probeAgentProvider(
     provider: WorkspaceAgentProvider
@@ -352,6 +511,31 @@ export interface TuttidClient {
     terminalID: string
   ): Promise<WorkspaceTerminalSnapshot>;
   getWorkspaceWorkbench(workspaceID: string): Promise<WorkbenchSnapshot>;
+  getWorkspaceAgentSessionTuttiModeActivation(
+    workspaceID: string,
+    agentSessionID: string,
+    requestOptions?: TuttidRequestOptions
+  ): Promise<TuttiModeActivation | null>;
+  updateWorkspaceAgentSessionTuttiModeActivation(
+    workspaceID: string,
+    agentSessionID: string,
+    request: UpdateTuttiModeActivationRequest,
+    requestOptions?: TuttidRequestOptions
+  ): Promise<UpdateTuttiModeActivationResponse>;
+  listPendingWorkspaceWorkflows(
+    workspaceID: string,
+    sourceSessionID: string
+  ): Promise<WorkspaceWorkflowSnapshot[]>;
+  listWorkspaceWorkflows(
+    workspaceID: string,
+    sourceSessionID: string
+  ): Promise<WorkspaceWorkflowSnapshot[]>;
+  decideWorkspaceWorkflowCheckpoint(
+    workspaceID: string,
+    workflowID: string,
+    checkpointID: string,
+    request: DecideWorkspaceWorkflowCheckpointRequest
+  ): Promise<WorkspaceWorkflowSnapshot>;
   listWorkspaceApps(workspaceID: string): Promise<WorkspaceAppListResponse>;
   listWorkspaceAppReferences(
     workspaceID: string,
@@ -579,7 +763,8 @@ export interface TuttidClient {
       beforeVersion?: number;
       order?: "asc" | "desc";
       limit?: number;
-    }
+    },
+    requestOptions?: TuttidRequestOptions
   ): Promise<WorkspaceAgentSessionMessagesResponse>;
   listWorkspaceFileDirectory(
     workspaceID: string,
@@ -609,6 +794,12 @@ export interface TuttidClient {
     request: CheckUserProjectPathRequest
   ): Promise<UserProjectPathCheckResponse>;
   listUserProjects(): Promise<UserProjectListResponse>;
+  moveUserProject(
+    request: MoveUserProjectRequest
+  ): Promise<UserProjectListResponse>;
+  pinUserProject(
+    request: PinUserProjectRequest
+  ): Promise<UserProjectListResponse>;
   openWorkspace(workspaceID: string): Promise<WorkspaceSummary>;
   removeWorkspaceIssueContextRef(
     workspaceID: string,
@@ -643,6 +834,14 @@ export interface TuttidClient {
     taskID: string,
     request: UpdateIssueManagerTaskRequest
   ): Promise<IssueManagerTask>;
+  cancelWorkspaceIssueExecution(
+    workspaceID: string,
+    issueID: string
+  ): Promise<CancelIssueManagerExecutionResponse>;
+  cancelTuttiModeExecution(
+    workspaceID: string,
+    issueID: string
+  ): Promise<CancelIssueManagerExecutionResponse>;
   putWorkspaceWorkbench(
     workspaceID: string,
     snapshot: WorkbenchSnapshot
@@ -659,7 +858,8 @@ export interface TuttidClient {
   cancelWorkspaceAgentTurn(
     workspaceID: string,
     agentSessionID: string,
-    turnID: string
+    turnID: string,
+    requestOptions?: TuttidRequestOptions
   ): Promise<WorkspaceAgentTurnCancelResponse>;
   goalControlWorkspaceAgentSession(
     workspaceID: string,
@@ -677,7 +877,8 @@ export interface TuttidClient {
   sendWorkspaceAgentSessionInput(
     workspaceID: string,
     agentSessionID: string,
-    request: SendWorkspaceAgentSessionInputRequest
+    request: SendWorkspaceAgentSessionInputRequest,
+    requestOptions?: TuttidRequestOptions
   ): Promise<SendWorkspaceAgentSessionInputResponse>;
   submitWorkspaceAgentPlanDecision(
     workspaceID: string,
@@ -710,12 +911,14 @@ export interface TuttidClient {
   updateWorkspaceAgentSessionSettings(
     workspaceID: string,
     agentSessionID: string,
-    request: AgentSessionComposerSettings
+    request: AgentSessionComposerSettings,
+    requestOptions?: TuttidRequestOptions
   ): Promise<WorkspaceAgentSession>;
   updateWorkspaceAgentSessionPin(
     workspaceID: string,
     agentSessionID: string,
-    request: UpdateWorkspaceAgentSessionPinRequest
+    request: UpdateWorkspaceAgentSessionPinRequest,
+    requestOptions?: TuttidRequestOptions
   ): Promise<WorkspaceAgentSession>;
   updateWorkspaceAgentSessionTitle(
     workspaceID: string,
@@ -731,7 +934,8 @@ export interface TuttidClient {
     workspaceID: string,
     agentSessionID: string,
     requestID: string,
-    request: SubmitWorkspaceAgentInteractiveRequest
+    request: SubmitWorkspaceAgentInteractiveRequest,
+    requestOptions?: TuttidRequestOptions
   ): Promise<WorkspaceAgentSession>;
   searchWorkspaceFiles(
     workspaceID: string,

@@ -35,6 +35,7 @@ import {
   IAgentProviderStatusService,
   type IAgentProviderStatusService as AgentProviderStatusService
 } from "../../../workspace-agent/services/agentProviderStatusService.interface.ts";
+import type { IAgentQuickPromptService as AgentQuickPromptService } from "../../../workspace-agent/services/agentQuickPromptService.interface.ts";
 import {
   IWorkspaceAgentActivityService,
   type IWorkspaceAgentActivityService as WorkspaceAgentActivityService
@@ -46,6 +47,7 @@ import {
 import { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center/services/workspaceAppCenterService.interface.ts";
 import { createDesktopAgentGeneratedFileMentionProvider } from "@renderer/features/workspace-agent/services/createDesktopAgentGeneratedFileMentionProvider.ts";
 import { IWorkspaceFileManagerService } from "../../../workspace-file-manager/services/workspaceFileManagerService.interface.ts";
+import { IWorkspaceFilePreviewSurfaceHost } from "../../../workspace-file-preview/services/workspaceFilePreviewSurfaceHost.interface.ts";
 import { createDesktopWorkspaceFileReferenceAdapter } from "../../../workspace-file-manager/services/createDesktopWorkspaceFileReferenceAdapter.ts";
 import { IWorkspaceUserProjectService } from "../../../workspace-user-project/services/workspaceUserProjectService.interface.ts";
 import { confirmWorkspaceWindowClose } from "./workspaceWindowCloseCoordinator.ts";
@@ -76,7 +78,9 @@ import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
 import { tuttiExternalAtProviderIds } from "@tutti-os/workspace-external-core/core";
 import type {
   TuttiExternalAtQueryInput,
-  TuttiExternalAtQueryResult
+  TuttiExternalAtQueryResult,
+  TuttiExternalAtResolveInput,
+  TuttiExternalAtResolveResult
 } from "@tutti-os/workspace-external-core/contracts";
 import type { WorkspaceFileReferenceAdapter } from "@tutti-os/workspace-file-reference/contracts";
 import type { WorkspaceUserProjectApi } from "@tutti-os/workspace-user-project/contracts";
@@ -102,6 +106,7 @@ import {
   type CachedWorkspaceWorkbenchHostInput,
   type WorkspaceWorkbenchHostInputResolverDependencies
 } from "./workspaceWorkbenchHostInputResolver.ts";
+import { createWorkspaceDockRetentionController } from "./workspaceDockRetentionController.ts";
 
 export interface WorkspaceWorkbenchHostServiceDependencies extends WorkspaceWorkbenchHostInputResolverDependencies {
   hostNotificationsApi: Pick<DesktopHostNotificationsApi, "onNavigate">;
@@ -113,6 +118,7 @@ export interface WorkspaceWorkbenchHostServiceDependencies extends WorkspaceWork
 }
 
 export interface WorkspaceWorkbenchHostExternalDependencies {
+  agentQuickPromptService?: AgentQuickPromptService;
   browserApi?: DesktopBrowserApi;
   computerUseApi: DesktopComputerUseApi;
   dockPreviewCacheApi: DesktopDockPreviewCacheApi;
@@ -137,6 +143,7 @@ export interface WorkspaceWorkbenchHostExternalDependencies {
 
 export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostService {
   readonly _serviceBrand = undefined;
+  readonly dockRetention;
   private readonly dependencies: WorkspaceWorkbenchHostServiceDependencies;
   private hostSessionBindingSequence = 0;
   private readonly hostSessionConfiguration: WorkbenchHostSessionConfiguration<
@@ -178,10 +185,13 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     workspaceAgentPromptSessionService: WorkspaceAgentPromptSessionService,
     appCenterService: IWorkspaceAppCenterService,
     workspaceFileManagerService: IWorkspaceFileManagerService,
+    workspaceFilePreviewSurfaceHost: IWorkspaceFilePreviewSurfaceHost,
     workspaceUserProjectService: IWorkspaceUserProjectService
   ) {
     const repository = externalDependencies.snapshotRepository;
+    this.dockRetention = createWorkspaceDockRetentionController(repository);
     this.dependencies = {
+      agentQuickPromptService: externalDependencies.agentQuickPromptService,
       agentProviderStatusService,
       agentsService,
       appCenterService,
@@ -197,6 +207,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       hostWindowApi: externalDependencies.hostWindowApi,
       hostWorkspaceApi: externalDependencies.hostWorkspaceApi,
       workspaceFileManagerService,
+      workspaceFilePreviewSurfaceHost,
       workspaceUserProjectService,
       workspaceAgentActivityService,
       workspaceAgentPromptSessionService,
@@ -287,28 +298,10 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
         ? input.query.providers
         : tuttiExternalAtProviderIds
     );
-    const richTextCapabilities = [...providerIds].filter(
-      (providerId) => providerId !== "agent-generated-file"
+    const providers = this.createWorkspaceAppExternalAtProviders(
+      providerIds,
+      input.workspaceId
     );
-    const providers: RichTextTriggerProvider[] = [
-      ...this.dependencies.richTextAtService.getProviders({
-        capabilities: richTextCapabilities,
-        surface: "workspace-app-external",
-        target: "workspace-app",
-        workspaceId: input.workspaceId
-      })
-    ];
-    if (providerIds.has("agent-generated-file")) {
-      const agentGeneratedFileProvider =
-        createDesktopAgentGeneratedFileMentionProvider({
-          agentActivityRuntime: this.dependencies.workspaceAgentActivityService,
-          workspaceId: input.workspaceId
-        });
-      providers.push({
-        ...agentGeneratedFileProvider,
-        trigger: "@"
-      });
-    }
     const registry = createRichTextTriggerRegistry(providers);
     const matches = await registry.query({
       keyword: input.query.keyword,
@@ -325,6 +318,55 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       .filter(
         (result): result is TuttiExternalAtQueryResult => result !== null
       );
+  }
+
+  async resolveWorkspaceAppExternalAt(input: {
+    mention: TuttiExternalAtResolveInput;
+    workspaceId: string;
+  }): Promise<TuttiExternalAtResolveResult | null> {
+    const providers = this.createWorkspaceAppExternalAtProviders(
+      new Set([input.mention.providerId]),
+      input.workspaceId
+    );
+    const provider = providers.find(
+      (candidate) => candidate.id === input.mention.providerId
+    );
+    if (!provider?.resolveMention) return null;
+    return provider.resolveMention({
+      providerId: input.mention.providerId,
+      entityId: input.mention.entityId,
+      label: "",
+      scope: {
+        ...input.mention.scope,
+        workspaceId: input.workspaceId
+      }
+    });
+  }
+
+  private createWorkspaceAppExternalAtProviders(
+    providerIds: ReadonlySet<(typeof tuttiExternalAtProviderIds)[number]>,
+    workspaceId: string
+  ): RichTextTriggerProvider[] {
+    const richTextCapabilities = [...providerIds].filter(
+      (providerId) => providerId !== "agent-generated-file"
+    );
+    const providers: RichTextTriggerProvider[] = [
+      ...this.dependencies.richTextAtService.getProviders({
+        capabilities: richTextCapabilities,
+        surface: "workspace-app-external",
+        target: "workspace-app",
+        workspaceId
+      })
+    ];
+    if (providerIds.has("agent-generated-file")) {
+      const agentGeneratedFileProvider =
+        createDesktopAgentGeneratedFileMentionProvider({
+          agentActivityRuntime: this.dependencies.workspaceAgentActivityService,
+          workspaceId
+        });
+      providers.push({ ...agentGeneratedFileProvider, trigger: "@" });
+    }
+    return providers;
   }
 
   onOpenFileRequest(
@@ -599,6 +641,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
   }
 
   dispose(): void {
+    this.dockRetention.dispose();
     this.wallpaperListeners.clear();
     this.clearCustomWallpaperUrls();
   }
@@ -733,7 +776,8 @@ IWorkspaceAgentPromptSessionService(
 );
 IWorkspaceAppCenterService(WorkspaceWorkbenchHostService, undefined, 7);
 IWorkspaceFileManagerService(WorkspaceWorkbenchHostService, undefined, 8);
-IWorkspaceUserProjectService(WorkspaceWorkbenchHostService, undefined, 9);
+IWorkspaceFilePreviewSurfaceHost(WorkspaceWorkbenchHostService, undefined, 9);
+IWorkspaceUserProjectService(WorkspaceWorkbenchHostService, undefined, 10);
 
 function createWorkspaceWorkbenchPartition(
   workspaceId: string

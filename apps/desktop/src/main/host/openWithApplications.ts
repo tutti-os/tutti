@@ -1,4 +1,4 @@
-import { shouldFilterVideoPlayersForOpenWith } from "@tutti-os/workspace-file-preview";
+import { shouldFilterVideoPlayersForOpenWith } from "@tutti-os/workspace-file-manager/services";
 import { execFile } from "node:child_process";
 import { accessSync, constants, readdirSync } from "node:fs";
 import { mkdtemp, writeFile } from "node:fs/promises";

@@ -29,6 +29,16 @@ type sessionSummaryInput struct {
 	Order         string `cli:"order" description:"Message order: asc or desc."`
 }
 
+type getSessionInput struct {
+	SessionID     string `cli:"session-id" validate:"required" description:"Agent session id to inspect."`
+	View          string `cli:"view" enum:"session,turns,conversation,trace" description:"Context view: session, turns, conversation, or trace."`
+	Turns         *int64 `cli:"turns" validate:"min=1,max=20" description:"Number of recent turns for turns or conversation view; defaults to 3."`
+	TurnID        string `cli:"turn-id" description:"Exact turn to inspect in conversation or trace view."`
+	BeforeTurnID  string `cli:"before-turn-id" description:"Return an older turns or conversation page before this turn."`
+	Messages      *int64 `cli:"messages" validate:"min=1,max=100" description:"Number of recent trace messages; defaults to 20."`
+	BeforeVersion int64  `cli:"before-version" validate:"min=0" description:"Return an older trace page before this message version."`
+}
+
 type waitInput struct {
 	SessionID    string `cli:"session-id" validate:"required" description:"Agent session id to await."`
 	AfterVersion *int64 `cli:"after-version" validate:"min=0" description:"Wait for a stop point after this message version."`
@@ -99,9 +109,10 @@ func (p Provider) newSessionSummaryCommand() cliservice.Command {
 	return framework.Register(framework.CommandSpec[sessionSummaryInput]{
 		ID:          appID + ".agent.session-summary",
 		Path:        []string{"agent", "session-summary"},
-		Summary:     "Get agent session summary",
-		Description: "Get compact session context and recent messages for agent-session mentions.",
+		Summary:     "Get agent session summary (deprecated)",
+		Description: "Deprecated compatibility alias. Use the progressive agent get views instead.",
 		Kind:        framework.KindAction,
+		Visibility:  cliservice.CapabilityVisibilityIntegration,
 		Workspace:   framework.WorkspaceRequired,
 		Workspaces:  p.workspaces,
 		Inputs:      framework.FromStruct[sessionSummaryInput](),
@@ -120,16 +131,24 @@ func (p Provider) newWaitCommand() cliservice.Command {
 		ID:          appID + ".agent.wait",
 		Path:        []string{"agent", "wait"},
 		Summary:     "Wait for an agent session stop point",
-		Description: "Block until the session reaches a stop point. Use `agent session-summary` for context recovery.",
+		Description: "Block until the session reaches a stop point and return its final answer or pending interactions inline.",
 		Kind:        framework.KindAction,
 		Workspace:   framework.WorkspaceRequired,
 		Workspaces:  p.workspaces,
 		Inputs:      framework.FromStruct[waitInput](),
+		Execution:   &cliservice.CommandExecution{Mode: cliservice.CommandExecutionModeWait},
 		Output: framework.OutputSpec{
 			DefaultMode: cliservice.OutputModeJSON,
 			DefaultView: framework.ViewSummary,
 			JSON:        true,
 			JSONViews:   map[framework.OutputView]func(any) map[string]any{framework.ViewSummary: waitJSONValue},
+			Continuation: func(result any) *cliservice.CommandContinuation {
+				waited := result.(waitCommandResult)
+				if !waited.Result.TimedOut {
+					return nil
+				}
+				return &cliservice.CommandContinuation{State: cliservice.CommandContinuationStatePending, RetryAfterMs: 250}
+			},
 		},
 		Run: p.runWait,
 	})
@@ -200,8 +219,8 @@ func (p Provider) runWait(ctx context.Context, invoke framework.InvokeContext, i
 		WorkspaceID:    invoke.WorkspaceID,
 		AgentSessionID: input.SessionID,
 		AfterVersion:   afterVersion,
-		SkipMessages:   true,
 		Timeout:        timeout,
+		SkipMessages:   true,
 	})
 	if err != nil {
 		return nil, err
@@ -263,14 +282,46 @@ func turnResourcesJSONValue(result any) map[string]any {
 
 func waitJSONValue(result any) map[string]any {
 	waited := result.(waitCommandResult)
-	return map[string]any{
+	value := map[string]any{
 		"agentSessionId": waited.Result.Session.ID,
+		"turnId":         nil,
 		"session":        sessionSummaryValue(waited.Result.Session),
 		"latestVersion":  waited.Result.LatestVersion,
 		"effectiveAfter": waited.Result.EffectiveAfter,
 		"timedOut":       waited.Result.TimedOut,
 		"reason":         string(waited.Result.Reason),
 	}
+	if turnID := strings.TrimSpace(waited.Result.TurnID); turnID != "" {
+		value["turnId"] = turnID
+	}
+	if (waited.Result.Reason == agentservice.WaitReasonCompleted || waited.Result.Reason == agentservice.WaitReasonFailed) && waited.Result.FinalMessage != nil {
+		value["finalMessage"] = map[string]any{
+			"turnId": waited.Result.FinalMessage.TurnID,
+			"text":   waited.Result.FinalMessage.Text,
+		}
+	}
+	if waited.Result.Reason == agentservice.WaitReasonWaitingApproval || waited.Result.Reason == agentservice.WaitReasonWaitingInput {
+		value["interactions"] = waitInteractionValues(waited.Result.Interactions)
+	}
+	return value
+}
+
+func waitInteractionValues(interactions []agentservice.WaitInteraction) []any {
+	values := make([]any, 0, len(interactions))
+	for _, interaction := range interactions {
+		actions := make([]any, 0, len(interaction.Actions))
+		for _, action := range interaction.Actions {
+			actions = append(actions, map[string]any{
+				"id": action.ID, "label": action.Label, "semantic": action.Semantic,
+			})
+		}
+		values = append(values, map[string]any{
+			"requestId": interaction.RequestID, "turnId": interaction.TurnID,
+			"kind": interaction.Kind, "toolName": interaction.ToolName, "actions": actions,
+			"input": map[string]any{"summary": interaction.InputSummary, "truncated": interaction.InputTruncated},
+		})
+	}
+	return values
 }
 
 func turnResourceMessageValues(messages []agentservice.SessionMessage, imageLocalPath imageLocalPathResolver) []any {

@@ -1,6 +1,7 @@
 package agentruntime
 
 import (
+	"sort"
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
@@ -19,12 +20,14 @@ func (s *claudeSDKAdapterSession) applySessionPayload(session *Session, payload 
 	if resumeCursor := payloadMap(payload, "resumeCursor"); len(resumeCursor) > 0 {
 		s.resumeCursor = clonePayload(resumeCursor)
 	}
+	previousModel := s.currentUsageModel(nil)
 	if descriptors := configOptionDescriptors(payload["configOptions"]); len(descriptors) > 0 {
 		applyClaudeSDKConfigOptionDescriptors(&s.liveState, descriptors)
 	}
 	if model := payloadString(payload, "model"); model != "" {
 		_ = s.applyConfigOption("model", model)
 	}
+	s.invalidateContextUsageForModelChange(previousModel, s.currentUsageModel(nil))
 }
 
 func (s *claudeSDKAdapterSession) assistantMessageID(turnID string) string {
@@ -57,27 +60,12 @@ func (s *claudeSDKAdapterSession) claudeSDKToolEvents(session Session, turnID st
 		return nil
 	}
 	isDelegation := payloadString(payload, "callType") == "subagent"
+	owner := s.claudeSDKToolEventOwner(turnID, payload)
+	events := []activityshared.Event{owner.event(session, payload, eventType, status)}
 	if isDelegation {
-		toolEvent := claudeSDKToolActivityEvent(session, turnID, payload, eventType, status)
-		// The Agent/Task call belongs to the session that launched the child,
-		// not to the child it creates. Claude's completed event repeats the
-		// spawned child's own tool call id, so resolving the owner from every
-		// child alias would move the completion into the new child turn and
-		// leave the parent's started call dangling. Only an explicit
-		// parentToolUseId identifies a nested delegation owned by another child.
-		if parent, ok := s.claudeSDKDelegationParentForPayload(payload); ok {
-			toolEvent = claudeSDKToolActivityEvent(claudeSDKChildRuntimeSession(session, parent), parent.TurnID, payload, eventType, status)
-			toolEvent = claudeSDKEventForChild(toolEvent, parent)
-		}
-		events := []activityshared.Event{toolEvent}
 		return append(events, s.updateClaudeSDKChildFromTool(session, turnID, payload, eventType, sidecarType)...)
 	}
-	if child, ok := s.claudeSDKChildForPayload(payload); ok {
-		childSession := claudeSDKChildRuntimeSession(session, child)
-		event := claudeSDKToolActivityEvent(childSession, child.TurnID, payload, eventType, status)
-		return []activityshared.Event{claudeSDKEventForChild(event, child)}
-	}
-	return []activityshared.Event{claudeSDKToolActivityEvent(session, turnID, payload, eventType, status)}
+	return events
 }
 
 func (s *claudeSDKAdapterSession) claudeSDKTaskLifecycleEvents(session Session, turnID string, sidecarType string, payload map[string]any) []activityshared.Event {
@@ -101,6 +89,49 @@ func (s *claudeSDKAdapterSession) claudeSDKTaskLifecycleEvents(session Session, 
 		return nil
 	}
 	return claudeSDKChildEvents(session, child, created, titleChanged, sidecarType)
+}
+
+func (s *claudeSDKAdapterSession) claudeSDKTaskResultUpdatedEvents(session Session, payload map[string]any) []activityshared.Event {
+	child, ok := s.claudeSDKChildForPayload(payload)
+	summary := strings.TrimSpace(payloadString(payload, "summary"))
+	if !ok || summary == "" {
+		return nil
+	}
+	child.Summary = summary
+	child.UpdatedAtUnixMS = unixMS(now())
+	s.childSessions[child.Key] = child
+	return claudeSDKChildResultEvents(session, child)
+}
+
+func (s *claudeSDKAdapterSession) endUnresolvedClaudeSDKBackgroundChildren(session Session) []activityshared.Event {
+	if s == nil || len(s.childSessions) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(s.childSessions))
+	for key := range s.childSessions {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	events := make([]activityshared.Event, 0)
+	for _, key := range keys {
+		child := s.childSessions[key]
+		if !child.Async || claudeSDKChildStatusIsTerminal(child.Status) {
+			continue
+		}
+		updatedAt := unixMS(now())
+		child.Status = "interrupted"
+		child.UpdatedAtUnixMS = updatedAt
+		child.CompletedAtUnixMS = updatedAt
+		s.childSessions[key] = child
+		events = append(events, claudeSDKChildEvents(
+			session,
+			child,
+			false,
+			false,
+			"background_level_ended",
+		)...)
+	}
+	return events
 }
 
 func (s *claudeSDKAdapterSession) updateClaudeSDKChildFromTool(session Session, turnID string, payload map[string]any, _ string, sidecarType string) []activityshared.Event {
@@ -209,7 +240,7 @@ func (s *claudeSDKAdapterSession) updateClaudeSDKChild(session Session, update c
 		child.LastToolName = update.LastToolName
 	}
 	child.Async = child.Async || update.Async
-	child.Status = firstNonEmptyString(claudeSDKNormalizeTaskStatus(update.Status), child.Status, string(activityshared.ActivityStatusRunning))
+	child.Status = claudeSDKMergeChildStatus(child.Status, update.Status)
 	if update.Started && child.StartedAtUnixMS == 0 {
 		child.StartedAtUnixMS = updatedAt
 	}
@@ -422,6 +453,7 @@ func claudeSDKChildEvents(session Session, child claudeSDKChildSession, created 
 		events = append(events, activityshared.NewTurnUpdated(eventContext("turn-updated"), child.TurnID, activityshared.TurnPhaseWorking))
 		events = append(events, activityshared.NewActivityUpdated(eventContext("activity-updated"), activityKey, metadata))
 	case "task_completed":
+		events = append(events, claudeSDKChildResultEvents(session, child)...)
 		switch claudeSDKNormalizeTaskStatus(child.Status) {
 		case string(activityshared.ActivityStatusFailed):
 			events = append(events, activityshared.NewActivityFailed(eventContext("activity-failed"), activityKey, metadata))
@@ -433,6 +465,9 @@ func claudeSDKChildEvents(session Session, child claudeSDKChildSession, created 
 			events = append(events, activityshared.NewActivityCompleted(eventContext("activity-completed"), activityKey, metadata))
 			events = append(events, activityshared.NewTurnCompleted(eventContext("turn-completed"), child.TurnID, activityshared.TurnOutcomeCompleted))
 		}
+	case "background_level_ended":
+		events = append(events, activityshared.NewActivityCompleted(eventContext("activity-completed"), activityKey, metadata))
+		events = append(events, activityshared.NewTurnCompleted(eventContext("turn-completed"), child.TurnID, activityshared.TurnOutcomeInterrupted))
 	case "tool_started", "tool_updated":
 		if created {
 			events = append(events, activityshared.NewTurnStarted(eventContext("turn-started"), child.TurnID))
@@ -456,9 +491,32 @@ func claudeSDKChildEvents(session Session, child claudeSDKChildSession, created 
 	return events
 }
 
+func claudeSDKChildResultEvents(session Session, child claudeSDKChildSession) []activityshared.Event {
+	if strings.TrimSpace(child.Summary) == "" {
+		return nil
+	}
+	messageID := "claude-sdk:child-result:" + child.Key
+	resultEvent := newTurnActivityEventWithIDAt(
+		claudeSDKChildRuntimeSession(session, child),
+		"claude-sdk:child-result-event:"+newID(),
+		EventMessage,
+		child.TurnID,
+		messageStreamStateCompleted,
+		RoleAssistant,
+		child.Summary,
+		map[string]any{
+			"messageId":   messageID,
+			"contentMode": messageContentModeSnapshot,
+			"streamState": messageStreamStateCompleted,
+		},
+		child.UpdatedAtUnixMS,
+	)
+	return []activityshared.Event{claudeSDKEventForChild(resultEvent, child)}
+}
+
 func claudeSDKChildStatusIsTerminal(status string) bool {
 	switch claudeSDKNormalizeTaskStatus(status) {
-	case string(activityshared.ActivityStatusCompleted), string(activityshared.ActivityStatusFailed), "stopped":
+	case string(activityshared.ActivityStatusCompleted), string(activityshared.ActivityStatusFailed), "stopped", "interrupted":
 		return true
 	default:
 		return false
@@ -517,6 +575,8 @@ func claudeSDKNormalizeTaskStatus(status string) string {
 		return string(activityshared.ActivityStatusCompleted)
 	case "stopped", "cancelled", "canceled":
 		return "stopped"
+	case "interrupted":
+		return "interrupted"
 	case "running", "in_progress", "pending":
 		return string(activityshared.ActivityStatusRunning)
 	default:

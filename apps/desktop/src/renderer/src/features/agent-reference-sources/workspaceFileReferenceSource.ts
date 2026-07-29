@@ -146,7 +146,7 @@ export function createWorkspaceFileReferenceSource(input: {
 
     async search(
       scope: ReferenceScope,
-      { query, filters, limit, signal, withinNodeId }: SearchInput
+      { query, filters, kinds, limit, signal, withinNodeId }: SearchInput
     ): Promise<SearchResult> {
       if (withinNodeId === RECENT_GROUP_NODE_ID) {
         if (!adapter.listRecentReferences) {
@@ -159,7 +159,12 @@ export function createWorkspaceFileReferenceSource(input: {
           ...(signal ? { signal } : {})
         });
         const filteredRefs = refs.filter((ref) =>
-          matchesRecentReferenceSearch(ref, normalizedQuery, filters ?? [])
+          matchesRecentReferenceSearch(
+            ref,
+            normalizedQuery,
+            filters ?? [],
+            kinds
+          )
         );
         return {
           entries:
@@ -188,6 +193,7 @@ export function createWorkspaceFileReferenceSource(input: {
       const refs = await adapter.searchReferences({
         workspaceId: scope.workspaceId,
         query,
+        ...(kinds && kinds.length > 0 ? { kinds } : {}),
         ...(filters && filters.length > 0 ? { filters } : {}),
         ...(within ? { within } : {}),
         ...(limit === undefined ? {} : { limit }),
@@ -267,10 +273,18 @@ function basename(path: string): string {
 function matchesRecentReferenceSearch(
   ref: WorkspaceFileReference,
   query: string,
-  filters: readonly string[]
+  filters: readonly string[],
+  kinds?: readonly ReferenceNode["kind"][]
 ): boolean {
   const name = ref.displayName?.trim() || basename(ref.path);
   const isFolder = normalizeReferenceNodeKind(ref.kind) === "folder";
+  if (
+    kinds &&
+    kinds.length > 0 &&
+    !kinds.includes(isFolder ? "folder" : "file")
+  ) {
+    return false;
+  }
   if (!matchesFilterCategories(name, isFolder, filters)) {
     return false;
   }

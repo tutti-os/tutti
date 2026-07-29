@@ -1,32 +1,33 @@
 package providerregistry
 
+import canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
+
 const (
-	CodexProviderID = "codex"
+	CodexProviderID = canonical.CodexProviderID
 	CodexTargetID   = "local:codex"
 	CodexMinVersion = "0.126.0"
 )
 
 func codexDescriptor() ProviderDescriptor {
 	return ProviderDescriptor{
-		Identity: IdentityDescriptor{
-			ID:          CodexProviderID,
-			DisplayName: "Codex",
-			IconKey:     "codex",
-			LocaleKey:   "agentHost.agentGui.conversationFilterCodex",
-		},
+		Identity: canonicalProviderIdentity(CodexProviderID),
 		Runtime: RuntimeDescriptor{
 			Kind:                RuntimeKindCodexAppServer,
 			Name:                "codex-app-server",
 			Command:             []string{"codex", "app-server"},
 			ClientInfoName:      "codex_cli_rs",
 			AuthRequiredMessage: "Codex requires authentication. Run `codex login` on the host (or sync Codex credentials), then retry this session.",
+			NativeSessionFork:   true,
 			Endpoint: RuntimeEndpointDescriptor{
 				BaseURLEnvVars: []string{
 					"OPENAI_BASE_URL",
 					"OPENAI_API_BASE_URL",
 					"OPENAI_API_BASE",
 				},
-				ConfigKind: EndpointConfigKindCodexCLI,
+				ConfigKind:               EndpointConfigKindCodexCLI,
+				ModelPlanProtocol:        ModelPlanProtocolOpenAI,
+				ModelPlanEndpointAdapter: ModelPlanEndpointAdapterResponsesToChatGateway,
+				NativeSubscription:       true,
 			},
 		},
 		Status: StatusDescriptor{
@@ -58,6 +59,14 @@ func codexDescriptor() ProviderDescriptor {
 				BinaryName:      "codex",
 				IncludeOptional: true,
 			},
+			Update: UpdateDescriptor{
+				Capability:      UpdateCapabilitySupported,
+				Source:          UpdateSourceNPM,
+				Strategy:        UpdateStrategyManagedNPM,
+				PackageName:     "@openai/codex",
+				BinaryName:      "codex",
+				IncludeOptional: true,
+			},
 			LoginArgs: []string{"login", "-c", `service_tier="fast"`},
 			AuthWatch: AuthWatchDescriptor{
 				Sources: []AuthWatchSourceDescriptor{
@@ -77,6 +86,8 @@ func codexDescriptor() ProviderDescriptor {
 			DefaultReasoningEffort:  "high",
 			ConfiguredModelOverride: ConfiguredModelOverrideCodexCustomProvider,
 			Speed:                   true,
+			SpeedValues:             []string{"standard", "fast"},
+			DefaultSpeed:            "standard",
 			Capabilities: []string{
 				CapabilityImageInput,
 				CapabilitySkills,
@@ -86,6 +97,9 @@ func codexDescriptor() ProviderDescriptor {
 				CapabilityPlanMode,
 				CapabilityInterrupt,
 				CapabilityActiveTurnGuidance,
+				CapabilityGoalPause,
+				CapabilityModelSwitch,
+				CapabilityModelPlanBinding,
 				CapabilityPlanImplementation,
 				CapabilityPermissionModeChangeDuringTurn,
 				CapabilityPermissionModeChangeDeferred,
@@ -135,7 +149,7 @@ func codexDescriptor() ProviderDescriptor {
 			TurnLifecycleProjection: TurnLifecycleProjectionExplicit,
 		},
 		Sidecar: SidecarDescriptor{ExecutionEnvironment: SidecarExecutionEnvironmentCodexSandbox},
-		Desktop: DesktopIntegrationDescriptor{Managed: true, ManagedOrder: 2, StatusProbePriority: 1, UsageProbeKind: DesktopUsageProbeCodex, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 1},
+		Desktop: DesktopIntegrationDescriptor{Managed: true, ManagedOrder: 2, StatusProbePriority: 1, UsageProbeKind: DesktopUsageProbeCodex, CommandNetworkAccess: true, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 1},
 		ExternalImport: ExternalImportDescriptor{
 			Enabled:                  true,
 			RootEnvVar:               "CODEX_HOME",

@@ -11,7 +11,8 @@ Use these environment variables:
 - `TUTTI_APP_INSTALLATION_ID`: current `<workspace-id>:<app-id>` installation id.
 - `TUTTI_APP_PACKAGE_DIR`: package files, read-only at runtime.
 - `TUTTI_APP_RUNTIME_DIR`: scratch/runtime files.
-- `TUTTI_APP_DATA_DIR`: durable app data.
+- `TUTTI_APP_DATA_DIR`: durable app artifacts and non-database state.
+- `TUTTI_APP_DATABASE_DIR`: host-local durable database files for this installation. Put active SQLite databases and their WAL/SHM files here; multiple database files are allowed.
 - `TUTTI_APP_LOG_DIR`: app logs.
 - `TUTTI_APP_TOOLCHAIN_ROOT`: shared daemon-owned toolchain cache for app-managed binaries that are safe to reuse across workspace app installations.
 - `TUTTI_APP_NODE`: managed Node.js executable path for generated apps.
@@ -20,15 +21,31 @@ Use these environment variables:
 - `TUTTI_API_BASE_URL`: base URL for server-side calls to the Tutti daemon API.
 - `TUTTI_APP_SERVER_TOKEN`: bearer token for this app server's scoped Tutti API calls.
 - `TUTTI_CLI`: explicit command path for invoking local Tutti CLI capabilities. This is the stable app-runtime entrypoint across development and packaged production.
+- `TUTTI_CLI_CONFIG`: optional host-provided Tutti CLI routing configuration. Treat its value as opaque.
 - `TUTTI_WORKSPACE_ID`: current workspace id.
 - `TUTTI_WORKSPACE_NAME`: current workspace display name.
-- `TUTTI_WORKSPACE_ROOT`: workspace path, read-only unless the user explicitly asked the app to write workspace files.
+
+The host does not copy its complete daemon environment into an app process. It inherits only the operating-system baseline needed to launch child processes (path, home and user identity, temporary directories, locale, proxy, certificate, and platform runtime variables) plus the explicit credential, endpoint, provider-home, and command/config variables used by the supported Codex, Claude Code, Cursor, Tutti Agent, and OpenCode targets. App runtime values such as `TUTTI_APP_SERVER_TOKEN` and managed executable paths are added as explicit host-owned overrides. Do not depend on unrelated ambient daemon, database, release, or publishing variables being present.
+
+The runner does not inject a workspace filesystem root. Use `TUTTI_WORKSPACE_ID` only as identity metadata and use `TUTTI_CLI` for explicit workspace-scoped capabilities. When a caller supplies an absolute input path, treat it as opaque caller data; do not derive a workspace root or default output location from it. Relative path inputs must be resolved by the caller against its own working directory before invoking the app.
 
 `PATH` includes the managed runtime bin directories, but generated apps must still use the explicit `TUTTI_APP_NODE`, `TUTTI_APP_NPM`, and, when applicable, `TUTTI_APP_PYTHON` variables. Do not rely on system `node`, `npm`, `python`, or `python3` commands.
 
 Read `TUTTI_APP_SERVER_TOKEN` only in the app server process. Never send it to browser code, persist it, or write it to logs. It remains available for non-Agent app-scoped daemon resources. Agent catalog and composer discovery must not use this token, daemon URL, workspace ID, or app ID; call the `@tutti-os/agent-acp-kit/tutti` facade, which owns `TUTTI_CLI` execution.
 
 For local Tutti capabilities, use `TUTTI_CLI`.
+
+`TUTTI_APP_DATABASE_DIR` is intentionally separate from `TUTTI_APP_DATA_DIR`.
+The data directory may be exposed through app references, uploads, backup, or a
+synchronized workspace implementation, while a live SQLite database requires
+local filesystem locking and atomic-write semantics. Do not put a live SQLite
+database in `TUTTI_APP_DATA_DIR`, and do not expose host paths from either
+directory to browser code. An app can keep exportable snapshots or documents in
+the data directory while keeping its active database in the database directory.
+
+`TUTTI_CLI` is the complete app-facing CLI contract. App code and generated
+skills must not require, parse, or document host-internal CLI configuration
+variables; the host-provided command owns its own connection configuration.
 
 Tutti keeps the managed runtime baseline outside app packages under daemon-owned state. Operators can override the cache with `TUTTI_APP_RUNTIME_CACHE_ROOT`, point at an exact prepared runtime with `TUTTI_APP_RUNTIME_ROOT`, or override first-use runtime downloads with `TUTTI_APP_RUNTIME_CATALOG`. App packages must not set these variables themselves.
 
@@ -63,7 +80,41 @@ function subscribeHostLocale(listener) {
 }
 ```
 
-`subscribe` replays the latest context after registration, so apps do not need host-injected DOM events for initial locale delivery. Agent lists, default agent selection, and Agent composer options are not part of browser external context. Agent-enabled apps should expose an app-owned backend endpoint whose implementation calls `@tutti-os/agent-acp-kit/tutti`; the kit automatically uses `TUTTI_CLI` inside Tutti and standalone runtime discovery outside it. App code must not spawn or parse the Agent CLI itself. Follow `$tutti-agent-workspace-app` and its `references/dynamic-agent-providers.md`. The browser context remains optional so generated apps continue to run in a normal browser during development.
+`subscribe` replays the latest context after registration, so apps do not need host-injected DOM events for initial locale delivery. The browser context remains optional so generated apps continue to run in a normal browser during development.
+
+## Browser Agent Activity Automation
+
+Trusted automation apps may use `window.tuttiExternal.agentActivity` to drive
+the official host-owned Agent GUI runtime. This is the correct surface for an
+app that batches provider tests and observes the same sessions, turns, and
+messages shown in Agent GUI. It is not a general replacement for an app-owned
+Agent runtime.
+
+Supporting hosts advertise `agentActivity@1` through
+`app.getContext().capabilities`; keep bridge feature detection for normal-browser
+development and older hosts.
+
+The surface provides:
+
+- `listTargets()` for exact host target IDs and availability.
+- `getComposerOptions(input)` for target-specific composer capabilities.
+- `activateSession(input)` for creating a visible Agent GUI session.
+- `sendInput(input)` and `cancelTurn(input)` for subsequent turn control.
+- `getSnapshot()` for the current workspace Activity snapshot.
+
+The host injects the current workspace ID and ignores workspace identities from
+app input. Use exact `agentTargetId` values from `listTargets()` and set
+`visible: true` for sessions users should inspect. The app may poll
+`getSnapshot()` to aggregate terminal turn outcomes and message failures; it
+must not add a second Activity engine, provider adapter, or provider-specific
+transport.
+
+Apps that own Agent policy, run an independent local Agent, or need app-owned
+MCP/tool gateways should instead expose an app backend using
+`@tutti-os/agent-acp-kit/tutti`. The kit automatically uses `TUTTI_CLI` inside
+Tutti and standalone runtime discovery outside it. App code must not spawn or
+parse the Agent CLI itself. Follow `$tutti-agent-workspace-app` and its
+`references/dynamic-agent-providers.md`.
 
 For theme, use CSS media queries and `matchMedia`:
 

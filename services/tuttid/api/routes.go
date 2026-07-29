@@ -100,6 +100,46 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.LogoutAccount(w, r)
 	})
 
+	mux.HandleFunc("/v1/mobile-remote-access/pairing-challenges", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.StartMobileRemotePairing(w, r)
+	})
+
+	mux.HandleFunc("/v1/mobile-remote-access/pairing-challenges/{challengeID}", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.GetMobileRemotePairingChallenge(w, r)
+	})
+
+	mux.HandleFunc("/v1/mobile-remote-access/pairing-challenges/{challengeID}/confirm", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.ConfirmMobileRemotePairing(w, r)
+	})
+
+	mux.HandleFunc("/v1/mobile-remote-access/pairings", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.ListMobileRemotePairings(w, r)
+	})
+
+	mux.HandleFunc("/v1/mobile-remote-access/pairings/{pairingID}", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.RevokeMobileRemotePairing(w, r)
+	})
+
 	mux.HandleFunc("/v1/cli/capabilities", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			tuttitypes.WriteMethodNotAllowed(w)
@@ -127,42 +167,18 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		}
 	})
 
-	mux.HandleFunc("/v1/agent-targets", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.ListAgentTargets(w, r)
-	})
-
-	mux.HandleFunc("/v1/agent-targets/{agentTargetID}/enabled", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPatch {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.SetSystemAgentTargetEnabled(w, r)
-	})
-
-	mux.HandleFunc("/v1/user-projects", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			wrapper.ListUserProjects(w, r)
-		case http.MethodPost:
-			wrapper.UseUserProject(w, r)
-		case http.MethodDelete:
-			wrapper.DeleteUserProject(w, r)
-		default:
-			tuttitypes.WriteMethodNotAllowed(w)
-		}
-	})
-
-	mux.HandleFunc("/v1/user-projects/check", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/agent-maintenance/deleted-conversations/purge", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			tuttitypes.WriteMethodNotAllowed(w)
 			return
 		}
-		wrapper.CheckUserProjectPath(w, r)
+		wrapper.PurgeDeletedAgentConversations(w, r)
 	})
+
+	registerAgentTargetRoutes(mux, wrapper)
+	registerAgentQuickPromptRoutes(mux, wrapper)
+
+	registerUserProjectRoutes(mux, wrapper)
 
 	mux.HandleFunc("/v1/events/ws", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -257,12 +273,121 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		}
 	})
 
+	registerWorkspaceWorkflowRoutes(mux, wrapper)
+	registerTuttiModeGoalReviewRoutes(mux, wrapper)
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-context/workspace-app-mentions", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			tuttitypes.WriteMethodNotAllowed(w)
 			return
 		}
 		wrapper.ListWorkspaceAppMentionCandidates(w, r)
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/model-plans", func(w http.ResponseWriter, r *http.Request) {
+		workspaceID := tuttigenerated.WorkspaceID(r.PathValue("workspaceID"))
+		switch r.Method {
+		case http.MethodGet:
+			routes.ListModelPlans(w, r, workspaceID)
+		case http.MethodPost:
+			routes.CreateModelPlan(w, r, workspaceID)
+		default:
+			tuttitypes.WriteMethodNotAllowed(w)
+		}
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/model-plans/detect", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		routes.DetectModelPlan(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")))
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}", func(w http.ResponseWriter, r *http.Request) {
+		workspaceID := tuttigenerated.WorkspaceID(r.PathValue("workspaceID"))
+		modelPlanID := tuttigenerated.ModelPlanID(r.PathValue("modelPlanID"))
+		switch r.Method {
+		case http.MethodGet:
+			routes.GetModelPlan(w, r, workspaceID, modelPlanID)
+		case http.MethodPut:
+			routes.UpdateModelPlan(w, r, workspaceID, modelPlanID)
+		case http.MethodDelete:
+			routes.DeleteModelPlan(w, r, workspaceID, modelPlanID)
+		default:
+			tuttitypes.WriteMethodNotAllowed(w)
+		}
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}/duplicate", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		routes.DuplicateModelPlan(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")), tuttigenerated.ModelPlanID(r.PathValue("modelPlanID")))
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}/enabled", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		routes.SetModelPlanEnabled(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")), tuttigenerated.ModelPlanID(r.PathValue("modelPlanID")))
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}/references", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		routes.ListModelPlanReferences(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")), tuttigenerated.ModelPlanID(r.PathValue("modelPlanID")))
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-model-bindings", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		routes.ListAgentModelBindings(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")))
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-model-bindings/{agentTargetID}", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		routes.SetAgentModelBinding(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")), r.PathValue("agentTargetID"))
+	})
+
+	registerWorkspaceAgentRoutes(mux, routes, wrapper)
+	registerAutomationRuleRoutes(mux, routes)
+	registerModelGovernanceRoutes(mux, routes, wrapper)
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/collaboration-runs", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			wrapper.ListCollaborationRuns(w, r)
+		case http.MethodPost:
+			routes.CreateCollaborationRun(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")))
+		default:
+			tuttitypes.WriteMethodNotAllowed(w)
+		}
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/adoption", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		routes.SetCollaborationRunAdoption(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")), tuttigenerated.CollaborationRunID(r.PathValue("collaborationRunID")))
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/cancel", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		routes.CancelCollaborationRun(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")), tuttigenerated.CollaborationRunID(r.PathValue("collaborationRunID")))
 	})
 
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/managed-model-providers", func(w http.ResponseWriter, r *http.Request) {
@@ -365,190 +490,9 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.PublishWorkspaceAppFactoryJob(w, r)
 	})
 
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			wrapper.ListWorkspaceAgentSessions(w, r)
-		case http.MethodDelete:
-			wrapper.ClearWorkspaceAgentSessions(w, r)
-		case http.MethodPost:
-			wrapper.CreateWorkspaceAgentSession(w, r)
-		default:
-			tuttitypes.WriteMethodNotAllowed(w)
-		}
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/batch", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodDelete {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.DeleteWorkspaceAgentSessionsBatch(w, r)
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-session-sections", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			wrapper.ListWorkspaceAgentSessionSections(w, r)
-		default:
-			tuttitypes.WriteMethodNotAllowed(w)
-		}
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-session-sections/page", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.ListWorkspaceAgentSessionSectionPage(w, r)
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-session-sections/deletion-candidates", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.ListWorkspaceAgentSessionSectionDeletionCandidates(w, r)
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-session-sections/pinned-page", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.ListWorkspaceAgentPinnedSessionPage(w, r)
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/external-imports/scan", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.ScanWorkspaceExternalAgentSessionImports(w, r)
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/external-imports/import", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.ImportWorkspaceExternalAgentSessions(w, r)
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			wrapper.GetWorkspaceAgentSession(w, r)
-		case http.MethodDelete:
-			wrapper.DeleteWorkspaceAgentSession(w, r)
-		default:
-			tuttitypes.WriteMethodNotAllowed(w)
-		}
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/messages", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.ListWorkspaceAgentSessionMessages(w, r)
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-generated-files", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.ListWorkspaceAgentGeneratedFiles(w, r)
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/attachments/{attachmentID}", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.ReadWorkspaceAgentSessionAttachment(w, r)
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/goal", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.GoalControlWorkspaceAgentSession(w, r)
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/input", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.SendWorkspaceAgentSessionInput(w, r)
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/settings", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.UpdateWorkspaceAgentSessionSettings(w, r)
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/pin", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.UpdateWorkspaceAgentSessionPin(w, r)
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/title", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.UpdateWorkspaceAgentSessionTitle(w, r)
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/turns/{turnID}/cancel", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.CancelWorkspaceAgentTurn(w, r)
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/turns/{turnID}/plan-decisions/{requestID}", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.SubmitWorkspaceAgentPlanDecision(w, r)
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/visibility", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.UpdateWorkspaceAgentSessionVisibility(w, r)
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/interactives/{requestID}/response", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.SubmitWorkspaceAgentInteractive(w, r)
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/git-branches", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.ListWorkspaceAgentSessionGitBranches(w, r)
-	})
+	registerWorkspaceAgentSessionRoutes(mux, wrapper)
+	registerAgentSessionRecordingRoutes(mux, wrapper)
+	registerAgentSessionReplayRunRoutes(mux, wrapper)
 
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/git-branches", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -574,168 +518,7 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.ApplyWorkspaceGitPatch(w, r)
 	})
 
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/issues", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			wrapper.ListWorkspaceIssues(w, r)
-		case http.MethodPost:
-			wrapper.CreateWorkspaceIssue(w, r)
-		default:
-			tuttitypes.WriteMethodNotAllowed(w)
-		}
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/issue-references/search", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.SearchWorkspaceIssueReferences(w, r)
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/issue-topics", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			wrapper.ListWorkspaceIssueTopics(w, r)
-		case http.MethodPost:
-			wrapper.CreateWorkspaceIssueTopic(w, r)
-		default:
-			tuttitypes.WriteMethodNotAllowed(w)
-		}
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/issue-topics/{topicID}", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodPatch:
-			wrapper.UpdateWorkspaceIssueTopic(w, r)
-		case http.MethodDelete:
-			wrapper.DeleteWorkspaceIssueTopic(w, r)
-		default:
-			tuttitypes.WriteMethodNotAllowed(w)
-		}
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/issues/{issueID}", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			wrapper.GetWorkspaceIssueDetail(w, r)
-		case http.MethodPatch:
-			wrapper.UpdateWorkspaceIssue(w, r)
-		case http.MethodDelete:
-			wrapper.DeleteWorkspaceIssue(w, r)
-		default:
-			tuttitypes.WriteMethodNotAllowed(w)
-		}
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/issues/{issueID}/context-refs", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.AddWorkspaceIssueContextRefs(w, r)
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/issues/{issueID}/context-refs/{contextRefID}", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodDelete {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.RemoveWorkspaceIssueContextRef(w, r)
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/issues/{issueID}/runs", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			wrapper.ListWorkspaceIssueRuns(w, r)
-		case http.MethodPost:
-			wrapper.CreateWorkspaceIssueRun(w, r)
-		default:
-			tuttitypes.WriteMethodNotAllowed(w)
-		}
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/issues/{issueID}/runs/{runID}", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			wrapper.GetWorkspaceIssueRun(w, r)
-		case http.MethodPatch:
-			wrapper.CompleteWorkspaceIssueRun(w, r)
-		default:
-			tuttitypes.WriteMethodNotAllowed(w)
-		}
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/issues/{issueID}/tasks", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			wrapper.ListWorkspaceIssueTasks(w, r)
-		case http.MethodPost:
-			wrapper.CreateWorkspaceIssueTask(w, r)
-		default:
-			tuttitypes.WriteMethodNotAllowed(w)
-		}
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/issues/{issueID}/tasks/batch-create", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodPost:
-			wrapper.CreateWorkspaceIssueTasks(w, r)
-		default:
-			tuttitypes.WriteMethodNotAllowed(w)
-		}
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/issues/{issueID}/tasks/{taskID}", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			wrapper.GetWorkspaceIssueTaskDetail(w, r)
-		case http.MethodPatch:
-			wrapper.UpdateWorkspaceIssueTask(w, r)
-		case http.MethodDelete:
-			wrapper.DeleteWorkspaceIssueTask(w, r)
-		default:
-			tuttitypes.WriteMethodNotAllowed(w)
-		}
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/issues/{issueID}/tasks/{taskID}/context-refs", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.AddWorkspaceIssueTaskContextRefs(w, r)
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/issues/{issueID}/tasks/{taskID}/context-refs/{contextRefID}", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodDelete {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.RemoveWorkspaceIssueTaskContextRef(w, r)
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/issues/{issueID}/tasks/{taskID}/runs", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			wrapper.ListWorkspaceIssueTaskRuns(w, r)
-		case http.MethodPost:
-			wrapper.CreateWorkspaceIssueTaskRun(w, r)
-		default:
-			tuttitypes.WriteMethodNotAllowed(w)
-		}
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/issues/{issueID}/tasks/{taskID}/runs/{runID}", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			wrapper.GetWorkspaceIssueTaskRun(w, r)
-		case http.MethodPatch:
-			wrapper.CompleteWorkspaceIssueTaskRun(w, r)
-		default:
-			tuttitypes.WriteMethodNotAllowed(w)
-		}
-	})
+	registerIssueRoutes(mux, wrapper)
 
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/terminals", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {

@@ -1,10 +1,11 @@
-import { memo, useEffect, useState, type JSX } from "react";
+import { memo, useState, type JSX } from "react";
 import { AlertCircle, ChevronDown, ChevronRight } from "lucide-react";
 import { AgentLinedIcon } from "../../../app/renderer/components/icons/AgentLinedIcon";
 import { translate } from "../../../i18n/index";
 import type { AgentTaskSubAgentVM } from "../contracts/agentTaskItemVM";
 import type { AgentToolCallVM } from "../contracts/agentToolCallVM";
 import { CollapsibleReveal } from "./CollapsibleReveal";
+import { useAgentConversationNowUnixMs } from "./AgentConversationClock";
 import { formatAgentToolDurationMs } from "./tool-renderers/render-data/agentToolRenderData";
 
 // A delegated sub-agent renders as a first-class row aligned with tool rows:
@@ -214,9 +215,15 @@ function SubAgentProgress({
     subAgent.failureDetail ??
     subAgent.latestActivity ??
     translate(
-      subAgent.queued
-        ? "agentHost.agentTool.details.subAgentQueued"
-        : "agentHost.agentTool.details.subAgentStarting"
+      subAgent.status === "completed"
+        ? "agentHost.agentTool.statusCompleted"
+        : subAgent.status === "canceled"
+          ? "agentHost.agentTool.statusCanceled"
+          : subAgent.status === "failed"
+            ? "agentHost.agentTool.statusFailed"
+            : subAgent.queued
+              ? "agentHost.agentTool.details.subAgentQueued"
+              : "agentHost.agentTool.details.subAgentStarting"
     );
   return (
     <div
@@ -281,23 +288,7 @@ function useRunningSubAgentNowUnixMs(
   const shouldTick =
     isSubAgentActivelyRunning(subAgent) &&
     typeof subAgent.startedAtUnixMs === "number";
-  const [nowUnixMs, setNowUnixMs] = useState<number | null>(() =>
-    shouldTick ? Date.now() : null
-  );
-
-  useEffect(() => {
-    if (!shouldTick) {
-      setNowUnixMs(null);
-      return;
-    }
-
-    const updateNow = () => setNowUnixMs(Date.now());
-    updateNow();
-    const intervalId = window.setInterval(updateNow, 1000);
-    return () => window.clearInterval(intervalId);
-  }, [shouldTick, subAgent.startedAtUnixMs]);
-
-  return nowUnixMs;
+  return useAgentConversationNowUnixMs(shouldTick);
 }
 
 function subAgentElapsedText(

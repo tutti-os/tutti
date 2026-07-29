@@ -48,6 +48,10 @@ export class WorkspaceWindowRegistry<
     return this.registrations.get(window)?.kind ?? null;
   }
 
+  getWorkspaceID(window: TWindow): string | null {
+    return this.registrations.get(window)?.workspaceID ?? null;
+  }
+
   register(window: TWindow, registration: WorkspaceWindowRegistration): void {
     if (registration.kind === "workspace") {
       this.assertDurableWorkspaceAvailable(registration.workspaceID);

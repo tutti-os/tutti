@@ -7,16 +7,29 @@ export const agentGuiWorkbenchOpenSessionActivationType =
 export const agentGuiWorkbenchPrefillPromptActivationType =
   "agent-gui:prefill-prompt";
 
+export interface AgentGuiWorkbenchOpenSessionComposerAppend {
+  draftPrompt: string;
+  focusComposer?: boolean;
+}
+
+export interface AgentGuiWorkbenchOpenSessionPayload {
+  agentSessionId: string;
+  composerAppend?: AgentGuiWorkbenchOpenSessionComposerAppend;
+}
+
 export interface AgentGuiWorkbenchPrefillPromptPayload {
   agentTargetId?: string | null;
   autoSubmit?: boolean;
   draftPrompt: string;
+  model?: string | null;
+  modelPlanId?: string | null;
   provider?: AgentGuiWorkbenchProvider;
   userProjectPath?: string | null;
 }
 
 export interface AgentGuiWorkbenchComposerOverrides {
   model?: string | null;
+  modelPlanId?: string | null;
   permissionModeId?: string | null;
   planMode?: boolean;
   reasoningEffort?: string | null;
@@ -41,6 +54,7 @@ export interface AgentGuiWorkbenchNodeState {
   conversationRailCollapsed?: boolean | null;
   conversationRailWidthPx?: number | null;
   lastActiveAgentSessionId: string | null;
+  lastActiveAgentSessionIdByAgentTargetId?: Record<string, string> | null;
   provider: AgentGuiWorkbenchProvider;
 }
 
@@ -49,6 +63,7 @@ export interface AgentGuiWorkbenchState {
   conversationRailCollapsed?: boolean | null;
   conversationRailWidthPx?: number | null;
   lastActiveAgentSessionId: string | null;
+  lastActiveAgentSessionIdByAgentTargetId?: Record<string, string> | null;
 }
 
 export interface AgentGuiWorkbenchWorkspaceState {

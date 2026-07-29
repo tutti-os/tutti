@@ -1,10 +1,13 @@
 package agentruntime
 
 import (
+	"encoding/json"
 	"strings"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/daemon/liveprotocol"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 func ReportableActivityEvents(events []activityshared.Event) []activityshared.Event {
@@ -37,6 +40,16 @@ func ProjectActivityEventsToStreamEvents(session Session, events []activityshare
 				Data:      patch,
 			})
 		}
+		if delta, ok := liveMessageDeltaFromSessionEvent(session, event, sessionID, timestamp); ok {
+			out = append(out, StreamEvent{
+				EventType: StreamEventMessageDelta,
+				Data:      delta,
+			})
+			continue
+		}
+		if isPrecommitTerminalTextMessage(event) {
+			continue
+		}
 		if update, ok := messageUpdateFromSessionEvent(source, event, sessionID, timestamp); ok {
 			out = append(out, StreamEvent{
 				EventType: StreamEventMessageUpdate,
@@ -58,8 +71,84 @@ func ProjectActivityEventsToStreamEvents(session Session, events []activityshare
 	return out
 }
 
-func eventSourceFromSession(session Session) agentsessionstore.EventSource {
-	return agentsessionstore.EventSource{
+func liveMessageDeltaFromSessionEvent(
+	session Session,
+	event activityshared.Event,
+	sessionID string,
+	timestamp int64,
+) (liveprotocol.Event, bool) {
+	contentOperation, _ := event.Payload.Metadata[liveContentOperationMetadataKey].(*liveprotocol.MessageContentOperation)
+	toolOutputOperation, _ := event.Payload.Metadata[liveToolOutputOperationMetadataKey].(*liveprotocol.MessageToolOutputOperation)
+	if contentOperation == nil && toolOutputOperation == nil {
+		return liveprotocol.Event{}, false
+	}
+	messageID := firstNonEmptyString(stringFromPayload(event.Payload.Metadata, "messageId"), event.EventID)
+	if toolOutputOperation != nil {
+		// Tool-call persistence deliberately keys the canonical message by call
+		// identity (`toolcall:<callId>`), while EventID is the normalizer's
+		// internal lifecycle identity. The live output must target that same
+		// canonical anchor or the optimistic overlay would create a second,
+		// output-only tool row.
+		messageID = toolCallMessageUpdateID(event, sessionID, timestamp)
+	}
+	if messageID == "" || strings.TrimSpace(event.Payload.TurnID) == "" || timestamp <= 0 {
+		return liveprotocol.Event{}, false
+	}
+	var contentOperationCopy *liveprotocol.MessageContentOperation
+	if contentOperation != nil {
+		copy := *contentOperation
+		copy.Value = append(json.RawMessage(nil), contentOperation.Value...)
+		contentOperationCopy = &copy
+	}
+	var toolOutputOperationCopy *liveprotocol.MessageToolOutputOperation
+	if toolOutputOperation != nil {
+		copy := *toolOutputOperation
+		if toolOutputOperation.OffsetBytes != nil {
+			offset := *toolOutputOperation.OffsetBytes
+			copy.OffsetBytes = &offset
+		}
+		toolOutputOperationCopy = &copy
+	}
+	status := strings.TrimSpace(stringFromPayload(event.Payload.Metadata, "streamState"))
+	data := liveprotocol.MessageDeltaData{
+		WorkspaceID:      strings.TrimSpace(session.RoomID),
+		AgentSessionID:   strings.TrimSpace(event.AgentSessionID),
+		MessageID:        messageID,
+		TurnID:           strings.TrimSpace(event.Payload.TurnID),
+		Role:             strings.TrimSpace(stringFromPayload(event.Payload.Metadata, liveMessageRoleMetadataKey)),
+		Kind:             strings.TrimSpace(stringFromPayload(event.Payload.Metadata, liveMessageKindMetadataKey)),
+		OccurredAtUnixMS: timestamp,
+		Content:          contentOperationCopy,
+		ToolOutput:       toolOutputOperationCopy,
+	}
+	if status != "" {
+		data.Status = &status
+	}
+	delta, err := liveprotocol.NewMessageDeltaEvent(data)
+	return delta, err == nil
+}
+
+func isPrecommitTerminalTextMessage(event activityshared.Event) bool {
+	if event.Type != activityshared.EventMessageAppended && event.Type != activityshared.EventMessageCreated {
+		return false
+	}
+	role := strings.TrimSpace(string(event.Payload.Role))
+	if role != RoleAssistant && role != RoleAssistantThinking {
+		return false
+	}
+	if stringFromPayload(event.Payload.Metadata, "contentMode") != messageContentModeSnapshot {
+		return false
+	}
+	switch stringFromPayload(event.Payload.Metadata, "streamState") {
+	case messageStreamStateCompleted, messageStreamStateFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+func eventSourceFromSession(session Session) canonical.EventSource {
+	return canonical.EventSource{
 		Provider:               strings.TrimSpace(session.Provider),
 		ProviderSessionID:      strings.TrimSpace(session.ProviderSessionID),
 		SessionCreatedAtUnixMS: session.CreatedAtUnixMS,
@@ -71,9 +160,16 @@ func eventSourceFromSession(session Session) agentsessionstore.EventSource {
 }
 
 func activityEventContext(session Session, eventID string, turnID string) (activityshared.EventContext, bool) {
+	return activityEventContextAt(session, eventID, turnID, 0)
+}
+
+func activityEventContextAt(session Session, eventID string, turnID string, occurredAtUnixMS int64) (activityshared.EventContext, bool) {
 	provider, ok := activityshared.NormalizeProvider(session.Provider)
 	if !ok {
 		return activityshared.EventContext{}, false
+	}
+	if occurredAtUnixMS <= 0 {
+		occurredAtUnixMS = nextEventUnixMS()
 	}
 	return activityshared.EventContext{
 		EventID:           strings.TrimSpace(eventID),
@@ -83,7 +179,7 @@ func activityEventContext(session Session, eventID string, turnID string) (activ
 		TurnID:            strings.TrimSpace(turnID),
 		CWD:               strings.TrimSpace(session.CWD),
 		Title:             strings.TrimSpace(session.Title),
-		OccurredAtUnixMS:  nextEventUnixMS(),
+		OccurredAtUnixMS:  occurredAtUnixMS,
 	}, true
 }
 

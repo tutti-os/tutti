@@ -1,6 +1,11 @@
 package types
 
-import "path/filepath"
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+)
 
 func TuttidDBPath() string {
 	return ResolveDefaultsFromEnv().State.TuttidDBPath
@@ -36,6 +41,34 @@ func TuttidStateOwnershipLockPath() string {
 
 func DefaultStateDir() string {
 	return ResolveDefaultsFromEnv().State.RootDir
+}
+
+func DefaultAgentRuntimeDir() (string, error) {
+	homeDir, err := userHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(homeDir, ".local", "share", "tutti", "agent-runtimes"), nil
+}
+
+func DefaultAgentExecutableDir() (string, error) {
+	homeDir, err := userHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(homeDir, ".local", "bin"), nil
+}
+
+func userHomeDir() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	homeDir = strings.TrimSpace(homeDir)
+	if homeDir == "" {
+		return "", errors.New("user home directory is unavailable")
+	}
+	return homeDir, nil
 }
 
 func IsDevelopmentEnv() bool {

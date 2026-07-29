@@ -1,12 +1,12 @@
 # @tutti-os/agent-activity-core
 
-Shared agent activity state, merge rules, and selectors for Tutti agent UIs.
+Shared agent activity state, orchestration rules, merge rules, and selectors for
+Tutti agent UIs.
 
-This package owns the frontend-side session snapshot model used by surfaces such
-as `@tutti-os/agent-gui` and the future message center. It does not know about
-Electron, HTTP, SSE, or daemon DTOs. Product-specific code provides an
-`AgentActivityAdapter`; the controller turns that adapter into a stable in-memory
-snapshot.
+This package owns the frontend-side workspace engine and activity snapshot model
+used by Desktop and Mobile surfaces. It does not know about Electron, React
+Native, HTTP, SSE, DeviceLink, or daemon DTOs. Product-specific adapters execute
+transport commands and normalize observations before they enter the engine.
 
 ## Package Boundary
 
@@ -17,13 +17,20 @@ snapshot.
 - can retain live session event streams with reference-counted subscription
   lifecycle when a host adapter exposes that optional capability
 - merges persisted and live messages with version-aware conflict handling
+- analyzes normalized activity events into one inline-observation intent plus
+  an explicit authoritative-reconcile requirement
+- projects shared activation, prompt send, settings update, turn cancel,
+  Interaction response, pin, and batch-delete commands onto one typed host
+  effect port
+- executes the shared prompt sequence, including required settings persistence
+  before send
 - exposes selectors such as `selectNeedsAttentionCount`
 
 It intentionally does not render UI, open network connections directly, persist
 state, or translate daemon/backend contracts. Those responsibilities belong to a
 host adapter such as the desktop renderer adapter.
 
-## Session Engine (skeleton)
+## Session Engine
 
 `createAgentSessionEngine` is the workspace-level orchestration loop described
 in `docs/architecture/agent-gui-refactor-plan.md` (section 3.3). It is
@@ -34,7 +41,7 @@ import { createAgentSessionEngine } from "@tutti-os/agent-activity-core";
 
 const engine = createAgentSessionEngine({
   identity: { workspaceId: "workspace-1", origin: "local-tuttid" },
-  commandPort, // executes external command descriptions (transport adapter)
+  commandPort, // typed lifecycle effects plus host-specific command extensions
   scheduler, // host timer port, e.g. setTimeout-backed outside this package
   clock, // host clock port: { nowUnixMs() }
   diagnosticSink // optional instance-level diagnostics receiver
@@ -50,6 +57,13 @@ Engine rules:
   plus command descriptions; the effect executor performs commands and feeds
   every settlement (success, failure, timeout) back into the loop as
   command-result intents.
+- New hosts implement `AgentSessionEffectPort` for activation, prompt send,
+  settings update, turn cancellation, Interaction response, pin, and batch
+  delete. The Engine owns command-to-capability projection and
+  required-settings-before-send ordering. A typed port declares
+  `kind: "typed"` and its `execute` callback receives only
+  `EngineExtensionCommand`; the discriminated legacy shape keeps the
+  complete-command callback while existing package consumers migrate.
 - Timing is never read inside reducers. Deadlines are `scheduleExpiry`
   commands handled by the expiry clock, which re-enters the loop with expiry
   intents through the injected host scheduler.
@@ -60,9 +74,10 @@ Engine rules:
   surfaces subscribe through the single `useEngineSelector` binding in
   `@tutti-os/agent-gui`.
 
-The current state tree carries only the skeleton `engineRuntime` domain;
-business domains (turn lifecycle, queue send, optimistic intents) land as
-sibling reducers in later refactor slices.
+The state tree includes lifecycle entities, message windows, prompt queue,
+pending intents, composer options, runtime availability, reconciliation, and
+attention/read state. Hosts must consume selectors or stable snapshot
+projections instead of reading reducer maps from UI components.
 
 ## Adapter Contract
 
@@ -159,21 +174,22 @@ the opaque `targetKey`.
 
 ## Submit Availability
 
-Hosts should return `submitAvailability` as the authoritative wire state when a
-session knows whether normal input is allowed. Consumers that need an effective
-decision should call `resolveSubmitAvailability()`: explicit wire
-`state: "available"` stays available, unknown wire blocked reasons stay
-blocked, and locally derived `active_turn` or `waiting`
-blocks fill missing or stale derived states.
+The engine derives submit availability from canonical Turns and pending
+Interactions. Hosts must not copy deprecated session-level lifecycle or submit
+availability fields into the frontend.
 
-`turnLifecycle.activeTurnId` should be cleared when a turn settles. The selector
-still treats terminal lifecycle phases such as `settled` as authoritative so an
-older runtime that leaves a stale active turn id does not permanently block the
-composer.
+A host whose command transport can differ per Session may dispatch
+`session/runtimeAvailabilityChanged`. This ephemeral, session-scoped fact is
+kept outside the canonical Session and blocks runtime-dependent commands while
+the exact Session transport reconnects or is unavailable. Omitted availability
+defaults to available, so ordinary local runtimes retain their existing
+behavior. A workspace-wide `engine/connectionChanged` event must not be used to
+represent one remote Session's transport because that would also block
+unrelated Sessions sharing the engine.
 
 ## Event Shape
 
-Live streams emit `AgentActivitySessionEventEnvelope`:
+Canonical streams emit a versioned `message_update`:
 
 ```ts
 {
@@ -181,19 +197,45 @@ Live streams emit `AgentActivitySessionEventEnvelope`:
   agentSessionId: "session-1",
   eventType: "message_update",
   data: {
-    messageId: "message-1",
-    version: 12,
-    role: "assistant",
-    kind: "ask_user_question",
-    status: "waiting",
-    payload: { title: "Choose a plan" }
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "message_update",
+    latestVersion: 12,
+    acceptedCount: 1,
+    messages: [/* canonical message snapshots */]
   }
 }
 ```
 
-The retained controller stream accepts `message_update` and upserts the message
-into `sessionMessagesById`. The session engine's generated
-`AgentActivityUpdatedEvent` input additionally accepts:
+Normalized provider text/reasoning streams may precede that confirmation with
+an optimistic `message_delta`:
+
+```ts
+{
+  workspaceId: "workspace-1",
+  agentSessionId: "session-1",
+  eventType: "message_delta",
+  data: {
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    messageId: "message-1",
+    turnId: "turn-1",
+    role: "assistant",
+    kind: "text",
+    occurredAtUnixMs: 100,
+    content: { operation: "append_text", text: "hello" },
+    status: "streaming"
+  }
+}
+```
+
+Each host creates one
+`createAgentActivityWorkspaceEventCoordinator` per workspace and passes
+transport deliveries into it. The coordinator validates and cleans
+`message_delta`, owns its optimistic projection over canonical
+`sessionMessagesById`, and clears that projection after authoritative message
+reads or Session removal. The generated `AgentActivityUpdatedEvent` input also
+accepts:
 
 - `turn_update`: updates the canonical durable turn projection
 - `interaction_update`: updates the canonical durable interaction projection
@@ -202,6 +244,56 @@ into `sessionMessagesById`. The session engine's generated
 
 Events with a different `workspaceId` are ignored. Unknown event types are
 ignored.
+
+The coordinator owns inline-message continuity, Engine observation intents,
+Session tombstones, discontinuity reconciliation, and reconnect hydration.
+Desktop receives the full canonical event union. The paired-device live
+protocol carries only delta, Turn, Interaction, and audit variants; tuttid
+converts canonical message and reconcile-required events into scoped
+discontinuities. It preserves `session_deleted` as a typed deletion delivery so
+Mobile enters the same Engine tombstone flow as Desktop. Platform adapters
+retain socket/DeviceLink lifecycle, diagnostics, Rail invalidation, and
+navigation.
+
+`eventStreamConnectionChanged` describes only event-stream continuity and
+drives reconnect hydration. The host still owns `engine/connectionChanged`,
+which describes command-transport reachability. Desktop may derive both from
+one WebSocket connection. Mobile must derive Engine state from
+application/service command reachability and coordinator state from
+`stream_ready`/disconnect frames; it must not synthesize one from the other.
+
+For realtime Turn observations, the Engine carries `live: true` on the
+resulting `session/reconcile` command. Command adapters preserve that flag on
+`session/detailSnapshotReceived`; failed commands retain it for the next retry.
+This lets authoritative hydration replay the latest Turn only after Session
+identity exists, with identical attention semantics on Desktop and Mobile.
+
+## Typed Effect Execution
+
+The Engine projects shared lifecycle command descriptions onto
+`AgentSessionEffectPort`: `activateSession`, `sendInput`,
+`updateSessionSettings`, `cancelTurn`, `respondToInteraction`,
+`setSessionPinned`, and `deleteSessions`. Hosts implement transport and result
+mapping without switching on those command types. When a queued prompt includes
+a required settings patch, the Engine waits for that exact settings write
+before sending; a failed write prevents the send. Capability references,
+structured content, display prompt, guidance, activation placement, Tutti-mode
+intent, and diagnostics survive the shared projection. Goal-on-create and
+settings command/correlation identities are also retained for external hosts
+that use them for goal setup or idempotency.
+
+Prompt command ordering is an Engine implementation detail. Consumers implement
+`AgentSessionEffectPort`; the package root does not expose the internal prompt
+execution helper or its precondition port.
+
+Host-only commands such as Desktop attention persistence or Mobile composer
+option loading remain in an `EngineExtensionCommand` adapter. Timeout, abort,
+observation, and command-result dispatch remain owned by the Engine effect
+executor. Every typed effect receives the Engine command's `AbortSignal`; hosts
+must propagate it through their transport. Prompt execution checks that signal
+again after a required settings write and before send, so a timeout cannot
+start a Turn in the precondition gap. The legacy full-command `execute` path is
+compatibility-only for existing published-package consumers such as tsh.
 
 ## Message Merge Rules
 

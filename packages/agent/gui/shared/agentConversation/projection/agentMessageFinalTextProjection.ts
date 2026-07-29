@@ -158,6 +158,7 @@ function isVisibleTextMessage(message: AgentMessageContentVM): boolean {
   return (
     message.body.trim() !== "" &&
     message.contentKind !== "image-grid" &&
+    message.contentKind !== "collaboration" &&
     !message.visibleError &&
     !message.systemNotice
   );

@@ -27,6 +27,7 @@ const allowedComponentKeys = new Set([
   "description",
   "useCases",
   "migrationHints",
+  "nativePreview",
   "storyboard"
 ]);
 const publicEntrypoints = new Map([
@@ -34,6 +35,8 @@ const publicEntrypoints = new Map([
   ["@tutti-os/ui-system/components", "src/components/index.ts"],
   ["@tutti-os/ui-system/icons", "src/icons/index.ts"],
   ["@tutti-os/ui-system/metadata", "src/metadata/index.ts"],
+  ["@tutti-os/ui-system/native", "src/native/index.ts"],
+  ["@tutti-os/ui-system/native.css", "src/styles/native.css"],
   ["@tutti-os/ui-system/styles.css", "src/styles/index.css"],
   ["@tutti-os/ui-system/utils", "src/lib/utils.ts"]
 ]);
@@ -47,6 +50,13 @@ const repoRoot = path.resolve(path.dirname(scriptPath), "../..");
 const packageRoot = path.join(repoRoot, "packages/ui/system");
 const metadataPath = path.join(packageRoot, "src/metadata/components.json");
 const packageJsonPath = path.join(packageRoot, "package.json");
+const nativeGalleryPath = path.join(
+  repoRoot,
+  "apps/mobile/src/dev/NativeComponentGallery.tsx"
+);
+const nativeGallerySource = existsSync(nativeGalleryPath)
+  ? readFileSync(nativeGalleryPath, "utf8")
+  : "";
 
 const violations = [];
 
@@ -461,6 +471,25 @@ if (metadata !== undefined) {
         typeof component.storyboard !== "boolean"
       ) {
         addViolation(`${label} storyboard must be boolean when present`);
+      }
+
+      if (
+        component.nativePreview !== undefined &&
+        typeof component.nativePreview !== "boolean"
+      ) {
+        addViolation(`${label} nativePreview must be boolean when present`);
+      } else if (component.nativePreview === true) {
+        if (component.from !== "@tutti-os/ui-system/native") {
+          addViolation(
+            `${label} nativePreview requires the @tutti-os/ui-system/native entrypoint`
+          );
+        }
+
+        if (!nativeGallerySource.includes(`title="${component.id}"`)) {
+          addViolation(
+            `${label} nativePreview requires a matching Mobile development gallery section`
+          );
+        }
       }
 
       if (

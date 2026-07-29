@@ -1,4 +1,4 @@
-import type { ConversationRailSectionMembership } from "./agentGuiConversationRail";
+import type { ConversationRailSectionMembership } from "../controller/agentConversationRailQueryModel";
 
 export interface ConversationRailMembershipRecord {
   agentTargetId?: string | null;

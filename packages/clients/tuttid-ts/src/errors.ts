@@ -8,12 +8,19 @@ const tuttidProtocolErrorCodes = new Set<TuttidProtocolErrorCode>([
   "method_not_allowed",
   "unauthorized",
   "service_unavailable",
+  "agent_quick_prompt_not_found",
+  "agent_quick_prompt_conflict",
+  "agent_quick_prompt_operation_failed",
   "workspace_not_found",
   "workspace_file_not_found",
   "workspace_issue_resource_exists",
   "workspace_issue_resource_not_found",
   "workspace_terminal_not_found",
   "workspace_app_not_found",
+  "model_plan_not_found",
+  "model_plan_referenced",
+  "workspace_agent_not_found",
+
   "workspace_operation_failed",
   "preferences_operation_failed"
 ]);

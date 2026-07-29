@@ -15,8 +15,10 @@ import { defaultIssueManagerWorkbenchTypeId } from "@tutti-os/workspace-issue-ma
 import {
   isEditableShortcutTarget,
   type WorkbenchContribution,
-  type WorkbenchHostHandle,
   type WorkbenchHostDockEntry,
+  type WorkbenchHostDockEntryPresentationOverride,
+  type WorkbenchHostDockEntryPresentationOverrides,
+  type WorkbenchHostHandle,
   type WorkbenchWindowManagementConfig,
   WorkbenchHost
 } from "@tutti-os/workbench-surface";
@@ -30,15 +32,24 @@ import { useWorkspaceCatalogService } from "@renderer/features/workspace-catalog
 import { AgentEnvPanel } from "@renderer/features/workspace-agent/ui/AgentEnvPanel.tsx";
 import { DesktopAgentProviderManageDialog } from "@renderer/features/workspace-agent/ui/DesktopAgentProviderManageDialog.tsx";
 import { IAgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
+import { IAgentsService } from "@renderer/features/workspace-agent/services/agentsService.interface.ts";
+import { IWorkspaceAgentActivityService } from "@renderer/features/workspace-agent/services/workspaceAgentActivityService.interface.ts";
+import { IAgentEnvService } from "@renderer/features/workspace-agent/services/agentEnvService.interface.ts";
 import {
   registerWorkspaceAgentGuiLaunchHandler,
   requestWorkspaceAgentGuiLaunch
 } from "@renderer/features/workspace-agent/services/workspaceAgentGuiLaunchCoordinator.ts";
+import { registerWorkspaceTerminalLoginLaunchHandler } from "@renderer/features/workspace-agent/services/workspaceTerminalLoginLaunchCoordinator.ts";
 import {
   isDesktopAgentGUIProvider,
   normalizeDesktopAgentGUIProvider
 } from "@renderer/features/workspace-agent/desktopAgentGUINodeState";
 import { useService } from "@tutti-os/infra/di";
+import { RichTextMentionServiceProvider } from "@tutti-os/ui-rich-text/editor";
+import {
+  createDesktopRichTextMentionService,
+  IDesktopRichTextAtService
+} from "@renderer/features/rich-text-at";
 import { useTranslation } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
 import {
@@ -54,10 +65,7 @@ import {
   registerWorkspaceBrowserLaunchHandler,
   type WorkspaceBrowserLaunchRequest
 } from "../services/workspaceBrowserLaunchCoordinator.ts";
-import {
-  isWorkspaceMissionControlActivateShortcut,
-  isWorkspaceMissionControlLayoutShortcut
-} from "../services/workspaceMissionControlShortcut.ts";
+import { isWorkspaceMissionControlLayoutShortcut } from "../services/workspaceMissionControlShortcut.ts";
 import {
   registerWorkspaceFilesLaunchHandler,
   workspaceFilesLaunchTypeId,
@@ -96,6 +104,7 @@ import { WorkspaceFallbackState } from "./WorkspaceFallbackState.tsx";
 import type { WorkspaceWorkbenchHostSessionBinding } from "../services/workspaceWorkbenchHostService.interface.ts";
 import { useWorkspaceOnboardingAutoOpen } from "./useWorkspaceOnboardingAutoOpen.ts";
 import { resolveWorkspaceWorkbenchLayoutConstraints } from "./workspaceWorkbenchLayoutConstraints.ts";
+import { defaultWorkspaceTerminalWorkbenchTypeId } from "../services/workspaceWorkbenchNodeIds.ts";
 import type { DesktopWorkspaceAppExternalHostApi } from "@preload/types";
 import type { DesktopWorkspaceAppExternalRendererEvent } from "@shared/contracts/ipc";
 import type {
@@ -112,8 +121,7 @@ import {
   openWorkspaceWorkbenchSameTypeWindowShortcut
 } from "../services/workspaceWorkbenchShortcutActions.ts";
 
-const temporaryWorkspaceAppDockRetentionActionPrefix =
-  "temporary-workspace-app-dock-retention:";
+const workspaceDockRetentionActionPrefix = "workspace-dock-retention:";
 
 interface WorkspaceWorkbenchProps {
   enableWindowCloseGuard: boolean;
@@ -218,6 +226,55 @@ function ReadyWorkspaceWorkbenchWithSession({
   hostSession: WorkspaceWorkbenchHostSessionBinding;
 }) {
   const { service: appCenterService } = useWorkspaceAppCenterService();
+  const agentsService = useService(IAgentsService);
+  const workspaceAgentActivityService = useService(
+    IWorkspaceAgentActivityService
+  );
+  const richTextAtService = useService(IDesktopRichTextAtService);
+  const mentionService = useMemo(
+    () =>
+      createDesktopRichTextMentionService({
+        invalidationSources: [
+          {
+            selector: {
+              providerId: "workspace-app",
+              workspaceId: state.workspace.id
+            },
+            subscribe: (listener) => appCenterService.subscribe(listener)
+          },
+          {
+            selector: {
+              providerId: "agent-target",
+              workspaceId: state.workspace.id
+            },
+            subscribe: (listener) => agentsService.subscribe(listener)
+          },
+          {
+            debounceMs: 100,
+            selector: {
+              providerId: "agent-session",
+              workspaceId: state.workspace.id
+            },
+            subscribe: (listener) =>
+              workspaceAgentActivityService.subscribe(
+                state.workspace.id,
+                listener
+              )
+          }
+        ],
+        richTextAtService,
+        workspaceId: state.workspace.id
+      }),
+    [
+      agentsService,
+      appCenterService,
+      richTextAtService,
+      state.workspace.id,
+      workspaceAgentActivityService
+    ]
+  );
+  useEffect(() => () => mentionService.dispose(), [mentionService]);
+  const agentEnvService = useService(IAgentEnvService);
   const agentProviderStatusService = useService(IAgentProviderStatusService);
   const runtime = useWorkspaceWorkbenchShellRuntime({
     enableWindowCloseGuard,
@@ -227,8 +284,6 @@ function ReadyWorkspaceWorkbenchWithSession({
   const hostInput = runtime.hostInput;
   const [workbenchHost, setWorkbenchHost] =
     useState<WorkbenchHostHandle | null>(null);
-  const [temporaryDockRetentionByEntryId, setTemporaryDockRetentionByEntryId] =
-    useState<Record<string, boolean>>({});
   const [launchpadOpen, setLaunchpadOpen] = useState(false);
   const [launchpadOpenTrigger, setLaunchpadOpenTrigger] =
     useState<WorkspaceLaunchpadOpenTrigger>("dock");
@@ -248,6 +303,8 @@ function ReadyWorkspaceWorkbenchWithSession({
   const unregisterIssueManagerLaunchRef = useRef<(() => void) | null>(null);
   const unregisterGroupChatLaunchRef = useRef<(() => void) | null>(null);
   const unregisterWorkbenchNodeLaunchRef = useRef<(() => void) | null>(null);
+  const unregisterTerminalLoginLaunchRef = useRef<(() => void) | null>(null);
+  const releaseAgentEnvHostRef = useRef<(() => void) | null>(null);
   const closeLaunchpad = useCallback(() => {
     setLaunchpadOpen(false);
   }, []);
@@ -279,31 +336,21 @@ function ReadyWorkspaceWorkbenchWithSession({
         setLaunchpadOpen(true);
         return;
       }
-      if (
-        request.actionId.startsWith(
-          temporaryWorkspaceAppDockRetentionActionPrefix
-        )
-      ) {
-        const entry = findTemporaryDockRetentionEntry({
+      if (request.actionId.startsWith(workspaceDockRetentionActionPrefix)) {
+        const entry = findWorkspaceDockRetentionEntry({
           contributions: hostInput.contributions,
           dockEntries: hostInput.dockEntries,
           entryId: request.entryId
         });
-        setTemporaryDockRetentionByEntryId((current) => {
-          const retained =
-            current[request.entryId] ??
-            (entry
-              ? resolveTemporaryDockRetentionDefault({
-                  appCenterService,
-                  entry
-                })
-              : false);
-          return {
-            ...current,
-            [request.entryId]: !retained
-          };
-        });
-        return;
+        const retained =
+          runtime.dockRetentionByEntryId[request.entryId] ??
+          (entry
+            ? resolveWorkspaceDockRetentionDefault({
+                appCenterService,
+                entry
+              })
+            : false);
+        return runtime.setDockEntryRetained(request.entryId, !retained);
       }
       return hostInput.onDockEntryAction?.(request);
     },
@@ -311,30 +358,25 @@ function ReadyWorkspaceWorkbenchWithSession({
       appCenterService,
       hostInput.contributions,
       hostInput.dockEntries,
-      hostInput.onDockEntryAction
+      hostInput.onDockEntryAction,
+      runtime.dockRetentionByEntryId,
+      runtime.setDockEntryRetained
     ]
   );
-  const contributions = useMemo(
+  const dockEntryPresentationOverrides = useMemo(
     () =>
-      hostInput.contributions?.map((contribution) =>
-        resolveTemporaryDockRetentionContribution({
-          appCenterService,
-          contribution,
-          retainedByEntryId: temporaryDockRetentionByEntryId
-        })
-      ),
-    [appCenterService, hostInput.contributions, temporaryDockRetentionByEntryId]
-  );
-  const dockEntries = useMemo(
-    () =>
-      hostInput.dockEntries?.map((entry) =>
-        resolveTemporaryDockRetentionEntry({
-          appCenterService,
-          entry,
-          retainedByEntryId: temporaryDockRetentionByEntryId
-        })
-      ),
-    [appCenterService, hostInput.dockEntries, temporaryDockRetentionByEntryId]
+      resolveWorkspaceDockEntryPresentationOverrides({
+        appCenterService,
+        contributions: hostInput.contributions,
+        dockEntries: hostInput.dockEntries,
+        retainedByEntryId: runtime.dockRetentionByEntryId
+      }),
+    [
+      appCenterService,
+      hostInput.contributions,
+      hostInput.dockEntries,
+      runtime.dockRetentionByEntryId
+    ]
   );
   const onDockEntryClick = useCallback(
     (request: Parameters<NonNullable<typeof hostInput.onDockEntryClick>>[0]) =>
@@ -357,10 +399,41 @@ function ReadyWorkspaceWorkbenchWithSession({
       unregisterGroupChatLaunchRef.current = null;
       unregisterWorkbenchNodeLaunchRef.current?.();
       unregisterWorkbenchNodeLaunchRef.current = null;
+      unregisterTerminalLoginLaunchRef.current?.();
+      unregisterTerminalLoginLaunchRef.current = null;
+      releaseAgentEnvHostRef.current?.();
+      releaseAgentEnvHostRef.current = null;
 
       if (!host) {
         return;
       }
+
+      releaseAgentEnvHostRef.current = agentEnvService.bindWorkbenchHost(host);
+
+      unregisterTerminalLoginLaunchRef.current =
+        registerWorkspaceTerminalLoginLaunchHandler(
+          state.workspace.id,
+          async ({ command, cwd }) => {
+            const nodeId = await host.launchNode({
+              payload: {
+                cwd,
+                initialInput: /[\r\n]$/u.test(command)
+                  ? command
+                  : `${command}\n`
+              },
+              reason: "host",
+              typeId: defaultWorkspaceTerminalWorkbenchTypeId
+            });
+            if (!nodeId) {
+              throw new Error("Terminal login did not open a workbench node.");
+            }
+            return {
+              close: () => {
+                host.closeNode(nodeId);
+              }
+            };
+          }
+        );
 
       unregisterAgentGuiLaunchRef.current =
         registerWorkspaceAgentGuiLaunchHandler(
@@ -370,27 +443,47 @@ function ReadyWorkspaceWorkbenchWithSession({
             agentTargetId,
             autoSubmit,
             draftPrompt,
+            model,
+            modelPlanId,
             openInNewWindow,
             provider,
             userProjectPath
           }) => {
             const normalizedDraftPrompt = draftPrompt?.trim() ?? "";
+            const normalizedAgentSessionId = agentSessionId?.trim() ?? "";
             await host.launchNode(
-              normalizedDraftPrompt
-                ? createWorkspaceAgentGuiDraftLaunchRequest({
+              normalizedAgentSessionId
+                ? createWorkspaceAgentGuiSessionLaunchRequest({
                     agentTargetId,
-                    autoSubmit,
-                    draftPrompt: normalizedDraftPrompt,
-                    openInNewWindow,
-                    provider,
-                    userProjectPath
-                  })
-                : createWorkspaceAgentGuiSessionLaunchRequest({
-                    agentTargetId,
-                    agentSessionId,
+                    agentSessionId: normalizedAgentSessionId,
+                    ...(normalizedDraftPrompt
+                      ? {
+                          composerAppend: {
+                            draftPrompt: normalizedDraftPrompt,
+                            focusComposer: true
+                          }
+                        }
+                      : {}),
                     openInNewWindow,
                     provider
                   })
+                : normalizedDraftPrompt
+                  ? createWorkspaceAgentGuiDraftLaunchRequest({
+                      agentTargetId,
+                      autoSubmit,
+                      draftPrompt: normalizedDraftPrompt,
+                      model,
+                      modelPlanId,
+                      openInNewWindow,
+                      provider,
+                      userProjectPath
+                    })
+                  : createWorkspaceAgentGuiSessionLaunchRequest({
+                      agentTargetId,
+                      agentSessionId,
+                      openInNewWindow,
+                      provider
+                    })
             );
           }
         );
@@ -463,7 +556,13 @@ function ReadyWorkspaceWorkbenchWithSession({
           }
         );
     },
-    [appCenterService, runtime, state.workspace.id, workspaceAppExternalApi]
+    [
+      agentEnvService,
+      appCenterService,
+      runtime,
+      state.workspace.id,
+      workspaceAppExternalApi
+    ]
   );
   const windowManagement = useMemo<WorkbenchWindowManagementConfig>(
     () => ({
@@ -484,11 +583,15 @@ function ReadyWorkspaceWorkbenchWithSession({
       unregisterFilesLaunchRef.current?.();
       unregisterFilesLaunchRef.current = null;
       unregisterIssueManagerLaunchRef.current?.();
+      releaseAgentEnvHostRef.current?.();
+      releaseAgentEnvHostRef.current = null;
       unregisterIssueManagerLaunchRef.current = null;
       unregisterGroupChatLaunchRef.current?.();
       unregisterGroupChatLaunchRef.current = null;
       unregisterWorkbenchNodeLaunchRef.current?.();
       unregisterWorkbenchNodeLaunchRef.current = null;
+      unregisterTerminalLoginLaunchRef.current?.();
+      unregisterTerminalLoginLaunchRef.current = null;
     };
   }, []);
 
@@ -560,8 +663,8 @@ function ReadyWorkspaceWorkbenchWithSession({
               preferred,
               intent.actionId,
               {
-                workbenchHost,
-                workspaceId
+                context: { workbenchHost, workspaceId },
+                origin: "user"
               }
             );
           }
@@ -591,8 +694,8 @@ function ReadyWorkspaceWorkbenchWithSession({
         if (intent.kind === "action" && targetStatus) {
           void agentProviderStatusService
             .runAction(targetStatus.provider, intent.actionId, {
-              workbenchHost,
-              workspaceId
+              context: { workbenchHost, workspaceId },
+              origin: "user"
             })
             .catch(() => {});
         }
@@ -633,28 +736,17 @@ function ReadyWorkspaceWorkbenchWithSession({
     }
 
     const handleKeyDown = (event: KeyboardEvent): void => {
-      if (!isWorkspaceMissionControlActivateShortcut(event)) {
-        if (!isWorkspaceMissionControlLayoutShortcut(event)) {
-          return;
-        }
-
-        event.preventDefault();
-        if (runtime.missionControl.mode === "layout") {
-          runtime.missionControl.close();
-          return;
-        }
-
-        runtime.missionControl.open("layout", "keyboard");
+      if (!isWorkspaceMissionControlLayoutShortcut(event)) {
         return;
       }
 
       event.preventDefault();
-      if (runtime.missionControl.mode === "activate") {
+      if (runtime.missionControl.isOpen) {
         runtime.missionControl.close();
         return;
       }
 
-      runtime.missionControl.open("activate", "keyboard");
+      runtime.missionControl.open("keyboard");
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -721,111 +813,146 @@ function ReadyWorkspaceWorkbenchWithSession({
   ]);
 
   return (
-    <main
-      className={cn(
-        "relative h-screen min-h-0 overflow-hidden bg-background",
-        launchpadOpen && "workspace-workbench-shell--launchpad-open"
-      )}
-    >
-      <WorkspaceAppCenterIntegration workspaceId={state.workspace.id} />
-      <WorkbenchHost
-        captureNodePreviewImage={hostInput.captureNodePreviewImage}
-        className="h-full"
-        contributions={contributions}
-        debugDiagnostics={hostInput.debugDiagnostics}
-        dockPreviewCache={hostInput.dockPreviewCache}
-        dockPlacement={runtime.dockPlacement}
-        dockEntries={dockEntries}
-        dockStateSource={hostInput.dockStateSource}
-        externalStateSource={hostInput.externalStateSource}
-        i18n={runtime.appI18n}
-        layoutConstraints={layoutConstraints}
-        missionControl={{
-          mode: runtime.missionControl.mode,
-          nodeIds: runtime.missionControl.nodeIds ?? undefined,
-          onRequestClose: runtime.missionControl.close
-        }}
-        minimizeAnimation={runtime.minimizeAnimation}
-        nodes={hostInput.nodes}
-        onDockEntryAction={onDockEntryAction}
-        onDockEntryClick={onDockEntryClick}
-        onHandleReady={onWorkbenchHostHandleReady}
-        onLaunchRequest={hostInput.onLaunchRequest}
-        onMissionControlAdapterReady={runtime.onMissionControlAdapterReady}
-        onMissionControlRequestOpen={(mode, request) => {
-          runtime.missionControl.open(
-            mode,
-            request
-              ? {
-                  nodeIds: request.nodeIds,
-                  trigger:
-                    request.trigger === "dock-context-menu"
-                      ? "button"
-                      : undefined
-                }
-              : "button"
-          );
-        }}
-        onNodeCloseRequest={hostInput.onNodeCloseRequest}
-        renderTopChrome={(chromeContext) => (
-          <WorkspaceChrome
-            headerSlot={headerSlot}
-            launchNode={chromeContext.launchNode}
-            missionControl={runtime.missionControl}
-            onSelectWallpaper={runtime.selectWallpaper}
-            onSelectWallpaperDisplayMode={runtime.selectWallpaperDisplayMode}
-            platform={state.platform}
-            selectedWallpaperDisplayMode={runtime.selectedWallpaperDisplayMode}
-            selectedWallpaperID={runtime.selectedWallpaperID}
-            wallpaperAppearance={runtime.wallpaper.appearance}
-            workbenchController={chromeContext.controller}
-            workspace={state.workspace}
-          />
+    <RichTextMentionServiceProvider service={mentionService}>
+      <main
+        className={cn(
+          "relative h-screen min-h-0 overflow-hidden bg-background",
+          launchpadOpen && "workspace-workbench-shell--launchpad-open"
         )}
-        snapshotRepository={hostInput.snapshotRepository}
-        shortcutsEnabled={runtime.shortcutsEnabled}
-        wallpaper={runtime.wallpaper}
-        windowManagement={windowManagement}
-        workspaceId={hostInput.workspaceId}
-      />
-      <WorkspaceAppExternalBridge
-        api={workspaceAppExternalApi}
-        openFile={openWorkspaceAppExternalFile}
-        workspaceId={state.workspace.id}
-      />
-      <DesktopAgentProviderManageDialog
-        agentProviderStatusService={agentProviderStatusService}
-        focusedProvider={agentProviderManageFocusedProvider}
-        open={agentProviderManageDialogOpen}
-        workbenchHost={workbenchHost}
-        workspaceId={state.workspace.id}
-        onOpenChange={setAgentProviderManageDialogOpen}
-      />
-      <WorkspaceLaunchpadOverlay
-        dockIconStyle={runtime.dockIconStyle}
-        dockPlacement={runtime.dockPlacement}
-        host={workbenchHost}
-        open={launchpadOpen}
-        openTrigger={launchpadOpenTrigger}
-        themeAppearance={runtime.themeAppearance}
-        workspaceId={state.workspace.id}
-        onClose={closeLaunchpad}
-      />
-      <WorkspaceCloseGuardDialog
-        request={runtime.closeDialog.request}
-        onCancel={runtime.closeDialog.onCancel}
-        onConfirm={runtime.closeDialog.onConfirm}
-      />
-      <AgentEnvPanel
-        agentProviderStatusService={agentProviderStatusService}
-        workspaceId={state.workspace.id}
-        workbenchHost={workbenchHost ?? undefined}
-      />
-    </main>
+      >
+        <WorkspaceAppCenterIntegration workspaceId={state.workspace.id} />
+        <WorkbenchHost
+          captureNodePreviewImage={hostInput.captureNodePreviewImage}
+          captureNodePreviewImages={hostInput.captureNodePreviewImages}
+          className="h-full"
+          contributions={hostInput.contributions}
+          debugDiagnostics={hostInput.debugDiagnostics}
+          dockPreviewCache={hostInput.dockPreviewCache}
+          dockPlacement={runtime.dockPlacement}
+          dockEntries={hostInput.dockEntries}
+          dockEntryPresentationOverrides={dockEntryPresentationOverrides}
+          dockStateSource={hostInput.dockStateSource}
+          externalStateSource={hostInput.externalStateSource}
+          i18n={runtime.appI18n}
+          layoutConstraints={layoutConstraints}
+          missionControl={{
+            active: runtime.missionControl.isOpen,
+            nodeIds: runtime.missionControl.nodeIds ?? undefined,
+            onRequestClose: runtime.missionControl.close
+          }}
+          minimizeAnimation={runtime.minimizeAnimation}
+          nodes={hostInput.nodes}
+          onDockEntryAction={onDockEntryAction}
+          onDockEntryClick={onDockEntryClick}
+          onHandleReady={onWorkbenchHostHandleReady}
+          onLaunchRequest={hostInput.onLaunchRequest}
+          onMissionControlAdapterReady={runtime.onMissionControlAdapterReady}
+          onMissionControlRequestOpen={(request) => {
+            runtime.missionControl.open(
+              request
+                ? {
+                    nodeIds: request.nodeIds,
+                    trigger:
+                      request.trigger === "dock-context-menu"
+                        ? "button"
+                        : undefined
+                  }
+                : "button"
+            );
+          }}
+          onNodeCloseRequest={hostInput.onNodeCloseRequest}
+          renderTopChrome={(chromeContext) => (
+            <WorkspaceChrome
+              headerSlot={headerSlot}
+              launchNode={chromeContext.launchNode}
+              missionControl={runtime.missionControl}
+              onSelectWallpaper={runtime.selectWallpaper}
+              onSelectWallpaperDisplayMode={runtime.selectWallpaperDisplayMode}
+              platform={state.platform}
+              selectedWallpaperDisplayMode={
+                runtime.selectedWallpaperDisplayMode
+              }
+              selectedWallpaperID={runtime.selectedWallpaperID}
+              wallpaperAppearance={runtime.wallpaper.appearance}
+              workbenchController={chromeContext.controller}
+              workspace={state.workspace}
+            />
+          )}
+          snapshotRepository={hostInput.snapshotRepository}
+          shortcutsEnabled={runtime.shortcutsEnabled}
+          wallpaper={runtime.wallpaper}
+          windowManagement={windowManagement}
+          workspaceId={hostInput.workspaceId}
+        />
+        <WorkspaceAppExternalBridge
+          api={workspaceAppExternalApi}
+          openFile={openWorkspaceAppExternalFile}
+          workspaceId={state.workspace.id}
+        />
+        <DesktopAgentProviderManageDialog
+          agentProviderStatusService={agentProviderStatusService}
+          focusedProvider={agentProviderManageFocusedProvider}
+          open={agentProviderManageDialogOpen}
+          workbenchHost={workbenchHost}
+          workspaceId={state.workspace.id}
+          onOpenChange={setAgentProviderManageDialogOpen}
+        />
+        <WorkspaceLaunchpadOverlay
+          dockIconStyle={runtime.dockIconStyle}
+          dockPlacement={runtime.dockPlacement}
+          host={workbenchHost}
+          open={launchpadOpen}
+          openTrigger={launchpadOpenTrigger}
+          themeAppearance={runtime.themeAppearance}
+          workspaceId={state.workspace.id}
+          onClose={closeLaunchpad}
+        />
+        <WorkspaceCloseGuardDialog
+          request={runtime.closeDialog.request}
+          onCancel={runtime.closeDialog.onCancel}
+          onConfirm={runtime.closeDialog.onConfirm}
+        />
+        <AgentEnvPanel />
+      </main>
+    </RichTextMentionServiceProvider>
   );
 }
 
-function resolveTemporaryDockRetentionEntry({
+function resolveWorkspaceDockEntryPresentationOverrides({
+  appCenterService,
+  contributions,
+  dockEntries,
+  retainedByEntryId
+}: {
+  appCenterService: IWorkspaceAppCenterService;
+  contributions: readonly WorkbenchContribution[] | undefined;
+  dockEntries: readonly WorkbenchHostDockEntry[] | undefined;
+  retainedByEntryId: Readonly<Record<string, boolean>>;
+}): WorkbenchHostDockEntryPresentationOverrides {
+  const overrides = new Map<
+    string,
+    WorkbenchHostDockEntryPresentationOverride
+  >();
+  const entries = [
+    ...(contributions?.flatMap(
+      (contribution) => contribution.dockEntries ?? []
+    ) ?? []),
+    ...(dockEntries ?? [])
+  ];
+  for (const entry of entries) {
+    const presentationOverride = resolveWorkspaceDockRetentionPresentation({
+      appCenterService,
+      entry,
+      retainedByEntryId
+    });
+    if (presentationOverride) {
+      overrides.set(entry.id, presentationOverride);
+    }
+  }
+  return Object.fromEntries(overrides);
+}
+
+function resolveWorkspaceDockRetentionPresentation({
   appCenterService,
   entry,
   retainedByEntryId
@@ -833,51 +960,26 @@ function resolveTemporaryDockRetentionEntry({
   appCenterService: IWorkspaceAppCenterService;
   entry: WorkbenchHostDockEntry;
   retainedByEntryId: Readonly<Record<string, boolean>>;
-}): WorkbenchHostDockEntry {
+}): WorkbenchHostDockEntryPresentationOverride | null {
   if (
     entry.id === workspaceLaunchpadDockEntryId ||
     entry.id === workspaceFilesNodeID
   ) {
-    return entry;
+    return null;
   }
   const retained =
     retainedByEntryId[entry.id] ??
-    resolveTemporaryDockRetentionDefault({ appCenterService, entry });
+    resolveWorkspaceDockRetentionDefault({ appCenterService, entry });
   return {
-    ...entry,
     dockRetention: {
-      actionId: `${temporaryWorkspaceAppDockRetentionActionPrefix}${encodeURIComponent(entry.id)}`,
+      actionId: `${workspaceDockRetentionActionPrefix}${encodeURIComponent(entry.id)}`,
       retained
     },
     visibility: retained ? "always" : "when-open"
   };
 }
 
-function resolveTemporaryDockRetentionContribution({
-  appCenterService,
-  contribution,
-  retainedByEntryId
-}: {
-  appCenterService: IWorkspaceAppCenterService;
-  contribution: WorkbenchContribution;
-  retainedByEntryId: Readonly<Record<string, boolean>>;
-}): WorkbenchContribution {
-  if (!contribution.dockEntries?.length) {
-    return contribution;
-  }
-  return {
-    ...contribution,
-    dockEntries: contribution.dockEntries.map((entry) =>
-      resolveTemporaryDockRetentionEntry({
-        appCenterService,
-        entry,
-        retainedByEntryId
-      })
-    )
-  };
-}
-
-function resolveTemporaryDockRetentionDefault({
+function resolveWorkspaceDockRetentionDefault({
   appCenterService,
   entry
 }: {
@@ -889,7 +991,7 @@ function resolveTemporaryDockRetentionDefault({
   return app?.installed ?? (entry.visibility ?? "always") === "always";
 }
 
-function findTemporaryDockRetentionEntry({
+function findWorkspaceDockRetentionEntry({
   contributions,
   dockEntries,
   entryId

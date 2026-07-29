@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { selectPendingSessionForkThroughTurnIds } from "@tutti-os/agent-activity-core";
 import { useAgentGUIViewModel } from "../model/useAgentGUIViewModel";
 import type { AgentGUIProviderRailMode } from "../../../types";
 import type { AgentGUIDetailViewModel } from "../model/agentGuiNodeTypes";
@@ -14,6 +15,10 @@ import type { useAgentGUILocalState } from "./useAgentGUILocalState";
 import type { useAgentGUIComposerCapabilities } from "./useAgentGUIComposerCapabilities";
 import type { useAgentGUISessionDetailTransport } from "./useAgentGUISessionDetailTransport";
 import { resolveAgentGUIProviderReadinessGateForView } from "../model/agentGuiProviderReadiness";
+import type { useAgentGUITuttiModeActivation } from "./useAgentGUITuttiModeActivation";
+import { targetConnectionForAgentGUIView } from "./agentGuiController.providerHelpers";
+import { isAgentGUIAgentTargetComingSoon } from "../../../agentTargets";
+import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
 
 type ConversationPresentationInput = Parameters<
   typeof useAgentGUIConversationPresentation
@@ -38,6 +43,7 @@ type SessionPresentationInput = Omit<
   | "conversation"
   | "isInterrupting"
   | "pendingApproval"
+  | "providerReadinessGate"
   | "serverInteractivePrompt"
 >;
 type ProviderHomeInput = Parameters<typeof useAgentGUIProviderHome>[0];
@@ -59,6 +65,7 @@ type UseAgentGUIViewAssemblyInput = ConversationPresentationInput &
   ComposerCapabilities &
   SessionDetailTransport &
   OperationActions & {
+    nodeId?: string | null;
     operationActions: OperationActions;
     detailAvailability: AgentGUIDetailViewModel["availability"];
     updateSelectedProjectPath: Parameters<
@@ -68,11 +75,34 @@ type UseAgentGUIViewAssemblyInput = ConversationPresentationInput &
       typeof useAgentGUIControllerActions
     >[0]["selectConversation"];
     providerRailMode: AgentGUIProviderRailMode | undefined;
+    tuttiModeActivation: ReturnType<typeof useAgentGUITuttiModeActivation>;
   };
 
 export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
   const { activeConversation, visibleConversations } =
     useAgentGUIConversationPresentation(input);
+  const forkThroughTurnPendingTurnIds = useEngineSelector(
+    input.sessionEngine,
+    (state) =>
+      selectPendingSessionForkThroughTurnIds(state, {
+        sourceAgentSessionId: input.activeConversationId,
+        workspaceId: input.workspaceId
+      }),
+    equalStringArrays
+  );
+  const targetConnection = useMemo(
+    () =>
+      targetConnectionForAgentGUIView({
+        activeConversation,
+        selectedTarget: input.effectiveSelectedProviderTarget,
+        targets: input.normalizedProviderTargets
+      }),
+    [
+      activeConversation,
+      input.effectiveSelectedProviderTarget,
+      input.normalizedProviderTargets
+    ]
+  );
   const stableActiveSessionViewProjection =
     useMemo<ActiveSessionViewProjection>(
       () =>
@@ -81,15 +111,15 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
               hasOlderMessages: input.activeSessionView.hasOlderMessages,
               isLoadingOlderMessages:
                 input.activeSessionView.isLoadingOlderMessages,
-              olderMessageCount: input.activeSessionView.olderMessages.length,
+              olderMessageCount: input.activeMessages.length,
               oldestLoadedVersion: input.activeSessionView.oldestLoadedVersion
             }
           : null,
       [
         input.activeSessionView?.hasOlderMessages,
         input.activeSessionView?.isLoadingOlderMessages,
-        input.activeSessionView?.olderMessages.length,
-        input.activeSessionView?.oldestLoadedVersion
+        input.activeSessionView?.oldestLoadedVersion,
+        input.activeMessages.length
       ]
     );
   const detail = useAgentGUIConversationDetail({
@@ -101,9 +131,33 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
     ...input,
     activeConversation
   });
+  const providerReadinessGate = useMemo(
+    () =>
+      input.activeConversationId === null &&
+      isAgentGUIAgentTargetComingSoon(
+        input.effectiveSelectedProviderTarget,
+        input.normalizedComingSoonProviders
+      )
+        ? ({ status: "coming_soon" } as const)
+        : resolveAgentGUIProviderReadinessGateForView({
+            activeConversationId: input.activeConversationId,
+            providerReadinessGates: input.providerReadinessGates,
+            selectedProvider: input.effectiveSelectedProviderTarget.provider
+          }),
+    [
+      input.activeConversationId,
+      input.effectiveSelectedProviderTarget,
+      input.normalizedComingSoonProviders,
+      input.providerReadinessGates
+    ]
+  );
   const session = useAgentGUISessionPresentation({
     ...input,
     activeConversation,
+    currentUserId: input.currentUserId,
+    ownerDeviceLabel: targetConnection.ownerDeviceLabel,
+    providerReadinessGate,
+    targetConnectionAgentTargetId: targetConnection.agentTargetId,
     activeLiveState: detail.activeLiveState,
     activationError: detail.activationError,
     activationErrorCode: detail.activationErrorCode,
@@ -118,19 +172,19 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
     ...providerHome,
     loadOlderConversationMessages: input.loadOlderConversationMessages,
     selectConversation: input.selectConversation,
+    setTuttiModeActive: input.tuttiModeActivation.setActive,
+    setTuttiModeEffect: input.tuttiModeActivation.setEffect,
+    setTuttiModeSpeed: input.tuttiModeActivation.setSpeed,
+    retryTuttiModeActivation: input.tuttiModeActivation.retry,
     updateSelectedProjectPath: input.updateSelectedProjectPath
   });
   const viewData =
     input.activeConversationId === null
       ? input.selectedComposerTargetData.data
       : input.data;
-  const providerReadinessGate = resolveAgentGUIProviderReadinessGateForView({
-    activeConversationId: input.activeConversationId,
-    providerReadinessGates: input.providerReadinessGates,
-    selectedProvider: input.effectiveSelectedProviderTarget.provider
-  });
   const viewModel = useAgentGUIViewModel({
     shell: {
+      nodeId: input.nodeId?.trim() || null,
       workspaceId: input.workspaceId,
       workspacePath: input.workspacePath,
       currentUserId: input.currentUserId,
@@ -147,6 +201,7 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       userProjects: input.userProjects,
       activeConversation,
       activeConversationId: input.activeConversationId,
+      revealRequest: input.railRevealRequest,
       isLoadingConversations: input.isLoadingConversations,
       listError: input.listError
     },
@@ -175,12 +230,18 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       promptImagesSupported: input.promptImagesSupported,
       compactSupported: input.compactSupported,
       goalPauseSupported: input.goalPauseSupported,
-      canSubmit: session.canSubmit,
+      gate: session.composerGate,
+      isTuttiModeActive: input.tuttiModeActivation.active,
+      isTuttiModeUpdating: input.tuttiModeActivation.updatePending,
+      tuttiModeEffect:
+        input.tuttiModeActivation.effect ??
+        input.tuttiModeActivation.orchestrationIntensity,
+      tuttiModeSpeed: input.tuttiModeActivation.speed ?? 50,
+      tuttiModeUpdateStatus: input.tuttiModeActivation.updateStatus,
       composerSettings: stableComposerSettings,
       queueStatus: detail.queueStatus,
       queuedPrompts: detail.queuedPrompts,
-      drainingQueuedPromptId: detail.drainingQueuedPromptId,
-      canQueueWhileBusy: session.canQueueWhileBusy
+      drainingQueuedPromptId: detail.drainingQueuedPromptId
     },
     interaction: {
       isRespondingApproval: session.isRespondingApproval,
@@ -199,13 +260,14 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
     readiness: {
       activeLiveState: detail.activeLiveState,
       activationError: detail.activationError,
-      activeConversationBusy: session.activeConversationBusy,
       providerReadinessGate
     },
     operations: {
+      forkThroughTurnPendingTurnIds,
       goalClearNoticeSequence: input.goalClearNoticeSequence,
       isDeletingConversation: input.isDeletingConversation,
       isDeletingProjectConversations: input.isDeletingProjectConversations,
+      isUserProjectMutationPending: input.isUserProjectMutationPending,
       pendingDeleteConversation: input.pendingDeleteConversation,
       pendingDeleteProjectConversations: input.pendingDeleteProjectConversations
     }
@@ -213,5 +275,15 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
   return useMemo(
     () => ({ viewModel, actions: controllerActions }),
     [controllerActions, viewModel]
+  );
+}
+
+function equalStringArrays(
+  previous: readonly string[],
+  next: readonly string[]
+): boolean {
+  return (
+    previous.length === next.length &&
+    previous.every((value, index) => value === next[index])
   );
 }

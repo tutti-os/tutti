@@ -6,9 +6,8 @@ import {
   type WorkbenchHostNodeBodyContext
 } from "@tutti-os/workbench-surface";
 import {
-  clampAgentGUIConversationRailWidthPx,
-  resolveAgentGUIExpandedWindowFrame,
-  shouldAutoCollapseAgentGUIConversationRail
+  resolveAgentGUIConversationRailPresentation,
+  resolveAgentGUIExpandedWindowFrame
 } from "../agent-gui/agentGuiNode/model/agentGuiRailLayout.ts";
 import { AgentGuiWorkbenchReactiveHeader } from "./AgentGuiWorkbenchReactiveHeader.tsx";
 import { setAgentGuiWorkbenchBodyRenderError } from "./bodyRenderErrorRegistry.ts";
@@ -33,6 +32,17 @@ import type {
   AgentGuiWorkbenchState
 } from "./types.ts";
 import type { AgentGUIAgentDirectoryPort } from "../types.ts";
+import {
+  AGENT_GUI_WORKBENCH_SESSION_ACTION_EVENT,
+  dispatchAgentGuiWorkbenchSessionAction,
+  isAgentGuiWorkbenchSessionAction
+} from "./sessionActions.ts";
+import type {
+  AgentGuiWorkbenchSessionAction,
+  AgentGuiWorkbenchSessionActionDetail,
+  AgentGuiWorkbenchSessionActionRequest,
+  AgentGuiWorkbenchSessionMenuCopy
+} from "./sessionActions.ts";
 
 export const AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT =
   "tutti:agent-gui-workbench-conversation-rail-toggle";
@@ -57,6 +67,18 @@ export interface AgentGuiWorkbenchNewConversationDetail {
   instanceId: string;
 }
 
+export {
+  AGENT_GUI_WORKBENCH_SESSION_ACTION_EVENT,
+  dispatchAgentGuiWorkbenchSessionAction,
+  isAgentGuiWorkbenchSessionAction
+};
+export type {
+  AgentGuiWorkbenchSessionAction,
+  AgentGuiWorkbenchSessionActionDetail,
+  AgentGuiWorkbenchSessionActionRequest,
+  AgentGuiWorkbenchSessionMenuCopy
+};
+
 export type { AgentGuiWorkbenchConversationIdentity } from "./conversationIdentity.ts";
 
 export interface AgentGuiWorkbenchContributionCopy {
@@ -71,6 +93,7 @@ export interface AgentGuiWorkbenchContributionCopy {
   openDetachedWindow: string;
   restore: string;
   untitledConversation: string;
+  sessionMenu?: AgentGuiWorkbenchSessionMenuCopy | null;
 }
 
 export type AgentGuiWorkbenchContributionCopyOverrides =
@@ -94,20 +117,6 @@ export interface CreateAgentGuiWorkbenchContributionInput {
   id?: string;
   providerAvailability?: AgentGuiWorkbenchProviderAvailability;
   renderBody(
-    context: WorkbenchHostNodeBodyContext<
-      AgentGuiWorkbenchState | null,
-      unknown
-    >,
-    helpers: AgentGuiWorkbenchRenderBodyHelpers
-  ): ReactNode;
-  renderPreview?(
-    context: WorkbenchHostNodeBodyContext<
-      AgentGuiWorkbenchState | null,
-      unknown
-    >,
-    helpers: AgentGuiWorkbenchRenderBodyHelpers
-  ): ReactNode;
-  renderMinimizedPreview(
     context: WorkbenchHostNodeBodyContext<
       AgentGuiWorkbenchState | null,
       unknown
@@ -146,7 +155,6 @@ export function createAgentGuiWorkbenchContribution(
       dockIconUrls: input.dockIconUrls,
       label: copy.nodeTitle,
       providerAvailability: input.providerAvailability,
-      renderPreview: input.renderPreview,
       resolveDockPopupIdentity: input.resolveDockPopupIdentity,
       resolveDockPopupTitle: input.resolveDockPopupTitle,
       sectionId: input.dockSectionId ?? "agents",
@@ -157,6 +165,28 @@ export function createAgentGuiWorkbenchContribution(
     nodes: [
       {
         frame,
+        getHeaderFrameRenderKey: (context) => {
+          if (context.isDragging) {
+            return "dragging";
+          }
+          const rawWorkbenchState = (context.externalNodeState ??
+            context.node.data.runtimeNodeState) as
+            | Partial<AgentGuiWorkbenchNodeState>
+            | null
+            | undefined;
+          const workbenchState = normalizeAgentGuiWorkbenchState(
+            migrateLegacyAgentGuiWorkbenchState(rawWorkbenchState)
+          );
+          const railPresentation = resolveAgentGUIConversationRailPresentation({
+            containerWidthPx: context.node.frame.width,
+            conversationRailCollapsed: workbenchState.conversationRailCollapsed,
+            conversationRailWidthPx: workbenchState.conversationRailWidthPx
+          });
+          if (railPresentation.isCollapsed) {
+            return "collapsed";
+          }
+          return `expanded:${railPresentation.conversationRailWidthPx}`;
+        },
         instance: { mode: "multi" },
         onBodyRenderErrorChange: ({ hasError, node }) => {
           setAgentGuiWorkbenchBodyRenderError(node.id, hasError);
@@ -227,15 +257,16 @@ export function createAgentGuiWorkbenchContribution(
             migratedWorkbenchState,
             provider
           );
+          const railPresentation = resolveAgentGUIConversationRailPresentation({
+            containerWidthPx: node.frame.width,
+            conversationRailCollapsed: nodeState.conversationRailCollapsed,
+            conversationRailWidthPx: nodeState.conversationRailWidthPx
+          });
           const isConversationRailAutoCollapsed =
-            shouldAutoCollapseAgentGUIConversationRail(node.frame.width);
-          const isConversationRailCollapsed =
-            nodeState.conversationRailCollapsed === true ||
-            isConversationRailAutoCollapsed;
-          const conversationRailWidthPx = clampAgentGUIConversationRailWidthPx(
-            nodeState.conversationRailWidthPx,
-            node.frame.width
-          );
+            railPresentation.isAutoCollapsed;
+          const isConversationRailCollapsed = railPresentation.isCollapsed;
+          const conversationRailWidthPx =
+            railPresentation.conversationRailWidthPx;
           const conversationIdentity = input.sessionEngine
             ? null
             : (input.resolveDockPopupIdentity?.(workbenchState) ?? null);
@@ -244,15 +275,10 @@ export function createAgentGuiWorkbenchContribution(
             : (conversationIdentity?.title ??
               input.resolveDockPopupTitle?.(workbenchState) ??
               null);
-          // The empty new-conversation home has no session identity, so it
-          // must not inherit the provider icon from the workbench instance.
-          // Once a local session id exists, keep the provider icon available
-          // while the canonical conversation title is still being persisted.
           const hasConversation = Boolean(
             workbenchState.lastActiveAgentSessionId?.trim()
           );
-          const conversationIconFallbackUrl =
-            hasConversation && selectedAgent ? selectedAgent.iconUrl : null;
+          const conversationIconFallbackUrl = selectedAgent?.iconUrl ?? null;
           const conversationIconUrl =
             conversationIdentity?.iconUrl ?? conversationIconFallbackUrl;
           const persistConversationRailCollapsed = (collapsed: boolean) => {
@@ -291,6 +317,15 @@ export function createAgentGuiWorkbenchContribution(
               )
             );
           };
+          const announceSessionAction = (
+            action: AgentGuiWorkbenchSessionAction
+          ) => {
+            dispatchAgentGuiWorkbenchSessionAction({
+              action,
+              agentSessionId: workbenchState.lastActiveAgentSessionId,
+              instanceId
+            });
+          };
 
           const headerProps = {
             copy,
@@ -309,6 +344,7 @@ export function createAgentGuiWorkbenchContribution(
             },
             ...dragHandleProps,
             onCreateConversation: announceNewConversation,
+            onSessionAction: announceSessionAction,
             onOpenDetachedWindow: input.onOpenDetachedWindow
               ? selectedAgent
                 ? () => {
@@ -334,19 +370,20 @@ export function createAgentGuiWorkbenchContribution(
                 nextCollapsed === false &&
                 node.displayMode !== "fullscreen"
               ) {
+                const currentFrame = windowActions.getFrame();
                 const expandedFrame = resolveAgentGUIExpandedWindowFrame({
                   conversationRailWidthPx: nodeState.conversationRailWidthPx,
                   desktopSize: surfaceSize,
-                  height: node.frame.height,
+                  height: currentFrame.height,
                   position: {
-                    x: node.frame.x,
-                    y: node.frame.y
+                    x: currentFrame.x,
+                    y: currentFrame.y
                   },
-                  width: node.frame.width
+                  width: currentFrame.width
                 });
 
                 windowActions.resize({
-                  ...node.frame,
+                  ...currentFrame,
                   height: expandedFrame.size.height,
                   width: expandedFrame.size.width,
                   x: expandedFrame.position.x,
@@ -378,16 +415,11 @@ export function createAgentGuiWorkbenchContribution(
         window: {
           closable: true,
           defaultOpen: false,
-          minimizedDock: {
-            kind: "component",
-            providePreview: (item) =>
-              createAgentGuiWorkbenchPreviewContent({
-                agentDirectory: input.agentDirectory,
-                item,
-                renderPreview: input.renderMinimizedPreview,
-                resolveDockPopupTitle: input.resolveDockPopupTitle
-              })
+          header: {
+            border: "none",
+            layout: "overlay"
           },
+          minimizedDock: { kind: "snapshot" },
           minimizable: true
         }
       }
@@ -547,7 +579,6 @@ import {
   agentGuiWorkbenchNewWindowCascadeOffset,
   agentGuiWorkbenchProviderRailWidthPx,
   buildAgentGuiDockEntries,
-  createAgentGuiWorkbenchPreviewContent,
   isAgentGuiWorkbenchCompactVisibleFrame,
   providerFromState,
   providerTargetLaunchPayloadFromRequest,

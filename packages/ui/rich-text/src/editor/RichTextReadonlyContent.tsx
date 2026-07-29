@@ -1,4 +1,4 @@
-import type { JSX } from "react";
+import { type JSX } from "react";
 import {
   MentionPill,
   Tooltip,
@@ -16,6 +16,12 @@ import { getWorkspaceReferencePresentation } from "../extensions/workspaceRefere
 import { RichTextMentionReadonly } from "./RichTextMentionReadonly.tsx";
 import { buildRichTextReadonlyInlineSegments } from "./richTextReadonlyContentModel.ts";
 import type { RichTextMentionAttrs } from "../types/mention.ts";
+import type { RichTextTriggerProvider } from "../types/trigger.ts";
+import type { RichTextMentionService } from "../service/index.ts";
+import {
+  useEffectiveRichTextMentionService,
+  useResolvedRichTextMention
+} from "./RichTextMentionServiceProvider.tsx";
 
 export interface RichTextReadonlyWorkspaceReference {
   kind: "file" | "folder";
@@ -27,6 +33,9 @@ export interface RichTextReadonlyContentProps {
   value: string;
   className?: string;
   paragraphClassName?: string;
+  /** @deprecated Prefer mentionService or RichTextMentionServiceProvider. */
+  triggerProviders?: readonly RichTextTriggerProvider[];
+  mentionService?: RichTextMentionService;
   onMentionAction?: (mention: RichTextMentionAttrs) => void | Promise<void>;
   onOpenWorkspaceReference?: (
     reference: RichTextReadonlyWorkspaceReference
@@ -40,10 +49,16 @@ export function RichTextReadonlyContent({
   value,
   className,
   paragraphClassName,
+  triggerProviders,
+  mentionService,
   onMentionAction,
   onOpenWorkspaceReference
 }: RichTextReadonlyContentProps): JSX.Element | null {
   const normalizedValue = normalizeRichTextContent(value).trim();
+  const effectiveMentionService = useEffectiveRichTextMentionService({
+    mentionService,
+    triggerProviders
+  });
 
   if (!normalizedValue) {
     return null;
@@ -63,6 +78,7 @@ export function RichTextReadonlyContent({
         >
           {renderReadonlyInlineMarkdown(
             paragraph,
+            effectiveMentionService,
             onOpenWorkspaceReference,
             onMentionAction
           )}
@@ -74,6 +90,7 @@ export function RichTextReadonlyContent({
 
 function renderReadonlyInlineMarkdown(
   content: string,
+  mentionService: RichTextMentionService,
   onOpenWorkspaceReference?: (
     reference: RichTextReadonlyWorkspaceReference
   ) => void | Promise<void>,
@@ -95,6 +112,7 @@ function renderReadonlyInlineMarkdown(
         label={segment.label}
         onMentionAction={onMentionAction}
         onOpenWorkspaceReference={onOpenWorkspaceReference}
+        mentionService={mentionService}
       />
     );
   });
@@ -106,7 +124,8 @@ function RichTextReadonlyInlineLink({
   href,
   label,
   onMentionAction,
-  onOpenWorkspaceReference
+  onOpenWorkspaceReference,
+  mentionService
 }: {
   href: string;
   label: string;
@@ -114,13 +133,14 @@ function RichTextReadonlyInlineLink({
   onOpenWorkspaceReference?: (
     reference: RichTextReadonlyWorkspaceReference
   ) => void | Promise<void>;
+  mentionService: RichTextMentionService;
 }): JSX.Element {
   const trimmedHref = href.trim();
   const mention = parseRichTextMentionHref(trimmedHref, label);
 
   if (mention) {
     return (
-      <RichTextMentionReadonly
+      <HydratedRichTextMentionReadonly
         mention={mention}
         onClick={
           onMentionAction
@@ -129,6 +149,7 @@ function RichTextReadonlyInlineLink({
               }
             : undefined
         }
+        mentionService={mentionService}
       />
     );
   }
@@ -164,6 +185,34 @@ function RichTextReadonlyInlineLink({
         path
       }}
       onOpenWorkspaceReference={onOpenWorkspaceReference}
+    />
+  );
+}
+
+function HydratedRichTextMentionReadonly({
+  mention,
+  onClick,
+  mentionService
+}: {
+  mention: RichTextMentionAttrs;
+  onClick?: (payload: { mention: RichTextMentionAttrs }) => void;
+  mentionService: RichTextMentionService;
+}): JSX.Element {
+  const snapshot = useResolvedRichTextMention(mention, mentionService);
+  const resolved =
+    snapshot.state === "ready"
+      ? { state: "active" as const, ...snapshot.resolved }
+      : snapshot.state === "loading"
+        ? { state: "loading" as const }
+        : snapshot.state === "missing"
+          ? { state: "missing" as const }
+          : undefined;
+
+  return (
+    <RichTextMentionReadonly
+      mention={mention}
+      onClick={onClick}
+      resolved={resolved}
     />
   );
 }

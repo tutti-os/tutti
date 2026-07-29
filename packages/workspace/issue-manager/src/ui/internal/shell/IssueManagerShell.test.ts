@@ -1,23 +1,6 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import { shouldIgnoreIssueManagerTaskDrawerBackdropEcho } from "./IssueManagerTaskDrawerEcho.ts";
-
-const issueManagerShellSource = readFileSync(
-  new URL("./IssueManagerShell.tsx", import.meta.url),
-  "utf8"
-);
-
-test("issue manager accepts a mode that keeps its sidebar visible", () => {
-  assert.match(
-    issueManagerShellSource,
-    /disableSidebarAutoCollapse\?: boolean/
-  );
-  assert.match(
-    issueManagerShellSource,
-    /disableSidebarAutoCollapse = false[\s\S]*?disableSidebarAutoCollapse,/
-  );
-});
 
 test("task drawer backdrop echo guard ignores near repeated clicks after opening", () => {
   assert.deepEqual(

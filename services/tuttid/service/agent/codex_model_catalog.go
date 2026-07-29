@@ -8,12 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os/exec"
 	"strings"
-	"sync"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/modelcatalog"
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
+	agentstatusservice "github.com/tutti-os/tutti/services/tuttid/service/agentstatus"
 )
 
 const (
@@ -27,12 +27,18 @@ type CodexCLIModelLister struct {
 	Command          string
 	Args             []string
 	ClientName       string
+	Provider         string
+	ProviderCommands ProviderCommandResolver
 	Timeout          time.Duration
 	Environ          func() []string
-	PrepareEnv       func([]string) ([]string, error)
+	PrepareEnv       func(context.Context, []string) ([]string, error)
 	HomeDir          func() (string, error)
 	IsExecutableFile func(string) bool
 	LookPath         func(string) (string, error)
+}
+
+type ProviderCommandResolver interface {
+	ResolveProviderCommand(context.Context, string) (agentstatusservice.ProviderCommandResolution, error)
 }
 
 type truncatingBuffer struct {
@@ -69,67 +75,52 @@ func (l CodexCLIModelLister) ListModels(ctx context.Context) (AgentModelListResu
 	if command == "" {
 		command = "codex"
 	}
+	args := append([]string{}, l.Args...)
 	resolver := runtimecmd.Resolver{
 		Environ:          l.Environ,
 		HomeDir:          l.HomeDir,
 		IsExecutableFile: l.IsExecutableFile,
 		LookPath:         l.LookPath,
 	}
-	env := resolver.Env(nil)
+	var envOverrides []string
+	if l.ProviderCommands != nil && strings.TrimSpace(l.Provider) != "" {
+		resolution, err := l.ProviderCommands.ResolveProviderCommand(processCtx, l.Provider)
+		if err != nil {
+			return AgentModelListResult{}, fmt.Errorf("resolve %s model-list command: %w", l.Provider, err)
+		}
+		if len(resolution.Command) == 0 || strings.TrimSpace(resolution.Command[0]) == "" {
+			return AgentModelListResult{}, fmt.Errorf("resolve %s model-list command: command is empty", l.Provider)
+		}
+		command = resolution.Command[0]
+		args = append([]string{}, resolution.Command[1:]...)
+		envOverrides = resolution.Env
+	}
+	env := resolver.Env(envOverrides)
 	if l.PrepareEnv != nil {
 		var err error
-		env, err = l.PrepareEnv(env)
+		env, err = l.PrepareEnv(processCtx, env)
 		if err != nil {
 			return AgentModelListResult{}, err
 		}
 	}
 	command = resolver.Resolve(command, env)
-	args := append([]string{}, l.Args...)
 	if len(args) == 0 {
 		args = []string{"app-server"}
 	}
-	cmd := exec.CommandContext(processCtx, command, args...)
-	cmd.Env = env
-	cmd.WaitDelay = codexAppServerShutdownWaitDelay
-	stdin, err := cmd.StdinPipe()
+	process, err := startCodexAppServerProcess(processCtx, command, args, env)
 	if err != nil {
-		return AgentModelListResult{}, fmt.Errorf("open codex app-server stdin: %w", err)
+		return AgentModelListResult{}, err
 	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return AgentModelListResult{}, fmt.Errorf("open codex app-server stdout: %w", err)
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return AgentModelListResult{}, fmt.Errorf("open codex app-server stderr: %w", err)
-	}
-	if err := cmd.Start(); err != nil {
-		return AgentModelListResult{}, fmt.Errorf("start codex app-server: %w", err)
-	}
-
-	stderrBuf := &truncatingBuffer{max: codexModelListMaxStderrBytes}
-	var stderrWG sync.WaitGroup
-	stderrWG.Add(1)
-	go func() {
-		defer stderrWG.Done()
-		_, _ = io.Copy(stderrBuf, stderr)
-	}()
-
-	defer func() {
-		_ = stdin.Close()
-		cancel()
-		_ = cmd.Wait()
-		stderrWG.Wait()
-	}()
-
-	models, err := requestCodexModelList(stdin, stdout, l.clientName())
+	models, err := requestCodexModelList(process.stdin, process.stdout, l.clientName())
+	processErr := processCtx.Err()
+	_ = process.stop(cancel)
 	if err == nil {
 		return AgentModelListResult{Models: models}, nil
 	}
-	if processCtx.Err() != nil {
-		return AgentModelListResult{}, fmt.Errorf("codex app-server model/list timed out: %w", processCtx.Err())
+	if processErr != nil {
+		return AgentModelListResult{}, fmt.Errorf("codex app-server model/list timed out: %w", processErr)
 	}
-	if stderr := strings.TrimSpace(stderrBuf.String()); stderr != "" {
+	if stderr := strings.TrimSpace(process.stderr.String()); stderr != "" {
 		return AgentModelListResult{}, fmt.Errorf("%w: %s", err, stderr)
 	}
 	return AgentModelListResult{}, err
@@ -225,29 +216,7 @@ func readCodexModelListResponse(scanner *bufio.Scanner) ([]AgentModelOption, err
 }
 
 func parseCodexModelListLine(line []byte) ([]AgentModelOption, bool, error) {
-	var payload map[string]json.RawMessage
-	if err := json.Unmarshal(line, &payload); err != nil {
-		return nil, false, nil
-	}
-	if !codexRPCIDMatches(payload["id"], "2") {
-		return nil, false, nil
-	}
-	if rawError, ok := payload["error"]; ok && string(rawError) != "null" {
-		return nil, true, errors.New(extractCodexRPCError(rawError))
-	}
-	var result struct {
-		Data []json.RawMessage `json:"data"`
-	}
-	if err := json.Unmarshal(payload["result"], &result); err != nil {
-		return nil, true, fmt.Errorf("parse codex model/list result: %w", err)
-	}
-	models := make([]AgentModelOption, 0, len(result.Data))
-	for _, rawModel := range result.Data {
-		if model, ok := normalizeCodexModel(rawModel); ok {
-			models = append(models, model)
-		}
-	}
-	return models, true, nil
+	return modelcatalog.ParseCodexModelListLine(line, "2")
 }
 
 func codexRPCIDMatches(raw json.RawMessage, want string) bool {
@@ -274,83 +243,4 @@ func extractCodexRPCError(raw json.RawMessage) string {
 		return strings.TrimSpace(object.Message)
 	}
 	return "unknown codex app-server RPC error"
-}
-
-func normalizeCodexModel(raw json.RawMessage) (AgentModelOption, bool) {
-	var object map[string]any
-	if err := json.Unmarshal(raw, &object); err != nil {
-		return AgentModelOption{}, false
-	}
-	id := stringMapValue(object, "model")
-	if id == "" {
-		id = stringMapValue(object, "id")
-	}
-	if id == "" {
-		return AgentModelOption{}, false
-	}
-	displayName := stringMapValue(object, "displayName")
-	if displayName == "" {
-		displayName = stringMapValue(object, "display_name")
-	}
-	if displayName == "" {
-		displayName = id
-	}
-	reasoningEffortsValue, reasoningEffortsAdvertised := object["supportedReasoningEfforts"]
-	if !reasoningEffortsAdvertised {
-		reasoningEffortsValue, reasoningEffortsAdvertised = object["supported_reasoning_efforts"]
-	}
-	return AgentModelOption{
-		ID:                         id,
-		DisplayName:                displayName,
-		Description:                stringMapValue(object, "description"),
-		DefaultReasoningEffort:     firstNonEmptyString(stringMapValue(object, "defaultReasoningEffort"), stringMapValue(object, "default_reasoning_effort")),
-		IsDefault:                  boolMapValue(object, "isDefault") || boolMapValue(object, "is_default"),
-		ReasoningEffortsAdvertised: reasoningEffortsAdvertised,
-		SupportedReasoningEfforts:  normalizeCodexReasoningEfforts(reasoningEffortsValue),
-	}, true
-}
-
-func normalizeCodexReasoningEfforts(value any) []AgentModelReasoningEffortOption {
-	rawOptions, ok := value.([]any)
-	if !ok {
-		return nil
-	}
-	options := make([]AgentModelReasoningEffortOption, 0, len(rawOptions))
-	seen := make(map[string]struct{}, len(rawOptions))
-	for _, rawOption := range rawOptions {
-		var option AgentModelReasoningEffortOption
-		switch typed := rawOption.(type) {
-		case string:
-			option.Value = strings.TrimSpace(typed)
-		case map[string]any:
-			option.Value = firstNonEmptyString(
-				stringMapValue(typed, "reasoningEffort"),
-				stringMapValue(typed, "effort"),
-				stringMapValue(typed, "value"),
-			)
-			option.Description = stringMapValue(typed, "description")
-		}
-		if option.Value == "" {
-			continue
-		}
-		if _, exists := seen[option.Value]; exists {
-			continue
-		}
-		seen[option.Value] = struct{}{}
-		options = append(options, option)
-	}
-	return options
-}
-
-func stringMapValue(object map[string]any, key string) string {
-	value, ok := object[key].(string)
-	if !ok {
-		return ""
-	}
-	return strings.TrimSpace(value)
-}
-
-func boolMapValue(object map[string]any, key string) bool {
-	value, ok := object[key].(bool)
-	return ok && value
 }

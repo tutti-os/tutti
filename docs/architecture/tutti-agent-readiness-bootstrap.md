@@ -18,13 +18,16 @@ account credentials.
 
 ## Provider Registration
 
-`services/tuttid/service/agentstatus/registry.go` registers `tutti-agent` with:
+`packages/agent/daemon/providerregistry/providers.go` registers `tutti-agent`
+with:
 
 - binary: `tutti-agent`;
 - adapter command: `tutti-agent app-server`;
-- minimum package version: the daemon's `minTuttiAgentVersion`;
+- minimum CLI version: the registry's `TuttiAgentMinVersion`;
+- tested install version: the registry's `TuttiAgentRecommendedVersion`;
 - auth marker: `~/.tutti-agent/auth.json`;
-- installer: `InstallerKindManagedNPMPackage` for
+- installer: registry kind `InstallerKindManagedNPM` (mapped to agentstatus
+  `InstallerKindManagedNPMPackage`) for
   `@tutti-os/tutti-agent`, including optional dependencies.
 
 Provider status is the source of truth for readiness. A successful npm command
@@ -37,11 +40,15 @@ The managed installer places the package in a global prefix searched by the
 daemon binary resolver. It also repairs an existing npm-owned installation in
 place when the launcher or a platform package is broken.
 
-The effective command has this shape:
+New installs and minimum-version repairs install the descriptor's exact tested
+`RecommendedVersion`. `MinVersion` remains the compatibility floor: an existing
+runtime at or above it is reused without contacting npm. Keeping these values
+separate makes installation reproducible and permits an explicit downgrade
+during rollback. The effective command has this shape:
 
 ```text
 npm install -g --prefix <managed-or-existing-prefix> \
-  @tutti-os/tutti-agent@<minimum-version> --include=optional
+  @tutti-os/tutti-agent@<recommended-version> --include=optional
 ```
 
 `--include=optional` is required because the CLI depends on platform-specific
@@ -54,21 +61,25 @@ Registry selection follows the shared agent npm registry policy:
 2. otherwise the installer ranks and retries the configured official and mirror
    registries for the exact package being installed.
 
-The mirrors must contain both the aggregate package and its matching platform
-dependencies. A partially synchronized mirror can otherwise produce an npm
-success followed by an unusable launcher.
+The shared `packages/agent/daemon/managednpm` policy ranks registries in the
+runtime's own network. A registry is eligible only when it contains the exact
+aggregate version and the matching optional platform package. A fast but
+partially synchronized mirror is ranked behind complete sources. Installation
+still verifies the binary, native payload, and app-server rather than trusting
+metadata or npm's exit status.
 
 ## Desktop Proactive Install
 
-`registerWorkspaceAgentServices` starts
-`startTuttiAgentInstallBootstrap` once the desktop provider-status service is
-available. The bootstrap:
+`registerWorkspaceAgentServices` starts `startManagedAgentInstallBootstraps`
+once the desktop provider-status service is available. The bootstrap:
 
 1. loads only the `tutti-agent` provider status;
-2. stops when the provider is already ready, is not `not_installed`, has no
+2. treats a missing CLI and a CLI below `TuttiAgentMinVersion` as installable
+   `not_installed` states;
+3. stops when the provider is already ready, is not `not_installed`, has no
    install action, or already has an install action pending;
-3. runs the normal provider `install` action;
-4. refreshes provider status after the action.
+4. runs the normal provider `install` action;
+5. refreshes provider status after the action.
 
 This path is best-effort and non-modal. It never auto-installs third-party
 providers and it reuses the same daemon action exposed by manual setup UI.
@@ -101,11 +112,34 @@ account logout completed
   -> revoke the removed LLM refresh token in the background
 ```
 
+The host-neutral ordering and compensation rules live in
+`packages/agent/daemon/tuttiagentauth`; the Tutti daemon supplies the Account,
+credential-file, and local CLI adapters. Another host may supply VM-backed
+adapters without importing Tutti product paths or account-session storage. One
+reconciler instance serializes mutations of one canonical credential file.
+Hosts must run local cleanup on logout/account switch before reconciling the
+next account; this does not require a user ID in the credential path.
+
+Reconciliation only establishes usable credential material. It does not prove
+that the provider accepts the credential and must not be treated as an
+authenticated or ready product state. Every host must run a provider probe
+after reconciliation and publish readiness from that authoritative probe.
+
 The same auth bootstrap runs once when the daemon starts and before each Tutti
 Agent runtime preparation. These fallback entry points cover a login completed
 before callback wiring, a transient token failure, or a stale provider auth
-home. When no host account session exists, preparation removes stale Tutti Agent
-auth instead of reporting the provider ready.
+home. A missing, unreadable, or malformed host account file is only an
+observation failure: preparation retains existing Tutti Agent auth. A rejected
+token issue also retains existing provider auth. Reconciliation and explicit
+logout serialize with Tutti Agent refresh through the shared
+`auth.json.refresh.lock`; if token issue, validation, provider login, or
+verification fails, the daemon safely restores the previous auth bytes. Both
+implementations resolve a symlinked `auth.json` to its final target before
+choosing the sibling lock path, so restoration does not replace the symlink.
+The Go `flock` and Rust `fs2` libraries use the same OS advisory file-lock
+primitive on a local filesystem; this coordination is not a distributed lock.
+Only the completed account logout callback authorizes local deletion and
+background token revocation.
 
 `TUTTI_ACCOUNT_BASE_URL` overrides the account service used for token issue and
 revoke. `TUTTI_AGENT_LLM_APP_ID` overrides the LLM application id for controlled
@@ -128,10 +162,16 @@ refresh so setup UI can move between `not_installed`, `auth_required`, and
 - Rendering an AgentGUI item never installs a provider.
 - Only `tutti-agent` uses proactive installation.
 - Installation completion is determined by a fresh provider probe.
+- Missing, unknown, or below-floor versions install the exact recommended
+  version; compatible versions do not contact a registry.
+- Registry ranking happens where npm will run and rejects incomplete platform
+  packages before comparing speed.
+- A Tutti Agent below `TuttiAgentMinVersion` is not ready and is repaired by
+  the same proactive install path as a missing CLI.
 - Desktop account credentials and Tutti LLM tokens never pass through renderer
   component state.
-- Logout removes the local provider auth marker before the renderer observes the
-  completed logout.
+- Only a completed account logout removes the local provider auth marker, and
+  it does so before the renderer observes the completed logout.
 - User-visible setup and login copy goes through desktop i18n.
 
 ## Validation
@@ -143,7 +183,9 @@ The durable test surface covers:
 - managed prefix selection, optional dependencies, repair, and post-install
   probing;
 - proactive install gating, coalescing, success refresh, and failure backoff;
-- account token issue, provider login, stale-auth cleanup, and logout revocation;
+- account token issue, provider login, safe auth restoration after failed
+  reconciliation, shared refresh-lock serialization, and explicit logout
+  cleanup and revocation;
 - desktop routing of Tutti Agent login actions to the account service.
 
 Related documents:

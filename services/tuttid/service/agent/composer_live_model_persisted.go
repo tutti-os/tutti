@@ -13,27 +13,35 @@ import (
 // durable last-known-good catalog avoids an unnecessary hidden probe and keeps
 // the picker from collapsing to the single selected model.
 func (s *Service) liveModelOptionsFromPersistedSessions(workspaceID string, provider string, agentTargetIDs ...string) []ComposerConfigOptionValue {
-	if s.SessionReader == nil {
-		return nil
-	}
-	provider = agentprovider.NormalizeOpen(provider)
 	agentTargetID := ""
 	if len(agentTargetIDs) > 0 {
 		agentTargetID = agentTargetIDs[0]
 	}
-	sessions, ok := s.SessionReader.ListSessions(workspaceID)
+	return s.liveModelOptionsFromPersistedSessionsForScope(newComposerLiveModelScope(provider, workspaceID, "", agentTargetID))
+}
+
+func (s *Service) liveModelOptionsFromPersistedSessionsForScope(scope composerLiveModelScope) []ComposerConfigOptionValue {
+	if s.SessionReader == nil {
+		return nil
+	}
+	scope.provider = agentprovider.NormalizeOpen(scope.provider)
+	sessions, ok := s.SessionReader.ListSessions(scope.workspaceID)
 	if !ok {
 		return nil
 	}
-	invalidatedAtUnixMS := s.liveModelInvalidatedAtUnixMSForProvider(provider)
+	invalidatedAtUnixMS := s.liveModelInvalidatedAtUnixMSForProvider(scope.provider)
 	var best []ComposerConfigOptionValue
 	bestUnixMS := int64(-1)
+	bestSessionID := ""
 	for _, session := range sessions {
 		runtimeContext := persistedSessionRuntimeContext(session)
-		if agentprovider.NormalizeOpen(session.Provider) != provider {
+		if agentprovider.NormalizeOpen(session.Provider) != scope.provider {
 			continue
 		}
-		if agentTargetID != "" && session.AgentTargetID != agentTargetID {
+		if scope.agentTargetID != "" && session.AgentTargetID != scope.agentTargetID {
+			continue
+		}
+		if !scope.matchesExtensionRuntimeContext(runtimeContext) {
 			continue
 		}
 		if isHiddenLiveModelDiscoveryRuntimeContext(runtimeContext) {
@@ -43,15 +51,16 @@ func (s *Service) liveModelOptionsFromPersistedSessions(workspaceID string, prov
 		if invalidatedAtUnixMS > 0 && sessionUnixMS <= invalidatedAtUnixMS {
 			continue
 		}
-		if sessionUnixMS <= bestUnixMS {
+		if sessionUnixMS < bestUnixMS || (sessionUnixMS == bestUnixMS && session.ID <= bestSessionID) {
 			continue
 		}
-		options := extractModelOptionsFromRuntimeContext(runtimeContext)
+		options := extractModelOptionsFromRuntimeContext(runtimeContext, scope.modelConfigOptionID)
 		if len(options) == 0 {
 			continue
 		}
 		best = options
 		bestUnixMS = sessionUnixMS
+		bestSessionID = session.ID
 	}
 	return best
 }
@@ -75,6 +84,10 @@ func (s *Service) persistedLiveModelFallback(workspaceID string, cwd string, pro
 		agentTargetID = agentTargetIDs[0]
 	}
 	scope := newComposerLiveModelScope(provider, workspaceID, cwd, agentTargetID)
+	return s.persistedLiveModelFallbackForScope(scope, now)
+}
+
+func (s *Service) persistedLiveModelFallbackForScope(scope composerLiveModelScope, now time.Time) ([]ComposerConfigOptionValue, bool) {
 	cacheKey := scope.key()
 	s.liveModelDiscoveryMu.Lock()
 	missedAtUnixMS := s.liveModelPersistedScanMissAtUnixMS[cacheKey]
@@ -82,7 +95,7 @@ func (s *Service) persistedLiveModelFallback(workspaceID string, cwd string, pro
 	if missedAtUnixMS > 0 && now.UnixMilli()-missedAtUnixMS < persistedLiveModelScanMissTTL.Milliseconds() {
 		return nil, false
 	}
-	persisted := s.liveModelOptionsFromPersistedSessions(workspaceID, provider, agentTargetID)
+	persisted := s.liveModelOptionsFromPersistedSessionsForScope(scope)
 	s.liveModelDiscoveryMu.Lock()
 	if len(persisted) == 0 {
 		if s.liveModelPersistedScanMissAtUnixMS == nil {
@@ -98,9 +111,9 @@ func (s *Service) persistedLiveModelFallback(workspaceID string, cwd string, pro
 	}
 	s.setLiveComposerModelOptionsForScope(scope, now, persisted)
 	logClaudeModelCatalogInvalidationDebug("composer_options_persisted_session_fallback", map[string]any{
-		"workspaceId":       workspaceID,
-		"provider":          provider,
-		"cwd":               cwd,
+		"workspaceId":       scope.workspaceID,
+		"provider":          scope.provider,
+		"cwd":               scope.cwd,
 		"modelOptionCount":  len(persisted),
 		"modelOptionValues": composerConfigOptionValuesDebugValues(persisted),
 		"checkedAtUnixMs":   now.UnixMilli(),

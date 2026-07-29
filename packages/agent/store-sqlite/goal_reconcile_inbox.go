@@ -18,6 +18,9 @@ const (
 )
 
 func (s *Store) PutGoalReconcileInbox(ctx context.Context, input GoalReconcileInboxItem) (bool, error) {
+	if s == nil || s.db == nil {
+		return false, errors.New("workspace database is not initialized")
+	}
 	input.RequestID, input.WorkspaceID, input.AgentSessionID = strings.TrimSpace(input.RequestID), strings.TrimSpace(input.WorkspaceID), strings.TrimSpace(input.AgentSessionID)
 	if input.RequestID == "" || input.WorkspaceID == "" || input.AgentSessionID == "" || input.CreatedAtUnixMS <= 0 {
 		return false, errors.New("valid goal reconcile inbox identity is required")
@@ -34,19 +37,41 @@ func (s *Store) PutGoalReconcileInbox(ctx context.Context, input GoalReconcileIn
 	if phase == goalReconcilePhasePending {
 		nextAttemptAt += goalReconcileFinalizeGrace.Milliseconds()
 	}
-	result, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO workspace_agent_goal_reconcile_inbox
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin put goal reconcile inbox: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	if err := requireSessionForkSourceWritableTx(
+		ctx, tx, input.WorkspaceID, input.AgentSessionID,
+	); err != nil {
+		return false, err
+	}
+	result, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO workspace_agent_goal_reconcile_inbox
 (request_id,workspace_id,agent_session_id,payload_json,status,next_attempt_at_unix_ms,created_at_unix_ms,updated_at_unix_ms)
 VALUES(?,?,?,?,'prepared',?,?,?)`, input.RequestID, input.WorkspaceID, input.AgentSessionID, string(payload), nextAttemptAt, input.CreatedAtUnixMS, input.CreatedAtUnixMS)
 	if err != nil {
 		return false, err
 	}
 	created, err := rowsWereAffected(result, "put goal reconcile inbox")
-	if err != nil || created {
-		return created, err
+	if err != nil {
+		return false, err
+	}
+	if created {
+		if err := tx.Commit(); err != nil {
+			return false, err
+		}
+		committed = true
+		return true, nil
 	}
 	for attempt := 0; attempt < 3; attempt++ {
 		var workspaceID, agentSessionID, existingPayload, status string
-		if err := s.db.QueryRowContext(ctx, `SELECT workspace_id,agent_session_id,payload_json,status FROM workspace_agent_goal_reconcile_inbox WHERE request_id=?`, input.RequestID).
+		if err := tx.QueryRowContext(ctx, `SELECT workspace_id,agent_session_id,payload_json,status FROM workspace_agent_goal_reconcile_inbox WHERE request_id=?`, input.RequestID).
 			Scan(&workspaceID, &agentSessionID, &existingPayload, &status); err != nil {
 			return false, err
 		}
@@ -70,7 +95,7 @@ VALUES(?,?,?,?,'prepared',?,?,?)`, input.RequestID, input.WorkspaceID, input.Age
 		if status != "prepared" {
 			return false, nil
 		}
-		updated, updateErr := s.db.ExecContext(ctx, `UPDATE workspace_agent_goal_reconcile_inbox
+		updated, updateErr := tx.ExecContext(ctx, `UPDATE workspace_agent_goal_reconcile_inbox
 SET payload_json=?,next_attempt_at_unix_ms=?,updated_at_unix_ms=?
 WHERE request_id=? AND status='prepared' AND payload_json=?`, string(payload), input.CreatedAtUnixMS, input.CreatedAtUnixMS, input.RequestID, existingPayload)
 		if updateErr != nil {
@@ -81,6 +106,10 @@ WHERE request_id=? AND status='prepared' AND payload_json=?`, string(payload), i
 			return false, updateErr
 		}
 		if changed {
+			if err := tx.Commit(); err != nil {
+				return false, err
+			}
+			committed = true
 			return false, nil
 		}
 	}

@@ -14,11 +14,14 @@ import (
 )
 
 var _ agentactivitybiz.Repository = (*SQLiteStore)(nil)
+var _ AgentActivityStore = (*SQLiteStore)(nil)
 
 // Agent activity and agent target persistence is delegated to the
 // embeddable packages/agent/store-sqlite module, sharing this store's
-// database handle. The delegation below keeps SQLiteStore satisfying the
-// AgentActivityStore and AgentTargetStore interfaces unchanged.
+// database handle. The delegation below keeps tuttid's persistence seams thin
+// while store-sqlite owns canonical query and migration behavior.
+
+var _ AgentActivityStore = (*SQLiteStore)(nil)
 
 const legacyIDLocalCodex = "local-codex"
 const legacyIDLocalClaudeCode = "local-claude-code"
@@ -37,6 +40,7 @@ func newAgentStore(db *sql.DB) *agentstore.Store {
 			legacyIDLocalClaudeCode: agenttargetbiz.IDLocalClaudeCode,
 		},
 		TargetIDBackfillByProvider: defaultTargetIDBackfillByProvider(),
+		TransactionParticipant:     tuttiModeSourceActivityParticipant{},
 	})
 }
 
@@ -56,6 +60,12 @@ func (s *SQLiteStore) agentStore() *agentstore.Store {
 		return nil
 	}
 	return s.agentWriter
+}
+
+// AgentCanonicalStore exposes the official canonical agent store for Host
+// composition. Product services must not wrap its lifecycle mutations.
+func (s *SQLiteStore) AgentCanonicalStore() *agentstore.Store {
+	return s.agentStore()
 }
 
 func (s *SQLiteStore) agentReadStore() *agentstore.Store {
@@ -158,8 +168,16 @@ func (s *SQLiteStore) SessionDeleted(ctx context.Context, workspaceID string, ag
 	return s.agentReadStore().SessionDeleted(ctx, workspaceID, agentSessionID)
 }
 
+func (s *SQLiteStore) RollbackRuntimeSessionInitialization(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
+	return s.agentStore().RollbackRuntimeSessionInitialization(ctx, workspaceID, agentSessionID)
+}
+
 func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string) ([]agentactivitybiz.Session, bool, error) {
 	return s.agentReadStore().ListSessions(ctx, workspaceID)
+}
+
+func (s *SQLiteStore) ListSessionsPage(ctx context.Context, input agentactivitybiz.ListSessionsPageInput) (agentactivitybiz.SessionListPage, bool, error) {
+	return s.agentReadStore().ListSessionsPage(ctx, input)
 }
 
 func (s *SQLiteStore) ListSessionSection(ctx context.Context, input agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool, error) {
@@ -183,15 +201,105 @@ func (s *SQLiteStore) ListWorkspaceGeneratedFileTurns(ctx context.Context, input
 }
 
 func (s *SQLiteStore) DeleteSession(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
-	return s.agentStore().DeleteSession(ctx, workspaceID, agentSessionID)
+	result, err := s.deleteAgentSessionsWithTuttiModeTx(ctx, agentactivitybiz.DeleteSessionsBatchInput{
+		WorkspaceID: workspaceID,
+		SessionIDs:  []string{agentSessionID},
+	})
+	return result.RemovedSessions > 0, err
+}
+
+func (s *SQLiteStore) DeleteSessionWithCommit(ctx context.Context, workspaceID string, agentSessionID string) (agentactivitybiz.DeleteSessionResult, error) {
+	return s.agentStore().DeleteSessionWithCommit(ctx, workspaceID, agentSessionID)
 }
 
 func (s *SQLiteStore) DeleteSessionsBatch(ctx context.Context, input agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsBatchResult, error) {
-	return s.agentStore().DeleteSessionsBatch(ctx, input)
+	return s.deleteAgentSessionsWithTuttiModeTx(ctx, input)
+}
+
+func (s *SQLiteStore) PlanDeleteSessions(ctx context.Context, input agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsPlan, error) {
+	return s.agentReadStore().PlanDeleteSessions(ctx, input)
+}
+
+func (s *SQLiteStore) PlanClearSessions(ctx context.Context, workspaceID string) (agentactivitybiz.DeleteSessionsPlan, error) {
+	return s.agentReadStore().PlanClearSessions(ctx, workspaceID)
 }
 
 func (s *SQLiteStore) ClearSessions(ctx context.Context, workspaceID string) (agentactivitybiz.ClearSessionsResult, error) {
-	return s.agentStore().ClearSessions(ctx, workspaceID)
+	if s == nil || s.writeDB == nil {
+		return agentactivitybiz.ClearSessionsResult{}, errors.New("workspace database is not initialized")
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return agentactivitybiz.ClearSessionsResult{}, nil
+	}
+	tx, err := s.writeDB.BeginTx(ctx, nil)
+	if err != nil {
+		return agentactivitybiz.ClearSessionsResult{}, fmt.Errorf("begin clear agent and Tutti mode sessions: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := s.agentStore().ClearSessionsTx(ctx, tx, workspaceID)
+	if err != nil {
+		return agentactivitybiz.ClearSessionsResult{}, err
+	}
+	if err := deleteTuttiModeWorkspaceSessionStateTx(ctx, tx, workspaceID); err != nil {
+		return agentactivitybiz.ClearSessionsResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return agentactivitybiz.ClearSessionsResult{}, fmt.Errorf("commit clear agent and Tutti mode sessions: %w", err)
+	}
+	return result, nil
+}
+
+func (s *SQLiteStore) deleteAgentSessionsWithTuttiModeTx(ctx context.Context, input agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsBatchResult, error) {
+	if s == nil || s.writeDB == nil {
+		return agentactivitybiz.DeleteSessionsBatchResult{}, errors.New("workspace database is not initialized")
+	}
+	tx, err := s.writeDB.BeginTx(ctx, nil)
+	if err != nil {
+		return agentactivitybiz.DeleteSessionsBatchResult{}, fmt.Errorf("begin delete agent and Tutti mode sessions: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := s.agentStore().DeleteSessionsBatchTx(ctx, tx, input)
+	if err != nil {
+		return agentactivitybiz.DeleteSessionsBatchResult{}, err
+	}
+	if err := deleteTuttiModeSessionStatesTx(ctx, tx, strings.TrimSpace(input.WorkspaceID), result.RemovedSessionIDs); err != nil {
+		return agentactivitybiz.DeleteSessionsBatchResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return agentactivitybiz.DeleteSessionsBatchResult{}, fmt.Errorf("commit delete agent and Tutti mode sessions: %w", err)
+	}
+	return result, nil
+}
+
+func deleteTuttiModeSessionStatesTx(ctx context.Context, tx *sql.Tx, workspaceID string, sessionIDs []string) error {
+	for _, sessionID := range sessionIDs {
+		sessionID = strings.TrimSpace(sessionID)
+		if sessionID == "" {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM tutti_mode_turn_snapshots WHERE workspace_id = ? AND agent_session_id = ?`, workspaceID, sessionID); err != nil {
+			return fmt.Errorf("delete Tutti mode turn snapshots with agent session: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM tutti_mode_activations WHERE workspace_id = ? AND agent_session_id = ?`, workspaceID, sessionID); err != nil {
+			return fmt.Errorf("delete Tutti mode activation with agent session: %w", err)
+		}
+	}
+	return nil
+}
+
+func deleteTuttiModeWorkspaceSessionStateTx(ctx context.Context, tx *sql.Tx, workspaceID string) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM tutti_mode_turn_snapshots WHERE workspace_id = ?`, workspaceID); err != nil {
+		return fmt.Errorf("clear Tutti mode turn snapshots with agent sessions: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM tutti_mode_activations WHERE workspace_id = ?`, workspaceID); err != nil {
+		return fmt.Errorf("clear Tutti mode activations with agent sessions: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) PurgeDeletedSessions(ctx context.Context, input agentactivitybiz.PurgeDeletedSessionsInput) (agentactivitybiz.PurgeDeletedSessionsResult, error) {
+	return s.agentStore().PurgeDeletedSessions(ctx, input)
 }
 
 func (s *SQLiteStore) UpdateSessionPinned(ctx context.Context, workspaceID string, agentSessionID string, pinned bool) (agentactivitybiz.Session, bool, error) {
@@ -234,6 +342,10 @@ func (s *SQLiteStore) ListSessionTurns(ctx context.Context, workspaceID string, 
 	return s.agentReadStore().ListSessionTurns(ctx, workspaceID, agentSessionID)
 }
 
+func (s *SQLiteStore) ListSessionTurnSummaries(ctx context.Context, input agentactivitybiz.ListSessionTurnSummariesInput) (agentactivitybiz.SessionTurnSummaryPage, error) {
+	return s.agentReadStore().ListSessionTurnSummaries(ctx, input)
+}
+
 func (s *SQLiteStore) SettleStaleTurns(ctx context.Context) ([]agentactivitybiz.StaleTurnSettlement, error) {
 	return s.agentStore().SettleStaleTurns(ctx)
 }
@@ -244,6 +356,10 @@ func (s *SQLiteStore) ListSessionInteractions(ctx context.Context, input agentac
 
 func (s *SQLiteStore) PrepareRuntimeOperation(ctx context.Context, input agentactivitybiz.RuntimeOperationPrepare) (agentactivitybiz.RuntimeOperation, bool, error) {
 	return s.agentStore().PrepareRuntimeOperation(ctx, input)
+}
+
+func (s *SQLiteStore) PrepareInteractiveRuntimeOperation(ctx context.Context, input agentactivitybiz.RuntimeOperationPrepare) (agentactivitybiz.RuntimeOperation, agentactivitybiz.Interaction, agentactivitybiz.InteractionTransitionResult, error) {
+	return s.agentStore().PrepareInteractiveRuntimeOperation(ctx, input)
 }
 
 func (s *SQLiteStore) PrepareGoalControlOperation(ctx context.Context, input agentactivitybiz.GoalControlOperationPrepare) (agentactivitybiz.GoalControlOperation, agentactivitybiz.SessionGoalState, bool, error) {
@@ -306,8 +422,44 @@ func (s *SQLiteStore) RequeueLeasedGoalControlOperationsOnStartup(ctx context.Co
 	return s.agentStore().RequeueLeasedGoalControlOperationsOnStartup(ctx, now)
 }
 
+func (s *SQLiteStore) PrepareGoalGenerationFence(ctx context.Context, input agentactivitybiz.GoalGenerationFencePrepare) (agentactivitybiz.GoalGenerationFence, bool, error) {
+	return s.agentStore().PrepareGoalGenerationFence(ctx, input)
+}
+
+func (s *SQLiteStore) GetGoalGenerationFence(ctx context.Context, workspaceID, fenceID string) (agentactivitybiz.GoalGenerationFence, bool, error) {
+	return s.agentReadStore().GetGoalGenerationFence(ctx, workspaceID, fenceID)
+}
+
+func (s *SQLiteStore) ListGoalGenerationFencesForSession(ctx context.Context, workspaceID, agentSessionID string) ([]agentactivitybiz.GoalGenerationFence, error) {
+	return s.agentReadStore().ListGoalGenerationFencesForSession(ctx, workspaceID, agentSessionID)
+}
+
+func (s *SQLiteStore) ListClaimableGoalGenerationFences(ctx context.Context, input agentactivitybiz.ListClaimableGoalGenerationFencesInput) ([]agentactivitybiz.GoalGenerationFence, error) {
+	return s.agentReadStore().ListClaimableGoalGenerationFences(ctx, input)
+}
+
+func (s *SQLiteStore) ClaimGoalGenerationFence(ctx context.Context, input agentactivitybiz.ClaimGoalGenerationFenceInput) (agentactivitybiz.GoalGenerationFence, bool, error) {
+	return s.agentStore().ClaimGoalGenerationFence(ctx, input)
+}
+
+func (s *SQLiteStore) ReleaseGoalGenerationFence(ctx context.Context, input agentactivitybiz.ReleaseGoalGenerationFenceInput) (agentactivitybiz.GoalGenerationFence, bool, error) {
+	return s.agentStore().ReleaseGoalGenerationFence(ctx, input)
+}
+
+func (s *SQLiteStore) CompleteGoalGenerationFence(ctx context.Context, input agentactivitybiz.CompleteGoalGenerationFenceInput) (agentactivitybiz.GoalGenerationFence, bool, error) {
+	return s.agentStore().CompleteGoalGenerationFence(ctx, input)
+}
+
+func (s *SQLiteStore) RequeueLeasedGoalGenerationFencesOnStartup(ctx context.Context, now int64) (int64, error) {
+	return s.agentStore().RequeueLeasedGoalGenerationFencesOnStartup(ctx, now)
+}
+
 func (s *SQLiteStore) PrepareSubmitClaim(ctx context.Context, input agentactivitybiz.SubmitClaimPrepare) (agentactivitybiz.SubmitClaim, bool, error) {
 	return s.agentStore().PrepareSubmitClaim(ctx, input)
+}
+
+func (s *SQLiteStore) GetSubmitClaim(ctx context.Context, workspaceID, agentSessionID, clientSubmitID string) (agentactivitybiz.SubmitClaim, bool, error) {
+	return s.agentStore().GetSubmitClaim(ctx, workspaceID, agentSessionID, clientSubmitID)
 }
 
 func (s *SQLiteStore) AcceptSubmitClaim(ctx context.Context, workspaceID, agentSessionID, clientSubmitID, turnID string, nowUnixMS int64) (agentactivitybiz.SubmitClaim, bool, error) {
@@ -421,6 +573,7 @@ func agentTargetToStore(target agenttargetbiz.Target) agentstore.Target {
 		Name:            target.Name,
 		IconKey:         target.IconKey,
 		IconURL:         target.IconURL,
+		MaskIconURL:     target.MaskIconURL,
 		HeroImageURL:    target.HeroImageURL,
 		Enabled:         target.Enabled,
 		Source:          target.Source,
@@ -438,6 +591,7 @@ func agentTargetFromStore(target agentstore.Target) agenttargetbiz.Target {
 		Name:            target.Name,
 		IconKey:         target.IconKey,
 		IconURL:         target.IconURL,
+		MaskIconURL:     target.MaskIconURL,
 		HeroImageURL:    target.HeroImageURL,
 		Enabled:         target.Enabled,
 		Source:          target.Source,

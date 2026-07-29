@@ -28,7 +28,7 @@ export function formatReferenceNodePathText(
       node.displayName
     );
   }
-  return node.contextLabel?.trim() || node.ref.nodeId;
+  return node.contextLabel?.trim() || node.displayName;
 }
 
 export function formatReferencePreviewDateTime(

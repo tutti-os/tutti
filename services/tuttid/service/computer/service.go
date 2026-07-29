@@ -36,10 +36,44 @@ func NewService() *Service {
 // CallTool invokes a cua-driver MCP tool against the workspace's computer
 // session, lazily starting it on first use.
 func (s *Service) CallTool(ctx context.Context, workspaceID, cwd, tool string, args map[string]any) (ToolResult, error) {
-	workspaceID = strings.TrimSpace(workspaceID)
+	return withComputerSession(s, ctx, workspaceID, cwd, func(session *computerSession) (ToolResult, error) {
+		return session.adaptToolCall(ctx, tool, args)
+	})
+}
 
+// CallNativeTool forwards one live-catalog tool allowed by Tutti's capability
+// policy without applying stable CLI aliases or automatic target selection.
+func (s *Service) CallNativeTool(ctx context.Context, workspaceID, cwd, tool string, args map[string]any) (ToolResult, error) {
+	return withComputerSession(s, ctx, workspaceID, cwd, func(session *computerSession) (ToolResult, error) {
+		catalog, err := session.listTools(ctx)
+		if err != nil {
+			return ToolResult{}, err
+		}
+		definition, err := requireAllowedNativeTool(catalog, tool)
+		if err != nil {
+			return ToolResult{}, err
+		}
+		return session.callNativeTool(ctx, definition.Name, args)
+	})
+}
+
+// ListTools returns the complete versioned cua-driver tool catalog annotated
+// with Tutti-owned authorization decisions.
+func (s *Service) ListTools(ctx context.Context, workspaceID, cwd string) (ToolCatalog, error) {
+	return withComputerSession(s, ctx, workspaceID, cwd, func(session *computerSession) (ToolCatalog, error) {
+		catalog, err := session.listTools(ctx)
+		if err != nil {
+			return ToolCatalog{}, err
+		}
+		return annotateNativeToolCatalog(catalog)
+	})
+}
+
+func withComputerSession[T any](s *Service, ctx context.Context, workspaceID, cwd string, call func(*computerSession) (T, error)) (T, error) {
+	var zero T
+	workspaceID = strings.TrimSpace(workspaceID)
 	if err := validateComputerReady(); err != nil {
-		return ToolResult{}, err
+		return zero, err
 	}
 
 	session := s.getOrCreate(workspaceID)
@@ -50,9 +84,9 @@ func (s *Service) CallTool(ctx context.Context, workspaceID, cwd, tool string, a
 		// A failed start should not be cached; drop the session so the next
 		// call retries (e.g. transient failure).
 		s.Shutdown(workspaceID)
-		return ToolResult{}, err
+		return zero, err
 	}
-	result, err := session.adaptToolCall(ctx, tool, args)
+	result, err := call(session)
 	if err != nil && session.client != nil && session.client.isClosed() {
 		s.Shutdown(workspaceID)
 	}

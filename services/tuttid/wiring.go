@@ -3,57 +3,53 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
-	"path/filepath"
-	"time"
+	"sync"
 
-	"github.com/google/uuid"
 	agentdaemon "github.com/tutti-os/tutti/packages/agent/daemon"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
-	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	tuttiapi "github.com/tutti-os/tutti/services/tuttid/api"
+	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	tuttiserver "github.com/tutti-os/tutti/services/tuttid/server"
-	accountservice "github.com/tutti-os/tutti/services/tuttid/service/account"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	agentextensionservice "github.com/tutti-os/tutti/services/tuttid/service/agentextension"
 	agentstatusservice "github.com/tutti-os/tutti/services/tuttid/service/agentstatus"
-	agenttargetservice "github.com/tutti-os/tutti/services/tuttid/service/agenttarget"
 	browsersvc "github.com/tutti-os/tutti/services/tuttid/service/browser"
-	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
-	appclicli "github.com/tutti-os/tutti/services/tuttid/service/cli/appcli"
-	agentcontextcli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/agentcontext"
-	browsercli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/browser"
-	computercli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/computer"
-	diagnosticscli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/diagnostics"
-	issuemanagercli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/issuemanager"
-	managedmodelscli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/managedmodels"
-	referencescli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/references"
-	workbenchappscli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/workbenchapps"
 	computersvc "github.com/tutti-os/tutti/services/tuttid/service/computer"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
-	managedcredentialsservice "github.com/tutti-os/tutti/services/tuttid/service/managedcredentials"
-	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
+	mobileremoteservice "github.com/tutti-os/tutti/services/tuttid/service/mobileremote"
+	modelgatewayservice "github.com/tutti-os/tutti/services/tuttid/service/modelgateway"
 	preferencesservice "github.com/tutti-os/tutti/services/tuttid/service/preferences"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
-	tuttiagentservice "github.com/tutti-os/tutti/services/tuttid/service/tuttiagent"
-	userprojectservice "github.com/tutti-os/tutti/services/tuttid/service/userproject"
+	tuttimodeexecutionservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeexecution"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
 type tuttiWiring struct {
-	api                 tuttiapi.DaemonAPI
-	appCenterService    *workspaceservice.AppCenterService
-	workspaceStore      *workspacedata.SQLiteStore
-	analyticsReporter   reporterservice.Reporter
-	browserService      *browsersvc.Service
-	computerService     *computersvc.Service
-	agentRuntime        *agentdaemon.Runtime
-	providerAuthWatcher *agentservice.ProviderAuthWatcher
+	api                          tuttiapi.DaemonAPI
+	appCenterService             *workspaceservice.AppCenterService
+	workspaceStore               *workspacedata.SQLiteStore
+	analyticsReporter            reporterservice.Reporter
+	browserService               *browsersvc.Service
+	computerService              *computersvc.Service
+	agentTargetSetup             *agentextensionservice.SetupService
+	agentRuntime                 *agentdaemon.Runtime
+	providerAuthWatcher          *agentservice.ProviderAuthWatcher
+	agentCLIUpdateScheduler      *agentstatusservice.ProviderUpdateScheduler
+	tuttiModeWakeRecoveryStarter func()
+	tuttiModeWatchdogMu          sync.Mutex
+	tuttiModeWatchdogWorker      *tuttimodeexecutionservice.Worker
+	tuttiModeWatchdogCancel      context.CancelFunc
+	tuttiModeWatchdogDone        <-chan struct{}
+	tuttiModeWatchdogClosed      bool
+	mobileRemoteService          *mobileremoteservice.Service
+	modelGateway                 *modelgatewayservice.Gateway
 }
 
 type analyticsDebugEventPublisher struct {
@@ -127,8 +123,12 @@ func buildTuttiServer() (*http.Server, net.Listener, *tuttiWiring, error) {
 		_ = wiring.Close()
 		return nil, nil, nil, fmt.Errorf("write tuttid listener info: %w", err)
 	}
+	wiring.startTuttiModeWakeRecovery()
+	wiring.startAgentCLIUpdateScheduler()
 
-	return tuttiserver.NewHTTPServer(listenerSpec, wiring.routes()), listener, wiring, nil
+	routes := wiring.routes()
+	wiring.mobileRemoteService.StartRemoteHost(tuttiserver.NewMux(routes))
+	return tuttiserver.NewHTTPServer(listenerSpec, routes), listener, wiring, nil
 }
 
 func (w *tuttiWiring) routes() tuttiserver.Routes {
@@ -152,11 +152,51 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 	if runtimeprep.ComputerUseDefaultEnabled() {
 		w.computerService = computersvc.NewService()
 	}
-	api, appCenterService, agentRuntime, providerAuthWatcher, err := buildDaemonAPI(ctx, workspaceStore, nil, w.browserService, w.computerService)
+	modelGateway, err := modelgatewayservice.New(modelgatewayservice.Config{})
 	if err != nil {
+		return fmt.Errorf("start model gateway: %w", err)
+	}
+	w.modelGateway = modelGateway
+	api, appCenterService, agentRuntime, providerAuthWatcher, err := buildDaemonAPI(
+		ctx, workspaceStore, nil, w.browserService, w.computerService,
+		modelGateway, w.installTuttiModeWatchdogWorker,
+	)
+	if err != nil {
+		_ = modelGateway.Close()
+		w.modelGateway = nil
 		return err
 	}
+	agentTargetSetup, ok := api.AgentTargetSetupService.(*agentextensionservice.SetupService)
+	if !ok {
+		agentRuntime.Close()
+		providerAuthWatcher.Close()
+		return errors.New("agent target setup service wiring is invalid")
+	}
+	w.agentTargetSetup = agentTargetSetup
+	w.agentRuntime = agentRuntime
 	w.providerAuthWatcher = providerAuthWatcher
+	mobileRemoteService, mobileRemoteOK := api.MobileRemoteService.(*mobileremoteservice.Service)
+	if !mobileRemoteOK {
+		return errors.New("mobile remote service wiring is invalid")
+	}
+	w.mobileRemoteService = mobileRemoteService
+	preferencesService, preferencesOK := api.PreferencesService.(*preferencesservice.Service)
+	agentStatusService, agentStatusOK := api.AgentStatusService.(*agentstatusservice.Service)
+	if !preferencesOK || !agentStatusOK {
+		return errors.New("agent CLI update scheduler wiring is invalid")
+	}
+	w.agentCLIUpdateScheduler = agentstatusservice.NewProviderUpdateScheduler(
+		agentstatusservice.ProviderUpdateSchedulerConfig{Discoverer: agentStatusService},
+	)
+	previousAfterPut := preferencesService.AfterPut
+	preferencesService.AfterPut = func(ctx context.Context, previous, current preferencesbiz.DesktopPreferences) {
+		if previousAfterPut != nil {
+			previousAfterPut(ctx, previous, current)
+		}
+		if previous.AgentCLIUpdateCheckEnabled != current.AgentCLIUpdateCheckEnabled {
+			w.agentCLIUpdateScheduler.SetEnabled(current.AgentCLIUpdateCheckEnabled)
+		}
+	}
 
 	analyticsConfig := tuttitypes.ResolveAnalyticsConfig()
 	debugPublisher := resolveAnalyticsDebugPublisher(analyticsConfig, api.EventStreamService)
@@ -172,8 +212,84 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 	w.analyticsReporter = analyticsReporter
 	w.api = api
 	w.appCenterService = appCenterService
-	w.agentRuntime = agentRuntime
+	w.tuttiModeWakeRecoveryStarter = api.OnListenerReady
 	return nil
+}
+
+func (w *tuttiWiring) startTuttiModeWakeRecovery() {
+	if w == nil {
+		return
+	}
+	w.tuttiModeWatchdogMu.Lock()
+	if w.tuttiModeWatchdogClosed ||
+		w.tuttiModeWakeRecoveryStarter == nil {
+		w.tuttiModeWatchdogMu.Unlock()
+		return
+	}
+	start := w.tuttiModeWakeRecoveryStarter
+	w.tuttiModeWakeRecoveryStarter = nil
+	w.tuttiModeWatchdogMu.Unlock()
+	start()
+
+	w.tuttiModeWatchdogMu.Lock()
+	defer w.tuttiModeWatchdogMu.Unlock()
+	if w.tuttiModeWatchdogClosed ||
+		w.tuttiModeWatchdogWorker == nil ||
+		w.tuttiModeWatchdogDone != nil {
+		return
+	}
+	workerCtx, cancel := context.WithCancel(context.Background())
+	w.tuttiModeWatchdogCancel = cancel
+	w.tuttiModeWatchdogDone = startTuttiModeWatchdogWorker(
+		workerCtx, *w.tuttiModeWatchdogWorker,
+	)
+}
+
+func (w *tuttiWiring) installTuttiModeWatchdogWorker(
+	worker tuttimodeexecutionservice.Worker,
+) {
+	if w == nil {
+		return
+	}
+	w.tuttiModeWatchdogMu.Lock()
+	defer w.tuttiModeWatchdogMu.Unlock()
+	if w.tuttiModeWatchdogClosed {
+		return
+	}
+	w.tuttiModeWatchdogWorker = &worker
+}
+
+func (w *tuttiWiring) stopTuttiModeWatchdogWorker() {
+	if w == nil {
+		return
+	}
+	w.tuttiModeWatchdogMu.Lock()
+	w.tuttiModeWatchdogClosed = true
+	cancel := w.tuttiModeWatchdogCancel
+	done := w.tuttiModeWatchdogDone
+	w.tuttiModeWatchdogMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	if done != nil {
+		<-done
+	}
+}
+
+func (w *tuttiWiring) startAgentCLIUpdateScheduler() {
+	if w == nil || w.agentCLIUpdateScheduler == nil || w.api.PreferencesService == nil {
+		return
+	}
+	preferences, err := w.api.PreferencesService.Get(context.Background())
+	if err != nil {
+		slog.Warn("failed to read agent CLI update check preference",
+			"event", "tutti.agent_provider.update_scheduler.preference_read_failed",
+			"error", err,
+		)
+		w.agentCLIUpdateScheduler.Start(false)
+		return
+	}
+	w.agentCLIUpdateScheduler.Start(preferences.AgentCLIUpdateCheckEnabled)
 }
 
 func resolveAnalyticsDebugPublisher(analyticsConfig tuttitypes.AnalyticsConfig, service analyticsDebugEventStream) reporterservice.DebugPublisher {
@@ -214,354 +330,19 @@ func openWorkspaceStore(ctx context.Context) (*workspacedata.SQLiteStore, error)
 	return workspaceStore, nil
 }
 
-func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analyticsReporter reporterservice.Reporter, browserService *browsersvc.Service, computerService *computersvc.Service) (tuttiapi.DaemonAPI, *workspaceservice.AppCenterService, *agentdaemon.Runtime, *agentservice.ProviderAuthWatcher, error) {
-	workspaceStore, _ := store.(workspacedata.WorkbenchStore)
-	issueStore, _ := store.(workspaceissues.Store)
-	preferencesStore, _ := store.(workspacedata.PreferencesStore)
-	agentTargetStore, _ := store.(workspacedata.AgentTargetStore)
-	managedCredentialsStore, _ := store.(workspacedata.ManagedCredentialsStore)
-	agentActivityRepo, _ := store.(workspacedata.AgentActivityStore)
-	userProjectStore, _ := store.(workspacedata.UserProjectStore)
-	appStore, _ := store.(workspacedata.AppStore)
-	appFactoryStore, _ := store.(workspacedata.AppFactoryStore)
-	fileAdapter := workspacedata.LocalFilesAdapter{}
-
-	events := eventstreamservice.NewService(eventstreamservice.DefaultCatalog(), nil)
-	preferences := preferencesservice.Service{
-		Store:     preferencesStore,
-		Publisher: eventstreamservice.DesktopPreferencesPublisher{Service: events},
-	}
-	agentTargets := agenttargetservice.Service{
-		Store: agentTargetStore,
-	}
-	agentExtensionManager := &agentextensionservice.Manager{
-		Sources:  tuttitypes.ResolveAgentExtensionSources(),
-		StateDir: tuttitypes.DefaultStateDir(),
-		Store:    agentTargetStore,
-	}
-	agentTargets.AvailabilityResolver = agentExtensionManager
-	for _, reconcileErr := range agentExtensionManager.Reconcile(ctx) {
-		payload, _ := json.Marshal(map[string]string{"error": reconcileErr.Error()})
-		slog.Warn("agent_extension.reconcile_failed", "payload", string(payload))
-	}
-	managedCredentials := &managedcredentialsservice.Service{
-		Store: managedCredentialsStore,
-	}
-	events.RegisterIntentHandler(
-		eventstreamservice.TopicPreferencesDesktopUpdateRequested,
-		eventstreamservice.NewPreferencesDesktopUpdateRequestedHandler(preferences),
-	)
-	agentActivityProjection := agentservice.NewActivityProjection(agentActivityRepo)
-	agentActivityProjection.SetAnalyticsReporter(analyticsReporter)
-	agentActivityProjection.SetPublisher(eventstreamservice.AgentActivityPublisher{Service: events})
-	if agentTargetResolver, ok := store.(agentservice.AgentTargetResolver); ok {
-		agentActivityProjection.SetAgentTargetResolver(agentTargetResolver)
-	}
-	managedRuntimeResolver := managedruntime.DefaultResolver{}
-	// Shared so a runtime auth failure (reporter side) surfaces in the status
-	// probe (List side) — see agentRunOutcomeReporter.
-	runOutcomes := agentstatusservice.NewRunOutcomeStore()
-	agentStatusService := agentstatusservice.Service{
-		AnalyticsReporter: analyticsReporter,
-		ManagedRuntime:    managedRuntimeResolver,
-		RunOutcomes:       runOutcomes,
-		StatusCache:       agentstatusservice.NewProviderStatusCache(),
-	}
-	accountService := accountservice.NewService("")
-	agentProcessTransport := agentdaemon.NewLocalProcessTransport()
-	agentHostMetadata := agentdaemon.HostMetadata{
-		ClientInfo:       agentdaemon.ClientInfo{Name: "tutti-desktop", Title: "Tutti", Version: "0.1.0"},
-		WorkspaceEnvName: "TUTTI_WORKSPACE_ID", OpenClawSessionKeyPrefix: "agent:main:tsh-",
-	}
-	agentRuntime, err := agentdaemon.NewRuntime(agentdaemon.Config{
-		Reporter: agentRunOutcomeReporter{
-			inner: agentActivityProjection,
-			store: runOutcomes,
-		},
-		ProcessTransport: agentProcessTransport,
-		AdapterResolver: agentextensionservice.RuntimeResolver{
-			Manager: agentExtensionManager, Transport: agentProcessTransport, Host: agentHostMetadata,
-		},
-		ProviderCommandResolver: func(ctx context.Context, provider string) (agentdaemon.ProviderCommand, error) {
-			resolved, err := agentStatusService.ResolveProviderCommand(ctx, provider)
-			if err != nil {
-				return agentdaemon.ProviderCommand{}, err
-			}
-			return agentdaemon.ProviderCommand{
-				Command: resolved.Command,
-				Env:     resolved.Env,
-			}, nil
-		},
-		HostMetadata: agentHostMetadata,
-	})
-	if err != nil {
-		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("create agent runtime: %w", err)
-	}
-	agentRuntimePreparer := runtimeprep.NewDefaultPreparer(tuttitypes.DefaultStateDir())
-	agentRuntimePreparer.RegisterProvider(tuttiagentservice.NewPreparer())
-	agentRuntimePreparer.ComputerUseAvailable = func() bool {
-		return runtimeprep.ComputerUseDefaultEnabled() && computersvc.CheckReady() == nil
-	}
-	userProjectService := userprojectservice.Service{
-		Store: userProjectStore,
-	}
-	agentRuntimeController := newAgentRuntimeAdapter(agentRuntime.Controller())
-	agentSessionService := agentservice.NewService(agentRuntimeController)
-	agentActivityProjection.SetRootTurnObserver(agentRuntimeController)
-	agentSessionService.AnalyticsReporter = analyticsReporter
-	agentModelCapabilities := agentservice.NewModelCapabilitiesService()
-	agentModelCatalog := agentservice.NewAgentModelCatalog()
-	agentModelCatalog.ModelCapabilities = agentModelCapabilities
-	agentSessionService.ModelCatalog = agentModelCatalog
-	agentSessionService.ModelCapabilities = agentModelCapabilities
-	agentSessionService.AgentTargetStore = agentTargetStore
-	agentSessionService.ExtensionComposerProfiles = agentExtensionComposerProfileResolver{
-		manager: agentExtensionManager,
-	}
-	agentSessionService.SessionInitializer = agentActivityProjection
-	agentSessionService.SessionReader = agentActivityProjection
-	agentSessionService.UserProjectReader = userProjectService
-	agentSessionService.MessageReader = agentActivityProjection
-	agentSessionService.ExternalImportStore = agentActivityRepo
-	agentSessionService.TurnStore = agentActivityRepo
-	agentSessionService.RuntimeOperationStore = agentActivityRepo
-	agentSessionService.GoalStateStore = agentActivityRepo
-	agentSessionService.GoalAuditPublisher = agentActivityProjection
-	agentSessionService.SubmitClaimStore = agentActivityRepo
-	agentSessionService.RuntimeOperationEventPublisher = agentActivityProjection
-	agentSessionService.RuntimeOperationOwner = uuid.NewString()
-	agentSessionService.GoalOperationOwner = uuid.NewString()
-	goalReconcileInbox, ok := agentActivityRepo.(interface {
-		agentservice.GoalReconcileInboxStore
-		agentservice.GoalReconcileInboxWriter
-	})
-	if !ok {
-		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("agent goal reconcile inbox store is unavailable")
-	}
-	agentSessionService.GoalReconcileInboxStore = goalReconcileInbox
-	agentActivityProjection.SetGoalReconcileInboxWriter(goalReconcileInbox)
-	goalProvenanceLedger, ok := agentActivityRepo.(agentservice.GoalProvenanceLedgerStore)
-	if !ok {
-		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("agent goal provenance ledger store is unavailable")
-	}
-	agentActivityProjection.SetGoalProvenanceLedger(goalProvenanceLedger)
-	agentSessionService.SessionDirectoryAllocator = agentservice.LocalSessionDirectoryAllocator{
-		StateDir: tuttitypes.DefaultStateDir(),
-	}
-	agentSessionService.PromptAttachmentStore = agentservice.PromptAttachmentStore{
-		RootDir:       tuttitypes.DefaultStateDir(),
-		SourceRootDir: filepath.Join(tuttitypes.DefaultStateDir(), "agent-prompt-assets"),
-	}
-	agentSessionService.RuntimePreparer = agentRuntimePreparer
-	agentSessionService.ComputerUseAvailable = agentRuntimePreparer.ComputerUseAvailable
-	agentSessionService.AvailabilityChecker = agentservice.AgentStatusProviderAvailabilityChecker{
-		Service: &agentStatusService,
-	}
-	// Recover durable runtime intents before generic stale-turn settlement so
-	// an acknowledged cancel keeps its canceled outcome across restart.
-	if err := agentSessionService.RecoverRuntimeOperations(ctx); err != nil {
-		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("recover agent runtime operations: %w", err)
-	}
-	if err := agentSessionService.RecoverGoalOperations(ctx); err != nil {
-		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("recover agent goal operations: %w", err)
-	}
-	if err := agentSessionService.RecoverGoalReconcileInbox(ctx); err != nil {
-		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("recover agent goal reconcile inbox: %w", err)
-	}
-	if err := agentActivityProjection.SettleStaleTurnsOnStartup(ctx); err != nil {
-		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("settle stale agent turns on startup: %w", err)
-	}
-	go agentSessionService.RunRuntimeOperationWorker(ctx)
-	go agentSessionService.RunGoalOperationWorker(ctx)
-	go agentSessionService.RunGoalReconcileInboxWorker(ctx)
-
-	workspaceService := workspaceservice.CatalogService{
-		Store:            store,
-		PreferencesStore: preferencesStore,
-	}
-	issueService := workspaceservice.IssueManagerService{
-		AgentSessionReader: agentActivityProjection,
-		Publisher:          eventstreamservice.WorkspaceIssuePublisher{Service: events},
-		Store:              issueStore,
-	}
-	issueService.RunReconcileQueue = workspaceservice.NewIssueRunReconcileQueue(workspaceservice.IssueRunReconcileQueueOptions{
-		Delay:     3 * time.Second,
-		Interval:  15 * time.Second,
-		Reconcile: issueService.ReconcileRunningRuns,
-	})
-	appCenterService := &workspaceservice.AppCenterService{
-		Store:                 appStore,
-		AppFactoryStore:       appFactoryStore,
-		WorkspaceRootResolver: workspaceservice.FileService{Adapter: fileAdapter},
-		WorkspaceStore:        store,
-		PreferencesStore:      preferencesStore,
-		Runner:                &workspaceservice.AppRunner{RuntimeResolver: managedRuntimeResolver},
-		StateDir:              tuttitypes.DefaultStateDir(),
-		HostTuttiVersion:      tuttitypes.ResolveAppVersion(),
-		HostTuttiCapabilities: tuttitypes.ResolveAppCapabilities(),
-		Publisher:             eventstreamservice.WorkspaceAppPublisher{Service: events},
-	}
-	go func() {
-		startedAt := time.Now()
-		slog.Info("managed runtime profile preload started", "event", "tutti.managed_runtime.profile_preload_started", "profile", managedruntime.NodeStaticProfile)
-		if err := managedRuntimeResolver.PreloadProfile(context.Background(), managedruntime.NodeStaticProfile); err != nil {
-			slog.Warn("managed runtime profile preload failed", "event", "tutti.managed_runtime.profile_preload_failed", "profile", managedruntime.NodeStaticProfile, "durationMs", time.Since(startedAt).Milliseconds(), "error", err)
-			return
-		}
-		slog.Info("managed runtime profile preload completed", "event", "tutti.managed_runtime.profile_preload_completed", "profile", managedruntime.NodeStaticProfile, "durationMs", time.Since(startedAt).Milliseconds())
-	}()
-	go func() {
-		// The packaged sidecar bundle no longer carries the native claude
-		// binary; provision it up front so the first Claude session does not
-		// pay the download. Sessions started before this completes fall back
-		// to a PATH-installed claude (see runtimeprep.ClaudeCodePreparer).
-		// The deadline bounds a stalled CDN/npm connection (the shared HTTP
-		// client deliberately has no timeout) while leaving room for a large
-		// fallback download through a slow proxy.
-		preloadCtx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
-		startedAt := time.Now()
-		slog.Info("claude code binary preload started", "event", "tutti.claude_code_binary.preload_started")
-		status, err := agentStatusService.EnsureClaudeCodeBinary(preloadCtx)
-		if err != nil {
-			slog.Warn("claude code binary preload failed", "event", "tutti.claude_code_binary.preload_failed", "durationMs", time.Since(startedAt).Milliseconds(), "error", err)
-			return
-		}
-		slog.Info("claude code binary preload completed", "event", "tutti.claude_code_binary.preload_completed", "source", status.Source, "version", status.Version, "path", status.Path, "durationMs", time.Since(startedAt).Milliseconds())
-	}()
-	appCLIRegistry := appclicli.NewRegistry(workspaceService, appCenterService)
-	appCenterService.AppCLIRegistry = appCLIRegistry
-	if err := appCenterService.InitBuiltinPackages(ctx); err != nil {
-		agentRuntime.Close()
-		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("initialize builtin workspace apps: %w", err)
-	}
-	appFactoryService := &workspaceservice.AppFactoryService{
-		Store:                 appFactoryStore,
-		AppStore:              appStore,
-		WorkspaceStore:        store,
-		WorkspaceRootResolver: workspaceservice.FileService{Adapter: fileAdapter},
-		AppCenter:             appCenterService,
-		AgentSessionService:   agentSessionService,
-		AgentTargetStore:      agentTargetStore,
-		AgentMessageReader:    agentActivityProjection,
-		AgentSessionReader:    agentActivityProjection,
-		AgentSessionState:     agentActivityProjection,
-		Runner:                &workspaceservice.AppRunner{RuntimeResolver: managedRuntimeResolver},
-		StateDir:              tuttitypes.DefaultStateDir(),
-		Publisher:             eventstreamservice.WorkspaceAppFactoryPublisher{Service: events},
-	}
-	agentActivityProjection.SetSessionMessageObserver(appFactoryService)
-	agentActivityProjection.SetSessionStateObserver(appFactoryService)
-	if _, err := appFactoryService.ReconcileInterruptedJobs(ctx); err != nil {
-		agentRuntime.Close()
-		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("reconcile interrupted app factory jobs: %w", err)
-	}
-	if workspaces, err := workspaceService.List(ctx); err == nil {
-		for _, workspace := range workspaces {
-			issueService.RunReconcileQueue.Enqueue(workspace.ID)
-		}
-	}
-	cliProviders := []cliservice.Provider{
-		diagnosticscli.NewProvider(),
-		managedmodelscli.NewProvider(managedCredentials),
-		issuemanagercli.NewProvider(workspaceService, issueService, appCenterService),
-		referencescli.NewProvider(workspaceService, appCenterService, issueService),
-		workbenchappscli.NewProvider(
-			workspaceService,
-			appCenterService,
-			eventstreamservice.WorkbenchNodeLaunchPublisher{Service: events},
-		),
-		agentcontextcli.NewProviderWithAgentTargets(
-			workspaceService,
-			agentSessionService,
-			eventstreamservice.AgentGUILaunchPublisher{Service: events},
-			agentTargets,
-			preferences,
-		),
-	}
-	if browserService != nil {
-		cliProviders = append(cliProviders, browsercli.NewProvider(workspaceService, browserService))
-	}
-	if computerService != nil {
-		cliProviders = append(cliProviders, computercli.NewProvider(workspaceService, computerService))
-	}
-	cliRegistry, err := cliservice.NewRegistryFromProviders(cliProviders...)
-	if err != nil {
-		agentRuntime.Close()
-		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("create cli registry: %w", err)
-	}
-	cliRegistry.AppCommands = appCLIRegistry
-	agentRuntimePreparer.CommandCatalog = runtimePrepCommandCatalog{Catalog: cliRegistry}
-
-	terminalService := &workspaceservice.TerminalService{}
-	accountService.OnLoginCompleted = func(ctx context.Context) {
-		tuttiagentservice.BootstrapTuttiAgentUserAuth(ctx)
-	}
-	accountService.OnLogoutCompleted = func(ctx context.Context) {
-		tuttiagentservice.LogoutTuttiAgentUserAuth(ctx)
-	}
-	go tuttiagentservice.BootstrapTuttiAgentUserAuth(context.Background())
-
-	// External credential switchers (for example cc-switch) rewrite provider
-	// auth/config files without notifying tuttid. Watch those files so cached
-	// model catalogs are dropped and the GUI hears about it immediately.
-	agentModelCatalogPublisher := eventstreamservice.AgentModelCatalogPublisher{Service: events}
-	providerAuthWatcher := &agentservice.ProviderAuthWatcher{
-		Entries: agentservice.DefaultProviderAuthWatchEntries(),
-		OnChange: func(providers []string) {
-			agentModelCatalog.Invalidate(providers...)
-			for _, provider := range providers {
-				agentSessionService.InvalidateLiveComposerModels(provider)
-			}
-			if err := agentModelCatalogPublisher.PublishAgentModelCatalogInvalidated(context.Background(), providers); err != nil {
-				slog.Warn("agent model catalog invalidation publish failed",
-					"event", "agent.model_catalog.invalidation_publish_failed",
-					"providers", providers,
-					"error", err,
-				)
-				return
-			}
-			slog.Info("agent provider auth files changed; model catalog invalidated",
-				"event", "agent.model_catalog.invalidated",
-				"providers", providers,
-			)
-		},
-	}
-	providerAuthWatcher.Start()
-
-	return tuttiapi.DaemonAPI{
-		AccountService:            accountService,
-		UserProjectService:        userProjectService,
-		AgentTargetService:        agentTargets,
-		PreferencesService:        preferences,
-		ManagedCredentialsService: managedCredentials,
-		EventStreamService:        events,
-		WorkspaceService:          workspaceService,
-		WorkbenchService: workspaceservice.WorkbenchService{
-			Store: workspaceStore,
-			SnapshotReconciler: workspaceservice.TerminalWorkbenchSnapshotReconciler{
-				TerminalService: terminalService,
-			},
-		},
-		AppCenterService:  appCenterService,
-		AppFactoryService: appFactoryService,
-		FileService: workspaceservice.FileService{
-			Adapter: fileAdapter,
-		},
-		AgentSessionService: agentSessionService,
-		AgentStatusService:  &agentStatusService,
-		TerminalService:     terminalService,
-		IssueService:        issueService,
-		CLIRegistry:         cliRegistry,
-		AnalyticsReporter:   analyticsReporter,
-	}, appCenterService, agentRuntime, providerAuthWatcher, nil
-}
-
 func (w *tuttiWiring) Close() error {
 	if w == nil {
 		return nil
 	}
+	w.stopTuttiModeWatchdogWorker()
 
+	var closeErr error
+	if w.mobileRemoteService != nil {
+		w.mobileRemoteService.Close()
+	}
+	if w.agentCLIUpdateScheduler != nil {
+		w.agentCLIUpdateScheduler.Close()
+	}
 	if w.appCenterService != nil && w.appCenterService.Runner != nil {
 		w.appCenterService.Runner.StopAll(context.Background())
 	}
@@ -577,12 +358,21 @@ func (w *tuttiWiring) Close() error {
 	if w.providerAuthWatcher != nil {
 		w.providerAuthWatcher.Close()
 	}
+	if w.agentTargetSetup != nil {
+		if err := w.agentTargetSetup.Close(); err != nil {
+			closeErr = err
+		}
+	}
 	if w.agentRuntime != nil {
 		w.agentRuntime.Close()
 	}
-	var closeErr error
+	if w.modelGateway != nil {
+		if err := w.modelGateway.Close(); err != nil && closeErr == nil {
+			closeErr = err
+		}
+	}
 	if w.analyticsReporter != nil {
-		if err := w.analyticsReporter.Close(); err != nil {
+		if err := w.analyticsReporter.Close(); err != nil && closeErr == nil {
 			closeErr = err
 		}
 	}

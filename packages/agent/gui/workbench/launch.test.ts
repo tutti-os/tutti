@@ -175,6 +175,34 @@ describe("agent gui workbench launch contract", () => {
     expect(descriptor.reusePolicy).toEqual({ kind: "dock-entry" });
   });
 
+  it("keeps a managed edit prompt attached to the exact source session", () => {
+    const descriptor = createAgentGuiWorkbenchLaunchDescriptor(
+      createAgentGuiWorkbenchSessionLaunchRequest({
+        agentSessionId: " source-session-9 ",
+        composerAppend: {
+          draftPrompt: " Modify the managed issue ",
+          focusComposer: true
+        },
+        provider: "codex"
+      })
+    );
+
+    expect(descriptor.activation).toEqual({
+      payload: {
+        agentSessionId: "source-session-9",
+        composerAppend: {
+          draftPrompt: "Modify the managed issue",
+          focusComposer: true
+        }
+      },
+      type: "agent-gui:open-session"
+    });
+    expect(descriptor.reusePolicy).toEqual({
+      agentSessionId: "source-session-9",
+      kind: "current-session"
+    });
+  });
+
   it("reuses unified aggregate dock nodes for empty launches", () => {
     expect(
       createAgentGuiWorkbenchLaunchDescriptor({

@@ -71,6 +71,45 @@ export function nonImageFilesFromDataTransfer(
   return files;
 }
 
+export function classifyAgentRichTextExternalFiles(
+  dataTransfer: DataTransfer | null
+): { imageFiles: File[]; regularFiles: File[] } {
+  const imageFiles = imageFilesFromDataTransfer(dataTransfer);
+  const imageFileSet = new Set(imageFiles);
+  return {
+    imageFiles,
+    regularFiles: nonImageFilesFromDataTransfer(dataTransfer).filter(
+      (file) => !imageFileSet.has(file)
+    )
+  };
+}
+
+export function routeAgentRichTextExternalFiles(
+  dataTransfer: DataTransfer | null,
+  options: {
+    externalFilesSupported: boolean;
+    promptImagesSupported: boolean;
+  }
+): {
+  externalFiles: File[];
+  imageFiles: File[];
+  imagesHandledAsFiles: boolean;
+} {
+  const { imageFiles, regularFiles } =
+    classifyAgentRichTextExternalFiles(dataTransfer);
+  const imagesHandledAsFiles =
+    imageFiles.length > 0 &&
+    !options.promptImagesSupported &&
+    options.externalFilesSupported;
+  return {
+    externalFiles: options.externalFilesSupported
+      ? [...regularFiles, ...(imagesHandledAsFiles ? imageFiles : [])]
+      : [],
+    imageFiles,
+    imagesHandledAsFiles
+  };
+}
+
 export function systemFileDragInfoFromDataTransfer(
   dataTransfer: DataTransfer | null
 ): { hasImageFiles: boolean; hasRegularFiles: boolean } {

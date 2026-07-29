@@ -16,6 +16,15 @@ type preferencesMutatorStub struct {
 	result preferencesbiz.DesktopPreferences
 }
 
+type agentComposerDefaultsPatcherStub struct {
+	inputs []preferencesservice.PatchAgentComposerDefaultsForTargetInput
+}
+
+func (s *agentComposerDefaultsPatcherStub) PatchAgentComposerDefaultsForTarget(_ context.Context, input preferencesservice.PatchAgentComposerDefaultsForTargetInput) (preferencesbiz.AgentComposerDefaults, error) {
+	s.inputs = append(s.inputs, input)
+	return preferencesbiz.AgentComposerDefaults{}, nil
+}
+
 func (s *preferencesMutatorStub) Put(_ context.Context, input preferencesservice.PutInput) (preferencesbiz.DesktopPreferences, error) {
 	s.inputs = append(s.inputs, input)
 	return s.result, nil
@@ -51,7 +60,7 @@ func TestServicePublishRejectsInvalidPayload(t *testing.T) {
 
 	err := service.PublishFromClient(context.Background(), ClientEvent{
 		Topic:   TopicPreferencesDesktopUpdateRequested,
-		Payload: []byte(`{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"agentConversationDetailMode":"coding","agentDockLayout":"legacySplit","appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"fr","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"stable","updatePolicy":"prompt"}}`),
+		Payload: []byte(`{"preferences":{"agentCliUpdateCheckEnabled":true,"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"agentConversationDetailMode":"coding","agentDockLayout":"legacySplit","appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"fr","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"stable","updatePolicy":"prompt"}}`),
 	})
 	if err == nil {
 		t.Fatal("PublishFromClient() error = nil, want invalid payload")
@@ -76,12 +85,12 @@ func TestServicePublishRejectsInvalidAgentDockLayout(t *testing.T) {
 	}{
 		{
 			name:    "missing",
-			payload: `{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"agentConversationDetailMode":"coding","appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"zh-CN","minimizeAnimation":"scale","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"stable","updatePolicy":"prompt"}}`,
+			payload: `{"preferences":{"agentCliUpdateCheckEnabled":true,"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"agentConversationDetailMode":"coding","appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"zh-CN","minimizeAnimation":"scale","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"stable","updatePolicy":"prompt"}}`,
 			want:    "preferences.agentDockLayout is required",
 		},
 		{
 			name:    "unsupported",
-			payload: `{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"agentConversationDetailMode":"coding","agentDockLayout":"stacked","appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"zh-CN","minimizeAnimation":"scale","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"stable","updatePolicy":"prompt"}}`,
+			payload: `{"preferences":{"agentCliUpdateCheckEnabled":true,"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"agentConversationDetailMode":"coding","agentDockLayout":"stacked","appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"zh-CN","minimizeAnimation":"scale","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"stable","updatePolicy":"prompt"}}`,
 			want:    "preferences.agentDockLayout is unsupported",
 		},
 	}
@@ -320,6 +329,44 @@ func TestAgentActivityUpdatedValidationEnforcesFullEntityStateMachines(t *testin
 	}
 }
 
+func TestAgentActivityUpdatedValidationAcceptsLiveTurnCapabilityReferences(t *testing.T) {
+	t.Parallel()
+	catalog := DefaultCatalog()
+	for _, phase := range []string{"submitted", "running"} {
+		phase := phase
+		t.Run(phase, func(t *testing.T) {
+			t.Parallel()
+			payload := strings.Replace(`{
+		"workspaceId":"workspace-1","agentSessionId":"session-1","eventType":"turn_update",
+		"data":{"workspaceId":"workspace-1","agentSessionId":"session-1","eventType":"turn_update","occurredAtUnixMs":10,"activeTurnId":"turn-1",
+		"turn":{"turnId":"turn-1","agentSessionId":"session-1","capabilityRefs":[{"capability":"tutti","source":"slash_command"}],"phase":"PHASE","origin":"user_prompt","outcome":null,"error":null,"fileChanges":null,"completedCommand":null,"startedAtUnixMs":10,"settledAtUnixMs":null,"updatedAtUnixMs":10}}
+	}`, "PHASE", phase, 1)
+			if err := catalog.ValidatePublish(TopicAgentActivityUpdated, DirectionServerToClient, []byte(payload)); err != nil {
+				t.Fatalf("valid %s turn with capability refs: %v", phase, err)
+			}
+		})
+	}
+}
+
+func TestAgentActivityUpdatedValidationRejectsUnsupportedTurnCapabilityReferences(t *testing.T) {
+	t.Parallel()
+	catalog := DefaultCatalog()
+	valid := `{
+		"workspaceId":"workspace-1","agentSessionId":"session-1","eventType":"turn_update",
+		"data":{"workspaceId":"workspace-1","agentSessionId":"session-1","eventType":"turn_update","occurredAtUnixMs":10,"activeTurnId":"turn-1",
+		"turn":{"turnId":"turn-1","agentSessionId":"session-1","capabilityRefs":[{"capability":"tutti","source":"slash_command"}],"phase":"running","outcome":null,"error":null,"fileChanges":null,"completedCommand":null,"startedAtUnixMs":10,"settledAtUnixMs":null,"updatedAtUnixMs":10}}
+	}`
+	invalid := []string{
+		strings.Replace(valid, `"capability":"tutti"`, `"capability":"other"`, 1),
+		strings.Replace(valid, `"source":"slash_command"`, `"source":"other"`, 1),
+	}
+	for index, payload := range invalid {
+		if err := catalog.ValidatePublish(TopicAgentActivityUpdated, DirectionServerToClient, []byte(payload)); err == nil {
+			t.Fatalf("invalid capability reference %d accepted", index)
+		}
+	}
+}
+
 func TestPreferencesIntentHandlerUsesAuthoritativeMutationPath(t *testing.T) {
 	t.Parallel()
 
@@ -358,7 +405,7 @@ func TestPreferencesIntentHandlerUsesAuthoritativeMutationPath(t *testing.T) {
 
 	if err := service.PublishFromClient(context.Background(), ClientEvent{
 		Topic:   TopicPreferencesDesktopUpdateRequested,
-		Payload: []byte(`{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{"codex":true},"agentConversationDetailMode":"coding","agentDockLayout":"unified","appCatalogChannel":"staging","defaultAgentProvider":"codex","dockIconStyle":"flat","dockPlacement":"left","locale":"zh-CN","minimizeAnimation":"scale","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"rc","updatePolicy":"auto"}}`),
+		Payload: []byte(`{"preferences":{"agentCliUpdateCheckEnabled":true,"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{"codex":true},"agentConversationDetailMode":"coding","agentDockLayout":"unified","appCatalogChannel":"staging","defaultAgentProvider":"codex","dockIconStyle":"flat","dockPlacement":"left","locale":"zh-CN","minimizeAnimation":"scale","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"rc","updatePolicy":"auto"}}`),
 	}); err != nil {
 		t.Fatalf("PublishFromClient() error = %v", err)
 	}
@@ -385,6 +432,48 @@ func TestPreferencesIntentHandlerUsesAuthoritativeMutationPath(t *testing.T) {
 	}
 }
 
+func TestAgentComposerDefaultsPatchIntentUsesDedicatedMutationAndTargetInvalidation(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(DefaultCatalog(), nil)
+	patcher := &agentComposerDefaultsPatcherStub{}
+	service.RegisterIntentHandler(
+		TopicPreferencesAgentComposerDefaultsPatchRequested,
+		NewPreferencesAgentComposerDefaultsPatchRequestedHandler(patcher),
+	)
+	if err := service.PublishFromClient(context.Background(), ClientEvent{
+		Topic:   TopicPreferencesAgentComposerDefaultsPatchRequested,
+		Payload: []byte(`{"agentTargetId":"local:opencode","patch":{"permissionModeId":"full-access"},"clientMutationId":"mutation-1"}`),
+	}); err != nil {
+		t.Fatalf("PublishFromClient() error = %v", err)
+	}
+	if len(patcher.inputs) != 1 || patcher.inputs[0].AgentTargetID != "local:opencode" {
+		t.Fatalf("patch inputs = %#v", patcher.inputs)
+	}
+	permission := patcher.inputs[0].Patch[preferencesbiz.AgentComposerDefaultsFieldPermissionModeID]
+	if permission == nil || *permission != "full-access" {
+		t.Fatalf("patch = %#v", patcher.inputs[0].Patch)
+	}
+
+	session := service.OpenSession()
+	t.Cleanup(func() { service.CloseSession(session) })
+	if err := service.Subscribe(session, []string{TopicPreferencesAgentComposerDefaultsChanged}, EventScope{}); err != nil {
+		t.Fatalf("Subscribe() error = %v", err)
+	}
+	publisher := DesktopPreferencesPublisher{Service: service}
+	if err := publisher.PublishAgentComposerDefaultsChanged(context.Background(), "local:opencode"); err != nil {
+		t.Fatalf("PublishAgentComposerDefaultsChanged() error = %v", err)
+	}
+	event := receiveEvent(t, session)
+	var payload map[string]any
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		t.Fatalf("decode invalidation: %v", err)
+	}
+	if len(payload) != 1 || payload["agentTargetId"] != "local:opencode" {
+		t.Fatalf("invalidation payload = %#v", payload)
+	}
+}
+
 func TestPreferencesIntentHandlerPassesWindowSnappingWhenProvided(t *testing.T) {
 	t.Parallel()
 
@@ -398,7 +487,7 @@ func TestPreferencesIntentHandlerPassesWindowSnappingWhenProvided(t *testing.T) 
 
 	if err := service.PublishFromClient(context.Background(), ClientEvent{
 		Topic:   TopicPreferencesDesktopUpdateRequested,
-		Payload: []byte(`{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{"codex":true},"agentConversationDetailMode":"coding","agentDockLayout":"unified","appCatalogChannel":"staging","defaultAgentProvider":"codex","dockIconStyle":"flat","dockPlacement":"left","locale":"zh-CN","minimizeAnimation":"scale","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"rc","updatePolicy":"auto","workbenchWindowSnapping":{"enabled":false,"shortcutPreset":"commandArrows"}}}`),
+		Payload: []byte(`{"preferences":{"agentCliUpdateCheckEnabled":true,"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{"codex":true},"agentConversationDetailMode":"coding","agentDockLayout":"unified","appCatalogChannel":"staging","defaultAgentProvider":"codex","dockIconStyle":"flat","dockPlacement":"left","locale":"zh-CN","minimizeAnimation":"scale","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"rc","updatePolicy":"auto","workbenchWindowSnapping":{"enabled":false,"shortcutPreset":"commandArrows"}}}`),
 	}); err != nil {
 		t.Fatalf("PublishFromClient() error = %v", err)
 	}
@@ -493,7 +582,7 @@ func TestServiceFiltersScopedSubscriptions(t *testing.T) {
 	if err := service.PublishFromServerScoped(
 		context.Background(),
 		TopicPreferencesDesktopUpdated,
-		[]byte(`{"initialized":true,"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"agentConversationDetailMode":"coding","agentDockLayout":"legacySplit","appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"zh-CN","minimizeAnimation":"scale","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"stable","updatePolicy":"prompt"}}`),
+		[]byte(`{"initialized":true,"preferences":{"agentCliUpdateCheckEnabled":true,"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"agentConversationDetailMode":"coding","agentDockLayout":"legacySplit","appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"zh-CN","minimizeAnimation":"scale","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"stable","updatePolicy":"prompt"}}`),
 		EventScope{WorkspaceID: "workspace-1"},
 	); err != nil {
 		t.Fatalf("PublishFromServerScoped() error = %v", err)
@@ -549,6 +638,66 @@ func TestAgentActivityPublisherPublishesScopedUpdate(t *testing.T) {
 	}
 	if event.Scope.WorkspaceID != "workspace-1" {
 		t.Fatalf("event scope workspace id = %q, want workspace-1", event.Scope.WorkspaceID)
+	}
+}
+
+func TestAgentActivityPublisherPublishesValidatedMessageDelta(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(DefaultCatalog(), nil)
+	session := service.OpenSession()
+	t.Cleanup(func() { service.CloseSession(session) })
+	if err := service.Subscribe(
+		session,
+		[]string{TopicAgentActivityUpdated},
+		EventScope{WorkspaceID: "workspace-1"},
+	); err != nil {
+		t.Fatal(err)
+	}
+	publisher := AgentActivityPublisher{Service: service}
+	valid := json.RawMessage(`{
+		"workspaceId":"workspace-1",
+		"agentSessionId":"agent-session-1",
+		"messageId":"message-1",
+		"turnId":"turn-1",
+		"role":"assistant",
+		"kind":"text",
+		"occurredAtUnixMs":100,
+		"content":{"operation":"set","value":"Hel"}
+	}`)
+	if err := publisher.PublishAgentActivityUpdatedJSON(
+		context.Background(),
+		"workspace-1",
+		"agent-session-1",
+		"message_delta",
+		valid,
+	); err != nil {
+		t.Fatalf("PublishAgentActivityUpdatedJSON() error = %v", err)
+	}
+	event := receiveEvent(t, session)
+	if event.Topic != TopicAgentActivityUpdated {
+		t.Fatalf("event topic = %q", event.Topic)
+	}
+
+	invalid := json.RawMessage(`{
+		"workspaceId":"workspace-1",
+		"agentSessionId":"agent-session-1",
+		"messageId":"message-1",
+		"turnId":"turn-1",
+		"role":"assistant",
+		"kind":"text",
+		"occurredAtUnixMs":101,
+		"content":{"operation":"append_text"}
+	}`)
+	err := publisher.PublishAgentActivityUpdatedJSON(
+		context.Background(),
+		"workspace-1",
+		"agent-session-1",
+		"message_delta",
+		invalid,
+	)
+	if err == nil || !strings.Contains(err.Error(), "append_text requires text") {
+		t.Fatalf("invalid message_delta error = %v", err)
 	}
 }
 

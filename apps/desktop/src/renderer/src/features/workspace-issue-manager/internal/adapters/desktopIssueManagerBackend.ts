@@ -72,6 +72,10 @@ export function createDesktopIssueManagerBackend(
     async createIssue(input) {
       return tuttidClient.createWorkspaceIssue(input.workspaceId, {
         content: input.content,
+        ...(input.budget === undefined ? {} : { budget: input.budget }),
+        ...(input.executionProfile === undefined
+          ? {}
+          : { executionProfile: input.executionProfile }),
         issueId: input.issueId,
         topicId: input.topicId,
         title: input.title
@@ -134,7 +138,20 @@ export function createDesktopIssueManagerBackend(
         input.issueId,
         {
           content: input.content,
+          ...(input.agentTargetId === undefined
+            ? {}
+            : { agentTargetId: input.agentTargetId }),
+          ...(input.dependencyTaskIds === undefined
+            ? {}
+            : { dependencyTaskIds: input.dependencyTaskIds }),
           dueAtUnix: input.dueAtUnix,
+          ...(input.executionDirectory === undefined
+            ? {}
+            : { executionDirectory: input.executionDirectory }),
+          ...(input.model === undefined ? {} : { model: input.model }),
+          ...(input.modelPlanId === undefined
+            ? {}
+            : { modelPlanId: input.modelPlanId }),
           priority: toClientPriority(input.priority),
           taskId: input.taskId,
           title: input.title
@@ -224,6 +241,13 @@ export function createDesktopIssueManagerBackend(
         input.issueId,
         {
           content: input.content,
+          ...(input.budget === undefined ? {} : { budget: input.budget }),
+          ...(input.dispatchPaused === undefined
+            ? {}
+            : { dispatchPaused: input.dispatchPaused }),
+          ...(input.executionProfile === undefined
+            ? {}
+            : { executionProfile: input.executionProfile }),
           title: input.title
         }
       );
@@ -246,7 +270,20 @@ export function createDesktopIssueManagerBackend(
         input.taskId,
         {
           content: input.content,
+          ...(input.agentTargetId === undefined
+            ? {}
+            : { agentTargetId: input.agentTargetId }),
+          ...(input.dependencyTaskIds === undefined
+            ? {}
+            : { dependencyTaskIds: input.dependencyTaskIds }),
           dueAtUnix: input.dueAtUnix,
+          ...(input.executionDirectory === undefined
+            ? {}
+            : { executionDirectory: input.executionDirectory }),
+          ...(input.model === undefined ? {} : { model: input.model }),
+          ...(input.modelPlanId === undefined
+            ? {}
+            : { modelPlanId: input.modelPlanId }),
           priority: toClientPriority(input.priority),
           sortIndex: input.sortIndex,
           status: toClientStatus(input.status),

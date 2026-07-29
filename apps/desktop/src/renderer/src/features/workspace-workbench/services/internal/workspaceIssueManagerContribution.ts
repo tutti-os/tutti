@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import type { AgentGUIAgent } from "@tutti-os/agent-gui";
 import { agentGuiDockIconUrls } from "@tutti-os/agent-gui/dock-icons";
+import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
 import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import type {
   AgentProviderStatus,
@@ -92,6 +93,27 @@ export function createWorkspaceIssueManagerContribution(input: {
         };
       }
     },
+    modelPlanOptions: {
+      loadOptions: async () => {
+        const response = await input.tuttidClient.listModelPlans(
+          input.workspaceId
+        );
+        return response.plans
+          .filter((plan) => plan.enabled && plan.status === "ready")
+          .map((plan) => ({
+            id: plan.id,
+            name: plan.name,
+            protocol: plan.protocol,
+            ...(plan.defaultModel?.trim()
+              ? { defaultModel: plan.defaultModel.trim() }
+              : {}),
+            models: plan.models.map((model) => ({
+              id: model.id,
+              name: model.name
+            }))
+          }));
+      }
+    },
     agentSessionCreator: input.workspaceAgentPromptSessionService,
     eventStreamClient: input.eventStreamClient,
     hostFilesApi: input.hostFilesApi,
@@ -108,6 +130,25 @@ export function createWorkspaceIssueManagerContribution(input: {
       });
       if (!launched) {
         throw new Error("issue_manager.agent_gui_launch_unavailable");
+      }
+    },
+    managedIssueActions: {
+      openSourceSession: async (request) => {
+        const sourceSession =
+          await input.workspaceAgentActivityService.getSession(
+            request.workspaceId,
+            request.sourceSessionId
+          );
+        const launched = await requestWorkspaceAgentGuiLaunch({
+          agentSessionId: request.sourceSessionId,
+          agentTargetId: sourceSession.agentTargetId,
+          draftPrompt: request.draftPrompt,
+          provider: normalizeDesktopAgentGUIProvider(sourceSession.provider),
+          workspaceId: request.workspaceId
+        });
+        if (!launched) {
+          throw new Error("issue_manager.managed_source_session_unavailable");
+        }
       }
     },
     mentionActionHandler: {
@@ -275,7 +316,10 @@ function resolveIssueManagerReadyAgentTargetOptions(
       agentTargetId: agent.agentTargetId.trim(),
       iconUrl: agent.iconUrl || agentGuiDockIconUrls[agent.provider],
       label: agent.name.trim() || resolveWorkspaceAgentGuiLabel(agent.provider),
-      provider: agent.provider
+      provider: agent.provider,
+      modelPlanProtocol:
+        resolveAgentGUIProviderCatalogIdentity(agent.provider)
+          ?.modelPlanProtocol || undefined
     }));
   const defaultAgentTargetId = resolveDefaultAppFactoryProvider(
     options,

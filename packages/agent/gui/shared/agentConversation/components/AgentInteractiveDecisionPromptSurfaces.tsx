@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ShortcutBadge } from "@tutti-os/ui-system";
+import { Button, ShortcutBadge } from "@tutti-os/ui-system";
 import {
   getOptionalAgentHostApi,
   useOptionalAgentHostApi
@@ -38,7 +38,6 @@ export function ApprovalPromptSurface({
   embedded = false,
   edgeGlow = false,
   keyboardShortcuts = true,
-  previewMode = false,
   isSubmitting,
   onSubmit,
   labels
@@ -179,7 +178,7 @@ export function ApprovalPromptSurface({
                 <span className={styles.interactiveOptionTitle}>
                   {detail.label}
                 </span>
-                <PromptDetailValue detail={detail} previewMode={previewMode} />
+                <PromptDetailValue detail={detail} />
                 {detail.meta ? (
                   <span className={styles.interactiveOptionDescription}>
                     {detail.meta}
@@ -278,21 +277,23 @@ export function ApprovalPromptSurface({
                 disabled={isSubmitting || submittingOptionId !== null}
                 onClick={() => submitOption(option.id)}
               >
-                <span className={styles.interactiveOptionTitle}>
-                  {optionPresentation.label}
-                </span>
-                {optionPresentation.commandPrefix ? (
-                  <CommandTextWithTooltip
-                    value={optionPresentation.commandPrefix}
-                    testId="agent-interactive-command-prefix-option"
-                    tooltipsEnabled={!previewMode}
-                  />
-                ) : null}
-                {option.description ? (
-                  <span className={styles.interactiveOptionDescription}>
-                    {option.description}
+                <span className={styles.interactiveOptionContent}>
+                  <span className={styles.interactiveOptionTitle}>
+                    {optionPresentation.label}
                   </span>
-                ) : null}
+                  {optionPresentation.commandPrefix ? (
+                    <CommandTextWithTooltip
+                      value={optionPresentation.commandPrefix}
+                      testId="agent-interactive-command-prefix-option"
+                      tooltipsEnabled
+                    />
+                  ) : null}
+                  {option.description ? (
+                    <span className={styles.interactiveOptionDescription}>
+                      {option.description}
+                    </span>
+                  ) : null}
+                </span>
                 {keyboardShortcuts && shortcutLabel && !showSpinner ? (
                   <ShortcutBadge
                     className={styles.interactiveOptionShortcut}
@@ -389,11 +390,13 @@ export function ExitPlanPromptSurface({
                   });
                 }}
               >
-                <span className={styles.interactiveOptionTitle}>
-                  {mode.label}
-                </span>
-                <span className={styles.interactiveOptionDescription}>
-                  {mode.description}
+                <span className={styles.interactiveOptionContent}>
+                  <span className={styles.interactiveOptionTitle}>
+                    {mode.label}
+                  </span>
+                  <span className={styles.interactiveOptionDescription}>
+                    {mode.description}
+                  </span>
                 </span>
                 {showSpinner ? <InteractiveOptionSpinner /> : null}
               </button>
@@ -410,8 +413,10 @@ export function ExitPlanPromptSurface({
               onChange={(event) => setFeedback(event.currentTarget.value)}
             />
             <div className={styles.interactivePromptActions}>
-              <button
+              <Button
                 type="button"
+                variant="secondary"
+                size="sm"
                 disabled={isSubmitting}
                 onClick={() =>
                   onSubmit({
@@ -429,7 +434,7 @@ export function ExitPlanPromptSurface({
                 }
               >
                 {continueLabel}
-              </button>
+              </Button>
             </div>
           </div>
         ) : (
@@ -437,8 +442,10 @@ export function ExitPlanPromptSurface({
           // must still let the user keep planning (refining/feedback is deferred
           // to the conversation via the card's "open conversation" jump).
           <div className={styles.interactivePromptActions}>
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size="sm"
               disabled={isSubmitting}
               onClick={() =>
                 onSubmit({
@@ -451,7 +458,7 @@ export function ExitPlanPromptSurface({
               }
             >
               {labels.stayInPlan}
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -505,8 +512,10 @@ export function PlanImplementationSurface({
               })
             }
           >
-            <span className={styles.interactiveOptionTitle}>
-              {labels.planImplementationConfirm}
+            <span className={styles.interactiveOptionContent}>
+              <span className={styles.interactiveOptionTitle}>
+                {labels.planImplementationConfirm}
+              </span>
             </span>
           </button>
         </div>
@@ -521,8 +530,10 @@ export function PlanImplementationSurface({
               onChange={(event) => setFeedback(event.currentTarget.value)}
             />
             <div className={styles.interactivePromptActions}>
-              <button
+              <Button
                 type="button"
+                variant="secondary"
+                size="sm"
                 data-testid="agent-plan-implementation-continue"
                 disabled={isSubmitting}
                 onClick={() =>
@@ -537,7 +548,7 @@ export function PlanImplementationSurface({
                 }
               >
                 {continueLabel}
-              </button>
+              </Button>
             </div>
           </div>
         ) : null}

@@ -116,12 +116,13 @@ The runtime must:
 - Fail startup with a clear error when `$TUTTI_APP_PORT` is absent. Do not guess, reserve, or hard-code a fallback port; the daemon owns port allocation.
 - Serve the manifest healthcheck path with a 2xx response.
 - Treat `$TUTTI_APP_PACKAGE_DIR` as read-only after startup.
-- Write durable app data only under `$TUTTI_APP_DATA_DIR`.
+- Write durable app artifacts and non-database state only under `$TUTTI_APP_DATA_DIR`.
+- Write active SQLite databases, WAL/SHM files, indexes, and other database-managed files only under `$TUTTI_APP_DATABASE_DIR`. The directory is host-local and durable for the installation; apps may create multiple databases beneath it.
 - Write scratch/runtime files only under `$TUTTI_APP_RUNTIME_DIR`.
 - Write logs only under `$TUTTI_APP_LOG_DIR` when backend/server-side file logs are needed.
 - Store reusable app-managed binaries only under `$TUTTI_APP_TOOLCHAIN_ROOT`.
 - Prefer `window.tuttiExternal?.logs?.write?.()` for browser-side diagnostics in Tutti Desktop; reserve `$TUTTI_APP_LOG_DIR` for backend process logs.
-- Read `$TUTTI_WORKSPACE_ROOT` only when the app needs workspace context.
+- Do not expect a workspace-root environment variable. Use `$TUTTI_WORKSPACE_ID` and `$TUTTI_CLI` for explicit workspace-scoped capabilities, and treat caller-supplied absolute file paths as opaque inputs rather than deriving a root from them.
 - Launch Python with `$TUTTI_APP_PYTHON` and Node with `$TUTTI_APP_NODE`; use `$TUTTI_APP_NPM` for npm install/build work.
 - When the app exposes an open command, support the routed pages in the app runtime itself: direct navigation to the route must render the intended page, and an already-mounted frontend should handle repeated open intents through `window.tuttiExternal?.workspace?.onLaunchIntent?.(...)`.
 - When the generated app calls another local Tutti capability at runtime, use `$TUTTI_CLI` and follow `references/tutti-cli-commands.md`.
@@ -144,7 +145,14 @@ For a full agent-enabled app repository, prefer `$tutti-agent-workspace-app` fir
 
 Agent app main flows must call `loadTuttiAgentCatalog` and lazy `loadTuttiAgentComposerOptions` from `@tutti-os/agent-acp-kit/tutti`. Do not use the deprecated provider-catalog projection because it cannot represent multiple agents sharing a provider. The kit automatically uses `TUTTI_CLI` inside Tutti and standalone runtime detection when the CLI is absent. App code must not pass a mode, app ID, daemon URL, token, provider alias map, or CLI arguments. Follow `$tutti-agent-workspace-app` and its `references/dynamic-agent-providers.md`. Show every returned agent, persist exact agent target ids, keep unavailable agents disabled with a reason, and treat provider as derived runtime metadata. A configured CLI failure is explicit; never synthesize a fixed catalog.
 
-Do not assume a Tutti API token, browser extension, daemon internals, or broad desktop APIs. The only browser-side host surface a generated app may optionally consume is the app context described in `references/runtime-env.md`.
+Do not assume a Tutti API token, browser extension, daemon internals, or
+undocumented desktop APIs. Generated apps may consume the documented
+`window.tuttiExternal` browser surfaces described in `references/runtime-env.md`.
+Use `agentActivity` only when the app intentionally orchestrates the official
+host-owned Agent GUI runtime, such as a provider test lab; do not use it to
+rebuild an app-owned Agent runtime. Apps that own their Agent policy or runtime
+must still follow `$tutti-agent-workspace-app` and
+`@tutti-os/agent-acp-kit`.
 
 ## Dependency Rules
 

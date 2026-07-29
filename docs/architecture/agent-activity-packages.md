@@ -7,6 +7,11 @@ GUI surfaces. The goal is to make the agent session data flow reusable by other
 repositories while keeping host-specific transport and desktop integration out
 of the shared packages.
 
+System-wide ownership and flow rules live in
+[Agent GUI Node](./agent-gui-node.md). This document is the detailed package
+contract for activity-core/runtime/adapter changes, not required reading for a
+presentation-only edit.
+
 ## Design Goals
 
 - Put reusable agent session state, event merging, and attention selectors
@@ -25,6 +30,9 @@ The current package family is:
 packages/agent/activity-core
   @tutti-os/agent-activity-core
 
+packages/agent/activity-tuttid-adapter
+  @tutti-os/agent-activity-tuttid-adapter
+
 packages/agent/gui
   @tutti-os/agent-gui
 
@@ -42,9 +50,12 @@ packages/agent/store-sqlite/canonical
 ```
 
 `packages/agent/store-sqlite/canonical` is the single authority for canonical
-activity contract vocabulary; other packages import its phase, outcome,
-origin, interaction-kind, and interaction-status definitions rather than
-redeclaring them.
+activity contracts. It owns phase, outcome, origin, interaction-kind and
+interaction-status vocabulary; pure activity projection snapshots and merge
+functions; commit-observer report types; and the provider identity,
+capability, and plan-decision vocabulary needed by canonical persistence.
+Daemon packages retain compatibility aliases, while runtime mechanics remain
+daemon-owned.
 
 ## Responsibilities
 
@@ -58,11 +69,75 @@ hooks. The `conformance` subpackage owns reusable typed lifecycle scenarios so
 the legacy `tuttid` service, the extracted Host, and downstream adapters can be
 checked against the same behavior baseline.
 
-The module does not own transport, authorization, room or device identity,
+Session read and metadata commands follow the same boundary. `GetSession`
+returns canonical truth with an optional live observation. Settings updates
+are serialized with resume and split between historical persistence and live
+runtime mutation; provider normalization stays in an adapter policy. Pin and
+canonical delete are Host commands, while authorization, transport DTOs,
+shared bindings, and local view cleanup remain adapter-owned.
+
+Single and batch canonical delete are the same Host command shape. The store
+plans the complete descendant closure, Host quiesces that exact closure under
+the shared session-mutation lane, and the write transaction rejects a stale
+plan. Renderer-side request loops are not an atomic batch-delete
+implementation. `daemon/hostadapter` is the official daemon-runtime-to-Host
+adapter, `host.SQLiteWorkspaceStore` is the workspace-routed canonical store,
+and `daemon/modelcatalog` owns provider model/reasoning/speed normalization;
+product daemons compose these modules instead of copying their mappings.
+
+Permanent deletion is intentionally distinct from the normal canonical delete
+command. `Host.PurgeDeletedSessions` accepts a cutoff and bounded batch limits,
+while `store-sqlite` selects tombstones globally by deletion time, fences every
+candidate with its exact `deleted_at` value, and removes session-scoped rows in
+one transaction. Candidate selection starts from current leaves, so large or
+deep trees cannot let blocked ancestors starve unrelated tombstones. Ancestors
+remain until every descendant has been safely removed, which preserves a
+concurrently restored child tree. Host does not choose retention periods or
+filesystem paths.
+The `tuttid` maintenance adapter owns the device-global 15/30-day preference,
+idle-aware scheduling, once-per-day durable eligibility marker, manual purge
+route, and optional database compaction. This retention flow performs no
+filesystem deletion.
+
+Automatic maintenance starts ten minutes after daemon readiness, checks at
+30-minute intervals, and records completion at most once per 24 hours. It runs
+only while no Agent turn is active and stops between short batches when Agent
+work begins. Manual cleanup uses the same serialized maintenance service but
+targets every current tombstone.
+Only an explicit manual sweep may request database compaction. The daemon
+attempts it after the final idle batch only when the database is small and at
+least one quarter of its pages are reclaimable; automatic maintenance never
+runs a full-database compaction.
+
+`store-sqlite` owns the transaction implementation. Its caller-owned
+`TransactionParticipant` seam lets an adapter append a durable outbox marker
+to the same transaction as runtime/goal operation intent, canonical facts, and
+non-re-derivable deletion tombstones without exposing `*sql.Tx` to Host domain
+code. The seam is reserved for facts that must commit or roll back together;
+re-derivable projection gates are repaired by consumers instead.
+
+For durable workspace activity reads, `store-sqlite.AgentStateReader` returns
+the canonical root Sessions composed with each Session's latest Turn. It does
+not copy entity fields into a presentation model and does not include online
+Presence or host-owned execution attribution. Hosts that own those independent
+authorities compose them only at their API or product-view boundary.
+
+After commit, Host emits typed `CommittedDelta` values through one
+`CommitObserver`. Activity state, messages, root settlement, runtime and goal
+operation milestones, projection-dirty identities, and canonical view
+invalidations all use that path. Observer failure cannot roll back an already
+committed command. Reliable delivery therefore depends on the durable marker,
+while event-stream publication and cache invalidation remain post-commit wake
+hints.
+
+The Host release module depends on `store-sqlite` and its `canonical` module,
+not on daemon, sidecar, or `tuttid` packages. It exposes `Run` to supervise the
+runtime-operation, goal-operation, and reconcile-inbox workers as one
+lifecycle, while retaining the individual worker entrypoints. The module does
+not own transport, authorization, room or device identity,
 process or VM implementations, HTTP/OpenAPI shapes, Electron integration, or
-control-plane DTOs. `tuttid` remains the production implementation until the
-later extraction slices explicitly switch its wiring; introducing this module
-does not change production routing.
+control-plane DTOs. `tuttid` production wiring delegates lifecycle decisions
+to Host and keeps only its adapter responsibilities.
 
 ### `packages/agent/activity-replication`
 
@@ -87,6 +162,14 @@ tombstone deletes.
 `agent-activity-core` is host-agnostic and must not import React, Electron,
 desktop preload APIs, or the generated `tuttid` client.
 
+The published Tutti Mode activation contract retains
+`orchestrationIntensity` as a deprecated effect alias during the
+effect/speed migration. New fields take precedence when both forms are
+present; presentations and daemon responses continue to emit the alias with
+the normalized effect value. The tuttid adapter also accepts an older response
+that contains only the alias and assigns balanced speed (`50`). Removing the
+alias or its selector requires an explicit breaking package/API release.
+
 It owns:
 
 - agent activity contracts used by UI packages and host adapters
@@ -97,14 +180,26 @@ It owns:
   contract
 - message merge, immutable presentation-sequence ordering, mutable version
   cursor handling, and duplicate handling
+- authoritative Session reconcile execution: scope selection, mapped detail
+  aggregation, message cursor/window policy, bounded page draining, the
+  discovery/detail race fence, and atomic Engine application
 - selectors for reusable derived state
 - `selectNeedsAttentionCount`
 - `selectNeedsAttentionItems`
 - the workspace session engine (`createAgentSessionEngine` under
   `src/engine/`): intent dispatch loop, domain-composed pure reducers,
   command-description effect executor, expiry-intent clock, and intent frame
-  batching, with scheduler/clock/command ports injected by the host (see
-  `docs/architecture/agent-gui-refactor-plan.md` section 3.3)
+  batching, with scheduler/clock/command ports injected by the host
+- the typed frontend effect seam for activation, prompt send, settings update,
+  turn cancellation, Interaction response, pin, and batch delete, including
+  lossless command projection and required-settings-before-send ordering; hosts
+  retain transport, DTO mapping, AbortSignal propagation, and product-specific
+  command extensions (see
+  [Agent GUI Node](./agent-gui-node.md#4-workspace-frontend-engine))
+
+The public seam is `AgentSessionEffectPort`. Prompt precondition ordering and
+its helper port are Engine implementation details and are not exported from the
+package root.
 
 It does not own:
 
@@ -115,6 +210,24 @@ It does not own:
 - workspace file access
 - Electron IPC or preload APIs
 - React hooks or UI components
+
+### `@tutti-os/agent-activity-tuttid-adapter`
+
+`agent-activity-tuttid-adapter` is the monorepo-private, narrow
+platform-neutral mapping boundary between generated
+`@tutti-os/client-tuttid-ts` workspace-agent DTOs and `agent-activity-core`
+entities. Desktop and Mobile consume the same protocol-v2 contract assertions
+and Session, Turn, Message, and Tutti-mode projections.
+Current-user identity is mandatory mapper input from the application host:
+Desktop supplies its local AgentGUI identity and Mobile supplies the immutable
+authenticated account user id.
+
+It may depend on the generated client and `agent-activity-core`, but must not
+own HTTP execution, authentication, retries, event subscriptions, logging,
+i18n, Electron/React Native APIs, DI scopes, or command orchestration. Those
+remain application-host responsibilities. If a proposed extraction requires a
+large callback surface for those concerns, keep it in the application adapter
+instead.
 
 ### `@tutti-os/agent-gui`
 
@@ -133,12 +246,48 @@ It owns:
 - Message Center snapshot model and UI while it shares AgentGUI activity and
   interaction ownership
 
+Room-scoped attention consumers that need every actionable target use the
+Agent GUI package's `selectWorkspaceAgentAttentionItems` projection. Unlike the
+conversation-shaped Message Center model, this projection returns one entry per
+canonical `(workspaceId, agentSessionId, turnId, requestId)` target, including
+multiple pending interactions in one root conversation. The display item keeps
+the root conversation identity for navigation, while the target keeps the exact
+child interaction identity for commands. Hosts may enrich or filter these
+entries for local owner/device authority, but must not rebuild prompts from
+transcript rows or collapse them by root session id.
+
+`WorkspaceAgentMessageCenterCard` keeps compact prompts and digest summaries by
+default. Dense room boards may opt into its full prompt variant and suppress the
+redundant digest only while a canonical prompt is present; both variants submit
+through the same exact target and shared prompt surface.
+
 It may depend on `@tutti-os/agent-activity-core`.
 
 Agent GUI must read and write agent session/activity data through
-`AgentActivityRuntime`. `AgentHostApi` remains available for host capabilities
-such as files, clipboard, runtime metadata, account lookup, composer options,
-and temporary desktop-only session-control behavior.
+`AgentActivityRuntime`. The effective `AgentHostApi` is limited to host
+capabilities such as files, clipboard, runtime metadata, account/project
+lookup, diagnostics, setup, and OS/Workbench helpers. Its input type still
+accepts a legacy `agentSessions` shape, but `toAgentHostRuntimeApi` strips that
+shape; production AgentGUI must not use it as an activity source.
+Device-global quick prompts are also an optional host capability rather than
+activity data. The desktop adapter combines the developer-gated preference,
+the generated `tuttid` client, and global invalidation events behind
+`AgentHostApi.quickPrompts`. AgentGUI may subscribe to that capability to render
+the composer picker and management dialogs, but quick-prompt entities must not
+be copied into `AgentActivityRuntime`, a workspace engine, a Session, or a Turn.
+The daemon remains authoritative for durable prompt records and optimistic
+version conflicts; event payloads are content-free refresh hints.
+Quick-prompt ordering follows the same boundary: `tuttid` stores a dense
+integer `sort_order` and accepts one moved prompt plus a nullable
+`beforePromptId` anchor and the moved prompt's expected version. Desktop may
+project the resulting order optimistically, but it must replace that projection
+with the daemon's authoritative list. AgentGUI only renders and requests moves;
+hosts that omit the optional move capability keep the library read/write-only.
+The v2 prompt-order schema is a forward-only daemon migration. After it is
+applied, rollback means disabling the quick-prompt feature flag or reverting
+the renderer surface; do not run an older daemon writer against that database.
+Older writers do not maintain `sort_order`, so binary daemon downgrade followed
+by create/delete is not a supported recovery path.
 Conversation rail sections are also an `AgentActivityRuntime` contract:
 AgentGUI calls `listSessionSections` for the first page of every returned rail
 section and `listSessionSectionPage` for Show more by `sectionKey` and cursor.
@@ -146,6 +295,42 @@ Hosts must pass those calls through to the daemon section endpoints so project
 sections come from current user projects and session membership comes from
 persisted `rail_section_key`, not frontend cwd grouping or project-root
 filters.
+The published `@tutti-os/agent-gui/conversation-rail-runtime` entrypoint owns
+the host-neutral Rail query/mutation cohort. Its stable host surface is the
+typed `createAgentConversationRailRuntime` factory plus the runtime/source
+types; method-name manifests and UI capability inspection are package-internal.
+Downstream hosts such as tsh compose the typed factory and do not import those
+test or presentation helpers. The sibling
+`@tutti-os/agent-gui/conversation-rail-controller` entrypoint owns the
+controller interface, workspace-Engine-scoped query caches, and
+`createAgentGUIConversationRailQueryController` factory. Product hosts provide
+the canonical Rail queries and construct the controller with their workspace
+Engine through that factory; they must not instantiate the package-internal
+implementation or copy query scope, first-page refresh, cursor pagination,
+stale-request fencing, membership reconciliation, Engine ingestion, forwarding
+methods, or cache lifetime into app or renderer composition code.
+Transport adapters still own HTTP/IPC DTO mapping, authorization, and protocol
+errors. In particular, `listSessionSectionDeletionCandidates` and
+`deleteSessionsBatch` are one atomic batch-deletion capability. AgentGUI disables
+the action and reports
+`agent.gui.conversation_batch_delete.capability_incomplete` when a host exposes
+only one half, instead of accepting a click that cannot complete.
+Desktop and Native Mobile use the same headless Rail controller. Generated
+Session DTOs from first-page and pagination responses are transient adapter
+input and are immediately upserted into the workspace Engine; they are never
+retained in a second host Rail entity store. Hosts retain only transport
+mapping, runtime-availability policy, surface lifecycle, presentation, and
+host-specific refresh cadence such as Mobile disconnected polling.
+The pure Rail contracts are the canonical source for both the controller and
+the compatibility-named `AgentActivityRuntime` Rail aliases. The public
+controller snapshot exposes memberships, ordered ids, pagination, search, and
+request state only; Desktop joins it with Engine state for localized
+conversation summaries outside the headless entrypoint. Resolved cache entries
+are shared by controllers created for the same workspace Engine; the factory,
+not `AgentActivityRuntime` or a host adapter, owns that registry. The cache
+implementation has no published AgentGUI subpath. In-flight first-page entity
+payloads stay scoped to one attached controller generation so an obsolete mount
+cannot ingest or cache them.
 Every daemon `WorkspaceAgentSession` response carries the persisted membership
 as required `railSectionKey`. The desktop adapter rejects a missing or blank
 value as a protocol contract error; it must not manufacture `conversations` or
@@ -191,15 +376,24 @@ invalid desktop protocol data, not a signal to infer membership from cwd or a
 resolved project. Hosts without this optional query may keep a
 loaded-row-only local title filter for previews, but desktop hosts must pass the
 backend query and pagination fields through unchanged.
+The canonical SQLite repository owns the shared root-session query semantics
+for conversation search, target filtering, visibility, stable ordering, and
+cursor pagination. A composing host may pass an explicit authorized Session-id
+set into that repository query; the repository applies it before pagination,
+section totals, and batch-deletion candidate selection. Service and host
+adapters may hydrate or authorize the returned entities, but must not copy the
+filter/sort/page algorithm into transport-specific code.
 Activating a conversation must not by itself call `listSessionSections` again.
 Likewise, active detail provider changes should not reload section first pages.
 Page sessions must be upserted into the workspace engine, while the rail query
 cache retains only ordered session ids, cursors, totals, and section metadata.
-Desktop keeps that cache on the workspace-scoped runtime rather than a mounted
-AgentGUI controller. Fresh first pages are reused for 30 seconds across panel
-remounts and repeated target switches; stale pages remain visible while one
-coalesced background request revalidates the scope. The cache never owns session
-entities, titles, lifecycle, or interaction state.
+The shared conversation-Rail controller factory keeps resolved cache entries
+per workspace `AgentSessionEngine`, rather than exposing cache ownership through
+a host runtime or mounted controller. Fresh first pages are reused for 30
+seconds across controller remounts and repeated target switches. In-flight
+request coalescing remains controller-local; the factory shares only resolved
+entries across controllers. The cache never owns session entities, titles,
+lifecycle, or interaction state.
 Pin and delete are engine mutations, not direct runtime calls from AgentGUI.
 The engine records the pending mutation, emits one semantic command, and feeds
 the command result back through its reducer loop. Successful pin results and
@@ -209,13 +403,15 @@ port is the only transport executor. Settled mutation records use a bounded
 window; they are workflow evidence, not an unbounded history store.
 When one of those canonical commits changes page membership, the rail query
 controller reloads only the affected first pages. Its public snapshot contains
-both derived engine conversations and daemon membership. The snapshot itself is
-the committed value: the controller keeps it unchanged while draft page requests
-are pending, then rebuilds and publishes it once from the latest engine state and
-resolved membership. The controller does not inspect engine mutation records.
-The view has no independent engine subscription or stale-page cache. A failed
-targeted read leaves the committed snapshot visible and locks
-membership-sensitive actions until an authoritative scoped refresh succeeds.
+daemon membership and query publication state, not derived Engine
+conversations. The controller keeps committed membership visible while draft
+page requests are pending, then publishes the resolved membership once. The
+Desktop adapter independently subscribes to the Engine and joins that canonical
+state with the headless snapshot to derive localized conversations; it does not
+own a second Session or Rail query cache. The controller does not inspect Engine
+mutation records. A failed targeted read leaves committed membership visible
+and locks membership-sensitive actions until an authoritative scoped refresh
+succeeds.
 Attach compares current canonical membership with the last observed membership
 and invalidates interrupted draft work before bootstrap, so changes completed
 while every panel is closed are revalidated without mutation-history coupling.
@@ -241,8 +437,80 @@ from the daemon. Desktop adapters preserve those fields and must not recreate
 them from `runtimeContext`, `lastError`, or module-global per-session defaults.
 Provider-native child work is represented only by child sessions and their
 turns; there is no parallel session metadata summary for it.
+Create/send intents carry the provider `planMode` setting independently from a
+Tutti-owned activation intent. `/plan` controls the boolean provider setting;
+`/tutti` creates or advances a durable `TuttiModeActivation`. Pending draft
+intent, creation, revision-checked updates, daemon projection, and canonical
+Turn snapshots preserve both values without treating them as a mutually
+exclusive mode enum. Historical `capabilityRefs` remain audit data and are
+trimmed and deduplicated by source plus capability, but they do not own the
+activation. Every submit route, including immediate sends, active-turn
+guidance, queued delivery, and provider Plan feedback, preserves that audit
+metadata when Tutti is active.
+
+A create timeout does not negate the optimistic Tutti activation: the draft
+and badge remain pending until a canonical active revision arrives or the
+operation reaches a definitive failure/confirmation expiry. Revision-checked
+updates own their follow-up reconcile command. Unrelated hydration cannot clear
+an uncertain update unless a newer revision with the requested status is
+semantic proof; a failed or inconclusive owned reconcile becomes a retryable
+failed update instead of permanently blocking the composer.
+
+Capability references describe historical submission provenance; they are not
+current activation and are not a workflow state machine. AgentSessionEngine
+normalizes the independent `TuttiModeActivation` read projection separately
+from Session entities, and uses an engine-owned pending draft intent before a
+Session exists. Tutti Mode Plan state is created only by an Agent CLI invocation
+and lives in daemon-owned workspace workflow entities. Renderer code must not
+infer provider Plan intent, Tutti activation, or a Tutti workflow from the
+latest Turn, transcript ordering, arbitrary assistant text, or compatibility
+markers. The schema-first event definitions remain the authority for realtime
+updates; OpenAPI-generated HTTP DTOs stay confined to API projections.
+
+Runtime acceptance is not itself a durable submit receipt. The API, Agent
+service, and runtime adapter carry `ClientSubmitID` through typed inputs; submit
+claims and durability decisions never recover it from diagnostics metadata.
+After `Exec` reports acceptance, the Agent service calls the required
+`RuntimeController.DurablyReportSubmitProvenance` method before accepting the
+Tutti snapshot or submit claim. The runtime reporter FIFO first persists the
+ordinary submitted Turn, then executes that uncoalesced barrier. The barrier
+atomically writes the enriched Session projection and a stable
+`client-submit:user:<clientSubmitId>` user message that references the exact
+canonical Turn; it requires the Turn to exist and never replays or regresses
+its lifecycle. The service accepts a submit claim only after
+`FindTurnByClientSubmitID` reads that same Turn back. Runtime hosts must provide
+the required `DurableActivityReporter`; plain `ActivityReporter` compatibility
+adapters do not satisfy this contract because state and message writes may be
+separate transactions. Reporter decorators preserve the required interface by
+construction instead of probing and forwarding an optional capability.
+
+Source-session deletion is coordinated by the Tutti Mode Plan service, not by
+the workspace data store. `DeleteSession`, `DeleteSessionsBatch`, and
+`ClearSessions` delegate to that use-case boundary in production. The service
+chooses which workflow, checkpoint, and operation states are cancellable and
+supplies the actor, reason, target states, and transition time. The workspace
+store only executes that explicit command, atomically removing the Agent
+Session closure and Tutti activation/Turn snapshots while applying the
+authorized workflow transitions. A persistence-only deletion must never infer
+or repeat the policy.
+
+The transaction result reports every removed Session and each affected
+workflow/checkpoint identity. After commit, the Tutti Mode Plan service emits
+the canonical workflow invalidations and the Agent service emits one
+`session_deleted` invalidation per reported Session. The activity projection
+does not perform a second deletion on that path. Persistence-only deleters and
+standalone activation cleanup remain test/legacy-orphan fallbacks only; normal
+daemon composition wires the coordinator so retries cannot split ownership or
+publish duplicate deletion events.
+
 Before a session exists, composer options carry the same typed capability
 descriptor. The active session descriptor takes precedence once available.
+Model composer options keep the selected value and provider-resolved value as
+separate facts. An inherited `default` remains the selected value used for
+future mutations; `effectiveModel` is presentation-only runtime evidence for
+describing what Default currently resolves to. Activity adapters and AgentGUI
+must not replace the selection with that resolved value or infer it from the
+catalog's Default entry.
 An omitted pre-session descriptor means the connected daemon predates the
 typed composer capability contract and must remain an unknown/loading state.
 Core capability booleans must not be reconstructed from private
@@ -328,11 +596,33 @@ before the historical call row resolves.
 Likewise, a runtime session snapshot may describe provider-local execution
 state but must not enrich a report with an Interaction transition. Runtime
 reports may submit only `pending` and `superseded`; `answered` belongs solely to
-the durable `interactive_response` operation. That operation reads the typed
-runtime disposition (`pending`, `resolving`, `answered`, `superseded`, or
-`interrupted`) and atomically commits the answered/superseded Interaction,
-completed operation, and outbox event. Absence from an in-memory request map is
-not evidence of success.
+the durable `interactive_response` operation. Preparing that operation
+atomically claims the interaction with a `pending` to `answered` transition and
+stores the requested action, option, and payload. Completion still records the
+typed runtime disposition (`pending`, `resolving`, `answered`, `superseded`, or
+`interrupted`) and commits the completed operation and outbox event. Competing
+responders compare against the claimed output and normalize to `answered` or
+`superseded`; absence from an in-memory request map is not evidence of success.
+The claim's provisional Interaction status must not overwrite the terminal
+runtime disposition: the completed operation result follows the runtime even
+when the claim already moved the Interaction to `answered`.
+
+Activity compatibility projection uses a causal, segmented write barrier. It
+scans state patches in provider order. Non-terminal state first creates the
+session, Turn, and Interaction required by message foreign keys; immediately
+before each terminal patch, it flushes that Turn's messages and the session
+audits, then commits the terminal state. Later non-terminal patches are never
+moved ahead of an earlier settlement. A completed root-provider transition is
+also terminal because, when no child remains active, SQLite uses it to settle
+the canonical root Turn. During the first SQLite settlement transaction, the
+store selects the latest already persisted assistant text message for that Turn
+and freezes its ID in the existing completed-command payload. A same-report
+anchor is only a validated fast path; cross-report provider event batches
+derive the same watermark from durable messages. The payload also records an
+explicit resolution marker when settlement found no assistant text, so a late
+message cannot become the result of an already settled Turn. Result readers use
+the exact frozen message, return no message for a resolved-empty watermark, and
+reserve the bounded fallback scan for legacy turns without resolution metadata.
 
 Cancellation of the caller waiting on an interactive-response operation is not
 a provider outcome and must not terminalize the runtime request. Before a
@@ -393,13 +683,21 @@ authoritative read is explicitly named `session_reconcile_required` and must
 never be applied as a partial Session entity. The old public `state_patch` and
 storage message row id are removed.
 
-Message `turnId` is explicitly nullable. Runtime execution messages should use
-the exact durable Turn id, while historical imports without trustworthy
-provider turn boundaries stay session-scoped (`turnId = null`); import must not
-manufacture one live synthetic Turn per transcript message.
+Message `turnId` is explicitly nullable. Runtime execution messages use the
+exact durable Turn id. An external transcript importer may reconstruct stable
+historical Turn ids only from trustworthy provider evidence: each retained real
+user message starts one Turn and the following assistant/tool messages keep
+that identity until the next retained user message. Persistence creates those
+Turns as settled backfills in the same transaction as their messages. A
+forward-only store migration repairs legacy imported turnless rows from the
+same retained-user boundary; re-import applies the same stable identity.
+Content before the first trustworthy boundary stays session-scoped
+(`turnId = null`). AgentGUI never reconstructs canonical Turn ownership from
+the currently loaded page, and import must not manufacture one Turn per
+transcript message.
 
-It should not know how a host connects to `tuttid`, opens SSE streams, resolves
-workspace paths, or talks to Electron.
+It should not know how a host connects to `tuttid`, subscribes to the
+business-event WebSocket, resolves workspace paths, or talks to Electron.
 
 ### `apps/desktop`
 
@@ -409,7 +707,7 @@ capabilities into `agent-activity-core`.
 It owns:
 
 - `tuttid` client calls
-- SSE connection implementation
+- business-event WebSocket connection implementation
 - backend base URL and authentication details
 - preload/runtime/file adapters
 - `IWorkspaceAgentActivityService` and the desktop
@@ -436,6 +734,27 @@ createAgentSessionEngine({
   commandPort
 });
 ```
+
+`plan/submitDecision` uses the dedicated
+`EngineCommandPort.executePlanDecision` method. Its public
+`PlanSubmitDecisionResult` contains the durable operation identity returned by
+the Host. It must not pass through the generic `execute(): Promise<unknown>`
+path or manufacture an operation id from a command id.
+
+Durable daemon message pages and `message_update` payloads use
+`AgentActivityDurableMessage`, whose immutable `sequence` is required. Local
+optimistic and session-audit projections may use the separate transient
+message shape; this must not weaken the durable page or realtime contract.
+The generated daemon Session DTO also requires `messageVersion`. The shared
+`@tutti-os/agent-activity-tuttid-adapter` validates and preserves that high-water
+cursor for Desktop and Mobile; consumers must not replace a missing value with
+zero or add an old-daemon fallback because both binaries upgrade together.
+Every HTTP field in this cursor domain (`messageVersion`, message `version`,
+page `latestVersion`, and `afterVersion`/`beforeVersion`) is bounded by
+JavaScript's maximum safe integer. Durable message `sequence` has the same
+transport bound. Store and service layers retain `uint64`; the daemon API owns
+checked conversion and must fail response projection instead of emitting an
+inexact JSON number.
 
 The adapter exposes the HTTP operations used by that command port and by the
 desktop reconcile bridge:
@@ -476,8 +795,14 @@ export interface AgentActivityAdapter {
   deleteSession(
     input: AgentActivityDeleteSessionInput
   ): Promise<AgentActivityDeleteSessionResult>;
+  deleteSessions(
+    input: AgentActivityDeleteSessionsInput
+  ): Promise<AgentActivityDeleteSessionsResult>;
   renameSession(
     input: AgentActivityRenameSessionInput
+  ): Promise<AgentActivitySession>;
+  setSessionPinned(
+    input: AgentActivitySetSessionPinnedInput
   ): Promise<AgentActivitySession>;
 }
 ```
@@ -549,17 +874,200 @@ launchers must re-authenticate and resolve it before using any concrete provider
 invocation. UI packages must keep `provider` as the real provider identity and
 must not synthesize providers for shared or remote targets.
 
-The desktop service owns the event-stream connection. Its reconcile bridge
-maps normalized events to engine intents: append-only messages are folded
-inline, while turn, interaction, and state changes schedule authoritative HTTP
-reconciliation through the engine command port. UI consumers never retain a
-second per-session stream or merge canonical entities themselves.
+The desktop service owns one business-event WebSocket at `/v1/events/ws`.
+Canonical `message_update` snapshots remain the hydration, terminal
+confirmation, and cloud-reconcile contract. During normalized provider
+text/reasoning streaming, and for provider events that explicitly carry
+ordered appendable tool output, the same `agent.activity.updated` topic carries
+schema-backed `message_delta` events produced by the provider normalizer; the
+transport must never derive deltas by comparing snapshots. The runtime
+publishes each delta to the business-event bridge before its per-Session
+runtime fan-out and before enqueueing the durable report, so a later committed
+terminal confirmation cannot overtake the optimistic prefix. The post-commit
+projection suppresses only a redundant nonterminal text/reasoning snapshot or
+running tool-output snapshot already represented by that delta. Tool anchors,
+structured tool mutations, audit, imported, unprojected, and terminal updates
+retain their existing canonical publication semantics. Every `message_delta`
+is scoped to a real persisted Turn; session-level notices continue to use
+explicit audit or state semantics.
+
+Provider normalizers must retain enough per-message state to preserve semantic
+operations. The first cumulative text/reasoning snapshot uses `set`; a later
+snapshot with the previous value as an exact prefix uses `append_text` with only
+the suffix. Duplicate snapshots are dropped, while a rewrite or backtrack that
+cannot prove the prefix relation uses `set`. Transport and renderer layers must
+not rediscover this relationship by diffing full snapshots.
+
+Tool output uses a separate `toolOutput` operation that mutates only the
+provider-neutral `payload.output.text` display projection. A provider adapter
+may emit it only from an explicit ordered output-delta event, or from a
+cumulative textual output snapshot whose exact prefix relationship the adapter
+has verified. It must not classify by tool name or inspect arbitrary structured
+tool results. Every output operation uses the exact `messageId` of the
+canonical tool-call anchor; provider-normalizer event ids are internal
+lifecycle identities and must not create a second optimistic row. The first
+output uses `set`; later `append_text` operations carry the prior UTF-8 byte
+length as `offsetBytes`. A missing anchor or offset mismatch triggers canonical
+reconciliation instead of guessed concatenation. When an explicit provider
+output notification races immediately ahead of its `item/started`, the
+provider normalizer may retain that prefix in a bounded pre-anchor buffer, but
+it must emit nothing until the real anchor arrives; it then publishes the
+anchor first and the retained prefix as `set`. An unmatched or oversized
+prefix is dropped with diagnostics rather than inventing a tool row.
+Completed, failed, canceled, and rewritten tool results remain full canonical
+`message_update` snapshots.
+
+The Go live-protocol adapter owns the complete fast-lane envelope on both sides
+of a device link: schema validation, recipient identity projection,
+protobuf-wire framing, batching, replay/resume, sequence-gap detection, and
+typed rejection. Recipient projection rewrites only the closed workspace,
+Session, and Turn identity fields. Opaque business values remain
+`json.RawMessage`, including file paths and large JSON integers, so transport
+does not sanitize or reinterpret renderer data. The exact protocol revision
+covers the event schema, protobuf field numbers, delivery-kind values, and JSON
+control shapes. A revision mismatch is an explicit rejection followed by
+canonical reconciliation; it is not a compatibility conversion path.
+
+`StreamReady` is transport-only and must not be interpreted as canonical
+catch-up. `AttachmentChanged` starts a baseline for one positive attachment
+revision; hosts publish their canonical baseline and then
+`AttachmentCaughtUp` with the exact same binding, workspace, Session, Turn,
+caller-Turn, and revision identity. Consumers reject a missing or mismatched
+barrier. The protocol carries this fence but does not choose recovery state:
+the host adapter must reread its canonical store, which remains the lifecycle
+authority after a runtime or host-process restart.
+
+Replay resumes the same epoch, so replayed attachment or caught-up controls may
+precede the replacement RPC's newly emitted `StreamReady`. Consumers persist
+the attachment projection together with the resume cursor. If disconnection
+occurred after `AttachmentChanged` but before `AttachmentCaughtUp`, the
+projection remains explicitly not caught up until the matching barrier is
+replayed. A host must not publish `AttachmentCaughtUp` for a replacement
+attachment until it has rerun the complete canonical baseline.
+
+Frames are bounded but not fragmented. The publisher may coalesce only adjacent
+pure `append_text` operations for the same message and Turn; tool-output
+operations additionally require contiguous byte offsets. Status, payload,
+semantic, or lifecycle mutations remain separate deliveries. A single delivery
+over the configured safe limit (1 MiB by default, with a 2 MiB encoded-frame
+ceiling and an 8 MiB replay-byte budget) is replaced with a `delivery_too_large`
+discontinuity carrying reconcile keys, and the caller falls back to canonical
+data. This avoids maintaining a second chunk assembly protocol while ensuring
+that the final oversized event is not silently lost.
+
+The publisher also keeps a bounded FIFO of the most recent settled Turn ids.
+Those fences convert late text or tool deltas into scoped discontinuities
+without allowing a long-lived stream to accumulate one permanent map entry per
+historical Turn. The retention bound is independent of canonical history:
+evicted Turns remain durable, and the activity-core overlay independently
+rejects a nonterminal delta against known terminal message truth so any later
+uncertainty still converges through authoritative reconciliation.
+
+A host creates one activity-core workspace event coordinator per Engine. The
+coordinator materializes accepted deltas in its optimistic overlay, projects
+that overlay over the latest canonical message base, applies continuous inline
+messages, owns Session deletion tombstones, and schedules authoritative
+reconciliation after a gap, discontinuity, recovered connection, invalid
+payload, or unanchored append. The Tutti desktop receives local deltas through
+the business-event WebSocket; shared-device hosts receive the same live subset
+through the framed Go protocol. UI consumers never retain transport
+epoch/sequence state or distinguish local from shared activity sources.
+
+For Personal paired devices, `services/tuttid/service/mobileremote` owns the
+`agent_live` application-stream adapter. It subscribes to
+`agent.activity.updated` with the requested workspace scope, projects only the
+closed live event variants into `liveprotocol.Publisher`, converts canonical
+message/reconcile variants into scoped discontinuities, and preserves an
+explicit `session_deleted` reason plus Session reconcile key for the Mobile
+adapter to normalize into the shared coordinator's removal path. That semantic
+reason participates in `AGENT_ACTIVITY_LIVE_PROTOCOL_REVISION`; mismatched
+builds are rejected instead of silently degrading deletion into an ordinary
+reconcile. The adapter establishes the workspace subscription before
+publishing `stream_ready`, so events produced during ready-frame delivery are
+already buffered instead of falling through a subscribe gap. The Android
+bridge keeps one long-lived DeviceLink stream and delegates frame decoding and
+continuity checks to the Agent-owned Go mobile Subscriber before emitting
+accepted deliveries to React Native. The Mobile Android host co-links that
+Subscriber and DeviceLink into its own composite AAR; the transport package's
+AAR and Java namespace remain Agent-free. Mobile disables its message and Rail
+pollers after `stream_ready`; those pollers are disconnected-transport fallback
+only.
+
+After either transport is normalized, Desktop and Mobile call the same
+`AgentActivityWorkspaceEventCoordinator`. Its package-internal rules derive
+inline messages, validate envelope/data/message identity, require every
+advertised message to parse, check the advertised count and latest-version
+cursor, and validate version continuity. Any disagreement fails closed to
+authoritative reconciliation. The coordinator emits Engine intents and owns
+the optimistic projection, rather than exporting those leaf mechanisms for
+hosts to assemble independently. Mobile does not widen its four-variant framed
+live protocol to mirror Desktop: canonical `message_update` and
+`session_reconcile_required` events converge through scoped discontinuities,
+while `session_deleted` retains typed deletion semantics across the adapter.
+
+Desktop and Mobile also call the same
+`AgentActivitySessionReconcileExecutor` for authoritative Session reads. The
+executor accepts only mapped activity-core detail aggregates and message pages;
+it owns the three reconcile scopes, cancellation and deletion fences,
+conversation-versus-durable cursors, pagination, the two-detail race closure,
+and atomic Engine dispatch. A host selects either requested-Session or
+Session-hierarchy message hydration according to the transcript surface it
+renders. The executor labels its first combined read as `message_hydration`;
+tuttid serves that projection without resolving provider-backed lifecycle
+capabilities. The final read remains authoritative and resolves those
+capabilities once. Hosts must preserve this distinction: caching provider
+capabilities or removing the final race-closing read can return stale actions,
+while using the full projection for discovery can launch an otherwise unused
+provider capability probe. Each HTTP response echoes its projection and whether
+lifecycle capability projection ran; clients fail closed on a mismatch, and
+values from a deliberately unprojected hydration response must never clear
+authoritative actions. Full projection remains fail-closed when a provider
+probe fails, preserving existing detail availability while making the action
+unavailable for that response. HTTP execution, generated DTO mapping,
+absent/error interpretation, logging, polling, and legacy event fanout stay in
+the host. The canonical detail aggregate type belongs to activity-core; the
+tuttid adapter only maps the generated response into it.
+
+Focused transcript paging is the adjacent AgentGUI application boundary.
+Desktop and Mobile construct the same
+`@tutti-os/agent-gui/conversation-message-controller`. It routes initial and
+latest hydration through Engine reconcile intents, reads older history only
+from the canonical Engine message window, fences in-flight pages when focus or
+host availability changes, and dispatches accepted mapped pages into that
+Engine. Mobile's disconnected poller and app lifecycle, Desktop diagnostics
+and WebSocket integration, and both renderers' scroll behavior remain host
+concerns. Hosts must not add a second older-message store or a host-local
+cursor/retry state machine. Desktop conversation selection owns activation
+guards and Rail projection coordination, then asks this controller to ensure
+initial detail hydration. Automatic selection restoration is idempotent: it
+must not reinterpret a repeated selection as a forced refresh or enqueue a
+second reconcile while the first is pending. Explicit refresh remains a
+separate command. Message paging adapters do not call back into selection or
+Rail orchestration, and hosts do not maintain a second messages-only reconcile
+entrypoint.
+
+Event-stream continuity and command reachability are separate host facts.
+`eventStreamConnectionChanged` belongs to the coordinator and triggers
+authoritative reconnect hydration; `engine/connectionChanged` belongs to the
+host command transport. Desktop's business-event WebSocket may drive both
+because it shares the local service boundary. Mobile drives Engine connection
+from application/service command reachability and coordinator connection from
+`stream_ready`, disconnect, attachment rejection, and stream shutdown. Neither
+signal may synthesize the other.
+
+Realtime Turn provenance travels on the Engine-owned `session/reconcile`
+command. If a live reconcile fails, the Engine retains that provenance for the
+next exact retry. Both Desktop and Mobile preserve it on
+`session/detailSnapshotReceived`, so an uncached completed Turn is replayed
+after Session identity exists and produces the same attention/read semantics.
+Hosts must not keep parallel “next reconcile is live” marker sets.
 
 Hosts may accept older provider/runtime reports with missing transcript
 ownership or ordering fields, but those gaps must be filled before events enter
 `agent-activity-core` or `@tutti-os/agent-gui`. Session-level notices and
-statuses should use state patches or explicit notice semantics; they should not
-be published as ordinary assistant transcript messages without a turn scope.
+statuses should use canonical lifecycle events or explicit notice semantics;
+they should not be published as ordinary assistant transcript messages without
+a turn scope.
 Activity reports may carry a host-defined user id before they reach the engine.
 The local desktop adapter injects its stable local AgentGUI identity so
 attention/read state has a deterministic partition without consulting account
@@ -575,7 +1083,18 @@ Realtime transport lifecycle belongs to the host. Engine semantics define how
 the normalized event is applied:
 
 - keep one workspace event-stream subscription independent of mounted panels
-- apply `message_update` messages inline and batch them by engine frame
+- hydrate canonical `message_update` snapshots into the host-owned base
+- materialize optimistic `message_delta` events before dispatching ordinary
+  messages into the engine; never replay an append operation log over a newer
+  canonical base
+- scope every optimistic overlay operation by workspace and Session; a
+  successful authoritative message read clears nonterminal optimistic state for
+  that scope before accepting later deltas
+- keep a newer optimistic terminal projection over a cloud nonterminal, and
+  clear it when canonical terminal truth arrives
+- after a gap, discontinuity, or reconnect, complete an authoritative read and
+  reconcile the overlay; use an unconditional overlay reset only when removing
+  or rebinding the Session
 - reconcile `turn_update` and `interaction_update` through a full session pull
 - preserve whether a reconcile was realtime-triggered until its authoritative
   session is applied; if the authoritative fetch fails, restore that provenance
@@ -603,10 +1122,16 @@ The host owns:
 - raw protocol decoding
 - host-specific retry capability
 
+When command reachability differs by Session, the host also projects
+`session/runtimeAvailabilityChanged` into the shared engine. This state is
+ephemeral transport coordination, not a canonical Session field. The engine
+gates runtime-dependent commands and AgentGUI presents the same frozen/loading
+interaction for every host; a host must not map one Session's transport loss to
+the workspace-wide engine connection state.
+
 ## Needs Attention Contract
 
-The future Agent Message Center counts user-actionable items, not all session
-messages.
+Agent Message Center counts user-actionable items, not all session messages.
 
 The initial selector surface is:
 
@@ -664,7 +1189,9 @@ For Agent GUI behavior:
 For runtime boundary enforcement:
 
 - `pnpm check:agent-activity-runtime-boundaries`
-- the same check is included in `pnpm check:full`
+- `pnpm check:agent-provider-strategy-boundaries`
+- `pnpm check:agent-gui-degradation`
+- these checks are included in `pnpm check:full`
 
 ## Non-Goals
 
@@ -680,7 +1207,16 @@ For runtime boundary enforcement:
 - A selector belongs in core when Agent GUI and another host-agnostic consumer can
   use it without knowing host details.
 - A React hook belongs in `agent-gui` rather than in core.
-- A `tuttid` mapping belongs in the desktop adapter unless it is a
-  host-agnostic contract type.
+- A pure generated-`tuttid` DTO projection shared by Desktop and Mobile belongs
+  in `agent-activity-tuttid-adapter`. Host identity injection, transport,
+  retries, event wiring, and orchestration remain in each application adapter.
+- Root detail DTOs use the adapter's aggregate mapper so root Session, child
+  Sessions, and Turns enter the Engine through one
+  `session/detailSnapshotReceived` intent. The mapper verifies the requested
+  Session identity, child hierarchy, and Turn ownership; a malformed nested
+  entity rejects the aggregate instead of publishing a partial hierarchy.
+- Engine prompt commands use the activity-core prompt executor. Required
+  settings are persisted before send, and a failed settings write prevents
+  delivery; transport request mapping remains host-owned.
 - External repository adoption should require implementing the adapter, not
   copying session merge or needs-attention logic.

@@ -1,6 +1,6 @@
 # Agent Extension Package Design
 
-Status: accepted target architecture; Phases 1–4 foundation implemented
+Status: accepted target architecture; foundation, generic composer projection, and Target-managed runtime setup implemented
 
 ## Implementation review (2026-07-14)
 
@@ -15,9 +15,13 @@ and out-of-process ACP runtime code, with these implementation clarifications:
 - Open provider strings are validated at the daemon ingress. Unknown valid
   values are preserved through OpenAPI, Agent GUI, and Workbench and are not
   coerced to Codex.
-- The first runtime implementation uses compatible local runtimes only.
-  Project-local installation remains behind a future explicit confirmation API;
-  enabling an extension must never silently mutate a project.
+- Compatible local runtimes remain preferred. The daemon exposes Target-scoped
+  setup state plus an explicit daemon-managed install action derived from the
+  verified package manifest. Enabling an extension never mutates a project.
+- Successful managed activation publishes a collision-safe command in
+  `~/.local/bin` through a stable Tutti-owned per-Agent symlink. Development and
+  production share this executable; environment separation remains limited to
+  daemon state.
 - A source-specific `versions.json` is sufficient for built-in rollout. The
   aggregate catalog remains a release-tool output for future discovery and does
   not become a second runtime source of truth.
@@ -29,11 +33,34 @@ safe atomic extension installation, offline installed-version fallback,
 dynamic generic ACP adapter resolution, fixed-installation resume, and the
 external Gemini extension repository.
 
-Still in compatibility migration: explicit project-scoped runtime installation,
-ACP readiness/auth probing, session-pinned adapter cache fingerprints, full
-pre-session composer/capability projection, richer event profile rules, and
-removal of remaining built-in provider catalogs. Declarative tool aliases,
-shared ACP diff normalization, and permission semantic mapping are implemented.
+Implemented in the compatibility follow-up: fixed-installation profile
+validation, exact Target/project/installation-scoped composer discovery,
+runtime-owned model/mode/reasoning catalogs, canonical reasoning aliases that
+retain their ACP runtime ids, signed permission semantics, signed slash-command
+narrowing with shared effects, and declared/runtime/host capability
+intersection. Public composer responses now expose typed command and per-model
+reasoning contracts; persisted `runtimeContext` remains an internal
+legacy/diagnostic recovery source rather than a renderer-facing capability
+channel. Hidden discovery remains bounded, prompt-free, single-flight, and is
+closed on every terminal path. It is pre-session projection, not setup or
+authentication state.
+
+Implemented in the runtime-setup follow-up: Target/fixed-installation-scoped
+plans; explicit idempotent actions; staged direct execution;
+version and ACP probes; auth-required classification; fresh-method ACP
+authenticate plus post-auth session verification; SHA-256/size activation
+fingerprints and replacement detection; atomic activation; durable interruption
+recovery; local-first managed runtime resolution; and one shared AgentGUI setup
+panel. Managed activation now also publishes a stable user command, atomically
+repoints it on upgrade, rejects user-owned path collisions, and treats the link
+chain as managed-runtime integrity. The package manifest remains the
+authoritative runtime-command source. Gemini and CodeBuddy use the same code
+path.
+
+Still in compatibility migration: composite session-pinned adapter/profile
+cache keys, richer tool/event profile rules, and removal of remaining built-in
+provider catalogs. Declarative tool aliases, shared ACP diff normalization,
+composer/capability projection, and permission semantic mapping are implemented.
 Remaining items must not be implemented with provider-specific Gemini branches.
 
 ## 1. 背景
@@ -65,7 +92,7 @@ ACP 负责通信协议；Agent Extension Package 负责 Tutti 产品内的完整
 8. release artifact 不可变，`latest.json`、`versions.json` 和 catalog metadata 可变。
 9. 扩展安装必须固定版本、校验发布者身份和 artifact 内容。
 10. 内置 Agent 的特殊策略继续作为可信内置 extension overlay，不要求强行改写为第三方配置。
-11. Extension 安装和 Agent Runtime 安装是两个独立状态；扩展包不携带 Agent 可执行文件，兼容的用户本地 Runtime 必须优先于项目内安装的 Runtime。
+11. Extension 安装和 Agent Runtime 安装是两个独立状态；扩展包不携带 Agent 可执行文件，兼容的用户本地 Runtime 必须优先于 daemon-managed Runtime。
 
 ## 3. 系统结构
 
@@ -121,11 +148,14 @@ Agent GUI、AgentSessionEngine 和 durable activity persistence 不应被第三�
 | `signingKeyId`    | 主仓信任的发布者签名身份              |
 | `enabled`         | 是否允许加载和运行该扩展              |
 
-运行时/env override 必须进入对应的 durable configuration convention。例如：
+桌面 Developer 参数通过通用 `featureFlags` 覆盖默认值。例如：
 
 ```text
-TUTTI_AGENT_EXTENSION_GEMINI_ENABLED=true
+agent.extension.gemini=true
 ```
+
+不提供 `TUTTI_AGENT_EXTENSION_<KEY>_ENABLED` 环境变量；开发环境的
+`TUTTI_AGENT_EXTENSION_<KEY>_PACKAGE_DIR` 只选择本地包，不负责启用扩展源。
 
 扩展包中的 `agentKey` 必须与主仓配置的 `key` 一致。远端 manifest 不能覆盖本地信任配置、功能开关或 signing key。
 
@@ -266,7 +296,7 @@ profiles/
 
 ## 8. Runtime discovery 和标准安装命令
 
-Extension package 只安装 manifest、profiles、assets 和 locales，不携带或解压任何 Agent executable。`runtime.install` 只是本地探测失败后的项目内安装声明，不是默认启动来源。
+Extension package 只安装 manifest、profiles、assets 和 locales，不携带或解压任何 Agent executable。`runtime.install` 只是本地探测失败后的 Target-managed 安装声明，不是默认启动来源。
 
 ### 8.1 本地 Runtime Discovery
 
@@ -278,6 +308,7 @@ Extension package 只安装 manifest、profiles、assets 和 locales，不携带
   "candidates": [
     {
       "binaryNames": ["gemini"],
+      "searchPaths": [{ "scope": "user", "path": ".vendor/bin" }],
       "version": {
         "args": ["--version"],
         "constraint": ">=0.50.0"
@@ -296,8 +327,8 @@ Extension package 只安装 manifest、profiles、assets 和 locales，不携带
 
 1. 用户为该 Agent Target 显式选择的可执行文件路径。
 2. Discovery Profile 中声明、且由 Tutti runtime command resolver 找到的本地候选。
-3. 当前项目下已安装、已验证的 project-local Runtime。
-4. 没有可用 Runtime 时提供项目内安装操作。
+3. 用户级 `~/.local` 下已安装、已验证的 managed Runtime。
+4. 没有可用 Runtime 时提供 Target 级托管安装操作。
 
 本地候选必须依次通过以下检查才能成为 runtime binding：
 
@@ -309,7 +340,7 @@ Extension package 只安装 manifest、profiles、assets 和 locales，不携带
 
 仅发现同名文件不能判定 Agent `ready`。版本不兼容、ACP 启动失败和认证未完成必须保留为不同状态，供 Agent GUI 展示准确原因和操作。
 
-Discovery Profile 只允许声明受限的路径候选、argv、版本解析、ACP probe 和认证状态规则，不能声明任意探测脚本。Tutti 现有 runtime command resolver 对 `PATH`、Homebrew、pnpm、Volta、asdf、mise、fnm、nvm 和常见用户 bin 目录的处理应继续作为统一底层能力，第三方 extension 不重复实现文件系统扫描。
+Discovery Profile 只允许声明受限的路径候选、argv、版本解析、ACP probe 和认证状态规则，不能声明任意探测脚本。`searchPaths` 目前只接受 `scope: "user"` 与不含 `.`、`..` 的用户主目录相对路径；绝对路径、路径穿越和其他 scope 都会在安装 extension 时被拒绝。声明的目录先于共享搜索环境探测。Tutti 现有 runtime command resolver 对 `PATH`、Homebrew、pnpm、Volta、asdf、mise、fnm、nvm 和常见用户 bin 目录的处理应继续作为统一底层能力，第三方 extension 不重复实现文件系统扫描。
 
 ### 8.2 标准安装命令
 
@@ -322,23 +353,27 @@ Discovery Profile 只允许声明受限的路径候选、argv、版本解析、A
 - `uv`：使用 Tutti 已解析的 uv Runtime；
 - 后续新增 runner 必须扩展 schema 和 host executor，不能由 manifest 自定义 executable。
 
-允许的 placeholder 只包括 Tutti 计算的 `${projectRoot}`、`${installRoot}` 和平台标识。禁止 `${HOME}`、任意环境变量展开、命令替换、管道、重定向、`curl | sh`、`bootstrap.sh` 或用户输入拼接。
+安装 argv 只允许 Tutti 计算的 `${installRoot}` 和平台标识；launch argv 还可使用会话 CWD 对应的 `${projectRoot}`。禁止 `${HOME}`、任意环境变量展开、命令替换、管道、重定向、`curl | sh`、`bootstrap.sh` 或用户输入拼接。
 
-安装根目录固定为当前项目下的 Tutti-owned 隔离目录：
+安装根目录固定为用户级 `~/.local` 下的 Tutti-owned 隔离目录：
 
 ```text
-<projectRoot>/.tutti/agent-runtimes/<agentKey>/<extensionVersion>/
+~/.local/share/tutti/agent-runtimes/<agentKey>/<runtimeIdentity>/
 ```
 
-标准安装命令的工作目录是 `<projectRoot>`，但 package manager 的 prefix、target 或 environment 必须指向 `<installRoot>`。安装不得修改项目的 `package.json`、lockfile、Python environment 或全局 package manager 状态。`.tutti/agent-runtimes` 是生成目录，应由项目忽略策略排除版本控制；Tutti 不应在未确认时修改用户的 `.gitignore`。
+`runtimeIdentity` 由 Agent key、runtime kind、平台、安装 runner/argv、精确 runtime package、launch executable/args 和 discovery profile 计算。Extension 只改文案、资产或其他不影响 runtime contract 的 metadata 时，复用同一个托管 Runtime；plan digest 仍绑定固定 Extension installation，保证用户确认的 setup action 不跨 Target/版本漂移。
 
-安装完成后必须从 manifest 的 `runtime.launch` 解析项目内 executable，再执行与本地候选相同的版本检查和 ACP handshake。只有 probe 成功才能原子切换为 active project runtime binding。
+标准安装命令在 daemon-owned scratch 目录运行，package manager 的 prefix、target 或 environment 必须指向 `<installRoot>`。安装不得修改任意项目的 `package.json`、lockfile、Python environment、`node_modules` 或全局 package manager 状态。
 
-包管理器安装可能执行第三方 package lifecycle code。Agent 本体本来就是第三方可执行代码，因此首次项目安装前必须展示发布者、精确版本、最终命令、安装目录和风险，并要求用户确认；后台自动更新只能在用户明确启用该策略后发生。
+安装完成后必须从 manifest 的 `runtime.launch` 解析托管 executable，再执行与本地候选相同的版本检查和 ACP handshake。只有 probe 成功才能原子切换为 active managed runtime binding。
+
+激活同时发布 `~/.local/bin/<agent-command>`。该入口只链接到 Tutti-owned 的 `~/.local/share/tutti/agent-runtimes/<agentKey>/bin/<agent-command>` 稳定入口，后者再链接到固定 runtime identity 目录内的真实 executable。升级只原子切换稳定入口；不得覆盖已有普通文件或非 Tutti-owned symlink。dev/prod 和所有 workspace 共用同一入口与版本化 Runtime，环境隔离仅作用于 daemon state。Tutti 自己发布的 PATH 入口仍按 managed runtime 校验，不能降级为 local source；入口缺失、断链或指向异常时必须要求显式重装。旧 extension-version 目录只有在 activation、package identity、fingerprint 和当前 discovery 版本检查都匹配时，才可迁移到 runtime identity 目录。
+
+包管理器安装可能执行第三方 package lifecycle code。Agent 本体本来就是第三方可执行代码，因此首次托管安装前必须展示发布者、精确版本、最终命令、安装目录和风险，并要求用户确认；后台自动更新只能在用户明确启用该策略后发生。
 
 ## 9. 安装模型
 
-Extension Installation Manager 只管理轻量 Extension 元数据。Project Runtime Installer 管理当前项目下由标准安装命令生成的 Runtime。开启扩展后先下载并验证 manifest/profile；只有本地 Discovery 没有找到兼容 Runtime、当前已选择有效项目且用户允许时，才执行 `runtime.install`。
+Extension Installation Manager 管理轻量 Extension 元数据。Target Runtime Installer 管理用户级 `~/.local` 下由标准安装命令生成的 Runtime。开启扩展后先下载并验证 manifest/profile；只有本地 Discovery 没有找到兼容 Runtime且用户明确允许时，才执行 `runtime.install`。
 
 建议的核心接口：
 
@@ -349,9 +384,9 @@ type AgentExtensionInstallationManager interface {
     Uninstall(ctx context.Context, installationID string) error
 }
 
-type ProjectAgentRuntimeInstaller interface {
-    Install(ctx context.Context, workspaceID string, projectRoot string, extensionInstallationID string) (ProjectRuntimeInstallation, error)
-    Remove(ctx context.Context, workspaceID string, projectRoot string, agentTargetID string) error
+type TargetAgentRuntimeInstaller interface {
+    Install(ctx context.Context, agentTargetID string, extensionInstallationID string) (ManagedRuntimeInstallation, error)
+    Remove(ctx context.Context, agentTargetID string, extensionInstallationID string) error
 }
 ```
 
@@ -367,26 +402,25 @@ Installation 至少保存：
 - 安装状态和错误；
 - 创建、更新时间。
 
-ProjectRuntimeInstallation 至少保存：
+ManagedRuntimeInstallation 至少保存：
 
-- workspace ID 和 normalized project root；
 - agent target ID、extension key/version/profile digest；
 - install runner 和最终 argv digest；
-- project-local install root；
+- daemon-managed install root；
 - detected runtime version、executable path、fingerprint 和 package integrity；
 - probe result、安装状态和错误。
 
-Extension 安装采用新目录准备、完整验证、原子切换。项目 Runtime 先安装到 `<installRoot>.staging-*`，probe 成功后再原子切换为项目 active binding。升级不能覆盖当前运行 session 正在使用的 extension profile 或 project runtime 文件。
+Extension 安装采用新目录准备、完整验证、原子切换。托管 Runtime 先安装到 staging，probe 成功后再原子切换为 active binding。升级不能覆盖当前运行 session 正在使用的 extension profile 或 managed runtime 文件。
 
 Runtime binding 作为独立记录保存：
 
-- `source`：`local` 或 `project`；
+- `source`：`local` 或 `managed`；
 - resolved executable path；
 - detected runtime version；
 - executable fingerprint；
 - discovery profile digest；
 - probe result 和 probe 时间；
-- project runtime installation ID，仅 `project` 来源存在。
+- managed runtime installation ID，仅 `managed` 来源存在。
 
 ## 10. Agent Target 注册
 
@@ -442,12 +476,12 @@ type AgentRuntimeResolveInput struct {
 
 1. 查找内置 adapter。
 2. 从 `agent_extension` target 解析固定 extension installation。
-3. 执行或读取该项目作用域的 Runtime Discovery，按用户显式路径、本地候选、project-local 版本的顺序选择 runtime binding。
+3. 执行 Target 级 Runtime Discovery，按兼容本地候选、daemon-managed 版本的顺序选择 runtime binding。
 4. 根据已校验 manifest 和 runtime binding 创建 generic standard ACP adapter。
 5. 绑定 command、event、config option 和 interactive disposition sinks。
 6. 按 extension version、profile digest、runtime source、runtime fingerprint 缓存 adapter。
 
-缓存键不能只使用 provider。至少包含 workspace ID、normalized project root、agent target ID、extension/profile 版本和 runtime fingerprint；不同项目不能共享错误的 project runtime binding。
+缓存键不能只使用 provider。至少包含 agent target ID、extension/profile 版本、runtime source 和 runtime fingerprint；正式会话的 ACP 状态仍按 workspace/CWD 隔离。
 
 探测在 `tuttid` 执行并由 provider-status service 持有事实状态。Agent GUI 和 Desktop React effects 不扫描 PATH、不执行版本命令，也不直接启动 probe；Desktop 只负责订阅渐进式状态并投影到具体 `agentTargetId`。
 
@@ -462,9 +496,9 @@ type AgentRuntimeResolveInput struct {
 - `installing`；
 - `error`。
 
-状态同时返回 `runtimeSource`、project root、已探测版本、可执行文件路径、失败 reason code 和服务端允许的 actions。Agent GUI 使用 extension locale/presentation profile 渲染“使用本地版本”“安装到当前项目”“选择其他路径”“重新探测”等操作，不包含 Agent-specific 判断。
+状态同时返回 `runtimeSource`、已探测版本、可执行文件路径、失败 reason code 和服务端允许的 actions。Agent GUI 渲染“使用本地版本”“安装托管版本”“重新探测”等通用操作，不包含 Agent-specific 判断。
 
-由于安装作用域是项目，provider-status service 的动态 Extension 状态也必须以 `workspaceID + normalized projectRoot + agentTargetId` 为 key。Agent GUI 切换项目时重新读取对应状态：项目 A 的 `ready` 不能让项目 B 被误判为已安装。没有选择项目且未发现用户本地 Runtime 时，状态为 `project_required`，只提供选择项目，不允许退化为全局安装。
+安装作用域是 Target + fixed extension installation。workspace URL 仅提供调用上下文；同一 Target 的托管 runtime 跨 workspace 复用。Agent GUI 切换 Target 时静默读取状态，不自动打开 Dialog；只有用户点击非 ready 状态下的 setup affordance 才打开。
 
 ## 12. Tool semantic profile
 
@@ -715,6 +749,19 @@ Manifest 声明不能覆盖实际 ACP handshake，也不能开启当前 host 不
       "semantic": "full-access"
     }
   ],
+  "slashCommands": {
+    "commandCatalogAuthoritative": true,
+    "commands": [
+      {
+        "name": "compact",
+        "effect": "submitImmediate"
+      },
+      {
+        "name": "status",
+        "effect": "showStatus"
+      }
+    ]
+  },
   "skills": {
     "invocation": "textTrigger",
     "triggerPrefix": "/",
@@ -732,6 +779,42 @@ Manifest 声明不能覆盖实际 ACP handshake，也不能开启当前 host 不
 }
 ```
 
+`configOptions` is the canonical profile shape. During compatibility migration,
+the loader also accepts the earlier top-level `model` and `permission` source
+objects. These declarations identify or constrain ACP fields. Model, reasoning,
+and command catalogs still require runtime facts; the signed `permissionModes`
+list is the independent launch-permission contract and does not depend on model
+catalog discovery.
+
+Known permission semantics are `ask-before-write`, `accept-edits`, `auto`,
+`locked-down`, `full-access`, and the plan-only `read-only` mapping. The composer
+returns each signed `runtimeId` as `permissionConfig.modes[].id` by default and
+retains every distinct runtime id even when several modes share one semantic.
+Only a profile with `launchSettings.permission` exposes the closed Tutti
+semantic as its public id, because that launch contract explicitly maps the
+semantic back to a runtime value. Clients must round-trip the advertised `id`
+verbatim; `semantic` is classification metadata and is never a portable
+provider permission id.
+
+Runtime ids are compared case-insensitively at the Standard ACP command
+boundary and therefore must be unique ignoring case. Exact declared runtime ids
+are registered before semantic and historical aliases; an alias can never
+redirect an advertised id to another permission tier.
+
+Runtime permission config options may enrich the current selection, label, and
+description for a signed runtime id. They cannot collapse modes by semantic,
+rewrite public ids, admit unsigned values, or make permission availability
+depend on model discovery. Reasoning option ids
+`thought_level`, `effort`, and `model_reasoning_effort` project as
+`reasoning_effort`, with deterministic alias precedence and the original id
+retained for ACP writes. Unrelated runtime options such as `sandbox` remain
+opaque provider-native context.
+
+`slashCommands.commandCatalogAuthoritative` narrows the runtime-advertised
+catalog. It cannot admit a command the runtime did not advertise. Runtime
+descriptions and input hints survive filtering, while effects select only
+shared host behaviors.
+
 `skills.roots` 是扩展拥有的声明式 Skill discovery contract。`scope` 只能是
 `workspace` 或 `user`，`path` 必须是安全的相对路径；host 分别从当前工作目录的
 祖先和用户目录解析，扩展不能声明任意绝对路径。`invocation` 与
@@ -742,8 +825,11 @@ Runtime 返回的 model、mode、reasoning 和 command labels 优先使用 ACP �
 
 ACP `available_commands_update` 同时进入实时 session command snapshot 和 session
 runtime context。Composer 优先使用实时 snapshot；若 renderer 错过启动期事件或
-应用重启，则从运行会话的 `availableCommands` 恢复相同 catalog。旧状态只有
-`commands: string[]` 时可以恢复名称，但不能伪造描述或 input hint。
+应用重启，daemon 可以从运行会话的 `availableCommands` 恢复相同 catalog。旧状态
+只有 `commands: string[]` 时可以恢复名称，但不能伪造描述或 input hint。恢复后，
+公开 composer-options 合约只通过 typed `commands` 返回 catalog；renderer 不解析
+`runtimeContext`。Model-specific reasoning profile 同样通过 typed
+`reasoningOptionsByModel` 返回，typed top-level fields 是唯一权威投影来源。
 
 ## 17. Authentication
 
@@ -812,12 +898,12 @@ Session 创建时必须固定扩展版本：
 
 Canonical activity 写入持久化后，历史页面不再依赖 extension profile。只有 resume、新 runtime event normalization 和未标准化 legacy data compatibility 才需要固定 profile。
 
-project-local Runtime 可以按不可变 installation ID 精确固定。用户全局/本地 Runtime 可能被用户或包管理器原地升级，因此只能固定探测到的 path、version 和 executable fingerprint：
+managed Runtime 可以按不可变 installation ID 精确固定。用户全局/本地 Runtime 可能被用户或包管理器原地升级，因此只能固定探测到的 path、version 和 executable fingerprint：
 
 - 已运行 ACP 子进程继续使用创建时的进程，不受磁盘文件变化影响；
 - 新 session 必须重新探测本地 Runtime；
 - Resume 前 fingerprint 变化时重新执行版本和 ACP probe；
-- 本地 Runtime 已变化且无法满足原 session 兼容范围时，返回 `runtime_changed`，由 Agent GUI 提供安装/使用当前项目版本或创建新 session 的操作，不能静默切换行为。
+- 本地 Runtime 已变化且无法满足原 session 兼容范围时，返回 `runtime_changed`，由 Agent GUI 提供安装/使用托管版本或创建新 session 的操作，不能静默切换行为。
 
 ## 20. 安全模型
 
@@ -834,7 +920,7 @@ project-local Runtime 可以按不可变 installation ID 精确固定。用户�
 7. Extension artifact 不允许包含 executable、安装脚本或 WASM。
 8. install runner 必须来自 Tutti allowlist，argv 逐项校验，禁止 shell 语法和未授权 placeholder。
 9. 安装命令中的 package 必须固定精确版本，并记录 package integrity。
-10. install root 和 launch executable 必须位于当前项目的 `.tutti/agent-runtimes` 边界内。
+10. install root 和 launch executable 必须位于用户级 `~/.local/share/tutti/agent-runtimes` 边界内。
 11. 过滤继承环境变量；credential 通过明确的 daemon-owned auth/credential flow 提供。
 12. 安装到 staging 目录，版本检查和 ACP probe 完成后原子切换 active installation。
 
@@ -851,7 +937,6 @@ signature_invalid
 artifact_invalid
 manifest_invalid
 installation_failed
-project_required
 runtime_missing
 protocol_incompatible
 authentication_required
@@ -861,8 +946,8 @@ normalization_failed
 
 行为：
 
-- Catalog 暂时不可用时可继续使用已验证、已 pin 的 Extension 和 project runtime installation。
-- 项目内新安装失败不能破坏该项目上一 active runtime installation，也不能影响其他项目。
+- Catalog 暂时不可用时可继续使用已验证、已 pin 的 Extension 和 managed runtime installation。
+- 新安装失败不能破坏上一 active managed runtime installation。
 - Profile 无法识别一个 tool 时回退 generic tool renderer。
 - Diff 解析失败不能伪造空 diff 或错误 file change。
 - Missing capability 保持 unsupported/unknown，不从 provider 名称猜测。
@@ -955,10 +1040,9 @@ fetch versions.json
   -> show Gemini in Agent GUI directory
   -> detect local gemini binary and verify version + ACP handshake
   -> use compatible local Gemini CLI when available
-  -> otherwise require a selected project
   -> show exact npm command and request install confirmation
-  -> install pinned @google/gemini-cli under <project>/.tutti/agent-runtimes
-  -> verify the project-local binary and bind it only for that project
+  -> install pinned @google/gemini-cli under ~/.local/share/tutti/agent-runtimes
+  -> verify and bind the Target-managed binary
   -> normalize Gemini tool IDs and file changes
   -> render through built-in Agent GUI components
 ```
@@ -993,10 +1077,10 @@ Tutti 主仓不需要新增 Gemini-specific runtime adapter、React component �
 
 - 引入 `AgentRuntimeResolver`。
 - 引入声明式 Discovery Profile，复用现有 runtime command resolver 和 provider-status 渐进探测链路。
-- 新增 project-scoped Runtime Installation persistence 和受限 standard-command executor。
-- 按用户显式路径、本地 Runtime、project-local Runtime 的优先级形成 runtime binding。
+- 新增 Target-managed Runtime Installation persistence 和受限 standard-command executor。
+- 按用户显式路径、本地 Runtime、managed Runtime 的优先级形成 runtime binding。
 - Generic standard ACP adapter 从固定 extension installation 和 runtime binding 创建。
-- Controller 以 workspace/project/target/extension/profile/runtime fingerprint 缓存 adapter。
+- Controller 以 target/extension/profile/runtime source/fingerprint 缓存 adapter。
 - 补齐标准 ACP authenticate 流程。
 
 ### Phase 5：Tool、diff 和 capability profiles
@@ -1023,10 +1107,10 @@ Tutti 主仓不需要新增 Gemini-specific runtime adapter、React component �
 - 开关关闭时不下载、不安装、不展示 Agent。
 - 开关开启后无需重新编译 provider adapter 即可安装和展示。
 - Agent Extension zip 不包含 executable、安装脚本或 WASM。
-- 用户已安装兼容 ACP Agent 时优先使用本地 Runtime，不执行项目安装命令。
-- 用户本地未安装时，在当前项目的 `.tutti/agent-runtimes` 隔离目录执行已确认的标准安装命令。
+- 用户已安装兼容 ACP Agent 时优先使用本地 Runtime，不执行托管安装命令。
+- 用户本地未安装时，在 `~/.local/share/tutti/agent-runtimes` 隔离目录执行已确认的标准安装命令。
 - 安装命令不修改项目 package manifest、lockfile、Python environment 或全局 package manager 状态。
-- 同一 Agent 在不同项目中的安装和探测状态相互隔离。
+- 同一 Agent Target 的托管安装跨 workspace 复用，会话 CWD 保持独立。
 - 本地 Runtime 不兼容或 ACP probe 失败时，Agent GUI 展示准确状态和可执行操作。
 - 支持 create、prompt、stream、tool call、permission、question 和 cancel。
 - 支持标准 ACP authenticate。

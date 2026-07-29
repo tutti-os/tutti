@@ -1,11 +1,10 @@
 import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentTimelineTypes";
-import {
-  isWorkspaceAgentToolCallItem,
-  resolveWorkspaceAgentToolName
-} from "./workspaceAgentToolCallDisplay";
+import { appendWorkspaceAgentGoalControl } from "./workspaceAgentGoalControlProjection";
+import { isWorkspaceAgentToolCallItem } from "./workspaceAgentToolCallDisplay";
 import type {
   BuildWorkspaceAgentSessionDetailInput,
   WorkspaceAgentSessionDetailAgentItem,
+  WorkspaceAgentSessionDetailGoalControl,
   WorkspaceAgentSessionDetailToolCall,
   WorkspaceAgentSessionDetailToolGroupEntry,
   WorkspaceAgentSessionDetailTurn,
@@ -22,6 +21,7 @@ import {
   thinkingStatusKind,
   userMessageProjectionKey
 } from "./workspaceAgentTimelineMessageHelpers";
+import { isCollaborationTimelineItem } from "./agentConversation/projection/agentCollaborationProjection";
 import {
   compareToolCallsAscending,
   delegatedToolStepFromCall,
@@ -38,6 +38,12 @@ import {
   visibleErrorFromPayload,
   withSourceTimelineItems
 } from "./workspaceAgentTimelineProjectionHelpers";
+import { enrichProjectedTurnsWithCanonicalErrors } from "./workspaceAgentTurnErrorProjection";
+import {
+  normalizeToolName,
+  shouldSuppressToolCall,
+  suppressedUnavailableAskUserQuestionCallIds
+} from "./workspaceAgentTimelineSuppression";
 
 export function buildCanonicalWorkspaceAgentDetailView({
   activity,
@@ -47,6 +53,7 @@ export function buildCanonicalWorkspaceAgentDetailView({
   workspaceRoot = null
 }: BuildWorkspaceAgentSessionDetailInput): WorkspaceAgentSessionDetailViewModel {
   const turns = new Map<string, WorkspaceAgentSessionDetailTurn>();
+  const goalControls: WorkspaceAgentSessionDetailGoalControl[] = [];
   const recentUserMessages = new Map<
     string,
     WorkspaceAgentActivityTimelineItem
@@ -63,6 +70,12 @@ export function buildCanonicalWorkspaceAgentDetailView({
     const role = messageRole(item);
     const body = messageBody(item);
     const explicitTurnId = item.turnId?.trim();
+
+    if (
+      appendWorkspaceAgentGoalControl(goalControls, item, itemId(item), body)
+    ) {
+      continue;
+    }
 
     if (role === "user") {
       const turnId = explicitTurnId || `seq:${item.seq || item.id}`;
@@ -99,6 +112,33 @@ export function buildCanonicalWorkspaceAgentDetailView({
     const turnId =
       explicitTurnId || activeSequenceTurnId || `seq:${item.seq || item.id}`;
     const turn = getTurn(turns, turnId);
+
+    // Collaboration runs render as a dedicated card. Unlike ordinary agent
+    // messages they must stay visible while their body (resultText) is still
+    // empty — a running consult has no output yet — so this branch does not
+    // require a non-empty body.
+    if (isCollaborationTimelineItem(item)) {
+      const status = firstPresentString(
+        item.status,
+        stringRecordValue(item.payload, "status")
+      );
+      const statusKind = messageStatusKind(status);
+      const message = withSourceTimelineItems(
+        {
+          id: itemId(item),
+          body,
+          ...(status ? { status } : {}),
+          ...(statusKind ? { statusKind } : {}),
+          turnId,
+          occurredAtUnixMs:
+            item.occurredAtUnixMs ?? item.createdAtUnixMs ?? null
+        },
+        [item]
+      );
+      turn.agentMessages.push(message);
+      turn.agentItems.push({ kind: "message", message });
+      continue;
+    }
 
     if (isWorkspaceAgentToolCallItem(item)) {
       if (shouldSuppressToolCall(item, suppressedToolCallIds)) {
@@ -184,6 +224,18 @@ export function buildCanonicalWorkspaceAgentDetailView({
     }
   }
 
+  enrichProjectedTurnsWithCanonicalErrors({
+    turns,
+    sessionTurns:
+      sessionTurns.length > 0
+        ? sessionTurns
+        : session.latestTurn
+          ? [session.latestTurn]
+          : [],
+    provider: session.provider,
+    agentSessionId: session.agentSessionId
+  });
+
   const visibleTurns = [...turns.values()].filter(
     (turn) => turn.userMessages.length > 0 || turn.agentItems.length > 0
   );
@@ -200,6 +252,7 @@ export function buildCanonicalWorkspaceAgentDetailView({
     sessionTurns,
     cwd: session.cwd.trim(),
     workspaceRoot: workspaceRoot?.trim() || null,
+    goalControls,
     turns: visibleTurns,
     showProcessingIndicator: shouldShowProcessingIndicator(
       session,
@@ -278,72 +331,6 @@ function upsertToolCall(
     (existing) => existing.statusKind === "failed"
   );
   upsertToolCallAgentItem(turn, call, itemId(item));
-}
-
-function suppressedUnavailableAskUserQuestionCallIds(
-  items: readonly WorkspaceAgentActivityTimelineItem[]
-): Set<string> {
-  const suppressed = new Set<string>();
-  for (const item of items) {
-    if (
-      normalizeToolName(toolNameFromItem(item)) !== "askuserquestion" ||
-      !isUnavailableAskUserQuestionFailure(item)
-    ) {
-      continue;
-    }
-    const callId = toolCallSuppressionId(item);
-    if (callId) {
-      suppressed.add(callId);
-    }
-  }
-  return suppressed;
-}
-
-function shouldSuppressToolCall(
-  item: WorkspaceAgentActivityTimelineItem,
-  suppressedToolCallIds: ReadonlySet<string>
-): boolean {
-  const callId = toolCallSuppressionId(item);
-  return callId ? suppressedToolCallIds.has(callId) : false;
-}
-
-function toolCallSuppressionId(
-  item: WorkspaceAgentActivityTimelineItem
-): string | null {
-  return firstPresentString(
-    item.callId,
-    stringRecordValue(item.payload, "callId"),
-    stringRecordValue(item.payload, "toolCallId")
-  );
-}
-
-function isUnavailableAskUserQuestionFailure(
-  item: WorkspaceAgentActivityTimelineItem
-): boolean {
-  const status = firstPresentString(
-    item.status,
-    stringRecordValue(item.payload, "status")
-  );
-  if (status !== "failed") {
-    return false;
-  }
-  const payload = normalizedPayload(item.payload);
-  const output = normalizedPayload(
-    payload?.output as WorkspaceAgentActivityTimelineItem["payload"]
-  );
-  const error = normalizedPayload(
-    payload?.error as WorkspaceAgentActivityTimelineItem["payload"]
-  );
-  const message = firstPresentString(
-    stringRecordValue(output, "output"),
-    stringRecordValue(output, "text"),
-    stringRecordValue(output, "message"),
-    stringRecordValue(error, "error"),
-    stringRecordValue(error, "message"),
-    stringRecordValue(payload, "error"),
-    stringRecordValue(payload, "message")
-  );
-  return message?.includes("No such tool available: AskUserQuestion") ?? false;
 }
 
 function upsertToolCallAgentItem(
@@ -478,17 +465,22 @@ function mergeBackgroundTerminalContinuations(
   }
 
   const removedCallIDs = new Set<string>();
+  const singleCallItems = turn.agentItems.filter(
+    (
+      item
+    ): item is Extract<
+      WorkspaceAgentSessionDetailAgentItem,
+      { kind: "tool-calls" }
+    > => item.kind === "tool-calls" && item.toolCalls.length === 1
+  );
+  const turnToolIndexByID = new Map(
+    turn.toolCalls.map((call, index) => [call.id, index])
+  );
 
-  for (let index = 0; index < turn.agentItems.length; index += 1) {
-    const item = turn.agentItems[index];
-    if (!item) {
-      continue;
-    }
-    if (item.kind !== "tool-calls" || item.toolCalls.length !== 1) {
-      continue;
-    }
-    const primaryCall = item.toolCalls[0];
-    if (!primaryCall) {
+  for (let index = 0; index < singleCallItems.length - 1; index += 1) {
+    const item = singleCallItems[index];
+    const primaryCall = item?.toolCalls[0];
+    if (!item || !primaryCall) {
       continue;
     }
     const terminalSessionID = backgroundTerminalSessionID(primaryCall);
@@ -496,50 +488,37 @@ function mergeBackgroundTerminalContinuations(
       continue;
     }
 
-    for (
-      let nextIndex = index + 1;
-      nextIndex < turn.agentItems.length;
-      nextIndex += 1
+    const continuationCall = singleCallItems[index + 1]?.toolCalls[0];
+    if (
+      !continuationCall ||
+      !isBackgroundTerminalContinuation(continuationCall, terminalSessionID)
     ) {
-      const nextItem = turn.agentItems[nextIndex];
-      if (!nextItem) {
-        continue;
-      }
-      if (nextItem.kind !== "tool-calls" || nextItem.toolCalls.length !== 1) {
-        continue;
-      }
-      const continuationCall = nextItem.toolCalls[0];
-      if (!continuationCall) {
-        continue;
-      }
-      if (
-        !isBackgroundTerminalContinuation(continuationCall, terminalSessionID)
-      ) {
-        break;
-      }
-
-      const mergedCall = mergeBackgroundTerminalCall(
-        primaryCall,
-        continuationCall
-      );
-      item.toolCalls[0] = mergedCall;
-      const turnToolIndex = turn.toolCalls.findIndex(
-        (existing) => existing.id === primaryCall.id
-      );
-      if (turnToolIndex >= 0) {
-        turn.toolCalls[turnToolIndex] = mergedCall;
-      }
-      refreshToolCallAgentItem(item);
-      removedCallIDs.add(continuationCall.id);
-      turn.agentItems.splice(nextIndex, 1);
-      break;
+      continue;
     }
+
+    const mergedCall = mergeBackgroundTerminalCall(
+      primaryCall,
+      continuationCall
+    );
+    item.toolCalls[0] = mergedCall;
+    const turnToolIndex = turnToolIndexByID.get(primaryCall.id);
+    if (turnToolIndex !== undefined) {
+      turn.toolCalls[turnToolIndex] = mergedCall;
+    }
+    refreshToolCallAgentItem(item);
+    removedCallIDs.add(continuationCall.id);
+    index += 1;
   }
 
   if (removedCallIDs.size === 0) {
     return;
   }
 
+  turn.agentItems = turn.agentItems.filter(
+    (item) =>
+      item.kind !== "tool-calls" ||
+      item.toolCalls.every((call) => !removedCallIDs.has(call.id))
+  );
   turn.toolCalls = turn.toolCalls.filter(
     (call) => !removedCallIDs.has(call.id)
   );
@@ -759,17 +738,4 @@ function appendDelegatedToolSteps(
   nextMetadata.steps = existingSteps;
   nextPayload.metadata = nextMetadata;
   parentCall.payload = nextPayload;
-}
-
-function toolNameFromItem(
-  item: WorkspaceAgentActivityTimelineItem
-): string | null {
-  return resolveWorkspaceAgentToolName(item);
-}
-
-function normalizeToolName(name: string | null): string {
-  return (name ?? "")
-    .trim()
-    .replace(/[_\s-]+/g, "")
-    .toLowerCase();
 }

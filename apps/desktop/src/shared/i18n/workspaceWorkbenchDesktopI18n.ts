@@ -59,7 +59,9 @@ export const workspaceWorkbenchDesktopI18nKeys = {
     terminal: "nodes.terminal"
   },
   filePreview: {
+    edit: "filePreview.edit",
     loading: "filePreview.loading",
+    preview: "filePreview.preview",
     revert: "filePreview.revert",
     save: "filePreview.save",
     saved: "filePreview.saved",
@@ -98,7 +100,6 @@ export const workspaceWorkbenchDesktopI18nKeys = {
     manageProviderClaudeCode: "agentProviders.manageProviderClaudeCode",
     manageProviderCodex: "agentProviders.manageProviderCodex",
     manageProviderCursor: "agentProviders.manageProviderCursor",
-    manageProviderHermes: "agentProviders.manageProviderHermes",
     manageProviderOpenClaw: "agentProviders.manageProviderOpenClaw",
     manageProviderOpenCode: "agentProviders.manageProviderOpenCode",
     manageProviderTutti: "agentProviders.manageProviderTutti",
@@ -127,9 +128,6 @@ export const workspaceWorkbenchDesktopI18nKeys = {
     unavailableItem: "launchpad.unavailableItem"
   },
   missionControl: {
-    activateShortcutDefault: "missionControl.activateShortcutDefault",
-    activateShortcutMac: "missionControl.activateShortcutMac",
-    activateTrigger: "missionControl.activateTrigger",
     layoutShortcutDefault: "missionControl.layoutShortcutDefault",
     layoutShortcutMac: "missionControl.layoutShortcutMac",
     layoutTrigger: "missionControl.layoutTrigger",

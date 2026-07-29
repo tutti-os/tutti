@@ -29,7 +29,7 @@ export function composerOptionsReducer(
     case "composerOptions/loadRequested":
       return requestLoad(state, intent);
     case "composerOptions/invalidated":
-      return invalidate(state, intent.providers);
+      return invalidate(state, intent.providers, intent.targetKeys);
     case "engine/commandResult":
       return intent.commandType === "composerOptions/load"
         ? settleLoad(state, intent)
@@ -150,12 +150,19 @@ function settleLoad(
 
 function invalidate(
   state: ComposerOptionsState,
-  providers: readonly string[] | undefined
+  providers: readonly string[] | undefined,
+  targetKeys: readonly string[] | undefined
 ): EngineReducerResult<ComposerOptionsState> {
   const providerSet = providers?.length ? new Set(providers) : null;
+  const targetKeySet = targetKeys?.length
+    ? new Set(targetKeys.map((value) => value.trim()).filter(Boolean))
+    : null;
   let entriesByTargetKey: Record<string, ComposerOptionsEntry> | null = null;
   for (const [targetKey, entry] of Object.entries(state.entriesByTargetKey)) {
-    const matches = providerSet === null || providerSet.has(entry.provider);
+    const matches =
+      (providerSet === null && targetKeySet === null) ||
+      providerSet?.has(entry.provider) === true ||
+      targetKeySet?.has(targetKey) === true;
     if (!matches) continue;
     entriesByTargetKey ??= { ...state.entriesByTargetKey };
     entriesByTargetKey[targetKey] = {

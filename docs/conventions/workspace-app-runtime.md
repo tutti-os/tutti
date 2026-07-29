@@ -4,6 +4,27 @@ Workspace App Center apps and daemon-managed ACP npm adapters run against a
 daemon-managed runtime baseline. App packages must not bundle or declare
 Python/Node versions; Tutti injects the managed runtime paths at launch.
 
+## App State Directories
+
+Each installed app receives installation-scoped directories below the Tutti
+state root. The runner creates them before `bootstrap.sh` starts and injects:
+
+- `TUTTI_APP_DATA_DIR` for durable artifacts and non-database state;
+- `TUTTI_APP_DATABASE_DIR` for host-local durable active databases, including
+  SQLite WAL/SHM files and indexes;
+- `TUTTI_APP_RUNTIME_DIR` for restartable scratch/runtime state;
+- `TUTTI_APP_LOG_DIR` for backend logs.
+
+An app may create multiple database files under `TUTTI_APP_DATABASE_DIR`.
+Keeping live databases separate prevents synchronized, referenced, or exported
+data paths from weakening filesystem locking and atomic-write guarantees. App
+restarts and package upgrades preserve the database directory; uninstalling the
+workspace app removes it together with the installation state root.
+
+`TUTTI_CLI` is the app-facing CLI contract. Apps and skills must not depend on a
+host-internal CLI configuration variable: the injected command is responsible
+for locating and authenticating its own daemon connection.
+
 ## Runtime Baseline
 
 The baseline runtime is componentized. The default baseline profile contains the

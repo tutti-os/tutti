@@ -31,9 +31,10 @@ func testClaudeBinaryName() string {
 }
 
 type claudeBinaryFixture struct {
-	service   Service
-	stateRoot string
-	payload   []byte
+	service     Service
+	stateRoot   string
+	runtimeRoot string
+	payload     []byte
 }
 
 func newClaudeBinaryFixture(t *testing.T, extraEnv ...string) claudeBinaryFixture {
@@ -76,17 +77,26 @@ func newClaudeBinaryFixture(t *testing.T, extraEnv ...string) claudeBinaryFixtur
 	}
 
 	stateDir := t.TempDir()
+	runtimeRoot := filepath.Join(t.TempDir(), ".local", "share", "tutti", "agent-runtimes", "claude-code")
 	env := append([]string{
 		claudeSDKSidecarEntryPathEnv + "=" + entry,
 	}, extraEnv...)
 	service := Service{
-		Environ:            func() []string { return env },
-		ClaudeCodeStateDir: stateDir,
+		Environ:              func() []string { return env },
+		ClaudeCodeStateDir:   stateDir,
+		ClaudeCodeRuntimeDir: runtimeRoot,
 	}
 	return claudeBinaryFixture{
-		service:   service,
-		stateRoot: filepath.Join(stateDir, filepath.FromSlash(claudeCodeStateRelDir)),
-		payload:   payload,
+		service:     service,
+		stateRoot:   filepath.Join(stateDir, filepath.FromSlash(claudeCodeStateRelDir)),
+		runtimeRoot: runtimeRoot,
+		payload:     payload,
+	}
+}
+
+func TestClaudeCodeRuntimeRootRequiresInjectedDirectory(t *testing.T) {
+	if _, err := (Service{}).claudeCodeRuntimeRoot(); err == nil {
+		t.Fatal("claudeCodeRuntimeRoot() error = nil")
 	}
 }
 
@@ -141,7 +151,7 @@ func npmTarballWithBinary(t *testing.T, binaryName string, payload []byte) []byt
 }
 
 func (f claudeBinaryFixture) installedBinaryPath() string {
-	return filepath.Join(f.stateRoot, "versions", testClaudeVersion, testClaudeBinaryName())
+	return filepath.Join(f.runtimeRoot, "versions", testClaudeVersion, testClaudeBinaryName())
 }
 
 func TestEnsureClaudeCodeBinaryDownloadsFromCDN(t *testing.T) {

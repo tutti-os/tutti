@@ -1,13 +1,25 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
   getNpmReleasePackages,
+  parseReleasePackageFilters,
   workspaceRoot
 } from "./npm-release-packages.mjs";
-import { missingPackedRelativeImports } from "./package-pack-relative-imports.mjs";
+import {
+  missingPackedModuleRelativeAssets,
+  missingPackedRelativeImports
+} from "./package-pack-relative-imports.mjs";
+import {
+  packedFilesWithRawSvgDataUrls,
+  packedFilesWithRelativeSvgUrls
+} from "./package-pack-svg-data-urls.mjs";
+import {
+  externalBundledTiptapImports,
+  packagePeerContractViolations
+} from "./package-pack-peer-contracts.mjs";
 
 const forbiddenPrefixes = [
   "package/src/",
@@ -20,7 +32,8 @@ const forbiddenPrefixes = [
 // `node --experimental-strip-types src/main.ts`, so it ships src/ on purpose.
 const sourcePublishingPackages = new Set(["@tutti-os/claude-sdk-sidecar"]);
 
-const packages = await getNpmReleasePackages();
+const packageNames = parseReleasePackageFilters(process.argv.slice(2));
+const packages = await getNpmReleasePackages({ packageNames });
 const tempDirectory = await mkdtemp(join(tmpdir(), "tutti-pack-check-"));
 
 try {
@@ -47,6 +60,9 @@ async function checkPackage(packageConfig, destination) {
   const entries = listTarballEntries(tarballPath);
   const entrySet = new Set(entries);
   const violations = [];
+  violations.push(
+    ...packagePeerContractViolations(packageConfig.name, packageConfig.manifest)
+  );
   const requiredFiles = getRequiredFiles(packageConfig.manifest);
   const packageForbiddenPrefixes = sourcePublishingPackages.has(
     packageConfig.name
@@ -76,6 +92,154 @@ async function checkPackage(packageConfig, destination) {
     );
     for (const missingImport of missingImports) {
       violations.push(`missing runtime import ${missingImport}`);
+    }
+  }
+
+  if (packageConfig.name === "@tutti-os/agent-gui") {
+    const unpackedDirectory = join(destination, `${tarball}.unpacked`);
+    await mkdir(unpackedDirectory, { recursive: true });
+    execFileSync("tar", ["-xzf", tarballPath, "-C", unpackedDirectory]);
+    const rawSvgDataUrlFiles = await packedFilesWithRawSvgDataUrls(
+      join(unpackedDirectory, "package")
+    );
+    for (const file of rawSvgDataUrlFiles) {
+      violations.push(`raw SVG data URL in ${file}`);
+    }
+    const relativeSvgUrlFiles = await packedFilesWithRelativeSvgUrls(
+      join(unpackedDirectory, "package")
+    );
+    for (const file of relativeSvgUrlFiles) {
+      violations.push(`consumer-unresolvable relative SVG URL in ${file}`);
+    }
+  }
+
+  if (packageConfig.name === "@tutti-os/ui-rich-text") {
+    const unpackedDirectory = join(destination, `${tarball}.unpacked`);
+    await mkdir(unpackedDirectory, { recursive: true });
+    execFileSync("tar", ["-xzf", tarballPath, "-C", unpackedDirectory]);
+    const editorSource = await readFile(
+      join(unpackedDirectory, "package/dist/editor/index.js"),
+      "utf8"
+    );
+    for (const specifier of externalBundledTiptapImports(
+      packageConfig.name,
+      editorSource
+    )) {
+      violations.push(`unbundled internal Tiptap extension ${specifier}`);
+    }
+  }
+
+  if (packageConfig.name === "@tutti-os/workspace-file-manager") {
+    const unpackedDirectory = join(destination, `${tarball}.unpacked`);
+    await mkdir(unpackedDirectory, { recursive: true });
+    execFileSync("tar", ["-xzf", tarballPath, "-C", unpackedDirectory]);
+    const packageRoot = join(unpackedDirectory, "package");
+    const missingAssets = await missingPackedModuleRelativeAssets(packageRoot);
+    for (const missingAsset of missingAssets) {
+      violations.push(`missing module-relative asset ${missingAsset}`);
+    }
+    const mainEntrySource = await readFile(
+      join(packageRoot, "dist/index.js"),
+      "utf8"
+    );
+    if (/data:image\/png(?:;|,)/i.test(mainEntrySource)) {
+      violations.push("PNG data URL embedded in dist/index.js");
+    }
+    if (
+      /new URL\(\s*["']\.\/assets\/workspace-(?:archive|folder)-fallback\.png["']/u.test(
+        mainEntrySource
+      )
+    ) {
+      violations.push(
+        "fallback asset URL is relative to the bundled module location"
+      );
+    }
+    if (
+      /@tutti-os\/workspace-file-manager\/assets\/workspace-(?:archive|folder)-fallback\.png/u.test(
+        mainEntrySource
+      )
+    ) {
+      violations.push(
+        "main runtime imports a fallback image instead of a code-owned UI icon"
+      );
+    }
+    try {
+      execFileSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "--eval",
+          `
+            for (const fallbackKind of ["archive", "folder"]) {
+              const { default: assetUrl } = await import(
+                \`@tutti-os/workspace-file-manager/assets/workspace-\${fallbackKind}-fallback.png\`
+              );
+              if (
+                !assetUrl.startsWith("file:") ||
+                !assetUrl.endsWith(\`workspace-\${fallbackKind}-fallback.png\`)
+              ) {
+                throw new Error(\`unexpected \${fallbackKind} fallback URL: \${assetUrl}\`);
+              }
+            }
+          `
+        ],
+        {
+          cwd: packageRoot,
+          stdio: "pipe"
+        }
+      );
+    } catch (error) {
+      const detail =
+        error instanceof Error && "stderr" in error
+          ? String(error.stderr).trim()
+          : String(error);
+      violations.push(`Node fallback asset import failed: ${detail}`);
+    }
+  }
+
+  if (packageConfig.name === "@tutti-os/commerce") {
+    const unpackedDirectory = join(destination, `${tarball}.unpacked`);
+    await mkdir(unpackedDirectory, { recursive: true });
+    execFileSync("tar", ["-xzf", tarballPath, "-C", unpackedDirectory]);
+    const packageRoot = join(unpackedDirectory, "package");
+    const missingAssets = await missingPackedModuleRelativeAssets(packageRoot);
+    for (const missingAsset of missingAssets) {
+      violations.push(`missing module-relative asset ${missingAsset}`);
+    }
+    try {
+      execFileSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "--eval",
+          `
+            for (const asset of [
+              "star-free.png",
+              "star-lite.png",
+              "star-pro.png",
+              "star-ultra.png",
+              "registration-credits-bg.png"
+            ]) {
+              const { default: assetUrl } = await import(
+                \`@tutti-os/commerce/assets/\${asset}\`
+              );
+              if (!assetUrl.startsWith("file:") || !assetUrl.endsWith(asset)) {
+                throw new Error(\`unexpected Commerce asset URL: \${assetUrl}\`);
+              }
+            }
+          `
+        ],
+        {
+          cwd: packageRoot,
+          stdio: "pipe"
+        }
+      );
+    } catch (error) {
+      const detail =
+        error instanceof Error && "stderr" in error
+          ? String(error.stderr).trim()
+          : String(error);
+      violations.push(`Node Commerce asset import failed: ${detail}`);
     }
   }
 

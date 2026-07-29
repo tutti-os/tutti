@@ -55,6 +55,7 @@ let computerUseGrantActionState: ComputerUseGrantActionState | null = null;
 let computerUseRestartPromise: Promise<DesktopComputerUseRestartDriverResult> | null =
   null;
 let checkStatusInFlight: Promise<DesktopComputerUseStatus> | null = null;
+let lastComputerUseStatusLogSignature: string | null = null;
 
 function cuaDriverExecutableCandidates(): string[] {
   const candidates = [
@@ -270,6 +271,35 @@ function summarizeComputerUseStatusForLog(
   };
 }
 
+function logComputerUseStatusChecked(
+  status: DesktopComputerUseStatus,
+  level: "info" | "warn",
+  fields: Record<string, unknown>
+): void {
+  const statusFields = summarizeComputerUseStatusForLog(status);
+  const signature = [
+    status.installed ? "installed" : "not-installed",
+    status.authorization,
+    status.reason ?? "",
+    status.permissions?.accessibility ?? "",
+    status.permissions?.screenRecording ?? "",
+    status.permissions?.screenRecordingCapturable ?? "",
+    status.permissions?.source ?? ""
+  ].join(":");
+  const logger = getDesktopLogger();
+  const log =
+    signature === lastComputerUseStatusLogSignature
+      ? logger.debug.bind(logger)
+      : level === "warn"
+        ? logger.warn.bind(logger)
+        : logger.info.bind(logger);
+  lastComputerUseStatusLogSignature = signature;
+  log("computer use permission status checked", {
+    ...statusFields,
+    ...fields
+  });
+}
+
 function truncateComputerUseDiagnosticMessage(message: string): string {
   if (message.length <= COMPUTER_USE_DIAGNOSTIC_MESSAGE_MAX_LENGTH) {
     return message;
@@ -374,8 +404,7 @@ async function checkCuaDriverStatus(): Promise<DesktopComputerUseStatus> {
       installed: false,
       permissions: null
     });
-    getDesktopLogger().info("computer use permission status checked", {
-      ...summarizeComputerUseStatusForLog(status),
+    logComputerUseStatusChecked(status, "info", {
       elapsedMs: Date.now() - startedAtUnixMs
     });
     return status;
@@ -389,15 +418,14 @@ async function checkCuaDriverStatus(): Promise<DesktopComputerUseStatus> {
       reason: "status-command-failed",
       diagnosticMessage: "cua-driver executable was not found."
     });
-    getDesktopLogger().warn("computer use permission status checked", {
-      ...summarizeComputerUseStatusForLog(status),
+    logComputerUseStatusChecked(status, "warn", {
       elapsedMs: Date.now() - startedAtUnixMs,
       executablePresent: false
     });
     return status;
   }
 
-  getDesktopLogger().info("computer use permission status command started", {
+  getDesktopLogger().debug("computer use permission status command started", {
     executable
   });
   const commandStartedAtUnixMs = Date.now();
@@ -406,7 +434,7 @@ async function checkCuaDriverStatus(): Promise<DesktopComputerUseStatus> {
     "status",
     "--json"
   ]);
-  getDesktopLogger().info("computer use permission status command completed", {
+  getDesktopLogger().debug("computer use permission status command completed", {
     elapsedMs: Date.now() - commandStartedAtUnixMs,
     outputBytes: permissionsResult.output.length,
     success: permissionsResult.success
@@ -418,8 +446,7 @@ async function checkCuaDriverStatus(): Promise<DesktopComputerUseStatus> {
       reason: "status-command-failed",
       diagnosticMessage: permissionsResult.output
     });
-    getDesktopLogger().warn("computer use permission status checked", {
-      ...summarizeComputerUseStatusForLog(status),
+    logComputerUseStatusChecked(status, "warn", {
       elapsedMs: Date.now() - startedAtUnixMs
     });
     return status;
@@ -435,20 +462,13 @@ async function checkCuaDriverStatus(): Promise<DesktopComputerUseStatus> {
     diagnosticMessage: detail.diagnosticMessage
   });
   const logFields = {
-    ...summarizeComputerUseStatusForLog(status),
     elapsedMs: Date.now() - startedAtUnixMs
   };
-  if (status.authorization === "authorized") {
-    getDesktopLogger().info(
-      "computer use permission status checked",
-      logFields
-    );
-  } else {
-    getDesktopLogger().warn(
-      "computer use permission status checked",
-      logFields
-    );
-  }
+  logComputerUseStatusChecked(
+    status,
+    status.authorization === "authorized" ? "info" : "warn",
+    logFields
+  );
   return status;
 }
 

@@ -5,6 +5,7 @@ export {
 export {
   ReferenceSourceContentPane,
   ReferenceSourcePicker,
+  type ReferenceSourceContentErrorAction,
   type ReferenceSourceContentPaneProps,
   type ReferenceSourcePickerProps
 } from "./internal/reference/ReferenceSourcePicker.tsx";

@@ -1,6 +1,11 @@
 package agentstatus
 
-import "testing"
+import (
+	"context"
+	"path/filepath"
+	"testing"
+	"time"
+)
 
 func TestParseCLIVersion(t *testing.T) {
 	cases := []struct {
@@ -28,5 +33,20 @@ func TestParseCLIVersion(t *testing.T) {
 				t.Fatalf("parseCLIVersion(%q) = %q, want %q", tc.output, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestCLIVersionHonorsContextCancellation(t *testing.T) {
+	binary := filepath.Join(t.TempDir(), "slow-cli")
+	writeExecutable(t, binary, "#!/bin/sh\nexec sleep 5\n")
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	startedAt := time.Now()
+	if got := (Service{}).cliVersion(ctx, binary, nil); got != "" {
+		t.Fatalf("cliVersion() = %q, want unknown version", got)
+	}
+	if elapsed := time.Since(startedAt); elapsed > 500*time.Millisecond {
+		t.Fatalf("cliVersion() ignored context cancellation; elapsed = %s", elapsed)
 	}
 }

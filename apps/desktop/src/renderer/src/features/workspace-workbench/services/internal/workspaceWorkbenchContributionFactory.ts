@@ -24,12 +24,14 @@ import type {
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
 import type {
   AgentProviderStatusService,
+  AgentQuickPromptService,
   IAgentsService,
   IWorkspaceAgentActivityService,
   WorkspaceAgentPromptSessionService
 } from "@renderer/features/workspace-agent";
 import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
+import type { IWorkspaceFilePreviewSurfaceHost } from "@renderer/features/workspace-file-preview";
 import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project";
 import type { IReporterService } from "@renderer/features/analytics";
 import type {
@@ -44,6 +46,7 @@ import type { WorkspaceBrowserService } from "./workspaceBrowserService.ts";
 import type { WorkbenchCapabilityFactoryDescriptor } from "@tutti-os/workbench-host";
 
 export interface DesktopWorkbenchContributionContext {
+  agentQuickPromptService?: AgentQuickPromptService;
   appI18n: I18nRuntime<string>;
   appLocale: DesktopLocale;
   appCenterService: IWorkspaceAppCenterService;
@@ -75,6 +78,7 @@ export interface DesktopWorkbenchContributionContext {
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
   agentProviderStatusService: AgentProviderStatusService;
   workspaceFileManagerService: IWorkspaceFileManagerService;
+  workspaceFilePreviewSurfaceHost: IWorkspaceFilePreviewSurfaceHost;
   workspaceUserProjectService: IWorkspaceUserProjectService;
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
   workspaceAgentPromptSessionService: WorkspaceAgentPromptSessionService;

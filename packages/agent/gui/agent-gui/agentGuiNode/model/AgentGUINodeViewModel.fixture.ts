@@ -41,6 +41,7 @@ export function groupAgentGUINodeViewModelFixture(
       userProjects: flat.userProjects,
       activeConversation: flat.activeConversation,
       activeConversationId: flat.activeConversationId,
+      revealRequest: flat.revealRequest,
       isLoadingConversations: flat.isLoadingConversations,
       listError: flat.listError
     },
@@ -68,12 +69,16 @@ export function groupAgentGUINodeViewModelFixture(
       promptImagesSupported: flat.promptImagesSupported,
       compactSupported: flat.compactSupported,
       goalPauseSupported: flat.goalPauseSupported,
-      canSubmit: flat.canSubmit,
+      gate: flat.gate,
+      isTuttiModeActive: flat.isTuttiModeActive ?? false,
+      isTuttiModeUpdating: flat.isTuttiModeUpdating ?? false,
+      tuttiModeEffect: flat.tuttiModeEffect ?? 50,
+      tuttiModeSpeed: flat.tuttiModeSpeed ?? 50,
+      tuttiModeUpdateStatus: flat.tuttiModeUpdateStatus ?? "idle",
       composerSettings: flat.composerSettings,
       queueStatus: flat.queueStatus,
       queuedPrompts: flat.queuedPrompts,
-      drainingQueuedPromptId: flat.drainingQueuedPromptId,
-      canQueueWhileBusy: flat.canQueueWhileBusy
+      drainingQueuedPromptId: flat.drainingQueuedPromptId
     },
     interaction: {
       isRespondingApproval: flat.isRespondingApproval,
@@ -85,13 +90,14 @@ export function groupAgentGUINodeViewModelFixture(
     readiness: {
       activeLiveState: flat.activeLiveState,
       activationError: flat.activationError,
-      activeConversationBusy: flat.activeConversationBusy,
       providerReadinessGate: flat.providerReadinessGate
     },
     operations: {
+      forkThroughTurnPendingTurnIds: flat.forkThroughTurnPendingTurnIds ?? [],
       goalClearNoticeSequence: flat.goalClearNoticeSequence ?? 0,
       isDeletingConversation: flat.isDeletingConversation,
       isDeletingProjectConversations: flat.isDeletingProjectConversations,
+      isUserProjectMutationPending: flat.isUserProjectMutationPending ?? false,
       pendingDeleteConversation: flat.pendingDeleteConversation,
       pendingDeleteProjectConversations: flat.pendingDeleteProjectConversations
     }

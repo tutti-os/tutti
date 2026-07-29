@@ -453,6 +453,28 @@ function validateCliVisibility(visibility, label) {
   }
 }
 
+function validateCliExecution(execution, inputSchema, output, label) {
+  if (execution === undefined) {
+    return;
+  }
+  if (!execution || typeof execution !== "object" || Array.isArray(execution)) {
+    throw new Error(`tutti.cli.json ${label} must be an object.`);
+  }
+  if (execution.mode !== "wait") {
+    throw new Error(`tutti.cli.json ${label}.mode must be wait.`);
+  }
+  if (output?.defaultMode !== "json" || output?.json !== true) {
+    throw new Error(
+      `tutti.cli.json ${label} mode wait requires json default output.`
+    );
+  }
+  if (inputSchema?.properties?.["timeout-ms"] !== undefined) {
+    throw new Error(
+      `tutti.cli.json ${label} mode wait reserves --timeout-ms for the total CLI wait timeout.`
+    );
+  }
+}
+
 function validateCliOutput(output, label) {
   if (!output || !["json", "table"].includes(output.defaultMode)) {
     throw new Error(
@@ -543,6 +565,12 @@ function validateCliManifest(cliManifest) {
     validateCliVisibility(command.visibility, `${label}.visibility`);
     validateCliInputSchema(command.inputSchema, `${label}.inputSchema`);
     validateCliOutput(command.output, `${label}.output`);
+    validateCliExecution(
+      command.execution,
+      command.inputSchema,
+      command.output,
+      `${label}.execution`
+    );
     validateCliHandler(command.handler, `${label}.handler`);
   }
 }

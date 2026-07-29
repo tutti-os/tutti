@@ -10,6 +10,7 @@ import (
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 const WorkspaceAgentSessionOriginRuntime = "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME"
@@ -20,9 +21,19 @@ type ActivityReporter interface {
 	Report(context.Context, agentsessionstore.ReportActivityInput) error
 }
 
+// DurableActivityReporter is the required host boundary for runtime
+// controllers. ReportSubmitProvenance must atomically persist the report's
+// session/turn patch and canonical client-submit message before returning.
+// Compatibility ActivityReporter implementations that split state and message
+// persistence do not satisfy this contract and cannot host a controller.
+type DurableActivityReporter interface {
+	ActivityReporter
+	ReportSubmitProvenance(context.Context, agentsessionstore.ReportActivityInput) error
+}
+
 type ActivityClient interface {
-	ReportSessionState(context.Context, agentsessionstore.ReportSessionStateInput) (agentsessionstore.ReportSessionStateReply, error)
-	ReportSessionMessages(context.Context, agentsessionstore.ReportSessionMessagesInput) (agentsessionstore.ReportSessionMessagesReply, error)
+	ReportSessionState(context.Context, canonical.ReportSessionStateInput) (canonical.ReportSessionStateReply, error)
+	ReportSessionMessages(context.Context, canonical.ReportSessionMessagesInput) (canonical.ReportSessionMessagesReply, error)
 }
 
 type goalProvenanceActivityClient interface {
@@ -64,7 +75,7 @@ func (r Reporter) Report(ctx context.Context, input agentsessionstore.ReportActi
 	}
 	input.Source.SessionOrigin = agentsessionstore.WorkspaceAgentSessionOriginRuntime
 	if input.Connector == nil && strings.TrimSpace(input.Source.Provider) != "" {
-		input.Connector = &agentsessionstore.ConnectorInfo{
+		input.Connector = &canonical.ConnectorInfo{
 			ID:      strings.TrimSpace(input.Source.Provider),
 			Version: "agent-gui-runtime",
 		}
@@ -208,7 +219,7 @@ func reportActivityInput(session Session, events []activityshared.Event) agentse
 	source := eventSourceFromSession(session)
 	input := agentsessionstore.ReportActivityInput{
 		WorkspaceID: session.RoomID,
-		Connector: &agentsessionstore.ConnectorInfo{
+		Connector: &canonical.ConnectorInfo{
 			ID:      session.Provider,
 			Version: "agent-gui-runtime",
 		},

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
@@ -16,15 +17,18 @@ const appID = "agent-context"
 
 type AgentSessions interface {
 	CancelTurn(context.Context, string, string, string) (agentservice.CancelTurnResult, error)
-	Create(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
+	CreateWithResult(context.Context, string, agentservice.CreateSessionInput) (agentservice.CreateSessionResult, error)
 	Get(context.Context, string, string) (agentservice.Session, error)
 	GetComposerOptions(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
 	GetSkillBundle(context.Context, string, agentservice.SkillBundleInput) (agentservice.SkillBundle, error)
+	GetTurn(context.Context, string, string, string) (agentactivitybiz.Turn, bool, error)
 	List(context.Context, string) ([]agentservice.Session, error)
 	ListActivePeers(context.Context, string) (agentservice.ActivePeers, error)
 	ListMessages(context.Context, string, string, agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error)
+	ListTurns(context.Context, string, string, agentservice.ListTurnsInput) (agentservice.TurnPage, error)
 	ListProviderAvailability(context.Context, agentservice.ProviderAvailabilityInput) ([]agentservice.ProviderAvailability, error)
 	LocalAttachmentPath(context.Context, string, string, string, string) (string, error)
+	Respond(context.Context, agentservice.RespondInput) (agentservice.RespondResult, error)
 	SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.SendInputResult, error)
 	Wait(context.Context, agentservice.WaitInput) (agentservice.WaitResult, error)
 }
@@ -95,7 +99,9 @@ func (p Provider) Commands() []cliservice.Command {
 		p.newGetCommand(),
 		p.newOpenCommand(),
 		p.newSendCommand(),
-		p.newCancelCommand(),
+		p.newRespondCommand(),
+		p.newCancelTurnCommand(),
+		p.newLegacyCancelCommand(),
 		p.newSessionsCommand([]string{"agent", "sessions"}, appID+".agent.sessions"),
 		p.newWaitCommand(),
 		p.newSessionSummaryCommand(),

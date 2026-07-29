@@ -19,6 +19,7 @@ import {
 import { awaitWorkspaceWindowReady } from "./workspaceWindowReady.ts";
 import type { WorkspaceLaunchWindowKind } from "./workspaceLaunchMode.ts";
 import { createDurableWorkspaceWindowCoordinator } from "./durableWorkspaceWindowCoordinator.ts";
+import { resolveDesktopPerformanceHeadless } from "../defaults.ts";
 
 export interface WorkspaceLaunchDesktopAdapterOptions {
   browserNodeGuestPreloadPath?: string;
@@ -35,14 +36,33 @@ export interface WorkspaceLaunchDesktopAdapterOptions {
 export function createWorkspaceLaunchDesktopAdapters(
   options: WorkspaceLaunchDesktopAdapterOptions
 ): WorkspaceLaunchAdapters {
+  const pendingAgentBrowserHosts = new Map<string, Promise<void>>();
+  const performanceHeadless = resolveDesktopPerformanceHeadless();
   const durableWorkspaceWindows = createDurableWorkspaceWindowCoordinator({
-    activate: activateWorkspaceWindow,
+    activate: (workspaceWindow) =>
+      activateWorkspaceWindow(workspaceWindow, performanceHeadless),
     find: (workspaceID: string) =>
       findWorkspaceWindow(workspaceID, "workspace"),
     open: (workspaceID: string) =>
       createAndShowWorkspaceWindow(options, workspaceID)
   });
   return {
+    async ensureAgentBrowserHost(input) {
+      if (findWorkspaceWindow(input.workspaceID, "agent")) return;
+      const existing = pendingAgentBrowserHosts.get(input.workspaceID);
+      if (existing) return existing;
+      const opening = showStandaloneAgentWindow(options, input, {
+        showOnReady: false
+      }).then(() => undefined);
+      pendingAgentBrowserHosts.set(input.workspaceID, opening);
+      try {
+        await opening;
+      } finally {
+        if (pendingAgentBrowserHosts.get(input.workspaceID) === opening) {
+          pendingAgentBrowserHosts.delete(input.workspaceID);
+        }
+      }
+    },
     async showAgentWindow(input) {
       await showStandaloneAgentWindow(options, input);
     },
@@ -80,33 +100,45 @@ async function createAndShowWorkspaceWindow(
     workspaceAppPreloadPath: options.workspaceAppPreloadPath,
     workspaceID
   });
-  await awaitWorkspaceWindowReady(workspaceWindow, () => {
-    loadWorkspaceWindowContent(workspaceWindow, {
-      dockPlacement: options.getDockPlacement(),
-      locale: options.getLocale(),
-      rendererUrl: options.rendererUrl,
-      theme: options.getTheme(),
-      workspaceID
-    });
-  });
+  await awaitWorkspaceWindowReady(
+    workspaceWindow,
+    () => {
+      loadWorkspaceWindowContent(workspaceWindow, {
+        dockPlacement: options.getDockPlacement(),
+        locale: options.getLocale(),
+        rendererUrl: options.rendererUrl,
+        theme: options.getTheme(),
+        workspaceID
+      });
+    },
+    { showInactive: resolveDesktopPerformanceHeadless() }
+  );
   return workspaceWindow;
 }
 
 function activateWorkspaceWindow(
-  workspaceWindow: Electron.BrowserWindow
+  workspaceWindow: Electron.BrowserWindow,
+  performanceHeadless: boolean
 ): void {
   if (workspaceWindow.isMinimized()) {
     workspaceWindow.restore();
   }
   if (!workspaceWindow.isVisible()) {
-    workspaceWindow.show();
+    if (performanceHeadless) {
+      workspaceWindow.showInactive();
+    } else {
+      workspaceWindow.show();
+    }
   }
-  workspaceWindow.focus();
+  if (!performanceHeadless) {
+    workspaceWindow.focus();
+  }
 }
 
 async function showStandaloneAgentWindow(
   options: WorkspaceLaunchDesktopAdapterOptions,
-  input: WorkspaceLaunchAgentWindowInput
+  input: WorkspaceLaunchAgentWindowInput,
+  readyOptions: { showOnReady?: boolean } = {}
 ): Promise<Electron.BrowserWindow> {
   const agentWindow = createWorkspaceWindow({
     browserNodeGuestPreloadPath: options.browserNodeGuestPreloadPath,
@@ -142,7 +174,11 @@ async function showStandaloneAgentWindow(
         workspaceID: input.workspaceID
       });
     },
-    { maximizeOnShow: false }
+    {
+      maximizeOnShow: false,
+      showOnReady: readyOptions.showOnReady,
+      showInactive: resolveDesktopPerformanceHeadless()
+    }
   );
   return agentWindow;
 }

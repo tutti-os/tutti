@@ -1,7 +1,6 @@
 import type {
   WorkbenchHostNodeData,
-  WorkbenchMissionControlAdapter,
-  WorkbenchMissionControlMode
+  WorkbenchMissionControlAdapter
 } from "@tutti-os/workbench-surface";
 import { MissionControlActivatedReporter } from "../../../analytics/reporters/mission-control-activated/missionControlActivatedReporter.ts";
 import { MissionControlDeactivatedReporter } from "../../../analytics/reporters/mission-control-deactivated/missionControlDeactivatedReporter.ts";
@@ -16,8 +15,8 @@ export interface WorkspaceMissionControlOpenRequest {
 
 export interface WorkspaceMissionControlSnapshot {
   canOpen: boolean;
+  isLayoutLocked: boolean;
   isOpen: boolean;
-  mode: WorkbenchMissionControlMode | null;
   nodeIds: readonly string[] | null;
   shortcutsEnabled: boolean;
   visibleWindowCount: number;
@@ -27,7 +26,6 @@ export interface WorkspaceMissionControlController {
   close: () => void;
   getSnapshot: () => WorkspaceMissionControlSnapshot;
   open: (
-    mode: WorkbenchMissionControlMode,
     request?:
       | WorkspaceMissionControlOpenRequest
       | WorkspaceMissionControlTrigger
@@ -36,6 +34,7 @@ export interface WorkspaceMissionControlController {
     adapter: WorkbenchMissionControlAdapter<WorkbenchHostNodeData> | null
   ) => void;
   subscribe: (listener: () => void) => () => void;
+  unlockLayout: () => void;
 }
 
 export interface WorkspaceMissionControlControllerDependencies {
@@ -50,8 +49,9 @@ export function createWorkspaceMissionControlController(
     null;
   let unsubscribeAdapter: (() => void) | null = null;
   let activatedAt: number | null = null;
+  let isOpen = false;
   let nodeIds: readonly string[] | null = null;
-  let snapshot = createSnapshot({ adapter, mode: null, nodeIds });
+  let snapshot = createSnapshot({ adapter, isOpen, nodeIds });
   const listeners = new Set<() => void>();
   const now = () => dependencies.reporterNow?.() ?? Date.now();
 
@@ -60,12 +60,13 @@ export function createWorkspaceMissionControlController(
       listener();
     }
   };
-  const setMode = (
-    mode: WorkbenchMissionControlMode | null,
-    nextNodeIds: readonly string[] | null = mode === null ? null : nodeIds
+  const setOpen = (
+    nextIsOpen: boolean,
+    nextNodeIds: readonly string[] | null = nextIsOpen ? nodeIds : null
   ) => {
+    isOpen = nextIsOpen;
     nodeIds = nextNodeIds;
-    const nextSnapshot = createSnapshot({ adapter, mode, nodeIds });
+    const nextSnapshot = createSnapshot({ adapter, isOpen, nodeIds });
     if (isEqualSnapshot(snapshot, nextSnapshot)) {
       return;
     }
@@ -74,16 +75,15 @@ export function createWorkspaceMissionControlController(
     notify();
   };
   const refreshSnapshot = () => {
-    const nextMode =
-      !adapter || countVisibleNodes(adapter, nodeIds) <= 1
-        ? null
-        : snapshot.mode;
-    if (nextMode === null) {
+    const nextIsOpen =
+      !adapter || countVisibleNodes(adapter, nodeIds) <= 1 ? false : isOpen;
+    if (!nextIsOpen) {
+      isOpen = false;
       nodeIds = null;
     }
     const nextSnapshot = createSnapshot({
       adapter,
-      mode: nextMode,
+      isOpen: nextIsOpen,
       nodeIds
     });
     if (isEqualSnapshot(snapshot, nextSnapshot)) {
@@ -96,26 +96,26 @@ export function createWorkspaceMissionControlController(
 
   return {
     close: () => {
-      if (snapshot.mode === null) {
+      if (!snapshot.isOpen) {
         return;
       }
 
       const durationMs =
         activatedAt === null ? 0 : Math.max(0, now() - activatedAt);
-      setMode(null);
+      setOpen(false);
       activatedAt = null;
       reportDeactivated(durationMs, dependencies);
     },
     getSnapshot: () => {
       return snapshot;
     },
-    open: (mode, request = "button") => {
+    open: (request = "button") => {
       const normalizedRequest =
         typeof request === "string" ? { trigger: request } : request;
       const nextNodeIds = normalizedRequest.nodeIds ?? null;
       const nextSnapshot = createSnapshot({
         adapter,
-        mode,
+        isOpen: true,
         nodeIds: nextNodeIds
       });
       if (!nextSnapshot.canOpen || isEqualSnapshot(snapshot, nextSnapshot)) {
@@ -123,10 +123,9 @@ export function createWorkspaceMissionControlController(
       }
 
       activatedAt = now();
-      setMode(mode, nextNodeIds);
+      setOpen(true, nextNodeIds);
       reportActivated(
         {
-          mode,
           trigger: normalizedRequest.trigger ?? "button",
           windowCount: snapshot.visibleWindowCount
         },
@@ -150,13 +149,15 @@ export function createWorkspaceMissionControlController(
       return () => {
         listeners.delete(listener);
       };
+    },
+    unlockLayout: () => {
+      adapter?.releaseLockedLayout();
     }
   };
 }
 
 function reportActivated(
   params: {
-    mode: WorkbenchMissionControlMode;
     trigger: WorkspaceMissionControlTrigger;
     windowCount: number;
   },
@@ -193,21 +194,21 @@ function reportDeactivated(
 
 function createSnapshot({
   adapter,
-  mode,
+  isOpen,
   nodeIds
 }: {
   adapter: WorkbenchMissionControlAdapter<WorkbenchHostNodeData> | null;
-  mode: WorkbenchMissionControlMode | null;
+  isOpen: boolean;
   nodeIds: readonly string[] | null;
 }): WorkspaceMissionControlSnapshot {
   const visibleWindowCount = countVisibleNodes(adapter, nodeIds);
   const canOpen = visibleWindowCount > 1;
   return {
     canOpen,
-    isOpen: mode !== null,
-    mode,
+    isLayoutLocked: adapter?.getSnapshot().isLayoutLocked ?? false,
+    isOpen,
     nodeIds,
-    shortcutsEnabled: mode === null,
+    shortcutsEnabled: !isOpen,
     visibleWindowCount
   };
 }
@@ -230,8 +231,8 @@ function isEqualSnapshot(
 ): boolean {
   return (
     left.canOpen === right.canOpen &&
+    left.isLayoutLocked === right.isLayoutLocked &&
     left.isOpen === right.isOpen &&
-    left.mode === right.mode &&
     areEqualNodeIds(left.nodeIds, right.nodeIds) &&
     left.shortcutsEnabled === right.shortcutsEnabled &&
     left.visibleWindowCount === right.visibleWindowCount

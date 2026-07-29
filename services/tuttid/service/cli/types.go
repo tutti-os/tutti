@@ -13,6 +13,14 @@ const (
 
 type CapabilityVisibility string
 
+type CommandExecutionMode string
+
+const CommandExecutionModeWait CommandExecutionMode = "wait"
+
+type CommandExecution struct {
+	Mode CommandExecutionMode
+}
+
 const (
 	CapabilityVisibilityPublic      CapabilityVisibility = "public"
 	CapabilityVisibilityIntegration CapabilityVisibility = "integration"
@@ -52,14 +60,16 @@ type CapabilitySource struct {
 }
 
 type Capability struct {
-	ID          string
-	Path        []string
-	Summary     string
-	Description string
-	Visibility  CapabilityVisibility
-	InputSchema map[string]any
-	Output      CapabilityOutput
-	Source      CapabilitySource
+	ID               string
+	Path             []string
+	Summary          string
+	Description      string
+	Visibility       CapabilityVisibility
+	InputSchema      map[string]any
+	Output           CapabilityOutput
+	Execution        *CommandExecution
+	HandlerTimeoutMs int
+	Source           CapabilitySource
 }
 
 type InvokeContext struct {
@@ -80,12 +90,22 @@ type InvokeRequest struct {
 }
 
 type CommandOutput struct {
-	Kind     OutputMode
-	Columns  []TableColumn
-	Rows     []map[string]any
-	Value    map[string]any
-	Text     string
-	Warnings []CommandWarning
+	Kind         OutputMode
+	Columns      []TableColumn
+	Rows         []map[string]any
+	Value        map[string]any
+	Text         string
+	Warnings     []CommandWarning
+	Continuation *CommandContinuation
+}
+
+type CommandContinuationState string
+
+const CommandContinuationStatePending CommandContinuationState = "pending"
+
+type CommandContinuation struct {
+	State        CommandContinuationState
+	RetryAfterMs int
 }
 
 type CommandWarning struct {

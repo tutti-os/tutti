@@ -15,6 +15,7 @@ test("zh-CN task terminology and status labels use requested copy", () => {
   assert.equal(copy.t("dockLabel"), "任务");
   assert.equal(copy.t("title"), "任务");
   assert.equal(copy.t("actions.addSubtask"), "添加任务");
+  assert.equal(copy.t("actions.adjustInTaskConversation"), "去任务对话调整");
   assert.equal(copy.t("actions.createIssue"), "新建任务");
   assert.equal(copy.t("actions.createTask"), "新建任务");
   assert.equal(copy.t("actions.deleteIssue"), "删除任务");
@@ -42,6 +43,7 @@ test("zh-CN task terminology and status labels use requested copy", () => {
   assert.equal(copy.t("composer.taskTitlePlaceholder"), "任务标题");
   assert.equal(copy.t("labels.issueDetails"), "任务详情");
   assert.equal(copy.t("labels.issueList"), "任务");
+  assert.equal(copy.t("labels.managedReadOnly"), "Tutti Mode 管理");
   assert.equal(copy.t("labels.searchIssues"), "搜索任务");
   assert.equal(copy.t("labels.subtasks"), "子任务");
   assert.equal(copy.t("labels.taskAcceptance"), "任务待验收");
@@ -55,6 +57,15 @@ test("zh-CN task terminology and status labels use requested copy", () => {
   assert.equal(
     copy.t("messages.agentGuiLaunchUnavailable"),
     "当前环境无法创建 Agent 草稿。"
+  );
+  assert.equal(
+    copy.t("messages.managedReadOnlyTooltip"),
+    "当前任务由 Tutti Mode 管理，无法直接编辑"
+  );
+  assert.equal(copy.t("messages.managedSourceUnavailable"), "任务对话不可用");
+  assert.equal(
+    copy.t("messages.adjustManagedPrompt", { reference: "任务 A" }),
+    "请在当前 Tutti Mode 计划中调整 任务 A，保留已有计划上下文，暂不执行"
   );
   assert.deepEqual(createIssueManagerAgentLaunchMessages(copy), {
     agentGuiLaunchUnavailable: "当前环境无法创建 Agent 草稿。",
@@ -78,6 +89,10 @@ test("en task terminology and status labels use requested copy", () => {
   assert.equal(copy.t("dockLabel"), "Tasks");
   assert.equal(copy.t("title"), "Tasks");
   assert.equal(copy.t("actions.addSubtask"), "Add subtask");
+  assert.equal(
+    copy.t("actions.adjustInTaskConversation"),
+    "Adjust in task conversation"
+  );
   assert.equal(copy.t("actions.createIssue"), "New task");
   assert.equal(copy.t("actions.createTask"), "Create task");
   assert.equal(copy.t("actions.deleteIssue"), "Delete task");
@@ -108,6 +123,7 @@ test("en task terminology and status labels use requested copy", () => {
   assert.equal(copy.t("composer.taskTitlePlaceholder"), "Task title");
   assert.equal(copy.t("labels.issueDetails"), "Task details");
   assert.equal(copy.t("labels.issueList"), "Tasks");
+  assert.equal(copy.t("labels.managedReadOnly"), "Managed by Tutti Mode");
   assert.equal(copy.t("labels.searchIssues"), "Search tasks");
   assert.equal(copy.t("labels.subtasks"), "Subtasks");
   assert.equal(copy.t("labels.taskAcceptance"), "Task pending acceptance");
@@ -121,6 +137,18 @@ test("en task terminology and status labels use requested copy", () => {
   assert.equal(
     copy.t("messages.agentGuiLaunchUnavailable"),
     "Agent session drafting is unavailable."
+  );
+  assert.equal(
+    copy.t("messages.managedReadOnlyTooltip"),
+    "This task is managed by Tutti Mode and can't be edited directly."
+  );
+  assert.equal(
+    copy.t("messages.managedSourceUnavailable"),
+    "The task conversation is unavailable."
+  );
+  assert.equal(
+    copy.t("messages.adjustManagedPrompt", { reference: "Task A" }),
+    "Please adjust Task A in this Tutti Mode plan. Keep the existing plan context and do not execute it yet."
   );
   assert.deepEqual(createIssueManagerAgentLaunchMessages(copy), {
     agentGuiLaunchUnavailable: "Agent session drafting is unavailable.",

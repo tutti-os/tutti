@@ -298,7 +298,11 @@ func (p Provider) newLegacyStartCommand(name string, targetID string) cliservice
 			if err != nil {
 				return nil, err
 			}
-			return p.runStart(ctx, invoke, target, startFields(input))
+			return p.runStart(ctx, invoke, target, startFields{
+				Cwd: input.Cwd, DisplayPrompt: input.DisplayPrompt, Hidden: input.Hidden, Images: input.Images,
+				Model: input.Model, PermissionMode: input.PermissionMode, Prompt: input.Prompt,
+				ReasoningEffort: input.ReasoningEffort, Show: input.Show, Speed: input.Speed, Title: input.Title,
+			})
 		},
 	})
 }

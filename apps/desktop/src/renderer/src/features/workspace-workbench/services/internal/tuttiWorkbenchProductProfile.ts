@@ -69,6 +69,7 @@ export function createTuttiWorkbenchProductProfile(
         agentGuiWorkbenchContributionFactory,
         pickDesktopWorkbenchContributionContext(context, [
           "agentProviderStatusService",
+          "agentQuickPromptService",
           "agentsService",
           "appCenterService",
           "appI18n",
@@ -77,6 +78,7 @@ export function createTuttiWorkbenchProductProfile(
           "defaultAgentProvider",
           "dockIcons",
           "dockPreviewCache",
+          "eventStreamClient",
           "hostFilesApi",
           "hostWindowApi",
           "i18n",
@@ -89,6 +91,7 @@ export function createTuttiWorkbenchProductProfile(
           "tuttidClient",
           "workspaceAgentActivityService",
           "workspaceFileManagerService",
+          "workspaceFilePreviewSurfaceHost",
           "workspaceId",
           "workspaceUserProjectService"
         ])

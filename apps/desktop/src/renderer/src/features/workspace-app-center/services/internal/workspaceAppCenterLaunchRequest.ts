@@ -15,7 +15,7 @@ import {
   workspaceAppWebviewInstanceId,
   workspaceAppWebviewTypeID
 } from "../workspaceAppCenterLaunchIds.ts";
-import { workspaceAppWebviewFrame } from "./workspaceAppWebviewFrame.ts";
+import { openWorkspaceAppTab } from "../workspaceAppCenterTabs.ts";
 import type { WorkspaceAppOpenRouteIntent } from "./workspaceAppCenterWebviewUrl.ts";
 
 export {
@@ -80,6 +80,13 @@ export async function resolveWorkspaceAppCenterLaunchRequest(input: {
   });
   const appTitle = resolveWorkspaceAppDisplayName(app);
   const url = resolveWorkspaceAppOpenUrl(app.launchUrl, payload?.intent);
+  input.appCenterService.setViewState({
+    state: openWorkspaceAppTab(
+      input.appCenterService.getViewState(input.request.workspaceId),
+      app.appId
+    ),
+    workspaceId: input.request.workspaceId
+  });
 
   return {
     activation: {
@@ -91,12 +98,10 @@ export async function resolveWorkspaceAppCenterLaunchRequest(input: {
       },
       type: payload?.intent ? "workspace-app:open" : "open-url"
     },
-    defaultFrame: workspaceAppWebviewFrame,
-    dockEntryId: workspaceAppDockEntryId(app.appId),
+    dockEntryId: workspaceAppCenterNodeID,
     framePolicy: "cascade",
-    instanceId: workspaceAppWebviewInstanceId(app.appId),
-    title: appTitle,
-    typeId: workspaceAppWebviewTypeID
+    instanceId: workspaceAppCenterNodeID,
+    typeId: workspaceAppCenterNodeID
   };
 }
 
@@ -220,7 +225,7 @@ function readWorkspaceAppLaunchPayload(request: WorkbenchHostLaunchRequest): {
   };
 }
 
-function readWorkspaceAppOpenRouteIntent(
+export function readWorkspaceAppOpenRouteIntent(
   value: unknown
 ): WorkspaceAppOpenRouteIntent | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -246,7 +251,7 @@ function readWorkspaceAppOpenRouteIntent(
   };
 }
 
-function resolveWorkspaceAppOpenUrl(
+export function resolveWorkspaceAppOpenUrl(
   launchUrl: string,
   intent: WorkspaceAppOpenRouteIntent | undefined
 ): string {

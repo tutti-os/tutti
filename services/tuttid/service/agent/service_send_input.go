@@ -2,123 +2,100 @@ package agent
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"time"
 
-	"github.com/tutti-os/tutti/packages/agent/daemon/titletext"
+	"github.com/google/uuid"
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	tuttimodeactivationbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeactivation"
 )
 
 func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessionID string, input SendInput) (SendInputResult, error) {
-	logAgentSubmitTrace("service.send.entered", workspaceID, agentSessionID, input.Metadata, nil)
+	input.ClientSubmitID = strings.TrimSpace(input.ClientSubmitID)
+	if input.ClientSubmitID == "" {
+		legacyClientSubmitID, _ := input.Metadata["clientSubmitId"].(string)
+		input.ClientSubmitID = strings.TrimSpace(legacyClientSubmitID)
+	}
+	if input.ClientSubmitID == "" {
+		// 同 CreateWithResult：调用方未提供提交幂等标识时生成一个，满足下游
+		// submit provenance 对 ClientSubmitID 非空的要求。
+		input.ClientSubmitID = uuid.NewString()
+	}
+	logAgentSubmitTrace("service.send.entered", workspaceID, agentSessionID, input.ClientSubmitID, input.Metadata, nil)
 	nodeStartedAt := time.Now()
-	normalizedContent, normalizedPromptText, err := normalizePromptContent(input.Content)
+	normalizedContent, _, err := normalizePromptContent(input.Content)
 	if err != nil {
 		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "content_normalized", "", nodeStartedAt, err)
 		return SendInputResult{}, err
 	}
 	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "content_normalized", "", nodeStartedAt)
-	visiblePrompt := firstNonEmptyString(strings.TrimSpace(input.DisplayPrompt), normalizedPromptText)
-	if goal, ok := parseTypedGoalControl(normalizedContent, visiblePrompt, input.Guidance); ok {
-		result, err := s.goalControl(ctx, workspaceID, agentSessionID, goal.Action, goal.Objective, input.Metadata)
-		if err != nil {
-			return SendInputResult{}, err
-		}
-		return SendInputResult{Session: result.Session, Kind: "goalControl", GoalControl: &result}, nil
-	}
-	submitClaim, claimPending, err := s.prepareSubmitClaim(ctx, workspaceID, agentSessionID, input.Metadata)
-	if err != nil {
-		return SendInputResult{}, err
-	}
-	if submitClaim.ClientSubmitID != "" && !claimPending {
-		if submitClaim.Status == "accepted" {
-			return s.acceptedSubmitResult(ctx, workspaceID, agentSessionID, submitClaim)
-		}
-		return SendInputResult{}, ErrSubmitDeliveryUnknown
-	}
-	defer func() {
-		if claimPending {
-			s.abandonSubmitClaim(workspaceID, agentSessionID, submitClaim.ClientSubmitID)
-		}
-	}()
-	logAgentSubmitTrace("service.send.content_normalized", workspaceID, agentSessionID, input.Metadata, map[string]any{
+	logAgentSubmitTrace("service.send.content_normalized", workspaceID, agentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{
 		"content_block_count": len(normalizedContent),
 	})
-	nodeStartedAt = time.Now()
-	runtimeSession, err := s.ensureRuntimeSession(ctx, workspaceID, agentSessionID)
-	if err != nil {
-		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "runtime_session_ready", "", nodeStartedAt, err)
-		return SendInputResult{}, err
+	hostInput := agenthost.SendInput{
+		CapabilityRefs: append([]CapabilityReference(nil), input.CapabilityRefs...),
+		Content:        normalizedContent, DisplayPrompt: input.DisplayPrompt,
+		Metadata: cloneMetadata(input.Metadata), ClientSubmitID: input.ClientSubmitID, Guidance: input.Guidance,
+		TurnID: input.TurnID,
 	}
-	provider := strings.TrimSpace(runtimeSession.Provider)
-	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "runtime_session_ready", provider, nodeStartedAt)
-	logAgentSubmitTrace("service.send.runtime_session_ready", workspaceID, agentSessionID, input.Metadata, nil)
-	nodeStartedAt = time.Now()
-	if err := s.validatePromptContentForExec(ctx, workspaceID, agentSessionID, normalizedContent); err != nil {
-		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "prompt_validated", provider, nodeStartedAt, err)
-		return SendInputResult{}, err
-	}
-	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "prompt_validated", provider, nodeStartedAt)
-	logAgentSubmitTrace("service.send.prompt_validated", workspaceID, agentSessionID, input.Metadata, nil)
-	nodeStartedAt = time.Now()
-	content, preparedDisplayPrompt, err := s.prepareNormalizedPromptContentForExec(workspaceID, agentSessionID, normalizedContent, "")
-	if err != nil {
-		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "prompt_prepared", provider, nodeStartedAt, err)
-		return SendInputResult{}, err
-	}
-	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "prompt_prepared", provider, nodeStartedAt)
-	logAgentSubmitTrace("service.send.prompt_prepared", workspaceID, agentSessionID, input.Metadata, map[string]any{
-		"content_block_count": len(content),
-	})
-	displayPrompt := strings.TrimSpace(input.DisplayPrompt)
-	initialTitle := ""
-	if !input.Guidance && !runtimeSession.InitialTitleEstablished {
-		visiblePrompt := firstNonEmptyString(displayPrompt, normalizedPromptText, preparedDisplayPrompt)
-		initialTitle = titletext.DeriveInitial(runtimeSession.Title, visiblePrompt)
-	}
-	logAgentSubmitTrace("service.send.exec_requested", workspaceID, agentSessionID, input.Metadata, nil)
-	nodeStartedAt = time.Now()
-	// Exec may have to resume an idle-released Claude process inside the runtime
-	// controller. Hold the same startup slot used by Create/Resume while Exec
-	// performs that ensure-live step.
-	releaseStartup, err := s.awaitClaudeStartupSlot(ctx, provider)
-	if err != nil {
-		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "runtime_exec", provider, nodeStartedAt, err)
-		return SendInputResult{}, err
-	}
-	result, err := func() (RuntimeExecResult, error) {
-		defer releaseStartup()
-		return s.controller().Exec(ctx, RuntimeExecInput{
-			WorkspaceID:      workspaceID,
-			AgentSessionID:   agentSessionID,
-			Content:          content,
-			DisplayPrompt:    displayPrompt,
-			InitialTitle:     initialTitle,
-			InitialTitleBase: runtimeSession.Title,
-			Guidance:         input.Guidance,
-			Metadata:         cloneMetadata(input.Metadata),
-		})
-	}()
-	if err != nil {
-		normalizedErr := normalizeRuntimeError(err)
-		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "runtime_exec", provider, nodeStartedAt, normalizedErr)
-		return SendInputResult{}, normalizedErr
-	}
-	turnID := strings.TrimSpace(result.TurnID)
-	if turnID == "" {
-		return SendInputResult{}, ErrSubmitDeliveryUnknown
-	}
-	if submitClaim.ClientSubmitID != "" {
-		claimPending = false
-		if err := s.acceptSubmitClaim(workspaceID, agentSessionID, submitClaim.ClientSubmitID, turnID); err != nil {
-			return SendInputResult{}, err
+	var preparedTurnID string
+	var preparedSnapshot tuttimodeactivationbiz.TurnSnapshot
+	if _, typedGoal := agenthost.ParseTypedGoalControl(normalizedContent, input.Guidance); !typedGoal {
+		runtimeSession, _ := s.controller().Session(workspaceID, agentSessionID)
+		existingCanonicalTurnID, claimErr := s.existingSubmitCanonicalTurnID(ctx, workspaceID, agentSessionID, input.ClientSubmitID, input.Metadata)
+		if claimErr != nil {
+			return SendInputResult{}, claimErr
+		}
+		if existingCanonicalTurnID != "" {
+			// A durable claim already owns this submit: reuse its canonical
+			// turn so a retry reconciles instead of redispatching.
+			preparedTurnID = existingCanonicalTurnID
+			hostInput.TurnID = existingCanonicalTurnID
+		} else {
+			preparedTurnID, preparedSnapshot, err = s.prepareTuttiModeExec(ctx, workspaceID, agentSessionID, input.Guidance, runtimeSession, input.TurnID)
+			if err != nil {
+				return SendInputResult{}, err
+			}
+			hostInput.TurnID = preparedTurnID
+			hostInput.TuttiModeSnapshot = runtimeTuttiModeTurnSnapshot(preparedSnapshot)
 		}
 	}
-	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "runtime_exec", provider, nodeStartedAt)
-	logAgentSubmitTrace("service.send.exec_resolved", workspaceID, agentSessionID, input.Metadata, map[string]any{
-		"turn_id":        result.TurnID,
-		"session_status": result.SessionStatus,
-		"turn_phase":     result.TurnLifecycle.Phase,
+	hostResult, err := s.ApplicationHost().SendInput(ctx,
+		agenthost.SessionRef{WorkspaceID: workspaceID, AgentSessionID: agentSessionID},
+		hostInput,
+	)
+	if err != nil {
+		if preparedTurnID != "" {
+			abandonErr := s.abandonPreparedTuttiModeExec(context.WithoutCancel(ctx), workspaceID, agentSessionID, preparedTurnID, preparedSnapshot, input.Guidance)
+			if abandonErr != nil {
+				return SendInputResult{}, deliveryUnknownError(abandonErr)
+			}
+		}
+		return SendInputResult{}, err
+	}
+	if hostResult.Kind == "goalControl" && hostResult.GoalControl != nil {
+		session, getErr := s.Get(ctx, workspaceID, agentSessionID)
+		if getErr != nil {
+			return SendInputResult{}, getErr
+		}
+		goal := GoalControlSessionResult{
+			Session: session, Goal: clonePayload(hostResult.GoalControl.Goal),
+			OperationID: hostResult.GoalControl.OperationID, GoalState: hostResult.GoalControl.GoalState,
+		}
+		return SendInputResult{Session: session, Kind: "goalControl", GoalControl: &goal}, nil
+	}
+	if preparedTurnID != "" && strings.TrimSpace(hostResult.TurnID) != preparedTurnID {
+		return SendInputResult{}, ErrSubmitDeliveryUnknown
+	}
+	turnID := hostResult.TurnID
+	provider := strings.TrimSpace(hostResult.Session.Provider)
+	logAgentSubmitTrace("service.send.runtime_session_ready", workspaceID, agentSessionID, input.ClientSubmitID, input.Metadata, nil)
+	logAgentSubmitTrace("service.send.prompt_validated", workspaceID, agentSessionID, input.ClientSubmitID, input.Metadata, nil)
+	logAgentSubmitTrace("service.send.prompt_prepared", workspaceID, agentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{"content_block_count": len(normalizedContent)})
+	logAgentSubmitTrace("service.send.exec_resolved", workspaceID, agentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{
+		"turn_id": turnID, "session_status": hostResult.Session.Status, "turn_phase": hostResult.TurnLifecycle.Phase,
 	})
 	nodeStartedAt = time.Now()
 	session, err := s.Get(ctx, workspaceID, agentSessionID)
@@ -132,14 +109,105 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 		return SendInputResult{}, err
 	}
 	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "session_refreshed", provider, nodeStartedAt)
+	s.observeTuttiModeSourceUserTurn(
+		ctx, workspaceID, agentSessionID,
+		input.ClientSubmitID, input.Metadata, turn,
+	)
 	return SendInputResult{
 		Session:            session,
 		Kind:               "turn",
 		TurnID:             turnID,
 		Turn:               turn,
-		TurnLifecycle:      result.TurnLifecycle,
-		SubmitAvailability: result.SubmitAvailability,
+		TurnLifecycle:      hostResult.TurnLifecycle,
+		SubmitAvailability: hostResult.SubmitAvailability,
 	}, nil
+}
+
+func (s *Service) observeTuttiModeSourceUserTurn(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	clientSubmitID string,
+	metadata map[string]any,
+	turn *agentactivitybiz.Turn,
+) {
+	if s == nil || s.TuttiModeSourceActivity == nil || turn == nil ||
+		strings.TrimSpace(turn.TurnID) == "" {
+		return
+	}
+	internalWake, _ := metadata["tuttiModeExecutionWake"].(bool)
+	if internalWake {
+		return
+	}
+	message, ok := s.canonicalSubmittedUserMessage(
+		workspaceID, agentSessionID, turn.TurnID, clientSubmitID, metadata,
+	)
+	if !ok || message.OccurredAtUnixMS <= 0 {
+		return
+	}
+	if err := s.TuttiModeSourceActivity.ObserveTuttiModeSourceActivity(
+		ctx,
+		TuttiModeSourceActivity{
+			WorkspaceID:      strings.TrimSpace(workspaceID),
+			SessionID:        strings.TrimSpace(agentSessionID),
+			Kind:             "user_turn",
+			ActivityID:       strings.TrimSpace(message.MessageID),
+			OccurredAtUnixMS: message.OccurredAtUnixMS,
+		},
+	); err != nil {
+		slog.WarnContext(
+			ctx,
+			"observe Tutti mode source user Turn failed",
+			"event", "tutti_mode_execution.source_user_turn_observation_failed",
+			"workspaceId", workspaceID,
+			"agentSessionId", agentSessionID,
+			"error", err,
+		)
+	}
+}
+
+func (s *Service) canonicalSubmittedUserMessage(
+	workspaceID string,
+	agentSessionID string,
+	turnID string,
+	clientSubmitID string,
+	metadata map[string]any,
+) (SessionMessage, bool) {
+	if s == nil || s.MessageReader == nil {
+		return SessionMessage{}, false
+	}
+	clientSubmitID = strings.TrimSpace(clientSubmitID)
+	if clientSubmitID == "" {
+		legacyClientSubmitID, _ := metadata["clientSubmitId"].(string)
+		clientSubmitID = strings.TrimSpace(legacyClientSubmitID)
+	}
+	page, ok := s.MessageReader.ListSessionMessages(
+		agentactivitybiz.ListSessionMessagesInput{
+			WorkspaceID:    strings.TrimSpace(workspaceID),
+			AgentSessionID: strings.TrimSpace(agentSessionID),
+			TurnID:         strings.TrimSpace(turnID),
+			Limit:          defaultListMessagesLimit,
+			Order:          agentactivitybiz.MessageOrderDesc,
+		},
+	)
+	if !ok {
+		return SessionMessage{}, false
+	}
+	for _, message := range page.Messages {
+		if strings.TrimSpace(message.TurnID) != strings.TrimSpace(turnID) ||
+			strings.TrimSpace(message.Role) != "user" ||
+			message.OccurredAtUnixMS <= 0 {
+			continue
+		}
+		if clientSubmitID != "" {
+			messageClientSubmitID, _ := message.Payload["clientSubmitId"].(string)
+			if strings.TrimSpace(messageClientSubmitID) != clientSubmitID {
+				continue
+			}
+		}
+		return message, true
+	}
+	return SessionMessage{}, false
 }
 
 func (s *Service) exactSubmittedTurn(
@@ -167,31 +235,4 @@ func (s *Service) exactSubmittedTurn(
 		}
 	}
 	return nil, nil
-}
-
-func (s *Service) validatePromptContentForExec(ctx context.Context, workspaceID, agentSessionID string, content []PromptContentBlock) error {
-	if err := s.controller().ValidatePromptContent(ctx, RuntimeExecInput{
-		WorkspaceID:    workspaceID,
-		AgentSessionID: agentSessionID,
-		Content:        content,
-	}); err != nil {
-		return normalizeRuntimeError(err)
-	}
-	return nil
-}
-
-func (s *Service) prepareNormalizedPromptContentForExec(workspaceID, agentSessionID string, content []PromptContentBlock, displayPrompt string) ([]PromptContentBlock, string, error) {
-	store := s.PromptAttachmentStore
-	persisted, err := store.PersistRequestContent(workspaceID, agentSessionID, content)
-	if err != nil {
-		return nil, "", err
-	}
-	hydrated, err := store.HydrateRuntimeContent(workspaceID, agentSessionID, persisted)
-	if err != nil {
-		return nil, "", err
-	}
-	if strings.TrimSpace(displayPrompt) == "" {
-		displayPrompt = promptImageOnlyDisplayText(persisted)
-	}
-	return hydrated, displayPrompt, nil
 }

@@ -4,6 +4,20 @@ export type ClientOptions = {
   baseUrl: "http://127.0.0.1:4545" | (string & {});
 };
 
+export type SwitchTuttiModeGoalReviewToSelfRequest = {
+  checkpointId: string;
+  expectedGraphRevision: number;
+  requestId: string;
+  reason: string;
+};
+
+export type SwitchTuttiModeGoalReviewToSelfResponse = {
+  executionId: string;
+  reviewId: string;
+  reviewMode: "self";
+  replayed: boolean;
+};
+
 export type HealthStatusResponse = {
   service: string;
   status: "ok";
@@ -42,6 +56,12 @@ export type AccountMembershipSummary = {
   cancel_at_period_end?: boolean | null;
 };
 
+export type AccountMembershipAccessState =
+  | "free"
+  | "active"
+  | "inactive"
+  | "unknown";
+
 export type AccountCreditsSummary = {
   available_credits: string | null;
   expiring_credits_within_24h?: string | null;
@@ -71,6 +91,7 @@ export type AccountRegistrationCreditsReward = {
 export type AccountProductSummaryResponse = {
   user: AccountUserInfo | null;
   membership: AccountMembershipSummary | null;
+  membership_access: AccountMembershipAccessState;
   credits: AccountCreditsSummary | null;
   partial_error?: AccountProductSummaryPartialError | null;
   registration_credits_reward?: AccountRegistrationCreditsReward | null;
@@ -122,6 +143,15 @@ export type CliCapabilityOutput = {
   defaultMode: CliOutputMode;
   json: boolean;
   table?: CliTableOutput | null;
+};
+
+export type CliCommandExecutionMode = "wait";
+
+/**
+ * Optional client-side execution behavior declared by a command. Wait commands remain active while handlers return a pending continuation.
+ */
+export type CliCommandExecution = {
+  mode: CliCommandExecutionMode;
 };
 
 export type CliCapabilitySourceKind = "builtin" | "app";
@@ -182,6 +212,11 @@ export type CliCapability = {
     [key: string]: unknown;
   } | null;
   output: CliCapabilityOutput;
+  execution?: CliCommandExecution | null;
+  /**
+   * Per-invocation App handler timeout used by clients to budget the daemon request.
+   */
+  handlerTimeoutMs?: number | null;
   source: CliCapabilitySource;
 };
 
@@ -228,6 +263,20 @@ export type CliCommandOutput = {
   } | null;
   text?: string | null;
   warnings?: Array<CliCommandWarning>;
+  continuation?: CliCommandContinuation | null;
+};
+
+export type CliCommandContinuationState = "pending";
+
+/**
+ * Internal continuation signal consumed by the CLI for wait commands and not rendered as a terminal result.
+ */
+export type CliCommandContinuation = {
+  state: CliCommandContinuationState;
+  /**
+   * Delay before the CLI invokes the same command again.
+   */
+  retryAfterMs: number;
 };
 
 export type CliCommandWarning = {
@@ -282,7 +331,24 @@ export type ApiErrorDetails = {
     | "workspace_app_not_found"
     | "workspace_issue_resource_not_found"
     | "workspace_operation_failed"
-    | "preferences_operation_failed";
+    | "preferences_operation_failed"
+    | "agent_quick_prompt_not_found"
+    | "agent_quick_prompt_conflict"
+    | "agent_quick_prompt_operation_failed"
+    | "agent_session_fork_operation_not_found"
+    | "agent_target_not_found"
+    | "model_plan_not_found"
+    | "model_plan_referenced"
+    | "model_policy_referenced"
+    | "workspace_agent_not_found"
+    | "collaboration_run_not_found"
+    | "automation_rule_not_found"
+    | "tutti_mode_goal_review_not_found"
+    | "tutti_mode_goal_review_conflict"
+    | "tutti_mode_goal_review_operation_failed"
+    | "tutti_mode_goal_review_service_unavailable"
+    | "tutti_mode_archive_conflict"
+    | "tutti_execution_active";
   reason?: string;
   params?: {
     [key: string]: unknown;
@@ -323,7 +389,19 @@ export type DesktopBrowserUseConnectionMode = "isolated" | "autoConnect";
 
 export type DesktopAppCatalogChannel = "production" | "staging";
 
+export type DeletedAgentConversationRetentionDays = 15 | 30;
+
+export type DeletedAgentConversationPurgeResult = {
+  removedSessions: number;
+  removedMessages: number;
+  payloadBytes: number;
+};
+
 export type DesktopPreferences = {
+  /**
+   * Whether tuttid may periodically discover newer managed agent CLI releases on this device. This never authorizes automatic installation.
+   */
+  agentCliUpdateCheckEnabled: boolean;
   agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
   agentComposerDefaultsByAgentTarget?: DesktopAgentComposerDefaultsByAgentTarget;
   agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
@@ -334,6 +412,7 @@ export type DesktopPreferences = {
   defaultAgentProvider: DesktopDefaultAgentProvider;
   dockIconStyle: DesktopDockIconStyle;
   dockPlacement: DesktopDockPlacement;
+  deletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays;
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   featureFlags: DesktopFeatureFlags;
   workbenchShortcuts: DesktopWorkbenchShortcuts;
@@ -394,7 +473,6 @@ export type DesktopAgentComposerDefaultsByProvider = {
   "tutti-agent"?: DesktopAgentComposerDefaults;
   cursor?: DesktopAgentComposerDefaults;
   nexight?: DesktopAgentComposerDefaults;
-  hermes?: DesktopAgentComposerDefaults;
   openclaw?: DesktopAgentComposerDefaults;
   opencode?: DesktopAgentComposerDefaults;
 };
@@ -409,7 +487,6 @@ export type DesktopAgentGuiConversationRailCollapsedByProvider = {
   "tutti-agent"?: boolean;
   cursor?: boolean;
   nexight?: boolean;
-  hermes?: boolean;
   openclaw?: boolean;
   opencode?: boolean;
 };
@@ -468,6 +545,7 @@ export type AgentTarget = {
   name: string;
   iconKey?: string | null;
   iconUrl?: string | null;
+  maskIconUrl?: string | null;
   heroImageUrl?: string | null;
   availability?: AgentProviderAvailability | null;
   enabled: boolean;
@@ -485,6 +563,107 @@ export type SetSystemAgentTargetEnabledRequest = {
   enabled: boolean;
 };
 
+export type AgentTargetInstallPlan = {
+  agentTargetId: string;
+  extensionInstallationId: string;
+  agentKey: string;
+  extensionVersion: string;
+  runtimeKind: string;
+  platform: string;
+  runner: "npm" | "pnpm" | "uv" | "binary";
+  packageName: string;
+  packageVersion: string;
+  installRoot: string;
+  installCommand: Array<string>;
+  executable: string;
+  launchArgs: Array<string>;
+  planDigest: string;
+};
+
+export type AgentTargetSetupStatus =
+  | "ready"
+  | "auth_required"
+  | "not_installed"
+  | "installing"
+  | "authenticating"
+  | "failed";
+
+export type AgentTargetRuntimeSource = "local" | "managed";
+
+export type AgentTargetSetupActionKind = "install" | "authenticate";
+
+export type AgentTargetSetupActionStatus =
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "interrupted";
+
+export type AgentTargetSetupActionPhase =
+  | "preparing"
+  | "installing"
+  | "verifying"
+  | "probing"
+  | "activating"
+  | "authenticating"
+  | "complete";
+
+export type AgentTargetSetupAction = {
+  actionId: string;
+  clientActionId: string;
+  kind: AgentTargetSetupActionKind;
+  status: AgentTargetSetupActionStatus;
+  phase: AgentTargetSetupActionPhase;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+};
+
+export type AgentTargetAuthenticatedAccount = {
+  id: string;
+  displayName: string;
+  authMethodId: string;
+  organization?: string | null;
+};
+
+export type AgentTargetSetupSnapshot = {
+  workspaceId: string;
+  agentTargetId: string;
+  status: AgentTargetSetupStatus;
+  runtimeSource: AgentTargetRuntimeSource | null;
+  runtimeVersion: string | null;
+  reason: string | null;
+  authMethods: Array<AgentTargetAuthMethod>;
+  account: AgentTargetAuthenticatedAccount | null;
+  plan: AgentTargetInstallPlan | null;
+  action: AgentTargetSetupAction | null;
+};
+
+export type AgentTargetAuthMethod = {
+  id: string;
+  name: string;
+  description?: string | null;
+  /**
+   * Provider-declared method kind (for example "terminal").
+   */
+  type?: string | null;
+  /**
+   * Ready-to-run interactive sign-in command for terminal-type methods.
+   */
+  terminalCommand?: string | null;
+};
+
+export type InstallAgentTargetRuntimeRequest = {
+  planDigest: string;
+  clientActionId: string;
+};
+
+export type AuthenticateAgentTargetRuntimeRequest = {
+  methodId: string;
+  clientActionId: string;
+};
+
 export type ListWorkspacesResponse = {
   workspaces: Array<WorkspaceSummary>;
   totalCount: number;
@@ -500,6 +679,455 @@ export type WorkspaceResponse = {
 
 export type DeleteWorkspaceResponse = {
   workspaceId: string;
+};
+
+/**
+ * Every rule targets a launchable Agent. The legacy model kind retired with the consult action and no longer appears.
+ */
+export type AutomationRuleTargetKind = "agent";
+
+export type AutomationRuleTarget = {
+  kind: AutomationRuleTargetKind;
+  /**
+   * Target Agent that receives the automated follow-up session. Accepts a WorkspaceAgent id or a built-in Harness AgentTarget id; the Agent must be enabled and launchable.
+   */
+  workspaceAgentId?: string | null;
+  /**
+   * Retired consult-era field; always empty. Launches inherit the target Agent's model configuration.
+   */
+  modelPlanId?: string | null;
+  /**
+   * Retired consult-era field; always empty.
+   */
+  model?: string | null;
+  /**
+   * Retired consult-era field; always empty.
+   */
+  requiredCapabilities: Array<string>;
+};
+
+/**
+ * Authority narrowing applied to the automatically launched target session. The option catalogs follow the selected target Agent's capability directory.
+ */
+export type AutomationRulePermissions = {
+  permissionModeId?: string | null;
+  allowedTools: Array<string>;
+};
+
+/**
+ * Independent per-source-session limit. Zero uses the daemon safety default and never means unlimited.
+ */
+export type AutomationRuleBudget = {
+  maxRunsPerSession: number;
+  maxTotalTokensPerSession: number;
+};
+
+/**
+ * Lifecycle outcome that evaluates the rule. A failed-turn rule can delegate to a stronger WorkspaceAgent as a bounded escalation attempt; automated outcomes never final-accept the source task.
+ */
+export type AutomationRuleTrigger = "on_task_complete" | "on_task_failed";
+
+/**
+ * One workspace automation rule. A triggered rule launches a new target-Agent session whose first message carries the rule prompt, a source-session mention, and a short event note.
+ */
+export type AutomationRule = {
+  id: string;
+  workspaceId: string;
+  name: string;
+  enabled: boolean;
+  trigger: AutomationRuleTrigger;
+  /**
+   * Optional source-session Agent filter. Empty means all non-automation-origin sessions.
+   */
+  sourceWorkspaceAgentId?: string | null;
+  target: AutomationRuleTarget;
+  permissions: AutomationRulePermissions;
+  budget: AutomationRuleBudget;
+  prompt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ListAutomationRulesResponse = {
+  rules: Array<AutomationRule>;
+};
+
+export type PutAutomationRuleRequest = {
+  name: string;
+  enabled: boolean;
+  trigger: AutomationRuleTrigger;
+  sourceWorkspaceAgentId?: string | null;
+  target: AutomationRuleTarget;
+  permissions: AutomationRulePermissions;
+  budget: AutomationRuleBudget;
+  prompt: string;
+};
+
+export type DeleteAutomationRuleResponse = {
+  automationRuleId: string;
+};
+
+export type AgentSessionAutomationRuleOverride = {
+  workspaceId: string;
+  agentSessionId: string;
+  disabled: boolean;
+  ruleIds: Array<string>;
+  updatedAt?: string | null;
+};
+
+export type SetAgentSessionAutomationRuleOverrideRequest = {
+  disabled: boolean;
+  ruleIds: Array<string>;
+};
+
+/**
+ * Wire protocol family used to call the plan's models.
+ */
+export type ModelPlanProtocol = "openai" | "anthropic";
+
+/**
+ * Access-scheme template the plan was created from. Presentation and guidance hint; runtime behavior derives from protocol.
+ */
+export type ModelPlanTemplateKind =
+  | "official_subscription"
+  | "coding_plan"
+  | "domestic"
+  | "relay"
+  | "custom";
+
+/**
+ * Derived plan lifecycle status. A plan is ready when its latest connection detection passed.
+ */
+export type ModelPlanStatus =
+  | "disabled"
+  | "undetected"
+  | "detection_failed"
+  | "ready";
+
+export type ModelPlanDetectionStage =
+  | "network"
+  | "auth"
+  | "model_discovery"
+  | "inference";
+
+export type ModelPlanStageStatus = "passed" | "failed" | "skipped";
+
+export type ModelPlanStageResult = {
+  stage: ModelPlanDetectionStage;
+  status: ModelPlanStageStatus;
+  latencyMs?: number | null;
+  /**
+   * Machine-readable failure code such as connection_failed, unauthorized, model_catalog_unavailable, model_rejected, inference_failed.
+   */
+  failureReason?: string | null;
+  /**
+   * Machine-readable remedy code such as check_network_or_base_url, check_api_key, add_models_manually, check_model_id, select_model. UI layers localize.
+   */
+  remedy?: string | null;
+  detail?: string | null;
+  checkedAt?: string | null;
+};
+
+export type ModelPlanDetection = {
+  stages: Array<ModelPlanStageResult>;
+  checkedAt?: string | null;
+  /**
+   * Model id exercised by the inference stage.
+   */
+  model?: string | null;
+};
+
+export type ModelPlanModel = {
+  id: string;
+  name: string;
+  capabilities?: Array<string> | null;
+};
+
+/**
+ * Workspace-level model access plan. Credentials are stored daemon-side only; hasApiKey is the only credential signal in responses.
+ */
+export type ModelPlan = {
+  id: string;
+  workspaceId: string;
+  revision: number;
+  name: string;
+  templateKind: ModelPlanTemplateKind;
+  protocol: ModelPlanProtocol;
+  hasApiKey: boolean;
+  baseUrl?: string | null;
+  models: Array<ModelPlanModel>;
+  defaultModel?: string | null;
+  enabled: boolean;
+  status: ModelPlanStatus;
+  detection: ModelPlanDetection;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ListModelPlansResponse = {
+  plans: Array<ModelPlan>;
+};
+
+export type PutModelPlanRequest = {
+  name: string;
+  templateKind?: ModelPlanTemplateKind | null;
+  protocol: ModelPlanProtocol;
+  /**
+   * Omitted or null keeps the stored credential on update; a value replaces it. Never echoed back.
+   */
+  apiKey?: string | null;
+  baseUrl?: string | null;
+  models?: Array<ModelPlanModel> | null;
+  defaultModel?: string | null;
+  enabled?: boolean | null;
+};
+
+export type DuplicateModelPlanRequest = {
+  name?: string | null;
+};
+
+export type SetModelPlanEnabledRequest = {
+  enabled: boolean;
+};
+
+export type DetectModelPlanRequest = {
+  /**
+   * When set, omitted fields fall back to the stored plan and the outcome persists onto it.
+   */
+  planId?: string | null;
+  /**
+   * Required for unsaved drafts whose detection path depends on the access scheme, such as an official provider subscription.
+   */
+  templateKind?: ModelPlanTemplateKind | null;
+  protocol?: ModelPlanProtocol | null;
+  baseUrl?: string | null;
+  apiKey?: string | null;
+  models?: Array<ModelPlanModel> | null;
+  /**
+   * Model id for the inference stage; defaults to the plan default model, then the first known model.
+   */
+  model?: string | null;
+};
+
+export type DetectModelPlanResponse = {
+  detection: ModelPlanDetection;
+  discoveredModels: Array<ModelPlanModel>;
+};
+
+export type ModelPlanReference = {
+  kind: "agent_target" | "model_policy" | "workspace_agent";
+  id: string;
+  name?: string | null;
+  /**
+   * How the consumer uses the plan. Agent target bindings report "default"; model usage policies report the bound role (execution, planning, or review).
+   */
+  role?: string | null;
+};
+
+export type ModelPlanReferencesResponse = {
+  references: Array<ModelPlanReference>;
+};
+
+export type DeleteModelPlanResponse = {
+  modelPlanId: string;
+};
+
+export type PlanModelRef = {
+  modelPlanId?: string | null;
+  model?: string | null;
+};
+
+export type ModelPolicyReviewRule = {
+  enabled: boolean;
+  trigger?: "on_task_complete";
+  maxRunsPerSession?: number | null;
+  maxTotalTokensPerSession?: number | null;
+};
+
+export type ModelUsagePolicy = {
+  id: string;
+  workspaceId: string;
+  name: string;
+  execution?: PlanModelRef | null;
+  planning?: PlanModelRef | null;
+  review?: PlanModelRef | null;
+  reviewRule: ModelPolicyReviewRule;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ListModelPoliciesResponse = {
+  policies: Array<ModelUsagePolicy>;
+};
+
+export type PutModelPolicyRequest = {
+  name: string;
+  execution?: PlanModelRef | null;
+  planning?: PlanModelRef | null;
+  review?: PlanModelRef | null;
+  reviewRule?: ModelPolicyReviewRule | null;
+};
+
+export type DeleteModelPolicyResponse = {
+  modelPolicyId: string;
+};
+
+export type AgentSessionModelPolicyOverride = {
+  workspaceId: string;
+  agentSessionId: string;
+  disabled: boolean;
+  modelPolicyId?: string | null;
+  updatedAt?: string | null;
+};
+
+export type SetAgentSessionModelPolicyOverrideRequest = {
+  disabled: boolean;
+  modelPolicyId?: string | null;
+};
+
+export type AgentSessionAcceptance = {
+  workspaceId: string;
+  agentSessionId: string;
+  state: "agent_claimed" | "auto_checked" | "user_accepted";
+  reviewRunId?: string | null;
+  updatedAt?: string | null;
+};
+
+export type AgentSessionAcceptanceResponse = {
+  acceptance?: AgentSessionAcceptance | null;
+};
+
+/**
+ * Collaboration kind. consult is a daemon-side advisory completion (advice only, no tools, ownership never changes); fork, delegate, and handoff link to a target session created through the session-create path.
+ */
+export type CollaborationRunMode = "consult" | "fork" | "delegate" | "handoff";
+
+export type CollaborationRunTriggerSource = "user" | "agent" | "policy";
+
+export type CollaborationRunStatus =
+  | "running"
+  | "completed"
+  | "failed"
+  | "canceled";
+
+/**
+ * Whether the run outcome was taken up by the source task. Fork and handoff runs report not_applicable.
+ */
+export type CollaborationRunAdoption =
+  | "pending"
+  | "adopted"
+  | "rejected"
+  | "not_applicable";
+
+export type CollaborationRunUsage = {
+  inputTokens: number;
+  outputTokens: number;
+};
+
+/**
+ * One recorded collaboration run with full accounting. Credentials never appear on run records; consults resolve the plan credential at call time only.
+ */
+export type CollaborationRun = {
+  id: string;
+  workspaceId: string;
+  mode: CollaborationRunMode;
+  triggerSource: CollaborationRunTriggerSource;
+  triggerReason?: string | null;
+  sourceSessionId?: string | null;
+  targetSessionId?: string | null;
+  targetAgentTargetId?: string | null;
+  modelPlanId?: string | null;
+  model?: string | null;
+  /**
+   * How much source context was carried over, for example none, summary, or full.
+   */
+  contextScope?: string | null;
+  /**
+   * Stored consult input (context plus question).
+   */
+  prompt?: string | null;
+  /**
+   * Consult output text.
+   */
+  resultText?: string | null;
+  /**
+   * Machine-readable failure code such as unauthorized, model_rejected, or canceled.
+   */
+  failureReason?: string | null;
+  status: CollaborationRunStatus;
+  adoption: CollaborationRunAdoption;
+  usage: CollaborationRunUsage;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  durationMs: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ListCollaborationRunsResponse = {
+  runs: Array<CollaborationRun>;
+};
+
+export type CreateCollaborationRunRequest = {
+  mode: CollaborationRunMode;
+  /**
+   * Required for consult runs; consults are capped per source session.
+   */
+  sourceSessionId?: string | null;
+  targetSessionId?: string | null;
+  targetAgentTargetId?: string | null;
+  /**
+   * Required for consult runs; the plan must exist and be enabled.
+   */
+  modelPlanId?: string | null;
+  /**
+   * Defaults to the plan default model for consult runs.
+   */
+  model?: string | null;
+  /**
+   * Consult question; required for consult runs.
+   */
+  question?: string | null;
+  /**
+   * Optional prepared context prepended to the consult question.
+   */
+  contextText?: string | null;
+  contextScope?: string | null;
+  triggerSource: CollaborationRunTriggerSource;
+  triggerReason?: string | null;
+  /**
+   * Consult completion output token cap.
+   */
+  maxTokens?: number | null;
+};
+
+export type SetCollaborationRunAdoptionRequest = {
+  adoption: CollaborationRunAdoption;
+};
+
+/**
+ * Per-workspace default model configuration for one agent target. Empty modelPlanId means the target keeps its provider-native model source.
+ */
+export type AgentModelBinding = {
+  workspaceId: string;
+  agentTargetId: string;
+  modelPlanId?: string | null;
+  defaultModel?: string | null;
+  modelPolicyId?: string | null;
+  updatedAt?: string | null;
+};
+
+export type ListAgentModelBindingsResponse = {
+  bindings: Array<AgentModelBinding>;
+};
+
+export type SetAgentModelBindingRequest = {
+  modelPlanId?: string | null;
+  /**
+   * Must belong to the referenced plan's model list when a plan is set.
+   */
+  defaultModel?: string | null;
+  modelPolicyId?: string | null;
 };
 
 export type WorkspaceAppInstallUserPhase =
@@ -837,6 +1465,7 @@ export type CreateWorkspaceAppFactoryJobRequest = {
   displayName: string;
   description?: string;
   agentTargetId: string;
+  clientSubmitId: string;
   /**
    * @deprecated
    */
@@ -954,6 +1583,101 @@ export type WorkspaceTerminalCloseGuardResponse = {
   guard: WorkspaceTerminalCloseGuard;
 };
 
+export type DeleteWorkspaceAgentResponse = {
+  workspaceAgentId: string;
+};
+
+export type ListWorkspaceAgentsResponse = {
+  agents: Array<WorkspaceAgent>;
+};
+
+export type PutWorkspaceAgentRequest = {
+  name: string;
+  /**
+   * Short human-readable description shown with the Agent in directories and cards.
+   */
+  description: string;
+  harnessAgentTargetId: string;
+  modelPlanId?: string | null;
+  defaultModel?: string | null;
+  /**
+   * Ordered fallback Plan/model references. Omit or pass an empty array to disable failover.
+   */
+  modelFallbacks?: Array<WorkspaceAgentModelRef>;
+  instructions: string;
+  callConditions: Array<string>;
+  /**
+   * When true, Skills and tools are an explicit allowlist, including the ability to select none. Omit on update to preserve the stored mode; new Agents default to automatic compatible capabilities.
+   */
+  capabilitiesExplicit?: boolean;
+  skills: Array<string>;
+  tools: Array<string>;
+};
+
+/**
+ * A selectable, workspace-scoped Agent made from one Harness target plus an optional model access plan and Agent-specific behavior configuration.
+ */
+export type WorkspaceAgent = {
+  /**
+   * Opaque Agent option id. New ids use the workspace-agent prefix and may be passed to workspace Agent session APIs.
+   */
+  id: string;
+  /**
+   * Compatibility alias of id for AgentGUI and session creation surfaces.
+   */
+  agentTargetId: string;
+  workspaceId: string;
+  name: string;
+  /**
+   * Short human-readable description shown with the Agent in directories and cards.
+   */
+  description: string;
+  harness: WorkspaceAgentHarness;
+  modelPlanId?: string | null;
+  defaultModel?: string | null;
+  /**
+   * Dormant contract field without an editor surface. Ordered, explicit fallback chain used only when starting a new session and the primary Plan/model is not usable. Credentials remain daemon-owned.
+   */
+  modelFallbacks: Array<WorkspaceAgentModelRef>;
+  instructions: string;
+  /**
+   * Explicit, user-editable conditions that explain when another Agent or user should invoke this Agent.
+   */
+  callConditions: Array<string>;
+  /**
+   * Dormant contract field without an editor surface. False keeps Skills and tools synchronized with all capabilities compatible with the selected Harness. True makes the Skills and tools arrays an explicit allowlist; empty arrays then mean none.
+   */
+  capabilitiesExplicit: boolean;
+  skills: Array<string>;
+  tools: Array<string>;
+  source: WorkspaceAgentSource;
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type WorkspaceAgentHarness = {
+  agentTargetId: string;
+  /**
+   * False when the referenced Harness target no longer exists. The Agent remains listable so it can be repaired or deleted.
+   */
+  available: boolean;
+  provider?: AgentTargetProvider | null;
+  name?: string | null;
+  iconKey?: string | null;
+  enabled?: boolean | null;
+};
+
+export type WorkspaceAgentModelRef = {
+  modelPlanId: string;
+  model?: string | null;
+};
+
+/**
+ * Origin of the workspace Agent configuration. legacy_binding rows were migrated from the former fixed-target binding model.
+ */
+export type WorkspaceAgentSource = "user" | "legacy_binding";
+
 export type WorkspaceAgentProvider = string;
 
 export type AgentSessionComposerSettings = {
@@ -992,11 +1716,19 @@ export type AgentProviderComposerConfigOptionValue = {
   label: string;
   description?: string;
   supportsImageInput?: boolean;
+  /**
+   * True when the entry mirrors the requested/current selection instead of the provider catalog (warm-catalog append of the requested model, selected-model bootstrap echo). Clients keep such entries selectable but must not treat them as proof the provider can run the model; create validation runs against the raw catalog only.
+   */
+  requested?: boolean;
 };
 
 export type AgentProviderComposerConfig = {
   configurable: boolean;
   currentValue?: string;
+  /**
+   * Provider-resolved runtime value. This may differ from currentValue when the current selection inherits a provider default.
+   */
+  effectiveValue?: string;
   defaultValue?: string;
   options: Array<AgentProviderComposerConfigOptionValue>;
 };
@@ -1025,16 +1757,39 @@ export type AgentProviderComposerOptionsResponse = {
   modelConfig: AgentProviderComposerConfig;
   permissionConfig: PermissionConfig;
   reasoningConfig: AgentProviderComposerConfig;
+  reasoningOptionsByModel: AgentProviderComposerReasoningOptionsByModel;
   speedConfig?: AgentProviderComposerConfig;
   effectiveSettings: AgentSessionComposerSettings;
+  /**
+   * Opaque provider runtime metadata retained for legacy and diagnostic consumers. Typed composer fields are authoritative; new composer capabilities must not be added to this object.
+   */
   runtimeContext: {
     [key: string]: unknown;
   };
+  /**
+   * Commands advertised by the resolved runtime session.
+   */
+  commands: Array<AgentProviderComposerCommandOption>;
   capabilities?: WorkspaceAgentCapabilities;
   skills: Array<AgentProviderSkillOption>;
   capabilityCatalog: Array<AgentProviderCapabilityOption>;
   behavior: AgentProviderComposerBehavior;
   slashCommandPolicy?: AgentSlashCommandPolicy;
+};
+
+export type AgentProviderComposerCommandOption = {
+  name: string;
+  description?: string;
+  inputHint?: string;
+};
+
+export type AgentProviderComposerReasoningOptionsByModel = {
+  [key: string]: AgentProviderComposerReasoningProfile;
+};
+
+export type AgentProviderComposerReasoningProfile = {
+  defaultValue?: string | null;
+  options: Array<AgentProviderComposerConfigOptionValue>;
 };
 
 export type AgentProviderComposerBehavior = {
@@ -1114,7 +1869,11 @@ export type AgentProviderActionKind =
   | "terminal_command"
   | "refresh";
 
-export type AgentProviderActionId = "install" | "login" | "refresh";
+export type AgentProviderActionId = "install" | "update" | "login" | "refresh";
+
+export type AgentProviderUpdateCapability = "supported" | "unsupported";
+
+export type AgentProviderUpdateSource = "npm";
 
 export type AgentProviderProbeStatus = "ready" | "failed" | "skipped";
 
@@ -1123,6 +1882,7 @@ export type AgentProviderActionRunStatus = "completed" | "failed";
 export type AgentProviderActiveActionPhase =
   | "detect"
   | "install"
+  | "update"
   | "repair"
   | "verify"
   | "done"
@@ -1201,7 +1961,7 @@ export type AgentProviderCliStatus = {
   binaryPath?: string | null;
   version?: string | null;
   /**
-   * The lowest CLI version this provider supports, when it enforces a floor (currently codex). Lets the UI show "current X, requires >= Y" without duplicating the backend's version gate.
+   * The lowest CLI version this provider supports, when it enforces a floor. Lets the UI show "current X, requires >= Y" without duplicating the backend's version gate.
    */
   minVersion?: string | null;
 };
@@ -1229,12 +1989,33 @@ export type AgentProviderAuthInfo = {
   authMethod?: string | null;
 };
 
+export type AgentProviderUpdateStatus = {
+  capability: AgentProviderUpdateCapability;
+  source: AgentProviderUpdateSource | null;
+  currentVersion: string | null;
+  latestVersion: string | null;
+  /**
+   * Null when discovery has not run, failed, or the current/latest versions cannot be compared safely.
+   */
+  updateAvailable: boolean | null;
+  /**
+   * Stable reason why this provider cannot be updated by tuttid.
+   */
+  unsupportedReason: string | null;
+  lastCheckedAt: string | null;
+  /**
+   * Non-fatal discovery or version-comparison result code.
+   */
+  reasonCode: string | null;
+};
+
 export type AgentProviderStatus = {
   provider: WorkspaceAgentProvider;
   availability: AgentProviderAvailability;
   cli: AgentProviderCliStatus;
   adapter: AgentProviderAdapterStatus;
   auth: AgentProviderAuthInfo;
+  update: AgentProviderUpdateStatus;
   actions: Array<AgentProviderAction>;
   network?: AgentProviderNetworkStatus | null;
   activeAction?: AgentProviderActiveAction | null;
@@ -1265,10 +2046,208 @@ export type AgentProviderStatusListResponse = {
   providers: Array<AgentProviderStatus>;
 };
 
+export type TuttiModeActivationStatus = "active" | "inactive";
+
+/**
+ * User-visible interaction that created this activation revision.
+ */
+export type TuttiModeActivationSource = "slash_command" | "badge_remove";
+
+export type TuttiModeActivationRevision = {
+  id: string;
+  activationId: string;
+  revision: number;
+  status: TuttiModeActivationStatus;
+  source: TuttiModeActivationSource;
+  /**
+   * Session-scoped outcome-quality preference captured with this activation revision. Higher values favor stronger models and stronger task verification.
+   */
+  effect?: number | null;
+  /**
+   * Session-scoped completion-speed preference captured with this activation revision. Higher values favor faster suitable models.
+   */
+  speed?: number | null;
+  /**
+   * Legacy single-axis alias of effect. New clients use effect and speed.
+   *
+   * @deprecated
+   */
+  orchestrationIntensity: number;
+  createdAtUnixMs: number;
+};
+
+export type TuttiModeActivation = {
+  id: string;
+  workspaceId: string;
+  agentSessionId: string;
+  status: TuttiModeActivationStatus;
+  currentRevision: TuttiModeActivationRevision;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+};
+
+export type TuttiModeActivationIntent = {
+  status: TuttiModeActivationStatus;
+  source: TuttiModeActivationSource;
+  /**
+   * Optional outcome-quality preference carried with the initial activation. Omitted uses the daemon default.
+   */
+  effect?: number | null;
+  /**
+   * Optional completion-speed preference carried with the initial activation. Omitted uses the daemon default.
+   */
+  speed?: number | null;
+  /**
+   * Legacy single-axis alias of effect. Ignored when effect is present.
+   *
+   * @deprecated
+   */
+  orchestrationIntensity?: number | null;
+};
+
+export type TuttiModeActivationResponse = {
+  /**
+   * Null until the session has its first Tutti mode activation revision.
+   */
+  activation: TuttiModeActivation | null;
+};
+
+export type UpdateTuttiModeActivationRequest = {
+  status: TuttiModeActivationStatus;
+  source: TuttiModeActivationSource;
+  /**
+   * Optional outcome-quality preference persisted with the appended activation revision. Omitted keeps the current value, or the daemon default for the first revision.
+   */
+  effect?: number | null;
+  /**
+   * Optional completion-speed preference persisted with the appended activation revision. Omitted keeps the current value, or the daemon default for the first revision.
+   */
+  speed?: number | null;
+  /**
+   * Legacy single-axis alias of effect. Ignored when effect is present.
+   *
+   * @deprecated
+   */
+  orchestrationIntensity?: number | null;
+  /**
+   * Optional optimistic-concurrency guard. Zero means no activation revision exists yet.
+   */
+  expectedRevision?: number | null;
+};
+
+export type UpdateTuttiModeActivationResponse = {
+  activation: TuttiModeActivation | null;
+  /**
+   * False for an idempotent update that did not create a new revision.
+   */
+  changed: boolean;
+};
+
 /**
  * Root sessions are user-visible conversations. Child sessions are provider-native agents reached through their immutable parent fields.
  */
 export type WorkspaceAgentSessionKind = "root" | "child";
+
+/**
+ * Per-session durable message change cursor. The upper bound preserves exact integer representation in JavaScript clients.
+ */
+export type WorkspaceAgentMessageCursor = number;
+
+/**
+ * Projection applied to a Session detail response. messageHydration preserves hierarchy and message cursors but leaves provider-backed lifecycle capabilities unresolved.
+ */
+export type WorkspaceAgentSessionDetailProjection = "full" | "messageHydration";
+
+export type WorkspaceAgentSessionLifecycleCapabilities = {
+  /**
+   * Whether this exact session can fork its latest settled state.
+   */
+  fork: boolean;
+  /**
+   * Whether this exact session can fork through a settled canonical Turn.
+   */
+  forkThroughTurn: boolean;
+  /**
+   * Canonical Turn ids currently verified against provider-native history.
+   */
+  forkThroughTurnIds?: Array<string>;
+  /**
+   * Whether forkThroughTurnIds is an authoritative provider-history projection.
+   */
+  forkThroughTurnIdsKnown?: boolean;
+};
+
+export type WorkspaceAgentSessionForkThroughTurnPoint = {
+  type: "throughTurn";
+  /**
+   * Exact canonical Turn id included as the final Turn in the fork.
+   */
+  turnId: string;
+};
+
+export type WorkspaceAgentSessionForkPoint = {
+  type: "throughTurn";
+} & WorkspaceAgentSessionForkThroughTurnPoint;
+
+export type WorkspaceAgentSessionForkLineage = {
+  sourceAgentSessionId: string;
+  /**
+   * Inclusive canonical Turn boundary in the source Session.
+   */
+  sourceTurnId: string;
+  /**
+   * Canonical Turn id of that inclusive boundary in the forked Session.
+   */
+  targetTurnId: string;
+  operationId: string;
+  forkedAtUnixMs: number;
+};
+
+/**
+ * Public durable operation state. accepted collapses the internal prepared, dispatching, and provider-accepted phases.
+ */
+export type WorkspaceAgentSessionForkOperationStatus =
+  | "accepted"
+  | "committed"
+  | "failed"
+  | "unknown";
+
+export type WorkspaceAgentSessionForkOperation = {
+  operationId: string;
+  requestId: string;
+  sourceAgentSessionId: string;
+  targetAgentSessionId: string;
+  point: WorkspaceAgentSessionForkPoint;
+  status: WorkspaceAgentSessionForkOperationStatus;
+  /**
+   * Complete target Session projection when status is committed.
+   */
+  session: WorkspaceAgentSession | null;
+  /**
+   * Durable lineage when status is committed.
+   */
+  lineage: WorkspaceAgentSessionForkLineage | null;
+  /**
+   * Durable failure diagnostic for failed or unknown outcomes.
+   */
+  error: string | null;
+};
+
+export type WorkspaceAgentSessionForkOperationResponse = {
+  operation: WorkspaceAgentSessionForkOperation;
+};
+
+export type ForkWorkspaceAgentSessionRequest = {
+  /**
+   * Caller-stable identity reserved for the forked canonical session.
+   */
+  targetAgentSessionId: string;
+  /**
+   * Caller-stable idempotency key for safe retries.
+   */
+  requestId: string;
+  point: WorkspaceAgentSessionForkPoint;
+};
 
 export type WorkspaceAgentSession = {
   id: string;
@@ -1299,6 +2278,10 @@ export type WorkspaceAgentSession = {
   agentTargetId: string | null;
   provider: WorkspaceAgentProvider;
   providerSessionId: string | null;
+  /**
+   * Latest accepted per-session message change cursor. This is a high-water mark, not a count of materialized message rows.
+   */
+  messageVersion: WorkspaceAgentMessageCursor;
   cwd: string | null;
   /**
    * Persisted conversation-rail membership key. Clients must use this exact key for section placement and must not infer membership from cwd or project paths.
@@ -1328,6 +2311,11 @@ export type WorkspaceAgentSession = {
    * Protocol v2. Daemon-issued capability descriptor; clients must branch on capabilities, never on provider identity.
    */
   capabilities: WorkspaceAgentCapabilities | null;
+  lifecycleCapabilities: WorkspaceAgentSessionLifecycleCapabilities;
+  /**
+   * Durable provenance for a user-initiated root Session fork. Null for ordinary root Sessions and provider-native child Sessions.
+   */
+  forkedFrom: WorkspaceAgentSessionForkLineage | null;
   /**
    * Protocol v2. Typed context-window and quota usage projected from provider runtime state.
    */
@@ -1336,6 +2324,10 @@ export type WorkspaceAgentSession = {
    * Protocol v2. Explicit field extracted from runtimeContext.
    */
   goal: WorkspaceAgentSessionGoal | null;
+  /**
+   * Independent, session-scoped Tutti mode activation projection. Null until the first activation revision exists; capability references are audit records and never determine this state.
+   */
+  tuttiModeActivation: TuttiModeActivation | null;
   /**
    * Protocol v2. True when the session was imported from external provider history. Explicit field extracted from runtimeContext.
    */
@@ -1365,6 +2357,11 @@ export type WorkspaceAgentSessionResponse = {
 };
 
 export type WorkspaceAgentSessionDetailResponse = {
+  projection: WorkspaceAgentSessionDetailProjection;
+  /**
+   * Whether provider-backed lifecycle capability projection ran for session and childSessions. A full projection reports true even when a provider probe fails closed, because false then means the action is unavailable for this response. When false, projection was intentionally skipped and capability values must not be applied as authoritative.
+   */
+  lifecycleCapabilitiesProjected: boolean;
   session: WorkspaceAgentSession;
   /**
    * Flat collection of every nested child session below session. Clients reconstruct the tree from the immutable parent fields.
@@ -1430,6 +2427,14 @@ export type WorkspaceAgentTurnError = {
 };
 
 /**
+ * A structured user-submission reference to a daemon-owned capability. This is provenance for UI and durable workflow linkage; it is not injected into provider prompt text and does not gate CLI availability.
+ */
+export type WorkspaceAgentCapabilityReference = {
+  capability: "tutti";
+  source: "slash_command";
+};
+
+/**
  * Protocol v2 closed-enum replacement for AgentActivityCompletedCommand.
  */
 export type WorkspaceAgentCompletedCommand = {
@@ -1462,6 +2467,7 @@ export type WorkspaceAgentTurn = {
     [key: string]: unknown;
   } | null;
   completedCommand: WorkspaceAgentCompletedCommand | null;
+  capabilityRefs?: Array<WorkspaceAgentCapabilityReference>;
   startedAtUnixMs: number;
   settledAtUnixMs: number | null;
   updatedAtUnixMs: number;
@@ -1503,6 +2509,14 @@ export type WorkspaceAgentInteraction = {
 export type WorkspaceAgentCapabilities = {
   imageInput: boolean;
   modelImageInputRequired: boolean;
+  /**
+   * The provider can apply a model change to the next call in the current session.
+   */
+  modelSwitch: boolean;
+  /**
+   * The provider runtime accepts a session-scoped model access plan endpoint and credential.
+   */
+  modelPlanBinding: boolean;
   skills: boolean;
   compact: boolean;
   tokenUsage: boolean;
@@ -1603,13 +2617,13 @@ export type WorkspaceAgentSessionMessage = {
   completedAtUnixMs?: number;
   createdAtUnixMs?: number;
   updatedAtUnixMs?: number;
-  version: number;
+  version: WorkspaceAgentMessageCursor;
 };
 
 export type WorkspaceAgentSessionMessagesResponse = {
   agentSessionId: string;
   messages: Array<WorkspaceAgentSessionMessage>;
-  latestVersion: number;
+  latestVersion: WorkspaceAgentMessageCursor;
   hasMore: boolean;
 };
 
@@ -1769,8 +2783,30 @@ export type ExternalAgentImportResultResponse = {
   errors: Array<ExternalAgentImportError>;
 };
 
+export type ArchiveTuttiModeExecutionRequest = {
+  requestId: string;
+  reason: string;
+};
+
+export type TuttiModeArchiveOperation = {
+  workspaceId: string;
+  executionId: string;
+  issueId: string;
+  operationId: string;
+  requestId: string;
+  status: "requested" | "canceling_runs" | "archiving" | "completed" | "failed";
+  requestedBy: string;
+  reason: string;
+  attemptCount: number;
+  lastError: string;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+  completedAtUnixMs: number;
+};
+
 export type DeleteWorkspaceAgentSessionResponse = {
   removed: boolean;
+  cleanupFailed: boolean;
 };
 
 export type WorkspaceAgentSessionSectionDeletionCandidatesResponse = {
@@ -1789,11 +2825,13 @@ export type DeleteWorkspaceAgentSessionsBatchResponse = {
   removedMessages: number;
   removedSessions: number;
   removedSessionIds: Array<string>;
+  cleanupFailedSessionIds: Array<string>;
 };
 
 export type ClearWorkspaceAgentSessionsResponse = {
   removedMessages: number;
   removedSessions: number;
+  cleanupFailedSessionIds: Array<string>;
 };
 
 export type UpdateWorkspaceAgentSessionPinRequest = {
@@ -1856,6 +2894,10 @@ export type CreateWorkspaceAgentSessionRequest = {
    */
   agentTargetId: string;
   clientSubmitId: string;
+  /**
+   * Developer create-session scenario waiting for this root Session.
+   */
+  recordingId?: string | null;
   submitDiagnostics?: AgentSubmitDiagnostics;
   initialContent: Array<AgentPromptContentBlock>;
   /**
@@ -1871,10 +2913,155 @@ export type CreateWorkspaceAgentSessionRequest = {
    * Classifies a session that is intentionally not attached to a workspace project.
    */
   noProject?: boolean | null;
+  railPlacement?: WorkspaceAgentRailPlacement;
   speed?: string | null;
   planMode?: boolean | null;
   browserUse?: boolean | null;
+  /**
+   * Structured capability references attached to the initial submission. They are persisted on the turn but never converted into provider prompt text.
+   */
+  capabilityRefs?: Array<WorkspaceAgentCapabilityReference>;
+  /**
+   * Optional independent Tutti mode activation intent applied before the first turn starts.
+   */
+  initialTuttiModeActivation?: TuttiModeActivationIntent | null;
   visible?: boolean | null;
+};
+
+export type StartAgentSessionRecordingRequest = {
+  agentTargetId: string;
+  /**
+   * Existing Session selecting continue-session mode. Omit for create-session mode.
+   */
+  agentSessionId?: string | null;
+};
+
+export type RenameAgentSessionRecordingRequest = {
+  name: string;
+};
+
+export type AgentSessionRecordingActivityEventInput = {
+  eventId: string;
+  kind: "intent" | "effect" | "direct-stimulus";
+  type: string;
+  correlationId?: string | null;
+  causedByEventId?: string | null;
+  agentSessionId?: string | null;
+  payload?: {
+    [key: string]: unknown;
+  };
+  occurredAtUnixMs: number;
+};
+
+export type AppendAgentSessionRecordingActivityEventsRequest = {
+  events: Array<AgentSessionRecordingActivityEventInput>;
+};
+
+export type AppendAgentSessionRecordingActivityEventsResponse = {
+  acceptedThroughSequence: number;
+};
+
+export type AgentSessionRecording = {
+  id: string;
+  /**
+   * Mutable name stored in the portable Cassette manifest after completion.
+   */
+  name: string;
+  /**
+   * Immutable Cassette produced by a completed Recording.
+   */
+  cassetteId?: string | null;
+  workspaceId: string;
+  agentTargetId: string;
+  mode: "create-session" | "continue-session";
+  rootAgentSessionId?: string | null;
+  status:
+    | "preparing"
+    | "ready"
+    | "recording"
+    | "finalizing"
+    | "complete"
+    | "failed"
+    | "canceled"
+    | "incomplete";
+  directory: string;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+};
+
+export type AgentSessionRecordingListResponse = {
+  recordings: Array<AgentSessionRecording>;
+};
+
+export type AgentSessionReplayRun = {
+  id: string;
+  cassetteId: string;
+  status: "starting" | "running" | "complete" | "failed" | "canceled";
+  checkpoint: number;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  createdAtUnixMs: number;
+  startedAtUnixMs?: number | null;
+  completedAtUnixMs?: number | null;
+  updatedAtUnixMs: number;
+};
+
+export type AgentSessionReplayLaunch = {
+  run: AgentSessionReplayRun;
+  cassetteDirectory: string;
+};
+
+export type AgentSessionReplayRunListResponse = {
+  runs: Array<AgentSessionReplayRun>;
+};
+
+export type AdvanceAgentSessionReplayRunCheckpointRequest = {
+  checkpoint: number;
+};
+
+export type AgentSessionCassette = {
+  id: string;
+  name: string;
+  sourceRecordingId: string;
+  workspaceId: string;
+  agentTargetId: string;
+  rootAgentSessionId: string;
+  mode: "create-session" | "continue-session";
+  totalBytes: number;
+  createdAtUnixMs: number;
+};
+
+export type AgentSessionCassetteListResponse = {
+  cassettes: Array<AgentSessionCassette>;
+};
+
+export type AgentSessionReplayTransportPlayback = {
+  drained: boolean;
+  paused: boolean;
+  playbackElapsedMs: number;
+  speed: 0.25 | 0.5 | 1 | 2 | 4;
+  timingMode: "realtime" | "fast-forward";
+};
+
+export type UpdateAgentSessionReplayTransportPlaybackRequest = {
+  command: "set-speed" | "pause" | "resume" | "set-timing-mode";
+  speed?: 0.25 | 0.5 | 1 | 2 | 4;
+  timingMode?: "realtime" | "fast-forward";
+};
+
+export type FailAgentSessionReplayRunRequest = {
+  checkpoint?: number;
+  errorCode: string;
+  errorMessage: string;
+};
+
+export type WorkspaceAgentRailPlacement = {
+  version: 1;
+  kind: "conversations" | "project";
+  projectPath?: string;
+  sectionKey: string;
 };
 
 export type SendWorkspaceAgentSessionInputRequest = {
@@ -1885,6 +3072,10 @@ export type SendWorkspaceAgentSessionInputRequest = {
    * Optional display-only text shown in the conversation (e.g. a folder bundle rendered as one chip while content carries the expanded files).
    */
   displayPrompt?: string | null;
+  /**
+   * Structured capability references attached to this submission. They are persisted on the turn but never converted into provider prompt text.
+   */
+  capabilityRefs?: Array<WorkspaceAgentCapabilityReference>;
   /**
    * When true, send this input as guidance to the currently active turn instead of starting a new turn.
    */
@@ -1971,6 +3162,44 @@ export type WorkspaceGitPatchResponse = {
   execOutput?: WorkspaceGitPatchExecOutput;
 };
 
+export type AgentQuickPrompt = {
+  id: string;
+  title: string;
+  content: string;
+  version: number;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+};
+
+export type AgentQuickPromptListResponse = {
+  prompts: Array<AgentQuickPrompt>;
+};
+
+export type AgentQuickPromptResponse = {
+  prompt: AgentQuickPrompt;
+};
+
+export type CreateAgentQuickPromptRequest = {
+  title: string;
+  content: string;
+};
+
+export type UpdateAgentQuickPromptRequest = {
+  title: string;
+  content: string;
+  expectedVersion: number;
+};
+
+export type DeleteAgentQuickPromptRequest = {
+  expectedVersion: number;
+};
+
+export type MoveAgentQuickPromptRequest = {
+  promptId: string;
+  beforePromptId: string | null;
+  expectedVersion: number;
+};
+
 export type UserProject = {
   id: string;
   path: string;
@@ -1978,7 +3207,8 @@ export type UserProject = {
   sectionKey: string;
   createdAtUnixMs: number;
   updatedAtUnixMs: number;
-  lastUsedAtUnixMs?: number;
+  lastUsedAtUnixMs: number;
+  pinnedAtUnixMs: number;
 };
 
 export type UserProjectListResponse = {
@@ -1995,6 +3225,16 @@ export type UseUserProjectRequest = {
 
 export type DeleteUserProjectRequest = {
   path: string;
+};
+
+export type MoveUserProjectRequest = {
+  projectId: string;
+  beforeProjectId: string | null;
+};
+
+export type PinUserProjectRequest = {
+  projectId: string;
+  pinned: boolean;
 };
 
 export type CheckUserProjectPathRequest = {
@@ -2217,6 +3457,30 @@ export type PreflightUploadWorkspaceFilesResponse = {
   conflicts: Array<WorkspaceFileUploadConflict>;
 };
 
+export type WorkbenchSize = {
+  width: number;
+  height: number;
+};
+
+export type WorkbenchSafeArea = {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+};
+
+export type WorkbenchLayoutConstraints = {
+  minWidth: number;
+  minHeight: number;
+  surfacePadding: number;
+  safeArea: WorkbenchSafeArea;
+};
+
+export type WorkbenchLayoutBasis = {
+  surfaceSize: WorkbenchSize;
+  layoutConstraints: WorkbenchLayoutConstraints;
+};
+
 export type WorkbenchFrame = {
   x: number;
   y: number;
@@ -2254,6 +3518,7 @@ export type WorkbenchSnapshot = {
   activeNodeId?: string | null;
   spaces?: Array<WorkbenchSnapshotSpace>;
   activeSpaceId?: string | null;
+  layoutBasis?: WorkbenchLayoutBasis;
   metadata?: {
     [key: string]: unknown;
   };
@@ -2265,6 +3530,200 @@ export type WorkspaceWorkbenchResponse = {
 
 export type PutWorkspaceWorkbenchRequest = {
   snapshot: WorkbenchSnapshot;
+};
+
+export type WorkspaceWorkflowStatus =
+  | "pending_review"
+  | "in_progress"
+  | "accepted"
+  | "rejected"
+  | "completed"
+  | "failed"
+  | "canceled";
+
+export type WorkspaceWorkflow = {
+  id: string;
+  workspaceId: string;
+  type: "tutti_mode_plan";
+  owner: "tutti";
+  triggerKind: "agent_cli";
+  sourceSessionId: string;
+  sourceTurnId: string | null;
+  sourceToolCallId: string | null;
+  status: WorkspaceWorkflowStatus;
+  currentRevisionId: string;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+};
+
+export type TuttiModePlanExecution = {
+  mode: "sequential" | "parallel";
+  reasoningIntensity: number;
+  /**
+   * Issue-owned decomposition, dependency, review, and retry strength. This legacy v1 field keeps its original meaning and is not the Tutti Mode speed preference.
+   */
+  orchestrationIntensity: number;
+  /**
+   * Optional Tutti Mode outcome-quality preference snapshot. Omitted documents use orchestrationIntensity as the legacy single-axis effect and use the balanced default for speed.
+   */
+  effect?: number | null;
+  /**
+   * Optional Tutti Mode completion-speed preference snapshot. Omitted documents use the balanced default.
+   */
+  speed?: number | null;
+};
+
+export type TuttiModePlanBudget = {
+  mode: "auto" | "fixed";
+  tokenLimit: number;
+  quotaWaterlinePercent: number;
+};
+
+export type TuttiModePlanTask = {
+  id: string;
+  title: string;
+  content: string;
+  priority: "high" | "medium" | "low";
+  agentTargetId: string | null;
+  modelPlanId: string | null;
+  model: string | null;
+  /**
+   * Task-level permission mode applied when the materialized Issue task launches.
+   */
+  permissionModeId: string | null;
+  /**
+   * Task-level reasoning effort applied when the materialized Issue task launches.
+   */
+  reasoningEffort: string | null;
+  executionDirectory: string | null;
+  dependsOn: Array<string>;
+  /**
+   * Opts this task out of the sequential default so it may run alongside other ready tasks. Persisted onto the materialized Issue task.
+   */
+  parallelizable: boolean;
+  /**
+   * Bypasses the human acceptance gate: a successful completion is accepted automatically and dispatch advances. Persisted onto the materialized Issue task.
+   */
+  autoAccept: boolean;
+};
+
+export type TuttiModePlanDocument = {
+  schema: "tutti-mode-plan/v1";
+  phase: "configuration" | "task_graph";
+  title: string;
+  topicId: string;
+  markdownBody: string;
+  execution: TuttiModePlanExecution;
+  budget: TuttiModePlanBudget;
+  tasks: Array<TuttiModePlanTask>;
+};
+
+export type WorkspaceWorkflowPlanRevision = {
+  id: string;
+  workflowId: string;
+  sequence: number;
+  schemaVersion: "tutti-mode-plan/v1";
+  documentPath: string;
+  sha256: string;
+  producedByTurnId: string | null;
+  createdAtUnixMs: number;
+  document: TuttiModePlanDocument;
+};
+
+export type WorkspaceWorkflowCheckpoint = {
+  id: string;
+  workflowId: string;
+  kind: "configuration_review" | "task_review";
+  revisionId: string;
+  status: "pending" | "accepted" | "rejected" | "superseded" | "canceled";
+  decidedBy: string | null;
+  decisionReason: string | null;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+  decidedAtUnixMs: number | null;
+};
+
+export type WorkspaceWorkflowTurnLink = {
+  workflowId: string;
+  turnId: string;
+  relation: "source" | "decomposition" | "revision" | "feedback";
+  createdAtUnixMs: number;
+};
+
+export type WorkspaceWorkflowOperation = {
+  id: string;
+  workflowId: string;
+  kind:
+    | "generate_task_graph"
+    | "create_revision"
+    | "create_issue"
+    | "start_issue";
+  status: "pending" | "running" | "succeeded" | "failed" | "canceled";
+  revisionId: string | null;
+  issueId: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+  startedAtUnixMs: number | null;
+  completedAtUnixMs: number | null;
+};
+
+export type WorkspaceWorkflowSnapshot = {
+  workflow: WorkspaceWorkflow;
+  revisions: Array<WorkspaceWorkflowPlanRevision>;
+  checkpoints: Array<WorkspaceWorkflowCheckpoint>;
+  turnLinks: Array<WorkspaceWorkflowTurnLink>;
+  operations: Array<WorkspaceWorkflowOperation>;
+  /**
+   * Read-only projection of the accepted current task graph; never an independent mutable record.
+   */
+  actionableItems: Array<WorkspaceWorkflowActionableItem>;
+};
+
+export type WorkspaceWorkflowActionableItem = {
+  id: string;
+  sourceWorkflowId: string;
+  sourceRevisionId: string;
+  ordinal: number;
+  topicId: string;
+  execution: TuttiModePlanExecution;
+  budget: TuttiModePlanBudget;
+  task: TuttiModePlanTask;
+};
+
+export type WorkspaceWorkflowListResponse = {
+  workflows: Array<WorkspaceWorkflowSnapshot>;
+};
+
+/**
+ * User-owned per-task assignment override recorded with an accepted task review decision. Null fields keep the plan document value; empty strings clear it.
+ */
+export type WorkspaceWorkflowTaskAssignment = {
+  taskId: string;
+  agentTargetId?: string | null;
+  modelPlanId?: string | null;
+  model?: string | null;
+  permissionModeId?: string | null;
+  reasoningEffort?: string | null;
+  /**
+   * Overrides the plan document's per-task parallel opt-in; null keeps it.
+   */
+  parallelizable?: boolean | null;
+  /**
+   * Overrides the plan document's per-task acceptance bypass; null keeps it.
+   */
+  autoAccept?: boolean | null;
+};
+
+export type DecideWorkspaceWorkflowCheckpointRequest = {
+  decision: "accepted" | "rejected" | "canceled";
+  decidedBy: string;
+  reason?: string | null;
+  /**
+   * Optional per-task assignment overrides. Only valid when accepting a task review checkpoint; recorded durably with the decision and merged into the materialized Issue tasks.
+   */
+  taskAssignments?: Array<WorkspaceWorkflowTaskAssignment> | null;
 };
 
 export type CreateWorkspaceRequest = {
@@ -2299,6 +3758,74 @@ export type IssueManagerRunCompletionStatus =
 
 export type IssueManagerPriority = "high" | "medium" | "low";
 
+/**
+ * How the issue entered the durable execution workflow.
+ */
+export type IssueManagerPlanningSource =
+  | "manual"
+  | "tutti_mode_plan"
+  | "traditional_plan";
+
+export type IssueManagerBudgetMode = "auto" | "fixed";
+
+/**
+ * soft_limited pauses future dispatch without canceling in-flight runs.
+ */
+export type IssueManagerBudgetStatus = "active" | "soft_limited";
+
+/**
+ * Three-step completion ladder. Only user_accepted closes a successful task.
+ */
+export type IssueManagerAcceptanceState =
+  | "agent_claimed"
+  | "auto_checked"
+  | "user_accepted";
+
+export type IssueManagerExecutionProfile = {
+  /**
+   * Issue-owned reasoning strength inherited by every task and run.
+   */
+  reasoningIntensity: number;
+  /**
+   * Issue-owned decomposition, dependency, review, and retry strength.
+   */
+  orchestrationIntensity: number;
+};
+
+export type IssueManagerBudget = {
+  mode: IssueManagerBudgetMode;
+  /**
+   * Compiled token soft limit. In auto mode the daemon owns this value; zero means no token gate is currently available.
+   */
+  tokenLimit: number;
+  consumedTokens: number;
+  /**
+   * Subscription plans gate on the remaining-quota waterline instead of fake monetary cost.
+   */
+  quotaWaterlinePercent: number;
+  /**
+   * Last provider-reported subscription quota percentage. Omitted when the provider cannot report quota.
+   */
+  remainingQuotaPercent?: number;
+  status: IssueManagerBudgetStatus;
+};
+
+export type IssueManagerTokenUsage = {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+};
+
+export type IssueManagerCost = {
+  /**
+   * ISO 4217 currency code. USD is used when a ModelPlan publishes API prices.
+   */
+  currency: string;
+  estimatedMicros: number;
+  actualMicros: number;
+};
+
 export type IssueManagerStatusCounts = {
   all: number;
   notStarted: number;
@@ -2328,6 +3855,25 @@ export type IssueManagerIssue = {
   title: string;
   content: string;
   status: IssueManagerStatus;
+  planningSource: IssueManagerPlanningSource;
+  /**
+   * Optional Agent session that produced the plan. Empty for manually created issues.
+   */
+  sourceSessionId: string;
+  /**
+   * When true, the daemon dispatches the next eligible task after each user acceptance while budget remains active.
+   */
+  sequentialExecution: boolean;
+  /**
+   * When true, the daemon dispatches every dependency-ready task whose execution directory is isolated; dependencies still require user acceptance.
+   */
+  parallelExecution: boolean;
+  /**
+   * When true, automatic task dispatch is durably paused and no successor task may launch.
+   */
+  dispatchPaused: boolean;
+  executionProfile: IssueManagerExecutionProfile;
+  budget: IssueManagerBudget;
   taskCount: number;
   notStartedCount: number;
   runningCount: number;
@@ -2352,6 +3898,38 @@ export type IssueManagerTask = {
   priority: IssueManagerPriority;
   sortIndex: number;
   dueAtUnix: number;
+  /**
+   * Opaque WorkspaceAgent assignment. Empty means not assigned yet.
+   */
+  agentTargetId: string;
+  /**
+   * Explicit Plan assignment. Empty delegates to the WorkspaceAgent default.
+   */
+  modelPlanId: string;
+  /**
+   * Explicit model assignment. Empty delegates to the assigned Agent/Plan default.
+   */
+  model: string;
+  executionDirectory: string;
+  dependencyTaskIds: Array<string>;
+  /**
+   * Opts this task out of the Issue's sequential default so it may run alongside other dependency-ready tasks. False keeps strict sequential ordering.
+   */
+  parallelizable: boolean;
+  /**
+   * Bypasses the human acceptance gate: a successful completion is accepted automatically and dispatch advances.
+   */
+  autoAccept: boolean;
+  acceptanceState: IssueManagerAcceptanceState;
+  acceptanceSummary: string;
+  /**
+   * Logical supersession timestamp. Zero means the task remains in the active graph; non-zero preserves the task and its execution history while excluding it from future scheduling.
+   */
+  supersededAtUnix: number;
+  /**
+   * Replacement task ID when supersession introduced one.
+   */
+  supersededByTaskId: string;
   creatorUserId: string;
   creatorDisplayName: string;
   creatorAvatarUrl: string;
@@ -2480,6 +4058,38 @@ export type IssueManagerIssueListResponse = {
   statusCounts: IssueManagerStatusCounts;
 };
 
+export type CreateIssueManagerIssueFromPlanRequest = {
+  issue: CreateIssueManagerIssueRequest;
+  tasks: Array<CreateIssueManagerTaskRequest>;
+};
+
+export type EstimateIssueManagerAutoTokenBudgetRequest = {
+  executionProfile: IssueManagerExecutionProfile;
+  tasks: Array<IssueManagerAutoTokenBudgetTaskInput>;
+};
+
+export type IssueManagerAutoTokenBudgetTaskInput = {
+  agentTargetId?: string;
+  modelPlanId?: string;
+  model?: string;
+};
+
+export type IssueManagerAutoTokenBudgetEstimate = {
+  /**
+   * Effective auto budget that Issue creation will compile for the same input.
+   */
+  tokenLimit: number;
+  /**
+   * Scale and intensity estimate before historical calibration.
+   */
+  deterministicTokenLimit: number;
+  /**
+   * Sum of comparable completed-run averages before headroom and blending.
+   */
+  historicalTokenEstimate: number;
+  matchedTaskCount: number;
+};
+
 export type IssueManagerIssueDetailResponse = {
   issue: IssueManagerIssue;
   tasks: Array<IssueManagerTask>;
@@ -2534,6 +4144,18 @@ export type CreateIssueManagerIssueRequest = {
   topicId: string;
   title: string;
   content?: string;
+  planningSource?: IssueManagerPlanningSource;
+  sourceSessionId?: string;
+  /**
+   * Persist the user's Create-and-Start choice so successor dispatch survives desktop restarts.
+   */
+  sequentialExecution?: boolean;
+  /**
+   * Persist the user's parallel Create-and-Start choice. Mutually exclusive with sequentialExecution.
+   */
+  parallelExecution?: boolean;
+  executionProfile?: IssueManagerExecutionProfile;
+  budget?: IssueManagerBudget;
 };
 
 export type CreateIssueManagerTopicRequest = {
@@ -2560,6 +4182,13 @@ export type CreateIssueManagerTaskRequest = {
   content?: string;
   priority?: IssueManagerPriority;
   dueAtUnix?: number;
+  agentTargetId?: string;
+  modelPlanId?: string;
+  model?: string;
+  executionDirectory?: string;
+  dependencyTaskIds?: Array<string>;
+  parallelizable?: boolean;
+  autoAccept?: boolean;
 };
 
 export type CreateIssueManagerTasksRequest = {
@@ -2573,6 +4202,10 @@ export type UpdateIssueManagerTaskRequest = {
   priority?: IssueManagerPriority;
   dueAtUnix?: number;
   sortIndex?: number;
+  parallelizable?: boolean;
+  autoAccept?: boolean;
+  acceptanceState?: IssueManagerAcceptanceState;
+  acceptanceSummary?: string;
 };
 
 export type AddIssueManagerContextRefItem = {
@@ -2610,6 +4243,8 @@ export type CompleteIssueManagerRunRequest = {
   status: IssueManagerRunCompletionStatus;
   summary?: string;
   errorMessage?: string;
+  usage?: IssueManagerTokenUsage;
+  remainingQuotaPercent?: number;
   outputs: Array<CompleteIssueManagerRunOutputItem>;
 };
 
@@ -2629,13 +4264,74 @@ export type DeleteIssueManagerContextRefResponse = {
   removed: boolean;
 };
 
+export type CancelIssueManagerExecutionResponse = {
+  /**
+   * Number of running runs this call settled as canceled.
+   */
+  canceledRunCount: number;
+};
+
+export type MobileRemotePairingChallenge = {
+  challengeId: string;
+  targetUserDeviceId: string;
+  controllerUserDeviceId?: string;
+  state: string;
+  pairingId?: string;
+  revision: number;
+  expiresAt: string;
+};
+
+export type MobileRemoteDevicePairing = {
+  pairingId: string;
+  controllerUserDeviceId: string;
+  targetUserDeviceId: string;
+  state: string;
+  revision: number;
+  confirmedAt: string;
+  revokedAt?: string;
+};
+
+export type MobileRemotePairingStartResponse = {
+  challenge: MobileRemotePairingChallenge;
+  qrPayload: string;
+};
+
+export type MobileRemotePairingChallengeResponse = {
+  challenge: MobileRemotePairingChallenge;
+};
+
+export type MobileRemotePairingResponse = {
+  pairing: MobileRemoteDevicePairing;
+};
+
+export type MobileRemotePairingConfirmResponse = {
+  pairing: MobileRemoteDevicePairing;
+  challenge: MobileRemotePairingChallenge;
+};
+
+export type MobileRemotePairingListResponse = {
+  pairings: Array<MobileRemoteDevicePairing>;
+};
+
 export type CliCommandId = string;
 
 export type WorkspaceId = string;
 
+export type SessionForkOperationId = string;
+
+export type IssueId = string;
+
 export type WorkspaceAppId = string;
 
 export type WorkspaceAppFactoryJobId = string;
+
+export type ModelPlanId = string;
+
+export type WorkspaceAgentId = string;
+
+export type ModelPolicyId = string;
+
+export type CollaborationRunId = string;
 
 /**
  * Omit to resolve the current workspace file root.
@@ -2678,6 +4374,8 @@ export type AgentTurnId = string;
 
 export type TerminalAfterSeq = number;
 
+export type AutomationRuleId = string;
+
 export type IssueManagerIssueId = string;
 
 export type IssueManagerTopicId = string;
@@ -2700,6 +4398,10 @@ export type IssueManagerStatusFilter2 = IssueManagerStatusFilter;
  * Case-insensitive substring search over the visible title only.
  */
 export type IssueManagerSearchQuery = string;
+
+export type MobileRemoteChallengeId = string;
+
+export type MobileRemotePairingId = string;
 
 export type GetHealthData = {
   body?: never;
@@ -2993,6 +4695,10 @@ export type ListCliCapabilitiesData = {
      */
     workspaceID?: string;
     /**
+     * Optional canonical Agent Session identity. When present, discovery is constrained by that Session's persisted command capability projection.
+     */
+    agentSessionID?: string;
+    /**
      * Include capabilities hidden from ordinary CLI command discovery by provider availability filters and command visibility. Intended for metadata consumers, not ordinary user command routing.
      */
     includeHidden?: boolean;
@@ -3212,6 +4918,288 @@ export type PutDesktopPreferencesResponses = {
 export type PutDesktopPreferencesResponse =
   PutDesktopPreferencesResponses[keyof PutDesktopPreferencesResponses];
 
+export type PurgeDeletedAgentConversationsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/agent-maintenance/deleted-conversations/purge";
+};
+
+export type PurgeDeletedAgentConversationsErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type PurgeDeletedAgentConversationsError =
+  PurgeDeletedAgentConversationsErrors[keyof PurgeDeletedAgentConversationsErrors];
+
+export type PurgeDeletedAgentConversationsResponses = {
+  /**
+   * Purge completed
+   */
+  200: DeletedAgentConversationPurgeResult;
+};
+
+export type PurgeDeletedAgentConversationsResponse =
+  PurgeDeletedAgentConversationsResponses[keyof PurgeDeletedAgentConversationsResponses];
+
+export type ListAgentQuickPromptsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/agent-quick-prompts";
+};
+
+export type ListAgentQuickPromptsErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Agent quick prompt persistence operation failed
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListAgentQuickPromptsError =
+  ListAgentQuickPromptsErrors[keyof ListAgentQuickPromptsErrors];
+
+export type ListAgentQuickPromptsResponses = {
+  /**
+   * Agent quick prompt list
+   */
+  200: AgentQuickPromptListResponse;
+};
+
+export type ListAgentQuickPromptsResponse =
+  ListAgentQuickPromptsResponses[keyof ListAgentQuickPromptsResponses];
+
+export type CreateAgentQuickPromptData = {
+  body: CreateAgentQuickPromptRequest;
+  path?: never;
+  query?: never;
+  url: "/v1/agent-quick-prompts";
+};
+
+export type CreateAgentQuickPromptErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Agent quick prompt limit, expected version, or ordering anchor conflicts with current state
+   */
+  409: ApiErrorResponse;
+  /**
+   * Agent quick prompt persistence operation failed
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type CreateAgentQuickPromptError =
+  CreateAgentQuickPromptErrors[keyof CreateAgentQuickPromptErrors];
+
+export type CreateAgentQuickPromptResponses = {
+  /**
+   * Agent quick prompt created
+   */
+  201: AgentQuickPromptResponse;
+};
+
+export type CreateAgentQuickPromptResponse =
+  CreateAgentQuickPromptResponses[keyof CreateAgentQuickPromptResponses];
+
+export type MoveAgentQuickPromptData = {
+  body: MoveAgentQuickPromptRequest;
+  path?: never;
+  query?: never;
+  url: "/v1/agent-quick-prompts/move";
+};
+
+export type MoveAgentQuickPromptErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Agent quick prompt was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Agent quick prompt limit, expected version, or ordering anchor conflicts with current state
+   */
+  409: ApiErrorResponse;
+  /**
+   * Agent quick prompt persistence operation failed
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type MoveAgentQuickPromptError =
+  MoveAgentQuickPromptErrors[keyof MoveAgentQuickPromptErrors];
+
+export type MoveAgentQuickPromptResponses = {
+  /**
+   * Authoritative Agent quick prompt order
+   */
+  200: AgentQuickPromptListResponse;
+};
+
+export type MoveAgentQuickPromptResponse =
+  MoveAgentQuickPromptResponses[keyof MoveAgentQuickPromptResponses];
+
+export type DeleteAgentQuickPromptData = {
+  body: DeleteAgentQuickPromptRequest;
+  path: {
+    promptId: string;
+  };
+  query?: never;
+  url: "/v1/agent-quick-prompts/{promptId}";
+};
+
+export type DeleteAgentQuickPromptErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Agent quick prompt was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Agent quick prompt limit, expected version, or ordering anchor conflicts with current state
+   */
+  409: ApiErrorResponse;
+  /**
+   * Agent quick prompt persistence operation failed
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type DeleteAgentQuickPromptError =
+  DeleteAgentQuickPromptErrors[keyof DeleteAgentQuickPromptErrors];
+
+export type DeleteAgentQuickPromptResponses = {
+  /**
+   * Agent quick prompt deleted
+   */
+  204: void;
+};
+
+export type DeleteAgentQuickPromptResponse =
+  DeleteAgentQuickPromptResponses[keyof DeleteAgentQuickPromptResponses];
+
+export type UpdateAgentQuickPromptData = {
+  body: UpdateAgentQuickPromptRequest;
+  path: {
+    promptId: string;
+  };
+  query?: never;
+  url: "/v1/agent-quick-prompts/{promptId}";
+};
+
+export type UpdateAgentQuickPromptErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Agent quick prompt was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Agent quick prompt limit, expected version, or ordering anchor conflicts with current state
+   */
+  409: ApiErrorResponse;
+  /**
+   * Agent quick prompt persistence operation failed
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type UpdateAgentQuickPromptError =
+  UpdateAgentQuickPromptErrors[keyof UpdateAgentQuickPromptErrors];
+
+export type UpdateAgentQuickPromptResponses = {
+  /**
+   * Agent quick prompt updated
+   */
+  200: AgentQuickPromptResponse;
+};
+
+export type UpdateAgentQuickPromptResponse =
+  UpdateAgentQuickPromptResponses[keyof UpdateAgentQuickPromptResponses];
+
 export type DeleteUserProjectData = {
   body: DeleteUserProjectRequest;
   path?: never;
@@ -3380,6 +5368,92 @@ export type CheckUserProjectPathResponses = {
 export type CheckUserProjectPathResponse =
   CheckUserProjectPathResponses[keyof CheckUserProjectPathResponses];
 
+export type MoveUserProjectData = {
+  body: MoveUserProjectRequest;
+  path?: never;
+  query?: never;
+  url: "/v1/user-projects/move";
+};
+
+export type MoveUserProjectErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Desktop preferences operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type MoveUserProjectError =
+  MoveUserProjectErrors[keyof MoveUserProjectErrors];
+
+export type MoveUserProjectResponses = {
+  /**
+   * Complete ordered user project list
+   */
+  200: UserProjectListResponse;
+};
+
+export type MoveUserProjectResponse =
+  MoveUserProjectResponses[keyof MoveUserProjectResponses];
+
+export type PinUserProjectData = {
+  body: PinUserProjectRequest;
+  path?: never;
+  query?: never;
+  url: "/v1/user-projects/pin";
+};
+
+export type PinUserProjectErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Desktop preferences operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type PinUserProjectError =
+  PinUserProjectErrors[keyof PinUserProjectErrors];
+
+export type PinUserProjectResponses = {
+  /**
+   * Complete ordered user project list
+   */
+  200: UserProjectListResponse;
+};
+
+export type PinUserProjectResponse =
+  PinUserProjectResponses[keyof PinUserProjectResponses];
+
 export type AttachEventStreamData = {
   body?: never;
   path?: never;
@@ -3499,6 +5573,156 @@ export type SetSystemAgentTargetEnabledResponses = {
 
 export type SetSystemAgentTargetEnabledResponse =
   SetSystemAgentTargetEnabledResponses[keyof SetSystemAgentTargetEnabledResponses];
+
+export type GetAgentTargetSetupData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    agentTargetID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup";
+};
+
+export type GetAgentTargetSetupErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetAgentTargetSetupError =
+  GetAgentTargetSetupErrors[keyof GetAgentTargetSetupErrors];
+
+export type GetAgentTargetSetupResponses = {
+  /**
+   * Target setup state
+   */
+  200: AgentTargetSetupSnapshot;
+};
+
+export type GetAgentTargetSetupResponse =
+  GetAgentTargetSetupResponses[keyof GetAgentTargetSetupResponses];
+
+export type InstallAgentTargetRuntimeData = {
+  body: InstallAgentTargetRuntimeRequest;
+  path: {
+    workspaceID: string;
+    agentTargetID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup/install";
+};
+
+export type InstallAgentTargetRuntimeErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type InstallAgentTargetRuntimeError =
+  InstallAgentTargetRuntimeErrors[keyof InstallAgentTargetRuntimeErrors];
+
+export type InstallAgentTargetRuntimeResponses = {
+  /**
+   * Current Target setup state
+   */
+  200: AgentTargetSetupSnapshot;
+};
+
+export type InstallAgentTargetRuntimeResponse =
+  InstallAgentTargetRuntimeResponses[keyof InstallAgentTargetRuntimeResponses];
+
+export type AuthenticateAgentTargetRuntimeData = {
+  body: AuthenticateAgentTargetRuntimeRequest;
+  path: {
+    workspaceID: string;
+    agentTargetID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup/authenticate";
+};
+
+export type AuthenticateAgentTargetRuntimeErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type AuthenticateAgentTargetRuntimeError =
+  AuthenticateAgentTargetRuntimeErrors[keyof AuthenticateAgentTargetRuntimeErrors];
+
+export type AuthenticateAgentTargetRuntimeResponses = {
+  /**
+   * Current Target setup state
+   */
+  200: AgentTargetSetupSnapshot;
+};
+
+export type AuthenticateAgentTargetRuntimeResponse =
+  AuthenticateAgentTargetRuntimeResponses[keyof AuthenticateAgentTargetRuntimeResponses];
 
 export type ListWorkspacesData = {
   body?: never;
@@ -3860,6 +6084,1335 @@ export type PutWorkspaceWorkbenchResponses = {
 
 export type PutWorkspaceWorkbenchResponse =
   PutWorkspaceWorkbenchResponses[keyof PutWorkspaceWorkbenchResponses];
+
+export type ListModelPlansData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/model-plans";
+};
+
+export type ListModelPlansErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListModelPlansError =
+  ListModelPlansErrors[keyof ListModelPlansErrors];
+
+export type ListModelPlansResponses = {
+  /**
+   * Model access plans
+   */
+  200: ListModelPlansResponse;
+};
+
+export type ListModelPlansResponse2 =
+  ListModelPlansResponses[keyof ListModelPlansResponses];
+
+export type CreateModelPlanData = {
+  body: PutModelPlanRequest;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/model-plans";
+};
+
+export type CreateModelPlanErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type CreateModelPlanError =
+  CreateModelPlanErrors[keyof CreateModelPlanErrors];
+
+export type CreateModelPlanResponses = {
+  /**
+   * Created model access plan
+   */
+  200: ModelPlan;
+};
+
+export type CreateModelPlanResponse =
+  CreateModelPlanResponses[keyof CreateModelPlanResponses];
+
+export type DetectModelPlanData = {
+  body: DetectModelPlanRequest;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/model-plans/detect";
+};
+
+export type DetectModelPlanErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Model access plan was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type DetectModelPlanError =
+  DetectModelPlanErrors[keyof DetectModelPlanErrors];
+
+export type DetectModelPlanResponses = {
+  /**
+   * Staged detection outcome
+   */
+  200: DetectModelPlanResponse;
+};
+
+export type DetectModelPlanResponse2 =
+  DetectModelPlanResponses[keyof DetectModelPlanResponses];
+
+export type DeleteModelPlanData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    modelPlanID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}";
+};
+
+export type DeleteModelPlanErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Model access plan was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Model plan is still referenced by agent targets
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type DeleteModelPlanError =
+  DeleteModelPlanErrors[keyof DeleteModelPlanErrors];
+
+export type DeleteModelPlanResponses = {
+  /**
+   * Model access plan deleted
+   */
+  200: DeleteModelPlanResponse;
+};
+
+export type DeleteModelPlanResponse2 =
+  DeleteModelPlanResponses[keyof DeleteModelPlanResponses];
+
+export type GetModelPlanData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    modelPlanID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}";
+};
+
+export type GetModelPlanErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Model access plan was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetModelPlanError = GetModelPlanErrors[keyof GetModelPlanErrors];
+
+export type GetModelPlanResponses = {
+  /**
+   * Model access plan
+   */
+  200: ModelPlan;
+};
+
+export type GetModelPlanResponse =
+  GetModelPlanResponses[keyof GetModelPlanResponses];
+
+export type UpdateModelPlanData = {
+  body: PutModelPlanRequest;
+  path: {
+    workspaceID: string;
+    modelPlanID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}";
+};
+
+export type UpdateModelPlanErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Model access plan was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type UpdateModelPlanError =
+  UpdateModelPlanErrors[keyof UpdateModelPlanErrors];
+
+export type UpdateModelPlanResponses = {
+  /**
+   * Updated model access plan
+   */
+  200: ModelPlan;
+};
+
+export type UpdateModelPlanResponse =
+  UpdateModelPlanResponses[keyof UpdateModelPlanResponses];
+
+export type DuplicateModelPlanData = {
+  body?: DuplicateModelPlanRequest;
+  path: {
+    workspaceID: string;
+    modelPlanID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}/duplicate";
+};
+
+export type DuplicateModelPlanErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Model access plan was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type DuplicateModelPlanError =
+  DuplicateModelPlanErrors[keyof DuplicateModelPlanErrors];
+
+export type DuplicateModelPlanResponses = {
+  /**
+   * Duplicated model access plan
+   */
+  200: ModelPlan;
+};
+
+export type DuplicateModelPlanResponse =
+  DuplicateModelPlanResponses[keyof DuplicateModelPlanResponses];
+
+export type SetModelPlanEnabledData = {
+  body: SetModelPlanEnabledRequest;
+  path: {
+    workspaceID: string;
+    modelPlanID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}/enabled";
+};
+
+export type SetModelPlanEnabledErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Model access plan was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type SetModelPlanEnabledError =
+  SetModelPlanEnabledErrors[keyof SetModelPlanEnabledErrors];
+
+export type SetModelPlanEnabledResponses = {
+  /**
+   * Updated model access plan
+   */
+  200: ModelPlan;
+};
+
+export type SetModelPlanEnabledResponse =
+  SetModelPlanEnabledResponses[keyof SetModelPlanEnabledResponses];
+
+export type ListModelPlanReferencesData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    modelPlanID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}/references";
+};
+
+export type ListModelPlanReferencesErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Model access plan was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListModelPlanReferencesError =
+  ListModelPlanReferencesErrors[keyof ListModelPlanReferencesErrors];
+
+export type ListModelPlanReferencesResponses = {
+  /**
+   * Plan references
+   */
+  200: ModelPlanReferencesResponse;
+};
+
+export type ListModelPlanReferencesResponse =
+  ListModelPlanReferencesResponses[keyof ListModelPlanReferencesResponses];
+
+export type ListCollaborationRunsData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query?: {
+    /**
+     * Narrow to runs started from one source agent session.
+     */
+    sourceSessionId?: string;
+    limit?: number;
+  };
+  url: "/v1/workspaces/{workspaceID}/collaboration-runs";
+};
+
+export type ListCollaborationRunsErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListCollaborationRunsError =
+  ListCollaborationRunsErrors[keyof ListCollaborationRunsErrors];
+
+export type ListCollaborationRunsResponses = {
+  /**
+   * Collaboration runs
+   */
+  200: ListCollaborationRunsResponse;
+};
+
+export type ListCollaborationRunsResponse2 =
+  ListCollaborationRunsResponses[keyof ListCollaborationRunsResponses];
+
+export type CreateCollaborationRunData = {
+  body: CreateCollaborationRunRequest;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/collaboration-runs";
+};
+
+export type CreateCollaborationRunErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type CreateCollaborationRunError =
+  CreateCollaborationRunErrors[keyof CreateCollaborationRunErrors];
+
+export type CreateCollaborationRunResponses = {
+  /**
+   * Collaboration run
+   */
+  200: CollaborationRun;
+};
+
+export type CreateCollaborationRunResponse =
+  CreateCollaborationRunResponses[keyof CreateCollaborationRunResponses];
+
+export type SetCollaborationRunAdoptionData = {
+  body: SetCollaborationRunAdoptionRequest;
+  path: {
+    workspaceID: string;
+    collaborationRunID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/adoption";
+};
+
+export type SetCollaborationRunAdoptionErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type SetCollaborationRunAdoptionError =
+  SetCollaborationRunAdoptionErrors[keyof SetCollaborationRunAdoptionErrors];
+
+export type SetCollaborationRunAdoptionResponses = {
+  /**
+   * Updated collaboration run
+   */
+  200: CollaborationRun;
+};
+
+export type SetCollaborationRunAdoptionResponse =
+  SetCollaborationRunAdoptionResponses[keyof SetCollaborationRunAdoptionResponses];
+
+export type CancelCollaborationRunData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    collaborationRunID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/cancel";
+};
+
+export type CancelCollaborationRunErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type CancelCollaborationRunError =
+  CancelCollaborationRunErrors[keyof CancelCollaborationRunErrors];
+
+export type CancelCollaborationRunResponses = {
+  /**
+   * Collaboration run after the cancel request
+   */
+  200: CollaborationRun;
+};
+
+export type CancelCollaborationRunResponse =
+  CancelCollaborationRunResponses[keyof CancelCollaborationRunResponses];
+
+export type ListAgentModelBindingsData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-model-bindings";
+};
+
+export type ListAgentModelBindingsErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListAgentModelBindingsError =
+  ListAgentModelBindingsErrors[keyof ListAgentModelBindingsErrors];
+
+export type ListAgentModelBindingsResponses = {
+  /**
+   * Agent model bindings
+   */
+  200: ListAgentModelBindingsResponse;
+};
+
+export type ListAgentModelBindingsResponse2 =
+  ListAgentModelBindingsResponses[keyof ListAgentModelBindingsResponses];
+
+export type SetAgentModelBindingData = {
+  body: SetAgentModelBindingRequest;
+  path: {
+    workspaceID: string;
+    agentTargetID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-model-bindings/{agentTargetID}";
+};
+
+export type SetAgentModelBindingErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Agent target was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type SetAgentModelBindingError =
+  SetAgentModelBindingErrors[keyof SetAgentModelBindingErrors];
+
+export type SetAgentModelBindingResponses = {
+  /**
+   * Updated agent model binding
+   */
+  200: AgentModelBinding;
+};
+
+export type SetAgentModelBindingResponse =
+  SetAgentModelBindingResponses[keyof SetAgentModelBindingResponses];
+
+export type ListModelPoliciesData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/model-policies";
+};
+
+export type ListModelPoliciesErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListModelPoliciesError =
+  ListModelPoliciesErrors[keyof ListModelPoliciesErrors];
+
+export type ListModelPoliciesResponses = {
+  /**
+   * Model usage policies
+   */
+  200: ListModelPoliciesResponse;
+};
+
+export type ListModelPoliciesResponse2 =
+  ListModelPoliciesResponses[keyof ListModelPoliciesResponses];
+
+export type CreateModelPolicyData = {
+  body: PutModelPolicyRequest;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/model-policies";
+};
+
+export type CreateModelPolicyErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type CreateModelPolicyError =
+  CreateModelPolicyErrors[keyof CreateModelPolicyErrors];
+
+export type CreateModelPolicyResponses = {
+  /**
+   * Created model usage policy
+   */
+  200: ModelUsagePolicy;
+};
+
+export type CreateModelPolicyResponse =
+  CreateModelPolicyResponses[keyof CreateModelPolicyResponses];
+
+export type DeleteModelPolicyData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    modelPolicyID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/model-policies/{modelPolicyID}";
+};
+
+export type DeleteModelPolicyErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Model usage policy is still referenced by agent bindings
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type DeleteModelPolicyError =
+  DeleteModelPolicyErrors[keyof DeleteModelPolicyErrors];
+
+export type DeleteModelPolicyResponses = {
+  /**
+   * Model usage policy deleted
+   */
+  200: DeleteModelPolicyResponse;
+};
+
+export type DeleteModelPolicyResponse2 =
+  DeleteModelPolicyResponses[keyof DeleteModelPolicyResponses];
+
+export type GetModelPolicyData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    modelPolicyID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/model-policies/{modelPolicyID}";
+};
+
+export type GetModelPolicyErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetModelPolicyError =
+  GetModelPolicyErrors[keyof GetModelPolicyErrors];
+
+export type GetModelPolicyResponses = {
+  /**
+   * Model usage policy
+   */
+  200: ModelUsagePolicy;
+};
+
+export type GetModelPolicyResponse =
+  GetModelPolicyResponses[keyof GetModelPolicyResponses];
+
+export type UpdateModelPolicyData = {
+  body: PutModelPolicyRequest;
+  path: {
+    workspaceID: string;
+    modelPolicyID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/model-policies/{modelPolicyID}";
+};
+
+export type UpdateModelPolicyErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type UpdateModelPolicyError =
+  UpdateModelPolicyErrors[keyof UpdateModelPolicyErrors];
+
+export type UpdateModelPolicyResponses = {
+  /**
+   * Updated model usage policy
+   */
+  200: ModelUsagePolicy;
+};
+
+export type UpdateModelPolicyResponse =
+  UpdateModelPolicyResponses[keyof UpdateModelPolicyResponses];
+
+export type GetAgentSessionModelPolicyOverrideData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/model-policy-override";
+};
+
+export type GetAgentSessionModelPolicyOverrideErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetAgentSessionModelPolicyOverrideError =
+  GetAgentSessionModelPolicyOverrideErrors[keyof GetAgentSessionModelPolicyOverrideErrors];
+
+export type GetAgentSessionModelPolicyOverrideResponses = {
+  /**
+   * Session policy override; absent override returns disabled=false with no policy id
+   */
+  200: AgentSessionModelPolicyOverride;
+};
+
+export type GetAgentSessionModelPolicyOverrideResponse =
+  GetAgentSessionModelPolicyOverrideResponses[keyof GetAgentSessionModelPolicyOverrideResponses];
+
+export type SetAgentSessionModelPolicyOverrideData = {
+  body: SetAgentSessionModelPolicyOverrideRequest;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/model-policy-override";
+};
+
+export type SetAgentSessionModelPolicyOverrideErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type SetAgentSessionModelPolicyOverrideError =
+  SetAgentSessionModelPolicyOverrideErrors[keyof SetAgentSessionModelPolicyOverrideErrors];
+
+export type SetAgentSessionModelPolicyOverrideResponses = {
+  /**
+   * Updated session policy override
+   */
+  200: AgentSessionModelPolicyOverride;
+};
+
+export type SetAgentSessionModelPolicyOverrideResponse =
+  SetAgentSessionModelPolicyOverrideResponses[keyof SetAgentSessionModelPolicyOverrideResponses];
+
+export type GetAgentSessionAcceptanceData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/acceptance";
+};
+
+export type GetAgentSessionAcceptanceErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetAgentSessionAcceptanceError =
+  GetAgentSessionAcceptanceErrors[keyof GetAgentSessionAcceptanceErrors];
+
+export type GetAgentSessionAcceptanceResponses = {
+  /**
+   * Session acceptance state; sessions never claimed complete return no state
+   */
+  200: AgentSessionAcceptanceResponse;
+};
+
+export type GetAgentSessionAcceptanceResponse =
+  GetAgentSessionAcceptanceResponses[keyof GetAgentSessionAcceptanceResponses];
+
+export type AcceptAgentSessionWorkData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/acceptance";
+};
+
+export type AcceptAgentSessionWorkErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type AcceptAgentSessionWorkError =
+  AcceptAgentSessionWorkErrors[keyof AcceptAgentSessionWorkErrors];
+
+export type AcceptAgentSessionWorkResponses = {
+  /**
+   * Acceptance recorded as user_accepted
+   */
+  200: AgentSessionAcceptanceResponse;
+};
+
+export type AcceptAgentSessionWorkResponse =
+  AcceptAgentSessionWorkResponses[keyof AcceptAgentSessionWorkResponses];
+
+export type ListWorkspaceWorkflowsData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query: {
+    sourceSessionId: string;
+    /**
+     * When omitted, returns every workflow for the source session. Pass pending to return only workflows with a pending checkpoint.
+     */
+    checkpointStatus?: "pending";
+  };
+  url: "/v1/workspaces/{workspaceID}/workflows";
+};
+
+export type ListWorkspaceWorkflowsErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListWorkspaceWorkflowsError =
+  ListWorkspaceWorkflowsErrors[keyof ListWorkspaceWorkflowsErrors];
+
+export type ListWorkspaceWorkflowsResponses = {
+  /**
+   * Matching authoritative workflow snapshots
+   */
+  200: WorkspaceWorkflowListResponse;
+};
+
+export type ListWorkspaceWorkflowsResponse =
+  ListWorkspaceWorkflowsResponses[keyof ListWorkspaceWorkflowsResponses];
+
+export type GetWorkspaceWorkflowData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    workflowID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/workflows/{workflowID}";
+};
+
+export type GetWorkspaceWorkflowErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetWorkspaceWorkflowError =
+  GetWorkspaceWorkflowErrors[keyof GetWorkspaceWorkflowErrors];
+
+export type GetWorkspaceWorkflowResponses = {
+  /**
+   * Authoritative workflow snapshot
+   */
+  200: WorkspaceWorkflowSnapshot;
+};
+
+export type GetWorkspaceWorkflowResponse =
+  GetWorkspaceWorkflowResponses[keyof GetWorkspaceWorkflowResponses];
+
+export type DecideWorkspaceWorkflowCheckpointData = {
+  body: DecideWorkspaceWorkflowCheckpointRequest;
+  path: {
+    workspaceID: string;
+    workflowID: string;
+    checkpointID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/workflows/{workflowID}/checkpoints/{checkpointID}/decision";
+};
+
+export type DecideWorkspaceWorkflowCheckpointErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Checkpoint was already decided differently or is no longer current
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type DecideWorkspaceWorkflowCheckpointError =
+  DecideWorkspaceWorkflowCheckpointErrors[keyof DecideWorkspaceWorkflowCheckpointErrors];
+
+export type DecideWorkspaceWorkflowCheckpointResponses = {
+  /**
+   * Updated authoritative workflow snapshot
+   */
+  200: WorkspaceWorkflowSnapshot;
+};
+
+export type DecideWorkspaceWorkflowCheckpointResponse =
+  DecideWorkspaceWorkflowCheckpointResponses[keyof DecideWorkspaceWorkflowCheckpointResponses];
 
 export type ListWorkspaceAppsData = {
   body?: never;
@@ -5564,6 +9117,646 @@ export type PublishWorkspaceAppFactoryJobResponses = {
 export type PublishWorkspaceAppFactoryJobResponse2 =
   PublishWorkspaceAppFactoryJobResponses[keyof PublishWorkspaceAppFactoryJobResponses];
 
+export type ListAgentSessionRecordingsData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-session-recordings";
+};
+
+export type ListAgentSessionRecordingsErrors = {
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListAgentSessionRecordingsError =
+  ListAgentSessionRecordingsErrors[keyof ListAgentSessionRecordingsErrors];
+
+export type ListAgentSessionRecordingsResponses = {
+  /**
+   * Agent Session recordings ordered by latest update
+   */
+  200: AgentSessionRecordingListResponse;
+};
+
+export type ListAgentSessionRecordingsResponse =
+  ListAgentSessionRecordingsResponses[keyof ListAgentSessionRecordingsResponses];
+
+export type StartAgentSessionRecordingData = {
+  body: StartAgentSessionRecordingRequest;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-session-recordings";
+};
+
+export type StartAgentSessionRecordingErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Another recording is active
+   */
+  409: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type StartAgentSessionRecordingError =
+  StartAgentSessionRecordingErrors[keyof StartAgentSessionRecordingErrors];
+
+export type StartAgentSessionRecordingResponses = {
+  /**
+   * Agent Session recording prepared or recording
+   */
+  201: AgentSessionRecording;
+};
+
+export type StartAgentSessionRecordingResponse =
+  StartAgentSessionRecordingResponses[keyof StartAgentSessionRecordingResponses];
+
+export type GetAgentSessionRecordingData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    recordingID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-session-recordings/{recordingID}";
+};
+
+export type GetAgentSessionRecordingErrors = {
+  /**
+   * Recording not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetAgentSessionRecordingError =
+  GetAgentSessionRecordingErrors[keyof GetAgentSessionRecordingErrors];
+
+export type GetAgentSessionRecordingResponses = {
+  /**
+   * Agent Session recording
+   */
+  200: AgentSessionRecording;
+};
+
+export type GetAgentSessionRecordingResponse =
+  GetAgentSessionRecordingResponses[keyof GetAgentSessionRecordingResponses];
+
+export type RenameAgentSessionRecordingData = {
+  body: RenameAgentSessionRecordingRequest;
+  path: {
+    workspaceID: string;
+    recordingID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-session-recordings/{recordingID}";
+};
+
+export type RenameAgentSessionRecordingErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Recording not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type RenameAgentSessionRecordingError =
+  RenameAgentSessionRecordingErrors[keyof RenameAgentSessionRecordingErrors];
+
+export type RenameAgentSessionRecordingResponses = {
+  /**
+   * Agent Session recording renamed
+   */
+  200: AgentSessionRecording;
+};
+
+export type RenameAgentSessionRecordingResponse =
+  RenameAgentSessionRecordingResponses[keyof RenameAgentSessionRecordingResponses];
+
+export type CompleteAgentSessionRecordingData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    recordingID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-session-recordings/{recordingID}/complete";
+};
+
+export type CompleteAgentSessionRecordingErrors = {
+  /**
+   * Recording not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * Recording cannot complete in its current state
+   */
+  409: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type CompleteAgentSessionRecordingError =
+  CompleteAgentSessionRecordingErrors[keyof CompleteAgentSessionRecordingErrors];
+
+export type CompleteAgentSessionRecordingResponses = {
+  /**
+   * Agent Session recording completed
+   */
+  200: AgentSessionRecording;
+};
+
+export type CompleteAgentSessionRecordingResponse =
+  CompleteAgentSessionRecordingResponses[keyof CompleteAgentSessionRecordingResponses];
+
+export type AppendAgentSessionRecordingActivityEventsData = {
+  body: AppendAgentSessionRecordingActivityEventsRequest;
+  path: {
+    workspaceID: string;
+    recordingID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-session-recordings/{recordingID}/activity-events";
+};
+
+export type AppendAgentSessionRecordingActivityEventsErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Recording not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * Recording cannot accept Activity events in its current state
+   */
+  409: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type AppendAgentSessionRecordingActivityEventsError =
+  AppendAgentSessionRecordingActivityEventsErrors[keyof AppendAgentSessionRecordingActivityEventsErrors];
+
+export type AppendAgentSessionRecordingActivityEventsResponses = {
+  /**
+   * Activity events persisted through the returned Cassette sequence
+   */
+  200: AppendAgentSessionRecordingActivityEventsResponse;
+};
+
+export type AppendAgentSessionRecordingActivityEventsResponse2 =
+  AppendAgentSessionRecordingActivityEventsResponses[keyof AppendAgentSessionRecordingActivityEventsResponses];
+
+export type CancelAgentSessionRecordingData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    recordingID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-session-recordings/{recordingID}/cancel";
+};
+
+export type CancelAgentSessionRecordingErrors = {
+  /**
+   * Recording not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type CancelAgentSessionRecordingError =
+  CancelAgentSessionRecordingErrors[keyof CancelAgentSessionRecordingErrors];
+
+export type CancelAgentSessionRecordingResponses = {
+  /**
+   * Agent Session recording canceled
+   */
+  200: AgentSessionRecording;
+};
+
+export type CancelAgentSessionRecordingResponse =
+  CancelAgentSessionRecordingResponses[keyof CancelAgentSessionRecordingResponses];
+
+export type ListAgentSessionCassettesData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-session-cassettes";
+};
+
+export type ListAgentSessionCassettesErrors = {
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListAgentSessionCassettesError =
+  ListAgentSessionCassettesErrors[keyof ListAgentSessionCassettesErrors];
+
+export type ListAgentSessionCassettesResponses = {
+  /**
+   * Cassettes ordered by creation time
+   */
+  200: AgentSessionCassetteListResponse;
+};
+
+export type ListAgentSessionCassettesResponse =
+  ListAgentSessionCassettesResponses[keyof ListAgentSessionCassettesResponses];
+
+export type ListAgentSessionReplayRunsData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    cassetteID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-session-cassettes/{cassetteID}/replay-runs";
+};
+
+export type ListAgentSessionReplayRunsErrors = {
+  /**
+   * Cassette not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListAgentSessionReplayRunsError =
+  ListAgentSessionReplayRunsErrors[keyof ListAgentSessionReplayRunsErrors];
+
+export type ListAgentSessionReplayRunsResponses = {
+  /**
+   * Replay runs ordered by latest update
+   */
+  200: AgentSessionReplayRunListResponse;
+};
+
+export type ListAgentSessionReplayRunsResponse =
+  ListAgentSessionReplayRunsResponses[keyof ListAgentSessionReplayRunsResponses];
+
+export type PrepareAgentSessionReplayRunData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    cassetteID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-session-cassettes/{cassetteID}/replay-runs";
+};
+
+export type PrepareAgentSessionReplayRunErrors = {
+  /**
+   * Cassette not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * Cassette is corrupt or cannot be replayed
+   */
+  409: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type PrepareAgentSessionReplayRunError =
+  PrepareAgentSessionReplayRunErrors[keyof PrepareAgentSessionReplayRunErrors];
+
+export type PrepareAgentSessionReplayRunResponses = {
+  /**
+   * Replay run and portable Cassette launch handoff
+   */
+  201: AgentSessionReplayLaunch;
+};
+
+export type PrepareAgentSessionReplayRunResponse =
+  PrepareAgentSessionReplayRunResponses[keyof PrepareAgentSessionReplayRunResponses];
+
+export type MarkAgentSessionReplayRunRunningData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    runID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-session-replay-runs/{runID}/running";
+};
+
+export type MarkAgentSessionReplayRunRunningErrors = {
+  /**
+   * Replay run not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * Replay run cannot start in its current state
+   */
+  409: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type MarkAgentSessionReplayRunRunningError =
+  MarkAgentSessionReplayRunRunningErrors[keyof MarkAgentSessionReplayRunRunningErrors];
+
+export type MarkAgentSessionReplayRunRunningResponses = {
+  /**
+   * Replay run is running
+   */
+  200: AgentSessionReplayRun;
+};
+
+export type MarkAgentSessionReplayRunRunningResponse =
+  MarkAgentSessionReplayRunRunningResponses[keyof MarkAgentSessionReplayRunRunningResponses];
+
+export type AdvanceAgentSessionReplayRunCheckpointData = {
+  body: AdvanceAgentSessionReplayRunCheckpointRequest;
+  path: {
+    workspaceID: string;
+    runID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-session-replay-runs/{runID}/checkpoint";
+};
+
+export type AdvanceAgentSessionReplayRunCheckpointErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Replay run not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * Replay run checkpoint cannot advance in its current state
+   */
+  409: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type AdvanceAgentSessionReplayRunCheckpointError =
+  AdvanceAgentSessionReplayRunCheckpointErrors[keyof AdvanceAgentSessionReplayRunCheckpointErrors];
+
+export type AdvanceAgentSessionReplayRunCheckpointResponses = {
+  /**
+   * Replay run checkpoint advanced
+   */
+  200: AgentSessionReplayRun;
+};
+
+export type AdvanceAgentSessionReplayRunCheckpointResponse =
+  AdvanceAgentSessionReplayRunCheckpointResponses[keyof AdvanceAgentSessionReplayRunCheckpointResponses];
+
+export type CancelAgentSessionReplayRunData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    runID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-session-replay-runs/{runID}/cancel";
+};
+
+export type CancelAgentSessionReplayRunErrors = {
+  /**
+   * Replay run not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * Replay run cannot cancel in its current state
+   */
+  409: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type CancelAgentSessionReplayRunError =
+  CancelAgentSessionReplayRunErrors[keyof CancelAgentSessionReplayRunErrors];
+
+export type CancelAgentSessionReplayRunResponses = {
+  /**
+   * Replay run canceled
+   */
+  200: AgentSessionReplayRun;
+};
+
+export type CancelAgentSessionReplayRunResponse =
+  CancelAgentSessionReplayRunResponses[keyof CancelAgentSessionReplayRunResponses];
+
+export type CompleteAgentSessionReplayRunData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    runID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-session-replay-runs/{runID}/complete";
+};
+
+export type CompleteAgentSessionReplayRunErrors = {
+  /**
+   * Replay run not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * Replay run cannot complete in its current state
+   */
+  409: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type CompleteAgentSessionReplayRunError =
+  CompleteAgentSessionReplayRunErrors[keyof CompleteAgentSessionReplayRunErrors];
+
+export type CompleteAgentSessionReplayRunResponses = {
+  /**
+   * Replay run completed
+   */
+  200: AgentSessionReplayRun;
+};
+
+export type CompleteAgentSessionReplayRunResponse =
+  CompleteAgentSessionReplayRunResponses[keyof CompleteAgentSessionReplayRunResponses];
+
+export type FailAgentSessionReplayRunData = {
+  body: FailAgentSessionReplayRunRequest;
+  path: {
+    workspaceID: string;
+    runID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-session-replay-runs/{runID}/fail";
+};
+
+export type FailAgentSessionReplayRunErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Replay run not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * Replay run cannot fail in its current state
+   */
+  409: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type FailAgentSessionReplayRunError =
+  FailAgentSessionReplayRunErrors[keyof FailAgentSessionReplayRunErrors];
+
+export type FailAgentSessionReplayRunResponses = {
+  /**
+   * Replay run failed with diagnostic evidence
+   */
+  200: AgentSessionReplayRun;
+};
+
+export type FailAgentSessionReplayRunResponse =
+  FailAgentSessionReplayRunResponses[keyof FailAgentSessionReplayRunResponses];
+
+export type VerifyAgentSessionReplayTransportData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/agent-session-replay/transport/verify";
+};
+
+export type VerifyAgentSessionReplayTransportErrors = {
+  /**
+   * Replay transport mismatch or incomplete consumption
+   */
+  409: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type VerifyAgentSessionReplayTransportError =
+  VerifyAgentSessionReplayTransportErrors[keyof VerifyAgentSessionReplayTransportErrors];
+
+export type VerifyAgentSessionReplayTransportResponses = {
+  /**
+   * Replay transport consumed every recorded connection and frame
+   */
+  204: void;
+};
+
+export type VerifyAgentSessionReplayTransportResponse =
+  VerifyAgentSessionReplayTransportResponses[keyof VerifyAgentSessionReplayTransportResponses];
+
+export type GetAgentSessionReplayTransportPlaybackData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/agent-session-replay/transport/playback";
+};
+
+export type GetAgentSessionReplayTransportPlaybackErrors = {
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetAgentSessionReplayTransportPlaybackError =
+  GetAgentSessionReplayTransportPlaybackErrors[keyof GetAgentSessionReplayTransportPlaybackErrors];
+
+export type GetAgentSessionReplayTransportPlaybackResponses = {
+  /**
+   * Current replay playback timing
+   */
+  200: AgentSessionReplayTransportPlayback;
+};
+
+export type GetAgentSessionReplayTransportPlaybackResponse =
+  GetAgentSessionReplayTransportPlaybackResponses[keyof GetAgentSessionReplayTransportPlaybackResponses];
+
+export type UpdateAgentSessionReplayTransportPlaybackData = {
+  body: UpdateAgentSessionReplayTransportPlaybackRequest;
+  path?: never;
+  query?: never;
+  url: "/v1/agent-session-replay/transport/playback";
+};
+
+export type UpdateAgentSessionReplayTransportPlaybackErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type UpdateAgentSessionReplayTransportPlaybackError =
+  UpdateAgentSessionReplayTransportPlaybackErrors[keyof UpdateAgentSessionReplayTransportPlaybackErrors];
+
+export type UpdateAgentSessionReplayTransportPlaybackResponses = {
+  /**
+   * Updated replay playback timing
+   */
+  200: AgentSessionReplayTransportPlayback;
+};
+
+export type UpdateAgentSessionReplayTransportPlaybackResponse =
+  UpdateAgentSessionReplayTransportPlaybackResponses[keyof UpdateAgentSessionReplayTransportPlaybackResponses];
+
 export type ClearWorkspaceAgentSessionsData = {
   body?: never;
   path: {
@@ -5590,6 +9783,10 @@ export type ClearWorkspaceAgentSessionsErrors = {
    * HTTP method is not supported on this route
    */
   405: ApiErrorResponse;
+  /**
+   * One or more source sessions own a nonterminal Tutti execution
+   */
+  409: ApiErrorResponse;
   /**
    * Workspace operation failed in an upstream adapter or command
    */
@@ -5745,6 +9942,10 @@ export type DeleteWorkspaceAgentSessionsBatchErrors = {
    * HTTP method is not supported on this route
    */
   405: ApiErrorResponse;
+  /**
+   * One or more source sessions own a nonterminal Tutti execution
+   */
+  409: ApiErrorResponse;
   /**
    * Workspace operation failed in an upstream adapter or command
    */
@@ -6186,9 +10387,17 @@ export type GetAgentProviderStatusesData = {
      */
     includeNetwork?: boolean;
     /**
-     * Bypass the daemon provider-readiness cache.
+     * Opt into cached remote update discovery for provider CLIs. Off by default so ordinary readiness and status requests stay purely local. Discovery failures are reported on each provider's update status and do not fail the status request.
+     */
+    includeUpdates?: boolean;
+    /**
+     * Bypass only the daemon's local provider-readiness cache. This does not opt into or refresh remote update discovery.
      */
     refresh?: boolean;
+    /**
+     * Bypass only the provider update-metadata cache when includeUpdates is true. This does not bypass local readiness or network-diagnostic caches and does not opt into discovery by itself.
+     */
+    refreshUpdates?: boolean;
   };
   url: "/v1/agent-providers/status";
 };
@@ -6257,6 +10466,10 @@ export type DeleteWorkspaceAgentSessionErrors = {
    */
   405: ApiErrorResponse;
   /**
+   * One or more source sessions own a nonterminal Tutti execution
+   */
+  409: ApiErrorResponse;
+  /**
    * Workspace operation failed in an upstream adapter or command
    */
   502: ApiErrorResponse;
@@ -6285,7 +10498,12 @@ export type GetWorkspaceAgentSessionData = {
     workspaceID: string;
     agentSessionID: string;
   };
-  query?: never;
+  query?: {
+    /**
+     * Selects the detail projection. messageHydration preserves the session hierarchy and message cursors used by reconciliation discovery without resolving provider-backed lifecycle capabilities.
+     */
+    projection?: WorkspaceAgentSessionDetailProjection;
+  };
   url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}";
 };
 
@@ -6328,6 +10546,428 @@ export type GetWorkspaceAgentSessionResponses = {
 
 export type GetWorkspaceAgentSessionResponse =
   GetWorkspaceAgentSessionResponses[keyof GetWorkspaceAgentSessionResponses];
+
+export type CancelTuttiModeExecutionData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    issueID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/tutti-executions/{issueID}/cancel-execution";
+};
+
+export type CancelTuttiModeExecutionErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace issue-manager resource was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type CancelTuttiModeExecutionError =
+  CancelTuttiModeExecutionErrors[keyof CancelTuttiModeExecutionErrors];
+
+export type CancelTuttiModeExecutionResponses = {
+  /**
+   * Tutti execution stopped
+   */
+  200: CancelIssueManagerExecutionResponse;
+};
+
+export type CancelTuttiModeExecutionResponse =
+  CancelTuttiModeExecutionResponses[keyof CancelTuttiModeExecutionResponses];
+
+export type GetTuttiModeArchiveOperationData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    issueID: string;
+  };
+  query: {
+    operationId: string;
+  };
+  url: "/v1/workspaces/{workspaceID}/tutti-executions/{issueID}/archive";
+};
+
+export type GetTuttiModeArchiveOperationErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace issue-manager resource was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetTuttiModeArchiveOperationError =
+  GetTuttiModeArchiveOperationErrors[keyof GetTuttiModeArchiveOperationErrors];
+
+export type GetTuttiModeArchiveOperationResponses = {
+  /**
+   * Current durable archive operation
+   */
+  200: TuttiModeArchiveOperation;
+};
+
+export type GetTuttiModeArchiveOperationResponse =
+  GetTuttiModeArchiveOperationResponses[keyof GetTuttiModeArchiveOperationResponses];
+
+export type ArchiveTuttiModeExecutionData = {
+  body: ArchiveTuttiModeExecutionRequest;
+  path: {
+    workspaceID: string;
+    issueID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/tutti-executions/{issueID}/archive";
+};
+
+export type ArchiveTuttiModeExecutionErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace issue-manager resource was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Archive request id conflicts with a different durable archive request
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ArchiveTuttiModeExecutionError =
+  ArchiveTuttiModeExecutionErrors[keyof ArchiveTuttiModeExecutionErrors];
+
+export type ArchiveTuttiModeExecutionResponses = {
+  /**
+   * Current durable archive operation
+   */
+  200: TuttiModeArchiveOperation;
+};
+
+export type ArchiveTuttiModeExecutionResponse =
+  ArchiveTuttiModeExecutionResponses[keyof ArchiveTuttiModeExecutionResponses];
+
+export type ForkWorkspaceAgentSessionData = {
+  body: ForkWorkspaceAgentSessionRequest;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/fork";
+};
+
+export type ForkWorkspaceAgentSessionErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * The source session or requested fork boundary is not forkable. Boundary validation failures keep reason `agent_session_fork_conflict` and include the stable rejection code in `error.params.forkBoundaryReason`.
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ForkWorkspaceAgentSessionError =
+  ForkWorkspaceAgentSessionErrors[keyof ForkWorkspaceAgentSessionErrors];
+
+export type ForkWorkspaceAgentSessionResponses = {
+  /**
+   * Terminal workspace agent session fork operation
+   */
+  200: WorkspaceAgentSessionForkOperationResponse;
+  /**
+   * Accepted workspace agent session fork operation
+   */
+  202: WorkspaceAgentSessionForkOperationResponse;
+};
+
+export type ForkWorkspaceAgentSessionResponse =
+  ForkWorkspaceAgentSessionResponses[keyof ForkWorkspaceAgentSessionResponses];
+
+export type GetWorkspaceAgentSessionForkOperationData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    operationID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-session-fork-operations/{operationID}";
+};
+
+export type GetWorkspaceAgentSessionForkOperationErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Agent session fork operation was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetWorkspaceAgentSessionForkOperationError =
+  GetWorkspaceAgentSessionForkOperationErrors[keyof GetWorkspaceAgentSessionForkOperationErrors];
+
+export type GetWorkspaceAgentSessionForkOperationResponses = {
+  /**
+   * Workspace agent session fork operation
+   */
+  200: WorkspaceAgentSessionForkOperationResponse;
+};
+
+export type GetWorkspaceAgentSessionForkOperationResponse =
+  GetWorkspaceAgentSessionForkOperationResponses[keyof GetWorkspaceAgentSessionForkOperationResponses];
+
+export type AcknowledgeWorkspaceAgentSessionForkOperationData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    operationID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-session-fork-operations/{operationID}/acknowledge";
+};
+
+export type AcknowledgeWorkspaceAgentSessionForkOperationErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Agent session fork operation was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Agent session fork operation cannot be acknowledged
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type AcknowledgeWorkspaceAgentSessionForkOperationError =
+  AcknowledgeWorkspaceAgentSessionForkOperationErrors[keyof AcknowledgeWorkspaceAgentSessionForkOperationErrors];
+
+export type AcknowledgeWorkspaceAgentSessionForkOperationResponses = {
+  /**
+   * Acknowledged workspace agent session fork operation
+   */
+  200: WorkspaceAgentSessionForkOperationResponse;
+};
+
+export type AcknowledgeWorkspaceAgentSessionForkOperationResponse =
+  AcknowledgeWorkspaceAgentSessionForkOperationResponses[keyof AcknowledgeWorkspaceAgentSessionForkOperationResponses];
+
+export type GetWorkspaceAgentSessionTuttiModeActivationData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/tutti-mode-activation";
+};
+
+export type GetWorkspaceAgentSessionTuttiModeActivationErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetWorkspaceAgentSessionTuttiModeActivationError =
+  GetWorkspaceAgentSessionTuttiModeActivationErrors[keyof GetWorkspaceAgentSessionTuttiModeActivationErrors];
+
+export type GetWorkspaceAgentSessionTuttiModeActivationResponses = {
+  /**
+   * Tutti mode activation projection
+   */
+  200: TuttiModeActivationResponse;
+};
+
+export type GetWorkspaceAgentSessionTuttiModeActivationResponse =
+  GetWorkspaceAgentSessionTuttiModeActivationResponses[keyof GetWorkspaceAgentSessionTuttiModeActivationResponses];
+
+export type UpdateWorkspaceAgentSessionTuttiModeActivationData = {
+  body: UpdateTuttiModeActivationRequest;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/tutti-mode-activation";
+};
+
+export type UpdateWorkspaceAgentSessionTuttiModeActivationErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Tutti mode activation revision conflict
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type UpdateWorkspaceAgentSessionTuttiModeActivationError =
+  UpdateWorkspaceAgentSessionTuttiModeActivationErrors[keyof UpdateWorkspaceAgentSessionTuttiModeActivationErrors];
+
+export type UpdateWorkspaceAgentSessionTuttiModeActivationResponses = {
+  /**
+   * Updated Tutti mode activation projection
+   */
+  200: UpdateTuttiModeActivationResponse;
+};
+
+export type UpdateWorkspaceAgentSessionTuttiModeActivationResponse =
+  UpdateWorkspaceAgentSessionTuttiModeActivationResponses[keyof UpdateWorkspaceAgentSessionTuttiModeActivationResponses];
 
 export type ListWorkspaceAgentPinnedSessionPageData = {
   body?: never;
@@ -6459,8 +11099,8 @@ export type ListWorkspaceAgentSessionMessagesData = {
     agentSessionID: string;
   };
   query?: {
-    afterVersion?: number;
-    beforeVersion?: number;
+    afterVersion?: WorkspaceAgentMessageCursor;
+    beforeVersion?: WorkspaceAgentMessageCursor;
     order?: "asc" | "desc";
     limit?: number;
   };
@@ -7761,6 +12401,60 @@ export type CreateWorkspaceFileDirectoryResponses = {
 export type CreateWorkspaceFileDirectoryResponse =
   CreateWorkspaceFileDirectoryResponses[keyof CreateWorkspaceFileDirectoryResponses];
 
+export type SwitchTuttiModeGoalReviewToSelfData = {
+  body: SwitchTuttiModeGoalReviewToSelfRequest;
+  path: {
+    workspaceID: string;
+    issueID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/issues/{issueID}/tutti-mode-review/self";
+};
+
+export type SwitchTuttiModeGoalReviewToSelfErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Tutti Mode execution or Goal Review was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Goal Review fallback conflicts with current durable state or request history
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type SwitchTuttiModeGoalReviewToSelfError =
+  SwitchTuttiModeGoalReviewToSelfErrors[keyof SwitchTuttiModeGoalReviewToSelfErrors];
+
+export type SwitchTuttiModeGoalReviewToSelfResponses = {
+  /**
+   * Goal Review switched to self review, or an idempotent replay
+   */
+  200: SwitchTuttiModeGoalReviewToSelfResponse;
+};
+
+export type SwitchTuttiModeGoalReviewToSelfResponse2 =
+  SwitchTuttiModeGoalReviewToSelfResponses[keyof SwitchTuttiModeGoalReviewToSelfResponses];
+
 export type ListWorkspaceRecentFilesData = {
   body?: never;
   path: {
@@ -8425,6 +13119,586 @@ export type OpenWorkspaceResponses = {
 export type OpenWorkspaceResponse =
   OpenWorkspaceResponses[keyof OpenWorkspaceResponses];
 
+export type ListWorkspaceAgentsData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agents";
+};
+
+export type ListWorkspaceAgentsErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListWorkspaceAgentsError =
+  ListWorkspaceAgentsErrors[keyof ListWorkspaceAgentsErrors];
+
+export type ListWorkspaceAgentsResponses = {
+  /**
+   * Workspace Agent configurations
+   */
+  200: ListWorkspaceAgentsResponse;
+};
+
+export type ListWorkspaceAgentsResponse2 =
+  ListWorkspaceAgentsResponses[keyof ListWorkspaceAgentsResponses];
+
+export type CreateWorkspaceAgentData = {
+  body: PutWorkspaceAgentRequest;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agents";
+};
+
+export type CreateWorkspaceAgentErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type CreateWorkspaceAgentError =
+  CreateWorkspaceAgentErrors[keyof CreateWorkspaceAgentErrors];
+
+export type CreateWorkspaceAgentResponses = {
+  /**
+   * Created workspace Agent
+   */
+  201: WorkspaceAgent;
+};
+
+export type CreateWorkspaceAgentResponse =
+  CreateWorkspaceAgentResponses[keyof CreateWorkspaceAgentResponses];
+
+export type DeleteWorkspaceAgentData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    workspaceAgentID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agents/{workspaceAgentID}";
+};
+
+export type DeleteWorkspaceAgentErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type DeleteWorkspaceAgentError =
+  DeleteWorkspaceAgentErrors[keyof DeleteWorkspaceAgentErrors];
+
+export type DeleteWorkspaceAgentResponses = {
+  /**
+   * Workspace Agent deleted
+   */
+  200: DeleteWorkspaceAgentResponse;
+};
+
+export type DeleteWorkspaceAgentResponse2 =
+  DeleteWorkspaceAgentResponses[keyof DeleteWorkspaceAgentResponses];
+
+export type GetWorkspaceAgentData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    workspaceAgentID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agents/{workspaceAgentID}";
+};
+
+export type GetWorkspaceAgentErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetWorkspaceAgentError =
+  GetWorkspaceAgentErrors[keyof GetWorkspaceAgentErrors];
+
+export type GetWorkspaceAgentResponses = {
+  /**
+   * Workspace Agent configuration
+   */
+  200: WorkspaceAgent;
+};
+
+export type GetWorkspaceAgentResponse =
+  GetWorkspaceAgentResponses[keyof GetWorkspaceAgentResponses];
+
+export type UpdateWorkspaceAgentData = {
+  body: PutWorkspaceAgentRequest;
+  path: {
+    workspaceID: string;
+    workspaceAgentID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agents/{workspaceAgentID}";
+};
+
+export type UpdateWorkspaceAgentErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type UpdateWorkspaceAgentError =
+  UpdateWorkspaceAgentErrors[keyof UpdateWorkspaceAgentErrors];
+
+export type UpdateWorkspaceAgentResponses = {
+  /**
+   * Updated workspace Agent
+   */
+  200: WorkspaceAgent;
+};
+
+export type UpdateWorkspaceAgentResponse =
+  UpdateWorkspaceAgentResponses[keyof UpdateWorkspaceAgentResponses];
+
+export type ListAutomationRulesData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/automation-rules";
+};
+
+export type ListAutomationRulesErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListAutomationRulesError =
+  ListAutomationRulesErrors[keyof ListAutomationRulesErrors];
+
+export type ListAutomationRulesResponses = {
+  /**
+   * Workspace automation rules
+   */
+  200: ListAutomationRulesResponse;
+};
+
+export type ListAutomationRulesResponse2 =
+  ListAutomationRulesResponses[keyof ListAutomationRulesResponses];
+
+export type CreateAutomationRuleData = {
+  body: PutAutomationRuleRequest;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/automation-rules";
+};
+
+export type CreateAutomationRuleErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type CreateAutomationRuleError =
+  CreateAutomationRuleErrors[keyof CreateAutomationRuleErrors];
+
+export type CreateAutomationRuleResponses = {
+  /**
+   * Created automation rule
+   */
+  201: AutomationRule;
+};
+
+export type CreateAutomationRuleResponse =
+  CreateAutomationRuleResponses[keyof CreateAutomationRuleResponses];
+
+export type DeleteAutomationRuleData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    automationRuleID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/automation-rules/{automationRuleID}";
+};
+
+export type DeleteAutomationRuleErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type DeleteAutomationRuleError =
+  DeleteAutomationRuleErrors[keyof DeleteAutomationRuleErrors];
+
+export type DeleteAutomationRuleResponses = {
+  /**
+   * Automation rule deleted
+   */
+  200: DeleteAutomationRuleResponse;
+};
+
+export type DeleteAutomationRuleResponse2 =
+  DeleteAutomationRuleResponses[keyof DeleteAutomationRuleResponses];
+
+export type GetAutomationRuleData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    automationRuleID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/automation-rules/{automationRuleID}";
+};
+
+export type GetAutomationRuleErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetAutomationRuleError =
+  GetAutomationRuleErrors[keyof GetAutomationRuleErrors];
+
+export type GetAutomationRuleResponses = {
+  /**
+   * Workspace automation rule
+   */
+  200: AutomationRule;
+};
+
+export type GetAutomationRuleResponse =
+  GetAutomationRuleResponses[keyof GetAutomationRuleResponses];
+
+export type UpdateAutomationRuleData = {
+  body: PutAutomationRuleRequest;
+  path: {
+    workspaceID: string;
+    automationRuleID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/automation-rules/{automationRuleID}";
+};
+
+export type UpdateAutomationRuleErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type UpdateAutomationRuleError =
+  UpdateAutomationRuleErrors[keyof UpdateAutomationRuleErrors];
+
+export type UpdateAutomationRuleResponses = {
+  /**
+   * Updated automation rule
+   */
+  200: AutomationRule;
+};
+
+export type UpdateAutomationRuleResponse =
+  UpdateAutomationRuleResponses[keyof UpdateAutomationRuleResponses];
+
+export type GetAgentSessionAutomationRuleOverrideData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/automation-rule-override";
+};
+
+export type GetAgentSessionAutomationRuleOverrideErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetAgentSessionAutomationRuleOverrideError =
+  GetAgentSessionAutomationRuleOverrideErrors[keyof GetAgentSessionAutomationRuleOverrideErrors];
+
+export type GetAgentSessionAutomationRuleOverrideResponses = {
+  /**
+   * Session automation rule override
+   */
+  200: AgentSessionAutomationRuleOverride;
+};
+
+export type GetAgentSessionAutomationRuleOverrideResponse =
+  GetAgentSessionAutomationRuleOverrideResponses[keyof GetAgentSessionAutomationRuleOverrideResponses];
+
+export type SetAgentSessionAutomationRuleOverrideData = {
+  body: SetAgentSessionAutomationRuleOverrideRequest;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/automation-rule-override";
+};
+
+export type SetAgentSessionAutomationRuleOverrideErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type SetAgentSessionAutomationRuleOverrideError =
+  SetAgentSessionAutomationRuleOverrideErrors[keyof SetAgentSessionAutomationRuleOverrideErrors];
+
+export type SetAgentSessionAutomationRuleOverrideResponses = {
+  /**
+   * Updated session automation rule override
+   */
+  200: AgentSessionAutomationRuleOverride;
+};
+
+export type SetAgentSessionAutomationRuleOverrideResponse =
+  SetAgentSessionAutomationRuleOverrideResponses[keyof SetAgentSessionAutomationRuleOverrideResponses];
+
 export type ListWorkspaceIssueTopicsData = {
   body?: never;
   path: {
@@ -8501,7 +13775,7 @@ export type CreateWorkspaceIssueTopicErrors = {
    */
   405: ApiErrorResponse;
   /**
-   * Workspace issue-manager resource already exists
+   * Workspace issue-manager resource conflicts with durable state
    */
   409: ApiErrorResponse;
   /**
@@ -8555,7 +13829,7 @@ export type DeleteWorkspaceIssueTopicErrors = {
    */
   405: ApiErrorResponse;
   /**
-   * Workspace issue-manager resource already exists
+   * Workspace issue-manager resource conflicts with durable state
    */
   409: ApiErrorResponse;
   /**
@@ -8716,7 +13990,7 @@ export type CreateWorkspaceIssueErrors = {
    */
   405: ApiErrorResponse;
   /**
-   * Workspace issue-manager resource already exists
+   * Workspace issue-manager resource conflicts with durable state
    */
   409: ApiErrorResponse;
   /**
@@ -8741,6 +14015,108 @@ export type CreateWorkspaceIssueResponses = {
 
 export type CreateWorkspaceIssueResponse =
   CreateWorkspaceIssueResponses[keyof CreateWorkspaceIssueResponses];
+
+export type CreateWorkspaceIssueFromPlanData = {
+  body: CreateIssueManagerIssueFromPlanRequest;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/issues/from-plan";
+};
+
+export type CreateWorkspaceIssueFromPlanErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace issue-manager resource conflicts with durable state
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type CreateWorkspaceIssueFromPlanError =
+  CreateWorkspaceIssueFromPlanErrors[keyof CreateWorkspaceIssueFromPlanErrors];
+
+export type CreateWorkspaceIssueFromPlanResponses = {
+  /**
+   * Workspace issue and tasks created
+   */
+  201: IssueManagerIssueDetailResponse;
+};
+
+export type CreateWorkspaceIssueFromPlanResponse =
+  CreateWorkspaceIssueFromPlanResponses[keyof CreateWorkspaceIssueFromPlanResponses];
+
+export type EstimateWorkspaceIssueAutoTokenBudgetData = {
+  body: EstimateIssueManagerAutoTokenBudgetRequest;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/issues/auto-token-budget-estimate";
+};
+
+export type EstimateWorkspaceIssueAutoTokenBudgetErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type EstimateWorkspaceIssueAutoTokenBudgetError =
+  EstimateWorkspaceIssueAutoTokenBudgetErrors[keyof EstimateWorkspaceIssueAutoTokenBudgetErrors];
+
+export type EstimateWorkspaceIssueAutoTokenBudgetResponses = {
+  /**
+   * Automatic token budget estimate
+   */
+  200: IssueManagerAutoTokenBudgetEstimate;
+};
+
+export type EstimateWorkspaceIssueAutoTokenBudgetResponse =
+  EstimateWorkspaceIssueAutoTokenBudgetResponses[keyof EstimateWorkspaceIssueAutoTokenBudgetResponses];
 
 export type SearchWorkspaceIssueReferencesData = {
   body: IssueManagerReferenceSearchRequest;
@@ -8818,6 +14194,10 @@ export type DeleteWorkspaceIssueErrors = {
    * HTTP method is not supported on this route
    */
   405: ApiErrorResponse;
+  /**
+   * Workspace issue-manager resource conflicts with durable state
+   */
+  409: ApiErrorResponse;
   /**
    * Workspace operation failed in an upstream adapter or command
    */
@@ -8919,6 +14299,10 @@ export type UpdateWorkspaceIssueErrors = {
    */
   405: ApiErrorResponse;
   /**
+   * Workspace issue-manager resource conflicts with durable state
+   */
+  409: ApiErrorResponse;
+  /**
    * Workspace operation failed in an upstream adapter or command
    */
   502: ApiErrorResponse;
@@ -8969,7 +14353,7 @@ export type AddWorkspaceIssueContextRefsErrors = {
    */
   405: ApiErrorResponse;
   /**
-   * Workspace issue-manager resource already exists
+   * Workspace issue-manager resource conflicts with durable state
    */
   409: ApiErrorResponse;
   /**
@@ -9024,6 +14408,10 @@ export type RemoveWorkspaceIssueContextRefErrors = {
    */
   405: ApiErrorResponse;
   /**
+   * Workspace issue-manager resource conflicts with durable state
+   */
+  409: ApiErrorResponse;
+  /**
    * Workspace operation failed in an upstream adapter or command
    */
   502: ApiErrorResponse;
@@ -9045,6 +14433,60 @@ export type RemoveWorkspaceIssueContextRefResponses = {
 
 export type RemoveWorkspaceIssueContextRefResponse =
   RemoveWorkspaceIssueContextRefResponses[keyof RemoveWorkspaceIssueContextRefResponses];
+
+export type CancelWorkspaceIssueExecutionData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    issueID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/issues/{issueID}/cancel-execution";
+};
+
+export type CancelWorkspaceIssueExecutionErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace issue-manager resource was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace issue-manager resource conflicts with durable state
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type CancelWorkspaceIssueExecutionError =
+  CancelWorkspaceIssueExecutionErrors[keyof CancelWorkspaceIssueExecutionErrors];
+
+export type CancelWorkspaceIssueExecutionResponses = {
+  /**
+   * Workspace issue execution canceled
+   */
+  200: CancelIssueManagerExecutionResponse;
+};
+
+export type CancelWorkspaceIssueExecutionResponse =
+  CancelWorkspaceIssueExecutionResponses[keyof CancelWorkspaceIssueExecutionResponses];
 
 export type ListWorkspaceIssueRunsData = {
   body?: never;
@@ -9124,7 +14566,7 @@ export type CreateWorkspaceIssueRunErrors = {
    */
   405: ApiErrorResponse;
   /**
-   * Workspace issue-manager resource already exists
+   * Workspace issue-manager resource conflicts with durable state
    */
   409: ApiErrorResponse;
   /**
@@ -9338,7 +14780,7 @@ export type CreateWorkspaceIssueTaskErrors = {
    */
   405: ApiErrorResponse;
   /**
-   * Workspace issue-manager resource already exists
+   * Workspace issue-manager resource conflicts with durable state
    */
   409: ApiErrorResponse;
   /**
@@ -9392,7 +14834,7 @@ export type CreateWorkspaceIssueTasksErrors = {
    */
   405: ApiErrorResponse;
   /**
-   * Workspace issue-manager resource already exists
+   * Workspace issue-manager resource conflicts with durable state
    */
   409: ApiErrorResponse;
   /**
@@ -9446,6 +14888,10 @@ export type DeleteWorkspaceIssueTaskErrors = {
    * HTTP method is not supported on this route
    */
   405: ApiErrorResponse;
+  /**
+   * Workspace issue-manager resource conflicts with durable state
+   */
+  409: ApiErrorResponse;
   /**
    * Workspace operation failed in an upstream adapter or command
    */
@@ -9549,6 +14995,10 @@ export type UpdateWorkspaceIssueTaskErrors = {
    */
   405: ApiErrorResponse;
   /**
+   * Workspace issue-manager resource conflicts with durable state
+   */
+  409: ApiErrorResponse;
+  /**
    * Workspace operation failed in an upstream adapter or command
    */
   502: ApiErrorResponse;
@@ -9600,7 +15050,7 @@ export type AddWorkspaceIssueTaskContextRefsErrors = {
    */
   405: ApiErrorResponse;
   /**
-   * Workspace issue-manager resource already exists
+   * Workspace issue-manager resource conflicts with durable state
    */
   409: ApiErrorResponse;
   /**
@@ -9655,6 +15105,10 @@ export type RemoveWorkspaceIssueTaskContextRefErrors = {
    * HTTP method is not supported on this route
    */
   405: ApiErrorResponse;
+  /**
+   * Workspace issue-manager resource conflicts with durable state
+   */
+  409: ApiErrorResponse;
   /**
    * Workspace operation failed in an upstream adapter or command
    */
@@ -9758,7 +15212,7 @@ export type CreateWorkspaceIssueTaskRunErrors = {
    */
   405: ApiErrorResponse;
   /**
-   * Workspace issue-manager resource already exists
+   * Workspace issue-manager resource conflicts with durable state
    */
   409: ApiErrorResponse;
   /**
@@ -9887,3 +15341,196 @@ export type CompleteWorkspaceIssueTaskRunResponses = {
 
 export type CompleteWorkspaceIssueTaskRunResponse =
   CompleteWorkspaceIssueTaskRunResponses[keyof CompleteWorkspaceIssueTaskRunResponses];
+
+export type StartMobileRemotePairingData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/mobile-remote-access/pairing-challenges";
+};
+
+export type StartMobileRemotePairingErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type StartMobileRemotePairingError =
+  StartMobileRemotePairingErrors[keyof StartMobileRemotePairingErrors];
+
+export type StartMobileRemotePairingResponses = {
+  /**
+   * Pairing challenge created
+   */
+  200: MobileRemotePairingStartResponse;
+};
+
+export type StartMobileRemotePairingResponse =
+  StartMobileRemotePairingResponses[keyof StartMobileRemotePairingResponses];
+
+export type GetMobileRemotePairingChallengeData = {
+  body?: never;
+  path: {
+    challengeID: string;
+  };
+  query?: never;
+  url: "/v1/mobile-remote-access/pairing-challenges/{challengeID}";
+};
+
+export type GetMobileRemotePairingChallengeErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetMobileRemotePairingChallengeError =
+  GetMobileRemotePairingChallengeErrors[keyof GetMobileRemotePairingChallengeErrors];
+
+export type GetMobileRemotePairingChallengeResponses = {
+  /**
+   * Current pairing challenge
+   */
+  200: MobileRemotePairingChallengeResponse;
+};
+
+export type GetMobileRemotePairingChallengeResponse =
+  GetMobileRemotePairingChallengeResponses[keyof GetMobileRemotePairingChallengeResponses];
+
+export type ConfirmMobileRemotePairingData = {
+  body?: never;
+  path: {
+    challengeID: string;
+  };
+  query?: never;
+  url: "/v1/mobile-remote-access/pairing-challenges/{challengeID}/confirm";
+};
+
+export type ConfirmMobileRemotePairingErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ConfirmMobileRemotePairingError =
+  ConfirmMobileRemotePairingErrors[keyof ConfirmMobileRemotePairingErrors];
+
+export type ConfirmMobileRemotePairingResponses = {
+  /**
+   * Pairing confirmed
+   */
+  200: MobileRemotePairingConfirmResponse;
+};
+
+export type ConfirmMobileRemotePairingResponse =
+  ConfirmMobileRemotePairingResponses[keyof ConfirmMobileRemotePairingResponses];
+
+export type ListMobileRemotePairingsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/mobile-remote-access/pairings";
+};
+
+export type ListMobileRemotePairingsErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListMobileRemotePairingsError =
+  ListMobileRemotePairingsErrors[keyof ListMobileRemotePairingsErrors];
+
+export type ListMobileRemotePairingsResponses = {
+  /**
+   * Pairings for this desktop device
+   */
+  200: MobileRemotePairingListResponse;
+};
+
+export type ListMobileRemotePairingsResponse =
+  ListMobileRemotePairingsResponses[keyof ListMobileRemotePairingsResponses];
+
+export type RevokeMobileRemotePairingData = {
+  body?: never;
+  path: {
+    pairingID: string;
+  };
+  query?: never;
+  url: "/v1/mobile-remote-access/pairings/{pairingID}";
+};
+
+export type RevokeMobileRemotePairingErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type RevokeMobileRemotePairingError =
+  RevokeMobileRemotePairingErrors[keyof RevokeMobileRemotePairingErrors];
+
+export type RevokeMobileRemotePairingResponses = {
+  /**
+   * Pairing revoked
+   */
+  200: MobileRemotePairingResponse;
+};
+
+export type RevokeMobileRemotePairingResponse =
+  RevokeMobileRemotePairingResponses[keyof RevokeMobileRemotePairingResponses];

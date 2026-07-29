@@ -121,7 +121,7 @@ function DropdownMenuCheckboxItem({
       data-slot="dropdown-menu-checkbox-item"
       className={cn(
         menuItemWithIndicatorClassName,
-        "data-inset:pl-7",
+        "data-inset:pl-7 data-[state=checked]:[&_[data-slot=dropdown-menu-checkbox-item-indeterminate]]:hidden data-[state=indeterminate]:[&_[data-slot=dropdown-menu-checkbox-item-check]]:hidden",
         className
       )}
       {...props}
@@ -130,8 +130,13 @@ function DropdownMenuCheckboxItem({
         className={menuItemIndicatorClassName}
         data-slot="dropdown-menu-checkbox-item-indicator"
       >
-        <DropdownMenuPrimitive.ItemIndicator>
-          <CheckIcon className="text-[var(--tutti-purple)]" />
+        <DropdownMenuPrimitive.ItemIndicator className="grid place-content-center text-[var(--tutti-purple)]">
+          <CheckIcon data-slot="dropdown-menu-checkbox-item-check" />
+          <span
+            aria-hidden="true"
+            className="h-0.5 w-2.5 rounded-full bg-current"
+            data-slot="dropdown-menu-checkbox-item-indeterminate"
+          />
         </DropdownMenuPrimitive.ItemIndicator>
       </span>
       {children}

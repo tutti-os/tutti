@@ -24,9 +24,13 @@ test("defaults to the built-in system chrome mode", () => {
     controller,
     defaultActions: "default-actions",
     genie: { minimizeNodeToAnchor: () => {} },
+    isDragging: false,
+    isFocused: false,
+    isResizing: false,
     node,
     onDoubleClick: () => {},
     onDragStart: () => {},
+    renderRevision: {},
     windowChromeMode: "system"
   });
 
@@ -49,6 +53,9 @@ test("custom-header mode uses the host header and replaces the shared default he
     controller,
     defaultActions: "default-actions",
     genie: { minimizeNodeToAnchor: () => {} },
+    isDragging: true,
+    isFocused: true,
+    isResizing: false,
     node,
     onDoubleClick: () => {},
     onDragStart: () => {},
@@ -56,6 +63,7 @@ test("custom-header mode uses the host header and replaces the shared default he
       receivedDragHandleProps = dragHandleProps;
       return "custom-header";
     },
+    renderRevision: {},
     windowChromeMode: resolvedMode
   });
 
@@ -66,6 +74,9 @@ test("custom-header mode uses the host header and replaces the shared default he
     onDoubleClick: resolvedHeader.context.dragHandleProps.onDoubleClick,
     onPointerDown: resolvedHeader.context.dragHandleProps.onPointerDown
   });
+  assert.equal(resolvedHeader.context.isDragging, true);
+  assert.equal(resolvedHeader.context.isFocused, true);
+  assert.equal(resolvedHeader.context.isResizing, false);
 });
 
 test("custom headers can reuse the shared default actions bundle", () => {
@@ -79,6 +90,9 @@ test("custom headers can reuse the shared default actions bundle", () => {
     controller,
     defaultActions,
     genie: { minimizeNodeToAnchor: () => {} },
+    isDragging: false,
+    isFocused: false,
+    isResizing: false,
     node,
     onDoubleClick: () => {},
     onDragStart: () => {},
@@ -87,6 +101,7 @@ test("custom headers can reuse the shared default actions bundle", () => {
       receivedDragHandleProps = dragHandleProps;
       return "custom-header";
     },
+    renderRevision: {},
     windowChromeMode: "custom-header"
   });
 
@@ -110,6 +125,9 @@ test("custom headers receive the current surface size", () => {
     controller,
     defaultActions: "default-actions",
     genie: { minimizeNodeToAnchor: () => {} },
+    isDragging: false,
+    isFocused: false,
+    isResizing: true,
     node,
     onDoubleClick: () => {},
     onDragStart: () => {},
@@ -117,6 +135,7 @@ test("custom headers receive the current surface size", () => {
       receivedSurfaceSize = surfaceSize;
       return "custom-header";
     },
+    renderRevision: {},
     windowChromeMode: "custom-header"
   });
 

@@ -9,6 +9,7 @@ import type {
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
   DesktopDockPlacement,
+  DeletedAgentConversationRetentionDays,
   DesktopFeatureFlags,
   DesktopFileDefaultOpenersByExtension,
   DesktopMinimizeAnimation,
@@ -21,12 +22,14 @@ import type {
 import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
 
 export interface DesktopPreferencesStoreState {
+  changingAgentCliUpdateCheckEnabled: boolean | null;
   changingDefaultAgentProvider: DesktopDefaultAgentProvider | null;
   changingAgentConversationDetailMode: DesktopAgentConversationDetailMode | null;
   changingAppCatalogChannel: DesktopAppCatalogChannel | null;
   changingBrowserUseConnectionMode: DesktopBrowserUseConnectionMode | null;
   changingDockIconStyle: DesktopDockIconStyle | null;
   changingDockPlacement: DesktopDockPlacement | null;
+  changingDeletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays | null;
   changingLocale: DesktopLocale | null;
   changingFeatureFlags: DesktopFeatureFlags | null;
   changingMinimizeAnimation: DesktopMinimizeAnimation | null;
@@ -37,6 +40,7 @@ export interface DesktopPreferencesStoreState {
   changingUpdatePolicy: DesktopUpdatePolicy | null;
   changingWorkbenchWindowSnapping: DesktopWorkbenchWindowSnapping | null;
   agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
+  agentCliUpdateCheckEnabled: boolean;
   agentComposerDefaultsByAgentTarget: DesktopAgentComposerDefaultsByAgentTarget;
   agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
   agentConversationDetailMode: DesktopAgentConversationDetailMode;
@@ -45,6 +49,7 @@ export interface DesktopPreferencesStoreState {
   defaultAgentProvider: DesktopDefaultAgentProvider;
   dockIconStyle: DesktopDockIconStyle;
   dockPlacement: DesktopDockPlacement;
+  deletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays;
   featureFlags: DesktopFeatureFlags;
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   locale: DesktopLocale;
@@ -59,12 +64,14 @@ export interface DesktopPreferencesStoreState {
 }
 
 export interface DesktopPreferencesReadableStoreState {
+  readonly changingAgentCliUpdateCheckEnabled: boolean | null;
   readonly changingDefaultAgentProvider: DesktopDefaultAgentProvider | null;
   readonly changingAgentConversationDetailMode: DesktopAgentConversationDetailMode | null;
   readonly changingAppCatalogChannel: DesktopAppCatalogChannel | null;
   readonly changingBrowserUseConnectionMode: DesktopBrowserUseConnectionMode | null;
   readonly changingDockIconStyle: DesktopDockIconStyle | null;
   readonly changingDockPlacement: DesktopDockPlacement | null;
+  readonly changingDeletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays | null;
   readonly changingLocale: DesktopLocale | null;
   readonly changingFeatureFlags: DesktopFeatureFlags | null;
   readonly changingMinimizeAnimation: DesktopMinimizeAnimation | null;
@@ -75,6 +82,7 @@ export interface DesktopPreferencesReadableStoreState {
   readonly changingUpdatePolicy: DesktopUpdatePolicy | null;
   readonly changingWorkbenchWindowSnapping: DesktopWorkbenchWindowSnapping | null;
   readonly agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
+  readonly agentCliUpdateCheckEnabled: boolean;
   readonly agentComposerDefaultsByAgentTarget: DesktopAgentComposerDefaultsByAgentTarget;
   readonly agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
   readonly agentConversationDetailMode: DesktopAgentConversationDetailMode;
@@ -83,6 +91,7 @@ export interface DesktopPreferencesReadableStoreState {
   readonly defaultAgentProvider: DesktopDefaultAgentProvider;
   readonly dockIconStyle: DesktopDockIconStyle;
   readonly dockPlacement: DesktopDockPlacement;
+  readonly deletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays;
   readonly featureFlags: DesktopFeatureFlags;
   readonly fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   readonly locale: DesktopLocale;

@@ -232,6 +232,19 @@ Core server-to-client frames:
 - `error`
 - `pong`
 
+## Backpressure And Recovery
+
+Server fan-out uses a bounded per-connection queue. It is large enough to absorb
+normal provider completion bursts, including adjacent optimistic Agent deltas
+and their canonical lifecycle updates, but it does not let an unresponsive
+renderer retain unbounded memory or block a business producer.
+
+If a consumer still falls behind, `tuttid` closes that WebSocket with
+`1013 Try Again Later`. A closed fan-out Session must never leave behind a
+pingable but event-silent WebSocket. The transport client reconnects and
+resubscribes, while feature hosts use their normal authoritative reads to
+reconcile any events missed across the disconnect.
+
 The business socket protocol should stay narrow and reusable. Terminal-specific
 frames such as resize or byte-stream input stay on the terminal transport.
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	eventprotocol "github.com/tutti-os/tutti/services/tuttid/api/events/generated"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
@@ -49,15 +50,15 @@ func TestAgentActivityProjectionPublishesEventHubUpdatesAndSupportsReconcile(t *
 	projection := agentservice.NewActivityProjection(store)
 	projection.SetPublisher(eventstreamservice.AgentActivityPublisher{Service: events})
 
-	stateReply, err := projection.ReportSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+	stateReply, err := projection.ReportSessionState(ctx, canonical.ReportSessionStateInput{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: agentSessionID,
 		SessionOrigin:  agentsessionstore.WorkspaceAgentSessionOriginRuntime,
-		Source: agentsessionstore.EventSource{
+		Source: canonical.EventSource{
 			Provider:          "codex",
 			ProviderSessionID: "provider-session-1",
 		},
-		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+		State: canonical.WorkspaceAgentSessionStateUpdate{
 			Title:            "Hello from activity",
 			LifecycleStatus:  "running",
 			CurrentPhase:     "thinking",
@@ -93,13 +94,13 @@ func TestAgentActivityProjectionPublishesEventHubUpdatesAndSupportsReconcile(t *
 	}
 
 	turnID := "turn-1"
-	turnReply, err := projection.ReportSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+	turnReply, err := projection.ReportSessionState(ctx, canonical.ReportSessionStateInput{
 		WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
 		SessionOrigin: agentsessionstore.WorkspaceAgentSessionOriginRuntime,
-		Source:        agentsessionstore.EventSource{Provider: "codex", ProviderSessionID: "provider-session-1"},
-		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+		Source:        canonical.EventSource{Provider: "codex", ProviderSessionID: "provider-session-1"},
+		State: canonical.WorkspaceAgentSessionStateUpdate{
 			LifecycleStatus: "running", OccurredAtUnixMS: 105,
-			Turn: &agentsessionstore.WorkspaceAgentTurnStateUpdate{
+			Turn: &canonical.WorkspaceAgentTurnStateUpdate{
 				TurnID: turnID, ActiveTurnID: &turnID, Phase: agentactivitybiz.TurnPhaseSubmitted,
 				Origin: agentactivitybiz.TurnOriginUserPrompt, StartedAtUnixMS: 105,
 			},
@@ -124,11 +125,11 @@ func TestAgentActivityProjectionPublishesEventHubUpdatesAndSupportsReconcile(t *
 		t.Fatalf("turn state report events: turn=%v reconcile=%v", receivedTurnUpdate, receivedSessionReconcile)
 	}
 
-	messageReply, err := projection.ReportSessionMessages(ctx, agentsessionstore.ReportSessionMessagesInput{
+	messageReply, err := projection.ReportSessionMessages(ctx, canonical.ReportSessionMessagesInput{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: agentSessionID,
 		SessionOrigin:  agentsessionstore.WorkspaceAgentSessionOriginRuntime,
-		Updates: []agentsessionstore.WorkspaceAgentSessionMessageUpdate{{
+		Updates: []canonical.WorkspaceAgentSessionMessageUpdate{{
 			MessageID:        "message-1",
 			TurnID:           "turn-1",
 			Role:             "assistant",

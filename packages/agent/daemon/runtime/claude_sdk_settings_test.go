@@ -38,6 +38,8 @@ func TestClaudeCodeSDKAdapterApplySessionSettingsSpeedSendsSidecarAndUpdatesRunt
 
 func TestClaudeCodeSDKAdapterGuideActiveTurnSendsSidecarGuide(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(nil)
+	imageURL, materializer := testRemotePromptImageMaterializer(t)
+	adapter.promptImageMaterializer = materializer
 	session := standardTestSession(ProviderClaudeCode)
 	conn := newBlockingClaudeSDKConnection()
 	defer func() { _ = conn.Close() }()
@@ -56,13 +58,24 @@ func TestClaudeCodeSDKAdapterGuideActiveTurnSendsSidecarGuide(t *testing.T) {
 	}
 	results := make(chan guidanceResult, 1)
 	go func() {
-		events, err := adapter.GuideActiveTurn(context.Background(), session, textPrompt("guide current turn"), "", "turn-guidance", nil, nil)
+		events, err := adapter.GuideActiveTurn(context.Background(), session, []PromptContentBlock{
+			{Type: "text", Text: "guide current turn"},
+			{Type: "image", MimeType: "image/png", URL: imageURL},
+		}, "", "turn-guidance", nil, nil)
 		results <- guidanceResult{events: events, err: err}
 	}()
 
 	request := waitForClaudeSDKSentRequest(t, conn, "guide")
 	if _, ok := request.Payload["turnId"]; ok || request.Payload["prompt"] != "guide current turn" {
 		t.Fatalf("guide payload = %#v", request.Payload)
+	}
+	content, _ := request.Payload["content"].([]any)
+	if len(content) != 2 {
+		t.Fatalf("guide content = %#v, want text+image", request.Payload["content"])
+	}
+	image, _ := content[1].(map[string]any)
+	if image["data"] != "aGk=" || image["url"] != nil {
+		t.Fatalf("guide image = %#v, want inline image data", image)
 	}
 	conn.pushEvent(claudeSDKSidecarEvent{ID: request.ID, Type: "ok"})
 

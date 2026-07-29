@@ -1,14 +1,14 @@
+import type { WorkspaceFileManagerHostFallbackAction } from "./workspaceFileManagerHostTypes.ts";
 import type {
-  WorkspaceFileManagerHostFallbackAction,
-  WorkspaceFileManagerHostImportConflict
-} from "./workspaceFileManagerHostTypes.ts";
+  WorkspaceFilePreviewKind as SharedWorkspaceFilePreviewKind,
+  WorkspaceFilePreviewTarget
+} from "@tutti-os/workspace-file-preview";
 
 export const workspaceFileManagerLogicalRoot = "/" as const;
 
 export type WorkspaceFileEntryKind = "file" | "directory" | "unknown";
 export type WorkspaceFileSearchMatchTarget = "basename" | "path";
-export type WorkspaceFileImportConflictKind = "replaceable" | "type_mismatch";
-export type WorkspaceFilePreviewKind = "image" | "text" | "video";
+export type WorkspaceFilePreviewKind = SharedWorkspaceFilePreviewKind;
 export type WorkspaceFileLocationKind = "directory" | "external" | "recent";
 export type WorkspaceFileManagerFileDefaultOpener =
   | "appBrowser"
@@ -30,22 +30,42 @@ export interface WorkspaceFileEntry {
   sizeBytes: number | null;
 }
 
-export interface WorkspaceFileActivationTarget {
-  fileKind: WorkspaceFilePreviewKind;
+/**
+ * File-manager activation payload. Reuses the shared preview target shape
+ * (`previewKind`) so hosts can decide whether to open an in-app preview, while
+ * open / reveal / open-with stay outside `@tutti-os/workspace-file-preview`.
+ */
+export interface WorkspaceFileActivationTarget extends WorkspaceFilePreviewTarget {
   mtimeMs: number | null;
-  name: string;
-  path: string;
   sizeBytes: number | null;
 }
 
 export type WorkspaceFilePreviewState =
   | { status: "empty" }
   | { entry: WorkspaceFileEntry; status: "directory" }
-  | { entry: WorkspaceFileActivationTarget; status: "loading" }
-  | { content: string; entry: WorkspaceFileActivationTarget; status: "text" }
-  | { content: string; entry: WorkspaceFileActivationTarget; status: "html" }
-  | { entry: WorkspaceFileActivationTarget; objectUrl: string; status: "image" }
-  | { entry: WorkspaceFileActivationTarget; objectUrl: string; status: "video" }
+  | {
+      entry: WorkspaceFileActivationTarget;
+      previewKind: WorkspaceFilePreviewKind;
+      status: "loading";
+    }
+  | {
+      content: string;
+      entry: WorkspaceFileActivationTarget;
+      previewKind: WorkspaceFilePreviewKind;
+      status: "text";
+    }
+  | {
+      entry: WorkspaceFileActivationTarget;
+      objectUrl: string;
+      previewKind: "image";
+      status: "image";
+    }
+  | {
+      entry: WorkspaceFileActivationTarget;
+      objectUrl: string;
+      previewKind: "video";
+      status: "video";
+    }
   | { entry: WorkspaceFileEntry; message: string; status: "unsupported" }
   | { entry: WorkspaceFileEntry; message: string; status: "readonly" }
   | { entry: WorkspaceFileEntry; message: string; status: "error" };
@@ -117,31 +137,6 @@ export interface WorkspaceFileRecentLocation {
   label: string;
 }
 
-export interface WorkspaceFileImportConflict {
-  conflictKind: WorkspaceFileImportConflictKind;
-  destinationKind: WorkspaceFileEntryKind;
-  destinationPath: string;
-  name: string;
-  sourcePath: string;
-}
-
-export type WorkspaceFileImportSummaryReason =
-  | "ignored"
-  | "symlink"
-  | "system_metadata";
-
-export interface WorkspaceFileImportSummaryReasonCount {
-  count: number;
-  reason: WorkspaceFileImportSummaryReason;
-}
-
-export interface WorkspaceFileImportSummary {
-  filteredCount?: number;
-  ignoredCount?: number;
-  reasonBreakdown?: WorkspaceFileImportSummaryReasonCount[];
-  selectedCount?: number;
-}
-
 export interface WorkspaceFileManagerPersistedState {
   currentDirectoryPath: string;
   navigationBackStack: string[];
@@ -168,9 +163,6 @@ export interface WorkspaceFileManagerCapabilities {
   canCreateDirectory: boolean;
   canCreateFile: boolean;
   canDelete: boolean;
-  canExport: boolean;
-  canImportFromDrop: boolean;
-  canImportFromPicker: boolean;
   canMove: boolean;
   canOpenInAppBrowser: boolean;
   canOpenInDefaultBrowser: boolean;
@@ -184,8 +176,6 @@ export interface WorkspaceFileManagerCapabilities {
 export type WorkspaceFileManagerBusyAction =
   | "create"
   | "delete"
-  | "export"
-  | "import"
   | "move"
   | "rename"
   | "view";
@@ -196,7 +186,10 @@ export interface WorkspaceFileManagerCreateDialogState {
   name: string;
 }
 
-export type WorkspaceFileManagerInlineRenameValidation = "invalid" | "required";
+export type WorkspaceFileManagerInlineRenameValidation =
+  | "invalid"
+  | "required"
+  | "tooLong";
 
 export interface WorkspaceFileManagerDeleteDialogState {
   entryPath: string;
@@ -211,7 +204,7 @@ export interface WorkspaceFileManagerContextMenuState {
 export interface WorkspaceFileManagerUnsupportedDialogState {
   actions?: WorkspaceFileManagerHostFallbackAction[] | null;
   entryPath?: string | null;
-  kind: "import" | "view";
+  kind: "view";
   message?: string | null;
   title?: string | null;
 }
@@ -230,7 +223,6 @@ export interface WorkspaceFileManagerState {
   >;
   inlineRenameEntryPath: string | null;
   inlineRenameValidation: WorkspaceFileManagerInlineRenameValidation | null;
-  dragDepth: number;
   entries: WorkspaceFileEntry[];
   error: string | null;
   expandedDirectoryPaths: Record<string, boolean>;
@@ -249,6 +241,5 @@ export interface WorkspaceFileManagerState {
   selectedLocationId: string | null;
   selectedPath: string | null;
   unsupportedDialog: WorkspaceFileManagerUnsupportedDialogState | null;
-  importConflictDialog: WorkspaceFileManagerHostImportConflict | null;
   workspaceID: string;
 }

@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import {
   claudeQueryOptionOverrides,
@@ -66,4 +69,59 @@ test("sidecarClaudeOptionsFromPayload defaults to Claude Code tool preset", () =
   assert.equal(overrides.disallowedTools, undefined);
   assert.equal(overrides.plugins, undefined);
   assert.equal(overrides.extraArgs, undefined);
+});
+
+test("sidecarClaudeOptionsFromPayload resolves prepared metadata in the sidecar filesystem", (t) => {
+  const runtimeRoot = mkdtempSync(join(tmpdir(), "tutti-claude-meta-"));
+  t.after(() => rmSync(runtimeRoot, { recursive: true, force: true }));
+  const systemPromptPath = join(runtimeRoot, "claude-system-prompt.md");
+  const pluginDir = join(runtimeRoot, "claude-plugin", "tutti-cli");
+  writeFileSync(systemPromptPath, "Use Tutti CLI for issue context.\n", "utf8");
+  mkdirSync(pluginDir, { recursive: true });
+
+  const options = sidecarClaudeOptionsFromPayload({
+    env: {
+      TUTTI_CLAUDE_SYSTEM_PROMPT_FILE: systemPromptPath,
+      TUTTI_CLAUDE_PLUGIN_DIR: pluginDir
+    },
+    extraArgs: { model: "MiniMax-M2.7" }
+  });
+  const overrides = claudeQueryOptionOverrides(options);
+
+  assert.deepEqual(overrides.systemPrompt, {
+    type: "preset",
+    preset: "claude_code",
+    append: "Use Tutti CLI for issue context."
+  });
+  assert.deepEqual(overrides.plugins, [{ type: "local", path: pluginDir }]);
+  assert.deepEqual(overrides.extraArgs, {
+    model: "MiniMax-M2.7",
+    "plugin-dir": pluginDir
+  });
+});
+
+test("sidecarClaudeOptionsFromPayload reports missing prepared metadata", () => {
+  const missingRoot = join(
+    tmpdir(),
+    `tutti-claude-missing-${crypto.randomUUID()}`
+  );
+
+  assert.throws(
+    () =>
+      sidecarClaudeOptionsFromPayload({
+        env: {
+          TUTTI_CLAUDE_SYSTEM_PROMPT_FILE: join(missingRoot, "prompt.md")
+        }
+      }),
+    /read claude system prompt:.*ENOENT/u
+  );
+  assert.throws(
+    () =>
+      sidecarClaudeOptionsFromPayload({
+        env: {
+          TUTTI_CLAUDE_PLUGIN_DIR: join(missingRoot, "plugin")
+        }
+      }),
+    /stat claude plugin dir:.*ENOENT/u
+  );
 });

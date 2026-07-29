@@ -7,6 +7,19 @@ import type {
 import type {
   TuttiExternalAtQueryInput,
   TuttiExternalAtQueryResult,
+  TuttiExternalAtInvalidation,
+  TuttiExternalAtResolveInput,
+  TuttiExternalAtResolveResult,
+  TuttiExternalAgentActivityActivateSessionInput,
+  TuttiExternalAgentActivityActivateSessionResult,
+  TuttiExternalAgentActivityCancelTurnInput,
+  TuttiExternalAgentActivityCancelTurnResult,
+  TuttiExternalAgentActivityComposerOptions,
+  TuttiExternalAgentActivityComposerOptionsInput,
+  TuttiExternalAgentActivitySendInput,
+  TuttiExternalAgentActivitySendResult,
+  TuttiExternalAgentActivitySnapshot,
+  TuttiExternalAgentTargetCatalog,
   TuttiExternalBridge,
   TuttiExternalFileOpenInput,
   TuttiExternalFileSelectInput,
@@ -55,6 +68,9 @@ export interface WorkspaceAppExternalBridgeDependencies {
   subscribeToUserProjects?(
     listener: (snapshot: WorkspaceUserProjectServiceSnapshot) => void
   ): () => void;
+  subscribeToAtInvalidations?(
+    listener: (event: TuttiExternalAtInvalidation) => void
+  ): () => void;
   subscribeToWorkspaceLaunchIntents?(
     listener: (intent: TuttiExternalWorkspaceOpenRouteIntent) => void
   ): () => void;
@@ -82,7 +98,15 @@ export interface WorkspaceAppUploadXMLHttpRequest {
 
 export const workspaceAppExternalChannels = {
   activityReportActive: "workspace-app-activity:report-active",
+  agentActivityActivateSession: "workspace-app-agent-activity:activate-session",
+  agentActivityCancelTurn: "workspace-app-agent-activity:cancel-turn",
+  agentActivityGetComposerOptions:
+    "workspace-app-agent-activity:get-composer-options",
+  agentActivityGetSnapshot: "workspace-app-agent-activity:get-snapshot",
+  agentActivityListTargets: "workspace-app-agent-activity:list-targets",
+  agentActivitySendInput: "workspace-app-agent-activity:send-input",
   atQuery: "workspace-app-at:query",
+  atResolve: "workspace-app-at:resolve",
   browserOpenUrl: "workspace-app:open-url",
   filesOpen: "workspace-app-files:open",
   filesSelect: "workspace-app-files:select",
@@ -100,6 +124,8 @@ export const workspaceAppExternalChannels = {
     "workspace-app-user-projects:get-default-selection",
   userProjectsGetSnapshot: "workspace-app-user-projects:get-snapshot",
   userProjectsList: "workspace-app-user-projects:list",
+  userProjectsMove: "workspace-app-user-projects:move",
+  userProjectsRemove: "workspace-app-user-projects:remove",
   userProjectsPrepareSelection: "workspace-app-user-projects:prepare-selection",
   userProjectsRefresh: "workspace-app-user-projects:refresh",
   userProjectsRememberDefaultSelection:
@@ -131,6 +157,44 @@ export function createWorkspaceAppExternalBridge(
         );
       }
     },
+    agentActivity: {
+      activateSession(input: TuttiExternalAgentActivityActivateSessionInput) {
+        return dependencies.invoke<TuttiExternalAgentActivityActivateSessionResult>(
+          workspaceAppExternalChannels.agentActivityActivateSession,
+          input
+        );
+      },
+      cancelTurn(input: TuttiExternalAgentActivityCancelTurnInput) {
+        return dependencies.invoke<TuttiExternalAgentActivityCancelTurnResult>(
+          workspaceAppExternalChannels.agentActivityCancelTurn,
+          input
+        );
+      },
+      getComposerOptions(
+        input: TuttiExternalAgentActivityComposerOptionsInput
+      ) {
+        return dependencies.invoke<TuttiExternalAgentActivityComposerOptions>(
+          workspaceAppExternalChannels.agentActivityGetComposerOptions,
+          input
+        );
+      },
+      getSnapshot() {
+        return dependencies.invoke<TuttiExternalAgentActivitySnapshot>(
+          workspaceAppExternalChannels.agentActivityGetSnapshot
+        );
+      },
+      listTargets() {
+        return dependencies.invoke<TuttiExternalAgentTargetCatalog>(
+          workspaceAppExternalChannels.agentActivityListTargets
+        );
+      },
+      sendInput(input: TuttiExternalAgentActivitySendInput) {
+        return dependencies.invoke<TuttiExternalAgentActivitySendResult>(
+          workspaceAppExternalChannels.agentActivitySendInput,
+          input
+        );
+      }
+    },
     browser: {
       openUrl(input) {
         requireUserActivation(
@@ -147,6 +211,15 @@ export function createWorkspaceAppExternalBridge(
           workspaceAppExternalChannels.atQuery,
           input
         );
+      },
+      resolve(input: TuttiExternalAtResolveInput) {
+        return dependencies.invoke<TuttiExternalAtResolveResult | null>(
+          workspaceAppExternalChannels.atResolve,
+          input
+        );
+      },
+      subscribe(listener) {
+        return dependencies.subscribeToAtInvalidations?.(listener) ?? noop;
       }
     },
     files: {
@@ -279,6 +352,22 @@ export function createWorkspaceAppExternalBridge(
       list() {
         return dependencies.invoke<{ projects: WorkspaceUserProject[] }>(
           workspaceAppExternalChannels.userProjectsList
+        );
+      },
+      move(input) {
+        return dependencies.invoke<void>(
+          workspaceAppExternalChannels.userProjectsMove,
+          input
+        );
+      },
+      remove(input: TuttiExternalUserProjectPathInput) {
+        requireUserActivation(
+          dependencies.isUserActivationActive(),
+          "userProjects.remove"
+        );
+        return dependencies.invoke<void>(
+          workspaceAppExternalChannels.userProjectsRemove,
+          input
         );
       },
       prepareSelection(input: WorkspaceUserProjectSelectionPreparationInput) {

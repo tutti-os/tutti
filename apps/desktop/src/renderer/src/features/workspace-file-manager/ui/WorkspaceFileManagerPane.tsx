@@ -1,6 +1,7 @@
 import {
   createWorkspaceFileManagerI18nRuntime,
   type WorkspaceFileManagerPersistedState,
+  type WorkspaceFileManagerPreviewActionsConfig,
   WorkspaceFileManager
 } from "@tutti-os/workspace-file-manager";
 import { ReferenceSourceContentPane } from "@tutti-os/workspace-file-reference/ui";
@@ -13,6 +14,7 @@ import { useService } from "@tutti-os/infra/di";
 import { useCallback, useEffect, useMemo } from "react";
 import type { WorkspaceFileEntry } from "@tutti-os/workspace-file-manager/services";
 import type { WorkspaceFileExternalLocation } from "@tutti-os/workspace-file-manager/services";
+import type { WorkspaceFileOpenWithApplication } from "@tutti-os/workspace-file-manager/services";
 import { resolveOpenWithApplicationIconOverrideDataUrl } from "@shared/openWithApplicationIconOverrides";
 import { FileManagerDirectoryExpandedReporter } from "@renderer/features/analytics/reporters/file-manager-directory-expanded/fileManagerDirectoryExpandedReporter.ts";
 import { FileManagerPathCopiedReporter } from "@renderer/features/analytics/reporters/file-manager-path-copied/fileManagerPathCopiedReporter.ts";
@@ -20,11 +22,28 @@ import { IReporterService } from "@renderer/features/analytics";
 import { useTranslation } from "@renderer/i18n";
 import { Toast } from "@renderer/lib/toast";
 import { useWorkspaceFileManagerService } from "./useWorkspaceFileManagerService";
+import { createDesktopWorkspaceFileManagerContextMenu } from "./createDesktopWorkspaceFileManagerContextMenu";
+
+/**
+ * Desktop only exposes the actions the package already implements. Download and
+ * share stay product-owned and are not part of this host.
+ */
+const desktopWorkspaceFilePreviewActions: WorkspaceFileManagerPreviewActionsConfig =
+  {
+    copy: true,
+    open: true
+  };
 
 interface WorkspaceFileManagerPaneProps {
   className?: string;
+  locationSidebarLayout?: {
+    contentMinWidth?: number;
+    defaultWidth?: number;
+    maxWidth?: number;
+    persistWidth?: boolean;
+  };
   revealIntent?: {
-    mode?: "reveal" | "open-directory";
+    mode?: "select" | "open";
     path: string;
     requestID: string;
   } | null;
@@ -36,6 +55,7 @@ interface WorkspaceFileManagerPaneProps {
 
 export function WorkspaceFileManagerPane({
   className,
+  locationSidebarLayout,
   revealIntent = null,
   restoredState = null,
   showInternalOpenWithActions = true,
@@ -80,6 +100,61 @@ export function WorkspaceFileManagerPane({
     () => featureService.getReferenceSourceAggregator(workspaceID, locale),
     [featureService, locale, workspaceID]
   );
+  const resolveOpenWithApplicationIcon = useCallback(
+    (application: WorkspaceFileOpenWithApplication) => {
+      const iconDataUrl =
+        resolveOpenWithApplicationIconOverrideDataUrl(application);
+      return iconDataUrl ? (
+        <img
+          alt=""
+          className="size-4 rounded-[4px] object-contain"
+          src={iconDataUrl}
+        />
+      ) : null;
+    },
+    []
+  );
+  const notifyEntryCopied = useCallback(() => {
+    Toast.Success(appI18n.t("workspaceFileManager.copySuccessTitle"));
+  }, [appI18n]);
+  const resolveContextMenu = useMemo(
+    () =>
+      createDesktopWorkspaceFileManagerContextMenu({
+        appI18n,
+        hostOs: featureService.hostOs,
+        i18n,
+        onCopyEntry: notifyEntryCopied,
+        onCopyPath: async (path) => {
+          await navigator.clipboard.writeText(path);
+          void new FileManagerPathCopiedReporter(
+            {},
+            {
+              reporterService
+            }
+          ).report();
+          Toast.Success(appI18n.t("workspaceFileManager.copyPathSuccessTitle"));
+        },
+        openInAppBrowserIcon: (
+          <img
+            alt=""
+            className="size-4 rounded-[4px] object-contain"
+            src={browserDockIconUrl}
+          />
+        ),
+        resolveOpenWithApplicationIcon,
+        session,
+        showInternalOpenWithActions
+      }),
+    [
+      appI18n,
+      featureService.hostOs,
+      i18n,
+      reporterService,
+      resolveOpenWithApplicationIcon,
+      session,
+      showInternalOpenWithActions
+    ]
+  );
   const renderExternalLocationContent = useCallback(
     (location: WorkspaceFileExternalLocation) => {
       if (location.externalType !== "workspace-reference") {
@@ -98,17 +173,7 @@ export function WorkspaceFileManagerPane({
           hostOs={featureService.hostOs}
           initialNodeRef={initialNodeRef}
           resolveEntryIconUrl={resolveEntryIconUrl}
-          resolveOpenWithApplicationIcon={(application) => {
-            const iconDataUrl =
-              resolveOpenWithApplicationIconOverrideDataUrl(application);
-            return iconDataUrl ? (
-              <img
-                alt=""
-                className="size-4 rounded-[4px] object-contain"
-                src={iconDataUrl}
-              />
-            ) : null;
-          }}
+          resolveOpenWithApplicationIcon={resolveOpenWithApplicationIcon}
           workspaceId={workspaceID}
         />
       );
@@ -116,8 +181,10 @@ export function WorkspaceFileManagerPane({
     [
       featureService.hostOs,
       i18n,
+      notifyEntryCopied,
       referenceCopy,
       referenceSourceAggregator,
+      resolveOpenWithApplicationIcon,
       resolveEntryIconUrl,
       workspaceID
     ]
@@ -127,39 +194,9 @@ export function WorkspaceFileManagerPane({
     <WorkspaceFileManager
       className={className}
       dateLocale={locale}
-      hostOs={featureService.hostOs}
       i18n={i18n}
-      openInAppBrowserIcon={
-        <img
-          alt=""
-          className="size-4 rounded-[4px] object-contain"
-          src={browserDockIconUrl}
-        />
-      }
-      resolveOpenWithApplicationIcon={(application) => {
-        const iconDataUrl =
-          resolveOpenWithApplicationIconOverrideDataUrl(application);
-        return iconDataUrl ? (
-          <img
-            alt=""
-            className="size-4 rounded-[4px] object-contain"
-            src={iconDataUrl}
-          />
-        ) : null;
-      }}
-      onCopyEntry={() => {
-        Toast.Success(appI18n.t("workspaceFileManager.copySuccessTitle"));
-      }}
-      onCopyPath={async (path) => {
-        await navigator.clipboard.writeText(path);
-        void new FileManagerPathCopiedReporter(
-          {},
-          {
-            reporterService
-          }
-        ).report();
-        Toast.Success(appI18n.t("workspaceFileManager.copyPathSuccessTitle"));
-      }}
+      locationSidebarLayout={locationSidebarLayout}
+      onCopyEntry={notifyEntryCopied}
       onDirectoryExpanded={(path) => {
         void new FileManagerDirectoryExpandedReporter(
           {
@@ -170,10 +207,11 @@ export function WorkspaceFileManagerPane({
           }
         ).report();
       }}
+      previewActions={desktopWorkspaceFilePreviewActions}
+      resolveContextMenu={resolveContextMenu}
       resolveEntryIconUrl={resolveEntryIconUrl}
       renderExternalLocationContent={renderExternalLocationContent}
       session={session}
-      showInternalOpenWithActions={showInternalOpenWithActions}
       showPreviewPanel={showPreviewPanel}
       surface="embedded"
     />

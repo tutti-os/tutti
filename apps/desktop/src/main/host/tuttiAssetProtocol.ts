@@ -1,27 +1,10 @@
 import { pathToFileURL } from "node:url";
-import { app, net, protocol, session, type Session } from "electron";
+import { app, net, session, type Session } from "electron";
 import { tuttiAssetProtocolScheme } from "../../shared/tuttiAssetProtocol.ts";
 import { resolveTuttiAssetProtocolFilePath } from "./tuttiAssetProtocolResolver.ts";
+import { createTuttiAssetProtocolResponse } from "./tuttiAssetProtocolResponse.ts";
 
-let schemeRegistered = false;
 const handledSessions = new WeakSet<Session>();
-
-export function registerTuttiAssetProtocolScheme(): void {
-  if (schemeRegistered) {
-    return;
-  }
-  schemeRegistered = true;
-  protocol.registerSchemesAsPrivileged([
-    {
-      privileges: {
-        secure: true,
-        standard: true,
-        supportFetchAPI: true
-      },
-      scheme: tuttiAssetProtocolScheme
-    }
-  ]);
-}
 
 export function registerTuttiAssetProtocol(): void {
   registerTuttiAssetProtocolForSession(session.defaultSession);
@@ -42,6 +25,8 @@ export function registerTuttiAssetProtocolForSession(
     if (!filePath) {
       return new Response(null, { status: 404 });
     }
-    return net.fetch(pathToFileURL(filePath).href);
+    return createTuttiAssetProtocolResponse(
+      await net.fetch(pathToFileURL(filePath).href)
+    );
   });
 }

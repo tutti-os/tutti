@@ -32,13 +32,26 @@ export async function executeIssueManagerSaveIssue(input: {
   const savedIssue =
     input.issueEditorMode === "create"
       ? await input.feature.backend.createIssue({
+          ...(input.issueDraft.budget === undefined
+            ? {}
+            : { budget: input.issueDraft.budget }),
           content,
+          ...(input.issueDraft.executionProfile === undefined
+            ? {}
+            : { executionProfile: input.issueDraft.executionProfile }),
           title: input.issueDraft.title.trim(),
           topicId: input.activeTopicId,
           workspaceId: input.workspaceId
         })
       : await input.feature.backend.updateIssue({
+          ...(input.issueDraft.budget === undefined
+            ? {}
+            : { budget: input.issueDraft.budget }),
           content,
+          dispatchPaused: input.issueDraft.dispatchPaused ?? false,
+          ...(input.issueDraft.executionProfile === undefined
+            ? {}
+            : { executionProfile: input.issueDraft.executionProfile }),
           issueId: input.selectedIssueId ?? "",
           title: input.issueDraft.title.trim(),
           workspaceId: input.workspaceId
@@ -89,15 +102,45 @@ export async function executeIssueManagerSaveTask(input: {
   const savedTask =
     input.taskEditorMode === "create"
       ? await input.feature.backend.createTask({
+          ...(input.taskDraft.agentTargetId === undefined
+            ? {}
+            : { agentTargetId: input.taskDraft.agentTargetId }),
           content,
+          ...(input.taskDraft.dependencyTaskIds === undefined
+            ? {}
+            : { dependencyTaskIds: input.taskDraft.dependencyTaskIds }),
+          ...(input.taskDraft.executionDirectory === undefined
+            ? {}
+            : { executionDirectory: input.taskDraft.executionDirectory }),
           issueId: input.selectedIssueId,
+          ...(input.taskDraft.model === undefined
+            ? {}
+            : { model: input.taskDraft.model }),
+          ...(input.taskDraft.modelPlanId === undefined
+            ? {}
+            : { modelPlanId: input.taskDraft.modelPlanId }),
           priority: input.taskDraft.priority,
           title: input.taskDraft.title.trim(),
           workspaceId: input.workspaceId
         })
       : await input.feature.backend.updateTask({
+          ...(input.taskDraft.agentTargetId === undefined
+            ? {}
+            : { agentTargetId: input.taskDraft.agentTargetId }),
           content,
+          ...(input.taskDraft.dependencyTaskIds === undefined
+            ? {}
+            : { dependencyTaskIds: input.taskDraft.dependencyTaskIds }),
+          ...(input.taskDraft.executionDirectory === undefined
+            ? {}
+            : { executionDirectory: input.taskDraft.executionDirectory }),
           issueId: input.selectedIssueId,
+          ...(input.taskDraft.model === undefined
+            ? {}
+            : { model: input.taskDraft.model }),
+          ...(input.taskDraft.modelPlanId === undefined
+            ? {}
+            : { modelPlanId: input.taskDraft.modelPlanId }),
           priority: input.taskDraft.priority,
           taskId: input.selectedTaskId ?? "",
           title: input.taskDraft.title.trim(),

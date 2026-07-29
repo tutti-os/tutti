@@ -1,9 +1,11 @@
-import type { WorkspaceFileActivationTarget } from "@tutti-os/workspace-file-manager/services";
 import {
-  createWorkspaceFilePreviewLoadedState,
+  createWorkspaceFilePreviewController,
   formatWorkspacePreviewByteLimit,
-  normalizeWorkspaceFilePreviewBytes,
+  isTextDegradablePreviewKind,
   workspaceFilePreviewMaxBytes,
+  type WorkspaceFilePreviewController,
+  type WorkspaceFilePreviewControllerState,
+  type WorkspaceFilePreviewTarget,
   type WorkspaceFilePreviewReadonlyReason
 } from "@tutti-os/workspace-file-preview";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
@@ -11,6 +13,7 @@ import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { DesktopHostFilesApi } from "@preload/types";
 import type { WorkspaceWorkbenchDesktopI18nRuntime } from "@shared/i18n";
 import { workspaceWorkbenchDesktopI18nKeys } from "@shared/i18n";
+import type { WorkspaceFilePreviewTextViewMode } from "../workspaceFilePreviewViewModeRequests.ts";
 import {
   createWorkspaceFilePreviewNodeRuntimeState,
   createWorkspaceFilePreviewNodeSnapshotState,
@@ -27,43 +30,49 @@ export type WorkspaceFilePreviewTextSaveStatus =
 
 export type WorkspaceFilePreviewNodeControllerState =
   | { status: "empty" }
-  | { entry: WorkspaceFileActivationTarget; status: "loading" }
+  | { entry: WorkspaceFilePreviewTarget; status: "loading" }
   | {
       content: string;
       draft: string;
-      entry: WorkspaceFileActivationTarget;
+      entry: WorkspaceFilePreviewTarget;
       message?: string;
       saveStatus: WorkspaceFilePreviewTextSaveStatus;
       status: "text";
+      viewMode: WorkspaceFilePreviewTextViewMode;
     }
   | {
-      entry: WorkspaceFileActivationTarget;
+      entry: WorkspaceFilePreviewTarget;
       objectUrl: string;
       status: "image";
     }
   | {
-      entry: WorkspaceFileActivationTarget;
+      entry: WorkspaceFilePreviewTarget;
       objectUrl: string;
       status: "video";
     }
-  | { entry: WorkspaceFileActivationTarget; message: string; status: "error" }
   | {
-      entry: WorkspaceFileActivationTarget;
+      entry: WorkspaceFilePreviewTarget;
+      message: string;
+      status: "error";
+    }
+  | {
+      entry: WorkspaceFilePreviewTarget;
       message: string;
       status: "readonly";
     }
   | {
-      entry: WorkspaceFileActivationTarget;
+      entry: WorkspaceFilePreviewTarget;
       message: string;
       status: "unsupported";
     };
 
 export interface WorkspaceFilePreviewNodeController {
   changeDraft(draft: string): void;
+  changeTextViewMode(mode: WorkspaceFilePreviewTextViewMode): void;
   dispose(): void;
   getSnapshot(): WorkspaceFilePreviewNodeControllerState;
   saveTextFile(): Promise<void>;
-  setActiveFile(file: WorkspaceFileActivationTarget | null): void;
+  setActiveFile(file: WorkspaceFilePreviewTarget | null): void;
   subscribe(listener: () => void): () => void;
 }
 
@@ -71,7 +80,7 @@ export function createWorkspaceFilePreviewNodeController(input: {
   appI18n: I18nRuntime<string>;
   hostFilesApi: Pick<DesktopHostFilesApi, "readLocalPreviewFile">;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
-  initialFile: WorkspaceFileActivationTarget | null;
+  initialFile: WorkspaceFilePreviewTarget | null;
   tuttidClient: Pick<
     TuttidClient,
     "readWorkspaceFilePreview" | "writeWorkspaceFileText"
@@ -84,16 +93,13 @@ export function createWorkspaceFilePreviewNodeController(input: {
 }
 
 class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNodeController {
-  private activeFileKey: string | null = null;
   private disposed = false;
-  private loadGeneration = 0;
-  private objectUrl: string | null = null;
   private readonly listeners = new Set<() => void>();
   private readonly input: {
     appI18n: I18nRuntime<string>;
     hostFilesApi: Pick<DesktopHostFilesApi, "readLocalPreviewFile">;
     i18n: WorkspaceWorkbenchDesktopI18nRuntime;
-    initialFile: WorkspaceFileActivationTarget | null;
+    initialFile: WorkspaceFilePreviewTarget | null;
     tuttidClient: Pick<
       TuttidClient,
       "readWorkspaceFilePreview" | "writeWorkspaceFileText"
@@ -102,6 +108,8 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     onSnapshotStateChange(state: unknown): void;
     workspaceID: string;
   };
+  private readonly previewController: WorkspaceFilePreviewController<WorkspaceFilePreviewTarget>;
+  private readonly unsubscribePreview: () => void;
   private runtimeStateKey: string | null = null;
   private snapshotStateKey: string | null = null;
   private state: WorkspaceFilePreviewNodeControllerState;
@@ -110,7 +118,7 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     appI18n: I18nRuntime<string>;
     hostFilesApi: Pick<DesktopHostFilesApi, "readLocalPreviewFile">;
     i18n: WorkspaceWorkbenchDesktopI18nRuntime;
-    initialFile: WorkspaceFileActivationTarget | null;
+    initialFile: WorkspaceFilePreviewTarget | null;
     tuttidClient: Pick<
       TuttidClient,
       "readWorkspaceFilePreview" | "writeWorkspaceFileText"
@@ -123,6 +131,30 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     this.state = input.initialFile
       ? { entry: input.initialFile, status: "loading" }
       : { status: "empty" };
+    this.previewController = createWorkspaceFilePreviewController({
+      canReadEntry: () => true,
+      getEntryKey: workspaceFilePreviewNodeFileKey,
+      read: async ({ entry }) => ({
+        bytes: isAbsoluteFilesystemPath(entry.path)
+          ? await input.hostFilesApi.readLocalPreviewFile(entry.path)
+          : decodeBase64Bytes(
+              (
+                await input.tuttidClient.readWorkspaceFilePreview(
+                  input.workspaceID,
+                  entry.path
+                )
+              ).bytesBase64
+            ),
+        kind: entry.previewKind
+      }),
+      toPreviewEntry: (entry: WorkspaceFilePreviewTarget) => ({
+        ...entry,
+        kind: "file"
+      })
+    });
+    this.unsubscribePreview = this.previewController.subscribe(() => {
+      this.applyPreviewState(this.previewController.getSnapshot());
+    });
   }
 
   changeDraft(draft: string): void {
@@ -138,10 +170,20 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     );
   }
 
+  changeTextViewMode(mode: WorkspaceFilePreviewTextViewMode): void {
+    this.updateState((current) =>
+      current.status === "text" &&
+      current.entry.previewKind === "markdown" &&
+      current.viewMode !== mode
+        ? { ...current, viewMode: mode }
+        : current
+    );
+  }
+
   dispose(): void {
     this.disposed = true;
-    this.loadGeneration += 1;
-    this.revokeObjectUrl();
+    this.unsubscribePreview();
+    this.previewController.dispose();
     this.listeners.clear();
   }
 
@@ -200,28 +242,11 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     }
   }
 
-  setActiveFile(file: WorkspaceFileActivationTarget | null): void {
+  setActiveFile(file: WorkspaceFilePreviewTarget | null): void {
     if (this.disposed) {
       return;
     }
-
-    const nextKey = file ? workspaceFilePreviewNodeFileKey(file) : null;
-    if (this.activeFileKey === nextKey) {
-      return;
-    }
-
-    this.activeFileKey = nextKey;
-    this.loadGeneration += 1;
-    this.revokeObjectUrl();
-
-    if (!file) {
-      this.updateState(() => ({ status: "empty" }));
-      return;
-    }
-
-    const generation = this.loadGeneration;
-    this.updateState(() => ({ entry: file, status: "loading" }));
-    void this.loadPreview(file, generation);
+    void this.previewController.setEntry(file);
   }
 
   subscribe(listener: () => void): () => void {
@@ -231,100 +256,74 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     };
   }
 
-  private async loadPreview(
-    target: WorkspaceFileActivationTarget,
-    generation: number
-  ): Promise<void> {
-    try {
-      const bytes = isAbsoluteFilesystemPath(target.path)
-        ? normalizeWorkspaceFilePreviewBytes(
-            await this.input.hostFilesApi.readLocalPreviewFile(target.path)
-          )
-        : normalizeWorkspaceFilePreviewBytes(
-            decodeBase64Bytes(
-              (
-                await this.input.tuttidClient.readWorkspaceFilePreview(
-                  this.input.workspaceID,
-                  target.path
-                )
-              ).bytesBase64
-            )
-          );
-      if (this.isStale(generation)) {
+  private applyPreviewState(
+    state: WorkspaceFilePreviewControllerState<WorkspaceFilePreviewTarget>
+  ): void {
+    switch (state.status) {
+      case "empty":
+        this.updateState(() => state);
         return;
-      }
-
-      const loadedState = createWorkspaceFilePreviewLoadedState({
-        bytes,
-        entry: {
-          ...target,
-          kind: "file"
-        },
-        target
-      });
-
-      if (loadedState.status === "image" || loadedState.status === "video") {
-        const objectUrl = URL.createObjectURL(
-          new Blob([loadedState.bytes], {
-            type: loadedState.contentType
-          })
-        );
-        if (this.isStale(generation)) {
-          URL.revokeObjectURL(objectUrl);
-          return;
-        }
-        this.revokeObjectUrl();
-        this.objectUrl = objectUrl;
-        this.updateState(() => ({
-          entry: target,
-          objectUrl,
-          status: loadedState.status
-        }));
+      case "loading":
+        this.updateState(() => state);
         return;
-      }
-
-      if (loadedState.status === "text") {
+      case "text":
         this.updateState(() => ({
-          content: loadedState.content,
-          draft: loadedState.content,
-          entry: target,
+          content: state.content,
+          draft: state.content,
+          entry: state.entry,
           saveStatus: "idle",
-          status: "text"
+          status: "text",
+          viewMode: "edit"
         }));
         return;
-      }
-
-      if (loadedState.status === "html") {
+      case "image":
+      case "video":
         this.updateState(() => ({
-          entry: target,
+          entry: state.entry,
+          objectUrl: state.objectUrl,
+          status: state.status
+        }));
+        return;
+      case "bytes":
+        // Desktop workbench does not register host renderers yet; hook-only
+        // payloads are treated as unsupported in this surface.
+        this.updateState(() => ({
+          entry: state.entry,
           message: this.input.appI18n.t(
             "workspaceFileManager.previewUnsupported"
           ),
           status: "unsupported"
         }));
         return;
-      }
-
-      this.updateState(() => ({
-        entry: target,
-        message: resolveReadonlyMessage(
-          this.input.appI18n,
-          loadedState.reason,
-          loadedState.maxSizeBytes
-        ),
-        status: "readonly"
-      }));
-    } catch {
-      if (this.isStale(generation)) {
+      case "readonly":
+        this.updateState(() => ({
+          entry: state.entry,
+          message: resolveReadonlyMessage(
+            this.input.appI18n,
+            state.reason,
+            state.maxSizeBytes
+          ),
+          status: "readonly"
+        }));
         return;
-      }
-      this.updateState(() => ({
-        entry: target,
-        message: this.input.appI18n.t(
-          "workspaceFileManager.unknownErrorMessage"
-        ),
-        status: "error"
-      }));
+      case "directory":
+      case "unsupported":
+        this.updateState(() => ({
+          entry: state.entry,
+          message: this.input.appI18n.t(
+            "workspaceFileManager.previewUnsupported"
+          ),
+          status: "unsupported"
+        }));
+        return;
+      case "error":
+        this.updateState(() => ({
+          entry: state.entry,
+          message: this.input.appI18n.t(
+            "workspaceFileManager.unknownErrorMessage"
+          ),
+          status: "error"
+        }));
     }
   }
 
@@ -332,10 +331,6 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     for (const listener of this.listeners) {
       listener();
     }
-  }
-
-  private isStale(generation: number): boolean {
-    return this.disposed || generation !== this.loadGeneration;
   }
 
   private publishNodeState(): void {
@@ -352,14 +347,6 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
       this.snapshotStateKey = snapshotStateKey;
       this.input.onSnapshotStateChange(snapshotState);
     }
-  }
-
-  private revokeObjectUrl(): void {
-    if (!this.objectUrl) {
-      return;
-    }
-    URL.revokeObjectURL(this.objectUrl);
-    this.objectUrl = null;
   }
 
   private updateState(
@@ -394,10 +381,9 @@ function resolveRuntimeStateFromPreviewState(
 
   return createWorkspaceFilePreviewNodeRuntimeState({
     file: state.entry,
-    textHeader:
-      state.entry.fileKind === "text"
-        ? resolveTextHeaderStateFromPreviewState(state)
-        : undefined
+    textHeader: isTextDegradablePreviewKind(state.entry.previewKind)
+      ? resolveTextHeaderStateFromPreviewState(state)
+      : undefined
   });
 }
 
@@ -420,16 +406,26 @@ function nodeStateKey(state: unknown): string {
 function resolveTextHeaderStateFromPreviewState(
   state: Exclude<WorkspaceFilePreviewNodeControllerState, { status: "empty" }>
 ): WorkspaceFilePreviewTextHeaderState {
+  const withMarkdownViewMode = (
+    headerState: WorkspaceFilePreviewTextHeaderState
+  ): WorkspaceFilePreviewTextHeaderState =>
+    state.entry.previewKind === "markdown"
+      ? {
+          ...headerState,
+          viewMode: state.status === "text" ? state.viewMode : "edit"
+        }
+      : headerState;
+
   if (state.status === "loading") {
-    return {
+    return withMarkdownViewMode({
       canSave: false,
       dirty: false,
       status: "loading"
-    };
+    });
   }
 
   if (state.status !== "text") {
-    return {
+    return withMarkdownViewMode({
       canSave: false,
       dirty: false,
       message:
@@ -439,37 +435,37 @@ function resolveTextHeaderStateFromPreviewState(
           ? state.message
           : undefined,
       status: "error"
-    };
+    });
   }
 
   const dirty = state.draft !== state.content;
   if (state.saveStatus === "saving") {
-    return {
+    return withMarkdownViewMode({
       canSave: true,
       dirty,
       status: "saving"
-    };
+    });
   }
   if (state.saveStatus === "error") {
-    return {
+    return withMarkdownViewMode({
       canSave: true,
       dirty,
       message: state.message,
       status: "error"
-    };
+    });
   }
   if (dirty) {
-    return {
+    return withMarkdownViewMode({
       canSave: true,
       dirty: true,
       status: "unsaved"
-    };
+    });
   }
-  return {
+  return withMarkdownViewMode({
     canSave: true,
     dirty: false,
     status: "saved"
-  };
+  });
 }
 
 function resolveReadonlyMessage(

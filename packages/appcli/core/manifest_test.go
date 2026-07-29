@@ -1,6 +1,9 @@
 package core
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestValidateManifestRejectsReservedHandlerPath(t *testing.T) {
 	err := ValidateManifest(Manifest{
@@ -149,5 +152,53 @@ func TestBuildCommandsDefaultsVisibilityToPublic(t *testing.T) {
 
 	if len(commands) != 1 || commands[0].Capability.Visibility != CommandVisibilityPublic {
 		t.Fatalf("commands = %#v", commands)
+	}
+}
+
+func TestValidateManifestAcceptsWaitExecutionAndBuildsCapabilityMetadata(t *testing.T) {
+	manifest := Manifest{
+		SchemaVersion: ManifestSchemaVersion,
+		Scope:         "automation",
+		Commands: []ManifestCommand{{
+			Path:      []string{"runs", "wait"},
+			Summary:   "Wait for a run",
+			Execution: &ManifestCommandExecution{Mode: CommandExecutionModeWait},
+			Output:    ManifestCommandOutput{DefaultMode: OutputModeJSON, JSON: true},
+			Handler: ManifestCommandHandler{
+				Kind: "http", Method: "POST", Path: "/tutti/cli/runs/wait", TimeoutMs: 45000,
+			},
+		}},
+	}
+	if err := ValidateManifest(manifest); err != nil {
+		t.Fatalf("ValidateManifest() error = %v", err)
+	}
+	commands := BuildCommands(manifest, CommandBuildOptions{AppID: "automation-app"})
+	if len(commands) != 1 || commands[0].Capability.Execution == nil ||
+		commands[0].Capability.Execution.Mode != CommandExecutionModeWait ||
+		commands[0].Capability.HandlerTimeoutMs != 45000 {
+		t.Fatalf("commands = %#v", commands)
+	}
+}
+
+func TestValidateManifestRejectsWaitExecutionTimeoutInput(t *testing.T) {
+	err := ValidateManifest(Manifest{
+		SchemaVersion: ManifestSchemaVersion,
+		Scope:         "automation",
+		Commands: []ManifestCommand{{
+			Path:      []string{"runs", "wait"},
+			Summary:   "Wait for a run",
+			Execution: &ManifestCommandExecution{Mode: CommandExecutionModeWait},
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"timeout-ms": map[string]any{"type": "integer"},
+				},
+			},
+			Output:  ManifestCommandOutput{DefaultMode: OutputModeJSON, JSON: true},
+			Handler: ManifestCommandHandler{Kind: "http", Method: "POST", Path: "/tutti/cli/runs/wait"},
+		}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "reserves --timeout-ms") {
+		t.Fatalf("ValidateManifest() error = %v", err)
 	}
 }

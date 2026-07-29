@@ -1,0 +1,236 @@
+package agenthost_test
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"path/filepath"
+	"testing"
+	"time"
+
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
+	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
+	_ "modernc.org/sqlite"
+)
+
+type workspaceStoreClock struct{ value time.Time }
+
+func (c workspaceStoreClock) Now() time.Time { return c.value }
+
+type workspaceStoreObserver struct{ deltas []agenthost.CommittedDelta }
+
+func (o *workspaceStoreObserver) ObserveCommitted(_ context.Context, delta agenthost.CommittedDelta) error {
+	o.deltas = append(o.deltas, delta)
+	return nil
+}
+
+type runtimeSessionInitializationObserver struct {
+	runtime   agenthost.ProviderRuntimeSession
+	persisted storesqlite.Session
+}
+
+type runtimeSessionInitializationPolicy struct{ calls int }
+
+type workspaceStoreForkRuntime struct{}
+
+func (workspaceStoreForkRuntime) ResolveSessionFork(
+	_ context.Context,
+	_ agenthost.ProviderRuntimeSession,
+) (agenthost.SessionForkDriverDescriptor, error) {
+	return agenthost.SessionForkDriverDescriptor{
+		Kind:                        "codex",
+		Version:                     "1",
+		ThroughTurn:                 true,
+		ThroughProviderTurnIDsKnown: true,
+		ThroughProviderTurnIDs:      []string{"provider-turn-1"},
+		StateBindingMode:            agenthost.SessionForkStateBindingProviderOwned,
+	}, nil
+}
+
+func (workspaceStoreForkRuntime) ForkSession(
+	_ context.Context,
+	_ agenthost.RuntimeSessionForkInput,
+) (agenthost.RuntimeSessionForkResult, error) {
+	return agenthost.RuntimeSessionForkResult{}, errors.New("unexpected fork dispatch")
+}
+
+func (p *runtimeSessionInitializationPolicy) NormalizeRuntimeSessionInitialization(
+	_ context.Context,
+	session agenthost.ProviderRuntimeSession,
+) (agenthost.ProviderRuntimeSession, error) {
+	p.calls++
+	session.AgentTargetID = "canonical-target"
+	return session, nil
+}
+
+func (o *runtimeSessionInitializationObserver) ObserveRuntimeSessionInitialized(
+	_ context.Context,
+	runtime agenthost.ProviderRuntimeSession,
+	persisted storesqlite.Session,
+) {
+	o.runtime = runtime
+	o.persisted = persisted
+}
+
+func TestSQLiteWorkspaceStoreInitializesCanonicalRuntimeSession(t *testing.T) {
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "agent-host-store.db"))
+	if err != nil {
+		t.Fatalf("open SQLite: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	db.SetMaxOpenConns(1)
+	canonical := storesqlite.New(db, storesqlite.Options{})
+	if err := canonical.Migrate(t.Context()); err != nil {
+		t.Fatalf("migrate SQLite: %v", err)
+	}
+	observer := &workspaceStoreObserver{}
+	initializationObserver := &runtimeSessionInitializationObserver{}
+	initializationPolicy := &runtimeSessionInitializationPolicy{}
+	store := &agenthost.SQLiteWorkspaceStore{
+		StoreForWorkspace: func(workspaceID string) *storesqlite.Store {
+			if workspaceID != "workspace-1" {
+				return nil
+			}
+			return canonical
+		},
+		CurrentUserID:          func() string { return " user-1 " },
+		Clock:                  workspaceStoreClock{value: time.UnixMilli(1234)},
+		Observer:               observer,
+		InitializationPolicy:   initializationPolicy,
+		InitializationObserver: initializationObserver,
+	}
+
+	persisted, err := store.InitializeRuntimeSession(t.Context(), agenthost.RuntimeSessionInitialization{
+		Session: agenthost.ProviderRuntimeSession{
+			ID: "session-1", WorkspaceID: "workspace-1", AgentTargetID: "target-1", Provider: "codex",
+			Visible: true, Provisional: true, RuntimeContext: map[string]any{"source": "create"},
+			Settings: &agenthost.ComposerSettings{Model: "gpt-5.6", ReasoningEffort: "ultra", Speed: "standard"},
+		},
+		RailPlacement: &agenthost.RailPlacement{
+			Version:     1,
+			Kind:        agenthost.RailPlacementKindProject,
+			ProjectPath: "/workspace/app",
+			SectionKey:  "project:workspace-1:/workspace/app",
+		},
+	})
+	if err != nil {
+		t.Fatalf("InitializeRuntimeSession() error = %v", err)
+	}
+	if persisted.ID != "session-1" || persisted.UserID != "user-1" || persisted.Provider != "codex" || persisted.AgentTargetID != "canonical-target" {
+		t.Fatalf("persisted session = %#v", persisted)
+	}
+	if persisted.LastEventUnixMS != 1234 || persisted.Settings["reasoningEffort"] != "ultra" || persisted.Settings["speed"] != "standard" {
+		t.Fatalf("persisted canonical fields = %#v", persisted)
+	}
+	if persisted.RailSectionKey != "project:workspace-1:/workspace/app" {
+		t.Fatalf("persisted rail section key = %q", persisted.RailSectionKey)
+	}
+	if persisted.Metadata.Visible {
+		t.Fatalf("provisional session visibility = true, want false")
+	}
+	if len(observer.deltas) != 1 || len(observer.deltas[0].ProjectionDirty) == 0 || len(observer.deltas[0].ViewsInvalidated) != 1 {
+		t.Fatalf("commit deltas = %#v", observer.deltas)
+	}
+	if initializationObserver.runtime.ID != "session-1" || initializationObserver.persisted.ID != "session-1" {
+		t.Fatalf("initialization projection = %#v", initializationObserver)
+	}
+	if initializationPolicy.calls != 1 {
+		t.Fatalf("initialization policy calls = %d, want 1", initializationPolicy.calls)
+	}
+
+	_, err = store.InitializeRuntimeSession(t.Context(), agenthost.RuntimeSessionInitialization{
+		Session: agenthost.ProviderRuntimeSession{
+			ID: "session-1", WorkspaceID: "workspace-1", AgentTargetID: "target-1", Provider: "codex",
+		},
+		RailPlacement: &agenthost.RailPlacement{
+			Version: 1, Kind: agenthost.RailPlacementKindConversations, SectionKey: "conversations",
+		},
+	})
+	if !errors.Is(err, agenthost.ErrRailPlacementConflict) {
+		t.Fatalf("conflicting rail placement error = %v", err)
+	}
+}
+
+func TestSQLiteWorkspaceStoreProjectsForkTurnIdentitiesThroughProductionPort(t *testing.T) {
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "agent-host-fork-store.db"))
+	if err != nil {
+		t.Fatalf("open SQLite: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	db.SetMaxOpenConns(1)
+	canonical := storesqlite.New(db, storesqlite.Options{})
+	if err := canonical.Migrate(t.Context()); err != nil {
+		t.Fatalf("migrate SQLite: %v", err)
+	}
+	if _, err := canonical.ReportSessionState(t.Context(), storesqlite.SessionStateReport{
+		WorkspaceID: "workspace-1", AgentSessionID: "source", Kind: storesqlite.SessionKindRoot,
+		Origin: "runtime", Provider: "codex", ProviderSessionID: "provider-source",
+		Cwd: "/workspace", Status: "ready", CurrentPhase: "idle", OccurredAtUnixMS: 1,
+	}); err != nil {
+		t.Fatalf("seed source session: %v", err)
+	}
+	if _, err := canonical.ReportActivityState(t.Context(), storesqlite.ActivityStateReport{
+		Session: storesqlite.SessionStateReport{
+			WorkspaceID: "workspace-1", AgentSessionID: "source", Kind: storesqlite.SessionKindRoot,
+			Origin: "runtime", Provider: "codex", ProviderSessionID: "provider-source",
+			Cwd: "/workspace", Status: "active", CurrentPhase: "working", OccurredAtUnixMS: 10,
+		},
+		Turn: &storesqlite.TurnTransition{
+			WorkspaceID: "workspace-1", AgentSessionID: "source", TurnID: "turn-1",
+			Phase: storesqlite.TurnPhaseRunning, OccurredAtUnixMS: 10,
+		},
+		RootProviderTurn: &storesqlite.RootProviderTurnTransition{
+			WorkspaceID: "workspace-1", RootAgentSessionID: "source", RootTurnID: "turn-1",
+			ProviderTurnID: "provider-turn-1", Phase: storesqlite.RootProviderTurnPhaseRunning,
+			OccurredAtUnixMS: 10,
+		},
+	}); err != nil {
+		t.Fatalf("seed running source turn: %v", err)
+	}
+	if _, err := canonical.ReportActivityState(t.Context(), storesqlite.ActivityStateReport{
+		Session: storesqlite.SessionStateReport{
+			WorkspaceID: "workspace-1", AgentSessionID: "source", OccurredAtUnixMS: 12,
+		},
+		RootProviderTurn: &storesqlite.RootProviderTurnTransition{
+			WorkspaceID: "workspace-1", RootAgentSessionID: "source", RootTurnID: "turn-1",
+			ProviderTurnID: "provider-turn-1", Phase: storesqlite.RootProviderTurnPhaseCompleted,
+			Outcome: storesqlite.TurnOutcomeCompleted, OccurredAtUnixMS: 12,
+		},
+	}); err != nil {
+		t.Fatalf("settle source turn: %v", err)
+	}
+	store := &agenthost.SQLiteWorkspaceStore{
+		StoreForWorkspace: func(workspaceID string) *storesqlite.Store {
+			if workspaceID == "workspace-1" {
+				return canonical
+			}
+			return nil
+		},
+	}
+	host := agenthost.New(agenthost.Config{
+		SessionForks:       store,
+		SessionForkRuntime: workspaceStoreForkRuntime{},
+	})
+	capabilities, err := host.GetSessionForkCapabilities(
+		t.Context(),
+		agenthost.SessionForkCapabilityInput{
+			WorkspaceID:          "workspace-1",
+			SourceAgentSessionID: "source",
+		},
+	)
+	if err != nil {
+		t.Fatalf("GetSessionForkCapabilities() error = %v", err)
+	}
+	if !capabilities.ThroughTurn || !capabilities.ThroughTurnIDsKnown ||
+		len(capabilities.ThroughTurnIDs) != 1 ||
+		capabilities.ThroughTurnIDs[0] != "turn-1" {
+		t.Fatalf("GetSessionForkCapabilities() = %#v, want turn-1 enabled", capabilities)
+	}
+}
+
+func TestSQLiteWorkspaceStoreRejectsUnknownWorkspace(t *testing.T) {
+	store := &agenthost.SQLiteWorkspaceStore{StoreForWorkspace: func(string) *storesqlite.Store { return nil }}
+	if _, _, err := store.GetSession(t.Context(), "workspace-1", "session-1"); err == nil {
+		t.Fatal("GetSession succeeded without a workspace store")
+	}
+}

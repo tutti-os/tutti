@@ -11,7 +11,6 @@ import type { Editor } from "@tiptap/core";
 import { useEditor } from "@tiptap/react";
 import { cn } from "../../../app/renderer/lib/utils";
 import { useTranslation } from "../../../i18n/index";
-import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
 import { createAgentRichTextInputExtensions } from "./agentRichTextExtensions";
 import {
   agentRichTextContentToPromptText,
@@ -19,16 +18,14 @@ import {
   plainTextToAgentRichTextInlineContent,
   plainTextToAgentRichTextDoc
 } from "./agentRichTextDocument";
-import { createAgentFileMentionContent } from "./agentWorkspaceFileReferences";
 import { isAgentRichTextImeComposing } from "./agentRichTextIme";
 import {
   hasWorkspaceFileDropData,
   readWorkspaceFileDropEntries
 } from "../../terminalNode/workspaceFileDrop";
 import {
-  imageFilesFromDataTransfer,
-  nonImageFilesFromDataTransfer,
   readAgentRichTextPromptImages,
+  routeAgentRichTextExternalFiles,
   systemFileDragInfoFromDataTransfer
 } from "./agentRichTextPromptImages";
 import type {
@@ -41,6 +38,7 @@ import {
   classifyAgentRichTextTextPaste,
   createAgentRichTextCaretAnchorExtension,
   createAgentRichTextPlaceholderExtension,
+  insertAgentRichTextClipboardHtml,
   isAgentRichTextLargeTextPaste,
   isPromptVisualLineStart,
   readEditorDomSelectionRange,
@@ -48,6 +46,7 @@ import {
   readPromptSelection,
   readPromptTextRange,
   readSelectedPlainText,
+  serializeAgentRichTextSelection,
   scrollEditorSelectionIntoView,
   writePlainTextToClipboard
 } from "./agentRichTextEditorSupport";
@@ -59,6 +58,12 @@ import {
   isAgentRichTextUserContentInsertion,
   markAgentRichTextPointerFocus
 } from "./agentRichTextEngagement";
+import {
+  createAgentRichTextControlledValueTracker,
+  recordAgentRichTextLocalEdit,
+  shouldApplyAgentRichTextControlledValue
+} from "./agentRichTextControlledValue";
+import { createAgentRichTextMentionSuggestionSuppression } from "./agentRichTextMentionSuggestionSuppression";
 
 export type {
   AgentRichTextEditorHandle,
@@ -71,11 +76,13 @@ export const AgentRichTextEditor = forwardRef<
 >(function AgentRichTextEditor(
   {
     value,
+    contentScopeKey = "default",
     disabled,
     placeholder,
     removeMentionLabel,
     className,
     onChange,
+    onContentLayoutInvalidated,
     onFocus,
     onUserContentChange,
     onSubmit,
@@ -85,6 +92,7 @@ export const AgentRichTextEditor = forwardRef<
     submitOnEnter = true,
     enableFileMentionSuggestions = true,
     onKeyDownForPalette,
+    onHistoryNavigation,
     onFileMentionSuggestionChange,
     onFileMentionSuggestionKeyDown,
     onLinkClick,
@@ -92,7 +100,7 @@ export const AgentRichTextEditor = forwardRef<
     onPromptImagesUnsupported,
     onPasteImages,
     onPasteLargeText,
-    getReferenceForFile,
+    onPasteFiles,
     onDropFiles
   },
   ref
@@ -100,14 +108,19 @@ export const AgentRichTextEditor = forwardRef<
   "use memo";
   const { t } = useTranslation();
   const lastEmittedPromptRef = useRef<string | null>(value);
+  const controlledValueTrackerRef = useRef(
+    createAgentRichTextControlledValueTracker(contentScopeKey)
+  );
   const editorRef = useRef<Editor | null>(null);
   const onChangeRef = useRef(onChange);
+  const onContentLayoutInvalidatedRef = useRef(onContentLayoutInvalidated);
   const onFocusRef = useRef(onFocus);
   const onUserContentChangeRef = useRef(onUserContentChange);
   const pendingFocusMethodRef = useRef<"pointer" | "programmatic" | null>(null);
   const onSubmitRef = useRef(onSubmit);
   const onSubmitGuidanceRef = useRef(onSubmitGuidance);
   const onKeyDownForPaletteRef = useRef(onKeyDownForPalette);
+  const onHistoryNavigationRef = useRef(onHistoryNavigation);
   const onFileMentionSuggestionChangeRef = useRef(
     onFileMentionSuggestionChange
   );
@@ -118,14 +131,16 @@ export const AgentRichTextEditor = forwardRef<
   const onPromptImagesUnsupportedRef = useRef(onPromptImagesUnsupported);
   const onPasteImagesRef = useRef(onPasteImages);
   const onPasteLargeTextRef = useRef(onPasteLargeText);
+  const onPasteFilesRef = useRef(onPasteFiles);
   const onDropFilesRef = useRef(onDropFiles);
   const promptImagesSupportedRef = useRef(promptImagesSupported);
-  const getReferenceForFileRef = useRef(getReferenceForFile);
   const placeholderRef = useRef(placeholder);
   const removeMentionLabelRef = useRef(removeMentionLabel);
   const availableSkillsRef = useRef(availableSkills);
   const availableCapabilitiesRef = useRef(availableCapabilities);
-  const suppressPastedAtSuggestionRef = useRef(false);
+  const [mentionSuggestionSuppression] = useState(() =>
+    createAgentRichTextMentionSuggestionSuppression(value)
+  );
   const scrollFrameRef = useRef<number | null>(null);
   const [contextMenu, setContextMenu] =
     useState<AgentRichTextContextMenuState | null>(null);
@@ -143,11 +158,7 @@ export const AgentRichTextEditor = forwardRef<
       onPasteLargeTextRef.current(text);
       return;
     }
-    suppressPastedAtSuggestionRef.current =
-      text.includes("@") && !text.endsWith("@");
-    if (suppressPastedAtSuggestionRef.current) {
-      releasePastedAtSuggestionSuppression(suppressPastedAtSuggestionRef);
-    }
+    mentionSuggestionSuppression.suppressTextInsertion(text);
     currentEditor
       .chain()
       .focus()
@@ -252,7 +263,7 @@ export const AgentRichTextEditor = forwardRef<
           onSuggestionKeyDown: (event) =>
             onFileMentionSuggestionKeyDownRef.current?.(event) ?? false,
           removeActionAriaLabel: removeMentionLabelRef.current,
-          shouldSuppressSuggestion: () => suppressPastedAtSuggestionRef.current
+          shouldSuppressSuggestion: mentionSuggestionSuppression.isSuppressed
         },
         { skills: availableSkillsRef.current },
         { capabilities: availableCapabilitiesRef.current }
@@ -264,20 +275,22 @@ export const AgentRichTextEditor = forwardRef<
   );
 
   onChangeRef.current = onChange;
+  onContentLayoutInvalidatedRef.current = onContentLayoutInvalidated;
   onFocusRef.current = onFocus;
   onUserContentChangeRef.current = onUserContentChange;
   onSubmitRef.current = onSubmit;
   onSubmitGuidanceRef.current = onSubmitGuidance;
   onKeyDownForPaletteRef.current = onKeyDownForPalette;
+  onHistoryNavigationRef.current = onHistoryNavigation;
   onFileMentionSuggestionChangeRef.current = onFileMentionSuggestionChange;
   onFileMentionSuggestionKeyDownRef.current = onFileMentionSuggestionKeyDown;
   onLinkClickRef.current = onLinkClick;
   onPromptImagesUnsupportedRef.current = onPromptImagesUnsupported;
   onPasteImagesRef.current = onPasteImages;
   onPasteLargeTextRef.current = onPasteLargeText;
+  onPasteFilesRef.current = onPasteFiles;
   onDropFilesRef.current = onDropFiles;
   promptImagesSupportedRef.current = promptImagesSupported;
-  getReferenceForFileRef.current = getReferenceForFile;
   placeholderRef.current = placeholder;
   removeMentionLabelRef.current = removeMentionLabel;
   availableSkillsRef.current = availableSkills;
@@ -359,11 +372,12 @@ export const AgentRichTextEditor = forwardRef<
           ) {
             return false;
           }
-          const selection = readPromptSelection(currentEditor);
-          if (!selection.text) {
+          const clipboard = serializeAgentRichTextSelection(currentEditor);
+          if (!clipboard) {
             return false;
           }
-          event.clipboardData.setData("text/plain", selection.text);
+          event.clipboardData.setData("text/plain", clipboard.text);
+          event.clipboardData.setData("text/html", clipboard.html);
           event.preventDefault();
           return true;
         },
@@ -378,10 +392,12 @@ export const AgentRichTextEditor = forwardRef<
             return false;
           }
           const selection = readPromptSelection(currentEditor);
-          if (!selection.text) {
+          const clipboard = serializeAgentRichTextSelection(currentEditor);
+          if (!clipboard) {
             return false;
           }
-          event.clipboardData.setData("text/plain", selection.text);
+          event.clipboardData.setData("text/plain", clipboard.text);
+          event.clipboardData.setData("text/html", clipboard.html);
           event.preventDefault();
           currentEditor.commands.deleteRange({
             from: selection.from,
@@ -390,59 +406,30 @@ export const AgentRichTextEditor = forwardRef<
           return true;
         },
         paste: (_view, event) => {
-          const imageFiles = imageFilesFromDataTransfer(event.clipboardData);
-          if (imageFiles.length > 0) {
-            event.preventDefault();
-            if (!promptImagesSupportedRef.current) {
-              onPromptImagesUnsupportedRef.current?.();
-              return true;
-            }
-            void readAgentRichTextPromptImages(imageFiles).then((images) => {
-              if (images.length > 0) {
-                onPasteImagesRef.current?.(images);
-              }
+          const { externalFiles, imageFiles, imagesHandledAsFiles } =
+            routeAgentRichTextExternalFiles(event.clipboardData, {
+              externalFilesSupported: Boolean(onPasteFilesRef.current),
+              promptImagesSupported: promptImagesSupportedRef.current
             });
-            return true;
-          }
-          const getReferenceForFileFn = getReferenceForFileRef.current;
-          if (getReferenceForFileFn) {
-            const nonImageFiles = nonImageFilesFromDataTransfer(
-              event.clipboardData
-            );
-            if (nonImageFiles.length > 0) {
-              const references = nonImageFiles
-                .map((file) => {
-                  try {
-                    return getReferenceForFileFn(file);
-                  } catch {
-                    return null;
+          if (imageFiles.length > 0 || externalFiles.length > 0) {
+            event.preventDefault();
+            if (externalFiles.length > 0) {
+              onPasteFilesRef.current?.(externalFiles);
+            }
+            if (imageFiles.length > 0 && !imagesHandledAsFiles) {
+              if (!promptImagesSupportedRef.current) {
+                onPromptImagesUnsupportedRef.current?.();
+              } else {
+                void readAgentRichTextPromptImages(imageFiles).then(
+                  (images) => {
+                    if (images.length > 0) {
+                      onPasteImagesRef.current?.(images);
+                    }
                   }
-                })
-                .filter((reference): reference is WorkspaceFileReference =>
-                  Boolean(reference?.path)
                 );
-              if (references.length > 0) {
-                event.preventDefault();
-                const currentEditor = editorRef.current;
-                if (!currentEditor) {
-                  return true;
-                }
-                if (!currentEditor.isFocused) {
-                  currentEditor.commands.setTextSelection(
-                    currentEditor.state.doc.content.size
-                  );
-                }
-                currentEditor.commands.insertContent(
-                  createAgentFileMentionContent(references, {
-                    prefixCaretAnchor: isPromptVisualLineStart(
-                      currentEditor,
-                      currentEditor.state.selection.from
-                    )
-                  })
-                );
-                return true;
               }
             }
+            return true;
           }
           const html = event.clipboardData?.getData("text/html") ?? "";
           const text = event.clipboardData?.getData("text/plain") ?? "";
@@ -460,7 +447,15 @@ export const AgentRichTextEditor = forwardRef<
             return true;
           }
           if (textPasteKind === "structured-mention") {
-            return false;
+            event.preventDefault();
+            const currentEditor = editorRef.current;
+            if (!currentEditor) {
+              return true;
+            }
+            if (insertAgentRichTextClipboardHtml(currentEditor, html)) {
+              mentionSuggestionSuppression.suppressTextInsertion(text);
+            }
+            return true;
           }
           event.preventDefault();
           const currentEditor = editorRef.current;
@@ -472,11 +467,7 @@ export const AgentRichTextEditor = forwardRef<
               currentEditor.state.doc.content.size
             );
           }
-          suppressPastedAtSuggestionRef.current =
-            text.includes("@") && !text.endsWith("@");
-          if (suppressPastedAtSuggestionRef.current) {
-            releasePastedAtSuggestionSuppression(suppressPastedAtSuggestionRef);
-          }
+          mentionSuggestionSuppression.suppressTextInsertion(text);
           currentEditor.commands.insertContent(
             plainTextToAgentRichTextInlineContent(text, {
               capabilities: availableCapabilitiesRef.current,
@@ -534,10 +525,15 @@ export const AgentRichTextEditor = forwardRef<
           const canDropRegularSystemFiles =
             systemFileDragInfo.hasRegularFiles &&
             Boolean(onDropFilesRef.current);
+          const canDropImagesAsFiles =
+            systemFileDragInfo.hasImageFiles &&
+            !promptImagesSupportedRef.current &&
+            Boolean(onDropFilesRef.current);
           if (systemFileDragInfo.hasImageFiles || canDropRegularSystemFiles) {
             event.preventDefault();
             dataTransfer.dropEffect =
               canDropRegularSystemFiles ||
+              canDropImagesAsFiles ||
               (systemFileDragInfo.hasImageFiles &&
                 promptImagesSupportedRef.current)
                 ? "copy"
@@ -560,20 +556,19 @@ export const AgentRichTextEditor = forwardRef<
           if (!dataTransfer || disabled) {
             return false;
           }
-          const imageFiles = imageFilesFromDataTransfer(dataTransfer);
-          const imageFileSet = new Set(imageFiles);
-          const regularFiles = nonImageFilesFromDataTransfer(
-            dataTransfer
-          ).filter((file) => !imageFileSet.has(file));
-          const canHandleRegularFiles = Boolean(onDropFilesRef.current);
-          if (
-            imageFiles.length > 0 ||
-            (regularFiles.length > 0 && canHandleRegularFiles)
-          ) {
+          const {
+            externalFiles: filesForExternalPreparation,
+            imageFiles,
+            imagesHandledAsFiles
+          } = routeAgentRichTextExternalFiles(dataTransfer, {
+            externalFilesSupported: Boolean(onDropFilesRef.current),
+            promptImagesSupported: promptImagesSupportedRef.current
+          });
+          if (imageFiles.length > 0 || filesForExternalPreparation.length > 0) {
             event.preventDefault();
             const currentEditor = editorRef.current;
             if (
-              regularFiles.length > 0 &&
+              filesForExternalPreparation.length > 0 &&
               onDropFilesRef.current &&
               currentEditor &&
               !currentEditor.isDestroyed
@@ -582,12 +577,11 @@ export const AgentRichTextEditor = forwardRef<
                 left: event.clientX,
                 top: event.clientY
               })?.pos;
-              const fallbackSelectionPosition =
-                currentEditor.state.selection.from;
+              const selectionPosition = currentEditor.state.selection.from;
               const insertPosition =
                 coordinatePosition ??
-                (Number.isInteger(fallbackSelectionPosition)
-                  ? fallbackSelectionPosition
+                (Number.isInteger(selectionPosition)
+                  ? selectionPosition
                   : null) ??
                 currentEditor.state.doc.content.size;
               currentEditor
@@ -595,9 +589,9 @@ export const AgentRichTextEditor = forwardRef<
                 .focus()
                 .setTextSelection(insertPosition)
                 .run();
-              onDropFilesRef.current(regularFiles);
+              onDropFilesRef.current(filesForExternalPreparation);
             }
-            if (imageFiles.length === 0) {
+            if (imageFiles.length === 0 || imagesHandledAsFiles) {
               return true;
             }
             if (!promptImagesSupportedRef.current) {
@@ -654,11 +648,16 @@ export const AgentRichTextEditor = forwardRef<
     onUpdate: ({ editor: nextEditor, transaction }) => {
       editorRef.current = nextEditor;
       scheduleSelectionScroll(nextEditor);
+      onContentLayoutInvalidatedRef.current?.();
       const nextPrompt = editorToPromptText(nextEditor);
       if (nextPrompt === lastEmittedPromptRef.current) {
         return;
       }
       lastEmittedPromptRef.current = nextPrompt;
+      recordAgentRichTextLocalEdit(
+        controlledValueTrackerRef.current,
+        nextPrompt
+      );
       if (isAgentRichTextUserContentInsertion(transaction)) {
         onUserContentChangeRef.current?.(nextPrompt);
       }
@@ -686,10 +685,12 @@ export const AgentRichTextEditor = forwardRef<
   const handleKeyDownCapture = (
     event: ReactKeyboardEvent<HTMLDivElement>
   ): void => {
+    mentionSuggestionSuppression.releaseForContentEditingKey(event);
     handleAgentRichTextKeyDownCapture(event, {
       disabled,
       editorRef,
       onKeyDownForPaletteRef,
+      onHistoryNavigationRef,
       onSubmitGuidanceRef,
       onSubmitRef,
       submitOnEnter
@@ -754,13 +755,21 @@ export const AgentRichTextEditor = forwardRef<
     if (!editor || editor.isDestroyed) {
       return;
     }
-    if (value === lastEmittedPromptRef.current) {
+    if (
+      !shouldApplyAgentRichTextControlledValue({
+        lastEmittedValue: lastEmittedPromptRef.current,
+        scopeKey: contentScopeKey,
+        tracker: controlledValueTrackerRef.current,
+        value
+      })
+    ) {
       return;
     }
     const nextDoc = plainTextToAgentRichTextDoc(value, {
       capabilities: availableCapabilities,
       skills: availableSkills
     });
+    mentionSuggestionSuppression.setRestoredValue(value);
     if (JSON.stringify(editor.getJSON()) === JSON.stringify(nextDoc)) {
       lastEmittedPromptRef.current = value;
       return;
@@ -768,7 +777,8 @@ export const AgentRichTextEditor = forwardRef<
     editor.commands.setContent(nextDoc, { emitUpdate: false });
     editor.commands.setTextSelection(editor.state.doc.content.size);
     lastEmittedPromptRef.current = value;
-  }, [availableCapabilities, availableSkills, editor, value]);
+    onContentLayoutInvalidatedRef.current?.();
+  }, [availableCapabilities, availableSkills, contentScopeKey, editor, value]);
 
   return (
     <AgentRichTextEditorSurface
@@ -788,10 +798,3 @@ export const AgentRichTextEditor = forwardRef<
     />
   );
 });
-
-function releasePastedAtSuggestionSuppression(ref: { current: boolean }): void {
-  // timing: keep suppression through the synchronous editor insertion only.
-  window.setTimeout(() => {
-    ref.current = false;
-  }, 0);
-}

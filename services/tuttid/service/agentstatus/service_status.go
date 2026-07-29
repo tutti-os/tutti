@@ -13,7 +13,17 @@ import (
 // concurrently for different specs: it only reads Service configuration, and
 // the shared stores it touches (RunOutcomes, the active-action table) are
 // internally synchronized.
-func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.Time) (status ProviderStatus) {
+type statusDetectionOptions struct {
+	forceRefresh     bool
+	skipAdapterProbe bool
+}
+
+func (s Service) statusForSpec(
+	ctx context.Context,
+	spec ProviderSpec,
+	now time.Time,
+	options statusDetectionOptions,
+) (status ProviderStatus) {
 	startedAt := time.Now()
 	var runtimeResolutionDuration time.Duration
 	var adapterProbeDuration time.Duration
@@ -21,6 +31,7 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 	var cliVersionDuration time.Duration
 	var postChecksDuration time.Duration
 	adapterProbeRan := false
+	adapterProbeCacheHit := false
 	cliVersionRan := false
 	unsupported := false
 	defer func() {
@@ -33,6 +44,7 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 			"durationMs", time.Since(startedAt).Milliseconds(),
 			"runtimeResolutionMs", runtimeResolutionDuration.Milliseconds(),
 			"adapterProbeRan", adapterProbeRan,
+			"adapterProbeCacheHit", adapterProbeCacheHit,
 			"adapterProbeMs", adapterProbeDuration.Milliseconds(),
 			"authMs", authDuration.Milliseconds(),
 			"cliVersionRan", cliVersionRan,
@@ -59,36 +71,54 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 	// concurrently: the per-provider cost becomes the slowest step instead of
 	// the sum. Each goroutine writes distinct variables read only after Wait.
 	var auth AuthInfo
+	authCLIVersion := ""
 	cliVersion := ""
+	reuseCursorAboutVersion := installed && isCursorAuthCommandSpec(spec) && s.RunAuthStatusCommand == nil
 	var checks errgroup.Group
-	if installed && adapterReady && s.shouldProbeAdapterCommandForStatus(spec, runtimeResolution) {
-		adapterProbeRan = true
-		checks.Go(func() error {
-			probeStartedAt := time.Now()
-			if probe := s.probeAdapterRuntimeCommand(ctx, spec, runtimeResolution, now); probe.Status == ProbeFailed {
-				adapterReady = false
-				adapterLaunchFailed = true
-			}
-			adapterProbeDuration = time.Since(probeStartedAt)
-			return nil
-		})
+	if installed && adapterReady && !options.skipAdapterProbe &&
+		s.shouldProbeAdapterCommandForStatus(spec, runtimeResolution) {
+		probeCacheKey := adapterProbeCacheKey(spec, runtimeResolution)
+		if !options.forceRefresh &&
+			s.AdapterProbeCache.ready(probeCacheKey, runtimeResolution.AdapterPath) {
+			adapterProbeCacheHit = true
+		} else {
+			adapterProbeRan = true
+			checks.Go(func() error {
+				probeStartedAt := time.Now()
+				if probe := s.probeAdapterRuntimeCommand(ctx, spec, runtimeResolution, now); probe.Status == ProbeFailed {
+					adapterReady = false
+					adapterLaunchFailed = true
+				}
+				adapterProbeDuration = time.Since(probeStartedAt)
+				return nil
+			})
+		}
 	}
 	checks.Go(func() error {
 		authStartedAt := time.Now()
-		auth = s.resolveAuth(ctx, spec, installed, runtimeResolution.CLIPath)
+		auth, authCLIVersion = s.resolveAuthAndCLIVersion(ctx, spec, installed, runtimeResolution.CLIPath)
 		authDuration = time.Since(authStartedAt)
 		return nil
 	})
-	if installed {
+	if installed && !reuseCursorAboutVersion {
 		cliVersionRan = true
 		checks.Go(func() error {
 			cliVersionStartedAt := time.Now()
-			cliVersion = s.cliVersion(ctx, runtimeResolution.CLIPath, runtimeResolution.Env)
+			cliVersion = s.providerCLIVersion(ctx, spec, runtimeResolution.CLIPath, runtimeResolution.Env)
 			cliVersionDuration = time.Since(cliVersionStartedAt)
 			return nil
 		})
 	}
 	_ = checks.Wait()
+	if reuseCursorAboutVersion {
+		cliVersion = authCLIVersion
+		if cliVersion == "" {
+			cliVersionRan = true
+			cliVersionStartedAt := time.Now()
+			cliVersion = s.cliVersion(ctx, runtimeResolution.CLIPath, runtimeResolution.Env)
+			cliVersionDuration = time.Since(cliVersionStartedAt)
+		}
+	}
 	postChecksStartedAt := time.Now()
 
 	codexPlatformOK := true
@@ -100,10 +130,18 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 		Status:    AvailabilityReady,
 	}
 	actions := []Action{}
+	cliBelowFloor := installed && !providerCLIVersionMeetsMinimum(spec, cliVersion)
 
 	if !installed {
 		availability.Status = AvailabilityNotInstalled
 		availability.ReasonCode = "cli_not_found"
+		actions = append(actions, daemonAction(ActionInstall))
+	} else if !isCodexStatusSpec(spec) && cliBelowFloor {
+		// Descriptor-owned version floors are a CLI capability gate. Surface
+		// that repair before any downstream adapter failure so callers retain
+		// the current/minimum version evidence and run the CLI installer first.
+		availability.Status = AvailabilityNotInstalled
+		availability.ReasonCode = providerCLIVersionUnsupportedReasonCode(spec)
 		actions = append(actions, daemonAction(ActionInstall))
 	} else if !adapterInstalled {
 		availability.Status = AvailabilityNotInstalled
@@ -121,9 +159,9 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 		availability.Status = AvailabilityNotInstalled
 		availability.ReasonCode = codexReasonCodeFromErrorCode(string(CodexErrPlatformPkgIncomplete))
 		actions = append(actions, daemonAction(ActionInstall))
-	} else if isCodexStatusSpec(spec) && !cliVersionMeetsMinimum(cliVersion, spec.MinVersion) {
+	} else if cliBelowFloor {
 		availability.Status = AvailabilityNotInstalled
-		availability.ReasonCode = codexReasonCodeFromErrorCode(string(CodexErrVersionTooOld))
+		availability.ReasonCode = providerCLIVersionUnsupportedReasonCode(spec)
 		actions = append(actions, daemonAction(ActionInstall))
 	} else {
 		if spec.LoginActionKind == ActionKindDaemonAction {
@@ -132,16 +170,12 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 			actions = append(actions, terminalAction(ActionLogin, loginCommandForRuntime(spec, runtimeResolution)))
 		}
 
-		// Claude Code can run in API Usage Billing mode — an API key, an auth
-		// token, or an apiKeyHelper — which bills usage to an API account and
-		// overrides any stored OAuth/subscription session. `claude auth status`
-		// only reflects the stored session, so it is blind to these env/settings
-		// credentials; detect them directly and prefer that signal over whatever
-		// the CLI reports, so the wizard shows "已配置 API 计费" instead of a
-		// stale OAuth label or "未登录". A bare custom endpoint without a
-		// credential is NOT API billing (the user may still be on an OAuth
-		// session), so it does not trigger this override.
-		if isClaudeStatusSpec(spec) && s.providerHasAPICredential(spec.Provider) {
+		// Codex and Claude Code can run in API Usage Billing mode. Their auth
+		// status commands report stored login sessions and may not reflect an API
+		// key, auth token, or apiKeyHelper, so explicit API billing credentials
+		// override the command result. A bare custom endpoint is not a credential.
+		if (isCodexStatusSpec(spec) || isClaudeStatusSpec(spec)) &&
+			s.providerHasAPICredential(spec.Provider) {
 			auth.Status = AuthAuthenticated
 			auth.AccountLabel = "API Usage Billing"
 			auth.AuthMethod = "apiKey"
@@ -168,6 +202,7 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 			Installed:  installed,
 			BinaryPath: runtimeResolution.CLIPath,
 			Version:    cliVersion,
+			MinVersion: spec.MinVersion,
 		},
 		Adapter: AdapterStatus{
 			Installed:       adapterReady,
@@ -209,7 +244,6 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 		)
 	}
 	if isCodexStatusSpec(spec) {
-		status.CLI.MinVersion = spec.MinVersion
 		status.Checks = codexProviderChecks(status, codexPlatformOK, s.codexNodeRuntimeCheck(spec))
 		status.LastError = codexProviderLastError(status)
 		slog.Info(
@@ -225,11 +259,24 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 	return status
 }
 
+func providerCLIVersionUnsupportedReasonCode(spec ProviderSpec) string {
+	if isCodexStatusSpec(spec) {
+		return codexReasonCodeFromErrorCode(string(CodexErrVersionTooOld))
+	}
+	return "cli_version_unsupported"
+}
+
 func (s Service) shouldProbeAdapterCommandForStatus(spec ProviderSpec, runtimeResolution providerRuntimeResolution) bool {
 	if strings.TrimSpace(spec.ExternalRegistryID) != "" {
 		return true
 	}
-	return isCodexStatusSpec(spec) && s.executableFile(runtimeResolution.AdapterPath)
+	if isCodexStatusSpec(spec) {
+		return s.executableFile(runtimeResolution.AdapterPath)
+	}
+	if isStandardACPStatusSpec(spec) && sameResolvedBinary(runtimeResolution.AdapterPath, runtimeResolution.CLIPath) {
+		return s.executableFile(runtimeResolution.AdapterPath)
+	}
+	return false
 }
 
 func (s Service) probeReadyAfterForSpec(spec ProviderSpec) time.Duration {

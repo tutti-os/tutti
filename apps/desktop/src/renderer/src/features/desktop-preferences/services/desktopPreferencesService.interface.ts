@@ -9,6 +9,7 @@ import type {
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
   DesktopDockPlacement,
+  DeletedAgentConversationRetentionDays,
   DesktopFeatureFlags,
   DesktopFileDefaultOpenersByExtension,
   DesktopMinimizeAnimation,
@@ -21,10 +22,19 @@ import type {
 import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
 import type { DesktopPreferencesReadableStoreState } from "./desktopPreferencesTypes.ts";
 
+export type DesktopAgentComposerDefaultsField =
+  keyof DesktopAgentComposerDefaultsPatch;
+
+export interface DesktopAgentComposerDefaultsPatchResult {
+  acknowledgedFields: DesktopAgentComposerDefaultsField[];
+  supersededFields: DesktopAgentComposerDefaultsField[];
+}
+
 export interface IDesktopPreferencesService {
   readonly _serviceBrand: undefined;
   readonly store: DesktopPreferencesReadableStoreState;
 
+  setAgentCliUpdateCheckEnabled(enabled: boolean): Promise<boolean>;
   setDefaultAgentProvider(
     provider: DesktopDefaultAgentProvider
   ): Promise<DesktopDefaultAgentProvider>;
@@ -40,6 +50,9 @@ export interface IDesktopPreferencesService {
   setDockPlacement(
     placement: DesktopDockPlacement
   ): Promise<DesktopDockPlacement>;
+  setDeletedAgentConversationRetentionDays(
+    days: DeletedAgentConversationRetentionDays
+  ): Promise<DeletedAgentConversationRetentionDays>;
   setDockIconStyle(style: DesktopDockIconStyle): Promise<DesktopDockIconStyle>;
   setFeatureFlags(flags: DesktopFeatureFlags): Promise<DesktopFeatureFlags>;
   setFileDefaultOpenersByExtension(
@@ -67,7 +80,7 @@ export interface IDesktopPreferencesService {
   rememberAgentComposerDefaultsForAgentTarget(
     agentTargetId: string,
     defaults: DesktopAgentComposerDefaultsPatch | null
-  ): Promise<void>;
+  ): Promise<DesktopAgentComposerDefaultsPatchResult>;
   rememberAgentGuiConversationRailCollapsed(
     provider: DesktopAgentProvider,
     collapsed: boolean

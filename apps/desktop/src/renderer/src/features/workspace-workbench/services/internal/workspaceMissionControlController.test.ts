@@ -6,21 +6,18 @@ import type {
   WorkbenchMissionControlSnapshot
 } from "@tutti-os/workbench-surface";
 import type { ReporterEventInput } from "../../../analytics/services/reporterService.interface.ts";
-import {
-  isWorkspaceMissionControlActivateShortcut,
-  isWorkspaceMissionControlLayoutShortcut
-} from "../workspaceMissionControlShortcut.ts";
+import { isWorkspaceMissionControlLayoutShortcut } from "../workspaceMissionControlShortcut.ts";
 import { createWorkspaceMissionControlController } from "./workspaceMissionControlController.ts";
 
 test("workspace mission control controller stays closed without an adapter", () => {
   const controller = createWorkspaceMissionControlController();
 
-  controller.open("activate");
+  controller.open();
 
   assert.deepEqual(controller.getSnapshot(), {
     canOpen: false,
+    isLayoutLocked: false,
     isOpen: false,
-    mode: null,
     nodeIds: null,
     shortcutsEnabled: true,
     visibleWindowCount: 0
@@ -31,12 +28,12 @@ test("workspace mission control controller requires multiple visible nodes", () 
   const controller = createWorkspaceMissionControlController();
   controller.setAdapter(createMissionControlAdapter(1));
 
-  controller.open("layout");
+  controller.open();
 
   assert.deepEqual(controller.getSnapshot(), {
     canOpen: false,
+    isLayoutLocked: false,
     isOpen: false,
-    mode: null,
     nodeIds: null,
     shortcutsEnabled: true,
     visibleWindowCount: 1
@@ -45,17 +42,17 @@ test("workspace mission control controller requires multiple visible nodes", () 
 
 test("workspace mission control controller opens and closes from snapshot state", () => {
   const controller = createWorkspaceMissionControlController();
-  const notifications: WorkspaceMissionControlSnapshotMode[] = [];
+  const notifications: boolean[] = [];
   controller.subscribe(() => {
-    notifications.push(controller.getSnapshot().mode);
+    notifications.push(controller.getSnapshot().isOpen);
   });
   controller.setAdapter(createMissionControlAdapter(2));
 
-  controller.open("activate");
+  controller.open();
   assert.deepEqual(controller.getSnapshot(), {
     canOpen: true,
+    isLayoutLocked: false,
     isOpen: true,
-    mode: "activate",
     nodeIds: null,
     shortcutsEnabled: false,
     visibleWindowCount: 2
@@ -64,13 +61,13 @@ test("workspace mission control controller opens and closes from snapshot state"
   controller.close();
   assert.deepEqual(controller.getSnapshot(), {
     canOpen: true,
+    isLayoutLocked: false,
     isOpen: false,
-    mode: null,
     nodeIds: null,
     shortcutsEnabled: true,
     visibleWindowCount: 2
   });
-  assert.deepEqual(notifications, [null, "activate", null]);
+  assert.deepEqual(notifications, [false, true, false]);
 });
 
 test("workspace mission control controller tracks activation", () => {
@@ -81,7 +78,7 @@ test("workspace mission control controller tracks activation", () => {
   });
   controller.setAdapter(createMissionControlAdapter(3));
 
-  controller.open("layout", "keyboard");
+  controller.open("keyboard");
 
   assert.deepEqual(reporterCalls, [
     [
@@ -89,7 +86,6 @@ test("workspace mission control controller tracks activation", () => {
         clientTS: 1749124800000,
         name: "mission_control.activated",
         params: {
-          mode: "layout",
           trigger: "keyboard",
           window_count: 3
         }
@@ -106,7 +102,7 @@ test("workspace mission control controller tracks deactivation duration", () => 
     reporterNow: () => now
   });
   controller.setAdapter(createMissionControlAdapter(2));
-  controller.open("activate", "button");
+  controller.open("button");
 
   now = 1749124800540;
   controller.close();
@@ -125,14 +121,14 @@ test("workspace mission control controller tracks deactivation duration", () => 
 test("workspace mission control controller closes when adapter is removed", () => {
   const controller = createWorkspaceMissionControlController();
   controller.setAdapter(createMissionControlAdapter(2));
-  controller.open("layout");
+  controller.open();
 
   controller.setAdapter(null);
 
   assert.deepEqual(controller.getSnapshot(), {
     canOpen: false,
+    isLayoutLocked: false,
     isOpen: false,
-    mode: null,
     nodeIds: null,
     shortcutsEnabled: true,
     visibleWindowCount: 0
@@ -150,82 +146,60 @@ test("workspace mission control controller follows adapter visible node updates"
 
   assert.deepEqual(controller.getSnapshot(), {
     canOpen: true,
+    isLayoutLocked: false,
     isOpen: false,
-    mode: null,
     nodeIds: null,
     shortcutsEnabled: true,
     visibleWindowCount: 3
   });
 });
 
+test("workspace mission control controller follows adapter locked layout updates", () => {
+  const controller = createWorkspaceMissionControlController();
+  const adapter = createMutableMissionControlAdapter(2);
+  controller.setAdapter(adapter);
+
+  assert.equal(controller.getSnapshot().isLayoutLocked, false);
+
+  adapter.setLayoutLocked(true);
+
+  assert.equal(controller.getSnapshot().isLayoutLocked, true);
+
+  adapter.setLayoutLocked(false);
+
+  assert.equal(controller.getSnapshot().isLayoutLocked, false);
+});
+
+test("workspace mission control controller unlocks the layout through the adapter", () => {
+  const controller = createWorkspaceMissionControlController();
+  const adapter = createMutableMissionControlAdapter(2);
+  controller.setAdapter(adapter);
+  adapter.setLayoutLocked(true);
+
+  assert.equal(controller.getSnapshot().isLayoutLocked, true);
+
+  controller.unlockLayout();
+
+  assert.equal(controller.getSnapshot().isLayoutLocked, false);
+});
+
 test("workspace mission control controller scopes open requests to node ids", () => {
   const controller = createWorkspaceMissionControlController();
   controller.setAdapter(createMissionControlAdapter(4));
 
-  controller.open("activate", {
+  controller.open({
     nodeIds: ["node-1", "node-3"],
     trigger: "button"
   });
 
   assert.deepEqual(controller.getSnapshot(), {
     canOpen: true,
+    isLayoutLocked: false,
     isOpen: true,
-    mode: "activate",
     nodeIds: ["node-1", "node-3"],
     shortcutsEnabled: false,
     visibleWindowCount: 2
   });
-});
-
-test("workspace mission control activate shortcut accepts cmd or ctrl with 1", () => {
-  assert.equal(
-    isWorkspaceMissionControlActivateShortcut({
-      altKey: false,
-      ctrlKey: false,
-      key: "1",
-      metaKey: true
-    }),
-    true
-  );
-  assert.equal(
-    isWorkspaceMissionControlActivateShortcut({
-      altKey: false,
-      ctrlKey: true,
-      key: "1",
-      metaKey: false
-    }),
-    true
-  );
-});
-
-test("workspace mission control activate shortcut rejects unrelated combinations", () => {
-  assert.equal(
-    isWorkspaceMissionControlActivateShortcut({
-      altKey: true,
-      ctrlKey: false,
-      key: "1",
-      metaKey: true
-    }),
-    false
-  );
-  assert.equal(
-    isWorkspaceMissionControlActivateShortcut({
-      altKey: false,
-      ctrlKey: false,
-      key: "1",
-      metaKey: false
-    }),
-    false
-  );
-  assert.equal(
-    isWorkspaceMissionControlActivateShortcut({
-      altKey: false,
-      ctrlKey: true,
-      key: "~",
-      metaKey: false
-    }),
-    false
-  );
 });
 
 test("workspace mission control layout shortcut accepts cmd or ctrl with 2", () => {
@@ -279,18 +253,16 @@ test("workspace mission control layout shortcut rejects unrelated combinations",
   );
 });
 
-type WorkspaceMissionControlSnapshotMode = ReturnType<
-  ReturnType<typeof createWorkspaceMissionControlController>["getSnapshot"]
->["mode"];
-
 function createMissionControlAdapter(
-  visibleNodeCount: number
+  visibleNodeCount: number,
+  options: { isLayoutLocked?: boolean } = {}
 ): WorkbenchMissionControlAdapter<WorkbenchHostNodeData> {
   return {
     applyLayoutPreset() {},
-    focusNode() {},
+    releaseLockedLayout() {},
     getSnapshot() {
       return {
+        isLayoutLocked: options.isLayoutLocked ?? false,
         layoutConstraints: {
           minHeight: 160,
           minWidth: 280,
@@ -319,17 +291,31 @@ function createMissionControlAdapter(
 
 function createMutableMissionControlAdapter(visibleNodeCount: number) {
   let nextVisibleNodeCount = visibleNodeCount;
+  let nextIsLayoutLocked = false;
   const listeners = new Set<() => void>();
+  const notify = () => {
+    for (const listener of listeners) {
+      listener();
+    }
+  };
   const adapter = {
-    ...createMissionControlAdapter(visibleNodeCount),
+    ...createMissionControlAdapter(nextVisibleNodeCount),
     getSnapshot() {
-      return createMissionControlAdapter(nextVisibleNodeCount).getSnapshot();
+      return createMissionControlAdapter(nextVisibleNodeCount, {
+        isLayoutLocked: nextIsLayoutLocked
+      }).getSnapshot();
+    },
+    setLayoutLocked(locked: boolean) {
+      nextIsLayoutLocked = locked;
+      notify();
+    },
+    releaseLockedLayout() {
+      nextIsLayoutLocked = false;
+      notify();
     },
     setVisibleNodeCount(count: number) {
       nextVisibleNodeCount = count;
-      for (const listener of listeners) {
-        listener();
-      }
+      notify();
     },
     subscribe(listener: () => void) {
       listeners.add(listener);

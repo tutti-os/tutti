@@ -26,14 +26,14 @@ test("toWorkspaceFilesRevealIntent preserves directory open mode", () => {
   assert.deepEqual(
     toWorkspaceFilesRevealIntent({
       payload: {
-        mode: "open-directory",
+        mode: "open",
         path: "/Users/example/demo"
       },
       sequence: 9,
       type: "reveal-file"
     }),
     {
-      mode: "open-directory",
+      mode: "open",
       path: "/Users/example/demo",
       requestID: "9"
     }
@@ -86,7 +86,7 @@ test("workspace files launch coordinator dispatches normalized workspace request
 
 test("workspace files launch coordinator preserves open directory mode", async () => {
   const requests: Array<{
-    mode?: "reveal" | "open-directory";
+    mode?: "select" | "open";
     path: string;
     workspaceId: string;
   }> = [];
@@ -101,7 +101,7 @@ test("workspace files launch coordinator preserves open directory mode", async (
   assert.equal(
     await requestWorkspaceFilesLaunch({
       homeDirectory: "/Users/example",
-      mode: "open-directory",
+      mode: "open",
       path: "/Users/example/demo",
       workspaceId: "workspace-directory"
     }),
@@ -110,7 +110,7 @@ test("workspace files launch coordinator preserves open directory mode", async (
   dispose();
   assert.deepEqual(requests, [
     {
-      mode: "open-directory",
+      mode: "open",
       path: "/Users/example/demo",
       workspaceId: "workspace-directory"
     }
@@ -152,7 +152,7 @@ test("workspace files launch coordinator preserves existence validation intent",
 
 test("workspace files launch coordinator expands home-relative paths before dispatch", async () => {
   const requests: Array<{
-    mode?: "reveal" | "open-directory";
+    mode?: "select" | "open";
     path: string;
     workspaceId: string;
   }> = [];
@@ -175,7 +175,7 @@ test("workspace files launch coordinator expands home-relative paths before disp
   assert.equal(
     await requestWorkspaceFilesLaunch({
       homeDirectory: "/Users/example",
-      mode: "open-directory",
+      mode: "open",
       path: "~",
       workspaceId: "workspace-home-relative"
     }),
@@ -196,7 +196,7 @@ test("workspace files launch coordinator expands home-relative paths before disp
       workspaceId: "workspace-home-relative"
     },
     {
-      mode: "open-directory",
+      mode: "open",
       path: "/Users/example",
       workspaceId: "workspace-home-relative"
     },

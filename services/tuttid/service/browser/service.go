@@ -2,6 +2,7 @@ package browser
 
 import (
 	"context"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +25,7 @@ type Service struct {
 	managedRuntime       managedruntime.ProfileResolver
 	idleTTL              time.Duration
 	autoConnectPreflight func() error
+	browserNode          browserNodeBackend
 
 	mu       sync.Mutex
 	sessions map[string]*browserSession
@@ -40,7 +42,7 @@ func NewService(preferences ...PreferencesReader) *Service {
 	if len(preferences) > 0 {
 		reader = preferences[0]
 	}
-	return &Service{
+	service := &Service{
 		transport:            agentruntime.NewLocalProcessTransport(),
 		preferences:          reader,
 		managedRuntime:       managedruntime.DefaultResolver{},
@@ -48,12 +50,26 @@ func NewService(preferences ...PreferencesReader) *Service {
 		autoConnectPreflight: validateAutoConnectChromeReady,
 		sessions:             make(map[string]*browserSession),
 	}
+	if listenerInfoPath := strings.TrimSpace(os.Getenv("TUTTI_BROWSER_NODE_LISTENER_INFO")); listenerInfoPath != "" {
+		service.browserNode = newBrowserNodeHTTPBackend(listenerInfoPath)
+	}
+	return service
 }
 
 // CallTool invokes a chrome-devtools-mcp tool against the workspace's browser
 // session, lazily starting it on first use.
 func (s *Service) CallTool(ctx context.Context, workspaceID, cwd, tool string, args map[string]any) (ToolResult, error) {
+	return s.CallToolForAgent(ctx, workspaceID, cwd, "", tool, args)
+}
+
+// CallToolForAgent routes desktop-owned browser calls to the in-app
+// BrowserNode host. A daemon without that explicit host configuration keeps
+// the managed Chrome backend for headless use.
+func (s *Service) CallToolForAgent(ctx context.Context, workspaceID, cwd, agentSessionID, tool string, args map[string]any) (ToolResult, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
+	if s.browserNode != nil {
+		return s.browserNode.Call(ctx, workspaceID, strings.TrimSpace(agentSessionID), tool, args)
+	}
 	currentMode := resolveBrowserUseConnectionMode(ctx, s.preferences)
 
 	s.mu.Lock()
@@ -103,6 +119,16 @@ func (s *Service) CallTool(ctx context.Context, workspaceID, cwd, tool string, a
 		s.Shutdown(workspaceID)
 	}
 	return result, err
+}
+
+// ReleaseAgent closes BrowserNode pages and relinquishes their leases when a
+// durable Agent session is deleted. Managed Chrome sessions are
+// workspace-scoped and do not have per-Agent resources.
+func (s *Service) ReleaseAgent(ctx context.Context, agentSessionID string) error {
+	if s.browserNode == nil {
+		return nil
+	}
+	return s.browserNode.ReleaseAgent(ctx, strings.TrimSpace(agentSessionID))
 }
 
 // isBrowserPageGoneError reports whether err is chrome-devtools-mcp's error for

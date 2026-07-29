@@ -24,7 +24,6 @@ export class DefaultWorkspaceFileManagerService implements WorkspaceFileManagerS
     return new DefaultWorkspaceFileManagerSession({
       copy: input.i18n,
       host: input.host,
-      onHostActionMessage: input.onHostActionMessage,
       onMutationErrorMessage: input.onMutationErrorMessage,
       persistence: input.persistence,
       resolveFileDefaultOpener: input.resolveFileDefaultOpener,
@@ -41,11 +40,6 @@ function capabilitiesFromHost(
     canCreateDirectory: input.host.createDirectory !== undefined,
     canCreateFile: input.host.createFile !== undefined,
     canDelete: input.host.deleteEntry !== undefined,
-    canExport: input.host.exportEntry !== undefined,
-    canImportFromDrop:
-      input.host.resolveDroppedPaths !== undefined &&
-      input.host.importPaths !== undefined,
-    canImportFromPicker: input.host.importFiles !== undefined,
     canMove: input.host.moveEntry !== undefined,
     canOpenInAppBrowser: input.host.openFileInAppBrowser !== undefined,
     canOpenInDefaultBrowser: input.host.openFileInDefaultBrowser !== undefined,

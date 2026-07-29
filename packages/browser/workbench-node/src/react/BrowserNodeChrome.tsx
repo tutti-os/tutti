@@ -1,8 +1,7 @@
 import {
-  AddIcon,
+  AddLinedIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
-  Badge,
   Button,
   CloseIcon,
   Input,
@@ -38,6 +37,7 @@ import {
 import { useBrowserNodeController } from "./useBrowserNodeController.ts";
 
 export interface BrowserNodeChromeProps {
+  allowChromeCookieImport?: boolean;
   className?: string;
   defaultActions?: ReactNode;
   defaultUrl: string;
@@ -94,6 +94,7 @@ export function BrowserNodeWorkbenchHeader({
 }
 
 export function BrowserNodeChrome({
+  allowChromeCookieImport = true,
   className,
   defaultActions,
   defaultUrl,
@@ -125,19 +126,18 @@ export function BrowserNodeChrome({
   return (
     <div
       className={cn(
-        "relative z-[1] flex h-[76px] min-h-[76px] flex-col overflow-visible bg-[var(--background-panel)]",
+        "relative z-[1] flex h-[76px] min-h-[76px] flex-col overflow-visible bg-[var(--background-fronted)]",
         withBorder ? "border-b border-border" : null,
         className
       )}
       data-browser-node-header="true"
       data-browser-node-header-display-mode={displayMode}
-      data-workbench-custom-header-layout="browser-tabs"
-      data-workbench-custom-header-overflow="visible"
     >
       <div
         {...restDragHandleProps}
         className={cn(
           "flex h-[38px] min-h-[38px] items-center gap-1.5 px-2 cursor-grab active:cursor-grabbing",
+          "bg-[var(--background-1)]",
           dragClassName
         )}
         data-browser-node-tab-strip="true"
@@ -209,11 +209,12 @@ export function BrowserNodeChrome({
           variant="chrome"
           onClick={() => feature.tabsStore.addTab(surfaceNodeId)}
         >
-          <AddIcon className="size-4" />
+          <AddLinedIcon className="size-3.5" />
         </Button>
         <div className="min-w-8 flex-1 self-stretch" aria-hidden="true" />
       </div>
       <BrowserNodeHeader
+        allowChromeCookieImport={allowChromeCookieImport}
         defaultUrl={activeTab.defaultUrl}
         feature={feature}
         navigationActions={navigationActions}
@@ -225,12 +226,14 @@ export function BrowserNodeChrome({
 }
 
 export function BrowserNodeHeader({
+  allowChromeCookieImport = true,
   defaultUrl,
   feature,
   navigationActions,
   nodeId,
   onFocusRequest
 }: {
+  allowChromeCookieImport?: boolean;
   defaultUrl: string;
   feature: BrowserNodeFeature;
   navigationActions?: ReactNode;
@@ -314,6 +317,7 @@ export function BrowserNodeHeader({
       ) : null}
       {navigationActions}
       <BrowserNodeActionsMenu
+        allowChromeCookieImport={allowChromeCookieImport}
         feature={feature}
         nodeId={nodeId}
         onOpenDevTools={
@@ -323,14 +327,6 @@ export function BrowserNodeHeader({
         }
         runtime={runtime}
       />
-      {runtime.lifecycle === "cold" ? (
-        <Badge
-          className="nodrag h-[26px] min-w-7 shrink-0 rounded-md text-[10px] font-semibold lowercase tracking-[0.08em]"
-          aria-label={feature.i18n.t("coldStatus")}
-        >
-          {feature.i18n.t("coldStatus")}
-        </Badge>
-      ) : null}
     </div>
   );
 }
@@ -359,9 +355,9 @@ function BrowserNodeTabButton({
   return (
     <div
       className={cn(
-        "group flex h-7 min-w-[104px] max-w-[220px] items-center gap-1.5 rounded-md border px-2 text-xs transition-colors",
+        "group flex h-7 min-w-[104px] max-w-[220px] items-center gap-1.5 rounded-md border pl-2 pr-1 text-xs transition-colors",
         active
-          ? "border-[var(--line-2)] bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-sm"
+          ? "border-[var(--line-2)] bg-[var(--background-fronted)] text-[var(--text-primary)]"
           : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)]"
       )}
       data-browser-node-tab-active={active ? "true" : "false"}

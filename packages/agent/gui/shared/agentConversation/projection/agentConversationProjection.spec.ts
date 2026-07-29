@@ -2079,6 +2079,73 @@ describe("projectAgentConversationVM", () => {
     );
   });
 
+  it("does not render a synthetic image-only displayPrompt below the image", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...detailViewModel().session,
+          workspaceId: "room-1"
+        },
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: null,
+            userMessages: [
+              {
+                id: "user-1",
+                body: "[Image]",
+                sourceTimelineItems: [
+                  {
+                    id: 1,
+                    agentSessionId: "session-1",
+                    eventId: "event-1",
+                    actorType: "user",
+                    actorId: "user",
+                    itemType: "message",
+                    role: "user",
+                    payload: {
+                      displayPrompt: "[Image]",
+                      content: [
+                        {
+                          type: "image",
+                          mimeType: "image/png",
+                          attachmentId: "attachment-1",
+                          name: "screen.png"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ],
+            agentMessages: [],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: []
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const userRow = conversation.rows.find(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "user"
+    );
+
+    expect(userRow?.messages.map((message) => message.contentKind)).toEqual([
+      "image-grid"
+    ]);
+    expect(userRow?.messages.map((message) => message.body)).not.toContain(
+      "[Image]"
+    );
+  });
+
   it("reuses unchanged transcript row references across incremental updates", () => {
     const firstTurn = detailViewModel().turns[0]!;
     const secondTurn = {

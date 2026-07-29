@@ -64,11 +64,111 @@ Rules:
 - Handler `kind` must be `http`, `method` must be `POST`, and `path` must start with `/tutti/cli/`.
 - Do not declare host, port, or full URLs; Tutti routes to the app runtime port.
 - Handler `timeoutMs`, when present, must be an integer between `1000` and `600000`.
+- Handler `timeoutMs` is a per-invocation transport budget, not a workflow deadline or total CLI wait timeout.
 - Supported input schema is a small object-only subset: `type`, `properties`, `required`, and property `description`, `enum`, and `default`.
 - Property `type` may be `string`, `boolean`, or `integer`.
 - Property `enum` and `default` values must match the declared property type. Treat `default` as manifest metadata for help and discovery; app handlers must still apply any business default they need.
 - `defaultMode` may be `json` or `table`; table output must declare static columns.
 - Successful handler responses must return the `CliCommandOutput` shape directly. Do not wrap it in an invoke response such as `{"ok":true,"output":...}`.
+
+## Wait Commands
+
+Commands named `wait` should wait until the underlying run, session, or durable
+execution reaches a stop point. Do not expose an App-owned observation-window
+timeout or require callers to invoke the command repeatedly.
+
+Declare a wait command with `execution.mode`:
+
+```json
+{
+  "path": ["runs", "wait"],
+  "summary": "Wait for a run stop point",
+  "execution": {
+    "mode": "wait"
+  },
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "run-id": {
+        "type": "string",
+        "description": "Run id to await."
+      }
+    },
+    "required": ["run-id"]
+  },
+  "output": {
+    "defaultMode": "json",
+    "json": true
+  },
+  "handler": {
+    "kind": "http",
+    "method": "POST",
+    "path": "/tutti/cli/runs/wait",
+    "timeoutMs": 30000
+  }
+}
+```
+
+When the execution is still active, return the current compact state plus an
+internal continuation:
+
+```json
+{
+  "kind": "json",
+  "value": {
+    "run": {
+      "runId": "run-123",
+      "status": "running"
+    }
+  },
+  "continuation": {
+    "state": "pending",
+    "retryAfterMs": 1000
+  }
+}
+```
+
+`retryAfterMs` must be between `250` and `60000`. Prefer an event-driven or
+long-polling handler when the App already has an efficient change signal. If a
+handler returns promptly, choose a retry delay that avoids a hot status-query
+loop. The Tutti CLI suppresses pending outputs, waits for the declared delay,
+and invokes the same command again.
+
+At a stop point, return the final JSON output without `continuation`:
+
+```json
+{
+  "kind": "json",
+  "value": {
+    "run": {
+      "runId": "run-123",
+      "status": "completed"
+    }
+  }
+}
+```
+
+Wait commands receive the common CLI flag `--timeout-ms`. It is reserved by
+Tutti and must not be declared in the App input schema. Omitting it waits until
+a stop point. When the total deadline expires, the CLI returns exit code zero
+with a JSON result shaped like:
+
+```json
+{
+  "reason": "wait_timeout",
+  "timedOut": true,
+  "executionContinues": true,
+  "lastResult": {
+    "run": {
+      "runId": "run-123",
+      "status": "running"
+    }
+  }
+}
+```
+
+This result only stops the local wait. It must not cancel or interrupt the
+underlying execution. Ctrl-C has the same non-canceling behavior.
 
 ## Self-Open Commands
 

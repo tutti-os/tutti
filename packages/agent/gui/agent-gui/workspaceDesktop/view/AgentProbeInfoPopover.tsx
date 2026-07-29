@@ -55,12 +55,14 @@ export function AgentProbeInfoPopover({
   lines,
   testId = "agent-probe-info",
   className,
-  onOpen
+  onOpen,
+  onClose
 }: {
   lines: DockAgentProbeTooltipLine[];
   testId?: string;
   className?: string;
   onOpen?: () => void;
+  onClose?: () => void;
 }): React.JSX.Element | null {
   "use memo";
   const anchorRef = useRef<HTMLDivElement | null>(null);
@@ -73,17 +75,25 @@ export function AgentProbeInfoPopover({
     }
     setIsOpen(true);
   }, [isOpen, onOpen]);
-  const closeIfPointerLeavesPopover = useCallback((event: MouseEvent): void => {
-    const nextTarget = event.relatedTarget;
-    if (
-      nextTarget instanceof Node &&
-      (anchorRef.current?.contains(nextTarget) ||
-        popoverRef.current?.contains(nextTarget))
-    ) {
-      return;
-    }
+  const closePopover = useCallback((): void => {
+    if (!isOpen) return;
     setIsOpen(false);
-  }, []);
+    onClose?.();
+  }, [isOpen, onClose]);
+  const closeIfPointerLeavesPopover = useCallback(
+    (event: MouseEvent): void => {
+      const nextTarget = event.relatedTarget;
+      if (
+        nextTarget instanceof Node &&
+        (anchorRef.current?.contains(nextTarget) ||
+          popoverRef.current?.contains(nextTarget))
+      ) {
+        return;
+      }
+      closePopover();
+    },
+    [closePopover]
+  );
   const updatePopoverPosition = useCallback((): void => {
     const anchor = anchorRef.current;
     if (!anchor) {
@@ -193,7 +203,7 @@ export function AgentProbeInfoPopover({
         updatePopoverPosition();
         openPopover();
       }}
-      onBlur={() => setIsOpen(false)}
+      onBlur={closePopover}
     >
       <Info size={15} strokeWidth={2.1} aria-hidden="true" />
       {isOpen ? createPortal(popover, document.body) : null}

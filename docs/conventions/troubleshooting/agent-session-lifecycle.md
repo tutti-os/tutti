@@ -2,7 +2,590 @@
 
 [Agent runtime index](./agent-runtime.md) · [All troubleshooting](./README.md)
 
+### One hung provider startup blocks unrelated Agent sessions
+
+- **Symptom:** One provider process starts but never reaches runtime-ready, then
+  new or resumed Sessions for other providers also wait without starting their
+  own provider processes.
+- **Quick checks:** Order `agent_session.process.start.sent` with Host
+  `runtime_started` and `runtime_session_ready` lifecycle steps. If later,
+  unrelated Sessions accumulate wait time before their own process-start event,
+  inspect Controller startup-lock ownership separately from the provider that
+  first stopped making progress.
+- **Root cause:** The runtime Controller held one process-wide `startMu` across
+  `Adapter.Start` and `Adapter.Resume`. A slow or unbounded provider handshake
+  therefore formed a lock convoy across every room, Session, and provider.
+- **Fix:** Serialize explicit startup requests by `(roomID, agentSessionID)`.
+  Keep the legacy no-ID start path idempotent with a narrower room-and-provider
+  key, and let startup-lock waiters return when their context is canceled.
+  Provider credential coordination remains a separate Host gate.
+- **Validation:** Block each of `Start` and `Resume` for one provider and prove
+  both operations still complete for an independent provider. Also verify all
+  same-Session combinations remain serialized, anonymous start replay reuses
+  one Session, canceled waiters release their lock references, and repeated
+  shuffled race runs stay clean.
+- **References:**
+  [controller_session_lifecycle.go](../../../packages/agent/daemon/runtime/controller_session_lifecycle.go),
+  [controller_test.go](../../../packages/agent/daemon/runtime/controller_test.go)
+
+### A shared-device connection banner looks terminal while the host is still retrying
+
+- **Symptom:** AgentGUI keeps showing a strong connection-lost notice for a
+  shared device, so the user cannot tell whether recovery is still running.
+- **Quick checks:** Inspect host logs for
+  `shared-agent-query.caller.connection.retry`,
+  `shared-agent-query.caller.connection.dormant`, and
+  `shared-agent-query.caller.connection.dormant-summary`. Correlate them with
+  `desktop.device_link.diagnostic` when distinguishing direct, rendezvous, and
+  relay transport attempts. A dormant state means the host has moved from
+  short retry delays to low-frequency recovery; it is not a terminal failure.
+- **Root cause:** The query channel correctly blocked runtime-dependent
+  commands, but its recoverable unavailable state was projected directly as a
+  terminal target-connection error. The target event also omitted retry
+  progress, so an unchanged banner made periodic recovery invisible.
+- **Fix:** Keep Session runtime availability as the command-safety gate.
+  Separately project target-scoped connection status with a retry attempt.
+  Present recoverable unavailable states as neutral reconnecting progress,
+  reserve the strong unavailable notice for explicitly non-retryable failures,
+  and remove the notice silently after recovery.
+- **Validation:** Force the query channel into dormant recovery and verify each
+  failed probe increments the target retry attempt while the composer remains
+  blocked. Confirm the reconnecting notice updates without restarting its
+  visibility delay, a non-retryable failure is still immediate, and recovery
+  produces no success banner.
+- **References:**
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+
+### Deleting an Agent Session leaves a Tutti plan active or emits duplicate removal events
+
+- **Symptom:** Deleting one Session removes the conversation but its pending
+  Tutti Mode Plan remains visible, or clients receive duplicate/missing
+  `session_deleted` and `workspace.workflow.updated` invalidations. A workspace
+  clear may leave orphan workflows in an active state.
+- **Quick checks:** Confirm production wiring assigns the Tutti Mode Plan
+  service as the Agent service's source-session deletion coordinator. Inspect
+  the transaction result for the complete removed Session closure and affected
+  workflow/current-checkpoint identities. Verify workflow events are published
+  only after the transaction returns and that the activity projection is not
+  also running its persistence deleter on the coordinator path.
+- **Root cause:** Session persistence, activation cleanup, and workflow
+  cancellation form one cross-aggregate use case. Letting
+  `data/workspace` choose cancellable states hides business policy in the data
+  layer and cannot publish the canonical post-commit workflow event. Calling a
+  service coordinator and the legacy projection deleter together instead
+  splits the transaction and duplicates `session_deleted` events.
+- **Fix:** Keep cancellation policy in `service/tuttimodeplan`: allowed source
+  states, canceled targets, actor, reason, and timestamp are all explicit. Pass
+  one command to the workspace store so Session closure, Tutti activation/Turn
+  snapshots, and workflow transitions commit or roll back together. Return
+  affected identities, then publish workflow and Session invalidations from
+  the respective services after commit. Reserve persistence-only deletion and
+  standalone activation cleanup for isolated tests or legacy orphan fallback.
+- **Validation:** Force the workflow update to fail and assert the Session and
+  activation still exist. Cover single, descendant batch, runtime-only, and
+  workspace-clear scopes; exact cancellation-state selection; no event on
+  rollback; one workflow event per reported change; and one
+  `session_deleted` event per unique removed Session.
+- **References:**
+  [workspace-workflows.md](../../architecture/workspace-workflows.md),
+  [source_session_deletion.go](../../../services/tuttid/service/tuttimodeplan/source_session_deletion.go),
+  [source_session_deletion.go](../../../services/tuttid/data/workspace/source_session_deletion.go)
+
+### Tutti badge is active but no Tutti Mode Plan panel opens
+
+- **Symptom:** The composer shows the Tutti badge and the Agent may even emit a
+  provider-native Plan, but no Tutti Mode Plan review panel appears.
+- **Quick checks:** Read
+  `GET /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/tutti-mode-activation`
+  and confirm the current revision is active. Then inspect whether the Agent
+  actually invoked `tutti plan propose` with a valid absolute Markdown file
+  and Agent Session context. Query
+  `GET /v1/workspaces/{workspaceID}/workflows?sourceSessionId=...` for a pending
+  authoritative snapshot. Do not inspect transcript markers or provider Plan
+  card or historical `capabilityRefs` as current activation or workflow
+  evidence.
+- **Root cause:** `TuttiModeActivation` and `WorkspaceWorkflow` are independent
+  Tutti-owned roots. The badge records a user preference that is snapshotted
+  into each new Turn's Host Context; it does not fabricate a proposal. Durable
+  review state begins only when the Agent invokes the always-available Tutti
+  CLI and commits a `WorkspaceWorkflow`, immutable revision, and pending
+  checkpoint. A missing CLI invocation, invalid `tutti-mode-plan/v1` document,
+  wrong source Session, or disconnected desktop workflow runtime leaves
+  nothing recoverable to render.
+- **Fix:** Keep `/plan` and `/tutti` as compatible independent modifiers. Let
+  AgentSessionEngine project the daemon activation and let the Agent freely
+  invoke the Tutti CLI. AgentGUI must list workflows by active source Session
+  and re-pull after `workspace.workflow.updated`; it must never synthesize a
+  panel from Agent text, a provider Plan card, the Tutti badge, or capability
+  audit records. User decisions go only through the checkpoint HTTP endpoint.
+- **Validation:** Cover activation create/update/reload, immutable per-Turn
+  snapshot binding before provider dispatch, CLI proposal persistence,
+  immutable revision verification, Session-scoped list recovery,
+  advisory-event refresh, accept/reject/cancel decisions, and Plan plus Tutti
+  badge coexistence. Verify an accepted task graph materializes exactly one
+  Issue and reports `issue_created` rather than asking the Agent to create it
+  again.
+- **References:**
+  [workspace-workflows.md](../../architecture/workspace-workflows.md),
+  [commands.go](../../../services/tuttid/service/cli/providers/tuttimodeplan/commands.go),
+  [useTuttiModePlanPanels.ts](../../../packages/agent/gui/workspaceWorkflow/tuttiModePlan/useTuttiModePlanPanels.ts)
+
+### Existing Session shows Tutti active but the Agent reports Default mode
+
+- **Symptom:** Tutti Mode is enabled on an already-existing Session, but the
+  next Turn says the conversation is still in provider Default mode or has not
+  entered Tutti Mode because `plan propose` has not run.
+- **Quick checks:** Confirm the activation revision is active in the exported
+  Session or activation endpoint, then confirm the affected Turn owns an active
+  `TuttiModeTurnSnapshot`. For Codex, inspect that Turn's provider rollout
+  `turn_context`: the collaboration mode may legitimately remain `default`,
+  while its developer instructions must contain `<tutti-host-context>` with
+  `"state":"active"`. If both facts are present, existing-Session snapshot
+  delivery works and the response is an interpretation failure. If the host
+  context is absent, trace snapshot preparation and runtime dispatch instead.
+- **Root cause:** Tutti activation, provider Default/Plan collaboration mode,
+  and Tutti workflow existence are three independent facts. An instruction
+  that says a workflow exists only after `plan propose` can make a provider
+  incorrectly use the missing workflow as evidence that activation is
+  inactive, even though the active snapshot reached the reused provider
+  Session.
+- **Fix:** Make the Host Context's snapshot state the sole authority for
+  reporting Tutti Mode status. Provider Default/Plan mode and workflow
+  existence remain independent facts and cannot override it. A clear plan
+  request must still run `plan propose` instead of returning a chat-only plan.
+- **Validation:** On an existing Session, activate Tutti Mode and send a new
+  Turn while the provider collaboration mode remains Default. Verify the
+  provider receives the active Host Context, a status-only question reports
+  active without proposing a workflow, and a clear plan-generation request
+  invokes `plan propose`. Repeat with an inactive revision and verify it
+  reports inactive.
+- **References:**
+  [workspace-workflows.md](../../architecture/workspace-workflows.md),
+  [tutti_mode_host_context.go](../../../packages/agent/daemon/runtime/tutti_mode_host_context.go),
+  [tutti_mode_host_context_test.go](../../../packages/agent/daemon/runtime/tutti_mode_host_context_test.go)
+
+### Tutti Mode Plan stops loading after a task-graph revision
+
+- **Symptom:** The configuration review panel works and `tutti plan revise`
+  returns a pending task-review checkpoint, but AgentGUI replaces the panel
+  with its load-failure state.
+- **Quick checks:** Call the session-scoped workspace-workflow list endpoint
+  and inspect every task in the returned revision. Required collection fields,
+  especially `dependsOn`, must be JSON arrays even when empty. A successful
+  CLI mutation and HTTP `200` do not prove that the response still satisfies
+  the generated client contract.
+- **Root cause:** A Go transport projection copied an empty dependency slice
+  onto a nil slice. `encoding/json` emitted `null`, violating the non-nullable
+  OpenAPI array contract. The generated TypeScript client therefore exposed a
+  value typed as `string[]` whose runtime value was `null`, and the desktop
+  adapter failed while cloning it before panel projection.
+- **Fix:** Normalize required collections at the daemon API boundary so empty
+  values serialize as `[]`. Keep the OpenAPI field non-nullable and do not move
+  the repair into AgentGUI business projection, where it would only conceal a
+  malformed wire response.
+- **Validation:** Exercise the real HTTP route, decode its JSON, and assert an
+  empty task dependency list is exactly `[]`, not `null`. Then verify a
+  task-graph revision with a root task can be listed and rendered.
+- **References:**
+  [workspace-workflows.md](../../architecture/workspace-workflows.md),
+  [daemon_workspace_workflows.go](../../../services/tuttid/api/daemon_workspace_workflows.go),
+  [desktopWorkspaceWorkflowRuntime.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopWorkspaceWorkflowRuntime.ts)
+
+### Retrying a Tutti Mode Plan mutation duplicates or rejects the revision
+
+- **Symptom:** A retry after a CLI timeout creates another workflow/revision,
+  or intentionally submitting the same Markdown again with a new request ID
+  fails with a revision/document-path uniqueness error.
+- **Quick checks:** Confirm `plan propose` or `plan revise` received a stable
+  `--request-id`. Read `workspace_workflow_mutations` for the exact workspace,
+  source Session, mutation kind, workflow scope, and request ID. Compare its
+  `input_sha256` and committed result IDs. For upgraded local databases, check
+  that `workspace_workflow_plan_revisions` no longer has a unique index on
+  `document_path`.
+- **Root cause:** Transport response loss is not the same as repeated content.
+  Without a caller mutation key, the daemon cannot distinguish a retry from
+  intentional reapplication. Conversely, a content-addressed document path may
+  legitimately be shared by multiple immutable revision metadata rows, so it
+  cannot be revision identity.
+- **Fix:** Reuse the same request ID only for a retry of the same bytes. Use a
+  new request ID for an intentional mutation, even when the bytes are equal.
+  Keep the ledger claim and workflow/revision/checkpoint write in one SQLite
+  transaction. Preserve revision-ID and sequence uniqueness, and let the
+  corrective migration remove legacy document-path uniqueness.
+- **Validation:** Cover concurrent same-key claims, same key plus same digest
+  replay, same key plus different digest conflict, new key plus identical bytes
+  creating the next sequence, and upgrade fixtures that retain checkpoints,
+  operations, mutations, and a clean `PRAGMA foreign_key_check`.
+
+### One corrupt Tutti Mode Plan prevents daemon startup recovery
+
+- **Symptom:** The daemon cannot finish startup after a task graph was accepted,
+  especially when its immutable Markdown file is missing or corrupt and its
+  `create_issue` operation is pending or failed.
+- **Quick checks:** Inspect accepted workflows with pending/failed
+  `create_issue` operations, verify the referenced revision path and SHA-256,
+  and check whether the operation received a durable
+  `startup_recovery_failed` outcome. Do not require an Agent `wait` call to
+  start recovery.
+- **Root cause:** Returning the first operation-local read, parse, validation,
+  or materialization error from the startup scan makes one damaged workflow a
+  process-wide availability failure.
+- **Fix:** Run one recovery scan after workflow and Issue service composition
+  but before exposing the daemon. Isolate each operation: persist a failed
+  outcome and continue. Abort startup only when the scan fails or the daemon
+  cannot write a durable outcome. Keep deterministic Issue materialization and
+  do not add a background workflow worker.
+- **Validation:** Cover pending and failed recovery, failed-before-retry state,
+  missing/corrupt revisions, a later operation succeeding after an earlier
+  failure, second-scan non-duplication, and outcome-write failure stopping
+  startup.
+
+### Many stopped Tutti Mode conversations start again when the app opens
+
+- **Symptom:** Starting the desktop app makes several old Tutti Mode source
+  conversations begin new Turns even though their tasks were previously
+  stopped or already terminal.
+- **Quick checks:** Correlate the startup time with
+  `workspace_tutti_mode_legacy_repair_v5`, listener-ready wake recovery, and
+  new canonical Turns. In the execution tables, look for a migration
+  checkpoint whose `creation_reason` is
+  `legacy_execution_startup_repair`, an idle execution changed to
+  `awaiting_main`, and a prepared or dispatched main wake. Do not attribute the
+  behavior to generic Agent Host resume unless the exact Session already had a
+  recoverable active Turn.
+- **Root cause:** The former V5 legacy backfill treated ambiguous idle plans as
+  live executions and created a durable main wake. Listener readiness later
+  delivered those historical wakes into the source conversations. Startup Run
+  settlement repair could also create another checkpoint for an execution
+  that was already terminal.
+- **Fix:** Make legacy migration side-effect-free: keep an execution running
+  only when an authoritative Run is running, classify idle history as
+  `completed`, and create no migration wake. Suppress settlement checkpoints
+  for terminal/orphaned executions. For databases that already applied V5,
+  run the exact-fingerprint V6 cleanup to cancel the old recovery chain and
+  normalize execution status from current Runs.
+- **Validation:** Cover fresh idle and running legacy fixtures with zero
+  migration wakes, a V5-corrupted idle fixture repaired to `completed`, a
+  V5-corrupted running fixture retained as `running`, and terminal settlement
+  replay producing no checkpoint or wake. Re-run V6 to prove idempotency.
+- **References:**
+  [issue-execution.md](../../architecture/issue-execution.md),
+  [migrations_tutti_mode_legacy.go](../../../services/tuttid/data/workspace/migrations_tutti_mode_legacy.go),
+  [sqlite_tutti_mode_settlement.go](../../../services/tuttid/data/workspace/sqlite_tutti_mode_settlement.go)
+
+### Tutti capability audit persistence races the first Turn projection
+
+- **Symptom:** Create or SendInput fails with `sql: no rows in result set`
+  immediately after `runtime.submitted`, or a live `turn_update` frame is
+  rejected because its outcome is null.
+- **Quick checks:** Verify capability provenance is carried on the
+  controller-owned submitted event or a lifecycle-neutral same-Turn guidance
+  report. Check that no second post-Exec writer tries to update a Turn before
+  the asynchronous projection creates it. Confirm the event schema accepts a
+  null outcome while a Turn is live.
+- **Root cause:** `capabilityRefs` are historical submission audit data, not
+  current Tutti activation. Writing them through a second store call races the
+  canonical Turn projection. Attaching a synthetic lifecycle phase to guidance
+  can also corrupt the running Turn. A bounded reporter queue that falls back
+  to inline reporting may reorder projection work or deadlock on reporter
+  re-entry.
+- **Fix:** Persist provenance with the submitted `TurnTransition`; use a
+  lifecycle-neutral state report for same-Turn guidance. Route synchronous
+  reporter work through one non-blocking, single-consumer FIFO. Queue pressure
+  must neither report inline nor block a reporter observer that can re-enter
+  the Controller.
+- **Validation:** Verify runtime acceptance may precede Turn projection, live
+  null-outcome events validate, later transitions retain references, and a
+  backlog beyond the former bounded queue plus reporter re-entry preserves FIFO
+  order without deadlocking. Unsupported capability/source values must fail at
+  HTTP ingress and event publication without changing activation.
+
+### Codex finishes but AgentGUI keeps showing the Session as working
+
+- **Symptom:** Codex has emitted its final assistant message, but AgentGUI keeps
+  showing a busy spinner and the Session still has an active Turn. The UI may
+  settle several minutes later without a restart.
+- **Quick checks:** Search `tuttid.log` for
+  `agent_session.activity_report.queue_backlog` and compare its `queue_depth`
+  with the final message's `occurredAtUnixMs` and canonical
+  `updatedAtUnixMs`. A large gap means provider completion reached the runtime
+  before canonical persistence. When prod and dev are both running, identify
+  them by listener, PID, state, and workspace paths; a shared log file alone
+  does not prove they share a database.
+- **Root cause:** Streaming text, reasoning, and tool-output snapshots entered
+  the unbounded report FIFO before coalescing. When the single reporter was
+  slower than producers, thousands of superseded snapshots accumulated ahead
+  of the same Session's terminal report. Tool-call output snapshots were not
+  eligible for coalescing at all.
+- **Fix:** Coalesce pending streaming snapshots by Session and message while
+  they are enqueued. Preserve the latest cumulative tool output, original tool
+  input, and earliest start time. Keep terminal and submit-provenance reports
+  as same-Session FIFO barriers.
+- **Validation:** Enqueue at least 2048 text and tool-output snapshots and prove
+  each pending Session occupies one queue slot. Verify the latest snapshot is
+  retained, terminal and submit-provenance barriers stay ordered, reporter
+  re-entry remains non-blocking, and focused race tests pass.
+- **References:**
+  [controller_report_queue.go](../../../packages/agent/daemon/runtime/controller_report_queue.go),
+  [report_coalescer.go](../../../packages/agent/daemon/runtime/report_coalescer.go),
+  [controller_report_queue_test.go](../../../packages/agent/daemon/runtime/controller_report_queue_test.go)
+
+### Tutti mode is active in the composer but disappears after the first submit
+
+- **Symptom:** The home composer shows Tutti enabled and the submit trace records
+  `tutti_mode_active=true`, but the created Session has no activation and its
+  first `tutti_mode_turn_snapshots` row is `inactive`.
+- **Quick checks:** Trace `initialTuttiModeActivation` at the composer submit,
+  controller activation, desktop activity service, renderer HTTP adapter, and
+  daemon create ingress. Log only a presence boolean at each boundary. Compare
+  the Session export with the durable activation and Turn snapshot rows;
+  `capabilityRefs` do not prove current activation.
+- **Root cause:** Session creation crosses several adapters that reconstruct
+  object literals. A manually projected create input can omit
+  `initialTuttiModeActivation` or its Tutti `capabilityRefs` even when the
+  upstream type carries them. Reading mutable draft state after submit can also
+  lose the exact composer selection. AgentGUI treats
+  `capabilityMenuState.tuttiMode.enabled === true` as the host capability for
+  the hero toggle, badge activation, and `/tutti`; Tutti Desktop always supplies
+  it, while hosts that omit it or set `enabled: false` fail closed.
+- **Fix:** Snapshot active/inactive state and orchestration intensity atomically
+  with the composer submit. Preserve both activation and capability provenance
+  through every create projection, and use the same host capability as the
+  visible control for slash actions.
+- **Validation:** Keep boundary tests for the service, engine host, and HTTP
+  adapter. In a real development launch, submit once with Tutti enabled and
+  verify the HTTP boundary sees the activation, the activation revision is
+  `active`, and the first Turn snapshot retains its source and intensity.
+
+### A new Tutti conversation briefly reports session not found after submit
+
+- **Symptom:** The optimistic conversation appears after the first submit and
+  briefly shows `workspace agent session not found`, then recovers after the
+  provider starts and the durable Session and Turn complete normally.
+- **Quick checks:** Correlate the Session ID across desktop and daemon submit
+  traces. The characteristic order is
+  `renderer_adapter.create.http_requested`, then
+  `agent.activity.reconcile_session_absent`, then
+  `renderer_adapter.create.resolved` and `api.create.completed`. Confirm the
+  missing reconcile occurs while the engine still has a requested or uncertain
+  new-session activation.
+- **Root cause:** Initial Tutti activation can publish
+  `workspace.tuttimode.updated` before the create transaction is query-visible
+  or its HTTP response returns. The renderer treats the event as a reconcile
+  hint and exposes its transient 404 as a detail failure even though the
+  independent create command is still in flight.
+- **Fix:** Ignore only this Tutti update hint when the exact Session has no
+  canonical record and its latest new-session activation is still requested or
+  uncertain. Let the authoritative create result confirm the Session. Do not
+  broadly swallow reconcile 404s: existing Sessions and other reconcile
+  sources still report their real failures. Tombstone only from explicit
+  deletion evidence such as `session_deleted` or a successful delete command.
+- **Validation:** Hold create in flight, publish
+  `workspace.tuttimode.updated`, and verify the Session read is not called and
+  no reconcile error is recorded. Then resolve create and verify the canonical
+  Session and active activation are present. Also prove the same event still
+  reconciles an existing Session and preserves its not-found diagnostic, while
+  an explicit `session_deleted` event tombstones it.
+- **References:**
+  [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
+  [workspaceEventCoordinator.ts](../../../packages/agent/activity-core/src/workspaceEventCoordinator.ts)
+
+### A Tutti submission remains `delivery is still being confirmed`
+
+- **Symptom:** Retrying the same composer submission keeps returning
+  `agent submit delivery is still being confirmed`. The Session may already
+  exist and the Tutti badge may remain active, but the daemon does not start a
+  second Turn.
+- **Quick checks:** Read the `workspace_agent_submit_claims` row for the exact
+  workspace, Session, and `clientSubmitId`. Compare its immutable
+  `canonical_turn_id` with `tutti_mode_turn_snapshots.turn_id` and with the
+  Turn found by durable message provenance for that `clientSubmitId`. Do not
+  change the claim to a runtime-returned mismatched Turn ID. If the barrier
+  reports `conflicts with durable submit provenance`, compare the JSON-encoded
+  existing and projected message payloads as well as their Go container types.
+  In particular, compare `payload.seq` and `occurred_at_unix_ms` from the
+  ordinary runtime report and the durable provenance report for the same
+  `clientSubmitId`.
+  Identical JSON with `[]any` on the SQLite-decoded side and
+  `[]map[string]any` on the fresh-report side is an in-memory normalization
+  defect, not conflicting submit evidence. Different sequence values for the
+  same canonical message mean the two report paths reconstructed its occurrence
+  independently.
+- **Root cause:** Provider handoff crossed an ambiguity boundary: the daemon
+  reserved and snapshotted a canonical Turn before dispatch, but did not
+  durably confirm the exact accepted Turn. The ordinary reporter may have
+  persisted its Session/Turn state while the atomic client-submit message
+  barrier failed, or the process may have stopped around that barrier. A host
+  wired only to the compatibility `ActivityReporter` cannot satisfy the
+  runtime's required `DurableActivityReporter` contract. The barrier can also
+  falsely reject an ordinary message replay when a fresh JSON payload retains
+  typed Go slices but the same payload decoded from SQLite uses `[]any`, and
+  idempotency compares those concrete types directly. Retrying the provider
+  call would risk duplicate work. Separately, the runtime adapter and durable
+  provenance barrier can construct the same user message on different
+  goroutines. If each path samples its own transient event timestamp, whichever
+  path reaches SQLite second carries a different derived `payload.seq`; the
+  strict provenance guard correctly rejects it. Scheduling determines whether
+  the ordinary report exists before the barrier, so this form is intermittent.
+- **Fix:** Preserve the prepared submit claim, Tutti snapshot, activation, and
+  Session. Ensure the host supplies `DurableActivityReporter`; decorators
+  should embed or otherwise preserve that required interface instead of
+  probing an optional capability. Its provenance barrier must run outside the
+  Session lifecycle lock, after earlier same-FIFO reports, and atomically write
+  the stable user message against an existing Turn.
+  Normalize every incoming message payload through the durable JSON
+  representation before projection, merge, and idempotency comparison so
+  fresh reports and SQLite-decoded rows share one in-memory shape. Do not
+  special-case individual typed slices or bypass genuine payload conflicts.
+  For the two canonical user-message paths, preserve the durable submit claim's
+  immutable creation time through the typed Host and Runtime inputs and derive
+  both reports' occurrence and sequence from it. Use `clientSubmitId` only as
+  the idempotency identity, not as a numeric sequence. Build both messages with
+  the shared canonical user-message constructor; do not weaken the store's
+  exact-payload conflict check.
+  Reconcile only from exact durable `clientSubmitId` provenance. If it resolves
+  to the reserved Turn, idempotently accept the snapshot and claim; if it is
+  absent or resolves elsewhere, keep delivery unknown and never re-dispatch
+  that client submission. Definite pre-dispatch rejection is the only path
+  allowed to abandon the prepared evidence.
+- **Validation:** Cover exact acceptance, accepted Turn-ID mismatch, snapshot
+  and claim acceptance failures, message-write rollback, process interruption
+  after snapshot binding, reporter re-entry, duplicate replay without a new
+  message version, and multiple guidance submissions sharing one active Turn.
+  Include an ordinary-message-first replay whose payload contains nested typed
+  slices and integer values; assert the provenance barrier reuses the existing
+  message version while a real content change still conflicts.
+  Exercise both runtime-message-first and provenance-first orderings and assert
+  their complete message updates, occurrence times, and derived payload
+  sequences are identical. Reopen the submit-claim store and prove an
+  idempotent retry retains the original claim creation time.
+  Assert the unknown paths execute the provider zero additional times and never
+  close the provisional Session or delete its activation.
+- **References:**
+  [workspace-workflows.md](../../architecture/workspace-workflows.md),
+  [submit_claims.go](../../../services/tuttid/service/agent/submit_claims.go),
+  [service_tutti_mode_activation.go](../../../services/tuttid/service/agent/service_tutti_mode_activation.go)
+
 Turn state, loading, cancel, restore, file-change undo, rail projection, event updates, imports, and performance.
+
+### AgentGUI restores a provisional conversation after creation fails
+
+- Symptom:
+  A new conversation fails to start, but a renderer reload selects the same
+  Session ID again. The Rail may show an optimistic row while the canonical
+  store has no matching Session.
+- Quick checks:
+  Correlate the activation request, Workbench
+  `lastActiveAgentSessionId`, renderer reload, and canonical Session lookup by
+  exact ID. If navigation persistence precedes canonical activation
+  confirmation and the lookup returns typed `session.not_found`, this is a
+  provisional-selection leak. A bounded Rail page that omits the Session is
+  not enough evidence.
+- Root cause:
+  The new-conversation controller persisted its generated Session ID when it
+  selected the optimistic row. A crash or reload could therefore restore that
+  ID before Host committed a canonical Session. Reconcile errors also lost
+  their typed code in the frontend engine, so AgentGUI could not distinguish a
+  proven missing Session from a transient read failure.
+- Fix:
+  Keep provisional selection in mounted UI only. Persist it after the engine
+  confirms activation from canonical Session state. Preserve reconcile
+  `errorCode`; clear only the exact global and per-target navigation memories
+  when the active reconcile settles with `session.not_found`. Preserve them
+  for timeout, transport failure, and bounded-list absence.
+- Validation:
+  Verify a requested activation performs no persistence, canonical
+  confirmation writes once, create failure plus reload cannot restore the
+  provisional ID, typed `session.not_found` clears only the matching memories,
+  and a transient reconcile error keeps the selection.
+- References:
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+  [sessionReconcile.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionReconcile.reducer.ts)
+  [useAgentGUIConversationSelectionController.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIConversationSelectionController.ts)
+
+### AgentGUI detail misses or misplaces a canonical Turn error
+
+- Symptom:
+  The AgentGUI rail marks a conversation failed, but opening the conversation
+  shows only the preceding tool or assistant rows. Reloading the session does
+  not reveal why the Turn failed. A related symptom is a failure from a much
+  older Turn appearing at the bottom of the currently loaded conversation,
+  immediately before current processing UI.
+- Quick checks:
+  Inspect the canonical Turn snapshot before debugging React state. Confirm the
+  owning Turn is terminal with `outcome = failed` or `interrupted` and has a
+  non-empty `error.message`. Then inspect that Turn's timeline messages for a
+  structured `visibleError` or a plain assistant message with the same error
+  text. Finally, distinguish the session-wide Turn list from the hydrated
+  message window: check whether any currently loaded timeline item has the
+  exact owning `turnId` and whether older message pages remain.
+- Root cause:
+  Turn outcome and error are durable canonical state, while provider transcript
+  messages are optional evidence. If detail rendering only projects transcript
+  messages, a runtime that settles `AgentActivityTurn.error` without emitting a
+  visible-error message leaves the rail and detail inconsistent. Reading only
+  the active Turn also loses the error as soon as settlement clears
+  `activeTurnId`. Conversely, treating the session-wide Turn list as transcript
+  membership manufactures an empty Turn for an error whose messages are outside
+  the current page, appends it after newer Turns, and makes an old failure look
+  current.
+- Fix:
+  Reconcile terminal `AgentActivityTurn.error` in the shared transcript
+  projection by exact `turnId`, but only when that Turn already exists in the
+  hydrated transcript projection. Reuse a structured visible error, upgrade a
+  matching plain assistant failure, or add one view-only row with a stable
+  `(agentSessionId, turnId)` identity. If the owning Turn is outside the message
+  window, skip it until an older page supplies an anchor. Do not manufacture an
+  empty transcript Turn, restore session `lastError`, let session-operation
+  selectors fall back to Turn errors, reinterpret a successful attach as
+  activation failure, persist a duplicate message, or add component-local
+  failure state.
+- Validation:
+  Cover a failed Turn with no provider error message, a matching plain failure,
+  and an existing structured visible error. The first must render one fallback
+  row when its Turn is loaded, and the latter two must remain single rows. With
+  a full canonical Turn list and a newest-page-only transcript window, an older
+  failed or interrupted Turn must not create a row or change Turn order. After
+  prepending the older page, its error must appear exactly once on the owning
+  Turn. Also cover a failed Turn with zero hydrated transcript items and a
+  newer active Turn whose processing ownership remains current.
+- References:
+  [workspaceAgentTurnErrorProjection.ts](../../../packages/agent/gui/shared/workspaceAgentTurnErrorProjection.ts)
+  [workspaceAgentTurnErrorProjection.spec.ts](../../../packages/agent/gui/shared/workspaceAgentTurnErrorProjection.spec.ts)
+  [workspaceAgentTimelineCanonical.ts](../../../packages/agent/gui/shared/workspaceAgentTimelineCanonical.ts)
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+
+### Mid-turn provider failure renders a generic "request failed" card
+
+- Symptom:
+  A root-provider-lifecycle turn (Codex, Cursor, OpenCode) fails mid-turn —
+  for example quota exhaustion — but the conversation shows only a generic
+  "request failed" card with no detail and no classification code. The real
+  reason appears only in the durable Turn record and daemon logs.
+- Quick checks:
+  Confirm the canonical Turn settled with a non-empty `error.message`. If the
+  durable Turn carries the reason but the live card does not, inspect the
+  synthesized `daemonRootTurnSettlement` event metadata, not the provider
+  adapter — the adapter already reported the failure correctly.
+- Root cause:
+  Root-provider adapters do not emit `EventTurnFailed`; the daemon synthesizes
+  it in `ReconcileRootTurnSettlement` after the durable settle commits. The
+  settlement previously forwarded only `turnId` and `outcome`, so the
+  synthesized event had an empty detail and the visible-error projection
+  classified it as `unknown` instead of (for example) `quota_or_rate_limit`.
+- Fix:
+  Forward `Turn.ErrorMessage` through `RootTurnSettlement` and stamp it on the
+  synthesized event metadata under the `error` / `errorMessage` keys read by
+  `BestEffortErrorMessage`. Keep classification text-based in
+  `visibleFailureCode`; do not special-case providers at this layer.
+- Validation:
+  `TestReconcileRootTurnSettlementPublishesFailureDetail` settles a failed
+  root turn with a quota message and asserts the live stream emits a
+  `quota_or_rate_limit` visible error carrying the original detail.
+- References:
+  [controller_root_turn.go](../../../packages/agent/daemon/runtime/controller_root_turn.go)
+  [visible_error.go](../../../packages/agent/daemon/runtime/visible_error.go)
+  [agent_runtime_adapter.go](../../../services/tuttid/agent_runtime_adapter.go)
 
 ### Codex WebSocket reconnect rejects a long prompt metadata header
 
@@ -33,6 +616,84 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [codex_appserver_event_params.go](../../../packages/agent/daemon/runtime/codex_appserver_event_params.go)
   [codex_appserver_adapter_test.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter_test.go)
   [agent-gui-node.md](../../architecture/agent-gui-node.md)
+
+### Opening a historical Codex session starts two short provider processes
+
+- Symptom:
+  Selecting one settled Codex conversation logs two process starts, each with
+  `initialize` followed by `thread/read`, even though no turn was resumed.
+- Quick checks:
+  Confirm neither sequence contains `thread/resume`. Enable reconcile trace
+  diagnostics temporarily and count complete `state_and_messages` commands.
+  Two discovery/message/final sequences indicate two reconciles; one sequence
+  with two probes indicates that both detail projections resolved capabilities.
+- Root cause:
+  There are two independent boundaries to verify. Combined reconciliation
+  intentionally reads detail twice to close races while messages load, but its
+  discovery read only needs hierarchy and `messageVersion`; using the full
+  Session projection there adds an accidental provider-history capability
+  probe. Separately, automatic selection restoration can be replayed while the
+  first reconcile is running. Treating that ordinary selection as
+  `force: true` appends a second complete reconcile, whose final detail read
+  launches another probe.
+- Fix:
+  Preserve the two-read race fence. Send the first request with the
+  `messageHydration` projection and the final request with `full`; only the
+  latter resolves provider-backed lifecycle capabilities. Model automatic
+  selection as idempotent “ensure hydrated” work, leaving force refresh as an
+  explicit intent. Do not mask either symptom with a TTL cache, single-flight
+  delay, or by removing the final read.
+- Validation:
+  Select a historical root-only Codex Session with no child hierarchy through
+  `make dev-gui`. One combined reconcile should issue two detail requests and
+  one message-list request, but only the final detail request should emit the short
+  `initialize`/`thread/read` capability probe. Replaying the same selection
+  while that reconcile is pending must not start another combined reconcile.
+  Sessions with child hierarchy or additional message pages may issue more than
+  one message-list request; each request must still follow the shared executor's
+  Session and cursor policy.
+- References:
+  [sessionReconcileExecutor.ts](../../../packages/agent/activity-core/src/sessionReconcileExecutor.ts)
+  [useAgentConversationSelection.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentConversationSelection.ts)
+  [service_turns.go](../../../services/tuttid/service/agent/service_turns.go)
+  [codex_appserver_fork.go](../../../packages/agent/daemon/runtime/codex_appserver_fork.go)
+
+### Codex turn stays working before any reply or tool activity
+
+- Symptom:
+  A submitted Codex turn stays working without assistant text, reasoning, or
+  tool activity. Stop may return quickly, but the next prompt on the same
+  conversation can stall in the same way.
+- Quick checks:
+  Correlate `agent.submit.trace` records by `client_submit_id`, `turn_id`, and
+  `agent_session_id`. A `turn.start.requested` without
+  `turn.start.succeeded` means the immediate app-server acknowledgement did
+  not arrive. After the bounded failure, confirm
+  `agent_session.app_server.turn_start.client_invalidated` appears and the next
+  submit starts a new local process with `thread/resume`.
+- Root cause:
+  Codex `turn/start` should acknowledge immediately and stream the actual work
+  through notifications, but the adapter previously called it with no client
+  deadline. A graceful Stop could acknowledge `turn/interrupt` without proving
+  that the unacknowledged `turn/start` connection was healthy, so the adapter
+  retained and reused the same bad process.
+- Fix:
+  Bound only the `turn/start` acknowledgement to 30 seconds; do not bound the
+  subsequent running turn. Treat deadline, cancellation before acknowledgement,
+  or transport disconnect as an unhealthy client, remove exactly that client
+  from the live-session registry, and close it. Do not automatically replay the
+  prompt because delivery is unknown. The next explicit submit uses the
+  existing session recovery path to start a process and resume the provider
+  thread. Bound `turn/steer` acknowledgement separately to 10 seconds.
+- Validation:
+  Run
+  `go test ./packages/agent/daemon/runtime -run 'TestCodexAppServerAdapter(Turn(StartAckTimeoutInvalidatesClient|StartCancelBeforeAckInvalidatesClient|StartAckTimeoutDoesNotBoundRunningTurn|SteerTimesOut)|CanResumeAfterTurnStartAckTimeout)$'`.
+  Cover timeout, pre-ack cancellation, a long post-ack turn, bounded guidance,
+  and successful `thread/resume` followed by a completed turn.
+- References:
+  [codex_appserver_turn.go](../../../packages/agent/daemon/runtime/codex_appserver_turn.go)
+  [codex_appserver_registry.go](../../../packages/agent/daemon/runtime/codex_appserver_registry.go)
+  [codex_appserver_turn_timeout_test.go](../../../packages/agent/daemon/runtime/codex_appserver_turn_timeout_test.go)
 
 ### AgentGUI turn actions return plain-text route 404s
 
@@ -97,6 +758,60 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [prompt_content.go](../../../packages/agent/daemon/runtime/prompt_content.go)
   [controller.go](../../../packages/agent/daemon/runtime/controller.go)
   [service_send_input.go](../../../services/tuttid/service/agent/service_send_input.go)
+
+### Remote Agent image reaches the provider as an unsupported URL
+
+- Symptom:
+  A URL-backed PNG, JPEG, or WebP is accepted and appears in the user activity,
+  but Codex rejects the turn with `remote image URLs are not supported; use an
+inline data URL instead`. Claude or standard ACP may instead receive no
+  usable image data.
+- Quick checks:
+  Confirm the durable prompt block intentionally contains an HTTPS `url`, then
+  inspect the final provider payload. Codex must receive a `data:` URL; Claude
+  SDK and standard ACP must receive base64 `data`. Search every provider send
+  and guidance path for `materializeProviderPromptImagesAtBoundary`; the helper
+  and its unit test can remain green even when a refactor removes all production
+  callers.
+- Root cause:
+  Remote image URLs are the durable transport representation, while current
+  Codex app-server, Claude SDK, and standard ACP provider wires require inline
+  data. A provider-adapter refactor can preserve the materialization helper but
+  omit its call sites in newly split turn files.
+- Fix:
+  Materialize only at the final provider boundary. Keep the original URL-backed
+  content for activity projection, and convert the provider-only copy after
+  local slash/control handling but immediately before Codex `turn/start` or
+  `turn/steer`, Claude SDK `exec` or `guide`, and standard ACP
+  `session/prompt`. Resolve and pin every download or redirect hop to a public
+  Internet address so prompt content cannot reach loopback, private, link-local,
+  transition-mapped, or other IANA special-purpose networks. Preserve the
+  configured proxy decision using the original URL, but send the proxy a pinned
+  public-IP tunnel target while retaining the original TLS server name and HTTP
+  Host. Strip redirect `Referer` headers so signed URL query parameters cannot
+  cross origins. Admit an asynchronous Codex guidance continuation before
+  publishing its provisional provider turn, and settle that exact attempt when
+  preparation ends without starting a real provider turn. For standard ACP,
+  publish the original user activity and provider-turn start before remote
+  materialization; if preparation fails, complete that same provider turn as
+  failed so the message remains durable and root settlement cannot strand.
+- Validation:
+  Exercise URL-only content through the real adapter request paths and assert
+  the captured provider payload contains inline data. Cover Codex send and
+  guidance, Claude SDK exec and guide, and standard ACP exec; do not rely only
+  on direct helper tests. Also reject loopback literals and redirects whose
+  target resolves to an internal or transition-mapped address, verify proxy
+  CONNECT uses the pinned public IP, and assert redirects omit signed-URL
+  referrers. Cover failed and concurrent guidance continuation admission so
+  every published provisional attempt either yields a real provider lifecycle
+  or receives its matching provider-turn completion. Also fail standard ACP
+  materialization and assert the original user message, turn start, and failed
+  provider-turn completion are all emitted without sending `session/prompt`.
+- References:
+  [prompt_content.go](../../../packages/agent/daemon/runtime/prompt_content.go)
+  [codex_appserver_turn.go](../../../packages/agent/daemon/runtime/codex_appserver_turn.go)
+  [claude_sdk_execution.go](../../../packages/agent/daemon/runtime/claude_sdk_execution.go)
+  [standard_acp_turn.go](../../../packages/agent/daemon/runtime/standard_acp_turn.go)
 
 ### AgentGUI Stop reports no active turn after cancel succeeds
 
@@ -256,6 +971,44 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [promptQueue.reducer.ts](../../../packages/agent/activity-core/src/engine/promptQueue.reducer.ts)
   [sessionLifecycle.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionLifecycle.reducer.ts)
   [controller_exec.go](../../../packages/agent/daemon/runtime/controller_exec.go)
+
+### Queued AgentGUI prompt stalls after no-active-turn failure
+
+- Symptom:
+  A prompt submitted while an AgentGUI turn is busy appears in the local queue
+  or as an optimistic user row, but does not start after the previous turn
+  settles. Submit traces show the same `clientSubmitId` first failing with
+  `errorReason = agent.no_active_turn`, then succeeding only after a later
+  manual retry or another queue-draining trigger.
+- Quick checks:
+  Search desktop and daemon logs for the queued `clientSubmitId`. A local queue
+  acceptance has `send_input.requested` with `queued=true` and
+  `optimistic_user_message_painted`. The failure pattern is a delayed
+  `renderer_adapter.send.failed` with `errorCode=invalid_request` and
+  `errorReason=agent.no_active_turn`, plus daemon `runtime_adapter.exec.failed`
+  with `agent session has no active turn`.
+- Root cause:
+  The daemon exposes the domain-specific reason as the protocol error
+  `reason`, while the Agent session engine previously kept only the generic
+  `errorCode`. The queue reducer therefore treated the race like a permanent
+  send failure, set `failedPromptId`, and stopped automatic drain until
+  send-now or another retry path cleared the failure.
+- Fix:
+  Preserve protocol `reason` on `EngineCommandResultIntent`. For
+  `queue/sendPrompt` failures whose reason is `agent.no_active_turn`, clear the
+  in-flight send, request a session reconcile, and skip same-reducer drain so
+  the queued prompt retries only after canonical state refresh. Keep ordinary
+  send failures blocked until explicit send-now retry.
+- Validation:
+  Add reducer coverage where a queued send fails with
+  `errorReason = agent.no_active_turn`: it should emit one
+  `session/reconcile`, leave the prompt queued without `failedPromptId`, and
+  avoid an immediate second `queue/sendPrompt` until a later canonical lifecycle
+  update. Keep the existing generic failure test blocked until send-now.
+- References:
+  [promptQueue.reducer.ts](../../../packages/agent/activity-core/src/engine/promptQueue.reducer.ts)
+  [effectExecutor.ts](../../../packages/agent/activity-core/src/engine/effectExecutor.ts)
+  [daemon_agent_submit_handlers.go](../../../services/tuttid/api/daemon_agent_submit_handlers.go)
 
 ### Cursor or OpenCode turn settles before late ACP activity arrives
 
@@ -444,10 +1197,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
 
 - Symptom:
   Clearing a goal while its current turn is still running leaves the composer
-  on a non-clickable send spinner. The transcript shows `/goal clear` followed
-  by a new processing row even though no new user turn started. Claude Code may
-  instead append a native `Goal cleared: …` assistant message at the bottom of
-  the transcript after the interrupted turn.
+  on a non-clickable send spinner. The transcript treats `/goal clear` as a
+  user Turn followed by a new processing row even though no new user work
+  started. Claude Code may instead append a native `Goal cleared: …` assistant
+  message at the bottom of the transcript after the interrupted turn.
 - Quick checks:
   Inspect the AgentGUI clear handler and the engine pending-submit records. If
   clear calls `executePrompt` with an immediate `/goal clear`, the control has
@@ -466,7 +1219,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   row at the bottom.
 - Fix:
   Route every goal action, including clear, through the dedicated runtime
-  goal-control API. Do not create a user message, pending submit, or pseudo turn.
+  goal-control API. Do not create a user Turn message, pending submit, or pseudo
+  turn. A surface may project the durable session audit as a dedicated
+  `goal-control` row, but that row must carry no Turn ID and must not affect
+  processing ownership or Turn counts.
   If the provider needs an internal clear-command turn, register its generated
   turn ID and suppress only that turn's assistant/thinking acknowledgement at
   the runtime-adapter boundary before persistence. Do not filter by localized
@@ -481,11 +1237,12 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   active light or dark theme instead of using the inverted neutral toast style.
 - Validation:
   Clear a goal while a turn is running and verify the goal-control API is called
-  without an engine submit dispatch. The clear command must not appear in the
-  transcript, the original processing row must remain in place, and Stop must
-  remain clickable until the active turn settles or is interrupted. For Claude
-  Code, verify the native acknowledgement is absent both live and after reload,
-  while identical text from an ordinary assistant turn remains visible.
+  without an engine submit dispatch. If the clear control is visible, it must
+  be a `goal-control` row with no Turn ID; the original processing row must
+  remain in place, and Stop must remain clickable until the active turn settles
+  or is interrupted. For Claude Code, verify the native acknowledgement is
+  absent both live and after reload, while identical text from an ordinary
+  assistant turn remains visible.
 - References:
   [useAgentGUISubmitInteractionActions.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUISubmitInteractionActions.ts)
   [claude_sdk_goal.go](../../../packages/agent/daemon/runtime/claude_sdk_goal.go)
@@ -598,12 +1355,46 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [sessionEntities.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionEntities.reducer.ts)
   [AgentGUIConversationRailQueryController.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/AgentGUIConversationRailQueryController.ts)
 
+### AgentGUI Batch delete sessions does nothing
+
+- Symptom:
+  The project or Chats overflow menu opens, but choosing **Batch delete
+  sessions** neither opens the confirmation dialog nor sends a delete request.
+- Quick checks:
+  Look for
+  `agent.gui.conversation_batch_delete.capability_incomplete` in the host's
+  AgentGUI diagnostics. Its `missingMethods` field identifies whether the host
+  omitted `listSessionSectionDeletionCandidates` or `deleteSessionsBatch`. If
+  the event is absent and the action is enabled, correlate the candidate-list
+  and batch-delete transport requests before investigating the view.
+- Root cause:
+  Batch deletion is a two-stage runtime capability: AgentGUI first resolves the
+  authoritative session ids for the rail section and only then submits the
+  selected ids. A host that manually assembled `AgentActivityRuntime` could
+  expose the mutation but omit the candidate query. The old optional-method
+  checks then returned an empty candidate list, making a valid click look like
+  a no-op.
+- Fix:
+  Install the complete runtime cohort from
+  `@tutti-os/agent-gui/conversation-rail-runtime` and keep only transport DTO
+  mapping in the host adapter. Do not add view-local candidate discovery or
+  infer membership from loaded rows. AgentGUI treats a partial two-method
+  contract as unavailable, disables the action, and reports the missing method.
+- Validation:
+  Cover the host composition with both batch-deletion methods, verify the shared
+  factory forwards the exact candidate and delete inputs, and cover a partial
+  runtime contract as disabled with one diagnostic. Run the Agent GUI package
+  tests and the host activity-runtime composition tests.
+- References:
+  [agentConversationRailRuntime.ts](../../../packages/agent/gui/agentConversationRailRuntime.ts)
+  [useAgentGUIConversationRailQuery.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIConversationRailQuery.ts)
+  [createDesktopAgentActivityRuntime.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/createDesktopAgentActivityRuntime.ts)
+
 ### AgentGUI model switch changes defaults but not the active session
 
 - Symptom:
   A user selects a different AgentGUI model, but the next provider call still
-  uses the previous model. Logs may show
-  `agent.gui.composer_defaults.remembered` for the new model while
+  uses the previous model. The target-default patch may be acknowledged while
   `workspace_agent_sessions.settings_json`, `runtimeContext.model`, or
   app-server `turn/start` still show the old model. For an Agent Extension, the
   selected model may also change back to Auto as soon as a new session is
@@ -615,8 +1406,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   `workspace.agent_session.settings.update_requested`,
   `agent_session.settings.update.requested`,
   `agent_session.app_server.settings.applied`, and
-  `agent_session.app_server.turn_start.params`. If only the defaults event is
-  present, the UI changed the target default draft, not the active session. If
+  `agent_session.app_server.turn_start.params`. Also distinguish the dedicated
+  defaults patch intent from the Session update. If only the defaults ack is
+  present, the UI remembered a future target default but did not update the
+  active Session. If
   daemon settings update completed but `turn_start.params.model` is old or
   empty, inspect the app-server adapter path. If persistence and the provider
   request both contain the selected model but the daemon session response omits
@@ -624,7 +1417,7 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   renderer selector.
 - Root cause:
   AgentGUI has two distinct composer surfaces. The target home composer writes
-  remembered defaults and node drafts. An active conversation composer must
+  remembered defaults and a sparse local display draft. An active conversation composer must
   additionally call `updateSessionSettings`; Codex app-server providers then
   apply model changes as per-turn overrides on the next `turn/start`, not to an
   already-running turn. If the daemon applies the settings but the update
@@ -637,7 +1430,7 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   produces an empty built-in provider, clamps the model, and makes the UI
   correctly render Auto from an already-corrupted session projection.
 - Fix:
-  Preserve the default-draft path, but make active-session model changes
+  Preserve the dedicated target-default patch path, but make active-session model changes
   observable at every layer. Do not conclude that a provider ignored the model
   until the logs show the active session settings update reached the daemon and
   the following `turn/start` carried the requested model. Keep closed
@@ -661,6 +1454,105 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [service_session.go](../../../services/tuttid/service/agent/service_session.go)
   [controller.go](../../../packages/agent/daemon/runtime/controller.go)
   [codex_appserver_adapter.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter.go)
+
+### AgentGUI shows the selected settings but a new session does not inherit them
+
+- Symptom:
+  The home composer continues to show the selected model, permission,
+  reasoning effort, or speed, but closing the Agent window, opening another
+  window, restarting Tutti, or creating a Session restores an older value. A
+  running Session may still use the selected value, which can make the problem
+  look provider-specific.
+- Quick checks:
+  Start with the exact `agentTargetId`, not only the provider. Confirm the
+  `preferences.agent.composer.defaults.patch.requested` intent receives an ack,
+  then inspect
+  `desktop_preferences.agent_composer_defaults_by_agent_target_json` for that
+  target and field. Confirm a
+  `preferences.agent.composer.defaults.changed` event carries only the same
+  target id. Finally request target-scoped composer options and verify
+  `effectiveSettings`, then create a Session without explicit overrides and
+  inspect the daemon's resolved create settings. For an Agent Extension model,
+  confirm the daemon first observed that value in a live catalog for the exact
+  target; a catalog observed only for another target cannot validate the patch.
+- Root cause:
+  Target defaults and current Session settings are separate durable concerns.
+  The renderer's home draft can display an optimistic selection even when a
+  defaults write failed. Conversely, a Session settings update can succeed
+  while the future-default patch fails. A stale renderer preferences snapshot
+  must never be merged and written back as the defaults map; options snapshots
+  must never sanitize a newly selected menu value before persistence.
+- Fix:
+  Keep `rememberAgentComposerDefaultsForAgentTarget` on the dedicated patch
+  intent. Merge its sparse fields only in the tuttid SQLite transaction, publish
+  target invalidation after success, and reread defaults through
+  composer-options. Keep Create Session inheritance in `agent.Service.Create`;
+  callers pass only explicit overrides. Do not repair this with debounce,
+  localStorage, node/workbench overlays, or another full preferences write.
+  Do not add workspace/cwd to the target-default patch. Extension model
+  validation uses the daemon-observed last-known-good catalog for the exact
+  target. Its evidence survives the workspace/cwd display-cache TTL and is
+  cleared by explicit provider invalidation; Create performs the separate
+  actual-workspace/cwd validation.
+- Validation:
+  Change different fields from two windows and confirm both survive. Repeat the
+  same SET, then change the same field again and confirm daemon acceptance order
+  determines the result. Force an options refresh with an older permission or
+  model list and confirm the explicit selection remains visible and is still
+  patched. Exercise A-to-B-to-A on one field and confirm only the exact latest
+  generation can leave the optimistic layer. Fail the first options reload
+  after a successful patch, then confirm a later successful target invalidation
+  read converges the acknowledged draft. Reopen the window and restart the app;
+  `effectiveSettings` and a new Session must resolve the remembered values.
+  Open a historical Session and confirm its settings do not change future
+  defaults.
+- References:
+  [service.go](../../../services/tuttid/service/preferences/service.go)
+  [sqlite_preferences.go](../../../services/tuttid/data/workspace/sqlite_preferences.go)
+  [composer_options.go](../../../services/tuttid/service/agent/composer_options.go)
+  [desktopPreferencesService.ts](../../../apps/desktop/src/renderer/src/features/desktop-preferences/services/internal/desktopPreferencesService.ts)
+  [useAgentGUIComposerSettingsActions.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIComposerSettingsActions.ts)
+
+### Agent interaction remains waiting after the user already responded
+
+- Symptom:
+  An approval or question remains at an ask-user stop point after the user
+  submitted a response. The session may continue after Cancel or an app
+  restart, while retrying by request id alone can target an older Turn or be
+  rejected as ambiguous.
+- Quick checks:
+  Inspect the canonical Interaction identity without logging its prompt or
+  response payload. Compare `workspace_id`, `agent_session_id`, `turn_id`, and
+  `request_id` across the UI/CLI command, Interaction row, and durable runtime
+  operation. A provider request id reused by two Turns is valid. An operation
+  id whose stored tuple differs from the command tuple is an invariant failure.
+- Root cause:
+  Provider request ids are transport-local and are not session-wide durable
+  identities. Selecting an Interaction or deduplicating a runtime operation by
+  request id alone can bind a response to historical Turn state, leaving the
+  live Turn waiting.
+- Fix:
+  Carry the typed exact tuple
+  `(workspaceId, agentSessionId, turnId, requestId)` into Host and select the
+  Interaction atomically by that tuple. Scope runtime-operation idempotency to
+  the same tuple. Keep the provider request id unchanged. Do not scan, guess,
+  auto-deduplicate, or rewrite historical rows. The V4 runtime-operation
+  migration removes the lossy `subject_id`, creates partial unique indexes for
+  each operation kind, verifies copied row distributions and foreign keys, and
+  rolls the whole transaction back when a conflicting durable identity exists.
+- Recovery:
+  Existing affected sessions may be canceled and retried; restart settlement
+  may also interrupt a stale Turn. This forward fix deliberately does not
+  mutate historical Interaction rows.
+- Validation:
+  Cover the same provider request id in two Turns, exact CLI response routing,
+  same-answer idempotency, different-answer supersession, operation identity
+  mismatch failure, lossless V1-to-V4 migration, and V4 preflight rollback.
+- References:
+  [host README](../../../packages/agent/host/README.md)
+  [runtime_operations.go](../../../packages/agent/host/runtime_operations.go)
+  [migrations_runtime_operations_v4.go](../../../packages/agent/store-sqlite/migrations_runtime_operations_v4.go)
+  [tutti-cli-contract.md](../tutti-cli-contract.md)
 
 ### Historical AgentGUI permission changes time out or stop responding
 
@@ -834,6 +1726,11 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   while its explicitly selected child-project section says `No chats yet`.
   Switching provider filters may briefly retain the previous scope's row before
   the exact persisted membership makes the child section empty again.
+  Delegated Issue tasks, Agent CLI handoffs, Automation follow-ups, or
+  AgentGUI “New conversation” / “Continue in new conversation” can show a
+  related variant: the new Session appears in Chats or under a temporary
+  worktree instead of the source project, and Git commands no longer operate
+  on the intended checkout.
 - Quick checks:
   Inspect the session `cwd` from the activity snapshot. Generated no-project
   sessions should carry `runtimeContext.noProject: true` in the daemon report
@@ -851,6 +1748,12 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   `rail_section_key` in `workspace_agent_sessions`. If the cwd is inside a
   registered child project but the persisted key names an ancestor, check
   whether that child was registered only after the original import completed.
+  For a newly derived Session, compare those three fields with the source
+  Session and inspect whether the create adapter supplied both `cwd` and
+  `RailPlacement`. If an Issue has `source_session_id` but no Run was created,
+  verify that the source Session still resolves; dispatch intentionally waits
+  instead of guessing. For project Sessions with an empty cwd, verify that the
+  adapter used `rail_project_path` as the runtime fallback.
 - Root cause:
   Rail membership is classified once by the daemon when the session is first
   persisted, using `cwd`, runtime no-project markers, and current user projects.
@@ -867,6 +1770,12 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   writes creates another ordering trap: the store may see an existing parent
   project but not the selected child while assigning the session's first,
   normally immutable rail key.
+  Derived-Session entry points add the inverse trap: copying only runtime cwd
+  loses logical ownership when the cwd is an isolated worktree, while copying
+  only rail placement can leave the Agent without the source checkout. Looking
+  up the source twice during one dispatch can also mix two different snapshots,
+  and silently accepting a missing source turns an invalid handoff into a
+  detached allocator-backed Session.
 - Fix:
   Build runtime state from a clone of the session launch `RuntimeContext`, overlay
   canonical session fields, and merge provider `StateAdapter` context as a patch
@@ -890,6 +1799,11 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   key rather than racing the runtime's asynchronous activity reporter. AgentGUI
   must project sessions only by exact key equality and must not retain a cwd-based
   grouping fallback.
+  For handoff, Issue, Automation, and AgentGUI new-conversation flows, carry
+  runtime cwd and canonical rail placement independently. Resolve project
+  identity by exact section key, use the canonical project path when a
+  project-backed source cwd is empty, take one source snapshot per dispatch,
+  and fail closed when a required source Session cannot be resolved.
 - Validation:
   Run
   `pnpm --filter @tutti-os/agent-gui test -- agent-gui/agentGuiNode/model/agentGuiConversationModel.spec.ts`,
@@ -898,6 +1812,9 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   `go test ./packages/agent/store-sqlite -run 'ImportedRail|ClassifiesRail'`,
   `node --import ./test/register-asset-stub.mjs --test --experimental-strip-types ./src/renderer/src/features/workspace-user-project/services/internal/desktopWorkspaceUserProjectService.test.ts`
   from `apps/desktop`, then run `pnpm check:changed`.
+  For derived-Session regressions, also run the focused AgentGUI
+  new-conversation tests plus
+  `go test ./service/workspace ./service/automationrule`.
 - References:
   [controller_state.go](../../../packages/agent/daemon/runtime/controller_state.go)
   [controller_state_test.go](../../../packages/agent/daemon/runtime/controller_state_test.go)
@@ -908,7 +1825,161 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [agentGuiConversationModel.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationModel.ts)
   [desktopWorkspaceUserProjectService.ts](../../../apps/desktop/src/renderer/src/features/workspace-user-project/services/internal/desktopWorkspaceUserProjectService.ts)
   [agentGuiConversationProjectResolver.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationProjectResolver.ts)
-  [agentGuiConversationListStore.ts](../../../packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore.ts)
+  [useAgentGuiConversationList.ts](../../../packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList.ts)
+  [issue_sequential_dispatch.go](../../../services/tuttid/service/workspace/issue_sequential_dispatch.go)
+  [daemon_executor.go](../../../services/tuttid/service/automationrule/daemon_executor.go)
+
+### AgentGUI new conversation does nothing after leaving a Chats session
+
+- Symptom:
+  After using an ordinary Chats Session, the toolbar new-conversation action
+  opens the home composer but submitting by Enter or the send button creates no
+  visible Session and produces no `session/activate` command. Enabling Tutti
+  Mode before submitting can make the problem look mode-specific even though
+  activation is blocked before provider or Tutti Mode execution starts.
+- Quick checks:
+  Inspect the active conversation projection before the new-conversation
+  request. If `railSectionKey` is `conversations` while `cwd` is a generated
+  runtime directory, confirm that directory is not copied into the home
+  composer's selected project. A subsequent activation that resolves the path
+  against user projects and returns no placement explains the missing
+  `session/activate`.
+- Root cause:
+  Composer presentation intentionally exposes the active Session `cwd` for
+  file mentions, Git operations, and missing-directory checks. Treating that
+  presentation field as the user's home project selection conflates runtime
+  working directory with rail placement. The generated Chats directory then
+  enters project resolution and fails closed because it has no canonical
+  project section.
+- Fix:
+  Normalize default project selection at the AgentGUI controller's
+  new-conversation command. Explicit section actions remain authoritative; an
+  active Chats Session replaces the home selection with no project, an active
+  project Session resolves its immutable section key back to the canonical
+  registered project path, and an action already on Home preserves the user's
+  explicit selection. The continuation action shares this resolver before it
+  moves the source mention draft to Home. Views forward the intent without
+  interpreting composer presentation fields.
+- Validation:
+  Cover the command through final `session/activate` for three P0 scenarios:
+  active Chats clears a generated cwd, active Project with a nested/worktree
+  cwd preserves its canonical placement, Continue uses that same project, and
+  Home preserves an explicit project selection.
+- References:
+  [agentGuiNewConversationRequest.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/agentGuiNewConversationRequest.ts)
+  [useAgentGUIOperationActions.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIOperationActions.ts)
+  [agentGuiNewConversationRequest.spec.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/agentGuiNewConversationRequest.spec.tsx)
+
+### Extension history becomes non-resumable after daemon restart
+
+- Symptom:
+  An Agent Extension conversation works until `tuttid` restarts. Its history
+  remains visible, but AgentGUI says it cannot resume on this device and only
+  offers continuing through an `@` mention. In an affected live extension
+  session, the `tutti` shim can be present on `PATH` while many public commands,
+  including `tutti agent list`, return `command_not_found`. After restart,
+  sending to the same session can fail with
+  `session runtime snapshot is unavailable: launch identity is incomplete`.
+- Quick checks:
+  Confirm the persisted session still has `provider_session_id` and
+  `agent_target_id`. If the Target remains enabled and names a fixed extension
+  installation, compare list-time `resumable` calculation with the actual
+  Resume path. An empty process-local adapter registry after restart is not
+  evidence that the session cannot be restored.
+  For the CLI variant, first distinguish discovery from routing: look for
+  `tutti cli shim ready` in Desktop logs and `path_contains_tutti_bin=true` in
+  the provider process diagnostics. If both are present but the provider tool
+  reports `unknown command`, compare
+  `workspace_agent_sessions.provider` with
+  `internal_runtime_context_json.$.sessionRuntimeSnapshot.provider`. An
+  extension provider such as `acp:<name>` beside an empty snapshot provider,
+  followed by `launch identity is incomplete`, identifies the durable snapshot
+  path rather than a PATH or listener failure.
+- Root cause:
+  Dynamic Agent Extension adapters are created on demand and cached only for
+  the daemon lifetime. Computing `resumable` from that cache maps restart state
+  to a false domain result before Resume can re-resolve the persisted Target.
+  The same false result occurs when an adapter rebuilds the runtime resume input
+  but drops `agentTargetId`: the fixed Target ref then fails the controller's
+  complete binding check even though persistence and Target resolution are
+  correct. A separate snapshot variant occurs when provider-neutral metadata
+  uses the closed built-in-provider normalizer for an open extension identity.
+  The writer then persists an empty provider and fingerprints the
+  provider-native configuration with that empty value. Session-scoped CLI
+  capability projection validates the snapshot before returning the command
+  catalog; validation failure collapses discovery to an empty catalog, so
+  otherwise valid commands appear unknown. Runtime resume rejects the same
+  incomplete identity after daemon restart.
+- Fix:
+  At the service boundary, re-derive `ProviderTargetRef` from the persisted
+  session's enabled `agentTargetId`. At the runtime boundary, validate the
+  provider, Target, and fixed installation binding; when a dynamic resolver is
+  configured, treat that authorized binding as eligible for a Resume attempt.
+  Keep installation validation and ACP `session/load` in the actual Resume
+  path. Never use an open provider id or adapter-cache presence as launch
+  authority.
+  Every bridge from the Host resume input to the runtime resume input must
+  preserve `agentTargetId` and `ProviderTargetRef` together. Cover the complete
+  service-to-adapter-to-controller path instead of testing each endpoint with
+  independently constructed valid inputs.
+  Persist and compare snapshot provider metadata with the open provider
+  normalizer; launch authority still comes exclusively from the exact enabled
+  Agent Target. For already-written empty-provider extension snapshots, recover
+  only when the canonical session provider is a valid unregistered open
+  identity, the snapshot declares provider-native configuration, and its
+  fingerprint exactly matches the historical empty-provider payload. Keep
+  every other malformed or mismatched snapshot fail-closed, and do not rewrite
+  the database merely to make discovery succeed.
+- Validation:
+  Start from a controller with no cached extension adapter. Assert a persisted
+  Target-bound session is resumable, malformed or mismatched bindings fail
+  closed, and the eligibility check does not launch the provider. Then run
+  `go test ./packages/agent/daemon/runtime ./services/tuttid/service/agent`.
+  Also cover new extension snapshots preserving `acp:*`, verified legacy
+  empty-provider recovery, registered-provider fallback rejection, CLI command
+  projection for the recovered session, and runtime preparation after restart.
+- References:
+  [controller_session_registry.go](../../../packages/agent/daemon/runtime/controller_session_registry.go)
+  [agent_runtime_adapter.go](../../../services/tuttid/agent_runtime_adapter.go)
+  [service_session.go](../../../services/tuttid/service/agent/service_session.go)
+  [session_runtime_snapshot.go](../../../services/tuttid/service/agent/session_runtime_snapshot.go)
+  [agent-extensions.md](../../architecture/agent-extensions.md)
+
+### An authorized observer loops unavailable while a session is resuming
+
+- Symptom:
+  A remote or local observer has a durable Agent session ID and passes
+  authorization, but immediately receives `session not found` or
+  `Unavailable`. Its caller reconnects rapidly even though Agent Host restores
+  the provider session shortly afterward.
+- Quick checks:
+  Separate durable identity from the Controller registry. Confirm the session
+  exists in canonical persistence while `Controller.Session` is temporarily
+  absent, then correlate the observer attempt with the later Host
+  `EnsureRuntimeSession`, runtime `Start`, or runtime `Resume`. If observation
+  itself launches the provider, lifecycle authority is inverted.
+- Root cause:
+  A durable session record proves that work may be resumed; it does not prove a
+  live provider or runtime registry entry exists after daemon restart. A
+  one-shot `Controller.Subscribe` therefore turns a normal restore race into a
+  transport failure, and caller reconnect loops cannot know when the local
+  lifecycle owner has finished restoring ACP.
+- Fix:
+  Use `Controller.SubscribeWhenAvailable` when the consumer already has an
+  authorized durable session identity and must observe the next live runtime.
+  It waits on a per-session Controller notification and atomically subscribes
+  with the initial state snapshot once `Start` or `Resume` registers the
+  session. Keep provider launch and resume in Agent Host; the observation
+  method must never call those lifecycle operations.
+- Validation:
+  Start the observation against a missing runtime, assert that it neither
+  returns nor creates a session, then perform a real Controller `Resume` and
+  verify the observer receives the initial state snapshot. Also cancel a
+  missing-session wait and verify no waiter or runtime session remains, and
+  cover concurrent observers under the race detector.
+- References:
+  [controller_stream.go](../../../packages/agent/daemon/runtime/controller_stream.go)
+  [controller_stream_wait_test.go](../../../packages/agent/daemon/runtime/controller_stream_wait_test.go)
 
 ### Agent session restore breaks when durable snapshot ownership is split
 
@@ -1083,6 +2154,121 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [controller.go](../../../packages/agent/daemon/runtime/controller.go)
   [controller_test.go](../../../packages/agent/daemon/runtime/controller_test.go)
 
+### Claude Code completes but the Turn has no Fork entry
+
+- Symptom:
+  A Claude Code Turn is settled and has assistant output, but AgentGUI does not
+  offer Fork. The session capability reports `forkThroughTurn=false`, or its
+  supported provider Turn list is empty even though the Claude transcript is
+  readable.
+- Quick checks:
+  Compare the canonical Turn's `root_provider_turn_id` with the UUID of the
+  matching root user message returned by the official Claude SDK
+  `getSessionMessages` API. If they differ, inspect the live sidecar event
+  sequence for `provider_turn_started`. Do not infer identity from transcript
+  position or substitute the canonical Tutti Turn ID.
+- Root cause:
+  The outbound user-message UUID is only a prompt correlation value. Claude
+  Code may rewrite that UUID before persisting the transcript. Publishing the
+  caller-generated value as canonical provider identity makes strict prefix
+  verification correctly reject the Turn, which removes the Fork capability.
+- Fix:
+  Mark the next root prompt echo as causally expected before submitting it.
+  Bind provider Turn identity from that observed root user-message UUID, emit
+  `provider_turn_started`, and only then persist the root provider lifecycle.
+  Keep historical Turns without observed provider identity fail-closed rather
+  than guessing or backfilling them.
+- Validation:
+  Cover a query whose root user echo rewrites the outbound UUID. Assert
+  `provider_turn_started` and terminal events both carry the persisted UUID,
+  then verify the daemon stores the same identity and the fork capability
+  accepts it. Restart the daemon/sidecar before manually checking a newly
+  completed Claude Code Turn; historical affected Turns remain intentionally
+  non-forkable.
+- References:
+  [sessionRuntime.ts](../../../packages/agent/claude-sdk-sidecar/src/sessionRuntime.ts)
+  [turnLifecycle.ts](../../../packages/agent/claude-sdk-sidecar/src/turnLifecycle.ts)
+  [claude_sdk_execution.go](../../../packages/agent/daemon/runtime/claude_sdk_execution.go)
+  [claude_sdk_events.go](../../../packages/agent/daemon/runtime/claude_sdk_events.go)
+
+### Claude Code Fork fails after the action is clicked
+
+- Symptom:
+  Fork is available for a completed Claude Code Turn, but clicking it produces
+  a failed operation. The durable operation becomes `unknown`, no target
+  canonical Session is committed, and the target provider Session is absent.
+- Quick checks:
+  Inspect the latest `workspace_agent_session_fork_operations` row and query the
+  target UUID with the official SDK `getSessionInfo` and
+  `getSessionMessages`. If both are empty, check whether the sidecar used
+  `query({forkSession: true})` with an empty prompt and treated
+  `initializationResult()` as provider mutation completion.
+- Root cause:
+  Query initialization only completes the SDK/CLI handshake. Without a prompt,
+  it does not durably create the requested child transcript. Unit tests can
+  hide the defect if their fake marks the child created inside
+  `initializationResult()`. A catch that replaces the original exception with
+  a generic Fork error also erases whether failure occurred during source
+  validation, provider mutation, or child verification.
+- Fix:
+  Use the official `forkSession(source, {upToMessageId, title})` transcript
+  mutation. Accept its provider-generated child UUID, advertise the driver as
+  non-deterministic, and let Host keep only the canonical target Session ID
+  deterministic. Preserve the failure stage and original SDK reason.
+  After provider mutation starts, any failure is `unknown` and must never be
+  replayed.
+- Validation:
+  Exercise the official SDK with an in-memory SessionStore, including a Turn
+  whose inclusive checkpoint ends in a system message. Verify the provider
+  child is independently readable, root user UUIDs are remapped, the canonical
+  child resumes by the returned provider Session ID, and a second Fork from
+  that child succeeds. Cover pre-mutation `not_started`, post-mutation
+  `unknown`, and Host's no-replay behavior for non-deterministic drivers.
+- References:
+  [sessionFork.ts](../../../packages/agent/claude-sdk-sidecar/src/sessionFork.ts)
+  [sessionFork.test.ts](../../../packages/agent/claude-sdk-sidecar/src/sessionFork.test.ts)
+  [claude_sdk_fork.go](../../../packages/agent/daemon/runtime/claude_sdk_fork.go)
+  [session_fork.go](../../../packages/agent/host/session_fork.go)
+
+### Fork reports only `agent_session_fork_conflict`
+
+- Symptom:
+  A through-Turn Fork returns HTTP 409 before any provider `thread/fork`
+  request. Desktop diagnostics contain only
+  `reason=agent_session_fork_conflict` or a developer-message length, so
+  provenance, attachment, descendant-lane, and provider-Turn failures are
+  indistinguishable.
+- Quick checks:
+  Read `error.params.forkBoundaryReason` from the 409 response or the promoted
+  Desktop diagnostic `reason`. For example,
+  `agent_session_fork_turn_sequence_unverified` means the selected Turn has
+  unverified sequence provenance, while
+  `agent_session_fork_prefix_sequence_unverified` identifies an earlier Turn
+  in the inclusive prefix. The developer message carries the observed phase,
+  provenance, sequence, or identity condition without message content.
+- Root cause:
+  `CheckSessionForkThroughTurn` collapsed every fail-closed boundary branch to
+  `supported=false`; Host replaced it with one generic Turn-state error, and
+  the service formatted the nested error with `%v`, which discarded the error
+  chain before transport classification.
+- Fix:
+  Preserve one stable boundary rejection reason from the Store through Host
+  and Service. Keep the public 409 reason
+  `agent_session_fork_conflict` for compatibility, add the exact stable code
+  as `error.params.forkBoundaryReason`, and promote that code only for Desktop
+  diagnostics. Do not log transcript payloads or attachment contents.
+- Validation:
+  Cover unverified selected/prefix sequences, duplicate provider Turn IDs,
+  descendant lanes, and session-local attachments at the Store. Verify Service
+  wrapping preserves both the generic conflict and typed boundary error, the
+  API includes the structured parameter, and Desktop promotes it to the
+  diagnostic reason.
+- References:
+  [session_fork.go](../../../packages/agent/store-sqlite/session_fork.go)
+  [session_fork_types.go](../../../packages/agent/store-sqlite/session_fork_types.go)
+  [daemon_agent_session_fork.go](../../../services/tuttid/api/daemon_agent_session_fork.go)
+  [desktopAgentActivityAdapter.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/desktopAgentActivityAdapter.ts)
+
 ### Claude Code cancel leaves Write/tool cards or thinking stuck in progress
 
 - Symptom:
@@ -1242,23 +2428,36 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   `agent.gui.node.render_state_changed` lines before blaming one visible click.
   Runtime event emissions should appear as
   `runtime.events_emitted.summary`/`runtime.async_events_emitted.summary`;
-  successful inline reconciles should appear as `inline.applied.summary`.
-  If the old per-event names dominate a new log, the running app is stale.
+  the old `runtime.events_emitted`/`runtime.async_events_emitted` names must not
+  appear at the default level. Successful reconcile steps, message-page reads,
+  ACP transport frames, and unchanged CuaDriver polls should appear only when
+  debug logging is enabled. A streaming message-version change alone must not
+  emit `agent.gui.node.render_state_changed` or
+  `agent.gui.runtime.snapshot_changed`.
 - Root cause:
   Per-token runtime events and renderer inline reconcile commits can produce
   thousands of diagnostic writes. Those writes compete with rendering and also
   inflate trace/log exports enough to obscure the actual session-switch work.
+  A later AgentGUI refactor can reintroduce this problem by replacing turn
+  summaries with per-batch logs or by adding message cursors to diagnostic
+  change keys.
 - Fix:
-  Keep success-path diagnostics aggregated by turn or short time window. Reserve
-  per-event logging for failures or rare state transitions.
+  Aggregate runtime emissions once per turn. Keep successful reconcile,
+  message-page, and ACP frame diagnostics at debug. Build renderer snapshot and
+  render-state keys from semantic lifecycle/interaction state rather than
+  streaming cursors. Log unchanged permission-poll results at debug, and keep
+  desktop log writes ordered through the asynchronous file writer.
 - Validation:
-  Reproduce a streaming turn and confirm the high-volume success paths collapse
-  to summary entries while `inline.not_applied` and submit failures still retain
-  event-level detail.
+  Reproduce a streaming turn at the default info level. Confirm each turn has
+  at most one runtime emission summary, semantic render/snapshot diagnostics do
+  not advance for token-only updates, and reconcile/ACP frame diagnostics are
+  absent. Repeat with debug enabled when per-frame evidence is needed. Submit,
+  reconcile, and protocol failures must remain visible.
 - References:
-  [controller.go](../../../packages/agent/daemon/runtime/controller.go)
-  [workspaceAgentActivityService.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityService.ts)
-  [useAgentGUINodeController.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts)
+  [controller_turn_exec.go](../../../packages/agent/daemon/runtime/controller_turn_exec.go)
+  [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
+  [desktopAgentRuntimeStateDiagnostics.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/desktopAgentRuntimeStateDiagnostics.ts)
+  [useAgentGUISessionPresentation.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUISessionPresentation.ts)
 
 ### Claude export leaks hidden data, flattens branches, or resumes as Claude Code
 
@@ -1302,6 +2501,39 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [ExternalAgentSessionImportWizard.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/ExternalAgentSessionImportWizard.tsx)
   [service_session.go](../../../services/tuttid/service/agent/service_session.go)
 
+### Imported long Turns show one disclosure per tool call
+
+- Symptom:
+  A long imported Codex or Claude Code execution shows many adjacent
+  `1 tool call` disclosures instead of one grouped Turn, especially after
+  opening or paging into the middle of the conversation.
+- Quick checks:
+  Inspect the affected `workspace_agent_messages` rows without printing
+  payload text. If the user/tool/assistant rows all have `turn_id = NULL`, then
+  compare the loaded page with the source transcript. A page that starts after
+  the initiating user message cannot recover the Turn boundary locally.
+- Root cause:
+  The external importer historically used the turnless compatibility path for
+  every message. AgentGUI can make a temporary presentation group when the
+  leading user row is loaded, but that grouping cannot survive a page boundary;
+  assigning each orphan row from its current page position would manufacture
+  lifecycle identity in the renderer.
+- Fix:
+  At the provider transcript boundary, start a stable historical Turn from each
+  retained real user message and carry it through following assistant and tool
+  messages. Persist the messages with settled backfilled Turns atomically.
+  The forward-only store migration repairs existing imported rows, while a
+  later re-import applies the same identity to any still-turnless rows. Content
+  before the first trustworthy user boundary remains turnless.
+- Validation:
+  Run `go test ./packages/agent/store-sqlite -run HistoricalImport`, then
+  `cd services/tuttid && go test ./service/agent -run
+'ServiceImportsExternalAgentSessionsByProject|ServiceReimportRepairsLegacyTurnlessExternalMessages'`.
+- References:
+  [external_import.go](../../../services/tuttid/service/agent/external_import.go)
+  [activity_historical_import_turns.go](../../../packages/agent/store-sqlite/activity_historical_import_turns.go)
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+
 ### Imported sessions trigger fresh-completion indicators
 
 - Symptom:
@@ -1325,12 +2557,12 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   filters, but exclude `runtimeContext.imported` items from unread-completion
   lamps and recently-completed groups.
 - Validation:
-  For Agent GUI rail read-state changes, run
-  `pnpm --dir packages/agent/gui exec vitest run --environment jsdom contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore.spec.ts`.
+  For Agent GUI rail projection changes, run
+  `pnpm --dir packages/agent/gui exec vitest run --environment jsdom contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList.spec.tsx agent-gui/agentGuiNode/model/agentGuiConversationModel.spec.ts`.
   For Message Center grouping changes, run
   `pnpm --dir packages/agent/gui exec vitest run --environment jsdom agent-message-center/workspaceAgentMessageCenterModel.spec.ts agent-message-center/workspaceAgentMessageCenterViewModel.spec.ts`.
 - References:
-  [agentGuiConversationListStore.ts](../../../packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore.ts)
+  [useAgentGuiConversationList.ts](../../../packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList.ts)
   [workspaceAgentMessageCenterModel.ts](../../../packages/agent/gui/agent-message-center/workspaceAgentMessageCenterModel.ts)
   [workspaceAgentMessageCenterViewModel.ts](../../../packages/agent/gui/agent-message-center/workspaceAgentMessageCenterViewModel.ts)
 
@@ -1380,7 +2612,8 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   the session create and turn both succeeded while the presentation remains
   `activating` until `engine/intentExpired`, inspect which session intent
   reached the pending-activation reducer. Also check that a failed realtime
-  session fetch does not consume the live-reconcile marker before a retry.
+  session fetch preserves `live: true` on the Engine's pending reconcile
+  record before a retry.
 - Root cause:
   An engine migration introduced `session/upserted` for authoritative mutation
   and realtime results, while pending activation still confirmed only from the
@@ -1392,9 +2625,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   Confirm activation from both authoritative session intents. Preserve the
   semantic distinction only where it matters: historical snapshots remain
   neutral for unread attention, while realtime reconciliation additionally
-  emits the live turn update. Move a consumed realtime marker to an in-flight
-  state and restore it after fetch failure until a live session is applied or
-  the session is deleted.
+  emits the live turn update. Carry realtime provenance on the Engine-owned
+  reconcile command, merge it into in-flight demand, and restore it to pending
+  demand after fetch failure until a live session is applied or the session is
+  deleted. Hosts must not keep a parallel marker set.
 - Validation:
   Cover the reducer with a pending activation followed by `session/upserted`.
   At the desktop service boundary, run a real engine activation through the
@@ -1405,6 +2639,42 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [pendingIntents.reducer.ts](../../../packages/agent/activity-core/src/engine/pendingIntents.reducer.ts)
   [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
   [workspaceAgentActivityService.test.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityService.test.ts)
+
+### Shared Agent composer stays disabled after the target connects
+
+- Symptom:
+  A shared Agent target reaches `connected`, and diagnostics show submission
+  readiness has recovered, but the entire composer remains disabled and cannot
+  receive focus or input. This differs from an empty draft disabling only the
+  send button.
+- Quick checks:
+  Inspect one rendered Composer gate snapshot. Its runtime, editor, and
+  submission branches must agree: a ready submission cannot coexist with a
+  target-connection runtime block. If logs instead compare fields from separate
+  Composer and readiness projections, inspect view-model memoization before
+  debugging P2P transport.
+- Root cause:
+  Connection and submission facts were projected into independent memoized
+  slices. A missing dependency could retain the old target-connection block
+  while publishing the new submission-ready value, and a downstream detail
+  model then recombined those two render-time generations into a torn
+  `composerDisabled` decision.
+- Fix:
+  Derive the canonical Composer gate once at the Session-presentation boundary.
+  Keep editor editability, submission readiness/queue/blocking, and
+  runtime-command availability in that one object, then pass it through one
+  view-model slice to the editor, send button, shortcuts, Stop control, and
+  Interaction paths. Keep draft-empty and upload conditions submission-local.
+- Validation:
+  Drive an exact shared target from `connecting` to `connected` and assert the
+  same resulting snapshot reports runtime ready, editor editable, and
+  submission ready. Also cover busy queue behavior, collaborator read-only
+  behavior, and the invariant that submission ready never retains a runtime
+  connection block.
+- References:
+  [agentGuiComposerGate.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiComposerGate.ts)
+  [useAgentGUISessionPresentation.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUISessionPresentation.ts)
+  [useAgentGUIViewModel.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/useAgentGUIViewModel.ts)
 
 ### AgentGUI submit clears the composer but creates no session or turn
 
@@ -1770,6 +3040,92 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [messageRouter.ts](../../../packages/agent/claude-sdk-sidecar/src/messageRouter.ts)
   [sessionRuntime.session.test.ts](../../../packages/agent/claude-sdk-sidecar/src/sessionRuntime.session.test.ts)
 
+### AgentGUI compaction timer keeps running after compaction completed
+
+- Symptom:
+  AgentGUI continues to show an increasing `Compacting context` duration after
+  the provider finished compaction. The durable compaction message and Turn are
+  already terminal, but the mounted renderer still projects the earlier
+  `noticeCommandStatus=running` snapshot.
+- Quick checks:
+  Compare the message-list requests in desktop reconcile diagnostics with the
+  durable message versions. If the renderer pulled a running compaction at
+  version N, missed its terminal update at N+1, then next requested
+  `afterVersion` at a much higher value, the local cache advanced across a
+  version hole. Confirm that the terminal row uses the same `messageId`; a new
+  compaction row or a timer-specific state bug is a different failure.
+- Root cause:
+  The realtime bridge treated the maximum version of materialized message rows
+  as a contiguous acknowledged change cursor. After an event-stream loss, it
+  applied a later inline message and advanced that maximum past the missed
+  terminal mutation. Every later `afterVersion` pull then started beyond the
+  mutation, so the authoritative completed snapshot could never repair the
+  cached running snapshot. The timer correctly kept rendering the stale running
+  lifecycle.
+- Fix:
+  Before folding realtime messages inline, compare only their unseen versions
+  with the cached high-water boundary. If the first unseen version is not the
+  next cursor, do not apply any of that event's messages; retain the old cursor
+  and request an authoritative incremental reconcile. After a disconnected
+  event stream reconnects, also incrementally reconcile every session whose
+  messages are already cached; otherwise a missed final mutation has no later
+  event that can reveal its gap. Do not require the materialized cache itself to
+  contain every historical cursor value, because mutable message rows replace
+  older versions.
+- Validation:
+  Cache a user message and a running compaction, omit the next terminal
+  compaction mutation, then deliver a later assistant message. Assert that the
+  later message is not applied inline, reconciliation requests from the
+  pre-gap cursor, and the stable compaction `messageId` becomes completed from
+  the authoritative response. Also cover valid snapshot gaps already present in
+  the cache plus duplicate and stale event delivery. Finally, omit the terminal
+  mutation as the last event, disconnect and reconnect without another activity
+  event, and verify the reconnect reconcile retrieves it from the pre-disconnect
+  cursor.
+- References:
+  [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
+  [workspaceAgentActivityReconcileMessages.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileMessages.ts)
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+
+### Root detail reconciliation repeatedly reloads unchanged child transcripts
+
+- Symptom:
+  Opening or reconciling one root conversation repeatedly issues message-list
+  requests for every known child Session, including assistant-only and
+  tool-only children whose durable messages have not changed.
+- Quick checks:
+  Compare each child Session's required `messageVersion` from both root-detail
+  reads with the largest cached message version that also has a durable
+  `sequence`. If the cache is current but the request still starts at zero,
+  inspect whether child reconciliation reused the root conversation's
+  user-message boundary heuristic.
+- Root cause:
+  The root heuristic intentionally returns zero when cached history has no user
+  message, so it can repair an incomplete root conversation. Applying that
+  heuristic to provider-native child Sessions makes ordinary assistant/tool
+  histories look permanently unhydrated and forces the same reads forever.
+- Fix:
+  Keep root and child cursor policies separate. For a child, derive the cursor
+  only from durable sequenced messages and skip its message request when that
+  cursor has reached the Session `messageVersion`. Preserve the bounded
+  newest-first initial read, but treat an existing empty child window as the
+  authoritative zero cursor and drain later messages from `afterVersion=0`.
+  After the first message pass, read root detail again and incrementally fetch
+  newly discovered children plus existing children whose `messageVersion`
+  advanced during the pass. Do not let optimistic/transient rows advance the
+  durable cursor, and do not add polling; later changes arrive through the
+  existing push-and-reconcile path.
+- Validation:
+  Cover assistant-only and tool-only child caches, a transient row with a higher
+  synthetic version, an unchanged child that performs no request, initial
+  newest-first hydration, an empty known child that gains more than one page,
+  and a child advancing between the two detail reads. Keep a root assistant-only
+  case proving its existing repair still reads from zero.
+- References:
+  [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
+  [workspaceAgentActivityReconcileMessages.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileMessages.ts)
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+
 ### AgentActivity replication repeatedly rejects message batches as invalid
 
 - Symptom:
@@ -1836,3 +3192,229 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [Agent Goal Control Design](../../specs/2026-07-15-agent-goal-control-design.md)
   [controller_exec.go](../../../packages/agent/daemon/runtime/controller_exec.go)
   [goal_state.go](../../../packages/agent/store-sqlite/goal_state.go)
+
+### Accepted Goal clear is sent repeatedly until convergence times out
+
+- Symptom:
+  One `/goal clear` produces repeated provider control requests at the Goal
+  worker interval. Each request is accepted, but the durable operation remains
+  `dispatched` with provider phase `accepted`, its attempt count keeps rising,
+  and it eventually fails with `accepted goal operation exceeded its
+convergence deadline`.
+- Quick checks:
+  Correlate logs by `agent_session_id`, operation ID, and Goal revision. Verify
+  there is one user control audit but multiple provider `action=clear` calls.
+  Inspect `workspace_agent_goal_control_operations`: an accepted operation with
+  increasing attempts and unchanged accepted evidence identifies Host replay,
+  not repeated user input.
+- Root cause:
+  The steady-state Goal worker treated clear's provider idempotence as
+  permission to resubmit an already accepted command. Acceptance had already
+  crossed the delivery boundary, so every later worker claim queued another
+  native clear command while the Host was supposed to wait for applied
+  lifecycle evidence.
+- Fix:
+  For every accepted Goal mutation, make the steady-state worker defer without
+  calling the provider again. Keep the convergence deadline so missing applied
+  evidence still terminates. Reserve replay for startup crash recovery and
+  gate it with the adapter recovery policy; query-incapable adapters may replay
+  an idempotent clear once, while unsafe set replay remains rejected.
+- Validation:
+  Return `accepted` from a clear, advance the worker clock past its next claim,
+  and step the steady-state worker. The provider call count must remain one,
+  while the operation stays pending and `applying`. Existing deadline coverage
+  must still fail a lost-evidence operation without another provider call.
+- References:
+  [goal_operation_worker.go](../../../packages/agent/host/goal_operation_worker.go)
+  [goal_scenarios.go](../../../packages/agent/host/conformance/goal_scenarios.go)
+
+### Revoked shared Goal starts again after handoff or desktop restart
+
+- Symptom:
+  After a shared binding is revoked, the old Goal starts or resumes provider
+  work, may replace the Owner's newer Goal, or an unrelated active Turn is
+  canceled.
+- Quick checks:
+  Resolve the original Goal operation by its stable `clientSubmitId`. Inspect
+  `workspace_agent_goal_generation_fences` for the exact operation ID, revision,
+  and repair epoch. `pending` or `processing` means Host still owns delivery;
+  absence means the revocation was never durably accepted. For any canceled
+  Turn, compare all three immutable `source_goal_*` fields with the fence.
+- Root cause:
+  Revocation was treated as a one-shot notification, or code guessed that the
+  session's current active Turn belonged to the revoked binding. A failed
+  notification was lost on restart, and recovery could replay the old prepared
+  Goal before runtime learned the revocation.
+- Fix:
+  Persist an exact Goal-generation fence before provider delivery. Process
+  fences before Goal operations during startup and each worker tick. Restore
+  all durable fences when a provider session resumes, and retain the exact set
+  in the runtime Controller across idle connection release so a replacement
+  adapter is fenced before its first user operation. Never resume an offline
+  provider solely for background fence or cancel delivery. Prepare the local
+  clear with the target revision as a compare-and-swap guard, and call
+  `CancelTurn` only for a live canonical Turn whose operation ID, revision,
+  and repair epoch all match. Keep the fence pending after cancellation
+  acceptance until the Turn is canonically terminal.
+- Validation:
+  Cover failed delivery followed by restart, a pending target operation and
+  fence recovered together, a newer Owner Goal, repeated runtime ensure, and
+  matching versus unrelated active Turns. Simulate connection replacement and
+  prove fence reinstallation happens before provider dispatch. Simulate a
+  disconnect immediately before cancel and prove background recovery makes
+  zero provider Resume calls. Provider tests must prove that the exact
+  Codex/Claude generation never becomes canonical while later generations
+  remain admissible.
+- References:
+  [Agent Host contracts](../../../packages/agent/host/README.md)
+  [Agent Goal Control Design](../../specs/2026-07-15-agent-goal-control-design.md)
+  [goal_generation_fence.go](../../../packages/agent/host/goal_generation_fence.go)
+
+### Initial Goal prompt disappears when the Agent starts responding
+
+- Symptom:
+  A new conversation opened with `/goal <objective>` first shows the submitted
+  command, then removes it as soon as the durable session or the first provider
+  response arrives. The response and processing state remain visible.
+- Quick checks:
+  Compare the optimistic activation message with the durable
+  `session_audit`. Verify both carry the same `clientSubmitId` and inspect the
+  transcript projection after the overlay removes the optimistic twin. If the
+  durable Goal audit is filtered from all presentation output, the replacement
+  leaves no visible row.
+- Root cause:
+  The optimistic activation was projected as an ordinary user message while
+  the canonical Goal control was correctly persisted as a session-level audit.
+  Overlay reconciliation removed the optimistic message by `clientSubmitId`,
+  then the message projector discarded the durable audit, so two individually
+  correct policies composed into a disappearing row.
+- Fix:
+  Mark the optimistic activation as Goal control when
+  `initialGoalControl` is present. Project both optimistic and durable forms as
+  a dedicated `goal-control` row outside the Turn model. Derive the row identity
+  from the audit payload's client-submit message identity before falling back
+  to the durable operation ID, so replacement preserves the renderer key.
+- Validation:
+  Project the optimistic-only state and the durable-after-overlay state. Both
+  must contain one `goal-control` row with the same ID and zero Turns. Also
+  verify the dedicated row renders, the first real provider Turn remains the
+  sole Turn, and reload produces the same control row.
+- References:
+  [workspaceAgentMessageOverlay.ts](../../../packages/agent/gui/shared/workspaceAgentMessageOverlay.ts)
+  [workspaceAgentMessageProjection.ts](../../../packages/agent/gui/shared/agentConversation/projection/workspaceAgentMessageProjection.ts)
+  [workspaceAgentTimelineCanonical.ts](../../../packages/agent/gui/shared/workspaceAgentTimelineCanonical.ts)
+
+### Goal clear duplicates the live Agent work section
+
+- Symptom:
+  While a Goal Turn is still streaming, clicking clear inserts `/goal clear`
+  between two identical Agent work sections. Both sections continue updating
+  together even though the daemon executed only one Turn.
+- Quick checks:
+  Inspect canonical Turns and message ownership. If Agent messages on both
+  sides of the turnless Goal audit carry the same Turn ID, compare transcript
+  group keys before inspecting provider retries or duplicate persistence.
+- Root cause:
+  Chronological insertion produced `Turn T -> goal-control -> Turn T`. A
+  grouping pass treated the turnless row as a hard boundary and created two
+  groups with key `T`; the work-section map retained the later model for that
+  shared key, so both Turn positions rendered the same rows.
+- Fix:
+  Keep a turnless session row inside the current presentation group only when
+  the next lifecycle-owned row proves that the surrounding Turn ID is
+  unchanged. Preserve the session row's null Turn ID; presentation continuity
+  must not manufacture lifecycle ownership.
+- Validation:
+  Cover `T -> goal-control -> T` and assert one Turn group, one processed-time
+  section, one Goal control row, and one copy of each Agent row. Also cover
+  `T1 -> goal-control -> T2` and verify the Goal control remains an independent
+  orphan between different Turns.
+- References:
+  [agentTranscriptModel.ts](../../../packages/agent/gui/shared/agentConversation/components/agentTranscriptModel.ts)
+  [AgentTranscriptView.tsx](../../../packages/agent/gui/shared/agentConversation/components/AgentTranscriptView.tsx)
+
+### Cassette replay loses the provider session before the second stimulus
+
+- Symptom:
+  Replay reaches checkpoint 1, then a later `session.send` fails with
+  `provider session was never established`. The replay error also reports that
+  an outbound write arrived while a recorded stdout chunk was next.
+- Quick checks:
+  Inspect `provider/frames.jsonl` around the reported chunk. If a provider
+  notification immediately follows a successful request response and precedes
+  the next outbound request, compare the reader and writer goroutine timing.
+- Root cause:
+  The process cassette encoded the provider byte-stream order, but replay
+  treated that order as a required Go goroutine schedule. A writer could run
+  before the reader consumed an already-recorded notification, so normal
+  concurrency was rejected as a transport mismatch and provider startup was
+  torn down.
+- Fix:
+  When the next recorded chunk is inbound, block the replay write until the
+  receive path consumes it. Continue strict payload validation when the next
+  recorded outbound chunk becomes current.
+- Validation:
+  Start a replay stream with `outbound -> stdout -> outbound`. Launch the
+  second send before receiving stdout; it must wait, then succeed after the
+  receive. Keep mismatch, pause, fast-forward, close, and full runtime tests
+  passing.
+- References:
+  [process_transport_replay.go](../../../packages/agent/daemon/runtime/process_transport_replay.go)
+  [process_transport_cassette_test.go](../../../packages/agent/daemon/runtime/process_transport_cassette_test.go)
+
+### Cassette replay reports a false final Session state mismatch
+
+- Symptom:
+  Every recorded stimulus succeeds, but final replay validation reports that
+  `workspace_agent_sessions` or `workspace_agent_turns` differs. The isolated
+  replay database contains the same child Sessions and Turns under new ids.
+- Quick checks:
+  Compare child Sessions by provider, provider Session id, target, and Session
+  kind instead of the generated Tutti id. Then compare each Session's Turns in
+  order. If those normalized rows match, the cassette state is not corrupt.
+- Root cause:
+  Replay creates new Tutti ids for provider-discovered child Sessions and their
+  canonical Turns. A validator that maps only the root Session and submitted
+  root Turns queries child rows with recorded ids, then mistakes missing rows
+  for durable state drift.
+- Fix:
+  Normalize child Session ids by an unambiguous stable provider identity before
+  querying final fixtures. Map remaining Turn ids by order within the already
+  mapped Session. Do not guess when either side has duplicate stable identities
+  or mismatched Turn counts.
+- Validation:
+  Cover regenerated child Session and Turn ids, ambiguous provider identities,
+  and the original multi-child cassette. The unambiguous cassette must pass;
+  ambiguous or count-mismatched fixtures must still fail closed.
+- References:
+  [run-agent-session-replay.mjs](../../../tools/scripts/run-agent-session-replay.mjs)
+  [run-agent-session-replay.test.mjs](../../../tools/scripts/run-agent-session-replay.test.mjs)
+
+### Cassette replay times out before a recorded queued Turn
+
+- Symptom:
+  Replay stops on `timed out waiting for renderer effect queue/sendPrompt`,
+  leaves later activity events untouched, and consumes only the provider frames
+  before a long-running Turn settles. The cassette itself contains the missing
+  intent, effect, and final Turn.
+- Quick checks:
+  Compare adjacent `activity-events.jsonl` timestamps. If the effect was
+  recorded more than the renderer effect timeout after its intent, check
+  whether replay dispatched both events immediately instead of waiting for
+  their recorded interval.
+- Root cause:
+  Provider frames followed the daemon playback clock, but the runner iterated
+  activity events as fast as JavaScript completed them. Effect verification
+  therefore began while the recorded Turn was still running and expired before
+  the effect could exist.
+- Fix:
+  Advance activity events by relative `occurredAtUnixMs` using the daemon's
+  playback state. Pause freezes the activity clock, speed scales it, and
+  checkpoint fast-forward skips its remaining wait.
+- Validation:
+  Cover normal recorded delay, processing time between events, pause/resume,
+  selected speed, and fast-forward. Then replay the failing cassette and require
+  the final checkpoint, all provider frames, and every expected Turn to pass.
+- References:
+  [run-agent-session-replay.mjs](../../../tools/scripts/run-agent-session-replay.mjs)
+  [run-agent-session-replay.test.mjs](../../../tools/scripts/run-agent-session-replay.test.mjs)

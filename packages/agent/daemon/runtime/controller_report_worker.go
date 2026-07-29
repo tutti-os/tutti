@@ -8,6 +8,7 @@ import (
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 func (c *Controller) enqueueSessionReport(ctx context.Context, session Session, events []activityshared.Event) {
@@ -49,7 +50,7 @@ func (c *Controller) reportGoalReconcileControl(ctx context.Context, report agen
 func (c *Controller) reportGoalReconcileDurable(ctx context.Context, session Session, request GoalReconcileDurableRequest) error {
 	report := agentsessionstore.ReportActivityInput{
 		WorkspaceID: session.RoomID,
-		Connector:   &agentsessionstore.ConnectorInfo{ID: session.Provider, Version: "agent-gui-runtime"},
+		Connector:   &canonical.ConnectorInfo{ID: session.Provider, Version: "agent-gui-runtime"},
 		Source:      eventSourceFromSession(session),
 		GoalReconcileRequests: []agentsessionstore.WorkspaceAgentGoalReconcileRequest{{
 			RequestID: request.RequestID, Phase: request.Phase, AgentSessionID: session.AgentSessionID,
@@ -65,7 +66,7 @@ func (c *Controller) reportGoalReconcileDurable(ctx context.Context, session Ses
 func (c *Controller) enqueueSessionSnapshotReport(ctx context.Context, session Session) {
 	report := agentsessionstore.ReportActivityInput{
 		WorkspaceID: session.RoomID,
-		Connector: &agentsessionstore.ConnectorInfo{
+		Connector: &canonical.ConnectorInfo{
 			ID:      session.Provider,
 			Version: "agent-gui-runtime",
 		},
@@ -82,7 +83,7 @@ func (c *Controller) enqueueSessionStatePatchReport(
 ) {
 	report := agentsessionstore.ReportActivityInput{
 		WorkspaceID: session.RoomID,
-		Connector: &agentsessionstore.ConnectorInfo{
+		Connector: &canonical.ConnectorInfo{
 			ID:      session.Provider,
 			Version: "agent-gui-runtime",
 		},
@@ -217,20 +218,20 @@ func (c *Controller) enqueueReport(ctx context.Context, report agentsessionstore
 		"timeline_items", timelineItemsForLog,
 		"state_patches", statePatchesForLog,
 	)
-	if c.reportCh == nil {
-		c.report(request.ctx, request)
+	if c.reportQueue == nil {
+		_ = c.report(request.ctx, request)
 		return
 	}
-	select {
-	case c.reportCh <- request:
-	default:
+	depth := c.reportQueue.enqueue(request)
+	if depth >= 1024 && depth%1024 == 0 {
 		slog.Warn(
-			"agent session activity report queue full; reporting inline",
-			"event", "agent_session.activity_report.queue_full",
+			"agent session activity report queue backlog is growing",
+			"event", "agent_session.activity_report.queue_backlog",
 			"room_id", report.WorkspaceID,
 			"agent_session_id", report.Source.AgentID,
 			"provider", report.Source.Provider,
 			"provider_session_id", report.Source.ProviderSessionID,
+			"queue_depth", depth,
 			"timeline_item_count", len(report.TimelineItems),
 			"state_patch_count", len(report.StatePatches),
 			"message_update_count", len(report.MessageUpdates),
@@ -238,38 +239,57 @@ func (c *Controller) enqueueReport(ctx context.Context, report agentsessionstore
 			"timeline_items", timelineItemsForLog,
 			"state_patches", statePatchesForLog,
 		)
-		c.report(request.ctx, request)
 	}
 }
 
 func (c *Controller) runReportWorker() {
+	if c.reportQueue == nil {
+		return
+	}
 	coalescer := newStreamingReportCoalescer(defaultStreamingReportCoalesceWindow)
 	defer coalescer.stop()
 	for {
+		// Do not let a continuously populated report queue starve the streaming
+		// coalescer's timer.
 		select {
-		case request, ok := <-c.reportCh:
-			if !ok {
-				for _, pending := range coalescer.flushAll() {
-					c.report(pending.ctx, pending)
-				}
-				return
-			}
-			for _, next := range coalescer.add(request) {
-				c.report(next.ctx, next)
-			}
 		case <-coalescer.ready():
 			for _, pending := range coalescer.flushAll() {
-				c.report(pending.ctx, pending)
+				_ = c.report(pending.ctx, pending)
+			}
+		default:
+		}
+		if request, ok := c.reportQueue.dequeue(); ok {
+			for _, next := range coalescer.add(request) {
+				_ = c.report(next.ctx, next)
+			}
+			continue
+		}
+		select {
+		case <-c.reportQueue.ready():
+		case <-coalescer.ready():
+			for _, pending := range coalescer.flushAll() {
+				_ = c.report(pending.ctx, pending)
 			}
 		}
 	}
 }
 
-func (c *Controller) report(ctx context.Context, request reportRequest) {
-	if c.reporter == nil {
-		return
+func (c *Controller) report(ctx context.Context, request reportRequest) (reportErr error) {
+	if request.done != nil {
+		defer func() {
+			request.done <- reportErr
+			close(request.done)
+		}()
 	}
-	if err := c.reporter.Report(ctx, request.report); err != nil {
+	if c.reporter == nil {
+		return errors.New("agent session activity reporter is unavailable")
+	}
+	if request.submitProvenance {
+		reportErr = c.reporter.ReportSubmitProvenance(ctx, request.report)
+	} else {
+		reportErr = c.reporter.Report(ctx, request.report)
+	}
+	if reportErr != nil {
 		timelineItemsForLog, statePatchesForLog := SummarizeReportActivityInputForLog(request.report)
 		slog.Error(
 			"agent session activity report failed",
@@ -284,9 +304,11 @@ func (c *Controller) report(ctx context.Context, request reportRequest) {
 			"session_audit_count", len(request.report.SessionAudits),
 			"timeline_items", timelineItemsForLog,
 			"state_patches", statePatchesForLog,
-			"error", err,
+			"submit_provenance", request.submitProvenance,
+			"error", reportErr,
 		)
 	}
+	return reportErr
 }
 
 func sessionKey(roomID, agentSessionID string) string {

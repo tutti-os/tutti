@@ -52,6 +52,10 @@ export class MessageProjection {
       this.handleTaskUpdated(message);
       return;
     }
+    if (subtype === "background_tasks_changed") {
+      this.activities.handleBackgroundTasksChanged(message);
+      return;
+    }
     if (subtype === "init" || subtype === "commands_changed") {
       const commands = commandEntries(message.commands);
       if (commands.length > 0 || Array.isArray(message.commands)) {
@@ -123,7 +127,8 @@ export class MessageProjection {
     block: Record<string, unknown>,
     parentToolUseID = "",
     messageId = "",
-    usedSegmentIds = new Set<string>()
+    usedSegmentIds = new Set<string>(),
+    failed = false
   ): void {
     if (isThinkingBlock(block)) {
       if (!parentToolUseID) {
@@ -138,12 +143,22 @@ export class MessageProjection {
     }
     if (block.type === "text") {
       if (!parentToolUseID) {
-        this.assistant.completeContent(
-          "assistant",
-          messageId,
-          stringValue(block.text),
-          usedSegmentIds
-        );
+        const content = stringValue(block.text);
+        if (failed) {
+          this.assistant.failContent(
+            "assistant",
+            messageId,
+            content,
+            usedSegmentIds
+          );
+        } else {
+          this.assistant.completeContent(
+            "assistant",
+            messageId,
+            content,
+            usedSegmentIds
+          );
+        }
       }
       return;
     }
@@ -186,7 +201,7 @@ export class MessageProjection {
     if (status !== "completed" && status !== "failed" && status !== "killed") {
       return;
     }
-    this.activities.handleTaskSystemMessage("task_notification", {
+    this.activities.handleTaskSystemMessage("task_updated", {
       task_id: stringValue(message.task_id),
       tool_use_id: stringValue(message.tool_use_id),
       status: status === "killed" ? "stopped" : status,

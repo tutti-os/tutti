@@ -155,3 +155,65 @@ test("desktop file dialog access can disable directory upload selection", async 
     properties: ["openFile", "multiSelections"]
   });
 });
+
+test("desktop file dialog access uses product-aligned initial directories", async () => {
+  const calls: Parameters<
+    NonNullable<DesktopFileDialogAccessDependencies["showOpenDialog"]>
+  >[] = [];
+  const dialogAccess = createDesktopFileDialogAccess({
+    getDefaultPath: (name) =>
+      name === "documents" ? "/Users/demo/Documents" : "/Users/demo/Downloads",
+    getLocale: () => "en",
+    showOpenDialog: async (...args) => {
+      calls.push(args);
+      return {
+        canceled: true,
+        filePaths: []
+      };
+    }
+  });
+
+  await dialogAccess.selectDirectory();
+  await dialogAccess.selectAppArchive();
+  await dialogAccess.selectAppIconImage();
+  await dialogAccess.selectUploadFiles();
+
+  assert.equal(calls[0]?.[1].defaultPath, "/Users/demo/Documents");
+  assert.equal(calls[1]?.[1].defaultPath, "/Users/demo/Downloads");
+  assert.equal(calls[2]?.[1].defaultPath, "/Users/demo/Downloads");
+  assert.equal(calls[3]?.[1].defaultPath, "/Users/demo/Downloads");
+});
+
+test("desktop file dialog access remembers successful selections for the process lifetime", async () => {
+  const calls: Parameters<
+    NonNullable<DesktopFileDialogAccessDependencies["showOpenDialog"]>
+  >[] = [];
+  const selections = [
+    ["/Users/demo/Projects/tutti"],
+    ["/Users/demo/Projects/next"],
+    ["/Users/demo/Imports/app.zip"],
+    ["/Users/demo/Imports/icon.png"]
+  ];
+  const dialogAccess = createDesktopFileDialogAccess({
+    getDefaultPath: (name) =>
+      name === "documents" ? "/Users/demo/Documents" : "/Users/demo/Downloads",
+    getLocale: () => "en",
+    showOpenDialog: async (...args) => {
+      calls.push(args);
+      return {
+        canceled: false,
+        filePaths: selections.shift() ?? []
+      };
+    }
+  });
+
+  await dialogAccess.selectDirectory();
+  await dialogAccess.selectDirectory();
+  await dialogAccess.selectAppArchive();
+  await dialogAccess.selectAppIconImage();
+
+  assert.equal(calls[0]?.[1].defaultPath, "/Users/demo/Documents");
+  assert.equal(calls[1]?.[1].defaultPath, "/Users/demo/Projects/tutti");
+  assert.equal(calls[2]?.[1].defaultPath, "/Users/demo/Downloads");
+  assert.equal(calls[3]?.[1].defaultPath, "/Users/demo/Imports");
+});

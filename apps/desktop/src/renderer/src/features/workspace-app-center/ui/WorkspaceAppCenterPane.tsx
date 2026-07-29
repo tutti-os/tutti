@@ -222,6 +222,11 @@ export function WorkspaceAppCenterPane({
   );
   const appCenterActions = useMemo<AppCenterHostActions>(
     () => ({
+      authoringCapabilities: {
+        createApp: true,
+        importArchive: true,
+        loadUnpacked: true
+      },
       cancelFactoryJob: (jobId) =>
         service.cancelFactoryJob({ jobId, workspaceId }),
       createFactoryJob: (input) =>

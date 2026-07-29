@@ -2,7 +2,6 @@ package workspace
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -19,6 +18,16 @@ const schemaMigrationWorkspaceIssuesV2 = "workspace_issues_v2"
 const schemaMigrationWorkspaceIssuesV3 = "workspace_issues_v3"
 const schemaMigrationWorkspaceIssuesV4 = "workspace_issues_v4"
 const schemaMigrationWorkspaceIssuesV5 = "workspace_issues_v5"
+const schemaMigrationWorkspaceAgentsV1 = "workspace_agents_v1"
+const schemaMigrationWorkspaceAgentsV2 = "workspace_agents_model_fallbacks_v1"
+const schemaMigrationWorkspaceAgentsV3 = "workspace_agents_call_conditions_v1"
+const schemaMigrationWorkspaceAgentsV4 = "workspace_agents_capability_selection_v1"
+const schemaMigrationWorkspaceIssuesV12 = "workspace_issue_tasks_launch_overrides_v1"
+const schemaMigrationWorkspaceIssuesV13 = "workspace_issue_tasks_parallelizable_v1"
+const schemaMigrationWorkspaceIssuesV14 = "workspace_issues_plan_origin_v1"
+const schemaMigrationWorkspaceIssuesV15 = "workspace_issues_execution_lifecycle_v1"
+const schemaMigrationWorkspaceIssuesV16 = "workspace_issue_tasks_auto_accept_v1"
+const schemaMigrationWorkspaceIssuesV17 = "workspace_issue_tasks_supersession_v1"
 const schemaMigrationDesktopPreferencesV1 = "desktop_preferences_v1"
 const schemaMigrationDesktopPreferencesAgentDockLayoutV1 = "desktop_preferences_agent_dock_layout_v1"
 const schemaMigrationDesktopPreferencesSleepPreventionModeV1 = "desktop_preferences_sleep_prevention_mode_v1"
@@ -37,14 +46,46 @@ const schemaMigrationDesktopPreferencesWindowSnappingV1 = "desktop_preferences_w
 const schemaMigrationDesktopPreferencesShowAppDeveloperSourcesV1 = "desktop_preferences_show_app_developer_sources_v1"
 const schemaMigrationDesktopPreferencesAgentConversationDetailModeV1 = "desktop_preferences_agent_conversation_detail_mode_v1"
 const schemaMigrationDesktopPreferencesFeatureFlagsV1 = "desktop_preferences_feature_flags_v1"
+const schemaMigrationDesktopPreferencesDeletedAgentRetentionV1 = "desktop_preferences_deleted_agent_retention_v1"
+const schemaMigrationDesktopPreferencesAgentCLIUpdateCheckV1 = "desktop_preferences_agent_cli_update_check_v1"
+const schemaMigrationAgentDataMaintenanceV1 = "agent_data_maintenance_v1"
 const schemaMigrationUserProjectsV1 = "user_projects_v1"
+const schemaMigrationUserProjectsV2 = "user_projects_v2"
+const schemaMigrationUserProjectsV3 = "user_projects_v3"
+const schemaMigrationAgentQuickPromptsV1 = "agent_quick_prompts_v1"
+const schemaMigrationAgentQuickPromptsV2 = "agent_quick_prompts_v2"
 const schemaMigrationWorkspaceAppsV1 = "workspace_apps_v1"
 const schemaMigrationWorkspaceAppsV2 = "workspace_apps_v2"
 const schemaMigrationWorkspaceAppsV3 = "workspace_apps_v3"
 const schemaMigrationManagedCredentialsV1 = "managed_credentials_v1"
+const schemaMigrationModelPlansV1 = "model_plans_v1"
+const schemaMigrationModelPlanFirstUseCandidatesV1 = "model_plan_first_use_candidates_v1"
+const schemaMigrationAgentModelBindingsV1 = "agent_model_bindings_v1"
+const schemaMigrationAgentModelBindingsV2 = "agent_model_bindings_v2"
+const schemaMigrationAgentModelBindingsV3 = "agent_model_bindings_v3"
+const schemaMigrationWorkspaceAgentsV5 = "workspace_agents_contract_cleanup_v1"
+const schemaMigrationWorkspaceAgentsV6 = "workspace_agents_reconcile_legacy_bindings_v1"
+const schemaMigrationCollabRunsV1 = "collab_runs_v1"
+const schemaMigrationModelPlanRevisionsV1 = "model_plan_revisions_v1"
 const schemaMigrationAppFactoryJobsV1 = "app_factory_jobs_v1"
 const schemaMigrationAppFactoryJobsV2 = "app_factory_jobs_v2"
 const schemaMigrationAppFactoryJobsV3 = "app_factory_jobs_v3"
+const schemaMigrationWorkspaceWorkflowsV1 = "workspace_workflows_v1"
+const schemaMigrationWorkspaceWorkflowMutationsV2 = "workspace_workflow_mutations_v2"
+const schemaMigrationWorkspaceWorkflowRevisionPathReuseV3 = "workspace_workflow_revision_path_reuse_v3"
+const schemaMigrationTuttiModeActivationsV1 = "tutti_mode_activations_v1"
+const schemaMigrationTuttiModeTurnDispatchV2 = "tutti_mode_turn_dispatch_v2"
+const schemaMigrationTuttiModeOrchestrationIntensityV3 = "tutti_mode_orchestration_intensity_v3"
+const schemaMigrationTuttiModeEffectSpeedV4 = "tutti_mode_effect_speed_v4"
+const schemaMigrationWorkspaceWorkflowTaskAssignmentsV4 = "workspace_workflow_task_assignments_v4"
+const schemaMigrationWorkspaceTuttiModeExecutionV1 = "workspace_tutti_mode_execution_v1"
+const schemaMigrationWorkspaceTuttiModeRunCancelCompensationV2 = "workspace_tutti_mode_run_cancel_compensation_v2"
+const schemaMigrationWorkspaceTuttiModeSourceActivityInboxV3 = "workspace_tutti_mode_source_activity_inbox_v3"
+const schemaMigrationWorkspaceTuttiModeGoalReviewV4 = "workspace_tutti_mode_goal_review_v4"
+const schemaMigrationWorkspaceTuttiModeLegacyRepairV5 = "workspace_tutti_mode_legacy_repair_v5"
+const schemaMigrationWorkspaceTuttiModeLegacyRecoveryCleanupV6 = "workspace_tutti_mode_legacy_recovery_cleanup_v6"
+const schemaMigrationAgentSessionReplayV1 = "agent_session_replay_v1"
+const schemaMigrationAgentSessionReplayV2 = "agent_session_replay_v2"
 
 func (s *SQLiteStore) Migrate(ctx context.Context) error {
 	if s == nil || s.writeDB == nil {
@@ -110,6 +151,25 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 
+	if err := s.applyWorkspaceIssuesV12(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceIssuesV13(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceIssuesV14(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceIssuesV15(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceIssuesV16(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceIssuesV17(ctx); err != nil {
+		return err
+	}
+
 	if err := s.applyDesktopPreferencesV1(ctx); err != nil {
 		return err
 	}
@@ -164,8 +224,29 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	if err := s.applyDesktopPreferencesFeatureFlagsV1(ctx); err != nil {
 		return err
 	}
+	if err := s.applyDesktopPreferencesDeletedAgentRetentionV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyDesktopPreferencesAgentCLIUpdateCheckV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyAgentDataMaintenanceV1(ctx); err != nil {
+		return err
+	}
 
 	if err := s.applyUserProjectsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyUserProjectsV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyUserProjectsV3(ctx); err != nil {
+		return err
+	}
+	if err := s.applyAgentQuickPromptsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyAgentQuickPromptsV2(ctx); err != nil {
 		return err
 	}
 
@@ -191,6 +272,57 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	if err := s.applyManagedCredentialsV1(ctx); err != nil {
 		return err
 	}
+	if err := s.applyModelPlansV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyModelPlanFirstUseCandidatesV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyModelPlanRevisionsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyAgentModelBindingsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyAgentModelBindingsV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentsV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentsV3(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentsV4(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentsV5(ctx); err != nil {
+		return err
+	}
+
+	if err := s.applyCollabRunsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyModelPoliciesV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyAutomationRulesV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyAutomationRulesV2(ctx); err != nil {
+		return err
+	}
+	// Runs after model_usage_policies exists so the bindings table can gain a
+	// foreign key referencing it.
+	if err := s.applyAgentModelBindingsV3(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentsV6(ctx); err != nil {
+		return err
+	}
 	if err := s.applyAppFactoryJobsV1(ctx); err != nil {
 		return err
 	}
@@ -198,6 +330,54 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 	if err := s.applyAppFactoryJobsV3(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceWorkflowsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceWorkflowMutationsV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceWorkflowRevisionPathReuseV3(ctx); err != nil {
+		return err
+	}
+	if err := s.applyTuttiModeActivationsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyTuttiModeTurnDispatchV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyTuttiModeOrchestrationIntensityV3(ctx); err != nil {
+		return err
+	}
+	if err := s.applyTuttiModeEffectSpeedV4(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceWorkflowTaskAssignmentsV4(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceTuttiModeExecutionV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceTuttiModeRunCancelCompensationV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceTuttiModeSourceActivityInboxV3(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceTuttiModeGoalReviewV4(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceTuttiModeLegacyRepairV5(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceTuttiModeLegacyRecoveryCleanupV6(ctx); err != nil {
+		return err
+	}
+	if err := s.applyAgentSessionReplayV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyAgentSessionReplayV2(ctx); err != nil {
 		return err
 	}
 	return s.openReadPool(ctx)
@@ -582,82 +762,50 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	return nil
 }
 
-func (s *SQLiteStore) applyUserProjectsV1(ctx context.Context) error {
-	applied, err := s.hasMigration(ctx, schemaMigrationUserProjectsV1)
+// applyWorkspaceIssuesV12 introduces the task-level assignment and launch
+// override fields recorded from the Tutti Mode plan review: per-task agent
+// target, model plan, model, execution directory, dependency graph, permission
+// mode, and reasoning effort. Empty values inherit the target default and the
+// Issue-level intensity. The migration is additive so existing local Issue
+// Manager data remains valid.
+func (s *SQLiteStore) applyWorkspaceIssuesV12(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceIssuesV12)
 	if err != nil {
 		return err
 	}
 	if applied {
 		return nil
 	}
-
-	now := unixMs(time.Now().UTC())
-	_, err = s.writeDB.ExecContext(ctx, `
-CREATE TABLE IF NOT EXISTS user_projects (
-  id TEXT PRIMARY KEY,
-  path TEXT NOT NULL UNIQUE,
-  label TEXT NOT NULL,
-  created_at_unix_ms INTEGER NOT NULL,
-  updated_at_unix_ms INTEGER NOT NULL,
-  last_used_at_unix_ms INTEGER NOT NULL DEFAULT 0
-);
-CREATE INDEX IF NOT EXISTS idx_user_projects_last_used
-  ON user_projects(last_used_at_unix_ms DESC, updated_at_unix_ms DESC);
+	columns := []struct {
+		name       string
+		definition string
+	}{
+		{"agent_target_id", "TEXT NOT NULL DEFAULT ''"},
+		{"model_plan_id", "TEXT NOT NULL DEFAULT ''"},
+		{"model", "TEXT NOT NULL DEFAULT ''"},
+		{"execution_directory", "TEXT NOT NULL DEFAULT ''"},
+		{"dependency_task_ids_json", "TEXT NOT NULL DEFAULT '[]'"},
+		{"permission_mode_id", "TEXT NOT NULL DEFAULT ''"},
+		{"reasoning_effort", "TEXT NOT NULL DEFAULT ''"},
+	}
+	for _, column := range columns {
+		hasColumn, err := s.hasColumn(ctx, "workspace_issue_tasks", column.name)
+		if err != nil {
+			return err
+		}
+		if hasColumn {
+			continue
+		}
+		statement := fmt.Sprintf("ALTER TABLE workspace_issue_tasks ADD COLUMN %s %s;", column.name, column.definition)
+		if _, err := s.writeDB.ExecContext(ctx, statement); err != nil {
+			return fmt.Errorf("add workspace_issue_tasks.%s: %w", column.name, err)
+		}
+	}
+	if _, err := s.writeDB.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
-`, schemaMigrationUserProjectsV1, now)
-	if err != nil {
-		return fmt.Errorf("migrate workspace database for user projects: %w", err)
+`, schemaMigrationWorkspaceIssuesV12, unixMs(time.Now().UTC())); err != nil {
+		return fmt.Errorf("record workspace issue task launch overrides migration: %w", err)
 	}
-
 	return nil
-}
-
-func (s *SQLiteStore) hasMigration(ctx context.Context, migrationID string) (bool, error) {
-	row := s.writeDB.QueryRowContext(ctx, `
-SELECT 1
-FROM tuttid_schema_migrations
-WHERE id = ?
-`, migrationID)
-
-	var exists int
-	if err := row.Scan(&exists); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return false, nil
-		}
-		return false, fmt.Errorf("check workspace migration %s: %w", migrationID, err)
-	}
-
-	return exists == 1, nil
-}
-
-func (s *SQLiteStore) hasColumn(ctx context.Context, tableName string, columnName string) (bool, error) {
-	rows, err := s.writeDB.QueryContext(ctx, fmt.Sprintf("PRAGMA table_info(%s)", tableName))
-	if err != nil {
-		return false, fmt.Errorf("inspect workspace table %s: %w", tableName, err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var (
-			columnID   int
-			name       string
-			columnType string
-			notNull    int
-			defaultSQL sql.NullString
-			pk         int
-		)
-		if err := rows.Scan(&columnID, &name, &columnType, &notNull, &defaultSQL, &pk); err != nil {
-			return false, fmt.Errorf("scan workspace table info %s: %w", tableName, err)
-		}
-		if name == columnName {
-			return true, nil
-		}
-	}
-
-	if err := rows.Err(); err != nil {
-		return false, fmt.Errorf("iterate workspace table info %s: %w", tableName, err)
-	}
-
-	return false, nil
 }

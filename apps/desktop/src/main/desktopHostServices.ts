@@ -1,4 +1,5 @@
 import type { DesktopLocale } from "../shared/i18n";
+import { app } from "electron";
 import {
   createDesktopHostPreferencesState,
   type DesktopHostPreferencesState
@@ -28,6 +29,7 @@ export interface CreateDesktopHostServicesOptions {
   browserNodeGuestPreloadPath?: string;
   enableDevelopmentReloadShortcut?: boolean;
   fallbackLocale: DesktopLocale;
+  isPackaged?: boolean;
   logger: DesktopLogger;
   tuttidClient: Pick<
     TuttidClient,
@@ -44,10 +46,12 @@ export async function createDesktopHostServices(
   const preferences = await createDesktopHostPreferencesState({
     appVersion: options.appVersion,
     fallbackLocale: options.fallbackLocale,
+    isPackaged: options.isPackaged,
     logger: options.logger,
     tuttidClient: options.tuttidClient
   });
   const fileDialogs = createDesktopFileDialogAccess({
+    getDefaultPath: (name) => app.getPath(name),
     getLocale: () => preferences.getLocale()
   });
   const workspaceLaunch = createWorkspaceLaunch({

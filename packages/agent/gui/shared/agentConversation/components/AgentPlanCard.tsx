@@ -110,7 +110,7 @@ export function AgentPlanCard({
             <button
               type="button"
               data-testid="agent-plan-card-expand"
-              className="pointer-events-auto inline-flex h-7 items-center rounded-full border border-[var(--line-2)] bg-[var(--background-fronted)] px-3 text-[12px] font-medium text-[var(--text-secondary)] shadow-sm transition-colors hover:text-[var(--text-primary)]"
+              className="pointer-events-auto inline-flex h-7 items-center rounded-full border border-[var(--line-2)] bg-[var(--background-fronted)] px-3 text-[12px] font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
               onClick={() => setCollapsed(false)}
             >
               {translate("agentHost.agentGui.planCardExpand")}

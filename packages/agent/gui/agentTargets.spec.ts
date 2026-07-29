@@ -54,7 +54,6 @@ describe("agent gui provider targets", () => {
       "local:tutti-agent",
       "local:opencode",
       "local:nexight",
-      "local:hermes",
       "local:openclaw"
     ]);
     expect(createLocalAgentGUIAgentTarget("cursor")).toMatchObject({
@@ -66,11 +65,6 @@ describe("agent gui provider targets", () => {
       agentTargetId: "local:nexight",
       label: "Nexight",
       provider: "nexight"
-    });
-    expect(createLocalAgentGUIAgentTarget("hermes")).toMatchObject({
-      agentTargetId: "local:hermes",
-      label: "Hermes Agent",
-      provider: "hermes"
     });
     expect(createLocalAgentGUIAgentTarget("openclaw")).toMatchObject({
       agentTargetId: "local:openclaw",
@@ -122,12 +116,6 @@ describe("agent gui provider targets", () => {
         disabled: true,
         label: "Nexight",
         provider: "nexight"
-      },
-      {
-        agentTargetId: "local:hermes",
-        disabled: true,
-        label: "Hermes Agent",
-        provider: "hermes"
       },
       {
         agentTargetId: "local:openclaw",
@@ -182,7 +170,9 @@ describe("agent gui provider targets", () => {
           label: " Alice avatar "
         },
         ownerLabel: " Alice ",
+        ownerDeviceLabel: " Alice's MacBook Pro ",
         iconUrl: " app://alice.png ",
+        maskIconUrl: " app://alice-mask.png ",
         unavailableReason: " owner_offline ",
         disabled: true,
         ref: {
@@ -205,7 +195,9 @@ describe("agent gui provider targets", () => {
         label: "Alice avatar"
       },
       ownerLabel: "Alice",
+      ownerDeviceLabel: "Alice's MacBook Pro",
       iconUrl: "app://alice.png",
+      maskIconUrl: "app://alice-mask.png",
       unavailableReason: "owner_offline",
       disabled: true
     });
@@ -229,7 +221,9 @@ describe("agent gui provider targets", () => {
           },
           description: " ",
           ownerLabel: " ",
+          ownerDeviceLabel: " ",
           iconUrl: " ",
+          maskIconUrl: " ",
           unavailableReason: " "
         }
       ],
@@ -296,7 +290,6 @@ describe("agent gui provider targets", () => {
       { disabled: true, provider: "tutti-agent" },
       { disabled: false, provider: "opencode" },
       { disabled: true, provider: "nexight" },
-      { disabled: true, provider: "hermes" },
       { disabled: true, provider: "openclaw" }
     ]);
   });
@@ -329,7 +322,7 @@ describe("agent gui provider targets", () => {
     );
   });
 
-  it("resolves targets only within the selected real provider", () => {
+  it("does not replace a missing explicit target with a provider sibling", () => {
     const targets = normalizeAgentGUIAgentTargets([
       {
         targetId: "shared-agent:codex-1",
@@ -360,10 +353,7 @@ describe("agent gui provider targets", () => {
         provider: "codex",
         agentTargets: targets
       })
-    ).toMatchObject({
-      targetId: "shared-agent:codex-1",
-      provider: "codex"
-    });
+    ).toBeNull();
   });
 
   it("resolves agent target ids across providers before using provider fallback", () => {

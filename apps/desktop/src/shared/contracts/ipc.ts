@@ -22,6 +22,9 @@ import type {
 } from "@tutti-os/client-tuttid-ts";
 import type {
   BrowserNodeActivationInput,
+  BrowserNodeChromeCookieImportInput,
+  BrowserNodeCancelChromeCookieImportInput,
+  BrowserNodeChromeProfileDiscoveryResult,
   BrowserNodeCookieImportResult,
   BrowserNodeDownloadDirectoryResult,
   BrowserNodeDownloadActionInput,
@@ -38,7 +41,8 @@ import type {
   BrowserNodeSetZoomFactorInput,
   BrowserNodeShowDevToolsContextMenuInput,
   BrowserNodeStopFindInPageInput,
-  BrowserNodeUnregisterGuestInput
+  BrowserNodeUnregisterGuestInput,
+  BrowserNodeUpdateAutomationTargetInput
 } from "@tutti-os/browser-node";
 import type {
   TuttiExternalAtQueryInput,
@@ -54,6 +58,19 @@ import type {
   TuttiExternalPdfPrintHtmlResult,
   TuttiExternalReferenceOpenInput,
   TuttiExternalRendererRequest,
+  TuttiExternalAtResolveResult,
+  TuttiExternalAtResolveInput,
+  TuttiExternalAtInvalidation,
+  TuttiExternalAgentActivityActivateSessionResult,
+  TuttiExternalAgentActivityActivateSessionInput,
+  TuttiExternalAgentActivityCancelTurnResult,
+  TuttiExternalAgentActivityCancelTurnInput,
+  TuttiExternalAgentActivityComposerOptions,
+  TuttiExternalAgentActivityComposerOptionsInput,
+  TuttiExternalAgentActivitySendInput,
+  TuttiExternalAgentActivitySendResult,
+  TuttiExternalAgentActivitySnapshot,
+  TuttiExternalAgentTargetCatalog,
   TuttiExternalSettingsOpenInput,
   TuttiExternalUserProjectCreateInput,
   TuttiExternalUserProjectPathInput,
@@ -64,6 +81,7 @@ import type {
 import type {
   WorkspaceUserProject,
   WorkspaceUserProjectDefaultSelection,
+  WorkspaceUserProjectMoveInput,
   WorkspaceUserProjectPathCheck,
   WorkspaceUserProjectSelectionPreparation,
   WorkspaceUserProjectSelectionPreparationInput,
@@ -92,7 +110,16 @@ export const desktopIpcChannels = {
   },
   appExternal: {
     activityReportActive: "workspace-app-activity:report-active",
+    agentActivityActivateSession:
+      "workspace-app-agent-activity:activate-session",
+    agentActivityCancelTurn: "workspace-app-agent-activity:cancel-turn",
+    agentActivityGetComposerOptions:
+      "workspace-app-agent-activity:get-composer-options",
+    agentActivityGetSnapshot: "workspace-app-agent-activity:get-snapshot",
+    agentActivityListTargets: "workspace-app-agent-activity:list-targets",
+    agentActivitySendInput: "workspace-app-agent-activity:send-input",
     atQuery: "workspace-app-at:query",
+    atResolve: "workspace-app-at:resolve",
     filesOpen: "workspace-app-files:open",
     filesSelect: "workspace-app-files:select",
     filesUploadCancel: "workspace-app-files:upload-cancel",
@@ -113,6 +140,8 @@ export const desktopIpcChannels = {
       "workspace-app-user-projects:get-default-selection",
     userProjectsGetSnapshot: "workspace-app-user-projects:get-snapshot",
     userProjectsList: "workspace-app-user-projects:list",
+    userProjectsMove: "workspace-app-user-projects:move",
+    userProjectsRemove: "workspace-app-user-projects:remove",
     userProjectsPrepareSelection:
       "workspace-app-user-projects:prepare-selection",
     userProjectsRefresh: "workspace-app-user-projects:refresh",
@@ -124,13 +153,19 @@ export const desktopIpcChannels = {
   },
   browser: {
     activate: "browser:activate",
+    automationHostReady: "browser:automation-host-ready",
+    automationRequest: "browser:automation-request",
+    automationResponse: "browser:automation-response",
     capturePreview: "browser:capturePreview",
     chooseDownloadDirectory: "browser:chooseDownloadDirectory",
     clearBrowsingData: "browser:clearBrowsingData",
+    cancelChromeCookieImport: "browser:cancelChromeCookieImport",
     close: "browser:close",
     event: "browser:event",
     findInPage: "browser:findInPage",
+    discoverChromeCookieProfiles: "browser:discoverChromeCookieProfiles",
     importCookies: "browser:importCookies",
+    importChromeCookies: "browser:importChromeCookies",
     goBack: "browser:goBack",
     goForward: "browser:goForward",
     guestDiagnostic: "browser:guestDiagnostic",
@@ -148,7 +183,8 @@ export const desktopIpcChannels = {
     setZoomFactor: "browser:setZoomFactor",
     showDevToolsContextMenu: "browser:showDevToolsContextMenu",
     stopFindInPage: "browser:stopFindInPage",
-    unregisterGuest: "browser:unregisterGuest"
+    unregisterGuest: "browser:unregisterGuest",
+    updateAutomationTarget: "browser:updateAutomationTarget"
   },
   dockPreviewCache: {
     read: "dock-preview-cache:read",
@@ -162,12 +198,18 @@ export const desktopIpcChannels = {
     openLogFile: "developer:openLogFile"
   },
   runtime: {
+    getAgentSessionReplayPlayback: "runtime:getAgentSessionReplayPlayback",
+    getAgentSessionReplayStatus: "runtime:getAgentSessionReplayStatus",
     getBackendConfig: "runtime:getBackendConfig",
     getBusinessEventStreamUrl: "runtime:getBusinessEventStreamUrl",
+    launchAgentSessionReplay: "runtime:launchAgentSessionReplay",
     listWorkspaceAgentProbes: "runtime:listWorkspaceAgentProbes",
     logRendererDiagnostic: "runtime:logRendererDiagnostic",
+    sendAgentSessionReplayControl: "runtime:sendAgentSessionReplayControl",
     getTerminalStreamUrl: "runtime:getTerminalStreamUrl",
-    logTerminalDiagnostic: "runtime:logTerminalDiagnostic"
+    logTerminalDiagnostic: "runtime:logTerminalDiagnostic",
+    setAgentSessionReplayPlayback: "runtime:setAgentSessionReplayPlayback",
+    waitForAgentSessionReplay: "runtime:waitForAgentSessionReplay"
   },
   update: {
     check: "update:check",
@@ -212,6 +254,7 @@ export const desktopIpcChannels = {
     window: {
       approveClose: "host:window:approveClose",
       capturePreview: "host:window:capturePreview",
+      capturePreviewImages: "host:window:capturePreviewImages",
       closeRequest: "host:window:closeRequest",
       closeRequestResolved: "host:window:closeRequestResolved",
       layout: "host:window:layout",
@@ -252,6 +295,11 @@ export interface DesktopHostWindowCapturePreviewInput {
     x: number;
     y: number;
   };
+}
+
+export interface DesktopHostWindowPreviewImages {
+  dockPreviewImageUrl: string;
+  genieImageUrl: string;
 }
 
 export interface DesktopHostWindowResizeContentWidthInput {
@@ -518,6 +566,85 @@ export interface DesktopBackendConfig {
   baseUrl: string;
 }
 
+export interface DesktopLaunchAgentSessionReplayInput {
+  cassetteId: string;
+  cassetteDirectory: string;
+  runId: string;
+  workspaceId: string;
+}
+
+export interface DesktopLaunchAgentSessionReplayResult {
+  runId: string;
+}
+
+export type DesktopAgentSessionReplayPlaybackSpeed = 0.25 | 0.5 | 1 | 2 | 4;
+
+export interface DesktopAgentSessionReplayPlayback {
+  active: boolean;
+  paused: boolean;
+  speed: DesktopAgentSessionReplayPlaybackSpeed;
+  timingMode: DesktopAgentSessionReplayTimingMode;
+}
+
+export type DesktopAgentSessionReplayTimingMode = "realtime" | "fast-forward";
+
+export type DesktopAgentSessionReplayPhase =
+  | "replaying"
+  | "verifying"
+  | "complete"
+  | "failed";
+
+export interface DesktopAgentSessionReplayStatus {
+  active: boolean;
+  cassetteId?: string;
+  cassettes?: Array<{
+    id: string;
+    name: string;
+  }>;
+  currentCheckpoint?: number;
+  errorMessage?: string;
+  paused?: boolean;
+  phase?: DesktopAgentSessionReplayPhase;
+  targetCheckpoint?: number | null;
+  timingMode?: DesktopAgentSessionReplayTimingMode;
+  totalCheckpoints?: number;
+}
+
+export type DesktopSetAgentSessionReplayPlaybackInput =
+  | {
+      command: "set-speed";
+      speed: DesktopAgentSessionReplayPlaybackSpeed;
+    }
+  | {
+      command: "pause" | "resume";
+    }
+  | {
+      command: "set-timing-mode";
+      timingMode: DesktopAgentSessionReplayTimingMode;
+    };
+
+export type DesktopSendAgentSessionReplayControlInput =
+  | {
+      command:
+        | "next-checkpoint"
+        | "pause"
+        | "previous-checkpoint"
+        | "restart"
+        | "resume";
+    }
+  | {
+      cassetteId: string;
+      command: "switch-cassette";
+    };
+
+export interface DesktopWaitAgentSessionReplayInput {
+  runId: string;
+}
+
+export interface DesktopWaitAgentSessionReplayResult {
+  runId: string;
+}
+
 export interface DesktopCustomWallpaperImage {
   bytes: Uint8Array;
   height: number;
@@ -541,6 +668,7 @@ export interface DesktopDockPreviewCacheKey {
   instanceId: string;
   instanceKey?: string | null;
   nodeId: string;
+  revision?: string | null;
   typeId: string;
   workspaceId: string;
 }
@@ -616,7 +744,14 @@ export type DesktopIpcResult<TResult> =
   | DesktopIpcFailure;
 
 export type DesktopWorkspaceAppExternalRendererResult =
+  | TuttiExternalAgentActivityActivateSessionResult
+  | TuttiExternalAgentActivityCancelTurnResult
+  | TuttiExternalAgentActivityComposerOptions
+  | TuttiExternalAgentActivitySendResult
+  | TuttiExternalAgentActivitySnapshot
+  | TuttiExternalAgentTargetCatalog
   | TuttiExternalAtQueryResult[]
+  | TuttiExternalAtResolveResult
   | TuttiExternalFileSelectResult
   | WorkspaceUserProject
   | WorkspaceUserProjectDefaultSelection
@@ -634,6 +769,11 @@ export interface DesktopWorkspaceAppExternalRendererResponse {
 }
 
 export type DesktopWorkspaceAppExternalRendererEvent =
+  | {
+      invalidation: TuttiExternalAtInvalidation;
+      type: "at.invalidated";
+      workspaceId: string;
+    }
   | {
       snapshot: WorkspaceUserProjectServiceSnapshot;
       type: "userProjects.changed";
@@ -672,6 +812,19 @@ export interface ClearDeveloperLogsResult {
   clearedFiles: number;
   clearedPaths: string[];
   clearedSizeBytes: number;
+}
+
+export const desktopDeveloperLogsExportScopes = [
+  "recent-10-minutes",
+  "recent-3-days"
+] as const;
+
+export type DesktopDeveloperLogsExportScope =
+  (typeof desktopDeveloperLogsExportScopes)[number];
+
+export interface ExportDeveloperLogsInput {
+  includeAgentSessions: boolean;
+  scope: DesktopDeveloperLogsExportScope;
 }
 
 export interface ExportDeveloperLogsResult {
@@ -813,6 +966,33 @@ export interface DesktopComputerUseRestartDriverResult {
   status: DesktopComputerUseStatus;
 }
 
+export interface DesktopBrowserAutomationRequest {
+  action: "create" | "select" | "close";
+  agentSessionId: string | null;
+  nodeId: string | null;
+  requestId: string;
+  surfaceRole: "agent" | "user";
+  url: string | null;
+  workspaceId: string;
+}
+
+export interface DesktopBrowserAutomationHostReady {
+  surfaceRole: "agent" | "user";
+  workspaceId: string;
+}
+
+export type DesktopBrowserAutomationResponse =
+  | {
+      nodeId: string | null;
+      ok: true;
+      requestId: string;
+    }
+  | {
+      error: string;
+      ok: false;
+      requestId: string;
+    };
+
 export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.computerUse.checkStatus]: undefined;
   [desktopIpcChannels.computerUse.install]: undefined;
@@ -827,7 +1007,18 @@ export interface DesktopInvokePayloadByChannel {
     | undefined;
   [desktopIpcChannels.appContext.get]: undefined;
   [desktopIpcChannels.appExternal.activityReportActive]: undefined;
+  [desktopIpcChannels.appExternal
+    .agentActivityActivateSession]: TuttiExternalAgentActivityActivateSessionInput;
+  [desktopIpcChannels.appExternal
+    .agentActivityCancelTurn]: TuttiExternalAgentActivityCancelTurnInput;
+  [desktopIpcChannels.appExternal
+    .agentActivityGetComposerOptions]: TuttiExternalAgentActivityComposerOptionsInput;
+  [desktopIpcChannels.appExternal.agentActivityGetSnapshot]: undefined;
+  [desktopIpcChannels.appExternal.agentActivityListTargets]: undefined;
+  [desktopIpcChannels.appExternal
+    .agentActivitySendInput]: TuttiExternalAgentActivitySendInput;
   [desktopIpcChannels.appExternal.atQuery]: TuttiExternalAtQueryInput;
+  [desktopIpcChannels.appExternal.atResolve]: TuttiExternalAtResolveInput;
   [desktopIpcChannels.appExternal.filesOpen]: TuttiExternalFileOpenInput;
   [desktopIpcChannels.appExternal.filesSelect]: TuttiExternalFileSelectInput;
   [desktopIpcChannels.appExternal
@@ -850,6 +1041,10 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.appExternal.userProjectsGetSnapshot]: undefined;
   [desktopIpcChannels.appExternal.userProjectsList]: undefined;
   [desktopIpcChannels.appExternal
+    .userProjectsMove]: WorkspaceUserProjectMoveInput;
+  [desktopIpcChannels.appExternal
+    .userProjectsRemove]: TuttiExternalUserProjectPathInput;
+  [desktopIpcChannels.appExternal
     .userProjectsPrepareSelection]: WorkspaceUserProjectSelectionPreparationInput;
   [desktopIpcChannels.appExternal.userProjectsRefresh]: undefined;
   [desktopIpcChannels.appExternal
@@ -863,9 +1058,14 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.browser.capturePreview]: BrowserNodeNodeIdInput;
   [desktopIpcChannels.browser.chooseDownloadDirectory]: BrowserNodeNodeIdInput;
   [desktopIpcChannels.browser.clearBrowsingData]: BrowserNodeNodeIdInput;
+  [desktopIpcChannels.browser
+    .cancelChromeCookieImport]: BrowserNodeCancelChromeCookieImportInput;
   [desktopIpcChannels.browser.close]: BrowserNodeNodeIdInput;
   [desktopIpcChannels.browser.findInPage]: BrowserNodeFindInPageInput;
+  [desktopIpcChannels.browser.discoverChromeCookieProfiles]: undefined;
   [desktopIpcChannels.browser.importCookies]: BrowserNodeNodeIdInput;
+  [desktopIpcChannels.browser
+    .importChromeCookies]: BrowserNodeChromeCookieImportInput;
   [desktopIpcChannels.browser.goBack]: BrowserNodeNodeIdInput;
   [desktopIpcChannels.browser.goForward]: BrowserNodeNodeIdInput;
   [desktopIpcChannels.browser.navigate]: BrowserNodeNavigateInput;
@@ -885,21 +1085,33 @@ export interface DesktopInvokePayloadByChannel {
     .showDevToolsContextMenu]: BrowserNodeShowDevToolsContextMenuInput;
   [desktopIpcChannels.browser.stopFindInPage]: BrowserNodeStopFindInPageInput;
   [desktopIpcChannels.browser.unregisterGuest]: BrowserNodeUnregisterGuestInput;
+  [desktopIpcChannels.browser
+    .updateAutomationTarget]: BrowserNodeUpdateAutomationTargetInput;
   [desktopIpcChannels.dockPreviewCache.read]: DesktopReadDockPreviewInput;
   [desktopIpcChannels.dockPreviewCache.write]: DesktopWriteDockPreviewInput;
   [desktopIpcChannels.developer.clearLogs]: undefined;
-  [desktopIpcChannels.developer.exportLogs]: undefined;
+  [desktopIpcChannels.developer.exportLogs]: ExportDeveloperLogsInput;
   [desktopIpcChannels.developer.getLogsState]: undefined;
   [desktopIpcChannels.developer.openLogDirectory]: undefined;
   [desktopIpcChannels.developer.openLogFile]: DesktopDeveloperLogKind;
   [desktopIpcChannels.runtime.getBackendConfig]: undefined;
   [desktopIpcChannels.runtime.getBusinessEventStreamUrl]: undefined;
+  [desktopIpcChannels.runtime.getAgentSessionReplayPlayback]: undefined;
+  [desktopIpcChannels.runtime.getAgentSessionReplayStatus]: undefined;
+  [desktopIpcChannels.runtime
+    .launchAgentSessionReplay]: DesktopLaunchAgentSessionReplayInput;
+  [desktopIpcChannels.runtime
+    .waitForAgentSessionReplay]: DesktopWaitAgentSessionReplayInput;
   [desktopIpcChannels.runtime
     .listWorkspaceAgentProbes]: AgentProviderProbeListInput;
   [desktopIpcChannels.runtime
     .getTerminalStreamUrl]: DesktopTerminalStreamUrlRequest;
   [desktopIpcChannels.runtime
     .logRendererDiagnostic]: DesktopRendererDiagnosticPayload;
+  [desktopIpcChannels.runtime
+    .setAgentSessionReplayPlayback]: DesktopSetAgentSessionReplayPlaybackInput;
+  [desktopIpcChannels.runtime
+    .sendAgentSessionReplayControl]: DesktopSendAgentSessionReplayControlInput;
   [desktopIpcChannels.runtime
     .logTerminalDiagnostic]: DesktopTerminalDiagnosticPayload;
   [desktopIpcChannels.update.check]: undefined;
@@ -951,6 +1163,8 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.host.window.approveClose]: undefined;
   [desktopIpcChannels.host.window
     .capturePreview]: DesktopHostWindowCapturePreviewInput;
+  [desktopIpcChannels.host.window
+    .capturePreviewImages]: DesktopHostWindowCapturePreviewInput;
   [desktopIpcChannels.host.window.minimize]: undefined;
   [desktopIpcChannels.host.window
     .openAgentWindow]: DesktopHostOpenAgentWindowInput;
@@ -980,7 +1194,21 @@ export interface DesktopInvokeResultByChannel {
     .restartDriver]: DesktopComputerUseRestartDriverResult;
   [desktopIpcChannels.appContext.get]: DesktopWorkspaceAppContext;
   [desktopIpcChannels.appExternal.activityReportActive]: void;
+  [desktopIpcChannels.appExternal
+    .agentActivityActivateSession]: TuttiExternalAgentActivityActivateSessionResult;
+  [desktopIpcChannels.appExternal
+    .agentActivityCancelTurn]: TuttiExternalAgentActivityCancelTurnResult;
+  [desktopIpcChannels.appExternal
+    .agentActivityGetComposerOptions]: TuttiExternalAgentActivityComposerOptions;
+  [desktopIpcChannels.appExternal
+    .agentActivityGetSnapshot]: TuttiExternalAgentActivitySnapshot;
+  [desktopIpcChannels.appExternal
+    .agentActivityListTargets]: TuttiExternalAgentTargetCatalog;
+  [desktopIpcChannels.appExternal
+    .agentActivitySendInput]: TuttiExternalAgentActivitySendResult;
   [desktopIpcChannels.appExternal.atQuery]: TuttiExternalAtQueryResult[];
+  [desktopIpcChannels.appExternal
+    .atResolve]: TuttiExternalAtResolveResult | null;
   [desktopIpcChannels.appExternal.filesOpen]: void;
   [desktopIpcChannels.appExternal.filesSelect]: TuttiExternalFileSelectResult;
   [desktopIpcChannels.appExternal.filesUploadCancel]: void;
@@ -1004,6 +1232,8 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.appExternal.userProjectsList]: {
     projects: WorkspaceUserProject[];
   };
+  [desktopIpcChannels.appExternal.userProjectsMove]: void;
+  [desktopIpcChannels.appExternal.userProjectsRemove]: void;
   [desktopIpcChannels.appExternal
     .userProjectsPrepareSelection]: WorkspaceUserProjectSelectionPreparation;
   [desktopIpcChannels.appExternal
@@ -1019,9 +1249,14 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.browser
     .chooseDownloadDirectory]: BrowserNodeDownloadDirectoryResult;
   [desktopIpcChannels.browser.clearBrowsingData]: void;
+  [desktopIpcChannels.browser.cancelChromeCookieImport]: void;
   [desktopIpcChannels.browser.close]: void;
   [desktopIpcChannels.browser.findInPage]: void;
+  [desktopIpcChannels.browser
+    .discoverChromeCookieProfiles]: BrowserNodeChromeProfileDiscoveryResult;
   [desktopIpcChannels.browser.importCookies]: BrowserNodeCookieImportResult;
+  [desktopIpcChannels.browser
+    .importChromeCookies]: BrowserNodeCookieImportResult;
   [desktopIpcChannels.browser.goBack]: void;
   [desktopIpcChannels.browser.goForward]: void;
   [desktopIpcChannels.browser.navigate]: void;
@@ -1038,6 +1273,7 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.browser.showDevToolsContextMenu]: void;
   [desktopIpcChannels.browser.stopFindInPage]: void;
   [desktopIpcChannels.browser.unregisterGuest]: void;
+  [desktopIpcChannels.browser.updateAutomationTarget]: void;
   [desktopIpcChannels.dockPreviewCache.read]: string | null;
   [desktopIpcChannels.dockPreviewCache.write]: void;
   [desktopIpcChannels.developer.clearLogs]: ClearDeveloperLogsResult;
@@ -1048,9 +1284,20 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.runtime.getBackendConfig]: DesktopBackendConfig;
   [desktopIpcChannels.runtime.getBusinessEventStreamUrl]: string;
   [desktopIpcChannels.runtime
+    .getAgentSessionReplayPlayback]: DesktopAgentSessionReplayPlayback;
+  [desktopIpcChannels.runtime
+    .getAgentSessionReplayStatus]: DesktopAgentSessionReplayStatus;
+  [desktopIpcChannels.runtime
+    .launchAgentSessionReplay]: DesktopLaunchAgentSessionReplayResult;
+  [desktopIpcChannels.runtime
+    .waitForAgentSessionReplay]: DesktopWaitAgentSessionReplayResult;
+  [desktopIpcChannels.runtime
     .listWorkspaceAgentProbes]: AgentProviderProbeListResult;
   [desktopIpcChannels.runtime.getTerminalStreamUrl]: string;
   [desktopIpcChannels.runtime.logRendererDiagnostic]: void;
+  [desktopIpcChannels.runtime
+    .setAgentSessionReplayPlayback]: DesktopAgentSessionReplayPlayback;
+  [desktopIpcChannels.runtime.sendAgentSessionReplayControl]: void;
   [desktopIpcChannels.runtime.logTerminalDiagnostic]: void;
   [desktopIpcChannels.update.check]: AppUpdateState;
   [desktopIpcChannels.update.configure]: AppUpdateState;
@@ -1088,6 +1335,8 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.host.files.copyFilesToClipboard]: void;
   [desktopIpcChannels.host.window.approveClose]: void;
   [desktopIpcChannels.host.window.capturePreview]: string | null;
+  [desktopIpcChannels.host.window
+    .capturePreviewImages]: DesktopHostWindowPreviewImages | null;
   [desktopIpcChannels.host.window.minimize]: void;
   [desktopIpcChannels.host.window.openAgentWindow]: void;
   [desktopIpcChannels.host.window

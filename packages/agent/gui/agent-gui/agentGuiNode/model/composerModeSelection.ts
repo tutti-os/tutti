@@ -31,18 +31,14 @@ export function permissionModeSelectionPatch(
  * Decides whether the composer's permission-mode control should be disabled
  * while a turn is in flight.
  *
- * The runtime descriptor decides whether a permission change is safe while a
- * turn is active. Missing capability data keeps the conservative gate.
+ * AgentGUI keeps the permission contract stable for the whole active turn,
+ * even when the provider runtime can technically apply changes live.
  */
 export function resolvePermissionModeControlsDisabled(options: {
-  changeDuringTurnSupported?: boolean;
   isSendingTurn: boolean;
   isSubmittingPrompt: boolean;
   showStopButton: boolean;
 }): boolean {
-  if (options.changeDuringTurnSupported) {
-    return options.isSubmittingPrompt;
-  }
   return (
     options.isSendingTurn ||
     options.isSubmittingPrompt ||

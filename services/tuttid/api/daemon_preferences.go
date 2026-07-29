@@ -359,6 +359,21 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 			),
 		}, nil
 	}
+	deletedAgentConversationRetentionDays := int(request.Body.Preferences.DeletedAgentConversationRetentionDays)
+	if deletedAgentConversationRetentionDays == 0 {
+		deletedAgentConversationRetentionDays = preferencesbiz.DefaultDeletedAgentConversationRetentionDays
+	}
+	if !preferencesbiz.IsDeletedAgentConversationRetentionDays(deletedAgentConversationRetentionDays) {
+		return tuttigenerated.PutDesktopPreferences400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(
+				apierrors.InvalidRequest(
+					apierrors.ReasonUnsupportedDeletedAgentConversationRetention,
+					apierrors.WithDeveloperMessage("deleted agent conversation retention is unsupported"),
+					apierrors.WithParams(map[string]any{"field": "preferences.deletedAgentConversationRetentionDays"}),
+				),
+			),
+		}, nil
+	}
 
 	var windowSnapping *preferencesservice.DesktopWindowSnappingInput
 	if request.Body.Preferences.WorkbenchWindowSnapping != nil {
@@ -393,6 +408,7 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		}
 	}
 	preferences, err := api.PreferencesService.Put(ctx, preferencesservice.PutInput{
+		AgentCLIUpdateCheckEnabled: request.Body.Preferences.AgentCliUpdateCheckEnabled,
 		AgentComposerDefaultsByProvider: agentComposerDefaultsByProviderFromGenerated(
 			request.Body.Preferences.AgentComposerDefaultsByProvider,
 		),
@@ -402,13 +418,14 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		AgentGUIConversationRailCollapsedByProvider: agentGUIConversationRailCollapsedByProviderFromGenerated(
 			request.Body.Preferences.AgentGuiConversationRailCollapsedByProvider,
 		),
-		AgentConversationDetailMode: agentConversationDetailMode,
-		AgentDockLayout:             agentDockLayout,
-		AppCatalogChannel:           appCatalogChannel,
-		BrowserUseConnectionMode:    browserUseConnectionMode,
-		DefaultAgentProvider:        defaultAgentProvider,
-		DockIconStyle:               dockIconStyle,
-		DockPlacement:               dockPlacement,
+		AgentConversationDetailMode:           agentConversationDetailMode,
+		AgentDockLayout:                       agentDockLayout,
+		AppCatalogChannel:                     appCatalogChannel,
+		BrowserUseConnectionMode:              browserUseConnectionMode,
+		DefaultAgentProvider:                  defaultAgentProvider,
+		DockIconStyle:                         dockIconStyle,
+		DockPlacement:                         dockPlacement,
+		DeletedAgentConversationRetentionDays: deletedAgentConversationRetentionDays,
 		FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionFromGenerated(
 			request.Body.Preferences.FileDefaultOpenersByExtension,
 		),
@@ -462,7 +479,6 @@ func agentGUIConversationRailCollapsedByProviderFromGenerated(
 	setAgentGUIConversationRailCollapsedFromGenerated(result, "codex", value.Codex)
 	setAgentGUIConversationRailCollapsedFromGenerated(result, "tutti-agent", value.TuttiAgent)
 	setAgentGUIConversationRailCollapsedFromGenerated(result, "cursor", value.Cursor)
-	setAgentGUIConversationRailCollapsedFromGenerated(result, "hermes", value.Hermes)
 	setAgentGUIConversationRailCollapsedFromGenerated(result, "openclaw", value.Openclaw)
 	return result
 }
@@ -486,7 +502,6 @@ func agentComposerDefaultsByProviderFromGenerated(
 	setAgentComposerDefaultsFromGenerated(result, "codex", value.Codex)
 	setAgentComposerDefaultsFromGenerated(result, "tutti-agent", value.TuttiAgent)
 	setAgentComposerDefaultsFromGenerated(result, "cursor", value.Cursor)
-	setAgentComposerDefaultsFromGenerated(result, "hermes", value.Hermes)
 	setAgentComposerDefaultsFromGenerated(result, "openclaw", value.Openclaw)
 	return result
 }

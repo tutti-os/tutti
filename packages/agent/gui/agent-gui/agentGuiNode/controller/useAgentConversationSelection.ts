@@ -1,11 +1,18 @@
 import { useCallback, useRef } from "react";
 import type { AgentGUINodeData } from "../../../types";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
+import type { AgentGUIConversationRailRevealReason } from "../model/agentGuiConversationRailViewState";
+import { rememberAgentGUIActiveConversation } from "../model/agentGuiSessionNavigationMemory";
 
 export type ConversationIntent =
   | { tag: "home" }
   | { tag: "requested"; id: string }
   | { tag: "active"; id: string };
+
+export interface AgentGUIConversationSelectionOptions {
+  reloadConversations?: boolean;
+  reveal?: Extract<AgentGUIConversationRailRevealReason, "external-open">;
+}
 
 export function resolveConversationSummaryById(
   conversations: readonly AgentGUIConversationSummary[],
@@ -22,17 +29,18 @@ export function resolveConversationSummaryById(
 
 interface AgentConversationSelectionInput {
   activation: {
+    canReload(agentSessionId: string): boolean;
     forget(agentSessionId: string): void;
     isPending(agentSessionId: string): boolean;
   };
-  conversations: { contains(agentSessionId: string): boolean };
+  conversations: {
+    agentTargetIdFor(agentSessionId: string): string | null;
+    contains(agentSessionId: string): boolean;
+  };
   detail: {
+    ensureHydrated(agentSessionId: string): void;
     isHydrated(agentSessionId: string): boolean;
     markPending(agentSessionId: string): void;
-    reload(
-      agentSessionId: string,
-      options: { reloadConversations: boolean; reloadDetail: boolean }
-    ): void;
     setLoading(loading: boolean): void;
   };
   hasConversationListQuery(): boolean;
@@ -40,6 +48,13 @@ interface AgentConversationSelectionInput {
   onMissingConversationListQuery(previousAgentSessionId: string | null): void;
   persistence: {
     update(updater: (current: AgentGUINodeData) => AgentGUINodeData): void;
+  };
+  rail: {
+    clearRevealRequest(): void;
+    requestReveal(
+      agentSessionId: string,
+      reason: AgentGUIConversationRailRevealReason
+    ): void;
   };
   selection: {
     clearDetailError(): void;
@@ -57,20 +72,44 @@ export function useAgentConversationSelection(
   inputRef.current = input;
 
   const persistActiveConversation = useCallback(
-    (agentSessionId: string | null) => {
+    (agentSessionId: string | null, agentTargetId?: string | null) => {
       inputRef.current.persistence.update((current) => {
-        if (current.lastActiveAgentSessionId === agentSessionId) return current;
-        return {
-          ...current,
-          lastActiveAgentSessionId: agentSessionId
-        };
+        const resolvedAgentTargetId = agentSessionId
+          ? agentTargetId?.trim() ||
+            inputRef.current.conversations.agentTargetIdFor(agentSessionId)
+          : null;
+        return rememberAgentGUIActiveConversation(
+          current,
+          agentSessionId,
+          resolvedAgentTargetId
+        );
       });
     },
     []
   );
 
+  const syncConversationListProjection = useCallback(
+    async (_preferredSessionId?: string | null) => {
+      const current = inputRef.current;
+      if (current.hasConversationListQuery()) return;
+      const previous = current.selection.getActiveSessionId();
+      current.onMissingConversationListQuery(previous);
+      current.selection.setIntent({ tag: "home" });
+      current.selection.setComposerHome(true);
+      current.selection.setActiveSessionId(null);
+      current.detail.setLoading(false);
+      current.selection.clearDetailError();
+      current.rail.clearRevealRequest();
+      persistActiveConversation(null);
+    },
+    [persistActiveConversation]
+  );
+
   const selectConversation = useCallback(
-    (agentSessionId: string, options?: { reloadConversations?: boolean }) => {
+    (
+      agentSessionId: string,
+      options?: AgentGUIConversationSelectionOptions
+    ) => {
       const normalized = agentSessionId.trim();
       if (!normalized) return;
       const current = inputRef.current;
@@ -93,31 +132,22 @@ export function useAgentConversationSelection(
       current.selection.setIntent({ tag: "active", id: normalized });
       current.selection.setActiveSessionId(normalized);
       current.selection.clearDetailError();
-      if (!activationPending) {
-        current.detail.reload(normalized, {
-          reloadConversations,
-          reloadDetail: previous === normalized || !detailHydrated
-        });
+      if (options?.reveal) {
+        current.rail.requestReveal(normalized, options.reveal);
+      } else {
+        current.rail.clearRevealRequest();
+      }
+      if (!activationPending && current.activation.canReload(normalized)) {
+        if (reloadConversations) {
+          void syncConversationListProjection(normalized);
+        }
+        if (!detailHydrated) {
+          current.detail.ensureHydrated(normalized);
+        }
       }
       persistActiveConversation(normalized);
     },
-    [persistActiveConversation]
-  );
-
-  const syncConversationListProjection = useCallback(
-    async (_preferredSessionId?: string | null) => {
-      const current = inputRef.current;
-      if (current.hasConversationListQuery()) return;
-      const previous = current.selection.getActiveSessionId();
-      current.onMissingConversationListQuery(previous);
-      current.selection.setIntent({ tag: "home" });
-      current.selection.setComposerHome(true);
-      current.selection.setActiveSessionId(null);
-      current.detail.setLoading(false);
-      current.selection.clearDetailError();
-      persistActiveConversation(null);
-    },
-    [persistActiveConversation]
+    [persistActiveConversation, syncConversationListProjection]
   );
 
   const isCurrentConversation = useCallback(

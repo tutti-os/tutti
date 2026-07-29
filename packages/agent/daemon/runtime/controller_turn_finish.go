@@ -17,7 +17,14 @@ func (c *Controller) storeTurnSession(session Session, turnID string) bool {
 	if !ok || strings.TrimSpace(active.turnID) != strings.TrimSpace(turnID) {
 		return false
 	}
-	if _, ok := c.sessions[key]; !ok {
+	current, ok := c.sessions[key]
+	if !ok {
+		return false
+	}
+	// A blocking Exec owns a local Session snapshot while the adapter's
+	// session-event sink can advance lifecycle concurrently. Never let the
+	// older local snapshot erase a newer synthetic continuation.
+	if current.LifecycleAuthority && current.LifecycleSeq > session.LifecycleSeq {
 		return false
 	}
 	c.sessions[key] = session

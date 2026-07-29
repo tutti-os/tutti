@@ -1,54 +1,39 @@
-import { memo, useCallback, useState } from "react";
-import { ChevronRight } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger
-} from "@tutti-os/ui-system";
-import { BareIconButton } from "@tutti-os/ui-system/components";
-import {
-  CreateChatIcon,
-  FolderIcon,
-  FolderOpenLinedIcon,
-  MoreHorizontalIcon
-} from "@tutti-os/ui-system/icons";
+import { memo, useCallback } from "react";
 import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings";
 import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
 import type { ConversationSection } from "../agentGuiNodeViewConversation";
-import type { AgentGUIViewLabels } from "../AgentGUINodeView";
+import type { AgentGUIConversationRailLabels } from "./agentGUIConversationRailLabels";
 import type { AgentGUIProjectActionDialog } from "./AgentGUIConversationRailPane";
 import { AgentGUIConversationRailItem } from "./AgentGUIConversationRailItem";
+import { AgentGUIConversationRailSectionHeader } from "./AgentGUIConversationRailSectionHeader";
 import { insertConversationRailSectionOverlay } from "../model/agentGuiConversationRail";
+import { AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE } from "../model/agentGuiConversationRailViewState";
+import {
+  useOptionalStableEventCallback,
+  useStableEventCallback
+} from "./agentGUIViewUtils";
 import styles from "../AgentGUINode.styles";
-
-const AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE = 5;
 
 interface AgentGUIConversationRailSectionProps {
   section: ConversationSection;
   activeConversation: ConversationSection["items"][number] | null;
   activeConversationCountsTowardTotal: boolean;
-  paginationScopeKey: string;
   projectPath: string;
   projectLabel: string;
   isSectionCollapsed: boolean;
   activeConversationId: string | null;
   pendingDeleteConversationId: string | null;
-  previewMode: boolean;
   isDeletingConversation: boolean;
-  isDeletingProjectConversations: boolean;
-  isRequestingBatchDeletion: boolean;
-  isConversationSearchActive: boolean;
   isLoadingMoreConversations: boolean;
   isRailInteractionLocked: () => boolean;
+  isProjectActionLocked: () => boolean;
+  projectDragging: boolean;
+  projectDropIndicator: "before" | "after" | null;
   sectionHasMore: boolean;
   sectionTotalCount: number;
+  visibleItemLimit: number;
   createConversationDisabled: boolean;
-  currentTimeMs: number;
-  labels: AgentGUIViewLabels;
+  labels: AgentGUIConversationRailLabels;
   uiLanguage: UiLanguage;
   workspaceId: string;
   registerItemElement: (itemId: string, element: HTMLDivElement | null) => void;
@@ -57,11 +42,13 @@ interface AgentGUIConversationRailSectionProps {
     source?: string;
   }) => void;
   onToggleProjectSectionCollapsed: (sectionId: string) => void;
+  onVisibleItemLimitChange: (sectionId: string, limit: number) => void;
   onRequestSectionBatchDeletion: (section: ConversationSection) => void;
   setPendingProjectAction: (action: AgentGUIProjectActionDialog | null) => void;
   onSelectConversation: (agentSessionId: string) => void;
   onLoadMoreConversations: (section: ConversationSection) => void;
   onToggleConversationPinned: (agentSessionId: string, pinned: boolean) => void;
+  onToggleProjectPinned: (projectId: string, pinned: boolean) => Promise<void>;
   onMarkConversationUnread: (agentSessionId: string) => void;
   onOpenProjectFiles?: ((action: WorkspaceLinkAction) => void) | null;
   onOpenConversationWindow?: (agentSessionId: string) => void;
@@ -71,6 +58,17 @@ interface AgentGUIConversationRailSectionProps {
   ) => void;
   onCancelDeleteConversation: () => void;
   onConfirmDeleteConversation: () => void;
+  onProjectDragStart: (
+    section: ConversationSection,
+    event: React.DragEvent<HTMLElement>
+  ) => void;
+  onProjectDragEnd: () => void;
+  onProjectDragOver: (
+    section: ConversationSection,
+    edge: "before" | "after",
+    event: React.DragEvent<HTMLElement>
+  ) => void;
+  onProjectMenuOpenChange: (sectionId: string, open: boolean) => void;
 }
 
 export const AgentGUIConversationRailSection = memo(
@@ -78,58 +76,50 @@ export const AgentGUIConversationRailSection = memo(
     section,
     activeConversation,
     activeConversationCountsTowardTotal,
-    paginationScopeKey,
     projectPath,
     projectLabel,
     isSectionCollapsed,
     activeConversationId,
     pendingDeleteConversationId,
-    previewMode,
     isDeletingConversation,
-    isDeletingProjectConversations,
-    isRequestingBatchDeletion,
-    isConversationSearchActive,
     isLoadingMoreConversations,
     isRailInteractionLocked,
+    isProjectActionLocked,
+    projectDragging,
+    projectDropIndicator,
     sectionHasMore,
     sectionTotalCount,
+    visibleItemLimit,
     createConversationDisabled,
-    currentTimeMs,
     labels,
     uiLanguage,
     workspaceId,
     registerItemElement,
     onCreateConversation,
     onToggleProjectSectionCollapsed,
+    onVisibleItemLimitChange,
     onSelectConversation,
     onLoadMoreConversations,
     onRequestSectionBatchDeletion,
     setPendingProjectAction,
     onToggleConversationPinned,
+    onToggleProjectPinned,
     onMarkConversationUnread,
     onOpenProjectFiles,
     onOpenConversationWindow,
     onRequestDeleteConversation,
     onRequestRenameConversation,
     onCancelDeleteConversation,
-    onConfirmDeleteConversation
+    onConfirmDeleteConversation,
+    onProjectDragStart,
+    onProjectDragEnd,
+    onProjectDragOver,
+    onProjectMenuOpenChange
   }: AgentGUIConversationRailSectionProps): React.JSX.Element {
     "use memo";
-    const isProjectSection = section.kind === "project";
-    const [visibleItemLimitState, setVisibleItemLimitState] = useState(() => ({
-      limit: AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE,
-      scopeKey: paginationScopeKey
-    }));
-    if (visibleItemLimitState.scopeKey !== paginationScopeKey) {
-      setVisibleItemLimitState({
-        limit: AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE,
-        scopeKey: paginationScopeKey
-      });
-    }
-    const visibleItemLimit =
-      visibleItemLimitState.scopeKey === paginationScopeKey
-        ? visibleItemLimitState.limit
-        : AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE;
+    const projectPinned = (section.project?.pinnedAtUnixMs ?? 0) > 0;
+    const projectId = section.project?.id?.trim() ?? "";
+    const hasProjectPath = Boolean(projectPath);
     const pageableItems = section.items.filter(
       (item) => item.projectionSource !== "pending_activation"
     );
@@ -184,49 +174,43 @@ export const AgentGUIConversationRailSection = memo(
       if (isRailInteractionLocked()) return;
       if (visibleItemCount >= pageableItems.length && sectionHasMore) {
         onLoadMoreConversations(section);
-        setVisibleItemLimitState((current) => ({
-          limit:
-            (current.scopeKey === paginationScopeKey
-              ? current.limit
-              : AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE) +
-            AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE,
-          scopeKey: paginationScopeKey
-        }));
+        onVisibleItemLimitChange(
+          section.id,
+          visibleItemLimit + AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE
+        );
         return;
       }
-      setVisibleItemLimitState((current) => ({
-        limit: Math.min(
+      onVisibleItemLimitChange(
+        section.id,
+        Math.min(
           pageableItems.length,
-          (current.scopeKey === paginationScopeKey
-            ? current.limit
-            : AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE) +
-            AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE
-        ),
-        scopeKey: paginationScopeKey
-      }));
+          visibleItemLimit + AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE
+        )
+      );
     }, [
       onLoadMoreConversations,
+      onVisibleItemLimitChange,
       isRailInteractionLocked,
       pageableItems.length,
-      paginationScopeKey,
       section,
       sectionHasMore,
-      visibleItemCount
+      visibleItemCount,
+      visibleItemLimit
     ]);
     const showLessConversations = useCallback(() => {
       if (isRailInteractionLocked()) return;
-      setVisibleItemLimitState({
-        limit: AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE,
-        scopeKey: paginationScopeKey
-      });
-    }, [isRailInteractionLocked, paginationScopeKey]);
+      onVisibleItemLimitChange(
+        section.id,
+        AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE
+      );
+    }, [isRailInteractionLocked, onVisibleItemLimitChange, section.id]);
 
     const canCreateConversationFromSection =
       section.kind === "conversations" || Boolean(projectPath);
     const createConversationLabel = projectPath
       ? labels.projectSectionEdit
       : labels.newConversation;
-    const handleCreateConversation = useCallback(() => {
+    const handleCreateConversation = useStableEventCallback(() => {
       if (isRailInteractionLocked()) return;
       if (projectPath) {
         onCreateConversation({ projectPath, source: "project_section" });
@@ -236,264 +220,99 @@ export const AgentGUIConversationRailSection = memo(
         projectPath: null,
         source: "unscoped_section"
       });
-    }, [isRailInteractionLocked, onCreateConversation, projectPath]);
-
+    });
+    const handleToggleCollapsed = useStableEventCallback(() => {
+      if (!isRailInteractionLocked()) {
+        onToggleProjectSectionCollapsed(section.id);
+      }
+    });
+    const handleProjectDragStart = useStableEventCallback(
+      (event: React.DragEvent<HTMLElement>) =>
+        onProjectDragStart(section, event)
+    );
+    const handleProjectDragEnd = useStableEventCallback(() =>
+      onProjectDragEnd()
+    );
+    const handleProjectDragOver = useStableEventCallback(
+      (event: React.DragEvent<HTMLElement>) => {
+        const header = event.currentTarget.firstElementChild;
+        const rect = (
+          header instanceof HTMLElement ? header : event.currentTarget
+        ).getBoundingClientRect();
+        onProjectDragOver(
+          section,
+          event.clientY < rect.top + rect.height / 2 ? "before" : "after",
+          event
+        );
+      }
+    );
+    const handleProjectMenuOpenChange = useStableEventCallback(
+      (open: boolean) => onProjectMenuOpenChange(section.id, open)
+    );
+    const handleOpenProjectFiles = useOptionalStableEventCallback(
+      onOpenProjectFiles
+        ? () => {
+            if (isRailInteractionLocked()) return;
+            onOpenProjectFiles({
+              directoryPath: projectPath,
+              mode: "open",
+              path: projectPath,
+              source: "agent-project-menu",
+              type: "open-workspace-file",
+              workspaceRoot: projectPath
+            });
+          }
+        : null
+    );
+    const handleToggleProjectPinned = useStableEventCallback(() => {
+      if (!projectId || isProjectActionLocked()) return;
+      void onToggleProjectPinned(projectId, !projectPinned);
+    });
+    const handleRequestBatchDeletion = useStableEventCallback(() => {
+      if (!isRailInteractionLocked()) {
+        onRequestSectionBatchDeletion(section);
+      }
+    });
+    const handleRemoveProject = useStableEventCallback(() => {
+      if (isProjectActionLocked()) return;
+      setPendingProjectAction({
+        kind: "remove",
+        label: projectLabel || projectPath,
+        path: projectPath
+      });
+    });
     return (
       <section
         className={styles.conversationSection}
         data-collapsed={isSectionCollapsed}
         data-kind={section.kind}
+        data-project-dragging={projectDragging ? "true" : undefined}
+        data-project-drop-indicator={projectDropIndicator ?? undefined}
+        onDragOver={
+          section.kind === "project" ? handleProjectDragOver : undefined
+        }
       >
-        <div className={styles.conversationSectionHeader}>
-          {isProjectSection ? (
-            <button
-              type="button"
-              className={styles.conversationSectionToggle}
-              aria-expanded={!isSectionCollapsed}
-              onClick={() => {
-                if (!isRailInteractionLocked()) {
-                  onToggleProjectSectionCollapsed(section.id);
-                }
-              }}
-            >
-              <ChevronRight
-                aria-hidden="true"
-                className={styles.conversationSectionChevron}
-              />
-              <span className={styles.conversationSectionLabel}>
-                {isSectionCollapsed ? (
-                  <FolderIcon
-                    aria-hidden="true"
-                    className={styles.conversationSectionLabelIcon}
-                  />
-                ) : (
-                  <FolderOpenLinedIcon
-                    aria-hidden="true"
-                    className={styles.conversationSectionLabelIcon}
-                  />
-                )}
-                <span>{section.label}</span>
-              </span>
-            </button>
-          ) : (
-            <div className={styles.conversationSectionToggle}>
-              <span className={styles.conversationSectionLabel}>
-                <span>{section.label}</span>
-              </span>
-            </div>
-          )}
-          {canCreateConversationFromSection ? (
-            <div className={styles.conversationSectionActions}>
-              {previewMode ? (
-                <span className={styles.conversationSectionActionTooltipWrap}>
-                  <BareIconButton
-                    className={styles.conversationSectionMoreButton}
-                    aria-label={createConversationLabel}
-                    size="sm"
-                    disabled={createConversationDisabled}
-                    onClick={handleCreateConversation}
-                  >
-                    <CreateChatIcon aria-hidden="true" />
-                  </BareIconButton>
-                </span>
-              ) : (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span
-                      className={styles.conversationSectionActionTooltipWrap}
-                    >
-                      <BareIconButton
-                        className={styles.conversationSectionMoreButton}
-                        aria-label={createConversationLabel}
-                        size="sm"
-                        disabled={createConversationDisabled}
-                        onClick={handleCreateConversation}
-                      >
-                        <CreateChatIcon aria-hidden="true" />
-                      </BareIconButton>
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent
-                    side="top"
-                    sideOffset={6}
-                    className={styles.conversationSectionActionTooltip}
-                  >
-                    {createConversationLabel}
-                  </TooltipContent>
-                </Tooltip>
-              )}
-              {projectPath ? (
-                <DropdownMenu>
-                  {previewMode ? (
-                    <DropdownMenuTrigger asChild>
-                      <span
-                        className={styles.conversationSectionActionTooltipWrap}
-                      >
-                        <BareIconButton
-                          className={styles.conversationSectionMoreButton}
-                          aria-label={labels.projectSectionMoreActions}
-                          size="sm"
-                        >
-                          <MoreHorizontalIcon aria-hidden="true" />
-                        </BareIconButton>
-                      </span>
-                    </DropdownMenuTrigger>
-                  ) : (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span
-                          className={
-                            styles.conversationSectionActionTooltipWrap
-                          }
-                        >
-                          <DropdownMenuTrigger asChild>
-                            <BareIconButton
-                              className={styles.conversationSectionMoreButton}
-                              aria-label={labels.projectSectionMoreActions}
-                              size="sm"
-                            >
-                              <MoreHorizontalIcon aria-hidden="true" />
-                            </BareIconButton>
-                          </DropdownMenuTrigger>
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent
-                        side="right"
-                        sideOffset={6}
-                        className={styles.conversationSectionActionTooltip}
-                      >
-                        {labels.projectSectionMoreActions}
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                  <DropdownMenuContent
-                    align="end"
-                    className={`${styles.composerMenuContent} nodrag [-webkit-app-region:no-drag]`}
-                    sideOffset={6}
-                  >
-                    <DropdownMenuItem
-                      className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
-                      disabled={!onOpenProjectFiles}
-                      onSelect={() => {
-                        if (isRailInteractionLocked()) return;
-                        onOpenProjectFiles?.({
-                          directoryPath: projectPath,
-                          mode: "open-directory",
-                          path: projectPath,
-                          source: "agent-project-menu",
-                          type: "open-workspace-file",
-                          workspaceRoot: projectPath
-                        });
-                      }}
-                    >
-                      <span>{labels.projectSectionViewFiles}</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
-                      disabled={
-                        isConversationSearchActive ||
-                        (section.items.length === 0 && !sectionHasMore) ||
-                        isDeletingProjectConversations ||
-                        isRequestingBatchDeletion
-                      }
-                      onSelect={() => {
-                        if (!isRailInteractionLocked()) {
-                          onRequestSectionBatchDeletion(section);
-                        }
-                      }}
-                    >
-                      <span>{labels.batchDeleteProjectSessions}</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
-                      onSelect={() => {
-                        if (isRailInteractionLocked()) return;
-                        const label = projectLabel || projectPath;
-                        setPendingProjectAction({
-                          kind: "remove",
-                          label,
-                          path: projectPath
-                        });
-                      }}
-                    >
-                      <span>{labels.removeProject}</span>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ) : null}
-              {!projectPath && section.kind === "conversations" ? (
-                <DropdownMenu>
-                  {previewMode ? (
-                    <DropdownMenuTrigger asChild>
-                      <span
-                        className={styles.conversationSectionActionTooltipWrap}
-                      >
-                        <BareIconButton
-                          className={styles.conversationSectionMoreButton}
-                          aria-label={labels.conversationsSectionMoreActions}
-                          size="sm"
-                        >
-                          <MoreHorizontalIcon aria-hidden="true" />
-                        </BareIconButton>
-                      </span>
-                    </DropdownMenuTrigger>
-                  ) : (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span
-                          className={
-                            styles.conversationSectionActionTooltipWrap
-                          }
-                        >
-                          <DropdownMenuTrigger asChild>
-                            <BareIconButton
-                              className={styles.conversationSectionMoreButton}
-                              aria-label={
-                                labels.conversationsSectionMoreActions
-                              }
-                              size="sm"
-                            >
-                              <MoreHorizontalIcon aria-hidden="true" />
-                            </BareIconButton>
-                          </DropdownMenuTrigger>
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent
-                        side="right"
-                        sideOffset={6}
-                        className={styles.conversationSectionActionTooltip}
-                      >
-                        {labels.conversationsSectionMoreActions}
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                  <DropdownMenuContent
-                    align="end"
-                    className={`${styles.composerMenuContent} nodrag [-webkit-app-region:no-drag]`}
-                    sideOffset={6}
-                  >
-                    <DropdownMenuItem
-                      className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
-                      disabled={
-                        isConversationSearchActive ||
-                        (section.items.length === 0 && !sectionHasMore) ||
-                        isDeletingProjectConversations ||
-                        isRequestingBatchDeletion
-                      }
-                      onSelect={() => {
-                        if (!isRailInteractionLocked()) {
-                          onRequestSectionBatchDeletion(section);
-                        }
-                      }}
-                    >
-                      <span>{labels.batchDeleteConversations}</span>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
+        <AgentGUIConversationRailSectionHeader
+          canCreateConversation={canCreateConversationFromSection}
+          createConversationDisabled={createConversationDisabled}
+          createConversationLabel={createConversationLabel}
+          hasProjectId={Boolean(projectId)}
+          hasProjectPath={hasProjectPath}
+          isSectionCollapsed={isSectionCollapsed}
+          kind={section.kind}
+          labels={labels}
+          onCreateConversation={handleCreateConversation}
+          onOpenProjectFiles={handleOpenProjectFiles}
+          onProjectDragEnd={handleProjectDragEnd}
+          onProjectDragStart={handleProjectDragStart}
+          onProjectMenuOpenChange={handleProjectMenuOpenChange}
+          onRemoveProject={handleRemoveProject}
+          onRequestBatchDeletion={handleRequestBatchDeletion}
+          onToggleCollapsed={handleToggleCollapsed}
+          onToggleProjectPinned={handleToggleProjectPinned}
+          projectPinned={projectPinned}
+          sectionLabel={section.label}
+        />
         <div
           className={styles.conversationSectionItems}
           aria-hidden={isSectionCollapsed ? "true" : undefined}
@@ -508,7 +327,6 @@ export const AgentGUIConversationRailSection = memo(
               <AgentGUIConversationRailItem
                 key={item.id}
                 active={item.id === activeConversationId}
-                currentTimeMs={currentTimeMs}
                 isDeletingConversation={isDeletingConversation}
                 isPendingDeleteConversation={
                   pendingDeleteConversationId === item.id
@@ -516,7 +334,6 @@ export const AgentGUIConversationRailSection = memo(
                 isRailInteractionLocked={isRailInteractionLocked}
                 item={item}
                 labels={labels}
-                previewMode={previewMode}
                 registerItemElement={registerItemElement}
                 uiLanguage={uiLanguage}
                 workspaceId={workspaceId}

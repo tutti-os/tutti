@@ -23,7 +23,6 @@ export interface AgentInteractivePromptSurfaceProps {
   variant?: AgentInteractivePromptVariant;
   edgeGlow?: boolean;
   keyboardShortcuts?: boolean;
-  previewMode?: boolean;
   isSubmitting: boolean;
   onSubmit: (input: {
     requestId: string;
@@ -58,7 +57,6 @@ export function AgentInteractivePromptSurface({
   edgeGlow = false,
   embedded = false,
   keyboardShortcuts = true,
-  previewMode = false,
   isSubmitting,
   onSubmit,
   labels
@@ -74,7 +72,6 @@ export function AgentInteractivePromptSurface({
         embedded={embedded}
         edgeGlow={edgeGlow}
         keyboardShortcuts={keyboardShortcuts}
-        previewMode={previewMode}
         isSubmitting={isSubmitting}
         onSubmit={onSubmit}
         labels={labels}
@@ -88,7 +85,6 @@ export function AgentInteractivePromptSurface({
         variant={variant}
         embedded={embedded}
         edgeGlow={edgeGlow}
-        previewMode={previewMode}
         isSubmitting={isSubmitting}
         onSubmit={onSubmit}
         labels={labels}
@@ -102,7 +98,6 @@ export function AgentInteractivePromptSurface({
         variant={variant}
         embedded={embedded}
         edgeGlow={edgeGlow}
-        previewMode={previewMode}
         isSubmitting={isSubmitting}
         onSubmit={onSubmit}
         labels={labels}

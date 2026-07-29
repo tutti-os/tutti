@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type HTMLAttributes } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AgentComposerDraft,
   AgentComposerDraftFile,
@@ -9,21 +9,18 @@ import { repairMentionPaletteHighlight } from "@tutti-os/ui-rich-text/at-panel";
 import { clampSlashCommandHighlight } from "./model/agentSlashCommands";
 import type { AgentRichTextEditorHandle } from "./agentRichText/AgentRichTextEditor";
 import {
-  AgentMentionSearchController,
-  type AgentMentionSearchState
-} from "./AgentMentionSearchController";
-import {
   agentMentionItemKey,
   isAgentMentionItemDisabled
 } from "./AgentFileMentionPalette";
-import { DEFAULT_AGENT_MENTION_FILTER } from "./agentMentionSearchHelpers";
 import { type AgentFileMentionSuggestionState } from "./agentRichText/agentFileMentionExtension";
 import { formatSlashStatusTokenCount } from "./AgentSlashStatusPanel";
 import { useOptionalAgentActivityRuntime } from "../../agentActivityRuntime";
-import { useOptionalAgentHostApi } from "../../agentActivityHost";
 import { useComposerDraftAttachments } from "./composer/useComposerDraftAttachments";
 import { goalDraftObjectiveFromPrompt } from "./composer/composerDraftUtils";
-import { useComposerLayout } from "./composer/useComposerLayout";
+import {
+  INITIAL_DOCK_COMPOSER_METRICS,
+  useComposerLayout
+} from "./composer/useComposerLayout";
 import { useComposerPaletteCatalog } from "./composer/useComposerPaletteCatalog";
 import { useMentionPaletteFrame } from "./composer/useMentionPaletteFrame";
 import { useComposerSlashActions } from "./composer/useComposerSlashActions";
@@ -33,11 +30,14 @@ import { useComposerFocusAndDrop } from "./composer/useComposerFocusAndDrop";
 import { useComposerPresentation } from "./composer/useComposerPresentation";
 import { AgentComposerView } from "./composer/AgentComposerView";
 import {
-  EMPTY_CONTEXT_MENTION_PROVIDERS,
   EMPTY_PROMPT_TIPS,
   EMPTY_PROVIDER_SKILLS
 } from "./composer/AgentComposerChrome";
+import { useAgentMentionSearchController } from "./composer/useAgentMentionSearchController";
+import { useAgentQuickPromptLibrary } from "./composer/quickPrompts/useAgentQuickPromptLibrary";
+import { useScopedProjectMissingState } from "./composer/useScopedProjectMissingState";
 import type { AgentComposerProps } from "./composer/AgentComposer.types";
+import { withAgentComposerTuttiModeSnapshot } from "./composer/agentComposerSubmitOptions";
 import {
   agentComposerDraftAttachmentProjection,
   agentComposerDraftFiles,
@@ -47,32 +47,15 @@ import {
   agentComposerDraftPrompt
 } from "./model/agentComposerDraft";
 import type { AgentGUIComposerContentType } from "./engagement/agentGUIEngagement.types";
+import { projectAgentGUIComposerGateControls } from "./model/agentGuiComposerGate";
+import {
+  groupAgentExternalPromptEntryInsertions,
+  resolveAgentExternalPromptEntries
+} from "./model/agentExternalPromptEntries";
+import { useComposerInputHistory } from "./composer/useComposerInputHistory";
 
 export { formatSlashStatusTokenCount };
 
-type DotLottieElementProps = HTMLAttributes<HTMLElement> & {
-  autoplay?: boolean;
-  loop?: boolean;
-  src?: string;
-};
-
-declare module "react" {
-  namespace JSX {
-    interface IntrinsicElements {
-      "dotlottie-wc": DotLottieElementProps;
-    }
-  }
-}
-
-const DOCK_COMPOSER_INPUT_MIN_HEIGHT = 56;
-const DOCK_COMPOSER_TEXT_LINE_HEIGHT = 24;
-const DOCK_COMPOSER_MAX_VISIBLE_TEXT_LINES = 3.5;
-const DOCK_COMPOSER_INPUT_TEXT_CHROME_HEIGHT = 26;
-const DOCK_COMPOSER_TEXT_VIEWPORT_MAX_HEIGHT =
-  DOCK_COMPOSER_TEXT_LINE_HEIGHT * DOCK_COMPOSER_MAX_VISIBLE_TEXT_LINES;
-const DOCK_COMPOSER_INPUT_MAX_HEIGHT =
-  DOCK_COMPOSER_INPUT_TEXT_CHROME_HEIGHT +
-  DOCK_COMPOSER_TEXT_VIEWPORT_MAX_HEIGHT;
 /**
  * 引用 picker 的确认结果:松散文件按 file mention 插入;mentionItems(如文件夹 bundle)
  * 作为整体节点插入。两者各走各的插入路径,composer 不需要理解 bundle 内部结构。
@@ -86,10 +69,12 @@ export type {
   AgentComposerGitBranches,
   AgentComposerPromptTip,
   AgentComposerReferenceProvenanceFilter,
+  AgentComposerReferenceProvenanceFilters,
   AgentComposerProps,
   AgentComposerSlashStatus,
   AgentComposerSlashStatusLimit,
   AgentComposerSubmitOptions,
+  AgentComposerTuttiModeSubmitSnapshot,
   AgentComposerUsage
 } from "./composer/AgentComposer.types";
 
@@ -97,6 +82,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   "use memo";
   const {
     workspaceId,
+    agentSessionId = null,
     workspacePath,
     currentUserId,
     provider,
@@ -104,13 +90,22 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     draftContent,
     engagement,
     draftScopeKey = "current",
+    inputHistory = [],
+    inputHistoryHasOlderPage = false,
+    inputHistoryIsLoadingOlderPage = false,
+    onRequestOlderInputHistoryPage,
     availableCommands,
     hasCompactableContext = true,
     compactSupported = null,
     availableSkills = EMPTY_PROVIDER_SKILLS,
-    disabled,
+    gate,
+    presentationEditorDisabled,
     disabledReason,
-    submitDisabled,
+    presentationSubmitDisabled,
+    tuttiModeActive = false,
+    tuttiModeUpdating = false,
+    tuttiModeEffect = 50,
+    tuttiModeSpeed = 50,
     placeholder,
     composerSettings,
     selectedAgentTarget = null,
@@ -118,16 +113,17 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     handoffAgentTargets,
     providerSelectReadonly = false,
     onHandoffConversation,
-    canQueueWhileBusy,
     showStopButton,
+    draftOverridesStopButton = false,
+    stopDisabled,
     activePrompt,
     promptTips = EMPTY_PROMPT_TIPS,
     isInterrupting,
     isSendingTurn,
     isSubmittingPrompt,
+    projectMissingProbeEnabled = true,
     uiLanguage = "en",
     isActive = true,
-    previewMode = false,
     workspaceReferencePickerOpen = false,
     promptImagesSupported = true,
     canGoalControl = true,
@@ -139,8 +135,14 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     labels,
     onDraftContentChange,
     onSettingsChange,
+    onTuttiModeChange = () => {},
+    onTuttiModeEffectChange = () => {},
+    onTuttiModeSpeedChange = () => {},
     capabilityMenuState,
+    capabilityControlsReadOnly = false,
     onSubmit,
+    onSubmitEmpty,
+    emptySubmitLabel,
     onSubmitGuidance,
     onInterruptCurrentTurn,
     onPromptImagesUnsupported,
@@ -149,11 +151,21 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     onSlashStatusOpen,
     onLinkAction,
     onRequestWorkspaceReferences = null,
-    resolveDroppedFileReferences = null,
+    resolveExternalPromptEntries = null,
+    prepareExternalPromptFiles = null,
+    promptAssetLimit = null,
     onRequestGitBranches = null,
-    contextMentionProviders = EMPTY_CONTEXT_MENTION_PROVIDERS,
-    referenceProvenanceFilter = null
+    referenceProvenanceFilters = null
   } = props;
+  const {
+    canQueueWhileBusy,
+    editorDisabled: disabled,
+    submissionDisabled: submitDisabled
+  } = projectAgentGUIComposerGateControls({
+    gate,
+    presentationEditorDisabled,
+    presentationSubmitDisabled
+  });
   const draftPrompt = agentComposerDraftPrompt(draftContent);
   const goalDraftObjective = canGoalControl
     ? goalDraftObjectiveFromPrompt(draftPrompt)
@@ -165,15 +177,11 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     largeTexts: draftLargeTexts
   } = agentComposerDraftAttachmentProjection(draftContent);
   const agentActivityRuntime = useOptionalAgentActivityRuntime();
-  const agentHostApi = useOptionalAgentHostApi();
-  const getReferenceForFile = agentHostApi?.workspace.getReferenceForFile;
-  const promptFileUploadSupported = Boolean(
-    canUploadAttachment &&
-    agentActivityRuntime?.uploadPromptContent &&
-    (agentActivityRuntime.promptContentUploadSupport?.file ?? true)
-  );
   const promptFilesSupported = Boolean(
-    resolveDroppedFileReferences && promptFileUploadSupported
+    canUploadAttachment && prepareExternalPromptFiles
+  );
+  const externalPromptEntriesSupported = Boolean(
+    resolveExternalPromptEntries || promptFilesSupported
   );
   const pastedTextStagingSupported = Boolean(
     canUploadAttachment && agentActivityRuntime?.stagePastedText
@@ -188,7 +196,35 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   };
   const [isPaletteOpen, setIsPaletteOpen] = useState(true);
   const [isReviewPickerOpen, setIsReviewPickerOpen] = useState(false);
-  const [isHandoffIconPlaying, setIsHandoffIconPlaying] = useState(false);
+  const submitWithComposerModifiers: AgentComposerProps["onSubmit"] = (
+    content,
+    displayPrompt,
+    options
+  ) => {
+    onSubmit(
+      content,
+      displayPrompt,
+      withAgentComposerTuttiModeSnapshot({
+        options,
+        active: tuttiModeActive,
+        effect: tuttiModeEffect,
+        speed: tuttiModeSpeed
+      })
+    );
+  };
+  const submitGuidanceWithComposerModifiers: NonNullable<
+    AgentComposerProps["onSubmitGuidance"]
+  > = (content, displayPrompt) => {
+    onSubmitGuidance?.(
+      content,
+      displayPrompt,
+      tuttiModeActive
+        ? {
+            capabilityRefs: [{ capability: "tutti", source: "slash_command" }]
+          }
+        : undefined
+    );
+  };
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [mentionHighlightedKey, setMentionHighlightedKey] = useState<
     string | null
@@ -204,28 +240,18 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   );
   const [fileMentionSuggestion, setFileMentionSuggestion] =
     useState<AgentFileMentionSuggestionState | null>(null);
+  const selectedProjectPath =
+    composerSettings.selectedProjectPath?.trim() ?? "";
   const [isSelectedProjectMissing, setIsSelectedProjectMissing] =
-    useState(false);
+    useScopedProjectMissingState(selectedProjectPath);
   const [isSlashStatusPanelOpen, setIsSlashStatusPanelOpen] = useState(false);
   const slashStatusAgentSessionId = slashStatus?.agentSessionId ?? null;
   const previousSlashStatusAgentSessionIdRef = useRef<string | null>(
     slashStatusAgentSessionId
   );
-  const selectedProjectPath =
-    composerSettings.selectedProjectPath?.trim() ?? "";
   const selectedProjectSectionKey =
     composerSettings.selectedProjectSectionKey?.trim() ?? "";
   const previousSelectedProjectPathRef = useRef(selectedProjectPath);
-  const [mentionSearchState, setMentionSearchState] =
-    useState<AgentMentionSearchState>({
-      status: "idle",
-      query: "",
-      mode: "browse",
-      filter: DEFAULT_AGENT_MENTION_FILTER,
-      categories: [],
-      groups: [],
-      error: null
-    });
   const composerRef = useRef<HTMLFormElement | null>(null);
   const inputShellRef = useRef<HTMLDivElement | null>(null);
   const promptInputAreaRef = useRef<HTMLDivElement | null>(null);
@@ -239,25 +265,33 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     [draftScopeKey]: draftContent
   });
   draftByScopeKeyRef.current[draftScopeKey] = draftContent;
+  const {
+    disposeInputHistory,
+    onHistoryNavigation,
+    settlePendingInputHistory
+  } = useComposerInputHistory({
+    agentSessionId,
+    currentDraft: draftContent,
+    draftByScopeKeyRef,
+    draftScopeKey,
+    entries: inputHistory,
+    hasOlderPage: inputHistoryHasOlderPage,
+    isLoadingOlderPage: inputHistoryIsLoadingOlderPage,
+    onDraftContentChange,
+    onRequestOlderPage: onRequestOlderInputHistoryPage,
+    runtime: agentActivityRuntime,
+    workspaceId
+  });
   const promptTipRef = useRef<HTMLSpanElement | null>(null);
-  const mentionControllerRef = useRef<AgentMentionSearchController | null>(
-    null
-  );
+  const { mentionControllerRef, mentionSearchState } =
+    useAgentMentionSearchController(referenceProvenanceFilters);
   const editorHandleRef = useRef<AgentRichTextEditorHandle | null>(null);
   const wasActiveRef = useRef(isActive);
   const lastComposerFocusRequestRef = useRef<number | null>(null);
   const autoMentionHighlightedKeyRef = useRef<string | null>(null);
   const [isPromptTipOverflowing, setIsPromptTipOverflowing] = useState(false);
-  const [dockComposerInputHeight, setDockComposerInputHeight] = useState(
-    DOCK_COMPOSER_INPUT_MIN_HEIGHT
-  );
-  const [dockComposerInputMaxHeight, setDockComposerInputMaxHeight] = useState(
-    DOCK_COMPOSER_INPUT_MAX_HEIGHT
-  );
-  const [dockComposerAttachmentHeight, setDockComposerAttachmentHeight] =
-    useState(0);
-  const [dockComposerTextHeight, setDockComposerTextHeight] = useState(
-    DOCK_COMPOSER_INPUT_MIN_HEIGHT
+  const [dockComposerMetrics, setDockComposerMetrics] = useState(
+    INITIAL_DOCK_COMPOSER_METRICS
   );
   const paletteCatalog = useComposerPaletteCatalog({
     provider,
@@ -270,6 +304,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     compactSupported,
     composerSettings,
     capabilityMenuState,
+    capabilityControlsReadOnly,
     labels,
     uiLanguage,
     editorHandleRef
@@ -354,33 +389,13 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   ]);
 
   useEffect(() => {
-    const controller = new AgentMentionSearchController({
-      contextMentionProviders
-    });
-    controller.setProvenanceCatalog(
-      referenceProvenanceFilter?.snapshot.catalog ?? null
-    );
-    // A provider replacement creates a fresh controller, so seed it with the
-    // filter captured by the same render before exposing it through the ref.
-    controller.setProvenanceFilter(
-      referenceProvenanceFilter?.snapshot.value ?? null
-    );
-    mentionControllerRef.current = controller;
-    const unsubscribe = controller.subscribe(setMentionSearchState);
-    return () => {
-      unsubscribe();
-      controller.dispose();
-      mentionControllerRef.current = null;
-    };
-  }, [contextMentionProviders]);
-
-  useEffect(() => {
     draftImagesRef.current = agentComposerDraftImages(draftContent);
     draftFilesRef.current = agentComposerDraftFiles(draftContent);
     draftLargeTextsRef.current = agentComposerDraftLargeTexts(draftContent);
     const isExternalDraftReplacement = draftPromptRef.current !== draftPrompt;
     draftPromptRef.current = draftPrompt;
     setPaletteDraftPrompt(goalDraftObjective ?? draftPrompt);
+    settlePendingInputHistory();
     if (isExternalDraftReplacement && draftPrompt) {
       window.requestAnimationFrame(() => {
         window.requestAnimationFrame(() => {
@@ -390,31 +405,26 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
         });
       });
     }
-  }, [draftContent, draftPrompt, goalDraftObjective]);
-
-  useEffect(() => {
-    mentionControllerRef.current?.setProvenanceCatalog(
-      referenceProvenanceFilter?.snapshot.catalog ?? null
-    );
-    mentionControllerRef.current?.setProvenanceFilter(
-      referenceProvenanceFilter?.snapshot.value ?? null
-    );
   }, [
-    referenceProvenanceFilter?.snapshot.catalog,
-    referenceProvenanceFilter?.snapshot.value
+    draftContent,
+    draftPrompt,
+    goalDraftObjective,
+    settlePendingInputHistory
   ]);
 
   useEffect(() => {
     if (
       previousSlashStatusAgentSessionIdRef.current === slashStatusAgentSessionId
     ) {
-      return;
+      return disposeInputHistory;
     }
     previousSlashStatusAgentSessionIdRef.current = slashStatusAgentSessionId;
     setIsSlashStatusPanelOpen(false);
-  }, [slashStatusAgentSessionId]);
+    return disposeInputHistory;
+  }, [disposeInputHistory, draftScopeKey, slashStatusAgentSessionId]);
 
   const slashActions = useComposerSlashActions({
+    workspaceId,
     provider,
     disabled,
     submitDisabled,
@@ -425,14 +435,21 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     promptImagesSupported: canUploadAttachment && promptImagesSupported,
     availableSkills,
     composerSettings,
+    // Host-gated product capability: omit or enabled:false must hide Tutti Mode
+    // entries (footer chip, badge activation, /tutti). Fail closed like other
+    // unsupported host capabilities — do not treat a missing flag as enabled.
+    tuttiModeSupported: capabilityMenuState?.tuttiMode?.enabled === true,
+    capabilityControlsReadOnly,
     onDraftContentChange,
     onSettingsChange,
-    onSubmit,
-    onSubmitGuidance,
+    onSubmit: submitWithComposerModifiers,
+    onSubmitEmpty,
+    onSubmitGuidance: submitGuidanceWithComposerModifiers,
     onCapabilitySettingsRequest,
     onSlashStatusOpen,
     onPromptImagesUnsupported,
     onRequestGitBranches,
+    onTuttiModeActivate: () => onTuttiModeChange(true),
     draftContent,
     selectedProjectPath,
     slashStatusAgentSessionId,
@@ -507,8 +524,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     goalDraftObjective,
     isGoalModeActive,
     promptImagesSupported: canUploadAttachment && promptImagesSupported,
-    promptFileUploadSupported,
     promptFilesSupported,
+    promptAssetLimit,
     pastedTextStagingSupported,
     editorHandleRef,
     draftPromptRef,
@@ -522,14 +539,33 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     onPromptImagesUnsupported,
     onContentEntered: reportContentEntered,
     onRequestWorkspaceReferences,
-    resolveDroppedFileReferences,
+    prepareExternalPromptFiles,
     onLinkAction
   });
-  const { addDraftImages, applyDroppedFileReferences } = attachments;
+  const { addDraftFiles, addDraftImages } = attachments;
+  const addExternalPromptEntries = useCallback(
+    (files: readonly File[]): void => {
+      const entries = resolveAgentExternalPromptEntries(
+        files,
+        resolveExternalPromptEntries
+      );
+      for (const insertion of groupAgentExternalPromptEntryInsertions(
+        entries
+      )) {
+        if (insertion.disposition === "prepare") {
+          addDraftFiles(insertion.files);
+        } else {
+          editorHandleRef.current?.insertWorkspaceReferences([
+            insertion.reference
+          ]);
+        }
+      }
+    },
+    [addDraftFiles, editorHandleRef, resolveExternalPromptEntries]
+  );
 
   const providerState = useComposerProviderTargets({
     layoutMode,
-    previewMode,
     provider,
     agentTargets,
     handoffAgentTargets,
@@ -538,7 +574,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     composerControlsHardDisabled,
     isSelectedProjectMissing,
     disabled,
-    canQueueWhileBusy,
     onHandoffConversation,
     handoffLabel,
     handoffMenuLabel,
@@ -546,6 +581,19 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     defaultHandoffMenuLabel: labels.handoffConversationMenu
   });
   const { inputDisabled, isHeroLayout } = providerState;
+  const closeQuickPromptCompetingDisclosure = useCallback((): void => {
+    mentionActions.closeFileMentionPalette();
+    slashActions.closeSlashFloatingMenu();
+  }, [mentionActions, slashActions]);
+  const insertQuickPrompt = useCallback((content: string): void => {
+    editorHandleRef.current?.insertPlainTextAtSelection(content);
+  }, []);
+  const quickPromptLibrary = useAgentQuickPromptLibrary({
+    disabled: composerControlsHardDisabled || inputDisabled,
+    labels: labels.quickPrompts,
+    onBeforeOpen: closeQuickPromptCompetingDisclosure,
+    onInsertPrompt: insertQuickPrompt
+  });
   const restoreComposerCaretAfterProjectMenu = (event: Event): void => {
     event.preventDefault();
     if (inputDisabled) {
@@ -562,38 +610,30 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     lastComposerFocusRequestRef,
     isActive,
     composerFocusRequestSequence,
-    promptFilesSupported,
+    promptFilesSupported: externalPromptEntriesSupported,
     promptImagesSupported: canUploadAttachment && promptImagesSupported,
     addDraftImages,
-    applyDroppedFileReferences,
+    addDraftFiles: addExternalPromptEntries,
     onPromptImagesUnsupported
   });
   const { fileDropOverlayActive, fileDropOverlayHost } = focusAndDrop;
   const layout = useComposerLayout({
+    isActive,
     isHeroLayout,
     inputDisabled,
-    paletteDraftPrompt,
+    projectMissingProbeEnabled,
     showFileMentionPalette,
     showFloatingCommandMenu,
-    previewMode,
     promptTips,
     promptTipsPrefix: labels.promptTipsPrefix,
     composerSettings,
     selectedProjectPath,
     promptTipRef,
     promptInputAreaRef,
-    isPromptTipOverflowing,
     setIsPromptTipOverflowing,
-    dockComposerInputHeight,
-    setDockComposerInputHeight,
-    dockComposerInputMaxHeight,
-    setDockComposerInputMaxHeight,
-    dockComposerAttachmentHeight,
-    setDockComposerAttachmentHeight,
-    dockComposerTextHeight,
-    setDockComposerTextHeight,
+    dockComposerMetrics,
+    setDockComposerMetrics,
     draftImages,
-    draftFiles,
     draftLargeTexts
   });
   const { activePromptTip, promptTipStyle, rotatingPromptTips } = layout;
@@ -601,6 +641,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     draftContent,
     canQueueWhileBusy,
     showStopButton,
+    draftOverridesStopButton,
+    stopDisabled,
     isInterrupting,
     isSendingTurn,
     activePrompt,
@@ -618,6 +660,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     onInterruptCurrentTurn,
     isSelectedProjectMissing,
     submitDisabled,
+    allowEmptySubmit: onSubmitEmpty !== undefined,
+    emptySubmitLabel,
     labels,
     activePromptTip,
     promptTipRef,
@@ -648,14 +692,15 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
       promptTipRef={promptTipRef}
       editorHandleRef={editorHandleRef}
       mentionControllerRef={mentionControllerRef}
-      getReferenceForFile={getReferenceForFile}
-      promptFilesSupported={promptFilesSupported}
+      externalPromptEntriesSupported={externalPromptEntriesSupported}
+      addExternalPromptEntries={addExternalPromptEntries}
       onDismissProjectMenuAutoFocus={restoreComposerCaretAfterProjectMenu}
       paletteDraftPrompt={paletteDraftPrompt}
       showFileMentionPalette={showFileMentionPalette}
       showSlashPalette={showSlashPalette}
       activeHighlight={activeHighlight}
       mentionSearchState={mentionSearchState}
+      quickPromptLibrary={quickPromptLibrary}
       mentionHighlightedKey={mentionHighlightedKey}
       shouldCenterMentionHighlight={shouldCenterMentionHighlight}
       isSlashStatusPanelOpen={isSlashStatusPanelOpen}
@@ -664,10 +709,18 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
       setIsSelectedProjectMissing={setIsSelectedProjectMissing}
       setIsPaletteOpen={setIsPaletteOpen}
       setHighlightedIndex={setHighlightedIndex}
-      isHandoffIconPlaying={isHandoffIconPlaying}
-      setIsHandoffIconPlaying={setIsHandoffIconPlaying}
       isGoalModeActive={isGoalModeActive}
+      isPlanModeActive={composerSettings.draftSettings.planMode}
+      isTuttiModeActive={tuttiModeActive}
+      isTuttiModeUpdating={tuttiModeUpdating}
+      tuttiModeEffect={tuttiModeEffect}
+      tuttiModeSpeed={tuttiModeSpeed}
+      onClearPlanMode={() => onSettingsChange({ planMode: false })}
+      onClearTuttiMode={() => onTuttiModeChange(false)}
+      onTuttiModeEffectChange={onTuttiModeEffectChange}
+      onTuttiModeSpeedChange={onTuttiModeSpeedChange}
       isPromptTipOverflowing={isPromptTipOverflowing}
+      onHistoryNavigation={onHistoryNavigation}
     />
   );
 }

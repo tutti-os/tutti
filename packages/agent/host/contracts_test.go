@@ -34,12 +34,18 @@ func TestPublicCommandTypesContainNoAdapterIdentityOrTransportFields(t *testing.
 	t.Parallel()
 	types := []reflect.Type{
 		reflect.TypeOf(SessionRef{}),
+		reflect.TypeOf(InteractionRef{}),
 		reflect.TypeOf(CreateSessionInput{}),
 		reflect.TypeOf(SendInput{}),
 		reflect.TypeOf(SubmitInteractiveInput{}),
 		reflect.TypeOf(SubmitPlanDecisionInput{}),
 		reflect.TypeOf(CancelTurnInput{}),
 		reflect.TypeOf(UpdateTitleInput{}),
+		reflect.TypeOf(UpdateSettingsInput{}),
+		reflect.TypeOf(UpdatePinInput{}),
+		reflect.TypeOf(GoalControlInput{}),
+		reflect.TypeOf(GoalReconcileRequiredInput{}),
+		reflect.TypeOf(RuntimeGoalControlInput{}),
 		reflect.TypeOf(RuntimePreparationInput{}),
 	}
 	forbidden := []string{
@@ -61,5 +67,22 @@ func TestPublicCommandTypesContainNoAdapterIdentityOrTransportFields(t *testing.
 				}
 			}
 		}
+	}
+}
+
+func TestInteractiveCommandSeparatesIdentityFromResponse(t *testing.T) {
+	t.Parallel()
+	ref := reflect.TypeOf(InteractionRef{})
+	wantRefFields := []string{"WorkspaceID", "AgentSessionID", "TurnID", "RequestID"}
+	if ref.NumField() != len(wantRefFields) {
+		t.Fatalf("InteractionRef fields=%d, want %d", ref.NumField(), len(wantRefFields))
+	}
+	for index, want := range wantRefFields {
+		if got := ref.Field(index).Name; got != want {
+			t.Fatalf("InteractionRef field[%d]=%q, want %q", index, got, want)
+		}
+	}
+	if _, found := reflect.TypeOf(SubmitInteractiveInput{}).FieldByName("TurnID"); found {
+		t.Fatal("SubmitInteractiveInput must not own interaction identity")
 	}
 }

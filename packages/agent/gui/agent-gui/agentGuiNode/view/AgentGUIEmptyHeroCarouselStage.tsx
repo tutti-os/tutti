@@ -7,6 +7,8 @@ import styles from "../AgentGUINode.styles";
 interface AgentGUIEmptyHeroCarouselStageProps {
   activeAgentTargetId?: string | null;
   children: ReactNode;
+  isActive: boolean;
+  isVisible: boolean;
   items: readonly AgentGUIAgentAvatarPresentation[];
   onProviderSelect?: AgentGUINodeViewProps["actions"]["selectHomeComposerAgentTarget"];
   providerSelectLabel: string;
@@ -15,6 +17,7 @@ interface AgentGUIEmptyHeroCarouselStageProps {
 // Keep the carousel outside the ready/readiness-gate branch. Runtime
 // readiness changes must not replace the WebGL canvas or reset its position.
 export class AgentGUIEmptyHeroCarouselStage extends Component<AgentGUIEmptyHeroCarouselStageProps> {
+  private alignmentActive = false;
   private animationFrame: number | null = null;
   private layer: HTMLDivElement | null = null;
   private mutationObserver: MutationObserver | null = null;
@@ -26,7 +29,15 @@ export class AgentGUIEmptyHeroCarouselStage extends Component<AgentGUIEmptyHeroC
   }
 
   componentDidUpdate(): void {
-    this.startAlignment();
+    if (!this.canAlign()) {
+      this.stopAlignment();
+      return;
+    }
+    if (!this.alignmentActive) {
+      this.startAlignment();
+      return;
+    }
+    this.scheduleAlignment();
   }
 
   componentWillUnmount(): void {
@@ -37,6 +48,8 @@ export class AgentGUIEmptyHeroCarouselStage extends Component<AgentGUIEmptyHeroC
     const {
       activeAgentTargetId,
       children,
+      isActive,
+      isVisible,
       items,
       onProviderSelect,
       providerSelectLabel
@@ -49,6 +62,8 @@ export class AgentGUIEmptyHeroCarouselStage extends Component<AgentGUIEmptyHeroC
           <div ref={this.setLayer} className={styles.emptyHeroCarouselLayer}>
             <AgentGUIHeroAgentCarousel
               activeAgentTargetId={activeAgentTargetId}
+              isActive={isActive}
+              isVisible={isVisible}
               items={items}
               onProviderSelect={onProviderSelect}
               providerSelectLabel={providerSelectLabel}
@@ -65,11 +80,13 @@ export class AgentGUIEmptyHeroCarouselStage extends Component<AgentGUIEmptyHeroC
   // while measuring the slot preserves alignment across host padding and
   // ready/gated subtree changes. The CSS fallback covers the pre-measure paint.
   private startAlignment(): void {
-    if (this.props.items.length <= 1 || !this.stage || !this.layer) {
+    const stage = this.stage;
+    if (!this.canAlign() || !stage) {
       this.stopAlignment();
       return;
     }
 
+    this.alignmentActive = true;
     if (!this.resizeObserver && typeof ResizeObserver === "function") {
       this.resizeObserver = new ResizeObserver(this.scheduleAlignment);
     }
@@ -78,7 +95,7 @@ export class AgentGUIEmptyHeroCarouselStage extends Component<AgentGUIEmptyHeroC
         this.observeLayoutRoots();
         this.scheduleAlignment();
       });
-      this.mutationObserver.observe(this.stage, {
+      this.mutationObserver.observe(stage, {
         childList: true,
         subtree: true
       });
@@ -87,7 +104,17 @@ export class AgentGUIEmptyHeroCarouselStage extends Component<AgentGUIEmptyHeroC
     this.syncAlignment();
   }
 
+  private canAlign(): boolean {
+    return Boolean(
+      this.props.isVisible &&
+      this.props.items.length > 1 &&
+      this.stage &&
+      this.layer
+    );
+  }
+
   private stopAlignment(): void {
+    this.alignmentActive = false;
     if (this.animationFrame !== null) {
       cancelAnimationFrame(this.animationFrame);
       this.animationFrame = null;

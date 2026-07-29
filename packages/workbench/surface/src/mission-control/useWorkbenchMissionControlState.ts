@@ -17,10 +17,7 @@ import {
   orderWorkbenchNodesForMissionControl,
   resolveWorkbenchMissionControlPreviewLayout
 } from "./layout.ts";
-import type {
-  WorkbenchMissionControlAdapter,
-  WorkbenchMissionControlMode
-} from "./types.ts";
+import type { WorkbenchMissionControlAdapter } from "./types.ts";
 
 const missionControlStagePaddingX = 24;
 const missionControlStageTop = 64;
@@ -42,23 +39,22 @@ export interface WorkbenchMissionControlState {
   ): void;
   canApplyPreset(preset: WorkbenchLayoutPreset): boolean;
   canUsePreset(preset: WorkbenchLayoutPreset): boolean;
-  mode: WorkbenchMissionControlMode;
   presentation: WorkbenchSurfacePresentation;
   selectedCount: number;
 }
 
 export function useWorkbenchMissionControlState<TData>({
+  active,
   adapter,
-  mode,
   nodeIds,
   onRequestClose
 }: {
+  active: boolean;
   adapter: WorkbenchMissionControlAdapter<TData> | null;
-  mode: WorkbenchMissionControlMode | null;
   nodeIds?: readonly string[];
   onRequestClose: () => void;
 }): WorkbenchMissionControlState | null {
-  const isActive = mode !== null && adapter !== null;
+  const isActive = active && adapter !== null;
   const snapshot = useExternalStoreSnapshot(
     isActive
       ? {
@@ -89,17 +85,17 @@ export function useWorkbenchMissionControlState<TData>({
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
 
   useEffect(() => {
-    if (mode === null) {
+    if (!active) {
       return;
     }
     setSelectedNodeIds([]);
-  }, [mode]);
+  }, [active]);
 
   useEffect(() => {
-    if (mode !== null && visibleNodes.length === 0) {
+    if (active && visibleNodes.length === 0) {
       onRequestClose();
     }
-  }, [mode, onRequestClose, visibleNodes.length]);
+  }, [active, onRequestClose, visibleNodes.length]);
 
   const orderedNodes = useMemo(
     () => (isActive ? orderWorkbenchNodesForMissionControl(visibleNodes) : []),
@@ -162,27 +158,8 @@ export function useWorkbenchMissionControlState<TData>({
   );
   const canApplyPreset = useCallback(
     (nextPreset: WorkbenchLayoutPreset) =>
-      mode === "layout" &&
-      orderedSelectedNodeIds.length >= 2 &&
-      canUsePreset(nextPreset),
-    [canUsePreset, mode, orderedSelectedNodeIds.length]
-  );
-  const applyActivationAndClose = useCallback(
-    (nodeId: string) => {
-      const nextAdapter = adapter;
-      if (!nextAdapter) {
-        return;
-      }
-      const nextSnapshot = nextAdapter.getSnapshot();
-      if (!nextSnapshot.visibleNodes.some((node) => node.id === nodeId)) {
-        return;
-      }
-      onRequestClose();
-      window.requestAnimationFrame(() => {
-        nextAdapter.focusNode(nodeId);
-      });
-    },
-    [adapter, onRequestClose]
+      orderedSelectedNodeIds.length >= 2 && canUsePreset(nextPreset),
+    [canUsePreset, orderedSelectedNodeIds.length]
   );
   const applyLayoutAndClose = useCallback(
     (nodeIds: string[], nextPreset: WorkbenchLayoutPreset, lock: boolean) => {
@@ -196,24 +173,13 @@ export function useWorkbenchMissionControlState<TData>({
     },
     [adapter, onRequestClose]
   );
-  const onPreviewPress = useCallback(
-    (nodeId: string) => {
-      if (mode === null) {
-        return;
-      }
-      if (mode === "activate") {
-        applyActivationAndClose(nodeId);
-        return;
-      }
-
-      setSelectedNodeIds((current) =>
-        current.includes(nodeId)
-          ? current.filter((entry) => entry !== nodeId)
-          : [...current, nodeId]
-      );
-    },
-    [applyActivationAndClose, mode]
-  );
+  const onPreviewPress = useCallback((nodeId: string) => {
+    setSelectedNodeIds((current) =>
+      current.includes(nodeId)
+        ? current.filter((entry) => entry !== nodeId)
+        : [...current, nodeId]
+    );
+  }, []);
   const selectedNodeIdSet = useMemo(
     () => new Set(selectedNodeIds),
     [selectedNodeIds]
@@ -234,14 +200,13 @@ export function useWorkbenchMissionControlState<TData>({
 
   const presentation = useMemo<WorkbenchSurfacePresentation | null>(
     () =>
-      mode === null
+      !active
         ? null
         : {
             frameByNodeId: new Map(
               previewItems.map((item) => [item.node.id, item.frame])
             ),
             interaction: {
-              mode,
               onBackdropPress: onRequestClose,
               onNodePress: onPreviewPress,
               selectedNodeIds: selectedNodeIdSet
@@ -250,7 +215,7 @@ export function useWorkbenchMissionControlState<TData>({
             visibleNodeIds: new Set(orderedNodes.map((node) => node.id))
           },
     [
-      mode,
+      active,
       onPreviewPress,
       onRequestClose,
       orderedNodes,
@@ -260,7 +225,7 @@ export function useWorkbenchMissionControlState<TData>({
   );
 
   useEffect(() => {
-    if (mode === null) {
+    if (!active) {
       return undefined;
     }
 
@@ -275,25 +240,24 @@ export function useWorkbenchMissionControlState<TData>({
     return () => {
       window.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [mode, onRequestClose]);
+  }, [active, onRequestClose]);
 
   return useMemo<WorkbenchMissionControlState | null>(
     () =>
-      mode === null || presentation === null
+      !active || presentation === null
         ? null
         : {
             applyPreset,
             canApplyPreset,
             canUsePreset,
-            mode,
             presentation,
             selectedCount: orderedSelectedNodeIds.length
           },
     [
+      active,
       applyPreset,
       canApplyPreset,
       canUsePreset,
-      mode,
       orderedSelectedNodeIds.length,
       presentation
     ]

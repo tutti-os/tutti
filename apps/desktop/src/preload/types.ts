@@ -23,6 +23,7 @@ import type {
   ClearDeveloperLogsResult,
   DesktopDeveloperLogKind,
   DesktopDeveloperLogsState,
+  ExportDeveloperLogsInput,
   DesktopReadDockPreviewInput,
   DesktopSetCustomWallpaperInput,
   DesktopWriteDockPreviewInput,
@@ -30,11 +31,21 @@ import type {
   ConfigureAppUpdatesInput,
   DesktopWorkspaceAppFolderKind,
   DesktopHostWindowCapturePreviewInput,
+  DesktopHostWindowPreviewImages,
   DesktopHostOpenAgentWindowInput,
   DesktopHostWindowCloseRequestPayload,
   DesktopHostWindowCloseRequestResolutionPayload,
+  DesktopHostWindowLayoutPayload,
   DesktopHostWindowResizeContentWidthInput,
   DesktopHostWindowResizeContentWidthResult,
+  DesktopLaunchAgentSessionReplayInput,
+  DesktopLaunchAgentSessionReplayResult,
+  DesktopAgentSessionReplayPlayback,
+  DesktopAgentSessionReplayStatus,
+  DesktopSendAgentSessionReplayControlInput,
+  DesktopSetAgentSessionReplayPlaybackInput,
+  DesktopWaitAgentSessionReplayInput,
+  DesktopWaitAgentSessionReplayResult,
   DesktopRendererDiagnosticPayload,
   DesktopTerminalDiagnosticPayload,
   DesktopTerminalStreamUrlRequest,
@@ -44,13 +55,30 @@ import type {
   DesktopWorkspaceAppOpenFileResolvedPayload,
   DesktopWorkspaceOpenFeatureRequest,
   DesktopArchiveAgentPromptFileInput,
-  DesktopArchiveAgentPromptFileResult
+  DesktopArchiveAgentPromptFileResult,
+  DesktopBrowserAutomationRequest,
+  DesktopBrowserAutomationHostReady,
+  DesktopBrowserAutomationResponse
 } from "../shared/contracts/ipc";
 import type { BrowserNodeHostApi } from "@tutti-os/browser-node";
 
 export interface DesktopRuntimeApi {
+  getAgentSessionReplayPlayback(): Promise<DesktopAgentSessionReplayPlayback>;
+  getAgentSessionReplayStatus(): Promise<DesktopAgentSessionReplayStatus>;
   getBackendConfig(): Promise<DesktopBackendConfig>;
   getBusinessEventStreamUrl(): Promise<string>;
+  launchAgentSessionReplay(
+    input: DesktopLaunchAgentSessionReplayInput
+  ): Promise<DesktopLaunchAgentSessionReplayResult>;
+  setAgentSessionReplayPlayback(
+    input: DesktopSetAgentSessionReplayPlaybackInput
+  ): Promise<DesktopAgentSessionReplayPlayback>;
+  sendAgentSessionReplayControl(
+    input: DesktopSendAgentSessionReplayControlInput
+  ): Promise<void>;
+  waitForAgentSessionReplay(
+    input: DesktopWaitAgentSessionReplayInput
+  ): Promise<DesktopWaitAgentSessionReplayResult>;
   listWorkspaceAgentProbes(
     input: AgentProviderProbeListInput
   ): Promise<AgentProviderProbeListResult>;
@@ -61,7 +89,9 @@ export interface DesktopRuntimeApi {
 
 export interface DesktopDeveloperApi {
   clearLogs(): Promise<ClearDeveloperLogsResult>;
-  exportLogs(): Promise<ExportDeveloperLogsResult>;
+  exportLogs(
+    input: ExportDeveloperLogsInput
+  ): Promise<ExportDeveloperLogsResult>;
   getLogsState(): Promise<DesktopDeveloperLogsState>;
   openLogDirectory(): Promise<void>;
   openLogFile(kind: DesktopDeveloperLogKind): Promise<void>;
@@ -119,10 +149,16 @@ export interface DesktopHostWindowApi {
   capturePreview(
     input: DesktopHostWindowCapturePreviewInput
   ): Promise<string | null>;
+  capturePreviewImages(
+    input: DesktopHostWindowCapturePreviewInput
+  ): Promise<DesktopHostWindowPreviewImages | null>;
   minimize(): Promise<void>;
   openAgentWindow(input: DesktopHostOpenAgentWindowInput): Promise<void>;
   onCloseRequest(
     listener: (payload: DesktopHostWindowCloseRequestPayload) => void
+  ): () => void;
+  onLayout(
+    listener: (payload: DesktopHostWindowLayoutPayload) => void
   ): () => void;
   onQuitShortcutToast(listener: () => void): () => void;
   resolveCloseRequest(
@@ -222,9 +258,12 @@ export type DesktopBrowserApi = Pick<
   | "capturePreview"
   | "chooseDownloadDirectory"
   | "clearBrowsingData"
+  | "cancelChromeCookieImport"
   | "close"
   | "findInPage"
+  | "discoverChromeCookieProfiles"
   | "importCookies"
+  | "importChromeCookies"
   | "goBack"
   | "goForward"
   | "navigate"
@@ -242,7 +281,14 @@ export type DesktopBrowserApi = Pick<
   | "showDevToolsContextMenu"
   | "stopFindInPage"
   | "unregisterGuest"
->;
+  | "updateAutomationTarget"
+> & {
+  announceAutomationHostReady?(input: DesktopBrowserAutomationHostReady): void;
+  onAutomationRequest(
+    listener: (request: DesktopBrowserAutomationRequest) => void
+  ): () => void;
+  respondAutomationRequest(response: DesktopBrowserAutomationResponse): void;
+};
 
 export interface DesktopUpdateApi {
   checkForUpdates(): Promise<AppUpdateState>;

@@ -1,39 +1,10 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tuttiAssetProtocolScheme } from "../../shared/tuttiAssetProtocol.ts";
-
-const tuttiAssetRoutes = {
-  "agent/claudecode.png": {
-    builtFilePrefixes: ["claude-rounded-", "claudecode-"],
-    sourceRelativePath:
-      "src/renderer/src/assets/workspace-canvas/dock/default/claudecode.png"
-  },
-  "agent/codex.png": {
-    builtFilePrefixes: ["codex-rounded-", "codex-"],
-    sourceRelativePath:
-      "src/renderer/src/assets/workspace-canvas/dock/default/codex.png"
-  },
-  "agent/tutti.png": {
-    builtFilePrefixes: ["tutti-"],
-    sourceRelativePath:
-      "src/renderer/src/assets/workspace-canvas/dock/default/tutti.png"
-  },
-  "file/default.png": {
-    builtFilePrefixes: ["document-"],
-    sourceRelativePath:
-      "src/renderer/src/assets/workspace-canvas/dock/default/apps/document.png"
-  },
-  "folder/default.png": {
-    builtFilePrefixes: ["files-"],
-    sourceRelativePath:
-      "src/renderer/src/assets/workspace-canvas/dock/default/files.png"
-  },
-  "issue/default.png": {
-    builtFilePrefixes: ["issue-"],
-    sourceRelativePath:
-      "src/renderer/src/assets/workspace-canvas/dock/default/issue.png"
-  }
-} as const;
+import {
+  tuttiAssetProtocolAssets,
+  type TuttiAssetProtocolRoute
+} from "./tuttiAssetProtocolAssets.ts";
 
 export function resolveTuttiAssetProtocolFilePath(
   url: string,
@@ -44,27 +15,23 @@ export function resolveTuttiAssetProtocolFilePath(
     return null;
   }
 
-  const sourcePath = join(appPath, route.sourceRelativePath);
+  const sourcePath = join(appPath, tuttiAssetProtocolAssets[route]);
   if (existsSync(sourcePath)) {
     return sourcePath;
   }
 
-  const builtAssetsDirectory = join(appPath, "out", "renderer", "assets");
-  if (!existsSync(builtAssetsDirectory)) {
-    return null;
-  }
-
-  const builtFileName = readdirSync(builtAssetsDirectory).find(
-    (fileName) =>
-      route.builtFilePrefixes.some((prefix) => fileName.startsWith(prefix)) &&
-      fileName.toLowerCase().endsWith(".png")
+  const builtAssetPath = join(
+    appPath,
+    "out",
+    "renderer",
+    "assets",
+    "tutti-asset",
+    route
   );
-  return builtFileName ? join(builtAssetsDirectory, builtFileName) : null;
+  return existsSync(builtAssetPath) ? builtAssetPath : null;
 }
 
-function tuttiAssetRouteFromUrl(
-  value: string
-): (typeof tuttiAssetRoutes)[keyof typeof tuttiAssetRoutes] | null {
+function tuttiAssetRouteFromUrl(value: string): TuttiAssetProtocolRoute | null {
   let url: URL;
   try {
     url = new URL(value);
@@ -75,5 +42,7 @@ function tuttiAssetRouteFromUrl(
     return null;
   }
   const key = `${url.hostname}${url.pathname}`.replace(/^\/+/, "");
-  return tuttiAssetRoutes[key as keyof typeof tuttiAssetRoutes] ?? null;
+  return key in tuttiAssetProtocolAssets
+    ? (key as TuttiAssetProtocolRoute)
+    : null;
 }

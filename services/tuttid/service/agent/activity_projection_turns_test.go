@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
@@ -13,27 +15,36 @@ func TestPublishPersistedTurnStateObservesOnlyCanonicalSettlement(t *testing.T) 
 	t.Parallel()
 	observer := &rootTurnObserverStub{}
 	projection := &ActivityProjection{rootTurnObserver: observer}
-	input := agentsessionstore.ReportSessionStateInput{
+	input := canonical.ReportSessionStateInput{
 		WorkspaceID: "ws-1", AgentSessionID: "root",
 	}
 
-	projection.publishPersistedTurnState(context.Background(), input, agentactivitybiz.ActivityStateReportResult{
-		RootTurnAccepted: true,
-		RootTurn: agentactivitybiz.Turn{
-			AgentSessionID: "root", TurnID: "goal-turn", Phase: agentactivitybiz.TurnPhaseWaiting,
-		},
-	})
+	if err := projection.ObserveCommitted(context.Background(), agenthost.CommittedDelta{
+		ActivityState: &agenthost.ActivityStateCommitted{Input: input, Result: agentactivitybiz.ActivityStateReportResult{
+			RootTurnAccepted: true,
+			RootTurn: agentactivitybiz.Turn{
+				AgentSessionID: "root", TurnID: "goal-turn", Phase: agentactivitybiz.TurnPhaseWaiting,
+			},
+		}},
+	}); err != nil {
+		t.Fatalf("observe waiting commit: %v", err)
+	}
 	if len(observer.turns) != 0 {
 		t.Fatalf("waiting root turn released runtime slot: %#v", observer.turns)
 	}
 
-	projection.publishPersistedTurnState(context.Background(), input, agentactivitybiz.ActivityStateReportResult{
-		RootTurnAccepted: true,
-		RootTurn: agentactivitybiz.Turn{
-			AgentSessionID: "root", TurnID: "goal-turn", Phase: agentactivitybiz.TurnPhaseSettled,
-			Outcome: agentactivitybiz.TurnOutcomeCompleted,
-		},
-	})
+	settled := agentactivitybiz.Turn{
+		AgentSessionID: "root", TurnID: "goal-turn", Phase: agentactivitybiz.TurnPhaseSettled,
+		Outcome: agentactivitybiz.TurnOutcomeCompleted,
+	}
+	if err := projection.ObserveCommitted(context.Background(), agenthost.CommittedDelta{
+		ActivityState: &agenthost.ActivityStateCommitted{Input: input, Result: agentactivitybiz.ActivityStateReportResult{
+			RootTurnAccepted: true, RootTurn: settled,
+		}},
+		RootTurnsSettled: []agenthost.RootTurnSettled{{WorkspaceID: "ws-1", AgentSessionID: "root", Turn: settled}},
+	}); err != nil {
+		t.Fatalf("observe settled commit: %v", err)
+	}
 	if len(observer.turns) != 1 || observer.turns[0].TurnID != "goal-turn" || observer.turns[0].Outcome != agentactivitybiz.TurnOutcomeCompleted {
 		t.Fatalf("canonical settlement observations = %#v", observer.turns)
 	}
@@ -43,15 +54,15 @@ func TestTurnTransitionFromStateInputRequiresExplicitTurnPatch(t *testing.T) {
 	t.Parallel()
 
 	activeTurnID := "root-turn-1"
-	input := agentsessionstore.ReportSessionStateInput{
+	input := canonical.ReportSessionStateInput{
 		WorkspaceID:    "ws-1",
 		AgentSessionID: "session-1",
-		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
-			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{
+		State: canonical.WorkspaceAgentSessionStateUpdate{
+			TurnLifecycle: &canonical.WorkspaceAgentTurnLifecycle{
 				ActiveTurnID: &activeTurnID,
 				Phase:        agentactivitybiz.TurnPhaseWaiting,
 			},
-			RootProviderTurn: &agentsessionstore.WorkspaceAgentRootProviderTurnTransition{
+			RootProviderTurn: &canonical.WorkspaceAgentRootProviderTurnTransition{
 				RootTurnID:     "root-turn-1",
 				ProviderTurnID: "provider-turn-1",
 				Phase:          agentsessionstore.RootProviderTurnPhaseCompleted,
@@ -85,6 +96,7 @@ func TestGeneratedWorkspaceAgentTurnCoversAllFields(t *testing.T) {
 		WorkspaceID:            "ws-1",
 		AgentSessionID:         "session-1",
 		TurnID:                 "turn-1",
+		CapabilityRefs:         []agentactivitybiz.CapabilityReference{{Capability: "tutti", Source: "slash_command"}},
 		Origin:                 agentactivitybiz.TurnOriginGoalContinuation,
 		SourceGoalOperationID:  "goal-op-1",
 		SourceGoalRevision:     2,

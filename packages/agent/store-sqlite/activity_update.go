@@ -28,12 +28,25 @@ func (s *Store) UpdateSessionPinned(
 	if pinned {
 		pinnedAtUnixMS = now
 	}
-	result, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Session{}, false, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	result, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_sessions
 SET pinned_at_unix_ms = ?,
-    updated_at_unix_ms = ?
+    updated_at_unix_ms = CASE
+      WHEN ? > updated_at_unix_ms THEN ?
+      ELSE updated_at_unix_ms + 1
+    END
 WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
-`, pinnedAtUnixMS, now, workspaceID, agentSessionID)
+`, pinnedAtUnixMS, now, now, workspaceID, agentSessionID)
 	if err != nil {
 		return Session{}, false, fmt.Errorf("update workspace agent session pinned state: %w", err)
 	}
@@ -42,12 +55,25 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 		return Session{}, false, err
 	}
 	if !updated {
+		if _, err := s.commitTransaction(ctx, tx, workspaceID, nil); err != nil {
+			return Session{}, false, err
+		}
+		committed = true
 		return Session{}, false, nil
 	}
+	delta, err := s.commitTransaction(ctx, tx, workspaceID, []TransactionMutation{
+		transactionMutation(workspaceID, agentSessionID, MutationEntitySession, agentSessionID, "upsert", now),
+	})
+	if err != nil {
+		return Session{}, false, err
+	}
+	committed = true
 	session, ok, err := s.GetSession(ctx, workspaceID, agentSessionID)
 	if err != nil {
 		return Session{}, false, err
 	}
+	session.CommitTransactionID = delta.TransactionID
+	session.CommitDelta = delta
 	return session, ok, nil
 }
 
@@ -63,17 +89,35 @@ func (s *Store) UpdateSessionTitle(
 	workspaceID = strings.TrimSpace(workspaceID)
 	agentSessionID = strings.TrimSpace(agentSessionID)
 	title = strings.TrimSpace(title)
-	if workspaceID == "" || agentSessionID == "" || title == "" {
+	if workspaceID == "" || agentSessionID == "" {
 		return Session{}, false, nil
 	}
 
 	now := unixMs(time.Now().UTC())
-	result, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Session{}, false, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	result, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_sessions
 SET title = ?,
-    updated_at_unix_ms = ?
+    internal_runtime_context_json = json_set(
+      internal_runtime_context_json,
+      '$.tuttiInitialTitleEstablished',
+      json('true')
+    ),
+    updated_at_unix_ms = CASE
+      WHEN ? > updated_at_unix_ms THEN ?
+      ELSE updated_at_unix_ms + 1
+    END
 WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
-`, title, now, workspaceID, agentSessionID)
+`, title, now, now, workspaceID, agentSessionID)
 	if err != nil {
 		return Session{}, false, fmt.Errorf("update workspace agent session title: %w", err)
 	}
@@ -82,12 +126,25 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 		return Session{}, false, err
 	}
 	if !updated {
+		if _, err := s.commitTransaction(ctx, tx, workspaceID, nil); err != nil {
+			return Session{}, false, err
+		}
+		committed = true
 		return Session{}, false, nil
 	}
+	delta, err := s.commitTransaction(ctx, tx, workspaceID, []TransactionMutation{
+		transactionMutation(workspaceID, agentSessionID, MutationEntitySession, agentSessionID, "upsert", now),
+	})
+	if err != nil {
+		return Session{}, false, err
+	}
+	committed = true
 	session, ok, err := s.GetSession(ctx, workspaceID, agentSessionID)
 	if err != nil {
 		return Session{}, false, err
 	}
+	session.CommitTransactionID = delta.TransactionID
+	session.CommitDelta = delta
 	return session, ok, nil
 }
 
@@ -112,13 +169,43 @@ func (s *Store) UpdateSessionSettings(
 	}
 
 	now := unixMs(time.Now().UTC())
-	result, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Session{}, false, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	if err := requireSessionForkSourceWritableTx(
+		ctx,
+		tx,
+		workspaceID,
+		agentSessionID,
+	); err != nil {
+		return Session{}, false, err
+	}
+	result, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_sessions
 SET model = ?,
     settings_json = ?,
-    updated_at_unix_ms = ?
+    session_metadata_json = CASE
+      WHEN trim(model) <> trim(?) THEN
+        CASE
+          WHEN json_array_length(json_extract(session_metadata_json, '$.usage.quotas')) > 0
+            THEN json_remove(session_metadata_json, '$.usage.contextWindow')
+          ELSE json_remove(session_metadata_json, '$.usage')
+        END
+      ELSE session_metadata_json
+    END,
+    updated_at_unix_ms = CASE
+      WHEN ? > updated_at_unix_ms THEN ?
+      ELSE updated_at_unix_ms + 1
+    END
 WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
-`, strings.TrimSpace(model), settingsJSON, now, workspaceID, agentSessionID)
+`, strings.TrimSpace(model), settingsJSON, strings.TrimSpace(model), now, now, workspaceID, agentSessionID)
 	if err != nil {
 		return Session{}, false, fmt.Errorf("update workspace agent session settings: %w", err)
 	}
@@ -127,11 +214,24 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 		return Session{}, false, err
 	}
 	if !updated {
+		if _, err := s.commitTransaction(ctx, tx, workspaceID, nil); err != nil {
+			return Session{}, false, err
+		}
+		committed = true
 		return Session{}, false, nil
 	}
+	delta, err := s.commitTransaction(ctx, tx, workspaceID, []TransactionMutation{
+		transactionMutation(workspaceID, agentSessionID, MutationEntitySession, agentSessionID, "upsert", now),
+	})
+	if err != nil {
+		return Session{}, false, err
+	}
+	committed = true
 	session, ok, err := s.GetSession(ctx, workspaceID, agentSessionID)
 	if err != nil {
 		return Session{}, false, err
 	}
+	session.CommitTransactionID = delta.TransactionID
+	session.CommitDelta = delta
 	return session, ok, nil
 }

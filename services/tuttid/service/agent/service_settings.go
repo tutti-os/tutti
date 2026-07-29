@@ -3,6 +3,9 @@ package agent
 import (
 	"context"
 	"strings"
+
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
+	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
 func (s *Service) clampReasoningEffortForModel(
@@ -22,14 +25,14 @@ func (s *Service) clampReasoningEffortForModel(
 		model = composerDefaultModel(ctx, provider, "", s.ModelCatalog)
 	}
 	catalogOptions, ok := composerModelOptionsFromCatalog(ctx, s.ModelCatalog, provider, "", model)
-	if !ok || !catalogOptions.ReasoningEffortsAdvertised {
+	if !ok || !catalogOptions.Selection.ReasoningEffortsAdvertised {
 		return normalizeReasoningEffortForProvider(provider, selected)
 	}
 	return resolveAdvertisedReasoningEffort(
 		provider,
 		selected,
-		catalogOptions.DefaultReasoningEffort,
-		catalogOptions.ReasoningEfforts,
+		catalogOptions.Selection.DefaultReasoningEffort,
+		catalogOptions.Selection.ReasoningEfforts,
 	)
 }
 
@@ -46,11 +49,32 @@ func (s *Service) clampReasoningEffortPointerForModel(
 	return &clamped
 }
 
+func (s *Service) clampReasoningEffortPointerForLaunch(
+	ctx context.Context,
+	provider string,
+	providerTargetRef map[string]any,
+	model string,
+	selected *string,
+) *string {
+	if selected == nil {
+		return nil
+	}
+	if providerTargetRefKind(providerTargetRef) == "agent_extension" {
+		value := strings.TrimSpace(*selected)
+		return &value
+	}
+	return s.clampReasoningEffortPointerForModel(ctx, provider, model, selected)
+}
+
 func (s *Service) clampPersistedSessionReasoningEffortForResume(
 	ctx context.Context,
 	session PersistedSession,
 ) PersistedSession {
 	if strings.TrimSpace(session.Settings.ReasoningEffort) == "" {
+		return session
+	}
+	if agentprovider.Normalize(session.Provider) == "" {
+		session.Settings.ReasoningEffort = strings.TrimSpace(session.Settings.ReasoningEffort)
 		return session
 	}
 	session.Settings.ReasoningEffort = s.clampReasoningEffortForModel(
@@ -73,20 +97,35 @@ func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentS
 		return Session{}, err
 	}
 	defer release()
-	if _, live := s.controller().Session(workspaceID, agentSessionID); !live {
-		return s.updatePersistedSessionSettings(ctx, workspaceID, agentSessionID, settings)
-	}
-	ensured, err := s.ensureRuntimeSessionResultLocked(ctx, workspaceID, agentSessionID)
+	ref := agenthost.SessionRef{WorkspaceID: workspaceID, AgentSessionID: agentSessionID}
+	ctx = withServiceHeldSessionLock(ctx, s, ref)
+	observed, err := s.ApplicationHost().GetSession(ctx, ref)
 	if err != nil {
 		return Session{}, err
 	}
-	provider := strings.TrimSpace(ensured.Session.Provider)
-	selectedModel := ""
-	selectedReasoningEffort := ""
-	if ensured.Session.Settings != nil {
-		selectedModel = ensured.Session.Settings.Model
-		selectedReasoningEffort = ensured.Session.Settings.ReasoningEffort
+	provider := strings.TrimSpace(observed.Canonical.Provider)
+	runtimeContext := observed.Canonical.InternalRuntimeContext
+	currentSettings := composerSettingsFromPayload(observed.Canonical.Settings)
+	if observed.Live {
+		provider = strings.TrimSpace(observed.Session.Provider)
+		runtimeContext = observed.Session.RuntimeContext
+		if observed.Session.Settings != nil {
+			currentSettings = *observed.Session.Settings
+		}
 	}
+	if settings.Model != nil {
+		if err := s.validateSessionModelAgainstRuntimeSnapshot(
+			ctx,
+			strings.TrimSpace(workspaceID),
+			provider,
+			runtimeContext,
+			strings.TrimSpace(*settings.Model),
+		); err != nil {
+			return Session{}, err
+		}
+	}
+	selectedModel := currentSettings.Model
+	selectedReasoningEffort := currentSettings.ReasoningEffort
 	if settings.Model != nil {
 		selectedModel = strings.TrimSpace(*settings.Model)
 	}
@@ -112,88 +151,18 @@ func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentS
 		normalizedSpeed := normalizeSpeedForProvider(provider, *settings.Speed)
 		settings.Speed = &normalizedSpeed
 	}
-	if err := s.controller().UpdateSettings(ctx, RuntimeUpdateSettingsInput{
-		WorkspaceID:    workspaceID,
-		AgentSessionID: agentSessionID,
-		Settings:       settings,
-	}); err != nil {
-		return Session{}, normalizeRuntimeError(err)
-	}
-	session, err := s.Get(ctx, workspaceID, agentSessionID)
+	result, err := s.ApplicationHost().UpdateSettings(ctx, agenthost.UpdateSettingsInput{
+		WorkspaceID: workspaceID, AgentSessionID: agentSessionID, Settings: settings,
+	})
 	if err != nil {
 		return Session{}, err
 	}
-	return session, nil
-}
-
-func (s *Service) updatePersistedSessionSettings(
-	ctx context.Context,
-	workspaceID string,
-	agentSessionID string,
-	patch ComposerSettingsPatch,
-) (Session, error) {
-	if s.SessionReader == nil {
-		return Session{}, ErrSessionNotFound
-	}
-	persisted, ok := s.SessionReader.GetSession(workspaceID, agentSessionID)
-	if !ok {
-		return Session{}, ErrSessionNotFound
-	}
-	updater, ok := s.SessionReader.(SessionSettingsUpdater)
-	if !ok {
-		return Session{}, ErrSessionNotFound
-	}
-	settings := applyComposerSettingsPatch(persisted.Settings, patch)
-	settings = normalizeObservedComposerSettingsForProvider(persisted.Provider, settings)
-	if patch.Model != nil || patch.ReasoningEffort != nil {
-		settings.ReasoningEffort = s.clampReasoningEffortForModel(
-			ctx,
-			persisted.Provider,
-			settings.Model,
-			settings.ReasoningEffort,
-		)
-	}
-	updated, ok, err := updater.UpdateSessionSettings(
+	return s.projectHostSessionResult(
 		ctx,
-		workspaceID,
-		agentSessionID,
-		settings,
+		result.Canonical,
+		result.Session,
+		result.Live,
+		result.Live,
+		true,
 	)
-	if err != nil {
-		return Session{}, err
-	}
-	if !ok {
-		return Session{}, ErrSessionNotFound
-	}
-	return s.withProtocolV2TurnState(ctx, workspaceID, sessionFromPersisted(
-		updated,
-		persistedSessionCanResume(s.controller(), updated),
-	))
-}
-
-func applyComposerSettingsPatch(settings ComposerSettings, patch ComposerSettingsPatch) ComposerSettings {
-	if patch.Model != nil {
-		settings.Model = strings.TrimSpace(*patch.Model)
-	}
-	if patch.PermissionModeID != nil {
-		settings.PermissionModeID = strings.TrimSpace(*patch.PermissionModeID)
-	}
-	if patch.PlanMode != nil {
-		settings.PlanMode = *patch.PlanMode
-	}
-	if patch.BrowserUse != nil {
-		value := *patch.BrowserUse
-		settings.BrowserUse = &value
-	}
-	if patch.ComputerUse != nil {
-		value := *patch.ComputerUse
-		settings.ComputerUse = &value
-	}
-	if patch.ReasoningEffort != nil {
-		settings.ReasoningEffort = strings.TrimSpace(*patch.ReasoningEffort)
-	}
-	if patch.Speed != nil {
-		settings.Speed = strings.TrimSpace(*patch.Speed)
-	}
-	return settings
 }

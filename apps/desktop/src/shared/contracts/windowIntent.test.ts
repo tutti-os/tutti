@@ -130,6 +130,8 @@ test("encodeDesktopWindowIntent carries agent provider target bootstrap", () => 
           agentTargetId: "target-1",
           availability: { status: "ready" },
           iconUrl: "tutti-asset://agent/codex.png",
+          maskIconUrl: "tutti-asset://agent/codex-mask.png",
+          heroImageUrl: "tutti-asset://agent/codex-hero.jpg",
           name: "Codex",
           provider: "codex"
         }
@@ -159,6 +161,8 @@ test("encodeDesktopWindowIntent carries agent provider target bootstrap", () => 
         agentTargetId: "target-1",
         availability: { status: "ready" },
         iconUrl: "tutti-asset://agent/codex.png",
+        maskIconUrl: "tutti-asset://agent/codex-mask.png",
+        heroImageUrl: "tutti-asset://agent/codex-hero.jpg",
         name: "Codex",
         provider: "codex"
       }

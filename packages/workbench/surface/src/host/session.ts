@@ -1,5 +1,8 @@
 import type { WorkbenchSnapshot } from "@tutti-os/workbench-snapshot";
-import { createWorkbenchSnapshotFromState } from "../core/snapshot.ts";
+import {
+  createWorkbenchSnapshotFromState,
+  createWorkbenchSnapshotLayoutBasis
+} from "../core/snapshot.ts";
 import type { WorkbenchNode, WorkbenchState } from "../core/types.ts";
 import { createWorkbenchController } from "../store/createWorkbenchController.ts";
 import type {
@@ -8,7 +11,6 @@ import type {
 } from "../store/types.ts";
 import {
   type ClosedDockWindowFrameEntry,
-  compactRestoredWorkbenchHostNodes,
   createDefaultLaunchResult,
   createProjectedNodeID,
   createWorkbenchLaunchedHostNode,
@@ -25,13 +27,22 @@ import {
   updateProjectedNodeFromInput,
   writeClosedDockWindowFrameEntries
 } from "./sessionState.ts";
-import { readWorkbenchHostExternalState } from "./externalState.ts";
+import {
+  restoreClosedDockWindowFrameEntriesToSurface,
+  restoreWorkbenchHostNodesToSurface,
+  restoreWorkbenchHostSpacesToSurface
+} from "./snapshotLayout.ts";
+import {
+  createWorkbenchHostExternalStateLookupInput,
+  readWorkbenchHostExternalState
+} from "./externalState.ts";
 import { sanitizeWorkbenchHostSnapshot } from "./snapshotSanitizer.ts";
 import type { WorkbenchHostNodeData } from "./types.ts";
 import type {
   WorkbenchHostActivation,
   WorkbenchHostActivationTarget,
   WorkbenchHostCloseEffect,
+  WorkbenchHostExternalStateLookupInput,
   WorkbenchHostExternalStateSource,
   WorkbenchHostLaunchInput,
   WorkbenchHostLaunchRequest,
@@ -114,7 +125,7 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
   private loadPromise: Promise<void> | null = null;
   private readonly nodeLeases = new Map<string, WorkbenchHostNodeLeaseHandle>();
   private nextActivationSequence = 1;
-  private hasAppliedInitialCompactRestoredFrames = false;
+  private hasAppliedInitialRestoredLayout = false;
   private hasReceivedSurfaceSize = false;
   private observedSurfaceSize:
     | WorkbenchState<WorkbenchHostNodeData>["surfaceSize"]
@@ -126,7 +137,13 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
   private saveTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
   private appliedSaveSequence = 0;
   private saveSequence = 0;
-  private externalStateUnsubscribe: (() => void) | null = null;
+  private readonly externalStatePersistenceSubscriptions = new Map<
+    string,
+    {
+      lookupInput: WorkbenchHostExternalStateLookupInput;
+      unsubscribe: () => void;
+    }
+  >();
   private leaseUnsubscribe: (() => void) | null = null;
   private unsubscribe: (() => void) | null = null;
 
@@ -170,17 +187,23 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
         this.nodeDefinitions,
         this.projectedNodes
       ),
-      { debugDiagnostics: input.debugDiagnostics }
+      {
+        debugDiagnostics: input.debugDiagnostics,
+        onSurfaceSizeMeasured: () => {
+          this.hasReceivedSurfaceSize = true;
+          this.applyInitialRestoredLayout();
+        }
+      }
     );
     this.observedSurfaceSize = this.controller.getSnapshot().surfaceSize;
     this.leaseUnsubscribe = this.controller.subscribe(() => {
       this.noteSurfaceSizeChange();
       this.reconcileNodeLeases();
-      this.applyInitialCompactRestoredFrames();
+      this.applyInitialRestoredLayout();
     });
     this.isSnapshotLoaded = this.loadedSnapshot !== null;
     if (this.isSnapshotLoaded) {
-      this.applyInitialCompactRestoredFrames();
+      this.applyInitialRestoredLayout();
       this.subscribeToPersistence();
     }
   }
@@ -311,8 +334,7 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
     this.leaseUnsubscribe = null;
     this.unsubscribe?.();
     this.unsubscribe = null;
-    this.externalStateUnsubscribe?.();
-    this.externalStateUnsubscribe = null;
+    this.disposeExternalStatePersistenceSubscriptions();
     if (this.saveTimer !== null) {
       globalThis.clearTimeout(this.saveTimer);
       this.saveTimer = null;
@@ -431,10 +453,10 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
   }
 
   private async loadInitialSnapshot(generation: number): Promise<void> {
+    this.hasAppliedInitialRestoredLayout = false;
     this.unsubscribe?.();
     this.unsubscribe = null;
-    this.externalStateUnsubscribe?.();
-    this.externalStateUnsubscribe = null;
+    this.disposeExternalStatePersistenceSubscriptions();
     if (this.saveTimer !== null) {
       globalThis.clearTimeout(this.saveTimer);
       this.saveTimer = null;
@@ -478,7 +500,7 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
 
     this.reconcileNodeLeases();
     this.isSnapshotLoaded = true;
-    this.applyInitialCompactRestoredFrames();
+    this.applyInitialRestoredLayout();
     this.subscribeToPersistence();
     this.markReady();
   }
@@ -847,7 +869,7 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
 
   private resetHydrationBarrier(): void {
     this.isHydratingInitialSnapshot = true;
-    this.hasAppliedInitialCompactRestoredFrames = false;
+    this.hasAppliedInitialRestoredLayout = false;
     this.readyPromise = new Promise((resolve) => {
       this.resolveReady = resolve;
     });
@@ -865,9 +887,9 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
     this.observedSurfaceSize = currentSurfaceSize;
   }
 
-  private applyInitialCompactRestoredFrames(): void {
+  private applyInitialRestoredLayout(): void {
     if (
-      this.hasAppliedInitialCompactRestoredFrames ||
+      this.hasAppliedInitialRestoredLayout ||
       !this.isSnapshotLoaded ||
       !this.hasReceivedSurfaceSize
     ) {
@@ -875,17 +897,43 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
     }
 
     const snapshot = this.controller.getSnapshot();
-    const compactedNodes = compactRestoredWorkbenchHostNodes({
+    const sourceLayoutBasis = this.loadedSnapshot?.layoutBasis;
+    const restoredNodes = restoreWorkbenchHostNodesToSurface({
       constraints: snapshot.layoutConstraints,
+      layoutBasis: sourceLayoutBasis,
       nodeDefinitionByType: this.nodeDefinitionByType,
       nodes: snapshot.nodes,
+      persistedNodes: this.loadedSnapshot?.nodes,
       surfaceSize: snapshot.surfaceSize
     });
-    this.hasAppliedInitialCompactRestoredFrames = true;
-    if (shallowArrayEqual(snapshot.nodes, compactedNodes)) {
-      return;
+    this.closedDockWindowFrameEntries =
+      restoreClosedDockWindowFrameEntriesToSurface({
+        constraints: snapshot.layoutConstraints,
+        entries: this.closedDockWindowFrameEntries.values(),
+        layoutBasis: sourceLayoutBasis,
+        nodeDefinitionByType: this.nodeDefinitionByType,
+        surfaceSize: snapshot.surfaceSize
+      });
+    if (this.loadedSnapshot) {
+      this.loadedSnapshot = {
+        ...this.loadedSnapshot,
+        layoutBasis: createWorkbenchSnapshotLayoutBasis(snapshot),
+        metadata: writeClosedDockWindowFrameEntries(
+          this.loadedSnapshot.metadata,
+          this.closedDockWindowFrameEntries.values()
+        ),
+        spaces: restoreWorkbenchHostSpacesToSurface({
+          constraints: snapshot.layoutConstraints,
+          layoutBasis: sourceLayoutBasis,
+          spaces: this.loadedSnapshot.spaces,
+          surfaceSize: snapshot.surfaceSize
+        })
+      };
     }
-    this.controller.commands.replaceNodes(compactedNodes);
+    this.hasAppliedInitialRestoredLayout = true;
+    if (!shallowArrayEqual(snapshot.nodes, restoredNodes)) {
+      this.controller.commands.replaceNodes(restoredNodes);
+    }
   }
 
   private queueProjectedNodeReconciliation(): void {
@@ -1073,19 +1121,60 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
 
     this.unsubscribe = this.controller.subscribe(() => {
       this.schedulePersistedSnapshotWrite();
+      this.refreshExternalStatePersistenceSubscription();
     });
-    if (this.externalStateUnsubscribe === null) {
-      const source = this.input.externalStateSource;
-      const canReadSnapshotNodeState =
-        typeof source?.getSnapshotNodeState === "function";
-      if (!canReadSnapshotNodeState) {
-        return;
-      }
-      this.externalStateUnsubscribe =
-        source?.subscribe?.(() => {
-          this.schedulePersistedSnapshotWrite();
-        }) ?? null;
+    this.refreshExternalStatePersistenceSubscription();
+  }
+
+  private refreshExternalStatePersistenceSubscription(): void {
+    const source = this.input.externalStateSource;
+    if (
+      typeof source?.getSnapshotNodeState !== "function" ||
+      !source.subscribeNodeState
+    ) {
+      this.disposeExternalStatePersistenceSubscriptions();
+      return;
     }
+
+    const activeNodeIDs = new Set<string>();
+    for (const node of this.controller.getSnapshot().nodes) {
+      activeNodeIDs.add(node.id);
+      const lookupInput = createWorkbenchHostExternalStateLookupInput({
+        node,
+        workspaceId: this.input.workspaceId
+      });
+      const existing = this.externalStatePersistenceSubscriptions.get(node.id);
+      if (
+        existing &&
+        sameExternalStateLookupInput(existing.lookupInput, lookupInput)
+      ) {
+        continue;
+      }
+      existing?.unsubscribe();
+      const unsubscribe = source.subscribeNodeState(lookupInput, () =>
+        this.schedulePersistedSnapshotWrite()
+      );
+      this.externalStatePersistenceSubscriptions.set(node.id, {
+        lookupInput,
+        unsubscribe
+      });
+    }
+
+    for (const [nodeID, subscription] of this
+      .externalStatePersistenceSubscriptions) {
+      if (activeNodeIDs.has(nodeID)) {
+        continue;
+      }
+      subscription.unsubscribe();
+      this.externalStatePersistenceSubscriptions.delete(nodeID);
+    }
+  }
+
+  private disposeExternalStatePersistenceSubscriptions(): void {
+    for (const subscription of this.externalStatePersistenceSubscriptions.values()) {
+      subscription.unsubscribe();
+    }
+    this.externalStatePersistenceSubscriptions.clear();
   }
 
   private disposeNodeLeases(): void {
@@ -1168,6 +1257,20 @@ function withoutRuntimeNodeState(
   const next = { ...data };
   delete next.runtimeNodeState;
   return next;
+}
+
+function sameExternalStateLookupInput(
+  left: WorkbenchHostExternalStateLookupInput,
+  right: WorkbenchHostExternalStateLookupInput
+): boolean {
+  return (
+    left.instanceId === right.instanceId &&
+    left.instanceKey === right.instanceKey &&
+    left.nodeId === right.nodeId &&
+    left.subject === right.subject &&
+    left.typeId === right.typeId &&
+    left.workspaceId === right.workspaceId
+  );
 }
 
 function withoutSnapshotNodeState(

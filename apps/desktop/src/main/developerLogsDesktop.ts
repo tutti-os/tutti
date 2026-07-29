@@ -1,12 +1,16 @@
 import { app } from "electron";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
-import type { ExportDeveloperLogsResult } from "../shared/contracts/ipc.ts";
+import type {
+  ExportDeveloperLogsInput,
+  ExportDeveloperLogsResult
+} from "../shared/contracts/ipc.ts";
 import {
   createDeveloperLogsService,
   type DeveloperLogsAppCenterSnapshot
 } from "./developerLogs.ts";
 import type { DeveloperLogsAgentSessionRecord } from "./developerLogsAgentSessions.ts";
+import { loadDeveloperLogsAgentSessionAttachments } from "./developerLogsAgentSessions.ts";
 import { getSystemDesktopLocale } from "./desktopLocale.ts";
 import type { DesktopHostPreferencesState } from "./desktopHostPreferences.ts";
 import { resolveDesktopDefaultsFromEnv } from "./defaults.ts";
@@ -20,6 +24,7 @@ export function createDesktopDeveloperLogsService(
     TuttidClient,
     | "listWorkspaceAgentSessionMessages"
     | "listWorkspaceAgentSessions"
+    | "readWorkspaceAgentSessionAttachment"
     | "listWorkspaceAppFactoryJobs"
     | "listWorkspaceApps"
     | "listWorkspaces"
@@ -52,18 +57,26 @@ export async function exportDesktopDeveloperLogsAndNotify(
     TuttidClient,
     | "listWorkspaceAgentSessionMessages"
     | "listWorkspaceAgentSessions"
+    | "readWorkspaceAgentSessionAttachment"
     | "listWorkspaceAppFactoryJobs"
     | "listWorkspaceApps"
     | "listWorkspaces"
-  >
+  >,
+  exportInput: ExportDeveloperLogsInput = {
+    includeAgentSessions: true,
+    scope: "recent-3-days"
+  }
 ): Promise<ExportDeveloperLogsResult> {
   const defaults = resolveDesktopDefaultsFromEnv();
   getDesktopLogger().info("developer logs export requested", {
-    logsDir: defaults.state.logsDir
+    logsDir: defaults.state.logsDir,
+    includeAgentSessions: exportInput.includeAgentSessions,
+    scope: exportInput.scope
   });
   await flushDesktopLogger();
 
   return exportDeveloperLogsToDefaultDownloadsPathAndNotify({
+    exportInput,
     locale: preferences.getLocale(),
     service: createDesktopDeveloperLogsService(preferences, tuttidClient)
   });
@@ -74,6 +87,7 @@ async function listDeveloperLogsAgentSessions(
     TuttidClient,
     | "listWorkspaceAgentSessionMessages"
     | "listWorkspaceAgentSessions"
+    | "readWorkspaceAgentSessionAttachment"
     | "listWorkspaceAppFactoryJobs"
     | "listWorkspaceApps"
     | "listWorkspaces"
@@ -130,8 +144,18 @@ async function listDeveloperLogsAgentSessions(
         if (!messages) {
           return null;
         }
+        const attachments = await loadDeveloperLogsAgentSessionAttachments(
+          messages.messages,
+          (attachmentID) =>
+            tuttidClient.readWorkspaceAgentSessionAttachment(
+              session.workspaceID,
+              session.agentSessionID,
+              attachmentID
+            )
+        );
         return {
           ...session,
+          ...attachments,
           hasMoreMessages: messages.hasMore,
           latestMessageVersion: messages.latestVersion,
           messages: messages.messages

@@ -17,8 +17,7 @@ import type {
   WorkbenchHostCloseDialogRequest,
   WorkbenchHostHandle,
   WorkbenchHostNodeData,
-  WorkbenchMissionControlAdapter,
-  WorkbenchMissionControlMode
+  WorkbenchMissionControlAdapter
 } from "@tutti-os/workbench-surface";
 import type { WorkspaceAppCenterApp } from "@tutti-os/workspace-app-center";
 import {
@@ -32,7 +31,7 @@ import { IReporterService } from "@renderer/features/analytics";
 import { IAgentsService } from "@renderer/features/workspace-agent/services/agentsService.interface.ts";
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences/ui/useDesktopPreferencesService";
 import { useWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager/ui/useWorkspaceFileManagerService";
-import { IWorkspaceFilePreviewSurfaceHost } from "@renderer/features/workspace-file-manager";
+import { IWorkspaceFilePreviewSurfaceHost } from "@renderer/features/workspace-file-preview";
 import { useTranslation } from "@renderer/i18n";
 import { createWorkspaceWorkbenchDesktopI18nRuntime } from "@shared/i18n";
 import type {
@@ -44,7 +43,10 @@ import type {
 import type { DesktopThemeAppearance } from "@shared/theme";
 import { createWorkspaceFilePreviewLaunchRequest } from "../services/workspaceFilePreviewLaunch";
 import { requestWorkspaceFilesLaunch } from "../services/workspaceFilesLaunchCoordinator";
-import { classifyWorkspaceFilePreviewKind } from "@tutti-os/workspace-file-preview";
+import {
+  classifyWorkspaceFilePreviewKind,
+  resolveWorkspaceFileBuiltinRenderKind
+} from "@tutti-os/workspace-file-preview";
 import type { WorkbenchSurfaceWallpaperFit } from "@tutti-os/workbench-surface";
 import type { DesktopWorkbenchWindowSnapping } from "@shared/preferences";
 import type {
@@ -79,6 +81,7 @@ export interface WorkspaceWorkbenchShellRuntime {
   dockIconStyle: DesktopDockIconStyle;
   dockPlacement: WorkbenchDockPlacement;
   defaultAgentProvider: WorkspaceAgentProvider;
+  dockRetentionByEntryId: Readonly<Record<string, boolean>>;
   featureFlags: DesktopFeatureFlags;
   minimizeAnimation: DesktopMinimizeAnimation;
   hostInput: ReturnType<
@@ -87,15 +90,15 @@ export interface WorkspaceWorkbenchShellRuntime {
   missionControl: {
     canOpen: boolean;
     close: () => void;
+    isLayoutLocked: boolean;
     isOpen: boolean;
-    mode: WorkbenchMissionControlMode | null;
     nodeIds: readonly string[] | null;
     open: (
-      mode: WorkbenchMissionControlMode,
       request?:
         | WorkspaceMissionControlOpenRequest
         | WorkspaceMissionControlTrigger
     ) => void;
+    unlockLayout: () => void;
     visibleWindowCount: number;
   };
   onMissionControlAdapterReady: (
@@ -104,6 +107,7 @@ export interface WorkspaceWorkbenchShellRuntime {
   onWorkbenchHostHandleReady: (host: WorkbenchHostHandle | null) => void;
   onWorkbenchCloseGuardHostReady: (host: WorkbenchHostHandle | null) => void;
   requestWindowClose: () => Promise<"approved" | "blocked">;
+  setDockEntryRetained: (entryId: string, retained: boolean) => Promise<void>;
   selectWallpaper: (wallpaperId: WorkspaceWallpaperId) => void;
   selectWallpaperDisplayMode: (
     displayMode: WorkspaceWallpaperDisplayMode
@@ -138,7 +142,8 @@ export function useWorkspaceWorkbenchShellRuntime({
   };
 }): WorkspaceWorkbenchShellRuntime {
   const { i18n: appI18n, locale } = useTranslation();
-  const { state: appCenterState } = useWorkspaceAppCenterService();
+  const { service: workspaceAppCenterService, state: appCenterState } =
+    useWorkspaceAppCenterService();
   const { state: desktopPreferencesState } = useDesktopPreferencesService();
   const { service: workspaceSettingsService } = useWorkspaceSettingsService();
   const agentsService = useService(IAgentsService);
@@ -153,6 +158,11 @@ export function useWorkspaceWorkbenchShellRuntime({
     (listener) => workbenchHostService.subscribeWallpaperChanges(listener),
     () => workbenchHostService.getWallpaperRevision(),
     () => workbenchHostService.getWallpaperRevision()
+  );
+  const dockRetentionRevision = useSyncExternalStore(
+    workbenchHostService.dockRetention.subscribe,
+    workbenchHostService.dockRetention.getRevision,
+    workbenchHostService.dockRetention.getRevision
   );
   const workbenchDesktopI18n = useMemo(
     () => createWorkspaceWorkbenchDesktopI18nRuntime(appI18n),
@@ -272,12 +282,15 @@ export function useWorkspaceWorkbenchShellRuntime({
         return;
       }
 
-      const fileKind = classifyWorkspaceFilePreviewKind({
+      const previewKind = classifyWorkspaceFilePreviewKind({
         kind: "file",
         name: request.name,
         path: request.absolutePath
       });
-      if (!fileKind || request.mode === "auto") {
+      if (
+        resolveWorkspaceFileBuiltinRenderKind(previewKind) === null ||
+        request.mode === "auto"
+      ) {
         void requestWorkspaceFilesLaunch({
           homeDirectory: workbenchHostService.getHomeDirectory(),
           path: request.absolutePath,
@@ -288,7 +301,7 @@ export function useWorkspaceWorkbenchShellRuntime({
 
       void host.launchNode(
         createWorkspaceFilePreviewLaunchRequest({
-          fileKind,
+          previewKind,
           mtimeMs: request.mtimeMs,
           name: request.name,
           path: request.absolutePath,
@@ -367,11 +380,20 @@ export function useWorkspaceWorkbenchShellRuntime({
     }
     return workspaceAppSurfaceHost.registerPresenter(
       createWorkbenchWorkspaceAppSurfacePresenter({
+        getViewState: (workspaceId) =>
+          workspaceAppCenterService.getViewState(workspaceId),
         host: workbenchHost,
+        setViewState: (request) =>
+          workspaceAppCenterService.setViewState(request),
         workspaceId: state.workspace.id
       })
     );
-  }, [workbenchHost, state.workspace.id, workspaceAppSurfaceHost]);
+  }, [
+    workbenchHost,
+    state.workspace.id,
+    workspaceAppCenterService,
+    workspaceAppSurfaceHost
+  ]);
 
   useEffect(() => {
     if (!enableWindowCloseGuard) {
@@ -410,6 +432,22 @@ export function useWorkspaceWorkbenchShellRuntime({
     },
     [hostSession, shellRuntimeController]
   );
+  const setDockEntryRetained = useCallback(
+    (entryId: string, retained: boolean) =>
+      workbenchHostService.dockRetention.setRetained(
+        state.workspace.id,
+        entryId,
+        retained
+      ),
+    [state.workspace.id, workbenchHostService]
+  );
+  const dockRetentionByEntryId = useMemo(
+    () =>
+      workbenchHostService.dockRetention.readRetainedByEntryId(
+        state.workspace.id
+      ),
+    [dockRetentionRevision, state.workspace.id, workbenchHostService]
+  );
 
   return {
     appI18n,
@@ -420,16 +458,18 @@ export function useWorkspaceWorkbenchShellRuntime({
     },
     dockIconStyle: desktopPreferencesState.dockIconStyle,
     dockPlacement: desktopPreferencesState.dockPlacement,
+    dockRetentionByEntryId,
     defaultAgentProvider: desktopPreferencesState.defaultAgentProvider,
     featureFlags: desktopPreferencesState.featureFlags,
     hostInput: shellRuntimeSnapshot.hostInput,
     missionControl: {
       canOpen: shellRuntimeSnapshot.missionControl.canOpen,
       close: shellRuntimeController.missionControl.close,
+      isLayoutLocked: shellRuntimeSnapshot.missionControl.isLayoutLocked,
       isOpen: shellRuntimeSnapshot.missionControl.isOpen,
-      mode: shellRuntimeSnapshot.missionControl.mode,
       nodeIds: shellRuntimeSnapshot.missionControl.nodeIds,
       open: shellRuntimeController.missionControl.open,
+      unlockLayout: shellRuntimeController.missionControl.unlockLayout,
       visibleWindowCount: shellRuntimeSnapshot.missionControl.visibleWindowCount
     },
     minimizeAnimation: desktopPreferencesState.minimizeAnimation,
@@ -438,6 +478,7 @@ export function useWorkspaceWorkbenchShellRuntime({
     onWorkbenchHostHandleReady: handleWorkbenchHostReady,
     onWorkbenchCloseGuardHostReady: handleWorkbenchCloseGuardHostReady,
     requestWindowClose: () => shellRuntimeController.requestWindowClose(),
+    setDockEntryRetained,
     selectWallpaper: shellRuntimeController.wallpaperSelection.selectWallpaper,
     selectWallpaperDisplayMode:
       shellRuntimeController.wallpaperSelection.selectDisplayMode,

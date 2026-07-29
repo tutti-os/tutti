@@ -219,7 +219,7 @@ describe("buildComposerModelMenuModel", () => {
     });
   });
 
-  it("preserves Claude Code model descriptions", () => {
+  it("presents Default with the provider-resolved Claude model", () => {
     const menu = buildComposerModelMenuModel(
       vm({
         draftSettings: {
@@ -230,6 +230,7 @@ describe("buildComposerModelMenuModel", () => {
           permissionModeId: "preset"
         },
         selectedModelValue: "default",
+        effectiveModelValue: "claude-sonnet-4-6",
         availableModels: [
           {
             value: "default",
@@ -253,17 +254,17 @@ describe("buildComposerModelMenuModel", () => {
       labels
     );
 
-    expect(menu.trigger.modelLabel).toBe("Default");
+    expect(menu.trigger.modelLabel).toBe("Default (Sonnet)");
     expect(menu.model.options).toEqual([
       {
         value: "default",
-        label: "Default",
-        description: "Opus 4.8 with 1M context · Most capable for complex work",
-        summary: ["1M"],
+        label: "Default (Sonnet)",
+        description: "Sonnet 4.6 · Best for everyday tasks · medium effort",
+        summary: ["Medium"],
         tooltip: {
-          contextWindow: "1M context window",
-          description: "Most capable for complex work",
-          title: "Opus 4.8"
+          description: "Best for everyday tasks",
+          title: "Sonnet 4.6",
+          version: "Version: medium effort"
         }
       },
       {
@@ -289,6 +290,41 @@ describe("buildComposerModelMenuModel", () => {
         }
       }
     ]);
+  });
+
+  it("does not present the catalog's static Default description as runtime truth", () => {
+    const menu = buildComposerModelMenuModel(
+      vm({
+        draftSettings: {
+          model: "default",
+          reasoningEffort: "high",
+          speed: "standard",
+          planMode: false,
+          permissionModeId: "preset"
+        },
+        selectedModelValue: "default",
+        availableModels: [
+          {
+            value: "default",
+            label: "Sonnet 5",
+            description: "Efficient for routine tasks"
+          },
+          {
+            value: "opus",
+            label: "Opus 4.8",
+            description: "Most capable"
+          }
+        ]
+      }),
+      labels
+    );
+
+    expect(menu.trigger.modelLabel).toBe("Default");
+    expect(menu.model.options[0]).toEqual({
+      value: "default",
+      label: "Default",
+      description: undefined
+    });
   });
 
   it("injects the selected value when missing from the advertised options", () => {
@@ -489,5 +525,134 @@ describe("buildComposerModelMenuModel", () => {
         labels
       ).disabled
     ).toBe(true);
+  });
+});
+
+describe("buildComposerModelMenuModel plan, search and history", () => {
+  function planVm(
+    overrides: Partial<AgentGUIComposerSettingsVM> = {}
+  ): AgentGUIComposerSettingsVM {
+    return vm({
+      modelPlan: { id: "plan-1", name: "Volc Coding Plan", protocol: "openai" },
+      availableModels: [
+        { value: "gpt-5.5", label: "gpt-5.5", description: "Volc Coding Plan" },
+        { value: "gpt-5.4", label: "gpt-5.4", description: "Volc Coding Plan" }
+      ],
+      ...overrides
+    });
+  }
+
+  function manyModels(count: number): AgentGUIComposerSettingsVM {
+    return vm({
+      availableModels: Array.from({ length: count }, (_, index) => ({
+        value: `model-${index + 1}`,
+        label: `model-${index + 1}`
+      })),
+      draftSettings: {
+        model: "model-1",
+        reasoningEffort: "high",
+        speed: "standard",
+        planMode: false,
+        permissionModeId: "preset"
+      }
+    });
+  }
+
+  it("surfaces the bound plan and inline plan-name descriptions", () => {
+    const menu = buildComposerModelMenuModel(planVm(), labels);
+    expect(menu.model.plan).toEqual({ id: "plan-1", name: "Volc Coding Plan" });
+    expect(menu.model.optionDescriptionInline).toBe(true);
+    expect(menu.model.options[0]?.description).toBe("Volc Coding Plan");
+
+    const withoutPlan = buildComposerModelMenuModel(vm(), labels);
+    expect(withoutPlan.model.plan).toBeNull();
+    expect(withoutPlan.model.optionDescriptionInline).toBe(false);
+  });
+
+  it("enables the filter input above the threshold and filters by label/id", () => {
+    const small = buildComposerModelMenuModel(vm(), labels);
+    expect(small.model.searchEnabled).toBe(false);
+    // Below the threshold the query is ignored entirely.
+    expect(
+      buildComposerModelMenuModel(vm(), labels, { searchQuery: "5.4" }).model
+        .options
+    ).toHaveLength(2);
+
+    const large = buildComposerModelMenuModel(manyModels(10), labels);
+    expect(large.model.searchEnabled).toBe(true);
+    expect(large.model.options).toHaveLength(10);
+
+    const filtered = buildComposerModelMenuModel(manyModels(10), labels, {
+      searchQuery: "MODEL-1"
+    });
+    expect(filtered.model.searchQuery).toBe("MODEL-1");
+    expect(filtered.model.options.map((option) => option.value)).toEqual([
+      "model-1",
+      "model-10"
+    ]);
+    expect(
+      buildComposerModelMenuModel(manyModels(10), labels, {
+        searchQuery: "no-match"
+      }).model.options
+    ).toHaveLength(0);
+  });
+
+  it("splits favorites and recents into pinned groups without duplicates", () => {
+    const menu = buildComposerModelMenuModel(manyModels(10), labels, {
+      favoriteModelIds: ["model-3", "model-9", "model-unknown"],
+      recentModelIds: ["model-9", "model-2", "model-5"]
+    });
+    expect(menu.model.favoriteOptions.map((option) => option.value)).toEqual([
+      "model-3",
+      "model-9"
+    ]);
+    // model-9 is favorited, so recents keep only the rest, in recency order.
+    expect(menu.model.recentOptions.map((option) => option.value)).toEqual([
+      "model-2",
+      "model-5"
+    ]);
+    expect(menu.model.favoriteValues).toEqual(["model-3", "model-9"]);
+    const remaining = menu.model.options.map((option) => option.value);
+    expect(remaining).not.toContain("model-3");
+    expect(remaining).not.toContain("model-9");
+    expect(remaining).not.toContain("model-2");
+    expect(remaining).not.toContain("model-5");
+    expect(remaining).toHaveLength(6);
+  });
+
+  it("applies the search filter to the pinned groups too", () => {
+    const menu = buildComposerModelMenuModel(manyModels(10), labels, {
+      favoriteModelIds: ["model-3"],
+      recentModelIds: ["model-2"],
+      searchQuery: "model-2"
+    });
+    expect(menu.model.favoriteOptions).toHaveLength(0);
+    expect(menu.model.recentOptions.map((option) => option.value)).toEqual([
+      "model-2"
+    ]);
+    expect(menu.model.options).toHaveLength(0);
+  });
+
+  it("shows the switch-effect hint only for active modelSwitch sessions", () => {
+    expect(
+      buildComposerModelMenuModel(
+        vm({ modelSwitchTakesEffectNextTurn: true }),
+        labels
+      ).switchEffectHint
+    ).toBe(true);
+    expect(buildComposerModelMenuModel(vm(), labels).switchEffectHint).toBe(
+      false
+    );
+    // The hint is a model-menu affordance: no model section, no hint.
+    expect(
+      buildComposerModelMenuModel(
+        vm({
+          modelSwitchTakesEffectNextTurn: true,
+          supportsModel: false,
+          availableModels: []
+        }),
+        labels
+      ).switchEffectHint
+    ).toBe(false);
   });
 });

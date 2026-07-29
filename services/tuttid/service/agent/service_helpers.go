@@ -42,6 +42,11 @@ func cloneSession(session Session) Session {
 		title := *session.Title
 		cloned.Title = &title
 	}
+	if session.Isolation != nil {
+		isolation := *session.Isolation
+		cloned.Isolation = &isolation
+	}
+	cloned.Warnings = append([]SessionWarning(nil), session.Warnings...)
 	if session.UpdatedAt != nil {
 		updatedAt := *session.UpdatedAt
 		cloned.UpdatedAt = &updatedAt
@@ -198,7 +203,7 @@ func cloneMetadata(metadata map[string]any) map[string]any {
 	}
 	cloned := make(map[string]any, len(metadata))
 	for key, value := range metadata {
-		if trimmed := strings.TrimSpace(key); trimmed != "" {
+		if trimmed := strings.TrimSpace(key); trimmed != "" && trimmed != "clientSubmitId" {
 			cloned[trimmed] = value
 		}
 	}

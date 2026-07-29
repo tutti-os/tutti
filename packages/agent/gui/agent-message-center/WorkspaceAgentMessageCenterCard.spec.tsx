@@ -1,8 +1,9 @@
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import {
   messageCenterStackPreviewNodes,
-  messageCenterStackPreviewText
+  messageCenterStackPreviewText,
+  WorkspaceAgentMessageCenterCard
 } from "./WorkspaceAgentMessageCenterCard";
 import type { WorkspaceAgentMessageCenterItem } from "./workspaceAgentMessageCenterModel";
 
@@ -62,6 +63,82 @@ describe("messageCenterStackPreviewNodes", () => {
       container.querySelector('[data-agent-mention-kind="workspace-app"]')
         ?.textContent
     ).toContain("AI 文档");
+  });
+});
+
+describe("WorkspaceAgentMessageCenterCard prompt presentation", () => {
+  it("supports a full prompt without repeating the digest summary", () => {
+    const pendingItem = item({ summary: "Allow the complete command?" });
+    pendingItem.status = "waiting";
+    pendingItem.pendingInteractionTarget = {
+      agentSessionId: "codex-1",
+      turnId: "turn-1",
+      requestId: "request-1"
+    };
+    pendingItem.pendingPrompt = {
+      kind: "approval",
+      id: "approval:request-1",
+      turnId: "turn-1",
+      requestId: "request-1",
+      callId: "call-1",
+      title: "Run command",
+      toolName: "Bash",
+      status: "pending",
+      input: { command: "printf a && printf b" },
+      options: [{ id: "allow", label: "Allow", kind: "allow" }],
+      output: null,
+      occurredAtUnixMs: 1
+    };
+
+    const { container } = render(
+      <WorkspaceAgentMessageCenterCard
+        item={pendingItem}
+        isSubmitting={false}
+        promptVariant="full"
+        showSummaryWithPrompt={false}
+        onOpenChat={() => undefined}
+        onSubmitPrompt={() => undefined}
+      />
+    );
+
+    expect(screen.getByText("printf a && printf b")).toBeTruthy();
+    expect(screen.queryByText("Allow the complete command?")).toBeNull();
+    expect(screen.getByRole("button", { name: "Allow" })).toBeTruthy();
+    expect(container.textContent).not.toContain("Allow the complete command?");
+  });
+
+  it("keeps the summary when a leaving or read-only card cannot render its prompt", () => {
+    const pendingItem = item({ summary: "Allow the complete command?" });
+    pendingItem.status = "waiting";
+    pendingItem.pendingPrompt = {
+      kind: "approval",
+      id: "approval:request-1",
+      turnId: "turn-1",
+      requestId: "request-1",
+      callId: "call-1",
+      title: "Run command",
+      toolName: "Bash",
+      status: "pending",
+      input: { command: "printf a && printf b" },
+      options: [{ id: "allow", label: "Allow", kind: "allow" }],
+      output: null,
+      occurredAtUnixMs: 1
+    };
+
+    render(
+      <WorkspaceAgentMessageCenterCard
+        interactive={false}
+        item={pendingItem}
+        isSubmitting={false}
+        promptVariant="full"
+        showSummaryWithPrompt={false}
+        onOpenChat={() => undefined}
+        onSubmitPrompt={() => undefined}
+      />
+    );
+
+    expect(screen.getByText("Allow the complete command?")).toBeTruthy();
+    expect(screen.queryByText("printf a && printf b")).toBeNull();
   });
 });
 

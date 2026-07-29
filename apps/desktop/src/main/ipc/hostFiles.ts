@@ -8,6 +8,10 @@ import {
   type DesktopWorkspaceFileEntryIconPayload,
   type DesktopWorkspaceFilePathPayload
 } from "../../shared/contracts/ipc";
+import {
+  DESKTOP_AGENT_PROMPT_FILE_MAX_BYTES,
+  DESKTOP_AGENT_PROMPT_FILE_TOO_LARGE_ERROR_CODE
+} from "../../shared/agentPromptAssets.ts";
 import { app, shell } from "electron";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
@@ -183,8 +187,10 @@ async function archiveAgentPromptFile(
   let sourcePath = "";
   let sizeBytes = 0;
   if (dataBase64) {
+    assertAgentPromptFileSize(Buffer.byteLength(dataBase64, "base64"));
     bytes = Buffer.from(dataBase64, "base64");
     sizeBytes = bytes.byteLength;
+    assertAgentPromptFileSize(sizeBytes);
   } else if (hostPath) {
     const sourceStat = await stat(hostPath);
     if (!sourceStat.isFile()) {
@@ -192,6 +198,7 @@ async function archiveAgentPromptFile(
     }
     sourcePath = hostPath;
     sizeBytes = sourceStat.size;
+    assertAgentPromptFileSize(sizeBytes);
   } else {
     throw new Error("Prompt asset archive requires hostPath or dataBase64.");
   }
@@ -230,6 +237,13 @@ async function archiveAgentPromptFile(
     path: archivePath,
     sizeBytes
   };
+}
+
+function assertAgentPromptFileSize(sizeBytes: number): void {
+  if (sizeBytes <= DESKTOP_AGENT_PROMPT_FILE_MAX_BYTES) return;
+  throw Object.assign(new Error("Agent prompt file is too large."), {
+    code: DESKTOP_AGENT_PROMPT_FILE_TOO_LARGE_ERROR_CODE
+  });
 }
 
 function normalizeAgentPromptAssetDisplayName(value: string): string {

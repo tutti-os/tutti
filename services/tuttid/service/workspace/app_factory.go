@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	workspacefiles "github.com/tutti-os/tutti/packages/workspace/files"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
@@ -96,8 +96,8 @@ type FactoryAgentSessionService interface {
 type FactoryAgentSessionStateReporter interface {
 	ReportSessionState(
 		context.Context,
-		agentsessionstore.ReportSessionStateInput,
-	) (agentsessionstore.ReportSessionStateReply, error)
+		canonical.ReportSessionStateInput,
+	) (canonical.ReportSessionStateReply, error)
 }
 
 type WorkspaceAppFactoryEventPublisher interface {
@@ -554,12 +554,10 @@ func (s *AppFactoryService) validatePackage(ctx context.Context, workspaceID str
 	if err != nil {
 		return err
 	}
-	workspaceRoot, _ := s.workspaceRoot(ctx, workspaceID)
 	factoryWorkspaceID := "factory:" + job.JobID
 	state, err := s.runner().Start(ctx, AppStartInput{
 		WorkspaceID:     factoryWorkspaceID,
 		WorkspaceName:   workspace.Name,
-		WorkspaceRoot:   workspaceRoot.PhysicalRoot,
 		AppID:           manifest.AppID,
 		PackageDir:      draftPackageDir,
 		Bootstrap:       manifest.Runtime.Bootstrap,
@@ -567,6 +565,7 @@ func (s *AppFactoryService) validatePackage(ctx context.Context, workspaceID str
 		RuntimeProfile:  strings.TrimSpace(manifest.Runtime.Profile),
 		RuntimeDir:      job.RuntimeDir,
 		DataDir:         job.DataDir,
+		DatabaseDir:     filepath.Join(filepath.Dir(job.DataDir), "database"),
 		LogDir:          job.LogDir,
 	})
 	if err != nil {

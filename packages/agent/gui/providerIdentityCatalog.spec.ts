@@ -35,6 +35,14 @@ describe("provider identity catalog", () => {
     });
   });
 
+  it("allows Tutti Agent sessions in developer log exports", () => {
+    expect(
+      resolveMigratedAgentGUIProviderIdentity("tutti-agent")?.desktop
+    ).toMatchObject({
+      developerLogs: true
+    });
+  });
+
   it("reads OpenCode aliases, identity, and target only from the generated catalog", () => {
     expect(resolveMigratedAgentGUIProviderIdentity("open-code")).toMatchObject({
       providerId: "opencode",

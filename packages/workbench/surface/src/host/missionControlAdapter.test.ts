@@ -5,25 +5,22 @@ import { createWorkbenchController } from "../store/createWorkbenchController.ts
 import { createWorkbenchHostMissionControlAdapter } from "./missionControlAdapter.ts";
 import type { WorkbenchHostNodeData } from "./types.ts";
 
-test("mission control adapter focusNode requests focus-input activation when available", () => {
+test("mission control adapter exposes locked layout state from the controller", () => {
   const controller = createWorkbenchController<WorkbenchHostNodeData>({
-    nodes: [makeNode("node-a")],
-    nodeStack: ["node-a"]
+    nodes: [makeNode("node-a"), makeNode("node-b")],
+    nodeStack: ["node-a", "node-b"]
   });
-  const activations: Array<{ nodeId: string; type: string }> = [];
-  const adapter = createWorkbenchHostMissionControlAdapter({
-    activateNode(target, activation) {
-      activations.push({
-        nodeId: "nodeId" in target ? target.nodeId : "",
-        type: activation.type
-      });
-    },
-    controller
-  });
+  const adapter = createWorkbenchHostMissionControlAdapter({ controller });
 
-  adapter.focusNode("node-a");
+  assert.equal(adapter.getSnapshot().isLayoutLocked, false);
 
-  assert.deepEqual(activations, [{ nodeId: "node-a", type: "focus-input" }]);
+  controller.commands.applyLayoutPreset(
+    ["node-a", "node-b"],
+    { kind: "row" },
+    true
+  );
+
+  assert.equal(adapter.getSnapshot().isLayoutLocked, true);
 });
 
 test("mission control adapter caches snapshots until controller state changes", () => {
@@ -40,7 +37,12 @@ test("mission control adapter caches snapshots until controller state changes", 
   controller.commands.focusNode("node-a");
 
   const thirdSnapshot = adapter.getSnapshot();
-  assert.notEqual(thirdSnapshot, firstSnapshot);
+  assert.equal(thirdSnapshot, firstSnapshot);
+
+  controller.commands.minimizeNode("node-a");
+
+  const fourthSnapshot = adapter.getSnapshot();
+  assert.notEqual(fourthSnapshot, firstSnapshot);
 });
 
 function makeNode(id: string): WorkbenchNode<WorkbenchHostNodeData> {

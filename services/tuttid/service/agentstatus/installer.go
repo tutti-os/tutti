@@ -343,13 +343,13 @@ func installNodeForTarget(target string) string {
 }
 
 func (s Service) providerCLIRequiresInstall(spec ProviderSpec, runtime providerRuntimeResolution) bool {
-	if !isCodexStatusSpec(spec) {
-		return false
-	}
-	if !s.codexPlatformBinaryOK(runtime.CLIPath) {
+	if isCodexStatusSpec(spec) && !s.codexPlatformBinaryOK(runtime.CLIPath) {
 		return true
 	}
-	return !cliVersionMeetsMinimum(s.cliVersion(context.Background(), runtime.CLIPath, runtime.Env), spec.MinVersion)
+	if strings.TrimSpace(spec.MinVersion) == "" {
+		return false
+	}
+	return !providerCLIVersionMeetsMinimum(spec, s.providerCLIVersion(context.Background(), spec, runtime.CLIPath, runtime.Env))
 }
 
 func adapterPackageRequirementSatisfied(requirement AdapterPackageRequirement, version string) bool {
@@ -361,7 +361,7 @@ func adapterPackageRequirementSatisfied(requirement AdapterPackageRequirement, v
 	if version == requiredVersion {
 		return true
 	}
-	cmp, ok := compareCodexVersions(version, requiredVersion)
+	cmp, ok := compareCLIVersions(version, requiredVersion)
 	if !ok {
 		return false
 	}
@@ -484,7 +484,6 @@ func installerLockCommand(spec InstallerSpec) string {
 		return strings.Join([]string{
 			string(spec.Kind),
 			strings.TrimSpace(spec.ManagedNPM.PackageName),
-			strings.TrimSpace(spec.ManagedNPM.PackageVersion),
 		}, ":")
 	}
 	return ""

@@ -50,3 +50,18 @@ func TestSplitSessionRuntimeContextUsesClosedMetadataVocabularies(t *testing.T) 
 		t.Fatalf("internal context = %#v, want empty", internal)
 	}
 }
+
+func TestDecodeSessionGoalUsesCanonicalValidation(t *testing.T) {
+	goal, err := DecodeSessionGoal(map[string]any{
+		"objective": "ship", "status": "paused", "iterations": 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if goal.Objective != "ship" || goal.Status != "paused" || goal.Iterations != 2 {
+		t.Fatalf("goal=%#v", goal)
+	}
+	if _, err := DecodeSessionGoal(map[string]any{"objective": "ship", "status": "unknown"}); err == nil {
+		t.Fatal("DecodeSessionGoal() error=nil, want closed status validation")
+	}
+}

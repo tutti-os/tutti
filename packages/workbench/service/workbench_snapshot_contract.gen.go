@@ -14,13 +14,14 @@ const (
 )
 
 type WorkbenchSnapshot struct {
-	SchemaVersion int                       `json:"schemaVersion"`
-	Nodes         []WorkbenchSnapshotNode   `json:"nodes"`
-	NodeStack     *[]string                 `json:"nodeStack,omitempty"`
-	ActiveNodeID  *string                   `json:"activeNodeId,omitempty"`
-	Spaces        *[]WorkbenchSnapshotSpace `json:"spaces,omitempty"`
-	ActiveSpaceID *string                   `json:"activeSpaceId,omitempty"`
-	Metadata      map[string]interface{}    `json:"metadata,omitempty"`
+	SchemaVersion int                           `json:"schemaVersion"`
+	Nodes         []WorkbenchSnapshotNode       `json:"nodes"`
+	NodeStack     *[]string                     `json:"nodeStack,omitempty"`
+	ActiveNodeID  *string                       `json:"activeNodeId,omitempty"`
+	Spaces        *[]WorkbenchSnapshotSpace     `json:"spaces,omitempty"`
+	ActiveSpaceID *string                       `json:"activeSpaceId,omitempty"`
+	LayoutBasis   *WorkbenchSnapshotLayoutBasis `json:"layoutBasis,omitempty"`
+	Metadata      map[string]interface{}        `json:"metadata,omitempty"`
 }
 
 type WorkbenchSnapshotNode struct {
@@ -49,6 +50,30 @@ type WorkbenchSnapshotFrame struct {
 	Y      float64 `json:"y"`
 	Width  float64 `json:"width"`
 	Height float64 `json:"height"`
+}
+
+type WorkbenchSnapshotSize struct {
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+}
+
+type WorkbenchSnapshotSafeArea struct {
+	Top    float64 `json:"top"`
+	Right  float64 `json:"right"`
+	Bottom float64 `json:"bottom"`
+	Left   float64 `json:"left"`
+}
+
+type WorkbenchSnapshotLayoutConstraints struct {
+	MinWidth       float64                   `json:"minWidth"`
+	MinHeight      float64                   `json:"minHeight"`
+	SurfacePadding float64                   `json:"surfacePadding"`
+	SafeArea       WorkbenchSnapshotSafeArea `json:"safeArea"`
+}
+
+type WorkbenchSnapshotLayoutBasis struct {
+	SurfaceSize       WorkbenchSnapshotSize              `json:"surfaceSize"`
+	LayoutConstraints WorkbenchSnapshotLayoutConstraints `json:"layoutConstraints"`
 }
 
 type WorkbenchSnapshotDisplayMode string

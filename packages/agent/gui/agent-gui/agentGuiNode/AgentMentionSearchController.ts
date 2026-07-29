@@ -8,6 +8,7 @@ import type { AgentContextMentionItem } from "./agentRichText/agentFileMentionEx
 import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
 import {
   buildBrowseCategories,
+  FILE_PROVIDER_ID,
   WORKSPACE_ISSUE_PROVIDER_ID,
   type AgentMentionFilterId,
   type AgentMentionGroupId,
@@ -24,13 +25,18 @@ import {
   queryAgentMentionProviderWithDiagnostics,
   type AgentMentionProviderQueryDiagnostic
 } from "./agentMentionSearchDiagnostics";
-import { queryAgentMentionProviderGroupPage } from "./AgentMentionSearchIndex";
+import {
+  queryAgentMentionProviderDirectoryItems,
+  queryAgentMentionProviderGroupPage
+} from "./AgentMentionSearchIndex";
 import { AgentMentionSearchControllerBase } from "./AgentMentionSearchControllerBase";
+import { AgentMentionDirectoryRequestLifecycle } from "./AgentMentionDirectoryRequestLifecycle";
 import type {
   ReferenceProvenanceCatalog,
   ReferenceProvenanceFilter
 } from "@tutti-os/workspace-file-reference/contracts";
-import { referenceProvenanceFilterCacheKey } from "@tutti-os/workspace-file-reference/core";
+import { presentWorkspaceFileDirectoryMentionItems } from "./agentMentionWorkspaceFilesPresentation";
+import { AgentMentionProvenanceFilterState } from "./AgentMentionProvenanceFilterState";
 
 export type {
   AgentMentionBrowseCategory,
@@ -46,6 +52,9 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     string,
     { abortController: AbortController; token: symbol }
   >();
+  private readonly directoryRequestLifecycle =
+    new AgentMentionDirectoryRequestLifecycle();
+  private readonly provenanceFilters = new AgentMentionProvenanceFilterState();
 
   setProvenanceCatalog(catalog: ReferenceProvenanceCatalog | null): void {
     if (this.currentProvenanceCatalog === catalog) return;
@@ -62,16 +71,13 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     });
   }
 
-  setProvenanceFilter(filter: ReferenceProvenanceFilter | null): void {
-    const previousKey = this.currentProvenanceFilter
-      ? referenceProvenanceFilterCacheKey(this.currentProvenanceFilter)
-      : "disabled";
-    const nextKey = filter
-      ? referenceProvenanceFilterCacheKey(filter)
-      : "disabled";
-    if (previousKey === nextKey) return;
+  setProvenanceFilters(
+    filters: Record<AgentMentionFilterId, ReferenceProvenanceFilter | null>
+  ): void {
+    const next = this.provenanceFilters.replace(filters, this.currentFilter);
+    if (!next.changed) return;
     this.cancelPendingPreload();
-    this.currentProvenanceFilter = filter;
+    this.currentProvenanceFilter = next.value;
     this.updateQuery({
       workspaceId: this.activeWorkspaceId,
       currentUserId: this.currentUserId,
@@ -106,9 +112,11 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     this.currentQuery = normalizeQuery(input.query);
     this.clearTimer();
     this.abortActiveRequest();
+    this.directoryRequestLifecycle.cancel();
     this.cancelIssueLoadMoreRequests();
     const requestId = ++this.requestId;
     this.resetAgentGeneratedBrowsePath();
+    this.resetWorkspaceFileBrowsePaths();
     this.resetExpandedCounts();
     this.resetSearchLimits();
     this.resetRawGroups();
@@ -161,11 +169,14 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       return;
     }
     this.currentFilter = filter;
+    this.currentProvenanceFilter = this.provenanceFilters.value(filter);
     this.clearTimer();
     this.abortActiveRequest();
+    this.directoryRequestLifecycle.cancel();
     this.cancelIssueLoadMoreRequests();
     const requestId = ++this.requestId;
     this.resetAgentGeneratedBrowsePath();
+    this.resetWorkspaceFileBrowsePaths();
     this.resetExpandedCounts();
     this.resetSearchLimits();
     this.resetRawGroups();
@@ -325,7 +336,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     this.setFilter(category);
   }
 
-  selectAgentGeneratedMentionItem(item: AgentContextMentionItem): boolean {
+  selectFileMentionNavigationItem(item: AgentContextMentionItem): boolean {
     if (item.kind !== "file" || !item.mentionNavigation) {
       return false;
     }
@@ -359,13 +370,26 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       });
       return true;
     }
+    if (item.mentionNavigation === "workspace-folder") {
+      const path = item.path.trim();
+      if (!path || this.currentFilter !== "file" || this.currentQuery) {
+        return false;
+      }
+      this.workspaceFileBrowsePaths.push(path);
+      this.loadWorkspaceFileDirectory(path);
+      return true;
+    }
+    if (item.mentionNavigation === "workspace-folder-back") {
+      return this.exitWorkspaceFileBrowse();
+    }
     return false;
   }
 
-  exitAgentGeneratedBrowse(): boolean {
-    if (!this.agentGeneratedBrowsePath) {
-      return false;
+  exitFileMentionBrowse(): boolean {
+    if (this.workspaceFileBrowsePaths.length > 0) {
+      return this.exitWorkspaceFileBrowse();
     }
+    if (!this.agentGeneratedBrowsePath) return false;
     this.resetAgentGeneratedBrowsePath();
     this.setState({
       status: this.state.status === "loading" ? "loading" : "ready",
@@ -377,6 +401,109 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       error: null
     });
     return true;
+  }
+
+  private exitWorkspaceFileBrowse(): boolean {
+    if (this.workspaceFileBrowsePaths.length === 0) {
+      return false;
+    }
+    this.workspaceFileBrowsePaths.pop();
+    const parentPath = this.workspaceFileBrowsePaths.at(-1);
+    if (parentPath) {
+      this.loadWorkspaceFileDirectory(parentPath);
+      return true;
+    }
+    this.directoryRequestLifecycle.cancel();
+    this.startBrowseModeFetch("file");
+    return true;
+  }
+
+  private loadWorkspaceFileDirectory(directoryPath: string): void {
+    this.clearTimer();
+    this.abortActiveRequest();
+    this.cancelIssueLoadMoreRequests();
+    this.requestId += 1;
+    const workspaceId = this.activeWorkspaceId;
+    const provider = this.contextMentionProviders.get(FILE_PROVIDER_ID);
+    const directoryRequest = this.directoryRequestLifecycle.start();
+    this.setState({
+      status: "loading",
+      query: "",
+      mode: "browse",
+      filter: this.currentFilter,
+      categories: buildBrowseCategories(),
+      groups: this.groupsFromRawGroups(),
+      error: null
+    });
+    void queryAgentMentionProviderDirectoryItems({
+      abortSignal: directoryRequest.abortSignal,
+      provider,
+      directoryPath,
+      workspaceId,
+      currentUserId: this.currentUserId,
+      sectionKey: this.currentSectionKey,
+      sessionCwd: this.currentSessionCwd,
+      provenanceFilter: this.currentProvenanceFilter
+    })
+      .then((items) => {
+        if (
+          !this.directoryRequestLifecycle.canApply({
+            activeDirectoryPath: this.workspaceFileBrowsePaths.at(-1),
+            activeWorkspaceId: this.activeWorkspaceId,
+            directoryPath,
+            disposed: this.disposed,
+            filter: this.currentFilter,
+            query: this.currentQuery,
+            requestId: directoryRequest.requestId,
+            workspaceId
+          })
+        ) {
+          return;
+        }
+        this.directoryRequestLifecycle.finish(directoryRequest.requestId);
+        this.rawGroups.opened_files = presentWorkspaceFileDirectoryMentionItems(
+          {
+            browsePath: directoryPath,
+            items
+          }
+        );
+        this.totalCounts.opened_files = this.rawGroups.opened_files.length;
+        this.setState({
+          status: "ready",
+          query: "",
+          mode: "browse",
+          filter: "file",
+          categories: buildBrowseCategories(),
+          groups: this.groupsFromRawGroups(),
+          error: null
+        });
+      })
+      .catch((error) => {
+        if (
+          !this.directoryRequestLifecycle.canApply({
+            activeDirectoryPath: this.workspaceFileBrowsePaths.at(-1),
+            activeWorkspaceId: this.activeWorkspaceId,
+            directoryPath,
+            disposed: this.disposed,
+            filter: this.currentFilter,
+            query: this.currentQuery,
+            requestId: directoryRequest.requestId,
+            workspaceId
+          })
+        ) {
+          return;
+        }
+        this.directoryRequestLifecycle.finish(directoryRequest.requestId);
+        this.setState({
+          status: "error",
+          query: "",
+          mode: "browse",
+          filter: "file",
+          categories: buildBrowseCategories(),
+          groups: this.groupsFromRawGroups(),
+          error: error instanceof Error ? error.message : String(error)
+        });
+      });
   }
 
   expandGroup(groupId: AgentMentionGroupId): void {
@@ -458,10 +585,12 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
   close(): void {
     this.clearTimer();
     this.abortActiveRequest();
+    this.directoryRequestLifecycle.cancel();
     this.cancelIssueLoadMoreRequests();
     this.requestId += 1;
     this.currentFilter = DEFAULT_AGENT_MENTION_FILTER;
     this.resetAgentGeneratedBrowsePath();
+    this.resetWorkspaceFileBrowsePaths();
     this.resetExpandedCounts();
     this.resetSearchLimits();
     this.resetRawGroups();
@@ -481,6 +610,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     this.disposed = true;
     this.clearTimer();
     this.abortActiveRequest();
+    this.directoryRequestLifecycle.cancel();
     this.cancelIssueLoadMoreRequests();
     this.cancelPendingPreload();
     this.listeners.clear();
@@ -647,13 +777,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
   }
 }
 
-// Warm the shared browse cache without a mounted controller — e.g. from an app
-// startup flow, so the first time the @ palette opens its results are already
-// cached. Spins up a transient controller (no listeners, default limits/ttl) so
-// the produced cacheKey matches a live composer controller built with the same
-// providers; the global cache + in-flight dedup are reused, so this never
-// double-fetches against a focus-driven preload. The instance holds no timers
-// after the idle warm runs, so it is garbage-collected.
+// A transient controller warms the shared cache and leaves no timer behind.
 export function preloadAgentMentionBrowse(input: {
   workspaceId: string;
   currentUserId?: string | null;

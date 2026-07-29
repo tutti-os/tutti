@@ -648,12 +648,20 @@ func (a *CodexAppServerAdapter) tryResolvePendingGoalTurn(agentSessionID, provid
 		provenanceMode = "ordered_goal_continuation_claim"
 		appSession.goalContinuationClaim = nil
 	}
+	session := pending.session
+	if goalIdentityFencedLocked(appSession, identity) {
+		delete(appSession.pendingGoalTurns, providerTurnID)
+		delete(appSession.goalTurnEvidence, providerTurnID)
+		a.pruneGoalProvenanceLocked(appSession)
+		a.mu.Unlock()
+		a.quiesceFencedGoalTurn(session, providerTurnID)
+		return true
+	}
 	// A newer set/clear changes future Goal scheduling, not work the provider
 	// already accepted. Provenance is immutable, so a superseded but fully
 	// proven Turn is adopted with its original identity and allowed to settle.
 	shouldAdopt := identity.valid() && appSession.activeTurn == nil
 	pending.provenanceMode = provenanceMode
-	session := pending.session
 	a.mu.Unlock()
 
 	if shouldAdopt && a.goalBeforeAdoptHook != nil {
@@ -759,7 +767,7 @@ func (a *CodexAppServerAdapter) quiesceUnprovenGoalTurn(session Session, provide
 			)
 			_ = client.Close()
 		}
-		// The durable GoalActor is notified only after exact quiesce has
+		// The durable Host goal mutation lane is notified only after exact quiesce has
 		// completed. Failed quiesce is explicit evidence: the service attaches
 		// repair work and must not mark the observation converged.
 		if finalizeErr := a.reportGoalReconcileRequired(session, requestID, providerTurnID, reason, fenceMode, current, "finalized", quiesceErr); finalizeErr != nil {

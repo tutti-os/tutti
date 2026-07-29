@@ -15,6 +15,7 @@ import type {
 import { type AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
 import type { useAgentGUIActivation } from "./useAgentGUIActivation";
 import type { ConversationIntent } from "./useAgentConversationSelection";
+import type { AgentGUIConversationRailRevealReason } from "../model/agentGuiConversationRailViewState";
 
 export interface UseAgentGUINewConversationActivationInput {
   getCachedComposerOptions: () =>
@@ -30,6 +31,9 @@ export interface UseAgentGUINewConversationActivationInput {
     (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
   >;
   selectedProjectPathRef: RefObject<string | null>;
+  userProjectsRef: RefObject<
+    import("../../../host/agentHostApi").AgentHostUserProject[]
+  >;
   draftByScopeKeyRef: RefObject<Record<string, AgentComposerDraft>>;
   submittedDraftSnapshotsRef: RefObject<Record<string, SubmittedDraftSnapshot>>;
   draftSettingsBySessionIdRef: RefObject<
@@ -41,11 +45,14 @@ export interface UseAgentGUINewConversationActivationInput {
   isComposerHomeRef: RefObject<boolean>;
   conversationsRef: RefObject<AgentGUIConversationSummary[]>;
   activeSessionState: AgentSessionState | null;
-  lastActiveModelByProviderRef: RefObject<Record<string, string>>;
   sessionEngine: AgentSessionEngine;
+  tuttiModeDraftKey: string;
   conversationListQuery: AgentGUIConversationListQuery | null;
   currentUserId: string | null | undefined;
-  persistActiveConversation: (agentSessionId: string | null) => void;
+  requestRailReveal(
+    agentSessionId: string,
+    reason: AgentGUIConversationRailRevealReason
+  ): void;
   setActiveConversationId: Dispatch<SetStateAction<string | null>>;
   setIntent: Dispatch<SetStateAction<ConversationIntent>>;
   setIsComposerHome: Dispatch<SetStateAction<boolean>>;
@@ -53,17 +60,8 @@ export interface UseAgentGUINewConversationActivationInput {
   activation: ReturnType<typeof useAgentGUIActivation>;
   isCurrentConversation: (agentSessionId: string) => boolean;
   isConversationStale: (agentSessionId: string) => boolean;
-  loadSelectedConversationMessages: (agentSessionId: string) => Promise<void>;
-  loadSessionState: (
-    agentSessionId: string,
-    cause?: { source: string; eventType?: string; force?: boolean }
-  ) => void;
-  syncConversationListProjection: (
-    _preferredSessionId?: string | null
-  ) => Promise<void>;
   data: AgentGUINodeData;
   defaultReasoningEffort: string;
-  refreshMessagesFromSnapshot: (agentSessionId: string) => void;
 }
 
 export interface AgentGUINewConversationActivationResult {

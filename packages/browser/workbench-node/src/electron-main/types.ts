@@ -1,5 +1,8 @@
 import type {
   BrowserNodeActivationInput,
+  BrowserNodeAutomationTargetMetadata,
+  BrowserNodeChromeCookieImportInput,
+  BrowserNodeChromeProfileId,
   BrowserNodeCookieImportResult,
   BrowserNodeDebugDump,
   BrowserNodeDownloadDirectoryResult,
@@ -14,12 +17,14 @@ import type {
   BrowserNodeRegisterGuestInput,
   BrowserNodeScreenshotSaveResult,
   BrowserNodeSaveScreenshotInput,
+  BrowserNodeSessionMode,
   BrowserNodeSetDeviceEmulationInput,
   BrowserNodeSetZoomFactorInput,
   BrowserNodeShowDevToolsContextMenuInput,
   BrowserNodeStopFindInPageInput,
   BrowserNodeUnregisterGuestInput
 } from "../core/types.ts";
+import type { BrowserNodeAutomationTargetRegistry } from "./automationTypes.ts";
 
 export interface BrowserGuestManager {
   activate(input: BrowserNodeActivationInput): Promise<void>;
@@ -37,6 +42,17 @@ export interface BrowserGuestManager {
   importCookies(
     input: BrowserNodeNodeIdInput
   ): Promise<BrowserNodeCookieImportResult>;
+  importChromeCookies(
+    input: BrowserNodeChromeCookieImportInput,
+    signal: AbortSignal
+  ): Promise<BrowserNodeCookieImportResult>;
+  getCookieImportSession(
+    input: BrowserNodeNodeIdInput
+  ): BrowserGuestElectronSession | null;
+  resolveCookieImportSession(
+    input: BrowserNodeNodeIdInput
+  ): Promise<BrowserGuestElectronSession | null>;
+  reloadCookieImportSession(target: BrowserGuestElectronSession): void;
   handleGuestOpenUrl(
     webContentsId: number,
     input: BrowserNodeGuestOpenUrlInput
@@ -56,6 +72,10 @@ export interface BrowserGuestManager {
   setZoomFactor(input: BrowserNodeSetZoomFactorInput): Promise<void>;
   stopFindInPage(input: BrowserNodeStopFindInPageInput): Promise<void>;
   unregisterGuest(input: BrowserNodeUnregisterGuestInput): Promise<void>;
+  updateAutomationTarget(
+    nodeId: string,
+    metadata: BrowserNodeAutomationTargetMetadata
+  ): void;
 }
 
 export type BrowserNodeShowDevToolsContextMenuPayload =
@@ -64,16 +84,37 @@ export type BrowserNodeShowDevToolsContextMenuPayload =
 export type BrowserPreferredColorScheme = "dark" | "light";
 
 export interface BrowserGuestManagerInput {
+  automationRegistry?: BrowserNodeAutomationTargetRegistry;
   emit: (event: BrowserNodeEvent) => void;
   getPreferredColorScheme?: () => BrowserPreferredColorScheme;
   chooseDownloadDirectory?: () => Promise<string | null>;
   selectCookieImport?: () => Promise<BrowserNodeCookieImportSource | null>;
+  prepareChromeCookieImport?: (
+    profileId: BrowserNodeChromeProfileId,
+    signal: AbortSignal
+  ) => Promise<BrowserNodeChromeCookiePreparationResult>;
   logger?: BrowserNodeElectronLogger;
   openExternal: (url: string) => Promise<void> | void;
   openDownloadedFile?: (path: string) => Promise<void> | void;
   prepareSession?: (
     input: BrowserNodePrepareSessionInput
   ) => Promise<void> | void;
+  resolveOrdinaryCookieStore?: (input: {
+    profileId: string | null;
+    sessionMode: BrowserNodeSessionMode;
+    sessionPartition: string | null;
+  }) =>
+    | Promise<BrowserGuestCookieStore | null>
+    | BrowserGuestCookieStore
+    | null;
+  resolveOrdinaryCookieSession?: (input: {
+    profileId: string | null;
+    sessionMode: BrowserNodeSessionMode;
+    sessionPartition: string | null;
+  }) =>
+    | Promise<BrowserGuestElectronSession | null>
+    | BrowserGuestElectronSession
+    | null;
   resolveWebContents: (webContentsId: number) => BrowserGuestWebContents | null;
   saveScreenshot?: (
     input: BrowserNodeScreenshotCapture
@@ -156,6 +197,10 @@ export interface BrowserGuestElectronSession {
   cookies?: BrowserGuestCookieStore;
   off(event: "will-download", listener: BrowserGuestWillDownloadListener): this;
   on(event: "will-download", listener: BrowserGuestWillDownloadListener): this;
+  resolveHost?(
+    hostname: string,
+    options?: { cacheUsage?: "allowed" | "disallowed" | "staleAllowed" }
+  ): Promise<{ endpoints: readonly { address: string }[] }>;
   setDownloadPath?(path: string): void;
 }
 
@@ -176,10 +221,33 @@ export interface BrowserGuestCookieDetails {
   value: string;
 }
 
+export type BrowserNodeChromeCookiePreparationResult =
+  | {
+      status: "canceled";
+    }
+  | {
+      cookies: readonly BrowserGuestCookieDetails[];
+      skipped: number;
+      status: "ready";
+    }
+  | {
+      failureCode: string;
+      failureStage: import("../core/types.ts").BrowserNodeCookieImportFailureStage;
+      status: "failed";
+    };
+
 export interface BrowserGuestDebugger {
   attach(protocolVersion?: string): void;
   detach(): void;
   isAttached(): boolean;
+  off?(
+    event: "message",
+    listener: (event: unknown, method: string, params: unknown) => void
+  ): this;
+  on?(
+    event: "message",
+    listener: (event: unknown, method: string, params: unknown) => void
+  ): this;
   sendCommand(
     method: string,
     commandParams?: Record<string, unknown>

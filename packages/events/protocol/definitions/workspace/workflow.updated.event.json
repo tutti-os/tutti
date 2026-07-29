@@ -1,0 +1,36 @@
+{
+  "$schema": "../../schemas/core/event-definition.schema.json",
+  "topic": "workspace.workflow.updated",
+  "version": 1,
+  "direction": "server->client",
+  "owner": "workspace",
+  "scope": "workspace",
+  "payloadSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["workflowId", "sourceSessionId", "checkpointId", "changeKind"],
+    "properties": {
+      "workflowId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "sourceSessionId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "checkpointId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "changeKind": {
+        "type": "string",
+        "enum": [
+          "proposal_created",
+          "revision_created",
+          "checkpoint_decided",
+          "operation_updated"
+        ]
+      }
+    }
+  }
+}

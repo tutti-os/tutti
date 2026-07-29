@@ -7,8 +7,11 @@ import type {
   EngineClock,
   EngineCommandPort,
   EngineExternalCommand,
+  EngineIntent,
   EngineScheduler
 } from "./types.ts";
+import type { AgentActivityTurn } from "../types.ts";
+import type { AgentActivitySessionInput } from "../sessionNormalization.ts";
 
 // Event-interleaving tests over synthetic entities: the engine loop is driven
 // by a manual clock/scheduler so every timing case is an explicit, enumerable
@@ -90,6 +93,21 @@ function createManualCommandPort(): ManualCommandPort {
   const executedCommands: EngineExternalCommand[] = [];
   const abortSignalsByCommandId = new Map<string, AbortSignal>();
   return {
+    executePlanDecision(command, options) {
+      executedCommands.push(command);
+      if (options?.signal) {
+        abortSignalsByCommandId.set(command.commandId, options.signal);
+      }
+      return new Promise((resolve, reject) => {
+        settlersByCommandId.set(command.commandId, {
+          reject,
+          resolve: (value) =>
+            resolve(
+              value as import("./planDecision.types.ts").PlanSubmitDecisionResult
+            )
+        });
+      });
+    },
     execute(command, options) {
       executedCommands.push(command);
       if (options?.signal) {
@@ -112,7 +130,11 @@ function createManualCommandPort(): ManualCommandPort {
   };
 }
 
-function createHarness(input?: { origin?: string; workspaceId?: string }) {
+function createHarness(input?: {
+  intentObserver?: (intent: EngineIntent) => void;
+  origin?: string;
+  workspaceId?: string;
+}) {
   const timer = createManualTimer();
   const commandPort = createManualCommandPort();
   const diagnosticEvents: EngineDiagnosticEvent[] = [];
@@ -127,6 +149,7 @@ function createHarness(input?: { origin?: string; workspaceId?: string }) {
       origin: input?.origin ?? "local-tuttid",
       workspaceId: input?.workspaceId ?? "ws-1"
     },
+    ...(input?.intentObserver ? { intentObserver: input.intentObserver } : {}),
     scheduler: timer.scheduler
   });
   engine.subscribe((state) => {
@@ -202,6 +225,47 @@ test("immediate dispatch reduces synchronously and notifies once per drain", () 
   assert.equal(notifiedStates.length, 1);
 });
 
+test("intent observer sees scoped dispatches including command results", async () => {
+  const observed: EngineIntent[] = [];
+  const harness = createHarness({
+    intentObserver: (intent) => observed.push(intent)
+  });
+  harness.engine.dispatch({
+    probeId: "p-observed",
+    type: "engine/probeRequested"
+  });
+  harness.commandPort.succeed("p-observed", { ok: true });
+  await flushMicrotasks();
+  assert.deepEqual(
+    observed.map((intent) => intent.type),
+    ["engine/probeRequested", "engine/commandResult"]
+  );
+});
+
+test("throwing intent observer is diagnostic-only", () => {
+  const observerError = new Error("observer exploded");
+  const harness = createHarness({
+    intentObserver: () => {
+      throw observerError;
+    }
+  });
+  harness.engine.dispatch({
+    status: "connected",
+    type: "engine/connectionChanged"
+  });
+  assert.equal(
+    harness.engine.getSnapshot().engineRuntime.connection,
+    "connected"
+  );
+  assert.deepEqual(harness.diagnosticEvents, [
+    {
+      error: observerError,
+      intentType: "engine/connectionChanged",
+      type: "intentObserverError"
+    }
+  ]);
+});
+
 test("batched intents coalesce into one frame and one notification", () => {
   const { engine, notifiedStates, timer } = createHarness();
   engine.dispatch(
@@ -271,6 +335,110 @@ test("command failure feeds back as a failed result with the error message", asy
     errorMessage: "transport down",
     outcome: "failed"
   });
+});
+
+test("a steer that loses the settle race is retried as a plain send", async () => {
+  const { commandPort, engine } = createHarness();
+  const runningSession = {
+    activeTurn: {
+      agentSessionId: "session-1",
+      origin: "user_prompt" as const,
+      phase: "running" as const,
+      startedAtUnixMs: 1,
+      turnId: "turn-1",
+      updatedAtUnixMs: 1
+    },
+    activeTurnId: "turn-1",
+    agentSessionId: "session-1",
+    capabilities: {
+      activeTurnGuidance: true,
+      browserUse: false,
+      compact: false,
+      computerUse: false,
+      goalPause: false,
+      imageInput: false,
+      interrupt: false,
+      modelImageInputRequired: false,
+      modelPlanBinding: false,
+      modelSwitch: false,
+      permissionModeChangeDeferred: false,
+      permissionModeChangeDuringTurn: false,
+      planImplementation: false,
+      planMode: false,
+      rateLimits: false,
+      resumeRunningTurn: false,
+      review: false,
+      skills: false,
+      tokenUsage: false
+    },
+    cwd: "/workspace",
+    latestTurnInteractions: [],
+    pendingInteractions: [],
+    provider: "claude-code",
+    title: "Session",
+    updatedAtUnixMs: 1,
+    workspaceId: "ws-1"
+  };
+  engine.dispatch({
+    sessions: [runningSession],
+    type: "session/snapshotReceived"
+  });
+  engine.dispatch({
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-1",
+    content: [{ type: "text", text: "steer" }],
+    expiresAtUnixMs: 120_000,
+    requestedAtUnixMs: 1,
+    routing: "send_now",
+    type: "submit/requested",
+    workspaceId: "ws-1"
+  });
+  const steer = commandPort.executedCommands.find(
+    (command) => command.type === "queue/sendPrompt"
+  );
+  assert.equal(steer?.type, "queue/sendPrompt");
+  assert.equal(steer?.type === "queue/sendPrompt" && steer.guidance, true);
+
+  // The daemon settled the turn before the steer landed and rejected it.
+  assert.ok(steer && "commandId" in steer);
+  commandPort.fail(
+    steer.commandId,
+    Object.assign(new Error("agent session has no active turn"), {
+      code: "invalid_request",
+      reason: "agent.no_active_turn"
+    })
+  );
+  await flushMicrotasks();
+
+  engine.dispatch({
+    sessions: [
+      {
+        ...runningSession,
+        activeTurn: {
+          ...runningSession.activeTurn,
+          phase: "settled" as const,
+          settledAtUnixMs: 2,
+          updatedAtUnixMs: 2
+        },
+        activeTurnId: null,
+        updatedAtUnixMs: 2
+      }
+    ],
+    type: "session/snapshotReceived"
+  });
+  const sends = commandPort.executedCommands.filter(
+    (command) => command.type === "queue/sendPrompt"
+  );
+  assert.equal(sends.length, 2);
+  const resend = sends[1];
+  assert.equal(
+    resend?.type === "queue/sendPrompt" ? resend.clientSubmitId : "",
+    "submit-1"
+  );
+  assert.equal(
+    resend?.type === "queue/sendPrompt" ? resend.guidance : true,
+    undefined
+  );
 });
 
 test("command timeout settles as timedOut and a late result is ignored", async () => {
@@ -524,6 +692,70 @@ test("unsubscribed listeners stop receiving notifications", () => {
   assert.equal(callCount, 1);
 });
 
+test("an authoritative Session detail snapshot notifies subscribers once", () => {
+  const { engine, notifiedStates } = createHarness({
+    workspaceId: "workspace-1"
+  });
+  const rootSession = activitySession("session-root");
+  const childSession = activitySession("session-child", {
+    kind: "child",
+    parentAgentSessionId: "session-root",
+    rootAgentSessionId: "session-root"
+  });
+  const turn = activityTurn("session-root", "turn-1");
+
+  engine.dispatch({
+    childSessions: [childSession],
+    live: true,
+    messages: [
+      {
+        agentSessionId: "session-root",
+        kind: "text",
+        messageId: "message-1",
+        occurredAtUnixMs: 3,
+        payload: { text: "hello" },
+        role: "assistant",
+        sequence: 1,
+        turnId: "turn-1",
+        version: 1,
+        workspaceId: "workspace-1"
+      }
+    ],
+    session: { ...rootSession, latestTurn: turn },
+    sessionMessageWindows: [
+      {
+        agentSessionId: "session-root",
+        hasOlderMessages: false,
+        oldestLoadedVersion: 1
+      }
+    ],
+    turns: [turn],
+    type: "session/detailSnapshotReceived",
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(notifiedStates.length, 1);
+  const snapshot = engine.getSnapshot();
+  assert.ok(snapshot.sessionLifecycle.sessionsById["session-root"]);
+  assert.ok(snapshot.sessionLifecycle.sessionsById["session-child"]);
+  assert.equal(
+    Object.values(snapshot.sessionLifecycle.turnsById)[0]?.turnId,
+    "turn-1"
+  );
+  assert.equal(
+    snapshot.sessionMessages.messagesBySessionId["session-root"]?.[0]
+      ?.messageId,
+    "message-1"
+  );
+  assert.deepEqual(
+    snapshot.sessionMessages.windowsBySessionId["session-root"],
+    {
+      hasOlderMessages: false,
+      oldestLoadedVersion: 1
+    }
+  );
+});
+
 test("a throwing listener is reported and does not block other listeners", () => {
   const { diagnosticEvents, engine } = createHarness();
   const listenerError = new Error("listener exploded");
@@ -555,3 +787,35 @@ test("intents dispatched from a listener are reduced in a follow-up drain", () =
   // Two drains happened: the original intent and the reentrant one.
   assert.equal(notifiedStates.length, 2);
 });
+
+function activityTurn(
+  agentSessionId: string,
+  turnId: string
+): AgentActivityTurn {
+  return {
+    agentSessionId,
+    origin: "user_prompt",
+    phase: "settled",
+    settledAtUnixMs: 3,
+    startedAtUnixMs: 2,
+    turnId,
+    updatedAtUnixMs: 3
+  };
+}
+
+function activitySession(
+  agentSessionId: string,
+  overrides: Partial<AgentActivitySessionInput> = {}
+): AgentActivitySessionInput {
+  return {
+    activeTurnId: null,
+    agentSessionId,
+    cwd: "/workspace",
+    latestTurnInteractions: [],
+    pendingInteractions: [],
+    provider: "codex",
+    title: "Session",
+    workspaceId: "workspace-1",
+    ...overrides
+  };
+}

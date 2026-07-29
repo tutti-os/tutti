@@ -9,10 +9,43 @@ import {
   resolveChannel
 } from "../../apps/desktop/scripts/generate-release-summary.mjs";
 import {
+  GITHUB_RELEASE_BODY_MAX_LENGTH,
+  RELEASE_NOTES_TRUNCATION_NOTICE
+} from "../../apps/desktop/scripts/lib/githubReleaseBody.mjs";
+import { resolvePreviousReleaseTag } from "../../apps/desktop/scripts/lib/previousReleaseTag.mjs";
+import {
   SECTION_END,
   SECTION_START,
   buildUpdatedReleaseBody
 } from "../../apps/desktop/scripts/upsert-release-summary.mjs";
+import { validateReleaseSummary } from "../../apps/desktop/scripts/validate-release-summary.mjs";
+
+function validReleaseSummary(overrides = {}) {
+  return {
+    schemaVersion: "tutti.desktop.release.summary.v1",
+    tag: "v1.2.4-rc.1",
+    version: "1.2.4-rc.1",
+    channel: "rc",
+    prerelease: true,
+    targetCommit: "0123456789abcdef",
+    compare: { from: "v1.2.4-rc.0", range: "v1.2.4-rc.0..HEAD", to: "HEAD" },
+    generatedAt: "2026-07-21T00:00:00.000Z",
+    summarySource: "fallback",
+    zh: {
+      headline: "本次版本优化发布流程。",
+      sections: [{ title: "发布与更新", items: ["验证候选版本。"] }],
+      qaFocus: ["验证更新。"]
+    },
+    en: {
+      headline: "This release improves the release flow.",
+      sections: [
+        { title: "Release and Updates", items: ["Validate the candidate."] }
+      ],
+      qaFocus: ["Verify updates."]
+    },
+    ...overrides
+  };
+}
 
 test("desktop release summary classifies commit messages for human sections", () => {
   assert.equal(
@@ -49,6 +82,28 @@ test("desktop release summary resolves channel from version shape", () => {
   assert.equal(resolveChannel({ version: "1.2.4" }), "stable");
   assert.equal(resolveChannel({ version: "1.2.4-rc.1" }), "rc");
   assert.equal(resolveChannel({ version: "1.2.4-beta.1" }), "beta");
+});
+
+test("GitHub release notes compare prereleases against the latest same-channel tag", () => {
+  const previousTag = resolvePreviousReleaseTag({
+    channel: "rc",
+    tag: "v0.2.2-rc.9",
+    tags: ["v0.2.2-rc.9", "v0.2.2-rc.8", "v0.2.2-beta.5", "v0.2.0"],
+    version: "0.2.2-rc.9"
+  });
+
+  assert.equal(previousTag, "v0.2.2-rc.8");
+});
+
+test("GitHub release notes fall back to the latest stable tag", () => {
+  const previousTag = resolvePreviousReleaseTag({
+    channel: "beta",
+    tag: "v0.3.0-beta.0",
+    tags: ["v0.3.0-beta.0", "v0.2.2-rc.8", "v0.2.1", "v0.2.0"],
+    version: "0.3.0-beta.0"
+  });
+
+  assert.equal(previousTag, "v0.2.1");
 });
 
 test("desktop release summary fallback emits zh and en sections", () => {
@@ -104,4 +159,52 @@ test("desktop release summary upserts a managed GitHub release section", () => {
   assert.doesNotMatch(nextBody, /Verify the download entry/);
   assert.match(nextBody, /Raw GitHub note/);
   assert.doesNotMatch(nextBody, /old summary/);
+});
+
+test("desktop release summary trims only generated notes at GitHub's body limit", () => {
+  const oversizedNotes = [
+    "## What's Changed",
+    ...Array.from(
+      { length: 2_000 },
+      (_, index) => `- generated note ${index}: ${"x".repeat(80)}`
+    )
+  ].join("\n");
+  const nextBody = buildUpdatedReleaseBody({
+    existingBody: oversizedNotes,
+    summary: {
+      en: {
+        headline: "A concise release summary.",
+        sections: [{ title: "Bug Fixes", items: ["Kept releases reliable."] }]
+      }
+    }
+  });
+
+  assert.ok(nextBody.length <= GITHUB_RELEASE_BODY_MAX_LENGTH);
+  assert.match(nextBody, /A concise release summary/);
+  assert.match(nextBody, /generated note 0:/);
+  assert.doesNotMatch(nextBody, /generated note 1999:/);
+  assert.ok(nextBody.includes(RELEASE_NOTES_TRUNCATION_NOTICE));
+});
+
+test("desktop release summary validator accepts a complete staged summary", () => {
+  const summary = validReleaseSummary();
+  assert.equal(
+    validateReleaseSummary(summary, {
+      tag: summary.tag,
+      channel: summary.channel,
+      targetCommit: summary.targetCommit
+    }),
+    summary
+  );
+});
+
+test("desktop release summary validator rejects inconsistent or incomplete summaries", () => {
+  assert.throws(
+    () => validateReleaseSummary(validReleaseSummary({ prerelease: false })),
+    /prerelease flag/
+  );
+  assert.throws(
+    () => validateReleaseSummary(validReleaseSummary({ en: { headline: "" } })),
+    /en.headline/
+  );
 });

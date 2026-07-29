@@ -28,6 +28,7 @@ export class SDKMessageRouter {
   private readonly getProviderSessionId: () => string;
   private readonly setProviderSessionId: (value: string) => void;
   private readonly onAssistantUuid: (value: string) => void;
+  private readonly onRuntimeModel: (value: string) => void;
   private readonly onSessionState: () => void;
   private readonly onMaybeTitle: (shouldEmit?: () => boolean) => Promise<void>;
   private readonly turns: TurnLifecycle;
@@ -37,11 +38,13 @@ export class SDKMessageRouter {
   private readonly compaction: CompactionTracker;
   private readonly emit: ClaudeSDKSidecarEventEmitter;
   private contextUsageGeneration = 0;
+  private activeRootAssistantError = "";
 
   constructor(options: {
     getProviderSessionId: () => string;
     setProviderSessionId: (value: string) => void;
     onAssistantUuid: (value: string) => void;
+    onRuntimeModel: (value: string) => void;
     onSessionState: () => void;
     onMaybeTitle: (shouldEmit?: () => boolean) => Promise<void>;
     turns: TurnLifecycle;
@@ -54,6 +57,7 @@ export class SDKMessageRouter {
     this.getProviderSessionId = options.getProviderSessionId;
     this.setProviderSessionId = options.setProviderSessionId;
     this.onAssistantUuid = options.onAssistantUuid;
+    this.onRuntimeModel = options.onRuntimeModel;
     this.onSessionState = options.onSessionState;
     this.onMaybeTitle = options.onMaybeTitle;
     this.turns = options.turns;
@@ -66,6 +70,10 @@ export class SDKMessageRouter {
 
   async handle(message: SDKMessage): Promise<void> {
     const parentToolUseID = readSDKParentToolUseID(message);
+    const runtimeModel = readRuntimeModel(message, parentToolUseID);
+    if (runtimeModel) {
+      this.onRuntimeModel(runtimeModel);
+    }
     this.emitLifecycleObservation(message, parentToolUseID);
     const sessionId = readSDKSessionID(message);
     if (sessionId && sessionId !== this.getProviderSessionId()) {
@@ -90,9 +98,17 @@ export class SDKMessageRouter {
     }
 
     if (message.type === "system") {
-      this.projection.handleSystemMessage(
-        message as unknown as Record<string, unknown>
-      );
+      const raw = message as unknown as Record<string, unknown>;
+      if (
+        stringValue(raw.subtype) === "session_state_changed" &&
+        stringValue(raw.state) === "idle" &&
+        this.activities.clearBackgroundContinuation()
+      ) {
+        this.turns.settleActive("turn_completed", {
+          stopReason: "background_agent_idle"
+        });
+      }
+      this.projection.handleSystemMessage(raw);
       return;
     }
 
@@ -107,6 +123,9 @@ export class SDKMessageRouter {
     }
 
     if (message.type === "user") {
+      if (isTuttiHostContextUserMessage(message)) {
+        return;
+      }
       this.handleUser(message, parentToolUseID);
       return;
     }
@@ -146,7 +165,9 @@ export class SDKMessageRouter {
       (messageSubtype === "task_started" ||
         messageSubtype === "task_progress" ||
         messageSubtype === "task_notification" ||
-        messageSubtype === "task_updated");
+        messageSubtype === "task_updated" ||
+        messageSubtype === "background_tasks_changed" ||
+        messageSubtype === "session_state_changed");
     const rootContinuationCandidate =
       messageType === "assistant" &&
       !parentToolUseID &&
@@ -181,7 +202,15 @@ export class SDKMessageRouter {
         ...(stringValue(raw.tool_use_id)
           ? { toolUseId: stringValue(raw.tool_use_id) }
           : {}),
-        ...(stringValue(raw.status) ? { status: stringValue(raw.status) } : {})
+        ...(stringValue(raw.status) ? { status: stringValue(raw.status) } : {}),
+        ...(stringValue(raw.state) ? { state: stringValue(raw.state) } : {}),
+        ...(stringValue(recordValue(raw.origin)?.kind)
+          ? { sdkMessageOrigin: stringValue(recordValue(raw.origin)?.kind) }
+          : {}),
+        ...(raw.is_error === true ? { sdkResultIsError: true } : {}),
+        ...(typeof raw.api_error_status === "number"
+          ? { sdkApiErrorStatus: raw.api_error_status }
+          : {})
       }
     });
   }
@@ -261,6 +290,12 @@ export class SDKMessageRouter {
     if (!this.turns.ensureActive("assistant")) {
       return;
     }
+    const assistantError = stringValue(
+      (message as unknown as Record<string, unknown>).error
+    );
+    if (assistantError) {
+      this.activeRootAssistantError = assistantError;
+    }
     const messageId = readSDKAssistantMessageID(message);
     const blocks = contentBlocksFromMessage(message);
     const usedAssistantSegmentIds = new Set<string>();
@@ -269,7 +304,8 @@ export class SDKMessageRouter {
         block,
         parentToolUseID,
         messageId,
-        usedAssistantSegmentIds
+        usedAssistantSegmentIds,
+        Boolean(assistantError)
       );
     }
     this.projection.emitGoalStatusFromBlocks(blocks);
@@ -306,17 +342,24 @@ export class SDKMessageRouter {
     const notificationText = readUserMessageNotificationText(
       message as { message?: { content?: unknown } }
     );
-    if (notificationText.includes("<task-notification>")) {
+    const taskNotification = notificationText.includes("<task-notification>");
+    if (taskNotification) {
       this.activities.handleTaskNotificationFromText(notificationText);
     }
     const activeTurnIdBefore = this.turns.activeId;
-    this.turns.activateForUserMessage(readSDKMessageUuid(message));
+    if (!parentToolUseID && !taskNotification) {
+      this.turns.activateForUserMessage(readSDKMessageUuid(message));
+    } else {
+      this.turns.ensureActive("user");
+    }
     if (
       !parentToolUseID &&
       this.turns.activeId &&
       this.turns.activeId !== activeTurnIdBefore
     ) {
+      this.activities.beginRootTurn();
       this.contextUsageGeneration += 1;
+      this.activeRootAssistantError = "";
     }
     const blocks = contentBlocksFromMessage(message);
     if (
@@ -345,9 +388,13 @@ export class SDKMessageRouter {
     const result = message as {
       subtype?: string;
       errors?: string[];
+      is_error?: boolean;
+      result?: string;
+      api_error_status?: number | null;
       usage?: unknown;
       modelUsage?: unknown;
       total_cost_usd?: unknown;
+      origin?: { kind?: string };
     };
     this.projection.emitFastModeState(
       (message as unknown as Record<string, unknown>).fast_mode_state
@@ -361,15 +408,54 @@ export class SDKMessageRouter {
     }
     const turnId = this.turns.activeId;
     const contextUsageGeneration = this.contextUsageGeneration;
+    const assistantError = this.activeRootAssistantError;
+    this.activeRootAssistantError = "";
+    const succeeded =
+      !this.turns.cancelled &&
+      result.subtype === "success" &&
+      result.is_error !== true &&
+      !assistantError;
+    const taskNotificationResult = result.origin?.kind === "task-notification";
+    if (succeeded && taskNotificationResult) {
+      this.activities.markTaskNotificationContinuation();
+      void this.emitResultUsage(turnId, contextUsageGeneration, result);
+      return;
+    }
+    const pendingBackgroundContinuation =
+      succeeded && this.activities.hasPendingBackgroundContinuation();
+    const completedSyntheticContinuation =
+      pendingBackgroundContinuation &&
+      this.turns.activeTurn?.synthetic === true;
+    // When the background level or task notifications already proved that
+    // follow-up output is pending, a successful root result is only the end of
+    // that provider response—not the canonical turn. Keep the original turn
+    // live until session idle instead of emitting a terminal/start pair that
+    // can settle durable state between the two events.
+    const retainRootForBackgroundContinuation =
+      pendingBackgroundContinuation &&
+      this.turns.activeTurn?.synthetic !== true;
     if (this.turns.cancelled) {
       this.turns.settleActive("turn_canceled");
       this.turns.clearCancelled();
-    } else if (result.subtype === "success") {
-      this.turns.settleActive("turn_completed", { stopReason: "end_turn" });
-    } else {
+    } else if (!succeeded) {
       this.turns.settleActive("turn_failed", {
-        error: result.errors?.[0] ?? "Claude SDK turn failed"
+        error:
+          result.errors?.[0] ||
+          (result.is_error ? result.result : "") ||
+          assistantError ||
+          "Claude SDK turn failed",
+        ...(assistantError ? { code: assistantError } : {}),
+        ...(typeof result.api_error_status === "number"
+          ? { apiErrorStatus: result.api_error_status }
+          : {})
       });
+    } else if (!retainRootForBackgroundContinuation) {
+      this.turns.settleActive("turn_completed", { stopReason: "end_turn" });
+    }
+    if (completedSyntheticContinuation) {
+      this.activities.clearBackgroundContinuation();
+    } else {
+      this.activities.handleRootResultSettled(succeeded);
     }
     void this.emitResultUsage(turnId, contextUsageGeneration, result);
     void this.onMaybeTitle(
@@ -401,4 +487,35 @@ export class SDKMessageRouter {
       });
     }
   }
+}
+
+function readRuntimeModel(
+  message: SDKMessage,
+  parentToolUseID: string
+): string {
+  if (parentToolUseID) {
+    return "";
+  }
+  const raw = message as unknown as Record<string, unknown>;
+  if (message.type === "system" && stringValue(raw.subtype) === "init") {
+    return stringValue(raw.model);
+  }
+  if (message.type !== "assistant") {
+    return "";
+  }
+  return stringValue(recordValue(raw.message)?.model);
+}
+
+function isTuttiHostContextUserMessage(message: SDKMessage): boolean {
+  const userMessage = message as SDKMessage & {
+    isSynthetic?: boolean;
+    origin?: { kind?: string };
+    message?: { content?: unknown };
+  };
+  if (!userMessage.isSynthetic || userMessage.origin?.kind !== "coordinator") {
+    return false;
+  }
+  return readUserMessageNotificationText(userMessage)
+    .trimStart()
+    .startsWith("<tutti-host-context");
 }

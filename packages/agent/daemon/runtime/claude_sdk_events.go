@@ -43,13 +43,23 @@ func (*ClaudeCodeSDKAdapter) applySidecarSessionEvent(adapterSession *claudeSDKA
 
 func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapterSession, session Session, turnID string, event claudeSDKSidecarEvent) ([]activityshared.Event, bool, error) {
 	adapterSession.applySessionPayload(&session, event.Payload)
-	providerTurnID := strings.TrimSpace(turnID)
 	eventTurnID := firstNonEmptyString(payloadString(event.Payload, "turnId"), payloadString(event.Payload, "turnID"))
-	if eventTurnID != "" && providerTurnID != "" && eventTurnID != providerTurnID {
+	if eventTurnID != "" && strings.TrimSpace(turnID) != "" && eventTurnID != strings.TrimSpace(turnID) {
 		return nil, false, nil
 	}
-	if providerTurnID == "" {
-		providerTurnID = eventTurnID
+	providerTurnID := firstNonEmptyString(
+		payloadString(event.Payload, "providerTurnId"),
+		strings.TrimSpace(turnID),
+		eventTurnID,
+	)
+	a.mu.Lock()
+	_, fencedGoalTurn := adapterSession.fencedGoalTurns[providerTurnID]
+	if fencedGoalTurn && isClaudeSDKTerminalEvent(event.Type) {
+		delete(adapterSession.fencedGoalTurns, providerTurnID)
+	}
+	a.mu.Unlock()
+	if fencedGoalTurn {
+		return nil, isClaudeSDKTerminalEvent(event.Type), nil
 	}
 	goalClearControlTurn := a.isGoalClearControlTurn(adapterSession, providerTurnID)
 	if goalClearControlTurn && isClaudeSDKGoalClearHiddenEvent(event.Type) {
@@ -60,11 +70,25 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 		return nil, true, nil
 	}
 	rootTurnID := a.claudeSDKRootTurnID(adapterSession, providerTurnID)
+	if events, handled := claudeSDKSidecarBackgroundTaskEvents(adapterSession, session, event); handled {
+		return events, false, nil
+	}
 	switch event.Type {
 	case "ok":
 		return nil, false, nil
 	case "session_state":
 		return []activityshared.Event{newSessionActivityEvent(session, EventSessionUpdated, firstNonEmpty(session.Status, SessionStatusReady), claudeSDKRuntimeContext(session, adapterSession))}, false, nil
+	case "provider_turn_started":
+		if eventTurnID == "" || providerTurnID == "" {
+			return nil, false, errors.New("claude SDK provider turn start omitted identity")
+		}
+		a.beginClaudeSDKRootTurn(adapterSession, eventTurnID, providerTurnID)
+		return []activityshared.Event{claudeSDKRootProviderTurnStartedEvent(
+			session,
+			eventTurnID,
+			providerTurnID,
+			map[string]any{"adapter": claudeSDKSidecarAdapterName},
+		)}, false, nil
 	case "turn_started":
 		metadata := map[string]any{
 			"adapter": claudeSDKSidecarAdapterName,
@@ -88,7 +112,23 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 				metadata["sourceGoalRepairEpoch"] = repairEpoch
 				a.mu.Lock()
 				latestRevision, latestRepairEpoch := adapterSession.goalRevision, adapterSession.goalRepairEpoch
+				identity := goalOperationIdentity{
+					operationID: operationID,
+					revision:    revision,
+					repairEpoch: repairEpoch,
+				}
+				_, fenced := adapterSession.fencedGoalIdentities[identity]
+				if fenced {
+					if adapterSession.fencedGoalTurns == nil {
+						adapterSession.fencedGoalTurns = make(map[string]struct{})
+					}
+					adapterSession.fencedGoalTurns[providerTurnID] = struct{}{}
+				}
 				a.mu.Unlock()
+				if fenced {
+					a.cancelClaudeSDKGoalTurn(adapterSession, session, providerTurnID, revision, repairEpoch)
+					return nil, false, nil
+				}
 				if revision > 0 && revision == latestRevision && repairEpoch < latestRepairEpoch {
 					a.cancelClaudeSDKGoalTurn(adapterSession, session, providerTurnID, revision, repairEpoch)
 				}
@@ -170,6 +210,15 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 			payloadString(event.Payload, "content"),
 			true,
 		), false, nil
+	case "assistant_failed":
+		messageID := firstNonEmptyString(payloadString(event.Payload, "messageId"), adapterSession.assistantMessageID(providerTurnID))
+		return a.claudeSDKAssistantFailedEvents(
+			adapterSession,
+			session,
+			rootTurnID,
+			messageID,
+			payloadString(event.Payload, "content"),
+		), false, nil
 	case "thinking_delta":
 		messageID := firstNonEmptyString(payloadString(event.Payload, "messageId"), adapterSession.thinkingMessageID(providerTurnID))
 		content := firstNonEmpty(payloadString(event.Payload, "snapshot"), payloadString(event.Payload, "content"))
@@ -205,6 +254,8 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 		events := adapterSession.claudeSDKToolEvents(session, rootTurnID, event.Payload, EventCallFailed, messageStreamStateFailed, event.Type)
 		events = a.projectClaudeSDKTurnCallEvents(adapterSession, events)
 		return events, false, nil
+	case "task_result_updated":
+		return adapterSession.claudeSDKTaskResultUpdatedEvents(session, event.Payload), false, nil
 	case "task_started", "task_progress", "task_completed":
 		if child, ok := adapterSession.claudeSDKChildForPayload(event.Payload); ok &&
 			a.turnAlreadySettled(adapterSession, child.TurnID) {
@@ -268,7 +319,7 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 
 func isClaudeSDKGoalClearHiddenEvent(eventType string) bool {
 	switch eventType {
-	case "turn_started", "assistant_delta", "assistant_completed", "thinking_delta", "thinking_completed":
+	case "turn_started", "assistant_delta", "assistant_completed", "assistant_failed", "thinking_delta", "thinking_completed":
 		return true
 	default:
 		return false
@@ -437,45 +488,6 @@ func (a *ClaudeCodeSDKAdapter) stampTurnLifecycleSnapshots(adapterSession *claud
 	return events
 }
 
-// turnAlreadySettled reports whether a terminal event for the turn already
-// left this adapter.
-func (a *ClaudeCodeSDKAdapter) turnAlreadySettled(adapterSession *claudeSDKAdapterSession, turnID string) bool {
-	if a == nil || adapterSession == nil {
-		return false
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	_, settled := adapterSession.settledTurns[strings.TrimSpace(turnID)]
-	return settled
-}
-
-// claudeSDKToolEventTargetsClosedTurn preserves the SDK's normal weak ordering:
-// an active child may still report after the root provider turn has ended. Once
-// services/tuttid explicitly cancels that exact child turn, however, later SDK
-// tool events are cancellation fallout and must not reopen or reclassify it.
-func (a *ClaudeCodeSDKAdapter) claudeSDKToolEventTargetsClosedTurn(
-	adapterSession *claudeSDKAdapterSession,
-	rootTurnID string,
-	payload map[string]any,
-) bool {
-	if child, ok := adapterSession.claudeSDKChildForPayload(payload); ok {
-		return a.turnAlreadySettled(adapterSession, child.TurnID)
-	}
-	return a.turnAlreadySettled(adapterSession, rootTurnID)
-}
-
-func (a *ClaudeCodeSDKAdapter) markClaudeSDKTurnClosed(adapterSession *claudeSDKAdapterSession, turnID string, outcome string) {
-	if a == nil || adapterSession == nil || strings.TrimSpace(turnID) == "" {
-		return
-	}
-	a.mu.Lock()
-	if adapterSession.settledTurns == nil {
-		adapterSession.settledTurns = make(map[string]string)
-	}
-	adapterSession.settledTurns[strings.TrimSpace(turnID)] = strings.TrimSpace(outcome)
-	a.mu.Unlock()
-}
-
 func (a *ClaudeCodeSDKAdapter) dispatchClaudeSDKEvent(agentSessionID string, adapterSession *claudeSDKAdapterSession, event claudeSDKSidecarEvent) {
 	if a == nil || adapterSession == nil {
 		return
@@ -491,7 +503,11 @@ func (a *ClaudeCodeSDKAdapter) dispatchClaudeSDKEvent(agentSessionID string, ada
 	}
 	waiter := a.claudeSDKTurnWaiter(adapterSession, turnID)
 	if claudeSDKSidecarTurnTerminal(event.Type) {
-		known := a.consumeClaudeSDKRootProviderTurn(adapterSession, turnID)
+		providerTurnID := firstNonEmptyString(
+			payloadString(event.Payload, "providerTurnId"),
+			turnID,
+		)
+		known := a.consumeClaudeSDKRootProviderTurn(adapterSession, providerTurnID)
 		goalClearControlTurn := a.isGoalClearControlTurn(adapterSession, turnID)
 		if waiter == nil && !known && !goalClearControlTurn {
 			return
@@ -538,46 +554,21 @@ func (a *ClaudeCodeSDKAdapter) logClaudeSDKLifecycleEvent(agentSessionID string,
 		"root_turn_id", rootTurnID,
 		"sidecar_event_type", strings.TrimSpace(event.Type),
 	}
-	for _, field := range []struct {
-		logKey     string
-		payloadKey string
-	}{
-		{logKey: "turn_id", payloadKey: "turnId"},
-		{logKey: "sdk_message_type", payloadKey: "sdkMessageType"},
-		{logKey: "sdk_message_subtype", payloadKey: "sdkMessageSubtype"},
-		{logKey: "active_turn_id_before", payloadKey: "activeTurnIdBefore"},
-		{logKey: "task_id", payloadKey: "taskId"},
-		{logKey: "agent_id", payloadKey: "agentId"},
-		{logKey: "tool_use_id", payloadKey: "toolUseId"},
-		{logKey: "tool_call_id", payloadKey: "toolCallId"},
-		{logKey: "parent_tool_use_id", payloadKey: "parentToolUseId"},
-		{logKey: "tool_name", payloadKey: "toolName"},
-		{logKey: "status", payloadKey: "status"},
-		{logKey: "stop_reason", payloadKey: "stopReason"},
-	} {
-		if value := strings.TrimSpace(payloadString(payload, field.payloadKey)); value != "" {
-			args = append(args, field.logKey, value)
-		}
-	}
-	if payloadBoolValue(payload, "synthetic") {
-		args = append(args, "synthetic", true)
-	}
-	if payloadBoolValue(payload, "taskNotification") {
-		args = append(args, "task_notification", true)
-	}
-	if payloadBoolValue(payload, "rootContinuationCandidate") {
-		args = append(args, "root_continuation_candidate", true)
-	}
-	if payloadBoolValue(payload, "syntheticTimeout") {
-		args = append(args, "synthetic_timeout", true)
-	}
-	slog.Info("agent session Claude SDK lifecycle event", args...)
+	args = append(args, claudeSDKLifecycleLogArgs(payload)...)
+	slog.Log(
+		context.Background(),
+		claudeSDKLifecycleEventLogLevel(event.Type),
+		"agent session Claude SDK lifecycle event",
+		args...,
+	)
 }
 
 func claudeSDKLifecycleEventDiagnostic(event claudeSDKSidecarEvent) bool {
 	switch strings.TrimSpace(event.Type) {
 	case "sdk_lifecycle_observed",
 		"turn_started", "turn_completed", "turn_canceled", "turn_failed",
+		"continuation_delayed",
+		"background_tasks_changed", "background_tasks_quiesced",
 		"task_started", "task_progress", "task_completed":
 		return true
 	case "tool_started", "tool_completed", "tool_failed":

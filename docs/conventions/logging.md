@@ -67,6 +67,26 @@ This is intentionally lightweight:
 - it is not a distributed tracing system
 - it is a stable per-launch correlation key for local debugging and log analysis
 
+## Desktop Diagnostic Exports
+
+Desktop diagnostic exports use an explicit time range and an explicit Session
+record choice. The supported combinations are:
+
+- the last 10 minutes of logs
+- the last 10 minutes of logs plus Agent Session records
+- the last 3 days of logs
+- the last 3 days of logs plus Agent Session records
+
+The selected time range applies to structured log timestamps, file modification
+time when a source has no parseable timestamps, and Agent Session update time.
+Choosing logs only must not query or write Agent Session records. Runtime context,
+the export summary, and other non-Session diagnostic snapshots remain part of the
+log bundle so exported evidence stays interpretable.
+
+Runtime-context transport diagnostics are allowlisted. Exports may include the
+bound/requested address and listener/PID paths, but must never serialize the
+transport access token or newly added transport snapshot fields by default.
+
 ## Error Codes
 
 Startup, transport, and supervision failures should carry a stable `error_code` in addition to the human-readable message.
@@ -152,6 +172,26 @@ Desktop main supports:
 Default:
 
 - `TUTTI_DESKTOP_LOG_LEVEL` unset behaves as `info`
+
+### Hot-Path Diagnostics
+
+Streaming events, polling loops, renderer snapshots, and transport frames are
+hot paths. Their successful per-event diagnostics belong at `debug`; the
+default `info` level should contain a bounded summary per turn, short time
+window, or semantic state transition.
+
+Rules:
+
+- aggregate repeated success events and retain counts plus stable correlation
+  fields in the summary
+- keep failures, dropped data, and rare lifecycle transitions visible at
+  `warn` or `error`
+- exclude cursors, timestamps, token/message versions, and elapsed time from
+  change-detection signatures unless that value is the state being diagnosed
+- log a periodic poll at `info` or `warn` only when its semantic result changes;
+  unchanged results belong at `debug`
+- desktop file writes must stay ordered without performing one synchronous
+  filesystem write on the Electron main thread per line
 
 ## Rotation
 

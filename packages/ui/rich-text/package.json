@@ -12,6 +12,7 @@
     "./core": "./src/core/index.ts",
     "./editor": "./src/editor/index.ts",
     "./plugins": "./src/plugins/index.ts",
+    "./service": "./src/service/index.ts",
     "./types": "./src/types/index.ts"
   },
   "files": [
@@ -30,15 +31,15 @@
   },
   "dependencies": {
     "@tutti-os/ui-i18n-runtime": "workspace:*",
-    "@tutti-os/ui-system": "workspace:*",
+    "@tutti-os/ui-system": "workspace:*"
+  },
+  "devDependencies": {
     "@tiptap/core": "^3.23.6",
     "@tiptap/extension-document": "^3.23.6",
     "@tiptap/extension-hard-break": "^3.23.6",
     "@tiptap/extension-paragraph": "^3.23.6",
     "@tiptap/extension-text": "^3.23.6",
-    "@tiptap/react": "^3.23.6"
-  },
-  "devDependencies": {
+    "@tiptap/react": "^3.23.6",
     "@tutti-os/config-tsconfig": "workspace:*",
     "@types/node": "^24.0.1",
     "@types/react": "^19.1.6",
@@ -48,6 +49,8 @@
     "typescript": "^5.8.3"
   },
   "peerDependencies": {
+    "@tiptap/core": "^3.23.6",
+    "@tiptap/react": "^3.23.6",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
@@ -88,6 +91,11 @@
         "import": "./dist/plugins/index.js",
         "default": "./dist/plugins/index.js"
       },
+      "./service": {
+        "types": "./dist/service/index.d.ts",
+        "import": "./dist/service/index.js",
+        "default": "./dist/service/index.js"
+      },
       "./types": {
         "types": "./dist/types/index.d.ts",
         "import": "./dist/types/index.js",
@@ -111,6 +119,9 @@
         ],
         "plugins": [
           "./dist/plugins/index.d.ts"
+        ],
+        "service": [
+          "./dist/service/index.d.ts"
         ],
         "types": [
           "./dist/types/index.d.ts"

@@ -1,7 +1,11 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useSnapshot } from "valtio";
-import type { AgentActivityRuntime, AgentGUIProps } from "@tutti-os/agent-gui";
-import { AGENT_CONTEXT_MENTION_PROVIDER_IDS } from "@tutti-os/agent-gui/context-mention-provider";
+import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
+import {
+  AGENT_CONTEXT_MENTION_PROVIDER_IDS,
+  type AgentContextMentionProvider
+} from "@tutti-os/agent-gui/context-mention-provider";
+import { createRichTextMentionService } from "@tutti-os/ui-rich-text/service";
 import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import type {
   WorkbenchDockPreviewCache,
@@ -17,12 +21,9 @@ import { DESKTOP_AGENT_GUI_EMPTY_CONTEXT_MENTION_PROVIDERS } from "./desktopAgen
 export function useDesktopAgentGUIContextMentions(input: {
   agentActivityRuntime: AgentActivityRuntime;
   appCenterService: IWorkspaceAppCenterService;
-  contextMentionProviders: NonNullable<
-    AgentGUIProps["hostCapabilities"]["contextMentionProviders"]
-  >;
+  contextMentionProviders: readonly AgentContextMentionProvider[];
   dockPreviewCache: WorkbenchDockPreviewCache;
   host: WorkbenchHostNodeBodyContext["host"];
-  previewMode: boolean;
   workspaceId: string;
 }) {
   const {
@@ -31,7 +32,6 @@ export function useDesktopAgentGUIContextMentions(input: {
     contextMentionProviders,
     dockPreviewCache,
     host,
-    previewMode,
     workspaceId
   } = input;
   const appCenterState = useSnapshot(appCenterService.store);
@@ -44,30 +44,27 @@ export function useDesktopAgentGUIContextMentions(input: {
     [appCenterState.apps, workspaceId]
   );
   const workspaceAppMentionProvider = useMemo(() => {
-    if (previewMode) return null;
     return (
       contextMentionProviders.find(
         (provider) =>
           provider.id === AGENT_CONTEXT_MENTION_PROVIDER_IDS.workspaceApp
       ) ?? null
     );
-  }, [contextMentionProviders, previewMode]);
+  }, [contextMentionProviders]);
   const agentGeneratedFileMentionProvider = useMemo(
     () =>
-      previewMode
-        ? null
-        : createDesktopAgentGeneratedFileMentionProvider({
-            agentActivityRuntime,
-            workspaceId
-          }),
-    [agentActivityRuntime, previewMode, workspaceId]
+      createDesktopAgentGeneratedFileMentionProvider({
+        agentActivityRuntime,
+        workspaceId
+      }),
+    [agentActivityRuntime, workspaceId]
   );
   const resolveDockFiles = useCallback(
     () => resolveWorkbenchDockFileMentionItems({ host, workspaceId }),
     [host, workspaceId]
   );
   const effectiveContextMentionProviders = useMemo(() => {
-    if (previewMode || !agentGeneratedFileMentionProvider) {
+    if (!agentGeneratedFileMentionProvider) {
       return DESKTOP_AGENT_GUI_EMPTY_CONTEXT_MENTION_PROVIDERS;
     }
     return composeDesktopAgentGuiContextMentionProviders({
@@ -83,10 +80,21 @@ export function useDesktopAgentGUIContextMentions(input: {
   }, [
     agentGeneratedFileMentionProvider,
     dockPreviewCache,
-    previewMode,
     resolveDockFiles,
     contextMentionProviders,
     workspaceAppMentionProvider
   ]);
-  return { effectiveContextMentionProviders, workspaceAppIcons };
+  const mentionService = useMemo(
+    () =>
+      createRichTextMentionService({
+        providers: effectiveContextMentionProviders
+      }),
+    [effectiveContextMentionProviders]
+  );
+  useEffect(() => () => mentionService.dispose(), [mentionService]);
+  return {
+    effectiveContextMentionProviders,
+    mentionService,
+    workspaceAppIcons
+  };
 }

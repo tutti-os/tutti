@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 func TestAppServerImageGenerationPublishesFileBackedContentWithoutBase64(t *testing.T) {
@@ -74,7 +74,7 @@ func TestAppServerImageGenerationPublishesFileBackedContentWithoutBase64(t *test
 	}
 
 	messageUpdate, ok := messageUpdateFromSessionEvent(
-		agentsessionstore.EventSource{Provider: string(ProviderCodex)},
+		canonical.EventSource{Provider: string(ProviderCodex)},
 		event,
 		session.AgentSessionID,
 		1,

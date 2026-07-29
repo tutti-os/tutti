@@ -2,13 +2,15 @@ import { ipcMain, shell } from "electron";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import {
   desktopIpcChannels,
-  type DesktopDeveloperLogKind
+  type DesktopDeveloperLogKind,
+  type ExportDeveloperLogsInput
 } from "../../shared/contracts/ipc";
 import { type DeveloperLogsService } from "../developerLogs";
 import {
   createDesktopDeveloperLogsService,
   exportDesktopDeveloperLogsAndNotify
 } from "../developerLogsDesktop.ts";
+import { normalizeDeveloperLogsExportInput } from "../developerLogsExportOptions.ts";
 import type { DesktopHostPreferencesState } from "../desktopHostPreferences";
 import { resolveDesktopDefaultsFromEnv } from "../defaults";
 import { toDesktopIpcResult } from "./result";
@@ -19,6 +21,7 @@ export function registerDeveloperIpc(
     TuttidClient,
     | "listWorkspaceAgentSessionMessages"
     | "listWorkspaceAgentSessions"
+    | "readWorkspaceAgentSessionAttachment"
     | "listWorkspaceAppFactoryJobs"
     | "listWorkspaceApps"
     | "listWorkspaces"
@@ -33,10 +36,16 @@ export function registerDeveloperIpc(
   ipcMain.handle(desktopIpcChannels.developer.clearLogs, () =>
     toDesktopIpcResult(() => service.clearLogs())
   );
-  ipcMain.handle(desktopIpcChannels.developer.exportLogs, () =>
-    toDesktopIpcResult(() =>
-      exportDesktopDeveloperLogsAndNotify(preferences, tuttidClient)
-    )
+  ipcMain.handle(
+    desktopIpcChannels.developer.exportLogs,
+    (_event, input?: ExportDeveloperLogsInput) =>
+      toDesktopIpcResult(() =>
+        exportDesktopDeveloperLogsAndNotify(
+          preferences,
+          tuttidClient,
+          normalizeDeveloperLogsExportInput(input)
+        )
+      )
   );
   ipcMain.handle(desktopIpcChannels.developer.openLogDirectory, () =>
     toDesktopIpcResult(async () => {

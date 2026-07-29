@@ -8,7 +8,6 @@ const (
 	ClaudeCode = providerregistry.ClaudeCodeProviderID
 	Codex      = providerregistry.CodexProviderID
 	Cursor     = providerregistry.CursorProviderID
-	Hermes     = providerregistry.HermesProviderID
 	Nexight    = providerregistry.NexightProviderID
 	OpenClaw   = providerregistry.OpenClawProviderID
 	OpenCode   = providerregistry.OpenCodeProviderID
@@ -47,6 +46,29 @@ func NormalizeOpen(provider string) string {
 		return normalized
 	}
 	return ""
+}
+
+// ModelPlanProtocol resolves the model API protocol declared by the provider's
+// runtime strategy. The returned value is transport-neutral so model-plan
+// ownership remains in the tuttid modelplan business package.
+func ModelPlanProtocol(provider string) (string, bool) {
+	protocol, ok := providerregistry.ResolveModelPlanProtocol(provider)
+	return string(protocol), ok
+}
+
+// ModelPlanModelAddressingProviderPrefixed reports whether the provider's
+// runtime strategy addresses bound plan models with the injected provider
+// namespace ("<provider>/<model>") in composer and settings values.
+func ModelPlanModelAddressingProviderPrefixed(provider string) bool {
+	addressing, ok := providerregistry.ResolveModelPlanModelAddressing(provider)
+	return ok && addressing == providerregistry.ModelPlanModelAddressingProviderPrefixed
+}
+
+// ModelPlanUsesResponsesToChatGateway reports whether the provider runtime
+// strategy requires the daemon's local Responses-to-Chat endpoint adapter.
+func ModelPlanUsesResponsesToChatGateway(provider string) bool {
+	adapter, ok := providerregistry.ResolveModelPlanEndpointAdapter(provider)
+	return ok && adapter == providerregistry.ModelPlanEndpointAdapterResponsesToChatGateway
 }
 
 func IsSupported(provider string) bool {

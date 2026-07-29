@@ -1,6 +1,14 @@
 import type { TranslationDictionary } from "../core/resources.ts";
 
 export const zhCN = {
+  browser: {
+    chromeImportNotification: {
+      completed: "已从 Chrome 导入 {{imported}} 项 Cookie",
+      failed: "Chrome Cookie 导入未完成",
+      partial: "已从 Chrome 导入 {{imported}} 项 Cookie，部分条目被跳过或失败",
+      title: "Chrome 登录状态导入"
+    }
+  },
   common: {
     cancel: "取消",
     close: "关闭",
@@ -104,9 +112,13 @@ export const zhCN = {
       edit: "编辑",
       exportLogsFailed: "无法导出日志",
       exportLogsTitle: "导出日志",
-      exportServiceLogs: "导出服务日志...",
+      exportRecentTenMinutesLogs: "最近 10 分钟",
+      exportRecentThreeDaysLogs: "最近 3 天",
+      exportServiceLogs: "导出服务日志",
       file: "文件",
       help: "帮助",
+      logsOnly: "仅日志",
+      logsWithAgentSessions: "日志 + Session 记录",
       openPerfMonitor: "打开 Perf Monitor DevTools",
       quit: "退出 Tutti",
       upToDateDetail: "Tutti {{version}} 是当前的最新版本。",
@@ -137,6 +149,42 @@ export const zhCN = {
       switchWorkspaceUnavailable: "暂时无法加载工作区列表。"
     },
     agentGui: {
+      sessionReplay: {
+        empty: "暂无录制",
+        failed: "会话录制或回放失败",
+        list: "录制列表",
+        record: {
+          cancel: "取消录制",
+          rename: "重命名录制",
+          renameCancel: "取消重命名",
+          renameFailed: "无法重命名录制",
+          renameSave: "保存录制名称",
+          start: "开始录制",
+          stop: "停止并保存录制"
+        },
+        replay: {
+          cassette: "回放 Cassette",
+          checkpoint: "Checkpoint {{current}} / {{total}}",
+          complete: "校验通过",
+          controlFailed: "无法控制回放",
+          failed: "校验失败",
+          launching: "正在启动独立回放窗口",
+          next: "下一个 checkpoint",
+          opened: "独立回放窗口已打开",
+          pause: "暂停回放",
+          play: "播放回放",
+          previous: "上一个 checkpoint",
+          replaying: "正在回放",
+          restart: "从头回放",
+          speed: "回放速度",
+          speedFailed: "无法修改回放速度",
+          stateMismatch: "回放最终状态与录制状态不一致：{{table}}",
+          toolbar: "回放控制",
+          validationComplete: "回放校验通过",
+          validationFailed: "回放校验失败",
+          verifying: "正在校验"
+        }
+      },
       collapseConversationRail: "隐藏侧边栏",
       expandConversationRail: "显示侧边栏",
       fallbackAgentLabel: "Agent",
@@ -145,6 +193,12 @@ export const zhCN = {
       untitledConversation: "未命名对话",
       openSessionUnavailableDescription: "这个 Agent 会话已不存在或无法打开。",
       openSessionUnavailableTitle: "会话不可用",
+      sessionMenu: {
+        copyAsMarkdown: "复制为 Markdown",
+        copyAsReference: "复制为引用",
+        moreActions: "更多会话操作",
+        rename: "重命名会话"
+      },
       browserElementContext: {
         cancel: "取消选择元素",
         failed: "无法将这个页面元素添加到 Agent 输入框",
@@ -171,18 +225,33 @@ export const zhCN = {
     accountMenu: {
       title: "Tutti Agent",
       member: "管理订阅",
+      upgradeMembership: "升级",
+      rechargeCredits: "充值积分",
+      viewCreditPlans: "查看积分方案",
       creditsBalance: "积分余额",
       accountCenter: "账户设置",
+      settings: "设置",
       free: "Free",
       signIn: "登录",
       signOut: "退出登录",
+      copyUserId: "复制用户 ID",
+      copyUserIdSuccess: "已复制用户 ID",
+      copyUserIdFailed: "复制用户 ID 失败",
+      openExternalFailed: "无法打开账户链接",
+      refresh: "刷新",
+      refreshing: "刷新中",
       loading: "加载中",
       unavailable: "--",
       dataUnavailable: "部分账号数据暂不可用",
       rewardToastTitle: "新用户积分",
       rewardToastCreditsUnit: "积分",
       rewardToastDescription: "已添加到账户余额",
-      rewardToastClose: "关闭积分奖励通知"
+      rewardToastClose: "关闭积分奖励通知",
+      insufficientCreditsUpgradeMessage:
+        "您账户下可用的积分额度已耗尽，升级会员可获取更多额度",
+      insufficientCreditsRechargeMessage:
+        "Tutti 积分不足，充值积分后可继续使用",
+      insufficientCreditsUnknownMessage: "Tutti 积分不足，请查看积分方案后继续"
     },
     agentEnv: {
       configTitle: "{{provider}} 环境",
@@ -196,6 +265,7 @@ export const zhCN = {
       detecting: "正在检测 {{provider}} 环境…",
       ready: "{{provider}} 已就绪。",
       busyInstalling: "正在设置 {{provider}}…",
+      busyUpdating: "正在更新 {{provider}}…",
       busyVerifying: "正在校验 {{provider}}…",
       actionDetect: "重新检测",
       redetectDisabledInstalling: "安装进行中，暂时无法重新检测",
@@ -203,6 +273,8 @@ export const zhCN = {
       actionInstall: "安装",
       actionRepair: "修复安装",
       actionUpgrade: "升级",
+      actionUpdate: "更新",
+      actionUpdating: "更新中…",
       actionRelogin: "重新登录",
       actionLogin: "登录",
       actionRetry: "重试",
@@ -400,7 +472,12 @@ export const zhCN = {
     },
     appCenter: {
       backToApps: "返回应用",
-      dockLabel: "应用"
+      dockLabel: "应用",
+      tabs: {
+        close: "关闭应用标签页",
+        label: "已打开的应用",
+        new: "打开其他应用"
+      }
     },
     info: {
       idDescription: "用于 preload 和 daemon 协调的稳定标识。",
@@ -449,6 +526,50 @@ export const zhCN = {
     },
     settings: {
       close: "关闭设置",
+      agent: {
+        agents: {
+          autoCheckUpdates: "自动检查更新",
+          autoCheckUpdatesFailed: "无法保存自动检查更新设置",
+          autoCheckUpdatesHint: "定期检查；只有点击更新后才会安装",
+          checkUpdates: "检查更新",
+          checkUpdatesFailed: "暂时无法检查 Agent CLI 更新",
+          checkingUpdates: "正在检查更新…",
+          currentVersionSummary: "{{current}}",
+          disabled: "已停用",
+          earlyAccessBadge: "抢先体验",
+          earlyAccessDescription: "显示仍在 Tutti 中测试和验证的 Agent 集成",
+          earlyAccessHiddenHint:
+            "在实验室中开启抢先体验 Agent 集成即可管理 {{agent}}",
+          earlyAccessLabel: "抢先体验 Agent 集成",
+          empty: "暂无可显示的 Agent",
+          enableAgent: "启用 {{agent}}",
+          enableChangeFailed: "无法更改 {{agent}} 的启用状态",
+          enabled: "已启用",
+          enabledColumn: "启用状态",
+          environmentColumn: "就绪状态",
+          extensionCodeBuddy: "CodeBuddy Code",
+          extensionEnableToSetUp: "启用后进行设置",
+          extensionGemini: "Gemini CLI",
+          extensionGrok: "Grok Build",
+          extensionHermes: "Hermes Agent",
+          extensionGitHubCopilot: "GitHub Copilot CLI",
+          extensionKilo: "Kilo Code",
+          extensionKimiCode: "Kimi Code",
+          extensionPreparing: "正在准备集成…",
+          extensionQwen: "Qwen Code",
+          updateAvailableLatest: "有可用更新 · {{latest}}",
+          updateAvailableSummary: "{{current}} → {{latest}}",
+          updateCheckFailed: "暂时无法检查更新",
+          updateCheckFailedSummary: "{{current}} · 暂时无法检查",
+          updateUpToDateSummary: "{{current}} · 已是最新"
+        },
+        tabs: {
+          agents: "Agent Runtime",
+          automation: "自动化",
+          customAgents: "自定义 Agent",
+          general: "通用设置"
+        }
+      },
       appearance: {
         dockPlacementDescription: "控制工作区 dock 栏停靠的位置",
         dockPlacementLabel: "Dock 布局",
@@ -523,6 +644,22 @@ export const zhCN = {
           generalDescription: "同样强大，技术细节更少"
         },
         agentConversationDetailModeSaveFailed: "暂时无法更新工作模式",
+        deletedConversationRetentionLabel: "已删除会话清理",
+        deletedConversationRetentionDescription:
+          "在所选期限后永久移除软删除的 Agent 会话，仅清理 Tutti 管理的数据",
+        deletedConversationRetentionDays: "{{count}} 天",
+        deletedConversationRetentionSaveFailed: "暂时无法更新清理期限",
+        deletedConversationPurgeAction: "立即清理",
+        deletedConversationPurging: "正在清理…",
+        deletedConversationPurgeTitle: "永久清理已删除会话？",
+        deletedConversationPurgeDescription:
+          "这会移除本设备上全部软删除的 Agent 会话且无法撤销，请输入「{{phrase}}」继续",
+        deletedConversationPurgeConfirmationPhrase: "永久清理",
+        deletedConversationPurgeConfirmationLabel: "确认文字",
+        deletedConversationPurgeConfirm: "永久清理",
+        deletedConversationPurgeCompleted: "已清理 {{count}} 个已删除会话",
+        deletedConversationPurgeFailed:
+          "暂时无法清理，请先结束正在运行的 Agent 任务后重试",
         computerUseLabel: "电脑控制",
         computerUseDescription:
           "让 Agent 控制你的 Mac 桌面——截图、点击、键盘输入等",
@@ -675,14 +812,15 @@ export const zhCN = {
       },
       nav: {
         about: "关于",
-        account: "账号",
         apps: "应用",
         sectionsLabel: "设置分区",
         appearance: "外观",
         agent: "Agent",
+        connection: "连接",
         developer: "开发者",
         general: "通用",
-        lab: "实验室"
+        lab: "实验室",
+        model: "模型"
       },
       about: {
         appName: "Tutti",
@@ -699,7 +837,36 @@ export const zhCN = {
         reopenLogin: "重新打开登录页",
         signedOutTitle: "未登录",
         signingIn: "登录中...",
-        signingOut: "退出中..."
+        signingOut: "退出中...",
+        mobileRemote: {
+          cancel: "取消配对",
+          confirming: "正在确认这台手机...",
+          copyPairingCode: "复制配对码",
+          copyPairingCodeFailed: "暂时无法复制配对码",
+          description:
+            "与登录同一 Tutti 账号的手机配对，随后可在手机上访问这台电脑的 Agent 会话",
+          empty: "尚未有手机与这台电脑配对",
+          errors: {
+            list: "暂时无法读取已配对手机",
+            revoke: "暂时无法移除这台手机",
+            start: "暂时无法开始配对",
+            status: "暂时无法更新配对状态"
+          },
+          mobileDevice: "移动设备",
+          pairedDevices: "已配对手机",
+          pairingCodeCopied: "配对码已复制",
+          qrAlt: "手机配对二维码",
+          qrError: "二维码生成失败",
+          remove: "移除",
+          removing: "移除中...",
+          revoked: "已移除",
+          scanHint:
+            "在手机上打开 Tutti 并扫描此二维码，二维码将在短时间后过期且仅对当前账号有效",
+          start: "配对手机",
+          starting: "正在创建...",
+          title: "手机远程访问",
+          waitingForScan: "等待手机扫码"
+        }
       },
       apps: {
         appCatalogChannelDescription:
@@ -710,61 +877,200 @@ export const zhCN = {
           staging: "测试应用"
         },
         appCatalogChannelSaveFailed: "暂时无法切换应用来源",
-        managedModels: {
-          apiKey: "API 密钥",
-          addModel: "添加",
-          addProvider: "添加",
-          baseUrl: "Base URL",
-          collapse: "收起",
-          customProvider: "自定义",
+        agents: {
+          addAgent: "添加 Agent",
+          defaultModelLabel: "默认模型",
           delete: "删除",
-          deleteConfirm: "删除此配置？",
-          deleteFailed: "删除失败，请重试",
+          deleteConfirm: "删除这个 Agent？",
+          deleteFailed: "Agent 删除失败，请重试",
+          deleting: "删除中...",
+          description: "选择 Agent Runtime、模型和指令，创建可重复使用的 Agent",
+          edit: "编辑",
+          editTitle: "编辑 {{agent}}",
+          editorDescription: "保存后，它会成为新会话中可选择的一个 Agent",
+          emptyDescription:
+            "添加一个 Agent，为它选择 Agent Runtime、模型和工作指令",
+          emptyTitle: "还没有自定义 Agent",
+          ready: "可用",
+          harnessLabel: "Agent Runtime",
+          harnessUnavailable: "Agent Runtime 不可用",
+          behaviorDetailsTitle: "完整指令与调用条件",
+          callConditionsLabel: "调用条件",
+          callConditionsPlaceholder: "发布决策前调用\n架构风险较高时调用",
+          instructionsLabel: "指令",
+          instructionsPlaceholder: "描述这个 Agent 应该如何开展工作",
+          loadFailed: "暂时无法加载工作区 Agent",
+          migrated: "由旧版绑定迁移",
+          modelPlanLabel: "模型方案",
+          nameLabel: "名称",
+          namePlaceholder: "前端审查 Agent",
+          noHarnesses: "暂无可用的 Agent Runtime",
+          noModelPlan: "使用 Agent Runtime 默认模型",
+          onePerLine: "每行填写一项",
+          planDefaultModel: "使用方案默认模型",
+          descriptionLabel: "描述",
+          descriptionPlaceholder: "描述这个 Agent 的职责与适用场景",
+          requiredFields: "请填写名称并选择 Agent Runtime",
+          retry: "重试",
+          save: "保存 Agent",
+          saveFailed: "Agent 保存失败，请检查配置后重试",
+          saving: "保存中...",
+          title: "自定义 Agent"
+        },
+        automationRules: {
+          addRule: "添加自动化",
+          allAgents: "全部 Agent",
+          allowedToolsHint: "不选择时跟随目标 Agent 的工具配置",
+          allowedToolsLabel: "允许的工具",
+          budgetDescription:
+            "限制会对每个来源会话独立计算。填写 0 会使用 daemon 的安全默认值，不代表无限制",
+          budgetLabel: "预算",
+          budgetSummary: "{{runs}} 次 · {{tokens}} tokens",
+          chooseTargetAgent: "选择目标 Agent",
+          delete: "删除",
+          deleteConfirm: "删除这条自动化？",
+          deleteFailed: "自动化删除失败，请重试",
           deleting: "删除中...",
           description:
-            "用你自己的 API 密钥接入模型，供工作区的应用和 Agent 使用",
-          detectModels: "获取可用模型",
-          detectingModels: "获取中...",
-          detectModelsEmpty: "没有找到可用模型",
-          detectModelsFailed: "获取模型失败，请重试",
+            "当 Agent 完成或失败任务后，自动新建一个目标 Agent 会话，并在首条消息中 @ 事件来源会话",
+          disabled: "已停用",
+          edit: "编辑",
+          editTitle: "编辑 {{rule}}",
+          editorDescription:
+            "触发后会为目标 Agent 新建会话，首条消息包含你的提示词并 @ 事件来源会话。新自动化默认停用并使用保守限制",
           emptyDescription:
-            "点「添加」用你的 API 密钥接入 Agnes、OpenAI 或 Anthropic",
-          emptyTitle: "还没有接入模型供应商",
-          enabled: "启用 {{provider}}",
-          expand: "展开",
-          getApiKey: "获取 {{provider}} API 密钥",
+            "当 Agent 完成或失败工作后需要自动发起后续会话时，可添加一条规则",
+          emptyTitle: "还没有自动化规则",
+          enabled: "已启用",
+          enabledLabel: "匹配的任务结束后自动运行",
+          invalidBudget: "两个预算限制都必须填写非负整数",
+          loadFailed: "暂时无法加载自动化规则",
+          maxRunsLabel: "每个来源会话最多运行次数",
+          maxTokensLabel: "每个来源会话最多使用 Token 数",
+          nameLabel: "名称",
+          namePlaceholder: "完成后续跟进",
+          permissionModeDefault: "使用目标 Agent 的默认值",
+          permissionModeLabel: "权限模式",
+          promptLabel: "提示词",
+          promptPlaceholder: "描述新会话应该执行的后续任务",
+          requiredFields: "请填写名称并选择目标 Agent",
+          retry: "重试",
+          save: "保存自动化",
+          saveFailed: "自动化保存失败，请检查目标、权限和预算",
+          saving: "保存中...",
+          sourceAgentLabel: "来源 Agent",
+          targetAgentLabel: "目标 Agent",
+          targetLabel: "目标",
+          targetOptionsLoadFailed: "无法加载目标 Agent 的能力目录",
+          targetOptionsLoading: "正在加载目标能力目录...",
+          title: "自动化规则",
+          toolsEmpty: "该目标没有可选工具，新会话将沿用目标 Agent 的工具配置",
+          triggerLabel: "触发条件",
+          triggers: {
+            onTaskComplete: "任务完成时",
+            onTaskFailed: "任务失败或中断时"
+          }
+        },
+        modelPlans: {
+          addModel: "添加模型",
+          addPlan: "添加方案",
+          apiKey: "API 密钥",
+          baseUrl: "Base URL",
+          defaultMarker: "默认",
+          delete: "删除",
+          deleteBlockedDescription: "改绑或停用以下引用后才能删除",
+          deleteBlockedTitle: "该方案仍被引用，无法删除",
+          deleteConfirm: "删除此方案？",
+          deleteFailed: "删除失败，请重试",
+          deleting: "删除中...",
+          description: "配置模型接口及可用模型，供工作区的 Agent 和应用使用",
+          confirmModelRangeImpact: "确认影响并保存",
+          detect: "检测连接",
+          detectFailed: "连接检测失败，请重试",
+          detecting: "检测中...",
+          duplicate: "复制",
+          duplicateFailed: "复制失败，请重试",
+          edit: "编辑",
+          editTitle: "编辑 {{plan}}",
+          emptyDescription:
+            "点「添加方案」，填写接口协议、Base URL、API 密钥和可用模型",
+          emptyTitle: "还没有模型方案",
+          enabled: "启用 {{plan}}",
+          fetchModels: "拉取模型",
+          fetchModelsEmpty: "接口未返回可选模型，你仍可手动输入模型 ID",
+          fetchModelsFailed: "拉取模型失败，请检查凭证与 Base URL 后重试",
+          fetchModelsResult: "已拉取 {{count}} 个可选模型",
+          fetchingModels: "拉取中...",
           hideApiKey: "隐藏密钥",
-          keyConfigured: "密钥已保存",
-          keyMissing: "还没填密钥",
           keepExistingKey: "留空则继续使用已保存的密钥",
-          loadFailed: "暂时无法加载模型供应商",
+          lastDetectedAt: "上次检测 {{time}}",
+          loadFailed: "暂时无法加载模型方案",
+          modelCount: "{{count}} 个模型",
           modelId: "模型 ID",
-          modelIdPlaceholder: "model-id",
-          models: "{{provider}} 模型",
-          presetLabels: {
-            agnes: "Agnes",
-            anthropicClaude: "Anthropic (Claude)",
-            deepseekAnthropic: "DeepSeek - Anthropic",
-            deepseekOpenai: "DeepSeek - OpenAI",
-            mimoAnthropic: "MiMo (Xiaomi) - Anthropic",
-            mimoOpenai: "MiMo (Xiaomi) - OpenAI",
-            minimaxAnthropic: "MiniMax - Anthropic",
-            minimaxOpenai: "MiniMax - OpenAI",
-            openaiOfficial: "OpenAI official"
+          modelPickerEmpty: "没有匹配的模型",
+          modelPickerPlaceholder: "选择或输入模型 ID",
+          modelPickerSearchPlaceholder: "搜索模型 ID 或名称",
+          modelPickerUseCustom: "使用自定义 ID“{{model}}”",
+          nativeLoginHint:
+            "此方案使用本机 Codex 或 Claude Code 已有的登录状态。如尚未登录，请先前往 Agent 设置完成登录，再运行连接检测；方案不会保存 API 密钥或 Base URL",
+          modelRangeImpactDescription:
+            "以下引用会在下一次调用时使用变更后的模型范围。请确认影响后再次保存；运行中的调用不会改变",
+          modelRangeImpactTitle: "确认受影响的引用",
+          models: "模型",
+          nameLabel: "名称",
+          namePlaceholder: "我的模型方案",
+          neverDetected: "尚未检测",
+          protocolLabel: "接口协议",
+          protocols: {
+            anthropic: "Anthropic 兼容",
+            openai: "OpenAI 兼容"
+          },
+          referenceKinds: {
+            agentTarget: "Agent",
+            modelPolicy: "模型策略",
+            workspaceAgent: "工作区 Agent",
+            workspaceApp: "应用"
           },
           removeModel: "移除模型",
-          requiredFieldsMissing: "请先填写 API 密钥和 Base URL",
-          quickFillProvider: "选择服务商预设",
+          setDefaultModel: "将 {{model}} 设为默认模型",
+          requiredFieldsMissing:
+            "请填写名称和模型列表；接口方案还需要 API 密钥与 Base URL",
           save: "保存",
           saveFailed: "保存失败，请重试",
           saving: "保存中...",
           showApiKey: "显示密钥",
-          test: "测试连接",
-          testFailed: "连接失败，请检查密钥或地址",
-          testSucceeded: "连接正常",
-          testing: "测试中...",
-          modelCount: "{{count}} 个模型",
-          title: "模型供应商"
+          statusLabels: {
+            detectionFailed: "检测失败",
+            disabled: "已停用",
+            ready: "可用",
+            undetected: "待检测"
+          },
+          templateGroups: {
+            codingPlan: {
+              guidance:
+                "使用编程套餐（如 Claude Coding Plan）提供的接入点和密钥",
+              label: "Coding Plan"
+            },
+            custom: {
+              guidance:
+                "填写 OpenAI 或 Anthropic 兼容接口的 Base URL、API 密钥和模型",
+              label: "模型接口"
+            },
+            domestic: {
+              guidance: "接入 DeepSeek、MiniMax、MiMo 等国内模型服务",
+              label: "国内模型"
+            },
+            officialSubscription: {
+              guidance: "使用服务商官方 API 密钥直连官方订阅",
+              label: "官方订阅"
+            },
+            relay: {
+              guidance: "使用聚合一个或多个服务商的中转/代理服务接入点",
+              label: "中转服务"
+            }
+          },
+          title: "模型方案",
+          toggleFailed: "状态更新失败，请重试"
         }
       },
       developer: {
@@ -782,6 +1088,12 @@ export const zhCN = {
         daemonLogLabel: "Daemon 日志",
         desktopLogLabel: "Desktop 日志",
         exportLogs: "导出日志",
+        exportRecentTenMinutesLogsOnly: "最近 10 分钟 · 仅日志",
+        exportRecentTenMinutesLogsWithSessions:
+          "最近 10 分钟 · 日志 + Session 记录",
+        exportRecentThreeDaysLogsOnly: "最近 3 天 · 仅日志",
+        exportRecentThreeDaysLogsWithSessions:
+          "最近 3 天 · 日志 + Session 记录",
         exportLogsDialogTitle: "导出日志",
         exportLogsFileType: "Zip 压缩包",
         exportingLogs: "导出中...",
@@ -808,19 +1120,37 @@ export const zhCN = {
         logsExported: "已导出 {{count}} 个日志文件到 {{path}}",
         logsExportFailed: "暂时无法导出本地日志",
         logsLoadFailed: "暂时无法加载本地日志信息",
+        qwenAgentDescription:
+          "在 Tutti 中显示 Qwen Code，Agent Extension 预览期间默认关闭",
+        qwenAgentLabel: "启用 Qwen Code Agent",
+        grokAgentDescription:
+          "加载已签名的 Grok Build Agent Extension，并在 AgentGUI 中显示",
+        grokAgentLabel: "启用 Grok Build Agent",
         logsSizeLabel: "日志大小",
         logsSummary: "{{count}} 个文件，共 {{size}}",
         logsTitle: "日志",
+        mobileRemoteAccessSettingsDescription:
+          "显示连接设置以及手机配对与远程访问控制项",
+        mobileRemoteAccessSettingsLabel: "显示手机远程访问设置",
+        mobileRemoteAccessSettingsSaveFailed:
+          "暂时无法更新手机远程访问显示设置",
         openDaemonLog: "打开 daemon 日志",
         openDesktopLog: "打开 desktop 日志",
         openLogsDirectory: "打开日志目录",
         addFileDefaultOpener: "添加",
+        agentSessionRecordingDescription:
+          "在 Agent 首页显示会话录制与回放开发入口",
+        agentSessionRecordingLabel: "Agent 会话录制",
         removeFileDefaultOpener: "移除 .{{extension}}",
         releaseChannelDescription: "选择稳定版更新；需要提前验收时可切到预览版",
         releaseChannelLabel: "发布渠道",
         referenceProvenanceFilterDescription:
           "在 Agent 对话的引用选择器中启用智能体来源筛选",
         referenceProvenanceFilterLabel: "智能体来源筛选",
+        quickPromptLibraryDescription:
+          "在 Agent 输入框中显示个人快捷提示词库入口",
+        quickPromptLibraryLabel: "快捷提示词库",
+        quickPromptLibrarySaveFailed: "暂时无法更新快捷提示词库可用状态",
         releaseChannelOptions: {
           rc: "预览版",
           stable: "稳定版"
@@ -837,13 +1167,25 @@ export const zhCN = {
         visibilityLabel: "显示开发者面板"
       },
       lab: {
+        agentInputHistoryDescription:
+          "在 Agent 输入框中使用上下键切换当前会话的历史输入",
+        agentInputHistoryLabel: "Agent 输入历史",
+        agentSessionForkDescription:
+          "允许从支持的已完成轮次创建新的 Agent 会话分支",
+        agentSessionForkLabel: "Agent 会话分支",
+        backLabel: "返回",
+        automationRulesDescription: "显示自动化规则配置与会话覆盖选项",
+        automationRulesLabel: "自动化规则",
         clearShortcutLabel: "清除 {{label}}",
         newAgentConversationShortcutLabel: "新建 Agent 对话",
         newSameTypeWindowShortcutLabel: "新建同类型窗口",
         preferencesSaveFailed: "暂时无法更新实验室设置",
+        previewAgentsDescription: "显示仍在 Tutti 中测试和验证的 Agent 集成",
+        previewAgentsLabel: "抢先体验 Agent 集成",
         shortcutUnbound: "未绑定",
         workbenchShortcutsDescription: "启用可配置的工作台快捷键操作",
-        workbenchShortcutsLabel: "工作台快捷键"
+        workbenchShortcutsLabel: "工作台快捷键",
+        workbenchShortcutsManageLabel: "配置键盘快捷键"
       },
       title: "设置",
       trigger: "设置"
@@ -880,7 +1222,9 @@ export const zhCN = {
         terminal: "终端"
       },
       filePreview: {
+        edit: "编辑",
         loading: "加载中...",
+        preview: "预览",
         revert: "还原",
         save: "保存",
         saved: "已保存",
@@ -909,6 +1253,9 @@ export const zhCN = {
         login: "登录",
         loginFailed: "登录失败",
         loginRequired: "需要先登录本地 CLI 才能使用这个 Agent",
+        updateFailed: "更新失败",
+        updateFailedDescription: "暂时无法更新本地 Agent，请稍后重试",
+        updateFailedTimedOut: "更新超时，请稍后重试",
         manageActionConnect: "连接",
         manageActionLogin: "登录",
         manageActionOpeningLogin: "打开中...",
@@ -922,7 +1269,6 @@ export const zhCN = {
         manageProviderClaudeCode: "Claude Code",
         manageProviderCodex: "Codex",
         manageProviderCursor: "Cursor",
-        manageProviderHermes: "Hermes",
         manageProviderNexight: "Tutti Agent",
         manageProviderOpenClaw: "OpenClaw",
         manageProviderOpenCode: "Open Code",
@@ -952,9 +1298,6 @@ export const zhCN = {
         unavailableItem: "{{title}}，{{reason}}"
       },
       missionControl: {
-        activateShortcutDefault: "Ctrl + 1",
-        activateShortcutMac: "Cmd + 1",
-        activateTrigger: "快速激活节点",
         layoutShortcutDefault: "Ctrl + 2",
         layoutShortcutMac: "Cmd + 2",
         layoutTrigger: "快速布局",

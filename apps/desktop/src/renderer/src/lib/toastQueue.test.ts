@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { enqueueDesktopToast, type DesktopToastItem } from "./toastQueue.ts";
+import {
+  desktopToastMountKey,
+  enqueueDesktopToast,
+  type DesktopToastItem
+} from "./toastQueue.ts";
 
 const missingFileToast: DesktopToastItem = {
   description: "The file could not be found",
@@ -61,4 +65,21 @@ test("desktop toast queue still enforces its visible toast limit", () => {
     next.map((toast) => toast.id),
     ["toast-5", "toast-1", "toast-2", "toast-3"]
   );
+});
+
+test("desktop loading toast remounts when it settles", () => {
+  const loading: DesktopToastItem = {
+    busy: true,
+    id: "loading-toast",
+    title: "Loading",
+    tone: "default"
+  };
+  const settled: DesktopToastItem = {
+    ...loading,
+    busy: false,
+    title: "Done",
+    tone: "success"
+  };
+
+  assert.notEqual(desktopToastMountKey(loading), desktopToastMountKey(settled));
 });

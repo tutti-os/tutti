@@ -2,6 +2,7 @@ package eventstream
 
 type desktopPreferencesMutationPayload struct {
 	Preferences struct {
+		AgentCLIUpdateCheckEnabled                  bool                                                      `json:"agentCliUpdateCheckEnabled"`
 		AgentComposerDefaultsByProvider             desktopAgentComposerDefaultsByProviderPayload             `json:"agentComposerDefaultsByProvider"`
 		AgentComposerDefaultsByAgentTarget          desktopAgentComposerDefaultsByAgentTargetPayload          `json:"agentComposerDefaultsByAgentTarget,omitempty"`
 		AgentGUIConversationRailCollapsedByProvider desktopAgentGUIConversationRailCollapsedByProviderPayload `json:"agentGuiConversationRailCollapsedByProvider"`
@@ -12,6 +13,7 @@ type desktopPreferencesMutationPayload struct {
 		DefaultAgentProvider                        string                                                    `json:"defaultAgentProvider"`
 		DockIconStyle                               string                                                    `json:"dockIconStyle"`
 		DockPlacement                               string                                                    `json:"dockPlacement"`
+		DeletedAgentConversationRetentionDays       int                                                       `json:"deletedAgentConversationRetentionDays"`
 		FileDefaultOpenersByExtension               desktopFileDefaultOpenersByExtensionPayload               `json:"fileDefaultOpenersByExtension"`
 		FeatureFlags                                map[string]bool                                           `json:"featureFlags"`
 		WorkbenchShortcuts                          desktopWorkbenchShortcutsPayload                          `json:"workbenchShortcuts"`
@@ -32,6 +34,7 @@ type desktopPreferencesUpdatedPayload struct {
 }
 
 type desktopPreferencesSettingsPayload struct {
+	AgentCLIUpdateCheckEnabled                  bool                                                      `json:"agentCliUpdateCheckEnabled"`
 	AgentComposerDefaultsByProvider             desktopAgentComposerDefaultsByProviderPayload             `json:"agentComposerDefaultsByProvider"`
 	AgentComposerDefaultsByAgentTarget          desktopAgentComposerDefaultsByAgentTargetPayload          `json:"agentComposerDefaultsByAgentTarget,omitempty"`
 	AgentGUIConversationRailCollapsedByProvider desktopAgentGUIConversationRailCollapsedByProviderPayload `json:"agentGuiConversationRailCollapsedByProvider"`
@@ -42,6 +45,7 @@ type desktopPreferencesSettingsPayload struct {
 	DefaultAgentProvider                        string                                                    `json:"defaultAgentProvider"`
 	DockIconStyle                               string                                                    `json:"dockIconStyle"`
 	DockPlacement                               string                                                    `json:"dockPlacement"`
+	DeletedAgentConversationRetentionDays       int                                                       `json:"deletedAgentConversationRetentionDays"`
 	FileDefaultOpenersByExtension               desktopFileDefaultOpenersByExtensionPayload               `json:"fileDefaultOpenersByExtension"`
 	FeatureFlags                                map[string]bool                                           `json:"featureFlags"`
 	WorkbenchShortcuts                          desktopWorkbenchShortcutsPayload                          `json:"workbenchShortcuts"`

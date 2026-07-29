@@ -90,6 +90,7 @@ export async function createDesktopAppServices(
     enableDevelopmentReloadShortcut: options.enableDevelopmentReloadShortcut,
     appVersion: options.appVersion,
     fallbackLocale: options.fallbackLocale,
+    isPackaged: options.isPackaged,
     logger: options.logger,
     tuttidClient: daemonRuntime.tuttidClient,
     preloadPath: options.preloadPath,

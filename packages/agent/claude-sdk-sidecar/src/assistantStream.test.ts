@@ -50,6 +50,27 @@ test("assistant fallback reuses a streamed prefix", () => {
   );
 });
 
+test("assistant SDK error replaces completion with a failed message", () => {
+  const events: Array<Omit<ClaudeSDKSidecarEvent, "version">> = [];
+  const projector = new AssistantStreamProjector(
+    () => "turn-1",
+    (event) => events.push(event)
+  );
+
+  projector.setMessageBase("message-1");
+  projector.failContent(
+    "assistant",
+    "message-1",
+    "Failed to authenticate",
+    new Set<string>()
+  );
+
+  assert.deepEqual(
+    events.map((event) => [event.type, event.payload?.content]),
+    [["assistant_failed", "Failed to authenticate"]]
+  );
+});
+
 test("assistant stream reset drops stale indexes", () => {
   const events: Array<Omit<ClaudeSDKSidecarEvent, "version">> = [];
   const projector = new AssistantStreamProjector(

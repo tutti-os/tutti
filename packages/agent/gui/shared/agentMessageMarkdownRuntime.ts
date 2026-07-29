@@ -79,6 +79,41 @@ export function parseStreamingFence(
   return length >= 3 ? { marker, length } : null;
 }
 
+export function hasOpenPotentialMermaidFence(content: string): boolean {
+  let openFence: {
+    marker: string;
+    length: number;
+    isPotentialMermaid: boolean;
+  } | null = null;
+
+  for (const line of content.replace(/\r\n?/g, "\n").split("\n")) {
+    const lineFence = parseStreamingFence(line);
+    if (!lineFence) {
+      continue;
+    }
+    const trimmed = line.trimStart();
+    const suffix = trimmed.slice(lineFence.length).trim();
+    if (!openFence) {
+      const language = suffix.split(/\s+/, 1)[0]?.toLowerCase() ?? "";
+      openFence = {
+        ...lineFence,
+        isPotentialMermaid:
+          language.length > 0 && "mermaid".startsWith(language)
+      };
+      continue;
+    }
+    if (
+      suffix === "" &&
+      lineFence.marker === openFence.marker &&
+      lineFence.length >= openFence.length
+    ) {
+      openFence = null;
+    }
+  }
+
+  return openFence?.isPotentialMermaid ?? false;
+}
+
 export function resolveMarkdownAnchorHref(
   target: EventTarget | null
 ): string | null {

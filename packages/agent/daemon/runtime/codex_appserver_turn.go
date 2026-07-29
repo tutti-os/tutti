@@ -20,7 +20,7 @@ func (a *CodexAppServerAdapter) Exec(
 	emit EventSink,
 	emitCommands CommandSnapshotSink,
 ) ([]activityshared.Event, error) {
-	return a.execBlocking(ctx, session, content, displayPrompt, turnID, emit, emitCommands)
+	return a.execBlocking(ctx, session, content, displayPrompt, turnID, emit, emitCommands, nil)
 }
 
 func (a *CodexAppServerAdapter) ExecAsync(
@@ -32,21 +32,127 @@ func (a *CodexAppServerAdapter) ExecAsync(
 	emit EventSink,
 	emitCommands CommandSnapshotSink,
 ) error {
+	return a.execAsync(ctx, session, content, displayPrompt, turnID, emit, emitCommands, nil)
+}
+
+type codexGuidanceContinuationAdmission struct {
+	providerTurnID     string
+	admitted           chan error
+	provisionalStarted chan struct{}
+}
+
+func newCodexGuidanceContinuationAdmission(providerTurnID string) *codexGuidanceContinuationAdmission {
+	return &codexGuidanceContinuationAdmission{
+		providerTurnID:     providerTurnID,
+		admitted:           make(chan error, 1),
+		provisionalStarted: make(chan struct{}),
+	}
+}
+
+func (a *codexGuidanceContinuationAdmission) published() bool {
+	if a == nil {
+		return false
+	}
+	select {
+	case <-a.provisionalStarted:
+		return true
+	default:
+		return false
+	}
+}
+
+func (a *CodexAppServerAdapter) execAsync(
+	ctx context.Context,
+	session Session,
+	content []PromptContentBlock,
+	displayPrompt string,
+	turnID string,
+	emit EventSink,
+	emitCommands CommandSnapshotSink,
+	continuation *codexGuidanceContinuationAdmission,
+) error {
 	go func() {
-		if _, err := a.execBlocking(ctx, session, content, displayPrompt, turnID, emit, emitCommands); err != nil {
-			if emit == nil {
-				return
+		events, err := a.execBlocking(
+			ctx,
+			session,
+			content,
+			displayPrompt,
+			turnID,
+			emit,
+			emitCommands,
+			continuation,
+		)
+		if continuation != nil && !continuation.published() {
+			return
+		}
+		if emit == nil {
+			return
+		}
+		outcome := codexAsyncTerminalOutcome(events, err)
+		terminalEvents := make([]activityshared.Event, 0, 2)
+		if continuation != nil &&
+			!codexAsyncProviderLifecycleSupersedes(events, continuation.providerTurnID) {
+			metadata := map[string]any{
+				"guidanceContinuation": true,
+				"providerTurnStarted":  false,
 			}
-			if errors.Is(err, context.Canceled) {
-				emit([]activityshared.Event{newTurnActivityEvent(session, EventTurnCanceled, turnID, SessionStatusCanceled, "", "", map[string]any{
+			if err != nil {
+				metadata["error"] = err.Error()
+			}
+			terminalEvents = append(terminalEvents, appServerRootProviderTurnCompletedEvent(
+				session,
+				turnID,
+				continuation.providerTurnID,
+				outcome,
+				metadata,
+			))
+		}
+		if err != nil {
+			if outcome == activityshared.TurnOutcomeCanceled {
+				terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnCanceled, turnID, SessionStatusCanceled, "", "", map[string]any{
 					"error": err.Error(),
-				})})
-				return
+				}))
+			} else {
+				terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(err)))
 			}
-			emit([]activityshared.Event{newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(err))})
+		}
+		if len(terminalEvents) > 0 {
+			emit(terminalEvents)
 		}
 	}()
 	return nil
+}
+
+func codexAsyncProviderLifecycleSupersedes(events []activityshared.Event, provisionalProviderTurnID string) bool {
+	for _, event := range events {
+		if event.Type != activityshared.EventRootProviderTurnStarted &&
+			event.Type != activityshared.EventRootProviderTurnCompleted {
+			continue
+		}
+		providerTurnID := strings.TrimSpace(event.Payload.ProviderTurnID)
+		if providerTurnID != "" && providerTurnID != provisionalProviderTurnID {
+			return true
+		}
+	}
+	return false
+}
+
+func codexAsyncTerminalOutcome(events []activityshared.Event, err error) activityshared.TurnOutcome {
+	if errors.Is(err, context.Canceled) {
+		return activityshared.TurnOutcomeCanceled
+	}
+	for _, event := range events {
+		switch event.Type {
+		case activityshared.EventTurnCanceled:
+			return activityshared.TurnOutcomeCanceled
+		case activityshared.EventTurnFailed:
+			return activityshared.TurnOutcomeFailed
+		}
+	}
+	if err != nil {
+		return activityshared.TurnOutcomeFailed
+	}
+	return activityshared.TurnOutcomeCompleted
 }
 
 func (a *CodexAppServerAdapter) GuideActiveTurn(
@@ -66,11 +172,16 @@ func (a *CodexAppServerAdapter) GuideActiveTurn(
 	session.ProviderSessionID = appSession.threadID
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
 	mentionRoutingApplied, mentionRoutingSkills := tuttiMentionRoutingSkills(visibleText)
-	providerContent := content
-	if mentionRoutingApplied {
-		providerContent = appendTuttiMentionRoutingContent(providerContent, mentionRoutingSkills)
-	}
 	if activeTurnID != "" {
+		providerContent := content
+		if mentionRoutingApplied {
+			providerContent = appendTuttiMentionRoutingContent(providerContent, mentionRoutingSkills)
+		}
+		var err error
+		providerContent, err = materializeProviderPromptImagesAtBoundary(ctx, providerContent, a.promptImageMaterializer)
+		if err != nil {
+			return nil, err
+		}
 		return a.steerActiveTurn(ctx, appSession, session, content, providerContent, explicitDisplayPrompt, visibleText, turnID, activeTurnID, emit)
 	}
 	// The canonical root turn remains active while child sessions drain even
@@ -89,10 +200,8 @@ func (a *CodexAppServerAdapter) GuideActiveTurn(
 	}
 	started := activityshared.NewRootProviderTurnStarted(eventContext, turnID, attemptID)
 	started.Payload.Metadata = map[string]any{"guidanceContinuation": true}
-	if emit != nil {
-		emit([]activityshared.Event{started})
-	}
-	if err := a.ExecAsync(
+	continuation := newCodexGuidanceContinuationAdmission(attemptID)
+	if err := a.execAsync(
 		context.WithoutCancel(ctx),
 		session,
 		content,
@@ -100,9 +209,17 @@ func (a *CodexAppServerAdapter) GuideActiveTurn(
 		turnID,
 		emit,
 		emitCommands,
+		continuation,
 	); err != nil {
-		return []activityshared.Event{started}, err
+		return nil, err
 	}
+	if err := <-continuation.admitted; err != nil {
+		return nil, err
+	}
+	if emit != nil {
+		emit([]activityshared.Event{started})
+	}
+	close(continuation.provisionalStarted)
 	return []activityshared.Event{started}, nil
 }
 
@@ -131,6 +248,8 @@ func (a *CodexAppServerAdapter) finalizeSettledTurn(agentSessionID string, appTu
 	if a == nil || appTurn == nil || appTurn.emitTerminal == nil {
 		return
 	}
+	providerTurnID := firstNonEmpty(asString(terminal.turn["id"]), appTurn.providerTurnID)
+	appTurn.diagnostics.Finish(string(terminal.phase), providerTurnID)
 	appTurn.processMu.Lock()
 	appTurn.settleFinalized.Store(true)
 	session := appTurn.session
@@ -245,9 +364,13 @@ func (a *CodexAppServerAdapter) execBlocking(
 	turnID string,
 	emit EventSink,
 	emitCommands CommandSnapshotSink,
+	continuation *codexGuidanceContinuationAdmission,
 ) ([]activityshared.Event, error) {
 	execState, ok := a.snapshotExecState(session.AgentSessionID)
 	if !ok {
+		if continuation != nil {
+			continuation.admitted <- ErrSessionDisconnected
+		}
 		return nil, ErrSessionDisconnected
 	}
 	appSession := execState.liveSession
@@ -260,17 +383,26 @@ func (a *CodexAppServerAdapter) execBlocking(
 	session.ProviderSessionID = appSession.threadID
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
 	mentionRoutingApplied, mentionRoutingSkills := tuttiMentionRoutingSkills(visibleText)
-	providerContent := content
-	if mentionRoutingApplied {
-		providerContent = appendTuttiMentionRoutingContent(providerContent, mentionRoutingSkills)
-	}
 
 	if activeTurnID := a.sessionActiveTurnID(session.AgentSessionID); activeTurnID != "" {
+		if continuation != nil {
+			continuation.admitted <- ErrSessionActiveTurn
+			return nil, ErrSessionActiveTurn
+		}
 		if command, args := splitSlashCommand(visibleText); command == appServerSlashGoal {
 			// Goal commands are thread-level control operations; steering them
 			// would paste "/goal …" into the running turn as prompt text
 			// instead of executing the RPC.
 			return a.execGoalControlCommand(ctx, appSession, session, args, turnID, content, explicitDisplayPrompt, visibleText, emit)
+		}
+		providerContent := content
+		if mentionRoutingApplied {
+			providerContent = appendTuttiMentionRoutingContent(providerContent, mentionRoutingSkills)
+		}
+		var err error
+		providerContent, err = materializeProviderPromptImagesAtBoundary(ctx, providerContent, a.promptImageMaterializer)
+		if err != nil {
+			return nil, err
 		}
 		return a.steerActiveTurn(ctx, appSession, session, content, providerContent, explicitDisplayPrompt, visibleText, turnID, activeTurnID, emit)
 	}
@@ -320,16 +452,16 @@ func (a *CodexAppServerAdapter) execBlocking(
 		return append([]activityshared.Event(nil), events...)
 	}
 	startEvents := []activityshared.Event{
-		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, visibleText, userPromptActivityPayload(content, explicitDisplayPrompt, userPromptActivityPayloadExtraFromExecMetadata(ctx, nil))),
+		newUserPromptActivityEvent(ctx, session, content, explicitDisplayPrompt, visibleText, turnID, nil),
 		newTurnActivityEvent(session, EventTurnStarted, turnID, SessionStatusWorking, "", "", nil),
 	}
-	emitEvents(startEvents)
 
 	appTurn := &codexAppServerActiveTurn{
 		turnID:       turnID,
 		session:      session,
 		ctx:          ctx,
 		normalizer:   normalizer,
+		diagnostics:  newCodexAppServerTurnDiagnostics(nil, turnID),
 		emit:         emitEvents,
 		emitCommands: emitCommands,
 		kind:         codexAppServerTurnKindNormal,
@@ -343,11 +475,29 @@ func (a *CodexAppServerAdapter) execBlocking(
 	// The settle path may finalize first; the Once keeps the close single.
 	defer appTurn.markTerminated()
 	if !a.beginActiveTurn(session.AgentSessionID, appTurn) {
+		if continuation != nil {
+			continuation.admitted <- ErrSessionActiveTurn
+		}
 		return nil, ErrSessionActiveTurn
 	}
 	defer a.endActiveTurn(session.AgentSessionID, appTurn)
+	if continuation != nil {
+		continuation.admitted <- nil
+		<-continuation.provisionalStarted
+	}
+	emitEvents(startEvents)
 
 	if handled, err := a.execSlashCommand(ctx, appSession, session, visibleText, turnID, appTurn, normalizer, emitEvents, emitTerminal, emitCommands); handled {
+		return snapshotEvents(), err
+	}
+
+	providerContent := content
+	if mentionRoutingApplied {
+		providerContent = appendTuttiMentionRoutingContent(providerContent, mentionRoutingSkills)
+	}
+	var err error
+	providerContent, err = materializeProviderPromptImagesAtBoundary(ctx, providerContent, a.promptImageMaterializer)
+	if err != nil {
 		return snapshotEvents(), err
 	}
 
@@ -355,22 +505,41 @@ func (a *CodexAppServerAdapter) execBlocking(
 	// production; the blocking shell below only waits and returns.
 	a.markTurnSettleEmits(appTurn)
 
-	trace := newCodexAppServerTurnTrace(session, turnID, execMetadataFromContext(ctx))
-	turnParams := appServerTurnStartParams(session, appSession.threadID, providerContent, appSession.planModeMask, appSession.defaultModeMask, execState.defaultModel)
+	execMetadata := execMetadataFromContext(ctx)
+	trace := newCodexAppServerTurnTrace(session, turnID, execMetadata)
+	appTurn.diagnostics.Start(trace)
+	turnParams := appServerTurnStartParams(
+		session,
+		appSession.threadID,
+		providerContent,
+		appSession.planModeMask,
+		appSession.defaultModeMask,
+		execState.defaultModel,
+		renderTuttiModeHostContext(tuttiModeTurnSnapshotFromContext(ctx)),
+		a.config.commandNetworkAccess,
+	)
 	trace.Log("turn.start.params", codexAppServerTraceTurnStartParams(session, turnParams, providerContent))
+	turnStartAckTimeout := a.turnStartAckTimeout
+	if turnStartAckTimeout <= 0 {
+		turnStartAckTimeout = defaultCodexAppServerTurnStartAckTimeout
+	}
+	logAgentSubmitTrace("turn.start.requested", session, turnID, execMetadata, map[string]any{
+		"timeout_ms": turnStartAckTimeout.Milliseconds(),
+	})
 	turnStartedAt := time.Now()
-	result, err := appSession.client.TurnStart(ctx, turnParams,
-		func(ctx context.Context, message acpMessage) error {
-			trace.LogMessage(message.Method, len(message.ID) > 0, len(message.Params))
-			next, err := a.handleAppServerMessage(ctx, appSession.client, session, turnID, message, normalizer, emitEvents, emitCommands)
-			emitEvents(next)
-			return err
-		})
+	result, err := appSession.client.TurnStart(ctx, turnStartAckTimeout, turnParams)
 	if err != nil {
+		durationMS := time.Since(turnStartedAt).Milliseconds()
+		appTurn.diagnostics.Finish("failed", "")
 		trace.Log("turn.start.failed", map[string]any{
-			"duration_ms": time.Since(turnStartedAt).Milliseconds(),
+			"duration_ms": durationMS,
 			"error":       err.Error(),
 		})
+		logAgentSubmitTrace("turn.start.failed", session, turnID, execMetadata, map[string]any{
+			"duration_ms": durationMS,
+			"error":       err.Error(),
+		})
+		invalidateClient := codexTurnStartClientUnhealthy(err, appSession.client)
 		a.endActiveTurn(session.AgentSessionID, appTurn)
 		if errors.Is(err, context.Canceled) || errors.Is(err, errPermissionRequestCanceled) {
 			terminalEvents := a.pendingRequestFailureEvents(session, turnID, errPermissionRequestCanceled)
@@ -384,10 +553,25 @@ func (a *CodexAppServerAdapter) execBlocking(
 			terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(err)))
 			emitTerminal(terminalEvents)
 		}
+		if invalidateClient && a.invalidateSessionClient(session.AgentSessionID, appSession.client) {
+			slog.Warn(
+				"agent session app-server client invalidated after turn/start failed",
+				"event", "agent_session.app_server.turn_start.client_invalidated",
+				"agent_session_id", session.AgentSessionID,
+				"provider_session_id", appSession.threadID,
+				"turn_id", turnID,
+				"error", err.Error(),
+			)
+		}
 		return snapshotEvents(), nil
 	}
+	durationMS := time.Since(turnStartedAt).Milliseconds()
 	trace.Log("turn.start.succeeded", map[string]any{
-		"duration_ms": time.Since(turnStartedAt).Milliseconds(),
+		"duration_ms": durationMS,
+		"result_size": len(result),
+	})
+	logAgentSubmitTrace("turn.start.succeeded", session, turnID, execMetadata, map[string]any{
+		"duration_ms": durationMS,
 		"result_size": len(result),
 	})
 
@@ -421,6 +605,15 @@ func (a *CodexAppServerAdapter) execBlocking(
 		"turn_id", turnID,
 	)
 	if finishErr != nil {
+		outcome := "failed"
+		if errors.Is(finishErr, context.Canceled) || errors.Is(finishErr, errPermissionRequestCanceled) || a.turnForceCanceled(appTurn) {
+			outcome = "canceled"
+		}
+		appTurn.diagnostics.Finish(outcome, appTurn.providerTurnID)
+	} else {
+		appTurn.diagnostics.Finish("completed", appTurn.providerTurnID)
+	}
+	if finishErr != nil {
 		if errors.Is(finishErr, context.Canceled) || errors.Is(finishErr, errPermissionRequestCanceled) || a.turnForceCanceled(appTurn) {
 			terminalEvents := a.pendingRequestFailureEvents(session, turnID, errPermissionRequestCanceled)
 			terminalEvents = append(terminalEvents, normalizer.FinishInterrupted(session, turnID, "interrupted")...)
@@ -436,6 +629,23 @@ func (a *CodexAppServerAdapter) execBlocking(
 	normalizer.ApplyAssistantFinalText(appServerTurnFinalAssistantText(finalTurn))
 	emitTerminal(appServerTurnTerminalEvents(session, turnID, finalTurn, normalizer))
 	return snapshotEvents(), nil
+}
+
+func codexTurnStartClientUnhealthy(err error, client *codexAppServerClient) bool {
+	if errors.Is(err, context.Canceled) ||
+		errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, ErrSessionDisconnected) {
+		return true
+	}
+	if client == nil {
+		return true
+	}
+	select {
+	case <-client.Done():
+		return true
+	default:
+		return false
+	}
 }
 
 // pendingRequestFailureEvents resolves any still-pending approval or
@@ -462,7 +672,7 @@ func (a *CodexAppServerAdapter) pendingRequestFailureEvents(
 	a.mu.Unlock()
 	var events []activityshared.Event
 	for _, pending := range pendings {
-		if !pending.finish(pendingInteractiveRequestStateSuperseded) {
+		if !pending.supersede(cause) {
 			continue
 		}
 		events = append(events, normalizedPermissionResolvedEvents(session, turnID, pending, pendingInteractiveResponse{}, cause)...)

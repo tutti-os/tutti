@@ -1,21 +1,38 @@
-import { useRef, useState } from "react";
+import {
+  useCallback,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction
+} from "react";
 import type { AgentHostUserProject } from "../../../host/agentHostApi";
 import type { AgentSessionComposerSettings } from "../../../shared/agentSessionTypes";
 import type { AgentGUINodeData } from "../../../types";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
+import type {
+  AgentGUIConversationRailRevealReason,
+  AgentGUIConversationRailRevealRequest
+} from "../model/agentGuiConversationRailViewState";
 import type {
   AgentComposerDraft,
   AgentGUIOptimisticGoalControl,
   AgentGUIProjectConversationDeleteTarget,
   SubmittedDraftSnapshot
 } from "../model/agentGuiNodeTypes";
-import { readAgentGUIUserProjectSnapshot } from "./agentGuiController.interactiveHelpers";
+import {
+  readAgentGUIUserProjectMutationPending,
+  readAgentGUIUserProjectSnapshot
+} from "./agentGuiController.interactiveHelpers";
 import type { ConversationIntent } from "./useAgentConversationSelection";
 
 interface UseAgentGUILocalStateInput {
   data: AgentGUINodeData;
   userProjectsApi: Parameters<typeof readAgentGUIUserProjectSnapshot>[0];
 }
+
+type AgentGUIHomeProjectSelection =
+  | { kind: "unresolved_default" }
+  | { kind: "resolved"; projectPath: string | null };
 
 export function useAgentGUILocalState({
   data,
@@ -24,6 +41,8 @@ export function useAgentGUILocalState({
   const [userProjects, setUserProjects] = useState<AgentHostUserProject[]>(() =>
     readAgentGUIUserProjectSnapshot(userProjectsApi)
   );
+  const [isUserProjectMutationPending, setIsUserProjectMutationPending] =
+    useState(() => readAgentGUIUserProjectMutationPending(userProjectsApi));
   const [activeConversationId, setActiveConversationId] = useState<
     string | null
   >(data.lastActiveAgentSessionId);
@@ -32,9 +51,25 @@ export function useAgentGUILocalState({
       ? { tag: "requested", id: data.lastActiveAgentSessionId }
       : { tag: "home" }
   );
-  const [selectedProjectPath, setSelectedProjectPath] = useState<string | null>(
-    null
-  );
+  const [homeProjectSelection, setHomeProjectSelection] =
+    useState<AgentGUIHomeProjectSelection>({ kind: "unresolved_default" });
+  const selectedProjectPath =
+    homeProjectSelection.kind === "resolved"
+      ? homeProjectSelection.projectPath
+      : null;
+  const setSelectedProjectPath = useCallback<
+    Dispatch<SetStateAction<string | null>>
+  >((nextProjectPath) => {
+    setHomeProjectSelection((current) => {
+      const currentProjectPath =
+        current.kind === "resolved" ? current.projectPath : null;
+      const projectPath =
+        typeof nextProjectPath === "function"
+          ? nextProjectPath(currentProjectPath)
+          : nextProjectPath;
+      return { kind: "resolved", projectPath };
+    });
+  }, []);
   const [isComposerHome, setIsComposerHome] = useState(
     data.lastActiveAgentSessionId === null
   );
@@ -62,9 +97,28 @@ export function useAgentGUILocalState({
   const [goalClearNoticeSequence, setGoalClearNoticeSequence] = useState(0);
   const [optimisticGoalControl, setOptimisticGoalControl] =
     useState<AgentGUIOptimisticGoalControl | null>(null);
+  const railRevealRevisionRef = useRef(0);
+  const [railRevealRequest, setRailRevealRequest] =
+    useState<AgentGUIConversationRailRevealRequest | null>(null);
+  const clearRailRevealRequest = useCallback(() => {
+    setRailRevealRequest(null);
+  }, []);
+  const requestRailReveal = useCallback(
+    (agentSessionId: string, reason: AgentGUIConversationRailRevealReason) => {
+      const normalized = agentSessionId.trim();
+      if (!normalized) return;
+      setRailRevealRequest({
+        agentSessionId: normalized,
+        reason,
+        revision: ++railRevealRevisionRef.current
+      });
+    },
+    []
+  );
 
   return {
     activeConversationId,
+    clearRailRevealRequest,
     detailError,
     draftByScopeKey,
     draftSettingsBySessionId,
@@ -74,11 +128,16 @@ export function useAgentGUILocalState({
     isDeletingConversation,
     isDeletingProjectConversations,
     isLoadingMessages,
+    isUserProjectMutationPending,
     listError,
     optimisticGoalControl,
     pendingDeleteConversation,
     pendingDeleteProjectConversations,
+    railRevealRequest,
+    requestRailReveal,
     selectedProjectPath,
+    shouldApplyPreparedProjectSelection:
+      homeProjectSelection.kind === "unresolved_default",
     setActiveConversationId,
     setDetailError,
     setDraftByScopeKey,
@@ -89,6 +148,7 @@ export function useAgentGUILocalState({
     setIsDeletingConversation,
     setIsDeletingProjectConversations,
     setIsLoadingMessages,
+    setIsUserProjectMutationPending,
     setListError,
     setOptimisticGoalControl,
     setPendingDeleteConversation,

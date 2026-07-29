@@ -34,6 +34,36 @@ prepared, err := preparer.Prepare(ctx, runtimeprep.PrepareInput{
 process environment. `Cleanup` removes only paths recorded in the session
 manifest or the session-scoped runtime root.
 
+Agent Extension hosts may pass a signed, validated
+`PrepareInput.ExtensionRuntimePrep` overlay for ACP providers that need
+provider-owned state projected into the session. The overlay is declarative and
+provider-neutral: it may write the instructions file, create a per-session home,
+copy declared opaque files from a user-home source, expose that home through one
+validated environment variable, materialize Tutti-managed skills into declared
+extension skill roots, and merge those roots into supported YAML config keys.
+Runtimeprep must not add provider-ID branches for third-party extensions. YAML
+config projection must use the shared parser-backed merge helpers and fail
+closed on invalid or incompatible config instead of maintaining provider-specific
+line parsers.
+
+Codex preparation keeps session state isolated under the run-scoped
+`CODEX_HOME`, while linking its writable `models_cache.json` to the provider
+user's process-default `~/.codex/models_cache.json`. The link may initially be
+dangling: the first Codex refresh creates the shared VM- or host-local cache,
+and later sessions reuse it. Hosts must therefore run preparation with `HOME`
+set to the provider user's stable local Home, never a session runtime directory
+or a remote filesystem projection.
+
+`TuttiAgentPreparer.ResolveAuthSource` lets a host expose one explicit absolute
+credential authority into the session-scoped `TUTTI_AGENT_HOME`. When omitted,
+the Tutti desktop keeps its existing `~/.tutti-agent/auth.json` behavior. An
+explicit source may be a dangling symlink target so a host-controlled login can
+materialize it atomically later; runtimeprep never follows or deletes that
+target during session cleanup. If a configured resolver returns no path,
+runtimeprep leaves auth unprojected and does not fall back to the VM user's
+`~/.tutti-agent`. Tutti Agent preparation also materializes the same resolved
+native Skills used by the other supported providers.
+
 ## Capability Packs
 
 A deployment capability resolves once into its policy, skills, and environment
@@ -71,21 +101,66 @@ provider runtime policy and dynamic skill bundles by default; set
 `PolicySection.Delivery` when a section is valid for only one delivery path.
 
 `StandardProfile` includes `CoreSkillsPack`, `TuttiDesktopHostPack`, browser
-use, and computer use. A non-desktop deployment should compose its own profile
-from `CoreSkillsPack` and deployment-owned packs instead of copying the
-desktop-host policy:
+use, and computer use. `CoreSkillsPack` includes the provider-neutral Tutti
+workflow skills plus `tutti-model-allocation`, whose C0-C3 policy combines the
+current Tutti Mode effect/speed preferences with live composer model catalogs
+and derives speed's bounded 1-4 parallel planning target. Allocation compares
+joint Agent/model candidates across every plausible target without favoring the
+planning Agent, its current model, or provider defaults.
+A non-desktop deployment should compose its own profile from `CoreSkillsPack`
+and deployment-owned packs instead of copying the desktop-host policy:
 
 ```go
 profile := runtimeprep.DeploymentProfile{
     Name:  "managed-vm",
     Title: "Managed VM Runtime",
     Intro: "This session runs inside the managed VM.",
+    HostFacts: runtimeprep.HostFacts{
+        TurnResources:  runtimeprep.AgentTurnResourcesReadPath,
+        WorkspaceScope: runtimeprep.AgentWorkspaceScopeRoom,
+        TargetContinuation: runtimeprep.AgentTargetContinuationProfile{
+            Mode: runtimeprep.AgentTargetContinuationExceptPrefixes,
+            UnsupportedTargetIDPrefixes: []string{"shared-agent:"},
+        },
+    },
     Packs: []runtimeprep.CapabilityPack{
         runtimeprep.CoreSkillsPack(),
         vmEnvironmentPack,
     },
 }
 ```
+
+Every preparation requires `CommandCatalog`. Runtimeprep reads it once and
+builds one immutable, agent-facing command snapshot shared by Skills, policy,
+and `command-guide.md`. The host must remove trusted bindings such as room or
+workspace inputs before returning the catalog. Runtimeprep filters
+non-public/integration commands, preserves output metadata, and adds
+wrapper-owned invocation inputs such as wait timeouts. It does not synthesize a
+fallback catalog.
+
+Skill and policy Markdown use Go `text/template`. Runtimeprep exposes
+`has`, `hasAll`, `hasFamily`, `hasInput`, `inputValues`, `path`, `args`, and
+`command`. `command` resolves paths and flags from the snapshot, appends
+`--json` only when output metadata advertises JSON, and fails rendering for an
+unknown command, input, enum value, or malformed schema.
+
+```gotemplate
+{{if has "issue-manager.issue.task.create-batch"}}
+Persist tasks with
+`{{command "issue-manager.issue.task.create-batch"
+    (args "tasks-json" "'[{\"title\":\"<title>\"}]'")}}`.
+{{else if has "issue-manager.issue.task.create"}}
+Create tasks in order with
+`{{command "issue-manager.issue.task.create" (args "title" "<title>")}}`.
+{{end}}
+```
+
+`DeploymentProfile.HostFacts` contains only behavior that cannot be derived
+from command metadata: turn-resource path semantics, workspace scoping, and
+target continuation exceptions. Omitted fields use Tutti's local-path,
+workspace-environment, and continue-all defaults. Command presence, command
+paths, inputs, cancellation scope, response support, and conversation reads
+belong only in the command snapshot.
 
 ## Skill Injection
 
@@ -103,12 +178,22 @@ an isolated extra skill.
 `Prepare` and `RenderSkillBundle` use the same resolver, so provider files and
 the skill-bundle API cannot drift.
 
+The canonical Tutti CLI skill treats the daemon and CLI as the only supported
+execution control plane. Provider Agents must not inspect or modify Tutti's
+backing SQLite databases to infer runtime state or bypass a rejected command.
+When the source Agent has the Tutti execution snapshot capability, the skill
+also renders the checkpoint/action matrix and a bounded recovery protocol:
+refresh an outdated fence once, correct a documented mutation schema once, and
+report a repeated rejection with its stable reason and hint.
+
 ## Product Boundaries
 
 The module must not import `services/tuttid/*`. Product adapters translate
 their command catalog and readiness types into the narrow interfaces here.
-Tutti account token issue/revoke remains in `services/tuttid/service/tuttiagent`;
-only the provider home/config preparation is shared.
+Tutti Account HTTP and local credential paths remain in
+`services/tuttid/service/tuttiagent`. The host-neutral issue/login/verify and
+cleanup ordering lives in `packages/agent/daemon/tuttiagentauth`; only provider
+home/config/Skills preparation lives in this module.
 
 Provider-specific runtime protocol and session control belong to
 `packages/agent/daemon`, not this module.

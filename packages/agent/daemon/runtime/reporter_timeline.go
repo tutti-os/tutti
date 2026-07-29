@@ -5,11 +5,12 @@ import (
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 func timelineItemFromSessionEvent(
 	roomID string,
-	source agentsessionstore.EventSource,
+	source canonical.EventSource,
 	event activityshared.Event,
 	sessionID string,
 	timestamp int64,
@@ -133,7 +134,7 @@ func messageTimelineItemType(role string) string {
 	}
 }
 
-func reportCallTimelineEventID(callID string, source agentsessionstore.EventSource, event activityshared.Event) string {
+func reportCallTimelineEventID(callID string, source canonical.EventSource, event activityshared.Event) string {
 	callID = strings.TrimSpace(callID)
 	if callID == "" {
 		return strings.TrimSpace(event.EventID)

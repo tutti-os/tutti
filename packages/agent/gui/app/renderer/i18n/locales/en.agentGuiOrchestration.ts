@@ -1,0 +1,36 @@
+import { enTuttiModePlan } from "./en.tuttiModePlan.ts";
+
+export const enAgentGuiOrchestration = {
+  planModeLabel: "Plan Mode",
+  normalModeLabel: "Normal",
+  normalModeDescription: "Execute the request directly",
+  tuttiModeLabel: "Tutti Mode",
+  tuttiModeDescription:
+    "Ask the agent to prefer Tutti's native workflow capabilities",
+  tuttiModeRemove: "Turn off Tutti mode",
+  tuttiBudgetTitle: "Tutti preferences",
+  tuttiBudgetEffectLabel: "Effect",
+  tuttiBudgetSpeedLabel: "Speed",
+  tuttiBudgetPreviewTitle: "Expected behavior",
+  tuttiBudgetPreviewHint: "Actual parallelism depends on task dependencies.",
+  tuttiBudgetPreviewCost: "Economical",
+  tuttiBudgetPreviewBalance: "Balanced",
+  tuttiBudgetPreviewPowerful: "Powerful",
+  tuttiBudgetModelPreferenceLabel: "Model strategy",
+  tuttiBudgetModelPreferenceCost: "Economical",
+  tuttiBudgetModelPreferenceBalance: "Balanced",
+  tuttiBudgetModelPreferencePowerful: "Most capable",
+  tuttiBudgetModelPreferenceFastestSuitable: "Fastest suitable",
+  tuttiBudgetParallelismLabel: "Parallel target",
+  tuttiBudgetParallelismValue: "Up to {{count}} agents",
+  tuttiBudgetParallelismValue_one: "{{count}} agent",
+  tuttiBudgetParallelismValue_other: "Up to {{count}} agents",
+  tuttiModeUpdateFailed: "Tutti mode couldn't be updated. Try again.",
+  tuttiModeUpdateUncertain:
+    "Tutti mode is still being reconciled. Try again after it finishes.",
+  tuttiModePlan: enTuttiModePlan,
+  planModeDescription: "Plan first, then implement or break down into an Issue",
+  planModeOnLabel: "On",
+  planModeOffLabel: "Off",
+  planUnavailable: "Plan unavailable"
+} as const;

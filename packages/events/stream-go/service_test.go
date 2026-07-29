@@ -58,6 +58,51 @@ func TestScopeRoutingDeliversAndFilters(t *testing.T) {
 	}
 }
 
+func TestSessionQueueAbsorbsNormalBurstAndClosesOnOverflow(t *testing.T) {
+	t.Parallel()
+
+	service := NewService[string](fakeCatalog{}, nil, nil)
+	session := service.OpenSession()
+	if err := service.Subscribe(session, []string{"topic.x"}, "room-1"); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+
+	for index := range defaultSessionEventBufferSize {
+		if err := service.PublishFromServerScoped(
+			context.Background(),
+			"topic.x",
+			[]byte(`{}`),
+			"room-1",
+		); err != nil {
+			t.Fatalf("publish %d: %v", index, err)
+		}
+	}
+
+	if err := service.PublishFromServerScoped(
+		context.Background(),
+		"topic.x",
+		[]byte(`{}`),
+		"room-1",
+	); err != nil {
+		t.Fatalf("overflow publish: %v", err)
+	}
+
+	var received int
+	for range session.Events() {
+		received++
+	}
+	if received != defaultSessionEventBufferSize {
+		t.Fatalf(
+			"received buffered events = %d, want %d",
+			received,
+			defaultSessionEventBufferSize,
+		)
+	}
+	if session.enqueue(PublishedEvent[string]{Topic: "topic.x"}) {
+		t.Fatal("overflowed session accepted another event")
+	}
+}
+
 func receive(t *testing.T, session *Session[string]) PublishedEvent[string] {
 	t.Helper()
 	select {

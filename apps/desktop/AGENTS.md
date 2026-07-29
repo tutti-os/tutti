@@ -41,6 +41,11 @@ Current naming guidance:
 
 - keep business rules out of renderer, preload, and main-process code
 - prefer calling `tuttid` or desktop IPC adapters instead of re-implementing workflows in Electron
+- for workspace-agent activity adapters, reconcile bridges, or AgentGUI
+  Workbench integration, read
+  [Agent GUI Node](../../docs/architecture/agent-gui-node.md); also read
+  [Agent Activity Packages](../../docs/architecture/agent-activity-packages.md)
+  when changing the runtime/engine/package boundary
 - keep preload surfaces narrow and explicit
 - keep webview guest preload entries self-contained at runtime. Avoid runtime imports from shared contracts or helpers in `src/preload/entries/browserNodeGuest.ts`, `src/preload/entries/workspaceApp.ts`, and directly imported guest-preload helpers unless the build output proves they are inlined. `import type` is fine.
 - keep Electron-only concerns in `src/main/*` and renderer window composition under `src/renderer/src/app/windows/*`

@@ -8,6 +8,7 @@ import (
 type GoalReconcileInput struct {
 	RoomID         string
 	AgentSessionID string
+	RequireLive    bool
 }
 
 type GoalReconcileResult struct {
@@ -51,8 +52,14 @@ func (c *Controller) ReconcileGoal(ctx context.Context, input GoalReconcileInput
 	if !ok {
 		return GoalReconcileResult{}, fmt.Errorf("agent provider does not support goals")
 	}
-	if err := c.ensureLiveAdapterSession(ctx, session, adapter); err != nil {
-		return GoalReconcileResult{}, err
+	if input.RequireLive {
+		if probe, ok := adapter.(LiveSessionProbeAdapter); ok && !probe.HasLiveSession(session) {
+			return GoalReconcileResult{}, ErrSessionDisconnected
+		}
+	} else {
+		if err := c.ensureLiveAdapterSession(ctx, session, adapter); err != nil {
+			return GoalReconcileResult{}, err
+		}
 	}
 	result, err := goalAdapter.ReconcileGoal(ctx, session)
 	if err != nil {

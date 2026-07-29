@@ -1,4 +1,9 @@
 import type {
+  AgentSessionEngine,
+  EngineExternalCommand,
+  EngineIntent
+} from "@tutti-os/agent-activity-core";
+import type {
   AgentActivityRuntime,
   AgentGUIAgentDirectorySnapshot,
   AgentGUIAllAgentsPresentation,
@@ -6,8 +11,10 @@ import type {
   AgentGUIComposerAppendRequest,
   AgentGUIAgentsEmptyRenderer,
   AgentGUIProps,
-  AgentHostInputApi
+  AgentHostInputApi,
+  AgentStatusSource
 } from "@tutti-os/agent-gui";
+import type { AgentContextMentionProvider } from "@tutti-os/agent-gui/context-mention-provider";
 import {
   AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT,
   type AgentGuiWorkbenchConversationRailToggleDetail
@@ -30,6 +37,7 @@ import type {
   DesktopAgentGUIWorkbenchState
 } from "../desktopAgentGUINodeState";
 import type { DesktopAgentGUIPrefillPromptRequest } from "../services/desktopAgentGUIPrefillPromptActivation.ts";
+import type { AgentSessionReplayService } from "../../agent-session-replay/services/agentSessionReplayService.ts";
 
 export const DESKTOP_AGENT_GUI_CONVERSATION_RAIL_TOGGLE_EVENT =
   AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT;
@@ -39,6 +47,7 @@ export type DesktopAgentGUIConversationRailToggleDetail =
 
 export interface DesktopAgentGUISurfaceContext {
   activation: WorkbenchHostNodeBodyContext["activation"];
+  conversationRailAutoCollapseMode?: "preserve-middle-content";
   displayMode: WorkbenchHostNodeBodyContext["displayMode"];
   frame: WorkbenchHostNodeBodyContext["node"]["frame"];
   host: WorkbenchHostNodeBodyContext["host"];
@@ -47,6 +56,7 @@ export interface DesktopAgentGUISurfaceContext {
   isFocused: boolean;
   isMinimized: boolean;
   isResizing: boolean;
+  isVisible: boolean;
   nodeId: string;
   nodeTitle: string;
   presentationMode: WorkbenchHostNodeBodyContext["presentationMode"];
@@ -56,12 +66,23 @@ export interface DesktopAgentGUISurfaceContext {
 export interface DesktopAgentGUIWorkbenchBodyProps {
   agentActivityRuntime: AgentActivityRuntime;
   agentHostApi: AgentHostInputApi;
+  agentSessionReplayService: AgentSessionReplayService;
+  agentSessionActivityReplay: {
+    addObserver(observer: {
+      observeCommand(command: EngineExternalCommand): void;
+      observeIntent(intent: EngineIntent): void;
+    }): () => void;
+    engine: AgentSessionEngine;
+  };
+  agentStatusSource?: AgentStatusSource;
+  tuttiModePlanReviewRuntime: NonNullable<
+    AgentGUIProps["tuttiModePlanReviewRuntime"]
+  >;
   appCenterService: IWorkspaceAppCenterService;
   agentProviderStatusService?: IAgentProviderStatusService;
   context: WorkbenchHostNodeBodyContext;
   computerUseApi?: Pick<DesktopComputerUseApi, "checkStatus">;
   composerAppendRequest?: AgentGUIComposerAppendRequest | null;
-  conversationRailAutoCollapseWidthPx?: number | null;
   dockPreviewCache: WorkbenchDockPreviewCache;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onCapabilitySettingsRequest?: AgentGUIProps["hostActions"]["onCapabilitySettingsRequest"];
@@ -73,25 +94,34 @@ export interface DesktopAgentGUIWorkbenchBodyProps {
   }) => Promise<void> | void;
   onStateChange: (state: DesktopAgentGUIWorkbenchState) => void;
   prefillPromptBootstrapRequest?: DesktopAgentGUIPrefillPromptRequest | null;
-  previewMode?: boolean;
   providerStatusBootstrapSnapshot?: AgentProviderStatusSnapshot | null;
   agentDirectory: AgentGUIAgentDirectorySnapshot;
   allAgentsPresentation?: AgentGUIAllAgentsPresentation | null;
   renderAgentsEmpty?: AgentGUIAgentsEmptyRenderer;
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
   defaultAgentTargetId?: string | null;
-  contextMentionProviders: NonNullable<
-    AgentGUIProps["hostCapabilities"]["contextMentionProviders"]
+  contextMentionProviders: readonly AgentContextMentionProvider[];
+  runtimeApi?: Pick<
+    DesktopRuntimeApi,
+    | "getAgentSessionReplayPlayback"
+    | "getAgentSessionReplayStatus"
+    | "launchAgentSessionReplay"
+    | "logTerminalDiagnostic"
+    | "sendAgentSessionReplayControl"
+    | "setAgentSessionReplayPlayback"
+    | "waitForAgentSessionReplay"
   >;
-  runtimeApi?: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
   trackAgentProviderChatReady?: (input: { provider: string }) => Promise<void>;
   onEngagementEvent?: AgentGUIProps["hostActions"]["onEngagementEvent"];
   trackWorkspaceFileReferences?: AgentGUIProps["workspace"]["onFileReferencesAdded"];
   workspaceFileReferenceAdapter: NonNullable<
     AgentGUIProps["workspace"]["fileReferenceAdapter"]
   >;
-  resolveDroppedFileReferences: NonNullable<
-    AgentGUIProps["workspace"]["resolveDroppedFileReferences"]
+  resolveExternalPromptEntries: NonNullable<
+    AgentGUIProps["workspace"]["resolveExternalPromptEntries"]
+  >;
+  prepareExternalPromptFiles: NonNullable<
+    AgentGUIProps["workspace"]["prepareExternalPromptFiles"]
   >;
   onRequestGitBranches: NonNullable<
     AgentGUIProps["workspace"]["onRequestGitBranches"]
@@ -134,11 +164,8 @@ export function handleDesktopAgentGUIShowMessage(
   Toast.tips(message);
 }
 
-export const AGENT_PROBE_REFRESH_DEBOUNCE_MS = 300;
 export const DESKTOP_AGENT_GUI_EMPTY_CONTEXT_MENTION_PROVIDERS =
-  [] satisfies NonNullable<
-    AgentGUIProps["hostCapabilities"]["contextMentionProviders"]
-  >;
+  [] satisfies readonly AgentContextMentionProvider[];
 export const DESKTOP_AGENT_GUI_EMPTY_PROVIDER_STATUS_SNAPSHOT = {
   capturedAt: null,
   defaultProvider: null,
@@ -156,12 +183,12 @@ export function areDesktopAgentGUIWorkbenchBodyPropsEqual(
   return (
     previous.agentActivityRuntime === next.agentActivityRuntime &&
     previous.agentHostApi === next.agentHostApi &&
+    previous.agentStatusSource === next.agentStatusSource &&
+    previous.tuttiModePlanReviewRuntime === next.tuttiModePlanReviewRuntime &&
     previous.appCenterService === next.appCenterService &&
     previous.agentProviderStatusService === next.agentProviderStatusService &&
     previous.computerUseApi === next.computerUseApi &&
     previous.composerAppendRequest === next.composerAppendRequest &&
-    previous.conversationRailAutoCollapseWidthPx ===
-      next.conversationRailAutoCollapseWidthPx &&
     previous.dockPreviewCache === next.dockPreviewCache &&
     previous.onLinkAction === next.onLinkAction &&
     previous.onCapabilitySettingsRequest === next.onCapabilitySettingsRequest &&
@@ -169,7 +196,6 @@ export function areDesktopAgentGUIWorkbenchBodyPropsEqual(
       next.onOpenAgentConversationWindow &&
     previous.prefillPromptBootstrapRequest ===
       next.prefillPromptBootstrapRequest &&
-    previous.previewMode === next.previewMode &&
     previous.providerStatusBootstrapSnapshot ===
       next.providerStatusBootstrapSnapshot &&
     previous.agentDirectory === next.agentDirectory &&
@@ -186,8 +212,9 @@ export function areDesktopAgentGUIWorkbenchBodyPropsEqual(
       next.trackWorkspaceFileReferences &&
     previous.workspaceFileReferenceAdapter ===
       next.workspaceFileReferenceAdapter &&
-    previous.resolveDroppedFileReferences ===
-      next.resolveDroppedFileReferences &&
+    previous.resolveExternalPromptEntries ===
+      next.resolveExternalPromptEntries &&
+    previous.prepareExternalPromptFiles === next.prepareExternalPromptFiles &&
     previous.onRequestGitBranches === next.onRequestGitBranches &&
     previous.referenceSourceAggregator === next.referenceSourceAggregator &&
     previous.renderSidebarFooter === next.renderSidebarFooter &&
@@ -217,6 +244,7 @@ export function areDesktopAgentGUIWorkbenchBodyContextsEqual(
       previous.isDragging === next.isDragging &&
       previous.isFocused === next.isFocused &&
       previous.isResizing === next.isResizing &&
+      previous.isVisible === next.isVisible &&
       previous.presentationMode === next.presentationMode &&
       previous.node.id === next.node.id &&
       previous.node.isMinimized === next.node.isMinimized &&

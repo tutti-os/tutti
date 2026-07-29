@@ -12,6 +12,7 @@ type Store interface {
 
 	ListIssues(context.Context, IssueListFilter) (IssueList, error)
 	CreateIssue(context.Context, Issue) (Issue, error)
+	CreateIssueWithTasks(context.Context, Issue, []Task) (Issue, []Task, error)
 	GetIssue(context.Context, string, string) (Issue, error)
 	UpdateIssue(context.Context, Issue) (Issue, error)
 	DeleteIssue(context.Context, string, string, string) (bool, error)
@@ -29,6 +30,10 @@ type Store interface {
 
 	CreateRun(context.Context, Run) (Run, error)
 	CompleteRun(context.Context, Run, []RunOutput) (Run, []RunOutput, error)
+	// ListRuns returns runs scoped to workspace. An empty issueID intentionally
+	// returns workspace history, which session-linkage lookups use without
+	// adding a second persistence API. taskID is only meaningful when issueID
+	// is set.
 	ListRuns(context.Context, string, string, string) ([]Run, error)
 	ListRunningRuns(context.Context, string, int) ([]Run, error)
 	GetRun(context.Context, string, string, string, string) (Run, error)

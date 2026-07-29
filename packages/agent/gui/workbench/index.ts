@@ -19,6 +19,17 @@ export type {
   CreateAgentGuiWorkbenchContributionInput
 } from "./contribution.ts";
 export {
+  AGENT_GUI_WORKBENCH_SESSION_ACTION_EVENT,
+  dispatchAgentGuiWorkbenchSessionAction,
+  isAgentGuiWorkbenchSessionAction
+} from "./sessionActions.ts";
+export type {
+  AgentGuiWorkbenchSessionAction,
+  AgentGuiWorkbenchSessionActionDetail,
+  AgentGuiWorkbenchSessionActionRequest,
+  AgentGuiWorkbenchSessionMenuCopy
+} from "./sessionActions.ts";
+export {
   agentGuiWorkbenchConversationIdentitiesEqual,
   resolveAgentGuiWorkbenchConversationIdentity
 } from "./conversationIdentity.ts";
@@ -66,6 +77,7 @@ export {
   type AgentGuiWorkbenchHeaderCopy,
   type AgentGuiWorkbenchHeaderProps
 } from "./header.ts";
+export type { AgentGuiWorkbenchSessionMenuAdditionalAction } from "./AgentGuiWorkbenchSessionMenu.tsx";
 export {
   resolveAgentGuiWorkbenchHeaderTitle,
   resolveAgentGuiWorkbenchSessionTitle

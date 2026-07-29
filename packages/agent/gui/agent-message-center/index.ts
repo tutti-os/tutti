@@ -53,15 +53,20 @@ export {
 } from "./workspaceAgentMessageCenterModel";
 export {
   buildWorkspaceAgentMessageCenterModelFromEngine,
+  selectWorkspaceAgentAttentionItems,
   selectWorkspaceAgentMessageCenterPresentation,
+  workspaceAgentAttentionItemsEqual,
   workspaceAgentMessageCenterPromptStatus,
   workspaceAgentMessageCenterPresentationEqual
 } from "./workspaceAgentMessageCenterEngineModel";
 export type {
+  WorkspaceAgentAttentionItem,
+  WorkspaceAgentAttentionTarget,
   WorkspaceAgentMessageCenterPresentation,
   WorkspaceAgentMessageCenterPromptStatus
 } from "./workspaceAgentMessageCenterEngineModel";
 export { stabilizeWorkspaceAgentMessageCenterModel } from "./workspaceAgentMessageCenterModelStability";
+export { workspaceAgentMessageCenterItemEqual } from "./workspaceAgentMessageCenterModelStability";
 export {
   selectWorkspaceAgentConsumerCounts,
   selectWorkspaceAgentConsumerSession,

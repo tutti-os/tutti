@@ -6,7 +6,7 @@ import {
   renameSync,
   rmSync,
   statSync,
-  writeFileSync
+  writeFile
 } from "node:fs";
 import { stat } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
@@ -82,7 +82,16 @@ export class RotatingFileWriter {
       throw new Error("log writer is not open");
     }
 
-    writeFileSync(this.fd, content, { encoding: "utf8", flag: "a" });
+    const fd = this.fd;
+    await new Promise<void>((resolve, reject) => {
+      writeFile(fd, content, { encoding: "utf8", flag: "a" }, (error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
     this.currentSize += Buffer.byteLength(content);
   }
 

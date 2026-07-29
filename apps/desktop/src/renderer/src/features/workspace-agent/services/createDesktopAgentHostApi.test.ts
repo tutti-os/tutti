@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { AgentHostInputApi } from "@tutti-os/agent-gui";
-import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import type {
+  AgentHostInputApi,
+  AgentHostQuickPromptsApi
+} from "@tutti-os/agent-gui";
+import type {
+  AgentTargetSetupSnapshot,
+  TuttidClient
+} from "@tutti-os/client-tuttid-ts";
 import type {
   DesktopHostFilesApi,
   DesktopPlatformApi,
@@ -12,18 +18,79 @@ import type {
   DesktopTerminalDiagnosticPayload,
   DesktopTerminalStreamUrlRequest
 } from "@shared/contracts/ipc";
-import { createDesktopAgentHostApi } from "./createDesktopAgentHostApi.ts";
+import {
+  createDesktopAgentHostApi,
+  projectDesktopAgentTargetSetupSnapshot
+} from "./createDesktopAgentHostApi.ts";
 import { WorkspaceAgentActivityService } from "./internal/workspaceAgentActivityService.ts";
 import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
+import { registerWorkspaceTerminalLoginLaunchHandler } from "./workspaceTerminalLoginLaunchCoordinator.ts";
 
 const workspaceId = "workspace-1";
+
+test("desktop agent host api projects the optional quick prompts capability", () => {
+  const quickPrompts = {} as AgentHostQuickPromptsApi;
+  const api = createAgentHostApi({ agentQuickPromptService: quickPrompts });
+
+  assert.equal(api.quickPrompts, quickPrompts);
+});
+
+test("desktop agent host api routes terminal login through the launch coordinator", async () => {
+  const api = createAgentHostApi({
+    tuttidClient: createTuttidClient({
+      async getAgentTargetSetup(_workspaceId, agentTargetId) {
+        return readyAgentTargetSetup(agentTargetId);
+      }
+    })
+  });
+  const closeCalls: string[] = [];
+  const requests: Array<{
+    command: string;
+    cwd?: string;
+    workspaceId: string;
+  }> = [];
+  const unregister = registerWorkspaceTerminalLoginLaunchHandler(
+    workspaceId,
+    async (request) => {
+      requests.push(request);
+      return {
+        close: () => {
+          closeCalls.push("close");
+        }
+      };
+    }
+  );
+  try {
+    const handle = await api.terminalLogin?.run({
+      agentTargetId: "extension:kimi-code",
+      command: "/opt/kimi/bin/kimi login"
+    });
+    assert.deepEqual(requests, [
+      { command: "/opt/kimi/bin/kimi login", cwd: undefined, workspaceId }
+    ]);
+    assert.equal(await handle?.completion, "ready");
+    handle?.close();
+    assert.deepEqual(closeCalls, ["close"]);
+  } finally {
+    unregister();
+  }
+
+  await assert.rejects(
+    () =>
+      api.terminalLogin?.run({
+        agentTargetId: "extension:kimi-code",
+        command: "/opt/kimi/bin/kimi login"
+      }) ?? Promise.reject(new Error("missing terminalLogin")),
+    /Terminal login is unavailable/
+  );
+});
 
 type DesktopAgentHostApiUnderTest = AgentHostInputApi & {
   persistence: NonNullable<AgentHostInputApi["persistence"]>;
   userProjects: NonNullable<AgentHostInputApi["userProjects"]>;
 };
 
-test("desktop agent host api forwards model catalog invalidation as a host event", async () => {
+test("desktop agent host api forwards model catalog and target defaults invalidation as host events", async () => {
   const topicHandlers = new Map<string, (event: unknown) => void>();
   const tuttidClient = createTuttidClient();
   const activityService = new WorkspaceAgentActivityService({
@@ -74,11 +141,26 @@ test("desktop agent host api forwards model catalog invalidation as a host event
       occurredAtUnixMs: 4200
     }
   ]);
+  const defaultsInvalidationHandler = topicHandlers.get(
+    "preferences.agent.composer.defaults.changed"
+  );
+  assert.ok(
+    defaultsInvalidationHandler,
+    "expected target defaults topic subscription"
+  );
+  defaultsInvalidationHandler({
+    payload: { agentTargetId: "local:codex" }
+  });
+  assert.deepEqual(hostEvents.at(-1), {
+    agentTargetId: "local:codex",
+    scope: "global",
+    type: "agent-composer-defaults-invalidated"
+  });
   unsubscribe?.();
   invalidationHandler({
     payload: { providers: ["codex"], occurredAtUnixMs: 4300 }
   });
-  assert.equal(hostEvents.length, 1);
+  assert.equal(hostEvents.length, 2);
 });
 
 test("desktop agent host api writes images through the host clipboard", async () => {
@@ -104,6 +186,122 @@ test("desktop agent host api does not inject legacy agent data host apis", () =>
 
   assert.equal(api.agentSessions, undefined);
   assert.equal("workspaceAgents" in api, false);
+});
+
+test("desktop agent host api reuses one target setup watch per target", () => {
+  const api = createAgentHostApi();
+  const setup = api.agentTargetSetup;
+  assert.ok(setup);
+
+  const first = setup.watch({ agentTargetId: "extension:gemini" });
+  const same = setup.watch({ agentTargetId: " extension:gemini " });
+  const other = setup.watch({ agentTargetId: "extension:codebuddy" });
+
+  assert.equal(first, same);
+  assert.notEqual(first, other);
+});
+
+test("desktop agent host api explicitly projects daemon target setup snapshots", () => {
+  const snapshot: AgentTargetSetupSnapshot = {
+    workspaceId: "workspace-transport-only",
+    agentTargetId: "extension:gemini",
+    status: "installing",
+    runtimeSource: "managed",
+    runtimeVersion: "1.2.3",
+    reason: "runtime update required",
+    authMethods: [
+      {
+        id: "oauth-personal",
+        name: "Log in with Google",
+        description: "Personal account"
+      },
+      {
+        id: "login",
+        name: "Login with Kimi account",
+        type: "terminal",
+        terminalCommand: "/opt/kimi-code/bin/kimi login"
+      }
+    ],
+    account: {
+      id: "account-1",
+      displayName: "Rhinoc",
+      authMethodId: "oauth-personal",
+      organization: "Tutti"
+    },
+    plan: {
+      agentTargetId: "extension:gemini",
+      extensionInstallationId: "gemini-installation",
+      agentKey: "gemini",
+      extensionVersion: "2.0.0",
+      runtimeKind: "standard-acp",
+      platform: "darwin-arm64",
+      runner: "binary",
+      packageName: "grok-0.2.103-macos-aarch64",
+      packageVersion: "1.2.3",
+      installRoot: "/state/runtimes/gemini/1.2.3",
+      installCommand: ["download", "https://example.com/grok"],
+      executable: "grok",
+      launchArgs: ["agent", "stdio"],
+      planDigest: "a".repeat(64)
+    },
+    action: {
+      actionId: "action-1",
+      clientActionId: "client-action-1",
+      kind: "install",
+      status: "running",
+      phase: "installing",
+      errorCode: null,
+      errorMessage: null,
+      createdAtUnixMs: 100,
+      updatedAtUnixMs: 200
+    }
+  };
+
+  assert.deepEqual(projectDesktopAgentTargetSetupSnapshot(snapshot), {
+    agentTargetId: "extension:gemini",
+    status: "installing",
+    runtimeSource: "managed",
+    runtimeVersion: "1.2.3",
+    reason: "runtime update required",
+    authMethods: [
+      {
+        id: "oauth-personal",
+        name: "Log in with Google",
+        description: "Personal account",
+        type: null,
+        terminalCommand: null
+      },
+      {
+        id: "login",
+        name: "Login with Kimi account",
+        description: null,
+        type: "terminal",
+        terminalCommand: "/opt/kimi-code/bin/kimi login"
+      }
+    ],
+    account: {
+      id: "account-1",
+      displayName: "Rhinoc",
+      authMethodId: "oauth-personal",
+      organization: "Tutti"
+    },
+    plan: {
+      packageName: "grok-0.2.103-macos-aarch64",
+      packageVersion: "1.2.3",
+      runner: "binary",
+      planDigest: "a".repeat(64),
+      installRoot: "/state/runtimes/gemini/1.2.3"
+    },
+    action: {
+      actionId: "action-1",
+      clientActionId: "client-action-1",
+      kind: "install",
+      status: "running",
+      phase: "installing",
+      errorCode: null,
+      errorMessage: null
+    }
+  });
 });
 
 test("desktop agent host api remembers the default project selection per workspace", async () => {
@@ -145,6 +343,7 @@ test("desktop agent host api delegates user project calls to the workspace user 
         label: "Listed",
         lastUsedAtUnixMs: null,
         path: "/workspace/listed",
+        pinnedAtUnixMs: 10,
         updatedAtUnixMs: 1
       }
     ],
@@ -167,7 +366,8 @@ test("desktop agent host api delegates user project calls to the workspace user 
         id: "project-created",
         label: name,
         lastUsedAtUnixMs: null,
-        path: `/workspace/${name}`
+        path: `/workspace/${name}`,
+        pinnedAtUnixMs: 0
       };
     },
     async ensureLoaded() {
@@ -195,6 +395,12 @@ test("desktop agent host api delegates user project calls to the workspace user 
       calls.push({ input: path, method: "isNoProjectPath" });
       return path.includes("session-");
     },
+    async moveProject(input) {
+      calls.push({ input, method: "moveProject" });
+    },
+    async pinProject(input) {
+      calls.push({ input, method: "pinProject" });
+    },
     rememberNoProjectPath(path) {
       calls.push({ input: path, method: "rememberNoProjectPath" });
     },
@@ -206,7 +412,8 @@ test("desktop agent host api delegates user project calls to the workspace user 
       return {
         id: "project-used",
         label: "Used",
-        path
+        path,
+        pinnedAtUnixMs: 0
       };
     },
     async removeProjectPath(path) {
@@ -245,6 +452,11 @@ test("desktop agent host api delegates user project calls to the workspace user 
     projectLocked: true,
     selectedPath: "/workspace/listed"
   });
+  await api.userProjects.move?.({
+    beforeProjectId: "project-listed",
+    projectId: "project-used"
+  });
+  await api.userProjects.pin({ pinned: true, projectId: "project-listed" });
   await api.userProjects.remove?.({ path: "/workspace/listed" });
   const listener = () => {};
   const unsubscribe = api.userProjects.subscribe?.(listener);
@@ -257,6 +469,7 @@ test("desktop agent host api delegates user project calls to the workspace user 
         id: "project-listed",
         label: "Listed",
         path: "/workspace/listed",
+        pinnedAtUnixMs: 10,
         updatedAtUnixMs: 1
       }
     ]
@@ -265,13 +478,15 @@ test("desktop agent host api delegates user project calls to the workspace user 
   assert.deepEqual(created, {
     id: "project-created",
     label: "created",
-    path: "/workspace/created"
+    path: "/workspace/created",
+    pinnedAtUnixMs: 0
   });
   assert.equal("lastUsedAtUnixMs" in created!, false);
   assert.deepEqual(used, {
     id: "project-used",
     label: "Used",
-    path: "/workspace/used"
+    path: "/workspace/used",
+    pinnedAtUnixMs: 0
   });
   assert.deepEqual(prepared, {
     isSelectedPathMissing: false,
@@ -281,6 +496,7 @@ test("desktop agent host api delegates user project calls to the workspace user 
         id: "project-listed",
         label: "Listed",
         path: "/workspace/listed",
+        pinnedAtUnixMs: 10,
         updatedAtUnixMs: 1
       }
     ],
@@ -309,6 +525,17 @@ test("desktop agent host api delegates user project calls to the workspace user 
         selectedPath: "/workspace/listed"
       },
       method: "prepareSelection"
+    },
+    {
+      input: {
+        beforeProjectId: "project-listed",
+        projectId: "project-used"
+      },
+      method: "moveProject"
+    },
+    {
+      input: { pinned: true, projectId: "project-listed" },
+      method: "pinProject"
     },
     { input: "/workspace/listed", method: "removeProjectPath" },
     { input: listener, method: "subscribe" },
@@ -378,7 +605,9 @@ test("desktop agent host api reuses desktop host file operations", async () => {
           createdAtUnixMs: 1,
           id: "project-1",
           label: "Demo project",
+          lastUsedAtUnixMs: 1,
           path: payload.path,
+          pinnedAtUnixMs: 0,
           sectionKey: `project:${payload.path}`,
           updatedAtUnixMs: 1
         };
@@ -430,13 +659,7 @@ test("desktop agent host api reuses desktop host file operations", async () => {
     }),
     platformApi: createPlatformApi({
       homeDirectory: "/Users/local",
-      os: "darwin",
-      resolveDroppedEntries(files) {
-        return files.map((file) => ({
-          path: `/resolved/${file.name}`,
-          kind: file.name === "assets" ? "folder" : "file"
-        }));
-      }
+      os: "darwin"
     })
   });
 
@@ -447,7 +670,9 @@ test("desktop agent host api reuses desktop host file operations", async () => {
     createdAtUnixMs: 1,
     id: "project-1",
     label: "Demo project",
+    lastUsedAtUnixMs: 1,
     path: "/Users/local/Documents/tutti/Demo project",
+    pinnedAtUnixMs: 0,
     sectionKey: "project:/Users/local/Documents/tutti/Demo project",
     updatedAtUnixMs: 1
   });
@@ -472,17 +697,6 @@ test("desktop agent host api reuses desktop host file operations", async () => {
     content: "hello",
     path: "/workspace/file.txt"
   });
-  assert.deepEqual(api.workspace.getReferenceForFile?.(new File([], "drop")), {
-    path: "/resolved/drop",
-    kind: "file"
-  });
-  assert.deepEqual(
-    api.workspace.getReferenceForFile?.(new File([], "assets")),
-    {
-      path: "/resolved/assets",
-      kind: "folder"
-    }
-  );
   assert.deepEqual(
     await api.filesystem.readFileText({ uri: "file:///tmp/prompt.md" }),
     {
@@ -690,22 +904,45 @@ function createHostFilesApi(
 }
 
 function createPlatformApi(
-  overrides: Partial<
-    Pick<DesktopPlatformApi, "homeDirectory" | "os" | "resolveDroppedEntries">
-  > = {}
-): Pick<DesktopPlatformApi, "homeDirectory" | "os" | "resolveDroppedEntries"> {
+  overrides: Partial<Pick<DesktopPlatformApi, "homeDirectory" | "os">> = {}
+): Pick<DesktopPlatformApi, "homeDirectory" | "os"> {
   return {
     homeDirectory: "/Users/local",
     os: "darwin",
-    resolveDroppedEntries() {
-      return [];
-    },
     ...overrides
   };
 }
 
 function createRuntimeApi(): DesktopRuntimeApi {
   return {
+    async getAgentSessionReplayPlayback() {
+      return {
+        active: false,
+        paused: false,
+        speed: 1,
+        timingMode: "realtime"
+      };
+    },
+    async getAgentSessionReplayStatus() {
+      return { active: false };
+    },
+    async launchAgentSessionReplay() {
+      return { runId: "replay-run-1" };
+    },
+    async setAgentSessionReplayPlayback() {
+      return {
+        active: false,
+        paused: false,
+        speed: 1,
+        timingMode: "realtime"
+      };
+    },
+    async sendAgentSessionReplayControl() {
+      return;
+    },
+    async waitForAgentSessionReplay() {
+      return { runId: "replay-run-1" };
+    },
     async getBackendConfig() {
       return {
         accessToken: "token-1",
@@ -770,6 +1007,9 @@ function createTuttidClient(
       };
     },
     async deleteUserProject() {},
+    async pinUserProject() {
+      return { projects: [] };
+    },
     async useUserProject(
       request: Parameters<TuttidClient["useUserProject"]>[0]
     ) {
@@ -778,6 +1018,7 @@ function createTuttidClient(
         id: "project-1",
         label: "Project",
         path: request.path,
+        pinnedAtUnixMs: 0,
         updatedAtUnixMs: 1
       };
     },
@@ -817,4 +1058,21 @@ function createTuttidClient(
     },
     ...overrides
   } as unknown as TuttidClient;
+}
+
+function readyAgentTargetSetup(
+  agentTargetId: string
+): AgentTargetSetupSnapshot {
+  return {
+    account: null,
+    action: null,
+    agentTargetId,
+    authMethods: [],
+    plan: null,
+    reason: null,
+    runtimeSource: "managed",
+    runtimeVersion: "1.0.0",
+    status: "ready",
+    workspaceId
+  };
 }

@@ -1,6 +1,7 @@
-import type { WorkspaceFileActivationTarget } from "@tutti-os/workspace-file-manager/services";
+import type { WorkspaceFilePreviewTarget } from "@tutti-os/workspace-file-preview";
 import type { WorkbenchHostNodeData } from "@tutti-os/workbench-surface";
-import { isWorkspaceFilePreviewActivationTarget } from "../services/workspaceFilePreviewLaunch";
+import { coerceWorkspaceFilePreviewTarget } from "../services/workspaceFilePreviewLaunch.ts";
+import type { WorkspaceFilePreviewTextViewMode } from "../services/workspaceFilePreviewViewModeRequests.ts";
 
 export type WorkspaceFilePreviewTextHeaderStatus =
   | "error"
@@ -14,19 +15,20 @@ export interface WorkspaceFilePreviewTextHeaderState {
   dirty: boolean;
   message?: string;
   status: WorkspaceFilePreviewTextHeaderStatus;
+  viewMode?: WorkspaceFilePreviewTextViewMode;
 }
 
 export interface WorkspaceFilePreviewNodeRuntimeState {
-  file: WorkspaceFileActivationTarget;
+  file: WorkspaceFilePreviewTarget;
   textHeader?: WorkspaceFilePreviewTextHeaderState;
 }
 
 export interface WorkspaceFilePreviewNodeSnapshotState {
-  file: WorkspaceFileActivationTarget;
+  file: WorkspaceFilePreviewTarget;
 }
 
 export function createWorkspaceFilePreviewNodeRuntimeState(input: {
-  file: WorkspaceFileActivationTarget;
+  file: WorkspaceFilePreviewTarget;
   textHeader?: WorkspaceFilePreviewTextHeaderState;
 }): WorkspaceFilePreviewNodeRuntimeState {
   return input.textHeader
@@ -35,22 +37,23 @@ export function createWorkspaceFilePreviewNodeRuntimeState(input: {
 }
 
 export function createWorkspaceFilePreviewNodeSnapshotState(input: {
-  file: WorkspaceFileActivationTarget;
+  file: WorkspaceFilePreviewTarget;
 }): WorkspaceFilePreviewNodeSnapshotState {
   return { file: input.file };
 }
 
 export function resolveWorkspaceFilePreviewNodeFile(
   data: Pick<WorkbenchHostNodeData, "runtimeNodeState" | "snapshotNodeState">
-): WorkspaceFileActivationTarget | null {
+): WorkspaceFilePreviewTarget | null {
   for (const value of [data.runtimeNodeState, data.snapshotNodeState]) {
     if (!value || typeof value !== "object") {
       continue;
     }
 
     const candidate = value as Partial<WorkspaceFilePreviewNodeSnapshotState>;
-    if (isWorkspaceFilePreviewActivationTarget(candidate.file)) {
-      return candidate.file;
+    const file = coerceWorkspaceFilePreviewTarget(candidate.file);
+    if (file) {
+      return file;
     }
   }
 
@@ -66,7 +69,7 @@ export function resolveWorkspaceFilePreviewTextHeaderState(
 
   const candidate =
     data.runtimeNodeState as Partial<WorkspaceFilePreviewNodeRuntimeState>;
-  if (!isWorkspaceFilePreviewActivationTarget(candidate.file)) {
+  if (!coerceWorkspaceFilePreviewTarget(candidate.file)) {
     return null;
   }
 
@@ -91,15 +94,18 @@ export function resolveWorkspaceFilePreviewTextHeaderState(
     ...(typeof textHeader.message === "string"
       ? { message: textHeader.message }
       : {}),
-    status: textHeader.status
+    status: textHeader.status,
+    ...(textHeader.viewMode === "edit" || textHeader.viewMode === "preview"
+      ? { viewMode: textHeader.viewMode }
+      : {})
   };
 }
 
 export function workspaceFilePreviewNodeFileKey(
-  file: WorkspaceFileActivationTarget
+  file: WorkspaceFilePreviewTarget
 ): string {
   return [
-    file.fileKind,
+    file.previewKind,
     file.path,
     file.name,
     file.sizeBytes ?? "",

@@ -58,7 +58,6 @@ export {
   maxFiniteMessageVersion,
   minFiniteMessageVersion,
   sessionHasRenderableMessages,
-  sessionViewHasUnhydratedOlderDetailMessages,
   windowHasTurnMissingUserPrompt
 } from "./useAgentConversationMessagePaging";
 export function stableConversationSummaryList(
@@ -121,6 +120,7 @@ export function stabilizeConversationDetail(
     previous.cwd === next.cwd &&
     previous.workspaceRoot === next.workspaceRoot &&
     previous.showProcessingIndicator === next.showProcessingIndicator &&
+    previous.goalControls === next.goalControls &&
     previous.turns === next.turns &&
     previous.sessionTurns === next.sessionTurns &&
     previous.session === session &&
@@ -192,6 +192,7 @@ export function conversationDetailSessionsEqual(
     left.workspaceId === right.workspaceId &&
     left.agentSessionId === right.agentSessionId &&
     left.userId === right.userId &&
+    left.kind === right.kind &&
     left.agentTargetId === right.agentTargetId &&
     left.provider === right.provider &&
     left.providerSessionId === right.providerSessionId &&
@@ -206,6 +207,21 @@ export function conversationDetailSessionsEqual(
     left.activeTurnId === right.activeTurnId &&
     left.activeTurn?.updatedAtUnixMs === right.activeTurn?.updatedAtUnixMs &&
     left.latestTurn?.updatedAtUnixMs === right.latestTurn?.updatedAtUnixMs &&
+    left.lifecycleCapabilities.fork === right.lifecycleCapabilities.fork &&
+    left.lifecycleCapabilities.forkThroughTurn ===
+      right.lifecycleCapabilities.forkThroughTurn &&
+    left.lifecycleCapabilities.forkThroughTurnIdsKnown ===
+      right.lifecycleCapabilities.forkThroughTurnIdsKnown &&
+    stringArraysEqual(
+      left.lifecycleCapabilities.forkThroughTurnIds,
+      right.lifecycleCapabilities.forkThroughTurnIds
+    ) &&
+    left.forkedFrom?.sourceAgentSessionId ===
+      right.forkedFrom?.sourceAgentSessionId &&
+    left.forkedFrom?.sourceTurnId === right.forkedFrom?.sourceTurnId &&
+    left.forkedFrom?.targetTurnId === right.forkedFrom?.targetTurnId &&
+    left.forkedFrom?.operationId === right.forkedFrom?.operationId &&
+    left.forkedFrom?.forkedAtUnixMs === right.forkedFrom?.forkedAtUnixMs &&
     left.pendingInteractions === right.pendingInteractions &&
     left.latestTurnInteractions === right.latestTurnInteractions
   );
@@ -462,6 +478,8 @@ export function areComposerSettingsVMsEqual(
     (left.planExclusiveWithPermissionMode ?? false) ===
       (right.planExclusiveWithPermissionMode ?? false) &&
     (left.selectedModelValue ?? null) === (right.selectedModelValue ?? null) &&
+    (left.effectiveModelValue ?? null) ===
+      (right.effectiveModelValue ?? null) &&
     (left.selectedReasoningEffortValue ?? null) ===
       (right.selectedReasoningEffortValue ?? null) &&
     (left.selectedSpeedValue ?? null) === (right.selectedSpeedValue ?? null) &&
@@ -470,10 +488,18 @@ export function areComposerSettingsVMsEqual(
     arePermissionConfigsEqual(left.permissionConfig, right.permissionConfig) &&
     (left.selectedProjectPath ?? null) ===
       (right.selectedProjectPath ?? null) &&
+    Boolean(left.shouldApplyPreparedProjectSelection) ===
+      Boolean(right.shouldApplyPreparedProjectSelection) &&
     Boolean(left.projectLocked) === Boolean(right.projectLocked) &&
     Boolean(left.projectPathIsRemote) === Boolean(right.projectPathIsRemote) &&
     Boolean(left.collapseModelOptionsToLatest) ===
       Boolean(right.collapseModelOptionsToLatest) &&
+    (left.modelPlan?.id ?? null) === (right.modelPlan?.id ?? null) &&
+    (left.modelPlan?.name ?? null) === (right.modelPlan?.name ?? null) &&
+    (left.modelPlan?.protocol ?? null) ===
+      (right.modelPlan?.protocol ?? null) &&
+    Boolean(left.modelSwitchTakesEffectNextTurn) ===
+      Boolean(right.modelSwitchTakesEffectNextTurn) &&
     areComposerSettingOptionListsEqual(
       left.availableModels,
       right.availableModels

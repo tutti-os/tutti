@@ -19,9 +19,53 @@ build step and no bundled entry point beyond the source files.
 ## Sidecar protocol
 
 The daemon and sidecar exchange newline-delimited JSON envelopes over standard
-input and output. Every request and event carries `"version": 2`; either side
+input and output. Every request and event carries `"version": 6`; either side
 rejects unsupported or missing versions instead of guessing compatibility.
 Protocol types and validation live in `src/protocol.ts`.
+
+Protocol version 6 adds background-task level and continuation diagnostics.
+`background_tasks_changed` is a full replace-set of currently running SDK
+background tasks, not a terminal root-turn signal. When the set becomes empty,
+the sidecar records a pending continuation. If the ordinary root result arrives
+while that continuation is already pending, the original turn stays active
+until session idle; no terminal/start pair is emitted. A synthetic continuation
+is reserved only when the pending signal arrives after the root already
+settled. Results whose
+`origin.kind` is `task-notification` confirm background follow-up output without
+assuming one result per notification. The SDK's `session_state_changed: idle`
+event authoritatively settles the continuation after its background loop
+drains. A follow-up result never starts a local settlement timer because later
+queued follow-ups may legitimately take several seconds to begin. The synthetic
+turn keeps the existing running/processing presentation. If root output does
+not begin within 30 seconds, the sidecar emits a `continuation_delayed` warning,
+completes the synthetic reservation, interrupts the pending query, and rejects
+that continuation's late output.
+Background-level events include aggregate provider and projected-task counts so
+diagnostics can expose missing terminal task edges without logging task
+descriptions or prompts.
+
+`inspect_fork_checkpoints` and `fork_session` are stateless requests: they do
+not create a `SessionRuntime` or resume a query. They use the official SDK
+session APIs, verify the selected source prefix and the independently readable
+child transcript, and return identities plus a provider-owned binding receipt;
+prompt and tool content never cross this protocol boundary.
+
+`fork_session` calls the official `forkSession(..., {upToMessageId, title})`
+mutation directly. Claude allocates the provider child UUID, while Host keeps
+the canonical target Agent Session ID deterministic. The driver therefore does
+not attest deterministic provider identity: after mutation starts, any SDK or
+verification failure is `unknown` and must never be replayed. A trailing system
+message may be present in the provider-owned child file but hidden by
+`getSessionMessages()` until a later message extends the chain, so verification
+compares the SDK-observable prefix while the source checkpoint receipt still
+binds the full inclusive prefix.
+
+For live Turns, the UUID supplied on the outbound SDK user message is a
+`promptCorrelationId` only because Claude Code may rewrite it in the durable
+transcript. `SessionRuntime` causally binds the next expected root prompt echo
+to its canonical Turn, takes provider identity from the observed root
+user-message UUID, and emits `provider_turn_started`; the daemon persists only
+that observed identity.
 
 Interactive responses use `(turnId, requestId)` identity. The sidecar keeps a
 bounded terminal disposition registry so `submit_interactive` is idempotent:

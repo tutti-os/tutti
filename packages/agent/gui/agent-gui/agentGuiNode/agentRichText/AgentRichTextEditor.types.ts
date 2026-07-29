@@ -1,5 +1,6 @@
 import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
 import type {
+  AgentComposerFileMentionStatus,
   AgentFileMentionSuggestionState,
   AgentContextMentionItem
 } from "./agentFileMentionExtension";
@@ -10,11 +11,14 @@ import type { AgentGUIComposerFocusMethod } from "../engagement/agentGUIEngageme
 
 export interface AgentRichTextEditorProps {
   value: string;
+  /** Stable owner of the controlled draft, such as a session draft scope. */
+  contentScopeKey?: string;
   disabled: boolean;
   placeholder: string;
   removeMentionLabel?: string;
   className?: string;
   onChange: (value: string) => void;
+  onContentLayoutInvalidated?: () => void;
   onFocus?: (method: AgentGUIComposerFocusMethod) => void;
   onUserContentChange?: (value: string) => void;
   onSubmit: () => void;
@@ -24,6 +28,7 @@ export interface AgentRichTextEditorProps {
   submitOnEnter?: boolean;
   enableFileMentionSuggestions?: boolean;
   onKeyDownForPalette?: (event: KeyboardEvent) => boolean;
+  onHistoryNavigation?: (direction: "older" | "newer") => boolean;
   onFileMentionSuggestionChange?: (
     state: AgentFileMentionSuggestionState | null
   ) => void;
@@ -33,7 +38,7 @@ export interface AgentRichTextEditorProps {
   onPromptImagesUnsupported?: () => void;
   onPasteImages?: (images: AgentRichTextPastedImage[]) => void;
   onPasteLargeText?: (text: string) => void;
-  getReferenceForFile?: (file: File) => WorkspaceFileReference | null;
+  onPasteFiles?: (files: readonly File[]) => void;
   onDropFiles?: (files: readonly File[]) => void;
 }
 
@@ -41,10 +46,24 @@ export interface AgentRichTextEditorHandle {
   focusAtStart: () => void;
   focusAtEnd: () => void;
   getPromptTextBeforeSelection: () => string;
+  insertPlainTextAtSelection: (text: string) => string | null;
   openMentionPalette: () => void;
   insertWorkspaceReferences: (items: readonly WorkspaceFileReference[]) => void;
   insertMentionItems: (items: readonly AgentContextMentionItem[]) => void;
+  insertComposerFiles: (
+    items: readonly AgentRichTextComposerFileMention[]
+  ) => void;
+  updateComposerFiles: (
+    items: readonly AgentRichTextComposerFileMention[]
+  ) => boolean;
   replaceTextBeforeSelection: (length: number, text: string) => string | null;
+}
+
+export interface AgentRichTextComposerFileMention {
+  errorCode?: string;
+  id: string;
+  name: string;
+  status: AgentComposerFileMentionStatus;
 }
 
 export type AgentRichTextPastedImage = AgentRichTextPromptImage;

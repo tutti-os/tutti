@@ -105,6 +105,67 @@ func TestLiveModelOptionsFromRunningSessionFiltersProvider(t *testing.T) {
 	}
 }
 
+func TestLiveModelOptionsFromRunningCodexSessionPreservesReasoningProfiles(t *testing.T) {
+	t.Parallel()
+	runtime := newFakeRuntime()
+	runtime.sessions["codex-1"] = ProviderRuntimeSession{
+		ID: "codex-1", WorkspaceID: "ws-1", Provider: "codex",
+		RuntimeContext: map[string]any{
+			"configOptions": []map[string]any{{
+				"id": "model",
+				"options": []any{map[string]any{
+					"value":                   "gpt-5.6-sol",
+					"name":                    "GPT-5.6-Sol",
+					"reasoningEffort":         "low",
+					"supportsReasoningEffort": true,
+					"reasoningEfforts": []map[string]any{
+						{"value": "low", "name": "Low", "default": true},
+						{"value": "medium", "name": "Medium"},
+						{"value": "high", "name": "High"},
+						{"value": "xhigh", "name": "X-High"},
+						{"value": "max", "name": "Max"},
+						{"value": "ultra", "name": "Ultra"},
+					},
+				}},
+			}},
+		},
+	}
+
+	options, hasSession := newIsolatedAgentService(runtime).liveModelOptionsFromRunningSession("ws-1", "codex")
+	if !hasSession || len(options) != 1 {
+		t.Fatalf("Codex options = %#v hasSession = %v, want one live model", options, hasSession)
+	}
+	if !options[0].ReasoningEffortsAdvertised || options[0].ReasoningEffort != "low" || len(options[0].ReasoningEfforts) != 6 {
+		t.Fatalf("Codex reasoning profile = %#v, want Low through Ultra", options[0])
+	}
+	if got := options[0].ReasoningEfforts[5]; got.Value != "ultra" || got.Label != "Ultra" {
+		t.Fatalf("Codex final reasoning option = %#v, want Ultra", got)
+	}
+}
+
+func TestLiveModelOptionsFromRunningSessionBreaksTimestampTiesBySessionID(t *testing.T) {
+	t.Parallel()
+	runtime := newFakeRuntime()
+	runtime.sessions["cursor-a"] = ProviderRuntimeSession{
+		ID: "cursor-a", WorkspaceID: "ws-1", Provider: "cursor", UpdatedAtUnixMS: 900,
+		RuntimeContext: map[string]any{
+			"configOptions": []any{map[string]any{
+				"id":      "model",
+				"options": []any{map[string]any{"value": "older-tie", "name": "Older tie"}},
+			}},
+		},
+	}
+	runtime.sessions["cursor-z"] = ProviderRuntimeSession{
+		ID: "cursor-z", WorkspaceID: "ws-1", Provider: "cursor", UpdatedAtUnixMS: 900,
+		RuntimeContext: cursorModelRuntimeContext(),
+	}
+
+	options, ok := newIsolatedAgentService(runtime).liveModelOptionsFromRunningSession("ws-1", "cursor")
+	if !ok || len(options) != 3 || options[0].Value != "default[]" {
+		t.Fatalf("options = %#v ok = %v, want lexically latest tied session", options, ok)
+	}
+}
+
 func TestGetComposerOptionsStartsHiddenProbeBeforeFirstCursorSession(t *testing.T) {
 	t.Setenv("TUTTI_STATE_DIR", t.TempDir())
 	runtime := newFakeRuntime()
@@ -291,6 +352,10 @@ func TestLiveModelOptionsFromPersistedSessionsPicksNewestAndSkipsStale(t *testin
 				ID: "newer", WorkspaceID: "ws-1", Provider: "cursor",
 				InternalRuntimeContext: cursorModelRuntimeContext(), UpdatedAtUnixMS: 900,
 			},
+			"ws-1:aaa-newer-tie": {
+				ID: "aaa-newer-tie", WorkspaceID: "ws-1", Provider: "cursor",
+				InternalRuntimeContext: oldContext, UpdatedAtUnixMS: 900,
+			},
 			"ws-1:hidden": {
 				ID: "hidden", WorkspaceID: "ws-1", Provider: "cursor",
 				InternalRuntimeContext: map[string]any{"hiddenLiveModelDiscovery": true},
@@ -443,6 +508,67 @@ func TestMergeLiveModelsIntoComposerOptionsKeepsSupportsImageInput(t *testing.T)
 	}
 	if got := options[1]["supportsImageInput"]; got != false {
 		t.Fatalf("runtime glm supportsImageInput = %#v, want false", got)
+	}
+}
+
+func TestMergeLiveModelsIntoComposerOptionsBuildsPerModelReasoningSelectors(t *testing.T) {
+	supported := true
+	unsupported := false
+	imageSupported := true
+	merged := mergeLiveModelsIntoComposerOptions(ComposerOptions{
+		Provider:          "acp:dynamic-models",
+		EffectiveSettings: ComposerSettings{Model: "reasoning-model", ReasoningEffort: "stale"},
+		RuntimeContext:    map[string]any{},
+	}, []ComposerConfigOptionValue{
+		{
+			ID:                      "reasoning-model",
+			Label:                   "Reasoning Model",
+			Value:                   "reasoning-model",
+			SupportsImageInput:      &imageSupported,
+			SupportsReasoningEffort: &supported,
+			ReasoningEffort:         "deep",
+			ReasoningEfforts: []AgentModelReasoningEffortOption{
+				{Value: "brief", Label: "Brief", Description: "Fast"},
+				{Value: "deep", Label: "Deep", Description: "Thorough"},
+			},
+			ReasoningEffortsAdvertised: true,
+		},
+		{
+			ID:                         "plain-model",
+			Label:                      "Plain Model",
+			Value:                      "plain-model",
+			SupportsReasoningEffort:    &unsupported,
+			ReasoningEffortsAdvertised: true,
+		},
+	})
+
+	profile, ok := merged.ReasoningOptionsByModel["reasoning-model"]
+	if !ok || profile.DefaultValue != "deep" || len(profile.Options) != 2 {
+		t.Fatalf("reasoning profile = %#v, want dynamic brief/deep with deep default", profile)
+	}
+	if profile.Options[0].Label != "Brief" || profile.Options[0].Description != "Fast" {
+		t.Fatalf("reasoning options = %#v, want runtime labels and descriptions", profile.Options)
+	}
+	plain, ok := merged.ReasoningOptionsByModel["plain-model"]
+	if !ok || plain.DefaultValue != "" || len(plain.Options) != 0 {
+		t.Fatalf("plain profile = %#v, want explicit unsupported empty profile", plain)
+	}
+	if !merged.ReasoningConfig.Configurable || merged.ReasoningConfig.CurrentValue != "deep" || merged.EffectiveSettings.ReasoningEffort != "deep" {
+		t.Fatalf("selected reasoning = config %#v settings %#v", merged.ReasoningConfig, merged.EffectiveSettings)
+	}
+	configOptions, ok := merged.RuntimeContext["configOptions"].([]map[string]any)
+	if !ok || len(configOptions) == 0 {
+		t.Fatalf("runtime configOptions = %#v", merged.RuntimeContext["configOptions"])
+	}
+	modelOptions, ok := configOptions[0]["options"].([]map[string]any)
+	if !ok || len(modelOptions) != 2 {
+		t.Fatalf("runtime model options = %#v", configOptions[0]["options"])
+	}
+	if modelOptions[0]["reasoningEffort"] != "deep" || modelOptions[0]["supportsReasoningEffort"] != true || modelOptions[0]["supportsImageInput"] != true {
+		t.Fatalf("runtime reasoning model metadata = %#v", modelOptions[0])
+	}
+	if efforts, ok := modelOptions[0]["reasoningEfforts"].([]map[string]any); !ok || len(efforts) != 2 || efforts[0]["value"] != "brief" {
+		t.Fatalf("runtime reasoning efforts = %#v", modelOptions[0]["reasoningEfforts"])
 	}
 }
 

@@ -7,18 +7,48 @@ import type {
 } from "./client/index.ts";
 import { client } from "./client.gen.ts";
 import type {
+  AcceptAgentSessionWorkData,
+  AcceptAgentSessionWorkErrors,
+  AcceptAgentSessionWorkResponses,
+  AcknowledgeWorkspaceAgentSessionForkOperationData,
+  AcknowledgeWorkspaceAgentSessionForkOperationErrors,
+  AcknowledgeWorkspaceAgentSessionForkOperationResponses,
   AddWorkspaceIssueContextRefsData,
   AddWorkspaceIssueContextRefsErrors,
   AddWorkspaceIssueContextRefsResponses,
   AddWorkspaceIssueTaskContextRefsData,
   AddWorkspaceIssueTaskContextRefsErrors,
   AddWorkspaceIssueTaskContextRefsResponses,
+  AdvanceAgentSessionReplayRunCheckpointData,
+  AdvanceAgentSessionReplayRunCheckpointErrors,
+  AdvanceAgentSessionReplayRunCheckpointResponses,
+  AppendAgentSessionRecordingActivityEventsData,
+  AppendAgentSessionRecordingActivityEventsErrors,
+  AppendAgentSessionRecordingActivityEventsResponses,
   ApplyWorkspaceGitPatchData,
   ApplyWorkspaceGitPatchErrors,
   ApplyWorkspaceGitPatchResponses,
+  ArchiveTuttiModeExecutionData,
+  ArchiveTuttiModeExecutionErrors,
+  ArchiveTuttiModeExecutionResponses,
   AttachEventStreamData,
   AttachEventStreamErrors,
   AttachEventStreamResponses,
+  AuthenticateAgentTargetRuntimeData,
+  AuthenticateAgentTargetRuntimeErrors,
+  AuthenticateAgentTargetRuntimeResponses,
+  CancelAgentSessionRecordingData,
+  CancelAgentSessionRecordingErrors,
+  CancelAgentSessionRecordingResponses,
+  CancelAgentSessionReplayRunData,
+  CancelAgentSessionReplayRunErrors,
+  CancelAgentSessionReplayRunResponses,
+  CancelCollaborationRunData,
+  CancelCollaborationRunErrors,
+  CancelCollaborationRunResponses,
+  CancelTuttiModeExecutionData,
+  CancelTuttiModeExecutionErrors,
+  CancelTuttiModeExecutionResponses,
   CancelWorkspaceAgentTurnData,
   CancelWorkspaceAgentTurnErrors,
   CancelWorkspaceAgentTurnResponses,
@@ -28,6 +58,9 @@ import type {
   CancelWorkspaceAppUploadData,
   CancelWorkspaceAppUploadErrors,
   CancelWorkspaceAppUploadResponses,
+  CancelWorkspaceIssueExecutionData,
+  CancelWorkspaceIssueExecutionErrors,
+  CancelWorkspaceIssueExecutionResponses,
   CheckUserProjectPathData,
   CheckUserProjectPathErrors,
   CheckUserProjectPathResponses,
@@ -37,6 +70,12 @@ import type {
   ClearWorkspaceAgentSessionsData,
   ClearWorkspaceAgentSessionsErrors,
   ClearWorkspaceAgentSessionsResponses,
+  CompleteAgentSessionRecordingData,
+  CompleteAgentSessionRecordingErrors,
+  CompleteAgentSessionRecordingResponses,
+  CompleteAgentSessionReplayRunData,
+  CompleteAgentSessionReplayRunErrors,
+  CompleteAgentSessionReplayRunResponses,
   CompleteWorkspaceAppUploadData,
   CompleteWorkspaceAppUploadErrors,
   CompleteWorkspaceAppUploadResponses,
@@ -46,9 +85,30 @@ import type {
   CompleteWorkspaceIssueTaskRunData,
   CompleteWorkspaceIssueTaskRunErrors,
   CompleteWorkspaceIssueTaskRunResponses,
+  ConfirmMobileRemotePairingData,
+  ConfirmMobileRemotePairingErrors,
+  ConfirmMobileRemotePairingResponses,
   CopyWorkspaceFileEntryData,
   CopyWorkspaceFileEntryErrors,
   CopyWorkspaceFileEntryResponses,
+  CreateAgentQuickPromptData,
+  CreateAgentQuickPromptErrors,
+  CreateAgentQuickPromptResponses,
+  CreateAutomationRuleData,
+  CreateAutomationRuleErrors,
+  CreateAutomationRuleResponses,
+  CreateCollaborationRunData,
+  CreateCollaborationRunErrors,
+  CreateCollaborationRunResponses,
+  CreateModelPlanData,
+  CreateModelPlanErrors,
+  CreateModelPlanResponses,
+  CreateModelPolicyData,
+  CreateModelPolicyErrors,
+  CreateModelPolicyResponses,
+  CreateWorkspaceAgentData,
+  CreateWorkspaceAgentErrors,
+  CreateWorkspaceAgentResponses,
   CreateWorkspaceAgentSessionData,
   CreateWorkspaceAgentSessionErrors,
   CreateWorkspaceAgentSessionResponses,
@@ -65,6 +125,9 @@ import type {
   CreateWorkspaceFileResponses,
   CreateWorkspaceIssueData,
   CreateWorkspaceIssueErrors,
+  CreateWorkspaceIssueFromPlanData,
+  CreateWorkspaceIssueFromPlanErrors,
+  CreateWorkspaceIssueFromPlanResponses,
   CreateWorkspaceIssueResponses,
   CreateWorkspaceIssueRunData,
   CreateWorkspaceIssueRunErrors,
@@ -85,9 +148,27 @@ import type {
   CreateWorkspaceTerminalData,
   CreateWorkspaceTerminalErrors,
   CreateWorkspaceTerminalResponses,
+  DecideWorkspaceWorkflowCheckpointData,
+  DecideWorkspaceWorkflowCheckpointErrors,
+  DecideWorkspaceWorkflowCheckpointResponses,
+  DeleteAgentQuickPromptData,
+  DeleteAgentQuickPromptErrors,
+  DeleteAgentQuickPromptResponses,
+  DeleteAutomationRuleData,
+  DeleteAutomationRuleErrors,
+  DeleteAutomationRuleResponses,
+  DeleteModelPlanData,
+  DeleteModelPlanErrors,
+  DeleteModelPlanResponses,
+  DeleteModelPolicyData,
+  DeleteModelPolicyErrors,
+  DeleteModelPolicyResponses,
   DeleteUserProjectData,
   DeleteUserProjectErrors,
   DeleteUserProjectResponses,
+  DeleteWorkspaceAgentData,
+  DeleteWorkspaceAgentErrors,
+  DeleteWorkspaceAgentResponses,
   DeleteWorkspaceAgentSessionData,
   DeleteWorkspaceAgentSessionErrors,
   DeleteWorkspaceAgentSessionResponses,
@@ -115,15 +196,30 @@ import type {
   DeleteWorkspaceIssueTopicErrors,
   DeleteWorkspaceIssueTopicResponses,
   DeleteWorkspaceResponses,
+  DetectModelPlanData,
+  DetectModelPlanErrors,
+  DetectModelPlanResponses,
   DismissAccountRegistrationCreditsRewardData,
   DismissAccountRegistrationCreditsRewardErrors,
   DismissAccountRegistrationCreditsRewardResponses,
+  DuplicateModelPlanData,
+  DuplicateModelPlanErrors,
+  DuplicateModelPlanResponses,
+  EstimateWorkspaceIssueAutoTokenBudgetData,
+  EstimateWorkspaceIssueAutoTokenBudgetErrors,
+  EstimateWorkspaceIssueAutoTokenBudgetResponses,
   ExportWorkspaceAppData,
   ExportWorkspaceAppErrors,
   ExportWorkspaceAppResponses,
+  FailAgentSessionReplayRunData,
+  FailAgentSessionReplayRunErrors,
+  FailAgentSessionReplayRunResponses,
   FixWorkspaceAppFactoryJobData,
   FixWorkspaceAppFactoryJobErrors,
   FixWorkspaceAppFactoryJobResponses,
+  ForkWorkspaceAgentSessionData,
+  ForkWorkspaceAgentSessionErrors,
+  ForkWorkspaceAgentSessionResponses,
   GetAccountLoginStatusData,
   GetAccountLoginStatusErrors,
   GetAccountLoginStatusResponses,
@@ -139,21 +235,63 @@ import type {
   GetAgentProviderStatusesData,
   GetAgentProviderStatusesErrors,
   GetAgentProviderStatusesResponses,
+  GetAgentSessionAcceptanceData,
+  GetAgentSessionAcceptanceErrors,
+  GetAgentSessionAcceptanceResponses,
+  GetAgentSessionAutomationRuleOverrideData,
+  GetAgentSessionAutomationRuleOverrideErrors,
+  GetAgentSessionAutomationRuleOverrideResponses,
+  GetAgentSessionModelPolicyOverrideData,
+  GetAgentSessionModelPolicyOverrideErrors,
+  GetAgentSessionModelPolicyOverrideResponses,
+  GetAgentSessionRecordingData,
+  GetAgentSessionRecordingErrors,
+  GetAgentSessionRecordingResponses,
+  GetAgentSessionReplayTransportPlaybackData,
+  GetAgentSessionReplayTransportPlaybackErrors,
+  GetAgentSessionReplayTransportPlaybackResponses,
+  GetAgentTargetSetupData,
+  GetAgentTargetSetupErrors,
+  GetAgentTargetSetupResponses,
+  GetAutomationRuleData,
+  GetAutomationRuleErrors,
+  GetAutomationRuleResponses,
   GetDesktopPreferencesData,
   GetDesktopPreferencesErrors,
   GetDesktopPreferencesResponses,
   GetHealthData,
   GetHealthErrors,
   GetHealthResponses,
+  GetMobileRemotePairingChallengeData,
+  GetMobileRemotePairingChallengeErrors,
+  GetMobileRemotePairingChallengeResponses,
+  GetModelPlanData,
+  GetModelPlanErrors,
+  GetModelPlanResponses,
+  GetModelPolicyData,
+  GetModelPolicyErrors,
+  GetModelPolicyResponses,
   GetStartupWorkspaceData,
   GetStartupWorkspaceErrors,
   GetStartupWorkspaceResponses,
+  GetTuttiModeArchiveOperationData,
+  GetTuttiModeArchiveOperationErrors,
+  GetTuttiModeArchiveOperationResponses,
+  GetWorkspaceAgentData,
+  GetWorkspaceAgentErrors,
+  GetWorkspaceAgentResponses,
   GetWorkspaceAgentSessionData,
   GetWorkspaceAgentSessionErrors,
+  GetWorkspaceAgentSessionForkOperationData,
+  GetWorkspaceAgentSessionForkOperationErrors,
+  GetWorkspaceAgentSessionForkOperationResponses,
   GetWorkspaceAgentSessionGoalData,
   GetWorkspaceAgentSessionGoalErrors,
   GetWorkspaceAgentSessionGoalResponses,
   GetWorkspaceAgentSessionResponses,
+  GetWorkspaceAgentSessionTuttiModeActivationData,
+  GetWorkspaceAgentSessionTuttiModeActivationErrors,
+  GetWorkspaceAgentSessionTuttiModeActivationResponses,
   GetWorkspaceAppAgentPreferencesData,
   GetWorkspaceAppAgentPreferencesErrors,
   GetWorkspaceAppAgentPreferencesResponses,
@@ -196,6 +334,9 @@ import type {
   GetWorkspaceWorkbenchData,
   GetWorkspaceWorkbenchErrors,
   GetWorkspaceWorkbenchResponses,
+  GetWorkspaceWorkflowData,
+  GetWorkspaceWorkflowErrors,
+  GetWorkspaceWorkflowResponses,
   GoalControlWorkspaceAgentSessionData,
   GoalControlWorkspaceAgentSessionErrors,
   GoalControlWorkspaceAgentSessionResponses,
@@ -205,6 +346,9 @@ import type {
   ImportWorkspaceExternalAgentSessionsData,
   ImportWorkspaceExternalAgentSessionsErrors,
   ImportWorkspaceExternalAgentSessionsResponses,
+  InstallAgentTargetRuntimeData,
+  InstallAgentTargetRuntimeErrors,
+  InstallAgentTargetRuntimeResponses,
   InstallWorkspaceAppData,
   InstallWorkspaceAppErrors,
   InstallWorkspaceAppResponses,
@@ -214,12 +358,45 @@ import type {
   LaunchWorkspaceAppData,
   LaunchWorkspaceAppErrors,
   LaunchWorkspaceAppResponses,
+  ListAgentModelBindingsData,
+  ListAgentModelBindingsErrors,
+  ListAgentModelBindingsResponses,
+  ListAgentQuickPromptsData,
+  ListAgentQuickPromptsErrors,
+  ListAgentQuickPromptsResponses,
+  ListAgentSessionCassettesData,
+  ListAgentSessionCassettesErrors,
+  ListAgentSessionCassettesResponses,
+  ListAgentSessionRecordingsData,
+  ListAgentSessionRecordingsErrors,
+  ListAgentSessionRecordingsResponses,
+  ListAgentSessionReplayRunsData,
+  ListAgentSessionReplayRunsErrors,
+  ListAgentSessionReplayRunsResponses,
   ListAgentTargetsData,
   ListAgentTargetsErrors,
   ListAgentTargetsResponses,
+  ListAutomationRulesData,
+  ListAutomationRulesErrors,
+  ListAutomationRulesResponses,
   ListCliCapabilitiesData,
   ListCliCapabilitiesErrors,
   ListCliCapabilitiesResponses,
+  ListCollaborationRunsData,
+  ListCollaborationRunsErrors,
+  ListCollaborationRunsResponses,
+  ListMobileRemotePairingsData,
+  ListMobileRemotePairingsErrors,
+  ListMobileRemotePairingsResponses,
+  ListModelPlanReferencesData,
+  ListModelPlanReferencesErrors,
+  ListModelPlanReferencesResponses,
+  ListModelPlansData,
+  ListModelPlansErrors,
+  ListModelPlansResponses,
+  ListModelPoliciesData,
+  ListModelPoliciesErrors,
+  ListModelPoliciesResponses,
   ListUserProjectsData,
   ListUserProjectsErrors,
   ListUserProjectsResponses,
@@ -229,6 +406,8 @@ import type {
   ListWorkspaceAgentPinnedSessionPageData,
   ListWorkspaceAgentPinnedSessionPageErrors,
   ListWorkspaceAgentPinnedSessionPageResponses,
+  ListWorkspaceAgentsData,
+  ListWorkspaceAgentsErrors,
   ListWorkspaceAgentSessionGitBranchesData,
   ListWorkspaceAgentSessionGitBranchesErrors,
   ListWorkspaceAgentSessionGitBranchesResponses,
@@ -247,6 +426,7 @@ import type {
   ListWorkspaceAgentSessionSectionsResponses,
   ListWorkspaceAgentSessionsErrors,
   ListWorkspaceAgentSessionsResponses,
+  ListWorkspaceAgentsResponses,
   ListWorkspaceAppFactoryJobsData,
   ListWorkspaceAppFactoryJobsErrors,
   ListWorkspaceAppFactoryJobsResponses,
@@ -289,21 +469,39 @@ import type {
   ListWorkspaceTerminalsData,
   ListWorkspaceTerminalsErrors,
   ListWorkspaceTerminalsResponses,
+  ListWorkspaceWorkflowsData,
+  ListWorkspaceWorkflowsErrors,
+  ListWorkspaceWorkflowsResponses,
   LoadLocalWorkspaceAppData,
   LoadLocalWorkspaceAppErrors,
   LoadLocalWorkspaceAppResponses,
   LogoutAccountData,
   LogoutAccountErrors,
   LogoutAccountResponses,
+  MarkAgentSessionReplayRunRunningData,
+  MarkAgentSessionReplayRunRunningErrors,
+  MarkAgentSessionReplayRunRunningResponses,
+  MoveAgentQuickPromptData,
+  MoveAgentQuickPromptErrors,
+  MoveAgentQuickPromptResponses,
+  MoveUserProjectData,
+  MoveUserProjectErrors,
+  MoveUserProjectResponses,
   MoveWorkspaceFileEntryData,
   MoveWorkspaceFileEntryErrors,
   MoveWorkspaceFileEntryResponses,
   OpenWorkspaceData,
   OpenWorkspaceErrors,
   OpenWorkspaceResponses,
+  PinUserProjectData,
+  PinUserProjectErrors,
+  PinUserProjectResponses,
   PreflightUploadWorkspaceFilesData,
   PreflightUploadWorkspaceFilesErrors,
   PreflightUploadWorkspaceFilesResponses,
+  PrepareAgentSessionReplayRunData,
+  PrepareAgentSessionReplayRunErrors,
+  PrepareAgentSessionReplayRunResponses,
   PrepareWorkspaceAppFactoryJobModificationData,
   PrepareWorkspaceAppFactoryJobModificationErrors,
   PrepareWorkspaceAppFactoryJobModificationResponses,
@@ -316,6 +514,9 @@ import type {
   PublishWorkspaceAppFactoryJobData,
   PublishWorkspaceAppFactoryJobErrors,
   PublishWorkspaceAppFactoryJobResponses,
+  PurgeDeletedAgentConversationsData,
+  PurgeDeletedAgentConversationsErrors,
+  PurgeDeletedAgentConversationsResponses,
   PutDesktopPreferencesData,
   PutDesktopPreferencesErrors,
   PutDesktopPreferencesResponses,
@@ -346,6 +547,9 @@ import type {
   RemoveWorkspaceIssueTaskContextRefData,
   RemoveWorkspaceIssueTaskContextRefErrors,
   RemoveWorkspaceIssueTaskContextRefResponses,
+  RenameAgentSessionRecordingData,
+  RenameAgentSessionRecordingErrors,
+  RenameAgentSessionRecordingResponses,
   RenameWorkspaceFileEntryData,
   RenameWorkspaceFileEntryErrors,
   RenameWorkspaceFileEntryResponses,
@@ -364,6 +568,9 @@ import type {
   RetryWorkspaceAppFactoryJobValidationErrors,
   RetryWorkspaceAppFactoryJobValidationResponses,
   RetryWorkspaceAppResponses,
+  RevokeMobileRemotePairingData,
+  RevokeMobileRemotePairingErrors,
+  RevokeMobileRemotePairingResponses,
   RollbackWorkspaceAppData,
   RollbackWorkspaceAppErrors,
   RollbackWorkspaceAppResponses,
@@ -385,15 +592,36 @@ import type {
   SendWorkspaceAgentSessionInputData,
   SendWorkspaceAgentSessionInputErrors,
   SendWorkspaceAgentSessionInputResponses,
+  SetAgentModelBindingData,
+  SetAgentModelBindingErrors,
+  SetAgentModelBindingResponses,
+  SetAgentSessionAutomationRuleOverrideData,
+  SetAgentSessionAutomationRuleOverrideErrors,
+  SetAgentSessionAutomationRuleOverrideResponses,
+  SetAgentSessionModelPolicyOverrideData,
+  SetAgentSessionModelPolicyOverrideErrors,
+  SetAgentSessionModelPolicyOverrideResponses,
+  SetCollaborationRunAdoptionData,
+  SetCollaborationRunAdoptionErrors,
+  SetCollaborationRunAdoptionResponses,
+  SetModelPlanEnabledData,
+  SetModelPlanEnabledErrors,
+  SetModelPlanEnabledResponses,
   SetSystemAgentTargetEnabledData,
   SetSystemAgentTargetEnabledErrors,
   SetSystemAgentTargetEnabledResponses,
   StartAccountLoginData,
   StartAccountLoginErrors,
   StartAccountLoginResponses,
+  StartAgentSessionRecordingData,
+  StartAgentSessionRecordingErrors,
+  StartAgentSessionRecordingResponses,
   StartEnabledWorkspaceAppsData,
   StartEnabledWorkspaceAppsErrors,
   StartEnabledWorkspaceAppsResponses,
+  StartMobileRemotePairingData,
+  StartMobileRemotePairingErrors,
+  StartMobileRemotePairingResponses,
   StopAllWorkspaceAppsData,
   StopAllWorkspaceAppsErrors,
   StopAllWorkspaceAppsResponses,
@@ -403,6 +631,9 @@ import type {
   SubmitWorkspaceAgentPlanDecisionData,
   SubmitWorkspaceAgentPlanDecisionErrors,
   SubmitWorkspaceAgentPlanDecisionResponses,
+  SwitchTuttiModeGoalReviewToSelfData,
+  SwitchTuttiModeGoalReviewToSelfErrors,
+  SwitchTuttiModeGoalReviewToSelfResponses,
   TerminateWorkspaceTerminalData,
   TerminateWorkspaceTerminalErrors,
   TerminateWorkspaceTerminalResponses,
@@ -412,6 +643,24 @@ import type {
   UninstallWorkspaceAppData,
   UninstallWorkspaceAppErrors,
   UninstallWorkspaceAppResponses,
+  UpdateAgentQuickPromptData,
+  UpdateAgentQuickPromptErrors,
+  UpdateAgentQuickPromptResponses,
+  UpdateAgentSessionReplayTransportPlaybackData,
+  UpdateAgentSessionReplayTransportPlaybackErrors,
+  UpdateAgentSessionReplayTransportPlaybackResponses,
+  UpdateAutomationRuleData,
+  UpdateAutomationRuleErrors,
+  UpdateAutomationRuleResponses,
+  UpdateModelPlanData,
+  UpdateModelPlanErrors,
+  UpdateModelPlanResponses,
+  UpdateModelPolicyData,
+  UpdateModelPolicyErrors,
+  UpdateModelPolicyResponses,
+  UpdateWorkspaceAgentData,
+  UpdateWorkspaceAgentErrors,
+  UpdateWorkspaceAgentResponses,
   UpdateWorkspaceAgentSessionPinData,
   UpdateWorkspaceAgentSessionPinErrors,
   UpdateWorkspaceAgentSessionPinResponses,
@@ -421,6 +670,9 @@ import type {
   UpdateWorkspaceAgentSessionTitleData,
   UpdateWorkspaceAgentSessionTitleErrors,
   UpdateWorkspaceAgentSessionTitleResponses,
+  UpdateWorkspaceAgentSessionTuttiModeActivationData,
+  UpdateWorkspaceAgentSessionTuttiModeActivationErrors,
+  UpdateWorkspaceAgentSessionTuttiModeActivationResponses,
   UpdateWorkspaceAgentSessionVisibilityData,
   UpdateWorkspaceAgentSessionVisibilityErrors,
   UpdateWorkspaceAgentSessionVisibilityResponses,
@@ -442,6 +694,9 @@ import type {
   UseUserProjectData,
   UseUserProjectErrors,
   UseUserProjectResponses,
+  VerifyAgentSessionReplayTransportData,
+  VerifyAgentSessionReplayTransportErrors,
+  VerifyAgentSessionReplayTransportResponses,
   WriteWorkspaceFileTextData,
   WriteWorkspaceFileTextErrors,
   WriteWorkspaceFileTextResponses
@@ -707,7 +962,121 @@ export const putDesktopPreferences = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * Remove a user project directory from the recent project list
+ * Permanently purge all soft-deleted Agent conversations
+ */
+export const purgeDeletedAgentConversations = <
+  ThrowOnError extends boolean = false
+>(
+  options?: Options<PurgeDeletedAgentConversationsData, ThrowOnError>
+) =>
+  (options?.client ?? client).post<
+    PurgeDeletedAgentConversationsResponses,
+    PurgeDeletedAgentConversationsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/agent-maintenance/deleted-conversations/purge",
+    ...options
+  });
+
+/**
+ * List device-local Agent quick prompts
+ */
+export const listAgentQuickPrompts = <ThrowOnError extends boolean = false>(
+  options?: Options<ListAgentQuickPromptsData, ThrowOnError>
+) =>
+  (options?.client ?? client).get<
+    ListAgentQuickPromptsResponses,
+    ListAgentQuickPromptsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/agent-quick-prompts",
+    ...options
+  });
+
+/**
+ * Create a device-local Agent quick prompt
+ */
+export const createAgentQuickPrompt = <ThrowOnError extends boolean = false>(
+  options: Options<CreateAgentQuickPromptData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CreateAgentQuickPromptResponses,
+    CreateAgentQuickPromptErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/agent-quick-prompts",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Move a device-local Agent quick prompt before an anchor or to the end
+ */
+export const moveAgentQuickPrompt = <ThrowOnError extends boolean = false>(
+  options: Options<MoveAgentQuickPromptData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    MoveAgentQuickPromptResponses,
+    MoveAgentQuickPromptErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/agent-quick-prompts/move",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Delete a device-local Agent quick prompt
+ */
+export const deleteAgentQuickPrompt = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteAgentQuickPromptData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    DeleteAgentQuickPromptResponses,
+    DeleteAgentQuickPromptErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/agent-quick-prompts/{promptId}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Update a device-local Agent quick prompt
+ */
+export const updateAgentQuickPrompt = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateAgentQuickPromptData, ThrowOnError>
+) =>
+  (options.client ?? client).put<
+    UpdateAgentQuickPromptResponses,
+    UpdateAgentQuickPromptErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/agent-quick-prompts/{promptId}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Remove a user project directory from the ordered project list
  */
 export const deleteUserProject = <ThrowOnError extends boolean = false>(
   options: Options<DeleteUserProjectData, ThrowOnError>
@@ -727,7 +1096,7 @@ export const deleteUserProject = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * List recently used user project directories
+ * List user project directories in durable order
  */
 export const listUserProjects = <ThrowOnError extends boolean = false>(
   options?: Options<ListUserProjectsData, ThrowOnError>
@@ -775,6 +1144,46 @@ export const checkUserProjectPath = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/user-projects/check",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Move a user project within its pinned or unpinned partition
+ */
+export const moveUserProject = <ThrowOnError extends boolean = false>(
+  options: Options<MoveUserProjectData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    MoveUserProjectResponses,
+    MoveUserProjectErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/user-projects/move",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Pin or unpin a user project
+ */
+export const pinUserProject = <ThrowOnError extends boolean = false>(
+  options: Options<PinUserProjectData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    PinUserProjectResponses,
+    PinUserProjectErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/user-projects/pin",
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -833,6 +1242,73 @@ export const setSystemAgentTargetEnabled = <
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/agent-targets/{agentTargetID}/enabled",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Resolve Agent Target setup state
+ *
+ * Prefers a compatible local runtime. Otherwise returns a daemon-derived installation plan and any durable install action for the fixed Target. The managed runtime is installed under the user's stable ~/.local data root and is reused across workspaces. Clients cannot submit runner args, package identity, executable paths, or installation roots.
+ *
+ */
+export const getAgentTargetSetup = <ThrowOnError extends boolean = false>(
+  options: Options<GetAgentTargetSetupData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetAgentTargetSetupResponses,
+    GetAgentTargetSetupErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup",
+    ...options
+  });
+
+/**
+ * Start an Agent Target runtime installation
+ *
+ * Recomputes the trusted installation plan, verifies its digest, then starts or returns the durable idempotent action identified by clientActionId. The daemon owns all executable arguments and paths.
+ *
+ */
+export const installAgentTargetRuntime = <ThrowOnError extends boolean = false>(
+  options: Options<InstallAgentTargetRuntimeData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    InstallAgentTargetRuntimeResponses,
+    InstallAgentTargetRuntimeErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup/install",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Authenticate an Agent Target runtime
+ *
+ * Validates methodId against auth methods returned by a fresh ACP initialize, calls ACP authenticate, then requires session/new to succeed before reporting ready. The durable action is idempotent by clientActionId and never stores credentials.
+ *
+ */
+export const authenticateAgentTargetRuntime = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<AuthenticateAgentTargetRuntimeData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    AuthenticateAgentTargetRuntimeResponses,
+    AuthenticateAgentTargetRuntimeErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup/authenticate",
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -973,6 +1449,554 @@ export const putWorkspaceWorkbench = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/workbench",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * List workspace model access plans
+ *
+ * Returns every named model access plan for the workspace. Credentials never appear in responses; only hasApiKey is exposed.
+ */
+export const listModelPlans = <ThrowOnError extends boolean = false>(
+  options: Options<ListModelPlansData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListModelPlansResponses,
+    ListModelPlansErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-plans",
+    ...options
+  });
+
+/**
+ * Create one named model access plan
+ *
+ * Creates a plan for one access scheme (official subscription, coding plan, relay, or custom compatible endpoint). Multiple named plans may share one protocol. New plans start undetected.
+ */
+export const createModelPlan = <ThrowOnError extends boolean = false>(
+  options: Options<CreateModelPlanData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CreateModelPlanResponses,
+    CreateModelPlanErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-plans",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Run the staged connection detection for a plan or draft
+ *
+ * Runs the network, auth, model discovery, and minimal real inference stages in order and reports one structured result per stage. With planId the outcome persists onto the stored plan; omitted fields fall back to stored values. Without planId the request verifies an unsaved draft.
+ */
+export const detectModelPlan = <ThrowOnError extends boolean = false>(
+  options: Options<DetectModelPlanData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    DetectModelPlanResponses,
+    DetectModelPlanErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-plans/detect",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Delete one model access plan
+ *
+ * Deletion is blocked with a 409 while any agent target still references the plan. Callers rebind or clear those bindings first; the references endpoint lists them.
+ */
+export const deleteModelPlan = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteModelPlanData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    DeleteModelPlanResponses,
+    DeleteModelPlanErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}",
+    ...options
+  });
+
+/**
+ * Get one model access plan
+ */
+export const getModelPlan = <ThrowOnError extends boolean = false>(
+  options: Options<GetModelPlanData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetModelPlanResponses,
+    GetModelPlanErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}",
+    ...options
+  });
+
+/**
+ * Update one model access plan
+ *
+ * Replaces the mutable plan fields. Omitting apiKey keeps the stored credential. Changing the credential, base URL, or protocol resets detection state. Changes affect only calls that have not started yet.
+ */
+export const updateModelPlan = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateModelPlanData, ThrowOnError>
+) =>
+  (options.client ?? client).put<
+    UpdateModelPlanResponses,
+    UpdateModelPlanErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Duplicate one model access plan
+ *
+ * Clones the plan, including its credential, into a new disabled plan that must be re-detected before use.
+ */
+export const duplicateModelPlan = <ThrowOnError extends boolean = false>(
+  options: Options<DuplicateModelPlanData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    DuplicateModelPlanResponses,
+    DuplicateModelPlanErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}/duplicate",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Enable or disable one model access plan
+ *
+ * Disabling a plan blocks new calls through it without deleting the configuration. Running calls are never interrupted.
+ */
+export const setModelPlanEnabled = <ThrowOnError extends boolean = false>(
+  options: Options<SetModelPlanEnabledData, ThrowOnError>
+) =>
+  (options.client ?? client).patch<
+    SetModelPlanEnabledResponses,
+    SetModelPlanEnabledErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}/enabled",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * List consumers that reference one model access plan
+ *
+ * Returns the agent targets that currently reference the plan so change and delete impact can be shown before committing.
+ */
+export const listModelPlanReferences = <ThrowOnError extends boolean = false>(
+  options: Options<ListModelPlanReferencesData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListModelPlanReferencesResponses,
+    ListModelPlanReferencesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}/references",
+    ...options
+  });
+
+/**
+ * List workspace collaboration runs
+ *
+ * Returns collaboration runs (model consults, forks, delegations, handoffs) newest first. Credentials never appear on run records.
+ */
+export const listCollaborationRuns = <ThrowOnError extends boolean = false>(
+  options: Options<ListCollaborationRunsData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListCollaborationRunsResponses,
+    ListCollaborationRunsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/collaboration-runs",
+    ...options
+  });
+
+/**
+ * Start or record one collaboration run
+ *
+ * Mode consult executes a daemon-side advisory completion against a workspace model access plan synchronously and returns the completed or failed run; the advisor never executes tools and task ownership never changes. Modes fork, delegate, and handoff record a run for a target session the GUI already created through the session-create path.
+ */
+export const createCollaborationRun = <ThrowOnError extends boolean = false>(
+  options: Options<CreateCollaborationRunData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CreateCollaborationRunResponses,
+    CreateCollaborationRunErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/collaboration-runs",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Record whether a collaboration run outcome was adopted
+ *
+ * Consult and delegate outcomes track adoption (pending, adopted, rejected). Fork and handoff runs are not adoptable.
+ */
+export const setCollaborationRunAdoption = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<SetCollaborationRunAdoptionData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    SetCollaborationRunAdoptionResponses,
+    SetCollaborationRunAdoptionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/adoption",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Cancel a running consult
+ *
+ * Marks a still-running consult canceled and aborts its in-flight completion call. Settled runs are returned unchanged.
+ */
+export const cancelCollaborationRun = <ThrowOnError extends boolean = false>(
+  options: Options<CancelCollaborationRunData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CancelCollaborationRunResponses,
+    CancelCollaborationRunErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/cancel",
+    ...options
+  });
+
+/**
+ * List per-workspace agent target model bindings
+ *
+ * Returns the default model plan and default model bound to each agent target in the workspace. Targets without a binding keep their provider-native model source.
+ */
+export const listAgentModelBindings = <ThrowOnError extends boolean = false>(
+  options: Options<ListAgentModelBindingsData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListAgentModelBindingsResponses,
+    ListAgentModelBindingsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-model-bindings",
+    ...options
+  });
+
+/**
+ * Set or clear one agent target model binding
+ *
+ * Binds the agent target to a default model plan and model for the workspace. An all-empty body clears the binding. Changes affect only sessions that have not started; running sessions keep their recorded configuration.
+ */
+export const setAgentModelBinding = <ThrowOnError extends boolean = false>(
+  options: Options<SetAgentModelBindingData, ThrowOnError>
+) =>
+  (options.client ?? client).put<
+    SetAgentModelBindingResponses,
+    SetAgentModelBindingErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-model-bindings/{agentTargetID}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * List legacy role-based model policies
+ *
+ * Compatibility-only. New workflows use WorkspaceAgent for runtime model configuration and AutomationRule for optional collaboration actions.
+ *
+ * @deprecated
+ */
+export const listModelPolicies = <ThrowOnError extends boolean = false>(
+  options: Options<ListModelPoliciesData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListModelPoliciesResponses,
+    ListModelPoliciesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-policies",
+    ...options
+  });
+
+/**
+ * Create one legacy role-based model policy
+ *
+ * Compatibility-only. The production daemon does not execute this policy's role map or fixed review runner; create a WorkspaceAgent and AutomationRule for new workflows.
+ *
+ * @deprecated
+ */
+export const createModelPolicy = <ThrowOnError extends boolean = false>(
+  options: Options<CreateModelPolicyData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CreateModelPolicyResponses,
+    CreateModelPolicyErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-policies",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Delete one legacy role-based model policy
+ *
+ * Deletion is blocked with a 409 while any agent binding still references the policy. Callers rebind or clear those bindings first.
+ *
+ * @deprecated
+ */
+export const deleteModelPolicy = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteModelPolicyData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    DeleteModelPolicyResponses,
+    DeleteModelPolicyErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-policies/{modelPolicyID}",
+    ...options
+  });
+
+/**
+ * Get one legacy role-based model policy
+ *
+ * Compatibility-only. The policy is retained for persisted data and acceptance records.
+ *
+ * @deprecated
+ */
+export const getModelPolicy = <ThrowOnError extends boolean = false>(
+  options: Options<GetModelPolicyData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetModelPolicyResponses,
+    GetModelPolicyErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-policies/{modelPolicyID}",
+    ...options
+  });
+
+/**
+ * Update one legacy role-based model policy
+ *
+ * Compatibility-only. Changes do not drive the production Agent runtime or AutomationRule engine.
+ *
+ * @deprecated
+ */
+export const updateModelPolicy = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateModelPolicyData, ThrowOnError>
+) =>
+  (options.client ?? client).put<
+    UpdateModelPolicyResponses,
+    UpdateModelPolicyErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-policies/{modelPolicyID}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Get the legacy session model-policy override
+ *
+ * Compatibility-only. Use the AutomationRule session override for new workflows.
+ *
+ * @deprecated
+ */
+export const getAgentSessionModelPolicyOverride = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetAgentSessionModelPolicyOverrideData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetAgentSessionModelPolicyOverrideResponses,
+    GetAgentSessionModelPolicyOverrideErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/model-policy-override",
+    ...options
+  });
+
+/**
+ * Set the legacy session model-policy override
+ *
+ * Compatibility-only. The legacy review runner is not wired in production; use the AutomationRule session override to select or disable future actions.
+ *
+ * @deprecated
+ */
+export const setAgentSessionModelPolicyOverride = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<SetAgentSessionModelPolicyOverrideData, ThrowOnError>
+) =>
+  (options.client ?? client).put<
+    SetAgentSessionModelPolicyOverrideResponses,
+    SetAgentSessionModelPolicyOverrideErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/model-policy-override",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Get the session acceptance ladder state
+ *
+ * States distinguish agent_claimed, auto_checked, and user_accepted. Only user_accepted may close work; automated review can reach auto_checked at most.
+ */
+export const getAgentSessionAcceptance = <ThrowOnError extends boolean = false>(
+  options: Options<GetAgentSessionAcceptanceData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetAgentSessionAcceptanceResponses,
+    GetAgentSessionAcceptanceErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/acceptance",
+    ...options
+  });
+
+/**
+ * Record explicit user acceptance for the session's claimed work
+ */
+export const acceptAgentSessionWork = <ThrowOnError extends boolean = false>(
+  options: Options<AcceptAgentSessionWorkData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    AcceptAgentSessionWorkResponses,
+    AcceptAgentSessionWorkErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/acceptance",
+    ...options
+  });
+
+/**
+ * List Tutti-owned workflows for a source Agent session
+ */
+export const listWorkspaceWorkflows = <ThrowOnError extends boolean = false>(
+  options: Options<ListWorkspaceWorkflowsData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListWorkspaceWorkflowsResponses,
+    ListWorkspaceWorkflowsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/workflows",
+    ...options
+  });
+
+/**
+ * Get one authoritative Tutti-owned workflow snapshot
+ */
+export const getWorkspaceWorkflow = <ThrowOnError extends boolean = false>(
+  options: Options<GetWorkspaceWorkflowData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetWorkspaceWorkflowResponses,
+    GetWorkspaceWorkflowErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/workflows/{workflowID}",
+    ...options
+  });
+
+/**
+ * Decide one Tutti-owned workflow checkpoint
+ *
+ * This user-facing API is the only decision boundary; Agent CLI capabilities cannot self-approve a checkpoint.
+ */
+export const decideWorkspaceWorkflowCheckpoint = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<DecideWorkspaceWorkflowCheckpointData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    DecideWorkspaceWorkflowCheckpointResponses,
+    DecideWorkspaceWorkflowCheckpointErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/workflows/{workflowID}/checkpoints/{checkpointID}/decision",
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -1654,6 +2678,348 @@ export const publishWorkspaceAppFactoryJob = <
   });
 
 /**
+ * List developer Agent Session recordings for one workspace
+ */
+export const listAgentSessionRecordings = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ListAgentSessionRecordingsData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListAgentSessionRecordingsResponses,
+    ListAgentSessionRecordingsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-recordings",
+    ...options
+  });
+
+/**
+ * Start one developer Agent Session recording
+ */
+export const startAgentSessionRecording = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<StartAgentSessionRecordingData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    StartAgentSessionRecordingResponses,
+    StartAgentSessionRecordingErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-recordings",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Get one developer Agent Session recording
+ */
+export const getAgentSessionRecording = <ThrowOnError extends boolean = false>(
+  options: Options<GetAgentSessionRecordingData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetAgentSessionRecordingResponses,
+    GetAgentSessionRecordingErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-recordings/{recordingID}",
+    ...options
+  });
+
+/**
+ * Rename one developer Agent Session recording and its Cassette
+ */
+export const renameAgentSessionRecording = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<RenameAgentSessionRecordingData, ThrowOnError>
+) =>
+  (options.client ?? client).patch<
+    RenameAgentSessionRecordingResponses,
+    RenameAgentSessionRecordingErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-recordings/{recordingID}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Complete one active developer Agent Session recording
+ */
+export const completeAgentSessionRecording = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<CompleteAgentSessionRecordingData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CompleteAgentSessionRecordingResponses,
+    CompleteAgentSessionRecordingErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-recordings/{recordingID}/complete",
+    ...options
+  });
+
+/**
+ * Append an ordered batch of renderer Agent Activity events
+ */
+export const appendAgentSessionRecordingActivityEvents = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<AppendAgentSessionRecordingActivityEventsData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    AppendAgentSessionRecordingActivityEventsResponses,
+    AppendAgentSessionRecordingActivityEventsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-recordings/{recordingID}/activity-events",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Cancel one active developer Agent Session recording
+ */
+export const cancelAgentSessionRecording = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<CancelAgentSessionRecordingData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CancelAgentSessionRecordingResponses,
+    CancelAgentSessionRecordingErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-recordings/{recordingID}/cancel",
+    ...options
+  });
+
+/**
+ * List immutable Agent Session Cassettes for one workspace
+ */
+export const listAgentSessionCassettes = <ThrowOnError extends boolean = false>(
+  options: Options<ListAgentSessionCassettesData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListAgentSessionCassettesResponses,
+    ListAgentSessionCassettesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-cassettes",
+    ...options
+  });
+
+/**
+ * List replay runs for one immutable Agent Session Cassette
+ */
+export const listAgentSessionReplayRuns = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ListAgentSessionReplayRunsData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListAgentSessionReplayRunsResponses,
+    ListAgentSessionReplayRunsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-cassettes/{cassetteID}/replay-runs",
+    ...options
+  });
+
+/**
+ * Validate one Cassette and prepare an isolated replay run
+ */
+export const prepareAgentSessionReplayRun = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<PrepareAgentSessionReplayRunData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    PrepareAgentSessionReplayRunResponses,
+    PrepareAgentSessionReplayRunErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-cassettes/{cassetteID}/replay-runs",
+    ...options
+  });
+
+/**
+ * Mark a prepared replay run accepted by its runtime adapter
+ */
+export const markAgentSessionReplayRunRunning = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<MarkAgentSessionReplayRunRunningData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    MarkAgentSessionReplayRunRunningResponses,
+    MarkAgentSessionReplayRunRunningErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-replay-runs/{runID}/running",
+    ...options
+  });
+
+/**
+ * Persist a stable checkpoint reached by one replay run
+ */
+export const advanceAgentSessionReplayRunCheckpoint = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<AdvanceAgentSessionReplayRunCheckpointData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    AdvanceAgentSessionReplayRunCheckpointResponses,
+    AdvanceAgentSessionReplayRunCheckpointErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-replay-runs/{runID}/checkpoint",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Cancel one active replay run
+ */
+export const cancelAgentSessionReplayRun = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<CancelAgentSessionReplayRunData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CancelAgentSessionReplayRunResponses,
+    CancelAgentSessionReplayRunErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-replay-runs/{runID}/cancel",
+    ...options
+  });
+
+/**
+ * Complete a replay run after transport and final-state verification
+ */
+export const completeAgentSessionReplayRun = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<CompleteAgentSessionReplayRunData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CompleteAgentSessionReplayRunResponses,
+    CompleteAgentSessionReplayRunErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-replay-runs/{runID}/complete",
+    ...options
+  });
+
+/**
+ * Persist an explicit replay runtime or verification failure
+ */
+export const failAgentSessionReplayRun = <ThrowOnError extends boolean = false>(
+  options: Options<FailAgentSessionReplayRunData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    FailAgentSessionReplayRunResponses,
+    FailAgentSessionReplayRunErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-replay-runs/{runID}/fail",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Verify that the isolated replay transport consumed its complete Cassette
+ */
+export const verifyAgentSessionReplayTransport = <
+  ThrowOnError extends boolean = false
+>(
+  options?: Options<VerifyAgentSessionReplayTransportData, ThrowOnError>
+) =>
+  (options?.client ?? client).post<
+    VerifyAgentSessionReplayTransportResponses,
+    VerifyAgentSessionReplayTransportErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/agent-session-replay/transport/verify",
+    ...options
+  });
+
+/**
+ * Read playback timing for the isolated replay transport
+ */
+export const getAgentSessionReplayTransportPlayback = <
+  ThrowOnError extends boolean = false
+>(
+  options?: Options<GetAgentSessionReplayTransportPlaybackData, ThrowOnError>
+) =>
+  (options?.client ?? client).get<
+    GetAgentSessionReplayTransportPlaybackResponses,
+    GetAgentSessionReplayTransportPlaybackErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/agent-session-replay/transport/playback",
+    ...options
+  });
+
+/**
+ * Update playback timing for the isolated replay transport
+ */
+export const updateAgentSessionReplayTransportPlayback = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<UpdateAgentSessionReplayTransportPlaybackData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    UpdateAgentSessionReplayTransportPlaybackResponses,
+    UpdateAgentSessionReplayTransportPlaybackErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/agent-session-replay/transport/playback",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
  * Hard-delete all agent sessions for one workspace
  */
 export const clearWorkspaceAgentSessions = <
@@ -1936,6 +3302,168 @@ export const getWorkspaceAgentSession = <ThrowOnError extends boolean = false>(
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}",
     ...options
+  });
+
+/**
+ * Stop one active Tutti execution without archiving it
+ */
+export const cancelTuttiModeExecution = <ThrowOnError extends boolean = false>(
+  options: Options<CancelTuttiModeExecutionData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CancelTuttiModeExecutionResponses,
+    CancelTuttiModeExecutionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/tutti-executions/{issueID}/cancel-execution",
+    ...options
+  });
+
+/**
+ * Get the current archive operation for one Tutti execution
+ */
+export const getTuttiModeArchiveOperation = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetTuttiModeArchiveOperationData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetTuttiModeArchiveOperationResponses,
+    GetTuttiModeArchiveOperationErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/tutti-executions/{issueID}/archive",
+    ...options
+  });
+
+/**
+ * Stop and durably archive one Tutti execution
+ */
+export const archiveTuttiModeExecution = <ThrowOnError extends boolean = false>(
+  options: Options<ArchiveTuttiModeExecutionData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    ArchiveTuttiModeExecutionResponses,
+    ArchiveTuttiModeExecutionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/tutti-executions/{issueID}/archive",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Fork one workspace agent session at an exact canonical boundary
+ */
+export const forkWorkspaceAgentSession = <ThrowOnError extends boolean = false>(
+  options: Options<ForkWorkspaceAgentSessionData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    ForkWorkspaceAgentSessionResponses,
+    ForkWorkspaceAgentSessionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/fork",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Get one durable workspace agent session fork operation
+ */
+export const getWorkspaceAgentSessionForkOperation = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetWorkspaceAgentSessionForkOperationData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetWorkspaceAgentSessionForkOperationResponses,
+    GetWorkspaceAgentSessionForkOperationErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-fork-operations/{operationID}",
+    ...options
+  });
+
+/**
+ * Acknowledge that a client observed one durable session fork operation
+ *
+ * Records an explicit client-observed acknowledgement. Reading the operation does not implicitly acknowledge it.
+ *
+ */
+export const acknowledgeWorkspaceAgentSessionForkOperation = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<
+    AcknowledgeWorkspaceAgentSessionForkOperationData,
+    ThrowOnError
+  >
+) =>
+  (options.client ?? client).post<
+    AcknowledgeWorkspaceAgentSessionForkOperationResponses,
+    AcknowledgeWorkspaceAgentSessionForkOperationErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-fork-operations/{operationID}/acknowledge",
+    ...options
+  });
+
+/**
+ * Get the independent Tutti mode activation for one agent session
+ */
+export const getWorkspaceAgentSessionTuttiModeActivation = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<
+    GetWorkspaceAgentSessionTuttiModeActivationData,
+    ThrowOnError
+  >
+) =>
+  (options.client ?? client).get<
+    GetWorkspaceAgentSessionTuttiModeActivationResponses,
+    GetWorkspaceAgentSessionTuttiModeActivationErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/tutti-mode-activation",
+    ...options
+  });
+
+/**
+ * Update the independent Tutti mode activation for one agent session
+ */
+export const updateWorkspaceAgentSessionTuttiModeActivation = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<
+    UpdateWorkspaceAgentSessionTuttiModeActivationData,
+    ThrowOnError
+  >
+) =>
+  (options.client ?? client).put<
+    UpdateWorkspaceAgentSessionTuttiModeActivationResponses,
+    UpdateWorkspaceAgentSessionTuttiModeActivationErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/tutti-mode-activation",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
   });
 
 /**
@@ -2483,6 +4011,30 @@ export const createWorkspaceFileDirectory = <
   });
 
 /**
+ * Switch a failed independent Tutti Mode Goal Review to self review
+ *
+ * Performs the explicit audited fallback for one failed independent reviewer operation. The authenticated local actor is resolved by the daemon and cannot be supplied in the request body.
+ */
+export const switchTuttiModeGoalReviewToSelf = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<SwitchTuttiModeGoalReviewToSelfData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    SwitchTuttiModeGoalReviewToSelfResponses,
+    SwitchTuttiModeGoalReviewToSelfErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/issues/{issueID}/tutti-mode-review/self",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
  * List the workspace's recently accessed entries, most-recent first
  */
 export const listWorkspaceRecentFiles = <ThrowOnError extends boolean = false>(
@@ -2727,6 +4279,238 @@ export const openWorkspace = <ThrowOnError extends boolean = false>(
   });
 
 /**
+ * List the configured Agent options for one workspace
+ *
+ * Returns explicit workspace Agent configurations. Each Agent maps one harness target to an optional model access plan and carries its own description, instructions, and call conditions.
+ */
+export const listWorkspaceAgents = <ThrowOnError extends boolean = false>(
+  options: Options<ListWorkspaceAgentsData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListWorkspaceAgentsResponses,
+    ListWorkspaceAgentsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agents",
+    ...options
+  });
+
+/**
+ * Create one selectable workspace Agent
+ *
+ * Creates an explicit Agent option from a harness target plus an optional model access plan. It does not generate a Harness by ModelPlan Cartesian product.
+ */
+export const createWorkspaceAgent = <ThrowOnError extends boolean = false>(
+  options: Options<CreateWorkspaceAgentData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CreateWorkspaceAgentResponses,
+    CreateWorkspaceAgentErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agents",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Delete one workspace Agent configuration
+ *
+ * Deletes only the named workspace Agent. Its Harness target and ModelPlan remain unchanged.
+ */
+export const deleteWorkspaceAgent = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteWorkspaceAgentData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    DeleteWorkspaceAgentResponses,
+    DeleteWorkspaceAgentErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agents/{workspaceAgentID}",
+    ...options
+  });
+
+/**
+ * Get one workspace Agent configuration
+ */
+export const getWorkspaceAgent = <ThrowOnError extends boolean = false>(
+  options: Options<GetWorkspaceAgentData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetWorkspaceAgentResponses,
+    GetWorkspaceAgentErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agents/{workspaceAgentID}",
+    ...options
+  });
+
+/**
+ * Replace one workspace Agent configuration
+ *
+ * Replaces mutable fields and increments the Agent revision. Omitted or null modelPlanId/defaultModel clear those fields. Existing sessions continue using their recorded runtime configuration.
+ */
+export const updateWorkspaceAgent = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateWorkspaceAgentData, ThrowOnError>
+) =>
+  (options.client ?? client).put<
+    UpdateWorkspaceAgentResponses,
+    UpdateWorkspaceAgentErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agents/{workspaceAgentID}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * List workspace automation rules
+ *
+ * Returns action-centric rules that react to Agent session lifecycle events. Rules target either a ModelPlan for a tool-free consult or a WorkspaceAgent for fork, delegate, and handoff actions.
+ */
+export const listAutomationRules = <ThrowOnError extends boolean = false>(
+  options: Options<ListAutomationRulesData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListAutomationRulesResponses,
+    ListAutomationRulesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/automation-rules",
+    ...options
+  });
+
+/**
+ * Create a workspace automation rule
+ */
+export const createAutomationRule = <ThrowOnError extends boolean = false>(
+  options: Options<CreateAutomationRuleData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CreateAutomationRuleResponses,
+    CreateAutomationRuleErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/automation-rules",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Delete a workspace automation rule
+ */
+export const deleteAutomationRule = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteAutomationRuleData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    DeleteAutomationRuleResponses,
+    DeleteAutomationRuleErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/automation-rules/{automationRuleID}",
+    ...options
+  });
+
+/**
+ * Get a workspace automation rule
+ */
+export const getAutomationRule = <ThrowOnError extends boolean = false>(
+  options: Options<GetAutomationRuleData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetAutomationRuleResponses,
+    GetAutomationRuleErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/automation-rules/{automationRuleID}",
+    ...options
+  });
+
+/**
+ * Replace a workspace automation rule
+ *
+ * Replaces mutable rule fields. Changes apply only to future trigger evaluations; already-started actions keep their recorded configuration.
+ */
+export const updateAutomationRule = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateAutomationRuleData, ThrowOnError>
+) =>
+  (options.client ?? client).put<
+    UpdateAutomationRuleResponses,
+    UpdateAutomationRuleErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/automation-rules/{automationRuleID}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Get the session-level automation rule override
+ *
+ * An absent override returns disabled=false and an empty rule id list.
+ */
+export const getAgentSessionAutomationRuleOverride = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetAgentSessionAutomationRuleOverrideData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetAgentSessionAutomationRuleOverrideResponses,
+    GetAgentSessionAutomationRuleOverrideErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/automation-rule-override",
+    ...options
+  });
+
+/**
+ * Disable or select automation rules for one session
+ *
+ * Disabled stops every future rule evaluation for this session. A non-empty ruleIds list replaces the workspace rule set for this session; an empty list uses all enabled workspace rules. Already-started actions are unchanged.
+ */
+export const setAgentSessionAutomationRuleOverride = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<SetAgentSessionAutomationRuleOverrideData, ThrowOnError>
+) =>
+  (options.client ?? client).put<
+    SetAgentSessionAutomationRuleOverrideResponses,
+    SetAgentSessionAutomationRuleOverrideErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/automation-rule-override",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
  * List issue-manager topics for one workspace
  */
 export const listWorkspaceIssueTopics = <ThrowOnError extends boolean = false>(
@@ -2827,6 +4611,54 @@ export const createWorkspaceIssue = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/issues",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Create one executable Issue and its tasks from an Ultra or traditional Plan
+ *
+ * The returned Issue remains durable even when execution is started later. Task assignments and dependencies are validated as one graph before task execution can start.
+ */
+export const createWorkspaceIssueFromPlan = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<CreateWorkspaceIssueFromPlanData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CreateWorkspaceIssueFromPlanResponses,
+    CreateWorkspaceIssueFromPlanErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/issues/from-plan",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Estimate the authoritative automatic token budget for a proposed Issue graph
+ *
+ * Uses the same scale, intensity, and comparable completed-run history compiler as Issue creation. No Issue or task is persisted.
+ */
+export const estimateWorkspaceIssueAutoTokenBudget = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<EstimateWorkspaceIssueAutoTokenBudgetData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    EstimateWorkspaceIssueAutoTokenBudgetResponses,
+    EstimateWorkspaceIssueAutoTokenBudgetErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/issues/auto-token-budget-estimate",
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -2948,6 +4780,26 @@ export const removeWorkspaceIssueContextRef = <
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/issues/{issueID}/context-refs/{contextRefID}",
+    ...options
+  });
+
+/**
+ * Stop one issue-manager issue's execution
+ *
+ * Durably pauses future task dispatch, cancels the live agent turn of every running run's session, and settles those runs as canceled. Idempotent.
+ */
+export const cancelWorkspaceIssueExecution = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<CancelWorkspaceIssueExecutionData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CancelWorkspaceIssueExecutionResponses,
+    CancelWorkspaceIssueExecutionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/issues/{issueID}/cancel-execution",
     ...options
   });
 
@@ -3249,4 +5101,88 @@ export const completeWorkspaceIssueTaskRun = <
       "Content-Type": "application/json",
       ...options.headers
     }
+  });
+
+/**
+ * Register this desktop device and create a short-lived pairing challenge
+ */
+export const startMobileRemotePairing = <ThrowOnError extends boolean = false>(
+  options?: Options<StartMobileRemotePairingData, ThrowOnError>
+) =>
+  (options?.client ?? client).post<
+    StartMobileRemotePairingResponses,
+    StartMobileRemotePairingErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/mobile-remote-access/pairing-challenges",
+    ...options
+  });
+
+/**
+ * Read the latest pairing challenge state
+ */
+export const getMobileRemotePairingChallenge = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetMobileRemotePairingChallengeData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetMobileRemotePairingChallengeResponses,
+    GetMobileRemotePairingChallengeErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/mobile-remote-access/pairing-challenges/{challengeID}",
+    ...options
+  });
+
+/**
+ * Confirm a claimed challenge with the daemon-held target device key
+ */
+export const confirmMobileRemotePairing = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ConfirmMobileRemotePairingData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    ConfirmMobileRemotePairingResponses,
+    ConfirmMobileRemotePairingErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/mobile-remote-access/pairing-challenges/{challengeID}/confirm",
+    ...options
+  });
+
+/**
+ * List pairings for this desktop device
+ */
+export const listMobileRemotePairings = <ThrowOnError extends boolean = false>(
+  options?: Options<ListMobileRemotePairingsData, ThrowOnError>
+) =>
+  (options?.client ?? client).get<
+    ListMobileRemotePairingsResponses,
+    ListMobileRemotePairingsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/mobile-remote-access/pairings",
+    ...options
+  });
+
+/**
+ * Revoke an active pairing
+ */
+export const revokeMobileRemotePairing = <ThrowOnError extends boolean = false>(
+  options: Options<RevokeMobileRemotePairingData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    RevokeMobileRemotePairingResponses,
+    RevokeMobileRemotePairingErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/mobile-remote-access/pairings/{pairingID}",
+    ...options
   });

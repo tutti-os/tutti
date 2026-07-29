@@ -1,15 +1,9 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   issueManagerOpenActivationType,
   readIssueManagerOpenActivationPayload
 } from "./openActivation.ts";
-
-const issueManagerWorkbenchSource = readFileSync(
-  new URL("./index.ts", import.meta.url),
-  "utf8"
-);
 
 test("issue-manager workbench reads canonical open activation payloads", () => {
   assert.deepEqual(
@@ -57,23 +51,5 @@ test("issue-manager workbench ignores unsupported open activations", () => {
       type: issueManagerOpenActivationType
     }),
     null
-  );
-});
-
-test("issue-manager sidebar expansion resizes only from auto-collapsed layout", () => {
-  assert.match(
-    issueManagerWorkbenchSource,
-    /if \(\s*isSidebarAutoCollapsed\s*&&\s*nextCollapsed === false\s*&&\s*node\.displayMode !== "fullscreen"\s*\) \{[\s\S]*windowActions\.resize\(/m
-  );
-  assert.doesNotMatch(
-    issueManagerWorkbenchSource,
-    /if \(\s*isSidebarCollapsed\s*&&\s*nextCollapsed === false\s*&&\s*node\.displayMode !== "fullscreen"\s*\) \{[\s\S]*windowActions\.resize\(/m
-  );
-});
-
-test("standalone issue manager disables sidebar auto-collapse", () => {
-  assert.match(
-    issueManagerWorkbenchSource,
-    /disableSidebarAutoCollapse:\s*readIssueManagerTopicSelectorPlacement\(context\.node\.data\) ===\s*"sidebar"/
   );
 });

@@ -1,0 +1,29 @@
+{
+  "name": "@tutti-os/agent-activity-tuttid-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup --config tsup.config.ts",
+    "test": "node --test --experimental-strip-types \"./src/**/*.test.ts\"",
+    "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
+  },
+  "dependencies": {
+    "@tutti-os/agent-activity-core": "workspace:*",
+    "@tutti-os/client-tuttid-ts": "workspace:*"
+  },
+  "devDependencies": {
+    "@tutti-os/config-tsconfig": "workspace:*",
+    "@types/node": "^24.0.1",
+    "tsup": "8.5.1",
+    "typescript": "^5.8.3"
+  }
+}

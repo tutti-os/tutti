@@ -1,6 +1,5 @@
 import type {
   CSSProperties,
-  DragEvent as ReactDragEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
@@ -20,22 +19,20 @@ import type { WorkspaceFileManagerSession } from "../services/workspaceFileManag
 import type { WorkspaceFileManagerI18nRuntime } from "../i18n/workspaceFileManagerI18n.ts";
 import type {
   WorkspaceFileEntry,
-  WorkspaceFileLocation,
-  WorkspaceFileOpenWithApplication
+  WorkspaceFileLocation
 } from "../services/workspaceFileManagerTypes.ts";
 import { WorkspaceFileManagerContextMenuContainer } from "./WorkspaceFileManagerContextMenuContainer.tsx";
 import {
   WorkspaceFileManagerCreateDialog,
   WorkspaceFileManagerDeleteDialog,
-  WorkspaceFileManagerUnsupportedDialog,
-  WorkspaceFileManagerImportConflictDialog
+  WorkspaceFileManagerUnsupportedDialog
 } from "./WorkspaceFileManagerMenus.tsx";
-import {
-  hasFileDragPayload,
-  type WorkspaceFileManagerEntryDragMode,
-  WorkspaceFileManagerPanels
-} from "./WorkspaceFileManagerPanels.tsx";
+import { type WorkspaceFileManagerEntryDragMode } from "./WorkspaceFileManagerPanels.tsx";
+import { WorkspaceFileManagerPanelsContainer } from "./WorkspaceFileManagerPanelsContainer.tsx";
+import type { ResolveWorkspaceFileManagerContextMenu } from "./workspaceFileManagerContextMenuTypes.ts";
 import { WorkspaceFileManagerToolbar } from "./WorkspaceFileManagerToolbar.tsx";
+import type { RenderWorkspaceFileManagerToolbarTrailingActions } from "./workspaceFileManagerToolbarTypes.ts";
+import type { WorkspaceFileManagerPreviewActionsConfig } from "./workspaceFileManagerPreviewActionTypes.ts";
 import { WorkspaceFileManagerSidebar } from "./WorkspaceFileManagerSidebar.tsx";
 import {
   clampWorkspaceFileManagerSidebarWidth,
@@ -48,26 +45,16 @@ import {
   workspaceFileManagerSidebarMinWidth,
   writeWorkspaceFileManagerSidebarWidth
 } from "./workspaceFileManagerPaneSizing.ts";
-import {
-  sortWorkspaceFileEntriesForArrangeMode,
-  type WorkspaceFileManagerArrangeMode
-} from "./workspaceFileManagerArrangeMode.ts";
+import type { WorkspaceFileManagerArrangeMode } from "./workspaceFileManagerArrangeMode.ts";
 import { useWorkspaceFileManagerArrangeMode } from "./useWorkspaceFileManagerArrangeMode.ts";
 import type { WorkspaceFileManagerLayoutMode } from "./workspaceFileManagerLayoutMode.ts";
 import { useWorkspaceFileManagerLayoutMode } from "./useWorkspaceFileManagerLayoutMode.ts";
-import { useWorkspaceFileEntryIconUrls } from "./useWorkspaceFileEntryIconUrls.ts";
 import { shouldTrackDirectoryExpanded } from "./workspaceFileManagerAnalytics.ts";
-import {
-  buildWorkspaceFileManagerVisibleTreeRows,
-  collectWorkspaceFileManagerVisibleTreeEntries,
-  type WorkspaceFileManagerVisibleTreeRow
-} from "./workspaceFileManagerVisibleTree.ts";
 import {
   resolveWorkspaceFileManagerPreservedNameColumnWidth,
   workspaceFileManagerTableNameColumnSelector,
   workspaceFileManagerTableNameMinWidthProperty
 } from "./workspaceFileManagerTableSizing.ts";
-import { workspaceFileSearchEntryToEntry } from "../services/workspaceFileManagerModel.ts";
 import { findWorkspaceFileLocationById } from "../services/workspaceFileManagerLocations.ts";
 import {
   useWorkspaceFileManagerDialogsView,
@@ -78,31 +65,61 @@ import {
 
 const workspaceFileManagerSearchDebounceMs = 180;
 
+export type {
+  RenderWorkspaceFileManagerToolbarTrailingActions,
+  WorkspaceFileManagerToolbarTrailingActionsContext
+} from "./workspaceFileManagerToolbarTypes.ts";
+export type {
+  WorkspaceFileManagerPreviewActionId,
+  WorkspaceFileManagerPreviewActionsConfig
+} from "./workspaceFileManagerPreviewActionTypes.ts";
+
+export interface WorkspaceFileManagerLocationSidebarLayout {
+  contentMinWidth?: number;
+  defaultWidth?: number;
+  maxWidth?: number;
+  persistWidth?: boolean;
+}
+
 export interface WorkspaceFileManagerProps {
   className?: string;
   dateLocale?: TuttiDateLocale;
   entryDragMode?: WorkspaceFileManagerEntryDragMode;
-  openInAppBrowserIcon?: ReactElement;
-  resolveOpenWithApplicationIcon?: (
-    application: WorkspaceFileOpenWithApplication
-  ) => ReactElement | null;
   onCopyEntry?: () => Promise<void> | void;
-  onCopyPath?: (path: string) => Promise<void> | void;
   onDirectoryExpanded?: (path: string) => void;
   onEntryDragStart?: (
     entry: WorkspaceFileEntry,
     dataTransfer: DataTransfer
   ) => void;
+  resolveContextMenu: ResolveWorkspaceFileManagerContextMenu;
   resolveEntryIconUrl?: (
     entry: WorkspaceFileEntry
   ) => Promise<string | null | undefined>;
   renderExternalLocationContent?: (
     location: Extract<WorkspaceFileLocation, { kind: "external" }>
   ) => ReactElement | null;
-  hostOs?: NodeJS.Platform;
+  /**
+   * Declares the action row rendered at the bottom of the preview panel. Copy
+   * and open opt in with a boolean and reuse the package's session commands;
+   * download and share are enabled by passing a host handler. Omit the prop to
+   * keep the preview panel action-free.
+   */
+  previewActions?: WorkspaceFileManagerPreviewActionsConfig;
+  /**
+   * Optional host actions rendered in the toolbar trailing cluster, after
+   * Refresh and before Search. Use for product-owned primary affordances such
+   * as upload; keep multi-step transfer UX outside this package.
+   */
+  renderToolbarTrailingActions?: RenderWorkspaceFileManagerToolbarTrailingActions;
   i18n: WorkspaceFileManagerI18nRuntime;
+  locationSidebarLayout?: WorkspaceFileManagerLocationSidebarLayout;
   session: WorkspaceFileManagerSession;
-  showInternalOpenWithActions?: boolean;
+  /**
+   * When false, hide the locations sidebar even if the session has location
+   * sections. Hosts with a single workspace root (for example TSH embedded
+   * Files) can turn this off. Defaults to true.
+   */
+  showLocationSidebar?: boolean;
   showPreviewPanel?: boolean;
   surface?: "card" | "embedded";
 }
@@ -112,17 +129,17 @@ export function WorkspaceFileManager({
   dateLocale,
   entryDragMode,
   i18n,
+  locationSidebarLayout,
   onCopyEntry,
-  onCopyPath,
   onDirectoryExpanded,
   onEntryDragStart,
-  openInAppBrowserIcon,
-  resolveOpenWithApplicationIcon,
+  previewActions,
+  resolveContextMenu,
   resolveEntryIconUrl,
   renderExternalLocationContent,
-  hostOs = "linux",
+  renderToolbarTrailingActions,
   session,
-  showInternalOpenWithActions = true,
+  showLocationSidebar = true,
   showPreviewPanel = true,
   surface = "card"
 }: WorkspaceFileManagerProps): ReactElement {
@@ -133,8 +150,14 @@ export function WorkspaceFileManager({
     startWidth: number;
     startX: number;
   } | null>(null);
-  const [sidebarWidth, setSidebarWidth] = useState(
-    readWorkspaceFileManagerSidebarWidth
+  const sidebarDefaultWidth =
+    locationSidebarLayout?.defaultWidth ??
+    workspaceFileManagerSidebarDefaultWidth;
+  const persistSidebarWidth = locationSidebarLayout?.persistWidth ?? true;
+  const [sidebarWidth, setSidebarWidth] = useState(() =>
+    persistSidebarWidth
+      ? readWorkspaceFileManagerSidebarWidth()
+      : sidebarDefaultWidth
   );
   const [containerWidth, setContainerWidth] = useState(0);
   const { arrangeMode, setArrangeMode } = useWorkspaceFileManagerArrangeMode();
@@ -149,31 +172,36 @@ export function WorkspaceFileManager({
     );
     return location?.kind === "external" ? location : null;
   }, [rootView.locationSections, rootView.selectedLocationId]);
-  const hasLocationSidebar = rootView.locationSections.some(
-    (section) => section.locations.length > 0
-  );
-  const sidebarContentMinWidth = showPreviewPanel
-    ? workspaceFileManagerContentMinWidth
-    : workspaceFileManagerContentWithoutPreviewMinWidth;
+  const hasLocationSidebar =
+    showLocationSidebar &&
+    rootView.locationSections.some((section) => section.locations.length > 0);
+  const sidebarContentMinWidth =
+    locationSidebarLayout?.contentMinWidth ??
+    (showPreviewPanel
+      ? workspaceFileManagerContentMinWidth
+      : workspaceFileManagerContentWithoutPreviewMinWidth);
+  const sidebarConfiguredMaxWidth = locationSidebarLayout?.maxWidth;
   const sidebarMaxWidth =
     containerWidth > 0
       ? resolveWorkspaceFileManagerSidebarMaxWidth(
           containerWidth,
-          sidebarContentMinWidth
+          sidebarContentMinWidth,
+          sidebarConfiguredMaxWidth
         )
-      : workspaceFileManagerSidebarDefaultWidth;
+      : sidebarDefaultWidth;
 
   const updateSidebarWidth = useCallback(
     (width: number): number => {
       const nextWidth = clampWorkspaceFileManagerSidebarWidth({
         containerWidth: rootRef.current?.getBoundingClientRect().width ?? 0,
         contentMinWidth: sidebarContentMinWidth,
+        maxWidth: sidebarConfiguredMaxWidth,
         width
       });
       setSidebarWidth(nextWidth);
       return nextWidth;
     },
-    [sidebarContentMinWidth]
+    [sidebarConfiguredMaxWidth, sidebarContentMinWidth]
   );
 
   useLayoutEffect(() => {
@@ -191,6 +219,7 @@ export function WorkspaceFileManager({
         clampWorkspaceFileManagerSidebarWidth({
           containerWidth: nextContainerWidth,
           contentMinWidth: sidebarContentMinWidth,
+          maxWidth: sidebarConfiguredMaxWidth,
           width: currentWidth
         })
       );
@@ -209,7 +238,7 @@ export function WorkspaceFileManager({
     return () => {
       observer.disconnect();
     };
-  }, [hasLocationSidebar, sidebarContentMinWidth]);
+  }, [hasLocationSidebar, sidebarConfiguredMaxWidth, sidebarContentMinWidth]);
 
   const handleSidebarResizePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -262,10 +291,12 @@ export function WorkspaceFileManager({
         return;
       }
       sidebarResizeRef.current = null;
-      writeWorkspaceFileManagerSidebarWidth(resize.currentWidth);
+      if (persistSidebarWidth) {
+        writeWorkspaceFileManagerSidebarWidth(resize.currentWidth);
+      }
       event.currentTarget.releasePointerCapture(event.pointerId);
     },
-    []
+    [persistSidebarWidth]
   );
 
   const handleSidebarResizeKeyDown = useCallback(
@@ -327,8 +358,9 @@ export function WorkspaceFileManager({
 
       event.preventDefault();
       void (async () => {
-        await session.copyToClipboard(entry);
-        await onCopyEntry?.();
+        if (await session.copyToClipboard(entry)) {
+          await onCopyEntry?.();
+        }
       })();
     }
 
@@ -394,122 +426,38 @@ export function WorkspaceFileManager({
     session
   ]);
 
-  useEffect(() => {
-    function resetDropOverlay(): void {
-      session.resetDragDepth();
-    }
+  const openContextMenu = useCallback(
+    (
+      event: ReactMouseEvent<HTMLElement>,
+      entry: WorkspaceFileEntry | null
+    ): void => {
+      event.preventDefault();
+      event.stopPropagation();
 
-    function handleDocumentDragOver(event: DragEvent): void {
-      if (isPointInsideElement(rootRef.current, event.clientX, event.clientY)) {
-        return;
-      }
-      session.resetDragDepth();
-    }
+      // Store viewport (client) coordinates. The menu renders with
+      // positionMode="viewport" / fixed so overflow:hidden ancestors in host
+      // shells (e.g. TSH workbench nodes) cannot clip or mis-stack it.
+      const menuWidth = 220;
+      const menuHeight = 280;
+      const x = clampContextMenuCoordinate(
+        event.clientX,
+        window.innerWidth,
+        menuWidth
+      );
+      const y = clampContextMenuCoordinate(
+        event.clientY,
+        window.innerHeight,
+        menuHeight
+      );
 
-    window.addEventListener("blur", resetDropOverlay);
-    window.addEventListener("dragend", resetDropOverlay);
-    window.addEventListener("drop", resetDropOverlay);
-    document.addEventListener("dragover", handleDocumentDragOver, true);
-
-    return () => {
-      window.removeEventListener("blur", resetDropOverlay);
-      window.removeEventListener("dragend", resetDropOverlay);
-      window.removeEventListener("drop", resetDropOverlay);
-      document.removeEventListener("dragover", handleDocumentDragOver, true);
-    };
-  }, [session]);
-
-  function openContextMenu(
-    event: ReactMouseEvent<HTMLElement>,
-    entry: WorkspaceFileEntry | null
-  ): void {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const rootBounds = rootRef.current?.getBoundingClientRect();
-    if (!rootBounds) {
-      return;
-    }
-
-    const menuWidth = 220;
-    const menuHeight = 280;
-    const x = clampContextMenuCoordinate(
-      event.clientX - rootBounds.left,
-      rootBounds.width,
-      menuWidth
-    );
-    const y = clampContextMenuCoordinate(
-      event.clientY - rootBounds.top,
-      rootBounds.height,
-      menuHeight
-    );
-
-    session.openContextMenu({
-      entryPath: entry?.path ?? null,
-      x,
-      y
-    });
-  }
-
-  function handleDragEnter(event: ReactDragEvent<HTMLElement>): void {
-    if (
-      !rootView.canImportFromDrop ||
-      rootView.isBusy ||
-      !hasFileDragPayload(event.dataTransfer)
-    ) {
-      return;
-    }
-
-    event.preventDefault();
-    session.incrementDragDepth();
-  }
-
-  function handleDragOver(event: ReactDragEvent<HTMLElement>): void {
-    if (
-      !rootView.canImportFromDrop ||
-      rootView.isBusy ||
-      !hasFileDragPayload(event.dataTransfer)
-    ) {
-      return;
-    }
-
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-  }
-
-  function handleDragLeave(event: ReactDragEvent<HTMLElement>): void {
-    if (
-      !rootView.canImportFromDrop ||
-      !hasFileDragPayload(event.dataTransfer)
-    ) {
-      return;
-    }
-
-    event.preventDefault();
-    const nextTarget = event.relatedTarget;
-    if (nextTarget instanceof Node && rootRef.current?.contains(nextTarget)) {
-      return;
-    }
-    session.resetDragDepth();
-  }
-
-  function handleDrop(event: ReactDragEvent<HTMLElement>): void {
-    if (
-      !rootView.canImportFromDrop ||
-      rootView.isBusy ||
-      !hasFileDragPayload(event.dataTransfer)
-    ) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    session.resetDragDepth();
-    void session.importDroppedFiles(
-      event.dataTransfer,
-      rootView.currentDirectoryPath
-    );
-  }
+      session.openContextMenu({
+        entryPath: entry?.path ?? null,
+        x,
+        y
+      });
+    },
+    [session]
+  );
 
   return (
     <section
@@ -522,24 +470,30 @@ export function WorkspaceFileManager({
       )}
       data-slot="viewport-menu-boundary"
       data-workspace-file-manager=""
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
       ref={rootRef}
+      style={
+        {
+          // Owned by the root so context menus (siblings of the panels pane)
+          // can resolve overlay stacking instead of falling back to invalid
+          // `calc(var(--undefined) - 1)`.
+          "--workspace-file-manager-dialog-overlay-z-index": "20"
+        } as CSSProperties
+      }
     >
-      <WorkspaceFileManagerSidebar
-        disabled={rootView.isBusy || panelsState.isLoading}
-        locationSections={rootView.locationSections}
-        selectedLocationId={rootView.selectedLocationId}
-        width={sidebarWidth}
-        onSelectLocation={(location) => {
-          if (location.kind === "directory") {
-            onDirectoryExpanded?.(location.path);
-          }
-          void session.selectLocation(location.id);
-        }}
-      />
+      {hasLocationSidebar ? (
+        <WorkspaceFileManagerSidebar
+          disabled={rootView.isBusy || panelsState.isLoading}
+          locationSections={rootView.locationSections}
+          selectedLocationId={rootView.selectedLocationId}
+          width={sidebarWidth}
+          onSelectLocation={(location) => {
+            if (location.kind === "directory") {
+              onDirectoryExpanded?.(location.path);
+            }
+            void session.selectLocation(location.id);
+          }}
+        />
+      ) : null}
       {hasLocationSidebar ? (
         <div
           aria-label={i18n.t("resizeLocationsSidebar")}
@@ -547,7 +501,7 @@ export function WorkspaceFileManager({
           aria-valuemax={sidebarMaxWidth}
           aria-valuemin={workspaceFileManagerSidebarMinWidth}
           aria-valuenow={sidebarWidth}
-          className="nodrag @max-[600px]/workspace-file-manager:hidden relative z-[1] -ml-1 -mr-1 h-full w-2 shrink-0 cursor-col-resize touch-none outline-none before:absolute before:left-1/2 before:h-full before:w-px before:-translate-x-1/2 before:bg-transparent hover:before:bg-[var(--border-focus)] focus-visible:before:bg-[var(--border-focus)]"
+          className="nodrag @max-[600px]/workspace-file-manager:hidden relative z-[1] -ml-1 -mr-1 h-full w-2 shrink-0 cursor-col-resize touch-none outline-none before:absolute before:left-1/2 before:h-full before:w-px before:-translate-x-1/2 before:bg-[var(--border-1)] hover:before:bg-[var(--border-focus)] focus-visible:before:bg-[var(--border-focus)]"
           role="separator"
           tabIndex={0}
           onKeyDown={handleSidebarResizeKeyDown}
@@ -569,25 +523,21 @@ export function WorkspaceFileManager({
               onArrangeModeChange={setArrangeMode}
               onDirectoryExpanded={onDirectoryExpanded}
               onLayoutModeChange={setLayoutMode}
+              renderToolbarTrailingActions={renderToolbarTrailingActions}
               session={session}
             />
-            <div
-              className="@max-[600px]/workspace-file-manager:flex-col @max-[600px]/workspace-file-manager:gap-3 flex min-h-0 min-w-0 flex-1 overflow-hidden"
-              style={
-                {
-                  "--workspace-file-manager-dialog-overlay-z-index": "20"
-                } as CSSProperties
-              }
-            >
+            <div className="@max-[600px]/workspace-file-manager:flex-col @max-[600px]/workspace-file-manager:gap-3 flex min-h-0 min-w-0 flex-1 overflow-hidden">
               <WorkspaceFileManagerPanelsContainer
                 dateLocale={dateLocale}
                 entryDragMode={entryDragMode}
                 arrangeMode={arrangeMode}
                 i18n={i18n}
                 layoutMode={layoutMode}
+                onCopyEntry={onCopyEntry}
                 onDirectoryExpanded={onDirectoryExpanded}
                 onEntryDragStart={onEntryDragStart}
                 onOpenContextMenu={openContextMenu}
+                previewActions={previewActions}
                 resolveEntryIconUrl={resolveEntryIconUrl}
                 session={session}
                 showPreviewPanel={showPreviewPanel}
@@ -600,14 +550,8 @@ export function WorkspaceFileManager({
         <>
           <WorkspaceFileManagerDialogsContainer i18n={i18n} session={session} />
           <WorkspaceFileManagerContextMenuContainer
-            hostOs={hostOs}
-            i18n={i18n}
-            onCopyEntry={onCopyEntry}
-            onCopyPath={onCopyPath}
-            openInAppBrowserIcon={openInAppBrowserIcon}
-            resolveOpenWithApplicationIcon={resolveOpenWithApplicationIcon}
+            resolveContextMenu={resolveContextMenu}
             session={session}
-            showInternalOpenWithActions={showInternalOpenWithActions}
           />
         </>
       ) : null}
@@ -622,6 +566,7 @@ function WorkspaceFileManagerToolbarContainer({
   onArrangeModeChange,
   onDirectoryExpanded,
   onLayoutModeChange,
+  renderToolbarTrailingActions,
   session
 }: {
   arrangeMode: WorkspaceFileManagerArrangeMode;
@@ -630,6 +575,7 @@ function WorkspaceFileManagerToolbarContainer({
   onArrangeModeChange: (arrangeMode: WorkspaceFileManagerArrangeMode) => void;
   onDirectoryExpanded?: (path: string) => void;
   onLayoutModeChange: (layoutMode: WorkspaceFileManagerLayoutMode) => void;
+  renderToolbarTrailingActions?: RenderWorkspaceFileManagerToolbarTrailingActions;
   session: WorkspaceFileManagerSession;
 }): ReactElement {
   const { view } = useWorkspaceFileManagerToolbarView(session, i18n);
@@ -682,6 +628,7 @@ function WorkspaceFileManagerToolbarContainer({
       isSearching={view.isSearching}
       arrangeMode={arrangeMode}
       layoutMode={layoutMode}
+      renderToolbarTrailingActions={renderToolbarTrailingActions}
       searchQuery={searchQuery}
       onArrangeModeChange={onArrangeModeChange}
       onGoBack={() => {
@@ -707,163 +654,6 @@ function WorkspaceFileManagerToolbarContainer({
       }}
       onSearchClear={handleSearchClear}
       onSearchQueryChange={setSearchQuery}
-    />
-  );
-}
-
-function WorkspaceFileManagerPanelsContainer({
-  arrangeMode,
-  dateLocale,
-  entryDragMode,
-  i18n,
-  layoutMode,
-  onDirectoryExpanded,
-  onEntryDragStart,
-  onOpenContextMenu,
-  resolveEntryIconUrl,
-  session,
-  showPreviewPanel
-}: {
-  arrangeMode: WorkspaceFileManagerArrangeMode;
-  dateLocale?: TuttiDateLocale;
-  entryDragMode?: WorkspaceFileManagerEntryDragMode;
-  i18n: WorkspaceFileManagerI18nRuntime;
-  layoutMode: WorkspaceFileManagerLayoutMode;
-  onDirectoryExpanded?: (path: string) => void;
-  onEntryDragStart?: (
-    entry: WorkspaceFileEntry,
-    dataTransfer: DataTransfer
-  ) => void;
-  onOpenContextMenu: (
-    event: ReactMouseEvent<HTMLElement>,
-    entry: WorkspaceFileEntry | null
-  ) => void;
-  resolveEntryIconUrl?: (
-    entry: WorkspaceFileEntry
-  ) => Promise<string | null | undefined>;
-  session: WorkspaceFileManagerSession;
-  showPreviewPanel: boolean;
-}): ReactElement {
-  const { state, view } = useWorkspaceFileManagerPanelsView(session);
-  const arrangedEntries = useMemo(
-    () => sortWorkspaceFileEntriesForArrangeMode(state.entries, arrangeMode),
-    [arrangeMode, state.entries]
-  );
-  const searchEntries = useMemo(
-    () => view.searchEntries.map(workspaceFileSearchEntryToEntry),
-    [view.searchEntries]
-  );
-  const searchEntryContextByPath = useMemo(() => {
-    const contextByPath = new Map<string, string>();
-    for (const entry of view.searchEntries) {
-      contextByPath.set(entry.path, entry.directoryPath);
-    }
-    return contextByPath;
-  }, [view.searchEntries]);
-  const treeRows = useMemo(
-    () =>
-      buildWorkspaceFileManagerVisibleTreeRows({
-        arrangeMode,
-        directoryExpansionByPath: state.directoryExpansionByPath,
-        entries: arrangedEntries,
-        expandedDirectoryPaths: state.expandedDirectoryPaths
-      }),
-    [
-      arrangeMode,
-      arrangedEntries,
-      state.directoryExpansionByPath,
-      state.expandedDirectoryPaths
-    ]
-  );
-  const searchTreeRows = useMemo<WorkspaceFileManagerVisibleTreeRow[]>(
-    () =>
-      searchEntries.map((entry) => ({
-        depth: 0,
-        entry,
-        expanded: false,
-        expandable: false,
-        kind: "entry",
-        loadingChildren: false
-      })),
-    [searchEntries]
-  );
-  const displayedEntries = view.isSearchMode ? searchEntries : arrangedEntries;
-  const displayedTreeRows = view.isSearchMode ? searchTreeRows : treeRows;
-  const visibleTreeEntries = useMemo(
-    () => collectWorkspaceFileManagerVisibleTreeEntries(displayedTreeRows),
-    [displayedTreeRows]
-  );
-  const {
-    iconUrlByCacheKey,
-    reportEntryIconViewportEnter,
-    reportEntryIconViewportLeave
-  } = useWorkspaceFileEntryIconUrls({
-    entries: layoutMode === "list" ? visibleTreeEntries : displayedEntries,
-    includeImageThumbnails: true,
-    resolveEntryIconUrl
-  });
-
-  return (
-    <WorkspaceFileManagerPanels
-      arrangeMode={arrangeMode}
-      canMove={view.isSearchMode ? false : view.canMove}
-      contextMenuEntryPath={view.contextMenuEntryPath}
-      copy={i18n}
-      dateLocale={dateLocale}
-      entryDragMode={entryDragMode}
-      iconUrlByCacheKey={iconUrlByCacheKey}
-      inlineRenameEntryPath={view.inlineRenameEntryPath}
-      inlineRenameValidation={view.inlineRenameValidation}
-      isRenaming={view.isRenaming}
-      layoutMode={layoutMode}
-      pendingDirectoryPath={view.pendingDirectoryPath}
-      previewState={view.previewState}
-      entryContextByPath={view.isSearchMode ? searchEntryContextByPath : null}
-      treeRows={displayedTreeRows}
-      onEntryIconViewportEnter={reportEntryIconViewportEnter}
-      onEntryIconViewportLeave={reportEntryIconViewportLeave}
-      selectedEntry={view.selectedEntry}
-      selectedPath={view.selectedPath}
-      showPreviewPanel={showPreviewPanel}
-      showDropOverlay={view.showDropOverlay}
-      state={{
-        entries: displayedEntries,
-        error: view.isSearchMode ? view.searchError : state.error,
-        isLoading: view.isSearchMode ? view.isSearching : state.isLoading,
-        isSearchMode: view.isSearchMode
-      }}
-      onBlankContextMenu={(event) => {
-        onOpenContextMenu(event, null);
-      }}
-      onCancelInlineRename={() => {
-        session.cancelInlineRename();
-      }}
-      onClearInlineRenameValidation={() => {
-        session.clearInlineRenameValidation();
-      }}
-      onConfirmInlineRename={(newName) => {
-        return session.confirmInlineRename(newName);
-      }}
-      onEntryContextMenu={onOpenContextMenu}
-      onEntryDragStart={onEntryDragStart}
-      onMoveEntry={(entry, targetDirectoryPath) => {
-        void session.moveEntry(entry, targetDirectoryPath);
-      }}
-      onOpenEntry={(entry) => {
-        if (entry.kind === "directory") {
-          onDirectoryExpanded?.(entry.path);
-        }
-        void session.openEntry(entry);
-      }}
-      onSelect={(path) => {
-        session.select(path);
-      }}
-      onToggleDirectoryExpanded={(entry, expanded) => {
-        if (!expanded) {
-          onDirectoryExpanded?.(entry.path);
-        }
-        void session.toggleDirectoryExpanded(entry);
-      }}
     />
   );
 }
@@ -904,17 +694,6 @@ function WorkspaceFileManagerDialogsContainer({
           void session.confirmDeleteDialog();
         }}
       />
-      <WorkspaceFileManagerImportConflictDialog
-        busy={view.isImporting}
-        copy={i18n}
-        dialog={view.importConflictDialog}
-        onClose={() => {
-          session.closeImportConflictDialog();
-        }}
-        onConfirm={() => {
-          void session.confirmImportConflict();
-        }}
-      />
       <WorkspaceFileManagerUnsupportedDialog
         copy={i18n}
         dialog={view.unsupportedDialog}
@@ -950,22 +729,4 @@ function clampContextMenuCoordinate(
 ): number {
   const max = Math.max(8, boundarySize - menuSize - 8);
   return Math.min(Math.max(coordinate, 8), max);
-}
-
-function isPointInsideElement(
-  element: HTMLElement | null,
-  clientX: number,
-  clientY: number
-): boolean {
-  if (!element) {
-    return false;
-  }
-
-  const bounds = element.getBoundingClientRect();
-  return (
-    clientX >= bounds.left &&
-    clientX <= bounds.right &&
-    clientY >= bounds.top &&
-    clientY <= bounds.bottom
-  );
 }

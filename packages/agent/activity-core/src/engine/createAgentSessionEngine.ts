@@ -9,6 +9,7 @@ import {
   isEngineInternalCommand,
   type AgentSessionEngine,
   type AgentSessionEngineIdentity,
+  type AgentSessionEngineIntentObserver,
   type AgentSessionEngineListener,
   type AgentSessionEngineState,
   type EngineClock,
@@ -16,7 +17,8 @@ import {
   type EngineDispatchOptions,
   type EngineIntent,
   type EngineScheduledTask,
-  type EngineScheduler
+  type EngineScheduler,
+  type EngineTypedCommandPort
 } from "./types.ts";
 
 // Session engine factory (docs/architecture/agent-gui-refactor-plan.md,
@@ -37,9 +39,10 @@ export const ENGINE_INTENT_BATCH_DELAY_MS = 33;
 export interface CreateAgentSessionEngineInput {
   batchDelayMs?: number;
   clock: EngineClock;
-  commandPort: EngineCommandPort;
+  commandPort: EngineCommandPort | EngineTypedCommandPort;
   diagnosticSink?: EngineDiagnosticSink;
   identity: AgentSessionEngineIdentity;
+  intentObserver?: AgentSessionEngineIntentObserver;
   scheduler: EngineScheduler;
 }
 
@@ -49,6 +52,7 @@ export function createAgentSessionEngine({
   commandPort,
   diagnosticSink,
   identity,
+  intentObserver,
   scheduler
 }: CreateAgentSessionEngineInput): AgentSessionEngine {
   if (identity.workspaceId.trim().length === 0) {
@@ -174,6 +178,17 @@ export function createAgentSessionEngine({
         type: "intentDroppedForIdentityMismatch"
       });
       return;
+    }
+    if (intentObserver) {
+      try {
+        intentObserver(scopedIntent);
+      } catch (error) {
+        diagnosticSink?.({
+          error,
+          intentType: scopedIntent.type,
+          type: "intentObserverError"
+        });
+      }
     }
     if (options?.batch === true) {
       batchedIntents.push(scopedIntent);

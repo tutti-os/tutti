@@ -35,6 +35,8 @@ flowchart LR
   API --> SAGA["Goal control saga"]
   SAGA --> GS["Durable Goal state<br/>desired / observed / revision"]
   SAGA --> OP["Durable operation<br/>prepared / dispatched / terminal"]
+  FENCE["Exact generation fence<br/>operation + revision + repair epoch"] --> SAGA
+  FENCE --> ADAPTER
   SAGA --> ADAPTER["Provider GoalAdapter"]
   ADAPTER --> PROVIDER["Codex or Claude Code"]
   PROVIDER --> EVENTS["Provider observations and lifecycle events"]
@@ -51,6 +53,9 @@ Ownership rules:
 - `workspace_agent_session_goals` is upper-layer durable business state.
 - `workspace_agent_goal_control_operations` is the control saga log. It has no
   `turn_id` foreign key.
+- `workspace_agent_goal_generation_fences` durably rejects one exact
+  operation/revision/repair-epoch generation. Its delivery status does not
+  weaken the fence: row existence is the admission rule.
 - Provider state is observation, not a replacement for desired state.
 - `workspace_agent_turns` is created only by an explicit Turn lifecycle
   transition. A message cannot manufacture a Turn.
@@ -86,9 +91,57 @@ Turn provenance is immutable after first classification:
 A Goal-created Turn records `sourceGoalOperationId` and
 `sourceGoalRevision`. Steer is input on an existing Turn and is not an origin.
 Delayed continuation scheduling captures the revision and exits before
-provider handoff when a newer set/clear has superseded it. Once the provider
-has accepted or started a Turn, that Turn keeps its original provenance and
-runs to its natural terminal; superseding Goal state only blocks later work.
+provider handoff when a newer set/clear has superseded it. Ordinary Goal
+supersession does not cancel a started Turn. An explicit exact-generation
+fence is different: it blocks that provider generation before canonical
+adoption and may cancel an already canonical Turn only when the Turn's
+immutable source operation, revision, and repair epoch all match. A fence never
+uses the session's current active Turn as a substitute for provenance and
+never cancels or clears a newer Owner generation.
+
+### Exact Goal-generation fence
+
+A higher layer may revoke the authorization/routing relation that originally
+submitted a shared Goal. That relation is not a Session, Turn, or provider
+execution. It must retain the accepted Goal operation identity and call
+`FenceGoalGeneration` with a stable revocation submit ID. Host first persists
+the exact target in `workspace_agent_goal_generation_fences`; only then does it
+attempt runtime quiescence or a revision-conditional Goal clear.
+
+The fence has two independent facts:
+
+- `IntentAccepted`: the durable row exists and Host owns retries.
+- `Settled`: runtime admission, exact-turn cancellation when applicable, and
+  the conditional clear have completed.
+
+No provider response is interpreted as success. A pending fence survives
+desktop/daemon restart, while a completed fence remains durable and is
+restored whenever the provider session is resumed. Recovery always handles
+fences before ordinary Goal operations so the revoked target cannot replay
+first. Recovery does not resume an offline provider merely to deliver a fence:
+it conditionally prepares the local clear, supersedes the revoked operation,
+and waits. The runtime Controller retains every delivered exact fence across
+idle connection release and installs the retained set into a replacement
+adapter connection before dispatching the user operation that caused the
+reconnect. Fence installation failure closes the unprotected connection
+instead of leaving it available for dispatch. A later user-triggered resume
+also restores the durable fence set before returning. Background fence/clear
+calls carry a require-live contract that is checked under the runtime lifecycle
+lock, closing the liveness-check/reconnect race. Runtime adapters key their
+in-memory gate by
+`(operationId, revision, repairEpoch)`: Codex rejects the matching continuation
+before adoption, and Claude Code suppresses the matching provider Turn and its
+later events until terminal. Other generations continue normally.
+
+Provider cancellation acceptance is not fence settlement. If an exactly
+matching canonical Turn exists, the fence stays pending after `CancelTurn`
+acceptance and completes only after canonical terminal evidence arrives.
+Fence-driven cancellation is also require-live: a disconnect between
+installing the fence and cancel delivery leaves the durable Turn and fence
+pending instead of resuming the provider just to cancel it.
+Desktop startup may independently settle a stale pre-restart Turn as
+`interrupted`; the retained fence is then free to finish without deleting the
+Session or Turn.
 
 ### Exact Goal-generation provenance ledger
 

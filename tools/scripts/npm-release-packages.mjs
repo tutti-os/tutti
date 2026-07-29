@@ -6,12 +6,18 @@ const defaultWorkspaceRoot = fileURLToPath(new URL("../..", import.meta.url));
 export const workspaceRoot =
   process.env.TUTTI_WORKSPACE_ROOT ?? defaultWorkspaceRoot;
 
-export async function getNpmReleasePackages() {
+export async function getNpmReleasePackages({
+  packageNames: selectedNames = null
+} = {}) {
   const packageMap = await discoverWorkspacePackages();
-  const packageNames = await readReleasePackageNames();
-  validateReleasePackageSelection(packageMap, packageNames);
+  const releasePackageNames = await readReleasePackageNames();
+  validateReleasePackageSelection(packageMap, releasePackageNames);
+  const selectedPackageNames = selectReleasePackageNames(
+    releasePackageNames,
+    selectedNames
+  );
 
-  return packageNames.map((name) => {
+  return selectedPackageNames.map((name) => {
     const packageConfig = packageMap.get(name);
 
     if (!packageConfig) {
@@ -34,6 +40,53 @@ export async function getNpmReleasePackages() {
 
     return packageConfig;
   });
+}
+
+export function parseReleasePackageFilters(args) {
+  const normalizedArgs = args.filter((arg) => arg !== "--");
+  if (normalizedArgs.length === 0) {
+    return null;
+  }
+  if (normalizedArgs.length !== 2 || normalizedArgs[0] !== "--packages-json") {
+    throw new Error(
+      "release package selection accepts only --packages-json <json-array>"
+    );
+  }
+
+  let packageNames;
+  try {
+    packageNames = JSON.parse(normalizedArgs[1]);
+  } catch {
+    throw new Error("--packages-json must contain valid JSON");
+  }
+  if (
+    !Array.isArray(packageNames) ||
+    packageNames.length === 0 ||
+    packageNames.some((name) => typeof name !== "string" || name.length === 0)
+  ) {
+    throw new Error("--packages-json must contain a non-empty string array");
+  }
+  return [...new Set(packageNames)];
+}
+
+export function selectReleasePackageNames(
+  releasePackageNames,
+  selectedPackageNames
+) {
+  if (selectedPackageNames === null) {
+    return releasePackageNames;
+  }
+
+  const releaseNameSet = new Set(releasePackageNames);
+  const unknownNames = selectedPackageNames.filter(
+    (name) => !releaseNameSet.has(name)
+  );
+  if (unknownNames.length > 0) {
+    throw new Error(
+      `Unknown npm release package filter(s): ${unknownNames.join(", ")}`
+    );
+  }
+  return selectedPackageNames;
 }
 
 async function readReleasePackageNames() {

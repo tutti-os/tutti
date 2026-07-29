@@ -149,7 +149,7 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 		acpLiveState:           liveState,
 		pendingRequests:        make(map[string]*pendingInteractiveRequest),
 	})
-	a.refreshStartupMetadataAsync(session, threadResult, len(models) == 0, true, trace)
+	a.refreshStartupMetadataAsync(session, threadResult, len(models) == 0, a.config.rateLimits, trace)
 	a.emitCommandSnapshot(AgentSessionCommandSnapshot{
 		AgentSessionID: strings.TrimSpace(session.AgentSessionID),
 		Commands:       codexAppServerCommands(),
@@ -291,7 +291,7 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) (er
 		acpLiveState:           liveState,
 		pendingRequests:        make(map[string]*pendingInteractiveRequest),
 	})
-	a.refreshStartupMetadataAsync(session, threadResult, len(models) == 0, true, trace)
+	a.refreshStartupMetadataAsync(session, threadResult, len(models) == 0, a.config.rateLimits, trace)
 	// Mirror Start: push the command snapshot so a resumed session advertises
 	// review/compact/undo to the GUI (otherwise the slash palette and the
 	// review picker only work on freshly created sessions).
@@ -351,35 +351,55 @@ func (a *CodexAppServerAdapter) startInitializedClient(
 	session Session,
 	trace *codexAppServerStartupTrace,
 ) (*codexAppServerClient, json.RawMessage, error) {
-	if a == nil || a.transport == nil {
-		return nil, nil, errors.New("app-server process transport is unavailable")
-	}
-	command := append([]string(nil), a.config.command...)
-	spawnEnv := append(codexACPEnv(session, a.host), session.Env...)
-	if a.commandResolver != nil {
-		resolved, err := a.commandResolver(ctx, a.config.provider)
-		if err != nil {
-			return nil, nil, err
-		}
-		if len(resolved.Command) > 0 {
-			command = append([]string(nil), resolved.Command...)
-		}
-		spawnEnv = append(spawnEnv, resolved.Env...)
-	}
-	spec, cleanup, err := prepareProviderLaunch(ctx, a.preparer, session, ProcessSpec{
-		Provider:       a.config.provider,
-		AgentSessionID: session.AgentSessionID,
-		RoomID:         session.RoomID,
-		CWD:            a.sessionCWD(session),
-		Command:        command,
-		Env:            spawnEnv,
-	})
+	spec, cleanup, err := a.prepareInitializedClientLaunch(ctx, session)
 	if err != nil {
 		trace.Log("process.prepare.failed", map[string]any{
 			"error": err.Error(),
 		})
 		return nil, nil, err
 	}
+	return a.startInitializedClientPrepared(ctx, session, trace, spec, cleanup)
+}
+
+func (a *CodexAppServerAdapter) prepareInitializedClientLaunch(
+	ctx context.Context,
+	session Session,
+) (ProcessSpec, func(context.Context), error) {
+	if a == nil || a.transport == nil {
+		return ProcessSpec{}, nil, errors.New(
+			"app-server process transport is unavailable",
+		)
+	}
+	command := append([]string(nil), a.config.command...)
+	spawnEnv := append(codexACPEnv(session, a.host), session.Env...)
+	if a.commandResolver != nil {
+		resolved, err := a.commandResolver(ctx, a.config.provider)
+		if err != nil {
+			return ProcessSpec{}, nil, err
+		}
+		if len(resolved.Command) > 0 {
+			command = append([]string(nil), resolved.Command...)
+		}
+		spawnEnv = append(spawnEnv, resolved.Env...)
+	}
+	return prepareProviderLaunch(ctx, a.preparer, session, ProcessSpec{
+		Provider:           a.config.provider,
+		AgentSessionID:     session.AgentSessionID,
+		RootAgentSessionID: session.RootAgentSessionID,
+		RoomID:             session.RoomID,
+		CWD:                a.sessionCWD(session),
+		Command:            command,
+		Env:                spawnEnv,
+	})
+}
+
+func (a *CodexAppServerAdapter) startInitializedClientPrepared(
+	ctx context.Context,
+	session Session,
+	trace *codexAppServerStartupTrace,
+	spec ProcessSpec,
+	cleanup func(context.Context),
+) (*codexAppServerClient, json.RawMessage, error) {
 	trace.Log("process.start.begin", map[string]any{
 		"command": strings.Join(spec.Command, " "),
 		"cwd":     spec.CWD,

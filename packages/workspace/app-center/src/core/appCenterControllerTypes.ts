@@ -127,6 +127,7 @@ export interface WorkspaceAppCenterControllerHooks {
 export interface WorkspaceAppCenterControllerDependencies {
   appOpenLaunchWaitTimeoutMs?: number;
   catalogLoadingRefreshDelayMs?: number;
+  createClientSubmitId?: () => string;
   formatError: (
     error: unknown,
     details?: WorkspaceAppCenterOperationDetails

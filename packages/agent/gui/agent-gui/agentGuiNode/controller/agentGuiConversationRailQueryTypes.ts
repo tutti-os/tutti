@@ -1,25 +1,25 @@
-import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { AgentSessionEngine } from "@tutti-os/agent-activity-core";
+import type { AgentConversationRailRuntimePort } from "../../../agentConversationRailContracts";
 import type { WorkspaceQueryCache } from "../../../shared/query/workspaceQueryCache";
-import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import type { AgentGuiScheduler } from "../agentGuiScheduler";
 import type { ConversationRailDiagnosticLogger } from "./agentGuiConversationRailDiagnostics";
 import type { CachedConversationRailQuery } from "./agentGuiConversationRailQueryCache";
+import { userProjectCollectionKey } from "./agentGuiConversationRailQueryScope";
 
 export interface ConversationRailQueryScope {
-  conversationFilter: AgentGUINodeViewModel["rail"]["conversationFilter"];
-  previewMode: boolean;
+  conversationFilter:
+    | { kind: "all" }
+    | { agentTargetId: string; kind: "agentTarget" };
   sectionAgentTargetFallbackId: string | null;
-  userProjects: AgentGUINodeViewModel["rail"]["userProjects"];
+  userProjects: readonly { id: string }[];
 }
 
 export type ConversationRailQueryRuntime = Pick<
-  AgentActivityRuntime,
+  AgentConversationRailRuntimePort,
   | "listPinnedSessionsPage"
   | "listSessionSectionPage"
   | "listSessionSections"
   | "listSessionsPage"
-  | "getSessionSectionsQueryCache"
   | "reportDiagnostic"
 >;
 
@@ -31,7 +31,10 @@ export interface ConversationRailQueryControllerInput {
   diagnosticSlowThresholdMs?: number;
   engine: AgentSessionEngine;
   getActiveConversationId(): string | null;
+  nodeId?: string | null;
   runtime: ConversationRailQueryRuntime;
+  sectionPageSize?: number;
+  sectionRefreshLimitMax?: number;
   sessionSectionsQueryCache?: WorkspaceQueryCache<CachedConversationRailQuery>;
   scheduler?: AgentGuiScheduler;
   workspaceId: string;
@@ -45,9 +48,7 @@ export function resolveConversationRailQueryScope(
     scope.conversationFilter.kind === "agentTarget"
       ? scope.conversationFilter.agentTargetId.trim()
       : (scope.sectionAgentTargetFallbackId?.trim() ?? "");
-  const projectPaths = scope.userProjects
-    .map((project) => project.path.trim())
-    .filter(Boolean);
+  const projectCollectionKey = userProjectCollectionKey(scope.userProjects);
   return {
     agentTargetId,
     scopeKey: JSON.stringify([
@@ -55,9 +56,8 @@ export function resolveConversationRailQueryScope(
       scope.conversationFilter.kind === "agentTarget"
         ? `agentTarget:${scope.conversationFilter.agentTargetId.trim()}`
         : "all",
-      scope.previewMode,
       agentTargetId,
-      JSON.stringify(projectPaths)
+      projectCollectionKey
     ])
   };
 }

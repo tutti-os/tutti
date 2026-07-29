@@ -1,7 +1,8 @@
 import type {
   DesktopComputerUsePermissionPane,
   DesktopComputerUseRestartDriverInput,
-  DesktopDeveloperLogKind
+  DesktopDeveloperLogKind,
+  ExportDeveloperLogsInput
 } from "@shared/contracts/ipc";
 import type { DesktopLocale } from "@shared/i18n";
 import type {
@@ -11,6 +12,7 @@ import type {
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
   DesktopDockPlacement,
+  DeletedAgentConversationRetentionDays,
   DesktopFeatureFlags,
   DesktopWorkspaceUiMode,
   DesktopMinimizeAnimation,
@@ -59,6 +61,7 @@ import type {
   WorkspaceSettingsSectionID,
   WorkspaceSettingsWorkspaceInput
 } from "../workspaceSettingsService.interface";
+import type { WorkspaceSettingsAgentTab } from "../workspaceSettingsTypes";
 import type { DesktopWorkspaceSettingsClient } from "./adapters/desktopWorkspaceSettingsClient.ts";
 import { formatWorkspaceSettingsBytes } from "../workspaceSettingsFormat.ts";
 import { createWorkspaceSettingsStore } from "./workspaceSettingsStore.ts";
@@ -70,19 +73,13 @@ import {
   markTuttiAgentSwitchDaemonMigrationComplete,
   readLegacyTuttiAgentSwitchEnabled
 } from "../tuttiAgentSwitchPreference.ts";
-import type {
-  WorkspaceManagedModel,
-  WorkspaceManagedModelProviderConfig,
-  WorkspaceManagedModelProviderDraft,
-  WorkspaceManagedModelProviderFeedbackKind,
-  WorkspaceManagedModelProviderID
-} from "../workspaceSettingsTypes.ts";
-
-const managedModelProviderIDs: WorkspaceManagedModelProviderID[] = [
-  "agnes",
-  "openai",
-  "anthropic"
-];
+import {
+  createWorkspaceFeatureFlagSettings,
+  type WorkspaceFeatureFlagSettings
+} from "./workspaceFeatureFlagSettings.ts";
+import { WorkspaceModelPlansController } from "./workspaceModelPlansController.ts";
+import { WorkspaceAgentsController } from "./workspaceAgentsController.ts";
+import { WorkspaceAutomationRulesController } from "./workspaceAutomationRulesController.ts";
 
 export interface WorkspaceSettingsServiceDependencies {
   client: DesktopWorkspaceSettingsClient;
@@ -104,9 +101,13 @@ const tuttiAgentTargetID = "local:tutti-agent";
 export class WorkspaceSettingsService implements IWorkspaceSettingsService {
   readonly _serviceBrand: undefined;
   readonly store = createWorkspaceSettingsStore();
+  readonly agents: WorkspaceAgentsController;
+  readonly automationRules: WorkspaceAutomationRulesController;
+  readonly modelPlans: WorkspaceModelPlansController;
 
   private readonly dependencies: WorkspaceSettingsServiceDependencies;
   private readonly desktopPreferences: DesktopPreferencesService;
+  private readonly featureFlagSettings: WorkspaceFeatureFlagSettings;
   private readonly notifications: NotificationService;
   private readonly reporterService: Pick<ReporterService, "trackEvents"> | null;
   private readonly appCenterService: Pick<
@@ -132,10 +133,29 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
   ) {
     this.dependencies = dependencies;
     this.desktopPreferences = desktopPreferences;
+    this.featureFlagSettings = createWorkspaceFeatureFlagSettings({
+      desktopPreferences,
+      notifications,
+      refreshAgentTargets: () => this.refreshAgentTargetConsumers()
+    });
     this.notifications = notifications;
     this.reporterService = reporterService;
     this.appCenterService = appCenterService;
     this.reporterNow = reporterNow;
+    this.modelPlans = new WorkspaceModelPlansController({
+      client: dependencies.client,
+      notifications,
+      store: this.store
+    });
+    this.agents = new WorkspaceAgentsController({
+      client: dependencies.client,
+      onWorkspaceAgentsChanged: dependencies.onAgentTargetsChanged,
+      store: this.store
+    });
+    this.automationRules = new WorkspaceAutomationRulesController({
+      client: dependencies.client,
+      store: this.store
+    });
     this.scheduleTuttiAgentSwitchInitialization();
   }
 
@@ -145,20 +165,41 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
   ): void {
     this.scheduleTuttiAgentSwitchInitialization();
     this.syncWorkspace(workspace);
-    const managedModelsRequested = options?.pane === "managed-models";
-    if (managedModelsRequested) {
-      this.store.activeSection = "apps";
+    // Normalize every legacy/plain-string settings request at this single
+    // host-owned seam. Callers publish intent; only Settings understands its
+    // current information architecture.
+    const requestedSection = options?.section as string | undefined;
+    if (options?.pane === "managed-models" || requestedSection === "apps") {
+      this.store.activeSection = "model";
     } else if (options?.section) {
-      this.store.activeSection = options.section;
+      this.store.activeSection =
+        options.section === "account" ? "connection" : options.section;
     }
     if (options?.anchor) {
       this.store.activeSection = "agent";
       this.store.generalFocusAnchor = options.anchor;
       this.store.generalFocusRequestID += 1;
     }
-    if (managedModelsRequested && isManagedModelProviderID(options.provider)) {
-      this.store.managedModels.focusedProvider = options.provider;
-      this.store.managedModels.focusRequestID += 1;
+    // Deep-link into the Agents tab of the agent section, optionally focusing a
+    // provider row. A hidden preview provider is still routed here (the Agents
+    // tab surfaces an "enable Preview Agents" hint) rather than silently failing.
+    if (options?.pane === "agents") {
+      this.store.activeSection = "agent";
+      this.store.agentTab = "agents";
+      this.store.agentFocusProvider =
+        typeof options.provider === "string" && options.provider.trim() !== ""
+          ? options.provider
+          : null;
+      this.store.agentFocusRequestID += 1;
+    } else if (
+      options?.pane === "custom-agents" ||
+      options?.pane === "workspace-agents"
+    ) {
+      this.store.activeSection = "agent";
+      this.store.agentTab = "customAgents";
+    } else if (options?.pane === "automation-rules") {
+      this.store.activeSection = "agent";
+      this.store.agentTab = "automation";
     }
     const wasOpen = this.store.open;
     this.store.open = true;
@@ -166,10 +207,8 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     if (!wasOpen) {
       this.reportSettingsOpened();
       void this.refreshDeveloperLogs();
-      void this.refreshManagedModelProviders();
-    } else if (this.store.activeSection === "apps") {
-      void this.refreshManagedModelProviders();
     }
+    this.refreshActiveSettingsSurface();
   }
 
   closePanel(): void {
@@ -229,14 +268,14 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     if (workspace.id !== this.store.workspaceID) {
       this.store.workspaceID = workspace.id;
       this.store.activeSection = "general";
+      this.store.agentTab = "general";
+      this.store.agentFocusProvider = null;
+      this.store.agentFocusRequestID = 0;
       this.store.generalFocusAnchor = null;
       this.store.generalFocusRequestID = 0;
-      this.store.managedModels.providers = [];
-      this.store.managedModels.draft = null;
-      this.store.managedModels.feedback = {};
-      this.store.managedModels.detectingProvider = null;
-      this.store.managedModels.focusedProvider = null;
-      this.store.managedModels.focusRequestID = 0;
+      this.modelPlans.reset();
+      this.agents.reset();
+      this.automationRules.reset();
     }
   }
 
@@ -247,9 +286,20 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
 
     this.store.activeSection = sectionID;
     this.reportSettingsSectionSwitched(sectionID);
-    if (sectionID === "apps") {
-      void this.refreshManagedModelProviders();
+    if (sectionID === "model") {
+      this.refreshModelPlansSurface();
     }
+    if (sectionID === "agent") {
+      this.refreshActiveAgentTab();
+    }
+  }
+
+  selectAgentTab(tab: WorkspaceSettingsAgentTab): void {
+    if (this.store.agentTab === tab) {
+      return;
+    }
+    this.store.agentTab = tab;
+    this.refreshActiveAgentTab();
   }
 
   setDeveloperPanelVisible(visible: boolean): void {
@@ -268,6 +318,26 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
   }
 
+  async setAgentTargetEnabled(
+    agentTargetID: string,
+    enabled: boolean
+  ): Promise<void> {
+    const normalizedAgentTargetID = agentTargetID.trim();
+    if (!normalizedAgentTargetID) {
+      throw new Error("Agent target ID is required");
+    }
+
+    const target = await this.dependencies.client.setSystemAgentTargetEnabled(
+      normalizedAgentTargetID,
+      enabled
+    );
+    if (target.id === tuttiAgentTargetID) {
+      this.tuttiAgentSwitchInitialized = true;
+      this.applyTuttiAgentTargetEnabled(target.enabled);
+    }
+    await this.refreshAgentTargetConsumers();
+  }
+
   async setTuttiAgentSwitchEnabled(enabled: boolean): Promise<void> {
     return this.enqueueTuttiAgentSwitchOperation(async () => {
       if (
@@ -278,14 +348,7 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       }
 
       try {
-        const target =
-          await this.dependencies.client.setSystemAgentTargetEnabled(
-            tuttiAgentTargetID,
-            enabled
-          );
-        this.tuttiAgentSwitchInitialized = true;
-        this.applyTuttiAgentTargetEnabled(target.enabled);
-        await this.refreshAgentTargetConsumers();
+        await this.setAgentTargetEnabled(tuttiAgentTargetID, enabled);
       } catch {
         this.notifications.error({
           title: createActiveTranslator().t(
@@ -370,9 +433,6 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
 
   private applyTuttiAgentTargetEnabled(enabled: boolean): void {
     this.store.tuttiAgentSwitchEnabled = enabled;
-    if (!enabled && this.store.activeSection === "account") {
-      this.store.activeSection = "general";
-    }
   }
 
   private async refreshAgentTargetConsumers(): Promise<void> {
@@ -558,26 +618,20 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
   }
 
   async changeFeatureFlags(flags: DesktopFeatureFlags): Promise<void> {
-    if (
-      desktopFeatureFlagsEqual(
-        this.desktopPreferences.store.featureFlags,
-        flags
-      ) ||
-      (this.desktopPreferences.store.changingFeatureFlags !== null &&
-        desktopFeatureFlagsEqual(
-          this.desktopPreferences.store.changingFeatureFlags,
-          flags
-        ))
-    ) {
-      return;
-    }
+    await this.featureFlagSettings.change(flags);
+  }
 
+  async changeDeletedAgentConversationRetentionDays(
+    days: DeletedAgentConversationRetentionDays
+  ): Promise<void> {
     try {
-      await this.desktopPreferences.setFeatureFlags(flags);
+      await this.desktopPreferences.setDeletedAgentConversationRetentionDays(
+        days
+      );
     } catch {
       this.notifications.error({
         title: createActiveTranslator().t(
-          "workspace.settings.lab.preferencesSaveFailed"
+          "workspace.settings.general.deletedConversationRetentionSaveFailed"
         )
       });
     }
@@ -820,7 +874,32 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
   }
 
-  async exportDeveloperLogs(): Promise<void> {
+  async purgeDeletedConversations(): Promise<void> {
+    if (this.store.purgingDeletedConversations) {
+      return;
+    }
+    this.store.purgingDeletedConversations = true;
+    try {
+      const result =
+        await this.dependencies.client.purgeDeletedAgentConversations();
+      this.notifications.success({
+        title: createActiveTranslator().t(
+          "workspace.settings.general.deletedConversationPurgeCompleted",
+          { count: String(result.removedSessions) }
+        )
+      });
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.general.deletedConversationPurgeFailed"
+        )
+      });
+    } finally {
+      this.store.purgingDeletedConversations = false;
+    }
+  }
+
+  async exportDeveloperLogs(input: ExportDeveloperLogsInput): Promise<void> {
     if (this.store.developerLogs.exporting) {
       return;
     }
@@ -828,7 +907,7 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     this.store.developerLogs.exporting = true;
 
     try {
-      const result = await this.dependencies.client.exportLogs();
+      const result = await this.dependencies.client.exportLogs(input);
       if (!result.canceled) {
         this.notifications.success({
           title: createActiveTranslator().t(
@@ -878,300 +957,6 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
   }
 
-  async refreshManagedModelProviders(): Promise<void> {
-    const workspaceID = this.store.workspaceID;
-    if (!workspaceID || this.store.managedModels.loading) {
-      return;
-    }
-
-    this.store.managedModels.loading = true;
-    try {
-      const providers =
-        await this.dependencies.client.listManagedModelProviders(workspaceID);
-      this.store.managedModels.providers = providers.map(
-        toManagedModelProviderDraft
-      );
-    } catch {
-      this.notifications.error({
-        title: createActiveTranslator().t(
-          "workspace.settings.apps.managedModels.loadFailed"
-        )
-      });
-    } finally {
-      this.store.managedModels.loading = false;
-    }
-  }
-
-  updateManagedModelProviderDraft(
-    providerID: WorkspaceManagedModelProviderID,
-    patch: Partial<WorkspaceManagedModelProviderDraft>
-  ): void {
-    this.store.managedModels.providers = this.store.managedModels.providers.map(
-      (provider) =>
-        provider.provider === providerID ? { ...provider, ...patch } : provider
-    );
-    this.clearManagedModelFeedback(providerID);
-  }
-
-  beginManagedModelProviderDraft(
-    provider: WorkspaceManagedModelProviderID
-  ): void {
-    const alreadyConfigured = this.store.managedModels.providers.some(
-      (candidate) => candidate.provider === provider
-    );
-    if (alreadyConfigured) {
-      return;
-    }
-    this.clearManagedModelFeedback(provider);
-    this.store.managedModels.draft = createManagedModelProviderDraft(provider);
-  }
-
-  updateManagedModelDraft(
-    patch: Partial<WorkspaceManagedModelProviderDraft>
-  ): void {
-    const draft = this.store.managedModels.draft;
-    if (!draft) {
-      return;
-    }
-    this.store.managedModels.draft = { ...draft, ...patch };
-    this.clearManagedModelFeedback(draft.provider);
-  }
-
-  cancelManagedModelProviderDraft(): void {
-    this.store.managedModels.draft = null;
-  }
-
-  async saveManagedModelDraft(): Promise<void> {
-    const workspaceID = this.store.workspaceID;
-    const draft = this.store.managedModels.draft;
-    if (!workspaceID || !draft || this.store.managedModels.savingProvider) {
-      return;
-    }
-    if (!hasRequiredManagedModelProviderFields(draft)) {
-      this.setManagedModelFeedback(draft.provider, "requiredFields");
-      return;
-    }
-    this.store.managedModels.savingProvider = draft.provider;
-    try {
-      const saved = await this.dependencies.client.putManagedModelProvider(
-        workspaceID,
-        draft.provider,
-        {
-          ...(draft.apiKey.trim() ? { apiKey: draft.apiKey } : {}),
-          baseUrl: draft.baseUrl,
-          enabled: draft.enabled,
-          models: normalizeManagedModels(draft.provider, draft.models)
-        }
-      );
-      this.replaceManagedModelProviderDraft(saved);
-      this.store.managedModels.draft = null;
-      this.clearManagedModelFeedback(draft.provider);
-    } catch {
-      this.setManagedModelFeedback(draft.provider, "saveFailed");
-    } finally {
-      this.store.managedModels.savingProvider = null;
-    }
-  }
-
-  async setManagedModelProviderEnabled(
-    providerID: WorkspaceManagedModelProviderID,
-    enabled: boolean
-  ): Promise<void> {
-    const workspaceID = this.store.workspaceID;
-    const target = this.store.managedModels.providers.find(
-      (provider) => provider.provider === providerID
-    );
-    if (!workspaceID || !target || this.store.managedModels.savingProvider) {
-      return;
-    }
-    const previousEnabled = target.enabled;
-    const baseUrl = target.baseUrl;
-    const apiKey = target.apiKey;
-    const models = normalizeManagedModels(providerID, target.models);
-    this.store.managedModels.savingProvider = providerID;
-    this.updateManagedModelProviderDraft(providerID, { enabled });
-    try {
-      const saved = await this.dependencies.client.putManagedModelProvider(
-        workspaceID,
-        providerID,
-        {
-          ...(apiKey.trim() ? { apiKey } : {}),
-          baseUrl,
-          enabled,
-          models
-        }
-      );
-      this.replaceManagedModelProviderDraft(saved);
-    } catch {
-      this.updateManagedModelProviderDraft(providerID, {
-        enabled: previousEnabled
-      });
-      this.notifications.error({
-        title: createActiveTranslator().t(
-          "workspace.settings.apps.managedModels.saveFailed"
-        )
-      });
-    } finally {
-      this.store.managedModels.savingProvider = null;
-    }
-  }
-
-  async saveManagedModelProvider(
-    provider: WorkspaceManagedModelProviderDraft
-  ): Promise<void> {
-    const workspaceID = this.store.workspaceID;
-    if (!workspaceID || this.store.managedModels.savingProvider) {
-      return;
-    }
-    if (!hasRequiredManagedModelProviderFields(provider)) {
-      this.setManagedModelFeedback(provider.provider, "requiredFields");
-      return;
-    }
-    this.store.managedModels.savingProvider = provider.provider;
-    try {
-      const saved = await this.dependencies.client.putManagedModelProvider(
-        workspaceID,
-        provider.provider,
-        {
-          ...(provider.apiKey.trim() ? { apiKey: provider.apiKey } : {}),
-          baseUrl: provider.baseUrl,
-          enabled: provider.enabled,
-          models: normalizeManagedModels(provider.provider, provider.models)
-        }
-      );
-      this.replaceManagedModelProviderDraft(saved);
-      this.clearManagedModelFeedback(provider.provider);
-    } catch {
-      this.setManagedModelFeedback(provider.provider, "saveFailed");
-    } finally {
-      this.store.managedModels.savingProvider = null;
-    }
-  }
-
-  async removeManagedModelProvider(
-    providerID: WorkspaceManagedModelProviderID
-  ): Promise<void> {
-    const workspaceID = this.store.workspaceID;
-    if (!workspaceID || this.store.managedModels.deletingProvider) {
-      return;
-    }
-    this.store.managedModels.deletingProvider = providerID;
-    try {
-      await this.dependencies.client.deleteManagedModelProvider(
-        workspaceID,
-        providerID
-      );
-      this.store.managedModels.providers =
-        this.store.managedModels.providers.filter(
-          (provider) => provider.provider !== providerID
-        );
-      this.clearManagedModelFeedback(providerID);
-    } catch {
-      this.setManagedModelFeedback(providerID, "deleteFailed");
-    } finally {
-      this.store.managedModels.deletingProvider = null;
-    }
-  }
-
-  async testManagedModelProvider(
-    providerID: WorkspaceManagedModelProviderID
-  ): Promise<void> {
-    const workspaceID = this.store.workspaceID;
-    if (!workspaceID || this.store.managedModels.testingProvider) {
-      return;
-    }
-    this.clearManagedModelFeedback(providerID);
-    this.store.managedModels.testingProvider = providerID;
-    try {
-      await this.dependencies.client.testManagedModelProvider(
-        workspaceID,
-        providerID
-      );
-      this.setManagedModelFeedback(providerID, "testOk");
-    } catch {
-      this.setManagedModelFeedback(providerID, "testFailed");
-    } finally {
-      this.store.managedModels.testingProvider = null;
-    }
-  }
-
-  async detectManagedModelProviderModels(
-    providerID: WorkspaceManagedModelProviderID
-  ): Promise<void> {
-    const workspaceID = this.store.workspaceID;
-    if (!workspaceID || this.store.managedModels.detectingProvider) {
-      return;
-    }
-    const provider = this.store.managedModels.providers.find(
-      (item) => item.provider === providerID
-    );
-    if (!provider) {
-      return;
-    }
-    this.clearManagedModelFeedback(providerID);
-    if (!hasRequiredManagedModelProviderFields(provider)) {
-      this.setManagedModelFeedback(providerID, "requiredFields");
-      return;
-    }
-    this.store.managedModels.detectingProvider = providerID;
-    try {
-      const models =
-        await this.dependencies.client.listManagedModelProviderModels(
-          workspaceID,
-          providerID,
-          {
-            ...(provider.apiKey.trim() ? { apiKey: provider.apiKey } : {}),
-            baseUrl: provider.baseUrl
-          }
-        );
-      this.updateManagedModelProviderDraft(providerID, {
-        models: normalizeManagedModels(providerID, models)
-      });
-      if (models.length === 0) {
-        this.setManagedModelFeedback(providerID, "detectEmpty");
-      }
-    } catch {
-      this.setManagedModelFeedback(providerID, "detectFailed");
-    } finally {
-      this.store.managedModels.detectingProvider = null;
-    }
-  }
-
-  private replaceManagedModelProviderDraft(
-    config: WorkspaceManagedModelProviderConfig
-  ): void {
-    const draft = toManagedModelProviderDraft(config);
-    const exists = this.store.managedModels.providers.some(
-      (provider) => provider.provider === draft.provider
-    );
-    this.store.managedModels.providers = exists
-      ? this.store.managedModels.providers.map((provider) =>
-          provider.provider === draft.provider ? draft : provider
-        )
-      : [...this.store.managedModels.providers, draft];
-  }
-
-  private setManagedModelFeedback(
-    providerID: WorkspaceManagedModelProviderID,
-    kind: WorkspaceManagedModelProviderFeedbackKind
-  ): void {
-    this.store.managedModels.feedback = {
-      ...this.store.managedModels.feedback,
-      [providerID]: { kind }
-    };
-  }
-
-  private clearManagedModelFeedback(
-    providerID: WorkspaceManagedModelProviderID
-  ): void {
-    if (!this.store.managedModels.feedback[providerID]) {
-      return;
-    }
-    const next = { ...this.store.managedModels.feedback };
-    delete next[providerID];
-    this.store.managedModels.feedback = next;
-  }
-
   private startDeveloperLogsLoad(): number {
     this.logsLoadSequence += 1;
     this.store.developerLogs.loading = true;
@@ -1190,6 +975,28 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
 
     this.store.developerLogs.logs = logs;
     this.store.developerLogs.loading = false;
+  }
+
+  private refreshActiveSettingsSurface(): void {
+    if (this.store.activeSection === "model") {
+      this.refreshModelPlansSurface();
+      return;
+    }
+    if (this.store.activeSection === "agent") {
+      this.refreshActiveAgentTab();
+    }
+  }
+
+  private refreshActiveAgentTab(): void {
+    if (this.store.agentTab === "customAgents") {
+      void this.agents.refresh();
+    } else if (this.store.agentTab === "automation") {
+      void this.automationRules.refresh();
+    }
+  }
+
+  private refreshModelPlansSurface(): void {
+    void this.modelPlans.refresh();
   }
 
   private reportSettingsOpened(): void {
@@ -1264,105 +1071,6 @@ function createActiveTranslator() {
   return createTranslator(getActiveLocale());
 }
 
-function createManagedModelProviderDraft(
-  provider: WorkspaceManagedModelProviderID
-): WorkspaceManagedModelProviderDraft {
-  return toManagedModelProviderDraft({
-    ...createDefaultManagedModelProviderConfig(provider),
-    enabled: true
-  });
-}
-
-function isManagedModelProviderID(
-  value: string | undefined
-): value is WorkspaceManagedModelProviderID {
-  return managedModelProviderIDs.includes(
-    value as WorkspaceManagedModelProviderID
-  );
-}
-
-function createDefaultManagedModelProviderConfig(
-  provider: WorkspaceManagedModelProviderID
-): WorkspaceManagedModelProviderConfig {
-  const officialDefaults: Record<
-    WorkspaceManagedModelProviderID,
-    { baseUrl: string; models: readonly string[] }
-  > = {
-    agnes: {
-      baseUrl: "https://apihub.agnes-ai.com/v1",
-      models: ["agnes-2.0-flash", "agnes-1.5-flash"]
-    },
-    anthropic: {
-      baseUrl: "https://api.anthropic.com/v1",
-      models: ["claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5"]
-    },
-    openai: {
-      baseUrl: "https://api.openai.com/v1",
-      models: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]
-    }
-  };
-  const defaults = officialDefaults[provider];
-
-  return {
-    baseUrl: defaults.baseUrl,
-    enabled: false,
-    hasApiKey: false,
-    models: defaults.models.map((id) => ({
-      id,
-      name: id,
-      provider
-    })),
-    provider
-  };
-}
-
-function toManagedModelProviderDraft(
-  provider: WorkspaceManagedModelProviderConfig
-): WorkspaceManagedModelProviderDraft {
-  const providerModels = (
-    provider as Omit<WorkspaceManagedModelProviderConfig, "models"> & {
-      models: readonly WorkspaceManagedModel[] | null;
-    }
-  ).models;
-  const models = providerModels ?? [];
-  return {
-    ...provider,
-    apiKey: provider.apiKey ?? "",
-    baseUrl: provider.baseUrl ?? "",
-    models: normalizeManagedModels(provider.provider, models)
-  };
-}
-
-function hasRequiredManagedModelProviderFields(
-  provider: WorkspaceManagedModelProviderDraft
-): boolean {
-  return (
-    (provider.hasApiKey || provider.apiKey.trim().length > 0) &&
-    (provider.baseUrl?.trim().length ?? 0) > 0
-  );
-}
-
-function normalizeManagedModels(
-  provider: WorkspaceManagedModelProviderID,
-  models: readonly WorkspaceManagedModel[]
-) {
-  const seen = new Set<string>();
-  return models
-    .map((model) => ({
-      id: model.id.trim(),
-      name: model.name.trim() || model.id.trim(),
-      provider
-    }))
-    .filter((model) => {
-      const id = model.id;
-      if (!id || seen.has(id)) {
-        return false;
-      }
-      seen.add(id);
-      return true;
-    });
-}
-
 // Avoid decorator syntax so the renderer Babel pass can parse this file.
 IDesktopPreferencesService(WorkspaceSettingsService, undefined, 1);
 INotificationService(WorkspaceSettingsService, undefined, 2);
@@ -1370,6 +1078,7 @@ IReporterService(WorkspaceSettingsService, undefined, 3);
 IWorkspaceAppCenterService(WorkspaceSettingsService, undefined, 4);
 
 const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
+  agentCliUpdateCheckEnabled: true,
   agentComposerDefaultsByProvider: {},
   agentComposerDefaultsByAgentTarget: {},
   agentGuiConversationRailCollapsedByProvider: {},
@@ -1377,11 +1086,13 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   appCatalogChannel: "production",
   browserUseConnectionMode: "isolated",
   changingAgentConversationDetailMode: null,
+  changingAgentCliUpdateCheckEnabled: null,
   changingAppCatalogChannel: null,
   changingBrowserUseConnectionMode: null,
   changingDefaultAgentProvider: null,
   changingDockIconStyle: null,
   changingDockPlacement: null,
+  changingDeletedAgentConversationRetentionDays: null,
   changingFeatureFlags: null,
   changingLocale: null,
   changingMinimizeAnimation: null,
@@ -1394,6 +1105,7 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   defaultAgentProvider: "codex",
   dockIconStyle: "default",
   dockPlacement: "bottom",
+  deletedAgentConversationRetentionDays: 30,
   featureFlags: defaultDesktopFeatureFlags,
   fileDefaultOpenersByExtension: {},
   locale: "en",
@@ -1413,6 +1125,9 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
 const noopDesktopPreferences: DesktopPreferencesService = {
   _serviceBrand: undefined,
   store: noopDesktopPreferencesStore,
+  setAgentCliUpdateCheckEnabled(enabled) {
+    return Promise.resolve(enabled);
+  },
   setAppCatalogChannel(channel) {
     return Promise.resolve(channel);
   },
@@ -1427,6 +1142,9 @@ const noopDesktopPreferences: DesktopPreferencesService = {
   },
   setDockPlacement(placement) {
     return Promise.resolve(placement);
+  },
+  setDeletedAgentConversationRetentionDays(days) {
+    return Promise.resolve(days);
   },
   setDockIconStyle(style) {
     return Promise.resolve(style);
@@ -1465,7 +1183,10 @@ const noopDesktopPreferences: DesktopPreferencesService = {
     return Promise.resolve(policy);
   },
   rememberAgentComposerDefaultsForAgentTarget() {
-    return Promise.resolve();
+    return Promise.resolve({
+      acknowledgedFields: [],
+      supersededFields: []
+    });
   },
   rememberAgentGuiConversationRailCollapsed() {
     return Promise.resolve();

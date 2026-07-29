@@ -1,4 +1,5 @@
 import type { AgentActivitySessionInput } from "../sessionNormalization.ts";
+import { normalizeAgentActivityCapabilityReferences } from "../capabilityReferences.ts";
 import type { SendInputResultValidation } from "./commandResult.validation.ts";
 import type { ScopedSessionResultValidation } from "./commandResult.validation.ts";
 import {
@@ -7,6 +8,16 @@ import {
   type PendingIntentsState,
   type SessionActivationRequestedIntent
 } from "./pendingIntents.types.ts";
+import {
+  pendingActivationGoalControlFields,
+  pendingActivationRailSectionKeyFields
+} from "./pendingIntents.activationExtras.ts";
+import {
+  markSessionActive,
+  markSessionInactive,
+  removeInactiveSession,
+  unchanged
+} from "./pendingIntents.inactiveSessions.ts";
 import {
   confirmFromMessages,
   confirmFromSessions,
@@ -206,6 +217,9 @@ function requestActivation(
   const runtimeContent = (intent.runtimeContent ?? content).map((block) => ({
     ...block
   }));
+  const capabilityRefs = normalizeAgentActivityCapabilityReferences(
+    intent.capabilityRefs
+  );
   const supersededRequestIds = Object.values(state.activationsByRequestId)
     .filter(
       (record) =>
@@ -215,6 +229,7 @@ function requestActivation(
   const baseState = supersededRequestIds.reduce(deleteActivation, state);
   const recordBase = {
     agentSessionId,
+    ...(capabilityRefs.length > 0 ? { capabilityRefs } : {}),
     content,
     cwd: intent.cwd?.trim() ?? "",
     ...(displayPrompt ? { displayPrompt } : {}),
@@ -223,6 +238,11 @@ function requestActivation(
     expiresAtUnixMs: intent.expiresAtUnixMs,
     initialTurnExpected:
       intent.initialTurnExpected ?? runtimeContent.length > 0,
+    ...pendingActivationGoalControlFields(intent),
+    ...pendingActivationRailSectionKeyFields(intent),
+    ...(intent.railPlacement
+      ? { railPlacement: { ...intent.railPlacement } }
+      : {}),
     ...(intent.submitDiagnostics
       ? { submitDiagnostics: { ...intent.submitDiagnostics } }
       : {}),
@@ -240,6 +260,16 @@ function requestActivation(
           agentTargetId: agentTargetId!,
           clientSubmitId: clientSubmitId!,
           mode: "new",
+          ...(intent.initialTuttiModeActivation
+            ? {
+                initialTuttiModeActivation: {
+                  ...intent.initialTuttiModeActivation
+                }
+              }
+            : {}),
+          ...(intent.tuttiModeDraftKey?.trim()
+            ? { tuttiModeDraftKey: intent.tuttiModeDraftKey.trim() }
+            : {}),
           ...(optimisticTitle ? { optimisticTitle } : {})
         }
       : {
@@ -262,6 +292,7 @@ function requestActivation(
       intent.mode === "new"
         ? {
             agentSessionId,
+            ...(capabilityRefs.length > 0 ? { capabilityRefs } : {}),
             agentTargetId: agentTargetId!,
             commandId: `activate:${requestId}`,
             clientSubmitId: clientSubmitId!,
@@ -271,10 +302,21 @@ function requestActivation(
               ? { initialContent: runtimeContent }
               : {}),
             ...(displayPrompt ? { initialDisplayPrompt: displayPrompt } : {}),
+            ...pendingActivationGoalControlFields(intent),
+            ...(intent.railPlacement
+              ? { railPlacement: { ...intent.railPlacement } }
+              : {}),
             ...(intent.submitDiagnostics
               ? { submitDiagnostics: { ...intent.submitDiagnostics } }
               : {}),
             mode: "new" as const,
+            ...(intent.initialTuttiModeActivation
+              ? {
+                  initialTuttiModeActivation: {
+                    ...intent.initialTuttiModeActivation
+                  }
+                }
+              : {}),
             ...(intent.settings ? { settings: { ...intent.settings } } : {}),
             timeoutMs: NEW_SESSION_ACTIVATION_COMMAND_TIMEOUT_MS,
             ...(intent.title?.trim() ? { title: intent.title.trim() } : {}),
@@ -286,6 +328,7 @@ function requestActivation(
           }
         : {
             agentSessionId,
+            ...(capabilityRefs.length > 0 ? { capabilityRefs } : {}),
             ...(agentTargetId ? { agentTargetId } : {}),
             commandId: `activate:${requestId}`,
             correlationId: requestId,
@@ -734,43 +777,4 @@ function deleteActivation(
   const activations = { ...state.activationsByRequestId };
   delete activations[requestId];
   return { ...state, activationsByRequestId: activations };
-}
-
-function markSessionActive(
-  state: PendingIntentsState,
-  agentSessionId: string
-): PendingIntentsState {
-  return removeInactiveSession(state, agentSessionId);
-}
-
-function markSessionInactive(
-  state: PendingIntentsState,
-  agentSessionId: string
-): PendingIntentsState {
-  const id = agentSessionId.trim();
-  return state.inactiveSessionIds[id]
-    ? state
-    : {
-        ...state,
-        inactiveSessionIds: { ...state.inactiveSessionIds, [id]: true }
-      };
-}
-
-function removeInactiveSession(
-  state: PendingIntentsState,
-  agentSessionId: string
-): PendingIntentsState {
-  const id = agentSessionId.trim();
-  if (!state.inactiveSessionIds[id]) {
-    return state;
-  }
-  const inactiveSessionIds = { ...state.inactiveSessionIds };
-  delete inactiveSessionIds[id];
-  return { ...state, inactiveSessionIds };
-}
-
-function unchanged(
-  state: PendingIntentsState
-): EngineReducerResult<PendingIntentsState> {
-  return { commands: NO_COMMANDS, state };
 }

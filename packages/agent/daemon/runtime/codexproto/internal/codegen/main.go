@@ -769,6 +769,7 @@ func manualProtocolTypes() map[string]struct{} {
 		"ThreadGoal":                              {},
 		"ThreadGoalUpdatedNotification":           {},
 		"ThreadForkParams":                        {},
+		"ThreadForkResponse":                      {},
 		"ThreadResumeParams":                      {},
 		"ThreadStartParams":                       {},
 		"ThreadStartResponse":                     {},

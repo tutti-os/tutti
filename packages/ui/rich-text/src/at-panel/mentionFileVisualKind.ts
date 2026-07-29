@@ -32,7 +32,10 @@ export interface MentionFileVisualKindInput {
 export function resolveMentionFileVisualKind(
   input: MentionFileVisualKindInput
 ): MentionFileVisualKind {
-  if (input.mentionNavigation === "agent-generated-folder-back") {
+  if (
+    input.mentionNavigation === "agent-generated-folder-back" ||
+    input.mentionNavigation === "workspace-folder-back"
+  ) {
     return "back";
   }
   if (input.entryKind === "directory") {

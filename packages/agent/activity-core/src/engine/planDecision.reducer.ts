@@ -1,5 +1,6 @@
 import { canonicalInteractionKey } from "./sessionEntityKeys.ts";
 import type {
+  PlanDecisionOperation,
   PlanDecisionRecord,
   PlanDecisionState
 } from "./planDecision.types.ts";
@@ -227,8 +228,9 @@ function validateOperation(
 } {
   if (!value || typeof value !== "object")
     return { operationId: null, status: "invalid" };
-  const operation = (value as { operation?: Record<string, unknown> })
-    .operation;
+  const operation = planDecisionOperation(
+    (value as { operation?: unknown }).operation
+  );
   if (
     !operation ||
     operation.workspaceId !== record.workspaceId ||
@@ -249,6 +251,29 @@ function validateOperation(
           ? "pending"
           : "invalid";
   return { operationId, status };
+}
+
+function planDecisionOperation(value: unknown): PlanDecisionOperation | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const operation = value as Record<string, unknown>;
+  const status = operation.status;
+  if (
+    typeof operation.agentSessionId !== "string" ||
+    typeof operation.idempotencyKey !== "string" ||
+    typeof operation.operationId !== "string" ||
+    typeof operation.requestId !== "string" ||
+    typeof operation.turnId !== "string" ||
+    typeof operation.workspaceId !== "string" ||
+    (status !== "prepared" &&
+      status !== "leased" &&
+      status !== "completed" &&
+      status !== "failed")
+  ) {
+    return null;
+  }
+  return operation as unknown as PlanDecisionOperation;
 }
 
 function text(value: unknown): string | null {

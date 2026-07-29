@@ -87,6 +87,47 @@ func generatedAgentProviderCapabilityOptions(options []agentservice.ComposerCapa
 	return result
 }
 
+func generatedAgentProviderComposerCommands(options []agentservice.ComposerCommandOption) []tuttigenerated.AgentProviderComposerCommandOption {
+	result := make([]tuttigenerated.AgentProviderComposerCommandOption, 0, len(options))
+	for _, option := range options {
+		name := strings.TrimSpace(option.Name)
+		if name == "" {
+			continue
+		}
+		generated := tuttigenerated.AgentProviderComposerCommandOption{Name: name}
+		if description := strings.TrimSpace(option.Description); description != "" {
+			generated.Description = optionalStringPointer(description)
+		}
+		if inputHint := strings.TrimSpace(option.InputHint); inputHint != "" {
+			generated.InputHint = optionalStringPointer(inputHint)
+		}
+		result = append(result, generated)
+	}
+	return result
+}
+
+func generatedAgentProviderComposerReasoningOptionsByModel(
+	profiles map[string]agentservice.ComposerReasoningProfile,
+) tuttigenerated.AgentProviderComposerReasoningOptionsByModel {
+	result := make(tuttigenerated.AgentProviderComposerReasoningOptionsByModel, len(profiles))
+	for model, profile := range profiles {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			continue
+		}
+		generated := tuttigenerated.AgentProviderComposerReasoningProfile{
+			Options: generatedComposerConfigOption(agentservice.ComposerConfigOption{
+				Options: profile.Options,
+			}).Options,
+		}
+		if defaultValue := strings.TrimSpace(profile.DefaultValue); defaultValue != "" {
+			generated.DefaultValue = optionalStringPointer(defaultValue)
+		}
+		result[model] = generated
+	}
+	return result
+}
+
 // generatedComposerConfigOptionPointer projects an optional composer config
 // (the orthogonal speed dimension) and omits it entirely for providers that do
 // not expose it, so the GUI hides the control.
@@ -105,6 +146,9 @@ func generatedComposerConfigOption(config agentservice.ComposerConfigOption) tut
 	}
 	if strings.TrimSpace(config.CurrentValue) != "" {
 		result.CurrentValue = optionalStringPointer(config.CurrentValue)
+	}
+	if strings.TrimSpace(config.EffectiveValue) != "" {
+		result.EffectiveValue = optionalStringPointer(config.EffectiveValue)
 	}
 	if strings.TrimSpace(config.DefaultValue) != "" {
 		result.DefaultValue = optionalStringPointer(config.DefaultValue)
@@ -126,6 +170,10 @@ func generatedComposerConfigOption(config agentservice.ComposerConfigOption) tut
 		}
 		if option.SupportsImageInput != nil {
 			resultOption.SupportsImageInput = option.SupportsImageInput
+		}
+		if option.Requested {
+			requested := true
+			resultOption.Requested = &requested
 		}
 		result.Options = append(result.Options, resultOption)
 	}

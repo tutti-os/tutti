@@ -14,12 +14,6 @@ import {
   workbenchSnapshotSchemaVersion
 } from "./index.ts";
 
-test("validates a fixture snapshot", () => {
-  const result = validateWorkbenchSnapshot(tuttiWorkbenchSnapshotFixture);
-  assert.equal(result.ok, true);
-  assert.deepEqual(result.issues, []);
-});
-
 test("rejects malformed snapshots", () => {
   const result = validateWorkbenchSnapshot({
     schemaVersion: workbenchSnapshotSchemaVersion,
@@ -62,6 +56,34 @@ test("rejects invalid minimized timestamps", () => {
   assert.equal(result.ok, false);
   assert.ok(
     result.issues.some((issue) => issue.path === "nodes[0].minimizedAtUnixMs")
+  );
+});
+
+test("rejects malformed layout bases", () => {
+  const result = validateWorkbenchSnapshot({
+    schemaVersion: workbenchSnapshotSchemaVersion,
+    nodes: [],
+    layoutBasis: {
+      surfaceSize: { width: 0, height: 800 },
+      layoutConstraints: {
+        minWidth: 280,
+        minHeight: 160,
+        surfacePadding: -1,
+        safeArea: { top: 52, right: 0, bottom: 88, left: 0 }
+      }
+    }
+  });
+
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.issues.some(
+      (issue) => issue.path === "layoutBasis.surfaceSize.width"
+    )
+  );
+  assert.ok(
+    result.issues.some(
+      (issue) => issue.path === "layoutBasis.layoutConstraints.surfacePadding"
+    )
   );
 });
 

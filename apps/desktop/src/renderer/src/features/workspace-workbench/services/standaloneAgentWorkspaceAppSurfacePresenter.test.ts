@@ -26,6 +26,7 @@ test("standalone agent app presenter selects the app before runtime preparation"
   });
 
   assert.equal(viewState.openAppId, "ai-slide");
+  assert.deepEqual(viewState.openAppIds, ["ai-slide"]);
   assert.deepEqual(calls, ["poll", "select:ai-slide"]);
 });
 
@@ -112,7 +113,8 @@ test("standalone agent app presenter does not report an older launch after the n
 
   harness.presenter.rollbackOpen(second);
 
-  assert.equal(harness.getViewState().openAppId, null);
+  assert.equal(harness.getViewState().openAppId, "ai-slide");
+  assert.deepEqual(harness.getViewState().openAppIds, ["ai-slide"]);
   assert.equal(
     harness.presenter.presentPrepared({
       appId: first.appId,

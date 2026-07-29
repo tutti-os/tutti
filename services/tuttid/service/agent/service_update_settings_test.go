@@ -74,6 +74,7 @@ func TestServiceUpdateSettingsSerializesWithHistoricalResume(t *testing.T) {
 				Provider:          "claude-code",
 				ProviderSessionID: "provider-session-1",
 				Cwd:               "/workspace",
+				RailSectionKey:    "conversations",
 				Settings:          ComposerSettings{PermissionModeID: "dontAsk"},
 			},
 		}},
@@ -117,8 +118,8 @@ func TestServiceUpdateSettingsSerializesWithHistoricalResume(t *testing.T) {
 	if err := <-settingsDone; err != nil {
 		t.Fatalf("UpdateSettings returned error: %v", err)
 	}
-	if reader.updateCalls != 0 {
-		t.Fatalf("durable historical updates = %d, want 0 after runtime became live", reader.updateCalls)
+	if reader.updateCalls != 1 {
+		t.Fatalf("durable settings updates = %d, want 1 after runtime accepted the live update", reader.updateCalls)
 	}
 	if len(baseRuntime.updateSettingsCalls) != 1 {
 		t.Fatalf("live runtime updates = %d, want 1", len(baseRuntime.updateSettingsCalls))

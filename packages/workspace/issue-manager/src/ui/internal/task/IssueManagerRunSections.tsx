@@ -1,4 +1,4 @@
-import { type JSX, type ReactNode } from "react";
+import { useState, type JSX, type ReactNode } from "react";
 import {
   Badge,
   AgentSessionsIcon,
@@ -9,6 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   IssueIcon,
+  Spinner,
   cn
 } from "@tutti-os/ui-system";
 import { WorkspaceUserProjectSelect } from "@tutti-os/workspace-user-project/ui";
@@ -102,29 +103,34 @@ function IssueManagerProviderActionMenu({
   triggerVariant: IssueManagerProviderActionTriggerVariant;
 }): JSX.Element {
   const agentTargetOptions = controller.agentTargetOptions;
+  const [isPending, setIsPending] = useState(false);
+  const triggerDisabled = disabled || isPending;
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild disabled={disabled}>
+      <DropdownMenuTrigger asChild disabled={triggerDisabled}>
         <Button
+          aria-busy={isPending}
           className={cn(
             "min-w-0",
             "[&[data-state=open]_[data-issue-manager-provider-chevron=true]]:rotate-180",
             providerActionTriggerClassName,
             triggerClassName
           )}
-          disabled={disabled}
+          disabled={triggerDisabled}
           size={triggerVariant === "button" ? "dialog" : "default"}
           type="button"
           variant={triggerButtonVariant}
         >
-          {icon}
+          {isPending ? <Spinner className="text-current" size={16} /> : icon}
           <span className="truncate">{label}</span>
-          <ChevronDownIcon
-            className="shrink-0 transition-transform duration-200"
-            data-issue-manager-provider-chevron="true"
-            size={14}
-          />
+          {isPending ? null : (
+            <ChevronDownIcon
+              className="shrink-0 transition-transform duration-200"
+              data-issue-manager-provider-chevron="true"
+              size={14}
+            />
+          )}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -146,7 +152,11 @@ function IssueManagerProviderActionMenu({
               onSelect={() => {
                 const agentTargetId = option.agentTargetId?.trim();
                 if (agentTargetId) {
-                  void onSelectAgentTarget(agentTargetId);
+                  void executeIssueManagerProviderAction({
+                    agentTargetId,
+                    onPendingChange: setIsPending,
+                    onSelectAgentTarget
+                  });
                 }
               }}
             >
@@ -163,6 +173,19 @@ function IssueManagerProviderActionMenu({
       </DropdownMenuContent>
     </DropdownMenu>
   );
+}
+
+export async function executeIssueManagerProviderAction(input: {
+  agentTargetId: string;
+  onPendingChange: (isPending: boolean) => void;
+  onSelectAgentTarget: (agentTargetId: string) => Promise<void>;
+}): Promise<void> {
+  input.onPendingChange(true);
+  try {
+    await input.onSelectAgentTarget(input.agentTargetId);
+  } finally {
+    input.onPendingChange(false);
+  }
 }
 
 function IssueManagerAgentProviderIcon({

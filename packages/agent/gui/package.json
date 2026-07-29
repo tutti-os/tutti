@@ -11,10 +11,14 @@
     "./agents": "./agents.ts",
     "./custom-mention": "./custom-mention.ts",
     "./dock-icons": "./dockIcons.ts",
+    "./layout": "./layout.ts",
     "./mention-search": "./agent-gui/agentGuiNode/AgentMentionSearchController.ts",
     "./agent-message-center": "./agent-message-center/index.ts",
     "./agent-conversation": "./agent-conversation/index.ts",
+    "./agent-conversation/follow-end": "./shared/agentConversation/agentConversationFollowEndController.ts",
+    "./agent-conversation/interactive-answer": "./shared/agentConversation/interactiveAnswerPayload.ts",
     "./agent-env": "./shared/agentEnv/index.ts",
+    "./agent-env-ui": "./shared/agentEnv/ui.ts",
     "./workspace-settings-panel": "./shared/workspaceSettingsPanel/workspaceSettingsPanelStore.ts",
     "./context-mention-palette": "./context-mention-palette/index.ts",
     "./context-mention-provider": "./agent-gui/agentGuiNode/agentContextMentionProvider.ts",
@@ -25,7 +29,12 @@
     "./provider-icons": "./provider-icons.ts",
     "./agentGuiSessionProviderIconUrls": "./agentGuiSessionProviderIconUrls.ts",
     "./workspace-agent-generated-files": "./shared/workspaceAgentGeneratedFiles.ts",
-    "./workspace-query-cache": "./shared/query/workspaceQueryCache.ts",
+    "./conversation-message-controller": "./agentConversationMessageController.ts",
+    "./conversation-rail-controller": "./agentConversationRailController.ts",
+    "./conversation-rail-runtime": "./agentConversationRailRuntime.ts",
+    "./conversation-rail-projection": "./conversationRailProjection.ts",
+    "./conversation-projection": "./conversationProjection.ts",
+    "./composer-projection": "./composerProjection.ts",
     "./i18n": "./i18n/index.ts",
     "./workbench": "./workbench/index.ts",
     "./workbench/contribution": "./workbench/contribution.ts",
@@ -33,8 +42,11 @@
     "./workbench/providerCatalog": "./workbench/providerCatalog.ts",
     "./workbench/sessionTitle": "./workbench/sessionTitle.ts",
     "./workbench/state": "./workbench/state.ts",
+    "./workbench/browser-element-context": "./workbench/browser-element-context/index.ts",
+    "./workbench/tool-sidebar": "./workbench/tool-sidebar/index.ts",
     "./workbench/types": "./workbench/types.ts",
-    "./styles.css": "./app/renderer/agentactivity.css"
+    "./styles.css": "./app/renderer/agentactivity.css",
+    "./agent-sidebar-preferences": "./agent-sidebar-preferences.ts"
   },
   "files": [
     "dist",
@@ -46,19 +58,14 @@
     "directory": "packages/agent/gui"
   },
   "scripts": {
-    "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs app/renderer/agentactivity.css dist/app/renderer/agentactivity.css app/renderer/assets/icons dist/app/renderer/assets/icons",
-    "test": "vitest run --environment jsdom --maxWorkers=3",
+    "build": "tsup --config tsup.config.ts && tsup --config tsup.dts.config.ts && node ../../../tools/scripts/copy-package-assets.mjs app/renderer/agentactivity.css dist/app/renderer/agentactivity.css app/renderer/assets/icons dist/app/renderer/assets/icons",
+    "test": "vitest run",
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
-    "@monaco-editor/react": "^4.7.0",
-    "@tanstack/react-virtual": "^3.13.12",
-    "@tiptap/core": "^3.11.1",
-    "@tiptap/pm": "^3.23.6",
-    "@tiptap/react": "^3.11.1",
-    "@tiptap/starter-kit": "^3.11.1",
-    "@tiptap/suggestion": "^3.11.1",
+    "@tanstack/react-virtual": "^3.14.8",
     "@tutti-os/agent-activity-core": "workspace:*",
+    "@tutti-os/browser-node": "workspace:*",
     "@tutti-os/ui-i18n-runtime": "workspace:*",
     "@tutti-os/ui-react-hooks": "workspace:*",
     "@tutti-os/ui-rich-text": "workspace:*",
@@ -66,13 +73,17 @@
     "@tutti-os/workbench-surface": "workspace:*",
     "@tutti-os/workspace-external-core": "workspace:*",
     "@tutti-os/workspace-file-manager": "workspace:*",
+    "@tutti-os/workspace-file-preview": "workspace:*",
     "@tutti-os/workspace-file-reference": "workspace:*",
     "@tutti-os/workspace-issue-manager": "workspace:*",
     "@tutti-os/workspace-user-project": "workspace:*",
     "clsx": "^2.1.1",
+    "dompurify": "^3.4.12",
     "framer-motion": "^12.40.0",
     "lodash": "^4.17.21",
     "lucide-react": "^0.511.0",
+    "mermaid": "^11.16.0",
+    "monaco-editor": "^0.55.1",
     "react-markdown": "^10.1.0",
     "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1",
@@ -85,6 +96,12 @@
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
+    "@tiptap/core": "^3.11.1",
+    "@tiptap/pm": "^3.23.6",
+    "@tiptap/react": "^3.11.1",
+    "@tiptap/static-renderer": "3.23.6",
+    "@tiptap/starter-kit": "^3.11.1",
+    "@tiptap/suggestion": "^3.11.1",
     "@tutti-os/client-tuttid-ts": "workspace:*",
     "@tutti-os/config-tsconfig": "workspace:*",
     "@types/lodash": "^4.17.24",
@@ -100,6 +117,12 @@
     "vitest": "^4.0.13"
   },
   "peerDependencies": {
+    "@tiptap/core": "^3.11.1",
+    "@tiptap/pm": "^3.23.6",
+    "@tiptap/react": "^3.11.1",
+    "@tiptap/static-renderer": "3.23.6",
+    "@tiptap/starter-kit": "^3.11.1",
+    "@tiptap/suggestion": "^3.11.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
@@ -133,6 +156,10 @@
         "types": "./dist/dock-icons.d.ts",
         "import": "./dist/dock-icons.js"
       },
+      "./layout": {
+        "types": "./dist/layout.d.ts",
+        "import": "./dist/layout.js"
+      },
       "./mention-search": {
         "types": "./dist/mention-search.d.ts",
         "import": "./dist/mention-search.js"
@@ -145,9 +172,25 @@
         "types": "./dist/agent-conversation/index.d.ts",
         "import": "./dist/agent-conversation/index.js"
       },
+      "./agent-conversation/follow-end": {
+        "types": "./dist/agent-conversation/follow-end.d.ts",
+        "import": "./dist/agent-conversation/follow-end.js"
+      },
+      "./agent-conversation/interactive-answer": {
+        "types": "./dist/agent-conversation/interactive-answer.d.ts",
+        "import": "./dist/agent-conversation/interactive-answer.js"
+      },
       "./agent-env": {
         "types": "./dist/agent-env/index.d.ts",
         "import": "./dist/agent-env/index.js"
+      },
+      "./agent-env-ui": {
+        "types": "./dist/agent-env/ui.d.ts",
+        "import": "./dist/agent-env/ui.js"
+      },
+      "./workspace-settings-panel": {
+        "types": "./dist/workspace-settings-panel.d.ts",
+        "import": "./dist/workspace-settings-panel.js"
       },
       "./context-mention-palette": {
         "types": "./dist/context-mention-palette/index.d.ts",
@@ -177,9 +220,29 @@
         "types": "./dist/workspace-agent-generated-files.d.ts",
         "import": "./dist/workspace-agent-generated-files.js"
       },
-      "./workspace-query-cache": {
-        "types": "./dist/workspace-query-cache.d.ts",
-        "import": "./dist/workspace-query-cache.js"
+      "./conversation-message-controller": {
+        "types": "./dist/conversation-message-controller.d.ts",
+        "import": "./dist/conversation-message-controller.js"
+      },
+      "./conversation-rail-controller": {
+        "types": "./dist/conversation-rail-controller.d.ts",
+        "import": "./dist/conversation-rail-controller.js"
+      },
+      "./conversation-rail-runtime": {
+        "types": "./dist/conversation-rail-runtime.d.ts",
+        "import": "./dist/conversation-rail-runtime.js"
+      },
+      "./conversation-rail-projection": {
+        "types": "./dist/conversation-rail-projection.d.ts",
+        "import": "./dist/conversation-rail-projection.js"
+      },
+      "./conversation-projection": {
+        "types": "./dist/conversation-projection.d.ts",
+        "import": "./dist/conversation-projection.js"
+      },
+      "./composer-projection": {
+        "types": "./dist/composer-projection.d.ts",
+        "import": "./dist/composer-projection.js"
       },
       "./i18n": {
         "types": "./dist/i18n/index.d.ts",
@@ -209,6 +272,14 @@
         "types": "./dist/workbench/state.d.ts",
         "import": "./dist/workbench/state.js"
       },
+      "./workbench/browser-element-context": {
+        "types": "./dist/workbench/browser-element-context/index.d.ts",
+        "import": "./dist/workbench/browser-element-context/index.js"
+      },
+      "./workbench/tool-sidebar": {
+        "types": "./dist/workbench/tool-sidebar/index.d.ts",
+        "import": "./dist/workbench/tool-sidebar/index.js"
+      },
       "./workbench/types": {
         "types": "./dist/workbench/types.d.ts",
         "import": "./dist/workbench/types.js"
@@ -236,14 +307,26 @@
         "dock-icons": [
           "./dist/dock-icons.d.ts"
         ],
+        "layout": [
+          "./dist/layout.d.ts"
+        ],
         "mention-search": [
           "./dist/mention-search.d.ts"
         ],
         "agent-conversation": [
           "./dist/agent-conversation/index.d.ts"
         ],
+        "agent-conversation/follow-end": [
+          "./dist/agent-conversation/follow-end.d.ts"
+        ],
+        "agent-conversation/interactive-answer": [
+          "./dist/agent-conversation/interactive-answer.d.ts"
+        ],
         "agent-env": [
           "./dist/agent-env/index.d.ts"
+        ],
+        "agent-env-ui": [
+          "./dist/agent-env/ui.d.ts"
         ],
         "context-mention-palette": [
           "./dist/context-mention-palette/index.d.ts"
@@ -266,8 +349,23 @@
         "workspace-agent-generated-files": [
           "./dist/workspace-agent-generated-files.d.ts"
         ],
-        "workspace-query-cache": [
-          "./dist/workspace-query-cache.d.ts"
+        "conversation-message-controller": [
+          "./dist/conversation-message-controller.d.ts"
+        ],
+        "conversation-rail-controller": [
+          "./dist/conversation-rail-controller.d.ts"
+        ],
+        "conversation-rail-runtime": [
+          "./dist/conversation-rail-runtime.d.ts"
+        ],
+        "conversation-rail-projection": [
+          "./dist/conversation-rail-projection.d.ts"
+        ],
+        "conversation-projection": [
+          "./dist/conversation-projection.d.ts"
+        ],
+        "composer-projection": [
+          "./dist/composer-projection.d.ts"
         ],
         "i18n": [
           "./dist/i18n/index.d.ts"
@@ -289,6 +387,12 @@
         ],
         "workbench/state": [
           "./dist/workbench/state.d.ts"
+        ],
+        "workbench/browser-element-context": [
+          "./dist/workbench/browser-element-context/index.d.ts"
+        ],
+        "workbench/tool-sidebar": [
+          "./dist/workbench/tool-sidebar/index.d.ts"
         ],
         "workbench/types": [
           "./dist/workbench/types.d.ts"

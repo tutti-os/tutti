@@ -10,7 +10,9 @@ import type {
   WorkbenchHostNodeHeaderContext,
   WorkbenchHostNodeDefinition
 } from "@tutti-os/workbench-surface";
+import { createMultiInstanceDockEntryOptions } from "@tutti-os/workbench-surface";
 import type { BrowserNodeFeature } from "../core/feature.ts";
+import type { BrowserNodeAutomationTargetMetadata } from "../core/types.ts";
 import { BrowserNode } from "../react/BrowserNode.tsx";
 import { BrowserNodeWorkbenchHeader } from "../react/BrowserNodeChrome.tsx";
 
@@ -25,6 +27,10 @@ export interface BrowserNodeExternalState {
 }
 
 export interface CreateBrowserNodeDefinitionInput {
+  automationTarget?: Omit<
+    BrowserNodeAutomationTargetMetadata,
+    "focused" | "selected" | "surfaceId" | "tabId"
+  > | null;
   defaultUrl: string;
   dockIcon?: ReactNode;
   feature: BrowserNodeFeature;
@@ -74,6 +80,7 @@ const defaultBrowserNodeFrame: WorkbenchFrame = {
 export const defaultBrowserNodeTypeId = "browser";
 
 export function createBrowserNodeDefinition({
+  automationTarget = null,
   defaultUrl,
   feature,
   frame = defaultBrowserNodeFrame,
@@ -88,6 +95,12 @@ export function createBrowserNodeDefinition({
     },
     renderBody: (context) =>
       createElement(BrowserNode, {
+        automationTarget: automationTarget
+          ? {
+              ...automationTarget,
+              focused: context.isFocused
+            }
+          : null,
         defaultUrl: resolveBrowserNodeInitialUrl({
           activation: context.activation,
           defaultUrl,
@@ -136,6 +149,10 @@ export function createBrowserNodeDefinition({
     window: {
       closable: true,
       defaultOpen: false,
+      header: {
+        heightPx: 76,
+        overflow: "visible"
+      },
       minimizedDock: {
         capturePreview: ({ node }) =>
           feature.hostApi.capturePreview?.({
@@ -153,6 +170,9 @@ export function createBrowserDockEntry(
   input: CreateBrowserDockEntryInput
 ): WorkbenchHostDockEntry {
   return {
+    ...createMultiInstanceDockEntryOptions(undefined, {
+      allowNewWindowInDockPopup: false
+    }),
     capturePopupItemPreview: ({ node }) =>
       input.feature.hostApi.capturePreview?.({
         nodeId: input.feature.tabsStore.getActiveNodeId(node.id)
@@ -160,7 +180,6 @@ export function createBrowserDockEntry(
     icon: input.dockIcon ?? null,
     id: input.id ?? defaultBrowserNodeTypeId,
     label: input.feature.i18n.t("dockLabel"),
-    launchBehavior: "enabled",
     matchNode: (node) =>
       node.data.typeId === (input.typeId ?? defaultBrowserNodeTypeId),
     order: input.order,

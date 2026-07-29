@@ -23,6 +23,7 @@ import { mentionVisual } from "./agentMentionPresentation";
 
 export type {
   AgentContextMentionItem,
+  AgentComposerFileMentionStatus,
   AgentFileMentionExtensionOptions,
   AgentFileMentionItem,
   AgentFileMentionKind,
@@ -44,6 +45,7 @@ export type {
 } from "./agentFileMentionContracts";
 export { attrsToMentionItem, mentionItemToAttrs } from "./agentMentionAttrs";
 export {
+  createAgentSessionHandoffPrompt,
   createAgentSessionMarkdownLink,
   createAgentSessionMentionHref,
   formatAgentFileMentionMarkdown,
@@ -52,6 +54,7 @@ export {
   parseAgentMentionMarkdown,
   parseMentionItemFromHref
 } from "./agentMentionMarkdown";
+export type { CreateAgentSessionHandoffPromptInput } from "./agentMentionMarkdown";
 export const agentFileMentionPluginKey = new PluginKey(
   "agentFileMentionSuggestion"
 );
@@ -205,7 +208,10 @@ export function createAgentFileMentionExtension(
         fileCount: { default: "" },
         customKind: { default: "" },
         sourceLabel: { default: "" },
-        preview: { default: "" }
+        preview: { default: "" },
+        attachmentId: { default: "" },
+        attachmentStatus: { default: "" },
+        attachmentErrorCode: { default: "" }
       };
     },
 
@@ -399,7 +405,10 @@ export function createAgentFileMentionExtension(
               .run();
           },
           render: () => ({
-            onStart: (props) => {
+            // Agent GUI owns candidate search outside Tiptap. Notify it before
+            // Suggestion awaits its intentionally empty `items()` result so a
+            // controlled editor remount cannot lose the activation callback.
+            onBeforeStart: (props) => {
               options.onSuggestionChange?.({
                 editor: props.editor,
                 range: props.range,
@@ -409,7 +418,7 @@ export function createAgentFileMentionExtension(
                 clientRect: props.clientRect
               });
             },
-            onUpdate: (props) => {
+            onBeforeUpdate: (props) => {
               options.onSuggestionChange?.({
                 editor: props.editor,
                 range: props.range,

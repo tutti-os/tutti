@@ -21,7 +21,11 @@ export interface IssueManagerTaskDrawerViewState {
 export function resolveIssueManagerTaskDrawerViewState(input: {
   controller: Pick<
     IssueManagerController,
-    "copy" | "taskDetail" | "taskDraft" | "taskEditorMode"
+    | "copy"
+    | "isTuttiModePlanIssue"
+    | "taskDetail"
+    | "taskDraft"
+    | "taskEditorMode"
   >;
   selectedTask: IssueManagerTaskSummary | null;
 }): IssueManagerTaskDrawerViewState {
@@ -30,6 +34,8 @@ export function resolveIssueManagerTaskDrawerViewState(input: {
   const isEdit = controller.taskEditorMode === "edit";
   const isRead = !isCreate && !isEdit;
   const showTaskMetadata = isRead && selectedTask !== null;
+  const showMutableTaskControls =
+    showTaskMetadata && !controller.isTuttiModePlanIssue;
   const bodyKind =
     controller.taskDetail.isLoading &&
     isCreate === false &&
@@ -46,8 +52,8 @@ export function resolveIssueManagerTaskDrawerViewState(input: {
     isRead,
     isTaskTitleMissing: controller.taskDraft.title.trim().length === 0,
     showEditFooter: isCreate || isEdit,
-    showReadFooter: showTaskMetadata,
-    showTaskActions: showTaskMetadata,
+    showReadFooter: showMutableTaskControls,
+    showTaskActions: showMutableTaskControls,
     showTaskMetadata,
     title:
       isCreate || isEdit

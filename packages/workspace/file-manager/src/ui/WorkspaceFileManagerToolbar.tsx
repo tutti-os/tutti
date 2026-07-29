@@ -26,6 +26,7 @@ import { useEffect, useRef, useState, type ReactElement } from "react";
 import type { WorkspaceFileManagerI18nRuntime } from "../i18n/workspaceFileManagerI18n.ts";
 import type { WorkspaceFileManagerArrangeMode } from "./workspaceFileManagerArrangeMode.ts";
 import type { WorkspaceFileManagerLayoutMode } from "./workspaceFileManagerLayoutMode.ts";
+import type { RenderWorkspaceFileManagerToolbarTrailingActions } from "./workspaceFileManagerToolbarTypes.ts";
 
 export function WorkspaceFileManagerToolbar({
   breadcrumbs,
@@ -40,6 +41,7 @@ export function WorkspaceFileManagerToolbar({
   isSearching,
   arrangeMode,
   layoutMode,
+  renderToolbarTrailingActions,
   searchQuery,
   onGoBack,
   onGoForward,
@@ -62,6 +64,7 @@ export function WorkspaceFileManagerToolbar({
   isSearching: boolean;
   arrangeMode: WorkspaceFileManagerArrangeMode;
   layoutMode: WorkspaceFileManagerLayoutMode;
+  renderToolbarTrailingActions?: RenderWorkspaceFileManagerToolbarTrailingActions;
   searchQuery: string;
   onGoBack: () => void;
   onGoForward: () => void;
@@ -144,6 +147,12 @@ export function WorkspaceFileManagerToolbar({
             {copy.t("refreshLabel")}
           </span>
         </ToolbarActionButton>
+        {renderToolbarTrailingActions?.({
+          currentDirectoryPath,
+          isBusy,
+          isLoading,
+          isMutating
+        }) ?? null}
         <WorkspaceFileManagerToolbarSearch
           canSearch={canSearch}
           copy={copy}

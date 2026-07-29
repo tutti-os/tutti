@@ -16,7 +16,8 @@ import (
 // All methods are scoped by a host-defined workspace ID.
 type Repository interface {
 	ClearSessions(context.Context, string) (ClearSessionsResult, error)
-	DeleteSession(context.Context, string, string) (bool, error)
+	PlanClearSessions(context.Context, string) (DeleteSessionsPlan, error)
+	PlanDeleteSessions(context.Context, DeleteSessionsBatchInput) (DeleteSessionsPlan, error)
 	DeleteSessionsBatch(context.Context, DeleteSessionsBatchInput) (DeleteSessionsBatchResult, error)
 	GetSession(context.Context, string, string) (Session, bool, error)
 	ListChildSessions(context.Context, string, string) ([]Session, error)
@@ -31,6 +32,7 @@ type Repository interface {
 	ListSessionSection(context.Context, ListSessionSectionInput) (SessionSectionPage, bool, error)
 	ListSessionSections(context.Context, ListSessionSectionsInput) (SessionSectionsPage, bool, error)
 	ListSessionSectionDeletionCandidates(context.Context, ListSessionSectionDeletionCandidatesInput) (SessionSectionDeletionCandidates, bool, error)
+	ListSessionsPage(context.Context, ListSessionsPageInput) (SessionListPage, bool, error)
 	ListSessionTurns(context.Context, string, string) ([]Turn, error)
 	ListSessions(context.Context, string) ([]Session, bool, error)
 	ListWorkspaceGeneratedFileTurns(context.Context, ListWorkspaceGeneratedFileTurnsInput) (GeneratedFileTurnList, bool, error)
@@ -39,6 +41,7 @@ type Repository interface {
 	ReportSessionMessages(context.Context, SessionMessageReport) (MessageReportResult, error)
 	ReportSessionState(context.Context, SessionStateReport) (StateReportResult, error)
 	PrepareRuntimeOperation(context.Context, RuntimeOperationPrepare) (RuntimeOperation, bool, error)
+	PrepareInteractiveRuntimeOperation(context.Context, RuntimeOperationPrepare) (RuntimeOperation, Interaction, InteractionTransitionResult, error)
 	GetRuntimeOperation(context.Context, string, string) (RuntimeOperation, bool, error)
 	ListClaimableRuntimeOperations(context.Context, ListClaimableRuntimeOperationsInput) ([]RuntimeOperation, error)
 	ClaimRuntimeOperationLease(context.Context, ClaimRuntimeOperationLeaseInput) (RuntimeOperation, bool, error)
@@ -54,6 +57,13 @@ type Repository interface {
 	UpdateSessionTitle(context.Context, string, string, string) (Session, bool, error)
 }
 
+// SessionTurnSummaryReader is a narrow optional read seam for consumers that
+// need bounded Turn discovery without broadening the canonical write
+// repository contract.
+type SessionTurnSummaryReader interface {
+	ListSessionTurnSummaries(context.Context, ListSessionTurnSummariesInput) (SessionTurnSummaryPage, error)
+}
+
 // GoalProvenanceLedger is a narrow optional persistence capability. It stays
 // separate from Repository so read-only/custom activity repositories do not
 // need to implement provider-specific Goal attribution.
@@ -62,10 +72,65 @@ type GoalProvenanceLedger interface {
 	LookupGoalProvenance(context.Context, LookupGoalProvenanceInput) (GoalProvenanceBinding, bool, error)
 }
 
+// AgentStateReader exposes the durable, canonical workspace activity read
+// model without coupling consumers to daemon/activity's in-memory relay state.
+// Presence and host-owned execution attribution are deliberately outside this
+// contract and remain the responsibility of the composing host.
+type AgentStateReader interface {
+	GetAgentState(context.Context, string) (AgentState, bool, error)
+}
+
+// AgentState is a workspace-scoped canonical activity snapshot.
+// AgentSessionState composes the existing Session and Turn entities instead of
+// copying their fields into another presentation DTO.
+type AgentState struct {
+	WorkspaceID string
+	Sessions    []AgentSessionState
+}
+
+type AgentSessionState struct {
+	Session    Session
+	LatestTurn *Turn
+}
+
 type ClearSessionsResult struct {
+	TransactionID     string           `json:"-"`
+	CommitDelta       TransactionDelta `json:"-"`
 	RemovedMessages   int
 	RemovedSessions   int
 	RemovedSessionIDs []string
+}
+
+type DeleteSessionResult struct {
+	TransactionID     string           `json:"-"`
+	CommitDelta       TransactionDelta `json:"-"`
+	RemovedMessages   int
+	RemovedSessions   int
+	RemovedSessionIDs []string
+}
+
+// PurgeDeletedSessionsInput bounds one permanent-removal transaction. The
+// caller owns retention policy and supplies an absolute cutoff.
+type PurgeDeletedSessionsInput struct {
+	CutoffUnixMS    int64
+	MaxSessions     int
+	MaxPayloadBytes int64
+}
+
+// PurgedSession is the content-free descriptor returned after a successful
+// canonical commit for aggregate accounting and bounded maintenance progress.
+type PurgedSession struct {
+	WorkspaceID     string
+	AgentSessionID  string
+	DeletedAtUnixMS int64
+	PayloadBytes    int64
+}
+
+type PurgeDeletedSessionsResult struct {
+	Sessions        []PurgedSession
+	RemovedMessages int
+	PayloadBytes    int64
+	HasMore         bool
 }
 
 type MessageOrder string
@@ -78,6 +143,7 @@ const (
 type ListSessionMessagesInput struct {
 	WorkspaceID    string
 	AgentSessionID string
+	MessageID      string
 	TurnID         string
 	// AfterVersion and BeforeVersion are per-session change cursors. Current
 	// message snapshots may skip cursor values when the same message is updated.
@@ -117,6 +183,7 @@ type ListSessionSectionInput struct {
 	WorkspaceID          string
 	SectionKey           string
 	AgentTargetID        string
+	IncludedSessionIDs   []string
 	CursorSortTimeUnixMS int64
 	CursorSessionID      string
 	Limit                int
@@ -126,17 +193,36 @@ type ListSessionSectionInput struct {
 // section in one workspace query. SectionKeys includes the synthetic pinned
 // page key when the caller needs pinned conversations.
 type ListSessionSectionsInput struct {
-	WorkspaceID     string
-	SectionKeys     []string
-	AgentTargetID   string
-	LimitPerSection int
+	WorkspaceID        string
+	SectionKeys        []string
+	AgentTargetID      string
+	IncludedSessionIDs []string
+	LimitPerSection    int
 }
 
 type ListSessionSectionDeletionCandidatesInput struct {
-	WorkspaceID   string
-	SectionKey    string
-	AgentTargetID string
-	ExcludePinned bool
+	WorkspaceID        string
+	SectionKey         string
+	AgentTargetID      string
+	IncludedSessionIDs []string
+	ExcludePinned      bool
+}
+
+type ListSessionsPageInput struct {
+	WorkspaceID          string
+	AgentTargetID        string
+	SearchQuery          string
+	IncludedSessionIDs   []string
+	CursorSortTimeUnixMS int64
+	CursorSessionID      string
+	Limit                int
+}
+
+type SessionListPage struct {
+	WorkspaceID string
+	Sessions    []Session
+	HasMore     bool
+	NextCursor  string
 }
 
 type SessionSectionDeletionCandidates struct {
@@ -148,11 +234,19 @@ type SessionSectionDeletionCandidates struct {
 }
 
 type DeleteSessionsBatchInput struct {
+	WorkspaceID        string
+	SessionIDs         []string
+	ExpectedSessionIDs []string
+}
+
+type DeleteSessionsPlan struct {
 	WorkspaceID string
 	SessionIDs  []string
 }
 
 type DeleteSessionsBatchResult struct {
+	TransactionID     string           `json:"-"`
+	CommitDelta       TransactionDelta `json:"-"`
 	RemovedMessages   int
 	RemovedSessions   int
 	RemovedSessionIDs []string
@@ -175,6 +269,10 @@ type SessionSectionsPage struct {
 }
 
 type Session struct {
+	// CommitTransactionID is populated only by a successful mutating call and
+	// is not persisted as canonical session state.
+	CommitTransactionID    string           `json:"-"`
+	CommitDelta            TransactionDelta `json:"-"`
 	ID                     string
 	WorkspaceID            string
 	Kind                   string
@@ -193,6 +291,8 @@ type Session struct {
 	Metadata               SessionMetadata
 	InternalRuntimeContext map[string]any
 	Cwd                    string
+	RailSectionKind        string
+	RailProjectPath        string
 	RailSectionKey         string
 	Title                  string
 	// ActiveTurnID is the protocol v2 turn reference: the id of the turn
@@ -215,16 +315,21 @@ const (
 )
 
 // ActivityStateReport persists the session projection and its optional v2
-// turn/interaction entities as one atomic unit. Child entities must identify
-// the same workspace and session as Session.
+// turn/interaction/message entities as one atomic unit. Child entities must
+// identify the same workspace and session as Session. Messages must reference
+// a turn that already exists in the transaction; unlike the standalone
+// message report, this boundary never synthesizes a missing turn.
 type ActivityStateReport struct {
 	Session          SessionStateReport
 	Turn             *TurnTransition
 	RootProviderTurn *RootProviderTurnTransition
 	Interaction      *InteractionUpsert
+	Messages         []MessageUpdate
 }
 
 type ActivityStateReportResult struct {
+	TransactionID     string           `json:"-"`
+	CommitDelta       TransactionDelta `json:"-"`
 	State             StateReportResult
 	Turn              Turn
 	TurnAccepted      bool
@@ -232,6 +337,7 @@ type ActivityStateReportResult struct {
 	RootTurnAccepted  bool
 	Interaction       Interaction
 	InteractionResult InteractionTransitionResult
+	Messages          MessageReportResult
 }
 
 // Closed protocol v2 turn phase vocabulary. The storage CHECK constraints
@@ -268,6 +374,7 @@ type Turn struct {
 	WorkspaceID                            string
 	AgentSessionID                         string
 	TurnID                                 string
+	CapabilityRefs                         []CapabilityReference
 	Phase                                  string
 	Outcome                                string
 	ErrorMessage                           string
@@ -275,6 +382,8 @@ type Turn struct {
 	FileChanges                            map[string]any
 	CompletedCommandKind                   string
 	CompletedCommandStatus                 string
+	FinalAssistantMessageID                string
+	FinalAssistantMessageResolved          bool
 	Backfilled                             bool
 	StartedAtUnixMS                        int64
 	SettledAtUnixMS                        int64
@@ -292,6 +401,45 @@ type Turn struct {
 	RootProviderTurnCompletedCommandKind   string
 	RootProviderTurnCompletedCommandStatus string
 	RootProviderTurnUpdatedAtUnixMS        int64
+}
+
+// SessionTurnCursor is the stable position immediately before a descending
+// session-Turn page. StartedAtUnixMS alone is not unique, so TurnID is the
+// deterministic tie-breaker.
+type SessionTurnCursor struct {
+	StartedAtUnixMS int64
+	TurnID          string
+}
+
+// ListSessionTurnSummariesInput bounds one metadata-only session-Turn read.
+// Before is exclusive; nil selects the newest page.
+type ListSessionTurnSummariesInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+	Before         *SessionTurnCursor
+	Limit          int
+}
+
+// SessionTurnSummary contains only the canonical fields needed to discover
+// and render a Turn without loading error, file-change, or provider payloads.
+type SessionTurnSummary struct {
+	TurnID                  string
+	Phase                   string
+	Outcome                 string
+	FinalAssistantMessageID string
+	StartedAtUnixMS         int64
+	SettledAtUnixMS         int64
+	Origin                  string
+}
+
+type SessionTurnSummaryPage struct {
+	Turns   []SessionTurnSummary
+	HasMore bool
+}
+
+type CapabilityReference struct {
+	Capability string `json:"capability"`
+	Source     string `json:"source"`
 }
 
 const (
@@ -316,25 +464,28 @@ type RootProviderTurnTransition struct {
 // TurnTransition records one turn phase transition. Transitions are written
 // synchronously per phase change (no batching); a settled turn is terminal
 // and rejects further transitions, which makes replays and cancel races
-// idempotent.
+// idempotent. A transition with an empty Phase and non-empty CapabilityRefs is
+// a metadata-only merge for an existing turn and must not alter lifecycle.
 type TurnTransition struct {
-	WorkspaceID            string
-	AgentSessionID         string
-	TurnID                 string
-	Phase                  string
-	Outcome                string
-	ErrorMessage           string
-	ErrorCode              string
-	FileChanges            map[string]any
-	CompletedCommandKind   string
-	CompletedCommandStatus string
-	Origin                 string
-	SourceGoalOperationID  string
-	SourceGoalRevision     int64
-	SourceGoalRepairEpoch  int64
-	StartedAtUnixMS        int64
-	SettledAtUnixMS        int64
-	OccurredAtUnixMS       int64
+	WorkspaceID             string
+	AgentSessionID          string
+	TurnID                  string
+	CapabilityRefs          []CapabilityReference
+	Phase                   string
+	Outcome                 string
+	ErrorMessage            string
+	ErrorCode               string
+	FileChanges             map[string]any
+	CompletedCommandKind    string
+	CompletedCommandStatus  string
+	FinalAssistantMessageID string
+	Origin                  string
+	SourceGoalOperationID   string
+	SourceGoalRevision      int64
+	SourceGoalRepairEpoch   int64
+	StartedAtUnixMS         int64
+	SettledAtUnixMS         int64
+	OccurredAtUnixMS        int64
 }
 
 // Closed protocol v2 interaction vocabulary; mirrors the openapi
@@ -392,6 +543,9 @@ const (
 type ListSessionInteractionsInput struct {
 	WorkspaceID    string
 	AgentSessionID string
+	// TurnID and RequestID select one exact canonical Interaction when both are set.
+	TurnID    string
+	RequestID string
 	// Status filters by interaction status when non-empty.
 	Status string
 }
@@ -399,6 +553,8 @@ type ListSessionInteractionsInput struct {
 // StaleTurnSettlement identifies one turn that startup reconciliation
 // force-settled with outcome interrupted.
 type StaleTurnSettlement struct {
+	TransactionID  string           `json:"-"`
+	CommitDelta    TransactionDelta `json:"-"`
 	WorkspaceID    string
 	AgentSessionID string
 	TurnID         string
@@ -425,17 +581,22 @@ type SessionStateReport struct {
 	// ImportProjectPath is the canonical selected project for a historical
 	// import. The store accepts it only for imported, project-backed sessions.
 	ImportProjectPath string
-	Title             string
-	Status            string
-	CurrentPhase      string
-	LastError         string
-	OccurredAtUnixMS  int64
-	StartedAtUnixMS   int64
-	EndedAtUnixMS     int64
-	CreatedAtUnixMS   int64
+	// RailPlacement is an explicit caller-selected placement for a newly
+	// created session. The first accepted value is immutable.
+	RailPlacement    *RailSection
+	Title            string
+	Status           string
+	CurrentPhase     string
+	LastError        string
+	OccurredAtUnixMS int64
+	StartedAtUnixMS  int64
+	EndedAtUnixMS    int64
+	CreatedAtUnixMS  int64
 }
 
 type StateReportResult struct {
+	TransactionID    string           `json:"-"`
+	CommitDelta      TransactionDelta `json:"-"`
 	Accepted         bool
 	StateApplied     bool
 	LastEventUnixMS  int64
@@ -448,9 +609,10 @@ type SessionMessageReport struct {
 	AgentSessionID string
 	Origin         string
 	Provider       string
-	// HistoricalImport is an internal-only compatibility boundary for
-	// read-only external transcript imports that predate Turn identities. It
-	// must never be populated from runtime/API report payloads.
+	// HistoricalImport is the internal-only write boundary for read-only
+	// external transcripts. Messages with a trustworthy reconstructed TurnID
+	// create settled backfilled Turns; messages without one remain session
+	// scoped. It must never be populated from runtime/API report payloads.
 	HistoricalImport bool
 	Messages         []MessageUpdate
 }
@@ -470,6 +632,8 @@ type MessageUpdate struct {
 }
 
 type MessageReportResult struct {
+	TransactionID    string           `json:"-"`
+	CommitDelta      TransactionDelta `json:"-"`
 	AcceptedCount    int
 	LatestVersion    uint64
 	Messages         []Message

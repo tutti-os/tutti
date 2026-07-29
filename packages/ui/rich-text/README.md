@@ -129,6 +129,10 @@ Interpretation:
   insertion
 - `resolveMention` restores editor-only label or presentation data from the
   stored mention identity
+- readonly conversation surfaces pass the same providers to
+  `RichTextReadonlyContent.triggerProviders`; it calls `resolveMention` to
+  restore presentation such as app icons while keeping serialized Markdown
+  limited to durable identity and scope
 - group ids, labels, totals, and cursors are candidate-panel metadata only;
   they must not be copied into mention identity, href, or persisted scope
 
@@ -151,6 +155,53 @@ interface RichTextMentionResolved {
 Markdown serialization includes only `providerId`, `entityId`, `label`, and
 short `scope` fields. It does not serialize `presentation`, `href`, `kind`,
 `version`, or arbitrary metadata.
+
+## Mention Service
+
+`RichTextMentionService` is the host-agnostic owner of provider lookup, query,
+reverse resolution, presentation caching, invalidation, and subscriptions.
+Create one service at the host or app root and reuse it across composer,
+readonly conversation, preview, and AgentGUI surfaces:
+
+```tsx
+import {
+  RichTextMentionServiceProvider,
+  RichTextReadonlyContent,
+  RichTextTriggerEditor
+} from "@tutti-os/ui-rich-text/editor";
+import { createRichTextMentionService } from "@tutti-os/ui-rich-text/service";
+
+const mentionService = createRichTextMentionService({ providers });
+
+<RichTextMentionServiceProvider service={mentionService}>
+  <RichTextTriggerEditor value={draft} onChange={setDraft} />
+  <RichTextReadonlyContent value={savedMarkdown} />
+</RichTextMentionServiceProvider>;
+
+// Dispose when the owning host/workspace root is destroyed.
+mentionService.dispose();
+```
+
+Non-React consumers use the same instance directly through `query`, `resolve`,
+`getSnapshot`, `invalidate`, and `subscribe`. The React Provider never creates
+a network client or a global singleton; it only injects an existing service.
+
+Resolution precedence is fixed: an explicit `mentionService` prop wins, then
+the nearest `RichTextMentionServiceProvider`, then the deprecated
+`triggerProviders` compatibility path. If no resolver exists, persisted label
+text and the semantic `MentionPill` icon remain available.
+
+The service uses a normalized `providerId + entityId + canonical scope` key.
+Labels and presentation URLs are deliberately excluded. Ready entries are
+cached for 5 minutes, missing entries for 30 seconds, and errors retry after 5
+seconds. The cache is capped at 1000 identities, concurrent resolution is
+single-flight, and stale ready presentation remains visible during refresh.
+Explicit invalidation may target all entries, a provider, a workspace, or an
+entity.
+
+Never persist a resolved snapshot or copy `presentation` into Markdown. Icon
+URLs and runtime cache state stay in memory; durable mention content remains
+limited to provider identity, entity identity, fallback label, and short scope.
 
 Helpers now exported:
 
@@ -195,13 +246,17 @@ Tutti workspace apps that already receive mention candidates from
 `@tutti-os/workspace-external-core/rich-text`:
 
 ```ts
-import { createTuttiExternalAtRichTextTriggerProviders } from "@tutti-os/workspace-external-core/rich-text";
+import { createTuttiExternalRichTextMentionService } from "@tutti-os/workspace-external-core/rich-text";
 
-const providers = createTuttiExternalAtRichTextTriggerProviders({
-  bridge: window.tuttiExternal,
+const mentionService = createTuttiExternalRichTextMentionService({
+  getBridge: () => window.tuttiExternal,
   providerIds: ["workspace-app", "agent-session"]
 });
 ```
+
+The older trigger-provider factory remains available for compatibility, but a
+root-owned service is the preferred integration because editor and readonly
+surfaces share resolution, caching, and invalidation automatically.
 
 Use a custom `RichTextTriggerProvider` only for app-local mention sources or for
 apps that do not use the Tutti external bridge.

@@ -12,10 +12,10 @@ func insertStaleTurnSystemMessageTx(
 	tx *sql.Tx,
 	settlement StaleTurnSettlement,
 	now int64,
-) error {
+) (Message, error) {
 	version, err := incrementAgentSessionMessageVersion(ctx, tx, settlement.WorkspaceID, settlement.AgentSessionID)
 	if err != nil {
-		return err
+		return Message{}, err
 	}
 	title := "Agent run was interrupted by an application restart."
 	payloadJSON, err := json.Marshal(map[string]any{
@@ -23,8 +23,9 @@ func insertStaleTurnSystemMessageTx(
 		"severity": "warning", "title": title, "content": title, "text": title,
 	})
 	if err != nil {
-		return fmt.Errorf("encode stale turn system message: %w", err)
+		return Message{}, fmt.Errorf("encode stale turn system message: %w", err)
 	}
+	messageID := fmt.Sprintf("system-stale-turn-%s", settlement.TurnID)
 	_, err = tx.ExecContext(ctx, `
 INSERT INTO workspace_agent_messages (
   workspace_id, agent_session_id, message_id, version, turn_id, role, kind, status,
@@ -38,10 +39,15 @@ ON CONFLICT(workspace_id, agent_session_id, message_id) DO UPDATE SET
   completed_at_unix_ms = excluded.completed_at_unix_ms,
   deleted_at_unix_ms = 0, updated_at_unix_ms = excluded.updated_at_unix_ms
 	`, settlement.WorkspaceID, settlement.AgentSessionID,
-		fmt.Sprintf("system-stale-turn-%s", settlement.TurnID), version, settlement.TurnID,
+		messageID, version, settlement.TurnID,
 		"assistant", "text", "completed", string(payloadJSON), now, now, now, now)
 	if err != nil {
-		return fmt.Errorf("persist stale turn system message: %w", err)
+		return Message{}, fmt.Errorf("persist stale turn system message: %w", err)
 	}
-	return nil
+	return Message{
+		AgentSessionID: settlement.AgentSessionID,
+		MessageID:      messageID, Version: version, TurnID: settlement.TurnID,
+		Role: "assistant", Kind: "text", Status: "completed",
+		OccurredAtUnixMS: now, CompletedAtUnixMS: now, CreatedAtUnixMS: now, UpdatedAtUnixMS: now,
+	}, nil
 }

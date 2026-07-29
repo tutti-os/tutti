@@ -20,6 +20,8 @@ This rule applies to local databases, logs, caches, temporary runtime metadata, 
 - `TUTTI_ENV=development` uses `~/.tutti-dev`
 - `TUTTI_ENV=production` uses `~/.tutti`
 - `TUTTI_STATE_DIR=/custom/path` overrides both defaults
+- `TUTTI_DESKTOP_USER_DATA_DIR=/custom/path` overrides Electron `userData`
+  only, for isolated desktop diagnostics
 
 These environment variables are for development, test, packaging, and diagnostics overrides.
 They are not the primary source of product defaults.
@@ -37,6 +39,7 @@ Current supported override surface for local state and closely-related runtime p
 - `TUTTI_ENV`
 - `TUTTI_STATE_DIR`
 - `TUTTI_LOG_DIR`
+- `TUTTI_DESKTOP_USER_DATA_DIR`
 - `TUTTID_DB_PATH`
 - `TUTTID_RUN_DIR`
 - `TUTTID_PID_PATH`
@@ -47,6 +50,8 @@ Rules:
 
 - treat these variables as developer and operator escape hatches, not product settings
 - prefer `TUTTI_STATE_DIR` over adding new per-file overrides
+- keep `TUTTI_DESKTOP_USER_DATA_DIR` paired with an isolated
+  `TUTTI_STATE_DIR`; it does not redirect daemon-owned state
 - do not add a new environment variable when an existing shared root or generated default can express the same rule
 - if a new override is truly needed, update this document and the matching transport or logging convention document in the same change
 
@@ -117,10 +122,56 @@ repository's managed development entry points. Environment separation and
 single-owner locking are complementary: separation prevents unintended access;
 locking prevents concurrent mutation after a root has been selected.
 
+## Desktop Preferences
+
+Device-global desktop preferences are durable daemon state in the
+`desktop_preferences` row of `tuttid.db`. They are not workspace settings and
+must be changed through the preferences service/API so the daemon can persist,
+normalize, and publish the authoritative preferences event.
+
+`agent_cli_update_check_enabled` stores the
+`agentCliUpdateCheckEnabled` preference as a non-null SQLite boolean and
+defaults to `true`, including for existing databases upgraded by migration. It
+controls only the daemon's periodic managed-provider CLI update discovery. A
+false value cancels scheduling and any in-flight discovery; it does not remove
+cached metadata, change local readiness, or disable an explicit user-requested
+update action.
+
+## Model Access Plans
+
+Workspace model access plans and custom Agents are daemon-owned rows in
+`tuttid.db`. `model_plans` stores the plan configuration and verification
+projection; API keys are encrypted in `api_key_ciphertext` and must never be
+returned through public plan DTOs. `workspace_agents` is the current writable
+Harness-to-Plan/default-model mapping. `agent_target_model_bindings` retains
+the older target-to-plan shape only for historical sessions, rollback, and
+legacy API compatibility; a forward migration idempotently materializes any
+late binding rows as `source=legacy_binding` WorkspaceAgents before Desktop
+removes the binding editor. Plan reference protection includes both current
+WorkspaceAgents and remaining legacy consumers.
+The retired `first_use_json` column and
+`model_plan_first_use_candidates` table remain only for database downgrade
+compatibility; current model-plan readiness ends at successful connection
+detection and no session attribution is written or reconciled. The historical
+`model_plan_first_use_candidates_v1` migration still repairs databases that
+recorded `model_plans_v1` before this table existed. Migration identifiers are
+immutable once any development or production database can record them; later
+required tables, columns, or indexes must use a new forward migration rather
+than extending the SQL hidden behind an existing marker.
+
+The initial migration copies existing managed model-provider credentials into
+stable `mp-migrated-<provider>` plans without removing the legacy rows, because
+the workspace-app credential broker still owns that legacy surface. Normal
+reads use the SQLite read pool and mutations use the single writer connection.
+
 Migrated agent runtime state should derive from the same root:
 
 ```text
 ~/.tutti[-dev]/
+  tutti-mode-plans/
+    <workflow-id>/
+      revisions/
+        <sha256>.md
   agent/
     discovery/
       claude-code/
@@ -135,6 +186,10 @@ Migrated agent runtime state should derive from the same root:
           assets/
     sessions/
       <date>-<sequence>/
+    worktrees/
+      <agent-session-id>/
+      .metadata/
+        <agent-session-id>.json
     runs/
       <agent-session-id>/
         sidecar-manifest.json
@@ -148,6 +203,8 @@ Migrated agent runtime state should derive from the same root:
         current/
           agent-context.json
   agent-providers/
+    claude-code/
+      current.json
     external-agent-registry/
       cache/
         registry.json
@@ -164,6 +221,7 @@ Migrated agent runtime state should derive from the same root:
         <installation-scope>/
           runtime/
           data/
+          database/
           logs/
     factory/
       jobs/
@@ -188,11 +246,143 @@ receive it through `CODEX_HOME`; Tutti Agent sessions use `tutti-agent-home`
 and receive it through `TUTTI_AGENT_HOME`. `agent/attachments` stores persisted
 prompt attachments by agent session.
 
+## Developer Agent Session Cassettes
+
+The daemon keeps mutable Recording, Cassette catalog, and Replay Run metadata in
+SQLite. It writes a Recording candidate under
+`<TUTTI_STATE_DIR>/agent-session-recordings/<recording-id>/candidate/`.
+A recording is a capture window over one
+recursive SessionGraph. `create-session` starts with no seed.
+`continue-session` exports the selected root graph's canonical and workflow
+dependency closure to `seed/state.jsonl`. Explicit stop writes
+`expected/state.jsonl`, finalizes the provider tape, assigns a distinct
+Cassette id, audits the candidate, and atomically publishes it under
+`<TUTTI_STATE_DIR>/agent-session-cassettes/<cassette-id>`. Recording metadata
+does not enter the published Cassette. Canceling removes the candidate. Turn
+settlement does not stop recording. A daemon restart marks an active recording
+incomplete and discards its candidate.
+
+`pnpm e2e:agent-gui -- --record <directory>` exercises that UI flow in an
+isolated runtime and copies the completed recording to the requested directory.
+The isolated daemon database and Electron `userData` live under the repository
+`.tmp` root and are removed unless `--keep-runtime` is set.
+
+The cassette contains `scenario.json`, `environment.json`, `stimuli.jsonl`,
+optional `seed/state.jsonl`, `provider/{manifest.json,frames.jsonl}`,
+`expected/state.jsonl`, content-addressed `blobs/`, and `cassette.json`.
+Publication rejects every unrecognized file, including logs, screenshots,
+databases, credentials, unrelated Sessions, and Workspace copies. Provider
+payloads are capped at 8 MiB per frame and 256 MiB stored per tape; referenced
+blobs are capped at 20 MiB each; the full audited file set is capped at 384 MiB.
+The manifests report per-kind and per-file byte counts and hashes. Provider
+frames and selected blobs may still contain private prompts, output, and files.
+The blob manifest selects persisted prompt attachments explicitly referenced by
+SessionGraph messages; replay verifies their SHA-256 and restores them into the
+isolated attachment store. It does not scan the Workspace. Do not commit,
+upload, or share a cassette without reviewing those scoped artifacts.
+
+## Deleted Agent Conversation Retention
+
+Soft-deleted Agent conversations remain recoverable canonical tombstones until
+the device-global retention period expires. The supported values are 15 and 30
+days, with 30 days as the default. Existing tombstones use their original
+deletion timestamp; upgrades do not add another grace period. The daemon runs
+small permanent-removal batches only while Agent work is idle, no more than one
+successful automatic sweep per 24 hours. The desktop setting also exposes an
+explicitly confirmed manual cleanup that targets all current tombstones.
+
+The filesystem cleanup checklist considered these Tutti-owned session roots:
+
+- `agent/attachments/<agent-session-id>`: persisted prompt attachments owned by
+  the purged session.
+- `agent/runs/<agent-session-id>`: residual provider sidecar state left when the
+  normal session-delete cleanup could not finish.
+
+This checklist is deliberately **not activated** by retention cleanup. A
+canonical row can be purged immediately before another workspace starts a new
+session with the same externally supplied id, and a real directory beneath a
+run root can be a filesystem mount rather than Tutti-owned content. Neither
+ownership can be proven safely across supported platforms without coordinating
+all session creation and mount topology. The conservative policy is therefore
+to delete no files at all. A session cwd, user project, worktree, provider
+installation, shared provider home, custom `CODEX_HOME`, the two candidate
+roots above, and every other filesystem path remain untouched.
+
+Deleted SQLite pages are immediately reusable by the database. After an
+explicit manual sweep only, the daemon may additionally run a three-second
+best-effort `VACUUM` when the whole database is no larger than 64 MiB, at least
+8 MiB and one quarter of its pages are free, and Agent work is still idle.
+Automatic maintenance never performs this compaction; a busy, timed-out, or
+failed attempt does not roll back the committed purge.
+
+`agent/worktrees/<agent-session-id>` is a daemon-managed Git checkout for a
+worktree-isolated agent session. The tuttid agent adapter owns the corresponding
+`.metadata/<agent-session-id>.json` record used for enumeration, failed-create
+rollback, and orphan recovery; it records the repository root, branch, base
+commit, and session scope. Canonical isolation coordinates remain in the
+session's existing runtime-context/metadata JSON, so this layout does not add a
+SQLite schema. Host startup recovery and the periodic Host worker only schedule
+cleanup through the adapter port. A tree is deleted only when it is clean with
+no commits ahead of its base, its creator is absent or not resumable, and no
+session cwd is inside the tree. Turn/runtime completion and session end times
+must never trigger this cleanup.
+
 `agent/extensions` is daemon-owned verified Agent Extension state. Version
 directories are immutable after installation; `active.json` selects the
 currently registered version and is replaced atomically. Extension ZIPs do not
 contain runtimes or executables. Cached assets and profiles remain under each
 fixed installation for integrity checks and future session-pinned resume.
+Development-only local package overrides are copied into the same state as
+content-addressed `+local.<digest>` versions; the daemon never launches against
+the mutable source directory. Only the `data/agentextension` installation
+adapter derives these paths or persists `installation.json` and `active.json`;
+the service layer retains verification and activation workflow ownership.
+Agent Extension executables are user-local programs rather than daemon state:
+
+```text
+~/.local/bin/
+  <agent-command> -> ~/.local/share/tutti/agent-runtimes/<agent-key>/bin/<agent-command>
+
+~/.local/share/tutti/agent-runtimes/
+  <agent-key>/
+    bin/
+      <agent-command> -> ../<runtime-identity>/<runtime-executable>
+    <runtime-identity>/
+      activation.json
+      node_modules/
+  claude-code/
+    versions/
+      <claude-version>/
+        claude
+```
+
+A compatible user-local executable remains preferred; otherwise one explicitly
+confirmed, pinned runtime is installed per extension version and reused across
+development, production, and all workspaces. Runtime installation never writes
+under a user project. Setup action records, extension packages, discovery CWDs,
+and session state remain under the selected `~/.tutti[-dev]` state root. The
+Claude SDK sidecar's `current.json` pointer is state metadata, while its pinned
+native executable uses the shared user-local runtime root.
+
+Agent Extension activation publishes its command through the stable two-link
+chain above. Development and production share that command and underlying
+versioned runtime; environment separation applies only to daemon state. Tutti
+never replaces a pre-existing regular file or foreign symlink in
+`~/.local/bin`. Its own published link remains classified as managed for
+fingerprint checks, persists across feature disablement and daemon shutdown,
+and requires explicit reinstall if either link is missing or invalid.
+
+Agent Extension setup uses these daemon-owned state paths:
+
+```text
+<state-dir>/agent/extension-runtime-actions/<scope-sha256>.json
+<state-dir>/agent/discovery/agent-extensions/
+```
+
+The action filename hashes exact Target plus fixed extension installation
+identity; workspace identity remains inside the record, not in a directory
+segment. The data adapter owns path derivation, strict JSON decoding, scope
+validation, `0700` directories, `0600` temporary files, sync, and atomic rename.
 Session-level runtime/profile pinning remains tracked in the Agent Extension
 architecture migration; `active.json` alone is not a durable session pin.
 
@@ -219,6 +409,7 @@ Tutti provider startup.
 ## Current Usage
 
 - `tuttid` SQLite database defaults to `<state-dir>/tuttid.db`
+- immutable Tutti mode plan revisions live under `<state-dir>/tutti-mode-plans/<workflow-id>/revisions/<sha256>.md`; the daemon writes each revision atomically and verifies its content digest when reading it
 - desktop-managed local development starts `tuttid` with `TUTTI_ENV=development`
 - packaged desktop builds start `tuttid` with `TUTTI_ENV=production`
 - path helpers reserve `<state-dir>/logs` and `<state-dir>/run` for daemon log, listener-info, and pid files
@@ -228,8 +419,12 @@ Tutti provider startup.
 - the bundled CLI discovers the managed daemon by reading `<state-dir>/run/tuttid.listener.json`
 - packaged desktop shim install or repair uses `<state-dir>/bin/tutti` as the canonical user-level command path and points it at the packaged CLI binary; on macOS and Linux, when the login-shell `PATH` already contains writable `~/.local/bin` or `~/bin`, desktop also maintains a Tutti-owned forwarding shim there without replacing third-party commands
 - local development scripts install or repair `<state-dir>/bin/tutti-dev` as the development CLI command and default it to `TUTTI_ENV=development`
-- workspace app package cache, per-installation runtime/data/log state, and
+- workspace app package cache, per-installation runtime/data/database/log state, and
   app factory job working directories live under `<state-dir>/apps`
+- each workspace app installation receives a host-local durable `database/`
+  directory for active SQLite databases and other files that require local
+  filesystem locking; uninstalling the installation removes it with the rest
+  of that installation's state
 - workspace apps receive `<state-dir>/app-toolchains` as the shared cache root
   for reusable app-managed binaries
 

@@ -9,45 +9,95 @@ import {
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  buildLaneInputFingerprint,
+  laneFingerprintVersion,
+  LaneCacheError,
+  mergeLaneResults,
+  resolveRetryPushReady,
+  selectFailedOnlyLanes
+} from "./run-check-changed-cache.mjs";
+import {
   buildGoLintLane,
   buildGoTestLane,
   buildPackageTestCommand,
   isBuiltinGenerateRequired,
-  isToolTestRelevant,
+  resolveGoModuleRoot,
   resolveGoValidationTargets
 } from "./run-check-changed-targets.mjs";
+import {
+  classifyChangedFiles,
+  createPackageManifestPackRelevance,
+  createRootManifestTestRelevance,
+  isPackagePackRelevantPath
+} from "./change-classification.mjs";
+import {
+  selectRepositoryCheckInputs,
+  selectRepositoryChecks
+} from "./repository-checks.mjs";
 import { formatFailureExcerpt } from "./run-validation-lanes.mjs";
+import { resolveGolangciLintBinary } from "./golangci-lint-tool.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = join(scriptDirectory, "..", "..");
+const golangciLintBinary = resolveGolangciLintBinary({ cwd: workspaceRoot });
 const pnpmCommand = resolvePnpmCommand();
 const pnpmShellCommand = formatCommand(pnpmCommand);
-const maxParallel = Number.parseInt(readOption("--max-parallel") ?? "4", 10);
-const tailLines = readPositiveIntegerOption("--tail-lines", 80);
-const dryRun = process.argv.includes("--dry-run");
-const failedOnly = process.argv.includes("--failed-only");
-const pushReady = process.argv.includes("--push-ready");
-const verbose = process.argv.includes("--verbose");
-const baseRef = readOption("--base") ?? resolveDefaultBaseRef();
+let maxParallel = 4;
+let tailLines = 80;
+let dryRun = false;
+let failedOnly = false;
+let pushReady = false;
+let verbose = false;
+let baseRef = resolveDefaultBaseRef();
 const tmpRoot = join(workspaceRoot, ".tmp", "check-runs");
 const latestSummaryPath = join(tmpRoot, "latest.json");
 
 const packageInfos = loadPackageInfos();
 
 export async function main() {
-  const lanes = failedOnly ? readFailedLanes() : buildChangedLanes();
+  const previousSummary = failedOnly ? readLatestSummary() : null;
+  if (failedOnly && !previousSummary) {
+    console.log("check:changed found no previous run to reuse");
+    return;
+  }
+  pushReady = resolveRetryPushReady(pushReady, previousSummary);
 
-  if (lanes.length === 0) {
-    console.log(
-      failedOnly
-        ? "check:changed found no failed lanes in the latest run"
-        : "check:changed found no changed files to validate"
-    );
+  const plannedLanes = buildChangedLanes();
+
+  if (plannedLanes.length === 0) {
+    console.log("check:changed found no changed files to validate");
     return;
   }
 
+  if (dryRun && !failedOnly) {
+    printPlan(plannedLanes);
+    return;
+  }
+
+  const currentLanes = plannedLanes.map((lane) => ({
+    ...lane,
+    inputFingerprint: buildLaneInputFingerprint({
+      baseRef,
+      lane,
+      workspaceRoot
+    })
+  }));
+
+  const failedOnlySelection = previousSummary
+    ? selectFailedOnlyLanes(currentLanes, previousSummary)
+    : null;
+  const lanesToRun = failedOnlySelection?.lanesToRun ?? currentLanes;
+  const reusedResults = failedOnlySelection?.reusedResults ?? [];
+
   if (dryRun) {
-    printPlan(lanes);
+    printPlan(lanesToRun, reusedResults);
+    return;
+  }
+
+  if (lanesToRun.length === 0) {
+    console.log(
+      `check:changed found no failed or changed lanes; reused ${reusedResults.length} passed lane(s)`
+    );
     return;
   }
 
@@ -56,18 +106,31 @@ export async function main() {
   mkdirSync(runDirectory, { recursive: true });
 
   if (verbose) {
-    console.log(`check:changed running ${lanes.length} lane(s)`);
+    console.log(`check:changed running ${lanesToRun.length} lane(s)`);
+    if (reusedResults.length > 0) {
+      console.log(
+        `check:changed reusing ${reusedResults.length} passed lane(s)`
+      );
+    }
     console.log(`logs: ${relative(workspaceRoot, runDirectory)}`);
   }
 
   const startedAt = Date.now();
-  const results = await runLanes(lanes, runDirectory);
+  const executedResults = await runLanes(lanesToRun, runDirectory);
+  const results = mergeLaneResults(
+    currentLanes,
+    executedResults,
+    reusedResults
+  );
   const durationMs = Date.now() - startedAt;
   const summary = {
     baseRef,
     durationMs,
+    executedLaneCount: executedResults.length,
     failedOnly,
+    laneFingerprintVersion,
     pushReady,
+    reusedLaneCount: reusedResults.length,
     runDirectory,
     startedAt: new Date(startedAt).toISOString(),
     tailLines,
@@ -90,10 +153,30 @@ export async function main() {
 
 function buildChangedLanes() {
   const changedFiles = listChangedFiles(baseRef);
+  const isPackageManifestPackRelevant = createPackageManifestPackRelevance({
+    baseRef,
+    root: workspaceRoot
+  });
+  const classification = classifyChangedFiles(changedFiles, {
+    isPackageManifestPackRelevant,
+    isRootManifestTestRelevant: createRootManifestTestRelevance({
+      baseRef,
+      root: workspaceRoot
+    })
+  });
   const lanesByKey = new Map();
   const addLane = (lane) => {
-    if (!lanesByKey.has(lane.key)) {
-      lanesByKey.set(lane.key, lane);
+    const normalizedInputs = Array.from(new Set(lane.inputFiles)).sort();
+    const existing = lanesByKey.get(lane.key);
+    if (existing) {
+      existing.inputFiles = Array.from(
+        new Set([...existing.inputFiles, ...normalizedInputs])
+      ).sort();
+    } else {
+      lanesByKey.set(lane.key, {
+        ...lane,
+        inputFiles: normalizedInputs
+      });
     }
   };
 
@@ -108,10 +191,13 @@ function buildChangedLanes() {
       "bash",
       "-lc",
       `git diff --check ${shellQuote(baseRef)}...HEAD && git diff --check && git diff --cached --check`
-    ]
+    ],
+    inputFiles: changedFiles
   });
 
-  const lintFiles = selectExistingLintFiles(changedFiles);
+  const lintFiles = classification.runTs
+    ? selectExistingLintFiles(changedFiles)
+    : [];
   if (lintFiles.length > 0) {
     addLane({
       key: "lint:changed",
@@ -122,100 +208,78 @@ function buildChangedLanes() {
         "oxlint",
         "--deny-warnings",
         ...lintFiles
-      ]
+      ],
+      inputFiles: lintFiles
     });
   }
 
-  if (changedFiles.some(isElectronRuntimeBoundaryRelevant)) {
+  for (const check of selectRepositoryChecks(changedFiles)) {
     addLane({
-      key: "boundary:electron",
-      label: "boundary:electron",
-      command: [...pnpmCommand, "run", "check:electron-runtime-boundaries"]
+      key: check.key,
+      label: check.label,
+      command: [...pnpmCommand, "run", check.script],
+      inputFiles: selectRepositoryCheckInputs(check, changedFiles)
     });
   }
 
-  if (changedFiles.some(isUiBoundaryRelevant)) {
-    addLane({
-      key: "boundary:ui",
-      label: "boundary:ui",
-      command: [...pnpmCommand, "run", "check:ui-boundaries"]
-    });
-  }
-
-  if (changedFiles.some(isRendererBoundaryRelevant)) {
-    addLane({
-      key: "boundary:renderer",
-      label: "boundary:renderer",
-      command: [...pnpmCommand, "run", "check:renderer-boundaries"]
-    });
-  }
-
-  if (changedFiles.some(isAgentActivityRuntimeBoundaryRelevant)) {
-    addLane({
-      key: "boundary:agent-activity-runtime",
-      label: "boundary:agent-activity-runtime",
-      command: [
-        ...pnpmCommand,
-        "run",
-        "check:agent-activity-runtime-boundaries"
-      ]
-    });
-  }
-
-  if (
-    changedFiles.some(
-      (file) =>
-        file.startsWith("packages/agent/") ||
-        file.startsWith("tools/degradation-baseline/")
-    )
-  ) {
-    addLane({
-      key: "degradation:agent-gui",
-      label: "degradation:agent-gui",
-      command: [...pnpmCommand, "run", "check:agent-gui-degradation"]
-    });
-  }
-
-  const goValidationTargets = resolveGoValidationTargets(changedFiles);
+  const goValidationTargets = classification.runGo
+    ? resolveGoValidationTargets(changedFiles)
+    : null;
   const forceBuiltinGenerate = isBuiltinGenerateRequired(changedFiles);
   if (goValidationTargets) {
     for (const [moduleRoot, targets] of goValidationTargets.lintByModule) {
-      addLane(
-        buildGoLintLane({
+      const inputFiles = selectGoLaneInputs(
+        changedFiles,
+        moduleRoot,
+        forceBuiltinGenerate
+      );
+      addLane({
+        ...buildGoLintLane({
+          golangciLintBinary,
           moduleRoot,
           targets,
           shellQuote,
           workspaceRoot
-        })
-      );
+        }),
+        inputFiles
+      });
     }
     for (const [moduleRoot, targets] of goValidationTargets.testByModule) {
-      addLane(
-        buildGoTestLane({
+      const inputFiles = selectGoLaneInputs(
+        changedFiles,
+        moduleRoot,
+        forceBuiltinGenerate
+      );
+      addLane({
+        ...buildGoTestLane({
           forceBuiltinGenerate,
           moduleRoot,
           pnpmCommand: pnpmShellCommand,
           shellQuote,
           targets
-        })
-      );
+        }),
+        inputFiles
+      });
     }
 
     if (pushReady) {
       addLane({
         key: "build:go",
         label: "build:go",
-        command: [...pnpmCommand, "run", "build:go"]
+        command: [...pnpmCommand, "run", "build:go"],
+        inputFiles: changedFiles.filter(isGoValidationInput)
       });
     }
   }
 
-  const rootGlobalChange = changedFiles.some(isGlobalTypecheckRelevant);
+  const rootGlobalChange =
+    classification.runTs && changedFiles.some(isGlobalTypecheckRelevant);
   if (rootGlobalChange) {
     addLane({
       key: "typecheck:all",
       label: "typecheck:all",
-      command: [process.execPath, "./tools/scripts/run-typecheck.mjs"]
+      command: [process.execPath, "./tools/scripts/run-typecheck.mjs"],
+      inputFiles: changedFiles.filter(isTypeScriptValidationInput)
     });
   }
 
@@ -237,7 +301,8 @@ function buildChangedLanes() {
           "./tools/scripts/run-tsgo-typecheck.mjs",
           "--package-root",
           packageInfo.root
-        ]
+        ],
+        inputFiles: packageFiles
       });
     }
 
@@ -252,47 +317,49 @@ function buildChangedLanes() {
         addLane({
           key: `${packageInfo.name}:test`,
           label: `${packageInfo.name}:test`,
-          command
+          command,
+          inputFiles: packageFiles
         });
       }
     }
 
     if (
       pushReady &&
+      !classification.packPackages.includes(packageInfo.name) &&
       packageInfo.scripts.build &&
-      packageFiles.some(isBuildRelevant)
+      packageFiles.some((file) =>
+        isPackageBuildRelevant(file, isPackageManifestPackRelevant)
+      )
     ) {
       addLane({
         key: `${packageInfo.name}:build`,
         label: `${packageInfo.name}:build`,
-        command: [...pnpmCommand, "--filter", packageInfo.name, "build"]
+        command: [...pnpmCommand, "--filter", packageInfo.name, "build"],
+        inputFiles: packageFiles
       });
     }
   }
 
-  if (changedFiles.some(isToolTestRelevant)) {
+  if (pushReady && classification.runPack) {
+    const packageArgs = classification.packAll
+      ? []
+      : ["--", "--packages-json", JSON.stringify(classification.packPackages)];
     addLane({
-      key: "test:tools",
-      label: "test:tools",
-      command: [...pnpmCommand, "run", "test:tools"]
+      key: "pack:npm",
+      label: "npm package pack",
+      command: [...pnpmCommand, "run", "release:pack:check", ...packageArgs],
+      inputFiles: changedFiles
     });
   }
 
   return Array.from(lanesByKey.values());
 }
 
-function readFailedLanes() {
+function readLatestSummary() {
   if (!existsSync(latestSummaryPath)) {
-    return [];
+    return null;
   }
-  const summary = JSON.parse(readFileSync(latestSummaryPath, "utf8"));
-  return (summary.results ?? [])
-    .filter((result) => result.exitCode !== 0)
-    .map((result) => ({
-      key: result.key,
-      label: result.label,
-      command: result.command
-    }));
+  return JSON.parse(readFileSync(latestSummaryPath, "utf8"));
 }
 
 export async function runLanes(inputLanes, runDirectory) {
@@ -360,30 +427,44 @@ function buildLaneResult(lane, index, logPath, startedAt, exitCode) {
     durationMs: Date.now() - startedAt,
     exitCode,
     index,
+    inputFiles: lane.inputFiles,
+    inputFingerprint: lane.inputFingerprint,
     key: lane.key,
     label: lane.label,
     logPath,
-    logPathRelative: relative(workspaceRoot, logPath)
+    logPathRelative: relative(workspaceRoot, logPath),
+    reused: false
   };
 }
 
-function printPlan(inputLanes) {
-  console.log(`check:changed plan (${inputLanes.length} lane(s))`);
+function printPlan(inputLanes, reusedResults = []) {
+  const reusedSuffix =
+    reusedResults.length > 0 ? `, ${reusedResults.length} reused` : "";
+  console.log(
+    `check:changed plan (${inputLanes.length} to run${reusedSuffix})`
+  );
   for (const lane of inputLanes) {
     console.log(`- ${lane.label}: ${formatCommand(lane.command)}`);
+  }
+  for (const result of reusedResults) {
+    console.log(`- ${result.label}: reuse passed result`);
   }
 }
 
 export function printSummary(results, failures, durationMs, runDirectory) {
+  const reusedCount = results.filter((result) => result.reused).length;
+  const runCount = results.length - reusedCount;
+  const reuseSuffix =
+    reusedCount > 0 ? ` (${runCount} run, ${reusedCount} reused)` : "";
   if (failures.length === 0) {
     console.log(
-      `check:changed passed ${results.length} lane(s) in ${formatDuration(durationMs)}`
+      `check:changed passed ${results.length} lane(s) in ${formatDuration(durationMs)}${reuseSuffix}`
     );
     return;
   }
 
   console.error(
-    `check:changed failed ${failures.length}/${results.length} lane(s) in ${formatDuration(durationMs)}`
+    `check:changed failed ${failures.length}/${results.length} lane(s) in ${formatDuration(durationMs)}${reuseSuffix}`
   );
   for (const failure of failures) {
     const output = failureExcerpt(failure.logPath, tailLines);
@@ -481,21 +562,74 @@ function resolvePnpmCommand() {
   }
 }
 
-function readOption(name) {
-  const index = process.argv.indexOf(name);
-  if (index === -1) {
-    return null;
+export function parseCliArgs(inputArgs) {
+  const options = {
+    baseRef: null,
+    dryRun: false,
+    failedOnly: false,
+    maxParallel: 4,
+    pushReady: false,
+    tailLines: 80,
+    verbose: false
+  };
+  const args = inputArgs.filter((arg) => arg !== "--");
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    switch (arg) {
+      case "--dry-run":
+        options.dryRun = true;
+        break;
+      case "--failed-only":
+        options.failedOnly = true;
+        break;
+      case "--push-ready":
+        options.pushReady = true;
+        break;
+      case "--verbose":
+        options.verbose = true;
+        break;
+      case "--base":
+        options.baseRef = readCliValue(args, ++index, arg);
+        break;
+      case "--max-parallel":
+        options.maxParallel = readPositiveIntegerCliValue(args, ++index, arg);
+        break;
+      case "--tail-lines":
+        options.tailLines = readPositiveIntegerCliValue(args, ++index, arg);
+        break;
+      default:
+        throw new UserFacingError(`unknown option: ${arg}`);
+    }
   }
-  return process.argv[index + 1] ?? null;
+
+  return options;
 }
 
-function readPositiveIntegerOption(name, defaultValue) {
-  const value = readOption(name);
-  if (value === null) {
-    return defaultValue;
+function readCliValue(args, index, option) {
+  const value = args[index];
+  if (!value || value.startsWith("--")) {
+    throw new UserFacingError(`${option} requires a value`);
   }
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultValue;
+  return value;
+}
+
+function readPositiveIntegerCliValue(args, index, option) {
+  const value = readCliValue(args, index, option);
+  if (!/^[1-9]\d*$/u.test(value)) {
+    throw new UserFacingError(`${option} requires a positive integer`);
+  }
+  return Number.parseInt(value, 10);
+}
+
+function applyCliOptions(options) {
+  maxParallel = options.maxParallel;
+  tailLines = options.tailLines;
+  dryRun = options.dryRun;
+  failedOnly = options.failedOnly;
+  pushReady = options.pushReady;
+  verbose = options.verbose;
+  baseRef = options.baseRef ?? resolveDefaultBaseRef();
 }
 
 function isLintableCodeFile(file) {
@@ -525,7 +659,16 @@ function isPackageValidationRelevant(file) {
   );
 }
 
-function isBuildRelevant(file) {
+export function isPackageBuildRelevant(file, isPackageManifestPackRelevant) {
+  if (!isPackagePackRelevantPath(file)) {
+    return false;
+  }
+  if (
+    /(?:^|\/)package\.json$/u.test(file) &&
+    !isPackageManifestPackRelevant(file)
+  ) {
+    return false;
+  }
   return (
     isPackageValidationRelevant(file) ||
     /(?:^|\/)(assets|public|style|styles)\//u.test(file) ||
@@ -542,46 +685,30 @@ function isGlobalTypecheckRelevant(file) {
   ].includes(file);
 }
 
-function isElectronRuntimeBoundaryRelevant(file) {
+function isTypeScriptValidationInput(file) {
   return (
-    file === "apps/desktop/electron.vite.config.ts" ||
-    file.startsWith("apps/desktop/src/main/") ||
-    file.startsWith("apps/desktop/src/preload/") ||
-    file.startsWith("apps/desktop/src/shared/") ||
-    file.startsWith("packages/")
+    isPackageValidationRelevant(file) ||
+    ["pnpm-lock.yaml", "pnpm-workspace.yaml"].includes(file) ||
+    file.startsWith("packages/configs/")
   );
 }
 
-function isUiBoundaryRelevant(file) {
+function isGoValidationInput(file) {
   return (
-    (file.startsWith("apps/") ||
-      file.startsWith("packages/") ||
-      file.startsWith("tools/")) &&
-    /\.(?:css|json|js|jsx|mjs|ts|tsx)$/u.test(file)
+    file.endsWith(".go") ||
+    /(?:^|\/)go\.(?:mod|sum)$/u.test(file) ||
+    ["go.work", "go.work.sum"].includes(file) ||
+    file.startsWith("services/tuttid/.golangci")
   );
 }
 
-export function isAgentActivityRuntimeBoundaryRelevant(file) {
-  return (
-    file.startsWith("packages/agent/gui/") ||
-    file.startsWith("packages/agent/activity-core/") ||
-    file.startsWith(
-      "apps/desktop/src/renderer/src/features/workspace-agent/"
-    ) ||
-    file.startsWith(
-      "apps/desktop/src/renderer/src/features/workspace-workbench/"
-    ) ||
-    file === "tools/scripts/check-agent-activity-runtime-boundaries.mjs" ||
-    file === "tools/scripts/check-agent-activity-runtime-boundaries.test.mjs" ||
-    file.startsWith("tools/fixtures/agent-activity-runtime-boundaries/")
-  );
-}
-
-export function isRendererBoundaryRelevant(file) {
-  return (
-    file.startsWith("apps/desktop/src/renderer/src/") ||
-    file === "tools/scripts/check-renderer-feature-boundaries.mjs" ||
-    file === "tools/scripts/check-renderer-feature-boundaries.test.mjs"
+function selectGoLaneInputs(changedFiles, moduleRoot, forceBuiltinGenerate) {
+  return changedFiles.filter(
+    (file) =>
+      (isGoValidationInput(file) && resolveGoModuleRoot(file) === moduleRoot) ||
+      (forceBuiltinGenerate &&
+        moduleRoot === "services/tuttid" &&
+        file.startsWith("services/tuttid/builtin-apps/tutti-onboarding/"))
   );
 }
 
@@ -622,12 +749,21 @@ function failureExcerpt(path, lineCount) {
   };
 }
 
+class UserFacingError extends Error {}
+
 const currentPath = fileURLToPath(import.meta.url);
 if (process.argv[1] && resolve(process.argv[1]) === currentPath) {
-  main().catch((error) => {
-    console.error(
-      error instanceof Error ? (error.stack ?? error.message) : error
-    );
-    process.exitCode = 1;
-  });
+  Promise.resolve()
+    .then(() => applyCliOptions(parseCliArgs(process.argv.slice(2))))
+    .then(() => main())
+    .catch((error) => {
+      console.error(
+        error instanceof UserFacingError || error instanceof LaneCacheError
+          ? `check:changed: ${error.message}`
+          : error instanceof Error
+            ? (error.stack ?? error.message)
+            : error
+      );
+      process.exitCode = 1;
+    });
 }

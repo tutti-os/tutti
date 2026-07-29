@@ -2,19 +2,26 @@ package storesqlite
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"testing"
 )
 
 func TestSubmitClaimIsDurableAndIdempotent(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
-	input := SubmitClaimPrepare{WorkspaceID: "ws-1", AgentSessionID: "session-1", ClientSubmitID: "submit-1", NowUnixMS: 10}
+	input := SubmitClaimPrepare{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", ClientSubmitID: "submit-1",
+		CanonicalTurnID: "turn-1", NowUnixMS: 10,
+	}
 	first, created, err := store.PrepareSubmitClaim(context.Background(), input)
-	if err != nil || !created || first.Status != "prepared" {
+	if err != nil || !created || first.Status != "prepared" || first.CanonicalTurnID != "turn-1" || first.TurnID != "" {
 		t.Fatalf("first = %#v created=%v err=%v", first, created, err)
 	}
+	input.CanonicalTurnID = "turn-retry-must-be-ignored"
+	input.NowUnixMS = 99
 	duplicate, created, err := store.PrepareSubmitClaim(context.Background(), input)
-	if err != nil || created || duplicate.Status != "prepared" {
+	if err != nil || created || duplicate.Status != "prepared" || duplicate.CanonicalTurnID != "turn-1" || duplicate.CreatedAtUnixMS != 10 {
 		t.Fatalf("duplicate = %#v created=%v err=%v", duplicate, created, err)
 	}
 	accepted, updated, err := store.AcceptSubmitClaim(context.Background(), "ws-1", "session-1", "submit-1", "turn-1", 20)
@@ -23,7 +30,233 @@ func TestSubmitClaimIsDurableAndIdempotent(t *testing.T) {
 	}
 	afterRestart := New(store.db, store.opts)
 	duplicate, created, err = afterRestart.PrepareSubmitClaim(context.Background(), input)
-	if err != nil || created || duplicate.TurnID != "turn-1" {
+	if err != nil || created || duplicate.TurnID != "turn-1" || duplicate.CanonicalTurnID != "turn-1" || duplicate.CreatedAtUnixMS != 10 {
 		t.Fatalf("restart duplicate = %#v created=%v err=%v", duplicate, created, err)
+	}
+}
+
+func TestSubmitClaimAcceptRequiresExactCanonicalTurn(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	input := SubmitClaimPrepare{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", ClientSubmitID: "submit-1",
+		CanonicalTurnID: "turn-1", NowUnixMS: 10,
+	}
+	if _, _, err := store.PrepareSubmitClaim(context.Background(), input); err != nil {
+		t.Fatal(err)
+	}
+	claim, updated, err := store.AcceptSubmitClaim(context.Background(), "ws-1", "session-1", "submit-1", "turn-other", 20)
+	if !errors.Is(err, ErrSubmitClaimTurnConflict) || updated || claim.Status != "prepared" || claim.CanonicalTurnID != "turn-1" {
+		t.Fatalf("mismatched accept claim=%#v updated=%v err=%v", claim, updated, err)
+	}
+}
+
+func TestSubmitClaimsAllowMultipleGuidanceSubmissionsForOneCanonicalTurn(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	for index, clientSubmitID := range []string{"guidance-1", "guidance-2"} {
+		claim, created, err := store.PrepareSubmitClaim(context.Background(), SubmitClaimPrepare{
+			WorkspaceID: "ws-1", AgentSessionID: "session-1", ClientSubmitID: clientSubmitID,
+			CanonicalTurnID: "turn-active", NowUnixMS: int64(10 + index),
+		})
+		if err != nil || !created || claim.CanonicalTurnID != "turn-active" {
+			t.Fatalf("prepare %s claim=%#v created=%v err=%v", clientSubmitID, claim, created, err)
+		}
+	}
+}
+
+func TestSubmitClaimV2BackfillsAcceptedAndLeavesLegacyPreparedUnknown(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := New(openTestDB(t), testOptions(&staticProjectPaths{}))
+	if _, err := store.db.ExecContext(ctx, `
+CREATE TABLE agent_store_schema_migrations (
+  id TEXT PRIMARY KEY,
+  applied_at_unix_ms INTEGER NOT NULL
+);`); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.applyWorkspaceAgentSubmitClaimsV1(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.ExecContext(ctx, `
+INSERT INTO workspace_agent_submit_claims
+  (workspace_id, agent_session_id, client_submit_id, status, turn_id, created_at_unix_ms, updated_at_unix_ms)
+VALUES
+  ('ws-1', 'session-1', 'accepted-legacy', 'accepted', 'turn-accepted', 1, 2),
+  ('ws-1', 'session-1', 'prepared-legacy', 'prepared', NULL, 1, 1);
+`); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.applyWorkspaceAgentSubmitClaimsV2(ctx); err != nil {
+		t.Fatal(err)
+	}
+	accepted, ok, err := store.getSubmitClaim(ctx, "ws-1", "session-1", "accepted-legacy")
+	if err != nil || !ok || accepted.CanonicalTurnID != "turn-accepted" {
+		t.Fatalf("accepted legacy claim=%#v ok=%v err=%v", accepted, ok, err)
+	}
+	prepared, ok, err := store.getSubmitClaim(ctx, "ws-1", "session-1", "prepared-legacy")
+	if err != nil || !ok || prepared.CanonicalTurnID != "" || prepared.Status != "prepared" {
+		t.Fatalf("prepared legacy claim=%#v ok=%v err=%v", prepared, ok, err)
+	}
+}
+
+func TestSubmitClaimTransitionsRespectActiveSessionForkFence(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	seedForkSession(t, store)
+
+	if _, _, err := store.PrepareSubmitClaim(ctx, SubmitClaimPrepare{
+		WorkspaceID: "ws-1", AgentSessionID: "source", ClientSubmitID: "accepted",
+		CanonicalTurnID: "turn-2", NowUnixMS: 50,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.AcceptSubmitClaim(ctx, "ws-1", "source", "accepted", "turn-2", 51); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := prepareSessionForkForTest(t, store, ctx, SessionForkPrepare{
+		OperationID: "fork-claim-fence", WorkspaceID: "ws-1",
+		RequestID: "request-claim-fence", RequestHash: "hash-claim-fence",
+		SourceAgentSessionID: "source", TargetAgentSessionID: "target-claim-fence",
+		SourceTurnID: "turn-1", DriverKind: "codex", DriverVersion: "1",
+		OccurredAtUnixMS: 100,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	claim, changed, err := store.AcceptSubmitClaim(ctx, "ws-1", "source", "accepted", "turn-2", 101)
+	if err != nil || changed || claim.Status != "accepted" {
+		t.Fatalf("accepted replay claim=%#v changed=%v error=%v", claim, changed, err)
+	}
+	if claim, changed, err := store.AcceptSubmitClaim(
+		ctx, "ws-1", "source", "accepted", "turn-other", 101,
+	); !errors.Is(err, ErrSubmitClaimTurnConflict) || changed || claim.Status != "accepted" {
+		t.Fatalf("conflicting replay claim=%#v changed=%v error=%v", claim, changed, err)
+	}
+	if deleted, err := store.DeleteSubmitClaim(ctx, "ws-1", "source", "accepted"); !errors.Is(err, ErrSessionForkInProgress) || deleted {
+		t.Fatalf("delete accepted during fork deleted=%v error=%v", deleted, err)
+	}
+	if deleted, err := store.DeleteSubmitClaim(ctx, "ws-1", "source", "absent"); err != nil || deleted {
+		t.Fatalf("delete absent during fork deleted=%v error=%v", deleted, err)
+	}
+
+	// Simulate a prepared claim left by an older writer which did not know
+	// about the source fork fence. Current transitions must still refuse to
+	// mutate it while the source snapshot is reserved.
+	if _, err := store.db.ExecContext(ctx, `
+INSERT INTO workspace_agent_submit_claims (
+  workspace_id, agent_session_id, client_submit_id, status, turn_id,
+  created_at_unix_ms, updated_at_unix_ms, canonical_turn_id
+) VALUES ('ws-1', 'source', 'legacy-prepared', 'prepared', NULL, 99, 99, 'turn-2')
+`); err != nil {
+		t.Fatal(err)
+	}
+	if claim, changed, err := store.AcceptSubmitClaim(
+		ctx, "ws-1", "source", "legacy-prepared", "turn-2", 102,
+	); !errors.Is(err, ErrSessionForkInProgress) || changed || claim != (SubmitClaim{}) {
+		t.Fatalf("accept prepared during fork claim=%#v changed=%v error=%v", claim, changed, err)
+	}
+	if deleted, err := store.DeleteSubmitClaim(ctx, "ws-1", "source", "legacy-prepared"); !errors.Is(err, ErrSessionForkInProgress) || deleted {
+		t.Fatalf("delete prepared during fork deleted=%v error=%v", deleted, err)
+	}
+	persisted, ok, err := store.GetSubmitClaim(ctx, "ws-1", "source", "legacy-prepared")
+	if err != nil || !ok || persisted.Status != "prepared" {
+		t.Fatalf("prepared claim after fenced transitions=%#v ok=%v error=%v", persisted, ok, err)
+	}
+}
+
+func TestSubmitClaimResolutionAndSessionForkPrepareSerialize(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		resolve func(context.Context, *Store) error
+	}{
+		{
+			name: "accept",
+			resolve: func(ctx context.Context, store *Store) error {
+				_, changed, err := store.AcceptSubmitClaim(
+					ctx, "ws-1", "source", "concurrent", "turn-2", 60,
+				)
+				if err == nil && !changed {
+					return errors.New("concurrent accept did not change the prepared claim")
+				}
+				return err
+			},
+		},
+		{
+			name: "delete",
+			resolve: func(ctx context.Context, store *Store) error {
+				deleted, err := store.DeleteSubmitClaim(ctx, "ws-1", "source", "concurrent")
+				if err == nil && !deleted {
+					return errors.New("concurrent delete did not remove the prepared claim")
+				}
+				return err
+			},
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			store := openTestStore(t, testOptions(&staticProjectPaths{}))
+			ctx := context.Background()
+			seedForkSession(t, store)
+			if _, _, err := store.PrepareSubmitClaim(ctx, SubmitClaimPrepare{
+				WorkspaceID: "ws-1", AgentSessionID: "source", ClientSubmitID: "concurrent",
+				CanonicalTurnID: "turn-2", NowUnixMS: 50,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			source, found, err := store.GetSession(ctx, "ws-1", "source")
+			if err != nil || !found {
+				t.Fatalf("source session found=%v error=%v", found, err)
+			}
+			sourceHash, err := SessionForkSourceHash(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			start := make(chan struct{})
+			var group sync.WaitGroup
+			var resolveErr, forkErr error
+			group.Add(2)
+			go func() {
+				defer group.Done()
+				<-start
+				resolveErr = test.resolve(ctx, store)
+			}()
+			go func() {
+				defer group.Done()
+				<-start
+				_, _, forkErr = store.PrepareSessionFork(ctx, SessionForkPrepare{
+					OperationID: "fork-concurrent", WorkspaceID: "ws-1",
+					RequestID: "request-concurrent", RequestHash: "hash-concurrent",
+					SourceAgentSessionID: "source", TargetAgentSessionID: "target-concurrent",
+					SourceTurnID: "turn-1", PointKind: SessionForkPointThroughTurn,
+					DriverKind: "codex", DriverVersion: "1", OccurredAtUnixMS: 100,
+					ExpectedSourceHash: sourceHash,
+				})
+			}()
+			close(start)
+			group.Wait()
+
+			if resolveErr != nil {
+				t.Fatalf("resolve prepared claim error=%v", resolveErr)
+			}
+			if forkErr != nil && !errors.Is(forkErr, ErrSessionForkSourceState) {
+				t.Fatalf("PrepareSessionFork() error=%v", forkErr)
+			}
+			claim, found, err := store.GetSubmitClaim(ctx, "ws-1", "source", "concurrent")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if test.name == "accept" && (!found || claim.Status != "accepted") {
+				t.Fatalf("accepted claim=%#v found=%v", claim, found)
+			}
+			if test.name == "delete" && found {
+				t.Fatalf("deleted claim still exists: %#v", claim)
+			}
+		})
 	}
 }

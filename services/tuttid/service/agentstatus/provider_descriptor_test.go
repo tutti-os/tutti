@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerstatus"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
@@ -33,6 +34,11 @@ func TestCodexStatusSpecComesFromProviderDescriptor(t *testing.T) {
 	if spec.Install.CodexCLI.PackageName != "@openai/codex" || spec.Install.CodexCLI.BinaryName != "codex" || !spec.Install.CodexCLI.IncludeOptional {
 		t.Fatalf("codex installer registration = %#v", spec.Install.CodexCLI)
 	}
+	if spec.Update.Capability != UpdateCapabilitySupported || spec.Update.Source != UpdateSourceNPM ||
+		spec.Update.Strategy != ProviderUpdateStrategyManagedNPM || spec.Update.PackageName != "@openai/codex" ||
+		spec.Update.BinaryName != "codex" || !spec.Update.IncludeOptional {
+		t.Fatalf("codex update registration = %#v", spec.Update)
+	}
 }
 
 func TestClaudeCodeStatusSpecComesFromProviderDescriptor(t *testing.T) {
@@ -52,6 +58,16 @@ func TestClaudeCodeStatusSpecComesFromProviderDescriptor(t *testing.T) {
 	}
 }
 
+func TestTuttiAgentStatusSpecComesFromProviderDescriptor(t *testing.T) {
+	specs, err := DefaultRegistry().Select([]string{agentprovider.TuttiAgent})
+	if err != nil || len(specs) != 1 {
+		t.Fatalf("Select(tutti-agent) = %#v, %v", specs, err)
+	}
+	if specs[0].MinVersion != providerregistry.TuttiAgentMinVersion {
+		t.Fatalf("MinVersion = %q, want %q", specs[0].MinVersion, providerregistry.TuttiAgentMinVersion)
+	}
+}
+
 func TestProviderStatusAdapterConsumesDescriptorInstallerData(t *testing.T) {
 	descriptor, ok := providerregistry.Find(providerregistry.CodexProviderID)
 	if !ok {
@@ -62,6 +78,9 @@ func TestProviderStatusAdapterConsumesDescriptorInstallerData(t *testing.T) {
 	descriptor.Status.Install.PackageName = "@poison/codex"
 	descriptor.Status.Install.BinaryName = "poison-codex"
 	descriptor.Status.Install.IncludeOptional = false
+	descriptor.Status.Update.PackageName = "@poison/codex"
+	descriptor.Status.Update.BinaryName = "poison-codex"
+	descriptor.Status.Update.IncludeOptional = false
 
 	spec, err := providerSpecFromDescriptor(descriptor)
 	if err != nil {
@@ -73,6 +92,9 @@ func TestProviderStatusAdapterConsumesDescriptorInstallerData(t *testing.T) {
 	if spec.Install.CodexCLI == nil || spec.Install.CodexCLI.PackageName != "@poison/codex" ||
 		spec.Install.CodexCLI.BinaryName != "poison-codex" || spec.Install.CodexCLI.IncludeOptional {
 		t.Fatalf("installer descriptor values = %#v", spec.Install.CodexCLI)
+	}
+	if spec.Update.PackageName != "@poison/codex" || spec.Update.BinaryName != "poison-codex" || spec.Update.IncludeOptional {
+		t.Fatalf("update descriptor values = %#v", spec.Update)
 	}
 }
 
@@ -88,6 +110,9 @@ func TestOpenCodeStatusSpecComesFromProviderDescriptor(t *testing.T) {
 	if !reflect.DeepEqual(spec.AdapterCommand, []string{"opencode", "acp"}) ||
 		!reflect.DeepEqual(spec.AuthStatusCommand, []string{"auth", "list"}) {
 		t.Fatalf("status commands = %#v %#v", spec.AdapterCommand, spec.AuthStatusCommand)
+	}
+	if spec.AuthMarkerParserKind != providerregistry.AuthMarkerParserKindOpenCode {
+		t.Fatalf("AuthMarkerParserKind = %q, want opencode", spec.AuthMarkerParserKind)
 	}
 	if spec.Install.Kind != InstallerKindOfficialScript ||
 		spec.Install.ScriptURL != "https://opencode.ai/install" ||
@@ -126,9 +151,12 @@ func TestOpenCodeStatusHelpersDispatchFromDescriptorStrategy(t *testing.T) {
 	if got := providerCustomConfigEnvVars("open-code"); !reflect.DeepEqual(got, descriptor.Status.CustomConfigEnvVars) {
 		t.Fatalf("custom config env vars = %#v, want %#v", got, descriptor.Status.CustomConfigEnvVars)
 	}
-	auth, ok := parseAuthStatusCommandOutput("open-code", []byte("Not authenticated. Run opencode auth login."))
+	auth, ok := providerstatus.ParseAuthStatusOutput(
+		descriptor.Status.AuthOutputParserKind,
+		[]byte("Not authenticated. Run opencode auth login."),
+	)
 	if !ok || auth.Status != AuthRequired {
-		t.Fatalf("parseAuthStatusCommandOutput() = %#v, %v", auth, ok)
+		t.Fatalf("ParseAuthStatusOutput() = %#v, %v", auth, ok)
 	}
 }
 
@@ -137,6 +165,7 @@ func TestAuthStrategiesProjectFromProviderDescriptor(t *testing.T) {
 		providerregistry.CodexProviderID,
 		providerregistry.ClaudeCodeProviderID,
 		providerregistry.CursorProviderID,
+		providerregistry.OpenCodeProviderID,
 		providerregistry.TuttiAgentProviderID,
 	} {
 		descriptor, ok := providerregistry.Find(provider)

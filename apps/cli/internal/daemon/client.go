@@ -21,9 +21,9 @@ type Client struct {
 }
 
 const (
-	// 覆盖最长的命令预算(如 vibe-design session-start 声明 timeoutMs=300000),
-	// 留出网络/排队余量,避免长命令在客户端侧误报 "daemon request timed out"。
-	// TODO: 改为按命令的 timeoutMs 透传后,此全局值可回落。
+	// Built-in commands use this broad fallback budget. App commands publish
+	// their handler timeout through capability metadata and override it per
+	// invocation, including the transport margin owned by the terminal CLI.
 	defaultClientTimeout    = 360 * time.Second
 	healthPath              = "/v1/health"
 	cliCapabilitiesPath     = "/v1/cli/capabilities"
@@ -40,19 +40,26 @@ type CapabilityList struct {
 }
 
 type Capability struct {
-	ID          string           `json:"id"`
-	Path        []string         `json:"path"`
-	Summary     string           `json:"summary"`
-	Description string           `json:"description,omitempty"`
-	Visibility  string           `json:"visibility,omitempty"`
-	InputSchema map[string]any   `json:"inputSchema,omitempty"`
-	Output      CapabilityOutput `json:"output"`
-	Source      CapabilitySource `json:"source"`
+	ID               string            `json:"id"`
+	Path             []string          `json:"path"`
+	Summary          string            `json:"summary"`
+	Description      string            `json:"description,omitempty"`
+	Visibility       string            `json:"visibility,omitempty"`
+	InputSchema      map[string]any    `json:"inputSchema,omitempty"`
+	Output           CapabilityOutput  `json:"output"`
+	Execution        *CommandExecution `json:"execution,omitempty"`
+	HandlerTimeoutMs int               `json:"handlerTimeoutMs,omitempty"`
+	Source           CapabilitySource  `json:"source"`
+}
+
+type CommandExecution struct {
+	Mode string `json:"mode"`
 }
 
 type CapabilityListOptions struct {
 	IncludeHidden      bool
 	IncludeIntegration bool
+	AgentSessionID     string
 }
 
 type CapabilitySource struct {
@@ -98,17 +105,33 @@ type InvokeResponse struct {
 }
 
 type CommandOutput struct {
-	Kind     string           `json:"kind"`
-	Columns  []TableColumn    `json:"columns,omitempty"`
-	Rows     []map[string]any `json:"rows,omitempty"`
-	Value    map[string]any   `json:"value,omitempty"`
-	Text     string           `json:"text,omitempty"`
-	Warnings []CommandWarning `json:"warnings,omitempty"`
+	Kind         string               `json:"kind"`
+	Columns      []TableColumn        `json:"columns,omitempty"`
+	Rows         []map[string]any     `json:"rows,omitempty"`
+	Value        map[string]any       `json:"value,omitempty"`
+	Text         string               `json:"text,omitempty"`
+	Warnings     []CommandWarning     `json:"warnings,omitempty"`
+	Continuation *CommandContinuation `json:"continuation,omitempty"`
+}
+
+type CommandContinuation struct {
+	State        string `json:"state"`
+	RetryAfterMs int    `json:"retryAfterMs"`
 }
 
 type CommandWarning struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+}
+
+type apiErrorEnvelope struct {
+	Error struct {
+		Code             string `json:"code"`
+		Reason           string `json:"reason"`
+		Retryable        bool   `json:"retryable"`
+		DeveloperMessage string `json:"developerMessage"`
+		CorrelationID    string `json:"correlationId"`
+	} `json:"error"`
 }
 
 func NewClient(endpoint Endpoint) (*Client, error) {
@@ -140,6 +163,9 @@ func (client *Client) ListCapabilitiesForWorkspaceWithOptions(ctx context.Contex
 	if strings.TrimSpace(workspaceID) != "" {
 		query.Set("workspaceID", strings.TrimSpace(workspaceID))
 	}
+	if strings.TrimSpace(options.AgentSessionID) != "" {
+		query.Set("agentSessionID", strings.TrimSpace(options.AgentSessionID))
+	}
 	if options.IncludeHidden {
 		query.Set("includeHidden", "true")
 	}
@@ -156,20 +182,34 @@ func (client *Client) ListCapabilitiesForWorkspaceWithOptions(ctx context.Contex
 }
 
 func (client *Client) Invoke(ctx context.Context, commandID string, request InvokeRequest) (InvokeResponse, error) {
+	return client.InvokeWithTimeout(ctx, commandID, request, defaultClientTimeout)
+}
+
+func (client *Client) InvokeWithTimeout(ctx context.Context, commandID string, request InvokeRequest, timeout time.Duration) (InvokeResponse, error) {
 	var result InvokeResponse
 	path := strings.Replace(cliCommandInvokePattern, "{commandID}", urlPathEscape(commandID), 1)
-	if err := client.DoJSON(ctx, http.MethodPost, path, request, &result); err != nil {
+	httpClient := client.httpClient
+	if timeout > 0 {
+		cloned := *client.httpClient
+		cloned.Timeout = timeout
+		httpClient = &cloned
+	}
+	if err := client.doJSON(ctx, httpClient, http.MethodPost, path, request, &result); err != nil {
 		return InvokeResponse{}, err
 	}
 	return result, nil
 }
 
 func (client *Client) DoJSON(ctx context.Context, method string, path string, body any, result any) error {
+	return client.doJSON(ctx, client.httpClient, method, path, body, result)
+}
+
+func (client *Client) doJSON(ctx context.Context, httpClient *http.Client, method string, path string, body any, result any) error {
 	var requestBody io.Reader
 	if body != nil {
 		encoded, err := json.Marshal(body)
 		if err != nil {
-			return fmt.Errorf("encode request body: %w", err)
+			return newRequestError(ErrorDetails{ReasonCode: "daemon_request_invalid", Message: fmt.Sprintf("encode request body: %v", err)})
 		}
 		requestBody = bytes.NewReader(encoded)
 	}
@@ -177,7 +217,7 @@ func (client *Client) DoJSON(ctx context.Context, method string, path string, bo
 	url := client.baseURL + path
 	request, err := http.NewRequestWithContext(ctx, method, url, requestBody)
 	if err != nil {
-		return fmt.Errorf("create daemon request: %w", err)
+		return newRequestError(ErrorDetails{ReasonCode: "daemon_request_invalid", Message: fmt.Sprintf("create daemon request: %v", err)})
 	}
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("Authorization", "Bearer "+client.token)
@@ -185,7 +225,7 @@ func (client *Client) DoJSON(ctx context.Context, method string, path string, bo
 		request.Header.Set("Content-Type", "application/json")
 	}
 
-	response, err := client.httpClient.Do(request)
+	response, err := httpClient.Do(request)
 	if err != nil {
 		return daemonRequestError(err)
 	}
@@ -193,38 +233,64 @@ func (client *Client) DoJSON(ctx context.Context, method string, path string, bo
 
 	content, err := io.ReadAll(response.Body)
 	if err != nil {
-		return fmt.Errorf("read daemon response: %w", err)
-	}
-	if response.StatusCode == http.StatusUnauthorized {
-		return fmt.Errorf("daemon authentication failed")
+		return newRequestError(ErrorDetails{ReasonCode: "daemon_response_read_failed", Message: fmt.Sprintf("read daemon response: %v", err)})
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		message := strings.TrimSpace(string(content))
-		if message == "" {
-			message = response.Status
-		}
-		return fmt.Errorf("daemon request failed: %s", message)
+		return daemonResponseError(response.StatusCode, response.Status, content)
 	}
 	if result == nil {
 		return nil
 	}
 	if err := json.Unmarshal(content, result); err != nil {
-		return fmt.Errorf("decode daemon response: %w", err)
+		return newRequestError(ErrorDetails{ReasonCode: "daemon_response_invalid", Message: fmt.Sprintf("decode daemon response: %v", err)})
 	}
 	return nil
 }
 
+func daemonResponseError(statusCode int, status string, content []byte) error {
+	var envelope apiErrorEnvelope
+	if err := json.Unmarshal(content, &envelope); err == nil {
+		reasonCode := strings.TrimSpace(envelope.Error.Reason)
+		if reasonCode == "" {
+			reasonCode = strings.TrimSpace(envelope.Error.Code)
+		}
+		if reasonCode != "" {
+			message := strings.TrimSpace(envelope.Error.DeveloperMessage)
+			if message == "" {
+				message = reasonCode
+			}
+			return newRequestError(ErrorDetails{
+				ReasonCode: reasonCode, Message: message, Retryable: envelope.Error.Retryable,
+				CorrelationID: strings.TrimSpace(envelope.Error.CorrelationID), StatusCode: statusCode,
+			})
+		}
+	}
+	if statusCode == http.StatusUnauthorized {
+		return newRequestError(ErrorDetails{ReasonCode: "unauthorized", Message: "daemon authentication failed", StatusCode: statusCode})
+	}
+	message := strings.TrimSpace(string(content))
+	if message == "" {
+		message = strings.TrimSpace(status)
+	}
+	return newRequestError(ErrorDetails{
+		ReasonCode: "daemon_request_failed", Message: "daemon request failed: " + message, StatusCode: statusCode,
+	})
+}
+
 func daemonRequestError(err error) error {
 	if errors.Is(err, context.Canceled) {
-		return fmt.Errorf("daemon request canceled")
+		return newRequestError(ErrorDetails{ReasonCode: "daemon_request_canceled", Message: "daemon request canceled"})
 	}
 	if errors.Is(err, context.DeadlineExceeded) || os.IsTimeout(err) {
-		return fmt.Errorf("daemon request timed out")
+		return newRequestError(ErrorDetails{ReasonCode: "daemon_request_timed_out", Message: "daemon request timed out", Retryable: true})
 	}
 	if runningInAgentEnvironment() {
-		return fmt.Errorf("daemon is not reachable from this agent execution environment; rerun the command in an execution environment with localhost/IPC access")
+		return newRequestError(ErrorDetails{
+			ReasonCode: "daemon_unavailable", Retryable: true,
+			Message: "daemon is not reachable from this agent execution environment; rerun the command in an execution environment with localhost/IPC access",
+		})
 	}
-	return fmt.Errorf("daemon is not reachable")
+	return newRequestError(ErrorDetails{ReasonCode: "daemon_unavailable", Message: "daemon is not reachable", Retryable: true})
 }
 
 func runningInAgentEnvironment() bool {

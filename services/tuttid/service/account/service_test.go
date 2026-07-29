@@ -15,6 +15,7 @@ import (
 	"time"
 
 	authbridge "github.com/tutti-os/tutti/packages/auth/bridge-go"
+	"github.com/tutti-os/tutti/packages/commerce"
 )
 
 func TestNewServiceReadsLocalAuthOverrides(t *testing.T) {
@@ -192,6 +193,18 @@ func TestGetProductSummaryFetchesCommerceWithSessionCookie(t *testing.T) {
 	}
 	if summary.PartialError != nil {
 		t.Fatalf("partial error = %#v, want nil", summary.PartialError)
+	}
+}
+
+func TestCommerceAuthorizerFailsClosedWithoutSessionCookie(t *testing.T) {
+	service := NewService(filepath.Join(t.TempDir(), "auth.json"))
+	request := httptest.NewRequest(http.MethodGet, "https://tutti.sh/api/commerce/v1/user-info", nil)
+
+	if err := service.authorizeCommerceRequest(request); err == nil {
+		t.Fatal("authorizeCommerceRequest error = nil, want missing session cookie")
+	}
+	if cookie := request.Header.Get("Cookie"); cookie != "" {
+		t.Fatalf("Cookie = %q, want empty", cookie)
 	}
 }
 
@@ -409,6 +422,9 @@ func TestGetProductSummaryReturnsLinksWhenSignedOut(t *testing.T) {
 	}
 	if summary.Links.PlanURL != "https://tutti.sh/profile/plan" {
 		t.Fatalf("plan url = %q", summary.Links.PlanURL)
+	}
+	if summary.MembershipAccess != commerce.MembershipAccessUnknown {
+		t.Fatalf("membership access = %q, want unknown", summary.MembershipAccess)
 	}
 }
 

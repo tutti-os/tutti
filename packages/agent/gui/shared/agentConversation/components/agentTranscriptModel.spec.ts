@@ -1,7 +1,48 @@
 import { describe, expect, it } from "vitest";
 import type { AgentTranscriptPresentationKind } from "../contracts/agentTranscriptPresentation";
 import type { AgentTranscriptRowVM } from "../contracts/agentTranscriptRowVM";
-import { findTurnDividerRowIndexes } from "./agentTranscriptModel";
+import {
+  attachLeadingToolRowsToFollowingMessages,
+  buildAgentParticipantTurnProjection,
+  buildAgentTranscriptTurnGroups,
+  findTurnDividerRowIndexes,
+  transcriptRowKey
+} from "./agentTranscriptModel";
+
+describe("buildAgentTranscriptTurnGroups", () => {
+  it("keeps a turnless Goal control inside one surrounding Turn presentation group", () => {
+    const rows = [row("turn-1"), goalControlRow(), row("turn-1")];
+    const groups = buildAgentTranscriptTurnGroups(
+      rows,
+      rows.map(transcriptRowKey)
+    );
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.key).toBe("turn-1");
+    expect(groups[0]?.turnId).toBe("turn-1");
+    expect(groups[0]?.rows.map(({ row: item }) => item.kind)).toEqual([
+      "message",
+      "goal-control",
+      "message"
+    ]);
+    expect(groups[0]?.rows[1]?.row.turnId).toBeNull();
+  });
+
+  it("keeps a Goal control between different Turns independent", () => {
+    const rows = [row("turn-1"), goalControlRow(), row("turn-2")];
+    const groups = buildAgentTranscriptTurnGroups(
+      rows,
+      rows.map(transcriptRowKey)
+    );
+
+    expect(groups.map((group) => group.key)).toEqual([
+      "turn-1",
+      "orphan:goal-control:clear",
+      "turn-2"
+    ]);
+    expect(groups[1]?.turnId).toBeNull();
+  });
+});
 
 describe("findTurnDividerRowIndexes", () => {
   const turnIndexes = new Map([
@@ -64,3 +105,120 @@ function row(
     occurredAtUnixMs: 1
   };
 }
+
+function goalControlRow(): AgentTranscriptRowVM {
+  return {
+    kind: "goal-control",
+    id: "goal-control:clear",
+    turnId: null,
+    action: "clear",
+    body: "/goal clear",
+    occurredAtUnixMs: 2
+  };
+}
+
+function userRow(turnId: string): AgentTranscriptRowVM {
+  return {
+    kind: "message",
+    id: `row:user:${turnId}`,
+    turnId,
+    speaker: "user",
+    messages: [
+      {
+        kind: "message-content",
+        id: `message:user:${turnId}`,
+        turnId,
+        body: "user question",
+        presentationKind: "content",
+        occurredAtUnixMs: 1
+      }
+    ],
+    thinking: [],
+    occurredAtUnixMs: 1
+  };
+}
+
+function toolGroupRow(id: string, turnId: string): AgentTranscriptRowVM {
+  return {
+    kind: "tool-group",
+    id: `tool-group:${id}`,
+    turnId,
+    grouped: true,
+    calls: [],
+    entries: [],
+    occurredAtUnixMs: 1
+  };
+}
+
+describe("buildAgentParticipantTurnProjection", () => {
+  it("starts a presentation turn at each user message", () => {
+    const projection = buildAgentParticipantTurnProjection([
+      userRow("turn-1"),
+      row("turn-1"),
+      userRow("turn-2"),
+      row("turn-2")
+    ]);
+
+    expect([...projection.dividerRowIndexes]).toEqual([2]);
+    expect([...projection.turnIndexByRowIndex.values()]).toEqual([0, 0, 1, 1]);
+  });
+
+  it("does not split a reply when its canonical turn id changes", () => {
+    const projection = buildAgentParticipantTurnProjection([
+      userRow("turn-1"),
+      row("turn-1"),
+      row("turn-recovery")
+    ]);
+
+    expect([...projection.dividerRowIndexes]).toEqual([]);
+    expect([...projection.turnIndexByRowIndex.values()]).toEqual([0, 0, 0]);
+  });
+
+  it("starts a new turn when user messages are adjacent", () => {
+    const projection = buildAgentParticipantTurnProjection([
+      userRow("turn-1"),
+      userRow("turn-2")
+    ]);
+
+    expect([...projection.dividerRowIndexes]).toEqual([1]);
+    expect([...projection.turnIndexByRowIndex.values()]).toEqual([0, 1]);
+  });
+});
+
+describe("attachLeadingToolRowsToFollowingMessages", () => {
+  it("moves tool-group rows into the assistant message that follows them", () => {
+    const rows = [
+      row("turn-1"),
+      toolGroupRow("a", "turn-1"),
+      toolGroupRow("b", "turn-1"),
+      row("turn-1")
+    ];
+    const result = attachLeadingToolRowsToFollowingMessages(rows);
+
+    expect(result).toHaveLength(2);
+    expect(result[0]?.kind).toBe("message");
+    const merged = result[1];
+    expect(merged?.kind).toBe("message");
+    if (merged?.kind !== "message") {
+      throw new Error("Expected a message row");
+    }
+    expect(merged.leadingToolRows?.map((toolRow) => toolRow.id)).toEqual([
+      "tool-group:a",
+      "tool-group:b"
+    ]);
+  });
+
+  it("does not attach tool-group rows to user messages", () => {
+    const rows = [toolGroupRow("a", "turn-1"), userRow("turn-1")];
+    const result = attachLeadingToolRowsToFollowingMessages(rows);
+
+    expect(result.map((item) => item.kind)).toEqual(["tool-group", "message"]);
+  });
+
+  it("keeps trailing tool-group rows standalone", () => {
+    const rows = [row("turn-1"), toolGroupRow("a", "turn-1")];
+    const result = attachLeadingToolRowsToFollowingMessages(rows);
+
+    expect(result.map((item) => item.kind)).toEqual(["message", "tool-group"]);
+  });
+});

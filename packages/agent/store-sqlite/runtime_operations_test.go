@@ -19,7 +19,6 @@ func TestRuntimeOperationPrepareIsSubjectIdempotentAndCrashRecoverable(t *testin
 	if err != nil || !created || first.Status != RuntimeOperationStatusPrepared {
 		t.Fatalf("prepare = %#v created=%v err=%v", first, created, err)
 	}
-	input.OperationID = "operation-retry"
 	duplicate, created, err := store.PrepareRuntimeOperation(context.Background(), input)
 	if err != nil || created || duplicate.OperationID != "operation-1" {
 		t.Fatalf("duplicate = %#v created=%v err=%v", duplicate, created, err)
@@ -27,6 +26,61 @@ func TestRuntimeOperationPrepareIsSubjectIdempotentAndCrashRecoverable(t *testin
 	claimable, err := store.ListClaimableRuntimeOperations(context.Background(), ListClaimableRuntimeOperationsInput{WorkspaceID: "ws-1", NowUnixMS: 20})
 	if err != nil || len(claimable) != 1 || claimable[0].Status != RuntimeOperationStatusPrepared {
 		t.Fatalf("claimable after crash = %#v err=%v", claimable, err)
+	}
+}
+
+func TestPrepareInteractiveRuntimeOperationClaimsInteractionAtomically(t *testing.T) {
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	seedRuntimeInteractiveSubject(t, store, "session-claim", "turn-claim", "request-claim")
+	start := make(chan struct{})
+	type result struct {
+		interaction Interaction
+		transition  InteractionTransitionResult
+		err         error
+	}
+	results := make(chan result, 2)
+	var group sync.WaitGroup
+	for index, option := range []string{"approve", "deny"} {
+		index, option := index, option
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			<-start
+			_, interaction, transition, err := store.PrepareInteractiveRuntimeOperation(context.Background(), RuntimeOperationPrepare{
+				OperationID: "operation-claim", WorkspaceID: "ws-1", AgentSessionID: "session-claim",
+				Kind: RuntimeOperationKindInteractiveResponse, TurnID: "turn-claim", RequestID: "request-claim",
+				Payload: map[string]any{"action": "", "optionId": option, "payload": (map[string]any)(nil)}, OccurredAtMS: int64(10 + index),
+			})
+			results <- result{interaction: interaction, transition: transition, err: err}
+		}()
+	}
+	close(start)
+	group.Wait()
+	close(results)
+	applied := 0
+	claimedOption := ""
+	for got := range results {
+		if got.err != nil {
+			t.Fatalf("PrepareInteractiveRuntimeOperation() error = %v", got.err)
+		}
+		if got.transition == InteractionTransitionApplied {
+			applied++
+		}
+		option, _ := got.interaction.Output["optionId"].(string)
+		if claimedOption == "" {
+			claimedOption = option
+		} else if option != claimedOption {
+			t.Fatalf("competing calls observed different claimed outputs: %q and %q", claimedOption, option)
+		}
+	}
+	if applied != 1 || (claimedOption != "approve" && claimedOption != "deny") {
+		t.Fatalf("applied claims=%d claimed option=%q", applied, claimedOption)
+	}
+	interactions, err := store.ListSessionInteractions(context.Background(), ListSessionInteractionsInput{
+		WorkspaceID: "ws-1", AgentSessionID: "session-claim",
+	})
+	if err != nil || len(interactions) != 1 || interactions[0].Status != InteractionStatusAnswered {
+		t.Fatalf("stored interactions=%#v error=%v", interactions, err)
 	}
 }
 
@@ -116,6 +170,34 @@ func TestCompleteInteractiveRuntimeOperationIsAtomicAndSessionScoped(t *testing.
 	events, err := store.ListPendingRuntimeOperationEvents(context.Background(), "ws-1", 10)
 	if err != nil || len(events) != 1 || events[0].OperationID != "operation-1" {
 		t.Fatalf("events = %#v err=%v", events, err)
+	}
+}
+
+func TestCompleteInteractiveRuntimeOperationPreservesRuntimeSupersededAfterClaim(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	seedRuntimeInteractiveSubject(t, store, "session-claim", "turn-claim", "request-claim")
+	operation, interaction, transition, err := store.PrepareInteractiveRuntimeOperation(context.Background(), RuntimeOperationPrepare{
+		OperationID: "operation-claim", WorkspaceID: "ws-1", AgentSessionID: "session-claim",
+		Kind: RuntimeOperationKindInteractiveResponse, TurnID: "turn-claim", RequestID: "request-claim",
+		Payload: map[string]any{"action": "approve", "optionId": "", "payload": (map[string]any)(nil)}, OccurredAtMS: 10,
+	})
+	if err != nil || transition != InteractionTransitionApplied || interaction.Status != InteractionStatusAnswered {
+		t.Fatalf("prepare claim operation=%#v interaction=%#v transition=%v error=%v", operation, interaction, transition, err)
+	}
+	claimRuntimeOperation(t, store, operation.OperationID, "worker-a")
+	completion, changed, err := store.CompleteInteractiveRuntimeOperation(context.Background(), CompleteInteractiveRuntimeOperationInput{
+		WorkspaceID: "ws-1", OperationID: operation.OperationID, LeaseOwner: "worker-a",
+		Disposition: InteractionStatusSuperseded, NowUnixMS: 30,
+	})
+	if err != nil || !changed || completion.Operation.Result != RuntimeOperationResultSuperseded {
+		t.Fatalf("completion=%#v changed=%v error=%v, want runtime superseded", completion, changed, err)
+	}
+	interactions, err := store.ListSessionInteractions(context.Background(), ListSessionInteractionsInput{
+		WorkspaceID: "ws-1", AgentSessionID: "session-claim",
+	})
+	if err != nil || len(interactions) != 1 || interactions[0].Status != InteractionStatusAnswered {
+		t.Fatalf("claimed interaction=%#v error=%v", interactions, err)
 	}
 }
 

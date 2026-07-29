@@ -1,20 +1,117 @@
 package conformance
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
-func TestPublishedScenariosHaveUniqueNames(t *testing.T) {
+func TestPublishedScenarioCatalogsHaveUniqueNames(t *testing.T) {
 	t.Parallel()
-	seen := map[string]struct{}{}
-	for _, scenario := range Scenarios() {
-		if scenario.Name == "" {
-			t.Fatal("conformance scenario has an empty name")
-		}
-		if _, ok := seen[scenario.Name]; ok {
-			t.Fatalf("duplicate conformance scenario name %q", scenario.Name)
-		}
-		seen[scenario.Name] = struct{}{}
+	catalogs := []struct {
+		name      string
+		scenarios []Scenario
+		wantCount int
+	}{
+		{name: "adapter lifecycle", scenarios: Scenarios(), wantCount: 22},
+		{name: "application core", scenarios: ApplicationCoreScenarios(), wantCount: 17},
+		{name: "resume policy", scenarios: ResumePolicyScenarios(), wantCount: 5},
+		{name: "submission fence", scenarios: SubmissionFenceScenarios(), wantCount: 1},
+		{name: "title policy", scenarios: TitlePolicyScenarios(), wantCount: 1},
+		{name: "deletion admission", scenarios: DeletionAdmissionScenarios(), wantCount: 3},
+		{name: "coordinator", scenarios: CoordinatorScenarios(), wantCount: 7},
+		{name: "goal", scenarios: GoalScenarios(), wantCount: 8},
+		{name: "commit observer", scenarios: CommitObserverScenarios(), wantCount: 2},
 	}
-	if len(seen) != 9 {
-		t.Fatalf("scenario count=%d, want 9", len(seen))
+	for _, catalog := range catalogs {
+		catalog := catalog
+		t.Run(catalog.name, func(t *testing.T) {
+			t.Parallel()
+			seen := map[string]struct{}{}
+			for _, scenario := range catalog.scenarios {
+				if scenario.Name == "" {
+					t.Fatal("conformance scenario has an empty name")
+				}
+				if _, ok := seen[scenario.Name]; ok {
+					t.Fatalf("duplicate conformance scenario name %q", scenario.Name)
+				}
+				seen[scenario.Name] = struct{}{}
+			}
+			if len(seen) != catalog.wantCount {
+				t.Fatalf("scenario count=%d, want %d", len(seen), catalog.wantCount)
+			}
+		})
 	}
+}
+
+func TestScenarioOwnershipIsExplicit(t *testing.T) {
+	t.Parallel()
+	wantAdapterLifecycle := []string{
+		"create empty session",
+		"create with initial content",
+		"create with explicit rail placement",
+		"resume persisted session",
+		"send input",
+		"duplicate client submit id",
+		"exact turn cancel",
+		"interactive response",
+		"interactive response reuses provider request id across turns",
+		"interactive response race",
+		"plan decision",
+		"initial title cas",
+		"get session",
+		"list session turns",
+		"historical and live settings",
+		"pin session",
+		"delete session",
+		"delete live session before canonical report",
+		"delete admission rejection has no canonical side effects",
+		"delete admission receives exact canonical closure",
+		"delete admission guards changed closure before additional runtime close",
+		"purge deleted sessions",
+	}
+	wantApplicationCore := []string{
+		"create empty session",
+		"create with initial content",
+		"create with explicit rail placement",
+		"resume persisted session",
+		"send input",
+		"duplicate client submit id",
+		"initial title cas",
+		"get session",
+		"list session turns",
+		"historical and live settings",
+		"pin session",
+		"delete session",
+		"delete live session before canonical report",
+		"delete admission rejection has no canonical side effects",
+		"delete admission receives exact canonical closure",
+		"delete admission guards changed closure before additional runtime close",
+		"purge deleted sessions",
+	}
+	wantCoordinator := []string{
+		"exact turn cancel",
+		"interactive response",
+		"interactive response reuses provider request id across turns",
+		"interactive response race",
+		"plan decision",
+		"recover operations before stale turns and worktree sweep",
+		"worktree sweep failure propagates",
+	}
+	if got := scenarioNames(Scenarios()); !slices.Equal(got, wantAdapterLifecycle) {
+		t.Fatalf("adapter lifecycle scenarios=%v, want %v", got, wantAdapterLifecycle)
+	}
+	if got := scenarioNames(ApplicationCoreScenarios()); !slices.Equal(got, wantApplicationCore) {
+		t.Fatalf("application core scenarios=%v, want %v", got, wantApplicationCore)
+	}
+	if got := scenarioNames(CoordinatorScenarios()); !slices.Equal(got, wantCoordinator) {
+		t.Fatalf("coordinator scenarios=%v, want %v", got, wantCoordinator)
+	}
+}
+
+func scenarioNames(scenarios []Scenario) []string {
+	names := make([]string, 0, len(scenarios))
+	for _, scenario := range scenarios {
+		names = append(names, scenario.Name)
+	}
+	return names
 }

@@ -11,6 +11,13 @@ export interface AgentProviderStatusActionContext {
   workspaceId?: string;
 }
 
+export type AgentProviderActionOrigin = "automatic" | "user";
+
+export interface AgentProviderStatusActionOptions {
+  context?: AgentProviderStatusActionContext;
+  origin?: AgentProviderActionOrigin;
+}
+
 // A closable handle to the terminal a command opened, so the caller can dismiss
 // it once the command's purpose is fulfilled (e.g. close the login terminal after
 // authentication succeeds).
@@ -45,6 +52,7 @@ export interface IAgentProviderStatusService {
   getRevision(): number;
   getSnapshot(): AgentProviderStatusSnapshot;
   isActionPending(provider: WorkspaceAgentProvider, actionId: string): boolean;
+  isCheckingUpdates(): boolean;
   getStatus(provider: WorkspaceAgentProvider): AgentProviderStatus | null;
   /**
    * Seeds the snapshot from another window's already-captured status (e.g. a
@@ -62,22 +70,48 @@ export interface IAgentProviderStatusService {
      * which renders the network diagnostic, sets this.
      */
     includeNetwork?: boolean;
+    /**
+     * Opt into cached remote CLI update discovery. Off by default so ordinary
+     * readiness loads stay local.
+     */
+    includeUpdates?: boolean;
   }): Promise<AgentProviderStatusListResponse | null>;
+  /**
+   * Reconciles the renderer snapshot with tuttid without bypassing tuttid's
+   * provider-status cache. Stale visibility checks use this path; analytics
+   * reuses ensureLoaded, and explicit user actions use refresh instead.
+   */
+  reconcileStatuses(
+    providers?: WorkspaceAgentProvider[]
+  ): Promise<AgentProviderStatusListResponse | null>;
   runAction(
     provider: WorkspaceAgentProvider,
     actionId: string,
-    context?: AgentProviderStatusActionContext
+    options?: AgentProviderStatusActionOptions
   ): Promise<void>;
   refresh(
     providers?: WorkspaceAgentProvider[],
-    options?: { includeNetwork?: boolean }
+    options?: {
+      includeNetwork?: boolean;
+      includeUpdates?: boolean;
+      /**
+       * Bypass only the update-metadata cache when includeUpdates is true.
+       */
+      refreshUpdates?: boolean;
+    }
   ): Promise<void>;
+  /**
+   * Explicit manual update-check path. Always opts into includeUpdates and
+   * refreshes cached update metadata; never forces local readiness detection.
+   */
+  checkUpdates(providers?: WorkspaceAgentProvider[]): Promise<void>;
   subscribe(listener: () => void): () => void;
   /** Whether the user agreed to send fuller diagnostics via "report problem". */
   getDiagnosticsConsent(): boolean;
   setDiagnosticsConsent(value: boolean): void;
   /** Send the consent-gated diagnostic report for a provider (no-op without consent). */
   reportEnvIssue(provider: WorkspaceAgentProvider): Promise<void>;
+  dispose(): void;
 }
 
 export const IAgentProviderStatusService =

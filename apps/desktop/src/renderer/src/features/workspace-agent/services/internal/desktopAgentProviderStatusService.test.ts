@@ -88,7 +88,8 @@ test("runAction executes terminal commands and refreshes the provider status", a
     }
   ]);
   assert.deepEqual(statusCalls, [undefined, ["codex"]]);
-  assert.equal(pendingSnapshots.includes(true), false);
+  assert.equal(pendingSnapshots.includes(true), true);
+  assert.equal(service.isActionPending("codex", "login"), false);
 });
 
 test("refresh sends includeNetwork only when the caller opts in", async () => {
@@ -120,6 +121,349 @@ test("refresh sends includeNetwork only when the caller opts in", async () => {
 
   assert.deepEqual(includeNetworkRequests, [undefined, true]);
   assert.deepEqual(forceRefreshRequests, [true, true]);
+});
+
+test("checkUpdates opts into includeUpdates without forcing readiness refresh", async () => {
+  const requests: Array<{
+    includeUpdates?: boolean;
+    refresh?: boolean;
+    refreshUpdates?: boolean;
+  }> = [];
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      onStatusRequest: (
+        _providers,
+        _includeNetwork,
+        refresh,
+        includeUpdates,
+        refreshUpdates
+      ) => {
+        requests.push({ includeUpdates, refresh, refreshUpdates });
+      },
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [{ id: "update", kind: "daemon_action" }],
+            availability: "ready",
+            update: {
+              capability: "supported",
+              currentVersion: "1.0.0",
+              lastCheckedAt: "2026-07-19T00:00:00.000Z",
+              latestVersion: "1.1.0",
+              reasonCode: null,
+              source: "npm",
+              unsupportedReason: null,
+              updateAvailable: true
+            }
+          })
+        ])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.refresh(["codex"]);
+  await service.checkUpdates(["codex"]);
+
+  assert.deepEqual(requests, [
+    {
+      includeUpdates: undefined,
+      refresh: true,
+      refreshUpdates: undefined
+    },
+    {
+      includeUpdates: true,
+      refresh: undefined,
+      refreshUpdates: true
+    }
+  ]);
+  assert.equal(service.getStatus("codex")?.update.updateAvailable, true);
+});
+
+test("checkUpdates exposes one stable operation state for the whole request", async () => {
+  const response = createDeferred<AgentProviderStatusListResponse>();
+  const checkingSnapshots: boolean[] = [];
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: {
+      getAgentProviderStatuses: () => response.promise
+    } as Partial<TuttidClient> as TuttidClient,
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+  service.subscribe(() => {
+    checkingSnapshots.push(service.isCheckingUpdates());
+  });
+
+  const request = service.checkUpdates(["codex"]);
+  assert.equal(service.isCheckingUpdates(), true);
+  response.resolve(
+    createStatusResponse([
+      createProviderStatus({ actions: [], availability: "ready" })
+    ])
+  );
+  await request;
+
+  assert.equal(service.isCheckingUpdates(), false);
+  assert.equal(checkingSnapshots[0], true);
+  assert.equal(checkingSnapshots.at(-1), false);
+  assert.equal(
+    checkingSnapshots.slice(0, -1).every((checking) => checking),
+    true
+  );
+});
+
+test("incidental update discovery does not expose manual check state", async () => {
+  const response = createDeferred<AgentProviderStatusListResponse>();
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: {
+      getAgentProviderStatuses: () => response.promise
+    } as Partial<TuttidClient> as TuttidClient,
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  const request = service.refresh(["codex"], {
+    includeNetwork: true,
+    includeUpdates: true
+  });
+  assert.equal(service.isCheckingUpdates(), false);
+  response.resolve(
+    createStatusResponse([
+      createProviderStatus({ actions: [], availability: "ready" })
+    ])
+  );
+  await request;
+
+  assert.equal(service.isCheckingUpdates(), false);
+});
+
+test("local-only refresh preserves prior includeUpdates discovery", async () => {
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [{ id: "update", kind: "daemon_action" }],
+            availability: "ready",
+            update: {
+              capability: "supported",
+              currentVersion: "1.0.0",
+              lastCheckedAt: "2026-07-19T00:00:00.000Z",
+              latestVersion: "1.1.0",
+              reasonCode: null,
+              source: "npm",
+              unsupportedReason: null,
+              updateAvailable: true
+            }
+          })
+        ]),
+        createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            availability: "ready",
+            update: {
+              capability: "supported",
+              currentVersion: "1.0.0",
+              lastCheckedAt: null,
+              latestVersion: null,
+              reasonCode: null,
+              source: "npm",
+              unsupportedReason: null,
+              updateAvailable: null
+            }
+          })
+        ])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.checkUpdates(["codex"]);
+  assert.equal(service.getStatus("codex")?.update.updateAvailable, true);
+  assert.equal(
+    service
+      .getStatus("codex")
+      ?.actions.some((action) => action.id === "update"),
+    true
+  );
+
+  await service.refresh(["codex"]);
+  assert.equal(service.getStatus("codex")?.update.updateAvailable, true);
+  assert.equal(
+    service
+      .getStatus("codex")
+      ?.actions.some((action) => action.id === "update"),
+    true
+  );
+});
+
+test("runAction update tracks pending progress and refreshes with includeUpdates", async () => {
+  const requests: Array<{
+    includeUpdates?: boolean;
+    refresh?: boolean;
+  }> = [];
+  const actionRuns: Array<string> = [];
+  const pendingSnapshots: boolean[] = [];
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      actionRuns: [createActionRunResponse("codex", "update", "completed")],
+      onRunActionRequest: (_provider, actionID) => {
+        actionRuns.push(actionID);
+      },
+      onStatusRequest: (
+        _providers,
+        _includeNetwork,
+        refresh,
+        includeUpdates
+      ) => {
+        requests.push({ includeUpdates, refresh });
+      },
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [{ id: "update", kind: "daemon_action" }],
+            availability: "ready",
+            update: {
+              capability: "supported",
+              currentVersion: "1.0.0",
+              lastCheckedAt: "2026-07-19T00:00:00.000Z",
+              latestVersion: "1.1.0",
+              reasonCode: null,
+              source: "npm",
+              unsupportedReason: null,
+              updateAvailable: true
+            }
+          })
+        ]),
+        createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            availability: "ready",
+            update: {
+              capability: "supported",
+              currentVersion: "1.1.0",
+              lastCheckedAt: "2026-07-19T00:01:00.000Z",
+              latestVersion: "1.1.0",
+              reasonCode: null,
+              source: "npm",
+              unsupportedReason: null,
+              updateAvailable: false
+            }
+          })
+        ])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  service.subscribe(() => {
+    pendingSnapshots.push(service.isActionPending("codex", "update"));
+  });
+
+  await service.checkUpdates(["codex"]);
+  pendingSnapshots.length = 0;
+  await service.runAction("codex", "update", { origin: "user" });
+
+  assert.deepEqual(actionRuns, ["update"]);
+  assert.equal(pendingSnapshots.includes(true), true);
+  assert.equal(
+    pendingSnapshots.slice(0, -1).every((pending) => pending),
+    true
+  );
+  assert.equal(pendingSnapshots.at(-1), false);
+  assert.equal(service.isActionPending("codex", "update"), false);
+  assert.equal(
+    requests.some(
+      (request) => request.includeUpdates === true && request.refresh === true
+    ),
+    true
+  );
+  assert.equal(service.getStatus("codex")?.update.currentVersion, "1.1.0");
+});
+
+test("runAction update failures notify through i18n", async () => {
+  const notifications = createNotificationRecorder();
+  const service = new DesktopAgentProviderStatusService(
+    {
+      tuttidClient: createTuttidClient({
+        actionRuns: [createActionRunResponse("codex", "update", "failed")],
+        snapshots: [
+          createStatusResponse([
+            createProviderStatus({
+              actions: [{ id: "update", kind: "daemon_action" }],
+              availability: "ready",
+              update: {
+                capability: "supported",
+                currentVersion: "1.0.0",
+                lastCheckedAt: "2026-07-19T00:00:00.000Z",
+                latestVersion: "1.1.0",
+                reasonCode: null,
+                source: "npm",
+                unsupportedReason: null,
+                updateAvailable: true
+              }
+            })
+          ])
+        ]
+      }),
+      terminalCommandRunner: {
+        async runTerminalCommand() {}
+      }
+    },
+    notifications.service
+  );
+
+  await service.checkUpdates(["codex"]);
+  await assert.rejects(() =>
+    service.runAction("codex", "update", { origin: "user" })
+  );
+
+  assert.equal(notifications.items[0]?.tone, "error");
+  assert.equal(notifications.items[0]?.title, "Update failed");
+});
+
+test("runAction reports a stale update action when rediscovery fails", async () => {
+  const notifications = createNotificationRecorder();
+  let requestCount = 0;
+  const service = new DesktopAgentProviderStatusService(
+    {
+      tuttidClient: {
+        async getAgentProviderStatuses() {
+          requestCount += 1;
+          if (requestCount === 1) {
+            return createStatusResponse([
+              createProviderStatus({ actions: [], availability: "ready" })
+            ]);
+          }
+          throw new Error("offline");
+        }
+      } as Partial<TuttidClient> as TuttidClient,
+      terminalCommandRunner: {
+        async runTerminalCommand() {}
+      }
+    },
+    notifications.service
+  );
+
+  await service.refresh(["codex"]);
+  await service.runAction("codex", "update", { origin: "user" });
+
+  assert.equal(requestCount, 2);
+  assert.deepEqual(notifications.items, [
+    {
+      description: undefined,
+      tone: "error",
+      title: "Update failed"
+    }
+  ]);
 });
 
 test("a local-only refresh keeps the network the wizard fetched", async () => {
@@ -449,7 +793,7 @@ test("requestStatuses fires agent.env_detected once per detection outcome", asyn
   assert.equal(events[0]?.params?.availability_status, "ready");
 });
 
-test("runAction short-polls login status after sign-in and coalesces repeated login attempts", async () => {
+test("automatic login requests reuse one terminal and one status poll", async () => {
   const commands: AgentProviderTerminalCommand[] = [];
   const statusCalls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
   const pollScheduler = createManualPollScheduler();
@@ -491,13 +835,13 @@ test("runAction short-polls login status after sign-in and coalesces repeated lo
   });
 
   await service.refresh();
-  await service.runAction("codex", "login");
-  await service.runAction("codex", "login");
+  await service.runAction("codex", "login", { origin: "automatic" });
+  await service.runAction("codex", "login", { origin: "automatic" });
   await waitFor(() => statusCalls.length >= 2);
   await waitFor(() => !service.getSnapshot().isLoading);
 
   assert.equal(pollScheduler.pendingTimerCount(), 1);
-  assert.equal(commands.length, 2);
+  assert.equal(commands.length, 1);
 
   pollScheduler.runNext();
   await waitFor(
@@ -509,8 +853,152 @@ test("runAction short-polls login status after sign-in and coalesces repeated lo
   assert.deepEqual(statusCalls, [undefined, ["codex"], ["codex"]]);
 });
 
+test("an explicit retry replaces the awaiting login terminal", async () => {
+  const pollScheduler = createManualPollScheduler();
+  const closed: number[] = [];
+  let launches = 0;
+  const authRequiredStatus = createProviderStatus({
+    actions: [
+      {
+        command: { cwd: "/workspace", input: "codex login\n" },
+        id: "login",
+        kind: "terminal_command"
+      }
+    ],
+    availability: "auth_required"
+  });
+  const service = new DesktopAgentProviderStatusService({
+    loginStatusPollScheduler: pollScheduler.scheduler,
+    tuttidClient: createTuttidClient({
+      snapshots: [
+        createStatusResponse([authRequiredStatus]),
+        createStatusResponse([authRequiredStatus]),
+        createStatusResponse([authRequiredStatus])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {
+        const launch = ++launches;
+        return { close: () => closed.push(launch) };
+      }
+    }
+  });
+
+  await service.refresh();
+  await service.runAction("codex", "login", { origin: "user" });
+  await service.runAction("codex", "login", { origin: "user" });
+
+  assert.equal(launches, 2);
+  assert.deepEqual(closed, [1]);
+  assert.equal(pollScheduler.pendingTimerCount(), 1);
+});
+
+test("rapid user retries reuse a login command that is still launching", async () => {
+  const terminalLaunch = createDeferred<{ close(): void }>();
+  let launches = 0;
+  const authRequiredStatus = createProviderStatus({
+    actions: [
+      {
+        command: { cwd: "/workspace", input: "codex login\n" },
+        id: "login",
+        kind: "terminal_command"
+      }
+    ],
+    availability: "auth_required"
+  });
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      snapshots: [
+        createStatusResponse([authRequiredStatus]),
+        createStatusResponse([authRequiredStatus])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {
+        launches += 1;
+        return terminalLaunch.promise;
+      }
+    }
+  });
+
+  await service.refresh();
+  const first = service.runAction("codex", "login", { origin: "user" });
+  await waitFor(() => launches === 1);
+  await service.runAction("codex", "login", { origin: "user" });
+  assert.equal(launches, 1);
+
+  terminalLaunch.resolve({ close() {} });
+  await first;
+});
+
+test("a terminal handle that resolves after dispose is closed as stale", async () => {
+  const terminalLaunch = createDeferred<{ close(): void }>();
+  let closed = 0;
+  const authRequiredStatus = createProviderStatus({
+    actions: [
+      {
+        command: { cwd: "/workspace", input: "codex login\n" },
+        id: "login",
+        kind: "terminal_command"
+      }
+    ],
+    availability: "auth_required"
+  });
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      snapshots: [createStatusResponse([authRequiredStatus])]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {
+        return terminalLaunch.promise;
+      }
+    }
+  });
+
+  await service.refresh();
+  const login = service.runAction("codex", "login");
+  service.dispose();
+  terminalLaunch.resolve({ close: () => (closed += 1) });
+  await login;
+
+  assert.equal(closed, 1);
+});
+
+test("daemon login actions delegate to the account login port", async () => {
+  let accountLoginCalls = 0;
+  let terminalLaunches = 0;
+  const status = createProviderStatus({
+    actions: [{ id: "login", kind: "daemon_action" }],
+    availability: "auth_required",
+    provider: "tutti-agent"
+  });
+  const service = new DesktopAgentProviderStatusService({
+    accountLogin: {
+      async startLogin() {
+        accountLoginCalls += 1;
+      }
+    },
+    tuttidClient: createTuttidClient({
+      snapshots: [createStatusResponse([status])]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {
+        terminalLaunches += 1;
+      }
+    }
+  });
+
+  await service.refresh();
+  await service.runAction("tutti-agent", "login", { origin: "automatic" });
+  await service.runAction("tutti-agent", "login", { origin: "automatic" });
+
+  assert.equal(accountLoginCalls, 1);
+  assert.equal(terminalLaunches, 0);
+});
+
 test("runAction stops login status polling after the default three minute window", async () => {
   const statusCalls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
+  let closed = 0;
   const pollScheduler = createManualPollScheduler();
   const authRequiredStatus = createProviderStatus({
     actions: [
@@ -537,7 +1025,9 @@ test("runAction stops login status polling after the default three minute window
       ]
     }),
     terminalCommandRunner: {
-      async runTerminalCommand() {}
+      async runTerminalCommand() {
+        return { close: () => (closed += 1) };
+      }
     }
   });
 
@@ -560,6 +1050,7 @@ test("runAction stops login status polling after the default three minute window
 
   assert.equal(statusCalls.length, 3);
   assert.equal(pollScheduler.pendingTimerCount(), 0);
+  assert.equal(closed, 1);
 });
 
 test("runAction installs providers silently and refreshes the status", async () => {
@@ -1527,6 +2018,52 @@ test("a targeted ensure resolves before an older full scan and keeps its newer s
   assert.equal(service.getStatus("cursor")?.availability.status, "ready");
 });
 
+test("reconcileStatuses reuses an in-flight read without forcing daemon detection", async () => {
+  const requests: Array<{
+    providers: readonly WorkspaceAgentProvider[] | undefined;
+    refresh: boolean | undefined;
+  }> = [];
+  const firstStatusRequest = createDeferred<AgentProviderStatusListResponse>();
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: {
+      async getAgentProviderStatuses(request) {
+        requests.push({
+          providers: request?.providers,
+          refresh: request?.refresh
+        });
+        return firstStatusRequest.promise;
+      }
+    } as Partial<TuttidClient> as TuttidClient,
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  const firstRead = service.reconcileStatuses(["codex"]);
+  const secondRead = service.reconcileStatuses(["codex"]);
+
+  assert.deepEqual(requests, [{ providers: ["codex"], refresh: undefined }]);
+
+  firstStatusRequest.resolve(
+    createStatusResponse([
+      createProviderStatus({
+        actions: [],
+        availability: "ready",
+        provider: "codex"
+      })
+    ])
+  );
+  await Promise.all([firstRead, secondRead]);
+
+  await service.reconcileStatuses(["codex"]);
+
+  assert.equal(service.getStatus("codex")?.availability.status, "ready");
+  assert.deepEqual(requests, [
+    { providers: ["codex"], refresh: undefined },
+    { providers: ["codex"], refresh: undefined }
+  ]);
+});
+
 test("refresh waits for an in-flight load and then requests a fresh status", async () => {
   const calls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
   const firstStatusRequest = createDeferred<AgentProviderStatusListResponse>();
@@ -1876,7 +2413,9 @@ function createTuttidClient(input: {
   onStatusRequest?: (
     providers: readonly WorkspaceAgentProvider[] | undefined,
     includeNetwork?: boolean,
-    refresh?: boolean
+    refresh?: boolean,
+    includeUpdates?: boolean,
+    refreshUpdates?: boolean
   ) => void;
   probes?: AgentProviderProbeResponse[];
   snapshots: AgentProviderStatusListResponse[];
@@ -1889,7 +2428,9 @@ function createTuttidClient(input: {
       input.onStatusRequest?.(
         request?.providers,
         request?.includeNetwork,
-        request?.refresh
+        request?.refresh,
+        request?.includeUpdates,
+        request?.refreshUpdates
       );
       const snapshot = input.snapshots[index] ?? input.snapshots.at(-1);
       index += 1;
@@ -2018,6 +2559,7 @@ function createProviderStatus(input: {
   network?: AgentProviderStatus["network"];
   provider?: WorkspaceAgentProvider;
   reasonCode?: string;
+  update?: AgentProviderStatus["update"];
 }): AgentProviderStatus {
   const cliInstalled =
     input.cliInstalled ??
@@ -2043,7 +2585,17 @@ function createProviderStatus(input: {
       installed: cliInstalled
     },
     network: input.network,
-    provider: input.provider ?? "codex"
+    provider: input.provider ?? "codex",
+    update: input.update ?? {
+      capability: "unsupported",
+      currentVersion: null,
+      lastCheckedAt: null,
+      latestVersion: null,
+      reasonCode: null,
+      source: null,
+      unsupportedReason: "update_strategy_unsupported",
+      updateAvailable: null
+    }
   };
 }
 

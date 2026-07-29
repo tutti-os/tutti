@@ -3,11 +3,13 @@ package agentruntime
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"reflect"
 	"sync"
 	"testing"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 func TestClaudeCodeSDKAdapterMapsSyntheticTurnStarted(t *testing.T) {
@@ -35,6 +37,132 @@ func TestClaudeCodeSDKAdapterMapsSyntheticTurnStarted(t *testing.T) {
 	}
 	if events[0].Payload.Metadata["synthetic"] != true {
 		t.Fatalf("turn metadata = %#v, want synthetic=true", events[0].Payload.Metadata)
+	}
+}
+
+func TestClaudeSDKLifecycleLogArgsKeepsZeroCounts(t *testing.T) {
+	got := claudeSDKLifecycleLogArgs(map[string]any{
+		"sdkMessageOrigin":                 "task-notification",
+		"state":                            "idle",
+		"backgroundTasksObservedCount":     float64(6),
+		"backgroundTasksRunningCount":      float64(0),
+		"backgroundTasksNoLongerLiveCount": float64(6),
+		"delegatedTasksKnownCount":         float64(6),
+		"delegatedTasksRunningCount":       float64(3),
+		"delegatedTasksCompletedCount":     float64(3),
+		"delegatedTasksFailedCount":        float64(0),
+		"delegatedTasksStoppedCount":       float64(0),
+	})
+	want := []any{
+		"sdk_message_origin", "task-notification",
+		"state", "idle",
+		"background_tasks_observed", int64(6),
+		"background_tasks_running", int64(0),
+		"background_tasks_no_longer_live", int64(6),
+		"delegated_tasks_known", int64(6),
+		"delegated_tasks_running", int64(3),
+		"delegated_tasks_completed", int64(3),
+		"delegated_tasks_failed", int64(0),
+		"delegated_tasks_stopped", int64(0),
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("log args = %#v, want %#v", got, want)
+	}
+}
+
+func TestClaudeSDKContinuationDelayUsesWarningLogLevel(t *testing.T) {
+	if got := claudeSDKLifecycleEventLogLevel("continuation_delayed"); got != slog.LevelWarn {
+		t.Fatalf("log level = %v, want warning", got)
+	}
+	if got := claudeSDKLifecycleEventLogLevel("background_tasks_changed"); got != slog.LevelInfo {
+		t.Fatalf("ordinary lifecycle log level = %v, want info", got)
+	}
+}
+
+func TestClaudeCodeSDKAdapterMapsObservedProviderTurnIdentity(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
+	adapter.beginClaudeSDKRootTurn(adapterSession, "canonical-turn-1", "")
+
+	events, terminal, err := adapter.sidecarTurnEvents(
+		adapterSession,
+		session,
+		"canonical-turn-1",
+		claudeSDKSidecarEvent{
+			Type: "provider_turn_started",
+			Payload: map[string]any{
+				"turnId":         "canonical-turn-1",
+				"providerTurnId": "persisted-claude-user-uuid",
+			},
+		},
+	)
+	if err != nil || terminal {
+		t.Fatalf("provider_turn_started err=%v terminal=%v", err, terminal)
+	}
+	if len(events) != 1 ||
+		events[0].Type != activityshared.EventRootProviderTurnStarted ||
+		events[0].Payload.TurnID != "canonical-turn-1" ||
+		events[0].Payload.ProviderTurnID != "persisted-claude-user-uuid" {
+		t.Fatalf("events = %#v, want observed provider identity", events)
+	}
+	if adapter.claudeSDKRootTurnID(adapterSession, "") != "canonical-turn-1" {
+		t.Fatalf("root turn id = %q", adapter.claudeSDKRootTurnID(adapterSession, ""))
+	}
+	if !adapter.consumeClaudeSDKRootProviderTurn(
+		adapterSession,
+		"persisted-claude-user-uuid",
+	) {
+		t.Fatal("observed provider identity was not registered")
+	}
+}
+
+func TestClaudeCodeSDKAdapterCompletesCanonicalTurnByProviderIdentity(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{
+		session:   session,
+		liveState: newClaudeSDKLiveState(),
+	}
+	adapter.beginClaudeSDKRootTurn(
+		adapterSession,
+		"canonical-turn-1",
+		"provider-prompt-1",
+	)
+
+	var published []activityshared.Event
+	adapter.SetSessionEventSink(func(agentSessionID string, events []activityshared.Event) {
+		if agentSessionID == session.AgentSessionID {
+			published = append(published, events...)
+		}
+	})
+	adapter.dispatchClaudeSDKEvent(
+		session.AgentSessionID,
+		adapterSession,
+		claudeSDKSidecarEvent{
+			Type: "turn_completed",
+			Payload: map[string]any{
+				"turnId":         "canonical-turn-1",
+				"providerTurnId": "provider-prompt-1",
+				"stopReason":     "end_turn",
+			},
+		},
+	)
+
+	var completion *activityshared.Event
+	for index := range published {
+		if published[index].Type == activityshared.EventRootProviderTurnCompleted {
+			completion = &published[index]
+			break
+		}
+	}
+	if completion == nil ||
+		completion.Payload.TurnID != "canonical-turn-1" ||
+		completion.Payload.ProviderTurnID != "provider-prompt-1" {
+		t.Fatalf("published=%#v, want canonical/provider completion identities", published)
+	}
+	if adapter.consumeClaudeSDKRootProviderTurn(adapterSession, "provider-prompt-1") {
+		t.Fatal("provider turn identity remained live after terminal dispatch")
 	}
 }
 
@@ -76,6 +204,32 @@ func TestClaudeCodeSDKAdapterUsesSidecarAssistantMessageID(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeSDKAdapterMapsAssistantSDKErrorToFailedMessage(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
+
+	events, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-auth", claudeSDKSidecarEvent{
+		Type: "assistant_failed",
+		Payload: map[string]any{
+			"turnId":    "turn-auth",
+			"messageId": "claude-sdk:assistant:auth-error:fallback:0",
+			"content":   "Failed to authenticate. API Error: 401",
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("assistant_failed err=%v terminal=%v", err, terminal)
+	}
+	if len(events) != 1 ||
+		events[0].Type != activityshared.EventMessageAppended ||
+		events[0].EventID != "claude-sdk:assistant:auth-error:fallback:0" ||
+		events[0].Payload.Role != activityshared.MessageRoleAssistant ||
+		events[0].Payload.Metadata["streamState"] != messageStreamStateFailed ||
+		events[0].Payload.Content != "Failed to authenticate. API Error: 401" {
+		t.Fatalf("assistant failed events = %#v", events)
+	}
+}
+
 func TestClaudeCodeSDKAdapterApprovalDoesNotMergeWithApprovedToolCall(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	session := standardTestSession(ProviderClaudeCode)
@@ -113,7 +267,7 @@ func TestClaudeCodeSDKAdapterApprovalDoesNotMergeWithApprovedToolCall(t *testing
 	}
 
 	approvalUpdate, ok := callMessageUpdateFromSessionEvent(
-		agentsessionstore.EventSource{Provider: ProviderClaudeCode},
+		canonical.EventSource{Provider: ProviderClaudeCode},
 		approvalEvents[1],
 		session.AgentSessionID,
 		approvalEvents[1].OccurredAtUnixMS,
@@ -122,7 +276,7 @@ func TestClaudeCodeSDKAdapterApprovalDoesNotMergeWithApprovedToolCall(t *testing
 		t.Fatal("approval event did not convert to message update")
 	}
 	toolUpdate, ok := callMessageUpdateFromSessionEvent(
-		agentsessionstore.EventSource{Provider: ProviderClaudeCode},
+		canonical.EventSource{Provider: ProviderClaudeCode},
 		toolEvents[0],
 		session.AgentSessionID,
 		toolEvents[0].OccurredAtUnixMS,
@@ -172,7 +326,7 @@ func TestClaudeCodeSDKAdapterPreservesSubagentParentToolUseID(t *testing.T) {
 		t.Fatalf("event metadata = %#v, want parentToolUseId", events[0].Payload.Metadata)
 	}
 	update, ok := callMessageUpdateFromSessionEvent(
-		agentsessionstore.EventSource{Provider: ProviderClaudeCode},
+		canonical.EventSource{Provider: ProviderClaudeCode},
 		events[0],
 		session.AgentSessionID,
 		events[0].OccurredAtUnixMS,
@@ -239,20 +393,48 @@ func TestClaudeCodeSDKAdapterCreatesAndSettlesChildSession(t *testing.T) {
 			"agentId":         "agent-1",
 			"parentToolUseId": "toolu-agent",
 			"status":          "completed",
-			"summary":         "Found relevant files",
+			"summary":         "Explore codebase structure",
 		},
 	})
 	if err != nil || terminal {
 		t.Fatalf("task_completed terminal=%v err=%v", terminal, err)
 	}
-	if len(completed) != 2 || completed[0].Type != activityshared.EventActivityCompleted ||
-		completed[1].Type != activityshared.EventTurnCompleted {
-		t.Fatalf("completed events = %#v, want child activity and turn completion", completed)
+	if len(completed) != 3 || completed[0].Type != activityshared.EventMessageAppended ||
+		completed[0].Payload.Content != "Explore codebase structure" ||
+		completed[1].Type != activityshared.EventActivityCompleted ||
+		completed[2].Type != activityshared.EventTurnCompleted {
+		t.Fatalf("completed events = %#v, want child result, activity, and turn completion", completed)
 	}
 	for _, event := range completed {
 		if event.AgentSessionID != childSessionID || event.Payload.TurnID != childTurnID || event.RootTurnID != "turn-task" {
 			t.Fatalf("child completion scope = %#v, want child session=%q turn=%q", event, childSessionID, childTurnID)
 		}
+	}
+
+	resultUpdated, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "", claudeSDKSidecarEvent{
+		Type: "task_result_updated",
+		Payload: map[string]any{
+			"taskId":          "task-1",
+			"agentId":         "agent-1",
+			"parentToolUseId": "toolu-agent",
+			"status":          "completed",
+			"summary":         "Found relevant files",
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("task_result_updated terminal=%v err=%v", terminal, err)
+	}
+	if len(resultUpdated) != 1 || resultUpdated[0].Type != activityshared.EventMessageAppended ||
+		resultUpdated[0].Payload.Content != "Found relevant files" ||
+		resultUpdated[0].AgentSessionID != childSessionID ||
+		resultUpdated[0].Payload.TurnID != childTurnID {
+		t.Fatalf("result update = %#v, want final child result on settled child", resultUpdated)
+	}
+	if payloadString(completed[0].Payload.Metadata, "messageId") != payloadString(resultUpdated[0].Payload.Metadata, "messageId") {
+		t.Fatalf("message ids differ: completed=%#v updated=%#v", completed[0].Payload.Metadata, resultUpdated[0].Payload.Metadata)
+	}
+	if completed[0].EventID == resultUpdated[0].EventID {
+		t.Fatalf("event ids must differ so the final snapshot is not deduplicated: %q", completed[0].EventID)
 	}
 }
 
@@ -650,7 +832,7 @@ func TestClaudeCodeSDKAdapterUpdatesChildSessionByProviderAlias(t *testing.T) {
 		Payload: map[string]any{
 			"taskId":  "task-2",
 			"status":  "completed",
-			"summary": "Generated number",
+			"summary": "7",
 		},
 	})
 	if err != nil || terminal {
@@ -660,9 +842,87 @@ func TestClaudeCodeSDKAdapterUpdatesChildSessionByProviderAlias(t *testing.T) {
 		t.Fatalf("child one = %#v, want running", first)
 	}
 	childTwo = adapterSession.claudeSDKChildByKey("toolu-agent-2")
-	if childTwo.Status != "completed" || len(completed) != 2 || completed[1].Type != activityshared.EventTurnCompleted ||
-		completed[1].AgentSessionID != childTwo.AgentSessionID || completed[1].Payload.TurnID != childTwo.TurnID {
+	if childTwo.Status != "completed" || len(completed) != 3 || completed[0].Type != activityshared.EventMessageAppended ||
+		completed[0].AgentSessionID != childTwo.AgentSessionID || completed[0].Payload.TurnID != childTwo.TurnID ||
+		completed[0].Payload.Content != "7" || completed[2].Type != activityshared.EventTurnCompleted ||
+		completed[2].AgentSessionID != childTwo.AgentSessionID || completed[2].Payload.TurnID != childTwo.TurnID {
 		t.Fatalf("completed child/events = %#v / %#v", childTwo, completed)
+	}
+}
+
+func TestClaudeCodeSDKAdapterEndsUnresolvedChildrenWhenBackgroundTasksQuiesce(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{
+		conn:            &recordingClaudeSDKConnection{},
+		pendingRequests: make(map[string]*pendingInteractiveRequest),
+		liveState:       newClaudeSDKLiveState(),
+	}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+
+	for _, launch := range []struct {
+		parentToolUseID string
+		agentID         string
+	}{
+		{parentToolUseID: "toolu-agent-1", agentID: "agent-1"},
+		{parentToolUseID: "toolu-agent-2", agentID: "agent-2"},
+	} {
+		_, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-task", claudeSDKSidecarEvent{
+			Type: "tool_completed",
+			Payload: map[string]any{
+				"turnId":     "turn-task",
+				"toolCallId": launch.parentToolUseID,
+				"toolName":   "Agent",
+				"callType":   "subagent",
+				"input":      map[string]any{"description": "Generate number"},
+				"output":     map[string]any{"text": "Async agent launched successfully"},
+				"metadata": map[string]any{
+					"subagentAsync":   true,
+					"subagentStatus":  "running",
+					"agentId":         launch.agentID,
+					"subagentAgentId": launch.agentID,
+				},
+			},
+		})
+		if err != nil || terminal {
+			t.Fatalf("tool_completed terminal=%v err=%v", terminal, err)
+		}
+	}
+
+	_, _, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-task", claudeSDKSidecarEvent{
+		Type: "task_completed",
+		Payload: map[string]any{
+			"turnId":          "turn-task",
+			"agentId":         "agent-1",
+			"parentToolUseId": "toolu-agent-1",
+			"status":          "completed",
+		},
+	})
+	if err != nil {
+		t.Fatalf("task_completed: %v", err)
+	}
+
+	ended, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-task", claudeSDKSidecarEvent{
+		Type: "background_tasks_quiesced",
+		Payload: map[string]any{
+			"turnId":       "turn-task",
+			"runningCount": 0,
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("background_tasks_quiesced terminal=%v err=%v", terminal, err)
+	}
+	first := adapterSession.claudeSDKChildByKey("toolu-agent-1")
+	second := adapterSession.claudeSDKChildByKey("toolu-agent-2")
+	if first.Status != "completed" || second.Status != "interrupted" {
+		t.Fatalf("children=%#v / %#v", first, second)
+	}
+	if len(ended) != 2 ||
+		ended[0].Type != activityshared.EventActivityCompleted ||
+		ended[1].Type != activityshared.EventTurnCompleted ||
+		ended[1].Payload.TurnOutcome != string(activityshared.TurnOutcomeInterrupted) ||
+		ended[1].AgentSessionID != second.AgentSessionID {
+		t.Fatalf("ended events=%#v", ended)
 	}
 }
 
@@ -742,8 +1002,10 @@ func TestClaudeCodeSDKAdapterKeepsChildSessionsSeparateOnAliasConflict(t *testin
 	}
 	first = adapterSession.claudeSDKChildByKey("toolu-agent-1")
 	second = adapterSession.claudeSDKChildByKey("toolu-agent-2")
-	if first.Status != "running" || second.Status != "completed" || len(completed) != 2 ||
-		completed[1].AgentSessionID != second.AgentSessionID {
+	if first.Status != "running" || second.Status != "completed" || len(completed) != 3 ||
+		completed[0].Type != activityshared.EventMessageAppended ||
+		completed[0].Payload.Content != "Generated number" ||
+		completed[2].AgentSessionID != second.AgentSessionID {
 		t.Fatalf("settled children/events = %#v / %#v / %#v", first, second, completed)
 	}
 }
@@ -804,13 +1066,105 @@ func TestClaudeCodeSDKAdapterKeepsLateChildEventsOnOriginalChildTurn(t *testing.
 	if err != nil || terminal {
 		t.Fatalf("late task_completed terminal=%v err=%v", terminal, err)
 	}
-	if len(completed) != 2 || completed[1].Type != activityshared.EventTurnCompleted {
-		t.Fatalf("late task_completed events = %#v, want activity + child turn completion", completed)
+	if len(completed) != 3 || completed[0].Type != activityshared.EventMessageAppended ||
+		completed[0].Payload.Content != "Found relevant files" ||
+		completed[2].Type != activityshared.EventTurnCompleted {
+		t.Fatalf("late task_completed events = %#v, want result + activity + child turn completion", completed)
 	}
 	for _, event := range completed {
 		if event.AgentSessionID != childSessionID || event.Payload.TurnID != childTurnID || event.RootTurnID != "turn-task" {
 			t.Fatalf("late child event scope = %#v", event)
 		}
+	}
+}
+
+func TestClaudeCodeSDKAdapterCompletesParentCallAfterChildSettles(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{
+		conn:            &recordingClaudeSDKConnection{},
+		pendingRequests: make(map[string]*pendingInteractiveRequest),
+		liveState:       newClaudeSDKLiveState(),
+	}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+
+	started, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-task", claudeSDKSidecarEvent{
+		Type: "tool_started",
+		Payload: map[string]any{
+			"turnId":     "turn-task",
+			"toolCallId": "toolu-agent",
+			"toolName":   "Agent",
+			"callType":   "subagent",
+			"input": map[string]any{
+				"description":       "Inspect lifecycle ownership",
+				"prompt":            "Find the first failed boundary",
+				"run_in_background": true,
+			},
+		},
+	})
+	if err != nil || terminal || len(started) != 3 {
+		t.Fatalf("tool_started events=%#v terminal=%v err=%v", started, terminal, err)
+	}
+	child := adapterSession.claudeSDKChildByKey("toolu-agent")
+	if child.AgentSessionID == "" || child.TurnID == "" || child.Status != "running" {
+		t.Fatalf("started child=%#v, want running child", child)
+	}
+
+	completedChild, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-task", claudeSDKSidecarEvent{
+		Type: "task_completed",
+		Payload: map[string]any{
+			"turnId":          "turn-task",
+			"taskId":          "task-1",
+			"agentId":         "agent-1",
+			"parentToolUseId": "toolu-agent",
+			"status":          "completed",
+			"summary":         "Lifecycle owner found",
+		},
+	})
+	if err != nil || terminal || len(completedChild) != 3 {
+		t.Fatalf("task_completed events=%#v terminal=%v err=%v", completedChild, terminal, err)
+	}
+	child = adapterSession.claudeSDKChildByKey("toolu-agent")
+	adapter.markClaudeSDKTurnClosed(adapterSession, child.TurnID, "completed")
+	if child.Status != "completed" || !adapter.turnAlreadySettled(adapterSession, child.TurnID) {
+		t.Fatalf("completed child=%#v settled=%v", child, adapter.turnAlreadySettled(adapterSession, child.TurnID))
+	}
+
+	completedParent, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-task", claudeSDKSidecarEvent{
+		Type: "tool_completed",
+		Payload: map[string]any{
+			"turnId":     "turn-task",
+			"toolCallId": "toolu-agent",
+			"toolName":   "Agent",
+			"callType":   "subagent",
+			"status":     "completed",
+			"input": map[string]any{
+				"description":       "Inspect lifecycle ownership",
+				"prompt":            "Find the first failed boundary",
+				"run_in_background": true,
+			},
+			"output": map[string]any{"text": "Lifecycle owner found"},
+			"metadata": map[string]any{
+				"subagentAsync":   true,
+				"subagentStatus":  "completed",
+				"taskId":          "task-1",
+				"agentId":         "agent-1",
+				"subagentAgentId": "agent-1",
+			},
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("tool_completed terminal=%v err=%v", terminal, err)
+	}
+	if len(completedParent) != 1 ||
+		completedParent[0].Type != activityshared.EventCallCompleted ||
+		completedParent[0].AgentSessionID != session.AgentSessionID ||
+		completedParent[0].Payload.TurnID != "turn-task" {
+		t.Fatalf("parent completion events=%#v, want one root call completion", completedParent)
+	}
+	child = adapterSession.claudeSDKChildByKey("toolu-agent")
+	if child.Status != "completed" {
+		t.Fatalf("child status=%q, want terminal status to remain completed", child.Status)
 	}
 }
 

@@ -1,9 +1,7 @@
 import { stat } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
-import {
-  resolveWorkspaceFileDefaultApplicationIconExtension,
-  resolveWorkspaceFileVisualKind
-} from "@tutti-os/workspace-file-manager/services";
+import { resolveWorkspaceFileDefaultApplicationIconExtension } from "@tutti-os/workspace-file-manager/services";
+import { resolveWorkspaceFileVisualKind } from "@tutti-os/workspace-file-preview";
 import { requestWorkerIconPngBytes } from "./iconWorker/iconWorkerClient.ts";
 import {
   readApplicationIconDataUrl,

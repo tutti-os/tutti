@@ -7,6 +7,7 @@ import { createWorkspaceAgentGuiContribution } from "../workspaceAgentGuiContrib
 type AgentGuiWorkbenchContributionContext = Pick<
   DesktopWorkbenchContributionContext,
   | "agentProviderStatusService"
+  | "agentQuickPromptService"
   | "agentsService"
   | "appCenterService"
   | "appI18n"
@@ -15,7 +16,9 @@ type AgentGuiWorkbenchContributionContext = Pick<
   | "defaultAgentProvider"
   | "dockIcons"
   | "dockPreviewCache"
+  | "eventStreamClient"
   | "hostFilesApi"
+  | "hostWindowApi"
   | "i18n"
   | "onCapabilitySettingsRequest"
   | "platformApi"
@@ -26,6 +29,7 @@ type AgentGuiWorkbenchContributionContext = Pick<
   | "tuttidClient"
   | "workspaceAgentActivityService"
   | "workspaceFileManagerService"
+  | "workspaceFilePreviewSurfaceHost"
   | "workspaceId"
   | "workspaceUserProjectService"
 >;
@@ -33,9 +37,10 @@ type AgentGuiWorkbenchContributionContext = Pick<
 export const agentGuiWorkbenchContributionFactory: DesktopWorkbenchContributionFactory<AgentGuiWorkbenchContributionContext> =
   {
     id: "workspace-agent-gui",
-    order: 25,
+    order: -10,
     create(context) {
       return createWorkspaceAgentGuiContribution({
+        agentQuickPromptService: context.agentQuickPromptService,
         agentProviderStatusService: context.agentProviderStatusService,
         appCenterService: context.appCenterService,
         appI18n: context.appI18n,
@@ -45,6 +50,8 @@ export const agentGuiWorkbenchContributionFactory: DesktopWorkbenchContributionF
         dockPreviewCache: context.dockPreviewCache,
         defaultAgentProvider: context.defaultAgentProvider,
         hostFilesApi: context.hostFilesApi,
+        eventStreamClient: context.eventStreamClient,
+        hostWindowApi: context.hostWindowApi,
         i18n: context.i18n,
         onCapabilitySettingsRequest: context.onCapabilitySettingsRequest,
         agentsService: context.agentsService,
@@ -57,6 +64,8 @@ export const agentGuiWorkbenchContributionFactory: DesktopWorkbenchContributionF
         runtimeApi: context.runtimeApi,
         workspaceAgentActivityService: context.workspaceAgentActivityService,
         workspaceFileManagerService: context.workspaceFileManagerService,
+        workspaceFilePreviewSurfaceHost:
+          context.workspaceFilePreviewSurfaceHost,
         workspaceUserProjectService: context.workspaceUserProjectService,
         workspaceId: context.workspaceId
       });

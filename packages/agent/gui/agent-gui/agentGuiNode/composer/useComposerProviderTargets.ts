@@ -5,7 +5,6 @@ import type { AgentGUIAgentTarget } from "../../../types";
 
 interface Input {
   layoutMode: "dock" | "hero";
-  previewMode: boolean;
   provider: string;
   agentTargets: readonly AgentGUIAgentTarget[];
   handoffAgentTargets?: readonly AgentGUIAgentTarget[];
@@ -14,7 +13,6 @@ interface Input {
   composerControlsHardDisabled: boolean;
   isSelectedProjectMissing: boolean;
   disabled: boolean;
-  canQueueWhileBusy: boolean;
   onHandoffConversation?: (target: AgentGUIAgentTarget) => void;
   handoffLabel?: string;
   handoffMenuLabel?: string;
@@ -25,7 +23,6 @@ interface Input {
 export function useComposerProviderTargets(input: Input) {
   const {
     layoutMode,
-    previewMode,
     provider,
     agentTargets,
     handoffAgentTargets,
@@ -34,7 +31,6 @@ export function useComposerProviderTargets(input: Input) {
     composerControlsHardDisabled,
     isSelectedProjectMissing,
     disabled,
-    canQueueWhileBusy,
     onHandoffConversation,
     handoffLabel,
     handoffMenuLabel
@@ -96,21 +92,17 @@ export function useComposerProviderTargets(input: Input) {
     styles.composerInputShell,
     isHeroLayout && styles.composerInputShellHero
   );
-  const inputDisabled =
-    isSelectedProjectMissing || (disabled && !canQueueWhileBusy);
+  const inputDisabled = isSelectedProjectMissing || disabled;
   const providerSelectDisabled =
     providerSelectReadonly || composerControlsHardDisabled || inputDisabled;
-  const handoffDisabled =
-    composerControlsHardDisabled ||
-    inputDisabled ||
-    !onHandoffConversation ||
-    handoffMenuTargets.length === 0;
+  const handoffDisabled = resolveComposerHandoffDisabled({
+    hasHandoffConversation: onHandoffConversation !== undefined
+  });
   const showProviderSelect =
     !isHeroLayout &&
     selectedProviderSwitchTarget !== null &&
     providerMenuTargets.length > 0;
-  const showHandoffSelect =
-    showProviderSelect && providerSelectReadonly && !previewMode;
+  const showHandoffSelect = showProviderSelect && providerSelectReadonly;
 
   return {
     composerClassName,
@@ -128,4 +120,10 @@ export function useComposerProviderTargets(input: Input) {
     showHandoffSelect,
     showProviderSelect
   };
+}
+
+export function resolveComposerHandoffDisabled(input: {
+  hasHandoffConversation: boolean;
+}): boolean {
+  return !input.hasHandoffConversation;
 }

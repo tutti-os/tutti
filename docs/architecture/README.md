@@ -21,9 +21,11 @@ Stable change rules live in [Conventions](../conventions/README.md).
 - [Agent Extensions](./agent-extensions.md)
 - [Agent Reference Sources](./agent-reference-sources.md)
 - [Agent Runtime Preparation](./agent-runtime-preparation.md)
-- [AgentGuiNode Architecture and Troubleshooting](./agent-gui-node.md)
+- [Agent GUI Node](./agent-gui-node.md)
 - [Agent Reference Mention Resolution](./agent-reference-mention-resolution.md)
 - [Tutti Agent Readiness Bootstrap](./tutti-agent-readiness-bootstrap.md)
+- [Agent Provider CLI Updates](./agent-provider-cli-updates.md)
+- [Model Access Plans](./model-access-plans.md)
 
 ## Desktop And Transport
 
@@ -38,6 +40,7 @@ Stable change rules live in [Conventions](../conventions/README.md).
 - [Workbench Node Lifecycle](./workbench-node-lifecycle.md)
 - [Workspace App Factory](./workspace-app-factory.md)
 - [Workspace Issue Manager](./workspace-issue-manager.md)
+- [Tutti Mode Activation And Workspace Workflows](./workspace-workflows.md)
 - [Workspace Terminal](./workspace-terminal.md)
 
 Keep this directory limited to current ownership, contracts, and data flow.

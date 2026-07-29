@@ -22,11 +22,16 @@ func (api DaemonAPI) ListCliCapabilities(ctx context.Context, request tuttigener
 	if request.Params.WorkspaceID != nil {
 		workspaceID = *request.Params.WorkspaceID
 	}
+	agentSessionID := ""
+	if request.Params.AgentSessionID != nil {
+		agentSessionID = *request.Params.AgentSessionID
+	}
 	includeHidden := request.Params.IncludeHidden != nil && *request.Params.IncludeHidden
 	includeIntegration := request.Params.IncludeIntegration != nil && *request.Params.IncludeIntegration
 	capabilities := api.CLIRegistry.Capabilities(ctx, cliservice.InvokeContext{
 		Source:                         "cli",
 		WorkspaceID:                    workspaceID,
+		AgentSessionID:                 agentSessionID,
 		SkipCapabilityFilters:          includeHidden,
 		IncludeIntegrationCapabilities: includeHidden || includeIntegration,
 	})
@@ -71,6 +76,14 @@ func writeInvokeCliCommandError(err error) tuttigenerated.InvokeCliCommandRespon
 		))
 	}
 	if errors.Is(err, cliservice.ErrInvalidInput) {
+		reason := cliservice.InvokeErrorReason(err)
+		if reason != "" {
+			return tuttigenerated.InvokeCliCommand400JSONResponse{
+				InvalidRequestErrorJSONResponse: invalidRequestError(
+					apierrors.InvalidRequest(reason, apierrors.WithCause(err)),
+				),
+			}
+		}
 		return tuttigenerated.InvokeCliCommand400JSONResponse{
 			InvalidRequestErrorJSONResponse: invalidRequestError(
 				apierrors.MalformedRequest(apierrors.WithCause(err)),
@@ -137,15 +150,25 @@ func generatedCliCapability(capability cliservice.Capability) tuttigenerated.Cli
 		inputSchema = &schema
 	}
 	return tuttigenerated.CliCapability{
-		Id:          capability.ID,
-		Path:        capability.Path,
-		Summary:     capability.Summary,
-		Description: description,
-		Visibility:  generatedCliCapabilityVisibility(capability.Visibility),
-		InputSchema: inputSchema,
-		Output:      generatedCliCapabilityOutput(capability.Output),
-		Source:      generatedCliCapabilitySource(capability.Source),
+		Id:               capability.ID,
+		Path:             capability.Path,
+		Summary:          capability.Summary,
+		Description:      description,
+		Visibility:       generatedCliCapabilityVisibility(capability.Visibility),
+		InputSchema:      inputSchema,
+		Output:           generatedCliCapabilityOutput(capability.Output),
+		Execution:        generatedCliCommandExecution(capability.Execution),
+		HandlerTimeoutMs: intPointerIfPositive(capability.HandlerTimeoutMs),
+		Source:           generatedCliCapabilitySource(capability.Source),
 	}
+}
+
+func generatedCliCommandExecution(execution *cliservice.CommandExecution) *tuttigenerated.CliCommandExecution {
+	if execution == nil {
+		return nil
+	}
+	mode := tuttigenerated.CliCommandExecutionMode(execution.Mode)
+	return &tuttigenerated.CliCommandExecution{Mode: mode}
 }
 
 func generatedCliCapabilityVisibility(visibility cliservice.CapabilityVisibility) *tuttigenerated.CliCapabilityVisibility {
@@ -223,10 +246,23 @@ func generatedCliCommandOutput(output cliservice.CommandOutput) *tuttigenerated.
 		}
 		result.Warnings = &warnings
 	}
+	if output.Continuation != nil {
+		state := tuttigenerated.CliCommandContinuationState(output.Continuation.State)
+		result.Continuation = &tuttigenerated.CliCommandContinuation{
+			State: state, RetryAfterMs: output.Continuation.RetryAfterMs,
+		}
+	}
 	if output.Text != "" {
 		result.Text = stringPointer(output.Text)
 	}
 	return result
+}
+
+func intPointerIfPositive(value int) *int {
+	if value <= 0 {
+		return nil
+	}
+	return &value
 }
 
 func generatedCliTableColumns(columns []cliservice.TableColumn) []tuttigenerated.CliTableColumn {

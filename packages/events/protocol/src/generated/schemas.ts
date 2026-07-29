@@ -7,6 +7,7 @@ export const preferencesDesktopPreferencesSchema = {
   type: "object",
   additionalProperties: false,
   required: [
+    "agentCliUpdateCheckEnabled",
     "agentComposerDefaultsByProvider",
     "agentGuiConversationRailCollapsedByProvider",
     "agentConversationDetailMode",
@@ -15,6 +16,7 @@ export const preferencesDesktopPreferencesSchema = {
     "defaultAgentProvider",
     "dockIconStyle",
     "dockPlacement",
+    "deletedAgentConversationRetentionDays",
     "fileDefaultOpenersByExtension",
     "featureFlags",
     "workbenchShortcuts",
@@ -27,6 +29,10 @@ export const preferencesDesktopPreferencesSchema = {
     "updatePolicy"
   ],
   properties: {
+    agentCliUpdateCheckEnabled: {
+      type: "boolean",
+      default: true
+    },
     agentComposerDefaultsByProvider: {
       type: "object",
       additionalProperties: false,
@@ -104,24 +110,6 @@ export const preferencesDesktopPreferencesSchema = {
           }
         },
         nexight: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            model: {
-              type: "string"
-            },
-            permissionModeId: {
-              type: "string"
-            },
-            reasoningEffort: {
-              type: "string"
-            },
-            speed: {
-              type: "string"
-            }
-          }
-        },
-        hermes: {
           type: "object",
           additionalProperties: false,
           properties: {
@@ -217,9 +205,6 @@ export const preferencesDesktopPreferencesSchema = {
         nexight: {
           type: "boolean"
         },
-        hermes: {
-          type: "boolean"
-        },
         openclaw: {
           type: "boolean"
         },
@@ -255,6 +240,10 @@ export const preferencesDesktopPreferencesSchema = {
     dockPlacement: {
       type: "string",
       enum: ["bottom", "left"]
+    },
+    deletedAgentConversationRetentionDays: {
+      type: "integer",
+      enum: [15, 30]
     },
     fileDefaultOpenersByExtension: {
       type: "object",
@@ -345,6 +334,62 @@ export const preferencesDesktopPreferencesSchema = {
           type: "string"
         }
       }
+    }
+  }
+} as const;
+
+export const userUserProjectSchema = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  $id: "https://tutti.dev/schemas/events/topics/user/user-project.schema.json",
+  title: "UserProject",
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "id",
+    "path",
+    "label",
+    "sectionKey",
+    "createdAtUnixMs",
+    "updatedAtUnixMs",
+    "lastUsedAtUnixMs",
+    "pinnedAtUnixMs"
+  ],
+  properties: {
+    id: {
+      type: "string",
+      minLength: 1
+    },
+    path: {
+      type: "string",
+      minLength: 1
+    },
+    label: {
+      type: "string",
+      minLength: 1
+    },
+    sectionKey: {
+      type: "string",
+      minLength: 1
+    },
+    createdAtUnixMs: {
+      type: "integer",
+      format: "int64",
+      minimum: 0
+    },
+    updatedAtUnixMs: {
+      type: "integer",
+      format: "int64",
+      minimum: 0
+    },
+    lastUsedAtUnixMs: {
+      type: "integer",
+      format: "int64",
+      minimum: 0
+    },
+    pinnedAtUnixMs: {
+      type: "integer",
+      format: "int64",
+      minimum: 0
     }
   }
 } as const;
@@ -745,6 +790,127 @@ export const agentActivityUpdatedPayloadSchema = {
           minLength: 1
         },
         eventType: {
+          const: "message_delta"
+        },
+        data: {
+          type: "object",
+          additionalProperties: false,
+          required: [
+            "workspaceId",
+            "agentSessionId",
+            "messageId",
+            "turnId",
+            "role",
+            "kind",
+            "occurredAtUnixMs"
+          ],
+          properties: {
+            workspaceId: {
+              type: "string",
+              minLength: 1
+            },
+            agentSessionId: {
+              type: "string",
+              minLength: 1
+            },
+            messageId: {
+              type: "string",
+              minLength: 1
+            },
+            turnId: {
+              type: "string",
+              minLength: 1
+            },
+            role: {
+              type: "string",
+              minLength: 1
+            },
+            kind: {
+              type: "string",
+              minLength: 1
+            },
+            occurredAtUnixMs: {
+              type: "integer",
+              minimum: 1
+            },
+            content: {
+              type: "object",
+              additionalProperties: false,
+              required: ["operation"],
+              properties: {
+                operation: {
+                  type: "string",
+                  enum: ["append_text", "set"]
+                },
+                text: {
+                  type: "string"
+                },
+                value: true
+              }
+            },
+            toolOutput: {
+              type: "object",
+              additionalProperties: false,
+              required: ["operation", "text"],
+              properties: {
+                operation: {
+                  type: "string",
+                  enum: ["append_text", "set"]
+                },
+                text: {
+                  type: "string"
+                },
+                offsetBytes: {
+                  type: "integer",
+                  minimum: 0
+                }
+              }
+            },
+            payloadSet: {
+              type: "object",
+              minProperties: 1
+            },
+            payloadUnset: {
+              type: "array",
+              minItems: 1,
+              uniqueItems: true,
+              items: {
+                type: "string",
+                minLength: 1
+              }
+            },
+            status: {
+              type: "string"
+            },
+            semantics: {
+              type: "object"
+            },
+            startedAtUnixMs: {
+              type: "integer",
+              minimum: 0
+            },
+            completedAtUnixMs: {
+              type: "integer",
+              minimum: 0
+            }
+          }
+        }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["workspaceId", "agentSessionId", "eventType", "data"],
+      properties: {
+        workspaceId: {
+          type: "string",
+          minLength: 1
+        },
+        agentSessionId: {
+          type: "string",
+          minLength: 1
+        },
+        eventType: {
           const: "session_deleted"
         },
         data: {
@@ -1041,6 +1207,26 @@ export const agentActivityUpdatedPayloadSchema = {
                   type: "string",
                   minLength: 1
                 },
+                capabilityRefs: {
+                  type: "array",
+                  description:
+                    "Structured capability provenance attached by the controller-owned initial submission event or lifecycle-neutral native-guidance report and persisted on the canonical turn. It is never provider prompt text.",
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["capability", "source"],
+                    properties: {
+                      capability: {
+                        type: "string",
+                        const: "tutti"
+                      },
+                      source: {
+                        type: "string",
+                        const: "slash_command"
+                      }
+                    }
+                  }
+                },
                 phase: {
                   type: "string",
                   enum: [
@@ -1245,12 +1431,88 @@ export const agentActivityUpdatedPayloadSchema = {
         "session_reconcile_required",
         "session_deleted",
         "session_audit",
+        "message_delta",
         "message_update",
         "turn_update",
         "interaction_update"
       ]
     },
     data: true
+  }
+} as const;
+
+export const agentAutomationRulesChangedPayloadSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["workspaceId", "occurredAtUnixMs"],
+  properties: {
+    workspaceId: {
+      type: "string",
+      minLength: 1
+    },
+    occurredAtUnixMs: {
+      type: "integer",
+      minimum: 0
+    }
+  }
+} as const;
+
+export const agentCollaborationUpdatedPayloadSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "workspaceId",
+    "runId",
+    "mode",
+    "status",
+    "triggerSource",
+    "occurredAtUnixMs"
+  ],
+  properties: {
+    workspaceId: {
+      type: "string",
+      minLength: 1
+    },
+    runId: {
+      type: "string",
+      minLength: 1
+    },
+    mode: {
+      type: "string",
+      enum: ["consult", "fork", "delegate", "handoff"]
+    },
+    status: {
+      type: "string",
+      enum: ["running", "completed", "failed", "canceled"]
+    },
+    sourceSessionId: {
+      type: "string",
+      minLength: 1
+    },
+    targetSessionId: {
+      type: "string",
+      minLength: 1
+    },
+    modelPlanId: {
+      type: "string",
+      minLength: 1
+    },
+    model: {
+      type: "string",
+      minLength: 1
+    },
+    triggerSource: {
+      type: "string",
+      enum: ["user", "agent", "policy"]
+    },
+    adoption: {
+      type: "string",
+      enum: ["pending", "adopted", "rejected", "not_applicable"]
+    },
+    occurredAtUnixMs: {
+      type: "integer",
+      minimum: 0
+    }
   }
 } as const;
 
@@ -1270,6 +1532,69 @@ export const agentModelCatalogInvalidatedPayloadSchema = {
     occurredAtUnixMs: {
       type: "integer",
       minimum: 0
+    }
+  }
+} as const;
+
+export const agentModelConfigurationChangedPayloadSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "workspaceId",
+    "agentTargetIds",
+    "defaultModels",
+    "resetComposerModel",
+    "occurredAtUnixMs"
+  ],
+  properties: {
+    workspaceId: {
+      type: "string",
+      minLength: 1
+    },
+    agentTargetIds: {
+      type: "array",
+      minItems: 1,
+      items: {
+        type: "string",
+        minLength: 1
+      }
+    },
+    defaultModels: {
+      type: "object",
+      additionalProperties: {
+        type: "string"
+      }
+    },
+    resetComposerModel: {
+      type: "boolean"
+    },
+    occurredAtUnixMs: {
+      type: "integer",
+      minimum: 0
+    }
+  }
+} as const;
+
+export const agentQuickpromptUpdatedPayloadSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["promptId", "changeKind", "version", "occurredAtUnixMs"],
+  properties: {
+    promptId: {
+      type: "string",
+      minLength: 1
+    },
+    changeKind: {
+      type: "string",
+      enum: ["created", "updated", "deleted"]
+    },
+    version: {
+      type: "integer",
+      minimum: 1
+    },
+    occurredAtUnixMs: {
+      type: "integer",
+      minimum: 1
     }
   }
 } as const;
@@ -1306,6 +1631,56 @@ export const analyticsDebugReportedPayloadSchema = {
   }
 } as const;
 
+export const preferencesAgentComposerDefaultsChangedPayloadSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["agentTargetId"],
+  properties: {
+    agentTargetId: {
+      type: "string",
+      minLength: 1,
+      maxLength: 128
+    }
+  }
+} as const;
+
+export const preferencesAgentComposerDefaultsPatchRequestedPayloadSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["agentTargetId", "patch"],
+  properties: {
+    agentTargetId: {
+      type: "string",
+      minLength: 1,
+      maxLength: 128
+    },
+    patch: {
+      type: "object",
+      additionalProperties: false,
+      minProperties: 1,
+      properties: {
+        model: {
+          type: ["string", "null"]
+        },
+        permissionModeId: {
+          type: ["string", "null"]
+        },
+        reasoningEffort: {
+          type: ["string", "null"]
+        },
+        speed: {
+          type: ["string", "null"]
+        }
+      }
+    },
+    clientMutationId: {
+      type: "string",
+      minLength: 1,
+      maxLength: 128
+    }
+  }
+} as const;
+
 export const preferencesDesktopUpdateRequestedPayloadSchema = {
   type: "object",
   additionalProperties: false,
@@ -1318,6 +1693,7 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
       type: "object",
       additionalProperties: false,
       required: [
+        "agentCliUpdateCheckEnabled",
         "agentComposerDefaultsByProvider",
         "agentGuiConversationRailCollapsedByProvider",
         "agentConversationDetailMode",
@@ -1326,6 +1702,7 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         "defaultAgentProvider",
         "dockIconStyle",
         "dockPlacement",
+        "deletedAgentConversationRetentionDays",
         "fileDefaultOpenersByExtension",
         "featureFlags",
         "workbenchShortcuts",
@@ -1338,6 +1715,10 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         "updatePolicy"
       ],
       properties: {
+        agentCliUpdateCheckEnabled: {
+          type: "boolean",
+          default: true
+        },
         agentComposerDefaultsByProvider: {
           type: "object",
           additionalProperties: false,
@@ -1415,24 +1796,6 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
               }
             },
             nexight: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                model: {
-                  type: "string"
-                },
-                permissionModeId: {
-                  type: "string"
-                },
-                reasoningEffort: {
-                  type: "string"
-                },
-                speed: {
-                  type: "string"
-                }
-              }
-            },
-            hermes: {
               type: "object",
               additionalProperties: false,
               properties: {
@@ -1528,9 +1891,6 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
             nexight: {
               type: "boolean"
             },
-            hermes: {
-              type: "boolean"
-            },
             openclaw: {
               type: "boolean"
             },
@@ -1566,6 +1926,10 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         dockPlacement: {
           type: "string",
           enum: ["bottom", "left"]
+        },
+        deletedAgentConversationRetentionDays: {
+          type: "integer",
+          enum: [15, 30]
         },
         fileDefaultOpenersByExtension: {
           type: "object",
@@ -1677,6 +2041,7 @@ export const preferencesDesktopUpdatedPayloadSchema = {
       type: "object",
       additionalProperties: false,
       required: [
+        "agentCliUpdateCheckEnabled",
         "agentComposerDefaultsByProvider",
         "agentGuiConversationRailCollapsedByProvider",
         "agentConversationDetailMode",
@@ -1685,6 +2050,7 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         "defaultAgentProvider",
         "dockIconStyle",
         "dockPlacement",
+        "deletedAgentConversationRetentionDays",
         "fileDefaultOpenersByExtension",
         "featureFlags",
         "workbenchShortcuts",
@@ -1697,6 +2063,10 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         "updatePolicy"
       ],
       properties: {
+        agentCliUpdateCheckEnabled: {
+          type: "boolean",
+          default: true
+        },
         agentComposerDefaultsByProvider: {
           type: "object",
           additionalProperties: false,
@@ -1774,24 +2144,6 @@ export const preferencesDesktopUpdatedPayloadSchema = {
               }
             },
             nexight: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                model: {
-                  type: "string"
-                },
-                permissionModeId: {
-                  type: "string"
-                },
-                reasoningEffort: {
-                  type: "string"
-                },
-                speed: {
-                  type: "string"
-                }
-              }
-            },
-            hermes: {
               type: "object",
               additionalProperties: false,
               properties: {
@@ -1887,9 +2239,6 @@ export const preferencesDesktopUpdatedPayloadSchema = {
             nexight: {
               type: "boolean"
             },
-            hermes: {
-              type: "boolean"
-            },
             openclaw: {
               type: "boolean"
             },
@@ -1925,6 +2274,10 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         dockPlacement: {
           type: "string",
           enum: ["bottom", "left"]
+        },
+        deletedAgentConversationRetentionDays: {
+          type: "integer",
+          enum: [15, 30]
         },
         fileDefaultOpenersByExtension: {
           type: "object",
@@ -2014,6 +2367,72 @@ export const preferencesDesktopUpdatedPayloadSchema = {
             speed: {
               type: "string"
             }
+          }
+        }
+      }
+    }
+  }
+} as const;
+
+export const userProjectUpdatedPayloadSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["projects"],
+  properties: {
+    projects: {
+      type: "array",
+      items: {
+        $schema: "https://json-schema.org/draft/2020-12/schema",
+        $id: "https://tutti.dev/schemas/events/topics/user/user-project.schema.json",
+        title: "UserProject",
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "path",
+          "label",
+          "sectionKey",
+          "createdAtUnixMs",
+          "updatedAtUnixMs",
+          "lastUsedAtUnixMs",
+          "pinnedAtUnixMs"
+        ],
+        properties: {
+          id: {
+            type: "string",
+            minLength: 1
+          },
+          path: {
+            type: "string",
+            minLength: 1
+          },
+          label: {
+            type: "string",
+            minLength: 1
+          },
+          sectionKey: {
+            type: "string",
+            minLength: 1
+          },
+          createdAtUnixMs: {
+            type: "integer",
+            format: "int64",
+            minimum: 0
+          },
+          updatedAtUnixMs: {
+            type: "integer",
+            format: "int64",
+            minimum: 0
+          },
+          lastUsedAtUnixMs: {
+            type: "integer",
+            format: "int64",
+            minimum: 0
+          },
+          pinnedAtUnixMs: {
+            type: "integer",
+            format: "int64",
+            minimum: 0
           }
         }
       }
@@ -2404,6 +2823,40 @@ export const workspaceIssueUpdatedPayloadSchema = {
   }
 } as const;
 
+export const workspaceTuttimodeUpdatedPayloadSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "agentSessionId",
+    "activationId",
+    "revision",
+    "status",
+    "changeKind"
+  ],
+  properties: {
+    agentSessionId: {
+      type: "string",
+      minLength: 1
+    },
+    activationId: {
+      type: "string",
+      format: "uuid"
+    },
+    revision: {
+      type: "integer",
+      minimum: 1
+    },
+    status: {
+      type: "string",
+      enum: ["active", "inactive"]
+    },
+    changeKind: {
+      type: "string",
+      enum: ["activated", "deactivated"]
+    }
+  }
+} as const;
+
 export const workspaceWorkbenchNodeLaunchRequestedPayloadSchema = {
   type: "object",
   additionalProperties: false,
@@ -2434,6 +2887,35 @@ export const workspaceWorkbenchNodeLaunchRequestedPayloadSchema = {
       minLength: 1
     },
     payload: true
+  }
+} as const;
+
+export const workspaceWorkflowUpdatedPayloadSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["workflowId", "sourceSessionId", "checkpointId", "changeKind"],
+  properties: {
+    workflowId: {
+      type: "string",
+      format: "uuid"
+    },
+    sourceSessionId: {
+      type: "string",
+      minLength: 1
+    },
+    checkpointId: {
+      type: "string",
+      format: "uuid"
+    },
+    changeKind: {
+      type: "string",
+      enum: [
+        "proposal_created",
+        "revision_created",
+        "checkpoint_decided",
+        "operation_updated"
+      ]
+    }
   }
 } as const;
 
@@ -2763,15 +3245,27 @@ export const businessEventServerFrameSchema = {
 
 export const businessEventPayloadSchemas = {
   "agent.activity.updated": agentActivityUpdatedPayloadSchema,
+  "agent.automation.rules.changed": agentAutomationRulesChangedPayloadSchema,
+  "agent.collaboration.updated": agentCollaborationUpdatedPayloadSchema,
   "agent.model.catalog.invalidated": agentModelCatalogInvalidatedPayloadSchema,
+  "agent.model.configuration.changed":
+    agentModelConfigurationChangedPayloadSchema,
+  "agent.quickprompt.updated": agentQuickpromptUpdatedPayloadSchema,
   "analytics.debug.reported": analyticsDebugReportedPayloadSchema,
+  "preferences.agent.composer.defaults.changed":
+    preferencesAgentComposerDefaultsChangedPayloadSchema,
+  "preferences.agent.composer.defaults.patch.requested":
+    preferencesAgentComposerDefaultsPatchRequestedPayloadSchema,
   "preferences.desktop.update.requested":
     preferencesDesktopUpdateRequestedPayloadSchema,
   "preferences.desktop.updated": preferencesDesktopUpdatedPayloadSchema,
+  "user.project.updated": userProjectUpdatedPayloadSchema,
   "workspace.app.updated": workspaceAppUpdatedPayloadSchema,
   "workspace.appfactory.job.updated":
     workspaceAppfactoryJobUpdatedPayloadSchema,
   "workspace.issue.updated": workspaceIssueUpdatedPayloadSchema,
+  "workspace.tuttimode.updated": workspaceTuttimodeUpdatedPayloadSchema,
   "workspace.workbench.node.launch.requested":
-    workspaceWorkbenchNodeLaunchRequestedPayloadSchema
+    workspaceWorkbenchNodeLaunchRequestedPayloadSchema,
+  "workspace.workflow.updated": workspaceWorkflowUpdatedPayloadSchema
 } as const;

@@ -1,17 +1,20 @@
 import type { DesktopLocale } from "@shared/i18n";
 import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
 import type { IDesktopPreferencesService } from "../desktopPreferencesService.interface.ts";
+import type { DesktopAgentComposerDefaultsPatchResult } from "../desktopPreferencesService.interface.ts";
 import type { DesktopPreferencesClient } from "./adapters/desktopPreferencesClient.ts";
 import { createDesktopPreferencesStore } from "./desktopPreferencesStore.ts";
+import { AgentComposerDefaultsPatchCoordinator } from "./agentComposerDefaultsPatchCoordinator.ts";
 import {
-  desktopAgentComposerDefaultsByAgentTargetEqual,
   desktopAgentGuiConversationRailCollapsedByProviderEqual,
+  defaultDesktopAgentCliUpdateCheckEnabled,
   defaultDesktopAgentProvider,
   defaultDesktopAgentConversationDetailMode,
   defaultDesktopAppCatalogChannel,
   defaultDesktopBrowserUseConnectionMode,
   defaultDesktopDockIconStyle,
   defaultDesktopDockPlacement,
+  defaultDeletedAgentConversationRetentionDays,
   defaultDesktopFeatureFlags,
   defaultDesktopFileDefaultOpenersByExtension,
   defaultDesktopMinimizeAnimation,
@@ -22,10 +25,11 @@ import {
   defaultDesktopWorkbenchShortcuts,
   defaultDesktopWorkbenchWindowSnapping,
   desktopFeatureFlagsEqual,
-  mergeDesktopAgentComposerDefaultsByAgentTarget,
   mergeDesktopAgentGuiConversationRailCollapsedByProvider,
   normalizeDesktopAgentComposerDefaultsByAgentTarget,
+  normalizeDesktopAgentCliUpdateCheckEnabled,
   normalizeDesktopAgentConversationDetailMode,
+  normalizeDeletedAgentConversationRetentionDays,
   normalizeDesktopFeatureFlags,
   normalizeDesktopFileDefaultOpenersByExtension,
   normalizeDesktopAgentGuiConversationRailCollapsedByProvider,
@@ -45,6 +49,7 @@ import {
   type DesktopBrowserUseConnectionMode,
   type DesktopDockIconStyle,
   type DesktopDockPlacement,
+  type DeletedAgentConversationRetentionDays,
   type DesktopFeatureFlags,
   type DesktopFileDefaultOpenersByExtension,
   type DesktopMinimizeAnimation,
@@ -70,12 +75,19 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
   readonly store;
 
   private readonly dependencies: DesktopPreferencesServiceDependencies;
+  private readonly agentComposerDefaultsPatchCoordinator: AgentComposerDefaultsPatchCoordinator;
   private readonly unsubscribePreferencesUpdates: () => void;
   private disposed = false;
 
   constructor(dependencies: DesktopPreferencesServiceDependencies) {
     this.dependencies = dependencies;
+    this.agentComposerDefaultsPatchCoordinator =
+      new AgentComposerDefaultsPatchCoordinator({
+        publish: (input) =>
+          this.dependencies.client.patchAgentComposerDefaultsForTarget(input)
+      });
     this.store = createDesktopPreferencesStore({
+      agentCliUpdateCheckEnabled: defaultDesktopAgentCliUpdateCheckEnabled,
       agentComposerDefaultsByProvider: {},
       agentComposerDefaultsByAgentTarget: {},
       agentGuiConversationRailCollapsedByProvider: {},
@@ -86,6 +98,8 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       dockIconStyle: defaultDesktopDockIconStyle,
       dockPlacement:
         this.dependencies.initialDockPlacement ?? defaultDesktopDockPlacement,
+      deletedAgentConversationRetentionDays:
+        defaultDeletedAgentConversationRetentionDays,
       featureFlags: defaultDesktopFeatureFlags,
       fileDefaultOpenersByExtension:
         defaultDesktopFileDefaultOpenersByExtension,
@@ -110,8 +124,37 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
 
   dispose(): void {
     this.disposed = true;
+    this.agentComposerDefaultsPatchCoordinator.dispose();
     this.unsubscribePreferencesUpdates();
     this.dependencies.client.dispose();
+  }
+
+  async setAgentCliUpdateCheckEnabled(enabled: boolean): Promise<boolean> {
+    if (this.store.changingAgentCliUpdateCheckEnabled === enabled) {
+      return enabled;
+    }
+
+    const previousEnabled = this.store.agentCliUpdateCheckEnabled;
+    this.store.changingAgentCliUpdateCheckEnabled = enabled;
+    this.store.agentCliUpdateCheckEnabled = enabled;
+    try {
+      const authoritativePreferences =
+        await this.dependencies.client.updateDesktopPreferences({
+          preferences: this.currentPreferences({
+            agentCliUpdateCheckEnabled: enabled
+          })
+        });
+      return normalizeDesktopAgentCliUpdateCheckEnabled(
+        authoritativePreferences.agentCliUpdateCheckEnabled
+      );
+    } catch (error) {
+      this.store.agentCliUpdateCheckEnabled = previousEnabled;
+      throw error;
+    } finally {
+      if (this.store.changingAgentCliUpdateCheckEnabled === enabled) {
+        this.store.changingAgentCliUpdateCheckEnabled = null;
+      }
+    }
   }
 
   async setDefaultAgentProvider(
@@ -256,6 +299,38 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     } finally {
       if (this.store.changingDockPlacement === placement) {
         this.store.changingDockPlacement = null;
+      }
+    }
+  }
+
+  async setDeletedAgentConversationRetentionDays(
+    days: DeletedAgentConversationRetentionDays
+  ): Promise<DeletedAgentConversationRetentionDays> {
+    const nextDays = normalizeDeletedAgentConversationRetentionDays(days);
+    if (this.store.changingDeletedAgentConversationRetentionDays === nextDays) {
+      return nextDays;
+    }
+    const previousDays = this.store.deletedAgentConversationRetentionDays;
+    this.store.changingDeletedAgentConversationRetentionDays = nextDays;
+    this.store.deletedAgentConversationRetentionDays = nextDays;
+    try {
+      const authoritativePreferences =
+        await this.dependencies.client.updateDesktopPreferences({
+          preferences: this.currentPreferences({
+            deletedAgentConversationRetentionDays: nextDays
+          })
+        });
+      return normalizeDeletedAgentConversationRetentionDays(
+        authoritativePreferences.deletedAgentConversationRetentionDays
+      );
+    } catch (error) {
+      this.store.deletedAgentConversationRetentionDays = previousDays;
+      throw error;
+    } finally {
+      if (
+        this.store.changingDeletedAgentConversationRetentionDays === nextDays
+      ) {
+        this.store.changingDeletedAgentConversationRetentionDays = null;
       }
     }
   }
@@ -627,36 +702,11 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
   async rememberAgentComposerDefaultsForAgentTarget(
     agentTargetId: string,
     defaults: DesktopAgentComposerDefaultsPatch | null
-  ): Promise<void> {
-    const previousDefaultsByAgentTarget =
-      this.store.agentComposerDefaultsByAgentTarget;
-    const nextDefaultsByAgentTarget =
-      mergeDesktopAgentComposerDefaultsByAgentTarget(
-        previousDefaultsByAgentTarget,
-        agentTargetId,
-        defaults
-      );
-    if (
-      desktopAgentComposerDefaultsByAgentTargetEqual(
-        previousDefaultsByAgentTarget,
-        nextDefaultsByAgentTarget
-      )
-    ) {
-      return;
-    }
-
-    this.store.agentComposerDefaultsByAgentTarget = nextDefaultsByAgentTarget;
-    try {
-      await this.dependencies.client.updateDesktopPreferences({
-        preferences: this.currentPreferences({
-          agentComposerDefaultsByAgentTarget: nextDefaultsByAgentTarget
-        })
-      });
-    } catch (error) {
-      this.store.agentComposerDefaultsByAgentTarget =
-        previousDefaultsByAgentTarget;
-      throw error;
-    }
+  ): Promise<DesktopAgentComposerDefaultsPatchResult> {
+    return this.agentComposerDefaultsPatchCoordinator.patch(
+      agentTargetId,
+      defaults
+    );
   }
 
   async rememberAgentGuiConversationRailCollapsed(
@@ -738,6 +788,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
   }
 
   private applyPreferences(preferences: {
+    agentCliUpdateCheckEnabled?: boolean;
     agentComposerDefaultsByAgentTarget?: DesktopAgentComposerDefaultsByAgentTarget;
     agentGuiConversationRailCollapsedByProvider?: DesktopAgentGuiConversationRailCollapsedByProvider;
     agentConversationDetailMode?: DesktopAgentConversationDetailMode;
@@ -746,6 +797,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     defaultAgentProvider: DesktopDefaultAgentProvider;
     dockIconStyle: DesktopDockIconStyle;
     dockPlacement: DesktopDockPlacement;
+    deletedAgentConversationRetentionDays?: DeletedAgentConversationRetentionDays;
     featureFlags?: DesktopFeatureFlags;
     fileDefaultOpenersByExtension?: DesktopFileDefaultOpenersByExtension;
     locale: DesktopLocale;
@@ -758,6 +810,10 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     workbenchShortcuts?: DesktopWorkbenchShortcuts;
     workbenchWindowSnapping?: DesktopWorkbenchWindowSnapping;
   }): void {
+    this.store.agentCliUpdateCheckEnabled =
+      normalizeDesktopAgentCliUpdateCheckEnabled(
+        preferences.agentCliUpdateCheckEnabled
+      );
     this.store.agentComposerDefaultsByAgentTarget =
       normalizeDesktopAgentComposerDefaultsByAgentTarget(
         preferences.agentComposerDefaultsByAgentTarget
@@ -778,6 +834,10 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     this.store.defaultAgentProvider = preferences.defaultAgentProvider;
     this.store.dockIconStyle = preferences.dockIconStyle;
     this.store.dockPlacement = preferences.dockPlacement;
+    this.store.deletedAgentConversationRetentionDays =
+      normalizeDeletedAgentConversationRetentionDays(
+        preferences.deletedAgentConversationRetentionDays
+      );
     this.store.fileDefaultOpenersByExtension =
       normalizeDesktopFileDefaultOpenersByExtension(
         preferences.fileDefaultOpenersByExtension
@@ -817,7 +877,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
 
   private currentPreferences(
     overrides: Partial<{
-      agentComposerDefaultsByAgentTarget: DesktopAgentComposerDefaultsByAgentTarget;
+      agentCliUpdateCheckEnabled: boolean;
       agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
       agentConversationDetailMode: DesktopAgentConversationDetailMode;
       appCatalogChannel: DesktopAppCatalogChannel;
@@ -825,6 +885,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       defaultAgentProvider: DesktopDefaultAgentProvider;
       dockIconStyle: DesktopDockIconStyle;
       dockPlacement: DesktopDockPlacement;
+      deletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays;
       featureFlags: DesktopFeatureFlags;
       fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
       locale: DesktopLocale;
@@ -838,8 +899,9 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       workbenchWindowSnapping: DesktopWorkbenchWindowSnapping;
     }> = {}
   ): {
+    agentCliUpdateCheckEnabled: boolean;
     agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
-    agentComposerDefaultsByAgentTarget: DesktopAgentComposerDefaultsByAgentTarget;
+    agentComposerDefaultsByAgentTarget?: DesktopAgentComposerDefaultsByAgentTarget;
     agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
     agentConversationDetailMode: DesktopAgentConversationDetailMode;
     agentDockLayout: "unified";
@@ -848,6 +910,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     defaultAgentProvider: DesktopDefaultAgentProvider;
     dockIconStyle: DesktopDockIconStyle;
     dockPlacement: DesktopDockPlacement;
+    deletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays;
     featureFlags: DesktopFeatureFlags;
     fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
     locale: DesktopLocale;
@@ -866,14 +929,12 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       overrides.workbenchWindowSnapping ?? this.store.workbenchWindowSnapping
     );
     return {
+      agentCliUpdateCheckEnabled:
+        overrides.agentCliUpdateCheckEnabled ??
+        this.store.agentCliUpdateCheckEnabled,
       // Keep the required wire-contract field, but stop round-tripping the
       // frozen legacy provider-keyed defaults through renderer state.
       agentComposerDefaultsByProvider: {},
-      agentComposerDefaultsByAgentTarget:
-        normalizeDesktopAgentComposerDefaultsByAgentTarget(
-          overrides.agentComposerDefaultsByAgentTarget ??
-            this.store.agentComposerDefaultsByAgentTarget
-        ),
       agentGuiConversationRailCollapsedByProvider:
         normalizeDesktopAgentGuiConversationRailCollapsedByProvider(
           overrides.agentGuiConversationRailCollapsedByProvider ??
@@ -895,6 +956,9 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
         overrides.defaultAgentProvider ?? this.store.defaultAgentProvider,
       dockIconStyle: overrides.dockIconStyle ?? this.store.dockIconStyle,
       dockPlacement: overrides.dockPlacement ?? this.store.dockPlacement,
+      deletedAgentConversationRetentionDays:
+        overrides.deletedAgentConversationRetentionDays ??
+        this.store.deletedAgentConversationRetentionDays,
       featureFlags: normalizeDesktopFeatureFlags(
         overrides.featureFlags ?? this.store.featureFlags
       ),

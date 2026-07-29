@@ -50,9 +50,5 @@ export const AGENT_PROVIDER_CAPABILITIES: Record<
   openclaw: {
     runtimeObservation: "jsonl",
     experimental: false
-  },
-  hermes: {
-    runtimeObservation: "jsonl",
-    experimental: false
   }
 };

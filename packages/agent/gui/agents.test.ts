@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   normalizeAgentGUIAgents,
-  projectAgentGUIAgentsToInternalTargets,
+  projectAgentGUIAgentsToTargets,
   resolveAgentGUISelectedDirectoryAgent
 } from "./agents";
 import type { AgentGUIAgent } from "./types";
@@ -34,20 +34,29 @@ describe("normalizeAgentGUIAgents", () => {
     expect(agents.map((agent) => agent.provider)).toEqual(["codex", "codex"]);
   });
 
-  it("drops invalid and duplicate identities while normalizing presentation", () => {
+  it("drops invalid and duplicate identities while retaining iconless Agents", () => {
     const agents = normalizeAgentGUIAgents([
       createAgent(" alice ", {
         name: " Alice ",
         iconUrl: " app://agents/alice.png ",
+        maskIconUrl: " app://agents/alice-mask.png ",
         heroImageUrl: " app://agents/alice-hero.jpg ",
         description: " Shared agent ",
+        ownerDeviceLabel: " Owner MacBook Pro ",
         owner: { name: " Owner ", avatarUrl: " app://owner.png " },
+        ownership: "shared",
         availability: { status: "unavailable", reason: " Offline " }
       }),
       createAgent("alice"),
       createAgent("", { name: "Missing identity" }),
       createAgent("missing-name", { name: " " }),
-      createAgent("missing-icon", { iconUrl: " " })
+      {
+        agentTargetId: "missing-icon",
+        name: "missing-icon",
+        iconUrl: "",
+        availability: { status: "ready" },
+        provider: "codex"
+      }
     ]);
 
     expect(agents).toEqual([
@@ -55,19 +64,74 @@ describe("normalizeAgentGUIAgents", () => {
         agentTargetId: "alice",
         name: "Alice",
         iconUrl: "app://agents/alice.png",
+        maskIconUrl: "app://agents/alice-mask.png",
         heroImageUrl: "app://agents/alice-hero.jpg",
         description: "Shared agent",
+        ownerDeviceLabel: "Owner MacBook Pro",
         owner: { name: "Owner", avatarUrl: "app://owner.png" },
+        ownership: "shared",
         availability: { status: "unavailable", reason: "Offline" },
+        provider: "codex"
+      },
+      {
+        agentTargetId: "missing-icon",
+        name: "missing-icon",
+        iconUrl: "",
+        availability: { status: "ready" },
         provider: "codex"
       }
     ]);
   });
 });
 
-describe("projectAgentGUIAgentsToInternalTargets", () => {
+describe("projectAgentGUIAgentsToTargets", () => {
+  it("preserves explicit ownership independently from owner presentation", () => {
+    const [target] = projectAgentGUIAgentsToTargets([
+      createAgent("agent-a", {
+        owner: { name: "Current User", avatarUrl: "app://owner.png" },
+        ownerDeviceLabel: "Current User Mac mini",
+        ownership: "self"
+      })
+    ]);
+
+    expect(target).toMatchObject({
+      ownership: "self",
+      ownerLabel: "Current User",
+      ownerDeviceLabel: "Current User Mac mini",
+      badge: { iconUrl: "app://owner.png" }
+    });
+  });
+
+  it("projects the mask icon independently from the canonical icon", () => {
+    const [target] = projectAgentGUIAgentsToTargets([
+      createAgent("agent-a", {
+        maskIconUrl: "app://agents/agent-a-mask.png"
+      })
+    ]);
+
+    expect(target).toMatchObject({
+      iconUrl: "app://agents/agent-a.png",
+      maskIconUrl: "app://agents/agent-a-mask.png"
+    });
+  });
+
+  it("keeps an Agent without decorative icon metadata selectable", () => {
+    const agents = normalizeAgentGUIAgents([
+      createAgent("workspace-agent:reviewer", { iconUrl: " " })
+    ]);
+
+    const [target] = projectAgentGUIAgentsToTargets(agents);
+
+    expect(target).toMatchObject({
+      agentTargetId: "workspace-agent:reviewer",
+      iconUrl: "",
+      targetId: "workspace-agent:reviewer"
+    });
+    expect(target?.disabled).toBeUndefined();
+  });
+
   it("preserves availability separately from disabled interaction state", () => {
-    const [target] = projectAgentGUIAgentsToInternalTargets([
+    const [target] = projectAgentGUIAgentsToTargets([
       createAgent("agent-a", {
         availability: { status: "unavailable", reason: "Offline" }
       })

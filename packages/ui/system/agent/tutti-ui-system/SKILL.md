@@ -90,10 +90,12 @@ Keep these outside `@tutti-os/ui-system` components:
 For any promoted public component, add stable exports, metadata, and storyboard
 coverage that match the chosen reference workflow.
 
-For promoted base components, storyboard coverage is not satisfied by metadata
-alone. The promotion flow must also add or update a real renderable example in
-`apps/ui-storyboard` so the component is visible in navigation and can be
-visually reviewed in shared docs immediately after promotion.
+For promoted base components, preview coverage is not satisfied by metadata
+alone. DOM components need a real renderable example in `apps/ui-storyboard`.
+React Native components need a real renderable example in the Mobile
+development gallery because the DOM storyboard cannot render their final
+surface. In both cases, the example must use the stable public entrypoint and
+show the component's public states.
 
 For business component promotion, use a copy-first workflow: move the existing
 business component structure as intact as possible, preserve the real DOM,

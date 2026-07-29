@@ -31,9 +31,43 @@ test("runTuttiAgentInstallBootstrap installs tutti-agent when missing", async ()
   assert.deepEqual(calls, ["ensureLoaded", "runAction", "refresh"]);
 });
 
+test("runTuttiAgentInstallBootstrap upgrades tutti-agent below its minimum version", async () => {
+  const calls: string[] = [];
+  const status = createStatus("not_installed", [
+    { id: "install", kind: "daemon_action" }
+  ]);
+  status.availability.reasonCode = "cli_version_unsupported";
+  status.cli = {
+    binaryPath: "/bin/tutti-agent",
+    installed: true,
+    minVersion: "0.0.4",
+    version: "0.0.2"
+  };
+  status.adapter.installed = true;
+  const service = createService(status, {
+    ensureLoaded: () => calls.push("ensureLoaded"),
+    refresh: () => calls.push("refresh"),
+    runAction: () => calls.push("runAction")
+  });
+
+  await runManagedAgentInstallBootstrap(service, "tutti-agent", {
+    now: () => 1_000,
+    storage: createMemoryStorage()
+  });
+
+  assert.deepEqual(calls, ["ensureLoaded", "runAction", "refresh"]);
+});
+
 test("runTuttiAgentInstallBootstrap skips ready tutti-agent", async () => {
   const calls: string[] = [];
-  const service = createService(createStatus("ready"), {
+  const status = createStatus("ready");
+  status.cli = {
+    binaryPath: "/bin/tutti-agent",
+    installed: true,
+    minVersion: "0.0.4",
+    version: "0.0.5"
+  };
+  const service = createService(status, {
     ensureLoaded: () => calls.push("ensureLoaded"),
     runAction: () => calls.push("runAction")
   });
@@ -118,6 +152,7 @@ function createService(
 ): IAgentProviderStatusService {
   return {
     _serviceBrand: undefined,
+    dispose: () => {},
     ensureLoaded: async () => {
       await hooks.ensureLoaded?.();
       return {
@@ -126,6 +161,7 @@ function createService(
         providers: [status]
       };
     },
+    reconcileStatuses: async () => null,
     getDiagnosticsConsent: () => false,
     getRevision: () => 0,
     getSnapshot: () => ({
@@ -139,6 +175,8 @@ function createService(
     getStatus: () => status,
     hydrate: () => {},
     isActionPending: () => false,
+    isCheckingUpdates: () => false,
+    checkUpdates: async () => {},
     refresh: async () => {
       hooks.refresh?.();
     },
@@ -192,7 +230,17 @@ function createStatus(
         availability === "not_installed" ? undefined : "/bin/tutti-agent",
       installed: availability !== "not_installed"
     },
-    provider: "tutti-agent" satisfies WorkspaceAgentProvider
+    provider: "tutti-agent" satisfies WorkspaceAgentProvider,
+    update: {
+      capability: "unsupported",
+      currentVersion: null,
+      lastCheckedAt: null,
+      latestVersion: null,
+      reasonCode: null,
+      source: null,
+      unsupportedReason: "update_strategy_unsupported",
+      updateAvailable: null
+    }
   };
 }
 

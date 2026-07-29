@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 type QueuedReporter struct {
@@ -42,7 +43,7 @@ func (r QueuedReporter) Report(ctx context.Context, input agentsessionstore.Repo
 	}
 	input.Source.SessionOrigin = agentsessionstore.WorkspaceAgentSessionOriginRuntime
 	if input.Connector == nil && strings.TrimSpace(input.Source.Provider) != "" {
-		input.Connector = &agentsessionstore.ConnectorInfo{
+		input.Connector = &canonical.ConnectorInfo{
 			ID:      strings.TrimSpace(input.Source.Provider),
 			Version: "agent-gui-runtime",
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -51,10 +52,13 @@ func (a *CodexAppServerAdapter) SessionState(session Session) SessionStateSnapsh
 	if len(state.rateLimits) > 0 {
 		snapshot.RuntimeContext["rateLimits"] = state.rateLimits
 	}
-	snapshot.RuntimeContext["appServerStartup"] = map[string]any{
-		"models":     codexAppServerStartupStatus(state.startupModelsReady),
-		"rateLimits": codexAppServerStartupStatus(state.startupRateLimitsReady),
+	startup := map[string]any{
+		"models": codexAppServerStartupStatus(state.startupModelsReady),
 	}
+	if a.config.rateLimits {
+		startup["rateLimits"] = codexAppServerStartupStatus(state.startupRateLimitsReady)
+	}
+	snapshot.RuntimeContext["appServerStartup"] = startup
 	if len(state.goal) > 0 {
 		snapshot.RuntimeContext["goal"] = state.goal
 	}
@@ -83,6 +87,11 @@ func (a *CodexAppServerAdapter) SessionState(session Session) SessionStateSnapsh
 		snapshot.RuntimeContext["usage"] = usage
 	}
 	codexCapabilities := codexAppServerCapabilities(state.planModeSupported)
+	if !a.config.rateLimits {
+		codexCapabilities = slices.DeleteFunc(codexCapabilities, func(capability string) bool {
+			return capability == CapabilityRateLimits
+		})
+	}
 	codexCapabilities = appendBrowserUseCapability(codexCapabilities, session.Env)
 	codexCapabilities = appendComputerUseCapability(codexCapabilities, session.Env)
 	snapshot.RuntimeContext["capabilities"] = codexCapabilities
@@ -187,10 +196,7 @@ func (a *CodexAppServerAdapter) SubmitInteractive(ctx context.Context, session S
 		return SubmitInteractiveResult{}, fmt.Errorf("%w: %q", ErrInteractiveRequestNotLive, requestID)
 	}
 	if pending.callType == "approval" {
-		optionID := strings.TrimSpace(input.OptionID)
-		if optionID == "" && input.Payload != nil {
-			optionID = strings.TrimSpace(asString(input.Payload["optionId"]))
-		}
+		optionID := interactiveApprovalOptionID(input)
 		if optionID == "" {
 			return SubmitInteractiveResult{}, errors.New("interactive option id is required")
 		}

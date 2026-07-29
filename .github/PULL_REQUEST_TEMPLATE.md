@@ -6,15 +6,6 @@
 
 <!-- Commands run, manual checks, or why verification is not applicable. -->
 
-## Fix Scope Justification
-
-<!--
-Required when a fix-titled PR changes more than 300 lines; delete otherwise.
-
-- Root cause: which event or state is the actual source of the bug?
-- Why can this not be fixed at a lower layer?
--->
-
 ## Fallback Three Questions
 
 <!--
@@ -28,6 +19,7 @@ delete otherwise.
 
 ## Checklist
 
+- [ ] If this PR changes agent lifecycle semantics (session/turn/goal/runtime-operation creation, sendability, terminal state, or recovery): the change lives in `packages/agent/host` and adds a `packages/agent/host/conformance` scenario, not in a `tuttid`/tsh adapter.
 - [ ] I kept the change focused on one concern.
 - [ ] I updated documentation when behavior, setup, or contributor workflow changed.
 - [ ] I updated all README/CONTRIBUTING language variants when changing their English source.

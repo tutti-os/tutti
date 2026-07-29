@@ -24,15 +24,6 @@ execFileSync(
 );
 
 execFileSync(
-  process.execPath,
-  [join(scriptDirectory, "check-agent-provider-strategy-boundaries.mjs")],
-  {
-    cwd: workspaceRoot,
-    stdio: "inherit"
-  }
-);
-
-execFileSync(
   process.platform === "win32" ? "corepack.cmd" : "corepack",
   [
     `pnpm@${match[1]}`,

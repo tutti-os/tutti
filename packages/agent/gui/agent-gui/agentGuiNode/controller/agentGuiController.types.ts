@@ -1,8 +1,22 @@
 // Agent GUI controller — shared TypeScript types for the controller hook.
 
 import type { AgentSessionComposerSettings } from "../../../shared/agentSessionTypes";
-import type { AgentGUINodeData } from "../../../types";
+import type {
+  AgentGUIAgentTarget,
+  AgentGUINodeData,
+  AgentGUIProvider,
+  AgentGUIProviderRailMode,
+  AgentGUIProviderReadinessGate,
+  AgentGUITargetConnectionSource
+} from "../../../types";
 import type { AgentGUIComposerSettingOption } from "../model/agentGuiNodeTypes";
+import type {
+  AgentGUIRememberComposerDefaultsInput,
+  AgentGUIRememberComposerDefaultsResult
+} from "./agentGuiController.providerHelpers";
+import type { AgentGUIComposerAppendRequest } from "./useAgentGUIComposerAppendRequest";
+import type { AgentGUIPrefillPromptRequest } from "./useAgentGUIConversationHome";
+import type { AgentGUIOpenSessionRequest } from "./agentGuiController.draftMessageHelpers";
 
 export type AgentGUIRuntimeErrorPhase =
   | "create_conversation"
@@ -38,10 +52,27 @@ export interface UseAgentGUINodeControllerInput {
   workspacePath: string;
   avoidGroupingEdits: boolean;
   data: AgentGUINodeData;
-  previewMode?: boolean;
+  agentTargets?: readonly AgentGUIAgentTarget[];
+  agentTargetsLoading?: boolean;
+  handoffAgentTargets?: readonly AgentGUIAgentTarget[];
+  handoffAgentTargetsLoading?: boolean;
+  providerRailMode?: AgentGUIProviderRailMode;
+  comingSoonProviders?: readonly AgentGUIProvider[];
+  providerReadinessGates?: Partial<
+    Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>
+  > | null;
+  targetConnectionSource?: AgentGUITargetConnectionSource | null;
+  defaultAgentTargetId?: string | null;
+  composerAppendRequest?: AgentGUIComposerAppendRequest | null;
+  openSessionRequest?: AgentGUIOpenSessionRequest | null;
+  prefillPromptRequest?: AgentGUIPrefillPromptRequest | null;
   onDataChange: (
     updater: (current: AgentGUINodeData) => AgentGUINodeData
   ) => void;
+  onComposerAppendHandled?: (sequence: number) => void;
+  onRememberComposerDefaults?: (
+    input: AgentGUIRememberComposerDefaultsInput
+  ) => void | Promise<AgentGUIRememberComposerDefaultsResult>;
   onShowMessage?: (
     message: string,
     tone?: "info" | "warning" | "error"

@@ -2,7 +2,6 @@ package agentruntime
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
@@ -26,7 +25,8 @@ func (a *ClaudeCodeSDKAdapter) Exec(
 		return nil, ErrSessionDisconnected
 	}
 	session.ProviderSessionID = adapterSession.providerSessionID
-	a.beginClaudeSDKRootTurn(adapterSession, turnID, turnID)
+	promptCorrelationID := newID()
+	a.beginClaudeSDKRootTurn(adapterSession, turnID, "")
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
 	events := make([]activityshared.Event, 0, 4)
 	emitEvents := func(next []activityshared.Event) {
@@ -39,13 +39,10 @@ func (a *ClaudeCodeSDKAdapter) Exec(
 		}
 	}
 	startEvents := []activityshared.Event{
-		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, visibleText, userPromptActivityPayload(content, explicitDisplayPrompt, userPromptActivityPayloadExtraFromExecMetadata(ctx, map[string]any{
-			"adapter": claudeSDKSidecarAdapterName,
-		}))),
-		newTurnActivityEvent(session, EventTurnStarted, turnID, SessionStatusWorking, "", "", map[string]any{
+		newUserPromptActivityEvent(ctx, session, content, explicitDisplayPrompt, visibleText, turnID, map[string]any{
 			"adapter": claudeSDKSidecarAdapterName,
 		}),
-		claudeSDKRootProviderTurnStartedEvent(session, turnID, turnID, map[string]any{
+		newTurnActivityEvent(session, EventTurnStarted, turnID, SessionStatusWorking, "", "", map[string]any{
 			"adapter": claudeSDKSidecarAdapterName,
 		}),
 	}
@@ -54,24 +51,25 @@ func (a *ClaudeCodeSDKAdapter) Exec(
 	}
 	emitEvents(a.stampTurnLifecycleSnapshots(adapterSession, startEvents))
 
+	providerContent, err := materializeProviderPromptImagesAtBoundary(ctx, content, a.promptImageMaterializer)
+	if err != nil {
+		events = append(events, a.claudeSDKRootProviderFailureEvents(adapterSession, session, turnID, promptCorrelationID, err)...)
+		return events, err
+	}
 	waiter := a.registerClaudeSDKTurn(adapterSession, turnID, emit)
 	if err := a.startClaudeSDKReader(session.AgentSessionID, adapterSession); err != nil {
 		a.unregisterClaudeSDKTurn(adapterSession, turnID, waiter)
-		events = append(events, a.claudeSDKRootProviderFailureEvents(adapterSession, session, turnID, err)...)
+		events = append(events, a.claudeSDKRootProviderFailureEvents(adapterSession, session, turnID, promptCorrelationID, err)...)
 		return events, err
 	}
+	payload := claudeSDKExecPayload(ctx, session, turnID, promptCorrelationID, providerContent, visibleText)
 	if err := adapterSession.send(claudeSDKSidecarRequest{
-		ID:   newID(),
-		Type: "exec",
-		Payload: map[string]any{
-			"agentSessionId": session.AgentSessionID,
-			"turnId":         turnID,
-			"prompt":         promptTextForClaudeSDK(content, visibleText),
-			"content":        promptContentForClaudeSDK(content, visibleText),
-		},
+		ID:      newID(),
+		Type:    "exec",
+		Payload: payload,
 	}); err != nil {
 		a.unregisterClaudeSDKTurn(adapterSession, turnID, waiter)
-		events = append(events, a.claudeSDKRootProviderFailureEvents(adapterSession, session, turnID, err)...)
+		events = append(events, a.claudeSDKRootProviderFailureEvents(adapterSession, session, turnID, promptCorrelationID, err)...)
 		return events, err
 	}
 
@@ -81,7 +79,7 @@ func (a *ClaudeCodeSDKAdapter) Exec(
 			events = append(events, result.events...)
 		}
 		if result.err != nil {
-			events = append(events, a.claudeSDKRootProviderFailureEvents(adapterSession, session, turnID, result.err)...)
+			events = append(events, a.claudeSDKRootProviderFailureEvents(adapterSession, session, turnID, promptCorrelationID, result.err)...)
 		}
 		return events, result.err
 	case <-ctx.Done():
@@ -100,7 +98,28 @@ func (a *ClaudeCodeSDKAdapter) Exec(
 	}
 }
 
-func (a *ClaudeCodeSDKAdapter) claudeSDKRootProviderFailureEvents(adapterSession *claudeSDKAdapterSession, session Session, turnID string, err error) []activityshared.Event {
+func claudeSDKExecPayload(
+	ctx context.Context,
+	session Session,
+	turnID string,
+	promptCorrelationID string,
+	content []PromptContentBlock,
+	visibleText string,
+) map[string]any {
+	payload := map[string]any{
+		"agentSessionId":      session.AgentSessionID,
+		"turnId":              turnID,
+		"promptCorrelationId": promptCorrelationID,
+		"prompt":              promptTextForClaudeSDK(content, visibleText),
+		"content":             promptContentForClaudeSDK(content, visibleText),
+	}
+	if hostContext := renderTuttiModeHostContext(tuttiModeTurnSnapshotFromContext(ctx)); hostContext != "" {
+		payload["hostContext"] = hostContext
+	}
+	return payload
+}
+
+func (a *ClaudeCodeSDKAdapter) claudeSDKRootProviderFailureEvents(adapterSession *claudeSDKAdapterSession, session Session, turnID string, providerTurnID string, err error) []activityshared.Event {
 	events := a.finishClaudeSDKTurnLifecycle(adapterSession, session, turnID, claudeSDKTurnFinishFailed, "provider_transport_failed")
 	metadata := map[string]any{"adapter": claudeSDKSidecarAdapterName}
 	if err != nil {
@@ -109,11 +128,11 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKRootProviderFailureEvents(adapterSession
 	events = append(events, claudeSDKRootProviderTurnCompletedEvent(
 		session,
 		turnID,
-		turnID,
+		providerTurnID,
 		activityshared.TurnOutcomeFailed,
 		metadata,
 	))
-	a.consumeClaudeSDKRootProviderTurn(adapterSession, turnID)
+	a.consumeClaudeSDKRootProviderTurn(adapterSession, providerTurnID)
 	return events
 }
 
@@ -132,12 +151,16 @@ func (a *ClaudeCodeSDKAdapter) GuideActiveTurn(
 	}
 	session.ProviderSessionID = adapterSession.providerSessionID
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
+	providerContent, err := materializeProviderPromptImagesAtBoundary(ctx, content, a.promptImageMaterializer)
+	if err != nil {
+		return nil, err
+	}
 	events := []activityshared.Event{
-		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, visibleText, userPromptActivityPayload(content, explicitDisplayPrompt, userPromptActivityPayloadExtraFromExecMetadata(ctx, map[string]any{
+		newUserPromptActivityEvent(ctx, session, content, explicitDisplayPrompt, visibleText, turnID, map[string]any{
 			"adapter":  claudeSDKSidecarAdapterName,
 			"guidance": true,
 			"steered":  true,
-		}))),
+		}),
 	}
 	if err := a.startClaudeSDKReader(session.AgentSessionID, adapterSession); err != nil {
 		return events, err
@@ -149,8 +172,8 @@ func (a *ClaudeCodeSDKAdapter) GuideActiveTurn(
 		Type: "guide",
 		Payload: map[string]any{
 			"agentSessionId": session.AgentSessionID,
-			"prompt":         promptTextForClaudeSDK(content, visibleText),
-			"content":        promptContentForClaudeSDK(content, visibleText),
+			"prompt":         promptTextForClaudeSDK(providerContent, visibleText),
+			"content":        promptContentForClaudeSDK(providerContent, visibleText),
 		},
 	}); err != nil {
 		return events, err
@@ -220,5 +243,39 @@ func (a *ClaudeCodeSDKAdapter) CancelTargets(ctx context.Context, rootSession Se
 			}, nil
 		}
 	}
-	return TargetedCancelResult{}, fmt.Errorf("claude SDK does not support canceling a child turn independently of its root turn")
+	return a.stopClaudeSDKChildTargets(ctx, rootSession, targets)
+}
+
+// stopClaudeSDKChildTargets stops individual background delegated tasks via
+// the SDK's targeted stopTask, leaving the root query and any other running
+// tasks untouched. The stopped task settles asynchronously through its own
+// task_notification, which projects the child turn canceled; a target whose
+// task is unknown or already settled is skipped, making the child cancel an
+// idempotent no-op (TargetAbsent) rather than an error.
+func (a *ClaudeCodeSDKAdapter) stopClaudeSDKChildTargets(ctx context.Context, rootSession Session, targets []CancelTarget) (TargetedCancelResult, error) {
+	adapterSession := a.getSession(rootSession.AgentSessionID)
+	if adapterSession == nil {
+		return TargetedCancelResult{}, ErrSessionDisconnected
+	}
+	confirmed := make([]CancelTarget, 0, len(targets))
+	for _, target := range targets {
+		a.mu.Lock()
+		child, ok := adapterSession.claudeSDKChildByAgentSessionID(target.AgentSessionID)
+		a.mu.Unlock()
+		if !ok {
+			continue
+		}
+		taskID := firstNonEmptyString(child.TaskID, child.AgentID, child.ParentToolUseID, child.Key)
+		if taskID == "" {
+			continue
+		}
+		stopped, err := a.StopTask(ctx, rootSession, taskID)
+		if err != nil {
+			return TargetedCancelResult{}, err
+		}
+		if stopped {
+			confirmed = append(confirmed, target)
+		}
+	}
+	return TargetedCancelResult{ConfirmedTargets: confirmed}, nil
 }

@@ -1,8 +1,9 @@
 import {
   classifyWorkspaceFilePreviewKind,
+  isTextDegradablePreviewKind,
   resolveWorkspaceFileExtension,
   resolveWorkspaceFileVisualKind
-} from "./workspaceFileManagerModel.ts";
+} from "@tutti-os/workspace-file-preview";
 import type { WorkspaceFileEntry } from "./workspaceFileManagerTypes.ts";
 
 const defaultApplicationIconExtensions = new Set([
@@ -71,7 +72,7 @@ export function shouldUseWorkspaceFileExtensionDocumentIcon(
     visualKind === "code" ||
     visualKind === "markdown" ||
     extensionDocumentIconExtensions.has(extension) ||
-    classifyWorkspaceFilePreviewKind(entry) === "text"
+    isTextDegradablePreviewKind(classifyWorkspaceFilePreviewKind(entry))
   );
 }
 

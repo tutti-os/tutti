@@ -1,6 +1,13 @@
-import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type {
+  AgentTargetSetupSnapshot,
+  TuttidClient
+} from "@tutti-os/client-tuttid-ts";
+import type {
+  AgentHostAgentTargetSetupSnapshot,
   AgentHostInputApi,
+  AgentHostQuickPromptsApi,
+  AgentHostAgentTargetSetupWatch,
+  AgentHostUserProject,
   AgentHostApplyWorkspaceGitPatchInput,
   AgentHostSelectFilesInput,
   AgentProviderProbeListInput,
@@ -15,37 +22,77 @@ import type {
   DesktopRuntimeApi
 } from "@preload/types";
 import { pathFromFileReadPayload } from "./internal/desktopAgentHostProjection.ts";
+import { createDesktopAgentTargetSetupWatch } from "./internal/desktopAgentTargetSetupWatch.ts";
+import { createDesktopTerminalLoginReadinessMonitor } from "./internal/desktopTerminalLoginReadinessMonitor.ts";
 import {
   DesktopWorkspaceUserProjectService,
   type IWorkspaceUserProjectService
 } from "../../workspace-user-project/index.ts";
 import type { WorkspaceUserProject } from "@tutti-os/workspace-user-project";
 import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface.ts";
+import { requestWorkspaceTerminalLoginLaunch } from "./workspaceTerminalLoginLaunchCoordinator.ts";
 
 interface CreateDesktopAgentHostApiInput {
+  agentQuickPromptService?: AgentHostQuickPromptsApi;
   hostFilesApi: DesktopHostFilesApi;
   tuttidClient: TuttidClient;
-  platformApi: Pick<
-    DesktopPlatformApi,
-    "homeDirectory" | "os" | "resolveDroppedEntries"
-  >;
+  platformApi: Pick<DesktopPlatformApi, "homeDirectory" | "os">;
   runtimeApi: DesktopRuntimeApi;
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
   workspaceUserProjectService?: IWorkspaceUserProjectService;
   workspaceId: string;
 }
 
-interface AgentHostUserProjectCompat {
-  createdAtUnixMs?: number;
-  id: string;
-  label: string;
-  lastUsedAtUnixMs?: number;
-  path: string;
-  sectionKey?: string;
-  updatedAtUnixMs?: number;
+// workspaceId and action timestamps remain daemon transport/audit metadata;
+// Agent GUI Host API intentionally does not expose them.
+export function projectDesktopAgentTargetSetupSnapshot(
+  snapshot: AgentTargetSetupSnapshot
+): AgentHostAgentTargetSetupSnapshot {
+  return {
+    agentTargetId: snapshot.agentTargetId,
+    status: snapshot.status,
+    runtimeSource: snapshot.runtimeSource,
+    runtimeVersion: snapshot.runtimeVersion,
+    reason: snapshot.reason,
+    authMethods: snapshot.authMethods.map((method) => ({
+      id: method.id,
+      name: method.name,
+      description: method.description ?? null,
+      type: method.type ?? null,
+      terminalCommand: method.terminalCommand ?? null
+    })),
+    account: snapshot.account
+      ? {
+          id: snapshot.account.id,
+          displayName: snapshot.account.displayName,
+          authMethodId: snapshot.account.authMethodId,
+          organization: snapshot.account.organization ?? null
+        }
+      : null,
+    plan: snapshot.plan
+      ? {
+          packageName: snapshot.plan.packageName,
+          packageVersion: snapshot.plan.packageVersion,
+          runner: snapshot.plan.runner,
+          planDigest: snapshot.plan.planDigest,
+          installRoot: snapshot.plan.installRoot
+        }
+      : null,
+    action: snapshot.action
+      ? {
+          actionId: snapshot.action.actionId,
+          clientActionId: snapshot.action.clientActionId,
+          kind: snapshot.action.kind,
+          status: snapshot.action.status,
+          phase: snapshot.action.phase,
+          errorCode: snapshot.action.errorCode ?? null,
+          errorMessage: snapshot.action.errorMessage ?? null
+        }
+      : null
+  };
 }
-
 export function createDesktopAgentHostApi({
+  agentQuickPromptService,
   hostFilesApi,
   tuttidClient,
   platformApi,
@@ -63,7 +110,73 @@ export function createDesktopAgentHostApi({
       platformApi,
       workspaceId
     });
+  const agentTargetSetupWatches = new Map<
+    string,
+    AgentHostAgentTargetSetupWatch
+  >();
+  const getAgentTargetSetup = async (payload: { agentTargetId: string }) =>
+    projectDesktopAgentTargetSetupSnapshot(
+      await tuttidClient.getAgentTargetSetup(workspaceId, payload.agentTargetId)
+    );
+  const installAgentTargetRuntime = async (payload: {
+    agentTargetId: string;
+    planDigest: string;
+    clientActionId: string;
+  }) =>
+    projectDesktopAgentTargetSetupSnapshot(
+      await tuttidClient.installAgentTargetRuntime(
+        workspaceId,
+        payload.agentTargetId,
+        {
+          planDigest: payload.planDigest,
+          clientActionId: payload.clientActionId
+        }
+      )
+    );
+  const authenticateAgentTargetRuntime = async (payload: {
+    agentTargetId: string;
+    methodId: string;
+    clientActionId: string;
+  }) =>
+    projectDesktopAgentTargetSetupSnapshot(
+      await tuttidClient.authenticateAgentTargetRuntime(
+        workspaceId,
+        payload.agentTargetId,
+        {
+          methodId: payload.methodId,
+          clientActionId: payload.clientActionId
+        }
+      )
+    );
+  const getAgentTargetSetupWatch = (
+    requestedAgentTargetId: string
+  ): AgentHostAgentTargetSetupWatch => {
+    const agentTargetId = requestedAgentTargetId.trim();
+    const existing = agentTargetSetupWatches.get(agentTargetId);
+    if (existing) return existing;
+    const watch = createDesktopAgentTargetSetupWatch({
+      agentTargetId,
+      get: () => getAgentTargetSetup({ agentTargetId }),
+      install: ({ planDigest, clientActionId }) =>
+        installAgentTargetRuntime({
+          agentTargetId,
+          planDigest,
+          clientActionId
+        }),
+      authenticate: ({ methodId, clientActionId }) =>
+        authenticateAgentTargetRuntime({
+          agentTargetId,
+          methodId,
+          clientActionId
+        })
+    });
+    agentTargetSetupWatches.set(agentTargetId, watch);
+    return watch;
+  };
   const api = {
+    ...(agentQuickPromptService
+      ? { quickPrompts: agentQuickPromptService }
+      : {}),
     meta: {
       allowWhatsNewInTests: false,
       appVersion: null,
@@ -82,6 +195,35 @@ export function createDesktopAgentHostApi({
       writeImage: (input: { data: string; mimeType: "image/png" }) =>
         hostFilesApi.copyImageToClipboard(input),
       writeText: (text: string) => navigator.clipboard.writeText(text)
+    },
+    terminalLogin: {
+      run: async (input: {
+        agentTargetId: string;
+        command: string;
+        cwd?: string;
+      }) => {
+        const launchHandle = await requestWorkspaceTerminalLoginLaunch({
+          command: input.command,
+          cwd: input.cwd,
+          workspaceId
+        });
+        if (!launchHandle) {
+          throw new Error("Terminal login is unavailable in this window.");
+        }
+        const readinessMonitor = createDesktopTerminalLoginReadinessMonitor({
+          watch: getAgentTargetSetupWatch(input.agentTargetId)
+        });
+        let closed = false;
+        return {
+          close: () => {
+            if (closed) return;
+            closed = true;
+            readinessMonitor.cancel();
+            launchHandle.close();
+          },
+          completion: readinessMonitor.completion
+        };
+      }
     },
     debug: {
       logRuntimeDiagnostics: (payload: unknown) => {
@@ -109,6 +251,10 @@ export function createDesktopAgentHostApi({
     },
     account: {
       batchGetUserInfo: () => Promise.resolve({ users: [] })
+    },
+    agentTargetSetup: {
+      watch: (payload: { agentTargetId: string }) =>
+        getAgentTargetSetupWatch(payload.agentTargetId)
     },
     workspaceAgentProbes: {
       list: (payload: AgentProviderProbeListInput) =>
@@ -139,6 +285,10 @@ export function createDesktopAgentHostApi({
           )
         };
       },
+      move: (payload: { beforeProjectId: string | null; projectId: string }) =>
+        userProjectService.moveProject(payload),
+      pin: (payload: { pinned: boolean; projectId: string }) =>
+        userProjectService.pinProject(payload),
       prepareSelection: async (payload: {
         projectLocked: boolean;
         selectedPath: string | null;
@@ -161,15 +311,29 @@ export function createDesktopAgentHostApi({
     // The desktop host forwards daemon business events the Agent GUI event bus
     // understands. Today that is the model-catalog invalidation broadcast; the
     // GUI reacts by force-reloading composer options and session state.
-    onHostEvent: (listener: (event: unknown) => void) =>
-      agentActivityService.onModelCatalogInvalidated((event) => {
-        listener({
-          scope: "global",
-          type: "agent-model-catalog-invalidated",
-          providers: event.providers,
-          occurredAtUnixMs: event.occurredAtUnixMs
+    onHostEvent: (listener: (event: unknown) => void) => {
+      const disposeModelCatalog =
+        agentActivityService.onModelCatalogInvalidated((event) => {
+          listener({
+            scope: "global",
+            type: "agent-model-catalog-invalidated",
+            providers: event.providers,
+            occurredAtUnixMs: event.occurredAtUnixMs
+          });
         });
-      }),
+      const disposeComposerDefaults =
+        agentActivityService.onComposerDefaultsInvalidated((event) => {
+          listener({
+            agentTargetId: event.agentTargetId,
+            scope: "global",
+            type: "agent-composer-defaults-invalidated"
+          });
+        });
+      return () => {
+        disposeModelCatalog();
+        disposeComposerDefaults();
+      };
+    },
     persistence: {
       readWorkspaceAgentReadState: readDesktopWorkspaceAgentReadState,
       writeWorkspaceAgentReadState: writeDesktopWorkspaceAgentReadState
@@ -218,15 +382,6 @@ export function createDesktopAgentHostApi({
         await navigator.clipboard.writeText(payload.path);
       },
       ensureDirectory: async () => {},
-      getReferenceForFile: (file: File) => {
-        const entry = platformApi.resolveDroppedEntries([file])[0] ?? null;
-        const kind: "file" | "folder" =
-          entry?.kind === "folder" ? "folder" : "file";
-        return {
-          path: entry?.path || file.name,
-          kind
-        };
-      },
       readFile: async (payload: { path: string }) => {
         const bytes = await hostFilesApi.readPreviewFile(
           workspaceId,
@@ -282,7 +437,7 @@ function logAgentGitPatchDiagnostic(
 
 function toAgentHostUserProject(
   project: WorkspaceUserProject
-): AgentHostUserProjectCompat {
+): AgentHostUserProject {
   const { lastUsedAtUnixMs, ...rest } = project;
   return lastUsedAtUnixMs == null ? rest : { ...rest, lastUsedAtUnixMs };
 }

@@ -3,7 +3,7 @@ import { mkdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path, { basename } from "node:path";
 import { pathToFileURL } from "node:url";
-import { workspaceFilePreviewMaxBytes } from "@tutti-os/workspace-file-manager/services";
+import { workspaceFilePreviewMaxBytes } from "@tutti-os/workspace-file-preview";
 import { desktopErrorCodes } from "../../shared/errors/desktopErrors.ts";
 import type {
   DesktopCreateUserDocumentsProjectDirectoryInput,

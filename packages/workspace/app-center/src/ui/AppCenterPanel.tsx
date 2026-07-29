@@ -50,6 +50,12 @@ import {
   resolveDefaultAppFactoryProvider,
   resolveSelectedAppFactoryProvider
 } from "../core/appFactoryProviderDefaults.ts";
+import { resolveAppCenterAuthoringCapabilities } from "../core/appCenterAuthoringCapabilities.ts";
+import {
+  resolveFactoryPublishActionKey,
+  resolveFactoryStatusLabelKey,
+  type AppCenterFactoryPresentationMode
+} from "../core/appCenterFactoryPresentation.ts";
 import type { AppCenterI18nRuntime } from "../i18n/appCenterI18n.ts";
 import {
   AppCard,
@@ -58,6 +64,11 @@ import {
   type AppCenterFactoryPermissionOption,
   type AppCenterHostActions
 } from "./AppCard.tsx";
+import {
+  resolveActiveAppCenterTab,
+  resolveVisibleAppCenterTabs,
+  type AppCenterAppTab
+} from "./appCenterTabs.ts";
 
 type FactoryTemplateID =
   | "lovart"
@@ -66,7 +77,7 @@ type FactoryTemplateID =
   | "system"
   | "news"
   | "gomoku";
-export type AppCenterAppTab = "recommended" | "community" | "my";
+export type { AppCenterAppTab } from "./appCenterTabs.ts";
 type RecommendedCategoryTabID =
   | "all"
   | "product-design"
@@ -145,6 +156,7 @@ export interface AppCenterPanelProps {
   readonly className?: string;
   readonly copy: AppCenterI18nRuntime;
   readonly defaultAgentTargetId?: string | null;
+  readonly factoryPresentationMode?: AppCenterFactoryPresentationMode;
   readonly errorMessage?: string;
   readonly loadProviderConfiguration?: (
     agentTargetId: string
@@ -155,6 +167,7 @@ export interface AppCenterPanelProps {
   readonly providerLoading?: boolean;
   readonly providerOptions?: readonly AppCenterFactoryProviderOption[];
   readonly showDeveloperSources?: boolean;
+  readonly visibleAppTabs?: readonly AppCenterAppTab[];
   readonly viewModel: AppCenterViewModel;
 }
 
@@ -165,6 +178,7 @@ export function AppCenterPanel({
   className,
   copy,
   defaultAgentTargetId = null,
+  factoryPresentationMode = "default",
   errorMessage,
   loadProviderConfiguration,
   onActiveAppTabChange,
@@ -173,6 +187,7 @@ export function AppCenterPanel({
   providerLoading = false,
   providerOptions = [],
   showDeveloperSources = false,
+  visibleAppTabs: configuredVisibleAppTabs,
   viewModel
 }: AppCenterPanelProps): ReactElement {
   const promptTextareaId = useId();
@@ -245,7 +260,14 @@ export function AppCenterPanel({
     useState<AppCenterAppTab>("recommended");
   const [activeRecommendedCategoryTab, setActiveRecommendedCategoryTab] =
     useState<RecommendedCategoryTabID>("all");
-  const activeAppTab = controlledActiveAppTab ?? uncontrolledActiveAppTab;
+  const visibleAppTabs = useMemo(
+    () => resolveVisibleAppCenterTabs(configuredVisibleAppTabs),
+    [configuredVisibleAppTabs]
+  );
+  const activeAppTab = resolveActiveAppCenterTab(
+    controlledActiveAppTab ?? uncontrolledActiveAppTab,
+    visibleAppTabs
+  );
   useEffect(() => {
     setSelectedProvider((current) =>
       resolveSelectedAppFactoryProvider(
@@ -338,6 +360,10 @@ export function AppCenterPanel({
   };
   const factoryJobs = viewModel.factoryJobs ?? [];
   const hasFactoryJobs = factoryJobs.length > 0;
+  const authoringCapabilities = resolveAppCenterAuthoringCapabilities(
+    actions.authoringCapabilities,
+    actions
+  );
   const closeFactoryDialog = (): void => {
     setFactoryDialogOpen(false);
     setDisplayName("");
@@ -590,26 +616,22 @@ export function AppCenterPanel({
             <SectionTabs
               ariaLabel={copy.t("labels.appList")}
               className="h-8"
-              tabs={[
-                {
-                  label: copy.t("labels.recommendedApps"),
-                  value: "recommended"
-                },
-                {
-                  label: copy.t("labels.communityApps"),
-                  value: "community"
-                },
-                {
-                  label: copy.t("labels.myApps"),
-                  value: "my"
-                }
-              ]}
+              tabs={visibleAppTabs.map((tab) => ({
+                label:
+                  tab === "recommended"
+                    ? copy.t("labels.recommendedApps")
+                    : tab === "community"
+                      ? copy.t("labels.communityApps")
+                      : copy.t("labels.myApps"),
+                value: tab
+              }))}
               value={activeAppTab}
               onValueChange={setActiveAppTab}
             />
             <div className="flex h-8 shrink-0 items-center gap-1">
               {activeAppTab === "my" ? (
                 <AppCenterHeaderActions
+                  capabilities={authoringCapabilities}
                   copy={copy}
                   onCreateApp={() => {
                     openFactoryDialog();
@@ -666,7 +688,11 @@ export function AppCenterPanel({
                         <h3 className="truncate text-[13px] font-semibold leading-5 text-[var(--text-primary)]">
                           {job.title}
                         </h3>
-                        <FactoryJobStatusIndicator copy={copy} job={job} />
+                        <FactoryJobStatusIndicator
+                          copy={copy}
+                          job={job}
+                          presentationMode={factoryPresentationMode}
+                        />
                       </div>
                       {job.failureReason ? (
                         <p
@@ -709,7 +735,12 @@ export function AppCenterPanel({
                             void actions.publishFactoryJob?.(job.id);
                           }}
                         >
-                          {copy.t("factory.actions.publish")}
+                          {copy.t(
+                            resolveFactoryPublishActionKey(
+                              factoryPresentationMode,
+                              false
+                            )
+                          )}
                         </Button>
                       ) : null}
                       {job.canFix ? (
@@ -784,6 +815,7 @@ export function AppCenterPanel({
             copy={copy}
             emptyMessage={activeAppEmptyMessage}
             officialDeveloperIconUrl={officialDeveloperIconUrl}
+            factoryPresentationMode={factoryPresentationMode}
             showDeveloperSources={showDeveloperSources}
             title={activeAppTabTitle}
           />
@@ -1400,6 +1432,7 @@ function AppCardGrid({
   apps,
   copy,
   emptyMessage,
+  factoryPresentationMode,
   officialDeveloperIconUrl,
   showDeveloperSources,
   title
@@ -1408,6 +1441,7 @@ function AppCardGrid({
   readonly apps: AppCenterViewModel["apps"];
   readonly copy: AppCenterI18nRuntime;
   readonly emptyMessage: string;
+  readonly factoryPresentationMode: AppCenterFactoryPresentationMode;
   readonly officialDeveloperIconUrl?: string | null;
   readonly showDeveloperSources: boolean;
   readonly title: string;
@@ -1436,6 +1470,7 @@ function AppCardGrid({
             actions={actions}
             app={app}
             copy={copy}
+            factoryPresentationMode={factoryPresentationMode}
             key={app.id}
             officialDeveloperIconUrl={officialDeveloperIconUrl}
             showDeveloperSources={showDeveloperSources}
@@ -1563,11 +1598,15 @@ function AppCenterStatusToast({
 }
 
 function AppCenterHeaderActions({
+  capabilities,
   copy,
   onCreateApp,
   onImportApp,
   onLoadLocalApp
 }: {
+  readonly capabilities: ReturnType<
+    typeof resolveAppCenterAuthoringCapabilities
+  >;
   readonly copy: AppCenterI18nRuntime;
   readonly onCreateApp: () => void;
   readonly onImportApp: () => void;
@@ -1575,47 +1614,53 @@ function AppCenterHeaderActions({
 }): ReactElement {
   return (
     <>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            size="default"
-            type="button"
-            variant="ghost"
-            onClick={onLoadLocalApp}
-          >
-            <UploadFolderIcon />
-            <span>{copy.t("actions.loadUnpackedApp")}</span>
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {copy.t("actions.loadUnpackedAppTooltip")}
-        </TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            size="default"
-            type="button"
-            variant="ghost"
-            onClick={onImportApp}
-          >
-            <ImportIcon />
-            <span>{copy.t("actions.importApp")}</span>
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {copy.t("actions.importAppTooltip")}
-        </TooltipContent>
-      </Tooltip>
-      <Button
-        size="default"
-        type="button"
-        variant="ghost"
-        onClick={onCreateApp}
-      >
-        <FileCreateIcon />
-        {copy.t("factory.actions.create")}
-      </Button>
+      {capabilities.loadUnpacked ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="default"
+              type="button"
+              variant="ghost"
+              onClick={onLoadLocalApp}
+            >
+              <UploadFolderIcon />
+              <span>{copy.t("actions.loadUnpackedApp")}</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {copy.t("actions.loadUnpackedAppTooltip")}
+          </TooltipContent>
+        </Tooltip>
+      ) : null}
+      {capabilities.importArchive ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="default"
+              type="button"
+              variant="ghost"
+              onClick={onImportApp}
+            >
+              <ImportIcon />
+              <span>{copy.t("actions.importApp")}</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {copy.t("actions.importAppTooltip")}
+          </TooltipContent>
+        </Tooltip>
+      ) : null}
+      {capabilities.createApp ? (
+        <Button
+          size="default"
+          type="button"
+          variant="ghost"
+          onClick={onCreateApp}
+        >
+          <FileCreateIcon />
+          {copy.t("factory.actions.create")}
+        </Button>
+      ) : null}
     </>
   );
 }
@@ -1658,12 +1703,20 @@ function AppCenterRecommendedHeaderActions({
 
 function FactoryJobStatusIndicator({
   copy,
-  job
+  job,
+  presentationMode
 }: {
   readonly copy: AppCenterI18nRuntime;
   readonly job: WorkspaceAppFactoryJobViewModel;
+  readonly presentationMode: AppCenterFactoryPresentationMode;
 }): ReactElement {
-  const statusLabel = copy.t(job.statusLabelKey);
+  const statusLabel = copy.t(
+    resolveFactoryStatusLabelKey(
+      presentationMode,
+      job.status,
+      job.statusLabelKey
+    )
+  );
   if (job.status === "generating") {
     return (
       <span

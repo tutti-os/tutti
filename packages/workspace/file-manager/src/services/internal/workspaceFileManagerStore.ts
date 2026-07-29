@@ -1,4 +1,7 @@
-import { proxy } from "valtio";
+// Must share the same valtio module instance as subscribe() in the session.
+// Mixing "valtio" with "valtio/vanilla" under Vite can create two proxyStateMaps
+// and crash subscribe with: Cannot read properties of undefined (reading '2').
+import { proxy } from "valtio/vanilla";
 import {
   workspaceFileManagerPersistedStateSchemaVersion,
   workspaceFileManagerLogicalRoot,
@@ -45,7 +48,6 @@ export function createWorkspaceFileManagerStore(input: {
     directoryExpansionByPath: {},
     inlineRenameEntryPath: null,
     inlineRenameValidation: null,
-    dragDepth: 0,
     entries: [],
     error: null,
     expandedDirectoryPaths: {},
@@ -64,7 +66,6 @@ export function createWorkspaceFileManagerStore(input: {
     selectedLocationId,
     selectedPath: null,
     unsupportedDialog: null,
-    importConflictDialog: null,
     workspaceID: input.workspaceID
   });
 }

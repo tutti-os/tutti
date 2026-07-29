@@ -1,11 +1,21 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { TooltipProvider } from "@tutti-os/ui-system";
 import { describe, expect, it, vi } from "vitest";
+import type {
+  AgentGUIAgentTarget,
+  AgentGUIAgentTargetInfoRenderer
+} from "../../../types";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
+import {
+  AgentTargetPresentationProvider,
+  type AgentMessageMarkdownAgentTarget
+} from "../../../shared/AgentTargetPresentationContext";
+import { AgentTargetInfoRendererProvider } from "../../../shared/AgentTargetInfoRendererContext";
 import type { AgentGUIViewLabels } from "./AgentGUINodeView.types";
 import { AgentGUIConversationRailItem } from "./AgentGUIConversationRailItem";
 
 describe("AgentGUIConversationRailItem interaction lock", () => {
-  it("keeps the provider icon and plain title while adding a monochrome task icon", () => {
+  it("keeps the provider icon and plain @ title without a task icon", () => {
     const { container } = renderRailItem({
       isRailInteractionLocked: () => false,
       item: {
@@ -19,11 +29,10 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
     ).not.toBeNull();
     expect(
       container.querySelector(
-        '[data-agent-gui-conversation-title-mention-icon="task"]'
+        "[data-agent-gui-conversation-title-mention-icon]"
       )
-    ).not.toBeNull();
-    expect(container.textContent).toContain("看看最新的代码提交 111");
-    expect(container.textContent).not.toContain("@看看最新的代码提交 111");
+    ).toBeNull();
+    expect(container.textContent).toContain("@看看最新的代码提交 111");
     expect(container.querySelector(".agent-rich-text-readonly")).toBeNull();
   });
 
@@ -69,7 +78,7 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
     }
   );
 
-  it("keeps the file marker for a projected file reference", () => {
+  it("keeps a projected file reference as @ text without a mention icon", () => {
     const { container } = renderRailItem({
       isRailInteractionLocked: () => false,
       item: {
@@ -82,9 +91,13 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
       container.querySelector(
         '[data-agent-gui-conversation-title-mention-icon="file"]'
       )
-    ).not.toBeNull();
-    expect(container.textContent).toContain("notes.md inspect");
-    expect(container.textContent).not.toContain("@notes.md inspect");
+    ).toBeNull();
+    expect(
+      container.querySelectorAll(
+        "[data-agent-gui-conversation-title-mention-icon]"
+      )
+    ).toHaveLength(0);
+    expect(container.textContent).toContain("@notes.md inspect");
   });
 
   it("leaves an ordinary conversation row unchanged", () => {
@@ -101,6 +114,155 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
       )
     ).toBeNull();
     expect(container.textContent).toContain("Session 1");
+  });
+
+  it("renders an open extension target icon through the monochrome mask", () => {
+    const iconUrl = "data:image/svg+xml;base64,kilo-colored";
+    const maskIconUrl = "data:image/svg+xml;base64,kilo-mask";
+    const { container } = renderRailItem({
+      agentTargets: [
+        {
+          agentTargetId: "extension:kilo",
+          iconUrl,
+          maskIconUrl,
+          provider: "acp:kilo",
+          workspaceId: "workspace-1"
+        }
+      ],
+      isRailInteractionLocked: () => false,
+      item: {
+        agentTargetId: "extension:kilo",
+        provider: "acp:kilo"
+      }
+    });
+
+    const icon = container.querySelector<HTMLElement>(
+      ".agent-gui-node__conversation-provider-icon"
+    );
+    expect(icon).not.toBeNull();
+    expect(icon?.style.maskImage).toBe(`url("${maskIconUrl}")`);
+    expect(
+      icon?.style.getPropertyValue("--agent-gui-conversation-provider-icon-url")
+    ).toBe("");
+  });
+
+  it("renders a target identity image without treating it as a mask", () => {
+    const iconUrl = "data:image/png;base64,kilo-colored";
+    const { container } = renderRailItem({
+      agentTargets: [
+        {
+          agentTargetId: "extension:kilo",
+          iconUrl,
+          provider: "acp:kilo",
+          workspaceId: "workspace-1"
+        }
+      ],
+      isRailInteractionLocked: () => false,
+      item: {
+        agentTargetId: "extension:kilo",
+        provider: "acp:kilo"
+      }
+    });
+
+    const image = container.querySelector<HTMLImageElement>(
+      ".agent-gui-node__conversation-provider-image"
+    );
+    expect(image?.src).toBe(iconUrl);
+    expect(
+      container.querySelector(
+        ".agent-gui-node__conversation-provider-mask-icon"
+      )
+    ).toBeNull();
+  });
+
+  it("opens exact Host target information from icon hover and row keyboard focus", async () => {
+    const exactTarget: AgentGUIAgentTarget = {
+      agentTargetId: "agent:shared",
+      iconUrl: "data:image/png;base64,shared",
+      label: "Shared Codex",
+      ownerDeviceLabel: "Vector's MacBook Pro",
+      provider: "codex",
+      ref: { kind: "shared", provider: "codex" },
+      targetId: "shared:codex"
+    };
+    const siblingTarget: AgentGUIAgentTarget = {
+      ...exactTarget,
+      agentTargetId: "agent:sibling",
+      label: "Sibling Codex",
+      targetId: "shared:sibling"
+    };
+    const renderAgentTargetInfo = vi.fn(({ surface, target }) => (
+      <div>{`${surface}:${target.label}`}</div>
+    ));
+    const { container } = renderRailItem({
+      agentTargets: [
+        {
+          agentTargetId: exactTarget.agentTargetId!,
+          iconUrl: exactTarget.iconUrl,
+          provider: exactTarget.provider,
+          workspaceId: "workspace-1"
+        }
+      ],
+      isRailInteractionLocked: () => false,
+      item: { agentTargetId: exactTarget.agentTargetId },
+      renderAgentTargetInfo,
+      targetInfoTargets: [siblingTarget, exactTarget]
+    });
+
+    expect(renderAgentTargetInfo).not.toHaveBeenCalled();
+
+    fireEvent.pointerMove(
+      container.querySelector(".agent-gui-node__conversation-provider-image")!,
+      { pointerType: "mouse" }
+    );
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "conversation-rail:Shared Codex"
+    );
+    expect(renderAgentTargetInfo).toHaveBeenLastCalledWith({
+      surface: "conversation-rail",
+      target: exactTarget
+    });
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
+
+    const conversationButton = screen.getByRole("button", {
+      name: /Session 1/
+    });
+    fireEvent.focus(conversationButton);
+    const focusTooltip = await screen.findByRole("tooltip");
+    expect(focusTooltip).toHaveTextContent("conversation-rail:Shared Codex");
+    expect(conversationButton).toHaveAttribute(
+      "aria-describedby",
+      focusTooltip.id
+    );
+
+    fireEvent.blur(conversationButton);
+    await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
+  });
+
+  it("fails closed when a session target is missing from the exact directory", () => {
+    const renderAgentTargetInfo = vi.fn(() => <div>Should not render</div>);
+    renderRailItem({
+      agentTargets: [
+        {
+          agentTargetId: "agent:missing",
+          iconUrl: "data:image/png;base64,missing",
+          provider: "codex",
+          workspaceId: "workspace-1"
+        }
+      ],
+      isRailInteractionLocked: () => false,
+      item: { agentTargetId: "agent:missing" },
+      renderAgentTargetInfo,
+      targetInfoTargets: []
+    });
+
+    fireEvent.focus(screen.getByRole("button", { name: /Session 1/ }));
+
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    expect(renderAgentTargetInfo).not.toHaveBeenCalled();
   });
 
   it("blocks the div context-menu trigger while rail reconciliation is pending", () => {
@@ -137,20 +299,121 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
       expect(onRequestRenameConversation).not.toHaveBeenCalled()
     );
   });
+
+  it("keeps pin and delete as direct row actions outside the menu", () => {
+    renderRailItem({ isRailInteractionLocked: () => false });
+
+    expect(screen.queryByRole("button", { name: "Pin" })).toBeNull();
+    fireEvent.pointerEnter(
+      screen.getByTestId("agent-gui-conversation-item-session-1")
+    );
+    expect(screen.getByRole("button", { name: "Pin" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeTruthy();
+  });
+
+  it("uses the same shared actions for the more button and context menu", async () => {
+    renderRailItem({ isRailInteractionLocked: () => false });
+
+    fireEvent.pointerEnter(
+      screen.getByTestId("agent-gui-conversation-item-session-1")
+    );
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "More actions" }),
+      { button: 0 }
+    );
+    for (const label of [
+      "Rename",
+      "Copy as Markdown",
+      "Copy as reference",
+      "Mark as unread"
+    ]) {
+      expect(await screen.findByRole("menuitem", { name: label })).toBeTruthy();
+    }
+    for (const label of ["Pin", "Delete", "Archive"]) {
+      expect(screen.queryByRole("menuitem", { name: label })).toBeNull();
+    }
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape"
+    });
+
+    fireEvent.contextMenu(
+      screen.getByTestId("agent-gui-conversation-item-session-1")
+    );
+    for (const label of [
+      "Rename",
+      "Copy as Markdown",
+      "Copy as reference",
+      "Mark as unread"
+    ]) {
+      expect(await screen.findByRole("menuitem", { name: label })).toBeTruthy();
+    }
+    for (const label of ["Pin", "Delete", "Archive"]) {
+      expect(screen.queryByRole("menuitem", { name: label })).toBeNull();
+    }
+  });
+
+  it("keeps the focused trigger mounted and unmounts content after Escape", async () => {
+    renderRailItem({ isRailInteractionLocked: () => false });
+
+    expect(screen.queryByRole("menuitem")).toBeNull();
+    const trigger = screen.getByTestId("agent-gui-conversation-item-session-1");
+    const selectButton = screen.getByRole("button", { name: /Session 1/ });
+    selectButton.focus();
+    fireEvent.contextMenu(trigger, { button: 0, detail: 0 });
+    expect(
+      await screen.findByRole("menuitem", { name: "Rename" })
+    ).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menuitem")).toBeNull());
+  });
+
+  it("mounts row actions before keyboard focus advances past the row", () => {
+    renderRailItem({ isRailInteractionLocked: () => false });
+
+    expect(screen.queryByRole("button", { name: "Pin" })).toBeNull();
+    fireEvent.focus(screen.getByRole("button", { name: /Session 1/ }));
+
+    expect(screen.getByRole("button", { name: "Pin" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "More actions" })
+    ).toBeInTheDocument();
+  });
+
+  it("runs an unlocked action before lazy menu content unmounts", async () => {
+    const onRequestRenameConversation = vi.fn();
+    renderRailItem({
+      isRailInteractionLocked: () => false,
+      onRequestRenameConversation
+    });
+
+    fireEvent.contextMenu(
+      screen.getByTestId("agent-gui-conversation-item-session-1")
+    );
+    const renameItem = await screen.findByRole("menuitem", { name: "Rename" });
+    fireEvent.pointerUp(renameItem, { button: 0 });
+
+    await waitFor(() =>
+      expect(onRequestRenameConversation).toHaveBeenCalledTimes(1)
+    );
+    expect(screen.queryByRole("menuitem")).toBeNull();
+  });
 });
 
 function renderRailItem(overrides: {
+  agentTargets?: readonly AgentMessageMarkdownAgentTarget[];
   isRailInteractionLocked: () => boolean;
   item?: Partial<AgentGUIConversationSummary>;
   onRequestRenameConversation?: (
     conversation: AgentGUIConversationSummary
   ) => void;
   onSelectConversation?: (agentSessionId: string) => void;
+  renderAgentTargetInfo?: AgentGUIAgentTargetInfoRenderer;
+  targetInfoTargets?: readonly AgentGUIAgentTarget[];
 }) {
-  return render(
+  const item = (
     <AgentGUIConversationRailItem
       active={false}
-      currentTimeMs={1}
       isDeletingConversation={false}
       isPendingDeleteConversation={false}
       isRailInteractionLocked={overrides.isRailInteractionLocked}
@@ -164,31 +427,62 @@ function renderRailItem(overrides: {
         ...overrides.item
       }}
       labels={RAIL_ITEM_LABELS}
-      previewMode={false}
       registerItemElement={() => {}}
       uiLanguage="en"
       workspaceId="workspace-1"
       onCancelDeleteConversation={() => {}}
       onConfirmDeleteConversation={() => {}}
-      onMarkConversationUnread={() => {}}
       onRequestDeleteConversation={() => {}}
       onRequestRenameConversation={
         overrides.onRequestRenameConversation ?? vi.fn()
       }
       onSelectConversation={overrides.onSelectConversation ?? vi.fn()}
       onToggleConversationPinned={() => {}}
+      onMarkConversationUnread={() => {}}
     />
+  );
+  const withTargetPresentation = overrides.agentTargets ? (
+    <AgentTargetPresentationProvider agentTargets={overrides.agentTargets}>
+      {item}
+    </AgentTargetPresentationProvider>
+  ) : (
+    item
+  );
+  return render(
+    <TooltipProvider>
+      <AgentTargetInfoRendererProvider
+        agentTargets={overrides.targetInfoTargets ?? []}
+        renderer={overrides.renderAgentTargetInfo}
+      >
+        {withTargetPresentation}
+      </AgentTargetInfoRendererProvider>
+    </TooltipProvider>
   );
 }
 
 const RAIL_ITEM_LABELS = {
-  copySessionLink: "Copy link",
+  copiedToClipboard: "Copied",
+  copyAsMarkdown: "Copy as Markdown",
+  copyAsReference: "Copy as reference",
+  copyFailed: "Copy failed",
+  conversationCopyFile: "File",
+  conversationCopyImage: "Image",
+  conversationCopyImagesOmitted: "{{count}} image(s) omitted",
+  conversationCopyMentionPrefix: "@",
+  conversationCopyPreviousMessages: "{{count}} previous messages",
   deleteSession: "Delete",
   deleteSessionConfirm: "Confirm delete",
   fallbackAgentTitle: "Agent",
-  markSessionUnread: "Mark unread",
+  markSessionUnread: "Mark as unread",
+  moreSessionActions: "More actions",
   openConversationWindow: "Open in window",
   pinSession: "Pin",
+  relativeTimeDays: (value: number) => `${value} days`,
+  relativeTimeHours: (value: number) => `${value} hours`,
+  relativeTimeJustNow: "just now",
+  relativeTimeMinutes: (value: number) => `${value} minutes`,
+  relativeTimeMonths: (value: number) => `${value} months`,
+  relativeTimeYears: (value: number) => `${value} years`,
   renameSession: "Rename",
   unpinSession: "Unpin"
-} as AgentGUIViewLabels;
+} as unknown as AgentGUIViewLabels;

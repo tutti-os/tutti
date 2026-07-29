@@ -1,4 +1,13 @@
 export const en = {
+  browser: {
+    chromeImportNotification: {
+      completed: "Imported {{imported}} Cookies from Chrome.",
+      failed: "Chrome Cookie import did not complete.",
+      partial:
+        "Imported {{imported}} Cookies from Chrome; some entries were skipped or failed.",
+      title: "Chrome login state import"
+    }
+  },
   common: {
     cancel: "Cancel",
     close: "Close",
@@ -105,9 +114,13 @@ export const en = {
       edit: "Edit",
       exportLogsFailed: "Unable to export logs",
       exportLogsTitle: "Export Logs",
-      exportServiceLogs: "Export Service Logs...",
+      exportRecentTenMinutesLogs: "Last 10 Minutes",
+      exportRecentThreeDaysLogs: "Last 3 Days",
+      exportServiceLogs: "Export Service Logs",
       file: "File",
       help: "Help",
+      logsOnly: "Logs Only",
+      logsWithAgentSessions: "Logs + Session Records",
       openPerfMonitor: "Open Perf Monitor DevTools",
       quit: "Quit Tutti",
       upToDateDetail: "Tutti {{version}} is currently the latest version.",
@@ -139,6 +152,43 @@ export const en = {
       switchWorkspaceUnavailable: "Unable to load workspaces right now."
     },
     agentGui: {
+      sessionReplay: {
+        empty: "No recordings",
+        failed: "Session recording or replay failed",
+        list: "Recordings",
+        record: {
+          cancel: "Cancel recording",
+          rename: "Rename recording",
+          renameCancel: "Cancel rename",
+          renameFailed: "Could not rename recording",
+          renameSave: "Save recording name",
+          start: "Start recording",
+          stop: "Stop and save recording"
+        },
+        replay: {
+          cassette: "Replay cassette",
+          checkpoint: "Checkpoint {{current}} of {{total}}",
+          complete: "Validation passed",
+          controlFailed: "Could not control replay",
+          failed: "Validation failed",
+          launching: "Starting isolated replay window",
+          next: "Next checkpoint",
+          opened: "Isolated replay window opened",
+          pause: "Pause replay",
+          play: "Play replay",
+          previous: "Previous checkpoint",
+          replaying: "Replaying",
+          restart: "Replay from start",
+          speed: "Replay speed",
+          speedFailed: "Could not change replay speed",
+          stateMismatch:
+            "Final replay state differs from the recording in {{table}}",
+          toolbar: "Replay controls",
+          validationComplete: "Replay validation passed",
+          validationFailed: "Replay validation failed",
+          verifying: "Validating"
+        }
+      },
       collapseConversationRail: "Hide sidebar",
       expandConversationRail: "Show sidebar",
       fallbackAgentLabel: "Agent",
@@ -148,6 +198,12 @@ export const en = {
       openSessionUnavailableDescription:
         "This agent session no longer exists or cannot be opened.",
       openSessionUnavailableTitle: "Session unavailable",
+      sessionMenu: {
+        copyAsMarkdown: "Copy as Markdown",
+        copyAsReference: "Copy as reference",
+        moreActions: "More session actions",
+        rename: "Rename session"
+      },
       browserElementContext: {
         cancel: "Cancel element selection",
         failed: "Unable to add this page element to the Agent input",
@@ -174,18 +230,34 @@ export const en = {
     accountMenu: {
       title: "Tutti Agent",
       member: "Manage subscription",
+      upgradeMembership: "Upgrade",
+      rechargeCredits: "Recharge credits",
+      viewCreditPlans: "View credit options",
       creditsBalance: "Credits",
       accountCenter: "Account settings",
+      settings: "Settings",
       free: "Free",
       signIn: "Sign in",
       signOut: "Sign out",
+      copyUserId: "Copy user ID",
+      copyUserIdSuccess: "User ID copied",
+      copyUserIdFailed: "Couldn't copy user ID",
+      openExternalFailed: "Couldn't open account link",
+      refresh: "Refresh",
+      refreshing: "Refreshing",
       loading: "Loading",
       unavailable: "--",
       dataUnavailable: "Some account data is unavailable",
       rewardToastTitle: "New user credits",
       rewardToastCreditsUnit: "credits",
       rewardToastDescription: "Added to account balance",
-      rewardToastClose: "Close credits reward notification"
+      rewardToastClose: "Close credits reward notification",
+      insufficientCreditsUpgradeMessage:
+        "Your available credits are exhausted. Upgrade your membership for more credits",
+      insufficientCreditsRechargeMessage:
+        "Your Tutti credits are insufficient. Recharge credits to continue",
+      insufficientCreditsUnknownMessage:
+        "Your Tutti credits are insufficient. Review credit options to continue"
     },
     agentEnv: {
       configTitle: "{{provider}} environment",
@@ -199,6 +271,7 @@ export const en = {
       detecting: "Checking your {{provider}} setup…",
       ready: "{{provider}} is ready to run.",
       busyInstalling: "Setting up {{provider}}…",
+      busyUpdating: "Updating {{provider}}…",
       busyVerifying: "Verifying {{provider}}…",
       actionDetect: "Re-check",
       redetectDisabledInstalling: "Can't re-check while setting up",
@@ -206,6 +279,8 @@ export const en = {
       actionInstall: "Set up",
       actionRepair: "Repair install",
       actionUpgrade: "Upgrade",
+      actionUpdate: "Update",
+      actionUpdating: "Updating…",
       actionRelogin: "Sign in again",
       actionLogin: "Sign in",
       actionRetry: "Retry",
@@ -419,7 +494,12 @@ export const en = {
     },
     appCenter: {
       backToApps: "Back to apps",
-      dockLabel: "Apps"
+      dockLabel: "Apps",
+      tabs: {
+        close: "Close app tab",
+        label: "Open apps",
+        new: "Open another app"
+      }
     },
     info: {
       idDescription: "Stable identifier for preload and daemon coordination.",
@@ -468,6 +548,53 @@ export const en = {
     },
     settings: {
       close: "Close settings",
+      agent: {
+        agents: {
+          autoCheckUpdates: "Automatically check for updates",
+          autoCheckUpdatesFailed:
+            "Couldn't save the automatic update check setting.",
+          autoCheckUpdatesHint:
+            "Checks periodically. Updates are installed only when you choose Update.",
+          checkUpdates: "Check for updates",
+          checkUpdatesFailed: "Couldn't check for agent CLI updates.",
+          checkingUpdates: "Checking for updates…",
+          currentVersionSummary: "{{current}}",
+          disabled: "Disabled",
+          earlyAccessBadge: "Early Access",
+          earlyAccessDescription:
+            "Show agent integrations that Tutti is still testing and validating.",
+          earlyAccessHiddenHint:
+            "Turn on Early access agent integrations in Lab to manage {{agent}}.",
+          earlyAccessLabel: "Early access agent integrations",
+          empty: "No agents to show.",
+          enableAgent: "Enable {{agent}}",
+          enableChangeFailed: "Couldn't change whether {{agent}} is enabled.",
+          enabled: "Enabled",
+          enabledColumn: "Enabled",
+          environmentColumn: "Readiness",
+          extensionCodeBuddy: "CodeBuddy Code",
+          extensionEnableToSetUp: "Enable to set up",
+          extensionGemini: "Gemini CLI",
+          extensionGrok: "Grok Build",
+          extensionHermes: "Hermes Agent",
+          extensionGitHubCopilot: "GitHub Copilot CLI",
+          extensionKilo: "Kilo Code",
+          extensionKimiCode: "Kimi Code",
+          extensionPreparing: "Preparing integration…",
+          extensionQwen: "Qwen Code",
+          updateAvailableLatest: "Update available · {{latest}}",
+          updateAvailableSummary: "{{current}} → {{latest}}",
+          updateCheckFailed: "Update check unavailable",
+          updateCheckFailedSummary: "{{current}} · Check unavailable",
+          updateUpToDateSummary: "{{current}} · Up to date"
+        },
+        tabs: {
+          agents: "Agent Runtime",
+          automation: "Automation",
+          customAgents: "Custom Agents",
+          general: "General Settings"
+        }
+      },
       appearance: {
         dockPlacementDescription:
           "Controls where the workspace dock is anchored",
@@ -556,6 +683,25 @@ export const en = {
         },
         agentConversationDetailModeSaveFailed:
           "We couldn't update the work mode right now.",
+        deletedConversationRetentionLabel: "Deleted conversation cleanup",
+        deletedConversationRetentionDescription:
+          "Permanently remove soft-deleted Agent conversations after the selected period. Only Tutti-managed data is removed.",
+        deletedConversationRetentionDays: "{{count}} days",
+        deletedConversationRetentionSaveFailed:
+          "We couldn't update the cleanup period right now.",
+        deletedConversationPurgeAction: "Clean up now",
+        deletedConversationPurging: "Cleaning up…",
+        deletedConversationPurgeTitle:
+          "Permanently clean up deleted conversations?",
+        deletedConversationPurgeDescription:
+          "This removes every soft-deleted Agent conversation on this device and cannot be undone. Type “{{phrase}}” to continue.",
+        deletedConversationPurgeConfirmationPhrase: "permanently delete",
+        deletedConversationPurgeConfirmationLabel: "Confirmation phrase",
+        deletedConversationPurgeConfirm: "Permanently clean up",
+        deletedConversationPurgeCompleted:
+          "Cleaned up {{count}} deleted conversations.",
+        deletedConversationPurgeFailed:
+          "Cleanup couldn't run right now. Finish active Agent work and try again.",
         computerUseLabel: "Computer use",
         computerUseDescription:
           "Allows the agent to control your Mac desktop — take screenshots, click, type, and more.",
@@ -719,14 +865,15 @@ export const en = {
       },
       nav: {
         about: "About",
-        account: "Account",
         apps: "Apps",
         sectionsLabel: "Settings sections",
         appearance: "Appearance",
         agent: "Agent",
+        connection: "Connection",
         developer: "Developer",
         general: "General",
-        lab: "Lab"
+        lab: "Lab",
+        model: "Model"
       },
       about: {
         appName: "Tutti",
@@ -743,7 +890,36 @@ export const en = {
         reopenLogin: "Open sign-in again",
         signedOutTitle: "Not signed in",
         signingIn: "Signing in...",
-        signingOut: "Signing out..."
+        signingOut: "Signing out...",
+        mobileRemote: {
+          cancel: "Cancel pairing",
+          confirming: "Confirming this phone...",
+          copyPairingCode: "Copy pairing code",
+          copyPairingCodeFailed: "Pairing code could not be copied.",
+          description:
+            "Pair a phone signed in to the same Tutti account, then use it to access Agent sessions on this computer.",
+          empty: "No phones are paired with this computer.",
+          errors: {
+            list: "Paired phones could not be loaded.",
+            revoke: "This phone could not be removed.",
+            start: "Pairing could not be started.",
+            status: "Pairing status could not be updated."
+          },
+          mobileDevice: "Mobile device",
+          pairedDevices: "Paired phones",
+          pairingCodeCopied: "Pairing code copied",
+          qrAlt: "Mobile pairing QR code",
+          qrError: "QR code unavailable",
+          remove: "Remove",
+          removing: "Removing...",
+          revoked: "Removed",
+          scanHint:
+            "Open Tutti on your phone and scan this code. This code expires shortly and only works for your account.",
+          start: "Pair a phone",
+          starting: "Starting...",
+          title: "Mobile remote access",
+          waitingForScan: "Waiting for your phone to scan"
+        }
       },
       apps: {
         appCatalogChannelDescription:
@@ -754,61 +930,220 @@ export const en = {
           staging: "Test"
         },
         appCatalogChannelSaveFailed: "We couldn't switch the app source.",
-        managedModels: {
-          apiKey: "API key",
-          addModel: "Add",
-          addProvider: "Add provider",
-          baseUrl: "Base URL",
-          collapse: "Collapse",
-          customProvider: "Custom",
+        agents: {
+          addAgent: "Add Agent",
+          defaultModelLabel: "Default model",
           delete: "Delete",
-          deleteConfirm: "Delete this provider?",
+          deleteConfirm: "Delete this Agent?",
+          deleteFailed: "Couldn't delete the Agent — try again.",
+          deleting: "Deleting...",
+          description:
+            "Choose an Agent Runtime, model, and instructions to create a reusable Agent.",
+          edit: "Edit",
+          editTitle: "Edit {{agent}}",
+          editorDescription:
+            "This configuration becomes one selectable Agent in new conversations.",
+          emptyDescription:
+            "Add an Agent, then choose its Agent Runtime, model, and instructions.",
+          emptyTitle: "No custom Agents yet",
+          ready: "Ready",
+          harnessLabel: "Agent Runtime",
+          harnessUnavailable: "Agent Runtime unavailable",
+          behaviorDetailsTitle: "Instructions and call conditions",
+          callConditionsLabel: "Call conditions",
+          callConditionsPlaceholder:
+            "Use before a release decision\nUse when architecture risk is high",
+          instructionsLabel: "Instructions",
+          instructionsPlaceholder:
+            "Describe how this Agent should approach its work.",
+          loadFailed: "We couldn't load workspace Agents.",
+          migrated: "Migrated from an earlier binding",
+          modelPlanLabel: "Model plan",
+          nameLabel: "Name",
+          namePlaceholder: "Frontend reviewer",
+          noHarnesses: "No Agent Runtimes are available",
+          noModelPlan: "Agent Runtime default models",
+          onePerLine: "One entry per line",
+          planDefaultModel: "Plan default",
+          descriptionLabel: "Description",
+          descriptionPlaceholder:
+            "Describe this Agent's responsibilities and when to use it.",
+          requiredFields: "Enter a name and choose an Agent Runtime.",
+          retry: "Try again",
+          save: "Save Agent",
+          saveFailed:
+            "Couldn't save the Agent — check the fields and try again.",
+          saving: "Saving...",
+          title: "Custom Agents"
+        },
+        automationRules: {
+          addRule: "Add automation",
+          allAgents: "All Agents",
+          allowedToolsHint:
+            "Select nothing to inherit the target Agent's tool configuration.",
+          allowedToolsLabel: "Allowed tools",
+          budgetDescription:
+            "Limits apply independently to each source session. Zero uses the daemon safety default and is never unlimited.",
+          budgetLabel: "Budget",
+          budgetSummary: "{{runs}} runs · {{tokens}} tokens",
+          chooseTargetAgent: "Choose a target Agent",
+          delete: "Delete",
+          deleteConfirm: "Delete this automation?",
+          deleteFailed: "Couldn't delete the automation — try again.",
+          deleting: "Deleting...",
+          description:
+            "When an Agent finishes or fails a task, automatically start a new session for a target Agent with the source session mentioned in the first message.",
+          disabled: "Disabled",
+          edit: "Edit",
+          editTitle: "Edit {{rule}}",
+          editorDescription:
+            "A triggered rule launches a new session for the target Agent and @-mentions the event's source session alongside your prompt. New automations start disabled with conservative limits.",
+          emptyDescription:
+            "Add a rule when finished or failed Agent work should automatically launch a follow-up session.",
+          emptyTitle: "No automation rules yet",
+          enabled: "Enabled",
+          enabledLabel: "Run automatically on matching task events",
+          invalidBudget:
+            "Enter non-negative whole numbers for both budget limits.",
+          loadFailed: "We couldn't load automation rules.",
+          maxRunsLabel: "Maximum runs per source session",
+          maxTokensLabel: "Maximum total tokens per source session",
+          nameLabel: "Name",
+          namePlaceholder: "Completion follow-up",
+          permissionModeDefault: "Use target Agent default",
+          permissionModeLabel: "Permission mode",
+          promptLabel: "Prompt",
+          promptPlaceholder:
+            "Describe the follow-up work the launched session should perform.",
+          requiredFields: "Enter a name and choose a target Agent.",
+          retry: "Try again",
+          save: "Save automation",
+          saveFailed:
+            "Couldn't save the automation — check its target, permissions, and budget.",
+          saving: "Saving...",
+          sourceAgentLabel: "Source Agent",
+          targetAgentLabel: "Target Agent",
+          targetLabel: "Target",
+          targetOptionsLoadFailed:
+            "Couldn't load the target Agent's capability options.",
+          targetOptionsLoading: "Loading target capability options...",
+          title: "Automation rules",
+          toolsEmpty:
+            "No selectable tools for this target — the launched session keeps the target Agent's tool configuration.",
+          triggerLabel: "Trigger",
+          triggers: {
+            onTaskComplete: "When a task completes",
+            onTaskFailed: "When a task fails or is interrupted"
+          }
+        },
+        modelPlans: {
+          addModel: "Add model",
+          addPlan: "Add plan",
+          apiKey: "API key",
+          baseUrl: "Base URL",
+          defaultMarker: "Default",
+          delete: "Delete",
+          deleteBlockedDescription:
+            "Rebind or disable the consumers below before deleting this plan.",
+          deleteBlockedTitle:
+            "This plan is still referenced and can't be deleted",
+          deleteConfirm: "Delete this plan?",
           deleteFailed: "Couldn't delete — try again.",
           deleting: "Deleting...",
           description:
-            "Bring your own model API keys for your workspace apps and agents to use",
-          detectModels: "Fetch available models",
-          detectingModels: "Fetching...",
-          detectModelsEmpty: "No models found.",
-          detectModelsFailed: "Couldn't fetch models — try again.",
+            "Configure model endpoints and available models for workspace Agents and apps",
+          confirmModelRangeImpact: "Confirm impact and save",
+          detect: "Test connection",
+          detectFailed: "Couldn't run the connection check — try again.",
+          detecting: "Checking...",
+          duplicate: "Duplicate",
+          duplicateFailed: "Couldn't duplicate — try again.",
+          edit: "Edit",
+          editTitle: "Edit {{plan}}",
           emptyDescription:
-            "Click “Add provider” to connect Agnes, OpenAI, or Anthropic with your API key",
-          emptyTitle: "No model providers yet",
-          enabled: "Enable {{provider}}",
-          expand: "Expand",
-          getApiKey: "Get {{provider}} API key",
+            "Click “Add plan”, then enter the API protocol, Base URL, API key, and available models",
+          emptyTitle: "No model plans yet",
+          enabled: "Enable {{plan}}",
+          fetchModels: "Fetch models",
+          fetchModelsEmpty:
+            "The endpoint returned no models. You can still type a model ID manually.",
+          fetchModelsFailed:
+            "Couldn't fetch the model list — check the credentials and Base URL, then try again.",
+          fetchModelsResult: "Fetched {{count}} selectable models",
+          fetchingModels: "Fetching...",
           hideApiKey: "Hide key",
-          keyConfigured: "Key saved",
-          keyMissing: "API key not set",
           keepExistingKey: "Leave blank to keep the saved key",
-          loadFailed: "We couldn't load model providers.",
+          lastDetectedAt: "Checked {{time}}",
+          loadFailed: "We couldn't load model plans.",
+          modelCount: "{{count}} models",
           modelId: "Model ID",
-          modelIdPlaceholder: "model-id",
-          models: "{{provider}} models",
-          presetLabels: {
-            agnes: "Agnes",
-            anthropicClaude: "Anthropic (Claude)",
-            deepseekAnthropic: "DeepSeek - Anthropic",
-            deepseekOpenai: "DeepSeek - OpenAI",
-            mimoAnthropic: "MiMo (Xiaomi) - Anthropic",
-            mimoOpenai: "MiMo (Xiaomi) - OpenAI",
-            minimaxAnthropic: "MiniMax - Anthropic",
-            minimaxOpenai: "MiniMax - OpenAI",
-            openaiOfficial: "OpenAI official"
+          modelPickerEmpty: "No matching models.",
+          modelPickerPlaceholder: "Select or type a model ID",
+          modelPickerSearchPlaceholder: "Search model IDs or names",
+          modelPickerUseCustom: "Use “{{model}}”",
+          nativeLoginHint:
+            "This plan uses the existing Codex or Claude Code login on this device. Sign in from Agent settings if needed, then run the connection check; no API key or Base URL is stored in this plan.",
+          modelRangeImpactDescription:
+            "These consumers may use the changed model range on their next call. Review the impact, then confirm to save; running calls are unchanged.",
+          modelRangeImpactTitle: "Review affected consumers",
+          models: "Models",
+          nameLabel: "Name",
+          namePlaceholder: "My model plan",
+          neverDetected: "Not checked yet",
+          protocolLabel: "API protocol",
+          protocols: {
+            anthropic: "Anthropic-compatible",
+            openai: "OpenAI-compatible"
+          },
+          referenceKinds: {
+            agentTarget: "Agent",
+            modelPolicy: "Model policy",
+            workspaceAgent: "Workspace agent",
+            workspaceApp: "App"
           },
           removeModel: "Remove model",
-          requiredFieldsMissing: "Fill in the API key and Base URL first.",
-          quickFillProvider: "Choose a preset",
+          setDefaultModel: "Set {{model}} as the default model",
+          requiredFieldsMissing:
+            "Enter a name and model. Endpoint plans also require an API key and Base URL.",
           save: "Save",
           saveFailed: "Couldn't save — try again.",
           saving: "Saving...",
           showApiKey: "Show key",
-          test: "Test connection",
-          testFailed: "Connection failed — check the key or URL.",
-          testSucceeded: "Connection OK.",
-          testing: "Testing...",
-          modelCount: "{{count}} models",
-          title: "Model providers"
+          statusLabels: {
+            detectionFailed: "Check failed",
+            disabled: "Disabled",
+            ready: "Ready",
+            undetected: "Not checked"
+          },
+          templateGroups: {
+            codingPlan: {
+              guidance:
+                "Use the endpoint and key from a coding plan subscription, such as a Claude coding plan.",
+              label: "Coding plan"
+            },
+            custom: {
+              guidance:
+                "Enter the Base URL, API key, and models for an OpenAI- or Anthropic-compatible endpoint.",
+              label: "Model endpoint"
+            },
+            domestic: {
+              guidance:
+                "Connect domestic model providers such as DeepSeek, MiniMax, or MiMo.",
+              label: "Domestic models"
+            },
+            officialSubscription: {
+              guidance:
+                "Connect an official API subscription directly with the provider's key.",
+              label: "Official subscription"
+            },
+            relay: {
+              guidance:
+                "Use a relay or proxy service endpoint that fronts one or more providers.",
+              label: "Relay service"
+            }
+          },
+          title: "Model plans",
+          toggleFailed: "Couldn't update the plan state — try again."
         }
       },
       developer: {
@@ -828,6 +1163,12 @@ export const en = {
         daemonLogLabel: "Daemon log",
         desktopLogLabel: "Desktop log",
         exportLogs: "Export logs",
+        exportRecentTenMinutesLogsOnly: "Last 10 minutes · Logs only",
+        exportRecentTenMinutesLogsWithSessions:
+          "Last 10 minutes · Logs + session records",
+        exportRecentThreeDaysLogsOnly: "Last 3 days · Logs only",
+        exportRecentThreeDaysLogsWithSessions:
+          "Last 3 days · Logs + session records",
         exportLogsDialogTitle: "Export Logs",
         exportLogsFileType: "Zip Archive",
         exportingLogs: "Exporting...",
@@ -855,13 +1196,27 @@ export const en = {
         logsExported: "Exported {{count}} log files to {{path}}.",
         logsExportFailed: "We couldn't export local logs right now.",
         logsLoadFailed: "We couldn't load local log details right now.",
+        qwenAgentDescription:
+          "Show Qwen Code across Tutti. Disabled by default while Agent Extensions are in preview.",
+        qwenAgentLabel: "Enable Qwen Code Agent",
+        grokAgentDescription:
+          "Load the signed Grok Build Agent Extension and expose it in AgentGUI.",
+        grokAgentLabel: "Enable Grok Build Agent",
         logsSizeLabel: "Log size",
         logsSummary: "{{count}} files, {{size}} total",
         logsTitle: "Logs",
+        mobileRemoteAccessSettingsDescription:
+          "Show Connection settings with phone pairing and remote access controls.",
+        mobileRemoteAccessSettingsLabel: "Show mobile remote access settings",
+        mobileRemoteAccessSettingsSaveFailed:
+          "We couldn't update mobile remote access visibility.",
         openDaemonLog: "Open daemon log",
         openDesktopLog: "Open desktop log",
         openLogsDirectory: "Open logs folder",
         addFileDefaultOpener: "Add",
+        agentSessionRecordingDescription:
+          "Show the developer entry for recording and replaying sessions on Agent Home.",
+        agentSessionRecordingLabel: "Agent session recording",
         removeFileDefaultOpener: "Remove .{{extension}}",
         releaseChannelDescription:
           "Choose stable release updates, or opt in to preview builds for internal verification.",
@@ -869,6 +1224,11 @@ export const en = {
         referenceProvenanceFilterDescription:
           "Enable Agent source filtering in Agent conversation reference pickers.",
         referenceProvenanceFilterLabel: "Agent source filter",
+        quickPromptLibraryDescription:
+          "Show a personal quick-prompt library in the Agent composer.",
+        quickPromptLibraryLabel: "Quick-prompt library",
+        quickPromptLibrarySaveFailed:
+          "We couldn't update quick-prompt library availability.",
         releaseChannelOptions: {
           rc: "Preview",
           stable: "Stable"
@@ -888,14 +1248,28 @@ export const en = {
         visibilityLabel: "Show developer panel"
       },
       lab: {
+        agentInputHistoryDescription:
+          "Use Up and Down in Agent input to recall earlier prompts from the current session.",
+        agentInputHistoryLabel: "Agent input history",
+        agentSessionForkDescription:
+          "Allow branching a new Agent conversation from a supported completed turn.",
+        agentSessionForkLabel: "Agent session fork",
+        backLabel: "Back",
+        automationRulesDescription:
+          "Shows Automation Rule configuration and session overrides.",
+        automationRulesLabel: "Automation Rules",
         clearShortcutLabel: "Clear {{label}}",
         newAgentConversationShortcutLabel: "New Agent conversation",
         newSameTypeWindowShortcutLabel: "New same-type window",
         preferencesSaveFailed: "We couldn't update Lab preferences.",
+        previewAgentsDescription:
+          "Show agent integrations that Tutti is still testing and validating.",
+        previewAgentsLabel: "Early access agent integrations",
         shortcutUnbound: "Unbound",
         workbenchShortcutsDescription:
           "Enables configurable workbench shortcut actions.",
-        workbenchShortcutsLabel: "Workbench shortcuts"
+        workbenchShortcutsLabel: "Workbench shortcuts",
+        workbenchShortcutsManageLabel: "Configure keyboard shortcuts"
       },
       title: "Settings",
       trigger: "Settings"
@@ -933,7 +1307,9 @@ export const en = {
         terminal: "Terminal"
       },
       filePreview: {
+        edit: "Edit",
         loading: "Loading...",
+        preview: "Preview",
         revert: "Revert",
         save: "Save",
         saved: "Saved",
@@ -965,6 +1341,10 @@ export const en = {
         installing: "Connecting",
         login: "Sign in",
         loginFailed: "Sign-in failed",
+        updateFailed: "Update failed",
+        updateFailedDescription:
+          "Unable to update the local agent right now. Try again in a moment.",
+        updateFailedTimedOut: "Update timed out. Try again in a moment.",
         loginRequired: "Sign in to the local CLI to use this agent",
         manageActionConnect: "Connect",
         manageActionLogin: "Sign in",
@@ -980,7 +1360,6 @@ export const en = {
         manageProviderClaudeCode: "Claude Code",
         manageProviderCodex: "Codex",
         manageProviderCursor: "Cursor",
-        manageProviderHermes: "Hermes",
         manageProviderNexight: "Tutti Agent",
         manageProviderOpenClaw: "OpenClaw",
         manageProviderOpenCode: "Open Code",
@@ -1011,9 +1390,6 @@ export const en = {
         unavailableItem: "{{title}}, {{reason}}"
       },
       missionControl: {
-        activateShortcutDefault: "Ctrl + 1",
-        activateShortcutMac: "Cmd + 1",
-        activateTrigger: "Quick activate node",
         layoutShortcutDefault: "Ctrl + 2",
         layoutShortcutMac: "Cmd + 2",
         layoutTrigger: "Quick layout",

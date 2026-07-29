@@ -286,7 +286,7 @@ func (a *CodexAppServerAdapter) refreshStartupMetadataAsync(
 	fetchRateLimits bool,
 	trace *codexAppServerStartupTrace,
 ) {
-	if a == nil || (!fetchModels && !fetchRateLimits) {
+	if a == nil {
 		return
 	}
 	a.mu.Lock()

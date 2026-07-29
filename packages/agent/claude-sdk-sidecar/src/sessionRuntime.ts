@@ -118,6 +118,7 @@ export class SessionRuntime {
       onSettled: () => this.emitSessionState(),
       continuationStartTimeoutMs,
       onContinuationStartTimeout: () => {
+        this.activities.clearBackgroundContinuation();
         void this.query?.interrupt?.().catch((error) => {
           emit({
             type: "error",
@@ -135,7 +136,8 @@ export class SessionRuntime {
     this.activities = new ToolActivityProjector(
       () => this.turns.activeId,
       emit,
-      () => this.turns.expectSyntheticContinuation()
+      () => this.turns.expectSyntheticContinuation(),
+      () => this.turns.lastTurnId
     );
     this.compaction = new CompactionTracker({
       activeTurnId: () => this.turns.activeId,
@@ -144,6 +146,7 @@ export class SessionRuntime {
       },
       clearPendingOrphans: () => this.turns.clearPendingOrphans(),
       getQuery: () => this.query,
+      getModel: () => settings.model,
       emit
     });
     this.projection = new MessageProjection({
@@ -177,10 +180,12 @@ export class SessionRuntime {
     this.goalExecQueue = new GoalExecQueue((input) =>
       this.dispatchExec(
         input.turnId,
+        input.promptCorrelationId,
         input.prompt,
         input.content,
         input.turnOrigin,
-        input.goal
+        input.goal,
+        input.hostContext
       )
     );
     this.router = new SDKMessageRouter({
@@ -190,6 +195,11 @@ export class SessionRuntime {
       },
       onAssistantUuid: (value) => {
         this.lastAssistantUuid = value;
+      },
+      onRuntimeModel: (value) => {
+        if (this.configuration.applyRuntimeModel(value)) {
+          this.emitSessionState();
+        }
       },
       onSessionState: () => this.emitSessionState(),
       onMaybeTitle: (shouldEmit) =>
@@ -230,6 +240,13 @@ export class SessionRuntime {
         resumeCursor: this.currentResumeCursor()
       }
     });
+    const generation = this.queryGeneration;
+    if (generation && this.isQueryGenerationActive(generation)) {
+      // The SDK publishes its per-user resolved model in system/init before it
+      // needs the first prompt. Keep the iterator alive from session start so
+      // Default never has to be inferred from the advertised catalog label.
+      this.consume(generation);
+    }
     this.logAuthRefresh("session_start.succeeded", {
       restore: this.restore,
       initialized: this.initialized,
@@ -242,10 +259,12 @@ export class SessionRuntime {
     prompt: string,
     content?: unknown,
     turnOrigin?: string,
-    goal?: GoalCommandDispatch
+    goal?: GoalCommandDispatch,
+    hostContext = "",
+    promptCorrelationId = ""
   ): void {
     if (this.driver) {
-      this.driver.exec(turnId, prompt);
+      this.driver.exec(turnId, prompt, promptCorrelationId);
       return;
     }
     if (this.sessionClosed) {
@@ -259,23 +278,41 @@ export class SessionRuntime {
       return;
     }
     if (goal?.operationId && goal.revision > 0) {
-      this.goalExecQueue.accept({ turnId, prompt, content, turnOrigin, goal });
+      this.goalExecQueue.accept({
+        turnId,
+        promptCorrelationId,
+        prompt,
+        content,
+        turnOrigin,
+        hostContext,
+        goal
+      });
       return;
     }
-    this.dispatchExec(turnId, prompt, content, turnOrigin);
+    this.dispatchExec(
+      turnId,
+      promptCorrelationId,
+      prompt,
+      content,
+      turnOrigin,
+      undefined,
+      hostContext
+    );
   }
 
   private dispatchExec(
     turnId: string,
+    promptCorrelationId: string | undefined,
     prompt: string,
     content?: unknown,
     turnOrigin?: string,
-    goal?: GoalCommandDispatch
+    goal?: GoalCommandDispatch,
+    hostContext = ""
   ): void {
     this.turns.closeSyntheticBeforeUserTurn();
     const turn: RuntimeTurn = {
       turnId,
-      promptUuid: crypto.randomUUID(),
+      promptUuid: promptCorrelationId?.trim() || crypto.randomUUID(),
       ...(turnOrigin ? { origin: turnOrigin } : {}),
       ...(goal
         ? {
@@ -306,7 +343,23 @@ export class SessionRuntime {
           content,
           prompt
         ) as unknown as SDKUserMessage["message"]["content"];
+        let outboundContent = sdkContent;
+        if (hostContext.trim()) {
+          const hostContextBlock = {
+            type: "text" as const,
+            text: hostContext.trim()
+          };
+          if (Array.isArray(sdkContent)) {
+            sdkContent.unshift(hostContextBlock);
+          } else {
+            outboundContent = [
+              hostContextBlock,
+              { type: "text" as const, text: sdkContent }
+            ];
+          }
+        }
         generation.expectPromptEcho(turn.promptUuid);
+        this.turns.expectProviderTurnIdentity(turn.turnId);
         generation.promptQueue.push({
           uuid: turn.promptUuid,
           type: "user",
@@ -314,7 +367,7 @@ export class SessionRuntime {
           parent_tool_use_id: null,
           message: {
             role: "user",
-            content: sdkContent
+            content: outboundContent
           }
         } as SDKUserMessage);
         this.consume(generation);
@@ -408,6 +461,7 @@ export class SessionRuntime {
     } else {
       hasActiveTurn = this.turns.cancelQueued();
     }
+    this.activities.cancel();
     this.executionEpoch += 1;
     this.canceledQueryTailPending = true;
     this.interactions.rejectAll(new Error("Tool use aborted"));
@@ -424,6 +478,24 @@ export class SessionRuntime {
     return hasActiveTurn;
   }
 
+  async stopTask(taskId: string, parentToolUseId = ""): Promise<boolean> {
+    if (this.sessionClosed) {
+      return false;
+    }
+    const resolvedTaskId = this.activities.resolveDelegatedTaskIdForStop(
+      taskId,
+      parentToolUseId
+    );
+    const stopTask = this.query?.stopTask;
+    if (!resolvedTaskId || !stopTask) {
+      return false;
+    }
+    // The stopped task_notification that follows settles the task's activity
+    // state; no local bookkeeping happens here so a failed stop stays running.
+    await stopTask.call(this.query, resolvedTaskId);
+    return true;
+  }
+
   async close(): Promise<void> {
     if (this.sessionClosed) {
       return;
@@ -431,6 +503,7 @@ export class SessionRuntime {
     this.sessionClosed = true;
     this.executionEpoch += 1;
     this.interactions.rejectAll(new Error("Tool use aborted"));
+    this.activities.close();
     this.turns.close();
     const generation = this.queryGeneration;
     this.queryGeneration = undefined;
@@ -569,6 +642,7 @@ export class SessionRuntime {
       ++this.nextQueryGenerationId,
       this.canceledQueryTailPending
     );
+    this.activities.resetBackgroundTaskLevel();
     this.queryGeneration = generation;
     const permissionMode = effectivePermissionMode(this.configuration.settings);
     const allowBypassPermissions = canBypassPermissions();

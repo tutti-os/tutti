@@ -15,6 +15,7 @@ test("desktop host preferences follows authoritative preference events", async (
   const preferences = createHostPreferencesState();
   const appliedThemeSources: DesktopThemeSource[] = [];
   let backgroundSyncs = 0;
+  const configureCalls: Array<{ channel: string; policy: string }> = [];
 
   const subscription = connectDesktopHostPreferencesEventStream({
     applyThemeSource(source) {
@@ -25,6 +26,29 @@ test("desktop host preferences follows authoritative preference events", async (
     preferences,
     syncWindowBackgroundColors() {
       backgroundSyncs += 1;
+    },
+    updateService: {
+      async configure(input) {
+        configureCalls.push({
+          channel: input.channel ?? "stable",
+          policy: input.policy
+        });
+        return {
+          channel: input.channel ?? "stable",
+          checkedAt: null,
+          currentVersion: "0.0.0",
+          downloadPercent: null,
+          downloadedBytes: null,
+          latestVersion: null,
+          message: null,
+          policy: input.policy,
+          releaseDate: null,
+          releaseName: null,
+          releaseNotesUrl: null,
+          status: "idle",
+          totalBytes: null
+        };
+      }
     }
   });
 
@@ -34,6 +58,7 @@ test("desktop host preferences follows authoritative preference events", async (
   eventStreamClient.emitDesktopPreferencesUpdated({
     initialized: true,
     preferences: {
+      agentCliUpdateCheckEnabled: true,
       agentComposerDefaultsByProvider: {},
       agentGuiConversationRailCollapsedByProvider: {},
       agentConversationDetailMode: "coding",
@@ -41,6 +66,7 @@ test("desktop host preferences follows authoritative preference events", async (
       appCatalogChannel: "production",
       browserUseConnectionMode: "isolated",
       defaultAgentProvider: "codex",
+      deletedAgentConversationRetentionDays: 30,
       featureFlags: {},
       workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
       dockIconStyle: "default",
@@ -68,11 +94,18 @@ test("desktop host preferences follows authoritative preference events", async (
   assert.equal(preferences.getThemeSource(), "dark");
   assert.deepEqual(appliedThemeSources, ["dark"]);
   assert.equal(backgroundSyncs, 1);
+  // Channel/policy unchanged from host defaults — do not reconfigure updater.
+  assert.deepEqual(configureCalls, []);
 
   eventStreamClient.emitDesktopPreferencesUpdated({
     initialized: true,
     preferences: {
-      agentComposerDefaultsByProvider: {},
+      agentCliUpdateCheckEnabled: true,
+      agentComposerDefaultsByProvider: {
+        "claude-code": {
+          permissionModeId: "bypassPermissions"
+        }
+      },
       agentGuiConversationRailCollapsedByProvider: {
         codex: true
       },
@@ -81,6 +114,7 @@ test("desktop host preferences follows authoritative preference events", async (
       appCatalogChannel: "production",
       browserUseConnectionMode: "isolated",
       defaultAgentProvider: "codex",
+      deletedAgentConversationRetentionDays: 30,
       featureFlags: {},
       workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
       dockIconStyle: "default",
@@ -106,12 +140,52 @@ test("desktop host preferences follows authoritative preference events", async (
   assert.equal(preferences.getThemeSource(), "dark");
   assert.deepEqual(appliedThemeSources, ["dark"]);
   assert.equal(backgroundSyncs, 1);
+  // Composer-default / rail changes alone must not trigger update checks.
+  assert.deepEqual(configureCalls, []);
+
+  eventStreamClient.emitDesktopPreferencesUpdated({
+    initialized: true,
+    preferences: {
+      agentCliUpdateCheckEnabled: false,
+      agentComposerDefaultsByProvider: {
+        "claude-code": {
+          permissionModeId: "bypassPermissions"
+        }
+      },
+      agentGuiConversationRailCollapsedByProvider: {
+        codex: true
+      },
+      agentConversationDetailMode: "coding",
+      agentDockLayout: "unified",
+      appCatalogChannel: "production",
+      browserUseConnectionMode: "isolated",
+      defaultAgentProvider: "codex",
+      deletedAgentConversationRetentionDays: 30,
+      featureFlags: {},
+      workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
+      dockIconStyle: "default",
+      dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
+      locale: "en",
+      minimizeAnimation: "scale",
+      sleepPreventionMode: "never",
+      showAppDeveloperSources: false,
+      themeSource: "dark",
+      updateChannel: "rc",
+      updatePolicy: "auto"
+    }
+  });
+
+  assert.deepEqual(configureCalls, [{ channel: "rc", policy: "auto" }]);
+  assert.equal(preferences.getUpdateChannel(), "rc");
+  assert.equal(preferences.getUpdatePolicy(), "auto");
 
   subscription.dispose();
   assert.equal(eventStreamClient.disposeCalls, 1);
 });
 
 function createHostPreferencesState(): DesktopHostPreferencesState {
+  let agentCliUpdateCheckEnabled = true;
   let agentGUIConversationRailCollapsedByProvider: DesktopPreferencesStateResponse["preferences"]["agentGuiConversationRailCollapsedByProvider"] =
     {};
   let agentConversationDetailMode: DesktopPreferencesStateResponse["preferences"]["agentConversationDetailMode"] =
@@ -150,6 +224,9 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
   };
 
   return {
+    getAgentCliUpdateCheckEnabled() {
+      return agentCliUpdateCheckEnabled;
+    },
     getAgentComposerDefaultsByProvider() {
       return {};
     },
@@ -208,6 +285,9 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
       return () => undefined;
     },
     sync(input) {
+      if (input.agentCliUpdateCheckEnabled !== undefined) {
+        agentCliUpdateCheckEnabled = input.agentCliUpdateCheckEnabled;
+      }
       if (input.agentGuiConversationRailCollapsedByProvider) {
         agentGUIConversationRailCollapsedByProvider =
           input.agentGuiConversationRailCollapsedByProvider;

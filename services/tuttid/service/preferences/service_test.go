@@ -9,8 +9,11 @@ import (
 )
 
 type preferencesStoreStub struct {
-	getResult preferencesbiz.DesktopPreferences
-	putInput  preferencesbiz.DesktopPreferences
+	getResult        preferencesbiz.DesktopPreferences
+	patchAgentTarget string
+	patchInput       preferencesbiz.AgentComposerDefaultsPatch
+	patchResult      preferencesbiz.AgentComposerDefaults
+	putInput         preferencesbiz.DesktopPreferences
 }
 
 type preferencesPublisherStub struct {
@@ -25,6 +28,32 @@ func (s preferencesStoreStub) GetDesktopPreferences(context.Context) (preference
 func (s *preferencesStoreStub) PutDesktopPreferences(_ context.Context, preferences preferencesbiz.DesktopPreferences) (preferencesbiz.DesktopPreferences, error) {
 	s.putInput = preferences
 	return preferences, nil
+}
+
+func (s *preferencesStoreStub) PatchAgentComposerDefaultsForTarget(_ context.Context, agentTargetID string, patch preferencesbiz.AgentComposerDefaultsPatch) (preferencesbiz.AgentComposerDefaults, error) {
+	s.patchAgentTarget = agentTargetID
+	s.patchInput = patch
+	return s.patchResult, nil
+}
+
+type agentComposerDefaultsValidatorStub struct {
+	agentTargetID string
+	patch         preferencesbiz.AgentComposerDefaultsPatch
+}
+
+func (s *agentComposerDefaultsValidatorStub) ValidateAgentComposerDefaultsPatch(_ context.Context, agentTargetID string, patch preferencesbiz.AgentComposerDefaultsPatch) error {
+	s.agentTargetID = agentTargetID
+	s.patch = patch
+	return nil
+}
+
+type agentComposerDefaultsPublisherStub struct {
+	agentTargetIDs []string
+}
+
+func (s *agentComposerDefaultsPublisherStub) PublishAgentComposerDefaultsChanged(_ context.Context, agentTargetID string) error {
+	s.agentTargetIDs = append(s.agentTargetIDs, agentTargetID)
+	return nil
 }
 
 func (s *preferencesPublisherStub) PublishDesktopPreferencesUpdated(_ context.Context, preferences preferencesbiz.DesktopPreferences) error {
@@ -91,6 +120,33 @@ func TestServiceGetReturnsStoredDesktopPreferences(t *testing.T) {
 	}
 }
 
+func TestServicePutNotifiesAfterPutWithPreviousAndCurrentPreferences(t *testing.T) {
+	store := &preferencesStoreStub{getResult: preferencesbiz.DesktopPreferences{
+		FeatureFlags: map[string]bool{"agent.extension.gemini": false},
+	}}
+	var previous, current preferencesbiz.DesktopPreferences
+	service := Service{
+		Store: store,
+		AfterPut: func(_ context.Context, before, after preferencesbiz.DesktopPreferences) {
+			previous = before
+			current = after
+		},
+	}
+
+	_, err := service.Put(context.Background(), PutInput{
+		FeatureFlags: map[string]bool{"agent.extension.gemini": true},
+	})
+	if err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if previous.FeatureFlags["agent.extension.gemini"] {
+		t.Fatalf("previous feature flags = %#v", previous.FeatureFlags)
+	}
+	if !current.FeatureFlags["agent.extension.gemini"] {
+		t.Fatalf("current feature flags = %#v", current.FeatureFlags)
+	}
+}
+
 func TestServicePutTrimsDesktopPreferences(t *testing.T) {
 	t.Parallel()
 
@@ -102,6 +158,7 @@ func TestServicePutTrimsDesktopPreferences(t *testing.T) {
 	}
 
 	preferences, err := service.Put(context.Background(), PutInput{
+		AgentCLIUpdateCheckEnabled: true,
 		AgentComposerDefaultsByProvider: map[string]preferencesbiz.AgentComposerDefaults{
 			" claude ": {
 				Model:            " claude-3-5 ",
@@ -141,6 +198,9 @@ func TestServicePutTrimsDesktopPreferences(t *testing.T) {
 	}
 	if !preferences.Initialized {
 		t.Fatal("Put() initialized = false, want true")
+	}
+	if !store.putInput.AgentCLIUpdateCheckEnabled {
+		t.Fatal("stored agent CLI update check = false, want true")
 	}
 	if store.putInput.DockPlacement != "left" {
 		t.Fatalf("stored dockPlacement = %q, want left", store.putInput.DockPlacement)
@@ -450,10 +510,14 @@ func TestServiceGetDoesNotResurrectLegacyComposerDefaults(t *testing.T) {
 	}
 }
 
-func TestServicePutNormalizesComposerDefaultsByAgentTarget(t *testing.T) {
+func TestServicePutIgnoresComposerDefaultsByAgentTarget(t *testing.T) {
 	t.Parallel()
 
-	store := &preferencesStoreStub{}
+	store := &preferencesStoreStub{getResult: preferencesbiz.DesktopPreferences{
+		AgentComposerDefaultsByAgentTarget: map[string]preferencesbiz.AgentComposerDefaults{
+			"local:codex": {Model: "gpt-5"},
+		},
+	}}
 	service := Service{Store: store}
 
 	_, err := service.Put(context.Background(), PutInput{
@@ -483,15 +547,45 @@ func TestServicePutNormalizesComposerDefaultsByAgentTarget(t *testing.T) {
 		t.Fatalf("Put() error = %v", err)
 	}
 	stored := store.putInput.AgentComposerDefaultsByAgentTarget
-	if len(stored) != 1 {
-		t.Fatalf("stored agent target defaults = %#v, want single trimmed entry", stored)
+	if len(stored) != 1 || stored["local:codex"].Model != "gpt-5" {
+		t.Fatalf("stored agent target defaults = %#v, want frozen stored value", stored)
 	}
-	codexDefaults := stored["local:codex"]
-	if codexDefaults.Model != "gpt-5" ||
-		codexDefaults.PermissionModeID != "full-access" ||
-		codexDefaults.ReasoningEffort != "high" ||
-		codexDefaults.Speed != "fast" {
-		t.Fatalf("stored local:codex defaults = %#v, want trimmed values", codexDefaults)
+}
+
+func TestServicePatchAgentComposerDefaultsForTargetValidatesStoresAndInvalidates(t *testing.T) {
+	t.Parallel()
+
+	store := &preferencesStoreStub{patchResult: preferencesbiz.AgentComposerDefaults{
+		Model: "gpt-5", PermissionModeID: "full-access",
+	}}
+	validator := &agentComposerDefaultsValidatorStub{}
+	publisher := &agentComposerDefaultsPublisherStub{}
+	service := Service{
+		Store:                          store,
+		AgentComposerDefaultsValidator: validator,
+		AgentComposerDefaultsPublisher: publisher,
+	}
+	permission := " full-access "
+	result, err := service.PatchAgentComposerDefaultsForTarget(context.Background(), PatchAgentComposerDefaultsForTargetInput{
+		AgentTargetID: " local:codex ",
+		Patch: preferencesbiz.AgentComposerDefaultsPatch{
+			preferencesbiz.AgentComposerDefaultsFieldPermissionModeID: &permission,
+		},
+	})
+	if err != nil {
+		t.Fatalf("PatchAgentComposerDefaultsForTarget() error = %v", err)
+	}
+	if result.PermissionModeID != "full-access" {
+		t.Fatalf("result = %#v", result)
+	}
+	if store.patchAgentTarget != "local:codex" || validator.agentTargetID != "local:codex" {
+		t.Fatalf("targets store=%q validator=%q", store.patchAgentTarget, validator.agentTargetID)
+	}
+	if got := *store.patchInput[preferencesbiz.AgentComposerDefaultsFieldPermissionModeID]; got != "full-access" {
+		t.Fatalf("stored permission = %q", got)
+	}
+	if len(publisher.agentTargetIDs) != 1 || publisher.agentTargetIDs[0] != "local:codex" {
+		t.Fatalf("invalidations = %#v", publisher.agentTargetIDs)
 	}
 }
 
@@ -574,13 +668,14 @@ func TestServicePutKeepsAgentTargetDefaultsWhenFieldOmitted(t *testing.T) {
 		t.Fatalf("stored agent target defaults = %#v, want preserved on omitted field", store.putInput.AgentComposerDefaultsByAgentTarget)
 	}
 
-	// An explicitly sent empty map still clears everything.
+	// An explicitly sent empty map is also ignored. Only the dedicated patch
+	// mutation may change target defaults.
 	clearedPut := basePut
 	clearedPut.AgentComposerDefaultsByAgentTarget = map[string]preferencesbiz.AgentComposerDefaults{}
 	if _, err := service.Put(context.Background(), clearedPut); err != nil {
 		t.Fatalf("Put() error = %v", err)
 	}
-	if len(store.putInput.AgentComposerDefaultsByAgentTarget) != 0 {
-		t.Fatalf("stored agent target defaults = %#v, want cleared by explicit empty map", store.putInput.AgentComposerDefaultsByAgentTarget)
+	if store.putInput.AgentComposerDefaultsByAgentTarget["local:codex"].Model != "gpt-5" {
+		t.Fatalf("stored agent target defaults = %#v, want preserved on explicit empty map", store.putInput.AgentComposerDefaultsByAgentTarget)
 	}
 }

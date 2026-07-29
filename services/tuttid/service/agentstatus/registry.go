@@ -43,9 +43,24 @@ type ProviderSpec struct {
 	AuthStatusCommandTimeout     time.Duration
 	AuthMarkerPaths              []string
 	Install                      InstallerSpec
+	Update                       ProviderUpdateSpec
 	AdapterInstall               InstallerSpec
 	LoginArgs                    []string
 	LoginActionKind              ActionKind
+}
+
+type ProviderUpdateStrategy string
+
+const ProviderUpdateStrategyManagedNPM ProviderUpdateStrategy = "managed_npm"
+
+type ProviderUpdateSpec struct {
+	Capability        UpdateCapability
+	Source            UpdateSource
+	Strategy          ProviderUpdateStrategy
+	PackageName       string
+	BinaryName        string
+	IncludeOptional   bool
+	UnsupportedReason string
 }
 
 type AdapterPackageRequirement struct {
@@ -143,8 +158,17 @@ func providerSpecFromDescriptor(descriptor providerregistry.ProviderDescriptor) 
 		AuthStatusCommandTimeout: time.Duration(
 			descriptor.Status.AuthStatusCommandTimeoutSeconds,
 		) * time.Second,
-		AuthMarkerPaths:    append([]string(nil), descriptor.Status.AuthMarkerPaths...),
-		Install:            install,
+		AuthMarkerPaths: append([]string(nil), descriptor.Status.AuthMarkerPaths...),
+		Install:         install,
+		Update: ProviderUpdateSpec{
+			Capability:        UpdateCapability(descriptor.Status.Update.Capability),
+			Source:            UpdateSource(descriptor.Status.Update.Source),
+			Strategy:          ProviderUpdateStrategy(descriptor.Status.Update.Strategy),
+			PackageName:       descriptor.Status.Update.PackageName,
+			BinaryName:        descriptor.Status.Update.BinaryName,
+			IncludeOptional:   descriptor.Status.Update.IncludeOptional,
+			UnsupportedReason: descriptor.Status.Update.UnsupportedReason,
+		},
 		LoginArgs:          append([]string(nil), descriptor.Status.LoginArgs...),
 		LoginActionKind:    ActionKind(descriptor.Status.LoginActionKind),
 		SupportStatus:      ProviderSupportStatus(descriptor.Status.SupportStatus),
@@ -170,6 +194,17 @@ func isClaudeStatusSpec(spec ProviderSpec) bool {
 		}
 	}
 	return kind == providerregistry.StatusKindClaudeCLI
+}
+
+// isStandardACPStatusSpec reports whether spec's runtime is a "standard ACP"
+// provider (e.g. cursor-agent, opencode): the CLI binary itself, invoked with
+// an `acp` subcommand, IS the ACP adapter. This is the same architecture
+// Codex has (see isCodexStatusSpec), so these providers are exposed to the
+// same "process started but never actually spoke ACP" false-positive risk
+// described in Agent 可用性需求摘要 issue #1.
+func isStandardACPStatusSpec(spec ProviderSpec) bool {
+	descriptor, ok := providerregistry.Find(spec.Provider)
+	return ok && descriptor.Runtime.Kind == providerregistry.RuntimeKindStandardACP
 }
 
 func migratedProviderStatus(provider string) (providerregistry.StatusDescriptor, bool) {
@@ -208,7 +243,7 @@ func installerSpecFromProviderDescriptor(descriptor providerregistry.InstallerDe
 			DisplayCommand:       descriptor.DisplayCommand,
 			FailureReasonMarkers: failureReasonMarkers,
 			ManagedNPM: &ManagedNPMPackageInstallerSpec{
-				PackageName: descriptor.PackageName, BinaryName: descriptor.BinaryName, IncludeOptional: descriptor.IncludeOptional,
+				PackageName: descriptor.PackageName, PackageVersion: descriptor.RecommendedVersion, BinaryName: descriptor.BinaryName, IncludeOptional: descriptor.IncludeOptional,
 			},
 		}, nil
 	case providerregistry.InstallerKindShellCommand:

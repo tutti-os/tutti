@@ -23,6 +23,29 @@ export interface InteractiveAnswerPayload {
   answersByQuestionId: Record<string, string | string[]>;
 }
 
+export function readOwnAnswer<T>(
+  values: Record<string, T>,
+  questionID: string,
+  fallback: T
+): T {
+  return Object.prototype.hasOwnProperty.call(values, questionID)
+    ? values[questionID]!
+    : fallback;
+}
+
+export function writeOwnAnswer<T>(
+  values: Record<string, T>,
+  questionID: string,
+  value: T
+): void {
+  Object.defineProperty(values, questionID, {
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true
+  });
+}
+
 /**
  * Builds the canonical interactive answer payload from the per-question answers.
  * `answers` is derived from `answersByQuestionId` (multi-select values joined)

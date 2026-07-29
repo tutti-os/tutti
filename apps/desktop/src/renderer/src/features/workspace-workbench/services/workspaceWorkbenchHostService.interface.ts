@@ -40,7 +40,9 @@ import type {
 } from "@shared/contracts/ipc";
 import type {
   TuttiExternalAtQueryInput,
-  TuttiExternalAtQueryResult
+  TuttiExternalAtQueryResult,
+  TuttiExternalAtResolveInput,
+  TuttiExternalAtResolveResult
 } from "@tutti-os/workspace-external-core/contracts";
 import type { WorkspaceFileReferenceAdapter } from "@tutti-os/workspace-file-reference/contracts";
 import type { WorkspaceUserProjectApi } from "@tutti-os/workspace-user-project/contracts";
@@ -57,6 +59,18 @@ export interface WorkspaceCustomWallpaperSnapshot {
   thumbnailUrl: string | null;
 }
 
+export interface WorkspaceDockRetentionService {
+  dispose(): void;
+  getRevision(): number;
+  readRetainedByEntryId(workspaceId: string): Readonly<Record<string, boolean>>;
+  setRetained(
+    workspaceId: string,
+    entryId: string,
+    retained: boolean
+  ): Promise<void>;
+  subscribe(listener: () => void): () => void;
+}
+
 export interface WorkspaceOnboardingAutoOpenDiagnostic {
   details?: Record<string, unknown>;
   event: string;
@@ -65,7 +79,7 @@ export interface WorkspaceOnboardingAutoOpenDiagnostic {
 }
 
 export interface WorkspaceFilesNodeActivationPayload {
-  mode?: "reveal" | "open-directory";
+  mode?: "select" | "open";
   path: string;
 }
 
@@ -81,6 +95,7 @@ export type WorkspaceWorkbenchCapabilitySettingsTarget =
 
 export interface WorkspaceWorkbenchHostInput {
   readonly captureNodePreviewImage?: WorkbenchHostProps["captureNodePreviewImage"];
+  readonly captureNodePreviewImages?: WorkbenchHostProps["captureNodePreviewImages"];
   readonly contributions?: readonly WorkbenchContribution[];
   readonly debugDiagnostics?: WorkbenchDebugDiagnostics;
   readonly dockPreviewCache?: WorkbenchDockPreviewCache;
@@ -145,6 +160,7 @@ export interface WorkspaceWorkbenchHostSessionBinding {
 
 export interface IWorkspaceWorkbenchHostService {
   readonly _serviceBrand: undefined;
+  readonly dockRetention: WorkspaceDockRetentionService;
 
   approveWindowClose(): Promise<void>;
   openHostSession(workspaceId: string): WorkspaceWorkbenchHostSessionBinding;
@@ -157,6 +173,10 @@ export interface IWorkspaceWorkbenchHostService {
     query: TuttiExternalAtQueryInput;
     workspaceId: string;
   }): Promise<TuttiExternalAtQueryResult[]>;
+  resolveWorkspaceAppExternalAt(input: {
+    mention: TuttiExternalAtResolveInput;
+    workspaceId: string;
+  }): Promise<TuttiExternalAtResolveResult | null>;
   onWindowCloseRequest(
     listener: (payload: DesktopHostWindowCloseRequestPayload) => void
   ): () => void;

@@ -30,9 +30,15 @@ export function attentionReadStateReducer(
     case "attention/readStateHydrated":
       return hydrate(state, intent);
     case "attention/read":
-      return setUnread(state, intent.userId, intent.agentSessionId, false);
+      return setUnread(
+        state,
+        intent.userId,
+        intent.agentSessionId,
+        false,
+        false
+      );
     case "attention/unreadRequested":
-      return setUnread(state, intent.userId, intent.agentSessionId, true);
+      return setUnread(state, intent.userId, intent.agentSessionId, true, true);
     case "attention/persistRetryRequested":
       return retryPersistence(state, intent.userId);
     case "engine/commandResult":
@@ -114,7 +120,7 @@ function observeTurn(
     ...durablePartition,
     recordsBySessionId: {
       ...durablePartition.recordsBySessionId,
-      [id]: { completionKey, isUnread, kind }
+      [id]: { completionKey, isUnread, kind, markedUnreadByUser: false }
     }
   };
   const persistence = queuePersistence(nextPartition, userId);
@@ -157,7 +163,8 @@ function setUnread(
   state: AttentionReadState,
   rawUserId: string,
   rawId: string,
-  isUnread: boolean
+  isUnread: boolean,
+  markedUnreadByUser: boolean
 ): EngineReducerResult<AttentionReadState> {
   const id = rawId.trim();
   const userId = rawUserId.trim();
@@ -166,7 +173,12 @@ function setUnread(
   const current = partition.recordsBySessionId[id];
   if (!current) return unchanged(state);
   const next: AttentionReadRecord = current;
-  if (current?.isUnread === isUnread) return unchanged(state);
+  if (
+    current.isUnread === isUnread &&
+    current.markedUnreadByUser === markedUnreadByUser
+  ) {
+    return unchanged(state);
+  }
   const durablePartition = updateDurableMarker(
     partition,
     id,
@@ -178,7 +190,7 @@ function setUnread(
     ...durablePartition,
     recordsBySessionId: {
       ...durablePartition.recordsBySessionId,
-      [id]: { ...next, isUnread }
+      [id]: { ...next, isUnread, markedUnreadByUser }
     }
   };
   const persistence = queuePersistence(nextPartition, userId);
@@ -271,7 +283,11 @@ function hydrate(
     if (unread.has(key)) {
       recordsBySessionId[id] = { ...record, isUnread: true };
     } else if (read.has(key)) {
-      recordsBySessionId[id] = { ...record, isUnread: false };
+      recordsBySessionId[id] = {
+        ...record,
+        isUnread: false,
+        markedUnreadByUser: false
+      };
     } else {
       // The durable store predates this session's current completion. Evict any
       // prior key for the session so the set stays bounded, then persist the

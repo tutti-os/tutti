@@ -1,29 +1,21 @@
-import { memo, useCallback, useEffect, useMemo } from "react";
+import { memo, useCallback, useMemo, useRef } from "react";
 import { createWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { createWorkspaceFileManagerI18nRuntime } from "@tutti-os/workspace-file-manager";
-import { useReferenceProvenanceFilterCatalog } from "@tutti-os/workspace-file-reference/react";
-import type {
-  ReferenceProvenanceCatalog,
-  WorkspaceFileReference
-} from "@tutti-os/workspace-file-reference/contracts";
+import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
 import { useTranslation } from "../../i18n/index";
-import type { AgentProvider } from "../../contexts/settings/domain/agentSettings";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
-import type { AgentGUINodeData } from "../../types";
+import type { AgentGUIAgentTarget, AgentGUINodeData } from "../../types";
 import { resolveCanonicalNodeMinSize } from "../../utils/workspaceNodeSizing";
 import { WorkspaceNodeWindow } from "../shared/WorkspaceNodeWindow";
 import { CanvasNodeGhostIconButton } from "../shared/CanvasNodeGhostIconButton";
 import { CanvasNodePanelLinedIcon } from "../shared/canvasNodeChromeIcons";
 import { useAgentGUINodeController } from "./controller/useAgentGUINodeController";
+import { useAgentGUIStatus } from "./controller/useAgentGUIStatus";
 import { AgentGUINodeView } from "./AgentGUINodeView";
 import {
   normalizeAgentGUIProviderIdentity,
   resolveAgentGUIProviderDisplayLabel
 } from "./model/agentGuiProviderIdentity";
-import {
-  buildDockAgentProbeTooltipLines,
-  findWorkspaceAgentProbeForDockProvider
-} from "../workspaceDesktop/view/desktopDockAgentProbeTooltipModel";
 import { AgentProbeInfoPopover } from "../workspaceDesktop/view/AgentProbeInfoPopover";
 import styles from "./AgentGUINode.styles";
 import {
@@ -31,31 +23,25 @@ import {
   AGENT_GUI_CONVERSATION_RAIL_MIN_WIDTH_PX,
   AGENT_GUI_DETAIL_MIN_WIDTH_PX,
   clampAgentGUIConversationRailWidthPx,
+  resolveAgentGUIConversationRailPresentation,
   resolveAgentGUIExpandedWindowFrame,
   resolveNextAgentGUIConversationRailWidthPx,
-  resolveAgentGUIConversationRailMaxWidthPx,
-  shouldAutoCollapseAgentGUIConversationRail
+  resolveAgentGUIConversationRailMaxWidthPx
 } from "./model/agentGuiRailLayout";
-import { resolveAgentGUIReferenceProvenanceFilterCatalog } from "./model/agentReferenceProvenanceCatalog";
-import type { AgentGUINodeProps } from "./AgentGUINode.types";
+import type {
+  AgentGUIAgentConfigMenuContext,
+  AgentGUINodeProps
+} from "./AgentGUINode.types";
 import { areAgentGUINodePropsEqual } from "./AgentGUINode.types";
+import { AgentGUIMentionServiceBoundary } from "./AgentGUIMentionServiceBoundary";
 import {
   useAgentGUIViewLabels,
+  useAgentGUIConversationRailLabels,
   useAgentGUIWorkspaceFileReferenceCopy
 } from "./AgentGUINode.labels";
-import {
-  resolveAgentGUIRailStatusProvider,
-  slashStatusLimitsFromQuotas
-} from "./AgentGUINode.usage";
+import { useAgentMentionProvenanceFilters } from "./composer/useAgentMentionProvenanceFilters";
 
 export type { AgentGUINodeProps } from "./AgentGUINode.types";
-
-const EMPTY_SLASH_STATUS_QUOTAS = [] as const;
-const DISABLED_REFERENCE_PROVENANCE_CATALOG: ReferenceProvenanceCatalog = {
-  enabledDimensions: [],
-  agentOptions: [],
-  memberOptions: []
-};
 
 export const AgentGUINode = memo(function AgentGUINode({
   identity,
@@ -74,8 +60,13 @@ export const AgentGUINode = memo(function AgentGUINode({
     fileReferenceAdapter: workspaceFileReferenceAdapter = null,
     onRequestGitBranches = null,
     selectProjectDirectory,
-    resolveDroppedFileReferences = null,
+    resolveExternalPromptEntries = null,
+    prepareExternalPromptFiles = null,
+    promptAssetLimit = null,
+    projectDirectorySourceAggregator = null,
     referenceSourceAggregator = null,
+    resolveReferenceContentErrorAction:
+      resolveWorkspaceReferenceContentErrorAction,
     resolveReferenceEntryIconUrl: resolveWorkspaceReferenceEntryIconUrl,
     resolveMentionReferenceTarget = null,
     resolveReferenceInitialTarget:
@@ -91,58 +82,54 @@ export const AgentGUINode = memo(function AgentGUINode({
     isMaximized = false,
     isActive,
     isVisible = true,
-    embedded = false,
-    previewMode = false,
-    conversationRailAutoCollapseWidthPx = null
+    embedded = false
   } = frame;
-  const railAutoCollapseWidthPx =
-    conversationRailAutoCollapseWidthPx ?? undefined;
+  const widthRef = useRef(width);
+  widthRef.current = width;
   const {
     composerAppend: composerAppendRequest = null,
     composerFocusSequence: composerFocusRequestSequence = null,
     newConversationSequence: newConversationRequestSequence = null,
+    sessionAction: sessionActionRequest = null,
     openSession: openSessionRequest = null,
     prefillPrompt: prefillPromptRequest = null,
-    agentProbes: workspaceAgentProbes,
-    onProbeDemandChange: onAgentProbeDemandChange,
-    onProbeRefreshRequest: onAgentProbeRefreshRequest
+    agentStatusController
   } = runtimeRequests;
   const {
     capabilityMenuState,
-    accountMenuState = null,
+    capabilityControlsReadOnly = false,
     agentTargets,
     agentTargetsLoading = false,
+    handoffAgentTargets,
+    handoffAgentTargetsLoading = false,
     providerRailAllPresentation = null,
     providerRailMode = "catalog",
     comingSoonProviders,
     providerReadinessGates = null,
+    targetConnectionSource = null,
     defaultAgentTargetId = null,
     providerAuthAccountLabels,
-    contextMentionProviders,
+    mentionService,
     workspaceAppIcons,
     disabledHomeSuggestions,
     referenceProvenanceFilterCatalog: injectedReferenceProvenanceFilterCatalog,
-    referenceProvenanceFilterEnabled = false
+    referenceProvenanceFilterEnabled = false,
+    sessionInputHistoryEnabled = false,
+    sessionForkEnabled = false
   } = hostCapabilities;
-  const referenceProvenanceFilterCatalog =
-    resolveAgentGUIReferenceProvenanceFilterCatalog({
-      agentTargets,
-      injectedCatalog: injectedReferenceProvenanceFilterCatalog,
-      legacyAgentFilterEnabled: referenceProvenanceFilterEnabled
-    });
-  const referenceProvenanceFilterBinding = useReferenceProvenanceFilterCatalog(
-    referenceProvenanceFilterCatalog ?? DISABLED_REFERENCE_PROVENANCE_CATALOG
-  );
-  const referenceProvenanceFilter =
-    referenceProvenanceFilterBinding.snapshot.catalog.enabledDimensions.length >
-    0
-      ? referenceProvenanceFilterBinding
-      : null;
+  const referenceProvenanceFilters = useAgentMentionProvenanceFilters({
+    agentTargets,
+    injectedCatalog: injectedReferenceProvenanceFilterCatalog,
+    legacyAgentFilterEnabled: referenceProvenanceFilterEnabled
+  });
   const {
+    onComposerAppendHandled,
     onLinkAction,
     onHandoffConversation,
     onCapabilitySettingsRequest,
     onAgentProviderLogin,
+    onAgentEnvPanelOpen,
+    onAgentConfigMenuOpen: onHostAgentConfigMenuOpen,
     onOpenConversationWindow,
     onClose,
     onResize,
@@ -152,9 +139,15 @@ export const AgentGUINode = memo(function AgentGUINode({
     onMinimize,
     onToggleMaximize,
     onShowMessage,
-    onEngagementEvent
+    onEngagementEvent,
+    onConversationRailLayoutChange
   } = hostActions;
   const {
+    agentConfigAccount: renderAgentConfigAccount,
+    agentTargetInfo: renderAgentTargetInfo,
+    composerFooterAccessory: renderComposerFooterAccessory,
+    projectDirectoryPickerHeaderActions:
+      renderProjectDirectoryPickerHeaderActions,
     providerRailEmpty: renderProviderRailEmpty,
     providerUnavailableState: renderProviderUnavailableState,
     sidebarFooter: renderSidebarFooter
@@ -197,23 +190,17 @@ export const AgentGUINode = memo(function AgentGUINode({
   );
   const handleDataChange = useCallback(
     (updater: (current: AgentGUINodeData) => AgentGUINodeData) => {
-      if (previewMode) {
-        return;
-      }
       onUpdateNode(updater);
     },
-    [onUpdateNode, previewMode]
+    [onUpdateNode]
   );
   const handleConversationRailWidthChanged = useCallback(
     (widthPx: number) => {
-      if (previewMode) {
-        return;
-      }
       onUpdateNode((current) => {
         const nextWidthPx = resolveNextAgentGUIConversationRailWidthPx({
           currentWidthPx: current.conversationRailWidthPx,
           requestedWidthPx: widthPx,
-          containerWidthPx: width
+          containerWidthPx: widthRef.current
         });
 
         if (current.conversationRailWidthPx === nextWidthPx) {
@@ -225,14 +212,18 @@ export const AgentGUINode = memo(function AgentGUINode({
         };
       });
     },
-    [onUpdateNode, previewMode, width]
+    [onUpdateNode]
   );
-  const isConversationRailManuallyCollapsed =
-    state.conversationRailCollapsed === true;
+  const conversationRailPresentation =
+    resolveAgentGUIConversationRailPresentation({
+      autoCollapseMode: frame.conversationRailAutoCollapseMode,
+      containerWidthPx: width,
+      conversationRailCollapsed: state.conversationRailCollapsed,
+      conversationRailWidthPx: state.conversationRailWidthPx
+    });
   const isConversationRailAutoCollapsed =
-    shouldAutoCollapseAgentGUIConversationRail(width, railAutoCollapseWidthPx);
-  const isConversationRailCollapsed =
-    isConversationRailManuallyCollapsed || isConversationRailAutoCollapsed;
+    conversationRailPresentation.isAutoCollapsed;
+  const isConversationRailCollapsed = conversationRailPresentation.isCollapsed;
   const minSize = useMemo(
     () => ({
       ...resolveCanonicalNodeMinSize("agentGui"),
@@ -241,18 +232,12 @@ export const AgentGUINode = memo(function AgentGUINode({
     []
   );
   const toggleConversationRailCollapsed = useCallback(() => {
-    if (previewMode) {
-      return;
-    }
     onUpdateNode((current) => ({
       ...current,
       conversationRailCollapsed: current.conversationRailCollapsed !== true
     }));
-  }, [onUpdateNode, previewMode]);
+  }, [onUpdateNode]);
   const handleConversationRailToggle = useCallback(() => {
-    if (previewMode) {
-      return;
-    }
     if (!isConversationRailAutoCollapsed) {
       toggleConversationRailCollapsed();
       return;
@@ -283,7 +268,6 @@ export const AgentGUINode = memo(function AgentGUINode({
     onResize,
     onUpdateNode,
     position,
-    previewMode,
     state.conversationRailWidthPx,
     toggleConversationRailCollapsed,
     width
@@ -300,18 +284,21 @@ export const AgentGUINode = memo(function AgentGUINode({
     prefillPromptRequest,
     agentTargets,
     agentTargetsLoading,
+    handoffAgentTargets,
+    handoffAgentTargetsLoading,
     providerRailMode,
     comingSoonProviders,
     providerReadinessGates,
+    targetConnectionSource,
     defaultAgentTargetId,
-    previewMode,
     onDataChange: handleDataChange,
+    onComposerAppendHandled,
     onRememberComposerDefaults,
     onShowMessage
   });
   const handleCreateConversation = useCallback(
     (...args: Parameters<typeof actions.createConversation>) => {
-      if (!previewMode) {
+      {
         onUpdateNode((current) =>
           current.lastActiveAgentSessionId === null
             ? current
@@ -323,7 +310,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       }
       actions.createConversation(...args);
     },
-    [actions, onUpdateNode, previewMode]
+    [actions, onUpdateNode]
   );
   const viewActions = useMemo(
     () => ({
@@ -342,6 +329,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   const displayProviderLabel = viewModel.rail.activeConversation
     ? resolveAgentGUIProviderDisplayLabel(activeProvider, fallbackAgentTitle)
     : selectedAgentTargetLabel;
+  const conversationRailLabels = useAgentGUIConversationRailLabels(t);
   const labels = useAgentGUIViewLabels({
     disabledHomeSuggestions,
     displayProviderLabel,
@@ -352,337 +340,240 @@ export const AgentGUINode = memo(function AgentGUINode({
   });
   const workspaceFileReferenceCopy = useAgentGUIWorkspaceFileReferenceCopy(t);
   const windowTitle = title;
-  const activeProbeProvider = activeProvider as AgentProvider;
-  const railStatusProvider = useMemo(
-    () =>
-      resolveAgentGUIRailStatusProvider({
-        conversationFilter: viewModel.rail.conversationFilter,
-        agentTargets: viewModel.rail.agentTargets
-      }),
-    [viewModel.rail.conversationFilter, viewModel.rail.agentTargets]
-  );
-  const activeAgentProbe = useMemo(
-    () =>
-      findWorkspaceAgentProbeForDockProvider(
-        workspaceAgentProbes?.snapshot ?? null,
-        activeProbeProvider
-      ),
-    [activeProbeProvider, workspaceAgentProbes?.snapshot]
-  );
-  const railAgentProbe = useMemo(
-    () =>
-      railStatusProvider
-        ? findWorkspaceAgentProbeForDockProvider(
-            workspaceAgentProbes?.snapshot ?? null,
-            railStatusProvider
-          )
-        : null,
-    [railStatusProvider, workspaceAgentProbes?.snapshot]
-  );
-  const canonicalSlashStatusQuotas =
-    viewModel.detail.usage?.quotas ?? EMPTY_SLASH_STATUS_QUOTAS;
-  const slashStatusQuotaSource =
-    canonicalSlashStatusQuotas.length > 0
-      ? canonicalSlashStatusQuotas
-      : activeAgentProbe?.usage?.quotas &&
-          activeAgentProbe.usage.quotas.length > 0
-        ? activeAgentProbe.usage.quotas
-        : EMPTY_SLASH_STATUS_QUOTAS;
-  const slashStatusLimits = useMemo(
-    () =>
-      slashStatusLimitsFromQuotas(
-        slashStatusQuotaSource,
-        viewModel.composer.composerSettings.selectedModelValue ??
-          viewModel.composer.composerSettings.draftSettings.model,
-        t
-      ),
-    [
-      slashStatusQuotaSource,
-      t,
-      viewModel.composer.composerSettings.draftSettings.model,
-      viewModel.composer.composerSettings.selectedModelValue
-    ]
-  );
-  const slashStatusLimitsUnavailable =
-    slashStatusLimits.length === 0 &&
-    canonicalSlashStatusQuotas.length === 0 &&
-    !(workspaceAgentProbes?.isLoadingUsage ?? false) &&
-    (Boolean(activeAgentProbe?.usage) || Boolean(activeAgentProbe?.lastError));
-  const railSlashStatusQuotaSource =
-    railStatusProvider &&
-    railAgentProbe?.usage?.quotas &&
-    railAgentProbe.usage.quotas.length > 0
-      ? railAgentProbe.usage.quotas
-      : EMPTY_SLASH_STATUS_QUOTAS;
-  const railSlashStatusLimits = useMemo(
-    () => slashStatusLimitsFromQuotas(railSlashStatusQuotaSource, null, t),
-    [railSlashStatusQuotaSource, t]
-  );
-  // The provider whose limits the rail config menu renders: the rail filter
-  // provider when one is active, otherwise the active window provider. Read
-  // freshness + attempt state from this same probe so an empty or failed usage
-  // result stays coherent with the meters (or absence of them).
-  const slashStatusUsageProbe = railStatusProvider
-    ? railAgentProbe
-    : activeAgentProbe;
-  const slashStatusUsageCapturedAtUnixMs =
-    slashStatusUsageProbe?.usage?.capturedAtUnixMs ?? null;
-  const slashStatusUsageDidFail =
-    workspaceAgentProbes?.usageLoadFailed ?? false;
-  // True once a usage probe has actually run for this provider — it came back
-  // with a usage snapshot (possibly zero quotas) or a usage error. Lets the
-  // config menu show an explicit "no limits / retry" row instead of hiding the
-  // whole section when the numbers resolve empty (e.g. a Claude OAuth usage
-  // response with no 5h/7d windows, or a usage fetch the probe caught into
-  // `lastError`), which previously made the limits look like they vanished.
-  const slashStatusUsageAttempted =
-    Boolean(slashStatusUsageProbe?.usage) ||
-    Boolean(slashStatusUsageProbe?.lastError);
-  const agentProbeLines = useMemo(() => {
-    return buildDockAgentProbeTooltipLines(
-      activeAgentProbe,
-      workspaceAgentProbes?.isLoadingAvailability ?? false,
-      t,
-      {
-        includeUsageLines: true,
-        isLoadingUsage: workspaceAgentProbes?.isLoadingUsage ?? false
-      }
-    );
-  }, [
-    activeAgentProbe,
-    workspaceAgentProbes?.isLoadingAvailability,
-    workspaceAgentProbes?.isLoadingUsage,
-    t
-  ]);
-
-  useEffect(() => {
-    if (previewMode || !onAgentProbeDemandChange) {
-      return;
+  const {
+    agentProbeLines,
+    controllerRailStatus,
+    handleAgentConfigMenuClose,
+    handleAgentConfigMenuOpen: handleStatusAgentConfigMenuOpen,
+    handleAgentProbeInfoClose,
+    handleAgentProbeInfoOpen,
+    handleAgentUsageRefresh,
+    handleSlashStatusClose,
+    handleSlashStatusOpen,
+    handleSlashStatusRefresh,
+    railStatusProvider,
+    slashStatusLimits,
+    slashStatusLimitsUnavailable,
+    slashStatusOverride
+  } = useAgentGUIStatus({
+    activeProvider,
+    agentStatusController,
+    t,
+    viewModel
+  });
+  const agentConfigMenuContext =
+    viewModel.rail.conversationFilter.kind === "all"
+      ? null
+      : resolveAgentConfigMenuContext(viewModel.rail.selectedAgentTarget);
+  const handleAgentConfigMenuOpen = () => {
+    handleStatusAgentConfigMenuOpen();
+    if (agentConfigMenuContext) {
+      onHostAgentConfigMenuOpen?.(agentConfigMenuContext);
     }
-    const probeSourceId = `agent-gui:${nodeId}`;
-    onAgentProbeDemandChange(activeProbeProvider, probeSourceId);
-    return () => {
-      onAgentProbeDemandChange(null, probeSourceId);
-    };
-  }, [activeProbeProvider, nodeId, onAgentProbeDemandChange, previewMode]);
-  useEffect(() => {
-    if (
-      previewMode ||
-      !onAgentProbeDemandChange ||
-      !railStatusProvider ||
-      railStatusProvider === activeProbeProvider
-    ) {
-      return;
-    }
-    const probeSourceId = `agent-gui:${nodeId}:rail`;
-    onAgentProbeDemandChange(railStatusProvider, probeSourceId);
-    return () => {
-      onAgentProbeDemandChange(null, probeSourceId);
-    };
-  }, [
-    activeProbeProvider,
-    nodeId,
-    onAgentProbeDemandChange,
-    previewMode,
-    railStatusProvider
-  ]);
-  const handleAgentProbeInfoOpen = useCallback(() => {
-    if (previewMode || !onAgentProbeRefreshRequest) {
-      return;
-    }
-    onAgentProbeRefreshRequest(activeProbeProvider, `agent-gui:${nodeId}`);
-  }, [activeProbeProvider, nodeId, onAgentProbeRefreshRequest, previewMode]);
-  // The rail's "usage & environment check" menu (AgentGUINodeView's
-  // agent-gui-config-menu popover) shows the same quota data as the window
-  // title's info tooltip above, but through a click rather than a hover. It
-  // needs the same on-open refresh (see handleAgentProbeInfoOpen) — otherwise
-  // a stale/empty probe fetched before a provider finished installing never
-  // gets a chance to refresh here, and the usage meters stay blank until some
-  // unrelated event happens to touch the info tooltip instead.
-  const handleAgentConfigMenuOpen = useCallback(() => {
-    if (previewMode || !onAgentProbeRefreshRequest) {
-      return;
-    }
-    onAgentProbeRefreshRequest(
-      railStatusProvider ?? activeProbeProvider,
-      `agent-gui:${nodeId}:config`
-    );
-  }, [
-    activeProbeProvider,
-    nodeId,
-    onAgentProbeRefreshRequest,
-    previewMode,
-    railStatusProvider
-  ]);
-  // Manual "refresh now" from the config menu's freshness control. Same probe
-  // fetch as opening the menu, but callable while the menu stays open (open-only
-  // handlers fire once on the open transition). The control disables itself
-  // while a fetch is in flight, so this cannot hammer the vendor usage API.
-  const handleAgentUsageRefresh = useCallback(() => {
-    if (previewMode || !onAgentProbeRefreshRequest) {
-      return;
-    }
-    onAgentProbeRefreshRequest(
-      railStatusProvider ?? activeProbeProvider,
-      `agent-gui:${nodeId}:usage-refresh`
-    );
-  }, [
-    activeProbeProvider,
-    nodeId,
-    onAgentProbeRefreshRequest,
-    previewMode,
-    railStatusProvider
-  ]);
+  };
+  const agentConfigAccountContent = agentConfigMenuContext
+    ? (renderAgentConfigAccount?.(agentConfigMenuContext) ?? null)
+    : null;
 
   return (
-    <WorkspaceNodeWindow
-      nodeId={nodeId}
-      kind="agentGui"
-      title={windowTitle}
-      titleIcon={null}
-      position={position}
-      width={width}
-      height={height}
-      desktopSize={desktopSize}
-      minSize={minSize}
-      appearance={embedded ? "embedded" : "window"}
-      className="size-full bg-transparent"
-      bodyClassName={`${styles.shell} nodrag size-full min-h-0 min-w-0 !bg-transparent p-0`}
-      hideHeader={embedded}
-      titleAccessory={
-        <span className="inline-flex flex-none items-center gap-1">
-          <AgentProbeInfoPopover
-            lines={agentProbeLines}
-            testId="agent-gui-window-agent-info"
-            className={styles.windowAgentInfo}
-            onOpen={handleAgentProbeInfoOpen}
-          />
-          <CanvasNodeGhostIconButton
-            aria-label={
-              isConversationRailCollapsed
-                ? t("agentHost.agentGui.expandConversationRail")
-                : t("agentHost.agentGui.collapseConversationRail")
-            }
-            title={
-              isConversationRailCollapsed
-                ? t("agentHost.agentGui.expandConversationRail")
-                : t("agentHost.agentGui.collapseConversationRail")
-            }
-            data-testid="agent-gui-toggle-conversation-rail"
-            data-agent-gui-conversation-rail-collapsed={
-              isConversationRailCollapsed ? "true" : "false"
-            }
-            data-agent-gui-conversation-rail-auto-collapsed={
-              isConversationRailAutoCollapsed ? "true" : "false"
-            }
-            onClick={(event) => {
-              event.stopPropagation();
-              handleConversationRailToggle();
-            }}
-          >
-            <CanvasNodePanelLinedIcon
-              width={18}
-              height={18}
-              aria-hidden="true"
+    <AgentGUIMentionServiceBoundary service={mentionService}>
+      <WorkspaceNodeWindow
+        nodeId={nodeId}
+        kind="agentGui"
+        title={windowTitle}
+        titleIcon={null}
+        position={position}
+        width={width}
+        height={height}
+        desktopSize={desktopSize}
+        minSize={minSize}
+        appearance={embedded ? "embedded" : "window"}
+        className="size-full bg-transparent"
+        bodyClassName={`${styles.shell} nodrag size-full min-h-0 min-w-0 !bg-transparent p-0`}
+        hideHeader={embedded}
+        titleAccessory={
+          <span className="inline-flex flex-none items-center gap-1">
+            <AgentProbeInfoPopover
+              lines={agentProbeLines}
+              testId="agent-gui-window-agent-info"
+              className={styles.windowAgentInfo}
+              onOpen={handleAgentProbeInfoOpen}
+              onClose={handleAgentProbeInfoClose}
             />
-          </CanvasNodeGhostIconButton>
-        </span>
-      }
-      onClose={onClose}
-      onResize={onResize}
-      isMaximized={isMaximized}
-      isMuted={isMuted}
-      hideMaximizeButton
-      onMinimize={onMinimize}
-      onToggleMaximize={onToggleMaximize}
-    >
-      {(renderFrame) => {
-        const renderedWidth = renderFrame.size.width;
-        const isRenderedConversationRailCollapsed =
-          isConversationRailCollapsed ||
-          shouldAutoCollapseAgentGUIConversationRail(
-            renderedWidth,
-            railAutoCollapseWidthPx
-          );
+            <CanvasNodeGhostIconButton
+              aria-label={
+                isConversationRailCollapsed
+                  ? t("agentHost.agentGui.expandConversationRail")
+                  : t("agentHost.agentGui.collapseConversationRail")
+              }
+              title={
+                isConversationRailCollapsed
+                  ? t("agentHost.agentGui.expandConversationRail")
+                  : t("agentHost.agentGui.collapseConversationRail")
+              }
+              data-testid="agent-gui-toggle-conversation-rail"
+              data-agent-gui-conversation-rail-collapsed={
+                isConversationRailCollapsed ? "true" : "false"
+              }
+              data-agent-gui-conversation-rail-auto-collapsed={
+                isConversationRailAutoCollapsed ? "true" : "false"
+              }
+              onClick={(event) => {
+                event.stopPropagation();
+                handleConversationRailToggle();
+              }}
+            >
+              <CanvasNodePanelLinedIcon
+                width={18}
+                height={18}
+                aria-hidden="true"
+              />
+            </CanvasNodeGhostIconButton>
+          </span>
+        }
+        onClose={onClose}
+        onResize={onResize}
+        isMaximized={isMaximized}
+        isMuted={isMuted}
+        hideMaximizeButton
+        onMinimize={onMinimize}
+        onToggleMaximize={onToggleMaximize}
+      >
+        {(renderFrame) => {
+          const renderedWidth = renderFrame.size.width;
+          const isRenderedConversationRailCollapsed =
+            isConversationRailCollapsed ||
+            resolveAgentGUIConversationRailPresentation({
+              autoCollapseMode: frame.conversationRailAutoCollapseMode,
+              containerWidthPx: renderedWidth,
+              conversationRailCollapsed: state.conversationRailCollapsed,
+              conversationRailWidthPx: state.conversationRailWidthPx
+            }).isCollapsed;
 
-        return (
-          <AgentGUINodeView
-            viewModel={viewModel}
-            renderSidebarFooter={renderSidebarFooter}
-            renderProviderRailEmpty={renderProviderRailEmpty}
-            renderProviderUnavailableState={renderProviderUnavailableState}
-            providerRailAllPresentation={providerRailAllPresentation}
-            actions={viewActions}
-            isActive={isActive}
-            isVisible={isVisible}
-            onEngagementEvent={onEngagementEvent}
-            composerFocusRequestSequence={composerFocusRequestSequence}
-            newConversationRequestSequence={newConversationRequestSequence}
-            slashStatusLimits={slashStatusLimits}
-            slashStatusLimitsLoading={
-              workspaceAgentProbes?.isLoadingUsage ?? false
-            }
-            slashStatusLimitsUnavailable={slashStatusLimitsUnavailable}
-            railConfigProvider={railStatusProvider}
-            railSlashStatusLimits={railSlashStatusLimits}
-            slashStatusUsageCapturedAtUnixMs={slashStatusUsageCapturedAtUnixMs}
-            slashStatusUsageDidFail={slashStatusUsageDidFail}
-            slashStatusUsageAttempted={slashStatusUsageAttempted}
-            providerAuthAccountLabels={providerAuthAccountLabels}
-            onAgentConfigMenuOpen={handleAgentConfigMenuOpen}
-            onAgentUsageRefresh={handleAgentUsageRefresh}
-            onSlashStatusOpen={handleAgentProbeInfoOpen}
-            previewMode={previewMode}
-            onLinkAction={handleLinkAction}
-            onHandoffConversation={onHandoffConversation}
-            capabilityMenuState={capabilityMenuState}
-            onCapabilitySettingsRequest={onCapabilitySettingsRequest}
-            onAgentProviderLogin={
-              onAgentProviderLogin ? handleAgentProviderLogin : undefined
-            }
-            accountMenuState={accountMenuState}
-            conversationRailCollapsed={isRenderedConversationRailCollapsed}
-            conversationRailWidthPx={clampAgentGUIConversationRailWidthPx(
-              state.conversationRailWidthPx,
-              renderedWidth
-            )}
-            conversationRailMinWidthPx={
-              AGENT_GUI_CONVERSATION_RAIL_MIN_WIDTH_PX
-            }
-            conversationRailMaxWidthPx={resolveAgentGUIConversationRailMaxWidthPx(
-              renderedWidth
-            )}
-            detailMinWidthPx={AGENT_GUI_DETAIL_MIN_WIDTH_PX}
-            uiLanguage={locale}
-            onWorkspaceFileReferencesAdded={
-              onWorkspaceFileReferencesAdded
-                ? handleWorkspaceFileReferencesAdded
-                : undefined
-            }
-            resolveDroppedFileReferences={resolveDroppedFileReferences}
-            onConversationRailWidthChanged={handleConversationRailWidthChanged}
-            labels={labels}
-            workspaceUserProjectI18n={workspaceUserProjectI18n}
-            workspaceFileManagerCopy={workspaceFileManagerI18n}
-            workspaceFileReferenceAdapter={workspaceFileReferenceAdapter}
-            onOpenConversationWindow={onOpenConversationWindow}
-            onRequestGitBranches={onRequestGitBranches}
-            selectProjectDirectory={selectProjectDirectory}
-            referenceSourceAggregator={referenceSourceAggregator}
-            resolveWorkspaceReferenceEntryIconUrl={
-              resolveWorkspaceReferenceEntryIconUrl
-            }
-            resolveMentionReferenceTarget={resolveMentionReferenceTarget}
-            resolveWorkspaceReferenceInitialTarget={
-              resolveWorkspaceReferenceInitialTarget
-            }
-            workspaceFileReferenceCopy={workspaceFileReferenceCopy}
-            contextMentionProviders={contextMentionProviders}
-            workspaceAppIcons={workspaceAppIcons}
-            referenceProvenanceFilter={referenceProvenanceFilter}
-          />
-        );
-      }}
-    </WorkspaceNodeWindow>
+          return (
+            <AgentGUINodeView
+              viewModel={viewModel}
+              renderAgentTargetInfo={renderAgentTargetInfo}
+              renderSidebarFooter={renderSidebarFooter}
+              renderProviderRailEmpty={renderProviderRailEmpty}
+              renderProviderUnavailableState={renderProviderUnavailableState}
+              providerRailAllPresentation={providerRailAllPresentation}
+              actions={viewActions}
+              isActive={isActive}
+              isVisible={isVisible}
+              onEngagementEvent={onEngagementEvent}
+              composerFocusRequestSequence={composerFocusRequestSequence}
+              newConversationRequestSequence={newConversationRequestSequence}
+              sessionActionRequest={sessionActionRequest}
+              slashStatusLimits={slashStatusLimits}
+              slashStatusLimitsLoading={controllerRailStatus?.loading ?? false}
+              slashStatusLimitsUnavailable={slashStatusLimitsUnavailable}
+              slashStatusOverride={slashStatusOverride}
+              railConfigProvider={railStatusProvider}
+              railSlashStatusLimits={controllerRailStatus?.limits ?? []}
+              slashStatusUsageCapturedAtUnixMs={
+                controllerRailStatus?.capturedAtUnixMs ?? null
+              }
+              slashStatusUsageDidFail={controllerRailStatus?.didFail ?? false}
+              slashStatusUsageAttempted={
+                controllerRailStatus?.attempted ?? false
+              }
+              slashStatusLimitsResolvedEmpty={
+                controllerRailStatus?.resolvedEmpty ?? false
+              }
+              agentConfigAccountContent={agentConfigAccountContent}
+              providerAuthAccountLabels={providerAuthAccountLabels}
+              onAgentConfigMenuClose={handleAgentConfigMenuClose}
+              onAgentConfigMenuOpen={handleAgentConfigMenuOpen}
+              onAgentUsageRefresh={handleAgentUsageRefresh}
+              onSlashStatusOpen={handleSlashStatusOpen}
+              onSlashStatusClose={handleSlashStatusClose}
+              onSlashStatusRefresh={handleSlashStatusRefresh}
+              onLinkAction={handleLinkAction}
+              onHandoffConversation={onHandoffConversation}
+              capabilityMenuState={capabilityMenuState}
+              capabilityControlsReadOnly={capabilityControlsReadOnly}
+              onCapabilitySettingsRequest={onCapabilitySettingsRequest}
+              onAgentProviderLogin={
+                onAgentProviderLogin ? handleAgentProviderLogin : undefined
+              }
+              onAgentEnvPanelOpen={onAgentEnvPanelOpen}
+              conversationRailCollapsed={isRenderedConversationRailCollapsed}
+              conversationRailWidthPx={clampAgentGUIConversationRailWidthPx(
+                state.conversationRailWidthPx,
+                renderedWidth
+              )}
+              conversationRailMinWidthPx={
+                AGENT_GUI_CONVERSATION_RAIL_MIN_WIDTH_PX
+              }
+              conversationRailMaxWidthPx={resolveAgentGUIConversationRailMaxWidthPx(
+                renderedWidth
+              )}
+              detailMinWidthPx={AGENT_GUI_DETAIL_MIN_WIDTH_PX}
+              uiLanguage={locale}
+              onWorkspaceFileReferencesAdded={
+                onWorkspaceFileReferencesAdded
+                  ? handleWorkspaceFileReferencesAdded
+                  : undefined
+              }
+              resolveExternalPromptEntries={resolveExternalPromptEntries}
+              prepareExternalPromptFiles={prepareExternalPromptFiles}
+              promptAssetLimit={promptAssetLimit}
+              onConversationRailWidthChanged={
+                handleConversationRailWidthChanged
+              }
+              onConversationRailLayoutChange={onConversationRailLayoutChange}
+              labels={labels}
+              conversationRailLabels={conversationRailLabels}
+              workspaceUserProjectI18n={workspaceUserProjectI18n}
+              workspaceFileManagerCopy={workspaceFileManagerI18n}
+              workspaceFileReferenceAdapter={workspaceFileReferenceAdapter}
+              onOpenConversationWindow={onOpenConversationWindow}
+              onRequestGitBranches={onRequestGitBranches}
+              selectProjectDirectory={selectProjectDirectory}
+              projectDirectorySourceAggregator={
+                projectDirectorySourceAggregator
+              }
+              referenceSourceAggregator={referenceSourceAggregator}
+              resolveReferenceContentErrorAction={
+                resolveWorkspaceReferenceContentErrorAction
+              }
+              resolveWorkspaceReferenceEntryIconUrl={
+                resolveWorkspaceReferenceEntryIconUrl
+              }
+              resolveMentionReferenceTarget={resolveMentionReferenceTarget}
+              resolveWorkspaceReferenceInitialTarget={
+                resolveWorkspaceReferenceInitialTarget
+              }
+              workspaceFileReferenceCopy={workspaceFileReferenceCopy}
+              workspaceAppIcons={workspaceAppIcons}
+              referenceProvenanceFilters={referenceProvenanceFilters}
+              sessionInputHistoryEnabled={sessionInputHistoryEnabled}
+              sessionForkEnabled={sessionForkEnabled}
+              renderProjectDirectoryPickerHeaderActions={
+                renderProjectDirectoryPickerHeaderActions
+              }
+              renderComposerFooterAccessory={renderComposerFooterAccessory}
+            />
+          );
+        }}
+      </WorkspaceNodeWindow>
+    </AgentGUIMentionServiceBoundary>
   );
 }, areAgentGUINodePropsEqual);
+
+function resolveAgentConfigMenuContext(
+  target: AgentGUIAgentTarget
+): AgentGUIAgentConfigMenuContext | null {
+  const agentTargetId = target.agentTargetId?.trim() || target.targetId.trim();
+  const provider = target.provider.trim();
+  if (!agentTargetId || !provider) {
+    return null;
+  }
+  return {
+    agentTargetId,
+    provider,
+    label: target.label,
+    ...(target.ownership ? { ownership: target.ownership } : {})
+  };
+}

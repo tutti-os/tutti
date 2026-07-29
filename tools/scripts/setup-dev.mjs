@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveGolangciLintBinary } from "./golangci-lint-tool.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = join(scriptDirectory, "..", "..");
@@ -47,9 +48,7 @@ if (failedChecks.length > 0) {
   console.log("recommended next steps:");
   if (onlyCheck === "golangci-lint") {
     console.log("1. pnpm install:golangci-lint");
-    console.log(
-      "2. Ensure `$(go env GOPATH)/bin` is on your PATH, then rerun `pnpm check:golangci-version`."
-    );
+    console.log("2. Rerun `pnpm check:golangci-version`.");
   } else {
     console.log(
       "1. Use Node.js from `.node-version` and pnpm from `packageManager`."
@@ -57,9 +56,7 @@ if (failedChecks.length > 0) {
     console.log("2. Install Go matching `services/tuttid/go.mod`.");
     console.log("3. Run `pnpm install`.");
     console.log("4. Run `pnpm install:golangci-lint`.");
-    console.log(
-      "5. Ensure `$(go env GOPATH)/bin` is on your PATH, then rerun `pnpm setup:dev`."
-    );
+    console.log("5. Rerun `pnpm setup:dev`.");
   }
   process.exitCode = 1;
 } else {
@@ -165,7 +162,8 @@ function checkGo() {
 }
 
 function checkGolangciLint() {
-  const result = spawnSync("golangci-lint", ["version"], {
+  const binary = resolveGolangciLintBinary({ cwd: workspaceRoot });
+  const result = spawnSync(binary, ["version"], {
     cwd: workspaceRoot,
     encoding: "utf8"
   });
@@ -174,7 +172,7 @@ function checkGolangciLint() {
     return {
       ok: false,
       success: "",
-      failure: `install ${pinnedGolangciVersion} and add it to PATH`
+      failure: `install ${pinnedGolangciVersion} with \`pnpm install:golangci-lint\``
     };
   }
 

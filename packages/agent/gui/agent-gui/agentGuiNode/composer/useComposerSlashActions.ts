@@ -16,6 +16,8 @@ import type {
   AgentGUIProviderSkillOption
 } from "../model/agentGuiNodeTypes";
 import type { AgentRichTextEditorHandle } from "../agentRichText/AgentRichTextEditor";
+import { agentComposerFileMentionReferences } from "../agentRichText/agentMentionMarkdown";
+import { useOptionalAgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { AgentSlashPaletteEntry } from "../AgentSlashCommandPalette";
 import type {
   AgentSlashCommand,
@@ -43,32 +45,40 @@ import {
 import { resolvePermissionModeControlsDisabled } from "../model/composerModeSelection";
 import { GOAL_MODE_SLASH_COMMAND } from "./AgentComposerChrome";
 import type { AgentComposerProps } from "./AgentComposer.types";
+import { reportAgentComposerDiagnostic } from "./agentComposerDiagnostics";
 
 type TriggerMatch = ReturnType<typeof getAgentComposerTriggerQueryMatch>;
 
 type Props = Pick<
   AgentComposerProps,
+  | "workspaceId"
   | "provider"
-  | "disabled"
-  | "submitDisabled"
-  | "canQueueWhileBusy"
   | "isSendingTurn"
   | "isSubmittingPrompt"
   | "showStopButton"
   | "promptImagesSupported"
   | "availableSkills"
   | "composerSettings"
+  | "capabilityControlsReadOnly"
   | "onDraftContentChange"
   | "onSettingsChange"
   | "onSubmit"
+  | "onSubmitEmpty"
   | "onSubmitGuidance"
   | "onCapabilitySettingsRequest"
   | "onSlashStatusOpen"
+  | "onSlashStatusClose"
   | "onPromptImagesUnsupported"
   | "onRequestGitBranches"
->;
+> & {
+  disabled: boolean;
+  submitDisabled: boolean;
+  canQueueWhileBusy: boolean;
+};
 
 interface UseComposerSlashActionsInput extends Props {
+  onTuttiModeActivate?: () => void;
+  tuttiModeSupported: boolean;
   draftContent: AgentComposerDraft;
   selectedProjectPath: string;
   slashStatusAgentSessionId: string | null;
@@ -103,7 +113,9 @@ function useStableEventCallback<Args extends unknown[], Result>(
 }
 
 export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
+  const agentActivityRuntime = useOptionalAgentActivityRuntime();
   const {
+    workspaceId,
     provider,
     disabled,
     submitDisabled,
@@ -114,12 +126,17 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
     promptImagesSupported,
     availableSkills = [],
     composerSettings,
+    tuttiModeSupported,
+    capabilityControlsReadOnly = false,
     onDraftContentChange,
     onSettingsChange,
     onSubmit,
+    onSubmitEmpty,
     onSubmitGuidance,
     onCapabilitySettingsRequest,
+    onTuttiModeActivate,
     onSlashStatusOpen,
+    onSlashStatusClose,
     onPromptImagesUnsupported,
     onRequestGitBranches,
     draftContent,
@@ -155,12 +172,12 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
 
   const closeSlashStatusPanel = useCallback((): void => {
     setIsSlashStatusPanelOpen(false);
-  }, []);
+    onSlashStatusClose?.();
+  }, [onSlashStatusClose, setIsSlashStatusPanelOpen]);
 
   const settingsControlsDisabled =
     isSendingTurn || isSubmittingPrompt || showStopButton;
   const permissionModeControlsDisabled = resolvePermissionModeControlsDisabled({
-    changeDuringTurnSupported: composerSettings.permissionModeChangeDuringTurn,
     isSendingTurn,
     isSubmittingPrompt,
     showStopButton
@@ -175,10 +192,19 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
   }, []);
 
   const closeSlashFloatingMenu = useCallback((): void => {
+    if (isSlashStatusPanelOpen) {
+      onSlashStatusClose?.();
+    }
     setIsSlashStatusPanelOpen(false);
     setIsReviewPickerOpen(false);
     setIsPaletteOpen(false);
-  }, []);
+  }, [
+    isSlashStatusPanelOpen,
+    onSlashStatusClose,
+    setIsPaletteOpen,
+    setIsReviewPickerOpen,
+    setIsSlashStatusPanelOpen
+  ]);
 
   const submitReviewCommand = useCallback(
     (command: string): void => {
@@ -232,17 +258,25 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
         setIsReviewPickerOpen(false);
         if (!isSlashStatusPanelOpen) {
           onSlashStatusOpen?.();
+        } else {
+          onSlashStatusClose?.();
         }
         setIsSlashStatusPanelOpen((current) => !current);
         return;
       }
       if (effect.kind === "showReviewPicker") {
         clearSlashCommandDraft();
-        setIsSlashStatusPanelOpen(false);
+        if (isSlashStatusPanelOpen) {
+          onSlashStatusClose?.();
+          setIsSlashStatusPanelOpen(false);
+        }
         setIsReviewPickerOpen(true);
         return;
       }
       if (effect.kind === "activateGoalMode") {
+        if (isSlashStatusPanelOpen) {
+          onSlashStatusClose?.();
+        }
         draftPromptRef.current = GOAL_MODE_SLASH_COMMAND;
         setPaletteDraftPrompt("");
         setIsSlashStatusPanelOpen(false);
@@ -255,11 +289,16 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
         );
         return;
       }
-      if (effect.kind === "togglePlanMode") {
+      if (effect.kind === "enablePlanMode") {
         clearSlashCommandDraft();
-        onSettingsChange({
-          planMode: !composerSettings.draftSettings.planMode
-        });
+        if (!settingsControlsDisabled) {
+          onSettingsChange({ planMode: true });
+        }
+        return;
+      }
+      if (effect.kind === "activateTuttiMode") {
+        clearSlashCommandDraft();
+        onTuttiModeActivate?.();
         return;
       }
       if (effect.kind === "enableBrowserUse") {
@@ -318,6 +357,8 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
       draftContent,
       isSlashStatusPanelOpen,
       onDraftContentChange,
+      onSlashStatusClose,
+      onTuttiModeActivate,
       onSlashStatusOpen,
       onSettingsChange,
       onSubmit,
@@ -342,6 +383,9 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
 
   const selectCapability = useCallback(
     (capability: AgentSlashCommandCapability): void => {
+      if (capabilityControlsReadOnly) {
+        return;
+      }
       const selectionEffect = resolveSlashCommandSelectionEffect({
         provider,
         policy: slashCommandPolicy,
@@ -352,15 +396,25 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
         executeSlashCommandEffect(selectionEffect);
       }
     },
-    [executeSlashCommandEffect, provider, slashCommandPolicy]
+    [
+      capabilityControlsReadOnly,
+      executeSlashCommandEffect,
+      provider,
+      slashCommandPolicy
+    ]
   );
 
   const selectCapabilitySettings = useCallback(
     (capability: AgentSlashCommandCapability): void => {
-      onCapabilitySettingsRequest?.(capability.capability);
+      if (capabilityControlsReadOnly) {
+        return;
+      }
+      if (capability.capability !== "tutti") {
+        onCapabilitySettingsRequest?.(capability.capability);
+      }
       setIsPaletteOpen(false);
     },
-    [onCapabilitySettingsRequest]
+    [capabilityControlsReadOnly, onCapabilitySettingsRequest]
   );
 
   const selectSkill = useCallback(
@@ -434,6 +488,12 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
         largeTexts: currentDraftLargeTexts
       });
       if (!agentComposerDraftHasContent(nextDraftContent)) {
+        // Empty-send override (e.g. plan review accept): only for a plain
+        // send, never for guidance, and only after the guards above agreed
+        // a submit is currently allowed at all.
+        if (options?.guidance !== true) {
+          onSubmitEmpty?.();
+        }
         return;
       }
       if (currentDraftImages.length > 0 && !promptImagesSupported) {
@@ -444,12 +504,23 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
         const slashCommandEffect = resolveSlashCommandSubmitEffect({
           browserSupported: Boolean(composerSettings.supportsBrowser),
           computerSupported: Boolean(composerSettings.supportsComputerUse),
+          tuttiSupported: tuttiModeSupported,
           commands: resolvedSlashCommands,
           draft: nextPrompt,
           provider,
           policy: slashCommandPolicy
         });
         if (slashCommandEffect) {
+          if (
+            capabilityControlsReadOnly &&
+            slashCommandEffect.kind === "submitPrompt" &&
+            (slashCommandEffect.requiredSettingsPatch?.browserUse !==
+              undefined ||
+              slashCommandEffect.requiredSettingsPatch?.computerUse !==
+                undefined)
+          ) {
+            return;
+          }
           executeSlashCommandEffect(slashCommandEffect);
           return;
         }
@@ -459,6 +530,32 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
       const submission = projectAgentComposerDraftSubmission({
         draft: nextDraftContent,
         skills: availableSkills
+      });
+      const fileReferences = agentComposerFileMentionReferences(nextPrompt);
+      const draftFileIds = new Set(currentDraftFiles.map((file) => file.id));
+      reportAgentComposerDiagnostic(agentActivityRuntime, {
+        details: {
+          contentBlockCount: submission.content.length,
+          contentFileBlockCount: submission.content.filter(
+            (block) => block.type === "file" && block.kind === "file"
+          ).length,
+          contentTypes: submission.content.map((block) => block.type),
+          draftFileCount: currentDraftFiles.length,
+          failedDraftFileCount: currentDraftFiles.filter((file) =>
+            Boolean(file.uploadError)
+          ).length,
+          fileMentionCount: fileReferences.length,
+          missingDraftFileCount: fileReferences.filter(
+            (reference) => !draftFileIds.has(reference.id)
+          ).length,
+          uploadingDraftFileCount: currentDraftFiles.filter(
+            (file) => file.uploading
+          ).length
+        },
+        event: "agent.gui.composer.file_preparation.submission_projection",
+        level: "info",
+        source: "agent-gui",
+        workspaceId
       });
       if (options?.guidance === true) {
         if (!onSubmitGuidance) {
@@ -518,6 +615,9 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
       if (event.key === "Tab" || event.key === "Enter") {
         event.preventDefault();
         const activeEntry = slashPaletteEntries[activeHighlight];
+        if (activeEntry?.type === "capability" && activeEntry.disabled) {
+          return true;
+        }
         if (activeEntry?.type === "command") {
           selectCommand(activeEntry.command);
         } else if (activeEntry?.type === "capability") {

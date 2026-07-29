@@ -6,12 +6,17 @@ import {
   type JSX,
   type ReactNode
 } from "react";
+import { Avatar } from "@tutti-os/ui-system";
 import { CheckIcon, CopyIcon } from "@tutti-os/ui-system/icons";
 import { formatAgentMessageTimestamp } from "../../../app/renderer/shell/utils/format";
 import { AgentPlanCard } from "./AgentPlanCard";
+import { AgentCollaborationRow } from "./AgentCollaborationRow";
 import { translate } from "../../../i18n/index";
 import { useOptionalAgentHostApi } from "../../../agentActivityHost";
-import type { WorkspaceLinkAction } from "../../../contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
+import {
+  AGENT_EXTERNAL_LINK_ACTION_SOURCE,
+  type WorkspaceLinkAction
+} from "../../../contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
 import {
   AgentMessageMarkdown,
   type AgentMessageMarkdownWorkspaceAppIcon
@@ -23,7 +28,12 @@ import type {
   AgentMessageContentVM,
   AgentMessageRowVM
 } from "../contracts/agentMessageRowVM";
+import type {
+  AgentConversationParticipantIdentity,
+  AgentConversationParticipantPresentation
+} from "../contracts/agentConversationParticipantPresentation";
 import { AgentMessageDetailsDisclosure } from "./AgentMessageDetailsDisclosure";
+import { AgentToolGroupRow } from "./AgentToolGroupRow";
 import {
   AgentVisibleErrorMessage,
   recoverVisibleErrorFromMessage
@@ -36,6 +46,8 @@ import { CanvasNodeGhostIconButton } from "../../../contexts/workspace/presentat
 import { AgentUserImageGrid } from "./AgentMessageImages";
 
 const MESSAGE_COPY_FEEDBACK_MS = 1400;
+const DEFAULT_TOOL_CALLS_LABEL = (count: number): string =>
+  `${count} tool calls`;
 const TRANSPORT_RETRY_PROGRESS_PATTERN =
   /\b(reconnect(?:ing)?(?:\s*(?:\.\.\.|…|[.。]+|:|-))?\s*\(?\d+\s*\/\s*\d+\)?)/i;
 // All system-notice banners use the light-red danger surface. Yellow/warning
@@ -50,15 +62,19 @@ interface AgentMessageBlockProps {
   row: AgentMessageRowVM;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   thinkingLabel: string;
+  toolCallsLabel?: (count: number) => string;
   onAuthLogin?: (provider?: string | null) => void;
   // The conversation's provider, so a failed message recovered as an env error
   // routes its wizard CTA to the right provider.
   provider?: string | null;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
-  previewMode?: boolean;
   showRawTimelineJson?: boolean;
   rawTimelineJsonLabel?: string;
+  participantPresentation?: AgentConversationParticipantPresentation;
+  showParticipantHeader?: boolean;
+  isActiveTurn?: boolean;
+  footerAction?: ReactNode;
 }
 
 export function AgentMessageBlock({
@@ -67,13 +83,17 @@ export function AgentMessageBlock({
   row,
   onLinkAction,
   thinkingLabel,
+  toolCallsLabel = DEFAULT_TOOL_CALLS_LABEL,
   onAuthLogin,
   provider,
   availableSkills,
   workspaceAppIcons,
-  previewMode = false,
   showRawTimelineJson = false,
-  rawTimelineJsonLabel = ""
+  rawTimelineJsonLabel = "",
+  participantPresentation,
+  showParticipantHeader = true,
+  isActiveTurn = false,
+  footerAction
 }: AgentMessageBlockProps): JSX.Element {
   "use memo";
   const agentHostApi = useOptionalAgentHostApi();
@@ -85,6 +105,20 @@ export function AgentMessageBlock({
         basePath,
         href,
         source: "agent-markdown"
+      });
+      if (action) {
+        onLinkAction?.(action);
+      }
+    },
+    [basePath, onLinkAction, workspaceRoot]
+  );
+  const handleExternalLinkClick = useCallback(
+    (href: string): void => {
+      const action = resolveAgentConversationLinkAction({
+        workspaceRoot,
+        basePath,
+        href,
+        source: AGENT_EXTERNAL_LINK_ACTION_SOURCE
       });
       if (action) {
         onLinkAction?.(action);
@@ -125,120 +159,282 @@ export function AgentMessageBlock({
           thinking={thinking}
           label={thinkingLabel}
           onLinkClick={handleLinkClick}
-          previewMode={previewMode}
           showRawTimelineJson={showRawTimelineJson}
           rawTimelineJsonLabel={rawTimelineJsonLabel}
         />
       ))
     : null;
 
+  const leadingToolContent =
+    !isUser && row.leadingToolRows && row.leadingToolRows.length > 0
+      ? row.leadingToolRows.map((toolRow) => (
+          <AgentToolGroupRow
+            key={toolRow.id}
+            row={toolRow}
+            label={toolCallsLabel}
+            thinkingLabel={thinkingLabel}
+            onLinkClick={handleLinkClick}
+            showRawTimelineJson={showRawTimelineJson}
+            rawTimelineJsonLabel={rawTimelineJsonLabel}
+          />
+        ))
+      : null;
+
+  const messageContent = row.messages.map((message, messageIndex) => {
+    const messageFooterAction =
+      messageIndex === row.messages.length - 1 ? footerAction : null;
+    const rawTimelineJson =
+      showRawTimelineJson &&
+      rawTimelineJsonLabel &&
+      (message.sourceTimelineItems?.length ?? 0) > 0 ? (
+        <RawTimelineJsonDisclosure
+          items={message.sourceTimelineItems}
+          label={rawTimelineJsonLabel}
+        />
+      ) : null;
+    // Recover a structured error card from a terminal message that the
+    // provider reported as plain text, including Claude SDK's completed
+    // standalone login notice.
+    const recoveredError =
+      !isUser && !message.visibleError
+        ? recoverVisibleErrorFromMessage(message, provider)
+        : null;
+    const content =
+      isUser && message.contentKind === "image-grid" ? (
+        <AgentUserImageGrid message={message} />
+      ) : isUser ? (
+        <AgentRichTextReadonly
+          value={message.body}
+          documentCacheKey={message.id}
+          className={`workspace-agents-status-panel__detail-user-message ${styles.userMessageBubble}`}
+          editorClassName="text-[inherit]"
+          onLinkClick={handleLinkClick}
+          availableSkills={availableSkills}
+          workspaceAppIcons={workspaceAppIcons}
+        />
+      ) : message.visibleError ? (
+        <AgentVisibleErrorMessage
+          message={message}
+          onAuthLogin={onAuthLogin}
+          onExternalLink={handleExternalLinkClick}
+        />
+      ) : recoveredError ? (
+        <AgentVisibleErrorMessage
+          message={recoveredError}
+          onAuthLogin={onAuthLogin}
+          onExternalLink={handleExternalLinkClick}
+        />
+      ) : message.systemNotice ? (
+        <AgentSystemNoticeMessage message={message} />
+      ) : message.contentKind === "collaboration" && message.collaboration ? (
+        <AgentCollaborationRow
+          collaboration={message.collaboration}
+          workspaceRoot={workspaceRoot}
+          basePath={basePath}
+          onLinkAction={onLinkAction}
+          workspaceAppIcons={workspaceAppIcons}
+        />
+      ) : message.contentKind === "plan" ? (
+        <AgentPlanCardMessage
+          message={message}
+          workspaceRoot={workspaceRoot}
+          basePath={basePath}
+          onLinkAction={onLinkAction}
+          workspaceAppIcons={workspaceAppIcons}
+        />
+      ) : (
+        <AgentMessageMarkdown
+          content={message.body}
+          documentCacheKey={message.id}
+          className={styles.assistantMarkdown}
+          onLinkAction={onLinkAction}
+          workspaceLinkContext={{
+            workspaceRoot,
+            basePath,
+            source: "agent-markdown"
+          }}
+          workspaceAppIcons={workspaceAppIcons}
+          enableImageZoom
+          streaming={
+            isActiveTurn ||
+            message.statusKind === "working" ||
+            message.statusKind === "waiting"
+          }
+        />
+      );
+
+    if (rawTimelineJson) {
+      return (
+        <AgentCopyableMessageGroup
+          key={message.id}
+          copyText={message.copyText ?? null}
+          occurredAtUnixMs={message.occurredAtUnixMs}
+          speaker={row.speaker}
+          onCopyMessageText={handleCopyMessageText}
+          footerAction={messageFooterAction}
+        >
+          {content}
+          {rawTimelineJson}
+        </AgentCopyableMessageGroup>
+      );
+    }
+
+    const copyText = message.copyText ?? null;
+    if (copyText) {
+      return (
+        <AgentCopyableMessageGroup
+          key={message.id}
+          copyText={copyText}
+          occurredAtUnixMs={message.occurredAtUnixMs}
+          speaker={row.speaker}
+          onCopyMessageText={handleCopyMessageText}
+          footerAction={messageFooterAction}
+        >
+          {content}
+        </AgentCopyableMessageGroup>
+      );
+    }
+
+    if (messageFooterAction) {
+      return (
+        <AgentCopyableMessageGroup
+          key={message.id}
+          copyText={null}
+          occurredAtUnixMs={message.occurredAtUnixMs}
+          speaker={row.speaker}
+          onCopyMessageText={handleCopyMessageText}
+          footerAction={messageFooterAction}
+        >
+          {content}
+        </AgentCopyableMessageGroup>
+      );
+    }
+
+    return <Fragment key={message.id}>{content}</Fragment>;
+  });
+  const enabledParticipantPresentation =
+    participantPresentation?.enabled === true ? participantPresentation : null;
+  const showParticipant =
+    enabledParticipantPresentation !== null &&
+    showParticipantHeader &&
+    row.messages.length > 0;
+
   return (
     <div
       className={isUser ? styles.userMessageFlow : styles.assistantMessageFlow}
+      data-agent-message-flow-thinking-first={
+        !isUser && row.thinking.length > 0 ? "true" : undefined
+      }
+      data-agent-message-flow-thinking-last={
+        !isUser && row.thinking.length > 0 && row.messages.length === 0
+          ? "true"
+          : undefined
+      }
+      data-agent-message-flow-participant={showParticipant ? "true" : undefined}
     >
+      {showParticipant ? (
+        <AgentConversationParticipantHeader
+          presentation={enabledParticipantPresentation}
+          speaker={row.speaker}
+        />
+      ) : null}
       {thinkingContent}
-      {row.messages.map((message) => {
-        const rawTimelineJson =
-          showRawTimelineJson &&
-          rawTimelineJsonLabel &&
-          (message.sourceTimelineItems?.length ?? 0) > 0 ? (
-            <RawTimelineJsonDisclosure
-              items={message.sourceTimelineItems}
-              label={rawTimelineJsonLabel}
-            />
-          ) : null;
-        // Recover a structured error card from a terminal message that the
-        // provider reported as plain text, including Claude SDK's completed
-        // standalone login notice.
-        const recoveredError =
-          !isUser && !message.visibleError
-            ? recoverVisibleErrorFromMessage(message, provider)
-            : null;
-        const content =
-          isUser && message.contentKind === "image-grid" ? (
-            <AgentUserImageGrid message={message} />
-          ) : isUser ? (
-            <AgentRichTextReadonly
-              value={message.body}
-              className={`workspace-agents-status-panel__detail-user-message ${styles.userMessageBubble}`}
-              editorClassName="text-[inherit]"
-              onLinkClick={handleLinkClick}
-              availableSkills={availableSkills}
-              workspaceAppIcons={workspaceAppIcons}
-            />
-          ) : message.visibleError ? (
-            <AgentVisibleErrorMessage
-              message={message}
-              onAuthLogin={onAuthLogin}
-              onExternalLink={handleLinkClick}
-            />
-          ) : recoveredError ? (
-            <AgentVisibleErrorMessage
-              message={recoveredError}
-              onAuthLogin={onAuthLogin}
-              onExternalLink={handleLinkClick}
-            />
-          ) : message.systemNotice ? (
-            <AgentSystemNoticeMessage message={message} />
-          ) : message.contentKind === "plan" ? (
-            <AgentPlanCardMessage
-              message={message}
-              workspaceRoot={workspaceRoot}
-              basePath={basePath}
-              onLinkAction={onLinkAction}
-              workspaceAppIcons={workspaceAppIcons}
-              previewMode={previewMode}
-            />
-          ) : (
-            <AgentMessageMarkdown
-              content={message.body}
-              className={styles.assistantMarkdown}
-              onLinkAction={onLinkAction}
-              workspaceLinkContext={{
-                workspaceRoot,
-                basePath,
-                source: "agent-markdown"
-              }}
-              workspaceAppIcons={workspaceAppIcons}
-              enableImageZoom
-              previewMode={previewMode}
-              streaming={message.statusKind === "working"}
-            />
-          );
-
-        if (rawTimelineJson) {
-          return (
-            <AgentCopyableMessageGroup
-              key={message.id}
-              copyText={message.copyText ?? null}
-              occurredAtUnixMs={message.occurredAtUnixMs}
-              speaker={row.speaker}
-              onCopyMessageText={handleCopyMessageText}
-            >
-              {content}
-              {rawTimelineJson}
-            </AgentCopyableMessageGroup>
-          );
-        }
-
-        const copyText = message.copyText ?? null;
-        if (copyText) {
-          return (
-            <AgentCopyableMessageGroup
-              key={message.id}
-              copyText={copyText}
-              occurredAtUnixMs={message.occurredAtUnixMs}
-              speaker={row.speaker}
-              onCopyMessageText={handleCopyMessageText}
-            >
-              {content}
-            </AgentCopyableMessageGroup>
-          );
-        }
-
-        return <Fragment key={message.id}>{content}</Fragment>;
-      })}
+      {leadingToolContent}
+      {showParticipant ? (
+        <div
+          className={styles.participantMessageLayout}
+          data-agent-message-speaker={row.speaker}
+        >
+          <div className={styles.participantMessageContent}>
+            {messageContent}
+          </div>
+        </div>
+      ) : (
+        messageContent
+      )}
     </div>
+  );
+}
+
+function AgentConversationParticipantHeader({
+  presentation,
+  speaker
+}: {
+  presentation: Extract<
+    AgentConversationParticipantPresentation,
+    { enabled: true }
+  >;
+  speaker: AgentMessageRowVM["speaker"];
+}): JSX.Element {
+  const participant: AgentConversationParticipantIdentity | null =
+    presentation.status === "loading"
+      ? null
+      : speaker === "user"
+        ? presentation.user
+        : presentation.agent;
+  const nameContent = participant ? (
+    <span className={styles.participantName}>{participant.name}</span>
+  ) : null;
+  const avatarContent = (
+    <AgentConversationParticipantAvatar
+      presentation={presentation}
+      speaker={speaker}
+    />
+  );
+  return (
+    <div
+      className={styles.participantMessageHeader}
+      data-agent-conversation-participant-header={speaker}
+    >
+      {speaker === "user" ? (
+        <>
+          {nameContent}
+          {avatarContent}
+        </>
+      ) : (
+        <>
+          {avatarContent}
+          {nameContent}
+        </>
+      )}
+    </div>
+  );
+}
+
+function AgentConversationParticipantAvatar({
+  presentation,
+  speaker
+}: {
+  presentation: Extract<
+    AgentConversationParticipantPresentation,
+    { enabled: true }
+  >;
+  speaker: AgentMessageRowVM["speaker"];
+}): JSX.Element {
+  if (presentation.status === "loading") {
+    return (
+      <Avatar
+        aria-hidden="true"
+        className={styles.participantAvatar}
+        data-agent-conversation-participant-avatar={speaker}
+        label=""
+        loading
+        size={28}
+      />
+    );
+  }
+
+  const participant: AgentConversationParticipantIdentity =
+    speaker === "user" ? presentation.user : presentation.agent;
+  return (
+    <Avatar
+      aria-label={participant.name}
+      className={styles.participantAvatar}
+      data-agent-conversation-participant-avatar={speaker}
+      label={participant.name}
+      size={28}
+      src={participant.avatarUrl}
+    />
   );
 }
 
@@ -247,21 +443,28 @@ function AgentCopyableMessageGroup({
   copyText,
   occurredAtUnixMs,
   onCopyMessageText,
-  speaker
+  speaker,
+  footerAction
 }: {
   children: ReactNode;
   copyText: string | null;
   occurredAtUnixMs: number | null;
   onCopyMessageText: (text: string) => Promise<boolean>;
   speaker: AgentMessageRowVM["speaker"];
+  footerAction?: ReactNode;
 }): JSX.Element {
   "use memo";
   const timestamp = formatAgentMessageTimestamp(occurredAtUnixMs);
+  const hasFooter = Boolean(timestamp || copyText || footerAction);
 
   return (
-    <div className={styles.messageGroup} data-agent-message-speaker={speaker}>
+    <div
+      className={styles.messageGroup}
+      data-agent-message-footer={hasFooter ? "true" : undefined}
+      data-agent-message-speaker={speaker}
+    >
       {children}
-      {timestamp || copyText ? (
+      {hasFooter ? (
         <div className={styles.messageFooter}>
           {timestamp ? (
             <span className={styles.messageTimestamp}>{timestamp}</span>
@@ -272,6 +475,7 @@ function AgentCopyableMessageGroup({
               onCopyMessageText={onCopyMessageText}
             />
           ) : null}
+          {footerAction}
         </div>
       ) : null}
     </div>
@@ -510,15 +714,13 @@ function AgentPlanCardMessage({
   workspaceRoot,
   basePath,
   onLinkAction,
-  workspaceAppIcons,
-  previewMode = false
+  workspaceAppIcons
 }: {
   message: AgentMessageContentVM;
   workspaceRoot: string | null;
   basePath: string;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
-  previewMode?: boolean;
 }): JSX.Element {
   "use memo";
   return (
@@ -534,7 +736,6 @@ function AgentPlanCardMessage({
         }}
         workspaceAppIcons={workspaceAppIcons}
         enableImageZoom
-        previewMode={previewMode}
       />
     </AgentPlanCard>
   );

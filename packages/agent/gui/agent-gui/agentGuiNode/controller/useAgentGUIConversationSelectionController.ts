@@ -1,15 +1,24 @@
 import {
   isPendingActivationViable,
+  selectEngineSession,
   selectEngineSessionDetailHydrated,
   selectLatestActivationForSession,
+  type AttentionReadRecord,
   type AgentSessionEngine,
   type PendingActivationIntentRecord
 } from "@tutti-os/agent-activity-core";
 import type { Dispatch, RefObject, SetStateAction } from "react";
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import { translate } from "../../../i18n/index";
 import type { AgentGUINodeData } from "../../../types";
+import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
+import type { AgentGUIConversationRailRevealReason } from "../model/agentGuiConversationRailViewState";
+import {
+  forgetAgentGUISessionMemories,
+  rememberAgentGUIActiveConversation
+} from "../model/agentGuiSessionNavigationMemory";
+import { AGENT_SESSION_NOT_FOUND_ERROR } from "./agentGuiController.errors";
 import {
   reportAgentGUIActiveConversationCleared,
   reportAgentGUIConversationListProjectionSkipped
@@ -20,13 +29,19 @@ import {
   type useAgentGUIActivation
 } from "./useAgentGUIActivation";
 import {
+  resolveConversationSummaryById,
   useAgentConversationSelection,
   type ConversationIntent
 } from "./useAgentConversationSelection";
 
 type ActivationRecord = Pick<
   PendingActivationIntentRecord,
-  "agentSessionId" | "errorMessage" | "mode" | "status"
+  | "agentSessionId"
+  | "agentTargetId"
+  | "errorMessage"
+  | "mode"
+  | "requestId"
+  | "status"
 >;
 
 interface UseAgentGUIConversationSelectionControllerInput {
@@ -34,12 +49,14 @@ interface UseAgentGUIConversationSelectionControllerInput {
   activeConversationId: string | null;
   activeConversationIdRef: RefObject<string | null>;
   activePendingActivation: ActivationRecord | null;
+  activeSessionReconcileErrorCode: string | null;
   agentActivityRuntime: AgentActivityRuntime;
   attentionReadRecordsBySessionId: Record<
     string,
-    { isUnread?: boolean } | undefined
+    AttentionReadRecord | undefined
   >;
   conversationIdsRef: RefObject<Set<string>>;
+  conversationsRef: RefObject<AgentGUIConversationSummary[]>;
   conversationListQuery: unknown | null;
   currentUserId: string | null | undefined;
   data: AgentGUINodeData;
@@ -48,15 +65,13 @@ interface UseAgentGUIConversationSelectionControllerInput {
   isComposerHomeRef: RefObject<boolean>;
   isMountedRef: RefObject<boolean>;
   loadDraftComposerOptions(): void;
+  loadSelectedConversationMessages(
+    agentSessionId: string,
+    options?: { force?: boolean }
+  ): Promise<void>;
   markSelectedConversationDetailPending(agentSessionId: string): string | null;
   onDataChangeRef: RefObject<
     (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
-  >;
-  reloadSelectedConversationRef: RefObject<
-    (
-      agentSessionId: string,
-      options: { reloadConversations: boolean; reloadDetail: boolean }
-    ) => void
   >;
   sessionEngine: AgentSessionEngine;
   setActiveConversationId: Dispatch<SetStateAction<string | null>>;
@@ -64,17 +79,51 @@ interface UseAgentGUIConversationSelectionControllerInput {
   setIntent: Dispatch<SetStateAction<ConversationIntent>>;
   setIsComposerHome: Dispatch<SetStateAction<boolean>>;
   setIsLoadingMessages: Dispatch<SetStateAction<boolean>>;
+  setActiveMessageSession(agentSessionId: string | null): void;
+  clearRailRevealRequest(): void;
+  requestRailReveal(
+    agentSessionId: string,
+    reason: AgentGUIConversationRailRevealReason
+  ): void;
+  transientConversation: AgentGUIConversationSummary | null;
   workspaceId: string;
 }
 
-export function clearFailedAgentGUIActivationSelection(
+export function clearRolledBackAgentGUISelection(
   current: AgentGUINodeData,
-  failedAgentSessionId: string
+  rolledBackAgentSessionId: string
 ): AgentGUINodeData {
-  return current.lastActiveAgentSessionId?.trim() ===
-    failedAgentSessionId.trim()
-    ? { ...current, lastActiveAgentSessionId: null }
+  const normalized = rolledBackAgentSessionId.trim();
+  return normalized
+    ? forgetAgentGUISessionMemories(current, new Set([normalized]))
     : current;
+}
+
+export function shouldMarkActiveConversationRead(input: {
+  activeConversationId: string;
+  previousActiveConversationId: string | null;
+  record: AttentionReadRecord | undefined;
+}): boolean {
+  const { activeConversationId, previousActiveConversationId, record } = input;
+  if (!record?.isUnread) return false;
+  return (
+    !record.markedUnreadByUser ||
+    previousActiveConversationId !== activeConversationId
+  );
+}
+
+export function shouldClearMissingAgentGUISelection(input: {
+  activeConversationId: string | null;
+  currentActiveConversationId: string | null;
+  reconcileErrorCode: string | null;
+}): boolean {
+  const activeConversationId = input.activeConversationId?.trim() ?? "";
+  return (
+    activeConversationId !== "" &&
+    activeConversationId ===
+      (input.currentActiveConversationId?.trim() ?? "") &&
+    input.reconcileErrorCode?.trim() === AGENT_SESSION_NOT_FOUND_ERROR
+  );
 }
 
 export function useAgentGUIConversationSelectionController(
@@ -85,9 +134,11 @@ export function useAgentGUIConversationSelectionController(
     activeConversationId,
     activeConversationIdRef,
     activePendingActivation,
+    activeSessionReconcileErrorCode,
     agentActivityRuntime,
     attentionReadRecordsBySessionId,
     conversationIdsRef,
+    conversationsRef,
     conversationListQuery,
     currentUserId,
     data,
@@ -96,57 +147,137 @@ export function useAgentGUIConversationSelectionController(
     isComposerHomeRef,
     isMountedRef,
     loadDraftComposerOptions,
+    loadSelectedConversationMessages,
     markSelectedConversationDetailPending,
     onDataChangeRef,
-    reloadSelectedConversationRef,
     sessionEngine,
     setActiveConversationId,
     setDetailError,
     setIntent,
     setIsComposerHome,
     setIsLoadingMessages,
+    setActiveMessageSession,
+    clearRailRevealRequest,
+    requestRailReveal,
+    transientConversation,
     workspaceId
   } = input;
+  const previousAttentionActiveConversationIdRef = useRef<string | null>(null);
+  const rolledBackSelectionSessionIdRef = useRef<string | null>(null);
+  const persistedConfirmedActivationRequestIdRef = useRef<string | null>(null);
+  const attentionHydrationRef = useRef<{
+    engine: AgentSessionEngine;
+    key: string;
+  } | null>(null);
 
   useEffect(() => {
     const userId = currentUserId?.trim() ?? "";
     const normalizedWorkspaceId = workspaceId.trim();
-    if (!normalizedWorkspaceId || !userId) return;
-    sessionEngine.dispatch({
-      type: "attention/hydrateRequested",
-      commandId: `attention-hydrate:${normalizedWorkspaceId}:${userId}`,
-      userId,
-      workspaceId: normalizedWorkspaceId
-    });
-  }, [currentUserId, sessionEngine, workspaceId]);
-
-  useEffect(() => {
-    if (
-      activePendingActivation?.mode === "new" &&
-      !isPendingActivationViable(activePendingActivation) &&
-      activeConversationIdRef.current === activePendingActivation.agentSessionId
+    const attentionHydrationKey =
+      normalizedWorkspaceId && userId
+        ? `${normalizedWorkspaceId}:${userId}`
+        : "";
+    if (!attentionHydrationKey) {
+      attentionHydrationRef.current = null;
+    } else if (
+      attentionHydrationRef.current?.engine !== sessionEngine ||
+      attentionHydrationRef.current.key !== attentionHydrationKey
     ) {
+      attentionHydrationRef.current = {
+        engine: sessionEngine,
+        key: attentionHydrationKey
+      };
+      sessionEngine.dispatch({
+        type: "attention/hydrateRequested",
+        commandId: `attention-hydrate:${attentionHydrationKey}`,
+        userId,
+        workspaceId: normalizedWorkspaceId
+      });
+    }
+    setActiveMessageSession(activeConversationId);
+    const rollbackSelection = (
+      agentSessionId: string,
+      errorMessage: string | null
+    ) => {
+      rolledBackSelectionSessionIdRef.current = agentSessionId;
+      setActiveMessageSession(null);
       activeConversationIdRef.current = null;
       setActiveConversationId(null);
       isComposerHomeRef.current = true;
       setIsComposerHome(true);
       setIntent({ tag: "home" });
+      clearRailRevealRequest();
       onDataChangeRef.current((current) =>
-        clearFailedAgentGUIActivationSelection(
-          current,
-          activePendingActivation.agentSessionId
-        )
+        clearRolledBackAgentGUISelection(current, agentSessionId)
       );
-      if (activePendingActivation.status === "failed") {
-        setDetailError(
-          activePendingActivation.errorMessage ||
-            translate("agentHost.agentGui.sessionActivationFailed")
-        );
-      }
+      if (errorMessage) setDetailError(errorMessage);
+      previousAttentionActiveConversationIdRef.current = null;
+    };
+
+    if (
+      activePendingActivation?.mode === "new" &&
+      !isPendingActivationViable(activePendingActivation) &&
+      activeConversationIdRef.current === activePendingActivation.agentSessionId
+    ) {
+      rollbackSelection(
+        activePendingActivation.agentSessionId,
+        activePendingActivation.status === "failed"
+          ? activePendingActivation.errorMessage ||
+              translate("agentHost.agentGui.sessionActivationFailed")
+          : null
+      );
       return;
     }
-    if (!activeConversationId) return;
-    if (attentionReadRecordsBySessionId[activeConversationId]?.isUnread) {
+    if (
+      shouldClearMissingAgentGUISelection({
+        activeConversationId,
+        currentActiveConversationId: activeConversationIdRef.current,
+        reconcileErrorCode: activeSessionReconcileErrorCode
+      })
+    ) {
+      rollbackSelection(
+        activeConversationId!.trim(),
+        translate("agentHost.agentGui.sessionNoLongerAvailable")
+      );
+      setIsLoadingMessages(false);
+      return;
+    }
+    if (
+      activePendingActivation?.mode === "new" &&
+      activePendingActivation.status === "confirmed" &&
+      activeConversationIdRef.current ===
+        activePendingActivation.agentSessionId &&
+      persistedConfirmedActivationRequestIdRef.current !==
+        activePendingActivation.requestId
+    ) {
+      persistedConfirmedActivationRequestIdRef.current =
+        activePendingActivation.requestId;
+      onDataChangeRef.current((current) =>
+        rememberAgentGUIActiveConversation(
+          current,
+          activePendingActivation.agentSessionId,
+          activePendingActivation.agentTargetId
+        )
+      );
+    }
+    if (!activeConversationId) {
+      previousAttentionActiveConversationIdRef.current = null;
+      return;
+    }
+    if (activeConversationIdRef.current !== activeConversationId) {
+      previousAttentionActiveConversationIdRef.current = null;
+      return;
+    }
+    const previousActiveConversationId =
+      previousAttentionActiveConversationIdRef.current;
+    previousAttentionActiveConversationIdRef.current = activeConversationId;
+    if (
+      shouldMarkActiveConversationRead({
+        activeConversationId,
+        previousActiveConversationId,
+        record: attentionReadRecordsBySessionId[activeConversationId]
+      })
+    ) {
       sessionEngine.dispatch({
         type: "attention/read",
         agentSessionId: activeConversationId,
@@ -156,13 +287,28 @@ export function useAgentGUIConversationSelectionController(
   }, [
     activeConversationId,
     activePendingActivation,
+    activeSessionReconcileErrorCode,
     attentionReadRecordsBySessionId,
+    clearRailRevealRequest,
     currentUserId,
-    sessionEngine
+    sessionEngine,
+    setActiveMessageSession,
+    workspaceId
   ]);
 
   useEffect(() => {
     const externalId = data.lastActiveAgentSessionId?.trim() ?? "";
+    const rolledBackSelectionSessionId =
+      rolledBackSelectionSessionIdRef.current;
+    if (rolledBackSelectionSessionId) {
+      if (externalId === rolledBackSelectionSessionId) {
+        // The Workbench state update that clears a failed or missing session
+        // can reach this component after the local rollback. Until that echo
+        // arrives, the old persisted id is not a new external selection.
+        return;
+      }
+      rolledBackSelectionSessionIdRef.current = null;
+    }
     if (externalId === (activeConversationIdRef.current ?? "")) return;
     if (!externalId) {
       const previous = activeConversationIdRef.current;
@@ -192,10 +338,12 @@ export function useAgentGUIConversationSelectionController(
       setIntent({ tag: "home" });
       isComposerHomeRef.current = true;
       setIsComposerHome(true);
+      setActiveMessageSession(null);
       activeConversationIdRef.current = null;
       setActiveConversationId(null);
       setIsLoadingMessages(false);
       setDetailError(null);
+      clearRailRevealRequest();
       loadDraftComposerOptions();
       return;
     }
@@ -217,6 +365,19 @@ export function useAgentGUIConversationSelectionController(
   }, [data.lastActiveAgentSessionId]);
   const selection = useAgentConversationSelection({
     activation: {
+      canReload: (agentSessionId) => {
+        const status =
+          selectLatestActivationForSession(
+            sessionEngine.getSnapshot(),
+            agentSessionId
+          )?.status ?? null;
+        return (
+          status !== "failed" &&
+          status !== "canceled" &&
+          status !== "requested" &&
+          status !== "uncertain"
+        );
+      },
       forget: activation.clearFailure,
       isPending: (agentSessionId) =>
         isPendingNewConversationActivation(
@@ -227,18 +388,39 @@ export function useAgentGUIConversationSelectionController(
         )
     },
     conversations: {
+      agentTargetIdFor: (agentSessionId) => {
+        const state = sessionEngine.getSnapshot();
+        const sessionAgentTargetId =
+          selectEngineSession(state, agentSessionId)?.agentTargetId?.trim() ??
+          "";
+        if (sessionAgentTargetId) return sessionAgentTargetId;
+        const activationAgentTargetId =
+          selectLatestActivationForSession(
+            state,
+            agentSessionId
+          )?.agentTargetId?.trim() ?? "";
+        if (activationAgentTargetId) return activationAgentTargetId;
+        return (
+          resolveConversationSummaryById(
+            conversationsRef.current,
+            agentSessionId,
+            transientConversation
+          )?.agentTargetId?.trim() || null
+        );
+      },
       contains: (agentSessionId) =>
         conversationIdsRef.current.has(agentSessionId)
     },
     detail: {
+      ensureHydrated: (agentSessionId) => {
+        void loadSelectedConversationMessages(agentSessionId);
+      },
       isHydrated: (agentSessionId) =>
         selectEngineSessionDetailHydrated(
           sessionEngine.getSnapshot(),
           agentSessionId
         ),
       markPending: markSelectedConversationDetailPending,
-      reload: (agentSessionId, options) =>
-        reloadSelectedConversationRef.current(agentSessionId, options),
       setLoading: setIsLoadingMessages
     },
     hasConversationListQuery: () => Boolean(conversationListQuery),
@@ -277,10 +459,15 @@ export function useAgentGUIConversationSelectionController(
       });
     },
     persistence: { update: (updater) => onDataChangeRef.current(updater) },
+    rail: {
+      clearRevealRequest: clearRailRevealRequest,
+      requestReveal: requestRailReveal
+    },
     selection: {
       clearDetailError: () => setDetailError(null),
       getActiveSessionId: () => activeConversationIdRef.current,
       setActiveSessionId: (agentSessionId) => {
+        setActiveMessageSession(agentSessionId);
         activeConversationIdRef.current = agentSessionId;
         setActiveConversationId(agentSessionId);
       },
@@ -292,5 +479,28 @@ export function useAgentGUIConversationSelectionController(
     }
   });
 
-  return selection;
+  const removeConversations = useCallback(
+    (conversationIds: readonly string[]) => {
+      const removedIds = new Set(
+        conversationIds
+          .map((agentSessionId) => agentSessionId.trim())
+          .filter(Boolean)
+      );
+      for (const agentSessionId of conversationIds) {
+        sessionEngine.dispatch({
+          type: "session/removed",
+          agentSessionId
+        });
+      }
+      if (removedIds.size === 0) return;
+      onDataChangeRef.current((current) => {
+        const next = forgetAgentGUISessionMemories(current, removedIds);
+        dataRef.current = next;
+        return next;
+      });
+    },
+    [dataRef, onDataChangeRef, sessionEngine]
+  );
+
+  return { ...selection, removeConversations };
 }

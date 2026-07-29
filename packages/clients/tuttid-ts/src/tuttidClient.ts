@@ -1,6 +1,9 @@
 import {
+  authenticateAgentTargetRuntime,
   addWorkspaceIssueContextRefs,
   addWorkspaceIssueTaskContextRefs,
+  cancelTuttiModeExecution,
+  cancelWorkspaceIssueExecution,
   checkUserProjectPath,
   completeWorkspaceIssueRun,
   completeWorkspaceIssueTaskRun,
@@ -11,10 +14,12 @@ import {
   createWorkspaceIssueTaskRun,
   createWorkspaceIssueTopic,
   createWorkspace,
+  createAgentQuickPrompt,
   createWorkspaceFile,
   createWorkspaceFileDirectory,
   createWorkspaceTerminal,
   deleteUserProject,
+  deleteAgentQuickPrompt,
   deleteWorkspaceIssue,
   deleteWorkspaceIssueTask,
   deleteWorkspaceIssueTopic,
@@ -24,10 +29,13 @@ import {
   getAccountLoginStatus,
   getAccountProductSummary,
   getAccountUserInfo,
+  getMobileRemotePairingChallenge,
   dismissAccountRegistrationCreditsReward,
   getHealth,
+  getAgentTargetSetup,
   getStartupWorkspace,
   listAgentTargets,
+  listAgentQuickPrompts,
   getWorkspaceFileTreeSnapshot,
   getWorkspace,
   getWorkspaceIssueDetail,
@@ -38,8 +46,12 @@ import {
   getWorkspaceTerminalSnapshot,
   getWorkspaceWorkbench,
   listCliCapabilities,
+  listMobileRemotePairings,
   listWorkspaceAppMentionCandidates,
   listUserProjects,
+  moveUserProject,
+  moveAgentQuickPrompt,
+  pinUserProject,
   listWorkspaceIssues,
   listWorkspaceIssueTopics,
   listWorkspaceIssueRuns,
@@ -49,13 +61,16 @@ import {
   listWorkspaceFileDirectory,
   listWorkspaceRecentFiles,
   listWorkspaces,
+  installAgentTargetRuntime,
   logoutAccount,
+  confirmMobileRemotePairing,
   copyWorkspaceFileEntry,
   moveWorkspaceFileEntry,
   renameWorkspaceFileEntry,
   openWorkspace,
   preflightUploadWorkspaceFiles,
   putDesktopPreferences,
+  purgeDeletedAgentConversations,
   putWorkspaceWorkbench,
   checkWorkspaceTerminalCloseGuard,
   readWorkspaceFilePreview,
@@ -66,14 +81,17 @@ import {
   searchWorkspaceIssueReferences,
   setSystemAgentTargetEnabled,
   startAccountLogin,
+  startMobileRemotePairing,
   terminateWorkspaceTerminal,
   trackEvents,
   updateWorkspaceIssue,
   updateWorkspaceIssueTask,
   updateWorkspaceIssueTopic,
+  updateAgentQuickPrompt,
   updateWorkspace,
   uploadWorkspaceFiles,
   useUserProject,
+  revokeMobileRemotePairing,
   writeWorkspaceFileText
 } from "./generated/index.ts";
 import { createClient } from "./generated/client/index.ts";
@@ -81,13 +99,19 @@ import { createAgentProvidersClient } from "./agentProvidersClient.ts";
 import { unwrapAccepted, unwrapData } from "./tuttidClientResponse.ts";
 import { createWorkspaceAppsClient } from "./workspaceAppsClient.ts";
 import { createWorkspaceAgentClient } from "./workspaceAgentClient.ts";
+import { createWorkspaceAgentConfigurationClient } from "./workspaceAgentConfigurationClient.ts";
+import { createTuttiModeActivationClient } from "./tuttiModeActivationClient.ts";
+import { createWorkspaceIssueOrchestrationClient } from "./workspaceIssueOrchestrationClient.ts";
+import { createWorkspaceWorkflowClient } from "./workspaceWorkflowClient.ts";
 import type {
   CreateTuttidClientInput,
+  MobileRemoteAccessClient,
   TuttidClient
 } from "./tuttidClientTypes.ts";
 
 export type {
   CreateTuttidClientInput,
+  MobileRemoteAccessClient,
   TuttidClient,
   TuttidRequestOptions,
   TuttidTrackEvent,
@@ -98,7 +122,7 @@ const defaultBaseUrl = "http://tuttid.local";
 
 export function createTuttidClient(
   input: CreateTuttidClientInput
-): TuttidClient {
+): TuttidClient & MobileRemoteAccessClient {
   const client = createClient({
     auth: input.auth,
     baseUrl: input.baseUrl ?? defaultBaseUrl,
@@ -106,6 +130,44 @@ export function createTuttidClient(
   });
 
   return {
+    ...createWorkspaceAgentConfigurationClient(client),
+    ...createWorkspaceIssueOrchestrationClient(client),
+    async listAgentQuickPrompts() {
+      return unwrapData(
+        await listAgentQuickPrompts({ client }),
+        "Agent quick prompts request failed."
+      );
+    },
+    async createAgentQuickPrompt(request) {
+      return unwrapData(
+        await createAgentQuickPrompt({ client, body: request }),
+        "Create Agent quick prompt request failed."
+      ).prompt;
+    },
+    async updateAgentQuickPrompt(promptID, request) {
+      return unwrapData(
+        await updateAgentQuickPrompt({
+          client,
+          body: request,
+          path: { promptId: promptID }
+        }),
+        "Update Agent quick prompt request failed."
+      ).prompt;
+    },
+    async deleteAgentQuickPrompt(promptID, request) {
+      const response = await deleteAgentQuickPrompt({
+        client,
+        body: request,
+        path: { promptId: promptID }
+      });
+      unwrapAccepted(response, "Delete Agent quick prompt request failed.");
+    },
+    async moveAgentQuickPrompt(request) {
+      return unwrapData(
+        await moveAgentQuickPrompt({ client, body: request }),
+        "Move Agent quick prompt request failed."
+      );
+    },
     async listAgentTargets() {
       return unwrapData(
         await listAgentTargets({ client }),
@@ -120,6 +182,35 @@ export function createTuttidClient(
           path: { agentTargetID }
         }),
         "Agent target visibility update failed."
+      );
+    },
+    async getAgentTargetSetup(workspaceID, agentTargetID) {
+      return unwrapData(
+        await getAgentTargetSetup({
+          client,
+          path: { workspaceID, agentTargetID }
+        }),
+        "Agent target setup request failed."
+      );
+    },
+    async installAgentTargetRuntime(workspaceID, agentTargetID, request) {
+      return unwrapData(
+        await installAgentTargetRuntime({
+          client,
+          path: { workspaceID, agentTargetID },
+          body: request
+        }),
+        "Agent target runtime install request failed."
+      );
+    },
+    async authenticateAgentTargetRuntime(workspaceID, agentTargetID, request) {
+      return unwrapData(
+        await authenticateAgentTargetRuntime({
+          client,
+          path: { workspaceID, agentTargetID },
+          body: request
+        }),
+        "Agent target runtime authentication request failed."
       );
     },
     async startAccountLogin() {
@@ -154,6 +245,45 @@ export function createTuttidClient(
     async logoutAccount() {
       const response = await logoutAccount({ client });
       unwrapAccepted(response, "Account logout request failed.");
+    },
+    async startMobileRemotePairing() {
+      return unwrapData(
+        await startMobileRemotePairing({ client }),
+        "Start mobile remote pairing request failed."
+      );
+    },
+    async getMobileRemotePairingChallenge(challengeID) {
+      return unwrapData(
+        await getMobileRemotePairingChallenge({
+          client,
+          path: { challengeID }
+        }),
+        "Mobile remote pairing challenge request failed."
+      );
+    },
+    async confirmMobileRemotePairing(challengeID) {
+      return unwrapData(
+        await confirmMobileRemotePairing({
+          client,
+          path: { challengeID }
+        }),
+        "Confirm mobile remote pairing request failed."
+      );
+    },
+    async listMobileRemotePairings() {
+      return unwrapData(
+        await listMobileRemotePairings({ client }),
+        "List mobile remote pairings request failed."
+      );
+    },
+    async revokeMobileRemotePairing(pairingID) {
+      return unwrapData(
+        await revokeMobileRemotePairing({
+          client,
+          path: { pairingID }
+        }),
+        "Revoke mobile remote pairing request failed."
+      ).pairing;
     },
     async listCliCapabilities(workspaceID, options) {
       const response = await listCliCapabilities({
@@ -420,6 +550,12 @@ export function createTuttidClient(
         "Desktop preferences request failed."
       );
     },
+    async purgeDeletedAgentConversations() {
+      return unwrapData(
+        await purgeDeletedAgentConversations({ client }),
+        "Deleted Agent conversation purge request failed."
+      );
+    },
     async getHealth() {
       return unwrapData(
         await getHealth({ client }),
@@ -596,6 +732,20 @@ export function createTuttidClient(
       const response = await listUserProjects({ client });
       return unwrapData(response, "List user projects failed.");
     },
+    async moveUserProject(request) {
+      const response = await moveUserProject({
+        client,
+        body: request
+      });
+      return unwrapData(response, "Move user project failed.");
+    },
+    async pinUserProject(request) {
+      const response = await pinUserProject({
+        client,
+        body: request
+      });
+      return unwrapData(response, "Pin user project failed.");
+    },
     async deleteUserProject(request) {
       const response = await deleteUserProject({
         client,
@@ -671,6 +821,26 @@ export function createTuttidClient(
       });
       return unwrapData(response, "Update workspace issue task request failed.")
         .task;
+    },
+    async cancelWorkspaceIssueExecution(workspaceID, issueID) {
+      const response = await cancelWorkspaceIssueExecution({
+        client,
+        path: { issueID, workspaceID }
+      });
+      return unwrapData(
+        response,
+        "Cancel workspace issue execution request failed."
+      );
+    },
+    async cancelTuttiModeExecution(workspaceID, issueID) {
+      const response = await cancelTuttiModeExecution({
+        client,
+        path: { issueID, workspaceID }
+      });
+      return unwrapData(
+        response,
+        "Cancel Tutti mode execution request failed."
+      );
     },
     async putWorkspaceWorkbench(workspaceID, snapshot) {
       const response = await putWorkspaceWorkbench({
@@ -763,6 +933,8 @@ export function createTuttidClient(
     },
     ...createAgentProvidersClient(client),
     ...createWorkspaceAgentClient(client),
-    ...createWorkspaceAppsClient(client)
+    ...createWorkspaceAppsClient(client),
+    ...createTuttiModeActivationClient(client),
+    ...createWorkspaceWorkflowClient(client)
   };
 }

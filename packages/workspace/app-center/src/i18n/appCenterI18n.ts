@@ -37,6 +37,7 @@ export const appCenterEn = {
     openAppPackageFolder: "Open app folder",
     modifyAppWithAgent: "Edit with agent",
     publishAppUpdate: "Republish",
+    saveAppUpdate: "Save update",
     refreshCatalog: "Refresh catalog",
     reloadLocalApp: "Reload",
     replaceIcon: "Replace icon",
@@ -69,6 +70,7 @@ export const appCenterEn = {
       delete: "Delete",
       fix: "Fix",
       publish: "Add to my apps",
+      saveLocal: "Save to my apps",
       validate: "Validate"
     },
     labels: {
@@ -174,6 +176,7 @@ export const appCenterEn = {
       generating: "Generating",
       preparing: "Preparing",
       published: "Published",
+      saved: "Saved",
       queued: "Queued",
       ready: "Completed",
       validating: "Validating"
@@ -326,6 +329,7 @@ export const appCenterZhCN = {
     openAppPackageFolder: "打开应用目录",
     modifyAppWithAgent: "用智能体编辑",
     publishAppUpdate: "重新发布",
+    saveAppUpdate: "保存更新",
     refreshCatalog: "刷新目录",
     reloadLocalApp: "重新加载",
     replaceIcon: "替换图标",
@@ -356,6 +360,7 @@ export const appCenterZhCN = {
       delete: "删除",
       fix: "修复",
       publish: "添加至我的应用",
+      saveLocal: "保存到我的应用",
       validate: "验证"
     },
     labels: {
@@ -459,6 +464,7 @@ export const appCenterZhCN = {
       generating: "生成中",
       preparing: "准备中",
       published: "已发布",
+      saved: "已保存",
       queued: "排队中",
       ready: "已完成",
       validating: "验证中"

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 const (
@@ -287,7 +288,7 @@ func turnPatchSummary(turn *agentsessionstore.WorkspaceAgentTurnPatch) string {
 	return strings.Join(parts, "/")
 }
 
-func turnLifecycleSummary(lifecycle *agentsessionstore.WorkspaceAgentTurnLifecycle) string {
+func turnLifecycleSummary(lifecycle *canonical.WorkspaceAgentTurnLifecycle) string {
 	if lifecycle == nil {
 		return ""
 	}
@@ -304,7 +305,7 @@ func turnLifecycleSummary(lifecycle *agentsessionstore.WorkspaceAgentTurnLifecyc
 	return strings.Join(parts, "/")
 }
 
-func rootProviderTurnSummary(turn *agentsessionstore.WorkspaceAgentRootProviderTurnTransition) string {
+func rootProviderTurnSummary(turn *canonical.WorkspaceAgentRootProviderTurnTransition) string {
 	if turn == nil {
 		return ""
 	}

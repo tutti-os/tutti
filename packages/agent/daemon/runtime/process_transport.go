@@ -18,15 +18,34 @@ import (
 
 type localProcessTransport struct{}
 
+// RunVerifiedExecutable starts a short-lived managed-runtime command from the
+// same verified descriptor or immutable snapshot used by the ACP transport.
+// Keeping preparation and process start in this package prevents callers from
+// reintroducing a pathname gap between identity verification and execution.
+func RunVerifiedExecutable(ctx context.Context, path string, args []string, identity *ExecutableIdentity) ([]byte, error) {
+	if identity == nil {
+		return nil, errors.New("verified process executable identity is required")
+	}
+	preparedExecutable, err := prepareProcessExecutable(path, identity)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = preparedExecutable.Close() }()
+	cmd := exec.CommandContext(ctx, preparedExecutable.path, args...)
+	if preparedExecutable.file != nil {
+		cmd.ExtraFiles = []*os.File{preparedExecutable.file}
+	}
+	return cmd.CombinedOutput()
+}
+
 type localProcessConnection struct {
-	cancel  context.CancelFunc
-	cmd     *exec.Cmd
-	done    chan struct{}
-	closing chan struct{}
-	frames  chan ProcessFrame
-	stdin   io.WriteCloser
-	stdout  io.Closer
-	stderr  io.Closer
+	cancel             context.CancelFunc
+	cmd                *exec.Cmd
+	preparedExecutable *preparedProcessExecutable
+	done               chan struct{}
+	closing            chan struct{}
+	frames             chan ProcessFrame
+	stdin              io.WriteCloser
 
 	closeOnce sync.Once
 	sendMu    sync.Mutex
@@ -52,7 +71,21 @@ func (localProcessTransport) Start(ctx context.Context, spec ProcessSpec) (Proce
 	env := resolver.Env(spec.Env)
 	resolvedCommand := resolver.Resolve(spec.Command[0], env)
 	logProcessStartEnvDiagnostics(spec, env, resolvedCommand)
-	cmd := exec.CommandContext(processCtx, resolvedCommand, spec.Command[1:]...)
+	preparedExecutable, err := prepareProcessExecutable(resolvedCommand, spec.ExecutableIdentity)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	started := false
+	defer func() {
+		if !started {
+			_ = preparedExecutable.Close()
+		}
+	}()
+	cmd := exec.CommandContext(processCtx, preparedExecutable.path, spec.Command[1:]...)
+	if preparedExecutable.file != nil {
+		cmd.ExtraFiles = []*os.File{preparedExecutable.file}
+	}
 	cmd.Env = env
 	if cwd := strings.TrimSpace(spec.CWD); cwd != "" {
 		cmd.Dir = cwd
@@ -63,21 +96,6 @@ func (localProcessTransport) Start(ctx context.Context, spec ProcessSpec) (Proce
 		cancel()
 		return nil, err
 	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		cancel()
-		return nil, err
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		cancel()
-		return nil, err
-	}
-	if err := cmd.Start(); err != nil {
-		cancel()
-		return nil, err
-	}
-
 	conn := &localProcessConnection{
 		cancel:  cancel,
 		cmd:     cmd,
@@ -85,14 +103,23 @@ func (localProcessTransport) Start(ctx context.Context, spec ProcessSpec) (Proce
 		closing: make(chan struct{}),
 		frames:  make(chan ProcessFrame, 16),
 		stdin:   stdin,
-		stdout:  stdout,
-		stderr:  stderr,
 	}
-	var readers sync.WaitGroup
-	readers.Add(2)
-	go conn.readPipe(&readers, stdout, true)
-	go conn.readPipe(&readers, stderr, false)
-	go conn.wait(&readers)
+	// Let os/exec own the stdout/stderr copy goroutines. Wait then guarantees
+	// that both writers have consumed their final bytes before it returns,
+	// without making process reaping depend on pipe EOF. In particular, this
+	// preserves startup-time streaming for long-lived sidecars while keeping a
+	// short-lived process's final output ordered before its exit frame.
+	cmd.Stdout = processFrameWriter{conn: conn, stdout: true}
+	cmd.Stderr = processFrameWriter{conn: conn}
+	if err := cmd.Start(); err != nil {
+		_ = stdin.Close()
+		cancel()
+		return nil, err
+	}
+	conn.preparedExecutable = &preparedExecutable
+	started = true
+
+	go conn.wait()
 	return conn, nil
 }
 
@@ -342,34 +369,38 @@ func (c *localProcessConnection) waitDone(timeout time.Duration) bool {
 	}
 }
 
-func (c *localProcessConnection) readPipe(readers *sync.WaitGroup, reader io.Reader, stdout bool) {
-	defer readers.Done()
-	buf := make([]byte, 4096)
-	for {
-		n, err := reader.Read(buf)
-		if n > 0 {
-			chunk := append([]byte(nil), buf[:n]...)
-			frame := ProcessFrame{}
-			if stdout {
-				frame.Stdout = chunk
-			} else {
-				frame.Stderr = chunk
-			}
-			select {
-			case c.frames <- frame:
-			case <-c.closing:
-				return
-			}
-		}
-		if err != nil {
-			return
-		}
+type processFrameWriter struct {
+	conn   *localProcessConnection
+	stdout bool
+}
+
+func (w processFrameWriter) Write(data []byte) (int, error) {
+	if len(data) == 0 {
+		return 0, nil
+	}
+	chunk := append([]byte(nil), data...)
+	frame := ProcessFrame{}
+	if w.stdout {
+		frame.Stdout = chunk
+	} else {
+		frame.Stderr = chunk
+	}
+	select {
+	case w.conn.frames <- frame:
+		return len(data), nil
+	case <-w.conn.closing:
+		// Closing intentionally discards unread diagnostics. Report the write as
+		// consumed so an orderly shutdown is not rewritten as a copy failure.
+		return len(data), nil
 	}
 }
 
-func (c *localProcessConnection) wait(readers *sync.WaitGroup) {
+func (c *localProcessConnection) wait() {
 	err := c.cmd.Wait()
-	readers.Wait()
+	if c.preparedExecutable != nil {
+		_ = c.preparedExecutable.Close()
+		c.preparedExecutable = nil
+	}
 	exitCode := 0
 	if err != nil {
 		exitCode = 1
@@ -378,7 +409,10 @@ func (c *localProcessConnection) wait(readers *sync.WaitGroup) {
 			exitCode = exitErr.ExitCode()
 		}
 	}
-	c.frames <- ProcessFrame{ExitCode: &exitCode}
+	select {
+	case c.frames <- ProcessFrame{ExitCode: &exitCode}:
+	case <-c.closing:
+	}
 	close(c.frames)
 	close(c.done)
 }

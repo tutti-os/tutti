@@ -233,4 +233,57 @@ describe("CollapsibleReveal", () => {
 
     expect(reveal).toHaveStyle({ height: "84px" });
   });
+
+  it("reports a collapsing height transition once when content unmounts", () => {
+    const onHeightTransitionEnd = vi.fn();
+    const { rerender } = render(
+      <CollapsibleReveal expanded onHeightTransitionEnd={onHeightTransitionEnd}>
+        <div>detail content</div>
+      </CollapsibleReveal>
+    );
+    const reveal = screen
+      .getByText("detail content")
+      .closest(".agent-collapsible-reveal");
+
+    rerender(
+      <CollapsibleReveal
+        expanded={false}
+        onHeightTransitionEnd={onHeightTransitionEnd}
+      >
+        <div>detail content</div>
+      </CollapsibleReveal>
+    );
+    fireEvent.transitionEnd(reveal as HTMLElement, { propertyName: "height" });
+
+    expect(onHeightTransitionEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports an expansion canceled before its mount frame", () => {
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 1);
+    const onHeightTransitionEnd = vi.fn();
+    const { rerender } = render(
+      <CollapsibleReveal
+        expanded={false}
+        onHeightTransitionEnd={onHeightTransitionEnd}
+      >
+        <div>detail content</div>
+      </CollapsibleReveal>
+    );
+
+    rerender(
+      <CollapsibleReveal expanded onHeightTransitionEnd={onHeightTransitionEnd}>
+        <div>detail content</div>
+      </CollapsibleReveal>
+    );
+    rerender(
+      <CollapsibleReveal
+        expanded={false}
+        onHeightTransitionEnd={onHeightTransitionEnd}
+      >
+        <div>detail content</div>
+      </CollapsibleReveal>
+    );
+
+    expect(onHeightTransitionEnd).toHaveBeenCalledTimes(1);
+  });
 });

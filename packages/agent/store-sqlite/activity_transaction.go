@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	agentactivityprojection "github.com/tutti-os/tutti/packages/agent/daemon/activity/projection"
+	agentactivityprojection "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 func (s *Store) upsertAgentSession(
@@ -28,10 +28,17 @@ func (s *Store) upsertAgentSession(
 	if err != nil {
 		return false, false, 0, Session{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	mutations := []TransactionMutation{}
+	if accepted {
+		mutations = append(mutations, transactionMutation(input.WorkspaceID, input.AgentSessionID, MutationEntitySession, input.AgentSessionID, "upsert", session.UpdatedAtUnixMS))
+	}
+	delta, err := s.commitTransaction(ctx, tx, input.WorkspaceID, mutations)
+	if err != nil {
 		return false, false, 0, Session{}, fmt.Errorf("commit workspace agent session state report: %w", err)
 	}
 	committed = true
+	session.CommitTransactionID = delta.TransactionID
+	session.CommitDelta = delta
 	return accepted, stateApplied, lastEventUnixMS, session, nil
 }
 
@@ -48,9 +55,27 @@ func (s *Store) upsertAgentSessionTx(
 	}
 	input.WorkspaceID = workspaceID
 	input.AgentSessionID = agentSessionID
+	if err := requireSessionForkSourceWritableTx(ctx, tx, workspaceID, agentSessionID); err != nil {
+		return false, false, 0, Session{}, err
+	}
 	existing, hasExisting, err := getAgentSessionForUpdate(ctx, tx, workspaceID, agentSessionID)
 	if err != nil {
 		return false, false, 0, Session{}, err
+	}
+	if !hasExisting {
+		var reserved int
+		if err := tx.QueryRowContext(ctx, `
+SELECT EXISTS(
+  SELECT 1
+  FROM workspace_agent_session_fork_target_reservations
+  WHERE workspace_id = ? AND target_agent_session_id = ?
+)
+`, workspaceID, agentSessionID).Scan(&reserved); err != nil {
+			return false, false, 0, Session{}, fmt.Errorf("read workspace agent session fork target reservation: %w", err)
+		}
+		if reserved != 0 {
+			return false, false, 0, Session{}, ErrSessionForkTargetReserved
+		}
 	}
 	if err := prepareSessionRelation(&input, existing, hasExisting); err != nil {
 		return false, false, 0, Session{}, err
@@ -112,6 +137,8 @@ func (s *Store) upsertAgentSessionTx(
 				agentSessionID,
 			)
 		}
+		dto.RailSectionKind = existingRail.Section.Kind
+		dto.RailProjectPath = existingRail.Section.ProjectPath
 		dto.RailSectionKey = existingRail.Section.Key
 		return false, false, projected.LastEventUnixMS, dto, nil
 	}
@@ -140,6 +167,7 @@ func (s *Store) upsertAgentSessionTx(
 		session.CWD,
 		session.RuntimeContext,
 		input.ImportProjectPath,
+		input.RailPlacement,
 	)
 	if err != nil {
 		return false, false, 0, Session{}, err
@@ -198,6 +226,8 @@ WHERE workspace_agent_sessions.deleted_at_unix_ms = 0
 	if err != nil {
 		return false, false, 0, Session{}, err
 	}
+	dto.RailSectionKind = railSection.Kind
+	dto.RailProjectPath = railSection.ProjectPath
 	dto.RailSectionKey = railSection.Key
 	return accepted, sessionStateReportApplied(input, projected.Session), projected.LastEventUnixMS, dto, nil
 }

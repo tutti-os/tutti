@@ -1,24 +1,23 @@
 import { createElement, useEffect, useRef, type ReactNode } from "react";
 import {
   type BrowserNodeNavigationPolicy,
-  type BrowserNodeRuntimeState,
   type BrowserNodeFeature
 } from "@tutti-os/browser-node";
 import { BrowserNode } from "@tutti-os/browser-node/react";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import {
-  ArrowLeftIcon,
+  AddIcon,
   Button,
+  CloseIcon,
   NavApplicationsLinedIcon,
-  Spinner
+  Spinner,
+  cn
 } from "@tutti-os/ui-system";
 import { resolveWorkspaceAppStatusPresentation } from "@tutti-os/workspace-app-center/core";
 import { createAppCenterI18nRuntime } from "@tutti-os/workspace-app-center/i18n";
 import type {
   WorkbenchContribution,
   WorkbenchHostDockEntry,
-  WorkbenchHostExternalStateLookupInput,
-  WorkbenchHostExternalStateSource,
   WorkbenchHostNodeBodyContext,
   WorkbenchHostNodeHeaderContext,
   WorkbenchHostNodeDefinition
@@ -27,11 +26,17 @@ import { createWorkspaceWorkbenchDesktopI18nRuntime } from "@shared/i18n";
 import { WorkspaceWorkbenchTrafficLights } from "@renderer/features/workspace-workbench/ui/WorkspaceWorkbenchTrafficLights";
 import type { IReporterService } from "@renderer/features/analytics";
 import type { IWorkspaceAppCenterService } from "../workspaceAppCenterService.interface";
+import {
+  closeWorkspaceAppTab,
+  readWorkspaceAppTabIds,
+  selectWorkspaceAppTab
+} from "../workspaceAppCenterTabs.ts";
 import type {
   WorkspaceAppCenterApp,
   WorkspaceAppCenterViewState
 } from "@tutti-os/workspace-app-center";
 import { createWorkspaceAppCenterOpenedLease } from "./workspaceAppCenterAnalytics.ts";
+import { createWorkspaceAppWebviewExternalStateSource } from "./workspaceAppCenterExternalState.ts";
 import {
   WorkspaceAppCenterInlineAppBody,
   workspaceAppBrowserPartitionPrefix
@@ -56,7 +61,6 @@ import {
 import {
   findWorkspaceApp,
   readWorkspaceAppIdFromInstanceId,
-  readWorkspaceAppIdFromNodeId,
   resolveWorkspaceAppCenterLaunchRequest,
   resolveWorkspaceAppDisplayName,
   workspaceAppCenterNodeID,
@@ -318,45 +322,191 @@ function WorkspaceAppCenterWorkbenchHeader({
     context.externalNodeState ??
     defaultWorkspaceAppCenterViewState;
   const openAppId = viewState.openAppId?.trim() ?? "";
+  const openApps = readWorkspaceAppTabIds(
+    viewState as WorkspaceAppCenterViewState
+  )
+    .map((appId) => findWorkspaceApp(appCenterService, appId))
+    .filter((app): app is WorkspaceAppCenterApp => app !== null);
+  const {
+    onDoubleClick: onDragDoubleClick,
+    onPointerDown: onDragPointerDown,
+    ...restDragHandleProps
+  } = context.dragHandleProps;
+
+  const updateSelectedTab = (appId: string | null): void => {
+    appCenterService.setViewState({
+      state: selectWorkspaceAppTab(
+        appCenterService.getViewState(workspaceId, context.externalNodeState),
+        appId
+      ),
+      workspaceId
+    });
+  };
+
+  const closeAppTab = (appId: string): void => {
+    appCenterService.setViewState({
+      state: closeWorkspaceAppTab(
+        appCenterService.getViewState(workspaceId, context.externalNodeState),
+        appId
+      ),
+      workspaceId
+    });
+  };
 
   return (
-    <div className="flex h-full min-h-0 items-center gap-3 bg-[var(--background-panel)] px-3 pl-4">
+    <div
+      {...restDragHandleProps}
+      className="flex h-full min-h-0 items-center gap-1.5 bg-[var(--background-panel)] px-2 pl-4 cursor-grab active:cursor-grabbing"
+      data-workspace-app-center-tab-strip="true"
+      onPointerDown={(event) => {
+        if (
+          event.target instanceof Element &&
+          event.target.closest(".nodrag")
+        ) {
+          return;
+        }
+        onDragPointerDown?.(event);
+      }}
+      onDoubleClick={(event) => {
+        if (
+          event.target instanceof Element &&
+          event.target.closest(".nodrag")
+        ) {
+          return;
+        }
+        event.stopPropagation();
+        onDragDoubleClick?.(event);
+      }}
+    >
       <WorkspaceWorkbenchTrafficLights
         className="nodrag"
         displayMode={context.displayMode}
         i18n={appCenterI18n}
         windowActions={context.windowActions}
       />
-      {openAppId ? (
-        <Button
-          className="nodrag shrink-0 gap-1 px-2"
-          size="sm"
-          type="button"
-          variant="ghost"
-          onClick={() => {
-            appCenterService.getViewState(
-              workspaceId,
-              context.externalNodeState
-            );
-            appCenterService.setViewState({
-              state: { openAppId: null },
-              workspaceId
-            });
-          }}
-        >
-          <ArrowLeftIcon aria-hidden size={16} />
-          {i18n.t("workspace.appCenter.backToApps")}
-        </Button>
-      ) : null}
-      <div
-        {...context.dragHandleProps}
-        className="flex h-full min-w-0 flex-1 cursor-grab items-center gap-2 active:cursor-grabbing"
-      >
+      {openApps.length > 0 ? (
+        <>
+          <div
+            aria-label={i18n.t("workspace.appCenter.tabs.label")}
+            className="nodrag flex min-w-0 max-w-[70%] items-center gap-1 overflow-x-auto"
+            role="tablist"
+          >
+            <WorkspaceAppCenterTab
+              active={!openAppId}
+              icon={
+                <NavApplicationsLinedIcon aria-hidden className="size-3.5" />
+              }
+              tabId="catalog"
+              title={context.node.title}
+              onSelect={() => updateSelectedTab(null)}
+            />
+            {openApps.map((app) => (
+              <WorkspaceAppCenterTab
+                active={openAppId === app.appId}
+                closeLabel={i18n.t("workspace.appCenter.tabs.close")}
+                icon={<WorkspaceAppCenterTabIcon app={app} />}
+                key={app.appId}
+                tabId={app.appId}
+                title={resolveWorkspaceAppDisplayName(app)}
+                onClose={() => closeAppTab(app.appId)}
+                onSelect={() => updateSelectedTab(app.appId)}
+              />
+            ))}
+          </div>
+          <Button
+            aria-label={i18n.t("workspace.appCenter.tabs.new")}
+            className="nodrag shrink-0 rounded-md"
+            size="icon-sm"
+            title={i18n.t("workspace.appCenter.tabs.new")}
+            type="button"
+            variant="chrome"
+            onClick={() => updateSelectedTab(null)}
+          >
+            <AddIcon className="size-4" />
+          </Button>
+        </>
+      ) : (
         <div className="min-w-0 truncate text-[13px] font-semibold text-[var(--text-primary)]">
           {context.node.title}
         </div>
-      </div>
+      )}
+      <div className="min-w-8 flex-1 self-stretch" aria-hidden="true" />
     </div>
+  );
+}
+
+function WorkspaceAppCenterTab({
+  active,
+  closeLabel,
+  icon,
+  onClose,
+  onSelect,
+  tabId,
+  title
+}: {
+  active: boolean;
+  closeLabel?: string;
+  icon: ReactNode;
+  onClose?: () => void;
+  onSelect: () => void;
+  tabId: string;
+  title: string;
+}): ReactNode {
+  return (
+    <div
+      className={cn(
+        "group flex h-7 min-w-[104px] max-w-[220px] items-center gap-1.5 rounded-md border px-2 text-xs transition-colors",
+        active
+          ? "border-[var(--line-2)] bg-[var(--background-fronted)] text-[var(--text-primary)]"
+          : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)]"
+      )}
+      data-workspace-app-center-tab={tabId}
+      data-workspace-app-center-tab-active={active ? "true" : "false"}
+    >
+      <button
+        aria-selected={active}
+        className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+        role="tab"
+        title={title}
+        type="button"
+        onClick={onSelect}
+      >
+        <span className="shrink-0 text-[var(--text-tertiary)]">{icon}</span>
+        <span className="truncate">{title}</span>
+      </button>
+      {onClose && closeLabel ? (
+        <button
+          aria-label={closeLabel}
+          className="flex size-5 shrink-0 items-center justify-center rounded text-[var(--text-tertiary)] hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)]"
+          title={closeLabel}
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onClose();
+          }}
+        >
+          <CloseIcon className="size-3" />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function WorkspaceAppCenterTabIcon({
+  app
+}: {
+  app: WorkspaceAppCenterApp;
+}): ReactNode {
+  return app.iconUrl ? (
+    <img
+      alt=""
+      aria-hidden="true"
+      className="size-3.5 rounded-[3px] object-cover"
+      draggable={false}
+      src={app.iconUrl}
+    />
+  ) : (
+    <NavApplicationsLinedIcon aria-hidden className="size-3.5" />
   );
 }
 
@@ -579,81 +729,6 @@ function WorkspaceAppWebviewLoadingState({
       </div>
     </div>
   );
-}
-
-type WorkspaceAppCenterExternalNodeState =
-  | WorkspaceAppCenterViewState
-  | WorkspaceAppWebviewExternalState
-  | null;
-
-function createWorkspaceAppWebviewExternalStateSource(input: {
-  appCenterService: IWorkspaceAppCenterService;
-  runtimeStore: {
-    getSnapshot(): Record<string, BrowserNodeRuntimeState | undefined>;
-    subscribe(listener: () => void): () => void;
-  };
-}): WorkbenchHostExternalStateSource<
-  WorkspaceAppCenterExternalNodeState,
-  null
-> {
-  return {
-    getNodeState(request) {
-      if (request.typeId === workspaceAppCenterNodeID) {
-        return input.appCenterService.getViewState(request.workspaceId);
-      }
-      return readWorkspaceAppExternalState(input, request);
-    },
-    getSnapshotNodeState(request) {
-      if (request.typeId === workspaceAppCenterNodeID) {
-        return input.appCenterService.getViewState(request.workspaceId);
-      }
-      return readWorkspaceAppExternalState(input, request);
-    },
-    getWorkspaceState() {
-      return null;
-    },
-    subscribe(listener) {
-      const unsubscribeRuntime = input.runtimeStore.subscribe(listener);
-      const unsubscribeAppCenter = input.appCenterService.subscribe(listener);
-      return () => {
-        unsubscribeRuntime();
-        unsubscribeAppCenter();
-      };
-    }
-  };
-}
-
-function readWorkspaceAppExternalState(
-  input: {
-    appCenterService: IWorkspaceAppCenterService;
-    runtimeStore: {
-      getSnapshot(): Record<string, BrowserNodeRuntimeState | undefined>;
-    };
-  },
-  request: WorkbenchHostExternalStateLookupInput
-): WorkspaceAppWebviewExternalState | null {
-  if (request.typeId !== workspaceAppWebviewTypeID) {
-    return null;
-  }
-  const runtime = input.runtimeStore.getSnapshot()[request.nodeId];
-  const runtimeUrl = runtime?.url?.trim();
-  if (runtimeUrl) {
-    return {
-      title: runtime?.title?.trim() || null,
-      url: runtimeUrl
-    };
-  }
-
-  const appId =
-    readWorkspaceAppIdFromNodeId(request.nodeId) ??
-    readWorkspaceAppIdFromInstanceId(request.instanceId);
-  const app = appId ? findWorkspaceApp(input.appCenterService, appId) : null;
-  return app?.launchUrl
-    ? {
-        title: resolveWorkspaceAppDisplayName(app),
-        url: app.launchUrl
-      }
-    : null;
 }
 
 function resolveWorkspaceAppWebviewNavigationPolicy(input: {

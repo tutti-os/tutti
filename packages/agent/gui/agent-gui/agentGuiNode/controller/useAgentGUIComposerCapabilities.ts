@@ -1,10 +1,13 @@
 import {
   resolveAgentActivityCapability,
   resolveAgentActivityUsage,
-  type AgentActivitySnapshot,
-  type CanonicalAgentSession
+  selectComposerOptions,
+  selectComposerOptionsLoadStatus,
+  type AgentActivityUsage,
+  type CanonicalAgentSession,
+  type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import type {
   AgentSessionComposerSettings,
   AgentSessionReasoningEffort,
@@ -14,42 +17,49 @@ import type { AgentGUINodeData } from "../../../types";
 import { composerSettingsSupportFromOptions } from "../model/composerSettingsSupport";
 import { normalizeOptionalText } from "./agentGuiController.promptHelpers";
 import {
-  composerOptionsForTarget,
-  composerOptionsLoadingForTarget
-} from "./agentGuiController.providerHelpers";
-import {
   composerTargetDataForConversation,
   type AgentGUIComposerTargetData
 } from "./agentGuiController.composerPresentation";
 import { resolvePromptImageSelectedModel } from "./agentGuiController.draftMessageHelpers";
+import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
 
 interface UseAgentGUIComposerCapabilitiesInput {
   activeConversationId: string | null;
   activeEngineSession: CanonicalAgentSession | null;
   activeSessionState: AgentSessionState | null;
-  agentActivitySnapshot: AgentActivitySnapshot;
   data: AgentGUINodeData;
   draftSettingsBySessionId: Record<string, AgentSessionComposerSettings>;
   selectedComposerTargetData: AgentGUIComposerTargetData;
+  sessionEngine: AgentSessionEngine;
 }
 
 export function useAgentGUIComposerCapabilities(
   input: UseAgentGUIComposerCapabilitiesInput
 ) {
+  const retainedUsageBySessionIdRef = useRef(
+    new Map<string, AgentActivityUsage>()
+  );
   const composerTargetData = composerTargetDataForConversation({
+    activeAgentTargetId: input.activeEngineSession?.agentTargetId,
     activeConversationId: input.activeConversationId,
     data: input.data,
     optimisticTarget: null,
     selectedTarget: input.selectedComposerTargetData
   });
-  const providerComposerOptions = composerOptionsForTarget({
-    snapshot: input.agentActivitySnapshot,
-    target: composerTargetData
-  });
-  const composerOptionsLoading = composerOptionsLoadingForTarget({
-    snapshot: input.agentActivitySnapshot,
-    target: composerTargetData
-  });
+  const composerTargetKey = composerTargetData.agentTargetId?.trim() ?? "";
+  const providerComposerOptions = useEngineSelector(
+    input.sessionEngine,
+    (state) => selectComposerOptions(state, composerTargetKey)
+  );
+  const composerOptionsLoadStatus = useEngineSelector(
+    input.sessionEngine,
+    (state) => selectComposerOptionsLoadStatus(state, composerTargetKey)
+  );
+  const composerOptionsLoading = Boolean(
+    composerTargetKey &&
+    !providerComposerOptions &&
+    composerOptionsLoadStatus === "loading"
+  );
   const defaultReasoningEffort: AgentSessionReasoningEffort | null = "high";
   const sessionCapabilities = input.activeEngineSession?.capabilities ?? null;
   const resolvedPromptImagesSupported =
@@ -89,10 +99,16 @@ export function useAgentGUIComposerCapabilities(
       providerComposerOptions,
       sessionCapabilities
     );
+    const targetSupport = composerSettingsSupportFromOptions(
+      providerComposerOptions,
+      null
+    );
     return {
       ...fallback,
-      browser: sessionCapabilities?.browserUse ?? fallback.browser,
-      computer: sessionCapabilities?.computerUse ?? fallback.computer,
+      browser:
+        sessionCapabilities?.browserUse === true || targetSupport.browser,
+      computer:
+        sessionCapabilities?.computerUse === true || targetSupport.computer,
       permissionModeChangeDeferred:
         sessionCapabilities?.permissionModeChangeDeferred ??
         fallback.permissionModeChangeDeferred,
@@ -106,10 +122,21 @@ export function useAgentGUIComposerCapabilities(
   }, [providerComposerOptions, sessionCapabilities]);
 
   const usageSource = input.activeEngineSession?.usage ?? null;
-  const usage = useMemo(
-    () => resolveAgentActivityUsage({ sessionUsage: usageSource }),
-    [usageSource]
-  );
+  const usage = useMemo(() => {
+    const agentSessionId =
+      input.activeEngineSession?.agentSessionId.trim() ?? "";
+    if (!agentSessionId) {
+      return null;
+    }
+    const resolved = resolveAgentActivityUsage({
+      sessionUsage: usageSource
+    });
+    if (resolved) {
+      retainedUsageBySessionIdRef.current.set(agentSessionId, resolved);
+      return resolved;
+    }
+    return retainedUsageBySessionIdRef.current.get(agentSessionId) ?? null;
+  }, [input.activeEngineSession?.agentSessionId, usageSource]);
 
   return {
     compactSupported:

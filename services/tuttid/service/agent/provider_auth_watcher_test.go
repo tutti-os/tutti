@@ -93,6 +93,54 @@ func TestProviderAuthWatcherReportsFileRewrites(t *testing.T) {
 	}
 }
 
+func TestDefaultProviderAuthWatcherReportsTuttiAgentLogin(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("TUTTI_AGENT_HOME", filepath.Join(home, "ignored-tutti-agent-home"))
+
+	var tuttiAgentEntry *ProviderAuthWatchEntry
+	for _, entry := range DefaultProviderAuthWatchEntries() {
+		if entry.Provider == agentprovider.TuttiAgent {
+			entry := entry
+			tuttiAgentEntry = &entry
+			break
+		}
+	}
+	if tuttiAgentEntry == nil {
+		t.Fatal("default auth watcher is missing tutti-agent")
+	}
+
+	changes := make(chan []string, 1)
+	watcher := &ProviderAuthWatcher{
+		Entries:       []ProviderAuthWatchEntry{*tuttiAgentEntry},
+		Interval:      5 * time.Millisecond,
+		CoalesceDelay: -1,
+		OnChange: func(providers []string) {
+			changes <- providers
+		},
+	}
+	watcher.Start()
+	defer watcher.Close()
+
+	time.Sleep(20 * time.Millisecond)
+	authPath := filepath.Join(home, ".tutti-agent", "auth.json")
+	if err := os.MkdirAll(filepath.Dir(authPath), 0o700); err != nil {
+		t.Fatalf("create tutti-agent home: %v", err)
+	}
+	if err := os.WriteFile(authPath, []byte(`{"tutti_llm":{"access_token":"test"}}`), 0o600); err != nil {
+		t.Fatalf("write tutti-agent auth: %v", err)
+	}
+
+	select {
+	case providers := <-changes:
+		if len(providers) != 1 || providers[0] != agentprovider.TuttiAgent {
+			t.Fatalf("OnChange providers = %v, want [tutti-agent]", providers)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("watcher did not report tutti-agent auth creation")
+	}
+}
+
 func TestProviderAuthWatcherStartWithoutCallbackIsInert(_ *testing.T) {
 	watcher := &ProviderAuthWatcher{
 		Entries: []ProviderAuthWatchEntry{
@@ -103,7 +151,7 @@ func TestProviderAuthWatcherStartWithoutCallbackIsInert(_ *testing.T) {
 	watcher.Close()
 }
 
-func TestDefaultProviderAuthWatchEntriesCoverCodexClaudeAndOpenCode(t *testing.T) {
+func TestDefaultProviderAuthWatchEntriesCoverCredentialBackedCatalogs(t *testing.T) {
 	home := t.TempDir()
 	configDir := filepath.Join(home, "opencode-config")
 	dataDir := filepath.Join(home, "opencode-data")
@@ -111,6 +159,7 @@ func TestDefaultProviderAuthWatchEntriesCoverCodexClaudeAndOpenCode(t *testing.T
 	codexHome := filepath.Join(home, "custom-codex")
 	t.Setenv("HOME", home)
 	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("TUTTI_AGENT_HOME", filepath.Join(home, "ignored-tutti-agent-home"))
 	t.Setenv("OPENCODE_CONFIG", configPath)
 	t.Setenv("OPENCODE_CONFIG_DIR", configDir)
 	t.Setenv("XDG_DATA_HOME", dataDir)
@@ -148,6 +197,10 @@ func TestDefaultProviderAuthWatchEntriesCoverCodexClaudeAndOpenCode(t *testing.T
 		if !containsString(opencodePaths, want) {
 			t.Fatalf("opencode paths = %v, want %q", opencodePaths, want)
 		}
+	}
+	tuttiAgentPaths := byProvider[agentprovider.TuttiAgent]
+	if !containsString(tuttiAgentPaths, filepath.Join(home, ".tutti-agent", "auth.json")) {
+		t.Fatalf("tutti-agent paths = %v, want auth file", tuttiAgentPaths)
 	}
 }
 

@@ -56,6 +56,9 @@ function createHostServices(): DesktopHostServices {
       }
     },
     preferences: {
+      getAgentCliUpdateCheckEnabled() {
+        return true;
+      },
       getAgentComposerDefaultsByProvider() {
         return {};
       },
@@ -121,6 +124,7 @@ function createHostServices(): DesktopHostServices {
       }
     },
     workspaceLaunch: {
+      async ensureAgentBrowserHost() {},
       async openStartupWindow() {},
       async replaceWorkspaceWindow() {},
       async showAgentWindow() {},
@@ -159,6 +163,7 @@ function createUpdateService(): AppUpdateService {
 test("createDesktopAppServices does not wait for the CLI shim before creating host services", async () => {
   const events: string[] = [];
   let finishCliShim: (() => void) | undefined;
+  let hostServicesIsPackaged: boolean | undefined;
   const daemonRuntime: DesktopDaemonRuntime = {
     daemonEndpoint: {
       accessToken: "token",
@@ -192,31 +197,38 @@ test("createDesktopAppServices does not wait for the CLI shim before creating ho
     } as unknown as DesktopDaemonRuntime["tuttidClient"]
   };
 
-  const services = await createDesktopAppServices(createOptions(events), {
-    createDaemonRuntime() {
-      events.push("daemon-runtime:create");
-      return daemonRuntime;
+  const services = await createDesktopAppServices(
+    {
+      ...createOptions(events),
+      isPackaged: true
     },
-    async createHostServices() {
-      events.push("host-services:create");
-      return createHostServices();
-    },
-    createUpdateService() {
-      events.push("update-service:create");
-      return createUpdateService();
-    },
-    ensureCliShim() {
-      events.push("cli-shim:ensure");
-      return new Promise((resolve) => {
-        finishCliShim = () =>
-          resolve({
-            installed: false,
-            pathShimPath: "/tmp/bin/tutti",
-            shimPath: "/tmp/tutti/bin/tutti"
-          });
-      });
+    {
+      createDaemonRuntime() {
+        events.push("daemon-runtime:create");
+        return daemonRuntime;
+      },
+      async createHostServices(options) {
+        events.push("host-services:create");
+        hostServicesIsPackaged = options.isPackaged;
+        return createHostServices();
+      },
+      createUpdateService() {
+        events.push("update-service:create");
+        return createUpdateService();
+      },
+      ensureCliShim() {
+        events.push("cli-shim:ensure");
+        return new Promise((resolve) => {
+          finishCliShim = () =>
+            resolve({
+              installed: false,
+              pathShimPath: "/tmp/bin/tutti",
+              shimPath: "/tmp/tutti/bin/tutti"
+            });
+        });
+      }
     }
-  });
+  );
 
   assert.deepEqual(events, [
     "daemon-runtime:create",
@@ -227,6 +239,7 @@ test("createDesktopAppServices does not wait for the CLI shim before creating ho
   ]);
   assert.equal(services.tuttid, daemonRuntime.tuttid);
   assert.equal(services.tuttidClient, daemonRuntime.tuttidClient);
+  assert.equal(hostServicesIsPackaged, true);
   assert.ok(finishCliShim);
   finishCliShim();
   await new Promise((resolve) => setImmediate(resolve));

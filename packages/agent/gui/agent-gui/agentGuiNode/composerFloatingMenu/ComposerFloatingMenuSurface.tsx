@@ -12,6 +12,7 @@ import {
 import { createPortal } from "react-dom";
 import { cn } from "../../../app/renderer/lib/utils";
 import { DESKTOP_WINDOW_TOP_MARGIN } from "../../workspaceDesktop/constants";
+import { resolveComposerPortalTarget } from "../composer/composerPortalTarget";
 
 const COMPOSER_MENU_GAP_PX = 8;
 const COMPOSER_MENU_VIEWPORT_PADDING_PX = 8;
@@ -63,14 +64,6 @@ const COMPOSER_MENU_WINDOW_FRAME_SELECTOR =
 
 function resolveComposerMenuWindowFrame(anchor: HTMLElement): Element | null {
   return anchor.closest(COMPOSER_MENU_WINDOW_FRAME_SELECTOR);
-}
-
-function resolveComposerMenuPortalTarget(anchor: HTMLElement): Element {
-  return (
-    anchor.closest('[data-slot="viewport-menu-boundary"]') ??
-    resolveComposerMenuWindowFrame(anchor) ??
-    document.body
-  );
 }
 
 function resolveComposerMenuZIndex(anchor: HTMLElement): number | string {
@@ -155,7 +148,7 @@ function computeComposerAnchoredMenuFrame(
     height,
     left,
     minHeight,
-    portalTarget: resolveComposerMenuPortalTarget(anchor),
+    portalTarget: resolveComposerPortalTarget(anchor),
     top: Math.max(
       topSafeArea,
       Math.min(
@@ -363,7 +356,7 @@ export const ComposerFloatingMenuSurface = forwardRef<
   const portalTarget =
     frame?.portalTarget ??
     (anchorRef.current
-      ? resolveComposerMenuPortalTarget(anchorRef.current)
+      ? resolveComposerPortalTarget(anchorRef.current)
       : document.body);
 
   return createPortal(

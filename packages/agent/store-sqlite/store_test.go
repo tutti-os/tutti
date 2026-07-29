@@ -35,6 +35,8 @@ func testSeedTargets(now int64) []Target {
 			LaunchRefJSON:   `{"type":"local_cli","provider":"codex"}`,
 			Name:            "Codex",
 			IconKey:         "codex",
+			IconURL:         "tutti-asset://agent/codex.png",
+			MaskIconURL:     "tutti-asset://agent/codex-mask.svg",
 			Enabled:         true,
 			Source:          "system",
 			SortOrder:       10,
@@ -47,6 +49,8 @@ func testSeedTargets(now int64) []Target {
 			LaunchRefJSON:   `{"type":"local_cli","provider":"claude-code"}`,
 			Name:            "Claude Code",
 			IconKey:         "claude-code",
+			IconURL:         "tutti-asset://agent/claudecode.png",
+			MaskIconURL:     "tutti-asset://agent/claudecode-mask.svg",
 			Enabled:         true,
 			Source:          "system",
 			SortOrder:       20,
@@ -149,7 +153,9 @@ func TestStoreMigrateRefreshesOnlySystemSeedTargets(t *testing.T) {
 	if _, err := store.db.ExecContext(ctx, `
 UPDATE agent_targets
 SET provider = 'stale-provider', launch_ref_json = '{}', name = 'Stale Codex',
-    icon_key = 'stale', enabled = 0, sort_order = 999, created_at_ms = 7, updated_at_ms = 8
+    icon_key = 'stale', icon_url = 'stale.png', mask_icon_url = 'stale-mask.svg',
+    hero_image_url = 'stale-hero.jpg', enabled = 0, sort_order = 999,
+    created_at_ms = 7, updated_at_ms = 8
 WHERE id = ?;
 `, testTargetIDCodex); err != nil {
 		t.Fatalf("seed stale system target: %v", err)
@@ -170,13 +176,17 @@ WHERE id = ?;
 
 	var codex Target
 	if err := store.db.QueryRowContext(ctx, `
-SELECT id, provider, launch_ref_json, name, icon_key, enabled, source, sort_order, created_at_ms, updated_at_ms
+SELECT id, provider, launch_ref_json, name, icon_key, icon_url, mask_icon_url, hero_image_url,
+       enabled, source, sort_order, created_at_ms, updated_at_ms
 FROM agent_targets WHERE id = ?
-`, testTargetIDCodex).Scan(&codex.ID, &codex.Provider, &codex.LaunchRefJSON, &codex.Name, &codex.IconKey, &codex.Enabled, &codex.Source, &codex.SortOrder, &codex.CreatedAtUnixMS, &codex.UpdatedAtUnixMS); err != nil {
+`, testTargetIDCodex).Scan(&codex.ID, &codex.Provider, &codex.LaunchRefJSON, &codex.Name, &codex.IconKey, &codex.IconURL, &codex.MaskIconURL, &codex.HeroImageURL, &codex.Enabled, &codex.Source, &codex.SortOrder, &codex.CreatedAtUnixMS, &codex.UpdatedAtUnixMS); err != nil {
 		t.Fatalf("query refreshed codex target: %v", err)
 	}
 	if codex.Provider != "codex" || codex.LaunchRefJSON != `{"type":"local_cli","provider":"codex"}` ||
-		codex.Name != "Codex" || codex.IconKey != "codex" || !codex.Enabled || codex.SortOrder != 10 {
+		codex.Name != "Codex" || codex.IconKey != "codex" ||
+		codex.IconURL != "tutti-asset://agent/codex.png" ||
+		codex.MaskIconURL != "tutti-asset://agent/codex-mask.svg" ||
+		codex.HeroImageURL != "" || codex.Enabled || codex.SortOrder != 10 {
 		t.Fatalf("refreshed system target = %#v", codex)
 	}
 	if codex.CreatedAtUnixMS != 7 || codex.Source != systemTargetSource || codex.UpdatedAtUnixMS == 8 {
@@ -204,6 +214,48 @@ FROM agent_targets WHERE id = ?
 		custom.IconKey != "custom" || custom.Enabled || custom.Source != "user" || custom.SortOrder != 777 ||
 		custom.CreatedAtUnixMS != 9 || custom.UpdatedAtUnixMS != 10 {
 		t.Fatalf("custom target was overwritten = %#v", custom)
+	}
+}
+
+func TestStoreMigratePreservesEnabledSystemTargetWithDisabledDefault(t *testing.T) {
+	t.Parallel()
+
+	opts := testOptions(&staticProjectPaths{})
+	opts.SeedSystemTargets = func(now int64) []Target {
+		targets := testSeedTargets(now)
+		targets[0].Enabled = false
+		return targets
+	}
+	store := openTestStore(t, opts)
+	ctx := context.Background()
+
+	target, err := store.GetAgentTarget(ctx, testTargetIDCodex)
+	if err != nil {
+		t.Fatalf("GetAgentTarget() error = %v", err)
+	}
+	if target.Enabled {
+		t.Fatalf("fresh system target enabled = true, want descriptor default false")
+	}
+	target.Enabled = true
+	target, err = store.PutAgentTarget(ctx, target)
+	if err != nil {
+		t.Fatalf("PutAgentTarget() error = %v", err)
+	}
+	enabledAt := target.UpdatedAtUnixMS
+
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	target, err = store.GetAgentTarget(ctx, testTargetIDCodex)
+	if err != nil {
+		t.Fatalf("GetAgentTarget() after Migrate error = %v", err)
+	}
+	if !target.Enabled {
+		t.Fatalf("system target enabled = false after Migrate, want persisted user value true")
+	}
+	if target.UpdatedAtUnixMS != enabledAt {
+		t.Fatalf("system target updated_at_ms = %d after enabled-only descriptor mismatch, want %d", target.UpdatedAtUnixMS, enabledAt)
 	}
 }
 
@@ -307,6 +359,27 @@ func TestStoreReportAndListSessionLifecycle(t *testing.T) {
 	if err != nil || !ok || renamed.Title != "final" || renamed.UpdatedAtUnixMS < pinned.UpdatedAtUnixMS {
 		t.Fatalf("UpdateSessionTitle() = %#v ok=%v error=%v", renamed, ok, err)
 	}
+	if _, err := store.db.ExecContext(ctx, `
+UPDATE workspace_agent_sessions
+SET updated_at_unix_ms = 9999999999999
+WHERE workspace_id = 'ws-1' AND agent_session_id = 'session-1'
+`); err != nil {
+		t.Fatalf("force session updated_at_unix_ms error = %v", err)
+	}
+	monotonicRenamed, ok, err := store.UpdateSessionTitle(ctx, "ws-1", "session-1", " monotonic ")
+	if err != nil || !ok || monotonicRenamed.Title != "monotonic" || monotonicRenamed.UpdatedAtUnixMS != 10000000000000 {
+		t.Fatalf("UpdateSessionTitle(monotonic) = %#v ok=%v error=%v", monotonicRenamed, ok, err)
+	}
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1",
+		Provider: "codex", Title: "runtime title", OccurredAtUnixMS: monotonicRenamed.UpdatedAtUnixMS + 1,
+	}); err != nil {
+		t.Fatalf("ReportSessionState(runtime title) error = %v", err)
+	}
+	sessionAfterRuntimeTitle, ok, err := store.GetSession(ctx, "ws-1", "session-1")
+	if err != nil || !ok || sessionAfterRuntimeTitle.Title != "monotonic" {
+		t.Fatalf("GetSession() after runtime title = %#v ok=%v error=%v, want explicit title", sessionAfterRuntimeTitle, ok, err)
+	}
 
 	updatedSettings, ok, err := store.UpdateSessionSettings(ctx, "ws-1", "session-1", "gpt-5.4", map[string]any{
 		"model":            "gpt-5.4",
@@ -314,16 +387,16 @@ func TestStoreReportAndListSessionLifecycle(t *testing.T) {
 	})
 	if err != nil || !ok || updatedSettings.Model != "gpt-5.4" ||
 		updatedSettings.Settings["permissionModeId"] != "full-access" ||
-		updatedSettings.UpdatedAtUnixMS < renamed.UpdatedAtUnixMS {
+		updatedSettings.UpdatedAtUnixMS < monotonicRenamed.UpdatedAtUnixMS {
 		t.Fatalf("UpdateSessionSettings() = %#v ok=%v error=%v", updatedSettings, ok, err)
 	}
 
 	blankRenamed, ok, err := store.UpdateSessionTitle(ctx, "ws-1", "session-1", "   ")
-	if err != nil || ok {
-		t.Fatalf("UpdateSessionTitle(blank) = %#v ok=%v error=%v, want no update", blankRenamed, ok, err)
+	if err != nil || !ok || blankRenamed.Title != "" || blankRenamed.InternalRuntimeContext["tuttiInitialTitleEstablished"] != true {
+		t.Fatalf("UpdateSessionTitle(blank) = %#v ok=%v error=%v, want cleared canonical title", blankRenamed, ok, err)
 	}
 	sessionAfterBlankTitle, ok, err := store.GetSession(ctx, "ws-1", "session-1")
-	if err != nil || !ok || sessionAfterBlankTitle.Title != "final" {
+	if err != nil || !ok || sessionAfterBlankTitle.Title != "" {
 		t.Fatalf("GetSession() after blank title = %#v ok=%v error=%v", sessionAfterBlankTitle, ok, err)
 	}
 
@@ -453,6 +526,54 @@ func TestHistoricalImportCompatibilityCannotBeForgedByOrigin(t *testing.T) {
 	result, err := store.ReportSessionMessages(ctx, input)
 	if err != nil || result.AcceptedCount != 1 || result.Messages[0].TurnID != "" {
 		t.Fatalf("historical import result=%#v error=%v", result, err)
+	}
+}
+
+func TestHistoricalImportPersistsTrustworthyTurnBoundaries(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	result, err := store.ReportSessionMessages(ctx, SessionMessageReport{
+		WorkspaceID:      "ws-import-turns",
+		AgentSessionID:   "session-import",
+		Origin:           "WORKSPACE_AGENT_SESSION_ORIGIN_IMPORTED",
+		HistoricalImport: true,
+		Messages: []MessageUpdate{
+			{MessageID: "user-1", TurnID: "imported-turn-1", Role: "user", Kind: "text", Status: "completed", OccurredAtUnixMS: 10, StartedAtUnixMS: 10, CompletedAtUnixMS: 10},
+			{MessageID: "tool-1", TurnID: "imported-turn-1", Role: "assistant", Kind: "tool_call", Status: "completed", OccurredAtUnixMS: 20, StartedAtUnixMS: 20, CompletedAtUnixMS: 30},
+			{MessageID: "assistant-1", TurnID: "imported-turn-1", Role: "assistant", Kind: "text", Status: "completed", OccurredAtUnixMS: 40, StartedAtUnixMS: 40, CompletedAtUnixMS: 40},
+			{MessageID: "user-2", TurnID: "imported-turn-2", Role: "user", Kind: "text", Status: "completed", OccurredAtUnixMS: 50, StartedAtUnixMS: 50, CompletedAtUnixMS: 50},
+			{MessageID: "assistant-2", TurnID: "imported-turn-2", Role: "assistant", Kind: "text", Status: "completed", OccurredAtUnixMS: 60, StartedAtUnixMS: 60, CompletedAtUnixMS: 60},
+		},
+	})
+	if err != nil || result.AcceptedCount != 5 {
+		t.Fatalf("historical import result=%#v error=%v", result, err)
+	}
+	for _, expected := range []struct {
+		turnID                string
+		startedAtUnixMS       int64
+		settledAtUnixMS       int64
+		finalAssistantMessage string
+	}{
+		{turnID: "imported-turn-1", startedAtUnixMS: 10, settledAtUnixMS: 40, finalAssistantMessage: "assistant-1"},
+		{turnID: "imported-turn-2", startedAtUnixMS: 50, settledAtUnixMS: 60, finalAssistantMessage: "assistant-2"},
+	} {
+		turn, ok, err := store.GetTurn(ctx, "ws-import-turns", "session-import", expected.turnID)
+		if err != nil || !ok {
+			t.Fatalf("GetTurn(%s) ok=%v error=%v", expected.turnID, ok, err)
+		}
+		if turn.Phase != TurnPhaseSettled || turn.Outcome != TurnOutcomeCompleted ||
+			!turn.Backfilled || turn.Origin != TurnOriginUserPrompt {
+			t.Fatalf("turn %s = %#v, want settled completed user-prompt backfill", expected.turnID, turn)
+		}
+		if turn.StartedAtUnixMS != expected.startedAtUnixMS || turn.SettledAtUnixMS != expected.settledAtUnixMS {
+			t.Fatalf("turn %s timestamps = %d..%d, want %d..%d", expected.turnID,
+				turn.StartedAtUnixMS, turn.SettledAtUnixMS, expected.startedAtUnixMS, expected.settledAtUnixMS)
+		}
+		if !turn.FinalAssistantMessageResolved || turn.FinalAssistantMessageID != expected.finalAssistantMessage {
+			t.Fatalf("turn %s final assistant = resolved:%v id:%q, want %q",
+				expected.turnID, turn.FinalAssistantMessageResolved, turn.FinalAssistantMessageID, expected.finalAssistantMessage)
+		}
 	}
 }
 
@@ -591,6 +712,12 @@ func TestStoreClearSessionsDeletesGoalSagaWithForeignKeysDisabledAndSessionIDReu
 	}); err != nil || !created || state.Revision != 1 {
 		t.Fatalf("prepare old goal state=%#v created=%v error=%v", state, created, err)
 	}
+	if _, created, err := store.PrepareGoalGenerationFence(ctx, GoalGenerationFencePrepare{
+		FenceID: "old-goal-fence", WorkspaceID: "ws-clear-goal", AgentSessionID: "session-reused",
+		TargetOperationID: "old-goal-op", ClientSubmitID: "old-binding-revoke", OccurredAtUnixMS: 21,
+	}); err != nil || !created {
+		t.Fatalf("prepare old goal fence created=%v error=%v", created, err)
+	}
 	if _, err := store.db.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
 		t.Fatalf("disable foreign keys: %v", err)
 	}
@@ -599,7 +726,7 @@ func TestStoreClearSessionsDeletesGoalSagaWithForeignKeysDisabledAndSessionIDReu
 	if err != nil || result.RemovedSessions != 1 {
 		t.Fatalf("ClearSessions() result=%#v error=%v", result, err)
 	}
-	for _, table := range []string{"workspace_agent_runtime_operation_events", "workspace_agent_runtime_operations", "workspace_agent_goal_control_operations", "workspace_agent_session_goals"} {
+	for _, table := range []string{"workspace_agent_runtime_operation_events", "workspace_agent_runtime_operations", "workspace_agent_goal_generation_fences", "workspace_agent_goal_control_operations", "workspace_agent_session_goals"} {
 		var count int
 		if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table+` WHERE workspace_id = ?`, "ws-clear-goal").Scan(&count); err != nil || count != 0 {
 			t.Fatalf("%s count=%d error=%v, want empty", table, count, err)
@@ -661,11 +788,18 @@ func TestStoreSessionDeleteVariantsExplicitlyDeleteGoalSagaWithForeignKeysDisabl
 			}); err != nil {
 				t.Fatal(err)
 			}
+			goalOperationID := "goal-op-" + tc.name
 			if _, _, _, err := store.PrepareGoalControlOperation(ctx, GoalControlOperationPrepare{
-				OperationID: "goal-op-" + tc.name, WorkspaceID: "ws-delete-goal", AgentSessionID: "session-1",
+				OperationID: goalOperationID, WorkspaceID: "ws-delete-goal", AgentSessionID: "session-1",
 				Action: "set", Objective: "objective", OccurredAtUnixMS: 20,
 			}); err != nil {
 				t.Fatal(err)
+			}
+			if _, created, err := store.PrepareGoalGenerationFence(ctx, GoalGenerationFencePrepare{
+				FenceID: "goal-fence-" + tc.name, WorkspaceID: "ws-delete-goal", AgentSessionID: "session-1",
+				TargetOperationID: goalOperationID, ClientSubmitID: "binding-revoke-" + tc.name, OccurredAtUnixMS: 21,
+			}); err != nil || !created {
+				t.Fatalf("prepare goal fence created=%v error=%v", created, err)
 			}
 			if _, err := store.db.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
 				t.Fatal(err)
@@ -674,7 +808,7 @@ func TestStoreSessionDeleteVariantsExplicitlyDeleteGoalSagaWithForeignKeysDisabl
 			if err := tc.remove(ctx, store); err != nil {
 				t.Fatal(err)
 			}
-			for _, table := range []string{"workspace_agent_runtime_operation_events", "workspace_agent_runtime_operations", "workspace_agent_goal_control_operations", "workspace_agent_session_goals"} {
+			for _, table := range []string{"workspace_agent_runtime_operation_events", "workspace_agent_runtime_operations", "workspace_agent_goal_generation_fences", "workspace_agent_goal_control_operations", "workspace_agent_session_goals"} {
 				var count int
 				if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table+` WHERE workspace_id = ?`, "ws-delete-goal").Scan(&count); err != nil || count != 0 {
 					t.Fatalf("%s count=%d error=%v", table, count, err)
@@ -701,11 +835,11 @@ func seedRuntimeDeletionSaga(t *testing.T, store *Store, workspaceID string, ses
 		{operationID: "old-runtime-completed", status: RuntimeOperationStatusCompleted, turnID: "turn-completed", result: RuntimeOperationResultCanceled, completedAt: int64(30)},
 	} {
 		query := `INSERT INTO workspace_agent_runtime_operations (
-operation_id, workspace_id, agent_session_id, kind, status, result, subject_id, turn_id,
+operation_id, workspace_id, agent_session_id, kind, status, result, turn_id,
 payload_json, lease_owner, lease_expires_at_unix_ms, next_attempt_at_unix_ms,
 created_at_unix_ms, updated_at_unix_ms, completed_at_unix_ms
-) VALUES (?, ?, ?, 'cancel_turn', ?, ?, ?, ?, '{}', ?, ?, ?, 20, 20, ?)`
-		if _, err := store.db.Exec(query, row.operationID, workspaceID, sessionID, row.status, row.result, row.turnID, row.turnID,
+) VALUES (?, ?, ?, 'cancel_turn', ?, ?, ?, '{}', ?, ?, ?, 20, 20, ?)`
+		if _, err := store.db.Exec(query, row.operationID, workspaceID, sessionID, row.status, row.result, row.turnID,
 			row.leaseOwner, row.leaseExpiry, row.nextAttempt, row.completedAt); err != nil {
 			t.Fatalf("seed runtime operation %s: %v", row.status, err)
 		}
@@ -716,10 +850,10 @@ operation_id, workspace_id, agent_session_id, kind, payload_json, created_at_uni
 		t.Fatalf("seed runtime operation event: %v", err)
 	}
 	if _, err := store.db.Exec(`INSERT INTO workspace_agent_runtime_operations (
-operation_id, workspace_id, agent_session_id, kind, status, result, subject_id, turn_id,
+operation_id, workspace_id, agent_session_id, kind, status, result, turn_id,
 request_id, payload_json, created_at_unix_ms, updated_at_unix_ms, completed_at_unix_ms
 ) VALUES ('old-runtime-interactive', ?, ?, 'interactive_response', 'completed', 'answered',
-  'request-reused', 'turn-prepared', 'request-reused', '{}', 31, 31, 31)`, workspaceID, sessionID); err != nil {
+  'turn-prepared', 'request-reused', '{}', 31, 31, 31)`, workspaceID, sessionID); err != nil {
 		t.Fatalf("seed reused interactive runtime operation: %v", err)
 	}
 	if _, err := store.db.Exec(`INSERT INTO workspace_agent_runtime_operation_events (
@@ -1289,6 +1423,7 @@ func TestStoreTargetNormalizationAndSkippableRows(t *testing.T) {
 		Provider:      "codex",
 		LaunchRefJSON: `{"type":"local_cli","provider":"codex"}`,
 		Name:          " Custom ",
+		MaskIconURL:   " data:image/svg+xml;base64,mask ",
 		Enabled:       true,
 		Source:        "user",
 	}); err != nil {
@@ -1300,6 +1435,9 @@ func TestStoreTargetNormalizationAndSkippableRows(t *testing.T) {
 	}
 	if target.Name != "Custom" {
 		t.Fatalf("target name = %q, want normalized Custom", target.Name)
+	}
+	if target.MaskIconURL != " data:image/svg+xml;base64,mask " {
+		t.Fatalf("target mask icon URL = %q", target.MaskIconURL)
 	}
 
 	if _, err := store.PutAgentTarget(ctx, Target{ID: "bad", Name: "broken row"}); !errors.Is(err, errInvalidTestTarget) {

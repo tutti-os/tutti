@@ -7,7 +7,7 @@ import {
 import { flushSync } from "react-dom";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { useAgentHostApi } from "../../../agentActivityHost";
-import type { AgentSessionViewRef } from "../../../contexts/workspace/presentation/renderer/agentSessions/useAgentSessionTransport";
+import type { AgentSessionViewRef } from "../../../contexts/workspace/presentation/renderer/agentSessions/useAgentSessionPagingState";
 import type { AgentGUINodeData } from "../../../types";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import type {
@@ -47,6 +47,7 @@ export interface UseAgentGUIConversationBatchDeletionInput {
   setIsLoadingMessages: Dispatch<SetStateAction<boolean>>;
   setActiveConversationId: Dispatch<SetStateAction<string | null>>;
   persistActiveConversation: (agentSessionId: string | null) => void;
+  removeConversations: (agentSessionIds: readonly string[]) => void;
   workspaceId: string;
   setIsDeletingProjectConversations: Dispatch<SetStateAction<boolean>>;
   agentActivityRuntime: AgentActivityRuntime;
@@ -72,6 +73,7 @@ export function useAgentGUIConversationBatchDeletion(
     setIsLoadingMessages,
     setActiveConversationId,
     persistActiveConversation,
+    removeConversations,
     workspaceId,
     setIsDeletingProjectConversations,
     agentActivityRuntime,
@@ -175,38 +177,72 @@ export function useAgentGUIConversationBatchDeletion(
       setIsDeletingProjectConversations(true);
       setDetailError(null);
       setListError(null);
-      const activeDeletedConversationId = activeConversationIdRef.current;
-      if (
-        activeDeletedConversationId &&
-        targetIds.has(activeDeletedConversationId)
-      ) {
-        const nextActive =
-          conversationsRef.current.find(
-            (conversation) => !targetIds.has(conversation.id)
-          )?.id ?? null;
-        if (nextActive) {
-          markSelectedConversationDetailPending(nextActive);
-        }
-        activeConversationIdRef.current = nextActive;
-        flushSync(() => {
-          if (nextActive) {
-            setIntent({ tag: "active", id: nextActive });
-          } else {
-            setIsLoadingMessages(false);
-            setIntent({ tag: "home" });
-          }
-          setActiveConversationId(nextActive);
-        });
-        persistActiveConversation(nextActive);
-      }
       void deleteSessionsBatch({
         sessionIds: [...targetIds],
         workspaceId
       })
         .then((result) => {
-          finalizeConversationBatchDeletion(
-            new Set([...targetIds, ...result.removedSessionIds])
-          );
+          const activeDeletedConversationId = activeConversationIdRef.current;
+          if (
+            activeDeletedConversationId &&
+            targetIds.has(activeDeletedConversationId)
+          ) {
+            const nextActive =
+              conversationsRef.current.find(
+                (conversation) => !targetIds.has(conversation.id)
+              )?.id ?? null;
+            if (nextActive) {
+              markSelectedConversationDetailPending(nextActive);
+            }
+            activeConversationIdRef.current = nextActive;
+            flushSync(() => {
+              if (nextActive) {
+                setIntent({ tag: "active", id: nextActive });
+              } else {
+                setIsLoadingMessages(false);
+                setIntent({ tag: "home" });
+              }
+              setActiveConversationId(nextActive);
+            });
+            persistActiveConversation(nextActive);
+          }
+          if (result.cleanupFailedSessionIds.length > 0) {
+            try {
+              void Promise.resolve(
+                agentActivityRuntime.reportDiagnostic?.({
+                  details: {
+                    cleanupFailedSessionIds: result.cleanupFailedSessionIds
+                  },
+                  event: "agent.gui.conversation_delete.cleanup_failed",
+                  level: "warn",
+                  source: "agent-gui",
+                  workspaceId
+                })
+              ).catch((error) => {
+                console.error(
+                  "[agent-gui-cleanup-diagnostic]",
+                  JSON.stringify({
+                    error: getAgentGUIErrorMessage(error),
+                    workspaceId
+                  })
+                );
+              });
+            } catch (error) {
+              console.error(
+                "[agent-gui-cleanup-diagnostic]",
+                JSON.stringify({
+                  error: getAgentGUIErrorMessage(error),
+                  workspaceId
+                })
+              );
+            }
+          }
+          const removedIds = new Set([
+            ...targetIds,
+            ...result.removedSessionIds
+          ]);
+          removeConversations([...removedIds]);
+          finalizeConversationBatchDeletion(removedIds);
         })
         .catch((error) => {
           const message = getAgentGUIErrorMessage(error);
@@ -237,6 +273,7 @@ export function useAgentGUIConversationBatchDeletion(
       isDeletingProjectConversations,
       markSelectedConversationDetailPending,
       persistActiveConversation,
+      removeConversations,
       setActiveConversationId,
       setDetailError,
       setIntent,

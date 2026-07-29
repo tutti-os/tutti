@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/managednpm"
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
@@ -49,6 +50,19 @@ func (s Service) runCodexCLILatestInstaller(
 func (s Service) runManagedNPMPackageInstaller(
 	ctx context.Context,
 	provider string,
+	spec ManagedNPMPackageInstallerSpec,
+	existingCLIPath string,
+) (InstallCommandResult, error) {
+	return s.runManagedNPMPackageAction(ctx, provider, ActionInstall, spec, existingCLIPath)
+}
+
+// runManagedNPMPackageAction is the controlled npm execution primitive shared
+// by install and update. The workflows that decide whether and why it runs are
+// separate; the action id keeps progress ownership and reporting distinct.
+func (s Service) runManagedNPMPackageAction(
+	ctx context.Context,
+	provider string,
+	actionID ActionID,
 	spec ManagedNPMPackageInstallerSpec,
 	existingCLIPath string,
 ) (InstallCommandResult, error) {
@@ -112,13 +126,20 @@ func (s Service) runManagedNPMPackageInstaller(
 	// which on some machines holds root-owned files that make every user-mode npm
 	// install fail with EACCES before any registry is hit.
 	baseEnv = withAgentNPMCache(baseEnv, filepath.Join(installPrefix, agentNPMCacheDirName))
-	registries := s.rankedAgentNPMRegistries(ctx, packageName)
+	registries := s.rankedManagedNPMRegistries(ctx, spec)
 	var result InstallCommandResult
 	binConflictRepaired := false
+	// npm can leave a sibling .<package>-<hash> staging directory when an
+	// install is interrupted (for example, when the desktop window that started
+	// the action closes). The next npm install then fails before doing any useful
+	// work with ENOTEMPTY while trying to rename the current package into that
+	// stale destination. Clean only this package's staging directories; the
+	// global prefix may contain unrelated user-installed packages.
+	cleanupManagedNPMStagingDirs(installPrefix, packageName)
 	for i, registry := range registries {
 		registryDisplay := displayNPMRegistry(registry)
 		setActiveAction(ctx, provider, ActiveAction{
-			ID:         ActionInstall,
+			ID:         actionID,
 			Status:     "running",
 			Step:       step,
 			Registry:   registryDisplay,
@@ -135,7 +156,7 @@ func (s Service) runManagedNPMPackageInstaller(
 		cancel()
 		if err == nil && result.ExitCode == 0 {
 			setActiveAction(ctx, provider, ActiveAction{
-				ID:         ActionInstall,
+				ID:         actionID,
 				Status:     "running",
 				Step:       "verify",
 				Registry:   registryDisplay,
@@ -147,7 +168,7 @@ func (s Service) runManagedNPMPackageInstaller(
 		if !binConflictRepaired && s.repairManagedNPMBinEEXIST(ctx, result, installPrefix, binaryName, spec.PackageVersion, baseEnv) {
 			binConflictRepaired = true
 			setActiveAction(ctx, provider, ActiveAction{
-				ID:         ActionInstall,
+				ID:         actionID,
 				Status:     "running",
 				Step:       "repair",
 				Registry:   registryDisplay,
@@ -165,7 +186,7 @@ func (s Service) runManagedNPMPackageInstaller(
 			cancel()
 			if err == nil && result.ExitCode == 0 {
 				setActiveAction(ctx, provider, ActiveAction{
-					ID:         ActionInstall,
+					ID:         actionID,
 					Status:     "running",
 					Step:       "verify",
 					Registry:   registryDisplay,
@@ -174,6 +195,10 @@ func (s Service) runManagedNPMPackageInstaller(
 				})
 				return result, nil
 			}
+		}
+		cleanupManagedNPMStagingDirs(installPrefix, packageName)
+		if ctx.Err() != nil {
+			return result, err
 		}
 		if i < len(registries)-1 {
 			slog.Warn(
@@ -189,6 +214,77 @@ func (s Service) runManagedNPMPackageInstaller(
 	return result, err
 }
 
+func cleanupManagedNPMStagingDirs(installPrefix, packageName string) {
+	packageDir, ok := managedNPMGlobalPackageDir(installPrefix, packageName)
+	if !ok {
+		return
+	}
+	parentDir := filepath.Dir(packageDir)
+	stagingPrefix := "." + filepath.Base(packageDir) + "-"
+	entries, err := os.ReadDir(parentDir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			slog.Warn(
+				"agent provider managed npm staging directory scan failed",
+				"path", parentDir,
+				"package", packageName,
+				"error", err,
+			)
+		}
+		return
+	}
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.Name(), stagingPrefix) {
+			continue
+		}
+		path := filepath.Join(parentDir, entry.Name())
+		if err := os.RemoveAll(path); err != nil {
+			slog.Warn(
+				"agent provider managed npm staging directory cleanup failed",
+				"path", path,
+				"package", packageName,
+				"error", err,
+			)
+			continue
+		}
+		slog.Info(
+			"agent provider managed npm staging directory cleaned",
+			"path", path,
+			"package", packageName,
+		)
+	}
+}
+
+func managedNPMGlobalPackageDir(installPrefix, packageName string) (string, bool) {
+	installPrefix = strings.TrimSpace(installPrefix)
+	packageName = strings.TrimSpace(packageName)
+	if installPrefix == "" || packageName == "" {
+		return "", false
+	}
+	parts := strings.Split(packageName, "/")
+	switch {
+	case strings.HasPrefix(packageName, "@"):
+		if len(parts) != 2 || !validManagedNPMPackagePathPart(parts[0]) || !validManagedNPMPackagePathPart(parts[1]) {
+			return "", false
+		}
+	case len(parts) != 1 || !validManagedNPMPackagePathPart(parts[0]):
+		return "", false
+	}
+	nodeModulesDir := filepath.Join(installPrefix, "lib", "node_modules")
+	if runtime.GOOS == "windows" {
+		nodeModulesDir = filepath.Join(installPrefix, "node_modules")
+	}
+	return filepath.Join(append([]string{nodeModulesDir}, parts...)...), true
+}
+
+func validManagedNPMPackagePathPart(part string) bool {
+	part = strings.TrimSpace(part)
+	return part != "" &&
+		part != "." &&
+		part != ".." &&
+		!strings.ContainsAny(part, `\/`)
+}
+
 func (s Service) repairManagedNPMBinEEXIST(
 	ctx context.Context,
 	result InstallCommandResult,
@@ -201,7 +297,7 @@ func (s Service) repairManagedNPMBinEEXIST(
 	if !ok || !managedNPMBinConflictMatchesInstallTarget(conflictPath, installPrefix, binaryName) {
 		return false
 	}
-	installedVersion := s.cliVersion(ctx, conflictPath, env)
+	installedVersion, _ := managednpm.ExtractVersion(s.cliVersionOutput(ctx, conflictPath, env))
 	if required := strings.TrimSpace(requiredVersion); required != "" && installedVersion == required {
 		return false
 	}

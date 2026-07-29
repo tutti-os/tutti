@@ -35,6 +35,7 @@ export function sanitizeWorkbenchHostSnapshot(
     activeNodeId: normalized.activeNodeId,
     spaces: normalized.spaces?.map(sanitizeSpace),
     activeSpaceId: normalized.activeSpaceId,
+    layoutBasis: normalized.layoutBasis,
     metadata: sanitizeMetadata(normalized.metadata)
   });
 }

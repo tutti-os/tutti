@@ -30,7 +30,7 @@ func codexProviderChecks(status ProviderStatus, platformBinaryOK bool, nodeRunti
 		},
 		{
 			Name:   "version_floor",
-			Passed: cliVersionMeetsMinimum(status.CLI.Version, status.CLI.MinVersion),
+			Passed: cliVersionMeetsMinimumAllowUnknown(status.CLI.Version, status.CLI.MinVersion),
 			Detail: firstNonBlank(status.CLI.Version, "version unknown"),
 		},
 		nodeRuntime,

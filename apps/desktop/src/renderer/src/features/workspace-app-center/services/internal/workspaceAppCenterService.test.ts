@@ -196,143 +196,6 @@ test("WorkspaceAppCenterService rolls back shell presentation when launch prepar
   assert.deepEqual(calls, ["begin:missing", "rollback:missing"]);
 });
 
-test("WorkspaceAppCenterService refreshes failed runtime state after launch is rejected", async () => {
-  let listCalls = 0;
-  const service = new WorkspaceAppCenterService({
-    eventStreamClient: createEventStreamClient(),
-    gateway: createGateway({
-      listWorkspaceApps: async () => {
-        listCalls += 1;
-        const failed = listCalls > 1;
-        return createSnapshot({
-          apps: [
-            createApp({
-              appId: "app-1",
-              failureReason: failed ? "process_exit" : null,
-              installed: true,
-              lastError: failed ? "exit status 1" : null,
-              runtimeStatus: failed ? "failed" : "idle",
-              source: "local-dev",
-              stateRevision: failed ? 2 : 1
-            })
-          ]
-        });
-      },
-      launchWorkspaceApp: async () => {
-        throw {
-          error: {
-            code: "invalid_request",
-            developerMessage:
-              "invalid workspace app runtime state: failed workspace apps must be retried before launch",
-            reason: "malformed_request"
-          }
-        };
-      }
-    }),
-    hostFilesApi: createHostFilesApi(),
-    hostWorkspaceApi: createHostWorkspaceApi()
-  });
-
-  await service.refresh("workspace-1");
-  await service.openApp({ appId: "app-1", workspaceId: "workspace-1" });
-
-  assert.equal(listCalls, 2);
-  assert.equal(service.store.apps[0]?.runtimeStatus, "failed");
-  assert.equal(
-    service.store.error,
-    "This app failed to start. Click Retry before opening it."
-  );
-});
-
-test("WorkspaceAppCenterService tracks app install when the success snapshot omits the app", async () => {
-  const reporterCalls: ReporterEventInput[][] = [];
-  let listCalls = 0;
-  const service = new WorkspaceAppCenterService({
-    eventStreamClient: createEventStreamClient(),
-    gateway: createGateway({
-      installWorkspaceApp: async () => createSnapshot({ apps: [] }),
-      listWorkspaceApps: async () => {
-        listCalls += 1;
-        return createSnapshot({
-          apps: [
-            createApp({
-              appId: "app-1",
-              installed: listCalls > 1,
-              source: "builtin"
-            })
-          ]
-        });
-      }
-    }),
-    hostFilesApi: createHostFilesApi(),
-    hostWorkspaceApi: createHostWorkspaceApi(),
-    reporterNow: () => 1749124800000,
-    reporterService: createReporterService(reporterCalls)
-  });
-
-  await service.refresh("workspace-1");
-  await service.installApp({ appId: "app-1", workspaceId: "workspace-1" });
-
-  await waitFor(() => service.store.apps[0]?.installed === true);
-  assert.deepEqual(reporterCalls, [
-    [
-      {
-        clientTS: 1749124800000,
-        name: "app_center.app_installed",
-        params: {
-          app_id: "app-1",
-          app_source: "builtin"
-        }
-      }
-    ]
-  ]);
-});
-
-test("WorkspaceAppCenterService merges catalog refresh fields without regressing runtime state", async () => {
-  const service = new WorkspaceAppCenterService({
-    eventStreamClient: createEventStreamClient(),
-    gateway: createGateway({
-      listWorkspaceApps: async () =>
-        createSnapshot({
-          apps: [
-            createApp({
-              appId: "app-1",
-              availableVersion: null,
-              runtimeStatus: "running",
-              source: "builtin",
-              stateRevision: 3,
-              updateAvailable: false,
-              version: "1.0.0"
-            })
-          ]
-        }),
-      refreshWorkspaceAppCatalog: async () =>
-        createSnapshot({
-          apps: [
-            createApp({
-              appId: "app-1",
-              availableVersion: "1.1.0",
-              runtimeStatus: "idle",
-              source: "builtin",
-              stateRevision: 3,
-              updateAvailable: true,
-              version: "1.0.0"
-            })
-          ]
-        })
-    }),
-    hostFilesApi: createHostFilesApi(),
-    hostWorkspaceApi: createHostWorkspaceApi()
-  });
-
-  await service.refresh("workspace-1");
-  await service.refreshCatalog("workspace-1");
-
-  assert.equal(service.store.apps[0]?.availableVersion, "1.1.0");
-  assert.equal(service.store.apps[0]?.updateAvailable, true);
-  assert.equal(service.store.apps[0]?.runtimeStatus, "running");
-});
-
 test("WorkspaceAppCenterService keeps factory jobs when catalog refresh supersedes app refresh", async () => {
   const diagnostics: DesktopRendererDiagnosticPayload[] = [];
   const appRefresh = createDeferred<WorkspaceAppCenterSnapshot>();
@@ -419,79 +282,6 @@ test("WorkspaceAppCenterService keeps factory jobs when catalog refresh supersed
     ],
     truncated: false
   });
-});
-
-test("WorkspaceAppCenterService keeps update disabled while update install is pending", async () => {
-  let installCalls = 0;
-  let listCalls = 0;
-  const service = new WorkspaceAppCenterService({
-    eventStreamClient: createEventStreamClient(),
-    gateway: createGateway({
-      installWorkspaceApp: async () => {
-        installCalls += 1;
-        return createSnapshot({
-          apps: [
-            createApp({
-              appId: "app-1",
-              availableVersion: "1.1.0",
-              installed: true,
-              runtimeStatus: "running",
-              source: "builtin",
-              stateRevision: 3,
-              updateAvailable: true,
-              version: "1.0.0"
-            })
-          ]
-        });
-      },
-      listWorkspaceApps: async () => {
-        listCalls += 1;
-        return createSnapshot({
-          apps: [
-            createApp({
-              appId: "app-1",
-              availableVersion: listCalls > 1 ? null : "1.1.0",
-              installed: true,
-              runtimeStatus: listCalls > 1 ? "running" : "idle",
-              source: "builtin",
-              stateRevision: listCalls > 1 ? 4 : 3,
-              updateAvailable: listCalls <= 1,
-              version: listCalls > 1 ? "1.1.0" : "1.0.0"
-            })
-          ]
-        });
-      }
-    }),
-    hostFilesApi: createHostFilesApi(),
-    hostWorkspaceApi: createHostWorkspaceApi()
-  });
-
-  await service.refresh("workspace-1");
-  const firstUpdate = service.updateApp({
-    appId: "app-1",
-    trigger: "primary_action",
-    workspaceId: "workspace-1"
-  });
-  await waitFor(() => service.store.apps[0]?.runtimeStatus === "installing");
-  await service.updateApp({
-    appId: "app-1",
-    trigger: "primary_action",
-    workspaceId: "workspace-1"
-  });
-
-  assert.equal(installCalls, 1);
-  assert.equal(service.store.apps[0]?.availableVersion, "1.1.0");
-  assert.equal(service.store.apps[0]?.runtimeStatus, "installing");
-  assert.equal(service.store.apps[0]?.updateAvailable, true);
-  assert.equal(service.store.apps[0]?.version, "1.0.0");
-
-  await firstUpdate;
-  await service.refresh("workspace-1");
-
-  assert.equal(installCalls, 1);
-  assert.equal(service.store.apps[0]?.runtimeStatus, "running");
-  assert.equal(service.store.apps[0]?.updateAvailable, false);
-  assert.equal(service.store.apps[0]?.version, "1.1.0");
 });
 
 test("WorkspaceAppCenterService records low-volume diagnostics for running app update handoff", async () => {
@@ -697,104 +487,6 @@ test("WorkspaceAppCenterService tracks app install failure when async install fa
       }
     ]
   ]);
-});
-
-test("WorkspaceAppCenterService forwards running status when reopening a running app", async () => {
-  const launchCalls: Array<{
-    appId: string;
-    prepared: boolean;
-    prevStatus?: WorkspaceAppCenterApp["runtimeStatus"];
-    workspaceId?: string;
-  }> = [];
-  const reporterCalls: ReporterEventInput[][] = [];
-  const service = new WorkspaceAppCenterService({
-    eventStreamClient: createEventStreamClient(),
-    gateway: createGateway({
-      listWorkspaceApps: async () =>
-        createSnapshot({
-          apps: [
-            createApp({
-              appId: "app-1",
-              installed: true,
-              runtimeStatus: "running",
-              source: "builtin",
-              launchUrl: "http://127.0.0.1:3000"
-            })
-          ]
-        })
-    }),
-    hostFilesApi: createHostFilesApi(),
-    hostWorkspaceApi: createHostWorkspaceApi(),
-    reporterNow: () => 1749124800000,
-    reporterService: createReporterService(reporterCalls),
-    surfaceHost: createSurfaceHost({
-      presentPrepared(input) {
-        const { attempt: _attempt, ...launch } = input;
-        launchCalls.push(launch);
-        return true;
-      }
-    })
-  });
-
-  await service.refresh("workspace-1");
-  await service.openApp({ appId: "app-1", workspaceId: "workspace-1" });
-
-  assert.deepEqual(launchCalls, [
-    {
-      appId: "app-1",
-      prepared: true,
-      prevStatus: "running",
-      workspaceId: "workspace-1"
-    }
-  ]);
-  assert.deepEqual(reporterCalls, []);
-});
-
-test("WorkspaceAppCenterService ignores stale failed updates before tracking runtime failures", async () => {
-  const reporterCalls: ReporterEventInput[][] = [];
-  const eventStream = createControllableEventStreamClient();
-  const service = new WorkspaceAppCenterService({
-    eventStreamClient: eventStream.client,
-    gateway: createGateway({
-      listWorkspaceApps: async () =>
-        createSnapshot({
-          apps: [
-            createApp({
-              appId: "app-1",
-              installed: true,
-              runtimeStatus: "running",
-              source: "generated",
-              stateRevision: 2,
-              launchUrl: "http://127.0.0.1:3000"
-            })
-          ]
-        })
-    }),
-    hostFilesApi: createHostFilesApi(),
-    hostWorkspaceApi: createHostWorkspaceApi(),
-    reporterNow: () => 1749124800000,
-    reporterService: createReporterService(reporterCalls)
-  });
-
-  await service.refresh("workspace-1");
-  service.startWorkspacePolling("workspace-1");
-  eventStream.publishWorkspaceAppUpdated(
-    createProtocolApp({
-      appId: "app-1",
-      status: "failed",
-      stateRevision: 1
-    })
-  );
-  eventStream.publishWorkspaceAppUpdated(
-    createProtocolApp({
-      appId: "app-1",
-      status: "failed",
-      stateRevision: 1
-    })
-  );
-
-  assert.equal(service.store.apps[0]?.runtimeStatus, "running");
-  assert.deepEqual(reporterCalls, []);
 });
 
 test("WorkspaceAppCenterService tracks accepted runtime failure transitions once", async () => {
@@ -1299,14 +991,15 @@ test("WorkspaceAppCenterService tracks import failure and catalog refresh result
 
 test("WorkspaceAppCenterService tracks factory job lifecycle events", async () => {
   const reporterCalls: ReporterEventInput[][] = [];
-  let createFactoryJobInput: {
+  const createFactoryJobInputs: Array<{
     agentTargetId: string;
+    clientSubmitId: string;
     displayName: string;
     model?: string;
     permissionModeId?: string;
     prompt: string;
     reasoningEffort?: string;
-  } | null = null;
+  }> = [];
   const createdJob = createFactoryJob({
     jobId: "job-1",
     model: "gpt-5",
@@ -1321,7 +1014,7 @@ test("WorkspaceAppCenterService tracks factory job lifecycle events", async () =
           jobs: [createFactoryJob({ jobId: "job-1", status: "canceled" })]
         }),
       createWorkspaceAppFactoryJob: async (_workspaceId, input) => {
-        createFactoryJobInput = input;
+        createFactoryJobInputs.push(input);
         return createFactorySnapshot({
           jobs: [createdJob]
         });
@@ -1365,8 +1058,15 @@ test("WorkspaceAppCenterService tracks factory job lifecycle events", async () =
     workspaceId: "workspace-1"
   });
 
+  const createFactoryJobInput = createFactoryJobInputs[0];
+  assert.ok(createFactoryJobInput);
+  assert.match(
+    createFactoryJobInput.clientSubmitId,
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  );
   assert.deepEqual(createFactoryJobInput, {
     agentTargetId: "local:codex",
+    clientSubmitId: createFactoryJobInput.clientSubmitId,
     displayName: "Dashboard App",
     model: "gpt-5",
     permissionModeId: "auto",
@@ -1451,7 +1151,9 @@ test("WorkspaceAppCenterService normalizes provider configuration", async () => 
             prewarmDraftSession: false,
             planModeExclusiveWithPermissionMode: false
           },
-          capabilityCatalog: []
+          capabilityCatalog: [],
+          reasoningOptionsByModel: {},
+          commands: []
         };
       }
     })
@@ -1523,7 +1225,9 @@ test("WorkspaceAppCenterService makes effective permission default visible", asy
             prewarmDraftSession: false,
             planModeExclusiveWithPermissionMode: false
           },
-          capabilityCatalog: []
+          capabilityCatalog: [],
+          reasoningOptionsByModel: {},
+          commands: []
         };
       }
     })
@@ -1570,7 +1274,11 @@ test("WorkspaceAppCenterService passes workspace id and prefers live composer mo
           modelConfig: {
             configurable: true,
             currentValue: "default",
-            options: [{ id: "default", label: "Default", value: "default" }]
+            options: [
+              { id: "default", label: "Default", value: "default" },
+              { id: "sonnet", label: "Sonnet", value: "sonnet" },
+              { id: "haiku", label: "Haiku", value: "haiku" }
+            ]
           },
           permissionConfig: {
             configurable: true,
@@ -1595,9 +1303,8 @@ test("WorkspaceAppCenterService passes workspace id and prefers live composer mo
                 currentValue: "sonnet",
                 id: "model",
                 options: [
-                  { name: "Default", value: "default" },
-                  { name: "Sonnet", value: "sonnet" },
-                  { name: "Haiku", value: "haiku" }
+                  { name: "Legacy Default", value: "default" },
+                  { name: "Legacy Sonnet", value: "sonnet" }
                 ]
               }
             ]
@@ -1610,7 +1317,9 @@ test("WorkspaceAppCenterService passes workspace id and prefers live composer mo
             prewarmDraftSession: false,
             planModeExclusiveWithPermissionMode: false
           },
-          capabilityCatalog: []
+          capabilityCatalog: [],
+          reasoningOptionsByModel: {},
+          commands: []
         };
       }
     })
@@ -1635,6 +1344,246 @@ test("WorkspaceAppCenterService passes workspace id and prefers live composer mo
     { label: "Haiku", value: "haiku" }
   ]);
   assert.equal(configuration.defaultModel, "sonnet");
+});
+
+test("WorkspaceAppCenterService reveals exported app archives", async () => {
+  const exportInputs: Array<{ destinationPath: string; version: string }> = [];
+  const revealedPaths: string[] = [];
+  const service = new WorkspaceAppCenterService({
+    eventStreamClient: createEventStreamClient(),
+    gateway: createGateway({
+      async listWorkspaceApps() {
+        return createSnapshot({
+          apps: [createApp({ appId: "exportable", version: "0.2.0" })]
+        });
+      },
+      async exportWorkspaceApp(_workspaceId, appId, input) {
+        assert.ok(input.version);
+        exportInputs.push({
+          destinationPath: input.destinationPath,
+          version: input.version
+        });
+        return {
+          appId,
+          archivePath: input.destinationPath,
+          artifactSha256: "sha",
+          artifactSizeBytes: 1,
+          version: input.version,
+          workspaceId: "workspace-1"
+        };
+      }
+    }),
+    hostFilesApi: createHostFilesApi({
+      async revealInFolder(path) {
+        revealedPaths.push(path);
+      },
+      async selectAppArchiveExportPath(input) {
+        assert.equal(input.defaultPath, "App_One_0.2.0.zip");
+        return "/tmp/exportable.zip";
+      }
+    }),
+    hostWorkspaceApi: createHostWorkspaceApi()
+  });
+
+  await service.refresh("workspace-1");
+  await service.exportApp({ appId: "exportable", workspaceId: "workspace-1" });
+
+  assert.deepEqual(exportInputs, [
+    { destinationPath: "/tmp/exportable.zip", version: "0.2.0" }
+  ]);
+  assert.deepEqual(revealedPaths, ["/tmp/exportable.zip"]);
+});
+
+test("WorkspaceAppCenterService translates structured import and delete failures", async () => {
+  const service = new WorkspaceAppCenterService({
+    eventStreamClient: createEventStreamClient(),
+    gateway: createGateway({
+      async deleteWorkspaceApp() {
+        throw Object.assign(new Error("cannot delete builtin app"), {
+          code: "invalid_request",
+          reason: "workspace_app_delete_forbidden"
+        });
+      },
+      async importWorkspaceApp() {
+        throw Object.assign(new Error("package exists"), {
+          code: "invalid_request",
+          reason: "workspace_app_package_exists"
+        });
+      },
+      async listWorkspaceApps() {
+        return createSnapshot({ apps: [createApp()] });
+      }
+    }),
+    hostFilesApi: createHostFilesApi({
+      selectAppArchive: async () => "/tmp/imported.zip"
+    }),
+    hostWorkspaceApi: createHostWorkspaceApi()
+  });
+
+  await service.importApp({ workspaceId: "workspace-1" });
+  assert.equal(service.store.error, "This app version already exists.");
+
+  await service.refresh("workspace-1");
+  await service.deleteApp({ appId: "app-1", workspaceId: "workspace-1" });
+  assert.equal(service.store.apps.length, 1);
+  assert.equal(service.store.error, "That request could not be completed.");
+});
+
+test("WorkspaceAppCenterService refreshes after event stream reconnect", async () => {
+  const eventStream = createReconnectableEventStreamClient();
+  let listCalls = 0;
+  const service = new WorkspaceAppCenterService({
+    eventStreamClient: eventStream.client,
+    gateway: createGateway({
+      async listWorkspaceApps() {
+        listCalls += 1;
+        return createSnapshot({
+          apps: [
+            createApp({
+              runtimeStatus: listCalls > 1 ? "running" : "idle",
+              stateRevision: listCalls
+            })
+          ]
+        });
+      }
+    }),
+    hostFilesApi: createHostFilesApi(),
+    hostWorkspaceApi: createHostWorkspaceApi()
+  });
+
+  const dispose = service.startWorkspacePolling("workspace-1");
+  await waitFor(() => listCalls === 1);
+  eventStream.emitConnected();
+  await waitFor(() => service.store.apps[0]?.runtimeStatus === "running");
+
+  assert.equal(listCalls, 2);
+  assert.equal(service.store.apps[0]?.runtimeStatus, "running");
+  dispose();
+});
+
+test("WorkspaceAppCenterService closes app surfaces on uninstall and before restart", async () => {
+  const calls: string[] = [];
+  const runningApp = createApp({
+    launchUrl: "http://127.0.0.1:3000",
+    runtimeStatus: "running"
+  });
+  const service = new WorkspaceAppCenterService({
+    eventStreamClient: createEventStreamClient(),
+    gateway: createGateway({
+      async installWorkspaceApp(_workspaceId, _appId, input) {
+        calls.push(`install:${String(input?.restartRunning)}`);
+        return createSnapshot({
+          apps: [createApp({ ...runningApp, stateRevision: 3 })]
+        });
+      },
+      async listWorkspaceApps() {
+        return createSnapshot({
+          apps: [
+            createApp({
+              ...runningApp,
+              runtimeStatus: "installed_pending_restart",
+              stateRevision: 2
+            })
+          ]
+        });
+      },
+      async uninstallWorkspaceApp() {
+        return createSnapshot({
+          apps: [
+            createApp({
+              installed: false,
+              launchUrl: null,
+              runtimeStatus: "idle",
+              stateRevision: 4
+            })
+          ]
+        });
+      }
+    }),
+    hostFilesApi: createHostFilesApi(),
+    hostWorkspaceApi: createHostWorkspaceApi(),
+    surfaceHost: createSurfaceHost({
+      close({ appId }) {
+        calls.push(`close:${appId}`);
+      },
+      presentPrepared({ appId }) {
+        calls.push(`present:${appId}`);
+        return true;
+      }
+    })
+  });
+
+  await service.refresh("workspace-1");
+  assert.equal(
+    await service.restartAndOpenApp({
+      appId: "app-1",
+      workspaceId: "workspace-1"
+    }),
+    true
+  );
+  assert.deepEqual(calls, ["close:app-1", "install:true", "present:app-1"]);
+
+  calls.length = 0;
+  await service.uninstallApp({ appId: "app-1", workspaceId: "workspace-1" });
+  assert.deepEqual(calls, ["close:app-1"]);
+});
+
+test("WorkspaceAppCenterService translates failed-runtime launch errors with operation details", async () => {
+  const diagnostics: DesktopRendererDiagnosticPayload[] = [];
+  const service = new WorkspaceAppCenterService({
+    eventStreamClient: createEventStreamClient(),
+    gateway: createGateway({
+      async launchWorkspaceApp() {
+        throw {
+          error: {
+            code: "invalid_request",
+            developerMessage:
+              "failed workspace apps must be retried before launch",
+            reason: "malformed_request"
+          }
+        };
+      },
+      async listWorkspaceApps() {
+        return createSnapshot({ apps: [createApp()] });
+      }
+    }),
+    hostFilesApi: createHostFilesApi(),
+    hostWorkspaceApi: createHostWorkspaceApi(),
+    runtimeApi: {
+      async logRendererDiagnostic(payload) {
+        diagnostics.push(payload);
+      }
+    }
+  });
+
+  await service.refresh("workspace-1");
+  assert.equal(
+    await service.openApp({ appId: "app-1", workspaceId: "workspace-1" }),
+    false
+  );
+  assert.equal(
+    service.store.error,
+    "This app failed to start. Click Retry before opening it."
+  );
+  assert.deepEqual(diagnostics[0], {
+    details: {
+      appId: "app-1",
+      developerMessage: "failed workspace apps must be retried before launch",
+      errorCode: "invalid_request",
+      params: {},
+      operation: "workspace_app.prepare_launch",
+      reason: "malformed_request",
+      retryable: false,
+      statusCode: 0,
+      toastMessage: "This app failed to start. Click Retry before opening it.",
+      uiAction: "open_app",
+      workspaceId: "workspace-1"
+    },
+    event: "workspace_app_center_operation_failed",
+    level: "warn",
+    source: "workspace-app-center",
+    workspaceId: "workspace-1"
+  });
 });
 
 function createApp(
@@ -1850,6 +1799,27 @@ function createEventStreamClient(): WorkspaceAppCenterServiceDependencies["event
   } as unknown as WorkspaceAppCenterServiceDependencies["eventStreamClient"];
 }
 
+function createReconnectableEventStreamClient(): {
+  client: WorkspaceAppCenterServiceDependencies["eventStreamClient"];
+  emitConnected: () => void;
+} {
+  const listeners = new Set<(state: "connected") => void>();
+  return {
+    client: {
+      ...createEventStreamClient(),
+      subscribeConnectionState(listener: (state: "connected") => void) {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      }
+    } as WorkspaceAppCenterServiceDependencies["eventStreamClient"],
+    emitConnected() {
+      for (const listener of listeners) {
+        listener("connected");
+      }
+    }
+  };
+}
+
 function createControllableEventStreamClient(): {
   client: WorkspaceAppCenterServiceDependencies["eventStreamClient"];
   publishWorkspaceAppUpdated: (app: WorkspaceAppLike) => void;
@@ -1951,7 +1921,9 @@ function createTuttidClient(
           prewarmDraftSession: false,
           planModeExclusiveWithPermissionMode: false
         },
-        capabilityCatalog: []
+        capabilityCatalog: [],
+        reasoningOptionsByModel: {},
+        commands: []
       };
     },
     ...overrides

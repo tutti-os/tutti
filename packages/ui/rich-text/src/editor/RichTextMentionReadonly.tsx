@@ -1,8 +1,10 @@
 import type { CSSProperties, JSX, MouseEvent, ReactNode } from "react";
+import { MentionPill } from "@tutti-os/ui-system/components";
+import { resolveRichTextMentionView } from "../plugins/mention.ts";
 import {
-  getRichTextMentionDisplayText,
-  resolveRichTextMentionView
-} from "../plugins/mention.ts";
+  resolveMentionPillIconUrl,
+  resolveMentionPillKind
+} from "../extensions/mentionPillPresentation.ts";
 import type {
   RichTextMentionAttrs,
   RichTextResolvedMention,
@@ -27,14 +29,8 @@ export interface RichTextMentionReadonlyProps<TResolved = unknown> {
 
 const baseStyle: CSSProperties = {
   alignItems: "center",
-  border: "1px solid transparent",
-  borderRadius: "999px",
   display: "inline-flex",
-  fontSize: "0.95em",
-  gap: "0.25rem",
-  lineHeight: 1.4,
   maxWidth: "100%",
-  padding: "0.05rem 0.45rem",
   textDecoration: "none",
   verticalAlign: "baseline",
   whiteSpace: "nowrap"
@@ -43,30 +39,22 @@ const baseStyle: CSSProperties = {
 const stateStyles: Record<RichTextResolvedMentionView["state"], CSSProperties> =
   {
     active: {
-      background:
-        "var(--tutti-rich-text-mention-active-bg, color-mix(in srgb, currentColor 12%, transparent))",
       color: "var(--tutti-rich-text-mention-active-fg, inherit)",
       cursor: "pointer"
     },
     missing: {
-      background:
-        "var(--tutti-rich-text-mention-missing-bg, color-mix(in srgb, currentColor 6%, transparent))",
       color:
         "var(--tutti-rich-text-mention-missing-fg, color-mix(in srgb, currentColor 48%, transparent))",
       cursor: "default",
       textDecoration: "line-through"
     },
     disabled: {
-      background:
-        "var(--tutti-rich-text-mention-disabled-bg, color-mix(in srgb, currentColor 6%, transparent))",
       color:
         "var(--tutti-rich-text-mention-disabled-fg, color-mix(in srgb, currentColor 58%, transparent))",
       cursor: "not-allowed",
       opacity: 0.88
     },
     loading: {
-      background:
-        "var(--tutti-rich-text-mention-loading-bg, color-mix(in srgb, currentColor 8%, transparent))",
       color:
         "var(--tutti-rich-text-mention-loading-fg, color-mix(in srgb, currentColor 82%, transparent))",
       cursor: "progress",
@@ -94,12 +82,21 @@ export function RichTextMentionReadonly<TResolved = unknown>({
     mention,
     resolved: view as RichTextResolvedMentionView<TResolved>
   };
-  const label =
-    renderLabel?.(payload) ??
-    getRichTextMentionDisplayText({
-      ...mention,
-      label: view.label
-    });
+  const label = renderLabel?.(payload) ?? view.label;
+  const content = (
+    <MentionPill
+      className="top-0"
+      iconUrl={
+        resolveMentionPillIconUrl({
+          presentation: view.presentation,
+          scope: mention.scope
+        }) ?? undefined
+      }
+      kind={resolveMentionPillKind(mention.providerId, mention.scope)}
+      label={label}
+      removable={false}
+    />
+  );
   const elementTitle = title ?? view.tooltip;
   const handleClick = (event: MouseEvent<HTMLElement>) => {
     if (!view.interactive) {
@@ -136,14 +133,17 @@ export function RichTextMentionReadonly<TResolved = unknown>({
         style={{
           ...sharedProps.style,
           appearance: "none",
-          font: "inherit"
+          background: "transparent",
+          border: 0,
+          font: "inherit",
+          padding: 0
         }}
         type="button"
       >
-        {label}
+        {content}
       </button>
     );
   }
 
-  return <span {...sharedProps}>{label}</span>;
+  return <span {...sharedProps}>{content}</span>;
 }

@@ -11,8 +11,10 @@
       "default": "./src/assets/workspace-dock-website.png"
     },
     "./bridge": "./src/bridge/index.ts",
+    "./chrome-cookie-import/macos": "./src/chrome-cookie-import/macos/index.ts",
     "./electron-main": "./src/electron-main/index.ts",
     "./electron-preload": "./src/electron-preload/index.ts",
+    "./electron-renderer": "./src/electron-renderer/index.ts",
     "./i18n": "./src/i18n/index.ts",
     "./react": "./src/react/index.ts",
     "./workbench": "./src/workbench/index.ts"
@@ -27,9 +29,10 @@
     "directory": "packages/browser/workbench-node"
   },
   "scripts": {
-    "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs src/assets dist/assets",
-    "test": "node --test --experimental-strip-types ./src/**/*.test.ts",
-    "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
+    "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs src/assets dist/assets && pnpm verify:built-entries",
+    "test": "node --test --experimental-strip-types \"./src/**/*.test.ts\"",
+    "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs",
+    "verify:built-entries": "node -e \"import('./dist/chrome-cookie-import/macos/index.js')\""
   },
   "dependencies": {
     "@tutti-os/ui-i18n-runtime": "workspace:*",
@@ -44,13 +47,13 @@
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
     "@types/ws": "^8.18.1",
-    "electron": "^35.7.5",
+    "electron": "^43.2.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "typescript": "^5.8.3"
   },
   "peerDependencies": {
-    "electron": "^35.7.5",
+    "electron": ">=35.7.5 <44",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
@@ -77,6 +80,10 @@
         "types": "./dist/bridge/index.d.ts",
         "import": "./dist/bridge/index.js"
       },
+      "./chrome-cookie-import/macos": {
+        "types": "./dist/chrome-cookie-import/macos/index.d.ts",
+        "import": "./dist/chrome-cookie-import/macos/index.js"
+      },
       "./electron-main": {
         "types": "./dist/electron-main/index.d.ts",
         "import": "./dist/electron-main/index.js"
@@ -84,6 +91,10 @@
       "./electron-preload": {
         "types": "./dist/electron-preload/index.d.ts",
         "import": "./dist/electron-preload/index.js"
+      },
+      "./electron-renderer": {
+        "types": "./dist/electron-renderer/index.d.ts",
+        "import": "./dist/electron-renderer/index.js"
       },
       "./i18n": {
         "types": "./dist/i18n/index.d.ts",

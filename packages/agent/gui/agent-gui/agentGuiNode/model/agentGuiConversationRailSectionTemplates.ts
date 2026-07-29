@@ -1,5 +1,8 @@
 import type { ConversationSection } from "../agentGuiNodeViewConversation";
-import type { ConversationRailLabels } from "./agentGuiConversationRail";
+import {
+  partitionConversationRailUserProjects,
+  type ConversationRailLabels
+} from "./agentGuiConversationRail";
 import type { AgentGUINodeViewModel } from "./agentGuiNodeTypes";
 
 export function preserveConversationRailSectionTemplates(input: {
@@ -18,7 +21,9 @@ export function preserveConversationRailSectionTemplates(input: {
   existingById.delete("pinned");
 
   const projectSectionKeys = new Set<string>();
-  for (const project of input.userProjects) {
+  for (const project of partitionConversationRailUserProjects(
+    input.userProjects
+  )) {
     const sectionKey = project.sectionKey?.trim() ?? "";
     if (!sectionKey || projectSectionKeys.has(sectionKey)) continue;
     projectSectionKeys.add(sectionKey);
@@ -33,12 +38,6 @@ export function preserveConversationRailSectionTemplates(input: {
     existingById.delete(sectionKey);
   }
 
-  for (const section of input.sections) {
-    if (section.kind !== "project" || !existingById.has(section.id)) continue;
-    result.push(section);
-    existingById.delete(section.id);
-  }
-
   const conversations = existingById.get("conversations");
   result.push(
     conversations ?? {
@@ -49,12 +48,5 @@ export function preserveConversationRailSectionTemplates(input: {
       items: []
     }
   );
-  existingById.delete("conversations");
-
-  for (const section of input.sections) {
-    if (!existingById.has(section.id)) continue;
-    result.push(section);
-    existingById.delete(section.id);
-  }
   return result;
 }

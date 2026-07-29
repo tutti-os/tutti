@@ -1,6 +1,7 @@
 import { translate } from "../../../i18n/index";
 import type { AppErrorCode } from "../../../shared/contracts/dto";
 import { getAppErrorCode } from "../../../shared/errors/appError";
+import { AGENT_PROVIDER_LABEL } from "../../../contexts/settings/domain/agentSettings";
 
 export const AGENT_PROVIDER_SESSION_NOT_FOUND_ERROR =
   "agent.provider_session_not_found";
@@ -8,6 +9,8 @@ export const AGENT_RESUME_SESSION_NOT_LOCAL_ERROR =
   "agent.resume_session_not_local";
 export const AGENT_SETTINGS_REQUIRE_NEW_SESSION_ERROR =
   "agent.settings_require_new_session";
+export const AGENT_CONFIG_DEPENDENCY_UNAVAILABLE_REASON =
+  "agent.config_dependency_unavailable";
 export const AGENT_SESSION_TITLE_TOO_LONG_REASON =
   "workspace_agent_session_title_too_long";
 export const AGENT_SESSION_NOT_FOUND_ERROR = "session.not_found";
@@ -25,6 +28,7 @@ export function normalizeAgentGUIDiagnosticError(
       ? (error as Record<string, unknown>)
       : null;
   const appErrorCode = getAgentGUIErrorCode(error);
+  const configDependency = getAgentGUIConfigDependencyErrorDetails(error);
   const explicitCode = typeof record?.code === "string" ? record.code : null;
   const hasStructuredCode = appErrorCode !== null || explicitCode !== null;
   const nativeRuntimeError =
@@ -41,6 +45,14 @@ export function normalizeAgentGUIDiagnosticError(
     ...(typeof record?.reason === "string" ? { reason: record.reason } : {}),
     ...(typeof record?.retryable === "boolean"
       ? { retryable: record.retryable }
+      : {}),
+    ...(configDependency
+      ? {
+          configKey: configDependency.configKey,
+          dependencyPath: configDependency.dependencyPath,
+          dependencyProvider: configDependency.provider,
+          failureKind: configDependency.failureKind
+        }
       : {})
   };
   if (nativeRuntimeError) {
@@ -178,6 +190,18 @@ export function buildResumeSessionNotLocalActivationError(
 }
 
 export function getAgentGUIErrorMessage(error: unknown): string {
+  const configDependency = getAgentGUIConfigDependencyErrorDetails(error);
+  if (configDependency) {
+    const provider =
+      AGENT_PROVIDER_LABEL[
+        configDependency.provider as keyof typeof AGENT_PROVIDER_LABEL
+      ] ||
+      configDependency.provider ||
+      translate("sidebar.fallbackAgentLabel");
+    return translate("messages.agentConfigDependencyUnavailable", {
+      provider
+    });
+  }
   const code = getAgentGUIErrorCode(error);
   if (isProviderSessionNotFoundErrorCode(code))
     return translate("messages.agentProviderSessionNotFound");
@@ -197,6 +221,31 @@ export function getAgentGUIErrorMessage(error: unknown): string {
       return debugMessage.trim();
   }
   return error instanceof Error ? error.message : String(error);
+}
+
+function getAgentGUIConfigDependencyErrorDetails(error: unknown): {
+  provider: string;
+  configKey: string;
+  dependencyPath: string;
+  failureKind: string;
+} | null {
+  if (!error || typeof error !== "object") return null;
+  const record = error as Record<string, unknown>;
+  if (record.reason !== AGENT_CONFIG_DEPENDENCY_UNAVAILABLE_REASON) return null;
+  const params =
+    record.params && typeof record.params === "object"
+      ? (record.params as Record<string, unknown>)
+      : {};
+  return {
+    provider: normalizedString(params.provider),
+    configKey: normalizedString(params.configKey),
+    dependencyPath: normalizedString(params.dependencyPath),
+    failureKind: normalizedString(params.failureKind)
+  };
+}
+
+function normalizedString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function getAgentGUIErrorNumberParam(

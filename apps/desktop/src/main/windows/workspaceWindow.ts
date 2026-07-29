@@ -1,6 +1,7 @@
 import { BrowserWindow, app, screen, session, shell } from "electron";
 import type { DesktopAgentDirectorySnapshot } from "../../shared/contracts/agentDirectory.ts";
 import type { DesktopAgentProviderStatusSnapshot } from "../../shared/contracts/ipc";
+import { AGENT_GUI_COLLAPSED_MIN_WIDTH_PX } from "@tutti-os/agent-gui/layout";
 import {
   installBrowserWebviewSecurity,
   isBrowserNodeWebviewAttach
@@ -9,6 +10,7 @@ import { registerBrowserGuestWebContents } from "../browser/browserGuestRegistry
 import { registerTuttiAssetProtocolForSession } from "../host/tuttiAssetProtocol.ts";
 import { registerWorkspaceAppGuestWebContents } from "../ipc/workspaceAppContext";
 import { resolveDesktopWindowBackgroundColor } from "../desktopTheme";
+import { resolveDesktopPerformanceHeadless } from "../defaults.ts";
 import { getDesktopLogger } from "../logging";
 import type { DesktopLocale } from "../../shared/i18n";
 import type { DesktopDockPlacement } from "../../shared/preferences/index.ts";
@@ -62,14 +64,31 @@ const workspaceWindowMacTrafficLightSizePx = 12;
 const workspaceWindowMacTrafficLightPositionY =
   (workspaceWindowHeaderHeightPx - workspaceWindowMacTrafficLightSizePx) / 2;
 const workspaceWindowDockHeightPx = 64;
-const agentWindowMinWidthPx = 420;
+const agentWindowMinWidthPx = AGENT_GUI_COLLAPSED_MIN_WIDTH_PX;
 const agentWindowMinHeightPx = 520;
 const agentWindowWorkAreaScale = 0.9;
 const agentWindowDuplicateOffsetPx = 25;
+const linuxWindowResizeSettleDelayMs = 150;
+
+function sendWorkspaceWindowLayout(workspaceWindow: BrowserWindow): void {
+  if (
+    workspaceWindow.isDestroyed() ||
+    workspaceWindow.webContents.isDestroyed()
+  ) {
+    return;
+  }
+
+  workspaceWindow.webContents.send(desktopIpcChannels.host.window.layout, {
+    compactTitlebar: workspaceWindow.isFullScreen(),
+    maximized: workspaceWindow.isMaximized() || workspaceWindow.isFullScreen()
+  });
+}
+
 export function createWorkspaceWindow(
   options: CreateWorkspaceWindowOptions
 ): BrowserWindow {
   const logger = getDesktopLogger();
+  const performanceHeadless = resolveDesktopPerformanceHeadless();
   const windowKind = options.windowKind ?? "workspace";
   if (windowKind === "workspace") {
     workspaceWindows.assertDurableWorkspaceAvailable(options.workspaceID);
@@ -108,6 +127,9 @@ export function createWorkspaceWindow(
   const workspaceWindow = new BrowserWindow({
     backgroundColor: resolveDesktopWindowBackgroundColor(),
     frame: windowKind === "agent" ? false : undefined,
+    ...(process.platform === "linux" && windowKind === "agent"
+      ? { roundedCorners: false }
+      : {}),
     // The agent window's green control is a native fullscreen toggle, and its
     // frameless chrome draws custom traffic lights. Disabling native zoom stops
     // macOS double-click-title-bar from zooming into an ambiguous "maximized"
@@ -117,6 +139,7 @@ export function createWorkspaceWindow(
     height: agentWindowBounds?.height ?? 840,
     minWidth: windowKind === "agent" ? agentWindowMinWidthPx : 960,
     minHeight: windowKind === "agent" ? agentWindowMinHeightPx : 640,
+    ...(performanceHeadless ? { opacity: 0, skipTaskbar: true } : {}),
     ...(agentWindowBounds
       ? {
           x: agentWindowBounds.x,
@@ -134,6 +157,7 @@ export function createWorkspaceWindow(
         }
       : {}),
     webPreferences: {
+      backgroundThrottling: !performanceHeadless,
       contextIsolation: true,
       nodeIntegration: false,
       preload: options.preloadPath,
@@ -141,6 +165,10 @@ export function createWorkspaceWindow(
       webviewTag: true
     }
   });
+  if (performanceHeadless) {
+    workspaceWindow.setFocusable(false);
+    workspaceWindow.setIgnoreMouseEvents(true);
+  }
   reportPredefinePageviewByWindow.set(
     workspaceWindow,
     primaryWindowAnalyticsClaim.claim()
@@ -212,22 +240,17 @@ export function createWorkspaceWindow(
     workspaceWindows.unregister(workspaceWindow);
   });
 
-  if (process.platform === "darwin") {
-    let resizeLayoutTimer: ReturnType<typeof setTimeout> | null = null;
-    const sendHostWindowLayout = () => {
-      if (
-        workspaceWindow.isDestroyed() ||
-        workspaceWindow.webContents.isDestroyed()
-      ) {
-        return;
-      }
+  const sendHostWindowLayout = () => {
+    sendWorkspaceWindowLayout(workspaceWindow);
+  };
+  workspaceWindow.on("maximize", sendHostWindowLayout);
+  workspaceWindow.on("unmaximize", sendHostWindowLayout);
+  workspaceWindow.on("enter-full-screen", sendHostWindowLayout);
+  workspaceWindow.on("leave-full-screen", sendHostWindowLayout);
+  workspaceWindow.webContents.on("did-finish-load", sendHostWindowLayout);
 
-      workspaceWindow.webContents.send(desktopIpcChannels.host.window.layout, {
-        compactTitlebar: workspaceWindow.isFullScreen(),
-        maximized:
-          workspaceWindow.isMaximized() || workspaceWindow.isFullScreen()
-      });
-    };
+  if (process.platform === "linux") {
+    let resizeLayoutTimer: ReturnType<typeof setTimeout> | null = null;
     const scheduleHostWindowLayout = () => {
       if (resizeLayoutTimer !== null) {
         clearTimeout(resizeLayoutTimer);
@@ -236,16 +259,20 @@ export function createWorkspaceWindow(
       resizeLayoutTimer = setTimeout(() => {
         resizeLayoutTimer = null;
         sendHostWindowLayout();
-      }, 50);
+      }, linuxWindowResizeSettleDelayMs);
     };
 
-    workspaceWindow.on("maximize", sendHostWindowLayout);
-    workspaceWindow.on("unmaximize", sendHostWindowLayout);
-    workspaceWindow.on("enter-full-screen", sendHostWindowLayout);
-    workspaceWindow.on("leave-full-screen", sendHostWindowLayout);
     workspaceWindow.on("resize", scheduleHostWindowLayout);
-    workspaceWindow.webContents.on("did-finish-load", sendHostWindowLayout);
+    workspaceWindow.once("closed", () => {
+      if (resizeLayoutTimer !== null) {
+        clearTimeout(resizeLayoutTimer);
+      }
+    });
+  } else {
+    workspaceWindow.on("resized", sendHostWindowLayout);
+  }
 
+  if (process.platform === "darwin") {
     const sendHostWindowMinimizeState = (minimized: boolean) => {
       if (
         workspaceWindow.isDestroyed() ||
@@ -283,6 +310,12 @@ export function getWorkspaceWindowKind(
   workspaceWindow: BrowserWindow
 ): "agent" | "workspace" | null {
   return workspaceWindows.getKind(workspaceWindow);
+}
+
+export function getWorkspaceWindowWorkspaceID(
+  workspaceWindow: BrowserWindow
+): string | null {
+  return workspaceWindows.getWorkspaceID(workspaceWindow);
 }
 
 export function findWorkspaceWindow(

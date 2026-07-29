@@ -7,8 +7,7 @@ import type {
 import type {
   WorkbenchHostChromeRenderContext,
   WorkbenchController,
-  WorkbenchHostNodeData,
-  WorkbenchMissionControlMode
+  WorkbenchHostNodeData
 } from "@tutti-os/workbench-surface";
 import { AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT } from "@tutti-os/agent-gui/workbench/contribution";
 import { cn } from "@renderer/lib/format";
@@ -50,12 +49,10 @@ export function WorkspaceChrome({
   missionControl: {
     canOpen: boolean;
     close(): void;
+    isLayoutLocked: boolean;
     isOpen: boolean;
-    mode: WorkbenchMissionControlMode | null;
-    open(
-      mode: WorkbenchMissionControlMode,
-      trigger?: "button" | "keyboard"
-    ): void;
+    open(trigger?: "button" | "keyboard"): void;
+    unlockLayout(): void;
     visibleWindowCount: number;
   };
   onSelectWallpaper: (id: WorkspaceWallpaperId) => void;
@@ -142,6 +139,13 @@ export function WorkspaceChrome({
         <div
           className="flex items-center justify-end gap-2 justify-self-end [-webkit-app-region:no-drag]"
           data-workbench-wallpaper-appearance={wallpaperAppearance}
+          // 顶栏元素始终保持白色，不随亮暗模式 / 壁纸明暗切换
+          style={
+            {
+              "--workbench-chrome-foreground": "var(--white-stationary)",
+              "--workbench-chrome-active-foreground": "var(--white-stationary)"
+            } as React.CSSProperties
+          }
         >
           {headerSlot ? <div className="min-w-0">{headerSlot}</div> : null}
           <WorkspaceFeedbackGroupPopover />
@@ -163,7 +167,7 @@ export function WorkspaceChrome({
             selectedWallpaperID={selectedWallpaperID}
             workspace={workspace}
           />
-          <WorkspaceAccountMenu />
+          <WorkspaceAccountMenu workspaceId={workspace.id} />
         </div>
       </header>
       <ExternalAgentSessionImportPrompt

@@ -89,7 +89,6 @@ function createGoalControlInput(
     planActionsRef: {
       current: { implement: vi.fn(), feedback: vi.fn(), skip: vi.fn() }
     },
-    previewMode: false,
     promptImagesSupported: true,
     optimisticGoalControl: null,
     sessionEngine,
@@ -145,9 +144,8 @@ describe("new-conversation home draft lifecycle", () => {
     const empty = { [draftKey]: draft("") };
     const changed = { [draftKey]: draft("second") };
     const failure = {
-      agentSessionId: "session-1",
-      content: [{ type: "text" as const, text: "first" }],
-      draftKey
+      draftKey,
+      submittedDraft: draft("first")
     };
 
     expect(
@@ -234,7 +232,8 @@ describe("goal controls", () => {
       [{ type: "text", text: "/goal count to ten" }],
       undefined,
       undefined,
-      false
+      false,
+      { action: "set", objective: "count to ten" }
     );
     expect(optimisticGoalControlRef.current).toEqual({
       agentSessionId: "session-new",
@@ -359,6 +358,7 @@ describe("goal controls", () => {
     expect(goalControl).toHaveBeenCalledWith({
       action: "clear",
       agentSessionId: "session-1",
+      clientSubmitId: expect.stringMatching(/^goal-control:/),
       workspaceId: "workspace-1"
     });
     expect(setGoalClearNoticeSequence).toHaveBeenCalledTimes(1);

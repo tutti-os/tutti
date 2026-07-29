@@ -31,24 +31,107 @@ export interface AgentTurnWorkSectionModel {
   collapseEligible: boolean;
 }
 
+/**
+ * Selects at most one participant header per speaker in each presentation
+ * turn. Completed collapsed turns prefer a visible message so the Agent header
+ * does not disappear into the hidden work section.
+ */
+export function findParticipantHeaderRenderKeys(
+  groups: readonly AgentTranscriptTurnGroup[],
+  rowKeys: readonly string[],
+  modelByGroupKey: ReadonlyMap<string, AgentTurnWorkSectionModel | null>,
+  participantTurnIndexByRowIndex: ReadonlyMap<number, number>
+): ReadonlySet<string> {
+  const headerCandidateByTurn = new Map<
+    number,
+    Map<
+      AgentMessageRowVM["speaker"],
+      { renderKey: string; visibilityPriority: number }
+    >
+  >();
+
+  for (const group of groups) {
+    const model = modelByGroupKey.get(group.key);
+    const renderedRows: ReadonlyArray<{
+      entry: AgentTurnWorkSectionRow;
+      visibilityPriority: number;
+    }> = model
+      ? [
+          ...model.leadingRows.map((entry) => ({
+            entry,
+            visibilityPriority: 0
+          })),
+          ...model.sections.flatMap((section) =>
+            section.rows.map((entry) => ({
+              entry,
+              visibilityPriority:
+                model.collapseEligible && section.kind === "work" ? 1 : 0
+            }))
+          )
+        ]
+      : group.rows.map((entry) => ({ entry, visibilityPriority: 0 }));
+
+    for (const { entry, visibilityPriority } of renderedRows) {
+      const row = entry.row;
+      if (row.kind !== "message" || row.messages.length === 0) {
+        continue;
+      }
+      const participantTurnIndex =
+        participantTurnIndexByRowIndex.get(entry.rowIndex) ?? entry.rowIndex;
+      let candidateBySpeaker = headerCandidateByTurn.get(participantTurnIndex);
+      if (!candidateBySpeaker) {
+        candidateBySpeaker = new Map();
+        headerCandidateByTurn.set(participantTurnIndex, candidateBySpeaker);
+      }
+      const currentCandidate = candidateBySpeaker.get(row.speaker);
+      if (
+        currentCandidate &&
+        currentCandidate.visibilityPriority <= visibilityPriority
+      ) {
+        continue;
+      }
+      candidateBySpeaker.set(row.speaker, {
+        renderKey: entry.renderKey ?? rowKeys[entry.rowIndex] ?? row.id,
+        visibilityPriority
+      });
+    }
+  }
+
+  return new Set(
+    [...headerCandidateByTurn.values()].flatMap((candidateBySpeaker) =>
+      [...candidateBySpeaker.values()].map((candidate) => candidate.renderKey)
+    )
+  );
+}
+
+interface AgentTurnWorkSectionOptions {
+  collapseIntermediateAssistantReplies?: boolean;
+}
+
 export function resolveAgentTurnTiming(
   turn: AgentActivityTurn | null | undefined,
-  isActiveTurn: boolean
+  isActiveTurn: boolean,
+  submittedAtUnixMs?: number | null
 ): AgentTurnTiming | null {
   if (!turn || !Number.isFinite(turn.startedAtUnixMs)) {
     return null;
   }
+  const timingStartedAtUnixMs =
+    Number.isFinite(submittedAtUnixMs) &&
+    (submittedAtUnixMs as number) <= turn.startedAtUnixMs
+      ? (submittedAtUnixMs as number)
+      : turn.startedAtUnixMs;
 
   if (turn.phase !== "settled") {
     return isActiveTurn
-      ? { kind: "live", startedAtUnixMs: turn.startedAtUnixMs }
+      ? { kind: "live", startedAtUnixMs: timingStartedAtUnixMs }
       : null;
   }
 
   const endUnixMs = turn.settledAtUnixMs;
   if (
     !Number.isFinite(endUnixMs) ||
-    (endUnixMs as number) < turn.startedAtUnixMs
+    (endUnixMs as number) < timingStartedAtUnixMs
   ) {
     return null;
   }
@@ -57,7 +140,7 @@ export function resolveAgentTurnTiming(
     kind: "settled",
     elapsedSeconds: Math.max(
       0,
-      Math.floor(((endUnixMs as number) - turn.startedAtUnixMs) / 1_000)
+      Math.floor(((endUnixMs as number) - timingStartedAtUnixMs) / 1_000)
     )
   };
 }
@@ -81,17 +164,27 @@ export function formatAgentTurnDuration(
 export function buildAgentTurnWorkSectionModel(
   group: AgentTranscriptTurnGroup,
   turn: AgentActivityTurn | null | undefined,
-  isActiveTurn = false
+  isActiveTurn = false,
+  options: AgentTurnWorkSectionOptions = {}
 ): AgentTurnWorkSectionModel | null {
-  const timing = resolveAgentTurnTiming(turn, isActiveTurn);
+  const leadingRowCount = countLeadingUserRows(group.rows);
+  const leadingRows = group.rows.slice(0, leadingRowCount);
+  const submittedAtUnixMs = resolveTurnSubmittedAtUnixMs(
+    leadingRows,
+    turn?.startedAtUnixMs
+  );
+  const timing = resolveAgentTurnTiming(turn, isActiveTurn, submittedAtUnixMs);
   if (!timing) {
     return null;
   }
 
-  const leadingRowCount = countLeadingUserRows(group.rows);
-  const leadingRows = group.rows.slice(0, leadingRowCount);
   const finalTarget = findFinalAssistantTextTarget(group.rows);
-  const sections = buildOrderedSections(group.rows, leadingRowCount);
+  const sections = buildOrderedSections(
+    group.rows,
+    leadingRowCount,
+    finalTarget,
+    options.collapseIntermediateAssistantReplies === true
+  );
   const hasHiddenWork = sections.some(
     (section) => section.kind === "work" && section.rows.length > 0
   );
@@ -111,6 +204,50 @@ export function buildAgentTurnWorkSectionModel(
   };
 }
 
+function resolveTurnSubmittedAtUnixMs(
+  leadingRows: readonly AgentTurnWorkSectionRow[],
+  fallbackUnixMs: number | null | undefined
+): number | null {
+  const exactTimestamps = leadingRows.flatMap(({ row }) => {
+    if (row.kind !== "message" || row.speaker !== "user") {
+      return [];
+    }
+    return row.messages.flatMap((message) =>
+      (message.sourceTimelineItems ?? []).flatMap((item) => {
+        const value = item.payload?.clientSubmittedAtUnixMs;
+        return validUnixMs(value) ? [value] : [];
+      })
+    );
+  });
+  const exact = minimumTimestamp(exactTimestamps);
+  if (exact !== null) {
+    return exact;
+  }
+
+  const projected = minimumTimestamp(
+    leadingRows.flatMap(({ row }) =>
+      row.kind === "message" && row.speaker === "user"
+        ? [
+            row.occurredAtUnixMs,
+            ...row.messages.map((message) => message.occurredAtUnixMs)
+          ]
+        : []
+    )
+  );
+  return projected ?? (validUnixMs(fallbackUnixMs) ? fallbackUnixMs : null);
+}
+
+function minimumTimestamp(
+  values: readonly (number | null | undefined)[]
+): number | null {
+  const valid = values.filter(validUnixMs);
+  return valid.length > 0 ? Math.min(...valid) : null;
+}
+
+function validUnixMs(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
 function countLeadingUserRows(
   rows: readonly AgentTurnWorkSectionRow[]
 ): number {
@@ -123,13 +260,21 @@ function countLeadingUserRows(
 
 function buildOrderedSections(
   rows: readonly AgentTurnWorkSectionRow[],
-  startIndex: number
+  startIndex: number,
+  finalTarget: { rowIndex: number; messageIndex: number } | null,
+  collapseIntermediateAssistantReplies: boolean
 ): AgentTurnWorkSectionSegment[] {
   const sections: AgentTurnWorkSectionSegment[] = [];
   for (let rowIndex = startIndex; rowIndex < rows.length; rowIndex += 1) {
     const entry = rows[rowIndex]!;
     if (entry.row.kind === "message" && entry.row.speaker === "assistant") {
-      appendAssistantMessageSections(sections, entry);
+      if (!collapseIntermediateAssistantReplies) {
+        appendAssistantMessageSections(sections, entry);
+      } else if (finalTarget?.rowIndex === rowIndex) {
+        appendFinalAssistantSections(sections, entry, finalTarget.messageIndex);
+      } else {
+        appendSectionRow(sections, "work", entry);
+      }
       continue;
     }
     appendSectionRow(
@@ -139,6 +284,42 @@ function buildOrderedSections(
     );
   }
   return sections;
+}
+
+function appendFinalAssistantSections(
+  sections: AgentTurnWorkSectionSegment[],
+  sourceEntry: AgentTurnWorkSectionRow,
+  finalMessageIndex: number
+): void {
+  const sourceRow = sourceEntry.row as AgentMessageRowVM;
+  const messagesBeforeFinal = sourceRow.messages.slice(0, finalMessageIndex);
+  const messagesAfterFinal = sourceRow.messages.slice(finalMessageIndex + 1);
+
+  if (sourceRow.thinking.length > 0 || messagesBeforeFinal.length > 0) {
+    appendSectionRow(sections, "work", {
+      ...sourceEntry,
+      renderKey: `${sourceRow.id}:turn-work-before`,
+      row: cloneAssistantRow(sourceRow, messagesBeforeFinal, sourceRow.thinking)
+    });
+  }
+
+  appendSectionRow(sections, "visible", {
+    ...sourceEntry,
+    renderKey: `${sourceRow.id}:turn-final`,
+    row: cloneAssistantRow(
+      sourceRow,
+      [sourceRow.messages[finalMessageIndex]!],
+      []
+    )
+  });
+
+  if (messagesAfterFinal.length > 0) {
+    appendSectionRow(sections, "work", {
+      ...sourceEntry,
+      renderKey: `${sourceRow.id}:turn-work-after`,
+      row: cloneAssistantRow(sourceRow, messagesAfterFinal, [])
+    });
+  }
 }
 
 function appendAssistantMessageSections(
@@ -242,11 +423,7 @@ function groupContainsBlockingMessage(
 }
 
 function isExplicitWorkRow(row: AgentTurnWorkSectionRow["row"]): boolean {
-  return (
-    row.kind === "tool-group" ||
-    row.kind === "turn-summary" ||
-    row.kind === "processing"
-  );
+  return row.kind === "tool-group" || row.kind === "processing";
 }
 
 function isExplicitWorkMessage(message: AgentMessageContentVM): boolean {

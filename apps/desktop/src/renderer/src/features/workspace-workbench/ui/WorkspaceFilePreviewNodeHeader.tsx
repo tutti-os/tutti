@@ -1,10 +1,18 @@
 import type { PointerEvent } from "react";
-import { Button, LoadingIcon, StatusDot } from "@tutti-os/ui-system";
+import { isTextDegradablePreviewKind } from "@tutti-os/workspace-file-preview";
+import {
+  Button,
+  EditIcon,
+  EyeIcon,
+  LoadingIcon,
+  StatusDot
+} from "@tutti-os/ui-system";
 import type { WorkbenchHostNodeHeaderContext } from "@tutti-os/workbench-surface";
 import type { WorkspaceWorkbenchDesktopI18nRuntime } from "@shared/i18n";
 import { workspaceWorkbenchDesktopI18nKeys } from "@shared/i18n";
 import { workspaceTextFileNodeTypeID } from "../services/workspaceFilePreviewLaunch";
 import { requestWorkspaceFilePreviewSave } from "../services/workspaceFilePreviewSaveRequests";
+import { requestWorkspaceFilePreviewViewMode } from "../services/workspaceFilePreviewViewModeRequests";
 import {
   resolveWorkspaceFilePreviewNodeFile,
   resolveWorkspaceFilePreviewTextHeaderState,
@@ -23,9 +31,12 @@ export function WorkspaceFilePreviewNodeHeader({
   const textHeaderState = resolveWorkspaceFilePreviewTextHeaderState(
     context.node.data
   );
+  // Video shares the text workbench node typeId; only text-degradable kinds
+  // publish textHeader / save chrome.
   const shouldShowTextAccessory =
     context.node.data.typeId === workspaceTextFileNodeTypeID &&
-    file?.fileKind === "text";
+    file !== null &&
+    isTextDegradablePreviewKind(file.previewKind);
 
   const onDragPointerDown = (event: PointerEvent<HTMLElement>): void => {
     context.dragHandleProps.onPointerDown?.(event);
@@ -55,6 +66,7 @@ export function WorkspaceFilePreviewNodeHeader({
         <WorkspaceFilePreviewTextHeaderAccessory
           headerState={textHeaderState}
           i18n={i18n}
+          isMarkdown={file?.previewKind === "markdown"}
           nodeId={context.node.id}
         />
       ) : null}
@@ -65,10 +77,12 @@ export function WorkspaceFilePreviewNodeHeader({
 function WorkspaceFilePreviewTextHeaderAccessory({
   headerState,
   i18n,
+  isMarkdown,
   nodeId
 }: {
   headerState: WorkspaceFilePreviewTextHeaderState | null;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
+  isMarkdown: boolean;
   nodeId: string;
 }): React.JSX.Element {
   const state = headerState ?? {
@@ -80,9 +94,37 @@ function WorkspaceFilePreviewTextHeaderAccessory({
   const shouldShowSaveButton = state.canSave && (state.dirty || isSaving);
   const statusLabel = resolveHeaderStatusLabel({ i18n, state });
   const statusDotTone = resolveHeaderStatusDotTone(state.status);
+  const viewMode = state.viewMode ?? "edit";
+  const viewModeLabel = i18n.t(
+    viewMode === "preview"
+      ? workspaceWorkbenchDesktopI18nKeys.filePreview.edit
+      : workspaceWorkbenchDesktopI18nKeys.filePreview.preview
+  );
 
   return (
     <div className="nodrag flex min-w-0 shrink-0 items-center gap-2">
+      {isMarkdown ? (
+        <Button
+          aria-pressed={viewMode === "preview"}
+          disabled={!state.canSave}
+          size="sm"
+          type="button"
+          variant="ghost"
+          onClick={() => {
+            requestWorkspaceFilePreviewViewMode(
+              nodeId,
+              viewMode === "preview" ? "edit" : "preview"
+            );
+          }}
+        >
+          {viewMode === "preview" ? (
+            <EditIcon aria-hidden />
+          ) : (
+            <EyeIcon aria-hidden />
+          )}
+          <span>{viewModeLabel}</span>
+        </Button>
+      ) : null}
       {shouldShowSaveButton ? (
         <Button
           type="button"

@@ -214,8 +214,15 @@ function createLocationReferenceSource(input: {
       scope: ReferenceScope,
       searchInput: SearchInput
     ): Promise<SearchResult> {
-      const { query, filters, limit, provenanceFilter, signal, withinNodeId } =
-        searchInput;
+      const {
+        query,
+        filters,
+        kinds,
+        limit,
+        provenanceFilter,
+        signal,
+        withinNodeId
+      } = searchInput;
       if (
         input.searchByProvenance &&
         provenanceFilter !== null &&
@@ -224,7 +231,7 @@ function createLocationReferenceSource(input: {
       ) {
         const refs = await input.searchByProvenance(scope, searchInput);
         const filtered = refs.filter((ref) =>
-          matchesRecentReferenceSearch(ref, "", filters ?? [])
+          matchesRecentReferenceSearch(ref, "", filters ?? [], kinds)
         );
         return {
           entries: (limit === undefined
@@ -245,7 +252,12 @@ function createLocationReferenceSource(input: {
           ...(signal ? { signal } : {})
         });
         const filteredRefs = refs.filter((ref) =>
-          matchesRecentReferenceSearch(ref, normalizedQuery, filters ?? [])
+          matchesRecentReferenceSearch(
+            ref,
+            normalizedQuery,
+            filters ?? [],
+            kinds
+          )
         );
         return {
           entries:
@@ -272,6 +284,7 @@ function createLocationReferenceSource(input: {
         const refs = await adapter.searchReferences({
           workspaceId: scope.workspaceId,
           query,
+          ...(kinds && kinds.length > 0 ? { kinds } : {}),
           ...(filters && filters.length > 0 ? { filters } : {}),
           ...(location?.kind === "directory"
             ? { within: location.referenceNodeId }
@@ -431,10 +444,18 @@ function basename(path: string): string {
 function matchesRecentReferenceSearch(
   ref: WorkspaceFileReference,
   query: string,
-  filters: readonly string[]
+  filters: readonly string[],
+  kinds?: readonly ReferenceNode["kind"][]
 ): boolean {
   const name = ref.displayName?.trim() || basename(ref.path);
   const isFolder = normalizeReferenceNodeKind(ref.kind) === "folder";
+  if (
+    kinds &&
+    kinds.length > 0 &&
+    !kinds.includes(isFolder ? "folder" : "file")
+  ) {
+    return false;
+  }
   if (!matchesFilterCategories(name, isFolder, filters)) {
     return false;
   }

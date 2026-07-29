@@ -31,6 +31,8 @@ interface Input {
   draftContent: AgentComposerDraft;
   canQueueWhileBusy: boolean;
   showStopButton: boolean;
+  draftOverridesStopButton: boolean;
+  stopDisabled: boolean;
   isInterrupting: boolean;
   isSendingTurn: boolean;
   activePrompt: AgentConversationPromptVM | null;
@@ -48,6 +50,10 @@ interface Input {
   onInterruptCurrentTurn: () => void;
   isSelectedProjectMissing: boolean;
   submitDisabled: boolean;
+  /** Keeps the send button live on an empty draft (empty-send override). */
+  allowEmptySubmit: boolean;
+  /** Overrides the empty-draft send copy (falls back to labels.sendAccept). */
+  emptySubmitLabel?: string;
   labels: AgentComposerProps["labels"];
   activePromptTip: AgentComposerPromptTip | null;
   promptTipRef: RefObject<HTMLSpanElement | null>;
@@ -60,11 +66,26 @@ interface Input {
   promptImagesSupported: boolean;
 }
 
+export function shouldShowAgentComposerStopButton(input: {
+  draftOverridesStopButton: boolean;
+  hasDraftContent: boolean;
+  isQueueMode: boolean;
+  showStopButton: boolean;
+}): boolean {
+  return (
+    input.showStopButton &&
+    !input.isQueueMode &&
+    !(input.draftOverridesStopButton && input.hasDraftContent)
+  );
+}
+
 export function useComposerPresentation(input: Input) {
   const {
     draftContent,
     canQueueWhileBusy,
     showStopButton,
+    draftOverridesStopButton,
+    stopDisabled,
     isInterrupting,
     isSendingTurn,
     activePrompt,
@@ -82,6 +103,8 @@ export function useComposerPresentation(input: Input) {
     onInterruptCurrentTurn,
     isSelectedProjectMissing,
     submitDisabled,
+    allowEmptySubmit,
+    emptySubmitLabel,
     labels,
     activePromptTip,
     promptTipRef,
@@ -109,7 +132,12 @@ export function useComposerPresentation(input: Input) {
     (item) => item.uploadError
   );
   const isQueueMode = canQueueWhileBusy && hasDraftContent;
-  const shouldShowStopButton = showStopButton && !isQueueMode;
+  const shouldShowStopButton = shouldShowAgentComposerStopButton({
+    draftOverridesStopButton,
+    hasDraftContent,
+    isQueueMode,
+    showStopButton
+  });
   const sendButtonState = isQueueMode
     ? "queue"
     : shouldShowStopButton
@@ -120,10 +148,11 @@ export function useComposerPresentation(input: Input) {
         ? "loading"
         : "send";
   const sendButtonBusy = isSendingTurn && !isQueueMode;
+  const emptyDraftBlocksSend = !hasDraftContent && !allowEmptySubmit;
   const sendDisabledReasons = [
     isSelectedProjectMissing ? "project_missing" : null,
     submitDisabled ? "submit_disabled" : null,
-    !hasDraftContent ? "draft_empty" : null,
+    emptyDraftBlocksSend ? "draft_empty" : null,
     hasUploadingDraftImages ? "image_uploading" : null,
     hasFailedDraftImages ? "image_upload_failed" : null,
     hasUploadingDraftFiles ? "file_uploading" : null,
@@ -191,7 +220,6 @@ export function useComposerPresentation(input: Input) {
       : null;
   const disabledReasonText = disabledReason?.trim() ?? "";
   const effectivePlaceholder = disabledReasonText || placeholder;
-  const visibleDraftFiles = draftFiles;
   const visibleDraftLargeTexts = draftLargeTexts;
   useEffect(() => {
     if (previousSelectedProjectPathRef.current === selectedProjectPath) {
@@ -234,11 +262,19 @@ export function useComposerPresentation(input: Input) {
     [onSubmitInteractivePrompt]
   );
 
+  // While the empty-send override is active (plan review) the send button
+  // carries explicit decision copy: an empty draft accepts, typed feedback
+  // requests changes. Icon-only otherwise.
+  const planReviewSendLabel = allowEmptySubmit
+    ? ((hasDraftContent
+        ? labels.sendRequestChanges
+        : (emptySubmitLabel ?? labels.sendAccept)) ?? null)
+    : null;
   const composerActionButton = shouldShowStopButton ? (
     <button
       type="button"
       className={`${styles.composerStopButton} relative inline-flex size-7 shrink-0 items-center justify-center rounded-full border border-transparent bg-transparent p-0 text-[var(--text-primary)] transition-[color,opacity] duration-150 hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--text-primary)_34%,transparent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background-panel)] active:bg-transparent disabled:cursor-not-allowed disabled:opacity-45`}
-      disabled={isInterrupting}
+      disabled={isInterrupting || stopDisabled}
       aria-label={isInterrupting ? labels.stopping : labels.stop}
       title={isInterrupting ? labels.stopping : labels.stop}
       onClick={onInterruptCurrentTurn}
@@ -262,10 +298,11 @@ export function useComposerPresentation(input: Input) {
       className={styles.composerSendButton}
       data-state={sendButtonState}
       data-disabled-reason={sendDisabledReasonKey || undefined}
+      data-plan-review-label={planReviewSendLabel ? "true" : undefined}
       disabled={
         isSelectedProjectMissing ||
         submitDisabled ||
-        !hasDraftContent ||
+        emptyDraftBlocksSend ||
         hasUploadingDraftImages ||
         hasFailedDraftImages ||
         hasUploadingDraftFiles ||
@@ -274,8 +311,8 @@ export function useComposerPresentation(input: Input) {
         hasFailedDraftLargeTexts ||
         sendButtonBusy
       }
-      aria-label={labels.send}
-      title={labels.send}
+      aria-label={planReviewSendLabel ?? labels.send}
+      title={planReviewSendLabel ?? labels.send}
       aria-busy={sendButtonBusy}
     >
       {sendButtonBusy ? (
@@ -286,6 +323,16 @@ export function useComposerPresentation(input: Input) {
           trackColor="var(--transparency-hover)"
           testId="agent-gui-composer-send-spinner"
         />
+      ) : planReviewSendLabel ? (
+        <>
+          <span
+            className="min-w-0 truncate"
+            data-testid="agent-gui-composer-send-label"
+          >
+            {planReviewSendLabel}
+          </span>
+          <SendFilledIcon />
+        </>
       ) : (
         <SendFilledIcon />
       )}
@@ -297,7 +344,7 @@ export function useComposerPresentation(input: Input) {
       key={activePromptTip.id}
       ref={promptTipRef}
       className={styles.composerPromptTip}
-      data-rotating={promptTips.length > 1 ? "true" : undefined}
+      data-rotating={rotatingPromptTips.length > 1 ? "true" : undefined}
       data-testid="agent-gui-prompt-tip"
       style={promptTipStyle}
     >
@@ -350,7 +397,6 @@ export function useComposerPresentation(input: Input) {
     promptTipNode,
     submitInteractivePromptAndDismiss,
     visibleActivePrompt,
-    visibleDraftFiles,
     visibleDraftLargeTexts
   };
 }

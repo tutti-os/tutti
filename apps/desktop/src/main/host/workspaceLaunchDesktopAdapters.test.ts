@@ -15,6 +15,7 @@ test("workspace window readiness handles ready-to-show emitted during load start
 
   assert.equal(target.maximizeCount, 1);
   assert.equal(target.showCount, 1);
+  assert.equal(target.showInactiveCount, 0);
 });
 
 test("workspace window readiness rejects failed loads emitted during load start", async () => {
@@ -56,11 +57,43 @@ test("workspace window readiness can show without maximizing", async () => {
   assert.equal(target.showCount, 1);
 });
 
+test("workspace window readiness can keep a background Browser host hidden", async () => {
+  const target = createWorkspaceWindowReadyTarget();
+
+  await awaitWorkspaceWindowReady(
+    target.window,
+    () => {
+      target.emit("ready-to-show");
+    },
+    { maximizeOnShow: false, showOnReady: false }
+  );
+
+  assert.equal(target.maximizeCount, 0);
+  assert.equal(target.showCount, 0);
+});
+
+test("workspace window readiness can render without activating a visible window", async () => {
+  const target = createWorkspaceWindowReadyTarget();
+
+  await awaitWorkspaceWindowReady(
+    target.window,
+    () => {
+      target.emit("ready-to-show");
+    },
+    { showInactive: true }
+  );
+
+  assert.equal(target.maximizeCount, 1);
+  assert.equal(target.showCount, 0);
+  assert.equal(target.showInactiveCount, 1);
+});
+
 interface WorkspaceWindowReadyTargetFixture {
   closeCount: number;
   emit: (event: string, ...args: unknown[]) => void;
   maximizeCount: number;
   showCount: number;
+  showInactiveCount: number;
   window: WorkspaceWindowReadyTarget;
 }
 
@@ -71,6 +104,7 @@ function createWorkspaceWindowReadyTarget(): WorkspaceWindowReadyTargetFixture {
     closeCount: 0,
     maximizeCount: 0,
     showCount: 0,
+    showInactiveCount: 0,
     window: {
       close() {
         fixture.closeCount += 1;
@@ -94,6 +128,9 @@ function createWorkspaceWindowReadyTarget(): WorkspaceWindowReadyTargetFixture {
       },
       show() {
         fixture.showCount += 1;
+      },
+      showInactive() {
+        fixture.showInactiveCount += 1;
       },
       webContents: {
         isDestroyed() {

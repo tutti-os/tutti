@@ -257,6 +257,9 @@ windows instead of assuming that the preferred side is always available.
 - recompute placement when the viewport or scroll position changes
 - preserve keyboard hierarchy: forward arrow enters the submenu, while back
   arrow and Escape return focus to its trigger
+- when a menu is portaled out of a side panel, stack it on the shared
+  `--z-panel-popover` layer; a raw numeric fallback below `--z-panel` leaves the
+  menu rendered but hidden behind the panel
 
 ### Settings Dialogs
 

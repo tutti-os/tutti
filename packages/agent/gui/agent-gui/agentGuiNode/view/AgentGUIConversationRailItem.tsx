@@ -1,79 +1,70 @@
-import {
-  memo,
-  useCallback,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode
-} from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { ExternalLink } from "lucide-react";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-  FileIcon,
-  IssueIcon,
-  NewWorkspaceLinedIcon,
-  cn
-} from "@tutti-os/ui-system";
-import { BareIconButton } from "@tutti-os/ui-system/components";
+import { NewWorkspaceLinedIcon, cn } from "@tutti-os/ui-system";
 import { WorkspaceUserProjectSelect } from "@tutti-os/workspace-user-project/ui";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
+import { BareIconButton } from "@tutti-os/ui-system/components";
 import { CanvasNodeTrashLinedIcon } from "../../shared/canvasNodeChromeIcons";
 import { PinFilledIcon } from "../../../app/renderer/components/icons/PinFilledIcon";
 import { PinLinedIcon } from "../../../app/renderer/components/icons/PinLinedIcon";
-import {
-  useAgentHostApi,
-  useOptionalAgentHostApi
-} from "../../../agentActivityHost";
+import { useAgentHostApi } from "../../../agentActivityHost";
+import { createAgentGUIUserProjectSelectionApi } from "../agentGuiUserProjectSelectionApi";
 import { resolveAgentGuiSessionProviderFlatIconUrl } from "../../../agentGuiSessionProviderIconUrls";
 import {
   resolveAgentTargetPresentation,
   useAgentTargetPresentations
 } from "../../../shared/AgentTargetPresentationContext";
-import { ConversationMeta } from "../agentGuiNodeViewConversation";
-import { createAgentSessionMarkdownLink } from "../agentRichText/agentFileMentionExtension";
-import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
+import {
+  useAgentTargetInfoRenderer,
+  useAgentTargetInfoTarget
+} from "../../../shared/AgentTargetInfoRendererContext";
+import { AgentTargetInfoTooltip } from "../../../shared/AgentTargetInfoTooltip";
 import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings";
+import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import type { AgentGUIViewLabels } from "../AgentGUINodeView";
+import type { AgentGUIConversationRailLabels } from "./agentGUIConversationRailLabels";
 import styles from "../AgentGUINode.styles";
 import { conversationPlainTitle } from "./agentGUIViewUtils";
+import { AgentGUIConversationRailRelativeTime } from "./AgentGUIConversationRailClock";
 import {
-  isAgentGUIConversationTitleIconMentionKind,
-  type AgentGUIConversationTitleIconMentionKind
-} from "../../../shared/agentConversationTitleProjection";
+  AgentGUIConversationActionsContextMenu,
+  AgentGUIConversationActionsDropdown,
+  useConversationActionGroups
+} from "./AgentGUIConversationActionsMenu";
 
-function agentGUIConversationIconUrl(
+type AgentGUIConversationIconPresentation =
+  | { kind: "image"; url: string }
+  | { kind: "mask"; url: string };
+
+function agentGUIConversationIconPresentation(
   provider: string | undefined,
   agentTargetId: string | null | undefined,
   workspaceId: string,
   agentTargets: ReturnType<typeof useAgentTargetPresentations>
-): string | null {
+): AgentGUIConversationIconPresentation | null {
   const targetPresentation = resolveAgentTargetPresentation({
     agentTargetId: agentTargetId ?? "",
     agentTargets,
     workspaceId
   });
-  return (
-    resolveAgentGuiSessionProviderFlatIconUrl(provider) ||
-    targetPresentation?.iconUrl?.trim() ||
-    null
-  );
+  const maskIconUrl = targetPresentation?.maskIconUrl?.trim() ?? "";
+  if (maskIconUrl) {
+    return { kind: "mask", url: maskIconUrl };
+  }
+  const iconUrl = targetPresentation?.iconUrl?.trim() ?? "";
+  if (iconUrl) {
+    return { kind: "image", url: iconUrl };
+  }
+  const providerIconUrl = resolveAgentGuiSessionProviderFlatIconUrl(provider);
+  return providerIconUrl ? { kind: "mask", url: providerIconUrl } : null;
 }
 
 function agentGUIConversationRailTitle(
   item: AgentGUINodeViewModel["rail"]["conversations"][number],
-  labels: AgentGUIViewLabels,
+  labels: AgentGUIConversationRailLabels,
   uiLanguage: UiLanguage
 ): string {
-  const title = conversationPlainTitle(item, labels, uiLanguage);
-  return isAgentGUIConversationTitleIconMentionKind(
-    item.titleLeadingMentionKind
-  )
-    ? title.replace(/^@\s*/, "")
-    : title;
+  return conversationPlainTitle(item, labels, uiLanguage);
 }
 
 interface AgentGUIConversationRailItemProps {
@@ -82,9 +73,7 @@ interface AgentGUIConversationRailItemProps {
   isPendingDeleteConversation: boolean;
   isDeletingConversation: boolean;
   isRailInteractionLocked: () => boolean;
-  currentTimeMs: number;
-  labels: AgentGUIViewLabels;
-  previewMode: boolean;
+  labels: AgentGUIConversationRailLabels;
   uiLanguage: UiLanguage;
   workspaceId: string;
   registerItemElement: (itemId: string, element: HTMLDivElement | null) => void;
@@ -107,9 +96,7 @@ export const AgentGUIConversationRailItem = memo(
     isPendingDeleteConversation,
     isDeletingConversation,
     isRailInteractionLocked,
-    currentTimeMs,
     labels,
-    previewMode,
     uiLanguage,
     workspaceId,
     registerItemElement,
@@ -124,24 +111,90 @@ export const AgentGUIConversationRailItem = memo(
   }: AgentGUIConversationRailItemProps): React.JSX.Element {
     "use memo";
     const pinned = (item.pinnedAtUnixMs ?? 0) > 0;
+    const [actionsActivated, setActionsActivated] = useState(false);
+    const [targetInfoOpen, setTargetInfoOpen] = useState(false);
     const agentTargets = useAgentTargetPresentations();
-    const conversationIconUrl = agentGUIConversationIconUrl(
+    const renderAgentTargetInfo = useAgentTargetInfoRenderer();
+    const targetInfoTarget = useAgentTargetInfoTarget(item.agentTargetId);
+    const hasTargetInfo = Boolean(renderAgentTargetInfo && targetInfoTarget);
+    const targetInfoFocusedRef = useRef(false);
+    const targetInfoPointerOverIconRef = useRef(false);
+    const handleTargetInfoOpenChange = (open: boolean): void => {
+      if (
+        !open ||
+        targetInfoFocusedRef.current ||
+        targetInfoPointerOverIconRef.current
+      ) {
+        setTargetInfoOpen(open);
+      }
+    };
+    const handleTargetInfoIconPointerMove = (): void => {
+      targetInfoPointerOverIconRef.current = true;
+      setTargetInfoOpen(true);
+    };
+    const handleTargetInfoIconPointerLeave = (): void => {
+      targetInfoPointerOverIconRef.current = false;
+      if (!targetInfoFocusedRef.current) {
+        setTargetInfoOpen(false);
+      }
+    };
+    const handleTargetInfoFocus = (): void => {
+      targetInfoFocusedRef.current = true;
+      setTargetInfoOpen(true);
+    };
+    const handleTargetInfoBlur = (): void => {
+      targetInfoFocusedRef.current = false;
+      setTargetInfoOpen(false);
+    };
+    const conversationIcon = agentGUIConversationIconPresentation(
       item.provider,
       item.agentTargetId,
       workspaceId,
       agentTargets
     );
+    const conversationIconNode =
+      conversationIcon?.kind === "mask" ? (
+        <span
+          aria-hidden="true"
+          className={cn(
+            styles.conversationProviderIcon,
+            styles.conversationProviderMaskIcon
+          )}
+          style={{
+            WebkitMaskImage: `url("${conversationIcon.url}")`,
+            maskImage: `url("${conversationIcon.url}")`
+          }}
+          onPointerLeave={
+            hasTargetInfo ? handleTargetInfoIconPointerLeave : undefined
+          }
+          onPointerMove={
+            hasTargetInfo ? handleTargetInfoIconPointerMove : undefined
+          }
+        />
+      ) : conversationIcon ? (
+        <img
+          alt=""
+          aria-hidden="true"
+          className={cn(
+            styles.conversationProviderIcon,
+            styles.conversationProviderImage
+          )}
+          draggable={false}
+          src={conversationIcon.url}
+          onPointerLeave={
+            hasTargetInfo ? handleTargetInfoIconPointerLeave : undefined
+          }
+          onPointerMove={
+            hasTargetInfo ? handleTargetInfoIconPointerMove : undefined
+          }
+        />
+      ) : null;
     const setItemElement = useCallback(
       (element: HTMLDivElement | null) => {
         registerItemElement(item.id, element);
       },
       [item.id, registerItemElement]
     );
-    const [contextMenuResetKey, setContextMenuResetKey] = useState(0);
-    const contextMenuRenameRequestedRef = useRef(false);
-    const contextMenuOpenConversationWindowRequestedRef = useRef(false);
-    const contextMenuCopySessionLinkRequestedRef = useRef(false);
-    const agentHostApi = useOptionalAgentHostApi();
     const handleMouseLeave = useCallback(() => {
       if (isPendingDeleteConversation && !isRailInteractionLocked()) {
         onCancelDeleteConversation();
@@ -151,122 +204,90 @@ export const AgentGUIConversationRailItem = memo(
       isRailInteractionLocked,
       onCancelDeleteConversation
     ]);
-    const handleSelect = useCallback(() => {
-      if (isRailInteractionLocked()) return;
-      onSelectConversation(item.id);
-    }, [isRailInteractionLocked, item.id, onSelectConversation]);
-    const handleTogglePinned = useCallback(() => {
-      if (isRailInteractionLocked()) return;
-      onToggleConversationPinned(item.id, !pinned);
-    }, [isRailInteractionLocked, item.id, onToggleConversationPinned, pinned]);
+    const handleSelect = (): void => {
+      if (!isRailInteractionLocked()) {
+        onSelectConversation(item.id);
+      }
+    };
+    const handleRequestRename = (): void => {
+      if (!isRailInteractionLocked()) {
+        onRequestRenameConversation(item);
+      }
+    };
+    // Plain closures on purpose: the component memo budget caps leaf caches
+    // at 5 and "use memo" lets the compiler stabilize these.
+    const handleTogglePinned = (): void => {
+      if (!isRailInteractionLocked()) {
+        onToggleConversationPinned(item.id, !pinned);
+      }
+    };
+    const handleRequestDelete = (): void => {
+      if (!isRailInteractionLocked()) {
+        onRequestDeleteConversation(item.id);
+      }
+    };
+    const handleOpenConversationWindow = (): void => {
+      if (!isRailInteractionLocked()) {
+        onOpenConversationWindow?.(item.id);
+      }
+    };
     const canMarkUnread = Boolean(
-      !previewMode &&
       !item.hasUnreadCompletion &&
       item.isImported !== true &&
       (item.unreadCompletionKey ||
         item.status === "completed" ||
         item.status === "ready")
     );
-    const handleMarkUnread = useCallback(() => {
-      if (!canMarkUnread || isRailInteractionLocked()) {
-        return;
-      }
-      onMarkConversationUnread(item.id);
-    }, [
+    const menu = useConversationActionGroups({
       canMarkUnread,
-      isRailInteractionLocked,
-      item.id,
-      onMarkConversationUnread
-    ]);
-    const handleOpenConversationWindow = useCallback(() => {
-      if (isRailInteractionLocked()) return;
-      onOpenConversationWindow?.(item.id);
-    }, [isRailInteractionLocked, item.id, onOpenConversationWindow]);
-    const handleRequestDelete = useCallback(() => {
-      if (isRailInteractionLocked()) return;
-      onRequestDeleteConversation(item.id);
-    }, [isRailInteractionLocked, item.id, onRequestDeleteConversation]);
-    const handleRequestRename = useCallback(() => {
-      if (isRailInteractionLocked()) return;
-      onRequestRenameConversation(item);
-    }, [isRailInteractionLocked, item, onRequestRenameConversation]);
-    const handleContextMenuRename = useCallback(() => {
-      if (isRailInteractionLocked() || contextMenuRenameRequestedRef.current) {
-        return;
-      }
-      contextMenuRenameRequestedRef.current = true;
-      setContextMenuResetKey((key) => key + 1);
-      // timing: defer past the context menu's own close/dismiss handling
-      window.setTimeout(() => {
-        if (isRailInteractionLocked()) {
-          contextMenuRenameRequestedRef.current = false;
-          return;
-        }
-        handleRequestRename();
-        contextMenuRenameRequestedRef.current = false;
-      }, 0);
-    }, [handleRequestRename, isRailInteractionLocked]);
-    const handleContextMenuOpenConversationWindow = useCallback(() => {
-      if (
-        isRailInteractionLocked() ||
-        contextMenuOpenConversationWindowRequestedRef.current
-      ) {
-        return;
-      }
-      contextMenuOpenConversationWindowRequestedRef.current = true;
-      setContextMenuResetKey((key) => key + 1);
-      // timing: defer past the context menu's own close/dismiss handling
-      window.setTimeout(() => {
-        if (isRailInteractionLocked()) {
-          contextMenuOpenConversationWindowRequestedRef.current = false;
-          return;
-        }
-        handleOpenConversationWindow();
-        contextMenuOpenConversationWindowRequestedRef.current = false;
-      }, 0);
-    }, [handleOpenConversationWindow, isRailInteractionLocked]);
-    const handleContextMenuCopySessionLink = useCallback(() => {
-      if (
-        isRailInteractionLocked() ||
-        contextMenuCopySessionLinkRequestedRef.current
-      ) {
-        return;
-      }
-      contextMenuCopySessionLinkRequestedRef.current = true;
-      setContextMenuResetKey((key) => key + 1);
-      // timing: defer past the context menu's own close/dismiss handling
-      window.setTimeout(() => {
-        if (isRailInteractionLocked()) {
-          contextMenuCopySessionLinkRequestedRef.current = false;
-          return;
-        }
-        if (!agentHostApi?.clipboard?.writeText) {
-          contextMenuCopySessionLinkRequestedRef.current = false;
-          return;
-        }
-        const title = conversationPlainTitle(item, labels, uiLanguage);
-        const markdown = createAgentSessionMarkdownLink({
-          agentSessionId: item.id,
-          agentTargetId: item.agentTargetId,
-          label: title,
-          workspaceId,
-          withAtPrefix: false
-        });
-        void agentHostApi.clipboard
-          .writeText(markdown)
-          .catch(() => undefined)
-          .finally(() => {
-            contextMenuCopySessionLinkRequestedRef.current = false;
-          });
-      }, 0);
-    }, [
-      agentHostApi,
-      isRailInteractionLocked,
-      item,
+      conversation: item,
+      isInteractionLocked: isRailInteractionLocked,
       labels,
       uiLanguage,
-      workspaceId
-    ]);
+      workspaceId,
+      onMarkConversationUnread,
+      onOpenConversationWindow,
+      onRequestRenameConversation
+    });
+    const conversationSelect = (
+      <button
+        type="button"
+        className={styles.conversationSelect}
+        onClick={handleSelect}
+        onBlur={hasTargetInfo ? handleTargetInfoBlur : undefined}
+        onDoubleClick={(event) => {
+          event.preventDefault();
+          handleRequestRename();
+        }}
+        onFocus={hasTargetInfo ? handleTargetInfoFocus : undefined}
+      >
+        <span className={styles.conversationTitleRow}>
+          {conversationIconNode}
+          <span className={styles.conversationTitle}>
+            {agentGUIConversationRailTitle(item, labels, uiLanguage)}
+          </span>
+        </span>
+        <AgentGUIConversationRailRelativeTime item={item} labels={labels} />
+      </button>
+    );
+    const conversationSelectWithTargetInfo =
+      renderAgentTargetInfo && targetInfoTarget ? (
+        <AgentTargetInfoTooltip
+          align="start"
+          fallbackLabel={targetInfoTarget.label}
+          onOpenChange={handleTargetInfoOpenChange}
+          open={targetInfoOpen}
+          renderer={renderAgentTargetInfo}
+          side="bottom"
+          sideOffset={6}
+          surface="conversation-rail"
+          target={targetInfoTarget}
+        >
+          {conversationSelect}
+        </AgentTargetInfoTooltip>
+      ) : (
+        conversationSelect
+      );
     const row = (
       <div
         ref={setItemElement}
@@ -279,53 +300,16 @@ export const AgentGUIConversationRailItem = memo(
           if (isRailInteractionLocked()) {
             event.preventDefault();
             event.stopPropagation();
+            return;
           }
+          setActionsActivated(true);
         }}
+        onFocusCapture={() => setActionsActivated(true)}
         onMouseLeave={handleMouseLeave}
+        onPointerEnter={() => setActionsActivated(true)}
       >
-        <button
-          type="button"
-          className={styles.conversationSelect}
-          onClick={handleSelect}
-          onDoubleClick={(event) => {
-            event.preventDefault();
-            handleRequestRename();
-          }}
-        >
-          <span className={styles.conversationTitleRow}>
-            {conversationIconUrl ? (
-              <span
-                aria-hidden="true"
-                className={styles.conversationProviderIcon}
-                style={
-                  {
-                    "--agent-gui-conversation-provider-icon-url": `url("${conversationIconUrl}")`
-                  } as CSSProperties
-                }
-              />
-            ) : null}
-            {isAgentGUIConversationTitleIconMentionKind(
-              item.titleLeadingMentionKind
-            ) ? (
-              <span
-                aria-hidden="true"
-                className={styles.conversationTitleMentionIcon}
-                data-agent-gui-conversation-title-mention-icon={
-                  item.titleLeadingMentionKind
-                }
-              >
-                <ConversationTitleMentionIcon
-                  kind={item.titleLeadingMentionKind}
-                />
-              </span>
-            ) : null}
-            <span className={styles.conversationTitle}>
-              {agentGUIConversationRailTitle(item, labels, uiLanguage)}
-            </span>
-          </span>
-          <ConversationMeta item={item} nowMs={currentTimeMs} labels={labels} />
-        </button>
-        {previewMode ? null : (
+        {conversationSelectWithTargetInfo}
+        {actionsActivated || isPendingDeleteConversation ? (
           <div className={styles.conversationActions}>
             {isPendingDeleteConversation ? (
               <button
@@ -407,80 +391,25 @@ export const AgentGUIConversationRailItem = memo(
                 >
                   <CanvasNodeTrashLinedIcon aria-hidden="true" />
                 </BareIconButton>
+                <AgentGUIConversationActionsDropdown
+                  buttonClassName={styles.conversationMoreButton}
+                  menu={menu}
+                  moreSessionActionsLabel={labels.moreSessionActions}
+                />
               </>
             )}
           </div>
-        )}
+        ) : null}
       </div>
     );
-    if (previewMode) {
-      return row;
-    }
+
     return (
-      <ContextMenu key={contextMenuResetKey}>
-        <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
-        <ContextMenuContent
-          className={`${styles.composerMenuContent} nodrag [-webkit-app-region:no-drag]`}
-        >
-          <ContextMenuItem
-            className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
-            onClick={handleContextMenuRename}
-            onPointerUp={(event) => {
-              if (event.button === 0) {
-                handleContextMenuRename();
-              }
-            }}
-            onSelect={handleContextMenuRename}
-          >
-            <span>{labels.renameSession}</span>
-          </ContextMenuItem>
-          {onOpenConversationWindow ? (
-            <ContextMenuItem
-              className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
-              onClick={handleContextMenuOpenConversationWindow}
-              onPointerUp={(event) => {
-                if (event.button === 0) {
-                  handleContextMenuOpenConversationWindow();
-                }
-              }}
-              onSelect={handleContextMenuOpenConversationWindow}
-            >
-              <span>{labels.openConversationWindow}</span>
-            </ContextMenuItem>
-          ) : null}
-          <ContextMenuItem
-            className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
-            onClick={handleContextMenuCopySessionLink}
-            onPointerUp={(event) => {
-              if (event.button === 0) {
-                handleContextMenuCopySessionLink();
-              }
-            }}
-            onSelect={handleContextMenuCopySessionLink}
-          >
-            <span>{labels.copySessionLink}</span>
-          </ContextMenuItem>
-          <ContextMenuItem
-            className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
-            disabled={!canMarkUnread}
-            onSelect={handleMarkUnread}
-          >
-            <span>{labels.markSessionUnread}</span>
-          </ContextMenuItem>
-        </ContextMenuContent>
-      </ContextMenu>
+      <AgentGUIConversationActionsContextMenu menu={menu}>
+        {row}
+      </AgentGUIConversationActionsContextMenu>
     );
   }
 );
-
-function ConversationTitleMentionIcon({
-  kind
-}: {
-  kind: AgentGUIConversationTitleIconMentionKind;
-}): ReactNode {
-  if (kind === "task") return <IssueIcon />;
-  return <FileIcon />;
-}
 
 export function AgentGUIProjectRailHeader({
   disabled,
@@ -500,18 +429,11 @@ export function AgentGUIProjectRailHeader({
   const agentHostApi = useAgentHostApi();
   const userProjectApi = useMemo(
     () =>
-      agentHostApi.userProjects
-        ? {
-            ...agentHostApi.userProjects,
-            selectDirectory:
-              selectProjectDirectory ?? agentHostApi.workspace.selectDirectory
-          }
-        : null,
-    [
-      agentHostApi.userProjects,
-      agentHostApi.workspace.selectDirectory,
-      selectProjectDirectory
-    ]
+      createAgentGUIUserProjectSelectionApi({
+        selectProjectDirectory,
+        userProjects: agentHostApi.userProjects
+      }),
+    [agentHostApi.userProjects, selectProjectDirectory]
   );
 
   return (

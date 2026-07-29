@@ -7,6 +7,7 @@ import {
   resolveDesktopLoginCallbackUrl,
   resolveDesktopLoginProtocolClientRegistration,
   resolveDesktopLoginProtocolScheme,
+  resolveDesktopPerformanceHeadless,
   resolveDesktopUserDataPath,
   resolveTuttiEnv
 } from "./defaults.ts";
@@ -137,6 +138,7 @@ test("resolveDesktopUserDataPath isolates development Electron storage", () => {
 
   try {
     process.env.TUTTI_ENV = "development";
+    delete process.env.TUTTI_DESKTOP_USER_DATA_DIR;
 
     assert.equal(
       resolveDesktopUserDataPath({
@@ -150,11 +152,32 @@ test("resolveDesktopUserDataPath isolates development Electron storage", () => {
   }
 });
 
+test("resolveDesktopUserDataPath honors an explicit diagnostic override", () => {
+  const previousEnv = { ...process.env };
+
+  try {
+    process.env.TUTTI_ENV = "development";
+    process.env.TUTTI_DESKTOP_USER_DATA_DIR =
+      " /tmp/tutti-desktop-performance-profile ";
+
+    assert.equal(
+      resolveDesktopUserDataPath({
+        appDataDir: "/tmp/app-data",
+        appName: "Tutti"
+      }),
+      "/tmp/tutti-desktop-performance-profile"
+    );
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
 test("resolveDesktopUserDataPath keeps production on Electron defaults", () => {
   const previousEnv = { ...process.env };
 
   try {
     process.env.TUTTI_ENV = "production";
+    delete process.env.TUTTI_DESKTOP_USER_DATA_DIR;
 
     assert.equal(
       resolveDesktopUserDataPath({
@@ -177,6 +200,24 @@ test("resolveDesktopDevelopmentAppName isolates development single-instance iden
 
     process.env.TUTTI_ENV = "production";
     assert.equal(resolveDesktopDevelopmentAppName("Tutti"), null);
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveDesktopPerformanceHeadless is limited to explicit development diagnostics", () => {
+  const previousEnv = { ...process.env };
+
+  try {
+    process.env.TUTTI_ENV = "development";
+    delete process.env.TUTTI_DESKTOP_PERFORMANCE_HEADLESS;
+    assert.equal(resolveDesktopPerformanceHeadless(), false);
+
+    process.env.TUTTI_DESKTOP_PERFORMANCE_HEADLESS = "1";
+    assert.equal(resolveDesktopPerformanceHeadless(), true);
+
+    process.env.TUTTI_ENV = "production";
+    assert.equal(resolveDesktopPerformanceHeadless(), false);
   } finally {
     restoreEnv(previousEnv);
   }

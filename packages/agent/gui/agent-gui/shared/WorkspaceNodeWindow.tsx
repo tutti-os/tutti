@@ -186,6 +186,7 @@ export function WorkspaceNodeWindow({
       )}
       style={rootStyle}
       data-workspace-node-window-root="true"
+      data-workspace-node-window-appearance={appearance}
       data-workspace-node-window-kind={kind}
       data-workspace-node-window-maximized={isMaximized ? "true" : "false"}
       data-workspace-node-window-muted={isMuted ? "true" : "false"}

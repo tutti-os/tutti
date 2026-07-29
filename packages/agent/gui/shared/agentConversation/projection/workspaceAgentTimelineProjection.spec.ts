@@ -228,58 +228,6 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
     ).toBe(true);
   });
 
-  it("projects visible agent errors from assistant message payloads", () => {
-    const conversation = projectWorkspaceAgentTimelineToConversationVM({
-      activity: activity(),
-      session: session({ effectiveStatus: "failed", turnPhase: "failed" }),
-      workspaceRoot: "/workspace/demo",
-      timelineItems: [
-        timelineItems()[0]!,
-        {
-          id: 99,
-          workspaceId: "room-1",
-          agentSessionId: "session-1",
-          turnId: "turn-1",
-          seq: 99,
-          eventId: "visible-error:event-99",
-          actorType: "agent",
-          actorId: "hermes",
-          itemType: "message.assistant",
-          role: "assistant",
-          status: "failed",
-          payload: {
-            kind: "agent_visible_error",
-            code: "process_exited",
-            phase: "start",
-            provider: "hermes",
-            detail: "Config invalid",
-            retryable: false,
-            content: "Hermes failed to start.",
-            text: "Hermes failed to start."
-          },
-          occurredAtUnixMs: 99,
-          createdAtUnixMs: 99
-        }
-      ]
-    });
-
-    const row = conversation.rows.find(
-      (
-        candidate
-      ): candidate is Extract<
-        (typeof conversation.rows)[number],
-        { kind: "message" }
-      > => candidate.kind === "message" && candidate.speaker === "assistant"
-    );
-    expect(row?.messages[0]?.visibleError).toEqual({
-      code: "process_exited",
-      phase: "start",
-      provider: "hermes",
-      detail: "Config invalid",
-      retryable: false
-    });
-  });
-
   it("projects transport notices without merging them into assistant content", () => {
     const conversation = projectWorkspaceAgentTimelineToConversationVM({
       activity: activity(),

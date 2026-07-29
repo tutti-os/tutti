@@ -28,20 +28,22 @@ func defaultStateDir() string {
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(homeDir) == "" {
-		if isDevelopmentEnv() {
+		if IsDevelopmentEnv() {
 			return ".tutti-dev"
 		}
 		return ".tutti"
 	}
 
 	dirName := ".tutti"
-	if isDevelopmentEnv() {
+	if IsDevelopmentEnv() {
 		dirName = ".tutti-dev"
 	}
 	return filepath.Join(homeDir, dirName)
 }
 
-func isDevelopmentEnv() bool {
+// IsDevelopmentEnv reports whether this process runs against the development
+// state root, which also selects the development Tutti CLI binary name.
+func IsDevelopmentEnv() bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("TUTTI_ENV"))) {
 	case "dev", "development", "local":
 		return true

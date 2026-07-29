@@ -58,6 +58,16 @@ export const defaultDesktopAppCatalogChannel: DesktopAppCatalogChannel =
 
 export const defaultDesktopShowAppDeveloperSources = false;
 
+export const defaultDesktopAgentCliUpdateCheckEnabled = true;
+
+export function normalizeDesktopAgentCliUpdateCheckEnabled(
+  value: unknown
+): boolean {
+  return typeof value === "boolean"
+    ? value
+    : defaultDesktopAgentCliUpdateCheckEnabled;
+}
+
 export type DesktopFeatureFlags = Record<string, boolean>;
 
 export const defaultDesktopFeatureFlags: DesktopFeatureFlags = {};
@@ -88,6 +98,21 @@ export type DesktopAgentConversationDetailMode =
 
 export const defaultDesktopAgentConversationDetailMode: DesktopAgentConversationDetailMode =
   "coding";
+
+export const deletedAgentConversationRetentionDaysOptions = [15, 30] as const;
+
+export type DeletedAgentConversationRetentionDays =
+  (typeof deletedAgentConversationRetentionDaysOptions)[number];
+
+export const defaultDeletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays = 30;
+
+export function normalizeDeletedAgentConversationRetentionDays(
+  value: unknown
+): DeletedAgentConversationRetentionDays {
+  return value === 15 || value === 30
+    ? value
+    : defaultDeletedAgentConversationRetentionDays;
+}
 
 export function readInitialDockPlacementFromLocation(
   locationSearch?: string
@@ -185,7 +210,6 @@ export const desktopAgentProviders = [
   "tutti-agent",
   "cursor",
   "nexight",
-  "hermes",
   "openclaw",
   "opencode"
 ] as const;

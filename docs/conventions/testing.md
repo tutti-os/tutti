@@ -4,11 +4,48 @@ This document defines the repository-managed test discovery and gate policy.
 
 ## Commands
 
-- `pnpm test:ts`: all TypeScript/JavaScript workspace package tests plus repository tool tests
+- `pnpm test:ts`: all TypeScript/JavaScript workspace package tests
+- `pnpm test:ts -- --packages-json '["@tutti-os/agent-gui"]'`: tests for an
+  explicit validated workspace package subset
+- `pnpm test:ts -- --shard 1/3`: the first deterministic package shard
 - `pnpm test:tools`: repository tool tests only
 - `pnpm test:go`: generate builtin app assets, then run the blocking Go workspace test set
 - `pnpm test:go:prepared`: run the blocking Go workspace test set when builtin app assets are already prepared
 - `pnpm test:go:agent-daemon`: run the blocking agent daemon module as a focused lane
+
+## Validation Selection
+
+Validation entrypoints are scopes, not a cumulative checklist. For normal
+non-UI-only work, inspect `pnpm check:changed -- --dry-run`, then run one final
+`pnpm check:changed` after the change has settled. The final plan owns its
+selected package tests, typechecks, lint, and boundary checks; do not run those
+same commands as a separate final preflight or follow-up.
+
+Direct package or boundary commands are iteration tools for a failing or
+uncertain surface. After a failed changed-aware run, use
+`pnpm check:changed -- --failed-only` after fixing the failure. The runner
+rebuilds the current plan, reruns failed, new, and input-changed lanes, and
+reuses only lanes that previously passed with the same lane inputs. Retries
+inherit the previous run's push-ready mode so failed build or pack lanes remain
+in the plan. A focused command run before subsequent edits is evidence for that
+iteration, not for the final worktree; some narrow coverage may therefore run
+again in the final changed-aware gate.
+
+Add a standalone final check only when the dry-run plan omits a capability the
+changed surface requires:
+
+- Desktop runtime/build behavior: `pnpm --filter @tutti-os/desktop build`
+- user-visible copy or locale resources: `pnpm check:i18n`
+- defaults under `config/tutti.defaults.json`: `pnpm generate:defaults` and `pnpm check:defaults-generated`
+- provider strategy/capability contracts: `pnpm check:agent-provider-strategy-boundaries`
+- daemon build confidence: `cd services/tuttid && go build ./...`
+
+Use a full package suite or `pnpm check:full` only when broad impact, release
+risk, an explicit workflow, or concrete uncertainty in changed-test selection
+requires wider confidence. If wider confidence is required, avoid separately
+pre-running every boundary/typecheck lane that `check:changed` already owns;
+some overlap between its selected tests and an intentionally broader suite may
+be unavoidable.
 
 `pnpm check:full` prepares builtin app assets once, then uses the prepared Go
 lint and test entrypoints. This prevents concurrent validation lanes from
@@ -23,14 +60,38 @@ TypeScript and JavaScript package tests are discovered from workspace
 `package.json` files. Every workspace package with a `test` script is included
 automatically; do not add package names to a root test whitelist.
 
+Pull-request CI keeps the stable `TypeScript Tests` required-check context but
+uses changed-file classification to select package lanes. Package-local changes
+run the owning package and transitive workspace dependents' tests; tool-only
+changes keep the context as a passing no-op because repository tool tests belong
+to `Tooling Consistency`. Lockfile, workspace, shared test configuration, runner,
+deleted-package, and relevant root manifest changes run all package tests.
+Selected packages are greedily balanced across at most three runner shards by
+their discovered test file counts; packages inside each runner remain serial so
+their own test workers do not oversubscribe the runner.
+
 A package that declares a `test` script must contain at least one package-local
 `*.test.*` or `*.spec.*` file. The root runner rejects zero-test scripts so an
 empty glob cannot be reported as a passing test suite. Remove a stale script or
 add a real package test.
 
+AgentGUI splits its Vitest suite by required runtime. Plain TypeScript tests run
+in Node; TSX tests and the exact TypeScript files listed in
+`packages/agent/gui/vitest.config.ts` run in JSDOM. Add a TypeScript test to that
+explicit list only when it requires browser globals or DOM behavior. Do not
+restore package-wide JSDOM, because most AgentGUI tests exercise DOM-free
+models and controllers. The package uses four Vitest threads so its worker pool
+matches the public Linux CI runner without stacking package-level concurrency.
+
 Repository tool tests are discovered from `tools/scripts/*.test.mjs`. Tool
 tests that exercise package release helpers remain tool-owned instead of being
-duplicated through a package-level test script.
+duplicated through a package-level test script. They are repository contract
+tests, not TypeScript package tests, and run through `test:tools` only.
+
+Repository policy, tool contracts, generated contracts, and architecture
+boundaries are selected from `tools/scripts/repository-checks.mjs`. Both PR CI
+and `check:changed` consume this registry; do not attach a repository-wide
+check to a TypeScript or Go lane based on its implementation language.
 
 Go tests are discovered from the modules declared in `go.work`. The blocking
 lane includes every module, so additions to `go.work` join the root test gate
@@ -38,6 +99,223 @@ without a second registry.
 
 Changed-aware validation must recognize every current `go.work` module so a Go
 file change selects the matching package lint and test lanes.
+
+## Local Performance Reports
+
+`pnpm perf:agent-gui` captures and analyzes an AgentGUI interaction scenario
+without requiring a manually started Desktop or manually exported trace. It
+makes a transactionally consistent SQLite backup of
+`~/.tutti-dev/tuttid.db`, clears recoverable operation queues and active AgentGUI
+session selection only in that copy, then starts an isolated daemon and
+Electron `userData` directory. The source database is never written; the
+SQLite source connection enables `query_only` before online backup.
+The runner also sets `TUTTI_DESKTOP_PERFORMANCE_HEADLESS=1`; workspace and
+standalone Agent windows remain fully rendered for CDP tracing but use zero
+opacity, stay out of the taskbar, disable background throttling, and never
+activate over the developer's current app. They are also non-focusable and
+ignore native mouse events, so pointer input passes through to the underlying
+application; CDP-injected scenario input remains available.
+
+Reports and traces are written under
+`.tmp/perf/agent-gui/<scenario>/<timestamp>/`. Metric values are
+report-only unless the selected scenario declares explicit thresholds.
+Startup, semantic scenario assertions, capture, analysis, and declared
+threshold failures return a non-zero exit code. Current timing/trace gates are
+owned by `virtualized-scroll-locator`, `workbench-window-drag`, and
+`workbench-fifty-window-stress`. The command remains local diagnostics, not a
+CI performance gate or a stable cross-device benchmark.
+
+The report separates semantic scenario assertions from performance metrics. It
+shows start-to-selection, selection-to-stable, and settling phases; restricts
+task, layout, paint, and event totals to the selected `CrRendererMain`; and
+labels the performance verdict `ungraded` when no comparable baseline or
+threshold exists. React component rows link to an unambiguous repository
+declaration when static symbol matching succeeds. Those links identify source
+ownership, not a runtime call stack or proof of causation.
+
+The capture runner ships `provider-switch`, `session-switch`,
+`provider-session-cycle`, `virtualized-streaming`,
+`concurrent-agent-streaming`,
+`virtualized-scroll-locator`, `virtualized-session-cycle`,
+`virtualized-oversized-active-turn`, `browser-behind-agent-gui-pixels`,
+`rail-scope-reveal`, `composer-input`, `composer-overflow-resize`, `workbench-window-lifecycle`,
+`workbench-window-drag`, `workbench-fifty-window-stress`,
+`desktop-window-state`, and
+`provider-status-focus-refresh`. List them with
+`--list-scenarios`; select one with
+`--scenario <id>`. Scenario modules own preparation, completion conditions,
+semantic assertions, milestones, and metadata; runtime startup, trace capture,
+renderer analysis, and report rendering stay scenario-neutral.
+
+`concurrent-agent-streaming` selects two settled root Sessions, restores them
+into two non-overlapping visible AgentGUI windows, and routes each through an
+isolated fake Cursor ACP Session. Both Composer forms submit in one renderer
+task. The scenario requires both windows to enter working state, produce
+repeated transcript mutations, and settle before the trace tail. It reports
+the sampled conversation-projection and streaming-text functions without
+setting a cross-device timing threshold.
+
+`virtualized-streaming` and `virtualized-scroll-locator` require one root
+Session with at least thirty settled Turns. They change only the isolated copy
+to route that Session through the repository's deterministic fake Cursor ACP
+executable. Streaming asserts that real daemon events drive repeated React DOM
+mutations. Scroll-locator additionally requires four user text messages and
+replaces their bodies with a fixed eight-paragraph, three-mention rich-text
+fixture. It performs a ten-second monotonic upward scroll over at least eight
+viewports, rejects reversed or returning locator selection, and asserts that
+historical rows never gain `contenteditable="true"` or `role="textbox"`. Its trace gate
+requires at least 300 scroll dispatches, a maximum 50 ms scroll dispatch,
+at most 1200 ms total scroll-dispatch time, at most 500 ms `Layout`, at most
+1000 ms `UpdateLayoutTree`, and zero inclusive CPU samples for `EditorView`,
+`hasSelection`, and `selectionToDOM`. CPU sample counts use
+marker-bounded renderer-process `ProfileChunk` stacks; the gate also requires
+at least one CPU sample so missing profiler data cannot pass as zero.
+`captureScrollAnchor` and `updateStateInner` are reported for diagnosis but are
+not thresholds. The active Composer legitimately calls `updateStateInner`
+during React passive effects, so that generic ProseMirror function name cannot
+distinguish it from a historical message. The historical transcript DOM
+assertion remains the ownership gate.
+Neither scenario launches or sends input to a developer's installed Agent provider.
+`virtualized-session-cycle` uses the same isolated fixture preparation, pairs
+one virtualized long Session with one non-virtualized Session of at most three
+Turns (and at least one Turn), then performs two round trips. It asserts the exact active Session and
+expected virtualization mode after every switch.
+`virtualized-oversized-active-turn` retains eighteen settled Turns, then drives
+a nineteenth active Turn through the deterministic fake Cursor ACP executable.
+The isolated fixture reaches approximately 250 total tool calls, with at least
+forty in the active Turn. The trace ends while that Turn is still running and
+reports mounted virtual Turn/row counts plus DOM mutation batches. It remains a
+local diagnostic without fixed timing thresholds.
+`browser-behind-agent-gui-pixels` opens a high-contrast Browser webview, saves a
+Browser reference screenshot, then keeps that webview mounted behind a
+fullscreen virtualized AgentGUI while the transcript scrolls. It saves the
+composited `browser-behind-agent-gui.png` artifact for real-pixel inspection;
+its DOM assertions intentionally do not claim a pixel verdict.
+`rail-scope-reveal` asserts the exact active-row
+`scrollIntoView` call during a fresh Agent scope restore.
+`session-switch` also reports inclusive CPU samples for
+`readTimelineGeometry`; sample counts are diagnostic stack samples, not
+function-call counts.
+`composer-overflow-resize` maximizes the AgentGUI Workbench node, narrows the
+renderer viewport, asserts the hero prompt-tip's native `scrollWidth` and
+`clientWidth` getters were read after resize, then restores the original
+viewport metrics.
+`composer-input` restores a settled Session so the dock composer is active,
+inserts four explicit newline rows, waits for the 3.5-line viewport to finish
+expanding, deletes back to one row, and verifies that the action button remains
+bottom-aligned across both transitions. It then injects ordinary text one
+character at a time, drives a real CDP IME composition lifecycle, opens the `@`
+panel, and verifies ArrowDown, Tab, and Escape navigation without submitting
+the draft.
+
+`workbench-window-lifecycle` measures the internal AgentGUI Workbench node's
+minimize, restore, maximize, unmaximize, close, and reopen mechanics.
+`workbench-window-drag` requires at least three mounted AgentGUI Workbench
+windows. It drives 120 trusted pointer moves through Chromium and fails when the
+startup or drag emits a Chromium tile-memory warning, or when the drag records
+more than 20 CSS animation iterations. This catches background AgentGUI
+animations that retain too many compositor tiles while windows restore or move.
+Before the drag marker starts, the scenario waits for staged background-body
+hydration to finish and for the resulting DOM mutations and images to settle,
+so startup work is checked separately instead of leaking into the drag window.
+`workbench-fifty-window-stress` rewrites only the isolated performance snapshot
+to contain exactly 50 mounted AgentGUI nodes. It verifies startup, focuses an
+exposed background window without remounting its body, then drags that window.
+The scenario rejects tile-memory warnings, any geometrically exposed body that
+becomes hidden, more than 20 animation iterations, or a renderer task above
+50 ms.
+`desktop-window-state` measures the owning Electron window's minimize, restore,
+maximize, and unmaximize states through typed host-window APIs and is currently
+macOS-only because only that host emits typed minimize-state events. Native
+close/reopen is not part of that renderer-marked scenario because closing the
+owning native window destroys the renderer that owns the trace boundary
+markers. Every declared milestone is required in the captured trace; a missing
+marker fails capture instead of silently producing an incomplete phase table.
+
+`provider-status-focus-refresh` dispatches a second workspace focus while the
+first focus is being observed, then watches the page for one second. It asserts
+that neither focus starts a provider-status request. This guards against window
+focus regressing into provider CLI scans without starting an Agent turn. On
+macOS, pass `--all-process-time-profile` to also write `time-profile.trace`,
+covering Electron, `tuttid`, and short-lived provider CLI child processes that
+Chromium CDP tracing cannot see.
+
+Daemon migrations remain forward-only. If the personal dev database was last
+opened by a newer checkout with incompatible Agent target migrations, the
+command fails before Desktop startup and lists them; use a compatible checkout
+or pass a compatible snapshot with `--source-db`. The runner never attempts to
+downgrade or rewrite the source database.
+
+## Agent Session Record And Replay
+
+The developer-only runner records and replays an Agent SessionGraph capture
+window:
+
+```sh
+pnpm e2e:agent-gui -- --record .tmp/cassettes/codex-three-turns
+pnpm e2e:agent-gui -- --replay .tmp/cassettes/codex-three-turns
+```
+
+Record mode starts from a newly migrated empty database, creates one temporary
+Workspace, and submits three Turns by default. Existing Sessions use
+`continue-session`: recording resolves the canonical root and exports only
+that recursive SessionGraph dependency closure to `seed/state.jsonl`. New
+Sessions use `create-session` and have no seed rows. Turn settlement and child
+creation never stop capture. The user presses the square stop control, then
+finalization exports `expected/state.jsonl`.
+
+External inputs are an ordered `stimuli.jsonl` stream. They include Session
+create/send/guidance, Turn cancel, interactive response, plan decision, Goal
+control, and Session settings changes. Provider-created child Sessions, Goal
+continuation Turns, and Host worker activity are state changes, not stimuli,
+and are never executed twice.
+
+`provider/manifest.json` identifies each connection by recorded Session,
+provider, and Session-local launch ordinal. `provider/frames.jsonl` carries
+connection-local and diagnostic global sequence numbers; the manifest records
+the final frame count and SHA-256 digest. Replay matches by that identity
+instead of global launch order. It maps only declared runtime identities and
+path fields, and fails on changed outbound bytes, missing inbound frames, extra
+connections, leftover frames, or tape-integrity mismatch. Replay compares the
+normalized full SessionGraph fixture, not only assistant text.
+Inbound provider frames honor their recorded elapsed time at the Replay
+surface's selected speed. Matching an outbound frame advances the playback
+clock to that recorded boundary, so time spent typing or waiting before a user
+action is not replayed. Final verification waits for every scheduled provider
+frame to drain after canonical Session settlement; Session idle alone is not
+proof that trailing diagnostics were consumed.
+
+The ordered activity stream also honors the relative `occurredAtUnixMs`
+timeline. Its runner clock reads the same daemon playback state as provider
+transport, so pause, selected speed, and checkpoint fast-forward cannot move
+queue, steer, or their effects out of sync with provider frames.
+
+Persisted prompt attachments explicitly referenced by graph messages are copied
+to `blobs/sha256/<digest>` and described in `blobs/manifest.json`. Replay
+verifies their size and digest, then restores only those attachment targets
+under its isolated state directory. Recording never scans or copies the whole
+Workspace.
+
+The cassette has no `baseline.db`, `action.json`, single Turn field, or copied
+Workspace. Replay migrates a new database, imports the optional seed, performs
+stimuli, and does not read the source user database. See [Local State
+Storage](./local-state-storage.md#developer-agent-session-cassettes).
+For a project-backed Session, Replay seeds the isolated User Project catalog
+from the recorded `cwd` and rail placement before starting Electron. The
+cassette remains read-only. CDP drives surface navigation and verification;
+recorded business stimuli use the isolated daemon HTTP API.
+
+`TUTTI_AGENT_CASSETTE_MODE` and `TUTTI_AGENT_CASSETTE_PATH` remain
+developer-only static transport controls used by replay and lower-level
+diagnostics. UI recording does not set them. Dynamic capture covers live and
+future connections in the selected root SessionGraph; provider probes and
+setup processes continue through the local transport.
+
+With the developer recording feature enabled, Desktop injects recording and
+replay controls through AgentGUI's generic composer-footer accessory slot.
+AgentGUI contains no recording/replay domain state or copy. Playing a completed
+recording prepares a daemon-owned Replay Run and opens a separate managed
+Electron instance without a terminal.
 
 ## Agent Daemon Blocking Gate
 

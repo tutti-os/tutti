@@ -1,4 +1,5 @@
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
+import type { IReporterService } from "@tutti-os/analytics";
 import type { RichTextMentionAttrs } from "@tutti-os/ui-rich-text/types";
 import {
   createWorkspaceUserProjectI18nRuntime,
@@ -20,6 +21,8 @@ import type {
   IssueManagerEventSource,
   IssueManagerFileAdapter,
   IssueManagerIdentityAdapter,
+  IssueManagerModelPlanOptionsAdapter,
+  IssueManagerManagedIssueActionsAdapter,
   IssueManagerNodeState,
   IssueManagerShareAdapter
 } from "../contracts/index.ts";
@@ -42,7 +45,9 @@ export interface IssueManagerFeatureUIConfig {
 export interface IssueManagerFeature {
   agentBreakdownLauncher?: IssueManagerAgentBreakdownLauncher;
   analytics?: IssueManagerAnalyticsAdapter;
+  reporterService?: Pick<IReporterService, "trackEvents">;
   agentTargetOptions?: IssueManagerAgentTargetOptionsAdapter;
+  modelPlanOptions?: IssueManagerModelPlanOptionsAdapter;
   agentSessionOpener?: IssueManagerAgentSessionOpener;
   agentRunner: IssueManagerAgentRunner;
   backend: IssueManagerBackend;
@@ -52,6 +57,7 @@ export interface IssueManagerFeature {
   i18n: IssueManagerI18nRuntime;
   identityAdapter: IssueManagerIdentityAdapter;
   mentionActionHandler?: IssueManagerMentionActionHandler;
+  managedIssueActions?: IssueManagerManagedIssueActionsAdapter;
   notifications?: IssueManagerNotificationSink;
   referenceSourceAggregator?: ReferenceSourceAggregator;
   shareAdapter?: IssueManagerShareAdapter;
@@ -62,7 +68,9 @@ export interface IssueManagerFeature {
 export interface CreateIssueManagerFeatureInput {
   agentBreakdownLauncher?: IssueManagerAgentBreakdownLauncher;
   analytics?: IssueManagerAnalyticsAdapter;
+  reporterService?: Pick<IReporterService, "trackEvents">;
   agentTargetOptions?: IssueManagerAgentTargetOptionsAdapter;
+  modelPlanOptions?: IssueManagerModelPlanOptionsAdapter;
   agentSessionOpener?: IssueManagerAgentSessionOpener;
   agentRunner: IssueManagerAgentRunner;
   backend: IssueManagerBackend;
@@ -72,6 +80,7 @@ export interface CreateIssueManagerFeatureInput {
   i18n?: I18nRuntime<string>;
   identityAdapter: IssueManagerIdentityAdapter;
   mentionActionHandler?: IssueManagerMentionActionHandler;
+  managedIssueActions?: IssueManagerManagedIssueActionsAdapter;
   notifications?: IssueManagerNotificationSink;
   referenceSourceAggregator?: ReferenceSourceAggregator;
   shareAdapter?: IssueManagerShareAdapter;
@@ -95,7 +104,9 @@ export function createIssueManagerFeature(
   return {
     agentBreakdownLauncher: input.agentBreakdownLauncher,
     analytics: input.analytics,
+    reporterService: input.reporterService,
     agentTargetOptions: input.agentTargetOptions,
+    modelPlanOptions: input.modelPlanOptions,
     agentSessionOpener: input.agentSessionOpener,
     agentRunner: input.agentRunner,
     backend: input.backend,
@@ -105,6 +116,7 @@ export function createIssueManagerFeature(
     i18n: createIssueManagerI18nRuntime(input.i18n),
     identityAdapter: input.identityAdapter,
     mentionActionHandler: input.mentionActionHandler,
+    managedIssueActions: input.managedIssueActions,
     notifications: input.notifications,
     referenceSourceAggregator: input.referenceSourceAggregator,
     shareAdapter: input.shareAdapter,

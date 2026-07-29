@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	eventprotocol "github.com/tutti-os/tutti/services/tuttid/api/events/generated"
 )
 
 type WorkspaceIssueChangeKind string
@@ -47,11 +49,19 @@ func (p WorkspaceIssuePublisher) PublishWorkspaceIssueUpdated(ctx context.Contex
 		return nil
 	}
 
-	payload, err := json.Marshal(workspaceIssueUpdatedPayload{
-		WorkspaceID: update.WorkspaceID,
-		IssueID:     update.IssueID,
-		TaskID:      update.TaskID,
-		RunID:       update.RunID,
+	var taskID *string
+	if update.TaskID != "" {
+		taskID = &update.TaskID
+	}
+	var runID *string
+	if update.RunID != "" {
+		runID = &update.RunID
+	}
+	payload, err := json.Marshal(eventprotocol.WorkspaceIssueUpdatedPayload{
+		WorkspaceId: update.WorkspaceID,
+		IssueId:     update.IssueID,
+		TaskId:      taskID,
+		RunId:       runID,
 		ChangeKind:  string(update.ChangeKind),
 	})
 	if err != nil {

@@ -21,6 +21,7 @@ type Target struct {
 	Name            string
 	IconKey         string
 	IconURL         string
+	MaskIconURL     string
 	HeroImageURL    string
 	Enabled         bool
 	Source          string
@@ -46,7 +47,7 @@ func (s *Store) ListAgentTargets(ctx context.Context) ([]Target, error) {
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-SELECT id, provider, launch_ref_json, name, icon_key, icon_url, hero_image_url, enabled, source, sort_order, created_at_ms, updated_at_ms
+SELECT id, provider, launch_ref_json, name, icon_key, icon_url, mask_icon_url, hero_image_url, enabled, source, sort_order, created_at_ms, updated_at_ms
 FROM agent_targets
 ORDER BY sort_order ASC, name ASC, id ASC
 `)
@@ -79,7 +80,7 @@ func (s *Store) GetAgentTarget(ctx context.Context, id string) (Target, error) {
 	}
 
 	row := s.db.QueryRowContext(ctx, `
-SELECT id, provider, launch_ref_json, name, icon_key, icon_url, hero_image_url, enabled, source, sort_order, created_at_ms, updated_at_ms
+SELECT id, provider, launch_ref_json, name, icon_key, icon_url, mask_icon_url, hero_image_url, enabled, source, sort_order, created_at_ms, updated_at_ms
 FROM agent_targets
 WHERE id = ?
 `, id)
@@ -115,6 +116,7 @@ INSERT INTO agent_targets (
   name,
   icon_key,
   icon_url,
+  mask_icon_url,
   hero_image_url,
   enabled,
   source,
@@ -122,19 +124,20 @@ INSERT INTO agent_targets (
   created_at_ms,
   updated_at_ms
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   provider = excluded.provider,
   launch_ref_json = excluded.launch_ref_json,
   name = excluded.name,
   icon_key = excluded.icon_key,
   icon_url = excluded.icon_url,
+  mask_icon_url = excluded.mask_icon_url,
   hero_image_url = excluded.hero_image_url,
   enabled = excluded.enabled,
   source = excluded.source,
   sort_order = excluded.sort_order,
   updated_at_ms = excluded.updated_at_ms
-`, normalized.ID, normalized.Provider, normalized.LaunchRefJSON, normalized.Name, normalized.IconKey, normalized.IconURL, normalized.HeroImageURL, normalized.Enabled, normalized.Source, normalized.SortOrder, normalized.CreatedAtUnixMS, normalized.UpdatedAtUnixMS); err != nil {
+`, normalized.ID, normalized.Provider, normalized.LaunchRefJSON, normalized.Name, normalized.IconKey, normalized.IconURL, normalized.MaskIconURL, normalized.HeroImageURL, normalized.Enabled, normalized.Source, normalized.SortOrder, normalized.CreatedAtUnixMS, normalized.UpdatedAtUnixMS); err != nil {
 		return Target{}, fmt.Errorf("put agent target: %w", err)
 	}
 	return s.GetAgentTarget(ctx, normalized.ID)
@@ -157,6 +160,7 @@ func (s *Store) scanAgentTarget(scanner rowScanner) (Target, error) {
 	var target Target
 	var iconKey sql.NullString
 	var iconURL sql.NullString
+	var maskIconURL sql.NullString
 	var heroImageURL sql.NullString
 	if err := scanner.Scan(
 		&target.ID,
@@ -165,6 +169,7 @@ func (s *Store) scanAgentTarget(scanner rowScanner) (Target, error) {
 		&target.Name,
 		&iconKey,
 		&iconURL,
+		&maskIconURL,
 		&heroImageURL,
 		&target.Enabled,
 		&target.Source,
@@ -179,6 +184,9 @@ func (s *Store) scanAgentTarget(scanner rowScanner) (Target, error) {
 	}
 	if iconURL.Valid {
 		target.IconURL = iconURL.String
+	}
+	if maskIconURL.Valid {
+		target.MaskIconURL = maskIconURL.String
 	}
 	if heroImageURL.Valid {
 		target.HeroImageURL = heroImageURL.String

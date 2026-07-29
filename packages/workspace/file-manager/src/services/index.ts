@@ -13,15 +13,9 @@ export type {
 } from "./workspaceFileManagerService.interface.ts";
 export type {
   WorkspaceFileManagerFileActivationRequest,
-  WorkspaceFileManagerHostActionMessage,
-  WorkspaceFileManagerHostActionMessageStatus,
-  WorkspaceFileManagerHostActionResult,
-  WorkspaceFileManagerHostExportResult,
   WorkspaceFileManagerHostFallbackAction,
   WorkspaceFileManagerHostFallbackActionKind,
-  WorkspaceFileManagerHostFileActivationResult,
-  WorkspaceFileManagerHostImportConflict,
-  WorkspaceFileManagerHostImportResult
+  WorkspaceFileManagerHostFileActivationResult
 } from "./workspaceFileManagerHostTypes.ts";
 export type {
   CreateWorkspaceFileManagerSessionInput,
@@ -33,6 +27,11 @@ export {
   WorkspaceFileOpenWithApplicationsCache
 } from "./internal/model/openWithApplicationsCache.ts";
 export {
+  isWorkspaceFileBrowserOpenable,
+  shouldFilterVideoPlayersForOpenWith,
+  workspaceFileVideoHandlerCollisionExtensions
+} from "./internal/model/openWithPolicy.ts";
+export {
   isWorkspaceApplicationBundle,
   resolveWorkspaceFileDefaultApplicationIconExtension,
   resolveWorkspaceFileEntryIconCacheKey,
@@ -40,21 +39,6 @@ export {
   shouldUseWorkspaceFileArchiveIcon,
   shouldUseWorkspaceFileExtensionDocumentIcon
 } from "./workspaceFileEntryIconPolicy.ts";
-export {
-  classifyWorkspaceFilePreviewKind,
-  decodeWorkspaceTextFile,
-  isWorkspaceFileBrowserOpenable,
-  isWorkspaceTextFileTooLarge,
-  looksLikeBinaryText,
-  resolveWorkspaceFileActivationTarget,
-  resolveWorkspaceFileExtension,
-  resolveWorkspaceFileVisualKind,
-  resolveWorkspaceImageMimeType,
-  resolveWorkspaceVideoMimeType,
-  workspaceFilePreviewMaxBytes,
-  workspaceFileTextMaxBytes,
-  type WorkspaceFileVisualKind
-} from "./workspaceFileManagerModel.ts";
 export {
   findWorkspaceFileLocationById,
   flattenWorkspaceFileLocations,
@@ -68,9 +52,6 @@ export {
   type WorkspaceFileDirectoryListing,
   type WorkspaceFileEntry,
   type WorkspaceFileEntryKind,
-  type WorkspaceFileImportSummary,
-  type WorkspaceFileImportSummaryReason,
-  type WorkspaceFileImportSummaryReasonCount,
   type WorkspaceFileLocation,
   type WorkspaceFileLocationKind,
   type WorkspaceFileLocationSection,
@@ -85,8 +66,7 @@ export {
   type WorkspaceFilePreviewState,
   type WorkspaceFileSearchEntry,
   type WorkspaceFileManagerState,
-  type WorkspaceFileSearchResult,
-  type WorkspaceFileImportConflict
+  type WorkspaceFileSearchResult
 } from "./workspaceFileManagerTypes.ts";
 // 排序能力(纯逻辑,供 file-reference picker 复用)。
 export {

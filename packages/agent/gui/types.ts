@@ -1,8 +1,10 @@
+import type { ReactElement } from "react";
 import type { AgentRuntimeStatus } from "./contexts/agent/domain/types";
 import type {
   AgentSettings,
   AgentProvider
 } from "./contexts/settings/domain/agentSettings";
+import type { PlanIssueBudgetPreset } from "./shared/agentConversation/planImplementationPresentation";
 import type { NodeLabelColorOverride } from "./shared/types/labelColor";
 import type {
   AgentHostTemplateBootstrapAction,
@@ -46,6 +48,7 @@ export interface AgentGUINodeData {
   provider: AgentGUIProvider;
   agentTargetId?: string | null;
   lastActiveAgentSessionId: string | null;
+  lastActiveAgentSessionIdByAgentTargetId?: Record<string, string> | null;
   conversationCount?: number | null;
   conversationRailWidthPx?: number | null;
   conversationRailCollapsed?: boolean | null;
@@ -57,6 +60,8 @@ export interface AgentGUINodeData {
   composerOverridesByProvider?: Partial<
     Record<AgentGUIProvider, AgentHostAgentSessionComposerSettings | null>
   > | null;
+  /** Remembered defaults for provider Plan decomposition review. */
+  planIssueBudgetPreset?: PlanIssueBudgetPreset | null;
 }
 
 /**
@@ -96,8 +101,55 @@ export interface AgentGUIAgentAvailability {
 }
 
 export interface AgentGUIAgentOwner {
+  userId?: string | null;
   name?: string | null;
   avatarUrl?: string | null;
+}
+
+/** Host-authoritative ownership classification for Agent directory entries. */
+export type AgentGUIAgentOwnership = "self" | "shared";
+
+export interface AgentGUISharedAgentQuota {
+  unit: "runs" | "tokens";
+  remaining: number;
+  limit?: number;
+  resetAt?: string | null;
+}
+
+export interface AgentGUISharedAgentConcurrency {
+  active: number;
+  limit: number;
+}
+
+export interface AgentGUISharedAgentCostQuota {
+  currency: string;
+  remainingMicros: number;
+  limitMicros?: number;
+}
+
+export interface AgentGUISharedAgentAllowedModel {
+  modelPlanId?: string | null;
+  model: string;
+}
+
+export interface AgentGUISharedAgentPolicyPermissions {
+  consult: boolean;
+  review: boolean;
+  delegate: boolean;
+  upgrade: boolean;
+}
+
+/** Credential-free access snapshot supplied by the shared-Agent control plane. */
+export interface AgentGUISharedAgentAccess {
+  grantId: string;
+  ownerUserId: string;
+  ownerOnline: boolean;
+  auditRequired: boolean;
+  quota?: AgentGUISharedAgentQuota | null;
+  concurrency?: AgentGUISharedAgentConcurrency | null;
+  costQuota?: AgentGUISharedAgentCostQuota | null;
+  allowedModels?: readonly AgentGUISharedAgentAllowedModel[] | null;
+  policyPermissions?: AgentGUISharedAgentPolicyPermissions | null;
 }
 
 /**
@@ -111,11 +163,18 @@ export interface AgentGUIAgent {
   agentTargetId: string;
   name: string;
   iconUrl: string;
+  /** Single-color artwork rendered through the conversation rail CSS mask. */
+  maskIconUrl?: string | null;
   heroImageUrl?: string | null;
   description?: string | null;
+  /** Host-resolved display name of the device that owns this Agent target. */
+  ownerDeviceLabel?: string | null;
   owner?: AgentGUIAgentOwner | null;
+  ownership?: AgentGUIAgentOwnership | null;
+  sharedAccess?: AgentGUISharedAgentAccess | null;
   availability: AgentGUIAgentAvailability;
   provider: AgentGUIProvider;
+  setupKind?: "target_runtime" | null;
 }
 
 export type AgentGUIAgentDirectoryStatus =
@@ -159,12 +218,58 @@ export interface AgentGUIAgentTarget {
   label: string;
   description?: string;
   iconUrl?: string | null;
+  maskIconUrl?: string | null;
   heroImageUrl?: string | null;
   badge?: AgentGUIAgentTargetBadge | null;
   ownerLabel?: string;
+  ownerDeviceLabel?: string;
+  ownership?: AgentGUIAgentOwnership;
   availability?: AgentGUIAgentAvailability;
   disabled?: boolean;
   unavailableReason?: string;
+}
+
+/**
+ * Product-neutral surfaces where a Host may enrich an exact Agent target.
+ * AgentGUI owns the trigger, positioning, and interaction behavior; the Host
+ * owns only the rendered information.
+ */
+export type AgentGUIAgentTargetInfoSurface =
+  | "provider-rail"
+  | "conversation-rail"
+  | "workbench-header";
+
+export interface AgentGUIAgentTargetInfoRenderContext {
+  surface: AgentGUIAgentTargetInfoSurface;
+  target: AgentGUIAgentTarget;
+}
+
+/**
+ * Renders Host-owned presentation for an exact Agent target.
+ *
+ * AgentGUI invokes this renderer lazily only while its tooltip content is
+ * mounted. Returning null preserves the built-in target-label fallback.
+ */
+export type AgentGUIAgentTargetInfoRenderer = (
+  context: AgentGUIAgentTargetInfoRenderContext
+) => ReactElement | null;
+
+export type AgentGUITargetConnectionStatus =
+  | "connected"
+  | "connecting"
+  | "unavailable";
+
+export interface AgentGUITargetConnectionState {
+  status: AgentGUITargetConnectionStatus;
+  retryAttempt: number;
+}
+
+/** Host-owned, ephemeral device transport state keyed by exact Agent target. */
+export interface AgentGUITargetConnectionSource {
+  getConnectionState(
+    agentTargetId: string
+  ): AgentGUITargetConnectionState | null;
+  subscribe(listener: () => void): () => void;
 }
 
 export interface AgentGUIProviderRailAllPresentation {

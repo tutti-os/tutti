@@ -1,4 +1,5 @@
 import type { WorkspaceFileOpenWithApplication } from "@tutti-os/workspace-file-manager/services";
+import type { WorkspaceFilePreviewKind } from "@tutti-os/workspace-file-preview";
 
 export interface WorkspaceFileReference {
   createdTimeMs?: number | null;
@@ -52,12 +53,13 @@ export interface WorkspaceFileReferenceTreeSnapshot {
   rootPath: string;
 }
 
-export type WorkspaceFileReferencePreviewKind = "image" | "text" | "video";
+/** Optional host override of classified preview kind for a preview read. */
+export type WorkspaceFileReferencePreviewKind = WorkspaceFilePreviewKind;
 
 export interface WorkspaceFileReferencePreview {
   bytes: Uint8Array | ArrayBuffer;
   contentType?: string | null;
-  kind: WorkspaceFileReferencePreviewKind;
+  kind?: WorkspaceFileReferencePreviewKind;
 }
 
 export interface WorkspaceFileReferenceScope {
@@ -110,7 +112,9 @@ export interface WorkspaceFileReferenceAdapter {
     input: WorkspaceFileReferenceScope & {
       limit?: number;
       query: string;
-      /** 已选文件类型筛选分类 id;query 可空、filters 非空时即「仅按类型查」。 */
+      /** 搜索结果类型约束,必须在 limit 前执行。 */
+      kinds?: Array<"file" | "folder">;
+      /** 已选文件类型筛选分类 id;仅在有关键词的搜索中下钻。 */
       filters?: string[];
       /**
        * 可选:把搜索限定在工作区根下的某子路径(左栏选中的「位置」,如 文稿/下载/桌面)。

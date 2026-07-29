@@ -8,8 +8,6 @@ import type {
   WorkspaceFileReferenceCopy
 } from "@tutti-os/workspace-file-reference/contracts";
 import type { WorkspaceFileManagerI18nRuntime } from "@tutti-os/workspace-file-manager";
-import type { AgentComposerReferenceProvenanceFilter } from "../composer/AgentComposer.types";
-import { AgentReferenceProvenanceFilterControl } from "../AgentReferenceProvenanceFilterControl";
 
 export interface AgentGUIReferencePickerSurfaceProps {
   aggregator: ReferenceSourcePickerProps["aggregator"] | null;
@@ -20,7 +18,9 @@ export interface AgentGUIReferencePickerSurfaceProps {
   initialTarget: ReferenceSourcePickerProps["initialTarget"];
   isNodeSelectable: ReferenceSourcePickerProps["isNodeSelectable"];
   open: boolean;
-  provenanceFilter: AgentComposerReferenceProvenanceFilter | null;
+  purpose: "directory" | "reference";
+  renderDirectoryHeaderActions?: ReferenceSourcePickerProps["renderHeaderActions"];
+  resolveContentErrorAction: ReferenceSourcePickerProps["resolveContentErrorAction"];
   resolveEntryIconUrl: ReferenceSourcePickerProps["resolveEntryIconUrl"];
   workspaceId: string;
   onClose: ReferenceSourcePickerProps["onClose"];
@@ -37,7 +37,9 @@ export function AgentGUIReferencePickerSurface({
   initialTarget,
   isNodeSelectable,
   open,
-  provenanceFilter,
+  purpose,
+  renderDirectoryHeaderActions,
+  resolveContentErrorAction,
   resolveEntryIconUrl,
   workspaceId,
   onClose,
@@ -52,15 +54,11 @@ export function AgentGUIReferencePickerSurface({
       isNodeSelectable={isNodeSelectable}
       fileManagerCopy={fileManagerCopy ?? undefined}
       open={open}
-      provenanceFilter={provenanceFilter?.snapshot.value}
-      provenanceFilterControl={
-        provenanceFilter ? (
-          <AgentReferenceProvenanceFilterControl
-            filter={provenanceFilter}
-            popoverElevation="panel"
-          />
-        ) : undefined
+      purpose={purpose}
+      renderHeaderActions={
+        purpose === "directory" ? renderDirectoryHeaderActions : undefined
       }
+      resolveContentErrorAction={resolveContentErrorAction}
       resolveEntryIconUrl={resolveEntryIconUrl}
       workspaceId={workspaceId}
       onClose={onClose}

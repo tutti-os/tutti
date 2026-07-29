@@ -27,6 +27,8 @@ import {
   writeCachedWorkbenchNodePreviewImage
 } from "../react/useWorkbenchGenieAnimation.tsx";
 import {
+  canCreateNewWindow,
+  canCreateNewWindowInDockPopup,
   resolveWorkbenchDockEntries,
   resolveWorkbenchDockEntryClick,
   type ResolvedWorkbenchHostDockEntry
@@ -44,7 +46,10 @@ import {
   resolveWorkbenchHostDockScrollState,
   type WorkbenchHostDockScrollState
 } from "./dockScrollState.ts";
-import { readWorkbenchHostExternalState } from "./externalState.ts";
+import {
+  createWorkbenchHostExternalStateLookupInput,
+  readWorkbenchHostExternalState
+} from "./externalState.ts";
 import {
   resolveWorkbenchMinimizedDockSlots,
   type WorkbenchMinimizedDockNode,
@@ -57,6 +62,7 @@ import {
 } from "./minimizedDockRestoreIntent.ts";
 import {
   WorkbenchHostDockPopup,
+  workbenchHostDockPopupPreviewViewport,
   type WorkbenchHostDockPopupAnchorRect,
   type WorkbenchHostDockPopupState
 } from "./WorkbenchHostDockPopup.tsx";
@@ -174,6 +180,7 @@ export function WorkbenchHostDock({
     () => new Set(context.minimizedNodes.map((node) => node.id)),
     [context.minimizedNodes]
   );
+  const dockPlateRef = useRef<HTMLDivElement | null>(null);
   const dockMeasureRef = useRef<HTMLDivElement | null>(null);
   const dockItemsRef = useRef<HTMLDivElement | null>(null);
   const hoverPanelRef = useRef<HTMLDivElement | null>(null);
@@ -450,6 +457,7 @@ export function WorkbenchHostDock({
     pauseMagnification: pauseDockMagnification,
     resetMagnification: resetDockMagnification
   } = useDockMagnification({
+    dockPlateRef,
     dockPlacement,
     dockRootRef: dockMeasureRef,
     dockViewportRef: dockItemsRef,
@@ -1097,13 +1105,29 @@ export function WorkbenchHostDock({
 
   useEffect(() => {
     const shouldSubscribe = activePopup !== null || hasMinimizedPreviewCapture;
-    if (!shouldSubscribe || !externalStateSource?.subscribe) {
+    if (!shouldSubscribe || !externalStateSource?.subscribeNodeState) {
       return undefined;
     }
-    return externalStateSource.subscribe(() => {
-      setExternalStateRevision((revision) => revision + 1);
-    });
-  }, [activePopup, externalStateSource, hasMinimizedPreviewCapture]);
+    const nodes = activePopup ? context.nodes : context.minimizedNodes;
+    const disposers = nodes.map((node) =>
+      externalStateSource.subscribeNodeState?.(
+        createWorkbenchHostExternalStateLookupInput({ node, workspaceId }),
+        () => setExternalStateRevision((revision) => revision + 1)
+      )
+    );
+    return () => {
+      for (const dispose of disposers) {
+        dispose?.();
+      }
+    };
+  }, [
+    activePopup,
+    context.minimizedNodes,
+    context.nodes,
+    externalStateSource,
+    hasMinimizedPreviewCapture,
+    workspaceId
+  ]);
 
   useEffect(() => {
     const nextAttentionIds = new Set<string>();
@@ -1244,10 +1268,6 @@ export function WorkbenchHostDock({
     [nodeDefinitions, provideMinimizedNodePreview]
   );
 
-  if (dockItems.length === 0 && presentDockItems.length === 0) {
-    return null;
-  }
-
   const closePopup = () => {
     clearHoverPanelCloseTimer();
     clearHoverPanelOpenTimer();
@@ -1344,6 +1364,10 @@ export function WorkbenchHostDock({
     [host, onDockEntryAction, pendingActionKeys]
   );
 
+  if (dockItems.length === 0 && presentDockItems.length === 0) {
+    return null;
+  }
+
   const popupEntry =
     activePopup === null
       ? null
@@ -1393,7 +1417,9 @@ export function WorkbenchHostDock({
       data-dock-placement={dockPlacement}
     >
       <div
+        ref={dockPlateRef}
         className="desktop-dock-plate"
+        data-dock-placement={dockPlacement}
         style={
           dockFrameSize === null
             ? undefined
@@ -2204,10 +2230,12 @@ export function WorkbenchHostDock({
               : null
           }
           capturePreview={
-            popupEntry.entry.capturePopupItemPreview
+            popupEntry.entry.capturePopupItemPreview || captureNodePreviewImage
               ? async (item) => {
                   const previewImageUrl = await Promise.resolve(
-                    popupEntry.entry.capturePopupItemPreview?.(item) ?? null
+                    popupEntry.entry.capturePopupItemPreview
+                      ? popupEntry.entry.capturePopupItemPreview(item)
+                      : (captureNodePreviewImage?.(item.node) ?? null)
                   ).catch(() => null);
                   return previewImageUrl
                     ? {
@@ -2233,7 +2261,8 @@ export function WorkbenchHostDock({
                 host,
                 isFocused: context.focusedNodeId === node.id,
                 isMinimized: minimizedNodeIDs.has(node.id),
-                node
+                node,
+                previewViewport: workbenchHostDockPopupPreviewViewport
               };
               const descriptor =
                 popupEntry.entry.resolvePopupItem?.(item) ?? {};
@@ -2369,7 +2398,7 @@ export function WorkbenchHostDock({
               }
             }
             window.requestAnimationFrame(() => {
-              onMissionControlRequestOpen?.("activate", {
+              onMissionControlRequestOpen?.({
                 nodeIds: openDockContextMenuNodeIds,
                 trigger: "dock-context-menu"
               });
@@ -2382,7 +2411,11 @@ export function WorkbenchHostDock({
             closePopup();
           }}
           quitLabel={i18n.t("dockContextMenu.quit")}
-          showCreateNew={canCreateNewWindow(
+          showCreateNew={canCreateNewWindowInDockPopup(
+            popupEntry.entry,
+            dockContextMenuInstanceMode
+          )}
+          showCreateNewInContextMenu={canCreateNewWindow(
             popupEntry.entry,
             dockContextMenuInstanceMode
           )}
@@ -2523,13 +2556,16 @@ function WorkbenchHostDockMinimizedNodePreview({
     WorkbenchDockPreviewContent | null | undefined
   >(undefined);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(() =>
-    deferPreview || providePreview
-      ? null
-      : readCachedWorkbenchNodePreviewImage(node.id)
+    deferPreview ? null : readCachedWorkbenchNodePreviewImage(node.id)
   );
 
   useEffect(() => {
-    if (deferPreview || !providePreview || componentPreview !== undefined) {
+    if (
+      deferPreview ||
+      !providePreview ||
+      componentPreview !== undefined ||
+      previewImageUrl
+    ) {
       return undefined;
     }
 
@@ -2592,11 +2628,12 @@ function WorkbenchHostDockMinimizedNodePreview({
     node.data.typeId,
     node.id,
     node.minimizedAtUnixMs,
+    previewImageUrl,
     providePreview
   ]);
 
   useEffect(() => {
-    if (deferPreview || providePreview) {
+    if (deferPreview) {
       return undefined;
     }
 
@@ -2661,10 +2698,6 @@ function WorkbenchHostDockMinimizedNodePreview({
     return renderMinimizedDockPreviewPlaceholder(className);
   }
 
-  if (componentPreview) {
-    return renderMinimizedDockPreviewContent(componentPreview, className);
-  }
-
   if (previewImageUrl) {
     return (
       <span
@@ -2685,6 +2718,10 @@ function WorkbenchHostDockMinimizedNodePreview({
         />
       </span>
     );
+  }
+
+  if (componentPreview) {
+    return renderMinimizedDockPreviewContent(componentPreview, className);
   }
 
   return renderMinimizedDockPreviewPlaceholder(className);
@@ -3067,20 +3104,6 @@ function resolveDockEntryInstanceMode(
 ): WorkbenchHostNodeInstanceStrategy["mode"] | undefined {
   return (
     entry.instanceMode ?? nodeDefinitions.get(entry.typeId)?.instance?.mode
-  );
-}
-
-function canCreateNewWindow(
-  entry: WorkbenchHostDockEntry,
-  instanceMode: WorkbenchHostNodeInstanceStrategy["mode"] | undefined
-): boolean {
-  const stateKind = entry.state?.kind ?? "enabled";
-  return (
-    instanceMode === "multi" &&
-    (entry.launchBehavior ?? "enabled") === "enabled" &&
-    stateKind !== "disabled" &&
-    stateKind !== "loading" &&
-    stateKind !== "unavailable"
   );
 }
 

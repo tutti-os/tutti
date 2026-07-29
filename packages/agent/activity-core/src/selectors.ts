@@ -1,11 +1,11 @@
 import type {
-  AgentActivityDisplayStatus,
   AgentActivityInteraction,
   AgentActivityNeedsAttentionItem,
   AgentActivityNeedsAttentionKind,
   AgentActivitySession,
   AgentActivitySnapshot
 } from "./types.ts";
+import type { AgentActivityDisplayStatus } from "./displayStatus.types.ts";
 
 export function selectCanonicalAgentActivitySessions(
   snapshot: Pick<AgentActivitySnapshot, "sessions">

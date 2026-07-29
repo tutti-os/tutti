@@ -4,6 +4,7 @@ export interface WorkspaceUserProject {
   label: string;
   lastUsedAtUnixMs?: number | null;
   path: string;
+  pinnedAtUnixMs: number;
   sectionKey?: string;
   updatedAtUnixMs?: number;
 }
@@ -16,6 +17,16 @@ export interface WorkspaceUserProjectPathCheck {
 
 export interface WorkspaceUserProjectDefaultSelection {
   path: string | null;
+}
+
+export interface WorkspaceUserProjectMoveInput {
+  beforeProjectId: string | null;
+  projectId: string;
+}
+
+export interface WorkspaceUserProjectPinInput {
+  pinned: boolean;
+  projectId: string;
 }
 
 export interface WorkspaceUserProjectSelectionPreparationInput {
@@ -47,6 +58,7 @@ export interface WorkspaceUserProjectApi {
   getSnapshot?(): Promise<WorkspaceUserProjectServiceSnapshot>;
   isNoProjectPath?(input: { path: string }): boolean;
   list(): Promise<{ projects: WorkspaceUserProject[] }>;
+  move?(input: WorkspaceUserProjectMoveInput): Promise<void> | void;
   prepareSelection?(
     input: WorkspaceUserProjectSelectionPreparationInput
   ): Promise<WorkspaceUserProjectSelectionPreparation>;
@@ -69,6 +81,7 @@ export interface WorkspaceUserProjectServiceSnapshot {
   error: string | null;
   initialized: boolean;
   isLoading: boolean;
+  isMutationPending?: boolean;
   projects: WorkspaceUserProject[];
   revision: number;
 }
@@ -88,6 +101,8 @@ export interface WorkspaceUserProjectService {
   getRevision?(): number;
   getSnapshot?(): WorkspaceUserProjectServiceSnapshot;
   isNoProjectPath?(path: string): boolean;
+  moveProject?(input: WorkspaceUserProjectMoveInput): Promise<void> | void;
+  pinProject?(input: WorkspaceUserProjectPinInput): Promise<void> | void;
   rememberNoProjectPath?(path: string | null | undefined): void;
   prepareSelection(
     input: WorkspaceUserProjectSelectionPreparationInput

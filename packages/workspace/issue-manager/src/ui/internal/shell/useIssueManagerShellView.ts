@@ -1,6 +1,8 @@
 import {
+  useCallback,
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -25,8 +27,13 @@ import {
   resolveIssueManagerSidebarViewState
 } from "./IssueManagerShellState.ts";
 import { logIssueManagerDiagnostic } from "../../../internal/issueManagerDiagnostics.ts";
+import {
+  clearIssueManagerSidebarLayout,
+  publishIssueManagerSidebarLayout
+} from "./IssueManagerSidebarLayout.ts";
 
 interface SidebarResizeState {
+  currentWidth: number;
   maxWidth: number;
   pointerId: number;
   startClientX: number;
@@ -58,10 +65,12 @@ export function useIssueManagerShellView({
   selectedTask
 }: UseIssueManagerShellViewInput) {
   const layoutRef = useRef<HTMLDivElement | null>(null);
+  const layoutScopeRef = useRef<HTMLElement | null>(null);
   const resizeRef = useRef<SidebarResizeState | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(
     issueManagerSidebarDefaultWidth
   );
+  const [isSidebarResizing, setIsSidebarResizing] = useState(false);
   const [isNarrowLayout, setIsNarrowLayout] = useState(false);
   const dismissNotification = useEffectEvent(() => {
     controller.dismissNotification();
@@ -183,26 +192,42 @@ export function useIssueManagerShellView({
   const isSidebarCollapsed =
     controller.nodeState.taskListCollapsed === true || isSidebarAutoCollapsed;
 
-  useEffect(() => {
-    const workbenchWindow =
-      layoutRef.current?.closest<HTMLElement>(".workbench-window") ?? null;
-    if (!workbenchWindow) {
-      return undefined;
-    }
+  const publishSidebarLayout = useCallback(
+    (width: number, isResizing: boolean) => {
+      const nextScope = publishIssueManagerSidebarLayout(layoutRef.current, {
+        isCollapsed: isSidebarCollapsed,
+        isResizing,
+        width
+      });
+      if (layoutScopeRef.current && layoutScopeRef.current !== nextScope) {
+        clearIssueManagerSidebarLayout(layoutScopeRef.current);
+      }
+      layoutScopeRef.current = nextScope;
+    },
+    [isSidebarCollapsed]
+  );
 
-    workbenchWindow.style.setProperty(
-      "--issue-manager-sidebar-width",
-      `${sidebarWidth}px`
-    );
-    workbenchWindow.dataset.issueManagerSidebarCollapsed = isSidebarCollapsed
-      ? "true"
-      : "false";
+  useLayoutEffect(() => {
+    publishSidebarLayout(sidebarWidth, isSidebarResizing);
+  }, [isSidebarResizing, publishSidebarLayout, sidebarWidth]);
 
+  useLayoutEffect(() => {
     return () => {
-      workbenchWindow.style.removeProperty("--issue-manager-sidebar-width");
-      delete workbenchWindow.dataset.issueManagerSidebarCollapsed;
+      clearIssueManagerSidebarLayout(layoutScopeRef.current);
+      layoutScopeRef.current = null;
     };
-  }, [isSidebarCollapsed, sidebarWidth]);
+  }, []);
+
+  const finishSidebarResize = (pointerId: number): void => {
+    const state = resizeRef.current;
+    if (!state || state.pointerId !== pointerId) {
+      return;
+    }
+    resizeRef.current = null;
+    setSidebarWidth(state.currentWidth);
+    setIsSidebarResizing(false);
+    publishSidebarLayout(state.currentWidth, false);
+  };
 
   return {
     content,
@@ -212,13 +237,13 @@ export function useIssueManagerShellView({
     layoutStyle: {
       gridTemplateColumns: isSidebarCollapsed
         ? "0 minmax(0, 1fr)"
-        : "var(--issue-manager-sidebar-width) minmax(0, 1fr)",
-      "--issue-manager-sidebar-width": `${sidebarWidth}px`
+        : "var(--issue-manager-sidebar-width, 280px) minmax(0, 1fr)"
     } as CSSProperties,
     resizeHandle: {
       ariaValueMax: issueManagerSidebarMaxWidth,
       ariaValueMin: issueManagerSidebarMinWidth,
       ariaValueNow: sidebarWidth,
+      isResizing: isSidebarResizing,
       onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => {
         if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
           return;
@@ -235,7 +260,7 @@ export function useIssueManagerShellView({
         );
       },
       onPointerCancel: (event: PointerEvent<HTMLDivElement>) => {
-        resizeRef.current = null;
+        finishSidebarResize(event.pointerId);
         event.currentTarget.releasePointerCapture?.(event.pointerId);
       },
       onPointerDown: (event: PointerEvent<HTMLDivElement>) => {
@@ -252,6 +277,7 @@ export function useIssueManagerShellView({
           layoutWidth
         );
         resizeRef.current = {
+          currentWidth: startWidth,
           maxWidth: clampIssueManagerSidebarWidth(
             issueManagerSidebarMaxWidth,
             layoutWidth
@@ -261,6 +287,8 @@ export function useIssueManagerShellView({
           startWidth
         };
         setSidebarWidth(startWidth);
+        setIsSidebarResizing(true);
+        publishSidebarLayout(startWidth, true);
         event.currentTarget.setPointerCapture?.(event.pointerId);
       },
       onPointerMove: (event: PointerEvent<HTMLDivElement>) => {
@@ -268,19 +296,26 @@ export function useIssueManagerShellView({
         if (!state || state.pointerId !== event.pointerId) {
           return;
         }
-        setSidebarWidth(
-          Math.min(
-            Math.max(
-              state.startWidth + event.clientX - state.startClientX,
-              issueManagerSidebarMinWidth
-            ),
-            state.maxWidth
-          )
+        const nextWidth = Math.min(
+          Math.max(
+            state.startWidth + event.clientX - state.startClientX,
+            issueManagerSidebarMinWidth
+          ),
+          state.maxWidth
         );
+        if (state.currentWidth === nextWidth) {
+          return;
+        }
+        state.currentWidth = nextWidth;
+        publishSidebarLayout(nextWidth, true);
+        event.currentTarget.setAttribute("aria-valuenow", String(nextWidth));
       },
       onPointerUp: (event: PointerEvent<HTMLDivElement>) => {
-        resizeRef.current = null;
+        finishSidebarResize(event.pointerId);
         event.currentTarget.releasePointerCapture?.(event.pointerId);
+      },
+      onLostPointerCapture: (event: PointerEvent<HTMLDivElement>) => {
+        finishSidebarResize(event.pointerId);
       }
     },
     sidebar: {

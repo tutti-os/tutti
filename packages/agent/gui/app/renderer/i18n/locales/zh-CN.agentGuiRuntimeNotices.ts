@@ -20,17 +20,24 @@ export const zhCNAgentGuiRuntimeNotices = {
     "{{provider}} 的响应在完成前被中断。请稍后重试。",
   visibleErrorConcurrencyLimit:
     "{{provider}} 当前处理的请求过多。请在其他任务完成后再试。",
-  visibleErrorInsufficientCredits: "Tutti 积分不足，无法继续此请求。",
+  visibleErrorInsufficientCreditsUnknown:
+    "Tutti 积分不足，请查看积分方案后继续",
   visibleErrorActionInstall: "去连接",
   visibleErrorActionUpgrade: "去升级",
   visibleErrorActionRelogin: "登录",
   visibleErrorActionCheckNetwork: "检测网络",
   visibleErrorActionDetect: "打开检测",
-  visibleErrorActionViewPlans: "查看订阅方案",
   systemNoticeTransportRetry: "Agent 连接中断，正在重连",
   systemNoticeTransportFallback: "Agent 已切换到 HTTPS 传输",
   systemNoticePlanImplementationPendingConfirmation: "计划实现正在等待确认",
   systemNoticePlanImplementationCompleted: "计划实现已开始",
   systemNoticeWarning: "Agent 警告",
-  systemNoticeDefault: "Agent 通知"
+  systemNoticeDefault: "Agent 通知",
+  sharedDeviceLabel: "共享设备",
+  runtimeConnecting: "正在连接 {{device}}…",
+  runtimeReconnectingAttempt:
+    "正在重新连接 {{device}} · 第 {{attempt}} 次重试…",
+  runtimeUnavailable: "与 {{device}} 的连接已断开，系统将自动重试",
+  runtimeUnavailableActive:
+    "与 {{device}} 的连接已断开，暂时无法发送或停止；任务可能仍在设备上运行"
 } as const;

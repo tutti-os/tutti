@@ -2,6 +2,7 @@ import {
   normalizeWorkbenchSnapshot,
   workbenchSnapshotSchemaVersion,
   type WorkbenchSnapshot,
+  type WorkbenchSnapshotLayoutBasisV1,
   type WorkbenchSnapshotNode
 } from "@tutti-os/workbench-snapshot";
 import type { WorkbenchNode, WorkbenchState } from "./types.ts";
@@ -74,7 +75,8 @@ export function createWorkbenchStateFromSnapshot<TData = unknown>(
 }
 
 export function createWorkbenchSnapshotFromState<TData = unknown>(
-  state: Pick<WorkbenchState<TData>, "nodeStack" | "nodes">,
+  state: Pick<WorkbenchState<TData>, "nodeStack" | "nodes"> &
+    Partial<Pick<WorkbenchState<TData>, "layoutConstraints" | "surfaceSize">>,
   options: CreateWorkbenchSnapshotFromStateOptions = {}
 ): WorkbenchSnapshot {
   return normalizeWorkbenchSnapshot({
@@ -94,6 +96,32 @@ export function createWorkbenchSnapshotFromState<TData = unknown>(
     activeNodeId: state.nodeStack.at(-1) ?? null,
     spaces: options.spaces,
     activeSpaceId: options.activeSpaceId,
+    layoutBasis: createWorkbenchSnapshotLayoutBasis(state),
     metadata: options.metadata
   });
+}
+
+export function createWorkbenchSnapshotLayoutBasis(
+  state: Partial<Pick<WorkbenchState, "layoutConstraints" | "surfaceSize">>
+): WorkbenchSnapshotLayoutBasisV1 | undefined {
+  if (
+    !state.surfaceSize ||
+    !state.layoutConstraints ||
+    !isPositiveFinite(state.surfaceSize.width) ||
+    !isPositiveFinite(state.surfaceSize.height)
+  ) {
+    return undefined;
+  }
+
+  return {
+    surfaceSize: { ...state.surfaceSize },
+    layoutConstraints: {
+      ...state.layoutConstraints,
+      safeArea: { ...state.layoutConstraints.safeArea }
+    }
+  };
+}
+
+function isPositiveFinite(value: number): boolean {
+  return Number.isFinite(value) && value > 0;
 }

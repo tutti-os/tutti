@@ -1,6 +1,9 @@
 import {
+  FileArchiveIcon,
   FileCodeIcon,
   FileTextIcon,
+  FolderFilledIcon,
+  ImageFileIcon,
   LoadingIcon,
   VideoFileIcon,
   cn
@@ -10,7 +13,7 @@ import { useEffect, useRef } from "react";
 import {
   resolveWorkspaceFileExtension,
   resolveWorkspaceFileVisualKind
-} from "../services/workspaceFileManagerModel.ts";
+} from "@tutti-os/workspace-file-preview";
 import type { WorkspaceFileEntry } from "../services/workspaceFileManagerTypes.ts";
 import {
   resolveWorkspaceFileEntryIconCacheKey,
@@ -18,19 +21,6 @@ import {
   shouldUseWorkspaceFileArchiveIcon,
   shouldUseWorkspaceFileExtensionDocumentIcon
 } from "./workspaceFileEntryIconPolicy.ts";
-
-const workspaceArchiveFallbackIconUrl = new URL(
-  "../assets/workspace-archive-fallback.png",
-  import.meta.url
-).toString();
-const workspaceFolderFallbackIconUrl = new URL(
-  "../assets/workspace-folder-fallback.png",
-  import.meta.url
-).toString();
-const workspaceImageFallbackIconUrl = new URL(
-  "../assets/workspace-image-fallback.png",
-  import.meta.url
-).toString();
 
 export function WorkspaceFileEntryIcon({
   entry,
@@ -245,14 +235,7 @@ export function WorkspaceFolderFallbackIcon({
   className: string;
 }): ReactElement {
   return (
-    <img
-      alt=""
-      aria-hidden="true"
-      className={cn("object-contain", className)}
-      decoding="async"
-      draggable={false}
-      src={workspaceFolderFallbackIconUrl}
-    />
+    <FolderFilledIcon className={vectorFallbackIconClassName(className)} />
   );
 }
 
@@ -261,16 +244,7 @@ export function WorkspaceArchiveFallbackIcon({
 }: {
   className: string;
 }): ReactElement {
-  return (
-    <img
-      alt=""
-      aria-hidden="true"
-      className={cn("object-contain", className)}
-      decoding="async"
-      draggable={false}
-      src={workspaceArchiveFallbackIconUrl}
-    />
-  );
+  return <FileArchiveIcon className={vectorFallbackIconClassName(className)} />;
 }
 
 export function WorkspaceImageFallbackIcon({
@@ -278,16 +252,7 @@ export function WorkspaceImageFallbackIcon({
 }: {
   className: string;
 }): ReactElement {
-  return (
-    <img
-      alt=""
-      aria-hidden="true"
-      className={cn("object-contain", className)}
-      decoding="async"
-      draggable={false}
-      src={workspaceImageFallbackIconUrl}
-    />
-  );
+  return <ImageFileIcon className={vectorFallbackIconClassName(className)} />;
 }
 
 function ExtensionDocumentIcon({

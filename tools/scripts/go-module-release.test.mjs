@@ -60,11 +60,7 @@ test("published store module resolves every internal dependency at the release v
   );
   const released = rewriteInternalGoModuleDependencies(source, "0.0.110");
 
-  for (const modulePath of [
-    "activity-replication",
-    "daemon",
-    "store-sqlite/canonical"
-  ]) {
+  for (const modulePath of ["activity-replication", "store-sqlite/canonical"]) {
     assert.match(
       released,
       new RegExp(
@@ -73,6 +69,7 @@ test("published store module resolves every internal dependency at the release v
     );
   }
   assert.doesNotMatch(released, /replace .*github\.com\/tutti-os\/tutti/);
+  assert.doesNotMatch(released, /packages\/agent\/daemon/);
 });
 
 test("published host contract contains only reusable agent package dependencies", async () => {
@@ -83,7 +80,7 @@ test("published host contract contains only reusable agent package dependencies"
   const released = rewriteInternalGoModuleDependencies(source, "0.0.110");
 
   for (const modulePath of [
-    "daemon",
+    "activity-replication",
     "store-sqlite",
     "store-sqlite/canonical"
   ]) {
@@ -95,7 +92,10 @@ test("published host contract contains only reusable agent package dependencies"
     );
   }
   assert.doesNotMatch(released, /replace .*github\.com\/tutti-os\/tutti/);
-  assert.doesNotMatch(released, /services\/tuttid/);
+  assert.doesNotMatch(
+    released,
+    /packages\/agent\/daemon|services\/tuttid|sidecar/
+  );
 });
 
 test("leaves modules without internal dependencies byte-for-byte unchanged", () => {

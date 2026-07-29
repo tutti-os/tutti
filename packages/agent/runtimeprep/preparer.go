@@ -31,8 +31,8 @@ func NewDefaultPreparer(stateDir string) *DefaultPreparer {
 	preparer.RegisterProvider(CodexPreparer{})
 	preparer.RegisterProvider(ClaudeCodePreparer{StateDir: stateDir})
 	preparer.RegisterProvider(CursorPreparer{})
+	preparer.RegisterProvider(OpenCodePreparer{})
 	preparer.RegisterProvider(InstructionFilePreparer{ProviderID: "nexight", FileName: "AGENTS.md"})
-	preparer.RegisterProvider(InstructionFilePreparer{ProviderID: "hermes", FileName: "AGENTS.md"})
 	preparer.RegisterProvider(InstructionFilePreparer{ProviderID: "openclaw", FileName: "AGENTS.md"})
 	return preparer
 }
@@ -75,6 +75,23 @@ func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (Prep
 	}
 	logRuntimePrepareTrace("runtime_prepare.cwd_checked", input, nil)
 
+	input = p.normalizeCapabilities(input)
+	if facts, factsErr := normalizeHostFacts(p.Profile.HostFacts); factsErr == nil {
+		input.hostFacts = facts
+	}
+	input.CLICommand = firstNonEmptyText(input.CLICommand, p.CLICommand, resolveCLICommand(p.StateDir))
+	resolver, err := resolveCommandCapabilities(
+		ctx,
+		p.CommandCatalog,
+		workspaceID,
+		input.CLICommand,
+		input.CommandCapabilityProjection,
+	)
+	if err != nil {
+		return PreparedRuntime{}, err
+	}
+	input.commandCapabilities = resolver
+
 	store := p.runtimeStore()
 	runtimeRoot, err := store.RuntimeRoot(workspaceID, agentSessionID)
 	if err != nil {
@@ -86,27 +103,28 @@ func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (Prep
 	}
 	logRuntimePrepareTrace("runtime_prepare.runtime_root_ensured", input, nil)
 
-	input = p.normalizeCapabilities(input)
 	manifest := NewManifest(ManifestInput{
 		AgentSessionID: agentSessionID,
 		Provider:       providerID,
 		Cwd:            cwd,
 		RuntimeRoot:    runtimeRoot,
 	})
-	input.CLICommand = firstNonEmptyText(input.CLICommand, p.CLICommand, resolveCLICommand(p.StateDir))
-	input.CommandGuide = commandGuideFromCatalog(ctx, p.CommandCatalog, workspaceID, input.CLICommand)
 	resolved, err := resolveCapabilities(ctx, input, p.Profile, p.SkillSources)
 	if err != nil {
 		return PreparedRuntime{}, err
 	}
 	input.resolved = resolved
+	commandGuide, err := input.commandCapabilities.Guide()
+	if err != nil {
+		return PreparedRuntime{}, err
+	}
 	logRuntimePrepareTrace("runtime_prepare.input_normalized", input, map[string]any{
 		"cli_command":          input.CLICommand,
-		"command_guide_length": len(input.CommandGuide),
+		"command_guide_length": len(commandGuide),
 	})
 
 	result := ProviderPrepareResult{Cwd: cwd}
-	if provider := p.provider(providerID); provider != nil {
+	if provider := p.provider(input); provider != nil {
 		logRuntimePrepareTrace("runtime_prepare.provider_requested", input, map[string]any{
 			"provider": providerID,
 		})
@@ -152,13 +170,26 @@ func (p *DefaultPreparer) RenderSkillBundle(ctx context.Context, input PrepareIn
 	input.Provider = providerID
 	input.CLICommand = firstNonEmptyText(input.CLICommand, p.CLICommand, resolveCLICommand(p.StateDir))
 	input = p.normalizeCapabilities(input)
-	input.CommandGuide = commandGuideFromCatalog(ctx, p.CommandCatalog, workspaceID, input.CLICommand)
+	if facts, factsErr := normalizeHostFacts(p.Profile.HostFacts); factsErr == nil {
+		input.hostFacts = facts
+	}
+	resolver, err := resolveCommandCapabilities(
+		ctx,
+		p.CommandCatalog,
+		workspaceID,
+		input.CLICommand,
+		input.CommandCapabilityProjection,
+	)
+	if err != nil {
+		return SkillBundle{}, err
+	}
+	input.commandCapabilities = resolver
 	resolved, err := resolveCapabilities(ctx, input, p.Profile, p.SkillSources)
 	if err != nil {
 		return SkillBundle{}, err
 	}
 	input.resolved = resolved
-	return renderProviderSkillBundle(input), nil
+	return renderProviderSkillBundle(input)
 }
 
 func (p *DefaultPreparer) Cleanup(_ context.Context, input CleanupInput) error {
@@ -187,11 +218,24 @@ func ensureCwdDirectory(cwd string) error {
 	return nil
 }
 
-func (p *DefaultPreparer) provider(providerID string) ProviderPreparer {
+func (p *DefaultPreparer) provider(input PrepareInput) ProviderPreparer {
 	if p == nil {
 		return nil
 	}
-	return p.providers[strings.TrimSpace(providerID)]
+	providerID := strings.TrimSpace(input.Provider)
+	if provider := p.providers[providerID]; provider != nil {
+		return provider
+	}
+	if input.ExtensionRuntimePrep != nil {
+		return ExtensionRuntimePreparer{}
+	}
+	// Other acp: extensions share a generic instruction+skill preparer; their
+	// skill roots arrive via PrepareInput.ExtensionSkillRoots from the
+	// extension composer profile, so they need no per-key entry.
+	if strings.HasPrefix(providerID, "acp:") {
+		return InstructionFilePreparer{}
+	}
+	return nil
 }
 
 func (p *DefaultPreparer) runtimeStore() RuntimeStore {

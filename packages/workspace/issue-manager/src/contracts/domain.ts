@@ -14,6 +14,31 @@ export type IssueManagerTaskStatusUpdate =
 
 export type IssueManagerPriority = "high" | "medium" | "low" | (string & {});
 
+export type IssueManagerPlanningSource =
+  | "manual"
+  | "tutti_mode_plan"
+  | "traditional_plan";
+export type IssueManagerBudgetMode = "auto" | "fixed";
+export type IssueManagerBudgetStatus = "active" | "soft_limited";
+export type IssueManagerAcceptanceState =
+  | "agent_claimed"
+  | "auto_checked"
+  | "user_accepted";
+
+export interface IssueManagerExecutionProfile {
+  reasoningIntensity: number;
+  orchestrationIntensity: number;
+}
+
+export interface IssueManagerBudget {
+  mode: IssueManagerBudgetMode;
+  tokenLimit: number;
+  consumedTokens: number;
+  quotaWaterlinePercent: number;
+  remainingQuotaPercent?: number;
+  status: IssueManagerBudgetStatus;
+}
+
 export type IssueManagerContextRefParentKind = "issue" | "task";
 
 export interface IssueManagerScope {
@@ -49,6 +74,11 @@ export interface IssueManagerIssueSummary {
   title: string;
   content?: string;
   status: IssueManagerStatus;
+  planningSource?: IssueManagerPlanningSource;
+  sourceSessionId?: string;
+  dispatchPaused?: boolean;
+  executionProfile?: IssueManagerExecutionProfile;
+  budget?: IssueManagerBudget;
   taskCount?: number;
   notStartedCount?: number;
   runningCount?: number;
@@ -77,6 +107,17 @@ export interface IssueManagerTaskSummary {
   creatorDisplayName?: string;
   creatorAvatarUrl?: string;
   latestRunId?: string;
+  agentTargetId?: string;
+  modelPlanId?: string;
+  model?: string;
+  executionDirectory?: string;
+  dependencyTaskIds?: string[];
+  /** Per-task parallel opt-in recorded at Tutti plan review. */
+  parallelizable?: boolean;
+  acceptanceState?: IssueManagerAcceptanceState;
+  acceptanceSummary?: string;
+  supersededAtUnix?: number;
+  supersededByTaskId?: string;
   createdAtUnix?: number;
   updatedAtUnix?: number;
 }
@@ -186,14 +227,19 @@ export interface IssueManagerListTasksResult {
 }
 
 export interface IssueManagerCreateIssueInput extends IssueManagerScope {
+  budget?: IssueManagerBudget;
   content?: string;
+  executionProfile?: IssueManagerExecutionProfile;
   issueId?: string;
   title: string;
   topicId: string;
 }
 
 export interface IssueManagerUpdateIssueInput extends IssueManagerScope {
+  budget?: IssueManagerBudget;
   content?: string;
+  dispatchPaused?: boolean;
+  executionProfile?: IssueManagerExecutionProfile;
   issueId: string;
   title?: string;
 }
@@ -216,18 +262,28 @@ export interface IssueManagerUpdateTopicInput extends IssueManagerScope {
 }
 
 export interface IssueManagerCreateTaskInput extends IssueManagerScope {
+  agentTargetId?: string;
   content?: string;
+  dependencyTaskIds?: string[];
   dueAtUnix?: number;
+  executionDirectory?: string;
   issueId: string;
+  model?: string;
+  modelPlanId?: string;
   priority?: IssueManagerPriority;
   taskId?: string;
   title: string;
 }
 
 export interface IssueManagerUpdateTaskInput extends IssueManagerScope {
+  agentTargetId?: string;
   content?: string;
+  dependencyTaskIds?: string[];
   dueAtUnix?: number;
+  executionDirectory?: string;
   issueId: string;
+  model?: string;
+  modelPlanId?: string;
   priority?: IssueManagerPriority;
   sortIndex?: number;
   status?: IssueManagerStatus;

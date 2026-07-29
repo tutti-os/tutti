@@ -11,15 +11,12 @@ import type {
 import type { WorkspaceFileManagerI18nRuntime } from "../i18n/workspaceFileManagerI18n.ts";
 import type {
   WorkspaceFileManagerFileActivationRequest,
-  WorkspaceFileManagerHostActionMessage,
-  WorkspaceFileManagerHostActionResult,
-  WorkspaceFileManagerHostExportResult,
   WorkspaceFileManagerHostFileActivationResult
 } from "./workspaceFileManagerHostTypes.ts";
 import type { WorkspaceFileManagerPersistedState } from "./workspaceFileManagerTypes.ts";
 
 export interface WorkspaceFileManagerMutationErrorMessage {
-  actionKind: "create" | "delete" | "move" | "rename";
+  actionKind: "copy" | "create" | "delete" | "move" | "rename";
   error: unknown;
   message: string;
 }
@@ -98,10 +95,6 @@ export interface WorkspaceFileManagerHost {
     request: WorkspaceFileManagerFileActivationRequest,
     workspaceID: string
   ): Promise<WorkspaceFileManagerHostFileActivationResult>;
-  exportEntry?(input: {
-    entry: WorkspaceFileEntry;
-    workspaceID: string;
-  }): Promise<WorkspaceFileManagerHostExportResult>;
   readPreviewFile?(
     workspaceID: string,
     path: string
@@ -110,18 +103,6 @@ export interface WorkspaceFileManagerHost {
     error: unknown,
     overrides?: Record<string, string>
   ): string;
-  resolveDroppedPaths?(
-    dataTransfer: Pick<DataTransfer, "files" | "items">
-  ): string[];
-  importFiles?(
-    workspaceID: string,
-    targetDirectoryPath: string
-  ): Promise<WorkspaceFileManagerHostActionResult>;
-  importPaths?(
-    workspaceID: string,
-    targetDirectoryPath: string,
-    sourcePaths: string[]
-  ): Promise<WorkspaceFileManagerHostActionResult>;
 }
 
 export interface CreateWorkspaceFileManagerSessionInput {
@@ -130,9 +111,6 @@ export interface CreateWorkspaceFileManagerSessionInput {
   initialDirectoryPath?: string;
   defaultLocationId?: string | null;
   locationSections?: WorkspaceFileLocationSection[];
-  onHostActionMessage?: (
-    message: WorkspaceFileManagerHostActionMessage
-  ) => void;
   onMutationErrorMessage?: (
     message: WorkspaceFileManagerMutationErrorMessage
   ) => boolean | void;

@@ -18,8 +18,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
     cursor: false,
     nexight: false,
     opencode: false,
-    openclaw: false,
-    hermes: false
+    openclaw: false
   },
   customModelByProvider: {
     "claude-code": "",
@@ -28,8 +27,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
     cursor: "",
     nexight: "",
     opencode: "",
-    openclaw: "",
-    hermes: ""
+    openclaw: ""
   },
   customModelOptionsByProvider: {
     "claude-code": [],
@@ -38,8 +36,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
     cursor: [],
     nexight: [],
     opencode: [],
-    openclaw: [],
-    hermes: []
+    openclaw: []
   },
   quickCommands: [],
   quickPhrases: [],

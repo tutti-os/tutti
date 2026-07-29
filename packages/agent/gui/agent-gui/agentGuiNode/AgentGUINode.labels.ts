@@ -1,18 +1,39 @@
 import { useMemo } from "react";
 import type { WorkspaceFileReferenceCopy } from "@tutti-os/workspace-file-reference/contracts";
 import type { TranslateFn } from "../../i18n/index";
+import {
+  agentGUIProviderIdentityDisplayName,
+  resolveAgentGUIProviderCatalogIdentity
+} from "../../providerIdentityCatalog";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../shared/AgentMessageMarkdown";
 import type { AgentGUIHomeSuggestionId } from "../../types";
 import { resolveAgentGUIProviderDisplayLabel } from "./model/agentGuiProviderIdentity";
 import { buildAgentHomeSuggestions } from "./model/agentHomeSuggestions";
 import type { AgentGUIViewLabels } from "./AgentGUINodeView";
-import { agentGUIConversationRailLabels } from "./view/agentGUIConversationRailLabels";
+import {
+  agentGUIConversationRailLabels,
+  type AgentGUIConversationRailLabels
+} from "./view/agentGUIConversationRailLabels";
 import { agentGUIProviderManagerLabels } from "./view/agentGUIProviderManagerLabels";
+import { agentQuickPromptLabels } from "./composer/quickPrompts/agentQuickPromptLabels";
+import { agentGUITuttiModeLabels } from "./view/agentGUITuttiModeLabels";
 
 export { buildAgentHomeSuggestions };
 
+export function useAgentGUIConversationRailLabels(
+  t: TranslateFn
+): AgentGUIConversationRailLabels {
+  return useMemo(() => agentGUIConversationRailLabels(t), [t]);
+}
+
 const workspaceFileReferenceLocaleKeyByPickerKey: Record<string, string> = {
   "actions.cancel": "common.cancel",
+  "directoryPicker.confirm": "agentHost.agentGui.directoryPicker.confirm",
+  "directoryPicker.emptySearch":
+    "agentHost.agentGui.directoryPicker.emptySearch",
+  "directoryPicker.searchPlaceholder":
+    "agentHost.agentGui.directoryPicker.searchPlaceholder",
+  "directoryPicker.title": "agentHost.agentGui.directoryPicker.title",
   "referencePicker.confirm": "agentHost.agentGui.referencePicker.confirm",
   "referencePicker.clearFilter":
     "agentHost.agentGui.referencePicker.clearFilter",
@@ -75,8 +96,6 @@ const workspaceFileReferenceLocaleKeyByPickerKey: Record<string, string> = {
     "agentHost.agentGui.referencePicker.selectGroupHint",
   "referencePicker.selectedCount":
     "agentHost.agentGui.referencePicker.selectedCount",
-  "referencePicker.workspaceRootGroup":
-    "agentHost.agentGui.referencePicker.workspaceRootGroup",
   "referencePicker.sourceColumn":
     "agentHost.agentGui.referencePicker.sourceColumn",
   "referencePicker.title": "agentHost.agentGui.referencePicker.title"
@@ -212,6 +231,9 @@ export function useAgentGUIViewLabels(input: {
       permissionModeFullAccess: t(
         "agentHost.agentGui.permissionModeFullAccess"
       ),
+      permissionModeChangeUnavailableDuringTurn: t(
+        "agentHost.agentGui.permissionModeChangeUnavailableDuringTurn"
+      ),
       modelDescriptions: {
         frontierComplexCoding: t(
           "agentHost.agentGui.modelDescriptions.frontierComplexCoding"
@@ -233,6 +255,10 @@ export function useAgentGUIViewLabels(input: {
         )
       },
       planModeLabel: t("agentHost.agentGui.planModeLabel"),
+      normalModeLabel: t("agentHost.agentGui.normalModeLabel"),
+      normalModeDescription: t("agentHost.agentGui.normalModeDescription"),
+      ...agentGUITuttiModeLabels(t),
+      planModeDescription: t("agentHost.agentGui.planModeDescription"),
       planModeOnLabel: t("agentHost.agentGui.planModeOnLabel"),
       planModeOffLabel: t("agentHost.agentGui.planModeOffLabel"),
       planUnavailable: t("agentHost.agentGui.planUnavailable"),
@@ -250,6 +276,15 @@ export function useAgentGUIViewLabels(input: {
       slashStatusContext: t("agentHost.agentGui.slashStatusContext"),
       slashStatusLimits: t("agentHost.agentGui.slashStatusLimits"),
       slashStatusAccount: t("agentHost.agentGui.slashStatusAccount"),
+      slashStatusProviderAccount: (provider: string) => {
+        const identity = resolveAgentGUIProviderCatalogIdentity(provider);
+        if (!identity) {
+          return null;
+        }
+        return t("agentHost.agentGui.slashStatusProviderAccount", {
+          provider: agentGUIProviderIdentityDisplayName(identity, t)
+        });
+      },
       slashStatusClose: t("agentHost.agentGui.slashStatusClose"),
       slashStatusContextValue: (input: {
         percentLeft: number;
@@ -267,6 +302,7 @@ export function useAgentGUIViewLabels(input: {
       slashStatusLimitsUnavailable: t(
         "agentHost.agentGui.slashStatusLimitsUnavailable"
       ),
+      slashStatusEmptyValue: t("agentHost.agentGui.slashStatusEmptyValue"),
       slashStatusUsageJustUpdated: t(
         "agentHost.agentGui.slashStatusUsageJustUpdated"
       ),
@@ -320,33 +356,6 @@ export function useAgentGUIViewLabels(input: {
       emptyProviderForProvider: (provider: string) =>
         resolveAgentGUIProviderDisplayLabel(provider, fallbackAgentTitle),
       conversations: t("agentHost.agentGui.conversations"),
-      newConversation: t("agentHost.agentGui.newConversation"),
-      accountMenuTitle: t("agentHost.agentGui.accountMenuTitle"),
-      accountMenuMember: t("agentHost.agentGui.accountMenuMember"),
-      accountMenuUpgrade: t("agentHost.agentGui.accountMenuUpgrade"),
-      accountMenuCreditsBalance: t(
-        "agentHost.agentGui.accountMenuCreditsBalance"
-      ),
-      accountMenuAccountCenter: t(
-        "agentHost.agentGui.accountMenuAccountCenter"
-      ),
-      accountMenuSettings: t("agentHost.agentGui.accountMenuSettings"),
-      accountMenuFree: t("agentHost.agentGui.accountMenuFree"),
-      accountMenuSignIn: t("agentHost.agentGui.accountMenuSignIn"),
-      accountMenuSignOut: t("agentHost.agentGui.accountMenuSignOut"),
-      accountMenuLoading: t("agentHost.agentGui.accountMenuLoading"),
-      accountMenuUnavailable: t("agentHost.agentGui.accountMenuUnavailable"),
-      accountMenuDataUnavailable: t(
-        "agentHost.agentGui.accountMenuDataUnavailable"
-      ),
-      accountRewardToastTitle: t("agentHost.agentGui.accountRewardToastTitle"),
-      accountRewardToastCreditsUnit: t(
-        "agentHost.agentGui.accountRewardToastCreditsUnit"
-      ),
-      accountRewardToastDescription: t(
-        "agentHost.agentGui.accountRewardToastDescription"
-      ),
-      accountRewardToastClose: t("agentHost.agentGui.accountRewardToastClose"),
       agentConfig: t("agentHost.agentGui.agentConfig"),
       agentSettingsMenu: t("agentHost.agentGui.agentSettingsMenu"),
       agentEnvSetup: t("agentHost.agentGui.agentEnvSetup"),
@@ -359,7 +368,11 @@ export function useAgentGUIViewLabels(input: {
       ),
       conversationFilterTutti: t("agentHost.agentGui.conversationFilterTutti"),
       providerSwitchLabel: t("agentHost.agentGui.providerSwitchLabel"),
+      sharedAgentOwnerSeparator: t(
+        "agentHost.agentGui.sharedAgentOwnerSeparator"
+      ),
       loadingConversation: t("agentHost.agentGui.loadingConversation"),
+      continuedFromTask: t("agentHost.agentGui.continuedFromTask"),
       scrollToBottom: t("agentHost.agentGui.scrollToBottom"),
       fallbackAgentTitle,
       untitledConversationTitle: t(
@@ -373,6 +386,12 @@ export function useAgentGUIViewLabels(input: {
         "agentHost.agentGui.projectSectionMoreActions"
       ),
       projectSectionViewFiles: t("agentHost.agentGui.projectSectionViewFiles"),
+      pinProject: t("agentHost.agentGui.pinProject"),
+      unpinProject: t("agentHost.agentGui.unpinProject"),
+      pinnedProjectAccessibleName: (projectLabel: string) =>
+        t("agentHost.agentGui.pinnedProjectAccessibleName", {
+          project: projectLabel
+        }),
       projectRailCreateProject: t(
         "agentHost.agentGui.projectRailCreateProject"
       ),
@@ -490,7 +509,29 @@ export function useAgentGUIViewLabels(input: {
       showLessConversations: t("agentHost.agentGui.showLessConversations"),
       deleteSession: t("agentHost.agentGui.deleteSession"),
       pinSession: t("agentHost.agentGui.pinSession"),
-      copySessionLink: t("agentHost.agentGui.copySessionLink"),
+      moreSessionActions: t("agentHost.agentGui.moreSessionActions"),
+      copyAsMarkdown: t("agentHost.agentGui.copyAsMarkdown"),
+      copyAsReference: t("agentHost.agentGui.copyAsReference"),
+      markSessionUnread: t("agentHost.agentGui.markSessionUnread"),
+      conversationCopyImage: t("agentHost.agentGui.conversationCopyImage"),
+      conversationCopyMentionPrefix: t(
+        "agentHost.agentGui.conversationCopyMentionPrefix"
+      ),
+      conversationCopyFile: t("agentHost.agentGui.conversationCopyFile"),
+      // Template label; the serializer substitutes {{count}} itself, and the
+      // i18n runtime keeps the placeholder intact when t() gets no params.
+      conversationCopyPreviousMessages: t(
+        "agentHost.agentGui.conversationCopyPreviousMessages"
+      ),
+      // Template label; the copy hook substitutes {{count}} itself.
+      conversationCopyImagesOmitted: t(
+        "agentHost.agentGui.conversationCopyImagesOmitted"
+      ),
+      copiedToClipboard: t("agentHost.agentGui.messageCopied"),
+      copyFailed: t("common.copyFailed"),
+      sessionActionUnavailable: t(
+        "agentHost.agentGui.sessionActionUnavailable"
+      ),
       renameSession: t("agentHost.agentGui.renameSession"),
       renameSessionTitle: t("agentHost.agentGui.renameSessionTitle"),
       renameSessionDescription: t(
@@ -501,7 +542,6 @@ export function useAgentGUIViewLabels(input: {
       ),
       renameSessionSave: t("agentHost.agentGui.renameSessionSave"),
       unpinSession: t("agentHost.agentGui.unpinSession"),
-      markSessionUnread: t("agentHost.agentGui.markSessionUnread"),
       deleteSessionTitle: t("agentHost.agentGui.deleteSessionTitle"),
       deleteSessionBody: t("agentHost.agentGui.deleteSessionBody"),
       deleteSessionConfirm: t("agentHost.agentGui.deleteSessionConfirm"),
@@ -553,6 +593,7 @@ export function useAgentGUIViewLabels(input: {
         submit: t("agentHost.agentGui.reviewPicker.submit"),
         cancel: t("agentHost.agentGui.reviewPicker.cancel")
       },
+      quickPrompts: agentQuickPromptLabels(t),
       promptTips: [
         {
           id: "set-workspace",
@@ -704,7 +745,13 @@ export function useAgentGUIViewLabels(input: {
       handoffConversationTooltip: t(
         "agentHost.agentGui.handoffConversationTooltip"
       ),
-      handoffConversationMenu: t("agentHost.agentGui.handoffConversationMenu")
+      handoffConversationMenu: t("agentHost.agentGui.handoffConversationMenu"),
+      handoffTargetDeviceSource: (deviceLabel: string) =>
+        t("agentHost.agentGui.handoffTargetDeviceSource", {
+          device: deviceLabel
+        }),
+      handoffTargetSelf: t("agentHost.agentGui.handoffTargetSelf"),
+      handoffTargetShared: t("agentHost.agentGui.handoffTargetShared")
     }),
     [
       displayProviderLabel,

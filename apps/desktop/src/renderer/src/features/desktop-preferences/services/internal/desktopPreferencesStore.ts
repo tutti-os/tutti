@@ -9,6 +9,7 @@ import type {
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
   DesktopDockPlacement,
+  DeletedAgentConversationRetentionDays,
   DesktopFeatureFlags,
   DesktopFileDefaultOpenersByExtension,
   DesktopMinimizeAnimation,
@@ -23,6 +24,7 @@ import { proxy } from "valtio";
 import type { DesktopPreferencesStoreState } from "../desktopPreferencesTypes.ts";
 
 export function createDesktopPreferencesStore(input: {
+  agentCliUpdateCheckEnabled: boolean;
   agentComposerDefaultsByProvider?: DesktopAgentComposerDefaultsByProvider;
   agentComposerDefaultsByAgentTarget?: DesktopAgentComposerDefaultsByAgentTarget;
   agentGuiConversationRailCollapsedByProvider?: DesktopAgentGuiConversationRailCollapsedByProvider;
@@ -32,6 +34,7 @@ export function createDesktopPreferencesStore(input: {
   defaultAgentProvider: DesktopDefaultAgentProvider;
   dockIconStyle: DesktopDockIconStyle;
   dockPlacement: DesktopDockPlacement;
+  deletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays;
   featureFlags: DesktopFeatureFlags;
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   locale: DesktopLocale;
@@ -45,12 +48,14 @@ export function createDesktopPreferencesStore(input: {
   workbenchWindowSnapping: DesktopWorkbenchWindowSnapping;
 }): DesktopPreferencesStoreState {
   return proxy({
+    changingAgentCliUpdateCheckEnabled: null,
     changingDefaultAgentProvider: null,
     changingAgentConversationDetailMode: null,
     changingAppCatalogChannel: null,
     changingBrowserUseConnectionMode: null,
     changingDockIconStyle: null,
     changingDockPlacement: null,
+    changingDeletedAgentConversationRetentionDays: null,
     changingLocale: null,
     changingFeatureFlags: null,
     changingMinimizeAnimation: null,
@@ -60,6 +65,7 @@ export function createDesktopPreferencesStore(input: {
     changingUpdateChannel: null,
     changingUpdatePolicy: null,
     changingWorkbenchWindowSnapping: null,
+    agentCliUpdateCheckEnabled: input.agentCliUpdateCheckEnabled,
     agentComposerDefaultsByProvider:
       input.agentComposerDefaultsByProvider ?? {},
     agentComposerDefaultsByAgentTarget:
@@ -72,6 +78,8 @@ export function createDesktopPreferencesStore(input: {
     defaultAgentProvider: input.defaultAgentProvider,
     dockIconStyle: input.dockIconStyle,
     dockPlacement: input.dockPlacement,
+    deletedAgentConversationRetentionDays:
+      input.deletedAgentConversationRetentionDays,
     featureFlags: input.featureFlags,
     fileDefaultOpenersByExtension: input.fileDefaultOpenersByExtension,
     locale: input.locale,

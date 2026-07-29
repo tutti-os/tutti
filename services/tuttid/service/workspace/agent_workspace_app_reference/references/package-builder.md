@@ -28,7 +28,7 @@ Generated `bootstrap.sh` should:
 - Resolve `TUTTI_APP_PACKAGE_DIR`, defaulting to its own directory for local direct startup.
 - Export app-specific env vars from Tutti runtime env vars.
 - Use `TUTTI_APP_NODE` instead of bare `node`.
-- Use `TUTTI_APP_DATA_DIR`, `TUTTI_APP_RUNTIME_DIR`, and `TUTTI_APP_LOG_DIR` for mutable files.
+- Use `TUTTI_APP_DATA_DIR` for durable artifacts, `TUTTI_APP_DATABASE_DIR` for active databases, `TUTTI_APP_RUNTIME_DIR` for scratch files, and `TUTTI_APP_LOG_DIR` for logs.
 - Set a package-local path for bundled MCP tools when local agents need them.
 - Start all required child processes and clean them up on `INT`/`TERM`.
 - Leave managed-agent credential, managed run cwd, and Codex home policy to `@tutti-os/agent-acp-kit` server calls. Do not export credentials or synthesize `CODEX_HOME` in `bootstrap.sh`.
@@ -46,12 +46,13 @@ export HOST="${TUTTI_APP_HOST:-127.0.0.1}"
 : "${TUTTI_APP_PORT:?TUTTI_APP_PORT is required}"
 export APP_PORT="$TUTTI_APP_PORT"
 export APP_DATA_ROOT="${TUTTI_APP_DATA_DIR:-$package_dir/.data}"
+export APP_DATABASE_ROOT="${TUTTI_APP_DATABASE_DIR:-$APP_DATA_ROOT/.database}"
 export APP_RUNTIME_ROOT="${TUTTI_APP_RUNTIME_DIR:-$APP_DATA_ROOT/.runtime}"
 export APP_WEB_DIST="$package_dir/dist"
 export APP_TOOLS_MCP_PATH="$package_dir/server/tools-mcp.js"
 
 node_bin="${TUTTI_APP_NODE:?TUTTI_APP_NODE is required}"
-mkdir -p "$APP_DATA_ROOT" "$APP_RUNTIME_ROOT"
+mkdir -p "$APP_DATA_ROOT" "$APP_DATABASE_ROOT" "$APP_RUNTIME_ROOT"
 
 cd "$APP_RUNTIME_ROOT"
 "$node_bin" "$package_dir/server/server.js"

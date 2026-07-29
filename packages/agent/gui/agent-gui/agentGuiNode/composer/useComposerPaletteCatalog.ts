@@ -47,6 +47,7 @@ interface UseComposerPaletteCatalogInput {
   compactSupported: boolean | null;
   composerSettings: AgentGUIComposerSettingsVM;
   capabilityMenuState?: AgentComposerCapabilityMenuState;
+  capabilityControlsReadOnly: boolean;
   labels: AgentComposerProps["labels"];
   uiLanguage: UiLanguage;
   editorHandleRef: RefObject<AgentRichTextEditorHandle | null>;
@@ -69,6 +70,7 @@ export function useComposerPaletteCatalog({
   compactSupported,
   composerSettings,
   capabilityMenuState,
+  capabilityControlsReadOnly,
   labels,
   uiLanguage,
   editorHandleRef
@@ -91,7 +93,8 @@ export function useComposerPaletteCatalog({
         compactSupported,
         planSupported: composerSettings.supportsPlanMode,
         browserSupported: Boolean(composerSettings.supportsBrowser),
-        computerSupported: Boolean(composerSettings.supportsComputerUse)
+        computerSupported: Boolean(composerSettings.supportsComputerUse),
+        tuttiSupported: capabilityMenuState?.tuttiMode?.enabled === true
       }).filter(
         (command) =>
           goalSupported || command.name.trim().toLowerCase() !== "goal"
@@ -102,6 +105,7 @@ export function useComposerPaletteCatalog({
       composerSettings.supportsPlanMode,
       composerSettings.supportsBrowser,
       composerSettings.supportsComputerUse,
+      capabilityMenuState?.tuttiMode?.enabled,
       hasCompactableContext,
       goalSupported,
       provider,
@@ -127,6 +131,9 @@ export function useComposerPaletteCatalog({
     [availableSkills, skillQueryMatch]
   );
   const availableCapabilities = useMemo<AgentCapabilityTokenOption[]>(() => {
+    if (capabilityControlsReadOnly) {
+      return [];
+    }
     const entries: AgentCapabilityTokenOption[] = [];
     if (composerSettings.supportsBrowser) {
       entries.push({
@@ -146,6 +153,7 @@ export function useComposerPaletteCatalog({
     }
     return entries;
   }, [
+    capabilityControlsReadOnly,
     composerSettings.supportsBrowser,
     composerSettings.supportsComputerUse,
     labels.browserUseCapabilityLabel,
@@ -162,27 +170,33 @@ export function useComposerPaletteCatalog({
           const computerUseAuthorization =
             capabilityMenuState?.computerUse?.authorization ?? null;
           const capLabel =
-            command.capability === "computerUse"
-              ? labels.computerUseCapabilityLabel
-              : labels.browserUseCapabilityLabel;
+            command.capability === "tutti"
+              ? labels.tuttiModeLabel
+              : command.capability === "computerUse"
+                ? labels.computerUseCapabilityLabel
+                : labels.browserUseCapabilityLabel;
           const capDescription =
-            command.capability === "computerUse"
-              ? computerUseInstalled === false
-                ? labels.computerUseCapabilitySetupRequiredDescription
-                : computerUseAuthorization === "needs-authorization"
-                  ? labels.computerUseCapabilityAuthorizationRequiredDescription
-                  : computerUseAuthorization === "unknown"
-                    ? labels.computerUseCapabilityAuthorizationUnknownDescription
-                    : labels.computerUseCapabilityDescription
-              : browserConnectionMode === "autoConnect"
-                ? labels.browserUseCapabilityDescriptionAutoConnect
-                : browserConnectionMode === "isolated"
-                  ? labels.browserUseCapabilityDescriptionIsolated
-                  : labels.browserUseCapabilityDescription;
+            command.capability === "tutti"
+              ? labels.tuttiModeDescription
+              : command.capability === "computerUse"
+                ? computerUseInstalled === false
+                  ? labels.computerUseCapabilitySetupRequiredDescription
+                  : computerUseAuthorization === "needs-authorization"
+                    ? labels.computerUseCapabilityAuthorizationRequiredDescription
+                    : computerUseAuthorization === "unknown"
+                      ? labels.computerUseCapabilityAuthorizationUnknownDescription
+                      : labels.computerUseCapabilityDescription
+                : browserConnectionMode === "autoConnect"
+                  ? labels.browserUseCapabilityDescriptionAutoConnect
+                  : browserConnectionMode === "isolated"
+                    ? labels.browserUseCapabilityDescriptionIsolated
+                    : labels.browserUseCapabilityDescription;
           const capSettingsLabel =
-            command.capability === "computerUse"
-              ? labels.computerUseCapabilitySettingsLabel
-              : labels.browserUseCapabilitySettingsLabel;
+            command.capability === "tutti"
+              ? labels.tuttiModeLabel
+              : command.capability === "computerUse"
+                ? labels.computerUseCapabilitySettingsLabel
+                : labels.browserUseCapabilitySettingsLabel;
           const capabilityEntry: AgentSlashPaletteEntry = {
             type: "capability",
             key: `capability:${command.capability}`,
@@ -190,6 +204,7 @@ export function useComposerPaletteCatalog({
             description: capDescription,
             settingsAriaLabel: capSettingsLabel,
             settingsLabel: labels.capabilityInlineSettingsLabel,
+            disabled: capabilityControlsReadOnly,
             selectAction:
               command.capability === "computerUse" &&
               (computerUseInstalled === false ||
@@ -235,6 +250,7 @@ export function useComposerPaletteCatalog({
     capabilityMenuState?.browserUse?.connectionMode,
     capabilityMenuState?.computerUse?.authorization,
     capabilityMenuState?.computerUse?.installed,
+    capabilityControlsReadOnly,
     filteredCommands,
     filteredSkills,
     labels.browserUseCapabilityDescription,
@@ -249,6 +265,8 @@ export function useComposerPaletteCatalog({
     labels.computerUseCapabilitySetupRequiredDescription,
     labels.computerUseCapabilityLabel,
     labels.computerUseCapabilitySettingsLabel,
+    labels.tuttiModeDescription,
+    labels.tuttiModeLabel,
     labels.slashCommandCompactLabel,
     labels.slashCommandContextLabel,
     labels.slashCommandFastLabel,

@@ -10,6 +10,8 @@ export interface DesktopAgentGUIPrefillPromptRequest {
   agentTargetId?: string | null;
   autoSubmit?: boolean;
   draftPrompt: string;
+  model?: string;
+  modelPlanId?: string;
   provider?: DesktopAgentGUIProvider;
   sequence: number;
   userProjectPath?: string;
@@ -63,6 +65,12 @@ export function resolveDesktopAgentGUIPrefillPromptActivation(
       ? { agentTargetId: activation.payload.agentTargetId.trim() }
       : {}),
     ...(activation.payload.autoSubmit ? { autoSubmit: true } : {}),
+    ...(activation.payload.model?.trim()
+      ? { model: activation.payload.model.trim() }
+      : {}),
+    ...(activation.payload.modelPlanId?.trim()
+      ? { modelPlanId: activation.payload.modelPlanId.trim() }
+      : {}),
     ...(isDesktopAgentGUIProvider(activation.payload.provider)
       ? { provider: activation.payload.provider }
       : {}),

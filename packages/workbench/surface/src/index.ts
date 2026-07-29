@@ -13,12 +13,12 @@ export type {
 } from "./react/dockPreviewCache.ts";
 export type {
   WorkbenchMissionControlAdapter,
-  WorkbenchMissionControlMode,
   WorkbenchMissionControlSnapshot
 } from "./mission-control/types.ts";
 export {
   createWorkbenchNode,
   createWorkbenchNodeFromSnapshot,
+  createWorkbenchSnapshotLayoutBasis,
   createWorkbenchSnapshotFromState,
   createWorkbenchStateFromSnapshot,
   type CreateWorkbenchNodeInput,
@@ -44,6 +44,8 @@ export type {
   WorkbenchHostDockEntryBadge,
   WorkbenchHostDockEntryDynamicState,
   WorkbenchHostDockEntryLaunchBehavior,
+  WorkbenchHostDockEntryPresentationOverride,
+  WorkbenchHostDockEntryPresentationOverrides,
   WorkbenchHostDockEntryStateSource,
   WorkbenchHostDockPopupItemDescriptor,
   WorkbenchHostDockPopupItemInput,
@@ -65,13 +67,13 @@ export type {
   WorkbenchHostLaunchRequest,
   WorkbenchHostLaunchResult,
   WorkbenchHostMissionControlProps,
-  WorkbenchHostMissionControlMode,
   WorkbenchHostMultiInstanceStrategy,
   WorkbenchHostNodeCloseDecision,
   WorkbenchHostNodeCloseRequest,
   WorkbenchHostNodeBodyContext,
   WorkbenchHostNodeData,
   WorkbenchHostNodeDefinition,
+  WorkbenchHostNodeHeaderFrameRenderKey,
   WorkbenchHostNodeHeaderContext,
   WorkbenchHostNodeHeaderWindowActions,
   WorkbenchHostNodeInstanceStrategy,
@@ -91,9 +93,37 @@ export {
   type WorkbenchSurfaceWallpaperFit,
   type WorkbenchWindowManagementConfig
 } from "./react/WorkbenchSurface.tsx";
+export type {
+  WorkbenchNodePreviewImageCapture,
+  WorkbenchNodePreviewImages,
+  WorkbenchNodePreviewImagesCapture
+} from "./react/nodePreviewCapture.ts";
+export {
+  WorkbenchDockComponentPreviewFrame,
+  type WorkbenchDockComponentPreviewFrameProps
+} from "./react/WorkbenchDockComponentPreviewFrame.tsx";
 export { useWorkbenchSelector } from "./react/hooks/useWorkbenchSelector.ts";
+export { useWorkbenchVisualOcclusionPresentation } from "./react/WorkbenchWindowFrame.tsx";
 export { getWorkbenchLayoutFrame } from "./core/geometry.ts";
 export { selectFocusedWorkbenchNode } from "./core/selectors.ts";
+export {
+  selectVisuallyExposedWorkbenchNodeIDs,
+  selectWorkbenchNodeIsVisuallyExposed,
+  type WorkbenchVisualOcclusionPresentation
+} from "./core/visualOcclusion.ts";
+export {
+  canCreateNewWindow,
+  canCreateNewWindowInDockPopup,
+  createDockNewWindowLaunchPayload,
+  createMultiInstanceDockEntryOptions,
+  matchWorkbenchDockEntryNode,
+  resolveWorkbenchDockCountBadge,
+  resolveWorkbenchDockEntries,
+  resolveWorkbenchDockEntryClick,
+  type ResolvedWorkbenchHostDockEntry,
+  type WorkbenchHostDockClickResolution,
+  type WorkbenchHostDockNodeState
+} from "./host/dockEntries.ts";
 export { isEditableShortcutTarget } from "./react/hooks/workbenchShortcutIntent.ts";
 export {
   createWorkbenchWindowChromeI18nRuntime,
@@ -126,9 +156,11 @@ export type {
   WorkbenchResolveFullscreenHeaderMode,
   WorkbenchResolveWindowChromeMode,
   WorkbenchResolveWindowChromeModeContext,
+  WorkbenchResolveWindowHeaderPresentation,
   WorkbenchSurfacePresentation,
   WorkbenchFullscreenHeaderMode,
   WorkbenchWindowActionContext,
   WorkbenchWindowChromeMode,
-  WorkbenchWindowHeaderContext
+  WorkbenchWindowHeaderContext,
+  WorkbenchWindowHeaderPresentation
 } from "./react/types.ts";

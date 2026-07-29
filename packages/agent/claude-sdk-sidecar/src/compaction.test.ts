@@ -10,6 +10,7 @@ test("compaction failure collapses a duplicated provider reason", () => {
     ensureActive: () => {},
     clearPendingOrphans: () => {},
     getQuery: () => undefined,
+    getModel: () => "sonnet",
     emit: (event) => events.push(event as ClaudeSDKSidecarEvent)
   });
 
@@ -39,6 +40,7 @@ test("a newer context usage request supersedes an older delayed snapshot", async
           resolvers.push(resolve);
         })
     }),
+    getModel: () => "sonnet",
     emit: (event) => events.push(event as ClaudeSDKSidecarEvent)
   });
 
@@ -55,4 +57,28 @@ test("a newer context usage request supersedes an older delayed snapshot", async
     totalTokens: 200_000,
     compactsAutomatically: false
   });
+});
+
+test("a result for another model cannot publish the query fallback window", async () => {
+  const events: ClaudeSDKSidecarEvent[] = [];
+  const tracker = new CompactionTracker({
+    activeTurnId: () => "turn-1",
+    ensureActive: () => {},
+    clearPendingOrphans: () => {},
+    getQuery: () => ({
+      getContextUsage: async () => ({ totalTokens: 222, maxTokens: 200_000 })
+    }),
+    getModel: () => "opus",
+    emit: (event) => events.push(event as ClaudeSDKSidecarEvent)
+  });
+
+  assert.equal(
+    await tracker.emitContextUsageSnapshot("turn-1", {
+      modelUsage: {
+        "claude-haiku-4-5": { contextWindow: 200_000 }
+      }
+    }),
+    "stale"
+  );
+  assert.deepEqual(events, []);
 });

@@ -1,59 +1,53 @@
+import type {
+  WorkspaceWindowLifecycle,
+  WorkspaceWindowLifecycleEvent
+} from "../../../../lib/workspaceWindowLifecycle.ts";
 import { AppPageviewReporter } from "../../reporters/app-pageview/appPageviewReporter.ts";
 import type { IReporterService } from "../reporterService.interface.ts";
 
 export interface PredefinePageviewAnalyticsController {
   dispose(): void;
-  reportAppOpen(): void;
-  reportFocus(): void;
-}
-
-export interface PredefinePageviewAnalyticsRuntime {
-  addFocusListener(listener: () => void): () => void;
-  scheduleFocusReport?(listener: () => void): () => void;
 }
 
 export function startPredefinePageviewAnalytics(input: {
-  reporterNow?: () => number;
+  lifecycle: WorkspaceWindowLifecycle;
   reporterService: Pick<IReporterService, "trackEvents">;
-  runtime?: PredefinePageviewAnalyticsRuntime;
+  scheduleFocusReport?: (listener: () => void) => () => void;
 }): PredefinePageviewAnalyticsController {
-  const runtime = input.runtime ?? createDocumentPredefinePageviewRuntime();
-  const now = input.reporterNow ?? Date.now;
   let disposed = false;
   const pendingFocusReports = new Set<() => void>();
 
-  const reportPageview = () => {
+  const reportPageview = (occurredAt: number) => {
     if (disposed) {
       return;
     }
     void new AppPageviewReporter({
-      now,
+      now: () => occurredAt,
       reporterService: input.reporterService
     }).report();
   };
 
-  const reportAppOpen = () => {
-    reportPageview();
-  };
-
-  const reportFocus = () => {
-    if (disposed) {
+  const handleLifecycleEvent = (event: WorkspaceWindowLifecycleEvent) => {
+    if (event.kind === "opened") {
+      reportPageview(event.occurredAt);
       return;
     }
+    if (event.kind !== "focused" || disposed) {
+      return;
+    }
+
     let cancelFocusReport = () => {};
     const runFocusReport = () => {
       pendingFocusReports.delete(cancelFocusReport);
-      reportPageview();
+      reportPageview(event.occurredAt);
     };
-    cancelFocusReport =
-      runtime.scheduleFocusReport?.(runFocusReport) ??
-      createTimeoutFocusReport(runFocusReport);
+    cancelFocusReport = (input.scheduleFocusReport ?? scheduleTimeout)(
+      runFocusReport
+    );
     pendingFocusReports.add(cancelFocusReport);
   };
 
-  const unsubscribeFocus = runtime.addFocusListener(reportFocus);
-
-  reportAppOpen();
+  const unsubscribeLifecycle = input.lifecycle.subscribe(handleLifecycleEvent);
 
   return {
     dispose() {
@@ -65,30 +59,14 @@ export function startPredefinePageviewAnalytics(input: {
         cancelFocusReport();
       }
       pendingFocusReports.clear();
-      unsubscribeFocus();
-    },
-    reportAppOpen,
-    reportFocus
+      unsubscribeLifecycle();
+    }
   };
 }
 
-function createTimeoutFocusReport(listener: () => void): () => void {
+function scheduleTimeout(listener: () => void): () => void {
   const timeoutId = window.setTimeout(listener, 0);
   return () => {
     window.clearTimeout(timeoutId);
-  };
-}
-
-function createDocumentPredefinePageviewRuntime(): PredefinePageviewAnalyticsRuntime {
-  return {
-    addFocusListener(listener) {
-      window.addEventListener("focus", listener);
-      return () => {
-        window.removeEventListener("focus", listener);
-      };
-    },
-    scheduleFocusReport(listener) {
-      return createTimeoutFocusReport(listener);
-    }
   };
 }

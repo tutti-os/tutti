@@ -36,16 +36,3 @@ export function workspaceAgentSessionStatus(
       return "unknown";
   }
 }
-
-export function workspaceAgentSessionLastError(
-  session: Pick<
-    WorkspaceAgentSessionProjectionInput,
-    "activeTurn" | "latestTurn"
-  >
-): string | null {
-  return (
-    session.activeTurn?.error?.message?.trim() ||
-    session.latestTurn?.error?.message?.trim() ||
-    null
-  );
-}

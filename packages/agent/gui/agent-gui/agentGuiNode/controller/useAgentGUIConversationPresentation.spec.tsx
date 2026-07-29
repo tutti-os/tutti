@@ -1,5 +1,6 @@
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import type { AgentGUINodeData } from "../../../types";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import { useAgentGUIConversationPresentation } from "./useAgentGUIConversationPresentation";
 
@@ -78,6 +79,126 @@ describe("useAgentGUIConversationPresentation", () => {
     );
     expect(rendered.result.current.activeConversation?.resumable).toBe(false);
   });
+
+  it("preserves the active agent target identity for open-provider fallback conversations", () => {
+    const conversation = createConversation();
+    const input = createInput({
+      ...conversation,
+      agentTargetId: "extension:example",
+      provider: "acp:example"
+    });
+    const rendered = renderHook(() =>
+      useAgentGUIConversationPresentation({
+        ...input,
+        conversations: [],
+        data: {
+          ...input.data,
+          agentTargetId: "extension:example",
+          provider: "acp:example"
+        },
+        dataRef: {
+          current: {
+            ...input.dataRef.current,
+            agentTargetId: "extension:example",
+            provider: "acp:example"
+          }
+        },
+        normalizedProviderTargets: [
+          {
+            agentTargetId: "extension:example",
+            label: "Example Agent",
+            provider: "acp:example",
+            ref: {
+              kind: "agent_extension",
+              provider: "acp:example"
+            },
+            targetId: "extension:example"
+          }
+        ]
+      })
+    );
+
+    expect(rendered.result.current.activeConversation?.title).toBe("");
+    expect(rendered.result.current.activeConversation?.titleFallback).toBe(
+      "untitled-conversation"
+    );
+    expect(rendered.result.current.activeConversation?.agentTargetId).toBe(
+      "extension:example"
+    );
+  });
+
+  it("preserves a missing explicit target instead of selecting a provider sibling", () => {
+    const conversation = createConversation();
+    const input = createInput({
+      ...conversation,
+      agentTargetId: "extension:missing",
+      provider: "acp:example"
+    });
+    const rendered = renderHook(() =>
+      useAgentGUIConversationPresentation({
+        ...input,
+        conversations: [],
+        data: {
+          ...input.data,
+          agentTargetId: "extension:missing",
+          provider: "acp:example"
+        },
+        dataRef: {
+          current: {
+            ...input.dataRef.current,
+            agentTargetId: "extension:missing",
+            provider: "acp:example"
+          }
+        },
+        normalizedProviderTargets: [
+          {
+            agentTargetId: "extension:sibling",
+            label: "Sibling Agent",
+            provider: "acp:example",
+            ref: {
+              kind: "agent_extension",
+              provider: "acp:example"
+            },
+            targetId: "extension:sibling"
+          }
+        ]
+      })
+    );
+
+    expect(rendered.result.current.activeConversation?.agentTargetId).toBe(
+      "extension:missing"
+    );
+  });
+
+  it("backfills target memory when canonical session metadata arrives", () => {
+    const conversation = createConversation();
+    const input = createInput(conversation);
+    let data: AgentGUINodeData = input.data;
+
+    input.dataRef = { current: data };
+    input.normalizedExplicitProviderTargets = [
+      {
+        agentTargetId: "target-1",
+        label: "Codex",
+        provider: "codex",
+        ref: { kind: "local", provider: "codex" },
+        targetId: "target-1"
+      }
+    ];
+    input.normalizedProviderTargets = input.normalizedExplicitProviderTargets;
+    input.onDataChangeRef = {
+      current: (updater) => {
+        data = updater(data);
+        input.dataRef.current = data;
+      }
+    };
+
+    renderHook(() => useAgentGUIConversationPresentation(input));
+
+    expect(data.lastActiveAgentSessionIdByAgentTargetId).toEqual({
+      "target-1": "session-1"
+    });
+  });
 });
 
 function createInput(
@@ -104,7 +225,6 @@ function createInput(
     normalizedExplicitProviderTargets: [],
     normalizedProviderTargets: [],
     onDataChangeRef: { current: vi.fn() },
-    previewMode: true,
     shouldUseStaticProviderTargets: false,
     transientConversation: null,
     userProjects: [],

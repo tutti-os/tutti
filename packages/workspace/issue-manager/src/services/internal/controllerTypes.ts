@@ -1,4 +1,6 @@
 import type {
+  IssueManagerBudget,
+  IssueManagerExecutionProfile,
   IssueManagerIssueDetail,
   IssueManagerPriority,
   IssueManagerStatusCounts,
@@ -6,12 +8,20 @@ import type {
 } from "../../contracts/index.ts";
 
 export interface IssueDraft {
+  budget?: IssueManagerBudget;
   content: string;
+  dispatchPaused?: boolean;
+  executionProfile?: IssueManagerExecutionProfile;
   title: string;
 }
 
 export interface TaskDraft {
+  agentTargetId?: string;
   content: string;
+  dependencyTaskIds?: string[];
+  executionDirectory?: string;
+  model?: string;
+  modelPlanId?: string;
   priority: IssueManagerPriority;
   title: string;
 }

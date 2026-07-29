@@ -12,18 +12,22 @@ import {
   LoadingIcon,
   VideoFileIcon
 } from "@tutti-os/ui-system";
-import type { WorkspaceFileActivationTarget } from "@tutti-os/workspace-file-manager/services";
-import { WorkspaceFilePreviewSurface } from "@tutti-os/workspace-file-preview/react";
+import type { WorkspaceFilePreviewTarget } from "@tutti-os/workspace-file-preview";
+import {
+  WorkspaceFilePreviewSurface,
+  type WorkspaceFilePreviewSurfaceState
+} from "@tutti-os/workspace-file-preview/react";
 import type { WorkbenchHostNodeBodyContext } from "@tutti-os/workbench-surface";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { DesktopHostFilesApi } from "@preload/types";
 import type { WorkspaceWorkbenchDesktopI18nRuntime } from "@shared/i18n";
 import {
-  isWorkspaceFilePreviewActivationTarget,
+  coerceWorkspaceFilePreviewTarget,
   workspaceFilePreviewActivationType
 } from "../services/workspaceFilePreviewLaunch";
 import type { WorkspaceFilePreviewSaveRequestSource } from "../services/workspaceFilePreviewSaveRequests";
+import type { WorkspaceFilePreviewViewModeRequestSource } from "../services/workspaceFilePreviewViewModeRequests";
 import {
   createWorkspaceFilePreviewNodeController,
   type WorkspaceFilePreviewNodeController,
@@ -33,6 +37,7 @@ import {
   resolveWorkspaceFilePreviewNodeFile,
   workspaceFilePreviewNodeFileKey
 } from "./workspaceFilePreviewNodeState";
+import { WorkspaceMarkdownPreview } from "./WorkspaceMarkdownPreview";
 
 export function WorkspaceFilePreviewNodeBody({
   appI18n,
@@ -41,6 +46,7 @@ export function WorkspaceFilePreviewNodeBody({
   i18n,
   tuttidClient,
   saveRequestSource,
+  viewModeRequestSource,
   workspaceID
 }: {
   appI18n: I18nRuntime<string>;
@@ -52,6 +58,7 @@ export function WorkspaceFilePreviewNodeBody({
     "readWorkspaceFilePreview" | "writeWorkspaceFileText"
   >;
   saveRequestSource: WorkspaceFilePreviewSaveRequestSource;
+  viewModeRequestSource: WorkspaceFilePreviewViewModeRequestSource;
   workspaceID: string;
 }): React.JSX.Element {
   const contextRef = useRef(context);
@@ -141,9 +148,17 @@ export function WorkspaceFilePreviewNodeBody({
     [context.node.id, controller, saveRequestSource]
   );
 
+  useEffect(
+    () =>
+      viewModeRequestSource.subscribe(context.node.id, (mode) => {
+        controller.changeTextViewMode(mode);
+      }),
+    [context.node.id, controller, viewModeRequestSource]
+  );
+
   if (state.status === "text") {
     return (
-      <WorkspaceTextFileEditor
+      <WorkspaceTextFileContent
         onChange={(event) => {
           const draft = event.target.value;
           controller.changeDraft(draft);
@@ -157,31 +172,86 @@ export function WorkspaceFilePreviewNodeBody({
     <WorkspaceFilePreviewSurface
       directoryMessage=""
       emptyMessage={appI18n.t("workspaceFileManager.previewUnsupported")}
-      frameClassName="flex h-full min-h-0 min-w-0 w-full items-center justify-center overflow-hidden bg-[var(--background-fronted)] text-[var(--text-tertiary)]"
       imageAlt={(entry) => entry.name}
-      imageClassName="block max-h-full max-w-full object-contain"
-      imageFrameClassName="overflow-auto p-3"
       loadingIndicator={
         <LoadingIcon className="mx-auto h-5 w-5 animate-spin" aria-hidden />
       }
       loadingMessage={appI18n.t("workspaceFileManager.previewLoadingLabel")}
       renderIcon={(entry) =>
-        entry.fileKind === "image" ? (
+        entry.previewKind === "image" ? (
           <ImageFileIcon className="h-8 w-8" aria-hidden />
-        ) : entry.fileKind === "video" ? (
+        ) : entry.previewKind === "video" ? (
           <VideoFileIcon className="h-8 w-8" aria-hidden />
         ) : (
           <FileTextIcon className="h-8 w-8" aria-hidden />
         )
       }
-      state={state}
-      textClassName="m-0 h-full min-h-0 min-w-0 w-full overflow-auto whitespace-pre-wrap break-words p-3 font-[var(--tsh-font-mono)] text-[11px] leading-[18px] text-[var(--text-secondary)]"
-      textFrameClassName="items-stretch justify-stretch"
+      state={toWorkspaceFilePreviewSurfaceState(state)}
+      variant="canvas"
     />
   );
 }
 
-function WorkspaceTextFileEditor({
+function toWorkspaceFilePreviewSurfaceState(
+  state: WorkspaceFilePreviewNodeControllerState
+): WorkspaceFilePreviewSurfaceState<WorkspaceFilePreviewTarget> {
+  switch (state.status) {
+    case "empty":
+      return { status: "empty" };
+    case "loading":
+      return {
+        entry: state.entry,
+        previewKind: state.entry.previewKind,
+        status: "loading"
+      };
+    case "image":
+      return {
+        entry: state.entry,
+        objectUrl: state.objectUrl,
+        previewKind: "image",
+        status: "image"
+      };
+    case "video":
+      return {
+        entry: state.entry,
+        objectUrl: state.objectUrl,
+        previewKind: "video",
+        status: "video"
+      };
+    case "readonly":
+      return {
+        entry: state.entry,
+        message: state.message,
+        previewKind: state.entry.previewKind,
+        status: "readonly"
+      };
+    case "unsupported":
+      return {
+        entry: state.entry,
+        message: state.message,
+        previewKind: state.entry.previewKind,
+        status: "unsupported"
+      };
+    case "error":
+      return {
+        entry: state.entry,
+        message: state.message,
+        previewKind: state.entry.previewKind,
+        status: "error"
+      };
+    case "text":
+      // Text editing uses WorkspaceTextFileContent; this branch is unreachable
+      // for the shared surface path above.
+      return {
+        content: state.content,
+        entry: state.entry,
+        previewKind: state.entry.previewKind,
+        status: "text"
+      };
+  }
+}
+
+function WorkspaceTextFileContent({
   onChange,
   state
 }: {
@@ -199,26 +269,28 @@ function WorkspaceTextFileEditor({
           {saveError}
         </div>
       ) : null}
-      <textarea
-        aria-label={state.entry.name}
-        className="h-full min-h-0 min-w-0 resize-none overflow-auto border-0 bg-transparent p-3 font-[var(--tsh-font-mono)] text-[11px] leading-[18px] text-[var(--text-secondary)] outline-none"
-        disabled={isSaving}
-        onChange={onChange}
-        spellCheck={false}
-        value={state.draft}
-      />
+      {state.entry.previewKind === "markdown" &&
+      state.viewMode === "preview" ? (
+        <WorkspaceMarkdownPreview content={state.draft} />
+      ) : (
+        <textarea
+          aria-label={state.entry.name}
+          className="h-full min-h-0 min-w-0 resize-none overflow-auto border-0 bg-transparent p-3 font-[var(--tsh-font-mono)] text-[11px] leading-[18px] text-[var(--text-secondary)] outline-none"
+          disabled={isSaving}
+          onChange={onChange}
+          spellCheck={false}
+          value={state.draft}
+        />
+      )}
     </div>
   );
 }
 
 function resolveActivationTarget(
   context: WorkbenchHostNodeBodyContext
-): WorkspaceFileActivationTarget | null {
-  if (
-    context.activation?.type !== workspaceFilePreviewActivationType ||
-    !isWorkspaceFilePreviewActivationTarget(context.activation.payload)
-  ) {
+): WorkspaceFilePreviewTarget | null {
+  if (context.activation?.type !== workspaceFilePreviewActivationType) {
     return null;
   }
-  return context.activation.payload;
+  return coerceWorkspaceFilePreviewTarget(context.activation.payload);
 }

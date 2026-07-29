@@ -1,0 +1,83 @@
+import { Switch } from "@tutti-os/ui-system";
+import { useTranslation } from "@renderer/i18n";
+import {
+  EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG,
+  LAB_AGENT_INPUT_HISTORY_FLAG,
+  LAB_AGENT_SESSION_FORK_FLAG,
+  LAB_AUTOMATION_RULES_FLAG,
+  LAB_WORKBENCH_SHORTCUTS_FLAG,
+  isFeatureEnabled
+} from "../../../../../shared/featureFlags/catalog.ts";
+import type { DesktopFeatureFlags } from "../../../../../shared/preferences/index.ts";
+
+const featureGateRows = [
+  {
+    key: LAB_AUTOMATION_RULES_FLAG,
+    labelKey: "workspace.settings.lab.automationRulesLabel" as const,
+    descriptionKey: "workspace.settings.lab.automationRulesDescription" as const
+  },
+  {
+    key: LAB_WORKBENCH_SHORTCUTS_FLAG,
+    labelKey: "workspace.settings.lab.workbenchShortcutsLabel" as const,
+    descriptionKey:
+      "workspace.settings.lab.workbenchShortcutsDescription" as const
+  },
+  {
+    key: LAB_AGENT_INPUT_HISTORY_FLAG,
+    labelKey: "workspace.settings.lab.agentInputHistoryLabel" as const,
+    descriptionKey:
+      "workspace.settings.lab.agentInputHistoryDescription" as const
+  },
+  {
+    key: LAB_AGENT_SESSION_FORK_FLAG,
+    labelKey: "workspace.settings.lab.agentSessionForkLabel" as const,
+    descriptionKey:
+      "workspace.settings.lab.agentSessionForkDescription" as const
+  },
+  {
+    key: EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG,
+    labelKey: "workspace.settings.lab.previewAgentsLabel" as const,
+    descriptionKey: "workspace.settings.lab.previewAgentsDescription" as const
+  }
+] as const;
+
+export function WorkspaceLabFeatureGateRows({
+  changingFeatureFlags,
+  featureFlags,
+  onFeatureFlagsChange
+}: {
+  changingFeatureFlags: DesktopFeatureFlags | null;
+  featureFlags: DesktopFeatureFlags;
+  onFeatureFlagsChange: (flags: DesktopFeatureFlags) => void;
+}) {
+  const { t } = useTranslation();
+  const pendingFeatureFlags = changingFeatureFlags ?? featureFlags;
+  const disabled = changingFeatureFlags !== null;
+
+  return featureGateRows.map((row) => (
+    <div
+      key={row.key}
+      className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch"
+    >
+      <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+        <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+          {t(row.labelKey)}
+        </strong>
+        <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+          {t(row.descriptionKey)}
+        </p>
+      </div>
+      <Switch
+        aria-label={t(row.labelKey)}
+        checked={isFeatureEnabled(pendingFeatureFlags, row.key)}
+        disabled={disabled}
+        onCheckedChange={(enabled) => {
+          onFeatureFlagsChange({
+            ...pendingFeatureFlags,
+            [row.key]: enabled
+          });
+        }}
+      />
+    </div>
+  ));
+}

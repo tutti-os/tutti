@@ -41,8 +41,15 @@ export function connectDesktopHostPreferencesEventStream(
       const nextPreferences = event.payload.preferences;
       const themeSourceChanged =
         deps.preferences.getThemeSource() !== nextPreferences.themeSource;
+      // Composer defaults and other non-update prefs also publish this event.
+      // Only reconfigure the updater when channel/policy actually change, so
+      // permission-mode switches do not flash "Checking for updates".
+      const updatePreferencesChanged =
+        deps.preferences.getUpdateChannel() !== nextPreferences.updateChannel ||
+        deps.preferences.getUpdatePolicy() !== nextPreferences.updatePolicy;
 
       deps.preferences.sync({
+        agentCliUpdateCheckEnabled: nextPreferences.agentCliUpdateCheckEnabled,
         agentComposerDefaultsByProvider:
           nextPreferences.agentComposerDefaultsByProvider,
         agentGuiConversationRailCollapsedByProvider:
@@ -65,16 +72,18 @@ export function connectDesktopHostPreferencesEventStream(
         workbenchWindowSnapping: nextPreferences.workbenchWindowSnapping
       });
 
-      void deps.updateService
-        ?.configure({
-          channel: nextPreferences.updateChannel,
-          policy: nextPreferences.updatePolicy
-        })
-        .catch((error: unknown) => {
-          deps.logger.warn("failed to apply desktop update preferences", {
-            error: error instanceof Error ? error.message : String(error)
+      if (updatePreferencesChanged) {
+        void deps.updateService
+          ?.configure({
+            channel: nextPreferences.updateChannel,
+            policy: nextPreferences.updatePolicy
+          })
+          .catch((error: unknown) => {
+            deps.logger.warn("failed to apply desktop update preferences", {
+              error: error instanceof Error ? error.message : String(error)
+            });
           });
-        });
+      }
 
       if (themeSourceChanged) {
         deps.applyThemeSource(nextPreferences.themeSource);

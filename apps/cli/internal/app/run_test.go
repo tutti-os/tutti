@@ -2,13 +2,16 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tutti-os/tutti/apps/cli/internal/daemon"
 )
@@ -133,6 +136,42 @@ func TestRunHelpDoesNotIncludeIntegrationCapabilitiesWithoutAppCLIContract(t *te
 	}
 }
 
+func TestAgentSessionDiscoversAndInvokesProjectedIntegrationCapability(t *testing.T) {
+	var invoked bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			if r.URL.Query().Get("workspaceID") != "workspace-1" ||
+				r.URL.Query().Get("agentSessionID") != "review-session-1" {
+				t.Fatalf("capability query = %q", r.URL.RawQuery)
+			}
+			_, _ = w.Write([]byte(`{"commands":[{"id":"tutti-goal-review.goal-review.verdict","path":["goal-review","verdict"],"summary":"Submit verdict","visibility":"integration","inputSchema":{"type":"object","properties":{"issue-id":{"type":"string"}},"required":["issue-id"]},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}}]}`))
+		case "/v1/cli/commands/tutti-goal-review.goal-review.verdict/invoke":
+			invoked = true
+			_, _ = w.Write([]byte(`{"ok":true,"output":{"kind":"json","value":{"verdict":"goal_satisfied"}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+	t.Setenv("TUTTI_WORKSPACE_ID", "workspace-1")
+	t.Setenv("TUTTI_AGENT_SESSION_ID", "review-session-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runDefaultProgram(t, []string{
+		"--json", "goal-review", "verdict", "--issue-id", "issue-1",
+	}, &stdout, &stderr); code != 0 {
+		t.Fatalf("code = %d stderr = %q", code, stderr.String())
+	}
+	if !invoked || !strings.Contains(stdout.String(), "goal_satisfied") {
+		t.Fatalf("invoked = %v stdout = %q", invoked, stdout.String())
+	}
+}
+
 func TestRunExactLegacyAgentCommandRetriesIntegrationDiscovery(t *testing.T) {
 	capabilityRequests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -164,9 +203,50 @@ func TestRunExactLegacyAgentCommandRetriesIntegrationDiscovery(t *testing.T) {
 	}
 }
 
+func TestRunLegacySessionSummaryPreservesTopLevelJSONShape(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			if r.URL.Query().Get("includeIntegration") != "true" {
+				_, _ = w.Write([]byte(`{"commands":[]}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"commands":[{"id":"agent-context.agent.session-summary","path":["agent","session-summary"],"summary":"Deprecated summary","visibility":"integration","inputSchema":{"type":"object","properties":{"session-id":{"type":"string"}},"required":["session-id"]},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}}]}`))
+		case "/v1/cli/commands/agent-context.agent.session-summary/invoke":
+			_, _ = w.Write([]byte(`{"ok":true,"output":{"kind":"json","value":{"session":{"agentSessionId":"SESSION-1"},"messages":[],"latestVersion":9,"hasMore":false}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runDefaultProgram(t, []string{"--json", "agent", "session-summary", "--session-id", "SESSION-1"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+	}
+	var output map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("decode stdout: %v\n%s", err, stdout.String())
+	}
+	if output["session"].(map[string]any)["agentSessionId"] != "SESSION-1" || output["latestVersion"] != float64(9) {
+		t.Fatalf("output = %#v", output)
+	}
+	if _, wrapped := output["value"]; wrapped {
+		t.Fatalf("legacy JSON was wrapped: %#v", output)
+	}
+	if _, warned := output["warnings"]; warned || stderr.Len() != 0 {
+		t.Fatalf("legacy JSON emitted runtime warning: output=%#v stderr=%q", output, stderr.String())
+	}
+}
+
 func TestLegacyAgentCompatibilityInvocationIsExactAllowlist(t *testing.T) {
 	for _, args := range [][]string{
 		{"agent", "providers"},
+		{"agent", "cancel", "--session-id", "SESSION-1"},
+		{"agent", "session-summary", "--session-id", "SESSION-1"},
 		{"codex", "start", "--prompt", "review"},
 		{"claude", "start", "--prompt", "review"},
 	} {
@@ -237,6 +317,39 @@ func TestRunStatusAuthFailure(t *testing.T) {
 	}
 }
 
+func TestRunStatusJSONAuthFailureIsStructured(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "nope", http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runDefaultProgram(t, []string{"status", "--json"}, &stdout, &stderr); code != 1 {
+		t.Fatalf("code = %d, want 1", code)
+	}
+	assertCLIJSONError(t, stdout.Bytes(), "unauthorized", "daemon authentication failed")
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunStatusJSONDaemonUnavailableIsStructured(t *testing.T) {
+	t.Setenv("TUTTID_LISTENER_INFO_PATH", filepath.Join(t.TempDir(), "missing-listener.json"))
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runDefaultProgram(t, []string{"status", "--json"}, &stdout, &stderr); code != 1 {
+		t.Fatalf("code = %d, want 1", code)
+	}
+	assertCLIJSONError(t, stdout.Bytes(), "daemon_unavailable", "daemon endpoint is not available")
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
 func TestRunDynamicCommandRendersTable(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -286,6 +399,195 @@ func TestRunDynamicCommandRendersJSONRows(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), `"id": "ISS-1"`) {
 		t.Fatalf("stdout = %q", stdout.String())
+	}
+}
+
+func TestRunWaitCommandRepeatsPendingInvocationsAndPrintsOnlyFinalJSON(t *testing.T) {
+	invokeCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			_, _ = w.Write([]byte(`{"commands":[{"id":"app.workflow.runs.wait","path":["workflow","runs","wait"],"summary":"Wait for run","inputSchema":{"type":"object","properties":{"run-id":{"type":"string"}},"required":["run-id"]},"output":{"defaultMode":"json","json":true},"execution":{"mode":"wait"},"handlerTimeoutMs":30000,"source":{"kind":"app"}}]}`))
+		case "/v1/cli/commands/app.workflow.runs.wait/invoke":
+			invokeCount++
+			var body daemon.InvokeRequest
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if body.Input["run-id"] != "RUN-1" {
+				t.Fatalf("input = %#v", body.Input)
+			}
+			if invokeCount < 3 {
+				_, _ = fmt.Fprintf(w, `{"ok":true,"output":{"kind":"json","value":{"status":"running","attempt":%d},"continuation":{"state":"pending","retryAfterMs":250}}}`, invokeCount)
+				return
+			}
+			_, _ = w.Write([]byte(`{"ok":true,"output":{"kind":"json","value":{"status":"completed","result":"done"}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runDefaultProgram(t, []string{"--json", "workflow", "runs", "wait", "--run-id", "RUN-1"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("code = %d stderr = %q", code, stderr.String())
+	}
+	if invokeCount != 3 {
+		t.Fatalf("invokeCount = %d", invokeCount)
+	}
+	var output map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("decode stdout: %v\n%s", err, stdout.String())
+	}
+	if output["status"] != "completed" || output["result"] != "done" || strings.Contains(stdout.String(), "attempt") {
+		t.Fatalf("output = %#v", output)
+	}
+}
+
+func TestRunWaitCommandTotalTimeoutReturnsExecutionContinues(t *testing.T) {
+	invokeCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			_, _ = w.Write([]byte(`{"commands":[{"id":"app.workflow.runs.wait","path":["workflow","runs","wait"],"summary":"Wait for run","inputSchema":{"type":"object","properties":{"run-id":{"type":"string"}},"required":["run-id"]},"output":{"defaultMode":"json","json":true},"execution":{"mode":"wait"},"source":{"kind":"app"}}]}`))
+		case "/v1/cli/commands/app.workflow.runs.wait/invoke":
+			invokeCount++
+			var body daemon.InvokeRequest
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if _, leaked := body.Input["timeout-ms"]; leaked {
+				t.Fatalf("total timeout leaked into app input: %#v", body.Input)
+			}
+			_, _ = w.Write([]byte(`{"ok":true,"output":{"kind":"json","value":{"run":{"status":"running"}},"continuation":{"state":"pending","retryAfterMs":250}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runDefaultProgram(t, []string{"--json", "workflow", "runs", "wait", "--run-id", "RUN-1", "--timeout-ms", "50"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("code = %d stderr = %q", code, stderr.String())
+	}
+	var output map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("decode stdout: %v\n%s", err, stdout.String())
+	}
+	if output["reason"] != "wait_timeout" || output["timedOut"] != true || output["executionContinues"] != true {
+		t.Fatalf("output = %#v", output)
+	}
+	last := output["lastResult"].(map[string]any)
+	if last["run"].(map[string]any)["status"] != "running" || invokeCount != 1 {
+		t.Fatalf("output = %#v invokeCount = %d", output, invokeCount)
+	}
+}
+
+func TestRunWaitCommandHelpDescribesTotalTimeoutWithoutFollowFlag(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/v1/cli/capabilities" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`{"commands":[{"id":"app.workflow.runs.wait","path":["workflow","runs","wait"],"summary":"Wait for run","output":{"defaultMode":"json","json":true},"execution":{"mode":"wait"},"source":{"kind":"app"}}]}`))
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runDefaultProgram(t, []string{"workflow", "runs", "wait", "--help"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("code = %d stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "--timeout-ms") || !strings.Contains(stdout.String(), "Maximum total wait") || strings.Contains(stdout.String(), "--follow") {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+}
+
+func TestRunWaitCommandTotalTimeoutDuringInvokeReturnsObservationNotTransportError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			_, _ = w.Write([]byte(`{"commands":[{"id":"app.workflow.runs.wait","path":["workflow","runs","wait"],"summary":"Wait for run","output":{"defaultMode":"json","json":true},"execution":{"mode":"wait"},"handlerTimeoutMs":30000,"source":{"kind":"app"}}]}`))
+		case "/v1/cli/commands/app.workflow.runs.wait/invoke":
+			time.Sleep(150 * time.Millisecond)
+			_, _ = w.Write([]byte(`{"ok":true,"output":{"kind":"json","value":{"status":"completed"}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runDefaultProgram(t, []string{"--json", "workflow", "runs", "wait", "--timeout-ms=40"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("code = %d stderr = %q stdout = %q", code, stderr.String(), stdout.String())
+	}
+	var output map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("decode stdout: %v\n%s", err, stdout.String())
+	}
+	if output["reason"] != "wait_timeout" || output["executionContinues"] != true {
+		t.Fatalf("output = %#v", output)
+	}
+	if _, hasLastResult := output["lastResult"]; hasLastResult {
+		t.Fatalf("output unexpectedly has lastResult: %#v", output)
+	}
+}
+
+func TestRunWaitCommandCancellationStopsLocalWaitWithoutBusinessCancel(t *testing.T) {
+	invoked := make(chan struct{}, 1)
+	var cancelRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			_, _ = w.Write([]byte(`{"commands":[{"id":"app.workflow.runs.wait","path":["workflow","runs","wait"],"summary":"Wait for run","output":{"defaultMode":"json","json":true},"execution":{"mode":"wait"},"source":{"kind":"app"}}]}`))
+		case "/v1/cli/commands/app.workflow.runs.wait/invoke":
+			invoked <- struct{}{}
+			_, _ = w.Write([]byte(`{"ok":true,"output":{"kind":"json","value":{"status":"running"},"continuation":{"state":"pending","retryAfterMs":1000}}}`))
+		case "/v1/cli/commands/app.workflow.runs.cancel/invoke":
+			cancelRequests++
+			http.Error(w, "unexpected cancel", http.StatusInternalServerError)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan int, 1)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	go func() {
+		done <- RunWithProgram(ctx, "tutti", []string{"--json", "workflow", "runs", "wait"}, &stdout, &stderr)
+	}()
+	select {
+	case <-invoked:
+		cancel()
+	case <-time.After(time.Second):
+		t.Fatal("wait invocation did not start")
+	}
+	select {
+	case code := <-done:
+		if code == 0 {
+			t.Fatalf("code = 0 stdout = %q", stdout.String())
+		}
+	case <-time.After(time.Second):
+		t.Fatal("local wait did not stop after cancellation")
+	}
+	if cancelRequests != 0 {
+		t.Fatalf("business cancel requests = %d", cancelRequests)
 	}
 }
 
@@ -618,6 +920,167 @@ func TestRunDynamicCommandRejectsUnexpectedPositionalArgument(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), `unexpected argument "ISS-1"`) {
 		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
+func TestRunDynamicJSONRejectsInvalidInputWithStructuredError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/cli/capabilities" {
+			_, _ = w.Write([]byte(`{"commands":[{"id":"issue-manager.issue.get","path":["issue","get"],"summary":"Get issue","output":{"defaultMode":"json","json":true}}]}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runDefaultProgram(t, []string{"--json", "issue", "get", "ISS-1"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("code = %d, want 2", code)
+	}
+	assertCLIJSONError(t, stdout.Bytes(), "invalid_input", `unexpected argument "ISS-1"`)
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunDynamicJSONPreservesDaemonReasonCode(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			_, _ = w.Write([]byte(`{"commands":[{"id":"agent-context.agent.get","path":["agent","get"],"summary":"Get agent session","output":{"defaultMode":"json","json":true}}]}`))
+		case "/v1/cli/commands/agent-context.agent.get/invoke":
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":{"code":"workspace_not_found","reason":"workspace_agent_session_not_found","developerMessage":"agent session was not found"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runDefaultProgram(t, []string{"--json", "agent", "get"}, &stdout, &stderr); code != 1 {
+		t.Fatalf("code = %d, want 1", code)
+	}
+	assertCLIJSONError(t, stdout.Bytes(), "workspace_agent_session_not_found", "agent session was not found")
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunDynamicJSONMapsDaemonInvalidInputToExitCodeTwo(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			_, _ = w.Write([]byte(`{"commands":[{"id":"agent-context.agent.get","path":["agent","get"],"summary":"Get agent session","output":{"defaultMode":"json","json":true}}]}`))
+		case "/v1/cli/commands/agent-context.agent.get/invoke":
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"code":"invalid_request","reason":"malformed_request","developerMessage":"session id is required"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runDefaultProgram(t, []string{"--json", "agent", "get"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("code = %d, want 2", code)
+	}
+	assertCLIJSONError(t, stdout.Bytes(), "malformed_request", "session id is required")
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunDynamicJSONPreservesUnsupportedPermissionReasonAndOmitsFalseRetryable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			_, _ = w.Write([]byte(`{"commands":[{"id":"agent-context.agent.start","path":["agent","start"],"summary":"Start agent","output":{"defaultMode":"json","json":true}}]}`))
+		case "/v1/cli/commands/agent-context.agent.start/invoke":
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"code":"invalid_request","reason":"unsupported_permission_mode_id","developerMessage":"refresh Composer Options and use an advertised permission id","retryable":false}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runDefaultProgram(t, []string{"--json", "agent", "start"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("code = %d, want 2; stderr = %s", code, stderr.String())
+	}
+	assertCLIJSONError(t, stdout.Bytes(), "unsupported_permission_mode_id", "refresh Composer Options")
+	var envelope map[string]map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode CLI error: %v", err)
+	}
+	if _, present := envelope["error"]["retryable"]; present {
+		t.Fatalf("stdout = %s, want false retryable omitted by JSON contract", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunDynamicJSONUnknownCommandIsStructured(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/cli/capabilities" {
+			_, _ = w.Write([]byte(`{"commands":[]}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runDefaultProgram(t, []string{"--json", "unknown", "command"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("code = %d, want 2", code)
+	}
+	assertCLIJSONError(t, stdout.Bytes(), "command_not_found", "unknown command: unknown command")
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunManagedModelJSONInvalidInputIsStructured(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runDefaultProgram(t, []string{"--json", "managed-model", "unknown"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("code = %d, want 2", code)
+	}
+	assertCLIJSONError(t, stdout.Bytes(), "invalid_input", "expected grant exchange, models, credential, or revoke")
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func assertCLIJSONError(t *testing.T, content []byte, reasonCode string, message string) {
+	t.Helper()
+	var envelope cliErrorEnvelope
+	if err := json.Unmarshal(content, &envelope); err != nil {
+		t.Fatalf("decode CLI error: %v\n%s", err, content)
+	}
+	if envelope.Error.ReasonCode != reasonCode || !strings.Contains(envelope.Error.Message, message) {
+		t.Fatalf("error = %#v, want reasonCode %q message containing %q", envelope.Error, reasonCode, message)
 	}
 }
 

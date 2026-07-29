@@ -54,6 +54,7 @@ const (
 	appServerNotifyTurnStarted           = "turn/started"
 	appServerNotifyTurnCompleted         = "turn/completed"
 	appServerNotifyAgentMessageDelta     = "item/agentMessage/delta"
+	appServerNotifyCommandOutputDelta    = "item/commandExecution/outputDelta"
 	appServerNotifyReasoningDelta        = "item/reasoning/textDelta"
 	appServerNotifyReasoningSummary      = "item/reasoning/summaryTextDelta"
 	appServerNotifyReasoningSummaryPart  = "item/reasoning/summaryPartAdded"
@@ -87,17 +88,39 @@ const (
 // Codex-compatible forks (Tutti Agent) without sharing brand, command, or
 // auth assumptions.
 type appServerAdapterConfig struct {
-	provider            string
-	runtimeName         string
-	displayName         string
-	command             []string
-	clientInfoName      string
-	authRequiredMessage string
+	provider             string
+	runtimeName          string
+	displayName          string
+	command              []string
+	clientInfoName       string
+	authRequiredMessage  string
+	commandNetworkAccess bool
+	rateLimits           bool
+	nativeSessionFork    bool
+}
+
+// CodexAppServerAdapterOptions controls host-owned app-server execution policy
+// without changing the provider-native permission-mode mapping.
+type CodexAppServerAdapterOptions struct {
+	// CommandNetworkAccess enables network access for commands and subprocesses
+	// in the read-only and workspace-write sandboxes. Filesystem access,
+	// approval policy, and approval reviewer remain owned by the selected
+	// permission mode. Network proxy configuration remains a separate concern.
+	CommandNetworkAccess bool
 }
 
 // defaultCodexAppServerCancelGraceWindow is how long Cancel waits for codex to
 // honor turn/interrupt gracefully before force-closing the app-server process.
 const defaultCodexAppServerCancelGraceWindow = 3 * time.Second
+
+// defaultCodexAppServerTurnStartAckTimeout only bounds the immediate
+// turn/start acknowledgement. Turn output continues through notifications
+// without this deadline after the acknowledgement arrives.
+const defaultCodexAppServerTurnStartAckTimeout = acpStartCallTimeout
+
+// defaultCodexAppServerTurnSteerTimeout bounds guidance delivery to a running
+// turn so a missing app-server response cannot block the caller forever.
+const defaultCodexAppServerTurnSteerTimeout = 10 * time.Second
 
 // startupModelSteadyRetryCount is how many 30s-spaced model/list retries follow
 // the initial fast ramp before the background refresh gives up (~18 minutes
@@ -115,6 +138,8 @@ const defaultCodexAppServerGoalContinuationGraceWindow = 1500 * time.Millisecond
 // generation and must never inherit the session's latest desired Goal identity.
 const defaultCodexAppServerGoalProvenanceGraceWindow = 250 * time.Millisecond
 
+const codexAppServerExecutableBase = "codex"
+
 type CodexAppServerAdapter struct {
 	transport                  ProcessTransport
 	host                       HostMetadata
@@ -129,6 +154,7 @@ type CodexAppServerAdapter struct {
 	eventSink                  SessionEventSink
 	goalReconcileSink          GoalReconcileDurableSink
 	goalProvenanceSink         GoalProvenanceDurableSink
+	promptImageMaterializer    providerPromptImageMaterializer
 	goalReconcileAckTimeout    time.Duration
 	configSink                 ConfigOptionsUpdateSink
 	// lifecycleMu guards lifecycleLocks; the per-session locks serialize
@@ -140,10 +166,24 @@ type CodexAppServerAdapter struct {
 	// cancelGraceWindow bounds the graceful-interrupt wait in Cancel before the
 	// process is force-closed. Zero falls back to the default.
 	cancelGraceWindow time.Duration
+	// turnStartAckTimeout bounds only the immediate turn/start RPC response.
+	// Zero falls back to the default.
+	turnStartAckTimeout time.Duration
+	// turnSteerTimeout bounds turn/steer guidance delivery. Zero falls back to
+	// the default.
+	turnSteerTimeout time.Duration
 	// cliVersionMu/cliVersionCached memoize the served CLI's --version result
 	// per adapter instance (each instance owns one command).
 	cliVersionMu     sync.Mutex
 	cliVersionCached string
+	// forkCapabilityMu serializes historical initialize probes. The bounded LRU
+	// is keyed by a SHA-256 launch fingerprint (including the resolved
+	// executable identity), so it retains no prepared environment material;
+	// unverifiable wrapper launches are never cached. Live sessions always use
+	// their exact process user-agent.
+	forkCapabilityMu       sync.Mutex
+	forkCapabilityVersions map[string][3]int
+	forkCapabilityOrder    []string
 	// startupModelRetryBackoffs is the wait schedule between background model/list
 	// refetches when the initial probe came back empty; the slice length bounds
 	// the number of retries. Nil falls back to defaultStartupModelRetryBackoffs.
@@ -199,11 +239,15 @@ type codexAppServerSession struct {
 	// immutable operation identity is still current, so a newer set/clear
 	// invalidates delayed work without rebinding it to the latest Goal.
 	goalContinuationClaim *codexGoalContinuationClaim
+	// fencedGoalIdentities contains durable Host revocations restored whenever
+	// the runtime session resumes. Exact identity matching preserves later
+	// Owner-authored Goal generations and ordinary user turns.
+	fencedGoalIdentities map[goalOperationIdentity]struct{}
 	// provenanceDegraded is fail-closed for the lifetime of this provider
 	// session. Once bounded evidence can no longer preserve ambiguity, no later
 	// notification may rebuild a partial cache and become adoptable.
 	provenanceDegraded bool
-	// goalMutationMu is the provider-side half of GoalActor. It serializes
+	// goalMutationMu is the provider-side half of the Host goal mutation lane. It serializes
 	// direct control, reconcile and delayed continuation nudges for this thread.
 	goalMutationMu         sync.Mutex
 	models                 []map[string]any
@@ -285,6 +329,7 @@ type codexAppServerActiveTurn struct {
 	session        Session
 	ctx            context.Context
 	normalizer     *acpTurnNormalizer
+	diagnostics    *codexAppServerTurnDiagnostics
 	emit           func([]activityshared.Event)
 	emitCommands   CommandSnapshotSink
 	kind           codexAppServerTurnKind
@@ -326,6 +371,16 @@ func NewCodexAppServerAdapterWithHostMetadata(transport ProcessTransport, host H
 	return NewCodexAppServerAdapterWithHostMetadataAndCommandResolver(transport, host, nil)
 }
 
+func NewCodexAppServerAdapterWithHostMetadataAndOptions(
+	transport ProcessTransport,
+	host HostMetadata,
+	options CodexAppServerAdapterOptions,
+) *CodexAppServerAdapter {
+	adapter := NewCodexAppServerAdapterWithHostMetadataAndCommandResolver(transport, host, nil)
+	adapter.config.commandNetworkAccess = options.CommandNetworkAccess
+	return adapter
+}
+
 func NewCodexAppServerAdapterWithHostMetadataAndCommandResolver(
 	transport ProcessTransport,
 	host HostMetadata,
@@ -343,6 +398,7 @@ func NewCodexAppServerAdapterWithHostMetadataAndCommandResolver(
 		transport,
 		host,
 		commandResolver,
+		providerAdapterOptions{},
 	)
 	codexAdapter, ok := adapter.(*CodexAppServerAdapter)
 	if !ok {
@@ -355,11 +411,37 @@ func NewCodexAppServerAdapterWithHostMetadataAndCommandResolver(
 // provider through the shared app-server adapter with Tutti-branded command,
 // client identity, and auth messaging.
 func NewTuttiAgentAppServerAdapterWithHostMetadata(transport ProcessTransport, host HostMetadata) *CodexAppServerAdapter {
+	return newTuttiAgentAppServerAdapterWithHostMetadata(transport, host)
+}
+
+// NewTuttiAgentAppServerAdapterWithHostMetadataAndOptions serves the
+// tutti-agent provider through the shared app-server adapter while applying
+// host-owned command execution policy.
+func NewTuttiAgentAppServerAdapterWithHostMetadataAndOptions(
+	transport ProcessTransport,
+	host HostMetadata,
+	options CodexAppServerAdapterOptions,
+) *CodexAppServerAdapter {
+	adapter := newTuttiAgentAppServerAdapterWithHostMetadata(transport, host)
+	adapter.config.commandNetworkAccess = options.CommandNetworkAccess
+	return adapter
+}
+
+func newTuttiAgentAppServerAdapterWithHostMetadata(
+	transport ProcessTransport,
+	host HostMetadata,
+) *CodexAppServerAdapter {
 	descriptor, ok := providerregistry.Find(ProviderTuttiAgent)
 	if !ok {
 		panic("tutti-agent provider descriptor is missing")
 	}
-	adapter := newAdapterFromProviderDescriptor(descriptor, transport, host, nil)
+	adapter := newAdapterFromProviderDescriptor(
+		descriptor,
+		transport,
+		host,
+		nil,
+		providerAdapterOptions{},
+	)
 	appServerAdapter, ok := adapter.(*CodexAppServerAdapter)
 	if !ok {
 		panic(fmt.Sprintf("Tutti Agent provider descriptor constructed %T", adapter))
@@ -374,13 +456,15 @@ func newAppServerAdapter(
 	commandResolver ProviderCommandResolver,
 ) *CodexAppServerAdapter {
 	return &CodexAppServerAdapter{
-		transport:         transport,
-		host:              host,
-		config:            config,
-		commandResolver:   commandResolver,
-		sessions:          make(map[string]*codexAppServerSession),
-		lifecycleLocks:    make(map[string]*codexAppServerSessionLock),
-		cancelGraceWindow: defaultCodexAppServerCancelGraceWindow,
+		transport:           transport,
+		host:                host,
+		config:              config,
+		commandResolver:     commandResolver,
+		sessions:            make(map[string]*codexAppServerSession),
+		lifecycleLocks:      make(map[string]*codexAppServerSessionLock),
+		cancelGraceWindow:   defaultCodexAppServerCancelGraceWindow,
+		turnStartAckTimeout: defaultCodexAppServerTurnStartAckTimeout,
+		turnSteerTimeout:    defaultCodexAppServerTurnSteerTimeout,
 	}
 }
 

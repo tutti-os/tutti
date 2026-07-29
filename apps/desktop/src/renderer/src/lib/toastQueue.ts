@@ -1,10 +1,16 @@
 export type DesktopToastTone = "default" | "destructive" | "success";
 
 export interface DesktopToastItem {
+  /** True while a loading toast's async work has not settled yet. */
+  busy?: boolean;
   description?: string;
   id: string;
   title: string;
   tone: DesktopToastTone;
+}
+
+export function desktopToastMountKey(toast: DesktopToastItem): string {
+  return `${toast.id}:${toast.busy ? "busy" : "settled"}`;
 }
 
 export function enqueueDesktopToast(

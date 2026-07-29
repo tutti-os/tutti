@@ -10,7 +10,35 @@ export {
   type BrowserNodeElectronMainChannels,
   type RegisterBrowserNodeElectronMainInput
 } from "./registerElectronMain.ts";
-export type { BrowserNodeElectronLogger } from "./types.ts";
+export type {
+  BrowserNodeChromeCookiePreparationResult,
+  BrowserNodeElectronLogger
+} from "./types.ts";
+export {
+  createBrowserNodeAutomationRegistry,
+  isBrowserNodeAutomationTool
+} from "./automationRegistry.ts";
+export {
+  createBrowserNodeAutomationServer,
+  type BrowserNodeAutomationListenerInfo,
+  type BrowserNodeAutomationServer
+} from "./automationServer.ts";
+export {
+  createBrowserNodeAutomationNetworkAuthorizer,
+  type BrowserNodeAutomationNetworkPolicyOptions
+} from "./automationNetworkPolicy.ts";
+export type {
+  BrowserNodeAutomationAuthorizationInput,
+  BrowserNodeAutomationAuthorizationResult,
+  BrowserNodeAutomationCallInput,
+  BrowserNodeAutomationRegistry,
+  BrowserNodeAutomationRegistryOptions,
+  BrowserNodeAutomationTargetRegistry,
+  BrowserNodeAutomationTargetRequest,
+  BrowserNodeAutomationTargetSummary,
+  BrowserNodeAutomationTool,
+  BrowserNodeAutomationToolResult
+} from "./automationTypes.ts";
 export {
   applyBrowserGuestUserAgent,
   sanitizeBrowserGuestUserAgent

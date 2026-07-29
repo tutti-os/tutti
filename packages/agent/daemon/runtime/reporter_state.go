@@ -6,9 +6,10 @@ import (
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
-func statePatchFromSessionEvent(source agentsessionstore.EventSource, event activityshared.Event, sessionID string, timestamp int64) (agentsessionstore.WorkspaceAgentStatePatch, bool) {
+func statePatchFromSessionEvent(source canonical.EventSource, event activityshared.Event, sessionID string, timestamp int64) (agentsessionstore.WorkspaceAgentStatePatch, bool) {
 	switch event.Type {
 	case activityshared.EventSessionStarted,
 		activityshared.EventSessionUpdated,
@@ -44,7 +45,7 @@ func statePatchFromSessionEvent(source agentsessionstore.EventSource, event acti
 		OccurredAtUnixMS:     timestamp,
 	}
 	if transition := event.Payload.Interaction; transition != nil {
-		patch.InteractionTransition = &agentsessionstore.WorkspaceAgentInteractionTransition{
+		patch.InteractionTransition = &canonical.WorkspaceAgentInteractionTransition{
 			RequestID: strings.TrimSpace(transition.RequestID),
 			TurnID:    strings.TrimSpace(transition.TurnID),
 			Kind:      strings.TrimSpace(transition.Kind),
@@ -62,6 +63,7 @@ func statePatchFromSessionEvent(source agentsessionstore.EventSource, event acti
 		event.Type != activityshared.EventRootProviderTurnCompleted {
 		patch.Turn = &agentsessionstore.WorkspaceAgentTurnPatch{
 			TurnID:                turnID,
+			CapabilityRefs:        activityCapabilityReferencesFromEvent(event),
 			Origin:                stringFromPayload(event.Payload.Metadata, "turnOrigin"),
 			SourceGoalOperationID: stringFromPayload(event.Payload.Metadata, "sourceGoalOperationId"),
 			SourceGoalRevision:    payloadInt64(event.Payload.Metadata, "sourceGoalRevision"),
@@ -82,7 +84,10 @@ func statePatchFromSessionEvent(source agentsessionstore.EventSource, event acti
 	if event.Type == activityshared.EventRootProviderTurnStarted || event.Type == activityshared.EventRootProviderTurnCompleted {
 		// A provider lifecycle snapshot may update the controller/session view,
 		// but root-provider aliases never create canonical Turns implicitly.
-		// The verified Goal-start proposal below is the only exception.
+		// The verified Goal-start proposal below is the only exception. Completed
+		// events retain their explicit RootProviderTurn identity below so the
+		// compatibility writer can apply a per-Turn settlement barrier even though
+		// this ordinary Turn patch is deliberately absent.
 		patch.Turn = nil
 	}
 	switch event.Type {
@@ -133,12 +138,20 @@ func statePatchFromSessionEvent(source agentsessionstore.EventSource, event acti
 		if event.Type == activityshared.EventRootProviderTurnCompleted {
 			phase = agentsessionstore.RootProviderTurnPhaseCompleted
 		}
-		patch.RootProviderTurn = &agentsessionstore.WorkspaceAgentRootProviderTurnTransition{
+		errorMessage := activityshared.BestEffortErrorMessage(event.Payload)
+		errorCode := ""
+		if event.Type == activityshared.EventRootProviderTurnCompleted &&
+			strings.TrimSpace(event.Payload.TurnOutcome) == string(activityshared.TurnOutcomeFailed) &&
+			strings.TrimSpace(errorMessage) != "" {
+			errorCode = visibleFailureCode(errorMessage)
+		}
+		patch.RootProviderTurn = &canonical.WorkspaceAgentRootProviderTurnTransition{
 			RootTurnID:     strings.TrimSpace(event.Payload.TurnID),
 			ProviderTurnID: strings.TrimSpace(event.Payload.ProviderTurnID),
 			Phase:          phase,
 			Outcome:        strings.TrimSpace(event.Payload.TurnOutcome),
-			ErrorMessage:   activityshared.BestEffortErrorMessage(event.Payload),
+			ErrorMessage:   errorMessage,
+			ErrorCode:      errorCode,
 		}
 		if event.Type == activityshared.EventRootProviderTurnStarted {
 			applyProviderCreatedGoalTurnToPatch(&patch, event, timestamp)
@@ -193,7 +206,7 @@ func applyProviderCreatedGoalTurnToPatch(
 		Phase:                 "running",
 		StartedAtUnixMS:       timestamp,
 	}
-	patch.TurnLifecycle = &agentsessionstore.WorkspaceAgentTurnLifecycle{
+	patch.TurnLifecycle = &canonical.WorkspaceAgentTurnLifecycle{
 		ActiveTurnID: &activeTurnID,
 		Phase:        "running",
 	}
@@ -219,6 +232,23 @@ func applyProviderInitiatedInteractionTurnToPatch(patch *agentsessionstore.Works
 	patch.Turn.ActiveTurnID = &activeTurnID
 }
 
+func activityCapabilityReferencesFromEvent(
+	event activityshared.Event,
+) []agentsessionstore.WorkspaceAgentCapabilityReference {
+	references := activityshared.TurnCapabilityReferencesFromEvent(event)
+	if len(references) == 0 {
+		return nil
+	}
+	mapped := make([]agentsessionstore.WorkspaceAgentCapabilityReference, 0, len(references))
+	for _, reference := range references {
+		mapped = append(mapped, agentsessionstore.WorkspaceAgentCapabilityReference{
+			Capability: reference.Capability,
+			Source:     reference.Source,
+		})
+	}
+	return mapped
+}
+
 func cloneStringPointer(value *string) *string {
 	if value == nil {
 		return nil
@@ -227,31 +257,31 @@ func cloneStringPointer(value *string) *string {
 	return &cloned
 }
 
-func cloneCompletedCommand(value *agentsessionstore.WorkspaceAgentCompletedCommand) *agentsessionstore.WorkspaceAgentCompletedCommand {
+func cloneCompletedCommand(value *canonical.WorkspaceAgentCompletedCommand) *canonical.WorkspaceAgentCompletedCommand {
 	if value == nil {
 		return nil
 	}
-	return &agentsessionstore.WorkspaceAgentCompletedCommand{
+	return &canonical.WorkspaceAgentCompletedCommand{
 		Kind:   strings.TrimSpace(value.Kind),
 		Status: strings.TrimSpace(value.Status),
 	}
 }
 
-func cloneSubmitAvailability(value *agentsessionstore.WorkspaceAgentSubmitAvailability) *agentsessionstore.WorkspaceAgentSubmitAvailability {
+func cloneSubmitAvailability(value *canonical.WorkspaceAgentSubmitAvailability) *canonical.WorkspaceAgentSubmitAvailability {
 	if value == nil {
 		return nil
 	}
-	return &agentsessionstore.WorkspaceAgentSubmitAvailability{
+	return &canonical.WorkspaceAgentSubmitAvailability{
 		State:  strings.TrimSpace(value.State),
 		Reason: strings.TrimSpace(value.Reason),
 	}
 }
 
-func cloneTurnLifecycle(value *agentsessionstore.WorkspaceAgentTurnLifecycle) *agentsessionstore.WorkspaceAgentTurnLifecycle {
+func cloneTurnLifecycle(value *canonical.WorkspaceAgentTurnLifecycle) *canonical.WorkspaceAgentTurnLifecycle {
 	if value == nil {
 		return nil
 	}
-	return &agentsessionstore.WorkspaceAgentTurnLifecycle{
+	return &canonical.WorkspaceAgentTurnLifecycle{
 		ActiveTurnID:     cloneStringPointer(value.ActiveTurnID),
 		Phase:            strings.TrimSpace(value.Phase),
 		Settling:         value.Settling,
@@ -296,7 +326,7 @@ func applyLifecycleSnapshotToPatch(patch *agentsessionstore.WorkspaceAgentStateP
 		patch.Turn.CompletedCommand = command
 	}
 	patch.SubmitAvailability = cloneSubmitAvailability(patch.Turn.SubmitAvailability)
-	patch.TurnLifecycle = &agentsessionstore.WorkspaceAgentTurnLifecycle{
+	patch.TurnLifecycle = &canonical.WorkspaceAgentTurnLifecycle{
 		ActiveTurnID:     turnActive,
 		Phase:            snapshot.Phase,
 		Outcome:          nil,
@@ -311,14 +341,14 @@ func applyLifecycleSnapshotToPatch(patch *agentsessionstore.WorkspaceAgentStateP
 	return true
 }
 
-func submitAvailabilityPatchForSnapshotPhase(phase string) *agentsessionstore.WorkspaceAgentSubmitAvailability {
+func submitAvailabilityPatchForSnapshotPhase(phase string) *canonical.WorkspaceAgentSubmitAvailability {
 	switch {
 	case phase == "settled":
-		return &agentsessionstore.WorkspaceAgentSubmitAvailability{State: "available"}
+		return &canonical.WorkspaceAgentSubmitAvailability{State: "available"}
 	case activityshared.TurnLifecyclePhaseIsWaiting(phase):
-		return &agentsessionstore.WorkspaceAgentSubmitAvailability{State: "blocked", Reason: "waiting"}
+		return &canonical.WorkspaceAgentSubmitAvailability{State: "blocked", Reason: "waiting"}
 	case activityshared.TurnLifecyclePhaseIsLive(phase):
-		return &agentsessionstore.WorkspaceAgentSubmitAvailability{State: "blocked", Reason: "active_turn"}
+		return &canonical.WorkspaceAgentSubmitAvailability{State: "blocked", Reason: "active_turn"}
 	default:
 		return nil
 	}
@@ -375,7 +405,7 @@ func applyExplicitTurnLifecycleToPatch(patch *agentsessionstore.WorkspaceAgentSt
 		patch.Turn.CompletedCommand = command
 	}
 	patch.SubmitAvailability = cloneSubmitAvailability(patch.Turn.SubmitAvailability)
-	patch.TurnLifecycle = &agentsessionstore.WorkspaceAgentTurnLifecycle{
+	patch.TurnLifecycle = &canonical.WorkspaceAgentTurnLifecycle{
 		ActiveTurnID:     turnActive,
 		Phase:            lifecyclePhase,
 		Outcome:          nil,
@@ -393,7 +423,7 @@ func providerUsesExplicitTurnLifecyclePatch(provider string) bool {
 	return false
 }
 
-func completedCommandFromEventMetadata(metadata map[string]any) *agentsessionstore.WorkspaceAgentCompletedCommand {
+func completedCommandFromEventMetadata(metadata map[string]any) *canonical.WorkspaceAgentCompletedCommand {
 	kind := firstNonEmptyString(
 		stringFromPayload(metadata, "completedCommandKind"),
 		stringFromPayload(metadata, "noticeCommand"),
@@ -405,7 +435,7 @@ func completedCommandFromEventMetadata(metadata map[string]any) *agentsessionsto
 	if kind == "" || status == "" {
 		return nil
 	}
-	return &agentsessionstore.WorkspaceAgentCompletedCommand{
+	return &canonical.WorkspaceAgentCompletedCommand{
 		Kind:   kind,
 		Status: status,
 	}
@@ -444,14 +474,14 @@ func explicitTurnLifecycleOutcomeFromActivityEvent(event activityshared.Event) s
 	}
 }
 
-func submitAvailabilityForExplicitLifecyclePhase(phase string) *agentsessionstore.WorkspaceAgentSubmitAvailability {
+func submitAvailabilityForExplicitLifecyclePhase(phase string) *canonical.WorkspaceAgentSubmitAvailability {
 	switch phase {
 	case "settled":
-		return &agentsessionstore.WorkspaceAgentSubmitAvailability{State: "available"}
+		return &canonical.WorkspaceAgentSubmitAvailability{State: "available"}
 	case "waiting":
-		return &agentsessionstore.WorkspaceAgentSubmitAvailability{State: "blocked", Reason: "waiting"}
+		return &canonical.WorkspaceAgentSubmitAvailability{State: "blocked", Reason: "waiting"}
 	case "submitted", "running":
-		return &agentsessionstore.WorkspaceAgentSubmitAvailability{State: "blocked", Reason: "active_turn"}
+		return &canonical.WorkspaceAgentSubmitAvailability{State: "blocked", Reason: "active_turn"}
 	default:
 		return nil
 	}

@@ -90,6 +90,8 @@ type IssueManagerService interface {
 	DeleteTopic(context.Context, string, string) (bool, error)
 	ListIssues(context.Context, string, workspaceservice.ListIssueManagerItemsInput) (workspaceissues.IssueList, error)
 	CreateIssue(context.Context, string, workspaceservice.CreateIssueManagerIssueInput) (workspaceissues.Issue, error)
+	CreateIssueFromPlan(context.Context, string, workspaceservice.CreateIssueManagerIssueFromPlanInput) (workspaceissues.IssueDetail, error)
+	EstimateAutoTokenBudget(context.Context, string, workspaceservice.EstimateIssueManagerAutoTokenBudgetInput) (workspaceservice.IssueManagerAutoTokenBudgetEstimate, error)
 	GetIssueDetail(context.Context, string, string) (workspaceissues.IssueDetail, error)
 	SearchIssueOutputs(context.Context, workspaceissues.RunOutputSearchParams) ([]workspaceissues.RunOutputSearchHit, error)
 	UpdateIssue(context.Context, string, string, workspaceservice.UpdateIssueManagerIssueInput) (workspaceissues.Issue, error)
@@ -108,4 +110,9 @@ type IssueManagerService interface {
 	CompleteRun(context.Context, string, string, string, string, workspaceservice.CompleteIssueManagerRunInput) (workspaceissues.RunDetail, error)
 	RemoveIssueContextRef(context.Context, string, string, string) (bool, error)
 	RemoveTaskContextRef(context.Context, string, string, string, string) (bool, error)
+}
+
+type IssueExecutionService interface {
+	CancelIssueExecution(context.Context, string, string) (int, error)
+	CancelTuttiModeIssueExecution(context.Context, string, string) (int, error)
 }

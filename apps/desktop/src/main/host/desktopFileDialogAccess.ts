@@ -5,6 +5,7 @@ import type {
   SaveDialogOptions,
   SaveDialogReturnValue
 } from "electron";
+import { dirname } from "node:path";
 import {
   createTranslator,
   type DesktopLocale
@@ -31,6 +32,7 @@ export interface DesktopSelectUploadFilesInput {
 }
 
 export interface DesktopFileDialogAccessDependencies {
+  getDefaultPath?: (name: "documents" | "downloads") => string;
   getLocale: () => DesktopLocale;
   showOpenDialog?: ShowOpenDialog;
   showSaveDialog?: ShowSaveDialog;
@@ -51,11 +53,14 @@ export function createDesktopFileDialogAccess(
 ): DesktopFileDialogAccess {
   const showOpenDialog = deps.showOpenDialog ?? defaultShowOpenDialog;
   const showSaveDialog = deps.showSaveDialog ?? defaultShowSaveDialog;
+  let lastImportDirectory = deps.getDefaultPath?.("downloads");
+  let lastProjectDirectory = deps.getDefaultPath?.("documents");
 
   return {
     async selectAppArchive(ownerWindow) {
       const translator = createTranslator(deps.getLocale());
       const selection = await showOpenDialog(ownerWindow, {
+        ...defaultPathOption(lastImportDirectory),
         filters: [
           {
             extensions: ["zip"],
@@ -69,7 +74,11 @@ export function createDesktopFileDialogAccess(
         return null;
       }
 
-      return selection.filePaths[0] ?? null;
+      const selectedPath = selection.filePaths[0] ?? null;
+      lastImportDirectory = selectedPath
+        ? dirname(selectedPath)
+        : lastImportDirectory;
+      return selectedPath;
     },
 
     async selectAppArchiveExportPath(defaultPath, ownerWindow) {
@@ -88,11 +97,13 @@ export function createDesktopFileDialogAccess(
         return null;
       }
 
+      lastImportDirectory = dirname(selection.filePath);
       return selection.filePath;
     },
 
     async selectAppIconImage(ownerWindow) {
       const selection = await showOpenDialog(ownerWindow, {
+        ...defaultPathOption(lastImportDirectory),
         filters: [
           { extensions: ["png", "jpg", "jpeg", "webp"], name: "Image" }
         ],
@@ -103,7 +114,11 @@ export function createDesktopFileDialogAccess(
         return null;
       }
 
-      return selection.filePaths[0] ?? null;
+      const selectedPath = selection.filePaths[0] ?? null;
+      lastImportDirectory = selectedPath
+        ? dirname(selectedPath)
+        : lastImportDirectory;
+      return selectedPath;
     },
 
     async selectDirectory(ownerWindow) {
@@ -111,6 +126,7 @@ export function createDesktopFileDialogAccess(
       const selectDirectoryLabel = translator.t("common.selectFolder");
       const selection = await showOpenDialog(ownerWindow, {
         buttonLabel: selectDirectoryLabel,
+        ...defaultPathOption(lastProjectDirectory),
         properties: ["openDirectory"],
         title: selectDirectoryLabel
       });
@@ -119,7 +135,9 @@ export function createDesktopFileDialogAccess(
         return null;
       }
 
-      return selection.filePaths[0] ?? null;
+      const selectedPath = selection.filePaths[0] ?? null;
+      lastProjectDirectory = selectedPath ?? lastProjectDirectory;
+      return selectedPath;
     },
 
     async selectUploadFiles(ownerWindow, input) {
@@ -131,6 +149,7 @@ export function createDesktopFileDialogAccess(
         properties.splice(1, 0, "openDirectory");
       }
       const selection = await showOpenDialog(ownerWindow, {
+        ...defaultPathOption(lastImportDirectory),
         properties
       });
 
@@ -138,9 +157,16 @@ export function createDesktopFileDialogAccess(
         return [];
       }
 
+      lastImportDirectory = dirname(selection.filePaths[0]!);
       return selection.filePaths;
     }
   };
+}
+
+function defaultPathOption(
+  defaultPath: string | undefined
+): Pick<OpenDialogOptions, "defaultPath"> | Record<never, never> {
+  return defaultPath ? { defaultPath } : {};
 }
 
 async function defaultShowOpenDialog(

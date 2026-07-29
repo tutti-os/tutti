@@ -6,10 +6,11 @@ import (
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 func messageUpdateFromSessionEvent(
-	source agentsessionstore.EventSource,
+	source canonical.EventSource,
 	event activityshared.Event,
 	sessionID string,
 	timestamp int64,
@@ -82,11 +83,11 @@ func textMessageUpdateFromSessionEvent(
 	return update, true
 }
 
-func messageSemanticsFromMetadata(metadata map[string]any) *agentsessionstore.WorkspaceAgentMessageSemantics {
+func messageSemanticsFromMetadata(metadata map[string]any) *canonical.WorkspaceAgentMessageSemantics {
 	if len(metadata) == 0 {
 		return nil
 	}
-	semantics := agentsessionstore.WorkspaceAgentMessageSemantics{}
+	semantics := canonical.WorkspaceAgentMessageSemantics{}
 	if value, ok := metadata["userVisibleAssistantResponse"].(bool); ok {
 		semantics.UserVisibleAssistantResponse = value
 	}
@@ -134,7 +135,7 @@ func forwardSystemNoticeMessageMetadata(payload map[string]any, metadata map[str
 }
 
 func callMessageUpdateFromSessionEvent(
-	source agentsessionstore.EventSource,
+	source canonical.EventSource,
 	event activityshared.Event,
 	sessionID string,
 	timestamp int64,

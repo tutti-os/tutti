@@ -7,12 +7,12 @@ import (
 	"log/slog"
 	"strings"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
 
-func (s *AppFactoryService) ObserveAgentSessionMessages(_ context.Context, input agentsessionstore.ReportSessionMessagesInput, reply agentsessionstore.ReportSessionMessagesReply) {
+func (s *AppFactoryService) ObserveAgentSessionMessages(_ context.Context, input canonical.ReportSessionMessagesInput, reply canonical.ReportSessionMessagesReply) {
 	if reply.AcceptedCount <= 0 {
 		return
 	}
@@ -39,7 +39,7 @@ func (s *AppFactoryService) ObserveAgentSessionMessages(_ context.Context, input
 	}()
 }
 
-func (s *AppFactoryService) ObserveAgentSessionState(_ context.Context, input agentsessionstore.ReportSessionStateInput, reply agentsessionstore.ReportSessionStateReply) {
+func (s *AppFactoryService) ObserveAgentSessionState(_ context.Context, input canonical.ReportSessionStateInput, reply canonical.ReportSessionStateReply) {
 	if !reply.Accepted || !reply.StateApplied {
 		return
 	}
@@ -305,14 +305,14 @@ func normalizeFactoryAgentSessionStatus(status string) string {
 	}
 }
 
-func factorySettledTurnOutcome(turn *agentsessionstore.WorkspaceAgentTurnStateUpdate) string {
+func factorySettledTurnOutcome(turn *canonical.WorkspaceAgentTurnStateUpdate) string {
 	if turn == nil || strings.TrimSpace(turn.Phase) != "settled" {
 		return ""
 	}
 	return normalizeFactoryAgentSessionStatus(turn.Outcome)
 }
 
-func factoryAgentMessageUpdatesContainCompletedAssistantText(updates []agentsessionstore.WorkspaceAgentSessionMessageUpdate) bool {
+func factoryAgentMessageUpdatesContainCompletedAssistantText(updates []canonical.WorkspaceAgentSessionMessageUpdate) bool {
 	for _, update := range updates {
 		if isCompletedAssistantTextMessage(update.Role, update.Kind, update.Status, update.Payload) {
 			return true
@@ -321,7 +321,7 @@ func factoryAgentMessageUpdatesContainCompletedAssistantText(updates []agentsess
 	return false
 }
 
-func factoryAgentMessageUpdatesContainCanceledTurnToolCall(updates []agentsessionstore.WorkspaceAgentSessionMessageUpdate) bool {
+func factoryAgentMessageUpdatesContainCanceledTurnToolCall(updates []canonical.WorkspaceAgentSessionMessageUpdate) bool {
 	for _, update := range updates {
 		if isCanceledTurnToolCallMessage(update.Kind, update.Status, update.Payload) {
 			return true

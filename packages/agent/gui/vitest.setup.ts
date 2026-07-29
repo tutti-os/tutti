@@ -1,26 +1,12 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach, beforeEach } from "vitest";
-import {
-  resetAgentHostApiForTests,
-  setAgentHostApiForTests
-} from "./agentActivityHost";
+import { setAgentHostApiForTests } from "./agentActivityHost";
 import type {
   AgentHostInputApi,
   AgentHostRuntimeApi
 } from "./host/agentHostApi";
-import { installReactRenderLoopConsoleTrap } from "./test/reactRenderLoopConsoleTrap";
-
-// Vitest 4 runs with NODE_ENV=development; agent test harnesses gate on "test".
-process.env.NODE_ENV = "test";
-
-const originalConsoleInfo = console.info.bind(console);
-console.info = (...args: unknown[]) => {
-  if (isSuppressedAgentGuiDiagnostic(args)) {
-    return;
-  }
-  originalConsoleInfo(...args);
-};
+import { createTestAgentHostApi } from "./vitest.shared.setup";
 
 class TestResizeObserver implements ResizeObserver {
   observe(): void {}
@@ -85,59 +71,40 @@ if (typeof Range !== "undefined") {
   });
 }
 
-let restoreReactRenderLoopConsoleTrap: (() => void) | null = null;
+const testLocalStorageValues = new Map<string, string>();
+const testLocalStorage: Storage = {
+  get length() {
+    return testLocalStorageValues.size;
+  },
+  clear() {
+    testLocalStorageValues.clear();
+  },
+  getItem(key) {
+    return testLocalStorageValues.get(key) ?? null;
+  },
+  key(index) {
+    return Array.from(testLocalStorageValues.keys())[index] ?? null;
+  },
+  removeItem(key) {
+    testLocalStorageValues.delete(key);
+  },
+  setItem(key, value) {
+    testLocalStorageValues.set(key, String(value));
+  }
+};
+Object.defineProperty(window, "localStorage", {
+  configurable: true,
+  value: testLocalStorage
+});
 
 beforeEach(() => {
-  restoreReactRenderLoopConsoleTrap?.();
-  restoreReactRenderLoopConsoleTrap = installReactRenderLoopConsoleTrap({
-    console
-  });
-  resetAgentHostApiForTests();
-  resetMentionSearchBrowseCacheForTests();
-  installTestLocalStorage();
+  testLocalStorage.clear();
   installTestAgentHostApi();
 });
 
 afterEach(() => {
-  try {
-    cleanup();
-    resetAgentHostApiForTests();
-    resetMentionSearchBrowseCacheForTests();
-  } finally {
-    restoreReactRenderLoopConsoleTrap?.();
-    restoreReactRenderLoopConsoleTrap = null;
-  }
+  cleanup();
 });
-
-function resetMentionSearchBrowseCacheForTests(): void {
-  (
-    globalThis as typeof globalThis & {
-      __tuttiResetAgentMentionSearchBrowseCacheForTests?: () => void;
-    }
-  ).__tuttiResetAgentMentionSearchBrowseCacheForTests?.();
-}
-
-function installTestLocalStorage(): void {
-  if (typeof window.localStorage?.clear === "function") {
-    return;
-  }
-  const values = new Map<string, string>();
-  Object.defineProperty(window, "localStorage", {
-    configurable: true,
-    value: {
-      get length() {
-        return values.size;
-      },
-      clear: () => values.clear(),
-      getItem: (key: string) => values.get(key) ?? null,
-      key: (index: number) => Array.from(values.keys())[index] ?? null,
-      removeItem: (key: string) => values.delete(key),
-      setItem: (key: string, value: string) => {
-        values.set(key, String(value));
-      }
-    }
-  });
-}
 
 function installTestAgentHostApi(): void {
   const windowWithAgentHost = window as unknown as Window & {
@@ -149,13 +116,8 @@ function installTestAgentHostApi(): void {
     setAgentHostApiForTests(windowWithAgentHost.agentHostApi ?? null);
     return;
   }
-  let testAgentHostApi: AgentHostInputApi | AgentHostRuntimeApi | null = {
-    account: {},
-    clipboard: {},
-    debug: {},
-    filesystem: {},
-    workspace: {}
-  } as unknown as AgentHostRuntimeApi;
+  let testAgentHostApi: AgentHostInputApi | AgentHostRuntimeApi | null =
+    createTestAgentHostApi();
   Object.defineProperty(windowWithAgentHost, "agentHostApi", {
     configurable: true,
     get() {
@@ -167,12 +129,4 @@ function installTestAgentHostApi(): void {
     }
   });
   setAgentHostApiForTests(testAgentHostApi);
-}
-
-function isSuppressedAgentGuiDiagnostic(args: readonly unknown[]): boolean {
-  const [prefix] = args;
-  return (
-    prefix === "[agent-gui] mention-lifecycle" ||
-    prefix === "[agent-gui] mention-search"
-  );
 }

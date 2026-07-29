@@ -60,6 +60,7 @@ test("resolveReleaseTagNames includes package Go module tags", async () => {
       "packages/agent/activity-replication/v0.0.25",
       "packages/agent/store-sqlite/canonical/v0.0.25",
       "packages/appcli/core/v0.0.25",
+      "packages/device-link/v0.0.25",
       "packages/workbench/service/v0.0.25",
       "packages/workspace/files/v0.0.25",
       "packages/workspace/issues/v0.0.25"

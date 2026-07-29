@@ -1,4 +1,4 @@
-import { createElement, type CSSProperties, type ReactNode } from "react";
+import { createElement, type ReactNode } from "react";
 import type {
   AgentGUIProvider,
   AgentGUIAllAgentsPresentation,
@@ -18,7 +18,10 @@ import type {
 } from "@tutti-os/agent-gui/workbench/types";
 import { isAgentGuiWorkbenchProvider } from "@tutti-os/agent-gui/workbench/providerCatalog";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
-import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import type {
+  TuttidClient,
+  TuttidEventStreamClient
+} from "@tutti-os/client-tuttid-ts";
 import type {
   WorkbenchContribution,
   WorkbenchDockPreviewCache
@@ -26,6 +29,7 @@ import type {
 import type {
   DesktopComputerUseApi,
   DesktopHostFilesApi,
+  DesktopHostWindowApi,
   DesktopPlatformApi,
   DesktopRuntimeApi
 } from "@preload/types";
@@ -37,10 +41,13 @@ import type {
 } from "@renderer/features/workspace-agent";
 import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project";
 import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
+import type { IWorkspaceFilePreviewSurfaceHost } from "@renderer/features/workspace-file-preview";
 import type { IReporterService } from "@renderer/features/analytics";
 import { createDesktopAgentGUIWorkbenchHostInput } from "@renderer/features/workspace-agent/services/createDesktopAgentGUIWorkbenchHostInput.ts";
+import { createDesktopWorkspaceAgentStatusSource } from "@renderer/features/workspace-agent/services/createDesktopAgentStatusSource.ts";
 import { requestWorkspaceAgentGuiLaunch } from "@renderer/features/workspace-agent/services/workspaceAgentGuiLaunchCoordinator.ts";
 import type { IAgentProviderStatusService as AgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
+import type { IAgentQuickPromptService as AgentQuickPromptService } from "@renderer/features/workspace-agent/services/agentQuickPromptService.interface.ts";
 import type { DesktopAgentGUIWorkbenchBodyProps } from "@renderer/features/workspace-agent/ui/desktopAgentGUIWorkbenchModel.ts";
 import { DesktopAgentGUIWorkbenchBody } from "@renderer/features/workspace-agent/ui/DesktopAgentGUIWorkbenchBody.tsx";
 import { runDesktopAgentGUILinkAction } from "@renderer/features/workspace-agent/services/desktopAgentGUILinkActions.ts";
@@ -56,6 +63,7 @@ import { useExternalStoreValue } from "../../ui/useExternalStoreValue.ts";
 import { workspaceAgentGuiNodeFrame } from "./workspaceWorkbenchComposition.ts";
 
 export function createWorkspaceAgentGuiContribution(input: {
+  agentQuickPromptService?: AgentQuickPromptService;
   agentProviderStatusService: AgentProviderStatusService;
   appCenterService: IWorkspaceAppCenterService;
   appI18n: I18nRuntime<string>;
@@ -69,6 +77,7 @@ export function createWorkspaceAgentGuiContribution(input: {
   >[0]["unifiedDockIconUrl"];
   defaultAgentProvider?: string | null;
   hostFilesApi: DesktopHostFilesApi;
+  hostWindowApi: Pick<DesktopHostWindowApi, "openAgentWindow">;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
   onCapabilitySettingsRequest?: DesktopAgentGUIWorkbenchBodyProps["onCapabilitySettingsRequest"];
   agentsService: Pick<IAgentsService, "getSnapshot" | "subscribe">;
@@ -76,6 +85,7 @@ export function createWorkspaceAgentGuiContribution(input: {
   renderAgentsEmpty?: AgentGUIAgentsEmptyRenderer;
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
   tuttidClient: TuttidClient;
+  eventStreamClient?: TuttidEventStreamClient;
   platformApi: Pick<
     DesktopPlatformApi,
     "homeDirectory" | "os" | "resolveDroppedEntries" | "resolveDroppedPaths"
@@ -85,6 +95,7 @@ export function createWorkspaceAgentGuiContribution(input: {
   runtimeApi: DesktopRuntimeApi;
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
   workspaceFileManagerService: IWorkspaceFileManagerService;
+  workspaceFilePreviewSurfaceHost: IWorkspaceFilePreviewSurfaceHost;
   workspaceUserProjectService: IWorkspaceUserProjectService;
   workspaceId: string;
 }): WorkbenchContribution {
@@ -96,7 +107,9 @@ export function createWorkspaceAgentGuiContribution(input: {
     ? input.defaultAgentProvider
     : null;
   const agentGUIWorkbenchHostInput = createDesktopAgentGUIWorkbenchHostInput({
+    agentQuickPromptService: input.agentQuickPromptService,
     hostFilesApi: input.hostFilesApi,
+    eventStreamClient: input.eventStreamClient,
     tuttidClient: input.tuttidClient,
     platformApi: input.platformApi,
     reporterService: input.reporterService,
@@ -104,7 +117,15 @@ export function createWorkspaceAgentGuiContribution(input: {
     runtimeApi: input.runtimeApi,
     workspaceAgentActivityService: input.workspaceAgentActivityService,
     workspaceFileManagerService: input.workspaceFileManagerService,
+    workspaceFilePreviewSurfaceHost: input.workspaceFilePreviewSurfaceHost,
     workspaceUserProjectService: input.workspaceUserProjectService,
+    workspaceId: input.workspaceId
+  });
+  const workspaceAgentStatusSource = createDesktopWorkspaceAgentStatusSource({
+    agentActivityRuntime: agentGUIWorkbenchHostInput.agentActivityRuntime,
+    agents: () => input.agentsService.getSnapshot().agents,
+    workspaceAgentProbes:
+      agentGUIWorkbenchHostInput.agentHostApi.workspaceAgentProbes,
     workspaceId: input.workspaceId
   });
   const trackWorkspaceAgentGUIEngagement =
@@ -131,6 +152,7 @@ export function createWorkspaceAgentGuiContribution(input: {
       },
       launchGroupChat: requestGroupChatLaunch,
       openBrowserUrl: requestWorkspaceBrowserLaunch,
+      openExternalUrl: (url) => input.hostFilesApi.openExternal(url),
       workspaceId: input.workspaceId
     });
   };
@@ -140,13 +162,18 @@ export function createWorkspaceAgentGuiContribution(input: {
     >[0],
     helpers: Parameters<
       Parameters<typeof createAgentGuiWorkbenchContribution>[0]["renderBody"]
-    >[1],
-    options?: { previewMode?: boolean }
+    >[1]
   ) => {
-    const previewMode = options?.previewMode === true;
     return createElement(DesktopWorkspaceAgentGUIWorkbenchBody, {
       agentActivityRuntime: agentGUIWorkbenchHostInput.agentActivityRuntime,
       agentHostApi: agentGUIWorkbenchHostInput.agentHostApi,
+      agentSessionActivityReplay:
+        agentGUIWorkbenchHostInput.agentSessionActivityReplay,
+      agentSessionReplayService:
+        agentGUIWorkbenchHostInput.agentSessionReplayService,
+      agentStatusSource: workspaceAgentStatusSource,
+      tuttiModePlanReviewRuntime:
+        agentGUIWorkbenchHostInput.tuttiModePlanReviewRuntime,
       appCenterService: input.appCenterService,
       agentProviderStatusService: input.agentProviderStatusService,
       context,
@@ -161,7 +188,6 @@ export function createWorkspaceAgentGuiContribution(input: {
         });
       },
       onStateChange: (...args) => helpers.onStateChange(...args),
-      previewMode,
       agentsService: helpers.agentDirectory,
       allAgentsPresentation: input.allAgentsPresentation,
       renderAgentsEmpty: input.renderAgentsEmpty,
@@ -177,8 +203,10 @@ export function createWorkspaceAgentGuiContribution(input: {
         agentGUIWorkbenchHostInput.trackWorkspaceFileReferences,
       workspaceFileReferenceAdapter:
         agentGUIWorkbenchHostInput.workspaceFileReferenceAdapter,
-      resolveDroppedFileReferences:
-        agentGUIWorkbenchHostInput.resolveDroppedFileReferences,
+      resolveExternalPromptEntries:
+        agentGUIWorkbenchHostInput.resolveExternalPromptEntries,
+      prepareExternalPromptFiles:
+        agentGUIWorkbenchHostInput.prepareExternalPromptFiles,
       onRequestGitBranches: agentGUIWorkbenchHostInput.onRequestGitBranches,
       referenceSourceAggregator:
         agentGUIWorkbenchHostInput.referenceSourceAggregator,
@@ -204,10 +232,23 @@ export function createWorkspaceAgentGuiContribution(input: {
         "workspace.agentGui.fallbackAgentLabel"
       ),
       newConversation: input.appI18n.t("workspace.agentGui.newConversation"),
+      openDetachedWindow: input.appI18n.t("workspace.agentGui.openNewWindow"),
       nodeTitle: input.i18n.t(workspaceWorkbenchDesktopI18nKeys.nodes.agent),
       untitledConversation: input.appI18n.t(
         "workspace.agentGui.untitledConversation"
-      )
+      ),
+      sessionMenu: {
+        copyAsMarkdown: input.appI18n.t(
+          "workspace.agentGui.sessionMenu.copyAsMarkdown"
+        ),
+        copyAsReference: input.appI18n.t(
+          "workspace.agentGui.sessionMenu.copyAsReference"
+        ),
+        moreSessionActions: input.appI18n.t(
+          "workspace.agentGui.sessionMenu.moreActions"
+        ),
+        renameSession: input.appI18n.t("workspace.agentGui.sessionMenu.rename")
+      }
     },
     dockIconUrls: input.dockIconUrls,
     unifiedDockIconUrl: input.unifiedDockIconUrl,
@@ -219,31 +260,20 @@ export function createWorkspaceAgentGuiContribution(input: {
     ),
     renderBody: (context, helpers) =>
       renderAgentGuiWorkbenchBody(context, helpers),
-    renderPreview: (context, helpers) =>
-      createElement(
-        DesktopAgentGUIWorkbenchDockPreviewFrame,
-        { height: context.node.frame.height, width: context.node.frame.width },
-        renderAgentGuiWorkbenchBody(context, helpers, { previewMode: true })
-      ),
-    renderMinimizedPreview: (context, helpers) => {
-      const previewViewport =
-        context.previewViewport ?? minimizedDockPreviewViewport;
-      return createElement(
-        DesktopAgentGUIWorkbenchDockPreviewFrame,
-        {
-          height: context.node.frame.height,
-          viewport: previewViewport,
-          width: context.node.frame.width
-        },
-        renderAgentGuiWorkbenchBody(context, helpers, { previewMode: true })
-      );
-    },
     resolveDockPopupIdentity: (state) =>
       resolveWorkspaceAgentGuiDockPopupIdentity(state, {
         dockIconUrls: input.dockIconUrls,
         agents: input.agentsService.getSnapshot().agents,
         sessionEngine
       }),
+    onOpenDetachedWindow: ({ agentTargetId, provider }) => {
+      void requestWorkspaceAgentGuiLaunch({
+        agentTargetId,
+        openInNewWindow: true,
+        provider,
+        workspaceId: input.workspaceId
+      });
+    },
     sessionEngine,
     workspaceId: input.workspaceId
   });
@@ -344,63 +374,4 @@ function resolveWorkspaceAgentGuiDockPopupIdentity(
     engineState: input.sessionEngine.getSnapshot(),
     workbenchState: state
   });
-}
-
-const dockPopupPreviewViewport = {
-  height: 95,
-  width: 157
-};
-
-const minimizedDockPreviewViewport = {
-  height: 34.2,
-  width: 46.8
-};
-
-function DesktopAgentGUIWorkbenchDockPreviewFrame({
-  children,
-  height,
-  viewport = dockPopupPreviewViewport,
-  width
-}: {
-  children?: ReactNode;
-  height: number;
-  viewport?: { height: number; width: number };
-  width: number;
-}): ReactNode {
-  const safeWidth = Math.max(1, width);
-  const safeHeight = Math.max(1, height);
-  const scale = Math.min(
-    viewport.width / safeWidth,
-    viewport.height / safeHeight
-  );
-  const bodyStyle = {
-    height: `${safeHeight}px`,
-    left: "50%",
-    position: "absolute",
-    top: "50%",
-    transform: `translate(-50%, -50%) scale(${scale})`,
-    transformOrigin: "center",
-    width: `${safeWidth}px`
-  } satisfies CSSProperties;
-
-  return createElement(
-    "span",
-    {
-      "aria-hidden": "true",
-      className:
-        "relative block h-full w-full overflow-hidden rounded-md bg-transparent",
-      style: {
-        height: `${viewport.height}px`,
-        width: `${viewport.width}px`
-      } satisfies CSSProperties
-    },
-    createElement(
-      "span",
-      {
-        className: "pointer-events-none block overflow-hidden",
-        style: bodyStyle
-      },
-      children
-    )
-  );
 }

@@ -13,13 +13,10 @@ export function normalizeAgentGUIAgents(
     const agentTargetId = agent.agentTargetId.trim();
     const name = agent.name.trim();
     const iconUrl = agent.iconUrl.trim();
+    const maskIconUrl = agent.maskIconUrl?.trim() ?? "";
     const heroImageUrl = agent.heroImageUrl?.trim() ?? "";
-    if (
-      !agentTargetId ||
-      !name ||
-      !iconUrl ||
-      seenAgentTargetIds.has(agentTargetId)
-    ) {
+    const ownerDeviceLabel = agent.ownerDeviceLabel?.trim() ?? "";
+    if (!agentTargetId || !name || seenAgentTargetIds.has(agentTargetId)) {
       continue;
     }
     seenAgentTargetIds.add(agentTargetId);
@@ -30,10 +27,12 @@ export function normalizeAgentGUIAgents(
       agentTargetId,
       name,
       iconUrl,
+      ...(maskIconUrl ? { maskIconUrl } : {}),
       ...(heroImageUrl ? { heroImageUrl } : {}),
       ...(agent.description?.trim()
         ? { description: agent.description.trim() }
         : {}),
+      ...(ownerDeviceLabel ? { ownerDeviceLabel } : {}),
       ...(ownerName || ownerAvatarUrl
         ? {
             owner: {
@@ -41,6 +40,9 @@ export function normalizeAgentGUIAgents(
               ...(ownerAvatarUrl ? { avatarUrl: ownerAvatarUrl } : {})
             }
           }
+        : {}),
+      ...(agent.ownership === "self" || agent.ownership === "shared"
+        ? { ownership: agent.ownership }
         : {}),
       availability: {
         status: normalizeAgentGUIAgentAvailabilityStatus(
@@ -51,7 +53,10 @@ export function normalizeAgentGUIAgents(
           ? { pendingAction: agent.availability.pendingAction }
           : {})
       },
-      provider: agent.provider
+      provider: agent.provider,
+      ...(agent.setupKind === "target_runtime"
+        ? { setupKind: "target_runtime" as const }
+        : {})
     });
   }
   return normalized;
@@ -82,8 +87,8 @@ export function resolveAgentGUISelectedDirectoryAgent(input: {
   );
 }
 
-/** Package-internal bridge while the carried node is migrated to agent names. */
-export function projectAgentGUIAgentsToInternalTargets(
+/** Projects the canonical Agent directory into target rows for selection menus. */
+export function projectAgentGUIAgentsToTargets(
   agents: readonly AgentGUIAgent[]
 ): AgentGUIAgentTarget[] {
   return agents.map((agent) => ({
@@ -93,13 +98,18 @@ export function projectAgentGUIAgentsToInternalTargets(
     ref: {
       kind: "agent-directory",
       provider: agent.provider,
-      agentTargetId: agent.agentTargetId
+      agentTargetId: agent.agentTargetId,
+      ...(agent.setupKind ? { setupKind: agent.setupKind } : {})
     },
     label: agent.name,
     availability: agent.availability,
     ...(agent.description ? { description: agent.description } : {}),
     iconUrl: agent.iconUrl,
+    ...(agent.maskIconUrl ? { maskIconUrl: agent.maskIconUrl } : {}),
     ...(agent.heroImageUrl ? { heroImageUrl: agent.heroImageUrl } : {}),
+    ...(agent.ownerDeviceLabel
+      ? { ownerDeviceLabel: agent.ownerDeviceLabel }
+      : {}),
     ...(agent.owner?.avatarUrl
       ? {
           badge: {
@@ -109,7 +119,10 @@ export function projectAgentGUIAgentsToInternalTargets(
         }
       : {}),
     ...(agent.owner?.name ? { ownerLabel: agent.owner.name } : {}),
-    ...(agent.availability.status !== "ready" ? { disabled: true } : {}),
+    ...(agent.ownership ? { ownership: agent.ownership } : {}),
+    ...(agent.availability.status !== "ready" && !agent.setupKind
+      ? { disabled: true }
+      : {}),
     ...(agent.availability.reason
       ? { unavailableReason: agent.availability.reason }
       : {})

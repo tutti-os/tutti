@@ -43,7 +43,7 @@ func TestGoalReconcileEvidencePropagatesFenceReadFailure(t *testing.T) {
 	store := &goalEvidenceFenceStore{recordingGoalStateStore: &recordingGoalStateStore{}, stateErr: want}
 	service := newIsolatedAgentService(newFakeRuntime())
 	service.GoalStateStore = store
-	err := service.ReconcileGoalFromEvidence(context.Background(), GoalReconcileRequiredInput{
+	err := service.ApplicationHost().ReconcileGoalFromEvidence(context.Background(), GoalReconcileRequiredInput{
 		WorkspaceID: "ws", AgentSessionID: "session", RequestID: "request", ProviderTurnID: "turn",
 		FenceMode: "operation", ExpectedOperationID: "operation", ExpectedRevision: 1, QuiesceSucceeded: true,
 	})
@@ -89,15 +89,15 @@ func TestGoalReconcileEvidenceRejectsOldOperationAfterSameRevisionRepair(t *test
 	}
 	service := newIsolatedAgentService(newFakeRuntime())
 	service.GoalStateStore = store
-	matches, err := service.goalReconcileEvidenceFenceMatches(context.Background(), GoalReconcileRequiredInput{
+	err := service.ApplicationHost().ReconcileGoalFromEvidence(context.Background(), GoalReconcileRequiredInput{
 		WorkspaceID: "ws", AgentSessionID: "session", FenceMode: "operation",
-		ExpectedOperationID: "old-op", ExpectedRevision: 2, ExpectedRepairEpoch: 0,
+		ExpectedOperationID: "old-op", ExpectedRevision: 2, ExpectedRepairEpoch: 0, QuiesceSucceeded: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if matches {
-		t.Fatal("old same-revision operation evidence passed after repair operation became current")
+	if len(store.evidenceInputs) != 0 || len(store.reconcileInputs) != 0 {
+		t.Fatalf("old same-revision evidence was applied: evidence=%#v reconcile=%#v", store.evidenceInputs, store.reconcileInputs)
 	}
 }
 
@@ -116,7 +116,7 @@ func TestGoalReconcileEvidenceFailedQuiesceAttachesRepairWithoutReconciling(t *t
 	}
 	service := newIsolatedAgentService(newFakeRuntime())
 	service.GoalStateStore = store
-	err := service.ReconcileGoalFromEvidence(context.Background(), GoalReconcileRequiredInput{
+	err := service.ApplicationHost().ReconcileGoalFromEvidence(context.Background(), GoalReconcileRequiredInput{
 		WorkspaceID: "ws", AgentSessionID: "session", RequestID: "request-1", ProviderTurnID: "provider-old",
 		FenceMode: "operation", ExpectedOperationID: "goal-op-3", ExpectedRevision: 3, ExpectedRepairEpoch: 2,
 		QuiesceSucceeded: false, QuiesceError: "interrupt rejected",
@@ -151,7 +151,7 @@ func TestGoalReconcileEvidenceFailedQuiesceRepairsRevisionAdvancedBeforeReport(t
 	}
 	service := newIsolatedAgentService(newFakeRuntime())
 	service.GoalStateStore = store
-	if err := service.ReconcileGoalFromEvidence(context.Background(), GoalReconcileRequiredInput{
+	if err := service.ApplicationHost().ReconcileGoalFromEvidence(context.Background(), GoalReconcileRequiredInput{
 		WorkspaceID: "ws", AgentSessionID: "session", RequestID: "late-failure", ProviderTurnID: "old-turn",
 		FenceMode: "operation", ExpectedOperationID: "old-op", ExpectedRevision: 3, ExpectedRepairEpoch: 1,
 		QuiesceSucceeded: false, QuiesceError: "still running",
@@ -182,7 +182,7 @@ func TestGoalReconcileEvidenceRestartedSyncedGoalUsesLastEvidenceForRepair(t *te
 	}
 	service := newIsolatedAgentService(newFakeRuntime())
 	service.GoalStateStore = store
-	err := service.ReconcileGoalFromEvidence(context.Background(), GoalReconcileRequiredInput{
+	err := service.ApplicationHost().ReconcileGoalFromEvidence(context.Background(), GoalReconcileRequiredInput{
 		WorkspaceID: "ws", AgentSessionID: "session", RequestID: "request-restart",
 		ProviderTurnID: "provider-unproven", FenceMode: "current_durable",
 		QuiesceSucceeded: false, QuiesceError: "interrupt rejected",
@@ -214,7 +214,7 @@ func TestGoalReconcileEvidenceRestartedGoalWithoutSourceCreatesRequestRepair(t *
 	}
 	service := newIsolatedAgentService(newFakeRuntime())
 	service.GoalStateStore = store
-	err := service.ReconcileGoalFromEvidence(context.Background(), GoalReconcileRequiredInput{
+	err := service.ApplicationHost().ReconcileGoalFromEvidence(context.Background(), GoalReconcileRequiredInput{
 		WorkspaceID: "ws", AgentSessionID: "session", RequestID: "request-restart",
 		ProviderTurnID: "provider-unproven", FenceMode: "current_durable",
 		QuiesceSucceeded: false, QuiesceError: "interrupt rejected",
@@ -248,10 +248,10 @@ func TestGoalReconcileEvidenceMissingRequestIdentityMarksUnknown(t *testing.T) {
 	}
 	service := newIsolatedAgentService(newFakeRuntime())
 	service.GoalStateStore = store
-	if err := service.attachGoalProvenanceQuiesceRepair(context.Background(), GoalReconcileRequiredInput{
-		WorkspaceID: "ws", AgentSessionID: "session", QuiesceError: "interrupt rejected",
+	if err := service.ApplicationHost().ReconcileGoalFromEvidence(context.Background(), GoalReconcileRequiredInput{
+		WorkspaceID: "ws", AgentSessionID: "session", QuiesceSucceeded: false, QuiesceError: "interrupt rejected",
 	}); err != nil {
-		t.Fatalf("attachGoalProvenanceQuiesceRepair: %v", err)
+		t.Fatalf("ReconcileGoalFromEvidence: %v", err)
 	}
 	if len(store.repairInputs) != 0 || len(store.reconcileInputs) != 1 || !store.reconcileInputs[0].ForceSyncUnknown {
 		t.Fatalf("repair=%#v unknown=%#v", store.repairInputs, store.reconcileInputs)
@@ -281,7 +281,7 @@ func TestGoalReconcileEvidenceDistinctProviderTurnsConsumePersistentIncidentBudg
 	service := newIsolatedAgentService(newFakeRuntime())
 	service.GoalStateStore = store
 	for i := 1; i <= 9; i++ {
-		if err := service.ReconcileGoalFromEvidence(ctx, GoalReconcileRequiredInput{WorkspaceID: "ws", AgentSessionID: "session", RequestID: fmt.Sprintf("request-%d", i), ProviderTurnID: fmt.Sprintf("turn-%d", i), FenceMode: "operation", ExpectedOperationID: "goal-origin", ExpectedRevision: 1, QuiesceSucceeded: false, QuiesceError: "still running"}); err != nil {
+		if err := service.ApplicationHost().ReconcileGoalFromEvidence(ctx, GoalReconcileRequiredInput{WorkspaceID: "ws", AgentSessionID: "session", RequestID: fmt.Sprintf("request-%d", i), ProviderTurnID: fmt.Sprintf("turn-%d", i), FenceMode: "operation", ExpectedOperationID: "goal-origin", ExpectedRevision: 1, QuiesceSucceeded: false, QuiesceError: "still running"}); err != nil {
 			t.Fatalf("incident %d: %v", i, err)
 		}
 	}

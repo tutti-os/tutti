@@ -1,4 +1,4 @@
-import { Component, useCallback, useMemo } from "react";
+import { Component, memo, useCallback, useMemo } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import type { WorkbenchNode } from "../core/types.ts";
 import type {
@@ -9,6 +9,7 @@ import type {
   WorkbenchResolveWindowChromeMode,
   WorkbenchWindowActionContext
 } from "../react/types.ts";
+import { useWorkbenchWindowPresentationVisibility } from "../react/WorkbenchWindowFrame.tsx";
 import type {
   WorkbenchDockPreviewCache,
   WorkbenchDockPreviewCacheKey
@@ -17,12 +18,16 @@ import {
   renderMinimizedDockPreviewContent,
   WorkbenchHostDock
 } from "./WorkbenchHostDock.tsx";
+import { MemoizedWorkbenchHostNodeBodyRenderer } from "./WorkbenchHostNodeBodyRenderer.tsx";
 import {
   createWorkbenchHostNodeBodyContext,
   createWorkbenchHostNodeHeaderContext
 } from "./hostNodeContext.ts";
 import { WorkbenchHostWindowActions } from "./WorkbenchHostWindowActions.tsx";
-import { readWorkbenchHostExternalState } from "./externalState.ts";
+import {
+  readWorkbenchHostExternalState,
+  useWorkbenchHostExternalState
+} from "./externalState.ts";
 import {
   isWorkbenchMinimizedDockEligibleNode,
   resolveWorkbenchMinimizedDockAnchorKeyForNode,
@@ -32,9 +37,10 @@ import type {
   WorkbenchHostChromeRenderContext,
   WorkbenchHostDockEntry,
   WorkbenchHostExternalStateSource,
-  WorkbenchHostNodeBodyContext,
   WorkbenchHostNodeData,
   WorkbenchHostNodeDefinition,
+  WorkbenchHostNodeHeaderContext,
+  WorkbenchHostNodeHeaderFrameRenderKey,
   WorkbenchHostProps,
   WorkbenchHostRuntimeHandle
 } from "./types.ts";
@@ -42,6 +48,7 @@ import type { WorkbenchHostI18nRuntime } from "./workbenchHostI18n.ts";
 
 export function useWorkbenchHostSurfaceRenderers(input: {
   captureNodePreviewImage?: WorkbenchHostProps["captureNodePreviewImage"];
+  captureNodePreviewImages?: WorkbenchHostProps["captureNodePreviewImages"];
   chromeContext: WorkbenchHostChromeRenderContext;
   debugDiagnostics?: WorkbenchHostProps["debugDiagnostics"];
   dockPreviewCache?: WorkbenchDockPreviewCache;
@@ -49,7 +56,6 @@ export function useWorkbenchHostSurfaceRenderers(input: {
   dockEntries: readonly WorkbenchHostDockEntry[];
   dockStateSource?: WorkbenchHostProps["dockStateSource"];
   externalStateSource?: WorkbenchHostExternalStateSource;
-  externalStateRevision: number;
   hostI18n: WorkbenchHostI18nRuntime;
   hostSession: WorkbenchHostRuntimeHandle;
   nodeDefinitionByType: Map<string, WorkbenchHostNodeDefinition>;
@@ -115,7 +121,7 @@ export function useWorkbenchHostSurfaceRenderers(input: {
     input.workspaceId
   ]);
 
-  const captureNodePreviewImage = useCallback(
+  const captureNodeDefinitionPreviewImage = useCallback(
     async (node: WorkbenchNode<WorkbenchHostNodeData>) => {
       const definition = input.nodeDefinitionByType.get(node.data.typeId);
       const minimizedDock = definition?.window?.minimizedDock;
@@ -129,28 +135,65 @@ export function useWorkbenchHostSurfaceRenderers(input: {
         node,
         workspaceId: input.workspaceId
       });
-      const nodePreview =
-        (await Promise.resolve(
-          capturePreview?.({
-            externalNodeState: externalState.externalNodeState,
-            externalWorkspaceState: externalState.externalWorkspaceState,
-            host: input.hostSession,
-            isFocused: snapshot.nodeStack.at(-1) === node.id,
-            isMinimized: node.isMinimized,
-            node
-          }) ?? null
-        ).catch(() => null)) ??
-        (await Promise.resolve(
-          input.captureNodePreviewImage?.(node) ?? null
-        ).catch(() => null));
-      return nodePreview;
+      return Promise.resolve(
+        capturePreview?.({
+          externalNodeState: externalState.externalNodeState,
+          externalWorkspaceState: externalState.externalWorkspaceState,
+          host: input.hostSession,
+          isFocused: snapshot.nodeStack.at(-1) === node.id,
+          isMinimized: node.isMinimized,
+          node
+        }) ?? null
+      ).catch(() => null);
     },
     [
-      input.captureNodePreviewImage,
       input.externalStateSource,
       input.hostSession,
       input.nodeDefinitionByType,
       input.workspaceId
+    ]
+  );
+
+  const captureNodePreviewImage = useCallback(
+    async (node: WorkbenchNode<WorkbenchHostNodeData>) =>
+      (await captureNodeDefinitionPreviewImage(node)) ??
+      (await Promise.resolve(
+        input.captureNodePreviewImage?.(node) ?? null
+      ).catch(() => null)),
+    [captureNodeDefinitionPreviewImage, input.captureNodePreviewImage]
+  );
+
+  const captureNodePreviewImages = useCallback(
+    async (node: WorkbenchNode<WorkbenchHostNodeData>) => {
+      const [images, definitionDockPreviewImageUrl] = await Promise.all([
+        Promise.resolve(input.captureNodePreviewImages?.(node) ?? null).catch(
+          () => null
+        ),
+        captureNodeDefinitionPreviewImage(node)
+      ]);
+      if (!images) {
+        const legacyPreviewImageUrl =
+          definitionDockPreviewImageUrl ??
+          (await Promise.resolve(
+            input.captureNodePreviewImage?.(node) ?? null
+          ).catch(() => null));
+        return legacyPreviewImageUrl
+          ? {
+              dockPreviewImageUrl: legacyPreviewImageUrl,
+              genieImageUrl: legacyPreviewImageUrl
+            }
+          : null;
+      }
+      return {
+        ...images,
+        dockPreviewImageUrl:
+          definitionDockPreviewImageUrl ?? images.dockPreviewImageUrl
+      };
+    },
+    [
+      captureNodeDefinitionPreviewImage,
+      input.captureNodePreviewImage,
+      input.captureNodePreviewImages
     ]
   );
 
@@ -213,38 +256,20 @@ export function useWorkbenchHostSurfaceRenderers(input: {
         return null;
       }
 
-      const bodyContext = createWorkbenchHostNodeBodyContext({
-        context,
-        definition,
-        externalStateSource: input.externalStateSource,
-        host: input.hostSession,
-        workspaceId: input.workspaceId
-      });
-
       return (
-        <WorkbenchHostNodeRenderErrorBoundary
+        <WorkbenchHostNodeRenderer
           debugDiagnostics={input.debugDiagnostics}
-          node={context.node}
-          onErrorChange={(hasError) =>
-            definition.onBodyRenderErrorChange?.({
-              hasError,
-              node: context.node
-            })
-          }
-          resetKey={`${context.node.id}:${context.node.data.typeId}:${input.externalStateRevision}`}
+          context={context}
+          definition={definition}
+          externalStateSource={input.externalStateSource}
+          host={input.hostSession}
           workspaceId={input.workspaceId}
-        >
-          <WorkbenchHostNodeBodyRenderer
-            context={bodyContext}
-            definition={definition}
-          />
-        </WorkbenchHostNodeRenderErrorBoundary>
+        />
       );
     },
     [
       input.debugDiagnostics,
       input.externalStateSource,
-      input.externalStateRevision,
       input.hostSession,
       input.nodeDefinitionByType,
       input.workspaceId
@@ -274,19 +299,18 @@ export function useWorkbenchHostSurfaceRenderers(input: {
         return null;
       }
 
-      return definition.renderHeader(
-        createWorkbenchHostNodeHeaderContext({
-          context,
-          definition,
-          externalStateSource: input.externalStateSource,
-          host: input.hostSession,
-          workspaceId: input.workspaceId
-        })
+      return (
+        <MemoizedWorkbenchHostNodeHeaderStateBridge
+          context={context}
+          definition={definition}
+          externalStateSource={input.externalStateSource}
+          host={input.hostSession}
+          workspaceId={input.workspaceId}
+        />
       );
     },
     [
       input.externalStateSource,
-      input.externalStateRevision,
       input.hostSession,
       input.nodeDefinitionByType,
       input.workspaceId
@@ -305,12 +329,8 @@ export function useWorkbenchHostSurfaceRenderers(input: {
   );
 
   const shouldCaptureNodePreviewImage = useCallback(
-    (node: WorkbenchNode<WorkbenchHostNodeData>) => {
-      const minimizedDock = input.nodeDefinitionByType.get(node.data.typeId)
-        ?.window?.minimizedDock;
-      return minimizedDock?.kind !== "component";
-    },
-    [input.nodeDefinitionByType]
+    (_node: WorkbenchNode<WorkbenchHostNodeData>) => true,
+    []
   );
 
   const renderNodeGeniePreview = useCallback(
@@ -440,8 +460,15 @@ export function useWorkbenchHostSurfaceRenderers(input: {
     [input.nodeDefinitionByType]
   );
 
+  const resolveWindowHeaderPresentation = useCallback(
+    ({ node }: { node: WorkbenchNode<WorkbenchHostNodeData> }) =>
+      input.nodeDefinitionByType.get(node.data.typeId)?.window?.header,
+    [input.nodeDefinitionByType]
+  );
+
   return {
     captureNodePreviewImage,
+    captureNodePreviewImages,
     renderBottomChrome,
     renderDock,
     renderNode,
@@ -454,6 +481,7 @@ export function useWorkbenchHostSurfaceRenderers(input: {
     resolveDockAnchorKey,
     resolveDockPreviewCacheKey,
     resolveFullscreenHeaderMode,
+    resolveWindowHeaderPresentation,
     resolveWindowSurfaceLayer,
     resolveWindowZIndex,
     windowChromeMode
@@ -465,9 +493,210 @@ interface WorkbenchHostNodeRenderErrorBoundaryProps {
   debugDiagnostics?: WorkbenchHostProps["debugDiagnostics"];
   node: WorkbenchNode<WorkbenchHostNodeData>;
   onErrorChange?: (hasError: boolean) => void;
-  resetKey: string;
+  resetKey: unknown;
   workspaceId: string;
 }
+
+function WorkbenchHostNodeRenderer(input: {
+  context: WorkbenchRenderNodeContext<WorkbenchHostNodeData>;
+  debugDiagnostics?: WorkbenchHostProps["debugDiagnostics"];
+  definition: WorkbenchHostNodeDefinition;
+  externalStateSource?: WorkbenchHostExternalStateSource;
+  host: WorkbenchHostRuntimeHandle;
+  workspaceId: string;
+}): ReactNode {
+  const isVisible = useWorkbenchWindowPresentationVisibility();
+  const externalState = useWorkbenchHostExternalState({
+    externalStateSource: input.externalStateSource,
+    node: input.context.node,
+    workspaceId: input.workspaceId
+  });
+  const bodyContext = createWorkbenchHostNodeBodyContext({
+    context: input.context,
+    definition: input.definition,
+    externalState,
+    externalStateSource: input.externalStateSource,
+    host: input.host,
+    isVisible,
+    workspaceId: input.workspaceId
+  });
+  const resetKey = useMemo(
+    () => [
+      input.context.node.id,
+      input.context.node.data.typeId,
+      externalState.externalNodeState,
+      externalState.externalWorkspaceState
+    ],
+    [
+      externalState.externalNodeState,
+      externalState.externalWorkspaceState,
+      input.context.node.data.typeId,
+      input.context.node.id
+    ]
+  );
+
+  return (
+    <WorkbenchHostNodeRenderErrorBoundary
+      debugDiagnostics={input.debugDiagnostics}
+      node={input.context.node}
+      onErrorChange={(hasError) =>
+        input.definition.onBodyRenderErrorChange?.({
+          hasError,
+          node: input.context.node
+        })
+      }
+      resetKey={resetKey}
+      workspaceId={input.workspaceId}
+    >
+      <MemoizedWorkbenchHostNodeBodyRenderer
+        context={bodyContext}
+        definition={input.definition}
+      />
+    </WorkbenchHostNodeRenderErrorBoundary>
+  );
+}
+
+interface WorkbenchHostNodeHeaderStateBridgeProps {
+  context: Parameters<WorkbenchRenderWindowHeader<WorkbenchHostNodeData>>[0];
+  definition: WorkbenchHostNodeDefinition;
+  externalStateSource?: WorkbenchHostExternalStateSource;
+  host: WorkbenchHostRuntimeHandle;
+  workspaceId: string;
+}
+
+function WorkbenchHostNodeHeaderStateBridge(
+  input: WorkbenchHostNodeHeaderStateBridgeProps
+): ReactNode {
+  const externalState = useWorkbenchHostExternalState({
+    externalStateSource: input.externalStateSource,
+    node: input.context.node,
+    workspaceId: input.workspaceId
+  });
+  const context = createWorkbenchHostNodeHeaderContext({
+    context: input.context,
+    definition: input.definition,
+    externalState,
+    externalStateSource: input.externalStateSource,
+    host: input.host,
+    workspaceId: input.workspaceId
+  });
+  const getFrameRenderKey = input.definition.getHeaderFrameRenderKey;
+
+  return (
+    <MemoizedWorkbenchHostNodeHeaderRenderer
+      context={context}
+      definition={input.definition}
+      frameRenderKey={getFrameRenderKey?.(context) ?? null}
+      hasFrameRenderKey={getFrameRenderKey !== undefined}
+      host={input.host}
+      renderRevision={input.context.renderRevision}
+    />
+  );
+}
+
+function areWorkbenchHostNodeHeaderStateBridgePropsEqual(
+  previous: WorkbenchHostNodeHeaderStateBridgeProps,
+  next: WorkbenchHostNodeHeaderStateBridgeProps
+): boolean {
+  return (
+    previous.definition === next.definition &&
+    previous.externalStateSource === next.externalStateSource &&
+    previous.host === next.host &&
+    previous.workspaceId === next.workspaceId &&
+    previous.context.controller === next.context.controller &&
+    previous.context.isDragging === next.context.isDragging &&
+    previous.context.isFocused === next.context.isFocused &&
+    previous.context.isResizing === next.context.isResizing &&
+    previous.context.node === next.context.node &&
+    previous.context.renderRevision === next.context.renderRevision &&
+    previous.context.surfaceSize.width === next.context.surfaceSize.width &&
+    previous.context.surfaceSize.height === next.context.surfaceSize.height
+  );
+}
+
+const MemoizedWorkbenchHostNodeHeaderStateBridge = memo(
+  WorkbenchHostNodeHeaderStateBridge,
+  areWorkbenchHostNodeHeaderStateBridgePropsEqual
+);
+
+interface WorkbenchHostNodeHeaderRendererProps {
+  context: WorkbenchHostNodeHeaderContext;
+  definition: WorkbenchHostNodeDefinition;
+  frameRenderKey: WorkbenchHostNodeHeaderFrameRenderKey;
+  hasFrameRenderKey: boolean;
+  host: WorkbenchHostRuntimeHandle;
+  renderRevision: object;
+}
+
+function WorkbenchHostNodeHeaderRenderer(
+  input: WorkbenchHostNodeHeaderRendererProps
+): ReactNode {
+  return input.definition.renderHeader?.(input.context);
+}
+
+function areWorkbenchHostNodeHeaderRendererPropsEqual(
+  previous: WorkbenchHostNodeHeaderRendererProps,
+  next: WorkbenchHostNodeHeaderRendererProps
+): boolean {
+  if (
+    previous.definition !== next.definition ||
+    previous.host !== next.host ||
+    previous.renderRevision !== next.renderRevision ||
+    previous.context.activation !== next.context.activation ||
+    previous.context.externalNodeState !== next.context.externalNodeState ||
+    previous.context.externalWorkspaceState !==
+      next.context.externalWorkspaceState ||
+    previous.context.isDragging !== next.context.isDragging ||
+    previous.context.isFocused !== next.context.isFocused ||
+    previous.context.isResizing !== next.context.isResizing
+  ) {
+    return false;
+  }
+
+  const previousNode = previous.context.node;
+  const nextNode = next.context.node;
+  const nonFrameInputsEqual =
+    previous.context.surfaceSize.width === next.context.surfaceSize.width &&
+    previous.context.surfaceSize.height === next.context.surfaceSize.height &&
+    previousNode.id === nextNode.id &&
+    previousNode.kind === nextNode.kind &&
+    previousNode.title === nextNode.title &&
+    previousNode.displayMode === nextNode.displayMode &&
+    previousNode.restoreFrame === nextNode.restoreFrame &&
+    previousNode.isMinimized === nextNode.isMinimized &&
+    previousNode.minimizedAtUnixMs === nextNode.minimizedAtUnixMs &&
+    previousNode.sizeConstraints === nextNode.sizeConstraints &&
+    previousNode.data === nextNode.data;
+  if (!nonFrameInputsEqual) {
+    return false;
+  }
+
+  if (
+    (next.context.isDragging || next.context.isResizing) &&
+    next.hasFrameRenderKey
+  ) {
+    return Object.is(previous.frameRenderKey, next.frameRenderKey);
+  }
+
+  return areWorkbenchFramesEqual(previousNode.frame, nextNode.frame);
+}
+
+function areWorkbenchFramesEqual(
+  previous: WorkbenchNode["frame"],
+  next: WorkbenchNode["frame"]
+): boolean {
+  return (
+    previous.x === next.x &&
+    previous.y === next.y &&
+    previous.width === next.width &&
+    previous.height === next.height
+  );
+}
+
+const MemoizedWorkbenchHostNodeHeaderRenderer = memo(
+  WorkbenchHostNodeHeaderRenderer,
+  areWorkbenchHostNodeHeaderRendererPropsEqual
+);
 
 interface WorkbenchHostSurfaceRenderErrorBoundaryProps {
   children: ReactNode;
@@ -557,7 +786,10 @@ class WorkbenchHostNodeRenderErrorBoundary extends Component<
   override componentDidUpdate(
     previousProps: WorkbenchHostNodeRenderErrorBoundaryProps
   ): void {
-    if (this.state.hasError && previousProps.resetKey !== this.props.resetKey) {
+    if (
+      this.state.hasError &&
+      !Object.is(previousProps.resetKey, this.props.resetKey)
+    ) {
       this.setState({ hasError: false });
       this.props.onErrorChange?.(false);
     }
@@ -657,16 +889,6 @@ class WorkbenchHostNodeRenderErrorBoundary extends Component<
 
     return this.props.children;
   }
-}
-
-function WorkbenchHostNodeBodyRenderer({
-  context,
-  definition
-}: {
-  context: WorkbenchHostNodeBodyContext;
-  definition: WorkbenchHostNodeDefinition;
-}): ReactNode {
-  return definition.renderBody(context);
 }
 
 function WorkbenchHostChromeRenderer({

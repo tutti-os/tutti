@@ -1,10 +1,19 @@
 import type {
+  AgentSessionEngine,
+  EngineExternalCommand,
+  EngineIntent
+} from "@tutti-os/agent-activity-core";
+import type {
   AgentActivityRuntime,
   AgentGUIProps,
-  AgentHostInputApi
+  AgentHostInputApi,
+  TuttiModePlanReviewRuntime
 } from "@tutti-os/agent-gui";
 import type { AgentContextMentionProvider } from "@tutti-os/agent-gui/context-mention-provider";
-import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import type {
+  TuttidClient,
+  TuttidEventStreamClient
+} from "@tutti-os/client-tuttid-ts";
 import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
 import type {
   DesktopHostFilesApi,
@@ -15,6 +24,7 @@ import type { WorkspaceFileEntry } from "@tutti-os/workspace-file-manager/servic
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
 import type { IReporterService } from "@renderer/features/analytics";
 import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
+import type { IWorkspaceFilePreviewSurfaceHost } from "@renderer/features/workspace-file-preview";
 import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
 import {
   createReferenceSourceAggregator,
@@ -44,16 +54,28 @@ import {
 import { createAgentWorkspaceFileReferenceTracker } from "./internal/agentWorkspaceFileReferenceAnalytics.ts";
 import { getDesktopAgentActivityRuntimeServices } from "./internal/desktopAgentActivityRuntimeServices.ts";
 import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface";
+import type { IAgentQuickPromptService } from "./agentQuickPromptService.interface.ts";
 import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
 import { translate } from "../../../i18n/appRuntime.ts";
 import { createDesktopAgentGeneratedFileMentionProvider } from "./internal/createDesktopAgentGeneratedFileMentionProvider.ts";
+import { createDesktopAgentExternalPromptFilePreparer } from "./internal/prepareDesktopAgentExternalPromptFiles.ts";
+import { createDesktopAgentExternalPromptEntryResolver } from "./internal/resolveDesktopAgentExternalPromptEntries.ts";
+import { createDesktopTuttiModePlanReviewRuntime } from "./internal/desktopWorkspaceWorkflowRuntime.ts";
+import { AgentSessionReplayService } from "../../agent-session-replay/services/agentSessionReplayService.ts";
 
 export interface DesktopAgentGUIWorkbenchHostInput {
   agentActivityRuntime: AgentActivityRuntime;
   agentHostApi: AgentHostInputApi;
-  contextMentionProviders: NonNullable<
-    AgentGUIProps["hostCapabilities"]["contextMentionProviders"]
-  >;
+  agentSessionReplayService: AgentSessionReplayService;
+  agentSessionActivityReplay: {
+    addObserver(observer: {
+      observeCommand(command: EngineExternalCommand): void;
+      observeIntent(intent: EngineIntent): void;
+    }): () => void;
+    engine: AgentSessionEngine;
+  };
+  tuttiModePlanReviewRuntime: TuttiModePlanReviewRuntime;
+  contextMentionProviders: readonly AgentContextMentionProvider[];
   trackAgentProviderChatReady: (input: { provider: string }) => Promise<void>;
   createAgentGUIEngagementEventSink: (
     surface: AgentGUIAnalyticsSurface
@@ -65,8 +87,11 @@ export interface DesktopAgentGUIWorkbenchHostInput {
   workspaceFileReferenceAdapter: NonNullable<
     AgentGUIProps["workspace"]["fileReferenceAdapter"]
   >;
-  resolveDroppedFileReferences: NonNullable<
-    AgentGUIProps["workspace"]["resolveDroppedFileReferences"]
+  resolveExternalPromptEntries: NonNullable<
+    AgentGUIProps["workspace"]["resolveExternalPromptEntries"]
+  >;
+  prepareExternalPromptFiles: NonNullable<
+    AgentGUIProps["workspace"]["prepareExternalPromptFiles"]
   >;
   onRequestGitBranches: NonNullable<
     AgentGUIProps["workspace"]["onRequestGitBranches"]
@@ -84,7 +109,9 @@ export interface DesktopAgentGUIWorkbenchHostInput {
 }
 
 export interface CreateDesktopAgentGUIWorkbenchHostInputInput {
+  agentQuickPromptService?: IAgentQuickPromptService;
   agentHostApi?: AgentHostInputApi | null;
+  eventStreamClient?: TuttidEventStreamClient | null;
   hostFilesApi: DesktopHostFilesApi;
   tuttidClient: TuttidClient;
   platformApi: Pick<
@@ -98,15 +125,20 @@ export interface CreateDesktopAgentGUIWorkbenchHostInputInput {
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
   workspaceFileManagerService?: Pick<
     IWorkspaceFileManagerService,
-    "openCanvasFilePreview" | "resolveEntryIconUrl"
+    "resolveEntryIconUrl"
   >;
-  workspaceFilePreviewMode?: "canvas" | "system-default";
+  workspaceFilePreviewSurfaceHost?: Pick<
+    IWorkspaceFilePreviewSurfaceHost,
+    "present"
+  >;
   workspaceUserProjectService?: IWorkspaceUserProjectService;
   workspaceId: string;
 }
 
 export function createDesktopAgentGUIWorkbenchHostInput({
+  agentQuickPromptService,
   agentHostApi,
+  eventStreamClient,
   hostFilesApi,
   tuttidClient,
   platformApi,
@@ -116,13 +148,14 @@ export function createDesktopAgentGUIWorkbenchHostInput({
   runtimeApi,
   workspaceAgentActivityService,
   workspaceFileManagerService,
-  workspaceFilePreviewMode = "canvas",
+  workspaceFilePreviewSurfaceHost,
   workspaceUserProjectService,
   workspaceId
 }: CreateDesktopAgentGUIWorkbenchHostInputInput): DesktopAgentGUIWorkbenchHostInput {
   const resolvedAgentHostApi =
     agentHostApi ??
     createDesktopAgentHostApi({
+      agentQuickPromptService,
       hostFilesApi,
       tuttidClient,
       platformApi,
@@ -152,14 +185,11 @@ export function createDesktopAgentGUIWorkbenchHostInput({
   const workspaceFileReferenceAdapter =
     createDesktopWorkspaceFileReferenceAdapter({
       hostFilesApi,
-      openCanvasFilePreview:
-        workspaceFilePreviewMode === "canvas" && workspaceFileManagerService
-          ? (target, workspaceId) =>
-              workspaceFileManagerService.openCanvasFilePreview(
-                workspaceId,
-                target
-              )
-          : undefined,
+      presentFilePreview: workspaceFilePreviewSurfaceHost
+        ? async (target, workspaceId) =>
+            (await workspaceFilePreviewSurfaceHost.present(workspaceId, target))
+              .presented
+        : undefined,
       tuttidClient,
       workspaceId
     });
@@ -234,32 +264,62 @@ export function createDesktopAgentGUIWorkbenchHostInput({
       })
     ])
   );
-  const resolveDroppedFileReferences: NonNullable<
-    AgentGUIProps["workspace"]["resolveDroppedFileReferences"]
-  > = (files) => {
-    const droppedEntries = platformApi.resolveDroppedEntries([...files]);
-    return files.flatMap((file, index): WorkspaceFileReference[] => {
-      const droppedEntry = droppedEntries[index];
-      const path = droppedEntry?.path.trim() ?? "";
-      if (!path) {
-        return [];
-      }
-      const kind = droppedEntry?.kind === "folder" ? "folder" : "file";
-      const displayName = file.name.trim() || path.split(/[\\/]/).at(-1);
-      return [
-        {
-          path,
-          ...(kind === "file" ? { hostPath: path } : {}),
-          kind,
-          ...(displayName ? { displayName } : {}),
-          sourceId: "host-local-file"
-        }
-      ];
+  const prepareExternalPromptFiles =
+    createDesktopAgentExternalPromptFilePreparer({
+      agentActivityRuntime,
+      platformApi,
+      workspaceId
     });
-  };
+  const resolveExternalPromptEntries =
+    createDesktopAgentExternalPromptEntryResolver({ platformApi });
+  const agentSessionReplayService = new AgentSessionReplayService({
+    armNextSessionRecording: (recordingId) =>
+      workspaceAgentActivityService.armNextSessionRecording?.(
+        workspaceId,
+        recordingId
+      ),
+    clearNextSessionRecording: (recordingId) =>
+      workspaceAgentActivityService.clearNextSessionRecording?.(
+        workspaceId,
+        recordingId
+      ),
+    discardActivityEventRecording: (recordingId) =>
+      workspaceAgentActivityService.discardSessionActivityEventRecording?.(
+        workspaceId,
+        recordingId
+      ),
+    sealActivityEventRecording: (recordingId) =>
+      workspaceAgentActivityService.sealSessionActivityEventRecording?.(
+        workspaceId,
+        recordingId
+      ) ?? Promise.resolve(),
+    startActivityEventRecording: (recordingId) =>
+      workspaceAgentActivityService.startSessionActivityEventRecording?.(
+        workspaceId,
+        recordingId
+      ),
+    tuttidClient,
+    workspaceId
+  });
   return {
     agentActivityRuntime,
     agentHostApi: resolvedAgentHostApi,
+    agentSessionActivityReplay: {
+      addObserver: (observer) =>
+        workspaceAgentActivityService.addSessionEngineActivityObserver?.(
+          workspaceId,
+          observer
+        ) ?? (() => {}),
+      get engine() {
+        return workspaceAgentActivityService.getSessionEngine(workspaceId);
+      }
+    },
+    agentSessionReplayService,
+    tuttiModePlanReviewRuntime: createDesktopTuttiModePlanReviewRuntime({
+      composerOptionsRuntime: agentActivityRuntime,
+      tuttidClient,
+      eventStreamClient
+    }),
     contextMentionProviders: richTextAtService
       .getProviders({
         capabilities: [
@@ -267,7 +327,8 @@ export function createDesktopAgentGUIWorkbenchHostInput({
           "workspace-issue",
           "agent-session",
           "workspace-app",
-          "agent-target"
+          "agent-target",
+          "workspace-model"
         ],
         surface: "composer",
         target: "agent-gui",
@@ -284,7 +345,8 @@ export function createDesktopAgentGUIWorkbenchHostInput({
     trackWorkspaceFileReferences: (input) =>
       workspaceFileReferenceTracker.track(input),
     workspaceFileReferenceAdapter,
-    resolveDroppedFileReferences,
+    resolveExternalPromptEntries,
+    prepareExternalPromptFiles,
     onRequestGitBranches: async ({ agentSessionId, workingDirectory }) => {
       const result = agentSessionId
         ? await tuttidClient.listWorkspaceAgentSessionGitBranches(

@@ -139,6 +139,7 @@ export interface BrowserNodePrepareSessionInput {
 }
 
 export interface BrowserNodeRegisterGuestInput {
+  automationTarget?: BrowserNodeAutomationTargetMetadata | null;
   navigationPolicy?: BrowserNodeNavigationPolicy | null;
   nodeId: string;
   profileId: string | null;
@@ -146,6 +147,22 @@ export interface BrowserNodeRegisterGuestInput {
   sessionPartition?: string | null;
   url?: string;
   webContentsId: number;
+}
+
+export type BrowserNodeAutomationSurfaceRole = "agent" | "user";
+
+export interface BrowserNodeAutomationTargetMetadata {
+  agentSessionId?: string | null;
+  focused?: boolean;
+  selected: boolean;
+  surfaceId: string;
+  surfaceRole: BrowserNodeAutomationSurfaceRole;
+  tabId: string | null;
+  workspaceId: string;
+}
+
+export interface BrowserNodeUpdateAutomationTargetInput extends BrowserNodeNodeIdInput {
+  automationTarget: BrowserNodeAutomationTargetMetadata;
 }
 
 export interface BrowserNodeUnregisterGuestInput {
@@ -212,10 +229,70 @@ export interface BrowserNodeSaveScreenshotInput extends BrowserNodeNodeIdInput {
   mode: BrowserNodeScreenshotMode;
 }
 
-export interface BrowserNodeCookieImportResult {
-  canceled: boolean;
+export type BrowserNodeCookieImportFailureStage =
+  | "profile"
+  | "snapshot"
+  | "keychain"
+  | "database"
+  | "decrypt"
+  | "integrity";
+
+interface BrowserNodeCookieImportCounts {
+  failed: number;
   imported: number;
+  partial: boolean;
   skipped: number;
+}
+
+export type BrowserNodeCookieImportResult =
+  | (BrowserNodeCookieImportCounts & {
+      canceled: true;
+      status: "canceled";
+    })
+  | (BrowserNodeCookieImportCounts & {
+      canceled: false;
+      status: "completed";
+    })
+  | (BrowserNodeCookieImportCounts & {
+      canceled: false;
+      failureCode: string;
+      failureStage: BrowserNodeCookieImportFailureStage;
+      status: "failed";
+    });
+
+declare const browserNodeChromeProfileIdBrand: unique symbol;
+export type BrowserNodeChromeProfileId = string & {
+  readonly [browserNodeChromeProfileIdBrand]: true;
+};
+
+export interface BrowserNodeChromeProfile {
+  avatarDataUrl?: string;
+  email?: string;
+  id: BrowserNodeChromeProfileId;
+  name: string;
+}
+
+export type BrowserNodeChromeProfileDiscoveryResult =
+  | {
+      profiles: readonly BrowserNodeChromeProfile[];
+      status: "available";
+    }
+  | {
+      reason:
+        | "disabled"
+        | "no-profiles"
+        | "unsupported-platform"
+        | "unavailable";
+      status: "unavailable";
+    };
+
+export interface BrowserNodeChromeCookieImportInput extends BrowserNodeNodeIdInput {
+  operationId: string;
+  profileId: BrowserNodeChromeProfileId;
+}
+
+export interface BrowserNodeCancelChromeCookieImportInput {
+  operationId: string;
 }
 
 export interface BrowserNodeDownloadDirectoryResult {
@@ -263,6 +340,9 @@ export interface BrowserNodeHostApi {
   capturePreview?(payload: BrowserNodeNodeIdInput): Promise<string | null>;
   close(payload: BrowserNodeNodeIdInput): Promise<void>;
   clearBrowsingData?(payload: BrowserNodeNodeIdInput): Promise<void>;
+  cancelChromeCookieImport?(
+    payload: BrowserNodeCancelChromeCookieImportInput
+  ): Promise<void>;
   chooseDownloadDirectory?(
     payload: BrowserNodeNodeIdInput
   ): Promise<BrowserNodeDownloadDirectoryResult>;
@@ -274,6 +354,10 @@ export interface BrowserNodeHostApi {
   findInPage?(payload: BrowserNodeFindInPageInput): Promise<void>;
   importCookies?(
     payload: BrowserNodeNodeIdInput
+  ): Promise<BrowserNodeCookieImportResult>;
+  discoverChromeCookieProfiles?(): Promise<BrowserNodeChromeProfileDiscoveryResult>;
+  importChromeCookies?(
+    payload: BrowserNodeChromeCookieImportInput
   ): Promise<BrowserNodeCookieImportResult>;
   navigate(payload: BrowserNodeNavigateInput): Promise<void>;
   onEvent(listener: (event: BrowserNodeEvent) => void): () => void;
@@ -298,4 +382,7 @@ export interface BrowserNodeHostApi {
   ): Promise<void>;
   stopFindInPage?(payload: BrowserNodeStopFindInPageInput): Promise<void>;
   unregisterGuest(payload: BrowserNodeUnregisterGuestInput): Promise<void>;
+  updateAutomationTarget?(
+    payload: BrowserNodeUpdateAutomationTargetInput
+  ): Promise<void>;
 }

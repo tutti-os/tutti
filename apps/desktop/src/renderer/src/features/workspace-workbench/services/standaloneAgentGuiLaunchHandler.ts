@@ -6,6 +6,10 @@ export interface StandaloneAgentGuiLaunchHandlerContext {
   activateAgentSession(input: {
     agentSessionId: string;
     agentTargetId: string | null;
+    composerAppend?: {
+      draftPrompt: string;
+      focusComposer: true;
+    };
     provider: DesktopAgentGUIProvider;
   }): void;
   agentDirectorySnapshot?: DesktopHostOpenAgentWindowInput["agentDirectorySnapshot"];
@@ -24,10 +28,18 @@ export async function handleStandaloneAgentGuiLaunch(
   const agentTargetId = normalizeOptionalNullableString(request.agentTargetId);
   const provider = request.provider ?? context.headerProvider;
 
-  if (agentSessionId && !draftPrompt && request.openInNewWindow !== true) {
+  if (agentSessionId && request.openInNewWindow !== true) {
     context.activateAgentSession({
       agentSessionId,
       agentTargetId: agentTargetId ?? null,
+      ...(draftPrompt
+        ? {
+            composerAppend: {
+              draftPrompt,
+              focusComposer: true
+            }
+          }
+        : {}),
       provider
     });
     return;

@@ -22,6 +22,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerstatus"
 	externalagentregistry "github.com/tutti-os/tutti/services/tuttid/service/externalagentregistry"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
@@ -142,6 +144,9 @@ func TestDefaultRegistryUsesTuttiAgentManagedNPMInstaller(t *testing.T) {
 	if install.ManagedNPM.BinaryName != "tutti-agent" {
 		t.Fatalf("BinaryName = %q, want tutti-agent", install.ManagedNPM.BinaryName)
 	}
+	if install.ManagedNPM.PackageVersion != providerregistry.TuttiAgentRecommendedVersion {
+		t.Fatalf("PackageVersion = %q, want %q", install.ManagedNPM.PackageVersion, providerregistry.TuttiAgentRecommendedVersion)
+	}
 	if !install.ManagedNPM.IncludeOptional {
 		t.Fatalf("IncludeOptional = false, want true")
 	}
@@ -151,9 +156,7 @@ func TestDefaultRegistryUsesTuttiAgentManagedNPMInstaller(t *testing.T) {
 }
 
 func TestServiceListUsesDescriptorOwnedDaemonLoginAction(t *testing.T) {
-	service := testService(func(name string) (string, error) {
-		return "/usr/local/bin/" + name, nil
-	}, map[string]bool{})
+	service, _ := updateTestService(t, "0.0.8")
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"tutti-agent"}})
 	if err != nil {
@@ -191,41 +194,18 @@ func TestDefaultRegistryIncludesCursorSpec(t *testing.T) {
 	}
 }
 
-func TestParseCursorAuthStatusOutput(t *testing.T) {
-	for _, tt := range []struct {
-		output       string
-		status       AuthStatus
-		accountLabel string
-		ok           bool
-	}{
-		{output: "Logged in as user@example.com", status: AuthAuthenticated, accountLabel: "user@example.com", ok: true},
-		{output: "cursor-agent 2026.06.10\nStatus: Authenticated", status: AuthAuthenticated, ok: true},
-		{output: "Not logged in. Run cursor-agent login to sign in.", status: AuthRequired, ok: true},
-		{output: "You are currently logged out", status: AuthRequired, ok: true},
-		{output: "", ok: false},
-		{output: "unrecognized output", ok: false},
-	} {
-		auth, ok := parseCursorAuthStatusOutput([]byte(tt.output))
-		if ok != tt.ok {
-			t.Fatalf("parseCursorAuthStatusOutput(%q) ok = %v, want %v", tt.output, ok, tt.ok)
-		}
-		if ok && auth.Status != tt.status {
-			t.Fatalf("parseCursorAuthStatusOutput(%q) status = %q, want %q", tt.output, auth.Status, tt.status)
-		}
-		if ok && auth.AccountLabel != tt.accountLabel {
-			t.Fatalf("parseCursorAuthStatusOutput(%q) accountLabel = %q, want %q", tt.output, auth.AccountLabel, tt.accountLabel)
-		}
-	}
-}
-
 func TestParseCursorAboutJSON(t *testing.T) {
-	auth, ok := parseCursorAboutJSON([]byte(`{
+	output := []byte(`{
 		"cliVersion": "2026.07.01-41b2de7",
 		"subscriptionTier": "Ultra",
 		"userEmail": "user@example.com"
-	}`))
+	}`)
+	auth, cliVersion, ok := parseCursorAboutJSONWithVersion(output)
 	if !ok {
-		t.Fatal("parseCursorAboutJSON() ok = false, want true")
+		t.Fatal("parseCursorAboutJSONWithVersion() ok = false, want true")
+	}
+	if cliVersion != "2026.07.01-41b2de7" {
+		t.Fatalf("cliVersion = %q, want 2026.07.01-41b2de7", cliVersion)
 	}
 	if auth.Status != AuthAuthenticated {
 		t.Fatalf("status = %q, want authenticated", auth.Status)
@@ -244,40 +224,20 @@ func TestParseCursorAboutJSON(t *testing.T) {
 }
 
 func TestParseCursorAboutText(t *testing.T) {
-	auth, ok := parseCursorAboutText([]byte(`About Cursor CLI
+	auth, cliVersion, ok := parseCursorAboutTextWithVersion([]byte(`About Cursor CLI
 
 CLI Version         2026.07.01-41b2de7
 Subscription Tier   Ultra
 User Email          user@example.com
 `))
 	if !ok {
-		t.Fatal("parseCursorAboutText() ok = false, want true")
+		t.Fatal("parseCursorAboutTextWithVersion() ok = false, want true")
+	}
+	if cliVersion != "2026.07.01-41b2de7" {
+		t.Fatalf("cliVersion = %q, want 2026.07.01-41b2de7", cliVersion)
 	}
 	if auth.AccountLabel != "Cursor Ultra · user@example.com" {
 		t.Fatalf("accountLabel = %q, want Cursor Ultra · user@example.com", auth.AccountLabel)
-	}
-}
-
-func TestParseOpenCodeAuthStatusOutput(t *testing.T) {
-	for _, tt := range []struct {
-		output string
-		status AuthStatus
-		ok     bool
-	}{
-		{output: "Logged in as user@example.com", status: AuthAuthenticated, ok: true},
-		{output: "Status: authenticated", status: AuthAuthenticated, ok: true},
-		{output: "Not authenticated. Run opencode auth login.", status: AuthRequired, ok: true},
-		{output: "No providers are authenticated", status: AuthRequired, ok: true},
-		{output: "", ok: false},
-		{output: "unexpected opencode error", ok: false},
-	} {
-		auth, ok := parseOpenCodeAuthStatusOutput([]byte(tt.output))
-		if ok != tt.ok {
-			t.Fatalf("parseOpenCodeAuthStatusOutput(%q) ok = %v, want %v", tt.output, ok, tt.ok)
-		}
-		if ok && auth.Status != tt.status {
-			t.Fatalf("parseOpenCodeAuthStatusOutput(%q) status = %q, want %q", tt.output, auth.Status, tt.status)
-		}
 	}
 }
 
@@ -481,7 +441,7 @@ func TestServiceListUsesCodexLoginStatusCommand(t *testing.T) {
 		if binaryPath != "/usr/local/bin/codex" {
 			t.Fatalf("binaryPath = %q, want /usr/local/bin/codex", binaryPath)
 		}
-		return parseCodexAuthStatusOutput([]byte("Logged in using ChatGPT"))
+		return AuthInfo{Status: AuthAuthenticated}, true
 	}
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
@@ -498,6 +458,36 @@ func TestServiceListUsesCodexLoginStatusCommand(t *testing.T) {
 	}
 }
 
+func TestServiceListReportsCodexAPIKeyAsAuthenticatedWithoutLogin(t *testing.T) {
+	service := testService(func(name string) (string, error) {
+		return "/usr/local/bin/" + name, nil
+	}, map[string]bool{})
+	service.Environ = func() []string {
+		return []string{"OPENAI_API_KEY=sk-test"}
+	}
+	service.RunAuthStatusCommand = func(
+		context.Context,
+		ProviderSpec,
+		string,
+	) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthRequired}, true
+	}
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	status := onlyStatus(t, snapshot)
+	if status.Availability.Status != AvailabilityReady {
+		t.Fatalf("availability = %q, want %q", status.Availability.Status, AvailabilityReady)
+	}
+	if status.Auth.Status != AuthAuthenticated ||
+		status.Auth.AuthMethod != "apiKey" ||
+		status.Auth.AccountLabel != "API Usage Billing" {
+		t.Fatalf("auth = %#v, want API billing authentication", status.Auth)
+	}
+}
+
 func TestServiceListDoesNotUseCodexAuthMarkerAfterConfigError(t *testing.T) {
 	service := testService(func(name string) (string, error) {
 		return "/usr/local/bin/" + name, nil
@@ -506,7 +496,10 @@ func TestServiceListDoesNotUseCodexAuthMarkerAfterConfigError(t *testing.T) {
 		if spec.Provider != "codex" {
 			t.Fatalf("Provider = %q, want codex", spec.Provider)
 		}
-		return parseAuthStatusCommandOutput("codex", []byte("Error loading configuration: /home/test/.codex/config.toml:8:16: unknown variant `priority`, expected `fast` or `flex`"))
+		return providerstatus.ParseAuthStatusOutput(
+			spec.AuthOutputParserKind,
+			[]byte("Error loading configuration: /home/test/.codex/config.toml:8:16: unknown variant `priority`, expected `fast` or `flex`"),
+		)
 	}
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
@@ -532,7 +525,7 @@ func TestServiceListReportsCodexChecksVersionAndLastError(t *testing.T) {
 	pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
 	writePackageManifest(t, pkgDir, "@openai/codex", "0.100.0")
 	codexPath := filepath.Join(pkgDir, "bin", "codex")
-	writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex 0.100.0'; exit 0; fi\nexit 0\n")
+	writeExecutable(t, codexPath, codexAppServerFakeScript("if [ \"$1\" = \"--version\" ]; then echo 'codex 0.100.0'; exit 0; fi\nexit 0\n"))
 	visiblePath := filepath.Join(binDir, "codex")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir bin dir: %v", err)
@@ -544,6 +537,10 @@ func TestServiceListReportsCodexChecksVersionAndLastError(t *testing.T) {
 	writeExecutable(t, platformPath, "#!/bin/sh\nexit 0\n")
 
 	service := probeTestService(home)
+	// The default 1s probe timeout is tuned for the old "still alive after
+	// 200ms" liveness check; the real ACP handshake needs to actually spawn,
+	// write, and read a response, which is slower under test-suite load.
+	service.ProbeTimeout = 5 * time.Second
 	service.Environ = func() []string {
 		return []string{"PATH=" + binDir}
 	}
@@ -573,6 +570,360 @@ func TestServiceListReportsCodexChecksVersionAndLastError(t *testing.T) {
 	assertProviderCheck(t, status.Checks, "auth", true)
 }
 
+// TestServiceListReportsCodexNotReadyWhenAppServerNeverRespondsToInitialize
+// covers Agent 可用性需求摘要 issue #1: a `codex` binary can be present on
+// PATH and start successfully (e.g. a launcher shim bundled with a desktop
+// app) without ever actually being able to serve ACP. The old probe only
+// checked that the process stayed alive, which this fake satisfies; the real
+// `initialize` handshake must still catch it and report "not installed"
+// instead of "ready".
+func TestServiceListReportsCodexNotReadyWhenAppServerNeverRespondsToInitialize(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
+	writePackageManifest(t, pkgDir, "@openai/codex", MinSupportedCodexVersion)
+	codexPath := filepath.Join(pkgDir, "bin", "codex")
+	writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nsleep 5\n")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin dir: %v", err)
+	}
+	if err := os.Symlink(codexPath, filepath.Join(binDir, "codex")); err != nil {
+		t.Fatalf("symlink codex: %v", err)
+	}
+	platformBinary := requireTestCodexPlatformBinaryPath(t, pkgDir)
+	writeExecutable(t, platformBinary, "#!/bin/sh\nexit 0\n")
+
+	service := probeTestService(home)
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir}
+	}
+	service.IsExecutableFile = isTestExecutable
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+
+	status := onlyStatus(t, snapshot)
+	if !status.CLI.Installed {
+		t.Fatal("CLI.Installed = false, want true (the binary is on PATH)")
+	}
+	if status.Adapter.Installed {
+		t.Fatal("Adapter.Installed = true, want false (it never answered the ACP handshake)")
+	}
+	if status.Availability.Status != AvailabilityNotInstalled {
+		t.Fatalf("Availability.Status = %q, want %q; status=%#v", status.Availability.Status, AvailabilityNotInstalled, status)
+	}
+	if status.Availability.ReasonCode != "acp_adapter_launch_failed" {
+		t.Fatalf("ReasonCode = %q, want acp_adapter_launch_failed", status.Availability.ReasonCode)
+	}
+}
+
+// TestServiceListReportsCodexNotReadyWhenAppServerRejectsInitialize covers the
+// same gap for a binary that does speak JSON-RPC but answers `initialize`
+// with a protocol error instead of a real result.
+func TestServiceListReportsCodexNotReadyWhenAppServerRejectsInitialize(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
+	writePackageManifest(t, pkgDir, "@openai/codex", MinSupportedCodexVersion)
+	codexPath := filepath.Join(pkgDir, "bin", "codex")
+	writeExecutable(t, codexPath, "#!/bin/sh\n"+
+		"if [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\n"+
+		"case \"$*\" in\n"+
+		"*app-server*) echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"unsupported\"}}'; exit 1 ;;\n"+
+		"esac\n"+
+		"exit 0\n")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin dir: %v", err)
+	}
+	if err := os.Symlink(codexPath, filepath.Join(binDir, "codex")); err != nil {
+		t.Fatalf("symlink codex: %v", err)
+	}
+	platformBinary := requireTestCodexPlatformBinaryPath(t, pkgDir)
+	writeExecutable(t, platformBinary, "#!/bin/sh\nexit 0\n")
+
+	service := probeTestService(home)
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir}
+	}
+	service.IsExecutableFile = isTestExecutable
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+
+	status := onlyStatus(t, snapshot)
+	if status.Availability.Status != AvailabilityNotInstalled {
+		t.Fatalf("Availability.Status = %q, want %q; status=%#v", status.Availability.Status, AvailabilityNotInstalled, status)
+	}
+	if status.Availability.ReasonCode != "acp_adapter_launch_failed" {
+		t.Fatalf("ReasonCode = %q, want acp_adapter_launch_failed", status.Availability.ReasonCode)
+	}
+}
+
+// TestServiceListReportsCodexNotReadyWhenAppServerSpoofsHandshake covers a
+// "fake shell" binary that never reads stdin (so it cannot possibly have
+// parsed our `initialize` request, let alone learned the unpredictable id
+// this probe run generated for it) but still races to print a
+// response-shaped line before exiting. Every case below hardcodes id 1,
+// which newCodexHandshakeRequestID never generates (see its doc comment),
+// so these can never accidentally match by chance; the handshake match must
+// still reject them for the reasons in each case's name. Unlike Standard
+// ACP, this deliberately does NOT test a missing "jsonrpc" field: the real
+// codex app-server wire format omits that field too (see
+// TestServiceListReportsCodexReadyWhenAppServerOmitsJSONRPCVersion), so
+// that alone must not be treated as a spoof signal.
+func TestServiceListReportsCodexNotReadyWhenAppServerSpoofsHandshake(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		line string
+	}{
+		{name: "hardcoded id, never reads the request", line: `{"id":1,"result":{}}`},
+		{name: "hardcoded id and echoes a method", line: `{"id":1,"method":"initialize","result":{}}`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			binDir := filepath.Join(home, "bin")
+			pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
+			writePackageManifest(t, pkgDir, "@openai/codex", MinSupportedCodexVersion)
+			codexPath := filepath.Join(pkgDir, "bin", "codex")
+			writeExecutable(t, codexPath, "#!/bin/sh\n"+
+				"if [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\n"+
+				"case \"$*\" in\n"+
+				"*app-server*) echo '"+tt.line+"'; exit 0 ;;\n"+
+				"esac\n"+
+				"exit 0\n")
+			if err := os.MkdirAll(binDir, 0o755); err != nil {
+				t.Fatalf("mkdir bin dir: %v", err)
+			}
+			if err := os.Symlink(codexPath, filepath.Join(binDir, "codex")); err != nil {
+				t.Fatalf("symlink codex: %v", err)
+			}
+			platformBinary := requireTestCodexPlatformBinaryPath(t, pkgDir)
+			writeExecutable(t, platformBinary, "#!/bin/sh\nexit 0\n")
+
+			service := probeTestService(home)
+			service.Environ = func() []string {
+				return []string{"PATH=" + binDir}
+			}
+			service.IsExecutableFile = isTestExecutable
+			service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+				return AuthInfo{Status: AuthAuthenticated}, true
+			}
+
+			snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
+			if err != nil {
+				t.Fatalf("List() error = %v", err)
+			}
+
+			status := onlyStatus(t, snapshot)
+			if status.Availability.Status != AvailabilityNotInstalled {
+				t.Fatalf("Availability.Status = %q, want %q; status=%#v", status.Availability.Status, AvailabilityNotInstalled, status)
+			}
+			if status.Availability.ReasonCode != "acp_adapter_launch_failed" {
+				t.Fatalf("ReasonCode = %q, want acp_adapter_launch_failed", status.Availability.ReasonCode)
+			}
+		})
+	}
+}
+
+// TestServiceListReportsCodexReadyWhenAppServerOmitsJSONRPCVersion locks in
+// that the real codex app-server wire format - which omits the "jsonrpc"
+// version header entirely (see
+// TestCodexAppServerAdapterWireFormatOmitsJSONRPCVersion in
+// packages/agent/daemon/runtime) - is accepted by the handshake probe. The
+// probe must not require a "jsonrpc" field the way the Standard ACP probe
+// does, or it would misreport a working codex install as not installed.
+func TestServiceListReportsCodexReadyWhenAppServerOmitsJSONRPCVersion(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
+	writePackageManifest(t, pkgDir, "@openai/codex", MinSupportedCodexVersion)
+	codexPath := filepath.Join(pkgDir, "bin", "codex")
+	// codexAppServerFakeScript omits "jsonrpc" (this test's whole point) but
+	// still reads stdin and echoes back the real request id.
+	writeExecutable(t, codexPath, codexAppServerFakeScript(
+		"if [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nexit 0\n"))
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin dir: %v", err)
+	}
+	if err := os.Symlink(codexPath, filepath.Join(binDir, "codex")); err != nil {
+		t.Fatalf("symlink codex: %v", err)
+	}
+	platformBinary := requireTestCodexPlatformBinaryPath(t, pkgDir)
+	writeExecutable(t, platformBinary, "#!/bin/sh\nexit 0\n")
+
+	service := probeTestService(home)
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir}
+	}
+	service.IsExecutableFile = isTestExecutable
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+
+	status := onlyStatus(t, snapshot)
+	if status.Availability.Status != AvailabilityReady {
+		t.Fatalf("Availability.Status = %q, want %q; status=%#v", status.Availability.Status, AvailabilityReady, status)
+	}
+}
+
+// TestServiceListStandardACPHandshakeProbe covers cursor and opencode: both
+// are RuntimeKindStandardACP providers where the CLI binary itself, invoked
+// as `<binary> acp`, IS the ACP adapter (the same "CLI is the adapter" shape
+// codex has). Each gets the same three scenarios already covered for codex
+// above: a real handshake succeeds, the adapter starts but never answers
+// `initialize`, and the adapter answers with a JSON-RPC error.
+func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		provider   string
+		binaryName string
+		script     string
+		wantStatus AvailabilityStatus
+		wantReason string
+	}{
+		{
+			name:       "cursor ready when handshake succeeds",
+			provider:   "cursor",
+			binaryName: "cursor-agent",
+			script:     standardACPFakeScript("exit 0\n"),
+			wantStatus: AvailabilityReady,
+		},
+		{
+			name:       "cursor not ready when acp never responds to initialize",
+			provider:   "cursor",
+			binaryName: "cursor-agent",
+			script:     "#!/bin/sh\ncase \"$*\" in\n*acp*) sleep 5 ;;\nesac\nexit 0\n",
+			wantStatus: AvailabilityNotInstalled,
+			wantReason: "acp_adapter_launch_failed",
+		},
+		{
+			name:       "cursor not ready when acp rejects initialize",
+			provider:   "cursor",
+			binaryName: "cursor-agent",
+			script: "#!/bin/sh\ncase \"$*\" in\n" +
+				"*acp*) echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"unsupported\"}}'; exit 1 ;;\n" +
+				"esac\nexit 0\n",
+			wantStatus: AvailabilityNotInstalled,
+			wantReason: "acp_adapter_launch_failed",
+		},
+		{
+			name:       "opencode ready when handshake succeeds",
+			provider:   "opencode",
+			binaryName: "opencode",
+			script:     standardACPFakeScript("exit 0\n"),
+			wantStatus: AvailabilityReady,
+		},
+		{
+			name:       "opencode not ready when acp never responds to initialize",
+			provider:   "opencode",
+			binaryName: "opencode",
+			script:     "#!/bin/sh\ncase \"$*\" in\n*acp*) sleep 5 ;;\nesac\nexit 0\n",
+			wantStatus: AvailabilityNotInstalled,
+			wantReason: "acp_adapter_launch_failed",
+		},
+		{
+			name:       "opencode not ready when acp rejects initialize",
+			provider:   "opencode",
+			binaryName: "opencode",
+			script: "#!/bin/sh\ncase \"$*\" in\n" +
+				"*acp*) echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"unsupported\"}}'; exit 1 ;;\n" +
+				"esac\nexit 0\n",
+			wantStatus: AvailabilityNotInstalled,
+			wantReason: "acp_adapter_launch_failed",
+		},
+		{
+			// A "fake shell" that never reads stdin but races to print a
+			// response-shaped line with the wrong id before exiting must
+			// not be able to satisfy the handshake match.
+			// newStandardACPHandshakeRequestID never generates 1 (see its doc
+			// comment), so this hardcoded id can never accidentally match by
+			// chance. This is the exact "never reads stdin" shim shape a
+			// canned/fake ACP adapter would use.
+			name:       "cursor not ready when acp spoofs handshake with hardcoded id, never reads the request",
+			provider:   "cursor",
+			binaryName: "cursor-agent",
+			script: "#!/bin/sh\ncase \"$*\" in\n" +
+				"*acp*) echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}'; exit 0 ;;\n" +
+				"esac\nexit 0\n",
+			wantStatus: AvailabilityNotInstalled,
+			wantReason: "acp_adapter_launch_failed",
+		},
+		{
+			name:       "cursor not ready when acp spoofs handshake without jsonrpc version",
+			provider:   "cursor",
+			binaryName: "cursor-agent",
+			script: "#!/bin/sh\ncase \"$*\" in\n" +
+				"*acp*) echo '{\"id\":1,\"result\":{}}'; exit 0 ;;\n" +
+				"esac\nexit 0\n",
+			wantStatus: AvailabilityNotInstalled,
+			wantReason: "acp_adapter_launch_failed",
+		},
+		{
+			name:       "opencode not ready when acp spoofs handshake with hardcoded id, never reads the request",
+			provider:   "opencode",
+			binaryName: "opencode",
+			script: "#!/bin/sh\ncase \"$*\" in\n" +
+				"*acp*) echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}'; exit 0 ;;\n" +
+				"esac\nexit 0\n",
+			wantStatus: AvailabilityNotInstalled,
+			wantReason: "acp_adapter_launch_failed",
+		},
+		{
+			name:       "opencode not ready when acp spoofs handshake without jsonrpc version",
+			provider:   "opencode",
+			binaryName: "opencode",
+			script: "#!/bin/sh\ncase \"$*\" in\n" +
+				"*acp*) echo '{\"id\":1,\"result\":{}}'; exit 0 ;;\n" +
+				"esac\nexit 0\n",
+			wantStatus: AvailabilityNotInstalled,
+			wantReason: "acp_adapter_launch_failed",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			binDir := filepath.Join(home, "bin")
+			writeExecutable(t, filepath.Join(binDir, tt.binaryName), tt.script)
+
+			service := probeTestService(home)
+			service.Environ = func() []string {
+				return []string{"PATH=" + binDir}
+			}
+			service.IsExecutableFile = isTestExecutable
+			service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+				return AuthInfo{Status: AuthAuthenticated}, true
+			}
+
+			snapshot, err := service.List(context.Background(), ListInput{Providers: []string{tt.provider}})
+			if err != nil {
+				t.Fatalf("List() error = %v", err)
+			}
+
+			status := onlyStatus(t, snapshot)
+			if status.Availability.Status != tt.wantStatus {
+				t.Fatalf("Availability.Status = %q, want %q; status=%#v", status.Availability.Status, tt.wantStatus, status)
+			}
+			if tt.wantReason != "" && status.Availability.ReasonCode != tt.wantReason {
+				t.Fatalf("ReasonCode = %q, want %q", status.Availability.ReasonCode, tt.wantReason)
+			}
+		})
+	}
+}
+
 func TestServiceListRunsCodexLauncherWithManagedNodePath(t *testing.T) {
 	home := t.TempDir()
 	binDir := filepath.Join(home, "bin")
@@ -591,9 +942,14 @@ func TestServiceListRunsCodexLauncherWithManagedNodePath(t *testing.T) {
 
 	runtimeRoot := fakeManagedRuntimeRoot(t)
 	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
-	writeExecutable(t, managedNode, "#!/bin/sh\nif [ \"$2\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nexit 0\n")
+	writeExecutable(t, managedNode, codexAppServerFakeScript("if [ \"$2\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nexit 0\n"))
 
 	service := probeTestService(home)
+	// The handshake probe execs through an extra `env`+managed-node hop here
+	// (unlike the direct-binary fakes elsewhere in this file), which is
+	// measurably slower under test-suite load; give it more headroom than the
+	// default 1s probe timeout so this isn't flaky.
+	service.ProbeTimeout = 15 * time.Second
 	service.Environ = func() []string {
 		return []string{"PATH=" + binDir}
 	}
@@ -661,7 +1017,7 @@ func TestServiceRunActionReinstallsCodexWhenPlatformPackageIncomplete(t *testing
 	pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
 	writePackageManifest(t, pkgDir, "@openai/codex", MinSupportedCodexVersion)
 	codexPath := filepath.Join(pkgDir, "bin", "codex")
-	writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nsleep 5\n")
+	writeExecutable(t, codexPath, codexAppServerFakeScript("if [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nexit 0\n"))
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir bin dir: %v", err)
 	}
@@ -671,6 +1027,10 @@ func TestServiceRunActionReinstallsCodexWhenPlatformPackageIncomplete(t *testing
 	platformBinary := requireTestCodexPlatformBinaryPath(t, pkgDir)
 
 	service := probeTestService(home)
+	// The default 1s probe timeout is tuned for the old "still alive after
+	// 200ms" liveness check; the real ACP handshake needs to actually spawn,
+	// write, and read a response, which is slower under test-suite load.
+	service.ProbeTimeout = 5 * time.Second
 	service.Environ = func() []string {
 		return []string{"PATH=" + binDir, agentNPMRegistryEnv + "=https://registry.example.test"}
 	}
@@ -740,6 +1100,10 @@ func TestServiceRunActionRepairsCodexWhenAppServerLaunchFails(t *testing.T) {
 	writeExecutable(t, platformBinary, "#!/bin/sh\nexit 0\n")
 
 	service := probeTestService(home)
+	// The default 1s probe timeout is tuned for the old "still alive after
+	// 200ms" liveness check; the real ACP handshake needs to actually spawn,
+	// write, and read a response, which is slower under test-suite load.
+	service.ProbeTimeout = 5 * time.Second
 	service.Environ = func() []string {
 		return []string{"PATH=" + binDir, agentNPMRegistryEnv + "=https://registry.example.test"}
 	}
@@ -751,7 +1115,7 @@ func TestServiceRunActionRepairsCodexWhenAppServerLaunchFails(t *testing.T) {
 	var command InstallCommandInput
 	service.InstallCommand = func(_ context.Context, input InstallCommandInput) (InstallCommandResult, error) {
 		command = input
-		writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nif [ \"$1\" = \"app-server\" ]; then sleep 5; fi\nexit 0\n")
+		writeExecutable(t, codexPath, codexAppServerFakeScript("if [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nexit 0\n"))
 		return InstallCommandResult{ExitCode: 0, Stdout: "installed"}, nil
 	}
 
@@ -885,16 +1249,15 @@ func TestServiceListTreatsTemporarilyUnsupportedProvidersAsUnsupported(t *testin
 		return "/usr/local/bin/" + name, nil
 	}, map[string]bool{
 		"/home/test/.nexight/auth.json":         true,
-		"/home/test/.hermes/auth.json":          true,
 		"/home/test/.config/openclaw/auth.json": true,
 	})
 
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"nexight", "hermes", "openclaw"}})
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"nexight", "openclaw"}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
-	if len(snapshot.Providers) != 3 {
-		t.Fatalf("len(providers) = %d, want 3", len(snapshot.Providers))
+	if len(snapshot.Providers) != 2 {
+		t.Fatalf("len(providers) = %d, want 2", len(snapshot.Providers))
 	}
 	for _, status := range snapshot.Providers {
 		if status.Availability.Status != AvailabilityUnsupported {
@@ -1039,9 +1402,9 @@ func TestServiceProbeReportsFailureWhenAdapterCommandCannotStart(t *testing.T) {
 func TestServiceProbeTreatsTemporarilyUnsupportedProviderAsUnsupported(t *testing.T) {
 	service := testService(func(name string) (string, error) {
 		return "/usr/local/bin/" + name, nil
-	}, map[string]bool{"/home/test/.hermes/auth.json": true})
+	}, map[string]bool{"/home/test/.config/openclaw/auth.json": true})
 
-	result, err := service.Probe(context.Background(), ProbeInput{Provider: "hermes"})
+	result, err := service.Probe(context.Background(), ProbeInput{Provider: "openclaw"})
 	if err != nil {
 		t.Fatalf("Probe() error = %v", err)
 	}
@@ -1201,6 +1564,10 @@ func TestServiceRunCodexInstallerReportsManagedNPMActiveAction(t *testing.T) {
 	managedNPM := filepath.Join(runtimeRoot, "node", "bin", npmBinaryNameForTest())
 	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
 	service := probeTestService(home)
+	// The default 1s probe timeout is tuned for the old "still alive after
+	// 200ms" liveness check; the real ACP handshake needs to actually spawn,
+	// write, and read a response, which is slower under test-suite load.
+	service.ProbeTimeout = 5 * time.Second
 	service.Environ = func() []string {
 		return []string{"PATH=" + binDir, agentNPMRegistryEnv + "=https://registry.example.test"}
 	}
@@ -1251,7 +1618,7 @@ func TestServiceRunCodexInstallerReportsManagedNPMActiveAction(t *testing.T) {
 		}
 		writePackageManifest(t, pkgDir, "@openai/codex", MinSupportedCodexVersion)
 		codexPath := filepath.Join(pkgDir, "bin", "codex")
-		writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nsleep 5\n")
+		writeExecutable(t, codexPath, codexAppServerFakeScript("if [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nexit 0\n"))
 		// Platform support was already checked on the test goroutine below, so ok
 		// is true here.
 		platformPath := requireTestCodexPlatformBinaryPath(t, pkgDir)
@@ -1595,6 +1962,74 @@ func TestServiceResolveProviderCommandFallsBackToManagedNodeForCodex(t *testing.
 	}
 }
 
+func TestServiceResolveProviderCommandFallsBackToManagedNodeForTuttiAgent(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	writeExecutable(t, filepath.Join(binDir, "tutti-agent"), "#!/usr/bin/env node\n")
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+
+	service := probeTestService(home)
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir}
+	}
+	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
+
+	result, err := service.ResolveProviderCommand(context.Background(), "tutti-agent")
+	if err != nil {
+		t.Fatalf("ResolveProviderCommand() error = %v", err)
+	}
+	if !slices.Equal(result.Command, []string{"tutti-agent", "app-server"}) {
+		t.Fatalf("Command = %#v, want tutti-agent app-server", result.Command)
+	}
+	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
+	if !slices.Contains(result.Env, "TUTTI_APP_NODE="+managedNode) {
+		t.Fatalf("Env = %#v, want managed node fallback", result.Env)
+	}
+	pathValue := managedruntime.EnvValue(result.Env, "PATH")
+	if !slices.Contains(filepath.SplitList(pathValue), filepath.Dir(managedNode)) {
+		t.Fatalf("PATH = %q, want managed node directory", pathValue)
+	}
+}
+
+func TestServiceListUsesManagedNodeForTuttiAgentVersionProbe(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	writeExecutable(t, filepath.Join(binDir, "tutti-agent"), "#!/usr/bin/env node\n")
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	writeExecutable(
+		t,
+		filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest()),
+		"#!/bin/sh\necho 'tutti-agent 0.0.8'\n",
+	)
+
+	service := probeTestService(home)
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir}
+	}
+	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+
+	snapshot, err := service.List(context.Background(), ListInput{
+		Providers:    []string{"tutti-agent"},
+		ForceRefresh: true,
+	})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	status := onlyStatus(t, snapshot)
+	if status.CLI.Version != "0.0.8" {
+		t.Fatalf("CLI.Version = %q, want 0.0.8", status.CLI.Version)
+	}
+	if status.Availability.Status != AvailabilityReady {
+		t.Fatalf(
+			"Availability = %#v, want ready with managed Node version probe",
+			status.Availability,
+		)
+	}
+}
+
 func TestServiceResolveProviderCommandDefaultsClaudeCodeToSDKSidecar(t *testing.T) {
 	home := t.TempDir()
 	entry := filepath.Join(home, "claude-sdk-sidecar", "src", "main.ts")
@@ -1709,7 +2144,7 @@ func TestServiceListClaudeCodeSDKReportsMissingSidecarEntry(t *testing.T) {
 func TestServiceRunActionDoesNotInstallTemporarilyUnsupportedProvider(t *testing.T) {
 	service := testService(func(name string) (string, error) {
 		return "/usr/local/bin/" + name, nil
-	}, map[string]bool{"/home/test/.hermes/auth.json": true})
+	}, map[string]bool{"/home/test/.config/openclaw/auth.json": true})
 	installCalled := false
 	service.InstallCommand = func(context.Context, InstallCommandInput) (InstallCommandResult, error) {
 		installCalled = true
@@ -1717,7 +2152,7 @@ func TestServiceRunActionDoesNotInstallTemporarilyUnsupportedProvider(t *testing
 	}
 
 	result, err := service.RunAction(context.Background(), RunActionInput{
-		Provider: "hermes",
+		Provider: "openclaw",
 		ActionID: ActionInstall,
 	})
 	if err != nil {
@@ -2150,7 +2585,26 @@ func TestServiceRunActionStartsInstallTimeoutAfterLockAcquisition(t *testing.T) 
 	}
 }
 
-func TestServiceListReportsAuthRequiredFromClaudeAuthStatusCommand(t *testing.T) {
+type claudeAuthCommandResult struct {
+	auth AuthInfo
+	ok   bool
+}
+
+type claudeAuthListHarness struct {
+	t          *testing.T
+	home       string
+	claudePath string
+	service    Service
+	calls      int
+	responses  []claudeAuthCommandResult
+}
+
+func newClaudeAuthListHarness(
+	t *testing.T,
+	environ []string,
+	responses ...claudeAuthCommandResult,
+) *claudeAuthListHarness {
+	t.Helper()
 	home := t.TempDir()
 	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
@@ -2168,19 +2622,17 @@ func TestServiceListReportsAuthRequiredFromClaudeAuthStatusCommand(t *testing.T)
 	}
 	writePackageManifest(t, packageDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
 
-	service := Service{
-		Environ: func() []string {
-			return []string{"PATH=/usr/bin:/bin"}
-		},
-		HomeDir: func() (string, error) {
-			return home, nil
-		},
-		LookPath: func(_ string) (string, error) {
-			return "", errors.New("not found")
-		},
-		Now: func() time.Time {
-			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
-		},
+	harness := &claudeAuthListHarness{
+		t:          t,
+		home:       home,
+		claudePath: claudePath,
+		responses:  responses,
+	}
+	harness.service = Service{
+		Environ:  func() []string { return environ },
+		HomeDir:  func() (string, error) { return home, nil },
+		LookPath: func(_ string) (string, error) { return "", errors.New("not found") },
+		Now:      func() time.Time { return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC) },
 		RunAuthStatusCommand: func(_ context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {
 			if spec.Provider != "claude-code" {
 				t.Fatalf("auth status provider = %q, want claude-code", spec.Provider)
@@ -2188,451 +2640,202 @@ func TestServiceListReportsAuthRequiredFromClaudeAuthStatusCommand(t *testing.T)
 			if binaryPath != claudePath {
 				t.Fatalf("auth status binaryPath = %q, want %q", binaryPath, claudePath)
 			}
-			return AuthInfo{Status: AuthRequired}, true
+			if harness.calls >= len(harness.responses) {
+				t.Fatalf("unexpected auth status command call %d", harness.calls+1)
+			}
+			response := harness.responses[harness.calls]
+			harness.calls++
+			return response.auth, response.ok
 		},
 		ExternalAgentRegistry: registryStore,
 		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
 	}
+	return harness
+}
 
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
+func (h *claudeAuthListHarness) writeSettings(content string) {
+	h.t.Helper()
+	settingsDir := filepath.Join(h.home, ".claude")
+	if err := os.MkdirAll(settingsDir, 0o755); err != nil {
+		h.t.Fatalf("mkdir .claude dir: %v", err)
 	}
+	if err := os.WriteFile(filepath.Join(settingsDir, "settings.json"), []byte(content), 0o600); err != nil {
+		h.t.Fatalf("write settings.json: %v", err)
+	}
+}
 
-	status := onlyStatus(t, snapshot)
+func (h *claudeAuthListHarness) writeMarker(content string) {
+	h.t.Helper()
+	if err := os.WriteFile(filepath.Join(h.home, ".claude.json"), []byte(content), 0o600); err != nil {
+		h.t.Fatalf("write claude marker: %v", err)
+	}
+}
+
+func (h *claudeAuthListHarness) list() ProviderStatus {
+	h.t.Helper()
+	snapshot, err := h.service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
+	if err != nil {
+		h.t.Fatalf("List() error = %v", err)
+	}
+	return onlyStatus(h.t, snapshot)
+}
+
+func assertClaudeAuthListStatus(
+	t *testing.T,
+	status ProviderStatus,
+	claudePath string,
+	availability AvailabilityStatus,
+	authStatus AuthStatus,
+	authMethod string,
+	accountLabel string,
+) {
+	t.Helper()
+	if status.Availability.Status != availability {
+		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, availability)
+	}
+	if status.Auth.Status != authStatus {
+		t.Fatalf("Auth.Status = %q, want %q", status.Auth.Status, authStatus)
+	}
+	if status.Auth.AuthMethod != authMethod {
+		t.Fatalf("Auth.AuthMethod = %q, want %q", status.Auth.AuthMethod, authMethod)
+	}
+	if status.Auth.AccountLabel != accountLabel {
+		t.Fatalf("Auth.AccountLabel = %q, want %q", status.Auth.AccountLabel, accountLabel)
+	}
 	if status.CLI.BinaryPath != claudePath {
 		t.Fatalf("CLI.BinaryPath = %q, want %q", status.CLI.BinaryPath, claudePath)
 	}
-	if status.Availability.Status != AvailabilityAuthRequired {
-		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityAuthRequired)
-	}
-	if status.Auth.Status != AuthRequired {
-		t.Fatalf("Auth.Status = %q, want %q", status.Auth.Status, AuthRequired)
-	}
 }
 
-func TestServiceListReportsReadyForClaudeAPIBillingWithEnvKey(t *testing.T) {
-	home := t.TempDir()
-	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
-	if err := os.MkdirAll(binDir, 0o755); err != nil {
-		t.Fatalf("mkdir bin dir: %v", err)
+func TestServiceListReportsClaudeAuthentication(t *testing.T) {
+	tests := []struct {
+		name         string
+		environ      []string
+		settings     string
+		commandAuth  AuthInfo
+		availability AvailabilityStatus
+		authStatus   AuthStatus
+		authMethod   string
+		accountLabel string
+	}{
+		{
+			name:         "auth required from CLI status",
+			environ:      []string{"PATH=/usr/bin:/bin"},
+			commandAuth:  AuthInfo{Status: AuthRequired},
+			availability: AvailabilityAuthRequired,
+			authStatus:   AuthRequired,
+		},
+		{
+			name:         "environment API key uses API billing",
+			environ:      []string{"PATH=/usr/bin:/bin", "ANTHROPIC_API_KEY=sk-test"},
+			commandAuth:  AuthInfo{Status: AuthRequired},
+			availability: AvailabilityReady,
+			authStatus:   AuthAuthenticated,
+			authMethod:   "apiKey",
+			accountLabel: "API Usage Billing",
+		},
+		{
+			name:         "settings API key uses API billing",
+			environ:      []string{"PATH=/usr/bin:/bin"},
+			settings:     `{"env":{"ANTHROPIC_API_KEY":"sk-test"}}`,
+			commandAuth:  AuthInfo{Status: AuthRequired},
+			availability: AvailabilityReady,
+			authStatus:   AuthAuthenticated,
+			authMethod:   "apiKey",
+			accountLabel: "API Usage Billing",
+		},
+		{
+			name:         "settings token and base URL override CLI OAuth",
+			environ:      []string{"PATH=/usr/bin:/bin"},
+			settings:     `{"env":{"ANTHROPIC_AUTH_TOKEN":"sk-test","ANTHROPIC_BASE_URL":"https://api.moonshot.cn/anthropic"}}`,
+			commandAuth:  AuthInfo{Status: AuthAuthenticated, AuthMethod: "oauth_token", AccountLabel: "oauth_token"},
+			availability: AvailabilityReady,
+			authStatus:   AuthAuthenticated,
+			authMethod:   "apiKey",
+			accountLabel: "API Usage Billing",
+		},
+		{
+			name:         "bare endpoint preserves CLI OAuth identity",
+			environ:      []string{"PATH=/usr/bin:/bin"},
+			settings:     `{"env":{"ANTHROPIC_BASE_URL":"https://gw.local"}}`,
+			commandAuth:  AuthInfo{Status: AuthAuthenticated, AuthMethod: "oauth", AccountLabel: "me@x.com"},
+			availability: AvailabilityReady,
+			authStatus:   AuthAuthenticated,
+			authMethod:   "oauth",
+			accountLabel: "me@x.com",
+		},
 	}
-	claudePath := filepath.Join(binDir, "claude")
-	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, filepath.Join(binDir, "sample-agent-acp"), "#!/bin/sh\nexit 0\n")
-	writePackageManifest(t, binDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
-	registryStore, prefixDir := fakeExternalAgentRegistry(t)
-	runtimeRoot := fakeManagedRuntimeRoot(t)
-	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/sample-agent-acp")
-	if err := os.MkdirAll(packageDir, 0o755); err != nil {
-		t.Fatalf("mkdir package dir: %v", err)
-	}
-	writePackageManifest(t, packageDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
 
-	service := Service{
-		Environ: func() []string {
-			return []string{"PATH=/usr/bin:/bin", "ANTHROPIC_API_KEY=sk-test"}
-		},
-		HomeDir: func() (string, error) {
-			return home, nil
-		},
-		LookPath: func(_ string) (string, error) {
-			return "", errors.New("not found")
-		},
-		Now: func() time.Time {
-			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
-		},
-		RunAuthStatusCommand: func(_ context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {
-			if spec.Provider != "claude-code" {
-				t.Fatalf("auth status provider = %q, want claude-code", spec.Provider)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			harness := newClaudeAuthListHarness(t, tt.environ, claudeAuthCommandResult{auth: tt.commandAuth, ok: true})
+			if tt.settings != "" {
+				harness.writeSettings(tt.settings)
 			}
-			if binaryPath != claudePath {
-				t.Fatalf("auth status binaryPath = %q, want %q", binaryPath, claudePath)
+
+			status := harness.list()
+			assertClaudeAuthListStatus(
+				t,
+				status,
+				harness.claudePath,
+				tt.availability,
+				tt.authStatus,
+				tt.authMethod,
+				tt.accountLabel,
+			)
+			if harness.calls != 1 {
+				t.Fatalf("auth status command calls = %d, want 1", harness.calls)
 			}
-			return AuthInfo{Status: AuthRequired}, true
-		},
-		ExternalAgentRegistry: registryStore,
-		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
-	}
-
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-
-	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityReady {
-		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityReady)
-	}
-	if status.Auth.Status != AuthAuthenticated {
-		t.Fatalf("Auth.Status = %q, want %q", status.Auth.Status, AuthAuthenticated)
-	}
-	if status.Auth.AccountLabel != "API Usage Billing" {
-		t.Fatalf("Auth.AccountLabel = %q, want %q", status.Auth.AccountLabel, "API Usage Billing")
-	}
-}
-
-func TestServiceListReportsReadyForClaudeAPIBillingWithSettingsKey(t *testing.T) {
-	home := t.TempDir()
-	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
-	if err := os.MkdirAll(binDir, 0o755); err != nil {
-		t.Fatalf("mkdir bin dir: %v", err)
-	}
-	claudePath := filepath.Join(binDir, "claude")
-	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, filepath.Join(binDir, "sample-agent-acp"), "#!/bin/sh\nexit 0\n")
-	writePackageManifest(t, binDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
-	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
-		t.Fatalf("mkdir .claude dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(home, ".claude", "settings.json"), []byte(`{"env":{"ANTHROPIC_API_KEY":"sk-test"}}`), 0o600); err != nil {
-		t.Fatalf("write settings.json: %v", err)
-	}
-	registryStore, prefixDir := fakeExternalAgentRegistry(t)
-	runtimeRoot := fakeManagedRuntimeRoot(t)
-	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/sample-agent-acp")
-	if err := os.MkdirAll(packageDir, 0o755); err != nil {
-		t.Fatalf("mkdir package dir: %v", err)
-	}
-	writePackageManifest(t, packageDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
-
-	service := Service{
-		Environ: func() []string {
-			return []string{"PATH=/usr/bin:/bin"}
-		},
-		HomeDir: func() (string, error) {
-			return home, nil
-		},
-		LookPath: func(_ string) (string, error) {
-			return "", errors.New("not found")
-		},
-		Now: func() time.Time {
-			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
-		},
-		RunAuthStatusCommand: func(_ context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {
-			if spec.Provider != "claude-code" {
-				t.Fatalf("auth status provider = %q, want claude-code", spec.Provider)
-			}
-			if binaryPath != claudePath {
-				t.Fatalf("auth status binaryPath = %q, want %q", binaryPath, claudePath)
-			}
-			return AuthInfo{Status: AuthRequired}, true
-		},
-		ExternalAgentRegistry: registryStore,
-		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
-	}
-
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-
-	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityReady {
-		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityReady)
-	}
-	if status.Auth.Status != AuthAuthenticated {
-		t.Fatalf("Auth.Status = %q, want %q", status.Auth.Status, AuthAuthenticated)
-	}
-	if status.Auth.AccountLabel != "API Usage Billing" {
-		t.Fatalf("Auth.AccountLabel = %q, want %q", status.Auth.AccountLabel, "API Usage Billing")
-	}
-}
-
-func TestServiceListReportsReadyForClaudeAPIBillingDespiteOauthTokenStatus(t *testing.T) {
-	home := t.TempDir()
-	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
-	if err := os.MkdirAll(binDir, 0o755); err != nil {
-		t.Fatalf("mkdir bin dir: %v", err)
-	}
-	claudePath := filepath.Join(binDir, "claude")
-	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, filepath.Join(binDir, "sample-agent-acp"), "#!/bin/sh\nexit 0\n")
-	writePackageManifest(t, binDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
-	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
-		t.Fatalf("mkdir .claude dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(home, ".claude", "settings.json"), []byte(`{"env":{"ANTHROPIC_AUTH_TOKEN":"sk-test","ANTHROPIC_BASE_URL":"https://api.moonshot.cn/anthropic"}}`), 0o600); err != nil {
-		t.Fatalf("write settings.json: %v", err)
-	}
-	registryStore, prefixDir := fakeExternalAgentRegistry(t)
-	runtimeRoot := fakeManagedRuntimeRoot(t)
-	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/sample-agent-acp")
-	if err := os.MkdirAll(packageDir, 0o755); err != nil {
-		t.Fatalf("mkdir package dir: %v", err)
-	}
-	writePackageManifest(t, packageDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
-
-	service := Service{
-		Environ: func() []string {
-			return []string{"PATH=/usr/bin:/bin"}
-		},
-		HomeDir: func() (string, error) {
-			return home, nil
-		},
-		LookPath: func(_ string) (string, error) {
-			return "", errors.New("not found")
-		},
-		Now: func() time.Time {
-			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
-		},
-		RunAuthStatusCommand: func(_ context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {
-			if spec.Provider != "claude-code" {
-				t.Fatalf("auth status provider = %q, want claude-code", spec.Provider)
-			}
-			if binaryPath != claudePath {
-				t.Fatalf("auth status binaryPath = %q, want %q", binaryPath, claudePath)
-			}
-			// Simulate a CLI that reports an OAuth-style authMethod even though
-			// the user is actually configured for API Usage Billing.
-			return AuthInfo{Status: AuthAuthenticated, AuthMethod: "oauth_token", AccountLabel: "oauth_token"}, true
-		},
-		ExternalAgentRegistry: registryStore,
-		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
-	}
-
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-
-	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityReady {
-		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityReady)
-	}
-	if status.Auth.Status != AuthAuthenticated {
-		t.Fatalf("Auth.Status = %q, want %q", status.Auth.Status, AuthAuthenticated)
-	}
-	if status.Auth.AuthMethod != "apiKey" {
-		t.Fatalf("Auth.AuthMethod = %q, want %q", status.Auth.AuthMethod, "apiKey")
-	}
-	if status.Auth.AccountLabel != "API Usage Billing" {
-		t.Fatalf("Auth.AccountLabel = %q, want %q", status.Auth.AccountLabel, "API Usage Billing")
-	}
-}
-
-// A bare custom endpoint (no API credential) must NOT be mislabeled as API
-// Usage Billing. The user may be on an OAuth/subscription session against that
-// endpoint, so the CLI-reported auth status and label must be preserved.
-func TestServiceListDoesNotMislabelCustomEndpointOnlyAsAPIBilling(t *testing.T) {
-	home := t.TempDir()
-	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
-	if err := os.MkdirAll(binDir, 0o755); err != nil {
-		t.Fatalf("mkdir bin dir: %v", err)
-	}
-	claudePath := filepath.Join(binDir, "claude")
-	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, filepath.Join(binDir, "sample-agent-acp"), "#!/bin/sh\nexit 0\n")
-	writePackageManifest(t, binDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
-	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
-		t.Fatalf("mkdir .claude dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(home, ".claude", "settings.json"), []byte(`{"env":{"ANTHROPIC_BASE_URL":"https://gw.local"}}`), 0o600); err != nil {
-		t.Fatalf("write settings.json: %v", err)
-	}
-	registryStore, prefixDir := fakeExternalAgentRegistry(t)
-	runtimeRoot := fakeManagedRuntimeRoot(t)
-	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/sample-agent-acp")
-	if err := os.MkdirAll(packageDir, 0o755); err != nil {
-		t.Fatalf("mkdir package dir: %v", err)
-	}
-	writePackageManifest(t, packageDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
-
-	service := Service{
-		Environ: func() []string {
-			return []string{"PATH=/usr/bin:/bin"}
-		},
-		HomeDir: func() (string, error) {
-			return home, nil
-		},
-		LookPath: func(_ string) (string, error) {
-			return "", errors.New("not found")
-		},
-		Now: func() time.Time {
-			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
-		},
-		RunAuthStatusCommand: func(_ context.Context, _ ProviderSpec, _ string) (AuthInfo, bool) {
-			return AuthInfo{Status: AuthAuthenticated, AuthMethod: "oauth", AccountLabel: "me@x.com"}, true
-		},
-		ExternalAgentRegistry: registryStore,
-		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
-	}
-
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-
-	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityReady {
-		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityReady)
-	}
-	if status.Auth.AuthMethod != "oauth" {
-		t.Fatalf("Auth.AuthMethod = %q, want oauth (not overridden to apiKey)", status.Auth.AuthMethod)
-	}
-	if status.Auth.AccountLabel != "me@x.com" {
-		t.Fatalf("Auth.AccountLabel = %q, want me@x.com (CLI label preserved)", status.Auth.AccountLabel)
+		})
 	}
 }
 
 func TestServiceListRetriesClaudeAuthStatusCommandWhenOutputIsUnrecognized(t *testing.T) {
-	home := t.TempDir()
-	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
-	if err := os.MkdirAll(binDir, 0o755); err != nil {
-		t.Fatalf("mkdir bin dir: %v", err)
-	}
-	claudePath := filepath.Join(binDir, "claude")
-	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, filepath.Join(binDir, "sample-agent-acp"), "#!/bin/sh\nexit 0\n")
-	writePackageManifest(t, binDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
-	registryStore, prefixDir := fakeExternalAgentRegistry(t)
-	runtimeRoot := fakeManagedRuntimeRoot(t)
-	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/sample-agent-acp")
-	if err := os.MkdirAll(packageDir, 0o755); err != nil {
-		t.Fatalf("mkdir package dir: %v", err)
-	}
-	writePackageManifest(t, packageDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
-	authStatusCommandCalls := 0
+	harness := newClaudeAuthListHarness(
+		t,
+		[]string{"PATH=/usr/bin:/bin"},
+		claudeAuthCommandResult{auth: AuthInfo{}, ok: false},
+		claudeAuthCommandResult{auth: AuthInfo{Status: AuthAuthenticated, AccountLabel: "dev@example.com"}, ok: true},
+	)
+	harness.service.AuthStatusCommandRetryDelay = time.Nanosecond
 
-	service := Service{
-		Environ: func() []string {
-			return []string{"PATH=/usr/bin:/bin"}
-		},
-		HomeDir: func() (string, error) {
-			return home, nil
-		},
-		LookPath: func(_ string) (string, error) {
-			return "", errors.New("not found")
-		},
-		Now: func() time.Time {
-			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
-		},
-		AuthStatusCommandRetryDelay: time.Nanosecond,
-		RunAuthStatusCommand: func(_ context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {
-			if spec.Provider != "claude-code" {
-				t.Fatalf("auth status provider = %q, want claude-code", spec.Provider)
-			}
-			if binaryPath != claudePath {
-				t.Fatalf("auth status binaryPath = %q, want %q", binaryPath, claudePath)
-			}
-			authStatusCommandCalls++
-			if authStatusCommandCalls == 1 {
-				return AuthInfo{}, false
-			}
-			return AuthInfo{Status: AuthAuthenticated, AccountLabel: "dev@example.com"}, true
-		},
-		ExternalAgentRegistry: registryStore,
-		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
-	}
-
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-
-	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityReady {
-		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityReady)
-	}
-	if status.Auth.Status != AuthAuthenticated {
-		t.Fatalf("Auth.Status = %q, want %q", status.Auth.Status, AuthAuthenticated)
-	}
-	if status.Auth.AccountLabel != "dev@example.com" {
-		t.Fatalf("AccountLabel = %q, want dev@example.com", status.Auth.AccountLabel)
-	}
-	if authStatusCommandCalls != 2 {
-		t.Fatalf("auth status command calls = %d, want 2", authStatusCommandCalls)
+	status := harness.list()
+	assertClaudeAuthListStatus(
+		t,
+		status,
+		harness.claudePath,
+		AvailabilityReady,
+		AuthAuthenticated,
+		"",
+		"dev@example.com",
+	)
+	if harness.calls != 2 {
+		t.Fatalf("auth status command calls = %d, want 2", harness.calls)
 	}
 }
 
 func TestServiceListFallsBackToClaudeAuthMarkerWhenAuthStatusCommandIsUnrecognized(t *testing.T) {
-	home := t.TempDir()
-	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
-	if err := os.MkdirAll(binDir, 0o755); err != nil {
-		t.Fatalf("mkdir bin dir: %v", err)
-	}
-	claudePath := filepath.Join(binDir, "claude")
-	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, filepath.Join(binDir, "sample-agent-acp"), "#!/bin/sh\nexit 0\n")
-	writePackageManifest(t, binDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
-	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(`{"userID":"user_123"}`), 0o600); err != nil {
-		t.Fatalf("write claude marker: %v", err)
-	}
-	registryStore, prefixDir := fakeExternalAgentRegistry(t)
-	runtimeRoot := fakeManagedRuntimeRoot(t)
-	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/sample-agent-acp")
-	if err := os.MkdirAll(packageDir, 0o755); err != nil {
-		t.Fatalf("mkdir package dir: %v", err)
-	}
-	writePackageManifest(t, packageDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
+	harness := newClaudeAuthListHarness(
+		t,
+		[]string{"PATH=/usr/bin:/bin"},
+		claudeAuthCommandResult{auth: AuthInfo{}, ok: false},
+		claudeAuthCommandResult{auth: AuthInfo{}, ok: false},
+	)
+	harness.service.AuthStatusCommandRetryDelay = time.Nanosecond
+	harness.writeMarker(`{"userID":"user_123"}`)
 
-	service := Service{
-		Environ: func() []string {
-			return []string{"PATH=/usr/bin:/bin"}
-		},
-		HomeDir: func() (string, error) {
-			return home, nil
-		},
-		LookPath: func(_ string) (string, error) {
-			return "", errors.New("not found")
-		},
-		Now: func() time.Time {
-			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
-		},
-		AuthStatusCommandRetryDelay: time.Nanosecond,
-		RunAuthStatusCommand: func(_ context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {
-			if spec.Provider != "claude-code" {
-				t.Fatalf("auth status provider = %q, want claude-code", spec.Provider)
-			}
-			if binaryPath != claudePath {
-				t.Fatalf("auth status binaryPath = %q, want %q", binaryPath, claudePath)
-			}
-			return AuthInfo{}, false
-		},
-		ExternalAgentRegistry: registryStore,
-		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
-	}
-
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-
-	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityReady {
-		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityReady)
-	}
-	if status.Auth.Status != AuthAuthenticated {
-		t.Fatalf("Auth.Status = %q, want %q", status.Auth.Status, AuthAuthenticated)
-	}
-}
-
-func TestParseClaudeAuthStatusOutputReportsAuthenticated(t *testing.T) {
-	auth, ok := parseClaudeAuthStatusOutput([]byte(`{"loggedIn":true,"authMethod":"oauth"}`))
-	if !ok {
-		t.Fatal("parseClaudeAuthStatusOutput ok = false, want true")
-	}
-	if auth.Status != AuthAuthenticated {
-		t.Fatalf("Status = %q, want %q", auth.Status, AuthAuthenticated)
-	}
-	if auth.AccountLabel != "oauth" {
-		t.Fatalf("AccountLabel = %q, want oauth", auth.AccountLabel)
-	}
-	if auth.AuthMethod != "oauth" {
-		t.Fatalf("AuthMethod = %q, want oauth", auth.AuthMethod)
-	}
-}
-
-func TestParseClaudeAuthStatusOutputReportsAuthMethodWhenNotLoggedIn(t *testing.T) {
-	auth, ok := parseClaudeAuthStatusOutput([]byte(`{"loggedIn":false,"authMethod":"apiKey"}`))
-	if !ok {
-		t.Fatal("parseClaudeAuthStatusOutput ok = false, want true")
-	}
-	if auth.Status != AuthRequired {
-		t.Fatalf("Status = %q, want %q", auth.Status, AuthRequired)
-	}
-	if auth.AuthMethod != "apiKey" {
-		t.Fatalf("AuthMethod = %q, want apiKey", auth.AuthMethod)
+	status := harness.list()
+	assertClaudeAuthListStatus(
+		t,
+		status,
+		harness.claudePath,
+		AvailabilityReady,
+		AuthAuthenticated,
+		"",
+		"user_123",
+	)
+	if harness.calls != 2 {
+		t.Fatalf("auth status command calls = %d, want 2", harness.calls)
 	}
 }
 
@@ -2789,7 +2992,10 @@ func probeTestService(home string) Service {
 			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
 		},
 		ProbeReadyAfter: 200 * time.Millisecond,
-		ProbeTimeout:    time.Second,
+		// Match production defaultProbeTimeout (3s). 1s was too tight for the
+		// real ACP initialize round-trip in fake shell scripts under parallel
+		// `go test` load and caused flaky acp_adapter_launch_failed failures.
+		ProbeTimeout: defaultProbeTimeout,
 	}
 }
 
@@ -2820,6 +3026,37 @@ func assertProviderCheck(t *testing.T, checks []ProviderCheck, name string, pass
 		}
 	}
 	t.Fatalf("check %q missing in %#v", name, checks)
+}
+
+// codexAppServerHandshakeOKCase is a POSIX `case` arm that answers
+// probeCodexAppServerHandshake's `initialize` request by actually reading
+// the request line from stdin, extracting the id the probe generated for
+// this run, and echoing it back. The probe now uses an unpredictable id per
+// run specifically so a canned response (one that never reads stdin) cannot
+// pass as a real handshake reply; a fake that wants to look "ready" has to
+// genuinely round-trip the id.
+const codexAppServerHandshakeOKCase = `*app-server*) read -r line; id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9]*\).*/\1/p'); printf '{"id":%s,"result":{}}\n' "$id"; exit 0 ;;`
+
+// codexAppServerFakeScript builds a POSIX shell fake CLI that answers the
+// real ACP handshake probe for any invocation whose args contain
+// "app-server" (matching the probe's request instead of just staying alive),
+// then falls through to extraBody for every other invocation (e.g.
+// `--version`).
+func codexAppServerFakeScript(extraBody string) string {
+	return "#!/bin/sh\ncase \"$*\" in\n" + codexAppServerHandshakeOKCase + "\nesac\n" + extraBody
+}
+
+// standardACPHandshakeOKCase is the Standard ACP equivalent of
+// codexAppServerHandshakeOKCase: it reads the `initialize` request from
+// stdin and echoes back the id it was sent, rather than a hardcoded value.
+const standardACPHandshakeOKCase = `*acp*) read -r line; id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9]*\).*/\1/p'); printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id"; exit 0 ;;`
+
+// standardACPFakeScript builds a POSIX shell fake CLI that answers the real
+// ACP handshake probe for any invocation whose args contain "acp" (matching
+// cursor-agent/opencode's `<binary> acp` adapter command), then falls
+// through to extraBody for every other invocation (e.g. `--version`).
+func standardACPFakeScript(extraBody string) string {
+	return "#!/bin/sh\ncase \"$*\" in\n" + standardACPHandshakeOKCase + "\nesac\n" + extraBody
 }
 
 func isTestExecutable(path string) bool {

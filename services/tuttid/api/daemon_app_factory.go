@@ -72,6 +72,12 @@ func (api DaemonAPI) CreateWorkspaceAppFactoryJob(ctx context.Context, request t
 			apierrors.WithParams(map[string]any{"field": "agentTargetId"}),
 		))}, nil
 	}
+	if strings.TrimSpace(request.Body.ClientSubmitId) == "" {
+		return tuttigenerated.CreateWorkspaceAppFactoryJob400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.MalformedRequest(
+			apierrors.WithDeveloperMessage("client submit id is required"),
+			apierrors.WithParams(map[string]any{"field": "clientSubmitId"}),
+		))}, nil
+	}
 	job, err := api.AppFactoryService.Create(ctx, workspaceID, workspaceservice.CreateAppFactoryJobInput{
 		Prompt:        request.Body.Prompt,
 		DisplayName:   request.Body.DisplayName,
@@ -111,7 +117,7 @@ func (api DaemonAPI) GetWorkspaceAppFactoryAgentTargetComposerOptions(ctx contex
 	}
 	settings := agentservice.ComposerSettings{}
 	if request.Body != nil && request.Body.Settings != nil {
-		settings = mergeComposerSettings(settings, composerSettingsFromGenerated(*request.Body.Settings))
+		settings = composerSettingsFromGenerated(*request.Body.Settings)
 	}
 	locale := api.composerDefaultLocale(ctx)
 	if request.Body != nil && request.Body.Locale != nil {

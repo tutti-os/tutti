@@ -11,6 +11,7 @@ import type {
   IssueManagerFileReference,
   IssueManagerIssueDetail,
   IssueManagerIssueSummary,
+  IssueManagerModelPlanOption,
   IssueManagerNodeState,
   IssueManagerOpenSource,
   IssueManagerPriority,
@@ -23,10 +24,14 @@ import type {
   IssueManagerCreateTopicInput,
   IssueManagerUpdateTopicInput
 } from "../../../../contracts/index.ts";
-import type { IssueManagerFeature } from "../../../../core/index.ts";
+import {
+  buildWorkspaceIssueMentionHref,
+  type IssueManagerFeature
+} from "../../../../core/index.ts";
 import type { IssueManagerI18nRuntime } from "../../../../i18n/issueManagerI18n.ts";
 import type { IssueManagerControllerService } from "../../../../services/issueManagerControllerService.interface.ts";
 import {
+  normalizeIssueManagerModelPlanOptions,
   resolveIssueManagerAgentTargetOptions,
   resolveIssueManagerControllerCapabilities
 } from "./IssueManagerControllerCapabilities.ts";
@@ -37,15 +42,17 @@ import type {
   IssueManagerNotificationState,
   TaskDraft
 } from "../../../../services/controllerTypes.ts";
-import type {
-  IssueManagerEditorMode,
-  IssueManagerReferenceTarget
+import {
+  isIssueManagerTuttiModePlanIssue,
+  type IssueManagerEditorMode,
+  type IssueManagerReferenceTarget
 } from "../../../../services/controllerModel.ts";
 import { createIssueManagerControllerActionsBridge } from "./createIssueManagerControllerActionsBridge.ts";
 import { createIssueManagerControllerBindings } from "./createIssueManagerControllerBindings.ts";
 import { resolveIssueManagerTopicDeleteErrorMessage } from "../../../../services/internal/controllerUtils.ts";
 import { useIssueManagerControllerRuntime } from "./useIssueManagerControllerRuntime.ts";
 import type { IssueManagerDiagnostics } from "../../../../internal/issueManagerDiagnostics.ts";
+import { trackIssueManagerAnalytics } from "../../../../services/internal/controllerAnalytics.ts";
 
 export type IssueManagerRichTextSurface = "issue" | "task";
 
@@ -87,6 +94,7 @@ export interface IssueManagerController {
   floatingNotice: IssueManagerFloatingNoticeViewState | null;
   issues: AsyncCollectionState<IssueManagerIssueSummary[]>;
   isRunningTask: boolean;
+  isTuttiModePlanIssue: boolean;
   nodeState: IssueManagerNodeState;
   notification: IssueManagerNotificationState | null;
   openAgentSession: (run: IssueManagerRun) => Promise<void>;
@@ -98,7 +106,9 @@ export interface IssueManagerController {
     taskId: string;
     visibleTaskIds?: readonly string[];
   }) => Promise<void>;
+  adjustManagedInTaskConversation: () => Promise<void>;
   agentTargetOptions: readonly IssueManagerAgentTargetOption[];
+  modelPlanOptions?: readonly IssueManagerModelPlanOption[];
   executionDirectoryProjectService: WorkspaceUserProjectService | null;
   reportIssueSearchUsage: (query: string) => void;
   refreshAll: () => void;
@@ -217,6 +227,30 @@ export function useIssueManagerController({
     });
   }, [feature]);
 
+  const [modelPlanOptions, setModelPlanOptions] = useState<
+    readonly IssueManagerModelPlanOption[]
+  >([]);
+  useEffect(() => {
+    let active = true;
+    const loadOptions = feature.modelPlanOptions?.loadOptions;
+    if (!loadOptions) {
+      setModelPlanOptions([]);
+      return;
+    }
+    void Promise.resolve(loadOptions())
+      .then((options) => {
+        if (active) {
+          setModelPlanOptions(normalizeIssueManagerModelPlanOptions(options));
+        }
+      })
+      .catch(() => {
+        if (active) setModelPlanOptions([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [feature]);
+
   const actions = createIssueManagerControllerActionsBridge({
     controllerSession,
     copy,
@@ -307,6 +341,46 @@ export function useIssueManagerController({
     floatingNotice,
     issues,
     isRunningTask,
+    isTuttiModePlanIssue:
+      issueDetail.value?.issue.issueId === nodeState.selectedIssueId &&
+      isIssueManagerTuttiModePlanIssue(issueDetail.value.issue),
+    async adjustManagedInTaskConversation() {
+      const issue = issueDetail.value?.issue;
+      const sourceSessionId = issue?.sourceSessionId?.trim() ?? "";
+      if (
+        !issue ||
+        !isIssueManagerTuttiModePlanIssue(issue) ||
+        !feature.managedIssueActions ||
+        !sourceSessionId
+      ) {
+        feature.notifications?.tips(
+          copy.t("messages.managedSourceUnavailable")
+        );
+        return;
+      }
+      const task = taskDetail.value?.task;
+      const label = task?.title.trim() || issue.title.trim() || issue.issueId;
+      const href = buildWorkspaceIssueMentionHref({
+        issueId: issue.issueId,
+        workspaceId,
+        topicId: issue.topicId,
+        ...(task ? { taskId: task.taskId } : {})
+      });
+      const reference = `[${label.replaceAll("[", "\\[").replaceAll("]", "\\]")}](${href})`;
+      try {
+        await feature.managedIssueActions.openSourceSession({
+          draftPrompt: copy.t("messages.adjustManagedPrompt", { reference }),
+          issueId: issue.issueId,
+          sourceSessionId,
+          ...(task ? { taskId: task.taskId } : {}),
+          workspaceId
+        });
+      } catch {
+        feature.notifications?.tips(
+          copy.t("messages.managedSourceUnavailable")
+        );
+      }
+    },
     nodeState,
     notification,
     async openMention(mention) {
@@ -316,6 +390,7 @@ export function useIssueManagerController({
       });
     },
     agentTargetOptions,
+    modelPlanOptions,
     executionDirectoryProjectService:
       feature.executionDirectoryPicker?.service ?? null,
     workspaceUserProjectI18n: feature.workspaceUserProjectI18n,
@@ -326,12 +401,10 @@ export function useIssueManagerController({
         return;
       }
       if (nodeState.activeTopicId !== trimmedTopicId) {
-        void Promise.resolve(
-          feature.analytics?.track({
-            name: "issue_manager.topic_changed",
-            params: {}
-          })
-        ).catch(() => undefined);
+        trackIssueManagerAnalytics(feature, {
+          name: "issue_manager.topic_changed",
+          params: {}
+        });
       }
       controllerSession.updateNodeState((current) => ({
         ...current,

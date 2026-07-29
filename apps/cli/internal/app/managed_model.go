@@ -40,16 +40,14 @@ type managedModelCredentialInput struct {
 	Provider   string `json:"provider"`
 }
 
-func runManagedModel(ctx context.Context, commandName string, _ options, args []string, stdout io.Writer, stderr io.Writer) int {
+func runManagedModel(ctx context.Context, commandName string, opts options, args []string, stdout io.Writer, stderr io.Writer) int {
 	commandID, input, err := parseManagedModelInput(args)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s managed-model: %v\n", commandName, err)
-		return 2
+		return writeCLIError(stdout, stderr, opts.json, commandName+" managed-model", reasonInvalidInput, err, 2)
 	}
 	client, err := discoverClient()
 	if err != nil {
-		fmt.Fprintf(stderr, "%s managed-model: %v\n", commandName, err)
-		return 1
+		return writeCLIError(stdout, stderr, opts.json, commandName+" managed-model", reasonDaemonUnavailable, err, 1)
 	}
 	response, err := client.Invoke(ctx, commandID, daemon.InvokeRequest{
 		Input:      input,
@@ -57,12 +55,13 @@ func runManagedModel(ctx context.Context, commandName string, _ options, args []
 		Context:    cliInvokeContextFromEnv(),
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "%s managed-model: %v\n", commandName, err)
-		return 1
+		return writeCLIError(stdout, stderr, opts.json, commandName+" managed-model", reasonDaemonRequestFailed, err, daemonErrorExitCode(err))
 	}
 	if response.Output == nil {
-		fmt.Fprintf(stderr, "%s managed-model: command returned no output\n", commandName)
-		return 1
+		return writeCLIError(
+			stdout, stderr, opts.json, commandName+" managed-model", reasonCommandOutputMissing,
+			fmt.Errorf("command returned no output"), 1,
+		)
 	}
 	return writeDynamicJSON(stdout, stderr, *response.Output)
 }

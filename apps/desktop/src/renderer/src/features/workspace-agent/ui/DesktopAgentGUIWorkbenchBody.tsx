@@ -8,13 +8,24 @@ import {
   type JSX
 } from "react";
 import { AgentGUI } from "@tutti-os/agent-gui/agent-gui";
-import type { AgentGUIProps, AgentHostInputApi } from "@tutti-os/agent-gui";
+import {
+  type AgentGUIProps,
+  type AgentHostInputApi,
+  type AgentVisibleErrorOverrides
+} from "@tutti-os/agent-gui";
+import { resolveInsufficientCreditsSemantic } from "@tutti-os/commerce";
+import { useService } from "@tutti-os/infra/di";
 import { requestWorkspaceAgentGuiLaunch } from "../services/workspaceAgentGuiLaunchCoordinator.ts";
 import { registerWorkspaceAgentGuiOpenSession } from "../../workspace-workbench/services/workspaceAgentGuiOpenSessionCoordinator.ts";
-import { workbenchFocusInputActivationType } from "@tutti-os/workbench-surface";
+import {
+  selectWorkbenchNodeIsVisuallyExposed,
+  useWorkbenchSelector,
+  useWorkbenchVisualOcclusionPresentation,
+  workbenchFocusInputActivationType
+} from "@tutti-os/workbench-surface";
 import { useTranslation } from "@renderer/i18n";
-import type { WorkspaceAgentProvider } from "@tutti-os/client-tuttid-ts";
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences/ui/useDesktopPreferencesService";
+import { buildDesktopCommerceErrorPresentation } from "./desktopCommerceErrorPresentation";
 import { Toast } from "@renderer/lib/toast";
 import { isDesktopAgentProvider } from "@shared/preferences";
 import {
@@ -28,6 +39,7 @@ import {
   type DesktopAgentGUINodeState
 } from "../desktopAgentGUINodeState";
 import { consumeDesktopAgentGUIOpenSessionActivation } from "../services/desktopAgentGUIOpenSessionActivation.ts";
+import type { DesktopAgentGUIOpenSessionComposerRequest } from "../services/desktopAgentGUIOpenSessionComposerActivation.ts";
 import {
   consumeDesktopAgentGUIPrefillPromptActivation,
   type DesktopAgentGUIPrefillPromptRequest
@@ -39,12 +51,9 @@ import {
 } from "./desktopAgentGUIWorkbenchDiagnostics.ts";
 import {
   hasDesktopAgentGUIConversationRailCollapsedState,
-  resolveDesktopAgentGUIProviderForAgentTarget,
-  withDesktopAgentGUIProviderComposerDefaults
+  resolveDesktopAgentGUIProviderForAgentTarget
 } from "./desktopAgentGUIWorkbenchStateHelpers.ts";
-import { useDesktopAgentProbes } from "./useDesktopAgentProbes.ts";
 import {
-  AGENT_PROBE_REFRESH_DEBOUNCE_MS,
   DESKTOP_AGENT_GUI_AGENT_SETTINGS,
   DESKTOP_AGENT_GUI_NOOP,
   DESKTOP_AGENT_GUI_POSITION,
@@ -57,33 +66,48 @@ import {
 } from "./desktopAgentGUIWorkbenchModel.ts";
 export { DESKTOP_AGENT_GUI_CONVERSATION_RAIL_TOGGLE_EVENT } from "./desktopAgentGUIWorkbenchModel.ts";
 export type { DesktopAgentGUIConversationRailToggleDetail } from "./desktopAgentGUIWorkbenchModel.ts";
+import { useDesktopAgentStatusController } from "./useDesktopAgentStatusController.ts";
 import { useDesktopAgentGUIContextMentions } from "./useDesktopAgentGUIContextMentions.ts";
 import { useDesktopAgentGUIReadiness } from "./useDesktopAgentGUIReadiness.ts";
 import { useDesktopAgentGUIOpenConversationWindow } from "./useDesktopAgentGUIOpenConversationWindow.ts";
 import { useDesktopAgentGUIWorkbenchEvents } from "./useDesktopAgentGUIWorkbenchEvents.ts";
+import { useStableDesktopAgentGUIHostProps } from "./useStableDesktopAgentGUIHostProps.ts";
+import { resolveDesktopAgentGUIEmbeddedDesktopSize } from "./desktopAgentGUIEmbeddedFrame.ts";
+import { scheduleDesktopAgentGUIWorkbenchHydration } from "./desktopAgentGUIWorkbenchHydration.ts";
+import { useDesktopAgentConfigCommerce } from "./useDesktopAgentConfigCommerce.tsx";
+import { hasDesktopLocalTuttiAgent } from "./desktopAgentConfigCommerceContext.ts";
+import { useDesktopAgentGUIComposerFooterAccessory } from "./useDesktopAgentGUIComposerFooterAccessory.tsx";
+import { useDesktopAgentGUIOpenSessionComposerRequest } from "./useDesktopAgentGUIOpenSessionComposerRequest.ts";
+import { useDesktopAgentGUIProviderAuthAccountLabels } from "./useDesktopAgentGUIProviderAuthAccountLabels.ts";
+import { IAgentEnvService } from "../services/agentEnvService.interface.ts";
 import { preloadDesktopAgentGuiMentionBrowse } from "../services/preloadDesktopAgentGuiMentionBrowse.ts";
 import { DESKTOP_AGENT_GUI_CURRENT_USER_ID } from "../services/desktopAgentGuiIdentity.ts";
 import {
+  AGENT_SESSION_RECORDING_FLAG,
   AGENT_REFERENCE_PROVENANCE_FILTER_FLAG,
-  isFeatureEnabled
+  isFeatureEnabled,
+  LAB_AGENT_INPUT_HISTORY_FLAG,
+  LAB_AGENT_SESSION_FORK_FLAG
 } from "../../../../../shared/featureFlags/catalog.ts";
 
 function DesktopAgentGUISurfaceImpl({
   agentActivityRuntime,
   agentHostApi,
+  agentSessionActivityReplay,
+  agentSessionReplayService,
+  agentStatusSource,
+  tuttiModePlanReviewRuntime,
   appCenterService,
   agentProviderStatusService,
   surface,
   computerUseApi,
   composerAppendRequest = null,
-  conversationRailAutoCollapseWidthPx = null,
   dockPreviewCache,
   onLinkAction,
   onCapabilitySettingsRequest,
   onOpenAgentConversationWindow,
   onStateChange,
   prefillPromptBootstrapRequest = null,
-  previewMode = false,
   providerStatusBootstrapSnapshot = null,
   agentDirectory,
   allAgentsPresentation = null,
@@ -96,7 +120,8 @@ function DesktopAgentGUISurfaceImpl({
   onEngagementEvent,
   trackWorkspaceFileReferences,
   workspaceFileReferenceAdapter,
-  resolveDroppedFileReferences,
+  resolveExternalPromptEntries,
+  prepareExternalPromptFiles,
   onRequestGitBranches,
   referenceSourceAggregator,
   renderSidebarFooter,
@@ -107,6 +132,9 @@ function DesktopAgentGUISurfaceImpl({
 }: DesktopAgentGUISurfaceProps): JSX.Element {
   const agents = agentDirectory.agents;
   const { i18n, locale } = useTranslation();
+  const commerceEnabled = hasDesktopLocalTuttiAgent(agents);
+  const { accountState, handleAgentConfigMenuOpen, renderAgentConfigAccount } =
+    useDesktopAgentConfigCommerce(commerceEnabled);
   const { service: desktopPreferencesService, state: desktopPreferencesState } =
     useDesktopPreferencesService();
   const rawWorkbenchState = normalizeDesktopAgentGUIWorkbenchState(
@@ -117,6 +145,39 @@ function DesktopAgentGUISurfaceImpl({
   const readinessProvider =
     agents.find((agent) => agent.agentTargetId === requestedAgentTargetId)
       ?.provider ?? null;
+  const agentEnvService = useService(IAgentEnvService);
+  const visibleErrorPresentationOverrides =
+    useMemo<AgentVisibleErrorOverrides | null>(() => {
+      if (!commerceEnabled) {
+        return null;
+      }
+      const summary = accountState.productSummary;
+      return buildDesktopCommerceErrorPresentation({
+        semantic: resolveInsufficientCreditsSemantic(summary?.membership_access)
+          .message,
+        actionUrl: summary?.links.plan_url,
+        copy: {
+          upgradeMembership: {
+            message: i18n.t(
+              "workspace.accountMenu.insufficientCreditsUpgradeMessage"
+            ),
+            actionLabel: i18n.t("workspace.accountMenu.upgradeMembership")
+          },
+          rechargeCredits: {
+            message: i18n.t(
+              "workspace.accountMenu.insufficientCreditsRechargeMessage"
+            ),
+            actionLabel: i18n.t("workspace.accountMenu.rechargeCredits")
+          },
+          creditsUnavailable: {
+            message: i18n.t(
+              "workspace.accountMenu.insufficientCreditsUnknownMessage"
+            ),
+            actionLabel: i18n.t("workspace.accountMenu.viewCreditPlans")
+          }
+        }
+      });
+    }, [accountState.productSummary, i18n, commerceEnabled]);
   const {
     computerUseStatus,
     handleAgentProviderLogin,
@@ -129,21 +190,22 @@ function DesktopAgentGUISurfaceImpl({
     computerUseApi,
     host: surface.host,
     provider: readinessProvider,
-    previewMode,
     providerStatusBootstrapSnapshot,
     trackAgentProviderChatReady,
     workspaceId
   });
-  const { effectiveContextMentionProviders, workspaceAppIcons } =
-    useDesktopAgentGUIContextMentions({
-      agentActivityRuntime,
-      appCenterService,
-      contextMentionProviders,
-      dockPreviewCache,
-      host: surface.host,
-      previewMode,
-      workspaceId
-    });
+  const {
+    effectiveContextMentionProviders,
+    mentionService,
+    workspaceAppIcons
+  } = useDesktopAgentGUIContextMentions({
+    agentActivityRuntime,
+    appCenterService,
+    contextMentionProviders,
+    dockPreviewCache,
+    host: surface.host,
+    workspaceId
+  });
   useEffect(() => {
     preloadDesktopAgentGuiMentionBrowse({
       agentActivityRuntime,
@@ -172,13 +234,6 @@ function DesktopAgentGUISurfaceImpl({
       ),
     [agents, provider, workbenchAgentTargetId]
   );
-  // Remembered defaults are keyed by agent target id; the daemon overlays
-  // legacy provider-keyed entries onto local target ids at read time.
-  const providerComposerDefaults = workbenchAgentTargetId
-    ? (desktopPreferencesState.agentComposerDefaultsByAgentTarget[
-        workbenchAgentTargetId
-      ] ?? null)
-    : null;
   const hasExplicitConversationRailCollapsedState =
     hasDesktopAgentGUIConversationRailCollapsedState(surface.state);
   const preferredConversationRailCollapsed =
@@ -186,8 +241,8 @@ function DesktopAgentGUISurfaceImpl({
     desktopPreferencesState.agentGuiConversationRailCollapsedByProvider[
       nodeProvider
     ] === true;
-  // Derive node state from the workbench store plus provider-default overlay;
-  // there is no local mirror or two-way binding.
+  // Persisted composer defaults are read through target-scoped composer
+  // options. Workbench state only carries the local draft and session route.
   const nodeState = useMemo(() => {
     const baseState = normalizeDesktopAgentGUINodeState(
       workbenchState,
@@ -198,18 +253,12 @@ function DesktopAgentGUISurfaceImpl({
       preferredConversationRailCollapsed
         ? { ...baseState, conversationRailCollapsed: true }
         : baseState;
-    const nextState = withDesktopAgentGUIProviderComposerDefaults(
-      railState,
-      nodeProvider,
-      providerComposerDefaults
-    );
-    return nextState;
+    return railState;
   }, [
     hasExplicitConversationRailCollapsedState,
     preferredConversationRailCollapsed,
     workbenchState,
-    nodeProvider,
-    providerComposerDefaults
+    nodeProvider
   ]);
   const nodeStateRef = useRef(nodeState);
   nodeStateRef.current = nodeState;
@@ -217,26 +266,20 @@ function DesktopAgentGUISurfaceImpl({
   // already visible, so it can skip a redundant in-app interruption.
   useEffect(() => {
     const agentSessionId = workbenchState.lastActiveAgentSessionId?.trim();
-    if (previewMode || !agentSessionId || surface.isMinimized) {
+    if (!agentSessionId || surface.isMinimized) {
       return undefined;
     }
     return registerWorkspaceAgentGuiOpenSession(workspaceId, agentSessionId);
   }, [
     surface.isMinimized,
-    previewMode,
     workbenchState.lastActiveAgentSessionId,
     workspaceId
   ]);
-  const [agentProbeDemandBySource, setAgentProbeDemandBySource] = useState<
-    Record<string, string>
-  >({});
-  const agentProbeRefreshTimerRef = useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null);
-  const [agentProbeRefreshSequence, setAgentProbeRefreshSequence] = useState(0);
   const [openSessionRequest, setOpenSessionRequest] = useState<NonNullable<
     AgentGUIProps["runtimeRequests"]["openSession"]
   > | null>(null);
+  const [openSessionComposerRequest, setOpenSessionComposerRequest] =
+    useState<DesktopAgentGUIOpenSessionComposerRequest | null>(null);
   const [prefillPromptRequest, setPrefillPromptRequest] =
     useState<DesktopAgentGUIPrefillPromptRequest | null>(
       () => prefillPromptBootstrapRequest
@@ -264,7 +307,6 @@ function DesktopAgentGUISurfaceImpl({
       const previousRailCollapsed = current.conversationRailCollapsed === true;
       const nextRailCollapsed = next.conversationRailCollapsed === true;
       if (
-        !previewMode &&
         previousRailCollapsed !== nextRailCollapsed &&
         isDesktopAgentProvider(next.provider)
       ) {
@@ -301,71 +343,17 @@ function DesktopAgentGUISurfaceImpl({
         onStateChangeRef.current(nextWorkbenchState);
       }
     },
-    [
-      desktopPreferencesService,
-      nodeProvider,
-      previewMode,
-      runtimeApi,
+    [desktopPreferencesService, nodeProvider, runtimeApi, workspaceId]
+  );
+  const agentStatusController = useDesktopAgentStatusController(
+    {
+      agentActivityRuntime,
+      agents,
+      workspaceAgentProbes: agentHostApi.workspaceAgentProbes,
       workspaceId
-    ]
+    },
+    agentStatusSource
   );
-  const agentProbeProviders = useMemo(
-    () => Array.from(new Set(Object.values(agentProbeDemandBySource))).sort(),
-    [agentProbeDemandBySource]
-  );
-  const workspaceAgentProbes = useDesktopAgentProbes({
-    previewMode,
-    providers: agentProbeProviders,
-    refreshSequence: agentProbeRefreshSequence,
-    runtimeApi,
-    workspaceAgentProbes: agentHostApi.workspaceAgentProbes,
-    workspaceId
-  });
-  const handleAgentProbeDemandChange: NonNullable<
-    AgentGUIProps["runtimeRequests"]["onProbeDemandChange"]
-  > = useCallback((probeProvider, sourceId = "default") => {
-    setAgentProbeDemandBySource((current) => {
-      if (!probeProvider) {
-        if (!(sourceId in current)) {
-          return current;
-        }
-        const next = { ...current };
-        delete next[sourceId];
-        return next;
-      }
-      if (current[sourceId] === probeProvider) {
-        return current;
-      }
-      return {
-        ...current,
-        [sourceId]: probeProvider
-      };
-    });
-  }, []);
-  const handleAgentProbeRefreshRequest: NonNullable<
-    AgentGUIProps["runtimeRequests"]["onProbeRefreshRequest"]
-  > = useCallback((probeProvider, sourceId = "default") => {
-    setAgentProbeDemandBySource((current) =>
-      current[sourceId] === probeProvider
-        ? current
-        : { ...current, [sourceId]: probeProvider }
-    );
-    if (agentProbeRefreshTimerRef.current) {
-      clearTimeout(agentProbeRefreshTimerRef.current);
-    }
-    agentProbeRefreshTimerRef.current = setTimeout(() => {
-      agentProbeRefreshTimerRef.current = null;
-      setAgentProbeRefreshSequence((current) => current + 1);
-    }, AGENT_PROBE_REFRESH_DEBOUNCE_MS);
-  }, []);
-  useEffect(() => {
-    return () => {
-      if (agentProbeRefreshTimerRef.current) {
-        clearTimeout(agentProbeRefreshTimerRef.current);
-        agentProbeRefreshTimerRef.current = null;
-      }
-    };
-  }, []);
   const handleOpenSessionActivationError = useCallback(
     (input: { agentSessionId: string; error: unknown }) => {
       Toast.Error(
@@ -400,6 +388,7 @@ function DesktopAgentGUISurfaceImpl({
       nodeId: surface.nodeId,
       onActivationError: handleOpenSessionActivationError,
       onOpenSessionRequest: setOpenSessionRequest,
+      onOpenSessionComposerRequest: setOpenSessionComposerRequest,
       // Persistence is owned by handleUpdateNode (the single writer).
       onStateChange: DESKTOP_AGENT_GUI_NOOP,
       provider,
@@ -425,9 +414,6 @@ function DesktopAgentGUISurfaceImpl({
   ]);
 
   useEffect(() => {
-    if (previewMode) {
-      return;
-    }
     const request = consumeDesktopAgentGUIPrefillPromptActivation({
       activation: surface.activation,
       clearNodeActivation: surface.host.clearNodeActivation?.bind(surface.host),
@@ -457,30 +443,25 @@ function DesktopAgentGUISurfaceImpl({
       }
       setPrefillPromptRequest(request);
     }
-  }, [
-    surface.activation,
-    surface.host,
-    surface.nodeId,
-    handleUpdateNode,
-    previewMode
-  ]);
+  }, [surface.activation, surface.host, surface.nodeId, handleUpdateNode]);
 
-  const newConversationRequestSequence = useDesktopAgentGUIWorkbenchEvents({
+  const {
+    newConversationSequence: newConversationRequestSequence,
+    sessionActionRequest
+  } = useDesktopAgentGUIWorkbenchEvents({
     instanceId: surface.instanceId,
     onConversationRailToggle: (conversationRailCollapsed) => {
       handleUpdateNode((current) => ({
         ...current,
         conversationRailCollapsed
       }));
-    },
-    previewMode
+    }
   });
 
   const handleOpenConversationWindow = useDesktopAgentGUIOpenConversationWindow(
     {
       agentTargetId: workbenchAgentTargetId,
       onOpenAgentConversationWindow,
-      previewMode,
       provider: nodeProvider,
       workspaceId
     }
@@ -488,7 +469,6 @@ function DesktopAgentGUISurfaceImpl({
 
   useEffect(() => {
     if (
-      previewMode ||
       hasExplicitConversationRailCollapsedState ||
       !preferredConversationRailCollapsed
     ) {
@@ -516,7 +496,6 @@ function DesktopAgentGUISurfaceImpl({
     nodeState,
     nodeProvider,
     preferredConversationRailCollapsed,
-    previewMode,
     workbenchState
   ]);
 
@@ -526,33 +505,26 @@ function DesktopAgentGUISurfaceImpl({
     ({ agentTargetId, provider: defaultsProvider, defaults }) => {
       // Remembered defaults are keyed strictly by agent target; targets
       // without an agentTargetId (legacy refs) are not persisted.
-      if (previewMode || !agentTargetId || !defaults) {
+      if (!agentTargetId || !defaults) {
         return;
       }
-      void desktopPreferencesService
+      return desktopPreferencesService
         .rememberAgentComposerDefaultsForAgentTarget(agentTargetId, defaults)
-        .then(() => {
-          logAgentComposerDefaultsDiagnostic({
-            defaults,
-            event: "agent.gui.composer_defaults.remembered",
-            provider: defaultsProvider,
-            runtimeApi,
-            workspaceId
-          });
-        })
         .catch((error) => {
           logAgentComposerDefaultsDiagnostic({
-            defaults,
+            agentTargetId,
             error,
-            event: "agent.gui.composer_defaults.remember_failed",
             provider: defaultsProvider,
             runtimeApi,
             workspaceId
           });
+          throw error;
         });
     },
-    [desktopPreferencesService, previewMode, runtimeApi, workspaceId]
+    [desktopPreferencesService, runtimeApi, workspaceId]
   );
+  const handleComposerAppendHandled =
+    useDesktopAgentGUIOpenSessionComposerRequest(setOpenSessionComposerRequest);
 
   const frame = surface.frame;
   const agentHostApiWithToast = useMemo<AgentHostInputApi>(
@@ -561,19 +533,18 @@ function DesktopAgentGUISurfaceImpl({
       toast: {
         error: Toast.Error,
         info: Toast.tips,
+        loading: Toast.Loading,
         success: Toast.Success
       }
     }),
     [agentHostApi]
   );
   const desktopSize = useMemo(
-    () => ({
-      height: Math.max(frame.height, frame.y + frame.height),
-      width: Math.max(frame.width, frame.x + frame.width)
-    }),
-    [frame.height, frame.width, frame.x, frame.y]
+    () => resolveDesktopAgentGUIEmbeddedDesktopSize(frame),
+    [frame.height, frame.width]
   );
   const composerFocusRequestSequence =
+    openSessionComposerRequest?.sequence ??
     composerAppendRequest?.sequence ??
     (surface.activation?.type === workbenchFocusInputActivationType ||
     surface.activation?.type === desktopAgentGUIPrefillPromptActivationType
@@ -589,26 +560,31 @@ function DesktopAgentGUISurfaceImpl({
       computerUse: {
         authorization: resolveComputerUseAuthorizationState(computerUseStatus),
         installed: computerUseStatus?.installed ?? null
+      },
+      tuttiMode: {
+        enabled: true
       }
     }),
     [computerUseStatus, desktopPreferencesState.browserUseConnectionMode]
   );
-  const referenceProvenanceFilterEnabled =
-    !previewMode &&
-    isFeatureEnabled(
-      desktopPreferencesState.featureFlags,
-      AGENT_REFERENCE_PROVENANCE_FILTER_FLAG
-    );
-  const providerAuthAccountLabels = useMemo(() => {
-    const labels: Partial<Record<WorkspaceAgentProvider, string>> = {};
-    for (const status of providerStatusSnapshot.statuses) {
-      const accountLabel = status.auth.accountLabel?.trim();
-      if (accountLabel) {
-        labels[status.provider] = accountLabel;
-      }
-    }
-    return labels;
-  }, [providerStatusSnapshot.statuses]);
+  const handleAgentEnvPanelOpen = useCallback<
+    NonNullable<AgentGUIProps["hostActions"]["onAgentEnvPanelOpen"]>
+  >((input) => agentEnvService.open(input), [agentEnvService]);
+  const referenceProvenanceFilterEnabled = isFeatureEnabled(
+    desktopPreferencesState.featureFlags,
+    AGENT_REFERENCE_PROVENANCE_FILTER_FLAG
+  );
+  const sessionInputHistoryEnabled = isFeatureEnabled(
+    desktopPreferencesState.featureFlags,
+    LAB_AGENT_INPUT_HISTORY_FLAG
+  );
+  const sessionForkEnabled = isFeatureEnabled(
+    desktopPreferencesState.featureFlags,
+    LAB_AGENT_SESSION_FORK_FLAG
+  );
+  const providerAuthAccountLabels = useDesktopAgentGUIProviderAuthAccountLabels(
+    providerStatusSnapshot.statuses
+  );
   const handleHandoffConversation = useCallback<
     NonNullable<AgentGUIProps["hostActions"]["onHandoffConversation"]>
   >(
@@ -624,119 +600,129 @@ function DesktopAgentGUISurfaceImpl({
     },
     [workspaceId]
   );
+  const sessionRecordingEnabled = isFeatureEnabled(
+    desktopPreferencesState.featureFlags,
+    AGENT_SESSION_RECORDING_FLAG
+  );
+  const renderComposerFooterAccessory =
+    useDesktopAgentGUIComposerFooterAccessory({
+      agentSessionActivityReplay,
+      agentSessionReplayService,
+      runtimeApi,
+      sessionRecordingEnabled,
+      workspaceId
+    });
+  const agentGUIHostProps = useStableDesktopAgentGUIHostProps({
+    identity: {
+      nodeId: surface.nodeId,
+      workspaceId,
+      currentUserId: DESKTOP_AGENT_GUI_CURRENT_USER_ID,
+      title: surface.nodeTitle
+    },
+    workspace: {
+      path: "",
+      fileReferenceAdapter: workspaceFileReferenceAdapter,
+      onRequestGitBranches: onRequestGitBranches,
+      selectProjectDirectory: agentHostApi.workspace.selectDirectory,
+      resolveExternalPromptEntries: resolveExternalPromptEntries,
+      prepareExternalPromptFiles: prepareExternalPromptFiles,
+      promptAssetLimit: 16,
+      referenceSourceAggregator: referenceSourceAggregator,
+      resolveReferenceEntryIconUrl: resolveWorkspaceReferenceEntryIconUrl,
+      resolveMentionReferenceTarget: resolveMentionReferenceTarget,
+      resolveReferenceInitialTarget: resolveWorkspaceReferenceInitialTarget,
+      onFileReferencesAdded: trackWorkspaceFileReferences,
+      agentSettings: DESKTOP_AGENT_GUI_AGENT_SETTINGS
+    },
+    runtimeRequests: {
+      composerAppend: openSessionComposerRequest
+        ? {
+            agentSessionId: openSessionComposerRequest.agentSessionId,
+            prompt: openSessionComposerRequest.draftPrompt,
+            sequence: openSessionComposerRequest.sequence
+          }
+        : composerAppendRequest,
+      composerFocusSequence: composerFocusRequestSequence,
+      newConversationSequence: newConversationRequestSequence,
+      sessionAction: sessionActionRequest,
+      openSession: openSessionRequest,
+      prefillPrompt: prefillPromptRequest,
+      agentStatusController: agentStatusController
+    },
+    hostCapabilities: {
+      referenceProvenanceFilterEnabled,
+      sessionInputHistoryEnabled,
+      sessionForkEnabled,
+      capabilityMenuState,
+      visibleErrorPresentationOverrides,
+      comingSoonProviders: comingSoonAgentProviders,
+      providerReadinessGates,
+      defaultAgentTargetId,
+      providerAuthAccountLabels,
+      mentionService,
+      workspaceAppIcons
+    },
+    hostActions: {
+      onComposerAppendHandled: handleComposerAppendHandled,
+      onAgentEnvPanelOpen: handleAgentEnvPanelOpen,
+      onAgentConfigMenuOpen: handleAgentConfigMenuOpen,
+      onAgentProviderLogin: agentProviderStatusService
+        ? handleAgentProviderLogin
+        : undefined,
+      onCapabilitySettingsRequest: onCapabilitySettingsRequest,
+      onClose: DESKTOP_AGENT_GUI_NOOP,
+      onLinkAction: onLinkAction,
+      onHandoffConversation: handleHandoffConversation,
+      onResize: DESKTOP_AGENT_GUI_NOOP,
+      onShowMessage: handleDesktopAgentGUIShowMessage,
+      onUpdateNode: handleUpdateNode,
+      onRememberComposerDefaults: handleRememberComposerDefaults,
+      onEngagementEvent: onEngagementEvent,
+      onOpenConversationWindow: !onOpenAgentConversationWindow
+        ? undefined
+        : handleOpenConversationWindow
+    },
+    renderSlots: {
+      agentConfigAccount: renderAgentConfigAccount,
+      composerFooterAccessory: renderComposerFooterAccessory,
+      sidebarFooter: renderSidebarFooter
+    }
+  });
 
   return (
-    <>
-      <AgentGUI
-        agentDirectory={agentDirectory}
-        allAgentsPresentation={allAgentsPresentation}
-        renderAgentsEmpty={renderAgentsEmpty}
-        agentActivityRuntime={agentActivityRuntime}
-        agentHostApi={agentHostApiWithToast}
-        i18n={i18n}
-        locale={locale}
-        identity={{
-          nodeId: surface.nodeId,
-          workspaceId,
-          currentUserId: DESKTOP_AGENT_GUI_CURRENT_USER_ID,
-          title: surface.nodeTitle
-        }}
-        workspace={{
-          path: "",
-          fileReferenceAdapter: previewMode
-            ? null
-            : workspaceFileReferenceAdapter,
-          onRequestGitBranches: previewMode ? null : onRequestGitBranches,
-          resolveDroppedFileReferences: previewMode
-            ? null
-            : resolveDroppedFileReferences,
-          referenceSourceAggregator: previewMode
-            ? null
-            : referenceSourceAggregator,
-          resolveReferenceEntryIconUrl: previewMode
-            ? undefined
-            : resolveWorkspaceReferenceEntryIconUrl,
-          resolveMentionReferenceTarget: previewMode
-            ? undefined
-            : resolveMentionReferenceTarget,
-          resolveReferenceInitialTarget: previewMode
-            ? undefined
-            : resolveWorkspaceReferenceInitialTarget,
-          onFileReferencesAdded: previewMode
-            ? undefined
-            : trackWorkspaceFileReferences,
-          agentSettings: DESKTOP_AGENT_GUI_AGENT_SETTINGS
-        }}
-        frame={{
-          position: DESKTOP_AGENT_GUI_POSITION,
-          width: frame.width,
-          height: frame.height,
-          desktopSize,
-          isMaximized: surface.displayMode === "fullscreen",
-          isActive: surface.isFocused,
-          isVisible:
-            surface.presentationMode !== "mission-control" &&
-            surface.isMinimized !== true,
-          embedded: true,
-          previewMode,
-          conversationRailAutoCollapseWidthPx
-        }}
-        state={nodeState}
-        runtimeRequests={{
-          composerAppend: composerAppendRequest,
-          composerFocusSequence: composerFocusRequestSequence,
-          newConversationSequence: newConversationRequestSequence,
-          openSession: openSessionRequest,
-          prefillPrompt: prefillPromptRequest,
-          agentProbes: workspaceAgentProbes,
-          onProbeDemandChange: previewMode
-            ? undefined
-            : handleAgentProbeDemandChange,
-          onProbeRefreshRequest: previewMode
-            ? undefined
-            : handleAgentProbeRefreshRequest
-        }}
-        hostCapabilities={{
-          referenceProvenanceFilterEnabled,
-          capabilityMenuState,
-          accountMenuState: null,
-          comingSoonProviders: comingSoonAgentProviders,
-          providerReadinessGates,
-          defaultAgentTargetId,
-          providerAuthAccountLabels,
-          contextMentionProviders: previewMode
-            ? []
-            : effectiveContextMentionProviders,
-          workspaceAppIcons
-        }}
-        hostActions={{
-          onAgentProviderLogin:
-            !previewMode && agentProviderStatusService
-              ? handleAgentProviderLogin
-              : undefined,
-          onCapabilitySettingsRequest: previewMode
-            ? undefined
-            : onCapabilitySettingsRequest,
-          onClose: DESKTOP_AGENT_GUI_NOOP,
-          onLinkAction: previewMode ? undefined : onLinkAction,
-          onHandoffConversation: previewMode
-            ? undefined
-            : handleHandoffConversation,
-          onResize: DESKTOP_AGENT_GUI_NOOP,
-          onShowMessage: handleDesktopAgentGUIShowMessage,
-          onUpdateNode: handleUpdateNode,
-          onRememberComposerDefaults: handleRememberComposerDefaults,
-          onEngagementEvent: previewMode ? undefined : onEngagementEvent,
-          onOpenConversationWindow:
-            previewMode || !onOpenAgentConversationWindow
-              ? undefined
-              : handleOpenConversationWindow
-        }}
-        renderSlots={{
-          sidebarFooter: previewMode ? undefined : renderSidebarFooter
-        }}
-      />
-    </>
+    <AgentGUI
+      agentDirectory={agentDirectory}
+      allAgentsPresentation={allAgentsPresentation}
+      renderAgentsEmpty={renderAgentsEmpty}
+      agentActivityRuntime={agentActivityRuntime}
+      agentHostApi={agentHostApiWithToast}
+      tuttiModePlanReviewRuntime={
+        capabilityMenuState?.tuttiMode?.enabled === false
+          ? null
+          : tuttiModePlanReviewRuntime
+      }
+      i18n={i18n}
+      locale={locale}
+      identity={agentGUIHostProps.identity}
+      workspace={agentGUIHostProps.workspace}
+      frame={{
+        conversationRailAutoCollapseMode:
+          surface.conversationRailAutoCollapseMode,
+        position: DESKTOP_AGENT_GUI_POSITION,
+        width: frame.width,
+        height: frame.height,
+        desktopSize,
+        isMaximized: surface.displayMode === "fullscreen",
+        isActive: surface.isFocused,
+        isVisible: surface.isVisible,
+        embedded: true
+      }}
+      state={nodeState}
+      runtimeRequests={agentGUIHostProps.runtimeRequests}
+      hostCapabilities={agentGUIHostProps.hostCapabilities}
+      hostActions={agentGUIHostProps.hostActions}
+      renderSlots={agentGUIHostProps.renderSlots}
+    />
   );
 }
 
@@ -746,6 +732,38 @@ function DesktopAgentGUIWorkbenchBodyAdapter({
   context,
   ...props
 }: DesktopAgentGUIWorkbenchBodyProps): JSX.Element {
+  const visualOcclusionPresentation = useWorkbenchVisualOcclusionPresentation();
+  const isVisuallyExposed = useWorkbenchSelector((state) =>
+    selectWorkbenchNodeIsVisuallyExposed(
+      state,
+      context.node.id,
+      visualOcclusionPresentation
+    )
+  );
+  const isBodyVisible = context.isVisible && isVisuallyExposed;
+  const [bodyHydrated, setBodyHydrated] = useState(
+    context.isFocused || isBodyVisible
+  );
+  useEffect(() => {
+    if (bodyHydrated || context.isFocused || isBodyVisible) {
+      if (!bodyHydrated) {
+        setBodyHydrated(true);
+      }
+      return;
+    }
+    return scheduleDesktopAgentGUIWorkbenchHydration(() => {
+      setBodyHydrated(true);
+    });
+  }, [bodyHydrated, context.isFocused, isBodyVisible]);
+  if (!bodyHydrated && !context.isFocused && !isBodyVisible) {
+    return (
+      <div
+        aria-hidden="true"
+        className="size-full bg-[var(--background-panel)]"
+        data-agent-gui-workbench-hydration="pending"
+      />
+    );
+  }
   const surface: DesktopAgentGUISurfaceContext = {
     activation: context.activation,
     displayMode: context.displayMode,
@@ -756,6 +774,7 @@ function DesktopAgentGUIWorkbenchBodyAdapter({
     isFocused: context.isFocused,
     isMinimized: context.node.isMinimized === true,
     isResizing: context.isResizing,
+    isVisible: isBodyVisible,
     nodeId: context.node.id,
     nodeTitle: context.node.title,
     presentationMode: context.presentationMode,

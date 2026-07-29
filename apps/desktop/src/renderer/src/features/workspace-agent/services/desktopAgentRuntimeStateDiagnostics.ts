@@ -42,15 +42,20 @@ export function agentActivitySessionDiagnosticSignature(
   session: AgentActivitySession
 ): string {
   const turn = session.activeTurn ?? session.latestTurn;
+  const pendingInteractionSignature = session.pendingInteractions
+    .map(
+      (interaction) =>
+        `${interaction.turnId}:${interaction.requestId}:${interaction.kind}:${interaction.status}`
+    )
+    .sort()
+    .join(",");
   return [
     session.agentSessionId,
     session.provider,
     session.activeTurnId ?? "",
     turn?.phase ?? "",
     turn?.outcome ?? "",
-    session.messageVersion ?? "",
-    session.lastEventUnixMs ?? "",
-    session.updatedAtUnixMs ?? ""
+    pendingInteractionSignature
   ].join(":");
 }
 

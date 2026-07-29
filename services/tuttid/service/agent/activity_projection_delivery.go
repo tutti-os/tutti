@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"strings"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
@@ -38,8 +38,8 @@ func (p *ActivityProjection) publishActivityUpdated(
 
 func (p *ActivityProjection) observeSessionState(
 	ctx context.Context,
-	input agentsessionstore.ReportSessionStateInput,
-	reply agentsessionstore.ReportSessionStateReply,
+	input canonical.ReportSessionStateInput,
+	reply canonical.ReportSessionStateReply,
 ) {
 	if p == nil || p.sessionStateObserver == nil {
 		return
@@ -49,8 +49,8 @@ func (p *ActivityProjection) observeSessionState(
 
 func (p *ActivityProjection) observeSessionMessages(
 	ctx context.Context,
-	input agentsessionstore.ReportSessionMessagesInput,
-	reply agentsessionstore.ReportSessionMessagesReply,
+	input canonical.ReportSessionMessagesInput,
+	reply canonical.ReportSessionMessagesReply,
 ) {
 	if p == nil || p.sessionMessageObserver == nil {
 		return
@@ -58,7 +58,7 @@ func (p *ActivityProjection) observeSessionMessages(
 	p.sessionMessageObserver.ObserveAgentSessionMessages(ctx, input, reply)
 }
 
-func activityMessageUpdates(updates []agentsessionstore.WorkspaceAgentSessionMessageUpdate) []agentactivitybiz.MessageUpdate {
+func activityMessageUpdates(updates []canonical.WorkspaceAgentSessionMessageUpdate) []agentactivitybiz.MessageUpdate {
 	if len(updates) == 0 {
 		return nil
 	}
@@ -126,7 +126,7 @@ func activityMessagesEventPayload(messages []agentactivitybiz.Message) []map[str
 	return out
 }
 
-func activityMessageSemantics(value *agentsessionstore.WorkspaceAgentMessageSemantics) *agentactivitybiz.MessageSemantics {
+func activityMessageSemantics(value *canonical.WorkspaceAgentMessageSemantics) *agentactivitybiz.MessageSemantics {
 	if value == nil {
 		return nil
 	}

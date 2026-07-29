@@ -203,6 +203,17 @@ func TestClaudeCodeSDKAdapterProviderLaunchPrepareMutatesSpecAndCleansUpOnClose(
 	if !containsString(transport.spec.Env, "SESSION_ENV=1") || !containsString(transport.spec.Env, "HOOK_ENV=1") {
 		t.Fatalf("Env = %#v, want session and hook env", transport.spec.Env)
 	}
+	requests := conn.sentRequests()
+	if len(requests) != 1 || requests[0].Type != "start" {
+		t.Fatalf("sidecar requests = %#v, want start", requests)
+	}
+	if requests[0].Payload["cwd"] != "/prepared/claude-sdk" {
+		t.Fatalf("start payload cwd = %#v, want prepared cwd", requests[0].Payload["cwd"])
+	}
+	startEnv := payloadMap(requests[0].Payload, "env")
+	if startEnv["SESSION_ENV"] != "1" || startEnv["HOOK_ENV"] != "1" {
+		t.Fatalf("start payload env = %#v, want session and hook env", startEnv)
+	}
 
 	if err := adapter.Close(context.Background(), session); err != nil {
 		t.Fatalf("Close: %v", err)
@@ -210,7 +221,7 @@ func TestClaudeCodeSDKAdapterProviderLaunchPrepareMutatesSpecAndCleansUpOnClose(
 	if cleanupCalls != 1 {
 		t.Fatalf("cleanup calls after close = %d, want 1", cleanupCalls)
 	}
-	requests := conn.sentRequests()
+	requests = conn.sentRequests()
 	if len(requests) == 0 || requests[len(requests)-1].Type != "close" {
 		t.Fatalf("last sidecar request = %#v, want close handshake", requests)
 	}
@@ -233,6 +244,7 @@ func TestClaudeSDKSidecarCommandUsesVendoredEntryWithManagedNodeEnv(t *testing.T
 func TestClaudeSDKSidecarCommandUsesManagedNodeCacheRoot(t *testing.T) {
 	t.Setenv(claudeSDKSidecarCommandEnv, "")
 	t.Setenv(claudeSDKSidecarEntryPathEnv, "")
+	t.Setenv(claudeSDKAppRuntimeRootEnv, "")
 
 	cacheRoot := t.TempDir()
 	nodePath := filepath.Join(cacheRoot, runtime.GOOS+"-"+runtime.GOARCH, "node", "bin", claudeSDKNodeBinaryName())
@@ -284,26 +296,26 @@ func TestClaudeCodeSDKAdapterStartEnablesSandboxBypassEnv(t *testing.T) {
 	}
 }
 
-func TestClaudeCodeSDKAdapterStartSendsClaudeProviderMeta(t *testing.T) {
-	systemPromptPath := filepath.Join(t.TempDir(), "claude-system-prompt.md")
-	if err := os.WriteFile(systemPromptPath, []byte("Use Tutti CLI for issue context."), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	pluginDir := filepath.Join(t.TempDir(), "tutti-cli-plugin")
-	if err := os.MkdirAll(pluginDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
+func TestClaudeCodeSDKAdapterStartPassesPreparedClaudeMetaPathsToSidecar(t *testing.T) {
+	systemPromptPath := "/run/tsh/managed-agent/session/claude-system-prompt.md"
+	pluginDir := "/run/tsh/managed-agent/session/claude-plugin/tutti-cli"
 	conn := &scriptedClaudeSDKConnection{
 		frames: []ProcessFrame{{
 			Stdout: []byte(`{"type":"session_started","payload":{"providerSessionId":"provider-session-meta"}}` + "\n"),
 		}},
 	}
 	adapter := NewClaudeCodeSDKAdapter(&recordingClaudeSDKTransport{conn: conn})
+	adapter.SetProviderLaunchPreparer(func(_ context.Context, input ProviderLaunchPrepareInput) (ProviderLaunchPrepareResult, error) {
+		return ProviderLaunchPrepareResult{
+			Command: input.Command,
+			Env: append(append([]string(nil), input.Env...),
+				"TUTTI_CLAUDE_SYSTEM_PROMPT_FILE="+systemPromptPath,
+				"TUTTI_CLAUDE_PLUGIN_DIR="+pluginDir,
+			),
+			CWD: input.CWD,
+		}, nil
+	})
 	session := standardTestSession(ProviderClaudeCode)
-	session.Env = []string{
-		claudeSystemPromptFileEnv + "=" + systemPromptPath,
-		claudePluginDirEnv + "=" + pluginDir,
-	}
 	session.Settings = &SessionSettings{
 		Model:            "MiniMax-M2.7",
 		PermissionModeID: "default",
@@ -319,8 +331,12 @@ func TestClaudeCodeSDKAdapterStartSendsClaudeProviderMeta(t *testing.T) {
 		t.Fatalf("sent requests = %#v, want start", sent)
 	}
 	payload := sent[0].Payload
-	if got, _ := payload["systemPromptAppend"].(string); got != "Use Tutti CLI for issue context." {
-		t.Fatalf("systemPromptAppend = %q, want prompt file content", got)
+	if _, ok := payload["systemPromptAppend"]; ok {
+		t.Fatalf("systemPromptAppend = %#v, want sidecar to read the prepared file", payload["systemPromptAppend"])
+	}
+	env := payloadMap(payload, "env")
+	if env["TUTTI_CLAUDE_SYSTEM_PROMPT_FILE"] != systemPromptPath || env["TUTTI_CLAUDE_PLUGIN_DIR"] != pluginDir {
+		t.Fatalf("env = %#v, want prepared Claude metadata paths", env)
 	}
 	if got, _ := payload["planModeInstructions"].(string); !strings.Contains(got, "do not edit files") || !strings.Contains(got, "implementation plan") {
 		t.Fatalf("planModeInstructions = %#v, want Tutti plan workflow instructions", payload["planModeInstructions"])
@@ -347,43 +363,15 @@ func TestClaudeCodeSDKAdapterStartSendsClaudeProviderMeta(t *testing.T) {
 	if !ok || tools["type"] != "preset" || tools["preset"] != "claude_code" {
 		t.Fatalf("tools = %#v, want claude_code preset", payload["tools"])
 	}
-	plugins, ok := payload["plugins"].([]any)
-	if !ok || len(plugins) != 1 {
-		t.Fatalf("plugins = %#v, want local plugin dir", payload["plugins"])
-	}
-	plugin, _ := plugins[0].(map[string]any)
-	if plugin["type"] != "local" || plugin["path"] != pluginDir {
-		t.Fatalf("plugins = %#v, want local plugin dir", payload["plugins"])
+	if _, ok := payload["plugins"]; ok {
+		t.Fatalf("plugins = %#v, want sidecar to resolve the prepared plugin dir", payload["plugins"])
 	}
 	extraArgs, ok := payload["extraArgs"].(map[string]any)
-	if !ok || extraArgs["plugin-dir"] != pluginDir || extraArgs["model"] != "MiniMax-M2.7" {
-		t.Fatalf("extraArgs = %#v, want plugin-dir and custom model", payload["extraArgs"])
+	if !ok || extraArgs["model"] != "MiniMax-M2.7" {
+		t.Fatalf("extraArgs = %#v, want custom model", payload["extraArgs"])
 	}
-}
-
-func TestClaudeCodeSDKAdapterStartFailsBeforeProcessForMissingClaudeMetaFiles(t *testing.T) {
-	transport := &recordingClaudeSDKTransport{conn: &scriptedClaudeSDKConnection{}}
-	adapter := NewClaudeCodeSDKAdapter(transport)
-	session := standardTestSession(ProviderClaudeCode)
-	session.Env = []string{claudeSystemPromptFileEnv + "=" + filepath.Join(t.TempDir(), "missing.md")}
-
-	if _, err := adapter.Start(context.Background(), session); err == nil {
-		t.Fatal("Start error = nil, want missing system prompt error")
-	}
-	if transport.spec.Command != nil {
-		t.Fatalf("process spec = %#v, want no sidecar process start on invalid meta", transport.spec)
-	}
-
-	pluginTransport := &recordingClaudeSDKTransport{conn: &scriptedClaudeSDKConnection{}}
-	pluginAdapter := NewClaudeCodeSDKAdapter(pluginTransport)
-	pluginSession := standardTestSession(ProviderClaudeCode)
-	pluginSession.Env = []string{claudePluginDirEnv + "=" + filepath.Join(t.TempDir(), "missing-plugin")}
-
-	if _, err := pluginAdapter.Start(context.Background(), pluginSession); err == nil {
-		t.Fatal("Start error = nil, want missing plugin dir error")
-	}
-	if pluginTransport.spec.Command != nil {
-		t.Fatalf("process spec = %#v, want no sidecar process start on invalid plugin dir", pluginTransport.spec)
+	if _, ok := extraArgs["plugin-dir"]; ok {
+		t.Fatalf("extraArgs = %#v, want sidecar to resolve plugin-dir", extraArgs)
 	}
 }
 
@@ -424,6 +412,43 @@ func TestClaudeCodeSDKAdapterStartSendsResumeCursor(t *testing.T) {
 	stateCursor := payloadMap(events[0].Payload.Metadata, "resumeCursor")
 	if stateCursor["resume"] != "provider-session-1" || stateCursor["resumeSessionAt"] != "assistant-1" {
 		t.Fatalf("started runtime cursor = %#v", stateCursor)
+	}
+}
+
+func TestClaudeCodeSDKAdapterStartDropsResumeCursorFromForkSource(t *testing.T) {
+	conn := &scriptedClaudeSDKConnection{
+		frames: []ProcessFrame{{
+			Stdout: []byte(`{"type":"session_started","payload":{"providerSessionId":"provider-session-child"}}` + "\n"),
+		}},
+	}
+	adapter := NewClaudeCodeSDKAdapter(&recordingClaudeSDKTransport{conn: conn})
+	session := standardTestSession(ProviderClaudeCode)
+	session.ProviderSessionID = "provider-session-child"
+	session.RuntimeContext = map[string]any{
+		"resumeCursor": map[string]any{
+			"kind":            "claude-agent-sdk",
+			"version":         int64(1),
+			"resume":          "provider-session-source",
+			"resumeSessionAt": "source-assistant-1",
+			"turnCount":       int64(7),
+		},
+	}
+
+	if _, err := adapter.Start(t.Context(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	sent := conn.sentRequests()
+	if len(sent) != 1 || sent[0].Type != "start" {
+		t.Fatalf("sent requests = %#v, want start", sent)
+	}
+	if cursor := payloadMap(sent[0].Payload, "resumeCursor"); len(cursor) != 0 {
+		t.Fatalf("resume cursor payload = %#v, want stale source cursor removed", cursor)
+	}
+	if sent[0].Payload["providerSessionId"] != "provider-session-child" {
+		t.Fatalf(
+			"provider session id = %#v, want forked child",
+			sent[0].Payload["providerSessionId"],
+		)
 	}
 }
 
@@ -548,6 +573,8 @@ func TestClaudeCodeSDKAdapterExecSendsStructuredPromptContent(t *testing.T) {
 		}},
 	}
 	adapter := NewClaudeCodeSDKAdapter(nil)
+	imageURL, materializer := testRemotePromptImageMaterializer(t)
+	adapter.promptImageMaterializer = materializer
 	session := standardTestSession(ProviderClaudeCode)
 	adapter.storeSession(session.AgentSessionID, &claudeSDKAdapterSession{
 		conn:              conn,
@@ -562,7 +589,7 @@ func TestClaudeCodeSDKAdapterExecSendsStructuredPromptContent(t *testing.T) {
 		session,
 		[]PromptContentBlock{
 			{Type: "text", Text: "what is in this image?"},
-			{Type: "image", MimeType: "image/png", Data: "aW1hZ2U="},
+			{Type: "image", MimeType: "image/png", URL: imageURL},
 		},
 		"what is in this image?",
 		"turn-image",
@@ -579,6 +606,13 @@ func TestClaudeCodeSDKAdapterExecSendsStructuredPromptContent(t *testing.T) {
 	if sent[0].Payload["prompt"] != "what is in this image?" {
 		t.Fatalf("exec prompt = %#v, want legacy text prompt", sent[0].Payload["prompt"])
 	}
+	promptCorrelationID := payloadString(sent[0].Payload, "promptCorrelationId")
+	if promptCorrelationID == "" || promptCorrelationID == "turn-image" {
+		t.Fatalf(
+			"exec prompt correlation id = %q, want a distinct UUID",
+			promptCorrelationID,
+		)
+	}
 	content, ok := sent[0].Payload["content"].([]any)
 	if !ok || len(content) != 2 {
 		t.Fatalf("exec content = %#v, want text and image blocks", sent[0].Payload["content"])
@@ -588,7 +622,7 @@ func TestClaudeCodeSDKAdapterExecSendsStructuredPromptContent(t *testing.T) {
 		t.Fatalf("text block = %#v", textBlock)
 	}
 	imageBlock, _ := content[1].(map[string]any)
-	if imageBlock["type"] != "image" || imageBlock["mimeType"] != "image/png" || imageBlock["data"] != "aW1hZ2U=" {
+	if imageBlock["type"] != "image" || imageBlock["mimeType"] != "image/png" || imageBlock["data"] != "aGk=" || imageBlock["url"] != nil {
 		t.Fatalf("image block = %#v", imageBlock)
 	}
 }

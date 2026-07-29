@@ -38,6 +38,20 @@ var (
 	agentTargetIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._:-]{0,127}$`)
 )
 
+type systemTargetIconAsset struct {
+	iconURL     string
+	maskIconURL string
+}
+
+var systemTargetIconAssetsByIconKey = map[string]systemTargetIconAsset{
+	"claude-code": {iconURL: "tutti-asset://agent/claudecode.png", maskIconURL: "tutti-asset://agent/claudecode-mask.svg"},
+	"codex":       {iconURL: "tutti-asset://agent/codex.png", maskIconURL: "tutti-asset://agent/codex-mask.svg"},
+	"cursor":      {iconURL: "tutti-asset://agent/cursor.png", maskIconURL: "tutti-asset://agent/cursor-mask.svg"},
+	"openclaw":    {iconURL: "tutti-asset://agent/openclaw.png"},
+	"opencode":    {iconURL: "tutti-asset://agent/opencode.png", maskIconURL: "tutti-asset://agent/opencode-mask.svg"},
+	"tutti":       {iconURL: "tutti-asset://agent/tutti.png", maskIconURL: "tutti-asset://agent/tutti-mask.svg"},
+}
+
 type Target struct {
 	ID                 string
 	Provider           string
@@ -45,6 +59,7 @@ type Target struct {
 	Name               string
 	IconKey            string
 	IconURL            string
+	MaskIconURL        string
 	HeroImageURL       string
 	Enabled            bool
 	Source             string
@@ -82,12 +97,15 @@ func systemTargetFromProviderDescriptor(descriptor providerregistry.ProviderDesc
 	if descriptor.Target.LaunchRefType != launchRefTypeLegacyLocalCLI {
 		panic(fmt.Sprintf("provider %q has unsupported target launch ref type %q", descriptor.Identity.ID, descriptor.Target.LaunchRefType))
 	}
+	icons := systemTargetIconAssetsByIconKey[strings.TrimSpace(descriptor.Identity.IconKey)]
 	return Target{
 		ID:              descriptor.Target.ID,
 		Provider:        descriptor.Identity.ID,
 		LaunchRefJSON:   MustLocalCLILaunchRefJSON(descriptor.Identity.ID),
 		Name:            descriptor.Identity.DisplayName,
 		IconKey:         descriptor.Identity.IconKey,
+		IconURL:         icons.iconURL,
+		MaskIconURL:     icons.maskIconURL,
 		Enabled:         descriptor.Target.Enabled,
 		Source:          SourceSystem,
 		SortOrder:       descriptor.Target.SortOrder,
@@ -183,6 +201,7 @@ func NormalizeTarget(value Target) (Target, error) {
 	value.Name = strings.TrimSpace(value.Name)
 	value.IconKey = strings.TrimSpace(value.IconKey)
 	value.IconURL = strings.TrimSpace(value.IconURL)
+	value.MaskIconURL = strings.TrimSpace(value.MaskIconURL)
 	value.HeroImageURL = strings.TrimSpace(value.HeroImageURL)
 	value.Source = normalizeSource(value.Source)
 	value.AvailabilityStatus = strings.TrimSpace(value.AvailabilityStatus)

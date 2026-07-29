@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/daemon/liveprotocol"
 )
 
 type appServerCaptureConn struct {
@@ -66,6 +67,185 @@ func mustJSONRawMessage(t *testing.T, value any) json.RawMessage {
 		t.Fatalf("json.Marshal: %v", err)
 	}
 	return raw
+}
+
+func TestCodexAppServerCommandOutputDeltaUsesToolOutputFastLane(t *testing.T) {
+	t.Parallel()
+	session := reportTestSession()
+	session.ProviderSessionID = "thread-1"
+	normalizer := newACPTurnNormalizer()
+	reducer := newCodexAppServerReducer(&CodexAppServerAdapter{})
+
+	started := reducer.ReduceNotification(
+		nil,
+		session,
+		"turn-1",
+		acpMessage{
+			Method: appServerNotifyItemStarted,
+			Params: mustJSONRawMessage(t, map[string]any{
+				"threadId": "thread-1",
+				"turnId":   "provider-turn-1",
+				"item": map[string]any{
+					"type": "commandExecution", "id": "command-1",
+					"command": "printf hello", "status": "inProgress",
+				},
+			}),
+		},
+		normalizer,
+		nil,
+	)
+	if len(started.Events) != 1 || started.Events[0].Type != activityshared.EventCallStarted {
+		t.Fatalf("started events = %#v", started.Events)
+	}
+	startReport := reportActivityInput(session, started.Events)
+	if len(startReport.MessageUpdates) != 1 {
+		t.Fatalf("started report = %#v, want one canonical tool anchor", startReport)
+	}
+
+	output := reducer.ReduceNotification(
+		nil,
+		session,
+		"turn-1",
+		acpMessage{
+			Method: appServerNotifyCommandOutputDelta,
+			Params: mustJSONRawMessage(t, map[string]any{
+				"threadId": "thread-1",
+				"turnId":   "provider-turn-1",
+				"itemId":   "command-1",
+				"delta":    "hello",
+			}),
+		},
+		normalizer,
+		nil,
+	)
+	if len(output.Events) != 1 {
+		t.Fatalf("output events = %#v", output.Events)
+	}
+	stream := ProjectActivityEventsToStreamEvents(session, output.Events)
+	if len(stream) != 1 || stream[0].EventType != StreamEventMessageDelta {
+		t.Fatalf("output stream = %#v", stream)
+	}
+	liveEvent := stream[0].Data.(liveprotocol.Event)
+	var data liveprotocol.MessageDeltaData
+	if err := json.Unmarshal(liveEvent.Data, &data); err != nil {
+		t.Fatal(err)
+	}
+	if data.ToolOutput == nil ||
+		data.ToolOutput.Operation != "set" ||
+		data.ToolOutput.Text != "hello" {
+		t.Fatalf("tool output delta = %#v", data.ToolOutput)
+	}
+	if data.MessageID != startReport.MessageUpdates[0].MessageID {
+		t.Fatalf(
+			"live output message id = %q, want canonical start anchor %q",
+			data.MessageID,
+			startReport.MessageUpdates[0].MessageID,
+		)
+	}
+
+	completed := reducer.ReduceNotification(
+		nil,
+		session,
+		"turn-1",
+		acpMessage{
+			Method: appServerNotifyItemCompleted,
+			Params: mustJSONRawMessage(t, map[string]any{
+				"threadId": "thread-1",
+				"turnId":   "provider-turn-1",
+				"item": map[string]any{
+					"type": "commandExecution", "id": "command-1",
+					"command": "printf hello", "status": "completed",
+					"aggregatedOutput": "hello", "exitCode": 0,
+				},
+			}),
+		},
+		normalizer,
+		nil,
+	)
+	if len(completed.Events) != 1 || completed.Events[0].Type != activityshared.EventCallCompleted {
+		t.Fatalf("completed events = %#v", completed.Events)
+	}
+	completedReport := reportActivityInput(session, completed.Events)
+	if len(completedReport.MessageUpdates) != 1 {
+		t.Fatalf("completed report = %#v, want one canonical terminal tool update", completedReport)
+	}
+	if completedReport.MessageUpdates[0].MessageID != startReport.MessageUpdates[0].MessageID {
+		t.Fatalf(
+			"completed message id = %q, want canonical start anchor %q",
+			completedReport.MessageUpdates[0].MessageID,
+			startReport.MessageUpdates[0].MessageID,
+		)
+	}
+}
+
+func TestCodexAppServerCommandOutputDeltaBeforeItemStartPreservesPrefix(t *testing.T) {
+	t.Parallel()
+	session := reportTestSession()
+	session.ProviderSessionID = "thread-1"
+	normalizer := newACPTurnNormalizer()
+	reducer := newCodexAppServerReducer(&CodexAppServerAdapter{})
+
+	for _, chunk := range []string{"first\n", "second\n"} {
+		early := reducer.ReduceNotification(
+			nil,
+			session,
+			"turn-1",
+			acpMessage{
+				Method: appServerNotifyCommandOutputDelta,
+				Params: mustJSONRawMessage(t, map[string]any{
+					"threadId": "thread-1",
+					"turnId":   "provider-turn-1",
+					"itemId":   "command-1",
+					"delta":    chunk,
+				}),
+			},
+			normalizer,
+			nil,
+		)
+		if len(early.Events) != 0 {
+			t.Fatalf("early events for %q = %#v, want no output before its anchor", chunk, early.Events)
+		}
+	}
+
+	started := reducer.ReduceNotification(
+		nil,
+		session,
+		"turn-1",
+		acpMessage{
+			Method: appServerNotifyItemStarted,
+			Params: mustJSONRawMessage(t, map[string]any{
+				"threadId": "thread-1",
+				"turnId":   "provider-turn-1",
+				"item": map[string]any{
+					"type": "commandExecution", "id": "command-1",
+					"command": "printf first", "status": "inProgress",
+				},
+			}),
+		},
+		normalizer,
+		nil,
+	)
+	if len(started.Events) != 2 ||
+		started.Events[0].Type != activityshared.EventCallStarted ||
+		started.Events[1].Type != activityshared.EventCallStarted {
+		t.Fatalf("started events = %#v, want anchor followed by buffered prefix", started.Events)
+	}
+	report := reportActivityInput(session, started.Events)
+	if len(report.MessageUpdates) != 2 {
+		t.Fatalf("report = %#v, want anchor and cumulative prefix", report)
+	}
+	startMessageID := report.MessageUpdates[0].MessageID
+	if report.MessageUpdates[1].MessageID != startMessageID {
+		t.Fatalf(
+			"message ids = %q / %q, want one canonical tool row",
+			startMessageID,
+			report.MessageUpdates[1].MessageID,
+		)
+	}
+	output, _ := report.MessageUpdates[1].Payload["output"].(map[string]any)
+	if output["text"] != "first\nsecond\n" {
+		t.Fatalf("persisted buffered prefix = %#v", output)
+	}
 }
 
 // appServerUserInputAnswers is the codex-specific translation of the GUI's
@@ -258,6 +438,79 @@ func TestCodexAppServerAdapterRoutesLinkedChildThreadEvents(t *testing.T) {
 	parentAfterChild := normalizer.AppendAssistantChunk(session, "parent-turn-1", "parent output")
 	if len(parentAfterChild) != 1 || parentAfterChild[0].Payload.Content != "parent output" {
 		t.Fatalf("parent normalizer was corrupted by child lane: %#v", parentAfterChild)
+	}
+}
+
+func TestCodexAppServerAdapterRegistersSubAgentActivityChild(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewCodexAppServerAdapter(nil)
+	session := Session{
+		AgentSessionID:    "agent-session-1",
+		Provider:          ProviderCodex,
+		ProviderSessionID: "parent-thread-1",
+		CWD:               "/workspace",
+	}
+	adapter.storeSession(session.AgentSessionID, &codexAppServerSession{threadID: session.ProviderSessionID})
+	reducer := newCodexAppServerReducer(adapter)
+	normalizer := newACPTurnNormalizer()
+	notification := acpMessage{
+		Method: appServerNotifyItemCompleted,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId": session.ProviderSessionID,
+			"turnId":   "parent-turn-1",
+			"item": map[string]any{
+				"type":          "subAgentActivity",
+				"id":            "spawn-child-1",
+				"agentThreadId": "child-thread-1",
+				"agentPath":     "/root/reviewer",
+				"kind":          "started",
+			},
+		}),
+	}
+
+	events := reducer.ReduceNotification(
+		nil,
+		session,
+		"parent-turn-1",
+		notification,
+		normalizer,
+		nil,
+	).Events
+	if len(events) != 2 {
+		t.Fatalf("subAgentActivity events = %#v, want child creation and completed parent tool call", events)
+	}
+	childStarted := events[0]
+	if childStarted.Type != activityshared.EventSessionStarted ||
+		childStarted.SessionKind != "child" ||
+		childStarted.ProviderSessionID != "child-thread-1" ||
+		childStarted.ParentToolCallID != "spawn-child-1" {
+		t.Fatalf("child start = %#v", childStarted)
+	}
+	parentCall := events[1]
+	parentCallInput := payloadMap(parentCall.Payload.Metadata, "input")
+	if parentCall.Type != activityshared.EventCallCompleted ||
+		parentCall.AgentSessionID != session.AgentSessionID ||
+		parentCall.Payload.CallID != "spawn-child-1" ||
+		parentCall.Payload.Name != "spawnAgent" ||
+		parentCallInput["agentName"] != "spawnAgent" {
+		t.Fatalf("parent spawn call = %#v", parentCall)
+	}
+	child, ok := adapter.appServerChildThread(session.AgentSessionID, "child-thread-1")
+	if !ok || child.parentItemID != "spawn-child-1" || child.parentAgentSessionID != session.AgentSessionID {
+		t.Fatalf("registered child = %#v (ok=%v)", child, ok)
+	}
+
+	duplicate := reducer.ReduceNotification(
+		nil,
+		session,
+		"parent-turn-1",
+		notification,
+		normalizer,
+		nil,
+	).Events
+	if len(duplicate) != 0 {
+		t.Fatalf("duplicate subAgentActivity events = %#v, want none", duplicate)
 	}
 }
 

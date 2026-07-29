@@ -28,3 +28,14 @@ func TestNormalizeUsesMigratedProviderIdentity(t *testing.T) {
 		}
 	}
 }
+
+func TestModelPlanResponsesToChatGatewayUsesRuntimeStrategy(t *testing.T) {
+	if !ModelPlanUsesResponsesToChatGateway(Codex) {
+		t.Fatal("Codex model plans must use the Responses-to-Chat gateway")
+	}
+	for _, provider := range []string{ClaudeCode, OpenCode, TuttiAgent, "unknown"} {
+		if ModelPlanUsesResponsesToChatGateway(provider) {
+			t.Fatalf("%q model plans must use the direct endpoint strategy", provider)
+		}
+	}
+}

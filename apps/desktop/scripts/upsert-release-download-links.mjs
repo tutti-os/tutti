@@ -3,6 +3,7 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { pathToFileURL } from "node:url";
+import { buildLimitedGithubReleaseBody } from "./lib/githubReleaseBody.mjs";
 
 const SECTION_START = "<!-- tutti-desktop-download-links:start -->";
 const SECTION_END = "<!-- tutti-desktop-download-links:end -->";
@@ -74,7 +75,7 @@ function buildUpdatedReleaseBody({
   const cleanedBody = removeManagedSection(existingBody);
 
   if (!releaseTag || !releaseAssetBaseUrl) {
-    return `${cleanedBody}\n`;
+    return buildLimitedGithubReleaseBody({ existingBody: cleanedBody });
   }
 
   const directDownloadLinks = resolveDesktopDownloadLinks(
@@ -84,18 +85,19 @@ function buildUpdatedReleaseBody({
   );
 
   if (directDownloadLinks.length === 0) {
-    return `${cleanedBody}\n`;
+    return buildLimitedGithubReleaseBody({ existingBody: cleanedBody });
   }
 
-  return [
-    cleanedBody,
-    "",
+  const downloadSection = [
     SECTION_START,
     "### Direct Downloads",
     ...directDownloadLinks,
-    SECTION_END,
-    ""
+    SECTION_END
   ].join("\n");
+  return buildLimitedGithubReleaseBody({
+    existingBody: cleanedBody,
+    trailingSections: [downloadSection]
+  });
 }
 
 async function main() {

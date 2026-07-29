@@ -1,0 +1,36 @@
+{
+  "$schema": "../../schemas/core/event-definition.schema.json",
+  "topic": "preferences.agent.composer.defaults.patch.requested",
+  "version": 1,
+  "direction": "client->server",
+  "owner": "core",
+  "scope": "desktop",
+  "payloadSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["agentTargetId", "patch"],
+    "properties": {
+      "agentTargetId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "patch": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "model": { "type": ["string", "null"] },
+          "permissionModeId": { "type": ["string", "null"] },
+          "reasoningEffort": { "type": ["string", "null"] },
+          "speed": { "type": ["string", "null"] }
+        }
+      },
+      "clientMutationId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import {
   type BrowserNodeFeature,
   type BrowserNodeNavigationPolicy
@@ -16,11 +16,13 @@ import { createAppCenterI18nRuntime } from "@tutti-os/workspace-app-center/i18n"
 import type { WorkbenchHostNodeBodyContext } from "@tutti-os/workbench-surface";
 import { WorkspaceAppCenterPane } from "../../ui/WorkspaceAppCenterPane.tsx";
 import type { IWorkspaceAppCenterService } from "../workspaceAppCenterService.interface";
+import { readWorkspaceAppTabIds } from "../workspaceAppCenterTabs.ts";
 import {
   findWorkspaceApp,
+  readWorkspaceAppOpenRouteIntent,
+  resolveWorkspaceAppOpenUrl,
   workspaceAppInlineBrowserNodeId
 } from "./workspaceAppCenterLaunchRequest.ts";
-import { retainWorkspaceAppInlineAppIds } from "./workspaceAppCenterInlineAppRetention.ts";
 import {
   shouldPreserveWorkspaceAppWebviewDuringHandoff,
   shouldRenderWorkspaceAppBrowserNode,
@@ -51,22 +53,15 @@ export function WorkspaceAppCenterInlineAppBody({
   const viewState =
     state.viewStateByWorkspaceId[workspaceId] ??
     appCenterService.getViewState(workspaceId, context.externalNodeState);
-  const appId = viewState.openAppId?.trim() ?? "";
-  const [persistedAppIds, setPersistedAppIds] = useState<readonly string[]>([]);
-  const retainedAppIds = retainWorkspaceAppInlineAppIds({
-    activeAppId: appId,
-    ...(state.loadStatus === "ready" && state.workspaceId === workspaceId
-      ? { availableAppIds: state.apps.map((app) => app.appId) }
-      : {}),
-    retainedAppIds: persistedAppIds
-  });
-  const catalogActive = !appId || !retainedAppIds.includes(appId);
-
-  useEffect(() => {
-    if (retainedAppIds !== persistedAppIds) {
-      setPersistedAppIds(retainedAppIds);
-    }
-  }, [persistedAppIds, retainedAppIds]);
+  const activeAppId = viewState.openAppId?.trim() ?? "";
+  const availableAppIds =
+    state.loadStatus === "ready" && state.workspaceId === workspaceId
+      ? new Set(state.apps.map((app) => app.appId))
+      : null;
+  const openAppIds = readWorkspaceAppTabIds(
+    viewState as WorkspaceAppCenterViewState
+  ).filter((appId) => !availableAppIds || availableAppIds.has(appId));
+  const catalogActive = !activeAppId || !openAppIds.includes(activeAppId);
 
   return (
     <div className="relative h-full min-h-0 overflow-hidden">
@@ -82,9 +77,9 @@ export function WorkspaceAppCenterInlineAppBody({
           workspaceId={workspaceId}
         />
       </div>
-      {retainedAppIds.map((retainedAppId) => {
-        const app = findWorkspaceApp(appCenterService, retainedAppId);
-        const isActive = !catalogActive && retainedAppId === appId;
+      {openAppIds.map((openAppId) => {
+        const app = findWorkspaceApp(appCenterService, openAppId);
+        const isActive = !catalogActive && openAppId === activeAppId;
         return (
           <div
             aria-hidden={!isActive}
@@ -92,24 +87,29 @@ export function WorkspaceAppCenterInlineAppBody({
               "absolute inset-0",
               !isActive && "invisible pointer-events-none"
             )}
-            key={retainedAppId}
+            key={openAppId}
           >
             <WorkspaceAppCenterInlineBrowser
+              activationUrl={resolveWorkspaceAppInlineActivationUrl({
+                app,
+                appId: openAppId,
+                activation: context.activation
+              })}
               app={app}
               appCenterCopy={createAppCenterI18nRuntime(i18n)}
-              appId={retainedAppId}
+              appId={openAppId}
               browserFeature={browserFeature}
               fallbackLabel={fallbackLabel}
               hidden={context.node.isMinimized || !isActive}
               navigationPolicy={resolveWorkspaceAppNavigationPolicy(app)}
-              nodeId={workspaceAppInlineBrowserNodeId(retainedAppId)}
+              nodeId={workspaceAppInlineBrowserNodeId(openAppId)}
               onFocusRequest={
                 !isActive || context.isFocused
                   ? undefined
                   : () => context.focus()
               }
               sessionPartition={workspaceAppBrowserSessionPartition({
-                appId: retainedAppId,
+                appId: openAppId,
                 workspaceId
               })}
             />
@@ -121,6 +121,7 @@ export function WorkspaceAppCenterInlineAppBody({
 }
 
 function WorkspaceAppCenterInlineBrowser({
+  activationUrl,
   app,
   appCenterCopy,
   appId,
@@ -132,6 +133,7 @@ function WorkspaceAppCenterInlineBrowser({
   onFocusRequest,
   sessionPartition
 }: {
+  activationUrl: string | null;
   app: WorkspaceAppCenterApp | null;
   appCenterCopy: ReturnType<typeof createAppCenterI18nRuntime>;
   appId: string;
@@ -144,7 +146,7 @@ function WorkspaceAppCenterInlineBrowser({
   sessionPartition: string;
 }): ReactNode {
   const recentHandoffAppIdRef = useRef<string | null>(null);
-  const defaultUrl = app?.launchUrl ?? "about:blank";
+  const defaultUrl = activationUrl ?? app?.launchUrl ?? "about:blank";
   const handoffOptions = {
     hadRecentHandoff: recentHandoffAppIdRef.current === appId
   };
@@ -213,6 +215,32 @@ function WorkspaceAppCenterInlineBrowser({
       ) : null}
     </div>
   );
+}
+
+function resolveWorkspaceAppInlineActivationUrl(input: {
+  activation: WorkbenchHostNodeBodyContext<unknown, unknown>["activation"];
+  app: WorkspaceAppCenterApp | null;
+  appId: string;
+}): string | null {
+  if (
+    input.activation?.type !== "workspace-app:open" ||
+    !input.activation.payload ||
+    typeof input.activation.payload !== "object" ||
+    !input.app?.launchUrl
+  ) {
+    return null;
+  }
+  const payload = input.activation.payload as {
+    appId?: unknown;
+    intent?: unknown;
+  };
+  if (payload.appId !== input.appId) {
+    return null;
+  }
+  const intent = readWorkspaceAppOpenRouteIntent(payload.intent);
+  return intent
+    ? resolveWorkspaceAppOpenUrl(input.app.launchUrl, intent)
+    : input.app.launchUrl;
 }
 
 function WorkspaceAppCenterInlineLoadingState({

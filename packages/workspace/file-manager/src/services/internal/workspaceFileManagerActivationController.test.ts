@@ -215,7 +215,6 @@ test("openEntry clears unsupported state after handled file activation", async (
   await controller.openEntry(entry);
 
   assert.equal(store.unsupportedDialog, null);
-  assert.equal(store.importConflictDialog, null);
   assert.equal(store.busyAction, null);
 });
 
@@ -233,9 +232,6 @@ function createTestStore(
     canCreateDirectory: false,
     canCreateFile: false,
     canDelete: false,
-    canExport: false,
-    canImportFromDrop: false,
-    canImportFromPicker: false,
     canMove: false,
     canOpenInAppBrowser: false,
     canOpenInDefaultBrowser: false,

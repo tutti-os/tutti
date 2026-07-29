@@ -26,6 +26,40 @@ test("projects canonical engine state and preserves the snapshot reference", () 
   assert.equal(populated.sessions[0]?.pendingInteractions.length, 1);
 });
 
+test("reuses expensive projections when unrelated engine slices change", () => {
+  const project = createAgentActivitySnapshotProjector("workspace-1");
+  const populatedState = rootEngineReducer(
+    createInitialAgentSessionEngineState(),
+    {
+      type: "session/snapshotReceived",
+      sessions: [session()]
+    }
+  ).state;
+  const populated = project(populatedState);
+  const reconcileOnlyState = {
+    ...populatedState,
+    sessionReconcile: { ...populatedState.sessionReconcile }
+  };
+
+  const reconciled = project(reconcileOnlyState);
+
+  assert.notEqual(reconciled, populated);
+  assert.equal(reconciled.sessions, populated.sessions);
+  assert.equal(reconciled.sessionMessagesById, populated.sessionMessagesById);
+  assert.equal(
+    reconciled.sessionMessageWindowsById,
+    populated.sessionMessageWindowsById
+  );
+  assert.equal(
+    reconciled.composerOptionsByTargetKey,
+    populated.composerOptionsByTargetKey
+  );
+  assert.equal(
+    reconciled.composerOptionsLoadStatusByTargetKey,
+    populated.composerOptionsLoadStatusByTargetKey
+  );
+});
+
 function session(): AgentActivitySession {
   const turn = {
     agentSessionId: "session-1",
@@ -64,6 +98,8 @@ function session(): AgentActivitySession {
     parentToolCallId: null,
     agentTargetId: "agent-1",
     capabilities: null,
+    lifecycleCapabilities: { fork: false, forkThroughTurn: false },
+    forkedFrom: null,
     createdAtUnixMs: 1,
     cwd: "/workspace",
     endedAtUnixMs: null,
@@ -82,6 +118,7 @@ function session(): AgentActivitySession {
     settings: {},
     startedAtUnixMs: 1,
     title: "Session",
+    tuttiModeActivation: null,
     updatedAtUnixMs: 20,
     usage: null,
     visible: true,

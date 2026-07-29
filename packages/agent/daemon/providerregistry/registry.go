@@ -2,7 +2,10 @@ package providerregistry
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
+
+	canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 var migratedDescriptors = []ProviderDescriptor{
@@ -12,13 +15,26 @@ var migratedDescriptors = []ProviderDescriptor{
 	tuttiAgentDescriptor(),
 	openCodeDescriptor(),
 	nexightDescriptor(),
-	hermesDescriptor(),
 	openClawDescriptor(),
 }
 
 var providerDescriptorIndex = buildProviderDescriptorIndex(migratedDescriptors)
 
 var eventProviderIndex = buildEventProviderIndex(migratedDescriptors)
+
+// Descriptor-owned compatibility floors intentionally accept stable releases
+// only. The daemon's lightweight comparator does not implement full SemVer
+// pre-release precedence, so allowing a pre-release floor would make the gate
+// ambiguous.
+var minimumVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
+
+func canonicalProviderIdentity(providerID string) IdentityDescriptor {
+	identity, ok := canonical.FindProviderIdentity(providerID)
+	if !ok {
+		panic("missing canonical provider identity: " + providerID)
+	}
+	return identity
+}
 
 // Migrated returns the complete provider descriptor catalog.
 func Migrated() []ProviderDescriptor {
@@ -63,61 +79,6 @@ type EventProvider struct {
 func ResolveEventProvider(value string) (EventProvider, bool) {
 	resolved, ok := eventProviderIndex[normalize(value)]
 	return resolved, ok
-}
-
-func ValidateMigrated() error {
-	providerKeys := map[string]string{}
-	eventKeys := map[string]string{}
-	targetIDs := map[string]string{}
-	defaultProviderPriorities := map[int]string{}
-	statusProbePriorities := map[int]string{}
-	managedOrders := map[int]string{}
-	for _, descriptor := range Migrated() {
-		if err := Validate(descriptor); err != nil {
-			return err
-		}
-		providerID := normalize(descriptor.Identity.ID)
-		for _, key := range append([]string{providerID}, descriptor.Identity.Aliases...) {
-			normalizedKey := normalize(key)
-			if owner, exists := providerKeys[normalizedKey]; exists {
-				return fmt.Errorf("provider key %q is shared by %q and %q", normalizedKey, owner, providerID)
-			}
-			providerKeys[normalizedKey] = providerID
-		}
-		if descriptor.Events.Enabled {
-			for _, key := range append([]string{providerID}, descriptor.Events.Aliases...) {
-				normalizedKey := normalize(key)
-				if owner, exists := eventKeys[normalizedKey]; exists {
-					return fmt.Errorf("event provider key %q is shared by %q and %q", normalizedKey, owner, providerID)
-				}
-				eventKeys[normalizedKey] = providerID
-			}
-		}
-		targetID := strings.TrimSpace(descriptor.Target.ID)
-		if owner, exists := targetIDs[targetID]; exists {
-			return fmt.Errorf("target id %q is shared by %q and %q", targetID, owner, providerID)
-		}
-		targetIDs[targetID] = providerID
-		if priority := descriptor.Desktop.DefaultProviderPriority; priority > 0 {
-			if owner, exists := defaultProviderPriorities[priority]; exists {
-				return fmt.Errorf("desktop default provider priority %d is shared by %q and %q", priority, owner, providerID)
-			}
-			defaultProviderPriorities[priority] = providerID
-		}
-		if priority := descriptor.Desktop.StatusProbePriority; priority > 0 {
-			if owner, exists := statusProbePriorities[priority]; exists {
-				return fmt.Errorf("desktop status probe priority %d is shared by %q and %q", priority, owner, providerID)
-			}
-			statusProbePriorities[priority] = providerID
-		}
-		if order := descriptor.Desktop.ManagedOrder; order > 0 {
-			if owner, exists := managedOrders[order]; exists {
-				return fmt.Errorf("desktop managed order %d is shared by %q and %q", order, owner, providerID)
-			}
-			managedOrders[order] = providerID
-		}
-	}
-	return nil
 }
 
 func Validate(descriptor ProviderDescriptor) error {
@@ -175,6 +136,9 @@ func Validate(descriptor ProviderDescriptor) error {
 	case "", DesktopRuntimeProbeFallbackDirect:
 	default:
 		return fmt.Errorf("provider %q desktop runtime probe fallback %q is unsupported", providerID, descriptor.Desktop.RuntimeProbeFallback)
+	}
+	if descriptor.Desktop.CommandNetworkAccess && descriptor.Runtime.Kind != RuntimeKindCodexAppServer {
+		return fmt.Errorf("provider %q desktop command network access requires a Codex app-server runtime", providerID)
 	}
 	if descriptor.Desktop.UnavailableDockOrderOffset < 0 {
 		return fmt.Errorf("provider %q desktop unavailable dock order offset must be non-negative", providerID)
@@ -243,6 +207,33 @@ func Validate(descriptor ProviderDescriptor) error {
 	default:
 		return fmt.Errorf("provider %q endpoint config kind %q is unsupported", providerID, descriptor.Runtime.Endpoint.ConfigKind)
 	}
+	switch descriptor.Runtime.Endpoint.ModelPlanProtocol {
+	case "", ModelPlanProtocolOpenAI, ModelPlanProtocolAnthropic:
+	default:
+		return fmt.Errorf("provider %q model plan protocol %q is unsupported", providerID, descriptor.Runtime.Endpoint.ModelPlanProtocol)
+	}
+	switch descriptor.Runtime.Endpoint.ModelPlanModelAddressing {
+	case "", ModelPlanModelAddressingProviderPrefixed:
+	default:
+		return fmt.Errorf("provider %q model plan model addressing %q is unsupported", providerID, descriptor.Runtime.Endpoint.ModelPlanModelAddressing)
+	}
+	if descriptor.Runtime.Endpoint.ModelPlanModelAddressing != "" && descriptor.Runtime.Endpoint.ModelPlanProtocol == "" {
+		return fmt.Errorf("provider %q model plan model addressing requires a model plan protocol", providerID)
+	}
+	switch descriptor.Runtime.Endpoint.ModelPlanEndpointAdapter {
+	case "", ModelPlanEndpointAdapterResponsesToChatGateway:
+	default:
+		return fmt.Errorf("provider %q model plan endpoint adapter %q is unsupported", providerID, descriptor.Runtime.Endpoint.ModelPlanEndpointAdapter)
+	}
+	if descriptor.Runtime.Endpoint.ModelPlanEndpointAdapter != "" &&
+		descriptor.Runtime.Endpoint.ModelPlanProtocol != ModelPlanProtocolOpenAI {
+		return fmt.Errorf("provider %q model plan endpoint adapter requires the OpenAI protocol", providerID)
+	}
+	hasModelPlanProtocol := descriptor.Runtime.Endpoint.ModelPlanProtocol != ""
+	hasModelPlanCapability := containsNormalized(descriptor.ComposerProfile.Capabilities, normalize(CapabilityModelPlanBinding))
+	if hasModelPlanProtocol != hasModelPlanCapability {
+		return fmt.Errorf("provider %q model plan protocol and capability must be declared together", providerID)
+	}
 	switch descriptor.Status.Kind {
 	case StatusKindCodexCLI, StatusKindClaudeCLI, StatusKindOpenCodeCLI, StatusKindGenericCLI:
 	case "":
@@ -260,7 +251,7 @@ func Validate(descriptor ProviderDescriptor) error {
 		return fmt.Errorf("provider %q auth output parser kind %q is unsupported", providerID, descriptor.Status.AuthOutputParserKind)
 	}
 	switch descriptor.Status.AuthMarkerParserKind {
-	case AuthMarkerParserKindFileExists, AuthMarkerParserKindClaude, AuthMarkerParserKindTuttiToken:
+	case AuthMarkerParserKindFileExists, AuthMarkerParserKindClaude, AuthMarkerParserKindOpenCode, AuthMarkerParserKindTuttiToken:
 	default:
 		return fmt.Errorf("provider %q auth marker parser kind %q is unsupported", providerID, descriptor.Status.AuthMarkerParserKind)
 	}
@@ -274,8 +265,17 @@ func Validate(descriptor ProviderDescriptor) error {
 	default:
 		return fmt.Errorf("provider %q static spec resolver kind %q is unsupported", providerID, descriptor.Status.StaticSpecResolverKind)
 	}
-	if descriptor.Status.Kind == StatusKindCodexCLI && strings.TrimSpace(descriptor.Status.MinVersion) == "" {
+	minimumVersion := strings.TrimSpace(descriptor.Status.MinVersion)
+	if descriptor.Status.Kind == StatusKindCodexCLI && minimumVersion == "" {
 		return fmt.Errorf("provider %q minimum version is required", providerID)
+	}
+	if minimumVersion != "" {
+		if !minimumVersionPattern.MatchString(minimumVersion) {
+			return fmt.Errorf("provider %q minimum version %q is invalid", providerID, descriptor.Status.MinVersion)
+		}
+		if descriptor.Status.Install.Kind == "" {
+			return fmt.Errorf("provider %q minimum version requires an installer", providerID)
+		}
 	}
 	if descriptor.Status.AuthStatusCommandTimeoutSeconds < 0 {
 		return fmt.Errorf("provider %q auth status timeout must be non-negative", providerID)
@@ -343,6 +343,10 @@ func Validate(descriptor ProviderDescriptor) error {
 		if strings.TrimSpace(descriptor.Status.Install.PackageName) == "" || strings.TrimSpace(descriptor.Status.Install.BinaryName) == "" {
 			return fmt.Errorf("provider %q managed npm installer package and binary are required", providerID)
 		}
+		managedDescriptor, _ := descriptor.ManagedNPMDescriptor()
+		if err := managedDescriptor.Validate(); err != nil {
+			return fmt.Errorf("provider %q managed npm installer: %w", providerID, err)
+		}
 	case InstallerKindShellCommand:
 		if strings.TrimSpace(descriptor.Status.Install.ShellCommand) == "" {
 			return fmt.Errorf("provider %q shell installer command is required", providerID)
@@ -356,6 +360,9 @@ func Validate(descriptor ProviderDescriptor) error {
 	}
 	if descriptor.Status.Install.Kind != "" && strings.TrimSpace(descriptor.Status.Install.DisplayCommand) == "" {
 		return fmt.Errorf("provider %q installer display command is required", providerID)
+	}
+	if err := validateUpdateDescriptor(providerID, descriptor.Status); err != nil {
+		return err
 	}
 	if err := validateAuthWatch(descriptor.Status.AuthWatch); err != nil {
 		return fmt.Errorf("provider %q auth watch: %w", providerID, err)
@@ -422,6 +429,20 @@ func Validate(descriptor ProviderDescriptor) error {
 		}
 	} else if descriptor.ComposerProfile.ReasoningEffortOptions != "" {
 		return fmt.Errorf("provider %q reasoning option source requires reasoning support", providerID)
+	}
+	if descriptor.ComposerProfile.Speed {
+		if err := validateUniqueNonBlankStrings(descriptor.ComposerProfile.SpeedValues); err != nil {
+			return fmt.Errorf("provider %q speed values: %w", providerID, err)
+		}
+		if len(descriptor.ComposerProfile.SpeedValues) == 0 {
+			return fmt.Errorf("provider %q speed support requires values", providerID)
+		}
+		defaultSpeed := strings.TrimSpace(descriptor.ComposerProfile.DefaultSpeed)
+		if !containsNormalized(descriptor.ComposerProfile.SpeedValues, defaultSpeed) {
+			return fmt.Errorf("provider %q default speed %q is not declared", providerID, defaultSpeed)
+		}
+	} else if len(descriptor.ComposerProfile.SpeedValues) != 0 || strings.TrimSpace(descriptor.ComposerProfile.DefaultSpeed) != "" {
+		return fmt.Errorf("provider %q speed values require speed support", providerID)
 	}
 	if err := validateUniqueNonBlankStrings(descriptor.ComposerProfile.Capabilities); err != nil {
 		return fmt.Errorf("provider %q capabilities: %w", providerID, err)
@@ -573,6 +594,11 @@ func validateStandardACPRuntime(descriptor StandardACPRuntimeDescriptor) error {
 	if descriptor.ProjectCurrentMode && strings.TrimSpace(descriptor.PlanModeRuntimeID) == "" {
 		return fmt.Errorf("current-mode projection requires a plan mode runtime id")
 	}
+	for _, inputID := range descriptor.AutoApprovePermissionModeInputIDs {
+		if _, ok := modeIDs[strings.TrimSpace(inputID)]; !ok {
+			return fmt.Errorf("auto-approve permission mode %q is not declared", inputID)
+		}
+	}
 	environment := descriptor.SettingsEnvironment
 	variable := strings.TrimSpace(environment.Variable)
 	if variable == "" && len(environment.JSONFields) == 0 {
@@ -608,42 +634,14 @@ func validateStandardACPRuntime(descriptor StandardACPRuntimeDescriptor) error {
 	return nil
 }
 
-// IsKnownCapability reports whether value is part of the canonical
-// provider/runtime/API capability vocabulary.
-var knownCapabilities = []string{
-	CapabilityImageInput,
-	CapabilityModelImageInputRequired,
-	CapabilitySkills,
-	CapabilityCompact,
-	CapabilityTokenUsage,
-	CapabilityRateLimits,
-	CapabilityPlanMode,
-	CapabilityInterrupt,
-	CapabilityActiveTurnGuidance,
-	CapabilityBrowserUse,
-	CapabilityComputerUse,
-	CapabilityGoalPause,
-	CapabilityPlanImplementation,
-	CapabilityPermissionModeChangeDuringTurn,
-	CapabilityPermissionModeChangeDeferred,
-	CapabilityReview,
-	CapabilityResumeRunningTurn,
-}
-
 // KnownCapabilities returns the ordered canonical capability vocabulary used
 // by provider descriptors, runtime projection, OpenAPI validation, and TS generation.
 func KnownCapabilities() []string {
-	return append([]string(nil), knownCapabilities...)
+	return canonical.KnownCapabilities()
 }
 
 func IsKnownCapability(value string) bool {
-	value = strings.TrimSpace(value)
-	for _, capability := range knownCapabilities {
-		if capability == value {
-			return true
-		}
-	}
-	return false
+	return canonical.IsKnownCapability(value)
 }
 
 func validateAuthWatch(descriptor AuthWatchDescriptor) error {
@@ -773,58 +771,6 @@ func buildEventProviderIndex(descriptors []ProviderDescriptor) map[string]EventP
 		for _, key := range append([]string{descriptor.Identity.ID}, descriptor.Events.Aliases...) {
 			result[normalize(key)] = resolved
 		}
-	}
-	return result
-}
-
-func cloneDescriptor(value ProviderDescriptor) ProviderDescriptor {
-	value.Identity.Aliases = append([]string(nil), value.Identity.Aliases...)
-	value.Runtime.Command = append([]string(nil), value.Runtime.Command...)
-	value.Runtime.Endpoint.BaseURLEnvVars = append([]string(nil), value.Runtime.Endpoint.BaseURLEnvVars...)
-	value.Runtime.StandardACP.PermissionModes = append([]RuntimePermissionModeDescriptor(nil), value.Runtime.StandardACP.PermissionModes...)
-	value.Runtime.StandardACP.SettingsEnvironment.JSONFields = append(
-		[]RuntimeSettingsJSONFieldDescriptor(nil),
-		value.Runtime.StandardACP.SettingsEnvironment.JSONFields...,
-	)
-	value.Status.BinaryNames = append([]string(nil), value.Status.BinaryNames...)
-	value.Status.AdapterBinaryNames = append([]string(nil), value.Status.AdapterBinaryNames...)
-	value.Status.AuthStatusCommand = append([]string(nil), value.Status.AuthStatusCommand...)
-	value.Status.AuthMarkerPaths = append([]string(nil), value.Status.AuthMarkerPaths...)
-	value.Status.APIEndpoints = append([]string(nil), value.Status.APIEndpoints...)
-	value.Status.CustomConfigEnvVars = append([]string(nil), value.Status.CustomConfigEnvVars...)
-	value.Status.CredentialEnvVars = append([]string(nil), value.Status.CredentialEnvVars...)
-	value.Status.LoginArgs = append([]string(nil), value.Status.LoginArgs...)
-	value.Status.Install.FailureReasonMarkers = cloneStringSliceMap(value.Status.Install.FailureReasonMarkers)
-	value.Status.AuthWatch.Sources = cloneAuthWatchSources(value.Status.AuthWatch.Sources)
-	value.ComposerProfile.ReasoningEffortValues = append([]string(nil), value.ComposerProfile.ReasoningEffortValues...)
-	value.ComposerProfile.Capabilities = append([]string(nil), value.ComposerProfile.Capabilities...)
-	value.ComposerProfile.PermissionModes = append([]PermissionModeDescriptor(nil), value.ComposerProfile.PermissionModes...)
-	value.ComposerProfile.SlashCommandPolicy.FallbackCommands = append([]string(nil), value.ComposerProfile.SlashCommandPolicy.FallbackCommands...)
-	value.ComposerProfile.SlashCommandPolicy.CommandEffects = append([]SlashCommandEffectDescriptor(nil), value.ComposerProfile.SlashCommandPolicy.CommandEffects...)
-	value.Events.Aliases = append([]string(nil), value.Events.Aliases...)
-	value.ExternalImport.ScanDirectories = append([]string(nil), value.ExternalImport.ScanDirectories...)
-	value.ExternalImport.SkipDirectoryPrefixes = append([]string(nil), value.ExternalImport.SkipDirectoryPrefixes...)
-	return value
-}
-
-func cloneStringSliceMap(values map[string][]string) map[string][]string {
-	if values == nil {
-		return nil
-	}
-	result := make(map[string][]string, len(values))
-	for key, entries := range values {
-		result[key] = append([]string(nil), entries...)
-	}
-	return result
-}
-
-func cloneAuthWatchSources(values []AuthWatchSourceDescriptor) []AuthWatchSourceDescriptor {
-	result := make([]AuthWatchSourceDescriptor, len(values))
-	for index, source := range values {
-		result[index] = source
-		result[index].PathEnvVars = append([]string(nil), source.PathEnvVars...)
-		result[index].RootCandidates = append([]AuthWatchRootCandidateDescriptor(nil), source.RootCandidates...)
-		result[index].Paths = append([]string(nil), source.Paths...)
 	}
 	return result
 }

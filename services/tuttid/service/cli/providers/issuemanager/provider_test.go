@@ -9,7 +9,9 @@ import (
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
+	workflowbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceworkflow"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
+	"github.com/tutti-os/tutti/services/tuttid/service/cli/framework"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
 )
 
@@ -37,6 +39,38 @@ type fakeIssueManager struct {
 	tasks       workspaceservice.CreateIssueManagerTasksInput
 	created     workspaceservice.CreateIssueManagerRunInput
 	completed   workspaceservice.CompleteIssueManagerRunInput
+}
+
+type managedConflictIssueManager struct {
+	*fakeIssueManager
+	resumeWorkspaceID     string
+	resumeIssueID         string
+	resumeSourceSessionID string
+}
+
+func (*managedConflictIssueManager) UpdateIssue(
+	context.Context,
+	string,
+	string,
+	workspaceservice.UpdateIssueManagerIssueInput,
+) (workspaceissues.Issue, error) {
+	return workspaceissues.Issue{}, &workspaceissues.ManagedIssueMutationError{
+		IssueID: "ISS-managed", SourceSessionID: "SESSION-source",
+	}
+}
+
+func (manager *managedConflictIssueManager) ResumeTuttiModeIssueExecution(
+	_ context.Context,
+	workspaceID string,
+	issueID string,
+	sourceSessionID string,
+) (workspaceissues.Issue, error) {
+	manager.resumeWorkspaceID = workspaceID
+	manager.resumeIssueID = issueID
+	manager.resumeSourceSessionID = sourceSessionID
+	return workspaceissues.Issue{
+		IssueID: issueID, WorkspaceID: workspaceID, DispatchPaused: false,
+	}, nil
 }
 
 func (*fakeIssueManager) ListTopics(context.Context, string) (workspaceissues.TopicList, error) {
@@ -266,6 +300,66 @@ func TestIssueListCommandAdvertisesAndValidatesStatusAndPageSize(t *testing.T) {
 	}
 }
 
+func TestIssueCreateFromPlanRejectsTuttiOwnedPlanningSource(t *testing.T) {
+	t.Parallel()
+	provider := NewProvider(fakeWorkspaceCatalog{}, &fakeIssueManager{}, nil)
+	_, err := provider.runIssueCreateFromPlan(
+		context.Background(),
+		framework.InvokeContext{WorkspaceID: "workspace-1"},
+		issueCreateFromPlanInput{
+			PlanningSource: string(workspaceissues.PlanningSourceTuttiModePlan),
+		},
+	)
+	if !errors.Is(err, cliservice.ErrInvalidInput) || !strings.Contains(err.Error(), "planning-source") {
+		t.Fatalf("runIssueCreateFromPlan() error = %v, want invalid planning-source", err)
+	}
+}
+
+func TestIssueCreateFromPlanAdvertisesAndBindsFlatInputs(t *testing.T) {
+	spec := framework.FromStruct[issueCreateFromPlanInput]()
+	createSpec := framework.FromStruct[issueCreateInput]()
+	if !reflect.DeepEqual(spec.Fields[:len(spec.Fields)-1], createSpec.Fields) {
+		t.Fatalf("create-from-plan fields drifted from issue create:\nplan=%#v\ncreate=%#v", spec.Fields, createSpec.Fields)
+	}
+	schema := framework.Schema(spec)
+	required := schema["required"].([]string)
+	if !reflect.DeepEqual(required, []string{"topic-id", "title", "tasks-json"}) {
+		t.Fatalf("required = %#v", required)
+	}
+	input, err := framework.BindInput[issueCreateFromPlanInput](spec, map[string]any{
+		"topic-id":        "topic-1",
+		"title":           "Launch",
+		"planning-source": string(workspaceissues.PlanningSourceTraditionalPlan),
+		"tasks-json":      `[{"title":"Implement"}]`,
+	})
+	if err != nil {
+		t.Fatalf("BindInput: %v", err)
+	}
+	if input.TopicID != "topic-1" || input.Title != "Launch" || input.TasksJSON == "" {
+		t.Fatalf("input = %#v", input)
+	}
+}
+
+func TestIssueCreateCommandsRejectReservedTuttiModePlanIssueID(t *testing.T) {
+	t.Parallel()
+	provider := NewProvider(fakeWorkspaceCatalog{}, &fakeIssueManager{}, nil)
+	reservedID := workflowbiz.TuttiModePlanIssueIDPrefix + "workflow-1"
+
+	if _, err := provider.runIssueCreate(context.Background(), framework.InvokeContext{WorkspaceID: "workspace-1"}, issueCreateInput{
+		IssueID: reservedID, TopicID: workspaceissues.DefaultTopicID, Title: "Preempt",
+	}); !errors.Is(err, cliservice.ErrInvalidInput) || !strings.Contains(err.Error(), "issue-id") {
+		t.Fatalf("runIssueCreate() error = %v, want reserved issue-id rejection", err)
+	}
+
+	if _, err := provider.runIssueCreateFromPlan(context.Background(), framework.InvokeContext{WorkspaceID: "workspace-1"}, issueCreateFromPlanInput{
+		IssueID: reservedID, TopicID: workspaceissues.DefaultTopicID, Title: "Preempt",
+		PlanningSource: string(workspaceissues.PlanningSourceTraditionalPlan),
+		TasksJSON:      `[{"taskId":"task-1","title":"Task"}]`,
+	}); !errors.Is(err, cliservice.ErrInvalidInput) || !strings.Contains(err.Error(), "issue-id") {
+		t.Fatalf("runIssueCreateFromPlan() error = %v, want reserved issue-id rejection", err)
+	}
+}
+
 func TestTopicListCommandReturnsWorkspaceTopics(t *testing.T) {
 	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeIssueManager{}, nil).newTopicListCommand()
 
@@ -411,6 +505,59 @@ func TestIssueUpdateTracksStatus(t *testing.T) {
 	}
 	if output.Value["issue"].(map[string]any)["status"] != "completed" {
 		t.Fatalf("output = %#v", output.Value)
+	}
+}
+
+func TestIssueUpdatePreservesManagedConflictDetails(t *testing.T) {
+	command := NewProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		&managedConflictIssueManager{fakeIssueManager: &fakeIssueManager{}},
+		nil,
+	).newIssueUpdateCommand()
+
+	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"issue-id": "ISS-managed", "title": "changed"},
+	})
+	var managed *workspaceissues.ManagedIssueMutationError
+	if !errors.As(err, &managed) ||
+		managed.ManagedIssueID() != "ISS-managed" ||
+		managed.ManagedSourceSessionID() != "SESSION-source" {
+		t.Fatalf("managed conflict = %T %v", err, err)
+	}
+}
+
+func TestIssueUpdateRoutesManagedResumeThroughSourceScopedControl(t *testing.T) {
+	issues := &managedConflictIssueManager{
+		fakeIssueManager: &fakeIssueManager{},
+	}
+	command := NewProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		issues,
+		nil,
+	).newIssueUpdateCommand()
+
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{
+			"issue-id":        "ISS-managed",
+			"dispatch-paused": false,
+		},
+		Context: cliservice.InvokeContext{AgentSessionID: " SESSION-source "},
+	})
+	if err != nil {
+		t.Fatalf("Handler() error = %v", err)
+	}
+	if issues.resumeWorkspaceID != "workspace-1" ||
+		issues.resumeIssueID != "ISS-managed" ||
+		issues.resumeSourceSessionID != "SESSION-source" {
+		t.Fatalf(
+			"resume scope = %q/%q/%q",
+			issues.resumeWorkspaceID,
+			issues.resumeIssueID,
+			issues.resumeSourceSessionID,
+		)
+	}
+	if output.Value["issue"].(map[string]any)["issueId"] != "ISS-managed" {
+		t.Fatalf("resume output = %#v", output.Value)
 	}
 }
 

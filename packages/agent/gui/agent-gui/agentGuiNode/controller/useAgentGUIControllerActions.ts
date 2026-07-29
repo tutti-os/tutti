@@ -56,6 +56,24 @@ export function useAgentGUIControllerActions(
   const updateComposerSettings = useStableControllerEventCallback(
     actions.updateComposerSettings
   );
+  const retryComposerOptions = useStableControllerEventCallback(
+    actions.retryComposerOptions
+  );
+  const setTuttiModeActive = useStableControllerEventCallback(
+    actions.setTuttiModeActive
+  );
+  const setTuttiModeEffect = useStableControllerEventCallback(
+    actions.setTuttiModeEffect
+  );
+  const setTuttiModeSpeed = useStableControllerEventCallback(
+    actions.setTuttiModeSpeed
+  );
+  const retryTuttiModeActivation = useStableControllerEventCallback(
+    actions.retryTuttiModeActivation
+  );
+  const updatePlanIssueBudgetPreset = useStableControllerEventCallback(
+    actions.updatePlanIssueBudgetPreset
+  );
   const sendQueuedPromptNext = useStableControllerEventCallback(
     actions.sendQueuedPromptNext
   );
@@ -66,6 +84,10 @@ export function useAgentGUIControllerActions(
     actions.editQueuedPrompt
   );
   const removeProject = useStableControllerEventCallback(actions.removeProject);
+  const moveProject = useStableControllerEventCallback(actions.moveProject);
+  const toggleProjectPinned = useStableControllerEventCallback(
+    actions.toggleProjectPinned
+  );
   const confirmDeleteProjectConversations = useStableControllerEventCallback(
     actions.confirmDeleteProjectConversations
   );
@@ -80,6 +102,12 @@ export function useAgentGUIControllerActions(
   );
   const renameConversation = useStableControllerEventCallback(
     actions.renameConversation
+  );
+  const forkConversationThroughTurn = useStableControllerEventCallback(
+    actions.forkConversationThroughTurn
+  );
+  const openForkSourceConversation = useStableControllerEventCallback(
+    actions.openForkSourceConversation
   );
   const requestDeleteConversation = useStableControllerEventCallback(
     actions.requestDeleteConversation
@@ -115,15 +143,25 @@ export function useAgentGUIControllerActions(
       updateDraftContent,
       updateSelectedProjectPath,
       updateComposerSettings,
+      retryComposerOptions,
+      setTuttiModeActive,
+      setTuttiModeEffect,
+      setTuttiModeSpeed,
+      retryTuttiModeActivation,
+      updatePlanIssueBudgetPreset,
       sendQueuedPromptNext,
       removeQueuedPrompt,
       editQueuedPrompt,
       removeProject,
+      moveProject,
+      toggleProjectPinned,
       confirmDeleteProjectConversations,
       confirmDeleteConversations,
       toggleConversationPinned,
       markConversationUnread,
       renameConversation,
+      forkConversationThroughTurn,
+      openForkSourceConversation,
       requestDeleteConversation,
       retryActivation,
       continueInNewConversation,
@@ -143,8 +181,12 @@ export function useAgentGUIControllerActions(
       loadOlderConversationMessages,
       markConversationUnread,
       removeProject,
+      moveProject,
+      toggleProjectPinned,
       removeQueuedPrompt,
       renameConversation,
+      forkConversationThroughTurn,
+      openForkSourceConversation,
       requestDeleteConversation,
       retryActivation,
       selectConversation,
@@ -158,6 +200,12 @@ export function useAgentGUIControllerActions(
       submitPrompt,
       toggleConversationPinned,
       updateComposerSettings,
+      retryComposerOptions,
+      setTuttiModeActive,
+      setTuttiModeEffect,
+      setTuttiModeSpeed,
+      retryTuttiModeActivation,
+      updatePlanIssueBudgetPreset,
       updateConversationFilter,
       updateDraftContent,
       updateSelectedProjectPath

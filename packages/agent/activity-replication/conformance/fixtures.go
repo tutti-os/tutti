@@ -225,7 +225,7 @@ func appliedAcknowledgements(mutations []activityreplication.Mutation, firstCurs
 }
 
 func batch(mutations ...activityreplication.Mutation) activityreplication.ChangeBatch {
-	return activityreplication.ChangeBatch{SchemaVersion: activityreplication.SchemaVersion, Mutations: mutations}
+	return activityreplication.ChangeBatch{SchemaVersion: activityreplication.SchemaVersion, ProjectionEpoch: activityreplication.ProjectionEpoch, Mutations: mutations}
 }
 
 func targetMutation(mutationID, transactionID string, updatedAt int64) activityreplication.Mutation {

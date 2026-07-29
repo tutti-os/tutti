@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   type CSSProperties,
   type ReactNode
 } from "react";
@@ -35,6 +36,7 @@ import type {
   WorkbenchResolveWindowSurfaceLayer,
   WorkbenchResolveWindowZIndex,
   WorkbenchResolveWindowChromeMode,
+  WorkbenchResolveWindowHeaderPresentation,
   WorkbenchWindowChromeMode
 } from "./types.ts";
 import type {
@@ -42,11 +44,15 @@ import type {
   WorkbenchDockPreviewCacheKeyResolver
 } from "./dockPreviewCache.ts";
 import type { WorkbenchWindowChromeI18nRuntime } from "./workbenchWindowI18n.ts";
+import type {
+  WorkbenchNodePreviewImageCapture,
+  WorkbenchNodePreviewImagesCapture
+} from "./nodePreviewCapture.ts";
+import { createWorkbenchNodePresentationTransitionStore } from "./nodePresentationTransitions.ts";
 
 export interface WorkbenchSurfaceProps<TData = unknown> {
-  captureNodePreviewImage?: (
-    node: WorkbenchNode<TData>
-  ) => Promise<string | null> | string | null;
+  captureNodePreviewImage?: WorkbenchNodePreviewImageCapture<TData>;
+  captureNodePreviewImages?: WorkbenchNodePreviewImagesCapture<TData>;
   className?: string;
   controller: WorkbenchController<TData>;
   debugDiagnostics?: WorkbenchDebugDiagnostics;
@@ -68,6 +74,7 @@ export interface WorkbenchSurfaceProps<TData = unknown> {
   renderWindowHeader?: WorkbenchRenderWindowHeader<TData>;
   shouldKeepMinimizedNodeMounted?: WorkbenchKeepMinimizedNodeMounted<TData>;
   resolveFullscreenHeaderMode?: WorkbenchResolveFullscreenHeaderMode<TData>;
+  resolveWindowHeaderPresentation?: WorkbenchResolveWindowHeaderPresentation<TData>;
   resolveWindowSurfaceLayer?: WorkbenchResolveWindowSurfaceLayer<TData>;
   resolveWindowZIndex?: WorkbenchResolveWindowZIndex<TData>;
   resolveDockAnchorKey?: (node: WorkbenchNode<TData>) => string;
@@ -102,6 +109,7 @@ export interface WorkbenchSurfaceWallpaper {
 
 export function WorkbenchSurface<TData>({
   captureNodePreviewImage,
+  captureNodePreviewImages,
   className,
   controller,
   debugDiagnostics,
@@ -123,6 +131,7 @@ export function WorkbenchSurface<TData>({
   renderWindowHeader,
   shouldKeepMinimizedNodeMounted,
   resolveFullscreenHeaderMode,
+  resolveWindowHeaderPresentation,
   resolveWindowSurfaceLayer,
   resolveWindowZIndex,
   resolveDockAnchorKey,
@@ -138,6 +147,7 @@ export function WorkbenchSurface<TData>({
     <WorkbenchProvider controller={controller}>
       <WorkbenchSurfaceInner
         captureNodePreviewImage={captureNodePreviewImage}
+        captureNodePreviewImages={captureNodePreviewImages}
         className={className}
         debugDiagnostics={debugDiagnostics}
         dockPreviewCache={dockPreviewCache}
@@ -158,6 +168,7 @@ export function WorkbenchSurface<TData>({
         renderWindowHeader={renderWindowHeader}
         shouldKeepMinimizedNodeMounted={shouldKeepMinimizedNodeMounted}
         resolveFullscreenHeaderMode={resolveFullscreenHeaderMode}
+        resolveWindowHeaderPresentation={resolveWindowHeaderPresentation}
         resolveWindowSurfaceLayer={resolveWindowSurfaceLayer}
         resolveWindowZIndex={resolveWindowZIndex}
         resolveDockAnchorKey={resolveDockAnchorKey}
@@ -175,6 +186,7 @@ export function WorkbenchSurface<TData>({
 
 function WorkbenchSurfaceInner<TData>({
   captureNodePreviewImage,
+  captureNodePreviewImages,
   className,
   debugDiagnostics,
   dockPreviewCache,
@@ -195,6 +207,7 @@ function WorkbenchSurfaceInner<TData>({
   renderWindowHeader,
   shouldKeepMinimizedNodeMounted,
   resolveFullscreenHeaderMode,
+  resolveWindowHeaderPresentation,
   resolveWindowSurfaceLayer,
   resolveWindowZIndex,
   resolveDockAnchorKey,
@@ -214,17 +227,27 @@ function WorkbenchSurfaceInner<TData>({
     [controller]
   );
   const ref = useWorkbenchSurfaceSize<HTMLDivElement>(onSizeChange);
+  const nodePresentationTransitions = useMemo(
+    createWorkbenchNodePresentationTransitionStore,
+    []
+  );
   const genie = useWorkbenchGenieAnimation({
     captureNodePreviewImage,
+    captureNodePreviewImages,
     controller,
     debugDiagnostics,
     dockPreviewCache,
     minimizeAnimation,
+    nodePresentationTransitions,
     renderNodeGeniePreview,
     resolveDockAnchorKey,
     resolveDockPreviewCacheKey,
     shouldCaptureNodePreviewImage
   });
+  useEffect(
+    () => () => nodePresentationTransitions.dispose(),
+    [nodePresentationTransitions]
+  );
   useWorkbenchShortcuts<TData>({
     enabled: (shortcutsEnabled ?? true) && interactive,
     windowManagementShortcutPreset: windowManagement?.shortcutPreset ?? null
@@ -270,6 +293,7 @@ function WorkbenchSurfaceInner<TData>({
       <WorkbenchNodeLayer
         genie={genie}
         interactive={interactive}
+        nodePresentationTransitions={nodePresentationTransitions}
         presentation={presentation}
         renderNode={renderNode}
         edgeSnapEnabled={windowManagement?.edgeSnapEnabled === true}
@@ -277,6 +301,7 @@ function WorkbenchSurfaceInner<TData>({
         renderWindowHeader={renderWindowHeader}
         shouldKeepMinimizedNodeMounted={shouldKeepMinimizedNodeMounted}
         resolveFullscreenHeaderMode={resolveFullscreenHeaderMode}
+        resolveWindowHeaderPresentation={resolveWindowHeaderPresentation}
         resolveWindowSurfaceLayer={resolveWindowSurfaceLayer}
         resolveWindowZIndex={resolveWindowZIndex}
         windowChromeMode={windowChromeMode}

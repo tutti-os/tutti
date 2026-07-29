@@ -10,7 +10,14 @@ import {
   type WheelEvent
 } from "react";
 import type { AgentMessageLocatorItem } from "./agentTranscriptModel";
-import { escapeCssString } from "./agentTranscriptModel";
+import type { AgentConversationFollowEndMode } from "../agentConversationFollowEndController";
+import {
+  findMessageLocatorScrollParent,
+  useAgentMessageLocatorSelection,
+  type AgentMessageLocatorVirtualSelectionSource
+} from "./useAgentMessageLocatorSelection";
+
+export { findMessageLocatorScrollParent } from "./useAgentMessageLocatorSelection";
 
 const AGENT_MESSAGE_LOCATOR_PANEL_FADE_MS = 160;
 const AGENT_MESSAGE_LOCATOR_ITEM_SPACING_PX = 30;
@@ -25,13 +32,19 @@ interface AgentMessageLocatorVisibleFrame {
 }
 
 export function AgentMessageLocatorRail({
+  followEndMode,
   items,
+  isVisible = true,
   label,
-  onLocate
+  onLocate,
+  virtualSelectionSource
 }: {
+  followEndMode?: AgentConversationFollowEndMode;
   items: readonly AgentMessageLocatorItem[];
+  isVisible?: boolean;
   label?: string;
   onLocate: (item: AgentMessageLocatorItem) => void;
+  virtualSelectionSource?: AgentMessageLocatorVirtualSelectionSource;
 }): JSX.Element | null {
   const locatorRef = useRef<HTMLElement | null>(null);
   const locatorViewportRef = useRef<HTMLDivElement | null>(null);
@@ -39,7 +52,13 @@ export function AgentMessageLocatorRail({
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [shouldRenderPanel, setShouldRenderPanel] = useState(false);
   const [activeKey, setActiveKey] = useState<string | null>(null);
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const { selectItem, selectedKey } = useAgentMessageLocatorSelection({
+    followEndMode,
+    items,
+    isVisible,
+    locatorRef,
+    virtualSelectionSource
+  });
   const previousAgentResponseByKeyRef = useRef<ReadonlyMap<
     string,
     boolean
@@ -69,11 +88,6 @@ export function AgentMessageLocatorRail({
     },
     []
   );
-  useEffect(() => {
-    if (selectedKey && !items.some((item) => item.key === selectedKey)) {
-      setSelectedKey(null);
-    }
-  }, [items, selectedKey]);
   useEffect(() => {
     const previousAgentResponseByKey = previousAgentResponseByKeyRef.current;
     const currentKeys = new Set(items.map((item) => item.key));
@@ -129,6 +143,9 @@ export function AgentMessageLocatorRail({
     });
   }, [selectedKey]);
   useLayoutEffect(() => {
+    if (!isVisible) {
+      return;
+    }
     const locator = locatorRef.current;
     const scrollParent = locator
       ? findMessageLocatorScrollParent(locator)
@@ -169,44 +186,11 @@ export function AgentMessageLocatorRail({
         window.cancelAnimationFrame(animationFrame);
       }
     };
-  }, [items.length]);
-  useEffect(() => {
-    const locator = locatorRef.current;
-    const scrollParent = locator
-      ? findMessageLocatorScrollParent(locator)
-      : null;
-    if (!scrollParent) {
+  }, [isVisible, items.length]);
+  useLayoutEffect(() => {
+    if (!isVisible) {
       return;
     }
-
-    let animationFrame: number | null = null;
-    const updateSelectedFromScroll = (): void => {
-      animationFrame = null;
-      const nextSelectedKey = selectMessageLocatorItemAtViewportCenter(
-        scrollParent,
-        items
-      );
-      if (nextSelectedKey) {
-        setSelectedKey(nextSelectedKey);
-      }
-    };
-    const scheduleUpdate = (): void => {
-      if (animationFrame !== null) {
-        return;
-      }
-      animationFrame = window.requestAnimationFrame(updateSelectedFromScroll);
-    };
-
-    scheduleUpdate();
-    scrollParent.addEventListener("scroll", scheduleUpdate, { passive: true });
-    return () => {
-      scrollParent.removeEventListener("scroll", scheduleUpdate);
-      if (animationFrame !== null) {
-        window.cancelAnimationFrame(animationFrame);
-      }
-    };
-  }, [items]);
-  useLayoutEffect(() => {
     const selectedIndex = selectedKey
       ? items.findIndex((item) => item.key === selectedKey)
       : -1;
@@ -218,15 +202,16 @@ export function AgentMessageLocatorRail({
     const railHeight =
       (items.length - 1) * AGENT_MESSAGE_LOCATOR_ITEM_SPACING_PX +
       AGENT_MESSAGE_LOCATOR_HIT_SIZE_PX;
-    const viewportHeight =
-      viewport.clientHeight ||
-      Math.min(railHeight, visibleFrame?.heightPx ?? railHeight);
+    const viewportHeight = Math.min(
+      railHeight,
+      visibleFrame?.heightPx ?? railHeight
+    );
     scrollMessageLocatorViewportToIndex(
       viewport,
       selectedIndex,
       viewportHeight
     );
-  }, [items, selectedKey, visibleFrame]);
+  }, [isVisible, items, selectedKey, visibleFrame]);
 
   if (items.length < 2) {
     return null;
@@ -251,7 +236,7 @@ export function AgentMessageLocatorRail({
     });
   };
   const handleLocateItem = (item: AgentMessageLocatorItem): void => {
-    setSelectedKey(item.key);
+    selectItem(item.key);
     setActiveKey(item.key);
     markItemRead(item.key);
     onLocate(item);
@@ -328,6 +313,7 @@ export function AgentMessageLocatorRail({
       ref={locatorRef}
       className="agent-gui-message-locator"
       aria-label={label ?? items[0]?.summary}
+      data-agent-transcript-scroll-away-intent
       data-testid="agent-message-locator"
       onBlurCapture={handleBlurCapture}
       onFocusCapture={openPanel}
@@ -392,6 +378,7 @@ export function AgentMessageLocatorRail({
               aria-label={item.summary}
               title={item.summary}
               data-selected={item.key === selectedKey ? "true" : undefined}
+              data-agent-message-locator-turn-group-index={item.turnGroupIndex}
               data-unread-agent-response={
                 unreadAgentResponseKeys.has(item.key) ? "true" : undefined
               }
@@ -569,55 +556,4 @@ function containMessageLocatorPanelWheel(
   }
   event.preventDefault();
   event.currentTarget.scrollTop += event.deltaY;
-}
-
-export function findMessageLocatorScrollParent(
-  locator: HTMLElement
-): HTMLElement | null {
-  const timeline = locator.closest<HTMLElement>(
-    '[data-testid="agent-gui-timeline"]'
-  );
-  if (timeline) {
-    return timeline;
-  }
-
-  let current = locator.parentElement;
-  while (current) {
-    const style = window.getComputedStyle(current);
-    const overflowY = style.overflowY;
-    if (
-      (overflowY === "auto" || overflowY === "scroll") &&
-      current.scrollHeight > current.clientHeight
-    ) {
-      return current;
-    }
-    current = current.parentElement;
-  }
-  return null;
-}
-
-function selectMessageLocatorItemAtViewportCenter(
-  scrollParent: HTMLElement,
-  items: readonly AgentMessageLocatorItem[]
-): string | null {
-  const viewportRect = scrollParent.getBoundingClientRect();
-  const viewportCenterY = viewportRect.top + viewportRect.height / 2;
-  let nearest: { key: string; distance: number } | null = null;
-
-  for (const item of items) {
-    const row = scrollParent.querySelector<HTMLElement>(
-      `[data-agent-transcript-row="${escapeCssString(item.rowKey)}"]`
-    );
-    if (!row) {
-      continue;
-    }
-    const rowRect = row.getBoundingClientRect();
-    const rowCenterY = rowRect.top + rowRect.height / 2;
-    const distance = Math.abs(rowCenterY - viewportCenterY);
-    if (!nearest || distance < nearest.distance) {
-      nearest = { key: item.key, distance };
-    }
-  }
-
-  return nearest?.key ?? null;
 }

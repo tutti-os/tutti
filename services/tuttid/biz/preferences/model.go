@@ -14,21 +14,23 @@ const (
 	DesktopAgentConversationDetailModeCoding  = "coding"
 	DesktopAgentConversationDetailModeGeneral = "general"
 
-	DefaultDesktopAppCatalogChannel           = "production"
-	DefaultDesktopAgentDockLayout             = DesktopAgentDockLayoutUnified
-	DefaultDesktopAgentConversationDetailMode = DesktopAgentConversationDetailModeCoding
-	DefaultDesktopDockIconStyle               = "default"
-	DefaultDesktopDockPlacement               = "bottom"
-	DefaultDesktopBrowserUseConnectionMode    = "isolated"
-	DefaultDesktopLocale                      = "en"
-	DefaultDesktopMinimizeAnimation           = "scale"
-	DefaultDesktopSleepPreventionMode         = "never"
-	DefaultDesktopShowAppDeveloperSources     = false
-	DefaultDesktopThemeSource                 = "dark"
-	DefaultDesktopUpdateChannel               = "rc"
-	DefaultDesktopUpdatePolicy                = "prompt"
-	DefaultDesktopWindowSnappingEnabled       = false
-	DefaultDesktopWindowSnappingShortcut      = "commandArrows"
+	DefaultDesktopAppCatalogChannel              = "production"
+	DefaultDesktopAgentDockLayout                = DesktopAgentDockLayoutUnified
+	DefaultDesktopAgentConversationDetailMode    = DesktopAgentConversationDetailModeCoding
+	DefaultDesktopAgentCLIUpdateCheckEnabled     = true
+	DefaultDesktopDockIconStyle                  = "default"
+	DefaultDesktopDockPlacement                  = "bottom"
+	DefaultDeletedAgentConversationRetentionDays = 30
+	DefaultDesktopBrowserUseConnectionMode       = "isolated"
+	DefaultDesktopLocale                         = "en"
+	DefaultDesktopMinimizeAnimation              = "scale"
+	DefaultDesktopSleepPreventionMode            = "never"
+	DefaultDesktopShowAppDeveloperSources        = false
+	DefaultDesktopThemeSource                    = "dark"
+	DefaultDesktopUpdateChannel                  = "rc"
+	DefaultDesktopUpdatePolicy                   = "prompt"
+	DefaultDesktopWindowSnappingEnabled          = false
+	DefaultDesktopWindowSnappingShortcut         = "commandArrows"
 )
 
 var DefaultDesktopDefaultAgentProvider = defaultDesktopAgentProvider()
@@ -50,6 +52,7 @@ func defaultDesktopAgentProvider() string {
 }
 
 type DesktopPreferences struct {
+	AgentCLIUpdateCheckEnabled                  bool
 	AgentComposerDefaultsByProvider             map[string]AgentComposerDefaults
 	AgentComposerDefaultsByAgentTarget          map[string]AgentComposerDefaults
 	AgentGUIConversationRailCollapsedByProvider map[string]bool
@@ -60,6 +63,7 @@ type DesktopPreferences struct {
 	DefaultAgentProvider                        string
 	DockIconStyle                               string
 	DockPlacement                               string
+	DeletedAgentConversationRetentionDays       int
 	FeatureFlags                                map[string]bool
 	FileDefaultOpenersByExtension               map[string]string
 	Initialized                                 bool
@@ -82,6 +86,18 @@ type AgentComposerDefaults struct {
 	Speed            string
 }
 
+const (
+	AgentComposerDefaultsFieldModel            = "model"
+	AgentComposerDefaultsFieldPermissionModeID = "permissionModeId"
+	AgentComposerDefaultsFieldReasoningEffort  = "reasoningEffort"
+	AgentComposerDefaultsFieldSpeed            = "speed"
+)
+
+// AgentComposerDefaultsPatch is a sparse field mutation. A present map key is
+// authoritative for that field; a nil value clears it, while an absent key is
+// left unchanged.
+type AgentComposerDefaultsPatch map[string]*string
+
 func (d AgentComposerDefaults) IsZero() bool {
 	return d.Model == "" && d.PermissionModeID == "" && d.ReasoningEffort == "" && d.Speed == ""
 }
@@ -103,6 +119,7 @@ type DesktopWorkbenchShortcuts struct {
 
 func DefaultDesktopPreferences() DesktopPreferences {
 	return DesktopPreferences{
+		AgentCLIUpdateCheckEnabled:                  DefaultDesktopAgentCLIUpdateCheckEnabled,
 		AgentComposerDefaultsByProvider:             map[string]AgentComposerDefaults{},
 		AgentComposerDefaultsByAgentTarget:          map[string]AgentComposerDefaults{},
 		AgentGUIConversationRailCollapsedByProvider: map[string]bool{},
@@ -113,6 +130,7 @@ func DefaultDesktopPreferences() DesktopPreferences {
 		DefaultAgentProvider:                        DefaultDesktopDefaultAgentProvider,
 		DockIconStyle:                               DefaultDesktopDockIconStyle,
 		DockPlacement:                               DefaultDesktopDockPlacement,
+		DeletedAgentConversationRetentionDays:       DefaultDeletedAgentConversationRetentionDays,
 		FeatureFlags:                                map[string]bool{},
 		FileDefaultOpenersByExtension: map[string]string{
 			"htm":   "appBrowser",
@@ -132,6 +150,17 @@ func DefaultDesktopPreferences() DesktopPreferences {
 		WindowSnappingShortcutPreset: DefaultDesktopWindowSnappingShortcut,
 		WorkbenchShortcuts:           DesktopWorkbenchShortcuts{},
 	}
+}
+
+func NormalizeDeletedAgentConversationRetentionDays(value int) int {
+	if IsDeletedAgentConversationRetentionDays(value) {
+		return value
+	}
+	return DefaultDeletedAgentConversationRetentionDays
+}
+
+func IsDeletedAgentConversationRetentionDays(value int) bool {
+	return value == 15 || value == 30
 }
 
 func NormalizeDesktopAgentDockLayout(value string) string {

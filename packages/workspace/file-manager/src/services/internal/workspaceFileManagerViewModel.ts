@@ -1,7 +1,6 @@
 import {
   buildWorkspaceFileBreadcrumbs,
-  normalizeWorkspaceFilePath,
-  resolveWorkspaceFileActivationTarget
+  normalizeWorkspaceFilePath
 } from "../workspaceFileManagerModel.ts";
 import {
   findWorkspaceFileLocationById,
@@ -17,7 +16,6 @@ import type {
 import { findWorkspaceFileEntry } from "./model/entryLookup.ts";
 
 export interface WorkspaceFileManagerRootViewState {
-  canImportFromDrop: boolean;
   currentDirectoryPath: string;
   isBusy: boolean;
   locationSections: WorkspaceFileManagerState["locationSections"];
@@ -35,8 +33,6 @@ export interface WorkspaceFileManagerToolbarViewState {
   isMutating: boolean;
   isSearching: boolean;
   searchQuery: string;
-  isImporting: boolean;
-  showImportAction: boolean;
 }
 
 export interface WorkspaceFileManagerPanelsViewState {
@@ -57,7 +53,6 @@ export interface WorkspaceFileManagerPanelsViewState {
   searchQuery: string;
   selectedEntry: WorkspaceFileEntry | null;
   selectedPath: string | null;
-  showDropOverlay: boolean;
 }
 
 export interface WorkspaceFileManagerDialogsViewState {
@@ -65,7 +60,6 @@ export interface WorkspaceFileManagerDialogsViewState {
   deleteDialogEntry: WorkspaceFileEntry | null;
   isBusy: boolean;
   isDeleting: boolean;
-  isImporting: boolean;
   isRenaming: boolean;
   isViewing: boolean;
   unsupportedDialog: {
@@ -75,11 +69,10 @@ export interface WorkspaceFileManagerDialogsViewState {
         : never
       : never;
     entry?: WorkspaceFileEntry;
-    kind: "import" | "view";
+    kind: "view";
     message?: string | null;
     title?: string | null;
   } | null;
-  importConflictDialog: WorkspaceFileManagerState["importConflictDialog"];
 }
 
 export interface WorkspaceFileManagerContextMenuViewState {
@@ -92,44 +85,13 @@ export interface WorkspaceFileManagerContextMenuViewState {
   isBusy: boolean;
   isLoading: boolean;
   isMutating: boolean;
-  showCreateAction: boolean;
-  showCopyAction: boolean;
-  showDeleteAction: boolean;
-  showExportAction: boolean;
-  showImportAction: boolean;
-  showMoveAction: boolean;
-  showOpenInAppBrowserAction: boolean;
-  showOpenInDefaultBrowserAction: boolean;
-  showOpenInFileViewerAction: boolean;
-  showOpenWithAction: boolean;
-  showOpenWithOtherAction: boolean;
-  showRevealInFolderAction: boolean;
-  showRenameAction: boolean;
 }
 
 export function resolveWorkspaceFileManagerRootViewState(input: {
   state: WorkspaceFileManagerState;
 }): WorkspaceFileManagerRootViewState {
   const { state } = input;
-  const isRecentLocation = isWorkspaceFileRecentLocation(
-    findWorkspaceFileLocationById(
-      state.locationSections,
-      state.selectedLocationId
-    )
-  );
-  const isExternalLocation = isWorkspaceFileExternalLocation(
-    findWorkspaceFileLocationById(
-      state.locationSections,
-      state.selectedLocationId
-    )
-  );
-  const isSearchMode = state.searchQuery.trim().length > 0;
   return {
-    canImportFromDrop:
-      state.capabilities.canImportFromDrop &&
-      !isRecentLocation &&
-      !isExternalLocation &&
-      !isSearchMode,
     currentDirectoryPath: state.currentDirectoryPath,
     isBusy: state.busyAction !== null,
     locationSections: state.locationSections,
@@ -162,9 +124,7 @@ export function resolveWorkspaceFileManagerToolbarViewState(input: {
     isLoading: state.isLoading,
     isMutating: state.isMutating,
     isSearching: state.isSearching,
-    searchQuery: state.searchQuery,
-    isImporting: state.busyAction === "import",
-    showImportAction: state.capabilities.canImportFromPicker
+    searchQuery: state.searchQuery
   };
 }
 
@@ -202,12 +162,7 @@ export function resolveWorkspaceFileManagerPanelsViewState(input: {
     searchError: state.searchError,
     searchQuery: state.searchQuery,
     selectedEntry: findSelectedEntry(state),
-    selectedPath: state.selectedPath,
-    showDropOverlay:
-      state.capabilities.canImportFromDrop &&
-      !isExternalLocation &&
-      state.dragDepth > 0 &&
-      state.busyAction === null
+    selectedPath: state.selectedPath
   };
 }
 
@@ -226,7 +181,6 @@ export function resolveWorkspaceFileManagerDialogsViewState(input: {
       : null,
     isBusy: state.busyAction !== null,
     isDeleting: state.busyAction === "delete",
-    isImporting: state.busyAction === "import",
     isRenaming: state.busyAction === "rename",
     isViewing: state.busyAction === "view",
     unsupportedDialog: state.unsupportedDialog
@@ -237,8 +191,7 @@ export function resolveWorkspaceFileManagerDialogsViewState(input: {
           message: state.unsupportedDialog.message,
           title: state.unsupportedDialog.title
         }
-      : null,
-    importConflictDialog: state.importConflictDialog
+      : null
   };
 }
 
@@ -246,23 +199,9 @@ export function resolveWorkspaceFileManagerContextMenuViewState(input: {
   state: WorkspaceFileManagerState;
 }): WorkspaceFileManagerContextMenuViewState {
   const { state } = input;
-  const isRecentLocation = isWorkspaceFileRecentLocation(
-    findWorkspaceFileLocationById(
-      state.locationSections,
-      state.selectedLocationId
-    )
-  );
-  const isExternalLocation = isWorkspaceFileExternalLocation(
-    findWorkspaceFileLocationById(
-      state.locationSections,
-      state.selectedLocationId
-    )
-  );
-  const isSearchMode = state.searchQuery.trim().length > 0;
   const contextMenuEntry = state.contextMenu?.entryPath
     ? findEntry(state, state.contextMenu.entryPath)
     : null;
-  const isContextMenuFile = contextMenuEntry?.kind === "file";
 
   return {
     contextMenu: state.contextMenu
@@ -275,47 +214,7 @@ export function resolveWorkspaceFileManagerContextMenuViewState(input: {
     currentDirectoryPath: state.currentDirectoryPath,
     isBusy: state.busyAction !== null,
     isLoading: state.isLoading,
-    isMutating: state.isMutating,
-    showCreateAction:
-      !isExternalLocation &&
-      !isRecentLocation &&
-      !isSearchMode &&
-      (state.capabilities.canCreateDirectory ||
-        state.capabilities.canCreateFile),
-    showCopyAction: state.capabilities.canCopy,
-    showDeleteAction:
-      state.capabilities.canDelete &&
-      !isExternalLocation &&
-      !isRecentLocation &&
-      !isSearchMode,
-    showExportAction: state.capabilities.canExport && !isExternalLocation,
-    showImportAction:
-      state.capabilities.canImportFromPicker &&
-      !isExternalLocation &&
-      !isRecentLocation &&
-      !isSearchMode,
-    showMoveAction:
-      state.capabilities.canMove &&
-      !isExternalLocation &&
-      !isRecentLocation &&
-      !isSearchMode,
-    showOpenInAppBrowserAction:
-      state.capabilities.canOpenInAppBrowser && !isExternalLocation,
-    showOpenInDefaultBrowserAction: state.capabilities.canOpenInDefaultBrowser,
-    showOpenInFileViewerAction:
-      contextMenuEntry !== null &&
-      isContextMenuFile &&
-      resolveWorkspaceFileActivationTarget(contextMenuEntry) !== null,
-    showOpenWithAction: state.capabilities.canOpenWith && isContextMenuFile,
-    showOpenWithOtherAction:
-      state.capabilities.canPickOtherOpenWithApplication && isContextMenuFile,
-    showRevealInFolderAction:
-      state.capabilities.canRevealInFolder && !isExternalLocation,
-    showRenameAction:
-      state.capabilities.canRename &&
-      !isExternalLocation &&
-      !isRecentLocation &&
-      !isSearchMode
+    isMutating: state.isMutating
   };
 }
 

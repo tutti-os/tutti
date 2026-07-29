@@ -38,6 +38,8 @@ interface UseAgentGUIProviderCatalogSelectionInput {
     | undefined;
   agentTargets: readonly AgentGUIAgentTarget[] | undefined;
   agentTargetsLoading: boolean | undefined;
+  handoffAgentTargets: readonly AgentGUIAgentTarget[] | undefined;
+  handoffAgentTargetsLoading: boolean | undefined;
 }
 
 export function useAgentGUIProviderCatalogSelection(
@@ -66,7 +68,9 @@ export function useAgentGUIProviderCatalogSelection(
     providerRailMode,
     providerReadinessGates,
     agentTargets,
-    agentTargetsLoading
+    agentTargetsLoading,
+    handoffAgentTargets,
+    handoffAgentTargetsLoading
   } = input;
   const normalizedComingSoonProviders = useMemo(
     () =>
@@ -115,14 +119,33 @@ export function useAgentGUIProviderCatalogSelection(
     !agentTargetsLoading &&
     (agentTargets === undefined ||
       normalizedExplicitProviderTargets.length === 0);
-  const handoffAgentTargets = useMemo(
+  const normalizedHandoffAgentTargets = useMemo(
     () =>
-      agentTargetsLoading
+      handoffAgentTargets === undefined
+        ? normalizedExplicitProviderTargets
+        : normalizeAgentGUIAgentTargets(handoffAgentTargets, {
+            includeDisabledPlaceholders: false,
+            useStaticCatalog: false
+          }),
+    [handoffAgentTargets, normalizedExplicitProviderTargets]
+  );
+  const enabledHandoffAgentTargets = useMemo(
+    () =>
+      (
+        handoffAgentTargets === undefined
+          ? agentTargetsLoading
+          : handoffAgentTargetsLoading
+      )
         ? []
-        : normalizedExplicitProviderTargets.filter(
+        : normalizedHandoffAgentTargets.filter(
             (target) => target.disabled !== true
           ),
-    [normalizedExplicitProviderTargets, agentTargetsLoading]
+    [
+      agentTargetsLoading,
+      handoffAgentTargets,
+      handoffAgentTargetsLoading,
+      normalizedHandoffAgentTargets
+    ]
   );
   const selectedAgentTarget = useMemo(
     () =>
@@ -238,7 +261,7 @@ export function useAgentGUIProviderCatalogSelection(
   return {
     effectiveSelectedProviderTarget,
     firstReadyHomeComposerProviderTarget,
-    handoffAgentTargets,
+    handoffAgentTargets: enabledHandoffAgentTargets,
     homeComposerTargetOverride,
     homeComposerTargetOverrideIsExplicit,
     normalizedComingSoonProviders,

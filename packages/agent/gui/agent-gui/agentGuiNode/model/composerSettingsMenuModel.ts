@@ -3,6 +3,7 @@ import {
   collapseModelOptionsToLatest,
   groupModelOptionsByVendor
 } from "./modelFamilies";
+import { effectiveDefaultModelOption } from "./effectiveDefaultModel";
 
 // Labels for the composer settings menus. Lives here (next to the pure menu
 // model) so the model + the presentational component share one source; the
@@ -78,6 +79,19 @@ export interface ComposerMenuOptionGroup {
   options: ComposerMenuOption[];
 }
 
+/** UI-local menu state fed into the pure model (search + history chrome). */
+export interface ComposerModelMenuLocalState {
+  /** Raw filter text typed into the menu's search input. */
+  searchQuery?: string;
+  /** Favorite model ids for the composer target (localStorage chrome). */
+  favoriteModelIds?: readonly string[];
+  /** Most-recent-first model ids picked for the target (localStorage chrome). */
+  recentModelIds?: readonly string[];
+}
+
+/** Render the model filter input once the list exceeds this option count. */
+export const COMPOSER_MODEL_SEARCH_THRESHOLD = 8;
+
 export interface ComposerModelMenuModel {
   /** The trigger should be disabled / the menu not openable. */
   disabled: boolean;
@@ -96,9 +110,32 @@ export interface ComposerModelMenuModel {
      * menu renders the flat `options`.
      */
     groups: ComposerMenuOptionGroup[];
+    /** Bound model access plan for the menu header badge; null when none. */
+    plan: { id: string; name: string } | null;
+    /**
+     * Plan-bound targets carry the source plan name in each option's
+     * `description`; render it as inline secondary text instead of the
+     * model-tooltip treatment.
+     */
+    optionDescriptionInline: boolean;
+    /** The list is long enough to render the filter input. */
+    searchEnabled: boolean;
+    /** Normalized applied filter ("" when none). */
+    searchQuery: string;
+    /** Favorites group shown above recents; deduped out of `options`. */
+    favoriteOptions: ComposerMenuOption[];
+    /** Recently used group (most recent first); deduped out of `options`. */
+    recentOptions: ComposerMenuOption[];
+    /** Every favorited value present in the list, for star toggle states. */
+    favoriteValues: string[];
   };
   reasoning: ComposerMenuSection;
   speed: ComposerMenuSection;
+  /**
+   * Active session with mid-session model switch support: the menu footer
+   * shows the "applies from the next request" hint.
+   */
+  switchEffectHint: boolean;
 }
 
 /**
@@ -110,7 +147,8 @@ export interface ComposerModelMenuModel {
  */
 export function buildComposerModelMenuModel(
   composerSettings: AgentGUIComposerSettingsVM,
-  labels: AgentComposerSettingsMenuLabels
+  labels: AgentComposerSettingsMenuLabels,
+  localState: ComposerModelMenuLocalState = {}
 ): ComposerModelMenuModel {
   const modelItems = modelOptionsWithSelectedValue(composerSettings);
   const reasoningItems = reasoningOptionsWithSelectedValue(composerSettings);
@@ -134,7 +172,15 @@ export function buildComposerModelMenuModel(
     selectedComposerReasoningValue(composerSettings) ?? "";
   const selectedSpeedValue = selectedComposerSpeedValue(composerSettings) ?? "";
 
-  const modelLabel = resolveSelectedModelLabel(composerSettings, labels);
+  const effectiveDefaultModel = effectiveDefaultModelOption(
+    composerSettings,
+    modelItems
+  );
+  const modelLabel = resolveSelectedModelLabel(
+    composerSettings,
+    labels,
+    effectiveDefaultModel
+  );
   // Only surface an effort label when the reasoning control is actually shown.
   // Providers such as Cursor keep a stale/default draft effort ("high") even
   // though reasoning is not configurable; showing it next to the model name
@@ -160,8 +206,42 @@ export function buildComposerModelMenuModel(
       showCombined: modelLabel === reasoningLabel || reasoningLabel.length === 0
     },
     model: (() => {
-      const options = modelItems.map((option) =>
-        modelMenuOptionFromSettingOption(option, labels)
+      const allOptions = modelItems.map((option) =>
+        modelMenuOptionFromSettingOption(option, labels, effectiveDefaultModel)
+      );
+      const searchEnabled = allOptions.length > COMPOSER_MODEL_SEARCH_THRESHOLD;
+      const searchQuery = searchEnabled
+        ? (localState.searchQuery ?? "").trim()
+        : "";
+      const visibleOptions = searchQuery
+        ? filterComposerModelMenuOptions(allOptions, searchQuery)
+        : allOptions;
+      const favoriteValueSet = new Set(
+        (localState.favoriteModelIds ?? [])
+          .map((value) => value.trim())
+          .filter(Boolean)
+      );
+      const favoriteValues = allOptions
+        .map((option) => option.value)
+        .filter((value) => favoriteValueSet.has(value));
+      const favoriteOptions = visibleOptions.filter((option) =>
+        favoriteValueSet.has(option.value)
+      );
+      const visibleOptionsByValue = new Map(
+        visibleOptions.map((option) => [option.value, option])
+      );
+      const recentOptions = (localState.recentModelIds ?? [])
+        .map((value) => visibleOptionsByValue.get(value.trim()))
+        .filter(
+          (option): option is ComposerMenuOption =>
+            option !== undefined && !favoriteValueSet.has(option.value)
+        );
+      const pinnedValues = new Set([
+        ...favoriteOptions.map((option) => option.value),
+        ...recentOptions.map((option) => option.value)
+      ]);
+      const options = visibleOptions.filter(
+        (option) => !pinnedValues.has(option.value)
       );
       return {
         show: showModel,
@@ -170,8 +250,22 @@ export function buildComposerModelMenuModel(
         options,
         groups:
           showModel && composerSettings.collapseModelOptionsToLatest
-            ? groupModelOptionsByVendor(options)
-            : []
+            ? groupModelOptionsByVendor(options).filter(
+                (group) => group.options.length > 0
+              )
+            : [],
+        plan: composerSettings.modelPlan
+          ? {
+              id: composerSettings.modelPlan.id,
+              name: composerSettings.modelPlan.name
+            }
+          : null,
+        optionDescriptionInline: Boolean(composerSettings.modelPlan),
+        searchEnabled,
+        searchQuery,
+        favoriteOptions,
+        recentOptions,
+        favoriteValues
       };
     })(),
     reasoning: {
@@ -194,16 +288,53 @@ export function buildComposerModelMenuModel(
           resolveSpeedOptionDescription(option.value, labels) ??
           option.description
       }))
-    }
+    },
+    switchEffectHint:
+      showModel && composerSettings.modelSwitchTakesEffectNextTurn === true
   };
+}
+
+/** Case-insensitive filter over model label and id (value). */
+export function filterComposerModelMenuOptions(
+  options: readonly ComposerMenuOption[],
+  searchQuery: string
+): ComposerMenuOption[] {
+  const query = searchQuery.trim().toLowerCase();
+  if (!query) {
+    return [...options];
+  }
+  return options.filter(
+    (option) =>
+      option.label.toLowerCase().includes(query) ||
+      option.value.toLowerCase().includes(query)
+  );
 }
 
 function modelMenuOptionFromSettingOption(
   option: AgentGUIComposerSettingsVM["availableModels"][number],
-  labels: AgentComposerSettingsMenuLabels
+  labels: AgentComposerSettingsMenuLabels,
+  effectiveDefaultModel:
+    | AgentGUIComposerSettingsVM["availableModels"][number]
+    | null
 ): ComposerMenuOption {
-  const displayLabel = formatModelDisplayLabel(option.label);
-  const description = resolveModelDescription(option.description, labels);
+  const resolvedOption =
+    option.value === "default" ? effectiveDefaultModel : null;
+  const defaultLabel = shortModelDisplayLabel(labels.defaultModel);
+  const resolvedLabel = resolvedOption
+    ? shortModelDisplayLabel(resolvedOption.label)
+    : "";
+  const displayLabel =
+    option.value === "default"
+      ? resolvedLabel
+        ? `${defaultLabel} (${resolvedLabel})`
+        : defaultLabel
+      : formatModelDisplayLabel(option.label);
+  const description = resolveModelDescription(
+    option.value === "default"
+      ? resolvedOption?.description
+      : option.description,
+    labels
+  );
   const presentation = modelOptionPresentation({
     description,
     label: displayLabel,
@@ -211,7 +342,7 @@ function modelMenuOptionFromSettingOption(
   });
   return {
     value: option.value,
-    label: presentation.label,
+    label: option.value === "default" ? displayLabel : presentation.label,
     ...(description ? { description } : {}),
     ...(presentation.summary.length > 0
       ? { summary: presentation.summary }
@@ -445,13 +576,25 @@ function resolveSelectedModelLabel(
   labels: Pick<
     AgentComposerSettingsMenuLabels,
     "defaultModel" | "inheritedUnavailable" | "loadingOptions"
-  >
+  >,
+  effectiveDefaultModel:
+    | AgentGUIComposerSettingsVM["availableModels"][number]
+    | null
 ): string {
   const selectedValue = selectedComposerModelValue(composerSettings);
   const selected = modelOptionsWithSelectedValue(composerSettings).find(
     (option) => option.value === selectedValue
   );
   if (selected) {
+    if (selected.value === "default") {
+      const defaultLabel = shortModelDisplayLabel(labels.defaultModel);
+      const effectiveLabel = effectiveDefaultModel
+        ? shortModelDisplayLabel(effectiveDefaultModel.label)
+        : "";
+      return effectiveLabel
+        ? `${defaultLabel} (${effectiveLabel})`
+        : defaultLabel;
+    }
     return shortModelDisplayLabel(selected.label);
   }
   // While composer options load, show a clear loading placeholder rather than

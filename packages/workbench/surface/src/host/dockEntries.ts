@@ -143,6 +143,82 @@ export function resolveWorkbenchDockEntryClick(input: {
   return { kind: "launch" };
 }
 
+export function canCreateNewWindow(
+  entry: WorkbenchHostDockEntry,
+  instanceMode?: WorkbenchHostNodeInstanceStrategy["mode"]
+): boolean {
+  const stateKind = entry.state?.kind ?? "enabled";
+  if (
+    stateKind === "disabled" ||
+    stateKind === "loading" ||
+    stateKind === "unavailable" ||
+    (entry.launchBehavior ?? "enabled") !== "enabled"
+  ) {
+    return false;
+  }
+  return instanceMode === "multi" || entry.newWindowLaunchPayload !== undefined;
+}
+
+export function canCreateNewWindowInDockPopup(
+  entry: WorkbenchHostDockEntry,
+  instanceMode?: WorkbenchHostNodeInstanceStrategy["mode"]
+): boolean {
+  if (entry.allowNewWindowInDockPopup === false) {
+    return false;
+  }
+  return canCreateNewWindow(entry, instanceMode);
+}
+
+export function createDockNewWindowLaunchPayload(
+  launchPayload?: unknown
+): Record<string, unknown> {
+  if (
+    launchPayload &&
+    typeof launchPayload === "object" &&
+    !Array.isArray(launchPayload)
+  ) {
+    return {
+      ...(launchPayload as Record<string, unknown>),
+      openInNewWindow: true
+    };
+  }
+  return { openInNewWindow: true };
+}
+
+export interface CreateMultiInstanceDockEntryOptionsInput {
+  allowNewWindowInDockPopup?: boolean;
+}
+
+export function createMultiInstanceDockEntryOptions(
+  launchPayload?: unknown,
+  input: CreateMultiInstanceDockEntryOptionsInput = {}
+): Pick<
+  WorkbenchHostDockEntry,
+  | "allowNewWindowInDockPopup"
+  | "instanceMode"
+  | "launchBehavior"
+  | "launchPayload"
+  | "newWindowLaunchPayload"
+> {
+  return {
+    ...(input.allowNewWindowInDockPopup === false
+      ? { allowNewWindowInDockPopup: false as const }
+      : {}),
+    instanceMode: "single",
+    launchBehavior: "enabled",
+    ...(launchPayload === undefined ? {} : { launchPayload }),
+    newWindowLaunchPayload: createDockNewWindowLaunchPayload(launchPayload)
+  };
+}
+
+export function resolveWorkbenchDockCountBadge(
+  activeNodeCount: number
+): WorkbenchHostDockEntry["badge"] {
+  return activeNodeCount > 1
+    ? { kind: "count", value: activeNodeCount }
+    : undefined;
+}
+
 function isWorkbenchDockEntryBlocked(entry: WorkbenchHostDockEntry): boolean {
   const stateKind = entry.state?.kind ?? "enabled";
   return (

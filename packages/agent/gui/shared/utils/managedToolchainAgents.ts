@@ -18,8 +18,7 @@ export type AgentHostManagedToolchainAgent = {
     | "cursor"
     | "openclaw"
     | "opencode"
-    | "nexight"
-    | "hermes";
+    | "nexight";
   aliases?: string[];
 };
 
@@ -67,16 +66,6 @@ export const AGENT_HOST_MANAGED_TOOLCHAIN_AGENTS: readonly AgentHostManagedToolc
       agentIds: ["nexight", "tutti"],
       runtimeManaged: false,
       helperProvider: "nexight"
-    },
-    {
-      id: "hermes",
-      // i18n-check-ignore: Provider brand name.
-      label: "Hermes",
-      toolIds: ["hermes-cli"],
-      agentIds: ["hermes"],
-      runtimeManaged: true,
-      helperProvider: "hermes",
-      aliases: ["hermes agent"]
     },
     {
       id: "openclaw",

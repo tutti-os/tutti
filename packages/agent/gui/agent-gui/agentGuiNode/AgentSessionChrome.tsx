@@ -113,7 +113,11 @@ export function AgentSessionChrome({
 }: AgentSessionChromeProps): JSX.Element | null {
   "use memo";
   const visibleAuth =
-    chrome.recovery?.kind === "activating" ? null : chrome.auth;
+    chrome.recovery?.kind === "activating" ||
+    chrome.recovery?.kind === "transport-connecting" ||
+    chrome.recovery?.kind === "transport-unavailable"
+      ? null
+      : chrome.auth;
   const visibleRecovery = chrome.recovery;
   const recoveryMessage =
     visibleRecovery?.kind === "activating"
@@ -197,36 +201,44 @@ export function AgentSessionChrome({
       {visibleRecovery ? (
         <section
           role={
-            visibleRecovery.kind === "failed"
+            visibleRecovery.kind === "failed" ||
+            visibleRecovery.kind === "transport-unavailable"
               ? "alert"
-              : visibleRecovery.kind === "resume-unavailable"
+              : visibleRecovery.kind === "resume-unavailable" ||
+                  visibleRecovery.kind === "transport-connecting"
                 ? "status"
                 : undefined
           }
           aria-live={
-            visibleRecovery.kind === "failed"
+            visibleRecovery.kind === "failed" ||
+            visibleRecovery.kind === "transport-unavailable"
               ? "assertive"
-              : visibleRecovery.kind === "resume-unavailable"
+              : visibleRecovery.kind === "transport-connecting"
                 ? "polite"
-                : undefined
+                : visibleRecovery.kind === "resume-unavailable"
+                  ? "polite"
+                  : undefined
           }
           data-has-inline-actions={recoveryHasInlineAction ? "true" : "false"}
           className={cn(
             styles.chromeCard,
-            visibleRecovery.kind === "failed"
+            visibleRecovery.kind === "failed" ||
+              visibleRecovery.kind === "transport-unavailable"
               ? styles.chromeCardDanger
               : visibleRecovery.kind === "resume-unavailable"
                 ? styles.chromeCardSuccess
                 : visibleRecovery.kind === "warning"
                   ? styles.chromeCardDanger
-                  : visibleRecovery.kind === "activating"
+                  : visibleRecovery.kind === "activating" ||
+                      visibleRecovery.kind === "transport-connecting"
                     ? styles.chromeCardConnecting
                     : styles.chromeCardMuted
           )}
         >
           <div className={styles.chromeMetaRow}>
             <div className={styles.chromeMessageSlot}>
-              {visibleRecovery.kind === "activating" ? (
+              {visibleRecovery.kind === "activating" ||
+              visibleRecovery.kind === "transport-connecting" ? (
                 <CastIcon
                   active
                   aria-hidden="true"
@@ -238,14 +250,16 @@ export function AgentSessionChrome({
               <p
                 className={styles.chromeMessage}
                 aria-label={
-                  visibleRecovery.kind === "activating"
+                  visibleRecovery.kind === "activating" ||
+                  visibleRecovery.kind === "transport-connecting"
                     ? recoveryMessage
                     : undefined
                 }
                 tabIndex={0}
                 title={recoveryMessage}
               >
-                {visibleRecovery.kind === "activating" ? (
+                {visibleRecovery.kind === "activating" ||
+                visibleRecovery.kind === "transport-connecting" ? (
                   <>
                     <span className="tsh-inline-loading-label">
                       {activatingMessage.label}

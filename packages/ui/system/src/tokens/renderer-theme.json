@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "dimensions": {
+    "control": {
+      "compact": 40,
+      "icon": 40,
+      "large": 52,
+      "regular": 48,
+      "row": 60
+    },
+    "radius": {
+      "large": 18,
+      "medium": 12,
+      "small": 8
+    },
+    "space": {
+      "large": 24,
+      "medium": 16,
+      "small": 10,
+      "xlarge": 32
+    }
+  },
+  "themes": {
+    "light": {
+      "accent": {
+        "native": "#4182f5",
+        "web": "rgb(65 130 245)"
+      },
+      "accentPressed": {
+        "native": "#3975df",
+        "web": "rgb(53 110 222)"
+      },
+      "background": {
+        "native": "#f7f8fa",
+        "web": "oklch(0.986 0.004 84)"
+      },
+      "backgroundFronted": {
+        "native": "#ffffff",
+        "web": "rgb(255 255 255 / 1)"
+      },
+      "backgroundPanel": {
+        "native": "#f8fafc",
+        "web": "rgb(248 250 252)"
+      },
+      "border": {
+        "native": "#e5e7eb",
+        "web": "oklch(0.904 0.005 252)"
+      },
+      "danger": {
+        "native": "#dc2626",
+        "web": "rgb(220 38 38)"
+      },
+      "foreground": {
+        "native": "#29313d",
+        "web": "oklch(0.248 0.016 258)"
+      },
+      "muted": {
+        "native": "#6b7280",
+        "web": "rgb(60 60 60 / 50%)"
+      },
+      "panel": {
+        "native": "#f8f8fa",
+        "web": "oklch(0.975 0.004 84 / 92%)"
+      },
+      "scrim": {
+        "native": "rgba(0, 0, 0, 0.6)",
+        "web": "rgb(0 0 0 / 60%)"
+      },
+      "scrimStrong": {
+        "native": "rgba(0, 0, 0, 0.64)",
+        "web": "rgb(0 0 0 / 64%)"
+      },
+      "success": {
+        "native": "#22c55e",
+        "web": "rgb(34 197 94)"
+      },
+      "textPrimary": {
+        "native": "#3c3c3c",
+        "web": "rgb(60 60 60)"
+      },
+      "textSecondary": {
+        "native": "#6c6c6c",
+        "web": "rgb(60 60 60 / 70%)"
+      }
+    },
+    "dark": {
+      "accent": {
+        "native": "#ff6b4a",
+        "web": "rgb(90 155 255)"
+      },
+      "accentPressed": {
+        "native": "#eb5839",
+        "web": "rgb(79 143 255)"
+      },
+      "background": {
+        "native": "#111216",
+        "web": "oklch(0.192 0.008 255)"
+      },
+      "backgroundFronted": {
+        "native": "#22252d",
+        "web": "rgb(51 51 51 / 1)"
+      },
+      "backgroundPanel": {
+        "native": "#1a1c22",
+        "web": "rgb(42 42 43)"
+      },
+      "border": {
+        "native": "#30333b",
+        "web": "oklch(0.352 0.012 255)"
+      },
+      "danger": {
+        "native": "#ff716c",
+        "web": "rgb(244 91 91)"
+      },
+      "foreground": {
+        "native": "#f6f6f7",
+        "web": "oklch(0.955 0.004 84)"
+      },
+      "muted": {
+        "native": "#9398a5",
+        "web": "rgb(255 255 255 / 50%)"
+      },
+      "panel": {
+        "native": "#1a1c22",
+        "web": "oklch(0.236 0.009 255 / 92%)"
+      },
+      "scrim": {
+        "native": "rgba(0, 0, 0, 0.6)",
+        "web": "rgb(0 0 0 / 60%)"
+      },
+      "scrimStrong": {
+        "native": "rgba(0, 0, 0, 0.64)",
+        "web": "rgb(0 0 0 / 64%)"
+      },
+      "success": {
+        "native": "#62d49f",
+        "web": "rgb(74 222 128)"
+      },
+      "textPrimary": {
+        "native": "#f6f6f7",
+        "web": "rgb(255 255 255)"
+      },
+      "textSecondary": {
+        "native": "#c3c6ce",
+        "web": "rgb(255 255 255 / 70%)"
+      }
+    }
+  }
+}

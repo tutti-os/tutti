@@ -6,13 +6,11 @@ import (
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/packages/agent/daemon/titletext"
 )
 
 func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, error) {
-	c.startMu.Lock()
-	defer c.startMu.Unlock()
-
 	roomID := strings.TrimSpace(input.RoomID)
 	provider := strings.TrimSpace(input.Provider)
 	if roomID == "" {
@@ -21,6 +19,13 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 	if provider == "" {
 		return StartResult{}, fmt.Errorf("provider is required")
 	}
+	agentSessionID := strings.TrimSpace(input.AgentSessionID)
+	releaseStartupLock, err := c.acquireStartupLockContext(ctx, roomID, agentSessionID, provider)
+	if err != nil {
+		return StartResult{}, err
+	}
+	defer releaseStartupLock()
+
 	adapter, err := c.resolveAdapter(ctx, AdapterResolveInput{Provider: provider, AgentTargetID: input.AgentTargetID, CWD: input.CWD, ProviderTargetRef: clonePayload(input.ProviderTargetRef)})
 	if err != nil {
 		return StartResult{}, err
@@ -29,7 +34,6 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 		return StartResult{}, fmt.Errorf("unsupported agent session provider %q", provider)
 	}
 	timestamp := unixMS(now())
-	agentSessionID := strings.TrimSpace(input.AgentSessionID)
 	settings := normalizeSessionSettings(
 		input.Settings,
 		provider,
@@ -47,9 +51,11 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 	if existing, ok := c.get(roomID, agentSessionID); ok {
 		return StartResult{Session: existing}, nil
 	}
+	c.deleteRetainedGoalGenerationFences(roomID, agentSessionID)
 	session := Session{
 		RoomID:                  roomID,
 		AgentSessionID:          agentSessionID,
+		RootAgentSessionID:      agentSessionID,
 		AgentTargetID:           strings.TrimSpace(input.AgentTargetID),
 		Provider:                provider,
 		ProviderSessionID:       "",
@@ -90,9 +96,11 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 	}
 	session = applySessionEvents(session, events)
 	c.mu.Lock()
-	c.sessions[sessionKey(roomID, agentSessionID)] = session
+	key := sessionKey(roomID, agentSessionID)
+	c.sessions[key] = session
+	c.notifySessionAvailableLocked(key)
 	if input.Provisional {
-		c.provisionalSessions[sessionKey(roomID, agentSessionID)] = true
+		c.provisionalSessions[key] = true
 	}
 	c.mu.Unlock()
 	if input.Provisional {
@@ -108,9 +116,6 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 }
 
 func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, error) {
-	c.startMu.Lock()
-	defer c.startMu.Unlock()
-
 	roomID := strings.TrimSpace(input.RoomID)
 	agentSessionID := strings.TrimSpace(input.AgentSessionID)
 	provider := strings.TrimSpace(input.Provider)
@@ -127,6 +132,12 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 	if providerSessionID == "" {
 		return Session{}, fmt.Errorf("provider session id is required")
 	}
+	releaseStartupLock, err := c.acquireStartupLockContext(ctx, roomID, agentSessionID, provider)
+	if err != nil {
+		return Session{}, err
+	}
+	defer releaseStartupLock()
+
 	if existing, ok := c.get(roomID, agentSessionID); ok {
 		return existing, nil
 	}
@@ -153,9 +164,11 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 	session := Session{
 		RoomID:                  roomID,
 		AgentSessionID:          agentSessionID,
+		RootAgentSessionID:      agentSessionID,
 		AgentTargetID:           strings.TrimSpace(input.AgentTargetID),
 		Provider:                provider,
 		ProviderSessionID:       providerSessionID,
+		Resumable:               input.Resumable,
 		CWD:                     strings.TrimSpace(input.CWD),
 		Env:                     append([]string(nil), input.Env...),
 		Status:                  firstNonEmpty(normalizeSessionStatus(input.Status), SessionStatusReady),
@@ -175,6 +188,7 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 	if session.Settings != nil {
 		session.PermissionModeID = session.Settings.PermissionModeID
 	}
+	c.invalidateAppliedGoalGenerationFences(session)
 	if err := adapter.Resume(ctx, session); err != nil {
 		if !input.RecreateIfMissing || !isResumeRecreatableError(err) {
 			return Session{}, err
@@ -191,6 +205,9 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 			return refreshed, nil
 		}
 		return session, nil
+	}
+	if err := c.applyRetainedGoalGenerationFencesOrClose(ctx, session, adapter); err != nil {
+		return Session{}, err
 	}
 	session.Status = SessionStatusReady
 	c.store(session)
@@ -223,6 +240,7 @@ func (c *Controller) Close(ctx context.Context, input CloseInput) (CloseResult, 
 		delete(c.commands, key)
 		delete(c.pendingCommandSnapshots, session.AgentSessionID)
 		delete(c.pendingConfigOptionsUpdates, key)
+		delete(c.goalGenerationFences, key)
 	}
 	c.mu.Unlock()
 	if provisional {
@@ -243,6 +261,7 @@ func (c *Controller) Close(ctx context.Context, input CloseInput) (CloseResult, 
 	delete(c.pendingCommandSnapshots, session.AgentSessionID)
 	delete(c.pendingConfigOptionsUpdates, key)
 	delete(c.provisionalSessions, key)
+	delete(c.goalGenerationFences, key)
 	c.mu.Unlock()
 	return CloseResult{AgentSessionID: session.AgentSessionID, Disconnected: true}, nil
 }
@@ -344,8 +363,11 @@ func defaultPermissionModeIDForProvider(provider string) string {
 }
 
 func permissionModeIDAllowedForProvider(provider string, mode string) bool {
+	mode = strings.TrimSpace(mode)
+	if mode == "" {
+		return false
+	}
 	if profile, ok := migratedProviderComposerProfile(provider); ok {
-		mode = strings.TrimSpace(mode)
 		for _, candidate := range profile.PermissionModes {
 			if strings.TrimSpace(candidate.ID) == mode {
 				return true
@@ -353,7 +375,8 @@ func permissionModeIDAllowedForProvider(provider string, mode string) bool {
 		}
 		return false
 	}
-	return false
+	_, ok := providerregistry.NormalizeOpenProviderID(provider)
+	return ok
 }
 
 func normalizeSessionSettings(settings *SessionSettings, provider string, defaultPermissionModeID string) SessionSettings {

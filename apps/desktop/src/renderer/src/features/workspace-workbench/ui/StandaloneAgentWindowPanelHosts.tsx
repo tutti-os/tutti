@@ -13,9 +13,7 @@ import type {
   WorkspaceAgentProvider,
   WorkspaceSummary
 } from "@tutti-os/client-tuttid-ts";
-import type { WorkbenchHostHandle } from "@tutti-os/workbench-surface";
 import { AgentEnvPanel } from "@renderer/features/workspace-agent/ui/AgentEnvPanel.tsx";
-import type { IAgentProviderStatusService as AgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
 import { ExternalAgentSessionImportPrompt } from "./ExternalAgentSessionImportPrompt";
 import { ExternalAgentSessionImportWizard } from "./ExternalAgentSessionImportWizard";
 import { WorkspaceSettingsPanel } from "./WorkspaceSettingsPanel";
@@ -28,14 +26,10 @@ import type {
 } from "../services/workspaceWallpaper";
 
 interface StandaloneAgentWindowPanelHostsProps {
-  agentProviderStatusService: AgentProviderStatusService;
-  host: WorkbenchHostHandle;
   workspace: WorkspaceSummary;
 }
 
 export function StandaloneAgentWindowPanelHosts({
-  agentProviderStatusService,
-  host,
   workspace
 }: StandaloneAgentWindowPanelHostsProps): ReactNode {
   const { service: workspaceSettingsService } = useWorkspaceSettingsService();
@@ -108,11 +102,10 @@ export function StandaloneAgentWindowPanelHosts({
     workspaceSettingsService.openPanel(
       { id: workspace.id },
       {
-        section:
-          settingsPanelRequest.section === "agent"
-            ? "general"
-            : ((settingsPanelRequest.section ??
-                "general") as WorkspaceSettingsSectionID)
+        section: (settingsPanelRequest.section ??
+          "general") as WorkspaceSettingsSectionID,
+        pane: settingsPanelRequest.pane ?? undefined,
+        provider: settingsPanelRequest.provider ?? undefined
       }
     );
   }, [settingsPanelRequest, workspace.id, workspaceSettingsService]);
@@ -137,11 +130,7 @@ export function StandaloneAgentWindowPanelHosts({
         workspace={workspace}
         onOpenChange={setExternalImportWizardOpen}
       />
-      <AgentEnvPanel
-        agentProviderStatusService={agentProviderStatusService}
-        workspaceId={workspace.id}
-        workbenchHost={host}
-      />
+      <AgentEnvPanel />
     </>
   );
 }

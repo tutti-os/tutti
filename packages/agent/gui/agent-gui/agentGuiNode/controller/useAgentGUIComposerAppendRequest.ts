@@ -12,11 +12,13 @@ import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftSc
 
 export type AgentGUIComposerAppendRequest =
   | {
+      agentSessionId?: string;
       files: readonly AgentComposerDraftFile[];
       prompt?: string;
       sequence: number;
     }
   | {
+      agentSessionId?: string;
       files?: never;
       prompt: string;
       sequence: number;
@@ -69,6 +71,13 @@ export function resolveAgentGUIComposerAppendRequest(input: {
     request = null
   } = input;
   if (!request || handledSequence === request.sequence) {
+    return null;
+  }
+  const targetAgentSessionId = request.agentSessionId?.trim() ?? "";
+  if (
+    targetAgentSessionId &&
+    targetAgentSessionId !== (activeConversationId?.trim() ?? "")
+  ) {
     return null;
   }
   const draftKey = resolveAgentComposerDraftScopeKey({

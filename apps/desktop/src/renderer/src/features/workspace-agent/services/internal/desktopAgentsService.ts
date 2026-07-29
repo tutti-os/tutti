@@ -1,5 +1,13 @@
-import type { AgentTarget, TuttidClient } from "@tutti-os/client-tuttid-ts";
+import type {
+  AgentTarget,
+  TuttidClient,
+  WorkspaceAgent
+} from "@tutti-os/client-tuttid-ts";
 import type { AgentGUIAgent, AgentGUIProvider } from "@tutti-os/agent-gui";
+import {
+  isAgentGuiWorkbenchProvider,
+  isAgentGuiWorkbenchProviderVisibleWithEarlyAccess
+} from "@tutti-os/agent-gui/workbench/providerCatalog";
 import type {
   AgentsSnapshot,
   AgentTargetPresentation,
@@ -7,7 +15,9 @@ import type {
 } from "../agentsService.interface.ts";
 
 export interface DesktopAgentsServiceDependencies {
+  earlyAccessEnabled?: boolean;
   clearTimeout?: (timer: ReturnType<typeof setTimeout>) => void;
+  isAgentTargetProviderGated?: (provider: string) => boolean;
   now?: () => number;
   resolveAgentTargetIconUrl?: (identity: {
     iconKey: string | null;
@@ -18,7 +28,8 @@ export interface DesktopAgentsServiceDependencies {
     callback: () => void,
     delayMs: number
   ) => ReturnType<typeof setTimeout>;
-  tuttidClient: Pick<TuttidClient, "listAgentTargets">;
+  tuttidClient: Pick<TuttidClient, "listAgentTargets" | "listWorkspaceAgents">;
+  workspaceId: string;
 }
 
 const EMPTY_AGENTS_SNAPSHOT: AgentsSnapshot = Object.freeze({
@@ -39,9 +50,11 @@ export class DesktopAgentsService implements IAgentsService {
   private requestSequence = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private snapshot: AgentsSnapshot = EMPTY_AGENTS_SNAPSHOT;
+  private earlyAccessEnabled: boolean;
 
   constructor(dependencies: DesktopAgentsServiceDependencies) {
     this.dependencies = dependencies;
+    this.earlyAccessEnabled = dependencies.earlyAccessEnabled ?? false;
   }
 
   getSnapshot(): AgentsSnapshot {
@@ -76,7 +89,25 @@ export class DesktopAgentsService implements IAgentsService {
     if (this.snapshot.status !== "idle" || snapshot.status === "idle") {
       return;
     }
-    this.setSnapshot(snapshot);
+    this.setSnapshot({
+      ...snapshot,
+      agents: mapAgentTargetPresentationsToAgents(snapshot.agentTargets, {
+        earlyAccessEnabled: this.earlyAccessEnabled
+      })
+    });
+  }
+
+  setEarlyAccessEnabled(enabled: boolean): void {
+    if (this.earlyAccessEnabled === enabled) {
+      return;
+    }
+    this.earlyAccessEnabled = enabled;
+    this.setSnapshot({
+      ...this.snapshot,
+      agents: mapAgentTargetPresentationsToAgents(this.snapshot.agentTargets, {
+        earlyAccessEnabled: enabled
+      })
+    });
   }
 
   load(signal?: AbortSignal): Promise<AgentsSnapshot> {
@@ -123,7 +154,12 @@ export class DesktopAgentsService implements IAgentsService {
       status: "loading"
     });
     try {
-      const response = await this.dependencies.tuttidClient.listAgentTargets();
+      const [targetResponse, workspaceAgentResponse] = await Promise.all([
+        this.dependencies.tuttidClient.listAgentTargets(),
+        this.dependencies.tuttidClient.listWorkspaceAgents(
+          this.dependencies.workspaceId
+        )
+      ]);
       if (signal?.aborted || requestSequence !== this.requestSequence) {
         if (requestSequence === this.requestSequence) {
           this.setSnapshot(previousSnapshot);
@@ -131,13 +167,43 @@ export class DesktopAgentsService implements IAgentsService {
         return this.snapshot;
       }
       const daemonAgentTargets = mapAgentTargetsToPresentations(
-        response.targets,
+        targetResponse.targets,
         {
           resolveAgentTargetIconUrl: this.dependencies.resolveAgentTargetIconUrl
         }
       );
+      const daemonAgentTargetIconUrls = new Map(
+        daemonAgentTargets.map((target) => [
+          target.agentTargetId,
+          target.iconUrl
+        ])
+      );
       const agentTargets = daemonAgentTargets;
-      const agents = mapAgentTargetPresentationsToAgents(daemonAgentTargets);
+      // Built-in Harness targets and explicit workspace Agents coexist in the
+      // AgentGUI directory: built-ins keep their placement and workspace
+      // Agents are appended, deduped by agentTargetId.
+      const builtinAgents = mapAgentTargetPresentationsToAgents(
+        daemonAgentTargets,
+        { earlyAccessEnabled: this.earlyAccessEnabled }
+      );
+      const workspaceAgents = mapWorkspaceAgentsToAgents(
+        workspaceAgentResponse.agents,
+        {
+          isAgentTargetProviderGated:
+            this.dependencies.isAgentTargetProviderGated,
+          resolveAgentTargetIconUrl: ({ agentTargetId, iconKey, provider }) =>
+            daemonAgentTargetIconUrls.get(agentTargetId)?.trim() ||
+            this.dependencies.resolveAgentTargetIconUrl?.({
+              iconKey,
+              provider
+            }) ||
+            ""
+        }
+      );
+      const agents = dedupeAgentsByAgentTargetId([
+        ...builtinAgents,
+        ...workspaceAgents
+      ]);
       const nextSnapshot: AgentsSnapshot = {
         agents,
         agentTargets,
@@ -200,6 +266,19 @@ export class DesktopAgentsService implements IAgentsService {
   }
 }
 
+function dedupeAgentsByAgentTargetId(
+  agents: readonly AgentGUIAgent[]
+): readonly AgentGUIAgent[] {
+  const seenAgentTargetIds = new Set<string>();
+  return agents.filter((agent) => {
+    if (seenAgentTargetIds.has(agent.agentTargetId)) {
+      return false;
+    }
+    seenAgentTargetIds.add(agent.agentTargetId);
+    return true;
+  });
+}
+
 export function mapAgentTargetsToPresentations(
   targets: readonly AgentTarget[],
   options: {
@@ -209,52 +288,114 @@ export function mapAgentTargetsToPresentations(
     }) => string;
   } = {}
 ): readonly AgentTargetPresentation[] {
-  return [...targets].sort(compareAgentTargetsForDisplay).map((target) => ({
-    agentTargetId: target.id,
-    createdAtUnixMs: target.createdAtUnixMs,
-    enabled: target.enabled === true,
-    iconKey: target.iconKey ?? null,
-    iconUrl:
+  return [...targets].sort(compareAgentTargetsForDisplay).map((target) => {
+    const isExtension = target.launchRef.type === "agent_extension";
+    const iconUrl =
       target.iconUrl?.trim() ||
-      (options.resolveAgentTargetIconUrl?.({
-        iconKey: target.iconKey?.trim() || null,
-        provider: target.provider
-      }) ??
-        ""),
-    heroImageUrl: target.heroImageUrl?.trim() || null,
-    availability: {
-      status:
-        target.availability?.status === "not_installed"
-          ? "not_installed"
-          : target.availability?.status === "auth_required"
-            ? "auth_required"
-            : target.availability?.status === "unsupported" ||
-                target.availability?.status === "unknown"
-              ? "unavailable"
-              : "ready"
-    },
-    launchRefType: target.launchRef.type,
-    name: target.name,
-    provider: target.provider,
-    sortOrder: target.sortOrder,
-    source: target.source,
-    updatedAtUnixMs: target.updatedAtUnixMs
-  }));
+      (isExtension
+        ? ""
+        : (options.resolveAgentTargetIconUrl?.({
+            iconKey: target.iconKey?.trim() || null,
+            provider: target.provider
+          }) ?? ""));
+    return {
+      agentTargetId: target.id,
+      createdAtUnixMs: target.createdAtUnixMs,
+      enabled: target.enabled === true,
+      iconKey: target.iconKey ?? null,
+      iconUrl,
+      maskIconUrl: target.maskIconUrl?.trim() || null,
+      heroImageUrl: target.heroImageUrl?.trim() || null,
+      availability: {
+        status:
+          target.availability?.status === "not_installed"
+            ? "not_installed"
+            : target.availability?.status === "auth_required"
+              ? "auth_required"
+              : target.availability?.status === "unsupported" ||
+                  target.availability?.status === "unknown"
+                ? "unavailable"
+                : "ready"
+      },
+      launchRefType: target.launchRef.type,
+      name: target.name,
+      provider: target.provider,
+      sortOrder: target.sortOrder,
+      source: target.source,
+      updatedAtUnixMs: target.updatedAtUnixMs
+    };
+  });
 }
 
 export function mapAgentTargetPresentationsToAgents(
-  targets: readonly AgentTargetPresentation[]
+  targets: readonly AgentTargetPresentation[],
+  options: { earlyAccessEnabled?: boolean } = {}
 ): readonly AgentGUIAgent[] {
   return targets
-    .filter((target) => target.enabled)
+    .filter(
+      (target) =>
+        target.enabled &&
+        (options.earlyAccessEnabled === true ||
+          (target.launchRefType !== "agent_extension" &&
+            (!isAgentGuiWorkbenchProvider(target.provider) ||
+              isAgentGuiWorkbenchProviderVisibleWithEarlyAccess(
+                target.provider,
+                false
+              ))))
+    )
     .map((target) => ({
       agentTargetId: target.agentTargetId,
       name: target.name,
       iconUrl: target.iconUrl,
+      ...(target.maskIconUrl ? { maskIconUrl: target.maskIconUrl } : {}),
       ...(target.heroImageUrl ? { heroImageUrl: target.heroImageUrl } : {}),
       availability: target.availability,
-      provider: target.provider as AgentGUIProvider
+      ownership: "self" as const,
+      provider: target.provider as AgentGUIProvider,
+      ...(target.launchRefType === "agent_extension"
+        ? { setupKind: "target_runtime" as const }
+        : {})
     }));
+}
+
+export function mapWorkspaceAgentsToAgents(
+  agents: readonly WorkspaceAgent[],
+  options: {
+    isAgentTargetProviderGated?: (provider: string) => boolean;
+    resolveAgentTargetIconUrl?: (identity: {
+      agentTargetId: string;
+      iconKey: string | null;
+      provider: string;
+    }) => string;
+  } = {}
+): readonly AgentGUIAgent[] {
+  return agents.flatMap((agent) => {
+    const provider = agent.harness.provider;
+    if (!provider) {
+      return [];
+    }
+    const availability =
+      options.isAgentTargetProviderGated?.(provider) === true
+        ? ({ status: "coming_soon" } as const)
+        : !agent.harness.available || agent.harness.enabled === false
+          ? ({ status: "unavailable" } as const)
+          : ({ status: "ready" } as const);
+    return [
+      {
+        agentTargetId: agent.id,
+        availability,
+        description: agent.description || null,
+        iconUrl:
+          options.resolveAgentTargetIconUrl?.({
+            agentTargetId: agent.harness.agentTargetId,
+            iconKey: agent.harness.iconKey?.trim() || null,
+            provider
+          }) ?? "",
+        name: agent.name,
+        provider: provider as AgentGUIProvider
+      }
+    ];
+  });
 }
 
 function compareAgentTargetsForDisplay(

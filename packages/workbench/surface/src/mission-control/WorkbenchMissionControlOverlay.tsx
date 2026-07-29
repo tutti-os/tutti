@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
   type ComponentType,
@@ -69,8 +68,6 @@ export function WorkbenchMissionControlOverlay({
   phase,
   state
 }: WorkbenchMissionControlOverlayProps) {
-  const layoutDockContentRef = useRef<HTMLDivElement | null>(null);
-  const [layoutDockWidth, setLayoutDockWidth] = useState<number | null>(null);
   // Only one preset menu may be open at a time; hovering another button
   // replaces the previous one instead of stacking popovers.
   const [openLayoutKey, setOpenLayoutKey] = useState<
@@ -147,79 +144,51 @@ export function WorkbenchMissionControlOverlay({
       hasUsableLayoutPreset
     );
 
-  useLayoutEffect(() => {
-    const element = layoutDockContentRef.current;
-    if (!element) {
-      return;
-    }
-    const computedStyle = window.getComputedStyle(element.parentElement!);
-    const horizontalChrome =
-      Number.parseFloat(computedStyle.paddingLeft) +
-      Number.parseFloat(computedStyle.paddingRight) +
-      Number.parseFloat(computedStyle.borderLeftWidth) +
-      Number.parseFloat(computedStyle.borderRightWidth);
-    setLayoutDockWidth(element.scrollWidth + horizontalChrome);
-  }, [
-    i18n,
-    layoutPresets.length,
-    showLayoutSelectionHint,
-    showNoAvailableLayoutMessage,
-    state.selectedCount
-  ]);
-
   return (
     <div
       className="workbench-mission-control pointer-events-none absolute inset-0 overflow-hidden"
       data-phase={phase}
     >
-      {state.mode === "layout" ? (
-        <div className="workbench-mission-control__footer-shell pointer-events-none absolute inset-x-0 bottom-0 flex justify-center px-6 pb-6">
-          <div
-            className="workbench-mission-control__layout-dock desktop-dock-plate pointer-events-auto"
-            style={
-              layoutDockWidth === null ? undefined : { width: layoutDockWidth }
-            }
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div
-              ref={layoutDockContentRef}
-              className="workbench-mission-control__layout-dock-content"
-            >
-              {showLayoutSelectionHint ? (
-                <span className="workbench-mission-control__layout-hint">
-                  {i18n.t("layoutSelectionHint")}
-                </span>
-              ) : showNoAvailableLayoutMessage ? (
-                <span className="workbench-mission-control__layout-hint">
-                  {i18n.t("noAvailableLayout")}
-                </span>
-              ) : (
-                <div className="flex items-end gap-2">
-                  {layoutPresets.map((option) => (
-                    <WorkbenchMissionControlLayoutPresetButton
-                      key={option.key}
-                      arrangeOnceLabel={i18n.t("presetActions.arrangeOnce")}
-                      canApply={state.canApplyPreset(option.preset)}
-                      icon={option.icon}
-                      layoutKey={option.key}
-                      lockLayoutLabel={i18n.t("presetActions.lockLayout")}
-                      open={openLayoutKey === option.key}
-                      onApply={(lock) => {
-                        closeLayoutMenu(option.key);
-                        state.applyPreset(option.preset, { lock });
-                      }}
-                      onHoverOpen={() => requestHoverOpen(option.key)}
-                      onHoverCancel={clearHoverOpenTimeout}
-                      onRequestClose={() => closeLayoutMenu(option.key)}
-                      presetLabel={option.label}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
+      <div className="workbench-mission-control__footer-shell pointer-events-none absolute inset-x-0 bottom-0 flex justify-center px-6 pb-6">
+        <div
+          className="workbench-mission-control__layout-dock desktop-dock-plate pointer-events-auto"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="workbench-mission-control__layout-dock-content">
+            {showLayoutSelectionHint ? (
+              <span className="workbench-mission-control__layout-hint">
+                {i18n.t("layoutSelectionHint")}
+              </span>
+            ) : showNoAvailableLayoutMessage ? (
+              <span className="workbench-mission-control__layout-hint">
+                {i18n.t("noAvailableLayout")}
+              </span>
+            ) : (
+              <div className="flex items-end gap-2">
+                {layoutPresets.map((option) => (
+                  <WorkbenchMissionControlLayoutPresetButton
+                    key={option.key}
+                    arrangeOnceLabel={i18n.t("presetActions.arrangeOnce")}
+                    canApply={state.canApplyPreset(option.preset)}
+                    icon={option.icon}
+                    layoutKey={option.key}
+                    lockLayoutLabel={i18n.t("presetActions.lockLayout")}
+                    open={openLayoutKey === option.key}
+                    onApply={(lock) => {
+                      closeLayoutMenu(option.key);
+                      state.applyPreset(option.preset, { lock });
+                    }}
+                    onHoverOpen={() => requestHoverOpen(option.key)}
+                    onHoverCancel={clearHoverOpenTimeout}
+                    onRequestClose={() => closeLayoutMenu(option.key)}
+                    presetLabel={option.label}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }

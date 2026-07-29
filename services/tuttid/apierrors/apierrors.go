@@ -9,6 +9,7 @@ import (
 	workspacefiles "github.com/tutti-os/tutti/packages/workspace/files"
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
+	executionbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeexecution"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
@@ -24,6 +25,9 @@ const (
 	StatusWorkspaceOperationFailed   = 502
 	StatusPreferencesOperationFailed = 502
 	StatusServiceUnavailable         = 503
+	StatusAgentQuickPromptNotFound   = 404
+	StatusAgentQuickPromptConflict   = 409
+	StatusAgentQuickPromptFailed     = 502
 )
 
 const (
@@ -31,8 +35,18 @@ const (
 	ReasonEntryAlreadyExists                             = "entry_already_exists"
 	ReasonAgentSubmitDeliveryUnknown                     = "agent_submit_delivery_unknown"
 	ReasonEventStreamServiceUnavailable                  = "event_stream_service_unavailable"
+	ReasonAgentQuickPromptNotFound                       = "agent_quick_prompt_not_found"
+	ReasonAgentQuickPromptVersionConflict                = "agent_quick_prompt_version_conflict"
+	ReasonAgentQuickPromptLimitExceeded                  = "agent_quick_prompt_limit_exceeded"
+	ReasonAgentQuickPromptOrderConflict                  = "agent_quick_prompt_order_conflict"
+	ReasonAgentQuickPromptOperationFailed                = "agent_quick_prompt_operation_failed"
+	ReasonAgentQuickPromptServiceUnavailable             = "agent_quick_prompt_service_unavailable"
 	ReasonInvalidEntryKind                               = "invalid_entry_kind"
 	ReasonInvalidPath                                    = "invalid_path"
+	ReasonNotAGitRepo                                    = "not_a_git_repo"
+	ReasonGitUnavailable                                 = "git_unavailable"
+	ReasonUnsupportedRepoLayout                          = "unsupported_repo_layout"
+	ReasonWorktreeCreateFailed                           = "worktree_create_failed"
 	ReasonInvalidUploadSource                            = "invalid_upload_source"
 	ReasonInvalidWorkbenchSnapshot                       = "invalid_workbench_snapshot"
 	ReasonMalformedRequest                               = "malformed_request"
@@ -61,6 +75,7 @@ const (
 	ReasonUnsupportedDesktopDefaultAgentProvider         = "unsupported_desktop_default_agent_provider"
 	ReasonUnsupportedDesktopDockIconStyle                = "unsupported_desktop_dock_icon_style"
 	ReasonUnsupportedDesktopDockPlacement                = "unsupported_desktop_dock_placement"
+	ReasonUnsupportedDeletedAgentConversationRetention   = "unsupported_deleted_agent_conversation_retention"
 	ReasonUnsupportedDesktopAppCatalogChannel            = "unsupported_desktop_app_catalog_channel"
 	ReasonUnsupportedDesktopBrowserUseConnectionMode     = "unsupported_desktop_browser_use_connection_mode"
 	ReasonUnsupportedDesktopLocale                       = "unsupported_desktop_locale"
@@ -75,6 +90,8 @@ const (
 	ReasonWorkspaceAgentSessionNotFound                  = "workspace_agent_session_not_found"
 	ReasonWorkspaceAgentSessionTitleTooLong              = "workspace_agent_session_title_too_long"
 	ReasonWorkspaceAgentSessionUnavailable               = "workspace_agent_session_service_unavailable"
+	ReasonUnsupportedPermissionModeID                    = "unsupported_permission_mode_id"
+	ReasonAgentConfigDependencyUnavailable               = "agent.config_dependency_unavailable"
 	ReasonAgentProviderUnavailable                       = "agent_provider_unavailable"
 	ReasonAgentRuntimeOperationReconciling               = "agent_runtime_operation_reconciling"
 	ReasonAgentRuntimeOperationFailed                    = "agent_runtime_operation_failed"
@@ -86,6 +103,7 @@ const (
 	ReasonWorkspaceAppUnavailable                        = "workspace_app_service_unavailable"
 	ReasonWorkspaceIssueContextRefNotFound               = "workspace_issue_context_ref_not_found"
 	ReasonWorkspaceIssueContextRefExists                 = "workspace_issue_context_ref_already_exists"
+	ReasonTuttiIssueManaged                              = "tutti_issue_managed"
 	ReasonWorkspaceIssueExists                           = "workspace_issue_already_exists"
 	ReasonWorkspaceIssueNotFound                         = "workspace_issue_not_found"
 	ReasonWorkspaceIssueResourceExists                   = "workspace_issue_resource_exists"
@@ -104,6 +122,7 @@ const (
 	ReasonWorkspaceTerminalNotRunning                    = "workspace_terminal_not_running"
 	ReasonWorkspaceTerminalUnavailable                   = "workspace_terminal_service_unavailable"
 	ReasonWorkspaceWorkbenchUnavailable                  = "workspace_workbench_service_unavailable"
+	ReasonTuttiExecutionActive                           = "tutti_execution_active"
 )
 
 type ProtocolError struct {
@@ -232,6 +251,22 @@ func EventStreamServiceUnavailable(options ...Option) *ProtocolError {
 	return ServiceUnavailable(ReasonEventStreamServiceUnavailable, options...)
 }
 
+func AgentQuickPromptServiceUnavailable(options ...Option) *ProtocolError {
+	return ServiceUnavailable(ReasonAgentQuickPromptServiceUnavailable, options...)
+}
+
+func AgentQuickPromptNotFound(options ...Option) *ProtocolError {
+	return New(StatusAgentQuickPromptNotFound, tuttigenerated.AgentQuickPromptNotFound, ReasonAgentQuickPromptNotFound, options...)
+}
+
+func AgentQuickPromptConflict(reason string, options ...Option) *ProtocolError {
+	return New(StatusAgentQuickPromptConflict, tuttigenerated.AgentQuickPromptConflict, reason, options...)
+}
+
+func AgentQuickPromptOperationFailed(options ...Option) *ProtocolError {
+	return New(StatusAgentQuickPromptFailed, tuttigenerated.AgentQuickPromptOperationFailed, ReasonAgentQuickPromptOperationFailed, options...)
+}
+
 func WorkspaceNotFound(reason string, options ...Option) *ProtocolError {
 	return New(StatusWorkspaceNotFound, tuttigenerated.WorkspaceNotFound, reason, options...)
 }
@@ -280,6 +315,23 @@ func AgentProviderUnavailable(err *agentservice.ProviderUnavailableError) *Proto
 	)
 }
 
+func AgentConfigDependencyUnavailable(err *runtimeprep.ConfigDependencyUnavailableError) *ProtocolError {
+	params := map[string]any{}
+	if err != nil {
+		params["provider"] = strings.TrimSpace(err.Provider)
+		params["configKey"] = strings.TrimSpace(err.ConfigKey)
+		params["dependencyPath"] = strings.TrimSpace(err.DependencyPath)
+		params["failureKind"] = strings.TrimSpace(err.FailureKind)
+	}
+	return New(
+		StatusWorkspaceOperationFailed,
+		tuttigenerated.WorkspaceOperationFailed,
+		ReasonAgentConfigDependencyUnavailable,
+		WithCause(err),
+		WithParams(params),
+	)
+}
+
 func PreferencesOperationFailed(options ...Option) *ProtocolError {
 	return New(StatusPreferencesOperationFailed, tuttigenerated.PreferencesOperationFailed, ReasonPreferencesOperationFailed, options...)
 }
@@ -300,6 +352,19 @@ func Classify(err error) *ProtocolError {
 	if errors.As(err, &protocolErr) {
 		return protocolErr
 	}
+	var protectedSourceErr *executionbiz.ProtectedSourceError
+	if errors.As(err, &protectedSourceErr) {
+		return New(
+			StatusWorkspaceIssueExists,
+			tuttigenerated.TuttiExecutionActive,
+			ReasonTuttiExecutionActive,
+			WithCause(err),
+			WithParams(map[string]any{
+				"workspaceId":     protectedSourceErr.WorkspaceID,
+				"protectedIssues": protectedSourceErr.Issues,
+			}),
+		)
+	}
 	var runtimeAppErr *agentruntime.AppError
 	if errors.As(err, &runtimeAppErr) {
 		reason := strings.TrimSpace(runtimeAppErr.Code)
@@ -312,6 +377,10 @@ func Classify(err error) *ProtocolError {
 	if errors.As(err, &providerUnavailableErr) {
 		return AgentProviderUnavailable(providerUnavailableErr)
 	}
+	var configDependencyErr *runtimeprep.ConfigDependencyUnavailableError
+	if errors.As(err, &configDependencyErr) {
+		return AgentConfigDependencyUnavailable(configDependencyErr)
+	}
 	var invalidModelErr *agentservice.InvalidModelError
 	if errors.As(err, &invalidModelErr) {
 		params := map[string]any{
@@ -323,7 +392,43 @@ func Classify(err error) *ProtocolError {
 		}
 		return InvalidRequest("agent.invalid_model", WithCause(err), WithParams(params))
 	}
+	var unsupportedPermissionErr *agentservice.UnsupportedPermissionModeIDError
+	if errors.As(err, &unsupportedPermissionErr) {
+		params := map[string]any{
+			"agentTargetId":    strings.TrimSpace(unsupportedPermissionErr.AgentTargetID),
+			"permissionModeId": strings.TrimSpace(unsupportedPermissionErr.PermissionModeID),
+		}
+		if len(unsupportedPermissionErr.AvailablePermissionModeIDs) > 0 {
+			params["availablePermissionModeIds"] = unsupportedPermissionErr.AvailablePermissionModeIDs
+		}
+		return InvalidRequest(
+			ReasonUnsupportedPermissionModeID,
+			WithCause(err),
+			WithParams(params),
+		)
+	}
+	var managedIssueErr *workspaceissues.ManagedIssueMutationError
+	if errors.As(err, &managedIssueErr) {
+		return WorkspaceIssueResourceExists(
+			ReasonTuttiIssueManaged,
+			WithCause(err),
+			WithParams(map[string]any{
+				"issueId":           managedIssueErr.ManagedIssueID(),
+				"sourceSessionId":   managedIssueErr.ManagedSourceSessionID(),
+				"recommendedAction": "open_source_session",
+			}),
+		)
+	}
 	switch {
+	case errors.Is(err, agentservice.ErrNotAGitRepo):
+		return InvalidRequest(ReasonNotAGitRepo, WithCause(err))
+	case errors.Is(err, agentservice.ErrGitUnavailable):
+		return ServiceUnavailable(ReasonGitUnavailable, WithCause(err))
+	case errors.Is(err, agentservice.ErrUnsupportedRepoLayout):
+		return InvalidRequest(ReasonUnsupportedRepoLayout, WithCause(err))
+	case errors.Is(err, agentservice.ErrWorktreeCreateFailed):
+		return New(StatusWorkspaceOperationFailed, tuttigenerated.WorkspaceOperationFailed, ReasonWorktreeCreateFailed,
+			WithCause(err), WithParams(map[string]any{"detail": err.Error()}))
 	case errors.Is(err, agentservice.ErrSubmitDeliveryUnknown):
 		return New(StatusWorkspaceOperationFailed, tuttigenerated.WorkspaceOperationFailed, ReasonAgentSubmitDeliveryUnknown, WithCause(err))
 	case errors.Is(err, workspacedata.ErrWorkspaceNotFound):
@@ -355,6 +460,8 @@ func Classify(err error) *ProtocolError {
 	case errors.Is(err, workspacefiles.ErrAdapterNotConfigured), errors.Is(err, workspacefiles.ErrResolverNotConfigured):
 		return WorkspaceFileServiceUnavailable(WithCause(err))
 	case errors.Is(err, workspaceissues.ErrInvalidArgument):
+		return InvalidRequest(ReasonMalformedRequest, WithCause(err))
+	case errors.Is(err, executionbiz.ErrInvalidExecution):
 		return InvalidRequest(ReasonMalformedRequest, WithCause(err))
 	case errors.Is(err, workspaceissues.ErrStoreNotConfigured):
 		return WorkspaceIssueServiceUnavailable(WithCause(err))

@@ -1,5 +1,10 @@
 import { useCallback, useRef, useState } from "react";
-import type { AgentSessionViewRef } from "./useAgentSessionTransport";
+
+export interface AgentSessionViewRef {
+  workspaceId: string | null | undefined;
+  agentSessionId: string | null | undefined;
+  origin?: string | null;
+}
 
 export interface AgentSessionPagingEntry {
   error: string | null;

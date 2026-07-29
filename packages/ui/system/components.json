@@ -13,8 +13,11 @@
   "aliases": {
     "components": "#components",
     "icons": "#icons",
-    "lib": "#lib",
     "utils": "#lib/utils",
-    "ui": "#components"
+    "ui": "#components",
+    "lib": "#lib"
+  },
+  "registries": {
+    "@diceui": "https://diceui.com/r/{style}/{name}.json"
   }
 }

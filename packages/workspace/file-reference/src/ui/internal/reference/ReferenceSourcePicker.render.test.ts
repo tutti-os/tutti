@@ -107,6 +107,40 @@ test("reference source picker renders shared folder icons and content errors", a
       "referencePicker.loadError"
     );
 
+    let retryContentCount = 0;
+    (
+      globalThis as { __referenceSourcePickerView?: unknown }
+    ).__referenceSourcePickerView = {
+      ...createFolderOnlyView(folderNode),
+      contentError: new Error("host access denied"),
+      currentEntries: [],
+      retryContent() {
+        retryContentCount += 1;
+      }
+    };
+    await act(async () => {
+      root?.render(
+        createElement(ReferenceSourcePicker, {
+          aggregator: {},
+          copy: createCopy(),
+          onClose() {},
+          onConfirm() {},
+          open: true,
+          resolveContentErrorAction: () => ({ label: "Authorize again" }),
+          workspaceId: "workspace-reference-content-error-action-test"
+        } as unknown as ReferenceSourcePickerProps)
+      );
+    });
+
+    const retryContentButton = Array.from(
+      dom.window.document.querySelectorAll("button")
+    ).find((button) => button.textContent === "Authorize again");
+    assert.ok(retryContentButton);
+    await act(async () => {
+      retryContentButton.click();
+    });
+    assert.equal(retryContentCount, 1);
+
     (
       globalThis as { __referenceSourcePickerView?: unknown }
     ).__referenceSourcePickerView = {
@@ -134,6 +168,299 @@ test("reference source picker renders shared folder icons and content errors", a
       dom.window.document.querySelector('[role="alert"]')?.textContent,
       "referencePicker.loadError"
     );
+
+    (
+      globalThis as { __referenceSourcePickerView?: unknown }
+    ).__referenceSourcePickerView = {
+      ...createFolderOnlyView(folderNode),
+      canCreateDirectory: true,
+      capabilities: { directoryCreatable: true, filterable: true },
+      filterCategories: [
+        {
+          extensions: ["png"],
+          id: "image",
+          labelKey: "referencePicker.fileTypeImage"
+        }
+      ]
+    };
+    await act(async () => {
+      root?.render(
+        createElement(ReferenceSourcePicker, {
+          aggregator: {},
+          copy: createCopy(),
+          fileManagerCopy: { t: (key: string) => key },
+          onClose() {},
+          onConfirm() {},
+          open: true,
+          purpose: "directory",
+          workspaceId: "workspace-directory-purpose-test"
+        } as unknown as ReferenceSourcePickerProps)
+      );
+    });
+
+    const bodyText = dom.window.document.body.textContent ?? "";
+    assert.match(bodyText, /directoryPicker\.title/);
+    assert.match(bodyText, /createDirectoryLabel/);
+    assert.match(bodyText, /directoryPicker\.confirm/);
+    assert.doesNotMatch(bodyText, /referencePicker\.fileTypeAll/);
+    assert.equal(
+      dom.window.document.querySelector("input")?.getAttribute("placeholder"),
+      "directoryPicker.searchPlaceholder"
+    );
+
+    let pickerCloseCount = 0;
+    await act(async () => {
+      root?.render(
+        createElement(ReferenceSourcePicker, {
+          aggregator: {},
+          copy: createCopy(),
+          fileManagerCopy: { t: (key: string) => key },
+          onClose() {
+            pickerCloseCount += 1;
+          },
+          onConfirm() {},
+          open: true,
+          purpose: "directory",
+          workspaceId: "workspace-directory-cancel-test"
+        } as unknown as ReferenceSourcePickerProps)
+      );
+    });
+
+    const createDirectoryButton = Array.from(
+      dom.window.document.querySelectorAll("button")
+    ).find((button) => button.textContent === "createDirectoryLabel");
+    assert.ok(createDirectoryButton);
+    await act(async () => {
+      createDirectoryButton.dispatchEvent(
+        new dom.window.MouseEvent("click", { bubbles: true })
+      );
+    });
+
+    const cancelCreateDirectoryButton = dom.window.document.querySelector(
+      '[data-testid="cancel-create-directory"]'
+    );
+    assert.ok(cancelCreateDirectoryButton);
+    await act(async () => {
+      cancelCreateDirectoryButton.dispatchEvent(
+        new dom.window.MouseEvent("click", { bubbles: true })
+      );
+    });
+
+    assert.equal(pickerCloseCount, 0);
+    assert.equal(
+      dom.window.document.querySelector(
+        '[data-testid="create-directory-dialog"]'
+      ),
+      null
+    );
+
+    (
+      globalThis as { __referenceSourcePickerView?: unknown }
+    ).__referenceSourcePickerView = {
+      ...createFolderOnlyView(folderNode),
+      isConfirming: true
+    };
+    await act(async () => {
+      root?.render(
+        createElement(ReferenceSourcePicker, {
+          aggregator: {},
+          copy: createCopy(),
+          onClose() {
+            pickerCloseCount += 1;
+          },
+          onConfirm() {},
+          open: true,
+          workspaceId: "workspace-reference-confirming-close-test"
+        } as unknown as ReferenceSourcePickerProps)
+      );
+    });
+
+    const pickerBackdrop =
+      dom.window.document.querySelector('[role="dialog"]')?.parentElement;
+    assert.ok(pickerBackdrop);
+    await act(async () => {
+      pickerBackdrop.dispatchEvent(
+        new dom.window.MouseEvent("click", { bubbles: true })
+      );
+      dom.window.document.dispatchEvent(
+        new dom.window.KeyboardEvent("keydown", {
+          bubbles: true,
+          key: "Escape"
+        })
+      );
+    });
+    assert.equal(pickerCloseCount, 0);
+    assert.equal(
+      dom.window.document.querySelector<HTMLButtonElement>(
+        'button[aria-label="actions.cancel"]'
+      )?.disabled,
+      true
+    );
+
+    const focusedFolderNode = folder("focused-folder", "Focused folder");
+    const fileNode = file("workspace-file", "Workspace file");
+    const createdDirectoryParents: Array<ReferenceNode | null> = [];
+    (
+      globalThis as { __referenceSourcePickerView?: unknown }
+    ).__referenceSourcePickerView = {
+      ...createFolderOnlyView(folderNode),
+      canCreateDirectory: true,
+      capabilities: { directoryCreatable: true, filterable: false },
+      currentEntries: [folderNode, fileNode],
+      createDirectory: async (parent: ReferenceNode | null) => {
+        createdDirectoryParents.push(parent);
+        return folderNode;
+      },
+      focusedNode: focusedFolderNode
+    };
+    await act(async () => {
+      root?.render(
+        createElement(ReferenceSourcePicker, {
+          aggregator: {},
+          copy: createCopy(),
+          fileManagerCopy: { t: (key: string) => key },
+          onClose() {},
+          onConfirm() {},
+          open: true,
+          purpose: "directory",
+          workspaceId: "workspace-directory-context-menu-test"
+        } as unknown as ReferenceSourcePickerProps)
+      );
+    });
+
+    const folderLabel = Array.from(
+      dom.window.document.querySelectorAll("[data-autofit-label]")
+    ).find((element) => element.textContent === "Workspace folder");
+    const folderRow = folderLabel?.closest("div");
+    assert.ok(folderRow);
+    await act(async () => {
+      folderRow.dispatchEvent(
+        new dom.window.MouseEvent("contextmenu", {
+          bubbles: true,
+          clientX: 48,
+          clientY: 64
+        })
+      );
+    });
+
+    const contextCreateDirectoryButton = dom.window.document.querySelector(
+      '[data-testid="context-create-directory"]'
+    );
+    assert.ok(contextCreateDirectoryButton);
+    await act(async () => {
+      contextCreateDirectoryButton.dispatchEvent(
+        new dom.window.MouseEvent("click", { bubbles: true })
+      );
+    });
+    assert.equal(
+      dom.window.document.querySelector(
+        '[data-testid="reference-context-menu"]'
+      ),
+      null
+    );
+    assert.ok(
+      dom.window.document.querySelector(
+        '[data-testid="create-directory-dialog"]'
+      )
+    );
+
+    const setDirectoryNameButton = dom.window.document.querySelector(
+      '[data-testid="set-directory-name"]'
+    );
+    assert.ok(setDirectoryNameButton);
+    await act(async () => {
+      setDirectoryNameButton.dispatchEvent(
+        new dom.window.MouseEvent("click", { bubbles: true })
+      );
+    });
+    const confirmCreateDirectoryButton = dom.window.document.querySelector(
+      '[data-testid="confirm-create-directory"]'
+    );
+    assert.ok(confirmCreateDirectoryButton);
+    await act(async () => {
+      confirmCreateDirectoryButton.dispatchEvent(
+        new dom.window.MouseEvent("click", { bubbles: true })
+      );
+    });
+    assert.deepEqual(createdDirectoryParents, [folderNode]);
+
+    const fileLabel = Array.from(
+      dom.window.document.querySelectorAll("[data-autofit-label]")
+    ).find((element) => element.textContent === "Workspace file");
+    const fileRow = fileLabel?.closest("div");
+    assert.ok(fileRow);
+    await act(async () => {
+      fileRow.dispatchEvent(
+        new dom.window.MouseEvent("contextmenu", { bubbles: true })
+      );
+    });
+    assert.equal(
+      dom.window.document.querySelector(
+        '[data-testid="reference-context-menu"]'
+      ),
+      null
+    );
+
+    (
+      globalThis as { __referenceSourcePickerView?: unknown }
+    ).__referenceSourcePickerView = createFolderOnlyView(folderNode);
+    await act(async () => {
+      root?.render(
+        createElement(ReferenceSourcePicker, {
+          aggregator: {},
+          copy: createCopy(),
+          fileManagerCopy: { t: (key: string) => key },
+          onClose() {},
+          onConfirm() {},
+          open: true,
+          purpose: "directory",
+          workspaceId: "workspace-directory-context-menu-disabled-test"
+        } as unknown as ReferenceSourcePickerProps)
+      );
+    });
+    const disabledFolderLabel = Array.from(
+      dom.window.document.querySelectorAll("[data-autofit-label]")
+    ).find((element) => element.textContent === "Workspace folder");
+    const disabledFolderRow = disabledFolderLabel?.closest("div");
+    assert.ok(disabledFolderRow);
+    await act(async () => {
+      disabledFolderRow.dispatchEvent(
+        new dom.window.MouseEvent("contextmenu", { bubbles: true })
+      );
+    });
+    assert.equal(
+      dom.window.document.querySelector(
+        '[data-testid="reference-context-menu"]'
+      ),
+      null
+    );
+
+    const opaqueNodeId = "f:L3dvcmtzcGFjZS8xMTEubWQ";
+    (
+      globalThis as { __referenceSourcePickerView?: unknown }
+    ).__referenceSourcePickerView = {
+      ...createFolderOnlyView(folderNode),
+      currentEntries: [],
+      isQuery: true,
+      searchQuery: "111",
+      searchResults: [file(opaqueNodeId, "111.md")]
+    };
+    await act(async () => {
+      root?.render(
+        createElement(ReferenceSourcePicker, {
+          aggregator: {},
+          copy: createCopy(),
+          onClose() {},
+          onConfirm() {},
+          open: true,
+          workspaceId: "workspace-reference-opaque-node-id-test"
+        } as unknown as ReferenceSourcePickerProps)
+      );
+    });
+
+    const searchBodyText = dom.window.document.body.textContent ?? "";
+    assert.match(searchBodyText, /111\.md/);
+    assert.doesNotMatch(searchBodyText, new RegExp(opaqueNodeId));
   } finally {
     if (root) {
       await act(async () => {
@@ -170,8 +497,6 @@ function buildReferenceSourcePickerRenderModule(tempDir: string): string {
           defaultLayout,
           defaultSize,
           disableDoubleClick,
-          htmlFrameClassName,
-          htmlTitle,
           imageAlt,
           imageFrameClassName,
           loadingIndicator,
@@ -299,8 +624,83 @@ function buildReferenceSourcePickerRenderModule(tempDir: string): string {
         }
         return createElement("span", { className: frameClassName });
       }
-      export function WorkspaceFileManagerContextMenu() {
-        return null;
+      export function WorkspaceFileManagerContextMenu({
+        contextMenu,
+        items,
+        onClose
+      }) {
+        if (!contextMenu) {
+          return null;
+        }
+        return createElement(
+          "div",
+          { "data-testid": "reference-context-menu" },
+          (items ?? []).map((item) => {
+            if (item.type !== "item") {
+              return null;
+            }
+            return createElement(
+              "button",
+              {
+                key: item.id,
+                "data-testid":
+                  item.id === "create-directory"
+                    ? "context-create-directory"
+                    : item.id,
+                type: "button",
+                onClick() {
+                  onClose();
+                  void item.onSelect();
+                }
+              },
+              item.label
+            );
+          })
+        );
+      }
+      export function WorkspaceFileManagerCreateDialog({
+        copy,
+        dialog,
+        onClose,
+        onConfirm,
+        onNameChange
+      }) {
+        if (!dialog) {
+          return null;
+        }
+        return createElement(
+          "div",
+          { "data-testid": "create-directory-dialog" },
+          createElement(
+            "button",
+            {
+              "data-testid": "set-directory-name",
+              type: "button",
+              onClick() {
+                onNameChange("child");
+              }
+            },
+            "set-name"
+          ),
+          createElement(
+            "button",
+            {
+              "data-testid": "cancel-create-directory",
+              type: "button",
+              onClick: onClose
+            },
+            copy.t("cancelLabel")
+          ),
+          createElement(
+            "button",
+            {
+              "data-testid": "confirm-create-directory",
+              type: "button",
+              onClick: onConfirm
+            },
+            copy.t("createActionLabel")
+          )
+        );
       }
       export function resolveRevealInFolderLabel() {
         return "Reveal in Folder";
@@ -311,6 +711,40 @@ function buildReferenceSourcePickerRenderModule(tempDir: string): string {
           reportEntryIconViewportEnter() {},
           reportEntryIconViewportLeave() {}
         };
+      }
+    `
+  );
+  const contextMenuHelperUrl = writeMock(
+    tempDir,
+    "reference-context-menu-helper.mjs",
+    `
+      export function buildReferenceSourcePickerContextMenuItems(input) {
+        const items = [];
+        if (input.showOpenAction) {
+          items.push({
+            type: "item",
+            id: "open",
+            label: input.fileManagerCopy.t("openLabel"),
+            onSelect: input.onOpen
+          });
+        }
+        if (input.showCreateDirectoryAction) {
+          items.push({
+            type: "item",
+            id: "create-directory",
+            label: input.fileManagerCopy.t("createDirectoryLabel"),
+            onSelect: input.onCreateDirectory
+          });
+        }
+        if (input.showRevealInFolderAction) {
+          items.push({
+            type: "item",
+            id: "reveal",
+            label: "Reveal in Folder",
+            onSelect: input.onRevealInFolder
+          });
+        }
+        return items;
       }
     `
   );
@@ -402,10 +836,15 @@ function buildReferenceSourcePickerRenderModule(tempDir: string): string {
       /import \{\s*WorkspaceFileEntryIcon[\s\S]*?\} from "@tutti-os\/workspace-file-manager";/,
       `import {
         WorkspaceFileEntryIcon,
+        WorkspaceFileManagerCreateDialog,
         WorkspaceFileManagerContextMenu,
         resolveRevealInFolderLabel,
         useWorkspaceFileEntryIconUrls
       } from "${fileManagerUrl}";`
+    )
+    .replace(
+      /import \{ buildReferenceSourcePickerContextMenuItems \} from "\.\/referenceSourcePickerContextMenu\.tsx";/,
+      `import { buildReferenceSourcePickerContextMenuItems } from "${contextMenuHelperUrl}";`
     )
     .replace(
       new RegExp(
@@ -455,10 +894,12 @@ function createFolderOnlyView(node: ReferenceNode) {
     activeTabLabel: "Workspace",
     breadcrumb: [],
     capabilities: { filterable: false },
+    canCreateDirectory: false,
     childrenByKey: {},
     confirm: async () => {},
     contentError: null,
     currentEntries: [node],
+    createDirectory: async () => node,
     expandedKeys: {},
     filterCategories: [],
     focusedNode: null,
@@ -482,6 +923,7 @@ function createFolderOnlyView(node: ReferenceNode) {
     revealNode: async () => {},
     searchQuery: "",
     searchResults: [],
+    selectTarget: async () => false,
     selectGroup: () => {},
     selectedGroupKey: "workspace:root",
     selection: [],
@@ -522,6 +964,15 @@ function folder(nodeId: string, displayName: string): ReferenceNode {
     displayName,
     hasChildren: true,
     kind: "folder",
+    ref: { nodeId, sourceId: "workspace" }
+  };
+}
+
+function file(nodeId: string, displayName: string): ReferenceNode {
+  return {
+    displayName,
+    hasChildren: false,
+    kind: "file",
     ref: { nodeId, sourceId: "workspace" }
   };
 }

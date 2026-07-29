@@ -18,7 +18,27 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	if err != nil {
 		return ExecResult{}, err
 	}
+	canonicalSubmit, err := newCanonicalSubmitFact(
+		input.ClientSubmitID,
+		input.CanonicalSubmitOccurredAtUnixMS,
+	)
+	if err != nil {
+		return ExecResult{}, err
+	}
+	if canonicalSubmit.occurredAtUnixMS > 0 {
+		observeEventUnixMS(canonicalSubmit.occurredAtUnixMS)
+		ctx = withCanonicalSubmitFact(ctx, canonicalSubmit)
+	}
 	metadata := cloneExecMetadata(input.Metadata)
+	delete(metadata, "clientSubmitId")
+	if clientSubmitID := strings.TrimSpace(input.ClientSubmitID); clientSubmitID != "" {
+		if metadata == nil {
+			metadata = make(map[string]any)
+		}
+		// Runtime adapters still consume execution context metadata internally;
+		// derive this compatibility projection from the typed host contract.
+		metadata["clientSubmitId"] = clientSubmitID
+	}
 	logAgentSubmitTrace("runtime.exec.entered", session, "", metadata, map[string]any{
 		"content_block_count": len(input.Content),
 	})
@@ -46,7 +66,7 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 		}
 	}
 	if input.Guidance {
-		return c.guideActiveTurn(ctx, session, adapter, content, displayPrompt, metadata)
+		return c.guideActiveTurn(ctx, session, adapter, content, displayPrompt, metadata, input.CapabilityRefs)
 	}
 	previousSession := session
 	titleUpdated := false
@@ -58,12 +78,23 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 		session.UpdatedAtUnixMS = unixMS(now())
 		titleUpdated = true
 	}
-	turnID := newID()
+	turnID := strings.TrimSpace(input.TurnID)
+	if turnID == "" {
+		// Internal callers that do not cross the daemon service boundary retain
+		// backwards-compatible allocation. External service submissions always
+		// preallocate and durably bind this canonical id before dispatch.
+		turnID = newID()
+	}
 	runCtx, cancel := context.WithCancel(context.Background())
 	if len(metadata) > 0 {
 		runCtx = context.WithValue(runCtx, execMetadataContextKey{}, metadata)
 	}
-	startedSession, err := c.beginTurn(session, turnID, cancel)
+	runCtx = withCanonicalSubmitFact(runCtx, canonicalSubmit)
+	tuttiModeSnapshot := normalizeTuttiModeTurnSnapshot(input.TuttiModeSnapshot)
+	runCtx = withTuttiModeTurnSnapshot(runCtx, tuttiModeSnapshot)
+	// beginTurn returns the zero session on failure; keep the real session
+	// for the goal-control fallback below.
+	startedSession, err := c.beginTurnWithTuttiModeSnapshot(session, turnID, cancel, tuttiModeSnapshot)
 	if err != nil {
 		cancel()
 		return ExecResult{}, err
@@ -73,7 +104,7 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	c.mu.Lock()
 	provisional := c.provisionalSessions[key]
 	c.mu.Unlock()
-	submitEvents := submittedTurnActivityEvents(session, turnID)
+	submitEvents := submittedTurnActivityEvents(session, turnID, input.CapabilityRefs)
 	if titleUpdated {
 		submitEvents = append([]activityshared.Event{newSessionTitleActivityEvent(session, session.Title)}, submitEvents...)
 	}
@@ -121,6 +152,7 @@ func (c *Controller) guideActiveTurn(
 	content []PromptContentBlock,
 	displayPrompt string,
 	metadata map[string]any,
+	capabilityRefs []activityshared.CapabilityReference,
 ) (ExecResult, error) {
 	guidanceAdapter, ok := adapter.(ActiveTurnGuidanceAdapter)
 	if !ok {
@@ -134,6 +166,10 @@ func (c *Controller) guideActiveTurn(
 	if len(metadata) > 0 {
 		runCtx = context.WithValue(ctx, execMetadataContextKey{}, metadata)
 	}
+	// Guidance belongs to the already-running canonical turn. Reuse the
+	// snapshot frozen when that turn began rather than observing a later badge
+	// toggle from the session.
+	runCtx = withTuttiModeTurnSnapshot(runCtx, c.activeTurnTuttiModeSnapshot(session.RoomID, session.AgentSessionID))
 	var emittedMu sync.Mutex
 	var emitted []activityshared.Event
 	emit := func(next []activityshared.Event) {
@@ -159,12 +195,18 @@ func (c *Controller) guideActiveTurn(
 	remaining := unemittedActivityEvents(events, emitted)
 	emittedMu.Unlock()
 	c.applySessionEventsByAgentSessionID(session.AgentSessionID, remaining)
-	logAgentSubmitTrace("runtime.exec.guidance", session, turnID, metadata, map[string]any{
-		"activity_event_count": len(events),
-	})
 	if refreshed, ok := c.get(session.RoomID, session.AgentSessionID); ok {
 		session = refreshed
 	}
+	if provenancePatch, ok := guidanceTurnCapabilityReferenceStatePatch(session, turnID, capabilityRefs); ok {
+		// Capability provenance is metadata on the existing turn, not a
+		// lifecycle event. Persist it through the reporter and let the
+		// post-commit canonical turn_update invalidate AgentGUI.
+		c.enqueueSessionStatePatchReport(ctx, session, provenancePatch)
+	}
+	logAgentSubmitTrace("runtime.exec.guidance", session, turnID, metadata, map[string]any{
+		"activity_event_count": len(events),
+	})
 	result := ExecResult{
 		AgentSessionID: session.AgentSessionID,
 		Status:         ExecStatusStarted,
@@ -190,6 +232,7 @@ type GoalControlInput struct {
 	GoalRevision       int64
 	RepairEpoch        int64
 	SubmissionMetadata map[string]any
+	RequireLive        bool
 }
 
 type GoalControlResult struct {
@@ -217,8 +260,14 @@ func (c *Controller) GoalControl(ctx context.Context, input GoalControlInput) (G
 	if !ok {
 		return GoalControlResult{}, fmt.Errorf("agent provider does not support goals")
 	}
-	if err := c.ensureLiveAdapterSession(ctx, session, adapter); err != nil {
-		return GoalControlResult{}, err
+	if input.RequireLive {
+		if probe, ok := adapter.(LiveSessionProbeAdapter); ok && !probe.HasLiveSession(session) {
+			return GoalControlResult{}, ErrSessionDisconnected
+		}
+	} else {
+		if err := c.ensureLiveAdapterSession(ctx, session, adapter); err != nil {
+			return GoalControlResult{}, err
+		}
 	}
 	adapterResult, err := goalAdapter.ApplyGoal(ctx, session, GoalApplyInput{
 		Action: input.Action, Objective: input.Objective,

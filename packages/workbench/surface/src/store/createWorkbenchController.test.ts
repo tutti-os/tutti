@@ -19,6 +19,44 @@ test("notifies subscribers when commands change state", () => {
   assert.equal(notifications, 1);
 });
 
+test("does not notify subscribers when focusing the focused visible node", () => {
+  const controller = createWorkbenchController();
+  controller.commands.openNode(makeNode("a"));
+  const focusedSnapshot = controller.getSnapshot();
+  let notifications = 0;
+  const unsubscribe = controller.subscribe(() => {
+    notifications += 1;
+  });
+
+  controller.commands.focusNode("a");
+
+  assert.equal(controller.getSnapshot(), focusedSnapshot);
+  assert.equal(notifications, 0);
+
+  controller.commands.minimizeNode("a");
+  controller.commands.focusNode("a");
+  assert.equal(controller.getSnapshot().nodes[0]?.isMinimized, false);
+  assert.equal(notifications, 2);
+  unsubscribe();
+});
+
+test("reports surface measurements even when the measured size is unchanged", () => {
+  let measurements = 0;
+  const controller = createWorkbenchController(
+    {},
+    {
+      onSurfaceSizeMeasured() {
+        measurements += 1;
+      }
+    }
+  );
+
+  controller.commands.setSurfaceSize({ width: 1024, height: 720 });
+  controller.commands.setSurfaceSize({ width: 1280, height: 800 });
+
+  assert.equal(measurements, 2);
+});
+
 test("commands match dispatch paths", () => {
   const viaCommand = createWorkbenchController();
   const viaDispatch = createWorkbenchController();

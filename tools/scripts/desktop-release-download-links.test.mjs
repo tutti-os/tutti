@@ -2,6 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  GITHUB_RELEASE_BODY_MAX_LENGTH,
+  RELEASE_NOTES_TRUNCATION_NOTICE
+} from "../../apps/desktop/scripts/lib/githubReleaseBody.mjs";
+import {
   SECTION_END,
   SECTION_START,
   buildUpdatedReleaseBody
@@ -92,4 +96,23 @@ test("desktop release notes remove the managed section when no mirrored base URL
   assert.doesNotMatch(nextBody, /Direct Downloads/);
   assert.doesNotMatch(nextBody, /old\.example/);
   assert.match(nextBody, /More text/);
+});
+
+test("desktop release notes preserve direct downloads while trimming oversized generated notes", () => {
+  const nextBody = buildUpdatedReleaseBody({
+    assetNames: ["Tutti-1.0.0-mac-universal.dmg"],
+    existingBody: Array.from(
+      { length: 2_000 },
+      (_, index) => `- generated note ${index}: ${"x".repeat(80)}`
+    ).join("\n"),
+    releaseAssetBaseUrl: "https://downloads.example.com/tutti",
+    releaseTag: "v1.0.0"
+  });
+
+  assert.ok(nextBody.length <= GITHUB_RELEASE_BODY_MAX_LENGTH);
+  assert.match(nextBody, /generated note 0:/);
+  assert.doesNotMatch(nextBody, /generated note 1999:/);
+  assert.match(nextBody, /### Direct Downloads/);
+  assert.match(nextBody, /Tutti-1\.0\.0-mac-universal\.dmg/);
+  assert.ok(nextBody.includes(RELEASE_NOTES_TRUNCATION_NOTICE));
 });

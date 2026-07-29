@@ -1,4 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import {
   dirname,
   extname,
@@ -10,6 +10,9 @@ import {
 
 const relativeImportPattern =
   /(?:import|export)\s+(?:type\s+)?(?:[^'";]*?\s+from\s+)?["'](\.[^"']+)["']|import\s*\(\s*["'](\.[^"']+)["']\s*\)/g;
+const moduleRelativeAssetPattern =
+  /new URL\(\s*["'](\.[^"']+)["']\s*,\s*import\.meta\.url\s*\)/g;
+const javascriptExtensions = new Set([".cjs", ".js", ".mjs"]);
 
 const extensionCandidates = [".ts", ".tsx", ".js", ".mjs", ".cjs", ".json"];
 
@@ -47,6 +50,31 @@ export async function missingPackedRelativeImports(packageRoot, entryPath) {
   return [...missing].sort();
 }
 
+export async function missingPackedModuleRelativeAssets(packageRoot) {
+  const normalizedRoot = resolve(packageRoot);
+  const files = await listFiles(normalizedRoot);
+  const missing = [];
+
+  for (const file of files) {
+    if (!javascriptExtensions.has(extname(file))) {
+      continue;
+    }
+
+    const source = await readFile(file, "utf8");
+    moduleRelativeAssetPattern.lastIndex = 0;
+    for (const match of source.matchAll(moduleRelativeAssetPattern)) {
+      const specifier = match[1];
+      const cleanSpecifier = specifier.split(/[?#]/, 1)[0];
+      const assetPath = resolve(dirname(file), cleanSpecifier);
+      if (!(await isFile(assetPath)) || !isInside(normalizedRoot, assetPath)) {
+        missing.push(`${asPackagePath(normalizedRoot, file)} -> ${specifier}`);
+      }
+    }
+  }
+
+  return missing.sort();
+}
+
 function relativeImportSpecifiers(source) {
   const specifiers = [];
   relativeImportPattern.lastIndex = 0;
@@ -82,6 +110,22 @@ async function isFile(path) {
   } catch {
     return false;
   }
+}
+
+async function listFiles(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await listFiles(path)));
+    } else if (entry.isFile()) {
+      files.push(path);
+    }
+  }
+
+  return files;
 }
 
 function isInside(root, path) {

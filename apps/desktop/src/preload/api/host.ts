@@ -193,6 +193,12 @@ export function createHostDesktopApi(): DesktopHostApi {
           input
         );
       },
+      capturePreviewImages(input) {
+        return invokeDesktopApi(
+          desktopIpcChannels.host.window.capturePreviewImages,
+          input
+        );
+      },
       minimize(): Promise<void> {
         return invokeDesktopApi(desktopIpcChannels.host.window.minimize);
       },
@@ -218,6 +224,18 @@ export function createHostDesktopApi(): DesktopHostApi {
         return () => {
           ipcRenderer.removeListener(
             desktopIpcChannels.host.window.closeRequest,
+            handler
+          );
+        };
+      },
+      onLayout(listener): () => void {
+        const handler = (_event: IpcRendererEvent, payload: unknown) => {
+          listener(payload as Parameters<typeof listener>[0]);
+        };
+        ipcRenderer.on(desktopIpcChannels.host.window.layout, handler);
+        return () => {
+          ipcRenderer.removeListener(
+            desktopIpcChannels.host.window.layout,
             handler
           );
         };

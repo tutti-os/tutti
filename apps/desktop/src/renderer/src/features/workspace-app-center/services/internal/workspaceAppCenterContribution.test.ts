@@ -5,7 +5,8 @@ import type { ReporterEventInput } from "../../../analytics/services/reporterSer
 import type { IWorkspaceAppCenterService } from "../workspaceAppCenterService.interface.ts";
 import type {
   WorkspaceAppCenterApp,
-  WorkspaceAppCenterReadableStoreState
+  WorkspaceAppCenterReadableStoreState,
+  WorkspaceAppCenterViewState
 } from "@tutti-os/workspace-app-center";
 import {
   shouldPreserveWorkspaceAppWebviewDuringHandoff,
@@ -17,11 +18,13 @@ import {
   readWorkspaceAppIdFromNodeId,
   reportWorkspaceAppOpenedFromDockEntry,
   resolveWorkspaceAppCenterLaunchRequest,
+  workspaceAppCenterNodeID,
   workspaceAppDockEntryId,
   workspaceAppInlineBrowserNodeId,
   workspaceAppWebviewInstanceId,
   workspaceAppWebviewTypeID
 } from "./workspaceAppCenterLaunchRequest.ts";
+import { createWorkspaceAppWebviewExternalStateSource } from "./workspaceAppCenterExternalState.ts";
 
 test("workspace app node ids resolve app ids from dock, inline, and webview node formats", () => {
   assert.equal(
@@ -39,6 +42,49 @@ test("workspace app node ids resolve app ids from dock, inline, and webview node
     "group-chat"
   );
   assert.equal(readWorkspaceAppIdFromNodeId("browser:browser-1"), null);
+});
+
+test("workspace app external state source preserves unchanged snapshot references", () => {
+  const app = createApp({
+    appId: "ready",
+    launchUrl: "http://127.0.0.1:3000"
+  });
+  const source = createWorkspaceAppWebviewExternalStateSource({
+    appCenterService: createAppCenterService([app], {
+      getViewState: () => ({
+        activeAppTab: "recommended",
+        openAppId: null,
+        openAppIds: []
+      })
+    }),
+    runtimeStore: {
+      getSnapshot: () => ({}),
+      subscribe: () => () => {}
+    }
+  });
+  const webviewRequest = {
+    instanceId: workspaceAppWebviewInstanceId("ready"),
+    instanceKey: workspaceAppWebviewInstanceId("ready"),
+    nodeId: `${workspaceAppWebviewTypeID}:${workspaceAppWebviewInstanceId("ready")}`,
+    typeId: workspaceAppWebviewTypeID,
+    workspaceId: "workspace-1"
+  };
+  const appCenterRequest = {
+    instanceId: workspaceAppCenterNodeID,
+    instanceKey: workspaceAppCenterNodeID,
+    nodeId: workspaceAppCenterNodeID,
+    typeId: workspaceAppCenterNodeID,
+    workspaceId: "workspace-1"
+  };
+
+  assert.equal(
+    source.getNodeState(webviewRequest),
+    source.getNodeState(webviewRequest)
+  );
+  assert.equal(
+    source.getNodeState(appCenterRequest),
+    source.getNodeState(appCenterRequest)
+  );
 });
 
 test("workspace app contribution reports app open from dock launch requests", async () => {
@@ -60,8 +106,8 @@ test("workspace app contribution reports app open from dock launch requests", as
     }
   });
 
-  assert.equal(result?.typeId, workspaceAppWebviewTypeID);
-  assert.equal(result?.dockEntryId, workspaceAppDockEntryId("ready"));
+  assert.equal(result?.typeId, "workspace-app-center");
+  assert.equal(result?.dockEntryId, "workspace-app-center");
   assert.equal(reporterCalls.length, 1);
   assert.deepEqual(
     reporterCalls[0]?.map(({ clientTS: _clientTS, ...event }) => event),
@@ -96,12 +142,7 @@ test("workspace app launch request does not apply app-specific minimum webview s
   });
 
   assert.equal(result?.sizeConstraints, undefined);
-  assert.deepEqual(result?.defaultFrame, {
-    height: 680,
-    width: 1040,
-    x: 170,
-    y: 64
-  });
+  assert.equal(result?.defaultFrame, undefined);
 });
 
 test("workspace app launch request preserves prepared payload previous status", async () => {
@@ -128,7 +169,7 @@ test("workspace app launch request preserves prepared payload previous status", 
     }
   });
 
-  assert.equal(result?.typeId, workspaceAppWebviewTypeID);
+  assert.equal(result?.typeId, "workspace-app-center");
   assert.deepEqual(
     reporterCalls[0]?.map(({ clientTS: _clientTS, ...event }) => event),
     [
@@ -672,6 +713,11 @@ function createAppCenterService(
   apps: readonly WorkspaceAppCenterApp[],
   overrides: Partial<IWorkspaceAppCenterService> = {}
 ): IWorkspaceAppCenterService {
+  let viewState: WorkspaceAppCenterViewState = {
+    activeAppTab: "recommended",
+    openAppId: null,
+    openAppIds: []
+  };
   return {
     _serviceBrand: undefined,
     store: {
@@ -679,7 +725,12 @@ function createAppCenterService(
     } as WorkspaceAppCenterReadableStoreState,
     prepareAppLaunch: async ({ appId }: { appId: string }) =>
       apps.find((app) => app.appId === appId) ?? null,
-    getViewState: () => ({ activeAppTab: "apps" }),
+    getViewState: () => viewState,
+    setViewState: ({
+      state
+    }: Parameters<IWorkspaceAppCenterService["setViewState"]>[0]) => {
+      viewState = { ...viewState, ...state };
+    },
     subscribe: () => () => {},
     ...overrides
   } as unknown as IWorkspaceAppCenterService;

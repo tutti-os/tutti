@@ -23,7 +23,6 @@ import {
 import type { DesktopI18nKey } from "@shared/i18n";
 import { useTranslation, type TranslateFn } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
-import { useAccountService } from "../../workspace-workbench/ui/useAccountService.ts";
 import type {
   AgentProviderStatusPendingAction,
   AgentProviderStatusSnapshot,
@@ -36,7 +35,6 @@ import {
   type DesktopAgentProviderManageRowAction,
   type DesktopAgentProviderManageRowStatus
 } from "./desktopAgentProviderManageDialogModel.ts";
-import { isDesktopAgentAccountLoginAction } from "./desktopAgentAccountLoginAction.ts";
 
 interface DesktopAgentProviderManageDialogProps {
   agentProviderStatusService: IAgentProviderStatusService;
@@ -61,7 +59,6 @@ const providerLabelKeys = {
     "workspace.workbenchDesktop.agentProviders.manageProviderClaudeCode",
   codex: "workspace.workbenchDesktop.agentProviders.manageProviderCodex",
   cursor: "workspace.workbenchDesktop.agentProviders.manageProviderCursor",
-  hermes: "workspace.workbenchDesktop.agentProviders.manageProviderHermes",
   nexight: "workspace.workbenchDesktop.agentProviders.manageProviderTutti",
   openclaw: "workspace.workbenchDesktop.agentProviders.manageProviderOpenClaw",
   opencode: "workspace.workbenchDesktop.agentProviders.manageProviderOpenCode",
@@ -69,7 +66,7 @@ const providerLabelKeys = {
     "workspace.workbenchDesktop.agentProviders.manageProviderTuttiAgent"
 } as const satisfies Record<WorkspaceAgentProvider, DesktopI18nKey>;
 
-const statusLabelKeys = {
+export const statusLabelKeys = {
   auth_required:
     "workspace.workbenchDesktop.agentProviders.manageStatusAuthRequired",
   available: "workspace.workbenchDesktop.agentProviders.manageStatusAvailable",
@@ -92,7 +89,6 @@ export function DesktopAgentProviderManageDialog({
   workspaceId
 }: DesktopAgentProviderManageDialogProps) {
   const { t } = useTranslation();
-  const { service: accountService } = useAccountService();
   const rowElementsRef = useRef(
     new Map<WorkspaceAgentProvider, HTMLDivElement>()
   );
@@ -192,23 +188,17 @@ export function DesktopAgentProviderManageDialog({
       }
 
       try {
-        if (
-          row.primaryActionId === "login" &&
-          isDesktopAgentAccountLoginAction(
-            agentProviderStatusService.getStatus(row.provider)
-          )
-        ) {
-          await accountService.startLogin();
-        } else {
-          await agentProviderStatusService.runAction(
-            row.provider,
-            row.primaryActionId,
-            {
+        await agentProviderStatusService.runAction(
+          row.provider,
+          row.primaryActionId,
+          {
+            context: {
               workbenchHost,
               workspaceId
-            }
-          );
-        }
+            },
+            origin: "user"
+          }
+        );
       } catch {
         // The status service owns user-facing error notifications.
       } finally {
@@ -222,13 +212,7 @@ export function DesktopAgentProviderManageDialog({
         );
       }
     },
-    [
-      accountService,
-      agentProviderStatusService,
-      onOpenChange,
-      workbenchHost,
-      workspaceId
-    ]
+    [agentProviderStatusService, onOpenChange, workbenchHost, workspaceId]
   );
 
   return (
@@ -454,7 +438,7 @@ function resolveActionTooltipKey(
   return "workspace.workbenchDesktop.agentProviders.manageActionUnavailableTooltip";
 }
 
-function resolveStatusDotTone(
+export function resolveStatusDotTone(
   status: DesktopAgentProviderManageRowStatus
 ): "amber" | "blue" | "green" | "neutral" {
   switch (status) {

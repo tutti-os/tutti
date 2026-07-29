@@ -12,6 +12,10 @@ import {
 import { booleanValue, envObject, stringValue } from "./runtimeValues.ts";
 import { sidecarSessionSettings } from "./sessionSettings.ts";
 import { SessionRuntime } from "./sessionRuntime.ts";
+import {
+  forkClaudeSession,
+  inspectClaudeForkCheckpoints
+} from "./sessionFork.ts";
 
 const sessions = new Map<string, SessionRuntime>();
 
@@ -64,9 +68,34 @@ export async function handleRequest(
                 repairEpoch: numberValue(payload.goalRepairEpoch),
                 action: stringValue(payload.goalAction) as "set" | "clear"
               }
-            : undefined
+            : undefined,
+          stringValue(payload.hostContext),
+          stringValue(payload.promptCorrelationId)
         );
         emit({ id, type: "ok" });
+        return;
+      }
+      case "inspect_fork_checkpoints": {
+        const payload = request.payload ?? {};
+        const result = await inspectClaudeForkCheckpoints({
+          sessionId: stringValue(payload.providerSessionId),
+          cwd: stringValue(payload.cwd)
+        });
+        emit({ id, type: "ok", payload: result });
+        return;
+      }
+      case "fork_session": {
+        const payload = request.payload ?? {};
+        const result = await forkClaudeSession({
+          sessionId: stringValue(payload.providerSessionId),
+          providerTurnId: stringValue(payload.providerTurnId),
+          providerTurnIds: Array.isArray(payload.providerTurnIds)
+            ? payload.providerTurnIds.map(stringValue)
+            : [],
+          cwd: stringValue(payload.cwd),
+          title: stringValue(payload.title)
+        });
+        emit({ id, type: "ok", payload: result });
         return;
       }
       case "guide": {
@@ -85,6 +114,17 @@ export async function handleRequest(
         const session = requireSession(stringValue(payload.agentSessionId));
         const canceled = await session.cancel(stringValue(payload.turnId));
         emit({ id, type: "ok", payload: { canceled } });
+        return;
+      }
+      case "stop_task": {
+        const payload = request.payload ?? {};
+        const session = requireSession(stringValue(payload.agentSessionId));
+        const stopped = await session.stopTask(
+          stringValue(payload.taskId),
+          stringValue(payload.toolCallId) ||
+            stringValue(payload.parentToolUseId)
+        );
+        emit({ id, type: "ok", payload: { stopped } });
         return;
       }
       case "submit_interactive": {
@@ -137,7 +177,19 @@ export async function handleRequest(
       id,
       type: "error",
       payload: {
-        error: errorMessage(error)
+        error: errorMessage(error),
+        ...(error &&
+        typeof error === "object" &&
+        "deliveryDisposition" in error &&
+        typeof error.deliveryDisposition === "string"
+          ? { deliveryDisposition: error.deliveryDisposition }
+          : {}),
+        ...(error &&
+        typeof error === "object" &&
+        "stage" in error &&
+        typeof error.stage === "string"
+          ? { stage: error.stage }
+          : {})
       }
     });
   }

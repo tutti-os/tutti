@@ -3,7 +3,140 @@ package providerregistry
 import (
 	"slices"
 	"testing"
+
+	canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
+
+func TestMigratedProviderIdentityAndPlanStrategyMatchCanonicalContract(t *testing.T) {
+	for _, descriptor := range Migrated() {
+		identity, found := canonical.FindProviderIdentity(descriptor.Identity.ID)
+		if !found {
+			t.Fatalf("provider %q missing canonical identity", descriptor.Identity.ID)
+		}
+		if descriptor.Identity.ID != identity.ID || descriptor.Identity.DisplayName != identity.DisplayName ||
+			descriptor.Identity.IconKey != identity.IconKey || descriptor.Identity.LocaleKey != identity.LocaleKey ||
+			!slices.Equal(descriptor.Identity.Aliases, identity.Aliases) {
+			t.Fatalf("provider %q identity drifted from canonical: %#v != %#v", descriptor.Identity.ID, descriptor.Identity, identity)
+		}
+		strategy, found := canonical.ProviderPlanDecisionStrategy(descriptor.Identity.ID)
+		if !found || descriptor.ComposerProfile.PlanDecisionStrategy != strategy {
+			t.Fatalf("provider %q plan strategy = %q; canonical = %q, %v", descriptor.Identity.ID, descriptor.ComposerProfile.PlanDecisionStrategy, strategy, found)
+		}
+	}
+}
+
+func TestMigratedProviderUpdateSupportMatrixIsDescriptorDriven(t *testing.T) {
+	want := map[string]UpdateDescriptor{
+		CodexProviderID:      {Capability: UpdateCapabilitySupported, Source: UpdateSourceNPM, Strategy: UpdateStrategyManagedNPM, PackageName: "@openai/codex", BinaryName: "codex", IncludeOptional: true},
+		TuttiAgentProviderID: {Capability: UpdateCapabilitySupported, Source: UpdateSourceNPM, Strategy: UpdateStrategyManagedNPM, PackageName: "@tutti-os/tutti-agent", BinaryName: "tutti-agent", IncludeOptional: true},
+		ClaudeCodeProviderID: {Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonOfficialScript},
+		CursorProviderID:     {Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonOfficialScript},
+		OpenCodeProviderID:   {Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonOfficialScript},
+		OpenClawProviderID:   {Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonUnmanagedSource},
+		NexightProviderID:    {Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonProvider},
+	}
+	for provider, expected := range want {
+		descriptor, ok := Find(provider)
+		if !ok {
+			t.Fatalf("Find(%q) = false", provider)
+		}
+		if descriptor.Status.Update != expected {
+			t.Fatalf("provider %q update = %#v, want %#v", provider, descriptor.Status.Update, expected)
+		}
+	}
+}
+
+func TestMigratedTuttiAgentDescriptorRequiresRefreshCapableVersion(t *testing.T) {
+	descriptor, ok := Find(TuttiAgentProviderID)
+	if !ok {
+		t.Fatal("Find(tutti-agent) ok = false")
+	}
+	if descriptor.Status.MinVersion != TuttiAgentMinVersion {
+		t.Fatalf("Status.MinVersion = %q, want %q", descriptor.Status.MinVersion, TuttiAgentMinVersion)
+	}
+	if descriptor.Status.StaticSpecResolverKind != StaticSpecResolverKindManagedNode {
+		t.Fatalf(
+			"Status.StaticSpecResolverKind = %q, want %q",
+			descriptor.Status.StaticSpecResolverKind,
+			StaticSpecResolverKindManagedNode,
+		)
+	}
+	if descriptor.Status.Install.PackageName != "@tutti-os/tutti-agent" ||
+		descriptor.Status.Install.BinaryName != "tutti-agent" ||
+		descriptor.Status.Install.RecommendedVersion != TuttiAgentRecommendedVersion ||
+		!descriptor.Status.Install.IncludeOptional {
+		t.Fatalf("Status.Install = %#v", descriptor.Status.Install)
+	}
+	if slices.Contains(descriptor.ComposerProfile.Capabilities, CapabilityRateLimits) {
+		t.Fatal("Tutti Agent must not advertise ChatGPT rate limits")
+	}
+	if descriptor.ComposerProfile.ReasoningEffort ||
+		descriptor.ComposerProfile.Speed ||
+		descriptor.ComposerProfile.ConfigOptionIDs.Reasoning != "" ||
+		descriptor.ComposerProfile.ConfigOptionIDs.Speed != "" {
+		t.Fatalf("Tutti Agent must hide provider-wide reasoning and speed controls: %#v", descriptor.ComposerProfile)
+	}
+}
+
+func TestValidateRejectsInvalidMinimumVersionFloor(t *testing.T) {
+	for _, version := range []string{"latest", "1.0.0-beta.1", "1.0.0+build.1"} {
+		t.Run("invalid floor "+version, func(t *testing.T) {
+			descriptor := tuttiAgentDescriptor()
+			descriptor.Status.MinVersion = version
+			if err := Validate(descriptor); err == nil {
+				t.Fatal("Validate() error = nil")
+			}
+		})
+	}
+	t.Run("missing repair installer", func(t *testing.T) {
+		descriptor := tuttiAgentDescriptor()
+		descriptor.Status.Install = InstallerDescriptor{}
+		if err := Validate(descriptor); err == nil {
+			t.Fatal("Validate() error = nil")
+		}
+	})
+	t.Run("missing recommended version", func(t *testing.T) {
+		descriptor := tuttiAgentDescriptor()
+		descriptor.Status.Install.RecommendedVersion = ""
+		if err := Validate(descriptor); err == nil {
+			t.Fatal("Validate() error = nil")
+		}
+	})
+}
+
+func TestValidateRejectsUnsafeProviderUpdateDeclarations(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*UpdateDescriptor)
+	}{
+		{name: "missing capability", mutate: func(update *UpdateDescriptor) { update.Capability = "" }},
+		{name: "unsupported source", mutate: func(update *UpdateDescriptor) { update.Source = "official_script" }},
+		{name: "missing package", mutate: func(update *UpdateDescriptor) { update.PackageName = "" }},
+		{name: "unsupported with execution", mutate: func(update *UpdateDescriptor) {
+			*update = UpdateDescriptor{Capability: UpdateCapabilityUnsupported, Source: UpdateSourceNPM, UnsupportedReason: UpdateUnsupportedReasonProvider}
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			descriptor := codexDescriptor()
+			test.mutate(&descriptor.Status.Update)
+			if err := Validate(descriptor); err == nil {
+				t.Fatal("Validate() error = nil")
+			}
+		})
+	}
+	t.Run("official script cannot claim managed update", func(t *testing.T) {
+		descriptor := claudeCodeDescriptor()
+		descriptor.Status.Update = UpdateDescriptor{
+			Capability: UpdateCapabilitySupported,
+			Source:     UpdateSourceNPM, Strategy: UpdateStrategyManagedNPM,
+			PackageName: "@anthropic-ai/claude-code", BinaryName: "claude",
+		}
+		if err := Validate(descriptor); err == nil {
+			t.Fatal("Validate() error = nil")
+		}
+	})
+}
 
 func TestMigratedCodexDescriptorIsComplete(t *testing.T) {
 	if err := ValidateMigrated(); err != nil {
@@ -40,6 +173,9 @@ func TestMigratedCodexDescriptorIsComplete(t *testing.T) {
 	if descriptor.ComposerProfile.ConfigOptionIDs.Speed != "service_tier" {
 		t.Fatalf("Speed config option = %q", descriptor.ComposerProfile.ConfigOptionIDs.Speed)
 	}
+	if !slices.Equal(descriptor.ComposerProfile.SpeedValues, []string{"standard", "fast"}) || descriptor.ComposerProfile.DefaultSpeed != "standard" {
+		t.Fatalf("Speed profile = %#v, default %q", descriptor.ComposerProfile.SpeedValues, descriptor.ComposerProfile.DefaultSpeed)
+	}
 	if descriptor.Status.MinVersion != CodexMinVersion {
 		t.Fatalf("Status.MinVersion = %q", descriptor.Status.MinVersion)
 	}
@@ -50,6 +186,9 @@ func TestMigratedCodexDescriptorIsComplete(t *testing.T) {
 	}
 	if descriptor.ComposerProfile.CapabilityCatalog.Kind != CapabilityCatalogKindCodexAppServer {
 		t.Fatalf("CapabilityCatalog = %#v", descriptor.ComposerProfile.CapabilityCatalog)
+	}
+	if !slices.Contains(descriptor.ComposerProfile.Capabilities, CapabilityGoalPause) {
+		t.Fatalf("Composer capabilities missing Codex goal pause: %#v", descriptor.ComposerProfile.Capabilities)
 	}
 	effects := descriptor.ComposerProfile.SlashCommandPolicy.CommandEffects
 	if len(effects) != 7 {
@@ -72,7 +211,6 @@ func TestMigratedProviderSetIsComplete(t *testing.T) {
 		ClaudeCodeProviderID: true,
 		CodexProviderID:      true,
 		CursorProviderID:     true,
-		HermesProviderID:     true,
 		NexightProviderID:    true,
 		OpenClawProviderID:   true,
 		OpenCodeProviderID:   true,
@@ -86,6 +224,17 @@ func TestMigratedProviderSetIsComplete(t *testing.T) {
 	}
 	if len(want) != 0 {
 		t.Fatalf("providers missing from migrated registry: %#v", want)
+	}
+}
+
+func TestExternalizedProvidersAreNotBuiltInTargets(t *testing.T) {
+	for _, provider := range []string{"hermes", "kimi-code"} {
+		if _, ok := Find(provider); ok {
+			t.Fatalf("Find(%q) = true, want signed Agent Extension ownership", provider)
+		}
+		if normalized, ok := NormalizeOpenProviderID("acp:" + provider); !ok || normalized != "acp:"+provider {
+			t.Fatalf("NormalizeOpenProviderID(acp:%s) = %q, %v", provider, normalized, ok)
+		}
 	}
 }
 
@@ -118,7 +267,6 @@ func TestMigratedProviderSidecarPoliciesAreDescriptorOwned(t *testing.T) {
 		TuttiAgentProviderID: {ExecutionEnvironment: SidecarExecutionEnvironmentLocalIPC},
 		OpenCodeProviderID:   {ExecutionEnvironment: SidecarExecutionEnvironmentLocalIPC},
 		NexightProviderID:    {ExecutionEnvironment: SidecarExecutionEnvironmentLocalIPC, SkillRoot: ".nexight/skills"},
-		HermesProviderID:     {ExecutionEnvironment: SidecarExecutionEnvironmentLocalIPC, SkillRoot: ".agent_context/skills"},
 		OpenClawProviderID:   {ExecutionEnvironment: SidecarExecutionEnvironmentLocalIPC, SkillRoot: ".openclaw/skills"},
 	}
 	for _, descriptor := range Migrated() {
@@ -134,13 +282,12 @@ func TestMigratedProviderSidecarPoliciesAreDescriptorOwned(t *testing.T) {
 
 func TestMigratedProviderDesktopIntegrationIsDescriptorOwned(t *testing.T) {
 	want := map[string]DesktopIntegrationDescriptor{
-		CodexProviderID:      {Managed: true, ManagedOrder: 2, StatusProbePriority: 1, UsageProbeKind: DesktopUsageProbeCodex, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 1},
+		CodexProviderID:      {Managed: true, ManagedOrder: 2, StatusProbePriority: 1, UsageProbeKind: DesktopUsageProbeCodex, CommandNetworkAccess: true, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 1},
 		ClaudeCodeProviderID: {Managed: true, ManagedOrder: 1, StatusProbePriority: 2, UsageProbeKind: DesktopUsageProbeClaudeCode, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 2},
 		CursorProviderID:     {Managed: true, ManagedOrder: 3, StatusProbePriority: 3, RuntimeProbeFallback: DesktopRuntimeProbeFallbackDirect, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 3},
-		TuttiAgentProviderID: {Managed: true, ManagedOrder: 4, StatusProbePriority: 4, VisibilityGate: DesktopVisibilityGateTuttiAgent, InstallBootstrap: true, RefreshOnAccountChange: true},
+		TuttiAgentProviderID: {Managed: true, ManagedOrder: 4, StatusProbePriority: 4, VisibilityGate: DesktopVisibilityGateTuttiAgent, CommandNetworkAccess: true, InstallBootstrap: true, RefreshOnAccountChange: true, DeveloperLogs: true},
 		OpenCodeProviderID:   {Managed: true, ManagedOrder: 5, StatusProbePriority: 5, DefaultProviderEligible: true, DefaultProviderPriority: 4},
 		NexightProviderID:    {},
-		HermesProviderID:     {Managed: true, ManagedOrder: 6, StatusProbePriority: 6},
 		OpenClawProviderID:   {Managed: true, ManagedOrder: 7, StatusProbePriority: 7, UnavailableDockOrderOffset: 200},
 	}
 	for _, descriptor := range Migrated() {
@@ -151,6 +298,14 @@ func TestMigratedProviderDesktopIntegrationIsDescriptorOwned(t *testing.T) {
 	}
 	if len(want) != 0 {
 		t.Fatalf("provider desktop integrations missing: %#v", want)
+	}
+}
+
+func TestValidateRejectsDesktopCommandNetworkAccessForNonAppServerRuntime(t *testing.T) {
+	descriptor := claudeCodeDescriptor()
+	descriptor.Desktop.CommandNetworkAccess = true
+	if err := Validate(descriptor); err == nil {
+		t.Fatal("Validate() error = nil")
 	}
 }
 
@@ -293,6 +448,59 @@ func TestResolveProviderProjectionsDoNotExposeDescriptors(t *testing.T) {
 	}
 }
 
+func TestResolveModelPlanProtocolOnlyForPreparedProviders(t *testing.T) {
+	tests := []struct {
+		provider string
+		want     ModelPlanProtocol
+	}{
+		{provider: CodexProviderID, want: ModelPlanProtocolOpenAI},
+		{provider: ClaudeCodeProviderID, want: ModelPlanProtocolAnthropic},
+		{provider: TuttiAgentProviderID, want: ModelPlanProtocolOpenAI},
+		{provider: OpenCodeProviderID, want: ModelPlanProtocolOpenAI},
+	}
+	for _, test := range tests {
+		protocol, ok := ResolveModelPlanProtocol(test.provider)
+		if !ok || protocol != test.want {
+			t.Fatalf("ResolveModelPlanProtocol(%q) = %q, %v; want %q, true", test.provider, protocol, ok, test.want)
+		}
+	}
+	for _, provider := range []string{CursorProviderID, "unknown"} {
+		if protocol, ok := ResolveModelPlanProtocol(provider); ok {
+			t.Fatalf("ResolveModelPlanProtocol(%q) = %q, true; want unresolved", provider, protocol)
+		}
+	}
+	addressing, ok := ResolveModelPlanModelAddressing(OpenCodeProviderID)
+	if !ok || addressing != ModelPlanModelAddressingProviderPrefixed {
+		t.Fatalf("ResolveModelPlanModelAddressing(opencode) = %q, %v; want provider_prefixed", addressing, ok)
+	}
+	adapter, ok := ResolveModelPlanEndpointAdapter(CodexProviderID)
+	if !ok || adapter != ModelPlanEndpointAdapterResponsesToChatGateway {
+		t.Fatalf("ResolveModelPlanEndpointAdapter(codex) = %q, %v; want responses_to_chat_gateway", adapter, ok)
+	}
+	for _, provider := range []string{ClaudeCodeProviderID, TuttiAgentProviderID, OpenCodeProviderID, "unknown"} {
+		if adapter, ok := ResolveModelPlanEndpointAdapter(provider); ok {
+			t.Fatalf("ResolveModelPlanEndpointAdapter(%q) = %q, true; want direct endpoint", provider, adapter)
+		}
+	}
+}
+
+func TestResolveNativeSubscriptionTargetUsesProviderDescriptor(t *testing.T) {
+	tests := []struct {
+		protocol ModelPlanProtocol
+		provider string
+		target   string
+	}{
+		{protocol: ModelPlanProtocolOpenAI, provider: CodexProviderID, target: CodexTargetID},
+		{protocol: ModelPlanProtocolAnthropic, provider: ClaudeCodeProviderID, target: ClaudeCodeTargetID},
+	}
+	for _, test := range tests {
+		resolved, ok := ResolveNativeSubscriptionTarget(test.protocol)
+		if !ok || resolved.ProviderID != test.provider || resolved.AgentTargetID != test.target {
+			t.Fatalf("ResolveNativeSubscriptionTarget(%q) = %#v, %v", test.protocol, resolved, ok)
+		}
+	}
+}
+
 func TestValidateRejectsUnsupportedDescriptorStrategies(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -306,6 +514,13 @@ func TestValidateRejectsUnsupportedDescriptorStrategies(t *testing.T) {
 		{name: "runtime command", mutate: func(value *ProviderDescriptor) { value.Runtime.Command[1] = " " }},
 		{name: "runtime client info", mutate: func(value *ProviderDescriptor) { value.Runtime.ClientInfoName = " " }},
 		{name: "runtime auth message", mutate: func(value *ProviderDescriptor) { value.Runtime.AuthRequiredMessage = " " }},
+		{name: "model plan protocol", mutate: func(value *ProviderDescriptor) { value.Runtime.Endpoint.ModelPlanProtocol = "poison" }},
+		{name: "model plan endpoint adapter", mutate: func(value *ProviderDescriptor) { value.Runtime.Endpoint.ModelPlanEndpointAdapter = "poison" }},
+		{name: "model plan capability missing", mutate: func(value *ProviderDescriptor) {
+			value.ComposerProfile.Capabilities = slices.DeleteFunc(value.ComposerProfile.Capabilities, func(capability string) bool {
+				return capability == CapabilityModelPlanBinding
+			})
+		}},
 		{name: "status kind", mutate: func(value *ProviderDescriptor) { value.Status.Kind = "poison" }},
 		{name: "status auth command", mutate: func(value *ProviderDescriptor) { value.Status.AuthStatusCommand[0] = " " }},
 		{name: "status auth marker", mutate: func(value *ProviderDescriptor) { value.Status.AuthMarkerPaths[0] = " " }},

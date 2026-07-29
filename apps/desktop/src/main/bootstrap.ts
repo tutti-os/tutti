@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, protocol } from "electron";
 import {
   initializeDesktopEnvironment,
   resolveDesktopDevelopmentAppName,
@@ -37,15 +37,11 @@ import { getSystemDesktopLocale } from "./desktopLocale";
 import { openDesktopWorkspaceAppFolder } from "./host/workspaceAppFolderAccess";
 import { openPerfMonitorDevToolsWindow } from "./windows/perfMonitorDevToolsWindow.ts";
 import { createTranslator } from "../shared/i18n/index.ts";
-import {
-  registerTuttiAssetProtocol,
-  registerTuttiAssetProtocolScheme
-} from "./host/tuttiAssetProtocol.ts";
+import { registerTuttiAssetProtocol } from "./host/tuttiAssetProtocol.ts";
+import { desktopCustomProtocolSchemes } from "./host/desktopCustomProtocolSchemes.ts";
 import { createWorkspaceFileIconCacheStore } from "./host/workspaceFileIconCacheStore.ts";
-import {
-  registerWorkspaceFileIconProtocol,
-  registerWorkspaceFileIconProtocolScheme
-} from "./host/workspaceFileIconProtocol.ts";
+import { registerWorkspaceFileIconProtocol } from "./host/workspaceFileIconProtocol.ts";
+import { applyDesktopElectronPlatformCompatibility } from "./electronPlatformCompatibility.ts";
 
 function envFlagEnabled(value: string | undefined): boolean {
   return /^(1|true|yes|on)$/iu.test(value?.trim() ?? "");
@@ -79,13 +75,13 @@ function focusPrimaryDesktopWindow(): void {
 }
 
 export async function bootstrapDesktopApp(): Promise<void> {
+  applyDesktopElectronPlatformCompatibility(app.commandLine);
   applyElectronDiagnosticSwitches();
   initializeDesktopEnvironment({
     appVersion: app.getVersion(),
     isPackaged: app.isPackaged
   });
-  registerTuttiAssetProtocolScheme();
-  registerWorkspaceFileIconProtocolScheme();
+  protocol.registerSchemesAsPrivileged(desktopCustomProtocolSchemes);
   const loginCallbackUrl = resolveDesktopLoginCallbackUrl();
   const protocolClientRegistration =
     resolveDesktopLoginProtocolClientRegistration({
@@ -212,10 +208,11 @@ export async function bootstrapDesktopApp(): Promise<void> {
         desktopAppServices.preferences,
         desktopAppServices.tuttidClient
       ).clearLogs(),
-    exportDeveloperLogs: () =>
+    exportDeveloperLogs: (input) =>
       exportDesktopDeveloperLogsAndNotify(
         desktopAppServices.preferences,
-        desktopAppServices.tuttidClient
+        desktopAppServices.tuttidClient,
+        input
       ),
     getLocale: () => desktopAppServices.preferences.getLocale(),
     logger,
@@ -236,7 +233,7 @@ export async function bootstrapDesktopApp(): Promise<void> {
         : undefined
   });
 
-  registerIpcHandlers({
+  const ipcDisposables = await registerIpcHandlers({
     daemonEndpoint: desktopAppServices.daemonEndpoint,
     fileDialogs: desktopAppServices.fileDialogs,
     logger,
@@ -287,6 +284,7 @@ export async function bootstrapDesktopApp(): Promise<void> {
     logger,
     tuttid: desktopAppServices.tuttid,
     disposables: [
+      ...ipcDisposables,
       hostPreferencesEventStream,
       agentPowerSaveBlocker,
       {

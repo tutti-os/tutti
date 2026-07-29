@@ -105,6 +105,7 @@ Reading rules:
 - `renderer/src/app/windows/*` are renderer window composition shells such as `dashboard` and `workspace`
 - `renderer/src/features/*` are reusable renderer feature modules
 - `renderer/src/features/*/services/internal/**` is private implementation for the owning feature
+- `renderer/src/features/workspace-file-preview` owns the workspace-scoped preview presenter registry and fallback policy; file-manager, Workbench, and Agent surfaces consume its public service contract directly instead of owning parallel routing or adding preview-open proxy methods to another feature service
 - desktop business-facing capabilities should usually surface through `ipc/*` and `preload/api/*`
 - `shared/contracts/*` is for stable desktop-local bridge contracts, not a general utility bucket
 - `shared/errors/*` owns desktop-local error codes and non-Electron error classification shared across desktop layers
@@ -356,6 +357,14 @@ React components should stay close to DOM concerns: render snapshots, handle DOM
 React effects are escape hatches for synchronizing with real external systems such as browser APIs, timers, subscriptions, and imperative third-party widgets. They should not become the default place for feature orchestration, derived state, command sequencing, or cross-feature coordination.
 
 When a component needs an effect to keep local state in sync with other state, prefer moving that flow into the owning service, reducer, selector, or a small subscription hook. UI event handlers should call service commands; they should not directly mutate stores or coordinate business workflows.
+
+Polling snapshots are events, not component lifecycle identities. A renderer
+feature that reacts to a request plus a polling service must keep the request
+session and its idempotency state in a window-scoped service/controller. Do not
+put an object derived from the latest polling snapshot into an effect dependency
+chain that attaches a workflow, resets session state, or starts an external
+command. Host-handle binding may use a lifecycle effect, but polling and render
+churn must be unable to replay the command.
 
 ## Renderer Render Stability Rule
 

@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
 
@@ -14,7 +15,6 @@ const (
 	ProviderTuttiAgent = providerregistry.TuttiAgentProviderID
 	ProviderCursor     = providerregistry.CursorProviderID
 	ProviderNexight    = providerregistry.NexightProviderID
-	ProviderHermes     = providerregistry.HermesProviderID
 	ProviderOpenClaw   = providerregistry.OpenClawProviderID
 	ProviderOpenCode   = providerregistry.OpenCodeProviderID
 
@@ -53,6 +53,7 @@ const (
 	messageStreamStateFailed    = "failed"
 
 	StreamEventMessageUpdate     = "message_update"
+	StreamEventMessageDelta      = "message_delta"
 	StreamEventStatePatch        = "state_patch"
 	StreamEventAvailableCommands = "available_commands_update"
 	StreamEventConfigOptions     = "config_options_update"
@@ -82,6 +83,7 @@ type ResumeInput struct {
 	AgentTargetID     string
 	Provider          string
 	ProviderSessionID string
+	Resumable         bool
 	CWD               string
 	Env               []string
 	Title             string
@@ -104,16 +106,114 @@ type CloseInput struct {
 	AgentSessionID string
 }
 
-type ExecInput struct {
-	RoomID           string
-	AgentSessionID   string
-	Content          []PromptContentBlock
-	DisplayPrompt    string
-	InitialTitle     string
-	InitialTitleBase string
-	Metadata         map[string]any
-	Guidance         bool
+// SessionForkCapabilities reports provider-native fork boundaries supported by
+// the exact runtime currently attached to a session.
+type SessionForkCapabilities struct {
+	DriverKind                   string   `json:"driverKind,omitempty"`
+	DriverVersion                string   `json:"driverVersion,omitempty"`
+	StateBindingMode             string   `json:"stateBindingMode,omitempty"`
+	DeterministicTargetSessionID bool     `json:"deterministicTargetSessionId,omitempty"`
+	FullSession                  bool     `json:"fullSession"`
+	ThroughTurn                  bool     `json:"throughTurn"`
+	ThroughProviderTurnIDs       []string `json:"throughProviderTurnIds,omitempty"`
+	ThroughProviderTurnIDsKnown  bool     `json:"throughProviderTurnIdsKnown,omitempty"`
 }
+
+// SessionForkInput identifies a provider source and optional inclusive
+// provider-turn boundary. ProviderTurnID is deliberately distinct from the
+// canonical WorkspaceAgentTurn id.
+type SessionForkInput struct {
+	Source                  Session  `json:"-"`
+	ProviderTurnID          string   `json:"providerTurnId,omitempty"`
+	ProviderTurnIDs         []string `json:"providerTurnIds,omitempty"`
+	TargetProviderSessionID string   `json:"targetProviderSessionId,omitempty"`
+	TargetTitle             string   `json:"targetTitle,omitempty"`
+}
+
+type SessionForkDeliveryDisposition string
+
+const (
+	SessionForkDeliveryNotStarted SessionForkDeliveryDisposition = "not_started"
+	SessionForkDeliveryRejected   SessionForkDeliveryDisposition = "rejected"
+	SessionForkDeliveryUnknown    SessionForkDeliveryDisposition = "unknown"
+	SessionForkDeliveryAccepted   SessionForkDeliveryDisposition = "accepted"
+)
+
+// SessionForkResult contains only provider-native durable identity. Canonical
+// session creation and history copying are owned by the host.
+type SessionForkResult struct {
+	ProviderSessionID           string                         `json:"providerSessionId"`
+	ForkedFromProviderSessionID string                         `json:"forkedFromProviderSessionId"`
+	ThroughProviderTurnID       string                         `json:"throughProviderTurnId,omitempty"`
+	TargetProviderTurnIDs       []string                       `json:"targetProviderTurnIds,omitempty"`
+	StateBindingMode            string                         `json:"stateBindingMode,omitempty"`
+	StateBindingReceipt         string                         `json:"stateBindingReceipt,omitempty"`
+	DeliveryDisposition         SessionForkDeliveryDisposition `json:"deliveryDisposition"`
+}
+
+type ExecInput struct {
+	RoomID         string
+	AgentSessionID string
+	TurnID         string
+	// ClientSubmitID is a typed host identity. The controller may project it
+	// into adapter execution metadata, but callers must not encode it there.
+	ClientSubmitID                  string
+	CanonicalSubmitOccurredAtUnixMS int64
+	CapabilityRefs                  []CapabilityReference
+	TuttiModeSnapshot               *TuttiModeTurnSnapshot
+	Content                         []PromptContentBlock
+	DisplayPrompt                   string
+	InitialTitle                    string
+	InitialTitleBase                string
+	Metadata                        map[string]any
+	Guidance                        bool
+}
+
+// SubmitProvenanceInput describes the canonical user submit that an adapter
+// has already accepted. It is reported separately from Exec so waiting for
+// durable provenance never happens while Exec holds the session lifecycle
+// lock.
+type SubmitProvenanceInput struct {
+	RoomID                          string
+	AgentSessionID                  string
+	TurnID                          string
+	ClientSubmitID                  string
+	CanonicalSubmitOccurredAtUnixMS int64
+	Content                         []PromptContentBlock
+	DisplayPrompt                   string
+	Guidance                        bool
+}
+
+type CapabilityReference = activityshared.CapabilityReference
+
+const (
+	TuttiModeStateActive   = "active"
+	TuttiModeStateInactive = "inactive"
+)
+
+// TuttiModeTurnSnapshot is the immutable runtime projection of the durable
+// TuttiModeActivation revision selected for one canonical turn. It carries
+// facts only; provider-facing instruction text is rendered inside this
+// package so callers cannot smuggle arbitrary prompt content through it.
+type TuttiModeTurnSnapshot struct {
+	ActivationID      string
+	RevisionID        string
+	Revision          int64
+	State             string
+	Source            string
+	PreferenceVersion int
+	// Effect and Speed are the user-selected outcome-quality and
+	// completion-speed preferences captured by the exact activation revision.
+	Effect int
+	Speed  int
+	// OrchestrationIntensity is the legacy single-axis alias of Effect.
+	//
+	// Deprecated: use Effect and Speed with PreferenceVersion set to
+	// TuttiModePreferenceVersionEffectSpeed.
+	OrchestrationIntensity int
+}
+
+const TuttiModePreferenceVersionEffectSpeed = 1
 
 type CancelInput struct {
 	RoomID             string
@@ -215,9 +315,11 @@ type PromptContentBlock struct {
 type Session struct {
 	RoomID             string              `json:"roomId"`
 	AgentSessionID     string              `json:"agentSessionId"`
+	RootAgentSessionID string              `json:"rootAgentSessionId,omitempty"`
 	AgentTargetID      string              `json:"agentTargetId,omitempty"`
 	Provider           string              `json:"provider"`
 	ProviderSessionID  string              `json:"providerSessionId"`
+	Resumable          bool                `json:"resumable"`
 	CWD                string              `json:"cwd,omitempty"`
 	Env                []string            `json:"-"`
 	Status             string              `json:"status"`
@@ -262,6 +364,7 @@ type SessionStateSnapshot struct {
 	AgentTargetID      string                    `json:"agentTargetId,omitempty"`
 	Provider           string                    `json:"provider"`
 	ProviderSessionID  string                    `json:"providerSessionId,omitempty"`
+	Resumable          bool                      `json:"resumable"`
 	Status             string                    `json:"status"`
 	TurnLifecycle      *TurnLifecycle            `json:"turnLifecycle,omitempty"`
 	SubmitAvailability *SubmitAvailability       `json:"submitAvailability,omitempty"`
@@ -386,6 +489,15 @@ func nextEventUnixMS() int64 {
 		}
 		if lastEventUnixMS.CompareAndSwap(last, current) {
 			return current
+		}
+	}
+}
+
+func observeEventUnixMS(value int64) {
+	for value > 0 {
+		last := lastEventUnixMS.Load()
+		if value <= last || lastEventUnixMS.CompareAndSwap(last, value) {
+			return
 		}
 	}
 }

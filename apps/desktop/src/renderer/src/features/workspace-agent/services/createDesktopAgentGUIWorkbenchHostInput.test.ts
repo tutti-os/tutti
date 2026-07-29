@@ -16,7 +16,6 @@ import type { WorkspaceUserProject } from "@tutti-os/workspace-user-project/cont
 import type { ReporterEventInput } from "@renderer/features/analytics/services/reporterService.interface.ts";
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
 import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project";
-import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
 import {
   USER_PROJECT_REFERENCE_SOURCE_ID,
   WORKSPACE_FILE_SOURCE_ID
@@ -97,7 +96,8 @@ test("desktop agent GUI workbench host input reuses an injected agent host api",
         "workspace-issue",
         "agent-session",
         "workspace-app",
-        "agent-target"
+        "agent-target",
+        "workspace-model"
       ],
       surface: "composer",
       target: "agent-gui",
@@ -133,7 +133,7 @@ test("desktop agent GUI workbench host input reuses workspace runtime services",
   );
 });
 
-test("desktop agent GUI preserves dropped system file and folder references", async () => {
+test("desktop agent GUI references paths and prepares in-memory external files", async () => {
   const droppedFileA = new File(["a"], "report.pdf", {
     type: "application/pdf"
   });
@@ -142,17 +142,38 @@ test("desktop agent GUI preserves dropped system file and folder references", as
   });
   const droppedFolder = new File([], "assets");
   const resolvedFiles: File[][] = [];
+  const archiveRequests: Parameters<
+    DesktopHostFilesApi["archiveAgentPromptFile"]
+  >[0][] = [];
   const hostInput = createDesktopAgentGUIWorkbenchHostInput({
-    hostFilesApi: createHostFilesApi(),
+    hostFilesApi: {
+      ...createHostFilesApi(),
+      async archiveAgentPromptFile(input) {
+        archiveRequests.push(input);
+        return {
+          name: input.displayName ?? "attachment",
+          path: `/prompt-assets/${input.displayName ?? "attachment"}`,
+          sizeBytes: 1
+        };
+      }
+    },
     tuttidClient: createTuttidClient(),
     platformApi: createPlatformApi({
       resolveDroppedEntries(files) {
         resolvedFiles.push([...files]);
-        return [
-          { kind: "file", path: "/Users/local/Downloads/report.pdf" },
-          { kind: "file", path: "/Users/local/Downloads/notes.txt" },
-          { kind: "folder", path: "/Users/local/Downloads/assets" }
-        ];
+        return files.map((file) =>
+          file === droppedFileA
+            ? {
+                kind: "file" as const,
+                path: "/Users/local/Downloads/report.pdf"
+              }
+            : file === droppedFolder
+              ? {
+                  kind: "folder" as const,
+                  path: "/Users/local/Downloads/assets"
+                }
+              : { kind: "file" as const, path: "" }
+        );
       }
     }),
     richTextAtService: createRichTextAtService({ providers: [] }),
@@ -162,36 +183,59 @@ test("desktop agent GUI preserves dropped system file and folder references", as
   });
 
   assert.deepEqual(
-    await hostInput.resolveDroppedFileReferences([
+    hostInput.resolveExternalPromptEntries([
       droppedFileA,
       droppedFileB,
       droppedFolder
     ]),
     [
       {
-        displayName: "report.pdf",
-        hostPath: "/Users/local/Downloads/report.pdf",
-        kind: "file",
-        path: "/Users/local/Downloads/report.pdf",
-        sourceId: "host-local-file"
+        sourceIndex: 0,
+        disposition: "reference",
+        reference: {
+          displayName: "report.pdf",
+          hostPath: "/Users/local/Downloads/report.pdf",
+          kind: "file",
+          path: "/Users/local/Downloads/report.pdf"
+        }
       },
+      { sourceIndex: 1, disposition: "prepare" },
       {
-        displayName: "notes.txt",
-        hostPath: "/Users/local/Downloads/notes.txt",
-        kind: "file",
-        path: "/Users/local/Downloads/notes.txt",
-        sourceId: "host-local-file"
-      },
-      {
-        displayName: "assets",
-        kind: "folder",
-        path: "/Users/local/Downloads/assets",
-        sourceId: "host-local-file"
+        sourceIndex: 2,
+        disposition: "reference",
+        reference: {
+          displayName: "assets",
+          hostPath: "/Users/local/Downloads/assets",
+          kind: "folder",
+          path: "/Users/local/Downloads/assets"
+        }
       }
     ]
   );
+  assert.deepEqual(await hostInput.prepareExternalPromptFiles([droppedFileB]), [
+    {
+      sourceIndex: 0,
+      status: "prepared",
+      file: {
+        mimeType: "text/plain",
+        name: "notes.txt",
+        path: "/prompt-assets/notes.txt",
+        sizeBytes: 1,
+        uploadStatus: "uploaded"
+      }
+    }
+  ]);
   assert.deepEqual(resolvedFiles, [
-    [droppedFileA, droppedFileB, droppedFolder]
+    [droppedFileA, droppedFileB, droppedFolder],
+    [droppedFileB]
+  ]);
+  assert.deepEqual(archiveRequests, [
+    {
+      dataBase64: "Yg==",
+      displayName: "notes.txt",
+      mimeType: "text/plain",
+      workspaceID: workspaceId
+    }
   ]);
 });
 
@@ -221,7 +265,7 @@ test("desktop agent GUI workbench host input creates the default agent host api"
   );
 });
 
-test("desktop agent GUI workbench host input opens workspace references through the file manager canvas preview first", async () => {
+test("desktop agent GUI workbench host input opens workspace references through the preview surface host first", async () => {
   const calls: string[] = [];
   const hostInput = createDesktopAgentGUIWorkbenchHostInput({
     hostFilesApi: {
@@ -235,12 +279,17 @@ test("desktop agent GUI workbench host input opens workspace references through 
     richTextAtService: createRichTextAtService(),
     runtimeApi: createRuntimeApi(),
     workspaceAgentActivityService: createWorkspaceAgentActivityService([]),
-    workspaceFileManagerService: createWorkspaceFileManagerService({
-      async openCanvasFilePreview(workspaceId, target) {
-        calls.push(`preview:${workspaceId}:${target.path}:${target.fileKind}`);
-        return true;
+    workspaceFilePreviewSurfaceHost: {
+      async present(workspaceId, target) {
+        calls.push(
+          `preview:${workspaceId}:${target.path}:${target.previewKind}`
+        );
+        return {
+          presented: true,
+          unsupportedFallbackNotification: "show"
+        };
       }
-    }),
+    },
     workspaceId
   });
 
@@ -252,7 +301,7 @@ test("desktop agent GUI workbench host input opens workspace references through 
   assert.deepEqual(calls, ["preview:workspace-1:/workspace/image.png:image"]);
 });
 
-test("desktop agent GUI workbench host input opens references in the system default application when configured", async () => {
+test("desktop agent GUI workbench host input opens references in the system default application without a preview presenter", async () => {
   const calls: string[] = [];
   const hostInput = createDesktopAgentGUIWorkbenchHostInput({
     hostFilesApi: {
@@ -266,13 +315,6 @@ test("desktop agent GUI workbench host input opens references in the system defa
     richTextAtService: createRichTextAtService(),
     runtimeApi: createRuntimeApi(),
     workspaceAgentActivityService: createWorkspaceAgentActivityService([]),
-    workspaceFileManagerService: createWorkspaceFileManagerService({
-      async openCanvasFilePreview() {
-        calls.push("preview");
-        return true;
-      }
-    }),
-    workspaceFilePreviewMode: "system-default",
     workspaceId
   });
 
@@ -564,17 +606,18 @@ test("desktop agent GUI workbench host input tracks runtime prompt sends", async
     workspaceId
   });
 
-  await hostInput.agentActivityRuntime.sendInput({
+  const sendInput = {
     clientSubmitId: "submit-runtime-send-1",
     workspaceId,
     agentSessionId: "session-runtime-send-1",
-    content: [
-      {
-        type: "text",
-        text: "/review [src/App.tsx](mention://file/src%2FApp.tsx?workspaceId=workspace-1)"
-      }
-    ]
-  });
+    content: [{ type: "text" as const, text: "Expanded runtime prompt" }],
+    displayPrompt:
+      "/review [src/App.tsx](mention://file/src%2FApp.tsx?workspaceId=workspace-1)",
+    submitDiagnostics: { queued: true }
+  };
+
+  await hostInput.agentActivityRuntime.sendInput(sendInput);
+  await hostInput.agentActivityRuntime.sendInput(sendInput);
 
   assert.deepEqual(reporterCalls, [
     [
@@ -586,7 +629,7 @@ test("desktop agent GUI workbench host input tracks runtime prompt sends", async
           conversation_index: 1,
           has_file_mention: true,
           has_slash_command: true,
-          is_queued: false,
+          is_queued: true,
           provider: "codex"
         }
       }
@@ -785,19 +828,26 @@ test("desktop agent GUI workbench host input tracks runtime new session activati
     workspaceId
   });
 
-  await hostInput.agentActivityRuntime.activateSession({
+  const activationInput = {
     workspaceId,
     agentSessionId: "session-runtime-start-1",
     agentTargetId: "local:codex",
     clientSubmitId: "submit-runtime-start-1",
     cwd: "/workspace",
-    initialContent: [{ type: "text", text: "Track initial prompt" }],
-    mode: "new",
+    initialContent: [
+      { type: "text" as const, text: "Expanded initial runtime prompt" }
+    ],
+    initialDisplayPrompt:
+      "/review [src/App.tsx](mention://file/src%2FApp.tsx?workspaceId=workspace-1)",
+    mode: "new" as const,
     settings: {
       model: "gpt-5",
       permissionModeId: "auto"
     }
-  });
+  };
+
+  await hostInput.agentActivityRuntime.activateSession(activationInput);
+  await hostInput.agentActivityRuntime.activateSession(activationInput);
 
   assert.deepEqual(reporterCalls, [
     [
@@ -821,8 +871,8 @@ test("desktop agent GUI workbench host input tracks runtime new session activati
         params: {
           agent_session_id: "session-runtime-start-1",
           conversation_index: 1,
-          has_file_mention: false,
-          has_slash_command: false,
+          has_file_mention: true,
+          has_slash_command: true,
           is_queued: false,
           provider: "codex"
         }
@@ -1399,18 +1449,6 @@ function createPlatformApi(
   };
 }
 
-function createWorkspaceFileManagerService(input: {
-  openCanvasFilePreview: IWorkspaceFileManagerService["openCanvasFilePreview"];
-}): Pick<
-  IWorkspaceFileManagerService,
-  "openCanvasFilePreview" | "resolveEntryIconUrl"
-> {
-  return {
-    openCanvasFilePreview: input.openCanvasFilePreview,
-    resolveEntryIconUrl: async () => null
-  };
-}
-
 function createRuntimeApi(
   input: {
     terminalDiagnostics?: Array<
@@ -1419,6 +1457,34 @@ function createRuntimeApi(
   } = {}
 ): DesktopRuntimeApi {
   return {
+    async getAgentSessionReplayPlayback() {
+      return {
+        active: false,
+        paused: false,
+        speed: 1,
+        timingMode: "realtime"
+      };
+    },
+    async getAgentSessionReplayStatus() {
+      return { active: false };
+    },
+    async launchAgentSessionReplay() {
+      return { runId: "replay-run-1" };
+    },
+    async setAgentSessionReplayPlayback() {
+      return {
+        active: false,
+        paused: false,
+        speed: 1,
+        timingMode: "realtime"
+      };
+    },
+    async sendAgentSessionReplayControl() {
+      return;
+    },
+    async waitForAgentSessionReplay() {
+      return { runId: "replay-run-1" };
+    },
     async getBackendConfig() {
       return {
         accessToken: "token-1",
@@ -1455,6 +1521,7 @@ function userProject(
     id,
     label,
     path,
+    pinnedAtUnixMs: 0,
     sectionKey: `project:${path}`,
     updatedAtUnixMs: 1
   };
@@ -1466,6 +1533,7 @@ function agentGUIUserProject(project: WorkspaceUserProject): {
   label: string;
   lastUsedAtUnixMs?: number;
   path: string;
+  pinnedAtUnixMs: number;
   sectionKey?: string;
   updatedAtUnixMs?: number;
 } {
@@ -1479,6 +1547,7 @@ function agentGUIUserProject(project: WorkspaceUserProject): {
       ? { lastUsedAtUnixMs: project.lastUsedAtUnixMs }
       : {}),
     path: project.path,
+    pinnedAtUnixMs: project.pinnedAtUnixMs,
     ...(project.sectionKey === undefined
       ? {}
       : { sectionKey: project.sectionKey }),
@@ -1518,6 +1587,8 @@ function createWorkspaceUserProjectService(
     isNoProjectPath() {
       return false;
     },
+    async moveProject() {},
+    async pinProject() {},
     rememberNoProjectPath() {},
     async prepareSelection() {
       return {
@@ -1614,7 +1685,7 @@ function createWorkspaceAgentActivityService(
       };
     },
     async deleteSession() {
-      return { removed: true };
+      return { cleanupFailed: false, removed: true };
     },
     async renameSession(input) {
       return {
@@ -1630,7 +1701,7 @@ function createWorkspaceAgentActivityService(
       return {
         effectiveSettings: input.settings ?? {},
         provider: input.provider ?? "codex"
-      };
+      } as never;
     },
     async updateSessionSettings(input) {
       calls.push(
@@ -1641,6 +1712,9 @@ function createWorkspaceAgentActivityService(
         settings: input.settings,
         session: { ...emptySession(), agentSessionId: input.agentSessionId }
       };
+    },
+    async updateTuttiModeActivation() {
+      throw new Error("not implemented");
     },
     async getSession(_workspaceId, agentSessionId) {
       return {
@@ -1690,6 +1764,7 @@ function createWorkspaceAgentActivityService(
     },
     async deleteSessionsBatch() {
       return {
+        cleanupFailedSessionIds: [],
         removedMessages: 0,
         removedSessionIds: [],
         removedSessions: 0
@@ -1718,6 +1793,9 @@ function createWorkspaceAgentActivityService(
       return () => {};
     },
     onModelCatalogInvalidated() {
+      return () => {};
+    },
+    onComposerDefaultsInvalidated() {
       return () => {};
     },
     ensureSessionSynchronized() {

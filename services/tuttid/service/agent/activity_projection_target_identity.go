@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	workspaceagentbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceagent"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 )
 
@@ -38,6 +39,14 @@ type AgentTargetResolver interface {
 	ResolveAgentTargetAlias(ctx context.Context, id string) (string, bool)
 }
 
+// WorkspaceAgentTargetResolver validates workspace-scoped Agent option ids.
+// It is separate from the global Harness registry because the same local
+// daemon can host multiple workspace directories without leaking one
+// workspace's Agents into another.
+type WorkspaceAgentTargetResolver interface {
+	GetWorkspaceAgent(ctx context.Context, workspaceID string, agentID string) (workspaceagentbiz.Agent, error)
+}
+
 // SetAgentTargetResolver wires the local agent target registry so the
 // ingestion boundary can enforce the reference-integrity invariant: any
 // persisted agentTargetId must exist locally or be empty. When no resolver is
@@ -49,6 +58,13 @@ func (p *ActivityProjection) SetAgentTargetResolver(resolver AgentTargetResolver
 	p.agentTargetResolver = resolver
 }
 
+func (p *ActivityProjection) SetWorkspaceAgentTargetResolver(resolver WorkspaceAgentTargetResolver) {
+	if p == nil {
+		return
+	}
+	p.workspaceAgentTargetResolver = resolver
+}
+
 // projectPersistedSession applies the reference-integrity invariant when
 // reading a persisted session, so pre-existing rows that were stored before
 // the ingestion boundary was hardened (or that slipped in through another
@@ -58,7 +74,7 @@ func (p *ActivityProjection) projectPersistedSession(ctx context.Context, sessio
 	if p == nil || p.agentTargetResolver == nil {
 		return session
 	}
-	canonical, _ := p.canonicalizeAgentTargetID(ctx, session.AgentTargetID, session.InternalRuntimeContext)
+	canonical, _ := p.canonicalizeAgentTargetID(ctx, session.WorkspaceID, session.AgentTargetID, session.InternalRuntimeContext)
 	session.AgentTargetID = canonical
 	return session
 }
@@ -80,6 +96,7 @@ func (p *ActivityProjection) projectPersistedSession(ctx context.Context, sessio
 //     keep verbatim rather than destroy a possibly-valid local id.
 func (p *ActivityProjection) canonicalizeAgentTargetID(
 	ctx context.Context,
+	workspaceID string,
 	rawID string,
 	runtimeContext map[string]any,
 ) (string, map[string]any) {
@@ -90,7 +107,7 @@ func (p *ActivityProjection) canonicalizeAgentTargetID(
 	if p == nil || p.agentTargetResolver == nil {
 		return rawID, runtimeContext
 	}
-	exists, verified := p.agentTargetExists(ctx, rawID)
+	exists, verified := p.agentTargetExists(ctx, strings.TrimSpace(workspaceID), rawID)
 	if exists || !verified {
 		return rawID, runtimeContext
 	}
@@ -117,7 +134,23 @@ func (p *ActivityProjection) canonicalizeAgentTargetID(
 // The second return value is false when the store could not be consulted (a
 // transient error distinct from a definitive "not found"), so callers can
 // avoid rewriting an id they merely failed to verify.
-func (p *ActivityProjection) agentTargetExists(ctx context.Context, id string) (bool, bool) {
+func (p *ActivityProjection) agentTargetExists(ctx context.Context, workspaceID string, id string) (bool, bool) {
+	if strings.HasPrefix(strings.TrimSpace(id), workspaceagentbiz.IDPrefix) && p.workspaceAgentTargetResolver != nil {
+		agent, err := p.workspaceAgentTargetResolver.GetWorkspaceAgent(ctx, workspaceID, id)
+		if err == nil {
+			return strings.TrimSpace(agent.ID) != "", true
+		}
+		if errors.Is(err, workspacedata.ErrWorkspaceAgentNotFound) {
+			return false, true
+		}
+		slog.Warn("workspace agent registry lookup failed during session ingestion",
+			"event", "workspace.agent_session.workspace_agent_id.lookup_failed",
+			"workspace_id", workspaceID,
+			"agent_target_id", strings.TrimSpace(id),
+			"error", err,
+		)
+		return false, false
+	}
 	target, err := p.agentTargetResolver.GetAgentTarget(ctx, id)
 	if err == nil {
 		return strings.TrimSpace(target.ID) != "", true

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerstatus"
 )
 
 // A provider CLI can diverge from its default Console/OAuth login in two
@@ -68,12 +69,28 @@ func (s Service) providerHasAPICredential(provider string) bool {
 	if status, ok := migratedProviderStatus(provider); ok {
 		switch status.Kind {
 		case providerregistry.StatusKindCodexCLI:
-			return s.codexConfigDeclares("api_key") || s.codexAuthJSONHasAPIKey()
+			return s.codexConfigHasAPICredential() || s.codexAuthJSONHasAPIKey()
 		case providerregistry.StatusKindClaudeCLI:
-			return s.claudeSettingsDeclares(claudeAPICredentialKeys, true)
+			return s.claudeSettingsHasAPICredential()
 		}
 	}
 	return false
+}
+
+func (s Service) codexConfigHasAPICredential() bool {
+	codexHome := strings.TrimSpace(s.lookupEnv("CODEX_HOME"))
+	if codexHome == "" {
+		home, err := s.homeDir()
+		if err != nil || strings.TrimSpace(home) == "" {
+			return false
+		}
+		codexHome = filepath.Join(home, ".codex")
+	}
+	content, err := os.ReadFile(filepath.Join(codexHome, "config.toml"))
+	if err != nil {
+		return false
+	}
+	return providerstatus.CodexConfigTOMLHasAPICredential(content)
 }
 
 func (s Service) codexAuthJSONHasAPIKey() bool {
@@ -89,13 +106,7 @@ func (s Service) codexAuthJSONHasAPIKey() bool {
 	if err != nil {
 		return false
 	}
-	var parsed struct {
-		OpenAIAPIKey string `json:"OPENAI_API_KEY"`
-	}
-	if err := json.Unmarshal(content, &parsed); err != nil {
-		return false
-	}
-	return strings.TrimSpace(parsed.OpenAIAPIKey) != ""
+	return providerstatus.CodexAuthJSONHasAPICredential(content)
 }
 
 // providerCustomConfigEnvVars lists env vars that signal a user-provided API
@@ -127,11 +138,20 @@ var claudeCustomConfigKeys = []string{
 	"ANTHROPIC_API_BASE_URL",
 }
 
-// claudeAPICredentialKeys are the ~/.claude/settings.json env keys that count
-// as an API credential for Claude Code — the billing axis, excluding endpoints.
-var claudeAPICredentialKeys = []string{
-	"ANTHROPIC_API_KEY",
-	"ANTHROPIC_AUTH_TOKEN",
+func (s Service) claudeSettingsHasAPICredential() bool {
+	configDir := strings.TrimSpace(s.lookupEnv("CLAUDE_CONFIG_DIR"))
+	if configDir == "" {
+		home, err := s.homeDir()
+		if err != nil || strings.TrimSpace(home) == "" {
+			return false
+		}
+		configDir = filepath.Join(home, ".claude")
+	}
+	content, err := os.ReadFile(filepath.Join(configDir, "settings.json"))
+	if err != nil {
+		return false
+	}
+	return providerstatus.ClaudeSettingsHasAPICredential(content)
 }
 
 // codexConfigDeclares reports whether ~/.codex/config.toml (or $CODEX_HOME)

@@ -1,10 +1,12 @@
 import type {
+  AgentActivityCapabilityReference,
   AgentActivitySubmitDiagnostics,
   AgentActivitySubmitSettingsPatch,
   AgentPromptContentBlock
 } from "../types.ts";
 
 export interface EngineQueuedPrompt {
+  capabilityRefs?: readonly AgentActivityCapabilityReference[];
   clientSubmitId?: string;
   content: readonly AgentPromptContentBlock[];
   createdAtUnixMs: number;
@@ -21,6 +23,8 @@ export type PromptQueueSuspendReason = "user_stop";
 
 export interface PromptQueueInFlightCommand {
   commandId: string;
+  /** Set when the command was dispatched as an active-turn steer. */
+  guidance?: true;
   kind: "send";
   promptId: string;
   runtimeContent?: readonly AgentPromptContentBlock[];
@@ -93,6 +97,7 @@ export type PromptQueueIntent =
 export interface PromptQueueSendCommand {
   type: "queue/sendPrompt";
   agentSessionId: string;
+  capabilityRefs?: readonly AgentActivityCapabilityReference[];
   commandId: string;
   clientSubmitId: string;
   correlationId?: string;

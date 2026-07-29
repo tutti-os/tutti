@@ -44,6 +44,16 @@ func TestDefaultSystemTargetsUseMigratedProviderDescriptors(t *testing.T) {
 		if target.Name != descriptor.Identity.DisplayName || target.IconKey != descriptor.Identity.IconKey {
 			t.Fatalf("target presentation = %#v", target)
 		}
+		if target.IconURL == "" {
+			t.Fatalf("target icon URL missing = %#v", target)
+		}
+		if target.IconKey == "hermes" || target.IconKey == "openclaw" {
+			if target.MaskIconURL != "" {
+				t.Fatalf("target mask icon URL = %q, want empty image fallback for %s", target.MaskIconURL, target.IconKey)
+			}
+		} else if target.MaskIconURL == "" {
+			t.Fatalf("target mask icon URL missing = %#v", target)
+		}
 		if target.SortOrder != descriptor.Target.SortOrder || target.CreatedAtUnixMS != 123 {
 			t.Fatalf("target ordering/timestamp = %#v", target)
 		}

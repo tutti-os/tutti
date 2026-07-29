@@ -25,7 +25,14 @@ export function mentionItemToAttrs(
       path: item.path,
       entryKind: item.entryKind,
       directoryPath: item.directoryPath,
-      thumbnailUrl: resolveAgentMentionFileThumbnailUrl(item) ?? ""
+      thumbnailUrl: resolveAgentMentionFileThumbnailUrl(item) ?? "",
+      ...(item.attachmentId ? { attachmentId: item.attachmentId } : {}),
+      ...(item.attachmentStatus
+        ? { attachmentStatus: item.attachmentStatus }
+        : {}),
+      ...(item.attachmentErrorCode
+        ? { attachmentErrorCode: item.attachmentErrorCode }
+        : {})
     };
   }
   if (item.kind === "session") {
@@ -348,6 +355,22 @@ export function attrsToMentionItem(
       typeof attrs.directoryPath === "string" && attrs.directoryPath.trim()
         ? attrs.directoryPath
         : dirnameFromPath(path),
+    attachmentId:
+      typeof attrs.attachmentId === "string" && attrs.attachmentId.trim()
+        ? attrs.attachmentId.trim()
+        : undefined,
+    attachmentStatus:
+      attrs.attachmentStatus === "uploading" ||
+      attrs.attachmentStatus === "error"
+        ? attrs.attachmentStatus
+        : attrs.attachmentId
+          ? "ready"
+          : undefined,
+    attachmentErrorCode:
+      typeof attrs.attachmentErrorCode === "string" &&
+      attrs.attachmentErrorCode.trim()
+        ? attrs.attachmentErrorCode.trim()
+        : undefined,
     thumbnailUrl: resolveAgentMentionFileThumbnailUrl({
       entryKind: normalizeEntryKind(attrs.entryKind),
       href: href || path,
@@ -378,6 +401,12 @@ export function parseAgentMentionHTMLElementAttrs(
     node.getAttribute("name") ||
     (node.textContent ?? "").replace(/^@+/, "").trim();
   const parsedItem = href ? parseMentionItemFromHref({ name, href }) : null;
+  if (
+    node.getAttribute("data-agent-mention-kind") === "custom" &&
+    parsedItem?.kind !== "custom"
+  ) {
+    return false;
+  }
   const parsedAttrs = parsedItem ? mentionItemToAttrs(parsedItem) : {};
   const iconUrl = node.getAttribute("data-agent-mention-icon-url") || "";
   const fileCount = node.getAttribute("data-agent-mention-file-count") || "";

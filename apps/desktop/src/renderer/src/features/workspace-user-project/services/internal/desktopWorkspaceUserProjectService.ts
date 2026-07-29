@@ -1,15 +1,22 @@
-import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import type {
+  TuttidClient,
+  TuttidEventStreamClient
+} from "@tutti-os/client-tuttid-ts";
 import type { NotificationService } from "@tutti-os/ui-notifications";
 import type {
   WorkspaceUserProject,
   WorkspaceUserProjectDefaultSelection,
+  WorkspaceUserProjectPinInput,
   WorkspaceUserProjectPathCheck,
   WorkspaceUserProjectSelectionPreparation,
   WorkspaceUserProjectSelectionPreparationInput,
   WorkspaceUserProjectServiceSnapshot,
   WorkspaceUserProjectValtioStore
 } from "@tutti-os/workspace-user-project/contracts";
-import { upsertWorkspaceUserProject } from "@tutti-os/workspace-user-project/core";
+import {
+  pinWorkspaceUserProjectOptimistically,
+  upsertWorkspaceUserProject
+} from "@tutti-os/workspace-user-project/core";
 import { createWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import type { DesktopHostFilesApi, DesktopPlatformApi } from "@preload/types";
 import { proxy, snapshot, subscribe } from "valtio/vanilla";
@@ -27,10 +34,15 @@ export interface DesktopWorkspaceUserProjectServiceDependencies {
     | "checkUserProjectPath"
     | "deleteUserProject"
     | "listUserProjects"
+    | "moveUserProject"
+    | "pinUserProject"
     | "useUserProject"
   >;
+  eventStreamClient?: Pick<TuttidEventStreamClient, "connect" | "subscribe">;
+  logDiagnostic?: (payload: unknown) => void;
   notifications?: NotificationService;
   platformApi: Pick<DesktopPlatformApi, "homeDirectory" | "os">;
+  now?: () => number;
   workspaceId: string;
 }
 
@@ -52,6 +64,7 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
     error: null,
     initialized: false,
     isLoading: false,
+    isMutationPending: false,
     projects: [],
     revision: 0
   }) as WorkspaceUserProjectValtioStore;
@@ -61,10 +74,21 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
   private loadSequence = 0;
   private inflightLoad: Promise<void> | null = null;
   private refreshQueued = false;
+  private inflightOrderingMutation: Promise<void> | null = null;
+  private pendingProjectsEvent: WorkspaceUserProject[] | null = null;
 
   constructor(dependencies: DesktopWorkspaceUserProjectServiceDependencies) {
     this.dependencies = dependencies;
     this.workspaceState = workspaceUserProjectState(dependencies.workspaceId);
+    if (dependencies.eventStreamClient) {
+      dependencies.eventStreamClient.subscribe(
+        "user.project.updated",
+        (event) => this.acceptProjectsEvent(event.payload.projects)
+      );
+      void dependencies.eventStreamClient.connect().catch((error) => {
+        this.logDiagnostic("user_project_event_stream_connect_failed", error);
+      });
+    }
   }
 
   async checkProjectPath(path: string): Promise<WorkspaceUserProjectPathCheck> {
@@ -72,11 +96,18 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
   }
 
   async createProject(name: string): Promise<WorkspaceUserProject> {
-    const directory =
-      await this.dependencies.hostFilesApi.createUserDocumentsProjectDirectory({
-        name
-      });
-    return this.registerProjectPath(directory.path);
+    this.beginMutation();
+    try {
+      const directory =
+        await this.dependencies.hostFilesApi.createUserDocumentsProjectDirectory(
+          {
+            name
+          }
+        );
+      return await this.registerProjectPathUnlocked(directory.path);
+    } finally {
+      this.finishMutation();
+    }
   }
 
   async ensureLoaded(): Promise<void> {
@@ -127,6 +158,64 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
     const normalizedPath = path?.trim() ?? "";
     if (normalizedPath) {
       this.workspaceState.noProjectPaths.add(normalizedPath);
+    }
+  }
+
+  async moveProject(input: {
+    projectId: string;
+    beforeProjectId: string | null;
+  }): Promise<void> {
+    this.beginMutation();
+    const optimisticProjects = moveProjectBefore(
+      this.store.projects,
+      input.projectId,
+      input.beforeProjectId
+    );
+    this.supersedeLoad();
+    this.store.projects = optimisticProjects;
+    this.store.error = null;
+    this.store.initialized = true;
+    this.bumpRevision();
+
+    this.inflightOrderingMutation = Promise.resolve();
+    const move = this.confirmProjectMove(input);
+    this.inflightOrderingMutation = move;
+    try {
+      await move;
+    } finally {
+      if (this.inflightOrderingMutation === move) {
+        this.inflightOrderingMutation = null;
+      }
+      this.finishMutation();
+    }
+  }
+
+  async pinProject(input: WorkspaceUserProjectPinInput): Promise<void> {
+    this.beginMutation();
+    const now = Math.max(1, (this.dependencies.now ?? Date.now)());
+    this.supersedeLoad();
+    this.store.projects = pinWorkspaceUserProjectOptimistically(
+      this.store.projects,
+      {
+        ...input,
+        pinnedAtUnixMs: now,
+        updatedAtUnixMs: now
+      }
+    );
+    this.store.error = null;
+    this.store.initialized = true;
+    this.bumpRevision();
+
+    this.inflightOrderingMutation = Promise.resolve();
+    const pin = this.confirmProjectPin(input);
+    this.inflightOrderingMutation = pin;
+    try {
+      await pin;
+    } finally {
+      if (this.inflightOrderingMutation === pin) {
+        this.inflightOrderingMutation = null;
+      }
+      this.finishMutation();
     }
   }
 
@@ -207,10 +296,21 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
   }
 
   async registerProjectPath(path: string): Promise<WorkspaceUserProject> {
+    this.beginMutation();
+    try {
+      return await this.registerProjectPathUnlocked(path);
+    } finally {
+      this.finishMutation();
+    }
+  }
+
+  private async registerProjectPathUnlocked(
+    path: string
+  ): Promise<WorkspaceUserProject> {
     const project = await this.dependencies.tuttidClient.useUserProject({
       path
     });
-    this.loadSequence += 1;
+    this.supersedeLoad();
     this.workspaceState.explicitProjectPaths.add(project.path);
     this.workspaceState.noProjectPaths.delete(project.path);
     this.workspaceState.removedProjectPaths.delete(project.path);
@@ -231,22 +331,27 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
     if (!normalizedPath) {
       return;
     }
-    await this.dependencies.tuttidClient.deleteUserProject({
-      path: normalizedPath
-    });
-    const previousProjectCount = this.store.projects.length;
-    this.workspaceState.explicitProjectPaths.delete(normalizedPath);
-    this.workspaceState.removedProjectPaths.add(normalizedPath);
-    this.store.projects = this.store.projects.filter(
-      (project) => project.path !== normalizedPath
-    );
-    if (this.workspaceState.defaultSelection?.path === normalizedPath) {
-      this.workspaceState.defaultSelection = { path: null };
-    }
-    this.store.error = null;
-    this.store.initialized = true;
-    if (this.store.projects.length !== previousProjectCount) {
-      this.bumpRevision();
+    this.beginMutation();
+    try {
+      await this.dependencies.tuttidClient.deleteUserProject({
+        path: normalizedPath
+      });
+      const previousProjectCount = this.store.projects.length;
+      this.workspaceState.explicitProjectPaths.delete(normalizedPath);
+      this.workspaceState.removedProjectPaths.add(normalizedPath);
+      this.store.projects = this.store.projects.filter(
+        (project) => project.path !== normalizedPath
+      );
+      if (this.workspaceState.defaultSelection?.path === normalizedPath) {
+        this.workspaceState.defaultSelection = { path: null };
+      }
+      this.store.error = null;
+      this.store.initialized = true;
+      if (this.store.projects.length !== previousProjectCount) {
+        this.bumpRevision();
+      }
+    } finally {
+      this.finishMutation();
     }
   }
 
@@ -304,6 +409,111 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
     this.store.revision += 1;
   }
 
+  private beginMutation(): void {
+    if (this.store.isMutationPending) {
+      throw new Error("A user project mutation is already in progress.");
+    }
+    this.store.isMutationPending = true;
+    this.bumpRevision();
+  }
+
+  private finishMutation(): void {
+    this.store.isMutationPending = false;
+    this.bumpRevision();
+  }
+
+  private supersedeLoad(): void {
+    this.loadSequence += 1;
+    this.refreshQueued = false;
+    this.store.isLoading = false;
+  }
+
+  private acceptProjectsEvent(projects: readonly WorkspaceUserProject[]): void {
+    const nextProjects = projects.map((project) => ({ ...project }));
+    if (this.inflightOrderingMutation) {
+      this.pendingProjectsEvent = nextProjects;
+      return;
+    }
+    this.applyAuthoritativeProjects(nextProjects);
+  }
+
+  private applyAuthoritativeProjects(
+    projects: readonly WorkspaceUserProject[]
+  ): void {
+    for (const project of projects) {
+      this.workspaceState.removedProjectPaths.delete(project.path);
+    }
+    this.supersedeLoad();
+    this.store.projects = projects.map((project) => ({ ...project }));
+    this.store.error = null;
+    this.store.initialized = true;
+    this.bumpRevision();
+  }
+
+  private async confirmProjectMove(input: {
+    projectId: string;
+    beforeProjectId: string | null;
+  }): Promise<void> {
+    return this.confirmOrderingMutation(
+      () =>
+        this.dependencies.tuttidClient.moveUserProject({
+          beforeProjectId: input.beforeProjectId,
+          projectId: input.projectId
+        }),
+      "user_project_move_failed"
+    );
+  }
+
+  private async confirmProjectPin(
+    input: WorkspaceUserProjectPinInput
+  ): Promise<void> {
+    return this.confirmOrderingMutation(
+      () => this.dependencies.tuttidClient.pinUserProject(input),
+      "user_project_pin_failed"
+    );
+  }
+
+  private async confirmOrderingMutation(
+    request: () => Promise<{ projects: WorkspaceUserProject[] }>,
+    diagnosticEvent: string
+  ): Promise<void> {
+    try {
+      const response = await request();
+      this.applyAuthoritativeProjects(response.projects);
+      const pendingEvent = this.pendingProjectsEvent;
+      this.pendingProjectsEvent = null;
+      if (
+        pendingEvent &&
+        !areProjectSnapshotsEqual(pendingEvent, response.projects)
+      ) {
+        if (this.inflightLoad) {
+          await this.inflightLoad;
+        }
+        await this.refresh();
+        const eventDuringRefresh = this.pendingProjectsEvent;
+        this.pendingProjectsEvent = null;
+        if (
+          eventDuringRefresh &&
+          !areProjectSnapshotsEqual(eventDuringRefresh, this.store.projects)
+        ) {
+          this.applyAuthoritativeProjects(eventDuringRefresh);
+        }
+      }
+    } catch (error) {
+      this.pendingProjectsEvent = null;
+      this.logDiagnostic(diagnosticEvent, error);
+      throw error;
+    }
+  }
+
+  private logDiagnostic(event: string, error: unknown): void {
+    this.dependencies.logDiagnostic?.({
+      error: describeError(error),
+      event,
+      workspaceId: this.dependencies.workspaceId
+    });
+  }
+
   private async isPathMissing(path: string): Promise<boolean> {
     try {
       const result = await this.checkProjectPath(path);
@@ -312,6 +522,57 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
       return false;
     }
   }
+}
+
+function moveProjectBefore(
+  projects: readonly WorkspaceUserProject[],
+  projectId: string,
+  beforeProjectId: string | null
+): WorkspaceUserProject[] {
+  const fromIndex = projects.findIndex((project) => project.id === projectId);
+  if (fromIndex < 0) {
+    return [...projects];
+  }
+  if (beforeProjectId === projectId) {
+    return [...projects];
+  }
+  const next = [...projects];
+  const [moving] = next.splice(fromIndex, 1);
+  if (!moving) {
+    return [...projects];
+  }
+  const beforeIndex =
+    beforeProjectId === null
+      ? next.length
+      : next.findIndex((project) => project.id === beforeProjectId);
+  if (beforeIndex < 0) {
+    return [...projects];
+  }
+  next.splice(beforeIndex, 0, moving);
+  return next;
+}
+
+function areProjectSnapshotsEqual(
+  left: readonly WorkspaceUserProject[],
+  right: readonly WorkspaceUserProject[]
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((project, index) => {
+      const candidate = right[index];
+      return (
+        candidate !== undefined &&
+        project.id === candidate.id &&
+        project.path === candidate.path &&
+        project.label === candidate.label &&
+        project.pinnedAtUnixMs === candidate.pinnedAtUnixMs &&
+        project.sectionKey === candidate.sectionKey &&
+        project.createdAtUnixMs === candidate.createdAtUnixMs &&
+        project.updatedAtUnixMs === candidate.updatedAtUnixMs &&
+        project.lastUsedAtUnixMs === candidate.lastUsedAtUnixMs
+      );
+    })
+  );
 }
 
 function hasProjectPath(

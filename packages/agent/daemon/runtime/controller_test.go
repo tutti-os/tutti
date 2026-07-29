@@ -13,6 +13,7 @@ import (
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 func rootCancelInput(roomID string, agentSessionID string, turnID string, reason string) CancelInput {
@@ -64,6 +65,10 @@ func (r *submittedTurnBarrierReporter) Report(ctx context.Context, _ agentsessio
 	}
 }
 
+func (r *submittedTurnBarrierReporter) ReportSubmitProvenance(ctx context.Context, report agentsessionstore.ReportActivityInput) error {
+	return r.Report(ctx, report)
+}
+
 type executionSignalAdapter struct {
 	recordingStartAdapter
 	executed chan struct{}
@@ -78,6 +83,10 @@ func (a *executionSignalAdapter) Exec(context.Context, Session, []PromptContentB
 func (blockingGoalReconcileReporter) Report(ctx context.Context, _ agentsessionstore.ReportActivityInput) error {
 	<-ctx.Done()
 	return ctx.Err()
+}
+
+func (r blockingGoalReconcileReporter) ReportSubmitProvenance(ctx context.Context, report agentsessionstore.ReportActivityInput) error {
+	return r.Report(ctx, report)
 }
 
 func (r *goalPrepareBarrierReporter) Report(ctx context.Context, report agentsessionstore.ReportActivityInput) error {
@@ -95,6 +104,10 @@ func (r *goalPrepareBarrierReporter) Report(ctx context.Context, report agentses
 		}
 	}
 	return nil
+}
+
+func (r *goalPrepareBarrierReporter) ReportSubmitProvenance(ctx context.Context, report agentsessionstore.ReportActivityInput) error {
+	return r.Report(ctx, report)
 }
 
 func (r *goalPrepareBarrierReporter) phaseSnapshot() []string {
@@ -126,6 +139,82 @@ func TestGoalRecoveryCapabilitiesComeFromAdapterPolicy(t *testing.T) {
 	}
 }
 
+func TestBackgroundGoalControlsRequireExistingLiveProvider(t *testing.T) {
+	adapter := &requireLiveGoalAdapter{recordingStartAdapter: recordingStartAdapter{provider: "require-live-goal"}}
+	controller := NewController([]Adapter{adapter}, nil)
+	session, err := controller.Resume(context.Background(), ResumeInput{
+		RoomID: "room-require-live", AgentSessionID: "session-require-live", Provider: adapter.Provider(),
+		ProviderSessionID: "provider-session-require-live",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter.live = false
+	adapter.resumeCalls = 0
+	adapter.calls = nil
+
+	if _, err := controller.GoalControl(context.Background(), GoalControlInput{
+		RoomID: session.RoomID, AgentSessionID: session.AgentSessionID,
+		Action: GoalControlClear, RequireLive: true,
+	}); !errors.Is(err, ErrSessionDisconnected) {
+		t.Fatalf("RequireLive GoalControl error=%v", err)
+	}
+	if err := controller.FenceGoalGeneration(context.Background(), GoalGenerationFenceRequest{
+		RoomID: session.RoomID, AgentSessionID: session.AgentSessionID,
+		OperationID: "goal-op", Revision: 1, RequireLive: true,
+	}); !errors.Is(err, ErrSessionDisconnected) {
+		t.Fatalf("RequireLive FenceGoalGeneration error=%v", err)
+	}
+	if adapter.resumeCalls != 0 || adapter.goalCalls != 0 || adapter.fenceCalls != 0 {
+		t.Fatalf("background controls resumed or reached provider: resume=%d goal=%d fence=%d",
+			adapter.resumeCalls, adapter.goalCalls, adapter.fenceCalls)
+	}
+
+	if _, err := controller.GoalControl(context.Background(), GoalControlInput{
+		RoomID: session.RoomID, AgentSessionID: session.AgentSessionID,
+		Action: GoalControlClear,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if adapter.resumeCalls != 1 || adapter.goalCalls != 1 || adapter.fenceCalls != 1 {
+		t.Fatalf("user control resume=%d goal=%d fence=%d", adapter.resumeCalls, adapter.goalCalls, adapter.fenceCalls)
+	}
+	if got, want := strings.Join(adapter.calls, ","), "resume,fence,goal"; got != want {
+		t.Fatalf("reconnect call order=%q want=%q", got, want)
+	}
+
+	// Releasing or losing the provider connection discards adapter-local
+	// fences. The Controller registry must reinstall them on the replacement
+	// connection before any user operation reaches the provider.
+	adapter.live = false
+	adapter.calls = nil
+	if _, err := controller.GoalControl(context.Background(), GoalControlInput{
+		RoomID: session.RoomID, AgentSessionID: session.AgentSessionID,
+		Action: GoalControlClear,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.Join(adapter.calls, ","), "resume,fence,goal"; got != want {
+		t.Fatalf("replacement connection call order=%q want=%q", got, want)
+	}
+
+	adapter.live = false
+	adapter.calls = nil
+	adapter.fenceErr = errors.New("fence install failed")
+	if _, err := controller.GoalControl(context.Background(), GoalControlInput{
+		RoomID: session.RoomID, AgentSessionID: session.AgentSessionID,
+		Action: GoalControlClear,
+	}); err == nil {
+		t.Fatal("replacement connection unexpectedly survived fence installation failure")
+	}
+	if got, want := strings.Join(adapter.calls, ","), "resume,fence,close"; got != want {
+		t.Fatalf("failed replacement call order=%q want=%q", got, want)
+	}
+	if adapter.live {
+		t.Fatal("failed replacement remained live without its admission fences")
+	}
+}
+
 func stringPtr(value string) *string {
 	return &value
 }
@@ -145,6 +234,10 @@ func (r *recordingReporter) Report(_ context.Context, report agentsessionstore.R
 		}
 	}
 	return nil
+}
+
+func (r *recordingReporter) ReportSubmitProvenance(ctx context.Context, report agentsessionstore.ReportActivityInput) error {
+	return r.Report(ctx, report)
 }
 
 func (r *recordingReporter) snapshot() []reportCall {
@@ -199,7 +292,7 @@ func TestControllerStartFailureDoesNotCreateCanonicalSessionOrTurnlessMessage(t 
 	started, err := controller.Start(context.Background(), StartInput{
 		RoomID:         "room-1",
 		AgentSessionID: "agent-session-1",
-		Provider:       ProviderHermes,
+		Provider:       hermesExtensionTestProvider,
 		CWD:            "/workspace",
 		Title:          "Hermes",
 	})
@@ -225,6 +318,267 @@ func TestControllerStartFailureDoesNotCreateCanonicalSessionOrTurnlessMessage(t 
 	defer controller.mu.Unlock()
 	if len(controller.pendingCommandSnapshots) != 0 || len(controller.pendingConfigOptionsUpdates) != 0 {
 		t.Fatalf("pending snapshots survived failed start: commands=%#v config=%#v", controller.pendingCommandSnapshots, controller.pendingConfigOptionsUpdates)
+	}
+}
+
+func TestControllerStartupOperationsDoNotBlockIndependentSessions(t *testing.T) {
+	tests := []struct {
+		name              string
+		blocking          string
+		following         string
+		followingProvider string
+	}{
+		{name: "other provider start while start is blocked", blocking: "start", following: "start", followingProvider: ProviderCodex},
+		{name: "other provider resume while start is blocked", blocking: "start", following: "resume", followingProvider: ProviderCodex},
+		{name: "other provider start while resume is blocked", blocking: "resume", following: "start", followingProvider: ProviderCodex},
+		{name: "other provider resume while resume is blocked", blocking: "resume", following: "resume", followingProvider: ProviderCodex},
+		{name: "same provider start while start is blocked", blocking: "start", following: "start", followingProvider: ProviderClaudeCode},
+		{name: "same provider resume while start is blocked", blocking: "start", following: "resume", followingProvider: ProviderClaudeCode},
+		{name: "same provider start while resume is blocked", blocking: "resume", following: "start", followingProvider: ProviderClaudeCode},
+		{name: "same provider resume while resume is blocked", blocking: "resume", following: "resume", followingProvider: ProviderClaudeCode},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			blocker := &blockingStartupAdapter{
+				recordingStartAdapter: recordingStartAdapter{provider: ProviderClaudeCode},
+				operation:             test.blocking,
+				blockedSessionID:      "blocked-session",
+				entered:               make(chan struct{}),
+				release:               make(chan struct{}),
+			}
+			adapters := []Adapter{blocker}
+			if test.followingProvider != ProviderClaudeCode {
+				adapters = append(adapters, &recordingStartAdapter{provider: test.followingProvider})
+			}
+			controller := NewController(adapters, nil)
+
+			blocked := make(chan error, 1)
+			go func() {
+				blocked <- invokeControllerStartupOperation(
+					context.Background(),
+					controller,
+					test.blocking,
+					ProviderClaudeCode,
+					"blocked-session",
+				)
+			}()
+			select {
+			case <-blocker.entered:
+			case <-time.After(time.Second):
+				t.Fatal("blocking startup operation was not entered")
+			}
+
+			completed := make(chan error, 1)
+			go func() {
+				completed <- invokeControllerStartupOperation(
+					context.Background(),
+					controller,
+					test.following,
+					test.followingProvider,
+					"independent-session",
+				)
+			}()
+
+			select {
+			case err := <-completed:
+				if err != nil {
+					close(blocker.release)
+					<-blocked
+					t.Fatalf("independent startup operation: %v", err)
+				}
+			case <-time.After(time.Second):
+				close(blocker.release)
+				<-blocked
+				<-completed
+				t.Fatal("independent provider startup was blocked")
+			}
+
+			close(blocker.release)
+			if err := <-blocked; err != nil {
+				t.Fatalf("blocking startup operation: %v", err)
+			}
+		})
+	}
+}
+
+func TestControllerStartupLockPreservesSameSessionSerialization(t *testing.T) {
+	tests := []struct {
+		name      string
+		blocking  string
+		following string
+	}{
+		{name: "start then start", blocking: "start", following: "start"},
+		{name: "start then resume", blocking: "start", following: "resume"},
+		{name: "resume then start", blocking: "resume", following: "start"},
+		{name: "resume then resume", blocking: "resume", following: "resume"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			adapter := &blockingStartupAdapter{
+				recordingStartAdapter: recordingStartAdapter{provider: ProviderClaudeCode},
+				operation:             test.blocking,
+				blockedSessionID:      "same-session",
+				entered:               make(chan struct{}),
+				release:               make(chan struct{}),
+			}
+			controller := NewController([]Adapter{adapter}, nil)
+
+			blocked := make(chan error, 1)
+			go func() {
+				blocked <- invokeControllerStartupOperation(
+					context.Background(),
+					controller,
+					test.blocking,
+					ProviderClaudeCode,
+					"same-session",
+				)
+			}()
+			select {
+			case <-adapter.entered:
+			case <-time.After(time.Second):
+				t.Fatal("blocking startup operation was not entered")
+			}
+
+			waitCtx, cancelWait := context.WithCancel(context.Background())
+			waiting := make(chan error, 1)
+			go func() {
+				waiting <- invokeControllerStartupOperation(
+					waitCtx,
+					controller,
+					test.following,
+					ProviderClaudeCode,
+					"same-session",
+				)
+			}()
+			cancelWait()
+			select {
+			case err := <-waiting:
+				if !errors.Is(err, context.Canceled) {
+					close(adapter.release)
+					<-blocked
+					t.Fatalf("waiting startup error = %v, want context canceled", err)
+				}
+			case <-time.After(time.Second):
+				close(adapter.release)
+				<-blocked
+				<-waiting
+				t.Fatal("same-session startup lock did not honor context cancellation")
+			}
+
+			close(adapter.release)
+			if err := <-blocked; err != nil {
+				t.Fatalf("blocking startup operation: %v", err)
+			}
+			if err := invokeControllerStartupOperation(
+				context.Background(),
+				controller,
+				test.following,
+				ProviderClaudeCode,
+				"same-session",
+			); err != nil {
+				t.Fatalf("startup replay: %v", err)
+			}
+			if calls := adapter.startCalls.Load() + adapter.resumeCalls.Load(); calls != 1 {
+				t.Fatalf("adapter startup calls = %d, want 1", calls)
+			}
+			if locks := len(controller.startupLocks); locks != 0 {
+				t.Fatalf("startup locks = %d, want 0", locks)
+			}
+		})
+	}
+}
+
+func TestControllerAnonymousStartsRemainProviderScopedAndIdempotent(t *testing.T) {
+	adapter := &blockingStartupAdapter{
+		recordingStartAdapter: recordingStartAdapter{provider: ProviderClaudeCode},
+		operation:             "start",
+		entered:               make(chan struct{}),
+		release:               make(chan struct{}),
+	}
+	controller := NewController([]Adapter{adapter}, nil)
+	input := StartInput{RoomID: "room-1", Provider: ProviderClaudeCode}
+
+	firstResult := make(chan StartResult, 1)
+	firstErr := make(chan error, 1)
+	go func() {
+		result, err := controller.Start(context.Background(), input)
+		firstResult <- result
+		firstErr <- err
+	}()
+	select {
+	case <-adapter.entered:
+	case <-time.After(time.Second):
+		t.Fatal("blocking anonymous start was not entered")
+	}
+
+	waitCtx, cancelWait := context.WithCancel(context.Background())
+	waiting := make(chan error, 1)
+	go func() {
+		_, err := controller.Start(waitCtx, input)
+		waiting <- err
+	}()
+	cancelWait()
+	select {
+	case err := <-waiting:
+		if !errors.Is(err, context.Canceled) {
+			close(adapter.release)
+			<-firstResult
+			<-firstErr
+			t.Fatalf("waiting anonymous start error = %v, want context canceled", err)
+		}
+	case <-time.After(time.Second):
+		close(adapter.release)
+		<-firstResult
+		<-firstErr
+		<-waiting
+		t.Fatal("anonymous startup lock did not honor context cancellation")
+	}
+
+	close(adapter.release)
+	first := <-firstResult
+	if err := <-firstErr; err != nil {
+		t.Fatalf("first anonymous start: %v", err)
+	}
+	replayed, err := controller.Start(context.Background(), input)
+	if err != nil {
+		t.Fatalf("replayed anonymous start: %v", err)
+	}
+	if replayed.Session.AgentSessionID != first.Session.AgentSessionID {
+		t.Fatalf("replayed session = %q, want %q", replayed.Session.AgentSessionID, first.Session.AgentSessionID)
+	}
+	if calls := adapter.startCalls.Load(); calls != 1 {
+		t.Fatalf("adapter start calls = %d, want 1", calls)
+	}
+	if locks := len(controller.startupLocks); locks != 0 {
+		t.Fatalf("startup locks = %d, want 0", locks)
+	}
+}
+
+func invokeControllerStartupOperation(
+	ctx context.Context,
+	controller *Controller,
+	operation string,
+	provider string,
+	agentSessionID string,
+) error {
+	switch operation {
+	case "start":
+		_, err := controller.Start(ctx, StartInput{
+			RoomID:         "room-1",
+			AgentSessionID: agentSessionID,
+			Provider:       provider,
+		})
+		return err
+	case "resume":
+		_, err := controller.Resume(ctx, ResumeInput{
+			RoomID:            "room-1",
+			AgentSessionID:    agentSessionID,
+			Provider:          provider,
+			ProviderSessionID: "provider-" + agentSessionID,
+		})
+		return err
+	default:
+		return fmt.Errorf("unsupported startup operation %q", operation)
 	}
 }
 
@@ -292,6 +646,9 @@ func TestControllerProvisionalStartCommitsWithFirstTurn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
+	if sessions := controller.Sessions("room-1"); len(sessions) != 0 {
+		t.Fatalf("Sessions() before first turn acceptance = %#v, want provisional session hidden", sessions)
+	}
 	result, err := controller.Exec(context.Background(), ExecInput{
 		RoomID: "room-1", AgentSessionID: "agent-session-1",
 		Content: []PromptContentBlock{{Type: "text", Text: "hello"}},
@@ -302,6 +659,9 @@ func TestControllerProvisionalStartCommitsWithFirstTurn(t *testing.T) {
 	reports := reporter.waitForCalls(t, 1)
 	if len(reports[0].report.StatePatches) == 0 {
 		t.Fatalf("commit report = %#v, want session and turn state", reports[0].report)
+	}
+	if sessions := controller.Sessions("room-1"); len(sessions) != 1 || sessions[0].AgentSessionID != "agent-session-1" {
+		t.Fatalf("Sessions() after first turn acceptance = %#v, want committed session", sessions)
 	}
 	controller.mu.Lock()
 	defer controller.mu.Unlock()
@@ -837,7 +1197,7 @@ func TestControllerReleaseIdleLiveSessionsSkipsFreshActiveUnsupportedAndNotLive(
 	t.Parallel()
 
 	adapter := newReleasableAdapter()
-	unsupported := &recordingStartAdapter{provider: ProviderHermes}
+	unsupported := &recordingStartAdapter{provider: hermesExtensionTestProvider}
 	controller := NewController([]Adapter{adapter, unsupported}, nil)
 	fresh := startReleasableSession(t, controller, "fresh-session")
 	active := startReleasableSession(t, controller, "active-session")
@@ -845,7 +1205,7 @@ func TestControllerReleaseIdleLiveSessionsSkipsFreshActiveUnsupportedAndNotLive(
 	unsupportedStarted, err := controller.Start(context.Background(), StartInput{
 		RoomID:         "room-1",
 		AgentSessionID: "unsupported-session",
-		Provider:       ProviderHermes,
+		Provider:       hermesExtensionTestProvider,
 	})
 	if err != nil {
 		t.Fatalf("Start unsupported: %v", err)
@@ -994,7 +1354,7 @@ func TestControllerCloseAllLiveSessionsClosesEveryLiveSession(t *testing.T) {
 	t.Parallel()
 
 	adapter := newReleasableAdapter()
-	unsupported := &recordingStartAdapter{provider: ProviderHermes}
+	unsupported := &recordingStartAdapter{provider: hermesExtensionTestProvider}
 	controller := NewController([]Adapter{adapter, unsupported}, nil)
 	fresh := startReleasableSession(t, controller, "fresh-session")
 	notLive := startReleasableSession(t, controller, "not-live-session")
@@ -1002,7 +1362,7 @@ func TestControllerCloseAllLiveSessionsClosesEveryLiveSession(t *testing.T) {
 	unsupportedStarted, err := controller.Start(context.Background(), StartInput{
 		RoomID:         "room-1",
 		AgentSessionID: "unsupported-session",
-		Provider:       ProviderHermes,
+		Provider:       hermesExtensionTestProvider,
 	})
 	if err != nil {
 		t.Fatalf("Start unsupported: %v", err)
@@ -1528,13 +1888,12 @@ func TestControllerExecGuidanceDuringActiveTurn(t *testing.T) {
 	adapter.waitForPrompt(t, "first prompt")
 
 	result, err := controller.Exec(ctx, ExecInput{
-		RoomID:         started.Session.RoomID,
-		AgentSessionID: started.Session.AgentSessionID,
-		Content:        textPrompt("guide current turn"),
-		Guidance:       true,
-		Metadata: map[string]any{
-			"clientSubmitId": "guidance-submit-1",
-		},
+		RoomID:                          started.Session.RoomID,
+		AgentSessionID:                  started.Session.AgentSessionID,
+		Content:                         textPrompt("guide current turn"),
+		Guidance:                        true,
+		ClientSubmitID:                  "guidance-submit-1",
+		CanonicalSubmitOccurredAtUnixMS: 1_234,
 	})
 	if err != nil {
 		t.Fatalf("guidance Exec: %v", err)
@@ -2533,6 +2892,116 @@ type recordingStartAdapter struct {
 	cancelReleased <-chan struct{}
 }
 
+type requireLiveGoalAdapter struct {
+	recordingStartAdapter
+	live        bool
+	resumeCalls int
+	goalCalls   int
+	fenceCalls  int
+	closeCalls  int
+	calls       []string
+	fenceErr    error
+}
+
+func (a *requireLiveGoalAdapter) Start(ctx context.Context, session Session) ([]activityshared.Event, error) {
+	events, err := a.recordingStartAdapter.Start(ctx, session)
+	if err == nil {
+		a.live = true
+	}
+	return events, err
+}
+
+func (a *requireLiveGoalAdapter) Resume(context.Context, Session) error {
+	a.resumeCalls++
+	a.live = true
+	a.calls = append(a.calls, "resume")
+	return nil
+}
+
+func (a *requireLiveGoalAdapter) HasLiveSession(Session) bool {
+	return a.live
+}
+
+func (*requireLiveGoalAdapter) GoalCapabilities() GoalAdapterCapabilities {
+	return GoalAdapterCapabilities{}
+}
+
+func (a *requireLiveGoalAdapter) ApplyGoal(_ context.Context, _ Session, input GoalApplyInput) (GoalAdapterResult, error) {
+	a.goalCalls++
+	a.calls = append(a.calls, "goal")
+	return GoalAdapterResult{Observation: map[string]any{"action": string(input.Action)}}, nil
+}
+
+func (*requireLiveGoalAdapter) ReconcileGoal(context.Context, Session) (GoalAdapterResult, error) {
+	return GoalAdapterResult{}, nil
+}
+
+func (*requireLiveGoalAdapter) NormalizeGoalObservation(raw map[string]any) map[string]any {
+	return clonePayload(raw)
+}
+
+func (*requireLiveGoalAdapter) ExecGoalControl(context.Context, Session, []PromptContentBlock, string) ([]activityshared.Event, bool, error) {
+	return nil, false, nil
+}
+
+func (a *requireLiveGoalAdapter) FenceGoalGeneration(context.Context, Session, GoalGenerationFenceInput) error {
+	a.fenceCalls++
+	a.calls = append(a.calls, "fence")
+	return a.fenceErr
+}
+
+func (a *requireLiveGoalAdapter) Close(context.Context, Session) error {
+	a.closeCalls++
+	a.live = false
+	a.calls = append(a.calls, "close")
+	return nil
+}
+
+type blockingStartupAdapter struct {
+	recordingStartAdapter
+	operation        string
+	blockedSessionID string
+	entered          chan struct{}
+	release          chan struct{}
+	enterOnce        sync.Once
+	startCalls       atomic.Int32
+	resumeCalls      atomic.Int32
+}
+
+func (a *blockingStartupAdapter) Start(ctx context.Context, session Session) ([]activityshared.Event, error) {
+	a.startCalls.Add(1)
+	if a.operation == "start" && a.blocks(session) {
+		if err := a.wait(ctx); err != nil {
+			return nil, err
+		}
+	}
+	return []activityshared.Event{
+		newSessionActivityEvent(session, EventSessionStarted, SessionStatusReady, nil),
+	}, nil
+}
+
+func (a *blockingStartupAdapter) Resume(ctx context.Context, session Session) error {
+	a.resumeCalls.Add(1)
+	if a.operation == "resume" && a.blocks(session) {
+		return a.wait(ctx)
+	}
+	return nil
+}
+
+func (a *blockingStartupAdapter) blocks(session Session) bool {
+	return a.blockedSessionID == "" || a.blockedSessionID == session.AgentSessionID
+}
+
+func (a *blockingStartupAdapter) wait(ctx context.Context) error {
+	a.enterOnce.Do(func() { close(a.entered) })
+	select {
+	case <-a.release:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 type recordingPromptAdapter struct {
 	recordingStartAdapter
 	validated []PromptContentBlock
@@ -2580,7 +3049,7 @@ func (a *recordingStartAdapter) Cancel(context.Context, Session, string) ([]acti
 
 type failingStartAdapter struct{}
 
-func (failingStartAdapter) Provider() string { return ProviderHermes }
+func (failingStartAdapter) Provider() string { return hermesExtensionTestProvider }
 
 func (failingStartAdapter) Start(context.Context, Session) ([]activityshared.Event, error) {
 	return nil, errors.New("\x1b[33macp process exited with code 1: Config invalid\x1b[39m")
@@ -5210,6 +5679,56 @@ func TestControllerFinishParentTurnDoesNotOverwriteSyntheticLifecycle(t *testing
 	}
 }
 
+func TestControllerStoreTurnSessionRejectsOlderAdapterLifecycle(t *testing.T) {
+	t.Parallel()
+
+	controller := NewController(nil, nil)
+	turnID := "parent-turn-1"
+	current := Session{
+		RoomID:             "room-1",
+		AgentSessionID:     "agent-session-1",
+		Provider:           ProviderClaudeCode,
+		Status:             SessionStatusWorking,
+		LifecycleAuthority: true,
+		LifecycleSeq:       3,
+		TurnLifecycle: &TurnLifecycle{
+			ActiveTurnID: &turnID,
+			Phase:        "running",
+		},
+		SubmitAvailability: blockedSubmitAvailability("active_turn"),
+	}
+	controller.store(current)
+	controller.mu.Lock()
+	controller.turns[sessionKey("room-1", "agent-session-1")] = activeTurn{turnID: turnID}
+	controller.mu.Unlock()
+
+	outcome := "completed"
+	stale := current
+	stale.Status = SessionStatusReady
+	stale.LifecycleSeq = 2
+	stale.TurnLifecycle = &TurnLifecycle{
+		Phase:   "settled",
+		Outcome: &outcome,
+	}
+	stale.SubmitAvailability = availableSubmitAvailability()
+
+	if controller.storeTurnSession(stale, turnID) {
+		t.Fatal("older adapter lifecycle overwrote current session")
+	}
+	stored, ok := controller.get("room-1", "agent-session-1")
+	if !ok {
+		t.Fatal("stored session missing")
+	}
+	if stored.LifecycleSeq != current.LifecycleSeq ||
+		stored.Status != SessionStatusWorking ||
+		stored.TurnLifecycle == nil ||
+		stored.TurnLifecycle.ActiveTurnID == nil ||
+		*stored.TurnLifecycle.ActiveTurnID != turnID ||
+		stored.TurnLifecycle.Phase != "running" {
+		t.Fatalf("stored session = %#v, want newer running lifecycle preserved", stored)
+	}
+}
+
 func TestControllerFinishTurnDoesNotRestoreClosedSession(t *testing.T) {
 	t.Parallel()
 
@@ -5639,7 +6158,7 @@ func TestEnrichReportStatePatchesWithSessionMetadataDoesNotAttachTurnLifecycle(t
 	report := &agentsessionstore.ReportActivityInput{
 		StatePatches: []agentsessionstore.WorkspaceAgentStatePatch{{
 			AgentSessionID: "agent-session-1",
-			RootProviderTurn: &agentsessionstore.WorkspaceAgentRootProviderTurnTransition{
+			RootProviderTurn: &canonical.WorkspaceAgentRootProviderTurnTransition{
 				RootTurnID:     "root-turn-1",
 				ProviderTurnID: "provider-turn-1",
 				Phase:          agentsessionstore.RootProviderTurnPhaseCompleted,
@@ -5649,11 +6168,11 @@ func TestEnrichReportStatePatchesWithSessionMetadataDoesNotAttachTurnLifecycle(t
 	enrichReportStatePatchesWithSessionMetadata(report, agentsessionstore.WorkspaceAgentStatePatch{
 		AgentSessionID: "agent-session-1",
 		Provider:       ProviderClaudeCode,
-		TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{
+		TurnLifecycle: &canonical.WorkspaceAgentTurnLifecycle{
 			ActiveTurnID: &activeTurnID,
 			Phase:        "waiting",
 		},
-		SubmitAvailability: &agentsessionstore.WorkspaceAgentSubmitAvailability{
+		SubmitAvailability: &canonical.WorkspaceAgentSubmitAvailability{
 			State:  "blocked",
 			Reason: "active_turn",
 		},

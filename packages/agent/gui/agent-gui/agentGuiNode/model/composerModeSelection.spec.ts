@@ -39,21 +39,19 @@ describe("permissionModeSelectionPatch", () => {
 });
 
 describe("resolvePermissionModeControlsDisabled", () => {
-  it("stays enabled mid-turn when the provider applies permission changes live", () => {
+  it("stays disabled while a turn is actively running", () => {
     expect(
       resolvePermissionModeControlsDisabled({
-        changeDuringTurnSupported: true,
         isSendingTurn: true,
         isSubmittingPrompt: false,
         showStopButton: true
       })
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it("still blocks claude-code/codex during the brief prompt-submission race", () => {
+  it("blocks the brief prompt-submission race", () => {
     expect(
       resolvePermissionModeControlsDisabled({
-        changeDuringTurnSupported: true,
         isSendingTurn: false,
         isSubmittingPrompt: true,
         showStopButton: false
@@ -61,10 +59,9 @@ describe("resolvePermissionModeControlsDisabled", () => {
     ).toBe(true);
   });
 
-  it("keeps the broader turn-in-flight gate for other ACP-backed providers", () => {
+  it("blocks waiting and interrupting turns represented by the stop control", () => {
     expect(
       resolvePermissionModeControlsDisabled({
-        changeDuringTurnSupported: false,
         isSendingTurn: false,
         isSubmittingPrompt: false,
         showStopButton: true
@@ -72,10 +69,9 @@ describe("resolvePermissionModeControlsDisabled", () => {
     ).toBe(true);
   });
 
-  it("leaves ACP-backed providers enabled once no turn is in flight", () => {
+  it("enables permission changes once no turn is in flight", () => {
     expect(
       resolvePermissionModeControlsDisabled({
-        changeDuringTurnSupported: false,
         isSendingTurn: false,
         isSubmittingPrompt: false,
         showStopButton: false

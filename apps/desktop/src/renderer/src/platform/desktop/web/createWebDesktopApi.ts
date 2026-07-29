@@ -120,6 +120,17 @@ function createWebRuntimeApi(
   backendConfig: DesktopBackendConfig
 ): DesktopRuntimeApi {
   return {
+    getAgentSessionReplayPlayback() {
+      return Promise.resolve({
+        active: false,
+        paused: false,
+        speed: 1,
+        timingMode: "realtime"
+      });
+    },
+    getAgentSessionReplayStatus() {
+      return Promise.resolve({ active: false });
+    },
     getBackendConfig() {
       return Promise.resolve(backendConfig);
     },
@@ -134,6 +145,22 @@ function createWebRuntimeApi(
         providers: [],
         workspaceId: input.workspaceId
       });
+    },
+    launchAgentSessionReplay() {
+      return Promise.reject(electronDebugRequired("launchAgentSessionReplay"));
+    },
+    setAgentSessionReplayPlayback() {
+      return Promise.reject(
+        electronDebugRequired("setAgentSessionReplayPlayback")
+      );
+    },
+    sendAgentSessionReplayControl() {
+      return Promise.reject(
+        electronDebugRequired("sendAgentSessionReplayControl")
+      );
+    },
+    waitForAgentSessionReplay() {
+      return Promise.reject(electronDebugRequired("waitForAgentSessionReplay"));
     },
     getTerminalStreamUrl(input) {
       const url = resolveWebSocketUrl(
@@ -314,6 +341,9 @@ function createWebHostApi(): DesktopHostApi {
       capturePreview() {
         return Promise.resolve(null);
       },
+      capturePreviewImages() {
+        return Promise.resolve(null);
+      },
       minimize() {
         return Promise.reject(electronDebugRequired("minimize"));
       },
@@ -321,6 +351,9 @@ function createWebHostApi(): DesktopHostApi {
         return Promise.reject(electronDebugRequired("openAgentWindow"));
       },
       onCloseRequest() {
+        return () => {};
+      },
+      onLayout() {
         return () => {};
       },
       onQuitShortcutToast() {

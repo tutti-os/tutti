@@ -1,6 +1,7 @@
 import { SyncDescriptor, type ServiceRegistry } from "@tutti-os/infra/di";
 import { WorkbenchHostCoordinator } from "@tutti-os/workbench-host";
 import type {
+  MobileRemoteAccessClient,
   TuttidClient,
   TuttidEventStreamClient
 } from "@tutti-os/client-tuttid-ts";
@@ -20,15 +21,19 @@ import type {
 import type { IReporterService } from "../../analytics/services/reporterService.interface.ts";
 import { createDesktopWorkspaceSettingsClient } from "./internal/adapters/desktopWorkspaceSettingsClient";
 import { AccountService } from "./internal/accountService";
+import { MobileRemoteAccessService } from "./internal/mobileRemoteAccessService";
 import { WorkspaceWorkbenchHostService } from "./internal/workspaceWorkbenchHostService";
 import { WorkspaceSettingsService } from "./internal/workspaceSettingsService";
 import { IAccountService } from "./accountService.interface";
+import { IMobileRemoteAccessService } from "./mobileRemoteAccessService.interface";
 import { IWorkbenchHostCoordinator } from "./workbenchHostCoordinator.interface.ts";
 import { IWorkspaceWorkbenchHostService } from "./workspaceWorkbenchHostService.interface";
 import type { DesktopWorkspaceWorkbenchRepository } from "./internal/adapters/desktopWorkspaceWorkbenchRepository.ts";
 import { IWorkspaceSettingsService } from "./workspaceSettingsService.interface";
+import type { IAgentQuickPromptService } from "../../workspace-agent/services/agentQuickPromptService.interface.ts";
 
 export interface WorkspaceWorkbenchServiceRegistrationInput {
+  agentQuickPromptService?: IAgentQuickPromptService;
   browserApi?: DesktopBrowserApi;
   computerUseApi: DesktopComputerUseApi;
   developerApi: DesktopDeveloperApi;
@@ -56,19 +61,31 @@ export interface WorkspaceWorkbenchServiceRegistrationInput {
   onAgentTargetsChanged?: () => void | Promise<void>;
 }
 
+export interface WorkspaceAccountServiceRegistrationInput {
+  hostFilesApi: DesktopHostFilesApi;
+  tuttidClient: TuttidClient & MobileRemoteAccessClient;
+}
+
+export function registerWorkspaceAccountService(
+  registry: ServiceRegistry,
+  input: WorkspaceAccountServiceRegistrationInput
+): IAccountService {
+  const accountService = new AccountService({
+    hostFilesApi: input.hostFilesApi,
+    tuttidClient: input.tuttidClient
+  });
+  registry.registerInstance(IAccountService, accountService);
+  registry.registerInstance(
+    IMobileRemoteAccessService,
+    new MobileRemoteAccessService(input.tuttidClient)
+  );
+  return accountService;
+}
+
 export function registerWorkspaceWorkbenchServices(
   registry: ServiceRegistry,
   input: WorkspaceWorkbenchServiceRegistrationInput
 ): void {
-  registry.register(
-    IAccountService,
-    new SyncDescriptor(AccountService, [
-      {
-        hostFilesApi: input.hostFilesApi,
-        tuttidClient: input.tuttidClient
-      }
-    ])
-  );
   registry.register(
     IWorkbenchHostCoordinator,
     new SyncDescriptor(WorkbenchHostCoordinator)
@@ -77,6 +94,7 @@ export function registerWorkspaceWorkbenchServices(
     IWorkspaceWorkbenchHostService,
     new SyncDescriptor(WorkspaceWorkbenchHostService, [
       {
+        agentQuickPromptService: input.agentQuickPromptService,
         browserApi: input.browserApi,
         computerUseApi: input.computerUseApi,
         dockPreviewCacheApi: input.dockPreviewCacheApi,

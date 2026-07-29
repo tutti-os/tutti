@@ -25,6 +25,7 @@
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
+    "@tutti-os/agent-activity-core": "workspace:*",
     "@tutti-os/ui-rich-text": "workspace:*",
     "@tutti-os/workspace-file-reference": "workspace:*",
     "@tutti-os/workspace-user-project": "workspace:*"

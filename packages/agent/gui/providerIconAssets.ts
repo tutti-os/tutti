@@ -8,11 +8,9 @@ import {
   codexRoundedUrl,
   cursorColorfulUrl,
   cursorRoundedUrl,
-  hermesRoundedUrl,
   manageAgentClaudeCodeUrl,
   manageAgentCodexUrl,
   manageAgentCursorUrl,
-  manageAgentHermesUrl,
   manageAgentOpenCodeUrl,
   manageAgentOpenclawUrl,
   manageAgentTuttiUrl,
@@ -20,7 +18,6 @@ import {
   openclawRoundedUrl,
   providerRailClaudeCodeColorfulUrl,
   providerRailCodexColorfulUrl,
-  providerRailHermesColorfulUrl,
   providerRailOpenCodeColorfulUrl,
   providerRailTuttiUrl,
   tuttiAgentRoundedUrl,
@@ -64,14 +61,6 @@ export const PROVIDER_ICON_ASSETS_BY_ICON_KEY: Readonly<
     sessionColorful: cursorColorfulUrl,
     sessionFlat: cursorFlatFilledIconUrl,
     dock: cursorRoundedUrl
-  },
-  hermes: {
-    manage: manageAgentHermesUrl,
-    providerRail: providerRailHermesColorfulUrl,
-    rounded: hermesRoundedUrl,
-    sessionColorful: hermesRoundedUrl,
-    sessionFlat: hermesRoundedUrl,
-    dock: hermesRoundedUrl
   },
   openclaw: {
     manage: manageAgentOpenclawUrl,

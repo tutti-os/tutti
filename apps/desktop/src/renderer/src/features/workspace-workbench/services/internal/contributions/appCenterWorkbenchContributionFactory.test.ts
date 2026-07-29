@@ -342,11 +342,13 @@ function createBrowserApi(
     goBack: async () => undefined,
     goForward: async () => undefined,
     navigate: async () => undefined,
+    onAutomationRequest: () => () => undefined,
     onEvent: () => () => undefined,
     openExternal: async () => undefined,
     prepareSession: async () => undefined,
     registerGuest: async () => undefined,
     reload: async () => undefined,
+    respondAutomationRequest: () => undefined,
     unregisterGuest: async () => undefined,
     ...overrides
   };

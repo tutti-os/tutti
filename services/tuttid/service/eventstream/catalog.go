@@ -7,20 +7,28 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/liveprotocol"
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 )
 
 const (
-	TopicAnalyticsDebugReported                = "analytics.debug.reported"
-	TopicAgentActivityUpdated                  = "agent.activity.updated"
-	TopicAgentModelCatalogInvalidated          = "agent.model.catalog.invalidated"
-	TopicPreferencesDesktopUpdateRequested     = "preferences.desktop.update.requested"
-	TopicPreferencesDesktopUpdated             = "preferences.desktop.updated"
-	TopicWorkspaceIssueUpdated                 = "workspace.issue.updated"
-	TopicWorkspaceAppFactoryJobUpdated         = "workspace.appfactory.job.updated"
-	TopicWorkspaceAppUpdated                   = "workspace.app.updated"
-	TopicWorkspaceWorkbenchNodeLaunchRequested = "workspace.workbench.node.launch.requested"
+	TopicAnalyticsDebugReported                         = "analytics.debug.reported"
+	TopicAgentActivityUpdated                           = "agent.activity.updated"
+	TopicAgentCollaborationUpdated                      = "agent.collaboration.updated"
+	TopicAgentModelCatalogInvalidated                   = "agent.model.catalog.invalidated"
+	TopicAgentQuickPromptUpdated                        = "agent.quickprompt.updated"
+	TopicPreferencesAgentComposerDefaultsChanged        = "preferences.agent.composer.defaults.changed"
+	TopicPreferencesAgentComposerDefaultsPatchRequested = "preferences.agent.composer.defaults.patch.requested"
+	TopicPreferencesDesktopUpdateRequested              = "preferences.desktop.update.requested"
+	TopicPreferencesDesktopUpdated                      = "preferences.desktop.updated"
+	TopicUserProjectUpdated                             = "user.project.updated"
+	TopicWorkspaceIssueUpdated                          = "workspace.issue.updated"
+	TopicWorkspaceWorkflowUpdated                       = "workspace.workflow.updated"
+	TopicWorkspaceTuttiModeUpdated                      = "workspace.tuttimode.updated"
+	TopicWorkspaceAppFactoryJobUpdated                  = "workspace.appfactory.job.updated"
+	TopicWorkspaceAppUpdated                            = "workspace.app.updated"
+	TopicWorkspaceWorkbenchNodeLaunchRequested          = "workspace.workbench.node.launch.requested"
 )
 
 // Direction, ValidationCode and ValidationError now live in stream-go and are
@@ -81,7 +89,7 @@ func NewStaticCatalog(definitions []TopicDefinition) StaticCatalog {
 }
 
 func DefaultCatalog() StaticCatalog {
-	return NewStaticCatalog([]TopicDefinition{
+	definitions := []TopicDefinition{
 		{
 			Name:               TopicAnalyticsDebugReported,
 			ClientCanPublish:   false,
@@ -103,6 +111,16 @@ func DefaultCatalog() StaticCatalog {
 			},
 		},
 		{
+			Name:               TopicAgentCollaborationUpdated,
+			ClientCanPublish:   false,
+			ClientCanSubscribe: true,
+			Version:            1,
+			directions:         []Direction{DirectionServerToClient},
+			validators: map[Direction]PayloadValidator{
+				DirectionServerToClient: validateAgentCollaborationUpdatedPayload,
+			},
+		},
+		{
 			Name:               TopicAgentModelCatalogInvalidated,
 			ClientCanPublish:   false,
 			ClientCanSubscribe: true,
@@ -113,23 +131,28 @@ func DefaultCatalog() StaticCatalog {
 			},
 		},
 		{
-			Name:               TopicPreferencesDesktopUpdateRequested,
-			ClientCanPublish:   true,
-			ClientCanSubscribe: false,
-			Version:            1,
-			directions:         []Direction{DirectionClientToServer},
-			validators: map[Direction]PayloadValidator{
-				DirectionClientToServer: validateDesktopPreferencesUpdateRequestedPayload,
-			},
-		},
-		{
-			Name:               TopicPreferencesDesktopUpdated,
+			Name:               TopicAgentQuickPromptUpdated,
 			ClientCanPublish:   false,
 			ClientCanSubscribe: true,
 			Version:            1,
 			directions:         []Direction{DirectionServerToClient},
 			validators: map[Direction]PayloadValidator{
-				DirectionServerToClient: validateDesktopPreferencesUpdatedPayload,
+				DirectionServerToClient: validateAgentQuickPromptUpdatedPayload,
+			},
+		},
+	}
+	definitions = append(definitions, preferencesTopicDefinitions()...)
+	definitions = append(definitions, modelGovernanceTopicDefinitions()...)
+	definitions = append(definitions, collaborationTopicDefinitions()...)
+	definitions = append(definitions, []TopicDefinition{
+		{
+			Name:               TopicUserProjectUpdated,
+			ClientCanPublish:   false,
+			ClientCanSubscribe: true,
+			Version:            2,
+			directions:         []Direction{DirectionServerToClient},
+			validators: map[Direction]PayloadValidator{
+				DirectionServerToClient: validateUserProjectUpdatedPayload,
 			},
 		},
 		{
@@ -140,6 +163,26 @@ func DefaultCatalog() StaticCatalog {
 			directions:         []Direction{DirectionServerToClient},
 			validators: map[Direction]PayloadValidator{
 				DirectionServerToClient: validateWorkspaceIssueUpdatedPayload,
+			},
+		},
+		{
+			Name:               TopicWorkspaceWorkflowUpdated,
+			ClientCanPublish:   false,
+			ClientCanSubscribe: true,
+			Version:            1,
+			directions:         []Direction{DirectionServerToClient},
+			validators: map[Direction]PayloadValidator{
+				DirectionServerToClient: validateWorkspaceWorkflowUpdatedPayload,
+			},
+		},
+		{
+			Name:               TopicWorkspaceTuttiModeUpdated,
+			ClientCanPublish:   false,
+			ClientCanSubscribe: true,
+			Version:            1,
+			directions:         []Direction{DirectionServerToClient},
+			validators: map[Direction]PayloadValidator{
+				DirectionServerToClient: validateWorkspaceTuttiModeUpdatedPayload,
 			},
 		},
 		{
@@ -172,7 +215,8 @@ func DefaultCatalog() StaticCatalog {
 				DirectionServerToClient: validateWorkspaceWorkbenchNodeLaunchRequestedPayload,
 			},
 		},
-	})
+	}...)
+	return NewStaticCatalog(definitions)
 }
 
 func (c StaticCatalog) Topic(topic string) (TopicDefinition, bool) {
@@ -280,14 +324,6 @@ type workbenchNodeLaunchRequestedPayload struct {
 	Payload      json.RawMessage `json:"payload,omitempty"`
 }
 
-type workspaceIssueUpdatedPayload struct {
-	WorkspaceID string `json:"workspaceId"`
-	IssueID     string `json:"issueId"`
-	TaskID      string `json:"taskId,omitempty"`
-	RunID       string `json:"runId,omitempty"`
-	ChangeKind  string `json:"changeKind"`
-}
-
 func validateAnalyticsDebugReportedPayload(payload []byte) error {
 	var decoded analyticsDebugReportedPayload
 	if err := json.Unmarshal(payload, &decoded); err != nil {
@@ -323,6 +359,9 @@ func validateDesktopPreferencesUpdateRequestedPayload(payload []byte) error {
 	}
 	if !preferencesbiz.IsDesktopDockPlacement(decoded.DockPlacement) {
 		return fmt.Errorf("preferences.dockPlacement is unsupported")
+	}
+	if !preferencesbiz.IsDeletedAgentConversationRetentionDays(decoded.DeletedAgentConversationRetentionDays) {
+		return fmt.Errorf("preferences.deletedAgentConversationRetentionDays is unsupported")
 	}
 	if strings.TrimSpace(decoded.AgentDockLayout) == "" {
 		return fmt.Errorf("preferences.agentDockLayout is required")
@@ -409,6 +448,10 @@ func validateDesktopPreferencesUpdatedPayload(payload []byte) error {
 	}
 	if !preferencesbiz.IsDesktopDockPlacement(decoded.Preferences.DockPlacement) {
 		return fmt.Errorf("preferences.dockPlacement is unsupported")
+	}
+	if decoded.Preferences.DeletedAgentConversationRetentionDays != 0 &&
+		!preferencesbiz.IsDeletedAgentConversationRetentionDays(decoded.Preferences.DeletedAgentConversationRetentionDays) {
+		return fmt.Errorf("preferences.deletedAgentConversationRetentionDays is unsupported")
 	}
 	if decoded.Preferences.AgentConversationDetailMode == "" {
 		return fmt.Errorf("preferences.agentConversationDetailMode is required")
@@ -503,7 +546,7 @@ func validateAgentActivityUpdatedPayload(payload []byte) error {
 		return fmt.Errorf("agentSessionId is required")
 	}
 	switch strings.TrimSpace(decoded.EventType) {
-	case "session_reconcile_required", "session_deleted", "session_audit", "message_update", "turn_update", "interaction_update":
+	case "session_reconcile_required", "session_deleted", "session_audit", "message_delta", "message_update", "turn_update", "interaction_update":
 	default:
 		return fmt.Errorf("eventType is unsupported")
 	}
@@ -542,13 +585,25 @@ func decodeJSONStrict(payload []byte, target any) error {
 }
 
 func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error {
+	workspaceID := strings.TrimSpace(decoded.WorkspaceID)
+	agentSessionID := strings.TrimSpace(decoded.AgentSessionID)
+	eventType := strings.TrimSpace(decoded.EventType)
+	if eventType == "message_delta" {
+		if _, err := liveprotocol.MarshalEvent(liveprotocol.Event{
+			WorkspaceID:    workspaceID,
+			AgentSessionID: agentSessionID,
+			EventType:      liveprotocol.EventTypeMessageDelta,
+			Data:           decoded.Data,
+		}); err != nil {
+			return fmt.Errorf("decode message_delta data: %w", err)
+		}
+		return nil
+	}
+
 	var header agentActivityUpdatedDataHeader
 	if err := json.Unmarshal(decoded.Data, &header); err != nil {
 		return fmt.Errorf("decode data: %w", err)
 	}
-	workspaceID := strings.TrimSpace(decoded.WorkspaceID)
-	agentSessionID := strings.TrimSpace(decoded.AgentSessionID)
-	eventType := strings.TrimSpace(decoded.EventType)
 	if strings.TrimSpace(header.WorkspaceID) != workspaceID {
 		return fmt.Errorf("data.workspaceId must match workspaceId")
 	}
@@ -674,6 +729,11 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 		if data.Turn.Outcome != nil && !isOneOf(*data.Turn.Outcome, "completed", "failed", "canceled", "interrupted") {
 			return fmt.Errorf("data.turn.outcome is invalid")
 		}
+		for index, reference := range data.Turn.CapabilityRefs {
+			if reference.Capability != "tutti" || reference.Source != "slash_command" {
+				return fmt.Errorf("data.turn.capabilityRefs[%d] is invalid", index)
+			}
+		}
 		if data.Turn.Phase == "settled" {
 			if data.ActiveTurnID != nil || data.Turn.Outcome == nil || data.Turn.SettledAtUnixMS == nil {
 				return fmt.Errorf("settled turn must clear activeTurnId and include outcome/settledAtUnixMs")
@@ -729,40 +789,6 @@ func validateWorkspaceWorkbenchNodeLaunchRequestedPayload(payload []byte) error 
 	}
 	if decoded.RequestID != "" && strings.TrimSpace(decoded.RequestID) == "" {
 		return fmt.Errorf("requestId must not be blank")
-	}
-	return nil
-}
-
-func validateWorkspaceIssueUpdatedPayload(payload []byte) error {
-	var decoded workspaceIssueUpdatedPayload
-	if err := json.Unmarshal(payload, &decoded); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
-	}
-	if strings.TrimSpace(decoded.WorkspaceID) == "" {
-		return fmt.Errorf("workspaceId is required")
-	}
-	if strings.TrimSpace(decoded.IssueID) == "" {
-		return fmt.Errorf("issueId is required")
-	}
-	if decoded.TaskID != "" && strings.TrimSpace(decoded.TaskID) == "" {
-		return fmt.Errorf("taskId must not be blank")
-	}
-	if decoded.RunID != "" && strings.TrimSpace(decoded.RunID) == "" {
-		return fmt.Errorf("runId must not be blank")
-	}
-	switch strings.TrimSpace(decoded.ChangeKind) {
-	case "issue_created",
-		"issue_updated",
-		"issue_deleted",
-		"issue_context_refs_updated",
-		"task_created",
-		"task_updated",
-		"task_deleted",
-		"task_context_refs_updated",
-		"run_created",
-		"run_completed":
-	default:
-		return fmt.Errorf("changeKind is unsupported")
 	}
 	return nil
 }

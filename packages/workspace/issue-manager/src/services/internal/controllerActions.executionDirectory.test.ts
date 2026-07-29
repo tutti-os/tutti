@@ -49,7 +49,8 @@ test("controller actions useExecutionDirectory updates state and remembers the p
         return {
           id: "project-1",
           label: "tutti",
-          path: input.path
+          path: input.path,
+          pinnedAtUnixMs: 0
         };
       }
     }

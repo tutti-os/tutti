@@ -42,7 +42,7 @@ test("desktop agent gui project menu opens the project folder path in workspace 
   const launchedFiles: unknown[] = [];
   const action: WorkspaceLinkAction = {
     directoryPath: "/Users/local/project",
-    mode: "open-directory",
+    mode: "open",
     path: "/Users/local/project",
     source: "agent-project-menu",
     type: "open-workspace-file",
@@ -66,7 +66,7 @@ test("desktop agent gui project menu opens the project folder path in workspace 
   assert.deepEqual(launchedFiles, [
     {
       homeDirectory: "/Users/local",
-      mode: "open-directory",
+      mode: "open",
       path: "/Users/local/project",
       source: "agent_command",
       validateExists: true,
@@ -176,6 +176,32 @@ test("desktop agent gui link actions open urls through the workspace browser", a
       workspaceId: "workspace-1"
     }
   ]);
+});
+
+test("desktop agent gui commerce actions open urls in the external browser", async () => {
+  const openedUrls: string[] = [];
+
+  const handled = await runDesktopAgentGUILinkAction(
+    {
+      source: "agent-external-action",
+      type: "open-url",
+      url: "https://example.com/plans"
+    },
+    {
+      getAgentSession: failGetAgentSession,
+      launchAgentGui: failLaunchAgentGui,
+      launchWorkspaceIssueManager: failLaunchWorkspaceIssueManager,
+      launchWorkspaceFiles: failLaunchWorkspaceFiles,
+      openBrowserUrl: failOpenBrowserUrl,
+      openExternalUrl(url) {
+        openedUrls.push(url);
+      },
+      workspaceId: "workspace-1"
+    }
+  );
+
+  assert.equal(handled, true);
+  assert.deepEqual(openedUrls, ["https://example.com/plans"]);
 });
 
 test("desktop agent gui link actions launch agent sessions in the same workspace", async () => {

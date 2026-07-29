@@ -1,21 +1,33 @@
 import {
+  agentActivitySessionMessageWindowFromDescendingPage,
   dispatchSessionMutation,
   type AgentActivityAdapter,
+  type AgentActivityComposerOptions,
   type AgentActivityGoalControlResult,
   type AgentActivityMessagePage,
   type AgentActivitySession,
   type AgentSessionEngine,
-  type AgentActivitySnapshot
+  type AgentActivitySnapshot,
+  type EngineExternalCommand,
+  type EngineIntent
 } from "@tutti-os/agent-activity-core";
 import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
 import type {
+  AgentProviderStatusListResponse,
+  Client,
+  CollaborationRun,
   TuttidClient,
-  TuttidEventStreamClient
+  TuttidEventStreamClient,
+  WorkspaceAgentProvider
+} from "@tutti-os/client-tuttid-ts";
+import {
+  createClient,
+  normalizeTuttidError,
+  setCollaborationRunAdoption
 } from "@tutti-os/client-tuttid-ts";
 import type { DesktopHostFilesApi, DesktopRuntimeApi } from "@preload/types";
-import { agentActivitySessionFromTuttidSession } from "../desktopAgentActivityAdapter.ts";
+import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import {
-  agentSessionActivationError,
   normalizeComposerSettings,
   resolveComposerPermissionMode,
   resolveDesktopAgentGUIProvider
@@ -24,7 +36,6 @@ import type {
   IWorkspaceAgentActivityService,
   WorkspaceAgentActivityListMessagesInput
 } from "../workspaceAgentActivityService.interface.ts";
-import type { IAgentProviderStatusService } from "../agentProviderStatusService.interface.ts";
 import type { IWorkspaceUserProjectService } from "../../../workspace-user-project/index.ts";
 import {
   createWorkspaceAgentSessionEngineHost,
@@ -36,9 +47,16 @@ import {
   normalizeWorkspaceId
 } from "./workspaceAgentActivityDiagnostics.ts";
 import { reportAgentSubmitTraceDiagnostic } from "../desktopAgentRuntimeSubmitDiagnostics.ts";
+import { WorkspaceAgentActivityAnalytics } from "./workspaceAgentActivityAnalytics.ts";
 import { WorkspaceAgentActivityQueryOperations } from "./workspaceAgentActivityQueryOperations.ts";
 import { WorkspaceAgentActivityImportOperations } from "./workspaceAgentActivityImportOperations.ts";
 import { loadWorkspaceAgentComposerOptions } from "./workspaceAgentComposerOptions.ts";
+import { WorkspaceAgentActivityMutationOperations } from "./workspaceAgentActivityMutationOperations.ts";
+import { AgentSessionRecordingBinding } from "../../../agent-session-replay/services/agentSessionRecordingBinding.ts";
+import {
+  AgentSessionActivityEventRecorder,
+  createTuttidAgentSessionActivityEventAppender
+} from "../../../agent-session-replay/services/agentSessionActivityEventRecorder.ts";
 
 function waitForPromiseWithSignal<T>(
   promise: Promise<T>,
@@ -75,8 +93,16 @@ export interface WorkspaceAgentActivityServiceDependencies {
     "createUserDocumentsProjectDirectory" | "selectAppArchive"
   >;
   tuttidClient: TuttidClient;
-  runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
-  agentProviderStatusService?: Pick<IAgentProviderStatusService, "refresh">;
+  reporterNow?: () => number;
+  reporterService?: Pick<IReporterService, "trackEvents">;
+  runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic"> &
+    Partial<Pick<DesktopRuntimeApi, "getBackendConfig">>;
+  forceRefreshAgentProviderStatuses?: (
+    providers: WorkspaceAgentProvider[]
+  ) => Promise<AgentProviderStatusListResponse | null>;
+  resolveAgentTargetProvider?: (
+    agentTargetId: string
+  ) => WorkspaceAgentProvider | null;
   workspaceUserProjectService?: IWorkspaceUserProjectService;
 }
 
@@ -88,18 +114,49 @@ export class WorkspaceAgentActivityService
 {
   readonly _serviceBrand = undefined;
 
+  private readonly analytics: WorkspaceAgentActivityAnalytics;
   private readonly dependencies: WorkspaceAgentActivityServiceDependencies;
   private readonly importOperations: WorkspaceAgentActivityImportOperations;
+  private readonly mutationOperations: WorkspaceAgentActivityMutationOperations;
   private readonly queryOperations: WorkspaceAgentActivityQueryOperations;
   private readonly workspaceLoadsInFlight = new Map<
     string,
     Promise<AgentActivitySnapshot>
   >();
+  private readonly sessionRecordingBinding = new AgentSessionRecordingBinding();
+  private readonly sessionActivityEventRecorders = new Map<
+    string,
+    AgentSessionActivityEventRecorder
+  >();
+  private readonly sessionEngineActivityObservers = new Map<
+    string,
+    Set<{
+      observeCommand(command: EngineExternalCommand): void;
+      observeIntent(intent: EngineIntent): void;
+    }>
+  >();
   private composerOptionsCommandSequence = 1;
   private sessionMutationSequence = 1;
+  // Collaboration-run/model-plan requests are not part of the TuttidClient
+  // wrapper yet, so they call the generated SDK directly. The client is
+  // re-resolved from the backend config on every call (cached per endpoint)
+  // because the managed daemon can restart onto a new ephemeral port.
+  private collaborationClientCache: {
+    accessToken: string;
+    baseUrl: string;
+    client: Client;
+  } | null = null;
   constructor(dependencies: WorkspaceAgentActivityServiceDependencies) {
     super(dependencies);
     this.dependencies = dependencies;
+    this.analytics = new WorkspaceAgentActivityAnalytics({
+      forceRefreshAgentProviderStatuses:
+        dependencies.forceRefreshAgentProviderStatuses,
+      reporterNow: dependencies.reporterNow,
+      reporterService: dependencies.reporterService,
+      resolveAgentTargetProvider: dependencies.resolveAgentTargetProvider,
+      workspaceUserProjectService: dependencies.workspaceUserProjectService
+    });
     this.queryOperations = new WorkspaceAgentActivityQueryOperations(
       dependencies.tuttidClient
     );
@@ -110,6 +167,93 @@ export class WorkspaceAgentActivityService
         this.dependencies.workspaceUserProjectService?.refresh(),
       tuttidClient: dependencies.tuttidClient
     });
+    this.mutationOperations = new WorkspaceAgentActivityMutationOperations({
+      getSession: (workspaceId, agentSessionId, signal) =>
+        this.getSession(workspaceId, agentSessionId, signal),
+      hostFilesApi: dependencies.hostFilesApi,
+      load: (workspaceId, signal) => this.load(workspaceId, signal),
+      markSessionDeleted: (input) => this.markSessionDeleted(input),
+      runtimeApi: dependencies.runtimeApi,
+      sessionCommandTarget: (workspaceId) => ({
+        adapter: this.entry(workspaceId).adapter
+      }),
+      tuttidClient: dependencies.tuttidClient,
+      upsertAuthoritativeSession: (session, source) =>
+        this.upsertAuthoritativeSession(session, source),
+      workspaceUserProjectService: dependencies.workspaceUserProjectService
+    });
+  }
+
+  armNextSessionRecording(workspaceId: string, recordingId: string): void {
+    this.sessionRecordingBinding.arm(workspaceId, recordingId);
+  }
+
+  clearNextSessionRecording(workspaceId: string, recordingId?: string): void {
+    this.sessionRecordingBinding.clear(workspaceId, recordingId);
+  }
+
+  startSessionActivityEventRecording(
+    workspaceId: string,
+    recordingId: string
+  ): void {
+    const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+    this.sessionActivityEventRecorder(normalizedWorkspaceId).start({
+      recordingId,
+      scopeId: normalizedWorkspaceId
+    });
+  }
+
+  sealSessionActivityEventRecording(
+    workspaceId: string,
+    recordingId: string
+  ): Promise<void> {
+    return this.sessionActivityEventRecorder(
+      normalizeWorkspaceId(workspaceId)
+    ).seal(recordingId);
+  }
+
+  discardSessionActivityEventRecording(
+    workspaceId: string,
+    recordingId: string
+  ): void {
+    this.sessionActivityEventRecorder(
+      normalizeWorkspaceId(workspaceId)
+    ).discard(recordingId);
+  }
+
+  addSessionEngineActivityObserver(
+    workspaceId: string,
+    observer: {
+      observeCommand(command: EngineExternalCommand): void;
+      observeIntent(intent: EngineIntent): void;
+    }
+  ): () => void {
+    const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+    let observers = this.sessionEngineActivityObservers.get(
+      normalizedWorkspaceId
+    );
+    if (!observers) {
+      observers = new Set();
+      this.sessionEngineActivityObservers.set(normalizedWorkspaceId, observers);
+    }
+    observers.add(observer);
+    return () => {
+      observers?.delete(observer);
+      if (observers?.size === 0) {
+        this.sessionEngineActivityObservers.delete(normalizedWorkspaceId);
+      }
+    };
+  }
+
+  private takeNextSessionRecording(workspaceId: string): string | null {
+    return this.sessionRecordingBinding.take(workspaceId);
+  }
+
+  private restoreNextSessionRecording(
+    workspaceId: string,
+    recordingId: string
+  ): void {
+    this.sessionRecordingBinding.restore(workspaceId, recordingId);
   }
 
   getSnapshot(workspaceId: string): AgentActivitySnapshot {
@@ -124,8 +268,7 @@ export class WorkspaceAgentActivityService
     workspaceId: string,
     listener: (snapshot: AgentActivitySnapshot) => void
   ): () => void {
-    const entry = this.entry(workspaceId);
-    return entry.engine.subscribe(() =>
+    return this.subscribeActivitySnapshot(workspaceId, () =>
       listener(this.activitySnapshot(workspaceId))
     );
   }
@@ -233,9 +376,22 @@ export class WorkspaceAgentActivityService
         if (input.cache !== false) {
           entry.engine.dispatch({
             messages: page.messages,
+            ...(input.order === "desc"
+              ? {
+                  sessionMessageWindows: [
+                    {
+                      agentSessionId: input.agentSessionId,
+                      ...agentActivitySessionMessageWindowFromDescendingPage(
+                        page
+                      )
+                    }
+                  ]
+                }
+              : {}),
             type: "message/snapshotReceived",
             workspaceId
           });
+          this.reconcileOptimisticMessages(workspaceId, input.agentSessionId);
         }
         return page;
       });
@@ -305,6 +461,9 @@ export class WorkspaceAgentActivityService
       throw new Error("workspace_agent_delete_result_missing");
     }
     return {
+      cleanupFailedSessionIds: [
+        ...mutation.deleteResult.cleanupFailedSessionIds
+      ],
       removedMessages: mutation.deleteResult.removedMessages,
       removedSessionIds: [...mutation.deleteResult.removedSessionIds],
       removedSessions: mutation.deleteResult.removedSessions
@@ -360,46 +519,14 @@ export class WorkspaceAgentActivityService
   async createSession(
     input: Parameters<AgentActivityAdapter["createSession"]>[0]
   ): Promise<AgentActivitySession> {
-    reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
-      agentSessionId: input.agentSessionId?.trim() ?? null,
-      clientSubmitId: input.clientSubmitId,
-      event: "activity_service.create.entered",
-      provider: null,
-      submitDiagnostics: input.submitDiagnostics,
-      workspaceId: input.workspaceId,
-      fields: { agentTargetId: input.agentTargetId ?? null }
-    });
-    const entry = this.entry(input.workspaceId);
-    reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
-      agentSessionId: input.agentSessionId?.trim() ?? null,
-      clientSubmitId: input.clientSubmitId,
-      event: "activity_service.create.adapter_requested",
-      provider: null,
-      submitDiagnostics: input.submitDiagnostics,
-      workspaceId: input.workspaceId,
-      fields: { agentTargetId: input.agentTargetId ?? null }
-    });
-    const session = await entry.adapter.createSession(input);
-    reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
-      agentSessionId: session.agentSessionId,
-      clientSubmitId: input.clientSubmitId,
-      event: "activity_service.create.adapter_resolved",
-      provider: session.provider,
-      submitDiagnostics: input.submitDiagnostics,
-      workspaceId: input.workspaceId,
-      fields: { activeTurnPhase: session.activeTurn?.phase ?? null }
-    });
-    this.upsertAuthoritativeSession(session, "create_session_result");
-    reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
-      agentSessionId: session.agentSessionId,
-      clientSubmitId: input.clientSubmitId,
-      event: "activity_service.create.resolved",
-      provider: session.provider,
-      submitDiagnostics: input.submitDiagnostics,
-      workspaceId: input.workspaceId,
-      fields: { activeTurnPhase: session.activeTurn?.phase ?? null }
-    });
-    return session;
+    try {
+      return await this.mutationOperations.createSession(input);
+    } catch (error) {
+      this.analytics.trackSessionCreateFailure({
+        agentTargetId: input.agentTargetId
+      });
+      throw error;
+    }
   }
 
   async activateSession(
@@ -414,7 +541,12 @@ export class WorkspaceAgentActivityService
       provider: null,
       submitDiagnostics: input.submitDiagnostics,
       workspaceId,
-      fields: { agentTargetId: input.agentTargetId ?? null, mode: input.mode }
+      fields: {
+        agentTargetId: input.agentTargetId ?? null,
+        hasInitialTuttiModeActivation:
+          input.mode === "new" && input.initialTuttiModeActivation != null,
+        mode: input.mode
+      }
     });
     if (input.mode === "new") {
       reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
@@ -450,7 +582,11 @@ export class WorkspaceAgentActivityService
     }
     let session: AgentActivitySession;
     if (input.mode === "existing") {
-      session = await this.getSession(workspaceId, requestedAgentSessionId);
+      session = await this.getSession(
+        workspaceId,
+        requestedAgentSessionId,
+        input.signal
+      );
     } else {
       reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
         agentSessionId: requestedAgentSessionId,
@@ -459,22 +595,31 @@ export class WorkspaceAgentActivityService
         provider: null,
         submitDiagnostics: input.submitDiagnostics,
         workspaceId,
-        fields: { agentTargetId: input.agentTargetId ?? null }
+        fields: {
+          agentTargetId: input.agentTargetId ?? null,
+          hasInitialTuttiModeActivation:
+            input.initialTuttiModeActivation != null
+        }
       });
       session = await this.createSession({
         clientSubmitId: input.clientSubmitId,
         workspaceId,
         agentSessionId: requestedAgentSessionId,
         agentTargetId: input.agentTargetId,
+        capabilityRefs: input.capabilityRefs ?? null,
         cwd: resolvedCwd?.cwd ?? null,
         initialContent: input.initialContent ?? [],
         initialDisplayPrompt: input.initialDisplayPrompt ?? null,
+        initialTuttiModeActivation: input.initialTuttiModeActivation ?? null,
         submitDiagnostics: input.submitDiagnostics,
         model: input.settings?.model ?? null,
         planMode: input.settings?.planMode ?? null,
         permissionModeId: resolveComposerPermissionMode(input.settings),
         reasoningEffort: input.settings?.reasoningEffort ?? null,
         ...(resolvedCwd?.noProject ? { noProject: true } : {}),
+        ...(input.railPlacement
+          ? { railPlacement: { ...input.railPlacement } }
+          : {}),
         speed: input.settings?.speed ?? null,
         title: input.title ?? null,
         visible: input.visible ?? true,
@@ -490,8 +635,6 @@ export class WorkspaceAgentActivityService
         fields: { activeTurnPhase: session.activeTurn?.phase ?? null }
       });
     }
-    const activationError = agentSessionActivationError(session);
-    const activationFailed = activationError !== undefined;
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
       agentSessionId: session.agentSessionId,
       clientSubmitId: input.mode === "new" ? input.clientSubmitId : null,
@@ -508,13 +651,8 @@ export class WorkspaceAgentActivityService
     return {
       activation: {
         mode: input.mode,
-        status: activationFailed
-          ? "failed"
-          : input.mode === "existing"
-            ? "already_attached"
-            : "attached"
+        status: input.mode === "existing" ? "already_attached" : "attached"
       },
-      ...(activationError ? { error: activationError } : {}),
       session
     };
   }
@@ -579,47 +717,166 @@ export class WorkspaceAgentActivityService
 
   async cancelTurn(input: {
     agentSessionId: string;
+    signal?: AbortSignal;
     turnId: string;
     workspaceId: string;
   }): Promise<
     import("@tutti-os/agent-activity-core").AgentActivityTurnCancelResponse
   > {
-    return this.dependencies.tuttidClient.cancelWorkspaceAgentTurn(
-      normalizeWorkspaceId(input.workspaceId),
-      input.agentSessionId,
-      input.turnId
+    return this.mutationOperations.cancelTurn(input);
+  }
+
+  async setCollaborationAdoption(
+    input: Parameters<
+      NonNullable<IWorkspaceAgentActivityService["setCollaborationAdoption"]>
+    >[0]
+  ): ReturnType<
+    NonNullable<IWorkspaceAgentActivityService["setCollaborationAdoption"]>
+  > {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const client = await this.resolveCollaborationClient();
+    const response = await setCollaborationRunAdoption({
+      body: { adoption: input.adoption },
+      client,
+      path: {
+        collaborationRunID: input.runId,
+        workspaceID: workspaceId
+      },
+      signal: input.signal
+    });
+    return agentActivityCollaborationRunFromTuttid(
+      unwrapCollaborationData(
+        response,
+        "Collaboration adoption request failed."
+      )
     );
+  }
+
+  private async resolveCollaborationClient(): Promise<Client> {
+    const getBackendConfig = this.dependencies.runtimeApi.getBackendConfig;
+    if (!getBackendConfig) {
+      throw new Error(
+        "Collaboration requests are unavailable: backend config resolver is missing."
+      );
+    }
+    const config = await getBackendConfig();
+    const cached = this.collaborationClientCache;
+    if (
+      cached &&
+      cached.baseUrl === config.baseUrl &&
+      cached.accessToken === config.accessToken
+    ) {
+      return cached.client;
+    }
+    const client = createClient({
+      auth: config.accessToken,
+      baseUrl: config.baseUrl,
+      fetch: globalThis.fetch.bind(globalThis)
+    });
+    this.collaborationClientCache = {
+      accessToken: config.accessToken,
+      baseUrl: config.baseUrl,
+      client
+    };
+    return client;
+  }
+
+  async listAutomationRules(input: {
+    workspaceId: string;
+    signal?: AbortSignal;
+  }): Promise<{
+    rules: {
+      id: string;
+      name: string;
+      enabled: boolean;
+      trigger: string;
+      action: string;
+    }[];
+  }> {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const response =
+      await this.dependencies.tuttidClient.listAutomationRules(workspaceId);
+    return {
+      rules: response.rules.map((rule) => ({
+        id: rule.id,
+        name: rule.name,
+        enabled: rule.enabled,
+        trigger: rule.trigger,
+        // The automation domain retired its action split; every rule
+        // launches a follow-up session. The runtime summary field stays for
+        // contract stability and is no longer populated from the daemon.
+        action: ""
+      }))
+    };
+  }
+
+  async getAutomationRuleOverride(input: {
+    agentSessionId: string;
+    workspaceId: string;
+    signal?: AbortSignal;
+  }): Promise<{
+    agentSessionId: string;
+    workspaceId: string;
+    disabled: boolean;
+    ruleIds: string[];
+  }> {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const override =
+      await this.dependencies.tuttidClient.getAgentSessionAutomationRuleOverride(
+        workspaceId,
+        input.agentSessionId
+      );
+    return {
+      agentSessionId: override.agentSessionId,
+      workspaceId: override.workspaceId,
+      disabled: override.disabled,
+      ruleIds: [...override.ruleIds]
+    };
+  }
+
+  async setAutomationRuleOverride(input: {
+    agentSessionId: string;
+    disabled: boolean;
+    ruleIds: string[];
+    workspaceId: string;
+    signal?: AbortSignal;
+  }): Promise<{
+    agentSessionId: string;
+    workspaceId: string;
+    disabled: boolean;
+    ruleIds: string[];
+  }> {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const override =
+      await this.dependencies.tuttidClient.setAgentSessionAutomationRuleOverride(
+        workspaceId,
+        input.agentSessionId,
+        { disabled: input.disabled, ruleIds: [...input.ruleIds] }
+      );
+    return {
+      agentSessionId: override.agentSessionId,
+      workspaceId: override.workspaceId,
+      disabled: override.disabled,
+      ruleIds: [...override.ruleIds]
+    };
   }
 
   async goalControl(
     input: Parameters<AgentActivityAdapter["goalControl"]>[0]
   ): Promise<AgentActivityGoalControlResult> {
-    const entry = this.entry(input.workspaceId);
-    const result = await entry.adapter.goalControl(input);
-    this.upsertAuthoritativeSession(result.session, "goal_control_result");
-    return result;
+    return this.mutationOperations.goalControl(input);
   }
 
   async submitInteractive(
     input: Parameters<AgentActivityAdapter["submitInteractive"]>[0]
   ): ReturnType<IWorkspaceAgentActivityService["submitInteractive"]> {
-    return this.entry(input.workspaceId).adapter.submitInteractive(input);
+    return this.mutationOperations.submitInteractive(input);
   }
 
   async submitPlanDecision(
     input: Parameters<IWorkspaceAgentActivityService["submitPlanDecision"]>[0]
   ) {
-    return this.dependencies.tuttidClient.submitWorkspaceAgentPlanDecision(
-      input.workspaceId,
-      input.agentSessionId,
-      input.turnId,
-      input.requestId,
-      {
-        action: input.action,
-        idempotencyKey: input.idempotencyKey,
-        promptKind: input.promptKind
-      }
-    );
+    return this.mutationOperations.submitPlanDecision(input);
   }
 
   async deleteSession(
@@ -632,32 +889,29 @@ export class WorkspaceAgentActivityService
       signal: input.signal,
       workspaceId
     });
-    return { removed: result.removedSessionIds.includes(agentSessionId) };
+    return {
+      cleanupFailed: result.cleanupFailedSessionIds.includes(agentSessionId),
+      removed: result.removedSessionIds.includes(agentSessionId)
+    };
   }
 
   async renameSession(
     input: Parameters<AgentActivityAdapter["renameSession"]>[0]
   ): Promise<AgentActivitySession> {
-    const workspaceId = normalizeWorkspaceId(input.workspaceId);
-    const agentSessionId = input.agentSessionId.trim();
-    const entry = this.entry(workspaceId);
-    const session = await entry.adapter.renameSession({
-      ...input,
-      agentSessionId,
-      workspaceId
-    });
-    this.upsertAuthoritativeSession(session, "rename_session_result");
-    return session;
+    return this.mutationOperations.renameSession(input);
   }
 
   async getSession(
     workspaceId: string,
-    agentSessionId: string
+    agentSessionId: string,
+    signal?: AbortSignal
   ): Promise<AgentActivitySession> {
     const detail = await this.fetchActivitySessionDetail(
       workspaceId,
       agentSessionId,
-      "get_session"
+      "get_session",
+      "full",
+      signal
     );
     this.upsertAuthoritativeSessionDetail(detail, "get_session_result");
     return detail.session;
@@ -671,7 +925,7 @@ export class WorkspaceAgentActivityService
     signal?: AbortSignal;
     settings?: Parameters<typeof normalizeComposerSettings>[0] | null;
     workspaceId: string;
-  }): Promise<unknown> {
+  }): Promise<AgentActivityComposerOptions> {
     const provider = resolveDesktopAgentGUIProvider(input.provider);
     const workspaceId = normalizeWorkspaceId(input.workspaceId);
     const entry = this.entry(workspaceId);
@@ -690,32 +944,23 @@ export class WorkspaceAgentActivityService
 
   async updateSessionSettings(input: {
     agentSessionId: string;
+    signal?: AbortSignal;
     settings: Parameters<typeof normalizeComposerSettings>[0];
     workspaceId: string;
   }): ReturnType<IWorkspaceAgentActivityService["updateSessionSettings"]> {
-    const session =
-      await this.dependencies.tuttidClient.updateWorkspaceAgentSessionSettings(
-        input.workspaceId,
-        input.agentSessionId,
-        normalizeComposerSettings(input.settings)
-      );
-    const settings = session.settings
-      ? normalizeComposerSettings(session.settings)
-      : normalizeComposerSettings(input.settings);
-    return {
-      agentSessionId: input.agentSessionId,
-      settings,
-      session: agentActivitySessionFromTuttidSession(input.workspaceId, session)
-    };
+    return this.mutationOperations.updateSessionSettings(input);
+  }
+
+  updateTuttiModeActivation(
+    input: Parameters<AgentActivityRuntime["updateTuttiModeActivation"]>[0]
+  ): ReturnType<AgentActivityRuntime["updateTuttiModeActivation"]> {
+    return this.mutationOperations.updateTuttiModeActivation(input);
   }
 
   unactivateSession(
     input: Parameters<AgentActivityRuntime["unactivateSession"]>[0]
   ): ReturnType<IWorkspaceAgentActivityService["unactivateSession"]> {
-    return Promise.resolve({
-      agentSessionId: input.agentSessionId,
-      buffered: false
-    });
+    return this.mutationOperations.unactivateSession(input);
   }
 
   private async resolveWorkspaceAgentCwd(input: {
@@ -748,12 +993,44 @@ export class WorkspaceAgentActivityService
 
   protected createEntry(workspaceId: string): WorkspaceAgentActivityEntry {
     return createWorkspaceAgentSessionEngineHost({
-      activateSession: (input) => this.activateSession(input),
+      activityEventObserver: {
+        observeCommand: (command) => {
+          this.sessionActivityEventRecorder(workspaceId).observeCommand(
+            command
+          );
+          this.notifySessionEngineActivityObservers(
+            workspaceId,
+            "observeCommand",
+            command
+          );
+        },
+        observeIntent: (intent) => {
+          this.sessionActivityEventRecorder(workspaceId).observeIntent(intent);
+          this.notifySessionEngineActivityObservers(
+            workspaceId,
+            "observeIntent",
+            intent
+          );
+        }
+      },
+      activateSession: async (input) => {
+        const activation = await this.activateSession(input);
+        this.analytics.trackEngineActivation(input, activation);
+        return activation;
+      },
       cancelTurn: (input) => this.cancelTurn(input),
-      reconcileSession: (command) =>
-        this.executeSessionReconcileCommand(command),
+      reconcileSession: (command, signal) =>
+        this.executeSessionReconcileCommand(command, signal),
       runtimeApi: this.dependencies.runtimeApi,
-      sendInput: (input) => this.sendInput(input),
+      takePendingSessionRecording: (workspaceId) =>
+        this.takeNextSessionRecording(workspaceId),
+      restorePendingSessionRecording: (workspaceId, recordingId) =>
+        this.restoreNextSessionRecording(workspaceId, recordingId),
+      sendInput: async (input) => {
+        const result = await this.sendInput(input);
+        this.analytics.trackEngineSend(input, result);
+        return result;
+      },
       submitInteractive: (input) => this.submitInteractive(input),
       submitPlanDecision: (input) => this.submitPlanDecision(input),
       subscribeSessionEvents: (workspaceId, listener) =>
@@ -761,12 +1038,137 @@ export class WorkspaceAgentActivityService
       tuttidClient: this.dependencies.tuttidClient,
       unactivateSession: (input) => this.unactivateSession(input),
       updateSessionSettings: (input) => this.updateSessionSettings(input),
+      updateTuttiModeActivation: (input) =>
+        this.updateTuttiModeActivation(input),
       workspaceId
     });
+  }
+
+  private sessionActivityEventRecorder(
+    workspaceId: string
+  ): AgentSessionActivityEventRecorder {
+    const existing = this.sessionActivityEventRecorders.get(workspaceId);
+    if (existing) return existing;
+    const recorder = new AgentSessionActivityEventRecorder({
+      appender: createTuttidAgentSessionActivityEventAppender({
+        tuttidClient: this.dependencies.tuttidClient,
+        workspaceId
+      })
+    });
+    this.sessionActivityEventRecorders.set(workspaceId, recorder);
+    return recorder;
+  }
+
+  private notifySessionEngineActivityObservers(
+    workspaceId: string,
+    method: "observeCommand",
+    value: EngineExternalCommand
+  ): void;
+  private notifySessionEngineActivityObservers(
+    workspaceId: string,
+    method: "observeIntent",
+    value: EngineIntent
+  ): void;
+  private notifySessionEngineActivityObservers(
+    workspaceId: string,
+    method: "observeCommand" | "observeIntent",
+    value: EngineExternalCommand | EngineIntent
+  ): void {
+    const observers = this.sessionEngineActivityObservers.get(workspaceId);
+    if (!observers) return;
+    for (const observer of observers) {
+      try {
+        if (method === "observeCommand") {
+          observer.observeCommand(value as EngineExternalCommand);
+        } else {
+          observer.observeIntent(value as EngineIntent);
+        }
+      } catch {
+        // Replay instrumentation cannot block the product command path.
+      }
+    }
   }
 
   private nextSessionMutationId(kind: "delete" | "pin"): string {
     const sequence = this.sessionMutationSequence++;
     return `${kind}:${Date.now()}:${sequence}`;
   }
+}
+
+// Local equivalent of the TuttidClient unwrap helper for direct generated-SDK
+// calls: normalize protocol errors, otherwise fall back to the caller message.
+function unwrapCollaborationData<TResult>(
+  response: { data?: TResult; error?: unknown; response?: Response },
+  fallback: string
+): TResult {
+  if (response.error !== undefined) {
+    throw (
+      normalizeTuttidError(response.error, response.response?.status ?? 0) ??
+      new Error(fallback)
+    );
+  }
+  if (response.data === undefined) {
+    throw new Error(fallback);
+  }
+  return response.data;
+}
+
+function agentActivityCollaborationRunFromTuttid(run: CollaborationRun): {
+  adoption: CollaborationRun["adoption"];
+  completedAtUnixMs: number | null;
+  contextScope: string | null;
+  durationMs: number | null;
+  failureReason: string | null;
+  id: string;
+  mode: CollaborationRun["mode"];
+  model: string | null;
+  modelPlanId: string | null;
+  resultText: string | null;
+  sourceSessionId: string | null;
+  startedAtUnixMs: number | null;
+  status: CollaborationRun["status"];
+  targetAgentTargetId: string | null;
+  targetSessionId: string | null;
+  triggerReason: string | null;
+  triggerSource: CollaborationRun["triggerSource"];
+  usage: { inputTokens: number; outputTokens: number } | null;
+  workspaceId: string;
+} {
+  return {
+    adoption: run.adoption,
+    completedAtUnixMs: unixMsFromIsoTimestamp(run.completedAt),
+    contextScope: run.contextScope ?? null,
+    durationMs: run.durationMs ?? null,
+    failureReason: run.failureReason ?? null,
+    id: run.id,
+    mode: run.mode,
+    model: run.model ?? null,
+    modelPlanId: run.modelPlanId ?? null,
+    resultText: run.resultText ?? null,
+    sourceSessionId: run.sourceSessionId ?? null,
+    startedAtUnixMs: unixMsFromIsoTimestamp(run.startedAt),
+    status: run.status,
+    targetAgentTargetId: run.targetAgentTargetId ?? null,
+    targetSessionId: run.targetSessionId ?? null,
+    triggerReason: run.triggerReason ?? null,
+    triggerSource: run.triggerSource,
+    usage: run.usage
+      ? {
+          inputTokens: run.usage.inputTokens,
+          outputTokens: run.usage.outputTokens
+        }
+      : null,
+    workspaceId: run.workspaceId
+  };
+}
+
+function unixMsFromIsoTimestamp(
+  value: string | null | undefined
+): number | null {
+  const normalized = value?.trim() ?? "";
+  if (!normalized) {
+    return null;
+  }
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 }

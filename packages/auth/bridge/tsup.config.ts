@@ -5,7 +5,8 @@ export default defineConfig({
   dts: true,
   entry: {
     browser: "src/browser.ts",
-    node: "src/node.ts"
+    node: "src/node.ts",
+    shared: "src/shared.ts"
   },
   format: ["esm"],
   sourcemap: false,

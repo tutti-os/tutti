@@ -5,6 +5,8 @@ export interface WorkspaceAgentGuiLaunchRequest {
   agentTargetId?: string | null;
   autoSubmit?: boolean;
   draftPrompt?: string;
+  model?: string | null;
+  modelPlanId?: string | null;
   openInNewWindow?: boolean;
   provider?: DesktopAgentGUIProvider | null;
   userProjectPath?: string | null;

@@ -129,6 +129,7 @@
   max-width: 100%;
   min-width: 0;
   flex-shrink: 0;
+  border-bottom: 1px solid var(--rich-text-at-mention-line-1);
 }
 
 .rich-text-at-mention-palette__tabs-layout {
@@ -141,8 +142,13 @@
   z-index: 1;
   display: flex;
   flex: 0 0 auto;
+  align-self: stretch;
   align-items: center;
+  box-sizing: border-box;
   padding-right: 12px;
+  /* 与左侧 tab 文本中线对齐:tab 行 h-8 带 pb-2,文本中线距盒顶 12px;
+     给等高的 header-actions 同样的底部内边距,使内容中线也落在 12px。 */
+  padding-bottom: 8px;
 }
 
 .rich-text-at-mention-palette__footer {
@@ -375,9 +381,9 @@
   position: relative;
   box-sizing: border-box;
   min-width: 0;
-  height: 33px;
+  height: 32px;
   padding-inline: 16px;
-  border-bottom: 1px solid var(--rich-text-at-mention-line-1);
+  border-bottom: 0;
 }
 
 .rich-text-at-mention-palette [data-slot="underline-tabs-viewport"] {
@@ -734,7 +740,35 @@
 }
 
 .rich-text-at-mention-row__session-summary {
+  min-width: 4em;
+}
+
+.rich-text-at-mention-row__session-participant--structured {
+  display: flex;
+  flex: 0 1 auto;
   min-width: 0;
+}
+
+.rich-text-at-mention-row__session-participant-entity {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 2em;
+  overflow: hidden;
+}
+
+.rich-text-at-mention-row__session-participant-segment {
+  display: block;
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rich-text-at-mention-row__session-participant-separator,
+.rich-text-at-mention-row__session-participant-suffix {
+  flex: 0 0 auto;
+  white-space: pre;
 }
 
 .rich-text-at-mention-row__media {

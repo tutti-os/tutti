@@ -1,5 +1,10 @@
 package providerregistry
 
+import (
+	"github.com/tutti-os/tutti/packages/agent/daemon/managednpm"
+	canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
+)
+
 // RuntimeKind identifies the adapter family used to execute a provider. The
 // runtime package maps each kind to an adapter constructor; provider identity
 // must not be used as the constructor switch.
@@ -31,9 +36,50 @@ const (
 	EndpointConfigKindClaudeSettings EndpointConfigKind = "claude_settings"
 )
 
+// ModelPlanProtocol identifies the external model API protocol that a runtime
+// can consume through Tutti's model-plan endpoint injection.
+type ModelPlanProtocol string
+
+const (
+	ModelPlanProtocolAnthropic ModelPlanProtocol = "anthropic"
+	ModelPlanProtocolOpenAI    ModelPlanProtocol = "openai"
+)
+
+// ModelPlanModelAddressing identifies how a runtime addresses a bound plan's
+// models in composer and settings values. Consumers switch on this strategy,
+// never on provider identity.
+type ModelPlanModelAddressing string
+
+const (
+	// ModelPlanModelAddressingProviderPrefixed namespaces plan model ids as
+	// "<injected-provider>/<model>" — the addressing OpenCode resolves against
+	// the session-scoped provider config injected by runtimeprep. The empty
+	// value means the runtime consumes raw plan model ids.
+	ModelPlanModelAddressingProviderPrefixed ModelPlanModelAddressing = "provider_prefixed"
+)
+
+// ModelPlanEndpointAdapter identifies a provider-owned transport adapter that
+// must wrap a bound plan endpoint before runtime preparation. The empty value
+// means the runtime can consume the plan endpoint directly.
+type ModelPlanEndpointAdapter string
+
+const (
+	ModelPlanEndpointAdapterResponsesToChatGateway ModelPlanEndpointAdapter = "responses_to_chat_gateway"
+)
+
 type RuntimeEndpointDescriptor struct {
-	BaseURLEnvVars []string
-	ConfigKind     EndpointConfigKind
+	BaseURLEnvVars    []string
+	ConfigKind        EndpointConfigKind
+	ModelPlanProtocol ModelPlanProtocol
+	// ModelPlanModelAddressing declares the composer/settings addressing for
+	// bound plan models; empty means raw plan model ids.
+	ModelPlanModelAddressing ModelPlanModelAddressing
+	// ModelPlanEndpointAdapter declares an additional provider-owned transport
+	// adapter required before the runtime receives a bound plan endpoint.
+	ModelPlanEndpointAdapter ModelPlanEndpointAdapter
+	// NativeSubscription marks the one local runtime that can validate an
+	// official subscription for this protocol without API credentials.
+	NativeSubscription bool
 }
 
 // InstallerKind is a transport-neutral installer identifier. tuttid converts
@@ -76,6 +122,7 @@ type AuthMarkerParserKind string
 const (
 	AuthMarkerParserKindFileExists AuthMarkerParserKind = "file_exists"
 	AuthMarkerParserKindClaude     AuthMarkerParserKind = "claude"
+	AuthMarkerParserKindOpenCode   AuthMarkerParserKind = "opencode"
 	AuthMarkerParserKindTuttiToken AuthMarkerParserKind = "tutti_token"
 )
 
@@ -95,13 +142,8 @@ const (
 	StaticSpecResolverKindCursor      StaticSpecResolverKind = "cursor"
 )
 
-type IdentityDescriptor struct {
-	ID          string
-	DisplayName string
-	IconKey     string
-	LocaleKey   string
-	Aliases     []string
-}
+// Deprecated: use canonical.ProviderIdentity.
+type IdentityDescriptor = canonical.ProviderIdentity
 
 type RuntimeDescriptor struct {
 	Kind                RuntimeKind
@@ -109,8 +151,12 @@ type RuntimeDescriptor struct {
 	Command             []string
 	ClientInfoName      string
 	AuthRequiredMessage string
-	Endpoint            RuntimeEndpointDescriptor
-	StandardACP         StandardACPRuntimeDescriptor
+	// NativeSessionFork marks runtimes whose provider strategy may expose a
+	// native session-fork primitive. The live adapter must still attest the
+	// exact protocol/version before advertising any fork capability.
+	NativeSessionFork bool
+	Endpoint          RuntimeEndpointDescriptor
+	StandardACP       StandardACPRuntimeDescriptor
 }
 
 type RuntimePermissionModeDescriptor struct {
@@ -143,6 +189,14 @@ type StandardACPRuntimeDescriptor struct {
 	StartupDiagnostics             bool
 	DeriveImageInputFromPrompt     bool
 	DeriveCapabilitiesFromCommands []string
+	// AutoApprovePermissionModeInputIDs lists the permission-tier input ids
+	// whose incoming session/request_permission calls the client resolves as
+	// approved without prompting. This is the data-driven form of the
+	// per-provider auto-approval policy so the shared (generic-strategy) adapter
+	// factory installs it — provider-specific constructors are not on the
+	// default controller's construction path. Every id must be declared in
+	// PermissionModes.
+	AutoApprovePermissionModeInputIDs []string
 }
 
 type InstallerDescriptor struct {
@@ -150,11 +204,62 @@ type InstallerDescriptor struct {
 	DisplayCommand       string
 	PackageName          string
 	BinaryName           string
+	RecommendedVersion   string
 	IncludeOptional      bool
 	ScriptURL            string
 	ScriptShell          string
 	ShellCommand         string
 	FailureReasonMarkers map[string][]string
+}
+
+func (d ProviderDescriptor) ManagedNPMDescriptor() (managednpm.Descriptor, bool) {
+	if d.Status.Install.Kind != InstallerKindManagedNPM {
+		return managednpm.Descriptor{}, false
+	}
+	return managednpm.Descriptor{
+		PackageName:        d.Status.Install.PackageName,
+		BinaryName:         d.Status.Install.BinaryName,
+		MinimumVersion:     d.Status.MinVersion,
+		RecommendedVersion: d.Status.Install.RecommendedVersion,
+		IncludeOptional:    d.Status.Install.IncludeOptional,
+	}, true
+}
+
+// UpdateCapability declares whether tuttid may safely discover and apply CLI
+// updates for a provider. Unsupported is explicit: callers must not infer an
+// update path from the install command or provider identity.
+type UpdateCapability string
+
+const (
+	UpdateCapabilitySupported   UpdateCapability = "supported"
+	UpdateCapabilityUnsupported UpdateCapability = "unsupported"
+)
+
+type UpdateSource string
+
+const UpdateSourceNPM UpdateSource = "npm"
+
+type UpdateStrategy string
+
+const UpdateStrategyManagedNPM UpdateStrategy = "managed_npm"
+
+const (
+	UpdateUnsupportedReasonOfficialScript  = "official_script_update_unsupported"
+	UpdateUnsupportedReasonUnmanagedSource = "unmanaged_install_source"
+	UpdateUnsupportedReasonProvider        = "provider_update_unsupported"
+)
+
+// UpdateDescriptor is deliberately separate from InstallerDescriptor. Install
+// repairs missing or below-minimum runtimes; update discovers and applies a
+// newer release only after an explicit update action.
+type UpdateDescriptor struct {
+	Capability        UpdateCapability
+	Source            UpdateSource
+	Strategy          UpdateStrategy
+	PackageName       string
+	BinaryName        string
+	IncludeOptional   bool
+	UnsupportedReason string
 }
 
 type StatusDescriptor struct {
@@ -174,6 +279,7 @@ type StatusDescriptor struct {
 	CredentialEnvVars               []string
 	NPMRegistryPackage              string
 	Install                         InstallerDescriptor
+	Update                          UpdateDescriptor
 	LoginArgs                       []string
 	LoginActionKind                 StatusActionKind
 	AuthWatch                       AuthWatchDescriptor
@@ -252,23 +358,25 @@ type ComposerConfigOptionIDs struct {
 // Canonical capability vocabulary shared by provider descriptors, daemon
 // runtime projections, and the generated/checked GUI mirror.
 const (
-	CapabilityImageInput                     = "imageInput"
-	CapabilityModelImageInputRequired        = "modelImageInputRequired"
-	CapabilitySkills                         = "skills"
-	CapabilityCompact                        = "compact"
-	CapabilityTokenUsage                     = "tokenUsage"
-	CapabilityRateLimits                     = "rateLimits"
-	CapabilityPlanMode                       = "planMode"
-	CapabilityInterrupt                      = "interrupt"
-	CapabilityActiveTurnGuidance             = "activeTurnGuidance"
-	CapabilityBrowserUse                     = "browserUse"
-	CapabilityComputerUse                    = "computerUse"
-	CapabilityGoalPause                      = "goalPause"
-	CapabilityPlanImplementation             = "planImplementation"
-	CapabilityPermissionModeChangeDuringTurn = "permissionModeChangeDuringTurn"
-	CapabilityPermissionModeChangeDeferred   = "permissionModeChangeDeferred"
-	CapabilityReview                         = "review"
-	CapabilityResumeRunningTurn              = "resumeRunningTurn"
+	CapabilityImageInput                     = canonical.CapabilityImageInput
+	CapabilityModelImageInputRequired        = canonical.CapabilityModelImageInputRequired
+	CapabilityModelSwitch                    = canonical.CapabilityModelSwitch
+	CapabilityModelPlanBinding               = canonical.CapabilityModelPlanBinding
+	CapabilitySkills                         = canonical.CapabilitySkills
+	CapabilityCompact                        = canonical.CapabilityCompact
+	CapabilityTokenUsage                     = canonical.CapabilityTokenUsage
+	CapabilityRateLimits                     = canonical.CapabilityRateLimits
+	CapabilityPlanMode                       = canonical.CapabilityPlanMode
+	CapabilityInterrupt                      = canonical.CapabilityInterrupt
+	CapabilityActiveTurnGuidance             = canonical.CapabilityActiveTurnGuidance
+	CapabilityBrowserUse                     = canonical.CapabilityBrowserUse
+	CapabilityComputerUse                    = canonical.CapabilityComputerUse
+	CapabilityGoalPause                      = canonical.CapabilityGoalPause
+	CapabilityPlanImplementation             = canonical.CapabilityPlanImplementation
+	CapabilityPermissionModeChangeDuringTurn = canonical.CapabilityPermissionModeChangeDuringTurn
+	CapabilityPermissionModeChangeDeferred   = canonical.CapabilityPermissionModeChangeDeferred
+	CapabilityReview                         = canonical.CapabilityReview
+	CapabilityResumeRunningTurn              = canonical.CapabilityResumeRunningTurn
 )
 
 type SkillKind string
@@ -373,11 +481,12 @@ type SlashCommandPolicyDescriptor struct {
 	CommandCatalogAuthoritative bool
 }
 
-type PlanDecisionStrategy string
+// Deprecated: use canonical.PlanDecisionStrategy.
+type PlanDecisionStrategy = canonical.PlanDecisionStrategy
 
 const (
-	PlanDecisionStrategyNone            PlanDecisionStrategy = ""
-	PlanDecisionStrategyImplementPrompt PlanDecisionStrategy = "implement_prompt"
+	PlanDecisionStrategyNone            = canonical.PlanDecisionStrategyNone
+	PlanDecisionStrategyImplementPrompt = canonical.PlanDecisionStrategyImplementPrompt
 )
 
 type ComposerProfileDescriptor struct {
@@ -389,6 +498,8 @@ type ComposerProfileDescriptor struct {
 	DefaultReasoningEffort  string
 	ConfiguredModelOverride ConfiguredModelOverrideKind
 	Speed                   bool
+	SpeedValues             []string
+	DefaultSpeed            string
 	Capabilities            []string
 	PermissionConfigurable  bool
 	DefaultPermissionModeID string
@@ -464,12 +575,15 @@ const (
 )
 
 type DesktopIntegrationDescriptor struct {
-	Managed                    bool
-	ManagedOrder               int
-	StatusProbePriority        int
-	UsageProbeKind             DesktopUsageProbeKind
-	VisibilityGate             DesktopVisibilityGate
-	RuntimeProbeFallback       DesktopRuntimeProbeFallback
+	Managed              bool
+	ManagedOrder         int
+	StatusProbePriority  int
+	UsageProbeKind       DesktopUsageProbeKind
+	VisibilityGate       DesktopVisibilityGate
+	RuntimeProbeFallback DesktopRuntimeProbeFallback
+	// CommandNetworkAccess explicitly opts a Codex-compatible app-server into
+	// command networking when it runs under the Tutti Desktop host.
+	CommandNetworkAccess       bool
 	InstallBootstrap           bool
 	RefreshOnAccountChange     bool
 	UnavailableDockOrderOffset int

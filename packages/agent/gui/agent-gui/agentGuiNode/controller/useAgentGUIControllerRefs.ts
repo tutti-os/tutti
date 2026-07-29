@@ -1,4 +1,3 @@
-import type { AgentActivitySnapshot } from "@tutti-os/agent-activity-core";
 import { useRef } from "react";
 import type { AgentHostUserProject } from "../../../host/agentHostApi";
 import type { AgentSessionComposerSettings } from "../../../shared/agentSessionTypes";
@@ -9,11 +8,14 @@ import type { AgentComposerSubmitOptions } from "../composer/AgentComposer.types
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
 import type { AgentGUIOpenSessionRequest } from "./agentGuiController.draftMessageHelpers";
-import type { AgentGUIRememberComposerDefaultsInput } from "./agentGuiController.providerHelpers";
+import type {
+  AgentGUIRememberComposerDefaultsInput,
+  AgentGUIRememberComposerDefaultsResult
+} from "./agentGuiController.providerHelpers";
+import type { AgentGUIComposerDefaultsAuthorityReconciler } from "./agentGuiComposerDefaultsReconciliation";
 
 interface UseAgentGUIControllerRefsInput {
   activeConversationId: string | null;
-  agentActivitySnapshot: AgentActivitySnapshot;
   conversations: AgentGUIConversationSummary[];
   data: AgentGUINodeData;
   draftByScopeKey: Record<string, AgentComposerDraft>;
@@ -27,7 +29,9 @@ interface UseAgentGUIControllerRefsInput {
     updater: (current: AgentGUINodeData) => AgentGUINodeData
   ) => void;
   onRememberComposerDefaults:
-    | ((input: AgentGUIRememberComposerDefaultsInput) => void | Promise<void>)
+    | ((
+        input: AgentGUIRememberComposerDefaultsInput
+      ) => void | Promise<AgentGUIRememberComposerDefaultsResult>)
     | undefined;
   onShowMessage:
     | ((message: string, tone?: "info" | "warning" | "error") => void)
@@ -49,7 +53,6 @@ export function useAgentGUIControllerRefs(
   const userProjectsLoadSeqRef = useRef(0);
   const conversationsRef = useRef(input.conversations);
   const isMountedRef = useRef(true);
-  const agentActivitySnapshotRef = useRef(input.agentActivitySnapshot);
   const dataRef = useRef(input.data);
   const selectedAgentTargetRef = useRef(input.effectiveSelectedProviderTarget);
   const selectedAgentTargetIsExplicitRef = useRef(
@@ -71,7 +74,16 @@ export function useAgentGUIControllerRefs(
   const handledPrefillPromptSequenceRef = useRef<number | null>(null);
   const handledComposerAppendSequenceRef = useRef<number | null>(null);
   const loadDraftComposerOptionsRef = useRef<() => void>(() => {});
-  const lastActiveModelByProviderRef = useRef<Record<string, string>>({});
+  const onComposerDefaultsAuthorityReloadedRef =
+    useRef<AgentGUIComposerDefaultsAuthorityReconciler>({
+      prepareRead: (_target, settings) => ({
+        force: false,
+        receipt: null,
+        settings
+      }),
+      reconcileHomeDefaults: () => {},
+      reloaded: () => {}
+    });
   const conversationIdsRef = useRef(
     new Set(input.conversations.map((conversation) => conversation.id))
   );
@@ -100,15 +112,6 @@ export function useAgentGUIControllerRefs(
       options?: AgentComposerSubmitOptions
     ) => void
   >(() => {});
-  const reloadSelectedConversationRef = useRef<
-    (
-      agentSessionId: string,
-      options: { reloadConversations: boolean; reloadDetail: boolean }
-    ) => void
-  >(() => {});
-  const syncConversationListProjectionRef = useRef<
-    (agentSessionId?: string | null) => Promise<void>
-  >(async () => {});
   const isComposerHomeRef = useRef(input.isComposerHome);
   const isCreatingConversationRef = useRef(input.isCreatingConversation);
 
@@ -117,7 +120,6 @@ export function useAgentGUIControllerRefs(
   userProjectsRef.current = input.userProjects;
   isNoProjectPathRef.current = input.isNoProjectPath;
   conversationsRef.current = input.conversations;
-  agentActivitySnapshotRef.current = input.agentActivitySnapshot;
   dataRef.current = input.data;
   selectedAgentTargetRef.current = input.effectiveSelectedProviderTarget;
   selectedAgentTargetIsExplicitRef.current = input.homeComposerTargetOverride
@@ -138,7 +140,6 @@ export function useAgentGUIControllerRefs(
 
   return {
     activeConversationIdRef,
-    agentActivitySnapshotRef,
     conversationIdsRef,
     conversationsRef,
     dataRef,
@@ -152,21 +153,19 @@ export function useAgentGUIControllerRefs(
     isCreatingConversationRef,
     isMountedRef,
     isNoProjectPathRef,
-    lastActiveModelByProviderRef,
     lastRenderStateDiagnosticKeyRef,
     loadDraftComposerOptionsRef,
     onDataChangeRef,
+    onComposerDefaultsAuthorityReloadedRef,
     onRememberComposerDefaultsRef,
     onShowMessageRef,
     pendingOpenSessionRequestRef,
     agentTargetsProvidedRef,
-    reloadSelectedConversationRef,
     selectedComposerTargetDataRef,
     selectedProjectPathRef,
     selectedAgentTargetIsExplicitRef,
     selectedAgentTargetRef,
     submitPromptRef,
-    syncConversationListProjectionRef,
     userProjectsLoadSeqRef,
     userProjectsRef
   };

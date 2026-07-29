@@ -574,18 +574,12 @@ export function readNodeDefaultDraftSettings(input: {
   if (agentTargetId) {
     return (
       input.drafts[nodeDefaultDraftKey(input.data.provider, agentTargetId)] ??
-      buildNodeDefaultComposerSettings(input.data, {
-        defaultReasoningEffort: input.defaultReasoningEffort,
-        defaultSpeed: input.defaultSpeed
-      })
+      {}
     );
   }
   return (
     input.drafts[nodeDefaultDraftKey(input.data.provider)] ??
     input.drafts[NODE_DEFAULT_DRAFT_KEY] ??
-    buildNodeDefaultComposerSettings(input.data, {
-      defaultReasoningEffort: input.defaultReasoningEffort,
-      defaultSpeed: input.defaultSpeed
-    })
+    {}
   );
 }

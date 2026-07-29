@@ -44,7 +44,6 @@ type AppRunnerStateChanged func(workspaceID string, appID string, state workspac
 type AppStartInput struct {
 	WorkspaceID     string
 	WorkspaceName   string
-	WorkspaceRoot   string
 	AppID           string
 	PackageDir      string
 	Bootstrap       string
@@ -52,6 +51,7 @@ type AppStartInput struct {
 	RuntimeProfile  string
 	RuntimeDir      string
 	DataDir         string
+	DatabaseDir     string
 	LogDir          string
 	Restart         bool
 }
@@ -174,6 +174,11 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 		r.setFailed(key, "startup", fmt.Errorf("create app data dir: %w", err))
 		return
 	}
+	if err := os.MkdirAll(input.DatabaseDir, 0o755); err != nil {
+		logAppRuntimeControl("workspace_app_runtime_start_failed", input, port, "startup", fmt.Errorf("create app database dir: %w", err))
+		r.setFailed(key, "startup", fmt.Errorf("create app database dir: %w", err))
+		return
+	}
 	if err := os.MkdirAll(input.LogDir, 0o755); err != nil {
 		logAppRuntimeControl("workspace_app_runtime_start_failed", input, port, "startup", fmt.Errorf("create app log dir: %w", err))
 		r.setFailed(key, "startup", fmt.Errorf("create app log dir: %w", err))
@@ -210,11 +215,11 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 		"TUTTI_APP_ID=" + input.AppID,
 		"TUTTI_WORKSPACE_ID=" + input.WorkspaceID,
 		"TUTTI_WORKSPACE_NAME=" + input.WorkspaceName,
-		"TUTTI_WORKSPACE_ROOT=" + input.WorkspaceRoot,
 		"TUTTI_APP_HOST=127.0.0.1",
 		"TUTTI_APP_PACKAGE_DIR=" + input.PackageDir,
 		"TUTTI_APP_RUNTIME_DIR=" + input.RuntimeDir,
 		"TUTTI_APP_DATA_DIR=" + input.DataDir,
+		"TUTTI_APP_DATABASE_DIR=" + input.DatabaseDir,
 		"TUTTI_APP_LOG_DIR=" + input.LogDir,
 		"TUTTI_APP_TOOLCHAIN_ROOT=" + appToolchainRoot,
 		"TUTTI_APP_PORT=" + strconv.Itoa(port),
@@ -532,7 +537,6 @@ func writeAppStartupDiagnostic(logFile *os.File, input AppStartInput, bootstrapP
 	_, _ = fmt.Fprintf(logFile, "  appId=%s\n", input.AppID)
 	_, _ = fmt.Fprintf(logFile, "  workspaceId=%s\n", input.WorkspaceID)
 	_, _ = fmt.Fprintf(logFile, "  workspaceName=%s\n", input.WorkspaceName)
-	_, _ = fmt.Fprintf(logFile, "  workspaceRoot=%s\n", input.WorkspaceRoot)
 	_, _ = fmt.Fprintf(logFile, "  bootstrap=%s\n", bootstrapPath)
 	_, _ = fmt.Fprintf(logFile, "  runtimeRoot=%s\n", appRuntime.Root)
 	_, _ = fmt.Fprintf(logFile, "  python=%s\n", appRuntime.Python)
@@ -541,6 +545,7 @@ func writeAppStartupDiagnostic(logFile *os.File, input AppStartInput, bootstrapP
 	_, _ = fmt.Fprintf(logFile, "  cwd=%s\n", input.RuntimeDir)
 	_, _ = fmt.Fprintf(logFile, "  packageDir=%s\n", input.PackageDir)
 	_, _ = fmt.Fprintf(logFile, "  dataDir=%s\n", input.DataDir)
+	_, _ = fmt.Fprintf(logFile, "  databaseDir=%s\n", input.DatabaseDir)
 	_, _ = fmt.Fprintf(logFile, "  logDir=%s\n", input.LogDir)
 	_, _ = fmt.Fprintf(logFile, "  toolchainRoot=%s\n", appRuntimeEnvValue(env, "TUTTI_APP_TOOLCHAIN_ROOT"))
 	_, _ = fmt.Fprintf(logFile, "  host=127.0.0.1\n")

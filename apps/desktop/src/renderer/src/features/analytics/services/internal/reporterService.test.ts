@@ -11,6 +11,7 @@ test("reporter service tracks one renderer event with a client timestamp", async
         calls.push(events);
       }
     },
+    mode: "agent",
     now: () => 1749124800000
   });
 
@@ -26,6 +27,7 @@ test("reporter service tracks one renderer event with a client timestamp", async
         name: "workspace.opened",
         params: {
           dark_mode: "1",
+          mode: "agent",
           source: "dashboard"
         }
       }
@@ -34,7 +36,7 @@ test("reporter service tracks one renderer event with a client timestamp", async
 });
 
 test("reporter service tracks batches without mutating caller params", async () => {
-  const params = { source: "dock" };
+  const params = { mode: "agent", source: "dock" };
   const calls: TrackEvent[][] = [];
   const service = new ReporterService({
     tuttidClient: {
@@ -43,6 +45,7 @@ test("reporter service tracks batches without mutating caller params", async () 
         events[0]!.params = { source: "mutated" };
       }
     },
+    mode: "os",
     now: () => 1749124800001
   });
 
@@ -63,16 +66,20 @@ test("reporter service tracks batches without mutating caller params", async () 
         client_ts: 1749124800000,
         name: "workspace.opened",
         params: {
+          mode: "os",
           source: "dock"
         }
       },
       {
         client_ts: 1749124800001,
-        name: "screen.viewed"
+        name: "screen.viewed",
+        params: {
+          mode: "os"
+        }
       }
     ]
   ]);
-  assert.deepEqual(params, { source: "dock" });
+  assert.deepEqual(params, { mode: "agent", source: "dock" });
 });
 
 test("reporter service swallows transport failures", async () => {
@@ -82,6 +89,7 @@ test("reporter service swallows transport failures", async () => {
         throw new Error("tuttid offline");
       }
     },
+    mode: "os",
     now: () => 1749124800000
   });
 

@@ -1,5 +1,5 @@
 import type { WorkbenchHostHandle } from "@tutti-os/workbench-surface";
-import type { WorkspaceFilePreviewSurfacePresenter } from "../../workspace-file-manager/services/workspaceFilePreviewSurfaceHost.interface.ts";
+import type { WorkspaceFilePreviewSurfacePresenter } from "@renderer/features/workspace-file-preview";
 import { createWorkspaceFilePreviewLaunchRequest } from "./workspaceFilePreviewLaunch.ts";
 
 export function createWorkbenchWorkspaceFilePreviewPresenter(input: {

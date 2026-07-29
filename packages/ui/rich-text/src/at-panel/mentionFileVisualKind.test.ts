@@ -5,14 +5,19 @@ import {
   resolveMentionFileVisualKind
 } from "./mentionFileVisualKind.ts";
 
-test("resolveMentionFileVisualKind: back navigation overrides base kind", () => {
-  assert.equal(
-    resolveMentionFileVisualKind({
-      mentionNavigation: "agent-generated-folder-back",
-      baseVisualKind: "document"
-    }),
-    "back"
-  );
+test("resolveMentionFileVisualKind: every folder back action overrides base kind", () => {
+  for (const mentionNavigation of [
+    "agent-generated-folder-back",
+    "workspace-folder-back"
+  ]) {
+    assert.equal(
+      resolveMentionFileVisualKind({
+        mentionNavigation,
+        baseVisualKind: "document"
+      }),
+      "back"
+    );
+  }
 });
 
 test("resolveMentionFileVisualKind: directory entry resolves to folder", () => {

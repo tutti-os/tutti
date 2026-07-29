@@ -29,6 +29,441 @@ vi.mock("../../../i18n/index", async (importOriginal) => {
 });
 
 describe("AgentTranscriptView", () => {
+  it("shows through-turn fork only for a supported settled Turn and passes its exact id", () => {
+    const onForkThroughTurn = vi.fn();
+    const settledTurn = canonicalTurn({
+      outcome: "completed",
+      phase: "settled",
+      settledAtUnixMs: 7_000
+    });
+    const detail = detailViewModel();
+    const supportedConversation = projectAgentConversationVM(
+      detailViewModel({
+        session: normalizeAgentActivitySession({
+          ...detail.session,
+          lifecycleCapabilities: {
+            fork: false,
+            forkThroughTurn: true,
+            forkThroughTurnIds: ["turn-1"],
+            forkThroughTurnIdsKnown: true
+          }
+        }),
+        sessionTurns: [settledTurn]
+      })
+    );
+    const labels = {
+      thinkingLabel: "Thought process",
+      toolCallsLabel: (count: number) => `Tool calls (${count})`,
+      processing: "Planning next moves",
+      turnSummary: "Changed files"
+    };
+    const { rerender } = render(
+      <AgentTranscriptView
+        conversation={supportedConversation}
+        labels={labels}
+        onForkThroughTurn={onForkThroughTurn}
+      />
+    );
+
+    const forkButton = screen.getByRole("button", {
+      name: "agentHost.agentGui.forkThroughTurn"
+    });
+    expect(
+      forkButton.closest("[data-agent-message-footer='true']")
+    ).not.toBeNull();
+    fireEvent.click(forkButton);
+    expect(onForkThroughTurn).toHaveBeenCalledTimes(1);
+    expect(onForkThroughTurn).toHaveBeenCalledWith("turn-1");
+
+    rerender(
+      <AgentTranscriptView
+        conversation={{
+          ...supportedConversation,
+          sourceDetail: {
+            ...supportedConversation.sourceDetail,
+            session: normalizeAgentActivitySession({
+              ...supportedConversation.sourceDetail.session,
+              lifecycleCapabilities: { fork: false, forkThroughTurn: false }
+            })
+          }
+        }}
+        labels={labels}
+        onForkThroughTurn={onForkThroughTurn}
+      />
+    );
+    expect(
+      screen.queryByRole("button", {
+        name: "agentHost.agentGui.forkThroughTurn"
+      })
+    ).toBeNull();
+  });
+
+  it("shows through-turn fork for a settled Turn without final assistant text", () => {
+    const onForkThroughTurn = vi.fn();
+    const detail = detailViewModel();
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: normalizeAgentActivitySession({
+          ...detail.session,
+          lifecycleCapabilities: {
+            fork: false,
+            forkThroughTurn: true,
+            forkThroughTurnIds: ["turn-1"],
+            forkThroughTurnIdsKnown: true
+          }
+        }),
+        sessionTurns: [
+          canonicalTurn({
+            outcome: "failed",
+            phase: "settled",
+            settledAtUnixMs: 7_000
+          })
+        ],
+        turns: [
+          {
+            ...detail.turns[0]!,
+            agentMessages: [],
+            agentItems: detail.turns[0]!.agentItems.filter(
+              (item) => item.kind !== "message"
+            )
+          }
+        ]
+      })
+    );
+
+    render(
+      <AgentTranscriptView
+        conversation={conversation}
+        labels={{
+          thinkingLabel: "Thought process",
+          toolCallsLabel: (count: number) => `Tool calls (${count})`,
+          processing: "Planning next moves",
+          turnSummary: "Changed files"
+        }}
+        onForkThroughTurn={onForkThroughTurn}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.forkThroughTurn"
+      })
+    );
+    expect(onForkThroughTurn).toHaveBeenCalledWith("turn-1");
+    expect(
+      screen
+        .getByRole("button", {
+          name: "agentHost.agentGui.forkThroughTurn"
+        })
+        .closest("[data-agent-turn-footer='true']")
+    ).not.toBeNull();
+  });
+
+  it("binds each settled Turn Fork action to its exact canonical Turn id", () => {
+    const onForkThroughTurn = vi.fn();
+    const detail = detailViewModel();
+    const secondTurn = {
+      ...detail.turns[0]!,
+      id: "turn-2",
+      userMessage: { id: "user-2", body: "Try another branch" },
+      userMessages: [{ id: "user-2", body: "Try another branch" }],
+      agentMessages: [{ id: "assistant-2", body: "Second answer" }],
+      toolCalls: [],
+      toolCallCount: 0,
+      hasFailedToolCall: false,
+      agentItems: [
+        {
+          kind: "message" as const,
+          message: { id: "assistant-2", body: "Second answer" }
+        }
+      ]
+    };
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: normalizeAgentActivitySession({
+          ...detail.session,
+          lifecycleCapabilities: {
+            fork: false,
+            forkThroughTurn: true,
+            forkThroughTurnIds: ["turn-1", "turn-2"],
+            forkThroughTurnIdsKnown: true
+          }
+        }),
+        sessionTurns: [
+          canonicalTurn({
+            outcome: "completed",
+            phase: "settled",
+            settledAtUnixMs: 7_000
+          }),
+          canonicalTurn({
+            outcome: "completed",
+            phase: "settled",
+            settledAtUnixMs: 9_000,
+            turnId: "turn-2",
+            updatedAtUnixMs: 9_000
+          })
+        ],
+        turns: [detail.turns[0]!, secondTurn]
+      })
+    );
+
+    render(
+      <AgentTranscriptView
+        conversation={conversation}
+        labels={{
+          thinkingLabel: "Thought process",
+          toolCallsLabel: (count: number) => `Tool calls (${count})`,
+          processing: "Planning next moves",
+          turnSummary: "Changed files"
+        }}
+        onForkThroughTurn={onForkThroughTurn}
+      />
+    );
+
+    const buttons = screen.getAllByRole("button", {
+      name: "agentHost.agentGui.forkThroughTurn"
+    });
+    expect(buttons).toHaveLength(2);
+    fireEvent.click(buttons[0]!);
+    fireEvent.click(buttons[1]!);
+    expect(onForkThroughTurn.mock.calls).toEqual([["turn-1"], ["turn-2"]]);
+  });
+
+  it("only exposes Fork for Turns verified in provider-native history", () => {
+    const detail = detailViewModel();
+    const secondTurn = {
+      ...detail.turns[0]!,
+      id: "turn-2",
+      userMessage: { id: "user-2", body: "Second request" },
+      userMessages: [{ id: "user-2", body: "Second request" }],
+      agentMessages: [{ id: "assistant-2", body: "Second answer" }],
+      toolCalls: [],
+      toolCallCount: 0,
+      hasFailedToolCall: false,
+      agentItems: [
+        {
+          kind: "message" as const,
+          message: { id: "assistant-2", body: "Second answer" }
+        }
+      ]
+    };
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: normalizeAgentActivitySession({
+          ...detail.session,
+          lifecycleCapabilities: {
+            fork: false,
+            forkThroughTurn: true,
+            forkThroughTurnIds: ["turn-1"],
+            forkThroughTurnIdsKnown: true
+          }
+        }),
+        sessionTurns: [
+          canonicalTurn({
+            outcome: "completed",
+            phase: "settled",
+            settledAtUnixMs: 7_000
+          }),
+          canonicalTurn({
+            outcome: "completed",
+            phase: "settled",
+            settledAtUnixMs: 9_000,
+            turnId: "turn-2",
+            updatedAtUnixMs: 9_000
+          })
+        ],
+        turns: [detail.turns[0]!, secondTurn]
+      })
+    );
+
+    render(
+      <AgentTranscriptView
+        conversation={conversation}
+        labels={{
+          thinkingLabel: "Thought process",
+          toolCallsLabel: (count: number) => `Tool calls (${count})`,
+          processing: "Planning next moves",
+          turnSummary: "Changed files"
+        }}
+        onForkThroughTurn={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getAllByRole("button", {
+        name: "agentHost.agentGui.forkThroughTurn"
+      })
+    ).toHaveLength(1);
+  });
+
+  it("fails closed when provider Turn boundary identities are unknown", () => {
+    const detail = detailViewModel();
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: normalizeAgentActivitySession({
+          ...detail.session,
+          lifecycleCapabilities: { fork: false, forkThroughTurn: true }
+        }),
+        sessionTurns: [
+          canonicalTurn({
+            outcome: "completed",
+            phase: "settled",
+            settledAtUnixMs: 7_000
+          })
+        ]
+      })
+    );
+    render(
+      <AgentTranscriptView
+        conversation={conversation}
+        labels={{
+          thinkingLabel: "Thought process",
+          toolCallsLabel: (count: number) => `Tool calls (${count})`,
+          processing: "Planning next moves",
+          turnSummary: "Changed files"
+        }}
+        onForkThroughTurn={vi.fn()}
+      />
+    );
+    expect(
+      screen.queryByRole("button", {
+        name: "agentHost.agentGui.forkThroughTurn"
+      })
+    ).toBeNull();
+  });
+
+  it("does not expose Fork for a canonical Turn that is still running", () => {
+    const detail = detailViewModel();
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: normalizeAgentActivitySession({
+          ...detail.session,
+          activeTurnId: "turn-1",
+          lifecycleCapabilities: {
+            fork: false,
+            forkThroughTurn: true,
+            forkThroughTurnIds: ["turn-1"],
+            forkThroughTurnIdsKnown: true
+          }
+        }),
+        sessionTurns: [canonicalTurn()]
+      })
+    );
+
+    render(
+      <AgentTranscriptView
+        conversation={conversation}
+        labels={{
+          thinkingLabel: "Thought process",
+          toolCallsLabel: (count: number) => `Tool calls (${count})`,
+          processing: "Planning next moves",
+          turnSummary: "Changed files"
+        }}
+        onForkThroughTurn={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.queryByRole("button", {
+        name: "agentHost.agentGui.forkThroughTurn"
+      })
+    ).toBeNull();
+  });
+
+  it("keeps provider capability visible but disables fork while the Session is busy", () => {
+    const detail = detailViewModel();
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: normalizeAgentActivitySession({
+          ...detail.session,
+          activeTurnId: "turn-active",
+          lifecycleCapabilities: {
+            fork: false,
+            forkThroughTurn: true,
+            forkThroughTurnIds: ["turn-1"],
+            forkThroughTurnIdsKnown: true
+          }
+        }),
+        sessionTurns: [
+          canonicalTurn({
+            outcome: "completed",
+            phase: "settled",
+            settledAtUnixMs: 7_000
+          })
+        ]
+      })
+    );
+    render(
+      <AgentTranscriptView
+        conversation={conversation}
+        labels={{
+          thinkingLabel: "Thought process",
+          toolCallsLabel: (count: number) => `Tool calls (${count})`,
+          processing: "Planning next moves",
+          turnSummary: "Changed files"
+        }}
+        onForkThroughTurn={vi.fn()}
+      />
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.forkThroughTurn"
+      })
+    ).toBeDisabled();
+  });
+
+  it("disables only the Engine-owned in-flight Fork boundary", () => {
+    const detail = detailViewModel();
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: normalizeAgentActivitySession({
+          ...detail.session,
+          lifecycleCapabilities: {
+            fork: false,
+            forkThroughTurn: true,
+            forkThroughTurnIds: ["turn-1"],
+            forkThroughTurnIdsKnown: true
+          }
+        }),
+        sessionTurns: [
+          canonicalTurn({
+            outcome: "completed",
+            phase: "settled",
+            settledAtUnixMs: 7_000
+          })
+        ]
+      })
+    );
+    const labels = {
+      thinkingLabel: "Thought process",
+      toolCallsLabel: (count: number) => `Tool calls (${count})`,
+      processing: "Planning next moves",
+      turnSummary: "Changed files"
+    };
+    const { rerender } = render(
+      <AgentTranscriptView
+        conversation={conversation}
+        forkThroughTurnPendingTurnIds={["turn-1"]}
+        labels={labels}
+        onForkThroughTurn={vi.fn()}
+      />
+    );
+    const button = screen.getByRole("button", {
+      name: "agentHost.agentGui.forkThroughTurn"
+    });
+    expect(button).toBeDisabled();
+
+    rerender(
+      <AgentTranscriptView
+        conversation={conversation}
+        forkThroughTurnPendingTurnIds={[]}
+        labels={labels}
+        onForkThroughTurn={vi.fn()}
+      />
+    );
+    expect(button).not.toBeDisabled();
+  });
+
   it("treats status-only conversation object changes as equal for transcript rendering", () => {
     const labels = {
       thinkingLabel: "Thought process",
@@ -51,6 +486,543 @@ describe("AgentTranscriptView", () => {
         { conversation: statusOnlyConversation, labels }
       )
     ).toBe(true);
+  });
+
+  it("rerenders when the authoritative active Turn settles", () => {
+    const labels = {
+      thinkingLabel: "Thought process",
+      toolCallsLabel: (count: number) => `Tool calls (${count})`,
+      processing: "Planning next moves",
+      turnSummary: "Changed files"
+    };
+    const runningTurn = canonicalTurn();
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: normalizeAgentActivitySession({
+          ...detailViewModel().session,
+          activeTurnId: runningTurn.turnId,
+          activeTurn: runningTurn
+        }),
+        sessionTurns: [runningTurn]
+      })
+    );
+    const settledTurn = canonicalTurn({
+      phase: "settled",
+      settledAtUnixMs: 7_000
+    });
+    const settledConversation = {
+      ...conversation,
+      sourceDetail: {
+        ...conversation.sourceDetail,
+        session: normalizeAgentActivitySession({
+          ...conversation.sourceDetail.session,
+          activeTurn: settledTurn
+        })
+      }
+    };
+
+    expect(
+      areAgentTranscriptViewPropsEqual(
+        { conversation, labels },
+        { conversation: settledConversation, labels }
+      )
+    ).toBe(false);
+  });
+
+  it("rerenders and disables Fork when a pending interaction appears", () => {
+    const labels = {
+      thinkingLabel: "Thought process",
+      toolCallsLabel: (count: number) => `Tool calls (${count})`,
+      processing: "Planning next moves",
+      turnSummary: "Changed files"
+    };
+    const detail = detailViewModel();
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: normalizeAgentActivitySession({
+          ...detail.session,
+          lifecycleCapabilities: {
+            fork: false,
+            forkThroughTurn: true,
+            forkThroughTurnIds: ["turn-1"],
+            forkThroughTurnIdsKnown: true
+          }
+        }),
+        sessionTurns: [
+          canonicalTurn({
+            outcome: "completed",
+            phase: "settled",
+            settledAtUnixMs: 7_000
+          })
+        ]
+      })
+    );
+    const pendingConversation = {
+      ...conversation,
+      sourceDetail: {
+        ...conversation.sourceDetail,
+        session: normalizeAgentActivitySession({
+          ...conversation.sourceDetail.session,
+          pendingInteractions: [
+            {
+              agentSessionId: "session-1",
+              createdAtUnixMs: 8_000,
+              kind: "question" as const,
+              requestId: "request-1",
+              status: "pending" as const,
+              turnId: "turn-1",
+              updatedAtUnixMs: 8_000
+            }
+          ]
+        })
+      }
+    };
+
+    expect(
+      areAgentTranscriptViewPropsEqual(
+        { conversation, labels },
+        { conversation: pendingConversation, labels }
+      )
+    ).toBe(false);
+
+    const { rerender } = render(
+      <AgentTranscriptView
+        conversation={conversation}
+        labels={labels}
+        onForkThroughTurn={vi.fn()}
+      />
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.forkThroughTurn"
+      })
+    ).not.toBeDisabled();
+    rerender(
+      <AgentTranscriptView
+        conversation={pendingConversation}
+        labels={labels}
+        onForkThroughTurn={vi.fn()}
+      />
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.forkThroughTurn"
+      })
+    ).toBeDisabled();
+  });
+
+  it("compares participant presentation by its explicit state and identity data", () => {
+    const labels = {
+      thinkingLabel: "Thought process",
+      toolCallsLabel: (count: number) => `Tool calls (${count})`,
+      processing: "Planning next moves",
+      turnSummary: "Changed files"
+    };
+    const conversation = projectAgentConversationVM(detailViewModel());
+    const baseProps = { conversation, labels };
+
+    expect(
+      areAgentTranscriptViewPropsEqual(baseProps, {
+        ...baseProps,
+        participantPresentation: { enabled: false }
+      })
+    ).toBe(true);
+    expect(
+      areAgentTranscriptViewPropsEqual(
+        {
+          ...baseProps,
+          participantPresentation: { enabled: true, status: "loading" }
+        },
+        {
+          ...baseProps,
+          participantPresentation: { enabled: true, status: "loading" }
+        }
+      )
+    ).toBe(true);
+    expect(
+      areAgentTranscriptViewPropsEqual(
+        {
+          ...baseProps,
+          participantPresentation: { enabled: false }
+        },
+        {
+          ...baseProps,
+          participantPresentation: { enabled: true, status: "loading" }
+        }
+      )
+    ).toBe(false);
+    expect(
+      areAgentTranscriptViewPropsEqual(
+        {
+          ...baseProps,
+          participantPresentation: {
+            enabled: true,
+            status: "ready",
+            user: { name: "Alice", avatarUrl: "user.png" },
+            agent: { name: "Codex", avatarUrl: "agent.png" }
+          }
+        },
+        {
+          ...baseProps,
+          participantPresentation: {
+            enabled: true,
+            status: "ready",
+            user: { name: "Alice", avatarUrl: "user.png" },
+            agent: { name: "Codex", avatarUrl: "agent-v2.png" }
+          }
+        }
+      )
+    ).toBe(false);
+  });
+
+  it("renders each participant header once per turn across tool progress rows", async () => {
+    const baseConversation = projectAgentConversationVM(
+      detailViewModel({
+        session: normalizeAgentActivitySession({
+          ...detailViewModel().session,
+          activeTurnId: "turn-1"
+        }),
+        sessionTurns: [canonicalTurn()]
+      })
+    );
+    const message = (
+      id: string,
+      body: string,
+      presentationKind: "content" | "specific-progress" = "content"
+    ) => ({
+      kind: "message-content" as const,
+      id,
+      turnId: "turn-1",
+      body,
+      presentationKind,
+      occurredAtUnixMs: 1
+    });
+    const conversation = {
+      ...baseConversation,
+      rows: [
+        {
+          kind: "message" as const,
+          id: "user-row",
+          turnId: "turn-1",
+          speaker: "user" as const,
+          messages: [message("user-message", "Please inspect the files")],
+          thinking: [],
+          occurredAtUnixMs: 1
+        },
+        {
+          kind: "tool-group" as const,
+          id: "tool-group-1",
+          turnId: "turn-1",
+          grouped: true,
+          calls: [],
+          entries: [],
+          occurredAtUnixMs: 2
+        },
+        {
+          kind: "message" as const,
+          id: "assistant-progress-1",
+          turnId: "turn-1",
+          speaker: "assistant" as const,
+          messages: [
+            message(
+              "assistant-progress-message-1",
+              "Reading files",
+              "specific-progress"
+            )
+          ],
+          thinking: [],
+          occurredAtUnixMs: 3
+        },
+        {
+          kind: "tool-group" as const,
+          id: "tool-group-2",
+          turnId: "turn-1",
+          grouped: true,
+          calls: [],
+          entries: [],
+          occurredAtUnixMs: 4
+        },
+        {
+          kind: "message" as const,
+          id: "assistant-progress-2",
+          turnId: "turn-1",
+          speaker: "assistant" as const,
+          messages: [
+            message(
+              "assistant-progress-message-2",
+              "Checking tests",
+              "specific-progress"
+            )
+          ],
+          thinking: [],
+          occurredAtUnixMs: 5
+        },
+        {
+          kind: "message" as const,
+          id: "assistant-final",
+          turnId: "turn-1",
+          speaker: "assistant" as const,
+          messages: [message("assistant-final-message", "Done")],
+          thinking: [],
+          occurredAtUnixMs: 6
+        }
+      ]
+    };
+    const participantPresentation = {
+      enabled: true,
+      status: "ready",
+      user: { name: "Alice", avatarUrl: "user.png" },
+      agent: { name: "Codex", avatarUrl: "agent.png" }
+    } as const;
+    const labels = {
+      thinkingLabel: "Thought process",
+      toolCallsLabel: (count: number) => `Tool calls (${count})`,
+      processing: "Planning next moves",
+      turnSummary: "Changed files"
+    };
+
+    const { container, rerender } = render(
+      <AgentTranscriptView
+        conversation={conversation}
+        participantPresentation={participantPresentation}
+        labels={labels}
+      />
+    );
+
+    expect(
+      container.querySelectorAll(
+        '[data-agent-conversation-participant-header="user"]'
+      )
+    ).toHaveLength(1);
+    expect(
+      container.querySelectorAll(
+        '[data-agent-conversation-participant-header="assistant"]'
+      )
+    ).toHaveLength(1);
+    expect(
+      container
+        .querySelector(
+          '[data-agent-conversation-participant-header="assistant"]'
+        )
+        ?.closest("[data-agent-transcript-row]")
+    ).toHaveAttribute("data-agent-transcript-row", "assistant-progress-1");
+    expect(
+      container.querySelector(
+        '[data-agent-transcript-row="assistant-progress-1"]'
+      )
+    ).not.toHaveAttribute("data-agent-transcript-row-participant-content");
+    expect(
+      container.querySelector(
+        '[data-agent-transcript-row="assistant-progress-2"]'
+      )
+    ).toHaveAttribute(
+      "data-agent-transcript-row-participant-content",
+      "assistant"
+    );
+    expect(
+      container.querySelector('[data-agent-transcript-row="assistant-final"]')
+    ).toHaveAttribute(
+      "data-agent-transcript-row-participant-content",
+      "assistant"
+    );
+    expect(
+      container.querySelector('[data-agent-transcript-row="user-row"]')
+    ).not.toHaveAttribute("data-agent-transcript-row-participant-content");
+    expect(screen.getByText("Reading files")).toBeInTheDocument();
+    expect(screen.getByText("Checking tests")).toBeInTheDocument();
+    expect(screen.getByText("Done")).toBeInTheDocument();
+
+    rerender(
+      <AgentTranscriptView
+        conversation={{
+          ...conversation,
+          rows: conversation.rows.map((row) =>
+            row.kind === "message" && row.id === "assistant-final"
+              ? {
+                  ...row,
+                  messages: row.messages.map((finalMessage) => ({
+                    ...finalMessage,
+                    isTurnFinalText: true as const
+                  }))
+                }
+              : row
+          ),
+          sourceDetail: {
+            ...conversation.sourceDetail,
+            session: normalizeAgentActivitySession({
+              ...conversation.sourceDetail.session,
+              activeTurnId: null
+            }),
+            sessionTurns: [
+              canonicalTurn({
+                phase: "settled",
+                outcome: "completed",
+                settledAtUnixMs: 12_000
+              })
+            ]
+          }
+        }}
+        participantPresentation={participantPresentation}
+        labels={labels}
+      />
+    );
+
+    expect(
+      container.querySelectorAll(
+        '[data-agent-conversation-participant-header="assistant"]'
+      )
+    ).toHaveLength(1);
+    expect(
+      container
+        .querySelector(
+          '[data-agent-conversation-participant-header="assistant"]'
+        )
+        ?.closest("[data-agent-transcript-row]")
+    ).toHaveAttribute(
+      "data-agent-transcript-row",
+      "assistant-final:turn-final"
+    );
+    expect(
+      container.querySelector(
+        '[data-agent-transcript-row="assistant-final:turn-final"]'
+      )
+    ).not.toHaveAttribute("data-agent-transcript-row-participant-content");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Expand task details" })
+    );
+    await flushCollapsibleRevealFrames();
+    expect(
+      container.querySelector(
+        '[data-agent-transcript-row="assistant-progress-1"]'
+      )
+    ).toHaveAttribute(
+      "data-agent-transcript-row-participant-content",
+      "assistant"
+    );
+  });
+
+  it("keeps one Agent header when a visible reply spans canonical Turns", () => {
+    const baseConversation = projectAgentConversationVM(detailViewModel());
+    const message = (id: string, turnId: string, body: string) => ({
+      kind: "message-content" as const,
+      id,
+      turnId,
+      body,
+      presentationKind: "content" as const,
+      occurredAtUnixMs: 1
+    });
+    const conversation = {
+      ...baseConversation,
+      rows: [
+        {
+          kind: "message" as const,
+          id: "user-first",
+          turnId: "turn-1",
+          speaker: "user" as const,
+          messages: [message("user-first-message", "turn-1", "Check prices")],
+          thinking: [],
+          occurredAtUnixMs: 1
+        },
+        {
+          kind: "message" as const,
+          id: "assistant-progress",
+          turnId: "turn-1",
+          speaker: "assistant" as const,
+          messages: [
+            message(
+              "assistant-progress-message",
+              "turn-1",
+              "Loading tools and fetching the latest data"
+            )
+          ],
+          thinking: [],
+          occurredAtUnixMs: 2
+        },
+        {
+          kind: "tool-group" as const,
+          id: "recovery-tool-group",
+          turnId: "turn-recovery",
+          grouped: true,
+          calls: [],
+          entries: [],
+          occurredAtUnixMs: 3
+        },
+        {
+          kind: "message" as const,
+          id: "assistant-restart-warning",
+          turnId: "turn-recovery",
+          speaker: "assistant" as const,
+          messages: [
+            message(
+              "assistant-restart-warning-message",
+              "turn-recovery",
+              "Agent run was interrupted by an application restart."
+            )
+          ],
+          thinking: [],
+          occurredAtUnixMs: 4
+        },
+        {
+          kind: "message" as const,
+          id: "user-second",
+          turnId: "turn-2",
+          speaker: "user" as const,
+          messages: [message("user-second-message", "turn-2", "Try again")],
+          thinking: [],
+          occurredAtUnixMs: 5
+        },
+        {
+          kind: "message" as const,
+          id: "assistant-second",
+          turnId: "turn-2",
+          speaker: "assistant" as const,
+          messages: [
+            message("assistant-second-message", "turn-2", "Trying again")
+          ],
+          thinking: [],
+          occurredAtUnixMs: 6
+        }
+      ]
+    };
+
+    const { container } = render(
+      <AgentTranscriptView
+        conversation={conversation}
+        participantPresentation={{
+          enabled: true,
+          status: "ready",
+          user: { name: "Alice", avatarUrl: "user.png" },
+          agent: { name: "Claude Code", avatarUrl: "agent.png" }
+        }}
+        labels={{
+          thinkingLabel: "Thought process",
+          toolCallsLabel: (count) => `Tool calls (${count})`,
+          processing: "Planning next moves",
+          turnSummary: "Changed files"
+        }}
+      />
+    );
+
+    const agentHeaders = container.querySelectorAll(
+      '[data-agent-conversation-participant-header="assistant"]'
+    );
+    expect(agentHeaders).toHaveLength(2);
+    expect(
+      agentHeaders[0]?.closest("[data-agent-transcript-row]")
+    ).toHaveAttribute("data-agent-transcript-row", "assistant-progress");
+    expect(
+      screen
+        .getByText("Agent run was interrupted by an application restart.")
+        .closest("[data-agent-transcript-row]")
+    ).not.toContainElement(agentHeaders[0] as HTMLElement);
+    expect(
+      agentHeaders[1]?.closest("[data-agent-transcript-row]")
+    ).toHaveAttribute("data-agent-transcript-row", "assistant-second");
+    expect(
+      container.querySelectorAll(
+        '[data-agent-conversation-participant-header="user"]'
+      )
+    ).toHaveLength(2);
   });
 
   it("rerenders when canonical turn timing changes", () => {
@@ -108,6 +1080,33 @@ describe("AgentTranscriptView", () => {
       areAgentTranscriptViewPropsEqual(
         { conversation, labels },
         { conversation: activeConversation, labels }
+      )
+    ).toBe(false);
+  });
+
+  it("rerenders when imported history changes the assistant disclosure policy", () => {
+    const labels = {
+      thinkingLabel: "Thought process",
+      toolCallsLabel: (count: number) => `Tool calls (${count})`,
+      processing: "Planning next moves",
+      turnSummary: "Changed files"
+    };
+    const conversation = projectAgentConversationVM(detailViewModel());
+    const importedConversation = {
+      ...conversation,
+      sourceDetail: {
+        ...conversation.sourceDetail,
+        session: {
+          ...conversation.sourceDetail.session,
+          imported: true
+        }
+      }
+    };
+
+    expect(
+      areAgentTranscriptViewPropsEqual(
+        { conversation, labels },
+        { conversation: importedConversation, labels }
       )
     ).toBe(false);
   });
@@ -173,6 +1172,107 @@ describe("AgentTranscriptView", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("renders one live Turn work section when Goal clear occurs between its rows", () => {
+    const baseDetail = detailViewModel();
+    const sourceTurn = baseDetail.turns[0]!;
+    const activeTurn = canonicalTurn();
+    const timedToolCall = {
+      ...sourceTurn.toolCalls[0]!,
+      turnId: "turn-1",
+      occurredAtUnixMs: 500
+    };
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...baseDetail.session,
+          activeTurnId: activeTurn.turnId,
+          activeTurn
+        },
+        sessionTurns: [activeTurn],
+        goalControls: [
+          {
+            id: "goal-control:clear",
+            action: "clear",
+            body: "/goal clear",
+            occurredAtUnixMs: 400
+          }
+        ],
+        turns: [
+          {
+            ...sourceTurn,
+            userMessage: {
+              id: "user-1",
+              body: "Start the goal",
+              turnId: "turn-1",
+              occurredAtUnixMs: 100
+            },
+            userMessages: [
+              {
+                id: "user-1",
+                body: "Start the goal",
+                turnId: "turn-1",
+                occurredAtUnixMs: 100
+              }
+            ],
+            agentMessages: [
+              {
+                id: "assistant-before-clear",
+                body: "Working before clear",
+                turnId: "turn-1",
+                occurredAtUnixMs: 200
+              }
+            ],
+            toolCalls: [timedToolCall],
+            agentItems: [
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-before-clear",
+                  body: "Working before clear",
+                  turnId: "turn-1",
+                  occurredAtUnixMs: 200
+                }
+              },
+              {
+                kind: "tool-calls",
+                id: "tools-after-clear",
+                toolCalls: [timedToolCall],
+                toolCallCount: 1,
+                hasFailedToolCall: false
+              }
+            ]
+          }
+        ]
+      })
+    );
+    const goalControlIndex = conversation.rows.findIndex(
+      (row) => row.kind === "goal-control"
+    );
+
+    expect(goalControlIndex).toBeGreaterThan(0);
+    expect(conversation.rows[goalControlIndex]?.turnId).toBeNull();
+    expect(conversation.rows[goalControlIndex - 1]?.turnId).toBe("turn-1");
+    expect(conversation.rows[goalControlIndex + 1]?.turnId).toBe("turn-1");
+
+    const { container } = render(
+      <AgentTranscriptView
+        conversation={conversation}
+        labels={{
+          thinkingLabel: "Thought process",
+          toolCallsLabel: (count) => `Tool calls (${count})`,
+          processing: "Planning next moves",
+          turnSummary: "Changed files"
+        }}
+      />
+    );
+
+    expect(
+      container.querySelectorAll("[data-agent-turn-work-section]")
+    ).toHaveLength(1);
+    expect(screen.getAllByText("/goal clear")).toHaveLength(1);
+    expect(screen.getAllByText("Working before clear")).toHaveLength(1);
   });
 
   it("freezes settled duration, auto-collapses work, and keeps manual expansion", async () => {
@@ -428,6 +1528,175 @@ describe("AgentTranscriptView", () => {
     expect(dividers).toHaveLength(1);
   });
 
+  it("keeps a turn attachment after its anchor when later turns are added", () => {
+    const base = detailViewModel();
+    render(
+      <AgentTranscriptView
+        conversation={projectAgentConversationVM(
+          detailViewModel({
+            turns: [
+              base.turns[0]!,
+              {
+                id: "turn-2",
+                userMessage: { id: "user-2", body: "Follow-up request" },
+                userMessages: [{ id: "user-2", body: "Follow-up request" }],
+                agentMessages: [
+                  { id: "assistant-2", body: "Follow-up answer" }
+                ],
+                toolCalls: [],
+                toolCallCount: 0,
+                hasFailedToolCall: false,
+                agentItems: [
+                  {
+                    kind: "message",
+                    message: { id: "assistant-2", body: "Follow-up answer" }
+                  }
+                ]
+              }
+            ]
+          })
+        )}
+        turnAttachments={[
+          {
+            id: "workflow:workflow-1",
+            anchorTurnId: "turn-1",
+            content: <div>Anchored workflow</div>
+          }
+        ]}
+        labels={{
+          thinkingLabel: "Thought process",
+          toolCallsLabel: (count) => `Tool calls (${count})`,
+          processing: "Planning next moves",
+          turnSummary: "Changed files"
+        }}
+      />
+    );
+
+    const attachment = screen
+      .getByText("Anchored workflow")
+      .closest("[data-agent-transcript-attachment]");
+    const firstTurnRow = screen
+      .getByText("User asks for a fix")
+      .closest("[data-agent-transcript-row]");
+    const secondTurnRow = screen
+      .getByText("Follow-up request")
+      .closest("[data-agent-transcript-row]");
+    expect(attachment).toBeInstanceOf(HTMLElement);
+    expect(firstTurnRow).toBeInstanceOf(HTMLElement);
+    expect(secondTurnRow).toBeInstanceOf(HTMLElement);
+    expect(
+      firstTurnRow!.compareDocumentPosition(attachment!) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      attachment!.compareDocumentPosition(secondTurnRow!) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
+  it("treats attachment reference changes as transcript render input", () => {
+    const conversation = projectAgentConversationVM(detailViewModel());
+    const labels = {
+      thinkingLabel: "Thought process",
+      toolCallsLabel: (count: number) => `Tool calls (${count})`,
+      processing: "Planning next moves",
+      turnSummary: "Changed files"
+    };
+    const attachments = [
+      {
+        id: "workflow:workflow-1",
+        anchorTurnId: "turn-1",
+        content: <div>Review</div>
+      }
+    ];
+    expect(
+      areAgentTranscriptViewPropsEqual(
+        { conversation, labels, turnAttachments: attachments },
+        { conversation, labels, turnAttachments: attachments }
+      )
+    ).toBe(true);
+    expect(
+      areAgentTranscriptViewPropsEqual(
+        { conversation, labels, turnAttachments: attachments },
+        { conversation, labels, turnAttachments: [...attachments] }
+      )
+    ).toBe(false);
+  });
+
+  it("hides an anchored-only attachment until its Turn page is loaded", () => {
+    const base = detailViewModel();
+    const attachment = {
+      id: "fork-lineage:operation-1",
+      anchorTurnId: "target-boundary-turn",
+      missingAnchorBehavior: "hide" as const,
+      content: <div>Continued from task</div>
+    };
+    const labels = {
+      thinkingLabel: "Thought process",
+      toolCallsLabel: (count: number) => `Tool calls (${count})`,
+      processing: "Planning next moves",
+      turnSummary: "Changed files"
+    };
+    const rendered = render(
+      <AgentTranscriptView
+        conversation={projectAgentConversationVM(base)}
+        turnAttachments={[attachment]}
+        labels={labels}
+      />
+    );
+
+    expect(screen.queryByText("Continued from task")).not.toBeInTheDocument();
+
+    rendered.rerender(
+      <AgentTranscriptView
+        conversation={projectAgentConversationVM(
+          detailViewModel({
+            turns: [
+              base.turns[0]!,
+              {
+                id: "target-boundary-turn",
+                userMessage: { id: "user-boundary", body: "Boundary request" },
+                userMessages: [
+                  { id: "user-boundary", body: "Boundary request" }
+                ],
+                agentMessages: [
+                  { id: "assistant-boundary", body: "Boundary answer" }
+                ],
+                toolCalls: [],
+                toolCallCount: 0,
+                hasFailedToolCall: false,
+                agentItems: [
+                  {
+                    kind: "message",
+                    message: {
+                      id: "assistant-boundary",
+                      body: "Boundary answer"
+                    }
+                  }
+                ]
+              }
+            ]
+          })
+        )}
+        turnAttachments={[attachment]}
+        labels={labels}
+      />
+    );
+
+    const boundaryRow = screen
+      .getByText("Boundary answer")
+      .closest("[data-agent-transcript-row]");
+    const lineage = screen
+      .getByText("Continued from task")
+      .closest("[data-agent-transcript-attachment]");
+    expect(boundaryRow).toBeInstanceOf(HTMLElement);
+    expect(lineage).toBeInstanceOf(HTMLElement);
+    expect(
+      boundaryRow!.compareDocumentPosition(lineage!) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
   it("renders user message locator ticks and scrolls to the selected message", () => {
     const scrollIntoView = vi.fn();
     const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
@@ -571,6 +1840,80 @@ describe("AgentTranscriptView", () => {
     expect(within(panel).getByText(displayPrompt)).toBeTruthy();
     expect(within(panel).getByText("啊？")).toBeTruthy();
     expect(within(panel).queryByText(mentionPrompt)).toBeNull();
+  });
+
+  it("remeasures the message locator when an occluded transcript becomes visible", async () => {
+    const base = detailViewModel();
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          base.turns[0]!,
+          {
+            id: "turn-2",
+            userMessage: { id: "user-2", body: "Follow-up request" },
+            userMessages: [{ id: "user-2", body: "Follow-up request" }],
+            agentMessages: [{ id: "assistant-2", body: "Follow-up answer" }],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-2",
+                  body: "Follow-up answer"
+                }
+              }
+            ]
+          }
+        ]
+      })
+    );
+    const transcriptLabels = {
+      thinkingLabel: "Thought process",
+      toolCallsLabel: (count: number) => `Tool calls (${count})`,
+      processing: "Planning next moves",
+      turnSummary: "Changed files",
+      userMessageLocator: "User messages"
+    };
+    const { rerender } = render(
+      <div data-testid="agent-gui-timeline">
+        <AgentTranscriptView
+          conversation={conversation}
+          isVisible={false}
+          labels={transcriptLabels}
+        />
+      </div>
+    );
+    const timeline = screen.getByTestId("agent-gui-timeline");
+    let timelineClientHeight = 0;
+    Object.defineProperty(timeline, "clientHeight", {
+      configurable: true,
+      get: () => timelineClientHeight
+    });
+    await flushAnimationFrame();
+
+    expect(
+      screen
+        .getByTestId("agent-message-locator")
+        .style.getPropertyValue("--agent-message-locator-visible-height")
+    ).toBe("");
+
+    timelineClientHeight = 240;
+    rerender(
+      <div data-testid="agent-gui-timeline">
+        <AgentTranscriptView
+          conversation={conversation}
+          isVisible
+          labels={transcriptLabels}
+        />
+      </div>
+    );
+    await flushAnimationFrame();
+
+    expect(screen.getByTestId("agent-message-locator")).toHaveStyle({
+      "--agent-message-locator-visible-height": "240px"
+    });
   });
 
   it("locates the nearest user message when clicking the locator rail around a dot", () => {
@@ -760,7 +2103,7 @@ describe("AgentTranscriptView", () => {
     }
   });
 
-  it("keeps the selected user message locator tick inside the locator viewport", async () => {
+  it("keeps the selected locator tick visible through resize without reading viewport geometry", async () => {
     const turns = Array.from({ length: 16 }, (_, index) => ({
       id: `turn-${index + 1}`,
       userMessage: {
@@ -794,23 +2137,37 @@ describe("AgentTranscriptView", () => {
     }));
 
     render(
-      <AgentTranscriptView
-        conversation={projectAgentConversationVM(detailViewModel({ turns }))}
-        labels={{
-          thinkingLabel: "Thought process",
-          toolCallsLabel: (count) => `Tool calls (${count})`,
-          processing: "Planning next moves",
-          turnSummary: "Changed files",
-          userMessageLocator: "User messages"
-        }}
-      />
+      <div data-testid="agent-gui-timeline">
+        <AgentTranscriptView
+          conversation={projectAgentConversationVM(detailViewModel({ turns }))}
+          labels={{
+            thinkingLabel: "Thought process",
+            toolCallsLabel: (count) => `Tool calls (${count})`,
+            processing: "Planning next moves",
+            turnSummary: "Changed files",
+            userMessageLocator: "User messages"
+          }}
+        />
+      </div>
     );
 
+    const timeline = screen.getByTestId("agent-gui-timeline");
     const locator = screen.getByTestId("agent-message-locator");
     const viewport = screen.getByTestId("agent-message-locator-viewport");
+    let timelineClientHeight = 96;
+    Object.defineProperty(timeline, "clientHeight", {
+      configurable: true,
+      get: () => timelineClientHeight
+    });
+    await flushAnimationFrame();
+
+    let viewportClientHeightReadCount = 0;
     Object.defineProperty(viewport, "clientHeight", {
       configurable: true,
-      value: 96
+      get: () => {
+        viewportClientHeightReadCount += 1;
+        return timelineClientHeight;
+      }
     });
 
     fireEvent.click(
@@ -820,9 +2177,18 @@ describe("AgentTranscriptView", () => {
     await waitFor(() => {
       expect(viewport.scrollTop).toBeGreaterThan(0);
     });
+    expect(viewportClientHeightReadCount).toBe(0);
     expect(
       locator.querySelectorAll(".agent-gui-message-locator__tick")[14]
     ).toHaveAttribute("data-selected", "true");
+
+    const scrollTopBeforeResize = viewport.scrollTop;
+    timelineClientHeight = 120;
+    fireEvent(window, new Event("resize"));
+    await flushAnimationFrame();
+
+    expect(viewport.scrollTop).toBeLessThan(scrollTopBeforeResize);
+    expect(viewportClientHeightReadCount).toBe(0);
   });
 
   it("keeps a compact locator safety inset above composer scroll padding", async () => {
@@ -1140,8 +2506,27 @@ describe("AgentTranscriptView", () => {
     const assistantFlow = document.querySelector(
       ".agent-gui-conversation__assistant-message-flow"
     );
+    const assistantRow = assistantFlow?.closest("[data-agent-transcript-row]");
 
     expect(assistantFlow).toBeTruthy();
+    expect(assistantFlow).toHaveAttribute(
+      "data-agent-message-flow-thinking-first",
+      "true"
+    );
+    expect(assistantFlow).not.toHaveAttribute(
+      "data-agent-message-flow-thinking-last"
+    );
+    expect(assistantRow).toHaveAttribute(
+      "data-agent-transcript-row-speaker",
+      "assistant"
+    );
+    expect(assistantRow).toHaveAttribute(
+      "data-agent-transcript-row-thinking-first",
+      "true"
+    );
+    expect(assistantRow).not.toHaveAttribute(
+      "data-agent-transcript-row-thinking-last"
+    );
     expect(assistantFlow?.firstElementChild?.contains(thinkingButton)).toBe(
       true
     );
@@ -1734,7 +3119,7 @@ describe("AgentTranscriptView", () => {
     expect(screen.getByTitle("/workspace/demo/src/routes.ts")).toBeTruthy();
   });
 
-  it("renders visible agent errors as an alert with collapsible details", async () => {
+  it("renders visible agent errors without exposing raw details", () => {
     render(
       <AgentTranscriptView
         conversation={projectAgentConversationVM(
@@ -1794,17 +3179,12 @@ describe("AgentTranscriptView", () => {
     expect(
       screen.getByText("agentHost.agentGui.visibleErrorStartFailed")
     ).toBeTruthy();
-    const detailsToggle = screen.getByRole("button", {
-      name: "agentHost.agentGui.visibleErrorRawDetails"
-    });
-    expect(detailsToggle).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByRole("button", {
+        name: "agentHost.agentGui.visibleErrorRawDetails"
+      })
+    ).toBeNull();
     expect(screen.queryByText("Config invalid")).toBeNull();
-
-    fireEvent.click(detailsToggle);
-    await flushCollapsibleRevealFrames();
-    expect(detailsToggle).toHaveAttribute("aria-expanded", "true");
-    const details = screen.getByText("Config invalid");
-    expect(details).toBeTruthy();
   });
 });
 

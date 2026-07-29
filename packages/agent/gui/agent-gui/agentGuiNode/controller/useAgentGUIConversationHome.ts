@@ -26,17 +26,24 @@ import {
   resolveAgentGUIComposerAppendRequest,
   type AgentGUIComposerAppendRequest
 } from "./useAgentGUIComposerAppendRequest";
+import {
+  buildNodeDefaultComposerSettings,
+  nodeDataFromComposerSettings
+} from "./agentGuiController.composerHelpers";
 
 export interface AgentGUIPrefillPromptRequest {
   agentTargetId?: string | null;
   autoSubmit?: boolean;
   draftPrompt: string;
+  model?: string | null;
+  modelPlanId?: string | null;
   provider?: AgentGUIProvider;
   sequence: number;
   userProjectPath?: string | null;
 }
 
 export interface UseAgentGUIConversationHomeInput {
+  activeConversationId: string | null;
   activeConversationIdRef: RefObject<string | null>;
   activePendingActivation: PendingActivationIntentRecord | null;
   agentActivityRuntime: AgentActivityRuntime;
@@ -63,10 +70,10 @@ export interface UseAgentGUIConversationHomeInput {
   onDataChangeRef: RefObject<
     (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
   >;
+  onComposerAppendHandled?: (sequence: number) => void;
   submitPrefillPrompt: (prompt: string) => void;
   persistActiveConversation: (agentSessionId: string | null) => void;
   prefillPromptRequest: AgentGUIPrefillPromptRequest | null;
-  previewMode: boolean;
   reportActiveConversationCleared: (input: {
     details: Record<string, unknown>;
     previousAgentSessionId: string | null;
@@ -97,6 +104,7 @@ export interface UseAgentGUIConversationHomeInput {
 
 /** Owns transitions from an active conversation back to the home composer. */
 export function useAgentGUIConversationHome({
+  activeConversationId,
   activeConversationIdRef,
   activePendingActivation,
   agentActivityRuntime,
@@ -114,10 +122,10 @@ export function useAgentGUIConversationHome({
   normalizedExplicitProviderTargets,
   normalizedProviderTargets,
   onDataChangeRef,
+  onComposerAppendHandled,
   submitPrefillPrompt,
   persistActiveConversation,
   prefillPromptRequest,
-  previewMode,
   reportActiveConversationCleared,
   selectedComposerTargetDataRef,
   selectedProjectPathRef,
@@ -237,11 +245,8 @@ export function useAgentGUIConversationHome({
   );
 
   useEffect(() => {
-    if (previewMode) {
-      return;
-    }
     const resolvedAppendRequest = resolveAgentGUIComposerAppendRequest({
-      activeConversationId: activeConversationIdRef.current,
+      activeConversationId,
       draftByScopeKey: draftByScopeKeyRef.current,
       handledSequence: handledComposerAppendSequenceRef.current,
       request: composerAppendRequest
@@ -256,6 +261,7 @@ export function useAgentGUIConversationHome({
         ...current,
         [resolvedAppendRequest.draftKey]: resolvedAppendRequest.nextDraft
       }));
+      onComposerAppendHandled?.(resolvedAppendRequest.sequence);
     }
     if (
       !prefillPromptRequest ||
@@ -313,10 +319,23 @@ export function useAgentGUIConversationHome({
           ),
           target
         });
-        const nextData = {
+        const nextTargetNodeData = {
           ...nextTargetData.data,
           lastActiveAgentSessionId: null
         };
+        const nextData = applyAgentGUIPrefillComposerAssignment(
+          nextTargetNodeData,
+          prefillPromptRequest
+        );
+        dataRef.current = nextData;
+        return nextData;
+      });
+    } else if (prefillPromptRequest.model || prefillPromptRequest.modelPlanId) {
+      onDataChangeRef.current((current) => {
+        const nextData = applyAgentGUIPrefillComposerAssignment(
+          { ...current, lastActiveAgentSessionId: null },
+          prefillPromptRequest
+        );
         dataRef.current = nextData;
         return nextData;
       });
@@ -337,6 +356,7 @@ export function useAgentGUIConversationHome({
     persistActiveConversation(null);
     loadDraftComposerOptions();
   }, [
+    activeConversationId,
     dataRef,
     draftByScopeKeyRef,
     composerAppendRequest,
@@ -347,10 +367,10 @@ export function useAgentGUIConversationHome({
     loadDraftComposerOptions,
     normalizedExplicitProviderTargets,
     normalizedProviderTargets,
+    onComposerAppendHandled,
     onDataChangeRef,
     persistActiveConversation,
     prefillPromptRequest,
-    previewMode,
     selectedComposerTargetDataRef,
     selectedProjectPathRef,
     setConversationFilter,
@@ -362,4 +382,20 @@ export function useAgentGUIConversationHome({
   ]);
 
   return { createConversation, enterHome };
+}
+
+export function applyAgentGUIPrefillComposerAssignment(
+  data: AgentGUINodeData,
+  request: Pick<AgentGUIPrefillPromptRequest, "model" | "modelPlanId">
+): AgentGUINodeData {
+  const model = request.model?.trim() || null;
+  const modelPlanId = request.modelPlanId?.trim() || null;
+  if (!model && !modelPlanId) {
+    return data;
+  }
+  return nodeDataFromComposerSettings(data, {
+    ...buildNodeDefaultComposerSettings(data),
+    model,
+    modelPlanId
+  });
 }

@@ -1,20 +1,17 @@
 import type {
   WorkspaceFileDirectoryListing,
-  WorkspaceFileActivationTarget,
   WorkspaceFileEntry,
   WorkspaceFileManagerFileActivationRequest,
   WorkspaceFileManagerHost,
-  WorkspaceFileManagerHostActionResult,
   WorkspaceFileManagerHostFileActivationResult,
   WorkspaceFileSearchResult
 } from "@tutti-os/workspace-file-manager/services";
+import type { WorkspaceFilePreviewTarget } from "@tutti-os/workspace-file-preview";
 import { requestWorkspaceBrowserHostFileLaunch } from "../../../workspace-workbench/services/workspaceBrowserLaunchCoordinator.ts";
-import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import { resolveDesktopErrorMessage } from "../../../../lib/desktopErrors.ts";
 import type { DesktopLocale } from "../../../../../../shared/i18n/index.ts";
-import { extractDesktopDroppedPaths } from "../desktopDroppedPaths.ts";
 import type { WorkspaceFileManagerServiceDependencies } from "./workspaceFileManagerService.ts";
-import type { WorkspaceFilePreviewPresentationResult } from "../workspaceFilePreviewSurfaceHost.interface.ts";
+import type { WorkspaceFilePreviewPresentationResult } from "@renderer/features/workspace-file-preview";
 
 interface DesktopWorkspaceFileManagerAdapterDependencies extends WorkspaceFileManagerServiceDependencies {
   notifyPreviewUnsupportedFallback(): void;
@@ -31,14 +28,13 @@ export function createDesktopWorkspaceFileManagerAdapter(
       workspaceID: string
     ): WorkspaceFilePreviewPresentationResult["unsupportedFallbackNotification"];
     openCanvasPreview(
-      target: WorkspaceFileActivationTarget,
+      target: WorkspaceFilePreviewTarget,
       workspaceID: string
     ): Promise<WorkspaceFilePreviewPresentationResult>;
   }
 ): WorkspaceFileManagerHost {
   const hostFilesApi = dependencies.hostFilesApi;
   const tuttidClient = dependencies.tuttidClient;
-  const platformApi = dependencies.platformApi;
 
   return {
     async createDirectory(input): Promise<WorkspaceFileEntry> {
@@ -185,13 +181,6 @@ export function createDesktopWorkspaceFileManagerAdapter(
     readPreviewFile(workspaceID: string, path: string): Promise<Uint8Array> {
       return hostFilesApi.readPreviewFile(workspaceID, path);
     },
-    resolveDroppedPaths(
-      dataTransfer: Pick<DataTransfer, "files" | "items">
-    ): string[] {
-      return extractDesktopDroppedPaths(dataTransfer, (files) =>
-        platformApi.resolveDroppedPaths(files)
-      );
-    },
     resolveErrorMessage(
       error: unknown,
       overrides?: Record<string, string>
@@ -221,30 +210,6 @@ export function createDesktopWorkspaceFileManagerAdapter(
         root: response.root,
         workspaceID: response.workspaceId
       };
-    },
-    async importFiles(
-      workspaceID: string,
-      targetDirectoryPath: string
-    ): Promise<WorkspaceFileManagerHostActionResult> {
-      const sourcePaths = await hostFilesApi.selectUploadFiles();
-      return uploadSourcePaths(
-        tuttidClient,
-        workspaceID,
-        targetDirectoryPath,
-        sourcePaths
-      );
-    },
-    async importPaths(
-      workspaceID: string,
-      targetDirectoryPath: string,
-      sourcePaths: string[]
-    ): Promise<WorkspaceFileManagerHostActionResult> {
-      return uploadSourcePaths(
-        tuttidClient,
-        workspaceID,
-        targetDirectoryPath,
-        sourcePaths
-      );
     }
   };
 }
@@ -269,57 +234,4 @@ function fileEntryFromDesktop(entry: {
     path: entry.path,
     sizeBytes: entry.sizeBytes
   };
-}
-
-async function uploadSourcePaths(
-  tuttidClient: TuttidClient,
-  workspaceID: string,
-  targetDirectoryPath: string,
-  sourcePaths: string[]
-): Promise<WorkspaceFileManagerHostActionResult> {
-  if (sourcePaths.length === 0) {
-    return { supported: true };
-  }
-
-  const preflight = await tuttidClient.preflightUploadWorkspaceFiles(
-    workspaceID,
-    {
-      sourcePaths,
-      targetDirectoryPath
-    }
-  );
-  if (preflight.conflicts.length > 0) {
-    const conflicts = preflight.conflicts.map((conflict) => ({
-      conflictKind: conflict.kind,
-      destinationKind: conflict.destinationKind,
-      destinationPath: conflict.destinationPath,
-      name: conflict.name,
-      sourcePath: conflict.sourcePath
-    }));
-    const hasBlockedConflict = conflicts.some(
-      (conflict) => conflict.conflictKind === "type_mismatch"
-    );
-    return {
-      supported: true,
-      importConflict: {
-        conflicts,
-        onConfirm: hasBlockedConflict
-          ? undefined
-          : async () => {
-              await tuttidClient.uploadWorkspaceFiles(workspaceID, {
-                overwrite: true,
-                sourcePaths,
-                targetDirectoryPath
-              });
-              return { supported: true };
-            }
-      }
-    };
-  }
-
-  await tuttidClient.uploadWorkspaceFiles(workspaceID, {
-    sourcePaths,
-    targetDirectoryPath
-  });
-  return { supported: true };
 }

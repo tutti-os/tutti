@@ -26,18 +26,18 @@ const workspaceUserProjectEn = {
     createProjectCancel: "Cancel",
     createProjectConfirm: "Create",
     createProjectDocumentsUnavailable:
-      "Documents is unavailable. Choose an existing project instead.",
+      "The workspace is unavailable. Use an existing project instead.",
     createProjectFailed: "Unable to create project",
     createProjectNameConflict:
       "A project with this name already exists. Use another name.",
     createProjectNameInvalid:
       "Project names cannot contain path separators or empty values.",
     createProjectNameLabel:
-      "Enter a project name. A folder will be created in Documents/tutti",
+      "Enter a project name. A folder will be created under /workspace",
     createProjectNamePlaceholder: "Project name",
     createProjectNameRequired: "Project name is required",
     createProjectPermissionDenied:
-      "Tutti does not have permission to create folders in Documents.",
+      "Tutti does not have permission to create folders under /workspace.",
     createProjectTitle: "Add project",
     linkExistingProject: "Use existing project",
     loadingProjects: "Loading projects",
@@ -55,15 +55,14 @@ const workspaceUserProjectZhCN = {
     addProject: "添加项目",
     createProjectCancel: "取消",
     createProjectConfirm: "创建",
-    createProjectDocumentsUnavailable: "无法访问文档目录。请选择已有项目。",
+    createProjectDocumentsUnavailable: "无法访问 /workspace。请选择已有项目。",
     createProjectFailed: "无法创建项目",
     createProjectNameConflict: "同名项目已存在，请换一个名称。",
     createProjectNameInvalid: "项目名称不能包含路径分隔符或为空。",
-    createProjectNameLabel:
-      "输入项目名称。系统会在 Documents/tutti 中创建文件夹",
+    createProjectNameLabel: "输入项目名称。系统会在 /workspace 下创建文件夹",
     createProjectNamePlaceholder: "项目名称",
     createProjectNameRequired: "请输入项目名称",
-    createProjectPermissionDenied: "Tutti 没有权限在 Documents 中创建文件夹。",
+    createProjectPermissionDenied: "Tutti 没有权限在 /workspace 下创建文件夹。",
     createProjectTitle: "添加项目",
     linkExistingProject: "使用已有项目",
     loadingProjects: "正在加载项目",

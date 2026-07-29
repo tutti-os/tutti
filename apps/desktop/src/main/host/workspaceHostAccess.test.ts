@@ -13,6 +13,7 @@ function createAdapters(
   overrides: Partial<WorkspaceLaunchAdapters> = {}
 ): WorkspaceLaunchAdapters {
   return {
+    async ensureAgentBrowserHost() {},
     async showAgentWindow() {},
     async showWorkspaceWindow() {},
     warnStartupWindowResolutionFailure() {},
@@ -23,11 +24,110 @@ function createAdapters(
 function createTransportClient(
   overrides: Partial<TuttidClient> = {}
 ): TuttidClient {
-  return {
+  const client: TuttidClient = {
+    async appendAgentSessionRecordingActivityEvents() {
+      throw new Error("not used");
+    },
+    async listAgentSessionRecordings() {
+      return [];
+    },
+    async startAgentSessionRecording() {
+      throw new Error("not used");
+    },
+    async getAgentSessionRecording() {
+      throw new Error("not used");
+    },
+    async renameAgentSessionRecording() {
+      throw new Error("not used");
+    },
+    async completeAgentSessionRecording() {
+      throw new Error("not used");
+    },
+    async cancelAgentSessionRecording() {
+      throw new Error("not used");
+    },
+    async prepareAgentSessionReplayRun() {
+      throw new Error("not used");
+    },
+    async listAgentSessionReplayRuns() {
+      return [];
+    },
+    async markAgentSessionReplayRunRunning() {
+      throw new Error("not used");
+    },
+    async completeAgentSessionReplayRun() {
+      throw new Error("not used");
+    },
+    async failAgentSessionReplayRun() {
+      throw new Error("not used");
+    },
+    async createAgentQuickPrompt() {
+      throw new Error("not used");
+    },
+    async deleteAgentQuickPrompt() {
+      throw new Error("not used");
+    },
+    async listAgentQuickPrompts() {
+      throw new Error("not used");
+    },
+    async moveAgentQuickPrompt() {
+      throw new Error("not used");
+    },
+    async getWorkspaceAgentSessionTuttiModeActivation() {
+      throw new Error("not used");
+    },
+    async updateWorkspaceAgentSessionTuttiModeActivation() {
+      throw new Error("not used");
+    },
     async listAgentTargets() {
       throw new Error("not used");
     },
+    async listAutomationRules() {
+      throw new Error("not used");
+    },
+    async createAutomationRule() {
+      throw new Error("not used");
+    },
+    async updateAutomationRule() {
+      throw new Error("not used");
+    },
+    async deleteAutomationRule() {
+      throw new Error("not used");
+    },
+    async getAgentSessionAutomationRuleOverride() {
+      throw new Error("not used");
+    },
+    async setAgentSessionAutomationRuleOverride() {
+      throw new Error("not used");
+    },
+    async listModelPlans() {
+      throw new Error("not used");
+    },
+    async listWorkspaceAgents() {
+      throw new Error("not used");
+    },
+    async createWorkspaceAgent() {
+      throw new Error("not used");
+    },
+    async updateWorkspaceAgent() {
+      throw new Error("not used");
+    },
+    async deleteWorkspaceAgent() {
+      throw new Error("not used");
+    },
     async setSystemAgentTargetEnabled() {
+      throw new Error("not used");
+    },
+    async updateAgentQuickPrompt() {
+      throw new Error("not used");
+    },
+    async getAgentTargetSetup() {
+      throw new Error("not used");
+    },
+    async installAgentTargetRuntime() {
+      throw new Error("not used");
+    },
+    async authenticateAgentTargetRuntime() {
       throw new Error("not used");
     },
     async startAccountLogin() {
@@ -133,6 +233,15 @@ function createTransportClient(
       throw new Error("not used");
     },
     async createWorkspaceAgentSession() {
+      throw new Error("not used");
+    },
+    async forkWorkspaceAgentSession() {
+      throw new Error("not used");
+    },
+    async getWorkspaceAgentSessionForkOperation() {
+      throw new Error("not used");
+    },
+    async acknowledgeWorkspaceAgentSessionForkOperation() {
       throw new Error("not used");
     },
     async updateWorkspaceAgentSessionVisibility() {
@@ -282,6 +391,12 @@ function createTransportClient(
     async listUserProjects() {
       throw new Error("not used");
     },
+    async moveUserProject() {
+      throw new Error("not used");
+    },
+    async pinUserProject() {
+      throw new Error("not used");
+    },
     async deleteUserProject() {
       throw new Error("not used");
     },
@@ -420,6 +535,9 @@ function createTransportClient(
     async putDesktopPreferences() {
       throw new Error("not used");
     },
+    async purgeDeletedAgentConversations() {
+      throw new Error("not used");
+    },
     async updateWorkspaceIssue() {
       throw new Error("not used");
     },
@@ -442,8 +560,23 @@ function createTransportClient(
     async useUserProject() {
       throw new Error("not used");
     },
-    ...overrides
+    async listPendingWorkspaceWorkflows() {
+      throw new Error("not used");
+    },
+    async listWorkspaceWorkflows() {
+      throw new Error("not used");
+    },
+    async decideWorkspaceWorkflowCheckpoint() {
+      throw new Error("not used");
+    },
+    async cancelWorkspaceIssueExecution() {
+      throw new Error("not used");
+    },
+    async cancelTuttiModeExecution() {
+      throw new Error("not used");
+    }
   };
+  return Object.assign(client, overrides);
 }
 
 test("workspace host access delegates workspace window handoff", async () => {

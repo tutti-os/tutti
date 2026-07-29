@@ -1,0 +1,3 @@
+export const DESKTOP_AGENT_PROMPT_FILE_MAX_BYTES = 2 * 1024 * 1024 * 1024;
+
+export const DESKTOP_AGENT_PROMPT_FILE_TOO_LARGE_ERROR_CODE = "file_too_large";

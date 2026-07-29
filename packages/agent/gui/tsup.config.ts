@@ -1,42 +1,32 @@
-import { defineConfig } from "tsup";
+import { readFile } from "node:fs/promises";
+
+import { defineConfig, type Options } from "tsup";
+
+import { cssSafeSvgDataUrl } from "./build/cssSafeSvgDataUrl";
+import { agentGUIBuildEntries } from "./build/agentGuiBuildEntries";
+
+const cssSafeSvgDataUrlPlugin: NonNullable<Options["esbuildPlugins"]>[number] =
+  {
+    name: "css-safe-svg-data-url",
+    setup(build) {
+      build.onLoad({ filter: /\.svg$/ }, async ({ path }) => {
+        const svg = await readFile(path, "utf8");
+        return {
+          contents: `export default ${JSON.stringify(cssSafeSvgDataUrl(svg))};`,
+          loader: "js"
+        };
+      });
+    }
+  };
 
 export default defineConfig({
   clean: true,
-  dts: true,
-  entry: {
-    index: "index.ts",
-    "agent-gui": "AgentGUI.tsx",
-    "startup-shell": "AgentGUIStartupShell.tsx",
-    agents: "agents.ts",
-    "custom-mention": "custom-mention.ts",
-    "dock-icons": "dockIcons.ts",
-    "mention-search": "agent-gui/agentGuiNode/AgentMentionSearchController.ts",
-    "agent-message-center/index": "agent-message-center/index.ts",
-    "agent-conversation/index": "agent-conversation/index.ts",
-    "agent-env/index": "shared/agentEnv/index.ts",
-    "context-mention-palette/index": "context-mention-palette/index.ts",
-    "context-mention-provider":
-      "agent-gui/agentGuiNode/agentContextMentionProvider.ts",
-    "agent-title-text": "shared/utils/agentTitleText.ts",
-    "provider-identity": "provider-identity.ts",
-    "provider-icons": "provider-icons.ts",
-    "i18n/index": "i18n/index.ts",
-    "mention-file-presentation": "agent-gui/shared/mentionFilePresentation.ts",
-    "workbench/index": "workbench/index.ts",
-    "workbench/contribution": "workbench/contribution.ts",
-    "workbench/launch": "workbench/launch.ts",
-    "workbench/providerCatalog": "workbench/providerCatalog.ts",
-    "workbench/sessionTitle": "workbench/sessionTitle.ts",
-    "workbench/state": "workbench/state.ts",
-    "workbench/types": "workbench/types.ts",
-    "workspace-agent-generated-files": "shared/workspaceAgentGeneratedFiles.ts",
-    "workspace-query-cache": "shared/query/workspaceQueryCache.ts"
-  },
+  entry: agentGUIBuildEntries,
   external: ["react", "react-dom"],
+  esbuildPlugins: [cssSafeSvgDataUrlPlugin],
   format: ["esm"],
   loader: {
-    ".png": "dataurl",
-    ".svg": "dataurl"
+    ".png": "dataurl"
   },
   sourcemap: true
 });

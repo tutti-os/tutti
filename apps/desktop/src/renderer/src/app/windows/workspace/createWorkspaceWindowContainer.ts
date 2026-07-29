@@ -5,23 +5,28 @@ import {
 } from "@renderer/features/analytics-debug";
 import {
   registerReporterServices,
-  shouldReportPredefinePageview,
-  startPredefinePageviewAnalytics
+  shouldReportPredefinePageview
 } from "@renderer/features/analytics";
+import { startPredefinePageviewAnalytics } from "@renderer/features/analytics/predefinePageviewAnalytics.ts";
 import { registerAppUpdateServices } from "@renderer/features/app-update/services/registerAppUpdateServices";
 import { registerDesktopPreferencesServices } from "@renderer/features/desktop-preferences/services/registerDesktopPreferencesServices.ts";
 import { registerRichTextAtServices } from "@renderer/features/rich-text-at/services/registerRichTextAtServices";
 import { createDesktopAgentSessionStatusViewResolver } from "@renderer/features/rich-text-at/providers/desktopAgentSessionStatusView.ts";
 import { registerWorkspaceAgentServices } from "@renderer/features/workspace-agent/services/registerWorkspaceAgentServices";
+import { startDesktopAgentAvailabilitySnapshotAnalytics } from "@renderer/features/workspace-agent/desktopAgentAvailabilitySnapshotAnalytics.ts";
 import type { IAgentProviderStatusService as AgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
 import type { IWorkspaceAgentActivityService as WorkspaceAgentActivityService } from "@renderer/features/workspace-agent/services/workspaceAgentActivityService.interface.ts";
 import { registerWorkspaceAppCenterServices } from "@renderer/features/workspace-app-center/services/registerWorkspaceAppCenterServices";
 import { registerWorkspaceCatalogServices } from "@renderer/features/workspace-catalog/services/registerWorkspaceCatalogServices";
 import { registerWorkspaceFileManagerServices } from "@renderer/features/workspace-file-manager/services/registerWorkspaceFileManagerServices";
+import { registerWorkspaceFilePreviewServices } from "@renderer/features/workspace-file-preview";
 import { registerWorkspaceUserProjectServices } from "@renderer/features/workspace-user-project/services/registerWorkspaceUserProjectServices.ts";
 import { createAgentProviderTerminalCommandRunner } from "@renderer/features/workspace-workbench/services/createAgentProviderTerminalCommandRunner";
 import { createWorkspaceAgentOutcomeNotificationController } from "@renderer/features/workspace-workbench/services/workspaceAgentOutcomeNotification";
-import { registerWorkspaceWorkbenchServices } from "@renderer/features/workspace-workbench/services/registerWorkspaceWorkbenchServices";
+import {
+  registerWorkspaceAccountService,
+  registerWorkspaceWorkbenchServices
+} from "@renderer/features/workspace-workbench/services/registerWorkspaceWorkbenchServices";
 import { createWorkspaceWorkbenchSnapshotRepository } from "@renderer/features/workspace-workbench/services/createWorkspaceWorkbenchSnapshotRepository.ts";
 import { createWorkspaceAgentOutcomeForegroundNotificationPresenter } from "@renderer/features/workspace-workbench/ui/WorkspaceAgentOutcomeNotificationToast";
 import {
@@ -29,8 +34,8 @@ import {
   userAvatarPlaceholderUrl,
   workspaceAgentActivityStatusLabel
 } from "@tutti-os/agent-gui/agent-message-center";
-import { resolveProviderIconAsset } from "@tutti-os/agent-gui/provider-icons";
 import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
+import { resolveProviderIconAsset } from "@tutti-os/agent-gui/provider-icons";
 import { normalizeAgentActivityDisplayStatus } from "@tutti-os/agent-activity-core";
 import { translate } from "../../../i18n";
 import { getActiveLocale } from "../../../i18n/runtime";
@@ -43,6 +48,7 @@ import {
   createHostBackgroundNotificationPresenter
 } from "@renderer/lib/compositeNotificationService";
 import { installRendererDiagnostics } from "@renderer/lib/rendererDiagnostics";
+import { createWorkspaceWindowLifecycle } from "@renderer/lib/workspaceWindowLifecycle.ts";
 import { resolveDesktopEnvironment } from "@renderer/platform/desktop/resolveDesktopEnvironment";
 import { createDesktopTuttidEventStreamClient } from "@renderer/platform/tuttid/createDesktopTuttidEventStreamClient";
 import { createDesktopTuttidClient } from "@renderer/platform/tuttid/createDesktopTuttidClient";
@@ -52,7 +58,10 @@ import type {
   DesktopRuntimeApi,
   DesktopWorkspaceAppExternalHostApi
 } from "@preload/types";
-import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import type {
+  TuttidClient,
+  TuttidEventStreamClient
+} from "@tutti-os/client-tuttid-ts";
 import type { IReporterService } from "@renderer/features/analytics/services/reporterService.interface.ts";
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at/services/richTextAtService.interface.ts";
 import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project/services/workspaceUserProjectService.interface.ts";
@@ -67,6 +76,7 @@ export interface WorkspaceWindowContainerResult {
   container: InstantiationService;
   desktopApi: ReturnType<typeof resolveDesktopEnvironment>["desktopApi"];
   environmentMode: "desktop" | "web";
+  eventStreamClient: TuttidEventStreamClient;
   hostWindowApi: DesktopHostWindowApi;
   reporterService: Pick<IReporterService, "trackEvents">;
   richTextAtService: IDesktopRichTextAtService;
@@ -120,13 +130,13 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     eventStreamClient: tuttidEventStreamClient
   });
   const reporterService = registerReporterServices(registry, {
-    tuttidClient
+    tuttidClient,
+    mode: routeView === "agent" ? "agent" : "os"
   });
-  const predefinePageviewAnalytics = shouldReportPredefinePageview(
+  const reportPredefinePageview = shouldReportPredefinePageview(
     window.location.search
-  )
-    ? startPredefinePageviewAnalytics({ reporterService })
-    : null;
+  );
+  const windowLifecycle = createWorkspaceWindowLifecycle();
   installRendererDiagnostics(
     desktopApi.runtime,
     "workspace-renderer",
@@ -169,11 +179,21 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     {
       hostFilesApi: desktopApi.host.files,
       tuttidClient,
+      eventStreamClient: tuttidEventStreamClient,
+      logDiagnostic: (payload) => {
+        void desktopApi.runtime.logTerminalDiagnostic({
+          details: { payload: JSON.stringify(payload).slice(0, 1000) },
+          event: "workspace.user-project.diagnostic",
+          level: "debug",
+          workspaceId: activeWorkspaceID
+        });
+      },
       notifications: notificationService,
       platformApi: desktopApi.platform,
       workspaceId: activeWorkspaceID
     }
   );
+  registerWorkspaceFilePreviewServices(registry);
   registerWorkspaceFileManagerServices(registry, {
     desktopPreferencesService,
     hostFilesApi: desktopApi.host.files,
@@ -182,19 +202,46 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     reporterService,
     workspaceUserProjectService
   });
+  const accountService = registerWorkspaceAccountService(registry, {
+    hostFilesApi: desktopApi.host.files,
+    tuttidClient
+  });
   const workspaceAgentServices = registerWorkspaceAgentServices(registry, {
+    accountLogin: accountService,
+    clipboard: {
+      writeText: (text) => navigator.clipboard.writeText(text)
+    },
+    desktopPreferencesService,
     eventStreamClient: tuttidEventStreamClient,
     hostFilesApi: desktopApi.host.files,
     tuttidClient,
     notifications: notificationService,
     reporterService,
-    runtimeApi: desktopApi.runtime,
     resolveAgentTargetIconUrl: resolveWorkspaceAgentTargetIconUrl,
+    runtimeApi: desktopApi.runtime,
     terminalCommandRunner: createAgentProviderTerminalCommandRunner(
       desktopApi.runtime
     ),
+    windowLifecycle,
+    workspaceId: activeWorkspaceID,
     workspaceUserProjectService
   });
+  const predefinePageviewAnalytics = reportPredefinePageview
+    ? startPredefinePageviewAnalytics({
+        lifecycle: windowLifecycle,
+        reporterService
+      })
+    : null;
+  const agentAvailabilitySnapshotAnalytics = reportPredefinePageview
+    ? startDesktopAgentAvailabilitySnapshotAnalytics({
+        dependencies: { reporterService },
+        lifecycle: windowLifecycle,
+        readStatuses: workspaceAgentServices.readManagedAgentProviderStatuses,
+        subscribeStatuses:
+          workspaceAgentServices.subscribeManagedAgentProviderStatuses
+      })
+    : null;
+  windowLifecycle.start();
   const agentOutcomeNotificationController =
     createWorkspaceAgentOutcomeNotificationController({
       foreground: createWorkspaceAgentOutcomeForegroundNotificationPresenter(),
@@ -238,6 +285,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     }
   });
   registerWorkspaceWorkbenchServices(registry, {
+    agentQuickPromptService: workspaceAgentServices.agentQuickPromptService,
     browserApi: desktopApi.browser,
     computerUseApi: desktopApi.computerUse,
     developerApi: desktopApi.developer,
@@ -281,8 +329,10 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     });
     disposeAgentOutcomeNotificationController?.();
     disposeAgentOutcomeNotificationController = null;
-    workspaceAgentServices.dispose();
+    agentAvailabilitySnapshotAnalytics?.dispose();
     predefinePageviewAnalytics?.dispose();
+    workspaceAgentServices.dispose();
+    windowLifecycle.dispose();
     daemonConnectionAnalytics.release();
     container.dispose();
     tuttidEventStreamClient.dispose();
@@ -343,6 +393,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     container,
     desktopApi,
     environmentMode: environment.mode,
+    eventStreamClient: tuttidEventStreamClient,
     hostWindowApi: desktopApi.host.window,
     reporterService,
     richTextAtService,
@@ -399,22 +450,19 @@ function logWorkspaceWindowRuntimeDiagnostic(
 }
 
 function resolveWorkspaceRichTextAgentIconUrl(provider: string | undefined) {
-  const identity = resolveAgentGUIProviderCatalogIdentity(provider);
-  return (
-    resolveProviderIconAsset(identity?.iconKey, "rounded") ??
-    managedAgentRoundedIconUrl(provider)
-  );
+  return managedAgentRoundedIconUrl(provider);
 }
 
 function resolveWorkspaceAgentTargetIconUrl(identity: {
   iconKey: string | null;
   provider: string;
 }): string {
-  if (identity.iconKey) {
-    return (
-      resolveProviderIconAsset(identity.iconKey, "rounded") ??
-      managedAgentRoundedIconUrl(undefined)
-    );
-  }
-  return resolveWorkspaceRichTextAgentIconUrl(identity.provider);
+  const catalogIconKey =
+    identity.iconKey ||
+    resolveAgentGUIProviderCatalogIdentity(identity.provider)?.iconKey;
+  return (
+    resolveProviderIconAsset(catalogIconKey, "rounded") ??
+    resolveProviderIconAsset(catalogIconKey, "manage") ??
+    managedAgentRoundedIconUrl(identity.provider)
+  );
 }

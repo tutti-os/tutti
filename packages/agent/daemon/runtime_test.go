@@ -30,6 +30,30 @@ func TestNewRuntimeCreatesDefaultController(t *testing.T) {
 	}
 }
 
+func TestNewRuntimeAppliesCommandNetworkAccessPolicyToDefaultAppServerAdapters(t *testing.T) {
+	t.Parallel()
+
+	policyProviders := make(map[string]int)
+	runtime, err := NewRuntime(Config{
+		ProcessTransport: NewLocalProcessTransport(),
+		HostMetadata:     testHostMetadata(),
+		CommandNetworkAccessPolicy: func(provider string) bool {
+			policyProviders[provider]++
+			return provider == agentruntime.ProviderTuttiAgent
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRuntime() error = %v", err)
+	}
+	t.Cleanup(runtime.Close)
+
+	if policyProviders[agentruntime.ProviderCodex] != 1 ||
+		policyProviders[agentruntime.ProviderTuttiAgent] != 1 ||
+		len(policyProviders) != 2 {
+		t.Fatalf("command network access policy providers = %#v", policyProviders)
+	}
+}
+
 func TestNewRuntimeRequiresHostMetadataForDefaultAdapters(t *testing.T) {
 	t.Parallel()
 
@@ -145,6 +169,43 @@ func TestRuntimeCloseForceClosesLiveProviderSessions(t *testing.T) {
 	if adapter.isLive(started.Session.AgentSessionID) {
 		t.Fatal("adapter still reports live session after Runtime.Close")
 	}
+}
+
+func TestRuntimeCloseFinalizesProcessTransport(t *testing.T) {
+	t.Parallel()
+
+	transport := &runtimeFinalizerTestTransport{}
+	runtime, err := NewRuntime(Config{
+		Adapters:         []agentruntime.Adapter{testAdapter{provider: "test-agent"}},
+		ProcessTransport: transport,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.Close()
+	if transport.finalizeCalls != 1 {
+		t.Fatalf("Finalize() calls = %d, want 1", transport.finalizeCalls)
+	}
+	runtime.Close()
+	if transport.finalizeCalls != 1 {
+		t.Fatalf("Finalize() calls after second close = %d, want 1", transport.finalizeCalls)
+	}
+}
+
+type runtimeFinalizerTestTransport struct {
+	finalizeCalls int
+}
+
+func (*runtimeFinalizerTestTransport) Start(
+	context.Context,
+	agentruntime.ProcessSpec,
+) (agentruntime.ProcessConnection, error) {
+	return nil, errors.New("unexpected process start")
+}
+
+func (t *runtimeFinalizerTestTransport) Finalize() error {
+	t.finalizeCalls++
+	return nil
 }
 
 func testHostMetadata() HostMetadata {

@@ -9,6 +9,7 @@ export function useAgentGUIViewModel(
     [
       candidate.shell.currentUserId,
       candidate.shell.data,
+      candidate.shell.nodeId,
       candidate.shell.workspaceId,
       candidate.shell.workspacePath
     ]
@@ -24,6 +25,7 @@ export function useAgentGUIViewModel(
       candidate.rail.isLoadingConversations,
       candidate.rail.listError,
       candidate.rail.providerRailMode,
+      candidate.rail.revealRequest,
       candidate.rail.agentTargets,
       candidate.rail.agentTargetsLoading,
       candidate.rail.selectedAgentTarget,
@@ -49,22 +51,26 @@ export function useAgentGUIViewModel(
     [
       candidate.composer.availableCommands,
       candidate.composer.availableSkills,
-      candidate.composer.canQueueWhileBusy,
-      candidate.composer.canSubmit,
       candidate.composer.compactSupported,
       candidate.composer.composerSettings,
       candidate.composer.draftContent,
       candidate.composer.draftPrompt,
       candidate.composer.drainingQueuedPromptId,
       candidate.composer.goalPauseSupported,
+      candidate.composer.gate,
       candidate.composer.handoffAgentTargets,
       candidate.composer.isCancelPending,
       candidate.composer.isCreatingConversation,
       candidate.composer.isInterrupting,
       candidate.composer.isSubmitting,
+      candidate.composer.isTuttiModeActive,
+      candidate.composer.isTuttiModeUpdating,
       candidate.composer.promptImagesSupported,
       candidate.composer.queueStatus,
-      candidate.composer.queuedPrompts
+      candidate.composer.queuedPrompts,
+      candidate.composer.tuttiModeEffect,
+      candidate.composer.tuttiModeSpeed,
+      candidate.composer.tuttiModeUpdateStatus
     ]
   );
   const interaction = useMemo(
@@ -81,7 +87,6 @@ export function useAgentGUIViewModel(
     () => candidate.readiness,
     [
       candidate.readiness.activationError,
-      candidate.readiness.activeConversationBusy,
       candidate.readiness.activeLiveState,
       candidate.readiness.providerReadinessGate
     ]
@@ -89,9 +94,11 @@ export function useAgentGUIViewModel(
   const operations = useMemo(
     () => candidate.operations,
     [
+      candidate.operations.forkThroughTurnPendingTurnIds,
       candidate.operations.goalClearNoticeSequence,
       candidate.operations.isDeletingConversation,
       candidate.operations.isDeletingProjectConversations,
+      candidate.operations.isUserProjectMutationPending,
       candidate.operations.pendingDeleteConversation,
       candidate.operations.pendingDeleteProjectConversations
     ]

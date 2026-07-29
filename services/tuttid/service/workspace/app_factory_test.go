@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	workspacefiles "github.com/tutti-os/tutti/packages/workspace/files"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
@@ -43,7 +43,7 @@ type factoryAgentSessionServiceStub struct {
 }
 
 type factoryAgentSessionStateReporterStub struct {
-	reports []agentsessionstore.ReportSessionStateInput
+	reports []canonical.ReportSessionStateInput
 }
 
 type factoryAgentSessionReaderStub struct {
@@ -69,9 +69,9 @@ type workspaceRootResolverStub struct {
 	root workspacefiles.WorkspaceRoot
 }
 
-func (s *factoryAgentSessionStateReporterStub) ReportSessionState(_ context.Context, input agentsessionstore.ReportSessionStateInput) (agentsessionstore.ReportSessionStateReply, error) {
+func (s *factoryAgentSessionStateReporterStub) ReportSessionState(_ context.Context, input canonical.ReportSessionStateInput) (canonical.ReportSessionStateReply, error) {
 	s.reports = append(s.reports, input)
-	return agentsessionstore.ReportSessionStateReply{Accepted: true, StateApplied: true}, nil
+	return canonical.ReportSessionStateReply{Accepted: true, StateApplied: true}, nil
 }
 
 func (s factoryAgentSessionReaderStub) GetSession(workspaceID string, agentSessionID string) (agentservice.PersistedSession, bool) {
@@ -1630,9 +1630,9 @@ func TestAppFactoryServiceFailedTurnOutcomeFailsGeneratingJob(t *testing.T) {
 		t.Fatalf("PutAppFactoryJob() error = %v", err)
 	}
 	service := AppFactoryService{Store: store}
-	state := agentsessionstore.WorkspaceAgentSessionStateUpdate{
+	state := canonical.WorkspaceAgentSessionStateUpdate{
 		LastError: "Codex request failed because a quota or rate limit was reached.",
-		Turn: &agentsessionstore.WorkspaceAgentTurnStateUpdate{
+		Turn: &canonical.WorkspaceAgentTurnStateUpdate{
 			Outcome: "failed",
 			Phase:   "settled",
 			TurnID:  "turn-1",
@@ -1751,14 +1751,14 @@ func TestAppFactoryServiceIgnoresStaleTerminalAgentSessionState(t *testing.T) {
 	}
 	service := AppFactoryService{Store: store}
 
-	service.ObserveAgentSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+	service.ObserveAgentSessionState(ctx, canonical.ReportSessionStateInput{
 		WorkspaceID:    "ws-1",
 		AgentSessionID: "session-1",
-		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+		State: canonical.WorkspaceAgentSessionStateUpdate{
 			LastError: "stale failure", OccurredAtUnixMS: 150,
-			Turn: &agentsessionstore.WorkspaceAgentTurnStateUpdate{TurnID: "turn-1", Phase: "settled", Outcome: "failed"},
+			Turn: &canonical.WorkspaceAgentTurnStateUpdate{TurnID: "turn-1", Phase: "settled", Outcome: "failed"},
 		},
-	}, agentsessionstore.ReportSessionStateReply{
+	}, canonical.ReportSessionStateReply{
 		Accepted:          true,
 		StateApplied:      false,
 		LastEventAtUnixMS: 200,
@@ -1776,7 +1776,7 @@ func TestAppFactoryServiceIgnoresStaleTerminalAgentSessionState(t *testing.T) {
 func TestFactorySettledTurnOutcomeCompleted(t *testing.T) {
 	t.Parallel()
 
-	status := factorySettledTurnOutcome(&agentsessionstore.WorkspaceAgentTurnStateUpdate{Outcome: "completed", Phase: "settled"})
+	status := factorySettledTurnOutcome(&canonical.WorkspaceAgentTurnStateUpdate{Outcome: "completed", Phase: "settled"})
 	if status != "completed" {
 		t.Fatalf("status = %q, want completed", status)
 	}
@@ -1785,7 +1785,7 @@ func TestFactorySettledTurnOutcomeCompleted(t *testing.T) {
 func TestFactorySettledTurnOutcomeFailed(t *testing.T) {
 	t.Parallel()
 
-	status := factorySettledTurnOutcome(&agentsessionstore.WorkspaceAgentTurnStateUpdate{Outcome: "failed", Phase: "settled"})
+	status := factorySettledTurnOutcome(&canonical.WorkspaceAgentTurnStateUpdate{Outcome: "failed", Phase: "settled"})
 	if status != "failed" {
 		t.Fatalf("status = %q, want failed", status)
 	}
@@ -1803,7 +1803,7 @@ func TestFactorySettledTurnOutcomeIgnoresMissingTurn(t *testing.T) {
 func TestFactorySettledTurnOutcomeInterruptedIsFailure(t *testing.T) {
 	t.Parallel()
 
-	status := factorySettledTurnOutcome(&agentsessionstore.WorkspaceAgentTurnStateUpdate{Outcome: "interrupted", Phase: "settled"})
+	status := factorySettledTurnOutcome(&canonical.WorkspaceAgentTurnStateUpdate{Outcome: "interrupted", Phase: "settled"})
 	if status != "failed" {
 		t.Fatalf("status = %q, want failed for interrupted settled turn", status)
 	}
@@ -1812,7 +1812,7 @@ func TestFactorySettledTurnOutcomeInterruptedIsFailure(t *testing.T) {
 func TestFactorySettledTurnOutcomeCanceled(t *testing.T) {
 	t.Parallel()
 
-	status := factorySettledTurnOutcome(&agentsessionstore.WorkspaceAgentTurnStateUpdate{Outcome: "canceled", Phase: "settled"})
+	status := factorySettledTurnOutcome(&canonical.WorkspaceAgentTurnStateUpdate{Outcome: "canceled", Phase: "settled"})
 	if status != "canceled" {
 		t.Fatalf("status = %q, want canceled", status)
 	}
@@ -2104,7 +2104,7 @@ func TestIsCompletedAssistantTextMessageIgnoresSystemNotice(t *testing.T) {
 func TestFactoryAgentMessageUpdatesContainCompletedAssistantTextIgnoresSystemNotice(t *testing.T) {
 	t.Parallel()
 
-	updates := []agentsessionstore.WorkspaceAgentSessionMessageUpdate{
+	updates := []canonical.WorkspaceAgentSessionMessageUpdate{
 		{
 			Role:    "assistant",
 			Kind:    "text",
@@ -2116,7 +2116,7 @@ func TestFactoryAgentMessageUpdatesContainCompletedAssistantTextIgnoresSystemNot
 		t.Fatal("system notice update was treated as completed assistant text, want ignored")
 	}
 
-	updates = append(updates, agentsessionstore.WorkspaceAgentSessionMessageUpdate{
+	updates = append(updates, canonical.WorkspaceAgentSessionMessageUpdate{
 		Role:   "assistant",
 		Kind:   "text",
 		Status: "completed",
@@ -2129,7 +2129,7 @@ func TestFactoryAgentMessageUpdatesContainCompletedAssistantTextIgnoresSystemNot
 func TestFactoryAgentMessageUpdatesContainCanceledTurnToolCall(t *testing.T) {
 	t.Parallel()
 
-	updates := []agentsessionstore.WorkspaceAgentSessionMessageUpdate{
+	updates := []canonical.WorkspaceAgentSessionMessageUpdate{
 		{
 			Role:   "assistant",
 			Kind:   "tool_call",
@@ -2153,7 +2153,7 @@ func TestFactoryAgentMessageUpdatesContainCanceledTurnToolCall(t *testing.T) {
 func TestFactoryAgentMessageUpdatesContainCanceledTurnToolCallIgnoresApproval(t *testing.T) {
 	t.Parallel()
 
-	updates := []agentsessionstore.WorkspaceAgentSessionMessageUpdate{
+	updates := []canonical.WorkspaceAgentSessionMessageUpdate{
 		{
 			Role:   "assistant",
 			Kind:   "tool_call",
@@ -2176,7 +2176,7 @@ func TestFactoryAgentMessageUpdatesContainCanceledTurnToolCallIgnoresApproval(t 
 func TestFactoryAgentMessageUpdatesContainCanceledTurnToolCallRequiresInterruptedReason(t *testing.T) {
 	t.Parallel()
 
-	updates := []agentsessionstore.WorkspaceAgentSessionMessageUpdate{
+	updates := []canonical.WorkspaceAgentSessionMessageUpdate{
 		{
 			Role:   "assistant",
 			Kind:   "tool_call",
@@ -2242,10 +2242,10 @@ func TestAppFactoryServiceObserveAgentSessionMessagesIgnoresSystemNoticeForCompl
 		AgentMessageReader: factoryAgentMessageReaderStub{},
 	}
 
-	service.ObserveAgentSessionMessages(ctx, agentsessionstore.ReportSessionMessagesInput{
+	service.ObserveAgentSessionMessages(ctx, canonical.ReportSessionMessagesInput{
 		WorkspaceID:    "ws-1",
 		AgentSessionID: "session-1",
-		Updates: []agentsessionstore.WorkspaceAgentSessionMessageUpdate{
+		Updates: []canonical.WorkspaceAgentSessionMessageUpdate{
 			{
 				MessageID: "notice-1",
 				Role:      "assistant",
@@ -2254,7 +2254,7 @@ func TestAppFactoryServiceObserveAgentSessionMessagesIgnoresSystemNoticeForCompl
 				Payload:   systemNoticeMessagePayload(),
 			},
 		},
-	}, agentsessionstore.ReportSessionMessagesReply{AcceptedCount: 1})
+	}, canonical.ReportSessionMessagesReply{AcceptedCount: 1})
 
 	// The guard in ObserveAgentSessionMessages returns synchronously (no
 	// goroutine spawned) when the update slice contains no genuine completed
@@ -2288,10 +2288,10 @@ func TestAppFactoryServiceObserveAgentSessionMessagesDoesNotTreatToolCallAsTermi
 	}
 	service := AppFactoryService{Store: store}
 
-	service.ObserveAgentSessionMessages(ctx, agentsessionstore.ReportSessionMessagesInput{
+	service.ObserveAgentSessionMessages(ctx, canonical.ReportSessionMessagesInput{
 		WorkspaceID:    "ws-1",
 		AgentSessionID: "session-1",
-		Updates: []agentsessionstore.WorkspaceAgentSessionMessageUpdate{
+		Updates: []canonical.WorkspaceAgentSessionMessageUpdate{
 			{
 				MessageID: "tool-1",
 				Role:      "assistant",
@@ -2308,7 +2308,7 @@ func TestAppFactoryServiceObserveAgentSessionMessagesDoesNotTreatToolCallAsTermi
 				},
 			},
 		},
-	}, agentsessionstore.ReportSessionMessagesReply{AcceptedCount: 1})
+	}, canonical.ReportSessionMessagesReply{AcceptedCount: 1})
 
 	job := waitForAppFactoryJobStatus(t, store, "ws-1", "job-1", workspacebiz.AppFactoryJobStatusGenerating)
 	if job.FailureReason != "" {

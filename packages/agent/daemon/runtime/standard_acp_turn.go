@@ -29,13 +29,9 @@ func (a *standardACPAdapter) Exec(
 		)}, ErrSessionDisconnected
 	}
 	session.ProviderSessionID = acpSession.providerSessionID
-	a.rememberSessionTurn(session.AgentSessionID, turnID)
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
 	mentionRoutingApplied, mentionRoutingSkills := tuttiMentionRoutingSkills(visibleText)
-	acpPromptContent := promptContentForACP(content)
-	if mentionRoutingApplied {
-		acpPromptContent = appendTuttiMentionRoutingPrompt(acpPromptContent, mentionRoutingSkills)
-	}
+	a.rememberSessionTurn(session.AgentSessionID, turnID)
 	normalizer := newACPTurnNormalizer()
 	var events []activityshared.Event
 	emitEvents := func(next []activityshared.Event) {
@@ -50,11 +46,43 @@ func (a *standardACPAdapter) Exec(
 	}
 
 	startEvents := []activityshared.Event{
-		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, visibleText, userPromptActivityPayload(content, explicitDisplayPrompt, userPromptActivityPayloadExtraFromExecMetadata(ctx, nil))),
+		newUserPromptActivityEvent(ctx, session, content, explicitDisplayPrompt, visibleText, turnID, nil),
 		newTurnActivityEvent(session, EventTurnStarted, turnID, SessionStatusWorking, "", "", nil),
 		standardACPRootProviderTurnStartedEvent(session, turnID),
 	}
 	emitEvents(startEvents)
+
+	providerContent, err := materializeProviderPromptImagesAtBoundary(ctx, content, a.promptImageMaterializer)
+	if err != nil {
+		outcome := activityshared.TurnOutcomeFailed
+		terminalEvents := normalizer.FinishFailed(session, turnID)
+		if errors.Is(err, context.Canceled) || errors.Is(err, errPermissionRequestCanceled) {
+			outcome = activityshared.TurnOutcomeCanceled
+			terminalEvents = normalizer.FinishInterrupted(session, turnID, "interrupted")
+		}
+		terminalEvents = append(terminalEvents, standardACPRootProviderTurnCompletedEvent(
+			session,
+			turnID,
+			outcome,
+			map[string]any{"error": err.Error()},
+		))
+		emitEvents(terminalEvents)
+		// Standard ACP reports provider failures through lifecycle events. Return
+		// nil so the controller does not replay the already-emitted event batch.
+		return events, nil
+	}
+	acpPromptContent := promptContentForACP(providerContent)
+	if mentionRoutingApplied {
+		acpPromptContent = appendTuttiMentionRoutingPrompt(acpPromptContent, mentionRoutingSkills)
+	}
+	// ACP v1 has no developer/system or synthetic-message channel. Keep the
+	// canonical Tutti-owned context in the provider-only prompt payload; the
+	// activity event above is still projected exclusively from the original
+	// user content.
+	acpPromptContent = appendTuttiModeHostContextPrompt(
+		acpPromptContent,
+		tuttiModeTurnSnapshotFromContext(ctx),
+	)
 	slog.Info("agent session ACP exec started",
 		"event", "agent_session.acp.exec.start",
 		"provider", a.config.provider,
@@ -90,7 +118,7 @@ execLoop:
 			"sessionId": acpSession.providerSessionID,
 			"prompt":    promptParams,
 		}, func(ctx context.Context, message acpMessage) error {
-			slog.Info("agent session ACP exec received message",
+			slog.Debug("agent session ACP exec received message",
 				"event", "agent_session.acp.exec.message",
 				"provider", a.config.provider,
 				"adapter", a.config.adapterName,
@@ -102,19 +130,21 @@ execLoop:
 				"message_id", rawMessageLogValue(message.ID),
 			)
 			next, err := a.handleACPMessage(ctx, acpSession.client, session, turnID, message, normalizer, emitEvents, emitCommands)
-			slog.Info("agent session ACP exec handled message",
-				"event", "agent_session.acp.exec.message_handled",
-				"provider", a.config.provider,
-				"adapter", a.config.adapterName,
-				"room_id", session.RoomID,
-				"agent_session_id", session.AgentSessionID,
-				"provider_session_id", session.ProviderSessionID,
-				"turn_id", turnID,
-				"message_method", message.Method,
-				"event_count", len(next),
-				"event_type_counts", activityEventTypeCounts(next),
-				"error", errString(err),
-			)
+			if slog.Default().Enabled(ctx, slog.LevelDebug) {
+				slog.Debug("agent session ACP exec handled message",
+					"event", "agent_session.acp.exec.message_handled",
+					"provider", a.config.provider,
+					"adapter", a.config.adapterName,
+					"room_id", session.RoomID,
+					"agent_session_id", session.AgentSessionID,
+					"provider_session_id", session.ProviderSessionID,
+					"turn_id", turnID,
+					"message_method", message.Method,
+					"event_count", len(next),
+					"event_type_counts", activityEventTypeCounts(next),
+					"error", errString(err),
+				)
+			}
 			emitEvents(next)
 			if err != nil {
 				return err
@@ -361,10 +391,7 @@ func (a *standardACPAdapter) SubmitInteractive(ctx context.Context, session Sess
 		return SubmitInteractiveResult{}, fmt.Errorf("%w: %q", ErrInteractiveRequestNotLive, requestID)
 	}
 	if pending.callType == "approval" {
-		optionID := strings.TrimSpace(input.OptionID)
-		if optionID == "" && input.Payload != nil {
-			optionID = strings.TrimSpace(asString(input.Payload["optionId"]))
-		}
+		optionID := interactiveApprovalOptionID(input)
 		if optionID == "" {
 			return SubmitInteractiveResult{}, errors.New("interactive option id is required")
 		}

@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "tutti.agent.discovery.v1",
+  "candidates": [
+    {
+      "binaryNames": ["kimi"],
+      "searchPaths": [
+        {
+          "scope": "user",
+          "path": ".kimi-code/bin"
+        }
+      ],
+      "version": {
+        "args": ["--version"],
+        "constraint": ">=0.29.0 <1.0.0"
+      },
+      "launchArgs": ["acp"],
+      "probe": {
+        "kind": "acp-initialize",
+        "timeoutMs": 15000
+      }
+    },
+    {
+      "binaryNames": ["kimi"],
+      "version": {
+        "args": ["--version"],
+        "constraint": ">=1.49.0 <2.0.0"
+      },
+      "launchArgs": ["acp"],
+      "probe": {
+        "kind": "acp-initialize",
+        "timeoutMs": 15000
+      }
+    }
+  ]
+}

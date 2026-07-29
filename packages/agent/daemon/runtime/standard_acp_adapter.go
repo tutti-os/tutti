@@ -28,6 +28,10 @@ type standardACPConfig struct {
 	env                func(Session) []string
 	commandResolver    ProviderCommandResolver
 	beforeNewSession   func(context.Context, *acpClient, Session, json.RawMessage) error
+	// validateNewSessionResult, when set, inspects the raw session/new response
+	// right after it succeeds and may reject the start (setup probes use it to
+	// catch agents that create a session they cannot actually serve).
+	validateNewSessionResult func(json.RawMessage) error
 	// allowSyntheticNotice lets codex-acp-derived providers promote bare
 	// transport text ("Reconnecting... 1/5", "Falling back ... transport")
 	// streamed as ordinary chunks into system-notice banners instead of
@@ -63,16 +67,35 @@ type standardACPConfig struct {
 	applySessionMeta               func(map[string]any, Session, HostMetadata)
 	planModeRuntimeID              string
 	planModeDisabledRuntimeID      string
+	planModeUsesLaunchPermission   bool
 	projectCurrentMode             bool
 	startupDiagnostics             bool
 	toolAliases                    map[string]string
+	modelConfigOptionID            string
+	permissionConfigOptionID       string
+	reasoningConfigOptionID        string
+	restrictConfigOptions          bool
+	launchPermission               *StandardACPLaunchPermissionSetting
+	setModelReasoningEffortMeta    bool
 	messageDiagnostics             *standardACPMessageDiagnostics
+	capabilities                   []string
+	agentTargetID                  string
+	installationID                 string
+	executableIdentity             *ExecutableIdentity
 }
 
 type standardACPMessageDiagnostics struct {
 	method         string
 	observeMessage func(standardACPConfig, Session, string, acpMessage, *acpTurnNormalizer)
 	observeUpdate  func(standardACPConfig, Session, string, string, map[string]any)
+}
+
+func (a *standardACPAdapter) MatchesAdapterResolveInput(input AdapterResolveInput) bool {
+	if a == nil || a.config.installationID == "" {
+		return true
+	}
+	installationID := strings.TrimSpace(asString(input.ProviderTargetRef["extensionInstallationId"]))
+	return strings.TrimSpace(input.AgentTargetID) == a.config.agentTargetID && installationID == a.config.installationID
 }
 
 type standardACPAdapter struct {
@@ -87,6 +110,7 @@ type standardACPAdapter struct {
 	commandSink                CommandSnapshotSink
 	eventSink                  SessionEventSink
 	configSink                 ConfigOptionsUpdateSink
+	promptImageMaterializer    providerPromptImageMaterializer
 	lifecycleMu                sync.Mutex
 	lifecycleLocks             map[string]*standardACPSessionLock
 }
@@ -108,6 +132,9 @@ type standardACPSession struct {
 	// approval or denial applies immediately after a mid-session tier change,
 	// without a respawn.
 	permissionModeID string
+	// planMode denies permission-gated operations even when the provider emits
+	// a request while its planning workflow is active.
+	planMode bool
 }
 
 func (a *standardACPAdapter) stampTurnLifecycleSnapshots(acpSession *standardACPSession, events []activityshared.Event) []activityshared.Event {
@@ -196,16 +223,6 @@ func mergeACPParamsMeta(params map[string]any, meta map[string]any) {
 	for key, value := range meta {
 		existing[key] = value
 	}
-}
-
-func joinPromptSections(sections ...string) string {
-	nonEmpty := make([]string, 0, len(sections))
-	for _, section := range sections {
-		if trimmed := strings.TrimSpace(section); trimmed != "" {
-			nonEmpty = append(nonEmpty, trimmed)
-		}
-	}
-	return strings.Join(nonEmpty, "\n\n")
 }
 
 func sessionEnvValue(env []string, key string) string {

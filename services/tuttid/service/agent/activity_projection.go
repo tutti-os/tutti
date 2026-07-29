@@ -2,30 +2,43 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	"github.com/tutti-os/tutti/services/tuttid/biz/agentanalytics"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 	agentnoderesult "github.com/tutti-os/tutti/services/tuttid/service/reporter/events/agent/node_result"
 )
 
 type ActivityProjection struct {
-	repo                   agentactivitybiz.Repository
-	analyticsReporter      reporterservice.Reporter
-	publisher              ActivityUpdatePublisher
-	sessionMessageObserver SessionMessageObserver
-	sessionStateObserver   SessionStateObserver
-	goalReconcileInbox     GoalReconcileInboxWriter
-	goalProvenanceLedger   GoalProvenanceLedgerStore
-	agentTargetResolver    AgentTargetResolver
-	rootTurnObserver       RootTurnObserver
+	repo                         agentactivitybiz.Repository
+	analyticsReporter            reporterservice.Reporter
+	publisher                    ActivityUpdatePublisher
+	sessionMessageObserver       SessionMessageObserver
+	sessionStateObserver         SessionStateObserver
+	goalReconcileInbox           GoalReconcileInboxWriter
+	goalProvenanceLedger         GoalProvenanceLedgerStore
+	agentTargetResolver          AgentTargetResolver
+	workspaceAgentTargetResolver WorkspaceAgentTargetResolver
+	rootTurnObserver             RootTurnObserver
+	// rootTurnSettleStateObserver is the dedicated, opt-in consumer list for
+	// synthesized canonical root-turn settlement states. It is deliberately
+	// separate from sessionStateObserver: the general observers historically
+	// never received live turn settles (root-provider-lifecycle adapters do
+	// not report settled state patches), and each one needs its own semantic
+	// review before opting in (see W4③-11).
+	rootTurnSettleStateObserver SessionStateObserver
 }
 
 var (
 	_ SessionReader         = (*ActivityProjection)(nil)
+	_ SessionPageReader     = (*ActivityProjection)(nil)
 	_ SessionSectionsReader = (*ActivityProjection)(nil)
 )
 
@@ -44,30 +57,18 @@ type ActivityUpdatePublisher interface {
 }
 
 type SessionStateObserver interface {
-	ObserveAgentSessionState(context.Context, agentsessionstore.ReportSessionStateInput, agentsessionstore.ReportSessionStateReply)
+	ObserveAgentSessionState(context.Context, canonical.ReportSessionStateInput, canonical.ReportSessionStateReply)
 }
 
 type SessionMessageObserver interface {
-	ObserveAgentSessionMessages(context.Context, agentsessionstore.ReportSessionMessagesInput, agentsessionstore.ReportSessionMessagesReply)
+	ObserveAgentSessionMessages(context.Context, canonical.ReportSessionMessagesInput, canonical.ReportSessionMessagesReply)
 }
 
 type RootTurnObserver interface {
 	ObserveRootTurnSettled(context.Context, string, string, agentactivitybiz.Turn)
 }
 
-type GoalReconcileRequiredInput struct {
-	WorkspaceID         string
-	AgentSessionID      string
-	RequestID           string
-	ProviderTurnID      string
-	Reason              string
-	FenceMode           string
-	ExpectedOperationID string
-	ExpectedRevision    int64
-	ExpectedRepairEpoch int64
-	QuiesceSucceeded    bool
-	QuiesceError        string
-}
+type GoalReconcileRequiredInput = agenthost.GoalReconcileRequiredInput
 
 type GoalReconcileInboxWriter interface {
 	PutGoalReconcileInbox(context.Context, agentactivitybiz.GoalReconcileInboxItem) (bool, error)
@@ -161,13 +162,23 @@ func activityGoalProvenanceBinding(binding agentactivitybiz.GoalProvenanceBindin
 	}
 }
 
+// SetRootTurnSettleStateObserver registers the dedicated, opt-in consumer of
+// synthesized canonical root-turn settlement states (automation rules today).
+// Delivery is at-least-once; observers must be idempotent per settled turn.
+func (p *ActivityProjection) SetRootTurnSettleStateObserver(observer SessionStateObserver) {
+	if p == nil {
+		return
+	}
+	p.rootTurnSettleStateObserver = observer
+}
+
 func normalizeReportSessionOrigins(
 	sessionOrigin string,
-	source agentsessionstore.EventSource,
-) (string, agentsessionstore.EventSource, error) {
+	source canonical.EventSource,
+) (string, canonical.EventSource, error) {
 	normalizedSessionOrigin := agentsessionstore.NormalizeSessionOrigin(sessionOrigin)
 	if normalizedSessionOrigin == "" {
-		return "", agentsessionstore.EventSource{}, ErrInvalidArgument
+		return "", canonical.EventSource{}, ErrInvalidArgument
 	}
 	sourceOrigin := strings.TrimSpace(source.SessionOrigin)
 	if sourceOrigin == "" {
@@ -176,7 +187,7 @@ func normalizeReportSessionOrigins(
 	}
 	normalizedSourceOrigin := agentsessionstore.NormalizeSessionOrigin(sourceOrigin)
 	if normalizedSourceOrigin == "" {
-		return "", agentsessionstore.EventSource{}, ErrInvalidArgument
+		return "", canonical.EventSource{}, ErrInvalidArgument
 	}
 	source.SessionOrigin = normalizedSourceOrigin
 	return normalizedSessionOrigin, source, nil
@@ -197,19 +208,28 @@ func (p *ActivityProjection) Report(ctx context.Context, input agentsessionstore
 
 func (p *ActivityProjection) ReportSessionState(
 	ctx context.Context,
-	input agentsessionstore.ReportSessionStateInput,
-) (agentsessionstore.ReportSessionStateReply, error) {
+	input canonical.ReportSessionStateInput,
+) (canonical.ReportSessionStateReply, error) {
+	return p.reportSessionState(ctx, input, true)
+}
+
+func (p *ActivityProjection) reportSessionState(
+	ctx context.Context,
+	input canonical.ReportSessionStateInput,
+	notify bool,
+) (canonical.ReportSessionStateReply, error) {
 	if p == nil || p.repo == nil {
-		return agentsessionstore.ReportSessionStateReply{}, nil
+		return canonical.ReportSessionStateReply{}, nil
 	}
 	sessionOrigin, source, err := normalizeReportSessionOrigins(input.SessionOrigin, input.Source)
 	if err != nil {
-		return agentsessionstore.ReportSessionStateReply{}, err
+		return canonical.ReportSessionStateReply{}, err
 	}
 	input.SessionOrigin = sessionOrigin
 	input.Source = source
 	canonicalTargetID, runtimeContext := p.canonicalizeAgentTargetID(
 		ctx,
+		input.WorkspaceID,
 		firstNonEmptyString(input.State.AgentTargetID, input.Source.AgentTargetID),
 		input.State.RuntimeContext,
 	)
@@ -233,6 +253,7 @@ func (p *ActivityProjection) ReportSessionState(
 		Settings:          clonePayload(input.State.Settings),
 		RuntimeContext:    clonePayload(runtimeContext),
 		Cwd:               strings.TrimSpace(input.State.CWD),
+		RailPlacement:     canonicalRailSection(input.State.RailPlacement),
 		Title:             strings.TrimSpace(sessionStateTitle(input.State)),
 		Status:            strings.TrimSpace(input.State.LifecycleStatus),
 		CurrentPhase:      strings.TrimSpace(input.State.CurrentPhase),
@@ -251,43 +272,38 @@ func (p *ActivityProjection) ReportSessionState(
 	}
 	interaction, err := interactionTransitionFromStateInput(input)
 	if err != nil {
-		return agentsessionstore.ReportSessionStateReply{}, err
+		return canonical.ReportSessionStateReply{}, err
 	}
 	activityReport.Interaction = interaction
 	activityResult, err := p.repo.ReportActivityState(ctx, activityReport)
 	if err != nil {
-		return agentsessionstore.ReportSessionStateReply{}, err
+		return canonical.ReportSessionStateReply{}, err
 	}
 	result := activityResult.State
-	reply := agentsessionstore.ReportSessionStateReply{
+	reply := canonical.ReportSessionStateReply{
 		Accepted:          result.Accepted,
 		StateApplied:      result.StateApplied,
 		LastEventAtUnixMS: result.LastEventUnixMS,
 		RequestBodyBytes:  result.RequestBodyBytes,
 	}
-	p.publishPersistedTurnState(ctx, input, activityResult)
-	if result.Accepted {
-		p.publishActivityUpdated(
-			ctx,
-			input.WorkspaceID,
-			input.AgentSessionID,
-			"session_reconcile_required",
-			activitySessionUpdateEventPayload(
-				input.WorkspaceID,
-				input.AgentSessionID,
-				result.LastEventUnixMS,
-				canonicalTargetID,
-			),
-		)
-		if result.StateApplied {
-			p.reportFailedRuntimeNodeResult(ctx, input)
-		}
+	if notify {
+		agenthost.NotifyCommitted(ctx, p, agenthost.ActivityStateDelta(input, reply, activityResult))
 	}
-	p.observeSessionState(ctx, input, reply)
 	return reply, nil
 }
 
-func (p *ActivityProjection) reportFailedRuntimeNodeResult(ctx context.Context, input agentsessionstore.ReportSessionStateInput) {
+func canonicalRailSection(placement *canonical.RailPlacement) *agentactivitybiz.RailSection {
+	if placement == nil {
+		return nil
+	}
+	return &agentactivitybiz.RailSection{
+		Kind:        strings.TrimSpace(placement.Kind),
+		ProjectPath: strings.TrimSpace(placement.ProjectPath),
+		Key:         strings.TrimSpace(placement.SectionKey),
+	}
+}
+
+func (p *ActivityProjection) reportFailedRuntimeNodeResult(ctx context.Context, input canonical.ReportSessionStateInput) {
 	if p == nil || p.analyticsReporter == nil {
 		return
 	}
@@ -309,7 +325,7 @@ func (p *ActivityProjection) reportFailedRuntimeNodeResult(ctx context.Context, 
 	}))
 }
 
-func sessionStateTitle(state agentsessionstore.WorkspaceAgentSessionStateUpdate) string {
+func sessionStateTitle(state canonical.WorkspaceAgentSessionStateUpdate) string {
 	return firstNonEmptyString(
 		state.Title,
 		payloadString(state.RuntimeContext, "title"),
@@ -343,6 +359,11 @@ func activitySessionDeletedEventPayload(workspaceID string, agentSessionID strin
 	}
 }
 
+func (p *ActivityProjection) PublishSessionDeleted(ctx context.Context, workspaceID string, agentSessionID string) {
+	p.publishActivityUpdated(ctx, workspaceID, agentSessionID,
+		"session_deleted", activitySessionDeletedEventPayload(workspaceID, agentSessionID))
+}
+
 func isFailedAgentLifecycleStatus(status string) bool {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "failed", "failure", "error", "errored":
@@ -359,26 +380,26 @@ func classifyRuntimeNodeErrorCode(message string) string {
 		strings.Contains(normalized, "disconnected") ||
 		strings.Contains(normalized, "econnreset") ||
 		strings.Contains(normalized, "socket") {
-		return agentnoderesult.ErrorCodeRuntimeNetworkDisconnected
+		return agentanalytics.ErrorCodeRuntimeNetworkDisconnected
 	}
 	if strings.Contains(normalized, "process") ||
 		strings.Contains(normalized, "exit") ||
 		strings.Contains(normalized, "exited") {
-		return agentnoderesult.ErrorCodeRuntimeProcessExited
+		return agentanalytics.ErrorCodeRuntimeProcessExited
 	}
-	return agentnoderesult.ErrorCodeRuntimeExecFailed
+	return agentanalytics.ErrorCodeRuntimeExecFailed
 }
 
 func (p *ActivityProjection) ReportSessionMessages(
 	ctx context.Context,
-	input agentsessionstore.ReportSessionMessagesInput,
-) (agentsessionstore.ReportSessionMessagesReply, error) {
+	input canonical.ReportSessionMessagesInput,
+) (canonical.ReportSessionMessagesReply, error) {
 	if p == nil || p.repo == nil {
-		return agentsessionstore.ReportSessionMessagesReply{}, nil
+		return canonical.ReportSessionMessagesReply{}, nil
 	}
 	sessionOrigin, source, err := normalizeReportSessionOrigins(input.SessionOrigin, input.Source)
 	if err != nil {
-		return agentsessionstore.ReportSessionMessagesReply{}, err
+		return canonical.ReportSessionMessagesReply{}, err
 	}
 	input.SessionOrigin = sessionOrigin
 	input.Source = source
@@ -390,35 +411,14 @@ func (p *ActivityProjection) ReportSessionMessages(
 		Messages:       activityMessageUpdates(input.Updates),
 	})
 	if err != nil {
-		return agentsessionstore.ReportSessionMessagesReply{}, err
+		return canonical.ReportSessionMessagesReply{}, err
 	}
-	if result.AcceptedCount > 0 {
-		publishedAgentSessionID := canonicalMessageUpdateSessionID(input.AgentSessionID, result.Messages)
-		for start := 0; start < len(result.Messages); {
-			if strings.TrimSpace(result.Messages[start].Kind) == "session_audit" {
-				p.publishActivityUpdated(ctx, input.WorkspaceID, publishedAgentSessionID, "session_audit", activitySessionAuditEventPayload(input.WorkspaceID, publishedAgentSessionID, result.Messages[start]))
-				start++
-				continue
-			}
-			end := start + 1
-			for end < len(result.Messages) && strings.TrimSpace(result.Messages[end].Kind) != "session_audit" {
-				end++
-			}
-			run := result.Messages[start:end]
-			p.publishActivityUpdated(ctx, input.WorkspaceID, publishedAgentSessionID, "message_update", map[string]any{
-				"acceptedCount": len(run), "agentSessionId": publishedAgentSessionID,
-				"eventType": "message_update", "latestVersion": run[len(run)-1].Version,
-				"messages": activityMessagesEventPayload(run), "workspaceId": strings.TrimSpace(input.WorkspaceID),
-			})
-			start = end
-		}
-	}
-	reply := agentsessionstore.ReportSessionMessagesReply{
+	reply := canonical.ReportSessionMessagesReply{
 		AcceptedCount:    result.AcceptedCount,
 		LatestVersion:    result.LatestVersion,
 		RequestBodyBytes: result.RequestBodyBytes,
 	}
-	p.observeSessionMessages(ctx, input, reply)
+	agenthost.NotifyCommitted(ctx, p, agenthost.SessionMessagesDelta(input, reply, result))
 	return reply, nil
 }
 
@@ -538,6 +538,28 @@ func (p *ActivityProjection) ListSessions(workspaceID string) ([]PersistedSessio
 	return out, true
 }
 
+func (p *ActivityProjection) ListSessionsPage(
+	ctx context.Context,
+	input agentactivitybiz.ListSessionsPageInput,
+) (PersistedSessionListPage, bool, error) {
+	if p == nil || p.repo == nil {
+		return PersistedSessionListPage{}, false, nil
+	}
+	page, ok, err := p.repo.ListSessionsPage(ctx, input)
+	if err != nil || !ok {
+		return PersistedSessionListPage{}, ok, err
+	}
+	sessions := make([]PersistedSession, 0, len(page.Sessions))
+	for _, session := range page.Sessions {
+		sessions = append(sessions, p.projectPersistedSession(ctx, persistedSessionFromActivity(session)))
+	}
+	return PersistedSessionListPage{
+		Sessions:   sessions,
+		HasMore:    page.HasMore,
+		NextCursor: page.NextCursor,
+	}, true, nil
+}
+
 func (p *ActivityProjection) ListChildSessions(
 	ctx context.Context,
 	workspaceID string,
@@ -577,20 +599,17 @@ func (p *ActivityProjection) ListSessionSections(
 	return p.repo.ListSessionSections(ctx, input)
 }
 
-func (p *ActivityProjection) DeleteSession(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
+func (p *ActivityProjection) RollbackRuntimeSessionInitialization(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
 	if p == nil || p.repo == nil {
 		return false, nil
 	}
-	workspaceID = strings.TrimSpace(workspaceID)
-	agentSessionID = strings.TrimSpace(agentSessionID)
-	removed, err := p.repo.DeleteSession(ctx, workspaceID, agentSessionID)
-	if err != nil {
-		return false, err
+	rollbacker, ok := p.repo.(interface {
+		RollbackRuntimeSessionInitialization(context.Context, string, string) (bool, error)
+	})
+	if !ok {
+		return false, fmt.Errorf("agent activity repository cannot roll back runtime session initialization")
 	}
-	if removed {
-		p.publishActivityUpdated(ctx, workspaceID, agentSessionID, "session_deleted", activitySessionDeletedEventPayload(workspaceID, agentSessionID))
-	}
-	return removed, nil
+	return rollbacker.RollbackRuntimeSessionInitialization(ctx, strings.TrimSpace(workspaceID), strings.TrimSpace(agentSessionID))
 }
 
 func (p *ActivityProjection) ListSessionSectionDeletionCandidates(
@@ -629,37 +648,27 @@ func (p *ActivityProjection) DeleteSessionsBatch(
 		)
 		return agentactivitybiz.DeleteSessionsBatchResult{}, err
 	}
-	for _, agentSessionID := range result.RemovedSessionIDs {
-		agentSessionID = strings.TrimSpace(agentSessionID)
-		if agentSessionID == "" {
-			continue
-		}
-		p.publishActivityUpdated(ctx, input.WorkspaceID, agentSessionID, "session_deleted", activitySessionDeletedEventPayload(input.WorkspaceID, agentSessionID))
+	if result.RemovedSessions > 0 {
+		agenthost.NotifyCommitted(ctx, p, agenthost.CanonicalDelta(result.CommitDelta))
 	}
 	return result, nil
 }
 
-func (p *ActivityProjection) ClearSessions(ctx context.Context, workspaceID string) (ClearSessionsResult, error) {
+func (p *ActivityProjection) PlanDeleteSessions(
+	ctx context.Context,
+	input agentactivitybiz.DeleteSessionsBatchInput,
+) (agentactivitybiz.DeleteSessionsPlan, error) {
 	if p == nil || p.repo == nil {
-		return ClearSessionsResult{}, nil
+		return agentactivitybiz.DeleteSessionsPlan{}, nil
 	}
-	workspaceID = strings.TrimSpace(workspaceID)
-	result, err := p.repo.ClearSessions(ctx, workspaceID)
-	if err != nil {
-		return ClearSessionsResult{}, err
+	return p.repo.PlanDeleteSessions(ctx, input)
+}
+
+func (p *ActivityProjection) PlanClearSessions(ctx context.Context, workspaceID string) (agentactivitybiz.DeleteSessionsPlan, error) {
+	if p == nil || p.repo == nil {
+		return agentactivitybiz.DeleteSessionsPlan{}, nil
 	}
-	for _, agentSessionID := range result.RemovedSessionIDs {
-		agentSessionID = strings.TrimSpace(agentSessionID)
-		if agentSessionID == "" {
-			continue
-		}
-		p.publishActivityUpdated(ctx, workspaceID, agentSessionID, "session_deleted", activitySessionDeletedEventPayload(workspaceID, agentSessionID))
-	}
-	return ClearSessionsResult{
-		RemovedMessages:   result.RemovedMessages,
-		RemovedSessions:   result.RemovedSessions,
-		RemovedSessionIDs: result.RemovedSessionIDs,
-	}, nil
+	return p.repo.PlanClearSessions(ctx, strings.TrimSpace(workspaceID))
 }
 
 func (p *ActivityProjection) UpdateSessionPinned(ctx context.Context, workspaceID string, agentSessionID string, pinned bool) (PersistedSession, bool, error) {
@@ -675,8 +684,8 @@ func (p *ActivityProjection) UpdateSessionPinned(ctx context.Context, workspaceI
 	if !ok {
 		return PersistedSession{}, false, nil
 	}
+	agenthost.NotifyCommitted(ctx, p, agenthost.CanonicalDelta(session.CommitDelta))
 	persisted := persistedSessionFromActivity(session)
-	p.publishActivityUpdated(ctx, workspaceID, agentSessionID, "session_reconcile_required", activitySessionUpdateEventPayload(workspaceID, agentSessionID, persisted.UpdatedAtUnixMS))
 	return persisted, true, nil
 }
 
@@ -699,8 +708,8 @@ func (p *ActivityProjection) UpdateSessionSettings(ctx context.Context, workspac
 	if !ok {
 		return PersistedSession{}, false, nil
 	}
+	agenthost.NotifyCommitted(ctx, p, agenthost.CanonicalDelta(session.CommitDelta))
 	persisted := persistedSessionFromActivity(session)
-	p.publishActivityUpdated(ctx, workspaceID, agentSessionID, "session_reconcile_required", activitySessionUpdateEventPayload(workspaceID, agentSessionID, persisted.UpdatedAtUnixMS))
 	return persisted, true, nil
 }
 
@@ -717,8 +726,8 @@ func (p *ActivityProjection) UpdateSessionTitle(ctx context.Context, workspaceID
 	if !ok {
 		return PersistedSession{}, false, nil
 	}
+	agenthost.NotifyCommitted(ctx, p, agenthost.CanonicalDelta(session.CommitDelta))
 	persisted := persistedSessionFromActivity(session)
-	p.publishActivityUpdated(ctx, workspaceID, agentSessionID, "session_reconcile_required", activitySessionUpdateEventPayload(workspaceID, agentSessionID, persisted.UpdatedAtUnixMS))
 	return persisted, true, nil
 }
 

@@ -1,0 +1,56 @@
+/* This file is generated from ../tokens/renderer-theme.json. Do not edit it directly. */
+:root {
+  --renderer-accent: rgb(65 130 245);
+  --renderer-accent-pressed: rgb(53 110 222);
+  --renderer-background: oklch(0.986 0.004 84);
+  --renderer-background-fronted: rgb(255 255 255 / 1);
+  --renderer-background-panel: rgb(248 250 252);
+  --renderer-border: oklch(0.904 0.005 252);
+  --renderer-danger: rgb(220 38 38);
+  --renderer-foreground: oklch(0.248 0.016 258);
+  --renderer-muted: rgb(60 60 60 / 50%);
+  --renderer-panel: oklch(0.975 0.004 84 / 92%);
+  --renderer-scrim: rgb(0 0 0 / 60%);
+  --renderer-scrim-strong: rgb(0 0 0 / 64%);
+  --renderer-success: rgb(34 197 94);
+  --renderer-text-primary: rgb(60 60 60);
+  --renderer-text-secondary: rgb(60 60 60 / 70%);
+}
+
+:root[data-theme="dark"] {
+  --renderer-accent: rgb(90 155 255);
+  --renderer-accent-pressed: rgb(79 143 255);
+  --renderer-background: oklch(0.192 0.008 255);
+  --renderer-background-fronted: rgb(51 51 51 / 1);
+  --renderer-background-panel: rgb(42 42 43);
+  --renderer-border: oklch(0.352 0.012 255);
+  --renderer-danger: rgb(244 91 91);
+  --renderer-foreground: oklch(0.955 0.004 84);
+  --renderer-muted: rgb(255 255 255 / 50%);
+  --renderer-panel: oklch(0.236 0.009 255 / 92%);
+  --renderer-scrim: rgb(0 0 0 / 60%);
+  --renderer-scrim-strong: rgb(0 0 0 / 64%);
+  --renderer-success: rgb(74 222 128);
+  --renderer-text-primary: rgb(255 255 255);
+  --renderer-text-secondary: rgb(255 255 255 / 70%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --renderer-accent: rgb(90 155 255);
+    --renderer-accent-pressed: rgb(79 143 255);
+    --renderer-background: oklch(0.192 0.008 255);
+    --renderer-background-fronted: rgb(51 51 51 / 1);
+    --renderer-background-panel: rgb(42 42 43);
+    --renderer-border: oklch(0.352 0.012 255);
+    --renderer-danger: rgb(244 91 91);
+    --renderer-foreground: oklch(0.955 0.004 84);
+    --renderer-muted: rgb(255 255 255 / 50%);
+    --renderer-panel: oklch(0.236 0.009 255 / 92%);
+    --renderer-scrim: rgb(0 0 0 / 60%);
+    --renderer-scrim-strong: rgb(0 0 0 / 64%);
+    --renderer-success: rgb(74 222 128);
+    --renderer-text-primary: rgb(255 255 255);
+    --renderer-text-secondary: rgb(255 255 255 / 70%);
+  }
+}

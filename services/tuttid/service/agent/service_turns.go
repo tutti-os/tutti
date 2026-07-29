@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
@@ -22,6 +23,13 @@ type TurnStore interface {
 	ListPendingInteractionsBySession(context.Context, string, []string) (map[string][]agentactivitybiz.Interaction, error)
 }
 
+// TurnCancelObserver is notified after CancelTurn actually canceled a live
+// turn. The Issue manager uses it to cascade a user's stop on a planning
+// conversation to every running task run that conversation orchestrates.
+type TurnCancelObserver interface {
+	ObserveUserTurnCanceled(ctx context.Context, workspaceID string, agentSessionID string)
+}
+
 type CancelTurnReason string
 
 const (
@@ -35,6 +43,68 @@ type CancelTurnResult struct {
 	Turn     *agentactivitybiz.Turn
 	Canceled bool
 	Reason   CancelTurnReason
+}
+
+type ListTurnsInput struct {
+	Before *agentactivitybiz.SessionTurnCursor
+	Limit  int
+}
+
+type TurnPage struct {
+	Turns   []agentactivitybiz.SessionTurnSummary
+	HasMore bool
+}
+
+// GetTurn returns canonical Turn truth through Host without starting or
+// resuming a provider runtime.
+func (s *Service) GetTurn(ctx context.Context, workspaceID string, agentSessionID string, turnID string) (agentactivitybiz.Turn, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return agentactivitybiz.Turn{}, false, err
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	turnID = strings.TrimSpace(turnID)
+	if workspaceID == "" || agentSessionID == "" || turnID == "" {
+		return agentactivitybiz.Turn{}, false, ErrInvalidArgument
+	}
+	return s.ApplicationHost().GetTurn(ctx, agenthost.SessionRef{
+		WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
+	}, turnID)
+}
+
+// ListTurns returns one bounded, newest-first metadata page for an existing
+// session. The adapter owns this CLI/query projection; lifecycle decisions
+// remain in Host.
+func (s *Service) ListTurns(ctx context.Context, workspaceID string, agentSessionID string, input ListTurnsInput) (TurnPage, error) {
+	if err := ctx.Err(); err != nil {
+		return TurnPage{}, err
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	if workspaceID == "" || agentSessionID == "" || input.Limit < 1 {
+		return TurnPage{}, ErrInvalidArgument
+	}
+	if s.TurnSummaryReader != nil {
+		page, err := s.TurnSummaryReader.ListSessionTurnSummaries(ctx, agentactivitybiz.ListSessionTurnSummariesInput{
+			WorkspaceID: workspaceID, AgentSessionID: agentSessionID, Before: input.Before, Limit: input.Limit,
+		})
+		if err != nil {
+			return TurnPage{}, err
+		}
+		if len(page.Turns) > 0 {
+			return TurnPage{
+				Turns: append([]agentactivitybiz.SessionTurnSummary(nil), page.Turns...), HasMore: page.HasMore,
+			}, nil
+		}
+	}
+	exists, err := s.sessionExists(ctx, workspaceID, agentSessionID)
+	if err != nil {
+		return TurnPage{}, err
+	}
+	if !exists {
+		return TurnPage{}, ErrSessionNotFound
+	}
+	return TurnPage{Turns: []agentactivitybiz.SessionTurnSummary{}}, nil
 }
 
 // CancelTurn stops one specific turn (protocol v2). It is idempotent: a
@@ -55,68 +125,43 @@ func (s *Service) CancelTurn(ctx context.Context, workspaceID string, agentSessi
 		"turnId", turnID,
 	)
 
-	turn, found, err := s.lookupPersistedTurn(ctx, workspaceID, agentSessionID, turnID)
-	if err != nil {
-		return CancelTurnResult{}, err
-	}
-	if !found {
-		session, err := s.get(ctx, workspaceID, agentSessionID, false)
-		if err != nil {
-			return CancelTurnResult{}, err
-		}
-		return CancelTurnResult{
-			Session: session,
-			Reason:  CancelTurnReasonNotFound,
-		}, nil
-	}
-	if turn.Phase == agentactivitybiz.TurnPhaseSettled {
-		session, err := s.get(ctx, workspaceID, agentSessionID, false)
-		if err != nil {
-			return CancelTurnResult{}, err
-		}
-		return CancelTurnResult{
-			Session: session,
-			Turn:    &turn,
-			Reason:  CancelTurnReasonAlreadySettled,
-		}, nil
-	}
-
-	route, err := s.resolveRuntimeControlRoute(ctx, workspaceID, agentSessionID)
-	if err != nil {
-		return CancelTurnResult{}, err
-	}
-	targets, err := s.cancelTargetsForTurn(ctx, workspaceID, route, turnID)
-	if err != nil {
-		return CancelTurnResult{}, err
-	}
-	operation, err := s.prepareCancelRuntimeOperation(ctx, workspaceID, agentSessionID, turnID, route.RootAgentSessionID, targets)
-	if err != nil {
-		return CancelTurnResult{}, err
-	}
-	completedOperation, err := s.processRuntimeOperation(ctx, operation, false)
+	hostResult, err := s.ApplicationHost().CancelTurn(ctx, agenthost.CancelTurnInput{
+		WorkspaceID: workspaceID, AgentSessionID: agentSessionID, TurnID: turnID,
+	})
 	if err != nil {
 		return CancelTurnResult{}, normalizeRuntimeError(err)
 	}
-	runtimeCanceled := completedOperation.Result == agentactivitybiz.RuntimeOperationResultCanceled
-
 	session, err := s.Get(ctx, workspaceID, agentSessionID)
 	if err != nil {
 		return CancelTurnResult{}, err
 	}
 	result := CancelTurnResult{
 		Session:  session,
-		Canceled: runtimeCanceled,
+		Canceled: hostResult.Operation.Status == agentactivitybiz.RuntimeOperationStatusCompleted && hostResult.Operation.Result == agentactivitybiz.RuntimeOperationResultCanceled,
 		Reason:   CancelTurnReasonAlreadySettled,
+	}
+	switch hostResult.State {
+	case agenthost.CancelStateNotFound:
+		result.Reason = CancelTurnReasonNotFound
+	case agenthost.CancelStateSettled:
+		if result.Canceled {
+			result.Reason = CancelTurnReasonTurnCanceled
+		}
+	}
+	if hostResult.Turn != nil {
+		turn := *hostResult.Turn
+		result.Turn = &turn
 	}
 	if result.Canceled {
 		result.Reason = CancelTurnReasonTurnCanceled
-	}
-	settled, ok, err := s.lookupPersistedTurn(ctx, workspaceID, agentSessionID, turnID)
-	if err != nil {
-		return CancelTurnResult{}, err
-	}
-	if ok {
-		result.Turn = &settled
+		if s.TurnCancelObserver != nil {
+			// Enter the product's durable stop boundary before returning. The
+			// canonical canceled Turn and source-activity inbox marker remain
+			// the crash-recovery fallback if this callback is interrupted.
+			s.TurnCancelObserver.ObserveUserTurnCanceled(
+				context.WithoutCancel(ctx), workspaceID, agentSessionID,
+			)
+		}
 	}
 	return result, nil
 }
@@ -130,6 +175,14 @@ func (s *Service) lookupPersistedTurn(ctx context.Context, workspaceID string, a
 		return agentactivitybiz.Turn{}, false, err
 	}
 	return turn, ok, nil
+}
+
+// PersistedActiveTurnID exposes the session's persisted active turn pointer
+// to collaborators outside the package (e.g. CLI capabilities invoked from
+// inside an agent turn that stamp durable records with their source turn).
+// It returns "" when the pointer is unset or the v2 store is not wired.
+func (s *Service) PersistedActiveTurnID(ctx context.Context, workspaceID string, agentSessionID string) (string, error) {
+	return s.persistedActiveTurnID(ctx, workspaceID, agentSessionID)
 }
 
 // persistedActiveTurnID reads the session's persisted active turn pointer.
@@ -148,13 +201,52 @@ func (s *Service) persistedActiveTurnID(ctx context.Context, workspaceID string,
 	return strings.TrimSpace(session.ActiveTurnID), nil
 }
 
-// withProtocolV2TurnState enriches an outgoing session projection with the
+// projectSessionForResponse is the canonical boundary for every public service
+// response that contains one Session. Keep the persisted Turn projection and
+// the Tutti-owned, session-associated activation read projection here so
+// mutations cannot accidentally return a partial Session that clears newer
+// client state.
+func (s *Service) projectSessionForResponse(ctx context.Context, workspaceID string, session Session) (Session, error) {
+	return s.withProtocolV2TurnState(ctx, strings.TrimSpace(workspaceID), session)
+}
+
+// projectSessionsForResponse is the batched form of
+// projectSessionForResponse. List and section responses must use the same
+// projection contract as single-session mutations.
+func (s *Service) projectSessionsForResponse(ctx context.Context, workspaceID string, sessions []Session) ([]Session, error) {
+	return s.withProtocolV2TurnStates(ctx, strings.TrimSpace(workspaceID), sessions)
+}
+
+// withProtocolV2TurnState enriches the canonical response projection with the
 // persisted v2 turn state: activeTurnId pointer, embedded active/latest turns,
 // and pending interactions. latestTurn remains an independent turn entity
-// projection; it is never persisted on the session row.
+// projection; it is never persisted on the session row. The Tutti-owned,
+// session-associated TuttiModeActivation read projection is attached last.
 func (s *Service) withProtocolV2TurnState(ctx context.Context, workspaceID string, session Session) (Session, error) {
+	return s.withProtocolV2TurnStateProjectionOptions(
+		ctx,
+		workspaceID,
+		session,
+		true,
+	)
+}
+
+func (s *Service) withProtocolV2TurnStateProjectionOptions(
+	ctx context.Context,
+	workspaceID string,
+	session Session,
+	resolveProviderCapabilities bool,
+) (Session, error) {
 	if s == nil || s.TurnStore == nil {
-		return session, nil
+		if resolveProviderCapabilities {
+			session = s.withSessionForkCapabilities(ctx, workspaceID, session)
+		}
+		var err error
+		session, err = s.withSessionForkLineage(ctx, workspaceID, session)
+		if err != nil {
+			return Session{}, err
+		}
+		return s.withTuttiModeActivation(ctx, workspaceID, session)
 	}
 	latestTurn, ok, err := s.TurnStore.GetLatestTurn(ctx, workspaceID, session.ID)
 	if err != nil {
@@ -165,9 +257,21 @@ func (s *Service) withProtocolV2TurnState(ctx context.Context, workspaceID strin
 		return Session{}, err
 	}
 	if !ok {
-		return s.withProtocolV2TurnStateProjection(ctx, workspaceID, session, nil, latestInteractionsBySessionID[session.ID])
+		session, err = s.withProtocolV2TurnStateProjection(ctx, workspaceID, session, nil, latestInteractionsBySessionID[session.ID])
+	} else {
+		session, err = s.withProtocolV2TurnStateProjection(ctx, workspaceID, session, &latestTurn, latestInteractionsBySessionID[session.ID])
 	}
-	return s.withProtocolV2TurnStateProjection(ctx, workspaceID, session, &latestTurn, latestInteractionsBySessionID[session.ID])
+	if err != nil {
+		return Session{}, err
+	}
+	if resolveProviderCapabilities {
+		session = s.withSessionForkCapabilities(ctx, workspaceID, session)
+	}
+	session, err = s.withSessionForkLineage(ctx, workspaceID, session)
+	if err != nil {
+		return Session{}, err
+	}
+	return s.withTuttiModeActivation(ctx, workspaceID, session)
 }
 
 func (s *Service) withProtocolV2TurnStateProjection(ctx context.Context, workspaceID string, session Session, latestTurn *agentactivitybiz.Turn, latestTurnInteractions []agentactivitybiz.Interaction) (Session, error) {
@@ -203,8 +307,11 @@ func (s *Service) withProtocolV2TurnStateProjection(ctx context.Context, workspa
 }
 
 func (s *Service) withProtocolV2TurnStates(ctx context.Context, workspaceID string, sessions []Session) ([]Session, error) {
-	if s == nil || s.TurnStore == nil || len(sessions) == 0 {
+	if len(sessions) == 0 {
 		return sessions, nil
+	}
+	if s == nil || s.TurnStore == nil {
+		return s.withTuttiModeActivations(ctx, workspaceID, sessions)
 	}
 	ids := make([]string, 0, len(sessions))
 	activeTurnIDBySessionID := make(map[string]string)
@@ -244,7 +351,40 @@ func (s *Service) withProtocolV2TurnStates(ctx context.Context, workspaceID stri
 		}
 		session.PendingInteractions = pendingBySessionID[sessionID]
 		session.LatestTurnInteractions = latestInteractionsBySessionID[sessionID]
+		session, err = s.withSessionForkLineage(ctx, workspaceID, session)
+		if err != nil {
+			return nil, err
+		}
 		result[i] = session
 	}
-	return result, nil
+	return s.withTuttiModeActivations(ctx, workspaceID, result)
+}
+
+func (s *Service) withSessionForkLineage(
+	ctx context.Context,
+	workspaceID string,
+	session Session,
+) (Session, error) {
+	session.ForkedFrom = nil
+	if s == nil || strings.TrimSpace(workspaceID) == "" ||
+		strings.TrimSpace(session.ID) == "" ||
+		strings.TrimSpace(session.Kind) != agentactivitybiz.SessionKindRoot {
+		return session, nil
+	}
+	lineage, found, err := s.ApplicationHost().GetSessionForkLineage(
+		ctx,
+		strings.TrimSpace(workspaceID),
+		strings.TrimSpace(session.ID),
+	)
+	if err != nil || !found {
+		return session, err
+	}
+	session.ForkedFrom = &SessionForkLineage{
+		SourceAgentSessionID: strings.TrimSpace(lineage.SourceAgentSessionID),
+		SourceTurnID:         strings.TrimSpace(lineage.SourceTurnID),
+		TargetTurnID:         strings.TrimSpace(lineage.TargetTurnID),
+		OperationID:          strings.TrimSpace(lineage.OperationID),
+		ForkedAtUnixMS:       lineage.ForkedAtUnixMS,
+	}
+	return session, nil
 }

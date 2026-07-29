@@ -166,6 +166,24 @@ func TestSessionActionValueIncludesExactAgentTarget(t *testing.T) {
 	}
 }
 
+func TestSessionValuesIncludeWorktreeIsolation(t *testing.T) {
+	session := agentserviceSessionWithRuntime()
+	session.Isolation = &agentservice.SessionIsolation{
+		Mode: "worktree", WorktreePath: "/state/agent/worktrees/SESSION-1",
+		Branch: "tutti/SESSION-1", BaseCommit: "abc123",
+	}
+	for name, value := range map[string]map[string]any{
+		"summary": sessionSummaryValue(session),
+		"action":  sessionActionValue(session),
+	} {
+		isolation, ok := value["isolation"].(map[string]any)
+		if !ok || isolation["mode"] != "worktree" || isolation["worktreePath"] != "/state/agent/worktrees/SESSION-1" ||
+			isolation["branch"] != "tutti/SESSION-1" || isolation["baseCommit"] != "abc123" {
+			t.Fatalf("%s isolation = %#v", name, value["isolation"])
+		}
+	}
+}
+
 func TestSessionSummaryValueOmitsOptionalEmptyRuntimeProtocolFields(t *testing.T) {
 	value := sessionSummaryValue(agentservice.Session{
 		ID:           "SESSION-1",

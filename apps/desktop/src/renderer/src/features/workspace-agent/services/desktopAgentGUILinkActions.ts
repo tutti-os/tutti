@@ -2,6 +2,11 @@ import { parseRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import type { WorkspaceLinkAction } from "@contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
 import type { DesktopAgentGUIProvider } from "../desktopAgentGUINodeState.ts";
 
+// Value mirror of AGENT_EXTERNAL_LINK_ACTION_SOURCE from @tutti-os/agent-gui.
+// See the note below: runtime imports from the Agent GUI barrel break the
+// desktop node --test runner.
+const AGENT_EXTERNAL_LINK_ACTION_SOURCE = "agent-external-action";
+
 // Value mirror of AGENT_PASTED_TEXT_MENTION_KIND from @tutti-os/agent-gui.
 // Kept as a local literal so this module (loaded by the node --test runner)
 // does not pull the whole agent-gui barrel, whose extensionless internal
@@ -34,7 +39,7 @@ export interface DesktopAgentGUILinkActionDependencies {
   }): Promise<boolean> | boolean;
   launchWorkspaceFiles(input: {
     homeDirectory?: string | null;
-    mode?: "reveal" | "open-directory";
+    mode?: "select" | "open";
     path: string;
     source?: "agent_command";
     validateExists?: boolean;
@@ -56,6 +61,7 @@ export interface DesktopAgentGUILinkActionDependencies {
     url: string;
     workspaceId: string;
   }): Promise<boolean> | boolean;
+  openExternalUrl?(url: string): Promise<void> | void;
   workspaceId: string;
 }
 
@@ -85,6 +91,13 @@ export async function runDesktopAgentGUILinkAction(
         workspaceId: dependencies.workspaceId
       });
     case "open-url":
+      if (
+        action.source === AGENT_EXTERNAL_LINK_ACTION_SOURCE &&
+        dependencies.openExternalUrl
+      ) {
+        await dependencies.openExternalUrl(action.url);
+        return true;
+      }
       return dependencies.openBrowserUrl({
         reuseIfOpen: false,
         source: "agent_command",

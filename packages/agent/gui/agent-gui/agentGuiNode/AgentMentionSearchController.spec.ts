@@ -4,15 +4,24 @@ import {
   AgentMentionSearchController as BaseAgentMentionSearchController,
   MAX_BROWSE_CACHE_ENTRIES,
   preloadAgentMentionBrowse,
-  resetAgentMentionSearchBrowseCacheForTests
+  resetAgentMentionSearchBrowseCacheForTests,
+  type AgentMentionSearchState
 } from "./AgentMentionSearchController";
 import { issuePreviewText } from "./agentMentionSearchHelpers";
 import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
 import { AGENT_CONTEXT_MENTION_PROVIDER_IDS } from "./agentContextMentionProvider";
 
+// Controller work settles through timers or microtasks. Vitest's 50 ms polling
+// default adds seconds of idle time across this state-heavy suite.
+function waitForFast<T>(assertion: () => T | Promise<T>): Promise<T> {
+  return vi.waitFor(assertion, { interval: 1 });
+}
+
 interface TestFileMentionItem {
+  childCount?: number;
   label: string;
   href: string;
+  kind?: "directory" | "file";
 }
 
 interface TestIssueMentionItem {
@@ -147,25 +156,39 @@ function createTestAgentGeneratedFileProvider(
 
 function createTestFileProvider(
   options: TestContextMentionProviderOptions
-): AgentContextMentionProvider<{ label: string; href: string }> {
+): AgentContextMentionProvider<TestFileMentionItem> {
+  const queryFiles = async (input: {
+    context: { metadata?: Readonly<Record<string, unknown>> };
+    directoryPath?: string;
+    keyword: string;
+    maxResults?: number;
+  }) => {
+    if (!options.queryFiles) {
+      return [];
+    }
+    const result = await options.queryFiles({
+      workspaceId: input.context?.metadata?.workspaceId,
+      query: input.keyword,
+      limit: input.maxResults,
+      includeKinds: ["file", "directory"],
+      directoryPath: input.directoryPath
+    });
+    return (result.entries ?? []).map((entry: any) => ({
+      childCount: entry.childCount,
+      label: entry.name,
+      href: entry.path,
+      kind: entry.kind
+    }));
+  };
   return {
     id: FILE_PROVIDER_ID,
     trigger: "@",
-    async query({ context, keyword, maxResults }) {
-      if (!options.queryFiles) {
-        return [];
-      }
-      const result = await options.queryFiles({
-        workspaceId: context?.metadata?.workspaceId,
-        query: keyword,
-        limit: maxResults,
-        includeKinds: ["file", "directory"]
-      });
-      return (result.entries ?? []).map((entry: any) => ({
-        label: entry.name,
-        href: entry.path
-      }));
-    },
+    query: queryFiles,
+    queryDirectory: queryFiles,
+    getItemDirectory: (item) =>
+      item.kind === "directory"
+        ? { childCount: item.childCount, path: item.href }
+        : null,
     getItemKey: (item) => item.href,
     getItemLabel: (item) => item.label,
     toInsertResult: (item) => ({
@@ -548,7 +571,7 @@ describe("AgentMentionSearchController", () => {
       mode: "browse",
       query: ""
     });
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         mode: "browse",
@@ -563,7 +586,7 @@ describe("AgentMentionSearchController", () => {
     expect(queryIssues).not.toHaveBeenCalled();
   });
 
-  it("groups session mentions by member across agent targets", async () => {
+  it("groups session mentions by initiator instead of Agent owner", async () => {
     const controller = new AgentMentionSearchController({
       querySessions: vi.fn().mockResolvedValue({
         sessions: [
@@ -585,7 +608,14 @@ describe("AgentMentionSearchController", () => {
             agentSessionId: "session-shared",
             agentTargetId: "shared-agent:shared-codex",
             provider: "codex",
-            title: "Shared build",
+            title: "Shared build initiated by me",
+            userId: "user-1"
+          },
+          {
+            agentSessionId: "session-shared-by-owner",
+            agentTargetId: "shared-agent:shared-codex",
+            provider: "codex",
+            title: "Shared build initiated by owner",
             userId: "user-2"
           },
           {
@@ -621,7 +651,11 @@ describe("AgentMentionSearchController", () => {
       ],
       memberOptions: [
         { id: "user-1", label: "Me" },
-        { id: "user-2", label: "Lin" }
+        {
+          id: "user-2",
+          label: "Lin",
+          iconUrl: "https://cdn.example.com/lin.png"
+        }
       ]
     });
 
@@ -631,7 +665,7 @@ describe("AgentMentionSearchController", () => {
       query: ""
     });
 
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         filter: "session",
@@ -643,17 +677,24 @@ describe("AgentMentionSearchController", () => {
               expect.objectContaining({ targetId: "session-local-0" }),
               expect.objectContaining({ targetId: "session-local-claude" })
             ]),
-            totalCount: 32,
+            totalCount: 33,
             hasMore: true
           },
           {
             id: "member:user-2",
             label: "Lin",
-            items: [expect.objectContaining({ targetId: "session-shared" })]
+            items: [
+              expect.objectContaining({
+                initiatorAvatarUrl: "https://cdn.example.com/lin.png",
+                initiatorName: "Lin",
+                initiatorUserId: "user-2",
+                targetId: "session-shared-by-owner"
+              })
+            ]
           },
           {
-            id: "agent:uncatalogued%3Alegacy-gemini",
-            label: "gemini",
+            id: "agent:uncatalogued%3Auser-3",
+            label: "user-3",
             items: [
               expect.objectContaining({ targetId: "session-uncatalogued" })
             ]
@@ -667,17 +708,29 @@ describe("AgentMentionSearchController", () => {
         states.at(-1) as { groups: Array<{ id: string; items: unknown[] }> }
       ).groups.find((group) => group.id === "member:user-1")?.items
     ).toHaveLength(20);
-    controller.setProvenanceFilter({
-      agentTargetIds: ["shared-agent:shared-codex"],
-      memberIds: null
+    controller.setProvenanceFilters({
+      session: {
+        agentTargetIds: ["shared-agent:shared-codex"],
+        memberIds: null
+      },
+      file: null,
+      issue: null,
+      agent: null,
+      app: null
     });
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         groups: [
           {
-            id: "member:user-2",
+            id: "member:user-1",
             items: [expect.objectContaining({ targetId: "session-shared" })]
+          },
+          {
+            id: "member:user-2",
+            items: [
+              expect.objectContaining({ targetId: "session-shared-by-owner" })
+            ]
           }
         ]
       })
@@ -735,7 +788,7 @@ describe("AgentMentionSearchController", () => {
     controller.subscribe((state) => states.push(state));
 
     controller.updateQuery({ workspaceId: "room-1", query: "" });
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         mode: "browse",
@@ -749,7 +802,7 @@ describe("AgentMentionSearchController", () => {
       mode: "browse",
       filter: "app"
     });
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         mode: "browse",
@@ -776,6 +829,107 @@ describe("AgentMentionSearchController", () => {
     expect(queryIssues).not.toHaveBeenCalled();
     expect(queryAgentTargets).not.toHaveBeenCalled();
     expect(querySessions).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps provenance filters independent across mention tabs", async () => {
+    const querySessions = vi.fn().mockResolvedValue([]);
+    const queryFiles = vi.fn().mockResolvedValue([]);
+    const sessionProvider: AgentContextMentionProvider<{ id: string }> = {
+      id: AGENT_SESSION_PROVIDER_ID,
+      trigger: "@",
+      query: querySessions,
+      getItemKey: (item) => item.id,
+      getItemLabel: (item) => item.id,
+      toInsertResult: (item) => ({
+        kind: "markdown-link",
+        href: `mention://agent-session/${item.id}`,
+        label: item.id
+      })
+    };
+    const fileProvider: AgentContextMentionProvider<{
+      href: string;
+      label: string;
+    }> = {
+      id: FILE_PROVIDER_ID,
+      trigger: "@",
+      query: queryFiles,
+      getItemKey: (item) => item.href,
+      getItemLabel: (item) => item.label,
+      toInsertResult: (item) => ({
+        kind: "markdown-link",
+        href: item.href,
+        label: item.label
+      })
+    };
+    const controller = new AgentMentionSearchController({
+      contextMentionProviders: [sessionProvider, fileProvider],
+      debounceMs: 0
+    });
+    controller.setProvenanceFilters({
+      session: {
+        agentTargetIds: null,
+        memberIds: ["zhou-man"]
+      },
+      file: {
+        agentTargetIds: null,
+        memberIds: null
+      },
+      issue: null,
+      agent: null,
+      app: null
+    });
+    controller.updateQuery({
+      workspaceId: "room-1",
+      currentUserId: "user-1",
+      query: "report"
+    });
+
+    await waitForFast(() => expect(querySessions).toHaveBeenCalledTimes(1));
+    expect(querySessions).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        context: {
+          metadata: expect.objectContaining({
+            referenceProvenanceFilter: {
+              agentTargetIds: null,
+              memberIds: ["zhou-man"]
+            }
+          })
+        }
+      })
+    );
+
+    controller.setFilter("file");
+
+    await waitForFast(() => expect(queryFiles).toHaveBeenCalledTimes(1));
+    expect(queryFiles).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        context: {
+          metadata: expect.objectContaining({
+            referenceProvenanceFilter: {
+              agentTargetIds: null,
+              memberIds: null
+            }
+          })
+        }
+      })
+    );
+
+    controller.setFilter("session");
+
+    await waitForFast(() => expect(querySessions).toHaveBeenCalledTimes(2));
+    expect(querySessions).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        context: {
+          metadata: expect.objectContaining({
+            referenceProvenanceFilter: {
+              agentTargetIds: null,
+              memberIds: ["zhou-man"]
+            }
+          })
+        }
+      })
+    );
+    controller.dispose();
   });
 
   it("loads agent targets from the agent tab and inserts agent-target mentions", async () => {
@@ -874,7 +1028,7 @@ describe("AgentMentionSearchController", () => {
     controller.setFilter("agent");
     controller.updateQuery({ workspaceId: "room-1", query: "" });
 
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         mode: "browse",
@@ -927,18 +1081,26 @@ describe("AgentMentionSearchController", () => {
       limit: undefined
     });
     expect(queryWorkspaceApps).not.toHaveBeenCalled();
-    controller.setProvenanceFilter({
-      agentTargetIds: ["shared-agent:shared-codex"],
-      memberIds: null
+    controller.setProvenanceFilters({
+      session: null,
+      file: null,
+      issue: null,
+      agent: {
+        agentTargetIds: ["shared-agent:shared-codex"],
+        memberIds: null
+      },
+      app: null
     });
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         groups: [
           {
             id: "member:user-lin",
             items: [
-              expect.objectContaining({ targetId: "shared-agent:shared-codex" })
+              expect.objectContaining({
+                targetId: "shared-agent:shared-codex"
+              })
             ]
           }
         ]
@@ -979,7 +1141,7 @@ describe("AgentMentionSearchController", () => {
     controller.setFilter("app");
     controller.updateQuery({ workspaceId: "room-1", query: "" });
 
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         mode: "browse",
@@ -1002,19 +1164,20 @@ describe("AgentMentionSearchController", () => {
     });
   });
 
-  it("reuses fresh browse results when the mention palette reopens", async () => {
+  it("shows fresh cached browse results immediately and revalidates when the mention palette reopens", async () => {
     let now = 1_000;
-    const queryFiles = vi.fn().mockResolvedValue({
+    let entries = [
+      {
+        path: "/workspace/README.md",
+        name: "README.md",
+        kind: "file"
+      }
+    ];
+    const queryFiles = vi.fn(async () => ({
       workspaceId: "room-1",
       root: "/workspace",
-      entries: [
-        {
-          path: "/workspace/README.md",
-          name: "README.md",
-          kind: "file"
-        }
-      ]
-    });
+      entries
+    }));
     const controller = new AgentMentionSearchController({
       queryFiles,
       queryIssues: vi.fn().mockResolvedValue({
@@ -1033,9 +1196,9 @@ describe("AgentMentionSearchController", () => {
     const states: any[] = [];
     controller.subscribe((state) => states.push(state));
 
-    controller.setFilter("file");
     controller.updateQuery({ workspaceId: "room-1", query: "" });
-    await vi.waitFor(() =>
+    controller.setFilter("file");
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         mode: "browse",
@@ -1056,9 +1219,17 @@ describe("AgentMentionSearchController", () => {
 
     controller.close();
     now += 1_000;
-    controller.setFilter("file");
+    entries = [
+      {
+        path: "/workspace/package.json",
+        name: "package.json",
+        kind: "file"
+      }
+    ];
     controller.updateQuery({ workspaceId: "room-1", query: "" });
+    controller.setFilter("file");
 
+    // Cache is presentation-only: it paints synchronously on reopen.
     expect(states.at(-1)).toMatchObject({
       status: "ready",
       mode: "browse",
@@ -1074,10 +1245,71 @@ describe("AgentMentionSearchController", () => {
         })
       ])
     });
-    expect(queryFiles).toHaveBeenCalledTimes(1);
+    await waitForFast(() => {
+      expect(queryFiles).toHaveBeenCalledTimes(2);
+      expect(states.at(-1)).toMatchObject({
+        status: "ready",
+        mode: "browse",
+        groups: expect.arrayContaining([
+          expect.objectContaining({
+            id: "opened_files",
+            items: [
+              expect.objectContaining({
+                kind: "file",
+                path: "/workspace/package.json"
+              })
+            ]
+          })
+        ])
+      });
+    });
   });
 
-  it("reuses fresh browse results after the agent GUI controller is recreated", async () => {
+  it("revalidates cached Agent availability when the Agent tab reopens", async () => {
+    let status = "available";
+    const queryAgentTargets = vi.fn(async () => ({
+      targets: [
+        {
+          name: "Claude Code",
+          provider: "claude-code",
+          status,
+          targetId: "local:claude-code",
+          workspaceId: "room-1"
+        }
+      ]
+    }));
+    const controller = new AgentMentionSearchController({ queryAgentTargets });
+    const states: any[] = [];
+    controller.subscribe((state) => states.push(state));
+    const latestClaudeAvailability = () =>
+      states
+        .at(-1)
+        ?.groups.flatMap((group: { items: any[] }) => group.items)
+        .find(
+          (item: { targetId?: string }) => item.targetId === "local:claude-code"
+        )?.availabilityStatus;
+
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+    controller.setFilter("agent");
+    await waitForFast(() => {
+      expect(queryAgentTargets).toHaveBeenCalledTimes(1);
+      expect(latestClaudeAvailability()).toBe("available");
+    });
+
+    controller.close();
+    status = "unavailable";
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+    controller.setFilter("agent");
+
+    expect(latestClaudeAvailability()).toBe("available");
+    await waitForFast(() => {
+      expect(queryAgentTargets).toHaveBeenCalledTimes(2);
+      expect(latestClaudeAvailability()).toBe("unavailable");
+    });
+    controller.dispose();
+  });
+
+  it("shows fresh cached browse results and revalidates after the controller is recreated", async () => {
     let now = 2_000;
     const queryFiles = vi.fn().mockResolvedValue({
       workspaceId: "room-1",
@@ -1116,7 +1348,7 @@ describe("AgentMentionSearchController", () => {
 
     firstController.setFilter("file");
     firstController.updateQuery({ workspaceId: "room-1", query: "" });
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(firstStates.at(-1)).toMatchObject({
         status: "ready",
         mode: "browse",
@@ -1160,6 +1392,7 @@ describe("AgentMentionSearchController", () => {
       ])
     });
     expect(queryFiles).toHaveBeenCalledTimes(1);
+    await waitForFast(() => expect(queryFiles).toHaveBeenCalledTimes(2));
   });
 
   it("evicts the oldest browse cache entry once the shared cap is exceeded", async () => {
@@ -1189,7 +1422,8 @@ describe("AgentMentionSearchController", () => {
       contextMentionProviders:
         createTestContextMentionProviders(providerOptions)
     });
-    controller.subscribe(() => {});
+    const states: any[] = [];
+    controller.subscribe((state) => states.push(state));
     controller.setFilter("file");
 
     // Warm one more distinct workspace than the cache can hold. Each distinct
@@ -1199,23 +1433,28 @@ describe("AgentMentionSearchController", () => {
     for (let index = 0; index < warmCount; index += 1) {
       controller.updateQuery({ workspaceId: `room-${index}`, query: "" });
       // eslint-disable-next-line no-await-in-loop
-      await vi.waitFor(() =>
+      await waitForFast(() =>
         expect(queryFiles).toHaveBeenCalledTimes(index + 1)
       );
     }
 
-    // The most recently warmed workspace is still cached -> no extra fetch.
+    // The most recently warmed workspace paints from cache synchronously, then
+    // still revalidates because this is a user-opened browse.
     controller.updateQuery({
       workspaceId: `room-${warmCount - 1}`,
       query: ""
     });
-    await Promise.resolve();
-    expect(queryFiles).toHaveBeenCalledTimes(warmCount);
-
-    // The oldest workspace was evicted by the cap -> reopening must re-fetch.
-    controller.updateQuery({ workspaceId: "room-0", query: "" });
-    await vi.waitFor(() =>
+    expect(states.at(-1)).toMatchObject({ status: "ready", mode: "browse" });
+    await waitForFast(() =>
       expect(queryFiles).toHaveBeenCalledTimes(warmCount + 1)
+    );
+
+    // The oldest workspace was evicted by the cap, so it has no synchronous
+    // cached presentation before its required realtime fetch.
+    controller.updateQuery({ workspaceId: "room-0", query: "" });
+    expect(states.at(-1)).toMatchObject({ status: "loading", mode: "browse" });
+    await waitForFast(() =>
+      expect(queryFiles).toHaveBeenCalledTimes(warmCount + 2)
     );
 
     controller.dispose();
@@ -1255,9 +1494,9 @@ describe("AgentMentionSearchController", () => {
       contextMentionProviders:
         createTestContextMentionProviders(providerOptions)
     });
-    await vi.waitFor(() => expect(queryFiles).toHaveBeenCalledTimes(1));
+    await waitForFast(() => expect(queryFiles).toHaveBeenCalledTimes(1));
 
-    // A later controller built with the same providers hits the warmed cache.
+    // A later controller built with the same providers paints the warmed cache.
     const controller = new AgentMentionSearchController({
       contextMentionProviders:
         createTestContextMentionProviders(providerOptions)
@@ -1283,6 +1522,7 @@ describe("AgentMentionSearchController", () => {
       ])
     });
     expect(queryFiles).toHaveBeenCalledTimes(1);
+    await waitForFast(() => expect(queryFiles).toHaveBeenCalledTimes(2));
     controller.dispose();
   });
 
@@ -1299,7 +1539,7 @@ describe("AgentMentionSearchController", () => {
       query: "",
       sectionKey: "project:/workspace/one"
     });
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(queryAgentGeneratedFiles).toHaveBeenCalledTimes(1)
     );
 
@@ -1308,7 +1548,7 @@ describe("AgentMentionSearchController", () => {
       query: "",
       sectionKey: "project:/workspace/two"
     });
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(queryAgentGeneratedFiles).toHaveBeenCalledTimes(2)
     );
     expect(queryAgentGeneratedFiles).toHaveBeenNthCalledWith(
@@ -1359,7 +1599,7 @@ describe("AgentMentionSearchController", () => {
     controller.subscribe((state) => states.push(state));
 
     controller.preloadBrowse({ workspaceId: "room-1", filter: "file" });
-    await vi.waitFor(() => expect(queryFiles).toHaveBeenCalledTimes(1));
+    await waitForFast(() => expect(queryFiles).toHaveBeenCalledTimes(1));
 
     now += 1_000;
     controller.setFilter("file");
@@ -1381,6 +1621,7 @@ describe("AgentMentionSearchController", () => {
       ])
     });
     expect(queryFiles).toHaveBeenCalledTimes(1);
+    await waitForFast(() => expect(queryFiles).toHaveBeenCalledTimes(2));
   });
 
   it("reuses preloaded app results when the app category first opens", async () => {
@@ -1424,7 +1665,9 @@ describe("AgentMentionSearchController", () => {
     controller.subscribe((state) => states.push(state));
 
     controller.preloadBrowse({ workspaceId: "room-1", filter: "app" });
-    await vi.waitFor(() => expect(queryWorkspaceApps).toHaveBeenCalledTimes(1));
+    await waitForFast(() =>
+      expect(queryWorkspaceApps).toHaveBeenCalledTimes(1)
+    );
 
     now += 1_000;
     controller.updateQuery({ workspaceId: "room-1", query: "" });
@@ -1448,6 +1691,9 @@ describe("AgentMentionSearchController", () => {
       ]
     });
     expect(queryWorkspaceApps).toHaveBeenCalledTimes(1);
+    await waitForFast(() =>
+      expect(queryWorkspaceApps).toHaveBeenCalledTimes(2)
+    );
   });
 
   it("cancels an orphaned browse load and refetches after reopen", async () => {
@@ -1483,11 +1729,11 @@ describe("AgentMentionSearchController", () => {
 
     controller.setFilter("file");
     controller.updateQuery({ workspaceId: "room-1", query: "" });
-    await vi.waitFor(() => expect(queryFiles).toHaveBeenCalledTimes(1));
+    await waitForFast(() => expect(queryFiles).toHaveBeenCalledTimes(1));
     controller.close();
     controller.updateQuery({ workspaceId: "room-1", query: "" });
     controller.setFilter("file");
-    await vi.waitFor(() => expect(queryFiles).toHaveBeenCalledTimes(2));
+    await waitForFast(() => expect(queryFiles).toHaveBeenCalledTimes(2));
 
     resolveFiles[1]?.({
       workspaceId: "room-1",
@@ -1501,7 +1747,7 @@ describe("AgentMentionSearchController", () => {
       ]
     });
 
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         mode: "browse",
@@ -1557,7 +1803,7 @@ describe("AgentMentionSearchController", () => {
     const firstController = new AgentMentionSearchController(options);
     firstController.setFilter("file");
     firstController.updateQuery({ workspaceId: "room-1", query: "" });
-    await vi.waitFor(() => expect(queryFiles).toHaveBeenCalledTimes(1));
+    await waitForFast(() => expect(queryFiles).toHaveBeenCalledTimes(1));
     firstController.dispose();
 
     const secondController = new AgentMentionSearchController(options);
@@ -1565,7 +1811,7 @@ describe("AgentMentionSearchController", () => {
     secondController.subscribe((state) => secondStates.push(state));
     secondController.setFilter("file");
     secondController.updateQuery({ workspaceId: "room-1", query: "" });
-    await vi.waitFor(() => expect(queryFiles).toHaveBeenCalledTimes(2));
+    await waitForFast(() => expect(queryFiles).toHaveBeenCalledTimes(2));
 
     resolveFiles[1]?.({
       workspaceId: "room-1",
@@ -1579,7 +1825,7 @@ describe("AgentMentionSearchController", () => {
       ]
     });
 
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(secondStates.at(-1)).toMatchObject({
         status: "ready",
         mode: "browse",
@@ -1645,7 +1891,7 @@ describe("AgentMentionSearchController", () => {
     });
 
     await vi.advanceTimersByTimeAsync(20);
-    await vi.waitFor(() => expect(queryFiles).toHaveBeenCalledTimes(1));
+    await waitForFast(() => expect(queryFiles).toHaveBeenCalledTimes(1));
 
     expect(queryFiles).toHaveBeenCalledWith({
       workspaceId: "room-1",
@@ -1716,7 +1962,7 @@ describe("AgentMentionSearchController", () => {
     });
     await vi.advanceTimersByTimeAsync(20);
 
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         query: rawQuery,
@@ -1787,7 +2033,7 @@ describe("AgentMentionSearchController", () => {
     });
     await vi.advanceTimersByTimeAsync(20);
 
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         query: "app",
@@ -1843,7 +2089,7 @@ describe("AgentMentionSearchController", () => {
     });
     await vi.advanceTimersByTimeAsync(40);
 
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         query: rawQuery,
@@ -1926,7 +2172,7 @@ describe("AgentMentionSearchController", () => {
 
     await vi.advanceTimersByTimeAsync(20);
 
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         query: "",
@@ -2058,7 +2304,7 @@ describe("AgentMentionSearchController", () => {
     });
     await vi.advanceTimersByTimeAsync(20);
 
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         groups: [
@@ -2213,7 +2459,7 @@ describe("AgentMentionSearchController", () => {
     });
 
     await vi.advanceTimersByTimeAsync(20);
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         filter: "issue",
@@ -2307,7 +2553,7 @@ describe("AgentMentionSearchController", () => {
     });
     controller.setFilter("file");
 
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         mode: "browse",
@@ -2370,18 +2616,24 @@ describe("AgentMentionSearchController", () => {
     });
     const states: unknown[] = [];
     controller.subscribe((state) => states.push(state));
-    controller.setProvenanceFilter({
-      agentTargetIds: ["agent-codex"],
-      memberIds: null
-    });
     controller.setFilter("file");
+    controller.setProvenanceFilters({
+      session: null,
+      file: {
+        agentTargetIds: ["agent-codex"],
+        memberIds: null
+      },
+      issue: null,
+      agent: null,
+      app: null
+    });
     controller.updateQuery({
       workspaceId: "room-1",
       currentUserId: "user-1",
       query: "report"
     });
 
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         mode: "results",
@@ -2463,7 +2715,7 @@ describe("AgentMentionSearchController", () => {
     });
     controller.setFilter("file");
 
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         groups: [
@@ -2505,13 +2757,13 @@ describe("AgentMentionSearchController", () => {
         (item) => item.mentionNavigation === "agent-generated-folder"
       );
     expect(folderItem).toBeDefined();
-    controller.selectAgentGeneratedMentionItem(
+    controller.selectFileMentionNavigationItem(
       folderItem as Parameters<
-        BaseAgentMentionSearchController["selectAgentGeneratedMentionItem"]
+        BaseAgentMentionSearchController["selectFileMentionNavigationItem"]
       >[0]
     );
 
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         groups: [
           expect.objectContaining({ id: "opened_files" }),
@@ -2542,6 +2794,540 @@ describe("AgentMentionSearchController", () => {
         ]
       })
     );
+    setAgentGuiI18nTestLocale("en");
+  });
+
+  it("loads nested workspace folders with child counts and returns one level at a time", async () => {
+    setAgentGuiI18nTestLocale("zh-CN");
+    const queryFiles = vi.fn(
+      async ({ directoryPath }: { directoryPath?: string }) => {
+        if (directoryPath === "/workspace/src/components") {
+          return {
+            entries: [
+              {
+                path: "/workspace/src/components/Button.tsx",
+                name: "Button.tsx",
+                kind: "file"
+              }
+            ]
+          };
+        }
+        if (directoryPath === "/workspace/src") {
+          return {
+            entries: [
+              {
+                path: "/workspace/src/components",
+                name: "components",
+                kind: "directory",
+                childCount: 1
+              },
+              {
+                path: "/workspace/src/index.ts",
+                name: "index.ts",
+                kind: "file"
+              }
+            ]
+          };
+        }
+        return {
+          entries: [
+            {
+              path: "/workspace/src",
+              name: "src",
+              kind: "directory",
+              childCount: 2
+            }
+          ]
+        };
+      }
+    );
+    const controller = new AgentMentionSearchController({ queryFiles });
+    const states: AgentMentionSearchState[] = [];
+    controller.subscribe((state) => states.push(state));
+
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+    controller.setFilter("file");
+
+    await waitForFast(() =>
+      expect(states.at(-1)?.groups).toEqual([
+        expect.objectContaining({
+          id: "opened_files",
+          items: [
+            expect.objectContaining({
+              childCount: 2,
+              entryKind: "directory",
+              mentionNavigation: "workspace-folder",
+              path: "/workspace/src"
+            })
+          ]
+        }),
+        expect.objectContaining({ id: "agent_generated_files" })
+      ])
+    );
+
+    const rootFolder = states
+      .at(-1)
+      ?.groups.find((group) => group.id === "opened_files")
+      ?.items.at(0);
+    expect(rootFolder).toBeDefined();
+    expect(controller.selectFileMentionNavigationItem(rootFolder!)).toBe(true);
+
+    await waitForFast(() =>
+      expect(states.at(-1)?.groups[0]).toMatchObject({
+        id: "opened_files",
+        items: [
+          expect.objectContaining({
+            mentionNavigation: "workspace-folder-back",
+            name: "返回"
+          }),
+          expect.objectContaining({
+            childCount: 1,
+            mentionNavigation: "workspace-folder",
+            path: "/workspace/src/components"
+          }),
+          expect.objectContaining({ path: "/workspace/src/index.ts" })
+        ]
+      })
+    );
+
+    const nestedFolder = states
+      .at(-1)
+      ?.groups.find((group) => group.id === "opened_files")
+      ?.items.find(
+        (item) =>
+          item.kind === "file" && item.path === "/workspace/src/components"
+      );
+    expect(nestedFolder).toBeDefined();
+    expect(controller.selectFileMentionNavigationItem(nestedFolder!)).toBe(
+      true
+    );
+
+    await waitForFast(() =>
+      expect(states.at(-1)?.groups[0]?.items).toEqual([
+        expect.objectContaining({
+          mentionNavigation: "workspace-folder-back",
+          path: "/workspace/src/components"
+        }),
+        expect.objectContaining({
+          path: "/workspace/src/components/Button.tsx"
+        })
+      ])
+    );
+
+    expect(controller.exitFileMentionBrowse()).toBe(true);
+    await waitForFast(() =>
+      expect(states.at(-1)?.groups[0]?.items).toEqual([
+        expect.objectContaining({
+          mentionNavigation: "workspace-folder-back",
+          path: "/workspace/src"
+        }),
+        expect.objectContaining({ path: "/workspace/src/components" }),
+        expect.objectContaining({ path: "/workspace/src/index.ts" })
+      ])
+    );
+    expect(queryFiles).toHaveBeenCalledWith(
+      expect.objectContaining({ directoryPath: "/workspace/src/components" })
+    );
+    expect(queryFiles).toHaveBeenCalledWith(
+      expect.objectContaining({ directoryPath: "/workspace/src" })
+    );
+
+    controller.dispose();
+    setAgentGuiI18nTestLocale("en");
+  });
+
+  it("keeps a directory request alive beyond the provider search timeout", async () => {
+    let resolveDirectory:
+      | ((value: {
+          entries: Array<{ path: string; name: string; kind: string }>;
+        }) => void)
+      | undefined;
+    const queryFiles = vi.fn(
+      ({ directoryPath }: { directoryPath?: string }) => {
+        if (directoryPath === "/workspace/src") {
+          return new Promise<{
+            entries: Array<{ path: string; name: string; kind: string }>;
+          }>((resolve) => {
+            resolveDirectory = resolve;
+          });
+        }
+        return Promise.resolve({
+          entries: [
+            {
+              path: "/workspace/src",
+              name: "src",
+              kind: "directory",
+              childCount: 1
+            }
+          ]
+        });
+      }
+    );
+    const controller = new AgentMentionSearchController({
+      providerTimeoutMs: 20,
+      queryFiles
+    });
+    const states: AgentMentionSearchState[] = [];
+    controller.subscribe((state) => states.push(state));
+
+    controller.setFilter("file");
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+    await waitForFast(() =>
+      expect(states.at(-1)?.groups[0]?.items[0]).toMatchObject({
+        mentionNavigation: "workspace-folder",
+        path: "/workspace/src"
+      })
+    );
+
+    const folder = states.at(-1)?.groups[0]?.items[0];
+    expect(folder).toBeDefined();
+    expect(controller.selectFileMentionNavigationItem(folder!)).toBe(true);
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(states.at(-1)).toMatchObject({
+      status: "loading",
+      error: null
+    });
+
+    resolveDirectory?.({
+      entries: [
+        {
+          path: "/workspace/src/index.ts",
+          name: "index.ts",
+          kind: "file"
+        }
+      ]
+    });
+    await waitForFast(() =>
+      expect(states.at(-1)).toMatchObject({
+        status: "ready",
+        groups: expect.arrayContaining([
+          expect.objectContaining({
+            id: "opened_files",
+            items: [
+              expect.objectContaining({
+                mentionNavigation: "workspace-folder-back"
+              }),
+              expect.objectContaining({
+                path: "/workspace/src/index.ts"
+              })
+            ]
+          })
+        ])
+      })
+    );
+  });
+
+  it("cancels an in-flight directory request when the search scope changes", async () => {
+    let resolveDirectory:
+      | ((value: readonly TestFileMentionItem[]) => void)
+      | undefined;
+    let directoryAbortSignal: AbortSignal | undefined;
+    const fileProvider = createTestFileProvider({
+      queryFiles: vi.fn().mockResolvedValue({
+        entries: [
+          {
+            path: "/workspace/src",
+            name: "src",
+            kind: "directory",
+            childCount: 1
+          }
+        ]
+      })
+    });
+    fileProvider.queryDirectory = (input) => {
+      directoryAbortSignal = input.abortSignal;
+      return new Promise<readonly TestFileMentionItem[]>((resolve) => {
+        resolveDirectory = resolve;
+      });
+    };
+    const controller = new AgentMentionSearchController({
+      contextMentionProviders: [fileProvider]
+    });
+    const states: AgentMentionSearchState[] = [];
+    controller.subscribe((state) => states.push(state));
+
+    controller.setFilter("file");
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+    await waitForFast(() =>
+      expect(states.at(-1)?.groups[0]?.items[0]).toMatchObject({
+        mentionNavigation: "workspace-folder",
+        path: "/workspace/src"
+      })
+    );
+
+    const folder = states.at(-1)?.groups[0]?.items[0];
+    expect(folder).toBeDefined();
+    expect(controller.selectFileMentionNavigationItem(folder!)).toBe(true);
+    expect(directoryAbortSignal?.aborted).toBe(false);
+
+    controller.updateQuery({ workspaceId: "room-2", query: "" });
+    expect(directoryAbortSignal?.aborted).toBe(true);
+    resolveDirectory?.([
+      {
+        href: "/workspace/src/stale.ts",
+        label: "stale.ts",
+        kind: "file"
+      }
+    ]);
+
+    await waitForFast(() =>
+      expect(states.at(-1)).toMatchObject({
+        status: "ready",
+        groups: expect.arrayContaining([
+          expect.objectContaining({
+            id: "opened_files",
+            items: [
+              expect.objectContaining({
+                mentionNavigation: "workspace-folder",
+                path: "/workspace/src"
+              })
+            ]
+          })
+        ])
+      })
+    );
+    expect(JSON.stringify(states.at(-1))).not.toContain("stale.ts");
+  });
+
+  it("surfaces directory provider failures instead of presenting an empty directory", async () => {
+    const controller = new AgentMentionSearchController({
+      queryFiles: vi.fn(({ directoryPath }: { directoryPath?: string }) => {
+        if (directoryPath === "/workspace/src") {
+          return Promise.reject(new Error("directory read failed"));
+        }
+        return Promise.resolve({
+          entries: [
+            {
+              path: "/workspace/src",
+              name: "src",
+              kind: "directory",
+              childCount: 1
+            }
+          ]
+        });
+      })
+    });
+    const states: AgentMentionSearchState[] = [];
+    controller.subscribe((state) => states.push(state));
+
+    controller.setFilter("file");
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+    await waitForFast(() =>
+      expect(states.at(-1)?.groups[0]?.items[0]).toMatchObject({
+        mentionNavigation: "workspace-folder",
+        path: "/workspace/src"
+      })
+    );
+
+    const folder = states.at(-1)?.groups[0]?.items[0];
+    expect(folder).toBeDefined();
+    expect(controller.selectFileMentionNavigationItem(folder!)).toBe(true);
+    await waitForFast(() =>
+      expect(states.at(-1)).toMatchObject({
+        status: "error",
+        error: "directory read failed"
+      })
+    );
+  });
+
+  it("fails closed when a file provider does not implement directory queries", async () => {
+    const query = vi.fn().mockResolvedValue([
+      {
+        childCount: 1,
+        href: "/workspace/src",
+        kind: "directory",
+        label: "src"
+      }
+    ]);
+    const fileProvider: AgentContextMentionProvider<TestFileMentionItem> = {
+      id: FILE_PROVIDER_ID,
+      trigger: "@",
+      query,
+      getItemDirectory: (item) => ({
+        childCount: item.childCount,
+        path: item.href
+      }),
+      getItemKey: (item) => item.href,
+      getItemLabel: (item) => item.label,
+      toInsertResult: (item) => ({
+        kind: "markdown-link",
+        label: item.label,
+        href: item.href
+      })
+    };
+    const controller = new AgentMentionSearchController({
+      contextMentionProviders: [fileProvider]
+    });
+    const states: AgentMentionSearchState[] = [];
+    controller.subscribe((state) => states.push(state));
+
+    controller.setFilter("file");
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+    await waitForFast(() =>
+      expect(states.at(-1)?.groups[0]?.items[0]).toMatchObject({
+        mentionNavigation: "workspace-folder",
+        path: "/workspace/src"
+      })
+    );
+
+    const folder = states.at(-1)?.groups[0]?.items[0];
+    expect(folder).toBeDefined();
+    expect(controller.selectFileMentionNavigationItem(folder!)).toBe(true);
+    await waitForFast(() =>
+      expect(states.at(-1)).toMatchObject({
+        status: "error",
+        error: "Mention provider does not support directory browsing."
+      })
+    );
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps workspace and agent-generated folder navigation independent", async () => {
+    setAgentGuiI18nTestLocale("zh-CN");
+    const queryFiles = vi.fn(
+      async ({ directoryPath }: { directoryPath?: string }) => ({
+        entries:
+          directoryPath === "/workspace/src"
+            ? [
+                {
+                  path: "/workspace/src/index.ts",
+                  name: "index.ts",
+                  kind: "file"
+                }
+              ]
+            : [
+                {
+                  path: "/workspace/src",
+                  name: "src",
+                  kind: "directory",
+                  childCount: 1
+                }
+              ]
+      })
+    );
+    const controller = new AgentMentionSearchController({
+      queryFiles,
+      queryAgentGeneratedFiles: vi.fn().mockResolvedValue({
+        entries: [
+          {
+            path: "/workspace/generated/app.js",
+            name: "app.js"
+          },
+          {
+            path: "/workspace/generated/index.html",
+            name: "index.html"
+          }
+        ]
+      })
+    });
+    const states: AgentMentionSearchState[] = [];
+    controller.subscribe((state) => states.push(state));
+
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+    controller.setFilter("file");
+
+    await waitForFast(() =>
+      expect(states.at(-1)?.groups).toEqual([
+        expect.objectContaining({
+          id: "opened_files",
+          items: [
+            expect.objectContaining({
+              mentionNavigation: "workspace-folder",
+              path: "/workspace/src"
+            })
+          ]
+        }),
+        expect.objectContaining({
+          id: "agent_generated_files",
+          items: [
+            expect.objectContaining({
+              mentionNavigation: "agent-generated-folder",
+              path: "/workspace/generated"
+            })
+          ]
+        })
+      ])
+    );
+
+    const workspaceFolder = states
+      .at(-1)
+      ?.groups.find((group) => group.id === "opened_files")
+      ?.items.find(
+        (item) =>
+          item.kind === "file" && item.mentionNavigation === "workspace-folder"
+      );
+    expect(workspaceFolder).toBeDefined();
+    expect(controller.selectFileMentionNavigationItem(workspaceFolder!)).toBe(
+      true
+    );
+
+    await waitForFast(() =>
+      expect(
+        states
+          .at(-1)
+          ?.groups.find((group) => group.id === "opened_files")
+          ?.items.at(0)
+      ).toMatchObject({ mentionNavigation: "workspace-folder-back" })
+    );
+
+    const generatedFolder = states
+      .at(-1)
+      ?.groups.find((group) => group.id === "agent_generated_files")
+      ?.items.find(
+        (item) =>
+          item.kind === "file" &&
+          item.mentionNavigation === "agent-generated-folder"
+      );
+    expect(generatedFolder).toBeDefined();
+    expect(controller.selectFileMentionNavigationItem(generatedFolder!)).toBe(
+      true
+    );
+
+    const bothNestedState = states.at(-1);
+    const workspaceBack = bothNestedState?.groups
+      .find((group) => group.id === "opened_files")
+      ?.items.find(
+        (item) =>
+          item.kind === "file" &&
+          item.mentionNavigation === "workspace-folder-back"
+      );
+    const generatedBack = bothNestedState?.groups
+      .find((group) => group.id === "agent_generated_files")
+      ?.items.find(
+        (item) =>
+          item.kind === "file" &&
+          item.mentionNavigation === "agent-generated-folder-back"
+      );
+    expect(workspaceBack).toBeDefined();
+    expect(generatedBack).toBeDefined();
+
+    expect(controller.selectFileMentionNavigationItem(workspaceBack!)).toBe(
+      true
+    );
+    await waitForFast(() =>
+      expect(
+        states
+          .at(-1)
+          ?.groups.find((group) => group.id === "opened_files")
+          ?.items.some(
+            (item) =>
+              item.kind === "file" &&
+              item.mentionNavigation === "workspace-folder-back"
+          )
+      ).toBe(false)
+    );
+    expect(
+      states
+        .at(-1)
+        ?.groups.find((group) => group.id === "agent_generated_files")
+        ?.items.at(0)
+    ).toMatchObject({ mentionNavigation: "agent-generated-folder-back" });
+
+    expect(controller.selectFileMentionNavigationItem(generatedBack!)).toBe(
+      true
+    );
+    controller.dispose();
     setAgentGuiI18nTestLocale("en");
   });
 
@@ -2614,7 +3400,7 @@ describe("AgentMentionSearchController", () => {
       query: ""
     });
 
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         mode: "browse",
@@ -2717,7 +3503,7 @@ describe("AgentMentionSearchController", () => {
     });
     controller.setFilter("session");
 
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         mode: "browse",
@@ -2816,7 +3602,7 @@ describe("AgentMentionSearchController", () => {
     });
     controller.setFilter("session");
 
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         mode: "browse",
@@ -2901,7 +3687,7 @@ describe("AgentMentionSearchController", () => {
       query: ""
     });
 
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         mode: "browse",
@@ -3042,7 +3828,7 @@ describe("AgentMentionSearchController", () => {
       query: ""
     });
 
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         mode: "browse",
@@ -3104,7 +3890,7 @@ describe("AgentMentionSearchController", () => {
       query: ""
     });
 
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         mode: "browse",
@@ -3153,7 +3939,7 @@ describe("AgentMentionSearchController", () => {
     });
     controller.setFilter("file");
 
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         mode: "browse",
@@ -3168,7 +3954,7 @@ describe("AgentMentionSearchController", () => {
     });
 
     await vi.advanceTimersByTimeAsync(20);
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         mode: "results",
@@ -3286,7 +4072,7 @@ describe("AgentMentionSearchController", () => {
     });
     await vi.advanceTimersByTimeAsync(20);
 
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         mode: "results",
@@ -3356,7 +4142,7 @@ describe("AgentMentionSearchController", () => {
       query: "design"
     });
     await vi.advanceTimersByTimeAsync(20);
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         mode: "results",
@@ -3371,7 +4157,7 @@ describe("AgentMentionSearchController", () => {
       filter: "app",
       query: "design"
     });
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         mode: "results",
@@ -3434,7 +4220,7 @@ describe("AgentMentionSearchController", () => {
     });
 
     await vi.advanceTimersByTimeAsync(20);
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         mode: "results",
@@ -3496,7 +4282,7 @@ describe("AgentMentionSearchController", () => {
     });
     controller.setFilter("issue");
 
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         mode: "browse",
@@ -3600,7 +4386,7 @@ describe("AgentMentionSearchController", () => {
     });
     controller.setFilter("session");
 
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         groups: [
@@ -3701,7 +4487,7 @@ describe("AgentMentionSearchController", () => {
     });
     controller.setFilter("session");
 
-    await vi.waitFor(() =>
+    await waitForFast(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
         query: "",

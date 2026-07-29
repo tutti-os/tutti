@@ -21,35 +21,100 @@ function createTestI18nRuntime() {
   );
 }
 
-test("stale preview reads do not overwrite a newer empty selection state", async () => {
-  const deferred = createDeferred<Uint8Array>();
-  const entry: WorkspaceFileEntry = {
+const workspaceID = "workspace-1";
+const defaultRoot = "/Users/demo/project";
+
+function createEntry(
+  path: string,
+  overrides: Partial<WorkspaceFileEntry> = {}
+): WorkspaceFileEntry {
+  const name = path.slice(path.lastIndexOf("/") + 1);
+  return {
     hasChildren: false,
     kind: "file",
     mtimeMs: null,
-    name: "notes.txt",
-    path: "/Users/demo/project/notes.txt",
-    sizeBytes: 5
+    name,
+    path,
+    sizeBytes: 5,
+    ...overrides
   };
-  const host: WorkspaceFileManagerHost = {
-    async listDirectory(input) {
-      return {
-        directoryPath: input.path,
-        entries: [entry],
-        root: "/Users/demo/project",
-        workspaceID: input.workspaceID
-      };
-    }
+}
+
+function createDirectoryListing(
+  path: string,
+  entries: WorkspaceFileEntry[] = [],
+  root = defaultRoot,
+  responseWorkspaceID = workspaceID
+) {
+  return {
+    directoryPath: path,
+    entries,
+    root,
+    workspaceID: responseWorkspaceID
   };
-  const session = createWorkspaceFileManagerService().createSession({
-    i18n: createTestI18nRuntime(),
+}
+
+function createSearchResult(
+  path: string,
+  kind: WorkspaceFileSearchResult["entries"][number]["kind"] = "file"
+): WorkspaceFileSearchResult {
+  return {
+    entries: [
+      {
+        directoryPath: path.slice(0, path.lastIndexOf("/")),
+        kind,
+        matchIndices: [0],
+        matchTarget: "basename",
+        name: path.slice(path.lastIndexOf("/") + 1),
+        path,
+        score: 1
+      }
+    ],
+    root: defaultRoot,
+    workspaceID
+  };
+}
+
+function createSession({
+  host,
+  i18n = createTestI18nRuntime(),
+  workspaceID: sessionWorkspaceID = workspaceID,
+  ...options
+}: Omit<
+  Parameters<
+    ReturnType<typeof createWorkspaceFileManagerService>["createSession"]
+  >[0],
+  "host" | "i18n" | "workspaceID"
+> & {
+  host?: Partial<WorkspaceFileManagerHost>;
+  i18n?: ReturnType<typeof createTestI18nRuntime>;
+  workspaceID?: string;
+} = {}) {
+  return createWorkspaceFileManagerService().createSession({
+    ...options,
     host: {
-      ...host,
+      async listDirectory(input) {
+        return createDirectoryListing(input.path);
+      },
+      ...host
+    },
+    i18n,
+    workspaceID: sessionWorkspaceID
+  });
+}
+
+test("stale preview reads do not overwrite a newer empty selection state", async () => {
+  const deferred = createDeferred<Uint8Array>();
+  const entry = createEntry("/Users/demo/project/notes.txt");
+  const session = createSession({
+    host: {
+      async listDirectory(input) {
+        return createDirectoryListing(input.path, [entry]);
+      },
       async readPreviewFile() {
         return deferred.promise;
       }
-    },
-    workspaceID: "workspace-1"
+    }
   });
   session.store.root = "/Users/demo/project";
 
@@ -72,38 +137,21 @@ test("stale preview reads do not overwrite a newer empty selection state", async
 
 test("preview mode transitions follow selection changes", async () => {
   const deferred = createDeferred<Uint8Array>();
-  const directoryEntry: WorkspaceFileEntry = {
+  const directoryEntry = createEntry("/Users/demo/project/src", {
     hasChildren: true,
     kind: "directory",
-    mtimeMs: null,
-    name: "src",
-    path: "/Users/demo/project/src",
     sizeBytes: null
-  };
-  const textEntry: WorkspaceFileEntry = {
-    hasChildren: false,
-    kind: "file",
-    mtimeMs: null,
-    name: "notes.txt",
-    path: "/Users/demo/project/notes.txt",
-    sizeBytes: 5
-  };
-  const session = createWorkspaceFileManagerService().createSession({
-    i18n: createTestI18nRuntime(),
+  });
+  const textEntry = createEntry("/Users/demo/project/notes.txt");
+  const session = createSession({
     host: {
       async listDirectory(input) {
-        return {
-          directoryPath: input.path,
-          entries: [directoryEntry, textEntry],
-          root: "/Users/demo/project",
-          workspaceID: input.workspaceID
-        };
+        return createDirectoryListing(input.path, [directoryEntry, textEntry]);
       },
       async readPreviewFile() {
         return deferred.promise;
       }
-    },
-    workspaceID: "workspace-1"
+    }
   });
 
   await session.initialize();
@@ -116,6 +164,9 @@ test("preview mode transitions follow selection changes", async () => {
   await flushMicrotasks();
   assert.equal(previewStatus(session), "loading");
   deferred.resolve(new TextEncoder().encode("hello"));
+  // Host returns bare bytes; preview controller wraps them in `{ bytes }`,
+  // which adds one extra async turn after the deferred resolves.
+  await flushMicrotasks();
   await flushMicrotasks();
   assert.equal(previewStatus(session), "text");
 
@@ -124,24 +175,13 @@ test("preview mode transitions follow selection changes", async () => {
 
 test("html files are previewed as source text", async () => {
   const content = "<!doctype html><h1>Hello</h1>";
-  const entry: WorkspaceFileEntry = {
-    hasChildren: false,
-    kind: "file",
-    mtimeMs: null,
-    name: "login.html",
-    path: "/Users/demo/project/login.html",
+  const entry = createEntry("/Users/demo/project/login.html", {
     sizeBytes: content.length
-  };
-  const session = createWorkspaceFileManagerService().createSession({
-    i18n: createTestI18nRuntime(),
+  });
+  const session = createSession({
     host: {
       async listDirectory(input) {
-        return {
-          directoryPath: input.path,
-          entries: [entry],
-          root: "/Users/demo/project",
-          workspaceID: input.workspaceID
-        };
+        return createDirectoryListing(input.path, [entry]);
       },
       async readPreviewFile() {
         return new TextEncoder().encode(content);
@@ -158,12 +198,13 @@ test("html files are previewed as source text", async () => {
   assert.deepEqual(session.store.previewState, {
     content,
     entry: {
-      fileKind: "text",
+      previewKind: "html",
       mtimeMs: null,
       name: "login.html",
       path: "/Users/demo/project/login.html",
       sizeBytes: content.length
     },
+    previewKind: "html",
     status: "text"
   });
 
@@ -172,32 +213,19 @@ test("html files are previewed as source text", async () => {
 
 test("preview state is stable across repeated selection and same i18n runtime", async () => {
   let previewReads = 0;
-  const entry: WorkspaceFileEntry = {
-    hasChildren: false,
-    kind: "file",
-    mtimeMs: null,
-    name: "notes.txt",
-    path: "/Users/demo/project/notes.txt",
-    sizeBytes: 5
-  };
+  const entry = createEntry("/Users/demo/project/notes.txt");
   const i18n = createTestI18nRuntime();
-  const session = createWorkspaceFileManagerService().createSession({
+  const session = createSession({
     i18n,
     host: {
       async listDirectory(input) {
-        return {
-          directoryPath: input.path,
-          entries: [entry],
-          root: "/Users/demo/project",
-          workspaceID: input.workspaceID
-        };
+        return createDirectoryListing(input.path, [entry]);
       },
       async readPreviewFile() {
         previewReads += 1;
         return new TextEncoder().encode("hello");
       }
-    },
-    workspaceID: "workspace-1"
+    }
   });
 
   await session.initialize();
@@ -220,30 +248,16 @@ test("preview state is stable across repeated selection and same i18n runtime", 
 });
 
 test("reselecting the same entry repairs an empty preview state", async () => {
-  const entry: WorkspaceFileEntry = {
-    hasChildren: false,
-    kind: "file",
-    mtimeMs: null,
-    name: "notes.txt",
-    path: "/Users/demo/project/notes.txt",
-    sizeBytes: 5
-  };
-  const session = createWorkspaceFileManagerService().createSession({
-    i18n: createTestI18nRuntime(),
+  const entry = createEntry("/Users/demo/project/notes.txt");
+  const session = createSession({
     host: {
       async listDirectory(input) {
-        return {
-          directoryPath: input.path,
-          entries: [entry],
-          root: "/Users/demo/project",
-          workspaceID: input.workspaceID
-        };
+        return createDirectoryListing(input.path, [entry]);
       },
       async readPreviewFile() {
         return new TextEncoder().encode("hello");
       }
-    },
-    workspaceID: "workspace-1"
+    }
   });
 
   await session.initialize();
@@ -262,44 +276,30 @@ test("reselecting the same entry repairs an empty preview state", async () => {
 });
 
 test("preview follows selected entries inside expanded directories", async () => {
-  const downloadsEntry: WorkspaceFileEntry = {
+  const downloadsEntry = createEntry("/Users/demo/Downloads", {
     hasChildren: true,
     kind: "directory",
-    mtimeMs: null,
-    name: "Downloads",
-    path: "/Users/demo/Downloads",
     sizeBytes: null
-  };
-  const nestedEntry: WorkspaceFileEntry = {
-    hasChildren: false,
-    kind: "file",
-    mtimeMs: null,
-    name: "notes.txt",
-    path: "/Users/demo/Downloads/notes.txt",
-    sizeBytes: 5
-  };
+  });
+  const nestedEntry = createEntry("/Users/demo/Downloads/notes.txt");
   const previewReads: string[] = [];
-  const session = createWorkspaceFileManagerService().createSession({
-    i18n: createTestI18nRuntime(),
+  const session = createSession({
     host: {
       async listDirectory(input) {
         const directoryPath = input.path || "/Users/demo";
-        return {
+        return createDirectoryListing(
           directoryPath,
-          entries:
-            directoryPath === downloadsEntry.path
-              ? [nestedEntry]
-              : [downloadsEntry],
-          root: "/Users/demo",
-          workspaceID: input.workspaceID
-        };
+          directoryPath === downloadsEntry.path
+            ? [nestedEntry]
+            : [downloadsEntry],
+          "/Users/demo"
+        );
       },
       async readPreviewFile(_workspaceID, path) {
         previewReads.push(path);
         return new TextEncoder().encode("hello");
       }
-    },
-    workspaceID: "workspace-1"
+    }
   });
 
   await session.initialize();
@@ -316,37 +316,22 @@ test("preview follows selected entries inside expanded directories", async () =>
 });
 
 test("openEntry enters directories and records navigation history", async () => {
-  const srcEntry: WorkspaceFileEntry = {
+  const srcEntry = createEntry("/Users/demo/project/src", {
     hasChildren: true,
     kind: "directory",
-    mtimeMs: null,
-    name: "src",
-    path: "/Users/demo/project/src",
     sizeBytes: null
-  };
-  const appEntry: WorkspaceFileEntry = {
-    hasChildren: false,
-    kind: "file",
-    mtimeMs: null,
-    name: "App.tsx",
-    path: "/Users/demo/project/src/App.tsx",
-    sizeBytes: 5
-  };
-  const session = createWorkspaceFileManagerService().createSession({
-    i18n: createTestI18nRuntime(),
+  });
+  const appEntry = createEntry("/Users/demo/project/src/App.tsx");
+  const session = createSession({
     host: {
       async listDirectory(input) {
         const directoryPath = input.path || "/Users/demo/project";
-        return {
+        return createDirectoryListing(
           directoryPath,
-          entries:
-            directoryPath === "/Users/demo/project" ? [srcEntry] : [appEntry],
-          root: "/Users/demo/project",
-          workspaceID: input.workspaceID
-        };
+          directoryPath === defaultRoot ? [srcEntry] : [appEntry]
+        );
       }
-    },
-    workspaceID: "workspace-1"
+    }
   });
 
   await session.initialize();
@@ -363,37 +348,22 @@ test("openEntry enters directories and records navigation history", async () => 
 });
 
 test("openEntry can re-enter a directory after navigating back", async () => {
-  const srcEntry: WorkspaceFileEntry = {
+  const srcEntry = createEntry("/Users/demo/project/src", {
     hasChildren: true,
     kind: "directory",
-    mtimeMs: null,
-    name: "src",
-    path: "/Users/demo/project/src",
     sizeBytes: null
-  };
-  const appEntry: WorkspaceFileEntry = {
-    hasChildren: false,
-    kind: "file",
-    mtimeMs: null,
-    name: "App.tsx",
-    path: "/Users/demo/project/src/App.tsx",
-    sizeBytes: 5
-  };
-  const session = createWorkspaceFileManagerService().createSession({
-    i18n: createTestI18nRuntime(),
+  });
+  const appEntry = createEntry("/Users/demo/project/src/App.tsx");
+  const session = createSession({
     host: {
       async listDirectory(input) {
         const directoryPath = input.path || "/Users/demo/project";
-        return {
+        return createDirectoryListing(
           directoryPath,
-          entries:
-            directoryPath === "/Users/demo/project" ? [srcEntry] : [appEntry],
-          root: "/Users/demo/project",
-          workspaceID: input.workspaceID
-        };
+          directoryPath === defaultRoot ? [srcEntry] : [appEntry]
+        );
       }
-    },
-    workspaceID: "workspace-1"
+    }
   });
 
   await session.initialize();
@@ -409,88 +379,17 @@ test("openEntry can re-enter a directory after navigating back", async () => {
   session.dispose();
 });
 
-test("import conflict confirm flow refreshes and clears the dialog", async () => {
-  let listCalls = 0;
-  let confirmCalls = 0;
-  const host: WorkspaceFileManagerHost = {
-    async listDirectory(input) {
-      listCalls += 1;
-      return {
-        directoryPath: input.path,
-        entries: [],
-        root: "/Users/demo/project",
-        workspaceID: input.workspaceID
-      };
-    }
-  };
-  const session = createWorkspaceFileManagerService().createSession({
-    host: {
-      ...host,
-      async importFiles() {
-        return {
-          supported: true,
-          importConflict: {
-            conflicts: [
-              {
-                conflictKind: "replaceable",
-                destinationKind: "file",
-                destinationPath: "/Users/demo/project/conflict.txt",
-                name: "conflict.txt",
-                sourcePath: "/tmp/conflict.txt"
-              }
-            ],
-            onConfirm: async () => {
-              confirmCalls += 1;
-              return { supported: true };
-            }
-          }
-        };
-      }
-    },
-    i18n: createTestI18nRuntime(),
-    workspaceID: "workspace-1"
-  });
-
-  await session.initialize();
-  assert.equal(listCalls, 1);
-
-  await session.importFiles("/Users/demo/project");
-  assert.equal(session.store.importConflictDialog?.conflicts.length, 1);
-  assert.equal(listCalls, 1);
-
-  await session.confirmImportConflict();
-  assert.equal(confirmCalls, 1);
-  assert.equal(session.store.importConflictDialog, null);
-  assert.equal(listCalls, 2);
-
-  session.dispose();
-});
-
 test("activation failures surface through the shared unsupported dialog state", async () => {
-  const entry: WorkspaceFileEntry = {
-    hasChildren: false,
-    kind: "file",
-    mtimeMs: null,
-    name: "notes.txt",
-    path: "/Users/demo/project/notes.txt",
-    sizeBytes: 5
-  };
-  const session = createWorkspaceFileManagerService().createSession({
+  const entry = createEntry("/Users/demo/project/notes.txt");
+  const session = createSession({
     host: {
       async listDirectory(input) {
-        return {
-          directoryPath: input.path,
-          entries: [entry],
-          root: "/Users/demo/project",
-          workspaceID: input.workspaceID
-        };
+        return createDirectoryListing(input.path, [entry]);
       },
       async activateFile() {
         throw new Error("Cannot open file");
       }
-    },
-    i18n: createTestI18nRuntime(),
-    workspaceID: "workspace-1"
+    }
   });
 
   await session.initialize();
@@ -509,23 +408,11 @@ test("activation failures surface through the shared unsupported dialog state", 
 });
 
 test("fallback activation action failures surface through shared unsupported state", async () => {
-  const entry: WorkspaceFileEntry = {
-    hasChildren: false,
-    kind: "file",
-    mtimeMs: null,
-    name: "notes.txt",
-    path: "/Users/demo/project/notes.txt",
-    sizeBytes: 5
-  };
-  const session = createWorkspaceFileManagerService().createSession({
+  const entry = createEntry("/Users/demo/project/notes.txt");
+  const session = createSession({
     host: {
       async listDirectory(input) {
-        return {
-          directoryPath: input.path,
-          entries: [entry],
-          root: "/Users/demo/project",
-          workspaceID: input.workspaceID
-        };
+        return createDirectoryListing(input.path, [entry]);
       },
       async activateFile() {
         return {
@@ -540,9 +427,7 @@ test("fallback activation action failures surface through shared unsupported sta
           disposition: "fallback" as const
         };
       }
-    },
-    i18n: createTestI18nRuntime(),
-    workspaceID: "workspace-1"
+    }
   });
 
   await session.initialize();
@@ -576,43 +461,22 @@ test("fallback activation action failures surface through shared unsupported sta
 
 test("mutations refresh the current directory after success", async () => {
   let listCalls = 0;
-  const host: WorkspaceFileManagerHost = {
-    async createFile() {
-      return {
-        hasChildren: false,
-        kind: "file",
-        mtimeMs: null,
-        name: "new-file.txt",
-        path: "/Users/demo/project/new-file.txt",
-        sizeBytes: 0
-      };
-    },
-    async listDirectory(input) {
-      listCalls += 1;
-      return {
-        directoryPath: input.path,
-        entries:
-          listCalls >= 2
-            ? [
-                {
-                  hasChildren: false,
-                  kind: "file",
-                  mtimeMs: null,
-                  name: "new-file.txt",
-                  path: "/Users/demo/project/new-file.txt",
-                  sizeBytes: 0
-                }
-              ]
-            : [],
-        root: "/Users/demo/project",
-        workspaceID: input.workspaceID
-      };
+  const newEntry = createEntry("/Users/demo/project/new-file.txt", {
+    sizeBytes: 0
+  });
+  const session = createSession({
+    host: {
+      async createFile() {
+        return newEntry;
+      },
+      async listDirectory(input) {
+        listCalls += 1;
+        return createDirectoryListing(
+          input.path,
+          listCalls >= 2 ? [newEntry] : []
+        );
+      }
     }
-  };
-  const session = createWorkspaceFileManagerService().createSession({
-    host,
-    i18n: createTestI18nRuntime(),
-    workspaceID: "workspace-1"
   });
 
   await session.initialize();
@@ -627,27 +491,167 @@ test("mutations refresh the current directory after success", async () => {
   session.dispose();
 });
 
+test("create dialog rejects names over 255 UTF-8 bytes before calling the host", async () => {
+  let createDirectoryCalls = 0;
+  const session = createSession({
+    host: {
+      async createDirectory(input) {
+        createDirectoryCalls += 1;
+        return createEntry(input.path, {
+          kind: "directory",
+          sizeBytes: null
+        });
+      }
+    }
+  });
+
+  session.openCreateDirectoryDialog();
+  session.updateCreateDialogName("你".repeat(86));
+  await session.confirmCreateDialog();
+
+  assert.equal(createDirectoryCalls, 0);
+  assert.equal(
+    session.store.createDialog?.errorMessage,
+    "Names must be 255 UTF-8 bytes or fewer"
+  );
+  assert.equal(session.store.error, null);
+
+  session.dispose();
+});
+
+test("inline rename rejects names over 255 UTF-8 bytes before calling the host", async () => {
+  let renameCalls = 0;
+  const entry = createEntry("/Users/demo/project/notes.txt");
+  const session = createSession({
+    host: {
+      async listDirectory(input) {
+        return createDirectoryListing(input.path, [entry]);
+      },
+      async renameEntry(input) {
+        renameCalls += 1;
+        return createEntry(input.path);
+      }
+    }
+  });
+
+  await session.initialize();
+  session.startInlineRename(entry);
+  const confirmed = await session.confirmInlineRename("a".repeat(256));
+
+  assert.equal(confirmed, false);
+  assert.equal(renameCalls, 0);
+  assert.equal(session.store.inlineRenameEntryPath, entry.path);
+  assert.equal(session.store.inlineRenameValidation, "tooLong");
+  assert.equal(session.store.error, null);
+
+  session.dispose();
+});
+
+test("copyToClipboard reports success and leaves no error behind", async () => {
+  const copyCalls: Array<{ paths: string[]; workspaceID: string }> = [];
+  const session = createSession({
+    host: {
+      async copyEntriesToClipboard(input) {
+        copyCalls.push(input);
+      }
+    }
+  });
+
+  await session.initialize();
+  const copied = await session.copyToClipboard(
+    createEntry("/Users/demo/project/deck.pptx")
+  );
+
+  assert.equal(copied, true);
+  assert.deepEqual(copyCalls, [
+    { paths: ["/Users/demo/project/deck.pptx"], workspaceID }
+  ]);
+  assert.equal(session.store.error, null);
+
+  session.dispose();
+});
+
+test("copyToClipboard surfaces host failures through the mutation error channel", async () => {
+  const failure = new Error("Clipboard is unavailable");
+  const messages: Array<{ actionKind: string; message: string }> = [];
+  const session = createSession({
+    host: {
+      async copyEntriesToClipboard() {
+        throw failure;
+      }
+    },
+    onMutationErrorMessage: (message) => {
+      messages.push({
+        actionKind: message.actionKind,
+        message: message.message
+      });
+      assert.equal(message.error, failure);
+      return true;
+    }
+  });
+
+  await session.initialize();
+  const copied = await session.copyToClipboard(
+    createEntry("/Users/demo/project/deck.pptx")
+  );
+
+  assert.equal(copied, false);
+  // Raw host errors stay internal; the package hands over its localized copy
+  // unless the host supplies resolveErrorMessage.
+  assert.deepEqual(messages, [
+    { actionKind: "copy", message: "Something went wrong. Please try again." }
+  ]);
+  // The host handled it, so the listing must not be replaced by an error state.
+  assert.equal(session.store.error, null);
+
+  session.dispose();
+});
+
+test("copyToClipboard falls back to the inline error when the host does not handle it", async () => {
+  const session = createSession({
+    host: {
+      async copyEntriesToClipboard() {
+        throw new Error("Clipboard is unavailable");
+      }
+    }
+  });
+
+  await session.initialize();
+  const copied = await session.copyToClipboard(
+    createEntry("/Users/demo/project/deck.pptx")
+  );
+
+  assert.equal(copied, false);
+  assert.equal(session.store.error, "Something went wrong. Please try again.");
+
+  session.dispose();
+});
+
+test("copyToClipboard reports false when the host cannot copy", async () => {
+  const session = createSession();
+
+  await session.initialize();
+  const copied = await session.copyToClipboard(
+    createEntry("/Users/demo/project/deck.pptx")
+  );
+
+  assert.equal(copied, false);
+  assert.equal(session.store.error, null);
+
+  session.dispose();
+});
+
 test("stale search results do not overwrite newer query results", async () => {
   const firstSearch = createDeferred<WorkspaceFileSearchResult>();
   const secondSearch = createDeferred<WorkspaceFileSearchResult>();
-  const session = createWorkspaceFileManagerService().createSession({
+  const session = createSession({
     host: {
-      async listDirectory(input) {
-        return {
-          directoryPath: input.path,
-          entries: [],
-          root: "/Users/demo/project",
-          workspaceID: input.workspaceID
-        };
-      },
       async search(input) {
         return input.query === "first"
           ? firstSearch.promise
           : secondSearch.promise;
       }
-    },
-    i18n: createTestI18nRuntime(),
-    workspaceID: "workspace-1"
+    }
   });
 
   await session.initialize();
@@ -656,38 +660,10 @@ test("stale search results do not overwrite newer query results", async () => {
   const secondPromise = session.search("second");
   await flushMicrotasks();
 
-  secondSearch.resolve({
-    entries: [
-      {
-        directoryPath: "/Users/demo/project",
-        kind: "file",
-        matchIndices: [0],
-        matchTarget: "basename",
-        name: "second.txt",
-        path: "/Users/demo/project/second.txt",
-        score: 1
-      }
-    ],
-    root: "/Users/demo/project",
-    workspaceID: "workspace-1"
-  });
+  secondSearch.resolve(createSearchResult("/Users/demo/project/second.txt"));
   await secondPromise;
 
-  firstSearch.resolve({
-    entries: [
-      {
-        directoryPath: "/Users/demo/project",
-        kind: "file",
-        matchIndices: [0],
-        matchTarget: "basename",
-        name: "first.txt",
-        path: "/Users/demo/project/first.txt",
-        score: 1
-      }
-    ],
-    root: "/Users/demo/project",
-    workspaceID: "workspace-1"
-  });
+  firstSearch.resolve(createSearchResult("/Users/demo/project/first.txt"));
   await firstPromise;
 
   assert.equal(session.store.searchQuery, "second");
@@ -702,40 +678,25 @@ test("stale search results do not overwrite newer query results", async () => {
 
 test("entering directories clears search state and ignores stale results", async () => {
   const deferredSearch = createDeferred<WorkspaceFileSearchResult>();
-  const srcEntry: WorkspaceFileEntry = {
+  const srcEntry = createEntry("/Users/demo/project/src", {
     hasChildren: true,
     kind: "directory",
-    mtimeMs: null,
-    name: "src",
-    path: "/Users/demo/project/src",
     sizeBytes: null
-  };
-  const appEntry: WorkspaceFileEntry = {
-    hasChildren: false,
-    kind: "file",
-    mtimeMs: null,
-    name: "App.tsx",
-    path: "/Users/demo/project/src/App.tsx",
-    sizeBytes: 5
-  };
-  const session = createWorkspaceFileManagerService().createSession({
+  });
+  const appEntry = createEntry("/Users/demo/project/src/App.tsx");
+  const session = createSession({
     host: {
       async listDirectory(input) {
         const directoryPath = input.path || "/Users/demo/project";
-        return {
+        return createDirectoryListing(
           directoryPath,
-          entries:
-            directoryPath === "/Users/demo/project" ? [srcEntry] : [appEntry],
-          root: "/Users/demo/project",
-          workspaceID: input.workspaceID
-        };
+          directoryPath === defaultRoot ? [srcEntry] : [appEntry]
+        );
       },
       async search() {
         return deferredSearch.promise;
       }
-    },
-    i18n: createTestI18nRuntime(),
-    workspaceID: "workspace-1"
+    }
   });
 
   await session.initialize();
@@ -751,21 +712,9 @@ test("entering directories clears search state and ignores stale results", async
   assert.deepEqual(session.store.searchEntries, []);
   assert.equal(session.store.isSearching, false);
 
-  deferredSearch.resolve({
-    entries: [
-      {
-        directoryPath: "/Users/demo/project",
-        kind: "directory",
-        matchIndices: [0],
-        matchTarget: "basename",
-        name: "src",
-        path: "/Users/demo/project/src",
-        score: 1
-      }
-    ],
-    root: "/Users/demo/project",
-    workspaceID: "workspace-1"
-  });
+  deferredSearch.resolve(
+    createSearchResult("/Users/demo/project/src", "directory")
+  );
   await searchPromise;
 
   assert.equal(session.store.searchQuery, "");
@@ -1031,16 +980,11 @@ test("setLocations reloads the selected directory when its path changes", async 
 
 test("external locations select without loading directories and persist their id", async () => {
   let copyCalls = 0;
-  let importCalls = 0;
   const listedPaths: string[] = [];
   const session = createWorkspaceFileManagerService().createSession({
     host: {
       async copyEntriesToClipboard() {
         copyCalls += 1;
-      },
-      async importFiles() {
-        importCalls += 1;
-        return { supported: true };
       },
       async listDirectory(input) {
         listedPaths.push(input.path);
@@ -1106,7 +1050,6 @@ test("external locations select without loading directories and persist their id
   await session.copyToClipboard(entry);
   session.startInlineRename(entry);
   session.openCreateFileDialog();
-  await session.importFiles("/Users/demo");
 
   assert.equal(
     session.store.selectedLocationId,
@@ -1119,7 +1062,6 @@ test("external locations select without loading directories and persist their id
   assert.equal(session.store.createDialog, null);
   assert.deepEqual(listedPaths, ["/Users/demo"]);
   assert.equal(copyCalls, 0);
-  assert.equal(importCalls, 0);
   assert.equal(
     session.getPersistedState().selectedLocationId,
     "reference:app-artifact:g:app"
@@ -1216,14 +1158,12 @@ test("recent locations load recent entries, search locally, and block mutations"
   assert.deepEqual(session.store.searchEntries, []);
 
   await session.createFile("/Users/demo/new.txt");
-  const importResult = await session.importFiles("/Users/demo");
   await session.refresh();
 
   assert.equal(createFileCalls, 0);
   assert.equal(hostSearchCalls, 0);
   assert.equal(listDirectoryCalls, 0);
   assert.equal(listRecentCalls, 4);
-  assert.equal(importResult.supported, false);
   session.dispose();
 });
 
@@ -1288,7 +1228,7 @@ test("explicit directory loads leave recent read-only mode", async () => {
 
   await session.initialize();
   await session.applyRevealIntent({
-    mode: "open-directory",
+    mode: "open",
     path: "/Users/demo/project",
     requestID: "open-directory-from-recent"
   });
@@ -1345,79 +1285,6 @@ test("directory location search is scoped with within", async () => {
   await session.search("app");
 
   assert.deepEqual(withinValues, ["/Users/demo/repo"]);
-  session.dispose();
-});
-
-test("host action result messages are emitted through the session callback", async () => {
-  const messages: string[] = [];
-  const session = createWorkspaceFileManagerService().createSession({
-    host: {
-      async listDirectory(input) {
-        return {
-          directoryPath: input.path,
-          entries: [],
-          root: "/Users/demo/project",
-          workspaceID: input.workspaceID
-        };
-      },
-      async importFiles() {
-        return {
-          completedMessage: "Import complete",
-          startedMessage: "Import started",
-          supported: true
-        };
-      }
-    },
-    i18n: createTestI18nRuntime(),
-    onHostActionMessage(message) {
-      messages.push(
-        `${message.actionKind}:${message.status}:${message.message}`
-      );
-    },
-    workspaceID: "workspace-1"
-  });
-
-  await session.initialize();
-  await session.importFiles("/Users/demo/project");
-
-  assert.deepEqual(messages, ["import:completed:Import complete"]);
-
-  session.dispose();
-});
-
-test("host action result emits started only when no terminal message is present", async () => {
-  const messages: string[] = [];
-  const session = createWorkspaceFileManagerService().createSession({
-    host: {
-      async listDirectory(input) {
-        return {
-          directoryPath: input.path,
-          entries: [],
-          root: "/Users/demo/project",
-          workspaceID: input.workspaceID
-        };
-      },
-      async importFiles() {
-        return {
-          startedMessage: "Import queued",
-          supported: true
-        };
-      }
-    },
-    i18n: createTestI18nRuntime(),
-    onHostActionMessage(message) {
-      messages.push(
-        `${message.actionKind}:${message.status}:${message.message}`
-      );
-    },
-    workspaceID: "workspace-1"
-  });
-
-  await session.initialize();
-  await session.importFiles("/Users/demo/project");
-
-  assert.deepEqual(messages, ["import:started:Import queued"]);
-
   session.dispose();
 });
 
@@ -1556,31 +1423,6 @@ test("opening the context menu does not change the selected preview target", asy
   session.dispose();
 });
 
-test("picker-only import capability does not claim drag-and-drop support", () => {
-  const session = createWorkspaceFileManagerService().createSession({
-    host: {
-      async listDirectory(input) {
-        return {
-          directoryPath: input.path,
-          entries: [],
-          root: "/Users/demo/project",
-          workspaceID: input.workspaceID
-        };
-      },
-      async importFiles() {
-        return { supported: true };
-      }
-    },
-    i18n: createTestI18nRuntime(),
-    workspaceID: "workspace-1"
-  });
-
-  assert.equal(session.store.capabilities.canImportFromPicker, true);
-  assert.equal(session.store.capabilities.canImportFromDrop, false);
-
-  session.dispose();
-});
-
 test("persisted state restores navigation state and excludes transient selection", async () => {
   const fileEntry: WorkspaceFileEntry = {
     hasChildren: false,
@@ -1669,7 +1511,7 @@ test("applyRevealIntent opens target directories directly when requested", async
   });
 
   await session.applyRevealIntent({
-    mode: "open-directory",
+    mode: "open",
     path: "/Users/demo/project/src",
     requestID: "open-directory-1"
   });
@@ -1771,6 +1613,49 @@ test("initialize preserves directory state already loaded by a reveal intent", a
   assert.deepEqual(listedPaths, ["/Users/demo/project/src"]);
   assert.equal(session.store.currentDirectoryPath, "/Users/demo/project/src");
   assert.equal(session.store.selectedPath, "/Users/demo/project/src/App.tsx");
+
+  session.dispose();
+});
+
+test("initialize still lists when only selectedPath is restored", async () => {
+  const listedPaths: string[] = [];
+  const session = createWorkspaceFileManagerService().createSession({
+    host: {
+      async listDirectory(input) {
+        listedPaths.push(input.path);
+        return {
+          directoryPath: "/Users/demo/project",
+          entries: [
+            {
+              hasChildren: false,
+              kind: "file",
+              mtimeMs: null,
+              name: "README.md",
+              path: "/Users/demo/project/README.md",
+              sizeBytes: 12
+            }
+          ],
+          root: "/Users/demo/project",
+          workspaceID: input.workspaceID
+        };
+      }
+    },
+    i18n: createTestI18nRuntime(),
+    initialDirectoryPath: "/Users/demo/project",
+    workspaceID: "workspace-1"
+  });
+  session.store.root = "/Users/demo/project";
+  session.store.currentDirectoryPath = "/Users/demo/project";
+  session.store.selectedPath = "/Users/demo/project/README.md";
+  session.store.entries = [];
+  session.store.isLoading = true;
+
+  await session.initialize();
+
+  assert.deepEqual(listedPaths, ["/Users/demo/project"]);
+  assert.equal(session.store.isLoading, false);
+  assert.equal(session.store.entries.length, 1);
+  assert.equal(session.store.entries[0]?.name, "README.md");
 
   session.dispose();
 });

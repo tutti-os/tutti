@@ -10,6 +10,9 @@ hooks and UI components in their owning packages.
 
 Prefer this package over adding new direct `useSyncExternalStore` wrappers in
 shared frontend packages so subscription semantics stay consistent.
+`useExternalStoreSnapshot` keeps its React subscription callbacks stable while
+the source identity is unchanged, so source consumers do not unsubscribe and
+resubscribe on each render.
 
 This package does not replace adapter-level snapshot memoization. If a non-React
 adapter exposes a derived `getSnapshot()`, keep reference-stable snapshot reuse

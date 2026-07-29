@@ -1,8 +1,5 @@
-import type {
-  AgentActivityDisplayStatus,
-  AgentActivityInteraction,
-  AgentActivityTurn
-} from "../types.ts";
+import type { AgentActivityInteraction, AgentActivityTurn } from "../types.ts";
+import type { AgentActivityDisplayStatus } from "../displayStatus.types.ts";
 import type { AgentSessionEngineState } from "./types.ts";
 import type {
   InteractionResponseState,
@@ -16,7 +13,10 @@ import {
 } from "./sessionEntityKeys.ts";
 import { selectLatestActivationForSession } from "./pendingIntents.selectors.ts";
 import { isPendingActivationViable } from "./pendingIntents.types.ts";
-import { deriveCanonicalSubmitAvailability } from "./sessionLifecycle.availability.ts";
+import {
+  deriveCanonicalSubmitAvailability,
+  type CanonicalSubmitAvailability
+} from "./sessionLifecycle.availability.ts";
 
 export interface WorkspaceAgentConsumerSession {
   activeTurn: AgentActivityTurn | null;
@@ -36,8 +36,18 @@ export interface WorkspaceAgentConsumerCounts {
 }
 
 export interface EngineSubmitAvailability {
-  reason?: "active_turn" | "waiting";
+  reason?: Exclude<CanonicalSubmitAvailability["reason"], undefined>;
   state: "available" | "blocked";
+}
+
+export function selectEngineSessionRuntimeAvailability(
+  state: AgentSessionEngineState,
+  agentSessionId: string | null | undefined
+) {
+  const id = agentSessionId?.trim() ?? "";
+  return (
+    state.sessionLifecycle.operationBySessionId[id]?.runtimeAvailability ?? null
+  );
 }
 
 const EMPTY_CONSUMER_COUNTS: WorkspaceAgentConsumerCounts = {
@@ -74,11 +84,7 @@ export function selectEngineTurnsForSession(
   if (!state.sessionLifecycle.sessionsById[id]) return [];
   return Object.values(state.sessionLifecycle.turnsById)
     .filter((turn) => turn.agentSessionId === id)
-    .sort(
-      (left, right) =>
-        left.startedAtUnixMs - right.startedAtUnixMs ||
-        left.turnId.localeCompare(right.turnId)
-    );
+    .sort(compareTurnsByOccurrence);
 }
 
 export function selectEngineActiveTurn(
@@ -190,7 +196,18 @@ export function selectEngineLatestTurn(
   state: AgentSessionEngineState,
   agentSessionId: string | null | undefined
 ): AgentActivityTurn | null {
-  return selectEngineTurnsForSession(state, agentSessionId).at(-1) ?? null;
+  const id = agentSessionId?.trim() ?? "";
+  if (!state.sessionLifecycle.sessionsById[id]) return null;
+  let latestTurn: AgentActivityTurn | null = null;
+  for (const turn of Object.values(state.sessionLifecycle.turnsById)) {
+    if (
+      turn.agentSessionId === id &&
+      (!latestTurn || compareTurnsByOccurrence(latestTurn, turn) < 0)
+    ) {
+      latestTurn = turn;
+    }
+  }
+  return latestTurn;
 }
 
 export function selectEngineInteractionsForSession(
@@ -273,16 +290,17 @@ export function selectEngineHasPendingInteractions(
   return selectEnginePendingInteractions(state, agentSessionId).length > 0;
 }
 
-export function selectEngineSessionError(
+/**
+ * Returns only failures from session-scoped commands. Canonical Turn failures
+ * belong to the owning Turn and must not be promoted into session chrome.
+ */
+export function selectEngineSessionOperationError(
   state: AgentSessionEngineState,
   agentSessionId: string | null | undefined
 ): string | null {
   const id = agentSessionId?.trim() ?? "";
-  const record = state.sessionLifecycle.operationBySessionId[id];
   return (
-    record?.operationError ??
-    selectEngineActiveTurn(state, id)?.error?.message ??
-    null
+    state.sessionLifecycle.operationBySessionId[id]?.operationError ?? null
   );
 }
 
@@ -290,19 +308,29 @@ export function selectWorkspaceAgentConsumerSessions(
   state: AgentSessionEngineState
 ): readonly WorkspaceAgentConsumerSession[] {
   return selectAllWorkspaceAgentConsumerSessions(state).filter(
-    (item) => item.session.kind === "root"
+    (item) => item.session.kind === "root" && item.session.visible !== false
   );
 }
 
 export function selectRootAgentSessionIdsWithPendingInteractions(
   state: AgentSessionEngineState
 ): readonly string[] {
+  const sessionIdsWithPendingInteractions = new Set<string>();
+  for (const interaction of Object.values(
+    state.sessionLifecycle.interactionsById
+  )) {
+    if (
+      interaction.status === "pending" &&
+      state.sessionLifecycle.turnsById[
+        canonicalTurnKey(interaction.agentSessionId, interaction.turnId)
+      ]
+    ) {
+      sessionIdsWithPendingInteractions.add(interaction.agentSessionId);
+    }
+  }
   const rootAgentSessionIds = new Set<string>();
   for (const session of Object.values(state.sessionLifecycle.sessionsById)) {
-    if (
-      selectEnginePendingInteractions(state, session.agentSessionId).length ===
-      0
-    ) {
+    if (!sessionIdsWithPendingInteractions.has(session.agentSessionId)) {
       continue;
     }
     const rootAgentSessionId =
@@ -363,13 +391,53 @@ export function selectWorkspaceAgentRootConversationSessions(
 export function selectAllWorkspaceAgentConsumerSessions(
   state: AgentSessionEngineState
 ): readonly WorkspaceAgentConsumerSession[] {
-  return Object.values(state.sessionLifecycle.sessionsById).map((session) => {
-    const activeTurn = selectEngineActiveTurn(state, session.agentSessionId);
-    const latestTurn = selectEngineLatestTurn(state, session.agentSessionId);
-    const pendingInteractions = selectEnginePendingInteractions(
-      state,
-      session.agentSessionId
+  const latestTurnsBySessionId = new Map<string, AgentActivityTurn>();
+  for (const turn of Object.values(state.sessionLifecycle.turnsById)) {
+    if (!state.sessionLifecycle.sessionsById[turn.agentSessionId]) continue;
+    const latestTurn = latestTurnsBySessionId.get(turn.agentSessionId);
+    if (!latestTurn || compareTurnsByOccurrence(latestTurn, turn) < 0) {
+      latestTurnsBySessionId.set(turn.agentSessionId, turn);
+    }
+  }
+
+  const pendingInteractionsBySessionId = new Map<
+    string,
+    AgentActivityInteraction[]
+  >();
+  for (const interaction of Object.values(
+    state.sessionLifecycle.interactionsById
+  )) {
+    if (
+      interaction.status !== "pending" ||
+      !state.sessionLifecycle.sessionsById[interaction.agentSessionId] ||
+      !state.sessionLifecycle.turnsById[
+        canonicalTurnKey(interaction.agentSessionId, interaction.turnId)
+      ]
+    ) {
+      continue;
+    }
+    const pendingInteractions =
+      pendingInteractionsBySessionId.get(interaction.agentSessionId) ?? [];
+    pendingInteractions.push(interaction);
+    pendingInteractionsBySessionId.set(
+      interaction.agentSessionId,
+      pendingInteractions
     );
+  }
+  for (const pendingInteractions of pendingInteractionsBySessionId.values()) {
+    pendingInteractions.sort(compareSessionInteractionsByOccurrence);
+  }
+
+  return Object.values(state.sessionLifecycle.sessionsById).map((session) => {
+    const activeTurn = session.activeTurnId
+      ? (state.sessionLifecycle.turnsById[
+          canonicalTurnKey(session.agentSessionId, session.activeTurnId)
+        ] ?? null)
+      : null;
+    const latestTurn =
+      latestTurnsBySessionId.get(session.agentSessionId) ?? null;
+    const pendingInteractions =
+      pendingInteractionsBySessionId.get(session.agentSessionId) ?? [];
     return {
       activeTurn,
       displayStatus: displayStatusFromCanonicalState({
@@ -495,5 +563,25 @@ function compareInteractionsByOccurrence(
     left.agentSessionId.localeCompare(right.agentSessionId) ||
     left.turnId.localeCompare(right.turnId) ||
     left.requestId.localeCompare(right.requestId)
+  );
+}
+
+function compareSessionInteractionsByOccurrence(
+  left: AgentActivityInteraction,
+  right: AgentActivityInteraction
+): number {
+  return (
+    left.createdAtUnixMs - right.createdAtUnixMs ||
+    left.requestId.localeCompare(right.requestId)
+  );
+}
+
+function compareTurnsByOccurrence(
+  left: AgentActivityTurn,
+  right: AgentActivityTurn
+): number {
+  return (
+    left.startedAtUnixMs - right.startedAtUnixMs ||
+    left.turnId.localeCompare(right.turnId)
   );
 }

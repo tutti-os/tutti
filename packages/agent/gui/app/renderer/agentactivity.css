@@ -2,30 +2,6 @@
 
 /* Restored agent activity renderer styles from the TSH desktop source during the GUI migration. */
 
-[data-agent-gui-preview="true"] {
-  pointer-events: none !important;
-  user-select: none;
-  -webkit-user-select: none;
-  cursor: default !important;
-  caret-color: transparent;
-}
-
-[data-agent-gui-preview="true"],
-[data-agent-gui-preview="true"] *,
-[data-agent-gui-preview="true"] *::before,
-[data-agent-gui-preview="true"] *::after {
-  animation: none !important;
-  transition: none !important;
-  scroll-behavior: auto !important;
-}
-
-[data-agent-gui-preview="true"] *,
-[data-agent-gui-preview="true"] *::before,
-[data-agent-gui-preview="true"] *::after {
-  caret-color: transparent !important;
-  cursor: default !important;
-}
-
 .workspace-agents-status-panel__detail-tool-code,
 .workspace-agents-status-panel__detail-tool-terminal,
 .workspace-agents-status-panel__detail-tool-diff,
@@ -152,12 +128,16 @@
   }
 }
 
-.tsh-zoom-dialog [data-rmiz-btn-unzoom] {
+.tsh-zoom-dialog__toolbar-actions {
   position: fixed;
   top: max(20px, calc(var(--cove-titlebar-reserve, 0px) + 10px));
   right: 20px;
   inset-inline-end: 20px;
   z-index: 100301;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  -webkit-app-region: no-drag;
 }
 
 .tsh-zoom-dialog__image {
@@ -167,15 +147,6 @@
   object-fit: contain;
   transform-origin: center center;
   cursor: zoom-out;
-}
-
-.tsh-zoom-dialog__image-actions {
-  position: fixed;
-  top: max(20px, calc(var(--cove-titlebar-reserve, 0px) + 10px));
-  right: 58px;
-  z-index: 100301;
-  display: flex;
-  gap: 6px;
 }
 
 .tsh-zoom-dialog__zoom-controls {
@@ -197,7 +168,7 @@
   -webkit-app-region: no-drag;
 }
 
-.tsh-zoom-dialog:not(:has(.tsh-zoom-dialog__image-actions))
+.tsh-zoom-dialog:not([data-tsh-image-actions="true"])
   .tsh-zoom-dialog__zoom-controls {
   right: 72px;
 }
@@ -209,14 +180,13 @@
   overflow: hidden;
   border: 1px solid var(--line-2);
   border-radius: 8px;
-  background: var(--background-panel);
+  background: var(--background-fronted);
   box-shadow: 0 18px 40px color-mix(in srgb, black 26%, transparent);
   color: var(--text-primary);
   padding: 4px;
   -webkit-app-region: no-drag;
 }
 
-.tsh-zoom-dialog__image-actions button,
 .tsh-zoom-dialog__zoom-controls button,
 .tsh-image-context-menu button {
   display: flex;
@@ -255,8 +225,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-.tsh-zoom-dialog__icon-button,
-.tsh-zoom-dialog__image-actions button {
+.tsh-zoom-dialog__icon-button {
   justify-content: center;
   width: 32px;
   height: 32px;
@@ -273,14 +242,285 @@
   padding: 7px 10px;
 }
 
-.tsh-zoom-dialog__icon-button:hover,
-.tsh-zoom-dialog__image-actions button:hover,
-.tsh-image-context-menu button:hover {
+.tsh-zoom-dialog__icon-button:hover {
   background: color-mix(in srgb, var(--background-panel) 82%, white 12%);
+}
+
+.tsh-image-context-menu button:hover {
+  background: var(--transparency-hover);
 }
 
 .tsh-zoom-dialog__zoom-controls button:not(:disabled):hover {
   background: color-mix(in srgb, var(--background-panel) 86%, black 8%);
+}
+
+.agent-markdown-mermaid {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin: 8px 0;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--background-panel);
+}
+
+.agent-markdown-mermaid__preview {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 16px;
+  outline: none;
+  cursor: zoom-in;
+}
+
+.agent-markdown-mermaid__preview:focus-visible {
+  box-shadow: inset 0 0 0 2px
+    color-mix(in srgb, var(--tutti-purple) 72%, transparent);
+}
+
+.agent-markdown-mermaid__preview-spacer {
+  min-height: 180px;
+}
+
+.agent-markdown-mermaid__svg {
+  display: flex;
+  min-width: min-content;
+  align-items: center;
+  justify-content: center;
+}
+
+.agent-markdown-mermaid__svg > svg {
+  display: block;
+  max-width: none;
+  height: auto;
+}
+
+.agent-markdown-mermaid__copy {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 5px;
+  background: color-mix(
+    in srgb,
+    var(--background-fronted, var(--background-panel)) 88%,
+    transparent
+  );
+  color: var(--text-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 120ms ease-out,
+    color 120ms ease-out,
+    background 120ms ease-out;
+}
+
+.agent-markdown-mermaid:hover .agent-markdown-mermaid__copy,
+.agent-markdown-mermaid__copy:focus-visible {
+  opacity: 1;
+}
+
+.agent-markdown-mermaid__copy:hover {
+  background: var(--transparency-hover);
+  color: var(--text-primary);
+}
+
+.agent-markdown-mermaid--loading {
+  min-height: 180px;
+  padding: 18px;
+}
+
+.agent-markdown-mermaid__placeholder {
+  position: relative;
+  min-height: 142px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--transparency-block);
+}
+
+.agent-markdown-mermaid__placeholder::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 24%,
+    color-mix(in srgb, var(--text-primary) 7%, transparent) 42%,
+    transparent 60%
+  );
+  content: "";
+  animation: agent-markdown-mermaid-shimmer 1.25s ease-in-out infinite;
+  transform: translateX(-100%);
+}
+
+.agent-markdown-mermaid__placeholder-node,
+.agent-markdown-mermaid__placeholder-edge {
+  position: absolute;
+  display: block;
+  background: color-mix(in srgb, var(--text-primary) 12%, transparent);
+}
+
+.agent-markdown-mermaid__placeholder-node {
+  width: 92px;
+  height: 34px;
+  border-radius: 6px;
+}
+
+.agent-markdown-mermaid__placeholder-node--start {
+  top: 20px;
+  left: calc(18% - 46px);
+}
+
+.agent-markdown-mermaid__placeholder-node--middle {
+  top: 88px;
+  left: calc(50% - 46px);
+}
+
+.agent-markdown-mermaid__placeholder-node--end {
+  top: 20px;
+  left: calc(82% - 46px);
+}
+
+.agent-markdown-mermaid__placeholder-edge {
+  top: 70px;
+  width: 25%;
+  height: 2px;
+  transform-origin: left center;
+}
+
+.agent-markdown-mermaid__placeholder-edge--first {
+  left: 22%;
+  transform: rotate(10deg);
+}
+
+.agent-markdown-mermaid__placeholder-edge--second {
+  left: 55%;
+  transform: rotate(-10deg);
+}
+
+@keyframes agent-markdown-mermaid-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.agent-markdown-mermaid--failed {
+  display: flex;
+  min-height: 96px;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 18px;
+  color: var(--text-secondary);
+}
+
+.agent-markdown-mermaid__failure-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: var(--transparency-block);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.agent-markdown-mermaid__failure-copy:hover {
+  background: var(--transparency-hover);
+}
+
+.agent-mermaid-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+  overflow: hidden;
+  -webkit-app-region: no-drag;
+}
+
+.agent-mermaid-viewer__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 60%);
+  backdrop-filter: blur(18px) saturate(1.02);
+}
+
+.agent-mermaid-viewer__stage {
+  position: absolute;
+  inset: 48px;
+  z-index: 100300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  outline: none;
+  cursor: default;
+  touch-action: none;
+  user-select: none;
+}
+
+.agent-mermaid-viewer[data-agent-mermaid-space-pressed="true"]
+  .agent-mermaid-viewer__stage {
+  cursor: grab;
+}
+
+.agent-mermaid-viewer[data-agent-mermaid-dragging="true"]
+  .agent-mermaid-viewer__stage {
+  cursor: grabbing;
+}
+
+.agent-mermaid-viewer__canvas {
+  width: 100%;
+  height: 100%;
+  transform-origin: center center;
+  will-change: transform;
+}
+
+.agent-mermaid-viewer__canvas .agent-markdown-mermaid__svg {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+}
+
+.agent-mermaid-viewer__canvas .agent-markdown-mermaid__svg > svg {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+}
+
+.agent-mermaid-viewer__zoom-controls {
+  right: 72px;
+}
+
+.agent-mermaid-viewer__hint {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  z-index: 100301;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--background-fronted);
+  box-shadow: 0 10px 28px color-mix(in srgb, black 24%, transparent);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-markdown-mermaid__placeholder::after {
+    animation: none;
+  }
 }
 
 .workspace-agents-status-panel {
@@ -322,7 +562,6 @@
   backdrop-filter: none;
   transform-origin: bottom left;
   -webkit-app-region: no-drag;
-  -webkit-backdrop-filter: none;
 }
 
 .workspace-agents-status-panel[data-layer="raised"] {
@@ -359,6 +598,10 @@
   border-radius: 0;
   background: var(--background-panel);
   color: var(--text-primary);
+}
+
+[data-testid="workspace-agent-message-center"][data-presentation="embedded"] {
+  width: 100%;
 }
 
 [data-testid="workspace-agent-message-center"]
@@ -904,7 +1147,6 @@ aside.workspace-agents-status-panel
   background: var(--transparency-block);
   cursor: grab;
   transition: background-color 160ms ease-in-out;
-  will-change: transform;
 }
 
 .workspace-agents-status-panel__scrollbar-thumb {
@@ -914,7 +1156,6 @@ aside.workspace-agents-status-panel
   background: var(--transparency-block);
   cursor: grab;
   transition: background-color 160ms ease-in-out;
-  will-change: transform;
 }
 
 .tsh-custom-scrollbar:hover .tsh-custom-scrollbar__thumb,
@@ -933,6 +1174,7 @@ aside.workspace-agents-status-panel
   .workspace-agents-status-panel__scrollbar-thumb {
   background: var(--transparency-hover);
   cursor: grabbing;
+  will-change: transform;
 }
 
 .agent-tool-scroll-area__scrollbar {
@@ -1992,7 +2234,6 @@ aside.workspace-agents-status-panel
     height 220ms ease,
     opacity 160ms ease,
     transform 180ms ease;
-  will-change: height, opacity, transform;
 }
 
 .agent-collapsible-reveal[data-expanded="true"] {
@@ -2842,7 +3083,6 @@ aside.workspace-agents-status-panel
   transition:
     border-radius 220ms cubic-bezier(0.16, 1, 0.3, 1),
     transform 280ms var(--agent-gui-chrome-card-spring);
-  will-change: transform;
 }
 
 @keyframes agent-gui-chrome-card-enter {
@@ -2922,30 +3162,29 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-chrome__card--connecting {
-  border-color: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-color: var(--agent-gui-border-subtle, var(--line-2));
   border-bottom: 0;
   border-top-left-radius: 8px;
   border-top-right-radius: 8px;
   border-bottom-right-radius: 0;
   border-bottom-left-radius: 0;
-  color: var(--accent);
+  color: var(--agent-gui-text-primary, var(--text-primary));
   align-items: center;
   min-height: 36px;
   padding: 6px 16px;
   cursor: default;
-  background:
-    linear-gradient(
-      color-mix(in srgb, var(--accent) 8%, transparent),
-      color-mix(in srgb, var(--accent) 8%, transparent)
-    ),
-    var(--background-fronted);
+  background: var(--agent-gui-surface-strong, var(--background-fronted));
 }
 
 .agent-gui-chrome__card--connecting .agent-gui-chrome__message {
   display: inline-flex;
   min-width: 0;
   align-items: center;
-  color: var(--accent);
+  color: var(--agent-gui-text-primary, var(--text-primary));
+}
+
+.agent-gui-chrome__card--connecting .agent-gui-chrome__icon {
+  color: var(--agent-gui-text-primary, var(--text-primary));
 }
 
 .agent-gui-chrome__card--danger {
@@ -3174,6 +3413,115 @@ aside.workspace-agents-status-panel
   color: var(--agent-gui-text-primary, var(--text-primary));
 }
 
+/* Tutti workflow intensity button: tint icon + tier label + value by tier.
+   Needs the extra attribute hook to outrank the goal-actions button rule. */
+.agent-gui-chrome__goal-actions button[data-agent-tutti-tier="cost"] {
+  color: var(--state-success);
+}
+
+.agent-gui-chrome__goal-actions button[data-agent-tutti-tier="balance"] {
+  color: var(--accent-codex);
+}
+
+.agent-gui-chrome__goal-actions button[data-agent-tutti-tier="powerful"] {
+  color: var(--tutti-purple);
+}
+
+/* The Tutti intensity chip is a non-button-like indicator: keep it flat on
+   hover instead of picking up the goal-actions button hover background. */
+.agent-gui-chrome__goal-actions button[data-agent-tutti-tier]:hover {
+  background: transparent;
+}
+
+.agent-gui-chrome__composer-disclosure {
+  display: grid;
+  min-width: 0;
+}
+
+.agent-gui-chrome__composer-disclosure-panel {
+  box-sizing: border-box;
+  max-height: min(52vh, 520px);
+  overflow: auto;
+  /* The translateY below fuses the panel with its own banner by painting
+     over the banner's top edge; the matching negative margin keeps the
+     panel flush with any card stacked above it instead of leaving a gap. */
+  margin-top: -12px;
+  border: 1px solid var(--agent-gui-border-subtle, var(--line-2));
+  border-bottom: 0;
+  border-radius: 12px 12px 0 0;
+  padding: 12px;
+  background: var(--agent-gui-surface-strong, var(--background-panel));
+  pointer-events: auto;
+  transform: translateY(12px);
+}
+
+/* Tutti workflow plan-review surfaces: --background-fronted base with an 8%
+   tutti-purple wash. Geometry (fused panel/banner overlap, radii, borders)
+   stays identical to the generic disclosure card. */
+.agent-gui-chrome__tutti-workflow-panel {
+  padding: 8px;
+  background: color-mix(
+    in srgb,
+    var(--tutti-purple) 8%,
+    var(--background-fronted)
+  );
+}
+
+.agent-gui-chrome__tutti-workflow-banner {
+  background: color-mix(
+    in srgb,
+    var(--tutti-purple) 8%,
+    var(--background-fronted)
+  );
+}
+
+.agent-gui-chrome__composer-disclosure[data-expanded="true"]
+  .agent-gui-chrome__composer-disclosure-banner {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.agent-gui-chrome__composer-disclosure-banner {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px;
+}
+
+.agent-gui-chrome__composer-disclosure-trigger {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--agent-gui-text-secondary, var(--text-secondary));
+  text-align: left;
+  cursor: pointer;
+}
+
+.agent-gui-chrome__composer-disclosure-trigger:focus-visible {
+  border-radius: 6px;
+  outline: 2px solid color-mix(in srgb, var(--tutti-purple) 62%, transparent);
+  outline-offset: 2px;
+}
+
+.agent-gui-chrome__composer-disclosure-chevron {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  transition: transform 160ms ease;
+}
+
+.agent-gui-chrome__composer-disclosure-chevron--expanded {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-gui-chrome__composer-disclosure-chevron {
+    transition: none;
+  }
+}
+
 .agent-gui-chrome__goal-edit-input {
   min-width: 0;
   flex: 1 1 auto;
@@ -3370,11 +3718,12 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-conversation__interactive-option-button {
-  position: relative;
-  display: grid;
-  gap: 3px;
-  justify-items: start;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  gap: 12px;
   width: 100%;
+  min-width: 0;
   border: 0;
   border-radius: 8px;
   background: var(--transparency-block);
@@ -3383,6 +3732,7 @@ aside.workspace-agents-status-panel
   font-size: 13px;
   font-weight: 500;
   line-height: 1.3;
+  outline: none;
   padding: 8px 8px 8px 12px;
   text-align: left;
   transition:
@@ -3401,8 +3751,12 @@ aside.workspace-agents-status-panel
     color-mix(in srgb, var(--text-primary) 24%, transparent);
 }
 
+.agent-gui-conversation__interactive-option-button:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
 .agent-gui-conversation__interactive-option-display {
-  position: relative;
   display: grid;
   gap: 3px;
   justify-items: start;
@@ -3455,31 +3809,22 @@ aside.workspace-agents-status-panel
   -webkit-line-clamp: 2;
 }
 
-.agent-gui-conversation__interactive-option-button:has(
-  .agent-gui-conversation__interactive-option-shortcut,
-  .agent-gui-conversation__interactive-option-spinner
-) {
-  padding-right: 8px;
-}
-
-.agent-gui-conversation__interactive-option-button:has(
-    .agent-gui-conversation__interactive-option-shortcut,
-    .agent-gui-conversation__interactive-option-spinner
-  )
-  .agent-gui-conversation__interactive-option-title,
-.agent-gui-conversation__interactive-option-button:has(
-    .agent-gui-conversation__interactive-option-shortcut,
-    .agent-gui-conversation__interactive-option-spinner
-  )
-  .agent-gui-conversation__interactive-option-description {
-  max-width: calc(100% - 112px);
+.agent-gui-conversation__interactive-option-content {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 3px;
+  justify-items: start;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .agent-gui-conversation__interactive-option-description {
+  max-width: 100%;
   color: var(--text-tertiary);
   font-size: 11px;
   font-weight: 400;
   line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .agent-gui-conversation__interactive-option-command-description {
@@ -3501,28 +3846,14 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-conversation__interactive-option-shortcut {
-  position: absolute;
-  top: 50%;
-  right: 8px;
-  display: inline-flex;
-  align-items: center;
-  height: 20px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--transparency-block) 72%, transparent);
-  color: var(--text-tertiary);
-  font-size: 11px;
+  flex: none;
+  margin-inline-start: auto;
   font-weight: 500;
-  line-height: 1;
-  padding: 4px 6px;
-  transform: translateY(-50%);
 }
 
 .agent-gui-conversation__interactive-option-spinner {
-  position: absolute;
-  top: 50%;
-  right: 8px;
+  flex: none;
   color: currentColor;
-  transform: translateY(-50%);
 }
 
 .agent-gui-conversation__interactive-feedback-composer {
@@ -3613,14 +3944,6 @@ aside.workspace-agents-status-panel
   height: 22px;
 }
 
-.agent-gui-conversation__interactive-feedback-send-button
-  .agent-gui-conversation__interactive-option-spinner {
-  position: static;
-  top: auto;
-  right: auto;
-  transform: none;
-}
-
 .agent-gui-conversation__interactive-prompt-footer {
   display: grid;
   gap: 10px;
@@ -3633,27 +3956,6 @@ aside.workspace-agents-status-panel
   gap: 8px;
 }
 
-.agent-gui-conversation__interactive-prompt-actions
-  button:not([data-slot="button"]) {
-  min-height: 30px;
-  border: 1px solid var(--line-2);
-  border-radius: 999px;
-  background: var(--background-fronted);
-  color: var(--text-primary);
-  font-family: inherit;
-  font-size: 11px;
-  font-weight: 560;
-  padding: 6px 12px;
-}
-
-.agent-gui-conversation__interactive-prompt-actions
-  button:not([data-slot="button"]):disabled {
-  cursor: not-allowed;
-  background: var(--transparency-block);
-  color: var(--text-disabled);
-  opacity: 0.58;
-}
-
 .agent-gui-conversation__user-message-flow,
 .agent-gui-conversation__assistant-message-flow {
   display: grid;
@@ -3662,6 +3964,107 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-conversation__user-message-flow {
+  row-gap: 14px;
+  justify-items: end;
+}
+
+.agent-gui-conversation__participant-message-layout {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+}
+
+.agent-gui-conversation__participant-message-header {
+  display: flex;
+  max-width: 100%;
+  min-width: 0;
+  align-items: center;
+  column-gap: 8px;
+}
+
+/* The participant header sits directly above the thinking/tool-call info and
+   the message content, so it uses a tighter gap than the default 24px flow
+   spacing. */
+.agent-gui-conversation__assistant-message-flow
+  > .agent-gui-conversation__participant-message-header
+  + * {
+  margin-top: 8px;
+}
+
+/* Content below the header aligns with the participant name: assistant
+   content insets to the name's left edge, user content to the name's right
+   edge (28px avatar + 8px gap). The header is pulled back over the padding so
+   it stays flush with the flow edge. */
+.agent-gui-conversation__assistant-message-flow[data-agent-message-flow-participant="true"] {
+  padding-left: 36px;
+}
+
+.agent-gui-conversation__assistant-message-flow[data-agent-message-flow-participant="true"]
+  > .agent-gui-conversation__participant-message-header {
+  margin-left: -36px;
+}
+
+.agent-gui-conversation__user-message-flow[data-agent-message-flow-participant="true"] {
+  padding-right: 36px;
+}
+
+.agent-gui-conversation__user-message-flow[data-agent-message-flow-participant="true"]
+  > .agent-gui-conversation__participant-message-header {
+  margin-right: -36px;
+}
+
+/*
+ * Participant headers render once per visible turn. Later assistant-owned
+ * transcript rows are siblings of that header row, so carry the same
+ * avatar-and-gap inset onto their content without changing host row padding.
+ */
+.agent-gui-transcript-row[data-agent-transcript-row-participant-content="assistant"]
+  > * {
+  box-sizing: border-box;
+  padding-left: 36px;
+}
+
+.agent-gui-conversation__participant-name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Hairline ring + crisp circular edge for participant avatars. The ring is
+   painted on the avatar root (paint, anti-aliased on composited layers); the
+   radial-gradient mask on the surface keeps the clipped image edge smooth in
+   virtualized/composited lists where border-radius clipping is not
+   anti-aliased. */
+.agent-gui-conversation__participant-avatar {
+  border-radius: 50%;
+  box-shadow: 0 0 0 0.5px var(--line-2);
+}
+
+.agent-gui-conversation__participant-avatar [data-slot="avatar-surface"] {
+  -webkit-mask-image: radial-gradient(
+    circle closest-side,
+    #000 calc(100% - 1px),
+    transparent
+  );
+  mask-image: radial-gradient(
+    circle closest-side,
+    #000 calc(100% - 1px),
+    transparent
+  );
+}
+
+.agent-gui-conversation__participant-message-content {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+}
+
+.agent-gui-conversation__participant-message-layout[data-agent-message-speaker="user"]
+  > .agent-gui-conversation__participant-message-content {
   row-gap: 14px;
   justify-items: end;
 }
@@ -3682,9 +4085,7 @@ aside.workspace-agents-status-panel
   content: "";
 }
 
-.agent-gui-conversation__message-group:has(
-  > .agent-gui-conversation__message-footer
-) {
+.agent-gui-conversation__message-group[data-agent-message-footer="true"] {
   margin-bottom: 26px;
 }
 
@@ -3726,6 +4127,12 @@ aside.workspace-agents-status-panel
   transition:
     opacity 120ms ease,
     transform 120ms ease;
+}
+
+.agent-gui-conversation__message-footer
+  > .agent-gui-conversation__message-copy-button
+  + .agent-gui-conversation__message-copy-button {
+  margin-left: -8px;
 }
 
 .agent-gui-conversation__message-group[data-agent-message-speaker="user"]
@@ -3805,9 +4212,7 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-node__timeline
-  > .agent-gui-conversation__assistant-message-flow:has(
-    > .workspace-agents-status-panel__detail-thinking-disclosure:last-child
-  )
+  > .agent-gui-conversation__assistant-message-flow[data-agent-message-flow-thinking-last="true"]
   + :is(
     .workspace-agents-status-panel__detail-tool-section,
     .workspace-agents-status-panel__detail-tool-row
@@ -3817,9 +4222,7 @@ aside.workspace-agents-status-panel
     .workspace-agents-status-panel__detail-tool-section,
     .workspace-agents-status-panel__detail-tool-row
   )
-  + .agent-gui-conversation__assistant-message-flow:has(
-    > .workspace-agents-status-panel__detail-thinking-disclosure:first-child
-  ),
+  + .agent-gui-conversation__assistant-message-flow[data-agent-message-flow-thinking-first="true"],
 .agent-gui-node__timeline
   > :is(
     .workspace-agents-status-panel__detail-tool-section,
@@ -3833,63 +4236,23 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-node__timeline
-  > .agent-gui-transcript-row:has(
-    > .agent-gui-conversation__assistant-message-flow
-      > .workspace-agents-status-panel__detail-thinking-disclosure:last-child
-  )
-  + .agent-gui-transcript-row:has(
-    > :is(
-      .workspace-agents-status-panel__detail-tool-section,
-      .workspace-agents-status-panel__detail-tool-row
-    )
-  ),
+  > .agent-gui-transcript-row[data-agent-transcript-row-thinking-last="true"]
+  + .agent-gui-transcript-row[data-agent-transcript-row-kind="tool-group"],
 .agent-gui-node__timeline
-  > .agent-gui-transcript-row:has(
-    > :is(
-      .workspace-agents-status-panel__detail-tool-section,
-      .workspace-agents-status-panel__detail-tool-row
-    )
-  )
-  + .agent-gui-transcript-row:has(
-    > .agent-gui-conversation__assistant-message-flow
-      > .workspace-agents-status-panel__detail-thinking-disclosure:first-child
-  ),
+  > .agent-gui-transcript-row[data-agent-transcript-row-kind="tool-group"]
+  + .agent-gui-transcript-row[data-agent-transcript-row-thinking-first="true"],
 .agent-gui-node__timeline
-  > .agent-gui-transcript-row:has(
-    > :is(
-      .workspace-agents-status-panel__detail-tool-section,
-      .workspace-agents-status-panel__detail-tool-row
-    )
-  )
-  + .agent-gui-transcript-row:has(
-    > :is(
-      .workspace-agents-status-panel__detail-tool-section,
-      .workspace-agents-status-panel__detail-tool-row
-    )
-  ) {
+  > .agent-gui-transcript-row[data-agent-transcript-row-kind="tool-group"]
+  + .agent-gui-transcript-row[data-agent-transcript-row-kind="tool-group"] {
   margin-top: -8px;
 }
 
 .agent-gui-node__timeline
-  > .agent-gui-transcript-row:has(
-    > .agent-gui-conversation__assistant-message-flow
-  )
-  + .agent-gui-transcript-row:has(
-    > :is(
-      .workspace-agents-status-panel__detail-tool-section,
-      .workspace-agents-status-panel__detail-tool-row
-    )
-  ),
+  > .agent-gui-transcript-row[data-agent-transcript-row-speaker="assistant"]
+  + .agent-gui-transcript-row[data-agent-transcript-row-kind="tool-group"],
 .agent-gui-node__timeline
-  > .agent-gui-transcript-row:has(
-    > :is(
-      .workspace-agents-status-panel__detail-tool-section,
-      .workspace-agents-status-panel__detail-tool-row
-    )
-  )
-  + .agent-gui-transcript-row:has(
-    > .agent-gui-conversation__assistant-message-flow
-  ) {
+  > .agent-gui-transcript-row[data-agent-transcript-row-kind="tool-group"]
+  + .agent-gui-transcript-row[data-agent-transcript-row-speaker="assistant"] {
   margin-top: -12px;
 }
 
@@ -4400,6 +4763,12 @@ aside.workspace-agents-status-panel
   color: var(--folder);
 }
 
+[data-agent-file-mention="true"][data-agent-mention-kind="file"][data-upload-error="true"].tsh-agent-object-token--file {
+  border-color: color-mix(in srgb, var(--state-danger) 42%, transparent);
+  background: color-mix(in srgb, var(--state-danger) 8%, transparent);
+  color: var(--state-danger);
+}
+
 [data-agent-file-mention="true"][data-agent-mention-kind="file"][data-agent-file-entry-kind="directory"]
   .tsh-agent-object-token__icon {
   mask-image: url("./assets/icons/folder-filled.svg");
@@ -4489,7 +4858,7 @@ aside.workspace-agents-status-panel
     --background-session-sidepanel,
     rgb(244 245 247)
   );
-  --agent-gui-detail-padding-x: 32px;
+  --agent-gui-detail-padding-x: 48px;
   width: 100%;
   height: 100%;
   container: agent-gui-node / inline-size;
@@ -4548,13 +4917,13 @@ aside.workspace-agents-status-panel
   transition: none;
 }
 
-.workbench-window:has([data-agent-gui-workbench-header="true"]) {
+.workbench-window[data-window-header-layout="overlay"] {
   --agent-gui-workbench-header-height: 44px;
 
   grid-template-rows: minmax(0, 1fr);
 }
 
-.workbench-window:has([data-agent-gui-workbench-header="true"])
+.workbench-window[data-window-header-layout="overlay"]
   .workbench-window__header {
   position: absolute !important;
   top: 0 !important;
@@ -4573,43 +4942,27 @@ aside.workspace-agents-status-panel
   user-select: auto;
 }
 
-.workbench-window:has(
-    .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
-  )
+.workbench-window[data-agent-gui-standalone-window="true"]
   .workbench-window__header {
   cursor: grab !important;
 }
 
-.workbench-window:has(
-    .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
-  )
+.workbench-window[data-agent-gui-standalone-window="true"]
   .workbench-window__header:active {
   cursor: grabbing !important;
 }
 
-.workbench-window:has(
-    .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
-  )
+.workbench-window[data-window-header-layout="overlay"]
   .workbench-window__header {
   z-index: calc(var(--z-panel) + 1);
 }
 
-.workbench-window:has(
-    .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
-  )
-  .agent-gui-workbench-header::after {
-  display: none;
-}
-
-.workbench-window:has([data-agent-gui-workbench-header="true"])
-  .workbench-window__body {
+.workbench-window[data-window-header-layout="overlay"] .workbench-window__body {
   grid-row: 1;
   overflow: hidden;
 }
 
-.workbench-window:has(
-    .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
-  )
+.workbench-window[data-agent-gui-standalone-window="true"]
   .workbench-window__body {
   display: flex;
   width: 100%;
@@ -4671,7 +5024,7 @@ aside.workspace-agents-status-panel
   overscroll-behavior: contain;
 }
 
-.workbench-window:has([data-agent-gui-workbench-header="true"])
+.workbench-window[data-window-header-layout="overlay"]
   .agent-gui-node__provider-rail-panel {
   padding-top: var(--agent-gui-workbench-header-height);
 }
@@ -4680,27 +5033,21 @@ aside.workspace-agents-status-panel
    breathing room on the inner rail, so the "All" tile sits at header + 2px. The
    toolbar has no such wrapper, so fold the same 2px into its offset to keep the
    search field top aligned with the provider tiles. */
-.workbench-window:has([data-agent-gui-workbench-header="true"])
+.workbench-window[data-window-header-layout="overlay"]
   .agent-gui-node__rail-toolbar {
   padding-top: calc(var(--agent-gui-workbench-header-height) + 2px);
 }
 
-.workbench-window:has([data-agent-gui-workbench-header="true"])
+.workbench-window[data-window-header-layout="overlay"]
   .agent-gui-node__detail-panel {
   position: relative;
 }
 
-.workbench-window:has([data-agent-gui-workbench-header="true"])
-  .agent-gui-node__detail-header {
-  display: none;
-}
-
-.workbench-window:has([data-agent-gui-workbench-header="true"])
-  .agent-gui-node__detail {
+.workbench-window[data-window-header-layout="overlay"] .agent-gui-node__detail {
   padding-top: var(--agent-gui-workbench-header-height);
 }
 
-.workbench-window:has([data-agent-gui-workbench-header="true"])
+.workbench-window[data-window-header-layout="overlay"]
   .agent-gui-node__timeline-with-composer {
   padding-top: 20px;
 }
@@ -4762,12 +5109,6 @@ aside.workspace-agents-status-panel
   --agent-gui-workbench-header-title-max-width: calc(100% - 32px);
   --agent-gui-workbench-header-text: var(--text-primary);
   --agent-gui-workbench-header-muted: var(--text-secondary);
-  --agent-gui-workbench-header-divider: color-mix(
-    in srgb,
-    var(--text-primary) 4%,
-    transparent
-  );
-
   position: relative;
   display: grid;
   width: 100%;
@@ -4785,27 +5126,12 @@ aside.workspace-agents-status-panel
   user-select: none;
 }
 
-.agent-gui-workbench-header[data-agent-gui-workbench-header-has-session="true"]::after {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: var(--agent-gui-workbench-header-rail-width);
-  height: 1px;
-  background: var(--agent-gui-workbench-header-divider);
-  content: "";
-  pointer-events: none;
-}
-
 .agent-gui-workbench-header:active {
   cursor: grabbing;
 }
 
 .agent-gui-workbench-header[data-agent-gui-workbench-header-collapsed="true"] {
   grid-template-columns: minmax(0, 0px) minmax(0, 1fr);
-}
-
-.agent-gui-workbench-header[data-agent-gui-workbench-header-collapsed="true"]::after {
-  left: 0;
 }
 
 .agent-gui-workbench-header__primary {
@@ -4829,10 +5155,11 @@ aside.workspace-agents-status-panel
 }
 
 /*
- * The standalone window's tool actions belong to native-window chrome, so
- * collapsing the conversation rail must not pull them into the 720px content
- * cap. Let the primary row span the window and keep the same trailing inset as
- * the expanded detail row.
+ * Tool-sidebar actions belong to the single Agent window header regardless of
+ * whether that header is owned by the native window or an embedding host.
+ * Collapsing the conversation rail must not pull them into the 720px content
+ * cap. Let the primary row span the host header and keep the same trailing
+ * inset as the expanded detail row.
  *
  * The tool actions are absolutely positioned against the window's right edge,
  * so they no longer occupy space in the flex row. In the collapsed primary row
@@ -4842,7 +5169,7 @@ aside.workspace-agents-status-panel
  * trailing padding on the row itself so the title flex-grows and truncates
  * before it can reach them, regardless of what precedes it.
  */
-.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"][data-agent-gui-workbench-header-collapsed="true"]
+.agent-gui-workbench-header[data-agent-gui-workbench-header-tool-sidebar="true"][data-agent-gui-workbench-header-collapsed="true"]
   .agent-gui-workbench-header__primary {
   width: 100%;
   padding-inline-end: calc(
@@ -4851,18 +5178,18 @@ aside.workspace-agents-status-panel
   );
 }
 
-.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+.agent-gui-workbench-header[data-agent-gui-workbench-header-tool-sidebar="true"]
   .agent-gui-workbench-header__secondary-accessory {
   padding-right: 0;
 }
 
-/* Keep the standalone tool header on the same right edge as its body panel.
+/* Keep the tool header on the same right edge as its body panel.
    The body panel is right-anchored independently of the Agent header's rail
    grid; leaving this accessory in the grid makes its left edge drift when the
    panel expands to the available width. */
-.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+.agent-gui-workbench-header[data-agent-gui-workbench-header-tool-sidebar="true"]
   .agent-gui-workbench-header__secondary-accessory:has(
-    [data-standalone-agent-tool-sidebar-header="true"]
+    [data-agent-tool-sidebar-header="true"]
   ) {
   position: absolute;
   top: 0;
@@ -4871,13 +5198,13 @@ aside.workspace-agents-status-panel
 }
 
 /*
- * In the collapsed empty state there is no session title to anchor the control
- * cluster, so the detached-window button's margin-left:auto would strand the
- * icons at the far window edge. Drop the auto push so those window controls sit
- * as a compact group right after the traffic lights instead. Secondary tool
- * actions retain their own right alignment across the full header width.
+ * The detached-window button pushes the detail controls to the far edge while
+ * the conversation rail is expanded. Once the rail collapses, every primary
+ * control and the session title share one full-width row, so keep that group
+ * anchored immediately after the traffic lights. Secondary tool actions retain
+ * their own right alignment across the full header width.
  */
-.agent-gui-workbench-header[data-agent-gui-workbench-header-collapsed="true"][data-agent-gui-workbench-header-has-session="false"]
+.agent-gui-workbench-header[data-agent-gui-workbench-header-collapsed="true"]
   .agent-gui-workbench-header__detached-window {
   margin-left: 0;
 }
@@ -5063,10 +5390,11 @@ aside.workspace-agents-status-panel
    the whole rich title can share the Agent icon's vertical center directly. */
 .agent-gui-workbench-header__rich-title {
   display: block;
-  width: 0;
+  width: max-content;
   min-width: 0;
+  max-width: calc(100% - 36px);
   height: 24px;
-  flex: 1 1 0;
+  flex: 0 1 auto;
   overflow: hidden;
 }
 
@@ -5136,7 +5464,7 @@ aside.workspace-agents-status-panel
 
 .agent-gui-workbench-header__session-title {
   display: flex;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   max-width: min(100%, var(--agent-gui-workbench-header-title-max-width));
   margin-left: 4px;
   align-items: center;
@@ -5148,6 +5476,19 @@ aside.workspace-agents-status-panel
   height: 20px;
   flex: 0 0 auto;
   border-radius: 5px;
+}
+
+.agent-gui-workbench-header__session-icon-info-trigger {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  border-radius: 5px;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+
+.agent-gui-workbench-header__session-icon-info-trigger:focus-visible {
+  outline: auto;
 }
 
 .agent-gui-workbench-header__session-icon--pending {
@@ -5168,7 +5509,7 @@ aside.workspace-agents-status-panel
 .agent-gui-workbench-header__detail-title {
   display: flex;
   height: 100%;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   max-width: min(100%, var(--agent-gui-workbench-header-title-max-width));
   min-width: 0;
   align-items: center;
@@ -5177,13 +5518,24 @@ aside.workspace-agents-status-panel
   pointer-events: none;
 }
 
-.workbench-window:has(
-    .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+.agent-gui-workbench-header__session-title:has(
+    .agent-gui-workbench-header__session-menu-trigger
   )
+  > .agent-gui-workbench-header__title-text,
+.agent-gui-workbench-header__detail-title:has(
+    .agent-gui-workbench-header__session-menu-trigger
+  )
+  > .agent-gui-workbench-header__title-text {
+  max-width: calc(100% - 36px);
+}
+
+.agent-gui-workbench-header__session-menu-trigger {
+  pointer-events: auto;
+}
+
+.agent-gui-workbench-header[data-agent-gui-workbench-header-tool-sidebar="true"]
   .agent-gui-workbench-header__session-title,
-.workbench-window:has(
-    .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
-  )
+.agent-gui-workbench-header[data-agent-gui-workbench-header-tool-sidebar="true"]
   .agent-gui-workbench-header__detail-title {
   box-sizing: border-box;
   width: auto;
@@ -5202,7 +5554,7 @@ aside.workspace-agents-status-panel
  * max-width here so the reservation is not counted twice, which would strand
  * the title far short of the actions.
  */
-.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"][data-agent-gui-workbench-header-collapsed="true"]
+.agent-gui-workbench-header[data-agent-gui-workbench-header-tool-sidebar="true"][data-agent-gui-workbench-header-collapsed="true"]
   .agent-gui-workbench-header__session-title {
   max-width: 100%;
 }
@@ -5241,6 +5593,13 @@ aside.workspace-agents-status-panel
   background: transparent !important;
   color: var(--agent-gui-workbench-header-muted) !important;
   cursor: pointer;
+  /* Header chrome icon buttons must not animate: no hover fade, no
+     press-down motion inherited from the ui-system Button base. */
+  transition: none !important;
+}
+
+.agent-gui-workbench-header__icon-button:active {
+  transform: none !important;
 }
 
 .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
@@ -5277,7 +5636,7 @@ aside.workspace-agents-status-panel
   margin-left: -4px;
 }
 
-.workbench-window:has([data-workbench-node-render-error="true"])
+.agent-gui-workbench-header[data-agent-gui-workbench-header-body-error="true"]
   .agent-gui-workbench-header__rail-toggle {
   display: none !important;
 }
@@ -5458,7 +5817,7 @@ aside.workspace-agents-status-panel
   );
 }
 
-.workbench-window:has([data-agent-gui-workbench-header="true"])
+.workbench-window[data-window-header-layout="overlay"]
   .agent-gui-node__provider-rail-panel::after {
   top: var(--agent-gui-workbench-header-height);
 }
@@ -5523,7 +5882,7 @@ aside.workspace-agents-status-panel
   align-items: center;
   gap: 10px;
   min-width: 0;
-  padding: 2px 16px 16px;
+  padding: 2px 12px 16px 12px;
 }
 
 .agent-gui-node__project-rail-header {
@@ -5766,6 +6125,22 @@ aside.workspace-agents-status-panel
   height: 18px;
 }
 
+/* Plan-review decision copy: the send button widens into a labeled pill
+   ("Accept plan" / "Request changes") while the empty-send override is on. */
+.agent-gui-node__composer-send-button[data-plan-review-label="true"] {
+  display: inline-flex;
+  width: auto;
+  min-width: 28px;
+  max-width: 220px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px 0 12px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+}
+
 .agent-gui-node__composer-reference-trigger {
   min-width: 36px;
   min-height: 36px;
@@ -5838,36 +6213,6 @@ aside.workspace-agents-status-panel
   );
 }
 
-.agent-gui-node__account-reward-toast {
-  border: 1px solid rgba(218, 233, 255, 0.62);
-  background:
-    linear-gradient(
-      90deg,
-      rgba(18, 60, 142, 0.08),
-      rgba(20, 66, 160, 0.2) 58%,
-      rgba(12, 32, 92, 0.34)
-    ),
-    url("./assets/commercial/registration-credits-bg.png") center / cover
-      no-repeat;
-  box-shadow:
-    0 14px 28px rgba(0, 0, 0, 0.2),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.24);
-}
-
-.agent-gui-node__account-reward-toast::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(
-      circle at 17% 28%,
-      rgba(255, 255, 255, 0.5),
-      transparent 24%
-    ),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.14), transparent 54%);
-}
-
 .agent-gui-node__conversation-list {
   display: flex;
   flex-direction: column;
@@ -5877,13 +6222,73 @@ aside.workspace-agents-status-panel
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 0 10px 18px 12px;
+  /* The native overlay scrollbar does not reserve a gutter on macOS, so the
+     right inset must match the left side explicitly. */
+  padding: 0 12px 18px 12px;
 }
 
 .agent-gui-node__conversation-section {
+  position: relative;
   display: grid;
   min-width: 0;
   max-width: 100%;
+}
+
+.agent-gui-node__pinned-project-rail-header {
+  min-width: 0;
+  padding: 4px 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 18px;
+}
+
+.agent-gui-node__conversation-section[data-project-dragging="true"] {
+  opacity: 0.42;
+}
+
+.agent-gui-node__conversation-section[data-project-drop-indicator]::before {
+  position: absolute;
+  right: 6px;
+  left: 6px;
+  z-index: 4;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--agent-gui-accent);
+  content: "";
+  pointer-events: none;
+}
+
+.agent-gui-node__conversation-section[data-project-drop-indicator="before"]::before {
+  top: -1px;
+}
+
+.agent-gui-node__conversation-section[data-project-drop-indicator="after"]::before {
+  bottom: -1px;
+}
+
+.agent-gui-node__project-drag-image {
+  position: fixed;
+  top: -1000px;
+  left: -1000px;
+  display: flex;
+  max-width: 220px;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 7px;
+  background: var(--agent-gui-surface-raised);
+  box-shadow: var(--shadow-elevated);
+  color: var(--text-primary);
+  padding: 7px 10px;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.agent-gui-node__project-drag-image > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .agent-gui-node__conversation-section + .agent-gui-node__conversation-section {
@@ -6263,6 +6668,10 @@ button.agent-gui-node__conversation-section-toggle:hover
 }
 
 .agent-gui-node__conversation-item {
+  --agent-gui-conversation-actions-width: 72px;
+  --agent-gui-conversation-actions-inset: 4px;
+  --agent-gui-conversation-actions-gap: 8px;
+
   position: relative;
   display: block;
   box-sizing: border-box;
@@ -6282,8 +6691,18 @@ button.agent-gui-node__conversation-section-toggle:hover
     border-color 140ms ease;
 }
 
+.agent-gui-node__conversation-item:has(
+  .agent-gui-node__conversation-open-window-button
+) {
+  --agent-gui-conversation-actions-width: 96px;
+}
+
 .agent-gui-node__conversation-item:focus-within,
-.agent-gui-node__conversation-item:hover {
+.agent-gui-node__conversation-item:hover,
+.agent-gui-node__conversation-item[data-state="open"],
+.agent-gui-node__conversation-item:has(
+  .agent-gui-node__conversation-actions [data-state="open"]
+) {
   background-color: var(--agent-gui-surface-hover);
 }
 
@@ -6296,7 +6715,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   display: grid;
   box-sizing: border-box;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: var(--agent-gui-conversation-actions-gap);
   align-items: center;
   width: 100%;
   max-width: 100%;
@@ -6326,9 +6745,22 @@ button.agent-gui-node__conversation-section-toggle:hover
   padding-left: 26px;
 }
 
-.agent-gui-node__conversation-item:hover .agent-gui-node__conversation-select {
+.agent-gui-node__conversation-item:hover .agent-gui-node__conversation-select,
+.agent-gui-node__conversation-item[data-state="open"]
+  .agent-gui-node__conversation-select,
+.agent-gui-node__conversation-item:has(
+    .agent-gui-node__conversation-actions [data-state="open"]
+  )
+  .agent-gui-node__conversation-select,
+.agent-gui-node__conversation-item:has(
+    .agent-gui-node__conversation-actions:focus-within
+  )
+  .agent-gui-node__conversation-select {
   grid-template-columns: minmax(0, 1fr) 0;
-  padding-right: 96px;
+  padding-right: calc(
+    var(--agent-gui-conversation-actions-width) +
+      var(--agent-gui-conversation-actions-inset)
+  );
 }
 
 .agent-gui-node__conversation-item[data-pending-delete="true"]
@@ -6362,17 +6794,33 @@ button.agent-gui-node__conversation-section-toggle:hover
 .agent-gui-node__conversation-actions {
   position: absolute;
   top: 50%;
-  right: 4px;
+  right: var(--agent-gui-conversation-actions-inset);
   z-index: 1;
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
   gap: 0;
   box-sizing: border-box;
-  min-width: 72px;
+  min-width: var(--agent-gui-conversation-actions-width);
   max-width: calc(100% - 20px);
   opacity: 0;
   transform: translateY(-50%);
+}
+
+.agent-gui-node__conversation-more-button {
+  background: transparent;
+  color: var(--text-tertiary);
+}
+
+.agent-gui-node__conversation-more-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.agent-gui-node__conversation-more-button:not(:disabled):hover,
+.agent-gui-node__conversation-more-button:not(:disabled):focus-visible {
+  background: var(--transparency-hover);
+  color: var(--text-primary);
 }
 
 .agent-gui-node__conversation-delete-button,
@@ -6391,7 +6839,10 @@ button.agent-gui-node__conversation-section-toggle:hover
 }
 
 .agent-gui-node__conversation-item:hover .agent-gui-node__conversation-actions,
-.agent-gui-node__conversation-actions:focus-within {
+.agent-gui-node__conversation-item[data-state="open"]
+  .agent-gui-node__conversation-actions,
+.agent-gui-node__conversation-actions:focus-within,
+.agent-gui-node__conversation-actions:has([data-state="open"]) {
   opacity: 1;
   /* Only in the visible state: fading in on hover stays smooth while
      leaving the row swaps back to the meta icon instantly, with no
@@ -6431,8 +6882,14 @@ button.agent-gui-node__conversation-section-toggle:hover
 .agent-gui-node__conversation-item[data-pending-delete="true"]
   .agent-gui-node__conversation-meta,
 .agent-gui-node__conversation-item:hover .agent-gui-node__conversation-meta,
+.agent-gui-node__conversation-item[data-state="open"]
+  .agent-gui-node__conversation-meta,
 .agent-gui-node__conversation-item:has(
     .agent-gui-node__conversation-actions:focus-within
+  )
+  .agent-gui-node__conversation-meta,
+.agent-gui-node__conversation-item:has(
+    .agent-gui-node__conversation-actions [data-state="open"]
   )
   .agent-gui-node__conversation-meta {
   width: 0;
@@ -6452,16 +6909,26 @@ button.agent-gui-node__conversation-section-toggle:hover
 }
 
 .agent-gui-node__conversation-provider-icon {
-  display: inline-block;
   flex: 0 0 14px;
   width: 14px;
   height: 14px;
+}
+
+.agent-gui-node__conversation-provider-image {
+  display: block;
+  object-fit: contain;
+}
+
+.agent-gui-node__conversation-provider-mask-icon {
+  display: inline-block;
   color: var(--text-tertiary);
   background-color: currentColor;
-  mask: var(--agent-gui-conversation-provider-icon-url) center / contain
-    no-repeat;
-  -webkit-mask: var(--agent-gui-conversation-provider-icon-url) center / contain
-    no-repeat;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
 }
 
 .agent-gui-node__conversation-title-mention-icon {
@@ -6721,7 +7188,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   --agent-message-locator-dot-size: 6px;
   --agent-message-locator-hit-size: 36px;
   --agent-message-locator-center-offset: 18px;
-  --agent-message-locator-inline-shift: 4px;
+  --agent-message-locator-inline-shift: 8px;
   --agent-message-locator-scrollbar-gap: 8px;
   --agent-message-locator-visible-height: 100vh;
   --agent-message-locator-visible-top-offset: 0px;
@@ -7278,73 +7745,6 @@ button.agent-gui-node__conversation-section-toggle:hover
   justify-content: center;
 }
 
-.agent-gui-node__detail-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex: 0 0 auto;
-  box-sizing: border-box;
-  height: 64px;
-  min-height: 64px;
-  padding: 0 var(--agent-gui-detail-padding-x);
-}
-
-.agent-gui-node__detail-header-title-group {
-  display: flex;
-  flex: 1 1 auto;
-  min-width: 0;
-  max-width: 100%;
-  align-items: center;
-  gap: 6px;
-}
-
-.agent-gui-node__detail-header-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-primary);
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 20px;
-}
-
-.agent-gui-node__detail-header-path-info {
-  display: inline-flex;
-  width: 20px;
-  height: 20px;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-secondary);
-  opacity: 0;
-  visibility: hidden;
-  transition:
-    background-color 120ms ease,
-    color 120ms ease,
-    opacity 120ms ease,
-    visibility 120ms ease;
-}
-
-.agent-gui-node__detail-header-title-group:hover
-  .agent-gui-node__detail-header-path-info,
-.agent-gui-node__detail-header-title-group:focus-within
-  .agent-gui-node__detail-header-path-info {
-  opacity: 1;
-  visibility: visible;
-}
-
-.agent-gui-node__detail-header-path-info:hover,
-.agent-gui-node__detail-header-path-info:focus-visible {
-  background: var(--transparency-hover);
-  color: var(--text-primary);
-  outline: none;
-}
-
 .agent-gui-node__layout [data-slot="status-dot"],
 [data-testid="workspace-agent-message-center"] [data-slot="status-dot"] {
   --agent-gui-status-dot-color: var(
@@ -7664,6 +8064,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   max-height: var(--agent-gui-composer-input-max-height, 110px);
   align-items: end;
   align-self: end;
+  contain: layout;
   overflow: hidden;
   padding: 0 12px;
   border: 1px solid var(--line-2);
@@ -8326,11 +8727,12 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   white-space: nowrap;
 }
 
-/* Media, tables, rules, and explicit line breaks cannot collapse into one
-   text line — drop them from the preview entirely. */
+/* Standalone media, tables, rules, and explicit line breaks cannot collapse
+   into one text line — drop them from the preview entirely. MentionPill owns
+   its nested image icon, which remains part of the inline mention preview. */
 .agent-gui-node__composer-queued-prompt-text
   .agent-gui-node__composer-queued-prompt-markdown
-  :is(img, video, table, hr, br, input) {
+  :is(img, video, table, hr, br, input):not([data-slot="mention-pill"] *) {
   display: none;
 }
 
@@ -8339,20 +8741,34 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   width: max-content;
   max-width: min(100%, var(--agent-mention-max-width, 16rem));
   color: inherit;
-  vertical-align: baseline;
+  vertical-align: middle;
 }
 
+/* Entity mentions wrap the shared MentionPill in an interactive link. Keep
+   that link layout-only so the pill remains the single owner of its visual
+   box; otherwise the wrapper's padding and offset create a second pill around
+   it and push adjacent queued mentions apart. */
 .agent-gui-node__composer-queued-prompt-markdown
   [data-agent-file-mention="true"].tsh-agent-object-token--entity {
   color: inherit;
-  top: 3px;
+  top: 0;
+  gap: 0;
   max-width: min(100%, var(--agent-mention-max-width, 16rem));
-  min-height: 24px;
-  padding: 2px 4px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  line-height: 20px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  line-height: inherit;
   transition: none;
+}
+
+.agent-gui-node__composer-queued-prompt-markdown
+  [data-agent-file-mention="true"].tsh-agent-object-token--file,
+.agent-gui-node__composer-queued-prompt-markdown
+  [data-agent-file-mention="true"].tsh-agent-object-token--entity
+  > [data-slot="mention-pill"] {
+  top: 0;
+  vertical-align: middle;
 }
 
 .agent-gui-node__composer-queued-prompt-markdown
@@ -8572,7 +8988,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   p:not(.agent-rich-text-placeholder-node):not(:empty) {
   position: relative;
   top: 0;
-  line-height: 20px;
+  line-height: var(--agent-gui-composer-text-line-height);
 }
 
 .agent-gui-node__composer-textarea
@@ -8681,6 +9097,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   align-items: center;
   justify-content: center;
   color: var(--text-secondary);
+  contain: layout paint;
 }
 
 .agent-gui-node__composer-handoff-icon[data-playing="true"] {
@@ -8703,7 +9120,9 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   opacity: 1;
 }
 
-.agent-gui-node__composer-handoff-icon[data-playing="true"]
+.agent-gui-node__composer-handoff-icon:has(
+    .agent-gui-node__composer-handoff-icon-animated[data-active="true"]
+  )
   .agent-gui-node__composer-handoff-icon-static {
   opacity: 0;
 }
@@ -8711,13 +9130,76 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__composer-handoff-icon-animated {
   position: absolute;
   inset: 0;
-  filter: var(--agent-gui-handoff-lottie-filter, none);
+  /* Match the APNG's padded 44px canvas to the static icon's visual size. */
+  transform: scale(1.3);
+  filter: var(--agent-gui-handoff-animation-filter, none);
   opacity: 0;
   pointer-events: none;
 }
 
 .agent-gui-node__composer-handoff-icon-animated[data-active="true"] {
+  transform: translateZ(0) scale(1.3);
   opacity: 1;
+  backface-visibility: hidden;
+  will-change: opacity, transform;
+}
+
+.agent-gui-node__composer-tutti-mode-icon {
+  position: relative;
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  /* Inherit color from the chip label so the mark tracks every state:
+     text-secondary at rest, text-primary on hover, tutti-purple when armed. */
+  contain: layout paint;
+}
+
+.agent-gui-node__composer-tutti-mode-icon-static,
+.agent-gui-node__composer-tutti-mode-icon-animated {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+.agent-gui-node__composer-tutti-mode-icon-static {
+  background-color: currentColor;
+  opacity: 1;
+}
+
+.agent-gui-node__composer-tutti-mode-icon:has(
+    .agent-gui-node__composer-tutti-mode-icon-animated[data-active="true"]
+  )
+  .agent-gui-node__composer-tutti-mode-icon-static {
+  opacity: 0;
+}
+
+.agent-gui-node__composer-tutti-mode-icon-animated {
+  position: absolute;
+  inset: 0;
+  /* Match the 16px static mark exactly; the APNG canvas already pads the
+    snapping hand and bursting stars, so no enlargement is applied. */
+  opacity: 0;
+  pointer-events: none;
+}
+
+.agent-gui-node__composer-tutti-mode-icon-animated[data-active="true"] {
+  transform: translateZ(0);
+  opacity: 1;
+  backface-visibility: hidden;
+  will-change: opacity, transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-gui-node__composer-tutti-mode-icon-animated {
+    display: none;
+  }
+
+  .agent-gui-node__composer-tutti-mode-icon-static {
+    opacity: 1 !important;
+  }
 }
 
 .agent-gui-node__composer-handoff-icon[data-disabled="true"]
@@ -8725,14 +9207,24 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   opacity: 0;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .agent-gui-node__composer-handoff-icon-animated {
+    display: none;
+  }
+
+  .agent-gui-node__composer-handoff-icon-static {
+    opacity: 1 !important;
+  }
+}
+
 :root[data-theme="dark"] .agent-gui-node__composer-handoff-icon-animated {
-  --agent-gui-handoff-lottie-filter: brightness(0) invert(1);
+  --agent-gui-handoff-animation-filter: brightness(0) invert(1);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"])
     .agent-gui-node__composer-handoff-icon-animated {
-    --agent-gui-handoff-lottie-filter: brightness(0) invert(1);
+    --agent-gui-handoff-animation-filter: brightness(0) invert(1);
   }
 }
 
@@ -8774,8 +9266,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__composer-prompt-tip-track {
   display: block;
   min-width: 0;
-  animation: agent-gui-node-prompt-tip-in 180ms ease both;
-  will-change: transform;
+  animation: agent-gui-node-prompt-tip-in 180ms ease backwards;
 }
 
 .agent-gui-node__composer-prompt-tip[data-rotating="true"]
@@ -8783,6 +9274,15 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   animation: agent-gui-node-prompt-tip-track
     var(--agent-gui-prompt-tip-cycle-duration)
     steps(var(--agent-gui-prompt-tip-count)) infinite;
+  will-change: transform;
+}
+
+.agent-gui-node__layout[data-agent-gui-active="false"]
+  .agent-gui-node__composer-prompt-tip-track,
+.agent-gui-node__layout[data-agent-gui-active="false"]
+  .agent-gui-node__composer-prompt-tip-item {
+  animation: none;
+  will-change: auto;
 }
 
 .agent-gui-node__composer-prompt-tip-item {
@@ -8939,6 +9439,13 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   line-height: 1.2;
 }
 
+/* Plan-task assignment rows space items with the row gap instead of each
+   trigger's own horizontal padding. */
+.tutti-plan-task-assignment-row .agent-gui-node__composer-menu-trigger {
+  padding-right: 0;
+  padding-left: 0;
+}
+
 .agent-gui-node__composer-menu-item > span:last-child {
   min-width: 0;
   flex: 1 1 auto;
@@ -8950,14 +9457,27 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   min-width: 0;
 }
 
-.agent-gui-node__composer-menu-trigger[data-agent-plan-mode-badge="true"] {
+.agent-gui-node__composer-menu-trigger[data-agent-plan-mode-badge="true"],
+.agent-gui-node__composer-menu-trigger[data-agent-plan-mode-badge="true"]:hover:not(
+    :disabled
+  ) {
   color: var(--state-warning);
 }
 
-.agent-gui-node__composer-menu-trigger[data-agent-goal-badge="true"] {
+.agent-gui-node__composer-menu-trigger[data-agent-goal-badge="true"],
+.agent-gui-node__composer-menu-trigger[data-agent-goal-badge="true"]:hover:not(
+    :disabled
+  ) {
   color: var(--tutti-purple);
 }
 
+/* Active Tutti Mode chip: icon (bg-current) and label both go tutti-purple. */
+.agent-gui-node__composer-menu-trigger[data-agent-tutti-mode-active="true"],
+.agent-gui-node__composer-menu-trigger[data-agent-tutti-mode-active="true"]:hover:not(
+    :disabled
+  ) {
+  color: var(--tutti-purple);
+}
 .agent-gui-node__composer-menu-trigger:hover:not(:disabled) {
   color: var(--agent-gui-text-primary);
 }
@@ -9238,7 +9758,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   height: 32px;
   place-items: center;
   border: 0;
-  border-radius: 8px;
+  border-radius: 6px;
   background: transparent;
   color: var(--text-secondary);
   padding: 0;
@@ -9377,12 +9897,14 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   width: 32px;
   height: 32px;
   place-items: center;
+  overflow: visible;
   border: 2px solid transparent;
   border-radius: 8px;
   background: transparent;
   color: var(--text-tertiary);
   transition:
     border-color 140ms ease,
+    outline-color 140ms ease,
     background-color 140ms ease,
     color 140ms ease,
     opacity 140ms ease,
@@ -9391,14 +9913,15 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__provider-rail-tile:not([data-selected="true"])
   .agent-gui-node__provider-rail-avatar {
-  opacity: 0.38;
+  opacity: 1;
 }
 
-/* "Beta" tag straddling the selected icon's bottom border: its centerline sits
-   on the selected-state stroke, horizontally centered on the icon. */
+/* "Beta" tag straddling the selected icon's stroke: its centerline sits on
+   the avatar's outer edge (the stroke is centered there with a -1px
+   outline offset), horizontally centered on the icon. */
 .agent-gui-node__provider-rail-beta-badge {
   position: absolute;
-  top: calc(100% - 1px);
+  top: 100%;
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 2;
@@ -9417,11 +9940,15 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   color: var(--text-primary);
 }
 
+/* Selected stroke floats 1px outside the 28px icon container: a 2px outline
+   centered on the avatar's outer edge (-1px offset) leaves exactly 1px of
+   transparent gap between the container and the stroke's inner edge. */
 .agent-gui-node__provider-rail-tile[data-selected="true"]
   .agent-gui-node__provider-rail-avatar {
-  border-color: var(--brand-primary, var(--tutti-purple));
+  border-color: transparent;
   background: color-mix(in srgb, var(--background-fronted) 80%, white);
-  box-shadow: 0 0 0 1px color-mix(in srgb, white 45%, transparent);
+  outline: 2px solid var(--brand-primary, var(--tutti-purple));
+  outline-offset: -1px;
   color: var(--brand-primary, var(--tutti-purple));
 }
 
@@ -9462,6 +9989,8 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   border-radius: 999px;
   background: var(--background-fronted);
   pointer-events: none;
+  font-size: 9px;
+  line-height: 1;
 }
 
 .agent-gui-node__agent-avatar-badge-image {
@@ -9698,7 +10227,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   height: 48px;
   object-fit: contain;
   animation: agent-gui-empty-hero-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) 40ms
-    both;
+    backwards;
 }
 
 /* Empty-hero agent carousel ("All" tab): a three.js ring of same-sized agent
@@ -9713,7 +10242,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   outline: none;
   touch-action: pan-y;
   animation: agent-gui-empty-hero-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) 40ms
-    both;
+    backwards;
 }
 
 /* Reference VinylPlayer structure, scaled from 440px to the 112px hero slot. */
@@ -9864,6 +10393,23 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
     ),
     #111;
   box-shadow: 0 4px 15px rgb(0 0 0 / 60%);
+  animation: agent-gui-vinyl-player-record-spin 4s linear infinite paused;
+}
+
+.agent-gui-vinyl-player__record--playing {
+  animation-play-state: running;
+}
+
+@keyframes agent-gui-vinyl-player-record-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-gui-vinyl-player__record {
+    animation: none;
+  }
 }
 
 .agent-gui-vinyl-player__groove,
@@ -9978,6 +10524,27 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   box-shadow: inset 0 2px 5px rgb(0 0 0 / 30%);
 }
 
+/* Match the WebGL carousel's historical BADGE_DIAMETER (0.36) and
+   BADGE_OFFSET (0.4): the selected DOM player must keep the same owner-marker
+   geometry as the records that move into and out of the center slot. */
+.agent-gui-vinyl-player__owner-badge {
+  position: absolute;
+  right: -8%;
+  bottom: -8%;
+  z-index: 5;
+  box-sizing: border-box;
+  display: grid;
+  width: 36%;
+  aspect-ratio: 1;
+  place-items: center;
+  overflow: hidden;
+  border: 8px solid var(--background-fronted);
+  border-radius: 999px;
+  background: var(--background-fronted);
+  font-size: 18px;
+  line-height: 1;
+}
+
 .agent-gui-node__empty-hero-carousel:has(:focus-visible) {
   border-radius: 12px;
   box-shadow: 0 0 0 1.5px var(--tutti-purple);
@@ -10032,7 +10599,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   line-height: 1.3;
   font-weight: 500;
   animation: agent-gui-empty-hero-enter 280ms cubic-bezier(0.16, 1, 0.3, 1)
-    110ms both;
+    110ms backwards;
 }
 
 .agent-gui-node__empty-hero-provider {
@@ -10068,7 +10635,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   font-size: 14px;
   line-height: 1.55;
   animation: agent-gui-empty-hero-enter 280ms cubic-bezier(0.16, 1, 0.3, 1)
-    150ms both;
+    150ms backwards;
 }
 
 .agent-gui-node__empty-provider-gate-status {
@@ -10077,14 +10644,14 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   font-size: 13px;
   line-height: 20px;
   animation: agent-gui-empty-hero-enter 280ms cubic-bezier(0.16, 1, 0.3, 1)
-    170ms both;
+    170ms backwards;
 }
 
 .agent-gui-node__empty-provider-gate-action {
   /* Container gap is 8px; add 16px so the description-to-button spacing is 24px. */
   margin-top: 16px;
   animation: agent-gui-empty-hero-enter 300ms cubic-bezier(0.16, 1, 0.3, 1)
-    190ms both;
+    190ms backwards;
 }
 
 .agent-gui-node__empty-hero-provider-select {
@@ -10136,7 +10703,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__empty-hero-body > .agent-gui-node__composer-hero {
   animation: agent-gui-empty-hero-enter 300ms cubic-bezier(0.16, 1, 0.3, 1)
-    180ms both;
+    180ms backwards;
 }
 
 .agent-gui-node__empty-hero-suggestions {
@@ -10147,7 +10714,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   gap: 12px;
   justify-items: stretch;
   animation: agent-gui-empty-hero-enter 300ms cubic-bezier(0.16, 1, 0.3, 1)
-    240ms both;
+    240ms backwards;
 }
 
 .agent-gui-node__empty-hero-suggestions-chips {
@@ -10208,7 +10775,8 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   background: var(--background-fronted);
   padding: 8px;
   box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.28);
-  animation: agent-gui-empty-hero-enter 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: agent-gui-empty-hero-enter 220ms cubic-bezier(0.16, 1, 0.3, 1)
+    backwards;
 }
 
 .agent-gui-node__empty-hero-suggestions-card-header {
@@ -10292,6 +10860,28 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   .agent-gui-node__empty-hero-body > .agent-gui-node__empty-hero-suggestions {
     width: 100%;
   }
+}
+
+[data-workspace-node-window-kind="agentGui"][data-workspace-node-window-appearance="embedded"]
+  .agent-gui-node__empty-hero-icon-effect,
+[data-workspace-node-window-kind="agentGui"][data-workspace-node-window-appearance="embedded"]
+  .agent-gui-node__empty-hero-carousel,
+[data-workspace-node-window-kind="agentGui"][data-workspace-node-window-appearance="embedded"]
+  .agent-gui-node__empty-hero-title,
+[data-workspace-node-window-kind="agentGui"][data-workspace-node-window-appearance="embedded"]
+  .agent-gui-node__empty-provider-gate-description,
+[data-workspace-node-window-kind="agentGui"][data-workspace-node-window-appearance="embedded"]
+  .agent-gui-node__empty-provider-gate-status,
+[data-workspace-node-window-kind="agentGui"][data-workspace-node-window-appearance="embedded"]
+  .agent-gui-node__empty-provider-gate-action,
+[data-workspace-node-window-kind="agentGui"][data-workspace-node-window-appearance="embedded"]
+  .agent-gui-node__empty-hero-body
+  > .agent-gui-node__composer-hero,
+[data-workspace-node-window-kind="agentGui"][data-workspace-node-window-appearance="embedded"]
+  .agent-gui-node__empty-hero-suggestions,
+[data-workspace-node-window-kind="agentGui"][data-workspace-node-window-appearance="embedded"]
+  .agent-gui-node__empty-hero-suggestions-card {
+  animation: none;
 }
 
 @keyframes agent-gui-empty-hero-enter {
@@ -10584,7 +11174,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .workspace-agents-status-panel__detail-subagent-name {
-  color: var(--text-primary);
+  color: var(--text-secondary);
   margin-left: 4px;
 }
 
@@ -10624,4 +11214,88 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   padding: 8px 12px;
   font-size: 11px;
   line-height: 1.5;
+}
+
+/* Tutti intensity slider: stars pour out of the handle towards the left end
+   of the track. The stream container is sized from React (track start to the
+   handle's left edge); per-star duration/delay/drift come from CSS vars so a
+   fixed pool can run continuously while intensity changes only toggle
+   visibility. Stacking: the stream sits above the track (z-index 1) and below
+   the handle (the slider thumb rules raise it to z-index 2). */
+.agent-gui-intensity-star-stream {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 0;
+  width: max(0px, var(--agent-gui-star-stream-width, 0px));
+  /* Match the slider track box (h-5 = 1.25rem). The Radix thumb is
+     absolutely positioned, so the slider root -- and therefore this
+     overlay's positioning parent -- is exactly the track height;
+     centering on it keeps stars and their glow clipped to the track
+     instead of spilling above and below it. */
+  height: 1.25rem;
+  transform: translateY(-50%);
+  /* Mirror the slider track's rounded-full so the clipped star layer
+     shares the same capsule silhouette as the gradient track beneath it. */
+  border-radius: 9999px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.agent-gui-intensity-star-stream__star {
+  position: absolute;
+  left: 100%;
+  opacity: 0;
+  filter: drop-shadow(0 0 3px currentColor) drop-shadow(0 0 6px currentColor);
+  animation: agent-gui-intensity-star-stream-flow
+    var(--agent-gui-star-duration, 2s) linear infinite;
+  animation-delay: var(--agent-gui-star-delay, 0s);
+}
+
+@keyframes agent-gui-intensity-star-stream-flow {
+  0% {
+    left: 100%;
+    opacity: 0;
+    transform: translateY(0) scale(0.5);
+  }
+
+  10% {
+    opacity: 0.95;
+  }
+
+  50% {
+    transform: translateY(var(--agent-gui-star-drift, 0px)) scale(1);
+  }
+
+  85% {
+    opacity: 0.95;
+  }
+
+  100% {
+    left: -16px;
+    opacity: 0;
+    transform: translateY(0) scale(0.6);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-gui-intensity-star-stream__star {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* Fully occluded Workbench nodes stay mounted for instant switching, but their
+   animations must not keep repainting pixels that cannot reach the screen.
+   Partial exposure removes this rule, even when another window owns focus. */
+.agent-gui-node__layout[data-agent-gui-visible="false"]
+  :where(*, *::before, *::after) {
+  animation-play-state: paused !important;
+}
+
+/* Occlusion is geometric, not focus-based. Fully covered Workbench bodies keep
+   their DOM state but stop producing tiles; partially exposed bodies remain
+   painted in full so moving the covering window never reveals a black region. */
+.agent-gui-node__layout[data-agent-gui-visible="false"] {
+  content-visibility: hidden;
 }

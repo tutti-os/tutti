@@ -24,6 +24,7 @@ import type {
 } from "./types.ts";
 
 export interface AgentGuiWorkbenchConversationIdentity {
+  agentTargetId?: string | null;
   agentTitle?: string | null;
   iconUrl?: string | null;
   title: string | null;
@@ -96,6 +97,7 @@ export function resolveAgentGuiWorkbenchConversationIdentity(input: {
       : null);
 
   return {
+    agentTargetId,
     agentTitle,
     iconUrl,
     title,
@@ -125,6 +127,7 @@ export function agentGuiWorkbenchConversationIdentitiesEqual(
     left === right ||
     (left !== null &&
       right !== null &&
+      left.agentTargetId === right.agentTargetId &&
       left.agentTitle === right.agentTitle &&
       left.iconUrl === right.iconUrl &&
       left.title === right.title &&

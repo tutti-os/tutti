@@ -3,7 +3,13 @@ import {
   tuttiExternalAtProviderIds,
   tuttiExternalWorkspaceAgentProviders,
   type TuttiExternalAtProviderId,
+  type TuttiExternalAgentActivityActivateSessionInput,
+  type TuttiExternalAgentActivityCancelTurnInput,
+  type TuttiExternalAgentActivityComposerOptionsInput,
+  type TuttiExternalAgentActivitySendInput,
   type TuttiExternalAtQueryInput,
+  type TuttiExternalAtResolveInput,
+  type TuttiExternalAtInvalidation,
   type TuttiExternalBrowserOpenUrlInput,
   type TuttiExternalFileOpenInput,
   type TuttiExternalFileSelectInput,
@@ -23,7 +29,10 @@ import {
   type TuttiExternalWorkspaceFeature,
   type TuttiExternalWorkspaceOpenFeatureInput
 } from "../contracts/index.ts";
-import type { WorkspaceUserProjectSelectionPreparationInput } from "@tutti-os/workspace-user-project/contracts";
+import type {
+  WorkspaceUserProjectMoveInput,
+  WorkspaceUserProjectSelectionPreparationInput
+} from "@tutti-os/workspace-user-project/contracts";
 
 export {
   tuttiExternalAtProviderIds,
@@ -96,6 +105,165 @@ export function normalizeTuttiExternalAtQueryInput(
     keyword: keywordValue,
     maxResults: normalizeMaxResults(input.maxResults),
     providers: normalizeProviders(input.providers)
+  };
+}
+
+export function normalizeTuttiExternalAtResolveInput(
+  input: unknown
+): TuttiExternalAtResolveInput {
+  if (!isRecord(input)) {
+    throw new Error("at.resolve input must be an object.");
+  }
+  if (!isTuttiExternalAtProviderId(input.providerId)) {
+    throw new Error("at.resolve providerId is unsupported.");
+  }
+  const entityId = normalizeRequiredString(
+    input.entityId,
+    "at.resolve entityId"
+  );
+  return {
+    providerId: input.providerId,
+    entityId,
+    ...(input.scope === undefined || input.scope === null
+      ? {}
+      : { scope: normalizeTuttiExternalAtScope(input.scope) })
+  };
+}
+
+export function normalizeTuttiExternalAtInvalidation(
+  input: unknown
+): TuttiExternalAtInvalidation {
+  if (!isRecord(input)) {
+    throw new Error("at invalidation must be an object.");
+  }
+  const providerIds =
+    input.providerIds === undefined
+      ? undefined
+      : normalizeProviders(input.providerIds);
+  const entityIds =
+    input.entityIds === undefined
+      ? undefined
+      : normalizeRequiredStringList(
+          input.entityIds,
+          "at invalidation entityIds"
+        );
+  if (
+    input.revision !== undefined &&
+    (typeof input.revision !== "number" || !Number.isFinite(input.revision))
+  ) {
+    throw new Error("at invalidation revision must be finite.");
+  }
+  return {
+    ...(providerIds ? { providerIds } : {}),
+    ...(entityIds ? { entityIds } : {}),
+    ...(typeof input.revision === "number" ? { revision: input.revision } : {})
+  };
+}
+
+export function normalizeTuttiExternalAgentActivityActivateSessionInput(
+  input: unknown
+): TuttiExternalAgentActivityActivateSessionInput {
+  if (!isRecord(input)) {
+    throw new Error("agentActivity.activateSession input must be an object.");
+  }
+  return {
+    agentSessionId: normalizeRequiredString(
+      input.agentSessionId,
+      "agentActivity.activateSession agentSessionId"
+    ),
+    agentTargetId: normalizeRequiredString(
+      input.agentTargetId,
+      "agentActivity.activateSession agentTargetId"
+    ),
+    clientSubmitId: normalizeRequiredString(
+      input.clientSubmitId,
+      "agentActivity.activateSession clientSubmitId"
+    ),
+    ...normalizeAgentActivityOptionalString(input.cwd, "cwd"),
+    initialContent: normalizeAgentActivityContent(
+      input.initialContent,
+      "agentActivity.activateSession initialContent"
+    ),
+    ...normalizeAgentActivityOptionalString(
+      input.initialDisplayPrompt,
+      "initialDisplayPrompt",
+      true
+    ),
+    ...(input.settings === undefined || input.settings === null
+      ? {}
+      : { settings: normalizeAgentActivitySettings(input.settings) }),
+    ...normalizeAgentActivityTitle(input.title),
+    ...normalizeAgentActivityVisible(input.visible)
+  };
+}
+
+export function normalizeTuttiExternalAgentActivityCancelTurnInput(
+  input: unknown
+): TuttiExternalAgentActivityCancelTurnInput {
+  if (!isRecord(input)) {
+    throw new Error("agentActivity.cancelTurn input must be an object.");
+  }
+  return {
+    agentSessionId: normalizeRequiredString(
+      input.agentSessionId,
+      "agentActivity.cancelTurn agentSessionId"
+    ),
+    turnId: normalizeRequiredString(
+      input.turnId,
+      "agentActivity.cancelTurn turnId"
+    )
+  };
+}
+
+export function normalizeTuttiExternalAgentActivityComposerOptionsInput(
+  input: unknown
+): TuttiExternalAgentActivityComposerOptionsInput {
+  if (!isRecord(input)) {
+    throw new Error(
+      "agentActivity.getComposerOptions input must be an object."
+    );
+  }
+  return {
+    agentTargetId: normalizeRequiredString(
+      input.agentTargetId,
+      "agentActivity.getComposerOptions agentTargetId"
+    ),
+    ...normalizeAgentActivityOptionalString(input.cwd, "cwd"),
+    provider: normalizeRequiredString(
+      input.provider,
+      "agentActivity.getComposerOptions provider"
+    ),
+    ...(input.settings === undefined || input.settings === null
+      ? {}
+      : { settings: normalizeAgentActivitySettings(input.settings) })
+  };
+}
+
+export function normalizeTuttiExternalAgentActivitySendInput(
+  input: unknown
+): TuttiExternalAgentActivitySendInput {
+  if (!isRecord(input)) {
+    throw new Error("agentActivity.sendInput input must be an object.");
+  }
+  return {
+    agentSessionId: normalizeRequiredString(
+      input.agentSessionId,
+      "agentActivity.sendInput agentSessionId"
+    ),
+    clientSubmitId: normalizeRequiredString(
+      input.clientSubmitId,
+      "agentActivity.sendInput clientSubmitId"
+    ),
+    content: normalizeAgentActivityContent(
+      input.content,
+      "agentActivity.sendInput content"
+    ),
+    ...normalizeAgentActivityOptionalString(
+      input.displayPrompt,
+      "displayPrompt",
+      true
+    ),
+    ...(typeof input.guidance === "boolean" ? { guidance: input.guidance } : {})
   };
 }
 
@@ -320,13 +488,38 @@ export function normalizeTuttiExternalUserProjectCreateInput(
 
 export function normalizeTuttiExternalUserProjectPathInput(
   input: unknown,
-  operation: "checkPath" | "use"
+  operation: "checkPath" | "remove" | "use"
 ): TuttiExternalUserProjectPathInput {
   if (!isRecord(input)) {
     throw new Error(`userProjects.${operation} input must be an object.`);
   }
   return {
     path: normalizeRequiredString(input.path, `userProjects.${operation} path`)
+  };
+}
+
+export function normalizeTuttiExternalUserProjectMoveInput(
+  input: unknown
+): WorkspaceUserProjectMoveInput {
+  if (!isRecord(input)) {
+    throw new Error("userProjects.move input must be an object.");
+  }
+  if (!("beforeProjectId" in input)) {
+    throw new Error("userProjects.move beforeProjectId is required.");
+  }
+  const projectId = normalizeRequiredString(
+    input.projectId,
+    "userProjects.move projectId"
+  );
+  if (input.beforeProjectId === null) {
+    return { beforeProjectId: null, projectId };
+  }
+  return {
+    beforeProjectId: normalizeRequiredString(
+      input.beforeProjectId,
+      "userProjects.move beforeProjectId"
+    ),
+    projectId
   };
 }
 
@@ -645,6 +838,265 @@ function isFileUploadAbortSignal(value: unknown): value is AbortSignal {
   );
 }
 
+type AgentActivityOptionalStringKey =
+  | "cwd"
+  | "displayPrompt"
+  | "initialDisplayPrompt";
+
+function normalizeAgentActivityOptionalString<
+  TKey extends AgentActivityOptionalStringKey
+>(
+  value: unknown,
+  key: TKey,
+  preserveEmpty = false
+): Partial<Record<TKey, string | null>> {
+  if (value === undefined) {
+    return {};
+  }
+  if (value === null) {
+    return { [key]: null } as Partial<Record<TKey, string | null>>;
+  }
+  if (typeof value !== "string") {
+    throw new Error(`agentActivity ${key} must be a string.`);
+  }
+  const trimmed = value.trim();
+  if (!trimmed && !preserveEmpty) {
+    return {};
+  }
+  return { [key]: trimmed } as Partial<Record<TKey, string | null>>;
+}
+
+function normalizeAgentActivityTitle(
+  value: unknown
+): Partial<Pick<TuttiExternalAgentActivityActivateSessionInput, "title">> {
+  if (value === undefined) {
+    return {};
+  }
+  if (typeof value !== "string") {
+    throw new Error("agentActivity title must be a string.");
+  }
+  const title = value.trim();
+  return title ? { title } : {};
+}
+
+function normalizeAgentActivityVisible(
+  value: unknown
+): Partial<Pick<TuttiExternalAgentActivityActivateSessionInput, "visible">> {
+  if (value === undefined) {
+    return {};
+  }
+  if (typeof value !== "boolean") {
+    throw new Error("agentActivity visible must be a boolean.");
+  }
+  return { visible: value };
+}
+
+function normalizeAgentActivityContent(
+  value: unknown,
+  field: string
+): TuttiExternalAgentActivitySendInput["content"] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`${field} must be a non-empty array.`);
+  }
+  return value.map((entry, index) => {
+    if (!isRecord(entry)) {
+      throw new Error(`${field}[${index}] must be an object.`);
+    }
+    if (
+      entry.type !== "text" &&
+      entry.type !== "image" &&
+      entry.type !== "file" &&
+      entry.type !== "skill" &&
+      entry.type !== "mention"
+    ) {
+      throw new Error(`${field}[${index}] type is unsupported.`);
+    }
+    return {
+      type: entry.type,
+      ...normalizeAgentActivityContentBlockString(
+        entry.text,
+        "text",
+        field,
+        index
+      ),
+      ...normalizeAgentActivityContentBlockString(
+        entry.mimeType,
+        "mimeType",
+        field,
+        index
+      ),
+      ...normalizeAgentActivityContentBlockString(
+        entry.data,
+        "data",
+        field,
+        index
+      ),
+      ...normalizeAgentActivityContentBlockString(
+        entry.url,
+        "url",
+        field,
+        index
+      ),
+      ...normalizeAgentActivityContentBlockString(
+        entry.attachmentId,
+        "attachmentId",
+        field,
+        index
+      ),
+      ...normalizeAgentActivityContentBlockString(
+        entry.name,
+        "name",
+        field,
+        index
+      ),
+      ...normalizeAgentActivityContentBlockString(
+        entry.path,
+        "path",
+        field,
+        index
+      ),
+      ...normalizeAgentActivityContentBlockString(
+        entry.uri,
+        "uri",
+        field,
+        index
+      ),
+      ...normalizeAgentActivityContentBlockString(
+        entry.hostPath,
+        "hostPath",
+        field,
+        index
+      ),
+      ...normalizeAgentActivityContentBlockString(
+        entry.uploadStatus,
+        "uploadStatus",
+        field,
+        index
+      ),
+      ...normalizeAgentActivityContentBlockString(
+        entry.assetId,
+        "assetId",
+        field,
+        index
+      ),
+      ...normalizeAgentActivityContentBlockString(
+        entry.kind,
+        "kind",
+        field,
+        index
+      ),
+      ...normalizeAgentActivityContentBlockSize(entry.sizeBytes, field, index)
+    };
+  });
+}
+
+type AgentActivityContentBlockStringKey =
+  | "assetId"
+  | "attachmentId"
+  | "data"
+  | "hostPath"
+  | "kind"
+  | "mimeType"
+  | "name"
+  | "path"
+  | "text"
+  | "uploadStatus"
+  | "uri"
+  | "url";
+
+function normalizeAgentActivityContentBlockString<
+  TKey extends AgentActivityContentBlockStringKey
+>(
+  value: unknown,
+  key: TKey,
+  field: string,
+  index: number
+): Partial<Record<TKey, string>> {
+  if (value === undefined) {
+    return {};
+  }
+  if (typeof value !== "string") {
+    throw new Error(`${field}[${index}] ${key} must be a string.`);
+  }
+  return { [key]: value } as Partial<Record<TKey, string>>;
+}
+
+function normalizeAgentActivityContentBlockSize(
+  value: unknown,
+  field: string,
+  index: number
+): { sizeBytes?: number } {
+  if (value === undefined) {
+    return {};
+  }
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new Error(
+      `${field}[${index}] sizeBytes must be a non-negative number.`
+    );
+  }
+  return { sizeBytes: value };
+}
+
+function normalizeAgentActivitySettings(
+  value: unknown
+): NonNullable<TuttiExternalAgentActivityActivateSessionInput["settings"]> {
+  if (!isRecord(value)) {
+    throw new Error("agentActivity settings must be an object.");
+  }
+  return {
+    ...normalizeAgentActivityNullableSetting(value.model, "model"),
+    ...normalizeAgentActivityNullableSetting(
+      value.permissionModeId,
+      "permissionModeId"
+    ),
+    ...normalizeAgentActivityNullableBoolean(value.planMode, "planMode"),
+    ...normalizeAgentActivityNullableBoolean(value.browserUse, "browserUse"),
+    ...normalizeAgentActivityNullableBoolean(value.computerUse, "computerUse"),
+    ...normalizeAgentActivityNullableSetting(
+      value.reasoningEffort,
+      "reasoningEffort"
+    ),
+    ...normalizeAgentActivityNullableSetting(value.speed, "speed")
+  };
+}
+
+type AgentActivityStringSettingKey =
+  | "model"
+  | "permissionModeId"
+  | "reasoningEffort"
+  | "speed";
+
+function normalizeAgentActivityNullableSetting(
+  value: unknown,
+  key: AgentActivityStringSettingKey
+): Partial<Record<AgentActivityStringSettingKey, string | null>> {
+  if (value === undefined) {
+    return {};
+  }
+  if (value === null) {
+    return { [key]: null };
+  }
+  if (typeof value !== "string") {
+    throw new Error(`agentActivity settings.${key} must be a string.`);
+  }
+  return { [key]: value.trim() || null };
+}
+
+type AgentActivityBooleanSettingKey = "browserUse" | "computerUse" | "planMode";
+
+function normalizeAgentActivityNullableBoolean(
+  value: unknown,
+  key: AgentActivityBooleanSettingKey
+): Partial<Record<AgentActivityBooleanSettingKey, boolean | null>> {
+  if (value === undefined) {
+    return {};
+  }
+  if (value === null || typeof value === "boolean") {
+    return { [key]: value };
+  }
+  throw new Error(`agentActivity settings.${key} must be a boolean.`);
+}
+
 function normalizeOptionalTrimmedString(
   value: unknown,
   key: "mimeType" | "name",
@@ -668,6 +1120,23 @@ function normalizeRequiredString(value: unknown, field: string): string {
     throw new Error(`${field} is required.`);
   }
   return value.trim();
+}
+
+function normalizeTuttiExternalAtScope(
+  value: unknown
+): Readonly<Record<string, string>> {
+  if (!isRecord(value)) {
+    throw new Error("at.resolve scope must be an object.");
+  }
+  const scope: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    const normalizedKey = key.trim();
+    if (!normalizedKey || typeof entry !== "string") {
+      throw new Error("at.resolve scope must contain string values.");
+    }
+    scope[normalizedKey] = entry;
+  }
+  return scope;
 }
 
 function normalizeRequiredStringList(value: unknown, field: string): string[] {

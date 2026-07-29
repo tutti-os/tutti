@@ -1,9 +1,11 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { AgentGUIProvider, AgentGUINodeData } from "../../../types";
-import type { AgentSessionEngine } from "@tutti-os/agent-activity-core";
+import { setAgentHostApiForTests } from "../../../agentActivityHost";
+import type { AgentHostRuntimeApi } from "../../../host/agentHostApi";
 import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
+import type { AgentGUIComposerDefaultsAuthorityReconciler } from "./agentGuiComposerDefaultsReconciliation";
 import { useAgentGUIComposerOptionsSync } from "./useAgentGUIComposerOptionsSync";
 
 describe("useAgentGUIComposerOptionsSync", () => {
@@ -13,16 +15,24 @@ describe("useAgentGUIComposerOptionsSync", () => {
     const dataRef = { current: targetData("codex") };
     const selectedTargetRef = { current: composerTarget("codex") };
     const selectedProjectPathRef = { current: "/workspace/project" };
-    const { rerender } = renderHook(
+    const authorityReconcilerRef =
+      createComposerDefaultsAuthorityReconcilerRef();
+    const composerOptionsByTargetKey = {
+      "local:codex": { provider: "codex" },
+      "local:claude-code": { provider: "claude-code" }
+    };
+    const { result, rerender } = renderHook(
       ({ provider }) => {
         const target = composerTarget(provider);
         dataRef.current = target.data;
         selectedTargetRef.current = target;
         return useAgentGUIComposerOptionsSync({
+          activeAgentTargetId: null,
           activeConversationId: null,
           activeConversationIdRef,
           agentActivityRuntime: {
-            getComposerOptions
+            getComposerOptions,
+            getSnapshot: () => ({ composerOptionsByTargetKey })
           } as unknown as AgentActivityRuntime,
           composerTargetData: target,
           conversationFilter: null,
@@ -36,15 +46,11 @@ describe("useAgentGUIComposerOptionsSync", () => {
           isCreatingConversation: false,
           loadDraftComposerOptionsRef: { current: () => {} },
           loadSessionState: vi.fn(),
-          previewMode: false,
+          onComposerDefaultsAuthorityReloadedRef: authorityReconcilerRef,
           providerComposerOptions: null,
-          reloadSelectedConversation: vi.fn(),
           selectedComposerTargetDataRef: selectedTargetRef,
           selectedProjectPath: "/workspace/project",
           selectedProjectPathRef,
-          sessionEngine: {
-            getSnapshot: () => ({})
-          } as unknown as AgentSessionEngine,
           syncConversationListProjection: vi.fn(async () => {}),
           workspaceId: "workspace-1",
           workspacePath: "/workspace"
@@ -53,8 +59,17 @@ describe("useAgentGUIComposerOptionsSync", () => {
       { initialProps: { provider: "codex" as AgentGUIProvider } }
     );
 
-    await waitFor(() => expect(getComposerOptions).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      expect(getComposerOptions).toHaveBeenCalledTimes(1);
+      expect(
+        authorityReconcilerRef.current.reconcileHomeDefaults
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({ agentTargetId: "local:codex" }),
+        composerOptionsByTargetKey["local:codex"]
+      );
+    });
     getComposerOptions.mockClear();
+    vi.mocked(authorityReconcilerRef.current.reconcileHomeDefaults).mockClear();
 
     rerender({ provider: "claude-code" });
 
@@ -64,6 +79,25 @@ describe("useAgentGUIComposerOptionsSync", () => {
         agentTargetId: "local:claude-code",
         force: undefined,
         provider: "claude-code"
+      })
+    );
+    expect(
+      authorityReconcilerRef.current.reconcileHomeDefaults
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({ agentTargetId: "local:claude-code" }),
+      composerOptionsByTargetKey["local:claude-code"]
+    );
+
+    getComposerOptions.mockClear();
+    await result.current.reloadComposerOptionsForTarget({
+      settings: { planMode: false },
+      target: selectedTargetRef.current
+    });
+    expect(getComposerOptions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentTargetId: "local:claude-code",
+        force: true,
+        settings: { planMode: false }
       })
     );
   });
@@ -89,10 +123,12 @@ describe("useAgentGUIComposerOptionsSync", () => {
     const { rerender } = renderHook(
       ({ isCreatingConversation }) =>
         useAgentGUIComposerOptionsSync({
+          activeAgentTargetId: null,
           activeConversationId: null,
           activeConversationIdRef,
           agentActivityRuntime: {
-            getComposerOptions
+            getComposerOptions,
+            getSnapshot: () => ({})
           } as unknown as AgentActivityRuntime,
           composerTargetData: target,
           conversationFilter: null,
@@ -106,15 +142,12 @@ describe("useAgentGUIComposerOptionsSync", () => {
           isCreatingConversation,
           loadDraftComposerOptionsRef: { current: () => {} },
           loadSessionState: vi.fn(),
-          previewMode: false,
+          onComposerDefaultsAuthorityReloadedRef:
+            createComposerDefaultsAuthorityReconcilerRef(),
           providerComposerOptions: null,
-          reloadSelectedConversation: vi.fn(),
           selectedComposerTargetDataRef: selectedTargetRef,
           selectedProjectPath: "/workspace/project",
           selectedProjectPathRef,
-          sessionEngine: {
-            getSnapshot: () => ({})
-          } as unknown as AgentSessionEngine,
           syncConversationListProjection: vi.fn(async () => {}),
           workspaceId: "workspace-1",
           workspacePath: "/workspace"
@@ -138,7 +171,373 @@ describe("useAgentGUIComposerOptionsSync", () => {
       );
     });
   });
+
+  it("does not force composer options when switching hydrated sessions", async () => {
+    const getComposerOptions = vi.fn(async () => ({}));
+    const data = targetData("codex");
+    const target = composerTarget("codex");
+    const activeConversationIdRef = { current: "session-1" };
+
+    const { rerender } = renderHook(
+      ({ activeConversationId }) => {
+        activeConversationIdRef.current = activeConversationId;
+        return useAgentGUIComposerOptionsSync({
+          activeAgentTargetId: null,
+          activeConversationId,
+          activeConversationIdRef,
+          agentActivityRuntime: {
+            getComposerOptions,
+            getSnapshot: () => ({})
+          } as unknown as AgentActivityRuntime,
+          composerTargetData: target,
+          conversationFilter: null,
+          currentUserId: "user-1",
+          data,
+          dataRef: { current: data },
+          defaultReasoningEffort: null,
+          draftSettingsBySessionIdRef: { current: {} },
+          isComposerHome: false,
+          isComposerHomeRef: { current: false },
+          isCreatingConversation: false,
+          loadDraftComposerOptionsRef: { current: () => {} },
+          loadSessionState: vi.fn(),
+          onComposerDefaultsAuthorityReloadedRef:
+            createComposerDefaultsAuthorityReconcilerRef(),
+          providerComposerOptions: null,
+          selectedComposerTargetDataRef: { current: target },
+          selectedProjectPath: "/workspace/project",
+          selectedProjectPathRef: { current: "/workspace/project" },
+          syncConversationListProjection: vi.fn(async () => {}),
+          workspaceId: "workspace-1",
+          workspacePath: "/workspace"
+        });
+      },
+      { initialProps: { activeConversationId: "session-1" } }
+    );
+
+    await waitFor(() => expect(getComposerOptions).toHaveBeenCalledTimes(1));
+    getComposerOptions.mockClear();
+
+    rerender({ activeConversationId: "session-2" });
+
+    await waitFor(() => expect(getComposerOptions).toHaveBeenCalledTimes(1));
+    expect(getComposerOptions).toHaveBeenLastCalledWith(
+      expect.objectContaining({ force: undefined })
+    );
+  });
+
+  it("loads active session options with the session agent target", async () => {
+    const getComposerOptions = vi.fn(async () => ({}));
+    const provider = "acp:hermes" as AgentGUIProvider;
+    const data: AgentGUINodeData = {
+      provider,
+      lastActiveAgentSessionId: "session-1"
+    };
+    const selectedTarget: AgentGUIComposerTargetData = {
+      agentTargetId: "extension:hermes",
+      data: { ...data, agentTargetId: "extension:hermes" },
+      provider,
+      targetId: "extension:hermes"
+    };
+
+    renderHook(() =>
+      useAgentGUIComposerOptionsSync({
+        activeAgentTargetId: "extension:hermes",
+        activeConversationId: "session-1",
+        activeConversationIdRef: { current: "session-1" },
+        agentActivityRuntime: {
+          getComposerOptions,
+          getSnapshot: () => ({})
+        } as unknown as AgentActivityRuntime,
+        composerTargetData: selectedTarget,
+        conversationFilter: null,
+        currentUserId: "user-1",
+        data,
+        dataRef: { current: data },
+        defaultReasoningEffort: null,
+        draftSettingsBySessionIdRef: { current: {} },
+        isComposerHome: false,
+        isComposerHomeRef: { current: false },
+        isCreatingConversation: false,
+        loadDraftComposerOptionsRef: { current: () => {} },
+        loadSessionState: vi.fn(),
+        onComposerDefaultsAuthorityReloadedRef:
+          createComposerDefaultsAuthorityReconcilerRef(),
+        providerComposerOptions: null,
+        selectedComposerTargetDataRef: { current: selectedTarget },
+        selectedProjectPath: "/workspace/project",
+        selectedProjectPathRef: { current: "/workspace/project" },
+        syncConversationListProjection: vi.fn(async () => {}),
+        workspaceId: "workspace-1",
+        workspacePath: "/workspace"
+      })
+    );
+
+    await waitFor(() =>
+      expect(getComposerOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentTargetId: "extension:hermes",
+          provider
+        })
+      )
+    );
+  });
+
+  it("rereads target authority on invalidation without sending local persistent intent", async () => {
+    const getComposerOptions = vi.fn(async () => ({}));
+    let emitHostEvent: ((event: unknown) => void) | null = null;
+    setAgentHostApiForTests({
+      onHostEvent: (listener: (event: unknown) => void) => {
+        emitHostEvent = listener;
+        return () => {
+          emitHostEvent = null;
+        };
+      }
+    } as unknown as AgentHostRuntimeApi);
+    const data = targetData("opencode");
+    const target = composerTarget("opencode");
+    const draftSettingsBySessionIdRef = {
+      current: {
+        "__agent_gui_node_defaults__:target:local:opencode": {
+          model: "opencode/new-model",
+          permissionModeId: "full-access",
+          planMode: false,
+          reasoningEffort: "high" as const,
+          speed: "fast" as const
+        }
+      }
+    };
+    const authorityReconcilerRef =
+      createComposerDefaultsAuthorityReconcilerRef();
+    const rendered = renderHook(() =>
+      useAgentGUIComposerOptionsSync({
+        activeAgentTargetId: null,
+        activeConversationId: null,
+        activeConversationIdRef: { current: null },
+        agentActivityRuntime: {
+          getComposerOptions,
+          getSnapshot: () => ({})
+        } as unknown as AgentActivityRuntime,
+        composerTargetData: target,
+        conversationFilter: null,
+        currentUserId: "user-1",
+        data,
+        dataRef: { current: data },
+        defaultReasoningEffort: null,
+        draftSettingsBySessionIdRef,
+        isComposerHome: true,
+        isComposerHomeRef: { current: true },
+        isCreatingConversation: false,
+        loadDraftComposerOptionsRef: { current: () => {} },
+        loadSessionState: vi.fn(),
+        onComposerDefaultsAuthorityReloadedRef: authorityReconcilerRef,
+        providerComposerOptions: null,
+        selectedComposerTargetDataRef: { current: target },
+        selectedProjectPath: "/workspace/project",
+        selectedProjectPathRef: { current: "/workspace/project" },
+        syncConversationListProjection: vi.fn(async () => {}),
+        workspaceId: "workspace-1",
+        workspacePath: "/workspace"
+      })
+    );
+
+    try {
+      await waitFor(() => expect(getComposerOptions).toHaveBeenCalled());
+      getComposerOptions.mockClear();
+      const permissionReceipt = {
+        draftKey: "__agent_gui_node_defaults__:target:local:opencode",
+        fields: {
+          permissionModeId: {
+            generation: 1,
+            value: "full-access"
+          }
+        }
+      };
+      authorityReconcilerRef.current.prepareRead = vi.fn(
+        (_target, settings) => {
+          const authoritySettings = { ...settings };
+          delete authoritySettings.permissionModeId;
+          return {
+            force: true,
+            receipt: permissionReceipt,
+            settings: authoritySettings
+          };
+        }
+      );
+      vi.mocked(authorityReconcilerRef.current.reloaded).mockClear();
+      act(() => {
+        emitHostEvent?.({
+          agentTargetId: "local:opencode",
+          scope: "global",
+          type: "agent-composer-defaults-invalidated"
+        });
+      });
+      await waitFor(() =>
+        expect(getComposerOptions).toHaveBeenCalledWith(
+          expect.objectContaining({
+            agentTargetId: "local:opencode",
+            force: true,
+            settings: { planMode: false }
+          })
+        )
+      );
+      expect(draftSettingsBySessionIdRef.current).toMatchObject({
+        "__agent_gui_node_defaults__:target:local:opencode": {
+          permissionModeId: "full-access"
+        }
+      });
+      expect(authorityReconcilerRef.current.prepareRead).toHaveBeenCalledWith(
+        target,
+        expect.objectContaining({
+          model: "opencode/new-model",
+          permissionModeId: "full-access",
+          reasoningEffort: "high",
+          speed: "fast"
+        })
+      );
+      expect(authorityReconcilerRef.current.reloaded).toHaveBeenCalledWith(
+        permissionReceipt
+      );
+    } finally {
+      rendered.unmount();
+      setAgentHostApiForTests(null);
+    }
+  });
+
+  it("forces a later home authority read to reconcile acknowledged defaults", async () => {
+    const getComposerOptions = vi.fn(async () => ({}));
+    const data = targetData("opencode");
+    const target = composerTarget("opencode");
+    const authorityReconcilerRef =
+      createComposerDefaultsAuthorityReconcilerRef();
+    authorityReconcilerRef.current.prepareRead = vi.fn((_target, settings) => ({
+      force: true,
+      receipt: {
+        draftKey: "__agent_gui_node_defaults__:target:local:opencode",
+        fields: {
+          permissionModeId: {
+            generation: 1,
+            value: "full-access"
+          }
+        }
+      },
+      settings: { planMode: settings.planMode }
+    }));
+
+    renderHook(() =>
+      useAgentGUIComposerOptionsSync({
+        activeAgentTargetId: null,
+        activeConversationId: null,
+        activeConversationIdRef: { current: null },
+        agentActivityRuntime: {
+          getComposerOptions,
+          getSnapshot: () => ({})
+        } as unknown as AgentActivityRuntime,
+        composerTargetData: target,
+        conversationFilter: null,
+        currentUserId: "user-1",
+        data,
+        dataRef: { current: data },
+        defaultReasoningEffort: null,
+        draftSettingsBySessionIdRef: {
+          current: {
+            "__agent_gui_node_defaults__:target:local:opencode": {
+              permissionModeId: "full-access",
+              planMode: false
+            }
+          }
+        },
+        isComposerHome: true,
+        isComposerHomeRef: { current: true },
+        isCreatingConversation: false,
+        loadDraftComposerOptionsRef: { current: () => {} },
+        loadSessionState: vi.fn(),
+        onComposerDefaultsAuthorityReloadedRef: authorityReconcilerRef,
+        providerComposerOptions: null,
+        selectedComposerTargetDataRef: { current: target },
+        selectedProjectPath: "/workspace/project",
+        selectedProjectPathRef: { current: "/workspace/project" },
+        syncConversationListProjection: vi.fn(async () => {}),
+        workspaceId: "workspace-1",
+        workspacePath: "/workspace"
+      })
+    );
+
+    await waitFor(() =>
+      expect(getComposerOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentTargetId: "local:opencode",
+          force: true,
+          settings: { planMode: false }
+        })
+      )
+    );
+    expect(authorityReconcilerRef.current.reloaded).toHaveBeenCalledWith(
+      expect.objectContaining({
+        draftKey: "__agent_gui_node_defaults__:target:local:opencode"
+      })
+    );
+  });
+
+  it("does not reconcile target defaults while loading an active session", async () => {
+    const getComposerOptions = vi.fn(async () => ({}));
+    const data = targetData("opencode");
+    const target = composerTarget("opencode");
+    const authorityReconcilerRef =
+      createComposerDefaultsAuthorityReconcilerRef();
+    renderHook(() =>
+      useAgentGUIComposerOptionsSync({
+        activeAgentTargetId: null,
+        activeConversationId: "session-1",
+        activeConversationIdRef: { current: "session-1" },
+        agentActivityRuntime: {
+          getComposerOptions,
+          getSnapshot: () => ({})
+        } as unknown as AgentActivityRuntime,
+        composerTargetData: target,
+        conversationFilter: null,
+        currentUserId: "user-1",
+        data,
+        dataRef: { current: data },
+        defaultReasoningEffort: null,
+        draftSettingsBySessionIdRef: { current: {} },
+        isComposerHome: false,
+        isComposerHomeRef: { current: false },
+        isCreatingConversation: false,
+        loadDraftComposerOptionsRef: { current: () => {} },
+        loadSessionState: vi.fn(),
+        onComposerDefaultsAuthorityReloadedRef: authorityReconcilerRef,
+        providerComposerOptions: null,
+        selectedComposerTargetDataRef: { current: target },
+        selectedProjectPath: "/workspace/project",
+        selectedProjectPathRef: { current: "/workspace/project" },
+        syncConversationListProjection: vi.fn(async () => {}),
+        workspaceId: "workspace-1",
+        workspacePath: "/workspace"
+      })
+    );
+
+    await waitFor(() => expect(getComposerOptions).toHaveBeenCalled());
+    expect(authorityReconcilerRef.current.prepareRead).not.toHaveBeenCalled();
+    expect(authorityReconcilerRef.current.reloaded).not.toHaveBeenCalled();
+  });
 });
+
+function createComposerDefaultsAuthorityReconcilerRef(): {
+  current: AgentGUIComposerDefaultsAuthorityReconciler;
+} {
+  return {
+    current: {
+      prepareRead: vi.fn((_target, settings) => ({
+        force: false,
+        receipt: null,
+        settings
+      })),
+      reconcileHomeDefaults: vi.fn(),
+      reloaded: vi.fn()
+    }
+  };
+}
 
 function targetData(provider: AgentGUIProvider): AgentGUINodeData {
   return {

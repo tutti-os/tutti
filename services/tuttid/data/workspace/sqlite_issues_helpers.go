@@ -3,6 +3,7 @@ package workspace
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -53,6 +54,15 @@ func isSQLiteUniqueConstraintError(err error) bool {
 	default:
 		return false
 	}
+}
+
+func isSQLiteForeignKeyConstraintError(err error) bool {
+	var sqliteErr *sqlitedriver.Error
+	if !errors.As(err, &sqliteErr) {
+		return false
+	}
+	return sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY ||
+		sqliteErr.Code()&0xff == sqlite3.SQLITE_CONSTRAINT && strings.Contains(strings.ToLower(sqliteErr.Error()), "foreign key")
 }
 
 func issueListWhere(filter workspaceissues.IssueListFilter) ([]string, []any) {
@@ -234,15 +244,42 @@ func scanWorkspaceIssue(scanner issueScanner) (workspaceissues.Issue, error) {
 	var item workspaceissues.Issue
 	var id int64
 	var status string
+	var planningSource string
+	var budgetMode string
+	var budgetStatus string
+	var hasRemainingQuota int
+	var sequentialExecution int
+	var parallelExecution int
+	var dispatchPaused int
 	err := scanner.Scan(
 		&id, &item.IssueID, &item.TopicID, &item.WorkspaceID, &item.Title, &item.Content,
-		&item.SearchText, &status, &item.TaskCount, &item.NotStartedCount, &item.RunningCount,
+		&item.SearchText, &status, &planningSource, &item.SourceSessionID, &sequentialExecution,
+		&parallelExecution, &dispatchPaused,
+		&item.ExecutionProfile.ReasoningIntensity, &item.ExecutionProfile.OrchestrationIntensity,
+		&budgetMode, &item.Budget.TokenLimit, &item.Budget.ConsumedTokens,
+		&item.Budget.QuotaWaterlinePercent, &item.Budget.RemainingQuotaPercent,
+		&hasRemainingQuota, &budgetStatus,
+		&item.TaskCount, &item.NotStartedCount, &item.RunningCount,
 		&item.PendingAcceptanceCount, &item.CompletedCount, &item.FailedCount,
 		&item.CanceledCount, &item.CreatorUserID, &item.CreatorDisplayName,
 		&item.CreatorAvatarURL, &item.CreatedAtUnixMS, &item.UpdatedAtUnixMS,
 	)
 	item.ID = uint64(id)
 	item.Status = workspaceissues.Status(status)
+	item.PlanningSource = workspaceissues.PlanningSource(planningSource)
+	item.SequentialExecution = sequentialExecution != 0
+	item.ParallelExecution = parallelExecution != 0
+	item.DispatchPaused = dispatchPaused != 0
+	item.Budget.Mode = workspaceissues.BudgetMode(budgetMode)
+	item.Budget.HasRemainingQuota = hasRemainingQuota != 0
+	item.Budget.Status = workspaceissues.BudgetStatus(budgetStatus)
+	if err == nil {
+		normalizedBudget, ok := workspaceissues.NormalizeBudget(item.Budget)
+		if !ok {
+			return workspaceissues.Issue{}, fmt.Errorf("invalid persisted workspace issue budget")
+		}
+		item.Budget = normalizedBudget
+	}
 	return item, err
 }
 
@@ -273,15 +310,29 @@ func scanWorkspaceIssueTask(scanner issueScanner) (workspaceissues.Task, error) 
 	var id int64
 	var status string
 	var priority string
+	var dependencyTaskIDsJSON string
+	var acceptanceState string
 	err := scanner.Scan(
 		&id, &item.TaskID, &item.IssueID, &item.WorkspaceID, &item.Title, &item.Content,
 		&item.SearchText, &status, &priority, &item.SortIndex, &item.DueAtUnixMS,
+		&item.AgentTargetID, &item.ModelPlanID, &item.Model,
+		&item.PermissionModeID, &item.ReasoningEffort,
+		&item.ExecutionDirectory, &dependencyTaskIDsJSON, &item.Parallelizable,
+		&item.AutoAccept, &acceptanceState, &item.AcceptanceSummary,
 		&item.CreatorUserID, &item.CreatorDisplayName, &item.CreatorAvatarURL,
-		&item.LatestRunID, &item.CreatedAtUnixMS, &item.UpdatedAtUnixMS,
+		&item.LatestRunID, &item.SupersededAtUnixMS, &item.SupersededByTaskID,
+		&item.CreatedAtUnixMS, &item.UpdatedAtUnixMS,
 	)
 	item.ID = uint64(id)
 	item.Status = workspaceissues.Status(status)
 	item.Priority = workspaceissues.Priority(priority)
+	item.AcceptanceState = workspaceissues.AcceptanceState(acceptanceState)
+	if err == nil {
+		err = json.Unmarshal([]byte(dependencyTaskIDsJSON), &item.DependencyTaskIDs)
+	}
+	if item.DependencyTaskIDs == nil {
+		item.DependencyTaskIDs = []string{}
+	}
 	return item, err
 }
 
@@ -305,7 +356,10 @@ func scanWorkspaceIssueRun(scanner issueScanner) (workspaceissues.Run, error) {
 	err := scanner.Scan(
 		&id, &item.RunID, &item.TaskID, &item.IssueID, &item.WorkspaceID,
 		&item.RequesterUserID, &item.AgentUserID, &item.AgentTargetID,
-		&item.AgentSessionID, &item.AgentProvider, &status, &item.Summary,
+		&item.AgentSessionID, &item.AgentProvider, &item.ModelPlanID, &item.Model,
+		&item.ReasoningIntensity, &status, &item.Usage.InputTokens,
+		&item.Usage.OutputTokens, &item.Usage.CacheReadTokens, &item.Usage.CacheWriteTokens,
+		&item.Summary,
 		&item.ErrorMessage, &item.OutputDir, &item.ExecutionDirectory,
 		&item.CreatedAtUnixMS, &item.StartedAtUnixMS, &item.CompletedAtUnixMS,
 		&item.UpdatedAtUnixMS,

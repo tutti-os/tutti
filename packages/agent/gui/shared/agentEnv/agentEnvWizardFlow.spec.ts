@@ -60,6 +60,7 @@ function input(
     ready: false,
     activePhase: null,
     installActionPending: false,
+    updateActionPending: false,
     loginPending: false,
     networkReachable: true,
     cliVersionDetail: null,
@@ -83,6 +84,23 @@ describe("deriveAgentSetupStages", () => {
       "login",
       "ready"
     ]);
+  });
+
+  it("keeps the CLI stage running for the whole update operation", () => {
+    const stages = deriveAgentSetupStages(
+      input({
+        cliInstalled: true,
+        adapterInstalled: true,
+        authenticated: true,
+        ready: true,
+        updateActionPending: true
+      })
+    );
+
+    expect(stages.find((stage) => stage.id === "install")?.status).toBe(
+      "running"
+    );
+    expect(stages.find((stage) => stage.id === "adapter")?.status).toBe("ok");
   });
 
   it("carries the cli version detail token on the install stage", () => {

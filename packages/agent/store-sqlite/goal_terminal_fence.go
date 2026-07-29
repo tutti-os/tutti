@@ -92,8 +92,13 @@ func (s *Store) MarkGoalRevisionTerminalIncident(ctx context.Context, input Goal
 	if err != nil {
 		return SessionGoalState{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	delta, err := s.commitTransaction(ctx, tx, input.WorkspaceID, []TransactionMutation{
+		transactionMutation(input.WorkspaceID, input.AgentSessionID, MutationEntityGoalState, input.AgentSessionID, "terminal", state.Revision),
+	})
+	if err != nil {
 		return SessionGoalState{}, err
 	}
+	state.CommitTransactionID = delta.TransactionID
+	state.CommitDelta = delta
 	return state, nil
 }

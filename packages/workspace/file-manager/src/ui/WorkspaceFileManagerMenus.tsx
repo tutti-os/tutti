@@ -1,3 +1,4 @@
+import { useComposedInputValue } from "@tutti-os/ui-react-hooks";
 import {
   Button,
   ConfirmationDialog,
@@ -10,18 +11,9 @@ import {
   Input
 } from "@tutti-os/ui-system";
 import type { ReactElement } from "react";
-import type {
-  WorkspaceFileManagerI18nKey,
-  WorkspaceFileManagerI18nRuntime
-} from "../i18n/workspaceFileManagerI18n.ts";
-import type {
-  WorkspaceFileEntry,
-  WorkspaceFileImportSummaryReason
-} from "../services/workspaceFileManagerTypes.ts";
-import type {
-  WorkspaceFileManagerHostFallbackAction,
-  WorkspaceFileManagerHostImportConflict
-} from "./workspaceFileManagerHostTypes.ts";
+import type { WorkspaceFileManagerI18nRuntime } from "../i18n/workspaceFileManagerI18n.ts";
+import type { WorkspaceFileEntry } from "../services/workspaceFileManagerTypes.ts";
+import type { WorkspaceFileManagerHostFallbackAction } from "./workspaceFileManagerHostTypes.ts";
 
 export function WorkspaceFileManagerCreateDialog({
   busy,
@@ -42,6 +34,11 @@ export function WorkspaceFileManagerCreateDialog({
   onConfirm: () => void;
   onNameChange: (name: string) => void;
 }): ReactElement | null {
+  const nameInput = useComposedInputValue({
+    onCommit: onNameChange,
+    value: dialog?.name ?? ""
+  });
+
   if (!dialog) {
     return null;
   }
@@ -60,6 +57,9 @@ export function WorkspaceFileManagerCreateDialog({
           className="grid gap-3"
           onSubmit={(event) => {
             event.preventDefault();
+            if (busy || nameInput.isComposing) {
+              return;
+            }
             onConfirm();
           }}
         >
@@ -77,10 +77,11 @@ export function WorkspaceFileManagerCreateDialog({
                 ? copy.t("createDirectoryPlaceholder")
                 : copy.t("createFilePlaceholder")
             }
-            value={dialog.name}
-            onChange={(event) => {
-              onNameChange(event.currentTarget.value);
-            }}
+            value={nameInput.value}
+            onBlur={nameInput.onBlur}
+            onChange={nameInput.onChange}
+            onCompositionEnd={nameInput.onCompositionEnd}
+            onCompositionStart={nameInput.onCompositionStart}
           />
           {dialog.errorMessage ? (
             <p className="text-[13px] text-[var(--state-danger)]">
@@ -153,7 +154,6 @@ export function WorkspaceFileManagerUnsupportedDialog({
   copy: WorkspaceFileManagerI18nRuntime;
   dialog: {
     actions?: WorkspaceFileManagerHostFallbackAction[] | null;
-    kind: "import" | "view";
     message?: string | null;
     title?: string | null;
     entry?: WorkspaceFileEntry;
@@ -166,16 +166,10 @@ export function WorkspaceFileManagerUnsupportedDialog({
     return null;
   }
 
-  const title =
-    dialog.title ??
-    (dialog.kind === "import"
-      ? copy.t("unsupportedImportTitle")
-      : copy.t("unsupportedViewTitle"));
+  const title = dialog.title ?? copy.t("unsupportedViewTitle");
   const body =
     dialog.message ??
-    (dialog.kind === "import"
-      ? copy.t("unsupportedImportBody")
-      : copy.t("unsupportedViewBody", { name: dialog.entry?.name ?? "" }));
+    copy.t("unsupportedViewBody", { name: dialog.entry?.name ?? "" });
   const actions =
     dialog.actions?.filter((action) => action.kind !== "none") ?? [];
 
@@ -236,169 +230,4 @@ export function WorkspaceFileManagerUnsupportedDialog({
       </DialogContent>
     </Dialog>
   );
-}
-
-export function WorkspaceFileManagerImportConflictDialog({
-  busy,
-  copy,
-  dialog,
-  onClose,
-  onConfirm
-}: {
-  busy: boolean;
-  copy: WorkspaceFileManagerI18nRuntime;
-  dialog: WorkspaceFileManagerHostImportConflict | null;
-  onClose: () => void;
-  onConfirm: () => void;
-}): ReactElement | null {
-  if (!dialog) {
-    return null;
-  }
-
-  const hasBlockedConflict = dialog.conflicts.some(
-    (conflict) => conflict.conflictKind === "type_mismatch"
-  );
-
-  return (
-    <ConfirmationDialog
-      cancelLabel={
-        hasBlockedConflict ? copy.t("closeLabel") : copy.t("cancelLabel")
-      }
-      className="max-w-lg"
-      confirmBusy={busy}
-      confirmLabel={
-        hasBlockedConflict
-          ? copy.t("closeLabel")
-          : copy.t("importConflictReplaceLabel")
-      }
-      description={
-        hasBlockedConflict
-          ? copy.t("importTypeConflictDescription", {
-              count: dialog.conflicts.length
-            })
-          : copy.t("importConflictDescription", {
-              count: dialog.conflicts.length
-            })
-      }
-      hideConfirmButton={hasBlockedConflict}
-      open
-      title={
-        hasBlockedConflict
-          ? copy.t("importTypeConflictTitle")
-          : copy.t("importConflictTitle")
-      }
-      tone={hasBlockedConflict ? "default" : "destructive"}
-      onConfirm={hasBlockedConflict ? onClose : onConfirm}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) {
-          onClose();
-        }
-      }}
-    >
-      <ImportConflictSummary copy={copy} dialog={dialog} />
-      <div className="max-h-60 overflow-auto rounded-lg border border-[var(--border-1)] bg-transparency-block">
-        <div className="divide-y divide-[var(--border-1)]">
-          {dialog.conflicts.map((conflict) => (
-            <div
-              key={`${conflict.destinationPath}:${conflict.sourcePath}`}
-              className="flex flex-col gap-1 px-4 py-3 text-[13px]"
-            >
-              <span className="font-medium text-[var(--text-primary)]">
-                {conflict.name}
-              </span>
-              <span className="text-[11px] text-[var(--text-secondary)]">
-                {copy.t("importConflictReviewLabel")}:{" "}
-                {conflict.destinationPath}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </ConfirmationDialog>
-  );
-}
-
-function ImportConflictSummary({
-  copy,
-  dialog
-}: {
-  copy: WorkspaceFileManagerI18nRuntime;
-  dialog: WorkspaceFileManagerHostImportConflict;
-}): ReactElement | null {
-  const summaryItems: string[] = [];
-  const hasReasonBreakdown =
-    dialog.summary?.reasonBreakdown?.some((reason) => reason.count > 0) ??
-    false;
-  if (
-    typeof dialog.summary?.selectedCount === "number" &&
-    dialog.summary.selectedCount > 0
-  ) {
-    summaryItems.push(
-      copy.t("importConflictSummarySelected", {
-        count: dialog.summary.selectedCount
-      })
-    );
-  }
-  if (
-    !hasReasonBreakdown &&
-    typeof dialog.summary?.filteredCount === "number" &&
-    dialog.summary.filteredCount > 0
-  ) {
-    summaryItems.push(
-      copy.t("importConflictSummaryFiltered", {
-        count: dialog.summary.filteredCount
-      })
-    );
-  }
-  if (
-    !hasReasonBreakdown &&
-    typeof dialog.summary?.ignoredCount === "number" &&
-    dialog.summary.ignoredCount > 0
-  ) {
-    summaryItems.push(
-      copy.t("importConflictSummaryIgnored", {
-        count: dialog.summary.ignoredCount
-      })
-    );
-  }
-  for (const reason of dialog.summary?.reasonBreakdown ?? []) {
-    if (reason.count <= 0) {
-      continue;
-    }
-    const copyKey = importSummaryReasonCopyKey(reason.reason);
-    if (!copyKey) {
-      continue;
-    }
-    summaryItems.push(copy.t(copyKey, { count: reason.count }));
-  }
-
-  if (summaryItems.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="flex flex-wrap gap-2 text-[11px] text-[var(--text-secondary)]">
-      {summaryItems.map((item) => (
-        <span
-          key={item}
-          className="rounded-md border border-[var(--border-1)] px-2 py-1"
-        >
-          {item}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function importSummaryReasonCopyKey(
-  reason: WorkspaceFileImportSummaryReason
-): WorkspaceFileManagerI18nKey | null {
-  switch (reason) {
-    case "ignored":
-      return "importConflictSummaryReasonIgnored";
-    case "symlink":
-      return "importConflictSummaryReasonSymlink";
-    case "system_metadata":
-      return "importConflictSummaryReasonSystemMetadata";
-  }
 }

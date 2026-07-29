@@ -22,6 +22,7 @@
       "items": { "$ref": "#/$defs/space" }
     },
     "activeSpaceId": { "type": ["string", "null"] },
+    "layoutBasis": { "$ref": "#/$defs/layoutBasis" },
     "metadata": { "type": "object" }
   },
   "$defs": {
@@ -34,6 +35,46 @@
         "y": { "type": "number" },
         "width": { "type": "number", "minimum": 160 },
         "height": { "type": "number", "minimum": 120 }
+      }
+    },
+    "size": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "safeArea": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["top", "right", "bottom", "left"],
+      "properties": {
+        "top": { "type": "number", "minimum": 0 },
+        "right": { "type": "number", "minimum": 0 },
+        "bottom": { "type": "number", "minimum": 0 },
+        "left": { "type": "number", "minimum": 0 }
+      }
+    },
+    "layoutConstraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minWidth", "minHeight", "surfacePadding", "safeArea"],
+      "properties": {
+        "minWidth": { "type": "number", "minimum": 0 },
+        "minHeight": { "type": "number", "minimum": 0 },
+        "surfacePadding": { "type": "number", "minimum": 0 },
+        "safeArea": { "$ref": "#/$defs/safeArea" }
+      }
+    },
+    "layoutBasis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["surfaceSize", "layoutConstraints"],
+      "properties": {
+        "surfaceSize": { "$ref": "#/$defs/size" },
+        "layoutConstraints": { "$ref": "#/$defs/layoutConstraints" }
       }
     },
     "node": {

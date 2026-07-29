@@ -55,7 +55,16 @@ export function StandaloneAgentIssueManagerToolPanel({
       );
     };
     updateState();
-    return source.subscribe?.(updateState);
+    return source.subscribeNodeState?.(
+      {
+        instanceId: standaloneAgentIssueManagerNodeId,
+        instanceKey: standaloneAgentIssueManagerNodeId,
+        nodeId: standaloneAgentIssueManagerNodeId,
+        typeId: defaultIssueManagerWorkbenchTypeId,
+        workspaceId
+      },
+      updateState
+    );
   }, [resolved, workspaceId]);
 
   useEffect(() => {
@@ -115,6 +124,7 @@ export function StandaloneAgentIssueManagerToolPanel({
     isDragging: false,
     isFocused: active,
     isResizing: false,
+    isVisible: true,
     node,
     setNodeRuntimeState: () => undefined,
     setSnapshotNodeState: () => undefined

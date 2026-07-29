@@ -99,7 +99,6 @@ interface UseAgentGUISubmitInteractionActionsInput {
     feedback(value: string): void;
     skip(): void;
   }>;
-  previewMode: boolean;
   promptImagesSupported: boolean;
   optimisticGoalControl: AgentGUIOptimisticGoalControl | null;
   sessionEngine: AgentSessionEngine;
@@ -118,7 +117,11 @@ interface UseAgentGUISubmitInteractionActionsInput {
     content: AgentPromptContentBlock[],
     displayPrompt?: string,
     options?: AgentComposerSubmitOptions,
-    initialTurnExpected?: boolean
+    initialTurnExpected?: boolean,
+    initialGoalControl?: {
+      action: AgentActivityGoalControlAction;
+      objective?: string;
+    }
   ): AgentGUINewConversationActivationResult | null;
   submitPromptRef: RefObject<
     (
@@ -159,7 +162,6 @@ export function typedGoalControlFromComposer(
       return { action: "set", objective: args };
   }
 }
-
 export function useAgentGUISubmitInteractionActions(
   input: UseAgentGUISubmitInteractionActionsInput
 ) {
@@ -180,7 +182,6 @@ export function useAgentGUISubmitInteractionActions(
     isSessionMarkedNonResumable,
     persistActiveConversation,
     planActionsRef,
-    previewMode,
     promptImagesSupported,
     optimisticGoalControl,
     sessionEngine,
@@ -203,7 +204,6 @@ export function useAgentGUISubmitInteractionActions(
       draftByScopeKeyRef,
       isCurrentConversation,
       optimisticGoalControl,
-      previewMode,
       sessionEngine,
       setDetailError,
       setDraftByScopeKey,
@@ -238,6 +238,7 @@ export function useAgentGUISubmitInteractionActions(
       content: AgentPromptContentBlock[],
       displayPrompt?: string,
       options?: {
+        capabilityRefs?: AgentComposerSubmitOptions["capabilityRefs"];
         immediate?: boolean;
         requiredSettingsPatch?: AgentComposerSubmitOptions["requiredSettingsPatch"];
         sendNow?: boolean;
@@ -298,6 +299,9 @@ export function useAgentGUISubmitInteractionActions(
       });
       sessionEngine.dispatch({
         agentSessionId,
+        ...(options?.capabilityRefs?.length
+          ? { capabilityRefs: options.capabilityRefs }
+          : {}),
         clientSubmitId: submitTrace.clientSubmitId,
         content: normalizedContent,
         expiresAtUnixMs: submittedAtUnixMs + 120_000,
@@ -402,6 +406,7 @@ export function useAgentGUISubmitInteractionActions(
       normalizedContent: AgentPromptContentBlock[],
       displayPromptText?: string,
       options?: {
+        capabilityRefs?: AgentComposerSubmitOptions["capabilityRefs"];
         requiredSettingsPatch?: AgentComposerSubmitOptions["requiredSettingsPatch"];
         sendNow?: boolean;
         sourceScopeKey?: string;
@@ -430,6 +435,7 @@ export function useAgentGUISubmitInteractionActions(
         return;
       }
       executePrompt(agentSessionId, normalizedContent, displayPromptText, {
+        capabilityRefs: options?.capabilityRefs,
         requiredSettingsPatch: options?.requiredSettingsPatch,
         sendNow: options?.sendNow === true,
         sourceScopeKey: options?.sourceScopeKey,
@@ -445,9 +451,6 @@ export function useAgentGUISubmitInteractionActions(
       displayPrompt?: string,
       options?: AgentComposerSubmitOptions
     ) => {
-      if (previewMode) {
-        return;
-      }
       const agentSessionId = activeConversationIdRef.current;
       const normalizedContent = normalizeAgentPromptContentBlocks(content);
       if (normalizedContent.length === 0) {
@@ -512,6 +515,7 @@ export function useAgentGUISubmitInteractionActions(
               normalizedContent,
               displayPromptText,
               {
+                capabilityRefs: options?.capabilityRefs,
                 requiredSettingsPatch: options?.requiredSettingsPatch,
                 sourceScopeKey: resolveAgentComposerDraftScopeKey({}),
                 trackDraft: true
@@ -528,7 +532,8 @@ export function useAgentGUISubmitInteractionActions(
           normalizedContent,
           displayPromptText,
           options,
-          typedGoal ? false : undefined
+          typedGoal ? false : undefined,
+          typedGoal ?? undefined
         );
         if (activationResult) {
           if (typedGoal) {
@@ -568,6 +573,7 @@ export function useAgentGUISubmitInteractionActions(
         normalizedContent,
         displayPromptText,
         {
+          capabilityRefs: options?.capabilityRefs,
           requiredSettingsPatch: options?.requiredSettingsPatch,
           trackDraft: true
         }
@@ -577,7 +583,6 @@ export function useAgentGUISubmitInteractionActions(
       agentActivityRuntime,
       beginOptimisticGoalControl,
       conversationListQuery,
-      previewMode,
       promptImagesSupported,
       goalControl,
       persistActiveConversation,
@@ -592,7 +597,11 @@ export function useAgentGUISubmitInteractionActions(
   }, [submitPrompt]);
 
   const submitGuidancePrompt = useCallback(
-    (content: AgentPromptContentBlock[], displayPrompt?: string) => {
+    (
+      content: AgentPromptContentBlock[],
+      displayPrompt?: string,
+      options?: AgentComposerSubmitOptions
+    ) => {
       const agentSessionId = activeConversationIdRef.current;
       const normalizedContent = normalizeAgentPromptContentBlocks(content);
       if (!agentSessionId || normalizedContent.length === 0) {
@@ -615,7 +624,11 @@ export function useAgentGUISubmitInteractionActions(
         agentSessionId,
         normalizedContent,
         displayPromptText,
-        { sendNow: true }
+        {
+          capabilityRefs: options?.capabilityRefs,
+          sendNow: true,
+          trackDraft: true
+        }
       );
     },
     [

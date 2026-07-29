@@ -1,26 +1,4 @@
-export {
-  classifyWorkspaceFilePreviewKind,
-  copyWorkspaceFilePreviewBytes,
-  createWorkspaceFilePreviewLoadedState,
-  decodeWorkspaceTextFile,
-  formatWorkspacePreviewByteLimit,
-  isWorkspaceFileBrowserOpenable,
-  isWorkspacePreviewFileTooLarge,
-  isWorkspaceTextFileTooLarge,
-  looksLikeBinaryText,
-  normalizeWorkspaceFilePreviewBytes,
-  resolveWorkspaceFileActivationTarget,
-  resolveWorkspaceFileExtension,
-  resolveWorkspaceFilePreviewReadiness,
-  resolveWorkspaceFileVisualKind,
-  resolveWorkspaceImageMimeType,
-  resolveWorkspaceVideoMimeType,
-  type WorkspaceFilePreviewLoadedResult,
-  type WorkspaceFilePreviewReadiness,
-  type WorkspaceFileVisualKind,
-  workspaceFilePreviewMaxBytes,
-  workspaceFileTextMaxBytes
-} from "./internal/model/fileKinds.ts";
+export { resolveWorkspaceFileActivationTarget } from "./internal/model/fileKinds.ts";
 export {
   formatWorkspaceFileBytes,
   formatWorkspaceFileModifiedTime,

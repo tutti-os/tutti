@@ -51,6 +51,7 @@ func prepareProviderLaunch(
 ) (ProcessSpec, func(context.Context), error) {
 	spec.Command = append([]string(nil), spec.Command...)
 	spec.Env = append([]string(nil), spec.Env...)
+	spec.ExecutableIdentity = cloneExecutableIdentity(spec.ExecutableIdentity)
 	if preparer == nil {
 		return spec, nil, nil
 	}
@@ -69,6 +70,14 @@ func prepareProviderLaunch(
 	spec.Env = append([]string(nil), result.Env...)
 	spec.CWD = result.CWD
 	return spec, providerLaunchCleanup(spec, result.Cleanup), nil
+}
+
+func cloneExecutableIdentity(value *ExecutableIdentity) *ExecutableIdentity {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func cloneProviderLaunchSession(session Session) Session {

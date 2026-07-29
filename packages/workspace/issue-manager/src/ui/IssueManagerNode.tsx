@@ -312,7 +312,6 @@ export function IssueManagerNodeHeader({
         "relative flex h-full min-h-0 w-full items-center bg-transparent",
         className
       )}
-      data-workbench-custom-header-border="none"
     >
       <div
         {...dragHandleProps}

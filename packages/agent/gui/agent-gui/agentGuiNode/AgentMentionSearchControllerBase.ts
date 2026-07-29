@@ -103,6 +103,7 @@ export class AgentMentionSearchControllerBase {
   protected currentFileSearchLimit: number;
   protected currentIssueSearchLimit: number;
   protected agentGeneratedBrowsePath: string | null = null;
+  protected workspaceFileBrowsePaths: string[] = [];
   protected rawGroups: AgentMentionRawGroups = emptyAgentMentionRawGroups();
   protected issueTopicGroups: AgentMentionIssueTopicGroup[] | null = null;
   protected state: AgentMentionSearchState = {
@@ -179,9 +180,9 @@ export class AgentMentionSearchControllerBase {
         groups: this.groupsFromRawGroups(),
         error: null
       });
-      if (cached.isFresh) {
-        return;
-      }
+      // A user-opened palette always revalidates. Cache freshness is used only
+      // to suppress redundant speculative preloads; here the cached entry is a
+      // zero-latency presentation while the provider query refreshes it.
     } else {
       this.rawGroups = emptyAgentMentionRawGroups();
       this.resetTotalCounts();
@@ -655,6 +656,10 @@ export class AgentMentionSearchControllerBase {
 
   protected resetAgentGeneratedBrowsePath(): void {
     this.agentGeneratedBrowsePath = null;
+  }
+
+  protected resetWorkspaceFileBrowsePaths(): void {
+    this.workspaceFileBrowsePaths = [];
   }
 
   protected resetTotalCounts(): void {

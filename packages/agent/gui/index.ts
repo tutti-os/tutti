@@ -16,9 +16,68 @@ export type {
   AgentGUIProps,
   AgentGUIReferenceProvenanceFilterCatalog
 } from "./AgentGUI";
+export type { AgentGUIAgentConfigMenuContext } from "./agent-gui/agentGuiNode/AgentGUINode.types";
+export type {
+  TuttiModePlanAssignmentAgentDetail,
+  TuttiModePlanAssignmentAgentOption,
+  TuttiModePlanAssignmentOptionsSource,
+  TuttiModePlanReviewSnapshot,
+  TuttiModePlanReviewRuntime,
+  TuttiModePlanTaskAssignmentInput,
+  TuttiPlanIssueMaterializationFailure,
+  TuttiPlanIssueQueryResult,
+  TuttiPlanIssueSnapshot,
+  TuttiPlanIssueSource,
+  TuttiPlanIssueTaskSnapshot
+} from "./workspaceWorkflow";
 export type { AgentGUIComposerAppendRequest } from "./agent-gui/agentGuiNode/controller/useAgentGUIComposerAppendRequest";
+export {
+  createAgentStatusController,
+  selectAgentStatusControllerSnapshot,
+  type AgentStatusController,
+  type AgentStatusControllerOptions,
+  type AgentStatusControllerSnapshot,
+  type AgentStatusFrame,
+  type AgentStatusQuery,
+  type AgentStatusRequestPhase,
+  type AgentStatusRequestReason,
+  type AgentStatusSelectionKey,
+  type AgentStatusSectionState,
+  type AgentStatusSource,
+  type AgentStatusSourceError,
+  type AgentStatusStreamObserver,
+  type AgentStatusValue
+} from "./agent-gui/agentGuiNode/controller/AgentStatusController";
+export {
+  AgentHandoffMenu,
+  type AgentHandoffMenuLabels,
+  type AgentHandoffMenuProps
+} from "./agent-gui/agentGuiNode/composer/AgentHandoffMenu";
+export {
+  createAgentSessionHandoffPrompt,
+  createAgentSessionMarkdownLink
+} from "./agent-gui/agentGuiNode/agentRichText/agentMentionMarkdown";
+export type {
+  CreateAgentSessionHandoffPromptInput,
+  CreateAgentSessionMarkdownLinkInput
+} from "./agent-gui/agentGuiNode/agentRichText/agentMentionMarkdown";
 export type { AgentComposerDraftFile } from "./agent-gui/agentGuiNode/model/agentGuiNodeTypes";
-export type { AgentGUIAccountMenuState } from "./agent-gui/agentGuiNode/accountMenuState";
+export type {
+  AgentExternalPromptFilePreparationErrorCode,
+  AgentExternalPromptFilePreparationResult,
+  AgentExternalPromptFilePreparer,
+  AgentPreparedExternalPromptFile
+} from "./agent-gui/agentGuiNode/model/agentExternalPromptFiles";
+export type {
+  AgentExternalPromptEntryResolution,
+  AgentExternalPromptEntryResolver
+} from "./agent-gui/agentGuiNode/model/agentExternalPromptEntries";
+export type {
+  AgentRunErrorCode,
+  AgentVisibleErrorOverride,
+  AgentVisibleErrorOverrideCode,
+  AgentVisibleErrorOverrides
+} from "./shared/agentEnv/agentErrorPresentation";
 export type {
   AgentGUIComposerContentType,
   AgentGUIComposerFocusMethod,
@@ -29,6 +88,7 @@ export type {
 export {
   agentGUIAgentIsReady,
   normalizeAgentGUIAgents,
+  projectAgentGUIAgentsToTargets,
   resolveAgentGUISelectedDirectoryAgent
 } from "./agents";
 export {
@@ -49,6 +109,7 @@ export type {
   AgentGUIAgentAvailabilityAction,
   AgentGUIAgentAvailabilityStatus,
   AgentGUIAgentOwner,
+  AgentGUIAgentOwnership,
   AgentGUIHomeSuggestionId,
   AgentGUIAllAgentsPresentation,
   AgentGUIProvider,
@@ -57,8 +118,14 @@ export type {
   AgentGUIProviderReadinessGate,
   AgentGUIProviderReadinessGateAction,
   AgentGUIProviderReadinessGateStatus,
+  AgentGUITargetConnectionSource,
+  AgentGUITargetConnectionState,
+  AgentGUITargetConnectionStatus,
   AgentGUIAgentTarget,
   AgentGUIAgentTargetBadge,
+  AgentGUIAgentTargetInfoRenderContext,
+  AgentGUIAgentTargetInfoRenderer,
+  AgentGUIAgentTargetInfoSurface,
   AgentGUIAgentTargetRef
 } from "./types";
 export {
@@ -69,14 +136,22 @@ export {
 export type { AgentGuiI18nLocale } from "./i18n/index";
 export { agentGuiDockIconUrl, agentGuiDockIconUrls } from "./dockIcons";
 export {
+  AGENT_GUI_COLLAPSED_MIN_WIDTH_PX,
   AGENT_GUI_DETAIL_MIN_WIDTH_PX,
   AGENT_GUI_EXPANDED_TARGET_WIDTH_PX,
-  AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX,
+  AGENT_GUI_STANDALONE_MIDDLE_CONTENT_MIN_WIDTH_PX,
+  resolveAgentGUIConversationRailPresentation,
   resolveAgentGUIExpandedWindowFrame,
+  resolveStandaloneAgentGUIViewportMinimumWidthPx,
   shouldAutoCollapseAgentGUIConversationRail
 } from "./agent-gui/agentGuiNode/model/agentGuiRailLayout";
 export type {
+  AgentGUIConversationRailAutoCollapseMode,
+  AgentGUIConversationRailPresentation
+} from "./agent-gui/agentGuiNode/model/agentGuiRailLayout";
+export type {
   AgentGUIAgentsEmptyRenderer,
+  AgentGUIConversationRailLayout,
   AgentGUIProviderUnavailableStateContext,
   AgentGUIProviderUnavailableStateRenderer,
   AgentGUISidebarFooterContext,
@@ -122,10 +197,18 @@ export type {
 } from "./agentActivityRuntime";
 export type {
   AgentHostApi,
+  AgentHostAgentTargetAuthenticatedAccount,
+  AgentHostAgentTargetSetupSnapshot,
+  AgentHostAgentTargetSetupState,
+  AgentHostAgentTargetSetupWatch,
   AgentHostApplyWorkspaceGitPatchInput,
   AgentHostInputApi,
+  AgentHostQuickPrompt,
+  AgentHostQuickPromptSnapshot,
+  AgentHostQuickPromptsApi,
   AgentHostSelectFilesInput,
   AgentHostRuntimeApi,
+  AgentHostUserProject,
   AgentProviderProbeListInput,
   AgentProviderProbeListResult
 } from "./host/agentHostApi";

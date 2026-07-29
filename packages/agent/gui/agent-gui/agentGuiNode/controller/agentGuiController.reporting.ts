@@ -26,6 +26,7 @@ import {
   getAgentGUIErrorCode,
   normalizeAgentGUIDiagnosticError
 } from "./agentGuiController.errors";
+import type { AgentConversationBatchDeletionCapability } from "./agentConversationBatchDeletionCapability";
 export {
   normalizePermissionModeSemantic,
   permissionConfigFromComposerOptions,
@@ -64,7 +65,6 @@ export {
   maxFiniteMessageVersion,
   minFiniteMessageVersion,
   sessionHasRenderableMessages,
-  sessionViewHasUnhydratedOlderDetailMessages,
   windowHasTurnMissingUserPrompt
 } from "./useAgentConversationMessagePaging";
 export type AgentGUIRuntimeErrorPhase =
@@ -77,6 +77,8 @@ export type AgentGUIRuntimeErrorPhase =
   | "submit_interactive"
   | "toggle_conversation_pinned"
   | "rename_conversation"
+  | "fork_conversation_through_turn"
+  | "open_fork_source_conversation"
   | "delete_conversation"
   | "update_session_settings"
   | "warmup_openclaw_gateway";
@@ -177,6 +179,39 @@ export function reportAgentGUIConversationFilterTargetUnresolved(input: {
       "[agent-gui] reportAgentGUIConversationFilterTargetUnresolved failed",
       reportError
     );
+  }
+}
+
+export function reportAgentGUIConversationBatchDeletionCapabilityIncomplete(input: {
+  missingMethods: AgentConversationBatchDeletionCapability["missingMethods"];
+  runtime: AgentActivityRuntime;
+  workspaceId: string;
+}): void {
+  const reportDiagnostic = input.runtime.reportDiagnostic;
+  if (!reportDiagnostic) {
+    return;
+  }
+  const reportFailure = (error: unknown) => {
+    console.error(
+      "[agent-gui-conversation-batch-delete-capability]",
+      JSON.stringify({
+        error: normalizeAgentGUIDiagnosticError(error),
+        workspaceId: input.workspaceId
+      })
+    );
+  };
+  try {
+    void Promise.resolve(
+      reportDiagnostic.call(input.runtime, {
+        details: { missingMethods: input.missingMethods },
+        event: "agent.gui.conversation_batch_delete.capability_incomplete",
+        level: "warn",
+        source: "agent-gui",
+        workspaceId: input.workspaceId
+      })
+    ).catch(reportFailure);
+  } catch (error) {
+    reportFailure(error);
   }
 }
 

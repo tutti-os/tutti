@@ -103,6 +103,51 @@ func TestProcessExists(t *testing.T) {
 	}
 }
 
+func TestWiringUsesSupervisedAgentHostRun(t *testing.T) {
+	var source strings.Builder
+	for _, file := range []string{"wiring.go", "wiring_daemon_api.go"} {
+		raw, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("read %s: %v", file, err)
+		}
+		source.Write(raw)
+		source.WriteByte('\n')
+	}
+	combined := source.String()
+	if !strings.Contains(combined, "agentHost.Run(ctx)") {
+		t.Fatal("production wiring does not start the supervised Agent Host lifecycle")
+	}
+	for _, legacy := range []string{
+		"agentHost.RunRuntimeOperationWorker(ctx)",
+		"agentHost.RunGoalOperationWorker(ctx)",
+		"agentHost.RunGoalReconcileInboxWorker(ctx)",
+		"agentHost.RunWorktreeGarbageCollectionWorker(ctx)",
+	} {
+		if strings.Contains(combined, legacy) {
+			t.Fatalf("production wiring still starts an unsupervised Host worker: %s", legacy)
+		}
+	}
+}
+
+func TestWiringComposesTuttiModeGoalReviewLifecycle(t *testing.T) {
+	raw, err := os.ReadFile("wiring_daemon_api.go")
+	if err != nil {
+		t.Fatalf("read wiring_daemon_api.go: %v", err)
+	}
+	source := string(raw)
+	for _, required := range []string{
+		"tuttiModeExecutions.ReviewerTargets = tuttiModeReviewerAgentAdapter{",
+		"tuttiModeReviewerTurnObserver{",
+		"tuttigoalreviewcli.NewProvider(",
+		"TuttiModeGoalReviewService: tuttiModeExecutions",
+		"cliRegistry.AgentSessionCapabilities = agentSessionCLIProjectionResolver{",
+	} {
+		if !strings.Contains(source, required) {
+			t.Fatalf("production wiring is missing Goal Review composition: %s", required)
+		}
+	}
+}
+
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }

@@ -1,0 +1,73 @@
+import { cn } from "@tutti-os/ui-system";
+import type { AgentGUIAgentTarget } from "../../../types";
+
+export interface AgentGUIAgentTargetNamePresentation {
+  agentLabel: string;
+  fullLabel: string;
+  ownerLabel: string | null;
+  ownerSeparator: string;
+}
+
+export function projectAgentGUIAgentTargetName(input: {
+  ownerSeparator: string;
+  target: AgentGUIAgentTarget;
+}): AgentGUIAgentTargetNamePresentation {
+  const agentLabel = input.target.label.trim();
+  const ownerLabel =
+    input.target.ownership === "shared"
+      ? input.target.ownerLabel?.trim() || null
+      : null;
+  const ownerSeparator = ownerLabel ? input.ownerSeparator : "";
+  return {
+    agentLabel,
+    fullLabel: ownerLabel
+      ? `${ownerLabel}${ownerSeparator}${agentLabel}`
+      : agentLabel,
+    ownerLabel,
+    ownerSeparator
+  };
+}
+
+export function AgentGUIAgentTargetName({
+  className,
+  ownerSeparator,
+  target
+}: {
+  className?: string;
+  ownerSeparator: string;
+  target: AgentGUIAgentTarget;
+}): React.JSX.Element {
+  const presentation = projectAgentGUIAgentTargetName({
+    ownerSeparator,
+    target
+  });
+
+  return (
+    <span
+      className={cn("flex min-w-0 max-w-full items-baseline", className)}
+      title={presentation.fullLabel}
+    >
+      {presentation.ownerLabel ? (
+        <>
+          <span
+            className="min-w-0 flex-1 truncate"
+            data-testid="agent-target-owner-name"
+          >
+            {presentation.ownerLabel}
+          </span>
+          <span
+            className="shrink-0 whitespace-pre"
+            data-testid="agent-target-name-suffix"
+          >
+            {presentation.ownerSeparator}
+            {presentation.agentLabel}
+          </span>
+        </>
+      ) : (
+        <span className="min-w-0 truncate" data-testid="agent-target-name">
+          {presentation.agentLabel}
+        </span>
+      )}
+    </span>
+  );
+}

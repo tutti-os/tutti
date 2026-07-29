@@ -15,6 +15,9 @@ type stubUserProjectService struct {
 	deleteFn    func(context.Context, userprojectservice.DeleteInput) error
 	useFn       func(context.Context, userprojectservice.UseInput) (userprojectbiz.Project, error)
 	listFn      func(context.Context) ([]userprojectbiz.Project, error)
+	moveFn      func(context.Context, userprojectservice.MoveInput) ([]userprojectbiz.Project, error)
+	pinFn       func(context.Context, userprojectservice.PinInput) ([]userprojectbiz.Project, error)
+	useManyFn   func(context.Context, userprojectservice.UseManyInput) []error
 }
 
 func (s stubUserProjectService) CheckPath(ctx context.Context, input userprojectservice.CheckPathInput) (userprojectservice.PathCheck, error) {
@@ -38,11 +41,32 @@ func (s stubUserProjectService) Use(ctx context.Context, input userprojectservic
 	return s.useFn(ctx, input)
 }
 
+func (s stubUserProjectService) UseMany(ctx context.Context, input userprojectservice.UseManyInput) []error {
+	if s.useManyFn == nil {
+		return make([]error, len(input.Paths))
+	}
+	return s.useManyFn(ctx, input)
+}
+
 func (s stubUserProjectService) List(ctx context.Context) ([]userprojectbiz.Project, error) {
 	if s.listFn == nil {
 		return nil, nil
 	}
 	return s.listFn(ctx)
+}
+
+func (s stubUserProjectService) Move(ctx context.Context, input userprojectservice.MoveInput) ([]userprojectbiz.Project, error) {
+	if s.moveFn == nil {
+		return nil, nil
+	}
+	return s.moveFn(ctx, input)
+}
+
+func (s stubUserProjectService) Pin(ctx context.Context, input userprojectservice.PinInput) ([]userprojectbiz.Project, error) {
+	if s.pinFn == nil {
+		return nil, nil
+	}
+	return s.pinFn(ctx, input)
 }
 
 func TestDaemonAPIRoutesCheckUserProjectPath(t *testing.T) {
@@ -87,6 +111,7 @@ func TestDaemonAPIRoutesUserProjects(t *testing.T) {
 					Label:           "tutti",
 					CreatedAtUnixMS: 1,
 					UpdatedAtUnixMS: 2,
+					PinnedAtUnixMS:  3,
 				}}, nil
 			},
 		},
@@ -104,6 +129,9 @@ func TestDaemonAPIRoutesUserProjects(t *testing.T) {
 	}
 	if response.Projects[0].Path != "/workspace/tutti" {
 		t.Fatalf("path = %q, want /workspace/tutti", response.Projects[0].Path)
+	}
+	if response.Projects[0].PinnedAtUnixMs != 3 {
+		t.Fatalf("pinnedAtUnixMs = %d, want 3", response.Projects[0].PinnedAtUnixMs)
 	}
 }
 
@@ -159,5 +187,117 @@ func TestDaemonAPIRoutesUseUserProject(t *testing.T) {
 	decodeGeneratedRouteResponse(t, recorder, &response)
 	if response.Project.Path != "/workspace/tutti" {
 		t.Fatalf("path = %q, want /workspace/tutti", response.Project.Path)
+	}
+}
+
+func TestDaemonAPIRoutesMoveUserProject(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		UserProjectService: stubUserProjectService{
+			moveFn: func(_ context.Context, input userprojectservice.MoveInput) ([]userprojectbiz.Project, error) {
+				if input.ProjectID != "beta" || input.BeforeProjectID == nil || *input.BeforeProjectID != "alpha" {
+					t.Fatalf("move input = %#v", input)
+				}
+				return []userprojectbiz.Project{
+					{ID: "beta", Path: "/workspace/beta", Label: "beta"},
+					{ID: "alpha", Path: "/workspace/alpha", Label: "alpha"},
+				}, nil
+			},
+		},
+	}))
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/user-projects/move", map[string]any{
+		"projectId": "beta", "beforeProjectId": "alpha",
+	})
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", recorder.Code, recorder.Body.String())
+	}
+	var response tuttigenerated.UserProjectListResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if len(response.Projects) != 2 || response.Projects[0].Id != "beta" {
+		t.Fatalf("response projects = %#v", response.Projects)
+	}
+}
+
+func TestDaemonAPIRoutesMoveUserProjectRejectsOmittedBeforeProjectID(t *testing.T) {
+	called := false
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		UserProjectService: stubUserProjectService{
+			moveFn: func(context.Context, userprojectservice.MoveInput) ([]userprojectbiz.Project, error) {
+				called = true
+				return nil, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/user-projects/move", map[string]any{
+		"projectId": "project-alpha",
+	})
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+	}
+	if called {
+		t.Fatal("Move called for request missing beforeProjectId")
+	}
+}
+
+func TestDaemonAPIRoutesMoveUserProjectRejectsUnknownID(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		UserProjectService: stubUserProjectService{
+			moveFn: func(context.Context, userprojectservice.MoveInput) ([]userprojectbiz.Project, error) {
+				return nil, userprojectservice.ErrInvalidArgument
+			},
+		},
+	}))
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/user-projects/move", map[string]any{
+		"projectId": "unknown", "beforeProjectId": nil,
+	})
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body: %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestDaemonAPIRoutesPinUserProject(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		UserProjectService: stubUserProjectService{
+			pinFn: func(_ context.Context, input userprojectservice.PinInput) ([]userprojectbiz.Project, error) {
+				if input.ProjectID != "project-alpha" || !input.Pinned {
+					t.Fatalf("pin input = %#v", input)
+				}
+				return []userprojectbiz.Project{{
+					ID: "project-alpha", Path: "/workspace/alpha", Label: "alpha", PinnedAtUnixMS: 10,
+				}}, nil
+			},
+		},
+	}))
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/user-projects/pin", map[string]any{
+		"projectId": "project-alpha", "pinned": true,
+	})
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", recorder.Code, recorder.Body.String())
+	}
+	var response tuttigenerated.UserProjectListResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if len(response.Projects) != 1 || response.Projects[0].Id != "project-alpha" || response.Projects[0].PinnedAtUnixMs != 10 {
+		t.Fatalf("response projects = %#v", response.Projects)
+	}
+}
+
+func TestDaemonAPIRoutesPinUserProjectRejectsUnknownID(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		UserProjectService: stubUserProjectService{
+			pinFn: func(context.Context, userprojectservice.PinInput) ([]userprojectbiz.Project, error) {
+				return nil, userprojectservice.ErrInvalidArgument
+			},
+		},
+	}))
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/user-projects/pin", map[string]any{
+		"projectId": "unknown", "pinned": true,
+	})
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body: %s", recorder.Code, recorder.Body.String())
 	}
 }

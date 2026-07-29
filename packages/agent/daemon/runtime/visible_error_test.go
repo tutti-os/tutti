@@ -1,14 +1,22 @@
 package agentruntime
 
 import (
+	"errors"
 	"testing"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 func TestVisibleFailureCodeClassifiesDeadlineExceededAsRequestTimedOut(t *testing.T) {
 	if got := visibleFailureCode("context deadline exceeded"); got != "request_timed_out" {
 		t.Fatalf("visibleFailureCode() = %q, want request_timed_out", got)
+	}
+}
+
+func TestIsAuthenticationRequiredClassifiesGeminiMissingAPIKey(t *testing.T) {
+	err := errors.New("Gemini API key is missing or not configured")
+	if !IsAuthenticationRequired(err) {
+		t.Fatalf("IsAuthenticationRequired(%q) = false, want true", err)
 	}
 }
 
@@ -160,6 +168,19 @@ func TestVisibleFailureContentDescribesTuttiInsufficientCredits(t *testing.T) {
 	}
 }
 
+func TestVisibleFailureCodeDoesNotMisclassifyStructuredProviderFailuresAsAuth(t *testing.T) {
+	tests := map[string]string{
+		`HTTP 403: {"error":{"code":"model_not_allowed","message":"authorization denied for model"}}`:                     "model_not_allowed",
+		`MCP client for codex_apps failed: HTTP 451: {"message":"no_biscuit_no_service"} authentication transport failed`: "plugin_unavailable",
+		`HTTP 451: {"message":"no_biscuit_no_service"} authentication transport failed`:                                   "provider_error",
+	}
+	for detail, want := range tests {
+		if got := visibleFailureCode(detail); got != want {
+			t.Fatalf("visibleFailureCode(%q) = %q, want %q", detail, got, want)
+		}
+	}
+}
+
 func TestVisibleFailureContentDescribesInterruptedSession(t *testing.T) {
 	got := visibleFailureContent(ProviderCodex, "turn", "session_interrupted")
 	want := "Codex stopped unexpectedly before it finished responding. Try again."
@@ -193,6 +214,13 @@ func TestVisibleFailureCodeClassifiesMissingBinaryAsCliNotFound(t *testing.T) {
 		if got := visibleFailureCode(detail); got != "cli_not_found" {
 			t.Fatalf("visibleFailureCode(%q) = %q, want cli_not_found", detail, got)
 		}
+	}
+}
+
+func TestVisibleFailureCodeDoesNotClassifyMetadataReadAsMissingCLI(t *testing.T) {
+	detail := `read claude system prompt: open /run/tsh/managed-agent/session/claude-system-prompt.md: no such file or directory`
+	if got := visibleFailureCode(detail); got != "provider_error" {
+		t.Fatalf("visibleFailureCode(%q) = %q, want provider_error", detail, got)
 	}
 }
 
@@ -268,6 +296,6 @@ func TestVisibleFailureTimelineItemCarriesTimeoutCodeForTurnFailures(t *testing.
 	}
 }
 
-func reportTestSource() agentsessionstore.EventSource {
-	return agentsessionstore.EventSource{Provider: ProviderClaudeCode}
+func reportTestSource() canonical.EventSource {
+	return canonical.EventSource{Provider: ProviderClaudeCode}
 }

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 
@@ -17,13 +17,13 @@ interface StableTimeline {
 
 export function useAgentGUITimelineTransition(input: Input) {
   const activeConversationId = input.activeConversationId;
-  const [committedTimeline, setCommittedTimeline] =
-    useState<StableTimeline | null>(() => ({
-      conversation: input.conversation,
-      conversationId: activeConversationId
-    }));
+  const committedTimelineRef = useRef<StableTimeline>({
+    conversation: input.conversation,
+    conversationId: activeConversationId
+  });
   const [revealedSkeletonConversationId, setRevealedSkeletonConversationId] =
     useState<string | null>(null);
+  const revealedSkeletonConversationIdRef = useRef<string | null>(null);
   const transitionPending =
     activeConversationId !== null &&
     input.availability === "loading" &&
@@ -31,22 +31,19 @@ export function useAgentGUITimelineTransition(input: Input) {
 
   useLayoutEffect(() => {
     if (!transitionPending || activeConversationId === null) {
-      setCommittedTimeline((current) =>
-        current?.conversation === input.conversation &&
-        current.conversationId === activeConversationId
-          ? current
-          : {
-              conversation: input.conversation,
-              conversationId: activeConversationId
-            }
-      );
-      setRevealedSkeletonConversationId((current) =>
-        current === null ? current : null
-      );
+      committedTimelineRef.current = {
+        conversation: input.conversation,
+        conversationId: activeConversationId
+      };
+      if (revealedSkeletonConversationIdRef.current !== null) {
+        revealedSkeletonConversationIdRef.current = null;
+        setRevealedSkeletonConversationId(null);
+      }
       return;
     }
     // timing: avoid flashing a detail skeleton during fast local conversation loads
     const timeoutId = window.setTimeout(() => {
+      revealedSkeletonConversationIdRef.current = activeConversationId;
       setRevealedSkeletonConversationId(activeConversationId);
     }, AGENT_GUI_TIMELINE_SKELETON_DELAY_MS);
     return () => window.clearTimeout(timeoutId);
@@ -55,7 +52,9 @@ export function useAgentGUITimelineTransition(input: Input) {
   const showTimelineSkeleton =
     transitionPending &&
     revealedSkeletonConversationId === activeConversationId;
-  const retainedTimeline = transitionPending ? committedTimeline : null;
+  const retainedTimeline = transitionPending
+    ? committedTimelineRef.current
+    : null;
   const retainsPreviousTimeline =
     !showTimelineSkeleton &&
     retainedTimeline?.conversation !== null &&

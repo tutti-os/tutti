@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AgentActivityLiveWireContract",
+  "description": "Revisioned protobuf-wire envelope and JSON control contract for the optimistic AgentGUI live fast lane.",
+  "encoding": "protobuf-wire",
+  "frameFields": [
+    {
+      "name": "protocolRevision",
+      "goConstant": "frameRevisionField",
+      "number": 1,
+      "wireType": "bytes",
+      "required": true
+    },
+    {
+      "name": "streamId",
+      "goConstant": "frameStreamIDField",
+      "number": 2,
+      "wireType": "bytes",
+      "required": true
+    },
+    {
+      "name": "bindingId",
+      "goConstant": "frameBindingIDField",
+      "number": 3,
+      "wireType": "bytes",
+      "required": true
+    },
+    {
+      "name": "epoch",
+      "goConstant": "frameEpochField",
+      "number": 4,
+      "wireType": "varint",
+      "required": true
+    },
+    {
+      "name": "deliveries",
+      "goConstant": "frameDeliveriesField",
+      "number": 5,
+      "wireType": "bytes",
+      "required": true,
+      "repeated": true
+    }
+  ],
+  "deliveryFields": [
+    {
+      "name": "seq",
+      "goConstant": "deliverySeqField",
+      "number": 1,
+      "wireType": "varint",
+      "required": true
+    },
+    {
+      "name": "kind",
+      "goConstant": "deliveryKindField",
+      "number": 2,
+      "wireType": "varint",
+      "required": true
+    },
+    {
+      "name": "event",
+      "goConstant": "deliveryEventField",
+      "number": 3,
+      "wireType": "bytes"
+    },
+    {
+      "name": "discontinuity",
+      "goConstant": "deliveryDiscontinuityField",
+      "number": 4,
+      "wireType": "bytes"
+    },
+    {
+      "name": "attachmentChanged",
+      "goConstant": "deliveryAttachmentField",
+      "number": 5,
+      "wireType": "bytes"
+    },
+    {
+      "name": "goalChanged",
+      "goConstant": "deliveryGoalField",
+      "number": 6,
+      "wireType": "bytes"
+    },
+    {
+      "name": "streamReady",
+      "goConstant": "deliveryReadyField",
+      "number": 7,
+      "wireType": "bytes"
+    },
+    {
+      "name": "rejected",
+      "goConstant": "deliveryRejectedField",
+      "number": 8,
+      "wireType": "bytes"
+    },
+    {
+      "name": "attachmentCaughtUp",
+      "goConstant": "deliveryAttachmentCaughtUpField",
+      "number": 9,
+      "wireType": "bytes"
+    }
+  ],
+  "deliveryKinds": [
+    {
+      "name": "event",
+      "goConstant": "DeliveryKindEvent",
+      "value": 1,
+      "payloadField": "event"
+    },
+    {
+      "name": "discontinuity",
+      "goConstant": "DeliveryKindDiscontinuity",
+      "value": 2,
+      "payloadField": "discontinuity"
+    },
+    {
+      "name": "attachmentChanged",
+      "goConstant": "DeliveryKindAttachmentChanged",
+      "value": 3,
+      "payloadField": "attachmentChanged"
+    },
+    {
+      "name": "goalChanged",
+      "goConstant": "DeliveryKindGoalChanged",
+      "value": 4,
+      "payloadField": "goalChanged"
+    },
+    {
+      "name": "streamReady",
+      "goConstant": "DeliveryKindStreamReady",
+      "value": 5,
+      "payloadField": "streamReady"
+    },
+    {
+      "name": "rejected",
+      "goConstant": "DeliveryKindRejected",
+      "value": 6,
+      "payloadField": "rejected"
+    },
+    {
+      "name": "attachmentCaughtUp",
+      "goConstant": "DeliveryKindAttachmentCaughtUp",
+      "value": 7,
+      "payloadField": "attachmentCaughtUp"
+    }
+  ],
+  "controls": {
+    "discontinuity": {
+      "required": ["reason"],
+      "semanticReasons": ["session_deleted"],
+      "properties": {
+        "reason": "non-empty-string",
+        "reconcileKeys": "reconcile-key-array"
+      }
+    },
+    "attachmentChanged": {
+      "required": [
+        "bindingId",
+        "workspaceId",
+        "agentSessionId",
+        "attachmentRevision"
+      ],
+      "pairedOptional": [["canonicalTurnId", "callerTurnId"]],
+      "properties": {
+        "bindingId": "non-empty-string",
+        "workspaceId": "non-empty-string",
+        "agentSessionId": "non-empty-string",
+        "canonicalTurnId": "string",
+        "callerTurnId": "string",
+        "attachmentRevision": "positive-integer"
+      }
+    },
+    "attachmentCaughtUp": {
+      "required": [
+        "bindingId",
+        "workspaceId",
+        "agentSessionId",
+        "attachmentRevision"
+      ],
+      "pairedOptional": [["canonicalTurnId", "callerTurnId"]],
+      "properties": {
+        "bindingId": "non-empty-string",
+        "workspaceId": "non-empty-string",
+        "agentSessionId": "non-empty-string",
+        "canonicalTurnId": "string",
+        "callerTurnId": "string",
+        "attachmentRevision": "positive-integer"
+      }
+    },
+    "goalChanged": {
+      "required": ["workspaceId", "agentSessionId"],
+      "properties": {
+        "workspaceId": "non-empty-string",
+        "agentSessionId": "non-empty-string",
+        "revision": "non-negative-integer"
+      }
+    },
+    "streamReady": {
+      "required": ["protocolRevision", "streamId", "bindingId"],
+      "properties": {
+        "protocolRevision": "exact-protocol-revision",
+        "streamId": "non-empty-string",
+        "bindingId": "non-empty-string"
+      }
+    },
+    "rejected": {
+      "required": ["reason"],
+      "properties": {
+        "reason": {
+          "enum": ["protocol_revision_mismatch", "permission", "binding"]
+        },
+        "expectedRevision": "string",
+        "receivedRevision": "string"
+      }
+    }
+  }
+}

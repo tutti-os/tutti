@@ -1,6 +1,8 @@
+const MAX_WORKSPACE_FILE_ENTRY_NAME_BYTES = 255;
+
 export function validateWorkspaceFileEntryName(
   name: string
-): "invalid" | "required" | null {
+): "invalid" | "required" | "tooLong" | null {
   const trimmed = name.trim();
   if (!trimmed) {
     return "required";
@@ -12,6 +14,12 @@ export function validateWorkspaceFileEntryName(
     trimmed === ".."
   ) {
     return "invalid";
+  }
+  if (
+    new TextEncoder().encode(trimmed).byteLength >
+    MAX_WORKSPACE_FILE_ENTRY_NAME_BYTES
+  ) {
+    return "tooLong";
   }
   return null;
 }

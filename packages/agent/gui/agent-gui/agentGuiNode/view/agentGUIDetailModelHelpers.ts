@@ -1,11 +1,9 @@
 import { useRef } from "react";
 import { normalizeOptionalWorkspaceAgentStatus } from "../../../shared/workspaceAgentStatusNormalizer";
 import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings";
+import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
-import {
-  createAgentSessionMentionHref,
-  formatAgentMentionMarkdown
-} from "../agentRichText/agentFileMentionExtension";
+import { createAgentSessionHandoffPrompt } from "../agentRichText/agentFileMentionExtension";
 import type {
   AgentComposerSlashStatus,
   AgentComposerSlashStatusLimit
@@ -16,7 +14,8 @@ import type {
 } from "../model/agentGuiNodeTypes";
 import type { AgentGUIAgentTarget } from "../../../types";
 import type { AgentGUIViewLabels } from "./AgentGUINodeView.types";
-import { conversationPlainTitle } from "./agentGUIViewUtils";
+import { conversationPlainTitle, stringValue } from "./agentGUIViewUtils";
+export { isDifferentKnownConversationOwner } from "../model/agentGuiComposerGate";
 
 export function commandAppSource(
   command: unknown
@@ -35,23 +34,6 @@ export function workspaceAppIconKey(
   workspaceId: string
 ): string {
   return `${workspaceId}\u0000${appId}`;
-}
-
-export function isDifferentKnownConversationOwner(input: {
-  conversationUserId?: string | null;
-  currentUserId?: string | null;
-}): boolean {
-  const conversationUserId = input.conversationUserId?.trim() ?? "";
-  const currentUserId = input.currentUserId?.trim() ?? "";
-  if (
-    !conversationUserId ||
-    !currentUserId ||
-    conversationUserId === "local" ||
-    currentUserId === "local"
-  ) {
-    return false;
-  }
-  return conversationUserId !== currentUserId;
 }
 
 export function isContextCanceledMessage(
@@ -258,6 +240,52 @@ export function shouldShowAgentGUIStopButton(input: {
   );
 }
 
+export function isAgentGUITransportNoticeVisible(
+  recovery: AgentGUISessionChrome["recovery"]
+): boolean {
+  return (
+    recovery?.kind === "transport-connecting" ||
+    recovery?.kind === "transport-unavailable"
+  );
+}
+
+export function resolveAgentGUIHomeNoticeChrome(input: {
+  inlineNoticeChrome: AgentGUISessionChrome | null;
+  sessionChrome: AgentGUISessionChrome;
+}): AgentGUISessionChrome | null {
+  return isAgentGUITransportNoticeVisible(input.sessionChrome.recovery)
+    ? input.sessionChrome
+    : input.inlineNoticeChrome;
+}
+
+export function resolveAgentGUIStopControl(input: {
+  hasPendingApproval: boolean;
+  hasPendingInteractivePrompt: boolean;
+  isAuthBlocked: boolean;
+  isCancelPending: boolean;
+  isConversationBusy: boolean;
+  isCreatingConversation: boolean;
+  isInterrupting: boolean;
+  isSubmitting: boolean;
+  isUnavailable: boolean;
+  runtimeCommandsBlocked: boolean;
+}): { disabled: boolean; visible: boolean } {
+  return {
+    disabled: input.runtimeCommandsBlocked,
+    visible: shouldShowAgentGUIStopButton(input)
+  };
+}
+
+export function resolveAgentGUITuttiStopTargets(input: {
+  executionActive: boolean;
+  sourceHasStoppableWork: boolean;
+}): { stopExecution: boolean; stopSession: boolean } {
+  return {
+    stopExecution: input.executionActive,
+    stopSession: !input.executionActive || input.sourceHasStoppableWork
+  };
+}
+
 export function buildAgentConversationHandoffPrompt(input: {
   activeConversation: AgentGUINodeViewModel["rail"]["activeConversation"];
   currentUserId?: string | null;
@@ -278,32 +306,67 @@ export function buildAgentConversationHandoffPrompt(input: {
     input.uiLanguage
   );
   const mentionLabel = title || sourceAgentLabel;
-  const href = createAgentSessionMentionHref({
+  return createAgentSessionHandoffPrompt({
     agentTargetId: conversation.agentTargetId,
     agentSessionId: conversation.id,
     label: mentionLabel,
     workspaceId: input.workspaceId
   });
-  return `${formatAgentMentionMarkdown({
-    kind: "session",
-    href,
-    workspaceId: input.workspaceId,
-    targetId: conversation.id,
-    agentTargetId: conversation.agentTargetId ?? undefined,
-    name: mentionLabel,
-    title: title || sourceAgentLabel,
-    scope: "my_sessions",
-    initiatorName: input.currentUserId?.trim() || sourceAgentLabel,
-    agentName: sourceAgentLabel,
-    status: conversation.status,
-    updatedAtUnixMs: conversation.updatedAtUnixMs
-  })} `;
 }
 
 export function handoffProjectPathForConversation(
   conversation: AgentGUINodeViewModel["rail"]["activeConversation"]
 ): string | null {
+  if (conversation?.railSectionKey?.trim() === "conversations") {
+    return null;
+  }
   return (
     conversation?.project?.path?.trim() || conversation?.cwd?.trim() || null
   );
+}
+
+export function mergeWorkspaceAppIconsFromCommands(input: {
+  commands: AgentGUINodeViewModel["composer"]["availableCommands"];
+  workspaceAppIcons: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+  workspaceId: string;
+}): readonly AgentMessageMarkdownWorkspaceAppIcon[] {
+  const seen = new Set(
+    input.workspaceAppIcons.flatMap((icon) => {
+      const appId = icon.appId.trim();
+      const iconUrl = icon.iconUrl?.trim() ?? "";
+      if (!appId || !iconUrl) {
+        return [];
+      }
+      return [
+        workspaceAppIconKey(appId, icon.workspaceId?.trim() ?? ""),
+        workspaceAppIconKey(appId, "")
+      ];
+    })
+  );
+  let next: AgentMessageMarkdownWorkspaceAppIcon[] | null = null;
+  for (const command of input.commands) {
+    const source = commandAppSource(command);
+    if (!source) {
+      continue;
+    }
+    const appId = stringValue(source.appId).trim();
+    const iconUrl = stringValue(source.iconUrl).trim();
+    if (!appId || !iconUrl) {
+      continue;
+    }
+    const key = workspaceAppIconKey(appId, input.workspaceId);
+    if (seen.has(key)) {
+      continue;
+    }
+    if (!next) {
+      next = [...input.workspaceAppIcons];
+    }
+    next.push({
+      appId,
+      iconUrl,
+      workspaceId: input.workspaceId
+    });
+    seen.add(key);
+  }
+  return next ?? input.workspaceAppIcons;
 }

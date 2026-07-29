@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useExternalStoreSnapshot } from "@tutti-os/ui-react-hooks";
 import {
   acquireBrowserNodeWebviewController,
@@ -7,6 +7,7 @@ import {
 } from "../core/webviewController.ts";
 import type { BrowserNodeFeature } from "../core/feature.ts";
 import type {
+  BrowserNodeAutomationTargetMetadata,
   BrowserNodeLifecycle,
   BrowserNodeNavigationPolicy,
   BrowserNodeSessionMode
@@ -14,6 +15,7 @@ import type {
 import type { BrowserNodeWebviewTag } from "./webviewTag.ts";
 
 export function useBrowserNodeWebview({
+  automationTarget,
   feature,
   initialUrl,
   lifecycle,
@@ -24,6 +26,7 @@ export function useBrowserNodeWebview({
   sessionMode,
   sessionPartition
 }: {
+  automationTarget?: BrowserNodeAutomationTargetMetadata | null;
   feature: BrowserNodeFeature;
   initialUrl: string;
   lifecycle: BrowserNodeLifecycle;
@@ -43,26 +46,34 @@ export function useBrowserNodeWebview({
   webviewPartition: string;
   webviewSrc: string;
 } {
+  const onGuestInteractionRef = useRef(onGuestInteraction);
+  onGuestInteractionRef.current = onGuestInteraction;
+  const stableOnGuestInteraction = useCallback(() => {
+    onGuestInteractionRef.current?.();
+  }, []);
+
   const controller = useMemo(
     () =>
       acquireBrowserNodeWebviewController({
+        automationTarget,
         feature,
         initialUrl,
         lifecycle,
         navigationPolicy,
         nodeId,
-        onGuestInteraction,
+        onGuestInteraction: stableOnGuestInteraction,
         profileId,
         sessionMode,
         sessionPartition
       }),
     [
       feature,
+      automationTarget,
       initialUrl,
       lifecycle,
       navigationPolicy,
       nodeId,
-      onGuestInteraction,
+      stableOnGuestInteraction,
       profileId,
       sessionMode,
       sessionPartition
@@ -80,11 +91,11 @@ export function useBrowserNodeWebview({
     controller.sync();
   }, [
     controller,
+    automationTarget,
     initialUrl,
     lifecycle,
     navigationPolicy,
     nodeId,
-    onGuestInteraction,
     profileId,
     sessionMode,
     sessionPartition

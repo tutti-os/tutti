@@ -31,7 +31,7 @@ import {
   type MentionPaletteState
 } from "../at-panel/index.ts";
 import { createRichTextMentionAttrs } from "../plugins/index.ts";
-import { createRichTextTriggerRegistry } from "../plugins/triggerRegistry.ts";
+import { useEffectiveRichTextMentionService } from "./RichTextMentionServiceProvider.tsx";
 import type {
   RichTextMentionAttrs,
   RichTextMentionPresentation
@@ -43,6 +43,7 @@ import type {
   RichTextTrigger,
   RichTextTriggerConfig
 } from "../types/trigger.ts";
+import type { RichTextMentionService } from "../service/index.ts";
 import {
   normalizeRichTextContent,
   normalizeRichTextLinkHref,
@@ -77,7 +78,9 @@ import {
 export interface RichTextTriggerEditorProps {
   value: string;
   onChange: (value: string) => void;
+  /** @deprecated Prefer mentionService or RichTextMentionServiceProvider. */
   triggerProviders?: readonly RichTextTriggerProvider[];
+  mentionService?: RichTextMentionService;
   placeholder?: string;
   disabled?: boolean;
   className?: string;
@@ -135,7 +138,8 @@ const RICH_TEXT_MENTION_PRESENTATION_KEYS = [
 export function RichTextTriggerEditor({
   value,
   onChange,
-  triggerProviders = [],
+  triggerProviders,
+  mentionService,
   placeholder,
   disabled = false,
   className,
@@ -166,10 +170,10 @@ export function RichTextTriggerEditor({
   const mentionHydrationRequestRef = useRef(0);
   const suppressPastedAtQueryRef = useRef(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const registry = useMemo(
-    () => createRichTextTriggerRegistry(triggerProviders),
-    [triggerProviders]
-  );
+  const registry = useEffectiveRichTextMentionService({
+    mentionService,
+    triggerProviders
+  });
   const activeTriggerConfigs = useMemo(
     () => registry.listTriggerConfigs(),
     [registry]
@@ -272,38 +276,37 @@ export function RichTextTriggerEditor({
       return;
     }
 
-    const requestId = mentionHydrationRequestRef.current + 1;
-    mentionHydrationRequestRef.current = requestId;
-    const mentions = collectHydratableMentionNodes(editor);
-    if (mentions.length === 0) {
-      return;
-    }
+    const hydrateMentions = (): void => {
+      const requestId = mentionHydrationRequestRef.current + 1;
+      mentionHydrationRequestRef.current = requestId;
+      const mentions = collectHydratableMentionNodes(editor);
+      for (const mention of mentions) {
+        void registry
+          .resolve(mention.attrs)
+          .then((snapshot) => {
+            const resolved =
+              snapshot.state === "ready" ? snapshot.resolved : undefined;
+            if (
+              !resolved ||
+              mentionHydrationRequestRef.current !== requestId ||
+              editor.isDestroyed
+            ) {
+              return;
+            }
 
-    for (const mention of mentions) {
-      const provider = registry.getProvider(mention.attrs.providerId);
-      if (!provider?.resolveMention) {
-        continue;
-      }
-
-      void Promise.resolve(provider.resolveMention(mention.attrs))
-        .then((resolved) => {
-          if (
-            !resolved ||
-            mentionHydrationRequestRef.current !== requestId ||
-            editor.isDestroyed
-          ) {
-            return;
-          }
-
-          applyResolvedMentionAttrs(editor, mention.pos, mention.attrs, {
-            label: resolved.label,
-            presentation: resolved.presentation
+            applyResolvedMentionAttrs(editor, mention.pos, mention.attrs, {
+              label: resolved.label,
+              presentation: resolved.presentation
+            });
+          })
+          .catch(() => {
+            // Resolver failures keep the fallback label-only mention.
           });
-        })
-        .catch(() => {
-          // Resolver failures keep the fallback label-only mention.
-        });
-    }
+      }
+    };
+
+    hydrateMentions();
+    return registry.subscribe(hydrateMentions);
   }, [editor, registry, normalizedValue]);
 
   useEffect(() => {

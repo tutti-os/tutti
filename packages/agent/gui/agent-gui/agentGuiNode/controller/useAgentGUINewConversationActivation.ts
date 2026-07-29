@@ -1,6 +1,10 @@
 import {
+  type AgentActivityInitialGoalControl,
+  type AgentActivityRailPlacement,
   isPendingActivationViable,
-  selectLatestActivationForSession
+  selectLatestActivationForSession,
+  selectTuttiModeDraftIsActive,
+  selectTuttiModeDraftPreferences
 } from "@tutti-os/agent-activity-core";
 import { useCallback } from "react";
 import { translate } from "../../../i18n/index";
@@ -14,18 +18,10 @@ import {
   textPromptContent
 } from "../model/agentComposerDraft";
 import { readNodeDefaultDraftSettings } from "./agentGuiController.composerHelpers";
-import {
-  resolveComposerSettingsPresentation,
-  sanitizeComposerSettingsForTarget
-} from "./agentGuiController.composerPresentation";
-import {
-  resolveSameProviderActiveSessionModel,
-  toRuntimeSendContent
-} from "./agentGuiController.draftMessageHelpers";
+import { toRuntimeSendContent } from "./agentGuiController.draftMessageHelpers";
 import {
   createAgentGUIConversationId,
-  normalizeOptionalPrompt,
-  normalizeOptionalText
+  normalizeOptionalPrompt
 } from "./agentGuiController.promptHelpers";
 import {
   agentSubmitTraceDiagnostics,
@@ -37,9 +33,82 @@ import {
   type AgentGUINewConversationActivationResult,
   type UseAgentGUINewConversationActivationInput
 } from "./agentGuiNewConversationActivation.types";
-import { resolveConversationSummaryById } from "./useAgentConversationSelection";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
+import {
+  type AgentGUIConversationUserProject,
+  resolveAgentGUIConversationProject
+} from "../model/agentGuiConversationProjectResolver";
 import type { AgentComposerSubmitOptions } from "../composer/AgentComposer.types";
+
+interface ResolvedInitialTuttiModeActivation {
+  activation: {
+    source: "slash_command";
+    status: "active";
+    effect?: number;
+    speed?: number;
+  };
+  source: "composer_submit" | "engine_draft";
+}
+
+export function resolveInitialTuttiModeActivation(input: {
+  submitOptions?: AgentComposerSubmitOptions;
+  draftActive: boolean;
+  draftEffect: number | null;
+  draftSpeed: number | null;
+}): ResolvedInitialTuttiModeActivation | null {
+  const submitSnapshot = input.submitOptions?.tuttiMode;
+  const active = submitSnapshot?.active ?? input.draftActive;
+  if (!active) return null;
+  const effect = normalizePreference(
+    submitSnapshot?.effect ?? input.draftEffect
+  );
+  const speed = normalizePreference(submitSnapshot?.speed ?? input.draftSpeed);
+  return {
+    activation: {
+      source: "slash_command",
+      status: "active",
+      ...(effect === null ? {} : { effect }),
+      ...(speed === null ? {} : { speed })
+    },
+    source: submitSnapshot ? "composer_submit" : "engine_draft"
+  };
+}
+
+function normalizePreference(value: number | null | undefined) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+export function resolveInitialRailPlacement(input: {
+  selectedProjectPath: string | null | undefined;
+  userProjects: readonly AgentGUIConversationUserProject[];
+}): AgentActivityRailPlacement | null {
+  const selectedProjectPath = input.selectedProjectPath?.trim() ?? "";
+  if (!selectedProjectPath) {
+    return {
+      version: 1,
+      kind: "conversations",
+      sectionKey: "conversations"
+    };
+  }
+  const selectedProject = resolveAgentGUIConversationProject(
+    selectedProjectPath,
+    input.userProjects
+  );
+  if (!selectedProject) {
+    return null;
+  }
+  const sectionKey = selectedProject.sectionKey?.trim() ?? "";
+  if (!sectionKey) {
+    return null;
+  }
+  return {
+    version: 1,
+    kind: "project",
+    projectPath: selectedProject.path.trim(),
+    sectionKey
+  };
+}
 
 export function useAgentGUINewConversationActivation(
   input: UseAgentGUINewConversationActivationInput
@@ -54,6 +123,7 @@ export function useAgentGUINewConversationActivation(
     isCreatingConversationRef,
     onDataChangeRef,
     selectedProjectPathRef,
+    userProjectsRef,
     draftByScopeKeyRef,
     submittedDraftSnapshotsRef,
     draftSettingsBySessionIdRef,
@@ -61,19 +131,14 @@ export function useAgentGUINewConversationActivation(
     workspaceId,
     activeConversationIdRef,
     isComposerHomeRef,
-    conversationsRef,
     activeSessionState,
-    lastActiveModelByProviderRef,
     sessionEngine,
+    tuttiModeDraftKey,
     activation,
     currentUserId,
     data,
     defaultReasoningEffort,
-    syncConversationListProjection,
-    loadSelectedConversationMessages,
-    loadSessionState,
-    refreshMessagesFromSnapshot,
-    persistActiveConversation,
+    requestRailReveal,
     setActiveConversationId,
     setIntent,
     setIsComposerHome,
@@ -87,7 +152,8 @@ export function useAgentGUINewConversationActivation(
       initialContentInput?: unknown,
       displayPrompt?: string,
       submitOptions?: AgentComposerSubmitOptions,
-      initialTurnExpected?: boolean
+      initialTurnExpected?: boolean,
+      initialGoalControl?: AgentActivityInitialGoalControl
     ): AgentGUINewConversationActivationResult | null => {
       const target = selectedAgentTargetRef.current;
       const targetData = selectedComposerTargetDataRef.current;
@@ -128,58 +194,26 @@ export function useAgentGUINewConversationActivation(
             }
       );
       const selectedProjectPath = selectedProjectPathRef.current;
+      const railPlacement = resolveInitialRailPlacement({
+        selectedProjectPath,
+        userProjects: userProjectsRef.current
+      });
+      if (railPlacement === null) {
+        return null;
+      }
+      const railSectionKey = railPlacement.sectionKey;
       const initialNodeSettings = readNodeDefaultDraftSettings({
         data: targetData.data,
         defaultReasoningEffort,
         drafts: draftSettingsBySessionIdRef.current
       });
       const snapshotComposerOptions = getCachedComposerOptions();
-      const targetSafeInitialSettings = sanitizeComposerSettingsForTarget({
-        settings: initialNodeSettings,
-        target: targetData,
-        options: snapshotComposerOptions
-      });
-      const initialSettings = resolveComposerSettingsPresentation({
-        active: false,
-        homeSettings: targetSafeInitialSettings,
-        options: snapshotComposerOptions
-      });
-      const currentActiveConversationId = activeConversationIdRef.current;
-      const currentActiveConversation = currentActiveConversationId
-        ? resolveConversationSummaryById(
-            conversationsRef.current,
-            currentActiveConversationId
-          )
-        : null;
-      const inheritedModel =
-        normalizeOptionalText(targetSafeInitialSettings.model) === null
-          ? (resolveSameProviderActiveSessionModel({
-              activeProvider: currentActiveConversation?.provider ?? null,
-              agentSessionId: currentActiveConversationId,
-              provider,
-              runtime: agentActivityRuntime,
-              sessionState: activeSessionState,
-              workspaceId
-            }) ??
-            normalizeOptionalText(
-              lastActiveModelByProviderRef.current[provider]
-            ))
-          : null;
-      const settings = sanitizeComposerSettingsForTarget({
-        settings:
-          inheritedModel === null
-            ? {
-                ...initialSettings,
-                ...submitOptions?.requiredSettingsPatch
-              }
-            : {
-                ...initialSettings,
-                model: inheritedModel,
-                ...submitOptions?.requiredSettingsPatch
-              },
-        target: targetData,
-        options: snapshotComposerOptions
-      });
+      // Only sparse, explicit home intent crosses Create. Target defaults and
+      // final provider validation are resolved from the latest daemon state.
+      const settings = {
+        ...initialNodeSettings,
+        ...submitOptions?.requiredSettingsPatch
+      };
       const prewarmedSessionId =
         normalizedInitialContent.length > 0 &&
         snapshotComposerOptions?.behavior?.prewarmDraftSession === true
@@ -210,22 +244,52 @@ export function useAgentGUINewConversationActivation(
         sourceScopeKey,
         content: snapshotAgentComposerDraft(submittedDraft)
       };
+      const engineSnapshot = sessionEngine.getSnapshot();
+      const draftPreferences = selectTuttiModeDraftPreferences(
+        engineSnapshot,
+        tuttiModeDraftKey
+      );
+      const initialTuttiMode = resolveInitialTuttiModeActivation({
+        submitOptions,
+        draftActive: selectTuttiModeDraftIsActive(
+          engineSnapshot,
+          tuttiModeDraftKey
+        ),
+        draftEffect: draftPreferences.effect,
+        draftSpeed: draftPreferences.speed
+      });
       reportAgentSubmitTraceDiagnostic({
         event: "activation.requested",
         runtime: agentActivityRuntime,
         trace: submitTrace,
         workspaceId,
-        fields: { mode: "new" }
+        fields: {
+          mode: "new",
+          tutti_mode_active: initialTuttiMode !== null,
+          tutti_mode_source: initialTuttiMode?.source ?? "inactive"
+        }
       });
       const requestId = activation.activate({
         mode: "new",
         agentSessionId,
         agentTargetId,
+        ...(submitOptions?.capabilityRefs?.length
+          ? { capabilityRefs: submitOptions.capabilityRefs }
+          : {}),
         clientSubmitId: submitTrace.clientSubmitId,
         cwd: selectedProjectPath ?? "",
+        railPlacement,
+        railSectionKey,
         initialContent: normalizedInitialContent,
         ...(initialTurnExpected !== undefined ? { initialTurnExpected } : {}),
+        ...(initialGoalControl ? { initialGoalControl } : {}),
         initialDisplayPrompt,
+        ...(initialTuttiMode
+          ? {
+              initialTuttiModeActivation: initialTuttiMode.activation,
+              tuttiModeDraftKey
+            }
+          : {}),
         runtimeContent: toRuntimeSendContent(normalizedInitialContent),
         submitDiagnostics: agentSubmitTraceDiagnostics(submitTrace),
         settings,
@@ -236,11 +300,11 @@ export function useAgentGUINewConversationActivation(
       if (requestId === null) return null;
       activeConversationIdRef.current = agentSessionId;
       setActiveConversationId(agentSessionId);
+      requestRailReveal(agentSessionId, "created");
       isComposerHomeRef.current = false;
       setIsComposerHome(false);
       setIntent({ tag: "active", id: agentSessionId });
       setIsLoadingMessages(false);
-      persistActiveConversation(agentSessionId);
       return { agentSessionId, requestId };
     },
     [
@@ -248,16 +312,14 @@ export function useAgentGUINewConversationActivation(
       currentUserId,
       data,
       defaultReasoningEffort,
-      syncConversationListProjection,
-      loadSelectedConversationMessages,
-      loadSessionState,
-      refreshMessagesFromSnapshot,
-      persistActiveConversation,
+      requestRailReveal,
       activation,
       conversationListQuery,
       isCurrentConversation,
       agentActivityRuntime,
       isConversationStale,
+      sessionEngine,
+      tuttiModeDraftKey,
       workspaceId
     ]
   );

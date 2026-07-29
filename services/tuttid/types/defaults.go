@@ -8,11 +8,12 @@ import (
 )
 
 type generatedDefaultsSpec struct {
-	State           generatedStateDefaults
-	Transport       generatedTransportDefaults
-	Logging         generatedLoggingDefaults
-	Analytics       generatedAnalyticsDefaults
-	AgentExtensions generatedAgentExtensionDefaults
+	State             generatedStateDefaults
+	Transport         generatedTransportDefaults
+	Logging           generatedLoggingDefaults
+	Analytics         generatedAnalyticsDefaults
+	AgentExtensions   generatedAgentExtensionDefaults
+	AgentRuntimeTools generatedAgentRuntimeToolDefaults
 }
 
 type generatedStateDefaults struct {
@@ -65,7 +66,38 @@ type AgentExtensionSource struct {
 	ReleaseIndexURL  string
 	SigningKeyID     string
 	SigningPublicKey string
+	LocalPackageDir  string
 	Enabled          bool
+}
+
+type generatedAgentRuntimeToolDefaults struct {
+	UV generatedUVToolDefaults
+}
+
+type generatedUVToolDefaults struct {
+	Version   string
+	Artifacts []generatedUVToolArtifactDefaults
+}
+
+type generatedUVToolArtifactDefaults struct {
+	Platform          string
+	URL               string
+	SHA256            string
+	SizeBytes         int64
+	Archive           string
+	ArchiveExecutable string
+}
+
+// UVToolArtifact describes the pinned Tutti-managed uv toolchain archive for
+// one platform.
+type UVToolArtifact struct {
+	Version           string
+	Platform          string
+	URL               string
+	SHA256            string
+	SizeBytes         int64
+	Archive           string
+	ArchiveExecutable string
 }
 
 type ResolvedDefaults struct {
@@ -165,23 +197,83 @@ func ResolveAppVersion() string {
 
 func ResolveAgentExtensionSources() []AgentExtensionSource {
 	result := make([]AgentExtensionSource, 0, len(generatedDefaults.AgentExtensions.Sources))
+	development := resolveTuttiEnv() == "development"
 	for _, source := range generatedDefaults.AgentExtensions.Sources {
-		enabled := source.Enabled
-		envName := "TUTTI_AGENT_EXTENSION_" + strings.ToUpper(strings.ReplaceAll(source.Key, "-", "_")) + "_ENABLED"
-		if value := strings.TrimSpace(os.Getenv(envName)); value != "" {
-			if parsed, err := strconv.ParseBool(value); err == nil {
-				enabled = parsed
-			}
+		envPrefix := "TUTTI_AGENT_EXTENSION_" + strings.ToUpper(strings.ReplaceAll(source.Key, "-", "_"))
+		localPackageDir := ""
+		if development {
+			localPackageDir = strings.TrimSpace(os.Getenv(envPrefix + "_PACKAGE_DIR"))
 		}
 		result = append(result, AgentExtensionSource{
 			Key:              source.Key,
 			ReleaseIndexURL:  source.ReleaseIndexURL,
 			SigningKeyID:     source.SigningKeyID,
 			SigningPublicKey: source.SigningPublicKey,
-			Enabled:          enabled,
+			LocalPackageDir:  localPackageDir,
+			Enabled:          source.Enabled,
 		})
 	}
 	return result
+}
+
+// ResolveUVToolArtifact returns the pinned Tutti-managed uv toolchain
+// artifact for the given platform ("<goos>-<goarch>"), or ok=false when the
+// platform is not covered or the pinned descriptor is invalid.
+func ResolveUVToolArtifact(platform string) (UVToolArtifact, bool) {
+	platform = strings.TrimSpace(platform)
+	if platform == "" {
+		return UVToolArtifact{}, false
+	}
+	version := strings.TrimSpace(generatedDefaults.AgentRuntimeTools.UV.Version)
+	for _, artifact := range generatedDefaults.AgentRuntimeTools.UV.Artifacts {
+		if artifact.Platform != platform {
+			continue
+		}
+		resolved := UVToolArtifact{
+			Version:           version,
+			Platform:          artifact.Platform,
+			URL:               strings.TrimSpace(artifact.URL),
+			SHA256:            strings.TrimSpace(artifact.SHA256),
+			SizeBytes:         artifact.SizeBytes,
+			Archive:           strings.TrimSpace(artifact.Archive),
+			ArchiveExecutable: strings.TrimSpace(artifact.ArchiveExecutable),
+		}
+		if !validUVToolArtifact(resolved) {
+			return UVToolArtifact{}, false
+		}
+		return resolved, true
+	}
+	return UVToolArtifact{}, false
+}
+
+func validUVToolArtifact(artifact UVToolArtifact) bool {
+	if artifact.Version == "" || artifact.Platform == "" || artifact.SizeBytes <= 0 {
+		return false
+	}
+	if !strings.HasPrefix(artifact.URL, "https://") || strings.ContainsAny(artifact.URL, "?#@") {
+		return false
+	}
+	if len(artifact.SHA256) != 64 {
+		return false
+	}
+	for _, digit := range artifact.SHA256 {
+		if (digit < '0' || digit > '9') && (digit < 'a' || digit > 'f') {
+			return false
+		}
+	}
+	if artifact.Archive != "tar.gz" && artifact.Archive != "zip" {
+		return false
+	}
+	executable := artifact.ArchiveExecutable
+	if executable == "" || strings.HasPrefix(executable, "/") || strings.Contains(executable, "\\") {
+		return false
+	}
+	for _, component := range strings.Split(executable, "/") {
+		if component == "" || component == "." || component == ".." {
+			return false
+		}
+	}
+	return true
 }
 
 func resolveTuttiEnv() string {

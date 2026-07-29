@@ -39,8 +39,10 @@ import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-ap
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import type { IDesktopRichTextAtService } from "../../../rich-text-at/services/richTextAtService.interface.ts";
 import type { IWorkspaceFileManagerService } from "../../../workspace-file-manager/services/workspaceFileManagerService.interface.ts";
+import type { IWorkspaceFilePreviewSurfaceHost } from "../../../workspace-file-preview/services/workspaceFilePreviewSurfaceHost.interface.ts";
 import type { IWorkspaceUserProjectService } from "../../../workspace-user-project/services/workspaceUserProjectService.interface.ts";
 import type { IAgentProviderStatusService as AgentProviderStatusService } from "../../../workspace-agent/services/agentProviderStatusService.interface.ts";
+import type { IAgentQuickPromptService as AgentQuickPromptService } from "../../../workspace-agent/services/agentQuickPromptService.interface.ts";
 import type { IAgentsService as AgentsService } from "../../../workspace-agent/services/agentsService.interface.ts";
 import type { IWorkspaceAgentActivityService as WorkspaceAgentActivityService } from "../../../workspace-agent/services/workspaceAgentActivityService.interface.ts";
 import type { IWorkspaceAgentPromptSessionService as WorkspaceAgentPromptSessionService } from "../../../workspace-agent/services/workspaceAgentPromptSessionService.interface.ts";
@@ -69,6 +71,7 @@ const workspaceDockNativePreviewMaxHeightPx = 170;
 const workspaceDockNativePreviewTimeoutMs = 2_500;
 
 export interface WorkspaceWorkbenchHostInputResolverDependencies {
+  agentQuickPromptService?: AgentQuickPromptService;
   agentProviderStatusService: AgentProviderStatusService;
   agentsService: AgentsService;
   appCenterService: IWorkspaceAppCenterService;
@@ -80,6 +83,7 @@ export interface WorkspaceWorkbenchHostInputResolverDependencies {
   hostFilesApi: DesktopHostFilesApi;
   hostWindowApi: DesktopHostWindowApi;
   workspaceFileManagerService: IWorkspaceFileManagerService;
+  workspaceFilePreviewSurfaceHost: IWorkspaceFilePreviewSurfaceHost;
   workspaceUserProjectService: IWorkspaceUserProjectService;
   workspaceAgentActivityService: WorkspaceAgentActivityService;
   workspaceAgentPromptSessionService: WorkspaceAgentPromptSessionService;
@@ -151,6 +155,7 @@ export class WorkspaceWorkbenchHostInputResolver {
     });
     const contributionRegistry = resolveWorkbenchCapabilityRegistry(
       createTuttiWorkbenchProductProfile({
+        agentQuickPromptService: this.dependencies.agentQuickPromptService,
         appI18n: input.appI18n,
         appLocale: input.appLocale,
         appCenterService: this.dependencies.appCenterService,
@@ -182,6 +187,8 @@ export class WorkspaceWorkbenchHostInputResolver {
         eventStreamClient: this.dependencies.eventStreamClient,
         workspaceFileManagerService:
           this.dependencies.workspaceFileManagerService,
+        workspaceFilePreviewSurfaceHost:
+          this.dependencies.workspaceFilePreviewSurfaceHost,
         workspaceUserProjectService:
           this.dependencies.workspaceUserProjectService,
         workspaceAgentActivityService:
@@ -199,12 +206,15 @@ export class WorkspaceWorkbenchHostInputResolver {
       })
     );
 
+    const captureNodePreviewImages = createDesktopWorkspaceNodePreviewCapture(
+      this.dependencies.hostWindowApi,
+      this.dependencies.runtimeApi,
+      input.workspaceId
+    );
     const baseHostInput: WorkspaceWorkbenchHostInput = {
-      captureNodePreviewImage: createDesktopWorkspaceNodePreviewCapture(
-        this.dependencies.hostWindowApi,
-        this.dependencies.runtimeApi,
-        input.workspaceId
-      ),
+      captureNodePreviewImage: async (node) =>
+        (await captureNodePreviewImages(node))?.dockPreviewImageUrl ?? null,
+      captureNodePreviewImages,
       contributions: contributionRegistry.contributions,
       debugDiagnostics: createWorkspaceWorkbenchDebugDiagnostics(
         this.dependencies.runtimeApi,
@@ -334,7 +344,7 @@ function createDesktopWorkspaceNodePreviewCapture(
   hostWindowApi: DesktopHostWindowApi,
   runtimeApi: Pick<DesktopRuntimeApi, "logRendererDiagnostic">,
   workspaceId: string
-): NonNullable<WorkspaceWorkbenchHostInput["captureNodePreviewImage"]> {
+): NonNullable<WorkspaceWorkbenchHostInput["captureNodePreviewImages"]> {
   return async (node) => {
     if (node.isMinimized || document.visibilityState !== "visible") {
       logDockPreviewCaptureDiagnostic(runtimeApi, workspaceId, {
@@ -418,9 +428,9 @@ function createDesktopWorkspaceNodePreviewCapture(
       level: "info"
     });
 
-    let captureResult: DockPreviewCaptureResult;
+    let captureResult: PreviewImagesCaptureResult;
     try {
-      const capturePromise = hostWindowApi.capturePreview({
+      const capturePromise = hostWindowApi.capturePreviewImages({
         maxHeight: workspaceDockNativePreviewMaxHeightPx,
         maxWidth: workspaceDockNativePreviewMaxWidthPx,
         rect: {
@@ -431,7 +441,7 @@ function createDesktopWorkspaceNodePreviewCapture(
         }
       });
       capturePromise.catch(() => undefined);
-      captureResult = await resolveDockPreviewCaptureWithTimeout(
+      captureResult = await resolvePreviewImagesCaptureWithTimeout(
         capturePromise,
         workspaceDockNativePreviewTimeoutMs
       );
@@ -463,9 +473,9 @@ function createDesktopWorkspaceNodePreviewCapture(
       return null;
     }
 
-    const previewImageUrl = captureResult.previewImageUrl;
+    const previewImages = captureResult.previewImages;
 
-    if (!previewImageUrl) {
+    if (!previewImages) {
       logDockPreviewCaptureDiagnostic(runtimeApi, workspaceId, {
         details: {
           durationMs: Math.round(performance.now() - captureStartedAt),
@@ -484,7 +494,8 @@ function createDesktopWorkspaceNodePreviewCapture(
         details: {
           durationMs: Math.round(performance.now() - captureStartedAt),
           nodeId: node.id,
-          previewLength: previewImageUrl.length,
+          dockPreviewLength: previewImages.dockPreviewImageUrl.length,
+          genieImageLength: previewImages.genieImageUrl.length,
           typeId: node.data.typeId
         },
         event: "dock_preview_capture.succeeded",
@@ -492,7 +503,7 @@ function createDesktopWorkspaceNodePreviewCapture(
       });
     }
 
-    return previewImageUrl;
+    return previewImages;
   };
 }
 
@@ -517,21 +528,26 @@ function isForegroundWorkspaceNodeCaptureTarget(
   return windowElement.dataset.focused === "true";
 }
 
-type DockPreviewCaptureResult =
-  | { previewImageUrl: string | null; status: "resolved" }
+type PreviewImagesCaptureResult =
+  | {
+      previewImages: Awaited<
+        ReturnType<DesktopHostWindowApi["capturePreviewImages"]>
+      >;
+      status: "resolved";
+    }
   | { status: "timeout" };
 
-function resolveDockPreviewCaptureWithTimeout(
-  capturePromise: Promise<string | null>,
+function resolvePreviewImagesCaptureWithTimeout(
+  capturePromise: ReturnType<DesktopHostWindowApi["capturePreviewImages"]>,
   timeoutMs: number
-): Promise<DockPreviewCaptureResult> {
+): Promise<PreviewImagesCaptureResult> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<DockPreviewCaptureResult>((resolve) => {
+  const timeoutPromise = new Promise<PreviewImagesCaptureResult>((resolve) => {
     timeout = setTimeout(() => resolve({ status: "timeout" }), timeoutMs);
   });
   return Promise.race([
-    capturePromise.then((previewImageUrl) => ({
-      previewImageUrl,
+    capturePromise.then((previewImages) => ({
+      previewImages,
       status: "resolved" as const
     })),
     timeoutPromise

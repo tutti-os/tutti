@@ -1,7 +1,17 @@
 import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
 import type {
+  AgentActivityActivateSessionResult,
+  AgentActivityComposerOptions,
+  AgentActivitySendInputResult,
+  AgentActivitySessionSettings,
+  AgentActivitySnapshot,
+  AgentActivityTurnCancelResponse,
+  AgentPromptContentBlock
+} from "@tutti-os/agent-activity-core";
+import type {
   WorkspaceUserProject,
   WorkspaceUserProjectDefaultSelection,
+  WorkspaceUserProjectMoveInput,
   WorkspaceUserProjectPathCheck,
   WorkspaceUserProjectSelectionPreparation,
   WorkspaceUserProjectSelectionPreparationInput,
@@ -14,7 +24,8 @@ export const TUTTI_EXTERNAL_AT_PROVIDER_IDS = {
   agentTarget: "agent-target",
   file: "file",
   workspaceApp: "workspace-app",
-  workspaceIssue: "workspace-issue"
+  workspaceIssue: "workspace-issue",
+  workspaceModel: "workspace-model"
 } as const;
 
 export type TuttiExternalAtProviderId =
@@ -26,6 +37,7 @@ export const tuttiExternalAtProviderIds = [
   TUTTI_EXTERNAL_AT_PROVIDER_IDS.workspaceApp,
   TUTTI_EXTERNAL_AT_PROVIDER_IDS.agentTarget,
   TUTTI_EXTERNAL_AT_PROVIDER_IDS.agentSession,
+  TUTTI_EXTERNAL_AT_PROVIDER_IDS.workspaceModel,
   TUTTI_EXTERNAL_AT_PROVIDER_IDS.agentGeneratedFile
 ] as const satisfies readonly TuttiExternalAtProviderId[];
 
@@ -42,6 +54,23 @@ export interface TuttiExternalAtQueryResult {
   subtitle?: string;
   thumbnailUrl?: string | null;
   insert: TuttiExternalAtInsertResult;
+}
+
+export interface TuttiExternalAtResolveInput {
+  providerId: TuttiExternalAtProviderId;
+  entityId: string;
+  scope?: Readonly<Record<string, string>>;
+}
+
+export interface TuttiExternalAtResolveResult {
+  label?: string;
+  presentation?: TuttiExternalAtMentionPresentation;
+}
+
+export interface TuttiExternalAtInvalidation {
+  providerIds?: readonly TuttiExternalAtProviderId[];
+  entityIds?: readonly string[];
+  revision?: number;
 }
 
 export interface TuttiExternalAtMentionPresentation {
@@ -196,6 +225,75 @@ export interface TuttiExternalReferenceOpenInput {
   href: string;
 }
 
+export type TuttiExternalAgentAvailabilityStatus =
+  | "ready"
+  | "checking"
+  | "coming_soon"
+  | "not_installed"
+  | "auth_required"
+  | "unavailable";
+
+export interface TuttiExternalAgentTarget {
+  agentTargetId: string;
+  availability: {
+    pendingAction?: "install" | "login" | "refresh" | null;
+    reason?: string | null;
+    status: TuttiExternalAgentAvailabilityStatus;
+  };
+  description?: string | null;
+  iconUrl: string;
+  name: string;
+  provider: string;
+}
+
+export interface TuttiExternalAgentTargetCatalog {
+  agents: TuttiExternalAgentTarget[];
+  capturedAtUnixMs: number | null;
+  error: string | null;
+  status: "idle" | "loading" | "ready" | "error";
+}
+
+export interface TuttiExternalAgentActivityComposerOptionsInput {
+  agentTargetId: string;
+  cwd?: string | null;
+  provider: string;
+  settings?: AgentActivitySessionSettings | null;
+}
+
+export interface TuttiExternalAgentActivityActivateSessionInput {
+  agentSessionId: string;
+  agentTargetId: string;
+  clientSubmitId: string;
+  cwd?: string | null;
+  initialContent: AgentPromptContentBlock[];
+  initialDisplayPrompt?: string | null;
+  settings?: AgentActivitySessionSettings;
+  title?: string;
+  visible?: boolean;
+}
+
+export interface TuttiExternalAgentActivitySendInput {
+  agentSessionId: string;
+  clientSubmitId: string;
+  content: AgentPromptContentBlock[];
+  displayPrompt?: string | null;
+  guidance?: boolean;
+}
+
+export interface TuttiExternalAgentActivityCancelTurnInput {
+  agentSessionId: string;
+  turnId: string;
+}
+
+export type TuttiExternalAgentActivityActivateSessionResult =
+  AgentActivityActivateSessionResult;
+export type TuttiExternalAgentActivityComposerOptions =
+  AgentActivityComposerOptions;
+export type TuttiExternalAgentActivitySendResult = AgentActivitySendInputResult;
+export type TuttiExternalAgentActivityCancelTurnResult =
+  AgentActivityTurnCancelResponse;
+export type TuttiExternalAgentActivitySnapshot = AgentActivitySnapshot;
+
 export interface TuttiExternalUserProjectCreateInput {
   name: string;
 }
@@ -260,6 +358,22 @@ export interface TuttiExternalBridge {
   activity: {
     reportActive(): Promise<void>;
   };
+  agentActivity: {
+    activateSession(
+      input: TuttiExternalAgentActivityActivateSessionInput
+    ): Promise<TuttiExternalAgentActivityActivateSessionResult>;
+    cancelTurn(
+      input: TuttiExternalAgentActivityCancelTurnInput
+    ): Promise<TuttiExternalAgentActivityCancelTurnResult>;
+    getComposerOptions(
+      input: TuttiExternalAgentActivityComposerOptionsInput
+    ): Promise<TuttiExternalAgentActivityComposerOptions>;
+    getSnapshot(): Promise<TuttiExternalAgentActivitySnapshot>;
+    listTargets(): Promise<TuttiExternalAgentTargetCatalog>;
+    sendInput(
+      input: TuttiExternalAgentActivitySendInput
+    ): Promise<TuttiExternalAgentActivitySendResult>;
+  };
   browser: {
     openUrl(input: TuttiExternalBrowserOpenUrlInput): Promise<void>;
   };
@@ -267,6 +381,12 @@ export interface TuttiExternalBridge {
     query(
       input: TuttiExternalAtQueryInput
     ): Promise<TuttiExternalAtQueryResult[]>;
+    resolve?(
+      input: TuttiExternalAtResolveInput
+    ): Promise<TuttiExternalAtResolveResult | null>;
+    subscribe?(
+      listener: (event: TuttiExternalAtInvalidation) => void
+    ): () => void;
   };
   files: {
     select(
@@ -310,6 +430,8 @@ export interface TuttiExternalBridge {
     getDefaultSelection(): Promise<WorkspaceUserProjectDefaultSelection | null>;
     getSnapshot(): Promise<WorkspaceUserProjectServiceSnapshot>;
     list(): Promise<{ projects: WorkspaceUserProject[] }>;
+    move(input: WorkspaceUserProjectMoveInput): Promise<void>;
+    remove(input: TuttiExternalUserProjectPathInput): Promise<void>;
     prepareSelection(
       input: WorkspaceUserProjectSelectionPreparationInput
     ): Promise<WorkspaceUserProjectSelectionPreparation>;
@@ -335,6 +457,53 @@ export interface TuttiExternalBridge {
 }
 
 export type TuttiExternalRendererRequest =
+  | {
+      appId: string;
+      input: TuttiExternalAgentActivityActivateSessionInput;
+      operation: "agentActivity.activateSession";
+      requestId: string;
+      workspaceId: string;
+    }
+  | {
+      appId: string;
+      input: TuttiExternalAgentActivityCancelTurnInput;
+      operation: "agentActivity.cancelTurn";
+      requestId: string;
+      workspaceId: string;
+    }
+  | {
+      appId: string;
+      input: TuttiExternalAgentActivityComposerOptionsInput;
+      operation: "agentActivity.getComposerOptions";
+      requestId: string;
+      workspaceId: string;
+    }
+  | {
+      appId: string;
+      operation: "agentActivity.getSnapshot";
+      requestId: string;
+      workspaceId: string;
+    }
+  | {
+      appId: string;
+      operation: "agentActivity.listTargets";
+      requestId: string;
+      workspaceId: string;
+    }
+  | {
+      appId: string;
+      input: TuttiExternalAgentActivitySendInput;
+      operation: "agentActivity.sendInput";
+      requestId: string;
+      workspaceId: string;
+    }
+  | {
+      appId: string;
+      input: TuttiExternalAtResolveInput;
+      operation: "at.resolve";
+      requestId: string;
+      workspaceId: string;
+    }
   | {
       appId: string;
       input: TuttiExternalAtQueryInput;
@@ -399,6 +568,20 @@ export type TuttiExternalRendererRequest =
   | {
       appId: string;
       operation: "userProjects.list";
+      requestId: string;
+      workspaceId: string;
+    }
+  | {
+      appId: string;
+      input: WorkspaceUserProjectMoveInput;
+      operation: "userProjects.move";
+      requestId: string;
+      workspaceId: string;
+    }
+  | {
+      appId: string;
+      input: TuttiExternalUserProjectPathInput;
+      operation: "userProjects.remove";
       requestId: string;
       workspaceId: string;
     }

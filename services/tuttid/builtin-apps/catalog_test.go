@@ -22,40 +22,18 @@ import (
 
 func TestCatalogLoadsRemoteAppsFromFile(t *testing.T) {
 	t.Setenv(remoteCatalogURLEnv, "")
-	catalogPath := filepath.Join(t.TempDir(), "catalog.json")
-	if err := os.WriteFile(catalogPath, []byte(`{
-		"schemaVersion": "tutti.app.catalog.v1",
-		"apps": [
-			{
-				"localizations": [
-					{
-						"locale": "zh-CN",
-						"name": "远程设计",
-						"description": "设计工作区",
-						"tags": ["设计", "工作区"]
-					}
-				],
-				"manifest": {
-					"schemaVersion": "tutti.app.manifest.v1",
-					"appId": "remote-design",
-					"version": "0.1.0",
-					"name": "Remote Design",
-					"description": "Design workspace",
-						"icon": {"type": "asset", "src": "icon.svg"},
-						"runtime": {"bootstrap": "bootstrap.sh", "healthcheckPath": "/healthz"}
-				},
-				"distribution": {
-					"kind": "remote",
-					"artifactUrl": "https://cdn.example.test/apps/remote-design/remote-design.zip",
-					"artifactSha256": "abc123",
-					"iconUrl": "https://cdn.example.test/apps/remote-design/icon.svg"
-				}
-			}
-		]
-	}`), 0o644); err != nil {
-		t.Fatalf("write catalog: %v", err)
-	}
-	t.Setenv(remoteCatalogFileEnv, catalogPath)
+	remoteApp := remoteCatalogAppForVersionTest("remote-design", "0.1.0")
+	remoteApp.Manifest.Name = "Remote Design"
+	remoteApp.Manifest.Description = "Design workspace"
+	remoteApp.Manifest.Icon.Src = "icon.svg"
+	remoteApp.Manifest.Runtime.HealthcheckPath = "/healthz"
+	remoteApp.Distribution.ArtifactURL = "https://cdn.example.test/apps/remote-design/remote-design.zip"
+	remoteApp.Distribution.ArtifactSHA256 = "abc123"
+	remoteApp.Distribution.IconURL = "https://cdn.example.test/apps/remote-design/icon.svg"
+	remoteApp.Localizations = []workspacebiz.AppManifestLocalization{{
+		Locale: "zh-CN", Name: "远程设计", Description: "设计工作区", Tags: []string{"设计", "工作区"},
+	}}
+	setRemoteCatalogFileForTest(t, remoteCatalogDocumentForTest(remoteApp))
 
 	apps, err := Catalog()
 	if err != nil {
@@ -84,32 +62,7 @@ func TestCatalogReturnsExplicitFileErrors(t *testing.T) {
 
 func TestCatalogLoadsRemoteAppsFromURL(t *testing.T) {
 	t.Setenv(remoteCatalogFileEnv, "")
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{
-			"schemaVersion": "tutti.app.catalog.v1",
-			"apps": [
-				{
-					"manifest": {
-						"schemaVersion": "tutti.app.manifest.v1",
-						"appId": "remote-tool",
-						"version": "1.2.3",
-						"name": "Remote Tool",
-						"description": "Remote tool",
-							"icon": {"type": "asset", "src": "icon.png"},
-							"runtime": {"bootstrap": "bootstrap.sh", "healthcheckPath": "/"}
-					},
-					"distribution": {
-						"kind": "remote",
-						"artifactUrl": "https://cdn.example.test/apps/remote-tool/remote-tool.zip",
-						"artifactSha256": "def456",
-						"iconUrl": "https://cdn.example.test/apps/remote-tool/icon.png"
-					}
-				}
-			]
-		}`))
-	}))
-	t.Cleanup(server.Close)
+	server := remoteCatalogServerForTest(t, remoteCatalogDocumentForTest(remoteCatalogAppForVersionTest("remote-tool", "1.2.3")))
 	t.Setenv(remoteCatalogURLEnv, server.URL+"/catalog.json")
 
 	snapshot, err := Snapshot()
@@ -136,34 +89,13 @@ func TestCatalogRetriesRemoteURLFetch(t *testing.T) {
 	disableRemoteCatalogRetrySleepForTest(t)
 	t.Setenv(remoteCatalogFileEnv, "")
 	var requests atomic.Int32
+	data := remoteCatalogDataForTest(t, remoteCatalogDocumentForTest(remoteCatalogAppForVersionTest("retry-tool", "1.2.3")))
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		if requests.Add(1) < remoteCatalogFetchAttempts {
 			http.Error(writer, "unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{
-			"schemaVersion": "tutti.app.catalog.v1",
-			"apps": [
-				{
-					"manifest": {
-						"schemaVersion": "tutti.app.manifest.v1",
-						"appId": "retry-tool",
-						"version": "1.2.3",
-						"name": "Retry Tool",
-						"description": "Retry tool",
-							"icon": {"type": "asset", "src": "icon.png"},
-							"runtime": {"bootstrap": "bootstrap.sh", "healthcheckPath": "/"}
-					},
-					"distribution": {
-						"kind": "remote",
-						"artifactUrl": "https://cdn.example.test/apps/retry-tool/retry-tool.zip",
-						"artifactSha256": "def456",
-						"iconUrl": "https://cdn.example.test/apps/retry-tool/icon.png"
-					}
-				}
-			]
-		}`))
+		writeRemoteCatalogResponseForTest(writer, data)
 	}))
 	t.Cleanup(server.Close)
 	t.Setenv(remoteCatalogURLEnv, server.URL+"/catalog.json")
@@ -195,31 +127,10 @@ func TestRefreshRemoteCatalogAndWaitReturnsReadyCatalog(t *testing.T) {
 		})
 	}
 	t.Cleanup(release)
+	data := remoteCatalogDataForTest(t, remoteCatalogDocumentForTest(remoteCatalogAppForVersionTest("wait-tool", "1.2.3")))
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		<-releaseResponse
-		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{
-			"schemaVersion": "tutti.app.catalog.v1",
-			"apps": [
-				{
-					"manifest": {
-						"schemaVersion": "tutti.app.manifest.v1",
-						"appId": "wait-tool",
-						"version": "1.2.3",
-						"name": "Wait Tool",
-						"description": "Wait tool",
-							"icon": {"type": "asset", "src": "icon.png"},
-							"runtime": {"bootstrap": "bootstrap.sh", "healthcheckPath": "/"}
-					},
-					"distribution": {
-						"kind": "remote",
-						"artifactUrl": "https://cdn.example.test/apps/wait-tool/wait-tool.zip",
-						"artifactSha256": "def456",
-						"iconUrl": "https://cdn.example.test/apps/wait-tool/icon.png"
-					}
-				}
-			]
-		}`))
+		writeRemoteCatalogResponseForTest(writer, data)
 	}))
 	t.Cleanup(server.Close)
 	t.Setenv(remoteCatalogURLEnv, server.URL+"/catalog.json")
@@ -229,7 +140,7 @@ func TestRefreshRemoteCatalogAndWaitReturnsReadyCatalog(t *testing.T) {
 		err      error
 	}, 1)
 	go func() {
-		snapshot, err := RefreshRemoteCatalogAndWait(context.Background())
+		snapshot, err := RefreshRemoteCatalogAndWaitForHost(context.Background(), CatalogHost{})
 		resultCh <- struct {
 			snapshot CatalogSnapshot
 			err      error
@@ -238,14 +149,14 @@ func TestRefreshRemoteCatalogAndWaitReturnsReadyCatalog(t *testing.T) {
 
 	select {
 	case result := <-resultCh:
-		t.Fatalf("RefreshRemoteCatalogAndWait() returned before response: %#v", result)
+		t.Fatalf("RefreshRemoteCatalogAndWaitForHost() returned before response: %#v", result)
 	case <-time.After(50 * time.Millisecond):
 	}
 	release()
 	select {
 	case result := <-resultCh:
 		if result.err != nil {
-			t.Fatalf("RefreshRemoteCatalogAndWait() error = %v", result.err)
+			t.Fatalf("RefreshRemoteCatalogAndWaitForHost() error = %v", result.err)
 		}
 		if result.snapshot.RemoteCatalog.Status != RemoteCatalogLoadStatusReady {
 			t.Fatalf("remote catalog status = %q, want ready", result.snapshot.RemoteCatalog.Status)
@@ -254,7 +165,7 @@ func TestRefreshRemoteCatalogAndWaitReturnsReadyCatalog(t *testing.T) {
 			t.Fatalf("remote app missing from waited snapshot: %#v", result.snapshot.Apps)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("RefreshRemoteCatalogAndWait() did not return after response")
+		t.Fatal("RefreshRemoteCatalogAndWaitForHost() did not return after response")
 	}
 }
 
@@ -267,9 +178,9 @@ func TestRefreshRemoteCatalogAndWaitReturnsFailedCatalog(t *testing.T) {
 	t.Cleanup(server.Close)
 	t.Setenv(remoteCatalogURLEnv, server.URL+"/catalog.json")
 
-	snapshot, err := RefreshRemoteCatalogAndWait(context.Background())
+	snapshot, err := RefreshRemoteCatalogAndWaitForHost(context.Background(), CatalogHost{})
 	if err != nil {
-		t.Fatalf("RefreshRemoteCatalogAndWait() error = %v", err)
+		t.Fatalf("RefreshRemoteCatalogAndWaitForHost() error = %v", err)
 	}
 	if snapshot.RemoteCatalog.Status != RemoteCatalogLoadStatusFailed {
 		t.Fatalf("remote catalog status = %q, want failed", snapshot.RemoteCatalog.Status)
@@ -408,7 +319,6 @@ func TestMergeCatalogsKeepsEmbeddedAppBeforeRemoteAppWithSameID(t *testing.T) {
 
 func TestCatalogLoadsRemoteAutomationWhenProvidedByCatalog(t *testing.T) {
 	t.Setenv(remoteCatalogURLEnv, "")
-	catalogPath := filepath.Join(t.TempDir(), "catalog.json")
 	manifest := remoteCatalogManifestForTest("automation")
 	document := remoteCatalogDocument{
 		SchemaVersion: remoteCatalogSchemaVersionV1,
@@ -422,14 +332,7 @@ func TestCatalogLoadsRemoteAutomationWhenProvidedByCatalog(t *testing.T) {
 			},
 		}},
 	}
-	data, err := json.Marshal(document)
-	if err != nil {
-		t.Fatalf("marshal catalog: %v", err)
-	}
-	if err := os.WriteFile(catalogPath, data, 0o644); err != nil {
-		t.Fatalf("write catalog: %v", err)
-	}
-	t.Setenv(remoteCatalogFileEnv, catalogPath)
+	setRemoteCatalogFileForTest(t, document)
 
 	apps, err := Catalog()
 	if err != nil {
@@ -467,10 +370,7 @@ func TestParseRemoteCatalogSelectsHighestCompatibleAppVersion(t *testing.T) {
 			},
 		}},
 	}
-	data, err := json.Marshal(document)
-	if err != nil {
-		t.Fatalf("marshal catalog: %v", err)
-	}
+	data := remoteCatalogDataForTest(t, document)
 
 	legacyApps, err := parseRemoteCatalogForTuttiVersion(data, "")
 	if err != nil {
@@ -526,10 +426,7 @@ func TestParseRemoteCatalogSelectsCapabilityCompatibleAppVersion(t *testing.T) {
 			},
 		},
 	}
-	data, err := json.Marshal(document)
-	if err != nil {
-		t.Fatalf("marshal catalog: %v", err)
-	}
+	data := remoteCatalogDataForTest(t, document)
 
 	legacyApps, err := parseRemoteCatalogForTuttiVersion(data, "0.12.0")
 	if err != nil {
@@ -580,10 +477,7 @@ func TestParseRemoteCatalogRejectsEligibleMalformedCapabilityPayload(t *testing.
 			},
 		},
 	}
-	data, err := json.Marshal(document)
-	if err != nil {
-		t.Fatalf("marshal catalog: %v", err)
-	}
+	data := remoteCatalogDataForTest(t, document)
 	if _, err := parseRemoteCatalogForHost(data, CatalogHost{
 		Capabilities: []string{"managed-model-cli-v1"},
 	}); err == nil {
@@ -602,10 +496,7 @@ func TestParseRemoteCatalogRejectsInvalidCompatibility(t *testing.T) {
 			},
 		}},
 	}
-	data, err := json.Marshal(document)
-	if err != nil {
-		t.Fatalf("marshal catalog: %v", err)
-	}
+	data := remoteCatalogDataForTest(t, document)
 	if _, err := parseRemoteCatalogForTuttiVersion(data, "0.12.0"); err == nil {
 		t.Fatal("parse compatibility error = nil, want invalid semver")
 	}
@@ -627,10 +518,7 @@ func TestParseRemoteCatalogIgnoresFutureCompatibilityPayload(t *testing.T) {
 			},
 		}},
 	}
-	data, err := json.Marshal(document)
-	if err != nil {
-		t.Fatalf("marshal catalog: %v", err)
-	}
+	data := remoteCatalogDataForTest(t, document)
 	apps, err := parseRemoteCatalogForTuttiVersion(data, "0.12.0")
 	if err != nil {
 		t.Fatalf("parse catalog: %v", err)
@@ -667,6 +555,46 @@ func remoteCatalogAppForVersionTest(appID string, version string) remoteCatalogA
 	}
 }
 
+func remoteCatalogDocumentForTest(apps ...remoteCatalogApp) remoteCatalogDocument {
+	return remoteCatalogDocument{
+		SchemaVersion: remoteCatalogSchemaVersionV1,
+		Apps:          apps,
+	}
+}
+
+func remoteCatalogDataForTest(t *testing.T, document remoteCatalogDocument) []byte {
+	t.Helper()
+	data, err := json.Marshal(document)
+	if err != nil {
+		t.Fatalf("marshal catalog: %v", err)
+	}
+	return data
+}
+
+func setRemoteCatalogFileForTest(t *testing.T, document remoteCatalogDocument) {
+	t.Helper()
+	catalogPath := filepath.Join(t.TempDir(), "catalog.json")
+	if err := os.WriteFile(catalogPath, remoteCatalogDataForTest(t, document), 0o644); err != nil {
+		t.Fatalf("write catalog: %v", err)
+	}
+	t.Setenv(remoteCatalogFileEnv, catalogPath)
+}
+
+func remoteCatalogServerForTest(t *testing.T, document remoteCatalogDocument) *httptest.Server {
+	t.Helper()
+	data := remoteCatalogDataForTest(t, document)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writeRemoteCatalogResponseForTest(writer, data)
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+func writeRemoteCatalogResponseForTest(writer http.ResponseWriter, data []byte) {
+	writer.Header().Set("Content-Type", "application/json")
+	_, _ = writer.Write(data)
+}
+
 func TestParseRemoteCatalogRequiresIconURLAndManifestIcon(t *testing.T) {
 	manifest := remoteCatalogManifestForTest("remote-tool")
 	document := remoteCatalogDocument{
@@ -680,10 +608,7 @@ func TestParseRemoteCatalogRequiresIconURLAndManifestIcon(t *testing.T) {
 			},
 		}},
 	}
-	data, err := json.Marshal(document)
-	if err != nil {
-		t.Fatalf("marshal catalog: %v", err)
-	}
+	data := remoteCatalogDataForTest(t, document)
 	if _, err := parseRemoteCatalog(data); err == nil {
 		t.Fatal("parseRemoteCatalog() error = nil, want missing iconUrl error")
 	}
@@ -691,10 +616,7 @@ func TestParseRemoteCatalogRequiresIconURLAndManifestIcon(t *testing.T) {
 	manifest.Icon = workspacebiz.AppManifestIcon{}
 	document.Apps[0].Manifest = manifest
 	document.Apps[0].Distribution.IconURL = "https://cdn.example.test/icon.png"
-	data, err = json.Marshal(document)
-	if err != nil {
-		t.Fatalf("marshal catalog: %v", err)
-	}
+	data = remoteCatalogDataForTest(t, document)
 	if _, err := parseRemoteCatalog(data); err == nil {
 		t.Fatal("parseRemoteCatalog() error = nil, want missing manifest icon error")
 	}

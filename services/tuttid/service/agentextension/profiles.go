@@ -3,18 +3,49 @@ package agentextension
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 )
 
 type ComposerProfile struct {
-	SchemaVersion   string          `json:"schemaVersion"`
-	Model           json.RawMessage `json:"model"`
-	Permission      json.RawMessage `json:"permission"`
-	PermissionModes []struct {
-		RuntimeID string `json:"runtimeId"`
-		Semantic  string `json:"semantic"`
-	} `json:"permissionModes"`
+	SchemaVersion string          `json:"schemaVersion"`
+	Model         json.RawMessage `json:"model"`
+	Permission    json.RawMessage `json:"permission"`
+	ConfigOptions *struct {
+		Model      ComposerConfigOptionReference `json:"model"`
+		Permission ComposerConfigOptionReference `json:"permission"`
+		Reasoning  ComposerConfigOptionReference `json:"reasoning"`
+	} `json:"configOptions,omitempty"`
+	PermissionModes []ComposerPermissionMode `json:"permissionModes"`
+	LaunchSettings  *struct {
+		Permission *struct {
+			Placeholder     string `json:"placeholder"`
+			DefaultSemantic string `json:"defaultSemantic"`
+		} `json:"permission,omitempty"`
+	} `json:"launchSettings,omitempty"`
+	WorkflowModes *struct {
+		Plan *struct {
+			EnabledRuntimeID  string `json:"enabledRuntimeId"`
+			DisabledRuntimeID string `json:"disabledRuntimeId"`
+			UpdateStrategy    string `json:"updateStrategy,omitempty"`
+		} `json:"plan,omitempty"`
+	} `json:"workflowModes,omitempty"`
+	SetModel *struct {
+		ReasoningEffortMeta bool `json:"reasoningEffortMeta"`
+	} `json:"setModel,omitempty"`
+	SlashCommands *struct {
+		CommandCatalogAuthoritative bool `json:"commandCatalogAuthoritative"`
+		Commands                    []struct {
+			Name   string `json:"name"`
+			Effect string `json:"effect,omitempty"`
+		} `json:"commands"`
+	} `json:"slashCommands,omitempty"`
 	Skills *struct {
 		Invocation    string `json:"invocation"`
 		TriggerPrefix string `json:"triggerPrefix"`
@@ -23,6 +54,101 @@ type ComposerProfile struct {
 			Path  string `json:"path"`
 		} `json:"roots"`
 	} `json:"skills,omitempty"`
+	RuntimePrep *runtimeprep.ExtensionRuntimePrep `json:"runtimePrep,omitempty"`
+}
+
+type ComposerPermissionMode struct {
+	RuntimeID         string `json:"runtimeId"`
+	Semantic          string `json:"semantic"`
+	AutomaticDecision string `json:"automaticDecision,omitempty"`
+}
+
+const composerPermissionLaunchPlaceholder = "${permissionMode}"
+
+type ComposerLaunchPermissionSetting struct {
+	Placeholder     string
+	DefaultSemantic string
+	Values          map[string]string
+}
+
+func (profile ComposerProfile) LaunchPermissionSetting() *ComposerLaunchPermissionSetting {
+	if profile.LaunchSettings == nil || profile.LaunchSettings.Permission == nil {
+		return nil
+	}
+	values := make(map[string]string, len(profile.PermissionModes))
+	for _, mode := range profile.PermissionModes {
+		values[strings.TrimSpace(mode.Semantic)] = strings.TrimSpace(mode.RuntimeID)
+	}
+	return &ComposerLaunchPermissionSetting{
+		Placeholder:     strings.TrimSpace(profile.LaunchSettings.Permission.Placeholder),
+		DefaultSemantic: strings.TrimSpace(profile.LaunchSettings.Permission.DefaultSemantic),
+		Values:          values,
+	}
+}
+
+func (profile ComposerProfile) PlanRuntimeIDs() (enabled string, disabled string) {
+	if profile.WorkflowModes == nil || profile.WorkflowModes.Plan == nil {
+		return "", ""
+	}
+	return strings.TrimSpace(profile.WorkflowModes.Plan.EnabledRuntimeID),
+		strings.TrimSpace(profile.WorkflowModes.Plan.DisabledRuntimeID)
+}
+
+func (profile ComposerProfile) PlanUpdateStrategy() string {
+	if profile.WorkflowModes == nil || profile.WorkflowModes.Plan == nil {
+		return ""
+	}
+	return strings.TrimSpace(profile.WorkflowModes.Plan.UpdateStrategy)
+}
+
+func (profile ComposerProfile) SetModelReasoningEffortMeta() bool {
+	return profile.SetModel != nil && profile.SetModel.ReasoningEffortMeta
+}
+
+func (profile ComposerProfile) AutomaticPermissionDecisions() map[string]string {
+	decisions := map[string]string{}
+	for _, mode := range profile.PermissionModes {
+		decision := strings.TrimSpace(mode.AutomaticDecision)
+		if decision == "" {
+			continue
+		}
+		for _, id := range []string{mode.RuntimeID, mode.Semantic} {
+			if normalized := strings.ToLower(strings.TrimSpace(id)); normalized != "" {
+				decisions[normalized] = decision
+			}
+		}
+	}
+	return decisions
+}
+
+type ComposerConfigOptionReference struct {
+	ACPOptionID string `json:"acpOptionId"`
+}
+
+func (profile ComposerProfile) ACPConfigOptionIDs() (model string, permission string, reasoning string) {
+	if strings.TrimSpace(profile.SchemaVersion) == "" {
+		return "", "", ""
+	}
+	if profile.ConfigOptions != nil {
+		return strings.TrimSpace(profile.ConfigOptions.Model.ACPOptionID),
+			strings.TrimSpace(profile.ConfigOptions.Permission.ACPOptionID),
+			strings.TrimSpace(profile.ConfigOptions.Reasoning.ACPOptionID)
+	}
+	// Compatibility for profiles written before configOptions became the
+	// canonical shape. Legacy profiles only declared model/mode sources;
+	// reasoning used the established standard ACP alias.
+	if len(profile.Model) > 0 && strings.TrimSpace(string(profile.Model)) != "null" {
+		model = "model"
+	}
+	if len(profile.Permission) > 0 && strings.TrimSpace(string(profile.Permission)) != "null" {
+		permission = "mode"
+	}
+	return model, permission, "reasoning_effort"
+}
+
+type CapabilitiesProfile struct {
+	SchemaVersion string          `json:"schemaVersion"`
+	Declared      map[string]bool `json:"declared"`
 }
 
 func (m *Manager) LoadComposerProfile(installationID string) (ComposerProfile, error) {
@@ -44,6 +170,14 @@ func (m *Manager) LoadComposerProfile(installationID string) (ComposerProfile, e
 	return profile, nil
 }
 
+func (m *Manager) LoadDeclaredCapabilities(installationID string) ([]string, error) {
+	installation, err := m.loadInstallationByID(strings.TrimSpace(installationID))
+	if err != nil {
+		return nil, err
+	}
+	return loadDeclaredCapabilities(installation)
+}
+
 func loadComposerModes(installation Installation) (map[string]string, string, error) {
 	if installation.Manifest.Profiles.Composer == "" {
 		return nil, "", nil
@@ -58,21 +192,36 @@ func loadComposerModes(installation Installation) (map[string]string, string, er
 	}
 	modes := map[string]string{}
 	planMode := ""
+	// Runtime IDs are the exact public launch contract. Register every exact
+	// ID before compatibility aliases so an alias can never redirect an
+	// advertised ID to a different permission tier.
+	for _, mode := range profile.PermissionModes {
+		runtimeID := strings.TrimSpace(mode.RuntimeID)
+		modes[strings.ToLower(runtimeID)] = runtimeID
+	}
 	for _, mode := range profile.PermissionModes {
 		runtimeID := strings.TrimSpace(mode.RuntimeID)
 		if runtimeID == "" {
 			return nil, "", errors.New("composer permission runtimeId is required")
 		}
-		modes[strings.ToLower(runtimeID)] = runtimeID
-		switch strings.TrimSpace(mode.Semantic) {
+		semantic := strings.TrimSpace(mode.Semantic)
+		setComposerModeAlias(modes, semantic, runtimeID)
+		switch semantic {
 		case "ask-before-write":
-			modes["read-only"] = runtimeID
+			setComposerModeAlias(modes, "read-only", runtimeID)
 		case "accept-edits":
-			modes["auto"] = runtimeID
+			setComposerModeAlias(modes, "accept-edits", runtimeID)
+			setComposerModeAlias(modes, "auto", runtimeID)
+		case "auto":
+			setComposerModeAlias(modes, "auto", runtimeID)
+			setComposerModeAlias(modes, "agent", runtimeID)
+		case "locked-down":
+			setComposerModeAlias(modes, "locked-down", runtimeID)
+			setComposerModeAlias(modes, "dont-ask", runtimeID)
 		case "full-access":
-			modes["full-access"] = runtimeID
+			setComposerModeAlias(modes, "full-access", runtimeID)
 		case "read-only":
-			modes["plan"] = runtimeID
+			setComposerModeAlias(modes, "plan", runtimeID)
 			planMode = runtimeID
 		default:
 			return nil, "", errors.New("composer permission semantic is unsupported")
@@ -81,9 +230,125 @@ func loadComposerModes(installation Installation) (map[string]string, string, er
 	return modes, planMode, nil
 }
 
+func loadDeclaredCapabilities(installation Installation) ([]string, error) {
+	if installation.Manifest.Profiles.Capabilities == "" {
+		return nil, nil
+	}
+	var profile CapabilitiesProfile
+	path := filepath.Join(installation.PackageDir, filepath.FromSlash(installation.Manifest.Profiles.Capabilities))
+	if err := readJSON(path, &profile); err != nil {
+		return nil, err
+	}
+	if profile.SchemaVersion != "tutti.agent.capabilities.v1" {
+		return nil, errors.New("unsupported capabilities profile schema")
+	}
+	capabilities := make([]string, 0, len(profile.Declared))
+	for _, capability := range knownExtensionCapabilities() {
+		if profile.Declared[capability] {
+			capabilities = append(capabilities, capability)
+		}
+	}
+	return capabilities, nil
+}
+
+func knownExtensionCapabilities() []string {
+	return []string{
+		providerregistry.CapabilityImageInput,
+		providerregistry.CapabilityModelImageInputRequired,
+		providerregistry.CapabilitySkills,
+		providerregistry.CapabilityCompact,
+		providerregistry.CapabilityTokenUsage,
+		providerregistry.CapabilityRateLimits,
+		providerregistry.CapabilityPlanMode,
+		providerregistry.CapabilityInterrupt,
+		providerregistry.CapabilityActiveTurnGuidance,
+		providerregistry.CapabilityBrowserUse,
+		providerregistry.CapabilityComputerUse,
+		providerregistry.CapabilityGoalPause,
+		providerregistry.CapabilityPlanImplementation,
+		providerregistry.CapabilityPermissionModeChangeDuringTurn,
+		providerregistry.CapabilityPermissionModeChangeDeferred,
+		providerregistry.CapabilityReview,
+		providerregistry.CapabilityResumeRunningTurn,
+	}
+}
+
+func setComposerModeAlias(modes map[string]string, alias string, runtimeID string) {
+	alias = strings.ToLower(strings.TrimSpace(alias))
+	runtimeID = strings.TrimSpace(runtimeID)
+	if alias == "" || runtimeID == "" {
+		return
+	}
+	if _, exists := modes[alias]; exists {
+		return
+	}
+	modes[alias] = runtimeID
+}
+
 func validateComposerProfile(profile ComposerProfile) error {
 	if profile.SchemaVersion != "tutti.agent.composer.v1" {
 		return errors.New("unsupported composer profile schema")
+	}
+	if err := validateComposerPermissionModes(profile.PermissionModes); err != nil {
+		return err
+	}
+	if profile.SlashCommands != nil {
+		if len(profile.SlashCommands.Commands) == 0 {
+			return errors.New("composer slashCommands requires at least one command")
+		}
+		seen := map[string]struct{}{}
+		for _, command := range profile.SlashCommands.Commands {
+			name := strings.ToLower(strings.TrimSpace(command.Name))
+			if name == "" {
+				return errors.New("composer slash command name is required")
+			}
+			if !composerSlashCommandName.MatchString(name) {
+				return errors.New("composer slash command name is unsupported")
+			}
+			if _, exists := seen[name]; exists {
+				return errors.New("composer slash command name must be unique")
+			}
+			seen[name] = struct{}{}
+			if effect := strings.TrimSpace(command.Effect); effect != "" && !composerSlashCommandEffectSupported(effect) {
+				return errors.New("composer slash command effect is unsupported")
+			}
+		}
+	}
+	if profile.ConfigOptions != nil {
+		for _, option := range []ComposerConfigOptionReference{
+			profile.ConfigOptions.Model,
+			profile.ConfigOptions.Permission,
+			profile.ConfigOptions.Reasoning,
+		} {
+			if id := strings.TrimSpace(option.ACPOptionID); id != "" && !composerConfigOptionID.MatchString(id) {
+				return errors.New("composer ACP config option id is unsupported")
+			}
+		}
+	}
+	for _, mode := range profile.PermissionModes {
+		decision := strings.TrimSpace(mode.AutomaticDecision)
+		if decision == "" {
+			continue
+		}
+		semantic := strings.TrimSpace(mode.Semantic)
+		if decision == "approved" && semantic == "full-access" {
+			continue
+		}
+		if decision == "denied" && (semantic == "read-only" || semantic == "locked-down") {
+			continue
+		}
+		return errors.New("composer automatic permission decision is unsafe")
+	}
+	if err := validateComposerLaunchSettings(profile); err != nil {
+		return err
+	}
+	if err := validateComposerWorkflowModes(profile); err != nil {
+		return err
+	}
+	if profile.RuntimePrep != nil {
+		if err := runtimeprep.ValidateExtensionRuntimePrep(*profile.RuntimePrep); err != nil {
+			return err
+		}
 	}
 	if profile.Skills == nil {
 		return nil
@@ -107,6 +372,183 @@ func validateComposerProfile(profile ComposerProfile) error {
 		}
 	}
 	return nil
+}
+
+func validateComposerPermissionModes(modes []ComposerPermissionMode) error {
+	seenRuntimeIDs := make(map[string]string, len(modes))
+	for _, mode := range modes {
+		runtimeID := strings.TrimSpace(mode.RuntimeID)
+		if runtimeID == "" {
+			return errors.New("composer permission runtimeId is required")
+		}
+		normalizedRuntimeID := strings.ToLower(runtimeID)
+		if existing, duplicate := seenRuntimeIDs[normalizedRuntimeID]; duplicate {
+			return fmt.Errorf(
+				"composer permission runtimeId %q conflicts with %q; runtime IDs must be unique ignoring case",
+				runtimeID,
+				existing,
+			)
+		}
+		seenRuntimeIDs[normalizedRuntimeID] = runtimeID
+		semantic := strings.TrimSpace(mode.Semantic)
+		switch semantic {
+		case "ask-before-write", "accept-edits", "auto", "locked-down", "full-access", "read-only":
+		default:
+			return fmt.Errorf(
+				"composer permission runtimeId %q has unsupported semantic %q",
+				runtimeID,
+				semantic,
+			)
+		}
+	}
+	return nil
+}
+
+func validateComposerLaunchSettings(profile ComposerProfile) error {
+	setting := profile.LaunchPermissionSetting()
+	if setting == nil {
+		return nil
+	}
+	if setting.Placeholder != composerPermissionLaunchPlaceholder {
+		return errors.New("composer launch permission placeholder is unsupported")
+	}
+	if setting.DefaultSemantic == "" {
+		setting.DefaultSemantic = "ask-before-write"
+	}
+	if setting.DefaultSemantic != "ask-before-write" {
+		return errors.New("composer launch permission default semantic is unsupported")
+	}
+	wanted := map[string]struct{}{
+		"ask-before-write": {},
+		"auto":             {},
+		"full-access":      {},
+	}
+	seenSemantic := map[string]struct{}{}
+	seenRuntime := map[string]struct{}{}
+	for _, mode := range profile.PermissionModes {
+		semantic := strings.TrimSpace(mode.Semantic)
+		runtimeID := strings.TrimSpace(mode.RuntimeID)
+		if _, ok := wanted[semantic]; !ok {
+			return errors.New("composer launch permission semantic is unsupported")
+		}
+		if _, exists := seenSemantic[semantic]; exists {
+			return errors.New("composer launch permission semantic must be unique")
+		}
+		if !composerLaunchSettingValue.MatchString(runtimeID) {
+			return errors.New("composer launch permission runtime value is unsupported")
+		}
+		if _, exists := seenRuntime[runtimeID]; exists {
+			return errors.New("composer launch permission runtime value must be unique")
+		}
+		seenSemantic[semantic] = struct{}{}
+		seenRuntime[runtimeID] = struct{}{}
+		delete(wanted, semantic)
+	}
+	if len(wanted) != 0 {
+		return errors.New("composer launch permission requires ask-before-write, auto, and full-access mappings")
+	}
+	return nil
+}
+
+func validateComposerWorkflowModes(profile ComposerProfile) error {
+	enabled, disabled := profile.PlanRuntimeIDs()
+	if enabled == "" && disabled == "" {
+		if profile.PlanUpdateStrategy() != "" {
+			return errors.New("composer plan workflow update strategy requires runtime ids")
+		}
+		return nil
+	}
+	if !composerLaunchSettingValue.MatchString(enabled) || !composerLaunchSettingValue.MatchString(disabled) || enabled == disabled {
+		return errors.New("composer plan workflow runtime ids are invalid")
+	}
+	strategy := profile.PlanUpdateStrategy()
+	if strategy != "" && strategy != "session-mode" && strategy != "restart-with-launch-permission" {
+		return errors.New("composer plan workflow update strategy is invalid")
+	}
+	if strategy == "restart-with-launch-permission" && profile.LaunchPermissionSetting() == nil {
+		return errors.New("composer plan workflow launch restart requires launch permission settings")
+	}
+	if strategy == "restart-with-launch-permission" {
+		for _, permissionMode := range profile.PermissionModes {
+			if enabled == strings.TrimSpace(permissionMode.RuntimeID) {
+				return errors.New("composer launch-restart Plan mode must use a distinct runtime value")
+			}
+		}
+	}
+	return nil
+}
+
+var composerSlashCommandName = regexp.MustCompile(`^[a-z0-9][a-z0-9._:-]{0,63}$`)
+var composerConfigOptionID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
+var composerLaunchSettingValue = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
+
+func validateInstalledProfiles(root string, manifest Manifest) error {
+	for file, schema := range map[string]string{
+		manifest.Profiles.Discovery:    "tutti.agent.discovery.v1",
+		manifest.Profiles.Tools:        "tutti.agent.tools.v1",
+		manifest.Profiles.Capabilities: "tutti.agent.capabilities.v1",
+		manifest.Profiles.Composer:     "tutti.agent.composer.v1",
+		manifest.Profiles.Events:       "tutti.agent.events.v1",
+	} {
+		if file == "" {
+			continue
+		}
+		var header struct {
+			SchemaVersion string `json:"schemaVersion"`
+		}
+		raw, readErr := os.ReadFile(filepath.Join(root, filepath.FromSlash(file)))
+		if readErr != nil || json.Unmarshal(raw, &header) != nil || header.SchemaVersion != schema {
+			return fmt.Errorf("installed extension profile %s must use %s", file, schema)
+		}
+	}
+	var discovery DiscoveryProfile
+	if err := readJSON(filepath.Join(root, filepath.FromSlash(manifest.Profiles.Discovery)), &discovery); err != nil {
+		return err
+	}
+	if err := validateDiscoveryProfile(discovery); err != nil {
+		return err
+	}
+	var composer ComposerProfile
+	if manifest.Profiles.Composer != "" {
+		if err := readJSON(filepath.Join(root, filepath.FromSlash(manifest.Profiles.Composer)), &composer); err != nil {
+			return err
+		}
+		if err := validateComposerProfile(composer); err != nil {
+			return err
+		}
+	}
+	if err := validateDiscoveryLaunchPlaceholders(discovery, composer); err != nil {
+		return err
+	}
+	if err := validateManifestLaunchPlaceholders(manifest, composer); err != nil {
+		return err
+	}
+	installation := Installation{PackageDir: root, Manifest: manifest}
+	if _, _, err := loadComposerModes(installation); err != nil {
+		return err
+	}
+	if _, err := loadDeclaredCapabilities(installation); err != nil {
+		return err
+	}
+	if _, err := loadToolAliases(installation); err != nil {
+		return err
+	}
+	return nil
+}
+
+func composerSlashCommandEffectSupported(effect string) bool {
+	switch providerregistry.SlashCommandEffect(strings.TrimSpace(effect)) {
+	case "",
+		providerregistry.SlashCommandEffectSubmitImmediate,
+		providerregistry.SlashCommandEffectShowReviewPicker,
+		providerregistry.SlashCommandEffectActivateGoalMode,
+		providerregistry.SlashCommandEffectTogglePlanMode,
+		providerregistry.SlashCommandEffectShowStatus,
+		providerregistry.SlashCommandEffectToggleSpeed:
+		return true
+	default:
+		return false
+	}
 }
 
 func loadToolAliases(installation Installation) (map[string]string, error) {

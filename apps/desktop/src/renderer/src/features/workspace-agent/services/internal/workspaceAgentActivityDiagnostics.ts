@@ -32,28 +32,6 @@ export function isWorkspaceAgentSessionNotFoundError(error: unknown): boolean {
   );
 }
 
-export function reconcileAfterVersion(
-  messages: readonly AgentActivityMessage[]
-): number {
-  const latest = messages.reduce(
-    (version, message) => Math.max(version, message.version),
-    0
-  );
-  if (
-    messages.length === 0 ||
-    messages.some((message) => message.role.trim().toLowerCase() === "user")
-  ) {
-    return latest;
-  }
-  return messages.some((message) => {
-    const role = message.role.trim().toLowerCase();
-    const kind = message.kind.trim().toLowerCase();
-    return role === "assistant" || role === "agent" || kind === "tool_call";
-  })
-    ? 0
-    : latest;
-}
-
 export function hasInlineMessagesData(data: unknown): boolean {
   return (
     typeof data === "object" &&

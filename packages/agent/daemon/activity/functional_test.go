@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 func TestWorkspaceAgentMessageFunctionalFlow(t *testing.T) {
@@ -96,7 +97,7 @@ func TestWorkspaceAgentMessageFunctionalFlow(t *testing.T) {
 				OccurredAtUnixMS: 1776934803000,
 			},
 		},
-		Source: agentsessionstore.EventSource{
+		Source: canonical.EventSource{
 			SessionOrigin: agentsessionstore.WorkspaceAgentSessionOriginRuntime,
 			Provider:      "codex",
 		},

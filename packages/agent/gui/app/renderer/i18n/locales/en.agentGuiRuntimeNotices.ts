@@ -24,19 +24,25 @@ export const enAgentGuiRuntimeNotices = {
     "{{provider}}'s response was interrupted before it completed. Try again in a moment.",
   visibleErrorConcurrencyLimit:
     "{{provider}} is handling too many requests right now. Try again after another task finishes.",
-  visibleErrorInsufficientCredits:
-    "Your Tutti credits are insufficient to continue this request.",
+  visibleErrorInsufficientCreditsUnknown:
+    "Your Tutti credits are insufficient. Review credit options to continue",
   visibleErrorActionInstall: "Connect",
   visibleErrorActionUpgrade: "Upgrade",
   visibleErrorActionRelogin: "Sign in",
   visibleErrorActionCheckNetwork: "Check network",
   visibleErrorActionDetect: "Open setup",
-  visibleErrorActionViewPlans: "View plans",
   systemNoticeTransportRetry: "Agent connection interrupted. Reconnecting...",
   systemNoticeTransportFallback: "Agent switched to HTTPS transport",
   systemNoticePlanImplementationPendingConfirmation:
     "Plan implementation is awaiting confirmation",
   systemNoticePlanImplementationCompleted: "Plan implementation started",
   systemNoticeWarning: "Agent warning",
-  systemNoticeDefault: "Agent notice"
+  systemNoticeDefault: "Agent notice",
+  sharedDeviceLabel: "shared device",
+  runtimeConnecting: "Connecting to {{device}}…",
+  runtimeReconnectingAttempt: "Reconnecting to {{device}} · Retry {{attempt}}…",
+  runtimeUnavailable:
+    "Connection to {{device}} was lost. The system will retry automatically.",
+  runtimeUnavailableActive:
+    "Connection to {{device}} was lost. Sending and stopping are temporarily unavailable; the task may still be running on the device."
 } as const;

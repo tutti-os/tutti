@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import type {
   ReferenceProvenanceCatalog,
   ReferenceProvenanceDimension,
@@ -26,8 +26,14 @@ export function useReferenceProvenanceFilter(
 export function useReferenceProvenanceFilterCatalog(
   injectedCatalog: ReferenceProvenanceCatalog
 ) {
-  const catalog = normalizeReferenceProvenanceCatalog(injectedCatalog);
-  const catalogKey = [...catalog.enabledDimensions].sort().join("|");
+  const catalog = useMemo(
+    () => normalizeReferenceProvenanceCatalog(injectedCatalog),
+    [injectedCatalog]
+  );
+  const catalogKey = useMemo(
+    () => [...catalog.enabledDimensions].sort().join("|"),
+    [catalog]
+  );
   const [stored, setStored] = useState<{
     catalogKey: string;
     value: ReferenceProvenanceFilter;
@@ -38,33 +44,49 @@ export function useReferenceProvenanceFilterCatalog(
       : { catalogKey, value: EMPTY_REFERENCE_PROVENANCE_FILTER };
   if (effectiveStored !== stored) setStored(effectiveStored);
   const storedValue = effectiveStored.value;
-  const setStoredValue = (
-    update: (current: ReferenceProvenanceFilter) => ReferenceProvenanceFilter
-  ) => {
-    setStored((current) => ({
-      catalogKey,
-      value: update(
-        current.catalogKey === catalogKey
-          ? current.value
-          : EMPTY_REFERENCE_PROVENANCE_FILTER
-      )
-    }));
-  };
-  const value = normalizeReferenceProvenanceFilter(storedValue, catalog);
-  return {
-    snapshot: { catalog, value },
-    controller: {
-      reset: () => setStoredValue(() => EMPTY_REFERENCE_PROVENANCE_FILTER),
-      toggle(dimension: ReferenceProvenanceDimension, id: string) {
-        setStoredValue((current) =>
-          toggleReferenceProvenanceFilterId(current, catalog, dimension, id)
-        );
-      },
-      toggleAll(dimension: ReferenceProvenanceDimension) {
-        setStoredValue((current) =>
-          toggleAllReferenceProvenanceFilterIds(current, catalog, dimension)
-        );
-      }
-    }
-  };
+  const setStoredValue = useCallback(
+    (
+      update: (current: ReferenceProvenanceFilter) => ReferenceProvenanceFilter
+    ) => {
+      setStored((current) => ({
+        catalogKey,
+        value: update(
+          current.catalogKey === catalogKey
+            ? current.value
+            : EMPTY_REFERENCE_PROVENANCE_FILTER
+        )
+      }));
+    },
+    [catalogKey]
+  );
+  const value = useMemo(
+    () => normalizeReferenceProvenanceFilter(storedValue, catalog),
+    [catalog, storedValue]
+  );
+  const reset = useCallback(
+    () => setStoredValue(() => EMPTY_REFERENCE_PROVENANCE_FILTER),
+    [setStoredValue]
+  );
+  const toggle = useCallback(
+    (dimension: ReferenceProvenanceDimension, id: string) => {
+      setStoredValue((current) =>
+        toggleReferenceProvenanceFilterId(current, catalog, dimension, id)
+      );
+    },
+    [catalog, setStoredValue]
+  );
+  const toggleAll = useCallback(
+    (dimension: ReferenceProvenanceDimension) => {
+      setStoredValue((current) =>
+        toggleAllReferenceProvenanceFilterIds(current, catalog, dimension)
+      );
+    },
+    [catalog, setStoredValue]
+  );
+  const snapshot = useMemo(() => ({ catalog, value }), [catalog, value]);
+  const controller = useMemo(
+    () => ({ reset, toggle, toggleAll }),
+    [reset, toggle, toggleAll]
+  );
+  return useMemo(() => ({ snapshot, controller }), [controller, snapshot]);
 }

@@ -12,7 +12,7 @@ func TestRuntimeOperationsV2UpgradesV1DataAndConstraints(t *testing.T) {
 DROP TABLE workspace_agent_runtime_operation_events;
 DROP TABLE workspace_agent_runtime_operations;
 DELETE FROM agent_store_schema_migrations
-WHERE id IN ('workspace_agent_runtime_operations_v1', 'workspace_agent_runtime_operations_v2', 'workspace_agent_runtime_operations_v3');
+WHERE id IN ('workspace_agent_runtime_operations_v1', 'workspace_agent_runtime_operations_v2', 'workspace_agent_runtime_operations_v3', 'workspace_agent_runtime_operations_v4');
 `); err != nil {
 		t.Fatal(err)
 	}
@@ -20,15 +20,17 @@ WHERE id IN ('workspace_agent_runtime_operations_v1', 'workspace_agent_runtime_o
 		t.Fatal(err)
 	}
 	seedRuntimeInteractiveSubject(t, store, "session-1", "turn-1", "request-1")
-	prepareRuntimeInteractive(t, store, "interactive-1", "session-1", "turn-1", "request-1")
-	if _, created, err := store.PrepareRuntimeOperation(ctx, RuntimeOperationPrepare{
-		OperationID: "cancel-1", WorkspaceID: "ws-1", AgentSessionID: "session-1",
-		Kind: RuntimeOperationKindCancelTurn, TurnID: "turn-1", OccurredAtMS: 10,
-		Payload: map[string]any{"rootAgentSessionId": "session-1", "targets": []any{
-			map[string]any{"agentSessionId": "session-1", "turnId": "turn-1"},
-		}},
-	}); err != nil || !created {
-		t.Fatalf("prepare v1 cancel created=%v err=%v", created, err)
+	if _, err := store.db.Exec(`
+INSERT INTO workspace_agent_runtime_operations (
+  operation_id, workspace_id, agent_session_id, kind, status, subject_id, turn_id,
+  request_id, payload_json, next_attempt_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
+) VALUES
+  ('interactive-1', 'ws-1', 'session-1', 'interactive_response', 'prepared', 'request-1', 'turn-1',
+   'request-1', '{"answer":"yes"}', 10, 10, 10),
+  ('cancel-1', 'ws-1', 'session-1', 'cancel_turn', 'prepared', 'turn-1', 'turn-1',
+   NULL, '{"rootAgentSessionId":"session-1","targets":[{"agentSessionId":"session-1","turnId":"turn-1"}]}', 10, 10, 10)
+`); err != nil {
+		t.Fatalf("seed v1 operations: %v", err)
 	}
 	if _, err := store.db.Exec(`
 INSERT INTO workspace_agent_runtime_operation_events (
@@ -63,16 +65,14 @@ INSERT INTO workspace_agent_runtime_operation_events (
 		t.Fatalf("claimable index count=%d err=%v", indexCount, err)
 	}
 	seedPlanDecisionSubject(t, store, "session-2", "plan-turn")
-	valid := RuntimeOperationPrepare{
-		OperationID: "plan-op", WorkspaceID: "ws-1", AgentSessionID: "session-2",
-		Kind: RuntimeOperationKindPlanDecision, TurnID: "plan-turn", RequestID: "plan-turn", OccurredAtMS: 20,
-		Payload: map[string]any{
-			"promptKind": "plan-implementation", "action": "implement", "idempotencyKey": "decision-1",
-			"clientSubmitId": "plan-decision:plan-op", "step": "prepared",
-		},
-	}
-	if _, created, err := store.PrepareRuntimeOperation(ctx, valid); err != nil || !created {
-		t.Fatalf("valid plan created=%v err=%v", created, err)
+	if _, err := store.db.Exec(`
+INSERT INTO workspace_agent_runtime_operations (
+ operation_id, workspace_id, agent_session_id, kind, status, subject_id, turn_id,
+ request_id, payload_json, next_attempt_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
+) VALUES ('plan-op', 'ws-1', 'session-2', 'plan_decision', 'prepared', 'plan-turn',
+ 'plan-turn', 'plan-turn', '{"promptKind":"plan-implementation","action":"implement","idempotencyKey":"decision-1","clientSubmitId":"plan-decision:plan-op","step":"prepared"}', 20, 20, 20)
+`); err != nil {
+		t.Fatalf("seed valid v2 plan operation: %v", err)
 	}
 	if _, err := store.db.Exec(`
 INSERT INTO workspace_agent_runtime_operations (
@@ -110,5 +110,35 @@ INSERT INTO workspace_agent_runtime_operation_events (
 	var v3Count int
 	if err := store.db.QueryRow(`SELECT COUNT(*) FROM agent_store_schema_migrations WHERE id = ?`, schemaMigrationWorkspaceAgentRuntimeOperationsV3).Scan(&v3Count); err != nil || v3Count != 1 {
 		t.Fatalf("v3 migration count=%d err=%v", v3Count, err)
+	}
+	if _, err := store.db.Exec(`UPDATE workspace_agent_runtime_operations SET attempt = 3, version = 4, last_error = 'retry me', updated_at_unix_ms = 25 WHERE operation_id = 'interactive-1'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(`UPDATE workspace_agent_runtime_operation_events SET published_at_unix_ms = 23 WHERE operation_id = 'interactive-1'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.applyWorkspaceAgentRuntimeOperationsV4(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var subjectColumnCount int
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('workspace_agent_runtime_operations') WHERE name = 'subject_id'`).Scan(&subjectColumnCount); err != nil || subjectColumnCount != 0 {
+		t.Fatalf("subject_id column count=%d err=%v", subjectColumnCount, err)
+	}
+	var operationCount, eventCount int
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM workspace_agent_runtime_operations`).Scan(&operationCount); err != nil || operationCount != 3 {
+		t.Fatalf("operation count=%d err=%v", operationCount, err)
+	}
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM workspace_agent_runtime_operation_events`).Scan(&eventCount); err != nil || eventCount != 4 {
+		t.Fatalf("event count=%d err=%v", eventCount, err)
+	}
+	var attempt, version int
+	var lastError string
+	var updatedAt int64
+	if err := store.db.QueryRow(`SELECT attempt, version, last_error, updated_at_unix_ms FROM workspace_agent_runtime_operations WHERE operation_id = 'interactive-1'`).Scan(&attempt, &version, &lastError, &updatedAt); err != nil || attempt != 3 || version != 4 || lastError != "retry me" || updatedAt != 25 {
+		t.Fatalf("preserved operation fields attempt=%d version=%d lastError=%q updatedAt=%d err=%v", attempt, version, lastError, updatedAt, err)
+	}
+	var publishedAt int64
+	if err := store.db.QueryRow(`SELECT published_at_unix_ms FROM workspace_agent_runtime_operation_events WHERE operation_id = 'interactive-1'`).Scan(&publishedAt); err != nil || publishedAt != 23 {
+		t.Fatalf("preserved event publishedAt=%d err=%v", publishedAt, err)
 	}
 }

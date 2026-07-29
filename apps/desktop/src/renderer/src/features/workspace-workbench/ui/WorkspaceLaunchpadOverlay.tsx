@@ -294,8 +294,11 @@ export function WorkspaceLaunchpadOverlay({
         closeLaunchpad();
         void agentProviderStatusService
           .runAction(agent.provider, actionId, {
-            workbenchHost: host ?? undefined,
-            workspaceId
+            context: {
+              workbenchHost: host ?? undefined,
+              workspaceId
+            },
+            origin: "user"
           })
           .catch(noop);
       }}

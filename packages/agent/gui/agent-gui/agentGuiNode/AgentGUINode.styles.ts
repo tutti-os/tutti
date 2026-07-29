@@ -15,6 +15,7 @@ const styles = {
   composerFooterRight: "agent-gui-node__composer-footer-right",
   composerHero: "agent-gui-node__composer-hero",
   composerFloatingPrompt: "agent-gui-node__composer-floating-prompt",
+  composerDisclosurePanel: "agent-gui-chrome__composer-disclosure-panel",
   composerFileDropOverlay: "agent-gui-node__composer-file-drop-overlay",
   composerFileDropOverlayActive:
     "agent-gui-node__composer-file-drop-overlay--active",
@@ -32,6 +33,11 @@ const styles = {
   composerInputShell: "agent-gui-node__composer-input-shell",
   composerInputShellHero: "agent-gui-node__composer-input-shell-hero",
   composerMenuTrigger: "agent-gui-node__composer-menu-trigger",
+  composerTuttiModeIcon: "agent-gui-node__composer-tutti-mode-icon",
+  composerTuttiModeIconStatic:
+    "agent-gui-node__composer-tutti-mode-icon-static",
+  composerTuttiModeIconAnimated:
+    "agent-gui-node__composer-tutti-mode-icon-animated",
   composerMenuContent: "agent-gui-node__composer-menu-content",
   composerMenuLabel: "agent-gui-node__composer-menu-label",
   composerMenuItem: "agent-gui-node__composer-menu-item",
@@ -74,7 +80,11 @@ const styles = {
   conversationItem: "agent-gui-node__conversation-item",
   conversationList: "agent-gui-node__conversation-list",
   conversationMeta: "agent-gui-node__conversation-meta",
+  conversationMoreButton: "agent-gui-node__conversation-more-button",
+  conversationProviderImage: "agent-gui-node__conversation-provider-image",
   conversationProviderIcon: "agent-gui-node__conversation-provider-icon",
+  conversationProviderMaskIcon:
+    "agent-gui-node__conversation-provider-mask-icon",
   conversationOpenWindowButton:
     "agent-gui-node__conversation-open-window-button",
   conversationPinButton: "agent-gui-node__conversation-pin-button",
@@ -100,18 +110,14 @@ const styles = {
   conversationSectionPaginationButton:
     "agent-gui-node__conversation-section-pagination-button",
   conversationSectionToggle: "agent-gui-node__conversation-section-toggle",
+  projectDragImage: "agent-gui-node__project-drag-image",
+  pinnedProjectRailHeader: "agent-gui-node__pinned-project-rail-header",
   conversationSelect: "agent-gui-node__conversation-select",
   conversationStatusGlyph: "agent-gui-node__conversation-status-glyph",
   conversationTime: "agent-gui-node__conversation-time",
   conversationTitle: "agent-gui-node__conversation-title",
-  conversationTitleMentionIcon:
-    "agent-gui-node__conversation-title-mention-icon",
   conversationTitleRow: "agent-gui-node__conversation-title-row",
   conversationUnreadLamp: "agent-gui-node__conversation-unread-lamp",
-  detailHeader: "agent-gui-node__detail-header",
-  detailHeaderPathInfo: "agent-gui-node__detail-header-path-info",
-  detailHeaderTitle: "agent-gui-node__detail-header-title",
-  detailHeaderTitleGroup: "agent-gui-node__detail-header-title-group",
   detail: "agent-gui-node__detail",
   detailPanel: "agent-gui-node__detail-panel",
   empty: "agent-gui-node__empty",

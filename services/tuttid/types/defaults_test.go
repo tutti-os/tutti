@@ -1,7 +1,12 @@
 package types
 
 import (
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/hex"
+	"encoding/pem"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -48,7 +53,7 @@ func TestResolveDefaultsFromEnvAppliesOverrides(t *testing.T) {
 	assertEqual(t, got.Transport.TCPAddr, "127.0.0.1:1111")
 }
 
-func TestResolveAgentExtensionSourcesAppliesEnabledOverride(t *testing.T) {
+func TestResolveAgentExtensionSourcesIgnoresRemovedEnabledOverride(t *testing.T) {
 	t.Setenv("TUTTI_AGENT_EXTENSION_GEMINI_ENABLED", "true")
 
 	sources := ResolveAgentExtensionSources()
@@ -57,16 +62,119 @@ func TestResolveAgentExtensionSourcesAppliesEnabledOverride(t *testing.T) {
 		byKey[source.Key] = source
 	}
 	gemini, ok := byKey["gemini"]
-	if !ok || !gemini.Enabled {
-		t.Fatalf("gemini source override not applied: %#v", sources)
+	if !ok || gemini.Enabled {
+		t.Fatalf("gemini source was enabled by removed env override: %#v", sources)
 	}
 	codebuddy, ok := byKey["codebuddy"]
 	if !ok || codebuddy.Enabled {
 		t.Fatalf("codebuddy source must stay disabled without override: %#v", sources)
 	}
-	for _, source := range []AgentExtensionSource{gemini, codebuddy} {
+	copilot := agentExtensionSourceByKey(t, sources, "copilot")
+	kilo := agentExtensionSourceByKey(t, sources, "kilo")
+	qwen := agentExtensionSourceByKey(t, sources, "qwen")
+	grok := agentExtensionSourceByKey(t, sources, "grok")
+	for _, source := range []AgentExtensionSource{gemini, codebuddy, copilot, kilo, qwen, grok} {
+		if source.Enabled {
+			t.Fatalf("agent extension source must stay disabled without override: %#v", source)
+		}
 		if source.SigningKeyID == "" || source.SigningPublicKey == "" {
 			t.Fatalf("agent extension trust configuration is incomplete: %#v", source)
+		}
+	}
+}
+
+func TestResolveAgentExtensionSourcesAppliesLocalPackageOnlyInDevelopment(t *testing.T) {
+	packageDir := filepath.Join(t.TempDir(), "package")
+	t.Setenv("TUTTI_ENV", "development")
+	t.Setenv("TUTTI_AGENT_EXTENSION_CODEBUDDY_PACKAGE_DIR", packageDir)
+
+	development := agentExtensionSourceByKey(t, ResolveAgentExtensionSources(), "codebuddy")
+	if development.Enabled || development.LocalPackageDir != packageDir {
+		t.Fatalf("development local package override not applied: %#v", development)
+	}
+
+	t.Setenv("TUTTI_ENV", "production")
+	production := agentExtensionSourceByKey(t, ResolveAgentExtensionSources(), "codebuddy")
+	if production.Enabled || production.LocalPackageDir != "" {
+		t.Fatalf("production local package override must be ignored: %#v", production)
+	}
+}
+
+func TestGrokAgentExtensionSourcePinsApprovedSigningIdentity(t *testing.T) {
+	source := agentExtensionSourceByKey(t, ResolveAgentExtensionSources(), "grok")
+	if source.Enabled || source.SigningKeyID != "tutti-grok-release-v2" ||
+		source.ReleaseIndexURL != "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/grok/versions.json" {
+		t.Fatalf("grok source activation/key identity = %#v", source)
+	}
+	block, rest := pem.Decode([]byte(source.SigningPublicKey))
+	if block == nil || len(rest) != 0 {
+		t.Fatal("grok signing public key is not one canonical PEM block")
+	}
+	if _, err := x509.ParsePKIXPublicKey(block.Bytes); err != nil {
+		t.Fatalf("parse grok signing public key: %v", err)
+	}
+	digest := sha256.Sum256(block.Bytes)
+	if got := hex.EncodeToString(digest[:]); got != "1d9c96185b82d9ad0a2102374365a958e6f10d2c9bbdb4a6ab0f7effc503745b" {
+		t.Fatalf("grok signing public key SPKI digest = %s", got)
+	}
+}
+
+func agentExtensionSourceByKey(t *testing.T, sources []AgentExtensionSource, key string) AgentExtensionSource {
+	t.Helper()
+	for _, source := range sources {
+		if source.Key == key {
+			return source
+		}
+	}
+	t.Fatalf("agent extension source %q not found", key)
+	return AgentExtensionSource{}
+}
+
+func TestResolveUVToolArtifactSelectsPlatform(t *testing.T) {
+	artifact, ok := ResolveUVToolArtifact("darwin-arm64")
+	if !ok {
+		t.Fatal("ResolveUVToolArtifact(darwin-arm64) ok = false, want true")
+	}
+	assertEqual(t, artifact.Version, "0.11.31")
+	assertEqual(t, artifact.Platform, "darwin-arm64")
+	assertEqual(t, artifact.URL, "https://github.com/astral-sh/uv/releases/download/0.11.31/uv-aarch64-apple-darwin.tar.gz")
+	assertEqual(t, artifact.SHA256, "b2b93e82a6786f9c7cb89fd4ca0e859a147b292ae8f6f95784f9742f0efec39e")
+	assertEqual(t, artifact.Archive, "tar.gz")
+	assertEqual(t, artifact.ArchiveExecutable, "uv-aarch64-apple-darwin/uv")
+	if artifact.SizeBytes <= 0 {
+		t.Fatalf("artifact size = %d, want > 0", artifact.SizeBytes)
+	}
+}
+
+func TestResolveUVToolArtifactCoversSupportedPlatforms(t *testing.T) {
+	platforms := []string{"darwin-arm64", "darwin-amd64", "linux-amd64", "linux-arm64", "windows-amd64"}
+	for _, platform := range platforms {
+		artifact, ok := ResolveUVToolArtifact(platform)
+		if !ok {
+			t.Fatalf("ResolveUVToolArtifact(%q) ok = false, want true", platform)
+		}
+		if !strings.HasPrefix(artifact.URL, "https://") {
+			t.Fatalf("platform %q url = %q, want https", platform, artifact.URL)
+		}
+		if len(artifact.SHA256) != 64 {
+			t.Fatalf("platform %q sha256 length = %d, want 64", platform, len(artifact.SHA256))
+		}
+		if artifact.SizeBytes <= 0 {
+			t.Fatalf("platform %q size = %d, want > 0", platform, artifact.SizeBytes)
+		}
+		if artifact.Archive != "tar.gz" && artifact.Archive != "zip" {
+			t.Fatalf("platform %q archive = %q, want tar.gz or zip", platform, artifact.Archive)
+		}
+		if artifact.ArchiveExecutable == "" {
+			t.Fatalf("platform %q archive executable is empty", platform)
+		}
+	}
+}
+
+func TestResolveUVToolArtifactRejectsUnknownPlatform(t *testing.T) {
+	for _, platform := range []string{"", "plan9-amd64", "darwin"} {
+		if artifact, ok := ResolveUVToolArtifact(platform); ok {
+			t.Fatalf("ResolveUVToolArtifact(%q) = %#v, want ok=false", platform, artifact)
 		}
 	}
 }

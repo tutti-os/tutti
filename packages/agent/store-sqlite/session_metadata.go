@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 type SessionMetadata struct {
@@ -41,6 +41,22 @@ type SessionGoal struct {
 	Tokens     int64  `json:"tokens,omitempty"`
 }
 
+// DecodeSessionGoal validates and decodes the canonical goal payload shared by
+// goal state and session metadata into the public typed session contract.
+func DecodeSessionGoal(raw any) (*SessionGoal, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	var value SessionGoal
+	if err := remarshalJSON(raw, &value); err != nil {
+		return nil, err
+	}
+	if err := validateSessionGoal(value); err != nil {
+		return nil, err
+	}
+	return &value, nil
+}
+
 var sessionMetadataRuntimeContextKeys = []string{"visible", "imported", "capabilities", "usage", "goal"}
 
 func splitSessionRuntimeContext(runtimeContext map[string]any) (SessionMetadata, map[string]any, error) {
@@ -52,7 +68,7 @@ func splitSessionRuntimeContext(runtimeContext map[string]any) (SessionMetadata,
 	seenCapabilities := map[string]struct{}{}
 	for _, raw := range jsonStringSlice(runtimeContext["capabilities"]) {
 		if value := strings.TrimSpace(raw); value != "" {
-			if !providerregistry.IsKnownCapability(value) {
+			if !canonical.IsKnownCapability(value) {
 				continue
 			}
 			if _, seen := seenCapabilities[value]; seen {
@@ -76,14 +92,11 @@ func splitSessionRuntimeContext(runtimeContext map[string]any) (SessionMetadata,
 		metadata.Usage = &value
 	}
 	if raw := runtimeContext["goal"]; raw != nil {
-		var value SessionGoal
-		if err := remarshalJSON(raw, &value); err != nil {
+		value, err := DecodeSessionGoal(raw)
+		if err != nil {
 			return SessionMetadata{}, nil, err
 		}
-		if err := validateSessionGoal(value); err != nil {
-			return SessionMetadata{}, nil, err
-		}
-		metadata.Goal = &value
+		metadata.Goal = value
 	}
 	internal := cloneJSONMap(runtimeContext)
 	for _, key := range sessionMetadataRuntimeContextKeys {
@@ -182,7 +195,7 @@ func unmarshalSessionMetadata(raw string) (SessionMetadata, error) {
 func validateSessionMetadata(value SessionMetadata) error {
 	seen := map[string]struct{}{}
 	for _, capability := range value.Capabilities {
-		if strings.TrimSpace(capability) != capability || !providerregistry.IsKnownCapability(capability) {
+		if strings.TrimSpace(capability) != capability || !canonical.IsKnownCapability(capability) {
 			return fmt.Errorf("unsupported session capability %q", capability)
 		}
 		if _, ok := seen[capability]; ok {

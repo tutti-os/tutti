@@ -1,14 +1,45 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  AGENT_EXTENSION_ACTIVATION_FLAGS,
+  AGENT_EXTENSION_CODEBUDDY_FLAG,
+  AGENT_EXTENSION_COPILOT_FLAG,
+  AGENT_EXTENSION_GEMINI_FLAG,
+  AGENT_EXTENSION_HERMES_FLAG,
+  AGENT_EXTENSION_KIMI_CODE_FLAG,
+  AGENT_EXTENSION_GROK_FLAG,
+  AGENT_EXTENSION_KILO_FLAG,
+  AGENT_EXTENSION_QWEN_FLAG,
   AGENT_REFERENCE_PROVENANCE_FILTER_FLAG,
+  AGENT_QUICK_PROMPT_LIBRARY_FLAG,
+  AGENT_SESSION_RECORDING_FLAG,
   isFeatureEnabled,
   labFeatureDefinitions,
   LAB_ENABLED_FLAG,
+  LAB_AGENT_INPUT_HISTORY_FLAG,
+  LAB_AGENT_SESSION_FORK_FLAG,
+  LAB_AUTOMATION_RULES_FLAG,
+  MOBILE_REMOTE_ACCESS_SETTINGS_FLAG,
   resolveDesktopWorkspaceUiMode,
   withDesktopWorkspaceUiMode,
   WORKSPACE_STANDALONE_AGENT_MODE_FLAG
 } from "./catalog.ts";
+
+test("Agent Extension activation flags stay catalog-driven", () => {
+  assert.deepEqual(AGENT_EXTENSION_ACTIVATION_FLAGS, [
+    AGENT_EXTENSION_GEMINI_FLAG,
+    AGENT_EXTENSION_CODEBUDDY_FLAG,
+    AGENT_EXTENSION_COPILOT_FLAG,
+    AGENT_EXTENSION_KILO_FLAG,
+    AGENT_EXTENSION_QWEN_FLAG,
+    AGENT_EXTENSION_HERMES_FLAG,
+    AGENT_EXTENSION_KIMI_CODE_FLAG,
+    AGENT_EXTENSION_GROK_FLAG
+  ]);
+  for (const flag of AGENT_EXTENSION_ACTIVATION_FLAGS) {
+    assert.equal(isFeatureEnabled({}, flag), false);
+  }
+});
 
 test("isFeatureEnabled falls back to catalog default when key absent", () => {
   assert.equal(isFeatureEnabled({}, LAB_ENABLED_FLAG), false);
@@ -20,6 +51,37 @@ test("isFeatureEnabled falls back to catalog default when key absent", () => {
     isFeatureEnabled({}, AGENT_REFERENCE_PROVENANCE_FILTER_FLAG),
     false
   );
+  assert.equal(isFeatureEnabled({}, AGENT_QUICK_PROMPT_LIBRARY_FLAG), false);
+  assert.equal(isFeatureEnabled({}, AGENT_SESSION_RECORDING_FLAG), false);
+  assert.equal(isFeatureEnabled({}, MOBILE_REMOTE_ACCESS_SETTINGS_FLAG), false);
+  assert.equal(
+    isFeatureEnabled(
+      { [AGENT_QUICK_PROMPT_LIBRARY_FLAG]: false },
+      AGENT_QUICK_PROMPT_LIBRARY_FLAG
+    ),
+    false
+  );
+  assert.equal(
+    isFeatureEnabled(
+      { [AGENT_QUICK_PROMPT_LIBRARY_FLAG]: true },
+      AGENT_QUICK_PROMPT_LIBRARY_FLAG
+    ),
+    true
+  );
+  assert.equal(
+    isFeatureEnabled(
+      { [AGENT_SESSION_RECORDING_FLAG]: true },
+      AGENT_SESSION_RECORDING_FLAG
+    ),
+    true
+  );
+  assert.equal(
+    isFeatureEnabled(
+      { [MOBILE_REMOTE_ACCESS_SETTINGS_FLAG]: true },
+      MOBILE_REMOTE_ACCESS_SETTINGS_FLAG
+    ),
+    true
+  );
 });
 
 test("isFeatureEnabled returns false for unknown keys", () => {
@@ -29,6 +91,33 @@ test("isFeatureEnabled returns false for unknown keys", () => {
 
 test("labFeatureDefinitions excludes the master switch", () => {
   assert.ok(labFeatureDefinitions().every((d) => d.group === "lab"));
+});
+
+test("experimental Agent features require independent Lab opt-ins", () => {
+  const flags = [
+    LAB_AGENT_INPUT_HISTORY_FLAG,
+    LAB_AGENT_SESSION_FORK_FLAG,
+    LAB_AUTOMATION_RULES_FLAG
+  ];
+
+  for (const flag of flags) {
+    assert.equal(isFeatureEnabled({}, flag), false);
+    assert.equal(isFeatureEnabled({ [flag]: true }, flag), true);
+  }
+});
+
+test("graduated Agent features are not registered as Lab flags", () => {
+  const definitions = labFeatureDefinitions();
+  for (const retiredKey of [
+    "lab.tuttiMode",
+    "lab.modelPlans",
+    "lab.workspaceAgents"
+  ]) {
+    assert.equal(
+      definitions.some((definition) => definition.key === retiredKey),
+      false
+    );
+  }
 });
 
 test("workspace UI mode defaults to OS and preserves explicit selections", () => {

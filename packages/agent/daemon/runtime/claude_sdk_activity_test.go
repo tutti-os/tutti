@@ -2,9 +2,11 @@ package agentruntime
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/daemon/liveprotocol"
 )
 
 func TestClaudeCodeSDKAdapterMapsSessionTitleUpdated(t *testing.T) {
@@ -26,6 +28,39 @@ func TestClaudeCodeSDKAdapterMapsSessionTitleUpdated(t *testing.T) {
 	}
 	if events[0].Payload.Title != "Inspect repository structure" {
 		t.Fatalf("title = %q, want provider title", events[0].Payload.Title)
+	}
+}
+
+func TestClaudeCodeSDKAdapterPreservesResolvedModelDescriptor(t *testing.T) {
+	adapterSession := &claudeSDKAdapterSession{
+		liveState: newClaudeSDKLiveState(),
+	}
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession.applySessionPayload(&session, map[string]any{
+		"model": "default",
+		"configOptions": []any{map[string]any{
+			"id":             "model",
+			"currentValue":   "default",
+			"effectiveValue": "claude-opus-4-8",
+			"options": []any{
+				map[string]any{"name": "Default", "value": "default"},
+				map[string]any{"name": "Opus 4.8", "value": "opus"},
+			},
+		}},
+	})
+
+	configOptions, ok := claudeSDKRuntimeContext(
+		session,
+		adapterSession,
+	)["configOptions"].([]map[string]any)
+	if !ok || len(configOptions) == 0 {
+		t.Fatal("runtime config options empty")
+	}
+	if got := asString(configOptions[0]["effectiveValue"]); got != "claude-opus-4-8" {
+		t.Fatalf("effective model = %q, want claude-opus-4-8", got)
+	}
+	if got := asString(configOptions[0]["currentValue"]); got != "default" {
+		t.Fatalf("current model = %q, want inherited default", got)
 	}
 }
 
@@ -364,6 +399,59 @@ func TestClaudeCodeSDKAdapterMapsThinkingEvents(t *testing.T) {
 	}
 	if completed[0].Payload.Metadata["streamState"] != messageStreamStateCompleted {
 		t.Fatalf("completed metadata = %#v, want completed stream state", completed[0].Payload.Metadata)
+	}
+}
+
+func TestClaudeCodeSDKAdapterProjectsCumulativeAssistantSnapshotsAsSuffixDeltas(t *testing.T) {
+	t.Parallel()
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	adapterSession := &claudeSDKAdapterSession{}
+	session := standardTestSession(ProviderClaudeCode)
+
+	project := func(snapshot string) liveprotocol.MessageDeltaData {
+		t.Helper()
+		events, terminal, err := adapter.sidecarTurnEvents(
+			adapterSession,
+			session,
+			"turn-1",
+			claudeSDKSidecarEvent{
+				Type: "assistant_delta",
+				Payload: map[string]any{
+					"turnId":   "turn-1",
+					"snapshot": snapshot,
+				},
+			},
+		)
+		if err != nil || terminal || len(events) != 1 {
+			t.Fatalf("assistant_delta events=%#v terminal=%v err=%v", events, terminal, err)
+		}
+		stream := ProjectActivityEventsToStreamEvents(session, events)
+		if len(stream) != 1 || stream[0].EventType != StreamEventMessageDelta {
+			t.Fatalf("stream = %#v, want one message_delta", stream)
+		}
+		event, ok := stream[0].Data.(liveprotocol.Event)
+		if !ok {
+			t.Fatalf("stream data = %T, want liveprotocol.Event", stream[0].Data)
+		}
+		var delta liveprotocol.MessageDeltaData
+		if err := json.Unmarshal(event.Data, &delta); err != nil {
+			t.Fatal(err)
+		}
+		return delta
+	}
+
+	first := project("Hel")
+	if first.Content == nil ||
+		first.Content.Operation != "set" ||
+		string(first.Content.Value) != `"Hel"` {
+		t.Fatalf("first delta = %#v, want set Hel", first)
+	}
+	second := project("Hello")
+	if second.MessageID != first.MessageID ||
+		second.Content == nil ||
+		second.Content.Operation != "append_text" ||
+		second.Content.Text != "lo" {
+		t.Fatalf("second delta = %#v, want same-message append lo", second)
 	}
 }
 

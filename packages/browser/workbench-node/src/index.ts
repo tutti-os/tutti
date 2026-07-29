@@ -4,6 +4,11 @@ export {
   type BrowserNodeFeature,
   type CreateBrowserNodeFeatureInput
 } from "./core/feature.ts";
+export type {
+  BrowserNodeChromeCookieImportFeature,
+  BrowserNodeChromeImportPromptAdapter,
+  BrowserNodeChromeImportState
+} from "./core/chromeCookieImport.ts";
 export {
   getBrowserNodeEventNodeId,
   isBrowserNodeSurfaceEvent,
@@ -24,9 +29,17 @@ export {
 } from "./core/tabsLifecycle.ts";
 export type {
   BrowserNodeActivationInput,
+  BrowserNodeAutomationSurfaceRole,
+  BrowserNodeAutomationTargetMetadata,
   BrowserNodeClosedEvent,
   BrowserNodeContextMenuPoint,
   BrowserNodeCookieImportResult,
+  BrowserNodeCookieImportFailureStage,
+  BrowserNodeChromeCookieImportInput,
+  BrowserNodeCancelChromeCookieImportInput,
+  BrowserNodeChromeProfile,
+  BrowserNodeChromeProfileDiscoveryResult,
+  BrowserNodeChromeProfileId,
   BrowserNodeDevicePreset,
   BrowserNodeDebugDump,
   BrowserNodeDownloadAction,
@@ -63,7 +76,8 @@ export type {
   BrowserNodeShowDevToolsContextMenuInput,
   BrowserNodeStateEvent,
   BrowserNodeStopFindInPageInput,
-  BrowserNodeUnregisterGuestInput
+  BrowserNodeUnregisterGuestInput,
+  BrowserNodeUpdateAutomationTargetInput
 } from "./core/types.ts";
 export type {
   BrowserAddressInputResolution,

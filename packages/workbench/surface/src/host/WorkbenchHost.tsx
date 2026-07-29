@@ -18,11 +18,13 @@ const noop = () => {};
 
 export function WorkbenchHost({
   captureNodePreviewImage,
+  captureNodePreviewImages,
   className,
   contributions,
   debugDiagnostics,
   dockPreviewCache,
   dockPlacement,
+  dockEntryPresentationOverrides,
   dockEntries,
   dockStateSource,
   externalStateSource,
@@ -68,18 +70,18 @@ export function WorkbenchHost({
     () =>
       resolveWorkbenchHostDockEntries({
         contributions,
+        dockEntryPresentationOverrides,
         dockEntries
       }),
-    [contributions, dockEntries]
+    [contributions, dockEntries, dockEntryPresentationOverrides]
   );
-  const missionControlMode = missionControl?.mode ?? null;
+  const missionControlActive = missionControl?.active ?? false;
   const missionControlNodeIds = missionControl?.nodeIds;
   const missionControlClose = missionControl?.onRequestClose ?? noop;
   const missionControlEnabled =
-    missionControlMode !== null || onMissionControlAdapterReady !== undefined;
+    missionControlActive || onMissionControlAdapterReady !== undefined;
   const {
     chromeContext,
-    externalStateRevision,
     hostI18n,
     hostSession,
     isHydrating,
@@ -103,6 +105,7 @@ export function WorkbenchHost({
   });
   const surfaceRenderers = useWorkbenchHostSurfaceRenderers({
     captureNodePreviewImage,
+    captureNodePreviewImages,
     chromeContext,
     debugDiagnostics,
     dockPreviewCache,
@@ -110,7 +113,6 @@ export function WorkbenchHost({
     dockStateSource,
     dockEntries: hostDockEntries,
     externalStateSource: hostRuntimeConfig.externalStateSource,
-    externalStateRevision,
     hostI18n,
     hostSession,
     nodeDefinitionByType,
@@ -122,8 +124,8 @@ export function WorkbenchHost({
     workspaceId
   });
   const missionControlState = useWorkbenchMissionControlState({
+    active: missionControlActive,
     adapter: missionControlAdapter,
-    mode: missionControlMode,
     nodeIds: missionControlNodeIds,
     onRequestClose: missionControlClose
   });
@@ -135,6 +137,7 @@ export function WorkbenchHost({
     <WorkbenchSurface<WorkbenchHostNodeData>
       className={className}
       captureNodePreviewImage={surfaceRenderers.captureNodePreviewImage}
+      captureNodePreviewImages={surfaceRenderers.captureNodePreviewImages}
       controller={hostSession.controller}
       debugDiagnostics={debugDiagnostics}
       dockPreviewCache={dockPreviewCache}
@@ -179,6 +182,9 @@ export function WorkbenchHost({
       }
       resolveDockPreviewCacheKey={surfaceRenderers.resolveDockPreviewCacheKey}
       resolveFullscreenHeaderMode={surfaceRenderers.resolveFullscreenHeaderMode}
+      resolveWindowHeaderPresentation={
+        surfaceRenderers.resolveWindowHeaderPresentation
+      }
       resolveWindowSurfaceLayer={surfaceRenderers.resolveWindowSurfaceLayer}
       resolveWindowZIndex={surfaceRenderers.resolveWindowZIndex}
       resolveDockAnchorKey={surfaceRenderers.resolveDockAnchorKey}

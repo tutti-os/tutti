@@ -1,8 +1,10 @@
 import {
+  Avatar,
   Badge,
   BareIconButton,
   Button,
   Checkbox,
+  Combobox,
   ConfirmationDialog,
   Dialog,
   DialogClose,
@@ -46,6 +48,11 @@ import {
   SelectValue,
   ShortcutBadge,
   Spinner,
+  Sortable,
+  SortableContent,
+  SortableItem,
+  SortableItemHandle,
+  SortableOverlay,
   StatusDot,
   Switch,
   Textarea,
@@ -121,6 +128,11 @@ const storyboardDarkThemeOverrideCss = `
   border-color: var(--border-1) !important;
 }
 `;
+
+const avatarSampleImageUrl = new URL(
+  "../../../docs/assets/tutti-logo.png",
+  import.meta.url
+).href;
 
 const {
   CheckIcon,
@@ -298,6 +310,7 @@ const buttonComponent = uiSystemMetadata.components.find(
 
 const sections = [
   ...foundationNavigationSections,
+  ...componentSection("avatar", "Avatar", "身份图片、字母与加载回退"),
   ...componentSection("badge", "Badge", "状态标签与紧凑元信息"),
   ...componentSection("button", "Button", "按钮层级、尺寸与状态"),
   {
@@ -306,6 +319,7 @@ const sections = [
     layer: "base",
     summary: "多选项、文件选择与布尔配置"
   },
+  ...componentSection("combobox", "Combobox", "可搜索选项选择与自定义值输入"),
   ...componentSection("dialog", "Dialog", "弹层、确认与焦点流程"),
   ...componentSection("drawer", "Drawer", "边缘抽屉与 sheet 面板"),
   ...iconSection,
@@ -339,6 +353,11 @@ const sections = [
     layer: "base",
     summary: "加载、提交与长任务等待指示器"
   },
+  ...componentSection(
+    "sortable",
+    "Sortable",
+    "鼠标、触摸与键盘可访问的受控排序组件"
+  ),
   ...componentSection(
     "status-dot",
     "Status Dot",
@@ -453,6 +472,7 @@ const sectionCopy: Record<
     badge: { label: "Badge", summary: "状态标签与紧凑元信息" },
     button: { label: "Button", summary: "按钮层级、尺寸与状态" },
     checkbox: { label: "Checkbox", summary: "多选项、文件选择与布尔配置" },
+    combobox: { label: "Combobox", summary: "可搜索选项选择与自定义值输入" },
     dialog: { label: "Dialog", summary: "弹层、确认与焦点流程" },
     drawer: { label: "Drawer", summary: "边缘抽屉与 sheet 面板" },
     icons: { label: "Icons", summary: "系统图标与品牌图标" },
@@ -520,6 +540,10 @@ const sectionCopy: Record<
     checkbox: {
       label: "Checkbox",
       summary: "Multi-select choices, file selection, and boolean settings."
+    },
+    combobox: {
+      label: "Combobox",
+      summary: "Searchable option selection with custom typed values."
     },
     dialog: {
       label: "Dialog",
@@ -1547,6 +1571,104 @@ function BadgeStoryboard() {
   );
 }
 
+function AvatarStoryboard() {
+  if (!hasStoryboard("Avatar")) {
+    return null;
+  }
+
+  const states = [
+    {
+      description: "Local raster image",
+      label: "Image",
+      node: (
+        <Avatar label="Tutti" size="lg" src={avatarSampleImageUrl}>
+          <StatusDot
+            className="absolute right-0 bottom-0 ring-2 ring-background"
+            tone="green"
+          />
+        </Avatar>
+      )
+    },
+    {
+      description: "Label-derived fallback",
+      label: "Initial",
+      node: <Avatar label="Tutti" size="lg" />
+    },
+    {
+      description: "Intentionally blank",
+      label: "Empty",
+      node: <Avatar fallback="empty" label="Private identity" size="lg" />
+    },
+    {
+      description: "Busy placeholder",
+      label: "Loading",
+      node: <Avatar label="Loading identity" loading size="lg" />
+    },
+    {
+      description: "Broken image to initial",
+      label: "Error",
+      node: (
+        <Avatar
+          initial="B"
+          label="Broken image"
+          size="lg"
+          src="/__missing-avatar-image__.png"
+        />
+      )
+    }
+  ];
+  const sizes = [
+    { label: "xs", size: "xs" as const },
+    { label: "sm", size: "sm" as const },
+    { label: "md", size: "md" as const },
+    { label: "lg", size: "lg" as const },
+    { label: "28px", size: 28 }
+  ];
+
+  return (
+    <DocsSection
+      id="avatar"
+      title="Avatar"
+      description="统一身份图片、字母、空白、加载和坏图回退"
+      componentId={metadataFor("Avatar")?.id}
+    >
+      <ExampleCard
+        title="Identity States"
+        description="真实图片和所有公开回退状态"
+      >
+        <div className="flex flex-wrap gap-5">
+          {states.map((state) => (
+            <div
+              className="grid min-w-20 justify-items-center gap-2 text-center"
+              key={state.label}
+            >
+              {state.node}
+              <div className="grid gap-0.5">
+                <span className="text-[13px] font-medium text-[var(--text-primary)]">
+                  {state.label}
+                </span>
+                <span className="text-[11px] text-[var(--text-secondary)]">
+                  {state.description}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-5 flex flex-wrap items-end gap-4 border-t border-[var(--border-1)] pt-5">
+          {sizes.map(({ label, size }) => (
+            <div className="grid justify-items-center gap-2" key={label}>
+              <Avatar label={label} size={size} />
+              <code className="font-mono text-[11px] text-[var(--text-secondary)]">
+                {label}
+              </code>
+            </div>
+          ))}
+        </div>
+      </ExampleCard>
+    </DocsSection>
+  );
+}
+
 function ShortcutBadgeStoryboard() {
   if (!hasStoryboard("ShortcutBadge")) {
     return null;
@@ -2209,6 +2331,171 @@ function UnderlineTabsStoryboard() {
               value={overflowValue}
               onValueChange={setOverflowValue}
             />
+          </div>
+        </ExampleCard>
+      </div>
+    </DocsSection>
+  );
+}
+
+function SortableStoryboard() {
+  const [items, setItems] = useState([
+    { id: "context", label: "Understand the context" },
+    { id: "plan", label: "Create an action plan" },
+    { id: "review", label: "Review and improve" }
+  ]);
+  const [horizontalItems, setHorizontalItems] = useState([
+    "One",
+    "Two",
+    "Three"
+  ]);
+  const [mixedItems, setMixedItems] = useState(["A", "B", "C", "D"]);
+  const compactAccessibility = {
+    announcements: {
+      onDragStart: () => "Started sorting",
+      onDragOver: () => "Changed position",
+      onDragEnd: () => "Finished sorting",
+      onDragCancel: () => "Canceled sorting"
+    },
+    screenReaderInstructions: {
+      draggable: "Use Space and arrow keys to reorder"
+    }
+  };
+
+  if (!hasStoryboard("Sortable")) return null;
+
+  return (
+    <DocsSection
+      id="sortable"
+      title="Sortable"
+      description="Dice UI-derived controlled sorting with handle-only mouse, touch, and keyboard activation"
+      componentId={metadataFor("Sortable")?.id}
+    >
+      <div className="grid gap-1 lg:grid-cols-2">
+        <ExampleCard
+          title="Interactive with overlay"
+          description="Drag a grip, or focus it and press Space or Enter before using arrow keys; overlay animation follows reduced-motion settings"
+        >
+          <Sortable
+            accessibility={{
+              announcements: {
+                onDragStart: ({ active }) => `Picked up ${String(active.id)}`,
+                onDragMove: ({ active }) => `Moving ${String(active.id)}`,
+                onDragOver: ({ active }) => `Moving ${String(active.id)}`,
+                onDragEnd: ({ active }) => `Dropped ${String(active.id)}`,
+                onDragCancel: ({ active }) =>
+                  `Canceled sorting ${String(active.id)}`
+              },
+              screenReaderInstructions: {
+                draggable:
+                  "Press Space or Enter to pick up, use arrow keys to move, and press Space or Enter to drop"
+              }
+            }}
+            getItemValue={(item) => item.id}
+            value={items}
+            onValueChange={setItems}
+          >
+            <SortableContent className="flex max-w-md flex-col gap-1">
+              {items.map((item) => (
+                <SortableItem
+                  key={item.id}
+                  className="flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-1)] bg-[var(--background-fronted)] px-2 py-2 text-[13px] text-[var(--text-primary)]"
+                  value={item.id}
+                >
+                  <SortableItemHandle asChild>
+                    <BareIconButton aria-label={`Reorder ${item.label}`}>
+                      <SystemIcons.GripVerticalIcon />
+                    </BareIconButton>
+                  </SortableItemHandle>
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                </SortableItem>
+              ))}
+            </SortableContent>
+            <SortableOverlay>
+              {({ value }) => (
+                <div className="rounded-[var(--radius-md)] border border-[var(--border-1)] bg-[var(--background-fronted)] px-3 py-2 text-[13px] shadow-soft">
+                  {items.find((item) => item.id === value)?.label ??
+                    String(value)}
+                </div>
+              )}
+            </SortableOverlay>
+          </Sortable>
+        </ExampleCard>
+        <ExampleCard
+          title="Disabled state"
+          description="Parent disabled state remains authoritative for the handle and item"
+        >
+          <Sortable
+            accessibility={compactAccessibility}
+            value={["disabled-item"]}
+          >
+            <SortableContent className="flex max-w-md flex-col gap-1">
+              <SortableItem
+                disabled
+                className="flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-1)] bg-[var(--background-fronted)] px-2 py-2 text-[13px] text-[var(--text-primary)]"
+                value="disabled-item"
+              >
+                <SortableItemHandle asChild>
+                  <BareIconButton aria-label="Reorder disabled item">
+                    <SystemIcons.GripVerticalIcon />
+                  </BareIconButton>
+                </SortableItemHandle>
+                <span>Disabled item</span>
+              </SortableItem>
+            </SortableContent>
+          </Sortable>
+        </ExampleCard>
+        <ExampleCard
+          title="Horizontal and mixed strategies"
+          description="Stable orientation variants use the same controlled-value and handle contracts"
+        >
+          <div className="grid gap-4">
+            <Sortable
+              accessibility={compactAccessibility}
+              orientation="horizontal"
+              value={horizontalItems}
+              onValueChange={setHorizontalItems}
+            >
+              <SortableContent className="flex gap-1">
+                {horizontalItems.map((item) => (
+                  <SortableItem
+                    key={item}
+                    className="flex items-center gap-1 rounded-[var(--radius-md)] border border-[var(--border-1)] bg-[var(--background-fronted)] px-2 py-2 text-[13px]"
+                    value={item}
+                  >
+                    <SortableItemHandle asChild>
+                      <BareIconButton aria-label={`Reorder ${item}`}>
+                        <SystemIcons.GripVerticalIcon />
+                      </BareIconButton>
+                    </SortableItemHandle>
+                    {item}
+                  </SortableItem>
+                ))}
+              </SortableContent>
+            </Sortable>
+            <Sortable
+              accessibility={compactAccessibility}
+              orientation="mixed"
+              value={mixedItems}
+              onValueChange={setMixedItems}
+            >
+              <SortableContent className="grid grid-cols-2 gap-1">
+                {mixedItems.map((item) => (
+                  <SortableItem
+                    key={item}
+                    className="flex items-center gap-1 rounded-[var(--radius-md)] border border-[var(--border-1)] bg-[var(--background-fronted)] px-2 py-2 text-[13px]"
+                    value={item}
+                  >
+                    <SortableItemHandle asChild>
+                      <BareIconButton aria-label={`Reorder ${item}`}>
+                        <SystemIcons.GripVerticalIcon />
+                      </BareIconButton>
+                    </SortableItemHandle>
+                    Grid {item}
+                  </SortableItem>
+                ))}
+              </SortableContent>
+            </Sortable>
           </div>
         </ExampleCard>
       </div>
@@ -3210,6 +3497,104 @@ function SelectStoryboard() {
   );
 }
 
+const comboboxStoryOptions = [
+  {
+    description: "Flagship tier · long-context reasoning",
+    label: "Claude Fable 5",
+    value: "claude-fable-5"
+  },
+  {
+    description: "Standard tier · balanced default",
+    label: "Claude Sonnet 5",
+    value: "claude-sonnet-5"
+  },
+  {
+    description: "Economy tier · fast and inexpensive",
+    label: "Claude Haiku 4.5",
+    value: "claude-haiku-4-5"
+  },
+  { label: "GPT-5.2", value: "gpt-5.2" },
+  { label: "GPT-5.2 mini", value: "gpt-5.2-mini" }
+];
+
+function ComboboxStoryboard() {
+  const [catalogValue, setCatalogValue] = useState("claude-sonnet-5");
+  const [customValue, setCustomValue] = useState("");
+
+  if (!hasStoryboard("Combobox")) {
+    return null;
+  }
+
+  return (
+    <DocsSection
+      id="combobox"
+      title="Combobox"
+      description="用于从较大目录中搜索并选择单个值；列表高度固定，可选支持输入目录外的自定义值"
+      componentId={metadataFor("Combobox")?.id}
+    >
+      <div className="grid gap-1 lg:grid-cols-2">
+        <ExampleCard
+          title="Catalog Selection"
+          description="搜索过滤、键盘导航与选中态"
+        >
+          <div className="grid max-w-[320px] gap-4">
+            <label className="space-y-1.5">
+              <span className={standardFieldLabelClass}>Model</span>
+              <Combobox
+                aria-label="Model"
+                emptyMessage="No matching models"
+                options={comboboxStoryOptions}
+                placeholder="Select model"
+                searchPlaceholder="Search models..."
+                value={catalogValue}
+                onValueChange={setCatalogValue}
+              />
+            </label>
+            <label className="space-y-1.5">
+              <span className={standardFieldLabelClass}>Disabled</span>
+              <Combobox
+                aria-label="Disabled model"
+                disabled
+                options={comboboxStoryOptions}
+                placeholder="Select model"
+                value=""
+                onValueChange={() => undefined}
+              />
+            </label>
+          </div>
+        </ExampleCard>
+        <ExampleCard
+          title="Custom Value"
+          description="目录没有匹配项时，允许把输入内容作为自定义值提交"
+        >
+          <div className="grid max-w-[320px] gap-4">
+            <label className="space-y-1.5">
+              <span className={standardFieldLabelClass}>Model id</span>
+              <Combobox
+                allowCustomValue
+                aria-label="Model id"
+                customValueLabel={(query) => `Use "${query}"`}
+                emptyMessage="No matching models"
+                options={comboboxStoryOptions}
+                placeholder="Select or type a model id"
+                searchPlaceholder="Search or type..."
+                value={customValue}
+                onValueChange={setCustomValue}
+              />
+            </label>
+            <p className="m-0 text-[11px] leading-5 text-[var(--text-tertiary)]">
+              Selected value:{" "}
+              <code className="font-mono text-[11px] text-[var(--text-primary)]">
+                {customValue || "—"}
+              </code>
+            </p>
+          </div>
+        </ExampleCard>
+      </div>
+    </DocsSection>
+  );
+}
+
 function DialogStoryboard() {
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -3673,9 +4058,11 @@ export function App() {
               description={copy.baseLayerDescription}
             />
           ) : null}
+          <AvatarStoryboard />
           <BadgeStoryboard />
           <ButtonStoryboard />
           <CheckboxStoryboard />
+          <ComboboxStoryboard />
           <DialogStoryboard />
           <DrawerStoryboard />
           <IconsStoryboard />
@@ -3687,6 +4074,7 @@ export function App() {
           <SelectStoryboard />
           <ShortcutBadgeStoryboard />
           <SpinnerStoryboard />
+          <SortableStoryboard />
           <StatusDotStoryboard />
           <SwitchStoryboard />
           <TextareaStoryboard />

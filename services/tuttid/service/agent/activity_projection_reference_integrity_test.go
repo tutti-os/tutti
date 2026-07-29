@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
@@ -105,11 +106,11 @@ func TestActivityProjectionReportSessionStateEnforcesTargetReferenceIntegrity(t 
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := projection.ReportSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+			if _, err := projection.ReportSessionState(ctx, canonical.ReportSessionStateInput{
 				WorkspaceID:    "ws-1",
 				AgentSessionID: tc.sessionID,
 				SessionOrigin:  agentsessionstore.WorkspaceAgentSessionOriginRuntime,
-				State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+				State: canonical.WorkspaceAgentSessionStateUpdate{
 					AgentTargetID:    tc.agentTargetID,
 					Provider:         "codex",
 					CurrentPhase:     "idle",
@@ -163,11 +164,11 @@ func TestActivityProjectionProjectsLegacyOwnerDomainTargetIDAtReadTime(t *testin
 		"session-legacy-aliased": aliasedOwnerDomainID,
 		"session-legacy-orphan":  orphanOwnerDomainID,
 	} {
-		if _, err := legacy.ReportSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+		if _, err := legacy.ReportSessionState(ctx, canonical.ReportSessionStateInput{
 			WorkspaceID:    "ws-1",
 			AgentSessionID: sessionID,
 			SessionOrigin:  agentsessionstore.WorkspaceAgentSessionOriginRuntime,
-			State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			State: canonical.WorkspaceAgentSessionStateUpdate{
 				AgentTargetID:    ownerDomainID,
 				Provider:         "codex",
 				CurrentPhase:     "idle",
@@ -221,11 +222,11 @@ func TestActivityProjectionReportSessionStatePreservesIDsWithoutResolver(t *test
 	projection := NewActivityProjection(store)
 
 	const rawID = "02fc7056aaaa4bbb8cccdddd0000eeee"
-	if _, err := projection.ReportSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+	if _, err := projection.ReportSessionState(ctx, canonical.ReportSessionStateInput{
 		WorkspaceID:    "ws-1",
 		AgentSessionID: "session-no-resolver",
 		SessionOrigin:  agentsessionstore.WorkspaceAgentSessionOriginRuntime,
-		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+		State: canonical.WorkspaceAgentSessionStateUpdate{
 			AgentTargetID:    rawID,
 			Provider:         "codex",
 			CurrentPhase:     "idle",

@@ -466,18 +466,24 @@ func (s *Service) importExternalSession(
 	projectPath string,
 ) (int, bool, error) {
 	agentSessionID := externalImportedSessionID(session.Provider, session.ProviderSessionID)
-	existingIDs, sessionExists, err := s.existingExternalImportMessageIDs(ctx, workspaceID, agentSessionID)
+	existingTurnIDs, sessionExists, err := s.existingExternalImportMessageTurnIDs(ctx, workspaceID, agentSessionID)
 	if err != nil {
 		return 0, false, err
 	}
 	updates := make([]agentactivitybiz.MessageUpdate, 0, len(session.Messages))
+	currentTurnID := ""
 	for i, message := range session.Messages {
 		messageID := externalImportedMessageIDForMessage(session.Provider, session.ProviderSessionID, message, i)
-		if _, ok := existingIDs[messageID]; ok {
+		if message.Role == "user" && message.Kind == "text" {
+			currentTurnID = externalImportedTurnID(messageID)
+		}
+		existingTurnID, exists := existingTurnIDs[messageID]
+		if exists && (currentTurnID == "" || existingTurnID == currentTurnID) {
 			continue
 		}
 		updates = append(updates, agentactivitybiz.MessageUpdate{
 			MessageID:         messageID,
+			TurnID:            currentTurnID,
 			Role:              message.Role,
 			Kind:              message.Kind,
 			Status:            message.Status,
@@ -542,13 +548,13 @@ func (s *Service) importExternalSession(
 	return importedMessages, true, nil
 }
 
-func (s *Service) existingExternalImportMessageIDs(ctx context.Context, workspaceID string, agentSessionID string) (map[string]struct{}, bool, error) {
-	ids := map[string]struct{}{}
+func (s *Service) existingExternalImportMessageTurnIDs(ctx context.Context, workspaceID string, agentSessionID string) (map[string]string, bool, error) {
+	turnIDs := map[string]string{}
 	if s == nil || s.ExternalImportStore == nil {
-		return ids, false, nil
+		return turnIDs, false, nil
 	}
 	if _, ok, err := s.ExternalImportStore.GetSession(ctx, workspaceID, agentSessionID); err != nil || !ok {
-		return ids, ok, err
+		return turnIDs, ok, err
 	}
 	var after uint64
 	for {
@@ -560,19 +566,19 @@ func (s *Service) existingExternalImportMessageIDs(ctx context.Context, workspac
 			Order:          agentactivitybiz.MessageOrderAsc,
 		})
 		if err != nil || !ok {
-			return ids, true, err
+			return turnIDs, true, err
 		}
 		if len(page.Messages) == 0 {
-			return ids, true, nil
+			return turnIDs, true, nil
 		}
 		for _, message := range page.Messages {
-			ids[strings.TrimSpace(message.MessageID)] = struct{}{}
+			turnIDs[strings.TrimSpace(message.MessageID)] = strings.TrimSpace(message.TurnID)
 			if message.Version > after {
 				after = message.Version
 			}
 		}
 		if !page.HasMore {
-			return ids, true, nil
+			return turnIDs, true, nil
 		}
 	}
 }
@@ -616,6 +622,15 @@ func externalImportedMessageIDForMessage(provider string, providerSessionID stri
 		return "imported-" + externalStableHash(provider + "\x00" + providerSessionID + "\x00" + seed)[:32]
 	}
 	return externalImportedMessageID(provider, providerSessionID, message.RawID, index)
+}
+
+func externalImportedTurnID(userMessageID string) string {
+	const messagePrefix = "imported-"
+	userMessageID = strings.TrimSpace(userMessageID)
+	if !strings.HasPrefix(userMessageID, messagePrefix) || len(userMessageID) == len(messagePrefix) {
+		return ""
+	}
+	return "imported-turn-" + strings.TrimPrefix(userMessageID, messagePrefix)
 }
 
 func externalImportedMessagePayload(message externalImportedMessage) map[string]any {

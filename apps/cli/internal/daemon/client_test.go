@@ -21,6 +21,33 @@ func TestNewClientUsesStartupFriendlyTimeout(t *testing.T) {
 	}
 }
 
+func TestInvokeWithTimeoutOverridesDefaultClientBudget(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(40 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"output":{"kind":"json","value":{"ok":true}}}`))
+	}))
+	defer server.Close()
+
+	client := &Client{
+		baseURL: server.URL,
+		token:   "token-1",
+		httpClient: &http.Client{
+			Timeout: 10 * time.Millisecond,
+		},
+	}
+	response, err := client.InvokeWithTimeout(context.Background(), "wait.command", InvokeRequest{}, 100*time.Millisecond)
+	if err != nil {
+		t.Fatalf("InvokeWithTimeout() error = %v", err)
+	}
+	if response.Output == nil || response.Output.Value["ok"] != true {
+		t.Fatalf("response = %#v", response)
+	}
+	if client.httpClient.Timeout != 10*time.Millisecond {
+		t.Fatalf("shared client timeout mutated to %s", client.httpClient.Timeout)
+	}
+}
+
 func TestDoJSONReportsTimeoutSeparatelyFromUnreachable(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(50 * time.Millisecond)
@@ -47,6 +74,30 @@ func TestDoJSONReportsTimeoutSeparatelyFromUnreachable(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "daemon is not reachable") {
 		t.Fatalf("error = %q, should not report daemon as unreachable", err.Error())
+	}
+	details, ok := RequestErrorDetails(err)
+	if !ok || details.ReasonCode != "daemon_request_timed_out" || !details.Retryable {
+		t.Fatalf("details = %#v ok=%t", details, ok)
+	}
+}
+
+func TestDoJSONPreservesStructuredDaemonError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":{"code":"workspace_not_found","reason":"workspace_agent_session_not_found","retryable":true,"developerMessage":"agent session was not found","correlationId":"corr-1"}}`))
+	}))
+	defer server.Close()
+
+	client := &Client{baseURL: server.URL, token: "token-1", httpClient: server.Client()}
+	err := client.DoJSON(context.Background(), http.MethodGet, healthPath, nil, &HealthStatus{})
+	details, ok := RequestErrorDetails(err)
+	if !ok {
+		t.Fatalf("RequestErrorDetails(%v) did not match", err)
+	}
+	if details.ReasonCode != "workspace_agent_session_not_found" || details.Message != "agent session was not found" ||
+		!details.Retryable || details.CorrelationID != "corr-1" || details.StatusCode != http.StatusNotFound {
+		t.Fatalf("details = %#v", details)
 	}
 }
 

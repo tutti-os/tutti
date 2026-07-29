@@ -3,6 +3,7 @@ import { createContext, useContext, type JSX, type ReactNode } from "react";
 export interface AgentMessageMarkdownAgentTarget {
   agentTargetId: string;
   iconUrl?: string | null;
+  maskIconUrl?: string | null;
   name?: string | null;
   provider?: string | null;
   workspaceId?: string | null;

@@ -10,13 +10,23 @@ import (
 var ErrLiveSessionBusy = errors.New("agent live session is busy")
 
 type ProcessSpec struct {
-	Provider       string
-	AgentSessionID string
-	RoomID         string
-	CWD            string
-	Command        []string
-	Env            []string
-	DirectStart    bool
+	Provider           string
+	AgentSessionID     string
+	RootAgentSessionID string
+	RoomID             string
+	CWD                string
+	Command            []string
+	Env                []string
+	DirectStart        bool
+	ExecutableIdentity *ExecutableIdentity
+}
+
+// ExecutableIdentity binds a process launch to bytes verified by an owning
+// managed-runtime boundary. When present, local transport executes the opened,
+// verified descriptor rather than resolving the pathname again.
+type ExecutableIdentity struct {
+	SHA256    string
+	SizeBytes int64
 }
 
 type ProcessFrame struct {
@@ -59,10 +69,19 @@ type ConfigOptionsUpdateSink func(AgentSessionConfigOptionsUpdate)
 type Adapter interface {
 	Provider() string
 	Start(context.Context, Session) ([]activityshared.Event, error)
+	// Resume reconnects provider context only. It must not initiate a Turn;
+	// execution remains gated on a later explicit Controller operation.
 	Resume(context.Context, Session) error
 	Close(context.Context, Session) error
 	Exec(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) ([]activityshared.Event, error)
 	Cancel(context.Context, Session, string) ([]activityshared.Event, error)
+}
+
+// SessionForkAdapter is an optional provider-native capability. Providers that
+// cannot prove an exact fork boundary do not implement it.
+type SessionForkAdapter interface {
+	ForkCapabilities(context.Context, Session) (SessionForkCapabilities, error)
+	Fork(context.Context, SessionForkInput) (SessionForkResult, error)
 }
 
 // TargetedCancelAdapter maps canonical root/child targets onto provider-native
@@ -79,6 +98,12 @@ type TargetedCancelAdapter interface {
 type TargetedCancelResult struct {
 	Events           []activityshared.Event
 	ConfirmedTargets []CancelTarget
+}
+
+// ResolveInputBoundAdapter lets a provider-keyed migration cache fail closed
+// when a dynamic adapter was created for a different trusted Target binding.
+type ResolveInputBoundAdapter interface {
+	MatchesAdapterResolveInput(AdapterResolveInput) bool
 }
 
 type AsyncExecAdapter interface {
@@ -226,6 +251,19 @@ type GoalAdapterCapabilities struct {
 	ReplaySetAfterRestart bool
 }
 
+type GoalGenerationFenceInput struct {
+	OperationID string
+	Revision    int64
+	RepairEpoch int64
+	Reason      string
+}
+
+// GoalGenerationFencer installs an exact, idempotent admission fence for one
+// Goal generation. It must never retarget the session's current Turn.
+type GoalGenerationFencer interface {
+	FenceGoalGeneration(context.Context, Session, GoalGenerationFenceInput) error
+}
+
 type GoalAdapterResult struct {
 	Events      []activityshared.Event
 	Observation map[string]any
@@ -269,6 +307,12 @@ type PermissionModeAdapter interface {
 
 type LiveSettingsAdapter interface {
 	ApplySessionSettings(context.Context, Session, SessionSettingsPatch) error
+}
+
+// SessionSettingsValidationAdapter validates a settings patch against live
+// runtime facts before the controller mutates or applies any part of it.
+type SessionSettingsValidationAdapter interface {
+	ValidateSessionSettings(Session, SessionSettingsPatch) error
 }
 
 type NewSessionSettingsAdapter interface {

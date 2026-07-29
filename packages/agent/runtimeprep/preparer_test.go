@@ -20,6 +20,9 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if err := os.WriteFile(filepath.Join(userCodexHome, "auth.json"), []byte(`{"token":"test"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(userCodexHome, "models_cache.json"), []byte(`{"models":["cached"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	userCodexConfig := strings.Join([]string{
 		`notify = ["say", "done"]`,
 		`model_provider = "proxy"`,
@@ -54,7 +57,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		t.Fatal(err)
 	}
 
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		AgentTargetID:  "local:codex",
@@ -119,6 +122,49 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	}
 	if _, err := os.Lstat(filepath.Join(codexHome, "auth.json")); err != nil {
 		t.Fatalf("codex auth not exposed: %v", err)
+	}
+	modelsCachePath := filepath.Join(codexHome, "models_cache.json")
+	modelsCacheInfo, err := os.Lstat(modelsCachePath)
+	if err != nil {
+		t.Fatalf("codex models cache not exposed: %v", err)
+	}
+	if modelsCacheInfo.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("codex models cache should be a symlink, got mode %v", modelsCacheInfo.Mode())
+	}
+	modelsCacheTarget, err := os.Readlink(modelsCachePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(userCodexHome, "models_cache.json"); modelsCacheTarget != want {
+		t.Fatalf("codex models cache symlink target = %q, want %q", modelsCacheTarget, want)
+	}
+	if err := os.WriteFile(modelsCachePath, []byte(`{"models":["refreshed"]}`), 0o600); err != nil {
+		t.Fatalf("refresh run-scoped codex models cache: %v", err)
+	}
+	sharedModelsCache, err := os.ReadFile(filepath.Join(userCodexHome, "models_cache.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(sharedModelsCache), `{"models":["refreshed"]}`; got != want {
+		t.Fatalf("shared codex models cache = %q, want %q", got, want)
+	}
+	secondPrepared, err := newTestPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-2",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            cwd,
+	})
+	if err != nil {
+		t.Fatalf("prepare second Codex session: %v", err)
+	}
+	secondModelsCachePath := filepath.Join(envValue(secondPrepared.Env, "CODEX_HOME"), "models_cache.json")
+	secondModelsCache, err := os.ReadFile(secondModelsCachePath)
+	if err != nil {
+		t.Fatalf("read second session Codex models cache: %v", err)
+	}
+	if got, want := string(secondModelsCache), `{"models":["refreshed"]}`; got != want {
+		t.Fatalf("second session Codex models cache = %q, want %q", got, want)
 	}
 	catalogLink, err := os.Lstat(filepath.Join(codexHome, "cc-switch-model-catalog.json"))
 	if err != nil {
@@ -224,7 +270,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		t.Fatalf("tutti command guide reference missing: %v", err)
 	}
 	if !strings.Contains(string(commandGuideReference), "tutti agent sessions") ||
-		!strings.Contains(string(commandGuideReference), "tutti issue list --topic-id <topic-id>") {
+		!strings.Contains(string(commandGuideReference), "tutti issue get --issue-id <issue-id> --json") {
 		t.Fatalf("tutti command guide reference = %q", string(commandGuideReference))
 	}
 	if !strings.Contains(string(skill), "local Tutti daemon") ||
@@ -248,11 +294,9 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		!strings.Contains(string(issueSkill), "command-guide.md") ||
 		!strings.Contains(string(issueSkill), "## Inspection Mode") ||
 		!strings.Contains(string(issueSkill), "Create the run yourself before doing the work") ||
-		!strings.Contains(string(issueSkill), "inspect issue tasks before creating a run") ||
-		!strings.Contains(string(issueSkill), "execute each child task in issue order") ||
-		!strings.Contains(string(issueSkill), "--agent-target-id local:codex --json") ||
-		!strings.Contains(string(issueSkill), "current AgentGUI session from the runtime context") ||
-		!strings.Contains(string(issueSkill), "complete that same run") ||
+		!strings.Contains(string(issueSkill), "tutti issue run create --issue-id <issue-id> --agent-provider codex --json") ||
+		!strings.Contains(string(issueSkill), "with child tasks execute them in order") ||
+		!strings.Contains(string(issueSkill), "Complete that same run") ||
 		!strings.Contains(string(issueSkill), "Do not edit code, do not execute the task, and do not create or complete runs in breakdown mode") ||
 		!strings.Contains(string(issueSkill), "**Done when:**") {
 		t.Fatalf("issue-manager skill content = %q", string(issueSkill))
@@ -278,7 +322,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		!strings.Contains(string(workspaceAppSkill), "use injected `$tutti-cli`") ||
 		!strings.Contains(string(workspaceAppSkill), "command-guide.md") ||
 		!strings.Contains(string(workspaceAppSkill), "Do not derive filesystem paths from the plugin directory, plugin name, or skill slug") ||
-		!strings.Contains(string(workspaceAppSkill), "inherits the caller agent session working directory") {
+		!strings.Contains(string(workspaceAppSkill), "inherit the caller agent session working directory") {
 		t.Fatalf("workspace-app skill content = %q", string(workspaceAppSkill))
 	}
 	if strings.Contains(string(workspaceAppSkill), "turn-resources") || strings.Contains(string(workspaceAppSkill), "--image <localPath>") {
@@ -331,6 +375,335 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	}
 }
 
+func TestDefaultPreparerCodexDedicatedProjectionNarrowsAutomaticCLIApproval(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	stateDir := t.TempDir()
+	cwd := t.TempDir()
+	catalog := append(testCommandCapabilities(), CommandCapability{
+		ID:         "tutti-goal-review.goal-review.verdict",
+		Path:       []string{"goal-review", "verdict"},
+		Summary:    "Submit Goal Review verdict",
+		Visibility: "integration",
+		Output:     CommandCapabilityOutput{DefaultMode: "json", JSON: true},
+	})
+	preparer := NewDefaultPreparer(stateDir)
+	preparer.CommandCatalog = staticCommandCatalog(catalog)
+
+	_, err := preparer.Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "review-session-1",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            cwd,
+		CommandCapabilityProjection: &CommandCapabilityProjection{
+			AllowedIDs: []string{
+				"issue-manager.issue.get",
+				"tutti-goal-review.goal-review.verdict",
+			},
+			IncludeIntegrationIDs: []string{
+				"tutti-goal-review.goal-review.verdict",
+			},
+			ExcludeIDs: []string{
+				"issue-manager.issue.update",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runtimeRoot, err := LocalStore{StateDir: stateDir}.RuntimeRoot(
+		"workspace-1",
+		"review-session-1",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rulesPath := filepath.Join(runtimeRoot, "codex-home", "rules", "default.rules")
+	rules, err := os.ReadFile(rulesPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(rules)
+	for _, want := range []string{
+		`prefix_rule(pattern=["tutti", "issue", "get"], decision="allow")`,
+		`prefix_rule(pattern=["tutti", "goal-review", "verdict"], decision="allow")`,
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("dedicated Codex approval rules = %q, want %q", content, want)
+		}
+	}
+	for _, denied := range []string{
+		`prefix_rule(pattern=["tutti"], decision="allow")`,
+		`prefix_rule(pattern=["tutti", "issue", "update"], decision="allow")`,
+	} {
+		if strings.Contains(content, denied) {
+			t.Fatalf("dedicated Codex approval rules = %q, must omit %q", content, denied)
+		}
+	}
+}
+
+func TestExposeUserCodexModelsCacheSharesFirstRefreshAcrossSessions(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	userCodexHome := filepath.Join(home, ".codex")
+	firstCodexHome := t.TempDir()
+	if err := exposeUserCodexModelsCache(firstCodexHome, userCodexHome); err != nil {
+		t.Fatal(err)
+	}
+
+	firstCachePath := filepath.Join(firstCodexHome, "models_cache.json")
+	info, err := os.Lstat(firstCachePath)
+	if err != nil {
+		t.Fatalf("first session models cache link missing: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("first session models cache mode = %v, want symlink", info.Mode())
+	}
+	if _, err := os.Stat(filepath.Join(userCodexHome, "models_cache.json")); !os.IsNotExist(err) {
+		t.Fatalf("shared models cache should not exist before first provider refresh, err = %v", err)
+	}
+	if err := os.WriteFile(firstCachePath, []byte(`{"models":["first-refresh"]}`), 0o600); err != nil {
+		t.Fatalf("write first session models cache: %v", err)
+	}
+
+	secondCodexHome := t.TempDir()
+	if err := exposeUserCodexModelsCache(secondCodexHome, userCodexHome); err != nil {
+		t.Fatal(err)
+	}
+	secondCache, err := os.ReadFile(filepath.Join(secondCodexHome, "models_cache.json"))
+	if err != nil {
+		t.Fatalf("read second session models cache: %v", err)
+	}
+	if got, want := string(secondCache), `{"models":["first-refresh"]}`; got != want {
+		t.Fatalf("second session models cache = %q, want %q", got, want)
+	}
+}
+
+func TestDefaultPreparerCodexRefreshesRunConfigFromCurrentUserConfig(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	userCodexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	userConfigPath := filepath.Join(userCodexHome, "config.toml")
+	if err := os.WriteFile(userConfigPath, []byte("model = \"gpt-5.6-sol\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	stateDir := t.TempDir()
+	input := PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            t.TempDir(),
+	}
+	first, err := newTestPreparer(stateDir).Prepare(t.Context(), input)
+	if err != nil {
+		t.Fatalf("first Prepare() error = %v", err)
+	}
+	codexConfigPath := filepath.Join(envValue(first.Env, "CODEX_HOME"), "config.toml")
+	firstConfig, err := os.ReadFile(codexConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(firstConfig), `model = "gpt-5.6-sol"`) {
+		t.Fatalf("first run config = %q, want initial user model", string(firstConfig))
+	}
+
+	if err := os.WriteFile(userConfigPath, []byte(strings.Join([]string{
+		`model_provider = "custom"`,
+		`model = "glm-5"`,
+		"",
+		"[model_providers.custom]",
+		`base_url = "https://proxy.example/v1"`,
+		"",
+	}, "\n")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second, err := newTestPreparer(stateDir).Prepare(t.Context(), input)
+	if err != nil {
+		t.Fatalf("second Prepare() error = %v", err)
+	}
+	if got, want := envValue(second.Env, "CODEX_HOME"), envValue(first.Env, "CODEX_HOME"); got != want {
+		t.Fatalf("second CODEX_HOME = %q, want stable run home %q", got, want)
+	}
+	secondConfig, err := os.ReadFile(codexConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(secondConfig), `model_provider = "custom"`) ||
+		!strings.Contains(string(secondConfig), `model = "glm-5"`) ||
+		strings.Contains(string(secondConfig), `model = "gpt-5.6-sol"`) {
+		t.Fatalf("second run config = %q, want refreshed custom provider config", string(secondConfig))
+	}
+	if !strings.Contains(string(secondConfig), codexProjectRootMarkersDisabledConfig) {
+		t.Fatalf("second run config = %q, want runtime session overlay reapplied", string(secondConfig))
+	}
+}
+
+func TestDefaultPreparerCodexRemovesRunConfigWhenUserConfigDisappears(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	userCodexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	userConfigPath := filepath.Join(userCodexHome, "config.toml")
+	if err := os.WriteFile(userConfigPath, []byte("model = \"glm-5\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	stateDir := t.TempDir()
+	input := PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            t.TempDir(),
+	}
+	first, err := newTestPreparer(stateDir).Prepare(t.Context(), input)
+	if err != nil {
+		t.Fatalf("first Prepare() error = %v", err)
+	}
+	codexConfigPath := filepath.Join(envValue(first.Env, "CODEX_HOME"), "config.toml")
+	if err := os.Remove(userConfigPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := newTestPreparer(stateDir).Prepare(t.Context(), input); err != nil {
+		t.Fatalf("second Prepare() error = %v", err)
+	}
+	config, err := os.ReadFile(codexConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(config), `model = "glm-5"`) {
+		t.Fatalf("second run config retained removed user model: %q", string(config))
+	}
+	if !strings.Contains(string(config), codexProjectRootMarkersDisabledConfig) {
+		t.Fatalf("second run config = %q, want runtime session config", string(config))
+	}
+}
+
+func TestExposeUserCodexModelsCacheDropsUnfencedRunCache(t *testing.T) {
+	userCodexHome := filepath.Join(t.TempDir(), ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userCodexHome, "config.toml"), []byte(`model_provider = "custom"`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userCodexHome, "models_cache.json"), []byte(`{"models":["shared-stale"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	codexHome := t.TempDir()
+	target := filepath.Join(codexHome, "models_cache.json")
+	if err := os.WriteFile(target, []byte(`{"models":["session-local"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := exposeUserCodexModelsCache(codexHome, userCodexHome); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("run cache mode = %v, want authority-scoped shared-cache symlink", info.Mode())
+	}
+	if _, err := os.Stat(filepath.Join(userCodexHome, "models_cache.json")); !os.IsNotExist(err) {
+		t.Fatalf("unfenced shared cache should be removed, err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(userCodexHome, codexModelsCacheAuthorityFile)); err != nil {
+		t.Fatalf("models cache authority fence missing: %v", err)
+	}
+}
+
+func TestExposeUserCodexModelsCacheInvalidatesWhenGlobalConfigChanges(t *testing.T) {
+	userCodexHome := filepath.Join(t.TempDir(), ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(userCodexHome, "config.toml")
+	if err := os.WriteFile(configPath, []byte("model_provider = \"first\"\nmodel = \"first-model\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	firstCodexHome := t.TempDir()
+	if err := exposeUserCodexModelsCache(firstCodexHome, userCodexHome); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(firstCodexHome, "models_cache.json"), []byte(`{"models":["first"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(configPath, []byte("model_provider = \"second\"\nmodel = \"second-model\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	secondCodexHome := t.TempDir()
+	if err := exposeUserCodexModelsCache(secondCodexHome, userCodexHome); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(userCodexHome, "models_cache.json")); !os.IsNotExist(err) {
+		t.Fatalf("cache from previous global config should be removed, err = %v", err)
+	}
+	if info, err := os.Lstat(filepath.Join(secondCodexHome, "models_cache.json")); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("second run cache link missing after config invalidation: info=%#v err=%v", info, err)
+	}
+}
+
+func TestExposeUserCodexModelsCacheInvalidatesWhenGlobalCatalogChanges(t *testing.T) {
+	home := t.TempDir()
+	userCodexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(userCodexHome, "config.toml")
+	catalogPath := filepath.Join(userCodexHome, "catalog.json")
+	if err := os.WriteFile(configPath, []byte("model_provider = \"first\"\nmodel_catalog_json = \"catalog.json\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(catalogPath, []byte(`{"models":[{"slug":"first"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	firstCodexHome := t.TempDir()
+	if err := exposeUserCodexModelsCache(firstCodexHome, userCodexHome); err != nil {
+		t.Fatal(err)
+	}
+	firstCache := filepath.Join(firstCodexHome, "models_cache.json")
+	if err := os.WriteFile(firstCache, []byte(`{"models":["first"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	firstFence, err := os.ReadFile(filepath.Join(userCodexHome, codexModelsCacheAuthorityFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(catalogPath, []byte(`{"models":[{"slug":"second"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	secondCodexHome := t.TempDir()
+	if err := exposeUserCodexModelsCache(secondCodexHome, userCodexHome); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(userCodexHome, "models_cache.json")); !os.IsNotExist(err) {
+		t.Fatalf("cache from previous global catalog should be removed, err = %v", err)
+	}
+	secondFence, err := os.ReadFile(filepath.Join(userCodexHome, codexModelsCacheAuthorityFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(firstFence) == string(secondFence) {
+		t.Fatalf("models cache authority fence did not change after global catalog update")
+	}
+	if info, err := os.Lstat(filepath.Join(secondCodexHome, "models_cache.json")); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("second run cache link missing after invalidation: info=%#v err=%v", info, err)
+	}
+}
+
 func TestDefaultPreparerCodexExposesRelativeModelCatalogJSON(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -360,7 +733,7 @@ func TestDefaultPreparerCodexExposesRelativeModelCatalogJSON(t *testing.T) {
 
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-catalog",
 		AgentTargetID:  "local:codex",
@@ -405,7 +778,7 @@ func TestDefaultPreparerCodexUserSkillNameWinsBeforeTuttiInjection(t *testing.T)
 	writeSidecarTestFile(t, filepath.Join(userCodexHome, "skills", "tutti-cli", "SKILL.md"), "---\nname: tutti-cli\n---\nUser tutti skill\n")
 
 	stateDir := t.TempDir()
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		Provider:       "codex",
@@ -454,7 +827,7 @@ func TestDefaultPreparerCodexWritesProjectRootMarkersDisabledConfigWithoutUserCo
 
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		Provider:       "codex",
@@ -487,7 +860,7 @@ func TestDefaultPreparerCodexWritesGeneralConversationDetailModeToSessionConfig(
 
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:            "workspace-1",
 		AgentSessionID:         "session-1",
 		Provider:               "codex",
@@ -734,7 +1107,7 @@ func TestDefaultPreparerUsesStateRootCLIShimName(t *testing.T) {
 	}
 	cwd := t.TempDir()
 
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		Provider:       "codex",
@@ -774,7 +1147,7 @@ func TestDefaultPreparerCleanupRemovesManagedBlocksAndRuntimeRoot(t *testing.T) 
 	if err := os.WriteFile(agentsPath, []byte("user guidance\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	preparer := NewDefaultPreparer(stateDir)
+	preparer := newTestPreparer(stateDir)
 	_, err := preparer.Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
@@ -810,7 +1183,7 @@ func TestDefaultPreparerCleanupRemovesManagedBlocksAndRuntimeRoot(t *testing.T) 
 func TestDefaultPreparerCodexUsesSessionScopedInstructionFile(t *testing.T) {
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
-	preparer := NewDefaultPreparer(stateDir)
+	preparer := newTestPreparer(stateDir)
 	prepared, err := preparer.Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
@@ -843,7 +1216,7 @@ func TestDefaultPreparerRejectsMissingCwd(t *testing.T) {
 	stateDir := t.TempDir()
 	missingCwd := filepath.Join(t.TempDir(), "deleted-project")
 
-	_, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	_, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		Provider:       "codex",
@@ -872,7 +1245,7 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:            "workspace-1",
 		AgentSessionID:         "session-1",
 		Provider:               "claude-code",
@@ -930,14 +1303,14 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 	}
 	if !strings.Contains(string(systemPrompt), "## Mention Routing") ||
 		!strings.Contains(string(systemPrompt), "| URI") ||
-		!strings.Contains(string(systemPrompt), "Fallback CLI Command") ||
+		!strings.Contains(string(systemPrompt), "Fallback") ||
 		!strings.Contains(string(systemPrompt), "`mention://workspace-issue/<issueId>?workspaceId=...`") ||
 		!strings.Contains(string(systemPrompt), "`mention://workspace-app/<appId>?workspaceId=...`") ||
 		!strings.Contains(string(systemPrompt), "`mention://workspace-reference/<id>?source=...&workspaceId=...`") ||
 		!strings.Contains(string(systemPrompt), "`mention://agent-session/<sessionId>?workspaceId=...`") ||
 		!strings.Contains(string(systemPrompt), "`mention://agent-target/<targetId>?workspaceId=...`") ||
-		!strings.Contains(string(systemPrompt), "Provider Skill tool exists -> call exact visible name for matching `$...` skill") ||
-		!strings.Contains(string(systemPrompt), "Skill missing/fails -> read matching materialized `SKILL.md`") ||
+		!strings.Contains(string(systemPrompt), "If a provider Skill tool exists, call the exact visible name") ||
+		!strings.Contains(string(systemPrompt), "If the Skill is unavailable, read its materialized `SKILL.md`") ||
 		!strings.Contains(string(systemPrompt), "Claude Code mention routing") ||
 		!strings.Contains(string(systemPrompt), "Claude Code skill names may be namespaced") ||
 		!strings.Contains(string(systemPrompt), "`tutti-cli:tutti-handoff`") ||
@@ -957,8 +1330,8 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(systemPrompt), "Claude Code `Monitor` tool is disabled") ||
 		!strings.Contains(string(systemPrompt), "bounded shell/script") ||
 		!strings.Contains(string(systemPrompt), "agent wait --session-id <session-id> --json") ||
-		!strings.Contains(string(systemPrompt), "agent session-summary --session-id <session-id> --json") ||
-		!strings.Contains(string(systemPrompt), "verify with `agent list`; hand off, do not do it yourself") {
+		!strings.Contains(string(systemPrompt), "agent get --session-id <session-id> --json") ||
+		!strings.Contains(string(systemPrompt), "Agent handoff decisions belong to `$tutti-handoff`") {
 		t.Fatalf("claude system prompt content = %q, want mention handoff fallback guidance", string(systemPrompt))
 	}
 	if !strings.Contains(string(systemPrompt), "# Host App Context") ||
@@ -974,12 +1347,11 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 	}
 	if !strings.Contains(string(systemPrompt), "Claude Code skill names may be namespaced") ||
 		!strings.Contains(string(systemPrompt), "Claude Code skill listings can omit descriptions") ||
-		!strings.Contains(string(systemPrompt), "Provider Skill tool exists -> call exact visible name for matching `$...` skill") ||
-		!strings.Contains(string(systemPrompt), "Skill missing/fails -> read matching materialized `SKILL.md`") ||
-		!strings.Contains(string(systemPrompt), "`mention://...` = internal data. Not URL/path.") ||
+		!strings.Contains(string(systemPrompt), "If a provider Skill tool exists, call the exact visible name") ||
+		!strings.Contains(string(systemPrompt), "If the Skill is unavailable, read its materialized `SKILL.md`") ||
+		!strings.Contains(string(systemPrompt), "`mention://...` is internal data, not a URL or path") ||
 		!strings.Contains(string(systemPrompt), "`mention://agent-target/<targetId>?workspaceId=...`") ||
-		!strings.Contains(string(systemPrompt), "does not fetch execution messages") ||
-		!strings.Contains(string(systemPrompt), "agent session-summary --session-id <session-id> --json") ||
+		!strings.Contains(string(systemPrompt), "agent get --session-id <session-id> --json") ||
 		!strings.Contains(string(systemPrompt), "issue get --issue-id <issue-id> --json") {
 		t.Fatalf("claude system prompt content = %q, want strict Tutti mention routing", string(systemPrompt))
 	}
@@ -1051,7 +1423,7 @@ func TestDefaultPreparerClaudeCodeSetsFallbackExecutableFromPath(t *testing.T) {
 	t.Setenv("PATH", binDir)
 	t.Setenv("CLAUDE_CODE_EXECUTABLE", "")
 
-	prepared, err := NewDefaultPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		Provider:       "claude-code",
@@ -1084,7 +1456,7 @@ func TestDefaultPreparerClaudeCodePrefersManagedBinaryOverPath(t *testing.T) {
 	writeFakeExecutable(t, managed)
 	writeManagedClaudePointer(t, stateDir, managed)
 
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		Provider:       "claude-code",
@@ -1112,7 +1484,7 @@ func TestDefaultPreparerCursorUsesRuntimePluginDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	preparer := NewDefaultPreparer(stateDir)
+	preparer := newTestPreparer(stateDir)
 	preparer.CLICommand = "tutti-dev"
 	prepared, err := preparer.Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
@@ -1202,7 +1574,7 @@ func TestDefaultPreparerClaudePlanModeDoesNotOverrideConfigDir(t *testing.T) {
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
 
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		Provider:       "claude-code",
@@ -1218,37 +1590,115 @@ func TestDefaultPreparerClaudePlanModeDoesNotOverrideConfigDir(t *testing.T) {
 	}
 }
 
-func TestTuttiAgentConfigWithLLMProviderPinsExistingRootProvider(t *testing.T) {
+func TestTuttiAgentManagedConfigRemovesOnlyLegacyPinnedProvider(t *testing.T) {
 	input := strings.Join([]string{
-		`model_provider = "custom"`,
-		`model = "custom-model"`,
+		`model_provider = "tutti-llm"`,
+		`model = "gpt-5.4"`,
+		`custom_root = "preserved"`,
+		``,
+		`[model_providers.tutti-llm]`,
+		`name = "Tutti LLM"`,
+		`base_url = "https://llm-api.tutti.sh/v1"`,
+		`wire_api = "responses"`,
 		``,
 		`[model_providers.custom]`,
 		`name = "Custom"`,
-		`base_url = "https://example.invalid/v1"`,
+		``,
+		`[profiles.custom]`,
+		`model_provider = "tutti-llm"`,
+		`model = "gpt-5.4"`,
 	}, "\n")
 
-	next, changed := tuttiAgentConfigWithLLMProvider(input)
+	next, changed := tuttiAgentConfigWithoutLegacyPinnedProvider(input)
 	if !changed {
 		t.Fatalf("changed = false, want true")
 	}
-	if strings.Contains(next, `model_provider = "custom"`) {
-		t.Fatalf("next retained custom provider: %s", next)
+	for _, removed := range []string{`[model_providers.tutti-llm]`} {
+		if strings.Contains(next, removed) {
+			t.Fatalf("next retained %q: %s", removed, next)
+		}
 	}
-	if !strings.Contains(next, `model_provider = "tutti-llm"`) ||
-		!strings.Contains(next, `model = "gpt-5.4"`) ||
-		!strings.Contains(next, `[model_providers.tutti-llm]`) {
-		t.Fatalf("next did not pin Tutti LLM provider: %s", next)
+	if !strings.HasPrefix(next, `custom_root = "preserved"`) {
+		t.Fatalf("next retained legacy root assignments: %s", next)
 	}
-	if !strings.Contains(next, `[model_providers.custom]`) {
-		t.Fatalf("next removed user provider block: %s", next)
+	for _, want := range []string{
+		`custom_root = "preserved"`,
+		`[model_providers.custom]`,
+		`[profiles.custom]`,
+		`model_provider = "tutti-llm"`,
+		`model = "gpt-5.4"`,
+	} {
+		if !strings.Contains(next, want) {
+			t.Fatalf("next removed %q: %s", want, next)
+		}
+	}
+}
+
+func TestTuttiAgentManagedConfigPreservesPartialLegacyLookalike(t *testing.T) {
+	input := strings.Join([]string{
+		`model_provider = "tutti-llm"`,
+		`model = "gpt-5.4"`,
+		``,
+		`[model_providers.tutti-llm]`,
+		`name = "Custom Tutti Gateway"`,
+		`base_url = "https://llm-api.tutti.sh/v1"`,
+		`wire_api = "responses"`,
+	}, "\n")
+
+	next, changed := tuttiAgentConfigWithoutLegacyPinnedProvider(input)
+	if changed {
+		t.Fatalf("changed = true, want false: %s", next)
+	}
+	if next != input {
+		t.Fatalf("next changed partial legacy lookalike:\n%s", next)
+	}
+}
+
+func TestTuttiAgentManagedConfigPreservesCommentedLegacySignature(t *testing.T) {
+	input := strings.Join([]string{
+		`# model_provider = "tutti-llm"`,
+		`# model = "gpt-5.4"`,
+		``,
+		`[model_providers.tutti-llm]`,
+		`name = "Tutti LLM"`,
+		`base_url = "https://llm-api.tutti.sh/v1"`,
+		`wire_api = "responses"`,
+	}, "\n")
+
+	next, changed := tuttiAgentConfigWithoutLegacyPinnedProvider(input)
+	if changed {
+		t.Fatalf("changed = true, want false: %s", next)
+	}
+	if next != input {
+		t.Fatalf("next changed commented legacy lookalike:\n%s", next)
+	}
+}
+
+func TestTuttiAgentManagedConfigPreservesLegacyProviderWithExtraKey(t *testing.T) {
+	input := strings.Join([]string{
+		`model_provider = "tutti-llm"`,
+		`model = "gpt-5.4"`,
+		``,
+		`[model_providers.tutti-llm]`,
+		`name = "Tutti LLM"`,
+		`base_url = "https://llm-api.tutti.sh/v1"`,
+		`wire_api = "responses"`,
+		`http_headers = { X-Custom = "preserve" }`,
+	}, "\n")
+
+	next, changed := tuttiAgentConfigWithoutLegacyPinnedProvider(input)
+	if changed {
+		t.Fatalf("changed = true, want false: %s", next)
+	}
+	if next != input {
+		t.Fatalf("next changed customized legacy provider:\n%s", next)
 	}
 }
 
 func TestDefaultPreparerCleanupRemovesClaudeSystemPromptRuntimeRoot(t *testing.T) {
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
-	preparer := NewDefaultPreparer(stateDir)
+	preparer := newTestPreparer(stateDir)
 	prepared, err := preparer.Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
@@ -1310,7 +1760,7 @@ func TestCodexPreparerSkipsUserBrowserSkillWhenBrowserUseEnabled(t *testing.T) {
 
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		Provider:       "codex",
@@ -1429,7 +1879,7 @@ func TestDefaultPreparerCodexExposesImportedRolloutFileFromPrepareInput(t *testi
 
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:               "workspace-1",
 		AgentSessionID:            "session-1",
 		AgentTargetID:             "local:codex",
@@ -1459,7 +1909,7 @@ func TestDefaultPreparerCodexSkipsRolloutExposureForNonImportedSession(t *testin
 	t.Setenv("HOME", home)
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		AgentTargetID:  "local:codex",
@@ -1486,6 +1936,190 @@ func envValue(env []string, key string) string {
 		}
 	}
 	return ""
+}
+
+func TestDefaultPreparerCodexExposesRelativeModelInstructionsFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	userCodexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userCodexHome, "auth.json"), []byte(`{"token":"test"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	instructionsName := "gpt5.5-unrestricted.md"
+	instructionsBody := "# Unrestricted model instructions\n"
+	if err := os.WriteFile(filepath.Join(userCodexHome, instructionsName), []byte(instructionsBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	userCodexConfig := strings.Join([]string{
+		`model_instructions_file = "./gpt5.5-unrestricted.md"`,
+		`model = "gpt-5.5"`,
+		"",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(userCodexHome, "config.toml"), []byte(userCodexConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	stateDir := t.TempDir()
+	cwd := t.TempDir()
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-instructions",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            cwd,
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	codexHome := envValue(prepared.Env, "CODEX_HOME")
+	if codexHome == "" {
+		t.Fatalf("prepared env = %#v, want CODEX_HOME", prepared.Env)
+	}
+	sandboxInstructions := filepath.Join(codexHome, instructionsName)
+	info, err := os.Lstat(sandboxInstructions)
+	if err != nil {
+		t.Fatalf("relative model instructions file not exposed into sandbox: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("sandbox model instructions file mode = %v, want symlink", info.Mode())
+	}
+	linkTarget, err := os.Readlink(sandboxInstructions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if linkTarget != filepath.Join(userCodexHome, instructionsName) {
+		t.Fatalf("sandbox instructions symlink target = %q, want user instructions", linkTarget)
+	}
+	got, err := os.ReadFile(sandboxInstructions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != instructionsBody {
+		t.Fatalf("sandbox instructions body = %q, want %q", string(got), instructionsBody)
+	}
+}
+
+func TestDefaultPreparerCodexRejectsMissingModelInstructionsFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	userCodexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userCodexHome, "auth.json"), []byte(`{"token":"test"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// config.toml references a file that doesn't exist
+	userCodexConfig := strings.Join([]string{
+		`model_instructions_file = "missing-instructions.md"`,
+		`model = "gpt-5.5"`,
+		"",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(userCodexHome, "config.toml"), []byte(userCodexConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	stateDir := t.TempDir()
+	cwd := t.TempDir()
+	_, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-missing-instructions",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            cwd,
+	})
+	if err == nil {
+		t.Fatalf("Prepare() should fail when model_instructions_file points to a missing file")
+	}
+	if !strings.Contains(err.Error(), "model_instructions_file") {
+		t.Fatalf("Prepare() error = %v, want error mentioning model_instructions_file", err)
+	}
+	var dependencyErr *ConfigDependencyUnavailableError
+	if !errors.As(err, &dependencyErr) {
+		t.Fatalf("Prepare() error = %T %v, want ConfigDependencyUnavailableError", err, err)
+	}
+	if dependencyErr.FailureKind != ConfigDependencyFailureMissing ||
+		dependencyErr.DependencyPath != "missing-instructions.md" {
+		t.Fatalf("dependency error = %#v", dependencyErr)
+	}
+}
+
+func TestDefaultPreparerCodexPreservesAbsoluteModelInstructionsFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	userCodexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userCodexHome, "auth.json"), []byte(`{"token":"test"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	absPath := filepath.Join(t.TempDir(), "absolute-instructions.md")
+	if err := os.WriteFile(absPath, []byte("# absolute\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	userCodexConfig := strings.Join([]string{
+		`model_instructions_file = "` + absPath + `"`,
+		`model = "gpt-5.5"`,
+		"",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(userCodexHome, "config.toml"), []byte(userCodexConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	stateDir := t.TempDir()
+	cwd := t.TempDir()
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-abs-instructions",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            cwd,
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	codexHome := envValue(prepared.Env, "CODEX_HOME")
+	// Absolute paths are not materialized; they're readable from host filesystem.
+	if _, err := os.Stat(filepath.Join(codexHome, "absolute-instructions.md")); !os.IsNotExist(err) {
+		t.Fatalf("absolute instructions file should not be materialized into sandbox, err = %v", err)
+	}
+}
+
+func TestDefaultPreparerCodexRejectsMissingAbsoluteModelInstructionsFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	userCodexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	missingPath := filepath.Join(t.TempDir(), "missing-absolute-instructions.md")
+	config := `model_instructions_file = "` + missingPath + `"` + "\n"
+	if err := os.WriteFile(filepath.Join(userCodexHome, "config.toml"), []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := newTestPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-missing-absolute-instructions",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            t.TempDir(),
+	})
+	var dependencyErr *ConfigDependencyUnavailableError
+	if !errors.As(err, &dependencyErr) {
+		t.Fatalf("Prepare() error = %T %v, want ConfigDependencyUnavailableError", err, err)
+	}
+	if dependencyErr.FailureKind != ConfigDependencyFailureMissing ||
+		dependencyErr.DependencyPath != filepath.Base(missingPath) {
+		t.Fatalf("dependency error = %#v", dependencyErr)
+	}
+	if strings.Contains(err.Error(), filepath.Dir(missingPath)) {
+		t.Fatalf("public error leaks absolute parent path: %q", err.Error())
+	}
 }
 
 func writeSidecarTestFile(t *testing.T, path string, content string) {

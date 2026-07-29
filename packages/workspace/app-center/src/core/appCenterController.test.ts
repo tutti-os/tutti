@@ -14,22 +14,39 @@ import {
 } from "./appCenterControllerHelpers.ts";
 import { createWorkspaceAppCenterController } from "./index.ts";
 
-test("app-center view state preserves the inline app selection", () => {
+test("app-center view state preserves normalized inline app tabs", () => {
   const selected = normalizeWorkspaceAppCenterViewState({
     activeAppTab: "community",
-    openAppId: "  group-chat  "
+    openAppId: "  group-chat  ",
+    openAppIds: [" ai-slide ", "group-chat", "ai-slide", " "]
   });
 
   assert.deepEqual(selected, {
     activeAppTab: "community",
-    openAppId: "group-chat"
+    openAppId: "group-chat",
+    openAppIds: ["ai-slide", "group-chat"]
   });
   assert.equal(
     areWorkspaceAppCenterViewStatesEqual(selected, {
       activeAppTab: "community",
-      openAppId: "group-chat"
+      openAppId: "group-chat",
+      openAppIds: ["ai-slide", "group-chat"]
     }),
     true
+  );
+});
+
+test("app-center view state restores a legacy inline app as its only tab", () => {
+  assert.deepEqual(
+    normalizeWorkspaceAppCenterViewState({
+      activeAppTab: "recommended",
+      openAppId: "ai-doc"
+    }),
+    {
+      activeAppTab: "recommended",
+      openAppId: "ai-doc",
+      openAppIds: ["ai-doc"]
+    }
   );
 });
 
@@ -144,6 +161,29 @@ test("WorkspaceAppCenterController asks host to close removed installed apps", (
   ]);
 });
 
+test("WorkspaceAppCenterController ignores late app events after delete", async () => {
+  const controller = createWorkspaceAppCenterController({
+    formatError,
+    gateway: createGateway({
+      async deleteWorkspaceApp() {
+        return createSnapshot();
+      }
+    })
+  });
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({ apps: [createApp({ stateRevision: 1 })] })
+  );
+
+  await controller.deleteApp({ appId: "app-1", workspaceId: "workspace-1" });
+  controller.applyAppUpdate({
+    app: createApp({ runtimeStatus: "running", stateRevision: 2 }),
+    workspaceId: "workspace-1"
+  });
+
+  assert.deepEqual(controller.store.apps, []);
+});
+
 test("WorkspaceAppCenterController app equality tracks runtime identity fields", () => {
   const app = createApp({
     installationId: "inst-1",
@@ -215,6 +255,59 @@ test("WorkspaceAppCenterController sorts factory jobs and reports snapshot appli
   );
 });
 
+test("WorkspaceAppCenterController keeps a factory job visible while publish is pending", async () => {
+  const readyJob = createFactoryJob({ status: "ready" });
+  let resolvePublish: (
+    result: Awaited<
+      ReturnType<WorkspaceAppCenterGateway["publishWorkspaceAppFactoryJob"]>
+    >
+  ) => void = () => {};
+  const publishResult = new Promise<
+    Awaited<
+      ReturnType<WorkspaceAppCenterGateway["publishWorkspaceAppFactoryJob"]>
+    >
+  >((resolve) => {
+    resolvePublish = resolve;
+  });
+  let publishCalls = 0;
+  const controller = createWorkspaceAppCenterController({
+    formatError,
+    gateway: createGateway({
+      async publishWorkspaceAppFactoryJob() {
+        publishCalls += 1;
+        return publishResult;
+      }
+    })
+  });
+
+  controller.applyFactorySnapshot(
+    "workspace-1",
+    createFactorySnapshot({ jobs: [readyJob] })
+  );
+  const firstPublish = controller.publishFactoryJob({
+    jobId: readyJob.jobId,
+    workspaceId: "workspace-1"
+  });
+
+  assert.deepEqual(controller.store.factoryJobs, [readyJob]);
+  assert.equal(
+    await controller.publishFactoryJob({
+      jobId: readyJob.jobId,
+      workspaceId: "workspace-1"
+    }),
+    null
+  );
+  assert.equal(publishCalls, 1);
+
+  const publishedJob = createFactoryJob({ status: "published" });
+  resolvePublish({
+    appSnapshot: createSnapshot(),
+    factorySnapshot: createFactorySnapshot({ jobs: [publishedJob] })
+  });
+  assert.equal(await firstPublish, publishedJob);
+  assert.deepEqual(controller.store.factoryJobs, [publishedJob]);
+});
+
 test("WorkspaceAppCenterController reports a create-factory-job failure instead of throwing", async () => {
   const failures: Array<{
     error: unknown;
@@ -253,6 +346,55 @@ test("WorkspaceAppCenterController reports a create-factory-job failure instead 
   );
 });
 
+test("WorkspaceAppCenterController creates one client submit id per factory action", async () => {
+  const calls: Array<{
+    clientSubmitId: string;
+    displayName: string;
+    workspaceId: string;
+  }> = [];
+  let idSequence = 0;
+  const controller = createWorkspaceAppCenterController({
+    createClientSubmitId: () => `factory-submit-${++idSequence}`,
+    formatError,
+    gateway: createGateway({
+      async createWorkspaceAppFactoryJob(workspaceId, input) {
+        calls.push({
+          clientSubmitId: input.clientSubmitId,
+          displayName: input.displayName,
+          workspaceId
+        });
+        return createFactorySnapshot();
+      }
+    })
+  });
+
+  await controller.createFactoryJob({
+    agentTargetId: "local:codex",
+    displayName: "First App",
+    prompt: "build the first app",
+    workspaceId: "workspace-1"
+  });
+  await controller.createFactoryJob({
+    agentTargetId: "local:codex",
+    displayName: "Second App",
+    prompt: "build the second app",
+    workspaceId: "workspace-1"
+  });
+
+  assert.deepEqual(calls, [
+    {
+      clientSubmitId: "factory-submit-1",
+      displayName: "First App",
+      workspaceId: "workspace-1"
+    },
+    {
+      clientSubmitId: "factory-submit-2",
+      displayName: "Second App",
+      workspaceId: "workspace-1"
+    }
+  ]);
+});
+
 test("WorkspaceAppCenterController prepares app launch through launch gateway", async () => {
   const launchCalls: Array<{ appId: string; workspaceId: string }> = [];
   const controller = createWorkspaceAppCenterController({
@@ -288,6 +430,104 @@ test("WorkspaceAppCenterController prepares app launch through launch gateway", 
   ]);
   assert.equal(app?.runtimeStatus, "running");
   assert.equal(app?.launchUrl, "http://127.0.0.1:3000");
+});
+
+test("WorkspaceAppCenterController reuses an already-running launch without calling the gateway", async () => {
+  let launchCalls = 0;
+  const runningApp = createApp({
+    launchUrl: "http://127.0.0.1:3000",
+    runtimeStatus: "running"
+  });
+  const controller = createWorkspaceAppCenterController({
+    formatError,
+    gateway: createGateway({
+      async launchWorkspaceApp() {
+        launchCalls += 1;
+        return createSnapshot();
+      }
+    })
+  });
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({ apps: [runningApp] })
+  );
+
+  assert.equal(
+    await controller.prepareAppLaunch({
+      appId: "app-1",
+      workspaceId: "workspace-1"
+    }),
+    runningApp
+  );
+  assert.equal(launchCalls, 0);
+});
+
+test("WorkspaceAppCenterController refreshes launch state after a wait timeout", async () => {
+  const controller = createWorkspaceAppCenterController({
+    appOpenLaunchWaitTimeoutMs: 1,
+    formatError,
+    gateway: createGateway({
+      async launchWorkspaceApp() {
+        return createSnapshot({
+          apps: [createApp({ runtimeStatus: "starting", stateRevision: 2 })]
+        });
+      },
+      async listWorkspaceApps() {
+        return createSnapshot({
+          apps: [
+            createApp({
+              launchUrl: "http://127.0.0.1:3000",
+              runtimeStatus: "running",
+              stateRevision: 3
+            })
+          ]
+        });
+      }
+    })
+  });
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({ apps: [createApp()] })
+  );
+
+  const app = await controller.prepareAppLaunch({
+    appId: "app-1",
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(app?.runtimeStatus, "running");
+  assert.equal(app?.launchUrl, "http://127.0.0.1:3000");
+});
+
+test("WorkspaceAppCenterController marks launch failed when timeout refresh stays transient", async () => {
+  const startingSnapshot = createSnapshot({
+    apps: [createApp({ runtimeStatus: "starting", stateRevision: 2 })]
+  });
+  const controller = createWorkspaceAppCenterController({
+    appOpenLaunchWaitTimeoutMs: 1,
+    formatError,
+    gateway: createGateway({
+      async launchWorkspaceApp() {
+        return startingSnapshot;
+      },
+      async listWorkspaceApps() {
+        return startingSnapshot;
+      }
+    })
+  });
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({ apps: [createApp()] })
+  );
+
+  assert.equal(
+    await controller.prepareAppLaunch({
+      appId: "app-1",
+      workspaceId: "workspace-1"
+    }),
+    null
+  );
+  assert.equal(controller.store.apps[0]?.runtimeStatus, "failed");
 });
 
 test("WorkspaceAppCenterController restores app state when launch preparation fails", async () => {
@@ -511,6 +751,46 @@ test("WorkspaceAppCenterController requests restart without closing views when u
   assert.deepEqual(closeRequests, []);
 });
 
+test("WorkspaceAppCenterController deduplicates a pending update", async () => {
+  let installCalls = 0;
+  let resolveInstall: (snapshot: WorkspaceAppCenterSnapshot) => void = () => {};
+  const installResult = new Promise<WorkspaceAppCenterSnapshot>((resolve) => {
+    resolveInstall = resolve;
+  });
+  const controller = createWorkspaceAppCenterController({
+    formatError,
+    gateway: createGateway({
+      async installWorkspaceApp() {
+        installCalls += 1;
+        return installResult;
+      }
+    })
+  });
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({ apps: [createApp({ updateAvailable: true })] })
+  );
+
+  const firstUpdate = controller.updateApp({
+    appId: "app-1",
+    trigger: "primary_action",
+    workspaceId: "workspace-1"
+  });
+  await controller.updateApp({
+    appId: "app-1",
+    trigger: "primary_action",
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(installCalls, 1);
+  resolveInstall(
+    createSnapshot({
+      apps: [createApp({ updateAvailable: false, version: "1.1.0" })]
+    })
+  );
+  await firstUpdate;
+});
+
 test("WorkspaceAppCenterController preserves install progress during pending install app updates", async () => {
   const controller = createWorkspaceAppCenterController({
     formatError: formatError,
@@ -581,6 +861,30 @@ test("WorkspaceAppCenterController preserves install progress during pending ins
     }),
     workspaceId: "workspace-1"
   });
+});
+
+test("WorkspaceAppCenterController refreshes a loading catalog while polling", async () => {
+  let listCalls = 0;
+  const controller = createWorkspaceAppCenterController({
+    catalogLoadingRefreshDelayMs: 1,
+    formatError,
+    gateway: createGateway({
+      async listWorkspaceApps() {
+        listCalls += 1;
+        return createSnapshot();
+      }
+    })
+  });
+  controller.beginWorkspacePolling("workspace-1");
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({ catalogStatus: "loading" })
+  );
+
+  await waitFor(() => listCalls === 1);
+
+  assert.equal(controller.store.catalogStatus, "ready");
+  controller.endWorkspacePolling("workspace-1");
 });
 
 test("WorkspaceAppCenterController event refresh policy does not start per-app polling", async () => {

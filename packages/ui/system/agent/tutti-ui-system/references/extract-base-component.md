@@ -42,12 +42,13 @@ instead.
    storyboard examples, and boundary-check issues.
 6. Keep helper exports minimal and directly tied to primitive support.
 7. Add metadata with `layer: "base"`.
-8. Add storyboard coverage for the public states and variants exposed by the
+8. Add preview coverage for the public states and variants exposed by the
    primitive.
    - This is mandatory for base-component promotion.
-   - Do not treat `storyboard: true` in metadata as sufficient by itself.
-   - Add or update a real renderable example in `apps/ui-storyboard` so the
-     component appears in navigation and can be visually reviewed immediately.
+   - Do not treat metadata as sufficient by itself.
+   - DOM primitives need an example in `apps/ui-storyboard`; React Native
+     primitives need an example in the Mobile development gallery. Do not
+     pretend that a DOM wrapper is evidence for a Native surface.
 9. Replace duplicated local UI only after the shared primitive exists.
 10. Run the promotion review gate from
     `ui-system.md`: verify Frictionless task
@@ -72,11 +73,12 @@ pnpm --filter @tutti-os/ui-system typecheck
 
 If a consumer was migrated, also run that consumer's typecheck or build.
 
-Before reporting completion, confirm storyboard delivery at two levels:
+Before reporting completion, confirm preview delivery at two levels:
 
-- inventory: the component is discoverable from storyboard navigation
+- inventory: the component is discoverable from the appropriate DOM storyboard
+  or Native development gallery
 - rendering: the component has a concrete example that renders its public
-  states or variants inside `apps/ui-storyboard`
+  states or variants on its target renderer
 
 Do not report full design-foundation compliance unless the subagent review ran
 and found no unresolved drift. If subagents are unavailable, report the

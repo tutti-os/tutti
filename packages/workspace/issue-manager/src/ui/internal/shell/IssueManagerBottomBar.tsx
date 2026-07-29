@@ -23,7 +23,7 @@ export function IssueManagerBottomBar({
   visible
 }: IssueManagerBottomBarProps): JSX.Element | null {
   const copy = controller.copy;
-  if (!visible || !selectedIssue) {
+  if (!visible || !selectedIssue || controller.isTuttiModePlanIssue) {
     return null;
   }
   const runControlsDisabled = isIssueManagerRunControlDisabled({

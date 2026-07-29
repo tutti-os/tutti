@@ -4,9 +4,11 @@
 
 This file applies to `services/tuttid/*`.
 
-`tuttid` is the primary business core of the repository.
+`tuttid` is the primary daemon/product business core of the repository.
 
-If a change involves domain decisions, durable state, or local persistence ownership, it should usually land here.
+Daemon-specific domain decisions, durable state, and local persistence usually
+land here. Extracted cross-consumer cores keep their own owner; Agent
+session/Turn/Goal/runtime-operation lifecycle belongs to `packages/agent/host`.
 
 ## Setup commands
 
@@ -49,7 +51,9 @@ types/
 
 ## Agent CLI ownership
 
-- `tuttid` owns agent provider availability, agent session workflows, and AgentGUI launch intent publication.
+- `tuttid` owns agent provider availability, AgentGUI launch intent publication,
+  HTTP/query/composer/product policy, and Host adapters. `packages/agent/host`
+  owns agent session/Turn/Goal/runtime-operation lifecycle workflows.
 - `apps/cli` must remain a thin daemon client for `tutti agent`; it should parse terminal shape and render daemon output, not call desktopd, renderer-private APIs, or agent runtimes directly.
 - AgentGUI launch requests from CLI or other local integrations should enter `tuttid` first and be published as business events on `/v1/events/ws`.
 - Keep provider availability naming separate from session status naming. CLI launch surfaces use `agent list` and exact agent ids; provider availability is derived diagnostic metadata on each catalog entry, not the launch identity.
@@ -65,7 +69,8 @@ types/
 
 - daemon-owned local state defaults to `~/.tutti` in production and `~/.tutti-dev` in development
 - prefer deriving new daemon-owned file paths from `TUTTI_STATE_DIR` helpers instead of writing directly under `$HOME`
-- keep persistence ownership inside `data/*`
+- keep daemon-owned persistence adapters inside `data/*`; Agent canonical
+  transactions belong to `packages/agent/store-sqlite`
 
 ## Testing defaults
 

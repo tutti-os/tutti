@@ -2,13 +2,19 @@ import type { SessionLifecycleState } from "./sessionLifecycle.types.ts";
 import { canonicalTurnKey } from "./sessionEntityKeys.ts";
 
 export interface CanonicalSubmitAvailability {
-  reason?: "active_turn" | "waiting";
+  reason?:
+    | "active_turn"
+    | "agent_capability_checking"
+    | "agent_capability_unavailable"
+    | "waiting"
+    | "transport_reconnecting"
+    | "transport_unavailable";
   state: "available" | "blocked" | "missing";
 }
 
 export type CanonicalSessionLifecycleView = Pick<
   SessionLifecycleState,
-  "interactionsById" | "sessionsById" | "turnsById"
+  "interactionsById" | "operationBySessionId" | "sessionsById" | "turnsById"
 >;
 
 export function deriveCanonicalSubmitAvailability(
@@ -19,6 +25,11 @@ export function deriveCanonicalSubmitAvailability(
   const session = lifecycle.sessionsById[agentSessionId];
   if (!session) {
     return { state: "missing" };
+  }
+  const runtimeAvailability =
+    lifecycle.operationBySessionId[agentSessionId]?.runtimeAvailability;
+  if (runtimeAvailability?.state === "blocked") {
+    return { state: "blocked", reason: runtimeAvailability.reason };
   }
   if (
     Object.values(lifecycle.interactionsById).some(

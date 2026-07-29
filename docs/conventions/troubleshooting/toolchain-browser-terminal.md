@@ -2,6 +2,126 @@
 
 [Back to troubleshooting index](./README.md)
 
+### Go-only PR skips a repository contract that later fails
+
+- Symptom:
+  A Go-only PR is green, but a later TypeScript PR fails an unrelated
+  repository-wide check or tool test against the Go change.
+- Quick checks:
+  Inspect whether the failing command scans repository-wide files, generated
+  artifacts, workflows, hooks, or architecture boundaries. Then check whether
+  CI attached it to `run_ts` only because the checker is implemented in
+  JavaScript or TypeScript.
+- Root cause:
+  Check ownership was classified by implementation language instead of checked
+  responsibility. Generated-source paths and non-code package assets could also
+  be absent from inline workflow path predicates.
+- Fix:
+  Register repository policy, tool contract, generated contract, or boundary
+  checks in `repository-checks.mjs`. Keep TypeScript and Go jobs limited to
+  language-owned lint and tests. Reuse `change-classification.mjs` in local and
+  PR validation.
+- Validation:
+  Add selector fixtures for every source-of-truth path and a narrow workflow
+  contract test that verifies repository groups stay outside language jobs.
+  Confirm a Go-only fixture does not select TypeScript validation.
+- References:
+  [repository-checks.mjs](../../../tools/scripts/repository-checks.mjs)
+  [change-classification.mjs](../../../tools/scripts/change-classification.mjs)
+  [testing.md](../testing.md)
+
+### Goal recovery Go tests fail only in the full workspace lane
+
+- Symptom:
+  `services/tuttid/service/agent` goal recovery tests pass alone but fail in the
+  pull-request Go workspace job with `recover goal operation ...: context
+deadline exceeded`. The failing test can take several seconds even though its
+  fake provider timeout is configured for 20–25 milliseconds.
+- Quick checks:
+  Inspect whether the test uses a small real
+  `GoalOperationAttemptTimeout` around the entire worker step. Compare the CI
+  duration with the configured timeout and check whether the fake provider hook
+  was reached before changing Host retry or lease semantics.
+- Root cause:
+  The attempt context also covers actor acquisition and SQLite work before the
+  fake provider call. Under concurrent Go workspace load, the runner may not
+  schedule that work within a 20–25 millisecond test window. The context then
+  expires before the intended fake deadline path, so the worker reports an
+  infrastructure timeout instead of exercising retry persistence.
+- Fix:
+  For deadline classification and retry-budget tests, return
+  `context.DeadlineExceeded` directly from the fake provider. Use a
+  test-controlled deadline context when cancellation propagation and detached
+  lease persistence are the behavior under test. Reserve real wall-clock
+  deadlines for end-to-end budget tests and give those assertions enough
+  scheduling margin for the full workspace lane. Do not add retries or change
+  production lifecycle timeouts to mask the test race.
+- Validation:
+  Run the affected goal tests repeatedly with shuffled order, then run the full
+  agent-service package and changed-aware validation.
+- References:
+  [service_test.go](../../../services/tuttid/service/agent/service_test.go)
+  [Testing](../testing.md)
+
+### gomobile Android AAR fails after Go compilation succeeds
+
+- Symptom:
+  `GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build ./...` succeeds, but
+  `gomobile bind` either reports `gobind was not found` after `gomobile init`,
+  or fails while linking `libgojni.so` with
+  `github.com/wlynxg/anet: invalid reference to net.zoneCache`.
+- Quick checks:
+  Confirm the module pins `golang.org/x/mobile` at a version compatible with the
+  repository Go baseline. Run `go mod why -m github.com/wlynxg/anet`; Pion ICE
+  reaches it through the Android network enumeration path. Check whether
+  `gobind` is actually present on `PATH` during the bind subprocess rather than
+  assuming `gomobile init` installed it globally.
+- Root cause:
+  `go tool gomobile` runs the pinned tool without installing its sibling
+  `gobind` executable. Separately, `anet` uses `go:linkname` for the Go network
+  zone cache, and Go 1.23 or newer rejects that internal reference unless the
+  linker compatibility flag is explicit. A no-CGO package compile does not
+  exercise the same shared-library link step as an AAR build.
+- Fix:
+  Build the module-selected `golang.org/x/mobile/cmd/gobind` into an isolated
+  temporary `GOBIN`, prepend that directory to `PATH` only for `gomobile bind`,
+  and pass `-ldflags=-checklinkname=0` only to that gomobile build. Pin the NDK
+  version through `ANDROID_NDK_HOME`; do not add a local `anet` fork or disable
+  linker checks for ordinary host builds.
+- Validation:
+  Run `make android-crosscompile`, `make android-bindings-check`, and
+  `make android-aar`. The final check must validate the Java binding and
+  `armeabi-v7a`, `arm64-v8a`, `x86`, and `x86_64` `libgojni.so` entries. A real
+  Android device or emulator is still required to execute the loopback probe.
+- References:
+  [DeviceLink Makefile](../../../packages/device-link/Makefile)
+  [DeviceLink README](../../../packages/device-link/README.md)
+
+### Android ICE probe gathers no candidates
+
+- Symptom:
+  A gomobile DeviceLink probe loads its JNI library and enters Go successfully,
+  but `LocalParams` reports that the ICE agent gathered no candidates even
+  when loopback candidates are enabled.
+- Quick checks:
+  Confirm the test or host app declares
+  `android.permission.INTERNET` in its manifest before changing ICE filters or
+  Android interface-enumeration code.
+- Root cause:
+  Android applies the `INTERNET` manifest permission to network sockets. A
+  minimal hand-built probe APK can omit it even though normal application
+  templates usually include it, leaving Pion unable to bind a UDP candidate.
+- Fix:
+  Add the `INTERNET` permission to the probe or product manifest. Do not add an
+  Android-only candidate fallback to the shared transport core for this case.
+- Validation:
+  Run the signed probe on an Android device or emulator and require a
+  `TuttiDeviceLinkProbe` log entry containing `PASS epoch=1` and the expected
+  echoed payload.
+- References:
+  [Probe manifest](../../../packages/device-link/mobile/androidprobe/AndroidManifest.xml)
+  [DeviceLink README](../../../packages/device-link/README.md)
+
 ### Temporary Git fixture turns a linked worktree bare
 
 - Symptom:
@@ -26,13 +146,16 @@
   after initialization, and pass fixture author identity through commit-local
   `-c` arguments instead of `git config`.
 - Validation:
-  Run the fixture tests with poisoned `GIT_DIR`, `GIT_WORK_TREE`, and
-  `GIT_CONFIG_*` inputs that point only at disposable paths. Confirm the fixture
-  initializes its own `.git`, then verify the caller's config, index, branch,
-  and worktree remain unchanged.
+  Run `git-environment.test.mjs`, which launches the temporary-repository test
+  suites with a poisoned linked-worktree `GIT_DIR` that points only at a
+  disposable repository. Confirm each fixture initializes its own `.git`, then
+  verify the caller's config and branch remain unchanged. Keep the lower-level
+  environment test coverage for `GIT_WORK_TREE` and `GIT_CONFIG_*` inputs.
 - References:
   [git-environment.mjs](../../../tools/scripts/git-environment.mjs)
   [check-agent-gui-degradation.test.mjs](../../../tools/scripts/check-agent-gui-degradation.test.mjs)
+  [push-checked.test.mjs](../../../tools/scripts/push-checked.test.mjs)
+  [run-check-changed.test.mjs](../../../tools/scripts/run-check-changed.test.mjs)
   [static-analysis.md](../static-analysis.md)
 
 ### Dynamic CLI input rejects plausible flags
@@ -83,6 +206,40 @@
 - Validation:
   Search workflows for `pnpm/action-setup` and confirm no step still passes a
   `version` input. Push a new commit to rerun the PR checks.
+
+### Multi-entry tsup declaration build exhausts its worker heap
+
+- Symptom:
+  A package build finishes its ESM phase, then fails during `DTS Build start`
+  with `ERR_WORKER_OUT_OF_MEMORY`. The failure is more frequent when
+  `check:changed --push-ready` runs package builds beside tests and other
+  builds, while an isolated retry may pass.
+- Quick checks:
+  Confirm the error comes from tsup's declaration worker after the JavaScript
+  output reports success. Measure an isolated build with `/usr/bin/time -l`
+  and compare the package's declaration entry count; raising the parent Node
+  heap does not prove the worker's declaration graph is bounded.
+- Root cause:
+  tsup sends every configured declaration entry through one worker. A package
+  with many overlapping public entrypoints can keep repeated TypeScript and
+  Rollup declaration graphs in that worker until it approaches the V8 heap
+  limit. Concurrent validation makes the near-limit build unreliable.
+- Fix:
+  Keep the runtime bundle as one build, then partition declaration entrypoints
+  into complete, non-overlapping groups and build those groups concurrently in
+  separate workers. Keep the group manifest separate from tsup itself so a
+  normal unit test can prove every runtime entry appears exactly once. Do not
+  make a global `NODE_OPTIONS` increase the default fix; it preserves the
+  oversized declaration graph and moves the failure threshold.
+- Validation:
+  Measure the isolated package build before and after, run the entry-coverage
+  test, typecheck imports from both the root and a subpath declaration, run the
+  package pack check, and reproduce the original changed-aware concurrent
+  build without a heap override.
+- References:
+  [agentGuiBuildEntries.ts](../../../packages/agent/gui/build/agentGuiBuildEntries.ts)
+  [tsup.dts.config.ts](../../../packages/agent/gui/tsup.dts.config.ts)
+  [tsup.dts.config.test.ts](../../../packages/agent/gui/tsup.dts.config.test.ts)
 
 ### Browser CLI cold start timeout looks like an unreachable daemon
 
@@ -261,8 +418,8 @@ emitted before this method can be called`, especially after HMR, navigation,
   guest action is bundled with the standalone Agent browser adapter, then reload
   the standalone Agent window before a manual page-selection smoke test.
 - References:
-  [browserElementWebview.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/browser-element-context/browserElementWebview.ts)
-  [BrowserElementContextAction.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/browser-element-context/BrowserElementContextAction.tsx)
+  [browserElementWebview.ts](../../../packages/agent/gui/workbench/browser-element-context/browserElementWebview.ts)
+  [BrowserElementContextAction.tsx](../../../packages/agent/gui/workbench/browser-element-context/BrowserElementContextAction.tsx)
   [webviewController.ts](../../../packages/browser/workbench-node/src/core/webviewController.ts)
 
 ### Hidden Browser Node webview covers another panel
@@ -288,14 +445,16 @@ emitted before this method can be called`, especially after HMR, navigation,
   Keep one active panel id for tools that share the same region. Pass that
   active state into every mounted Browser Node through its `hidden` prop, while
   retaining the mounted component when session preservation is required. Keep
-  the App Center catalog and every previously opened inline workspace app as
-  mounted sibling layers: clearing `openAppId` reveals the catalog but must not
-  remove an app's Browser Node, and selecting another app must not replace the
-  previous app's keyed Browser Node. Give each inline app a stable app-specific
-  node id so Browser Node controllers and Electron guests cannot be rebound to
-  a different app. Prune those retained app layers only after a ready catalog
-  snapshot confirms removal; loading or reconnecting snapshots are not proof
-  that an app disappeared. Inactive app layers need both non-interactive DOM
+  the App Center catalog and every workspace app listed in the persisted
+  `openAppIds` tab state as mounted sibling layers: selecting the permanent
+  catalog tab clears `openAppId` but must not remove an app's Browser Node, and
+  selecting another app tab must not replace the previous app's keyed Browser
+  Node. Closing a tab removes its id from `openAppIds` and intentionally releases
+  that guest. Give each inline app a stable app-specific node id so Browser Node
+  controllers and Electron guests cannot be rebound to a different app. A ready
+  catalog snapshot may also close tabs for apps confirmed unavailable; loading
+  or reconnecting snapshots are not proof that an app disappeared. Inactive app
+  layers need both non-interactive DOM
   visibility and `hidden={true}` on `BrowserNode`, because ancestor visibility
   alone is insufficient for Electron guest compositing. Do not add an explicit
   `visibility: visible` utility to the active child layer: CSS descendants can
@@ -318,9 +477,11 @@ emitted before this method can be called`, especially after HMR, navigation,
   Cover every switch among panels in the shared region, verify the inactive
   Browser Node receives `hidden={true}`, and verify an independently placed
   terminal remains open throughout the same switches. For App Center, open two
-  apps, return to the catalog after each, and reopen both; page state and any
-  running in-page Agent must continue while both inactive Browser Nodes stay
-  hidden. Also open the Browser Node overflow menu, its submenus, settings
+  apps, switch through their tabs and the permanent catalog tab, and reopen both;
+  page state and any running in-page Agent must continue while inactive Browser
+  Nodes stay hidden. Close the active and inactive app tabs in turn and verify
+  the adjacent/catalog fallback plus guest release. Also open the Browser Node
+  overflow menu, its submenus, settings
   dialog, and clear-data confirmation above a loaded guest page; verify the
   webview returns after each overlay closes. Renderer-only visibility changes
   can use HMR; preload or Electron-main changes still require a process restart.
@@ -438,6 +599,13 @@ emitted before this method can be called`, especially after HMR, navigation,
   `dist/assets/...`. The same feature often works inside this monorepo because
   workspace source resolution or local build layout hides the packaging
   problem.
+  In Vite development mode the failing URL may instead point at
+  `node_modules/.vite/deps/assets/...`: dependency prebundling moved the
+  JavaScript module, then a preserved `new URL("./assets/...", import.meta.url)`
+  resolved relative to the optimizer cache.
+  A browser-only correction can surface as `Unknown file extension ".png"` in
+  Vitest when the test runner externalizes the published dependency and Node
+  evaluates its asset import directly.
 - Quick checks:
   If the failing package entrypoint renders a package-local image or icon,
   inspect whether the main runtime entrypoint still imports that asset directly
@@ -446,12 +614,17 @@ emitted before this method can be called`, especially after HMR, navigation,
   Run `pnpm release:pack:check` and confirm the packed tarball includes the
   exported asset file under `dist/assets/...`.
   Inspect the built `dist` entrypoint and confirm the main runtime code no
-  longer hard-depends on the asset unless the consumer imported it explicitly.
+  longer uses a module-relative asset URL. If the runtime intentionally imports
+  the asset, verify the public export has both a browser asset target and a
+  Node-executable target.
 - Root cause:
   The public runtime entrypoint owned a default asset dependency instead of
   exposing that asset as an explicit public subpath. The packed npm artifact
   either did not ship the matching file layout or forced every consumer to pay
   the asset cost even when the feature was unused.
+  A related failure occurs when a published bundle preserves a module-relative
+  `new URL(...)`: consumer dependency optimization can relocate that bundle
+  independently from its adjacent asset.
 - Fix:
   Move the image or icon out of the main runtime entrypoint and export it
   through an explicit package asset subpath such as
@@ -459,11 +632,22 @@ emitted before this method can be called`, especially after HMR, navigation,
   Let the business consumer import that asset only when it needs the default
   visual, and keep the package build rule that copies the asset into the packed
   `dist/assets` directory.
+  When the package runtime owns an always-available default icon, prefer a
+  code-owned UI-system SVG component so the runtime does not import an image at
+  all. Conditional asset exports are not sufficient for this case: a
+  browser-conditioned test environment can select the image target and then
+  externalize the package for Node execution, which still fails on `.png`.
+  Keep explicit public asset subpaths only for browser consumers that knowingly
+  opt into the artwork. Do not require every consumer to add a test alias for
+  the published package.
   Apply the same rule to every public runtime subpath in the package, not just
   the first failing icon.
 - Validation:
   Build the affected package, inspect the built runtime entrypoint for the
   absence of the old asset dependency, and rerun `pnpm release:pack:check`.
+  Import any intentionally supported packed asset subpath with Node and run a
+  real Vite dependency-prebundle fixture. The optimized root runtime must
+  contain the code-owned fallback icon and no fallback image dependency.
   If the package is consumed by desktop renderer code in this repo, also run
   the relevant desktop build to confirm the consumer bundler copies or emits
   the asset only when the business import is present.

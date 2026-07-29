@@ -14,21 +14,23 @@ import {
 import { AgentGUINode } from "./AgentGUINode";
 import { createLocalAgentGUIAgentTarget } from "../../agentTargets";
 import { buildAgentComposerDraft } from "./model/agentComposerDraft";
+import { resolveNextAgentGUIConversationRailWidthPx } from "./model/agentGuiRailLayout";
 
-const { agentGuiNodeViewSpy } = vi.hoisted(() => ({
-  agentGuiNodeViewSpy: vi.fn()
+const { agentGuiNodeViewSpy, translate } = vi.hoisted(() => ({
+  agentGuiNodeViewSpy: vi.fn(),
+  translate: (key: string, options?: Record<string, unknown>) => {
+    if (key === "agentHost.workspaceAgentSessionDetailToolCalls") {
+      return `${options?.count ?? 0} tool calls`;
+    }
+    return key;
+  }
 }));
 
 let mockViewModel: AgentGUINodeViewModel;
 
 vi.mock("../../i18n/index", () => ({
   useTranslation: () => ({
-    t: (key: string, options?: Record<string, unknown>) => {
-      if (key === "agentHost.workspaceAgentSessionDetailToolCalls") {
-        return `${options?.count ?? 0} tool calls`;
-      }
-      return key;
-    }
+    t: translate
   })
 }));
 
@@ -50,6 +52,7 @@ vi.mock("./controller/useAgentGUINodeController", () => ({
       removeQueuedPrompt: vi.fn(),
       editQueuedPrompt: vi.fn(),
       removeProject: vi.fn(),
+      toggleProjectPinned: vi.fn(),
       confirmDeleteProjectConversations: vi.fn(),
       requestDeleteConversation: vi.fn(),
       retryActivation: vi.fn(),
@@ -100,24 +103,12 @@ describe("AgentGUINode memoization", () => {
     agentGuiNodeViewSpy.mockReset();
   });
 
-  it("rerenders when its own provider probe changes", () => {
+  it("rerenders when its host status controller changes", () => {
     mockViewModel = createViewModel();
+    const firstController = createStatusControllerStub();
     const props = createProps({
       runtimeRequests: {
-        agentProbes: {
-          snapshot: {
-            workspaceId: "workspace-1",
-            capturedAtUnixMs: 1,
-            providers: [
-              {
-                provider: "codex",
-                availability: { status: "available", detailsVisible: false }
-              }
-            ]
-          },
-          isLoadingAvailability: false,
-          isLoadingUsage: false
-        }
+        agentStatusController: firstController
       }
     });
     const { rerender } = render(<AgentGUINode {...props} />);
@@ -130,29 +121,56 @@ describe("AgentGUINode memoization", () => {
         {...props}
         runtimeRequests={{
           ...props.runtimeRequests,
-          agentProbes: {
-            snapshot: {
-              workspaceId: "workspace-1",
-              capturedAtUnixMs: 2,
-              providers: [
-                {
-                  provider: "codex",
-                  availability: {
-                    status: "unavailable",
-                    detailsVisible: false
-                  },
-                  lastError: { code: "auth_required", message: "Sign in again" }
-                }
-              ]
-            },
-            isLoadingAvailability: false,
-            isLoadingUsage: false
-          }
+          agentStatusController: createStatusControllerStub()
         }}
       />
     );
 
     expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("rerenders when Session input history is enabled", () => {
+    mockViewModel = createViewModel();
+    const props = createProps();
+    const { rerender } = render(<AgentGUINode {...props} />);
+
+    expect(agentGuiNodeViewSpy).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sessionInputHistoryEnabled: false })
+    );
+    agentGuiNodeViewSpy.mockClear();
+
+    rerender(
+      <AgentGUINode
+        {...props}
+        hostCapabilities={{ sessionInputHistoryEnabled: true }}
+      />
+    );
+
+    expect(agentGuiNodeViewSpy).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sessionInputHistoryEnabled: true })
+    );
+  });
+
+  it("rerenders when Session fork is enabled", () => {
+    mockViewModel = createViewModel();
+    const props = createProps();
+    const { rerender } = render(<AgentGUINode {...props} />);
+
+    expect(agentGuiNodeViewSpy).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sessionForkEnabled: false })
+    );
+    agentGuiNodeViewSpy.mockClear();
+
+    rerender(
+      <AgentGUINode
+        {...props}
+        hostCapabilities={{ sessionForkEnabled: true }}
+      />
+    );
+
+    expect(agentGuiNodeViewSpy).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sessionForkEnabled: true })
+    );
   });
 
   it("rerenders when per-target composer overrides change", () => {
@@ -184,7 +202,253 @@ describe("AgentGUINode memoization", () => {
 
     expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
   });
+
+  it("rerenders when per-target session memory changes", () => {
+    mockViewModel = createViewModel();
+    const props = createProps({
+      state: createState({
+        lastActiveAgentSessionIdByAgentTargetId: {
+          "local:codex": "session-1"
+        }
+      })
+    });
+    const { rerender } = render(<AgentGUINode {...props} />);
+
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+    agentGuiNodeViewSpy.mockClear();
+
+    rerender(
+      <AgentGUINode
+        {...props}
+        state={createState({
+          lastActiveAgentSessionIdByAgentTargetId: {
+            "local:codex": "session-2"
+          }
+        })}
+      />
+    );
+
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes reference content error recovery through the memo boundary", () => {
+    mockViewModel = createViewModel();
+    const firstResolver = vi.fn();
+    const secondResolver = vi.fn();
+    const initial = createProps();
+    const props = {
+      ...initial,
+      workspace: {
+        ...initial.workspace,
+        resolveReferenceContentErrorAction: firstResolver
+      }
+    };
+    const { rerender } = render(<AgentGUINode {...props} />);
+
+    expect(
+      agentGuiNodeViewSpy.mock.calls.at(-1)?.[0]
+        .resolveReferenceContentErrorAction
+    ).toBe(firstResolver);
+
+    agentGuiNodeViewSpy.mockClear();
+    rerender(
+      <AgentGUINode
+        {...props}
+        workspace={{
+          ...props.workspace,
+          resolveReferenceContentErrorAction: secondResolver
+        }}
+      />
+    );
+
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+    expect(
+      agentGuiNodeViewSpy.mock.calls.at(-1)?.[0]
+        .resolveReferenceContentErrorAction
+    ).toBe(secondResolver);
+  });
+
+  it("keeps the rail resize callback stable and reads the latest frame width", () => {
+    mockViewModel = createViewModel();
+    const onUpdateNode = vi.fn();
+    const initial = createProps();
+    const props = {
+      ...initial,
+      hostActions: { ...initial.hostActions, onUpdateNode }
+    };
+    const { rerender } = render(<AgentGUINode {...props} />);
+    const firstViewProps = agentGuiNodeViewSpy.mock.calls.at(-1)?.[0] as
+      | {
+          onConversationRailWidthChanged: (widthPx: number) => void;
+        }
+      | undefined;
+    expect(firstViewProps).toBeDefined();
+    const firstCallback = firstViewProps!.onConversationRailWidthChanged;
+
+    rerender(
+      <AgentGUINode {...props} frame={{ ...props.frame, width: 640 }} />
+    );
+    const secondViewProps = agentGuiNodeViewSpy.mock.calls.at(-1)?.[0] as
+      | {
+          onConversationRailWidthChanged: (widthPx: number) => void;
+        }
+      | undefined;
+    expect(secondViewProps).toBeDefined();
+    const secondCallback = secondViewProps!.onConversationRailWidthChanged;
+
+    expect(secondCallback).toBe(firstCallback);
+    firstCallback(600);
+    const updater = onUpdateNode.mock.calls.at(-1)?.[0] as (
+      current: AgentGUINodeData
+    ) => AgentGUINodeData;
+    const current = createState({ conversationRailWidthPx: 320 });
+    expect(updater(current).conversationRailWidthPx).toBe(
+      resolveNextAgentGUIConversationRailWidthPx({
+        currentWidthPx: current.conversationRailWidthPx,
+        requestedWidthPx: 600,
+        containerWidthPx: 640
+      })
+    );
+    expect(updater(current).conversationRailWidthPx).not.toBe(
+      resolveNextAgentGUIConversationRailWidthPx({
+        currentWidthPx: current.conversationRailWidthPx,
+        requestedWidthPx: 600,
+        containerWidthPx: props.frame.width
+      })
+    );
+  });
+
+  it("passes host rail layout observers through the memo boundary", () => {
+    mockViewModel = createViewModel();
+    const firstObserver = vi.fn();
+    const secondObserver = vi.fn();
+    const initial = createProps();
+    const props = {
+      ...initial,
+      hostActions: {
+        ...initial.hostActions,
+        onConversationRailLayoutChange: firstObserver
+      }
+    };
+    const { rerender } = render(<AgentGUINode {...props} />);
+    const firstViewProps = agentGuiNodeViewSpy.mock.calls.at(-1)?.[0] as
+      | {
+          onConversationRailLayoutChange?: (layout: unknown) => void;
+        }
+      | undefined;
+    expect(firstViewProps?.onConversationRailLayoutChange).toBe(firstObserver);
+
+    agentGuiNodeViewSpy.mockClear();
+    rerender(
+      <AgentGUINode
+        {...props}
+        hostActions={{
+          ...props.hostActions,
+          onConversationRailLayoutChange: secondObserver
+        }}
+      />
+    );
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+    const secondViewProps = agentGuiNodeViewSpy.mock.calls.at(-1)?.[0] as
+      | {
+          onConversationRailLayoutChange?: (layout: unknown) => void;
+        }
+      | undefined;
+    expect(secondViewProps?.onConversationRailLayoutChange).toBe(
+      secondObserver
+    );
+  });
+
+  it("passes project directory picker header actions through the memo boundary", () => {
+    mockViewModel = createViewModel();
+    const firstRenderer = vi.fn();
+    const secondRenderer = vi.fn();
+    const initial = createProps();
+    const props = {
+      ...initial,
+      renderSlots: {
+        ...initial.renderSlots,
+        projectDirectoryPickerHeaderActions: firstRenderer
+      }
+    };
+    const { rerender } = render(<AgentGUINode {...props} />);
+
+    expect(
+      agentGuiNodeViewSpy.mock.calls.at(-1)?.[0]
+        .renderProjectDirectoryPickerHeaderActions
+    ).toBe(firstRenderer);
+
+    agentGuiNodeViewSpy.mockClear();
+    rerender(
+      <AgentGUINode
+        {...props}
+        renderSlots={{
+          ...props.renderSlots,
+          projectDirectoryPickerHeaderActions: secondRenderer
+        }}
+      />
+    );
+
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+    expect(
+      agentGuiNodeViewSpy.mock.calls.at(-1)?.[0]
+        .renderProjectDirectoryPickerHeaderActions
+    ).toBe(secondRenderer);
+  });
+
+  it("keeps rail labels stable when provider-facing labels change", () => {
+    mockViewModel = createViewModel();
+    const props = createProps();
+    const { rerender } = render(<AgentGUINode {...props} />);
+    const firstViewProps = agentGuiNodeViewSpy.mock.calls.at(-1)?.[0] as
+      | {
+          conversationRailLabels: unknown;
+          labels: unknown;
+        }
+      | undefined;
+    expect(firstViewProps).toBeDefined();
+
+    mockViewModel = createViewModel({
+      selectedAgentTarget: createLocalAgentGUIAgentTarget("claude-code"),
+      agentTargets: [createLocalAgentGUIAgentTarget("claude-code")]
+    });
+    rerender(
+      <AgentGUINode
+        {...props}
+        state={createState({ provider: "claude-code" })}
+      />
+    );
+    const secondViewProps = agentGuiNodeViewSpy.mock.calls.at(-1)?.[0] as
+      | {
+          conversationRailLabels: unknown;
+          labels: unknown;
+        }
+      | undefined;
+    expect(secondViewProps).toBeDefined();
+
+    expect(secondViewProps!.labels).not.toBe(firstViewProps!.labels);
+    expect(secondViewProps!.conversationRailLabels).toBe(
+      firstViewProps!.conversationRailLabels
+    );
+  });
 });
+
+function createStatusControllerStub() {
+  const snapshot = {
+    query: null,
+    value: null,
+    phase: "idle" as const,
+    isRefreshing: false,
+    errorCode: null
+  };
+  return {
+    close: vi.fn(),
+    getSnapshot: () => snapshot,
+    invalidate: vi.fn(),
+    open: vi.fn(),
+    subscribe: () => () => {}
+  };
+}
 
 function createProps(
   overrides: Partial<Parameters<typeof AgentGUINode>[0]> = {}
@@ -262,8 +526,16 @@ function createViewModel(
     pendingInteractivePrompt: null,
     queuedPrompts: [],
     queueStatus: "active",
-    canSubmit: true,
-    canQueueWhileBusy: false,
+    gate: {
+      conversationBusy: false,
+      runtime: {
+        status: "ready",
+        reason: null,
+        sessionRuntimeReason: null
+      },
+      editor: { status: "editable", reason: null },
+      submission: { status: "ready", reason: null }
+    },
     isSubmitting: false,
     isInterrupting: false,
     promptImagesSupported: true,

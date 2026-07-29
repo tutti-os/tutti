@@ -1,5 +1,6 @@
 import {
   selectPlanDecisionForTurn,
+  selectTuttiModeActivationPresentation,
   selectWorkspaceAgentConsumerSession,
   type AgentSessionEngine,
   type AgentSessionEngineState
@@ -88,9 +89,21 @@ export function dispatchAgentPlanPromptAction(input: {
   const text = input.feedbackText?.trim() ?? "";
   if (!text) return false;
   const requestedAtUnixMs = (input.nowUnixMs ?? Date.now)();
+  const tuttiModeActive = selectTuttiModeActivationPresentation(
+    input.engine.getSnapshot(),
+    input.agentSessionId,
+    ""
+  ).active;
   input.engine.dispatch({
     type: "plan/feedbackRequested",
     agentSessionId: input.agentSessionId,
+    ...(tuttiModeActive
+      ? {
+          capabilityRefs: [
+            { capability: "tutti" as const, source: "slash_command" as const }
+          ]
+        }
+      : {}),
     clientSubmitId: `${scopeKey}:feedback:${requestedAtUnixMs}`,
     content: [{ type: "text", text }],
     displayPrompt: text,

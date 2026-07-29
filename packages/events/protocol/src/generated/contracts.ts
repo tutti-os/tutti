@@ -8,14 +8,23 @@ export type BusinessEventScopeName = "global" | "desktop" | "workspace";
 
 export type BusinessEventTopic =
   | "agent.activity.updated"
+  | "agent.automation.rules.changed"
+  | "agent.collaboration.updated"
   | "agent.model.catalog.invalidated"
+  | "agent.model.configuration.changed"
+  | "agent.quickprompt.updated"
   | "analytics.debug.reported"
+  | "preferences.agent.composer.defaults.changed"
+  | "preferences.agent.composer.defaults.patch.requested"
   | "preferences.desktop.update.requested"
   | "preferences.desktop.updated"
+  | "user.project.updated"
   | "workspace.app.updated"
   | "workspace.appfactory.job.updated"
   | "workspace.issue.updated"
-  | "workspace.workbench.node.launch.requested";
+  | "workspace.tuttimode.updated"
+  | "workspace.workbench.node.launch.requested"
+  | "workspace.workflow.updated";
 
 export interface BusinessEventScopeV1 {
   workspaceId?: string;
@@ -41,6 +50,7 @@ export type BusinessEventEnvelopeV1<
 };
 
 export interface PreferencesDesktopPreferencesV1 {
+  agentCliUpdateCheckEnabled: boolean;
   agentComposerDefaultsByProvider: {
     "claude-code"?: {
       model?: string;
@@ -67,12 +77,6 @@ export interface PreferencesDesktopPreferencesV1 {
       speed?: string;
     };
     nexight?: {
-      model?: string;
-      permissionModeId?: string;
-      reasoningEffort?: string;
-      speed?: string;
-    };
-    hermes?: {
       model?: string;
       permissionModeId?: string;
       reasoningEffort?: string;
@@ -106,7 +110,6 @@ export interface PreferencesDesktopPreferencesV1 {
     "tutti-agent"?: boolean;
     cursor?: boolean;
     nexight?: boolean;
-    hermes?: boolean;
     openclaw?: boolean;
     opencode?: boolean;
   };
@@ -117,6 +120,7 @@ export interface PreferencesDesktopPreferencesV1 {
   defaultAgentProvider: "claude-code" | "codex" | "cursor" | "opencode";
   dockIconStyle: "default" | "flat";
   dockPlacement: "bottom" | "left";
+  deletedAgentConversationRetentionDays: 15 | 30;
   fileDefaultOpenersByExtension: Record<
     string,
     "appBrowser" | "defaultBrowser" | "fileViewer" | "system"
@@ -137,6 +141,17 @@ export interface PreferencesDesktopPreferencesV1 {
     enabled: boolean;
     shortcutPreset: "commandArrows" | "commandShiftArrows";
   };
+}
+
+export interface UserUserProjectV1 {
+  id: string;
+  path: string;
+  label: string;
+  sectionKey: string;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+  lastUsedAtUnixMs: number;
+  pinnedAtUnixMs: number;
 }
 
 export interface WorkspaceWorkspaceAppFactoryJobV1 {
@@ -231,6 +246,36 @@ export type AgentActivityUpdatedPayloadV1 =
   | {
       workspaceId: string;
       agentSessionId: string;
+      eventType: "message_delta";
+      data: {
+        workspaceId: string;
+        agentSessionId: string;
+        messageId: string;
+        turnId: string;
+        role: string;
+        kind: string;
+        occurredAtUnixMs: number;
+        content?: {
+          operation: "append_text" | "set";
+          text?: string;
+          value?: unknown;
+        };
+        toolOutput?: {
+          operation: "append_text" | "set";
+          text: string;
+          offsetBytes?: number;
+        };
+        payloadSet?: Record<string, unknown>;
+        payloadUnset?: readonly string[];
+        status?: string;
+        semantics?: Record<string, unknown>;
+        startedAtUnixMs?: number;
+        completedAtUnixMs?: number;
+      };
+    }
+  | {
+      workspaceId: string;
+      agentSessionId: string;
       eventType: "session_deleted";
       data: {
         workspaceId: string;
@@ -297,6 +342,10 @@ export type AgentActivityUpdatedPayloadV1 =
         turn: {
           turnId: string;
           agentSessionId: string;
+          capabilityRefs?: readonly {
+            capability: "tutti";
+            source: "slash_command";
+          }[];
           phase: "submitted" | "running" | "waiting" | "settling" | "settled";
           origin:
             | "user_prompt"
@@ -342,8 +391,42 @@ export type AgentActivityUpdatedPayloadV1 =
       };
     };
 
+export interface AgentAutomationRulesChangedPayloadV1 {
+  workspaceId: string;
+  occurredAtUnixMs: number;
+}
+
+export interface AgentCollaborationUpdatedPayloadV1 {
+  workspaceId: string;
+  runId: string;
+  mode: "consult" | "fork" | "delegate" | "handoff";
+  status: "running" | "completed" | "failed" | "canceled";
+  sourceSessionId?: string;
+  targetSessionId?: string;
+  modelPlanId?: string;
+  model?: string;
+  triggerSource: "user" | "agent" | "policy";
+  adoption?: "pending" | "adopted" | "rejected" | "not_applicable";
+  occurredAtUnixMs: number;
+}
+
 export interface AgentModelCatalogInvalidatedPayloadV1 {
   providers: readonly string[];
+  occurredAtUnixMs: number;
+}
+
+export interface AgentModelConfigurationChangedPayloadV1 {
+  workspaceId: string;
+  agentTargetIds: readonly string[];
+  defaultModels: Record<string, string>;
+  resetComposerModel: boolean;
+  occurredAtUnixMs: number;
+}
+
+export interface AgentQuickpromptUpdatedPayloadV1 {
+  promptId: string;
+  changeKind: "created" | "updated" | "deleted";
+  version: number;
   occurredAtUnixMs: number;
 }
 
@@ -355,6 +438,21 @@ export interface AnalyticsDebugReportedPayloadV1 {
   }[];
 }
 
+export interface PreferencesAgentComposerDefaultsChangedPayloadV1 {
+  agentTargetId: string;
+}
+
+export interface PreferencesAgentComposerDefaultsPatchRequestedPayloadV1 {
+  agentTargetId: string;
+  patch: {
+    model?: string | null;
+    permissionModeId?: string | null;
+    reasoningEffort?: string | null;
+    speed?: string | null;
+  };
+  clientMutationId?: string;
+}
+
 export interface PreferencesDesktopUpdateRequestedPayloadV1 {
   preferences: PreferencesDesktopPreferencesV1;
 }
@@ -362,6 +460,10 @@ export interface PreferencesDesktopUpdateRequestedPayloadV1 {
 export interface PreferencesDesktopUpdatedPayloadV1 {
   initialized: boolean;
   preferences: PreferencesDesktopPreferencesV1;
+}
+
+export interface UserProjectUpdatedPayloadV1 {
+  projects: readonly UserUserProjectV1[];
 }
 
 export interface WorkspaceAppUpdatedPayloadV1 {
@@ -390,6 +492,14 @@ export interface WorkspaceIssueUpdatedPayloadV1 {
     | "run_completed";
 }
 
+export interface WorkspaceTuttimodeUpdatedPayloadV1 {
+  agentSessionId: string;
+  activationId: string;
+  revision: number;
+  status: "active" | "inactive";
+  changeKind: "activated" | "deactivated";
+}
+
 export interface WorkspaceWorkbenchNodeLaunchRequestedPayloadV1 {
   workspaceId: string;
   typeId: string;
@@ -400,10 +510,33 @@ export interface WorkspaceWorkbenchNodeLaunchRequestedPayloadV1 {
   payload?: unknown;
 }
 
+export interface WorkspaceWorkflowUpdatedPayloadV1 {
+  workflowId: string;
+  sourceSessionId: string;
+  checkpointId: string;
+  changeKind:
+    | "proposal_created"
+    | "revision_created"
+    | "checkpoint_decided"
+    | "operation_updated";
+}
+
 export type AgentActivityUpdatedEventV1 = BusinessEventEnvelopeV1<
   "agent.activity.updated",
   AgentActivityUpdatedPayloadV1,
   2
+>;
+
+export type AgentAutomationRulesChangedEventV1 = BusinessEventEnvelopeV1<
+  "agent.automation.rules.changed",
+  AgentAutomationRulesChangedPayloadV1,
+  1
+>;
+
+export type AgentCollaborationUpdatedEventV1 = BusinessEventEnvelopeV1<
+  "agent.collaboration.updated",
+  AgentCollaborationUpdatedPayloadV1,
+  1
 >;
 
 export type AgentModelCatalogInvalidatedEventV1 = BusinessEventEnvelopeV1<
@@ -412,11 +545,37 @@ export type AgentModelCatalogInvalidatedEventV1 = BusinessEventEnvelopeV1<
   1
 >;
 
+export type AgentModelConfigurationChangedEventV1 = BusinessEventEnvelopeV1<
+  "agent.model.configuration.changed",
+  AgentModelConfigurationChangedPayloadV1,
+  1
+>;
+
+export type AgentQuickpromptUpdatedEventV1 = BusinessEventEnvelopeV1<
+  "agent.quickprompt.updated",
+  AgentQuickpromptUpdatedPayloadV1,
+  1
+>;
+
 export type AnalyticsDebugReportedEventV1 = BusinessEventEnvelopeV1<
   "analytics.debug.reported",
   AnalyticsDebugReportedPayloadV1,
   1
 >;
+
+export type PreferencesAgentComposerDefaultsChangedEventV1 =
+  BusinessEventEnvelopeV1<
+    "preferences.agent.composer.defaults.changed",
+    PreferencesAgentComposerDefaultsChangedPayloadV1,
+    1
+  >;
+
+export type PreferencesAgentComposerDefaultsPatchRequestedEventV1 =
+  BusinessEventEnvelopeV1<
+    "preferences.agent.composer.defaults.patch.requested",
+    PreferencesAgentComposerDefaultsPatchRequestedPayloadV1,
+    1
+  >;
 
 export type PreferencesDesktopUpdateRequestedEventV1 = BusinessEventEnvelopeV1<
   "preferences.desktop.update.requested",
@@ -428,6 +587,12 @@ export type PreferencesDesktopUpdatedEventV1 = BusinessEventEnvelopeV1<
   "preferences.desktop.updated",
   PreferencesDesktopUpdatedPayloadV1,
   1
+>;
+
+export type UserProjectUpdatedEventV1 = BusinessEventEnvelopeV1<
+  "user.project.updated",
+  UserProjectUpdatedPayloadV1,
+  2
 >;
 
 export type WorkspaceAppUpdatedEventV1 = BusinessEventEnvelopeV1<
@@ -448,6 +613,12 @@ export type WorkspaceIssueUpdatedEventV1 = BusinessEventEnvelopeV1<
   1
 >;
 
+export type WorkspaceTuttimodeUpdatedEventV1 = BusinessEventEnvelopeV1<
+  "workspace.tuttimode.updated",
+  WorkspaceTuttimodeUpdatedPayloadV1,
+  1
+>;
+
 export type WorkspaceWorkbenchNodeLaunchRequestedEventV1 =
   BusinessEventEnvelopeV1<
     "workspace.workbench.node.launch.requested",
@@ -455,29 +626,55 @@ export type WorkspaceWorkbenchNodeLaunchRequestedEventV1 =
     1
   >;
 
-export type ClientToServerEventTopic = "preferences.desktop.update.requested";
+export type WorkspaceWorkflowUpdatedEventV1 = BusinessEventEnvelopeV1<
+  "workspace.workflow.updated",
+  WorkspaceWorkflowUpdatedPayloadV1,
+  1
+>;
+
+export type ClientToServerEventTopic =
+  | "preferences.agent.composer.defaults.patch.requested"
+  | "preferences.desktop.update.requested";
 
 export type ServerToClientEventTopic =
   | "agent.activity.updated"
+  | "agent.automation.rules.changed"
+  | "agent.collaboration.updated"
   | "agent.model.catalog.invalidated"
+  | "agent.model.configuration.changed"
+  | "agent.quickprompt.updated"
   | "analytics.debug.reported"
+  | "preferences.agent.composer.defaults.changed"
   | "preferences.desktop.updated"
+  | "user.project.updated"
   | "workspace.app.updated"
   | "workspace.appfactory.job.updated"
   | "workspace.issue.updated"
-  | "workspace.workbench.node.launch.requested";
+  | "workspace.tuttimode.updated"
+  | "workspace.workbench.node.launch.requested"
+  | "workspace.workflow.updated";
 
-export type ClientToServerEventV1 = PreferencesDesktopUpdateRequestedEventV1;
+export type ClientToServerEventV1 =
+  | PreferencesAgentComposerDefaultsPatchRequestedEventV1
+  | PreferencesDesktopUpdateRequestedEventV1;
 
 export type ServerToClientEventV1 =
   | AgentActivityUpdatedEventV1
+  | AgentAutomationRulesChangedEventV1
+  | AgentCollaborationUpdatedEventV1
   | AgentModelCatalogInvalidatedEventV1
+  | AgentModelConfigurationChangedEventV1
+  | AgentQuickpromptUpdatedEventV1
   | AnalyticsDebugReportedEventV1
+  | PreferencesAgentComposerDefaultsChangedEventV1
   | PreferencesDesktopUpdatedEventV1
+  | UserProjectUpdatedEventV1
   | WorkspaceAppUpdatedEventV1
   | WorkspaceAppfactoryJobUpdatedEventV1
   | WorkspaceIssueUpdatedEventV1
-  | WorkspaceWorkbenchNodeLaunchRequestedEventV1;
+  | WorkspaceTuttimodeUpdatedEventV1
+  | WorkspaceWorkbenchNodeLaunchRequestedEventV1
+  | WorkspaceWorkflowUpdatedEventV1;
 
 export type BusinessEventV1 = ClientToServerEventV1 | ServerToClientEventV1;
 

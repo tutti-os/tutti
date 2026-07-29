@@ -1,22 +1,16 @@
 import { useMemo } from "react";
-import { ChevronDown } from "lucide-react";
 import {
   WorkspaceUserProjectSelect,
-  resolveWorkspaceUserProjectSelectLabels,
   type WorkspaceUserProjectSelectChangeAction,
   type WorkspaceUserProjectSelectLabelOverrides
 } from "@tutti-os/workspace-user-project/ui";
 import type { WorkspaceUserProject } from "@tutti-os/workspace-user-project/contracts";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { useAgentHostApi } from "../../agentActivityHost";
-import {
-  FolderIcon,
-  NewWorkspaceLinedIcon,
-  NoWorkspaceLinedIcon,
-  cn
-} from "@tutti-os/ui-system";
+import { NewWorkspaceLinedIcon, cn } from "@tutti-os/ui-system";
 import type { AgentGUIComposerSettingsVM } from "./model/agentGuiNodeTypes";
 import styles from "./AgentGUINode.styles";
+import { createAgentGUIUserProjectSelectionApi } from "./agentGuiUserProjectSelectionApi";
 
 export type AgentProjectDropdownLabels = Pick<
   WorkspaceUserProjectSelectLabelOverrides,
@@ -30,16 +24,10 @@ export interface AgentProjectPathChangeMetadata {
   project?: WorkspaceUserProject;
 }
 
-function basenameProjectPath(path: string): string {
-  const normalized = path.trim().replaceAll("\\", "/").replace(/\/+$/, "");
-  return normalized.split("/").filter(Boolean).at(-1) ?? path;
-}
-
 export function AgentProjectDropdown({
   composerSettings,
   labels,
   i18n,
-  previewMode = false,
   selectProjectDirectory,
   onDismissAutoFocus,
   onProjectMissingChange,
@@ -47,11 +35,12 @@ export function AgentProjectDropdown({
 }: {
   composerSettings: Pick<
     AgentGUIComposerSettingsVM,
-    "selectedProjectPath" | "projectLocked"
+    | "selectedProjectPath"
+    | "projectLocked"
+    | "shouldApplyPreparedProjectSelection"
   >;
   i18n: WorkspaceUserProjectI18nRuntime;
   labels: AgentProjectDropdownLabels;
-  previewMode?: boolean;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onDismissAutoFocus?: (event: Event) => void;
   onProjectMissingChange?: (isMissing: boolean) => void;
@@ -62,66 +51,14 @@ export function AgentProjectDropdown({
 }): React.JSX.Element {
   "use memo";
   const agentHostApi = useAgentHostApi();
-  const resolvedLabels = useMemo(
-    () => resolveWorkspaceUserProjectSelectLabels(i18n, labels),
-    [i18n, labels]
-  );
   const userProjectApi = useMemo(
     () =>
-      !previewMode && agentHostApi.userProjects
-        ? {
-            ...agentHostApi.userProjects,
-            selectDirectory:
-              selectProjectDirectory ?? agentHostApi.workspace.selectDirectory
-          }
-        : null,
-    [
-      agentHostApi.userProjects,
-      agentHostApi.workspace.selectDirectory,
-      previewMode,
-      selectProjectDirectory
-    ]
+      createAgentGUIUserProjectSelectionApi({
+        selectProjectDirectory,
+        userProjects: agentHostApi.userProjects
+      }),
+    [agentHostApi.userProjects, selectProjectDirectory]
   );
-
-  if (previewMode) {
-    const selectedPath = composerSettings.selectedProjectPath?.trim() ?? "";
-    const triggerLabel = selectedPath
-      ? basenameProjectPath(selectedPath)
-      : resolvedLabels.noProject;
-    return (
-      <button
-        type="button"
-        aria-label={
-          composerSettings.projectLocked
-            ? resolvedLabels.projectLocked
-            : resolvedLabels.projectLabel
-        }
-        className={cn(
-          "w-auto max-w-full",
-          styles.composerMenuTrigger,
-          "text-[var(--agent-gui-text-tertiary)]"
-        )}
-      >
-        <span
-          className="workspace-user-project-trigger-label"
-          data-workspace-user-project-trigger-label="true"
-        >
-          {selectedPath ? (
-            <FolderIcon aria-hidden className="shrink-0" size={15} />
-          ) : (
-            <NoWorkspaceLinedIcon
-              aria-hidden
-              className="shrink-0"
-              data-agent-project-trigger-no-workspace-icon="true"
-              size={15}
-            />
-          )}
-          <span className="min-w-0 truncate">{triggerLabel}</span>
-        </span>
-        <ChevronDown aria-hidden="true" className="shrink-0" size={16} />
-      </button>
-    );
-  }
 
   return (
     <WorkspaceUserProjectSelect
@@ -151,6 +88,9 @@ export function AgentProjectDropdown({
       )}
       selectedProjectPath={composerSettings.selectedProjectPath}
       service={agentHostApi.userProjects?.service ?? null}
+      shouldApplyPreparedSelection={
+        composerSettings.shouldApplyPreparedProjectSelection === true
+      }
       onDismissAutoFocus={onDismissAutoFocus}
       onProjectMissingChange={onProjectMissingChange}
       onProjectPathChange={onProjectPathChange}

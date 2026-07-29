@@ -2,11 +2,13 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	"github.com/tutti-os/tutti/services/tuttid/apierrors"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
@@ -30,15 +32,18 @@ type AgentSessionService interface {
 	ImportExternalSessions(context.Context, string, agentservice.ExternalImportInput) (agentservice.ExternalImportResult, error)
 	ExternalImportValidProjectPaths(context.Context, agentservice.ExternalImportInput) ([]string, error)
 	Create(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
+	Fork(context.Context, string, string, agentservice.ForkSessionInput) (agentservice.SessionForkOperation, error)
+	GetSessionForkOperation(context.Context, string, string) (agentservice.SessionForkOperation, error)
+	AcknowledgeSessionForkOperation(context.Context, string, string) (agentservice.SessionForkOperation, error)
 	Get(context.Context, string, string) (agentservice.Session, error)
-	GetDetail(context.Context, string, string) (agentservice.SessionDetail, error)
+	GetDetailWithProjection(context.Context, string, string, agentservice.SessionDetailProjection) (agentservice.SessionDetail, error)
 	ReadAttachment(context.Context, string, string, string) (agentservice.PromptAttachment, error)
 	ListGitBranches(context.Context, string, string) (agentservice.GitBranches, error)
 	ListGitBranchesForPath(context.Context, string, string) (agentservice.GitBranches, error)
 	ResolveGitPatchSupportForPath(context.Context, string, string) (agentservice.GitPatchSupport, error)
 	ApplyGitPatchForPath(context.Context, string, agentservice.ApplyGitPatchInput) (agentservice.ApplyGitPatchResult, error)
 	Clear(context.Context, string) (agentservice.ClearSessionsResult, error)
-	Delete(context.Context, string, string) (bool, error)
+	Delete(context.Context, string, string) (agentservice.DeleteSessionResult, error)
 	CancelTurn(context.Context, string, string, string) (agentservice.CancelTurnResult, error)
 	GoalControl(ctx context.Context, workspaceID string, agentSessionID string, action string, objective string) (agentservice.GoalControlSessionResult, error)
 	GetGoalState(context.Context, string, string) (agentservice.GoalStateSessionResult, error)
@@ -48,7 +53,7 @@ type AgentSessionService interface {
 	UpdateTitle(context.Context, string, string, string) (agentservice.Session, error)
 	UpdateVisible(context.Context, string, string, bool) (agentservice.Session, error)
 	UpdateSettings(context.Context, string, string, agentservice.ComposerSettingsPatch) (agentservice.Session, error)
-	SubmitInteractive(context.Context, string, string, string, agentservice.SubmitInteractiveInput) (agentservice.Session, error)
+	SubmitInteractive(context.Context, agenthost.InteractionRef, agenthost.SubmitInteractiveInput) (agentservice.Session, error)
 }
 
 func (api DaemonAPI) ClearWorkspaceAgentSessions(ctx context.Context, request tuttigenerated.ClearWorkspaceAgentSessionsRequestObject) (tuttigenerated.ClearWorkspaceAgentSessionsResponseObject, error) {
@@ -62,8 +67,9 @@ func (api DaemonAPI) ClearWorkspaceAgentSessions(ctx context.Context, request tu
 		return writeClearWorkspaceAgentSessionsError(err), nil
 	}
 	return tuttigenerated.ClearWorkspaceAgentSessions200JSONResponse{
-		RemovedMessages: result.RemovedMessages,
-		RemovedSessions: result.RemovedSessions,
+		RemovedMessages:         result.RemovedMessages,
+		RemovedSessions:         result.RemovedSessions,
+		CleanupFailedSessionIds: append([]string{}, result.CleanupFailedSessionIDs...),
 	}, nil
 }
 
@@ -81,9 +87,8 @@ func (api DaemonAPI) GetAgentProviderComposerOptions(ctx context.Context, reques
 		input.Cwd = optionalStringValue(request.Body.Cwd)
 		input.WorkspaceID = optionalStringValue(request.Body.WorkspaceId)
 	}
-	input.Settings = api.composerDefaultsForProvider(ctx, input.Provider)
 	if request.Body != nil && request.Body.Settings != nil {
-		input.Settings = mergeComposerSettings(input.Settings, composerSettingsFromGenerated(*request.Body.Settings))
+		input.Settings = composerSettingsFromGenerated(*request.Body.Settings)
 	}
 	if request.Body != nil && request.Body.Locale != nil {
 		input.Locale = string(*request.Body.Locale)
@@ -100,19 +105,49 @@ func (api DaemonAPI) GetAgentProviderComposerOptions(ctx context.Context, reques
 }
 
 func (api DaemonAPI) GetWorkspaceAgentSession(ctx context.Context, request tuttigenerated.GetWorkspaceAgentSessionRequestObject) (tuttigenerated.GetWorkspaceAgentSessionResponseObject, error) {
+	if request.Params.Projection != nil && !request.Params.Projection.Valid() {
+		return tuttigenerated.GetWorkspaceAgentSession400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(
+				apierrors.InvalidRequest(
+					apierrors.ReasonMalformedRequest,
+					apierrors.WithDeveloperMessage("unsupported agent session detail projection"),
+				),
+			),
+		}, nil
+	}
 	if api.AgentSessionService == nil {
 		return tuttigenerated.GetWorkspaceAgentSession503JSONResponse{
 			ServiceUnavailableErrorJSONResponse: agentSessionServiceUnavailableError(),
 		}, nil
 	}
-	detail, err := api.AgentSessionService.GetDetail(ctx, string(request.WorkspaceID), string(request.AgentSessionID))
+	projection := agentservice.SessionDetailProjectionFull
+	if request.Params.Projection != nil &&
+		*request.Params.Projection == tuttigenerated.MessageHydration {
+		projection = agentservice.SessionDetailProjectionMessageHydration
+	}
+	detail, err := api.AgentSessionService.GetDetailWithProjection(
+		ctx,
+		string(request.WorkspaceID),
+		string(request.AgentSessionID),
+		projection,
+	)
+	if err != nil {
+		return writeGetWorkspaceAgentSessionError(err), nil
+	}
+	generatedSession, err := generatedAgentSession(detail.Session)
+	if err != nil {
+		return writeGetWorkspaceAgentSessionError(err), nil
+	}
+	generatedChildren, err := generatedAgentSessions(detail.ChildSessions)
 	if err != nil {
 		return writeGetWorkspaceAgentSessionError(err), nil
 	}
 	return tuttigenerated.GetWorkspaceAgentSession200JSONResponse{
-		Session:       generatedAgentSession(detail.Session),
-		ChildSessions: generatedAgentSessions(detail.ChildSessions),
-		Turns:         generatedAgentTurns(detail.Turns),
+		Session:                        generatedSession,
+		ChildSessions:                  generatedChildren,
+		Turns:                          generatedAgentTurns(detail.Turns),
+		Projection:                     tuttigenerated.WorkspaceAgentSessionDetailProjection(projection),
+		LifecycleCapabilitiesProjected: projection == agentservice.SessionDetailProjectionFull,
 	}, nil
 }
 
@@ -130,12 +165,12 @@ func (api DaemonAPI) DeleteWorkspaceAgentSession(ctx context.Context, request tu
 			ServiceUnavailableErrorJSONResponse: agentSessionServiceUnavailableError(),
 		}, nil
 	}
-	removed, err := api.AgentSessionService.Delete(ctx, string(request.WorkspaceID), string(request.AgentSessionID))
+	result, err := api.AgentSessionService.Delete(ctx, string(request.WorkspaceID), string(request.AgentSessionID))
 	if err != nil {
 		return writeDeleteWorkspaceAgentSessionError(err), nil
 	}
 	return tuttigenerated.DeleteWorkspaceAgentSession200JSONResponse{
-		Removed: removed,
+		Removed: result.Removed, CleanupFailed: result.CleanupFailed,
 	}, nil
 }
 
@@ -150,16 +185,18 @@ func (api DaemonAPI) ListWorkspaceAgentSessionMessages(ctx context.Context, requ
 	agentSessionID := string(request.AgentSessionID)
 	input := agentservice.ListMessagesInput{}
 	if request.Params.AfterVersion != nil {
-		if *request.Params.AfterVersion < 0 {
+		afterVersion, err := workspaceAgentMessageCursorFromRequest(*request.Params.AfterVersion)
+		if err != nil {
 			return writeListWorkspaceAgentSessionMessagesError(agentservice.ErrInvalidArgument), nil
 		}
-		input.AfterVersion = uint64(*request.Params.AfterVersion)
+		input.AfterVersion = afterVersion
 	}
 	if request.Params.BeforeVersion != nil {
-		if *request.Params.BeforeVersion < 0 {
+		beforeVersion, err := workspaceAgentMessageCursorFromRequest(*request.Params.BeforeVersion)
+		if err != nil {
 			return writeListWorkspaceAgentSessionMessagesError(agentservice.ErrInvalidArgument), nil
 		}
-		input.BeforeVersion = uint64(*request.Params.BeforeVersion)
+		input.BeforeVersion = beforeVersion
 	}
 	if request.Params.Order != nil {
 		switch *request.Params.Order {
@@ -207,6 +244,10 @@ func (api DaemonAPI) ListWorkspaceAgentSessionMessages(ctx context.Context, requ
 		return writeListWorkspaceAgentSessionMessagesError(err), nil
 	}
 	messages, err := generatedAgentSessionMessages(page.Messages)
+	var latestVersion int64
+	if err == nil {
+		latestVersion, err = generatedWorkspaceAgentSafeInteger("latest message version", page.LatestVersion)
+	}
 	if err != nil {
 		firstVersion, lastVersion := agentSessionMessageVersionRange(page.Messages)
 		slog.Warn("workspace agent session messages response transform failed",
@@ -246,7 +287,7 @@ func (api DaemonAPI) ListWorkspaceAgentSessionMessages(ctx context.Context, requ
 	return tuttigenerated.ListWorkspaceAgentSessionMessages200JSONResponse{
 		AgentSessionId: page.AgentSessionID,
 		HasMore:        page.HasMore,
-		LatestVersion:  int64(page.LatestVersion),
+		LatestVersion:  latestVersion,
 		Messages:       messages,
 	}, nil
 }
@@ -371,8 +412,10 @@ func (api DaemonAPI) SubmitWorkspaceAgentInteractive(ctx context.Context, reques
 			InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.EmptyBody(apierrors.WithDeveloperMessage("empty body"))),
 		}, nil
 	}
-	session, err := api.AgentSessionService.SubmitInteractive(ctx, string(request.WorkspaceID), string(request.AgentSessionID), string(request.RequestID), agentservice.SubmitInteractiveInput{
-		TurnID:   request.Body.TurnId,
+	session, err := api.AgentSessionService.SubmitInteractive(ctx, agenthost.InteractionRef{
+		WorkspaceID: string(request.WorkspaceID), AgentSessionID: string(request.AgentSessionID),
+		TurnID: request.Body.TurnId, RequestID: string(request.RequestID),
+	}, agenthost.SubmitInteractiveInput{
 		Action:   request.Body.Action,
 		OptionID: request.Body.OptionId,
 		Payload:  optionalPayloadMap(request.Body.Payload),
@@ -380,57 +423,84 @@ func (api DaemonAPI) SubmitWorkspaceAgentInteractive(ctx context.Context, reques
 	if err != nil {
 		return writeSubmitWorkspaceAgentInteractiveError(err), nil
 	}
+	generatedSession, err := generatedAgentSession(session)
+	if err != nil {
+		return writeSubmitWorkspaceAgentInteractiveError(err), nil
+	}
+	api.recordAgentStimulus(ctx, "interactive.response", string(request.WorkspaceID), string(request.AgentSessionID), map[string]any{
+		"turnId":    request.Body.TurnId,
+		"requestId": string(request.RequestID),
+		"action":    request.Body.Action,
+		"optionId":  request.Body.OptionId,
+		"payload":   request.Body.Payload,
+	})
 	return tuttigenerated.SubmitWorkspaceAgentInteractive200JSONResponse{
-		Session: generatedAgentSession(session),
+		Session: generatedSession,
 	}, nil
 }
 
-func generatedAgentSessions(sessions []agentservice.Session) []tuttigenerated.WorkspaceAgentSession {
+func generatedAgentSessions(sessions []agentservice.Session) ([]tuttigenerated.WorkspaceAgentSession, error) {
 	result := make([]tuttigenerated.WorkspaceAgentSession, 0, len(sessions))
 	for _, session := range sessions {
-		result = append(result, generatedAgentSession(session))
+		generated, err := generatedAgentSession(session)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, generated)
 	}
-	return result
+	return result, nil
 }
 
-func generatedAgentSessionPage(page agentservice.SessionPage) tuttigenerated.WorkspaceAgentSessionPage {
+func generatedAgentSessionPage(page agentservice.SessionPage) (tuttigenerated.WorkspaceAgentSessionPage, error) {
+	sessions, err := generatedAgentSessions(page.Sessions)
+	if err != nil {
+		return tuttigenerated.WorkspaceAgentSessionPage{}, err
+	}
 	response := tuttigenerated.WorkspaceAgentSessionPage{
 		HasMore:    page.HasMore,
-		Sessions:   generatedAgentSessions(page.Sessions),
+		Sessions:   sessions,
 		TotalCount: page.TotalCount,
 	}
 	if strings.TrimSpace(page.NextCursor) != "" {
 		response.NextCursor = &page.NextCursor
 	}
-	return response
+	return response, nil
 }
 
-func generatedAgentSessionSections(sections []agentservice.SessionSection) []tuttigenerated.WorkspaceAgentSessionSection {
+func generatedAgentSessionSections(sections []agentservice.SessionSection) ([]tuttigenerated.WorkspaceAgentSessionSection, error) {
 	result := make([]tuttigenerated.WorkspaceAgentSessionSection, 0, len(sections))
 	for _, section := range sections {
-		result = append(result, generatedAgentSessionSection(section))
+		generated, err := generatedAgentSessionSection(section)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, generated)
 	}
-	return result
+	return result, nil
 }
 
-func generatedAgentSessionSection(section agentservice.SessionSection) tuttigenerated.WorkspaceAgentSessionSection {
+func generatedAgentSessionSection(section agentservice.SessionSection) (tuttigenerated.WorkspaceAgentSessionSection, error) {
 	var userProject *tuttigenerated.UserProject
 	if section.UserProject != nil {
 		value := generatedUserProject(*section.UserProject)
 		userProject = &value
 	}
+	sessions, err := generatedAgentSessions(section.Sessions)
+	if err != nil {
+		return tuttigenerated.WorkspaceAgentSessionSection{}, err
+	}
 	response := tuttigenerated.WorkspaceAgentSessionSection{
 		HasMore:     section.HasMore,
 		Kind:        tuttigenerated.WorkspaceAgentSessionSectionKind(section.Kind),
 		SectionKey:  section.SectionKey,
-		Sessions:    generatedAgentSessions(section.Sessions),
+		Sessions:    sessions,
 		TotalCount:  section.TotalCount,
 		UserProject: userProject,
 	}
 	if strings.TrimSpace(section.NextCursor) != "" {
 		response.NextCursor = &section.NextCursor
 	}
-	return response
+	return response, nil
 }
 
 func composerSettingsFromGenerated(settings tuttigenerated.AgentSessionComposerSettings) agentservice.ComposerSettings {
@@ -441,25 +511,6 @@ func composerSettingsFromGenerated(settings tuttigenerated.AgentSessionComposerS
 		BrowserUse:       settings.BrowserUse,
 		ReasoningEffort:  optionalStringValue(settings.ReasoningEffort),
 		Speed:            optionalStringValue(settings.Speed),
-	}
-}
-
-func (api DaemonAPI) composerDefaultsForProvider(ctx context.Context, provider string) agentservice.ComposerSettings {
-	if api.PreferencesService == nil {
-		return agentservice.ComposerSettings{}
-	}
-	preferences, err := api.PreferencesService.Get(ctx)
-	if err != nil {
-		return agentservice.ComposerSettings{}
-	}
-	// Legacy provider-keyed defaults were copied onto local agent target ids
-	// by a one-time sqlite data migration, so this lookup covers old data too.
-	defaults := preferences.AgentComposerDefaultsByAgentTarget[preferencesbiz.LocalAgentTargetIDForProvider(provider)]
-	return agentservice.ComposerSettings{
-		Model:            defaults.Model,
-		PermissionModeID: defaults.PermissionModeID,
-		ReasoningEffort:  defaults.ReasoningEffort,
-		Speed:            defaults.Speed,
 	}
 }
 
@@ -485,25 +536,6 @@ func (api DaemonAPI) agentConversationDetailMode(ctx context.Context) string {
 	return preferencesbiz.NormalizeDesktopAgentConversationDetailMode(preferences.AgentConversationDetailMode)
 }
 
-func mergeComposerSettings(base agentservice.ComposerSettings, override agentservice.ComposerSettings) agentservice.ComposerSettings {
-	if strings.TrimSpace(override.Model) != "" {
-		base.Model = override.Model
-	}
-	if strings.TrimSpace(override.PermissionModeID) != "" {
-		base.PermissionModeID = override.PermissionModeID
-	}
-	if override.PlanMode {
-		base.PlanMode = override.PlanMode
-	}
-	if strings.TrimSpace(override.ReasoningEffort) != "" {
-		base.ReasoningEffort = override.ReasoningEffort
-	}
-	if strings.TrimSpace(override.Speed) != "" {
-		base.Speed = override.Speed
-	}
-	return base
-}
-
 func composerSettingsPatchFromGenerated(settings tuttigenerated.AgentSessionComposerSettings) agentservice.ComposerSettingsPatch {
 	return agentservice.ComposerSettingsPatch{
 		Model:            settings.Model,
@@ -525,13 +557,17 @@ func generatedAgentProviderComposerOptions(options agentservice.ComposerOptions)
 			PrewarmDraftSession:                 options.Behavior.PrewarmDraftSession,
 			PlanModeExclusiveWithPermissionMode: options.Behavior.PlanModeExclusiveWithPermissionMode,
 		},
-		Capabilities:       generatedAgentSessionCapabilities(options.Capabilities),
-		CapabilityCatalog:  generatedAgentProviderCapabilityOptions(options.CapabilityCatalog),
-		EffectiveSettings:  effectiveSettings,
-		ModelConfig:        generatedComposerConfigOption(options.ModelConfig),
-		PermissionConfig:   generatedPermissionConfig(options.PermissionConfig),
-		Provider:           tuttigenerated.WorkspaceAgentProvider(options.Provider),
-		ReasoningConfig:    generatedComposerConfigOption(options.ReasoningConfig),
+		Capabilities:      generatedAgentSessionCapabilities(options.Capabilities),
+		CapabilityCatalog: generatedAgentProviderCapabilityOptions(options.CapabilityCatalog),
+		Commands:          generatedAgentProviderComposerCommands(options.Commands),
+		EffectiveSettings: effectiveSettings,
+		ModelConfig:       generatedComposerConfigOption(options.ModelConfig),
+		PermissionConfig:  generatedPermissionConfig(options.PermissionConfig),
+		Provider:          tuttigenerated.WorkspaceAgentProvider(options.Provider),
+		ReasoningConfig:   generatedComposerConfigOption(options.ReasoningConfig),
+		ReasoningOptionsByModel: generatedAgentProviderComposerReasoningOptionsByModel(
+			options.ReasoningOptionsByModel,
+		),
 		SpeedConfig:        generatedComposerConfigOptionPointer(options.SpeedConfig),
 		RuntimeContext:     options.RuntimeContext,
 		Skills:             generatedAgentProviderSkillOptions(options.Skills),
@@ -677,7 +713,7 @@ func agentPromptContentFromGenerated(content []tuttigenerated.AgentPromptContent
 	return result
 }
 
-func generatedAgentSession(session agentservice.Session) tuttigenerated.WorkspaceAgentSession {
+func generatedAgentSession(session agentservice.Session) (tuttigenerated.WorkspaceAgentSession, error) {
 	var settings *tuttigenerated.AgentSessionComposerSettings
 	if session.Settings != nil {
 		value := generatedAgentSessionComposerSettings(*session.Settings)
@@ -687,21 +723,21 @@ func generatedAgentSession(session agentservice.Session) tuttigenerated.Workspac
 	// plus the embedded active turn and pending interactions.
 	var activeTurn *tuttigenerated.WorkspaceAgentTurn
 	if session.ActiveTurn != nil {
-		turn := agentservice.GeneratedWorkspaceAgentTurn(*session.ActiveTurn)
+		turn := generatedWorkspaceAgentTurn(*session.ActiveTurn)
 		activeTurn = &turn
 	}
 	var latestTurn *tuttigenerated.WorkspaceAgentTurn
 	if session.LatestTurn != nil {
-		turn := agentservice.GeneratedWorkspaceAgentTurn(*session.LatestTurn)
+		turn := generatedWorkspaceAgentTurn(*session.LatestTurn)
 		latestTurn = &turn
 	}
 	pendingInteractions := make([]tuttigenerated.WorkspaceAgentInteraction, 0, len(session.PendingInteractions))
 	for _, interaction := range session.PendingInteractions {
-		pendingInteractions = append(pendingInteractions, agentservice.GeneratedWorkspaceAgentInteraction(interaction))
+		pendingInteractions = append(pendingInteractions, generatedWorkspaceAgentInteraction(interaction))
 	}
 	latestTurnInteractions := make([]tuttigenerated.WorkspaceAgentInteraction, 0, len(session.LatestTurnInteractions))
 	for _, interaction := range session.LatestTurnInteractions {
-		latestTurnInteractions = append(latestTurnInteractions, agentservice.GeneratedWorkspaceAgentInteraction(interaction))
+		latestTurnInteractions = append(latestTurnInteractions, generatedWorkspaceAgentInteraction(interaction))
 	}
 	updatedAtUnixMS := session.CreatedAt.UnixMilli()
 	if session.UpdatedAt != nil {
@@ -716,6 +752,30 @@ func generatedAgentSession(session agentservice.Session) tuttigenerated.Workspac
 	if settings != nil {
 		generatedSettings = *settings
 	}
+	tuttiModeActivation, err := generatedTuttiModeActivation(session.TuttiModeActivation)
+	if err != nil {
+		return tuttigenerated.WorkspaceAgentSession{}, err
+	}
+	messageVersion, err := generatedWorkspaceAgentSafeInteger("session message version", session.MessageVersion)
+	if err != nil {
+		return tuttigenerated.WorkspaceAgentSession{}, fmt.Errorf("project workspace agent session %q: %w", session.ID, err)
+	}
+	var forkedFrom *tuttigenerated.WorkspaceAgentSessionForkLineage
+	if session.ForkedFrom != nil {
+		forkedFrom = &tuttigenerated.WorkspaceAgentSessionForkLineage{
+			ForkedAtUnixMs:       session.ForkedFrom.ForkedAtUnixMS,
+			OperationId:          strings.TrimSpace(session.ForkedFrom.OperationID),
+			SourceAgentSessionId: strings.TrimSpace(session.ForkedFrom.SourceAgentSessionID),
+			SourceTurnId:         strings.TrimSpace(session.ForkedFrom.SourceTurnID),
+			TargetTurnId:         strings.TrimSpace(session.ForkedFrom.TargetTurnID),
+		}
+	}
+	forkThroughTurnIDs := append(
+		[]string(nil),
+		session.LifecycleCapabilities.ForkThroughTurnIDs...,
+	)
+	forkThroughTurnIDsKnown :=
+		session.LifecycleCapabilities.ForkThroughTurnIDsKnown
 	return tuttigenerated.WorkspaceAgentSession{
 		ActiveTurn:             activeTurn,
 		ActiveTurnId:           optionalStringPointer(strings.TrimSpace(session.ActiveTurnID)),
@@ -724,30 +784,39 @@ func generatedAgentSession(session agentservice.Session) tuttigenerated.Workspac
 		CreatedAtUnixMs:        session.CreatedAt.UnixMilli(),
 		Cwd:                    stringPointer(strings.TrimSpace(session.Cwd)),
 		EndedAtUnixMs:          endedAtUnixMS,
+		ForkedFrom:             forkedFrom,
 		Goal:                   generatedAgentSessionGoal(session.Metadata.Goal),
 		Id:                     session.ID,
 		Imported:               session.Metadata.Imported,
 		Kind:                   tuttigenerated.WorkspaceAgentSessionKind(session.Kind),
 		LatestTurn:             latestTurn,
 		LatestTurnInteractions: latestTurnInteractions,
-		ParentAgentSessionId:   optionalStringPointer(strings.TrimSpace(session.ParentAgentSessionID)),
-		ParentToolCallId:       optionalStringPointer(strings.TrimSpace(session.ParentToolCallID)),
-		ParentTurnId:           optionalStringPointer(strings.TrimSpace(session.ParentTurnID)),
-		PendingInteractions:    pendingInteractions,
-		PermissionConfig:       generatedPermissionConfig(session.PermissionConfig),
-		Provider:               tuttigenerated.WorkspaceAgentProvider(session.Provider),
-		ProviderSessionId:      stringPointer(strings.TrimSpace(session.ProviderSessionID)),
-		PinnedAtUnixMs:         int64Pointer(session.PinnedAtUnixMS),
-		RailSectionKey:         strings.TrimSpace(session.RailSectionKey),
-		Resumable:              session.Resumable,
-		RootAgentSessionId:     optionalStringPointer(strings.TrimSpace(session.RootAgentSessionID)),
-		RootTurnId:             optionalStringPointer(strings.TrimSpace(session.RootTurnID)),
-		Settings:               generatedSettings,
-		Title:                  session.Title,
-		UpdatedAtUnixMs:        updatedAtUnixMS,
-		Usage:                  generatedAgentSessionUsage(session.Metadata.Usage),
-		Visible:                session.Visible,
-	}
+		MessageVersion:         messageVersion,
+		LifecycleCapabilities: tuttigenerated.WorkspaceAgentSessionLifecycleCapabilities{
+			Fork:                    session.LifecycleCapabilities.Fork,
+			ForkThroughTurn:         session.LifecycleCapabilities.ForkThroughTurn,
+			ForkThroughTurnIds:      &forkThroughTurnIDs,
+			ForkThroughTurnIdsKnown: &forkThroughTurnIDsKnown,
+		},
+		ParentAgentSessionId: optionalStringPointer(strings.TrimSpace(session.ParentAgentSessionID)),
+		ParentToolCallId:     optionalStringPointer(strings.TrimSpace(session.ParentToolCallID)),
+		ParentTurnId:         optionalStringPointer(strings.TrimSpace(session.ParentTurnID)),
+		PendingInteractions:  pendingInteractions,
+		PermissionConfig:     generatedPermissionConfig(session.PermissionConfig),
+		Provider:             tuttigenerated.WorkspaceAgentProvider(session.Provider),
+		ProviderSessionId:    stringPointer(strings.TrimSpace(session.ProviderSessionID)),
+		PinnedAtUnixMs:       int64Pointer(session.PinnedAtUnixMS),
+		RailSectionKey:       strings.TrimSpace(session.RailSectionKey),
+		Resumable:            session.Resumable,
+		RootAgentSessionId:   optionalStringPointer(strings.TrimSpace(session.RootAgentSessionID)),
+		RootTurnId:           optionalStringPointer(strings.TrimSpace(session.RootTurnID)),
+		Settings:             generatedSettings,
+		Title:                session.Title,
+		TuttiModeActivation:  tuttiModeActivation,
+		UpdatedAtUnixMs:      updatedAtUnixMS,
+		Usage:                generatedAgentSessionUsage(session.Metadata.Usage),
+		Visible:              session.Visible,
+	}, nil
 }
 
 func int64Pointer(value int64) *int64 {

@@ -44,6 +44,8 @@ import {
   issueManagerEditorRiseInDelay1ClassName,
   issueManagerEditorRiseInDelay2ClassName
 } from "./IssueManagerEditorMotion.ts";
+import { IssueManagerTaskAssignmentFields } from "../orchestration/IssueManagerOrchestrationFields.tsx";
+import { ManagedTuttiIssueActions } from "../orchestration/ManagedTuttiIssueActions.tsx";
 
 export function IssueManagerTaskDrawerHeader({
   controller,
@@ -91,6 +93,9 @@ export function IssueManagerTaskDrawerHeader({
             )}
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            {controller.isTuttiModePlanIssue && view.showTaskMetadata ? (
+              <ManagedTuttiIssueActions controller={controller} />
+            ) : null}
             {view.showTaskActions && selectedTask ? (
               <>
                 <Button
@@ -118,7 +123,8 @@ export function IssueManagerTaskDrawerHeader({
               copy={copy}
               selectedTask={selectedTask}
             />
-            {selectedTask.status === "pending_acceptance" ? (
+            {selectedTask.status === "pending_acceptance" &&
+            !controller.isTuttiModePlanIssue ? (
               <IssueManagerTaskAcceptanceCard controller={controller} />
             ) : null}
           </div>
@@ -267,6 +273,7 @@ export function IssueManagerTaskDrawerEditBody({
             onChange={controller.setTaskContent}
           />
         </div>
+        <IssueManagerTaskAssignmentFields controller={controller} />
       </div>
     </div>
   );

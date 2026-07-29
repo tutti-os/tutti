@@ -1,5 +1,6 @@
 import type {
   BrowserGuestCookieDetails,
+  BrowserGuestCookieStore,
   BrowserGuestWebContents,
   BrowserNodeCookieImportSource
 } from "./types.ts";
@@ -15,26 +16,68 @@ export async function importBrowserGuestCookies(
   source: BrowserNodeCookieImportSource | null
 ): Promise<BrowserNodeCookieImportResult> {
   if (source === null) {
-    return { canceled: true, imported: 0, skipped: 0 };
+    return canceledCookieImportResult();
   }
   const store = contents?.session?.cookies;
   if (!contents || contents.isDestroyed() || !store) {
-    return { canceled: false, imported: 0, skipped: 0 };
+    return completedCookieImportResult({ imported: 0, skipped: 0, failed: 0 });
   }
 
   const parsed = parseBrowserCookieImport(source.contents);
+  return importPreparedBrowserGuestCookies(store, parsed);
+}
+
+export async function importPreparedBrowserGuestCookies(
+  store: BrowserGuestCookieStore,
+  prepared: {
+    cookies: readonly BrowserGuestCookieDetails[];
+    skipped: number;
+  }
+): Promise<BrowserNodeCookieImportResult> {
   let imported = 0;
-  let skipped = parsed.skipped;
-  for (const cookie of parsed.cookies) {
+  let failed = 0;
+  for (const cookie of prepared.cookies) {
     try {
       await store.set(cookie);
       imported += 1;
     } catch {
-      skipped += 1;
+      failed += 1;
     }
   }
-  await store.flushStore?.();
-  return { canceled: false, imported, skipped };
+  try {
+    await store.flushStore?.();
+  } catch {
+    failed += 1;
+  }
+  return completedCookieImportResult({
+    failed,
+    imported,
+    skipped: prepared.skipped
+  });
+}
+
+export function canceledCookieImportResult(): BrowserNodeCookieImportResult {
+  return {
+    canceled: true,
+    failed: 0,
+    imported: 0,
+    partial: false,
+    skipped: 0,
+    status: "canceled"
+  };
+}
+
+export function completedCookieImportResult(input: {
+  failed: number;
+  imported: number;
+  skipped: number;
+}): BrowserNodeCookieImportResult {
+  return {
+    canceled: false,
+    ...input,
+    partial: input.imported > 0 && input.failed + input.skipped > 0,
+    status: "completed"
+  };
 }
 
 export function parseBrowserCookieImport(contents: string): ParsedCookieImport {
@@ -84,7 +127,7 @@ function normalizeJsonCookie(value: unknown): BrowserGuestCookieDetails | null {
   }
   const entry = value as Record<string, unknown>;
   const name = readString(entry.name);
-  const cookieValue = readString(entry.value, true);
+  const cookieValue = readCookieValue(entry.value);
   const explicitUrl = readString(entry.url);
   const domain = readString(entry.domain);
   const secure = entry.secure === true;
@@ -105,8 +148,15 @@ function normalizeJsonCookie(value: unknown): BrowserGuestCookieDetails | null {
   const expirationDate = readFiniteNumber(
     entry.expirationDate ?? entry.expiration ?? entry.expires
   );
+  if (
+    expirationDate !== null &&
+    expirationDate > 0 &&
+    expirationDate <= nowSeconds()
+  ) {
+    return null;
+  }
   return {
-    ...(domain ? { domain } : {}),
+    ...(domain && entry.hostOnly !== true ? { domain } : {}),
     ...(expirationDate && expirationDate > 0 ? { expirationDate } : {}),
     ...(entry.httpOnly === true ? { httpOnly: true } : {}),
     name,
@@ -138,6 +188,7 @@ function parseNetscapeCookies(contents: string): ParsedCookieImport {
     }
     const httpOnly = fields[0]!.startsWith("#HttpOnly_");
     const domain = fields[0]!.replace(/^#HttpOnly_/, "");
+    const includeSubdomains = fields[1]?.toUpperCase() === "TRUE";
     const path = normalizeCookiePath(fields[2]);
     const secure = fields[3]?.toUpperCase() === "TRUE";
     const name = fields[5]?.trim() ?? "";
@@ -148,8 +199,16 @@ function parseNetscapeCookies(contents: string): ParsedCookieImport {
       continue;
     }
     const expirationDate = readFiniteNumber(fields[4]);
+    if (
+      expirationDate !== null &&
+      expirationDate > 0 &&
+      expirationDate <= nowSeconds()
+    ) {
+      skipped += 1;
+      continue;
+    }
     cookies.push({
-      domain,
+      ...(includeSubdomains ? { domain } : {}),
       ...(expirationDate && expirationDate > 0 ? { expirationDate } : {}),
       ...(httpOnly ? { httpOnly: true } : {}),
       name,
@@ -205,6 +264,14 @@ function readString(value: unknown, allowEmpty = false): string | null {
   }
   const normalized = value.trim();
   return normalized.length > 0 || allowEmpty ? normalized : null;
+}
+
+function readCookieValue(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function nowSeconds(): number {
+  return Date.now() / 1000;
 }
 
 function readFiniteNumber(value: unknown): number | null {

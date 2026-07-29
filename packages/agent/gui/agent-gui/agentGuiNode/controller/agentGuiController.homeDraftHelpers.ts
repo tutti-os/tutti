@@ -1,8 +1,7 @@
-import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
 import {
   agentComposerDraftHasContent,
-  agentPromptContentToComposerDraft,
-  emptyAgentComposerDraft
+  emptyAgentComposerDraft,
+  snapshotAgentComposerDraft
 } from "../model/agentComposerDraft";
 import type { AgentComposerDraft } from "../model/agentGuiNodeTypes";
 import { shouldClearSubmittedDraft } from "./agentGuiController.draftMessageHelpers";
@@ -27,10 +26,9 @@ export function clearSubmittedAgentGUIHomeDraft(input: {
 }
 
 export function restoreFailedAgentGUIHomeDraft(input: {
-  agentSessionId: string;
-  content: readonly AgentPromptContentBlock[];
   draftKey: string;
   drafts: Record<string, AgentComposerDraft>;
+  submittedDraft: AgentComposerDraft;
 }): Record<string, AgentComposerDraft> {
   const currentDraft = input.drafts[input.draftKey];
   if (currentDraft && agentComposerDraftHasContent(currentDraft)) {
@@ -38,9 +36,6 @@ export function restoreFailedAgentGUIHomeDraft(input: {
   }
   return {
     ...input.drafts,
-    [input.draftKey]: agentPromptContentToComposerDraft(
-      input.content,
-      `activation-failure:${input.agentSessionId}`
-    )
+    [input.draftKey]: snapshotAgentComposerDraft(input.submittedDraft)
   };
 }

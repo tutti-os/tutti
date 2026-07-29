@@ -52,6 +52,11 @@ type Options struct {
 	// TargetIDBackfillByProvider maps a provider to the agent target ID
 	// assigned to its sessions that predate target tracking.
 	TargetIDBackfillByProvider map[string]string
+	// TransactionParticipant joins host-owned durable markers to canonical
+	// writes. The participant runs before commit through a restricted writer;
+	// returning an error rolls back both the canonical facts and participant
+	// writes. It must not perform network IO or other non-transactional work.
+	TransactionParticipant TransactionParticipant
 }
 
 // Store is the SQLite implementation of Repository plus agent target
@@ -123,6 +128,19 @@ func unmarshalJSONMap(input string) (map[string]any, error) {
 		return nil, nil
 	}
 	return payload, nil
+}
+
+func normalizeJSONMap(payload map[string]any) (map[string]any, error) {
+	if len(payload) == 0 {
+		return nil, nil
+	}
+	// Round-trip through the durable JSON representation so fresh reports and
+	// rows decoded from SQLite use the same map, slice, and number types.
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	return unmarshalJSONMap(string(data))
 }
 
 func cloneJSONMap(payload map[string]any) map[string]any {

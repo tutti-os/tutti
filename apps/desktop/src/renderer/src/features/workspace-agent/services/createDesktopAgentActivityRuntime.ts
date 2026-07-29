@@ -1,8 +1,5 @@
 import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
-import {
-  createWorkspaceQueryCache,
-  type WorkspaceQueryCache
-} from "@tutti-os/agent-gui/workspace-query-cache";
+import { createAgentConversationRailRuntime } from "@tutti-os/agent-gui/conversation-rail-runtime";
 import { AGENT_SESSION_ENGINE_LOCAL_ORIGIN } from "@tutti-os/agent-activity-core";
 import type {
   AgentActivityMessagePage,
@@ -44,9 +41,9 @@ import {
 import {
   logAgentComposerSettingsDiagnostic,
   promptContentDisplayText,
-  reportAgentSubmitTraceDiagnostic,
-  uint8ArrayToBase64
+  reportAgentSubmitTraceDiagnostic
 } from "./desktopAgentRuntimeSubmitDiagnostics.ts";
+import { uint8ArrayToBase64 } from "./internal/desktopAgentPromptAssetEncoding.ts";
 
 interface CreateDesktopAgentActivityRuntimeOptions {
   reporterNow?: () => number;
@@ -70,10 +67,6 @@ export function createDesktopAgentActivityRuntime(
 ): AgentActivityRuntime {
   const runtimeSnapshotDiagnosticSignatures = new Map<string, string>();
   const runtimeMessagePageDiagnosticSignatures = new Map<string, string>();
-  const sessionSectionsQueryCaches = new Map<
-    string,
-    WorkspaceQueryCache<unknown>
-  >();
   const reportRuntimeDiagnostic = (input: {
     details?: Record<string, unknown>;
     event: string;
@@ -140,7 +133,7 @@ export function createDesktopAgentActivityRuntime(
         order: input.order ?? null
       },
       event: "agent.gui.runtime.messages.resolved",
-      level: "info",
+      level: "debug",
       workspaceId: input.workspaceId
     });
   };
@@ -158,7 +151,11 @@ export function createDesktopAgentActivityRuntime(
   });
   const archiveAgentPromptFile = options.hostFilesApi?.archiveAgentPromptFile;
   const readLocalPreviewFile = options.hostFilesApi?.readLocalPreviewFile;
+  const conversationRailRuntime = createAgentConversationRailRuntime(
+    workspaceAgentActivityService
+  );
   return {
+    ...conversationRailRuntime,
     origin: AGENT_SESSION_ENGINE_LOCAL_ORIGIN,
     promptContentUploadSupport: {
       file: Boolean(archiveAgentPromptFile),
@@ -166,14 +163,6 @@ export function createDesktopAgentActivityRuntime(
     },
     getSessionEngine(workspaceId) {
       return workspaceAgentActivityService.getSessionEngine(workspaceId);
-    },
-    getSessionSectionsQueryCache(workspaceId) {
-      const key = workspaceId.trim();
-      const current = sessionSectionsQueryCaches.get(key);
-      if (current) return current;
-      const created = createWorkspaceQueryCache<unknown>();
-      sessionSectionsQueryCaches.set(key, created);
-      return created;
     },
     async activateSession(input) {
       reportAgentSubmitTraceDiagnostic(options.runtimeApi, {
@@ -239,6 +228,7 @@ export function createDesktopAgentActivityRuntime(
       if (input.mode === "new" && !activationFailed) {
         await sessionStartedTracker.track({
           agentSessionId: activation.session.agentSessionId,
+          clientSubmitId: input.clientSubmitId,
           hasProject:
             Boolean(activation.session.cwd?.trim()) &&
             !(
@@ -259,12 +249,13 @@ export function createDesktopAgentActivityRuntime(
           provider: activation.session.provider,
           success: true
         });
-        const initialPrompt = promptContentDisplayText(
-          input.initialContent ?? []
-        );
+        const initialPrompt =
+          input.initialDisplayPrompt?.trim() ||
+          promptContentDisplayText(input.initialContent ?? []);
         if (initialPrompt) {
           await messageSentTracker.track({
             agentSessionId: activation.session.agentSessionId,
+            clientSubmitId: input.clientSubmitId,
             prompt: initialPrompt,
             provider: activation.session.provider
           });
@@ -301,18 +292,6 @@ export function createDesktopAgentActivityRuntime(
     },
     listAgentGeneratedFiles: (input) =>
       workspaceAgentActivityService.listAgentGeneratedFiles(input),
-    listSessionsPage: (input) =>
-      workspaceAgentActivityService.listSessionsPage(input),
-    listSessionSections: (input) =>
-      workspaceAgentActivityService.listSessionSections(input),
-    listSessionSectionPage: (input) =>
-      workspaceAgentActivityService.listSessionSectionPage(input),
-    listSessionSectionDeletionCandidates: (input) =>
-      workspaceAgentActivityService.listSessionSectionDeletionCandidates(input),
-    deleteSessionsBatch: (input) =>
-      workspaceAgentActivityService.deleteSessionsBatch(input),
-    listPinnedSessionsPage: (input) =>
-      workspaceAgentActivityService.listPinnedSessionsPage(input),
     async load(workspaceId, signal) {
       const snapshot = await workspaceAgentActivityService.load(
         workspaceId,
@@ -387,7 +366,11 @@ export function createDesktopAgentActivityRuntime(
       });
       await messageSentTracker.track({
         agentSessionId: result.session.agentSessionId,
-        prompt: promptContentDisplayText(input.content),
+        clientSubmitId: input.clientSubmitId,
+        isQueued: input.submitDiagnostics?.queued,
+        prompt:
+          input.displayPrompt?.trim() ||
+          promptContentDisplayText(input.content),
         provider: result.session.provider
       });
       await safeTrackAgentNodeResult(nodeResultTracker, {
@@ -500,6 +483,15 @@ export function createDesktopAgentActivityRuntime(
       : {}),
     renameSession: (input) =>
       workspaceAgentActivityService.renameSession(input),
+    ...(workspaceAgentActivityService.setCollaborationAdoption
+      ? {
+          setCollaborationAdoption: (
+            input: Parameters<
+              NonNullable<AgentActivityRuntime["setCollaborationAdoption"]>
+            >[0]
+          ) => workspaceAgentActivityService.setCollaborationAdoption!(input)
+        }
+      : {}),
     async setSessionPinned(input) {
       const session =
         await workspaceAgentActivityService.setSessionPinned(input);
@@ -582,6 +574,8 @@ export function createDesktopAgentActivityRuntime(
       });
       return normalizedResult;
     },
+    updateTuttiModeActivation: (input) =>
+      workspaceAgentActivityService.updateTuttiModeActivation(input),
     async trackSettingsProjectChange(input) {
       await new AgentSettingsProjectChangedReporter(
         {

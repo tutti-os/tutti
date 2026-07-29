@@ -20,7 +20,6 @@ interface AgentGUIPanelEngagementInput {
   isActive: boolean;
   isVisible: boolean;
   onEvent?: AgentGUIEngagementEventSink;
-  previewMode: boolean;
 }
 
 interface AgentGUIPanelVisit {
@@ -169,7 +168,6 @@ export class AgentGUIPanelEngagementController {
     const input = this.options.getInput();
     return (
       Boolean(input.onEvent) &&
-      !input.previewMode &&
       input.contextKey === this.options.visitContextKey &&
       input.isActive &&
       input.isVisible &&

@@ -1,18 +1,27 @@
 import {
   app,
+  BrowserWindow,
   dialog,
   ipcMain,
   nativeTheme,
+  Notification,
   session,
   shell,
   webContents
 } from "electron";
+import { randomUUID } from "node:crypto";
 import { readFile, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveBrowserSessionPartition } from "@tutti-os/browser-node";
+import { createMacosChromeCookieImportAdapter } from "@tutti-os/browser-node/chrome-cookie-import/macos";
 import { registerBrowserNodeElectronMain } from "@tutti-os/browser-node/electron-main";
-import type { BrowserNodeElectronLogger } from "@tutti-os/browser-node/electron-main";
+import {
+  createBrowserNodeAutomationRegistry,
+  createBrowserNodeAutomationNetworkAuthorizer,
+  createBrowserNodeAutomationServer,
+  type BrowserNodeElectronLogger
+} from "@tutti-os/browser-node/electron-main";
 import {
   desktopIpcChannels,
   type DesktopInvokeChannel
@@ -31,10 +40,24 @@ import {
 } from "./browserPreferredColorScheme.ts";
 import { resolveOwnerWindowFromEvent } from "./ownerWindow.ts";
 import { openFileWithDefaultBrowser } from "../host/openWithApplications.ts";
+import { createTranslator } from "../../shared/i18n/index.ts";
+import {
+  BROWSER_CHROME_COOKIE_IMPORT_FLAG,
+  isFeatureEnabled
+} from "../../shared/featureFlags/catalog.ts";
+import { resolveBrowserNodeAutomationListenerInfoPath } from "../transport/paths.ts";
+import { createDesktopBrowserAutomationCoordinator } from "./browserAutomationCoordinator.ts";
+import {
+  getWorkspaceWindowKind,
+  getWorkspaceWindowWorkspaceID
+} from "../windows/workspaceWindow.ts";
 
 type BrowserInvokeChannel = Exclude<
   (typeof desktopIpcChannels.browser)[keyof typeof desktopIpcChannels.browser],
-  typeof desktopIpcChannels.browser.event
+  | typeof desktopIpcChannels.browser.automationHostReady
+  | typeof desktopIpcChannels.browser.automationRequest
+  | typeof desktopIpcChannels.browser.automationResponse
+  | typeof desktopIpcChannels.browser.event
 >;
 
 const prefersColorSchemeFeatureName = "prefers-color-scheme";
@@ -49,13 +72,66 @@ function getPreferredColorScheme(
   });
 }
 
-export function registerBrowserIpc(
-  preferences: DesktopHostPreferencesState
-): void {
+export async function registerBrowserIpc(
+  preferences: DesktopHostPreferencesState,
+  options: {
+    ensureAgentBrowserHost(input: {
+      agentSessionId: string;
+      workspaceId: string;
+    }): Promise<void>;
+  }
+): Promise<{ dispose(): void }> {
   const logger = getDesktopLogger();
+  const automationCoordinator = createDesktopBrowserAutomationCoordinator({
+    ...options,
+    runtime: {
+      ipc: ipcMain,
+      randomId: randomUUID,
+      resolveHostContext(sender) {
+        const ownerWindow = BrowserWindow.fromWebContents(sender);
+        if (!ownerWindow) return null;
+        const kind = getWorkspaceWindowKind(ownerWindow);
+        const workspaceId = getWorkspaceWindowWorkspaceID(ownerWindow);
+        return kind && workspaceId ? { kind, workspaceId } : null;
+      },
+      resolveWebContents: (id) => webContents.fromId(id) ?? null
+    }
+  });
+  const automationNetworkAuthorizer =
+    createBrowserNodeAutomationNetworkAuthorizer();
+  const automationRegistry = createBrowserNodeAutomationRegistry({
+    authorize: automationNetworkAuthorizer,
+    authorizeRequest: automationNetworkAuthorizer,
+    closeTarget: automationCoordinator.closeTarget,
+    requestTarget: async (input) => {
+      const nodeId = await automationCoordinator.requestTarget(input);
+      if (nodeId) {
+        await waitForAutomationTarget(
+          automationRegistry,
+          input.workspaceId,
+          input.agentSessionId,
+          nodeId
+        );
+      }
+      return nodeId;
+    },
+    selectTarget: automationCoordinator.selectTarget
+  });
   const preparedDownloadSessions = new WeakSet<Electron.Session>();
+  let lastBrowserDownloadDirectory = app.getPath("downloads");
+  let lastCookieImportDirectory = app.getPath("downloads");
+  const chromeCookieImport = createMacosChromeCookieImportAdapter({
+    isEnabled: () =>
+      isFeatureEnabled(
+        preferences.getFeatureFlags(),
+        BROWSER_CHROME_COOKIE_IMPORT_FLAG
+      ),
+    logger
+  });
 
   registerBrowserNodeElectronMain({
+    ...chromeCookieImport,
+    automationRegistry,
     channels: {
       ...desktopIpcChannels.browser,
       openDevTools: isBrowserDevToolsEnabled()
@@ -67,15 +143,50 @@ export function registerBrowserIpc(
     },
     async chooseDownloadDirectory(ownerWindow) {
       const result = await dialog.showOpenDialog(ownerWindow, {
+        defaultPath: lastBrowserDownloadDirectory,
         properties: ["openDirectory", "createDirectory"]
       });
-      return result.canceled ? null : (result.filePaths[0] ?? null);
+      const selectedPath = result.canceled
+        ? null
+        : (result.filePaths[0] ?? null);
+      lastBrowserDownloadDirectory =
+        selectedPath ?? lastBrowserDownloadDirectory;
+      return selectedPath;
     },
     getOwnerWindow(event) {
       return resolveOwnerWindowFromEvent(event as Electron.IpcMainInvokeEvent);
     },
     getPreferredColorScheme: () => getPreferredColorScheme(preferences),
     logger,
+    notifyCookieImportResult({ ownerWindow, result, source }) {
+      if (
+        source !== "chrome" ||
+        result.status === "canceled" ||
+        !ownerWindow.isDestroyed() ||
+        !Notification.isSupported()
+      ) {
+        return;
+      }
+      const translator = createTranslator(preferences.getLocale());
+      const body =
+        result.status === "failed" || result.imported === 0
+          ? translator.t("browser.chromeImportNotification.failed")
+          : result.partial
+            ? translator.t("browser.chromeImportNotification.partial", {
+                imported: result.imported
+              })
+            : translator.t("browser.chromeImportNotification.completed", {
+                imported: result.imported
+              });
+      const notification = new Notification({
+        body,
+        title: translator.t("browser.chromeImportNotification.title")
+      });
+      notification.on("failed", (_event, error) => {
+        logger.warn("browser Chrome import notification failed", { error });
+      });
+      notification.show();
+    },
     openDownloadedFile: async (path) => {
       const error = await shell.openPath(path);
       if (error) {
@@ -143,12 +254,14 @@ export function registerBrowserIpc(
     },
     async selectCookieImport(ownerWindow) {
       const result = await dialog.showOpenDialog(ownerWindow, {
+        defaultPath: lastCookieImportDirectory,
         properties: ["openFile"]
       });
       const filePath = result.canceled ? null : (result.filePaths[0] ?? null);
       if (!filePath) {
         return null;
       }
+      lastCookieImportDirectory = dirname(filePath);
       const metadata = await stat(filePath);
       if (!metadata.isFile() || metadata.size > maximumCookieImportBytes) {
         throw new Error("Browser Cookie import file is invalid or too large");
@@ -208,6 +321,38 @@ export function registerBrowserIpc(
       webContentsId: event.sender.id
     });
   });
+
+  const automationServer = await createBrowserNodeAutomationServer({
+    listenerInfoPath: resolveBrowserNodeAutomationListenerInfoPath(),
+    logger,
+    registry: automationRegistry
+  });
+  return {
+    dispose() {
+      automationCoordinator.dispose();
+      automationServer.dispose();
+    }
+  };
+}
+
+async function waitForAutomationTarget(
+  registry: ReturnType<typeof createBrowserNodeAutomationRegistry>,
+  workspaceId: string,
+  agentSessionId: string | null,
+  nodeId: string
+): Promise<void> {
+  const deadline = Date.now() + 8_000;
+  while (Date.now() < deadline) {
+    if (
+      registry
+        .list({ agentSessionId, workspaceId })
+        .some((target) => target.nodeId === nodeId)
+    ) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`In-app Browser page did not attach: ${nodeId}`);
 }
 
 function isBrowserDevToolsEnabled(): boolean {

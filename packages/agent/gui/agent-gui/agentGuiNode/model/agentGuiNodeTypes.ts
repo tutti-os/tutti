@@ -1,7 +1,8 @@
 import type {
   AgentActivitySessionGoal,
   AgentActivityUsage,
-  CanonicalAgentSession
+  CanonicalAgentSession,
+  SessionRuntimeAvailability
 } from "@tutti-os/agent-activity-core";
 import type {
   AgentGUINodeData,
@@ -17,6 +18,7 @@ import type {
   AgentGUIInteractivePrompt
 } from "./agentGuiConversationModel";
 import type { AgentGUIConversationFilter } from "./agentGuiConversationFilter";
+import type { AgentGUIConversationRailRevealRequest } from "./agentGuiConversationRailViewState";
 import type {
   AgentSessionCommand,
   AgentSessionComposerSettings,
@@ -42,7 +44,12 @@ export interface AgentGUISessionChrome {
   approval: AgentGUIApprovalRequest | null;
   recovery:
     | {
-        kind: "activating" | "failed" | "warning";
+        kind:
+          | "activating"
+          | "failed"
+          | "warning"
+          | "transport-connecting"
+          | "transport-unavailable";
         message: string;
         canRetry?: boolean;
         followupAction?: never;
@@ -86,6 +93,12 @@ export interface AgentGUIComposerSettingOption {
   label: string;
   description?: string;
   supportsImageInput?: boolean;
+  /** Bound plan identity for options aggregated from model access plans. */
+  modelPlanId?: string | null;
+  /** Display name of the plan (or provider) the option originates from. */
+  sourceName?: string;
+  /** When the option takes effect after selection. */
+  effect?: "new_session" | "next_call";
 }
 
 export interface AgentGUIProviderSkillOption {
@@ -133,10 +146,15 @@ interface AgentComposerFileBlockBase {
   mimeType?: string;
   path?: string;
   hostPath?: string;
+  url?: string;
+  uri?: string;
   assetId?: string;
+  uploadStatus?: string;
   sizeBytes?: number;
   uploading?: boolean;
   uploadError?: string;
+  uploadErrorCode?: string;
+  uploadRetryable?: boolean;
 }
 
 export interface AgentComposerRegularFileBlock extends AgentComposerFileBlockBase {
@@ -243,6 +261,12 @@ export interface AgentHomeSuggestionCategory {
   action?: AgentHomeSuggestionAction;
 }
 
+export interface AgentGUIComposerModelPlanVM {
+  id: string;
+  name: string;
+  protocol?: string | null;
+}
+
 export interface AgentGUIComposerSettingsVM {
   sessionSettings: AgentSessionComposerSettings | null;
   draftSettings: {
@@ -276,6 +300,8 @@ export interface AgentGUIComposerSettingsVM {
   speedUnavailable: boolean;
   permissionModeUnavailable?: boolean;
   selectedModelValue?: string | null;
+  /** Actual provider-resolved model while selectedModelValue remains inherited. */
+  effectiveModelValue?: string | null;
   selectedReasoningEffortValue?: AgentSessionReasoningEffort | null;
   selectedSpeedValue?: AgentSessionSpeed | null;
   selectedPermissionModeValue?: string | null;
@@ -283,6 +309,8 @@ export interface AgentGUIComposerSettingsVM {
   selectedProjectPath?: string | null;
   /** Persisted rail membership used to scope Agent-generated file mentions. */
   selectedProjectSectionKey?: string | null;
+  /** Resolve the durable default only before the home project intent is known. */
+  shouldApplyPreparedProjectSelection?: boolean;
   projectLocked?: boolean;
   // Mirrors the injected runtime's `projectPathIsRemote`. When true the session
   // cwd is not on the local filesystem (e.g. a shared/cloud sandbox), so the
@@ -293,6 +321,14 @@ export interface AgentGUIComposerSettingsVM {
   // whose live lists span many vendors and versions, e.g. Cursor). The
   // currently selected model always stays visible even if older.
   collapseModelOptionsToLatest?: boolean;
+  // Bound model access plan for the composer target, projected from the
+  // daemon composer options `runtimeContext.modelPlan`. Absent/null when the
+  // target keeps its provider-native model source.
+  modelPlan?: AgentGUIComposerModelPlanVM | null;
+  // Active session with a provider advertising the "modelSwitch" capability:
+  // a new model pick applies from the next request, so the model menu shows
+  // the switch-effect footer hint.
+  modelSwitchTakesEffectNextTurn?: boolean;
   availableModels: AgentGUIComposerSettingOption[];
   availableReasoningEfforts: AgentGUIComposerSettingOption[];
   availableSpeeds: AgentGUIComposerSettingOption[];
@@ -310,6 +346,7 @@ export interface AgentGUIQueuedPromptVM {
 export type AgentGUIQueueStatus = "active" | "paused_by_user";
 
 export interface AgentGUIShellViewModel {
+  nodeId?: string | null;
   workspaceId: string;
   workspacePath?: string | null;
   currentUserId?: string | null;
@@ -329,6 +366,7 @@ export interface AgentGUIRailViewModel {
   userProjects: AgentGUIConversationUserProject[];
   activeConversation: AgentGUIConversationSummary | null;
   activeConversationId: string | null;
+  revealRequest: AgentGUIConversationRailRevealRequest | null;
   isLoadingConversations: boolean;
   listError: string | null;
 }
@@ -345,6 +383,80 @@ export interface AgentGUIDetailViewModel {
   conversationDetail: WorkspaceAgentSessionDetailViewModel | null;
 }
 
+export type AgentGUIRuntimeBlockedReason = Extract<
+  SessionRuntimeAvailability,
+  { state: "blocked" }
+>["reason"];
+
+export type AgentGUIComposerRuntimeGate =
+  | {
+      status: "ready";
+      reason: null;
+      sessionRuntimeReason: null;
+    }
+  | {
+      status: "blocked";
+      reason: "target_connection";
+      sessionRuntimeReason: null;
+    }
+  | {
+      status: "blocked";
+      reason: "session_runtime";
+      sessionRuntimeReason: AgentGUIRuntimeBlockedReason;
+    };
+
+export type AgentGUIComposerEditorBlockedReason =
+  | "collaborator_read_only"
+  | "creating_conversation"
+  | "interrupting"
+  | "non_retryable_recovery"
+  | "pending_approval"
+  | "pending_interactive_prompt"
+  | "provider_readiness"
+  | "runtime_blocked"
+  | "submitting";
+
+export type AgentGUIComposerSubmissionBlockedReason =
+  | AgentGUIComposerEditorBlockedReason
+  | "activation_failed"
+  | "activation_pending"
+  | "agent_targets_loading"
+  | "authentication_required"
+  | "conversation_busy"
+  | "resume_unavailable";
+
+export interface AgentGUIComposerGate {
+  /** Canonical busy projection captured with the same gate snapshot. */
+  conversationBusy: boolean;
+  /**
+   * Runtime-dependent command availability used by Composer-adjacent
+   * controls such as Stop and interactive responses.
+   */
+  runtime: AgentGUIComposerRuntimeGate;
+  editor:
+    | {
+        status: "editable";
+        reason: null;
+      }
+    | {
+        status: "blocked";
+        reason: AgentGUIComposerEditorBlockedReason;
+      };
+  submission:
+    | {
+        status: "ready";
+        reason: null;
+      }
+    | {
+        status: "queue";
+        reason: "conversation_busy";
+      }
+    | {
+        status: "blocked";
+        reason: AgentGUIComposerSubmissionBlockedReason;
+      };
+}
+
 export interface AgentGUIComposerViewModel {
   handoffAgentTargets: readonly AgentGUIAgentTarget[];
   availableCommands: AgentSessionCommand[];
@@ -359,12 +471,22 @@ export interface AgentGUIComposerViewModel {
   compactSupported: boolean | null;
   /** Provider goal exposes a real paused state and pause/resume controls. */
   goalPauseSupported: boolean;
-  canSubmit: boolean;
+  gate: AgentGUIComposerGate;
+  isTuttiModeActive: boolean;
+  isTuttiModeUpdating: boolean;
+  /** Effective Tutti outcome-quality and completion-speed preferences. */
+  tuttiModeEffect: number;
+  tuttiModeSpeed: number;
+  tuttiModeUpdateStatus:
+    | "idle"
+    | "pending_create"
+    | "updating"
+    | "failed"
+    | "uncertain";
   composerSettings: AgentGUIComposerSettingsVM;
   queuedPrompts: AgentGUIQueuedPromptVM[];
   queueStatus: AgentGUIQueueStatus;
   drainingQueuedPromptId: string | null;
-  canQueueWhileBusy: boolean;
 }
 
 export interface AgentGUIInteractionViewModel {
@@ -378,14 +500,15 @@ export interface AgentGUIInteractionViewModel {
 export interface AgentGUIReadinessViewModel {
   activeLiveState: "inactive" | "activating" | "active" | "failed";
   activationError: string | null;
-  activeConversationBusy: boolean;
   providerReadinessGate: AgentGUIProviderReadinessGate | null;
 }
 
 export interface AgentGUIOperationsViewModel {
+  forkThroughTurnPendingTurnIds: readonly string[];
   goalClearNoticeSequence: number;
   isDeletingConversation: boolean;
   isDeletingProjectConversations: boolean;
+  isUserProjectMutationPending: boolean;
   pendingDeleteConversation: AgentGUIConversationSummary | null;
   pendingDeleteProjectConversations: AgentGUIProjectConversationDeleteTarget | null;
 }

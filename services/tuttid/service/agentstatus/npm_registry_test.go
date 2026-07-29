@@ -3,14 +3,17 @@ package agentstatus
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/managednpm"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
 
@@ -279,6 +282,36 @@ func TestRankedAgentNPMRegistriesMovesHTTPErrorBehindSuccessfulMirror(t *testing
 	got := service.rankedAgentNPMRegistries(context.Background(), "@openai/codex")
 	if len(got) == 0 || got[0] != "https://repo.huaweicloud.com/repository/npm/" {
 		t.Fatalf("rankedAgentNPMRegistries()[0] = %q, want first successful mirror; full order=%#v", got[0], got)
+	}
+}
+
+func TestRankedManagedNPMRegistriesRejectsMirrorMissingPlatformPackage(t *testing.T) {
+	npmOS, npmArch, ok := managednpm.NPMPlatform(runtime.GOOS, runtime.GOARCH)
+	if !ok {
+		t.Fatalf("NPMPlatform(%q, %q) unsupported", runtime.GOOS, runtime.GOARCH)
+	}
+	platformDependency := fmt.Sprintf("@tutti-os/tutti-agent-%s-%s", npmOS, npmArch)
+	platformVersion := fmt.Sprintf("0.0.4-%s-%s", npmOS, npmArch)
+	service := Service{
+		Environ: func() []string { return []string{"PATH=/usr/bin"} },
+		HTTPClient: &http.Client{Transport: networkRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			body := `{"version":"` + platformVersion + `"}`
+			if !strings.Contains(request.URL.Path, platformVersion) {
+				optional := ""
+				if request.URL.Host != "registry.npmjs.org" {
+					optional = fmt.Sprintf(`,"optionalDependencies":{"%s":"npm:@tutti-os/tutti-agent@%s"}`, platformDependency, platformVersion)
+				}
+				body = `{"version":"0.0.4"` + optional + `}`
+			}
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+		})},
+	}
+
+	got := service.rankedManagedNPMRegistries(context.Background(), ManagedNPMPackageInstallerSpec{
+		PackageName: "@tutti-os/tutti-agent", PackageVersion: "0.0.4", BinaryName: "tutti-agent", IncludeOptional: true,
+	})
+	if len(got) == 0 || got[0] != "https://repo.huaweicloud.com/repository/npm/" {
+		t.Fatalf("rankedManagedNPMRegistries()[0] = %q, want complete mirror; full order=%#v", got[0], got)
 	}
 }
 

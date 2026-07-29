@@ -18,10 +18,12 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
         return {
           initialized: false,
           preferences: {
+            agentCliUpdateCheckEnabled: true,
             agentComposerDefaultsByProvider: {},
             agentGuiConversationRailCollapsedByProvider: {},
             agentConversationDetailMode: "coding",
             agentDockLayout: "legacySplit",
+            deletedAgentConversationRetentionDays: 30,
             appCatalogChannel: "production",
             browserUseConnectionMode: "isolated",
             defaultAgentProvider: "codex",
@@ -53,10 +55,12 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
   assert.deepEqual(putRequests, [
     {
       preferences: {
+        agentCliUpdateCheckEnabled: true,
         agentComposerDefaultsByProvider: {},
         agentGuiConversationRailCollapsedByProvider: {},
         agentConversationDetailMode: "coding",
         agentDockLayout: "unified",
+        deletedAgentConversationRetentionDays: 30,
         appCatalogChannel: "production",
         browserUseConnectionMode: "isolated",
         defaultAgentProvider: "codex",
@@ -80,6 +84,7 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
       }
     }
   ]);
+  assert.equal(state.getAgentCliUpdateCheckEnabled(), true);
   assert.equal(state.getDockPlacement(), "bottom");
   assert.equal(state.getLocale(), "zh-CN");
   assert.equal(state.getDefaultAgentProvider(), "codex");
@@ -102,10 +107,12 @@ test("createDesktopHostPreferencesState defaults missing rc package preferences 
         return {
           initialized: false,
           preferences: {
+            agentCliUpdateCheckEnabled: true,
             agentComposerDefaultsByProvider: {},
             agentGuiConversationRailCollapsedByProvider: {},
             agentConversationDetailMode: "coding",
             agentDockLayout: "legacySplit",
+            deletedAgentConversationRetentionDays: 30,
             appCatalogChannel: "production",
             browserUseConnectionMode: "isolated",
             defaultAgentProvider: "codex",
@@ -149,10 +156,12 @@ test("createDesktopHostPreferencesState keeps missing beta package preferences o
         return {
           initialized: false,
           preferences: {
+            agentCliUpdateCheckEnabled: true,
             agentComposerDefaultsByProvider: {},
             agentGuiConversationRailCollapsedByProvider: {},
             agentConversationDetailMode: "coding",
             agentDockLayout: "legacySplit",
+            deletedAgentConversationRetentionDays: 30,
             appCatalogChannel: "production",
             browserUseConnectionMode: "isolated",
             defaultAgentProvider: "codex",
@@ -195,10 +204,12 @@ test("createDesktopHostPreferencesState keeps initialized theme preferences", as
         return {
           initialized: true,
           preferences: {
+            agentCliUpdateCheckEnabled: true,
             agentComposerDefaultsByProvider: {},
             agentGuiConversationRailCollapsedByProvider: {},
             agentConversationDetailMode: "coding",
             agentDockLayout: "legacySplit",
+            deletedAgentConversationRetentionDays: 30,
             appCatalogChannel: "production",
             browserUseConnectionMode: "isolated",
             defaultAgentProvider: "codex",
@@ -248,10 +259,12 @@ test("createDesktopHostPreferencesState keeps initialized stable update channel"
         return {
           initialized: true,
           preferences: {
+            agentCliUpdateCheckEnabled: true,
             agentComposerDefaultsByProvider: {},
             agentGuiConversationRailCollapsedByProvider: {},
             agentConversationDetailMode: "coding",
             agentDockLayout: "legacySplit",
+            deletedAgentConversationRetentionDays: 30,
             appCatalogChannel: "production",
             defaultAgentProvider: "codex",
             featureFlags: {},
@@ -297,10 +310,12 @@ test("createDesktopHostPreferencesState migrates the old rc default update chann
         return {
           initialized: true,
           preferences: {
+            agentCliUpdateCheckEnabled: true,
             agentComposerDefaultsByProvider: {},
             agentGuiConversationRailCollapsedByProvider: {},
             agentConversationDetailMode: "coding",
             agentDockLayout: "legacySplit",
+            deletedAgentConversationRetentionDays: 30,
             appCatalogChannel: "production",
             defaultAgentProvider: "codex",
             featureFlags: {},
@@ -359,10 +374,12 @@ test("createDesktopHostPreferencesState preserves initialized rc channel on rc p
         return {
           initialized: true,
           preferences: {
+            agentCliUpdateCheckEnabled: true,
             agentComposerDefaultsByProvider: {},
             agentGuiConversationRailCollapsedByProvider: {},
             agentConversationDetailMode: "coding",
             agentDockLayout: "legacySplit",
+            deletedAgentConversationRetentionDays: 30,
             appCatalogChannel: "production",
             defaultAgentProvider: "codex",
             featureFlags: {},
@@ -391,6 +408,312 @@ test("createDesktopHostPreferencesState preserves initialized rc channel on rc p
   assert.equal(state.getUpdateChannel(), "rc");
 });
 
+test("createDesktopHostPreferencesState aligns a changed packaged rc version to the rc channel", async () => {
+  const migrationStateRootDir = await mkdtemp(
+    join(tmpdir(), "tutti-update-channel-installed-version-")
+  );
+  const migrationsDir = join(migrationStateRootDir, "migrations");
+  const installedVersionStatePath = join(
+    migrationsDir,
+    "desktop-update-channel-installed-version-v1"
+  );
+  await mkdir(migrationsDir, { recursive: true });
+  await writeFile(installedVersionStatePath, "0.2.1", "utf8");
+  const putRequests: PutDesktopPreferencesRequest[] = [];
+
+  const state = await createDesktopHostPreferencesState({
+    appVersion: "v0.2.2-rc.1",
+    fallbackLocale: "zh-CN",
+    isPackaged: true,
+    logger: createLogger(),
+    migrationStateRootDir,
+    tuttidClient: {
+      async getDesktopPreferences() {
+        return {
+          initialized: true,
+          preferences: {
+            agentCliUpdateCheckEnabled: true,
+            agentComposerDefaultsByProvider: {},
+            agentGuiConversationRailCollapsedByProvider: {},
+            agentConversationDetailMode: "coding",
+            agentDockLayout: "legacySplit",
+            deletedAgentConversationRetentionDays: 30,
+            appCatalogChannel: "production",
+            defaultAgentProvider: "codex",
+            featureFlags: {},
+            workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
+            dockIconStyle: "default",
+            dockPlacement: "bottom",
+            fileDefaultOpenersByExtension: { html: "defaultBrowser" },
+            locale: "zh-CN",
+            minimizeAnimation: "scale",
+            sleepPreventionMode: "never",
+            showAppDeveloperSources: false,
+            themeSource: "dark",
+            updateChannel: "stable",
+            updatePolicy: "prompt"
+          }
+        };
+      },
+      async putDesktopPreferences(request) {
+        putRequests.push(request);
+        return {
+          initialized: true,
+          preferences: request.preferences
+        };
+      }
+    }
+  });
+
+  assert.equal(state.getUpdateChannel(), "rc");
+  assert.equal(putRequests.length, 1);
+  assert.equal(putRequests[0]?.preferences.updateChannel, "rc");
+  assert.equal(await readFile(installedVersionStatePath, "utf8"), "0.2.2-rc.1");
+});
+
+test("createDesktopHostPreferencesState preserves a manual channel on the same packaged version", async () => {
+  const migrationStateRootDir = await mkdtemp(
+    join(tmpdir(), "tutti-update-channel-installed-version-")
+  );
+  const migrationsDir = join(migrationStateRootDir, "migrations");
+  await mkdir(migrationsDir, { recursive: true });
+  await writeFile(
+    join(migrationsDir, "desktop-update-channel-installed-version-v1"),
+    "0.2.2-rc.1",
+    "utf8"
+  );
+  let putCalls = 0;
+
+  const state = await createDesktopHostPreferencesState({
+    appVersion: "0.2.2-rc.1",
+    fallbackLocale: "zh-CN",
+    isPackaged: true,
+    logger: createLogger(),
+    migrationStateRootDir,
+    tuttidClient: {
+      async getDesktopPreferences() {
+        return {
+          initialized: true,
+          preferences: {
+            agentCliUpdateCheckEnabled: true,
+            agentComposerDefaultsByProvider: {},
+            agentGuiConversationRailCollapsedByProvider: {},
+            agentConversationDetailMode: "coding",
+            agentDockLayout: "legacySplit",
+            deletedAgentConversationRetentionDays: 30,
+            appCatalogChannel: "production",
+            defaultAgentProvider: "codex",
+            featureFlags: {},
+            workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
+            dockIconStyle: "default",
+            dockPlacement: "bottom",
+            fileDefaultOpenersByExtension: { html: "defaultBrowser" },
+            locale: "zh-CN",
+            minimizeAnimation: "scale",
+            sleepPreventionMode: "never",
+            showAppDeveloperSources: false,
+            themeSource: "dark",
+            updateChannel: "stable",
+            updatePolicy: "prompt"
+          }
+        };
+      },
+      async putDesktopPreferences() {
+        putCalls += 1;
+        throw new Error("putDesktopPreferences should not be called");
+      }
+    }
+  });
+
+  assert.equal(putCalls, 0);
+  assert.equal(state.getUpdateChannel(), "stable");
+});
+
+test("createDesktopHostPreferencesState preserves manual rc on the same packaged stable version", async () => {
+  const migrationStateRootDir = await mkdtemp(
+    join(tmpdir(), "tutti-update-channel-installed-version-")
+  );
+  const migrationsDir = join(migrationStateRootDir, "migrations");
+  await mkdir(migrationsDir, { recursive: true });
+  await writeFile(
+    join(migrationsDir, "desktop-update-channel-installed-version-v1"),
+    "0.2.2",
+    "utf8"
+  );
+  let putCalls = 0;
+
+  const state = await createDesktopHostPreferencesState({
+    appVersion: "0.2.2",
+    fallbackLocale: "zh-CN",
+    isPackaged: true,
+    logger: createLogger(),
+    migrationStateRootDir,
+    tuttidClient: {
+      async getDesktopPreferences() {
+        return {
+          initialized: true,
+          preferences: {
+            agentCliUpdateCheckEnabled: true,
+            agentComposerDefaultsByProvider: {},
+            agentGuiConversationRailCollapsedByProvider: {},
+            agentConversationDetailMode: "coding",
+            agentDockLayout: "legacySplit",
+            deletedAgentConversationRetentionDays: 30,
+            appCatalogChannel: "production",
+            defaultAgentProvider: "codex",
+            featureFlags: {},
+            workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
+            dockIconStyle: "default",
+            dockPlacement: "bottom",
+            fileDefaultOpenersByExtension: { html: "defaultBrowser" },
+            locale: "zh-CN",
+            minimizeAnimation: "scale",
+            sleepPreventionMode: "never",
+            showAppDeveloperSources: false,
+            themeSource: "dark",
+            updateChannel: "rc",
+            updatePolicy: "prompt"
+          }
+        };
+      },
+      async putDesktopPreferences() {
+        putCalls += 1;
+        throw new Error("putDesktopPreferences should not be called");
+      }
+    }
+  });
+
+  assert.equal(putCalls, 0);
+  assert.equal(state.getUpdateChannel(), "rc");
+});
+
+test("createDesktopHostPreferencesState aligns a changed packaged stable version to stable", async () => {
+  const migrationStateRootDir = await mkdtemp(
+    join(tmpdir(), "tutti-update-channel-installed-version-")
+  );
+  const migrationsDir = join(migrationStateRootDir, "migrations");
+  const installedVersionStatePath = join(
+    migrationsDir,
+    "desktop-update-channel-installed-version-v1"
+  );
+  await mkdir(migrationsDir, { recursive: true });
+  await writeFile(
+    join(migrationsDir, "desktop-update-channel-default-stable-v1"),
+    "applied",
+    "utf8"
+  );
+  await writeFile(installedVersionStatePath, "0.2.2-rc.4", "utf8");
+  const putRequests: PutDesktopPreferencesRequest[] = [];
+
+  const state = await createDesktopHostPreferencesState({
+    appVersion: "0.2.2",
+    fallbackLocale: "zh-CN",
+    isPackaged: true,
+    logger: createLogger(),
+    migrationStateRootDir,
+    tuttidClient: {
+      async getDesktopPreferences() {
+        return {
+          initialized: true,
+          preferences: {
+            agentCliUpdateCheckEnabled: true,
+            agentComposerDefaultsByProvider: {},
+            agentGuiConversationRailCollapsedByProvider: {},
+            agentConversationDetailMode: "coding",
+            agentDockLayout: "legacySplit",
+            deletedAgentConversationRetentionDays: 30,
+            appCatalogChannel: "production",
+            defaultAgentProvider: "codex",
+            featureFlags: {},
+            workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
+            dockIconStyle: "default",
+            dockPlacement: "bottom",
+            fileDefaultOpenersByExtension: { html: "defaultBrowser" },
+            locale: "zh-CN",
+            minimizeAnimation: "scale",
+            sleepPreventionMode: "never",
+            showAppDeveloperSources: false,
+            themeSource: "dark",
+            updateChannel: "rc",
+            updatePolicy: "prompt"
+          }
+        };
+      },
+      async putDesktopPreferences(request) {
+        putRequests.push(request);
+        return {
+          initialized: true,
+          preferences: request.preferences
+        };
+      }
+    }
+  });
+
+  assert.equal(state.getUpdateChannel(), "stable");
+  assert.equal(putRequests.length, 1);
+  assert.equal(putRequests[0]?.preferences.updateChannel, "stable");
+  assert.equal(await readFile(installedVersionStatePath, "utf8"), "0.2.2");
+});
+
+test("createDesktopHostPreferencesState retries packaged channel alignment after persistence fails", async () => {
+  const migrationStateRootDir = await mkdtemp(
+    join(tmpdir(), "tutti-update-channel-installed-version-")
+  );
+  const migrationsDir = join(migrationStateRootDir, "migrations");
+  const installedVersionStatePath = join(
+    migrationsDir,
+    "desktop-update-channel-installed-version-v1"
+  );
+  await mkdir(migrationsDir, { recursive: true });
+  await writeFile(installedVersionStatePath, "0.2.1", "utf8");
+  let putCalls = 0;
+
+  const state = await createDesktopHostPreferencesState({
+    appVersion: "0.2.2-rc.1",
+    fallbackLocale: "zh-CN",
+    isPackaged: true,
+    logger: createLogger(),
+    migrationStateRootDir,
+    tuttidClient: {
+      async getDesktopPreferences() {
+        return {
+          initialized: true,
+          preferences: {
+            agentCliUpdateCheckEnabled: true,
+            agentComposerDefaultsByProvider: {},
+            agentGuiConversationRailCollapsedByProvider: {},
+            agentConversationDetailMode: "coding",
+            agentDockLayout: "legacySplit",
+            deletedAgentConversationRetentionDays: 30,
+            appCatalogChannel: "production",
+            defaultAgentProvider: "codex",
+            featureFlags: {},
+            workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
+            dockIconStyle: "default",
+            dockPlacement: "bottom",
+            fileDefaultOpenersByExtension: { html: "defaultBrowser" },
+            locale: "zh-CN",
+            minimizeAnimation: "scale",
+            sleepPreventionMode: "never",
+            showAppDeveloperSources: false,
+            themeSource: "dark",
+            updateChannel: "stable",
+            updatePolicy: "prompt"
+          }
+        };
+      },
+      async putDesktopPreferences() {
+        putCalls += 1;
+        throw new Error("tuttid unavailable");
+      }
+    }
+  });
+
+  assert.equal(putCalls, 1);
+  assert.equal(state.getUpdateChannel(), "stable");
+  assert.equal(await readFile(installedVersionStatePath, "utf8"), "0.2.1");
+});
+
 test("createDesktopHostPreferencesState preserves rc after the stable default migration ran", async () => {
   const migrationStateRootDir = await mkdtemp(
     join(tmpdir(), "tutti-update-channel-migration-")
@@ -415,10 +738,12 @@ test("createDesktopHostPreferencesState preserves rc after the stable default mi
         return {
           initialized: true,
           preferences: {
+            agentCliUpdateCheckEnabled: true,
             agentComposerDefaultsByProvider: {},
             agentGuiConversationRailCollapsedByProvider: {},
             agentConversationDetailMode: "coding",
             agentDockLayout: "legacySplit",
+            deletedAgentConversationRetentionDays: 30,
             appCatalogChannel: "production",
             defaultAgentProvider: "codex",
             featureFlags: {},
@@ -456,10 +781,12 @@ test("createDesktopHostPreferencesState notifies subscribers after sync changes"
         return {
           initialized: true,
           preferences: {
+            agentCliUpdateCheckEnabled: true,
             agentComposerDefaultsByProvider: {},
             agentGuiConversationRailCollapsedByProvider: {},
             agentConversationDetailMode: "coding",
             agentDockLayout: "legacySplit",
+            deletedAgentConversationRetentionDays: 30,
             appCatalogChannel: "production",
             browserUseConnectionMode: "isolated",
             defaultAgentProvider: "codex",
@@ -490,6 +817,8 @@ test("createDesktopHostPreferencesState notifies subscribers after sync changes"
 
   state.sync({ locale: "zh-CN" });
   state.sync({ locale: "zh-CN" });
+  state.sync({ agentCliUpdateCheckEnabled: false });
+  state.sync({ agentCliUpdateCheckEnabled: false });
   state.sync({ defaultAgentProvider: "claude-code" });
   state.sync({ defaultAgentProvider: "claude-code" });
   state.sync({ browserUseConnectionMode: "autoConnect" });
@@ -503,7 +832,8 @@ test("createDesktopHostPreferencesState notifies subscribers after sync changes"
   unsubscribe();
   state.sync({ locale: "en" });
 
-  assert.equal(notifications, 6);
+  assert.equal(notifications, 7);
+  assert.equal(state.getAgentCliUpdateCheckEnabled(), false);
 });
 
 function createLogger(): DesktopLogger {

@@ -20,6 +20,7 @@ func TestMigratedCodexDescriptorBuildsDefaultAdapter(t *testing.T) {
 		newScriptedAppServerTransport(),
 		LegacyHostMetadata(),
 		nil,
+		providerAdapterOptions{},
 	)
 	if adapter == nil {
 		t.Fatal("adapter = nil")
@@ -46,7 +47,13 @@ func TestMigratedClaudeCodeDescriptorBuildsSDKAdapter(t *testing.T) {
 	if !ok {
 		t.Fatal("claude-code descriptor missing")
 	}
-	adapter := newAdapterFromProviderDescriptor(descriptor, nil, HostMetadata{}, nil)
+	adapter := newAdapterFromProviderDescriptor(
+		descriptor,
+		nil,
+		HostMetadata{},
+		nil,
+		providerAdapterOptions{},
+	)
 	if _, ok := adapter.(*ClaudeCodeSDKAdapter); !ok {
 		t.Fatalf("adapter = %T, want *ClaudeCodeSDKAdapter", adapter)
 	}
@@ -74,6 +81,12 @@ func TestSharedAppServerAdapterKeepsTuttiAgentIdentity(t *testing.T) {
 	serverInfo := adapter.appServerInfo(nil)
 	if serverInfo["name"] != "tutti-agent-app-server" || serverInfo["title"] != "Tutti Agent" {
 		t.Fatalf("server info = %#v, want Tutti Agent identity", serverInfo)
+	}
+	if adapter.config.rateLimits {
+		t.Fatal("Tutti Agent adapter must not probe ChatGPT rate limits")
+	}
+	if capabilities := adapter.SessionState(Session{AgentSessionID: "missing"}).RuntimeContext["capabilities"]; capabilities != nil {
+		t.Fatalf("empty session capabilities = %#v, want nil", capabilities)
 	}
 }
 
@@ -122,6 +135,7 @@ func TestMigratedOpenCodeDescriptorBuildsStandardACPAdapter(t *testing.T) {
 		nil,
 		LegacyHostMetadata(),
 		nil,
+		providerAdapterOptions{},
 	)
 	standardAdapter, ok := adapter.(*standardACPAdapter)
 	if !ok {
@@ -183,5 +197,39 @@ func TestDefaultControllerRegistersEveryMigratedProviderDescriptor(t *testing.T)
 	}
 	if len(controller.adapters) != len(providerregistry.Migrated()) {
 		t.Fatalf("controller adapters = %d, migrated descriptors = %d", len(controller.adapters), len(providerregistry.Migrated()))
+	}
+}
+
+func TestDefaultControllerAppliesCommandNetworkAccessPolicyOnlyToSelectedAppServerProvider(t *testing.T) {
+	policyProviders := make(map[string]int)
+	controller := NewDefaultControllerWithOptions(nil, nil, ControllerOptions{
+		HostMetadata: LegacyHostMetadata(),
+		CommandNetworkAccessPolicy: func(provider string) bool {
+			policyProviders[provider]++
+			return provider == ProviderTuttiAgent
+		},
+	})
+
+	codexAdapter, ok := controller.adapters[ProviderCodex].(*CodexAppServerAdapter)
+	if !ok {
+		t.Fatalf("codex adapter = %T, want *CodexAppServerAdapter", controller.adapters[ProviderCodex])
+	}
+	if codexAdapter.config.commandNetworkAccess {
+		t.Fatal("Codex command network access = true, want false")
+	}
+	tuttiAgentAdapter, ok := controller.adapters[ProviderTuttiAgent].(*CodexAppServerAdapter)
+	if !ok {
+		t.Fatalf(
+			"Tutti Agent adapter = %T, want *CodexAppServerAdapter",
+			controller.adapters[ProviderTuttiAgent],
+		)
+	}
+	if !tuttiAgentAdapter.config.commandNetworkAccess {
+		t.Fatal("Tutti Agent command network access = false, want true")
+	}
+	if policyProviders[ProviderCodex] != 1 ||
+		policyProviders[ProviderTuttiAgent] != 1 ||
+		len(policyProviders) != 2 {
+		t.Fatalf("command network access policy providers = %#v", policyProviders)
 	}
 }

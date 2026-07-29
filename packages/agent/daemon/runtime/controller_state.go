@@ -12,6 +12,11 @@ func (c *Controller) UpdateSettings(ctx context.Context, input UpdateSettingsInp
 	if err != nil {
 		return UpdateSettingsResult{}, err
 	}
+	if validator, ok := adapter.(SessionSettingsValidationAdapter); ok {
+		if err := validator.ValidateSessionSettings(session, input.Settings); err != nil {
+			return UpdateSettingsResult{}, err
+		}
+	}
 	nextSession := session
 	settings := normalizeSessionSettings(nextSession.Settings, nextSession.Provider, nextSession.PermissionModeID)
 	if input.Settings.Model != nil {
@@ -98,6 +103,7 @@ func (c *Controller) State(roomID, agentSessionID string) (SessionStateSnapshot,
 		AgentTargetID:      session.AgentTargetID,
 		Provider:           session.Provider,
 		ProviderSessionID:  session.ProviderSessionID,
+		Resumable:          session.Resumable,
 		Status:             session.Status,
 		TurnLifecycle:      cloneRuntimeTurnLifecycle(session.TurnLifecycle),
 		SubmitAvailability: cloneRuntimeSubmitAvailability(session.SubmitAvailability),
@@ -186,6 +192,7 @@ func (c *Controller) sessionStateSnapshot(session Session) SessionStateSnapshot 
 		AgentTargetID:     session.AgentTargetID,
 		Provider:          session.Provider,
 		ProviderSessionID: session.ProviderSessionID,
+		Resumable:         session.Resumable,
 		Status:            session.Status,
 		TurnLifecycle:     cloneRuntimeTurnLifecycle(session.TurnLifecycle),
 		SubmitAvailability: cloneRuntimeSubmitAvailability(

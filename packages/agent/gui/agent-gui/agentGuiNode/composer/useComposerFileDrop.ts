@@ -18,7 +18,7 @@ interface UseComposerFileDropInput {
   promptFilesSupported: boolean;
   promptImagesSupported: boolean;
   addDraftImages: (images: AgentRichTextPastedImage[]) => void;
-  applyDroppedFileReferences: (files: readonly File[]) => Promise<void>;
+  addDraftFiles: (files: readonly File[]) => void;
   scheduleComposerFocus: () => void;
   onPromptImagesUnsupported?: () => void;
 }
@@ -44,7 +44,7 @@ export function useComposerFileDrop({
   promptFilesSupported,
   promptImagesSupported,
   addDraftImages,
-  applyDroppedFileReferences,
+  addDraftFiles,
   scheduleComposerFocus,
   onPromptImagesUnsupported
 }: UseComposerFileDropInput) {
@@ -87,7 +87,12 @@ export function useComposerFileDrop({
       }
       const dragInfo = systemFileDragInfoFromDataTransfer(event.dataTransfer);
       const hasRegularFiles = dragInfo.hasRegularFiles && promptFilesSupported;
-      if (!dragInfo.hasImageFiles && !hasRegularFiles) {
+      const hasPromptImages = dragInfo.hasImageFiles && promptImagesSupported;
+      const hasImageFilesAsFiles =
+        dragInfo.hasImageFiles &&
+        !promptImagesSupported &&
+        promptFilesSupported;
+      if (!hasPromptImages && !hasImageFilesAsFiles && !hasRegularFiles) {
         return null;
       }
       return { hasImageFiles: dragInfo.hasImageFiles, hasRegularFiles };
@@ -107,14 +112,27 @@ export function useComposerFileDrop({
       const imageFiles = imageFilesFromDataTransfer(event.dataTransfer);
       const imageFileSet = new Set(imageFiles);
       const regularFiles = promptFilesSupported
-        ? nonImageFilesFromDataTransfer(event.dataTransfer).filter(
-            (file) => !imageFileSet.has(file)
-          )
+        ? [
+            ...nonImageFilesFromDataTransfer(event.dataTransfer).filter(
+              (file) => !imageFileSet.has(file)
+            ),
+            ...(!promptImagesSupported ? imageFiles : [])
+          ]
         : [];
-      if (imageFiles.length === 0 && regularFiles.length === 0) {
+      const promptImageFiles = promptImagesSupported ? imageFiles : [];
+      const unsupportedImageFiles =
+        !promptImagesSupported && !promptFilesSupported ? imageFiles : [];
+      if (
+        promptImageFiles.length === 0 &&
+        regularFiles.length === 0 &&
+        unsupportedImageFiles.length === 0
+      ) {
         return null;
       }
-      return { imageFiles, regularFiles };
+      return {
+        imageFiles: [...promptImageFiles, ...unsupportedImageFiles],
+        regularFiles
+      };
     };
 
     const handleDragOver: EventListener = (event): void => {
@@ -129,7 +147,8 @@ export function useComposerFileDrop({
       if (
         !drag.hasRegularFiles &&
         drag.hasImageFiles &&
-        !promptImagesSupported
+        !promptImagesSupported &&
+        !promptFilesSupported
       ) {
         clearDropOverlay();
         return;
@@ -155,11 +174,8 @@ export function useComposerFileDrop({
       clearDropOverlay();
       if (drop.regularFiles.length > 0) {
         editorHandleRef.current?.focusAtEnd();
-        void applyDroppedFileReferences(drop.regularFiles).then(() => {
-          if (!isDisposed) {
-            scheduleComposerFocus();
-          }
-        });
+        addDraftFiles(drop.regularFiles);
+        scheduleComposerFocus();
       }
       if (drop.imageFiles.length === 0) {
         return;
@@ -237,7 +253,7 @@ export function useComposerFileDrop({
     };
   }, [
     addDraftImages,
-    applyDroppedFileReferences,
+    addDraftFiles,
     inputDisabled,
     onPromptImagesUnsupported,
     promptFilesSupported,

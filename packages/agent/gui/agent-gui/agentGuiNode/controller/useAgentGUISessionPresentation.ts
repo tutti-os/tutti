@@ -6,6 +6,7 @@ import {
   type AgentActivityTurn,
   type CanonicalAgentSession,
   type PendingActivationIntentRecord,
+  type SessionRuntimeAvailability,
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
 import { useEffect, useMemo } from "react";
@@ -19,11 +20,16 @@ import {
 } from "../../../shared/agentConversation/planImplementationPresentation";
 import type { AgentSessionState } from "../../../shared/agentSessionTypes";
 import type { AppErrorCode } from "../../../shared/contracts/dto";
+import type { AgentGUITargetConnectionSource } from "../../../types";
 import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
 import type {
   AgentGUIConversationSummary,
   AgentGUIInteractivePrompt
 } from "../model/agentGuiConversationModel";
+import {
+  isDifferentKnownConversationOwner,
+  resolveAgentGUIComposerGate
+} from "../model/agentGuiComposerGate";
 import type {
   AgentGUIOptimisticGoalControl,
   AgentGUISessionChrome
@@ -35,16 +41,10 @@ import {
 } from "./agentGuiController.draftMessageHelpers";
 import { unresolvedOptimisticGoalControl } from "./agentGuiOptimisticGoal";
 import { isNonRetryableResumeErrorCode } from "./agentGuiController.errors";
-import {
-  normalizeOptionalText,
-  projectAgentGUIMessagesToTimelineItems
-} from "./agentGuiController.promptHelpers";
+import { projectAgentGUIMessagesToTimelineItems } from "./agentGuiController.promptHelpers";
 import { promptRequestId } from "./agentGuiController.diagnostics";
 import { reportAgentGUIRenderStateDiagnostic } from "./agentGuiController.reporting";
-import {
-  maxFiniteMessageVersion,
-  minFiniteMessageVersion
-} from "./useAgentConversationMessagePaging";
+import { useAgentGUITargetConnectionState } from "./useAgentGUITargetConnectionState";
 
 interface CurrentValue<T> {
   current: T;
@@ -57,6 +57,7 @@ interface UseAgentGUISessionPresentationInput {
   activeEngineAvailability: "available" | "blocked" | "missing";
   activeEngineHasPendingInteractions: boolean;
   activeEngineLatestTurn: AgentActivityTurn | null;
+  activeEngineRuntimeAvailability: SessionRuntimeAvailability | null;
   activeEngineSession: CanonicalAgentSession | null;
   activeLatestPendingSubmitTurnId: string | null;
   activeLiveState: "inactive" | "activating" | "active" | "failed";
@@ -73,19 +74,25 @@ interface UseAgentGUISessionPresentationInput {
   agentActivityRuntime: AgentActivityRuntime;
   composerSupport: ReturnType<typeof composerSettingsSupportFromOptions>;
   conversation: AgentConversationVM | null;
+  currentUserId?: string | null;
   isCreatingConversation: boolean;
   isInterrupting: boolean;
   isLoadingMessages: boolean;
   isRespondingToInteraction: boolean;
   isSubmitting: boolean;
-  lastActiveModelByProviderRef: CurrentValue<Record<string, string>>;
   lastRenderStateDiagnosticKeyRef: CurrentValue<string | null>;
   pendingApproval: AgentApprovalItemVM | null;
   planImplementationTurnIdRef: CurrentValue<string | null>;
   optimisticGoalControl: AgentGUIOptimisticGoalControl | null;
+  providerReadinessGate:
+    | import("../../../types").AgentGUIProviderReadinessGate
+    | null;
   agentTargetsLoading: boolean;
+  ownerDeviceLabel?: string | null;
   serverInteractivePrompt: AgentGUIInteractivePrompt | null;
   sessionEngine: AgentSessionEngine;
+  targetConnectionAgentTargetId?: string | null;
+  targetConnectionSource?: AgentGUITargetConnectionSource | null;
   workspaceId: string;
 }
 
@@ -135,31 +142,18 @@ export function useAgentGUISessionPresentation(
   const pendingInteractivePrompt =
     input.serverInteractivePrompt ?? planImplementationPrompt;
 
-  useEffect(() => {
-    const provider = normalizeOptionalText(
-      input.activeEngineSession?.provider ?? input.activeConversation?.provider
-    );
-    if (provider === null) return;
-    const model =
-      normalizeOptionalText(input.activeSessionState?.settings?.model) ??
-      normalizeOptionalText(input.activeEngineSession?.settings?.model);
-    if (model === null) return;
-    input.lastActiveModelByProviderRef.current = {
-      ...input.lastActiveModelByProviderRef.current,
-      [provider]: model
-    };
-  }, [
-    input.activeConversation?.provider,
-    input.activeEngineSession?.provider,
-    input.activeEngineSession?.settings?.model,
-    input.activeSessionState?.settings?.model,
-    input.lastActiveModelByProviderRef
-  ]);
-
   const activeHasPendingSubmittedTurn = Boolean(
     input.activeConversationId && input.activeLatestPendingSubmitTurnId
   );
   const activeSubmitBlocked = input.activeEngineAvailability === "blocked";
+  const sessionRuntimeBlockedReason =
+    input.activeEngineRuntimeAvailability?.state === "blocked"
+      ? input.activeEngineRuntimeAvailability.reason
+      : null;
+  const targetConnection = useAgentGUITargetConnectionState({
+    agentTargetId: input.targetConnectionAgentTargetId,
+    source: input.targetConnectionSource
+  });
   const activeConversationBusy = input.activeEngineSession
     ? input.activeEngineAvailability === "blocked"
     : agentActivityDisplayStatusBusy(input.activityDisplayStatus) ||
@@ -202,6 +196,36 @@ export function useAgentGUISessionPresentation(
     input.optimisticGoalControl
   ]);
   const sessionChrome = useMemo<AgentGUISessionChrome>(() => {
+    if (
+      targetConnection.visibleState?.status === "connecting" ||
+      targetConnection.visibleState?.status === "unavailable"
+    ) {
+      const device =
+        input.ownerDeviceLabel?.trim() ||
+        translate("agentHost.agentGui.sharedDeviceLabel");
+      const reconnecting =
+        targetConnection.visibleState.status === "connecting";
+      const retryAttempt = targetConnection.visibleState.retryAttempt;
+      return {
+        auth: null,
+        approval: null,
+        recovery: {
+          kind: reconnecting ? "transport-connecting" : "transport-unavailable",
+          message: translate(
+            reconnecting
+              ? retryAttempt > 0
+                ? "agentHost.agentGui.runtimeReconnectingAttempt"
+                : "agentHost.agentGui.runtimeConnecting"
+              : input.activeEngineActiveTurn !== null
+                ? "agentHost.agentGui.runtimeUnavailableActive"
+                : "agentHost.agentGui.runtimeUnavailable",
+            { attempt: retryAttempt, device }
+          ),
+          canRetry: false
+        },
+        rawState: sessionChromeRawState
+      };
+    }
     const normalizedError = input.activationError?.trim() ?? "";
     const authState = input.activeSessionState?.authState?.trim() ?? "";
     const providerSessionMissing = isNonRetryableResumeErrorCode(
@@ -260,36 +284,75 @@ export function useAgentGUISessionPresentation(
     input.activationError,
     input.activationErrorCode,
     input.activeConversationId,
+    input.activeEngineActiveTurn,
     input.activeLiveState,
     input.activeSessionState,
     input.activePendingActivation?.mode,
     input.pendingApproval,
+    input.ownerDeviceLabel,
+    targetConnection.visibleState,
     sessionChromeRawState
   ]);
-  const canSubmit =
-    !input.agentTargetsLoading &&
-    input.activeLiveState !== "activating" &&
-    input.activeLiveState !== "failed" &&
-    !activeConversationResumeUnavailable &&
-    input.pendingApproval === null &&
-    pendingInteractivePrompt === null &&
-    sessionChrome.auth === null &&
-    !activeConversationBusy &&
-    !input.isCreatingConversation &&
-    !input.isSubmitting &&
-    !input.isInterrupting;
-  const canQueueWhileBusy =
-    input.activeConversationId !== null &&
-    (activeConversationBusy ||
-      input.isSubmitting ||
-      input.activeEngineHasPendingInteractions);
+  const hasNonRetryableRecoveryFailure =
+    (sessionChrome.recovery?.kind === "failed" &&
+      sessionChrome.recovery.canRetry === false) ||
+    sessionChrome.recovery?.kind === "resume-unavailable";
+  const authBlocked = sessionChrome.auth !== null;
+  const isCollaboratorConversation = isDifferentKnownConversationOwner({
+    conversationUserId: input.activeConversation?.userId,
+    currentUserId: input.currentUserId
+  });
+  const pendingApproval = input.pendingApproval !== null;
+  const hasPendingInteractivePrompt = pendingInteractivePrompt !== null;
+  const composerGate = useMemo(
+    () =>
+      resolveAgentGUIComposerGate({
+        activeConversationBusy,
+        activeConversationId: input.activeConversationId,
+        activeEngineHasPendingInteractions:
+          input.activeEngineHasPendingInteractions,
+        activeLiveState: input.activeLiveState,
+        activeConversationResumeUnavailable,
+        agentTargetsLoading: input.agentTargetsLoading,
+        authBlocked,
+        hasNonRetryableRecoveryFailure,
+        isCollaboratorConversation,
+        isCreatingConversation: input.isCreatingConversation,
+        isInterrupting: input.isInterrupting,
+        isSubmitting: input.isSubmitting,
+        pendingApproval,
+        pendingInteractivePrompt: hasPendingInteractivePrompt,
+        providerReadinessGate: input.providerReadinessGate,
+        sessionRuntimeBlockedReason,
+        targetConnectionBlocked: targetConnection.blocked
+      }),
+    [
+      activeConversationBusy,
+      activeConversationResumeUnavailable,
+      authBlocked,
+      hasNonRetryableRecoveryFailure,
+      hasPendingInteractivePrompt,
+      input.activeConversationId,
+      input.activeEngineHasPendingInteractions,
+      input.activeLiveState,
+      input.agentTargetsLoading,
+      input.isCreatingConversation,
+      input.isInterrupting,
+      input.isSubmitting,
+      input.providerReadinessGate,
+      isCollaboratorConversation,
+      pendingApproval,
+      sessionRuntimeBlockedReason,
+      targetConnection.blocked
+    ]
+  );
+  const canSubmit = composerGate.submission.status === "ready";
+  const canQueueWhileBusy = composerGate.submission.status === "queue";
   const hasSentUserMessage = input.activeTimelineItems.some(
     (item) => item.role === "user"
   );
 
   useEffect(() => {
-    const firstVersion = minFiniteMessageVersion(input.activeMessages);
-    const lastVersion = maxFiniteMessageVersion(input.activeMessages);
     const diagnosticKey = [
       input.activeConversationId ?? "",
       input.activeConversation?.status ?? "",
@@ -308,15 +371,16 @@ export function useAgentGUISessionPresentation(
       activeSubmitBlocked ? "submit-blocked" : "submit-open",
       input.pendingApproval?.requestId ?? "",
       promptRequestId(pendingInteractivePrompt) ?? "",
-      input.conversation?.rows.length ?? "",
-      input.conversation?.sourceDetail.turns.length ?? "",
-      firstVersion ?? "",
-      lastVersion ?? "",
+      input.conversation?.activity.status ?? "",
       input.isCreatingConversation ? "creating" : "",
       input.isLoadingMessages ? "loading-messages" : "",
       input.isSubmitting ? "submitting" : "",
       canSubmit ? "can-submit" : "cannot-submit",
-      canQueueWhileBusy ? "can-queue" : "cannot-queue"
+      canQueueWhileBusy ? "can-queue" : "cannot-queue",
+      composerGate.editor.status,
+      composerGate.editor.reason ?? "",
+      composerGate.submission.reason ?? "",
+      composerGate.runtime.reason ?? ""
     ].join(":");
     if (input.lastRenderStateDiagnosticKeyRef.current === diagnosticKey) return;
     input.lastRenderStateDiagnosticKeyRef.current = diagnosticKey;
@@ -347,7 +411,7 @@ export function useAgentGUISessionPresentation(
     activeSubmitBlocked,
     canQueueWhileBusy,
     canSubmit,
-    hasSentUserMessage,
+    composerGate,
     input.activeConversation,
     input.activeConversationId,
     input.activeEngineActiveTurn,
@@ -355,7 +419,6 @@ export function useAgentGUISessionPresentation(
     input.activeEngineLatestTurn,
     input.activeEngineSession,
     input.activeLiveState,
-    input.activeMessages,
     input.activeSessionState,
     input.activityDisplayStatus,
     input.agentActivityRuntime,
@@ -371,8 +434,7 @@ export function useAgentGUISessionPresentation(
 
   return {
     activeConversationBusy,
-    canQueueWhileBusy,
-    canSubmit,
+    composerGate,
     hasSentUserMessage,
     isRespondingApproval,
     pendingInteractivePrompt,

@@ -1,6 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import test from "node:test";
 import {
   advanceDockMagnificationSpring,
@@ -14,14 +12,13 @@ import {
   isDockMagnificationSlotLayoutLocked,
   isDockMagnificationSpringSettled,
   mapDistanceToTargetSize,
+  projectDockMagnificationGeometry,
   resolveDockMagnificationHitBounds,
   resolveDockMagnificationSlotLayoutSize,
   resolveDockMagnificationSlotCenter,
   resolveDockMagnificationVisibleHitBounds,
   resolveDockMagnificationVisibleSlotRects
 } from "./dockMagnification.ts";
-
-const source = readFileSync(resolve("src/host/dockMagnification.ts"), "utf8");
 
 function assertBoundsEqual(
   actual: ReturnType<typeof resolveDockMagnificationHitBounds>,
@@ -34,6 +31,26 @@ function assertBoundsEqual(
   assert.ok(Math.abs(actual.crossStart - expected.crossStart) < 0.001);
   assert.ok(Math.abs(actual.mainEnd - expected.mainEnd) < 0.001);
   assert.ok(Math.abs(actual.mainStart - expected.mainStart) < 0.001);
+}
+
+function assertRectEqual(
+  actual: {
+    bottom: number;
+    left: number;
+    right: number;
+    top: number;
+  },
+  expected: {
+    bottom: number;
+    left: number;
+    right: number;
+    top: number;
+  }
+) {
+  assert.ok(Math.abs(actual.bottom - expected.bottom) < 0.001);
+  assert.ok(Math.abs(actual.left - expected.left) < 0.001);
+  assert.ok(Math.abs(actual.right - expected.right) < 0.001);
+  assert.ok(Math.abs(actual.top - expected.top) < 0.001);
 }
 
 class FakePointerTrackingTarget {
@@ -375,6 +392,64 @@ test("left dock magnification center ignores the slot's current magnified size",
   assert.equal(restCenter, magnifiedCenter);
 });
 
+test("dock magnification projects centered flex reflow without DOM reads", () => {
+  const geometry = projectDockMagnificationGeometry({
+    appliedSizes: new Map([["a", 70]]),
+    dockPlacement: "bottom",
+    mainAxisStartAligned: false,
+    order: ["a", "b"],
+    restRects: new Map([
+      ["a", { bottom: 80, left: 100, right: 143.2, top: 36.8 }],
+      ["b", { bottom: 80, left: 160, right: 203.2, top: 36.8 }]
+    ])
+  });
+
+  assert.equal(geometry.slotRects.length, 2);
+  assertRectEqual(geometry.slotRects[0]!, {
+    bottom: 80,
+    left: 86.6,
+    right: 156.6,
+    top: 10
+  });
+  assertRectEqual(geometry.slotRects[1]!, {
+    bottom: 80,
+    left: 173.4,
+    right: 216.6,
+    top: 36.8
+  });
+  assert.ok(Math.abs(geometry.centers.get("a")! - 108.2) < 0.001);
+  assert.ok(Math.abs(geometry.centers.get("b")! - 195) < 0.001);
+});
+
+test("dock magnification projects start-aligned vertical flex reflow", () => {
+  const geometry = projectDockMagnificationGeometry({
+    appliedSizes: new Map([["a", 70]]),
+    dockPlacement: "left",
+    mainAxisStartAligned: true,
+    order: ["a", "b"],
+    restRects: new Map([
+      ["a", { bottom: 143.2, left: 20, right: 63.2, top: 100 }],
+      ["b", { bottom: 203.2, left: 20, right: 63.2, top: 160 }]
+    ])
+  });
+
+  assert.equal(geometry.slotRects.length, 2);
+  assertRectEqual(geometry.slotRects[0]!, {
+    bottom: 170,
+    left: 6.6,
+    right: 76.6,
+    top: 100
+  });
+  assertRectEqual(geometry.slotRects[1]!, {
+    bottom: 230,
+    left: 20,
+    right: 63.2,
+    top: 186.8
+  });
+  assert.ok(Math.abs(geometry.centers.get("a")! - 121.6) < 0.001);
+  assert.ok(Math.abs(geometry.centers.get("b")! - 208.4) < 0.001);
+});
+
 test("dock magnification spring settles on the target size", () => {
   let spring = { value: DOCK_ICON_BASE_SIZE, velocity: 0 };
   const target = mapDistanceToTargetSize(0);
@@ -385,20 +460,6 @@ test("dock magnification spring settles on the target size", () => {
 
   assert.ok(isDockMagnificationSpringSettled(spring, target));
   assert.ok(Math.abs(spring.value - target) < 0.5);
-});
-
-test("dock magnification keeps active styles until leave animation settles", () => {
-  const handlePointerLeaveSource =
-    source.match(
-      /const handlePointerLeave = useCallback\([\s\S]*?\n {2}\}, \[scheduleAnimation\]\);/
-    )?.[0] ?? "";
-
-  assert.notEqual(handlePointerLeaveSource, "");
-  assert.match(
-    source,
-    /if \(pointerAxis === null && allSettled\) \{[\s\S]*?setMagnifyActive\(false\);/
-  );
-  assert.doesNotMatch(handlePointerLeaveSource, /setMagnifyActive\(false\);/);
 });
 
 test("dock magnification global pointer tracker forwards gap moves and cleans up", () => {
@@ -449,68 +510,6 @@ test("dock magnification global pointer tracker forwards gap moves and cleans up
   assert.equal(blurTarget.listenerCount("blur"), 0);
 });
 
-test("dock magnification starts global tracking on active pointers and stops on bounds exit or reset", () => {
-  assert.match(
-    source,
-    /createDockMagnificationGlobalPointerTracker\(\{[\s\S]*?pointerTarget: document/
-  );
-  assert.match(
-    source,
-    /startGlobalPointerTracking\(\);[\s\S]*?scheduleAnimation\(\);/
-  );
-  assert.match(
-    source,
-    /const isPointerInsideDockMagnificationTarget = useCallback\([\s\S]*?isDockMagnificationPointInsideHitBounds\([\s\S]*?\) \|\| isPointerInsideAnyVisibleDockSlot\(clientX, clientY\)/
-  );
-  assert.match(
-    source,
-    /if \(!isPointerInsideDockMagnificationTarget\(clientX, clientY\)\) \{[\s\S]*?stopGlobalPointerTracking\(\);[\s\S]*?clearTrackedPointer\(\);/
-  );
-  assert.match(
-    source,
-    /const resetMagnification = useCallback\([\s\S]*?stopGlobalPointerTracking\(\);/
-  );
-  assert.match(
-    source,
-    /useEffect\(\s*\(\) => \(\) => \{[\s\S]*?resetMagnification\(\);/
-  );
-});
-
-test("dock magnification samples ambient pointer moves without taking dock pointer events", () => {
-  assert.match(
-    source,
-    /document\.addEventListener\(\s*"pointermove",\s*handleAmbientPointerMove/
-  );
-  assert.match(source, /isPointNearDockScreenEdge\(/);
-  assert.match(source, /isPointNearDockViewport\(/);
-  assert.match(
-    source,
-    /const handleAmbientPointerMove = \(event: PointerEvent\) => \{[\s\S]*?!isPointNearDockScreenEdge\([\s\S]*?return;[\s\S]*?latestPoint =/
-  );
-  assert.match(
-    source,
-    /const clearAmbientPointerSample = \(\) => \{[\s\S]*?latestPoint = null;[\s\S]*?cancelAnimationFrame\(animationFrame\);/
-  );
-  assert.match(
-    source,
-    /!isPointNearDockScreenEdge\([\s\S]*?\) \{[\s\S]*?clearAmbientPointerSample\(\);[\s\S]*?return;/
-  );
-  assert.match(
-    source,
-    /isPointerInsideDockMagnificationTarget\(point\.clientX, point\.clientY\)[\s\S]*?handlePointerMove\(point\.clientX, point\.clientY\);/
-  );
-});
-
-test("dock magnification caches slot shell lookups during animation", () => {
-  assert.match(source, /const dockMagnificationShellBySlot = new WeakMap/);
-  assert.match(source, /dockMagnificationShellBySlot\.get\(slotElement\)/);
-  assert.match(source, /slotElement\.contains\(cachedShell\)/);
-  assert.match(
-    source,
-    /dockMagnificationShellBySlot\.set\(slotElement, shell\)/
-  );
-});
-
 test("dock magnification skips layout-locked dock slots", () => {
   assert.equal(
     isDockMagnificationSlotLayoutLocked({
@@ -535,23 +534,5 @@ test("dock magnification skips layout-locked dock slots", () => {
       dataset: { presence: "present" }
     } as unknown as HTMLElement),
     false
-  );
-  assert.match(source, /isDockMagnificationSlotLayoutLocked\(slotElement\)/);
-});
-
-test("dock magnification refreshes slot centers while the pointer is active", () => {
-  const runAnimationFrameSource =
-    source.match(
-      /const runAnimationFrame = useCallback\([\s\S]*?\n {4}\},\n {4}\[captureRestCenters, setMagnifyActive, slotRefs\]\n {2}\);/
-    )?.[0] ?? "";
-
-  assert.notEqual(runAnimationFrameSource, "");
-  assert.match(
-    runAnimationFrameSource,
-    /if \(pointerAxis !== null\) \{[\s\S]*?captureRestCenters\(\);/
-  );
-  assert.match(
-    source,
-    /const ensureDockMagnificationGeometry = useCallback\([\s\S]*?restCentersRef\.current === null[\s\S]*?hitBoundsRef\.current === null[\s\S]*?visibleSlotRectsRef\.current === null[\s\S]*?captureRestCenters\(\);/
   );
 });

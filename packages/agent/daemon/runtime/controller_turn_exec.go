@@ -13,6 +13,15 @@ import (
 )
 
 func (c *Controller) beginTurn(session Session, turnID string, cancel context.CancelFunc) (Session, error) {
+	return c.beginTurnWithTuttiModeSnapshot(session, turnID, cancel, nil)
+}
+
+func (c *Controller) beginTurnWithTuttiModeSnapshot(
+	session Session,
+	turnID string,
+	cancel context.CancelFunc,
+	tuttiModeSnapshot *TuttiModeTurnSnapshot,
+) (Session, error) {
 	if c == nil {
 		return Session{}, fmt.Errorf("agent session controller is unavailable")
 	}
@@ -27,7 +36,11 @@ func (c *Controller) beginTurn(session Session, turnID string, cancel context.Ca
 		return Session{}, ErrSessionActiveTurn
 	}
 	c.sessions[key] = session
-	c.turns[key] = activeTurn{turnID: turnID, cancel: cancel}
+	c.turns[key] = activeTurn{
+		turnID:            turnID,
+		cancel:            cancel,
+		tuttiModeSnapshot: cloneTuttiModeTurnSnapshot(tuttiModeSnapshot),
+	}
 	return session, nil
 }
 
@@ -46,12 +59,27 @@ func (c *Controller) rollbackSubmittedTurn(session Session, turnID string) {
 	c.sessions[key] = session
 }
 
+func (c *Controller) activeTurnTuttiModeSnapshot(roomID string, agentSessionID string) *TuttiModeTurnSnapshot {
+	if c == nil {
+		return nil
+	}
+	key := sessionKey(roomID, agentSessionID)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	turn, ok := c.turns[key]
+	if !ok {
+		return nil
+	}
+	return cloneTuttiModeTurnSnapshot(turn.tuttiModeSnapshot)
+}
+
 func (c *Controller) runExecTurn(ctx context.Context, session Session, adapter Adapter, content []PromptContentBlock, displayPrompt string, turnID string) {
 	if asyncAdapter, ok := adapter.(AsyncExecAdapter); ok {
 		c.runAsyncExecTurn(ctx, session, asyncAdapter, content, displayPrompt, turnID)
 		return
 	}
 	var emitted []activityshared.Event
+	var emittedSummary agentSubmitRuntimeEventSummary
 	metadata := execMetadataFromContext(ctx)
 	logAgentSubmitTrace("runtime.turn_goroutine_started", session, turnID, metadata, nil)
 	emit := func(events []activityshared.Event) {
@@ -69,11 +97,7 @@ func (c *Controller) runExecTurn(ctx context.Context, session Session, adapter A
 		emitted = append(emitted, events...)
 		c.publish(session, events)
 		c.enqueueSessionReport(ctx, session, events)
-		logAgentSubmitTrace("runtime.events_emitted", session, turnID, metadata, map[string]any{
-			"activity_event_count": len(events),
-			"session_status":       session.Status,
-			"turn_phase":           turnLifecyclePhaseFromEvents(events),
-		})
+		emittedSummary.observe(events, session)
 	}
 	emitCommands := func(snapshot AgentSessionCommandSnapshot) {
 		c.applyTurnCommandSnapshot(session, turnID, snapshot)
@@ -123,6 +147,7 @@ func (c *Controller) runExecTurn(ctx context.Context, session Session, adapter A
 	if shouldAdvanceSessionUpdatedAtFromEvents(statusEvents) {
 		session.UpdatedAtUnixMS = unixMS(now())
 	}
+	emittedSummary.log("runtime.events_emitted.summary", session, turnID, metadata)
 	if rootProviderLifecycle {
 		// Exec returning closes only the provider invocation. The controller's
 		// active root turn remains addressable for guidance/cancel until the
@@ -143,12 +168,17 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 	logAgentSubmitTrace("runtime.async_turn_started", session, turnID, metadata, nil)
 	var mu sync.Mutex
 	finished := false
+	var emittedSummary agentSubmitRuntimeEventSummary
 	finish := func(next Session) bool {
 		if finished {
 			return false
 		}
 		finished = true
-		return c.finishTurn(next, turnID)
+		if !c.finishTurn(next, turnID) {
+			return false
+		}
+		emittedSummary.log("runtime.async_events_emitted.summary", next, turnID, metadata)
+		return true
 	}
 	emit := func(events []activityshared.Event) {
 		if len(events) == 0 {
@@ -172,6 +202,7 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 			// Remove the controller's active-turn record before publishing a
 			// terminal/ready session. Consumers must never observe a ready session
 			// while HasActiveTurn still reports the finished turn.
+			emittedSummary.observe(events, session)
 			if !finish(session) {
 				return
 			}
@@ -179,14 +210,10 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 			if !c.storeTurnSession(session, turnID) {
 				return
 			}
+			emittedSummary.observe(events, session)
 		}
 		c.publish(session, events)
 		c.enqueueSessionReport(ctx, session, events)
-		logAgentSubmitTrace("runtime.async_events_emitted", session, turnID, metadata, map[string]any{
-			"activity_event_count": len(events),
-			"session_status":       session.Status,
-			"turn_phase":           turnLifecyclePhaseFromEvents(events),
-		})
 	}
 	emitCommands := func(snapshot AgentSessionCommandSnapshot) {
 		mu.Lock()

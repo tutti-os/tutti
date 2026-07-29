@@ -14,6 +14,55 @@ type PreferencesMutator interface {
 	Put(context.Context, preferencesservice.PutInput) (preferencesbiz.DesktopPreferences, error)
 }
 
+type AgentComposerDefaultsPatcher interface {
+	PatchAgentComposerDefaultsForTarget(context.Context, preferencesservice.PatchAgentComposerDefaultsForTargetInput) (preferencesbiz.AgentComposerDefaults, error)
+}
+
+func preferencesTopicDefinitions() []TopicDefinition {
+	return []TopicDefinition{
+		{
+			Name:               TopicPreferencesAgentComposerDefaultsChanged,
+			ClientCanPublish:   false,
+			ClientCanSubscribe: true,
+			Version:            1,
+			directions:         []Direction{DirectionServerToClient},
+			validators: map[Direction]PayloadValidator{
+				DirectionServerToClient: validateAgentComposerDefaultsChangedPayload,
+			},
+		},
+		{
+			Name:               TopicPreferencesAgentComposerDefaultsPatchRequested,
+			ClientCanPublish:   true,
+			ClientCanSubscribe: false,
+			Version:            1,
+			directions:         []Direction{DirectionClientToServer},
+			validators: map[Direction]PayloadValidator{
+				DirectionClientToServer: validateAgentComposerDefaultsPatchRequestedPayload,
+			},
+		},
+		{
+			Name:               TopicPreferencesDesktopUpdateRequested,
+			ClientCanPublish:   true,
+			ClientCanSubscribe: false,
+			Version:            1,
+			directions:         []Direction{DirectionClientToServer},
+			validators: map[Direction]PayloadValidator{
+				DirectionClientToServer: validateDesktopPreferencesUpdateRequestedPayload,
+			},
+		},
+		{
+			Name:               TopicPreferencesDesktopUpdated,
+			ClientCanPublish:   false,
+			ClientCanSubscribe: true,
+			Version:            1,
+			directions:         []Direction{DirectionServerToClient},
+			validators: map[Direction]PayloadValidator{
+				DirectionServerToClient: validateDesktopPreferencesUpdatedPayload,
+			},
+		},
+	}
+}
+
 type DesktopPreferencesPublisher struct {
 	Service *Service
 }
@@ -25,6 +74,7 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 	payload, err := json.Marshal(desktopPreferencesUpdatedPayload{
 		Initialized: preferences.Initialized,
 		Preferences: desktopPreferencesSettingsPayload{
+			AgentCLIUpdateCheckEnabled: preferences.AgentCLIUpdateCheckEnabled,
 			AgentComposerDefaultsByProvider: desktopAgentComposerDefaultsByProviderPayloadFromBiz(
 				preferences.AgentComposerDefaultsByProvider,
 			),
@@ -34,13 +84,14 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 			AgentGUIConversationRailCollapsedByProvider: agentGUIConversationRailCollapsedByProviderPayloadFromBiz(
 				preferences.AgentGUIConversationRailCollapsedByProvider,
 			),
-			AgentConversationDetailMode: preferencesbiz.NormalizeDesktopAgentConversationDetailMode(preferences.AgentConversationDetailMode),
-			AgentDockLayout:             preferencesbiz.NormalizeDesktopAgentDockLayout(preferences.AgentDockLayout),
-			AppCatalogChannel:           preferences.AppCatalogChannel,
-			BrowserUseConnectionMode:    preferences.BrowserUseConnectionMode,
-			DefaultAgentProvider:        preferences.DefaultAgentProvider,
-			DockIconStyle:               preferences.DockIconStyle,
-			DockPlacement:               preferences.DockPlacement,
+			AgentConversationDetailMode:           preferencesbiz.NormalizeDesktopAgentConversationDetailMode(preferences.AgentConversationDetailMode),
+			AgentDockLayout:                       preferencesbiz.NormalizeDesktopAgentDockLayout(preferences.AgentDockLayout),
+			AppCatalogChannel:                     preferences.AppCatalogChannel,
+			BrowserUseConnectionMode:              preferences.BrowserUseConnectionMode,
+			DefaultAgentProvider:                  preferences.DefaultAgentProvider,
+			DockIconStyle:                         preferences.DockIconStyle,
+			DockPlacement:                         preferences.DockPlacement,
+			DeletedAgentConversationRetentionDays: preferencesbiz.NormalizeDeletedAgentConversationRetentionDays(preferences.DeletedAgentConversationRetentionDays),
 			FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionPayloadFromBiz(
 				preferences.FileDefaultOpenersByExtension,
 			),
@@ -68,6 +119,40 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 	return p.Service.PublishFromServer(ctx, TopicPreferencesDesktopUpdated, payload)
 }
 
+func (p DesktopPreferencesPublisher) PublishAgentComposerDefaultsChanged(ctx context.Context, agentTargetID string) error {
+	if p.Service == nil {
+		return nil
+	}
+	payload, err := json.Marshal(agentComposerDefaultsChangedPayload{
+		AgentTargetID: agentTargetID,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal agent composer defaults changed payload: %w", err)
+	}
+	return p.Service.PublishFromServer(ctx, TopicPreferencesAgentComposerDefaultsChanged, payload)
+}
+
+func NewPreferencesAgentComposerDefaultsPatchRequestedHandler(
+	patcher AgentComposerDefaultsPatcher,
+) IntentHandler {
+	return func(ctx context.Context, event ClientEvent) error {
+		if patcher == nil {
+			return fmt.Errorf("agent composer defaults patcher is not configured")
+		}
+		var decoded agentComposerDefaultsPatchRequestedPayload
+		if err := json.Unmarshal(event.Payload, &decoded); err != nil {
+			return fmt.Errorf("decode payload: %w", err)
+		}
+		if _, err := patcher.PatchAgentComposerDefaultsForTarget(ctx, preferencesservice.PatchAgentComposerDefaultsForTargetInput{
+			AgentTargetID: decoded.AgentTargetID,
+			Patch:         decoded.Patch,
+		}); err != nil {
+			return fmt.Errorf("patch agent composer defaults: %w", err)
+		}
+		return nil
+	}
+}
+
 func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) IntentHandler {
 	return func(ctx context.Context, event ClientEvent) error {
 		if mutator == nil {
@@ -80,6 +165,7 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 		}
 
 		_, err = mutator.Put(ctx, preferencesservice.PutInput{
+			AgentCLIUpdateCheckEnabled:                  decoded.AgentCLIUpdateCheckEnabled,
 			AgentComposerDefaultsByProvider:             decoded.AgentComposerDefaultsByProvider,
 			AgentComposerDefaultsByAgentTarget:          decoded.AgentComposerDefaultsByAgentTarget,
 			AgentGUIConversationRailCollapsedByProvider: decoded.AgentGUIConversationRailCollapsedByProvider,
@@ -90,6 +176,7 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 			DefaultAgentProvider:                        decoded.DefaultAgentProvider,
 			DockIconStyle:                               decoded.DockIconStyle,
 			DockPlacement:                               decoded.DockPlacement,
+			DeletedAgentConversationRetentionDays:       decoded.DeletedAgentConversationRetentionDays,
 			FileDefaultOpenersByExtension:               decoded.FileDefaultOpenersByExtension,
 			FeatureFlags:                                decoded.FeatureFlags,
 			WorkbenchShortcuts:                          decoded.WorkbenchShortcuts,
@@ -110,6 +197,7 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 }
 
 type decodedDesktopPreferencesMutationPayload struct {
+	AgentCLIUpdateCheckEnabled                  bool
 	AgentComposerDefaultsByProvider             map[string]preferencesbiz.AgentComposerDefaults
 	AgentComposerDefaultsByAgentTarget          map[string]preferencesbiz.AgentComposerDefaults
 	AgentGUIConversationRailCollapsedByProvider map[string]bool
@@ -120,6 +208,7 @@ type decodedDesktopPreferencesMutationPayload struct {
 	DefaultAgentProvider                        string
 	DockIconStyle                               string
 	DockPlacement                               string
+	DeletedAgentConversationRetentionDays       int
 	FileDefaultOpenersByExtension               map[string]string
 	FeatureFlags                                map[string]bool
 	WorkbenchShortcuts                          preferencesbiz.DesktopWorkbenchShortcuts
@@ -145,8 +234,13 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 			ShortcutPreset: decoded.Preferences.WorkbenchWindowSnapping.ShortcutPreset,
 		}
 	}
+	deletedAgentConversationRetentionDays := decoded.Preferences.DeletedAgentConversationRetentionDays
+	if deletedAgentConversationRetentionDays == 0 {
+		deletedAgentConversationRetentionDays = preferencesbiz.DefaultDeletedAgentConversationRetentionDays
+	}
 
 	return decodedDesktopPreferencesMutationPayload{
+		AgentCLIUpdateCheckEnabled: decoded.Preferences.AgentCLIUpdateCheckEnabled,
 		AgentComposerDefaultsByProvider: agentComposerDefaultsByProviderFromPayload(
 			decoded.Preferences.AgentComposerDefaultsByProvider,
 		),
@@ -156,13 +250,14 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 		AgentGUIConversationRailCollapsedByProvider: agentGUIConversationRailCollapsedByProviderFromPayload(
 			decoded.Preferences.AgentGUIConversationRailCollapsedByProvider,
 		),
-		AgentConversationDetailMode: decoded.Preferences.AgentConversationDetailMode,
-		AgentDockLayout:             decoded.Preferences.AgentDockLayout,
-		AppCatalogChannel:           decoded.Preferences.AppCatalogChannel,
-		BrowserUseConnectionMode:    decoded.Preferences.BrowserUseConnectionMode,
-		DefaultAgentProvider:        decoded.Preferences.DefaultAgentProvider,
-		DockIconStyle:               decoded.Preferences.DockIconStyle,
-		DockPlacement:               decoded.Preferences.DockPlacement,
+		AgentConversationDetailMode:           decoded.Preferences.AgentConversationDetailMode,
+		AgentDockLayout:                       decoded.Preferences.AgentDockLayout,
+		AppCatalogChannel:                     decoded.Preferences.AppCatalogChannel,
+		BrowserUseConnectionMode:              decoded.Preferences.BrowserUseConnectionMode,
+		DefaultAgentProvider:                  decoded.Preferences.DefaultAgentProvider,
+		DockIconStyle:                         decoded.Preferences.DockIconStyle,
+		DockPlacement:                         decoded.Preferences.DockPlacement,
+		DeletedAgentConversationRetentionDays: deletedAgentConversationRetentionDays,
 		FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionFromPayload(
 			decoded.Preferences.FileDefaultOpenersByExtension,
 		),

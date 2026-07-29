@@ -23,6 +23,19 @@ export type AgentHostClipboardApi = {
   writeText: (text: string) => AgentHostAsyncResult<void>;
 };
 
+export type AgentHostTerminalLoginHandle = {
+  close: () => void;
+  completion: Promise<"ready" | "timed_out">;
+};
+
+export type AgentHostTerminalLoginApi = {
+  run: (input: {
+    agentTargetId: string;
+    command: string;
+    cwd?: string;
+  }) => AgentHostAsyncResult<AgentHostTerminalLoginHandle | void>;
+};
+
 export type AgentHostDebugApi = {
   logRuntimeDiagnostics: (
     payload: unknown
@@ -56,6 +69,52 @@ export type AgentHostEnvironmentApi = AgentHostRecord & {
   getBaseUrl?: () => AgentHostAsyncResult<string>;
 };
 
+export interface AgentHostQuickPrompt {
+  id: string;
+  title: string;
+  content: string;
+  version: number;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+}
+
+export interface AgentHostQuickPromptSnapshot {
+  enabled: boolean;
+  status: "idle" | "loading" | "ready" | "error";
+  prompts: readonly AgentHostQuickPrompt[];
+  error: string | null;
+  revision: number;
+  pendingMutationIds: readonly string[];
+  orderMutationPending?: boolean;
+}
+
+export interface AgentHostQuickPromptsApi {
+  ensureLoaded: (input?: { force?: boolean }) => AgentHostAsyncResult<void>;
+  getSnapshot: () => AgentHostQuickPromptSnapshot;
+  subscribe: (
+    listener: (snapshot: AgentHostQuickPromptSnapshot) => void
+  ) => AgentHostUnsubscribe;
+  create: (input: {
+    title: string;
+    content: string;
+  }) => AgentHostAsyncResult<AgentHostQuickPrompt>;
+  update: (input: {
+    id: string;
+    title: string;
+    content: string;
+    expectedVersion: number;
+  }) => AgentHostAsyncResult<AgentHostQuickPrompt>;
+  remove: (input: {
+    id: string;
+    expectedVersion: number;
+  }) => AgentHostAsyncResult<void>;
+  move?: (input: {
+    promptId: string;
+    beforePromptId: string | null;
+    expectedVersion: number;
+  }) => AgentHostAsyncResult<readonly AgentHostQuickPrompt[]>;
+}
+
 export type AgentHostPersistenceApi = AgentHostRecord & {
   readWorkspaceAgentReadState: (
     input: ReadWorkspaceAgentReadStateInput
@@ -65,9 +124,24 @@ export type AgentHostPersistenceApi = AgentHostRecord & {
   ) => AgentHostAsyncResult<PersistWriteResult>;
 };
 
+export type AgentHostToastHandle = {
+  /** Settles the toast to a neutral, non-error, non-success tone. */
+  info: (title: string, description?: string) => void;
+  /** Settles the toast to the destructive tone. */
+  reject: (title: string, description?: string) => void;
+  /** Settles the toast to the success tone. */
+  resolve: (title: string, description?: string) => void;
+};
+
 export type AgentHostToastApi = AgentHostRecord & {
   error: (title: string, description?: string) => void;
   info?: (title: string, description?: string) => void;
+  /**
+   * Opens one toast that stays mounted across async work: it shows busy
+   * (spinner, no auto-dismiss) until the returned handle settles it in
+   * place, at which point it starts auto-dismissing like any other toast.
+   */
+  loading?: (title: string) => AgentHostToastHandle;
   success?: (title: string, description?: string) => void;
 };
 
@@ -121,10 +195,6 @@ export type AgentHostWorkspaceApi = AgentHostRecord & {
   ) => AgentHostAsyncResult<AgentHostResolveWorkspaceGitPatchSupportResult>;
   copyPath?: (input: { path: string }) => AgentHostAsyncResult<void>;
   ensureDirectory: (input: { path: string }) => AgentHostAsyncResult<void>;
-  getReferenceForFile?: (file: File) => {
-    kind: "file" | "folder";
-    path: string;
-  };
   readFile: (input: {
     path: string;
   }) => AgentHostAsyncResult<AgentHostReadWorkspaceFileResult>;
@@ -142,13 +212,16 @@ export type AgentHostWorkspaceApi = AgentHostRecord & {
 export interface AgentHostInputApi {
   account?: AgentHostAccountApi;
   agentSessions?: AgentHostAgentSessionsApi;
+  agentTargetSetup?: AgentHostAgentTargetSetupApi;
   clipboard: AgentHostClipboardApi;
   debug?: AgentHostDebugApi;
   filesystem: AgentHostFilesystemApi;
   meta?: AgentHostMetaApi;
   onHostEvent?: (listener: (event: any) => void) => AgentHostUnsubscribe;
   persistence?: AgentHostPersistenceApi;
+  quickPrompts?: AgentHostQuickPromptsApi;
   runtime?: AgentHostEnvironmentApi;
+  terminalLogin?: AgentHostTerminalLoginApi;
   toast?: AgentHostToastApi;
   userProjects?: AgentHostUserProjectsApi;
   workspace: AgentHostWorkspaceApi;
@@ -170,6 +243,92 @@ export type AgentHostWorkspaceAgentProbesApi = AgentHostRecord & {
   ) => AgentHostAsyncResult<AgentHostWorkspaceAgentProbesResult>;
 };
 
+export interface AgentHostAgentTargetInstallPlan {
+  packageName: string;
+  packageVersion: string;
+  runner: "npm" | "pnpm" | "uv" | "binary";
+  planDigest: string;
+  installRoot: string;
+}
+
+export interface AgentHostAgentTargetSetupAction {
+  actionId: string;
+  clientActionId: string;
+  kind: "install" | "authenticate";
+  status: "queued" | "running" | "succeeded" | "failed" | "interrupted";
+  phase:
+    | "preparing"
+    | "installing"
+    | "verifying"
+    | "probing"
+    | "activating"
+    | "authenticating"
+    | "complete";
+  errorCode: string | null;
+  errorMessage: string | null;
+}
+
+export interface AgentHostAgentTargetSetupSnapshot {
+  agentTargetId: string;
+  status:
+    | "ready"
+    | "auth_required"
+    | "not_installed"
+    | "installing"
+    | "authenticating"
+    | "failed";
+  runtimeSource: "local" | "managed" | null;
+  runtimeVersion: string | null;
+  reason: string | null;
+  authMethods: AgentHostAgentTargetAuthMethod[];
+  account: AgentHostAgentTargetAuthenticatedAccount | null;
+  plan: AgentHostAgentTargetInstallPlan | null;
+  action: AgentHostAgentTargetSetupAction | null;
+}
+
+export interface AgentHostAgentTargetAuthenticatedAccount {
+  id: string;
+  displayName: string;
+  authMethodId: string;
+  organization: string | null;
+}
+
+export interface AgentHostAgentTargetAuthMethod {
+  id: string;
+  name: string;
+  description?: string | null;
+  /** Provider-declared method kind (for example "terminal"). */
+  type?: string | null;
+  /** Ready-to-run interactive sign-in command for terminal-type methods. */
+  terminalCommand?: string | null;
+}
+
+export interface AgentHostAgentTargetSetupState {
+  snapshot: AgentHostAgentTargetSetupSnapshot | null;
+  loading: boolean;
+  failed: boolean;
+}
+
+export interface AgentHostAgentTargetSetupWatch {
+  getSnapshot: () => AgentHostAgentTargetSetupState;
+  subscribe: (
+    listener: (state: AgentHostAgentTargetSetupState) => void
+  ) => AgentHostUnsubscribe;
+  install: (input: {
+    planDigest: string;
+    clientActionId: string;
+  }) => AgentHostAsyncResult<void>;
+  authenticate: (input: {
+    methodId: string;
+    clientActionId: string;
+  }) => AgentHostAsyncResult<void>;
+  refresh: () => AgentHostAsyncResult<void>;
+}
+
+export type AgentHostAgentTargetSetupApi = AgentHostRecord & {
+  watch: (input: { agentTargetId: string }) => AgentHostAgentTargetSetupWatch;
+};
+
 export type AgentProviderProbeListInput =
   AgentHostListWorkspaceAgentProbesInput;
 export type AgentProviderProbeListResult = AgentHostWorkspaceAgentProbesResult;
@@ -178,6 +337,7 @@ export interface AgentHostUserProject {
   id: string;
   path: string;
   label: string;
+  pinnedAtUnixMs: number;
   sectionKey?: string;
   createdAtUnixMs?: number;
   updatedAtUnixMs?: number;
@@ -200,6 +360,14 @@ export type AgentHostUserProjectsApi = AgentHostRecord & {
   list: () => AgentHostAsyncResult<{
     projects: AgentHostUserProject[];
   }>;
+  move?: (input: {
+    beforeProjectId: string | null;
+    projectId: string;
+  }) => AgentHostAsyncResult<void>;
+  pin: (input: {
+    pinned: boolean;
+    projectId: string;
+  }) => AgentHostAsyncResult<void>;
   subscribe?: (listener: () => void) => AgentHostUnsubscribe;
   prepareSelection?: (input: {
     projectLocked: boolean;
@@ -243,13 +411,16 @@ export type AgentHostAgentSessionsApi = AgentHostRecord & {
 
 export interface AgentHostRuntimeApi {
   account?: AgentHostAccountApi;
+  agentTargetSetup?: AgentHostAgentTargetSetupApi;
   clipboard: AgentHostClipboardApi;
   debug?: AgentHostDebugApi;
   filesystem: AgentHostFilesystemApi;
   meta?: AgentHostMetaApi;
   onHostEvent?: (listener: (event: any) => void) => AgentHostUnsubscribe;
   persistence?: AgentHostPersistenceApi;
+  quickPrompts?: AgentHostQuickPromptsApi;
   runtime?: AgentHostEnvironmentApi;
+  terminalLogin?: AgentHostTerminalLoginApi;
   toast?: AgentHostToastApi;
   userProjects?: AgentHostUserProjectsApi;
   workspace: AgentHostWorkspaceApi;
@@ -261,13 +432,16 @@ export function toAgentHostRuntimeApi(
 ): AgentHostRuntimeApi {
   return {
     account: hostApi.account,
+    agentTargetSetup: hostApi.agentTargetSetup,
     clipboard: hostApi.clipboard,
     debug: hostApi.debug,
     filesystem: hostApi.filesystem,
     meta: hostApi.meta,
     onHostEvent: hostApi.onHostEvent,
     persistence: hostApi.persistence,
+    quickPrompts: hostApi.quickPrompts,
     runtime: hostApi.runtime,
+    terminalLogin: hostApi.terminalLogin,
     toast: hostApi.toast,
     userProjects: hostApi.userProjects,
     workspace: hostApi.workspace,

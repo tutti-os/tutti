@@ -15,6 +15,7 @@ import {
 } from "../../shared/errors/desktopErrors.ts";
 import { getDesktopLogger, getDesktopLogSessionID } from "../logging.ts";
 import {
+  resolveBrowserNodeAutomationListenerInfoPath,
   resolveDesktopLogsDir,
   type DesktopDaemonEndpoint
 } from "../transport/paths.ts";
@@ -340,6 +341,8 @@ export function resolveManagedDaemonProcessEnv(
     ...resolveBrowserMcpDaemonEnv(),
     ...resolveClaudeSDKSidecarDaemonEnv(),
     TUTTI_APP_VERSION: process.env.TUTTI_APP_VERSION?.trim() ?? "",
+    TUTTI_BROWSER_NODE_LISTENER_INFO:
+      resolveBrowserNodeAutomationListenerInfoPath(),
     TUTTI_DESKTOP_PARENT_PID: String(input.parentPID ?? process.pid),
     TUTTI_LOG_DIR: input.logDir ?? resolveDesktopLogsDir(),
     TUTTI_SESSION_ID: input.sessionID ?? getDesktopLogSessionID(),

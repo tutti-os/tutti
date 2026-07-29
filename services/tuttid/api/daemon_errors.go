@@ -13,6 +13,10 @@ func serviceUnavailableError(err *apierrors.ProtocolError) tuttigenerated.Servic
 	return tuttigenerated.ServiceUnavailableErrorJSONResponse(protocolErrorResponse(err))
 }
 
+func tuttiExecutionActiveError(err *apierrors.ProtocolError) tuttigenerated.TuttiExecutionActiveErrorJSONResponse {
+	return tuttigenerated.TuttiExecutionActiveErrorJSONResponse(protocolErrorResponse(err))
+}
+
 func workspaceNotFoundError(err *apierrors.ProtocolError) tuttigenerated.WorkspaceNotFoundErrorJSONResponse {
 	return tuttigenerated.WorkspaceNotFoundErrorJSONResponse(protocolErrorResponse(err))
 }
@@ -35,6 +39,18 @@ func workspaceOperationError(err *apierrors.ProtocolError) tuttigenerated.Worksp
 
 func preferencesOperationError(err *apierrors.ProtocolError) tuttigenerated.PreferencesOperationErrorJSONResponse {
 	return tuttigenerated.PreferencesOperationErrorJSONResponse(protocolErrorResponse(err))
+}
+
+func agentQuickPromptNotFoundError(err *apierrors.ProtocolError) tuttigenerated.AgentQuickPromptNotFoundErrorJSONResponse {
+	return tuttigenerated.AgentQuickPromptNotFoundErrorJSONResponse(protocolErrorResponse(err))
+}
+
+func agentQuickPromptConflictError(err *apierrors.ProtocolError) tuttigenerated.AgentQuickPromptConflictErrorJSONResponse {
+	return tuttigenerated.AgentQuickPromptConflictErrorJSONResponse(protocolErrorResponse(err))
+}
+
+func agentQuickPromptOperationError(err *apierrors.ProtocolError) tuttigenerated.AgentQuickPromptOperationErrorJSONResponse {
+	return tuttigenerated.AgentQuickPromptOperationErrorJSONResponse(protocolErrorResponse(err))
 }
 
 func protocolErrorResponse(err *apierrors.ProtocolError) tuttigenerated.ApiErrorResponse {

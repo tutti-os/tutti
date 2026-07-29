@@ -15,6 +15,7 @@ func GeneratedDesktopPreferencesFromBiz(value preferencesbiz.DesktopPreferences)
 		NewSameTypeWindow:    optionalStringPointer(value.WorkbenchShortcuts.NewSameTypeWindow),
 	}
 	return tuttigenerated.DesktopPreferences{
+		AgentCliUpdateCheckEnabled:                  value.AgentCLIUpdateCheckEnabled,
 		AgentComposerDefaultsByProvider:             generatedAgentComposerDefaultsByProvider(value.AgentComposerDefaultsByProvider),
 		AgentComposerDefaultsByAgentTarget:          generatedAgentComposerDefaultsByAgentTarget(value.AgentComposerDefaultsByAgentTarget),
 		AgentGuiConversationRailCollapsedByProvider: generatedAgentGUIConversationRailCollapsedByProvider(value.AgentGUIConversationRailCollapsedByProvider),
@@ -25,6 +26,7 @@ func GeneratedDesktopPreferencesFromBiz(value preferencesbiz.DesktopPreferences)
 		DefaultAgentProvider:                        tuttigenerated.DesktopDefaultAgentProvider(value.DefaultAgentProvider),
 		DockIconStyle:                               tuttigenerated.DesktopDockIconStyle(value.DockIconStyle),
 		DockPlacement:                               tuttigenerated.DesktopDockPlacement(value.DockPlacement),
+		DeletedAgentConversationRetentionDays:       tuttigenerated.DeletedAgentConversationRetentionDays(preferencesbiz.NormalizeDeletedAgentConversationRetentionDays(value.DeletedAgentConversationRetentionDays)),
 		FileDefaultOpenersByExtension:               generatedFileDefaultOpenersByExtension(value.FileDefaultOpenersByExtension),
 		FeatureFlags:                                tuttigenerated.DesktopFeatureFlags(value.FeatureFlags),
 		WorkbenchShortcuts:                          workbenchShortcuts,
@@ -57,7 +59,6 @@ func generatedAgentGUIConversationRailCollapsedByProvider(value map[string]bool)
 		Codex:      optionalBoolPointerFromMap(value, "codex"),
 		TuttiAgent: optionalBoolPointerFromMap(value, "tutti-agent"),
 		Cursor:     optionalBoolPointerFromMap(value, "cursor"),
-		Hermes:     optionalBoolPointerFromMap(value, "hermes"),
 		Openclaw:   optionalBoolPointerFromMap(value, "openclaw"),
 		Opencode:   optionalBoolPointerFromMap(value, "opencode"),
 	}
@@ -84,7 +85,6 @@ func generatedAgentComposerDefaultsByProvider(value map[string]preferencesbiz.Ag
 		Codex:      generatedAgentComposerDefaultsPointer(value["codex"]),
 		TuttiAgent: generatedAgentComposerDefaultsPointer(value["tutti-agent"]),
 		Cursor:     generatedAgentComposerDefaultsPointer(value["cursor"]),
-		Hermes:     generatedAgentComposerDefaultsPointer(value["hermes"]),
 		Openclaw:   generatedAgentComposerDefaultsPointer(value["openclaw"]),
 		Opencode:   generatedAgentComposerDefaultsPointer(value["opencode"]),
 	}

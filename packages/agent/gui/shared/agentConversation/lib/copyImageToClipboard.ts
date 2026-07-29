@@ -27,7 +27,9 @@ async function imageSrcToPngBlob(src: string): Promise<Blob | null> {
   );
 }
 
-async function blobToBase64(blob: Blob): Promise<string> {
+// FileReader-based (jsdom-compatible) blob-to-base64; also reused by the
+// conversation copy path to embed workspace image bytes as data URIs.
+export async function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(reader.error ?? new Error("read failed"));

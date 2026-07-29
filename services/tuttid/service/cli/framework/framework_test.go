@@ -31,6 +31,14 @@ type hiddenInput struct {
 	Provider string `cli:"provider" hidden:"true"`
 }
 
+type defaultInput struct {
+	TimeoutMS *int `cli:"timeout-ms" default:"30000" validate:"min=0,max=60000"`
+}
+
+type numberInput struct {
+	Percent *float64 `cli:"percent" validate:"min=0,max=100"`
+}
+
 func TestFromStructGeneratesInputSchema(t *testing.T) {
 	schema := Schema(FromStruct[sampleInput]())
 	properties := schema["properties"].(map[string]any)
@@ -59,6 +67,21 @@ func TestFromStructGeneratesInputSchema(t *testing.T) {
 	}
 	if required := schema["required"].([]string); !reflect.DeepEqual(required, []string{"topic-id"}) {
 		t.Fatalf("required = %#v", required)
+	}
+}
+
+func TestFromStructPublishesAndBindsTypedDefault(t *testing.T) {
+	spec := FromStruct[defaultInput]()
+	property := Schema(spec)["properties"].(map[string]any)["timeout-ms"].(map[string]any)
+	if property["default"] != int64(30000) {
+		t.Fatalf("default = %#v", property["default"])
+	}
+	input, err := BindInput[defaultInput](spec, nil)
+	if err != nil {
+		t.Fatalf("BindInput: %v", err)
+	}
+	if input.TimeoutMS == nil || *input.TimeoutMS != 30000 {
+		t.Fatalf("input = %#v", input)
 	}
 }
 
@@ -172,6 +195,24 @@ func TestBindInputTracksOptionalPointerPresence(t *testing.T) {
 	}
 }
 
+func TestNumberInputSchemaAndBinding(t *testing.T) {
+	spec := FromStruct[numberInput]()
+	property := Schema(spec)["properties"].(map[string]any)["percent"].(map[string]any)
+	if property["type"] != "number" || property["minimum"] != int64(0) || property["maximum"] != int64(100) {
+		t.Fatalf("percent property = %#v", property)
+	}
+	input, err := BindInput[numberInput](spec, map[string]any{"percent": "12.5"})
+	if err != nil {
+		t.Fatalf("BindInput: %v", err)
+	}
+	if input.Percent == nil || *input.Percent != 12.5 {
+		t.Fatalf("percent = %#v", input.Percent)
+	}
+	if _, err := BindInput[numberInput](spec, map[string]any{"percent": "101"}); !errors.Is(err, cliservice.ErrInvalidInput) {
+		t.Fatalf("out-of-range error = %v", err)
+	}
+}
+
 func TestFormatOutputSupportsTableJSONPlainAndMarkdown(t *testing.T) {
 	spec := OutputSpec{
 		DefaultMode: cliservice.OutputModeTable,
@@ -275,6 +316,14 @@ func TestRegisterBindsResolvesWorkspaceRunsAndFormats(t *testing.T) {
 	}
 	if output.Value["workspaceId"] != "workspace-1" {
 		t.Fatalf("output = %#v", output)
+	}
+}
+
+func TestValidateSpecRejectsWaitExecutionWithoutContinuationFormatter(t *testing.T) {
+	spec := validSpec()
+	spec.Execution = &cliservice.CommandExecution{Mode: cliservice.CommandExecutionModeWait}
+	if err := ValidateSpec(spec); err == nil || !strings.Contains(err.Error(), "continuation formatter") {
+		t.Fatalf("ValidateSpec() error = %v", err)
 	}
 }
 

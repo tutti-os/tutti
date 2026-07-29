@@ -6,6 +6,8 @@ import type {
   ReferenceProvenanceCatalog
 } from "@tutti-os/workspace-file-reference/contracts";
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
+import type { ReferenceSourcePickerProps } from "@tutti-os/workspace-file-reference/ui";
+import type { AgentGuiWorkbenchSessionActionRequest } from "../../workbench/sessionActions";
 import type { AgentSettings } from "../../contexts/settings/domain/agentSettings";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import type {
@@ -14,40 +16,43 @@ import type {
   AgentGUIProviderRailAllPresentation,
   AgentGUIProviderRailMode,
   AgentGUIProviderReadinessGate,
+  AgentGUITargetConnectionSource,
   AgentGUIHomeSuggestionId,
   AgentGUIAgentTarget,
+  AgentGUIAgentTargetInfoRenderer,
+  AgentGUIAgentOwnership,
   NodeFrame,
   Point
 } from "../../types";
-import type {
-  DesktopSize,
-  WorkspaceDesktopAgentProbeDemandChange,
-  WorkspaceDesktopAgentProbeRefreshRequest,
-  WorkspaceDesktopAgentProbesState
-} from "../workspaceDesktop/types";
+import type { DesktopSize } from "../workspaceDesktop/types";
 import type {
   AgentGUIOpenSessionRequest,
   AgentGUIPrefillPromptRequest,
-  AgentGUIRememberComposerDefaultsInput
+  AgentGUIRememberComposerDefaultsInput,
+  AgentGUIRememberComposerDefaultsResult
 } from "./controller/useAgentGUINodeController";
+import type { AgentStatusController } from "./controller/AgentStatusController";
 import type {
   AgentGUISidebarFooterContext,
+  AgentGUIConversationRailLayout,
   AgentGUIAgentsEmptyRenderer,
+  AgentGUIComposerFooterAccessoryRenderer,
   AgentGUIProviderUnavailableStateRenderer,
   AgentMentionReferenceTargetResolver,
   AgentWorkspaceReferenceInitialTargetResolver
 } from "./AgentGUINodeView";
-import type { AgentGUIAccountMenuState } from "./accountMenuState";
+import type { AgentVisibleErrorOverrides } from "../../shared/agentEnv/agentErrorPresentation";
 import type {
   AgentComposerCapabilityMenuState,
   AgentComposerCapabilitySettingsTarget,
   AgentComposerGitBranchLoader,
   AgentComposerProps
 } from "./AgentComposer";
-import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../shared/AgentMessageMarkdown";
+import type { RichTextMentionService } from "@tutti-os/ui-rich-text/service";
 import type { AgentGUIEngagementEventSink } from "./engagement/agentGUIEngagement.types";
 import type { AgentGUIComposerAppendRequest } from "./controller/useAgentGUIComposerAppendRequest";
+import type { OpenAgentEnvPanelInput } from "../../shared/agentEnv";
 
 export interface AgentGUINodeIdentity {
   nodeId: string;
@@ -61,8 +66,12 @@ export interface AgentGUINodeWorkspace {
   fileReferenceAdapter?: WorkspaceFileReferenceAdapter | null;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
-  resolveDroppedFileReferences?: AgentComposerProps["resolveDroppedFileReferences"];
+  resolveExternalPromptEntries?: AgentComposerProps["resolveExternalPromptEntries"];
+  prepareExternalPromptFiles?: AgentComposerProps["prepareExternalPromptFiles"];
+  promptAssetLimit?: number | null;
+  projectDirectorySourceAggregator?: ReferenceSourceAggregator | null;
   referenceSourceAggregator?: ReferenceSourceAggregator | null;
+  resolveReferenceContentErrorAction?: ReferenceSourcePickerProps["resolveContentErrorAction"];
   resolveReferenceEntryIconUrl?: (
     entry: WorkspaceFileEntry
   ) => Promise<string | null | undefined>;
@@ -85,24 +94,26 @@ export interface AgentGUINodeFrameLayout {
   /** Host-projected presentation visibility. Independent from node focus. */
   isVisible?: boolean;
   embedded?: boolean;
-  previewMode?: boolean;
   /**
-   * Container width at or below which the conversation rail auto-hides.
-   * Hosts with roomier layouts (e.g. the standalone agent window) raise this
-   * above the default AGENT_GUI_AUTO_COLLAPSE_WIDTH_PX.
+   * Standalone windows preserve the middle conversation width and collapse
+   * the conversation Rail before it can be compressed. Other surfaces retain
+   * the default responsive policy.
    */
-  conversationRailAutoCollapseWidthPx?: number | null;
+  conversationRailAutoCollapseMode?: "preserve-middle-content";
 }
+
+export type AgentGUISessionActionRequest =
+  AgentGuiWorkbenchSessionActionRequest;
 
 export interface AgentGUINodeRuntimeRequests {
   composerAppend?: AgentGUIComposerAppendRequest | null;
   composerFocusSequence?: number | null;
   newConversationSequence?: number | null;
+  sessionAction?: AgentGUISessionActionRequest | null;
   openSession?: AgentGUIOpenSessionRequest | null;
   prefillPrompt?: AgentGUIPrefillPromptRequest | null;
-  agentProbes?: WorkspaceDesktopAgentProbesState | null;
-  onProbeDemandChange?: WorkspaceDesktopAgentProbeDemandChange;
-  onProbeRefreshRequest?: WorkspaceDesktopAgentProbeRefreshRequest;
+  /** On-demand status capability. Transport and owner resolution stay host-owned. */
+  agentStatusController?: AgentStatusController | null;
 }
 
 export interface AgentGUINodeHostCapabilities {
@@ -115,35 +126,61 @@ export interface AgentGUINodeHostCapabilities {
   referenceProvenanceFilterCatalog?: ReferenceProvenanceCatalog | null;
   /** Legacy Tutti Agent-only opt-in. Prefer an explicit catalog in new hosts. */
   referenceProvenanceFilterEnabled?: boolean;
+  /** Host-owned experimental opt-in for current-Session composer history. */
+  sessionInputHistoryEnabled?: boolean;
+  /** Host-owned experimental opt-in for creating Session forks. */
+  sessionForkEnabled?: boolean;
   capabilityMenuState?: AgentComposerCapabilityMenuState;
-  accountMenuState?: AgentGUIAccountMenuState | null;
+  /**
+   * Keeps owner-supported Browser/Computer capability entries visible while
+   * preventing this host from mutating device-owned capability settings.
+   */
+  capabilityControlsReadOnly?: boolean;
+  /**
+   * Host-owned product copy and external action for structured run errors.
+   * AgentGUI owns the generic card; product domains own product semantics.
+   */
+  visibleErrorPresentationOverrides?: AgentVisibleErrorOverrides | null;
   agentTargets?: readonly AgentGUIAgentTarget[];
   agentTargetsLoading?: boolean;
+  /** Launch-only targets for active-conversation handoff. */
+  handoffAgentTargets?: readonly AgentGUIAgentTarget[];
+  handoffAgentTargetsLoading?: boolean;
   providerRailAllPresentation?: AgentGUIProviderRailAllPresentation | null;
   providerRailMode?: AgentGUIProviderRailMode;
   comingSoonProviders?: readonly AgentGUIProvider[];
   providerReadinessGates?: Partial<
     Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>
   > | null;
+  targetConnectionSource?: AgentGUITargetConnectionSource | null;
   defaultAgentTargetId?: string | null;
   providerAuthAccountLabels?: Partial<Record<string, string>>;
-  contextMentionProviders?: readonly AgentContextMentionProvider[];
+  mentionService?: RichTextMentionService;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   disabledHomeSuggestions?: readonly AgentGUIHomeSuggestionId[];
 }
 
 export interface AgentGUINodeHostActions {
+  /** Confirms that AgentGUI applied one host-issued composer append request. */
+  onComposerAppendHandled?: (sequence: number) => void;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onHandoffConversation?: (input: {
     agentTargetId?: string | null;
     draftPrompt: string;
     provider: AgentGUIProvider;
+    sourceAgentSessionId: string;
     userProjectPath?: string | null;
   }) => void | Promise<void>;
   onCapabilitySettingsRequest?: (
     capability: AgentComposerCapabilitySettingsTarget
   ) => void;
   onAgentProviderLogin?: (provider: AgentGUIProvider) => void;
+  onAgentEnvPanelOpen?: (input?: OpenAgentEnvPanelInput) => void;
+  /**
+   * Notifies the Host when the exact target's config menu opens. Account and
+   * Commerce refreshes remain Host-owned and must not enter Agent status.
+   */
+  onAgentConfigMenuOpen?: (context: AgentGUIAgentConfigMenuContext) => void;
   onOpenConversationWindow?: (agentSessionId: string) => void;
   onClose: () => void;
   onResize: (frame: NodeFrame) => void;
@@ -152,7 +189,7 @@ export interface AgentGUINodeHostActions {
   ) => void;
   onRememberComposerDefaults?: (
     input: AgentGUIRememberComposerDefaultsInput
-  ) => void | Promise<void>;
+  ) => void | Promise<AgentGUIRememberComposerDefaultsResult>;
   isMuted?: boolean;
   onMinimize?: () => void;
   onToggleMaximize?: () => void;
@@ -161,9 +198,37 @@ export interface AgentGUINodeHostActions {
     tone?: "info" | "warning" | "error"
   ) => void;
   onEngagementEvent?: AgentGUIEngagementEventSink;
+  /**
+   * Reports live left-side rail layout width while the conversation rail is
+   * being resized. Hosts with external chrome aligned to the rail can consume
+   * this instead of observing package DOM/style mutations.
+   */
+  onConversationRailLayoutChange?: (
+    layout: AgentGUIConversationRailLayout
+  ) => void;
+}
+
+export interface AgentGUIAgentConfigMenuContext {
+  agentTargetId: string;
+  provider: AgentGUIProvider;
+  label: string;
+  ownership?: AgentGUIAgentOwnership;
 }
 
 export interface AgentGUINodeRenderSlots {
+  /** Host-owned controls appended to the composer footer. */
+  composerFooterAccessory?: AgentGUIComposerFooterAccessoryRenderer;
+  /**
+   * Optional Host-owned information for an exact Agent target. AgentGUI owns
+   * tooltip mechanics and invokes this renderer lazily for supported surfaces.
+   */
+  agentTargetInfo?: AgentGUIAgentTargetInfoRenderer;
+  /**
+   * Optional Host chrome for the exact target's account/Commerce presentation.
+   * Returning null preserves AgentGUI's provider account and quota content.
+   */
+  agentConfigAccount?: (context: AgentGUIAgentConfigMenuContext) => ReactNode;
+  projectDirectoryPickerHeaderActions?: ReferenceSourcePickerProps["renderHeaderActions"];
   providerRailEmpty?: AgentGUIAgentsEmptyRenderer;
   providerUnavailableState?: AgentGUIProviderUnavailableStateRenderer;
   sidebarFooter?: (ctx: AgentGUISidebarFooterContext) => ReactNode;
@@ -189,6 +254,10 @@ function agentGuiStateEquals(
     (left.provider === right.provider &&
       (left.agentTargetId ?? null) === (right.agentTargetId ?? null) &&
       left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
+      stringRecordsEqual(
+        left.lastActiveAgentSessionIdByAgentTargetId,
+        right.lastActiveAgentSessionIdByAgentTargetId
+      ) &&
       left.conversationRailWidthPx === right.conversationRailWidthPx &&
       left.conversationRailCollapsed === right.conversationRailCollapsed &&
       (left.composerOverrides?.model ?? null) ===
@@ -263,6 +332,20 @@ function composerOverridesByAgentTargetIdEqual(
   return true;
 }
 
+function stringRecordsEqual(
+  left: Record<string, string> | null | undefined,
+  right: Record<string, string> | null | undefined
+): boolean {
+  const leftKeys = Object.keys(left ?? {}).sort();
+  const rightKeys = Object.keys(right ?? {}).sort();
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key, index) => key === rightKeys[index] && left?.[key] === right?.[key]
+    )
+  );
+}
+
 export function areAgentGUINodePropsEqual(
   previous: AgentGUINodeProps,
   next: AgentGUINodeProps
@@ -290,8 +373,14 @@ export function areAgentGUINodePropsEqual(
     pw.fileReferenceAdapter === nw.fileReferenceAdapter &&
     pw.onRequestGitBranches === nw.onRequestGitBranches &&
     pw.selectProjectDirectory === nw.selectProjectDirectory &&
-    pw.resolveDroppedFileReferences === nw.resolveDroppedFileReferences &&
+    pw.resolveExternalPromptEntries === nw.resolveExternalPromptEntries &&
+    pw.prepareExternalPromptFiles === nw.prepareExternalPromptFiles &&
+    pw.promptAssetLimit === nw.promptAssetLimit &&
+    pw.projectDirectorySourceAggregator ===
+      nw.projectDirectorySourceAggregator &&
     pw.referenceSourceAggregator === nw.referenceSourceAggregator &&
+    pw.resolveReferenceContentErrorAction ===
+      nw.resolveReferenceContentErrorAction &&
     pw.resolveReferenceEntryIconUrl === nw.resolveReferenceEntryIconUrl &&
     pw.resolveMentionReferenceTarget === nw.resolveMentionReferenceTarget &&
     pw.resolveReferenceInitialTarget === nw.resolveReferenceInitialTarget &&
@@ -302,6 +391,8 @@ export function areAgentGUINodePropsEqual(
       nc.referenceProvenanceFilterCatalog &&
     pc.referenceProvenanceFilterEnabled ===
       nc.referenceProvenanceFilterEnabled &&
+    pc.sessionInputHistoryEnabled === nc.sessionInputHistoryEnabled &&
+    pc.sessionForkEnabled === nc.sessionForkEnabled &&
     agentGuiStateEquals(previous.state, next.state) &&
     pf.position.x === nf.position.x &&
     pf.position.y === nf.position.y &&
@@ -313,35 +404,39 @@ export function areAgentGUINodePropsEqual(
     pf.isActive === nf.isActive &&
     pf.isVisible === nf.isVisible &&
     pf.embedded === nf.embedded &&
-    pf.previewMode === nf.previewMode &&
-    pf.conversationRailAutoCollapseWidthPx ===
-      nf.conversationRailAutoCollapseWidthPx &&
+    pf.conversationRailAutoCollapseMode ===
+      nf.conversationRailAutoCollapseMode &&
     pr.composerFocusSequence === nr.composerFocusSequence &&
     pr.composerAppend === nr.composerAppend &&
     pr.newConversationSequence === nr.newConversationSequence &&
+    pr.sessionAction === nr.sessionAction &&
     pr.openSession === nr.openSession &&
     pr.prefillPrompt === nr.prefillPrompt &&
-    pr.agentProbes === nr.agentProbes &&
-    pr.onProbeDemandChange === nr.onProbeDemandChange &&
-    pr.onProbeRefreshRequest === nr.onProbeRefreshRequest &&
+    pr.agentStatusController === nr.agentStatusController &&
     pc.capabilityMenuState === nc.capabilityMenuState &&
-    pc.accountMenuState === nc.accountMenuState &&
+    pc.capabilityControlsReadOnly === nc.capabilityControlsReadOnly &&
     pc.agentTargets === nc.agentTargets &&
     pc.agentTargetsLoading === nc.agentTargetsLoading &&
+    pc.handoffAgentTargets === nc.handoffAgentTargets &&
+    pc.handoffAgentTargetsLoading === nc.handoffAgentTargetsLoading &&
     pc.providerRailAllPresentation?.iconUrl ===
       nc.providerRailAllPresentation?.iconUrl &&
     pc.providerRailMode === nc.providerRailMode &&
     pc.comingSoonProviders === nc.comingSoonProviders &&
     pc.providerReadinessGates === nc.providerReadinessGates &&
+    pc.targetConnectionSource === nc.targetConnectionSource &&
     pc.defaultAgentTargetId === nc.defaultAgentTargetId &&
     pc.providerAuthAccountLabels === nc.providerAuthAccountLabels &&
-    pc.contextMentionProviders === nc.contextMentionProviders &&
+    pc.mentionService === nc.mentionService &&
     pc.workspaceAppIcons === nc.workspaceAppIcons &&
     pc.disabledHomeSuggestions === nc.disabledHomeSuggestions &&
     pa.onLinkAction === na.onLinkAction &&
     pa.onHandoffConversation === na.onHandoffConversation &&
     pa.onCapabilitySettingsRequest === na.onCapabilitySettingsRequest &&
     pa.onAgentProviderLogin === na.onAgentProviderLogin &&
+    pa.onAgentEnvPanelOpen === na.onAgentEnvPanelOpen &&
+    pa.onAgentConfigMenuOpen === na.onAgentConfigMenuOpen &&
+    pa.onComposerAppendHandled === na.onComposerAppendHandled &&
     pa.onOpenConversationWindow === na.onOpenConversationWindow &&
     pa.onClose === na.onClose &&
     pa.onResize === na.onResize &&
@@ -352,8 +447,14 @@ export function areAgentGUINodePropsEqual(
     pa.onToggleMaximize === na.onToggleMaximize &&
     pa.onShowMessage === na.onShowMessage &&
     pa.onEngagementEvent === na.onEngagementEvent &&
+    pa.onConversationRailLayoutChange === na.onConversationRailLayoutChange &&
+    ps.agentConfigAccount === ns.agentConfigAccount &&
+    ps.agentTargetInfo === ns.agentTargetInfo &&
+    ps.composerFooterAccessory === ns.composerFooterAccessory &&
     ps.providerRailEmpty === ns.providerRailEmpty &&
     ps.providerUnavailableState === ns.providerUnavailableState &&
+    ps.projectDirectoryPickerHeaderActions ===
+      ns.projectDirectoryPickerHeaderActions &&
     ps.sidebarFooter === ns.sidebarFooter
   );
 }

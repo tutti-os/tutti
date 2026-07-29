@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	agentextensionservice "github.com/tutti-os/tutti/services/tuttid/service/agentextension"
@@ -16,21 +17,56 @@ func (r agentExtensionComposerProfileResolver) ResolveExtensionComposerProfile(
 	installationID string,
 ) (agentservice.ExtensionComposerProfile, error) {
 	profile, err := r.manager.LoadComposerProfile(installationID)
-	if err != nil || profile.Skills == nil {
+	if err != nil {
 		return agentservice.ExtensionComposerProfile{}, err
 	}
-	roots := make([]agentservice.ExtensionComposerSkillRoot, 0, len(profile.Skills.Roots))
-	for _, root := range profile.Skills.Roots {
-		roots = append(roots, agentservice.ExtensionComposerSkillRoot{
-			Scope: root.Scope,
-			Path:  root.Path,
+	capabilities, err := r.manager.LoadDeclaredCapabilities(installationID)
+	if err != nil {
+		return agentservice.ExtensionComposerProfile{}, err
+	}
+	result := agentservice.ExtensionComposerProfile{
+		Capabilities:           capabilities,
+		PermissionModeIDPolicy: agentservice.ExtensionPermissionModeIDPolicyRuntime,
+		RuntimePrep:            profile.RuntimePrep,
+	}
+	result.ModelConfigOptionID, result.PermissionConfigOptionID, result.ReasoningConfigOptionID = profile.ACPConfigOptionIDs()
+	if launchPermission := profile.LaunchPermissionSetting(); launchPermission != nil {
+		result.DefaultPermissionModeID = launchPermission.DefaultSemantic
+		result.PermissionModeIDPolicy = agentservice.ExtensionPermissionModeIDPolicySemantic
+		if result.DefaultPermissionModeID == "" {
+			result.DefaultPermissionModeID = "ask-before-write"
+		}
+	}
+	result.PermissionModes = make([]agentservice.ExtensionComposerPermissionMode, 0, len(profile.PermissionModes))
+	for _, mode := range profile.PermissionModes {
+		result.PermissionModes = append(result.PermissionModes, agentservice.ExtensionComposerPermissionMode{
+			RuntimeID: strings.TrimSpace(mode.RuntimeID),
+			Semantic:  agentservice.PermissionModeSemantic(strings.TrimSpace(mode.Semantic)),
 		})
 	}
-	return agentservice.ExtensionComposerProfile{
-		Skills: &agentservice.ExtensionComposerSkillProfile{
+	if profile.Skills != nil {
+		roots := make([]agentservice.ExtensionComposerSkillRoot, 0, len(profile.Skills.Roots))
+		for _, root := range profile.Skills.Roots {
+			roots = append(roots, agentservice.ExtensionComposerSkillRoot{
+				Scope: root.Scope,
+				Path:  root.Path,
+			})
+		}
+		result.Skills = &agentservice.ExtensionComposerSkillProfile{
 			Invocation:    profile.Skills.Invocation,
 			TriggerPrefix: profile.Skills.TriggerPrefix,
 			Roots:         roots,
-		},
-	}, nil
+		}
+	}
+	if profile.SlashCommands != nil {
+		result.SlashCommandCatalogAuthoritative = profile.SlashCommands.CommandCatalogAuthoritative
+		result.SlashCommands = make([]agentservice.ExtensionComposerSlashCommand, 0, len(profile.SlashCommands.Commands))
+		for _, command := range profile.SlashCommands.Commands {
+			result.SlashCommands = append(result.SlashCommands, agentservice.ExtensionComposerSlashCommand{
+				Name:   command.Name,
+				Effect: command.Effect,
+			})
+		}
+	}
+	return result, nil
 }

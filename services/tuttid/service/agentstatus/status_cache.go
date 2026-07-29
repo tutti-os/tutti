@@ -65,16 +65,18 @@ func (c *ProviderStatusCache) invalidate(provider string) {
 }
 
 func (s Service) providerCredentialFingerprint(spec ProviderSpec) string {
-	if len(spec.AuthMarkerPaths) == 0 {
+	paths, complete := s.resolvedAuthMarkerPaths(spec)
+	if len(paths) == 0 {
+		if !complete {
+			return "markers:unavailable"
+		}
 		return ""
 	}
-	home, err := s.homeDir()
-	if err != nil || strings.TrimSpace(home) == "" {
-		return "home:unavailable"
+	parts := make([]string, 0, len(paths)+1)
+	if !complete {
+		parts = append(parts, "markers:incomplete")
 	}
-	parts := make([]string, 0, len(spec.AuthMarkerPaths))
-	for _, marker := range spec.AuthMarkerPaths {
-		path := expandHomePath(marker, home)
+	for _, path := range paths {
 		if modifiedAt, ok := s.fileModTime(path); ok {
 			parts = append(parts, path+"="+modifiedAt.UTC().Format(time.RFC3339Nano))
 			continue

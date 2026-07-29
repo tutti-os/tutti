@@ -5,6 +5,7 @@ import type {
 import { extractImageGenerationPreview } from "../../imageGenerationTool";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
 import type { AgentGeneratedImageRowVM } from "../contracts/agentGeneratedImageRowVM";
+import type { AgentGoalControlRowVM } from "../contracts/agentGoalControlRowVM";
 import type {
   AgentMessageContentVM,
   AgentMessageRowVM
@@ -63,9 +64,10 @@ export function projectAgentConversationVM(
       )
     )
   );
-  const processing = projectAgentProcessingRow(detail, normalizedRows);
+  const timelineRows = insertGoalControlRows(normalizedRows, detail);
+  const processing = projectAgentProcessingRow(detail, timelineRows);
   const projectedRows = projectAgentMessageFinalText(
-    processing ? [...normalizedRows, processing] : normalizedRows,
+    processing ? [...timelineRows, processing] : timelineRows,
     detail
   );
 
@@ -75,6 +77,40 @@ export function projectAgentConversationVM(
     sourceDetail: detail,
     rows: projectedRows
   };
+}
+
+function insertGoalControlRows(
+  rows: readonly AgentTranscriptRowVM[],
+  detail: WorkspaceAgentSessionDetailViewModel
+): AgentTranscriptRowVM[] {
+  const controls = detail.goalControls ?? [];
+  if (controls.length === 0) {
+    return [...rows];
+  }
+  const merged = [...rows];
+  for (const control of controls) {
+    const row: AgentGoalControlRowVM = {
+      kind: "goal-control",
+      id: `goal-control:${control.id}`,
+      turnId: null,
+      action: control.action,
+      body: control.body,
+      occurredAtUnixMs: control.occurredAtUnixMs ?? null,
+      sourceTimelineItems: control.sourceTimelineItems
+    };
+    const insertionIndex = merged.findIndex(
+      (candidate) =>
+        row.occurredAtUnixMs !== null &&
+        candidate.occurredAtUnixMs !== null &&
+        candidate.occurredAtUnixMs > row.occurredAtUnixMs
+    );
+    if (insertionIndex < 0) {
+      merged.push(row);
+    } else {
+      merged.splice(insertionIndex, 0, row);
+    }
+  }
+  return merged;
 }
 
 function dropRedundantCompactFailureEchoRows(
@@ -128,6 +164,43 @@ function isSinglePlainAssistantMessageRow(
     !row.messages[0]?.visibleError &&
     !row.messages[0]?.systemNotice
   );
+}
+
+/**
+ * Latest plain assistant reply in the projected transcript (newest first).
+ * Used as the optional consult context; error cards, system notices, plan and
+ * collaboration cards are skipped so only ordinary reply text qualifies.
+ */
+export function latestAssistantMessageText(
+  conversation: Pick<AgentConversationVM, "rows"> | null | undefined
+): string | null {
+  if (!conversation) {
+    return null;
+  }
+  for (let rowIndex = conversation.rows.length - 1; rowIndex >= 0; rowIndex--) {
+    const row = conversation.rows[rowIndex];
+    if (row?.kind !== "message" || row.speaker !== "assistant") {
+      continue;
+    }
+    for (
+      let messageIndex = row.messages.length - 1;
+      messageIndex >= 0;
+      messageIndex--
+    ) {
+      const message = row.messages[messageIndex];
+      if (!message || message.visibleError || message.systemNotice) {
+        continue;
+      }
+      if (message.contentKind && message.contentKind !== "text") {
+        continue;
+      }
+      const body = message.body.trim();
+      if (body) {
+        return body;
+      }
+    }
+  }
+  return null;
 }
 
 export function reconcileProjectedAgentConversationVM(
@@ -446,7 +519,8 @@ function isSpecialAssistantMessage(message: {
   return Boolean(
     message.visibleError ||
     message.systemNotice ||
-    message.contentKind === "plan"
+    message.contentKind === "plan" ||
+    message.contentKind === "collaboration"
   );
 }
 

@@ -42,9 +42,15 @@ import type {
   AgentGUINodeViewProps,
   AgentGUIViewLabels
 } from "../AgentGUINodeView";
-import type { ChromeLabels } from "./AgentGUIDetailHeader";
+import type { ChromeLabels } from "./AgentGUINodeView.types";
 import { AgentGUIEmptyHeroCarouselStage } from "./AgentGUIEmptyHeroCarouselStage";
+import { AgentTargetSetupGate } from "./AgentTargetSetupGate.tsx";
+import {
+  AgentGUIAgentTargetName,
+  projectAgentGUIAgentTargetName
+} from "./AgentGUIAgentTargetName";
 import styles from "../AgentGUINode.styles";
+import { AgentGUIOwnerAvatar } from "../AgentGUIOwnerAvatar";
 
 export interface AgentGUIProviderIconPresentation {
   iconUrl: string;
@@ -71,7 +77,6 @@ export function agentGUIProviderRailIconPresentation(
   return {
     provider: normalizedProvider,
     iconUrl:
-      (normalizedProvider === "cursor" ? providerRailIconUrl : null) ||
       iconUrl?.trim() ||
       providerRailIconUrl ||
       resolveAgentGUIHeroIconUrl(normalizedProvider)
@@ -86,13 +91,15 @@ export const EMPTY_HOME_SUGGESTIONS: readonly AgentHomeSuggestionCategory[] =
   Object.freeze([]);
 
 interface AgentGUIEmptyHomePaneProps {
+  isActive: boolean;
+  isVisible: boolean;
   provider: AgentGUINodeViewModel["shell"]["data"]["provider"];
   providerReadinessGate: AgentGUIProviderReadinessGate | null;
   showAllProviders: boolean;
   agentTargets: readonly AgentGUIAgentTarget[];
   selectedAgentTarget: AgentGUIAgentTarget | null;
   onProviderSelect?: AgentGUINodeViewProps["actions"]["selectHomeComposerAgentTarget"];
-  inlineNoticeChrome: AgentGUISessionChrome | null;
+  noticeChrome: AgentGUISessionChrome | null;
   isRespondingApproval: boolean;
   onSubmitApprovalOption: AgentGUINodeViewProps["actions"]["submitApprovalOption"];
   onAuthLogin?: (provider?: string | null) => void;
@@ -108,6 +115,8 @@ interface AgentGUIEmptyHomePaneProps {
 }
 
 export const AgentGUIEmptyHomePane = memo(function AgentGUIEmptyHomePane({
+  isActive,
+  isVisible,
   provider,
   providerReadinessGate,
   showAllProviders,
@@ -119,9 +128,16 @@ export const AgentGUIEmptyHomePane = memo(function AgentGUIEmptyHomePane({
 }: AgentGUIEmptyHomePaneProps): React.JSX.Element {
   "use memo";
 
+  const presentedSelectedAgentTarget =
+    selectedAgentTarget?.ref.kind === "loading" ? null : selectedAgentTarget;
   const runtimeProviderLabel =
     labels.emptyProviderForProvider?.(provider) ?? labels.emptyProvider ?? "";
-  const providerLabel = selectedAgentTarget?.label ?? runtimeProviderLabel;
+  const providerLabel = presentedSelectedAgentTarget
+    ? projectAgentGUIAgentTargetName({
+        ownerSeparator: labels.sharedAgentOwnerSeparator,
+        target: presentedSelectedAgentTarget
+      }).fullLabel
+    : runtimeProviderLabel;
   const baseLabel = labels.emptyForProvider?.(provider) ?? labels.empty;
   const emptyLabel = runtimeProviderLabel
     ? baseLabel.replace(runtimeProviderLabel, providerLabel)
@@ -130,67 +146,81 @@ export const AgentGUIEmptyHomePane = memo(function AgentGUIEmptyHomePane({
     () =>
       agentTargets.length
         ? agentTargets.map(projectAgentGUIAgentTargetAvatar)
-        : selectedAgentTarget
-          ? [projectAgentGUIAgentTargetAvatar(selectedAgentTarget)]
+        : presentedSelectedAgentTarget
+          ? [projectAgentGUIAgentTargetAvatar(presentedSelectedAgentTarget)]
           : [
               createFallbackAgentGUIAgentAvatar({
                 provider,
                 label: providerLabel
               })
             ],
-    [agentTargets, provider, providerLabel, selectedAgentTarget]
+    [agentTargets, presentedSelectedAgentTarget, provider, providerLabel]
   );
   const carouselMountedExternally = avatarPresentations.length > 1;
 
   return (
     <AgentGUIEmptyHeroCarouselStage
       activeAgentTargetId={
-        selectedAgentTarget?.agentTargetId ?? selectedAgentTarget?.targetId
+        presentedSelectedAgentTarget?.agentTargetId ??
+        presentedSelectedAgentTarget?.targetId
       }
+      isActive={isActive}
+      isVisible={isVisible}
       items={avatarPresentations}
       onProviderSelect={onProviderSelect}
       providerSelectLabel={labels.providerSwitchLabel}
     >
-      {providerReadinessGate ? (
-        <AgentGUIProviderReadinessGatePane
-          provider={provider}
-          gate={providerReadinessGate}
-          showAllProviders={showAllProviders}
-          emptyLabel={emptyLabel}
-          agentTargets={agentTargets}
-          avatarPresentations={avatarPresentations}
-          carouselMountedExternally={carouselMountedExternally}
-          onProviderSelect={onProviderSelect}
-          providerLabel={providerLabel}
-          providerSelectLabel={labels.providerSwitchLabel}
-          selectedAgentTarget={selectedAgentTarget}
-          labels={labels}
-        />
-      ) : (
-        <AgentGUIEmptyHeroPane
-          {...heroProps}
-          provider={provider}
-          emptyLabel={emptyLabel}
-          emptyProvider={providerLabel}
-          avatarPresentations={avatarPresentations}
-          carouselMountedExternally={carouselMountedExternally}
-          onProviderSelect={onProviderSelect}
-          agentTargets={agentTargets}
-          selectedAgentTarget={selectedAgentTarget}
-          providerSelectLabel={labels.providerSwitchLabel}
-        />
-      )}
+      <AgentTargetSetupGate
+        carouselMountedExternally={carouselMountedExternally}
+      >
+        {providerReadinessGate ? (
+          <AgentGUIProviderReadinessGatePane
+            isActive={isActive}
+            isVisible={isVisible}
+            provider={provider}
+            gate={providerReadinessGate}
+            showAllProviders={showAllProviders}
+            emptyLabel={emptyLabel}
+            agentTargets={agentTargets}
+            avatarPresentations={avatarPresentations}
+            carouselMountedExternally={carouselMountedExternally}
+            onProviderSelect={onProviderSelect}
+            providerLabel={providerLabel}
+            providerSelectLabel={labels.providerSwitchLabel}
+            selectedAgentTarget={presentedSelectedAgentTarget}
+            labels={labels}
+          />
+        ) : (
+          <AgentGUIEmptyHeroPane
+            {...heroProps}
+            isActive={isActive}
+            isVisible={isVisible}
+            provider={provider}
+            emptyLabel={emptyLabel}
+            emptyProvider={providerLabel}
+            avatarPresentations={avatarPresentations}
+            carouselMountedExternally={carouselMountedExternally}
+            onProviderSelect={onProviderSelect}
+            agentTargets={agentTargets}
+            selectedAgentTarget={presentedSelectedAgentTarget}
+            providerSelectLabel={labels.providerSwitchLabel}
+            sharedAgentOwnerSeparator={labels.sharedAgentOwnerSeparator}
+          />
+        )}
+      </AgentTargetSetupGate>
     </AgentGUIEmptyHeroCarouselStage>
   );
 });
 
 interface AgentGUIEmptyHeroPaneProps {
+  isActive?: boolean;
+  isVisible?: boolean;
   provider: AgentGUINodeViewModel["shell"]["data"]["provider"];
   emptyLabel: string;
   emptyProvider: string;
   avatarPresentations: readonly AgentGUIAgentAvatarPresentation[];
   carouselMountedExternally?: boolean;
-  inlineNoticeChrome: AgentGUISessionChrome | null;
+  noticeChrome: AgentGUISessionChrome | null;
   isRespondingApproval: boolean;
   onSubmitApprovalOption: AgentGUINodeViewProps["actions"]["submitApprovalOption"];
   onAuthLogin?: (provider?: string | null) => void;
@@ -202,6 +232,7 @@ interface AgentGUIEmptyHeroPaneProps {
   chromeLabels: ChromeLabels;
   composerProps: AgentComposerProps;
   providerSelectLabel: string;
+  sharedAgentOwnerSeparator: string;
   suggestions: readonly AgentHomeSuggestionCategory[];
   suggestionsCloseLabel?: string;
   onSelectSuggestion: (prompt: string) => void;
@@ -209,12 +240,14 @@ interface AgentGUIEmptyHeroPaneProps {
 }
 
 export const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
+  isActive = true,
+  isVisible = true,
   provider,
   emptyLabel,
   emptyProvider,
   avatarPresentations,
   carouselMountedExternally = false,
-  inlineNoticeChrome,
+  noticeChrome,
   isRespondingApproval,
   onSubmitApprovalOption,
   onAuthLogin,
@@ -226,6 +259,7 @@ export const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
   chromeLabels,
   composerProps,
   providerSelectLabel,
+  sharedAgentOwnerSeparator,
   suggestions,
   suggestionsCloseLabel,
   onSelectSuggestion,
@@ -263,7 +297,9 @@ export const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
                 selectedAgentTarget?.agentTargetId ??
                 selectedAgentTarget?.targetId
               }
+              isActive={isActive}
               items={heroAvatarPresentations}
+              isVisible={isVisible}
               onProviderSelect={onProviderSelect}
               providerSelectLabel={providerSelectLabel}
             />
@@ -283,11 +319,12 @@ export const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
             agentTargets={agentTargets}
             selectedAgentTarget={selectedAgentTarget}
             onProviderSelect={onProviderSelect}
+            sharedAgentOwnerSeparator={sharedAgentOwnerSeparator}
           />
         </h2>
-        {inlineNoticeChrome ? (
+        {noticeChrome ? (
           <AgentSessionChrome
-            chrome={inlineNoticeChrome}
+            chrome={noticeChrome}
             isRespondingApproval={isRespondingApproval}
             onSubmitApprovalOption={onSubmitApprovalOption}
             onAuthLogin={onAuthLogin}
@@ -309,6 +346,8 @@ export const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
 });
 
 interface AgentGUIProviderReadinessGatePaneProps {
+  isActive?: boolean;
+  isVisible?: boolean;
   provider: AgentGUINodeViewModel["shell"]["data"]["provider"];
   gate: AgentGUIProviderReadinessGate;
   showAllProviders?: boolean;
@@ -340,11 +379,14 @@ interface AgentGUIProviderReadinessGatePaneProps {
     | "providerGatePendingInstall"
     | "providerGatePendingLogin"
     | "providerGatePendingRefresh"
+    | "sharedAgentOwnerSeparator"
   >;
 }
 
 export const AgentGUIProviderReadinessGatePane = memo(
   function AgentGUIProviderReadinessGatePane({
+    isActive = true,
+    isVisible = true,
     provider,
     gate,
     showAllProviders = false,
@@ -414,7 +456,9 @@ export const AgentGUIProviderReadinessGatePane = memo(
                 selectedAgentTarget?.agentTargetId ??
                 selectedAgentTarget?.targetId
               }
+              isActive={isActive}
               items={heroAvatarPresentations}
+              isVisible={isVisible}
               onProviderSelect={onProviderSelect}
               providerSelectLabel={providerSelectLabel}
             />
@@ -432,6 +476,7 @@ export const AgentGUIProviderReadinessGatePane = memo(
               agentTargets={agentTargets}
               selectedAgentTarget={selectedAgentTarget}
               onProviderSelect={onProviderSelect}
+              sharedAgentOwnerSeparator={labels.sharedAgentOwnerSeparator}
             />
           </h2>
           <p className={styles.emptyProviderGateDescription}>
@@ -544,14 +589,12 @@ function AgentGUIAgentAvatarVisual({
         src={presentation.iconUrl}
       />
       {presentation.badge?.iconUrl ? (
-        <span className={styles.agentAvatarBadge}>
-          <img
-            alt=""
-            className={styles.agentAvatarBadgeImage}
-            draggable={false}
-            src={presentation.badge.iconUrl}
-          />
-        </span>
+        <AgentGUIOwnerAvatar
+          className={styles.agentAvatarBadge}
+          iconUrl={presentation.badge.iconUrl}
+          imageClassName={styles.agentAvatarBadgeImage}
+          label={presentation.badge.label}
+        />
       ) : null}
     </span>
   );
@@ -563,7 +606,8 @@ function EmptyHeroTitle({
   providerSelectLabel,
   agentTargets = [],
   selectedAgentTarget = null,
-  onProviderSelect
+  onProviderSelect,
+  sharedAgentOwnerSeparator
 }: {
   label: string;
   providerLabel: string;
@@ -571,6 +615,7 @@ function EmptyHeroTitle({
   agentTargets?: readonly AgentGUIAgentTarget[];
   selectedAgentTarget?: AgentGUIAgentTarget | null;
   onProviderSelect?: AgentGUINodeViewProps["actions"]["selectHomeComposerAgentTarget"];
+  sharedAgentOwnerSeparator: string;
 }): React.JSX.Element {
   const providerStart = providerLabel ? label.indexOf(providerLabel) : -1;
 
@@ -611,11 +656,18 @@ function EmptyHeroTitle({
             title={providerSelectLabel}
             className={styles.emptyHeroProviderSelect}
           >
-            <span className={styles.emptyHeroProvider}>{providerName}</span>
+            <AgentGUIAgentTargetName
+              className={cn(styles.emptyHeroProvider, "max-w-[240px]")}
+              ownerSeparator={sharedAgentOwnerSeparator}
+              target={selectedAgentTarget}
+            />
           </SelectTrigger>
           <SelectContent
             align="center"
-            className={cn(styles.composerMenuContent, "min-w-[190px]")}
+            className={cn(
+              styles.composerMenuContent,
+              "min-w-[190px] max-w-[min(420px,calc(100vw-32px))]"
+            )}
           >
             {agentTargets.map((target) => (
               <SelectItem
@@ -635,12 +687,21 @@ function EmptyHeroTitle({
                       ).iconUrl
                     }
                   />
-                  <span className="min-w-0 truncate">{target.label}</span>
+                  <AgentGUIAgentTargetName
+                    ownerSeparator={sharedAgentOwnerSeparator}
+                    target={target}
+                  />
                 </span>
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+      ) : selectedAgentTarget ? (
+        <AgentGUIAgentTargetName
+          className={cn(styles.emptyHeroProvider, "max-w-[240px]")}
+          ownerSeparator={sharedAgentOwnerSeparator}
+          target={selectedAgentTarget}
+        />
       ) : (
         <span className={styles.emptyHeroProvider}>{providerName}</span>
       )}

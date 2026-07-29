@@ -2,12 +2,99 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeAgentActivitySession,
   type AgentActivityMessage,
+  type AgentActivitySnapshot,
   type AgentActivitySession
 } from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentActivityCard } from "../../workspaceAgentActivityListViewModel";
-import { projectWorkspaceAgentMessagesToConversationVM } from "./workspaceAgentMessageProjection";
+import { mergeWorkspaceAgentActivityDurableAndOverlayMessages } from "../../workspaceAgentMessageOverlay";
+import {
+  projectAgentActivitySessionToConversationVM,
+  projectWorkspaceAgentMessagesToConversationVM,
+  projectWorkspaceAgentMessagesToTimelineItems
+} from "./workspaceAgentMessageProjection";
 
 describe("projectWorkspaceAgentMessagesToConversationVM", () => {
+  it("derives the selected Session and its messages from one activity snapshot", () => {
+    const selectedSession = session();
+    const selectedMessage = message({
+      messageId: "snapshot-message",
+      version: 1,
+      role: "user",
+      kind: "text",
+      payload: { text: "Snapshot-owned message" }
+    });
+    const activitySnapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessions: [selectedSession],
+      presences: [],
+      sessionMessagesById: {
+        [selectedSession.agentSessionId]: [selectedMessage]
+      }
+    };
+
+    const conversation = projectAgentActivitySessionToConversationVM({
+      activitySnapshot,
+      agentSessionId: selectedSession.agentSessionId
+    });
+    const userRow = conversation?.rows.find(
+      (row) => row.kind === "message" && row.speaker === "user"
+    );
+
+    expect(userRow?.kind === "message" ? userRow.messages[0]?.body : null).toBe(
+      "Snapshot-owned message"
+    );
+    expect(
+      projectAgentActivitySessionToConversationVM({
+        activitySnapshot,
+        agentSessionId: "missing-session"
+      })
+    ).toBeNull();
+  });
+
+  it("filters supplied Turns to the selected Session", () => {
+    const selectedSession = session();
+    const selectedMessage = message({
+      messageId: "selected-message",
+      payload: { text: "Selected Session message" },
+      role: "user"
+    });
+    const activitySnapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessions: [selectedSession],
+      presences: [],
+      sessionMessagesById: {
+        [selectedSession.agentSessionId]: [selectedMessage]
+      }
+    };
+
+    const conversation = projectAgentActivitySessionToConversationVM({
+      activitySnapshot,
+      agentSessionId: selectedSession.agentSessionId,
+      sessionTurns: [
+        {
+          agentSessionId: "session-2",
+          error: { message: "Foreign Turn failure" },
+          origin: "user_prompt",
+          outcome: "failed",
+          phase: "settled",
+          settledAtUnixMs: 10,
+          startedAtUnixMs: 1,
+          turnId: "foreign-turn",
+          updatedAtUnixMs: 10
+        }
+      ]
+    });
+
+    expect(conversation?.sourceDetail.sessionTurns).toEqual([]);
+    expect(
+      conversation?.rows.flatMap((row) =>
+        row.kind === "message"
+          ? row.messages.map((message) => message.body)
+          : []
+      )
+    ).not.toContain("Foreign Turn failure");
+  });
+
   it("prefers canonical browser element prompt content over a lossy provider echo", () => {
     const prompt =
       "[@a](mention://browser-element/browser-element%3A1?path=%2Ftmp%2Fa.txt&tag=a&workspaceId=workspace-1) " +
@@ -415,6 +502,118 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
       "user:/goal second",
       "assistant:Second goal result"
     ]);
+  });
+
+  it("projects goal control audits as dedicated non-turn rows", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session({
+        effectiveStatus: "completed",
+        turnPhase: "completed"
+      }),
+      messages: [
+        message({
+          messageId: "user-message",
+          version: 1,
+          role: "user",
+          kind: "text",
+          payload: { text: "Pause the goal" },
+          occurredAtUnixMs: 100
+        }),
+        message({
+          messageId: "goal-control:pause",
+          version: 2,
+          turnId: undefined,
+          role: "user",
+          kind: "session_audit",
+          payload: {
+            action: "pause",
+            goalControl: true,
+            text: "/goal pause"
+          },
+          occurredAtUnixMs: 200
+        })
+      ]
+    });
+
+    expect(conversation.rows.map((row) => row.kind)).toEqual([
+      "message",
+      "goal-control"
+    ]);
+    expect(
+      conversation.rows.find((row) => row.kind === "goal-control")
+    ).toMatchObject({
+      action: "pause",
+      body: "/goal pause",
+      turnId: null
+    });
+    expect(conversation.sourceDetail.turns).toHaveLength(1);
+  });
+
+  it("keeps the goal control row identity stable when the durable audit replaces its optimistic echo", () => {
+    const optimistic = message({
+      messageId: "client-submit:user:submit-goal-1",
+      version: 0,
+      turnId: "pending:submit-goal-1",
+      role: "user",
+      kind: "session_audit",
+      payload: {
+        __agentGuiOptimisticPrompt: true,
+        action: "set",
+        clientSubmitId: "submit-goal-1",
+        goalControl: true,
+        messageId: "client-submit:user:submit-goal-1",
+        text: "/goal ship it"
+      },
+      occurredAtUnixMs: 100
+    });
+    const durable = message({
+      messageId: "goal-control:operation-1",
+      version: 1,
+      turnId: undefined,
+      role: "user",
+      kind: "session_audit",
+      payload: {
+        action: "set",
+        clientSubmitId: "submit-goal-1",
+        goalControl: true,
+        messageId: "client-submit:user:submit-goal-1",
+        operationId: "operation-1",
+        text: "/goal ship it"
+      },
+      occurredAtUnixMs: 100
+    });
+    const optimisticConversation =
+      projectWorkspaceAgentMessagesToConversationVM({
+        activity: activity(),
+        session: session({ effectiveStatus: "completed" }),
+        messages: [optimistic]
+      });
+    const mergedMessages = mergeWorkspaceAgentActivityDurableAndOverlayMessages(
+      {
+        durableMessages: [durable],
+        localMessages: [optimistic]
+      }
+    );
+    const durableConversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session({ effectiveStatus: "completed" }),
+      messages: mergedMessages
+    });
+    const optimisticRow = optimisticConversation.rows.find(
+      (row) => row.kind === "goal-control"
+    );
+    const durableRow = durableConversation.rows.find(
+      (row) => row.kind === "goal-control"
+    );
+
+    expect(mergedMessages).toEqual([durable]);
+    expect(optimisticRow?.id).toBe(
+      "goal-control:client-submit:user:submit-goal-1"
+    );
+    expect(durableRow?.id).toBe(optimisticRow?.id);
+    expect(optimisticConversation.sourceDetail.turns).toHaveLength(0);
+    expect(durableConversation.sourceDetail.turns).toHaveLength(0);
   });
 
   it("projects only the latest text snapshot for a stable message id", () => {
@@ -1117,6 +1316,34 @@ function session(
     ...canonical
   });
 }
+
+it("hides tutti-plan issue dispatch delegate cards but keeps other collaborations", () => {
+  const items = projectWorkspaceAgentMessagesToTimelineItems([
+    message({
+      messageId: "collab:cr-plan",
+      version: 1,
+      kind: "collaboration",
+      turnId: "",
+      payload: {
+        mode: "delegate",
+        triggerReason: "issue:tutti-mode-plan-wf-1/task:t1/run:r1"
+      }
+    }),
+    message({
+      messageId: "collab:cr-manual",
+      version: 2,
+      kind: "collaboration",
+      turnId: "",
+      payload: { mode: "consult", triggerReason: "user" }
+    })
+  ]);
+
+  const collaborationItems = items.filter(
+    (item) => item.itemType === "collaboration"
+  );
+  expect(collaborationItems).toHaveLength(1);
+  expect(collaborationItems[0]?.eventId).toBe("collab:cr-manual");
+});
 
 function message(
   overrides: Partial<AgentActivityMessage> & { id?: number }

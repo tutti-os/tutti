@@ -16,6 +16,7 @@ export function createWorkspaceAppExternalUserProjectApi(
         projects: service.store.projects.map((project) => ({ ...project }))
       };
     },
+    move: (input) => service.moveProject(input),
     prepareSelection: (input) => service.prepareSelection(input),
     refresh: async () => {
       await service.refresh();

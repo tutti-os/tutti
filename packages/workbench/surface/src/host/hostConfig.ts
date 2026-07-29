@@ -29,6 +29,7 @@ export function resolveWorkbenchHostConfig(
   props: Pick<
     WorkbenchHostProps,
     | "contributions"
+    | "dockEntryPresentationOverrides"
     | "dockEntries"
     | "externalStateSource"
     | "nodes"
@@ -46,14 +47,25 @@ export function resolveWorkbenchHostConfig(
 }
 
 export function resolveWorkbenchHostDockEntries(
-  props: Pick<WorkbenchHostProps, "contributions" | "dockEntries">
+  props: Pick<
+    WorkbenchHostProps,
+    "contributions" | "dockEntryPresentationOverrides" | "dockEntries"
+  >
 ): readonly WorkbenchHostDockEntry[] {
   const contributions = props.contributions ?? [];
-  return mergeByKey(
+  const mergedEntries = mergeByKey(
     contributions.flatMap((contribution) => contribution.dockEntries ?? []),
     props.dockEntries ?? [],
     (entry) => entry.id
   );
+  const presentationOverrides = props.dockEntryPresentationOverrides;
+  if (!presentationOverrides) {
+    return mergedEntries;
+  }
+  return mergedEntries.map((entry) => {
+    const presentationOverride = presentationOverrides[entry.id];
+    return presentationOverride ? { ...entry, ...presentationOverride } : entry;
+  });
 }
 
 export function resolveWorkbenchHostRuntimeConfig(
@@ -143,9 +155,19 @@ function combineContributionExternalStateSources(
       }
       return null;
     },
-    subscribe(listener) {
+    subscribeNodeState(input, listener) {
       const disposers = sources
-        .map((source) => source.subscribe?.(listener))
+        .map((source) => source.subscribeNodeState?.(input, listener))
+        .filter((dispose): dispose is () => void => Boolean(dispose));
+      return () => {
+        for (const dispose of disposers) {
+          dispose();
+        }
+      };
+    },
+    subscribeWorkspaceState(input, listener) {
+      const disposers = sources
+        .map((source) => source.subscribeWorkspaceState?.(input, listener))
         .filter((dispose): dispose is () => void => Boolean(dispose));
       return () => {
         for (const dispose of disposers) {

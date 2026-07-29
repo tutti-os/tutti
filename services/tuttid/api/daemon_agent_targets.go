@@ -86,6 +86,9 @@ func (api DaemonAPI) SetSystemAgentTargetEnabled(ctx context.Context, request tu
 			),
 		}, nil
 	}
+	if target.ID == agenttargetbiz.IDLocalTuttiAgent && api.TuttiAgentReadiness != nil {
+		api.TuttiAgentReadiness.Trigger("target_enabled_changed")
+	}
 	return tuttigenerated.SetSystemAgentTargetEnabled200JSONResponse(response), nil
 }
 

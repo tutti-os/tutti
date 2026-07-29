@@ -56,6 +56,10 @@ type composerProfile struct {
 	ReasoningEffortValues []string
 	// Speed: the provider exposes the orthogonal speed tier (standard/fast).
 	Speed bool
+	// SpeedValues and DefaultSpeed are registry-owned so all Host consumers
+	// project the same ordered options and initial selection.
+	SpeedValues  []string
+	DefaultSpeed string
 	// Capabilities is the conservative static capability list used to render
 	// the composer before a session exists. Once a session is live the
 	// adapter-reported typed session capabilities take precedence. Keys mirror
@@ -122,6 +126,8 @@ func composerProfileFromDescriptor(provider providerregistry.ProviderDescriptor)
 		ReasoningEffortValues:    append([]string(nil), descriptor.ReasoningEffortValues...),
 		DefaultReasoningEffort:   strings.TrimSpace(descriptor.DefaultReasoningEffort),
 		Speed:                    descriptor.Speed,
+		SpeedValues:              append([]string(nil), descriptor.SpeedValues...),
+		DefaultSpeed:             strings.TrimSpace(descriptor.DefaultSpeed),
 		Capabilities:             append([]string(nil), descriptor.Capabilities...),
 		PermissionConfigurable:   descriptor.PermissionConfigurable,
 		DefaultPermissionModeID:  strings.TrimSpace(descriptor.DefaultPermissionModeID),

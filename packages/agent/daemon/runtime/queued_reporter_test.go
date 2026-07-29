@@ -5,25 +5,26 @@ import (
 	"testing"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 type captureActivityClient struct {
-	stateInputs    []agentsessionstore.ReportSessionStateInput
-	messagesInputs []agentsessionstore.ReportSessionMessagesInput
+	stateInputs    []canonical.ReportSessionStateInput
+	messagesInputs []canonical.ReportSessionMessagesInput
 	rejectMessages bool
 }
 
-func (c *captureActivityClient) ReportSessionState(_ context.Context, input agentsessionstore.ReportSessionStateInput) (agentsessionstore.ReportSessionStateReply, error) {
+func (c *captureActivityClient) ReportSessionState(_ context.Context, input canonical.ReportSessionStateInput) (canonical.ReportSessionStateReply, error) {
 	c.stateInputs = append(c.stateInputs, input)
-	return agentsessionstore.ReportSessionStateReply{Accepted: true}, nil
+	return canonical.ReportSessionStateReply{Accepted: true}, nil
 }
 
-func (c *captureActivityClient) ReportSessionMessages(_ context.Context, input agentsessionstore.ReportSessionMessagesInput) (agentsessionstore.ReportSessionMessagesReply, error) {
+func (c *captureActivityClient) ReportSessionMessages(_ context.Context, input canonical.ReportSessionMessagesInput) (canonical.ReportSessionMessagesReply, error) {
 	c.messagesInputs = append(c.messagesInputs, input)
 	if c.rejectMessages {
-		return agentsessionstore.ReportSessionMessagesReply{}, nil
+		return canonical.ReportSessionMessagesReply{}, nil
 	}
-	return agentsessionstore.ReportSessionMessagesReply{AcceptedCount: len(input.Updates)}, nil
+	return canonical.ReportSessionMessagesReply{AcceptedCount: len(input.Updates)}, nil
 }
 
 func TestQueuedReporterRejectsUnacceptedControlActivity(t *testing.T) {
@@ -32,7 +33,7 @@ func TestQueuedReporterRejectsUnacceptedControlActivity(t *testing.T) {
 	reporter := QueuedReporter{ClientProvider: func() ActivityClient { return client }}
 	err := reporter.Report(context.Background(), agentsessionstore.ReportActivityInput{
 		WorkspaceID:   "room-1",
-		Source:        agentsessionstore.EventSource{Provider: "codex", AgentID: "agent-1"},
+		Source:        canonical.EventSource{Provider: "codex", AgentID: "agent-1"},
 		SessionAudits: []agentsessionstore.WorkspaceAgentSessionAuditUpdate{{AuditID: "audit-1", Role: "user"}},
 	})
 	if err == nil {
@@ -52,7 +53,7 @@ func TestQueuedReporterCallsClientWithNormalizedRuntimeInput(t *testing.T) {
 
 	err := reporter.Report(context.Background(), agentsessionstore.ReportActivityInput{
 		WorkspaceID: "room-1",
-		Source: agentsessionstore.EventSource{
+		Source: canonical.EventSource{
 			Provider: "codex",
 			AgentID:  "agent-1",
 		},

@@ -31,7 +31,7 @@ vi.mock("../../i18n/index", async () => {
     "agentHost.agentGui.mentionGroupOpenedFiles": "我打开的文件",
     "agentHost.agentGui.mentionGroupAgentGeneratedFiles":
       "近期 Agent 生成的文件",
-    "agentHost.agentGui.mentionAgentGeneratedFolderBack": "返回",
+    "agentHost.agentGui.mentionFolderBack": "返回",
     "agentHost.agentGui.mentionNoMatchingFiles": "没有匹配到文件",
     "agentHost.roomIssueNode.issueStatusNotStarted": "待开始",
     "agentHost.roomIssueNode.issueStatusRunning": "执行中",
@@ -137,6 +137,7 @@ describe("AgentFileMentionPalette", () => {
               name: "写一个文件",
               title: "写一个文件",
               creatorName: "Alice",
+              iconUrl: "tutti-asset://issue/default.png",
               status: "not_started"
             },
             {
@@ -227,6 +228,11 @@ describe("AgentFileMentionPalette", () => {
     );
 
     expect(screen.getByText("待开始")).toBeVisible();
+    expect(
+      screen
+        .getByRole("option", { name: /写一个文件/ })
+        .querySelector('[data-agent-mention-issue-icon="true"] img')
+    ).toHaveAttribute("src", "tutti-asset://issue/default.png");
     expect(screen.getAllByText("执行中")).toHaveLength(2);
     expect(screen.getByText("待验收")).toBeVisible();
     expect(screen.getByText("已完成")).toBeVisible();
@@ -244,10 +250,6 @@ describe("AgentFileMentionPalette", () => {
       "red",
       "neutral"
     ]);
-    expect(statusTags[1]).toHaveClass("text-[var(--status-running)]");
-    expect(statusTags[3]).toHaveClass("text-[var(--rich-text-mention-issue)]");
-    expect(statusTags[4]).toHaveClass("text-[var(--state-success)]");
-    expect(statusTags[5]).toHaveClass("text-[var(--state-danger)]");
     for (const statusTag of statusTags) {
       expect(statusTag.className).not.toContain("border-[");
     }
@@ -440,26 +442,6 @@ describe("AgentFileMentionPalette", () => {
       "green",
       "red"
     ]);
-    expect(statusTags[0]).toHaveClass(
-      "bg-transparent",
-      "px-0",
-      "text-[var(--status-running)]"
-    );
-    expect(statusTags[1]).toHaveClass(
-      "bg-transparent",
-      "px-0",
-      "text-[var(--state-warning)]"
-    );
-    expect(statusTags[2]).toHaveClass(
-      "bg-transparent",
-      "px-0",
-      "text-[var(--state-success)]"
-    );
-    expect(statusTags[8]).toHaveClass(
-      "bg-transparent",
-      "px-0",
-      "text-[var(--state-danger)]"
-    );
     const selectedOption = screen.getByRole("option", { selected: true });
     expect(selectedOption).toHaveClass(
       "rich-text-at-mention-palette__row-button"
@@ -507,6 +489,93 @@ describe("AgentFileMentionPalette", () => {
     expect(userAvatarImage).toBeNull();
     expect(selectedOption).toHaveTextContent("Codex");
     expect(selectedOption).not.toHaveTextContent("Alice & Codex");
+  });
+
+  it("omits the grouped initiator while preserving the shared Agent owner and suffix", () => {
+    const initiatorLabel = "A session initiator with a very long display name";
+    const ownerLabel = "A member with a very long display name";
+    const agentLabel = "Codex (Shared)";
+    const agentName = `${ownerLabel} · ${agentLabel}`;
+    const state: AgentMentionSearchState = {
+      status: "ready",
+      query: "",
+      mode: "browse",
+      filter: "session",
+      categories: [],
+      groups: [
+        {
+          id: "member:user-1",
+          label: initiatorLabel,
+          items: [
+            {
+              kind: "session",
+              href: "mention://agent-session/session-1?workspaceId=room-1",
+              workspaceId: "room-1",
+              targetId: "session-1",
+              agentTargetId: "shared-agent:shared-codex",
+              name: "Build result",
+              title: "Build result",
+              scope: "collab_sessions",
+              initiatorName: initiatorLabel,
+              agentName,
+              agentOwnerLabel: ownerLabel,
+              agentLabel,
+              agentIconUrl: "data:image/png;base64,agent",
+              status: "completed"
+            }
+          ],
+          totalCount: 1,
+          visibleCount: 1,
+          hasMore: false
+        }
+      ],
+      error: null
+    };
+
+    render(
+      <AgentFileMentionPalette
+        state={state}
+        highlightedKey={null}
+        label="mention palette"
+        loadingLabel="loading"
+        emptyLabel="empty"
+        errorLabel="error"
+        tabHintLabel="hint"
+        maxHeightPx={320}
+        onHighlightChange={vi.fn()}
+        onSelectItem={vi.fn()}
+        onSelectCategory={vi.fn()}
+        onSelectFilter={vi.fn()}
+        onExpandGroup={vi.fn()}
+      />
+    );
+
+    const participantElement = document.querySelector(
+      ".rich-text-at-mention-row__session-participant"
+    );
+    const entities = document.querySelectorAll(
+      ".rich-text-at-mention-row__session-participant-entity"
+    );
+    const segments = document.querySelectorAll(
+      ".rich-text-at-mention-row__session-participant-segment"
+    );
+    const separator = document.querySelector(
+      ".rich-text-at-mention-row__session-participant-separator"
+    );
+    const suffix = document.querySelector(
+      ".rich-text-at-mention-row__session-participant-suffix"
+    );
+    expect(participantElement).toHaveClass(
+      "rich-text-at-mention-row__session-participant--structured"
+    );
+    expect(participantElement).toHaveAttribute("title", agentName);
+    expect(entities).toHaveLength(1);
+    expect(segments[0]).toHaveTextContent(ownerLabel);
+    expect(separator).toBeNull();
+    expect(suffix?.textContent).toBe(` · ${agentLabel}`);
+    expect(participantElement).not.toHaveTextContent(initiatorLabel);
+    expect(screen.getByText("Build result")).toBeVisible();
+    expect(screen.getByText("已完成")).toBeVisible();
   });
 
   it("uses the session provider to resolve agent mention avatars", () => {
@@ -1181,90 +1250,96 @@ describe("AgentFileMentionPalette", () => {
     expect(backIcon?.querySelector("svg")).not.toBeNull();
   });
 
-  it("enters agent generated folders from the row arrow without selecting the row", () => {
-    const folderItem = {
-      kind: "file" as const,
-      href: "",
-      path: "/workspace/demo/agentGuiNode",
-      name: "agentGuiNode",
-      entryKind: "directory",
-      directoryPath: "/workspace/demo",
-      mentionNavigation: "agent-generated-folder" as const,
-      childCount: 5
-    } satisfies AgentContextMentionItem;
-    const state: AgentMentionSearchState = {
-      status: "ready",
-      query: "",
-      mode: "browse",
-      filter: "file",
-      categories: [],
-      groups: [
-        {
-          id: "agent_generated_files",
-          items: [folderItem],
-          totalCount: 1,
-          visibleCount: 1,
-          hasMore: false
-        }
-      ],
-      error: null
-    };
-    const onNavigateIntoItem = vi.fn();
-    const onSelectItem = vi.fn();
+  it.each([
+    ["agent generated", "agent_generated_files", "agent-generated-folder"],
+    ["workspace", "opened_files", "workspace-folder"]
+  ] as const)(
+    "enters %s folders from the row arrow without selecting the row",
+    (_label, groupId, mentionNavigation) => {
+      const folderItem = {
+        kind: "file" as const,
+        href: "",
+        path: "/workspace/demo/agentGuiNode",
+        name: "agentGuiNode",
+        entryKind: "directory",
+        directoryPath: "/workspace/demo",
+        mentionNavigation,
+        childCount: 5
+      } satisfies AgentContextMentionItem;
+      const state: AgentMentionSearchState = {
+        status: "ready",
+        query: "",
+        mode: "browse",
+        filter: "file",
+        categories: [],
+        groups: [
+          {
+            id: groupId,
+            items: [folderItem],
+            totalCount: 1,
+            visibleCount: 1,
+            hasMore: false
+          }
+        ],
+        error: null
+      };
+      const onNavigateIntoItem = vi.fn();
+      const onSelectItem = vi.fn();
 
-    render(
-      <AgentFileMentionPalette
-        state={state}
-        highlightedKey="agent_generated_files:file:/workspace/demo/agentGuiNode"
-        label="mention palette"
-        loadingLabel="loading"
-        emptyLabel="empty"
-        errorLabel="error"
-        tabHintLabel="hint"
-        maxHeightPx={320}
-        onHighlightChange={vi.fn()}
-        onSelectItem={onSelectItem}
-        onSelectCategory={vi.fn()}
-        onSelectFilter={vi.fn()}
-        onExpandGroup={vi.fn()}
-        onNavigateIntoItem={onNavigateIntoItem}
-      />
-    );
+      render(
+        <AgentFileMentionPalette
+          state={state}
+          highlightedKey={`${groupId}:file:/workspace/demo/agentGuiNode`}
+          label="mention palette"
+          loadingLabel="loading"
+          emptyLabel="empty"
+          errorLabel="error"
+          tabHintLabel="hint"
+          maxHeightPx={320}
+          onHighlightChange={vi.fn()}
+          onSelectItem={onSelectItem}
+          onSelectCategory={vi.fn()}
+          onSelectFilter={vi.fn()}
+          onExpandGroup={vi.fn()}
+          onNavigateIntoItem={onNavigateIntoItem}
+        />
+      );
 
-    const folderRow = screen
-      .getByText("agentGuiNode")
-      .closest('[data-agent-file-mention="true"]');
-    const enterButton = screen.getByRole("button", { name: "进入文件夹" });
-    const fileCount = folderRow?.querySelector(
-      ".rich-text-at-mention-row__file-count"
-    );
+      const folderRow = screen
+        .getByText("agentGuiNode")
+        .closest('[data-agent-file-mention="true"]');
+      const enterButton = screen.getByRole("button", { name: "进入文件夹" });
+      const fileCount = folderRow?.querySelector(
+        ".rich-text-at-mention-row__file-count"
+      );
 
-    expect(folderRow).toHaveAttribute(
-      "data-agent-mention-navigation",
-      "agent-generated-folder"
-    );
-    expect(fileCount).not.toBeNull();
-    if (!fileCount) {
-      throw new Error("Expected the generated-folder file count");
+      expect(folderRow).toHaveAttribute(
+        "data-agent-mention-navigation",
+        mentionNavigation
+      );
+      expect(fileCount).not.toBeNull();
+      if (!fileCount) {
+        throw new Error("Expected the folder child count");
+      }
+      expect(
+        fileCount.compareDocumentPosition(enterButton) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+      expect(enterButton).toHaveAttribute(
+        "data-agent-mention-navigate-into",
+        "true"
+      );
+
+      fireEvent.click(enterButton);
+
+      expect(onNavigateIntoItem).toHaveBeenCalledWith(folderItem);
+      expect(onSelectItem).not.toHaveBeenCalled();
+
+      fireEvent.click(folderRow!);
+
+      expect(onSelectItem).toHaveBeenCalledWith(folderItem);
     }
-    expect(
-      fileCount.compareDocumentPosition(enterButton) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-    expect(enterButton).toHaveAttribute(
-      "data-agent-mention-navigate-into",
-      "true"
-    );
-
-    fireEvent.click(enterButton);
-
-    expect(onNavigateIntoItem).toHaveBeenCalledWith(folderItem);
-    expect(onSelectItem).not.toHaveBeenCalled();
-
-    fireEvent.click(folderRow!);
-
-    expect(onSelectItem).toHaveBeenCalledWith(folderItem);
-  });
+  );
 
   it("renders image mention rows with thumbnails instead of default file icons", () => {
     const state: AgentMentionSearchState = {

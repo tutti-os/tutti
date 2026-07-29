@@ -1,11 +1,35 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, utimes, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
+import { inflateRawSync } from "node:zlib";
 import { createDeveloperLogsService } from "./developerLogs.ts";
-import type { DeveloperLogsAgentSessionRecord } from "./developerLogsAgentSessions.ts";
+import {
+  loadDeveloperLogsAgentSessionAttachments,
+  type DeveloperLogsAgentSessionRecord
+} from "./developerLogsAgentSessions.ts";
+import { sanitizeDeveloperLogsTransportSnapshot } from "./developerLogsRuntimeContext.ts";
 import { workspaceAppScopeSegment } from "./host/workspaceAppFolderPaths.ts";
+
+test("developer logs runtime context allowlists transport diagnostics", () => {
+  const snapshot = sanitizeDeveloperLogsTransportSnapshot({
+    accessToken: "must-not-export",
+    boundAddr: "127.0.0.1:4545",
+    listenerInfoPath: "/tmp/tuttid.listener.json",
+    pidPath: "/tmp/tuttid.pid",
+    requestedAddr: "127.0.0.1:0",
+    unknownField: "must-not-export-either"
+  });
+
+  assert.deepEqual(snapshot, {
+    boundAddr: "127.0.0.1:4545",
+    listenerInfoPath: "/tmp/tuttid.listener.json",
+    pidPath: "/tmp/tuttid.pid",
+    requestedAddr: "127.0.0.1:0"
+  });
+  assert.equal(JSON.stringify(snapshot).includes("must-not-export"), false);
+});
 
 test("developer logs service summarizes managed desktop and daemon logs", async () => {
   const root = join(tmpdir(), `tutti-developer-logs-${Date.now()}`);
@@ -148,6 +172,7 @@ test("developer logs service exports managed logs into a zip archive", async () 
     },
     desktopVersion: "1.2.3",
     getDownloadsPath: () => downloadsDir,
+    now: () => new Date(Date.now() + 60_000),
     preferredSystemLanguages: ["en-US", "zh-CN"],
     systemLocale: "en",
     transportSnapshot: { kind: "unix", socketPath: "/tmp/tutti.sock" }
@@ -165,6 +190,202 @@ test("developer logs service exports managed logs into a zip archive", async () 
   assert.equal(zipText.includes("runtime-context.json"), true);
   assert.equal(zipText.includes("export-summary.json"), true);
   assert.equal(zipText.includes("manifest.json"), false);
+});
+
+test("developer logs service exports only log content from the last ten minutes without reading sessions", async () => {
+  const root = join(tmpdir(), `tutti-developer-recent-export-${Date.now()}`);
+  const logsDir = join(root, "logs");
+  const downloadsDir = join(root, "downloads");
+  const runtimeLogPath = join(
+    root,
+    "apps",
+    "installations",
+    "app.alpha",
+    workspaceAppScopeSegment("workspace-1", "app.alpha"),
+    "logs",
+    "runtime.log"
+  );
+  const oldRotatedLogPath = join(logsDir, "tuttid.2026-07-20.log");
+  await mkdir(dirname(runtimeLogPath), { recursive: true });
+  await mkdir(logsDir, { recursive: true });
+  await mkdir(downloadsDir, { recursive: true });
+
+  await writeFile(
+    join(logsDir, "tuttid.log"),
+    [
+      "time=2026-07-20T11:49:59.999Z level=info msg=old",
+      "time=2026-07-20T11:50:00.000Z level=info msg=boundary",
+      "time=2026-07-20T11:58:00.000Z level=error msg=recent",
+      "time=2026-07-20T12:00:00.001Z level=info msg=future"
+    ].join("\n") + "\n"
+  );
+  await writeFile(
+    runtimeLogPath,
+    "recent app output referencing 2020-01-01T00:00:00Z snapshot\n"
+  );
+  await writeFile(oldRotatedLogPath, "old unstructured daemon output\n");
+  await utimes(
+    runtimeLogPath,
+    new Date("2026-07-20T11:58:00.000Z"),
+    new Date("2026-07-20T11:58:00.000Z")
+  );
+  await utimes(
+    oldRotatedLogPath,
+    new Date("2026-07-20T11:40:00.000Z"),
+    new Date("2026-07-20T11:40:00.000Z")
+  );
+
+  let agentSessionsRequested = false;
+  const service = createDeveloperLogsService({
+    agentSessionsProvider: async () => {
+      agentSessionsRequested = true;
+      return [];
+    },
+    defaults: {
+      state: {
+        desktopLogPath: join(logsDir, "tutti-desktop.log"),
+        logsDir,
+        tuttidDBPath: "",
+        tuttidListenerInfoPath: "",
+        tuttidLogPath: join(logsDir, "tuttid.log"),
+        tuttidPIDPath: "",
+        rootDir: root,
+        runDir: ""
+      }
+    },
+    desktopVersion: "1.2.3",
+    getDownloadsPath: () => downloadsDir,
+    now: () => new Date("2026-07-20T12:00:00.000Z")
+  });
+
+  const result = await service.exportLogs({
+    includeAgentSessions: false,
+    scope: "recent-10-minutes"
+  });
+
+  assert.equal(agentSessionsRequested, false);
+  assert.equal(result.fileCount, 2);
+  assert.ok(result.filePath);
+  assert.match(result.filePath, /tutti-logs-last-10-minutes-/);
+  const entries = readZipEntries(await readFile(result.filePath));
+  const daemonLog = entries.get("logs/tuttid.log")?.toString("utf8");
+  assert.equal(
+    daemonLog,
+    [
+      "time=2026-07-20T11:50:00.000Z level=info msg=boundary",
+      "time=2026-07-20T11:58:00.000Z level=error msg=recent"
+    ].join("\n") + "\n"
+  );
+  assert.equal(
+    entries
+      .get(
+        `app-logs/app.alpha/${workspaceAppScopeSegment("workspace-1", "app.alpha")}/runtime.log`
+      )
+      ?.toString("utf8"),
+    "recent app output referencing 2020-01-01T00:00:00Z snapshot\n"
+  );
+  assert.equal(entries.has("logs/tuttid.2026-07-20.log"), false);
+  assert.equal(
+    entries.has(
+      "agent-sessions/codex/workspace-1/old-agent-session/session.json"
+    ),
+    false
+  );
+  const exportSummary = JSON.parse(
+    entries.get("export-summary.json")?.toString("utf8") ?? "{}"
+  ) as Record<string, unknown>;
+  assert.equal(exportSummary.scope, "recent-10-minutes");
+  assert.equal(exportSummary.includeAgentSessions, false);
+  assert.equal(exportSummary.windowStart, "2026-07-20T11:50:00.000Z");
+});
+
+test("developer logs service exports three days of logs with matching session records", async () => {
+  const root = join(tmpdir(), `tutti-developer-three-day-export-${Date.now()}`);
+  const logsDir = join(root, "logs");
+  const downloadsDir = join(root, "downloads");
+  await mkdir(logsDir, { recursive: true });
+  await mkdir(downloadsDir, { recursive: true });
+  await writeFile(
+    join(logsDir, "tuttid.log"),
+    [
+      "time=2026-07-17T11:59:59.999Z level=info msg=old",
+      "time=2026-07-17T12:00:00.000Z level=info msg=boundary",
+      "time=2026-07-20T11:59:00.000Z level=info msg=recent"
+    ].join("\n") + "\n"
+  );
+
+  const createSession = (
+    agentSessionID: string,
+    updatedAt: string
+  ): DeveloperLogsAgentSessionRecord => ({
+    agentSessionID,
+    hasMoreMessages: false,
+    latestMessageVersion: 1,
+    messages: [],
+    provider: "codex",
+    providerSessionID: `provider-${agentSessionID}`,
+    session: {
+      id: agentSessionID,
+      provider: "codex",
+      providerSessionId: `provider-${agentSessionID}`,
+      createdAt: updatedAt,
+      updatedAt
+    },
+    updatedAtUnixMS: Date.parse(updatedAt),
+    workspaceID: "workspace-1"
+  });
+  const service = createDeveloperLogsService({
+    agentSessionsProvider: async () => [
+      createSession("recent-session", "2026-07-19T12:00:00.000Z"),
+      createSession("old-session", "2026-07-17T11:59:59.999Z")
+    ],
+    defaults: {
+      state: {
+        desktopLogPath: join(logsDir, "tutti-desktop.log"),
+        logsDir,
+        tuttidDBPath: "",
+        tuttidListenerInfoPath: "",
+        tuttidLogPath: join(logsDir, "tuttid.log"),
+        tuttidPIDPath: "",
+        rootDir: root,
+        runDir: ""
+      }
+    },
+    desktopVersion: "1.2.3",
+    getDownloadsPath: () => downloadsDir,
+    now: () => new Date("2026-07-20T12:00:00.000Z")
+  });
+
+  const result = await service.exportLogs({
+    includeAgentSessions: true,
+    scope: "recent-3-days"
+  });
+
+  assert.equal(result.fileCount, 4);
+  assert.ok(result.filePath);
+  assert.match(result.filePath, /tutti-logs-last-3-days-with-sessions-/);
+  const entries = readZipEntries(await readFile(result.filePath));
+  assert.equal(
+    entries.get("logs/tuttid.log")?.toString("utf8"),
+    [
+      "time=2026-07-17T12:00:00.000Z level=info msg=boundary",
+      "time=2026-07-20T11:59:00.000Z level=info msg=recent"
+    ].join("\n") + "\n"
+  );
+  assert.equal(
+    entries.has("agent-sessions/codex/workspace-1/recent-session/session.json"),
+    true
+  );
+  assert.equal(
+    entries.has("agent-sessions/codex/workspace-1/old-session/session.json"),
+    false
+  );
+  const exportSummary = JSON.parse(
+    entries.get("export-summary.json")?.toString("utf8") ?? "{}"
+  ) as Record<string, unknown>;
+  assert.equal(exportSummary.scope, "recent-3-days");
+  assert.equal(exportSummary.includeAgentSessions, true);
+  assert.equal(exportSummary.windowStart, "2026-07-17T12:00:00.000Z");
 });
 
 test("developer logs service exports provider session records from tuttid snapshots", async () => {
@@ -230,6 +451,50 @@ test("developer logs service exports provider session records from tuttid snapsh
         },
         updatedAtUnixMS: 10,
         workspaceID
+      },
+      {
+        agentSessionID: "agent-tutti",
+        attachments: [
+          {
+            attachmentID: "attachment-screen",
+            dataBase64: Buffer.from("original-image-bytes").toString("base64"),
+            mimeType: "image/png",
+            name: "screen.png"
+          }
+        ],
+        hasMoreMessages: false,
+        latestMessageVersion: 9,
+        messages: [
+          {
+            agentSessionId: "agent-tutti",
+            id: 3,
+            kind: "text",
+            messageId: "tutti-message",
+            payload: {
+              content: [
+                {
+                  attachmentId: "attachment-screen",
+                  mimeType: "image/png",
+                  name: "screen.png",
+                  type: "image"
+                }
+              ]
+            },
+            role: "user",
+            version: 9
+          }
+        ],
+        provider: "tutti-agent",
+        providerSessionID: "provider-tutti",
+        session: {
+          id: "agent-tutti",
+          provider: "tutti-agent",
+          providerSessionId: "provider-tutti",
+          createdAt: "2026-06-10T00:00:00Z",
+          updatedAt: "2026-06-10T00:00:25Z"
+        },
+        updatedAtUnixMS: 25,
+        workspaceID
       }
     ],
     defaults: {
@@ -245,14 +510,16 @@ test("developer logs service exports provider session records from tuttid snapsh
       }
     },
     desktopVersion: "1.2.3",
-    getDownloadsPath: () => downloadsDir
+    getDownloadsPath: () => downloadsDir,
+    now: () => new Date(30)
   });
 
   const result = await service.exportLogs();
 
-  assert.equal(result.fileCount, 6);
+  assert.equal(result.fileCount, 10);
   assert.ok(result.filePath);
-  const zipText = (await readFile(result.filePath)).toString("utf8");
+  const zip = await readFile(result.filePath);
+  const zipText = zip.toString("utf8");
   assert.equal(
     zipText.includes(
       "agent-sessions/codex/workspace-1/agent-codex/manifest.json"
@@ -277,6 +544,104 @@ test("developer logs service exports provider session records from tuttid snapsh
     ),
     true
   );
+  assert.equal(
+    zipText.includes(
+      "agent-sessions/tutti-agent/workspace-1/agent-tutti/manifest.json"
+    ),
+    true
+  );
+  const entries = readZipEntries(zip);
+  assert.equal(
+    entries
+      .get(
+        "agent-sessions/tutti-agent/workspace-1/agent-tutti/attachments/attachment-screen.png"
+      )
+      ?.toString("utf8"),
+    "original-image-bytes"
+  );
+  const manifest = JSON.parse(
+    entries
+      .get("agent-sessions/tutti-agent/workspace-1/agent-tutti/manifest.json")
+      ?.toString("utf8") ?? "{}"
+  ) as {
+    attachments?: unknown[];
+    files?: { attachments?: string[] };
+    unavailableAttachmentIds?: string[];
+  };
+  assert.deepEqual(manifest.attachments, [
+    {
+      attachmentId: "attachment-screen",
+      file: "attachments/attachment-screen.png",
+      mimeType: "image/png",
+      name: "screen.png",
+      sizeBytes: 20
+    }
+  ]);
+  assert.deepEqual(manifest.files?.attachments, [
+    "attachments/attachment-screen.png"
+  ]);
+  assert.deepEqual(manifest.unavailableAttachmentIds, []);
+});
+
+test("developer logs attachment loading deduplicates image references and records failures", async () => {
+  const requestedAttachmentIDs: string[] = [];
+  const result = await loadDeveloperLogsAgentSessionAttachments(
+    [
+      {
+        payload: {
+          content: [
+            {
+              attachmentId: "attachment-1",
+              mimeType: "image/png",
+              name: "screen.png",
+              type: "image"
+            },
+            {
+              attachmentId: "attachment-1",
+              mimeType: "image/png",
+              type: "image"
+            },
+            {
+              attachmentId: "attachment-file",
+              type: "file"
+            },
+            {
+              attachmentId: "attachment-missing",
+              mimeType: "image/webp",
+              type: "image"
+            }
+          ]
+        }
+      }
+    ],
+    async (attachmentID) => {
+      requestedAttachmentIDs.push(attachmentID);
+      if (attachmentID === "attachment-missing") {
+        throw new Error("attachment is unavailable");
+      }
+      return {
+        attachmentId: attachmentID,
+        data: Buffer.from("image").toString("base64"),
+        mimeType: "image/png"
+      };
+    }
+  );
+
+  assert.deepEqual(requestedAttachmentIDs, [
+    "attachment-1",
+    "attachment-missing"
+  ]);
+  assert.deepEqual(result, {
+    attachments: [
+      {
+        attachmentID: "attachment-1",
+        dataBase64: "aW1hZ2U=",
+        mimeType: "image/png",
+        name: "screen.png"
+      }
+    ],
+    unavailableAttachmentIDs: ["attachment-missing"]
+  });
 });
 
 test("developer logs service exports at most ten provider session records per provider", async () => {
@@ -335,7 +700,8 @@ test("developer logs service exports at most ten provider session records per pr
       }
     },
     desktopVersion: "1.2.3",
-    getDownloadsPath: () => downloadsDir
+    getDownloadsPath: () => downloadsDir,
+    now: () => new Date(10)
   });
 
   const result = await service.exportLogs();
@@ -436,6 +802,7 @@ test("developer logs service exports workspace app log files", async () => {
     },
     desktopVersion: "1.2.3",
     getDownloadsPath: () => downloadsDir,
+    now: () => new Date(Date.now() + 60_000),
     preferredSystemLanguages: ["en-US", "zh-CN"],
     systemLocale: "en",
     transportSnapshot: { kind: "unix", socketPath: "/tmp/tutti.sock" }
@@ -490,6 +857,7 @@ test("developer logs service exports app factory job log files", async () => {
     },
     desktopVersion: "1.2.3",
     getDownloadsPath: () => downloadsDir,
+    now: () => new Date(Date.now() + 60_000),
     preferredSystemLanguages: ["en-US", "zh-CN"],
     systemLocale: "en",
     transportSnapshot: { kind: "unix", socketPath: "/tmp/tutti.sock" }
@@ -576,6 +944,62 @@ test("developer logs service exports app center snapshot", async () => {
   const zipText = (await readFile(result.filePath)).toString("utf8");
   assert.equal(zipText.includes("app-center-snapshot.json"), true);
 });
+
+function readZipEntries(archive: Buffer): Map<string, Buffer> {
+  const endOfCentralDirectorySignature = 0x06054b50;
+  const centralDirectoryEntrySignature = 0x02014b50;
+  const localFileHeaderSignature = 0x04034b50;
+  let endOfCentralDirectoryOffset = -1;
+  for (let offset = archive.length - 22; offset >= 0; offset -= 1) {
+    if (archive.readUInt32LE(offset) === endOfCentralDirectorySignature) {
+      endOfCentralDirectoryOffset = offset;
+      break;
+    }
+  }
+  assert.notEqual(endOfCentralDirectoryOffset, -1);
+
+  const entries = new Map<string, Buffer>();
+  const entryCount = archive.readUInt16LE(endOfCentralDirectoryOffset + 10);
+  let centralOffset = archive.readUInt32LE(endOfCentralDirectoryOffset + 16);
+
+  for (let index = 0; index < entryCount; index += 1) {
+    assert.equal(
+      archive.readUInt32LE(centralOffset),
+      centralDirectoryEntrySignature
+    );
+    const compressionMethod = archive.readUInt16LE(centralOffset + 10);
+    const compressedSize = archive.readUInt32LE(centralOffset + 20);
+    const fileNameLength = archive.readUInt16LE(centralOffset + 28);
+    const extraFieldLength = archive.readUInt16LE(centralOffset + 30);
+    const commentLength = archive.readUInt16LE(centralOffset + 32);
+    const localHeaderOffset = archive.readUInt32LE(centralOffset + 42);
+    const fileName = archive
+      .subarray(centralOffset + 46, centralOffset + 46 + fileNameLength)
+      .toString("utf8");
+
+    assert.equal(
+      archive.readUInt32LE(localHeaderOffset),
+      localFileHeaderSignature
+    );
+    const localFileNameLength = archive.readUInt16LE(localHeaderOffset + 26);
+    const localExtraFieldLength = archive.readUInt16LE(localHeaderOffset + 28);
+    const contentOffset =
+      localHeaderOffset + 30 + localFileNameLength + localExtraFieldLength;
+    const compressedContent = archive.subarray(
+      contentOffset,
+      contentOffset + compressedSize
+    );
+    const content =
+      compressionMethod === 0
+        ? compressedContent
+        : inflateRawSync(compressedContent);
+    entries.set(fileName, content);
+
+    centralOffset += 46 + fileNameLength + extraFieldLength + commentLength;
+  }
+
+  return entries;
+}
 
 test("developer logs service treats .LOG files as managed logs", async () => {
   const root = join(tmpdir(), `tutti-developer-uppercase-${Date.now()}`);
@@ -668,7 +1092,7 @@ test("developer logs service does not clear generated diagnostics", async () => 
           createdAt: "2026-06-10T00:00:00Z",
           updatedAt: "2026-06-10T00:00:20Z"
         },
-        updatedAtUnixMS: 20,
+        updatedAtUnixMS: Date.now(),
         workspaceID
       }
     ],
@@ -695,6 +1119,7 @@ test("developer logs service does not clear generated diagnostics", async () => 
     },
     desktopVersion: "1.2.3",
     getDownloadsPath: () => downloadsDir,
+    now: () => new Date(Date.now() + 60_000),
     preferredSystemLanguages: ["en-US"],
     systemLocale: "en",
     transportSnapshot: { kind: "unix", socketPath: "/tmp/tutti.sock" }
@@ -708,7 +1133,7 @@ test("developer logs service does not clear generated diagnostics", async () => 
   assert.equal(await readFile(desktopPath, "utf8"), "");
   await assert.rejects(() => stat(appLogPath));
 
-  assert.equal(exportResult.fileCount, 6);
+  assert.equal(exportResult.fileCount, 4);
   assert.ok(exportResult.filePath !== null);
   const zipText = await readFile(exportResult.filePath, "utf8");
   assert.equal(

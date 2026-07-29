@@ -123,7 +123,10 @@ export interface IssueManagerSubtaskProgressViewState {
 }
 
 export function resolveIssueManagerSubtaskProgress(
-  issue: Pick<IssueManagerIssueSummary, "completedCount" | "taskCount">
+  issue: Pick<
+    IssueManagerIssueSummary,
+    "completedCount" | "pendingAcceptanceCount" | "taskCount"
+  >
 ): IssueManagerSubtaskProgressViewState | null {
   const total = Math.max(0, Math.trunc(issue.taskCount ?? 0));
   if (total <= 0) {
@@ -132,7 +135,8 @@ export function resolveIssueManagerSubtaskProgress(
 
   const completed = Math.min(
     total,
-    Math.max(0, Math.trunc(issue.completedCount ?? 0))
+    Math.max(0, Math.trunc(issue.completedCount ?? 0)) +
+      Math.max(0, Math.trunc(issue.pendingAcceptanceCount ?? 0))
   );
 
   return {

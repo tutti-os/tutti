@@ -6,21 +6,30 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:260d4aaa4021fbd9"
+	BusinessEventCatalogRevision = "sha256:0883cf9e6ae0b25c"
 )
 
 type Topic string
 
 const (
-	TopicAgentActivityUpdated                  Topic = "agent.activity.updated"
-	TopicAgentModelCatalogInvalidated          Topic = "agent.model.catalog.invalidated"
-	TopicAnalyticsDebugReported                Topic = "analytics.debug.reported"
-	TopicPreferencesDesktopUpdateRequested     Topic = "preferences.desktop.update.requested"
-	TopicPreferencesDesktopUpdated             Topic = "preferences.desktop.updated"
-	TopicWorkspaceAppUpdated                   Topic = "workspace.app.updated"
-	TopicWorkspaceAppfactoryJobUpdated         Topic = "workspace.appfactory.job.updated"
-	TopicWorkspaceIssueUpdated                 Topic = "workspace.issue.updated"
-	TopicWorkspaceWorkbenchNodeLaunchRequested Topic = "workspace.workbench.node.launch.requested"
+	TopicAgentActivityUpdated                           Topic = "agent.activity.updated"
+	TopicAgentAutomationRulesChanged                    Topic = "agent.automation.rules.changed"
+	TopicAgentCollaborationUpdated                      Topic = "agent.collaboration.updated"
+	TopicAgentModelCatalogInvalidated                   Topic = "agent.model.catalog.invalidated"
+	TopicAgentModelConfigurationChanged                 Topic = "agent.model.configuration.changed"
+	TopicAgentQuickpromptUpdated                        Topic = "agent.quickprompt.updated"
+	TopicAnalyticsDebugReported                         Topic = "analytics.debug.reported"
+	TopicPreferencesAgentComposerDefaultsChanged        Topic = "preferences.agent.composer.defaults.changed"
+	TopicPreferencesAgentComposerDefaultsPatchRequested Topic = "preferences.agent.composer.defaults.patch.requested"
+	TopicPreferencesDesktopUpdateRequested              Topic = "preferences.desktop.update.requested"
+	TopicPreferencesDesktopUpdated                      Topic = "preferences.desktop.updated"
+	TopicUserProjectUpdated                             Topic = "user.project.updated"
+	TopicWorkspaceAppUpdated                            Topic = "workspace.app.updated"
+	TopicWorkspaceAppfactoryJobUpdated                  Topic = "workspace.appfactory.job.updated"
+	TopicWorkspaceIssueUpdated                          Topic = "workspace.issue.updated"
+	TopicWorkspaceTuttimodeUpdated                      Topic = "workspace.tuttimode.updated"
+	TopicWorkspaceWorkbenchNodeLaunchRequested          Topic = "workspace.workbench.node.launch.requested"
+	TopicWorkspaceWorkflowUpdated                       Topic = "workspace.workflow.updated"
 )
 
 type Direction string
@@ -60,6 +69,7 @@ type EventEnvelope struct {
 }
 
 type PreferencesDesktopPreferences struct {
+	AgentCliUpdateCheckEnabled      bool `json:"agentCliUpdateCheckEnabled"`
 	AgentComposerDefaultsByProvider struct {
 		ClaudeCode *struct {
 			Model            *string `json:"model,omitempty"`
@@ -91,12 +101,6 @@ type PreferencesDesktopPreferences struct {
 			ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
 			Speed            *string `json:"speed,omitempty"`
 		} `json:"nexight,omitempty"`
-		Hermes *struct {
-			Model            *string `json:"model,omitempty"`
-			PermissionModeId *string `json:"permissionModeId,omitempty"`
-			ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
-			Speed            *string `json:"speed,omitempty"`
-		} `json:"hermes,omitempty"`
 		Openclaw *struct {
 			Model            *string `json:"model,omitempty"`
 			PermissionModeId *string `json:"permissionModeId,omitempty"`
@@ -122,20 +126,20 @@ type PreferencesDesktopPreferences struct {
 		TuttiAgent *bool `json:"tutti-agent,omitempty"`
 		Cursor     *bool `json:"cursor,omitempty"`
 		Nexight    *bool `json:"nexight,omitempty"`
-		Hermes     *bool `json:"hermes,omitempty"`
 		Openclaw   *bool `json:"openclaw,omitempty"`
 		Opencode   *bool `json:"opencode,omitempty"`
 	} `json:"agentGuiConversationRailCollapsedByProvider"`
-	AgentConversationDetailMode   string            `json:"agentConversationDetailMode"`
-	AgentDockLayout               string            `json:"agentDockLayout"`
-	AppCatalogChannel             string            `json:"appCatalogChannel"`
-	BrowserUseConnectionMode      *string           `json:"browserUseConnectionMode,omitempty"`
-	DefaultAgentProvider          string            `json:"defaultAgentProvider"`
-	DockIconStyle                 string            `json:"dockIconStyle"`
-	DockPlacement                 string            `json:"dockPlacement"`
-	FileDefaultOpenersByExtension map[string]string `json:"fileDefaultOpenersByExtension"`
-	FeatureFlags                  map[string]bool   `json:"featureFlags"`
-	WorkbenchShortcuts            struct {
+	AgentConversationDetailMode           string            `json:"agentConversationDetailMode"`
+	AgentDockLayout                       string            `json:"agentDockLayout"`
+	AppCatalogChannel                     string            `json:"appCatalogChannel"`
+	BrowserUseConnectionMode              *string           `json:"browserUseConnectionMode,omitempty"`
+	DefaultAgentProvider                  string            `json:"defaultAgentProvider"`
+	DockIconStyle                         string            `json:"dockIconStyle"`
+	DockPlacement                         string            `json:"dockPlacement"`
+	DeletedAgentConversationRetentionDays int               `json:"deletedAgentConversationRetentionDays"`
+	FileDefaultOpenersByExtension         map[string]string `json:"fileDefaultOpenersByExtension"`
+	FeatureFlags                          map[string]bool   `json:"featureFlags"`
+	WorkbenchShortcuts                    struct {
 		NewAgentConversation *string `json:"newAgentConversation"`
 		NewSameTypeWindow    *string `json:"newSameTypeWindow"`
 	} `json:"workbenchShortcuts"`
@@ -150,6 +154,17 @@ type PreferencesDesktopPreferences struct {
 		Enabled        bool   `json:"enabled"`
 		ShortcutPreset string `json:"shortcutPreset"`
 	} `json:"workbenchWindowSnapping,omitempty"`
+}
+
+type UserUserProject struct {
+	Id               string `json:"id"`
+	Path             string `json:"path"`
+	Label            string `json:"label"`
+	SectionKey       string `json:"sectionKey"`
+	CreatedAtUnixMs  int64  `json:"createdAtUnixMs"`
+	UpdatedAtUnixMs  int64  `json:"updatedAtUnixMs"`
+	LastUsedAtUnixMs int64  `json:"lastUsedAtUnixMs"`
+	PinnedAtUnixMs   int64  `json:"pinnedAtUnixMs"`
 }
 
 type WorkspaceWorkspaceAppFactoryJob struct {
@@ -230,9 +245,43 @@ type AgentActivityUpdatedPayload struct {
 	Data           any     `json:"data"`
 }
 
+type AgentAutomationRulesChangedPayload struct {
+	WorkspaceId      string `json:"workspaceId"`
+	OccurredAtUnixMs int    `json:"occurredAtUnixMs"`
+}
+
+type AgentCollaborationUpdatedPayload struct {
+	WorkspaceId      string  `json:"workspaceId"`
+	RunId            string  `json:"runId"`
+	Mode             string  `json:"mode"`
+	Status           string  `json:"status"`
+	SourceSessionId  *string `json:"sourceSessionId,omitempty"`
+	TargetSessionId  *string `json:"targetSessionId,omitempty"`
+	ModelPlanId      *string `json:"modelPlanId,omitempty"`
+	Model            *string `json:"model,omitempty"`
+	TriggerSource    string  `json:"triggerSource"`
+	Adoption         *string `json:"adoption,omitempty"`
+	OccurredAtUnixMs int     `json:"occurredAtUnixMs"`
+}
+
 type AgentModelCatalogInvalidatedPayload struct {
 	Providers        []string `json:"providers"`
 	OccurredAtUnixMs int      `json:"occurredAtUnixMs"`
+}
+
+type AgentModelConfigurationChangedPayload struct {
+	WorkspaceId        string            `json:"workspaceId"`
+	AgentTargetIds     []string          `json:"agentTargetIds"`
+	DefaultModels      map[string]string `json:"defaultModels"`
+	ResetComposerModel bool              `json:"resetComposerModel"`
+	OccurredAtUnixMs   int               `json:"occurredAtUnixMs"`
+}
+
+type AgentQuickpromptUpdatedPayload struct {
+	PromptId         string `json:"promptId"`
+	ChangeKind       string `json:"changeKind"`
+	Version          int    `json:"version"`
+	OccurredAtUnixMs int    `json:"occurredAtUnixMs"`
 }
 
 type AnalyticsDebugReportedPayload struct {
@@ -243,6 +292,21 @@ type AnalyticsDebugReportedPayload struct {
 	} `json:"events"`
 }
 
+type PreferencesAgentComposerDefaultsChangedPayload struct {
+	AgentTargetId string `json:"agentTargetId"`
+}
+
+type PreferencesAgentComposerDefaultsPatchRequestedPayload struct {
+	AgentTargetId string `json:"agentTargetId"`
+	Patch         struct {
+		Model            *string `json:"model,omitempty"`
+		PermissionModeId *string `json:"permissionModeId,omitempty"`
+		ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
+		Speed            *string `json:"speed,omitempty"`
+	} `json:"patch"`
+	ClientMutationId *string `json:"clientMutationId,omitempty"`
+}
+
 type PreferencesDesktopUpdateRequestedPayload struct {
 	Preferences PreferencesDesktopPreferences `json:"preferences"`
 }
@@ -250,6 +314,10 @@ type PreferencesDesktopUpdateRequestedPayload struct {
 type PreferencesDesktopUpdatedPayload struct {
 	Initialized bool                          `json:"initialized"`
 	Preferences PreferencesDesktopPreferences `json:"preferences"`
+}
+
+type UserProjectUpdatedPayload struct {
+	Projects []UserUserProject `json:"projects"`
 }
 
 type WorkspaceAppUpdatedPayload struct {
@@ -268,6 +336,14 @@ type WorkspaceIssueUpdatedPayload struct {
 	ChangeKind  string  `json:"changeKind"`
 }
 
+type WorkspaceTuttimodeUpdatedPayload struct {
+	AgentSessionId string `json:"agentSessionId"`
+	ActivationId   string `json:"activationId"`
+	Revision       int    `json:"revision"`
+	Status         string `json:"status"`
+	ChangeKind     string `json:"changeKind"`
+}
+
 type WorkspaceWorkbenchNodeLaunchRequestedPayload struct {
 	WorkspaceId  string  `json:"workspaceId"`
 	TypeId       string  `json:"typeId"`
@@ -276,6 +352,13 @@ type WorkspaceWorkbenchNodeLaunchRequestedPayload struct {
 	DockEntryId  *string `json:"dockEntryId,omitempty"`
 	RequestId    *string `json:"requestId,omitempty"`
 	Payload      any     `json:"payload,omitempty"`
+}
+
+type WorkspaceWorkflowUpdatedPayload struct {
+	WorkflowId      string `json:"workflowId"`
+	SourceSessionId string `json:"sourceSessionId"`
+	CheckpointId    string `json:"checkpointId"`
+	ChangeKind      string `json:"changeKind"`
 }
 
 type AgentActivityUpdatedEvent struct {
@@ -287,6 +370,24 @@ type AgentActivityUpdatedEvent struct {
 	Payload   AgentActivityUpdatedPayload `json:"payload"`
 }
 
+type AgentAutomationRulesChangedEvent struct {
+	ID        string                             `json:"id"`
+	Topic     Topic                              `json:"topic"`
+	Version   int                                `json:"version"`
+	EmittedAt string                             `json:"emittedAt"`
+	Scope     *EventScope                        `json:"scope,omitempty"`
+	Payload   AgentAutomationRulesChangedPayload `json:"payload"`
+}
+
+type AgentCollaborationUpdatedEvent struct {
+	ID        string                           `json:"id"`
+	Topic     Topic                            `json:"topic"`
+	Version   int                              `json:"version"`
+	EmittedAt string                           `json:"emittedAt"`
+	Scope     *EventScope                      `json:"scope,omitempty"`
+	Payload   AgentCollaborationUpdatedPayload `json:"payload"`
+}
+
 type AgentModelCatalogInvalidatedEvent struct {
 	ID        string                              `json:"id"`
 	Topic     Topic                               `json:"topic"`
@@ -296,6 +397,24 @@ type AgentModelCatalogInvalidatedEvent struct {
 	Payload   AgentModelCatalogInvalidatedPayload `json:"payload"`
 }
 
+type AgentModelConfigurationChangedEvent struct {
+	ID        string                                `json:"id"`
+	Topic     Topic                                 `json:"topic"`
+	Version   int                                   `json:"version"`
+	EmittedAt string                                `json:"emittedAt"`
+	Scope     *EventScope                           `json:"scope,omitempty"`
+	Payload   AgentModelConfigurationChangedPayload `json:"payload"`
+}
+
+type AgentQuickpromptUpdatedEvent struct {
+	ID        string                         `json:"id"`
+	Topic     Topic                          `json:"topic"`
+	Version   int                            `json:"version"`
+	EmittedAt string                         `json:"emittedAt"`
+	Scope     *EventScope                    `json:"scope,omitempty"`
+	Payload   AgentQuickpromptUpdatedPayload `json:"payload"`
+}
+
 type AnalyticsDebugReportedEvent struct {
 	ID        string                        `json:"id"`
 	Topic     Topic                         `json:"topic"`
@@ -303,6 +422,24 @@ type AnalyticsDebugReportedEvent struct {
 	EmittedAt string                        `json:"emittedAt"`
 	Scope     *EventScope                   `json:"scope,omitempty"`
 	Payload   AnalyticsDebugReportedPayload `json:"payload"`
+}
+
+type PreferencesAgentComposerDefaultsChangedEvent struct {
+	ID        string                                         `json:"id"`
+	Topic     Topic                                          `json:"topic"`
+	Version   int                                            `json:"version"`
+	EmittedAt string                                         `json:"emittedAt"`
+	Scope     *EventScope                                    `json:"scope,omitempty"`
+	Payload   PreferencesAgentComposerDefaultsChangedPayload `json:"payload"`
+}
+
+type PreferencesAgentComposerDefaultsPatchRequestedEvent struct {
+	ID        string                                                `json:"id"`
+	Topic     Topic                                                 `json:"topic"`
+	Version   int                                                   `json:"version"`
+	EmittedAt string                                                `json:"emittedAt"`
+	Scope     *EventScope                                           `json:"scope,omitempty"`
+	Payload   PreferencesAgentComposerDefaultsPatchRequestedPayload `json:"payload"`
 }
 
 type PreferencesDesktopUpdateRequestedEvent struct {
@@ -321,6 +458,15 @@ type PreferencesDesktopUpdatedEvent struct {
 	EmittedAt string                           `json:"emittedAt"`
 	Scope     *EventScope                      `json:"scope,omitempty"`
 	Payload   PreferencesDesktopUpdatedPayload `json:"payload"`
+}
+
+type UserProjectUpdatedEvent struct {
+	ID        string                    `json:"id"`
+	Topic     Topic                     `json:"topic"`
+	Version   int                       `json:"version"`
+	EmittedAt string                    `json:"emittedAt"`
+	Scope     *EventScope               `json:"scope,omitempty"`
+	Payload   UserProjectUpdatedPayload `json:"payload"`
 }
 
 type WorkspaceAppUpdatedEvent struct {
@@ -350,6 +496,15 @@ type WorkspaceIssueUpdatedEvent struct {
 	Payload   WorkspaceIssueUpdatedPayload `json:"payload"`
 }
 
+type WorkspaceTuttimodeUpdatedEvent struct {
+	ID        string                           `json:"id"`
+	Topic     Topic                            `json:"topic"`
+	Version   int                              `json:"version"`
+	EmittedAt string                           `json:"emittedAt"`
+	Scope     *EventScope                      `json:"scope,omitempty"`
+	Payload   WorkspaceTuttimodeUpdatedPayload `json:"payload"`
+}
+
 type WorkspaceWorkbenchNodeLaunchRequestedEvent struct {
 	ID        string                                       `json:"id"`
 	Topic     Topic                                        `json:"topic"`
@@ -357,6 +512,15 @@ type WorkspaceWorkbenchNodeLaunchRequestedEvent struct {
 	EmittedAt string                                       `json:"emittedAt"`
 	Scope     *EventScope                                  `json:"scope,omitempty"`
 	Payload   WorkspaceWorkbenchNodeLaunchRequestedPayload `json:"payload"`
+}
+
+type WorkspaceWorkflowUpdatedEvent struct {
+	ID        string                          `json:"id"`
+	Topic     Topic                           `json:"topic"`
+	Version   int                             `json:"version"`
+	EmittedAt string                          `json:"emittedAt"`
+	Scope     *EventScope                     `json:"scope,omitempty"`
+	Payload   WorkspaceWorkflowUpdatedPayload `json:"payload"`
 }
 
 type ClientSubscribeFrame struct {
@@ -426,6 +590,20 @@ var BusinessEventDefinitions = []EventDefinition{
 		Scope:     ScopeNameWorkspace,
 	},
 	{
+		Topic:     TopicAgentAutomationRulesChanged,
+		Version:   1,
+		Direction: DirectionServerToClient,
+		Owner:     "agent",
+		Scope:     ScopeNameWorkspace,
+	},
+	{
+		Topic:     TopicAgentCollaborationUpdated,
+		Version:   1,
+		Direction: DirectionServerToClient,
+		Owner:     "agent",
+		Scope:     ScopeNameWorkspace,
+	},
+	{
 		Topic:     TopicAgentModelCatalogInvalidated,
 		Version:   1,
 		Direction: DirectionServerToClient,
@@ -433,10 +611,38 @@ var BusinessEventDefinitions = []EventDefinition{
 		Scope:     ScopeNameGlobal,
 	},
 	{
+		Topic:     TopicAgentModelConfigurationChanged,
+		Version:   1,
+		Direction: DirectionServerToClient,
+		Owner:     "agent",
+		Scope:     ScopeNameWorkspace,
+	},
+	{
+		Topic:     TopicAgentQuickpromptUpdated,
+		Version:   1,
+		Direction: DirectionServerToClient,
+		Owner:     "core",
+		Scope:     ScopeNameGlobal,
+	},
+	{
 		Topic:     TopicAnalyticsDebugReported,
 		Version:   1,
 		Direction: DirectionServerToClient,
 		Owner:     "desktop",
+		Scope:     ScopeNameDesktop,
+	},
+	{
+		Topic:     TopicPreferencesAgentComposerDefaultsChanged,
+		Version:   1,
+		Direction: DirectionServerToClient,
+		Owner:     "core",
+		Scope:     ScopeNameDesktop,
+	},
+	{
+		Topic:     TopicPreferencesAgentComposerDefaultsPatchRequested,
+		Version:   1,
+		Direction: DirectionClientToServer,
+		Owner:     "core",
 		Scope:     ScopeNameDesktop,
 	},
 	{
@@ -452,6 +658,13 @@ var BusinessEventDefinitions = []EventDefinition{
 		Direction: DirectionServerToClient,
 		Owner:     "core",
 		Scope:     ScopeNameDesktop,
+	},
+	{
+		Topic:     TopicUserProjectUpdated,
+		Version:   2,
+		Direction: DirectionServerToClient,
+		Owner:     "core",
+		Scope:     ScopeNameGlobal,
 	},
 	{
 		Topic:     TopicWorkspaceAppUpdated,
@@ -475,39 +688,71 @@ var BusinessEventDefinitions = []EventDefinition{
 		Scope:     ScopeNameWorkspace,
 	},
 	{
+		Topic:     TopicWorkspaceTuttimodeUpdated,
+		Version:   1,
+		Direction: DirectionServerToClient,
+		Owner:     "workspace",
+		Scope:     ScopeNameWorkspace,
+	},
+	{
 		Topic:     TopicWorkspaceWorkbenchNodeLaunchRequested,
 		Version:   1,
 		Direction: DirectionServerToClient,
 		Owner:     "core",
 		Scope:     ScopeNameWorkspace,
 	},
+	{
+		Topic:     TopicWorkspaceWorkflowUpdated,
+		Version:   1,
+		Direction: DirectionServerToClient,
+		Owner:     "workspace",
+		Scope:     ScopeNameWorkspace,
+	},
 }
 
 var businessEventDefinitionByTopic = map[Topic]EventDefinition{
-	TopicAgentActivityUpdated:                  BusinessEventDefinitions[0],
-	TopicAgentModelCatalogInvalidated:          BusinessEventDefinitions[1],
-	TopicAnalyticsDebugReported:                BusinessEventDefinitions[2],
-	TopicPreferencesDesktopUpdateRequested:     BusinessEventDefinitions[3],
-	TopicPreferencesDesktopUpdated:             BusinessEventDefinitions[4],
-	TopicWorkspaceAppUpdated:                   BusinessEventDefinitions[5],
-	TopicWorkspaceAppfactoryJobUpdated:         BusinessEventDefinitions[6],
-	TopicWorkspaceIssueUpdated:                 BusinessEventDefinitions[7],
-	TopicWorkspaceWorkbenchNodeLaunchRequested: BusinessEventDefinitions[8],
+	TopicAgentActivityUpdated:                           BusinessEventDefinitions[0],
+	TopicAgentAutomationRulesChanged:                    BusinessEventDefinitions[1],
+	TopicAgentCollaborationUpdated:                      BusinessEventDefinitions[2],
+	TopicAgentModelCatalogInvalidated:                   BusinessEventDefinitions[3],
+	TopicAgentModelConfigurationChanged:                 BusinessEventDefinitions[4],
+	TopicAgentQuickpromptUpdated:                        BusinessEventDefinitions[5],
+	TopicAnalyticsDebugReported:                         BusinessEventDefinitions[6],
+	TopicPreferencesAgentComposerDefaultsChanged:        BusinessEventDefinitions[7],
+	TopicPreferencesAgentComposerDefaultsPatchRequested: BusinessEventDefinitions[8],
+	TopicPreferencesDesktopUpdateRequested:              BusinessEventDefinitions[9],
+	TopicPreferencesDesktopUpdated:                      BusinessEventDefinitions[10],
+	TopicUserProjectUpdated:                             BusinessEventDefinitions[11],
+	TopicWorkspaceAppUpdated:                            BusinessEventDefinitions[12],
+	TopicWorkspaceAppfactoryJobUpdated:                  BusinessEventDefinitions[13],
+	TopicWorkspaceIssueUpdated:                          BusinessEventDefinitions[14],
+	TopicWorkspaceTuttimodeUpdated:                      BusinessEventDefinitions[15],
+	TopicWorkspaceWorkbenchNodeLaunchRequested:          BusinessEventDefinitions[16],
+	TopicWorkspaceWorkflowUpdated:                       BusinessEventDefinitions[17],
 }
 
 var ClientToServerTopics = []Topic{
+	TopicPreferencesAgentComposerDefaultsPatchRequested,
 	TopicPreferencesDesktopUpdateRequested,
 }
 
 var ServerToClientTopics = []Topic{
 	TopicAgentActivityUpdated,
+	TopicAgentAutomationRulesChanged,
+	TopicAgentCollaborationUpdated,
 	TopicAgentModelCatalogInvalidated,
+	TopicAgentModelConfigurationChanged,
+	TopicAgentQuickpromptUpdated,
 	TopicAnalyticsDebugReported,
+	TopicPreferencesAgentComposerDefaultsChanged,
 	TopicPreferencesDesktopUpdated,
+	TopicUserProjectUpdated,
 	TopicWorkspaceAppUpdated,
 	TopicWorkspaceAppfactoryJobUpdated,
 	TopicWorkspaceIssueUpdated,
+	TopicWorkspaceTuttimodeUpdated,
 	TopicWorkspaceWorkbenchNodeLaunchRequested,
+	TopicWorkspaceWorkflowUpdated,
 }
 
 func LookupEventDefinition(topic Topic) (EventDefinition, bool) {
@@ -522,6 +767,8 @@ func IsKnownTopic(topic Topic) bool {
 
 func IsClientToServerTopic(topic Topic) bool {
 	switch topic {
+	case TopicPreferencesAgentComposerDefaultsPatchRequested:
+		return true
 	case TopicPreferencesDesktopUpdateRequested:
 		return true
 	default:
@@ -533,11 +780,23 @@ func IsServerToClientTopic(topic Topic) bool {
 	switch topic {
 	case TopicAgentActivityUpdated:
 		return true
+	case TopicAgentAutomationRulesChanged:
+		return true
+	case TopicAgentCollaborationUpdated:
+		return true
 	case TopicAgentModelCatalogInvalidated:
+		return true
+	case TopicAgentModelConfigurationChanged:
+		return true
+	case TopicAgentQuickpromptUpdated:
 		return true
 	case TopicAnalyticsDebugReported:
 		return true
+	case TopicPreferencesAgentComposerDefaultsChanged:
+		return true
 	case TopicPreferencesDesktopUpdated:
+		return true
+	case TopicUserProjectUpdated:
 		return true
 	case TopicWorkspaceAppUpdated:
 		return true
@@ -545,7 +804,11 @@ func IsServerToClientTopic(topic Topic) bool {
 		return true
 	case TopicWorkspaceIssueUpdated:
 		return true
+	case TopicWorkspaceTuttimodeUpdated:
+		return true
 	case TopicWorkspaceWorkbenchNodeLaunchRequested:
+		return true
+	case TopicWorkspaceWorkflowUpdated:
 		return true
 	default:
 		return false
@@ -556,22 +819,40 @@ func PayloadPrototypeForTopic(topic Topic) (any, bool) {
 	switch topic {
 	case TopicAgentActivityUpdated:
 		return &AgentActivityUpdatedPayload{}, true
+	case TopicAgentAutomationRulesChanged:
+		return &AgentAutomationRulesChangedPayload{}, true
+	case TopicAgentCollaborationUpdated:
+		return &AgentCollaborationUpdatedPayload{}, true
 	case TopicAgentModelCatalogInvalidated:
 		return &AgentModelCatalogInvalidatedPayload{}, true
+	case TopicAgentModelConfigurationChanged:
+		return &AgentModelConfigurationChangedPayload{}, true
+	case TopicAgentQuickpromptUpdated:
+		return &AgentQuickpromptUpdatedPayload{}, true
 	case TopicAnalyticsDebugReported:
 		return &AnalyticsDebugReportedPayload{}, true
+	case TopicPreferencesAgentComposerDefaultsChanged:
+		return &PreferencesAgentComposerDefaultsChangedPayload{}, true
+	case TopicPreferencesAgentComposerDefaultsPatchRequested:
+		return &PreferencesAgentComposerDefaultsPatchRequestedPayload{}, true
 	case TopicPreferencesDesktopUpdateRequested:
 		return &PreferencesDesktopUpdateRequestedPayload{}, true
 	case TopicPreferencesDesktopUpdated:
 		return &PreferencesDesktopUpdatedPayload{}, true
+	case TopicUserProjectUpdated:
+		return &UserProjectUpdatedPayload{}, true
 	case TopicWorkspaceAppUpdated:
 		return &WorkspaceAppUpdatedPayload{}, true
 	case TopicWorkspaceAppfactoryJobUpdated:
 		return &WorkspaceAppfactoryJobUpdatedPayload{}, true
 	case TopicWorkspaceIssueUpdated:
 		return &WorkspaceIssueUpdatedPayload{}, true
+	case TopicWorkspaceTuttimodeUpdated:
+		return &WorkspaceTuttimodeUpdatedPayload{}, true
 	case TopicWorkspaceWorkbenchNodeLaunchRequested:
 		return &WorkspaceWorkbenchNodeLaunchRequestedPayload{}, true
+	case TopicWorkspaceWorkflowUpdated:
+		return &WorkspaceWorkflowUpdatedPayload{}, true
 	default:
 		return nil, false
 	}
@@ -581,22 +862,40 @@ func EventPrototypeForTopic(topic Topic) (any, bool) {
 	switch topic {
 	case TopicAgentActivityUpdated:
 		return &AgentActivityUpdatedEvent{}, true
+	case TopicAgentAutomationRulesChanged:
+		return &AgentAutomationRulesChangedEvent{}, true
+	case TopicAgentCollaborationUpdated:
+		return &AgentCollaborationUpdatedEvent{}, true
 	case TopicAgentModelCatalogInvalidated:
 		return &AgentModelCatalogInvalidatedEvent{}, true
+	case TopicAgentModelConfigurationChanged:
+		return &AgentModelConfigurationChangedEvent{}, true
+	case TopicAgentQuickpromptUpdated:
+		return &AgentQuickpromptUpdatedEvent{}, true
 	case TopicAnalyticsDebugReported:
 		return &AnalyticsDebugReportedEvent{}, true
+	case TopicPreferencesAgentComposerDefaultsChanged:
+		return &PreferencesAgentComposerDefaultsChangedEvent{}, true
+	case TopicPreferencesAgentComposerDefaultsPatchRequested:
+		return &PreferencesAgentComposerDefaultsPatchRequestedEvent{}, true
 	case TopicPreferencesDesktopUpdateRequested:
 		return &PreferencesDesktopUpdateRequestedEvent{}, true
 	case TopicPreferencesDesktopUpdated:
 		return &PreferencesDesktopUpdatedEvent{}, true
+	case TopicUserProjectUpdated:
+		return &UserProjectUpdatedEvent{}, true
 	case TopicWorkspaceAppUpdated:
 		return &WorkspaceAppUpdatedEvent{}, true
 	case TopicWorkspaceAppfactoryJobUpdated:
 		return &WorkspaceAppfactoryJobUpdatedEvent{}, true
 	case TopicWorkspaceIssueUpdated:
 		return &WorkspaceIssueUpdatedEvent{}, true
+	case TopicWorkspaceTuttimodeUpdated:
+		return &WorkspaceTuttimodeUpdatedEvent{}, true
 	case TopicWorkspaceWorkbenchNodeLaunchRequested:
 		return &WorkspaceWorkbenchNodeLaunchRequestedEvent{}, true
+	case TopicWorkspaceWorkflowUpdated:
+		return &WorkspaceWorkflowUpdatedEvent{}, true
 	default:
 		return nil, false
 	}

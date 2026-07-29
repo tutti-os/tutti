@@ -3,6 +3,136 @@
   "schemaVersion": 1,
   "components": [
     {
+      "id": "sortable",
+      "layer": "base",
+      "name": "Sortable",
+      "export": "Sortable",
+      "from": "@tutti-os/ui-system/components",
+      "category": "primitive",
+      "status": "stable",
+      "source": "src/components/sortable/index.tsx",
+      "description": "Controlled Dice UI-derived drag sorting root with mouse, touch, and keyboard sensors.",
+      "useCases": ["Accessible list reordering", "Handle-only drag sorting"],
+      "migrationHints": [],
+      "storyboard": true
+    },
+    {
+      "id": "sortable-content",
+      "layer": "base",
+      "name": "SortableContent",
+      "export": "SortableContent",
+      "from": "@tutti-os/ui-system/components",
+      "category": "composition",
+      "status": "stable",
+      "source": "src/components/sortable/index.tsx",
+      "description": "Collection context and content wrapper for Sortable items.",
+      "useCases": ["Vertical sortable lists", "Horizontal sortable lists"],
+      "migrationHints": []
+    },
+    {
+      "id": "sortable-item",
+      "layer": "base",
+      "name": "SortableItem",
+      "export": "SortableItem",
+      "from": "@tutti-os/ui-system/components",
+      "category": "composition",
+      "status": "stable",
+      "source": "src/components/sortable/index.tsx",
+      "description": "Stable-identity sortable item that owns drag transforms.",
+      "useCases": ["Sortable rows", "Sortable cards"],
+      "migrationHints": []
+    },
+    {
+      "id": "sortable-item-handle",
+      "layer": "base",
+      "name": "SortableItemHandle",
+      "export": "SortableItemHandle",
+      "from": "@tutti-os/ui-system/components",
+      "category": "composition",
+      "status": "stable",
+      "source": "src/components/sortable/index.tsx",
+      "description": "Handle that receives Sortable activator attributes and listeners.",
+      "useCases": ["Handle-only drag activation", "Keyboard reordering"],
+      "migrationHints": []
+    },
+    {
+      "id": "sortable-overlay",
+      "layer": "base",
+      "name": "SortableOverlay",
+      "export": "SortableOverlay",
+      "from": "@tutti-os/ui-system/components",
+      "category": "composition",
+      "status": "stable",
+      "source": "src/components/sortable/index.tsx",
+      "description": "Optional portaled drag overlay for Sortable compositions.",
+      "useCases": ["Drag previews"],
+      "migrationHints": []
+    },
+    {
+      "id": "message-square-text-icon",
+      "layer": "base",
+      "name": "MessageSquareTextIcon",
+      "export": "MessageSquareTextIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "Source-derived Lucide message-square-text icon.",
+      "useCases": ["Reusable prompt entry points", "Text message actions"],
+      "migrationHints": []
+    },
+    {
+      "id": "quote-lined-icon",
+      "layer": "base",
+      "name": "QuoteIcon",
+      "export": "QuoteIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "Source-derived Lucide quote icon.",
+      "useCases": ["Quote actions", "Quoted content affordances"],
+      "migrationHints": [],
+      "iconVariant": "lined"
+    },
+    {
+      "id": "grip-vertical-icon",
+      "layer": "base",
+      "name": "GripVerticalIcon",
+      "export": "GripVerticalIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "Source-derived Lucide vertical drag grip icon.",
+      "useCases": ["Drag handles", "Reorder controls"],
+      "migrationHints": []
+    },
+    {
+      "id": "avatar",
+      "layer": "base",
+      "name": "Avatar",
+      "export": "Avatar",
+      "from": "@tutti-os/ui-system/components",
+      "category": "primitive",
+      "status": "stable",
+      "source": "src/components/avatar/index.tsx",
+      "description": "High-level identity image primitive with rendered-size-aware CloudFront delivery and resilient fallback states.",
+      "propsType": "AvatarProps",
+      "useCases": [
+        "People and account identity",
+        "Agent identity",
+        "Compact image surfaces with caller-owned overlays"
+      ],
+      "migrationHints": [
+        "Pass a stable label even when src is available so broken images have a meaningful fallback.",
+        "Pass a directly consumable CloudFront URL; Avatar defaults to a bucketed 2x WebP request and retries the original URL if delivery fails.",
+        "Sources are requested unchanged by default; pass transform only when the caller knows the URL supports image-delivery query parameters.",
+        "Use children for caller-owned presence badges and other overlays."
+      ],
+      "storyboard": true
+    },
+    {
       "id": "badge",
       "layer": "base",
       "name": "Badge",
@@ -1096,6 +1226,26 @@
       ]
     },
     {
+      "id": "combobox",
+      "layer": "base",
+      "name": "Combobox",
+      "export": "Combobox",
+      "from": "@tutti-os/ui-system/components",
+      "category": "composition",
+      "status": "stable",
+      "source": "src/components/combobox/index.tsx",
+      "description": "Searchable single-value picker with a fixed-height option list and optional custom typed values.",
+      "useCases": [
+        "Large option catalogs",
+        "Model or identifier selection",
+        "Free-form value entry with suggestions"
+      ],
+      "migrationHints": [
+        "Replace local Popover+Input search dropdowns with the shared Combobox so filtering, keyboard navigation, and tokens stay aligned."
+      ],
+      "storyboard": true
+    },
+    {
       "id": "checkbox",
       "layer": "base",
       "name": "Checkbox",
@@ -1152,6 +1302,26 @@
       ],
       "migrationHints": [
         "Use the shared Switch instead of product-local toggles so checked and focus states stay consistent."
+      ],
+      "storyboard": true
+    },
+    {
+      "id": "slider",
+      "layer": "base",
+      "name": "Slider",
+      "export": "Slider",
+      "from": "@tutti-os/ui-system/components",
+      "category": "primitive",
+      "status": "stable",
+      "source": "src/components/slider/index.tsx",
+      "description": "Token-backed slider primitive for selecting one value or a bounded range.",
+      "useCases": [
+        "Intensity controls",
+        "Numeric range filters",
+        "Continuous settings"
+      ],
+      "migrationHints": [
+        "Replace native range inputs with Slider so focus, disabled, track, and thumb treatments stay aligned across renderer surfaces."
       ],
       "storyboard": true
     },
@@ -1892,6 +2062,20 @@
       "iconVariant": "filled"
     },
     {
+      "id": "message-center-filled-icon",
+      "layer": "base",
+      "name": "MessageCenterIcon",
+      "export": "MessageCenterIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "System icon for the agent message center entry point.",
+      "useCases": ["Message center trigger"],
+      "migrationHints": [],
+      "iconVariant": "filled"
+    },
+    {
       "id": "minimize-lined-icon",
       "layer": "base",
       "name": "MinimizeIcon",
@@ -2180,6 +2364,20 @@
       "iconVariant": "lined"
     },
     {
+      "id": "minus-lined-icon",
+      "layer": "base",
+      "name": "MinusLinedIcon",
+      "export": "MinusLinedIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "Slim system icon for minus or decrease actions.",
+      "useCases": ["Zoom controls", "Dense decrease controls"],
+      "migrationHints": [],
+      "iconVariant": "lined"
+    },
+    {
       "id": "import-lined-icon",
       "layer": "base",
       "name": "ImportLinedIcon",
@@ -2304,6 +2502,20 @@
       "useCases": ["Code file items"],
       "migrationHints": [],
       "iconVariant": "filled"
+    },
+    {
+      "id": "file-archive-lined-icon",
+      "layer": "base",
+      "name": "FileArchiveIcon",
+      "export": "FileArchiveIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "System icon for archive and compressed files.",
+      "useCases": ["Archive file items", "Compressed file previews"],
+      "migrationHints": [],
+      "iconVariant": "lined"
     },
     {
       "id": "terminal-lined-icon",
@@ -2526,6 +2738,20 @@
       "source": "src/icons/system-icons.tsx",
       "description": "System icon for download or export actions.",
       "useCases": ["Download buttons", "Export actions"],
+      "migrationHints": [],
+      "iconVariant": "lined"
+    },
+    {
+      "id": "share-lined-icon",
+      "layer": "base",
+      "name": "ShareLinedIcon",
+      "export": "ShareLinedIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "System icon for sharing a resource with other people or sessions.",
+      "useCases": ["Share buttons", "Share menu items"],
       "migrationHints": [],
       "iconVariant": "lined"
     },
@@ -2894,6 +3120,20 @@
       "iconVariant": "lined"
     },
     {
+      "id": "chrome-lined-icon",
+      "layer": "base",
+      "name": "ChromeIcon",
+      "export": "ChromeIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "System icon for Google Chrome integrations.",
+      "useCases": ["Chrome profile import", "Chrome integrations"],
+      "migrationHints": [],
+      "iconVariant": "lined"
+    },
+    {
       "id": "capability-lined-icon",
       "layer": "base",
       "name": "CapabilityIcon",
@@ -3163,6 +3403,115 @@
       "migrationHints": []
     },
     {
+      "id": "native-css",
+      "layer": "base",
+      "name": "./native.css",
+      "export": "./native.css",
+      "from": "@tutti-os/ui-system/native.css",
+      "category": "style-entry",
+      "status": "experimental",
+      "source": "src/styles/native.css",
+      "description": "React Native Tailwind entry point for Native UI System primitives.",
+      "useCases": [
+        "Mobile NativeWind bootstrap",
+        "Native UI System primitives"
+      ],
+      "migrationHints": []
+    },
+    {
+      "id": "native-theme",
+      "layer": "base",
+      "name": "nativeTheme",
+      "export": "nativeTheme",
+      "from": "@tutti-os/ui-system/native",
+      "category": "utility",
+      "status": "experimental",
+      "source": "src/native/tokens.ts",
+      "description": "Semantic color, radius, and spacing tokens for React Native renderers.",
+      "useCases": ["Native UI System primitives", "Mobile screen composition"],
+      "migrationHints": []
+    },
+    {
+      "id": "native-theme-provider",
+      "layer": "base",
+      "name": "NativeThemeProvider",
+      "export": "NativeThemeProvider",
+      "from": "@tutti-os/ui-system/native",
+      "category": "utility",
+      "status": "experimental",
+      "source": "src/native/theme-provider.tsx",
+      "propsType": "NativeThemeProviderProps",
+      "description": "Resolves a Native light or dark semantic theme for UI System primitives and application composition.",
+      "useCases": ["Native renderer roots", "Product theme preferences"],
+      "migrationHints": []
+    },
+    {
+      "id": "native-button",
+      "layer": "base",
+      "name": "NativeButton",
+      "export": "NativeButton",
+      "from": "@tutti-os/ui-system/native",
+      "category": "primitive",
+      "status": "experimental",
+      "source": "src/native/button.tsx",
+      "propsType": "NativeButtonProps",
+      "description": "Token-backed pressable button for React Native renderers.",
+      "useCases": [
+        "Primary actions",
+        "Secondary actions",
+        "Destructive actions"
+      ],
+      "migrationHints": [],
+      "nativePreview": true
+    },
+    {
+      "id": "native-icon-button",
+      "layer": "base",
+      "name": "NativeIconButton",
+      "export": "NativeIconButton",
+      "from": "@tutti-os/ui-system/native",
+      "category": "primitive",
+      "status": "experimental",
+      "source": "src/native/icon-button.tsx",
+      "propsType": "NativeIconButtonProps",
+      "description": "Accessible icon-only action composed from the Native Button primitive.",
+      "useCases": ["Compact toolbars", "Dismiss actions", "Row actions"],
+      "migrationHints": [],
+      "nativePreview": true
+    },
+    {
+      "id": "native-list-row",
+      "layer": "base",
+      "name": "NativeListRow",
+      "export": "NativeListRow",
+      "from": "@tutti-os/ui-system/native",
+      "category": "primitive",
+      "status": "experimental",
+      "source": "src/native/list-row.tsx",
+      "propsType": "NativeListRowProps",
+      "description": "Selectable token-backed list row with caller-owned leading and trailing content.",
+      "useCases": ["Session lists", "Settings lists", "Picker rows"],
+      "migrationHints": [],
+      "nativePreview": true
+    },
+    {
+      "id": "native-sheet",
+      "layer": "base",
+      "name": "NativeSheet",
+      "export": "NativeSheet",
+      "from": "@tutti-os/ui-system/native",
+      "category": "primitive",
+      "status": "experimental",
+      "source": "src/native/sheet.tsx",
+      "propsType": "NativeSheetProps",
+      "description": "Controlled compact sheet backed by React Native Modal with a token-backed scrim and panel.",
+      "useCases": ["Row actions", "Confirmation flows", "Compact forms"],
+      "migrationHints": [
+        "Provide a localized closeAccessibilityLabel and replace a single snapPoints value with height; keep multi-snap sheets app-owned."
+      ],
+      "nativePreview": true
+    },
+    {
       "id": "cn",
       "layer": "base",
       "name": "cn",
@@ -3256,6 +3605,58 @@
       "source": "src/components/context-menu/context-menu.tsx",
       "description": "Selectable action row for ContextMenu content.",
       "useCases": ["Context menu actions", "Right-click menu items"],
+      "migrationHints": []
+    },
+    {
+      "id": "context-menu-separator",
+      "layer": "base",
+      "name": "ContextMenuSeparator",
+      "export": "ContextMenuSeparator",
+      "from": "@tutti-os/ui-system/components",
+      "category": "composition",
+      "status": "stable",
+      "source": "src/components/context-menu/context-menu.tsx",
+      "description": "Visual divider between groups of ContextMenu actions.",
+      "useCases": ["Context menu action grouping"],
+      "migrationHints": []
+    },
+    {
+      "id": "context-menu-sub",
+      "layer": "base",
+      "name": "ContextMenuSub",
+      "export": "ContextMenuSub",
+      "from": "@tutti-os/ui-system/components",
+      "category": "composition",
+      "status": "stable",
+      "source": "src/components/context-menu/context-menu.tsx",
+      "description": "Submenu root for nested ContextMenu actions.",
+      "useCases": ["Nested context menu actions"],
+      "migrationHints": []
+    },
+    {
+      "id": "context-menu-sub-trigger",
+      "layer": "base",
+      "name": "ContextMenuSubTrigger",
+      "export": "ContextMenuSubTrigger",
+      "from": "@tutti-os/ui-system/components",
+      "category": "composition",
+      "status": "stable",
+      "source": "src/components/context-menu/context-menu.tsx",
+      "description": "Trigger row that opens a nested ContextMenu submenu.",
+      "useCases": ["Nested context menu action groups"],
+      "migrationHints": []
+    },
+    {
+      "id": "context-menu-sub-content",
+      "layer": "base",
+      "name": "ContextMenuSubContent",
+      "export": "ContextMenuSubContent",
+      "from": "@tutti-os/ui-system/components",
+      "category": "composition",
+      "status": "stable",
+      "source": "src/components/context-menu/context-menu.tsx",
+      "description": "Popup surface for nested ContextMenu actions.",
+      "useCases": ["Nested context menu panels"],
       "migrationHints": []
     }
   ]

@@ -7,6 +7,8 @@ import {
 } from "react";
 import type {
   AgentActivityActivateSessionResult,
+  AgentActivityCollaborationRun,
+  AgentActivityComposerOptions,
   AgentActivityGoalControlInput,
   AgentActivityGoalControlResult,
   AgentActivityCreateSessionInput,
@@ -14,22 +16,40 @@ import type {
   AgentActivityDeleteSessionResult,
   AgentActivityMessageOrder,
   AgentActivityMessagePage,
+  AgentActivityRailPlacement,
   AgentActivityRenameSessionInput,
   AgentActivitySendInput,
   AgentActivitySendInputResult,
   AgentActivitySession,
   AgentActivitySessionSettings,
+  AgentActivitySetCollaborationAdoptionInput,
   AgentActivitySnapshot,
   AgentActivitySnapshotListener,
   AgentActivitySubmitInteractiveInput,
   AgentActivitySubmitInteractiveResult,
+  AgentActivityUpdateTuttiModeActivationInput,
+  AgentActivityUpdateTuttiModeActivationResult,
   AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
 import type {
   AgentHostAgentSessionComposerSettings,
   AgentHostUnactivateAgentSessionResult
 } from "./shared/contracts/dto";
-import type { WorkspaceQueryCache } from "./shared/query/workspaceQueryCache";
+import type {
+  AgentConversationRailDeleteSessionsBatchInput,
+  AgentConversationRailDeleteSessionsBatchResult,
+  AgentConversationRailListPinnedSessionsPageInput,
+  AgentConversationRailListSessionSectionPageInput,
+  AgentConversationRailListSessionSectionsInput,
+  AgentConversationRailListSessionsPageInput,
+  AgentConversationRailSessionPage,
+  AgentConversationRailSessionSection,
+  AgentConversationRailSessionSectionDeletionCandidates,
+  AgentConversationRailSessionSectionScopeInput,
+  AgentConversationRailSessionSectionsResult,
+  AgentConversationRailSessionsPageResult,
+  AgentConversationRailUserProject
+} from "./agentConversationRailContracts";
 
 export interface AgentActivityRuntimeUpdateSessionSettingsResult {
   agentSessionId: string;
@@ -58,78 +78,22 @@ export interface AgentActivityRuntimeListGeneratedFilesInput {
   workspaceId: string;
 }
 
-export interface AgentActivityRuntimeListSessionsPageInput {
-  agentTargetId?: string | null;
-  cursor?: string;
-  limit?: number;
-  searchQuery?: string;
-  signal?: AbortSignal;
-  workspaceId: string;
-}
-
-export interface AgentActivityRuntimeSessionPageResult {
-  hasMore: boolean;
-  nextCursor?: string;
-  sessions: AgentActivitySession[];
-  workspaceId: string;
-}
-
-export interface AgentActivityRuntimeListSessionSectionsInput {
-  agentTargetId?: string | null;
-  limitPerSection?: number;
-  signal?: AbortSignal;
-  workspaceId: string;
-}
-
-export interface AgentActivityRuntimeListSessionSectionPageInput {
-  agentTargetId?: string | null;
-  cursor?: string;
-  limit?: number;
-  sectionKey: string;
-  signal?: AbortSignal;
-  workspaceId: string;
-}
-
-export interface AgentActivityRuntimeListPinnedSessionsPageInput {
-  agentTargetId?: string | null;
-  cursor?: string;
-  limit?: number;
-  signal?: AbortSignal;
-  workspaceId: string;
-}
-
-export interface AgentActivityRuntimeUserProject {
-  createdAtUnixMs: number;
-  id: string;
-  label: string;
-  lastUsedAtUnixMs?: number;
-  path: string;
-  sectionKey: string;
-  updatedAtUnixMs: number;
-}
-
-export interface AgentActivityRuntimeSessionSection {
-  kind: "conversations" | "project";
-  sectionKey: string;
-  userProject?: AgentActivityRuntimeUserProject;
-  sessions: AgentActivitySession[];
-  hasMore: boolean;
-  totalCount: number;
-  nextCursor?: string;
-}
-
-export interface AgentActivityRuntimeSessionPage {
-  sessions: AgentActivitySession[];
-  hasMore: boolean;
-  totalCount: number;
-  nextCursor?: string;
-}
-
-export interface AgentActivityRuntimeSessionSectionsResult {
-  pinned?: AgentActivityRuntimeSessionPage;
-  sections: AgentActivityRuntimeSessionSection[];
-  workspaceId: string;
-}
+export type AgentActivityRuntimeListSessionsPageInput =
+  AgentConversationRailListSessionsPageInput;
+export type AgentActivityRuntimeSessionPageResult =
+  AgentConversationRailSessionsPageResult;
+export type AgentActivityRuntimeListSessionSectionsInput =
+  AgentConversationRailListSessionSectionsInput;
+export type AgentActivityRuntimeListSessionSectionPageInput =
+  AgentConversationRailListSessionSectionPageInput;
+export type AgentActivityRuntimeListPinnedSessionsPageInput =
+  AgentConversationRailListPinnedSessionsPageInput;
+export type AgentActivityRuntimeUserProject = AgentConversationRailUserProject;
+export type AgentActivityRuntimeSessionSection =
+  AgentConversationRailSessionSection;
+export type AgentActivityRuntimeSessionPage = AgentConversationRailSessionPage;
+export type AgentActivityRuntimeSessionSectionsResult =
+  AgentConversationRailSessionSectionsResult;
 
 export interface AgentActivityRuntimeGeneratedFile {
   label: string;
@@ -174,6 +138,7 @@ export interface AgentActivityRuntimeGetComposerOptionsInput {
 
 export interface AgentActivityRuntimeUpdateSessionSettingsInput {
   agentSessionId: string;
+  signal?: AbortSignal;
   settings: AgentHostAgentSessionComposerSettings;
   workspaceId: string;
 }
@@ -195,10 +160,12 @@ export interface AgentActivityRuntimeDiagnosticInput {
 
 interface AgentActivityRuntimeActivateSessionInputBase {
   agentSessionId: string;
+  capabilityRefs?: AgentActivityCreateSessionInput["capabilityRefs"];
   cwd?: string;
   initialContent?: AgentActivitySendInput["content"];
   /** 仅展示用首轮文本(bundle 折叠成一个 chip);initialContent 仍带展开后的文件。 */
   initialDisplayPrompt?: string | null;
+  railPlacement?: AgentActivityRailPlacement;
   submitDiagnostics?: AgentActivitySendInput["submitDiagnostics"];
   settings?: AgentActivitySessionSettings;
   title?: string;
@@ -211,6 +178,7 @@ export type AgentActivityRuntimeActivateSessionInput =
   | (AgentActivityRuntimeActivateSessionInputBase & {
       agentTargetId: string;
       clientSubmitId: string;
+      initialTuttiModeActivation?: AgentActivityCreateSessionInput["initialTuttiModeActivation"];
       mode: "new";
     })
   | (AgentActivityRuntimeActivateSessionInputBase & {
@@ -281,33 +249,14 @@ export interface AgentActivityRuntimeStagePastedTextResult {
   sizeBytes: number;
 }
 
-export interface AgentActivityRuntimeSessionSectionScopeInput {
-  agentTargetId?: string | null;
-  excludePinned?: boolean;
-  sectionKey: string;
-  signal?: AbortSignal;
-  workspaceId: string;
-}
-
-export interface AgentActivityRuntimeSessionSectionDeletionCandidates {
-  agentTargetId?: string | null;
-  excludePinned: boolean;
-  sectionKey: string;
-  sessionIds: string[];
-  workspaceId: string;
-}
-
-export interface AgentActivityRuntimeDeleteSessionsBatchInput {
-  sessionIds: string[];
-  signal?: AbortSignal;
-  workspaceId: string;
-}
-
-export interface AgentActivityRuntimeDeleteSessionsBatchResult {
-  removedMessages: number;
-  removedSessionIds: string[];
-  removedSessions: number;
-}
+export type AgentActivityRuntimeSessionSectionScopeInput =
+  AgentConversationRailSessionSectionScopeInput;
+export type AgentActivityRuntimeSessionSectionDeletionCandidates =
+  AgentConversationRailSessionSectionDeletionCandidates;
+export type AgentActivityRuntimeDeleteSessionsBatchInput =
+  AgentConversationRailDeleteSessionsBatchInput;
+export type AgentActivityRuntimeDeleteSessionsBatchResult =
+  AgentConversationRailDeleteSessionsBatchResult;
 
 export interface AgentActivityRuntimeSessionAttachment {
   attachmentId: string;
@@ -370,15 +319,15 @@ export interface AgentActivityRuntime {
   ): Promise<AgentActivitySession>;
   getComposerOptions(
     input: AgentActivityRuntimeGetComposerOptionsInput
-  ): Promise<unknown>;
+  ): Promise<AgentActivityComposerOptions>;
   updateSessionSettings(
     input: AgentActivityRuntimeUpdateSessionSettingsInput
   ): Promise<AgentActivityRuntimeUpdateSessionSettingsResult>;
+  updateTuttiModeActivation(
+    input: AgentActivityUpdateTuttiModeActivationInput
+  ): Promise<AgentActivityUpdateTuttiModeActivationResult>;
   getSnapshot(workspaceId: string): AgentActivitySnapshot;
   getSessionEngine(workspaceId: string): AgentSessionEngine;
-  getSessionSectionsQueryCache?(
-    workspaceId: string
-  ): WorkspaceQueryCache<unknown>;
   listSessionMessages(
     input: AgentActivityRuntimeListSessionMessagesInput
   ): Promise<AgentActivityMessagePage>;
@@ -428,6 +377,13 @@ export interface AgentActivityRuntime {
   renameSession(
     input: AgentActivityRenameSessionInput
   ): Promise<AgentActivitySession>;
+  /**
+   * Record whether a collaboration outcome was adopted.
+   * Optional; hosts without support omit it and adoption controls stay hidden.
+   */
+  setCollaborationAdoption?(
+    input: AgentActivitySetCollaborationAdoptionInput
+  ): Promise<AgentActivityCollaborationRun>;
   setSessionPinned(
     input: AgentActivityRuntimeSetSessionPinnedInput
   ): Promise<AgentActivitySession>;

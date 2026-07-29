@@ -6,6 +6,10 @@ use ./services/tuttid
 
 use ./packages/events/stream-go
 
+use ./packages/analytics/reporter-go
+
+use ./packages/device-link
+
 use ./apps/cli
 
 use ./packages/workbench/service
@@ -16,11 +20,14 @@ use ./packages/workspace/issues
 
 use ./packages/auth/bridge-go
 
+use ./packages/commerce
+
 use (
 	./packages/agent/activity-replication
 	./packages/agent/daemon
 	./packages/agent/host
 	./packages/agent/runtimeprep
+	./packages/agent/session-replay
 	./packages/agent/store-sqlite
 	./packages/agent/store-sqlite/canonical
 	./packages/appcli/core

@@ -271,7 +271,10 @@ function createWorkspaceTerminalNodeExternalStateSource(input: {
     getWorkspaceState() {
       return null;
     },
-    subscribe(listener) {
+    subscribeNodeState(request, listener) {
+      if (request.typeId !== defaultWorkspaceTerminalWorkbenchTypeId) {
+        return () => {};
+      }
       const unsubscribeAdapter =
         input.adapter.externalStateSource.subscribe(listener);
       const unsubscribePreview = input.previewStore.subscribe(listener);

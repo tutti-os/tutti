@@ -1,6 +1,15 @@
 export { registerWorkspaceAgentServices } from "./services/registerWorkspaceAgentServices";
+export { startDesktopAgentAvailabilitySnapshotAnalytics } from "./desktopAgentAvailabilitySnapshotAnalytics.ts";
+export {
+  AgentAnalyticsErrorCode,
+  agentAnalyticsErrorFields,
+  agentAnalyticsSuccessFields
+} from "./agentAnalyticsError.ts";
+export type { AgentAnalyticsErrorFields } from "./agentAnalyticsError.ts";
 export { IAgentsService } from "./services/agentsService.interface";
+export { IAgentEnvService } from "./services/agentEnvService.interface";
 export { IAgentProviderStatusService } from "./services/agentProviderStatusService.interface";
+export { IAgentQuickPromptService } from "./services/agentQuickPromptService.interface";
 export { createDesktopAgentGUIWorkbenchHostInput } from "./services/createDesktopAgentGUIWorkbenchHostInput";
 export { preloadDesktopAgentGuiMentionBrowse } from "./services/preloadDesktopAgentGuiMentionBrowse";
 export { createDesktopAgentActivityRuntime } from "./services/createDesktopAgentActivityRuntime";
@@ -27,17 +36,25 @@ export {
   normalizeDesktopAgentGUIProvider,
   normalizeDesktopAgentGUIWorkbenchState
 } from "./desktopAgentGUINodeState";
+export type { IAgentQuickPromptService as AgentQuickPromptService } from "./services/agentQuickPromptService.interface";
 export type {
   AgentTargetPresentation,
   AgentsSnapshot,
   IAgentsService as AgentsService
 } from "./services/agentsService.interface";
 export type {
+  AgentProviderActionOrigin,
   AgentProviderStatusActionContext,
+  AgentProviderStatusActionOptions,
   AgentProviderStatusSnapshot,
   AgentProviderTerminalCommandRunner,
   IAgentProviderStatusService as AgentProviderStatusService
 } from "./services/agentProviderStatusService.interface";
+export type {
+  AgentEnvReportState,
+  AgentEnvSnapshot,
+  IAgentEnvService as AgentEnvService
+} from "./services/agentEnvService.interface";
 export type { IWorkspaceAgentActivityService as WorkspaceAgentActivityService } from "./services/workspaceAgentActivityService.interface";
 export type {
   IWorkspaceAgentPromptSessionService as WorkspaceAgentPromptSessionService,

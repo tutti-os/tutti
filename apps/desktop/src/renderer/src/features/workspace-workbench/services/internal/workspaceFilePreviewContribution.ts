@@ -13,11 +13,12 @@ import { createAnalyticsOpenedSourceParams } from "../../../analytics/reporters/
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import type { DesktopHostFilesApi } from "@preload/types";
 import { createWorkspaceFilePreviewWindowSaveRequestSource } from "../workspaceFilePreviewSaveRequests.ts";
+import { createWorkspaceFilePreviewWindowViewModeRequestSource } from "../workspaceFilePreviewViewModeRequests.ts";
 import { WorkspaceFilePreviewNodeBody } from "../../ui/WorkspaceFilePreviewNodeBody.tsx";
 import { WorkspaceFilePreviewNodeHeader } from "../../ui/WorkspaceFilePreviewNodeHeader.tsx";
 import {
   createWorkspaceFilePreviewInstanceID,
-  isWorkspaceFilePreviewActivationTarget,
+  coerceWorkspaceFilePreviewTarget,
   isWorkspaceFilePreviewNodeTypeID,
   resolveWorkspaceFilePreviewNodeTypeID,
   workspaceFilePreviewActivationType,
@@ -56,17 +57,14 @@ export function createWorkspaceFilePreviewContribution(input: {
       })
     ],
     onLaunchRequest: (request) => {
-      if (
-        !isWorkspaceFilePreviewNodeTypeID(request.typeId) ||
-        !isWorkspaceFilePreviewActivationTarget(request.payload)
-      ) {
+      const target = coerceWorkspaceFilePreviewTarget(request.payload);
+      if (!isWorkspaceFilePreviewNodeTypeID(request.typeId) || !target) {
         return null;
       }
 
-      const target = request.payload;
       if (
         request.typeId !==
-        resolveWorkspaceFilePreviewNodeTypeID(target.fileKind)
+        resolveWorkspaceFilePreviewNodeTypeID(target.previewKind)
       ) {
         return null;
       }
@@ -102,6 +100,8 @@ function createWorkspaceFilePreviewNodeDefinition(input: {
   const saveRequestSource = createWorkspaceFilePreviewWindowSaveRequestSource(
     globalThis.window
   );
+  const viewModeRequestSource =
+    createWorkspaceFilePreviewWindowViewModeRequestSource(globalThis.window);
 
   return {
     frame: workspaceFilePreviewNodeFrame,
@@ -133,6 +133,7 @@ function createWorkspaceFilePreviewNodeDefinition(input: {
         i18n: input.i18n,
         tuttidClient: input.tuttidClient,
         saveRequestSource,
+        viewModeRequestSource,
         workspaceID: input.workspaceId
       }),
     renderHeader: (context) =>
@@ -155,11 +156,12 @@ function createWorkspaceFilePreviewNodeDefinition(input: {
 }
 
 function resolvePreviewFileExtension(payload: unknown): string | null {
-  if (!isWorkspaceFilePreviewActivationTarget(payload)) {
+  const target = coerceWorkspaceFilePreviewTarget(payload);
+  if (!target) {
     return null;
   }
 
-  const source = payload.name || payload.path;
+  const source = target.name || target.path;
   const slashIndex = Math.max(
     source.lastIndexOf("/"),
     source.lastIndexOf("\\")

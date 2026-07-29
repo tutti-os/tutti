@@ -14,7 +14,56 @@ type UserProjectService interface {
 	CheckPath(context.Context, userprojectservice.CheckPathInput) (userprojectservice.PathCheck, error)
 	Delete(context.Context, userprojectservice.DeleteInput) error
 	List(context.Context) ([]userprojectbiz.Project, error)
+	Move(context.Context, userprojectservice.MoveInput) ([]userprojectbiz.Project, error)
+	Pin(context.Context, userprojectservice.PinInput) ([]userprojectbiz.Project, error)
 	Use(context.Context, userprojectservice.UseInput) (userprojectbiz.Project, error)
+	UseMany(context.Context, userprojectservice.UseManyInput) []error
+}
+
+func (api DaemonAPI) PinUserProject(ctx context.Context, request tuttigenerated.PinUserProjectRequestObject) (tuttigenerated.PinUserProjectResponseObject, error) {
+	if api.UserProjectService == nil {
+		return tuttigenerated.PinUserProject503JSONResponse{ServiceUnavailableErrorJSONResponse: userProjectServiceUnavailableError()}, nil
+	}
+	if request.Body == nil {
+		return tuttigenerated.PinUserProject400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.EmptyBody(apierrors.WithDeveloperMessage("empty body")))}, nil
+	}
+	projects, err := api.UserProjectService.Pin(ctx, userprojectservice.PinInput{
+		ProjectID: request.Body.ProjectId,
+		Pinned:    request.Body.Pinned,
+	})
+	if err != nil {
+		if errors.Is(err, userprojectservice.ErrInvalidArgument) {
+			return tuttigenerated.PinUserProject400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.InvalidRequest(
+				apierrors.ReasonMalformedRequest,
+				apierrors.WithDeveloperMessage("user project pin references an unknown or invalid project"),
+			))}, nil
+		}
+		return tuttigenerated.PinUserProject502JSONResponse{PreferencesOperationErrorJSONResponse: preferencesOperationError(apierrors.PreferencesOperationFailed(apierrors.WithCause(err)))}, nil
+	}
+	return tuttigenerated.PinUserProject200JSONResponse{Projects: generatedUserProjects(projects)}, nil
+}
+
+func (api DaemonAPI) MoveUserProject(ctx context.Context, request tuttigenerated.MoveUserProjectRequestObject) (tuttigenerated.MoveUserProjectResponseObject, error) {
+	if api.UserProjectService == nil {
+		return tuttigenerated.MoveUserProject503JSONResponse{ServiceUnavailableErrorJSONResponse: userProjectServiceUnavailableError()}, nil
+	}
+	if request.Body == nil {
+		return tuttigenerated.MoveUserProject400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.EmptyBody(apierrors.WithDeveloperMessage("empty body")))}, nil
+	}
+	projects, err := api.UserProjectService.Move(ctx, userprojectservice.MoveInput{
+		ProjectID:       request.Body.ProjectId,
+		BeforeProjectID: request.Body.BeforeProjectId,
+	})
+	if err != nil {
+		if errors.Is(err, userprojectservice.ErrInvalidArgument) {
+			return tuttigenerated.MoveUserProject400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.InvalidRequest(
+				apierrors.ReasonMalformedRequest,
+				apierrors.WithDeveloperMessage("user project move references an unknown or invalid project"),
+			))}, nil
+		}
+		return tuttigenerated.MoveUserProject502JSONResponse{PreferencesOperationErrorJSONResponse: preferencesOperationError(apierrors.PreferencesOperationFailed(apierrors.WithCause(err)))}, nil
+	}
+	return tuttigenerated.MoveUserProject200JSONResponse{Projects: generatedUserProjects(projects)}, nil
 }
 
 func (api DaemonAPI) CheckUserProjectPath(ctx context.Context, request tuttigenerated.CheckUserProjectPathRequestObject) (tuttigenerated.CheckUserProjectPathResponseObject, error) {
@@ -169,8 +218,9 @@ func generatedUserProject(project userprojectbiz.Project) tuttigenerated.UserPro
 		CreatedAtUnixMs:  project.CreatedAtUnixMS,
 		Id:               project.ID,
 		Label:            project.Label,
-		LastUsedAtUnixMs: int64Pointer(project.LastUsedAtUnixMS),
+		LastUsedAtUnixMs: project.LastUsedAtUnixMS,
 		Path:             project.Path,
+		PinnedAtUnixMs:   project.PinnedAtUnixMS,
 		SectionKey:       userprojectbiz.SectionKeyFromPath(project.Path),
 		UpdatedAtUnixMs:  project.UpdatedAtUnixMS,
 	}

@@ -214,7 +214,6 @@ export class WorkspaceFileManagerActivationController {
       return;
     }
 
-    this.store.importConflictDialog = null;
     this.store.unsupportedDialog = {
       actions: result.actions ?? null,
       entryPath: entry.path,

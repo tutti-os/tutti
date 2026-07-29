@@ -3,6 +3,11 @@ import { createBrowserNodeI18nRuntime } from "../i18n/browserNodeI18n.ts";
 import type { BrowserNodeI18nRuntime } from "../i18n/browserNodeI18n.ts";
 import type { BrowserNodeHostApi } from "./types.ts";
 import {
+  createBrowserNodeChromeCookieImportFeature,
+  type BrowserNodeChromeCookieImportFeature,
+  type BrowserNodeChromeImportPromptAdapter
+} from "./chromeCookieImport.ts";
+import {
   createBrowserNodeRuntimeStore,
   type BrowserNodeRuntimeStore
 } from "./runtimeStore.ts";
@@ -19,6 +24,7 @@ import {
 } from "./url.ts";
 
 export interface BrowserNodeFeature {
+  chromeCookieImport: BrowserNodeChromeCookieImportFeature | null;
   hostApi: BrowserNodeHostApi;
   i18n: BrowserNodeI18nRuntime;
   reportDiagnostic?: BrowserNodeDiagnosticReporter;
@@ -40,6 +46,7 @@ export type BrowserNodeDiagnosticReporter = (
 ) => void;
 
 export interface CreateBrowserNodeFeatureInput {
+  chromeCookieImportPrompt?: BrowserNodeChromeImportPromptAdapter;
   hostApi: BrowserNodeHostApi;
   i18n?: I18nRuntime<string>;
   reportDiagnostic?: BrowserNodeDiagnosticReporter;
@@ -49,6 +56,7 @@ export interface CreateBrowserNodeFeatureInput {
 }
 
 export function createBrowserNodeFeature({
+  chromeCookieImportPrompt,
   hostApi,
   i18n,
   reportDiagnostic,
@@ -75,6 +83,10 @@ export function createBrowserNodeFeature({
   };
 
   return {
+    chromeCookieImport: createBrowserNodeChromeCookieImportFeature({
+      hostApi,
+      ...(chromeCookieImportPrompt ? { prompt: chromeCookieImportPrompt } : {})
+    }),
     connect,
     hostApi,
     i18n: createBrowserNodeI18nRuntime(i18n),

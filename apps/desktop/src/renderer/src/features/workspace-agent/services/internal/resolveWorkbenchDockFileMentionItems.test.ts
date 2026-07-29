@@ -70,7 +70,7 @@ test("resolveWorkbenchDockFileMentionItems returns open file preview nodes in st
           data: {
             activation: {
               payload: {
-                fileKind: "text",
+                previewKind: "text",
                 mtimeMs: null,
                 name: "alpha.ts",
                 path: "/workspace/alpha.ts",
@@ -89,7 +89,7 @@ test("resolveWorkbenchDockFileMentionItems returns open file preview nodes in st
           data: {
             activation: {
               payload: {
-                fileKind: "text",
+                previewKind: "text",
                 mtimeMs: null,
                 name: "beta.ts",
                 path: "/workspace/beta.ts",
@@ -156,7 +156,7 @@ test("resolveWorkbenchDockFileMentionItems includes image previews restored from
             instanceId: "path:img",
             snapshotNodeState: {
               file: {
-                fileKind: "image",
+                previewKind: "image",
                 mtimeMs: null,
                 name: "diagram.png",
                 path: "/workspace/assets/diagram.png",
@@ -200,7 +200,7 @@ test("resolveWorkbenchDockFileMentionItems reads preview targets from runtime no
             instanceId: "path:txt",
             runtimeNodeState: {
               file: {
-                fileKind: "text",
+                previewKind: "text",
                 mtimeMs: null,
                 name: "notes.md",
                 path: "/workspace/notes.md",

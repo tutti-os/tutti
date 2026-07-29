@@ -1,8 +1,5 @@
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
-import {
-  resolveWorkspaceFileActivationTarget,
-  type WorkspaceFileEntry
-} from "@tutti-os/workspace-file-manager/services";
+import type { WorkspaceFileEntry } from "@tutti-os/workspace-file-manager/services";
 import type {
   WorkspaceFileReference,
   WorkspaceFileReferenceAdapter,
@@ -12,25 +9,25 @@ import type {
 } from "@tutti-os/workspace-file-reference/contracts";
 import {
   classifyWorkspaceFilePreviewKind,
+  resolveWorkspaceFileBuiltinRenderKind,
   resolveWorkspaceFilePreviewName,
+  resolveWorkspaceFilePreviewTarget,
   resolveWorkspaceImageMimeType,
-  resolveWorkspaceVideoMimeType
+  resolveWorkspaceVideoMimeType,
+  type WorkspaceFilePreviewTarget
 } from "@tutti-os/workspace-file-preview";
 import type { DesktopHostFilesApi } from "@preload/types";
 
 export function createDesktopWorkspaceFileReferenceAdapter(input: {
   hostFilesApi: DesktopHostFilesApi;
-  openCanvasFilePreview?: (
-    target: NonNullable<
-      ReturnType<typeof resolveWorkspaceFileActivationTarget>
-    >,
+  presentFilePreview?: (
+    target: WorkspaceFilePreviewTarget,
     workspaceId: string
   ) => Promise<boolean> | boolean;
   tuttidClient: TuttidClient;
   workspaceId: string;
 }): WorkspaceFileReferenceAdapter {
-  const { hostFilesApi, openCanvasFilePreview, tuttidClient, workspaceId } =
-    input;
+  const { hostFilesApi, presentFilePreview, tuttidClient, workspaceId } = input;
 
   return {
     async loadReferenceTree({
@@ -88,12 +85,10 @@ export function createDesktopWorkspaceFileReferenceAdapter(input: {
         path: trimmedPath
       });
       const target =
-        entry.kind === "file"
-          ? resolveWorkspaceFileActivationTarget(entry)
-          : null;
+        entry.kind === "file" ? resolveWorkspaceFilePreviewTarget(entry) : null;
       if (
         target &&
-        (await openCanvasFilePreview?.(target, workspaceId)) === true
+        (await presentFilePreview?.(target, workspaceId)) === true
       ) {
         return;
       }
@@ -129,11 +124,23 @@ export function createDesktopWorkspaceFileReferenceAdapter(input: {
       );
     },
     async readReferencePreview({ reference, workspaceId }) {
-      const previewKind = classifyWorkspaceFilePreviewKind(reference);
-      if (!previewKind || isTerminalReferencePath(reference.path)) {
+      // References use displayName; map to preview entry.name so classification
+      // matches openReference → referenceToWorkspaceFileEntry.
+      const name = resolveWorkspaceFilePreviewName({
+        name: reference.displayName,
+        path: reference.path
+      });
+      const previewKind = classifyWorkspaceFilePreviewKind({
+        kind: reference.kind === "folder" ? "directory" : reference.kind,
+        name,
+        path: reference.path
+      });
+      if (
+        resolveWorkspaceFileBuiltinRenderKind(previewKind) === null ||
+        isTerminalReferencePath(reference.path)
+      ) {
         return null;
       }
-      const name = resolveWorkspaceFilePreviewName(reference);
       const path = reference.path.trim();
       return {
         bytes: await hostFilesApi.readPreviewFile(workspaceId, path),
@@ -153,6 +160,7 @@ export function createDesktopWorkspaceFileReferenceAdapter(input: {
       limit = 30,
       query,
       filters,
+      kinds,
       within,
       signal,
       workspaceId
@@ -162,6 +170,13 @@ export function createDesktopWorkspaceFileReferenceAdapter(input: {
         {
           limit,
           query,
+          ...(kinds && kinds.length > 0
+            ? {
+                includeKinds: kinds.map((kind) =>
+                  kind === "folder" ? "directory" : "file"
+                )
+              }
+            : {}),
           ...(filters && filters.length > 0 ? { filters } : {}),
           ...(within ? { within } : {})
         },

@@ -10,60 +10,50 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  tooling-consistency:
-    name: Tooling Consistency
+  changes:
+    name: PR Change Classification
     runs-on: ubuntu-latest
+    outputs:
+      pack_all: ${{ steps.changed-files.outputs.pack_all }}
+      pack_packages: ${{ steps.changed-files.outputs.pack_packages }}
+      run_boundaries: ${{ steps.changed-files.outputs.run_boundaries }}
+      run_contracts: ${{ steps.changed-files.outputs.run_contracts }}
+      run_generated: ${{ steps.changed-files.outputs.run_generated }}
+      run_go: ${{ steps.changed-files.outputs.run_go }}
+      run_pack: ${{ steps.changed-files.outputs.run_pack }}
+      run_ts: ${{ steps.changed-files.outputs.run_ts }}
+      run_ts_tests: ${{ steps.changed-files.outputs.run_ts_tests }}
+      test_all: ${{ steps.changed-files.outputs.test_all }}
+      test_packages: ${{ steps.changed-files.outputs.test_packages }}
+      test_shards: ${{ steps.changed-files.outputs.test_shards }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
         with:
-          node-version-file: .node-version
+          fetch-depth: 0
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.24.5"
-          cache-dependency-path: |
-            go.work
-            go.work.sum
-            packages/agent/activity-replication/go.mod
-            packages/agent/daemon/go.mod
-            packages/agent/daemon/go.sum
-            packages/agent/host/go.mod
-            packages/agent/host/go.sum
-            packages/agent/runtimeprep/go.mod
-            packages/agent/store-sqlite/go.mod
-            packages/agent/store-sqlite/canonical/go.mod
-            packages/auth/bridge-go/go.mod
-            packages/appcli/core/go.mod
-            packages/events/stream-go/go.mod
-            packages/workbench/service/go.mod
-            packages/workspace/files/go.mod
-            packages/workspace/issues/go.mod
-            apps/cli/go.mod
-            services/tuttid/go.mod
-            services/tuttid/go.sum
+      - name: Classify changed files
+        id: changed-files
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: >-
+          node ./tools/scripts/change-classification.mjs
+          --base "${BASE_SHA}"
+          --github-output "${GITHUB_OUTPUT}"
 
-      - name: Install pinned golangci-lint
-        run: |
-          version=$(tr -d '\n' < services/tuttid/.golangci-lint-version)
-          install_dir="${HOME}/.local/bin"
-          mkdir -p "${install_dir}"
-          curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b "${install_dir}" "${version}"
-          echo "${install_dir}" >> "${GITHUB_PATH}"
-
-      - name: Check golangci-lint version pin
-        run: node ./tools/scripts/setup-dev.mjs --only=golangci-lint
-
-  fix-scope:
-    name: Fix Scope Soft Gate
+  tooling-consistency:
+    name: Tooling Consistency
+    needs: changes
+    if: always()
     runs-on: ubuntu-latest
 
     steps:
+      - name: Require change classification
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+        run: test "${CHANGES_RESULT}" = "success"
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -74,15 +64,69 @@ jobs:
         with:
           node-version-file: .node-version
 
-      - name: Check fix scope justification
+      - name: Check changed-file whitespace
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-        run: node ./tools/scripts/check-fix-scope.mjs
+        run: git diff --check "${BASE_SHA}...HEAD"
+
+      - name: Check repository naming policy
+        run: node ./tools/scripts/check-tutti-names.mjs
+
+      - name: Set up pnpm
+        if: >-
+          needs.changes.outputs.run_contracts == 'true' ||
+          needs.changes.outputs.run_generated == 'true' ||
+          needs.changes.outputs.run_boundaries == 'true'
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Go
+        if: >-
+          needs.changes.outputs.run_generated == 'true' ||
+          needs.changes.outputs.run_boundaries == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.5"
+          cache-dependency-path: |
+            go.work
+            go.work.sum
+            packages/agent/daemon/go.sum
+            services/tuttid/go.sum
+
+      - name: Install workspace dependencies
+        if: >-
+          needs.changes.outputs.run_contracts == 'true' ||
+          needs.changes.outputs.run_generated == 'true' ||
+          needs.changes.outputs.run_boundaries == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Run repository contract tests
+        if: needs.changes.outputs.run_contracts == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: >-
+          node ./tools/scripts/run-repository-checks.mjs
+          --group contracts --base "${BASE_SHA}"
+
+      - name: Run generated contract checks
+        if: needs.changes.outputs.run_generated == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: >-
+          node ./tools/scripts/run-repository-checks.mjs
+          --group generated --base "${BASE_SHA}"
+
+      - name: Run repository boundary checks
+        if: needs.changes.outputs.run_boundaries == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: >-
+          node ./tools/scripts/run-repository-checks.mjs
+          --group boundaries --base "${BASE_SHA}"
 
   ts-lint:
     name: TypeScript Lint
+    needs: changes
+    if: needs.changes.outputs.run_ts == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -102,27 +146,6 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check generated defaults
-        run: pnpm check:defaults-generated
-
-      - name: Check generated API artifacts
-        run: pnpm check:api-generated
-
-      - name: Check generated event protocol artifacts
-        run: pnpm check:event-protocol-generated
-
-      - name: Check UI boundaries
-        run: pnpm check:ui-boundaries
-
-      - name: Check renderer feature boundaries
-        run: pnpm check:renderer-boundaries
-
-      - name: Check agent GUI degradation baseline
-        run: pnpm check:agent-gui-degradation
-
-      - name: Check i18n
-        run: pnpm check:i18n
-
       - name: Run TypeScript lint
         env:
           NODE_OPTIONS: --max-old-space-size=4096
@@ -130,6 +153,8 @@ jobs:
 
   typecheck:
     name: Typecheck
+    needs: changes
+    if: needs.changes.outputs.run_ts == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -152,9 +177,15 @@ jobs:
       - name: Run workspace typecheck
         run: pnpm typecheck
 
-  ts-tests:
-    name: TypeScript Tests
+  ts-test-shards:
+    name: TypeScript Test Shard ${{ matrix.shard }}
+    needs: changes
+    if: needs.changes.outputs.run_ts_tests == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.changes.outputs.test_shards) }}
 
     steps:
       - name: Checkout repository
@@ -174,10 +205,45 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run TypeScript tests
-        run: pnpm test:ts
+        env:
+          TEST_ALL: ${{ needs.changes.outputs.test_all }}
+          TEST_PACKAGES: ${{ needs.changes.outputs.test_packages }}
+          TEST_SHARD: ${{ matrix.shard }}
+        run: >-
+          if [ "${TEST_ALL}" = "true" ]; then
+            pnpm test:ts -- --shard "${TEST_SHARD}";
+          else
+            pnpm test:ts -- --packages-json "${TEST_PACKAGES}" --shard "${TEST_SHARD}";
+          fi
+
+  ts-tests:
+    name: TypeScript Tests
+    needs:
+      - changes
+      - ts-test-shards
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Require change classification
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+        run: test "${CHANGES_RESULT}" = "success"
+
+      - name: Require selected test shards
+        if: needs.changes.outputs.run_ts_tests == 'true'
+        env:
+          SHARDS_RESULT: ${{ needs.ts-test-shards.result }}
+        run: test "${SHARDS_RESULT}" = "success"
+
+      - name: No workspace package tests selected
+        if: needs.changes.outputs.run_ts_tests != 'true'
+        run: echo "No workspace package tests selected"
 
   npm-package-packs:
     name: npm Package Pack Check
+    needs: changes
+    if: needs.changes.outputs.run_pack == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -198,10 +264,20 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Validate package tarballs
-        run: pnpm release:pack:check
+        env:
+          PACK_ALL: ${{ needs.changes.outputs.pack_all }}
+          PACK_PACKAGES: ${{ needs.changes.outputs.pack_packages }}
+        run: >-
+          if [ "${PACK_ALL}" = "true" ]; then
+            pnpm release:pack:check;
+          else
+            pnpm release:pack:check -- --packages-json "${PACK_PACKAGES}";
+          fi
 
   go-tests:
     name: Go Tests
+    needs: changes
+    if: needs.changes.outputs.run_go == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -249,14 +325,13 @@ jobs:
       - name: Generate builtin apps
         run: pnpm generate:builtin-apps
 
-      - name: Check Codex app-server protocol generation
-        run: pnpm check:codexproto-generated
-
       - name: Run Go workspace tests
         run: pnpm test:go:prepared
 
   go-lint:
     name: Go Lint
+    needs: changes
+    if: needs.changes.outputs.run_go == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -301,9 +376,21 @@ jobs:
       - name: Install pinned golangci-lint
         run: |
           version=$(tr -d '\n' < services/tuttid/.golangci-lint-version)
-          install_dir="${HOME}/.local/bin"
+          install_dir="${RUNNER_TEMP}/golangci-lint/bin"
+          installer="${RUNNER_TEMP}/golangci-lint-install.sh"
           mkdir -p "${install_dir}"
-          curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b "${install_dir}" "${version}"
+          curl \
+            --retry 5 \
+            --retry-all-errors \
+            --retry-delay 2 \
+            --silent \
+            --show-error \
+            --fail \
+            --location \
+            --output "${installer}" \
+            https://golangci-lint.run/install.sh
+          sh "${installer}" -b "${install_dir}" "${version}"
+          test -x "${install_dir}/golangci-lint"
           echo "${install_dir}" >> "${GITHUB_PATH}"
 
       - name: Run Go lint

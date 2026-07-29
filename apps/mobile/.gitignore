@@ -1,0 +1,12 @@
+android/.gradle/
+android/app/.cxx/
+android/app/build/
+android/app/libs/
+android/build/
+android/local.properties
+ios/.xcode.env.local
+ios/Frameworks/
+ios/Pods/
+ios/build/
+ios/*.xcworkspace/
+.metro-health-check*

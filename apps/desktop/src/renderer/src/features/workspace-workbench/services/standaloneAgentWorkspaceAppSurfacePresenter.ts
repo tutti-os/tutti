@@ -1,5 +1,10 @@
 import type { WorkspaceAppCenterViewState } from "@tutti-os/workspace-app-center";
 import type { WorkspaceAppSurfacePresenter } from "../../workspace-app-center/services/workspaceAppSurfaceHost.interface.ts";
+import {
+  closeWorkspaceAppTab,
+  openWorkspaceAppTab,
+  readWorkspaceAppTabIds
+} from "../../workspace-app-center/services/workspaceAppCenterTabs.ts";
 
 export function createStandaloneAgentWorkspaceAppSurfacePresenter(input: {
   ensureWorkspaceAppPolling(): void;
@@ -11,33 +16,38 @@ export function createStandaloneAgentWorkspaceAppSurfacePresenter(input: {
   workspaceId: string;
 }): WorkspaceAppSurfacePresenter {
   let activeAttemptId: number | null = null;
+  let previousState: WorkspaceAppCenterViewState | null = null;
   return {
     beginOpen(attempt) {
       if (attempt.workspaceId !== input.workspaceId) {
         return;
       }
       activeAttemptId = attempt.attemptId;
+      previousState = input.getViewState(input.workspaceId);
       input.ensureWorkspaceAppPolling();
       input.setViewState({
-        state: { openAppId: attempt.appId },
+        state: openWorkspaceAppTab(previousState, attempt.appId),
         workspaceId: input.workspaceId
       });
     },
     close(request) {
-      if (
-        request.workspaceId === input.workspaceId &&
-        input.getViewState(input.workspaceId).openAppId === request.appId
-      ) {
-        input.setViewState({
-          state: { openAppId: null },
-          workspaceId: input.workspaceId
-        });
+      if (request.workspaceId !== input.workspaceId) {
+        return;
       }
+      input.setViewState({
+        state: closeWorkspaceAppTab(
+          input.getViewState(input.workspaceId),
+          request.appId
+        ),
+        workspaceId: input.workspaceId
+      });
     },
     isOpen(request) {
       return (
         request.workspaceId === input.workspaceId &&
-        input.getViewState(input.workspaceId).openAppId === request.appId
+        readWorkspaceAppTabIds(input.getViewState(input.workspaceId)).includes(
+          request.appId
+        )
       );
     },
     presentPrepared(request) {
@@ -49,6 +59,7 @@ export function createStandaloneAgentWorkspaceAppSurfacePresenter(input: {
         return false;
       }
       activeAttemptId = null;
+      previousState = null;
       return true;
     },
     rollbackOpen(attempt) {
@@ -60,8 +71,15 @@ export function createStandaloneAgentWorkspaceAppSurfacePresenter(input: {
         return;
       }
       activeAttemptId = null;
+      const rollbackState = previousState;
+      previousState = null;
       input.setViewState({
-        state: { openAppId: null },
+        state:
+          rollbackState ??
+          closeWorkspaceAppTab(
+            input.getViewState(input.workspaceId),
+            attempt.appId
+          ),
         workspaceId: input.workspaceId
       });
     }

@@ -12,6 +12,69 @@ func mkdirAll(path string) error {
 	return os.MkdirAll(path, 0o755)
 }
 
+func TestAgentTargetsV5ReplacesSidebarIconWithoutCompatibility(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	db := openTestDB(t)
+	store := New(db, Options{})
+	if _, err := db.ExecContext(ctx, `
+CREATE TABLE agent_store_schema_migrations (
+  id TEXT PRIMARY KEY,
+  applied_at_unix_ms INTEGER NOT NULL
+);
+`); err != nil {
+		t.Fatal(err)
+	}
+	for _, migrate := range []func(context.Context) error{
+		store.applyAgentTargetsV1,
+		store.applyAgentTargetsV2,
+		store.applyAgentTargetsV3,
+		store.applyAgentTargetsV4,
+	} {
+		if err := migrate(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO agent_targets (
+  id, provider, launch_ref_json, name, icon_url, sidebar_icon_url,
+  enabled, source, sort_order, created_at_ms, updated_at_ms
+) VALUES (
+  'extension:example', 'acp:example', '{"type":"agent_extension","extensionInstallationId":"example@1.0.0"}',
+  'Example', 'data:image/svg+xml;base64,old-mask', 'data:image/svg+xml;base64,old-primary',
+  1, 'system', 700, 1, 1
+);
+`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.applyAgentTargetsV5(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.GetAgentTarget(ctx, "extension:example"); !errors.Is(err, ErrAgentTargetNotFound) {
+		t.Fatalf("old extension target error = %v, want not found", err)
+	}
+	rows, err := db.QueryContext(ctx, `PRAGMA table_info(agent_targets)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	columns := map[string]bool{}
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			t.Fatal(err)
+		}
+		columns[name] = true
+	}
+	if !columns["mask_icon_url"] || columns["sidebar_icon_url"] {
+		t.Fatalf("agent target columns = %#v", columns)
+	}
+}
+
 // createLegacyTuttidDatabase replays the schema a fully migrated tuttid
 // database had before the store was extracted: shared tuttid ledger, host
 // workspaces table, agent tables with the workspaces foreign key, and

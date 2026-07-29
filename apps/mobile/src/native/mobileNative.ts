@@ -1,0 +1,84 @@
+import { NativeModules } from "react-native";
+import type { AccountSession, DeviceIdentity } from "../services/mobileDomain";
+import type { AppLifecycleNative } from "./appLifecyclePort";
+export type { AccountSession, DeviceIdentity } from "../services/mobileDomain";
+
+export interface BrowserLoginCompletion {
+  attemptId: string;
+  bridgeToken: string;
+  deviceId: string;
+  transferCode: string;
+}
+
+interface MobileSecurityNative {
+  cancelQRCodeScan(): Promise<void>;
+  clearLegacySessionCookie(accountBaseURL: string): Promise<void>;
+  clearSession(): Promise<void>;
+  getOrCreateIdentity(): Promise<DeviceIdentity>;
+  loadSession(): Promise<AccountSession | null>;
+  saveSession(
+    sessionId: string,
+    userId: string,
+    email: string,
+    name: string
+  ): Promise<void>;
+  scanQRCode(): Promise<string>;
+  sign(message: string): Promise<string>;
+  startBrowserLogin(
+    appId: string,
+    authLoginURL: string,
+    appCallbackURL: string
+  ): Promise<BrowserLoginCompletion>;
+}
+
+interface DeviceLinkNative {
+  addListener(eventName: string): void;
+  closeLink(): Promise<void>;
+  connectLink(
+    peerDescriptionJSON: string,
+    caller: boolean,
+    token: number,
+    timeoutMillis: number
+  ): Promise<string>;
+  prepareLink(
+    stunEndpointsJSON: string,
+    timeoutMillis: number
+  ): Promise<{
+    descriptionJSON: string;
+    token: number;
+  }>;
+  probeEpoch(): Promise<number>;
+  protocolEpoch(): Promise<number>;
+  requestAgentHTTP(
+    method: string,
+    path: string,
+    body: string,
+    timeoutMillis: number
+  ): Promise<{
+    body: string;
+    errorCode: string;
+    headers: Record<string, string[]>;
+    protocolEpoch: number;
+    status: number;
+  }>;
+  removeListeners(count: number): void;
+  runLoopbackProbe(timeoutMillis: number): Promise<string>;
+  startAgentLive(workspaceId: string): Promise<void>;
+  stopAgentLive(): Promise<void>;
+}
+
+function requireNativeModule<T>(name: string): T {
+  const module = NativeModules[name] as T | undefined;
+  if (!module) {
+    throw new Error(`${name} native module is unavailable`);
+  }
+  return module;
+}
+
+export const mobileSecurity = requireNativeModule<MobileSecurityNative>(
+  "TuttiMobileSecurity"
+);
+export const appLifecycle =
+  requireNativeModule<AppLifecycleNative>("TuttiAppLifecycle");
+export const deviceLink =
+  requireNativeModule<DeviceLinkNative>("TuttiDeviceLink");

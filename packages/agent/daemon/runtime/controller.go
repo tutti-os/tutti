@@ -15,6 +15,7 @@ var (
 	ErrSessionNotFound                  = errors.New("agent session not found")
 	ErrSessionSettingsRequireNewSession = errors.New("agent session settings update requires a new session to preserve context")
 	ErrSessionActiveTurn                = errors.New("agent session already has an active turn")
+	ErrSessionForkUnsupported           = errors.New("agent session fork is unsupported")
 )
 
 const defaultStreamingReportCoalesceWindow = 50 * time.Millisecond
@@ -24,9 +25,10 @@ const interactiveDenyFollowUpPollInterval = 25 * time.Millisecond
 type execMetadataContextKey struct{}
 
 type Controller struct {
-	startMu                     sync.Mutex
 	mu                          sync.Mutex
+	streamObserverMu            sync.RWMutex
 	sessions                    map[string]Session
+	sessionAvailabilityWaiters  map[string]*sessionAvailabilityWaiter
 	adapters                    map[string]Adapter
 	adapterResolver             AdapterResolver
 	turns                       map[string]activeTurn
@@ -35,28 +37,60 @@ type Controller struct {
 	configOptionsUpdates        map[string]AgentSessionConfigOptionsUpdate
 	pendingConfigOptionsUpdates map[string][]AgentSessionConfigOptionsUpdate
 	provisionalSessions         map[string]bool
-	lifecycleLocks              map[string]*sessionLifecycleLock
+	goalGenerationFences        map[string]*controllerGoalGenerationFenceRegistry
+	startupLocks                map[startupLockKey]*controllerLifecycleLock
+	lifecycleLocks              map[string]*controllerLifecycleLock
 	hub                         *EventHub
-	reporter                    ActivityReporter
-	reportCh                    chan reportRequest
+	reporter                    DurableActivityReporter
+	reportQueue                 *reportRequestQueue
 	terminalInteractions        terminalInteractiveDispositionStore
+	streamObserver              RuntimeStreamEventObserver
 }
 
-type sessionLifecycleLock struct {
+// RuntimeStreamEventObserver receives the ordered precommit stream projection
+// synchronously with the per-session EventHub fan-out. Implementations must
+// remain lightweight: the ordering guarantee prevents a durable terminal
+// confirmation from overtaking its preceding optimistic deltas.
+type RuntimeStreamEventObserver interface {
+	ObserveRuntimeStreamEvents(
+		context.Context,
+		string,
+		string,
+		[]StreamEvent,
+	) error
+}
+
+type controllerLifecycleLock struct {
 	gate chan struct{}
 	refs int
+}
+
+// startupLockKey uses agentSessionID for normal Host calls. Provider is set
+// only for the legacy path that asks Controller.Start to allocate the ID.
+type startupLockKey struct {
+	roomID         string
+	agentSessionID string
+	provider       string
+}
+
+type sessionAvailabilityWaiter struct {
+	changed chan struct{}
+	refs    int
 }
 
 type activeTurn struct {
 	turnID                string
 	cancel                context.CancelFunc
+	tuttiModeSnapshot     *TuttiModeTurnSnapshot
 	openCallIDs           map[string]struct{}
 	pendingTerminalEvents []activityshared.Event
 }
 
 type reportRequest struct {
-	ctx    context.Context
-	report agentsessionstore.ReportActivityInput
+	ctx              context.Context
+	report           agentsessionstore.ReportActivityInput
+	submitProvenance bool
+	done             chan error
 }
 
 type ReleaseIdleLiveSessionsInput struct {
@@ -85,15 +119,15 @@ type CloseAllLiveSessionsResult struct {
 }
 
 type asyncActivityReporter interface {
-	ActivityReporter
+	DurableActivityReporter
 	AsyncActivityReporter()
 }
 
-func NewController(adapters []Adapter, reporter ActivityReporter) *Controller {
+func NewController(adapters []Adapter, reporter DurableActivityReporter) *Controller {
 	return NewControllerWithAdapterResolver(adapters, reporter, nil)
 }
 
-func NewControllerWithAdapterResolver(adapters []Adapter, reporter ActivityReporter, resolver AdapterResolver) *Controller {
+func NewControllerWithAdapterResolver(adapters []Adapter, reporter DurableActivityReporter, resolver AdapterResolver) *Controller {
 	byProvider := make(map[string]Adapter, len(adapters))
 	for _, adapter := range adapters {
 		if adapter == nil {
@@ -106,6 +140,7 @@ func NewControllerWithAdapterResolver(adapters []Adapter, reporter ActivityRepor
 	}
 	controller := &Controller{
 		sessions:                    make(map[string]Session),
+		sessionAvailabilityWaiters:  make(map[string]*sessionAvailabilityWaiter),
 		adapters:                    byProvider,
 		adapterResolver:             resolver,
 		turns:                       make(map[string]activeTurn),
@@ -114,13 +149,15 @@ func NewControllerWithAdapterResolver(adapters []Adapter, reporter ActivityRepor
 		configOptionsUpdates:        make(map[string]AgentSessionConfigOptionsUpdate),
 		pendingConfigOptionsUpdates: make(map[string][]AgentSessionConfigOptionsUpdate),
 		provisionalSessions:         make(map[string]bool),
-		lifecycleLocks:              make(map[string]*sessionLifecycleLock),
+		goalGenerationFences:        make(map[string]*controllerGoalGenerationFenceRegistry),
+		startupLocks:                make(map[startupLockKey]*controllerLifecycleLock),
+		lifecycleLocks:              make(map[string]*controllerLifecycleLock),
 		hub:                         NewEventHub(),
 		reporter:                    reporter,
 	}
 	if reporter != nil {
 		if _, ok := reporter.(asyncActivityReporter); !ok {
-			controller.reportCh = make(chan reportRequest, 1024)
+			controller.reportQueue = newReportRequestQueue()
 			go controller.runReportWorker()
 		}
 	}
@@ -158,12 +195,12 @@ func (c *Controller) configureAdapter(adapter Adapter) {
 	}
 }
 
-func NewDefaultController(reporter ActivityReporter) *Controller {
+func NewDefaultController(reporter DurableActivityReporter) *Controller {
 	return NewDefaultControllerWithProcessTransport(reporter, nil)
 }
 
 func NewDefaultControllerWithProcessTransport(
-	reporter ActivityReporter,
+	reporter DurableActivityReporter,
 	transport ProcessTransport,
 ) *Controller {
 	return NewDefaultControllerWithOptions(reporter, transport, ControllerOptions{
@@ -172,12 +209,17 @@ func NewDefaultControllerWithProcessTransport(
 }
 
 func NewDefaultControllerWithOptions(
-	reporter ActivityReporter,
+	reporter DurableActivityReporter,
 	transport ProcessTransport,
 	options ControllerOptions,
 ) *Controller {
 	host := options.HostMetadata
-	adapters := newMigratedProviderAdapters(transport, host, options.ProviderCommandResolver)
+	adapters := newMigratedProviderAdapters(
+		transport,
+		host,
+		options.ProviderCommandResolver,
+		options.CommandNetworkAccessPolicy,
+	)
 	setProviderLaunchPreparer(adapters, options.ProviderLaunchPreparer)
 	return NewControllerWithAdapterResolver(adapters, reporter, options.AdapterResolver)
 }

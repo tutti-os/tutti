@@ -113,19 +113,40 @@ export function reduceWorkbenchState<TData>(
       return openedState;
     }
 
-    case "closeNode":
+    case "closeNode": {
       if (!state.nodes.some((node) => node.id === action.nodeID)) {
         return state;
       }
-      return {
+      const closedState: WorkbenchState<TData> = {
         ...state,
         nodes: state.nodes.filter((node) => node.id !== action.nodeID),
         nodeStack: removeFromWorkbenchStack(state.nodeStack, action.nodeID),
         lockedLayout: pruneLockedLayout(state.lockedLayout, action.nodeID)
       };
+      // Closing a locked window re-fits the remaining locked windows to the
+      // preset for the new window count, so no empty slot is left behind.
+      if (
+        closedState.lockedLayout !== null &&
+        closedState.lockedLayout !== state.lockedLayout
+      ) {
+        return applyLayoutPresetToNodes(
+          closedState,
+          closedState.lockedLayout.nodeIDs,
+          closedState.lockedLayout.preset,
+          { lock: true, reorderStack: false }
+        );
+      }
+      return closedState;
+    }
 
-    case "focusNode":
-      if (!state.nodes.some((node) => node.id === action.nodeID)) {
+    case "focusNode": {
+      const targetNode = state.nodes.find((node) => node.id === action.nodeID);
+      if (!targetNode) {
+        return state;
+      }
+      const isAlreadyFocused =
+        state.nodeStack[state.nodeStack.length - 1] === action.nodeID;
+      if (isAlreadyFocused && !targetNode.isMinimized) {
         return state;
       }
       return {
@@ -137,6 +158,7 @@ export function reduceWorkbenchState<TData>(
         ),
         nodeStack: focusWorkbenchStack(state.nodeStack, action.nodeID)
       };
+    }
 
     case "minimizeNode":
       return updateNode(state, action.nodeID, (node) =>
@@ -183,7 +205,12 @@ export function reduceWorkbenchState<TData>(
         return {
           ...node,
           displayMode: "floating",
-          frame: node.restoreFrame ?? node.frame,
+          frame: clampWorkbenchRect(
+            node.restoreFrame ?? node.frame,
+            state.surfaceSize,
+            state.layoutConstraints,
+            node.sizeConstraints
+          ),
           restoreFrame: null
         };
       });
@@ -356,30 +383,29 @@ export function reduceWorkbenchState<TData>(
       ) {
         return state;
       }
+      const resizedNodes = state.nodes.map((node) => {
+        const frame =
+          node.displayMode === "fullscreen"
+            ? getWorkbenchFullscreenRect(
+                action.size,
+                state.layoutConstraints,
+                node.sizeConstraints
+              )
+            : clampWorkbenchRectToVisibleArea(
+                node.frame,
+                action.size,
+                state.layoutConstraints,
+                undefined,
+                node.sizeConstraints
+              );
+        return rectsEqual(node.frame, frame) ? node : { ...node, frame };
+      });
       const resizedState: WorkbenchState<TData> = {
         ...state,
         surfaceSize: action.size,
-        nodes: state.nodes.map((node) =>
-          node.displayMode === "fullscreen"
-            ? {
-                ...node,
-                frame: getWorkbenchFullscreenRect(
-                  action.size,
-                  state.layoutConstraints,
-                  node.sizeConstraints
-                )
-              }
-            : {
-                ...node,
-                frame: clampWorkbenchRectToVisibleArea(
-                  node.frame,
-                  action.size,
-                  state.layoutConstraints,
-                  undefined,
-                  node.sizeConstraints
-                )
-              }
-        )
+        nodes: resizedNodes.every((node, index) => node === state.nodes[index])
+          ? state.nodes
+          : resizedNodes
       };
       // When a layout is locked, re-apply the layout at the new surface size so
       // the locked nodes keep scaling proportionally with the window. Preserve

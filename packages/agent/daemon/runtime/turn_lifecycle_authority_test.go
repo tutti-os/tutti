@@ -9,6 +9,7 @@ import (
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 func lifecycleWith(phase string, turnID string, outcome string) *TurnLifecycle {
@@ -237,7 +238,7 @@ func TestApplyLifecycleSnapshotToPatchProviderAgnostic(t *testing.T) {
 		ActiveTurnID: "turn-9",
 		Phase:        string(activityshared.TurnPhaseRunning),
 	})
-	patch, ok := statePatchFromSessionEvent(agentsessionstore.EventSource{Provider: ProviderClaudeCode}, event, "agent-1", 1)
+	patch, ok := statePatchFromSessionEvent(canonical.EventSource{Provider: ProviderClaudeCode}, event, "agent-1", 1)
 	if !ok {
 		t.Fatal("turn.started did not produce a state patch")
 	}
@@ -247,7 +248,7 @@ func TestApplyLifecycleSnapshotToPatchProviderAgnostic(t *testing.T) {
 	if patch.SubmitAvailability == nil || patch.SubmitAvailability.State != "blocked" {
 		t.Fatalf("patch submit availability not derived: %#v", patch.SubmitAvailability)
 	}
-	if _, isMessage := messageUpdateFromSessionEvent(agentsessionstore.EventSource{}, event, "agent-1", 1); isMessage {
+	if _, isMessage := messageUpdateFromSessionEvent(canonical.EventSource{}, event, "agent-1", 1); isMessage {
 		t.Fatal("stamped turn event must never become a message update")
 	}
 }
@@ -265,7 +266,7 @@ func TestGoalRootProviderStartProjectsAtomicCanonicalTurn(t *testing.T) {
 		"sourceGoalRevision":    int64(4),
 		"sourceGoalRepairEpoch": int64(2),
 	})
-	patch, ok := statePatchFromSessionEvent(agentsessionstore.EventSource{Provider: ProviderClaudeCode}, event, session.AgentSessionID, 100)
+	patch, ok := statePatchFromSessionEvent(canonical.EventSource{Provider: ProviderClaudeCode}, event, session.AgentSessionID, 100)
 	if !ok || patch.Turn == nil || patch.RootProviderTurn == nil {
 		t.Fatalf("goal provider start patch = %#v, want atomic turn and provider transition", patch)
 	}
@@ -284,7 +285,7 @@ func TestOrdinaryRootProviderStartCannotCreateCanonicalTurn(t *testing.T) {
 	session := Session{RoomID: "room-1", AgentSessionID: "agent-1", Provider: ProviderClaudeCode}
 	event := claudeSDKRootProviderTurnStartedEvent(session, "missing-turn", "provider-turn-1", map[string]any{"adapter": "claude"})
 	event = stampAdapterTurnLifecycleEvents([]activityshared.Event{event}, func() uint64 { return 1 })[0]
-	patch, ok := statePatchFromSessionEvent(agentsessionstore.EventSource{Provider: ProviderClaudeCode}, event, session.AgentSessionID, 100)
+	patch, ok := statePatchFromSessionEvent(canonical.EventSource{Provider: ProviderClaudeCode}, event, session.AgentSessionID, 100)
 	if !ok || patch.RootProviderTurn == nil {
 		t.Fatalf("ordinary root provider patch = %#v", patch)
 	}

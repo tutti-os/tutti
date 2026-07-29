@@ -7,7 +7,8 @@ import { proxy } from "valtio/vanilla";
  * Settings" popover). The host (apps/desktop) watches this singleton store and
  * opens its settings panel, navigating to `section` when provided.
  *
- * Mirrors `agentEnvPanelStore` — agent-gui stays decoupled from the desktop
+ * Workspace settings keeps this legacy request channel; Agent Env uses an
+ * injected host command and a desktop-owned service instead
  * settings service; it only publishes the intent as a plain string section.
  */
 export interface WorkspaceSettingsPanelRequest {
@@ -18,6 +19,16 @@ export interface WorkspaceSettingsPanelRequest {
    */
   section: string | null;
   /**
+   * Optional sub-pane within the section, e.g. "agents" to open the Agents tab
+   * of the agent section. Plain string; the host validates/casts it.
+   */
+  pane: string | null;
+  /**
+   * Optional provider/agent id to focus once the pane is open, e.g. deep-linking
+   * from an agent's "more" action to its row in the Agents tab. Plain string.
+   */
+  provider: string | null;
+  /**
    * Bumped on every openWorkspaceSettingsPanel() call so the host reacts even
    * when the panel is already open or the section is unchanged.
    */
@@ -26,10 +37,14 @@ export interface WorkspaceSettingsPanelRequest {
 
 export interface OpenWorkspaceSettingsPanelInput {
   section?: string | null;
+  pane?: string | null;
+  provider?: string | null;
 }
 
 const workspaceSettingsPanelStore = proxy<WorkspaceSettingsPanelRequest>({
   section: null,
+  pane: null,
+  provider: null,
   requestSequence: 0
 });
 
@@ -42,6 +57,8 @@ export function openWorkspaceSettingsPanel(
   input?: OpenWorkspaceSettingsPanelInput
 ): void {
   workspaceSettingsPanelStore.section = input?.section ?? null;
+  workspaceSettingsPanelStore.pane = input?.pane ?? null;
+  workspaceSettingsPanelStore.provider = input?.provider ?? null;
   workspaceSettingsPanelStore.requestSequence += 1;
 }
 

@@ -205,11 +205,11 @@ func TestStandardACPAdapterProviderLaunchPrepareMutatesSpecAndCleansUpOnClose(t 
 	t.Parallel()
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-1")
-	adapter := NewHermesAdapter(transport)
+	adapter := newHermesExtensionTestAdapter(transport)
 	cleanupCalls := 0
 	adapter.SetProviderLaunchPreparer(func(_ context.Context, input ProviderLaunchPrepareInput) (ProviderLaunchPrepareResult, error) {
-		if input.Provider != ProviderHermes {
-			t.Fatalf("Provider = %q, want %q", input.Provider, ProviderHermes)
+		if input.Provider != hermesExtensionTestProvider {
+			t.Fatalf("Provider = %q, want %q", input.Provider, hermesExtensionTestProvider)
 		}
 		if input.DirectStart {
 			t.Fatal("DirectStart = true, want false for Hermes")
@@ -224,7 +224,7 @@ func TestStandardACPAdapterProviderLaunchPrepareMutatesSpecAndCleansUpOnClose(t 
 			},
 		}, nil
 	})
-	session := standardTestSession(ProviderHermes)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.Env = []string{"SESSION_ENV=1"}
 
 	if _, err := adapter.Start(context.Background(), session); err != nil {
@@ -265,8 +265,8 @@ func TestStandardACPAdapterConcurrentStartsLeaveSingleLiveProcess(t *testing.T) 
 		agentTitle: "Hermes Agent",
 		sessionID:  "hermes-session-1",
 	}
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 
 	var wg sync.WaitGroup
 	errs := make([]error, 2)
@@ -299,8 +299,8 @@ func TestHermesAdapterStartAppliesModelAndReasoningConfigOptions(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-1")
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.Settings = &SessionSettings{
 		Model:           "hermes-pro",
 		ReasoningEffort: "high",
@@ -325,6 +325,234 @@ func TestHermesAdapterStartAppliesModelAndReasoningConfigOptions(t *testing.T) {
 	}
 	if got, _ := calls[1]["value"].(string); got != "high" {
 		t.Fatalf("second config value = %q, want high", got)
+	}
+}
+
+func TestStandardACPAdapterStartAppliesThoughtLevelConfigOption(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Example Agent", "example-session-1")
+	transport.conn.configOptions = []map[string]any{{
+		"id":           "thought_level",
+		"currentValue": "enabled",
+		"options": []any{
+			map[string]any{"name": "Enabled", "value": "enabled"},
+			map[string]any{"name": "Deep", "value": "deep"},
+		},
+	}}
+	adapterRaw, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider:    "acp:example",
+		Name:        "example-acp",
+		DisplayName: "Example Agent",
+		Command:     []string{"example", "--acp"},
+	}, transport, LegacyHostMetadata())
+	if err != nil {
+		t.Fatalf("NewStandardACPAdapter: %v", err)
+	}
+	adapter := adapterRaw.(*standardACPAdapter)
+	session := standardTestSession("acp:example")
+	session.Settings = &SessionSettings{ReasoningEffort: "deep"}
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	calls := transport.conn.setConfigOptionCalls()
+	if len(calls) != 1 {
+		t.Fatalf("config option calls = %#v, want thought_level", calls)
+	}
+	if got, _ := calls[0]["configId"].(string); got != "thought_level" {
+		t.Fatalf("config id = %q, want thought_level", got)
+	}
+	if got, _ := calls[0]["value"].(string); got != "deep" {
+		t.Fatalf("config value = %q, want deep", got)
+	}
+	state := adapter.SessionState(session)
+	config := payloadObject(state.RuntimeContext["config"])
+	if asString(config["reasoning_effort"]) != "deep" {
+		t.Fatalf("runtime config = %#v, want canonical reasoning_effort", config)
+	}
+	options, _ := state.RuntimeContext["configOptions"].([]map[string]any)
+	reasoning := configOptionByID(options, "reasoning_effort")
+	if reasoning == nil || asString(reasoning["runtimeId"]) != "thought_level" || asString(reasoning["currentValue"]) != "deep" {
+		t.Fatalf("runtime configOptions = %#v, want canonical reasoning_effort with runtimeId", options)
+	}
+}
+
+func TestStandardACPAdapterCarriesExecutableIdentityToProcessStart(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Example Agent", "example-session-1")
+	identity := &ExecutableIdentity{SHA256: strings.Repeat("a", 64), SizeBytes: 42}
+	adapterRaw, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider: "acp:example", Name: "example-acp", DisplayName: "Example Agent",
+		Command: []string{"example", "--acp"}, ExecutableIdentity: identity,
+	}, transport, LegacyHostMetadata())
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity.SHA256 = strings.Repeat("b", 64)
+	if _, err := adapterRaw.Start(context.Background(), standardTestSession("acp:example")); err != nil {
+		t.Fatal(err)
+	}
+	transport.mu.Lock()
+	defer transport.mu.Unlock()
+	if len(transport.specs) != 1 || transport.specs[0].ExecutableIdentity == nil ||
+		transport.specs[0].ExecutableIdentity.SHA256 != strings.Repeat("a", 64) ||
+		transport.specs[0].ExecutableIdentity.SizeBytes != 42 {
+		t.Fatalf("process executable identity = %#v", transport.specs)
+	}
+}
+
+func TestStandardACPAdapterApplySessionSettingsUsesAdvertisedThoughtLevel(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Example Agent", "example-session-1")
+	transport.conn.configOptions = []map[string]any{{
+		"id":           "thought_level",
+		"currentValue": "enabled",
+		"options": []any{
+			map[string]any{"name": "Enabled", "value": "enabled"},
+			map[string]any{"name": "Deep", "value": "deep"},
+		},
+	}}
+	adapterRaw, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider:    "acp:example",
+		Name:        "example-acp",
+		DisplayName: "Example Agent",
+		Command:     []string{"example", "--acp"},
+	}, transport, LegacyHostMetadata())
+	if err != nil {
+		t.Fatalf("NewStandardACPAdapter: %v", err)
+	}
+	adapter := adapterRaw.(*standardACPAdapter)
+	session := standardTestSession("acp:example")
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	session.Settings = &SessionSettings{ReasoningEffort: "deep"}
+	if err := adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{
+		ReasoningEffort: stringPtr("deep"),
+	}); err != nil {
+		t.Fatalf("ApplySessionSettings: %v", err)
+	}
+
+	calls := transport.conn.setConfigOptionCalls()
+	if len(calls) != 1 {
+		t.Fatalf("config option calls = %#v, want thought_level", calls)
+	}
+	if got, _ := calls[0]["configId"].(string); got != "thought_level" {
+		t.Fatalf("config id = %q, want thought_level", got)
+	}
+	if got, _ := calls[0]["value"].(string); got != "deep" {
+		t.Fatalf("config value = %q, want deep", got)
+	}
+}
+
+func TestControllerUpdateSettingsAppliesOpenProviderPermissionMode(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Example Agent", "example-session-1")
+	transport.conn.configOptions = []map[string]any{{
+		"id":           "mode",
+		"currentValue": "default",
+		"options": []any{
+			map[string]any{"name": "Default", "value": "default"},
+			map[string]any{"name": "Automatic", "value": "auto"},
+		},
+	}}
+	adapter, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider:    "acp:example",
+		Name:        "example-acp",
+		DisplayName: "Example Agent",
+		Command:     []string{"example", "--acp"},
+		PermissionModes: map[string]string{
+			"default": "default",
+			"auto":    "auto",
+		},
+	}, transport, LegacyHostMetadata())
+	if err != nil {
+		t.Fatalf("NewStandardACPAdapter: %v", err)
+	}
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       "acp:example",
+		CWD:            "/workspace",
+		Title:          "Example Agent",
+		Settings: &SessionSettings{
+			PermissionModeID: "default",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	updated, err := controller.UpdateSettings(context.Background(), UpdateSettingsInput{
+		RoomID:         "room-1",
+		AgentSessionID: started.Session.AgentSessionID,
+		Settings: SessionSettingsPatch{
+			PermissionModeID: stringPtr("auto"),
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdateSettings: %v", err)
+	}
+	if updated.Settings.PermissionModeID != "auto" {
+		t.Fatalf("updated permission mode = %q, want auto", updated.Settings.PermissionModeID)
+	}
+	session, ok := controller.Session("room-1", started.Session.AgentSessionID)
+	if !ok {
+		t.Fatal("Session returned ok=false")
+	}
+	if session.PermissionModeID != "auto" {
+		t.Fatalf("session permission mode = %q, want auto", session.PermissionModeID)
+	}
+	if transport.conn.lastModeID() != "auto" {
+		t.Fatalf("mode id = %q, want auto", transport.conn.lastModeID())
+	}
+}
+
+func TestStandardACPAdapterIntersectsOpenProviderDeclaredCapabilitiesWithRuntimeFacts(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Example Agent", "example-session-1")
+	transport.conn.commandUpdateOnNewSession = true
+	transport.conn.availableCommands = []AgentSessionCommand{{Name: "compact"}}
+	transport.conn.configOptions = []map[string]any{{
+		"id":           "mode",
+		"currentValue": "default",
+		"options": []any{
+			map[string]any{"name": "Default", "value": "default"},
+			map[string]any{"name": "Plan", "value": "plan"},
+		},
+	}}
+	adapterRaw, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider:     "acp:example",
+		Name:         "example-acp",
+		DisplayName:  "Example Agent",
+		Command:      []string{"example", "--acp"},
+		Capabilities: []string{CapabilityCompact, CapabilityPlanMode, CapabilityCompact, "unknownCapability"},
+	}, transport, LegacyHostMetadata())
+	if err != nil {
+		t.Fatalf("NewStandardACPAdapter: %v", err)
+	}
+	adapter := adapterRaw.(*standardACPAdapter)
+	session := standardTestSession("acp:example")
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	state := adapter.SessionState(session)
+	capabilities, _ := state.RuntimeContext["capabilities"].([]string)
+	if !containsString(capabilities, CapabilityCompact) || !containsString(capabilities, CapabilityPlanMode) {
+		t.Fatalf("capabilities = %#v, want negotiated compact+planMode", capabilities)
+	}
+	if len(capabilities) != 2 {
+		t.Fatalf("capabilities = %#v, want known deduplicated effective capabilities", capabilities)
 	}
 }
 
@@ -359,6 +587,250 @@ func TestCursorAdapterStartCreatesStandardACPSession(t *testing.T) {
 	if got := transport.conn.authenticatedMethodID(); got != "" {
 		t.Fatalf("authenticated method id = %q, want empty", got)
 	}
+}
+
+func TestRunStandardACPSetupAuthenticatesWithFreshAdvertisedMethod(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Example Agent", "setup-session")
+	transport.conn.authMethods = []map[string]any{{
+		"id": "oauth-personal", "name": "Log in with Google", "description": "Google account",
+	}}
+	transport.conn.requireAuthentication = true
+	transport.conn.authenticateResult = map[string]any{
+		"_meta": map[string]any{
+			"codebuddy.ai/userinfo": map[string]any{
+				"userId": "user-1", "userName": "Ryan", "userNickname": "Rhinoc", "enterpriseName": "Tutti",
+			},
+		},
+	}
+	result, err := runStandardACPSetupTest(t, transport, "oauth-personal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != StandardACPSetupReady || len(result.AuthMethods) != 1 || result.AuthMethods[0].ID != "oauth-personal" {
+		t.Fatalf("setup result = %#v", result)
+	}
+	if result.Account == nil || result.Account.ID != "user-1" || result.Account.DisplayName != "Rhinoc" ||
+		result.Account.AuthMethodID != "oauth-personal" || result.Account.Organization != "Tutti" {
+		t.Fatalf("authenticated account = %#v", result.Account)
+	}
+	if got := transport.conn.authenticatedMethodID(); got != "oauth-personal" {
+		t.Fatalf("authenticated method id = %q", got)
+	}
+	if containsString(transport.specs[0].Env, "NO_BROWSER=1") {
+		t.Fatal("interactive authenticate must allow the runtime to open a browser")
+	}
+}
+
+func TestRunStandardACPSetupRejectsUnadvertisedMethod(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Example Agent", "setup-session")
+	transport.conn.authMethods = []map[string]any{{"id": "oauth", "name": "OAuth"}}
+	_, err := runStandardACPSetupTest(t, transport, "attacker-method")
+	if !errors.Is(err, ErrACPAuthMethodUnavailable) {
+		t.Fatalf("error = %v, want ErrACPAuthMethodUnavailable", err)
+	}
+	if got := transport.conn.authenticatedMethodID(); got != "" {
+		t.Fatalf("authenticated method id = %q", got)
+	}
+}
+
+func TestRunStandardACPSetupPreservesExplicitAuthenticationFailure(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Example Agent", "setup-session")
+	transport.conn.authMethods = []map[string]any{{"id": "oauth", "name": "OAuth"}}
+	transport.conn.authenticateError = &acpError{
+		Code:    -32000,
+		Message: "This account is not supported by this client",
+	}
+	result, err := runStandardACPSetupTest(t, transport, "oauth")
+	if err == nil || !strings.Contains(err.Error(), "This account is not supported by this client") {
+		t.Fatalf("error = %v, want provider authentication failure", err)
+	}
+	if result.Status != StandardACPSetupAuthRequired || len(result.AuthMethods) != 1 {
+		t.Fatalf("setup result = %#v", result)
+	}
+}
+
+func TestRunStandardACPSetupRejectsTerminalMethodWithoutAuthenticate(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Example Agent", "setup-session")
+	transport.conn.authMethods = []map[string]any{{
+		"id": "login", "name": "Login with Example account",
+		"description": "Run `example login` in a terminal",
+		"type":        "terminal", "args": []any{"login"},
+	}}
+	transport.conn.requireAuthentication = true
+	result, err := runStandardACPSetupTest(t, transport, "login")
+	if !errors.Is(err, ErrACPAuthMethodTerminal) {
+		t.Fatalf("error = %v, want ErrACPAuthMethodTerminal", err)
+	}
+	if result.Status != StandardACPSetupAuthRequired || len(result.AuthMethods) != 1 {
+		t.Fatalf("setup result = %#v", result)
+	}
+	method := result.AuthMethods[0]
+	if method.Type != "terminal" || len(method.Args) != 1 || method.Args[0] != "login" {
+		t.Fatalf("terminal auth method = %#v", method)
+	}
+	if got := transport.conn.authenticatedMethodID(); got != "" {
+		t.Fatalf("authenticated method id = %q, want no ACP authenticate call", got)
+	}
+}
+
+func TestRunStandardACPSetupParsesAuthMethodTypeAndArgs(t *testing.T) {
+	t.Parallel()
+
+	initializeResult := json.RawMessage(`{"authMethods":[
+		{"id":"browser","name":"Browser","description":"d"},
+		{"id":"login","name":"Terminal login","type":"terminal","args":["login","--device"]},
+		{"id":"bad","name":"Bad","type":"terminal","args":["", "ok"]}
+	]}`)
+	methods := parseStandardACPAuthMethods(initializeResult)
+	if len(methods) != 3 {
+		t.Fatalf("auth methods = %#v", methods)
+	}
+	if methods[0].Type != "" || methods[0].Args != nil {
+		t.Fatalf("browser method = %#v", methods[0])
+	}
+	if methods[1].Type != "terminal" || strings.Join(methods[1].Args, " ") != "login --device" {
+		t.Fatalf("terminal method = %#v", methods[1])
+	}
+	if methods[2].Type != "terminal" || methods[2].Args != nil {
+		t.Fatalf("method with invalid args = %#v", methods[2])
+	}
+}
+
+func TestRunStandardACPSetupParsesAuthMethodTerminalMeta(t *testing.T) {
+	t.Parallel()
+
+	// Kimi Code declares the terminal login metadata inside the ACP _meta
+	// extension, not as top-level type/args fields.
+	initializeResult := json.RawMessage(`{"authMethods":[
+		{"id":"login","name":"Login with Kimi account","description":"Run ` + "`kimi login`" + ` in a terminal",
+			"_meta":{"terminal-auth":{"command":"/opt/kimi/bin/kimi","args":["login"],"label":"Kimi Code Login","env":{},"type":"terminal"}}},
+		{"id":"both","name":"Both","type":"browser","args":["--top"],
+			"_meta":{"terminal-auth":{"type":"terminal","args":["login"]}}},
+		{"id":"weird","name":"Weird","_meta":{"other":{"type":"terminal"}}}
+	]}`)
+	methods := parseStandardACPAuthMethods(initializeResult)
+	if len(methods) != 3 {
+		t.Fatalf("auth methods = %#v", methods)
+	}
+	if methods[0].Type != "terminal" || len(methods[0].Args) != 1 || methods[0].Args[0] != "login" {
+		t.Fatalf("meta terminal method = %#v", methods[0])
+	}
+	if methods[1].Type != "browser" || strings.Join(methods[1].Args, " ") != "--top" {
+		t.Fatalf("top-level fields must win over _meta = %#v", methods[1])
+	}
+	if methods[2].Type != "" || methods[2].Args != nil {
+		t.Fatalf("unrelated _meta must be ignored = %#v", methods[2])
+	}
+}
+
+func TestRunStandardACPSetupRejectsTerminalMetaMethodWithoutAuthenticate(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Example Agent", "setup-session")
+	transport.conn.authMethods = []map[string]any{{
+		"id": "login", "name": "Login with Example account",
+		"description": "Run `example login` in a terminal",
+		"_meta": map[string]any{
+			"terminal-auth": map[string]any{"type": "terminal", "args": []any{"login"}},
+		},
+	}}
+	transport.conn.requireAuthentication = true
+	result, err := runStandardACPSetupTest(t, transport, "login")
+	if !errors.Is(err, ErrACPAuthMethodTerminal) {
+		t.Fatalf("error = %v, want ErrACPAuthMethodTerminal", err)
+	}
+	if result.Status != StandardACPSetupAuthRequired || len(result.AuthMethods) != 1 {
+		t.Fatalf("setup result = %#v", result)
+	}
+	if got := transport.conn.authenticatedMethodID(); got != "" {
+		t.Fatalf("authenticated method id = %q, want no ACP authenticate call", got)
+	}
+}
+
+func TestRunStandardACPSetupFlagsSessionWithoutUsableModel(t *testing.T) {
+	t.Parallel()
+
+	// Kimi Code with a saved OAuth token but an unseeded model config:
+	// session/new succeeds yet advertises zero models, and every prompt would
+	// fail. The probe must keep the target in auth_required so the gate
+	// re-offers the terminal login that seeds the config.
+	transport := newStandardACPTransport("Example Agent", "setup-session")
+	transport.conn.authMethods = []map[string]any{{
+		"id": "login", "name": "Login with Example account",
+		"_meta": map[string]any{
+			"terminal-auth": map[string]any{"type": "terminal", "args": []any{"login"}},
+		},
+	}}
+	transport.conn.models = map[string]any{"availableModels": []any{}, "currentModelId": ""}
+	result, err := runStandardACPSetupTest(t, transport, "")
+	if err != nil {
+		t.Fatalf("probe without method must not fail hard: %v", err)
+	}
+	if result.Status != StandardACPSetupAuthRequired || len(result.AuthMethods) != 1 {
+		t.Fatalf("setup result = %#v", result)
+	}
+	if method := result.AuthMethods[0]; method.Type != "terminal" || len(method.Args) != 1 || method.Args[0] != "login" {
+		t.Fatalf("terminal auth method = %#v", method)
+	}
+}
+
+func TestRunStandardACPSetupReadyWithSeededModels(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Example Agent", "setup-session")
+	transport.conn.models = map[string]any{
+		"availableModels": []any{map[string]any{"modelId": "example-model", "name": "Example Model"}},
+		"currentModelId":  "example-model",
+	}
+	result, err := runStandardACPSetupTest(t, transport, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != StandardACPSetupReady {
+		t.Fatalf("setup result = %#v", result)
+	}
+}
+
+func TestACPSessionHasNoUsableModel(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		raw  string
+		want bool
+	}{
+		{"empty list and no current model", `{"models":{"availableModels":[],"currentModelId":""}}`, true},
+		{"populated list", `{"models":{"availableModels":[{"modelId":"m"}],"currentModelId":"m"}}`, false},
+		{"empty list but current model set", `{"models":{"availableModels":[],"currentModelId":"m"}}`, false},
+		{"models state without list", `{"models":{"currentModelId":"m"}}`, false},
+		{"no models state", `{"sessionId":"s"}`, false},
+		{"null models state", `{"models":null}`, false},
+	}
+	for _, tc := range cases {
+		if got := acpSessionHasNoUsableModel(json.RawMessage(tc.raw)); got != tc.want {
+			t.Fatalf("%s: acpSessionHasNoUsableModel = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func runStandardACPSetupTest(t *testing.T, transport *standardACPTransport, methodID string) (StandardACPSetupResult, error) {
+	t.Helper()
+	return RunStandardACPSetup(
+		context.Background(),
+		StandardACPAdapterConfig{Provider: "acp:example", Name: "example-acp", Command: []string{"example", "--acp"}},
+		transport,
+		LegacyHostMetadata(),
+		standardTestSession("acp:example"),
+		methodID,
+	)
 }
 
 func TestCursorAdapterStartMapsPermissionTiersToACPModes(t *testing.T) {
@@ -999,8 +1471,8 @@ func TestHermesAdapterStartCreatesStandardACPSession(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-1")
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.PermissionModeID = "full-access"
 
 	events, err := adapter.Start(context.Background(), session)
@@ -1020,43 +1492,70 @@ func TestHermesAdapterStartCreatesStandardACPSession(t *testing.T) {
 	if events[0].ProviderSessionID != "hermes-session-1" {
 		t.Fatalf("provider session id = %q", events[0].ProviderSessionID)
 	}
-	if transport.conn.lastModeID() != "yolo" {
-		t.Fatalf("mode id = %q, want yolo", transport.conn.lastModeID())
+	if transport.conn.lastModeID() != "dont_ask" {
+		t.Fatalf("mode id = %q, want dont_ask", transport.conn.lastModeID())
 	}
 	if got := transport.conn.authenticatedMethodID(); got != "" {
 		t.Fatalf("authenticated method id = %q, want empty", got)
 	}
 }
 
-func TestHermesAdapterStartCoercesReadOnlyModeToYolo(t *testing.T) {
+func TestHermesAdapterStartCoercesReadOnlyModeToDontAsk(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-default")
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.PermissionModeID = "read-only"
 
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if transport.conn.lastModeID() != "yolo" {
-		t.Fatalf("mode id = %q, want yolo", transport.conn.lastModeID())
+	if transport.conn.lastModeID() != "dont_ask" {
+		t.Fatalf("mode id = %q, want dont_ask", transport.conn.lastModeID())
 	}
 }
 
-func TestHermesAdapterStartCoercesAutoModeToYolo(t *testing.T) {
+func TestHermesAdapterStartCoercesAutoModeToDontAsk(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-auto")
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.PermissionModeID = "auto"
 
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if transport.conn.lastModeID() != "yolo" {
-		t.Fatalf("mode id = %q, want yolo", transport.conn.lastModeID())
+	if transport.conn.lastModeID() != "dont_ask" {
+		t.Fatalf("mode id = %q, want dont_ask", transport.conn.lastModeID())
+	}
+}
+
+func TestExtensionAdapterInstallsSignedAutomaticPermissionDecisions(t *testing.T) {
+	t.Parallel()
+
+	adapterRaw, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider: "acp:hermes", Name: "hermes-acp", DisplayName: "Hermes Agent",
+		Command: []string{"hermes", "acp"},
+		AutomaticPermissionDecisions: map[string]string{
+			"full-access": "approved",
+			"read-only":   "denied",
+			"unsafe":      "execute-arbitrary-code",
+		},
+	}, newStandardACPTransport("Hermes Agent", "extension-hermes"), LegacyHostMetadata())
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter := adapterRaw.(*standardACPAdapter)
+	if got := adapter.config.automaticPermissionDecision("FULL-ACCESS"); got != "approved" {
+		t.Fatalf("full-access decision = %q, want approved", got)
+	}
+	if got := adapter.config.automaticPermissionDecision("read-only"); got != "denied" {
+		t.Fatalf("read-only decision = %q, want denied", got)
+	}
+	if got := adapter.config.automaticPermissionDecision("unsafe"); got != "" {
+		t.Fatalf("unsafe decision = %q, want prompt", got)
 	}
 }
 
@@ -1156,10 +1655,10 @@ func TestStandardACPProvidersResumeClassifyMissingProviderSession(t *testing.T) 
 	}{
 		{
 			name:     "hermes",
-			provider: ProviderHermes,
-			build:    NewHermesAdapter,
+			provider: hermesExtensionTestProvider,
+			build:    newHermesExtensionTestAdapter,
 			session: func() Session {
-				session := standardTestSession(ProviderHermes)
+				session := standardTestSession(hermesExtensionTestProvider)
 				session.ProviderSessionID = "persisted-hermes-session-id"
 				return session
 			},
@@ -1200,8 +1699,8 @@ func TestStandardACPProvidersResumeClassifyUnsupportedRestoreAsResumeSessionNotL
 	t.Parallel()
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-resume")
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.ProviderSessionID = "persisted-hermes-session-id"
 
 	err := adapter.Resume(context.Background(), session)
@@ -1218,8 +1717,8 @@ func TestStandardACPProvidersResumeRequireProviderSessionID(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-resume")
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.ProviderSessionID = ""
 
 	err := adapter.Resume(context.Background(), session)
@@ -1330,12 +1829,95 @@ func TestCursorAdapterAllowsImagePromptWithoutInitializeCapability(t *testing.T)
 	}
 }
 
+func TestStandardACPAdapterExecMaterializesRemoteImageAtProviderBoundary(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("OpenCode", "opencode-session-remote-image")
+	adapter := newOpenCodeTestAdapter(transport)
+	imageURL, materializer := testRemotePromptImageMaterializer(t)
+	adapter.promptImageMaterializer = materializer
+	session := standardTestSession(ProviderOpenCode)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "opencode-session-remote-image"
+
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{
+		{Type: "text", Text: "what is in this screenshot?"},
+		{Type: "image", MimeType: "image/png", URL: imageURL},
+	}, "", "turn-remote-image", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	params := transport.conn.lastPromptParams()
+	prompt, _ := params["prompt"].([]any)
+	if len(prompt) != 2 {
+		t.Fatalf("session/prompt content = %#v, want text+image", params["prompt"])
+	}
+	image, _ := prompt[1].(map[string]any)
+	if image["mimeType"] != "image/png" || image["data"] != "aGk=" {
+		t.Fatalf("session/prompt image = %#v, want inline image data", image)
+	}
+}
+
+func TestStandardACPAdapterRemoteImageFailurePreservesPromptAndClosesProviderTurn(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("OpenCode", "opencode-session-remote-image-failure")
+	adapter := newOpenCodeTestAdapter(transport)
+	materializeErr := errors.New("remote image unavailable")
+	adapter.promptImageMaterializer = func(context.Context, []PromptContentBlock) ([]PromptContentBlock, error) {
+		return nil, materializeErr
+	}
+	session := standardTestSession(ProviderOpenCode)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "opencode-session-remote-image-failure"
+
+	var streamed []activityshared.Event
+	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{
+		{Type: "text", Text: "what is in this screenshot?"},
+		{Type: "image", MimeType: "image/png", URL: "https://images.example/screenshot.png"},
+	}, "", "turn-remote-image-failure", func(next []activityshared.Event) {
+		streamed = append(streamed, next...)
+	}, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	if params := transport.conn.lastPromptParams(); len(params) != 0 {
+		t.Fatalf("session/prompt params = %#v, want no provider request after materialization failure", params)
+	}
+	messages := eventsOfType(events, activityshared.EventMessageAppended)
+	if len(messages) != 1 || messages[0].Payload.Role != activityshared.MessageRoleUser ||
+		messages[0].Payload.Content != "what is in this screenshot?" {
+		t.Fatalf("user prompt events = %#v, want original prompt preserved", messages)
+	}
+	if turnStarted := eventsOfType(events, activityshared.EventTurnStarted); len(turnStarted) != 1 {
+		t.Fatalf("turn started events = %#v, want one", turnStarted)
+	}
+	started := eventsOfType(events, activityshared.EventRootProviderTurnStarted)
+	if len(started) != 1 || started[0].Payload.ProviderTurnID != "turn-remote-image-failure" {
+		t.Fatalf("provider turn started events = %#v, want one", started)
+	}
+	completed := eventsOfType(events, activityshared.EventRootProviderTurnCompleted)
+	if len(completed) != 1 ||
+		completed[0].Payload.ProviderTurnID != "turn-remote-image-failure" ||
+		completed[0].Payload.TurnOutcome != string(activityshared.TurnOutcomeFailed) ||
+		completed[0].Payload.Metadata["error"] != materializeErr.Error() {
+		t.Fatalf("provider turn completed events = %#v, want failed materialization lifecycle", completed)
+	}
+	if len(streamed) != len(events) {
+		t.Fatalf("streamed event count = %d, returned = %d", len(streamed), len(events))
+	}
+}
+
 func TestStandardACPAdapterRejectsImagePromptWithoutCapability(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-1")
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -1359,7 +1941,7 @@ func TestStandardACPAdapterRejectsImagePromptWithoutCapability(t *testing.T) {
 func TestStandardACPToolCallEventInfersCompletedStatusFromRawOutput(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderHermes)
+	session := standardTestSession(hermesExtensionTestProvider)
 	completed, ok := standardACPToolCallEventWithID(session, "event-complete-inferred", "turn-1", "tool_call_update", readSessionTestdataJSON(t, "standard_acp_tool_call_update_completed_without_status.json"))
 	if !ok {
 		t.Fatal("standardACPToolCallEventWithID(inferred complete) returned !ok")
@@ -1386,7 +1968,7 @@ func TestStandardACPToolAliasOverridesProviderToolIDDeclaratively(t *testing.T) 
 func TestStandardACPToolCallEventInfersFailedStatusFromRawOutput(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderHermes)
+	session := standardTestSession(hermesExtensionTestProvider)
 	failed, ok := standardACPToolCallEventWithID(session, "event-failed-inferred", "turn-1", "tool_call_update", readSessionTestdataJSON(t, "standard_acp_tool_call_update_failed_without_status.json"))
 	if !ok {
 		t.Fatal("standardACPToolCallEventWithID(inferred failed) returned !ok")
@@ -1486,8 +2068,8 @@ func TestStandardACPAdapterSessionStateExposesPendingAskUserPrompt(t *testing.T)
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-interactive-1")
 	transport.conn.promptKind = "ask-user"
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -1578,8 +2160,8 @@ func TestStandardACPAdapterSessionStateExposesPendingExitPlanPrompt(t *testing.T
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-plan-1")
 	transport.conn.promptKind = "exit-plan"
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -1633,13 +2215,13 @@ func TestStandardACPToolCallLifecycleReusesStableEventID(t *testing.T) {
 	}{
 		{
 			name:     "hermes default config",
-			provider: ProviderHermes,
-			config:   standardACPConfig{provider: ProviderHermes},
+			provider: hermesExtensionTestProvider,
+			config:   standardACPConfig{provider: hermesExtensionTestProvider},
 		},
 		{
 			name:     "hermes",
-			provider: ProviderHermes,
-			config:   standardACPConfig{provider: ProviderHermes},
+			provider: hermesExtensionTestProvider,
+			config:   standardACPConfig{provider: hermesExtensionTestProvider},
 		},
 		{
 			name:     "openclaw",
@@ -1702,14 +2284,14 @@ func TestStandardACPToolCallLifecycleReusesStableEventID(t *testing.T) {
 func TestStandardACPNormalizerSegmentsAssistantAndThinkingAroundToolCalls(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderHermes)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.ProviderSessionID = "hermes-session-segment-1"
 	normalizer := newACPTurnNormalizer()
 
 	var events []activityshared.Event
 	events = append(events, normalizer.AppendThinkingChunk(session, "turn-1", "Thinking before tool. ")...)
 	events = append(events, normalizer.AppendAssistantChunk(session, "turn-1", "Before tool. ")...)
-	events = append(events, standardACPUpdateEvents(standardACPConfig{provider: ProviderHermes}, session, "turn-1", json.RawMessage(`{
+	events = append(events, standardACPUpdateEvents(standardACPConfig{provider: hermesExtensionTestProvider}, session, "turn-1", json.RawMessage(`{
 		"update": {
 			"sessionUpdate": "tool_call",
 			"toolCallId": "tool-segment-1",
@@ -1765,9 +2347,9 @@ func TestStandardACPNormalizerSegmentsAssistantAndThinkingAroundToolCalls(t *tes
 func TestStandardACPUpdateDoesNotProjectInternalMentionRoutingTitle(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderHermes)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.ProviderSessionID = "hermes-session-1"
-	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderHermes}, session, "turn-1", json.RawMessage(`{
+	events := standardACPUpdateEvents(standardACPConfig{provider: hermesExtensionTestProvider}, session, "turn-1", json.RawMessage(`{
 		"update": {
 			"sessionUpdate": "session_info_update",
 			"title": "`+tuttiMentionRoutingReminder+`"
@@ -1783,10 +2365,10 @@ func TestStandardACPUpdateDoesNotProjectInternalMentionRoutingTitle(t *testing.T
 func TestStandardACPSystemNoticeChunkProjectsAssistantNotice(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderHermes)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.ProviderSessionID = "hermes-session-1"
 
-	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderHermes}, session, "turn-1", json.RawMessage(`{
+	events := standardACPUpdateEvents(standardACPConfig{provider: hermesExtensionTestProvider}, session, "turn-1", json.RawMessage(`{
 		"update": {
 			"sessionUpdate": "agent_message_chunk",
 			"content": {
@@ -1898,8 +2480,8 @@ func TestStandardACPSpawnCommandUnchangedForOtherProviders(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-1")
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.Settings = &SessionSettings{Model: "gpt-5.3-codex-spark", ReasoningEffort: "high"}
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -1913,6 +2495,447 @@ func TestStandardACPSpawnCommandUnchangedForOtherProviders(t *testing.T) {
 	sparkModel := "gpt-5.3-codex-spark"
 	if adapter.RequiresNewSessionForSettings(session, SessionSettingsPatch{Model: &sparkModel}) {
 		t.Fatal("non-nexight providers must not force new sessions for model changes")
+	}
+}
+
+func TestStandardACPLaunchPermissionBuildsExactArgvAndDoesNotSetWorkflowMode(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		semantic string
+		want     string
+	}{
+		{name: "default", want: "default"},
+		{name: "ask", semantic: "ask-before-write", want: "default"},
+		{name: "auto", semantic: "auto", want: "auto"},
+		{name: "full access", semantic: "full-access", want: "bypassPermissions"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			transport := newStandardACPTransport("Spawn ACP", "spawn-session-1")
+			adapterRaw, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+				Provider:        "acp:spawn",
+				Name:            "spawn-acp",
+				DisplayName:     "Spawn ACP",
+				Command:         []string{"grok", "--no-auto-update", "--permission-mode", "${permissionMode}", "agent", "stdio"},
+				PermissionModes: map[string]string{"ask-before-write": "default", "auto": "auto", "full-access": "bypassPermissions"},
+				LaunchPermission: &StandardACPLaunchPermissionSetting{
+					Placeholder: "${permissionMode}",
+					Values:      map[string]string{"ask-before-write": "default", "auto": "auto", "full-access": "bypassPermissions"},
+				},
+			}, transport, LegacyHostMetadata())
+			if err != nil {
+				t.Fatalf("NewStandardACPAdapter: %v", err)
+			}
+			adapter := adapterRaw.(*standardACPAdapter)
+			session := standardTestSession("acp:spawn")
+			session.PermissionModeID = tt.semantic
+			if _, err := adapter.Start(context.Background(), session); err != nil {
+				t.Fatalf("Start: %v", err)
+			}
+			transport.mu.Lock()
+			specs := append([]ProcessSpec(nil), transport.specs...)
+			transport.mu.Unlock()
+			want := []string{"grok", "--no-auto-update", "--permission-mode", tt.want, "agent", "stdio"}
+			if len(specs) != 1 || !reflect.DeepEqual(specs[0].Command, want) {
+				t.Fatalf("spawn command = %#v, want %#v", specs, want)
+			}
+			if got := transport.conn.lastSetModeParams(); got != nil {
+				t.Fatalf("session/set_mode params = %#v, want none for spawn-time permission", got)
+			}
+		})
+	}
+}
+
+func TestStandardACPLaunchPermissionKeepsPlanAsIndependentWorkflowMode(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Spawn ACP", "spawn-plan-session")
+	transport.conn.modes = map[string]any{
+		"currentModeId": "default",
+		"availableModes": []any{
+			map[string]any{"id": "default", "name": "Default"},
+			map[string]any{"id": "plan", "name": "Plan"},
+		},
+	}
+	adapterRaw, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider:                  "acp:spawn-plan",
+		Name:                      "spawn-plan-acp",
+		DisplayName:               "Spawn Plan ACP",
+		Command:                   []string{"grok", "--no-auto-update", "--permission-mode", "${permissionMode}", "agent", "stdio"},
+		PermissionModes:           map[string]string{"ask-before-write": "default", "auto": "auto", "full-access": "bypassPermissions"},
+		PlanModeRuntimeID:         "plan",
+		PlanModeDisabledRuntimeID: "default",
+		LaunchPermission: &StandardACPLaunchPermissionSetting{
+			Placeholder: "${permissionMode}",
+			Values:      map[string]string{"ask-before-write": "default", "auto": "auto", "full-access": "bypassPermissions"},
+		},
+	}, transport, LegacyHostMetadata())
+	if err != nil {
+		t.Fatalf("NewStandardACPAdapter: %v", err)
+	}
+	adapter := adapterRaw.(*standardACPAdapter)
+	session := standardTestSession("acp:spawn-plan")
+	session.PermissionModeID = "full-access"
+	session.Settings = &SessionSettings{PermissionModeID: "full-access"}
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if got := transport.conn.lastSetModeParams(); got != nil {
+		t.Fatalf("startup session/set_mode = %#v, want none", got)
+	}
+	for _, enabled := range []bool{true, false} {
+		session.Settings.PlanMode = enabled
+		if err := adapter.ValidateSessionSettings(session, SessionSettingsPatch{PlanMode: &enabled}); err != nil {
+			t.Fatalf("ValidateSessionSettings(%v): %v", enabled, err)
+		}
+		if err := adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{PlanMode: &enabled}); err != nil {
+			t.Fatalf("ApplySessionSettings(%v): %v", enabled, err)
+		}
+		want := "default"
+		if enabled {
+			want = "plan"
+		}
+		if got := transport.conn.lastModeID(); got != want {
+			t.Fatalf("plan=%v mode = %q, want %q", enabled, got, want)
+		}
+	}
+	changed := "auto"
+	if !adapter.RequiresNewSessionForSettings(session, SessionSettingsPatch{PermissionModeID: &changed}) {
+		t.Fatal("spawn-time permission update must require a new session")
+	}
+	if err := adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{PermissionModeID: &changed}); !errors.Is(err, ErrSessionSettingsRequireNewSession) {
+		t.Fatalf("ApplySessionSettings permission error = %v, want ErrSessionSettingsRequireNewSession", err)
+	}
+}
+
+func TestStandardACPLaunchPermissionWithoutPlanWorkflowNeverSendsPermissionAsMode(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Spawn ACP", "spawn-without-plan-session")
+	transport.conn.modes = map[string]any{
+		"currentModeId": "default",
+		"availableModes": []any{
+			map[string]any{"id": "default", "name": "Default"},
+			map[string]any{"id": "plan", "name": "Plan"},
+		},
+	}
+	adapterRaw, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider:        "acp:spawn-without-plan",
+		Name:            "spawn-without-plan-acp",
+		DisplayName:     "Spawn Without Plan ACP",
+		Command:         []string{"spawn-acp", "--permission-mode", "${permissionMode}", "agent", "stdio"},
+		PermissionModes: map[string]string{"ask-before-write": "default", "auto": "auto", "full-access": "bypassPermissions"},
+		LaunchPermission: &StandardACPLaunchPermissionSetting{
+			Placeholder: "${permissionMode}",
+			Values:      map[string]string{"ask-before-write": "default", "auto": "auto", "full-access": "bypassPermissions"},
+		},
+	}, transport, LegacyHostMetadata())
+	if err != nil {
+		t.Fatalf("NewStandardACPAdapter: %v", err)
+	}
+	adapter := adapterRaw.(*standardACPAdapter)
+	session := standardTestSession("acp:spawn-without-plan")
+	session.PermissionModeID = "ask-before-write"
+	session.Settings = &SessionSettings{PermissionModeID: "ask-before-write", PlanMode: true}
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if got := transport.conn.lastSetModeParams(); got != nil {
+		t.Fatalf("startup session/set_mode = %#v, want none", got)
+	}
+	enabled := true
+	if err := adapter.ValidateSessionSettings(session, SessionSettingsPatch{PlanMode: &enabled}); err == nil {
+		t.Fatal("ValidateSessionSettings error = nil, want missing signed Plan mapping")
+	}
+}
+
+func TestStandardACPDeclaredPlanModesDoNotRequireRuntimeModeCatalog(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Declared Plan ACP", "declared-plan-session")
+	adapterRaw, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider:                  "acp:declared-plan",
+		Name:                      "declared-plan-acp",
+		DisplayName:               "Declared Plan ACP",
+		Command:                   []string{"declared-plan", "agent", "stdio"},
+		PermissionModes:           map[string]string{"ask-before-write": "default"},
+		PlanModeRuntimeID:         "plan",
+		PlanModeDisabledRuntimeID: "default",
+	}, transport, LegacyHostMetadata())
+	if err != nil {
+		t.Fatalf("NewStandardACPAdapter: %v", err)
+	}
+	adapter := adapterRaw.(*standardACPAdapter)
+	session := standardTestSession("acp:declared-plan")
+	session.Settings = &SessionSettings{PermissionModeID: "ask-before-write"}
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	for _, enabled := range []bool{true, false} {
+		if err := adapter.ValidateSessionSettings(session, SessionSettingsPatch{PlanMode: &enabled}); err != nil {
+			t.Fatalf("ValidateSessionSettings(%v): %v", enabled, err)
+		}
+		session.Settings.PlanMode = enabled
+		if err := adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{PlanMode: &enabled}); err != nil {
+			t.Fatalf("ApplySessionSettings(%v): %v", enabled, err)
+		}
+		want := "default"
+		if enabled {
+			want = "plan"
+		}
+		if got := transport.conn.lastModeID(); got != want {
+			t.Fatalf("plan=%v mode = %q, want %q", enabled, got, want)
+		}
+	}
+}
+
+func TestStandardACPDeclaredPlanModeSurfacesRuntimeRejection(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Rejected Plan ACP", "rejected-plan-session")
+	adapterRaw, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider:                  "acp:rejected-plan",
+		Name:                      "rejected-plan-acp",
+		DisplayName:               "Rejected Plan ACP",
+		Command:                   []string{"rejected-plan", "agent", "stdio"},
+		PermissionModes:           map[string]string{"ask-before-write": "default"},
+		PlanModeRuntimeID:         "plan",
+		PlanModeDisabledRuntimeID: "default",
+	}, transport, LegacyHostMetadata())
+	if err != nil {
+		t.Fatalf("NewStandardACPAdapter: %v", err)
+	}
+	adapter := adapterRaw.(*standardACPAdapter)
+	session := standardTestSession("acp:rejected-plan")
+	session.Settings = &SessionSettings{PermissionModeID: "ask-before-write"}
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	transport.conn.setModeError = &acpError{Code: -32602, Message: "unsupported mode"}
+	enabled := true
+	session.Settings.PlanMode = enabled
+	if err := adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{PlanMode: &enabled}); err == nil {
+		t.Fatal("ApplySessionSettings error = nil, want runtime rejection")
+	}
+}
+
+func TestStandardACPLaunchPermissionPlanRestartsAndLoadsSameSession(t *testing.T) {
+	t.Parallel()
+
+	transport := &multiProcStandardACPTransport{
+		agentTitle:          "Grok Build",
+		sessionID:           "grok-provider-session",
+		supportsLoadSession: true,
+	}
+	adapterRaw, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider:                     "acp:grok-launch-plan",
+		Name:                         "grok-launch-plan-acp",
+		DisplayName:                  "Grok Build",
+		Command:                      []string{"grok", "--permission-mode", "${permissionMode}", "agent", "stdio"},
+		PermissionModes:              map[string]string{"ask-before-write": "default", "auto": "auto", "full-access": "bypassPermissions"},
+		PlanModeRuntimeID:            "plan",
+		PlanModeDisabledRuntimeID:    "default",
+		PlanModeUsesLaunchPermission: true,
+		LaunchPermission: &StandardACPLaunchPermissionSetting{
+			Placeholder:     "${permissionMode}",
+			DefaultSemantic: "ask-before-write",
+			Values:          map[string]string{"ask-before-write": "default", "auto": "auto", "full-access": "bypassPermissions"},
+		},
+	}, transport, LegacyHostMetadata())
+	if err != nil {
+		t.Fatalf("NewStandardACPAdapter: %v", err)
+	}
+	adapter := adapterRaw.(*standardACPAdapter)
+	session := standardTestSession("acp:grok-launch-plan")
+	session.PermissionModeID = "auto"
+	session.Settings = &SessionSettings{PermissionModeID: "auto"}
+	events, err := adapter.Start(context.Background(), session)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = events[0].ProviderSessionID
+
+	for _, enabled := range []bool{true, false} {
+		if err := adapter.ValidateSessionSettings(session, SessionSettingsPatch{PlanMode: &enabled}); err != nil {
+			t.Fatalf("ValidateSessionSettings(%v): %v", enabled, err)
+		}
+		session.Settings.PlanMode = enabled
+		if err := adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{PlanMode: &enabled}); err != nil {
+			t.Fatalf("ApplySessionSettings(%v): %v", enabled, err)
+		}
+		wantDecision := ""
+		if enabled {
+			wantDecision = "denied"
+		}
+		if got := adapter.automaticPermissionDecision(session.AgentSessionID); got != wantDecision {
+			t.Fatalf("plan=%v automatic permission decision = %q, want %q", enabled, got, wantDecision)
+		}
+	}
+
+	transport.mu.Lock()
+	specs := append([]ProcessSpec(nil), transport.specs...)
+	connections := append([]*standardACPConnection(nil), transport.conns...)
+	transport.mu.Unlock()
+	if len(specs) != 3 {
+		t.Fatalf("process starts = %d, want initial plus two Plan restarts", len(specs))
+	}
+	wantModes := []string{"auto", "plan", "auto"}
+	for index, want := range wantModes {
+		if got := specs[index].Command[2]; got != want {
+			t.Fatalf("process %d permission mode = %q, want %q", index, got, want)
+		}
+	}
+	for index := 1; index < len(connections); index++ {
+		if got := asString(connections[index].lastLoadSessionParams["sessionId"]); got != "grok-provider-session" {
+			t.Fatalf("restart %d loaded session = %q, want grok-provider-session", index, got)
+		}
+	}
+	spawned, live := transport.snapshot()
+	if spawned != 3 || len(live) != 1 {
+		t.Fatalf("spawned/live processes = %d/%d, want 3/1", spawned, len(live))
+	}
+}
+
+func TestStandardACPLaunchPermissionRejectsUnknownSessionSemantic(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Spawn ACP", "spawn-invalid-session")
+	adapterRaw, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider:        "acp:spawn-invalid",
+		Name:            "spawn-invalid-acp",
+		DisplayName:     "Spawn Invalid ACP",
+		Command:         []string{"spawn-acp", "${permissionMode}", "stdio"},
+		PermissionModes: map[string]string{"ask-before-write": "ask", "auto": "auto", "full-access": "always-approve"},
+		LaunchPermission: &StandardACPLaunchPermissionSetting{
+			Placeholder: "${permissionMode}",
+			Values:      map[string]string{"ask-before-write": "ask", "auto": "auto", "full-access": "always-approve"},
+		},
+	}, transport, LegacyHostMetadata())
+	if err != nil {
+		t.Fatalf("NewStandardACPAdapter: %v", err)
+	}
+	session := standardTestSession("acp:spawn-invalid")
+	session.PermissionModeID = "unknown"
+	if _, err := adapterRaw.Start(context.Background(), session); err == nil {
+		t.Fatal("Start unknown permission semantic error = nil")
+	}
+	transport.mu.Lock()
+	defer transport.mu.Unlock()
+	if len(transport.specs) != 0 {
+		t.Fatalf("spawn specs = %#v, want fail before process start", transport.specs)
+	}
+}
+
+func TestStandardACPSessionNewAndLoadPassStandardClientMCPConfig(t *testing.T) {
+	t.Parallel()
+
+	newTransport := newStandardACPTransport("MCP ACP", "mcp-new-session")
+	newAdapterRaw, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider: "acp:mcp-new", Name: "mcp-new-acp", DisplayName: "MCP ACP", Command: []string{"mcp-acp", "stdio"},
+	}, newTransport, LegacyHostMetadata())
+	if err != nil {
+		t.Fatalf("NewStandardACPAdapter new: %v", err)
+	}
+	if _, err := newAdapterRaw.Start(context.Background(), standardTestSession("acp:mcp-new")); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if servers, ok := newTransport.conn.lastNewSessionParams["mcpServers"].([]any); !ok || len(servers) != 0 {
+		t.Fatalf("session/new mcpServers = %#v, want standard empty client config", newTransport.conn.lastNewSessionParams["mcpServers"])
+	}
+
+	loadTransport := newStandardACPTransport("MCP ACP", "mcp-load-session")
+	loadTransport.conn.supportsLoadSession = true
+	loadAdapterRaw, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider: "acp:mcp-load", Name: "mcp-load-acp", DisplayName: "MCP ACP", Command: []string{"mcp-acp", "stdio"},
+	}, loadTransport, LegacyHostMetadata())
+	if err != nil {
+		t.Fatalf("NewStandardACPAdapter load: %v", err)
+	}
+	loadSession := standardTestSession("acp:mcp-load")
+	loadSession.ProviderSessionID = "mcp-load-session"
+	if err := loadAdapterRaw.Resume(context.Background(), loadSession); err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	if servers, ok := loadTransport.conn.lastLoadSessionParams["mcpServers"].([]any); !ok || len(servers) != 0 {
+		t.Fatalf("session/load mcpServers = %#v, want standard empty client config", loadTransport.conn.lastLoadSessionParams["mcpServers"])
+	}
+}
+
+func TestStandardACPSetModelCarriesAdvertisedPerModelReasoningMetadata(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Model ACP", "model-session")
+	transport.conn.models = map[string]any{
+		"currentModelId": "reasoning-model",
+		"availableModels": []any{
+			map[string]any{
+				"modelId": "reasoning-model", "name": "Reasoning Model",
+				"supportsReasoningEffort": true, "reasoningEffort": "deep",
+				"reasoningEfforts": []any{
+					map[string]any{"value": "brief", "label": "Brief"},
+					map[string]any{"value": "deep", "label": "Deep", "default": true},
+				},
+			},
+			map[string]any{"modelId": "plain-model", "name": "Plain Model", "supportsReasoningEffort": false, "reasoningEfforts": []any{}},
+		},
+	}
+	adapterRaw, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider:                    "acp:model-meta",
+		Name:                        "model-meta-acp",
+		DisplayName:                 "Model ACP",
+		Command:                     []string{"model-acp", "stdio"},
+		SetModelReasoningEffortMeta: true,
+	}, transport, LegacyHostMetadata())
+	if err != nil {
+		t.Fatalf("NewStandardACPAdapter: %v", err)
+	}
+	adapter := adapterRaw.(*standardACPAdapter)
+	session := standardTestSession("acp:model-meta")
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	session.Settings = &SessionSettings{Model: "reasoning-model", ReasoningEffort: "brief"}
+	brief := "brief"
+	if err := adapter.ValidateSessionSettings(session, SessionSettingsPatch{ReasoningEffort: &brief}); err != nil {
+		t.Fatalf("ValidateSessionSettings reasoning: %v", err)
+	}
+	if err := adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{ReasoningEffort: &brief}); err != nil {
+		t.Fatalf("ApplySessionSettings reasoning: %v", err)
+	}
+	calls := transport.conn.setModelCalls()
+	if len(calls) != 1 || calls[0]["modelId"] != "reasoning-model" {
+		t.Fatalf("set_model calls = %#v, want reasoning-model", calls)
+	}
+	if meta := payloadObject(calls[0]["_meta"]); meta["reasoningEffort"] != "brief" {
+		t.Fatalf("set_model _meta = %#v, want brief", meta)
+	}
+
+	plain := "plain-model"
+	session.Settings = &SessionSettings{Model: plain, ReasoningEffort: "brief"}
+	if err := adapter.ValidateSessionSettings(session, SessionSettingsPatch{Model: &plain}); err != nil {
+		t.Fatalf("ValidateSessionSettings plain model: %v", err)
+	}
+	if err := adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{Model: &plain}); err != nil {
+		t.Fatalf("ApplySessionSettings plain model: %v", err)
+	}
+	calls = transport.conn.setModelCalls()
+	if len(calls) != 2 || calls[1]["modelId"] != plain {
+		t.Fatalf("set_model calls = %#v, want plain-model second", calls)
+	}
+	if _, exists := calls[1]["_meta"]; exists {
+		t.Fatalf("plain model set_model = %#v, want no reasoning metadata", calls[1])
+	}
+	unsupported := "brief"
+	if err := adapter.ValidateSessionSettings(session, SessionSettingsPatch{ReasoningEffort: &unsupported}); err == nil {
+		t.Fatal("unsupported model reasoning validation error = nil")
+	}
+	if calls := transport.conn.setConfigOptionCalls(); len(calls) != 0 {
+		t.Fatalf("config option calls = %#v, want standard session/set_model only", calls)
 	}
 }
 
@@ -2011,10 +3034,10 @@ func TestNexightACPSystemNoticeMessageFromStderr(t *testing.T) {
 func TestStandardACPTransportFallbackTextStaysProviderScoped(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderHermes)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.ProviderSessionID = "hermes-session-1"
 
-	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderHermes}, session, "turn-1", json.RawMessage(`{
+	events := standardACPUpdateEvents(standardACPConfig{provider: hermesExtensionTestProvider}, session, "turn-1", json.RawMessage(`{
 		"update": {
 			"sessionUpdate": "agent_message_chunk",
 			"content": {
@@ -2188,8 +3211,8 @@ func TestStandardACPAdapterExecAddsInternalMentionRoutingPromptForGemini(t *test
 	t.Parallel()
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-mention-routing")
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.PermissionModeID = "full-access"
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -2318,8 +3341,8 @@ func TestHermesAdapterStartPreservesCommandsAdvertisedDuringNewSession(t *testin
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-commands")
 	transport.conn.commandUpdateOnNewSession = true
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -2580,8 +3603,8 @@ func TestStandardACPAdapterCloseSendsProtocolSessionCloseBeforeTransportClose(t 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-close")
 	transport.conn.supportsCloseSession = true
 	transport.conn.closeSessionExits = true
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -2605,8 +3628,8 @@ func TestStandardACPAdapterCloseFallsBackWhenProtocolSessionCloseFails(t *testin
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-close-failure")
 	transport.conn.supportsCloseSession = true
 	transport.conn.closeSessionError = &acpError{Code: -32601, Message: "session close unavailable"}
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -2642,11 +3665,12 @@ type standardACPTransport struct {
 }
 
 type multiProcStandardACPTransport struct {
-	mu         sync.Mutex
-	agentTitle string
-	sessionID  string
-	specs      []ProcessSpec
-	conns      []*standardACPConnection
+	mu                  sync.Mutex
+	agentTitle          string
+	sessionID           string
+	supportsLoadSession bool
+	specs               []ProcessSpec
+	conns               []*standardACPConnection
 }
 
 func newStandardACPTransport(agentTitle string, sessionID string) *standardACPTransport {
@@ -2670,9 +3694,10 @@ func (t *multiProcStandardACPTransport) Start(_ context.Context, spec ProcessSpe
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	conn := &standardACPConnection{
-		recv:       make(chan ProcessFrame, 32),
-		agentTitle: t.agentTitle,
-		sessionID:  t.sessionID,
+		recv:                make(chan ProcessFrame, 32),
+		agentTitle:          t.agentTitle,
+		sessionID:           t.sessionID,
+		supportsLoadSession: t.supportsLoadSession,
 	}
 	t.specs = append(t.specs, spec)
 	t.conns = append(t.conns, conn)
@@ -2703,6 +3728,7 @@ type standardACPConnection struct {
 	lastInitializeParamsSnapshot  map[string]any
 	commandUpdateOnNewSession     bool
 	commandUpdateOnLoadSession    bool
+	availableCommands             []AgentSessionCommand
 	promptPermission              bool
 	promptKind                    string
 	pauseBeforePromptResult       chan struct{}
@@ -2742,7 +3768,14 @@ type standardACPConnection struct {
 	// normal prompt results, emulating a tool-calls-only turn.
 	omitAssistantTextInPromptResults bool
 	setConfigOptionSnapshots         []map[string]any
+	setModelSnapshots                []map[string]any
 	configOptions                    []map[string]any
+	models                           map[string]any
+	modes                            map[string]any
+	authMethods                      []map[string]any
+	authenticateResult               map[string]any
+	authenticateError                *acpError
+	requireAuthentication            bool
 }
 
 func (c *standardACPConnection) Send(data []byte) error {
@@ -2783,6 +3816,9 @@ func (c *standardACPConnection) Send(data []byte) error {
 			if len(sessionCapabilities) > 0 {
 				result["sessionCapabilities"] = sessionCapabilities
 			}
+			if len(c.authMethods) > 0 {
+				result["authMethods"] = c.authMethods
+			}
 			c.sendJSON(map[string]any{
 				"jsonrpc": "2.0",
 				"id":      message.ID,
@@ -2795,13 +3831,25 @@ func (c *standardACPConnection) Send(data []byte) error {
 				} `json:"params"`
 			}
 			_ = json.Unmarshal([]byte(line), &request)
+			if c.authenticateError != nil {
+				c.sendJSON(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      message.ID,
+					"error":   c.authenticateError,
+				})
+				continue
+			}
 			c.mu.Lock()
 			c.lastAuthenticatedMethodID = request.Params.MethodID
 			c.mu.Unlock()
+			result := c.authenticateResult
+			if result == nil {
+				result = map[string]any{}
+			}
 			c.sendJSON(map[string]any{
 				"jsonrpc": "2.0",
 				"id":      message.ID,
-				"result":  map[string]any{},
+				"result":  result,
 			})
 		case acpMethodNewSession:
 			var request struct {
@@ -2813,16 +3861,30 @@ func (c *standardACPConnection) Send(data []byte) error {
 				c.lastNewSessionParams = maps.Clone(request.Params)
 			}
 			c.mu.Unlock()
+			if c.requireAuthentication && c.authenticatedMethodID() == "" {
+				c.sendJSON(map[string]any{
+					"jsonrpc": "2.0", "id": message.ID,
+					"error": map[string]any{"code": -32000, "message": "authentication required"},
+				})
+				continue
+			}
 			if c.commandUpdateOnNewSession {
 				c.sendAvailableCommandsUpdate()
+			}
+			result := map[string]any{
+				"sessionId":     c.sessionID,
+				"configOptions": c.defaultConfigOptions(),
+			}
+			if c.models != nil {
+				result["models"] = clonePayload(c.models)
+			}
+			if c.modes != nil {
+				result["modes"] = clonePayload(c.modes)
 			}
 			c.sendJSON(map[string]any{
 				"jsonrpc": "2.0",
 				"id":      message.ID,
-				"result": map[string]any{
-					"sessionId":     c.sessionID,
-					"configOptions": c.defaultConfigOptions(),
-				},
+				"result":  result,
 			})
 		case acpMethodLoadSession, acpMethodResume:
 			var request struct {
@@ -2845,12 +3907,17 @@ func (c *standardACPConnection) Send(data []byte) error {
 				})
 				return nil
 			}
+			result := map[string]any{"configOptions": c.defaultConfigOptions()}
+			if c.models != nil {
+				result["models"] = clonePayload(c.models)
+			}
+			if c.modes != nil {
+				result["modes"] = clonePayload(c.modes)
+			}
 			c.sendJSON(map[string]any{
 				"jsonrpc": "2.0",
 				"id":      message.ID,
-				"result": map[string]any{
-					"configOptions": c.defaultConfigOptions(),
-				},
+				"result":  result,
 			})
 		case acpMethodCloseSession:
 			var request struct {
@@ -2906,6 +3973,25 @@ func (c *standardACPConnection) Send(data []byte) error {
 				"jsonrpc": "2.0",
 				"id":      message.ID,
 				"result":  map[string]any{},
+			})
+		case acpMethodSetModel:
+			var request struct {
+				Params map[string]any `json:"params"`
+			}
+			_ = json.Unmarshal([]byte(line), &request)
+			c.mu.Lock()
+			if request.Params != nil {
+				c.setModelSnapshots = append(c.setModelSnapshots, clonePayload(request.Params))
+			}
+			result := map[string]any{}
+			if c.models != nil {
+				result["models"] = clonePayload(c.models)
+			}
+			c.mu.Unlock()
+			c.sendJSON(map[string]any{
+				"jsonrpc": "2.0",
+				"id":      message.ID,
+				"result":  result,
 			})
 		case "session/set_config_option":
 			var request struct {
@@ -3169,22 +4255,29 @@ func (c *standardACPConnection) sendJSON(value any) {
 }
 
 func (c *standardACPConnection) sendAvailableCommandsUpdate() {
+	commands := c.availableCommands
+	if len(commands) == 0 {
+		commands = []AgentSessionCommand{{Name: "web", Description: "Search the web", InputHint: "query"}}
+	}
+	availableCommands := make([]any, 0, len(commands))
+	for _, command := range commands {
+		item := map[string]any{"name": command.Name}
+		if command.Description != "" {
+			item["description"] = command.Description
+		}
+		if command.InputHint != "" {
+			item["input"] = map[string]any{"hint": command.InputHint}
+		}
+		availableCommands = append(availableCommands, item)
+	}
 	c.sendJSON(map[string]any{
 		"jsonrpc": "2.0",
 		"method":  acpMethodUpdate,
 		"params": map[string]any{
 			"sessionId": c.sessionID,
 			"update": map[string]any{
-				"sessionUpdate": "available_commands_update",
-				"availableCommands": []any{
-					map[string]any{
-						"name":        "web",
-						"description": "Search the web",
-						"input": map[string]any{
-							"hint": "query",
-						},
-					},
-				},
+				"sessionUpdate":     "available_commands_update",
+				"availableCommands": availableCommands,
 			},
 		},
 	})
@@ -3338,6 +4431,19 @@ func (c *standardACPConnection) setConfigOptionCalls() []map[string]any {
 	out := make([]map[string]any, 0, len(c.setConfigOptionSnapshots))
 	for _, snapshot := range c.setConfigOptionSnapshots {
 		out = append(out, maps.Clone(snapshot))
+	}
+	return out
+}
+
+func (c *standardACPConnection) setModelCalls() []map[string]any {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.setModelSnapshots) == 0 {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(c.setModelSnapshots))
+	for _, snapshot := range c.setModelSnapshots {
+		out = append(out, clonePayload(snapshot))
 	}
 	return out
 }

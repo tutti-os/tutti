@@ -19,6 +19,7 @@ import {
 import type { IssueManagerI18nRuntime } from "../../../i18n/issueManagerI18n.ts";
 import { IssueManagerTitleTooltip } from "../content/IssueManagerTitleTooltip.tsx";
 import { summarizeIssueManagerContent } from "../panel/IssueManagerPanelText.ts";
+import { IssueManagerTaskStructureChips } from "./IssueManagerTaskStructure.tsx";
 
 type IssueManagerSubtaskBoardStatus =
   | "not_started"
@@ -487,7 +488,7 @@ export function IssueManagerSubtaskBoard({
   };
 
   return (
-    <div className="min-w-0 overflow-x-auto pb-1 [scrollbar-width:thin]">
+    <div className="board-scroll min-w-0 overflow-x-auto pb-1">
       <div
         className="grid min-w-[1560px] grid-cols-6 gap-3"
         ref={boardLayoutRef}
@@ -709,7 +710,7 @@ function IssueManagerSubtaskBoardColumn({
             >
               <button
                 className={cn(
-                  "rounded-[8px] bg-[var(--background-fronted)] px-3 py-2.5 text-left transition-shadow duration-150 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25",
+                  "rounded-[8px] bg-[var(--background-board-card)] p-2 text-left transition-shadow duration-150 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25",
                   "cursor-grab active:cursor-grabbing",
                   isDraggingTask && issueManagerSubtaskDragShadowClassName
                 )}
@@ -734,6 +735,9 @@ function IssueManagerSubtaskBoardColumn({
                     {task.title}
                   </span>
                 </IssueManagerTitleTooltip>
+                <span className="mt-1 block empty:hidden">
+                  <IssueManagerTaskStructureChips copy={copy} task={task} />
+                </span>
                 <p className="mt-2 line-clamp-3 text-[11px] font-normal leading-[1.5] text-[var(--text-secondary)] [overflow-wrap:anywhere]">
                   {summarizeIssueManagerContent(
                     task.content,

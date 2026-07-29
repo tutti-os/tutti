@@ -16,6 +16,7 @@ function message(
   return {
     workspaceId: "workspace-1",
     role: "assistant",
+    sequence: overrides.sequence ?? overrides.version ?? 1,
     kind: "text",
     turnId: "turn-1",
     version: 1,
@@ -49,6 +50,84 @@ test("merges messages into the canonical session bucket", () => {
     state.messagesBySessionId["session-1"]?.map((item) => item.messageId),
     ["m1"]
   );
+});
+
+test("stores authoritative message-window coverage without inferring from versions", () => {
+  const state = sessionMessagesReducer(
+    createInitialSessionMessagesState(),
+    {
+      type: "message/snapshotReceived",
+      messages: [
+        message({
+          messageId: "streamed-message",
+          agentSessionId: "session-1",
+          version: 446
+        })
+      ],
+      sessionMessageWindows: [
+        {
+          agentSessionId: "session-1",
+          hasOlderMessages: false,
+          oldestLoadedVersion: 446
+        }
+      ]
+    },
+    context
+  ).state;
+
+  assert.deepEqual(state.windowsBySessionId["session-1"], {
+    hasOlderMessages: false,
+    oldestLoadedVersion: 446
+  });
+});
+
+test("canonicalizes and removes message-window buckets with session identity", () => {
+  let state = sessionMessagesReducer(
+    createInitialSessionMessagesState(),
+    {
+      type: "message/snapshotReceived",
+      messages: [],
+      sessionMessageWindows: [
+        {
+          agentSessionId: "provider-1",
+          hasOlderMessages: true,
+          oldestLoadedVersion: 101
+        }
+      ]
+    },
+    { sessionsById: {} }
+  ).state;
+
+  state = sessionMessagesReducer(
+    state,
+    {
+      type: "session/upserted",
+      session: {
+        activeTurnId: null,
+        agentSessionId: "session-1",
+        cwd: "/workspace",
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        provider: "codex",
+        providerSessionId: "provider-1",
+        title: "Session",
+        workspaceId: "workspace-1"
+      }
+    },
+    context
+  ).state;
+
+  assert.equal(state.windowsBySessionId["provider-1"], undefined);
+  assert.deepEqual(state.windowsBySessionId["session-1"], {
+    hasOlderMessages: true,
+    oldestLoadedVersion: 101
+  });
+
+  state = sessionMessagesReducer(state, {
+    type: "session/removed",
+    agentSessionId: "session-1"
+  }).state;
+  assert.equal(state.windowsBySessionId["session-1"], undefined);
 });
 
 test("a higher version replaces the existing message; a lower version is dropped", () => {

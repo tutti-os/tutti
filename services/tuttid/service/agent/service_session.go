@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 )
@@ -17,6 +18,7 @@ func runtimeResumeInputFromRuntimeSession(session ProviderRuntimeSession) Runtim
 		AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
 		Provider:          strings.TrimSpace(session.Provider),
 		ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
+		Resumable:         session.Resumable,
 		Cwd:               strings.TrimSpace(session.Cwd),
 		Env:               append([]string(nil), session.Env...),
 		Title:             strings.TrimSpace(session.Title),
@@ -62,9 +64,10 @@ func runtimeResumeInputFromPersistedSession(session PersistedSession) RuntimeRes
 	}
 }
 
-const WorkspaceAgentSessionOriginImported = "WORKSPACE_AGENT_SESSION_ORIGIN_IMPORTED"
+const WorkspaceAgentSessionOriginImported = agenthost.WorkspaceAgentSessionOriginImported
 
-func persistedSessionCanResume(controller RuntimeController, session PersistedSession) bool {
+func (s *Service) persistedSessionCanResume(ctx context.Context, session PersistedSession) bool {
+	controller := s.controller()
 	if controller == nil {
 		return false
 	}
@@ -75,16 +78,24 @@ func persistedSessionCanResume(controller RuntimeController, session PersistedSe
 		!externalImportResumeSupported(session.InternalRuntimeContext) {
 		return false
 	}
-	return controller.CanResume(runtimeResumeInputFromPersistedSession(session))
+	input := runtimeResumeInputFromPersistedSession(session)
+	if input.AgentTargetID != "" {
+		launchInput := CreateSessionInput{
+			AgentTargetID: input.AgentTargetID,
+			Provider:      input.Provider,
+		}
+		launch, err := s.resolveCreateSessionLaunch(ctx, session.WorkspaceID, &launchInput)
+		if err != nil {
+			return false
+		}
+		input.Provider = launch.Provider
+		input.ProviderTargetRef = launch.ProviderTargetRef
+	}
+	return controller.CanResume(input)
 }
 
 func externalImportResumeSupported(runtimeContext map[string]any) bool {
-	value, exists := runtimeContext["externalImportResumeSupported"]
-	if !exists {
-		return true
-	}
-	supported, ok := value.(bool)
-	return ok && supported
+	return agenthost.ExternalImportResumeSupported(runtimeContext)
 }
 
 func serviceSession(session ProviderRuntimeSession, resumable bool) Session {
@@ -96,7 +107,11 @@ func serviceSession(session ProviderRuntimeSession, resumable bool) Session {
 		normalizedProvider,
 		cloneComposerSettingsPointerValue(session.Settings),
 	)
-	metadata, _, err := agentactivitybiz.SplitSessionRuntimeContext(session.RuntimeContext)
+	normalizedSettings = composerSettingsWithRuntimeSnapshot(
+		normalizedSettings,
+		session.RuntimeContext,
+	)
+	metadata, internalRuntimeContext, err := agentactivitybiz.SplitSessionRuntimeContext(session.RuntimeContext)
 	if err != nil {
 		metadata = agentactivitybiz.SessionMetadata{Visible: session.Visible, Capabilities: []string{}}
 	}
@@ -118,17 +133,19 @@ func serviceSession(session ProviderRuntimeSession, resumable bool) Session {
 		CreatedAt:         createdAt,
 		UpdatedAt:         updatedAt,
 		Metadata:          metadata,
+		Isolation:         sessionIsolationFromRuntimeContext(internalRuntimeContext),
 	}
 }
 
 func (s *Service) initializeRuntimeSession(
 	ctx context.Context,
 	session ProviderRuntimeSession,
+	railPlacement *agenthost.RailPlacement,
 ) (PersistedSession, error) {
 	if s == nil || s.SessionInitializer == nil {
 		return PersistedSession{}, fmt.Errorf("initialize workspace agent session: session initializer is unavailable")
 	}
-	persisted, err := s.SessionInitializer.InitializeRuntimeSession(ctx, session)
+	persisted, err := s.SessionInitializer.InitializeRuntimeSession(ctx, session, railPlacement)
 	if err != nil {
 		return PersistedSession{}, fmt.Errorf("initialize workspace agent session: %w", err)
 	}
@@ -171,8 +188,11 @@ func sessionFromPersisted(session PersistedSession, resumable bool) Session {
 		CreatedAtUnixMS:   createdAtUnixMS,
 		UpdatedAtUnixMS:   updatedAtUnixMS,
 		Visible:           session.Metadata.Visible,
+		RuntimeContext:    persistedSessionRuntimeContext(session),
 	}, resumable)
 	result.ActiveTurnID = strings.TrimSpace(session.ActiveTurnID)
+	result.RailSectionKind = strings.TrimSpace(session.RailSectionKind)
+	result.RailProjectPath = strings.TrimSpace(session.RailProjectPath)
 	result.RailSectionKey = strings.TrimSpace(session.RailSectionKey)
 	result.Kind = strings.TrimSpace(session.Kind)
 	if result.Kind == "" {
@@ -183,7 +203,9 @@ func sessionFromPersisted(session PersistedSession, resumable bool) Session {
 	result.ParentAgentSessionID = strings.TrimSpace(session.ParentAgentSessionID)
 	result.ParentTurnID = strings.TrimSpace(session.ParentTurnID)
 	result.ParentToolCallID = strings.TrimSpace(session.ParentToolCallID)
+	result.MessageVersion = session.MessageVersion
 	result.Metadata = session.Metadata
+	result.Isolation = sessionIsolationFromRuntimeContext(session.InternalRuntimeContext)
 	return result
 }
 
@@ -210,6 +232,8 @@ func mergePersistedSessionState(session Session, persisted PersistedSession) Ses
 	session.ParentAgentSessionID = strings.TrimSpace(persisted.ParentAgentSessionID)
 	session.ParentTurnID = strings.TrimSpace(persisted.ParentTurnID)
 	session.ParentToolCallID = strings.TrimSpace(persisted.ParentToolCallID)
+	session.RailSectionKind = strings.TrimSpace(persisted.RailSectionKind)
+	session.RailProjectPath = strings.TrimSpace(persisted.RailProjectPath)
 	session.RailSectionKey = strings.TrimSpace(persisted.RailSectionKey)
 	if strings.TrimSpace(session.UserID) == "" {
 		session.UserID = strings.TrimSpace(persisted.UserID)
@@ -220,13 +244,24 @@ func mergePersistedSessionState(session Session, persisted PersistedSession) Ses
 	if session.Settings == nil {
 		session.Settings = normalizeComposerSettingsPointerForProvider(session.Provider, &persisted.Settings)
 	}
+	if session.Settings != nil {
+		settings := composerSettingsWithRuntimeSnapshot(
+			*session.Settings,
+			persistedSessionRuntimeContext(persisted),
+		)
+		session.Settings = &settings
+	}
 	session.PermissionConfig = composerPermissionConfig(session.Provider, permissionModeIDFromSettings(session.Settings), preferencesbiz.DefaultDesktopLocale)
+	session.MessageVersion = persisted.MessageVersion
 	session.PinnedAtUnixMS = persisted.PinnedAtUnixMS
 	if persisted.UpdatedAtUnixMS > 0 &&
 		(session.UpdatedAt == nil || persisted.UpdatedAtUnixMS > session.UpdatedAt.UnixMilli()) {
 		session.UpdatedAt = timeFromUnixMSPointer(persisted.UpdatedAtUnixMS)
 	}
 	session.Metadata = persisted.Metadata
+	if isolation := sessionIsolationFromRuntimeContext(persisted.InternalRuntimeContext); isolation != nil {
+		session.Isolation = isolation
+	}
 	return session
 }
 
@@ -239,12 +274,48 @@ func serviceSessionWithPersistedFreshness(session ProviderRuntimeSession, persis
 		service.ProviderSessionID = strings.TrimSpace(session.ProviderSessionID)
 	}
 	if liveSettings := normalizeComposerSettingsPointerForProvider(session.Provider, session.Settings); liveSettings != nil {
-		service.Settings = liveSettings
+		settings := composerSettingsWithRuntimeSnapshot(
+			*liveSettings,
+			persistedSessionRuntimeContext(persisted),
+		)
+		service.Settings = &settings
 	} else if service.Settings == nil {
 		service.Settings = normalizeComposerSettingsPointerForProvider(session.Provider, session.Settings)
 	}
 	service.PermissionConfig = composerPermissionConfig(service.Provider, permissionModeIDFromSettings(service.Settings), preferencesbiz.DefaultDesktopLocale)
 	return service
+}
+
+func (s *Service) projectHostSessionResult(
+	ctx context.Context,
+	canonical agentactivitybiz.Session,
+	runtime ProviderRuntimeSession,
+	live bool,
+	requireRailSection bool,
+	resolveProviderCapabilities bool,
+) (Session, error) {
+	persisted := persistedSessionFromHost(canonical)
+	if requireRailSection && s.SessionReader != nil {
+		if err := validatePersistedRailSectionKey(persisted); err != nil {
+			return Session{}, err
+		}
+	}
+	var result Session
+	if live {
+		resumable := s.controller().CanResume(runtimeResumeInputFromRuntimeSession(runtime))
+		result = serviceSession(runtime, resumable)
+		if s.SessionReader != nil {
+			result = serviceSessionWithPersistedFreshness(runtime, persisted, resumable)
+		}
+	} else {
+		result = sessionFromPersisted(persisted, s.persistedSessionCanResume(ctx, persisted))
+	}
+	return s.withProtocolV2TurnStateProjectionOptions(
+		ctx,
+		canonical.WorkspaceID,
+		result,
+		resolveProviderCapabilities,
+	)
 }
 
 func persistedSessionIsNewerThanRuntime(persisted PersistedSession, session ProviderRuntimeSession) bool {
@@ -259,6 +330,17 @@ func permissionModeIDFromSettings(settings *ComposerSettings) string {
 		return ""
 	}
 	return strings.TrimSpace(settings.PermissionModeID)
+}
+
+func composerSettingsWithRuntimeSnapshot(
+	settings ComposerSettings,
+	runtimeContext map[string]any,
+) ComposerSettings {
+	snapshot, exists, err := sessionRuntimeSnapshotFromContext(runtimeContext)
+	if err == nil && exists {
+		settings.ModelPlanID = strings.TrimSpace(snapshot.ModelPlanID)
+	}
+	return settings
 }
 
 func boolPointer(value bool) *bool {

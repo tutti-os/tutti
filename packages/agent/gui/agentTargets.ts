@@ -60,7 +60,9 @@ export function createSharedAgentGUIAgentTarget(input: {
   agentTargetId?: string | null;
   badge?: AgentGUIAgentTargetBadge | null;
   ownerLabel?: string | null;
+  ownerDeviceLabel?: string | null;
   iconUrl?: string | null;
+  maskIconUrl?: string | null;
   unavailableReason?: string | null;
   disabled?: boolean;
   ref?: Record<string, unknown> | null;
@@ -85,7 +87,13 @@ export function createSharedAgentGUIAgentTarget(input: {
     ...(input.ownerLabel?.trim()
       ? { ownerLabel: input.ownerLabel.trim() }
       : {}),
+    ...(input.ownerDeviceLabel?.trim()
+      ? { ownerDeviceLabel: input.ownerDeviceLabel.trim() }
+      : {}),
     ...(input.iconUrl?.trim() ? { iconUrl: input.iconUrl.trim() } : {}),
+    ...(input.maskIconUrl?.trim()
+      ? { maskIconUrl: input.maskIconUrl.trim() }
+      : {}),
     ...(input.unavailableReason?.trim()
       ? { unavailableReason: input.unavailableReason.trim() }
       : {}),
@@ -173,16 +181,18 @@ export function resolveAgentGUIAgentTarget(input: {
   agentTargets: readonly AgentGUIAgentTarget[];
   useStaticCatalog?: boolean;
 }): AgentGUIAgentTarget | null {
+  const explicitAgentTargetId = input.agentTargetId?.trim() ?? "";
   const targetByAgentTargetId = new Map(
     input.agentTargets.flatMap((target) =>
       target.agentTargetId ? [[target.agentTargetId, target] as const] : []
     )
   );
-  const agentTarget = targetByAgentTargetId.get(
-    input.agentTargetId?.trim() ?? ""
-  );
+  const agentTarget = targetByAgentTargetId.get(explicitAgentTargetId);
   if (agentTarget) {
     return agentTarget;
+  }
+  if (explicitAgentTargetId) {
+    return null;
   }
   const agentTargets = input.agentTargets.filter(
     (target) => target.provider === input.provider
@@ -240,8 +250,10 @@ function normalizeAgentGUIAgentTarget(
     badge,
     description,
     iconUrl,
+    maskIconUrl,
     heroImageUrl,
     ownerLabel,
+    ownerDeviceLabel,
     unavailableReason,
     ...rest
   } = target;
@@ -268,8 +280,12 @@ function normalizeAgentGUIAgentTarget(
     ...(normalizedBadge ? { badge: normalizedBadge } : {}),
     ...(description?.trim() ? { description: description.trim() } : {}),
     ...(iconUrl?.trim() ? { iconUrl: iconUrl.trim() } : {}),
+    ...(maskIconUrl?.trim() ? { maskIconUrl: maskIconUrl.trim() } : {}),
     ...(heroImageUrl?.trim() ? { heroImageUrl: heroImageUrl.trim() } : {}),
     ...(ownerLabel?.trim() ? { ownerLabel: ownerLabel.trim() } : {}),
+    ...(ownerDeviceLabel?.trim()
+      ? { ownerDeviceLabel: ownerDeviceLabel.trim() }
+      : {}),
     ...(unavailableReason?.trim()
       ? { unavailableReason: unavailableReason.trim() }
       : {})

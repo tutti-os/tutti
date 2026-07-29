@@ -3,7 +3,7 @@ export interface AnalyticsDebugModeInput {
 }
 
 export function isAnalyticsDebugAvailable(
-  _input: AnalyticsDebugModeInput = {}
+  input: AnalyticsDebugModeInput = {}
 ): boolean {
-  return true;
+  return input.isDev === true;
 }

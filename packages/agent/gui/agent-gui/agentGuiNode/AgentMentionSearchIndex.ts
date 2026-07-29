@@ -1,6 +1,9 @@
 import { resolveAgentMentionFileThumbnailUrl } from "../shared/mentionFilePresentation";
 import type { AgentContextMentionItem } from "./agentRichText/agentFileMentionExtension";
-import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
+import type {
+  AgentContextMentionProvider,
+  AgentContextMentionQueryInput
+} from "./agentContextMentionProvider";
 import type { AgentMentionProviderQueryDiagnostic } from "./agentMentionSearchDiagnostics";
 import {
   emptyAgentMentionRawGroups,
@@ -226,11 +229,51 @@ export async function queryAgentMentionProviderItems(input: {
   abortSignal: AbortSignal;
   provenanceFilter: ReferenceProvenanceFilter | null;
 }): Promise<AgentContextMentionItem[]> {
-  const items = await input.provider.query({
+  const queryInput: AgentContextMentionQueryInput = {
     keyword: input.query,
     maxResults: input.limit,
     abortSignal: input.abortSignal,
     trigger: "@",
+    context: {
+      metadata: {
+        currentUserId: input.currentUserId,
+        sectionKey: input.sectionKey || undefined,
+        sessionCwd: input.sessionCwd || undefined,
+        target: "agent-gui",
+        workspaceId: input.workspaceId,
+        referenceProvenanceFilter: input.provenanceFilter ?? undefined
+      }
+    }
+  };
+  const items = await input.provider.query(queryInput);
+  if (input.abortSignal.aborted) {
+    return [];
+  }
+  return mapProviderItemsToAgentMentionItems({
+    ...input,
+    items
+  });
+}
+
+export async function queryAgentMentionProviderDirectoryItems(input: {
+  provider: AgentContextMentionProvider | undefined;
+  workspaceId: string;
+  currentUserId: string;
+  directoryPath: string;
+  sessionCwd: string;
+  sectionKey: string;
+  abortSignal: AbortSignal;
+  provenanceFilter: ReferenceProvenanceFilter | null;
+}): Promise<AgentContextMentionItem[]> {
+  const provider = input.provider;
+  if (!provider?.queryDirectory) {
+    throw new Error("Mention provider does not support directory browsing.");
+  }
+  const items = await provider.queryDirectory({
+    keyword: "",
+    abortSignal: input.abortSignal,
+    trigger: "@",
+    directoryPath: input.directoryPath,
     context: {
       metadata: {
         currentUserId: input.currentUserId,
@@ -247,6 +290,7 @@ export async function queryAgentMentionProviderItems(input: {
   }
   return mapProviderItemsToAgentMentionItems({
     ...input,
+    provider,
     items
   });
 }
@@ -393,6 +437,7 @@ async function mapProviderItemsToAgentMentionItems(input: {
         insertResult: input.provider.toInsertResult(item),
         label: input.provider.getItemLabel(item),
         providerId: input.provider.id,
+        directory: input.provider.getItemDirectory?.(item) ?? null,
         subtitle: input.provider.getItemSubtitle?.(item) ?? "",
         workspaceId: input.workspaceId
       });

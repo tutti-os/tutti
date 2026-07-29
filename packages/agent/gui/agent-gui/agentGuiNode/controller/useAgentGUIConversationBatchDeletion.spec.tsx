@@ -29,6 +29,7 @@ function createInput(agentActivityRuntime: AgentActivityRuntime) {
     isDeletingProjectConversations: false,
     markSelectedConversationDetailPending: vi.fn(() => null),
     persistActiveConversation: vi.fn(),
+    removeConversations: vi.fn(),
     sessionViewRef: (agentSessionId: string | null | undefined) => ({
       agentSessionId,
       origin: "local",
@@ -55,6 +56,7 @@ describe("useAgentGUIConversationBatchDeletion", () => {
       workspaceId: "workspace-1"
     }));
     const deleteSessionsBatch = vi.fn(async () => ({
+      cleanupFailedSessionIds: [],
       removedMessages: 1,
       removedSessionIds: ["loaded-session", "unloaded-session"],
       removedSessions: 2
@@ -95,6 +97,10 @@ describe("useAgentGUIConversationBatchDeletion", () => {
     await waitFor(() =>
       expect(input.deleteAgentSessionView).toHaveBeenCalledTimes(2)
     );
+    expect(input.removeConversations).toHaveBeenCalledWith([
+      "loaded-session",
+      "unloaded-session"
+    ]);
   });
 
   it("refreshes activity and does not delete when the candidate snapshot is empty", async () => {
@@ -129,12 +135,13 @@ describe("useAgentGUIConversationBatchDeletion", () => {
     expect(runtime.deleteSessionsBatch).not.toHaveBeenCalled();
   });
 
-  it("commits a surviving conversation before deleting a batch containing the active session", async () => {
+  it("commits a surviving conversation only after deleting a batch containing the active session", async () => {
     let committedActiveConversationId: string | null = "loaded-session";
     let activeConversationIdObservedByDelete: string | null = null;
     const deleteSessionsBatch = vi.fn(async () => {
       activeConversationIdObservedByDelete = committedActiveConversationId;
       return {
+        cleanupFailedSessionIds: [],
         removedMessages: 0,
         removedSessionIds: ["loaded-session"],
         removedSessions: 1
@@ -176,13 +183,68 @@ describe("useAgentGUIConversationBatchDeletion", () => {
 
     act(() => result.current.confirmDeleteConversations(["loaded-session"]));
 
-    expect(result.current.activeConversationId).toBe("surviving-session");
-    expect(activeConversationIdObservedByDelete).toBe("surviving-session");
-    expect(input.persistActiveConversation).toHaveBeenCalledWith(
-      "surviving-session"
-    );
+    expect(result.current.activeConversationId).toBe("loaded-session");
+    expect(activeConversationIdObservedByDelete).toBe("loaded-session");
     await waitFor(() =>
       expect(input.deleteAgentSessionView).toHaveBeenCalledTimes(1)
     );
+    expect(result.current.activeConversationId).toBe("surviving-session");
+    expect(input.persistActiveConversation).toHaveBeenCalledWith(
+      "surviving-session"
+    );
+  });
+
+  it("fails a protected batch closed without partially changing rail state", async () => {
+    const deleteSessionsBatch = vi.fn(async () => {
+      throw {
+        code: "workspace_issue_resource_exists",
+        reason: "tutti_execution_active",
+        details: {
+          protectedIssues: [
+            {
+              executionId: "execution-1",
+              issueId: "issue-1",
+              sourceSessionId: "loaded-session",
+              status: "running"
+            }
+          ]
+        }
+      };
+    });
+    const input = createInput({
+      deleteSession: vi.fn(),
+      deleteSessionsBatch
+    } as unknown as AgentActivityRuntime);
+    input.activeConversationIdRef.current = "loaded-session";
+    const { result } = renderHook(() => {
+      const [activeConversationId, setActiveConversationId] = useState<
+        string | null
+      >("loaded-session");
+      return {
+        activeConversationId,
+        ...useAgentGUIConversationBatchDeletion({
+          ...input,
+          setActiveConversationId
+        })
+      };
+    });
+
+    act(() =>
+      result.current.confirmDeleteConversations([
+        "loaded-session",
+        "unloaded-session"
+      ])
+    );
+
+    await waitFor(() =>
+      expect(input.setIsDeletingProjectConversations).toHaveBeenLastCalledWith(
+        false
+      )
+    );
+    expect(result.current.activeConversationId).toBe("loaded-session");
+    expect(input.activeConversationIdRef.current).toBe("loaded-session");
+    expect(input.persistActiveConversation).not.toHaveBeenCalled();
+    expect(input.removeConversations).not.toHaveBeenCalled();
+    expect(input.deleteAgentSessionView).not.toHaveBeenCalled();
   });
 });

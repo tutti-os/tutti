@@ -113,6 +113,22 @@ export function stripImagePayloadData(value: unknown): unknown {
   return sanitized;
 }
 
+// A bare local filesystem path (posix absolute or Windows drive letter), as
+// opposed to a scheme-qualified URL. Shared by the generated-image preview and
+// the conversation copy serializer so both hydrate the same source taxonomy
+// through the host workspace reader.
+export function isLocalImagePath(path: string): boolean {
+  const candidate = path.trim();
+  return (
+    (candidate.length > 1 &&
+      candidate.startsWith("/") &&
+      !candidate.startsWith("//") &&
+      !candidate.includes("://") &&
+      !/\s/.test(candidate)) ||
+    /^[a-zA-Z]:[\\/]/.test(candidate)
+  );
+}
+
 export function resolveImageGenerationPreviewSrc(
   uri: string | null
 ): string | null {

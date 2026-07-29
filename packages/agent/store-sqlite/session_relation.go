@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	agentactivityprojection "github.com/tutti-os/tutti/packages/agent/daemon/activity/projection"
+	agentactivityprojection "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 func prepareSessionRelation(

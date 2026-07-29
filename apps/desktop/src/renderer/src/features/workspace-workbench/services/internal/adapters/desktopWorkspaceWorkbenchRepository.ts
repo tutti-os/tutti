@@ -5,9 +5,11 @@ import {
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import { replaceWorkspaceWallpaperSnapshotMetadata } from "../../workspaceWallpaper.ts";
 import { replaceWorkspaceOnboardingSnapshotMetadata } from "../../workspaceOnboarding.ts";
+import { replaceWorkspaceDockSnapshotMetadata } from "../../workspaceDockRetention.ts";
 import type { WorkbenchSnapshotRepositoryPort } from "../workbenchHostPorts.ts";
 
 export type DesktopWorkspaceWorkbenchProductMetadataOwner =
+  | "dock"
   | "onboarding"
   | "wallpaper";
 
@@ -138,6 +140,12 @@ function mergeProductMetadata(input: {
   owner: DesktopWorkspaceWorkbenchProductMetadataOwner | null;
   snapshot: WorkbenchSnapshot;
 }): WorkbenchSnapshot {
+  if (input.owner === "dock") {
+    return replaceWorkspaceDockSnapshotMetadata(
+      input.snapshot,
+      input.cachedSnapshot ?? input.snapshot
+    );
+  }
   if (input.owner === "onboarding") {
     return replaceWorkspaceOnboardingSnapshotMetadata(
       input.snapshot,
@@ -155,9 +163,13 @@ function mergeProductMetadata(input: {
     input.cachedSnapshot,
     input.snapshot
   );
-  return replaceWorkspaceWallpaperSnapshotMetadata(
+  const snapshotWithWallpaper = replaceWorkspaceWallpaperSnapshotMetadata(
     input.cachedSnapshot,
     snapshotWithOnboarding
+  );
+  return replaceWorkspaceDockSnapshotMetadata(
+    input.cachedSnapshot,
+    snapshotWithWallpaper
   );
 }
 

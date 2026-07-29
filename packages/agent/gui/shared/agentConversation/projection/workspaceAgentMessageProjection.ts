@@ -1,4 +1,9 @@
-import type { AgentActivityMessage } from "@tutti-os/agent-activity-core";
+import type {
+  AgentActivityMessage,
+  AgentActivitySnapshot,
+  AgentActivityTurn
+} from "@tutti-os/agent-activity-core";
+import { buildWorkspaceAgentActivityListViewModel } from "../../workspaceAgentActivityListViewModel";
 import type { BuildWorkspaceAgentSessionDetailInput } from "../../workspaceAgentSessionDetailViewModel";
 import { buildCanonicalWorkspaceAgentDetailView } from "../../workspaceAgentTimelineCanonical";
 import { resolveWorkspaceAgentNoticeCommandSemantics } from "../../workspaceAgentSystemNoticeSemantics";
@@ -16,39 +21,116 @@ export interface ProjectWorkspaceAgentMessagesInput extends Omit<
   messages: AgentActivityMessage[];
 }
 
+export interface ProjectAgentActivitySessionConversationInput {
+  activitySnapshot: AgentActivitySnapshot;
+  agentSessionId: string;
+  sessionTurns?: readonly AgentActivityTurn[];
+  workspaceRoot?: string | null;
+}
+
+export function projectAgentActivitySessionToConversationVM({
+  activitySnapshot,
+  agentSessionId,
+  sessionTurns,
+  workspaceRoot
+}: ProjectAgentActivitySessionConversationInput): AgentConversationVM | null {
+  const session =
+    activitySnapshot.sessions.find(
+      (candidate) => candidate.agentSessionId === agentSessionId
+    ) ?? null;
+  if (!session) return null;
+  const messages = activitySnapshot.sessionMessagesById[agentSessionId] ?? [];
+  const activity =
+    buildWorkspaceAgentActivityListViewModel(activitySnapshot, {
+      sessionMessagesById: activitySnapshot.sessionMessagesById
+    }).activities.find(
+      (candidate) => candidate.sessionId === session.agentSessionId
+    ) ?? null;
+  if (!activity) return null;
+  return projectWorkspaceAgentMessagesToConversationVM({
+    activity,
+    messages,
+    session,
+    sessionTurns,
+    workspaceRoot
+  });
+}
+
 export function projectWorkspaceAgentMessagesToConversationVM(
   input: ProjectWorkspaceAgentMessagesInput,
   options: AgentConversationProjectionOptions = {}
 ): AgentConversationVM {
-  const timelineItems = projectWorkspaceAgentMessagesToTimelineItems(
-    input.messages
-  );
+  const { messages, ...detailInput } = input;
+  const timelineItems = projectWorkspaceAgentMessagesToTimelineItems(messages);
   const detail = buildCanonicalWorkspaceAgentDetailView({
-    activity: input.activity,
-    session: input.session,
-    workspaceRoot: input.workspaceRoot,
+    ...detailInput,
+    sessionTurns: detailInput.sessionTurns?.filter(
+      (turn) => turn.agentSessionId === detailInput.session.agentSessionId
+    ),
     timelineItems
   });
   return projectAgentConversationVM(detail, options);
 }
 
+const tuttiPlanIssueDispatchTriggerPrefix = "issue:tutti-mode-plan-";
+
+/**
+ * Per-run delegate cards for tutti-plan Issue dispatch stay out of the
+ * timeline: the embedded plan-issue panel carries that state per task, and a
+ * duplicate card per run reads as unrelated noise. Collaboration records from
+ * any other source keep their cards.
+ */
+function isTuttiPlanIssueDispatchCollaboration(
+  message: AgentActivityMessage
+): boolean {
+  if (message.kind?.trim() !== "collaboration") {
+    return false;
+  }
+  const triggerReason = message.payload?.triggerReason;
+  return (
+    typeof triggerReason === "string" &&
+    triggerReason.startsWith(tuttiPlanIssueDispatchTriggerPrefix)
+  );
+}
+
 export function projectWorkspaceAgentMessagesToTimelineItems(
   messages: readonly AgentActivityMessage[]
 ): WorkspaceAgentActivityTimelineItem[] {
-  const sortedMessages = latestMessageSnapshots(messages).sort(
-    compareMessagesByDisplayOrder
-  );
+  const sortedMessages = latestMessageSnapshots(messages)
+    .filter((message) => !isTuttiPlanIssueDispatchCollaboration(message))
+    .sort(compareMessagesByDisplayOrder);
   const mergedToolPayloadByKey = new Map<string, Record<string, unknown>>();
 
   return sortedMessages.map((message, index) => {
     const kind = normalizeToken(message.kind);
     const role = normalizeToken(message.role);
     const payload = normalizedPayload(message.payload);
+    const goalControlAudit = isGoalControlAudit(message);
     const id = normalizedMessageId(message.version, index);
     const seq = index + 1;
-    const eventId = message.messageId.trim() || `message:${id}`;
+    const eventId = goalControlAudit
+      ? firstNonEmptyString(
+          stringValue(payload.messageId),
+          message.messageId,
+          `message:${id}`
+        )
+      : message.messageId.trim() || `message:${id}`;
     const turnId = message.turnId?.trim() || undefined;
     const occurredAtUnixMs = messageDisplayOrderTime(message);
+
+    if (goalControlAudit) {
+      return messageTimelineItem({
+        message,
+        id,
+        seq,
+        eventId,
+        actorType: "user",
+        itemType: "goal.control",
+        role: "user",
+        content: messageText(message),
+        occurredAtUnixMs
+      });
+    }
 
     if (kind === "tool_call") {
       const callId = firstNonEmptyString(
@@ -94,6 +176,26 @@ export function projectWorkspaceAgentMessagesToTimelineItems(
           ? { createdAtUnixMs: message.startedAtUnixMs }
           : {})
       };
+    }
+
+    if (kind === "collaboration") {
+      // Collaboration runs (model consult/fork/delegate/handoff) are durable
+      // assistant-side messages the daemon updates in place by messageId
+      // ("collab:<runId>"). Keep the full payload so the canonical detail view
+      // can project the typed collaboration card even while resultText is
+      // still empty (running consult).
+      return messageTimelineItem({
+        message,
+        id,
+        seq,
+        eventId,
+        turnId,
+        actorType: "agent",
+        itemType: "collaboration",
+        role: "assistant",
+        content: messagePayloadString(message, "resultText") ?? "",
+        occurredAtUnixMs
+      });
     }
 
     if (kind === "reasoning") {
@@ -174,6 +276,13 @@ export function projectWorkspaceAgentMessagesToTimelineItems(
       occurredAtUnixMs
     });
   });
+}
+
+function isGoalControlAudit(message: AgentActivityMessage): boolean {
+  return (
+    normalizeToken(message.kind) === "session_audit" &&
+    normalizedPayload(message.payload).goalControl === true
+  );
 }
 
 function normalizeLegacyCompactNotice(

@@ -10,10 +10,7 @@ import {
   projectDesktopAgentGUIWorkbenchState,
   type DesktopAgentGUINodeState
 } from "./desktopAgentGUINodeState.ts";
-import {
-  resolveDesktopAgentGUIProviderForAgentTarget,
-  withDesktopAgentGUIProviderComposerDefaults
-} from "./ui/desktopAgentGUIWorkbenchStateHelpers.ts";
+import { resolveDesktopAgentGUIProviderForAgentTarget } from "./ui/desktopAgentGUIWorkbenchStateHelpers.ts";
 
 test("desktop agent gui node state preserves open valid providers", () => {
   assert.equal(
@@ -36,6 +33,9 @@ test("desktop agent gui workbench state only preserves whitelisted data", () => 
     conversationRailCollapsed: true,
     agentTargetId: "daemon-hermes",
     lastActiveAgentSessionId: "session-1",
+    lastActiveAgentSessionIdByAgentTargetId: {
+      "daemon-hermes": "session-1"
+    },
     lastActiveConversationTitle: "A title",
     provider: "hermes"
   });
@@ -44,7 +44,10 @@ test("desktop agent gui workbench state only preserves whitelisted data", () => 
     agentTargetId: "daemon-hermes",
     conversationRailCollapsed: true,
     conversationRailWidthPx: null,
-    lastActiveAgentSessionId: "session-1"
+    lastActiveAgentSessionId: "session-1",
+    lastActiveAgentSessionIdByAgentTargetId: {
+      "daemon-hermes": "session-1"
+    }
   });
 });
 
@@ -57,13 +60,19 @@ test("desktop agent gui workbench projection preserves rail state and permission
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360.4,
       agentTargetId: "daemon-hermes",
-      lastActiveAgentSessionId: "session-1"
+      lastActiveAgentSessionId: "session-1",
+      lastActiveAgentSessionIdByAgentTargetId: {
+        "daemon-hermes": "session-1"
+      }
     }),
     {
       agentTargetId: "daemon-hermes",
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360,
-      lastActiveAgentSessionId: "session-1"
+      lastActiveAgentSessionId: "session-1",
+      lastActiveAgentSessionIdByAgentTargetId: {
+        "daemon-hermes": "session-1"
+      }
     }
   );
 });
@@ -150,31 +159,6 @@ test("desktop agent gui workbench state ignores composer overrides by agent targ
   assert.equal("composerOverridesByAgentTargetId" in workbenchState, false);
 });
 
-test("desktop agent gui composer defaults are agent target keyed", () => {
-  const state = withDesktopAgentGUIProviderComposerDefaults(
-    {
-      ...createDefaultDesktopAgentGUINodeState("codex"),
-      agentTargetId: "local:codex"
-    },
-    "codex",
-    {
-      model: "gpt-5",
-      permissionModeId: "auto",
-      reasoningEffort: "high"
-    }
-  );
-
-  assert.deepEqual(state.composerOverridesByAgentTargetId, {
-    "local:codex": {
-      model: "gpt-5",
-      permissionModeId: "auto",
-      reasoningEffort: "high"
-    }
-  });
-  assert.equal(state.composerOverridesByProvider, null);
-  assert.equal(state.composerOverrides, null);
-});
-
 test("desktop agent gui target state resolves composer defaults from the target provider", () => {
   assert.equal(
     resolveDesktopAgentGUIProviderForAgentTarget(
@@ -205,29 +189,6 @@ test("desktop agent gui target state resolves composer defaults from the target 
     ),
     "codex"
   );
-});
-
-test("desktop agent gui target defaults do not use the fallback dock provider", () => {
-  const state = withDesktopAgentGUIProviderComposerDefaults(
-    {
-      ...createDefaultDesktopAgentGUINodeState("claude-code"),
-      agentTargetId: "local:claude-code"
-    },
-    "claude-code",
-    {
-      model: "default",
-      permissionModeId: "default",
-      reasoningEffort: "high"
-    }
-  );
-
-  assert.deepEqual(state.composerOverridesByAgentTargetId, {
-    "local:claude-code": {
-      model: "default",
-      permissionModeId: "default",
-      reasoningEffort: "high"
-    }
-  });
 });
 
 test("desktop agent gui node state normalizes partial runtime data", () => {
@@ -267,9 +228,17 @@ test("desktop agent gui node state source consumes instance launch state after n
   });
   let notified = 0;
   const unsubscribe =
-    source.externalStateSource.subscribe?.(() => {
-      notified += 1;
-    }) ?? (() => undefined);
+    source.externalStateSource.subscribeNodeState?.(
+      {
+        instanceId: "agent-gui",
+        nodeId: "agent-gui",
+        typeId: "agent-gui",
+        workspaceId: "workspace-1"
+      },
+      () => {
+        notified += 1;
+      }
+    ) ?? (() => undefined);
   t.after(unsubscribe);
 
   source.writeNodeState({

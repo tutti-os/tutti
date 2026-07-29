@@ -5,21 +5,9 @@ import {
   buildGoTestLane,
   buildPackageTestCommand,
   isBuiltinGenerateRequired,
-  isToolTestRelevant,
   resolveGoModuleRoot,
   resolveGoValidationTargets
 } from "./run-check-changed-targets.mjs";
-
-describe("isToolTestRelevant", () => {
-  it("keeps app release package changes covered by tool-owned tests", () => {
-    assert.equal(
-      isToolTestRelevant("packages/workspace/app-release-tools/bin/build.mjs"),
-      true
-    );
-    assert.equal(isToolTestRelevant("tools/scripts/build.test.mjs"), true);
-    assert.equal(isToolTestRelevant("packages/workspace/files/file.go"), false);
-  });
-});
 
 describe("resolveGoModuleRoot", () => {
   it("maps changed files to their Go module root", () => {
@@ -60,6 +48,10 @@ describe("resolveGoModuleRoot", () => {
     assert.equal(
       resolveGoModuleRoot("packages/auth/bridge-go/bridge.go"),
       "packages/auth/bridge-go"
+    );
+    assert.equal(
+      resolveGoModuleRoot("packages/device-link/mobile/probe.go"),
+      "packages/device-link"
     );
     assert.equal(
       resolveGoModuleRoot("packages/events/stream-go/stream.go"),
@@ -300,6 +292,7 @@ describe("builtin onboarding ensure", () => {
 describe("buildGoLintLane", () => {
   it("does not run generate:builtin-apps", () => {
     const lane = buildGoLintLane({
+      golangciLintBinary: "/tmp/go/bin/golangci-lint",
       moduleRoot: "services/tuttid",
       targets: new Set(["./service/workspace/..."]),
       workspaceRoot: "/repo",
@@ -307,7 +300,7 @@ describe("buildGoLintLane", () => {
     });
 
     assert.doesNotMatch(lane.command[2], /generate:builtin-apps/);
-    assert.match(lane.command[2], /golangci-lint run/);
+    assert.match(lane.command[2], /\/tmp\/go\/bin\/golangci-lint run/);
     assert.match(lane.command[2], /--allow-parallel-runners/);
   });
 });

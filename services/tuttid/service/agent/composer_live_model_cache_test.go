@@ -84,8 +84,9 @@ func TestGetComposerOptionsClaudeRunningSessionOverridesStaleCache(t *testing.T)
 		RuntimeContext: map[string]any{
 			"configOptions": []any{
 				map[string]any{
-					"id":           "model",
-					"currentValue": "default",
+					"id":             "model",
+					"currentValue":   "default",
+					"effectiveValue": "claude-opus-4-6",
 					"options": []any{
 						map[string]any{"name": "Default", "value": "default"},
 						map[string]any{"name": "Opus", "value": "opus[1m]"},
@@ -118,6 +119,14 @@ func TestGetComposerOptionsClaudeRunningSessionOverridesStaleCache(t *testing.T)
 	if got := composerConfigOptionModelValues(options.ModelConfig.Options); !slices.Equal(got, wantValues) {
 		t.Fatalf("model options = %v, want newer running-session list %v", got, wantValues)
 	}
+	if options.ModelConfig.CurrentValue != "default" ||
+		options.ModelConfig.EffectiveValue != "claude-opus-4-6" {
+		t.Fatalf(
+			"model config values = (%q, %q), want requested default and effective opus",
+			options.ModelConfig.CurrentValue,
+			options.ModelConfig.EffectiveValue,
+		)
+	}
 	if options.RuntimeContext["modelCatalogSource"] != runtimeLiveModelCatalogSource {
 		t.Fatalf("modelCatalogSource = %#v, want %s", options.RuntimeContext["modelCatalogSource"], runtimeLiveModelCatalogSource)
 	}
@@ -129,6 +138,64 @@ func TestGetComposerOptionsClaudeRunningSessionOverridesStaleCache(t *testing.T)
 	}
 	if got := composerConfigOptionModelValues(cached); !slices.Equal(got, wantValues) {
 		t.Fatalf("cache after refresh = %v, want %v", got, wantValues)
+	}
+}
+
+func TestGetComposerOptionsDoesNotReuseOlderEffectiveModel(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	runtime := newFakeRuntime()
+	modelConfig := func(effectiveValue string) map[string]any {
+		option := map[string]any{
+			"id":           "model",
+			"currentValue": "default",
+			"options": []any{
+				map[string]any{"name": "Default", "value": "default"},
+				map[string]any{"name": "Opus", "value": "opus"},
+				map[string]any{"name": "Sonnet", "value": "sonnet"},
+			},
+		}
+		if effectiveValue != "" {
+			option["effectiveValue"] = effectiveValue
+		}
+		return option
+	}
+	runtime.sessions["ws-1:older"] = ProviderRuntimeSession{
+		ID:              "older",
+		WorkspaceID:     "ws-1",
+		Provider:        "claude-code",
+		Status:          "ready",
+		UpdatedAtUnixMS: 100,
+		RuntimeContext: map[string]any{
+			"configOptions": []any{modelConfig("claude-sonnet-4-6")},
+		},
+	}
+	runtime.sessions["ws-1:newer"] = ProviderRuntimeSession{
+		ID:              "newer",
+		WorkspaceID:     "ws-1",
+		Provider:        "claude-code",
+		Status:          "ready",
+		UpdatedAtUnixMS: 200,
+		RuntimeContext: map[string]any{
+			"configOptions": []any{modelConfig("")},
+		},
+	}
+
+	options, err := newIsolatedAgentService(runtime).GetComposerOptions(
+		context.Background(),
+		ComposerOptionsInput{
+			Provider:    "claude-code",
+			WorkspaceID: "ws-1",
+			Cwd:         "/repo",
+		},
+	)
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if options.ModelConfig.EffectiveValue != "" {
+		t.Fatalf(
+			"effective model = %q, want unknown until the newest session reports it",
+			options.ModelConfig.EffectiveValue,
+		)
 	}
 }
 

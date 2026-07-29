@@ -48,6 +48,7 @@ desktop source registry
   -> ReferenceSourceAggregator
   -> ReferenceSourcePicker controller/state
   -> shared picker UI
+  -> optional source-owned confirm preparation
   -> selected file or ReferenceHandle
   -> composer mention
   -> workspace-reference runtime resolution when required
@@ -58,6 +59,125 @@ shared `ReferenceListBackend` / `createReferenceListSource` protocol. Local
 files wrap `WorkspaceFileReferenceAdapter` directly. Open, reveal, open-with,
 and preview operations remain source-owned and are delegated back to the host.
 
+A source may implement `prepareSelection()` when `resolveSelection()` returns a
+source-owned locator that the final consumer cannot read directly. Confirmation
+is then an asynchronous transaction: the picker keeps its confirm action in a
+loading state, waits for every selected node to prepare, and publishes the
+prepared references only after all preparations succeed. A failure publishes no
+partial selection, leaves the picker open for retry, and surfaces an error. The
+source owns transport, materialization, and the resulting consumer-readable
+locator; the shared picker must not interpret a host path or capability handle.
+
+The picker source heading is the source-root navigation target. When a source
+does not provide explicit sidebar groups, its root folders may appear as
+shortcuts below that heading, but the picker must not synthesize another
+same-named root folder. This keeps root-level files reachable without producing
+duplicated structures such as `Workspace / Workspace`.
+
+OS clipboard and drop entries may enter the same ordinary file/folder mention
+model without going through a picker. AgentGUI asks the synchronous host
+`resolveExternalPromptEntries` port whether each browser `File` is a live
+`WorkspaceFileReference` or needs snapshot preparation. Live references keep
+their host path and kind, do not become prompt assets, and preserve their
+position relative to prepared entries. Hosts that cannot expose a live local
+reference omit that capability or classify the entry for preparation.
+
+Reference sources own whether preview bytes are available and how those bytes
+are read. The host-neutral `@tutti-os/workspace-file-preview` controller owns
+the frontend preview lifecycle after a node is focused: readiness and size
+checks, stale-request fencing, cancellation, decoding, canonical status, and
+media object-URL cleanup. Picker controllers project that language-neutral
+status into source metadata and localized presentation; they must not start a
+second preview request state machine.
+
+### Project Directory Selection
+
+AgentGUI lets each host explicitly own project-directory selection. TSH injects
+a dedicated `projectDirectorySourceAggregator` and reuses
+`ReferenceSourcePicker` instead of owning a second directory dialog. Opening
+“Use existing project” switches that shared picker to the `directory` purpose
+and routes the resolved folder path back through the existing project-selection
+callback. Tutti Desktop explicitly injects its native directory selector at the
+same host boundary.
+
+`WorkspaceUserProjectSelect` keeps project creation and existing-directory
+selection distinct. “Add project” uses the user-project `create()` capability
+and its compact name input. “Use existing project” alone invokes the host's
+explicit project-directory selector. In TSH, directory creation inside the
+shared picker is an optional action for organizing the browsed workspace; it
+does not replace the project-name creation flow.
+
+The directory purpose is a constrained use of the same source architecture:
+
+- the injected registry contains only directory sources that are valid project
+  roots, so host-local file sections do not appear implicitly;
+- sources return and search folders only, and enforce workspace boundaries
+  before pagination;
+- the picker uses single selection, omits file-type and provenance controls,
+  and supplies directory-specific title, search, empty, and confirmation copy;
+- a source that declares `directoryCreatable` implements `createDirectory()`;
+  it owns path-segment validation, parent-boundary checks, persistence, and the
+  canonical node returned after refreshing the parent;
+- a host header mutation may ask the picker to select a newly created or
+  uploaded directory through a `ReferenceLocateTarget`; the source owns
+  translating that durable target into opaque node ids, while the picker owns
+  loading the resolved path and updating its selection;
+- picker/controller code routes creation by `sourceId` and may update selection
+  and loaded child state, but never constructs paths from opaque node ids.
+
+Project-directory selection is an explicit host policy. AgentGUI never falls
+back to the generic host `workspace.selectDirectory` capability. TSH injects
+`projectDirectorySourceAggregator`, so “Use existing project” is routed through
+the shared reference picker. Tutti Desktop explicitly injects its native
+directory selector through `workspace.selectProjectDirectory`. A host that
+injects neither capability does not expose the action. This keeps each host's
+interaction owner visible at composition time instead of coupling project
+selection to an unrelated generic workspace API.
+
+Hosts that construct the AgentGUI i18n runtime must merge the workspace file
+manager resources as well as the AgentGUI and project-selector resources. The
+shared directory creation dialog reads its label, placeholder, cancel, and
+create copy from the `workspaceFileManager` namespace.
+
+### Composer Mention Directory Navigation
+
+The compact AgentGUI `@` palette uses `AgentContextMentionProvider` instead of
+the full reference picker, but it preserves the same ownership boundary. A file
+provider that supports directory browsing exposes both `getItemDirectory()`
+and `queryDirectory()`. The descriptor supplies the provider-owned canonical
+directory path and, when known, its direct-child count; `queryDirectory()`
+lists that directory's direct children without overloading keyword search.
+
+AgentGUI owns only the ephemeral browse stack and turns those provider results
+into enter/back navigation rows. The palette renders the supplied count and
+navigation affordance, but does not infer hierarchy from a path, a trailing
+separator, cached tree depth, or already loaded rows. Search results remain
+ordinary insertable mentions unless the provider explicitly marks them as
+navigable directories.
+
+Directory navigation owns a request lifecycle that is independent from
+keyword-search and root-browse provider queries. Entering another directory,
+going back, changing the query scope, closing the palette, or disposing the
+controller aborts the active directory request and advances its own response
+fence. A directory response applies only while its request id, workspace,
+active file filter, empty query, and browse-stack head still match.
+
+Directory reads do not inherit the short provider-search timeout or its
+partial-result fallback. They remain loading until the provider completes or
+the directory lifecycle explicitly cancels them. A successful authoritative
+empty result is the only state presented as an empty directory; provider
+failure remains an error, and a file provider without `queryDirectory()` fails
+closed instead of falling back to keyword search.
+
+The compact palette browse cache is presentation-only. Every user-opened `@`
+browse paints a matching cached entry synchronously when one exists and always
+starts a provider query in parallel, even while the cached entry is within its
+freshness TTL. The successful query replaces the visible groups and writes the
+same result back to the shared cache. Freshness may suppress a speculative
+startup or focus preload, but it must never suppress a user-opened query.
+Closing or replacing the browse aborts its consumer and advances the controller
+request fence, so an older response cannot overwrite a later open.
+
 ## Search Relevance
 
 The daemon-backed source owns the ranked order for a non-empty local-file
@@ -65,6 +185,16 @@ query. Shared picker controllers may deduplicate that response but must not
 re-sort it by node kind or label. Host-only collections such as open Dock files
 may provide the empty-query browse list and presentation metadata, but must not
 be prepended to ranked query results.
+
+Picker purpose constrains result kinds before pagination: the reference picker
+searches files only, while the project-directory picker searches folders only.
+A file-type filter by itself remains in browse mode, filters files in the
+recursively loaded source tree, and keeps only folders with matching descendant
+files. The traversal is cancellable and the picker remains loading until the
+filtered projection is complete. When a keyword is present, the same category
+ids are passed to the source for pre-pagination filtering. Search rows render a
+source-provided `contextLabel` when available and otherwise omit the subtitle;
+opaque `nodeId` values are never presentation copy.
 
 Local-file queries are field-aware:
 
@@ -84,16 +214,26 @@ ranking implementation.
 ## Source Provenance Filtering
 
 `@tutti-os/workspace-file-reference` owns the host-neutral provenance model and
-controlled filter UI. The model has independent `agent` and `member`
+its reusable filter control. The model has independent `agent` and `member`
 dimensions so collaboration products can reuse the package, but a host decides
 which dimensions and options are enabled. Tutti personal edition injects only
 Agent options; member and group-chat behavior are outside its product surface.
+
+The full `ReferenceSourcePicker` does not accept, render, or apply a provenance
+filter. AgentGUI may use the provenance control in its compact mention/search
+surface, whose query controller owns that filter state. Project-directory
+selection likewise has no provenance entry. This prevents picker navigation
+and ordinary filesystem search from being silently constrained by a hidden
+host value.
 
 The controller owns only ephemeral selection state. The host injects the
 catalog, and concrete providers or `ReferenceSourceService.search()` own the
 actual filtering. An active filter is part of the query and cache identity and
 must be applied before pagination. Picker result grouping remains source-owned;
-the filter option list itself is flat.
+the filter option list itself is flat. The compact AgentGUI palette keeps an
+independent filter selection for each mention tab. A tab that has not been
+filtered starts at All, while returning to a previously filtered tab restores
+only that tab's selection.
 
 AgentGUI exposes that host boundary as the optional complete
 `referenceProvenanceFilterCatalog` capability. Omitting it keeps the public
@@ -101,6 +241,23 @@ surface disabled by default. Tutti's legacy boolean capability remains an
 Agent-only adapter over the current Agent directory and does not synthesize
 Member options; collaboration hosts explicitly inject both their enabled
 dimensions and catalogs.
+
+Session mention providers preserve the canonical initiator user id in the
+mention scope. The compact AgentGUI palette groups Session results by that
+initiator through the injected Member catalog; Agent results continue to group
+by the Agent target owner's `parentMemberId`. The matched Member catalog option
+also supplies the Session row's initiator label and avatar so an external
+mention provider does not need to duplicate member presentation in its mention
+payload. A collaboration host also owns the Session row's Agent display label,
+including an owner-qualified label for another member's shared Agent, and must
+project the same label used by its Agent filter option. The host also projects
+the Agent's provider identity separately as `agentProviderId`; AgentGUI resolves
+the provider icon from that identity and never infers it from an
+owner-qualified display label. AgentGUI also resolves that label's structured
+owner and Agent segments from the matching provenance catalog entries. Session
+rows truncate the initiator and Agent owner independently with a minimum visible
+segment, keep the Agent label fully visible, and reserve visible space for the
+Session title.
 
 Catalog option identity is host-owned and normalized at the shared-package
 boundary. Agent options require a durable `agentTargetId`; product-local target
@@ -139,7 +296,13 @@ cache expires; they do not claim exhaustive history.
 ## Invariants
 
 - Route every operation by `sourceId`; reject unknown sources.
+- Route project-directory selection only through the host's explicitly injected
+  selector; never infer it from the generic workspace API.
 - Never derive hierarchy by splitting an opaque `nodeId`.
+- Never implement directory creation by joining or decoding `nodeId` in shared
+  picker code; the owning source validates and creates the directory.
+- Never derive composer-folder child counts from the currently loaded mention
+  rows; directory providers own that count and the corresponding child query.
 - Keep node ids stable across repeated listings so selection and pagination can
   deduplicate safely.
 - Preserve source relevance order for search results; browsing order and search
@@ -156,6 +319,8 @@ cache expires; they do not claim exhaustive history.
   do not present a failed request as an empty artifact set.
 - Keep source-specific transport and absolute host paths outside the shared UI
   package.
+- Never submit a source-owned staging locator as a consumer-readable reference;
+  sources that require materialization must complete it during confirmation.
 - Use `ReferenceHandle` for app/issue groups that should resolve lazily at agent
   execution time; do not expand an entire artifact bundle into prompt text.
 

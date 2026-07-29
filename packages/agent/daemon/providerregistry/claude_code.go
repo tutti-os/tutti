@@ -1,28 +1,27 @@
 package providerregistry
 
+import canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
+
 const (
-	ClaudeCodeProviderID = "claude-code"
+	ClaudeCodeProviderID = canonical.ClaudeCodeProviderID
 	ClaudeCodeTargetID   = "local:claude-code"
 )
 
 func claudeCodeDescriptor() ProviderDescriptor {
 	return ProviderDescriptor{
-		Identity: IdentityDescriptor{
-			ID:          ClaudeCodeProviderID,
-			DisplayName: "Claude Code",
-			IconKey:     "claude-code",
-			LocaleKey:   "agentHost.agentGui.conversationFilterClaudeCode",
-			Aliases:     []string{"claude", "claude code"},
-		},
+		Identity: canonicalProviderIdentity(ClaudeCodeProviderID),
 		Runtime: RuntimeDescriptor{
-			Kind: RuntimeKindClaudeSDK,
-			Name: "claude-agent-sdk",
+			Kind:              RuntimeKindClaudeSDK,
+			Name:              "claude-agent-sdk",
+			NativeSessionFork: true,
 			Endpoint: RuntimeEndpointDescriptor{
 				BaseURLEnvVars: []string{
 					"ANTHROPIC_BASE_URL",
 					"ANTHROPIC_API_BASE_URL",
 				},
-				ConfigKind: EndpointConfigKindClaudeSettings,
+				ConfigKind:         EndpointConfigKindClaudeSettings,
+				ModelPlanProtocol:  ModelPlanProtocolAnthropic,
+				NativeSubscription: true,
 			},
 		},
 		Status: StatusDescriptor{
@@ -52,6 +51,10 @@ func claudeCodeDescriptor() ProviderDescriptor {
 					"install_unavailable_in_region": {"app-unavailable-in-region", "app unavailable in region", "claude isn't available here", "claude isn&#x27;t available here", "claude isn&apos;t available here"},
 				},
 			},
+			Update: UpdateDescriptor{
+				Capability:        UpdateCapabilityUnsupported,
+				UnsupportedReason: UpdateUnsupportedReasonOfficialScript,
+			},
 			LoginArgs: []string{"auth", "login"},
 			AuthWatch: AuthWatchDescriptor{
 				Sources: []AuthWatchSourceDescriptor{
@@ -77,6 +80,8 @@ func claudeCodeDescriptor() ProviderDescriptor {
 			ReasoningEffortOptions: ReasoningEffortOptionsStatic,
 			DefaultReasoningEffort: "high",
 			Speed:                  true,
+			SpeedValues:            []string{"standard", "fast"},
+			DefaultSpeed:           "standard",
 			Capabilities: []string{
 				"imageInput",
 				"skills",
@@ -86,6 +91,8 @@ func claudeCodeDescriptor() ProviderDescriptor {
 				"planMode",
 				CapabilityInterrupt,
 				CapabilityActiveTurnGuidance,
+				CapabilityModelSwitch,
+				CapabilityModelPlanBinding,
 				"permissionModeChangeDuringTurn",
 			},
 			PermissionConfigurable:  true,

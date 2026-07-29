@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { AgentActivityTurn } from "@tutti-os/agent-activity-core";
 import type { JSX } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -203,7 +203,7 @@ describe("AgentTurnWorkSection", () => {
     ]);
   });
 
-  it("keeps ordinary assistant replies and follow-up guidance visible by default", () => {
+  it("collapses ordinary assistant replies while keeping follow-up guidance visible", () => {
     render(
       <AgentTurnWorkSection
         group={interleavedTurnGroup()}
@@ -223,10 +223,84 @@ describe("AgentTurnWorkSection", () => {
       />
     );
 
-    expect(screen.getByText("Earlier answer")).toBeTruthy();
+    expect(screen.queryByText("Earlier answer")).toBeNull();
     expect(screen.getByText("Follow-up")).toBeTruthy();
     expect(screen.getByText("Final answer")).toBeTruthy();
     expect(screen.queryByText("tools")).toBeNull();
+  });
+
+  it("keeps the response-tail file diff panel visible when turn work is collapsed", () => {
+    const group = interleavedTurnGroup();
+    const summary: AgentTranscriptRowVM = {
+      kind: "turn-summary",
+      id: "file-diff",
+      turnId: "turn-1",
+      files: [],
+      fileCount: 0,
+      modifiedCount: 0,
+      createdCount: 0,
+      occurredAtUnixMs: 15_000
+    };
+    group.rows.push({ row: summary, rowIndex: group.rows.length });
+
+    const { container } = render(
+      <AgentTurnWorkSection
+        group={group}
+        sessionId="session-1"
+        turn={canonicalTurn({
+          phase: "settled",
+          outcome: "completed",
+          settledAtUnixMs: 15_000
+        })}
+        isActiveTurn={false}
+        disclosureStore={disclosureStore}
+        renderRow={(row) => (
+          <div key={row.id} data-test-row-id={row.id}>
+            {row.kind === "message" ? row.messages[0]?.body : row.id}
+          </div>
+        )}
+      />
+    );
+
+    expect(screen.queryByText("tools")).toBeNull();
+    expect(screen.getByText("Final answer")).toBeTruthy();
+    expect(screen.getByText("file-diff")).toBeTruthy();
+    expect(
+      [...container.querySelectorAll("[data-test-row-id]")].map(
+        (element) => element.textContent
+      )
+    ).toEqual(["First request", "Follow-up", "Final answer", "file-diff"]);
+  });
+
+  it("makes the duration text part of the turn disclosure button", () => {
+    const setExpandedOverride = vi.fn();
+    render(
+      <AgentTurnWorkSection
+        group={interleavedTurnGroup()}
+        sessionId="session-1"
+        turn={canonicalTurn({
+          phase: "settled",
+          outcome: "completed",
+          settledAtUnixMs: 15_000
+        })}
+        isActiveTurn={false}
+        disclosureStore={{
+          expandedOverrides: {},
+          setExpandedOverride
+        }}
+        renderRow={(row) => <div key={row.id}>{row.id}</div>}
+      />
+    );
+
+    const duration = screen.getByText("agentHost.agentGui.turnTotalSeconds");
+    const toggle = screen.getByRole("button", {
+      name: "agentHost.agentGui.expandTurnWork"
+    });
+    expect(toggle).toContainElement(duration);
+
+    fireEvent.click(duration);
+
+    expect(setExpandedOverride).toHaveBeenCalledWith("session-1:turn-1", true);
   });
 
   it("keeps dynamic section spacing inside the animated height", () => {
@@ -280,7 +354,9 @@ function AgentTurnWorkSection({
     renderKey?: string
   ) => JSX.Element;
 }): JSX.Element {
-  const model = buildAgentTurnWorkSectionModel(group, turn, isActiveTurn);
+  const model = buildAgentTurnWorkSectionModel(group, turn, isActiveTurn, {
+    collapseIntermediateAssistantReplies: true
+  });
   if (!model) {
     throw new Error("Test expected a timing-enabled turn disclosure model");
   }

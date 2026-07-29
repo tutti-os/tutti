@@ -55,6 +55,7 @@ function input(
     isLoading: false,
     activeAction: null,
     installActionPending: false,
+    updateActionPending: false,
     loginPending: false,
     revealIndex: Number.MAX_SAFE_INTEGER,
     stageLabels: LABELS,
@@ -68,6 +69,35 @@ describe("buildAgentEnvWizardViewModel", () => {
     expect(vm.ready).toBe(true);
     expect(vm.displayStages.every((s) => s.status === "ok")).toBe(true);
     expect(vm.blockingStageId).toBeNull();
+  });
+
+  it("projects a discovered update and keeps the CLI stage busy while it runs", () => {
+    const updateStatus = status({
+      actions: [{ id: "update", kind: "daemon_action" }],
+      update: {
+        capability: "supported",
+        source: "npm",
+        currentVersion: "1.2.3",
+        latestVersion: "1.3.0",
+        updateAvailable: true,
+        unsupportedReason: null,
+        lastCheckedAt: "2026-07-19T00:00:00Z",
+        reasonCode: null
+      }
+    });
+    const available = buildAgentEnvWizardViewModel(
+      input({ status: updateStatus })
+    );
+    expect(available.updateAvailable).toBe(true);
+
+    const pending = buildAgentEnvWizardViewModel(
+      input({ status: updateStatus, updateActionPending: true })
+    );
+    expect(pending.busy).toBe(true);
+    expect(pending.updating).toBe(true);
+    expect(
+      pending.displayStages.find((stage) => stage.id === "install")?.status
+    ).toBe("running");
   });
 
   it("shows the version-floor token when the CLI is below the supported floor", () => {
@@ -93,6 +123,33 @@ describe("buildAgentEnvWizardViewModel", () => {
       kind: "version-floor",
       current: "0.9.0",
       required: "1.0.0"
+    });
+    expect(install?.status).toBe("error");
+  });
+
+  it("shows the version-floor token for a generic provider version gate", () => {
+    const vm = buildAgentEnvWizardViewModel(
+      input({
+        status: status({
+          availability: {
+            status: "not_installed",
+            reasonCode: "cli_version_unsupported"
+          },
+          cli: {
+            installed: true,
+            version: "0.0.2",
+            minVersion: "0.0.4",
+            binaryPath: "/usr/bin/tutti-agent"
+          }
+        }),
+        revealIndex: Number.MAX_SAFE_INTEGER
+      })
+    );
+    const install = vm.displayStages.find((s) => s.id === "install");
+    expect(install?.detail).toEqual({
+      kind: "version-floor",
+      current: "0.0.2",
+      required: "0.0.4"
     });
     expect(install?.status).toBe("error");
   });

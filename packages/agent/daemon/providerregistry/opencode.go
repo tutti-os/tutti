@@ -1,24 +1,24 @@
 package providerregistry
 
+import canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
+
 const (
-	OpenCodeProviderID = "opencode"
+	OpenCodeProviderID = canonical.OpenCodeProviderID
 	OpenCodeTargetID   = "local:opencode"
 )
 
 func openCodeDescriptor() ProviderDescriptor {
 	return ProviderDescriptor{
-		Identity: IdentityDescriptor{
-			ID:          OpenCodeProviderID,
-			DisplayName: "OpenCode",
-			IconKey:     "opencode",
-			LocaleKey:   "agentHost.agentGui.conversationFilterOpenCode",
-			Aliases:     []string{"open-code", "open code", "opencode-ai", "opencode_ai"},
-		},
+		Identity: canonicalProviderIdentity(OpenCodeProviderID),
 		Runtime: RuntimeDescriptor{
 			Kind:                RuntimeKindStandardACP,
 			Name:                "opencode-acp",
 			Command:             []string{"opencode", "acp"},
 			AuthRequiredMessage: "OpenCode ACP requires authentication; run `opencode auth login` on the host, then retry this session.",
+			Endpoint: RuntimeEndpointDescriptor{
+				ModelPlanProtocol:        ModelPlanProtocolOpenAI,
+				ModelPlanModelAddressing: ModelPlanModelAddressingProviderPrefixed,
+			},
 			StandardACP: StandardACPRuntimeDescriptor{
 				AdapterStrategy:           StandardACPAdapterStrategyOpenCode,
 				PlanModeRuntimeID:         "plan",
@@ -35,7 +35,7 @@ func openCodeDescriptor() ProviderDescriptor {
 		Status: StatusDescriptor{
 			Kind:                   StatusKindOpenCodeCLI,
 			AuthOutputParserKind:   AuthOutputParserKindOpenCode,
-			AuthMarkerParserKind:   AuthMarkerParserKindFileExists,
+			AuthMarkerParserKind:   AuthMarkerParserKindOpenCode,
 			AuthCommandRunnerKind:  AuthCommandRunnerKindGeneric,
 			StaticSpecResolverKind: StaticSpecResolverKindGeneric,
 			BinaryNames:            []string{"opencode"},
@@ -52,6 +52,10 @@ func openCodeDescriptor() ProviderDescriptor {
 				DisplayCommand: "curl -fsSL https://opencode.ai/install | bash",
 				ScriptURL:      "https://opencode.ai/install",
 				ScriptShell:    "bash",
+			},
+			Update: UpdateDescriptor{
+				Capability:        UpdateCapabilityUnsupported,
+				UnsupportedReason: UpdateUnsupportedReasonOfficialScript,
 			},
 			LoginArgs: []string{"auth", "login"},
 			AuthWatch: AuthWatchDescriptor{
@@ -87,6 +91,8 @@ func openCodeDescriptor() ProviderDescriptor {
 				CapabilityPlanMode,
 				CapabilityInterrupt,
 				CapabilityPermissionModeChangeDuringTurn,
+				CapabilityModelSwitch,
+				CapabilityModelPlanBinding,
 			},
 			PermissionConfigurable:  true,
 			DefaultPermissionModeID: "ask",

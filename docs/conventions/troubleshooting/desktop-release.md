@@ -77,15 +77,50 @@
   [.github/workflows/desktop-release.yml](../../../.github/workflows/desktop-release.yml)
   [desktop-release-config.test.mjs](../../../tools/scripts/desktop-release-config.test.mjs)
 
+### Desktop release notes exceed GitHub's body limit
+
+- Symptom:
+  All architecture builds and asset uploads succeed, but `Stage Release Draft`
+  fails in `Update release notes with summary` with HTTP 422 and
+  `body is too long (maximum is 125000 characters)`. Promotion and notification
+  jobs are then skipped.
+- Quick checks:
+  Inspect the failed step rather than rebuilding the installers. Run
+  `gh release view <tag> --json body --jq '.body | length'` and check whether
+  the generated `What's Changed` section contains repository-wide history.
+- Root cause:
+  GitHub's implicit release-note comparison selects published releases. Tutti
+  intentionally keeps RC and beta GitHub Releases as drafts, so the implicit
+  base can remain far behind and every prerelease accumulates the same old pull
+  requests until the Release body reaches GitHub's limit.
+- Fix:
+  Resolve the previous same-channel tag explicitly and pass it as
+  `softprops/action-gh-release`'s `previous_tag`. Keep the shared Release body
+  limiter as a fallback: it preserves managed summary and direct-download
+  sections and trims only generated detail entries. Re-running an old Actions
+  run still uses its original workflow revision; merge the workflow fix before
+  starting a new release, or repair the existing draft notes before manually
+  promoting that draft.
+- Validation:
+  Generate notes with the failing tag and its resolved previous tag and confirm
+  the body is bounded to that comparison range. Run
+  `node --test tools/scripts/desktop-release-summary.test.mjs tools/scripts/desktop-release-download-links.test.mjs tools/scripts/desktop-release-config.test.mjs`.
+- References:
+  [.github/workflows/desktop-release.yml](../../../.github/workflows/desktop-release.yml)
+  [resolve-previous-release-tag.mjs](../../../apps/desktop/scripts/resolve-previous-release-tag.mjs)
+  [githubReleaseBody.mjs](../../../apps/desktop/scripts/lib/githubReleaseBody.mjs)
+
 ### Desktop dev GUI exits before opening
 
 - Symptom:
   `make dev-gui` exits during startup before the desktop window is usable. The
   early form reports `pnpm <version> installation did not succeed`; the later
   form reaches `start electron app...` and then `make` exits while desktop logs
-  say `secondary tutti instance detected`. Another early form exits while
-  checking prerequisites because a stale `pnpm` shim reports that its bundled
-  `../node/bin/node` no longer exists.
+  say `secondary tutti instance detected`. A database form reports
+  `no such table: model_plan_first_use_candidates`, followed by
+  `tuttid exited before it published its listener info`. Another early form
+  exits while checking prerequisites because a stale `pnpm` shim reports that
+  its bundled `../node/bin/node` no longer exists.
 - Quick checks:
   Run `DEV_GUI_SKIP_START=1 make dev-gui` to isolate prerequisite setup from
   Electron startup. If full startup exits after `start electron app...`, inspect
@@ -101,6 +136,10 @@
   app makes the dev app quit as a secondary instance. Agent shells launched from
   the packaged app may inherit `TUTTI_ENV=production`, so `make dev-gui` must
   force the development environment instead of preserving that inherited value.
+  The missing-table variant comes from a development database that already
+  recorded `model_plans_v1` before the candidate table was added behind that
+  same marker. SQLite correctly skips the recorded migration, so startup
+  reconciliation reaches a physical schema that the marker does not describe.
 - Fix:
   Probe `pnpm --version` without letting a broken shim abort startup, discover
   Corepack from the active or locally installed Node runtime, prefer that
@@ -109,16 +148,23 @@
   single-instance lock. Ensure the dev-gui script exports
   `TUTTI_ENV=development` before resolving pid files, installing the dev CLI, or
   launching Electron.
+  Apply a new, idempotent `model_plan_first_use_candidates_v1` forward migration
+  after `model_plans_v1`; do not require deleting the development database and
+  do not rewrite or reuse the recorded migration identifier.
 - Validation:
   Run `DEV_GUI_SKIP_START=1 make dev-gui`, then run full `make dev-gui` while
   the packaged app is open and confirm the renderer dev server and development
   `tuttid` start. Also run `pnpm --filter @tutti-os/desktop test`,
   `pnpm --filter @tutti-os/desktop typecheck`, and
   `pnpm check:electron-runtime-boundaries`.
+  Retain a migration test that starts with `model_plans_v1` recorded and the
+  candidate table absent, then verifies a full migration pass restores the table
+  and index exactly once.
 - References:
   [dev-gui.sh](../../../tools/scripts/dev-gui.sh)
   [bootstrap.ts](../../../apps/desktop/src/main/bootstrap.ts)
   [defaults.ts](../../../apps/desktop/src/main/defaults.ts)
+  [migrations_model_plans.go](../../../services/tuttid/data/workspace/migrations_model_plans.go)
 
 ### Running a development tuttid breaks the production Agent session
 
@@ -297,6 +343,38 @@ information is not available yet`, but `ps` or `lsof` still shows an older
 - References:
   [tuttidManager.ts](../../../apps/desktop/src/main/daemon/tuttidManager.ts)
   [main.go](../../../services/tuttid/main.go)
+
+### Switching agent permission mode flashes Checking for updates
+
+- Symptom:
+  In a packaged build, changing composer permission mode (or other remembered
+  composer defaults) briefly shows the top-right **Checking for updates** /
+  **正在检查更新** badge. Rapid switches may spam updater checks in
+  `tutti-desktop.log` (`Checking for update` next to
+  `agent.gui.composer_defaults.remembered`). Local unpackaged dev usually hides
+  this because update checks are unsupported unless `TUTTI_APP_UPDATE_DEV` is set.
+- Quick checks:
+  Confirm packaged/`supportsUpdates`. Correlate
+  `agent.gui.composer_defaults.remembered` with
+  `checking for application updates` / `application updater static feed
+configured`. Verify `updateChannel` / `updatePolicy` did not change.
+- Root cause:
+  Remembering composer defaults writes desktop preferences and emits
+  `preferences.desktop.updated`. The main-process host preferences stream used
+  to call `updateService.configure()` on every preferences event; `configure()`
+  always runs a background update check and surfaces the checking status.
+- Fix:
+  Only call `updateService.configure()` when `updateChannel` or `updatePolicy`
+  actually changed. Other preference syncs (composer defaults, locale, rail,
+  theme) must not reconfigure the updater.
+- Validation:
+  In a packaged build, switch permission mode and confirm the update badge does
+  not appear and desktop logs do not emit a new update check. Cover
+  composer-default vs channel/policy changes in
+  `desktopHostPreferencesEventStream` tests.
+- References:
+  [desktopHostPreferencesEventStream.ts](../../../apps/desktop/src/main/desktopHostPreferencesEventStream.ts)
+  [appUpdateService.ts](../../../apps/desktop/src/main/update/appUpdateService.ts)
 
 ### App update diagnostics flood with identical download progress states
 

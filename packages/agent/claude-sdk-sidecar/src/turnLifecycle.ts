@@ -2,7 +2,15 @@ import type { ClaudeSDKSidecarEventEmitter } from "./protocol.ts";
 
 export type RuntimeTurn = {
   readonly turnId: string;
+  /**
+   * Correlates the outbound SDK prompt with mocks and SDK versions that
+   * preserve caller UUIDs. Claude Code may rewrite it before persistence, so
+   * it is not provider identity.
+   */
   readonly promptUuid: string;
+  awaitingProviderTurnIdentity?: boolean;
+  providerTurnId?: string;
+  providerTurnStarted?: boolean;
   readonly synthetic?: boolean;
   awaitingContinuation?: boolean;
   readonly origin?: string;
@@ -24,6 +32,7 @@ export class TurnLifecycle {
   private readonly continuationStartTimeoutMs: number;
   private active: RuntimeTurn | undefined;
   private activeIdValue = "";
+  private lastTurnIdValue = "";
   private pendingOrphanCount = 0;
   private cancelledValue = false;
   private completedTurnCount = 0;
@@ -48,6 +57,15 @@ export class TurnLifecycle {
 
   get activeId(): string {
     return this.activeIdValue;
+  }
+
+  /**
+   * The most recent turn id, kept after the turn settles. Lets late background
+   * task events (which often arrive after the provider turn ended) attribute
+   * to the turn that launched them instead of being dropped.
+   */
+  get lastTurnId(): string {
+    return this.activeIdValue || this.lastTurnIdValue;
   }
 
   get activeTurn(): RuntimeTurn | undefined {
@@ -87,26 +105,41 @@ export class TurnLifecycle {
     this.turns.push(turn);
   }
 
-  activateForPromptUuid(promptUuid: string): void {
-    if (!promptUuid) {
-      return;
-    }
-    const matched = this.turns.find(
-      (turn) => !turn.settled && turn.promptUuid === promptUuid
+  expectProviderTurnIdentity(turnId: string): void {
+    const turn = this.turns.find(
+      (candidate) => !candidate.settled && candidate.turnId === turnId.trim()
     );
-    if (matched) {
-      if (!matched.synthetic) {
-        this.rejectingTimedOutContinuation = false;
-      }
-      this.activate(matched);
+    if (turn && !turn.synthetic && !turn.providerTurnId?.trim()) {
+      turn.awaitingProviderTurnIdentity = true;
     }
   }
 
   activateForUserMessage(promptUuid: string): void {
-    this.activateForPromptUuid(promptUuid);
-    if (!this.active) {
+    const normalizedPromptUuid = promptUuid.trim();
+    if (!normalizedPromptUuid) {
       this.ensureActive("user");
+      return;
     }
+    const matched = this.turns.find(
+      (turn) => !turn.settled && turn.promptUuid === normalizedPromptUuid
+    );
+    const candidate =
+      matched ??
+      this.turns.find(
+        (turn) =>
+          !turn.settled &&
+          !turn.synthetic &&
+          turn.awaitingProviderTurnIdentity === true
+      );
+    if (candidate) {
+      if (!candidate.synthetic) {
+        this.rejectingTimedOutContinuation = false;
+      }
+      this.bindProviderTurnId(candidate, normalizedPromptUuid);
+      this.activate(candidate);
+      return;
+    }
+    this.ensureActive("user");
   }
 
   ensureActive(messageType: string): RuntimeTurn | undefined {
@@ -155,6 +188,13 @@ export class TurnLifecycle {
       if (this.active !== turn || turn.settled || !turn.awaitingContinuation) {
         return;
       }
+      this.emit({
+        type: "continuation_delayed",
+        payload: {
+          turnId: turn.turnId,
+          waitedMs: this.continuationStartTimeoutMs
+        }
+      });
       turn.awaitingContinuation = false;
       this.rejectingTimedOutContinuation = true;
       this.settleActive("turn_completed", {
@@ -196,7 +236,16 @@ export class TurnLifecycle {
     }
     turn.settled = true;
     this.completedTurnCount += 1;
-    this.emit({ type, payload: { ...payload, turnId: turn.turnId } });
+    this.emit({
+      type,
+      payload: {
+        ...payload,
+        turnId: turn.turnId,
+        ...(this.providerTurnId(turn)
+          ? { providerTurnId: this.providerTurnId(turn) }
+          : {})
+      }
+    });
     this.clearContinuationStartTimer();
     this.active = undefined;
     this.activeIdValue = "";
@@ -280,6 +329,7 @@ export class TurnLifecycle {
     }
     this.active = turn;
     this.activeIdValue = turn.turnId;
+    this.lastTurnIdValue = turn.turnId;
     this.cancelledValue = false;
     this.pendingOrphanCount = 0;
     this.onActivate();
@@ -288,6 +338,9 @@ export class TurnLifecycle {
         type: "goal_command_started",
         payload: {
           turnId: turn.turnId,
+          ...(this.providerTurnId(turn)
+            ? { providerTurnId: this.providerTurnId(turn) }
+            : {}),
           operationId: turn.goalOperationId,
           revision: turn.goalRevision,
           repairEpoch: turn.goalRepairEpoch ?? 0,
@@ -341,7 +394,41 @@ export class TurnLifecycle {
       return;
     }
     turn.settled = true;
-    this.emit({ type, payload: { ...payload, turnId: turn.turnId } });
+    this.emit({
+      type,
+      payload: {
+        ...payload,
+        turnId: turn.turnId,
+        ...(this.providerTurnId(turn)
+          ? { providerTurnId: this.providerTurnId(turn) }
+          : {})
+      }
+    });
+  }
+
+  private bindProviderTurnId(turn: RuntimeTurn, providerTurnId: string): void {
+    if (
+      turn.synthetic ||
+      !providerTurnId ||
+      turn.providerTurnId?.trim() ||
+      turn.providerTurnStarted
+    ) {
+      return;
+    }
+    turn.providerTurnId = providerTurnId;
+    turn.awaitingProviderTurnIdentity = false;
+    turn.providerTurnStarted = true;
+    this.emit({
+      type: "provider_turn_started",
+      payload: {
+        turnId: turn.turnId,
+        providerTurnId
+      }
+    });
+  }
+
+  private providerTurnId(turn: RuntimeTurn): string {
+    return turn.providerTurnId?.trim() || turn.promptUuid.trim();
   }
 
   private compactQueue(): void {

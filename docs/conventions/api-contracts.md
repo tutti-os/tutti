@@ -103,6 +103,22 @@ while reading durable state, but API output and new writes must never emit it.
 Add a new union member before adding a new launch mechanism; do not overload a
 provider string with launch or installation state.
 
+## Agent Provider CLI Update Status
+
+Provider status is local by default. `includeUpdates` is the explicit opt-in for
+cached remote update discovery. `refresh` bypasses only local readiness;
+`refreshUpdates` bypasses only update metadata and has no effect unless
+`includeUpdates` is also true. Keep `includeNetwork` independent from both.
+
+Every provider status carries a provider-neutral `update` object. Nullable
+`updateAvailable` distinguishes unchecked or non-comparable state from a known
+up-to-date result. Remote discovery errors belong in update `reasonCode` and
+must not turn a valid local readiness snapshot into an HTTP failure.
+
+`update` is an explicit action id, not an alias for `install`. The daemon may
+offer it only when both the provider descriptor and the resolved installation
+prove a supported managed source. See [Agent Provider CLI Updates](../architecture/agent-provider-cli-updates.md).
+
 ## Error Contract
 
 Daemon API failures should use the shared protocol-error shape in
@@ -176,6 +192,28 @@ Codex app-server adapter must pass the active preset instructions in
 `turn/start.collaborationMode.settings.developer_instructions` so the active
 mode matches Codex App behavior. Plan Mode and explicit planning-only flows
 remain higher priority than conversation detail mode prompt guidance.
+
+## Deleted Agent Conversation Retention
+
+`deletedAgentConversationRetentionDays` is a device-global desktop preference
+and must stay aligned across the OpenAPI `DesktopPreferences` schema and the
+desktop preferences event schema. It is the closed integer set `15 | 30`; the
+daemon normalizes missing durable values to 30 and rejects other transport
+values. The renderer must publish the complete preference object through the
+existing authoritative preference event flow rather than storing this setting
+locally.
+
+`POST /v1/agent-maintenance/deleted-conversations/purge` is the explicit manual
+command. It accepts no path or workspace input and returns only aggregate row,
+message, and payload-byte counts. The command performs no filesystem deletion.
+The API reports an idle conflict as service unavailable and a maintenance
+failure as a workspace operation failure. The high-risk typed confirmation is
+a desktop interaction, not an HTTP request field; unattended automatic
+maintenance is daemon-owned and is not exposed as a second client scheduler.
+After a successful manual sweep, the daemon may make a strictly bounded
+best-effort compaction attempt for a small database with substantial free
+pages; this optional post-step is not run by automatic maintenance and is not
+part of the aggregate response contract.
 
 ## Desktop Lab Preferences
 

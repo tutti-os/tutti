@@ -11,6 +11,12 @@ import { createServer as createNetServer } from "node:net";
 import { hostname } from "node:os";
 import { dirname } from "node:path";
 import {
+  buildBridgeResultUrl,
+  callbackErrorToError,
+  callbackErrorToSafeResultCode,
+  isTuttiAuthUserCancelledError
+} from "./node-login-result";
+import {
   type AccountEnvelope,
   AUTH_SERVER_BASE_PORT,
   AUTH_SERVER_HOST,
@@ -29,6 +35,8 @@ import {
   trimString
 } from "./shared";
 
+const BRIDGE_SERVER_FORCE_CLOSE_TIMEOUT_MS = 1_000;
+
 export interface TuttiNodeAuthClientOptions {
   authJsonPath: string;
   appCallbackUrl: string;
@@ -42,6 +50,7 @@ export interface TuttiNodeAuthClientOptions {
   hostname?: string;
   loginIdleTimeoutMs?: number;
   loginMaxTimeoutMs?: number;
+  accountHeaders?: Readonly<Record<string, string>>;
 }
 
 export interface TuttiNodeAuthClient {
@@ -69,6 +78,7 @@ type BridgeState = {
 };
 
 type PendingLogin = {
+  accountHeaders: Readonly<Record<string, string>>;
   accountBaseUrl: string;
   appId: string;
   appCallbackUrl: string;
@@ -117,6 +127,7 @@ export function createTuttiNodeAuthClient(
     idleTimeoutMs,
     positiveMs(options.loginMaxTimeoutMs, DEFAULT_LOGIN_MAX_TIMEOUT_MS)
   );
+  const accountHeaders = { ...options.accountHeaders };
 
   async function readSession(): Promise<TuttiAuthSession | null> {
     return await readAuthJson(authJsonPath);
@@ -131,7 +142,11 @@ export function createTuttiNodeAuthClient(
     if (!session) {
       return null;
     }
-    const user = await fetchUserInfo(accountBaseUrl, session.cookie);
+    const user = await fetchUserInfo(
+      accountBaseUrl,
+      session.cookie,
+      accountHeaders
+    );
     if (!user) {
       return null;
     }
@@ -161,6 +176,7 @@ export function createTuttiNodeAuthClient(
         hostname: options.hostname?.trim() || hostname()
       });
       const pending: PendingLogin = {
+        accountHeaders,
         accountBaseUrl,
         appId,
         appCallbackUrl,
@@ -196,7 +212,12 @@ export function createTuttiNodeAuthClient(
     logout: async (): Promise<void> => {
       const session = await readSession();
       if (session) {
-        await logoutSession(accountBaseUrl, appId, session.cookie);
+        await logoutSession(
+          accountBaseUrl,
+          appId,
+          session.cookie,
+          accountHeaders
+        );
       }
       await clearSession();
     },
@@ -391,11 +412,15 @@ async function createLoginBridgeServer(
         return;
       }
       if (callbackError) {
-        const error = new Error(callbackError);
+        const error = callbackErrorToError(callbackError);
         complete(() => rejectCompletion(error));
         sendRedirect(
           res,
-          buildBridgeResultUrl(input, "error", "providerError")
+          buildBridgeResultUrl(
+            input,
+            "error",
+            callbackErrorToSafeResultCode(callbackError)
+          )
         );
         return;
       }
@@ -452,10 +477,15 @@ async function createLoginBridgeServer(
         return;
       }
       if (callbackError) {
-        const error = new Error(callbackError);
+        const error = callbackErrorToError(callbackError);
         sendJson(res, 400, {
           ok: false,
-          error: { code: "PROVIDER_CALLBACK_ERROR", message: error.message }
+          error: {
+            code: isTuttiAuthUserCancelledError(error)
+              ? "USER_CANCELLED"
+              : "PROVIDER_CALLBACK_ERROR",
+            message: error.message
+          }
         });
         complete(() => rejectCompletion(error));
         return;
@@ -496,7 +526,8 @@ async function completePendingLogin(
   const sessionId = await redeemDesktopTransferCode(input, transferCode);
   const user = await fetchUserInfo(
     input.accountBaseUrl,
-    buildSessionCookie(sessionId)
+    buildSessionCookie(sessionId),
+    input.accountHeaders
   );
   if (!user) {
     throw new Error("Failed to load user info after login");
@@ -528,17 +559,14 @@ async function waitForCompletion(
 
 async function fetchUserInfo(
   accountBaseUrl: string,
-  cookie: string
+  cookie: string,
+  accountHeaders: Readonly<Record<string, string>>
 ): Promise<TuttiUserInfo | null> {
   const response = await fetch(
     buildAccountUrl(accountBaseUrl, "/user/v1/user_info"),
     {
       method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        Cookie: cookie
-      },
+      headers: buildAccountHeaders(accountHeaders, cookie),
       body: JSON.stringify({})
     }
   );
@@ -565,10 +593,7 @@ async function redeemDesktopTransferCode(
     ),
     {
       method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json"
-      },
+      headers: buildAccountHeaders(input.accountHeaders),
       body: JSON.stringify({
         transfer_code: transferCode,
         attempt_id: input.attemptId,
@@ -594,18 +619,15 @@ async function redeemDesktopTransferCode(
 async function logoutSession(
   accountBaseUrl: string,
   appId: string,
-  cookie: string
+  cookie: string,
+  accountHeaders: Readonly<Record<string, string>>
 ): Promise<void> {
   const response = await fetch(
     buildAccountUrl(accountBaseUrl, "/auth/v1/logout-web-session"),
     {
       method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        Cookie: cookie
-      },
-      body: JSON.stringify({ appId })
+      headers: buildAccountHeaders(accountHeaders, cookie),
+      body: JSON.stringify({ app_id: appId })
     }
   );
   const payload = (await response.json().catch(() => null)) as AccountEnvelope<
@@ -614,6 +636,21 @@ async function logoutSession(
   if (!response.ok || (payload?.code ?? 0) !== 0) {
     throw readEnvelopeError(response, payload);
   }
+}
+
+function buildAccountHeaders(
+  accountHeaders: Readonly<Record<string, string>>,
+  cookie?: string
+): Headers {
+  const headers = new Headers(accountHeaders);
+  headers.set("Accept", "application/json");
+  headers.set("Content-Type", "application/json");
+  if (cookie) {
+    headers.set("Cookie", cookie);
+  } else {
+    headers.delete("Cookie");
+  }
+  return headers;
 }
 
 async function findAvailablePort(): Promise<number> {
@@ -674,7 +711,8 @@ function sendCors(res: ServerResponse, status: number): void {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Private-Network": "true"
+    "Access-Control-Allow-Private-Network": "true",
+    Connection: "close"
   });
   res.end();
 }
@@ -698,73 +736,31 @@ function sendJson(res: ServerResponse, status: number, payload: unknown): void {
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Allow-Private-Network": "true",
-    "Content-Type": "application/json; charset=utf-8"
+    "Content-Type": "application/json; charset=utf-8",
+    Connection: "close"
   });
   res.end(JSON.stringify(payload));
 }
 
 function sendRedirect(res: ServerResponse, location: string): void {
-  res.writeHead(302, { Location: location });
+  res.writeHead(302, { Location: location, Connection: "close" });
   res.end();
 }
 
-function buildBridgeResultUrl(
-  input: PendingLogin,
-  status: string,
-  safeErrorCode?: string
-): string {
-  const url = new URL("/auth/login/callback", input.authOrigin);
-  url.searchParams.set("desktopBridgeStatus", status);
-  if (safeErrorCode) {
-    url.searchParams.set("desktopBridgeError", safeErrorCode);
-  }
-  const openAppUrl = buildSafeOpenAppUrl(
-    input.appCallbackUrl,
-    status,
-    safeErrorCode
-  );
-  if (openAppUrl) {
-    url.searchParams.set("openAppUrl", openAppUrl);
-  }
-  return url.toString();
-}
-
-function buildSafeOpenAppUrl(
-  rawUrl: string,
-  status: string,
-  safeErrorCode?: string
-): string | null {
-  try {
-    const url = new URL(rawUrl.trim());
-    if (!isAllowedAppCallbackProtocol(url.protocol)) {
-      return null;
-    }
-    url.search = "";
-    url.hash = "";
-    url.searchParams.set("desktopBridgeStatus", status);
-    if (safeErrorCode) {
-      url.searchParams.set("desktopBridgeError", safeErrorCode);
-    }
-    return url.toString();
-  } catch {
-    return null;
-  }
-}
-
-function isAllowedAppCallbackProtocol(protocol: string): boolean {
-  const legacyProtocol = `${DEFAULT_APP_ID}:`;
-  const legacyDevProtocol = `${DEFAULT_APP_ID}-dev:`;
-
-  return (
-    protocol === "tutti:" ||
-    protocol === "tutti-dev:" ||
-    protocol === legacyProtocol ||
-    protocol === legacyDevProtocol
-  );
-}
-
 function closeServer(server: Server): Promise<void> {
-  return new Promise((resolve) => server.close(() => resolve()));
+  return new Promise((resolve) => {
+    const forceCloseTimer = setTimeout(() => {
+      server.closeAllConnections();
+      resolve();
+    }, BRIDGE_SERVER_FORCE_CLOSE_TIMEOUT_MS);
+    forceCloseTimer.unref();
+
+    server.close(() => {
+      clearTimeout(forceCloseTimer);
+      resolve();
+    });
+    server.closeIdleConnections();
+  });
 }
 
 function openUrlWithDefaultBrowser(url: string): Promise<void> {
@@ -788,4 +784,9 @@ function openUrlWithDefaultBrowser(url: string): Promise<void> {
   });
 }
 
+export {
+  isTuttiAuthUserCancelledError,
+  TuttiAuthError
+} from "./node-login-result";
+export type { TuttiAuthErrorCode } from "./node-login-result";
 export type { TuttiAuthSession, TuttiUserInfo } from "./shared";

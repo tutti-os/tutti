@@ -56,22 +56,9 @@ func (p Provider) runComposerOptions(ctx context.Context, invoke framework.Invok
 		return nil, err
 	}
 	canonicalProvider := target.Provider
-	defaults := p.composerDefaultsForAgent(ctx, target.ID)
 	locale := input.Locale
 	if locale == "" {
 		locale = p.composerDefaultLocale(ctx)
-	}
-	model := input.Model
-	if model == "" {
-		model = defaults.Model
-	}
-	permissionModeID := input.PermissionMode
-	if permissionModeID == "" {
-		permissionModeID = defaults.PermissionModeID
-	}
-	reasoningEffort := input.ReasoningEffort
-	if reasoningEffort == "" {
-		reasoningEffort = defaults.ReasoningEffort
 	}
 	// The app-facing composer facade does not return CapabilityCatalog. Keep
 	// discovery off here so a catalog scan is never paid for and discarded.
@@ -84,9 +71,9 @@ func (p Provider) runComposerOptions(ctx context.Context, invoke framework.Invok
 		WorkspaceID:              invoke.WorkspaceID,
 		IncludeCapabilityCatalog: &includeCapabilityCatalog,
 		Settings: agentservice.ComposerSettings{
-			Model:            model,
-			PermissionModeID: permissionModeID,
-			ReasoningEffort:  reasoningEffort,
+			Model:            input.Model,
+			PermissionModeID: input.PermissionMode,
+			ReasoningEffort:  input.ReasoningEffort,
 		},
 	})
 	if err != nil {
@@ -104,24 +91,6 @@ func (p Provider) composerDefaultLocale(ctx context.Context) string {
 		return ""
 	}
 	return preferences.Locale
-}
-
-func (p Provider) composerDefaultsForAgent(ctx context.Context, agentID string) agentservice.ComposerSettings {
-	if p.preferences == nil {
-		return agentservice.ComposerSettings{}
-	}
-	preferences, err := p.preferences.Get(ctx)
-	if err != nil {
-		return agentservice.ComposerSettings{}
-	}
-	defaults := preferences.AgentComposerDefaultsByAgentTarget[agentID]
-	return agentservice.ComposerSettings{
-		Model:                  defaults.Model,
-		PermissionModeID:       defaults.PermissionModeID,
-		ReasoningEffort:        defaults.ReasoningEffort,
-		Speed:                  defaults.Speed,
-		ConversationDetailMode: preferences.AgentConversationDetailMode,
-	}
 }
 
 func composerOptionsValue(result composerOptionsResult) map[string]any {

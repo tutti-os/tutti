@@ -16,14 +16,12 @@ import type {
   DesktopComputerUseStatus
 } from "@shared/contracts/ipc";
 import {
-  AddLinedIcon,
+  ArrowLeftIcon,
+  ArrowRightIcon,
   AskLinedIcon,
   Button,
   CheckIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
   CloseIcon,
-  CloseEyesIcon,
   DeleteIcon,
   Dialog,
   DialogContent,
@@ -31,13 +29,12 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  EyeIcon,
   GitHubBrandIcon,
   ImportLinedIcon,
   Input,
   LoadingIcon,
-  OpenLinkLinedIcon,
   RadioIndicator,
+  SectionTabs,
   Select,
   SelectContent,
   SelectItem,
@@ -51,7 +48,6 @@ import {
   UploadIcon,
   WebIcon
 } from "@tutti-os/ui-system";
-import { useAnalyticsDebugPreferenceService } from "@renderer/features/analytics-debug";
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences/ui/useDesktopPreferencesService";
 import { useTranslation } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
@@ -59,17 +55,8 @@ import {
   setAgentDiagnosticsConsent,
   useAgentDiagnosticsConsent
 } from "@renderer/lib/agentDiagnosticsConsent";
-import { formatWorkspaceSettingsBytes } from "../services/workspaceSettingsFormat";
 import type { WorkspaceSettingsDeveloperLogsSnapshotState } from "../services/workspaceSettingsTypes";
-import type {
-  WorkspaceManagedModel,
-  WorkspaceManagedModelProviderDraft,
-  WorkspaceManagedModelProviderFeedback,
-  WorkspaceManagedModelProviderFeedbackKind,
-  WorkspaceManagedModelProviderID,
-  WorkspaceSettingsGeneralFocusAnchor,
-  WorkspaceSettingsManagedModelsSnapshotState
-} from "../services/workspaceSettingsTypes";
+import type { WorkspaceSettingsGeneralFocusAnchor } from "../services/workspaceSettingsTypes";
 import {
   desktopLocales,
   type DesktopI18nKey,
@@ -78,40 +65,40 @@ import {
 import {
   type DesktopDefaultAgentProvider,
   desktopAgentConversationDetailModes,
-  desktopAppCatalogChannels,
+  deletedAgentConversationRetentionDaysOptions,
   desktopBrowserUseConnectionModes,
   desktopDockPlacements,
-  desktopFileDefaultOpeners,
   desktopMinimizeAnimations,
   desktopSleepPreventionModes,
   desktopWorkspaceUiModes,
-  desktopUpdateChannels,
   desktopWorkbenchWindowSnappingShortcutPresets,
   formatDesktopShortcutBinding,
-  normalizeDesktopFileExtension,
-  type DesktopAppCatalogChannel,
   type DesktopAgentConversationDetailMode,
   type DesktopBrowserUseConnectionMode,
   type DesktopDockPlacement,
+  type DeletedAgentConversationRetentionDays,
   type DesktopFeatureFlags,
   type DesktopWorkspaceUiMode,
-  type DesktopFileDefaultOpener,
-  type DesktopFileDefaultOpenersByExtension,
   type DesktopMinimizeAnimation,
   type DesktopSleepPreventionMode,
-  type DesktopUpdateChannel,
   type DesktopWorkbenchShortcuts,
   type DesktopWorkbenchWindowSnapping,
   type DesktopWorkbenchWindowSnappingShortcutPreset
 } from "../../../../../shared/preferences/index.ts";
 import {
-  AGENT_REFERENCE_PROVENANCE_FILTER_FLAG,
+  EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG,
   isFeatureEnabled,
   LAB_ENABLED_FLAG,
   LAB_WORKBENCH_SHORTCUTS_FLAG,
+  LAB_AUTOMATION_RULES_FLAG,
+  MOBILE_REMOTE_ACCESS_SETTINGS_FLAG,
   resolveDesktopWorkspaceUiMode
 } from "../../../../../shared/featureFlags/catalog.ts";
 import { resolveWorkspaceAgentGuiLabel } from "../services/workspaceAgentProviderCatalog";
+import { IAgentEnvService } from "../../workspace-agent/services/agentEnvService.interface.ts";
+import { IAgentsService } from "../../workspace-agent/services/agentsService.interface.ts";
+import { IAgentProviderStatusService } from "../../workspace-agent/services/agentProviderStatusService.interface.ts";
+import { WorkspaceAgentsSettingsTab } from "./WorkspaceAgentsSettingsTab.tsx";
 import {
   desktopThemeSources,
   type DesktopThemeAppearance,
@@ -119,7 +106,11 @@ import {
 } from "../../../../../shared/theme/index.ts";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
-import { useAccountService } from "./useAccountService";
+import { WorkspaceDeveloperSettingsSection } from "./WorkspaceDeveloperSettingsSection";
+import { WorkspaceLabFeatureGateRows } from "./WorkspaceLabFeatureGateRows";
+import { WorkspaceAgentsSection } from "./WorkspaceAgentsSection";
+import { WorkspaceAutomationRulesSection } from "./WorkspaceAutomationRulesSection";
+import { SettingsRows } from "./WorkspaceSettingsRows";
 import {
   normalizeWorkspaceSettingsDefaultAgentProvider,
   workspaceSettingsDefaultAgentProviders
@@ -138,14 +129,14 @@ import {
   workspaceWallpaperDisplayModes,
   workspaceWallpaperOptions
 } from "../services/workspaceWallpaper";
+import { WorkspaceModelPlansSection } from "./WorkspaceModelPlansSection";
+import { WorkspaceConnectionSettingsSection } from "./WorkspaceConnectionSettingsSection";
+import {
+  workspaceSettingsInputClass,
+  workspaceSettingsSelectContentClass,
+  workspaceSettingsSelectTriggerClass
+} from "./workspaceSettingsFieldStyles";
 
-const workspaceSettingsSelectTriggerClass =
-  "w-full h-8 min-w-0 overflow-hidden rounded-[6px] border-0 bg-[var(--transparency-block)] px-3 text-left text-[13px] font-normal text-[var(--text-primary)] !shadow-none !outline-none !ring-0 transition-colors duration-200 hover:bg-[var(--transparency-hover)] focus-visible:border-0 focus-visible:!ring-0 [&>svg]:text-[var(--text-tertiary)] *:data-[slot=select-value]:!block *:data-[slot=select-value]:min-w-0 *:data-[slot=select-value]:flex-1 *:data-[slot=select-value]:overflow-hidden *:data-[slot=select-value]:text-left *:data-[slot=select-value]:text-ellipsis *:data-[slot=select-value]:whitespace-nowrap";
-const workspaceSettingsSelectContentClass =
-  "w-[var(--radix-select-trigger-width)] rounded-[8px] border border-[var(--border-1)] bg-[var(--background-fronted)] px-1 text-[var(--text-primary)] shadow-[0_16px_40px_var(--shadow-elevated)] [--tutti-select-content-min-width:100%] !outline-none !ring-0";
-const workspaceSettingsInputClass =
-  "h-8 w-full rounded-[6px] border-0 bg-[var(--transparency-block)] px-3 text-[13px] text-[var(--text-primary)] outline-none transition-colors duration-150 placeholder:text-[var(--text-tertiary)] hover:bg-[var(--transparency-hover)] focus-visible:border-0";
-const workspaceManagedModelInputClass = workspaceSettingsInputClass;
 const developerPanelUnlockTaps = 7;
 const computerUseOperationSettleMs = 280;
 const computerUseAutoCheckIntervalMs = 1_500;
@@ -183,10 +174,6 @@ export function WorkspaceSettingsPanel({
 }) {
   const { t } = useTranslation();
   const notifications = useService(INotificationService);
-  const {
-    service: analyticsDebugPreferenceService,
-    state: analyticsDebugPreferenceState
-  } = useAnalyticsDebugPreferenceService();
   const { service: desktopPreferencesService, state: desktopPreferencesState } =
     useDesktopPreferencesService();
   const { service: settingsService, state: settingsState } =
@@ -198,6 +185,21 @@ export function WorkspaceSettingsPanel({
   const labSectionVisible =
     settingsState.developerPanelVisible &&
     isFeatureEnabled(pendingFeatureFlags, LAB_ENABLED_FLAG);
+  const earlyAccessIntegrationsEnabled = isFeatureEnabled(
+    pendingFeatureFlags,
+    EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG
+  );
+  const agentsService = useService(IAgentsService);
+  const agentProviderStatusService = useService(IAgentProviderStatusService);
+  const agentEnvService = useService(IAgentEnvService);
+  const automationRulesEnabled = isFeatureEnabled(
+    pendingFeatureFlags,
+    LAB_AUTOMATION_RULES_FLAG
+  );
+  const mobileRemoteAccessSettingsEnabled = isFeatureEnabled(
+    pendingFeatureFlags,
+    MOBILE_REMOTE_ACCESS_SETTINGS_FLAG
+  );
 
   useEffect(() => {
     if (settingsState.open) {
@@ -210,6 +212,25 @@ export function WorkspaceSettingsPanel({
       settingsService.selectSection("general");
     }
   }, [labSectionVisible, settingsService, settingsState.activeSection]);
+
+  useEffect(() => {
+    if (
+      !mobileRemoteAccessSettingsEnabled &&
+      settingsState.activeSection === "connection"
+    ) {
+      settingsService.selectSection("general");
+    }
+  }, [
+    mobileRemoteAccessSettingsEnabled,
+    settingsService,
+    settingsState.activeSection
+  ]);
+
+  useEffect(() => {
+    if (!automationRulesEnabled && settingsState.agentTab === "automation") {
+      settingsService.selectAgentTab("general");
+    }
+  }, [automationRulesEnabled, settingsService, settingsState.agentTab]);
 
   const handleVersionTap = () => {
     if (settingsState.developerPanelVisible) {
@@ -280,18 +301,18 @@ export function WorkspaceSettingsPanel({
               label: t("workspace.settings.nav.agent")
             },
             {
+              id: "model" as const,
+              label: t("workspace.settings.nav.model")
+            },
+            {
               id: "appearance" as const,
               label: t("workspace.settings.nav.appearance")
             },
-            {
-              id: "apps" as const,
-              label: t("workspace.settings.nav.apps")
-            },
-            ...(settingsState.tuttiAgentSwitchEnabled
+            ...(mobileRemoteAccessSettingsEnabled
               ? [
                   {
-                    id: "account" as const,
-                    label: t("workspace.settings.nav.account")
+                    id: "connection" as const,
+                    label: t("workspace.settings.nav.connection")
                   }
                 ]
               : []),
@@ -347,6 +368,12 @@ export function WorkspaceSettingsPanel({
                 changingSleepPreventionMode={
                   desktopPreferencesState.changingSleepPreventionMode
                 }
+                changingDeletedAgentConversationRetentionDays={
+                  desktopPreferencesState.changingDeletedAgentConversationRetentionDays
+                }
+                deletedAgentConversationRetentionDays={
+                  desktopPreferencesState.deletedAgentConversationRetentionDays
+                }
                 featureFlags={desktopPreferencesState.featureFlags}
                 locale={desktopPreferencesState.locale}
                 onLocaleChange={(nextLocale) => {
@@ -355,6 +382,17 @@ export function WorkspaceSettingsPanel({
                 onSleepPreventionModeChange={(mode) => {
                   void settingsService.changeSleepPreventionMode(mode);
                 }}
+                onDeletedAgentConversationRetentionDaysChange={(days) => {
+                  void settingsService.changeDeletedAgentConversationRetentionDays(
+                    days
+                  );
+                }}
+                onPurgeDeletedConversations={() =>
+                  settingsService.purgeDeletedConversations()
+                }
+                purgingDeletedConversations={
+                  settingsState.purgingDeletedConversations
+                }
                 onWorkspaceUiModeChange={(mode) => {
                   void settingsService.changeWorkspaceUiMode(mode);
                 }}
@@ -363,38 +401,133 @@ export function WorkspaceSettingsPanel({
                 }
               />
             ) : settingsState.activeSection === "agent" ? (
-              <WorkspaceAgentSettingsSection
-                agentConversationDetailMode={
-                  desktopPreferencesState.agentConversationDetailMode
-                }
-                browserUseConnectionMode={
-                  desktopPreferencesState.browserUseConnectionMode
-                }
-                changingAgentConversationDetailMode={
-                  desktopPreferencesState.changingAgentConversationDetailMode
-                }
-                changingDefaultAgentProvider={
-                  desktopPreferencesState.changingDefaultAgentProvider
-                }
-                changingBrowserUseConnectionMode={
-                  desktopPreferencesState.changingBrowserUseConnectionMode
-                }
-                defaultAgentProvider={
-                  desktopPreferencesState.defaultAgentProvider
-                }
-                focusedAnchor={settingsState.generalFocusAnchor}
-                focusRequestID={settingsState.generalFocusRequestID}
-                onBrowserUseConnectionModeChange={(mode) => {
-                  void settingsService.changeBrowserUseConnectionMode(mode);
-                }}
-                onAgentConversationDetailModeChange={(mode) => {
-                  void settingsService.changeAgentConversationDetailMode(mode);
-                }}
-                onDefaultAgentProviderChange={(provider) => {
-                  void settingsService.changeDefaultAgentProvider(provider);
-                }}
-                onOpenExternalAgentImport={onOpenExternalAgentImport}
-              />
+              <div className="flex min-h-0 flex-col gap-5 pt-5">
+                <SectionTabs
+                  ariaLabel={t("workspace.settings.nav.agent")}
+                  className="h-8 shrink-0"
+                  tabs={[
+                    {
+                      value: "general" as const,
+                      label: t("workspace.settings.agent.tabs.general")
+                    },
+                    {
+                      value: "agents" as const,
+                      label: t("workspace.settings.agent.tabs.agents")
+                    },
+                    {
+                      value: "customAgents" as const,
+                      label: t("workspace.settings.agent.tabs.customAgents")
+                    },
+                    ...(automationRulesEnabled
+                      ? [
+                          {
+                            value: "automation" as const,
+                            label: t("workspace.settings.agent.tabs.automation")
+                          }
+                        ]
+                      : [])
+                  ]}
+                  value={settingsState.agentTab}
+                  onValueChange={(tab) => settingsService.selectAgentTab(tab)}
+                />
+                {settingsState.agentTab === "agents" ? (
+                  <WorkspaceAgentsSettingsTab
+                    autoCheckEnabled={
+                      desktopPreferencesState.agentCliUpdateCheckEnabled
+                    }
+                    autoCheckPending={
+                      desktopPreferencesState.changingAgentCliUpdateCheckEnabled !==
+                      null
+                    }
+                    agentProviderStatusService={agentProviderStatusService}
+                    agentsService={agentsService}
+                    focusProvider={settingsState.agentFocusProvider}
+                    focusRequestID={settingsState.agentFocusRequestID}
+                    tuttiAgentSwitchEnabled={
+                      settingsState.tuttiAgentSwitchEnabled
+                    }
+                    earlyAccessEnabled={earlyAccessIntegrationsEnabled}
+                    featureFlags={pendingFeatureFlags}
+                    featureFlagsPending={
+                      desktopPreferencesState.changingFeatureFlags !== null
+                    }
+                    onAgentEnabledChange={(agentTargetID, enabled) =>
+                      settingsService.setAgentTargetEnabled(
+                        agentTargetID,
+                        enabled
+                      )
+                    }
+                    onAutoCheckEnabledChange={(enabled) => {
+                      void desktopPreferencesService
+                        .setAgentCliUpdateCheckEnabled(enabled)
+                        .catch((error) => {
+                          notifications.error({
+                            description:
+                              error instanceof Error && error.message.trim()
+                                ? error.message
+                                : undefined,
+                            title: t(
+                              "workspace.settings.agent.agents.autoCheckUpdatesFailed"
+                            )
+                          });
+                        });
+                    }}
+                    onExtensionEnabledChange={(flag, enabled) => {
+                      return settingsService.changeFeatureFlags({
+                        ...pendingFeatureFlags,
+                        [flag]: enabled
+                      });
+                    }}
+                    onOpenEnvironment={(provider) =>
+                      agentEnvService.open({ focus: "detect", provider })
+                    }
+                  />
+                ) : settingsState.agentTab === "customAgents" ? (
+                  <SettingsRows>
+                    <WorkspaceAgentsSection />
+                  </SettingsRows>
+                ) : settingsState.agentTab === "automation" &&
+                  automationRulesEnabled ? (
+                  <SettingsRows>
+                    <WorkspaceAutomationRulesSection />
+                  </SettingsRows>
+                ) : (
+                  <WorkspaceAgentSettingsSection
+                    agentConversationDetailMode={
+                      desktopPreferencesState.agentConversationDetailMode
+                    }
+                    browserUseConnectionMode={
+                      desktopPreferencesState.browserUseConnectionMode
+                    }
+                    changingAgentConversationDetailMode={
+                      desktopPreferencesState.changingAgentConversationDetailMode
+                    }
+                    changingDefaultAgentProvider={
+                      desktopPreferencesState.changingDefaultAgentProvider
+                    }
+                    changingBrowserUseConnectionMode={
+                      desktopPreferencesState.changingBrowserUseConnectionMode
+                    }
+                    defaultAgentProvider={
+                      desktopPreferencesState.defaultAgentProvider
+                    }
+                    focusedAnchor={settingsState.generalFocusAnchor}
+                    focusRequestID={settingsState.generalFocusRequestID}
+                    onBrowserUseConnectionModeChange={(mode) => {
+                      void settingsService.changeBrowserUseConnectionMode(mode);
+                    }}
+                    onAgentConversationDetailModeChange={(mode) => {
+                      void settingsService.changeAgentConversationDetailMode(
+                        mode
+                      );
+                    }}
+                    onDefaultAgentProviderChange={(provider) => {
+                      void settingsService.changeDefaultAgentProvider(provider);
+                    }}
+                    onOpenExternalAgentImport={onOpenExternalAgentImport}
+                  />
+                )}
+              </div>
             ) : settingsState.activeSection === "appearance" ? (
               <WorkspaceAppearanceSettingsSection
                 changingDockPlacement={
@@ -433,48 +566,8 @@ export function WorkspaceSettingsPanel({
                   desktopPreferencesState.workbenchWindowSnapping
                 }
               />
-            ) : settingsState.activeSection === "apps" ? (
-              <WorkspaceAppsSettingsSection
-                managedModels={settingsState.managedModels}
-                onBeginDraft={(provider) => {
-                  settingsService.beginManagedModelProviderDraft(provider);
-                }}
-                onCancelDraft={() => {
-                  settingsService.cancelManagedModelProviderDraft();
-                }}
-                onDeleteProvider={(providerID) => {
-                  void settingsService.removeManagedModelProvider(providerID);
-                }}
-                onDetectProviderModels={(providerID) => {
-                  void settingsService.detectManagedModelProviderModels(
-                    providerID
-                  );
-                }}
-                onSaveDraft={() => {
-                  void settingsService.saveManagedModelDraft();
-                }}
-                onSaveProvider={(provider) => {
-                  void settingsService.saveManagedModelProvider(provider);
-                }}
-                onSetProviderEnabled={(providerID, enabled) => {
-                  void settingsService.setManagedModelProviderEnabled(
-                    providerID,
-                    enabled
-                  );
-                }}
-                onTestProvider={(providerID) => {
-                  void settingsService.testManagedModelProvider(providerID);
-                }}
-                onUpdateDraft={(patch) => {
-                  settingsService.updateManagedModelDraft(patch);
-                }}
-                onUpdateProvider={(providerID, patch) => {
-                  settingsService.updateManagedModelProviderDraft(
-                    providerID,
-                    patch
-                  );
-                }}
-              />
+            ) : settingsState.activeSection === "model" ? (
+              <WorkspaceModelSettingsSection />
             ) : settingsState.activeSection === "lab" ? (
               <WorkspaceLabSettingsSection
                 changingFeatureFlags={
@@ -489,100 +582,20 @@ export function WorkspaceSettingsPanel({
                   void settingsService.changeWorkbenchShortcuts(shortcuts);
                 }}
               />
-            ) : settingsState.activeSection === "account" ? (
-              <WorkspaceAccountSettingsSection />
+            ) : settingsState.activeSection === "connection" ? (
+              <WorkspaceConnectionSettingsSection
+                featureFlags={
+                  desktopPreferencesState.changingFeatureFlags ??
+                  desktopPreferencesState.featureFlags
+                }
+              />
             ) : settingsState.activeSection === "about" ? (
               <WorkspaceAboutSettingsSection
                 developerLogs={settingsState.developerLogs}
                 onVersionTap={handleVersionTap}
               />
             ) : (
-              <WorkspaceDeveloperSettingsSection
-                analyticsDebugAvailable={
-                  analyticsDebugPreferenceState.available
-                }
-                analyticsDebugEnabled={analyticsDebugPreferenceState.enabled}
-                appCatalogChannel={desktopPreferencesState.appCatalogChannel}
-                changingAppCatalogChannel={
-                  desktopPreferencesState.changingAppCatalogChannel
-                }
-                changingUpdateChannel={
-                  desktopPreferencesState.changingUpdateChannel
-                }
-                developerLogs={settingsState.developerLogs}
-                developerPanelVisible={settingsState.developerPanelVisible}
-                fileDefaultOpenersByExtension={
-                  desktopPreferencesState.fileDefaultOpenersByExtension
-                }
-                labEnabled={isFeatureEnabled(
-                  pendingFeatureFlags,
-                  LAB_ENABLED_FLAG
-                )}
-                referenceProvenanceFilterEnabled={isFeatureEnabled(
-                  pendingFeatureFlags,
-                  AGENT_REFERENCE_PROVENANCE_FILTER_FLAG
-                )}
-                featureFlagsUpdating={
-                  desktopPreferencesState.changingFeatureFlags !== null
-                }
-                showAppDeveloperSources={
-                  desktopPreferencesState.showAppDeveloperSources
-                }
-                tuttiAgentSwitchEnabled={settingsState.tuttiAgentSwitchEnabled}
-                updateChannel={desktopPreferencesState.updateChannel}
-                onAppCatalogChannelChange={(channel) => {
-                  void settingsService.changeAppCatalogChannel(channel);
-                }}
-                onAnalyticsDebugEnabledChange={(enabled) => {
-                  analyticsDebugPreferenceService.setEnabled(enabled);
-                }}
-                onClearConversationHistory={() => {
-                  if (
-                    window.confirm(
-                      t(
-                        "workspace.settings.developer.clearConversationHistoryConfirm"
-                      )
-                    )
-                  ) {
-                    void settingsService.clearConversationHistory();
-                  }
-                }}
-                onClearLogs={() => {
-                  void settingsService.clearDeveloperLogs();
-                }}
-                onDeveloperPanelVisibleChange={(visible) => {
-                  settingsService.setDeveloperPanelVisible(visible);
-                }}
-                onLabEnabledChange={(enabled) => {
-                  void settingsService.changeFeatureFlags({
-                    ...pendingFeatureFlags,
-                    [LAB_ENABLED_FLAG]: enabled
-                  });
-                }}
-                onReferenceProvenanceFilterEnabledChange={(enabled) => {
-                  void settingsService.changeFeatureFlags({
-                    ...pendingFeatureFlags,
-                    [AGENT_REFERENCE_PROVENANCE_FILTER_FLAG]: enabled
-                  });
-                }}
-                onTuttiAgentSwitchEnabledChange={(enabled) => {
-                  settingsService.setTuttiAgentSwitchEnabled(enabled);
-                }}
-                onUpdateChannelChange={(channel) => {
-                  void settingsService.changeUpdateChannel(channel);
-                }}
-                onShowAppDeveloperSourcesChange={(show) => {
-                  void settingsService.changeShowAppDeveloperSources(show);
-                }}
-                onExportLogs={() => {
-                  void settingsService.exportDeveloperLogs();
-                }}
-                onFileDefaultOpenersChange={(openersByExtension) => {
-                  void desktopPreferencesService.setFileDefaultOpenersByExtension(
-                    openersByExtension
-                  );
-                }}
-              />
+              <WorkspaceDeveloperSettingsSection />
             )}
           </div>
         </div>
@@ -591,1005 +604,11 @@ export function WorkspaceSettingsPanel({
   );
 }
 
-const managedModelProviderLabels: Record<
-  WorkspaceManagedModelProviderID,
-  string
-> = {
-  agnes: "Agnes",
-  anthropic: "Anthropic",
-  openai: "OpenAI"
-};
-
-type ManagedModelProviderPreset = {
-  provider: WorkspaceManagedModelProviderID;
-  labelKey: DesktopI18nKey;
-  baseUrl: string;
-  apiKeyUrl: string;
-  models: readonly string[];
-};
-
-const CUSTOM_MANAGED_MODEL_PROVIDER_PRESET = "__custom_provider__";
-const AGNES_API_KEYS_URL = "https://platform.agnes-ai.com/settings/apiKeys";
-const ANTHROPIC_API_KEYS_URL = "https://console.anthropic.com/settings/keys";
-const DEEPSEEK_API_KEYS_URL = "https://platform.deepseek.com/api_keys";
-const MINIMAX_API_KEYS_URL = "https://platform.minimax.io/console/access";
-const MIMO_API_KEYS_URL = "https://platform.xiaomimimo.com/console/api-keys";
-const OPENAI_API_KEYS_URL = "https://platform.openai.com/api-keys";
-
-const managedModelProviderPresets: readonly ManagedModelProviderPreset[] = [
-  {
-    provider: "agnes",
-    labelKey: "workspace.settings.apps.managedModels.presetLabels.agnes",
-    baseUrl: "https://apihub.agnes-ai.com/v1",
-    apiKeyUrl: AGNES_API_KEYS_URL,
-    models: ["agnes-2.0-flash", "agnes-1.5-flash"]
-  },
-  {
-    provider: "anthropic",
-    labelKey:
-      "workspace.settings.apps.managedModels.presetLabels.anthropicClaude",
-    baseUrl: "https://api.anthropic.com/v1",
-    apiKeyUrl: ANTHROPIC_API_KEYS_URL,
-    models: ["claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5"]
-  },
-  {
-    provider: "anthropic",
-    labelKey:
-      "workspace.settings.apps.managedModels.presetLabels.deepseekAnthropic",
-    baseUrl: "https://api.deepseek.com/anthropic",
-    apiKeyUrl: DEEPSEEK_API_KEYS_URL,
-    models: [
-      "deepseek-v4-flash",
-      "deepseek-v4-pro",
-      "deepseek-chat",
-      "deepseek-reasoner"
-    ]
-  },
-  {
-    provider: "anthropic",
-    labelKey:
-      "workspace.settings.apps.managedModels.presetLabels.minimaxAnthropic",
-    baseUrl: "https://api.minimaxi.com/anthropic",
-    apiKeyUrl: MINIMAX_API_KEYS_URL,
-    models: [
-      "MiniMax-M3",
-      "MiniMax-M2.7-highspeed",
-      "MiniMax-M2.7",
-      "MiniMax-M2.5-highspeed",
-      "MiniMax-M2.5",
-      "MiniMax-M2.1-highspeed",
-      "MiniMax-M2.1",
-      "MiniMax-M2"
-    ]
-  },
-  {
-    provider: "openai",
-    labelKey:
-      "workspace.settings.apps.managedModels.presetLabels.openaiOfficial",
-    baseUrl: "https://api.openai.com/v1",
-    apiKeyUrl: OPENAI_API_KEYS_URL,
-    models: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]
-  },
-  {
-    provider: "openai",
-    labelKey:
-      "workspace.settings.apps.managedModels.presetLabels.deepseekOpenai",
-    baseUrl: "https://api.deepseek.com",
-    apiKeyUrl: DEEPSEEK_API_KEYS_URL,
-    models: [
-      "deepseek-v4-flash",
-      "deepseek-v4-pro",
-      "deepseek-chat",
-      "deepseek-reasoner"
-    ]
-  },
-  {
-    provider: "openai",
-    labelKey:
-      "workspace.settings.apps.managedModels.presetLabels.minimaxOpenai",
-    baseUrl: "https://api.minimaxi.com/v1",
-    apiKeyUrl: MINIMAX_API_KEYS_URL,
-    models: [
-      "MiniMax-M3",
-      "MiniMax-M2.7-highspeed",
-      "MiniMax-M2.7",
-      "MiniMax-M2.5-highspeed",
-      "MiniMax-M2.5",
-      "MiniMax-M2.1-highspeed",
-      "MiniMax-M2.1",
-      "MiniMax-M2"
-    ]
-  },
-  {
-    provider: "openai",
-    labelKey: "workspace.settings.apps.managedModels.presetLabels.mimoOpenai",
-    baseUrl: "https://token-plan-cn.xiaomimimo.com/v1",
-    apiKeyUrl: MIMO_API_KEYS_URL,
-    models: ["mimo-v2.5-pro"]
-  },
-  {
-    provider: "anthropic",
-    labelKey:
-      "workspace.settings.apps.managedModels.presetLabels.mimoAnthropic",
-    baseUrl: "https://token-plan-cn.xiaomimimo.com/anthropic",
-    apiKeyUrl: MIMO_API_KEYS_URL,
-    models: ["mimo-v2.5-pro"]
-  }
-];
-
-function defaultManagedProviderBaseUrl(
-  provider: WorkspaceManagedModelProviderID
-): string {
-  switch (provider) {
-    case "agnes":
-      return "https://apihub.agnes-ai.com/v1";
-    case "anthropic":
-      return "https://api.anthropic.com/v1";
-    case "openai":
-      return "https://api.openai.com/v1";
-  }
-}
-
-function defaultManagedProviderModel(
-  provider: WorkspaceManagedModelProviderID
-): string {
-  switch (provider) {
-    case "agnes":
-      return "agnes-2.0-flash";
-    case "anthropic":
-      return "claude-sonnet-4-6";
-    case "openai":
-      return "gpt-5.5";
-  }
-}
-
-function getManagedModelProviderPresets(
-  provider: WorkspaceManagedModelProviderID
-): ManagedModelProviderPreset[] {
-  return managedModelProviderPresets.filter(
-    (preset) => preset.provider === provider
-  );
-}
-
-function getSelectedManagedModelProviderPreset(
-  provider: WorkspaceManagedModelProviderID,
-  baseUrl: string | undefined
-): ManagedModelProviderPreset | null {
-  const currentBaseUrl = baseUrl?.trim() ?? "";
-  if (!currentBaseUrl) {
-    return null;
-  }
+function WorkspaceModelSettingsSection() {
   return (
-    managedModelProviderPresets.find(
-      (preset) =>
-        preset.provider === provider && preset.baseUrl === currentBaseUrl
-    ) ?? null
-  );
-}
-
-function toManagedModelPresetRows(
-  preset: ManagedModelProviderPreset
-): WorkspaceManagedModel[] {
-  return preset.models.map((id) => ({
-    id,
-    name: id,
-    provider: preset.provider
-  }));
-}
-
-const managedModelProviderOrder: readonly WorkspaceManagedModelProviderID[] = [
-  "agnes",
-  "openai",
-  "anthropic"
-];
-
-const managedModelFeedbackConfig: Record<
-  WorkspaceManagedModelProviderFeedbackKind,
-  { className: string; messageKey: DesktopI18nKey }
-> = {
-  testOk: {
-    className: "text-[var(--state-success)]",
-    messageKey: "workspace.settings.apps.managedModels.testSucceeded"
-  },
-  testFailed: {
-    className: "text-[var(--state-danger)]",
-    messageKey: "workspace.settings.apps.managedModels.testFailed"
-  },
-  detectEmpty: {
-    className: "text-[var(--text-tertiary)]",
-    messageKey: "workspace.settings.apps.managedModels.detectModelsEmpty"
-  },
-  detectFailed: {
-    className: "text-[var(--state-danger)]",
-    messageKey: "workspace.settings.apps.managedModels.detectModelsFailed"
-  },
-  saveFailed: {
-    className: "text-[var(--state-danger)]",
-    messageKey: "workspace.settings.apps.managedModels.saveFailed"
-  },
-  deleteFailed: {
-    className: "text-[var(--state-danger)]",
-    messageKey: "workspace.settings.apps.managedModels.deleteFailed"
-  },
-  requiredFields: {
-    className: "text-[var(--state-danger)]",
-    messageKey: "workspace.settings.apps.managedModels.requiredFieldsMissing"
-  }
-};
-
-function ManagedModelFeedbackLine({
-  feedback
-}: {
-  feedback: WorkspaceManagedModelProviderFeedback | undefined;
-}) {
-  const { t } = useTranslation();
-  if (!feedback) {
-    return null;
-  }
-  const config = managedModelFeedbackConfig[feedback.kind];
-  return (
-    <p className={cn("m-0 text-[12px] leading-[1.4]", config.className)}>
-      {t(config.messageKey)}
-    </p>
-  );
-}
-
-function normalizeWorkspaceManagedModelRows(
-  provider: WorkspaceManagedModelProviderID,
-  models: readonly WorkspaceManagedModel[]
-): WorkspaceManagedModel[] {
-  const seen = new Set<string>();
-  const normalized: WorkspaceManagedModel[] = [];
-  for (const model of models) {
-    const id = model.id.trim();
-    if (!id || seen.has(id)) {
-      continue;
-    }
-    seen.add(id);
-    normalized.push({
-      id,
-      name: model.name.trim() || id,
-      provider
-    });
-  }
-  return normalized;
-}
-
-function WorkspaceAppsSettingsSection({
-  managedModels,
-  onBeginDraft,
-  onCancelDraft,
-  onDeleteProvider,
-  onDetectProviderModels,
-  onSaveDraft,
-  onSaveProvider,
-  onSetProviderEnabled,
-  onTestProvider,
-  onUpdateDraft,
-  onUpdateProvider
-}: {
-  managedModels: WorkspaceSettingsManagedModelsSnapshotState;
-  onBeginDraft: (provider: WorkspaceManagedModelProviderID) => void;
-  onCancelDraft: () => void;
-  onDeleteProvider: (providerID: WorkspaceManagedModelProviderID) => void;
-  onDetectProviderModels: (providerID: WorkspaceManagedModelProviderID) => void;
-  onSaveDraft: () => void;
-  onSaveProvider: (provider: WorkspaceManagedModelProviderDraft) => void;
-  onSetProviderEnabled: (
-    providerID: WorkspaceManagedModelProviderID,
-    enabled: boolean
-  ) => void;
-  onTestProvider: (providerID: WorkspaceManagedModelProviderID) => void;
-  onUpdateDraft: (patch: Partial<WorkspaceManagedModelProviderDraft>) => void;
-  onUpdateProvider: (
-    providerID: WorkspaceManagedModelProviderID,
-    patch: Partial<WorkspaceManagedModelProviderDraft>
-  ) => void;
-}) {
-  const { t } = useTranslation();
-  const { draft, providers } = managedModels;
-  const [expandedProviderID, setExpandedProviderID] =
-    useState<WorkspaceManagedModelProviderID | null>(
-      managedModels.focusedProvider
-    );
-  const [confirmingDeleteID, setConfirmingDeleteID] =
-    useState<WorkspaceManagedModelProviderID | null>(null);
-  const [addMenuOpen, setAddMenuOpen] = useState(false);
-  const addMenuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const provider = managedModels.focusedProvider;
-    if (
-      provider &&
-      providers.some((candidate) => candidate.provider === provider)
-    ) {
-      setExpandedProviderID(provider);
-    }
-  }, [managedModels.focusedProvider, managedModels.focusRequestID, providers]);
-
-  useEffect(() => {
-    if (!addMenuOpen) {
-      return;
-    }
-    const handlePointerDown = (event: MouseEvent) => {
-      if (
-        addMenuRef.current &&
-        !addMenuRef.current.contains(event.target as Node)
-      ) {
-        setAddMenuOpen(false);
-      }
-    };
-    window.addEventListener("mousedown", handlePointerDown);
-    return () => {
-      window.removeEventListener("mousedown", handlePointerDown);
-    };
-  }, [addMenuOpen]);
-
-  const configuredProviders = new Set(
-    providers.map((provider) => provider.provider)
-  );
-  const availableProviders = managedModelProviderOrder.filter(
-    (provider) =>
-      !configuredProviders.has(provider) && draft?.provider !== provider
-  );
-  const canAddProvider = availableProviders.length > 0 && draft === null;
-  const isEmpty = providers.length === 0 && draft === null;
-
-  return (
-    <SettingsRows className="gap-6">
-      <div className="flex w-full items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-2">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.settings.apps.managedModels.title")}
-          </strong>
-          <p className="m-0 text-[13px] leading-[1.35] text-[var(--text-secondary)]">
-            {t("workspace.settings.apps.managedModels.description")}
-          </p>
-        </div>
-        <div className="relative shrink-0" ref={addMenuRef}>
-          <Button
-            disabled={!canAddProvider}
-            size="sm"
-            type="button"
-            variant="secondary"
-            onClick={() => setAddMenuOpen((open) => !open)}
-          >
-            <AddLinedIcon className="size-3.5" />
-            {t("workspace.settings.apps.managedModels.addProvider")}
-          </Button>
-          {addMenuOpen && canAddProvider ? (
-            <div
-              className="absolute right-0 top-[calc(100%+6px)] flex min-w-[160px] flex-col gap-0.5 rounded-[8px] border border-[var(--border-1)] bg-[var(--background-fronted)] p-1 shadow-[0_16px_40px_var(--shadow-elevated)]"
-              role="menu"
-              style={{ zIndex: "var(--z-panel-popover)" }}
-            >
-              {availableProviders.map((provider) => (
-                <button
-                  key={provider}
-                  className="rounded-[6px] px-2.5 py-1.5 text-left text-[13px] text-[var(--text-primary)] outline-none transition-colors duration-150 hover:bg-[var(--transparency-hover)] focus-visible:bg-[var(--transparency-hover)]"
-                  role="menuitem"
-                  type="button"
-                  onClick={() => {
-                    onBeginDraft(provider);
-                    setExpandedProviderID(null);
-                    setAddMenuOpen(false);
-                  }}
-                >
-                  {managedModelProviderLabels[provider]}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      </div>
-
-      {isEmpty ? (
-        <div className="flex flex-col items-center gap-1.5 rounded-[10px] border border-dashed border-[var(--border-1)] bg-[var(--transparency-block)] px-4 py-8 text-center">
-          <p className="m-0 text-[13px] font-medium text-[var(--text-primary)]">
-            {t("workspace.settings.apps.managedModels.emptyTitle")}
-          </p>
-          <p className="m-0 text-[12px] leading-[1.4] text-[var(--text-secondary)]">
-            {t("workspace.settings.apps.managedModels.emptyDescription")}
-          </p>
-        </div>
-      ) : (
-        <div className="flex w-full flex-col gap-2">
-          {providers.map((provider) => (
-            <ManagedModelProviderItem
-              key={provider.provider}
-              confirmingDelete={confirmingDeleteID === provider.provider}
-              deleting={managedModels.deletingProvider === provider.provider}
-              detecting={managedModels.detectingProvider === provider.provider}
-              expanded={expandedProviderID === provider.provider}
-              feedback={managedModels.feedback[provider.provider]}
-              provider={provider}
-              saving={managedModels.savingProvider === provider.provider}
-              testing={managedModels.testingProvider === provider.provider}
-              onCancelDelete={() => setConfirmingDeleteID(null)}
-              onConfirmDelete={() => {
-                setConfirmingDeleteID(null);
-                onDeleteProvider(provider.provider);
-              }}
-              onDetect={() => onDetectProviderModels(provider.provider)}
-              onRequestDelete={() => setConfirmingDeleteID(provider.provider)}
-              onSave={() => onSaveProvider(provider)}
-              onSetEnabled={(enabled) =>
-                onSetProviderEnabled(provider.provider, enabled)
-              }
-              onTest={() => onTestProvider(provider.provider)}
-              onToggleExpand={() =>
-                setExpandedProviderID((current) =>
-                  current === provider.provider ? null : provider.provider
-                )
-              }
-              onUpdate={(patch) => onUpdateProvider(provider.provider, patch)}
-            />
-          ))}
-          {draft ? (
-            <ManagedModelDraftItem
-              draft={draft}
-              feedback={managedModels.feedback[draft.provider]}
-              saving={managedModels.savingProvider === draft.provider}
-              onCancel={onCancelDraft}
-              onSave={onSaveDraft}
-              onUpdate={onUpdateDraft}
-            />
-          ) : null}
-        </div>
-      )}
+    <SettingsRows>
+      <WorkspaceModelPlansSection />
     </SettingsRows>
-  );
-}
-
-function ManagedModelProviderItem({
-  confirmingDelete,
-  deleting,
-  detecting,
-  expanded,
-  feedback,
-  provider,
-  saving,
-  testing,
-  onCancelDelete,
-  onConfirmDelete,
-  onDetect,
-  onRequestDelete,
-  onSave,
-  onSetEnabled,
-  onTest,
-  onToggleExpand,
-  onUpdate
-}: {
-  confirmingDelete: boolean;
-  deleting: boolean;
-  detecting: boolean;
-  expanded: boolean;
-  feedback: WorkspaceManagedModelProviderFeedback | undefined;
-  provider: WorkspaceManagedModelProviderDraft;
-  saving: boolean;
-  testing: boolean;
-  onCancelDelete: () => void;
-  onConfirmDelete: () => void;
-  onDetect: () => void;
-  onRequestDelete: () => void;
-  onSave: () => void;
-  onSetEnabled: (enabled: boolean) => void;
-  onTest: () => void;
-  onToggleExpand: () => void;
-  onUpdate: (patch: Partial<WorkspaceManagedModelProviderDraft>) => void;
-}) {
-  const { t } = useTranslation();
-  const { addModel, modelInputRefs, updateModels } = useManagedModelRows(
-    provider,
-    onUpdate
-  );
-  const label = managedModelProviderLabels[provider.provider];
-  const status = provider.hasApiKey
-    ? `${t("workspace.settings.apps.managedModels.keyConfigured")} · ${t(
-        "workspace.settings.apps.managedModels.modelCount",
-        { count: String(provider.models.length) }
-      )}`
-    : t("workspace.settings.apps.managedModels.keyMissing");
-
-  return (
-    <section className="flex w-full flex-col gap-4 rounded-[10px] border-0 bg-[var(--transparency-block)] p-4">
-      <div
-        className={cn(
-          "flex min-h-8 items-center justify-between gap-3",
-          !confirmingDelete && "cursor-pointer"
-        )}
-        onClick={confirmingDelete ? undefined : onToggleExpand}
-      >
-        <div className="flex min-h-8 min-w-0 flex-col justify-center">
-          <strong className="block text-[13px] font-semibold text-[var(--text-primary)]">
-            {label}
-          </strong>
-          <p className="m-0 mt-1 truncate text-[11px] leading-[1.3] text-[var(--text-secondary)]">
-            {status}
-          </p>
-        </div>
-        {confirmingDelete ? (
-          <div className="flex shrink-0 items-center gap-2">
-            <span className="text-[12px] text-[var(--text-secondary)]">
-              {t("workspace.settings.apps.managedModels.deleteConfirm")}
-            </span>
-            <Button
-              disabled={deleting}
-              size="sm"
-              type="button"
-              variant="secondary"
-              onClick={onConfirmDelete}
-            >
-              {deleting
-                ? t("workspace.settings.apps.managedModels.deleting")
-                : t("workspace.settings.apps.managedModels.delete")}
-            </Button>
-            <Button
-              size="sm"
-              type="button"
-              variant="ghost"
-              onClick={onCancelDelete}
-            >
-              {t("common.cancel")}
-            </Button>
-          </div>
-        ) : (
-          <div className="flex shrink-0 items-center gap-3">
-            <div className="flex items-center gap-1">
-              <Button
-                aria-expanded={expanded}
-                aria-label={t(
-                  expanded
-                    ? "workspace.settings.apps.managedModels.collapse"
-                    : "workspace.settings.apps.managedModels.expand"
-                )}
-                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] aria-expanded:bg-transparent aria-expanded:text-[var(--text-secondary)]"
-                size="icon"
-                type="button"
-                variant="ghost"
-              >
-                {expanded ? (
-                  <ChevronUpIcon aria-hidden="true" size={16} />
-                ) : (
-                  <ChevronDownIcon aria-hidden="true" size={16} />
-                )}
-              </Button>
-              <Button
-                aria-label={t("workspace.settings.apps.managedModels.delete")}
-                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                size="icon"
-                type="button"
-                variant="ghost"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onRequestDelete();
-                }}
-              >
-                <DeleteIcon aria-hidden="true" size={15} />
-              </Button>
-            </div>
-            <Switch
-              aria-label={t("workspace.settings.apps.managedModels.enabled", {
-                provider: label
-              })}
-              checked={provider.enabled}
-              disabled={saving}
-              onClick={(event) => event.stopPropagation()}
-              onCheckedChange={onSetEnabled}
-            />
-          </div>
-        )}
-      </div>
-
-      {expanded ? null : <ManagedModelFeedbackLine feedback={feedback} />}
-
-      {expanded ? (
-        <>
-          <ManagedModelProviderFields
-            detecting={detecting}
-            draft={provider}
-            modelInputRefs={modelInputRefs}
-            onDetect={onDetect}
-            onUpdate={onUpdate}
-            updateModels={updateModels}
-          />
-          <ManagedModelFeedbackLine feedback={feedback} />
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <Button
-              className="h-auto px-0 text-[12px] font-medium text-[var(--text-primary)] hover:bg-transparent hover:text-[var(--text-primary)]"
-              size="sm"
-              type="button"
-              variant="ghost"
-              onClick={addModel}
-            >
-              <AddLinedIcon className="size-3.5" />
-              {t("workspace.settings.apps.managedModels.addModel")}
-            </Button>
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button
-                disabled={testing}
-                type="button"
-                variant="secondary"
-                onClick={onTest}
-              >
-                {testing
-                  ? t("workspace.settings.apps.managedModels.testing")
-                  : t("workspace.settings.apps.managedModels.test")}
-              </Button>
-              <Button disabled={saving} type="button" onClick={onSave}>
-                {saving
-                  ? t("workspace.settings.apps.managedModels.saving")
-                  : t("workspace.settings.apps.managedModels.save")}
-              </Button>
-            </div>
-          </div>
-        </>
-      ) : null}
-    </section>
-  );
-}
-
-function ManagedModelDraftItem({
-  draft,
-  feedback,
-  saving,
-  onCancel,
-  onSave,
-  onUpdate
-}: {
-  draft: WorkspaceManagedModelProviderDraft;
-  feedback: WorkspaceManagedModelProviderFeedback | undefined;
-  saving: boolean;
-  onCancel: () => void;
-  onSave: () => void;
-  onUpdate: (patch: Partial<WorkspaceManagedModelProviderDraft>) => void;
-}) {
-  const { t } = useTranslation();
-  const { addModel, modelInputRefs, updateModels } = useManagedModelRows(
-    draft,
-    onUpdate
-  );
-
-  return (
-    <section className="flex w-full flex-col gap-4 rounded-[10px] border border-[var(--border-1)] bg-[var(--transparency-block)] p-4">
-      <div className="flex items-center justify-between gap-3">
-        <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-          {managedModelProviderLabels[draft.provider]}
-        </strong>
-        <button
-          aria-label={t("common.cancel")}
-          className="flex size-8 items-center justify-center rounded-[6px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]"
-          type="button"
-          onClick={onCancel}
-        >
-          <CloseIcon className="size-4" />
-        </button>
-      </div>
-
-      <ManagedModelProviderFields
-        detecting={false}
-        draft={draft}
-        modelInputRefs={modelInputRefs}
-        onDetect={null}
-        onUpdate={onUpdate}
-        updateModels={updateModels}
-      />
-
-      <ManagedModelFeedbackLine feedback={feedback} />
-
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Button
-          className="h-auto px-0 text-[12px] font-medium text-[var(--text-primary)] hover:bg-transparent hover:text-[var(--text-primary)]"
-          size="sm"
-          type="button"
-          variant="ghost"
-          onClick={addModel}
-        >
-          <AddLinedIcon className="size-3.5" />
-          {t("workspace.settings.apps.managedModels.addModel")}
-        </Button>
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onCancel}>
-            {t("common.cancel")}
-          </Button>
-          <Button disabled={saving} type="button" onClick={onSave}>
-            {saving
-              ? t("workspace.settings.apps.managedModels.saving")
-              : t("workspace.settings.apps.managedModels.save")}
-          </Button>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function useManagedModelRows(
-  draft: WorkspaceManagedModelProviderDraft,
-  onUpdate: (patch: Partial<WorkspaceManagedModelProviderDraft>) => void
-): {
-  addModel: () => void;
-  modelInputRefs: React.MutableRefObject<Map<number, HTMLInputElement>>;
-  updateModels: (models: readonly WorkspaceManagedModel[]) => void;
-} {
-  const modelInputRefs = useRef(new Map<number, HTMLInputElement>());
-  const [pendingFocusModelIndex, setPendingFocusModelIndex] = useState<
-    number | null
-  >(null);
-
-  const updateModels = useCallback(
-    (models: readonly WorkspaceManagedModel[]) => {
-      onUpdate({
-        models: normalizeWorkspaceManagedModelRows(draft.provider, models)
-      });
-    },
-    [draft.provider, onUpdate]
-  );
-
-  const addModel = useCallback(() => {
-    const nextIndex = draft.models.length;
-    setPendingFocusModelIndex(nextIndex);
-    onUpdate({
-      models: [...draft.models, { id: "", name: "", provider: draft.provider }]
-    });
-  }, [draft.models, draft.provider, onUpdate]);
-
-  useEffect(() => {
-    if (pendingFocusModelIndex === null) {
-      return;
-    }
-    const input = modelInputRefs.current.get(pendingFocusModelIndex);
-    if (!input) {
-      return;
-    }
-    input.focus();
-    setPendingFocusModelIndex(null);
-  }, [draft.models.length, pendingFocusModelIndex]);
-
-  return { addModel, modelInputRefs, updateModels };
-}
-
-function ManagedModelProviderFields({
-  detecting,
-  draft,
-  modelInputRefs,
-  onDetect,
-  onUpdate,
-  updateModels
-}: {
-  detecting: boolean;
-  draft: WorkspaceManagedModelProviderDraft;
-  modelInputRefs: React.MutableRefObject<Map<number, HTMLInputElement>>;
-  onDetect: (() => void) | null;
-  onUpdate: (patch: Partial<WorkspaceManagedModelProviderDraft>) => void;
-  updateModels: (models: readonly WorkspaceManagedModel[]) => void;
-}) {
-  const { t } = useTranslation();
-  const [visibleAPIKeyProviderID, setVisibleAPIKeyProviderID] =
-    useState<WorkspaceManagedModelProviderID | null>(null);
-
-  const apiKeyVisible = visibleAPIKeyProviderID === draft.provider;
-  const presets = getManagedModelProviderPresets(draft.provider);
-  const selectedPreset = getSelectedManagedModelProviderPreset(
-    draft.provider,
-    draft.baseUrl
-  );
-  const selectedPresetValue =
-    selectedPreset?.baseUrl ?? CUSTOM_MANAGED_MODEL_PROVIDER_PRESET;
-  const apiKeyPreset = presets.length === 1 ? presets[0] : selectedPreset;
-  const apiKeyUrl = apiKeyPreset?.apiKeyUrl ?? "";
-
-  return (
-    <>
-      {presets.length > 1 ? (
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-            {t("workspace.settings.apps.managedModels.quickFillProvider")}
-          </span>
-          <Select
-            value={selectedPresetValue}
-            onValueChange={(value) => {
-              if (value === CUSTOM_MANAGED_MODEL_PROVIDER_PRESET) {
-                onUpdate({ baseUrl: "", models: [] });
-                return;
-              }
-              const preset = presets.find(
-                (candidate) => candidate.baseUrl === value
-              );
-              if (!preset) {
-                return;
-              }
-              onUpdate({
-                baseUrl: preset.baseUrl,
-                models: normalizeWorkspaceManagedModelRows(
-                  draft.provider,
-                  toManagedModelPresetRows(preset)
-                )
-              });
-            }}
-          >
-            <SelectTrigger
-              aria-label={t(
-                "workspace.settings.apps.managedModels.quickFillProvider"
-              )}
-              className={workspaceSettingsSelectTriggerClass}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent
-              className={workspaceSettingsSelectContentClass}
-              style={{ zIndex: "var(--z-panel-popover)" }}
-            >
-              <SelectItem value={CUSTOM_MANAGED_MODEL_PROVIDER_PRESET}>
-                {t("workspace.settings.apps.managedModels.customProvider")}
-              </SelectItem>
-              {presets.map((preset) => (
-                <SelectItem key={preset.baseUrl} value={preset.baseUrl}>
-                  {t(preset.labelKey)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label>
-      ) : null}
-
-      <div className="grid grid-cols-2 gap-3 max-[640px]:grid-cols-1">
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-            {t("workspace.settings.apps.managedModels.apiKey")}
-          </span>
-          <div className="relative">
-            <Input
-              className={`${workspaceSettingsInputClass} pr-9`}
-              placeholder={
-                draft.hasApiKey
-                  ? t("workspace.settings.apps.managedModels.keepExistingKey")
-                  : "sk-..."
-              }
-              spellCheck={false}
-              type={apiKeyVisible ? "text" : "password"}
-              value={draft.apiKey}
-              onChange={(event) =>
-                onUpdate({ apiKey: event.currentTarget.value })
-              }
-            />
-            <button
-              aria-label={t(
-                apiKeyVisible
-                  ? "workspace.settings.apps.managedModels.hideApiKey"
-                  : "workspace.settings.apps.managedModels.showApiKey"
-              )}
-              aria-pressed={apiKeyVisible}
-              className={cn(
-                "absolute right-1 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-[5px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]"
-              )}
-              type="button"
-              onClick={() =>
-                setVisibleAPIKeyProviderID((currentProviderID) =>
-                  currentProviderID === draft.provider ? null : draft.provider
-                )
-              }
-            >
-              {apiKeyVisible ? (
-                <EyeIcon aria-hidden="true" size={16} />
-              ) : (
-                <CloseEyesIcon aria-hidden="true" size={16} />
-              )}
-            </button>
-          </div>
-        </label>
-
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-            {t("workspace.settings.apps.managedModels.baseUrl")}
-          </span>
-          <Input
-            className={workspaceSettingsInputClass}
-            placeholder={defaultManagedProviderBaseUrl(draft.provider)}
-            type="url"
-            value={draft.baseUrl ?? ""}
-            onChange={(event) =>
-              onUpdate({ baseUrl: event.currentTarget.value })
-            }
-          />
-        </label>
-      </div>
-
-      <div className="flex flex-col gap-3">
-        {apiKeyUrl ? (
-          <button
-            className="inline-flex w-fit items-center gap-1.5 rounded-[5px] text-left text-[12px] font-medium text-[var(--text-primary)] transition-opacity duration-150 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]"
-            type="button"
-            onClick={() => {
-              window.open(apiKeyUrl, "_blank", "noopener,noreferrer");
-            }}
-          >
-            {t("workspace.settings.apps.managedModels.getApiKey", {
-              provider:
-                (apiKeyPreset ? t(apiKeyPreset.labelKey) : null) ??
-                managedModelProviderLabels[draft.provider]
-            })}
-            <OpenLinkLinedIcon aria-hidden="true" size={13} />
-          </button>
-        ) : null}
-        <div aria-hidden="true" className="h-px w-full bg-[var(--border-1)]" />
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-            {t("workspace.settings.apps.managedModels.models", {
-              provider: managedModelProviderLabels[draft.provider]
-            })}
-          </span>
-          {onDetect ? (
-            <Button
-              className="h-auto px-0 text-[12px] font-medium text-[var(--text-primary)] hover:bg-transparent hover:text-[var(--text-primary)]"
-              disabled={detecting}
-              size="sm"
-              type="button"
-              variant="ghost"
-              onClick={onDetect}
-            >
-              {detecting
-                ? t("workspace.settings.apps.managedModels.detectingModels")
-                : t("workspace.settings.apps.managedModels.detectModels")}
-            </Button>
-          ) : null}
-        </div>
-        <div className="flex flex-col gap-1.5">
-          {draft.models.map((model, index) => (
-            <div
-              key={`${model.provider}:${model.id}:${index}`}
-              className="grid grid-cols-[minmax(0,1fr)_32px] items-center gap-1.5"
-            >
-              <Input
-                aria-label={t("workspace.settings.apps.managedModels.modelId")}
-                className={workspaceManagedModelInputClass}
-                placeholder={
-                  model.id
-                    ? defaultManagedProviderModel(draft.provider)
-                    : t(
-                        "workspace.settings.apps.managedModels.modelIdPlaceholder"
-                      )
-                }
-                ref={(input) => {
-                  if (input) {
-                    modelInputRefs.current.set(index, input);
-                    return;
-                  }
-                  modelInputRefs.current.delete(index);
-                }}
-                value={model.id}
-                onChange={(event) => {
-                  const id = event.currentTarget.value;
-                  updateModels(
-                    draft.models.map((row, rowIndex) =>
-                      rowIndex === index
-                        ? { ...row, id, name: id.trim() || row.name }
-                        : row
-                    )
-                  );
-                }}
-              />
-              <button
-                aria-label={t(
-                  "workspace.settings.apps.managedModels.removeModel"
-                )}
-                className="flex size-8 items-center justify-center rounded-[6px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]"
-                type="button"
-                onClick={() =>
-                  updateModels(
-                    draft.models.filter((_, rowIndex) => rowIndex !== index)
-                  )
-                }
-              >
-                <DeleteIcon aria-hidden="true" size={15} />
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
   );
 }
 
@@ -1613,61 +632,91 @@ function WorkspaceLabSettingsSection({
     pendingFeatureFlags,
     LAB_WORKBENCH_SHORTCUTS_FLAG
   );
-  const updateFeatureFlag = useCallback(
-    (key: string, enabled: boolean) => {
-      onFeatureFlagsChange({
-        ...featureFlags,
-        [key]: enabled
-      });
-    },
-    [featureFlags, onFeatureFlagsChange]
-  );
-  const shortcutsDisabled = isUpdatingFlags || !workbenchShortcutsEnabled;
 
-  return (
-    <SettingsRows>
-      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+  // The two shortcut bindings live on a secondary page reached from the Labs
+  // list; the toggle itself stays in the list. `labView` is a single-level
+  // secondary view (no navigation stack), mirroring the panel's other in-place
+  // view swaps. When the feature is turned off the secondary page becomes
+  // unreachable, so fall back to the list.
+  const [labView, setLabView] = useState<"root" | "workbenchShortcuts">("root");
+  useEffect(() => {
+    if (!workbenchShortcutsEnabled && labView === "workbenchShortcuts") {
+      setLabView("root");
+    }
+  }, [workbenchShortcutsEnabled, labView]);
+
+  if (labView === "workbenchShortcuts" && workbenchShortcutsEnabled) {
+    return (
+      <SettingsRows>
+        <div className="flex w-full items-center gap-2">
+          <Button
+            aria-label={t("workspace.settings.lab.backLabel")}
+            size="icon-sm"
+            title={t("workspace.settings.lab.backLabel")}
+            type="button"
+            variant="ghost"
+            onClick={() => setLabView("root")}
+          >
+            <ArrowLeftIcon aria-hidden="true" size={16} />
+          </Button>
           <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
             {t("workspace.settings.lab.workbenchShortcutsLabel")}
           </strong>
-          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-            {t("workspace.settings.lab.workbenchShortcutsDescription")}
-          </p>
         </div>
-        <Switch
-          aria-label={t("workspace.settings.lab.workbenchShortcutsLabel")}
-          checked={workbenchShortcutsEnabled}
+
+        <WorkspaceLabShortcutRow
           disabled={isUpdatingFlags}
-          onCheckedChange={(enabled) => {
-            updateFeatureFlag(LAB_WORKBENCH_SHORTCUTS_FLAG, enabled);
+          label={t("workspace.settings.lab.newAgentConversationShortcutLabel")}
+          value={workbenchShortcuts.newAgentConversation}
+          onChange={(binding) => {
+            onWorkbenchShortcutsChange({
+              ...workbenchShortcuts,
+              newAgentConversation: binding
+            });
           }}
         />
-      </div>
 
-      <WorkspaceLabShortcutRow
-        disabled={shortcutsDisabled}
-        label={t("workspace.settings.lab.newAgentConversationShortcutLabel")}
-        value={workbenchShortcuts.newAgentConversation}
-        onChange={(binding) => {
-          onWorkbenchShortcutsChange({
-            ...workbenchShortcuts,
-            newAgentConversation: binding
-          });
-        }}
+        <WorkspaceLabShortcutRow
+          disabled={isUpdatingFlags}
+          label={t("workspace.settings.lab.newSameTypeWindowShortcutLabel")}
+          value={workbenchShortcuts.newSameTypeWindow}
+          onChange={(binding) => {
+            onWorkbenchShortcutsChange({
+              ...workbenchShortcuts,
+              newSameTypeWindow: binding
+            });
+          }}
+        />
+      </SettingsRows>
+    );
+  }
+
+  return (
+    <SettingsRows>
+      <WorkspaceLabFeatureGateRows
+        changingFeatureFlags={changingFeatureFlags}
+        featureFlags={featureFlags}
+        onFeatureFlagsChange={onFeatureFlagsChange}
       />
 
-      <WorkspaceLabShortcutRow
-        disabled={shortcutsDisabled}
-        label={t("workspace.settings.lab.newSameTypeWindowShortcutLabel")}
-        value={workbenchShortcuts.newSameTypeWindow}
-        onChange={(binding) => {
-          onWorkbenchShortcutsChange({
-            ...workbenchShortcuts,
-            newSameTypeWindow: binding
-          });
-        }}
-      />
+      {workbenchShortcutsEnabled ? (
+        <button
+          className="flex w-full items-center justify-between gap-4 rounded-md border-0 bg-transparent px-0 py-1 text-left outline-none transition-colors duration-150 hover:text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--border-focus)] disabled:opacity-70"
+          data-testid="workspace-settings-lab-configure-shortcuts"
+          disabled={isUpdatingFlags}
+          type="button"
+          onClick={() => setLabView("workbenchShortcuts")}
+        >
+          <span className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.lab.workbenchShortcutsManageLabel")}
+          </span>
+          <ArrowRightIcon
+            aria-hidden="true"
+            className="text-[var(--text-secondary)]"
+            size={16}
+          />
+        </button>
+      ) : null}
     </SettingsRows>
   );
 }
@@ -1747,623 +796,6 @@ function WorkspaceLabShortcutRow({
   );
 }
 
-type FileDefaultOpenerDraft = {
-  committedExtension: string | null;
-  extension: string;
-  id: number;
-  opener: DesktopFileDefaultOpener;
-};
-
-function WorkspaceDeveloperSettingsSection({
-  analyticsDebugAvailable,
-  analyticsDebugEnabled,
-  appCatalogChannel,
-  changingAppCatalogChannel,
-  changingUpdateChannel,
-  developerLogs,
-  developerPanelVisible,
-  fileDefaultOpenersByExtension,
-  labEnabled,
-  referenceProvenanceFilterEnabled,
-  featureFlagsUpdating,
-  showAppDeveloperSources,
-  tuttiAgentSwitchEnabled,
-  updateChannel,
-  onAnalyticsDebugEnabledChange,
-  onAppCatalogChannelChange,
-  onClearConversationHistory,
-  onClearLogs,
-  onDeveloperPanelVisibleChange,
-  onExportLogs,
-  onFileDefaultOpenersChange,
-  onLabEnabledChange,
-  onReferenceProvenanceFilterEnabledChange,
-  onShowAppDeveloperSourcesChange,
-  onTuttiAgentSwitchEnabledChange,
-  onUpdateChannelChange
-}: {
-  analyticsDebugAvailable: boolean;
-  analyticsDebugEnabled: boolean;
-  appCatalogChannel: DesktopAppCatalogChannel;
-  changingAppCatalogChannel: DesktopAppCatalogChannel | null;
-  changingUpdateChannel: DesktopUpdateChannel | null;
-  developerLogs: WorkspaceSettingsDeveloperLogsSnapshotState;
-  developerPanelVisible: boolean;
-  fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
-  labEnabled: boolean;
-  referenceProvenanceFilterEnabled: boolean;
-  featureFlagsUpdating: boolean;
-  showAppDeveloperSources: boolean;
-  tuttiAgentSwitchEnabled: boolean;
-  updateChannel: DesktopUpdateChannel;
-  onAnalyticsDebugEnabledChange: (enabled: boolean) => void;
-  onAppCatalogChannelChange: (channel: DesktopAppCatalogChannel) => void;
-  onClearConversationHistory: () => void;
-  onClearLogs: () => void;
-  onDeveloperPanelVisibleChange: (visible: boolean) => void;
-  onExportLogs: () => void;
-  onFileDefaultOpenersChange: (
-    openersByExtension: DesktopFileDefaultOpenersByExtension
-  ) => void;
-  onLabEnabledChange: (enabled: boolean) => void;
-  onReferenceProvenanceFilterEnabledChange: (enabled: boolean) => void;
-  onShowAppDeveloperSourcesChange: (show: boolean) => void;
-  onTuttiAgentSwitchEnabledChange: (enabled: boolean) => void;
-  onUpdateChannelChange: (channel: DesktopUpdateChannel) => void;
-}) {
-  const { t } = useTranslation();
-  const logs = developerLogs.logs;
-  const [fileDefaultOpenerDrafts, setFileDefaultOpenerDrafts] = useState<
-    FileDefaultOpenerDraft[]
-  >([]);
-  const fileDefaultOpenerDraftIDRef = useRef(0);
-  const fileDefaultOpenerInputRefs = useRef(
-    new Map<number, HTMLInputElement>()
-  );
-  const [pendingFileDefaultOpenerDraftID, setPendingFileDefaultOpenerDraftID] =
-    useState<number | null>(null);
-  const draftCommittedExtensions = new Set(
-    fileDefaultOpenerDrafts.flatMap((draft) =>
-      draft.committedExtension ? [draft.committedExtension] : []
-    )
-  );
-  const fileDefaultOpeners = Object.entries(fileDefaultOpenersByExtension)
-    .filter(([extension]) => !draftCommittedExtensions.has(extension))
-    .sort(([left], [right]) => left.localeCompare(right));
-
-  const addFileDefaultOpener = useCallback(() => {
-    const id = fileDefaultOpenerDraftIDRef.current++;
-    setFileDefaultOpenerDrafts((drafts) => [
-      ...drafts,
-      { committedExtension: null, extension: "", id, opener: "fileViewer" }
-    ]);
-    setPendingFileDefaultOpenerDraftID(id);
-  }, []);
-
-  useEffect(() => {
-    if (pendingFileDefaultOpenerDraftID === null) {
-      return;
-    }
-    const input = fileDefaultOpenerInputRefs.current.get(
-      pendingFileDefaultOpenerDraftID
-    );
-    if (!input) {
-      return;
-    }
-    input.focus();
-    setPendingFileDefaultOpenerDraftID(null);
-  }, [fileDefaultOpenerDrafts.length, pendingFileDefaultOpenerDraftID]);
-
-  const updateFileDefaultOpenerDraft = useCallback(
-    (id: number, patch: Partial<Omit<FileDefaultOpenerDraft, "id">>) => {
-      setFileDefaultOpenerDrafts((drafts) =>
-        drafts.map((draft) => {
-          if (draft.id !== id) {
-            return draft;
-          }
-          const nextDraft = { ...draft, ...patch };
-          const normalizedExtension = normalizeDesktopFileExtension(
-            nextDraft.extension
-          );
-          const nextOpeners = { ...fileDefaultOpenersByExtension };
-          if (draft.committedExtension) {
-            delete nextOpeners[draft.committedExtension];
-          }
-          const canCommitExtension =
-            normalizedExtension &&
-            (fileDefaultOpenersByExtension[normalizedExtension] === undefined ||
-              normalizedExtension === draft.committedExtension);
-          if (canCommitExtension) {
-            nextOpeners[normalizedExtension] = nextDraft.opener;
-            nextDraft.committedExtension = normalizedExtension;
-          } else if (normalizedExtension && draft.committedExtension) {
-            nextOpeners[draft.committedExtension] = draft.opener;
-            nextDraft.committedExtension = draft.committedExtension;
-          } else {
-            nextDraft.committedExtension = null;
-          }
-          onFileDefaultOpenersChange(nextOpeners);
-          return nextDraft;
-        })
-      );
-    },
-    [fileDefaultOpenersByExtension, onFileDefaultOpenersChange]
-  );
-
-  const removeFileDefaultOpenerDraft = useCallback(
-    (id: number) => {
-      const draft = fileDefaultOpenerDrafts.find(
-        (candidate) => candidate.id === id
-      );
-      if (!draft) {
-        return;
-      }
-      if (draft.committedExtension) {
-        const { [draft.committedExtension]: _removed, ...remaining } =
-          fileDefaultOpenersByExtension;
-        onFileDefaultOpenersChange(remaining);
-      }
-      setFileDefaultOpenerDrafts((drafts) =>
-        drafts.filter((candidate) => candidate.id !== id)
-      );
-    },
-    [
-      fileDefaultOpenerDrafts,
-      fileDefaultOpenersByExtension,
-      onFileDefaultOpenersChange
-    ]
-  );
-
-  return (
-    <SettingsRows>
-      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.settings.developer.visibilityLabel")}
-          </strong>
-          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-            {t("workspace.settings.developer.visibilityDescription")}
-          </p>
-        </div>
-        <Switch
-          aria-label={t("workspace.settings.developer.visibilityLabel")}
-          checked={developerPanelVisible}
-          onCheckedChange={onDeveloperPanelVisibleChange}
-        />
-      </div>
-
-      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.settings.developer.referenceProvenanceFilterLabel")}
-          </strong>
-          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-            {t(
-              "workspace.settings.developer.referenceProvenanceFilterDescription"
-            )}
-          </p>
-        </div>
-        <Switch
-          aria-label={t(
-            "workspace.settings.developer.referenceProvenanceFilterLabel"
-          )}
-          checked={referenceProvenanceFilterEnabled}
-          disabled={featureFlagsUpdating}
-          onCheckedChange={onReferenceProvenanceFilterEnabledChange}
-        />
-      </div>
-
-      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.settings.developer.labVisibilityLabel")}
-          </strong>
-          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-            {t("workspace.settings.developer.labVisibilityDescription")}
-          </p>
-        </div>
-        <Switch
-          aria-label={t("workspace.settings.developer.labVisibilityLabel")}
-          checked={labEnabled}
-          disabled={featureFlagsUpdating}
-          onCheckedChange={onLabEnabledChange}
-        />
-      </div>
-
-      <AppCatalogChannelControl
-        appCatalogChannel={appCatalogChannel}
-        changingAppCatalogChannel={changingAppCatalogChannel}
-        onAppCatalogChannelChange={onAppCatalogChannelChange}
-      />
-
-      <ReleaseChannelControl
-        changingUpdateChannel={changingUpdateChannel}
-        updateChannel={updateChannel}
-        onUpdateChannelChange={onUpdateChannelChange}
-      />
-
-      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.settings.developer.tuttiAgentSwitchLabel")}
-          </strong>
-          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-            {t("workspace.settings.developer.tuttiAgentSwitchDescription")}
-          </p>
-        </div>
-        <Switch
-          aria-label={t("workspace.settings.developer.tuttiAgentSwitchLabel")}
-          checked={tuttiAgentSwitchEnabled}
-          onCheckedChange={onTuttiAgentSwitchEnabledChange}
-        />
-      </div>
-
-      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.settings.developer.showAppDeveloperSourcesLabel")}
-          </strong>
-          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-            {t(
-              "workspace.settings.developer.showAppDeveloperSourcesDescription"
-            )}
-          </p>
-        </div>
-        <Switch
-          aria-label={t(
-            "workspace.settings.developer.showAppDeveloperSourcesLabel"
-          )}
-          checked={showAppDeveloperSources}
-          onCheckedChange={onShowAppDeveloperSourcesChange}
-        />
-      </div>
-
-      {analyticsDebugAvailable ? (
-        <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-          <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-            <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-              {t("workspace.settings.developer.analyticsDebugLabel")}
-            </strong>
-            <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-              {t("workspace.settings.developer.analyticsDebugDescription")}
-            </p>
-          </div>
-          <Switch
-            aria-label={t("workspace.settings.developer.analyticsDebugLabel")}
-            checked={analyticsDebugEnabled}
-            onCheckedChange={onAnalyticsDebugEnabledChange}
-          />
-        </div>
-      ) : null}
-
-      <div className="flex w-full flex-col gap-3">
-        <div className="flex min-w-0 flex-col gap-1">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.settings.developer.fileDefaultOpenersLabel")}
-          </strong>
-          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-            {t("workspace.settings.developer.fileDefaultOpenersDescription")}
-          </p>
-        </div>
-        <div className="flex w-full flex-col gap-2 rounded-[10px] bg-[var(--transparency-block)] p-4">
-          <div className="grid gap-2">
-            {fileDefaultOpeners.map(([extension, opener]) => (
-              <div
-                key={extension}
-                className="grid grid-cols-[minmax(70px,0.7fr)_minmax(130px,1fr)_auto] items-center gap-2"
-              >
-                <span className="min-w-0 truncate text-[13px] text-[var(--text-primary)]">
-                  .{extension}
-                </span>
-                <Select
-                  value={opener}
-                  onValueChange={(value) => {
-                    onFileDefaultOpenersChange({
-                      ...fileDefaultOpenersByExtension,
-                      [extension]: value as DesktopFileDefaultOpener
-                    });
-                  }}
-                >
-                  <SelectTrigger
-                    aria-label={t(
-                      "workspace.settings.developer.fileDefaultOpenerActionLabel",
-                      { extension }
-                    )}
-                    className={workspaceSettingsSelectTriggerClass}
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent
-                    className={workspaceSettingsSelectContentClass}
-                    style={{ zIndex: "var(--z-panel-popover)" }}
-                  >
-                    {desktopFileDefaultOpeners.map((candidate) => (
-                      <SelectItem key={candidate} value={candidate}>
-                        {t(
-                          workspaceSettingsFileDefaultOpenerLabelKey(candidate)
-                        )}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  aria-label={t(
-                    "workspace.settings.developer.removeFileDefaultOpener",
-                    { extension }
-                  )}
-                  className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                  variant="ghost"
-                  type="button"
-                  onClick={() => {
-                    const { [extension]: _removed, ...remaining } =
-                      fileDefaultOpenersByExtension;
-                    onFileDefaultOpenersChange(remaining);
-                  }}
-                >
-                  <DeleteIcon className="size-3.5" />
-                </Button>
-              </div>
-            ))}
-            {fileDefaultOpenerDrafts.map((draft) => (
-              <div
-                key={draft.id}
-                className="grid grid-cols-[minmax(70px,0.7fr)_minmax(130px,1fr)_auto] items-center gap-2"
-              >
-                <Input
-                  aria-label={t(
-                    "workspace.settings.developer.fileDefaultOpenerExtensionLabel"
-                  )}
-                  className={workspaceSettingsInputClass}
-                  placeholder={t(
-                    "workspace.settings.developer.fileDefaultOpenerExtensionPlaceholder"
-                  )}
-                  ref={(input) => {
-                    if (input) {
-                      fileDefaultOpenerInputRefs.current.set(draft.id, input);
-                      return;
-                    }
-                    fileDefaultOpenerInputRefs.current.delete(draft.id);
-                  }}
-                  value={draft.extension}
-                  onChange={(event) =>
-                    updateFileDefaultOpenerDraft(draft.id, {
-                      extension: event.currentTarget.value
-                    })
-                  }
-                />
-                <Select
-                  value={draft.opener}
-                  onValueChange={(value) =>
-                    updateFileDefaultOpenerDraft(draft.id, {
-                      opener: value as DesktopFileDefaultOpener
-                    })
-                  }
-                >
-                  <SelectTrigger
-                    aria-label={t(
-                      "workspace.settings.developer.fileDefaultOpenerNewActionLabel"
-                    )}
-                    className={workspaceSettingsSelectTriggerClass}
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent
-                    className={workspaceSettingsSelectContentClass}
-                    style={{ zIndex: "var(--z-panel-popover)" }}
-                  >
-                    {desktopFileDefaultOpeners.map((candidate) => (
-                      <SelectItem key={candidate} value={candidate}>
-                        {t(
-                          workspaceSettingsFileDefaultOpenerLabelKey(candidate)
-                        )}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  aria-label={t(
-                    "workspace.settings.developer.removeFileDefaultOpener",
-                    { extension: draft.extension }
-                  )}
-                  className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                  variant="ghost"
-                  type="button"
-                  onClick={() => removeFileDefaultOpenerDraft(draft.id)}
-                >
-                  <DeleteIcon className="size-3.5" />
-                </Button>
-              </div>
-            ))}
-            <Button
-              className="w-fit"
-              variant="ghost"
-              type="button"
-              onClick={addFileDefaultOpener}
-            >
-              <AddLinedIcon className="size-3.5" />
-              {t("workspace.settings.developer.addFileDefaultOpener")}
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      <SettingsRow label={t("workspace.settings.developer.logsSizeLabel")}>
-        <p className="m-0 text-right text-[13px] leading-5 text-[var(--text-secondary)] max-[560px]:text-left">
-          {developerLogs.loading || logs === null
-            ? t("common.loading")
-            : t("workspace.settings.developer.logsSummary", {
-                count: String(logs.totalFiles),
-                size: formatWorkspaceSettingsBytes(logs.totalSizeBytes)
-              })}
-        </p>
-      </SettingsRow>
-
-      <SettingsRow label={t("workspace.settings.developer.actionsLabel")}>
-        <div className="flex flex-wrap justify-end gap-2 max-[560px]:justify-start">
-          <Button
-            variant="secondary"
-            type="button"
-            onClick={onExportLogs}
-            disabled={developerLogs.exporting}
-          >
-            {developerLogs.exporting
-              ? t("workspace.settings.developer.exportingLogs")
-              : t("workspace.settings.developer.exportLogs")}
-          </Button>
-          <Button
-            variant="secondary"
-            type="button"
-            onClick={onClearLogs}
-            disabled={developerLogs.clearing || developerLogs.exporting}
-          >
-            {developerLogs.clearing
-              ? t("workspace.settings.developer.clearingLogs")
-              : t("workspace.settings.developer.clearLogs")}
-          </Button>
-          <Button
-            variant="secondary"
-            type="button"
-            onClick={onClearConversationHistory}
-            disabled={developerLogs.clearingConversationHistory}
-          >
-            <DeleteIcon className="size-3.5" />
-            {developerLogs.clearingConversationHistory
-              ? t("workspace.settings.developer.clearingConversationHistory")
-              : t("workspace.settings.developer.clearConversationHistory")}
-          </Button>
-        </div>
-      </SettingsRow>
-    </SettingsRows>
-  );
-}
-
-function AppCatalogChannelControl({
-  appCatalogChannel,
-  changingAppCatalogChannel,
-  onAppCatalogChannelChange
-}: {
-  appCatalogChannel: DesktopAppCatalogChannel;
-  changingAppCatalogChannel: DesktopAppCatalogChannel | null;
-  onAppCatalogChannelChange: (channel: DesktopAppCatalogChannel) => void;
-}) {
-  const { t } = useTranslation();
-  const effectiveAppCatalogChannel =
-    changingAppCatalogChannel ?? appCatalogChannel;
-
-  return (
-    <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-      <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-        <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-          {t("workspace.settings.apps.appCatalogChannelLabel")}
-        </strong>
-        <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-          {t("workspace.settings.apps.appCatalogChannelDescription")}
-        </p>
-      </div>
-      <div
-        aria-label={t("workspace.settings.apps.appCatalogChannelLabel")}
-        className="grid h-8 shrink-0 grid-cols-2 overflow-hidden rounded-[6px] bg-[var(--transparency-block)] p-0.5"
-        role="group"
-      >
-        {desktopAppCatalogChannels.map((channel) => {
-          const selected = effectiveAppCatalogChannel === channel;
-          return (
-            <button
-              key={channel}
-              aria-pressed={selected}
-              className={cn(
-                "min-w-[92px] rounded-[5px] border-0 px-3 text-[13px] font-semibold leading-none outline-none transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--border-focus)]",
-                selected
-                  ? "bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-none"
-                  : "bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-              )}
-              disabled={changingAppCatalogChannel !== null}
-              type="button"
-              onClick={() => onAppCatalogChannelChange(channel)}
-            >
-              {t(workspaceSettingsAppCatalogChannelOptionLabelKey(channel))}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function workspaceSettingsAppCatalogChannelOptionLabelKey(
-  channel: DesktopAppCatalogChannel
-): DesktopI18nKey {
-  switch (channel) {
-    case "production":
-      return "workspace.settings.apps.appCatalogChannelOptions.production";
-    case "staging":
-      return "workspace.settings.apps.appCatalogChannelOptions.staging";
-  }
-}
-
-function ReleaseChannelControl({
-  changingUpdateChannel,
-  updateChannel,
-  onUpdateChannelChange
-}: {
-  changingUpdateChannel: DesktopUpdateChannel | null;
-  updateChannel: DesktopUpdateChannel;
-  onUpdateChannelChange: (channel: DesktopUpdateChannel) => void;
-}) {
-  const { t } = useTranslation();
-  const effectiveUpdateChannel = changingUpdateChannel ?? updateChannel;
-
-  return (
-    <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-      <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-        <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-          {t("workspace.settings.developer.releaseChannelLabel")}
-        </strong>
-        <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-          {t("workspace.settings.developer.releaseChannelDescription")}
-        </p>
-      </div>
-      <div
-        aria-label={t("workspace.settings.developer.releaseChannelLabel")}
-        className="grid h-8 shrink-0 grid-cols-2 overflow-hidden rounded-[6px] bg-[var(--transparency-block)] p-0.5"
-        role="group"
-      >
-        {desktopUpdateChannels.map((channel) => {
-          const selected = effectiveUpdateChannel === channel;
-          return (
-            <button
-              key={channel}
-              aria-pressed={selected}
-              className={cn(
-                "min-w-[92px] rounded-[5px] border-0 px-3 text-[13px] font-semibold leading-none outline-none transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--border-focus)]",
-                selected
-                  ? "bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-none"
-                  : "bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-              )}
-              disabled={changingUpdateChannel !== null}
-              type="button"
-              onClick={() => onUpdateChannelChange(channel)}
-            >
-              {t(workspaceSettingsUpdateChannelOptionLabelKey(channel))}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function workspaceSettingsUpdateChannelOptionLabelKey(
-  channel: DesktopUpdateChannel
-): DesktopI18nKey {
-  switch (channel) {
-    case "stable":
-      return "workspace.settings.developer.releaseChannelOptions.stable";
-    case "rc":
-      return "workspace.settings.developer.releaseChannelOptions.rc";
-  }
-}
-
 function workspaceSettingsMinimizeAnimationOptionLabelKey(
   animation: DesktopMinimizeAnimation
 ): DesktopI18nKey {
@@ -2391,12 +823,6 @@ function workspaceSettingsWindowSnappingShortcutLabelKey(
 type WorkspaceSettingsWindowSnappingSelectValue =
   | "off"
   | DesktopWorkbenchWindowSnappingShortcutPreset;
-
-function workspaceSettingsFileDefaultOpenerLabelKey(
-  opener: DesktopFileDefaultOpener
-): DesktopI18nKey {
-  return `workspace.settings.developer.fileDefaultOpenerOptions.${opener}`;
-}
 
 function WorkspaceSettingsPanelPortal({
   children,
@@ -2441,48 +867,6 @@ function WorkspaceSettingsPanelPortal({
   }
 
   return createPortal(panel, document.body);
-}
-
-function SettingsRows({
-  children,
-  className
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={cn("flex w-full flex-col gap-8 pb-[22px] pt-5", className)}>
-      {children}
-    </div>
-  );
-}
-
-function SettingsRow({
-  children,
-  label,
-  valueClassName
-}: {
-  children: React.ReactNode;
-  label: string;
-  valueClassName?: string;
-}) {
-  return (
-    <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-      <div className="min-w-0">
-        <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-          {label}
-        </strong>
-      </div>
-      <div
-        className={cn(
-          "flex min-w-0 justify-end max-[560px]:justify-start",
-          valueClassName
-        )}
-      >
-        {children}
-      </div>
-    </div>
-  );
 }
 
 function ComputerUseSetupRow({
@@ -3820,7 +2204,7 @@ function WorkspaceAgentSettingsSection({
   }, [focusedAnchor, focusRequestID]);
 
   return (
-    <div className="flex flex-col gap-6 pb-[22px] pt-5">
+    <div className="flex flex-col gap-6 pb-[22px]">
       <div className="flex w-full flex-col gap-3">
         <div className="flex min-w-0 flex-col gap-1">
           <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
@@ -4023,24 +2407,36 @@ function WorkspaceAgentSettingsSection({
 }
 
 function WorkspaceGeneralSettingsSection({
+  changingDeletedAgentConversationRetentionDays,
   changingFeatureFlags,
   changingLocale,
   changingSleepPreventionMode,
+  deletedAgentConversationRetentionDays,
   featureFlags,
   locale,
+  onDeletedAgentConversationRetentionDaysChange,
   onLocaleChange,
+  onPurgeDeletedConversations,
   onSleepPreventionModeChange,
   onWorkspaceUiModeChange,
+  purgingDeletedConversations,
   sleepPreventionMode
 }: {
+  changingDeletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays | null;
   changingFeatureFlags: DesktopFeatureFlags | null;
   changingLocale: DesktopLocale | null;
   changingSleepPreventionMode: DesktopSleepPreventionMode | null;
+  deletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays;
   featureFlags: DesktopFeatureFlags;
   locale: DesktopLocale;
+  onDeletedAgentConversationRetentionDaysChange: (
+    days: DeletedAgentConversationRetentionDays
+  ) => void;
   onLocaleChange: (locale: DesktopLocale) => void;
+  onPurgeDeletedConversations: () => Promise<void>;
   onSleepPreventionModeChange: (mode: DesktopSleepPreventionMode) => void;
   onWorkspaceUiModeChange: (mode: DesktopWorkspaceUiMode) => void;
+  purgingDeletedConversations: boolean;
   sleepPreventionMode: DesktopSleepPreventionMode;
 }) {
   const { t } = useTranslation();
@@ -4050,6 +2446,14 @@ function WorkspaceGeneralSettingsSection({
   const isUpdatingSleepPrevention = changingSleepPreventionMode !== null;
   const pendingSleepPreventionMode =
     changingSleepPreventionMode ?? sleepPreventionMode;
+  const pendingRetentionDays =
+    changingDeletedAgentConversationRetentionDays ??
+    deletedAgentConversationRetentionDays;
+  const [purgeDialogOpen, setPurgeDialogOpen] = useState(false);
+  const [purgeConfirmation, setPurgeConfirmation] = useState("");
+  const purgeConfirmationPhrase = t(
+    "workspace.settings.general.deletedConversationPurgeConfirmationPhrase"
+  );
   const isUpdatingWorkspaceUiMode = changingFeatureFlags !== null;
   const pendingWorkspaceUiMode = resolveDesktopWorkspaceUiMode(
     changingFeatureFlags ?? featureFlags
@@ -4224,113 +2628,133 @@ function WorkspaceGeneralSettingsSection({
           onCheckedChange={setAgentDiagnosticsConsent}
         />
       </div>
-    </div>
-  );
-}
 
-function WorkspaceAccountSettingsSection() {
-  const { t } = useTranslation();
-  const { service: accountService, state: accountState } = useAccountService();
-
-  useEffect(() => {
-    void accountService.refreshUserInfo();
-  }, [accountService]);
-
-  const handleLogin = async () => {
-    if (accountState.signingOut) {
-      return;
-    }
-    await accountService.startLogin();
-  };
-
-  const handleLogout = async () => {
-    if (accountState.signingIn || accountState.signingOut) {
-      return;
-    }
-    await accountService.logout();
-  };
-
-  const user = accountState.user;
-  const displayName = user?.name || user?.email || user?.user_id || "Tutti";
-
-  return (
-    <div className="flex flex-col gap-6 pb-[22px] pt-5">
-      <div className="flex min-w-0 items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          {user?.avatar ? (
-            <img
-              alt=""
-              className="size-12 shrink-0 rounded-full object-cover"
-              draggable={false}
-              src={user.avatar}
-            />
-          ) : (
-            <div className="grid size-12 shrink-0 place-items-center rounded-full bg-[var(--transparency-block)] text-[18px] font-semibold text-[var(--text-primary)]">
-              {displayName.slice(0, 1).toUpperCase()}
-            </div>
-          )}
-          <div className="min-w-0">
-            <strong className="block truncate text-[16px] font-semibold leading-6 text-[var(--text-primary)]">
-              {accountState.loading
-                ? t("common.loading")
-                : user
-                  ? displayName
-                  : t("workspace.settings.account.signedOutTitle")}
-            </strong>
-            <p className="m-0 truncate text-[13px] text-[var(--text-secondary)]">
-              {user?.email || t("workspace.settings.account.description")}
-            </p>
-          </div>
+      <div className="order-5 flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.general.deletedConversationRetentionLabel")}
+          </strong>
+          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+            {t(
+              "workspace.settings.general.deletedConversationRetentionDescription"
+            )}
+          </p>
         </div>
-
-        <div className="flex shrink-0 flex-wrap justify-end gap-2 max-[560px]:w-full max-[560px]:justify-start">
-          {user ? (
-            <>
-              <WorkspaceSettingsActionButton
-                className="w-auto min-w-[96px]"
-                disabled={accountState.signingIn || accountState.signingOut}
-                label={
-                  accountState.signingOut
-                    ? t("workspace.settings.account.signingOut")
-                    : t("workspace.settings.account.logout")
-                }
-                onClick={handleLogout}
-              />
-              <WorkspaceSettingsActionButton
-                className="w-auto min-w-[96px]"
-                disabled={accountState.signingIn || accountState.signingOut}
-                label={t("workspace.settings.account.refresh")}
-                onClick={() => void accountService.refreshUserInfo()}
-              />
-            </>
-          ) : (
-            <WorkspaceSettingsActionButton
-              className="w-auto min-w-[104px] max-[560px]:w-full"
-              disabled={accountState.loading || accountState.signingOut}
-              icon={
-                accountState.signingIn ? (
+        <div className="flex w-[220px] min-w-[220px] items-center gap-2 max-[560px]:w-full max-[560px]:min-w-0">
+          <div className="min-w-0 flex-1">
+            <Select
+              disabled={
+                changingDeletedAgentConversationRetentionDays !== null ||
+                purgingDeletedConversations
+              }
+              value={String(pendingRetentionDays)}
+              onValueChange={(value) =>
+                onDeletedAgentConversationRetentionDaysChange(
+                  Number(value) as DeletedAgentConversationRetentionDays
+                )
+              }
+            >
+              <SelectTrigger
+                aria-label={t(
+                  "workspace.settings.general.deletedConversationRetentionLabel"
+                )}
+                className={workspaceSettingsSelectTriggerClass}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent
+                className={workspaceSettingsSelectContentClass}
+                style={{ zIndex: "var(--z-panel-popover)" }}
+              >
+                {deletedAgentConversationRetentionDaysOptions.map((days) => (
+                  <SelectItem key={days} value={String(days)}>
+                    {t(
+                      "workspace.settings.general.deletedConversationRetentionDays",
+                      { count: String(days) }
+                    )}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                aria-label={t(
+                  purgingDeletedConversations
+                    ? "workspace.settings.general.deletedConversationPurging"
+                    : "workspace.settings.general.deletedConversationPurgeAction"
+                )}
+                className="size-8 rounded-[6px]"
+                disabled={purgingDeletedConversations}
+                size="icon"
+                variant="destructive-secondary"
+                onClick={() => {
+                  setPurgeConfirmation("");
+                  setPurgeDialogOpen(true);
+                }}
+              >
+                {purgingDeletedConversations ? (
                   <LoadingIcon className="size-3.5" />
-                ) : null
-              }
-              label={
-                accountState.signingIn
-                  ? t("workspace.settings.account.signingIn")
-                  : accountState.loginStatus === "pending"
-                    ? t("workspace.settings.account.reopenLogin")
-                    : t("workspace.settings.account.login")
-              }
-              onClick={handleLogin}
-              variant="default"
-            />
-          )}
+                ) : (
+                  <DeleteIcon className="size-3.5" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {t(
+                purgingDeletedConversations
+                  ? "workspace.settings.general.deletedConversationPurging"
+                  : "workspace.settings.general.deletedConversationPurgeAction"
+              )}
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
 
-      {accountState.error ? (
-        <p className="m-0 rounded-[6px] bg-[color-mix(in_srgb,var(--state-warning)_16%,transparent)] px-3 py-2 text-[13px] text-[var(--text-primary)]">
-          {accountState.error}
-        </p>
-      ) : null}
+      <Dialog open={purgeDialogOpen} onOpenChange={setPurgeDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {t("workspace.settings.general.deletedConversationPurgeTitle")}
+            </DialogTitle>
+            <DialogDescription>
+              {t(
+                "workspace.settings.general.deletedConversationPurgeDescription",
+                { phrase: purgeConfirmationPhrase }
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            aria-label={t(
+              "workspace.settings.general.deletedConversationPurgeConfirmationLabel"
+            )}
+            autoComplete="off"
+            value={purgeConfirmation}
+            onChange={(event) => setPurgeConfirmation(event.target.value)}
+          />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setPurgeDialogOpen(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button
+              disabled={
+                purgeConfirmation !== purgeConfirmationPhrase ||
+                purgingDeletedConversations
+              }
+              variant="destructive"
+              onClick={() => {
+                void onPurgeDeletedConversations().finally(() => {
+                  setPurgeDialogOpen(false);
+                  setPurgeConfirmation("");
+                });
+              }}
+            >
+              {t("workspace.settings.general.deletedConversationPurgeConfirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

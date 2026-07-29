@@ -1,3 +1,5 @@
+import type { AgentActivitySessionMessageWindow } from "./messageWindow.types.ts";
+
 export interface AgentActivityMessagePageLike<T> {
   messages: readonly T[];
   hasMore?: boolean;
@@ -18,6 +20,34 @@ export interface LoadAllAgentSessionMessagesResult<T> {
 }
 
 const DEFAULT_MAX_MESSAGE_PAGES = 1000;
+
+/**
+ * Projects the server-owned boundary of a newest-to-oldest page. The boundary
+ * must come from `hasMore`; message versions are mutable change cursors and
+ * cannot answer whether an older row exists.
+ */
+export function agentActivitySessionMessageWindowFromDescendingPage<
+  T extends { version?: number | null }
+>(page: AgentActivityMessagePageLike<T>): AgentActivitySessionMessageWindow {
+  const oldestLoadedVersion = page.messages.reduce<number | null>(
+    (oldest, message) => {
+      const version = message.version;
+      if (
+        typeof version !== "number" ||
+        !Number.isFinite(version) ||
+        version <= 0
+      ) {
+        return oldest;
+      }
+      return oldest === null ? version : Math.min(oldest, version);
+    },
+    null
+  );
+  return {
+    hasOlderMessages: oldestLoadedVersion !== null && page.hasMore === true,
+    oldestLoadedVersion
+  };
+}
 
 export async function loadAllAgentSessionMessages<
   T extends { version?: number }

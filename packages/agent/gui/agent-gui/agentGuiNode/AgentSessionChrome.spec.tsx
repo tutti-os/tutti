@@ -376,6 +376,65 @@ describe("AgentSessionChrome", () => {
     );
   });
 
+  it("renders device transport connection and disconnection states without actions", () => {
+    const props = {
+      isRespondingApproval: false,
+      onSubmitApprovalOption: vi.fn(),
+      onRetryActivation: vi.fn(),
+      onContinueInNewConversation: vi.fn(),
+      labels: {
+        approvalRequired: "Approval required",
+        authRequired: "Authentication required",
+        activatingSession: "Connecting session...",
+        retryActivation: "Retry",
+        continueInNewConversation: "Continue in new session"
+      }
+    };
+    const { rerender } = render(
+      <AgentSessionChrome
+        {...props}
+        chrome={{
+          auth: { message: "Sign in" },
+          approval: null,
+          recovery: {
+            kind: "transport-connecting",
+            message: "Connecting to Li's Mac…",
+            canRetry: false
+          },
+          rawState: null
+        }}
+      />
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Connecting to Li's Mac"
+    );
+    expect(screen.queryByText("Sign in")).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+
+    rerender(
+      <AgentSessionChrome
+        {...props}
+        chrome={{
+          auth: null,
+          approval: null,
+          recovery: {
+            kind: "transport-unavailable",
+            message:
+              "Connection to Li's Mac was lost. The system will retry automatically.",
+            canRetry: false
+          },
+          rawState: null
+        }}
+      />
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Connection to Li's Mac was lost"
+    );
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
   it("mounts recovery chrome after an empty state without a composed tooltip ref", () => {
     const props = {
       isRespondingApproval: false,

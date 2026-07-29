@@ -36,6 +36,8 @@ const stableEntrypoints = [
   ".",
   "./components",
   "./icons",
+  "./native",
+  "./native.css",
   "./styles.css",
   "./utils"
 ] as const;
@@ -244,7 +246,7 @@ async function removeDeletedFile(
 
 function subscribeToEvents(server: ViteDevServer, state: DevSyncState): void {
   let closed = false;
-  let reconnectTimer: NodeJS.Timeout | null = null;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let websocket: WebSocket | null = null;
 
   const close = (): void => {

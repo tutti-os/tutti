@@ -245,11 +245,15 @@ class AgentQueuedPromptImage extends Component<
  * block with no text) still renders its reference instead of appearing blank.
  */
 function queuedPromptDisplayText(queuedPrompt: AgentGUIQueuedPromptVM): string {
+  const displayPrompt = queuedPrompt.displayPrompt?.trim();
+  if (displayPrompt) {
+    return displayPrompt;
+  }
   const prompt = agentPromptContentDisplayText(queuedPrompt.content);
   if (prompt) {
     return prompt;
   }
-  return queuedPrompt.displayPrompt?.trim() ?? "";
+  return "";
 }
 
 function queuedPromptTitle(queuedPrompt: AgentGUIQueuedPromptVM): string {
@@ -301,7 +305,6 @@ function AgentQueuedPromptText({
         className="agent-gui-node__composer-queued-prompt-markdown"
         inline
         onLinkClick={onLinkClick}
-        previewMode
         workspaceAppIcons={workspaceAppIcons}
       />
     </div>

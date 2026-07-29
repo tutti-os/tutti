@@ -12,10 +12,7 @@ import type {
   WorkbenchSize,
   WorkbenchState
 } from "../core/types.ts";
-import type {
-  WorkbenchMissionControlAdapter,
-  WorkbenchMissionControlMode
-} from "../mission-control/types.ts";
+import type { WorkbenchMissionControlAdapter } from "../mission-control/types.ts";
 import type {
   WorkbenchController,
   WorkbenchDebugDiagnostics
@@ -27,11 +24,16 @@ import type {
 import type {
   WorkbenchDockPlacement,
   WorkbenchMinimizeAnimation,
+  WorkbenchWindowHeaderPresentation,
   WorkbenchSurfacePresentation,
   WorkbenchWindowSurfaceLayer,
   WorkbenchWindowHeaderDragHandleProps
 } from "../react/types.ts";
 import type { WorkbenchDockPreviewCache } from "../react/dockPreviewCache.ts";
+import type {
+  WorkbenchNodePreviewImageCapture,
+  WorkbenchNodePreviewImagesCapture
+} from "../react/nodePreviewCapture.ts";
 
 export interface WorkbenchHostActivation<TPayload = unknown> {
   payload?: TPayload;
@@ -84,7 +86,22 @@ export interface WorkbenchHostExternalStateSource<
   getNodeState(input: WorkbenchHostExternalStateLookupInput): TNodeState;
   getSnapshotNodeState?(input: WorkbenchHostExternalStateLookupInput): unknown;
   getWorkspaceState(input: { workspaceId: string }): TWorkspaceState;
-  subscribe?(listener: () => void): () => void;
+  /**
+   * Subscribe to one node's live state. `getNodeState` must return the same
+   * reference until this node's observable state changes.
+   */
+  subscribeNodeState?(
+    input: WorkbenchHostExternalStateLookupInput,
+    listener: () => void
+  ): () => void;
+  /**
+   * Subscribe to workspace state consumed by a node renderer. `getWorkspaceState`
+   * must return the same reference until this workspace state changes.
+   */
+  subscribeWorkspaceState?(
+    input: { workspaceId: string },
+    listener: () => void
+  ): () => void;
 }
 
 export type WorkbenchHostNodeCloseDecision = "close" | "keep-open";
@@ -262,6 +279,12 @@ export interface WorkbenchHostDockEntry {
    * `launch` keeps clicks on the launch request path even when matching nodes
    * already exist.
    */
+  /**
+   * When false, hides the dock hover-popup "New window" tile even for
+   * multi-instance entries. Context-menu "New window" remains available unless
+   * the entry is otherwise disabled. Defaults to true.
+   */
+  allowNewWindowInDockPopup?: boolean;
   clickBehavior?: "default" | "launch";
   hoverActions?: readonly WorkbenchHostDockEntryAction[];
   icon: ReactNode;
@@ -295,6 +318,14 @@ export interface WorkbenchHostDockEntry {
   visibility?: WorkbenchHostDockEntryVisibility;
 }
 
+export type WorkbenchHostDockEntryPresentationOverride = Readonly<
+  Partial<Pick<WorkbenchHostDockEntry, "dockRetention" | "visibility">>
+>;
+
+export type WorkbenchHostDockEntryPresentationOverrides = Readonly<
+  Record<string, WorkbenchHostDockEntryPresentationOverride>
+>;
+
 export type WorkbenchHostDockEntryDynamicState = Partial<
   Pick<
     WorkbenchHostDockEntry,
@@ -322,6 +353,7 @@ export interface WorkbenchHostNodeWindowCapabilities {
   defaultOpen?: boolean;
   fullscreenHeaderMode?: "persistent";
   fullscreenable?: boolean;
+  header?: WorkbenchWindowHeaderPresentation;
   keepMountedWhenMinimized?:
     | boolean
     | ((node: WorkbenchNode<WorkbenchHostNodeData>) => boolean);
@@ -376,6 +408,11 @@ export interface WorkbenchHostNodeBodyContext<
   isFocused: boolean;
   /** True while the host is interactively resizing this node. */
   isResizing: boolean;
+  /**
+   * True only while the normal Workbench window presentation is visible.
+   * False while minimized, Genie-hidden, or inside Mission Control.
+   */
+  isVisible: boolean;
   /** Current host presentation mode; null for the normal window layout. */
   presentationMode?: WorkbenchSurfacePresentation["mode"] | null;
   node: WorkbenchNode<WorkbenchHostNodeData>;
@@ -409,6 +446,7 @@ export interface WorkbenchHostNodeHeaderWindowActions {
   applyQuickLayout(target: WorkbenchQuickLayoutTarget): void;
   close(): void;
   focus(): void;
+  getFrame(): WorkbenchFrame;
   minimize(): void;
   resize(frame: WorkbenchFrame): void;
   toggleDisplayMode(): void;
@@ -426,13 +464,13 @@ export interface WorkbenchHostNodeHeaderContext<
   externalWorkspaceState: TExternalWorkspaceState;
   instanceId: string;
   instanceKey?: string | null;
+  isDragging: boolean;
   isFocused: boolean;
+  isResizing: boolean;
   node: WorkbenchNode<WorkbenchHostNodeData>;
   surfaceSize: WorkbenchSize;
   windowActions: WorkbenchHostNodeHeaderWindowActions;
 }
-
-export type WorkbenchHostMissionControlMode = WorkbenchMissionControlMode;
 
 type WorkbenchHostBodyRenderer<
   TExternalNodeState = unknown,
@@ -456,6 +494,24 @@ type WorkbenchHostHeaderRenderer<
       TExternalWorkspaceState
     >
   ): ReactNode;
+}["bivarianceHack"];
+
+export type WorkbenchHostNodeHeaderFrameRenderKey =
+  | boolean
+  | number
+  | string
+  | null;
+
+type WorkbenchHostHeaderFrameRenderKeyResolver<
+  TExternalNodeState = unknown,
+  TExternalWorkspaceState = unknown
+> = {
+  bivarianceHack(
+    context: WorkbenchHostNodeHeaderContext<
+      TExternalNodeState,
+      TExternalWorkspaceState
+    >
+  ): WorkbenchHostNodeHeaderFrameRenderKey;
 }["bivarianceHack"];
 
 type WorkbenchHostWindowCloseEffectResolver<
@@ -484,6 +540,14 @@ export interface WorkbenchHostNodeDefinition<
   description?: string;
   frame: WorkbenchFrame;
   getWindowCloseEffect?: WorkbenchHostWindowCloseEffectResolver<
+    TExternalNodeState,
+    TExternalWorkspaceState
+  >;
+  /**
+   * Projects frame-derived header presentation during direct manipulation.
+   * Equal keys skip renderHeader; omitted definitions keep live frame renders.
+   */
+  getHeaderFrameRenderKey?: WorkbenchHostHeaderFrameRenderKeyResolver<
     TExternalNodeState,
     TExternalWorkspaceState
   >;
@@ -564,7 +628,7 @@ export interface WorkbenchHostChromeRenderContext {
 }
 
 export interface WorkbenchHostMissionControlProps {
-  mode: WorkbenchMissionControlMode | null;
+  active: boolean;
   nodeIds?: readonly string[];
   onRequestClose: () => void;
 }
@@ -605,15 +669,15 @@ export interface WorkbenchContribution {
 }
 
 export interface WorkbenchHostProps {
-  captureNodePreviewImage?: (
-    node: WorkbenchNode<WorkbenchHostNodeData>
-  ) => Promise<string | null> | string | null;
+  captureNodePreviewImage?: WorkbenchNodePreviewImageCapture<WorkbenchHostNodeData>;
+  captureNodePreviewImages?: WorkbenchNodePreviewImagesCapture<WorkbenchHostNodeData>;
   className?: string;
   contributions?: readonly WorkbenchContribution[];
   debugDiagnostics?: WorkbenchDebugDiagnostics;
   dockPreviewCache?: WorkbenchDockPreviewCache;
   dockPlacement?: WorkbenchDockPlacement;
   dockEntries?: readonly WorkbenchHostDockEntry[];
+  dockEntryPresentationOverrides?: WorkbenchHostDockEntryPresentationOverrides;
   dockStateSource?: WorkbenchHostDockEntryStateSource;
   externalStateSource?: WorkbenchHostExternalStateSource;
   i18n?: I18nRuntime<string>;
@@ -642,7 +706,6 @@ export interface WorkbenchHostProps {
     adapter: WorkbenchMissionControlAdapter<WorkbenchHostNodeData> | null
   ) => void;
   onMissionControlRequestOpen?: (
-    mode: WorkbenchMissionControlMode,
     request?: WorkbenchHostMissionControlOpenRequest
   ) => void;
   onNodeCloseRequest?: (

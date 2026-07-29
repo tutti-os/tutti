@@ -17,8 +17,14 @@ import type {
   AgentActivitySession,
   AgentActivitySessionList,
   AgentActivitySubmitInteractiveInput,
-  AgentActivitySubmitInteractiveResult
+  AgentActivitySubmitInteractiveResult,
+  AgentActivityUpdateTuttiModeActivationInput,
+  AgentActivityUpdateTuttiModeActivationResult
 } from "./types.ts";
+import type {
+  AgentActivityForkSessionResult,
+  AgentActivityForkSessionThroughTurnInput
+} from "./sessionFork.types.ts";
 
 export interface AgentActivityAdapter {
   listSessions(input: {
@@ -46,6 +52,9 @@ export interface AgentActivityAdapter {
   sendInput(
     input: AgentActivitySendInput
   ): Promise<AgentActivitySendInputResult>;
+  updateTuttiModeActivation(
+    input: AgentActivityUpdateTuttiModeActivationInput
+  ): Promise<AgentActivityUpdateTuttiModeActivationResult>;
   goalControl(
     input: AgentActivityGoalControlInput
   ): Promise<AgentActivityGoalControlResult>;
@@ -64,4 +73,7 @@ export interface AgentActivityAdapter {
   setSessionPinned(
     input: AgentActivitySetSessionPinnedInput
   ): Promise<AgentActivitySession>;
+  forkSession(
+    input: AgentActivityForkSessionThroughTurnInput
+  ): Promise<AgentActivityForkSessionResult>;
 }

@@ -9,6 +9,22 @@ type Preparer interface {
 	Cleanup(context.Context, CleanupInput) error
 }
 
+// SessionForkProviderStateBinder makes provider-native fork state available
+// from the target session's isolated runtime namespace.
+type SessionForkProviderStateBinder interface {
+	SupportsSessionForkProviderStateBinding(provider string) bool
+	BindSessionForkProviderState(context.Context, SessionForkProviderStateBindingInput) error
+}
+
+type SessionForkProviderStateBindingInput struct {
+	WorkspaceID             string
+	Provider                string
+	SourceAgentSessionID    string
+	TargetAgentSessionID    string
+	SourceProviderSessionID string
+	TargetProviderSessionID string
+}
+
 type SkillBundleRenderer interface {
 	RenderSkillBundle(context.Context, PrepareInput) (SkillBundle, error)
 }
@@ -20,7 +36,6 @@ type PrepareInput struct {
 	Provider               string
 	Cwd                    string
 	CLICommand             string
-	CommandGuide           string
 	Title                  string
 	PermissionModeID       string
 	PlanMode               bool
@@ -30,9 +45,45 @@ type PrepareInput struct {
 	Model                  string
 	ReasoningEffort        string
 	ConversationDetailMode string
-	ExtraSkills            []ProviderSkillBundle
-	Metadata               map[string]any
-	resolved               *resolvedCapabilities
+	// AgentInstructions and the accompanying capability lists come from the
+	// immutable WorkspaceAgent revision selected for this session. They are
+	// non-secret and may be materialized into provider instructions.
+	AgentName                 string
+	AgentDescription          string
+	AgentInstructions         string
+	AgentCapabilitiesExplicit bool
+	AgentSkills               []string
+	AgentTools                []string
+	ExtraSkills               []ProviderSkillBundle
+	// ExtensionSkillRoots carries the skill root paths declared by an agent
+	// extension's composer profile (Skills.Roots[].Path). When non-empty,
+	// native tutti skills materialize into these roots instead of the
+	// hard-coded providerSkillRoot, so acp: extension agents (hermes and
+	// future ones) load tutti-handoff/tutti-cli. Paths are safe relative
+	// paths validated by the extension profile; the selected runtime preparer
+	// chooses whether they are resolved against Cwd or mirrored into the
+	// session RuntimeRoot for provider isolation.
+	ExtensionSkillRoots []string
+	// ExtensionRuntimePrep carries a signed agent-extension runtime overlay.
+	// It is provider-neutral: package profiles describe any required per-run
+	// home, user-home file copies, and config merges instead of Tutti core
+	// branching on a provider ID.
+	ExtensionRuntimePrep *ExtensionRuntimePrep
+	Metadata             map[string]any
+	// CommandCapabilityProjection narrows the command guide for a dedicated
+	// internal session. A non-empty AllowedIDs is an exact public/integration
+	// set; otherwise public commands remain visible unless explicitly excluded.
+	// Only the named integration commands are promoted into that session's
+	// agent-facing snapshot.
+	CommandCapabilityProjection *CommandCapabilityProjection
+	// ModelEndpoint routes the session through a managed model access plan
+	// endpoint when the agent target is bound to one. Nil keeps the
+	// provider's native credential source. Credentials must never reach
+	// logs, manifests, or generated instructions.
+	ModelEndpoint       *ModelEndpointConfig
+	resolved            *resolvedCapabilities
+	hostFacts           HostFacts
+	commandCapabilities *CommandResolver
 	// ExternalRolloutSourcePath is the absolute path to the original provider
 	// CLI rollout/transcript file this session was imported from (Codex CLI's
 	// own on-disk conversation transcript under the user's real
@@ -47,6 +98,25 @@ type PrepareInput struct {
 type PreparedRuntime struct {
 	Cwd string
 	Env []string
+}
+
+type ExtensionRuntimePrep struct {
+	InstructionsFile string                `json:"instructionsFile,omitempty"`
+	Home             *ExtensionRuntimeHome `json:"home,omitempty"`
+}
+
+type ExtensionRuntimeHome struct {
+	EnvVar             string   `json:"envVar"`
+	DirName            string   `json:"dirName"`
+	SourceEnvVar       string   `json:"sourceEnvVar,omitempty"`
+	SourceDefaultRel   string   `json:"sourceDefaultRel,omitempty"`
+	CopyFiles          []string `json:"copyFiles,omitempty"`
+	ConfigFile         string   `json:"configFile,omitempty"`
+	ConfigFormat       string   `json:"configFormat,omitempty"`
+	ExternalDirsKey    []string `json:"externalDirsKey,omitempty"`
+	UserHomeSkillDir   string   `json:"userHomeSkillDir,omitempty"`
+	IncludeSkillRoots  bool     `json:"includeSkillRoots,omitempty"`
+	IncludeUserHomeDir bool     `json:"includeUserHomeDir,omitempty"`
 }
 
 type SkillBundle struct {

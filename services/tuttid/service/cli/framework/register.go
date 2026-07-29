@@ -25,7 +25,8 @@ func Register[T any](spec CommandSpec[T]) cliservice.Command {
 				JSON:        spec.Output.JSON,
 				Table:       tableOutput(spec.Output.Table),
 			},
-			Source: spec.Source,
+			Execution: spec.Execution,
+			Source:    spec.Source,
 		},
 		Handler: func(ctx context.Context, request cliservice.InvokeRequest) (cliservice.CommandOutput, error) {
 			workspaceID, err := resolveWorkspace(ctx, spec, request)
@@ -40,7 +41,17 @@ func Register[T any](spec CommandSpec[T]) cliservice.Command {
 			if err != nil {
 				return cliservice.CommandOutput{}, err
 			}
-			return FormatOutput(spec.Output, request.OutputMode, result)
+			output, err := FormatOutput(spec.Output, request.OutputMode, result)
+			if err != nil {
+				return cliservice.CommandOutput{}, err
+			}
+			if spec.Output.Warnings != nil {
+				output.Warnings = spec.Output.Warnings(result)
+			}
+			if spec.Output.Continuation != nil {
+				output.Continuation = spec.Output.Continuation(result)
+			}
+			return output, nil
 		},
 	}
 }

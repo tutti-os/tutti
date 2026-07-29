@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	authbridge "github.com/tutti-os/tutti/packages/auth/bridge-go"
+	"github.com/tutti-os/tutti/packages/commerce"
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
@@ -36,7 +37,9 @@ type Service struct {
 	mu       sync.Mutex
 	client   *authbridge.Client
 	attempts map[string]*authbridge.LoginAttempt
-	rewardMu sync.Mutex
+
+	commerceMu sync.Mutex
+	commerce   *commerce.Service
 }
 
 type LoginStart struct {
@@ -108,6 +111,16 @@ func (s *Service) GetUserInfo(ctx context.Context) (*authbridge.UserInfo, error)
 		return nil, err
 	}
 	return client.GetUserInfo(ctx)
+}
+
+// ReadSession exposes the daemon-owned account session to trusted service
+// adapters without returning credentials through the local HTTP API.
+func (s *Service) ReadSession() (*authbridge.Session, error) {
+	client, err := s.authClient()
+	if err != nil {
+		return nil, err
+	}
+	return client.ReadSession()
 }
 
 func (s *Service) GetProductSummary(ctx context.Context) (ProductSummary, error) {

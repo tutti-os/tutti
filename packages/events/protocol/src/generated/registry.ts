@@ -10,22 +10,40 @@ import type {
 
 export const businessEventTopicAgentActivityUpdated =
   "agent.activity.updated" as const;
+export const businessEventTopicAgentAutomationRulesChanged =
+  "agent.automation.rules.changed" as const;
+export const businessEventTopicAgentCollaborationUpdated =
+  "agent.collaboration.updated" as const;
 export const businessEventTopicAgentModelCatalogInvalidated =
   "agent.model.catalog.invalidated" as const;
+export const businessEventTopicAgentModelConfigurationChanged =
+  "agent.model.configuration.changed" as const;
+export const businessEventTopicAgentQuickpromptUpdated =
+  "agent.quickprompt.updated" as const;
 export const businessEventTopicAnalyticsDebugReported =
   "analytics.debug.reported" as const;
+export const businessEventTopicPreferencesAgentComposerDefaultsChanged =
+  "preferences.agent.composer.defaults.changed" as const;
+export const businessEventTopicPreferencesAgentComposerDefaultsPatchRequested =
+  "preferences.agent.composer.defaults.patch.requested" as const;
 export const businessEventTopicPreferencesDesktopUpdateRequested =
   "preferences.desktop.update.requested" as const;
 export const businessEventTopicPreferencesDesktopUpdated =
   "preferences.desktop.updated" as const;
+export const businessEventTopicUserProjectUpdated =
+  "user.project.updated" as const;
 export const businessEventTopicWorkspaceAppUpdated =
   "workspace.app.updated" as const;
 export const businessEventTopicWorkspaceAppfactoryJobUpdated =
   "workspace.appfactory.job.updated" as const;
 export const businessEventTopicWorkspaceIssueUpdated =
   "workspace.issue.updated" as const;
+export const businessEventTopicWorkspaceTuttimodeUpdated =
+  "workspace.tuttimode.updated" as const;
 export const businessEventTopicWorkspaceWorkbenchNodeLaunchRequested =
   "workspace.workbench.node.launch.requested" as const;
+export const businessEventTopicWorkspaceWorkflowUpdated =
+  "workspace.workflow.updated" as const;
 
 export interface BusinessEventDefinition {
   topic: BusinessEventTopic;
@@ -35,12 +53,26 @@ export interface BusinessEventDefinition {
   scope: BusinessEventScopeName;
 }
 
-export const businessEventCatalogRevision = "sha256:260d4aaa4021fbd9" as const;
+export const businessEventCatalogRevision = "sha256:0883cf9e6ae0b25c" as const;
 
 export const businessEventDefinitions = [
   {
     topic: "agent.activity.updated",
     version: 2,
+    direction: "server->client",
+    owner: "agent",
+    scope: "workspace"
+  },
+  {
+    topic: "agent.automation.rules.changed",
+    version: 1,
+    direction: "server->client",
+    owner: "agent",
+    scope: "workspace"
+  },
+  {
+    topic: "agent.collaboration.updated",
+    version: 1,
     direction: "server->client",
     owner: "agent",
     scope: "workspace"
@@ -53,10 +85,38 @@ export const businessEventDefinitions = [
     scope: "global"
   },
   {
+    topic: "agent.model.configuration.changed",
+    version: 1,
+    direction: "server->client",
+    owner: "agent",
+    scope: "workspace"
+  },
+  {
+    topic: "agent.quickprompt.updated",
+    version: 1,
+    direction: "server->client",
+    owner: "core",
+    scope: "global"
+  },
+  {
     topic: "analytics.debug.reported",
     version: 1,
     direction: "server->client",
     owner: "desktop",
+    scope: "desktop"
+  },
+  {
+    topic: "preferences.agent.composer.defaults.changed",
+    version: 1,
+    direction: "server->client",
+    owner: "core",
+    scope: "desktop"
+  },
+  {
+    topic: "preferences.agent.composer.defaults.patch.requested",
+    version: 1,
+    direction: "client->server",
+    owner: "core",
     scope: "desktop"
   },
   {
@@ -72,6 +132,13 @@ export const businessEventDefinitions = [
     direction: "server->client",
     owner: "core",
     scope: "desktop"
+  },
+  {
+    topic: "user.project.updated",
+    version: 2,
+    direction: "server->client",
+    owner: "core",
+    scope: "global"
   },
   {
     topic: "workspace.app.updated",
@@ -95,10 +162,24 @@ export const businessEventDefinitions = [
     scope: "workspace"
   },
   {
+    topic: "workspace.tuttimode.updated",
+    version: 1,
+    direction: "server->client",
+    owner: "workspace",
+    scope: "workspace"
+  },
+  {
     topic: "workspace.workbench.node.launch.requested",
     version: 1,
     direction: "server->client",
     owner: "core",
+    scope: "workspace"
+  },
+  {
+    topic: "workspace.workflow.updated",
+    version: 1,
+    direction: "server->client",
+    owner: "workspace",
     scope: "workspace"
   }
 ] as const satisfies readonly BusinessEventDefinition[];
@@ -111,6 +192,20 @@ export const businessEventDefinitionByTopic = {
     owner: "agent",
     scope: "workspace"
   },
+  "agent.automation.rules.changed": {
+    topic: "agent.automation.rules.changed",
+    version: 1,
+    direction: "server->client",
+    owner: "agent",
+    scope: "workspace"
+  },
+  "agent.collaboration.updated": {
+    topic: "agent.collaboration.updated",
+    version: 1,
+    direction: "server->client",
+    owner: "agent",
+    scope: "workspace"
+  },
   "agent.model.catalog.invalidated": {
     topic: "agent.model.catalog.invalidated",
     version: 1,
@@ -118,11 +213,39 @@ export const businessEventDefinitionByTopic = {
     owner: "agent",
     scope: "global"
   },
+  "agent.model.configuration.changed": {
+    topic: "agent.model.configuration.changed",
+    version: 1,
+    direction: "server->client",
+    owner: "agent",
+    scope: "workspace"
+  },
+  "agent.quickprompt.updated": {
+    topic: "agent.quickprompt.updated",
+    version: 1,
+    direction: "server->client",
+    owner: "core",
+    scope: "global"
+  },
   "analytics.debug.reported": {
     topic: "analytics.debug.reported",
     version: 1,
     direction: "server->client",
     owner: "desktop",
+    scope: "desktop"
+  },
+  "preferences.agent.composer.defaults.changed": {
+    topic: "preferences.agent.composer.defaults.changed",
+    version: 1,
+    direction: "server->client",
+    owner: "core",
+    scope: "desktop"
+  },
+  "preferences.agent.composer.defaults.patch.requested": {
+    topic: "preferences.agent.composer.defaults.patch.requested",
+    version: 1,
+    direction: "client->server",
+    owner: "core",
     scope: "desktop"
   },
   "preferences.desktop.update.requested": {
@@ -138,6 +261,13 @@ export const businessEventDefinitionByTopic = {
     direction: "server->client",
     owner: "core",
     scope: "desktop"
+  },
+  "user.project.updated": {
+    topic: "user.project.updated",
+    version: 2,
+    direction: "server->client",
+    owner: "core",
+    scope: "global"
   },
   "workspace.app.updated": {
     topic: "workspace.app.updated",
@@ -160,11 +290,25 @@ export const businessEventDefinitionByTopic = {
     owner: "workspace",
     scope: "workspace"
   },
+  "workspace.tuttimode.updated": {
+    topic: "workspace.tuttimode.updated",
+    version: 1,
+    direction: "server->client",
+    owner: "workspace",
+    scope: "workspace"
+  },
   "workspace.workbench.node.launch.requested": {
     topic: "workspace.workbench.node.launch.requested",
     version: 1,
     direction: "server->client",
     owner: "core",
+    scope: "workspace"
+  },
+  "workspace.workflow.updated": {
+    topic: "workspace.workflow.updated",
+    version: 1,
+    direction: "server->client",
+    owner: "workspace",
     scope: "workspace"
   }
 } as const satisfies Record<BusinessEventTopic, BusinessEventDefinition>;

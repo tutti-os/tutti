@@ -9,11 +9,10 @@ import {
 } from "react";
 import type { WorkbenchHostNodeBodyContext } from "@tutti-os/workbench-surface";
 import type { DesktopAgentDirectorySnapshot } from "@shared/contracts/agentDirectory.ts";
-import type { DesktopHostWindowApi } from "@preload/types";
+import type { DesktopHostWindowApi, DesktopRuntimeApi } from "@preload/types";
 import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import type { IAgentProviderStatusService as AgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
 import type { IWorkspaceAgentActivityService } from "@renderer/features/workspace-agent/services/workspaceAgentActivityService.interface.ts";
-import { runDesktopAgentGUILinkAction } from "@renderer/features/workspace-agent/services/desktopAgentGUILinkActions.ts";
 import type { DesktopAgentGUIWorkbenchBodyProps } from "@renderer/features/workspace-agent/ui/desktopAgentGUIWorkbenchModel.ts";
 import {
   registerWorkspaceAgentGuiLaunchHandler,
@@ -32,6 +31,7 @@ import {
   registerWorkspaceIssueManagerLaunchPresenter,
   requestWorkspaceIssueManagerLaunch
 } from "../services/workspaceIssueManagerLaunchCoordinator.ts";
+import { runStandaloneAgentLinkAction } from "../services/standaloneAgentLinkAction.ts";
 
 interface StandaloneAgentLaunchRoutingInput {
   agentDirectorySnapshot: DesktopAgentDirectorySnapshot;
@@ -44,6 +44,7 @@ interface StandaloneAgentLaunchRoutingInput {
     path: string,
     validateExists?: boolean
   ): Promise<boolean> | boolean;
+  runtimeApi: Pick<DesktopRuntimeApi, "logRendererDiagnostic">;
   setActivation: Dispatch<
     SetStateAction<WorkbenchHostNodeBodyContext["activation"]>
   >;
@@ -61,6 +62,7 @@ export function useStandaloneAgentLaunchRouting({
   hostWindowApi,
   openExternalUrl,
   openFileInSidebar,
+  runtimeApi,
   setActivation,
   setNodeState,
   workspaceAgentActivityService,
@@ -90,6 +92,10 @@ export function useStandaloneAgentLaunchRouting({
     (input: {
       agentSessionId: string;
       agentTargetId: string | null;
+      composerAppend?: {
+        draftPrompt: string;
+        focusComposer: true;
+      };
       provider: string;
     }) => {
       setNodeState((current) => ({
@@ -99,7 +105,12 @@ export function useStandaloneAgentLaunchRouting({
         provider: normalizeDesktopAgentGUIProvider(input.provider)
       }));
       setActivation({
-        payload: { agentSessionId: input.agentSessionId },
+        payload: {
+          agentSessionId: input.agentSessionId,
+          ...(input.composerAppend
+            ? { composerAppend: input.composerAppend }
+            : {})
+        },
         sequence: ++activationSequenceRef.current,
         type: desktopAgentGUIOpenSessionActivationType
       });
@@ -147,7 +158,7 @@ export function useStandaloneAgentLaunchRouting({
     NonNullable<DesktopAgentGUIWorkbenchBodyProps["onLinkAction"]>
   >(
     (action) => {
-      void runDesktopAgentGUILinkAction(action, {
+      void runStandaloneAgentLinkAction(action, {
         getAgentSession: ({ agentSessionId, workspaceId }) =>
           workspaceAgentActivityService.getSession(workspaceId, agentSessionId),
         homeDirectory,
@@ -166,14 +177,8 @@ export function useStandaloneAgentLaunchRouting({
           return true;
         },
         launchGroupChat: () => false,
-        openBrowserUrl: async ({ url }) => {
-          try {
-            await openExternalUrl(url);
-            return true;
-          } catch {
-            return false;
-          }
-        },
+        openExternalUrl,
+        runtimeApi,
         workspaceId
       });
     },
@@ -181,6 +186,7 @@ export function useStandaloneAgentLaunchRouting({
       homeDirectory,
       openFileInSidebar,
       openExternalUrl,
+      runtimeApi,
       workspaceAgentActivityService,
       workspaceAppCenterService,
       workspaceId

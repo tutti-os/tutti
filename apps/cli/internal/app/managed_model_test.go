@@ -64,3 +64,16 @@ func TestParseManagedModelInputRejectsUnknownFields(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestParseManagedModelCredentialRejectsUnsupportedModelPlanID(t *testing.T) {
+	previous := managedModelInputReader
+	managedModelInputReader = func() io.Reader {
+		return strings.NewReader(`{"capability":"chat","grantRef":"grant-1","model":"gpt","modelPlanId":"plan-1","provider":"openai"}`)
+	}
+	t.Cleanup(func() { managedModelInputReader = previous })
+
+	_, _, err := parseManagedModelInput([]string{"credential", "--input-json", "-"})
+	if err == nil || !strings.Contains(err.Error(), `unknown field "modelPlanId"`) {
+		t.Fatalf("err = %v", err)
+	}
+}

@@ -140,7 +140,17 @@ function mergeReadyProbeStatus(
     },
     actions: status?.actions.filter((action) => action.id !== "refresh") ?? [],
     activeAction: status?.activeAction,
-    network: status?.network
+    network: status?.network,
+    update: status?.update ?? {
+      capability: "unsupported",
+      currentVersion: null,
+      lastCheckedAt: null,
+      latestVersion: null,
+      reasonCode: null,
+      source: null,
+      unsupportedReason: "update_strategy_unsupported",
+      updateAvailable: null
+    }
   };
 }
 

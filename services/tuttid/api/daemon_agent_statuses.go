@@ -32,7 +32,9 @@ func (api DaemonAPI) GetAgentProviderStatuses(ctx context.Context, request tutti
 	snapshot, err := api.AgentStatusService.List(ctx, agentstatusservice.ListInput{
 		Providers:      generatedAgentStatusProviders(request.Params.Providers),
 		IncludeNetwork: request.Params.IncludeNetwork != nil && *request.Params.IncludeNetwork,
+		IncludeUpdates: request.Params.IncludeUpdates != nil && *request.Params.IncludeUpdates,
 		ForceRefresh:   request.Params.Refresh != nil && *request.Params.Refresh,
+		RefreshUpdates: request.Params.RefreshUpdates != nil && *request.Params.RefreshUpdates,
 	})
 	if err != nil {
 		return writeGetAgentProviderStatusesError(err), nil
@@ -73,6 +75,9 @@ func (api DaemonAPI) RunAgentProviderAction(ctx context.Context, request tuttige
 	})
 	if err != nil {
 		return writeRunAgentProviderActionError(err), nil
+	}
+	if api.TuttiAgentReadiness != nil {
+		api.TuttiAgentReadiness.ProviderActionCompleted(result)
 	}
 	return tuttigenerated.RunAgentProviderAction200JSONResponse(
 		generatedAgentProviderActionRun(result),
@@ -244,6 +249,25 @@ func generatedAgentProviderStatus(status agentstatusservice.ProviderStatus) tutt
 		Cli:          generatedAgentProviderCLIStatus(status.CLI),
 		Network:      generatedAgentProviderNetworkStatus(status.Network),
 		Provider:     tuttigenerated.WorkspaceAgentProvider(status.Provider),
+		Update:       generatedAgentProviderUpdateStatus(status.Update),
+	}
+}
+
+func generatedAgentProviderUpdateStatus(status agentstatusservice.UpdateStatus) tuttigenerated.AgentProviderUpdateStatus {
+	var source *tuttigenerated.AgentProviderUpdateSource
+	if status.Source != "" {
+		value := tuttigenerated.AgentProviderUpdateSource(status.Source)
+		source = &value
+	}
+	return tuttigenerated.AgentProviderUpdateStatus{
+		Capability:        tuttigenerated.AgentProviderUpdateCapability(status.Capability),
+		Source:            source,
+		CurrentVersion:    stringPointerIfNotBlank(status.CurrentVersion),
+		LatestVersion:     stringPointerIfNotBlank(status.LatestVersion),
+		UpdateAvailable:   status.UpdateAvailable,
+		UnsupportedReason: stringPointerIfNotBlank(status.UnsupportedReason),
+		LastCheckedAt:     status.LastCheckedAt,
+		ReasonCode:        stringPointerIfNotBlank(status.ReasonCode),
 	}
 }
 
@@ -252,7 +276,7 @@ func generatedAgentProviderActiveAction(provider string, action *agentstatusserv
 		return nil
 	}
 	logLines := activeActionLog(action.Stdout)
-	phase := activeActionPhase(action.Step)
+	phase := activeActionPhase(action.ID, action.Step)
 	slog.Info(
 		"agent provider API mapped active action",
 		"event", "tutti.agent_provider.api.active_action_mapped",
@@ -271,7 +295,10 @@ func generatedAgentProviderActiveAction(provider string, action *agentstatusserv
 	}
 }
 
-func activeActionPhase(step string) tuttigenerated.AgentProviderActiveActionPhase {
+func activeActionPhase(actionID agentstatusservice.ActionID, step string) tuttigenerated.AgentProviderActiveActionPhase {
+	if actionID == agentstatusservice.ActionUpdate {
+		return tuttigenerated.AgentProviderActiveActionPhaseUpdate
+	}
 	switch strings.TrimSpace(step) {
 	case "verify":
 		return tuttigenerated.AgentProviderActiveActionPhaseVerify

@@ -1,9 +1,6 @@
 export type {
   WorkspaceFileManagerFileActivationRequest,
-  WorkspaceFileManagerHostActionResult,
   WorkspaceFileManagerHostFallbackAction,
   WorkspaceFileManagerHostFallbackActionKind,
-  WorkspaceFileManagerHostFileActivationResult,
-  WorkspaceFileManagerHostImportConflict,
-  WorkspaceFileManagerHostImportResult
+  WorkspaceFileManagerHostFileActivationResult
 } from "../services/workspaceFileManagerHostTypes.ts";

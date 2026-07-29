@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerstatus"
 	"golang.org/x/sync/errgroup"
 
 	externalagentregistry "github.com/tutti-os/tutti/services/tuttid/service/externalagentregistry"
@@ -26,12 +27,12 @@ const (
 	AvailabilityUnknown      AvailabilityStatus = "unknown"
 )
 
-type AuthStatus string
+type AuthStatus = providerstatus.AuthStatus
 
 const (
-	AuthAuthenticated AuthStatus = "authenticated"
-	AuthRequired      AuthStatus = "required"
-	AuthUnknown       AuthStatus = "unknown"
+	AuthAuthenticated = providerstatus.AuthAuthenticated
+	AuthRequired      = providerstatus.AuthRequired
+	AuthUnknown       = providerstatus.AuthUnknown
 )
 
 type ActionKind string
@@ -46,9 +47,21 @@ type ActionID string
 
 const (
 	ActionInstall ActionID = "install"
+	ActionUpdate  ActionID = "update"
 	ActionLogin   ActionID = "login"
 	ActionRefresh ActionID = "refresh"
 )
+
+type UpdateCapability string
+
+const (
+	UpdateCapabilitySupported   UpdateCapability = "supported"
+	UpdateCapabilityUnsupported UpdateCapability = "unsupported"
+)
+
+type UpdateSource string
+
+const UpdateSourceNPM UpdateSource = "npm"
 
 type ProbeStatus string
 
@@ -73,9 +86,15 @@ type ListInput struct {
 	// never blocks on the network. Only the agent-env wizard, which renders the
 	// network diagnostic, sets this.
 	IncludeNetwork bool
+	// IncludeUpdates explicitly opts into remote provider CLI update discovery.
+	// It is OFF by default so readiness/status reads remain purely local.
+	IncludeUpdates bool
 	// ForceRefresh bypasses the application readiness cache. Interactive refresh,
 	// install, and login flows use it; ordinary startup and dock reads do not.
 	ForceRefresh bool
+	// RefreshUpdates bypasses only the remote update-metadata cache when
+	// IncludeUpdates is true. It never forces local readiness detection.
+	RefreshUpdates bool
 }
 
 type ProbeInput struct {
@@ -124,11 +143,23 @@ type ProviderStatus struct {
 	CLI          CLIStatus
 	Adapter      AdapterStatus
 	Auth         AuthInfo
+	Update       UpdateStatus
 	Actions      []Action
 	Network      *NetworkStatus
 	Checks       []ProviderCheck
 	LastError    *ProviderLastError
 	ActiveAction *ActiveAction
+}
+
+type UpdateStatus struct {
+	Capability        UpdateCapability
+	Source            UpdateSource
+	CurrentVersion    string
+	LatestVersion     string
+	UpdateAvailable   *bool
+	UnsupportedReason string
+	LastCheckedAt     *time.Time
+	ReasonCode        string
 }
 
 type ProviderCheck struct {
@@ -162,7 +193,7 @@ type CLIStatus struct {
 	BinaryPath string
 	Version    string
 	// MinVersion is the lowest CLI version this provider supports, when it
-	// enforces a floor (codex). Empty for providers with no version gate. Lets
+	// enforces a floor. Empty for providers with no version gate. Lets
 	// the UI surface "current X, requires Y" from the same constant the gate uses.
 	MinVersion string
 }
@@ -179,11 +210,7 @@ type AdapterStatus struct {
 	RequiredVersion string
 }
 
-type AuthInfo struct {
-	Status       AuthStatus
-	AccountLabel string
-	AuthMethod   string
-}
+type AuthInfo = providerstatus.AuthInfo
 
 type Action struct {
 	ID      ActionID
@@ -220,6 +247,7 @@ type Service struct {
 	InstallCommand              func(context.Context, InstallCommandInput) (InstallCommandResult, error)
 	InstallTimeout              time.Duration
 	RunAuthStatusCommand        func(context.Context, ProviderSpec, string) (AuthInfo, bool)
+	runCursorAuthStatusCommand  func(context.Context, string, []string) (AuthInfo, string, bool)
 	AuthStatusCommandRetryDelay time.Duration
 	IsExecutableFile            func(string) bool
 	Now                         func() time.Time
@@ -228,10 +256,13 @@ type Service struct {
 	Registry                    Registry
 	ExternalAgentRegistry       externalagentregistry.Store
 	ManagedRuntime              managedruntime.Resolver
-	// ClaudeCodeStateDir overrides the tutti state root that hosts the
-	// provisioned claude runtime binary (tests); empty uses DefaultStateDir.
+	// ClaudeCodeStateDir overrides the tutti state root that hosts the managed
+	// binary pointer (tests); empty uses DefaultStateDir.
 	ClaudeCodeStateDir string
-	AnalyticsReporter  reporterservice.Reporter
+	// ClaudeCodeRuntimeDir is the user-local root that hosts provisioned Claude
+	// binaries. It is required for Claude Code runtime provisioning.
+	ClaudeCodeRuntimeDir string
+	AnalyticsReporter    reporterservice.Reporter
 	// RunOutcomes lets a runtime auth failure override a stale "logged in" marker
 	// so the dock/wizard surface that login dropped. Shared pointer across copies.
 	RunOutcomes *RunOutcomeStore
@@ -239,6 +270,17 @@ type Service struct {
 	// readiness probes run once per provider instead of once per caller/window.
 	StatusCache    *ProviderStatusCache
 	StatusCacheTTL time.Duration
+	// CLIVersionCache and AdapterProbeCache keep stable executable facts across
+	// forced auth refreshes. DetectionCommands bounds actual subprocess fan-out
+	// across concurrent requests.
+	CLIVersionCache   *CLIVersionCache
+	AdapterProbeCache *AdapterProbeCache
+	DetectionCommands *DetectionCommandLimiter
+	// UpdateCache is separate from readiness caching because remote release
+	// discovery is opt-in and must never make ordinary local status reads touch
+	// the network.
+	UpdateCache    *ProviderUpdateCache
+	UpdateCacheTTL time.Duration
 }
 
 const authStatusCommandTimeout = 5 * time.Second
@@ -270,7 +312,9 @@ func (s Service) List(ctx context.Context, input ListInput) (snapshot Snapshot, 
 			"event", "tutti.agent_provider.status_list.completed",
 			"durationMs", time.Since(startedAt).Milliseconds(),
 			"includeNetwork", input.IncludeNetwork,
+			"includeUpdates", input.IncludeUpdates,
 			"forceRefresh", input.ForceRefresh,
+			"refreshUpdates", input.RefreshUpdates,
 			"providerCount", len(snapshot.Providers),
 			"requestedProviderCount", len(input.Providers),
 			"requestedProviders", input.Providers,
@@ -296,6 +340,27 @@ func (s Service) List(ctx context.Context, input ListInput) (snapshot Snapshot, 
 		})
 	}
 	_ = group.Wait() // statusForSpec never returns an error
+	for i := range statuses {
+		statuses[i].Update = baseProviderUpdateStatus(specs[i], statuses[i].CLI.Version, statuses[i].CLI.BinaryPath)
+	}
+
+	// Remote update discovery is a separate, explicit opt-in. It never runs for
+	// ordinary readiness/status requests, and each provider records a cached,
+	// non-fatal outcome rather than failing the whole snapshot.
+	if input.IncludeUpdates {
+		var updateGroup errgroup.Group
+		updateGroup.SetLimit(statusDetectionConcurrency)
+		for i, spec := range specs {
+			updateGroup.Go(func() error {
+				statuses[i].Update = s.updateStatusForSpec(ctx, spec, statuses[i].CLI.Version, statuses[i].CLI.BinaryPath, input.RefreshUpdates)
+				if statuses[i].Update.UpdateAvailable != nil && *statuses[i].Update.UpdateAvailable {
+					statuses[i].Actions = appendProviderAction(statuses[i].Actions, daemonAction(ActionUpdate))
+				}
+				return nil
+			})
+		}
+		_ = updateGroup.Wait()
+	}
 
 	// The network connectivity probe is OPT-IN (input.IncludeNetwork). The dock /
 	// startup / polling / provider-availability path leaves it off so detection is
@@ -362,7 +427,7 @@ func (s Service) List(ctx context.Context, input ListInput) (snapshot Snapshot, 
 func (s Service) cachedStatusForSpec(ctx context.Context, spec ProviderSpec, forceRefresh bool) ProviderStatus {
 	cache := s.StatusCache
 	if cache == nil {
-		return s.detectStatusForSpec(ctx, spec)
+		return s.detectStatusForSpec(ctx, spec, forceRefresh)
 	}
 	if !forceRefresh {
 		if cached, cachedAt, credentialFingerprint, ok := cache.get(spec.Provider, s.now(), s.providerStatusCacheTTL()); ok &&
@@ -378,7 +443,7 @@ func (s Service) cachedStatusForSpec(ctx context.Context, spec ProviderSpec, for
 				return cached, nil
 			}
 		}
-		status := s.detectStatusForSpec(ctx, spec)
+		status := s.detectStatusForSpec(ctx, spec, forceRefresh)
 		completedAt := s.now()
 		status.Availability.CheckedAt = &completedAt
 		cache.set(spec.Provider, completedAt, s.providerCredentialFingerprint(spec), status)
@@ -387,8 +452,10 @@ func (s Service) cachedStatusForSpec(ctx context.Context, spec ProviderSpec, for
 	return cloneProviderStatus(value.(ProviderStatus))
 }
 
-func (s Service) detectStatusForSpec(ctx context.Context, spec ProviderSpec) ProviderStatus {
-	status := s.statusForSpec(ctx, spec, s.now())
+func (s Service) detectStatusForSpec(ctx context.Context, spec ProviderSpec, forceRefresh bool) ProviderStatus {
+	status := s.statusForSpec(ctx, spec, s.now(), statusDetectionOptions{
+		forceRefresh: forceRefresh,
+	})
 	completedAt := s.now()
 	status.Availability.CheckedAt = &completedAt
 	return status
@@ -430,7 +497,10 @@ func (s Service) Probe(ctx context.Context, input ProbeInput) (ProbeResult, erro
 		return result, nil
 	}
 	runtimeResolution := s.resolveProviderRuntime(ctx, spec)
-	status := s.statusForSpec(ctx, spec, now)
+	status := s.statusForSpec(ctx, spec, now, statusDetectionOptions{
+		forceRefresh:     true,
+		skipAdapterProbe: true,
+	})
 	result := ProbeResult{
 		Provider:   spec.Provider,
 		CheckedAt:  now,
@@ -460,49 +530,14 @@ func (s Service) Probe(ctx context.Context, input ProbeInput) (ProbeResult, erro
 		result.Message = status.LastError.Message
 		return result, nil
 	}
+	if !providerCLIVersionMeetsMinimum(spec, status.CLI.Version) {
+		result.Status = ProbeFailed
+		result.ReasonCode = providerCLIVersionUnsupportedReasonCode(spec)
+		result.Message = "CLI version is below " + spec.MinVersion
+		return result, nil
+	}
 
 	return s.probeAdapterRuntimeCommand(ctx, spec, runtimeResolution, now), nil
-}
-
-func (s Service) probeAdapterRuntimeCommand(
-	ctx context.Context,
-	spec ProviderSpec,
-	runtimeResolution providerRuntimeResolution,
-	now time.Time,
-) ProbeResult {
-	result := ProbeResult{
-		Provider:   spec.Provider,
-		CheckedAt:  now,
-		BinaryPath: runtimeResolution.AdapterPath,
-		Command:    cloneStrings(spec.AdapterCommand),
-	}
-	command := cloneStrings(spec.AdapterCommand)
-	if len(command) == 0 {
-		command = cloneStrings(spec.BinaryNames)
-	}
-	if len(command) == 0 || strings.TrimSpace(command[0]) == "" {
-		result.Status = ProbeSkipped
-		result.ReasonCode = "probe_command_unavailable"
-		result.Message = "Provider probe command is unavailable"
-		return result
-	}
-
-	env := s.commandResolver().Env(s.adapterCommandEnv(ctx, spec))
-	command[0] = s.commandResolver().Resolve(command[0], env)
-	result.Command = cloneStrings(command)
-	if strings.TrimSpace(runtimeResolution.AdapterPath) != "" {
-		result.BinaryPath = runtimeResolution.AdapterPath
-	} else {
-		result.BinaryPath = command[0]
-	}
-	result = s.probeCommandWithReadyAfter(ctx, result, command, env, s.probeReadyAfterForSpec(spec))
-	if isCodexStatusSpec(spec) && result.Status == ProbeFailed {
-		if code, ok := classifyCodexRuntimeError(result.Message); ok {
-			result.LastError = &ProviderLastError{Code: string(code), Message: result.Message}
-			result.ReasonCode = codexReasonCodeFromErrorCode(string(code))
-		}
-	}
-	return result
 }
 
 func (s Service) RunAction(ctx context.Context, input RunActionInput) (RunActionResult, error) {
@@ -513,6 +548,7 @@ func (s Service) RunAction(ctx context.Context, input RunActionInput) (RunAction
 	}
 	spec := specs[0]
 	defer s.invalidateProviderStatus(spec.Provider)
+	defer s.UpdateCache.invalidate(spec.Provider)
 	result := RunActionResult{
 		Provider:    spec.Provider,
 		ActionID:    input.ActionID,
@@ -531,6 +567,8 @@ func (s Service) RunAction(ctx context.Context, input RunActionInput) (RunAction
 			StartedAt: startedAt,
 		})
 		return result, err
+	case ActionUpdate:
+		return s.runUpdateAction(ctx, spec, result)
 	default:
 		return RunActionResult{}, ErrInvalidAction
 	}
@@ -570,7 +608,9 @@ func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result
 		}
 		result.Probe = &probe
 		if probe.Status == ProbeFailed {
-			repairStatus := s.statusForSpec(ctx, spec, s.now())
+			repairStatus := s.statusForSpec(ctx, spec, s.now(), statusDetectionOptions{
+				forceRefresh: true,
+			})
 			if repairStatus.Availability.ReasonCode == "acp_adapter_launch_failed" {
 				runtimeResolution.ReasonCode = "acp_adapter_launch_failed"
 				summary, updatedRuntime, err = s.installMissingProviderRuntime(installCtx, spec, runtimeResolution)

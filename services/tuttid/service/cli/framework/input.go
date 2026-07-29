@@ -41,6 +41,7 @@ func FromStruct[T any]() InputSpec {
 			Hidden:             field.Tag.Get("hidden") == "true",
 			AdvertisedRequired: field.Tag.Get("advertise-required") == "true",
 			Hint:               strings.TrimSpace(field.Tag.Get("hint")),
+			Default:            typedDefault(field.Type, field.Tag.Get("default")),
 		}
 		applyValidateTag(&fieldSpec, field.Tag.Get("validate"))
 		fieldSpec.Enum = parseCSVTag(field.Tag.Get("enum"))
@@ -80,6 +81,9 @@ func Schema(input InputSpec) map[string]any {
 		}
 		if len(field.Enum) > 0 {
 			property["enum"] = field.Enum
+		}
+		if field.Default != nil {
+			property["default"] = field.Default
 		}
 		properties[field.Name] = property
 		if field.Required || field.AdvertisedRequired {
@@ -132,6 +136,10 @@ func BindInput[T any](spec InputSpec, input map[string]any) (T, error) {
 			continue
 		}
 		raw, exists := input[name]
+		if (!exists || raw == nil) && fieldSpec.Default != nil {
+			raw = fieldSpec.Default
+			exists = true
+		}
 		if !exists || raw == nil {
 			if fieldSpec.Required {
 				return result, missingRequiredError(fieldSpec)
@@ -146,6 +154,36 @@ func BindInput[T any](spec InputSpec, input map[string]any) (T, error) {
 		}
 	}
 	return result, nil
+}
+
+func typedDefault(fieldType reflect.Type, raw string) any {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	for fieldType.Kind() == reflect.Pointer {
+		fieldType = fieldType.Elem()
+	}
+	switch fieldType.Kind() {
+	case reflect.String:
+		return raw
+	case reflect.Bool:
+		value, err := strconv.ParseBool(raw)
+		if err == nil {
+			return value
+		}
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		value, err := strconv.ParseInt(raw, 10, 64)
+		if err == nil {
+			return value
+		}
+	case reflect.Float32, reflect.Float64:
+		value, err := strconv.ParseFloat(raw, 64)
+		if err == nil {
+			return value
+		}
+	}
+	return nil
 }
 
 func setFieldValue(field reflect.Value, spec FieldSpec, raw any) error {
@@ -206,6 +244,18 @@ func setFieldValue(field reflect.Value, spec FieldSpec, raw any) error {
 			return invalidInputErrorWithReason(spec.Name, fmt.Sprintf("must be <= %d", *spec.Max))
 		}
 		field.SetInt(value)
+	case reflect.Float32, reflect.Float64:
+		value, err := parseFloat(raw)
+		if err != nil {
+			return invalidInputError(spec.Name)
+		}
+		if spec.Min != nil && value < float64(*spec.Min) {
+			return invalidInputErrorWithReason(spec.Name, fmt.Sprintf("must be >= %d", *spec.Min))
+		}
+		if spec.Max != nil && value > float64(*spec.Max) {
+			return invalidInputErrorWithReason(spec.Name, fmt.Sprintf("must be <= %d", *spec.Max))
+		}
+		field.SetFloat(value)
 	default:
 		return invalidInputError(spec.Name)
 	}
@@ -266,6 +316,23 @@ func parseInt(raw any) (int64, error) {
 		return strconv.ParseInt(strings.TrimSpace(value), 10, 64)
 	default:
 		return 0, fmt.Errorf("invalid integer")
+	}
+}
+
+func parseFloat(raw any) (float64, error) {
+	switch value := raw.(type) {
+	case int:
+		return float64(value), nil
+	case int64:
+		return float64(value), nil
+	case float32:
+		return float64(value), nil
+	case float64:
+		return value, nil
+	case string:
+		return strconv.ParseFloat(strings.TrimSpace(value), 64)
+	default:
+		return 0, fmt.Errorf("invalid number")
 	}
 }
 
@@ -348,6 +415,8 @@ func schemaType(typ reflect.Type) string {
 		return "boolean"
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return "integer"
+	case reflect.Float32, reflect.Float64:
+		return "number"
 	case reflect.Slice:
 		return "array"
 	default:

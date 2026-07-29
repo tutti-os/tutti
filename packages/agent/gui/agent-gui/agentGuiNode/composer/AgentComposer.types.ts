@@ -1,4 +1,5 @@
 import type { AgentSessionCommand } from "../../../shared/agentSessionTypes";
+import type { ReactNode } from "react";
 import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings";
 import type { AgentConversationPromptVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
@@ -6,12 +7,13 @@ import type { AgentPromptContentBlock } from "../../../shared/contracts/dto/agen
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
 import type { AgentContextMentionItem } from "../agentRichText/agentFileMentionExtension";
-import type { AgentContextMentionProvider } from "../agentContextMentionProvider";
-import type { AgentDroppedFileReferenceResolver } from "../model/agentDroppedFileReferences";
+import type { AgentExternalPromptEntryResolver } from "../model/agentExternalPromptEntries";
+import type { AgentExternalPromptFilePreparer } from "../model/agentExternalPromptFiles";
 import type { AgentProjectPathChangeMetadata } from "../AgentComposerSettingsMenus";
 import type { AgentSlashCommandCapability } from "../model/agentSlashCommandProviderPolicy";
 import type {
   AgentComposerDraft,
+  AgentGUIComposerGate,
   AgentGUIComposerSettingsVM,
   AgentGUIProviderSkillOption,
   AgentGUIQueueStatus,
@@ -25,6 +27,9 @@ import type {
   ReferenceProvenanceFilterController,
   ReferenceProvenanceFilterSnapshot
 } from "@tutti-os/workspace-file-reference/react";
+import type { AgentQuickPromptLabels } from "./quickPrompts/agentQuickPromptLabels";
+import type { AgentMentionFilterId } from "../AgentMentionSearchContracts";
+import type { AgentComposerInputHistoryEntry } from "../model/agentComposerInputHistory";
 
 export interface AgentComposerReferenceProvenanceFilter {
   snapshot: ReferenceProvenanceFilterSnapshot;
@@ -34,12 +39,38 @@ export interface AgentComposerReferenceProvenanceFilter {
   >;
 }
 
+export interface AgentComposerReferenceProvenanceFilters {
+  byFilter: Record<
+    AgentMentionFilterId,
+    AgentComposerReferenceProvenanceFilter
+  >;
+}
+
 export interface AgentComposerSubmitOptions {
   requiredSettingsPatch?: AgentActivitySubmitSettingsPatch;
+  capabilityRefs?: readonly AgentComposerCapabilityReference[];
+  /**
+   * Immutable Tutti presentation captured by the composer that initiated the
+   * submit. An explicit inactive snapshot is authoritative over stale draft
+   * state while a new conversation is being created.
+   */
+  tuttiMode?: AgentComposerTuttiModeSubmitSnapshot;
+}
+
+export interface AgentComposerTuttiModeSubmitSnapshot {
+  active: boolean;
+  effect?: number;
+  speed?: number;
+}
+
+export interface AgentComposerCapabilityReference {
+  capability: "tutti";
+  source: "slash_command";
 }
 
 export interface AgentComposerProps {
   workspaceId: string;
+  agentSessionId?: string | null;
   workspacePath?: string | null;
   currentUserId?: string | null;
   provider: string;
@@ -49,13 +80,27 @@ export interface AgentComposerProps {
   engagement?: AgentGUIComposerEngagement;
   /** Stable project/session owner for async draft attachment work. */
   draftScopeKey?: string;
+  inputHistory?: readonly AgentComposerInputHistoryEntry[];
+  inputHistoryHasOlderPage?: boolean;
+  inputHistoryIsLoadingOlderPage?: boolean;
+  onRequestOlderInputHistoryPage?: () => void;
   availableCommands: readonly AgentSessionCommand[];
   hasCompactableContext?: boolean;
   compactSupported?: boolean | null;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
-  disabled: boolean;
+  gate: AgentGUIComposerGate;
+  /** View-local lock that does not redefine canonical Composer readiness. */
+  presentationEditorDisabled: boolean;
   disabledReason?: string | null;
-  submitDisabled: boolean;
+  /** Draft-independent view-local submission lock. */
+  presentationSubmitDisabled: boolean;
+  /** Canonical engine projection of the independent TuttiModeActivation. */
+  tuttiModeActive?: boolean;
+  /** Blocks submission/removal while activation CAS or creation is unresolved. */
+  tuttiModeUpdating?: boolean;
+  /** Effective Tutti outcome-quality and completion-speed preferences. */
+  tuttiModeEffect?: number;
+  tuttiModeSpeed?: number;
   placeholder: string;
   composerSettings: AgentGUIComposerSettingsVM;
   queueStatus?: AgentGUIQueueStatus;
@@ -63,6 +108,7 @@ export interface AgentComposerProps {
   drainingQueuedPromptId: string | null;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   selectedAgentTarget?: AgentGUIAgentTarget | null;
+  footerAccessory?: ReactNode;
   agentTargets?: readonly AgentGUIAgentTarget[];
   handoffAgentTargets?: readonly AgentGUIAgentTarget[];
   providerSelectReadonly?: boolean;
@@ -71,17 +117,20 @@ export interface AgentComposerProps {
     agentTargetId?: string | null;
   }) => void;
   onHandoffConversation?: (target: AgentGUIAgentTarget) => void;
-  canQueueWhileBusy: boolean;
   showStopButton: boolean;
+  /** Lets typed input replace an aggregate-work Stop control with Send. */
+  draftOverridesStopButton?: boolean;
+  stopDisabled: boolean;
   activePrompt: AgentConversationPromptVM | null;
   activePromptKeyboardShortcutsEnabled?: boolean;
   promptTips?: readonly AgentComposerPromptTip[];
   isInterrupting: boolean;
   isSendingTurn: boolean;
   isSubmittingPrompt: boolean;
+  /** Whether the active session is authoritative enough to probe its cwd. */
+  projectMissingProbeEnabled?: boolean;
   uiLanguage?: UiLanguage;
   isActive?: boolean;
-  previewMode?: boolean;
   workspaceReferencePickerOpen?: boolean;
   promptImagesSupported?: boolean;
   canGoalControl?: boolean;
@@ -93,6 +142,13 @@ export interface AgentComposerProps {
   handoffMenuLabel?: string;
   labels: {
     send: string;
+    /**
+     * Plan-review send copy: with an empty-send override active the send
+     * button reads sendAccept on an empty draft and sendRequestChanges once
+     * feedback is typed, so the composer decision semantics stay legible.
+     */
+    sendAccept?: string;
+    sendRequestChanges?: string;
     modelLabel: string;
     modelSelectionLabel: string;
     modelContextWindowSuffix: string;
@@ -121,6 +177,7 @@ export interface AgentComposerProps {
     permissionModeReadOnly: string;
     permissionModeAuto: string;
     permissionModeFullAccess: string;
+    permissionModeChangeUnavailableDuringTurn: string;
     modelDescriptions: {
       frontierComplexCoding: string;
       everydayCoding: string;
@@ -130,6 +187,25 @@ export interface AgentComposerProps {
       professionalLongRunning: string;
     };
     planModeLabel: string;
+    tuttiModeLabel: string;
+    tuttiModeDescription: string;
+    tuttiModeRemove: string;
+    tuttiBudgetTitle: string;
+    tuttiBudgetEffectLabel: string;
+    tuttiBudgetSpeedLabel: string;
+    tuttiBudgetPreviewTitle: string;
+    tuttiBudgetPreviewHint: string;
+    tuttiBudgetPreviewCost: string;
+    tuttiBudgetPreviewBalance: string;
+    tuttiBudgetPreviewPowerful: string;
+    tuttiBudgetModelPreferenceLabel: string;
+    tuttiBudgetModelPreferenceCost: string;
+    tuttiBudgetModelPreferenceBalance: string;
+    tuttiBudgetModelPreferencePowerful: string;
+    tuttiBudgetModelPreferenceFastestSuitable: string;
+    tuttiBudgetParallelismLabel: string;
+    tuttiBudgetParallelismValue: (count: number) => string;
+    planModeDescription?: string;
     planModeOnLabel: string;
     planModeOffLabel: string;
     planUnavailable: string;
@@ -196,6 +272,13 @@ export interface AgentComposerProps {
     }) => string;
     slashStatusContextUnavailable: string;
     slashStatusLimitsUnavailable: string;
+    slashStatusEmptyValue: string;
+    slashStatusUsageJustUpdated: string;
+    slashStatusUsageMinutesAgo: (count: number) => string;
+    slashStatusUsageHoursAgo: (count: number) => string;
+    slashStatusUsageUpdating: string;
+    slashStatusUsageRefreshFailed: string;
+    slashStatusUsageRefreshAria: string;
     usageChipLabel: (input: { percent: number }) => string;
     usageTooltipLabel: string;
     usagePopoverTitle: string;
@@ -234,6 +317,9 @@ export interface AgentComposerProps {
     handoffConversation: string;
     handoffConversationTooltip: string;
     handoffConversationMenu: string;
+    handoffTargetDeviceSource: (deviceLabel: string) => string;
+    handoffTargetSelf: string;
+    handoffTargetShared: string;
     providerSwitchLabel: string;
     projectLocked: string;
     projectMissingDescription: string;
@@ -256,6 +342,7 @@ export interface AgentComposerProps {
       submit: string;
       cancel: string;
     };
+    quickPrompts: AgentQuickPromptLabels;
   };
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
   onDraftContentChange: (
@@ -275,19 +362,38 @@ export interface AgentComposerProps {
     computerUse?: boolean;
     permissionModeId?: string | null;
   }) => void;
+  onTuttiModeChange?: (active: boolean) => void;
+  onTuttiModeEffectChange?: (value: number) => void;
+  onTuttiModeSpeedChange?: (value: number) => void;
   capabilityMenuState?: AgentComposerCapabilityMenuState;
+  capabilityControlsReadOnly?: boolean;
   onCapabilitySettingsRequest?: (
     capability: AgentComposerCapabilitySettingsTarget
   ) => void;
   onSlashStatusOpen?: () => void;
+  onSlashStatusClose?: () => void;
+  onSlashStatusRefresh?: () => void;
   onSubmit: (
     content: AgentPromptContentBlock[],
     displayPrompt?: string,
     options?: AgentComposerSubmitOptions
   ) => void;
+  /**
+   * When set, an empty-draft send is enabled and routed here instead of being
+   * blocked (e.g. Tutti plan review: empty send = accept). Typed sends keep
+   * flowing through onSubmit.
+   */
+  onSubmitEmpty?: () => void;
+  /**
+   * Overrides the empty-draft send button copy while the empty-send override
+   * is active (e.g. plan review with a diverged intensity reads "Request
+   * changes" instead of "Accept plan"). Falls back to labels.sendAccept.
+   */
+  emptySubmitLabel?: string;
   onSubmitGuidance?: (
     content: AgentPromptContentBlock[],
-    displayPrompt?: string
+    displayPrompt?: string,
+    options?: AgentComposerSubmitOptions
   ) => void;
   onSendQueuedPromptNext: (queuedPromptId: string) => void;
   onRemoveQueuedPrompt: (queuedPromptId: string) => void;
@@ -306,15 +412,18 @@ export interface AgentComposerProps {
         entity?: AgentContextMentionItem | null
       ) => Promise<WorkspaceReferencePickResult>)
     | null;
-  resolveDroppedFileReferences?: AgentDroppedFileReferenceResolver | null;
+  resolveExternalPromptEntries?: AgentExternalPromptEntryResolver | null;
+  prepareExternalPromptFiles?: AgentExternalPromptFilePreparer | null;
+  promptAssetLimit?: number | null;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
-  contextMentionProviders?: readonly AgentContextMentionProvider[];
-  referenceProvenanceFilter?: AgentComposerReferenceProvenanceFilter | null;
+  referenceProvenanceFilters?: AgentComposerReferenceProvenanceFilters | null;
 }
 
-export type AgentComposerCapabilitySettingsTarget =
-  AgentSlashCommandCapability["capability"];
+export type AgentComposerCapabilitySettingsTarget = Exclude<
+  AgentSlashCommandCapability["capability"],
+  "tutti"
+>;
 
 export interface AgentComposerCapabilityMenuState {
   browserUse?: {
@@ -323,6 +432,9 @@ export interface AgentComposerCapabilityMenuState {
   computerUse?: {
     authorization?: AgentComposerComputerUseAuthorizationState | null;
     installed?: boolean | null;
+  };
+  tuttiMode?: {
+    enabled?: boolean | null;
   };
 }
 
@@ -357,6 +469,10 @@ export interface AgentComposerSlashStatus {
   limits?: readonly AgentComposerSlashStatusLimit[];
   limitsLoading?: boolean;
   limitsUnavailable?: boolean;
+  limitsResolvedEmpty?: boolean;
+  limitsCapturedAtUnixMs?: number | null;
+  refreshFailed?: boolean;
+  isRefreshing?: boolean;
 }
 
 export interface AgentComposerSlashStatusLimit {

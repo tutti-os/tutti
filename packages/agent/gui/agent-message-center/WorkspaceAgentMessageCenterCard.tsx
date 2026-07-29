@@ -50,6 +50,8 @@ export interface WorkspaceAgentMessageCenterCardProps {
   interactive?: boolean;
   isSubmitting: boolean;
   lazySummary?: boolean;
+  promptVariant?: "compact" | "full";
+  showSummaryWithPrompt?: boolean;
   summaryAccessory?: ReactNode;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onOpenChat: (input: { agentSessionId: string; provider: string }) => void;
@@ -92,6 +94,8 @@ export const WorkspaceAgentMessageCenterCard = memo(
     item,
     isSubmitting,
     lazySummary = false,
+    promptVariant = "compact",
+    showSummaryWithPrompt = true,
     summaryAccessory,
     onLinkAction,
     onOpenChat,
@@ -162,7 +166,7 @@ export const WorkspaceAgentMessageCenterCard = memo(
           </span>
         </div>
 
-        {summary ? (
+        {summary && (showSummaryWithPrompt || !prompt || !interactive) ? (
           <MessageCenterSummary
             item={item}
             lazy={lazySummary}
@@ -178,7 +182,7 @@ export const WorkspaceAgentMessageCenterCard = memo(
           <div className="min-w-0">
             <AgentInteractivePromptSurface
               embedded
-              variant="compact"
+              variant={promptVariant}
               keyboardShortcuts={false}
               prompt={prompt}
               isSubmitting={isSubmitting}

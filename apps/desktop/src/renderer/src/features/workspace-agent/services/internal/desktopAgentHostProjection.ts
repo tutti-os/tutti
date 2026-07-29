@@ -1,4 +1,3 @@
-import type { AgentActivitySession } from "@tutti-os/agent-activity-core";
 import type { AgentHostAgentSessionComposerSettings as SharedAgentHostAgentSessionComposerSettings } from "@shared/contracts/dto";
 import {
   isDesktopAgentGUIProvider,
@@ -74,31 +73,6 @@ export function resolveDesktopAgentGUIProvider(
       debugMessage: `Unsupported desktop agent provider: ${rawProvider}`
     }
   );
-}
-
-export function agentSessionActivationError(session: AgentActivitySession):
-  | {
-      code: string;
-      debugMessage: string;
-      message: string;
-    }
-  | undefined {
-  const message =
-    session.activeTurn?.error?.message?.trim() ||
-    session.latestTurn?.error?.message?.trim() ||
-    null;
-  if (
-    !message ||
-    (session.activeTurn?.error === undefined &&
-      session.latestTurn?.outcome !== "failed")
-  ) {
-    return undefined;
-  }
-  return {
-    code: "agent_session_start_failed",
-    debugMessage: message,
-    message
-  };
 }
 
 export function unavailableHostMethod(name: string): () => Promise<never> {

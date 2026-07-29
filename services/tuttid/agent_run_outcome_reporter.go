@@ -15,11 +15,15 @@ import (
 // status probe: it flips the provider's cached auth to "needs login", which the
 // stateless marker / `auth status` check would otherwise miss (the local
 // credentials file still says "logged in"). A successfully completed turn clears
-// the flag, so a re-login that works stops being reported as broken.
+// the flag, so a re-login that works stops being reported as broken. Embedding
+// the required durable reporter promotes its provenance receipt method without
+// a second, manually forwarded optional seam.
 type agentRunOutcomeReporter struct {
-	inner agentdaemon.ActivityReporter
+	agentdaemon.DurableActivityReporter
 	store *agentstatusservice.RunOutcomeStore
 }
+
+var _ agentdaemon.DurableActivityReporter = agentRunOutcomeReporter{}
 
 func (r agentRunOutcomeReporter) Report(
 	ctx context.Context,
@@ -34,11 +38,11 @@ func (r agentRunOutcomeReporter) Report(
 			r.store.RecordSuccess(provider)
 		}
 	}
-	return r.inner.Report(ctx, input)
+	return r.DurableActivityReporter.Report(ctx, input)
 }
 
 func (r agentRunOutcomeReporter) BindGoalProvenance(ctx context.Context, input agentsessionstore.BindGoalProvenanceInput) (agentsessionstore.GoalProvenanceBinding, error) {
-	ledger, ok := r.inner.(agentsessionstore.GoalProvenanceLedger)
+	ledger, ok := r.DurableActivityReporter.(agentsessionstore.GoalProvenanceLedger)
 	if !ok {
 		return agentsessionstore.GoalProvenanceBinding{}, errors.New("agent activity reporter does not support goal provenance")
 	}
@@ -46,7 +50,7 @@ func (r agentRunOutcomeReporter) BindGoalProvenance(ctx context.Context, input a
 }
 
 func (r agentRunOutcomeReporter) LookupGoalProvenance(ctx context.Context, input agentsessionstore.LookupGoalProvenanceInput) (agentsessionstore.GoalProvenanceBinding, bool, error) {
-	ledger, ok := r.inner.(agentsessionstore.GoalProvenanceLedger)
+	ledger, ok := r.DurableActivityReporter.(agentsessionstore.GoalProvenanceLedger)
 	if !ok {
 		return agentsessionstore.GoalProvenanceBinding{}, false, errors.New("agent activity reporter does not support goal provenance")
 	}
@@ -105,6 +109,8 @@ func messageLooksLikeAuthFailure(status string, payload map[string]any) bool {
 		"not logged in",
 		"please run /login",
 		"invalid api key",
+		"could not load the default credentials",
+		"api key is missing or not configured",
 	} {
 		if strings.Contains(lower, marker) {
 			return true

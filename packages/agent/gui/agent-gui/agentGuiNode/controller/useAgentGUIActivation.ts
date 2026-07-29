@@ -1,7 +1,11 @@
 import {
   selectSessionActivationPresentations,
   sessionActivationPresentationMapsEqual,
+  type AgentActivityCapabilityReference,
+  type AgentActivityInitialGoalControl,
+  type AgentActivityInitialTuttiModeActivation,
   type AgentActivitySubmitDiagnostics,
+  type AgentActivityRailPlacement,
   type PendingActivationIntentRecord,
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
@@ -17,9 +21,13 @@ type AgentGUILiveState = "inactive" | "activating" | "active" | "failed";
 
 interface AgentGUIActivateInputBase {
   agentSessionId: string;
+  capabilityRefs?: readonly AgentActivityCapabilityReference[];
   cwd?: string;
   initialContent?: AgentPromptContentBlock[];
   initialTurnExpected?: boolean;
+  initialGoalControl?: AgentActivityInitialGoalControl;
+  railSectionKey?: string;
+  railPlacement?: AgentActivityRailPlacement;
   initialDisplayPrompt?: string;
   runtimeContent?: AgentPromptContentBlock[];
   submitDiagnostics?: AgentActivitySubmitDiagnostics;
@@ -32,8 +40,10 @@ type AgentGUIActivateInput =
   | (AgentGUIActivateInputBase & {
       agentTargetId: string;
       clientSubmitId: string;
+      initialTuttiModeActivation?: AgentActivityInitialTuttiModeActivation;
       mode: "new";
       optimisticTitle?: string;
+      tuttiModeDraftKey?: string;
     })
   | (AgentGUIActivateInputBase & {
       agentTargetId?: string | null;
@@ -116,11 +126,23 @@ export function useAgentGUIActivation({
       const sharedIntent = {
         type: "activation/requested",
         agentSessionId,
+        ...(input.capabilityRefs?.length
+          ? { capabilityRefs: input.capabilityRefs }
+          : {}),
         ...(input.initialContent ? { content: input.initialContent } : {}),
         ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
         expiresAtUnixMs: requestedAtUnixMs + ACTIVATION_EXPIRY_MS,
         ...(input.initialTurnExpected !== undefined
           ? { initialTurnExpected: input.initialTurnExpected }
+          : {}),
+        ...(input.initialGoalControl
+          ? { initialGoalControl: { ...input.initialGoalControl } }
+          : {}),
+        ...(input.railSectionKey?.trim()
+          ? { railSectionKey: input.railSectionKey.trim() }
+          : {}),
+        ...(input.railPlacement
+          ? { railPlacement: { ...input.railPlacement } }
           : {}),
         ...(input.initialDisplayPrompt
           ? { initialDisplayPrompt: input.initialDisplayPrompt }
@@ -147,9 +169,19 @@ export function useAgentGUIActivation({
           ...sharedIntent,
           agentTargetId,
           clientSubmitId,
+          ...(input.initialTuttiModeActivation
+            ? {
+                initialTuttiModeActivation: {
+                  ...input.initialTuttiModeActivation
+                }
+              }
+            : {}),
           mode: "new",
           ...(input.optimisticTitle
             ? { optimisticTitle: input.optimisticTitle }
+            : {}),
+          ...(input.tuttiModeDraftKey?.trim()
+            ? { tuttiModeDraftKey: input.tuttiModeDraftKey.trim() }
             : {})
         });
       } else {

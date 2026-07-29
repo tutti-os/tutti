@@ -11,6 +11,7 @@ const GO_MODULE_ROOTS = [
   "packages/agent/store-sqlite/canonical",
   "packages/appcli/core",
   "packages/auth/bridge-go",
+  "packages/device-link",
   "packages/events/stream-go",
   "packages/workbench/service",
   "packages/workspace/files",
@@ -42,14 +43,6 @@ export function isBuiltinGenerateRequired(changedFiles) {
       !normalized.startsWith("services/tuttid/builtin-apps/generated/")
     );
   });
-}
-
-export function isToolTestRelevant(file) {
-  const normalized = file.replaceAll("\\", "/");
-  return (
-    normalized.startsWith("tools/scripts/") ||
-    normalized.startsWith("packages/workspace/app-release-tools/")
-  );
 }
 
 export function resolveGoValidationTargets(
@@ -99,6 +92,7 @@ export function resolveGoValidationTargets(
 }
 
 export function buildGoLintLane({
+  golangciLintBinary = "golangci-lint",
   moduleRoot,
   targets,
   workspaceRoot,
@@ -112,7 +106,7 @@ export function buildGoLintLane({
     command: [
       "bash",
       "-lc",
-      `cd ${shellQuote(moduleRoot)} && golangci-lint run --allow-parallel-runners --config ${shellQuote(golangciConfigPath)} ${targetList}`
+      `cd ${shellQuote(moduleRoot)} && ${shellQuote(golangciLintBinary)} run --allow-parallel-runners --config ${shellQuote(golangciConfigPath)} ${targetList}`
     ]
   };
 }

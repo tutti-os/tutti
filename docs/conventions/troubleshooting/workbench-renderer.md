@@ -2,12 +2,13 @@
 
 [Back to troubleshooting index](./README.md)
 
-### Tabbed standalone Browser remains in `Sleeping` state
+### Tabbed standalone Browser remains blank with a cold lifecycle
 
 - Symptom:
   A standalone Browser shows its default URL and tab title, but the guest area
-  stays blank and the navigation bar keeps showing `Sleeping` after multi-tab
-  support is enabled. The same Browser may work in an OS-mode Workbench window.
+  stays blank after multi-tab support is enabled. Renderer diagnostics keep the
+  active tab in the internal `cold` lifecycle even though activation was
+  requested. The same Browser may work in an OS-mode Workbench window.
 - Quick checks:
   Compare the surface node ID with the node ID in Browser runtime events. A
   tabbed surface owns a parent such as `browser:surface` while its controller
@@ -49,11 +50,13 @@
   clips descendants before stacking order can place the menu over the node
   body. Raising the menu z-index cannot escape ancestor overflow clipping.
 - Fix:
-  Keep the shared inline menu and mark only headers that own intentional inline
-  overlays with `data-workbench-custom-header-overflow="visible"`. Workbench
-  uses that semantic opt-in to allow overflow on the custom-header row; do not
-  copy the menu into the OS shell or globally disable clipping for every custom
-  header. The outer `.workbench-window` remains the window-bounds clip.
+  Keep the shared inline menu and declare the owning node's header presentation
+  as `window.header: { overflow: "visible" }` (plus its explicit `heightPx`
+  when it owns a non-default header height). Workbench projects that contract
+  to `data-window-header-overflow="visible"` on `.workbench-window` and allows
+  overflow only for that custom-header row. Do not copy the menu into the OS
+  shell or globally disable clipping for every custom header. The outer
+  `.workbench-window` remains the window-bounds clip.
 - Validation:
   Run the Browser Node and Workbench Surface package tests, typecheck the
   affected packages, and build the desktop renderer. In both Agent-only and OS
@@ -130,7 +133,12 @@
   settings aligned between development and production; do not hide a cold
   transform bottleneck by changing compiler semantics only in development.
   Reduce the initial module graph, precompile a stable package boundary, or
-  schedule non-blocking preload work instead. Keep the
+  schedule non-blocking preload work instead. For desktop development, wait for
+  Vite to transform the statically reachable startup graphs before
+  `electron-vite` launches Electron. Treat the top-level workspace and
+  standalone Agent lazy route modules as explicit warmup entries; do not follow
+  every dynamic import, because that compiles unopened tools and diagnostics.
+  Keep the
   right side shaped like the empty-home/new-conversation hero, not a selected
   conversation timeline with a bottom dock. Keep the fallback hero composer
   non-interactive until the real controller owns its draft.
@@ -155,7 +163,8 @@
   Finally cold-start local dev and compare the same timestamp landmarks; this
   manual renderer verification requires explicit user approval. If the dynamic
   import still dominates, compare cold and warm module-graph timings before
-  investigating daemon hydration or provider discovery.
+  investigating daemon hydration or provider discovery. The dev server must log
+  `renderer warmup completed` before `start electron app`.
   When a provider-status request is slow, compare Renderer `durationMs` with the
   daemon batch `durationMs`. A large daemon total points to provider detection;
   a large Renderer-only gap points to transport, timeout handling, or Renderer
@@ -166,6 +175,8 @@
 - References:
   [agent-gui-node.md](../../architecture/agent-gui-node.md)
   [WorkspaceWindow.tsx](../../../apps/desktop/src/renderer/src/app/windows/workspace/WorkspaceWindow.tsx)
+  [electron.vite.config.ts](../../../apps/desktop/electron.vite.config.ts)
+  [renderer-dev-warmup.mjs](../../../tools/scripts/renderer-dev-warmup.mjs)
   [StandaloneAgentToolSidebar.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/StandaloneAgentToolSidebar.tsx)
   [desktopAgentProviderStatusService.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderStatusService.ts)
   [desktopAgentProviderStatusDiagnostics.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderStatusDiagnostics.ts)
@@ -202,6 +213,94 @@
   [createRestartAwareFetch.ts](../../../apps/desktop/src/renderer/src/platform/tuttid/createRestartAwareFetch.ts)
   [desktop-transport.md](../../architecture/desktop-transport.md)
 
+### Renderer `fetch()` rejects an Electron image protocol that `<img>` can load
+
+- Symptom:
+  An image rendered from a Desktop custom protocol remains visible, but
+  renderer code that inlines or resizes the same image logs
+  `Fetch API cannot load` and `URL scheme ... is not supported`. Catching the
+  rejected promise does not suppress Chromium's console message.
+- Quick checks:
+  Find the scheme passed to `fetch()`. Confirm its privileged registration
+  enables both `supportFetchAPI` and `corsEnabled`, runs before Electron
+  `ready`, and its handler is installed on the renderer's exact `Session`.
+  A working `<img>` only proves the no-CORS subresource path and protocol
+  handler; it does not prove that renderer JavaScript may read the response.
+- Root cause:
+  The renderer page and custom protocol have different origins. Electron
+  permits `<img>` to load a no-CORS custom-protocol response, but blocks a
+  cross-origin `fetch()` from reading it when the scheme is not CORS-enabled.
+- Fix:
+  For fixed, non-sensitive image routes that renderer code must inline, register
+  the scheme with `supportFetchAPI: true` and `corsEnabled: true`. Register all
+  privileged Desktop schemes together in the single pre-`ready` call, then
+  install handlers on every intended Session. Do not enable cross-origin reads
+  for protocols that expose arbitrary or sensitive local files.
+- Validation:
+  Keep a contract test over every fetchable image scheme, run the Desktop
+  Electron boundary checks and typecheck, and build the production Desktop
+  bundle. Verify the renderer can read the response body, not only display the
+  URL in an image element.
+- References:
+  [desktopCustomProtocolSchemes.ts](../../../apps/desktop/src/main/host/desktopCustomProtocolSchemes.ts)
+  [tuttiAssetProtocol.ts](../../../apps/desktop/src/main/host/tuttiAssetProtocol.ts)
+  [workspaceFileIconProtocol.ts](../../../apps/desktop/src/main/host/workspaceFileIconProtocol.ts)
+
+### AgentGUI Mermaid flowcharts render shapes without labels
+
+- Symptom:
+  Mermaid flowcharts in AgentGUI show node borders and edges, but node and edge
+  labels are blank.
+- Quick checks:
+  Inspect Mermaid's raw SVG before the transcript sanitizer. If labels are
+  children of `<foreignObject>` while the sanitized SVG keeps shapes but has no
+  `<foreignObject>` or equivalent `<text>`, the missing content is an SVG/HTML
+  label-mode mismatch rather than a color or layout problem.
+- Root cause:
+  Mermaid enables HTML labels by default and renders them inside SVG
+  `<foreignObject>` elements. AgentGUI's defense-in-depth SVG sanitizer removes
+  those elements, including their text, while preserving native SVG shapes and
+  paths.
+- Fix:
+  Configure Mermaid to emit native SVG text with `htmlLabels: false`. Add
+  `htmlLabels` to Mermaid's secure configuration keys so diagram-level
+  directives cannot turn HTML labels back on. Keep the post-render SVG
+  sanitizer in place.
+- Validation:
+  Render a real flowchart containing multiline, CJK, decision, and edge labels,
+  including an `init` directive that requests HTML labels. Assert the sanitized
+  result contains every label as native SVG text and no `<foreignObject>`.
+- References:
+  [AgentMessageMermaid.tsx](../../../packages/agent/gui/shared/AgentMessageMermaid.tsx)
+  [AgentMessageMermaid.integration.spec.tsx](../../../packages/agent/gui/shared/AgentMessageMermaid.integration.spec.tsx)
+
+### AgentGUI carousel owner avatar stays a solid badge
+
+- Symptom:
+  The DOM owner avatar and other identity surfaces show the expected image, but
+  the WebGL empty-home carousel keeps its solid programmatic owner marker until
+  the component remounts.
+- Quick checks:
+  Confirm the host projects a non-empty `owner.avatarUrl`, the same URL renders
+  in a normal anonymous `<img>`, and the asset response permits anonymous CORS.
+  If a restart or remount makes the carousel image appear without changing the
+  directory projection, inspect the carousel image loader rather than adding
+  another profile or daemon request.
+- Root cause:
+  A transient first network failure can be latched as a decoded `null` image.
+  Because the authoritative URL did not change, the carousel has no reason to
+  create a new image generation and the solid fallback remains.
+- Fix:
+  Keep one carousel image-load owner and retry anonymous owner badges a small,
+  bounded number of times. Cancellation must clear both the active image source
+  and any pending retry timer. Continue using the host's authoritative owner
+  projection; renderer code must not fetch a second avatar source.
+- Validation:
+  Inject one failed owner-image attempt, advance through the first retry delay,
+  and assert that the next anonymous image resolves while icon and cover loading
+  remain unchanged. Also assert that canceling a generation resolves it empty
+  and clears every active source.
+
 ### Renderer tile memory warnings from hidden autoplay animation
 
 - Symptom:
@@ -213,53 +312,107 @@
   In the trace, group `FunctionCall` or `v8.callFunction` events by `url` and
   `functionName`. Hidden animation players often still appear as repeated
   `requestAnimationFrame` callbacks even when their DOM node has
-  `opacity: 0`.
+  `opacity: 0`. Also inspect `animationiteration` volume and completed CSS
+  entry animations whose `fill-mode: both` leaves an identity `transform` on
+  every mounted window.
 - Root cause:
   CSS-hidden animation elements are still live renderers. An autoplay/looping
   Lottie, canvas, or WebGL player can keep scheduling frames and force layer
-  updates across every mounted instance.
+  updates across every mounted instance. CSS can produce the same pressure:
+  inactive windows may keep infinite transform/opacity animations running, and
+  a completed entry animation with forwards fill can retain a compositor layer
+  long after its visual work ends.
 - Fix:
   Mount animation players only while the animation is actually visible, and
   defer loading third-party animation runtimes until an active state needs
-  them. Do not rely on `opacity`, `visibility`, or off-screen placement to stop
-  playback.
+  them. When a workspace restores many heavy bodies, render the active body
+  immediately but hydrate inactive bodies sequentially after idle, one
+  animation frame at a time; keep their shells and saved geometry visible
+  throughout. Once mounted, derive visual exposure from Workbench geometry and
+  z-order, not keyboard focus. Pause descendant CSS animations only while a
+  window is fully occluded. A partially exposed window remains fully painted;
+  only a window whose frame is completely covered may use
+  `content-visibility: hidden`. Release imperative resources such as WebGL
+  scenes, decoded carousel images, observers, and non-passive listeners while
+  fully occluded. Avoid running a body's entry animation when its host shell
+  already owns the appearance transition. For delayed entry animations whose
+  normal styles already match the final keyframe, use backwards fill so the
+  initial keyframe covers the delay and the final identity transform is
+  released. Do not rely on `opacity`, `visibility`, or off-screen placement to
+  stop playback.
 - Validation:
   Re-record a short DevTools trace after the fix. Idle UI should no longer show
   the hidden player's function as a high-frequency `requestAnimationFrame`
-  source, and Chromium tile memory warnings should stop during idle.
+  source, and Chromium tile memory warnings should stop during idle. For
+  multi-window AgentGUI changes, run
+  `pnpm perf:agent-gui -- --scenario workbench-window-drag`; it moves one
+  window while at least three are mounted and rejects tile-memory warnings or
+  excessive background animation iterations. Use
+  `--scenario workbench-fifty-window-stress` for the 50-window startup,
+  background-focus, retained-DOM, geometric exposure, drag, and 50 ms
+  renderer-task budgets.
 
 ### IME composition breaks fuzzy search or controlled search inputs
 
 - Symptom:
-  Chinese, Japanese, or Korean input cannot be committed in a fuzzy search or
-  mention picker. Pressing Enter to accept an IME candidate may select a
-  highlighted result, submit a search, or clear/replace the partially composed
-  text.
+  Chinese, Japanese, or Korean input cannot be committed in a fuzzy search,
+  mention picker, or a controlled name dialog (for example Files → New folder /
+  New file). Pressing Enter to accept an IME candidate may select a highlighted
+  result, submit a search or create dialog, or clear/replace the partially
+  composed text.
 - Quick checks:
   Inspect any `keydown` handler that consumes `Enter` or `Tab` while a menu is
-  open. Also inspect controlled `input[type="search"]` fields whose `value`
-  comes from async search/controller state.
+  open. Also inspect controlled text/`input[type="search"]` fields whose
+  `value` comes from async search/controller or dialog store state and whose
+  `onChange` commits on every keystroke without composition handlers.
 - Root cause:
   IME candidate confirmation is delivered through composition-aware keyboard
   events. If menu shortcuts do not check `isComposing` or the `keyCode/which`
   `229` fallback, the app treats candidate confirmation as a command. If a
-  controlled search input pushes every composition update through async search
-  state, stale parent values can overwrite the local composing buffer.
+  controlled search or name input pushes every composition update through async
+  search/controller/dialog state, stale parent values can overwrite the local
+  composing buffer.
 - Fix:
   In fuzzy/menu key handlers, return before command handling when
   `event.isComposing`, `event.nativeEvent.isComposing`, `keyCode === 229`, or
-  `which === 229`. For controlled search inputs, keep a local value during
-  `compositionstart`/`compositionend`, commit to the controller on
-  `compositionend`, and ignore stale parent values until the parent catches up.
+  `which === 229`. For controlled search or name inputs, keep a local value
+  during `compositionstart`/`compositionend` (prefer
+  `useComposedInputValue`), commit to the controller on `compositionend`, and
+  ignore stale parent values until the parent catches up. Guard form submit
+  while composition is active.
 - Validation:
   Add a unit test for the IME guard or input sync state, then manually type a
-  Chinese query and confirm Enter accepts the candidate instead of selecting a
-  result or submitting the field.
+  Chinese query/name and confirm Enter accepts the candidate instead of
+  selecting a result or submitting the field.
 - References:
   [richTextIme.ts](../../../packages/ui/rich-text/src/editor/richTextIme.ts)
   [useComposedInputValue.ts](../../../packages/ui/react-hooks/src/useComposedInputValue.ts)
+  [WorkspaceFileManagerMenus.tsx](../../../packages/workspace/file-manager/src/ui/WorkspaceFileManagerMenus.tsx)
   [WorkspaceFileReferencePickerTree.tsx](../../../packages/workspace/file-reference/src/ui/internal/reference/WorkspaceFileReferencePickerTree.tsx)
   [IssueManagerSidebarSections.tsx](../../../packages/workspace/issue-manager/src/ui/internal/shell/IssueManagerSidebarSections.tsx)
+
+### Controlled list input loses focus after every edit
+
+- Symptom:
+  Typing or deleting one character in a controlled input inside a rendered list
+  immediately ends the input state or clears focus.
+- Quick checks:
+  Inspect the nearest mapped row's React `key`. Confirm the key does not include
+  the input value or another field that changes in the input's `onChange` path.
+- Root cause:
+  Each edit changes the row key, so React treats the row as a different element
+  and unmounts the focused input before mounting its replacement.
+- Fix:
+  Build list-row keys only from stable row identity. For append/remove-only
+  drafts without a persisted row ID, a stable parent identity plus the row
+  position is acceptable; do not include editable values merely to make the key
+  look unique.
+- Validation:
+  Keep a regression test that rejects editable values in the row key. Manually
+  type and backspace repeatedly in each affected input and confirm that focus
+  and selection remain in the same field.
+- References:
+  [WorkspaceSettingsPanel.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/WorkspaceSettingsPanel.tsx)
 
 ### External-store snapshots churn because derived reads lose reference stability
 
@@ -301,6 +454,32 @@
   [packages/workbench/surface/src/store/createDerivedSnapshotGetter.ts](../../../packages/workbench/surface/src/store/createDerivedSnapshotGetter.ts)
   [packages/workbench/surface/src/host/missionControlAdapter.ts](../../../packages/workbench/surface/src/host/missionControlAdapter.ts)
   [packages/workbench/surface/src/host/missionControlAdapter.test.ts](../../../packages/workbench/surface/src/host/missionControlAdapter.test.ts)
+
+### React Compiler removes a manual identity memo
+
+- Symptom:
+  React profiling reports a grouped prop as referentially unequal but deeply
+  equal on every render even though source code wraps it in `useMemo`.
+- Quick checks:
+  Inspect the renderer's dev transform and production bundle. A source pattern
+  such as `useMemo(() => nextValue, [nextValue.field])` may compile to
+  `const value = nextValue`, restoring the fresh input reference.
+- Root cause:
+  The memo callback returns an existing input object while its dependency list
+  intentionally describes selected fields. React Compiler infers the input
+  object as the value dependency and may remove this identity-only memo.
+- Fix:
+  Build an explicit projection object from every semantic field and let React
+  Compiler cache that allocation by those fields. Do not use a component ref or
+  `useMemo(() => freshInput)` to absorb upstream reference churn.
+- Validation:
+  Add a compiler regression test for the projection, run the desktop production
+  build, and inspect the emitted cache conditions. They must compare semantic
+  fields rather than assign the fresh input object directly. Re-record a React
+  performance trace to verify deeply-equal grouped-prop changes disappear.
+- References:
+  [useStableDesktopAgentGUIHostProps.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/ui/useStableDesktopAgentGUIHostProps.ts)
+  [useStableDesktopAgentGUIHostProps.test.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/ui/useStableDesktopAgentGUIHostProps.test.ts)
 
 ### Workbench host rebuilds when dock business status changes
 
@@ -399,13 +578,111 @@
 - References:
   [useAgentGUINodeController.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts)
 
+### Dock popup stays on skeletons after preview capture succeeds
+
+- Symptom:
+  Dock popup cards remain as skeletons even though renderer diagnostics report
+  `dock_preview_capture.succeeded`.
+- Quick checks:
+  Compare `dock.popup.preview_capture.started` and
+  `dock.popup.preview_capture.resolved`. If capture starts once but the popup
+  effect runs twice in development, inspect whether the first cleanup fences
+  the result while the replayed effect skips the same pending capture.
+- Root cause:
+  React StrictMode replays effect setup and cleanup. Electron capture cannot be
+  canceled, so a module-level pending marker can outlive the effect invocation
+  that started it. Treating that invocation as canceled drops its successful
+  result, while the replay cannot start a replacement.
+- Fix:
+  Keep the pending marker until the native capture settles. Commit the result
+  when the popup is still mounted and the item's semantic preview identity is
+  still current, regardless of which equivalent effect invocation issued the
+  capture.
+- Validation:
+  Render the popup under `StrictMode`, defer the capture promise until effect
+  replay completes, and assert one native capture plus a rendered image.
+- References:
+  [docs/architecture/workbench-dock-model.md](../../architecture/workbench-dock-model.md)
+  [WorkbenchHostDockPopup.tsx](../../../packages/workbench/surface/src/host/WorkbenchHostDockPopup.tsx)
+
+### Some background Dock previews remain as skeletons
+
+- Symptom:
+  A multi-window Dock popup renders foreground or previously cached previews,
+  but windows that have never been foreground remain visually identical to
+  loading skeletons.
+- Quick checks:
+  Correlate `dock.popup.preview_capture.started` with
+  `dock.popup.preview_capture.resolved`. An immediate `hasPreview: false`
+  without a native `dock_preview_capture.started` event means the host rejected
+  native capture before IPC. Check whether the node is background and whether
+  its revision has a persisted preview.
+- Root cause:
+  Electron's rectangular capture reads the currently composited foreground
+  pixels. The desktop host correctly rejects a background node because its
+  rectangle contains another window. AgentGUI may also be unhydrated or have
+  inactive imperative resources when `surface.isVisible=false`, so a fresh DOM
+  snapshot can produce a blank image. Treating an unavailable result as a
+  reusable cache entry also prevents a later foreground attempt for the same
+  revision.
+- Fix:
+  Keep native capture as the foreground high-fidelity path. Background and
+  minimized popup nodes reuse only a successful memory or persistent image;
+  they do not request a fresh DOM snapshot. Keep an unavailable result local to
+  the mounted popup so reopening can retry after the node becomes foreground.
+  Show a static terminal placeholder instead of a loading skeleton when no
+  successful image exists.
+- Validation:
+  Cover native-null plus persisted-cache success, assert that background DOM
+  capture is not called, and reopen the popup to prove that a prior unavailable
+  result does not block a later successful capture.
+- References:
+  [docs/architecture/workbench-dock-model.md](../../architecture/workbench-dock-model.md)
+  [WorkbenchHostDockPopup.tsx](../../../packages/workbench/surface/src/host/WorkbenchHostDockPopup.tsx)
+
+### AgentGUI crashes while unmounting a Monaco diff
+
+- Symptom:
+  AgentGUI's React subtree crashes while a file diff is being hidden, replaced,
+  or removed. Renderer logs repeatedly report
+  `TextModel got disposed before DiffEditorWidget model got reset`. Long
+  histories with many expanded edit tools make the failure easier to trigger.
+- Quick checks:
+  Confirm the exception occurs during a diff component cleanup rather than
+  while parsing the patch. Inspect whether either Monaco text model is disposed
+  while the diff editor still returns it from `getModel()`. Repeatedly mounting
+  and unmounting one diff is a focused reproduction.
+- Root cause:
+  A diff wrapper disposed its owned original and modified text models before
+  detaching them from `DiffEditorWidget`. Monaco listens for model disposal and
+  deliberately throws while a disposed model is still attached. Keeping the
+  models alive avoids the exception but leaks one pair per diff.
+- Fix:
+  Let the Agent GUI package own the diff editor and both models. On cleanup,
+  call `diffEditor.setModel(null)` first, dispose the diff editor second, and
+  dispose the owned original and modified models last. Cancel asynchronous
+  Monaco loading on unmount so a late module resolution cannot create detached
+  resources.
+- Validation:
+  Keep a component test that records the exact detach/editor/model disposal
+  order, a test for unmount before Monaco finishes loading, and a test proving
+  content changes reuse the mounted editor. Run the Agent GUI package test and
+  typecheck lanes.
+- References:
+  [AgentMonacoDiffViewer.tsx](../../../packages/agent/gui/shared/agentConversation/components/tool-renderers/file-diff/AgentMonacoDiffViewer.tsx)
+  [monaco-react issue 647](https://github.com/suren-atoyan/monaco-react/issues/647)
+  [monaco-editor issue 4779](https://github.com/microsoft/monaco-editor/issues/4779)
+
 ### Workbench node body warns about updating WorkbenchNodeLayer during render
 
 - Symptom:
   Opening a workbench node shows React's warning that
   `WorkbenchNodeLayer` is updated while rendering a different node body
   component. The node may stay on a loading surface even though the backing
-  request succeeds.
+  request succeeds. A retained request controller can also work for the
+  restored item but silently ignore later selections: for example, AgentGUI
+  shows the conversation rail while every newly selected conversation has a
+  blank timeline and the daemon receives no message-list request.
 - Quick checks:
   Inspect controller construction paths called from React render or `useMemo`.
   If the constructor calls `setActiveFile`, subscribes with an immediate
@@ -430,9 +707,12 @@
 - Validation:
   Verify construction does not call host state publishers, then run the
   affected desktop tests and open the node in development with DevTools visible.
+  For request-owning controllers, switch between at least two uncached items
+  after the initial render and confirm that each selection reaches the backend.
 - References:
   [workspaceFilePreviewNodeController.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/internal/workspaceFilePreviewNodeController.ts)
   [WorkspaceFilePreviewNodeBody.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/WorkspaceFilePreviewNodeBody.tsx)
+  [useAgentConversationMessagePaging.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentConversationMessagePaging.ts)
 
 ### Renderer component repeatedly re-renders without visible changes
 
@@ -455,6 +735,12 @@
   `engine -> selector -> projection -> controller -> section` chain. Separate
   real summary-field changes from reference-only array, object, or callback
   changes; a memoized leaf cannot contain churn created at the selector boundary.
+  On a Rail click, count updated sections and rows, then inspect whether a global
+  active ID, the full provider-dependent label object, or scope-dependent action
+  callbacks changed on every section. Thousands of Tooltip, Popper, Dropdown,
+  or ContextMenu component renders usually amplify that upstream fan-out rather
+  than identify its owner. React DevTools component tracks add profiling cost,
+  so use them to locate the chain but recapture without the profiler for timing.
   When the stack starts in `setRef`, inspect Radix `asChild` composition before
   changing business state. In particular, check whether Tooltip and Dropdown
   triggers both clone the same DOM child and merge callback refs, or whether a
@@ -470,7 +756,25 @@
   list for every unrelated engine event, after which a container rebuilds command
   callbacks and fans one update out to every list section. A render-budget test
   that injects an already-stable view model bypasses this production chain and
-  cannot detect that regression.
+  cannot detect that regression. A container-owned relative-time interval can
+  cause the same fan-out when its timestamp is passed through every section and
+  row instead of being consumed at the timestamp leaf. A globally threaded
+  selection ID, a provider-dependent full label object passed into Rail, or
+  callbacks rebuilt for each target scope can likewise invalidate every
+  section even though only one or two rows changed visually. If every section
+  owns closed Tooltip/Popper/Dropdown/ContextMenu content, that upstream
+  invalidation also executes thousands of invisible primitive components. A
+  changing lock, drag-disabled, or batch-disabled prop on one memoized section
+  header has the same effect: React must execute the whole header and its
+  mounted Radix trigger tree even when only one native attribute or one open
+  menu item changes. A combined Context object merely moves that fan-out from
+  props to every Context consumer. Keeping those Context providers inside the
+  memoized section also executes item projection before the update reaches the
+  narrow consumer. A project reorder can show a valid insertion indicator but
+  never commit when only the section owns `drop`: releasing over a gap bypasses
+  that handler and global cleanup clears the valid drag state. A measurement
+  effect that includes the state it writes in its dependencies can repeat the
+  resulting layout read once more.
 - Fix:
   Stabilize the value at the ownership boundary, or remove derived presentation
   values from bidirectional state. For external/workbench state, only sync
@@ -480,7 +784,34 @@
   from active-session semantic equality. Stabilize usage, commands, prompt
   queue, quota, session-chrome, and host callback projections at their owning
   selector/controller boundary; do not clone canonical arrays while assembling
-  the view model. During Rail reconciliation, expose a stable lock reader so
+  the view model. For a paged Rail, project only canonical sessions referenced
+  by current section, search-result, or reconciliation ids, then structurally
+  share unchanged summary items. Let time-label consumers subscribe directly
+  to a shared renderer-realm relative-time external store. The store starts one
+  timer for its first subscriber and clears it after its last unsubscribe.
+  Project selection into the section that owns the active canonical or overlay
+  row, passing `null` to unrelated sections. Give Rail a dedicated locale-bound
+  label projection instead of the provider-dependent full view labels. Keep
+  shared section actions referentially stable and read the latest scope at event
+  time. Split stable section header/action chrome from changing item data: pass
+  scalar presentation fields and stable event-time actions, never the section
+  object. Keep menu root and trigger mounted, while rendering portaled menu
+  content only during its view-local open state. Do not move disclosure into a
+  controller/store or copy Session/project semantics to obtain this isolation.
+  Split large headers into stable identity, create-action, menu, and frame
+  render islands. Project frequently changing derived booleans through
+  separate primitive view Contexts owned outside the memoized Section so
+  project drag state reaches only the native draggable frame, project action
+  lock reaches only the forwarded-ref button leaf and open project menu, and
+  batch deletion state reaches only open menu content. Keep event-time lock
+  readers as the action-delivery guard; Context is only the current
+  presentation projection. Closed menus should have no batch-state consumer.
+  Keep the project header as the drag source and let each project section update
+  insertion position across its full area. Let the Rail scroll viewport own the
+  final drop so section gaps commit the last visible valid position.
+  Remove a measured state value from an effect dependency when the effect only
+  writes, but never reads, that value.
+  During Rail reconciliation, expose a stable lock reader so
   portaled menu actions can check current state without passing a changing
   boolean through every section. For composed menu actions, attach the Tooltip
   trigger to a stable wrapper and the Dropdown trigger to the actual
@@ -497,17 +828,58 @@
   and run the affected renderer tests plus desktop typecheck. AgentGUI budget
   tests must dispatch a real engine update and assert the unrelated Rail subtree
   stays at zero renders; do not replace this with a manual view-model rerender
-  that reuses the Rail reference by construction. Add a composition regression
-  test for shared Tooltip/Dropdown actions and manually create a new
-  conversation, since an empty-to-populated Rail transition can be the first
-  time the faulty trigger mounts.
+  that reuses the Rail reference by construction. For relative-time clocks,
+  assert multiple time-label consumers share one interval, the last unmount
+  clears it, and a tick updates labels without rerendering the parent rows. Add
+  identity tests for locale-bound Rail labels and scope-bound actions, including
+  invoking a callback retained before a scope switch. Assert active selection
+  projects only into its owning section. Then recapture the same interaction
+  without React Profiler instrumentation before claiming timing improvement.
+  Add a render-budget test proving item replacement does not rerender stable
+  section chrome, including an item-empty transition that changes batch-action
+  availability. While a menu is open, assert lock changes still update its
+  trigger and disabled items. For lazy menu content, test pointer/context-menu
+  opening, keyboard-origin focus, Escape dismissal, action delivery, and
+  event-time lock rejection. Add a composition regression test for shared
+  Tooltip/Dropdown actions and manually create a new conversation, since an
+  empty-to-populated Rail transition can be the first time the faulty trigger
+  mounts.
 - References:
   [main.tsx](../../../apps/desktop/src/renderer/src/main.tsx)
   [whyDidYouRender.ts](../../../apps/desktop/src/renderer/src/lib/whyDidYouRender.ts)
   [useAgentGUIConversationRailQuery.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIConversationRailQuery.ts)
   [useAgentGUIConversationRailQuery.search.spec.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIConversationRailQuery.search.spec.tsx)
+  [agentGuiConversationRailQuerySnapshot.spec.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/agentGuiConversationRailQuerySnapshot.spec.ts)
+  [AgentGUIConversationRailClock.spec.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIConversationRailClock.spec.tsx)
+  [agentGUIConversationRailLabels.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/view/agentGUIConversationRailLabels.ts)
+  [useAgentGUIConversationRailViewState.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/view/useAgentGUIConversationRailViewState.ts)
   [AgentGUIConversationRailSection.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIConversationRailSection.tsx)
+  [AgentGUIConversationRailSectionHeader.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIConversationRailSectionHeader.tsx)
+  [AgentGUIConversationRailItem.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIConversationRailItem.tsx)
   [AgentSessionChrome.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/AgentSessionChrome.tsx)
+
+### Provider Rail tile drags but does not reorder
+
+- Symptom:
+  A Provider Rail tile shows the native drag image, but the insertion indicator
+  does not follow rail gaps and dropping does not persist a new order.
+- Quick checks:
+  Inspect each `[data-provider-tile="true"]` element. Confirm the rendered
+  `data-*` identity and its camel-cased `dataset` reader name match exactly.
+- Root cause:
+  A terminology migration can rename the dataset reader without renaming the
+  DOM attribute. Container-level hit testing then discards every tile because
+  each target ID appears empty, while native dragging still makes the feature
+  look partially functional.
+- Fix:
+  Keep the DOM identity attribute and dataset reader aligned. Cover the Rail
+  container path, not only a tile's own `dragover`: simulate dragging over a
+  gap, assert the insertion indicator, drop, and verify persisted order.
+- Validation:
+  Reorder through a rail gap, reload, and confirm the new order remains.
+- References:
+  [AgentGUIProviderRail.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIProviderRail.tsx)
+  [AgentGUIProviderRail.spec.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIProviderRail.spec.tsx)
 
 ### Dense list panel stutters when mounted or resized
 
@@ -588,6 +960,43 @@
 - References:
   [StandaloneAgentToolSidebar.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/StandaloneAgentToolSidebar.tsx)
   [standaloneAgentWindowBounds.ts](../../../apps/desktop/src/main/windows/standaloneAgentWindowBounds.ts)
+
+### Header divider drifts from a resizable sidebar
+
+- Symptom:
+  A Workbench node's custom header divides its chrome at the sidebar boundary,
+  but that divider moves ahead of or behind the body sidebar while the resize
+  handle is dragged.
+- Quick checks:
+  Identify where the header and body read their widths. If the body owns a
+  descendant CSS variable while an effect copies the value to a Workbench
+  ancestor for the header, there are two update paths. Also check whether
+  `grid-template-columns`, `width`, or the resize handle's position keeps a
+  transition active during pointer movement.
+- Root cause:
+  A CSS variable declared inside the body cannot inherit upward into a sibling
+  header. Copying React state to an ancestor in a passive effect makes the
+  header update in a different phase, while a persistent layout transition
+  makes one boundary chase each pointer position. Rapid pointer movement
+  exposes the divergence even when both paths eventually settle on the same
+  number.
+- Fix:
+  Put the live width variable on the lowest DOM scope shared by header and body,
+  and update that single variable directly from `pointermove`. Keep the
+  in-progress width in the interaction ref, update ARIA imperatively, and
+  commit React state when the resize ends. Mark the resize lifecycle explicitly
+  and disable layout and handle-position transitions until `pointerup`,
+  `pointercancel`, or lost pointer capture. A standalone surface without a
+  shared Workbench ancestor can own the same variable on its layout root.
+- Validation:
+  Unit-test that the layout publisher selects the shared Workbench scope,
+  updates it in place, and cleans it up. Run the owning package tests,
+  typecheck, and renderer/UI boundary checks, then visually drag in both
+  directions and confirm the header and body dividers remain coincident.
+- References:
+  [IssueManagerSidebarLayout.ts](../../../packages/workspace/issue-manager/src/ui/internal/shell/IssueManagerSidebarLayout.ts)
+  [useIssueManagerShellView.ts](../../../packages/workspace/issue-manager/src/ui/internal/shell/useIssueManagerShellView.ts)
+  [useAgentGUIConversationRailResizePointerMove.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/view/useAgentGUIConversationRailResizePointerMove.ts)
 
 ### Renderer services initialize twice and consume one event twice
 
@@ -680,3 +1089,71 @@
 - References:
   [apierrors.go](../../../services/tuttid/apierrors/apierrors.go)
   [agentGuiController.errors.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/agentGuiController.errors.ts)
+
+### Mask-backed icon renders as a solid color block
+
+- Symptom:
+  A monochrome icon has the expected size and color but renders as a solid
+  square or rectangle. Other icons backed by the same packaged SVG still render
+  normally.
+- Quick checks:
+  Confirm the SVG import resolves to a CSS-safe self-contained data URL, then
+  inspect how that URL reaches the element. If the icon background applies but
+  the mask does not, look for a dynamic URL passed through a custom property
+  into the `mask` or `-webkit-mask` shorthand. If both mask-image longhands are
+  present, verify that their source is the dedicated monochrome `maskIconUrl`,
+  not the target's primary color `iconUrl`.
+- Root cause:
+  Either the dynamic mask source crossed two parsing boundaries and the
+  composed declaration was rejected, or the renderer conflated two Agent
+  Directory roles by using the primary identity image as a monochrome mask. An
+  opaque primary image produces a full-box alpha mask even when the CSS is
+  valid.
+- Fix:
+  Keep the dynamic image source on the element through the explicit
+  `maskImage` and `WebkitMaskImage` longhands. Keep static position, repeat, and
+  size declarations in CSS longhands. Do not route dynamic image URLs through a
+  custom property into a shorthand. Preserve Agent Directory icon roles: render
+  `maskIconUrl` through the mask element and render an `iconUrl` without a
+  matching mask as a normal image.
+- Validation:
+  Assert the rendered element owns both mask-image longhands and that the
+  packaged SVG remains a CSS-safe data URL. Verify the affected icon in the
+  consuming renderer rather than inferring success from unrelated icon paths.
+- References:
+  [AgentGUIConversationRailItem.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIConversationRailItem.tsx)
+  [agentactivity.css](../../../packages/agent/gui/app/renderer/agentactivity.css)
+
+### Restored fullscreen window overflows after the host surface becomes smaller
+
+- Symptom:
+  A Workbench node was fullscreen before restart. After the room or workspace
+  reopens on a smaller non-fullscreen host surface, exiting the node's
+  fullscreen mode restores a window wider or taller than the Workbench desktop.
+- Quick checks:
+  Inspect the persisted node's `displayMode`, `frame`, and `restoreFrame`.
+  Compare both frames with the current Workbench safe layout, not the native
+  Electron window bounds. Reproduce by dispatching `exitFullscreen` directly;
+  if the first invalid state appears in the reducer, CSS clipping is only the
+  final symptom.
+- Root cause:
+  Historical snapshots stored absolute node frames without the surface and safe
+  layout that produced them. Fullscreen restore recomputed the visible
+  fullscreen frame but kept a stale hidden `restoreFrame`, then copied it
+  directly back to `frame` on exit.
+- Fix:
+  Persist an additive snapshot `layoutBasis`, map all durable frame-bearing
+  state from the saved safe layout into the current safe layout during initial
+  host restore, and clamp the `exitFullscreen` transition as a final invariant.
+  Keep snapshots without a basis on a conservative bounds-only compatibility
+  path.
+- Validation:
+  Cover a fullscreen snapshot restored from a larger basis to a smaller
+  surface, an old snapshot with no basis, and direct reducer exit with a stale
+  restore frame. Verify the OpenAPI and generated Go contracts retain
+  `layoutBasis` through the daemon boundary.
+- References:
+  [schema.json](../../../packages/workbench/snapshot/src/schema.json)
+  [snapshotLayout.ts](../../../packages/workbench/surface/src/core/snapshotLayout.ts)
+  [session.ts](../../../packages/workbench/surface/src/host/session.ts)
+  [reducer.ts](../../../packages/workbench/surface/src/core/reducer.ts)

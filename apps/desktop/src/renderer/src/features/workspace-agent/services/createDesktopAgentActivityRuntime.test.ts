@@ -3,18 +3,21 @@ import test from "node:test";
 import { createDesktopAgentActivityRuntime } from "./createDesktopAgentActivityRuntime.ts";
 import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface.ts";
 
-test("desktop agent activity runtime scopes section query caches by workspace", () => {
+test("desktop agent activity runtime installs the complete conversation rail capability", () => {
   const runtime = createDesktopAgentActivityRuntime(
     createWorkspaceAgentActivityService()
   );
 
-  const first = runtime.getSessionSectionsQueryCache?.("workspace-1");
-  const same = runtime.getSessionSectionsQueryCache?.(" workspace-1 ");
-  const other = runtime.getSessionSectionsQueryCache?.("workspace-2");
-
-  assert.ok(first);
-  assert.equal(first, same);
-  assert.notEqual(first, other);
+  for (const method of [
+    "deleteSessionsBatch",
+    "listPinnedSessionsPage",
+    "listSessionSectionDeletionCandidates",
+    "listSessionSectionPage",
+    "listSessionSections",
+    "listSessionsPage"
+  ] as const) {
+    assert.equal(typeof runtime[method], "function", method);
+  }
 });
 
 test("desktop agent activity runtime forwards package diagnostics to renderer diagnostics", () => {
@@ -47,6 +50,49 @@ test("desktop agent activity runtime forwards package diagnostics to renderer di
       },
       event: "agent.gui.caught_error",
       level: "error",
+      source: "agent-gui",
+      workspaceId: "workspace-1"
+    }
+  ]);
+});
+
+test("desktop agent activity runtime keeps successful message reads at debug", async () => {
+  const rendererDiagnostics: Array<{ event: string; level?: string }> = [];
+  const service = createWorkspaceAgentActivityService();
+  service.listSessionMessages = async () => ({
+    hasMore: false,
+    latestVersion: 0,
+    messages: []
+  });
+  const runtime = createDesktopAgentActivityRuntime(service, {
+    runtimeApi: {
+      async logRendererDiagnostic(payload) {
+        rendererDiagnostics.push(payload);
+      },
+      async logTerminalDiagnostic() {}
+    }
+  });
+
+  await runtime.listSessionMessages({
+    agentSessionId: "session-1",
+    workspaceId: "workspace-1"
+  });
+
+  assert.deepEqual(rendererDiagnostics, [
+    {
+      details: {
+        afterVersion: null,
+        agentSessionId: "session-1",
+        beforeVersion: null,
+        cache: null,
+        hasMore: false,
+        lastMessage: null,
+        latestVersion: 0,
+        messageCount: 0,
+        order: null
+      },
+      event: "agent.gui.runtime.messages.resolved",
+      level: "debug",
       source: "agent-gui",
       workspaceId: "workspace-1"
     }
@@ -383,6 +429,9 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
     updateSessionSettings: async () => {
       throw new Error("not implemented");
     },
+    updateTuttiModeActivation: async () => {
+      throw new Error("not implemented");
+    },
     getSnapshot: () => {
       throw new Error("not implemented");
     },
@@ -416,6 +465,7 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
       workspaceId: input.workspaceId
     }),
     deleteSessionsBatch: async () => ({
+      cleanupFailedSessionIds: [],
       removedMessages: 0,
       removedSessionIds: [],
       removedSessions: 0
@@ -437,6 +487,7 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
     },
     onSessionEvent: () => () => {},
     onModelCatalogInvalidated: () => () => {},
+    onComposerDefaultsInvalidated: () => () => {},
     submitInteractive: async () => {
       throw new Error("not implemented");
     },

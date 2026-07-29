@@ -5,12 +5,13 @@ import {
   screen,
   waitFor
 } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
-import { getAgentEnvPanelStore } from "../../agentEnv/agentEnvPanelStore";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { AgentEnvPanelActionProvider } from "../../agentEnv";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import { AgentMessageBlock } from "./AgentMessageBlock";
 import { AgentTranscriptItemView } from "./AgentTranscriptItemView";
 import type { AgentGeneratedImageRowVM } from "../contracts/agentGeneratedImageRowVM";
+import type { AgentGoalControlRowVM } from "../contracts/agentGoalControlRowVM";
 import type { AgentMessageContentVM } from "../contracts/agentMessageRowVM";
 import type { AgentMessageRowVM } from "../contracts/agentMessageRowVM";
 import type { AgentToolCallVM } from "../contracts/agentToolCallVM";
@@ -72,7 +73,38 @@ vi.mock("./AgentToolGroupRow", () => ({
   }
 }));
 
+beforeEach(() => {
+  mockState.markdownOnLinkClicks.length = 0;
+  mockState.markdownStreamingFlags.length = 0;
+  mockState.toolGroupOnLinkClicks.length = 0;
+});
+
 describe("AgentTranscriptItemView render stability", () => {
+  it("renders a goal control as a dedicated transcript row", () => {
+    const row: AgentGoalControlRowVM = {
+      kind: "goal-control",
+      id: "goal-control:client-submit:user:submit-goal-1",
+      turnId: null,
+      action: "set",
+      body: "/goal ship it",
+      occurredAtUnixMs: 1
+    };
+
+    const { container } = render(
+      <AgentTranscriptItemView
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={row}
+        labels={transcriptLabels()}
+      />
+    );
+
+    expect(screen.getByText("/goal ship it")).toBeInTheDocument();
+    expect(
+      container.querySelector('[data-agent-goal-control-action="set"]')
+    ).toBeInTheDocument();
+  });
+
   it("renders a generated image artifact independently from tool-call expansion", () => {
     const row: AgentGeneratedImageRowVM = {
       kind: "generated-image",
@@ -191,7 +223,7 @@ describe("AgentTranscriptItemView render stability", () => {
     });
   });
 
-  it("enables streaming markdown only for working assistant messages", () => {
+  it("keeps markdown streaming for active turns and unsettled messages", () => {
     render(
       <AgentMessageBlock
         workspaceRoot="/workspace/demo"
@@ -224,12 +256,30 @@ describe("AgentTranscriptItemView render stability", () => {
       />
     );
 
-    expect(mockState.markdownStreamingFlags.at(-2)).toBe(true);
-    expect(mockState.markdownStreamingFlags.at(-1)).toBe(false);
+    render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={assistantMessageRow({
+          kind: "message-content",
+          id: "assistant-active-turn-1",
+          turnId: "turn-1",
+          body: "Tool completed, answer still growing",
+          statusKind: "completed",
+          occurredAtUnixMs: 1
+        })}
+        thinkingLabel="Thought process"
+        isActiveTurn
+      />
+    );
+
+    expect(mockState.markdownStreamingFlags.at(-3)).toBe(true);
+    expect(mockState.markdownStreamingFlags.at(-2)).toBe(false);
+    expect(mockState.markdownStreamingFlags.at(-1)).toBe(true);
   });
 
-  it("renders plain user messages inside a copyable message group", () => {
-    render(
+  it("keeps participant presentation off by default", () => {
+    const { container } = render(
       <AgentMessageBlock
         workspaceRoot="/workspace/demo"
         basePath="/workspace/demo"
@@ -254,10 +304,196 @@ describe("AgentTranscriptItemView render stability", () => {
       throw new Error("Expected user message bubble to render.");
     }
     expect(group).toHaveAttribute("data-agent-message-speaker", "user");
+    expect(group).toHaveAttribute("data-agent-message-footer", "true");
     expect(group).toHaveTextContent("User asks for a fix");
     expect(
       group.querySelector(".agent-gui-conversation__message-copy-button")
     ).toBeInstanceOf(HTMLButtonElement);
+    expect(
+      container.querySelector("[data-agent-conversation-participant-avatar]")
+    ).toBeNull();
+    expect(
+      container.querySelector(
+        ".agent-gui-conversation__participant-message-layout"
+      )
+    ).toBeNull();
+  });
+
+  it("preserves the existing message DOM when participant presentation is disabled", () => {
+    const { container } = render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={userMessageRow()}
+        thinkingLabel="Thought process"
+        participantPresentation={{ enabled: false }}
+      />
+    );
+
+    expect(
+      container.querySelector(
+        ".agent-gui-conversation__participant-message-layout"
+      )
+    ).toBeNull();
+    expect(
+      container.querySelector("[data-agent-conversation-participant-avatar]")
+    ).toBeNull();
+    expect(
+      container.querySelector(".agent-gui-conversation__user-message-flow")
+        ?.children
+    ).toHaveLength(1);
+  });
+
+  it("renders fixed participant avatar loading slots without hiding messages", () => {
+    const participantPresentation = {
+      enabled: true,
+      status: "loading"
+    } as const;
+    const { container } = render(
+      <>
+        <AgentMessageBlock
+          workspaceRoot="/workspace/demo"
+          basePath="/workspace/demo"
+          row={assistantMessageRow()}
+          thinkingLabel="Thought process"
+          participantPresentation={participantPresentation}
+        />
+        <AgentMessageBlock
+          workspaceRoot="/workspace/demo"
+          basePath="/workspace/demo"
+          row={userMessageRow()}
+          thinkingLabel="Thought process"
+          participantPresentation={participantPresentation}
+        />
+      </>
+    );
+
+    const avatars = container.querySelectorAll(
+      "[data-agent-conversation-participant-avatar]"
+    );
+    expect(avatars).toHaveLength(2);
+    expect(avatars[0]).toHaveAttribute(
+      "data-agent-conversation-participant-avatar",
+      "assistant"
+    );
+    expect(avatars[1]).toHaveAttribute(
+      "data-agent-conversation-participant-avatar",
+      "user"
+    );
+    expect(avatars[0]).toHaveAttribute("data-avatar-state", "loading");
+    expect(avatars[1]).toHaveAttribute("data-avatar-state", "loading");
+    expect(screen.getByText(/Assistant answer/)).toBeInTheDocument();
+    expect(screen.getByText("User asks for a fix")).toBeInTheDocument();
+  });
+
+  it("renders the avatar and sender name in a header row above the message", () => {
+    const participantPresentation = {
+      enabled: true,
+      status: "ready",
+      agent: { name: "Codex" },
+      user: { name: "Alice" }
+    } as const;
+    const { container } = render(
+      <>
+        <AgentMessageBlock
+          workspaceRoot="/workspace/demo"
+          basePath="/workspace/demo"
+          row={assistantMessageRow()}
+          thinkingLabel="Thought process"
+          participantPresentation={participantPresentation}
+        />
+        <AgentMessageBlock
+          workspaceRoot="/workspace/demo"
+          basePath="/workspace/demo"
+          row={userMessageRow()}
+          thinkingLabel="Thought process"
+          participantPresentation={participantPresentation}
+        />
+      </>
+    );
+
+    const assistantLayout = container.querySelector(
+      '.agent-gui-conversation__participant-message-layout[data-agent-message-speaker="assistant"]'
+    );
+    const userLayout = container.querySelector(
+      '.agent-gui-conversation__participant-message-layout[data-agent-message-speaker="user"]'
+    );
+    const assistantHeader = container.querySelector(
+      '[data-agent-conversation-participant-header="assistant"]'
+    );
+    expect(assistantHeader).toHaveClass(
+      "agent-gui-conversation__participant-message-header"
+    );
+    expect(
+      assistantHeader?.querySelector(
+        '[data-agent-conversation-participant-avatar="assistant"]'
+      )
+    ).toHaveAttribute("aria-label", "Codex");
+    expect(assistantHeader).toHaveTextContent("Codex");
+    // The header row renders above the thinking/tool-call info and the
+    // message content.
+    expect(
+      assistantHeader?.compareDocumentPosition(assistantLayout as Element)
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    const userHeader = container.querySelector(
+      '[data-agent-conversation-participant-header="user"]'
+    );
+    expect(userHeader).toHaveClass(
+      "agent-gui-conversation__participant-message-header"
+    );
+    expect(
+      userHeader?.querySelector(
+        '[data-agent-conversation-participant-avatar="user"]'
+      )
+    ).toHaveAttribute("aria-label", "Alice");
+    expect(userHeader).toHaveTextContent("Alice");
+    expect(userHeader?.compareDocumentPosition(userLayout as Element)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+  });
+
+  it("renders leading tool rows under the participant header above the message", () => {
+    const participantPresentation = {
+      enabled: true,
+      status: "ready",
+      agent: { name: "Codex" },
+      user: { name: "Alice" }
+    } as const;
+    const leadingToolGroup: AgentToolGroupRowVM = {
+      kind: "tool-group",
+      id: "leading-tools-1",
+      turnId: "turn-1",
+      grouped: true,
+      calls: [toolCall(), toolCall()],
+      entries: [],
+      occurredAtUnixMs: 1
+    };
+    const row: AgentMessageRowVM = {
+      ...assistantMessageRow(),
+      leadingToolRows: [leadingToolGroup]
+    };
+    const { container, getByText } = render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={row}
+        thinkingLabel="Thought process"
+        participantPresentation={participantPresentation}
+      />
+    );
+
+    const header = container.querySelector(
+      '[data-agent-conversation-participant-header="assistant"]'
+    );
+    const toolContent = getByText("Tool group");
+    const messageContent = getByText(/Assistant answer/);
+    expect(header).not.toBeNull();
+    expect(header?.compareDocumentPosition(toolContent)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    expect(toolContent.compareDocumentPosition(messageContent)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
   });
 
   it("copies user message text through the agent host clipboard", async () => {
@@ -598,14 +834,16 @@ describe("AgentTranscriptItemView render stability", () => {
   });
 
   it("shows local agent sign-in guidance for auth errors", () => {
-    getAgentEnvPanelStore().open = false;
+    const onOpenAgentEnvPanel = vi.fn();
     const { getByText } = render(
-      <AgentMessageBlock
-        workspaceRoot="/workspace/demo"
-        basePath="/workspace/demo"
-        row={assistantMessageRow(claudeCodeAuthErrorMessage())}
-        thinkingLabel="Thought process"
-      />
+      <AgentEnvPanelActionProvider openPanel={onOpenAgentEnvPanel}>
+        <AgentMessageBlock
+          workspaceRoot="/workspace/demo"
+          basePath="/workspace/demo"
+          row={assistantMessageRow(claudeCodeAuthErrorMessage())}
+          thinkingLabel="Thought process"
+        />
+      </AgentEnvPanelActionProvider>
     );
 
     expect(
@@ -615,10 +853,10 @@ describe("AgentTranscriptItemView render stability", () => {
       getByText("agentHost.agentGui.visibleErrorAuthRequiredLocalAgentHint")
     ).toBeTruthy();
     fireEvent.click(getByText("agentHost.agentGui.visibleErrorActionRelogin"));
-    const store = getAgentEnvPanelStore();
-    expect(store.open).toBe(true);
-    expect(store.provider).toBe("claude-code");
-    expect(store.focus).toBe("auth");
+    expect(onOpenAgentEnvPanel).toHaveBeenCalledWith({
+      provider: "claude-code",
+      focus: "auth"
+    });
   });
 
   it("renders transport retry notice details without the generic title", () => {

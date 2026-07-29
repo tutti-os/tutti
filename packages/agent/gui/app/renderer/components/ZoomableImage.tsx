@@ -334,6 +334,7 @@ export function ZoomableImage({
               autoFocus
               className="tsh-zoom-dialog nodrag tsh-desktop-no-drag"
               data-closing={isImagePreviewClosing ? "true" : undefined}
+              data-tsh-image-actions={hasImageActions ? "true" : undefined}
               data-rmiz-modal=""
               role="dialog"
               tabIndex={-1}
@@ -367,11 +368,24 @@ export function ZoomableImage({
                 onZoomOut={zoomOutPreviewImage}
                 onWheel={handlePreviewImageWheel}
               />
-              {actionButtons ? (
-                <div className="tsh-zoom-dialog__image-actions nodrag tsh-desktop-no-drag">
-                  {actionButtons}
-                </div>
-              ) : null}
+              <div className="tsh-zoom-dialog__toolbar-actions nodrag tsh-desktop-no-drag">
+                {actionButtons}
+                <Button
+                  aria-label={t("common.minimizeImage")}
+                  className="tsh-zoom-dialog__icon-button nodrag tsh-desktop-no-drag"
+                  size="icon"
+                  title={t("common.minimizeImage")}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  variant="chrome"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    closePreviewImage();
+                  }}
+                >
+                  <RestoreIcon aria-hidden="true" className="size-4" />
+                </Button>
+              </div>
               {contextMenuPosition?.inZoomDialog && actionButtons ? (
                 <div
                   className="tsh-image-context-menu nodrag tsh-desktop-no-drag"
@@ -403,21 +417,6 @@ export function ZoomableImage({
                   }}
                 />
               ) : null}
-              <Button
-                asChild
-                className="tsh-zoom-dialog__icon-button nodrag tsh-desktop-no-drag"
-                size="icon"
-                variant="chrome"
-              >
-                <button
-                  type="button"
-                  aria-label={t("common.minimizeImage")}
-                  data-rmiz-btn-unzoom=""
-                  onClick={closePreviewImage}
-                >
-                  <RestoreIcon aria-hidden="true" className="size-4" />
-                </button>
-              </Button>
             </div>,
             document.body
           )

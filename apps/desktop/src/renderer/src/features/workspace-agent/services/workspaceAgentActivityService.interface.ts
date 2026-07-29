@@ -5,6 +5,7 @@ import type {
 } from "@tutti-os/agent-gui";
 import type {
   AgentActivityCancelTurnInput,
+  AgentActivityComposerOptions,
   AgentActivityGoalControlInput,
   AgentActivityGoalControlResult,
   AgentActivityCreateSessionInput,
@@ -19,6 +20,8 @@ import type {
   AgentActivitySnapshot,
   AgentActivitySnapshotListener,
   AgentSessionEngine,
+  EngineExternalCommand,
+  EngineIntent,
   AgentActivitySubmitInteractiveInput,
   AgentActivitySubmitInteractiveResult
 } from "@tutti-os/agent-activity-core";
@@ -130,8 +133,34 @@ export interface WorkspaceAgentModelCatalogInvalidatedEvent {
   occurredAtUnixMs: number;
 }
 
+export interface WorkspaceAgentComposerDefaultsInvalidatedEvent {
+  agentTargetId: string;
+}
+
 export interface IWorkspaceAgentActivityService {
   readonly _serviceBrand: undefined;
+
+  armNextSessionRecording?(workspaceId: string, recordingId: string): void;
+  clearNextSessionRecording?(workspaceId: string, recordingId?: string): void;
+  startSessionActivityEventRecording?(
+    workspaceId: string,
+    recordingId: string
+  ): void;
+  sealSessionActivityEventRecording?(
+    workspaceId: string,
+    recordingId: string
+  ): Promise<void>;
+  discardSessionActivityEventRecording?(
+    workspaceId: string,
+    recordingId: string
+  ): void;
+  addSessionEngineActivityObserver?(
+    workspaceId: string,
+    observer: {
+      observeCommand(command: EngineExternalCommand): void;
+      observeIntent(intent: EngineIntent): void;
+    }
+  ): () => void;
 
   activateSession: AgentActivityRuntime["activateSession"];
   cancelTurn?(
@@ -150,7 +179,8 @@ export interface IWorkspaceAgentActivityService {
   ): Promise<AgentActivityDeleteSessionResult>;
   getSession(
     workspaceId: string,
-    agentSessionId: string
+    agentSessionId: string,
+    signal?: AbortSignal
   ): Promise<AgentActivitySession>;
   getComposerOptions(input: {
     agentTargetId: string;
@@ -160,12 +190,14 @@ export interface IWorkspaceAgentActivityService {
     signal?: AbortSignal;
     settings?: AgentHostAgentSessionComposerSettings | null;
     workspaceId: string;
-  }): Promise<unknown>;
+  }): Promise<AgentActivityComposerOptions>;
   updateSessionSettings(input: {
     agentSessionId: string;
+    signal?: AbortSignal;
     settings: AgentHostAgentSessionComposerSettings;
     workspaceId: string;
   }): Promise<AgentActivityRuntimeUpdateSessionSettingsResult>;
+  updateTuttiModeActivation: AgentActivityRuntime["updateTuttiModeActivation"];
   getSnapshot(workspaceId: string): AgentActivitySnapshot;
   getSessionEngine(workspaceId: string): AgentSessionEngine;
   listSessionMessages(
@@ -212,6 +244,9 @@ export interface IWorkspaceAgentActivityService {
   onModelCatalogInvalidated(
     listener: (event: WorkspaceAgentModelCatalogInvalidatedEvent) => void
   ): () => void;
+  onComposerDefaultsInvalidated(
+    listener: (event: WorkspaceAgentComposerDefaultsInvalidatedEvent) => void
+  ): () => void;
   submitInteractive(
     input: AgentActivitySubmitInteractiveInput
   ): Promise<AgentActivitySubmitInteractiveResult>;
@@ -235,6 +270,46 @@ export interface IWorkspaceAgentActivityService {
     attachmentId: string;
     workspaceId: string;
   }): Promise<WorkspaceAgentActivityAttachment>;
+  // Optional like their AgentActivityRuntime counterparts so lightweight
+  // fakes/hosts without collaboration-run support can omit them; the runtime
+  // wiring only exposes the commands when the service implements them.
+  setCollaborationAdoption?: NonNullable<
+    AgentActivityRuntime["setCollaborationAdoption"]
+  >;
+  listAutomationRules?(input: {
+    workspaceId: string;
+    signal?: AbortSignal;
+  }): Promise<{
+    rules: {
+      id: string;
+      name: string;
+      enabled: boolean;
+      trigger: string;
+      action: string;
+    }[];
+  }>;
+  getAutomationRuleOverride?(input: {
+    agentSessionId: string;
+    workspaceId: string;
+    signal?: AbortSignal;
+  }): Promise<{
+    agentSessionId: string;
+    workspaceId: string;
+    disabled: boolean;
+    ruleIds: string[];
+  }>;
+  setAutomationRuleOverride?(input: {
+    agentSessionId: string;
+    disabled: boolean;
+    ruleIds: string[];
+    workspaceId: string;
+    signal?: AbortSignal;
+  }): Promise<{
+    agentSessionId: string;
+    workspaceId: string;
+    disabled: boolean;
+    ruleIds: string[];
+  }>;
   renameSession(
     input: AgentActivityRenameSessionInput
   ): Promise<AgentActivitySession>;

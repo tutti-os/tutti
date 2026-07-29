@@ -35,7 +35,7 @@ func (c *streamingReportCoalescer) add(request reportRequest) []reportRequest {
 		return []reportRequest{request}
 	}
 	sessionKey := reportCoalesceSessionKey(request.report)
-	if isCoalescibleStreamingReport(request.report) {
+	if !request.submitProvenance && request.done == nil && isCoalescibleStreamingReport(request.report) {
 		c.merge(sessionKey, request)
 		c.ensureTimer()
 		return nil
@@ -165,7 +165,7 @@ func isCoalescibleStreamingReport(report agentsessionstore.ReportActivityInput) 
 
 func isCoalescibleStreamingMessageUpdate(update agentsessionstore.WorkspaceAgentMessageUpdate) bool {
 	switch strings.ToLower(strings.TrimSpace(update.Kind)) {
-	case "text", "reasoning":
+	case "text", "reasoning", "tool_call":
 	default:
 		return false
 	}
@@ -208,11 +208,65 @@ func latestMessageUpdate(
 	current agentsessionstore.WorkspaceAgentMessageUpdate,
 	incoming agentsessionstore.WorkspaceAgentMessageUpdate,
 ) agentsessionstore.WorkspaceAgentMessageUpdate {
+	earlier := incoming
+	latest := current
 	if incoming.Seq > current.Seq {
-		return incoming
+		earlier = current
+		latest = incoming
+	} else if incoming.Seq == current.Seq && incoming.OccurredAtUnixMS >= current.OccurredAtUnixMS {
+		earlier = current
+		latest = incoming
 	}
-	if incoming.Seq == current.Seq && incoming.OccurredAtUnixMS >= current.OccurredAtUnixMS {
-		return incoming
+	if strings.EqualFold(strings.TrimSpace(latest.Kind), "tool_call") {
+		latest = mergeCoalescedToolCallUpdate(earlier, latest)
 	}
-	return current
+	return latest
+}
+
+func mergeCoalescedToolCallUpdate(
+	earlier agentsessionstore.WorkspaceAgentMessageUpdate,
+	latest agentsessionstore.WorkspaceAgentMessageUpdate,
+) agentsessionstore.WorkspaceAgentMessageUpdate {
+	if latest.AgentSessionID == "" {
+		latest.AgentSessionID = earlier.AgentSessionID
+	}
+	if latest.MessageID == "" {
+		latest.MessageID = earlier.MessageID
+	}
+	if latest.TurnID == "" {
+		latest.TurnID = earlier.TurnID
+	}
+	if latest.Role == "" {
+		latest.Role = earlier.Role
+	}
+	if latest.Kind == "" {
+		latest.Kind = earlier.Kind
+	}
+	if latest.Status == "" {
+		latest.Status = earlier.Status
+	}
+	if latest.Semantics == nil {
+		latest.Semantics = earlier.Semantics
+	}
+	if latest.CallID == "" {
+		latest.CallID = earlier.CallID
+	}
+	if latest.ParentCallID == "" {
+		latest.ParentCallID = earlier.ParentCallID
+	}
+	if latest.RootCallID == "" {
+		latest.RootCallID = earlier.RootCallID
+	}
+	if latest.Title == "" {
+		latest.Title = earlier.Title
+	}
+	latest.Payload = mergePendingToolCallPayload(earlier.Payload, latest.Payload)
+	if earlier.StartedAtUnixMS > 0 &&
+		(latest.StartedAtUnixMS <= 0 || earlier.StartedAtUnixMS < latest.StartedAtUnixMS) {
+		latest.StartedAtUnixMS = earlier.StartedAtUnixMS
+	}
+	if earlier.CompletedAtUnixMS > latest.CompletedAtUnixMS {
+		latest.CompletedAtUnixMS = earlier.CompletedAtUnixMS
+	}
+	return latest
 }

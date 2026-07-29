@@ -3,6 +3,26 @@
 AgentGUI renders workspace agent sessions, timelines, approvals, and composer
 UI. It is a UI package, not a host transport or business-core package.
 
+## Product Error Presentation
+
+AgentGUI does not own Account or Commerce UI. Product hosts render those
+surfaces through `@tutti-os/commerce` and its `./react` entrypoint.
+
+Hosts may pass `hostCapabilities.visibleErrorPresentationOverrides` to
+customize structured product errors such as `insufficient_credits`. The
+override contains only localized copy and an optional sanitized external
+action; it does not expose membership state, credentials, or Commerce response
+objects to AgentGUI. Raw provider error details remain available to diagnostics
+but are not rendered in the product error card. Environment, authentication,
+network, and runtime errors are not overridable and remain AgentGUI policy.
+
+This is an intentional public API break. The former `accountMenuState`,
+`commercePresentation`, `AgentGUIAccountMenu*`, and
+`AgentGUIAccountRewardToast` surfaces were removed instead of being retained as
+silent no-ops. Hosts must render account chrome through
+`@tutti-os/commerce/react` and translate Commerce policy into
+`visibleErrorPresentationOverrides`.
+
 Before changing AgentGUI, AgentGuiNode, or the agent conversation module, read
 [AgentGuiNode Architecture and Troubleshooting](../../../docs/architecture/agent-gui-node.md).
 It defines daemon, workspace-engine, GUI-module, provider, and desktop-host
@@ -44,8 +64,25 @@ local persistence and returns `{ path, name, sizeBytes }`.
 If the method is absent or staging fails, the attachment remains in an explicit
 failed state and retains its in-memory text. AgentGUI must not silently put the
 payload back into the input. The user can explicitly choose “Show in text
-field” to do that. Generic `uploadPromptContent` remains the contract for
-images and host-local files; it is not a pasted-text capability signal.
+field” to do that. Generic `uploadPromptContent` remains the image-upload
+contract; it is not a pasted-text or external-file capability signal.
+
+## External File Preparation
+
+OS clipboard and drop entries first use the optional synchronous workspace
+`resolveExternalPromptEntries` host port. The host classifies every input as a
+live `WorkspaceFileReference` or a snapshot that needs preparation. AgentGUI
+inserts references directly as ordinary file/folder mentions, preserves mixed
+input order, and sends only `prepare` entries to `prepareExternalPromptFiles`.
+Without the resolver, every input uses preparation.
+
+Both ports return one result per input `sourceIndex`. The resolver is
+synchronous so paste/drop insertion position remains stable. Prepared files
+require a provider-readable `path` or `url`; failures require a typed
+`errorCode`. Hosts must isolate per-file failures and reject oversized inputs
+before reading or persisting their bytes. A host that resolves path-backed
+entries as references must also reject any such entry that unexpectedly reaches
+preparation, preventing a resolver failure from creating a duplicate snapshot.
 
 Slash commands come from the runtime session command snapshot. AgentGUI keeps
 legacy provider-default slash entries unless the host passes
@@ -73,6 +110,129 @@ accepted for host capabilities that are not agent activity data:
 AgentGUI has no host-API activity fallback. A host must inject the runtime and
 the grouped `AgentGUINodeProps` responsibility objects.
 
+## Headless Conversation Message Controller
+
+`@tutti-os/agent-gui/conversation-message-controller` is the renderer-neutral
+query controller for one focused conversation. Desktop AgentGUI and Native
+Mobile both use it for initial detail hydration, latest-message reconciliation,
+and explicit older-page loading.
+
+Initial and latest reads enter the workspace Engine as semantic Session
+reconcile commands. Older-page reads use only the Engine's authoritative
+message-window cursor, share one in-flight/retry/stale-request state machine,
+and apply the mapped durable page back to that same Engine. A high mutable
+message version without an authoritative window is never treated as evidence
+of older history.
+
+Hosts supply the mapped message transport and retain lifecycle concerns such as
+Mobile foreground/background behavior, disconnected polling, DOM or Native
+scrolling, and diagnostics enrichment. The controller does not own navigation,
+rendering, localization, or transport authorization. Desktop selection owns
+activation guards and Rail projection coordination, then requests initial or
+forced message hydration through this controller; it must not add a parallel
+messages-only Engine reconcile path.
+
+## Reference Picker Error Recovery
+
+Hosts may provide `workspace.resolveReferenceContentErrorAction` to map a
+reference-source content error to a labeled recovery action. AgentGUI passes
+the resolver to the shared `ReferenceSourcePicker`; the picker renders the
+action in its centered error state and retries the failed browse or search when
+the user activates it. Hosts should return an action only for errors they can
+recover interactively, such as requesting filesystem authorization again.
+
+## DOM-Free Conversation Projection
+
+`@tutti-os/agent-gui/conversation-projection` is the renderer-neutral entry
+for hosts that need the same canonical transcript semantics without importing
+the DOM conversation components. Its focused Session projection accepts the
+canonical activity snapshot, the selected Session id, and known Turns. It
+derives the exact Session and message snapshots from that one activity snapshot
+and hides AgentGUI's intermediate activity-card and timeline-item construction.
+The host owns rendering, local disclosure, scrolling, i18n, and semantic
+commands for pending Interactions.
+
+The entry also exports `resolveAgentConversationNavigationAction`, whose
+portable action union contains only external URLs and Agent Session mentions.
+Workspace files, local assets, apps, issues, and custom mentions stay in
+host-specific capability adapters. The broad Workspace resolver and this
+portable resolver share only the host-neutral URL and Agent Session parsing
+primitives. Alternate renderers must not parse `mention://` values or invent
+fallback file paths locally.
+
+Pending Engine Interactions are projected through
+`projectAgentConversationPromptFromInteraction`. The resulting canonical prompt
+preserves runtime approval and plan option ids; hosts render it and submit those
+exact ids rather than guessing generic allow/deny actions. Missing presentation
+copy remains empty so each renderer can supply localized fallback text.
+
+Do not recreate this transformation from raw message kinds in another host.
+The public projection is where AgentGUI canonicalizes message snapshots and
+groups assistant messages, thinking, tool activity, processing, notices, and
+turn summaries.
+
+## DOM-Free Composer Projection
+
+`@tutti-os/agent-gui/composer-projection` exposes the shared pure Composer
+support decision and presented-settings projection. The workspace engine
+continues to own target-keyed Composer option loads and semantic settings
+commands. Alternate renderers receive canonical activity-core options and
+session settings, then retain only their menu, sheet, and disclosure UI.
+
+The daemon DTO mapper belongs to
+`@tutti-os/agent-activity-tuttid-adapter`, so Desktop and Mobile do not keep
+separate parser implementations for Composer capabilities or option catalogs.
+
+## Standalone Conversation Participant Presentation
+
+The `@tutti-os/agent-gui/agent-conversation` entrypoint exposes one optional,
+host-owned participant presentation contract on `WorkspaceAgentSessionDetail`,
+`AgentConversationFlow`, and `AgentTranscriptView`:
+
+```tsx
+<WorkspaceAgentSessionDetail
+  participantPresentation={{
+    enabled: true,
+    status: "ready",
+    user: { name: "Alice", avatarUrl: userAvatarUrl },
+    agent: { name: "Codex", avatarUrl: agentAvatarUrl }
+  }}
+  {...props}
+/>
+```
+
+Omitting the property or passing `{ enabled: false }` preserves the existing
+transcript DOM and spacing. Pass `{ enabled: true, status: "loading" }` while
+the host is resolving identities; existing messages stay visible and the
+package renders fixed-size circular loading slots. In the `ready` state, each
+participant requires a non-empty `name`; `avatarUrl` is optional and the shared
+UI System `Avatar` falls back to the name's initial.
+
+Participant headers are turn-scoped. Agent GUI renders at most one header for
+each speaker in a presentation turn, even when thinking, tool progress, or
+turn-work disclosure splits that turn into multiple message rows. A completed
+collapsed turn anchors the Agent header to visible reply content instead of the
+hidden work section.
+
+The host owns identity lookup and lifecycle. Agent GUI owns placement, sizing,
+loading treatment, image fallback, and left/right message alignment. The
+contract is presentation-only and must not be copied into canonical Session,
+Turn, Message, or workspace-engine state.
+
+## Session Handoff Drafts
+
+External AgentGUI hosts can use `createAgentSessionHandoffPrompt` to prefill a
+destination Agent composer with the same canonical complete-session mention as
+AgentGUI's built-in Handoff menu. The helper owns mention serialization and the
+trailing rich-text caret space; hosts continue to own destination selection and
+window launch behavior.
+
+Hosts that copy a session reference without launching a handoff must use
+`createAgentSessionMarkdownLink`. This is the same canonical serializer used by
+AgentGUI's Copy as reference action. Pass `withAtPrefix: true` when the copied
+value should paste back into Agent and room-chat composers as an `@` session
+mention; unlike the handoff helper, it does not append a trailing caret space.
+
 ## Boundary Rule
 
 `AgentActivity*` types from `@tutti-os/agent-activity-core` are the canonical
@@ -84,6 +244,27 @@ messages.
 Runtime identity is explicit: each consumer resolves the injected engine and
 verifies its `(workspaceId, origin)` identity. Module-global runtime slots and
 hidden origin registries are forbidden.
+
+The `@tutti-os/agent-gui/conversation-rail-runtime` subpath exposes the
+host-neutral Rail query/mutation cohort through
+`createAgentConversationRailRuntime` and its runtime/source types. Method-name
+manifests and UI capability inspection remain package-internal; hosts use the
+typed factory instead of importing test helpers. The sibling
+`@tutti-os/agent-gui/conversation-rail-controller` subpath exposes the canonical
+`createAgentGUIConversationRailQueryController` factory and controller
+interface used by Desktop and Native Mobile. The headless implementation owns
+Rail query scope, first-page and cursor pagination, cache and stale-request
+handling, membership refresh, and canonical Engine ingestion. Hosts supply
+transport and Session mapping, then retain only host lifecycle, availability,
+polling, diagnostic context, and presentation policy. Do not instantiate the
+internal controller, create a host-local second Rail state machine, or export
+its internal query helpers as public API.
+Its public snapshot is presentation-free; Desktop derives localized
+conversation summaries from that snapshot plus Engine state in its adapter.
+The factory owns resolved-query cache reuse per workspace Engine; cache access
+is not a runtime or host capability and has no published package entrypoint.
+In-flight first-page results are fenced to the attached controller generation
+so stale mounts cannot mutate the Engine or cache.
 
 Run this boundary check after changing AgentGUI data flow:
 
@@ -97,6 +278,20 @@ pnpm check:agent-activity-runtime-boundaries
 `identity`, `workspace`, `frame`, `state`, `runtimeRequests`,
 `hostCapabilities`, `hostActions`, and `renderSlots`. Extend the owning object;
 do not restore flat compatibility props.
+
+Hosts may provide `renderSlots.agentTargetInfo` to enrich the exact Agent icon
+in the provider Rail and Conversation Rail. The renderer receives
+`{ target, surface }` and returns one React element, or `null` to retain the
+built-in target-label fallback. AgentGUI owns Tooltip mechanics and calls the
+renderer only while the content is mounted. Pass the same renderer plus an exact
+`conversationAgentTarget` to `AgentGuiWorkbenchHeader` for the Header icon.
+Conversation history resolves the current Host directory by canonical
+`agentTargetId`; missing targets show no enriched Tooltip and target metadata
+is never copied into Session state.
+
+Workbench hosts capture Dock and minimize previews from the mounted AgentGUI
+node. AgentGUI does not expose a second-tree preview renderer or preview-mode
+contract.
 
 ## Reference Provenance Filtering
 
@@ -143,6 +338,29 @@ The supported stable IDs are `meet-tutti`, `task-breakdown`, `quality-review`,
 `agent-interaction`, and `import-session`. Omitting `disabled` (or passing an
 empty array) renders all five entries.
 
+## Tutti Mode capability
+
+Tutti Mode UI (composer footer chip, composer badge activation, `/tutti`) is a
+host-gated product capability under
+`hostCapabilities.capabilityMenuState.tuttiMode.enabled`.
+
+Hosts must set `enabled: true` to show those controls. Omitting `tuttiMode` or
+setting `enabled: false` fails closed — the same rule as other unsupported host
+capabilities. External hosts that share AgentGUI for Codex/Claude/VM sessions
+should keep Tutti Mode disabled unless they intentionally productize it, and
+should also hide Tutti branding home chips via `disabled` (for example
+`meet-tutti`).
+
+```tsx
+<AgentGUI
+  disabled={["meet-tutti", "import-session"]}
+  hostCapabilities={{
+    capabilityMenuState: { tuttiMode: { enabled: false } }
+  }}
+  {...props}
+/>
+```
+
 ## Agent Directory
 
 `AgentGUI` requires the host's `/agents` projection through its `agents` prop.
@@ -154,12 +372,15 @@ export interface AgentGUIAgent {
   agentTargetId: string;
   name: string;
   iconUrl: string;
+  maskIconUrl?: string | null;
   heroImageUrl?: string | null;
   description?: string | null;
+  ownerDeviceLabel?: string | null;
   owner?: {
     name?: string | null;
     avatarUrl?: string | null;
   } | null;
+  ownership?: "self" | "shared" | null;
   availability: {
     status:
       | "ready"
@@ -185,23 +406,29 @@ Runnable provider targets are host-supplied. If the target catalog is absent,
 AgentGUI presents an explicit unavailable state; it does not synthesize local
 targets from presentation metadata.
 
-Agent names, primary icons, and optional home-carousel artwork come from
-`agents[].name`, `agents[].iconUrl`, and `agents[].heroImageUrl`.
-`owner.avatarUrl` is rendered separately as an ownership badge. Invalid entries
-and duplicate `agentTargetId` values are discarded by
+Agent names, primary icons, optional conversation-mask icons, and optional
+home-carousel artwork come from `agents[].name`, `agents[].iconUrl`,
+`agents[].maskIconUrl`, and `agents[].heroImageUrl`. Hosts must pass fully
+resolved presentation URLs from their authoritative directory. All identity
+surfaces use `iconUrl`; conversation rows use `maskIconUrl` where present.
+`owner.avatarUrl` is rendered separately as an ownership badge.
+`ownerDeviceLabel` is optional host-resolved presentation metadata rendered on
+the exact Handoff target row. Invalid entries and duplicate `agentTargetId`
+values are discarded by
 `normalizeAgentGUIAgents`, with the first occurrence preserving host order.
+Hosts set `agents[].ownership` to `"self"` or `"shared"` from their authoritative
+directory or launch reference. Owner name and avatar are presentation metadata
+and do not determine ownership.
 
 With one agent, AgentGUI hides the aggregate `All` entry and renders that agent
 directly. With multiple agents, it shows `All` plus the host-ordered agent rail
 and empty-home carousel. Hosts may customize the aggregate icon with
 `allAgentsPresentation.iconUrl`.
 
-Hosts adapting daemon-owned agent targets must resolve the target's descriptor
-`iconKey` instead of assuming it equals the provider ID. The narrow
-`@tutti-os/agent-gui/provider-icons` subpath exports
-`resolveProviderIconAsset(iconKey, variant)` for that adapter seam. Unknown
-keys return `null`; hosts should render a neutral icon rather than silently
-substituting another provider's icon.
+Daemon-owned system targets seed and refresh their `iconUrl` and `maskIconUrl`
+from the target descriptor `iconKey`. AgentGUI consumers must not synthesize
+built-in target icons from provider IDs or `iconKey`; stale or missing directory
+presentation should be fixed in the source directory.
 
 Hosts that need provider identity presentation may call
 `resolveAgentGUIProviderIdentity(value)` from the narrow
@@ -227,7 +454,31 @@ use `renderAgentsEmpty` for a host-specific loaded-empty state. Use
 `renderAgentReadinessState` for host-specific availability presentation, and
 handle install/login/refresh requests through `onAgentAvailabilityAction`.
 
+Hosts that launch handoffs across session-runtime boundaries may also pass
+`handoffAgentDirectory`. Its ready entries populate only the active-conversation
+Handoff menu; the conversation rail, session queries, and empty composer remain
+owned by `agentDirectory`. When omitted, Handoff uses `agentDirectory`. Handoff
+rows keep the Agent name as the primary identity and render ownership separately:
+entries with `ownership: "self"` are labeled as the current user's Agent, while
+entries with `ownership: "shared"` are labeled as shared and show the available
+owner identity. Entries without explicit ownership remain unclassified; AgentGUI
+does not infer ownership from `owner.name`, `owner.avatarUrl`, or other
+presentation metadata.
+
+Host-owned task or activity surfaces can render the same target picker with
+`AgentHandoffMenu`. Pass the authoritative ready `AgentGUIAgentTarget` entries
+and keep launch orchestration in the host's `onSelect` callback; the shared
+component owns only menu disclosure, ownership presentation, and handoff-icon
+motion.
+
 The old public `providerTargets`, `providerRailMode`, provider-target renderers,
 and `defaultProviderTargetId` contract is intentionally unsupported. Workbench
 state hydration performs a one-time read of legacy `providerTargetId` into
 `agentTargetId`; new state writes contain only `agentTargetId`.
+
+Account and Commerce remain Host chrome. A Host may use
+`renderSlots.agentConfigAccount` to replace the selected target's default
+account/quota block and `hostActions.onAgentConfigMenuOpen` to refresh its
+Host-owned account state. Both receive the same exact target context. Returning
+`null` preserves the default provider account and quota presentation; the slot
+must not start requests or own menu lifecycle.

@@ -54,6 +54,9 @@
               "@tutti-os/ui-system",
               "@tutti-os/ui-system/components",
               "@tutti-os/ui-system/icons",
+              "@tutti-os/ui-system/metadata",
+              "@tutti-os/ui-system/native",
+              "@tutti-os/ui-system/native.css",
               "@tutti-os/ui-system/styles.css",
               "@tutti-os/ui-system/utils"
             ]
@@ -101,6 +104,9 @@
             }
           },
           "storyboard": {
+            "type": "boolean"
+          },
+          "nativePreview": {
             "type": "boolean"
           }
         }

@@ -5,6 +5,7 @@ import { createOptionalReporterService } from "./agentMessageSentAnalytics.ts";
 export interface AgentSessionStartedTracker {
   track(input: {
     agentSessionId: string;
+    clientSubmitId?: string;
     hasProject: boolean;
     model?: string | null;
     permissionMode: string | null;
@@ -17,8 +18,16 @@ export function createAgentSessionStartedTracker(input: {
   reporterNow?: () => number;
   reporterService?: Pick<IReporterService, "trackEvents">;
 }): AgentSessionStartedTracker {
+  const reportedClientSubmitIds = new Set<string>();
   return {
     async track(session) {
+      const clientSubmitId = session.clientSubmitId?.trim() ?? "";
+      if (clientSubmitId) {
+        if (reportedClientSubmitIds.has(clientSubmitId)) {
+          return;
+        }
+        reportedClientSubmitIds.add(clientSubmitId);
+      }
       await new AgentSessionStartedReporter(
         {
           agentSessionId: session.agentSessionId,

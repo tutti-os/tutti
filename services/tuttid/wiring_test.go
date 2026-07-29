@@ -2,11 +2,135 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
+	workspaceagentbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceagent"
+	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
+	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
+	workspaceagentservice "github.com/tutti-os/tutti/services/tuttid/service/workspaceagent"
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
+
+type recordingIssueRunAgentSessionCreator struct {
+	workspaceID string
+	input       agentservice.CreateSessionInput
+}
+
+func (r *recordingIssueRunAgentSessionCreator) CreateWithResult(
+	_ context.Context,
+	workspaceID string,
+	input agentservice.CreateSessionInput,
+) (agentservice.CreateSessionResult, error) {
+	r.workspaceID = workspaceID
+	r.input = input
+	return agentservice.CreateSessionResult{}, nil
+}
+
+func TestIssueRunAgentLauncherForwardsSourceRailPlacement(t *testing.T) {
+	creator := &recordingIssueRunAgentSessionCreator{}
+	launcher := issueRunAgentLauncher{Sessions: creator}
+
+	err := launcher.Launch(context.Background(), workspaceservice.IssueRunLaunch{
+		WorkspaceID:        "workspace-1",
+		ClientSubmitID:     "issue-run:run-1",
+		AgentSessionID:     "delegate-1",
+		AgentTargetID:      "local-codex",
+		RunID:              "run-1",
+		Title:              "Delegated task",
+		Prompt:             "Implement the task",
+		ExecutionDirectory: "/tmp/task-worktree",
+		RailPlacement: &workspaceservice.IssueRunRailPlacement{
+			Kind:        " project ",
+			ProjectPath: " /workspace/project ",
+			SectionKey:  " project:/workspace/project ",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Launch() error = %v", err)
+	}
+	if creator.workspaceID != "workspace-1" {
+		t.Fatalf("Create() workspace = %q, want workspace-1", creator.workspaceID)
+	}
+	if creator.input.Cwd == nil || *creator.input.Cwd != "/tmp/task-worktree" {
+		t.Fatalf("Create() cwd = %#v, want isolated worktree", creator.input.Cwd)
+	}
+	if creator.input.RailPlacement == nil {
+		t.Fatal("Create() rail placement is nil")
+	}
+	if creator.input.RailPlacement.Version != 1 ||
+		creator.input.RailPlacement.Kind != "project" ||
+		creator.input.RailPlacement.ProjectPath != "/workspace/project" ||
+		creator.input.RailPlacement.SectionKey != "project:/workspace/project" {
+		t.Fatalf("Create() rail placement = %#v", creator.input.RailPlacement)
+	}
+}
+
+type fakeIssueSourceSessionReader struct {
+	session agentservice.PersistedSession
+	found   bool
+}
+
+func (r fakeIssueSourceSessionReader) GetSession(string, string) (agentservice.PersistedSession, bool) {
+	return r.session, r.found
+}
+
+func (fakeIssueSourceSessionReader) ListSessions(string) ([]agentservice.PersistedSession, bool) {
+	return nil, false
+}
+
+func (fakeIssueSourceSessionReader) SessionDeleted(context.Context, string, string) (bool, error) {
+	return false, nil
+}
+
+func TestIssueSourceSessionContextResolverReturnsExecutionAndRailIdentity(t *testing.T) {
+	resolver := issueSourceSessionContextResolver{Sessions: fakeIssueSourceSessionReader{
+		found: true,
+		session: agentservice.PersistedSession{
+			Cwd:             " /workspace/project ",
+			RailSectionKind: " project ",
+			RailProjectPath: " /workspace/project ",
+			RailSectionKey:  " project:/workspace/project ",
+		},
+	}}
+
+	got, ok := resolver.ResolveSourceSessionContext("workspace-1", "planning-session")
+	if !ok {
+		t.Fatal("ResolveSourceSessionContext() found = false")
+	}
+	if got.WorkingDirectory != "/workspace/project" {
+		t.Fatalf("working directory = %q, want /workspace/project", got.WorkingDirectory)
+	}
+	if got.RailPlacement == nil ||
+		got.RailPlacement.Kind != "project" ||
+		got.RailPlacement.ProjectPath != "/workspace/project" ||
+		got.RailPlacement.SectionKey != "project:/workspace/project" {
+		t.Fatalf("rail placement = %#v", got.RailPlacement)
+	}
+}
+
+func TestIssueSourceSessionContextResolverFallsBackToProjectPathWhenCwdIsEmpty(t *testing.T) {
+	resolver := issueSourceSessionContextResolver{Sessions: fakeIssueSourceSessionReader{
+		found: true,
+		session: agentservice.PersistedSession{
+			RailSectionKind: "project",
+			RailProjectPath: " /workspace/project ",
+			RailSectionKey:  "project:/workspace/project",
+		},
+	}}
+
+	got, ok := resolver.ResolveSourceSessionContext("workspace-1", "planning-session")
+	if !ok {
+		t.Fatal("ResolveSourceSessionContext() found = false")
+	}
+	if got.WorkingDirectory != "/workspace/project" {
+		t.Fatalf("working directory = %q, want project-path fallback", got.WorkingDirectory)
+	}
+}
 
 type fakeAnalyticsDebugEventStream struct{}
 
@@ -39,4 +163,306 @@ func TestResolveAnalyticsDebugPublisherSkipsDisabledAnalytics(t *testing.T) {
 	}
 }
 
+func TestTuttiDesktopCommandNetworkAccessPolicyAllowsOptedInAppServers(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		provider string
+		want     bool
+	}{
+		{provider: providerregistry.TuttiAgentProviderID, want: true},
+		{provider: providerregistry.CodexProviderID, want: true},
+		{provider: providerregistry.ClaudeCodeProviderID, want: false},
+		{provider: "acp:custom-agent", want: false},
+		{provider: "", want: false},
+	} {
+		if got := tuttiDesktopCommandNetworkAccessPolicy(test.provider); got != test.want {
+			t.Fatalf(
+				"tuttiDesktopCommandNetworkAccessPolicy(%q) = %t, want %t",
+				test.provider,
+				got,
+				test.want,
+			)
+		}
+	}
+}
+
+func TestTuttiModeWakeRecoveryStartsOnlyFromListenerReadyHook(t *testing.T) {
+	calls := 0
+	wiring := &tuttiWiring{
+		tuttiModeWakeRecoveryStarter: func() {
+			calls++
+		},
+	}
+	if calls != 0 {
+		t.Fatalf("wake recovery started during wiring construction: calls=%d", calls)
+	}
+
+	wiring.startTuttiModeWakeRecovery()
+	if calls != 1 {
+		t.Fatalf("listener-ready wake recovery calls=%d, want 1", calls)
+	}
+	wiring.startTuttiModeWakeRecovery()
+	if calls != 1 {
+		t.Fatalf("listener-ready wake recovery replay calls=%d, want one-shot", calls)
+	}
+}
+
+type recordingWorkspaceAgentTargetResolverSetter struct {
+	resolver agentservice.WorkspaceAgentTargetResolver
+}
+
+func (r *recordingWorkspaceAgentTargetResolverSetter) SetWorkspaceAgentTargetResolver(
+	resolver agentservice.WorkspaceAgentTargetResolver,
+) {
+	r.resolver = resolver
+}
+
+type fakeWorkspaceAgentTargetResolver struct{}
+
+func (fakeWorkspaceAgentTargetResolver) GetWorkspaceAgent(
+	context.Context,
+	string,
+	string,
+) (workspaceagentbiz.Agent, error) {
+	return workspaceagentbiz.Agent{}, nil
+}
+
+func TestConfigureWorkspaceAgentResolutionWiresLaunchAndProjection(t *testing.T) {
+	agentSessions := &agentservice.Service{}
+	activityProjection := &recordingWorkspaceAgentTargetResolverSetter{}
+	workspaceAgents := &workspaceagentservice.Service{}
+	workspaceAgentTargets := fakeWorkspaceAgentTargetResolver{}
+
+	configureWorkspaceAgentResolution(
+		agentSessions,
+		activityProjection,
+		workspaceAgents,
+		workspaceAgentTargets,
+	)
+
+	if agentSessions.WorkspaceAgentResolver != workspaceAgents {
+		t.Fatalf(
+			"agent session WorkspaceAgentResolver = %T, want workspace agent service",
+			agentSessions.WorkspaceAgentResolver,
+		)
+	}
+	if activityProjection.resolver != workspaceAgentTargets {
+		t.Fatalf(
+			"activity projection WorkspaceAgentTargetResolver = %T, want workspace agent service",
+			activityProjection.resolver,
+		)
+	}
+}
+
 var _ reporterservice.DebugPublisher = analyticsDebugEventPublisher{}
+
+type recordingIssueRunSessionCreator struct {
+	workspaceID string
+	input       agentservice.CreateSessionInput
+	result      agentservice.CreateSessionResult
+	err         error
+	createCalls int
+	legacyCalls int
+}
+
+type recordingIssueRunTurnFinder struct {
+	turnID         string
+	found          bool
+	err            error
+	calls          int
+	ref            agenthost.SessionRef
+	clientSubmitID string
+}
+
+func (finder *recordingIssueRunTurnFinder) FindTurnByClientSubmitID(
+	_ context.Context,
+	ref agenthost.SessionRef,
+	clientSubmitID string,
+) (string, bool, error) {
+	finder.calls++
+	finder.ref = ref
+	finder.clientSubmitID = clientSubmitID
+	return finder.turnID, finder.found, finder.err
+}
+
+func (creator *recordingIssueRunSessionCreator) Create(
+	_ context.Context,
+	workspaceID string,
+	input agentservice.CreateSessionInput,
+) (agentservice.Session, error) {
+	creator.legacyCalls++
+	creator.workspaceID = workspaceID
+	creator.input = input
+	return creator.result.Session, creator.err
+}
+
+func (creator *recordingIssueRunSessionCreator) CreateWithResult(
+	_ context.Context,
+	workspaceID string,
+	input agentservice.CreateSessionInput,
+) (agentservice.CreateSessionResult, error) {
+	creator.createCalls++
+	creator.workspaceID = workspaceID
+	creator.input = input
+	return creator.result, creator.err
+}
+
+func TestIssueRunAgentLauncherUsesPersistedClientSubmitID(t *testing.T) {
+	creator := &recordingIssueRunSessionCreator{}
+	err := (issueRunAgentLauncher{Sessions: creator}).Launch(
+		context.Background(),
+		workspaceservice.IssueRunLaunch{
+			WorkspaceID: "workspace-1", RunID: "run-1",
+			ClientSubmitID: "persisted-submit-id", AgentSessionID: "session-1",
+			AgentTargetID: "local:codex", Title: "Task",
+		},
+	)
+	if err != nil {
+		t.Fatalf("Launch() error = %v", err)
+	}
+	if creator.workspaceID != "workspace-1" ||
+		creator.input.ClientSubmitID != "persisted-submit-id" {
+		t.Fatalf("Create() scope/input = %q/%#v", creator.workspaceID, creator.input)
+	}
+}
+
+func TestIssueRunAgentLauncherClassifiesPreTurnFailureAsNotStarted(t *testing.T) {
+	cause := errors.New("provider rejected launch")
+	creator := &recordingIssueRunSessionCreator{err: cause}
+	finder := &recordingIssueRunTurnFinder{}
+
+	err := (issueRunAgentLauncher{Sessions: creator, Host: finder}).Launch(
+		context.Background(),
+		workspaceservice.IssueRunLaunch{
+			WorkspaceID: "workspace-1", ClientSubmitID: "submit-1",
+			AgentSessionID: "session-1", AgentTargetID: "local:codex", Title: "Task",
+		},
+	)
+
+	if !errors.Is(err, cause) {
+		t.Fatalf("Launch() error = %v, want wrapped cause %v", err, cause)
+	}
+	if err == cause || fmt.Sprintf("%T", err) != "workspace.issueRunLaunchNotStartedError" {
+		t.Fatalf("Launch() error type = %T, want typed IssueRunLaunchNotStartedError", err)
+	}
+	if creator.createCalls != 1 || creator.legacyCalls != 0 {
+		t.Fatalf(
+			"session creation calls = CreateWithResult:%d Create:%d, want 1/0",
+			creator.createCalls,
+			creator.legacyCalls,
+		)
+	}
+	if finder.calls != 1 ||
+		finder.ref != (agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"}) ||
+		finder.clientSubmitID != "submit-1" {
+		t.Fatalf(
+			"canonical Turn lookup = calls:%d ref:%#v submit:%q, want 1/workspace-1/session-1/submit-1",
+			finder.calls,
+			finder.ref,
+			finder.clientSubmitID,
+		)
+	}
+}
+
+func TestIssueRunAgentLauncherKeepsDeliveryUnknownRecoverable(t *testing.T) {
+	deliveryErr := fmt.Errorf("provider response lost: %w", agentservice.ErrSubmitDeliveryUnknown)
+	creator := &recordingIssueRunSessionCreator{err: deliveryErr}
+	finder := &recordingIssueRunTurnFinder{}
+
+	err := (issueRunAgentLauncher{Sessions: creator, Host: finder}).Launch(
+		context.Background(),
+		workspaceservice.IssueRunLaunch{
+			WorkspaceID: "workspace-1", ClientSubmitID: "submit-1",
+			AgentSessionID: "session-1", AgentTargetID: "local:codex", Title: "Task",
+		},
+	)
+
+	if err != deliveryErr {
+		t.Fatalf("Launch() error = %v (%T), want unchanged ambiguous error", err, err)
+	}
+	if creator.createCalls != 1 || creator.legacyCalls != 0 {
+		t.Fatalf(
+			"session creation calls = CreateWithResult:%d Create:%d, want 1/0",
+			creator.createCalls,
+			creator.legacyCalls,
+		)
+	}
+	if finder.calls != 0 {
+		t.Fatalf("canonical Turn lookup calls = %d, want 0 for delivery-unknown", finder.calls)
+	}
+}
+
+func TestIssueRunAgentLauncherKeepsTurnIdentifiedFailureRecoverable(t *testing.T) {
+	cause := errors.New("response failed after canonical turn")
+	creator := &recordingIssueRunSessionCreator{
+		result: agentservice.CreateSessionResult{TurnID: "turn-1"},
+		err:    cause,
+	}
+	finder := &recordingIssueRunTurnFinder{}
+
+	err := (issueRunAgentLauncher{Sessions: creator, Host: finder}).Launch(
+		context.Background(),
+		workspaceservice.IssueRunLaunch{
+			WorkspaceID: "workspace-1", ClientSubmitID: "submit-1",
+			AgentSessionID: "session-1", AgentTargetID: "local:codex", Title: "Task",
+		},
+	)
+
+	if err != cause {
+		t.Fatalf("Launch() error = %v (%T), want unchanged recoverable error", err, err)
+	}
+	if creator.createCalls != 1 || creator.legacyCalls != 0 {
+		t.Fatalf(
+			"session creation calls = CreateWithResult:%d Create:%d, want 1/0",
+			creator.createCalls,
+			creator.legacyCalls,
+		)
+	}
+	if finder.calls != 0 {
+		t.Fatalf("canonical Turn lookup calls = %d, want 0 for identified Turn", finder.calls)
+	}
+}
+
+func TestIssueRunAgentLauncherKeepsCanonicalTurnLookupHitRecoverable(t *testing.T) {
+	cause := errors.New("submit claim read failed after canonical creation")
+	creator := &recordingIssueRunSessionCreator{err: cause}
+	finder := &recordingIssueRunTurnFinder{turnID: "turn-existing", found: true}
+
+	err := (issueRunAgentLauncher{Sessions: creator, Host: finder}).Launch(
+		context.Background(),
+		workspaceservice.IssueRunLaunch{
+			WorkspaceID: "workspace-1", ClientSubmitID: "submit-1",
+			AgentSessionID: "session-1", AgentTargetID: "local:codex", Title: "Task",
+		},
+	)
+
+	if err != cause {
+		t.Fatalf("Launch() error = %v (%T), want unchanged recoverable error", err, err)
+	}
+	if finder.calls != 1 {
+		t.Fatalf("canonical Turn lookup calls = %d, want 1", finder.calls)
+	}
+}
+
+func TestIssueRunAgentLauncherKeepsCanonicalTurnLookupErrorRecoverable(t *testing.T) {
+	cause := errors.New("submit claim read failed")
+	lookupErr := errors.New("canonical store is temporarily unavailable")
+	creator := &recordingIssueRunSessionCreator{err: cause}
+	finder := &recordingIssueRunTurnFinder{err: lookupErr}
+
+	err := (issueRunAgentLauncher{Sessions: creator, Host: finder}).Launch(
+		context.Background(),
+		workspaceservice.IssueRunLaunch{
+			WorkspaceID: "workspace-1", ClientSubmitID: "submit-1",
+			AgentSessionID: "session-1", AgentTargetID: "local:codex", Title: "Task",
+		},
+	)
+
+	if err != cause {
+		t.Fatalf("Launch() error = %v (%T), want unchanged recoverable error", err, err)
+	}
+	if finder.calls != 1 {
+		t.Fatalf("canonical Turn lookup calls = %d, want 1", finder.calls)
+	}
+}

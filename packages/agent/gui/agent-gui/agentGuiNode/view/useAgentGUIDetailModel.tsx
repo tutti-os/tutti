@@ -1,22 +1,21 @@
 import { useMemo } from "react";
-import type { AgentGUIProviderReadinessGate } from "../../../types";
 import { isAgentGUIAgentTargetComingSoon } from "../../../agentTargets";
 import { UnavailableChatIcon } from "../../../app/renderer/components/icons/UnavailableChatIcon";
 import { useProjectedAgentConversation } from "../../../shared/agentConversation/projection/useProjectedAgentConversation";
 import type { AgentComposerSlashStatusLimit } from "../AgentComposer";
 import type { AgentGoalBannerLabels } from "../AgentGoalBanner";
 import type {
+  AgentGUIInlineNotice,
   AgentGUINodeViewModel,
   AgentGUISessionChrome
 } from "../model/agentGuiNodeTypes";
 import type { AgentGUIViewLabels } from "../AgentGUINodeView";
 import {
   isContextCanceledMessage,
-  isDifferentKnownConversationOwner,
-  resolveActiveConversationBusyStatus,
-  resolveConversationDetailStatus,
+  isAgentGUITransportNoticeVisible,
+  resolveAgentGUIHomeNoticeChrome,
+  resolveAgentGUIStopControl,
   resolveSlashStatus,
-  shouldShowAgentGUIStopButton,
   useStableSlashStatus
 } from "./agentGUIDetailModelHelpers";
 import { useAgentGUITimelineTransition } from "./useAgentGUITimelineTransition";
@@ -29,6 +28,22 @@ interface Input {
   slashStatusLimitsLoading: boolean;
   slashStatusLimitsUnavailable: boolean;
   viewModel: AgentGUINodeViewModel;
+}
+
+export function resolveTuttiModeUpdateInlineNotice(input: {
+  failedMessage: string;
+  status: AgentGUINodeViewModel["composer"]["tuttiModeUpdateStatus"];
+  uncertainMessage: string;
+}): AgentGUIInlineNotice | null {
+  if (input.status !== "failed" && input.status !== "uncertain") return null;
+  const localizedMessage =
+    input.status === "failed" ? input.failedMessage : input.uncertainMessage;
+  return {
+    autoDismissMs: null,
+    id: `agent-gui-tutti-mode-update-${input.status}`,
+    message: localizedMessage,
+    tone: input.status === "failed" ? "error" : "warning"
+  };
 }
 
 export function useAgentGUIDetailModel(input: Input) {
@@ -65,9 +80,7 @@ export function useAgentGUIDetailModel(input: Input) {
     viewModel.rail.comingSoonProviders
   );
   const emptyProviderReadinessGate = !hasActiveConversation
-    ? selectedAgentTargetComingSoon
-      ? ({ status: "coming_soon" } satisfies AgentGUIProviderReadinessGate)
-      : viewModel.readiness.providerReadinessGate
+    ? viewModel.readiness.providerReadinessGate
     : null;
   const activePrompt =
     viewModel.interaction.pendingInteractivePrompt ??
@@ -76,6 +89,9 @@ export function useAgentGUIDetailModel(input: Input) {
   const sessionChrome = useMemo<AgentGUISessionChrome>(
     () => ({ ...viewModel.interaction.sessionChrome, approval: null }),
     [viewModel.interaction.sessionChrome]
+  );
+  const transportNoticeVisible = isAgentGUITransportNoticeVisible(
+    sessionChrome.recovery
   );
   const rawSlashStatus = useMemo(
     () =>
@@ -95,8 +111,25 @@ export function useAgentGUIDetailModel(input: Input) {
     ]
   );
   const slashStatus = useStableSlashStatus(rawSlashStatus);
+  const tuttiModeUpdateNotice = useMemo(
+    () =>
+      resolveTuttiModeUpdateInlineNotice({
+        failedMessage: labels.tuttiModeUpdateFailed,
+        status: viewModel.composer.tuttiModeUpdateStatus,
+        uncertainMessage: labels.tuttiModeUpdateUncertain
+      }),
+    [
+      labels.tuttiModeUpdateFailed,
+      labels.tuttiModeUpdateUncertain,
+      viewModel.composer.tuttiModeUpdateStatus
+    ]
+  );
   const displayedInlineNotice = useMemo(() => {
-    const inlineNotice = viewModel.interaction.inlineNotice;
+    if (transportNoticeVisible) {
+      return null;
+    }
+    const inlineNotice =
+      tuttiModeUpdateNotice ?? viewModel.interaction.inlineNotice;
     const inlineNoticeMessage = inlineNotice?.message.trim() ?? "";
     if (!inlineNotice || inlineNoticeMessage === "") {
       return null;
@@ -124,8 +157,10 @@ export function useAgentGUIDetailModel(input: Input) {
   }, [
     sessionChrome.auth?.message,
     sessionChrome.recovery?.message,
+    tuttiModeUpdateNotice,
     viewModel.rail.activeConversation?.status,
     viewModel.readiness.activeLiveState,
+    transportNoticeVisible,
     viewModel.interaction.inlineNotice
   ]);
   const inlineNoticeChrome = useMemo<AgentGUISessionChrome | null>(() => {
@@ -138,11 +173,17 @@ export function useAgentGUIDetailModel(input: Input) {
       recovery: {
         kind: displayedInlineNotice.tone === "warning" ? "warning" : "failed",
         message: displayedInlineNotice.message,
-        canRetry: false
+        canRetry: displayedInlineNotice.id.startsWith(
+          "agent-gui-tutti-mode-update-failed"
+        )
       },
       rawState: null
     };
   }, [displayedInlineNotice]);
+  const homeNoticeChrome = resolveAgentGUIHomeNoticeChrome({
+    inlineNoticeChrome,
+    sessionChrome
+  });
   // Plan decisions replace the composer in the bottom dock: the card takes its slot
   // and the composer hides until it is acted on (optimistically cleared via
   // bottomDockDismissedPromptRequestId) or otherwise resolves.
@@ -151,6 +192,7 @@ export function useAgentGUIDetailModel(input: Input) {
     activePrompt?.kind === "plan-implementation";
   const activePromptIsVisible =
     activePrompt !== null &&
+    !transportNoticeVisible &&
     bottomDockDismissedPromptRequestId !== activePromptRequestId;
   const bottomDockReplacementPrompt =
     activePromptIsPlanDecision && activePromptIsVisible ? activePrompt : null;
@@ -165,54 +207,28 @@ export function useAgentGUIDetailModel(input: Input) {
       ? activePrompt
       : null;
   const composerActivePrompt =
-    activePromptIsPlanDecision || shouldLiftActivePromptAboveInlineNotice
+    !activePromptIsVisible ||
+    activePromptIsPlanDecision ||
+    shouldLiftActivePromptAboveInlineNotice
       ? null
       : activePrompt;
   const showUnavailableChatEmpty =
     hasActiveConversation && viewModel.detail.availability === "not_found";
-  const activeDetailStatus = resolveConversationDetailStatus(
-    viewModel.detail.conversationDetail
-  );
-  const derivedBusyStatus = resolveActiveConversationBusyStatus({
-    conversationStatus: viewModel.rail.activeConversation?.status,
-    detailStatus: activeDetailStatus,
-    conversation: targetConversation
-  });
-  const activeConversationTurnBusy =
-    viewModel.composer.isSubmitting ||
-    viewModel.readiness.activeConversationBusy ||
-    derivedBusyStatus !== null;
+  const activeConversationTurnBusy = viewModel.composer.gate.conversationBusy;
   const isComposerSending =
-    viewModel.composer.isSubmitting ||
     activeConversationTurnBusy ||
-    (!hasActiveConversation && viewModel.composer.isCreatingConversation);
-  const isCollaboratorConversation = isDifferentKnownConversationOwner({
-    conversationUserId: viewModel.rail.activeConversation?.userId,
-    currentUserId: viewModel.shell.currentUserId
-  });
-  const canQueueWhileBusy =
-    viewModel.composer.canQueueWhileBusy && !isCollaboratorConversation;
+    (!hasActiveConversation &&
+      viewModel.composer.gate.submission.status === "blocked" &&
+      viewModel.composer.gate.submission.reason === "creating_conversation");
+  const isCollaboratorConversation =
+    viewModel.composer.gate.editor.status === "blocked" &&
+    viewModel.composer.gate.editor.reason === "collaborator_read_only";
   const composerDisabledReason = isCollaboratorConversation
     ? labels.collaboratorSessionReadOnlyPlaceholder
     : null;
-  const hasNonRetryableRecoveryFailure =
-    (sessionChrome.recovery?.kind === "failed" &&
-      sessionChrome.recovery.canRetry === false) ||
-    sessionChrome.recovery?.kind === "resume-unavailable";
-  const submitDisabled =
-    hasNonRetryableRecoveryFailure ||
-    isCollaboratorConversation ||
-    (!viewModel.composer.canSubmit && !canQueueWhileBusy);
-  const composerDisabled =
-    hasNonRetryableRecoveryFailure ||
-    isCollaboratorConversation ||
-    (!canQueueWhileBusy &&
-      (viewModel.interaction.pendingApproval !== null ||
-        viewModel.interaction.pendingInteractivePrompt !== null ||
-        viewModel.composer.isSubmitting ||
-        viewModel.composer.isInterrupting ||
-        viewModel.composer.isCreatingConversation));
-  const showStopButton = shouldShowAgentGUIStopButton({
+  const runtimeCommandsBlocked =
+    viewModel.composer.gate.runtime.status === "blocked";
+  const stopControl = resolveAgentGUIStopControl({
     hasPendingApproval: viewModel.interaction.pendingApproval !== null,
     hasPendingInteractivePrompt:
       viewModel.interaction.pendingInteractivePrompt !== null,
@@ -222,8 +238,11 @@ export function useAgentGUIDetailModel(input: Input) {
     isCreatingConversation: viewModel.composer.isCreatingConversation,
     isInterrupting: viewModel.composer.isInterrupting,
     isSubmitting: viewModel.composer.isSubmitting,
-    isUnavailable: viewModel.readiness.activeLiveState === "failed"
+    isUnavailable: viewModel.readiness.activeLiveState === "failed",
+    runtimeCommandsBlocked
   });
+  const showStopButton = stopControl.visible;
+  const stopDisabled = stopControl.disabled;
   const conversationFlowLabels = useMemo(
     () => ({
       thinkingLabel: labels.thinkingLabel,
@@ -354,6 +373,8 @@ export function useAgentGUIDetailModel(input: Input) {
   const composerLabels = useMemo(
     () => ({
       send: labels.send,
+      sendAccept: labels.tuttiModePlanSendAccept,
+      sendRequestChanges: labels.tuttiModePlanSendRequestChanges,
       modelLabel: labels.modelLabel,
       modelSelectionLabel: labels.modelSelectionLabel,
       modelContextWindowSuffix: labels.modelContextWindowSuffix,
@@ -382,8 +403,34 @@ export function useAgentGUIDetailModel(input: Input) {
       permissionModeReadOnly: labels.permissionModeReadOnly,
       permissionModeAuto: labels.permissionModeAuto,
       permissionModeFullAccess: labels.permissionModeFullAccess,
+      permissionModeChangeUnavailableDuringTurn:
+        labels.permissionModeChangeUnavailableDuringTurn,
       modelDescriptions: labels.modelDescriptions,
       planModeLabel: labels.planModeLabel,
+      normalModeLabel: labels.normalModeLabel,
+      normalModeDescription: labels.normalModeDescription,
+      tuttiModeLabel: labels.tuttiModeLabel,
+      tuttiModeDescription: labels.tuttiModeDescription,
+      tuttiModeRemove: labels.tuttiModeRemove,
+      tuttiBudgetTitle: labels.tuttiBudgetTitle,
+      tuttiBudgetEffectLabel: labels.tuttiBudgetEffectLabel,
+      tuttiBudgetSpeedLabel: labels.tuttiBudgetSpeedLabel,
+      tuttiBudgetPreviewTitle: labels.tuttiBudgetPreviewTitle,
+      tuttiBudgetPreviewHint: labels.tuttiBudgetPreviewHint,
+      tuttiBudgetPreviewCost: labels.tuttiBudgetPreviewCost,
+      tuttiBudgetPreviewBalance: labels.tuttiBudgetPreviewBalance,
+      tuttiBudgetPreviewPowerful: labels.tuttiBudgetPreviewPowerful,
+      tuttiBudgetModelPreferenceLabel: labels.tuttiBudgetModelPreferenceLabel,
+      tuttiBudgetModelPreferenceCost: labels.tuttiBudgetModelPreferenceCost,
+      tuttiBudgetModelPreferenceBalance:
+        labels.tuttiBudgetModelPreferenceBalance,
+      tuttiBudgetModelPreferencePowerful:
+        labels.tuttiBudgetModelPreferencePowerful,
+      tuttiBudgetModelPreferenceFastestSuitable:
+        labels.tuttiBudgetModelPreferenceFastestSuitable,
+      tuttiBudgetParallelismLabel: labels.tuttiBudgetParallelismLabel,
+      tuttiBudgetParallelismValue: labels.tuttiBudgetParallelismValue,
+      planModeDescription: labels.planModeDescription,
       planModeOnLabel: labels.planModeOnLabel,
       planModeOffLabel: labels.planModeOffLabel,
       planUnavailable: labels.planUnavailable,
@@ -452,10 +499,18 @@ export function useAgentGUIDetailModel(input: Input) {
       slashStatusContext: labels.slashStatusContext,
       slashStatusLimits: labels.slashStatusLimits,
       slashStatusAccount: labels.slashStatusAccount,
+      slashStatusProviderAccount: labels.slashStatusProviderAccount,
       slashStatusClose: labels.slashStatusClose,
       slashStatusContextValue: labels.slashStatusContextValue,
       slashStatusContextUnavailable: labels.slashStatusContextUnavailable,
       slashStatusLimitsUnavailable: labels.slashStatusLimitsUnavailable,
+      slashStatusEmptyValue: labels.slashStatusEmptyValue,
+      slashStatusUsageJustUpdated: labels.slashStatusUsageJustUpdated,
+      slashStatusUsageMinutesAgo: labels.slashStatusUsageMinutesAgo,
+      slashStatusUsageHoursAgo: labels.slashStatusUsageHoursAgo,
+      slashStatusUsageUpdating: labels.slashStatusUsageUpdating,
+      slashStatusUsageRefreshFailed: labels.slashStatusUsageRefreshFailed,
+      slashStatusUsageRefreshAria: labels.slashStatusUsageRefreshAria,
       usageChipLabel: labels.usageChipLabel,
       usageTooltipLabel: labels.usageTooltipLabel,
       usagePopoverTitle: labels.usagePopoverTitle,
@@ -477,16 +532,22 @@ export function useAgentGUIDetailModel(input: Input) {
       handoffConversation: labels.handoffConversation,
       handoffConversationTooltip: labels.handoffConversationTooltip,
       handoffConversationMenu: labels.handoffConversationMenu,
+      handoffTargetDeviceSource: labels.handoffTargetDeviceSource,
+      handoffTargetSelf: labels.handoffTargetSelf,
+      handoffTargetShared: labels.handoffTargetShared,
       providerSwitchLabel: labels.providerSwitchLabel,
       projectLocked: labels.projectLocked,
       projectMissingDescription: labels.projectMissingDescription,
       promptTipsPrefix: labels.promptTipsPrefix,
       reviewPicker: labels.reviewPicker,
+      quickPrompts: labels.quickPrompts,
       ...interactivePromptLabels
     }),
     [
       interactivePromptLabels,
       labels.defaultModel,
+      labels.tuttiModePlanSendAccept,
+      labels.tuttiModePlanSendRequestChanges,
       labels.addReference,
       labels.addContent,
       labels.deleteQueuedPrompt,
@@ -500,6 +561,9 @@ export function useAgentGUIDetailModel(input: Input) {
       labels.handoffConversation,
       labels.handoffConversationTooltip,
       labels.handoffConversationMenu,
+      labels.handoffTargetDeviceSource,
+      labels.handoffTargetSelf,
+      labels.handoffTargetShared,
       labels.inheritedUnavailable,
       labels.loadingConversation,
       labels.modelLabel,
@@ -509,9 +573,31 @@ export function useAgentGUIDetailModel(input: Input) {
       labels.modelTooltipVersionLabel,
       labels.permissionLabel,
       labels.permissionModeAuto,
+      labels.permissionModeChangeUnavailableDuringTurn,
       labels.permissionModeFullAccess,
       labels.permissionModeReadOnly,
       labels.planModeLabel,
+      labels.normalModeLabel,
+      labels.normalModeDescription,
+      labels.tuttiModeLabel,
+      labels.tuttiModeDescription,
+      labels.tuttiModeRemove,
+      labels.tuttiBudgetTitle,
+      labels.tuttiBudgetEffectLabel,
+      labels.tuttiBudgetSpeedLabel,
+      labels.tuttiBudgetPreviewTitle,
+      labels.tuttiBudgetPreviewHint,
+      labels.tuttiBudgetPreviewCost,
+      labels.tuttiBudgetPreviewBalance,
+      labels.tuttiBudgetPreviewPowerful,
+      labels.tuttiBudgetModelPreferenceLabel,
+      labels.tuttiBudgetModelPreferenceCost,
+      labels.tuttiBudgetModelPreferenceBalance,
+      labels.tuttiBudgetModelPreferencePowerful,
+      labels.tuttiBudgetModelPreferenceFastestSuitable,
+      labels.tuttiBudgetParallelismLabel,
+      labels.tuttiBudgetParallelismValue,
+      labels.planModeDescription,
       labels.planModeOffLabel,
       labels.planModeOnLabel,
       labels.planUnavailable,
@@ -520,6 +606,7 @@ export function useAgentGUIDetailModel(input: Input) {
       labels.projectMissingDescription,
       labels.promptTipsPrefix,
       labels.reviewPicker,
+      labels.quickPrompts,
       labels.queuedLabel,
       labels.queuePausedByUserLabel,
       labels.queuedPromptMoreActions,
@@ -591,6 +678,13 @@ export function useAgentGUIDetailModel(input: Input) {
       labels.slashStatusBaseUrl,
       labels.slashStatusLimits,
       labels.slashStatusLimitsUnavailable,
+      labels.slashStatusEmptyValue,
+      labels.slashStatusUsageHoursAgo,
+      labels.slashStatusUsageJustUpdated,
+      labels.slashStatusUsageMinutesAgo,
+      labels.slashStatusUsageRefreshAria,
+      labels.slashStatusUsageRefreshFailed,
+      labels.slashStatusUsageUpdating,
       labels.slashStatusSession,
       labels.slashStatusTitle,
       labels.usageChipLabel,
@@ -609,11 +703,10 @@ export function useAgentGUIDetailModel(input: Input) {
     activePromptRequestId,
     bottomDockLiftedPrompt,
     bottomDockReplacementPrompt,
-    canQueueWhileBusy,
     chromeLabels,
     composerActivePrompt,
-    composerDisabled,
     composerDisabledReason,
+    composerGate: viewModel.composer.gate,
     composerLabels,
     conversation,
     conversationFlowEmpty,
@@ -621,6 +714,7 @@ export function useAgentGUIDetailModel(input: Input) {
     emptyProviderReadinessGate,
     goalBannerLabels,
     hasActiveConversation,
+    homeNoticeChrome,
     inlineNoticeChrome,
     interactivePromptLabels,
     isCollaboratorConversation,
@@ -628,10 +722,10 @@ export function useAgentGUIDetailModel(input: Input) {
     selectedAgentTargetComingSoon,
     sessionChrome,
     showStopButton,
+    stopDisabled,
     showTimelineSkeleton,
     showUnavailableChatEmpty,
     slashStatus,
-    submitDisabled,
     timelineConversationId,
     timelineInteractionLocked: timelineTransitionPending
   };

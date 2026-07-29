@@ -623,6 +623,27 @@ test("validateCLIManifest accepts the app CLI HTTP bridge contract", () => {
   );
 });
 
+test("validateCLIManifest accepts wait execution without app-owned timeout input", () => {
+  const manifest = cliManifestForTest();
+  manifest.commands[0].path = ["runs", "wait"];
+  manifest.commands[0].execution = { mode: "wait" };
+
+  assert.doesNotThrow(() => validateCLIManifest(manifest, "tutti.cli.json"));
+});
+
+test("validateCLIManifest rejects app-owned timeout input on wait execution", () => {
+  const manifest = cliManifestForTest();
+  manifest.commands[0].execution = { mode: "wait" };
+  manifest.commands[0].inputSchema.properties["timeout-ms"] = {
+    type: "integer"
+  };
+
+  assert.throws(
+    () => validateCLIManifest(manifest, "tutti.cli.json"),
+    /reserves --timeout-ms for the total CLI wait timeout/
+  );
+});
+
 test("validateCLIManifest accepts typed input enum values", () => {
   const manifest = cliManifestForTest();
   manifest.commands[0].inputSchema.properties.mode = {

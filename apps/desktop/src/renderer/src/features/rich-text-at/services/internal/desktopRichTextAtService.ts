@@ -33,6 +33,7 @@ import {
   createAgentSessionAtContributor,
   createAgentTargetAtContributor
 } from "./desktopRichTextAtAgentContributors.ts";
+import { createWorkspaceModelAtContributor } from "./desktopRichTextAtModelContributor.ts";
 import {
   compactMentionPresentation,
   compactStringRecord,
@@ -58,8 +59,6 @@ export interface DesktopRichTextAtServiceDependencies {
   ) => DesktopAgentSessionStatusView | null;
   /** Live getter for agent availability, used to hide unbound agent apps. */
   agentProviderStatuses?: () => readonly AgentProviderStatus[] | undefined;
-  /** Live getter for the renderer-local Tutti Agent entry switch. */
-  isTuttiAgentSwitchEnabled?: () => boolean;
 }
 
 interface WorkspaceFileAtItem {
@@ -120,8 +119,7 @@ export class DesktopRichTextAtService implements IDesktopRichTextAtService {
       createWorkspaceIssueAtContributor(dependencies.tuttidClient),
       createAgentTargetAtContributor({
         agentsService: dependencies.agentsService,
-        agentProviderStatuses: dependencies.agentProviderStatuses,
-        isTuttiAgentSwitchEnabled: dependencies.isTuttiAgentSwitchEnabled
+        agentProviderStatuses: dependencies.agentProviderStatuses
       }),
       createAgentSessionAtContributor({
         agentsService: dependencies.agentsService,
@@ -130,7 +128,8 @@ export class DesktopRichTextAtService implements IDesktopRichTextAtService {
       createWorkspaceAppAtContributor({
         tuttidClient: dependencies.tuttidClient,
         getLocale: dependencies.getLocale
-      })
+      }),
+      createWorkspaceModelAtContributor(dependencies.tuttidClient)
     ];
   }
 

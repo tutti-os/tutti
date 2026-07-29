@@ -27,8 +27,15 @@ func (api DaemonAPI) UpdateWorkspaceAgentSessionSettings(ctx context.Context, re
 	if err != nil {
 		return writeUpdateWorkspaceAgentSessionSettingsError(err), nil
 	}
+	generatedSession, err := generatedAgentSession(session)
+	if err != nil {
+		return writeUpdateWorkspaceAgentSessionSettingsError(err), nil
+	}
+	api.recordAgentStimulus(ctx, "session.settings.update", string(request.WorkspaceID), string(request.AgentSessionID), map[string]any{
+		"settings": *request.Body,
+	})
 	return tuttigenerated.UpdateWorkspaceAgentSessionSettings200JSONResponse{
-		Session: generatedAgentSession(session),
+		Session: generatedSession,
 	}, nil
 }
 
@@ -52,8 +59,12 @@ func (api DaemonAPI) UpdateWorkspaceAgentSessionPin(ctx context.Context, request
 	if err != nil {
 		return writeUpdateWorkspaceAgentSessionPinError(err), nil
 	}
+	generatedSession, err := generatedAgentSession(session)
+	if err != nil {
+		return writeUpdateWorkspaceAgentSessionPinError(err), nil
+	}
 	return tuttigenerated.UpdateWorkspaceAgentSessionPin200JSONResponse{
-		Session: generatedAgentSession(session),
+		Session: generatedSession,
 	}, nil
 }
 
@@ -77,8 +88,12 @@ func (api DaemonAPI) UpdateWorkspaceAgentSessionTitle(ctx context.Context, reque
 	if err != nil {
 		return writeUpdateWorkspaceAgentSessionTitleError(err), nil
 	}
+	generatedSession, err := generatedAgentSession(session)
+	if err != nil {
+		return writeUpdateWorkspaceAgentSessionTitleError(err), nil
+	}
 	return tuttigenerated.UpdateWorkspaceAgentSessionTitle200JSONResponse{
-		Session: generatedAgentSession(session),
+		Session: generatedSession,
 	}, nil
 }
 
@@ -102,7 +117,11 @@ func (api DaemonAPI) UpdateWorkspaceAgentSessionVisibility(ctx context.Context, 
 	if err != nil {
 		return writeUpdateWorkspaceAgentSessionVisibilityError(err), nil
 	}
+	generatedSession, err := generatedAgentSession(session)
+	if err != nil {
+		return writeUpdateWorkspaceAgentSessionVisibilityError(err), nil
+	}
 	return tuttigenerated.UpdateWorkspaceAgentSessionVisibility200JSONResponse{
-		Session: generatedAgentSession(session),
+		Session: generatedSession,
 	}, nil
 }

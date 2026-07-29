@@ -9,7 +9,11 @@ package activityreplication
 import "encoding/json"
 
 const (
-	SchemaVersion     = 1
+	SchemaVersion = 1
+	// ProjectionEpoch fences local acknowledgement state from a cloud
+	// projection that has been intentionally rebaselined. Increment it in the
+	// same release as any destructive cloud projection reset.
+	ProjectionEpoch   = 1
 	MaxBatchMutations = 500
 )
 
@@ -53,6 +57,7 @@ type Target struct {
 	Name            string          `json:"name"`
 	IconKey         *string         `json:"iconKey"`
 	IconURL         string          `json:"iconUrl"`
+	MaskIconURL     string          `json:"maskIconUrl,omitempty"`
 	HeroImageURL    string          `json:"heroImageUrl"`
 	Enabled         bool            `json:"enabled"`
 	Source          string          `json:"source"`
@@ -191,14 +196,16 @@ type Mutation struct {
 }
 
 type ChangeBatch struct {
-	SchemaVersion int        `json:"schemaVersion"`
-	Mutations     []Mutation `json:"mutations"`
+	SchemaVersion   int        `json:"schemaVersion"`
+	ProjectionEpoch int        `json:"projectionEpoch"`
+	Mutations       []Mutation `json:"mutations"`
 }
 
 // ApplyResult is the HTTP acknowledgement returned after a whole ordered
 // batch is accepted. Cursor is the greatest durable cursor observed while
 // applying the batch; stale no-ops do not create one.
 type ApplyResult struct {
-	AcceptedCount int    `json:"acceptedCount"`
-	Cursor        uint64 `json:"cursor"`
+	AcceptedCount   int    `json:"acceptedCount"`
+	Cursor          uint64 `json:"cursor"`
+	ProjectionEpoch int    `json:"projectionEpoch"`
 }

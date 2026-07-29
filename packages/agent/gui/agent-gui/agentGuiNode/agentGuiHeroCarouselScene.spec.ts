@@ -385,6 +385,66 @@ describe("AgentGuiHeroCarouselScene", () => {
     scene?.dispose();
   });
 
+  it("settles to zero scheduled frames after its static render", () => {
+    let nextFrameID = 1;
+    const pendingFrames = new Map<number, FrameRequestCallback>();
+    globalThis.requestAnimationFrame = vi.fn((callback) => {
+      const frameID = nextFrameID;
+      nextFrameID += 1;
+      pendingFrames.set(frameID, callback);
+      return frameID;
+    });
+    globalThis.cancelAnimationFrame = vi.fn((frameID) => {
+      pendingFrames.delete(frameID);
+    });
+    const scene = createSceneWithBadge(null);
+
+    expect(scene).not.toBeNull();
+    expect(pendingFrames.size).toBeGreaterThan(0);
+    for (const [frameID, callback] of [...pendingFrames]) {
+      pendingFrames.delete(frameID);
+      callback(0);
+    }
+    expect(pendingFrames.size).toBe(0);
+    scene?.dispose();
+  });
+
+  it("stops scheduling frames after an interactive spring settles", () => {
+    let nextFrameID = 1;
+    const pendingFrames = new Map<number, FrameRequestCallback>();
+    globalThis.requestAnimationFrame = vi.fn((callback) => {
+      const frameID = nextFrameID;
+      nextFrameID += 1;
+      pendingFrames.set(frameID, callback);
+      return frameID;
+    });
+    globalThis.cancelAnimationFrame = vi.fn((frameID) => {
+      pendingFrames.delete(frameID);
+    });
+    const scene = createSceneWithBadge(null);
+
+    for (const [frameID, callback] of [...pendingFrames]) {
+      pendingFrames.delete(frameID);
+      callback(0);
+    }
+    scene?.stepBy(1);
+
+    let now = 16;
+    while (pendingFrames.size > 0 && now < 5_000) {
+      const next = pendingFrames.entries().next().value as [
+        number,
+        FrameRequestCallback
+      ];
+      pendingFrames.delete(next[0]);
+      next[1](now);
+      now += 16;
+    }
+
+    expect(pendingFrames.size).toBe(0);
+    expect(now).toBeLessThan(5_000);
+    scene?.dispose();
+  });
+
   it("disposes a rejected texture and keeps the fallback when WebGL upload fails", () => {
     threeState.failTextureUpload = true;
     const scene = createSceneWithBadge(createLoadedImage());

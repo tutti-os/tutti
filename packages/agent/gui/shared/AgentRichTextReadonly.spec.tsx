@@ -1,14 +1,24 @@
 import "@testing-library/jest-dom/vitest";
-import { render, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { fireEvent, render, waitFor } from "@testing-library/react";
+import { renderToReactElement } from "@tiptap/static-renderer";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentRichTextReadonly } from "./AgentRichTextReadonly";
+import { createAgentCapabilityTokenExtension } from "../agent-gui/agentGuiNode/agentRichText/agentCapabilityTokenExtension";
+import { createAgentRichTextReadonlyExtensions } from "../agent-gui/agentGuiNode/agentRichText/agentRichTextExtensions";
+import { createAgentSkillTokenExtension } from "../agent-gui/agentGuiNode/agentRichText/agentSkillTokenExtension";
 import {
   registerAgentCustomMentionKind,
   resetAgentCustomMentionKindsForTests
 } from "./agentCustomMentionKinds";
+import {
+  parsedDocumentCacheStatsForTests,
+  resetParsedDocumentCacheForTests
+} from "./parsedDocumentCache";
 
 afterEach(() => {
   resetAgentCustomMentionKindsForTests();
+  resetParsedDocumentCacheForTests();
+  vi.restoreAllMocks();
 });
 
 describe("AgentRichTextReadonly", () => {
@@ -19,6 +29,67 @@ describe("AgentRichTextReadonly", () => {
 
     expect(container).toHaveTextContent("First-frame user message");
     expect(container.querySelector(".ProseMirror")).not.toBeNull();
+  });
+
+  it("reuses the parsed document after a historical message remounts", () => {
+    resetParsedDocumentCacheForTests();
+    const first = render(
+      <AgentRichTextReadonly
+        value="Historical user message"
+        documentCacheKey="message-1:version-1"
+      />
+    );
+    first.unmount();
+
+    render(
+      <AgentRichTextReadonly
+        value="Historical user message"
+        documentCacheKey="message-1:version-1"
+      />
+    );
+
+    expect(parsedDocumentCacheStatsForTests()).toMatchObject({
+      entries: 1,
+      hits: 1,
+      misses: 1
+    });
+  });
+
+  it("mounts a transcript window without creating editable views or reading DOM selection", () => {
+    const getSelection = vi.spyOn(document, "getSelection");
+    const { container } = render(
+      <>
+        {Array.from({ length: 30 }, (_, index) => (
+          <AgentRichTextReadonly
+            key={index}
+            value={`Historical user message ${index}`}
+          />
+        ))}
+      </>
+    );
+
+    expect(container.querySelectorAll(".ProseMirror")).toHaveLength(30);
+    expect(container.querySelector("[contenteditable]")).toBeNull();
+    expect(getSelection).not.toHaveBeenCalled();
+  });
+
+  it("delegates mention clicks without an EditorView", () => {
+    const onLinkClick = vi.fn();
+    const href = "mention://workspace-app/weather?workspaceId=workspace-1";
+    const { container } = render(
+      <AgentRichTextReadonly
+        value={`Run [@Weather](${href})`}
+        onLinkClick={onLinkClick}
+      />
+    );
+
+    const mention = container.querySelector(
+      '[data-agent-mention-kind="workspace-app"]'
+    );
+    expect(mention).not.toBeNull();
+    fireEvent.click(mention!);
+    expect(onLinkClick).toHaveBeenCalledOnce();
+    expect(onLinkClick).toHaveBeenCalledWith(href);
   });
 
   it("renders historical browser-element hrefs whose entity id contains an unescaped colon", async () => {
@@ -297,5 +368,71 @@ describe("AgentRichTextReadonly", () => {
     expect(skillToken).toHaveTextContent("/caveman");
     expect(skillToken).toHaveAttribute("data-agent-skill-trigger", "/caveman");
     expect(container).toHaveTextContent("/compact");
+  });
+
+  it("renders readonly agent tokens without invalid React DOM properties", () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const extensions = createAgentRichTextReadonlyExtensions();
+
+    for (const token of [
+      {
+        attrs: {
+          capability: "browser",
+          label: "Browser",
+          name: "browser",
+          trigger: "/browser"
+        },
+        dataAttribute: "data-agent-capability-token",
+        extension: createAgentCapabilityTokenExtension(),
+        type: "agentCapabilityToken"
+      },
+      {
+        attrs: {
+          label: "Caveman",
+          name: "caveman",
+          trigger: "/caveman"
+        },
+        dataAttribute: "data-agent-skill-token",
+        extension: createAgentSkillTokenExtension(),
+        type: "agentSkillToken"
+      }
+    ]) {
+      const renderHTML = token.extension.config.renderHTML as
+        | ((props: { HTMLAttributes: Record<string, unknown> }) => unknown)
+        | undefined;
+      const outputSpec = renderHTML?.({ HTMLAttributes: token.attrs });
+      const outputAttributes = Array.isArray(outputSpec)
+        ? (outputSpec[1] as Record<string, unknown>)
+        : {};
+
+      expect(outputAttributes.contentEditable).toBe("false");
+      expect(outputAttributes.contenteditable).toBeUndefined();
+
+      const content = renderToReactElement({
+        content: {
+          content: [
+            {
+              content: [{ attrs: token.attrs, type: token.type }],
+              type: "paragraph"
+            }
+          ],
+          type: "doc"
+        },
+        extensions
+      });
+
+      const rendered = render(content);
+
+      expect(
+        rendered.container.querySelector(`[${token.dataAttribute}="true"]`)
+      ).toHaveAttribute("contenteditable", "false");
+      rendered.unmount();
+    }
+
+    expect(consoleError.mock.calls.flat().join(" ")).not.toContain(
+      "Invalid DOM property `contenteditable`"
+    );
   });
 });

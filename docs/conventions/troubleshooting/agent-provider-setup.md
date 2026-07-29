@@ -4,6 +4,154 @@
 
 Provider discovery, installation, authentication, models, configuration, and runtime reachability.
 
+### Focusing a workspace repeatedly starts provider CLIs and raises CPU usage
+
+- Symptom:
+  Focusing or reopening a workspace makes the fan ramp up even when no Agent
+  turn starts. The effect grows when more managed provider CLIs are installed.
+- Quick checks:
+  Inspect GET requests to `/v1/agent-providers/status`. A focus-driven request
+  with `refresh=true` bypasses the daemon status cache. Correlate the same time
+  range with short-lived `codex`, `opencode`, `cursor`, `node`, `git`, and
+  credential-helper processes. Use `pnpm perf:agent-gui -- --scenario
+provider-status-focus-refresh --all-process-time-profile` on macOS when a
+  Chromium trace cannot see daemon child processes.
+- Root cause:
+  Window lifecycle analytics requested a fresh availability snapshot by using
+  the explicit-refresh path. Every pageview opportunity therefore bypassed the
+  daemon cache and launched provider detection work; a focus arriving during a
+  scan queued another forced scan.
+- Fix:
+  Let availability analytics reuse the renderer's loaded status snapshot, and
+  route only stale visibility reconciliation through a non-forced tuttid read.
+  Let tuttid own cache expiry, credential fingerprints, and per-provider
+  single-flight. Initialize providers in parallel for first-paint latency, but
+  serialize later background stale reconciliation and cap the aggregate
+  auth/version/adapter subprocess count. Keep `refresh=true` only for explicit
+  user refreshes and provider-scoped confirmation after state-changing actions.
+  A forced read must recheck auth/readiness, but can reuse successful
+  executable-scoped facts while the binary fingerprint is unchanged; never
+  cache failed version or adapter probes. Prefer validated credential files for
+  OpenCode and Tutti Agent and allow at most one CLI fallback for malformed
+  files. Reuse fields from a provider command instead of launching duplicate
+  probes: Cursor `about --format json` returns both authentication details and
+  `cliVersion`, so its status detection must not also launch `cursor-agent
+--version` unless the `about` output omitted the version.
+- Validation:
+  Dispatch two focus events and assert they start no provider-status request,
+  availability pageviews are unchanged, and an explicit refresh still sends
+  exactly one forced request. The all-process trace should contain no
+  focus-driven provider-detection child process burst.
+- References:
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+  [desktopAgentProviderStatusService.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderStatusService.ts)
+  [agent-provider-status-performance-scenario.mjs](../../../tools/scripts/agent-provider-status-performance-scenario.mjs)
+
+### Loading Agent Targets repeatedly starts Extension CLIs
+
+- Symptom:
+  Opening a workspace, standalone Agent window, or Agent settings takes longer
+  as more Agent Extensions are enabled. Repeated `GET /v1/agent-targets`
+  requests start the same Extension CLI `--version` commands even though the
+  executables did not change.
+- Quick checks:
+  Time several authenticated `GET /v1/agent-targets` requests and correlate them
+  with short-lived Extension CLI processes. Compare the total request duration
+  with each configured discovery candidate's version command.
+- Root cause:
+  Extension Target availability resolved every runtime from scratch. Package
+  and executable validation are required, but the stable successful version
+  result was discarded after every request. Concurrent catalog consumers could
+  also run the same version command independently.
+- Fix:
+  Cache only successful version results by resolved executable fingerprint,
+  arguments, and version constraint, and coalesce concurrent probes. Keep failed
+  probes uncached. Continue package authority and managed-runtime integrity
+  checks on every resolution; catalog availability is not runtime launch
+  authorization.
+- Validation:
+  Resolve the same Extension runtime twice and assert one version subprocess.
+  Cover concurrent callers, a failed probe followed by recovery, and executable
+  replacement invalidation. Repeated `/v1/agent-targets` requests should retain
+  the same availability while no longer starting unchanged Extension CLIs.
+- References:
+  [agent-extensions.md](../../architecture/agent-extensions.md)
+  [manager.go](../../../services/tuttid/service/agentextension/manager.go)
+  [runtime_version_cache.go](../../../services/tuttid/service/agentextension/runtime_version_cache.go)
+
+### An extension Agent is installed in the terminal but Tutti cannot detect it
+
+- Symptom:
+  Running the Agent CLI in an interactive terminal works, while the extension
+  setup dialog reports that no compatible runtime is installed.
+- Quick checks:
+  Resolve the executable with `command -v` in the terminal and compare its
+  parent directory with the desktop daemon's effective PATH. Check the signed
+  extension `profiles/discovery.json` for a matching user-relative
+  `searchPaths` entry and confirm that the reported CLI version satisfies its
+  constraint.
+- Root cause:
+  The desktop daemon inherits the GUI process environment and does not source
+  `.zshrc` or other interactive shell startup files. Some official installers
+  place a self-contained CLI in a vendor directory under the user's home, so
+  the terminal can find it only after shell initialization.
+- Fix:
+  Declare the vendor-owned location in the extension candidate, for example
+  `{"scope":"user","path":".vendor/bin"}`. Keep the vendor path out of
+  core and let the shared runtime resolver prepend the validated directory.
+  Update the extension version constraint and managed package recipe to match
+  the same official CLI generation.
+- Validation:
+  Run discovery with a daemon PATH that omits the vendor directory and an
+  injected user home containing the CLI. Assert that the binding is `local`,
+  uses the absolute vendor executable, passes the version constraint, and
+  retains the declared ACP launch arguments. Also reject absolute paths,
+  parent traversal, and unsupported scopes.
+- References:
+  [agent-extensions.md](../../architecture/agent-extensions.md)
+  [runtime_contract.go](../../../services/tuttid/service/agentextension/runtime_contract.go)
+  [manager.go](../../../services/tuttid/service/agentextension/manager.go)
+
+### Clicking provider login repeatedly opens terminals and browser auth pages
+
+- Symptom:
+  One login click opens many terminal nodes and repeatedly launches the
+  provider's browser authentication page. The repeats may continue at the
+  provider-status polling interval and resume after reopening the app.
+- Quick checks:
+  Count `agent-provider.terminal-command.start` events for one provider and
+  compare their timestamps with provider status requests. If every status
+  snapshot is followed by another login command, inspect whether a React effect
+  reattaches the setup workflow when a status-derived callback changes identity.
+  Also check whether reattachment resets the request-sequence dedup marker and
+  whether login is excluded from pending/single-flight tracking.
+- Root cause:
+  The panel lifecycle and the setup workflow had competing ownership. A status
+  refresh replaced the status object, rebuilt the login callback, reran the
+  effect, reset wizard state, and accepted the same automatic login again. Each
+  command opened a new terminal; the CLI then opened another browser page. A
+  single terminal-handle map entry also allowed newer launches to overwrite the
+  only handle that could later be closed.
+- Fix:
+  Inject the panel-open host command into AgentGUI and let a window-scoped
+  Agent Env service/controller own the request session, automatic-action idempotency,
+  reveal/report state, and provider-status subscription. Route account and CLI
+  login through the provider-status service. Its per-provider login lifecycle
+  must reuse automatic requests, coalesce launches, replace an awaiting attempt
+  only for an explicit retry, reject stale terminal handles, and own one poll.
+  React should only subscribe and forward commands.
+- Validation:
+  Replay at least 60 provider-status ticks for one request and assert one
+  automatic login call. Cover rapid user clicks, explicit replacement, delayed
+  terminal resolution, account login without a terminal, timeout/dispose
+  cleanup, and a new request sequence. Verify one terminal and one browser page
+  for the original click.
+- References:
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+  [desktop-layering.md](../desktop-layering.md)
+  [agentEnvService.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/agentEnvService.ts)
+  [desktopAgentProviderLoginLifecycle.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderLoginLifecycle.ts)
+
 ### Codex `/status` shows a 5h limit for a weekly-only account window
 
 - Symptom:
@@ -254,6 +402,12 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
   platform optional dependency versions. The daemon default chain intentionally
   excludes mirrors that only sync the aggregate package. Preserve
   `TUTTI_AGENT_NPM_REGISTRY` as an explicit single-registry pin with no fallback.
+  Before a managed global npm retry, remove only the selected package's sibling
+  staging directories (for example, `@tutti-os/.tutti-agent-<hash>`), and repeat
+  that cleanup after a failed or canceled attempt. Do not remove the global
+  `node_modules` tree because the selected prefix can contain unrelated
+  user-installed packages. This lets a later daemon restart recover from a
+  desktop-close cancellation instead of repeatedly failing with `ENOTEMPTY`.
 - Validation:
   Install into a temporary prefix/cache and verify the provider probe, not only
   npm's exit code. Confirm `tutti-agent app-server` can start far enough to pass
@@ -263,38 +417,88 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
   [runtimeprep tutti_agent.go](../../../packages/agent/runtimeprep/tutti_agent.go)
   [tuttid tuttiagent service.go](../../../services/tuttid/service/tuttiagent/service.go)
 
+### Tutti Agent unexpectedly loses login after a host auth read failure
+
+- Symptom:
+  Tutti Agent was previously authenticated, but provider preparation or model
+  discovery changes it to `auth_required` after the desktop account auth file is
+  temporarily missing, unreadable, or malformed. A token issue rejection may
+  produce the same symptom.
+- Root cause:
+  Provider preparation used to treat one failed observation of the host Account
+  session as a completed logout and removed the durable
+  `~/.tutti-agent/auth.json`. The token issue 401 path used the same cleanup
+  helper, even though neither condition proves that the user requested logout.
+- Invariants:
+  Missing, unreadable, malformed, or session-less host auth retains existing
+  Tutti Agent credentials. Failed token issue, validation, provider login, or
+  verification safely restores the previous auth file. Bootstrap and explicit
+  logout resolve a symlinked auth file to the same final target as Tutti Agent,
+  then use its sibling `auth.json.refresh.lock`. Go `flock` and Rust `fs2`
+  coordinate through the same OS advisory lock on a local filesystem; this is
+  not a distributed lock. Only the completed Account logout callback may
+  delete local provider auth and revoke its refresh token. Logs identify these
+  decisions with
+  `event=tutti_agent.auth_bootstrap`, `action`, and `reason`, without including
+  cookies or tokens.
+- Validation:
+  Run the `service/tuttiagent` tests covering
+  `RetainsAuthWithoutHostSession`, `RetainsAuthWhenHostAuthIsInvalidJSON`,
+  `RetainsAuthWhenHostAuthIsUnreadable`,
+  `RetainsAuthAfterUnauthorizedTokenIssue`, and
+  `LogoutTuttiAgentUserAuthRemovesAuthAndRevokesToken`, plus the reconciliation
+  restoration and refresh-lock serialization tests in the same package.
+- References:
+  [service.go](../../../services/tuttid/service/tuttiagent/service.go)
+  [tutti-agent-readiness-bootstrap.md](../../architecture/tutti-agent-readiness-bootstrap.md)
+
 ### Agent sandbox cannot reach local daemon
 
 - Symptom:
-  An AgentGUI-backed Codex turn runs a dynamic Tutti CLI command such as
-  `tutti-dev automation --help` and gets `daemon is not reachable`, while
-  `~/.tutti-dev/run/tuttid.listener.json` exists and the desktop daemon is
-  running.
+  An AgentGUI-backed Codex-compatible turn runs a dynamic Tutti CLI command
+  such as `tutti agent get --session-id <id>` and gets
+  `reasonCode=daemon_unavailable` or `daemon is not reachable`, while the
+  listener file exists and the desktop daemon is serving other requests.
 - Quick checks:
   Inspect the turn context in the provider session JSONL. If
   `network_access=false`, a plain `exec_command` cannot reach localhost/IPC.
-  For Codex sessions, also confirm the command was not rerun with
+  Identify the executing provider from that same session instead of inferring
+  it from a queried session ID. For Codex sessions, also confirm the command
+  was not rerun with
   `sandbox_permissions=require_escalated`. Other providers need their own
   local-daemon-capable shell/runtime path, not Codex-specific sandbox syntax.
 - Root cause:
   Dynamic CLI scopes fetch command capabilities from the local daemon before
   printing scope help. In a sandboxed provider command environment, localhost
-  access can be blocked even though the daemon is reachable from the host.
+  access can be blocked even though the daemon is reachable from the host. For
+  a Codex-compatible app-server, omitting
+  `sandboxPolicy.networkAccess=true` from a `readOnly` or `workspaceWrite` turn
+  creates this exact split between successful host requests and failed
+  in-sandbox CLI requests.
 - Fix:
-  In agent environments, keep the CLI's transport failure message explicit
-  about the sandbox but provider-neutral. Put provider-specific recovery steps
-  in the injected runtime policy: Codex can use
-  `sandbox_permissions=require_escalated`, while ACP providers should be told to
-  use an execution environment with localhost/IPC access and not to invent Codex
+  Keep the CLI's transport failure message explicit about the sandbox but
+  provider-neutral. The Tutti Desktop host explicitly enables command network
+  access for the built-in `codex` and `tutti-agent` app-servers through
+  `agentdaemon.Config.CommandNetworkAccessPolicy`. Keep this an explicit
+  provider-registry Desktop opt-in instead of branching on provider identity or
+  granting every future app-server network access. This preserves the
+  permission-mode filesystem sandbox and approval policy. Codex should run the
+  CLI normally first and use `sandbox_permissions=require_escalated` only as a
+  fallback for hosts that do not grant command networking. ACP providers should
+  use an execution environment with localhost/IPC access and not invent Codex
   flags.
 - Validation:
-  Add CLI daemon-client coverage that non-agent failures keep the plain
-  `daemon is not reachable` message, while agent failures include the
-  localhost/IPC execution-environment hint. Add provider policy coverage so only
-  Codex receives `sandbox_permissions=require_escalated`.
+  Verify the default adapter policy enables
+  `sandboxPolicy.networkAccess=true` for Codex and `tutti-agent` read-only and
+  workspace-write turns. Verify the Desktop host policy rejects Claude Code,
+  external ACP IDs, and empty provider IDs. Retain CLI daemon-client coverage
+  for provider-neutral agent hints and Codex fallback coverage for
+  `sandbox_permissions=require_escalated`.
 - References:
   [client.go](../../../apps/cli/internal/daemon/client.go)
   [run.go](../../../apps/cli/internal/app/run.go)
+  [agent daemon runtime.go](../../../packages/agent/daemon/runtime.go)
+  [tuttid command network policy](../../../services/tuttid/agent_command_network_policy.go)
 
 ### Codex provider install fails with missing npm
 
@@ -497,7 +701,7 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
   API-key-without-login readiness, then run
   `cd services/tuttid && go test ./service/agentstatus`.
 
-### Codex session fails with not connected when model_catalog_json is relative
+### Codex session fails with not connected when config file dependencies are relative
 
 - Symptom:
   Codex is installed and `codex login status` reports logged in, but Tutti
@@ -506,26 +710,34 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
   `failed to load configuration: No such file or directory (os error 2)`.
   Tools such as CC Switch often set
   `model_catalog_json = "cc-switch-model-catalog.json"` in `~/.codex/config.toml`.
+  User-managed instruction files can reproduce the same failure with
+  `model_instructions_file = "gpt5.5-unrestricted.md"`.
   If that catalog file is missing entirely, the same config error can also make
   provider status show login required (`auth_unknown`) even though OAuth tokens
   exist.
 - Quick checks:
-  `grep model_catalog_json ~/.codex/config.toml` and confirm the referenced
-  file exists under `~/.codex/`. Inspect the run-scoped
+  `grep -E 'model_catalog_json|model_instructions_file' ~/.codex/config.toml`
+  and confirm each relative referenced file exists under `~/.codex/`.
+  Inspect the run-scoped
   `~/.tutti-dev/agent/runs/<session>/codex-home/` (or `~/.tutti/...` in prod):
-  `config.toml` is copied, but a relative catalog must also be present there.
+  `config.toml` is copied, but relative catalog and instruction files must also
+  be present there.
 - Root cause:
   Tutti prepares a run-scoped `CODEX_HOME` and copies only `config.toml` (plus
-  auth/plugin/skill exposure). Relative `model_catalog_json` paths resolve
-  against that sandbox home, so the catalog is missing unless Tutti mirrors it.
+  auth/plugin/skill exposure). Relative `model_catalog_json` and
+  `model_instructions_file` paths resolve against that sandbox home, so the
+  dependency is missing unless Tutti mirrors it.
 - Fix:
-  After copying `config.toml`, resolve top-level `model_catalog_json`. For
-  relative paths under `~/.codex`, symlink (or copy) the catalog into the
-  run-scoped `CODEX_HOME` at the same relative path. Absolute catalog paths
-  need no mirror. Do not mutate the user's global config.
+  After copying `config.toml`, resolve top-level `model_catalog_json` and
+  `model_instructions_file`. For relative paths under `~/.codex`, symlink (or
+  copy) the file into the run-scoped `CODEX_HOME` at the same relative path.
+  Absolute paths need no mirror but must be validated in place. Missing,
+  unreadable, non-regular, or illegal dependencies should fail preparation
+  before provider startup with a safe `agent.config_dependency_unavailable`
+  diagnostic. Do not mutate the user's global config.
 - Validation:
-  Add or update `runtimeprep` tests that set a relative catalog beside
-  `config.toml` and assert the sandbox exposes it. Run
+  Add or update `runtimeprep` tests that set relative catalog and instruction
+  files beside `config.toml` and assert the sandbox exposes them. Run
   `cd packages/agent/runtimeprep && go test ./...`.
 - References:
   [codex.go](../../../packages/agent/runtimeprep/codex.go)
@@ -563,6 +775,44 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
 - References:
   [codex_model_catalog.go](../../../services/tuttid/service/agent/codex_model_catalog.go)
   [codex_model_catalog_test.go](../../../services/tuttid/service/agent/codex_model_catalog_test.go)
+
+### Codex composer model and reasoning selectors stay loading
+
+- Symptom:
+  The empty Codex composer shows loading placeholders for both model and
+  reasoning, even though provider status reports Codex as ready.
+- Quick checks:
+  Correlate a ready Codex provider snapshot in `tuttid.log` with
+  `agent.composer_options.load` in `tutti-desktop.log`. A duration near 15
+  seconds with `errorCode=ETIMEDOUT` means the Desktop request deadline expired
+  before Composer Options returned. If tuttid later logs
+  `superfluous response.WriteHeader`, or a detached `codex app-server` remains
+  after the request, the canceled handler did not finish cleaning up its
+  discovery subprocess.
+- Root cause:
+  Codex Composer Options needs both `model/list` and the app-server capability
+  catalog. Running those independent, individually bounded probes in series
+  can exceed the Desktop's aggregate request deadline. A second failure mode
+  occurs when timeout kills only the JavaScript launcher: its native child
+  inherits stdout, the response scanner never receives EOF, and deferred
+  `Wait` cannot run because it sits behind that scanner.
+- Fix:
+  Start model-catalog loading before capability discovery so the two independent
+  app-server exchanges overlap. Run every short-lived Codex app-server in its
+  own process group, begin process reaping immediately, and make timeout cancel
+  the entire group. Keep the Desktop deadline unchanged so a genuinely stuck
+  daemon request still fails closed.
+- Validation:
+  Block both catalog fixtures and assert both start before either is released.
+  Use a fake app-server whose child retains stdout and assert model and
+  capability timeouts return promptly with no surviving child. Finally, time a
+  cold Composer Options request and confirm it completes within the Desktop
+  deadline.
+- References:
+  [composer_options.go](../../../services/tuttid/service/agent/composer_options.go)
+  [codex_appserver_process.go](../../../services/tuttid/service/agent/codex_appserver_process.go)
+  [codex_model_catalog.go](../../../services/tuttid/service/agent/codex_model_catalog.go)
+  [codex_capability_catalog.go](../../../services/tuttid/service/agent/codex_capability_catalog.go)
 
 ### Codex custom model_provider mixes models, duplicates replies, or shows metadata warnings
 
@@ -621,6 +871,28 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
 - Validation:
   Assert the sidecar start payload carries `allowedTools: ["Grep", "Glob"]`,
   and typecheck against the local `@anthropic-ai/claude-agent-sdk` definitions.
+
+### Provider process loses final stdout or a sidecar fails during startup
+
+- Symptom:
+  A short-lived provider helper exits successfully but its final stdout frame is
+  absent, or a long-lived SDK sidecar intermittently appears to exit before its
+  startup response is consumed.
+- Root cause:
+  `os/exec.Cmd.StdoutPipe` and `StderrPipe` make pipe draining and `Cmd.Wait`
+  ordering the caller's responsibility. Waiting for readers before `Cmd.Wait`
+  makes process reaping depend on pipe EOF, while calling `Cmd.Wait` first can
+  close a short-lived process's pipes before its last bytes are delivered.
+- Fix:
+  Give `Cmd.Stdout` and `Cmd.Stderr` frame writers instead of managing
+  `StdoutPipe`/`StderrPipe` directly. `os/exec` then owns the copy goroutines and
+  `Cmd.Wait` returns only after the final writes complete, without delaying
+  startup-time streaming for a live sidecar.
+- Validation:
+  Run the local-process transport tests together with the Claude SDK sidecar
+  start, approval, and controller tests repeatedly. Keep explicit assertions
+  that final stdout arrives before the exit frame and that a live process can
+  exchange frames before it exits.
 
 ### Concurrent agent CLI installs corrupt shared npm global state
 
@@ -850,6 +1122,44 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
   proving bypass mode allows an ordinary Bash request without
   `approval_requested`, while `AskUserQuestion` still surfaces user input.
 
+### Extension session create rejects a semantic permission id
+
+- Symptom:
+  An extension exposes a full-access option whose id is provider-specific, such
+  as `bypassPermissions`, but session creation fails after a caller sends
+  `full-access`. The Tutti CLI reports
+  `reasonCode=unsupported_permission_mode_id` and lists the currently accepted
+  ids.
+- Quick checks:
+  Query Composer Options for the exact Agent target. Compare
+  `permissionConfig.modes[].id` with `permissionConfig.modes[].semantic` and
+  inspect the submitted `permissionModeId`. Multiple ids may legitimately have
+  the same semantic.
+- Root cause:
+  `semantic` is provider-neutral classification metadata. It is only a launch
+  id for extensions whose signed Composer profile declares semantic launch
+  permission mapping. Runtime-id extensions require the exact provider-owned
+  id returned by Composer Options.
+- Fix:
+  Refresh Composer Options and round-trip the selected `id` verbatim. Do not
+  hard-code a provider permission alias or collapse modes by semantic. Extension
+  implementations keep the signed Composer profile as the launch contract;
+  runtime config options may enrich current state and labels but cannot rewrite
+  ids. Composer Options ignores a persisted default that is no longer in the
+  signed profile and falls back to live runtime state, then the profile default;
+  an explicit obsolete id still fails. Exact runtime ids also take precedence
+  over semantic and historical aliases in the Standard ACP lookup.
+- Validation:
+  Confirm Composer Options preserves every declared runtime id in profile order,
+  including multiple ids with the same semantic, and that the exact selected id
+  reaches the runtime start input and final Standard ACP mapping. Test an exact
+  runtime id that collides with another mode's semantic alias, plus an obsolete
+  persisted default. An invalid explicitly supplied semantic alias must fail
+  before hidden discovery or visible session creation.
+- References:
+  [extension_composer_options.go](../../../services/tuttid/service/agent/extension_composer_options.go)
+  [composer_runtime_context.go](../../../services/tuttid/service/agent/composer_runtime_context.go)
+
 ### Claude Code logs out after sending a message (invalid_grant, credentials wiped)
 
 - Symptom:
@@ -929,6 +1239,43 @@ invalid_grant`. Search `tuttid.log` for
 - References:
   [agentErrorPresentation.ts](../../../packages/agent/gui/shared/agentEnv/agentErrorPresentation.ts)
   [AgentMessageBlock.tsx](../../../packages/agent/gui/shared/agentConversation/components/AgentMessageBlock.tsx)
+
+### Model Plan check succeeds but Kimi Claude Code turns wait and then return 401
+
+- Symptom:
+  An Anthropic-protocol Model Plan using
+  `https://api.kimi.com/coding/` passes model discovery/inference checks, but a
+  custom Agent backed by Claude Code stays `running` for roughly three minutes
+  and then appends `Failed to authenticate. API Error: 401`.
+- Quick checks:
+  Confirm the submit claim is `accepted`, the user message exists, and the
+  runtime reached `runtime.turn_goroutine_started`. Inspect only environment
+  variable names and whether each is non-empty, never credential values. If
+  the child has a non-empty `ANTHROPIC_AUTH_TOKEN` but no non-empty
+  `ANTHROPIC_API_KEY`, the plan credential was injected with the wrong auth
+  shape.
+- Root cause:
+  Model Plan detection sends Anthropic requests with `x-api-key`. Runtime
+  preparation previously treated every non-`api.anthropic.com` endpoint as a
+  bearer-token relay and launched Claude Code with `ANTHROPIC_AUTH_TOKEN`.
+  Kimi Coding's Claude Code contract requires `ANTHROPIC_API_KEY`, so the same
+  valid credential passed detection and failed only in the real Agent process.
+- Fix:
+  Keep the existing bearer default for relay endpoints, but classify
+  `api.kimi.com` alongside the official Anthropic endpoint for
+  `ANTHROPIC_API_KEY` injection. Also preserve Claude SDK `assistant.error` and
+  `result.is_error` as failed message/turn state; a result subtype of `success`
+  is not authoritative when either error signal is present.
+- Validation:
+  Run `go test ./packages/agent/runtimeprep ./packages/agent/daemon/runtime`
+  and `pnpm --dir packages/agent/claude-sdk-sidecar test`. Verify a newly
+  created Kimi-backed session has a non-empty `ANTHROPIC_API_KEY`, an empty
+  `ANTHROPIC_AUTH_TOKEN`, and no 401. Existing running sessions retain their
+  launch environment and must be recreated.
+- References:
+  [Kimi Claude Code setup](https://www.kimi.com/code/docs/en/third-party-tools/claude-code.html)
+  [model_endpoint.go](../../../packages/agent/runtimeprep/model_endpoint.go)
+  [messageRouter.ts](../../../packages/agent/claude-sdk-sidecar/src/messageRouter.ts)
 
 ### Claude Code sessions fail with `effectiveSource: "none"` when CC-Switch or similar proxy tools are used
 
@@ -1276,6 +1623,113 @@ invalid_grant`. Search `tuttid.log` for
   [composer_options.go](../../../services/tuttid/service/agent/composer_options.go)
   [AgentGUINodeView.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/AgentGUINodeView.tsx)
 
+### Extension login returns to the login button without an error
+
+- Symptom:
+  Target setup opens the browser and waits for authentication, then silently
+  returns to `auth_required`. The runtime detection row may appear to restart
+  during each progress poll, and a pending `Ready` row can look like an
+  incorrect success state while login is still running.
+- Quick checks:
+  Inspect the setup snapshot's durable `action.status`, `errorCode`, and
+  `errorMessage`, then correlate its timestamp with the ACP `authenticate`
+  request in the daemon log. A successful browser callback does not prove that
+  the runtime accepted the account; the ACP response remains authoritative.
+- Root cause:
+  Setup polling reused the foreground refresh state, so every background
+  request set the whole panel to loading. Explicit ACP authentication failures
+  were also normalized into a successful `auth_required` probe result, losing
+  the provider error before the durable action was written. AgentGUI then
+  rendered errors only for top-level setup failure, not a failed authenticate
+  action. The terminal `Ready` row could never become successful because the
+  setup dialog closes as soon as the authoritative snapshot becomes ready.
+- Fix:
+  Keep background polling non-disruptive, preserve errors from explicit ACP
+  `authenticate` calls, and show failed/interrupted action details in both the
+  existing host toast and the setup dialog while keeping retry available. Fire
+  the toast only when the current action moves from running to failed so polling
+  cannot repeat it and restoring an old failure cannot replay it. Do not render
+  a terminal readiness row that only exists while setup is non-ready.
+- Validation:
+  Cover background polling without detection loading, an ACP authenticate
+  rejection retaining provider text through the durable setup action, one toast
+  per current-action failure, the persistent GUI failure presentation, and
+  absence of the misleading pending readiness row.
+  Run Agent daemon, setup service, AgentGUI, desktop watcher, i18n, typecheck,
+  and desktop build checks.
+- References:
+  [standard_acp_setup.go](../../../packages/agent/daemon/runtime/standard_acp_setup.go)
+  [setup.go](../../../services/tuttid/service/agentextension/setup.go)
+  [AgentTargetSetupGate.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/AgentTargetSetupGate.tsx)
+  [agentTargetSetupNotificationController.ts](../../../packages/agent/gui/shared/agentEnv/agentTargetSetupNotificationController.ts)
+
+### Extension runtime installation stays failed after restart
+
+- Symptom:
+  An Agent Extension runtime install fails once. Reopening Tutti restores the
+  same failure, and checking again never offers or starts another installation.
+- Quick checks:
+  Inspect the setup snapshot. If it contains a failed or interrupted install
+  action plus a non-null install plan, the daemon has enough information to
+  retry. Confirm the visible action starts `setup/install` with a new
+  `clientActionId`; a setup GET only refreshes the persisted failure.
+- Root cause:
+  Failed setup actions are durable by design. The setup panel rendered its
+  install button only for `not_installed`, while mapping failed/interrupted
+  install actions to `failed`. Its generic check-again action only fetched the
+  same durable snapshot, so restart could not change the state.
+- Fix:
+  Keep the failed action and provider error visible. When a failed or
+  interrupted install snapshot retains a plan, offer an explicit reinstall
+  action that submits the plan digest with a fresh client action ID. Do not
+  erase the previous failure or treat a GET refresh as a retry.
+- Validation:
+  Mount the setup panel from an initial persisted failed-install snapshot,
+  verify the error remains visible, and assert reinstall submits the retained
+  plan with a client action ID different from the failed action.
+- References:
+  [setup.go](../../../services/tuttid/service/agentextension/setup.go)
+  [AgentTargetSetupGate.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/AgentTargetSetupGate.tsx)
+  [agentTargetSetupController.tsx](../../../packages/agent/gui/shared/agentEnv/agentTargetSetupController.tsx)
+
+### Vertex setup reports ready but the first prompt cannot load credentials
+
+- Symptom:
+  Selecting Gemini `vertex-ai` completes Target setup and creates a session,
+  but the first prompt fails with `Could not load the default credentials` or
+  reports missing `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, or an API
+  key. The empty-home setup gate is gone, leaving no obvious way to change the
+  login method.
+- Quick checks:
+  Correlate the durable authenticate action with ACP traffic. If
+  `authenticate` returns an empty result and `session/new` succeeds, but the
+  later formal `session/prompt` returns the credential error, setup observed a
+  runtime false positive rather than losing the selected method.
+- Root cause:
+  Gemini can defer Vertex ADC and project/location validation until a real
+  prompt. ACP exposes no credential-validation request stronger than the
+  runtime's own `authenticate` plus `session/new`, so setup cannot prove request
+  usability without sending user-visible work. Extension Target setup was also
+  mounted only in empty-home state, unlike the persistent built-in provider
+  environment entry.
+- Fix:
+  Classify the formal prompt's credential error as an authentication failure
+  and feed it into Target setup detection. Override a later otherwise-ready ACP
+  probe to `auth_required`. Expose the same Target setup dialog from the
+  selected provider's config menu in both ready and non-ready states, permit
+  explicit re-authentication from ready, and reuse one Target watch across the
+  two UI hosts.
+- Validation:
+  Cover the real Vertex ADC error text, auth invalidation overriding a ready
+  probe, re-authentication clearing invalidation, ready-state auth method
+  selection, and one cached desktop watch per Target. Do not add a hidden
+  synthetic prompt to setup.
+- References:
+  [agent_run_outcome_reporter.go](../../../services/tuttid/agent_run_outcome_reporter.go)
+  [setup.go](../../../services/tuttid/service/agentextension/setup.go)
+  [AgentGUINodeView.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/AgentGUINodeView.tsx)
+  [AgentTargetSetupGate.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/AgentTargetSetupGate.tsx)
+
 ### Extension messages appear sent but show no running or failure state
 
 - Symptom:
@@ -1368,17 +1822,21 @@ invalid_grant`. Search `tuttid.log` for
   [turn_lifecycle_stamp.go](../../../packages/agent/daemon/runtime/turn_lifecycle_stamp.go)
   [reporter_state.go](../../../packages/agent/daemon/runtime/reporter_state.go)
 
-### Extension slash palette is empty even though ACP advertised commands
+### Extension slash palette is empty or ignores its command filter
 
 - Symptom:
   Typing `/` in an extension conversation opens no command or Skill list, while
-  the ACP process otherwise starts successfully.
+  the ACP process otherwise starts successfully. A related failure shows every
+  provider-advertised command instead of the signed profile's smaller catalog.
 - Quick checks:
   Inspect the persisted session `internal_runtime_context_json`. If `commands`
   contains provider command names, the ACP command update was received and the
-  remaining fault is command hydration. Separately inspect the installed
-  `profiles/composer.json`; Skills remain empty unless it declares validated
-  roots and the matching capabilities profile advertises Skill support.
+  remaining fault is command hydration or filtering. Confirm the composer
+  request uses the active Session's exact `agentTargetId`, then compare the
+  response `commands` and `slashCommandPolicy` with the installed
+  `profiles/composer.json`. Skills remain empty unless the profile declares
+  validated roots and the matching capabilities profile advertises Skill
+  support.
 - Root cause:
   Runtime command updates were available only through a transient renderer
   event. A renderer that subscribed after the startup update, or reloaded an
@@ -1389,18 +1847,121 @@ invalid_grant`. Search `tuttid.log` for
   hydration succeeded.
   Open extension providers also have no built-in composer profile, so the
   built-in provider Skill discovery table correctly returned no roots.
+  Active-session composer reads could also fall back to node-level provider
+  metadata and miss the extension Target. Conversely, an authoritative signed
+  catalog that repeated every ACP command correctly preserved every command;
+  that was a package declaration error, not a renderer filtering failure.
 - Fix:
   Persist the detailed ACP command catalog in session runtime context and let
   composer options restore it when no live engine snapshot is present. Treat
   provider-advertised commands as runtime capabilities even without a built-in
-  policy, and keep their selection provider-native. Declare extension Skill
-  roots, invocation, and trigger prefix in the signed composer profile; resolve
-  only safe relative workspace/user paths.
+  policy, and keep their selection provider-native. Scope active-session
+  composer reads and cache lookup by the Session's exact `agentTargetId`.
+  Declare only the intended product command subset in an authoritative signed
+  catalog; do not add a provider-name filter in AgentGUI. Declare extension
+  Skill roots, invocation, and trigger prefix in the signed composer profile;
+  resolve only safe relative workspace/user paths.
 - Validation:
   Cover startup command projection, legacy command-name recovery, composer
-  option parsing, declared extension Skill roots, and unsafe path rejection.
+  option parsing, active-session Target selection, authoritative command
+  narrowing, declared extension Skill roots, and unsafe path rejection.
 - References:
   [standard_acp_settings.go](../../../packages/agent/daemon/runtime/standard_acp_settings.go)
   [composer_commands.go](../../../services/tuttid/service/agent/composer_commands.go)
   [profiles.go](../../../services/tuttid/service/agentextension/profiles.go)
   [agentSlashCommandProviderPolicy.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentSlashCommandProviderPolicy.ts)
+
+### Codex Model Plan turns fail or stay waiting against a Chat-only endpoint
+
+- Symptom:
+  A Codex session bound to an OpenAI-protocol Model Plan fails immediately,
+  stays working without output, or loses tool-call messages. The Plan's
+  connection check can still pass because detection calls
+  `/v1/chat/completions` directly.
+- Quick checks:
+  Inspect the session-scoped Codex `config.toml`. The
+  `tutti-model-plan` provider must use a loopback `base_url`, a temporary
+  `TUTTI_MODEL_PLAN_API_KEY`, and `wire_api = "responses"`. Verify the upstream
+  server receives `/v1/chat/completions`, not `/v1/responses`. A direct
+  Chat-only Base URL paired with `wire_api = "responses"` is incomplete.
+- Root cause:
+  Current Codex emits Responses-shaped requests and requires terminal
+  Responses SSE events. A Chat-only provider neither owns `/v1/responses` nor
+  emits the `response.output_item.*` and `response.completed` state machine.
+  Renaming Chat deltas or changing only `wire_api` leaves Codex waiting or
+  discarding output. Current Codex can also advertise its built-in hosted
+  `web_search` tool by default, and later versions may advertise other hosted
+  tools that Chat Completions cannot execute. Codex also sends Responses
+  `developer` messages; Chat-compatible providers that only recognize
+  `system`/`user`/`assistant`/`tool` can reject the otherwise valid request
+  during tokenization.
+- Fix:
+  Keep Codex on `wire_api = "responses"` and route the session through
+  tuttid's loopback Model Gateway. The gateway authenticates the temporary
+  session token, converts supported Responses inputs to Chat Completions,
+  forwards with the daemon-held Plan credential, and reconstructs complete
+  Responses JSON/SSE output. The gateway filters non-translatable entries only
+  from the per-request tool registration list and removes orphaned
+  `tool_choice`/`parallel_tool_calls` controls. It still rejects explicit
+  selection of a filtered tool and hosted call/output history. This avoids
+  version-specific Codex config mutations while preserving fail-closed
+  semantics for requested or recorded tool use. Its Codex role normalization
+  matches cc-switch: `developer` becomes `system`, `latest_reminder` and
+  unknown internal roles become `user`, text-only content-part arrays are
+  newline-joined, and textual system messages are merged in order at message
+  index zero. This preserves instruction precedence without requiring newer
+  OpenAI-only roles or mid-conversation system roles from the upstream
+  tokenizer. OpenCode continues to use the Plan endpoint directly.
+- Validation:
+  Cover request/tool conversion, interleaved parallel tool arguments, UTF-8
+  and arbitrary SSE byte boundaries, large arguments, usage, upstream errors,
+  timeout/cancel/disconnect paths, route isolation, token replacement, cleanup,
+  immutable-revision resume, mixed supported/hosted registrations, future
+  unknown registration types, explicit hosted tool choices/history, and
+  internal-role normalization and system-message collapse. A real smoke test
+  must complete two Codex turns and one tool call while the upstream records
+  `/v1/chat/completions` without any upstream `developer` role or `system`
+  message after index zero.
+- References:
+  [model-access-plans.md](../../architecture/model-access-plans.md)
+  [gateway.go](../../../services/tuttid/service/modelgateway/gateway.go)
+  [stream_converter.go](../../../services/tuttid/service/modelgateway/stream_converter.go)
+  [model_endpoint.go](../../../packages/agent/runtimeprep/model_endpoint.go)
+
+### Enabled Agent Extensions delay every daemon startup
+
+- Symptom:
+  `tutti.parent_monitor.started` is followed by a multi-second silent gap before
+  `tutti.managed_runtime.profile_preload_started` and `tutti.listen`. The gap
+  grows as more Agent Extension feature flags are enabled.
+- Quick checks:
+  Compare the two timestamps and inspect `feature_flags_json` in the active
+  `desktop_preferences` row. Time each enabled source's signed
+  `versions.json`; the old startup path fetched the enabled indexes serially
+  before constructing the daemon API.
+- Root cause:
+  Agent Extension reconciliation combined two different jobs: restoring an
+  already verified local installation and checking its remote release index.
+  The daemon needed the first job before serving the Agent Target catalog, but
+  synchronously waited for the second job too. Multiple CloudFront TLS and
+  response waits therefore accumulated on every restart.
+- Fix:
+  Restore and verify cached active installations synchronously, register their
+  Targets, and move remote release refresh after successful daemon API
+  construction into the background. Keep synchronous reconciliation when an
+  enabled source has no usable local installation, and for explicit preference
+  activation changes, so the initial or newly enabled Target does not disappear
+  from the next catalog read. Release the reconciliation lock between background
+  source refreshes so a preference change does not wait for the complete remote
+  batch.
+- Validation:
+  Cover cached restore without any network request, missing-cache fallback to
+  synchronous reconciliation, disabled Target removal, offline fallback, and
+  preference-driven enable/disable. On a state root with cached enabled
+  extensions, verify `tutti.agent_extension.refresh_started` no longer delays
+  `tutti.listen` and later reaches
+  `tutti.agent_extension.refresh_completed`.
+- References:
+  [agent-extensions.md](../../architecture/agent-extensions.md)
+  [manager.go](../../../services/tuttid/service/agentextension/manager.go)
+  [wiring_daemon_api.go](../../../services/tuttid/wiring_daemon_api.go)

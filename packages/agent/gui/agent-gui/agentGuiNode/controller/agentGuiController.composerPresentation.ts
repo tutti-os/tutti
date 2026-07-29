@@ -47,6 +47,7 @@ export function composerTargetDataFromNodeData(
 }
 
 export function composerTargetDataForConversation(input: {
+  activeAgentTargetId?: string | null;
   activeConversationId: string | null;
   data: AgentGUINodeData;
   optimisticTarget: OptimisticComposerTarget | null;
@@ -60,6 +61,18 @@ export function composerTargetDataForConversation(input: {
     !nodeDataMatchesComposerTarget(input.data, input.optimisticTarget.target)
   ) {
     return input.optimisticTarget.target;
+  }
+  const activeAgentTargetId = normalizeOptionalText(input.activeAgentTargetId);
+  if (activeAgentTargetId) {
+    return {
+      agentTargetId: activeAgentTargetId,
+      provider: input.data.provider,
+      targetId: activeAgentTargetId,
+      data: {
+        ...input.data,
+        agentTargetId: activeAgentTargetId
+      }
+    };
   }
   return composerTargetDataFromNodeData(input.data);
 }
@@ -189,6 +202,75 @@ export function sanitizeComposerSettingsForTarget(input: {
     return input.settings;
   }
   return sanitizeComposerSettingsForOptions(input.settings, input.options);
+}
+
+export type ComposerNativeModelVerdict =
+  | "verified"
+  | "rejected"
+  | "unverifiable";
+
+/**
+ * Verdict of a bare model id against the provider-native options list. Only
+ * settled catalog entries are testimony:
+ * - options missing or the model catalog still loading have no opinion
+ *   ("unverifiable");
+ * - requested-origin entries (daemon warm-catalog append of the requested
+ *   model, selected-model bootstrap echo, GUI current-value append) mirror
+ *   the request rather than the catalog and are excluded — a list with no
+ *   catalog entries left proves nothing;
+ * - as a fallback for options produced before provenance marking, a
+ *   single-entry list mirroring the effective selection is recognized as the
+ *   daemon's selected-model bootstrap echo (composerSelectedModelOptions)
+ *   and proves nothing either;
+ * - otherwise the catalog either contains the model ("verified") or
+ *   positively rejects it ("rejected").
+ */
+export function verifyComposerModelAgainstNativeOptions(
+  model: string,
+  options: AgentActivityComposerOptions | null
+): ComposerNativeModelVerdict {
+  if (options === null || options.modelOptionsLoading === true) {
+    return "unverifiable";
+  }
+  const catalogEntries = options.models.filter(
+    (option) => option.requested !== true
+  );
+  if (catalogEntries.length === 0) {
+    return "unverifiable";
+  }
+  const isSelectedModelEcho =
+    catalogEntries.length === 1 &&
+    catalogEntries[0]!.value === model &&
+    normalizeOptionalText(options.effectiveSettings?.model) === model;
+  if (isSelectedModelEcho) {
+    return "unverifiable";
+  }
+  return catalogEntries.some((option) => option.value === model)
+    ? "verified"
+    : "rejected";
+}
+
+/**
+ * Home-composer default policy: a pure provider target must never adopt a
+ * bare model that the settled provider-native list rejects — it falls back
+ * to the provider default instead of presenting (and later submitting) a
+ * model the provider cannot run. This only acts on a positive rejection:
+ * while options are missing or the catalog is loading the stored default is
+ * left alone so a transient load state cannot destroy a legitimate
+ * remembered model.
+ */
+export function enforceComposerModelBindingForHomeDefaults(
+  settings: AgentSessionComposerSettings,
+  options: AgentActivityComposerOptions | null
+): AgentSessionComposerSettings {
+  const model = normalizeOptionalText(settings.model);
+  const modelPlanId = normalizeOptionalText(settings.modelPlanId);
+  if (!model || modelPlanId) {
+    return settings;
+  }
+  return verifyComposerModelAgainstNativeOptions(model, options) === "rejected"
+    ? { ...settings, model: null, modelPlanId: null }
+    : settings;
 }
 
 export function resolvePresentedComposerSettings(input: {

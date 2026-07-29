@@ -3,6 +3,7 @@ import {
   type ClearDeveloperLogsResult,
   type DesktopDeveloperLogKind,
   type DesktopDeveloperLogsState,
+  type ExportDeveloperLogsInput,
   type ExportDeveloperLogsResult
 } from "../../shared/contracts/ipc";
 import type { DesktopDeveloperApi } from "../types";
@@ -13,8 +14,10 @@ export function createDeveloperDesktopApi(): DesktopDeveloperApi {
     clearLogs(): Promise<ClearDeveloperLogsResult> {
       return invokeDesktopApi(desktopIpcChannels.developer.clearLogs);
     },
-    exportLogs(): Promise<ExportDeveloperLogsResult> {
-      return invokeDesktopApi(desktopIpcChannels.developer.exportLogs);
+    exportLogs(
+      input: ExportDeveloperLogsInput
+    ): Promise<ExportDeveloperLogsResult> {
+      return invokeDesktopApi(desktopIpcChannels.developer.exportLogs, input);
     },
     getLogsState(): Promise<DesktopDeveloperLogsState> {
       return invokeDesktopApi(desktopIpcChannels.developer.getLogsState);

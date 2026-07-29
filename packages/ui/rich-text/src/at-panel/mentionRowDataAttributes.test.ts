@@ -16,6 +16,9 @@ test("shared mention row data hooks are the default package vocabulary", () => {
       "data-rich-text-at-mention-file-visual-kind": "document"
     }
   );
+  assert.deepEqual(mentionRowDataAttribute("shared", "issueIcon", "true"), {
+    "data-rich-text-at-mention-issue-icon": "true"
+  });
 });
 
 test("agent mode keeps the legacy agent data hooks for compatibility", () => {
@@ -29,4 +32,7 @@ test("agent mode keeps the legacy agent data hooks for compatibility", () => {
       "data-agent-file-visual-kind": "document"
     }
   );
+  assert.deepEqual(mentionRowDataAttribute("agent", "issueIcon", "true"), {
+    "data-agent-mention-issue-icon": "true"
+  });
 });

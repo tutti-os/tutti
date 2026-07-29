@@ -81,6 +81,9 @@ function fakeAggregator(options: FakeOptions): ReferenceSourceAggregator {
     resolveSelection(node): SelectedReference {
       return { path: node.ref.nodeId, kind: node.kind };
     },
+    async prepareSelection(_scope, node): Promise<SelectedReference> {
+      return { path: node.ref.nodeId, kind: node.kind };
+    },
     locateTarget: async (_scope, sourceId) =>
       options.locate?.[sourceId] ?? null,
     getLoadedSource: (sourceId: string) =>
@@ -368,6 +371,84 @@ test("toggleSingleSelectionAndExpand single-selects and expands folders", async 
   );
 });
 
+test("single selection mode replaces the previous selection", async () => {
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({ tabs: tabsTwo, children: {} }),
+    scope,
+    searchDebounceMs: 0,
+    selectionMode: "single"
+  });
+  controller.open();
+  await flush();
+
+  controller.toggleSelection(folder("workspace-file", "/first"));
+  controller.toggleSelection(folder("workspace-file", "/second"));
+
+  assert.deepEqual(
+    controller.getSnapshot().selection.map((node) => node.ref.nodeId),
+    ["/second"]
+  );
+});
+
+test("createDirectory delegates to the active source and selects the created folder", async () => {
+  const parent = folder("workspace-file", "/projects", "projects");
+  const created = folder(
+    "workspace-file",
+    "/projects/new-project",
+    "new-project"
+  );
+  const calls: Array<{ parent: ReferenceNode | null; name: string }> = [];
+  const controller = createReferenceSourcePickerController({
+    aggregator: {
+      ...fakeAggregator({
+        tabs: tabsTwo,
+        children: {
+          [`workspace-file:${SOURCE_ROOT_NODE_ID}`]: {
+            entries: [parent],
+            nextCursor: null
+          },
+          "workspace-file:/projects": {
+            entries: [
+              folder("workspace-file", "/projects/existing", "existing")
+            ],
+            nextCursor: null
+          }
+        }
+      }),
+      async createDirectory(_scope, sourceId, input) {
+        assert.equal(sourceId, "workspace-file");
+        calls.push(input);
+        return created;
+      }
+    },
+    scope,
+    searchDebounceMs: 0,
+    selectionMode: "single"
+  });
+  controller.open();
+  await flush();
+  controller.ensureChildren(parent);
+  await flush();
+
+  const result = await controller.createDirectory(parent, "new-project");
+
+  assert.equal(result, created);
+  assert.deepEqual(calls, [{ parent, name: "new-project" }]);
+  const parentKey = nodeRefKey(parent.ref);
+  const snapshot = controller.getSnapshot();
+  assert.equal(
+    snapshot.bySource["workspace-file"]?.expandedKeys[parentKey],
+    true
+  );
+  assert.deepEqual(
+    snapshot.bySource["workspace-file"]?.childrenByKey[parentKey]?.entries.map(
+      (node) => node.ref.nodeId
+    ),
+    ["/projects/existing", "/projects/new-project"]
+  );
+  assert.deepEqual(snapshot.selection, [created]);
+});
+
 test("expandNode 展开定位到的 folder 并懒加载子节点", async () => {
   const controller = createReferenceSourcePickerController({
     aggregator: fakeAggregator({
@@ -596,6 +677,61 @@ test("provenance-only filtering enters query mode and reaches the source before 
   });
   assert.equal(searchInput?.query, "");
   assert.equal(searchInput?.limit, SEARCH_PAGE_SIZE);
+});
+
+test("file-type filters keep browse mode until a keyword search starts", async () => {
+  const searchInputs: SearchInput[] = [];
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: tabsTwo,
+      children: {
+        [`workspace-file:${SOURCE_ROOT_NODE_ID}`]: {
+          entries: [
+            folder("workspace-file", "/docs", "docs"),
+            file("workspace-file", "/photo.png", "photo.png")
+          ],
+          nextCursor: null
+        }
+      },
+      onSearch: (input) => searchInputs.push(input)
+    }),
+    scope,
+    searchDebounceMs: 0,
+    searchResultKind: "file"
+  });
+  controller.open();
+  await flush();
+
+  controller.setSearchFilters(["image"]);
+  await flush();
+
+  assert.equal(
+    controller.getSnapshot().bySource["workspace-file"]?.mode,
+    "browse"
+  );
+  assert.equal(searchInputs.length, 0);
+
+  controller.setActiveSource("app-artifact");
+  await flush();
+  assert.equal(
+    controller.getSnapshot().bySource["app-artifact"]?.mode,
+    "browse"
+  );
+  assert.deepEqual(
+    controller.getSnapshot().bySource["app-artifact"]?.searchFilters,
+    ["image"]
+  );
+  assert.equal(searchInputs.length, 0);
+
+  controller.setActiveSource("workspace-file");
+  await flush();
+
+  controller.setSearchQuery("photo");
+  await flush();
+
+  assert.equal(searchInputs.length, 1);
+  assert.deepEqual(searchInputs[0]?.filters, ["image"]);
+  assert.deepEqual(searchInputs[0]?.kinds, ["file"]);
 });
 
 test("semantically equal provenance filters do not repeat the active search", async () => {

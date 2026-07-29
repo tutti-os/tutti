@@ -12,14 +12,15 @@ import (
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 type retryingActivityClient struct {
 	failuresBeforeSuccess int
 	calls                 int
 	inputs                []agentsessionstore.ReportActivityInput
-	stateInputs           []agentsessionstore.ReportSessionStateInput
-	messageInputs         []agentsessionstore.ReportSessionMessagesInput
+	stateInputs           []canonical.ReportSessionStateInput
+	messageInputs         []canonical.ReportSessionMessagesInput
 	reply                 *agentsessionstore.ReportActivityReply
 }
 
@@ -40,32 +41,32 @@ func (c *retryingActivityClient) ReportActivity(
 
 func (c *retryingActivityClient) ReportSessionState(
 	_ context.Context,
-	input agentsessionstore.ReportSessionStateInput,
-) (agentsessionstore.ReportSessionStateReply, error) {
+	input canonical.ReportSessionStateInput,
+) (canonical.ReportSessionStateReply, error) {
 	c.calls++
 	c.stateInputs = append(c.stateInputs, input)
 	if c.calls <= c.failuresBeforeSuccess {
-		return agentsessionstore.ReportSessionStateReply{}, errors.New("temporary report failure")
+		return canonical.ReportSessionStateReply{}, errors.New("temporary report failure")
 	}
 	if c.reply != nil && c.reply.AcceptedStatePatchCount == 0 {
-		return agentsessionstore.ReportSessionStateReply{Accepted: false}, nil
+		return canonical.ReportSessionStateReply{Accepted: false}, nil
 	}
-	return agentsessionstore.ReportSessionStateReply{Accepted: true, LastEventAtUnixMS: input.State.OccurredAtUnixMS}, nil
+	return canonical.ReportSessionStateReply{Accepted: true, LastEventAtUnixMS: input.State.OccurredAtUnixMS}, nil
 }
 
 func (c *retryingActivityClient) ReportSessionMessages(
 	_ context.Context,
-	input agentsessionstore.ReportSessionMessagesInput,
-) (agentsessionstore.ReportSessionMessagesReply, error) {
+	input canonical.ReportSessionMessagesInput,
+) (canonical.ReportSessionMessagesReply, error) {
 	c.calls++
 	c.messageInputs = append(c.messageInputs, input)
 	if c.calls <= c.failuresBeforeSuccess {
-		return agentsessionstore.ReportSessionMessagesReply{}, errors.New("temporary report failure")
+		return canonical.ReportSessionMessagesReply{}, errors.New("temporary report failure")
 	}
 	if c.reply != nil {
-		return agentsessionstore.ReportSessionMessagesReply{AcceptedCount: c.reply.AcceptedMessageUpdateCount}, nil
+		return canonical.ReportSessionMessagesReply{AcceptedCount: c.reply.AcceptedMessageUpdateCount}, nil
 	}
-	return agentsessionstore.ReportSessionMessagesReply{AcceptedCount: len(input.Updates)}, nil
+	return canonical.ReportSessionMessagesReply{AcceptedCount: len(input.Updates)}, nil
 }
 
 func acceptedReportActivityReply(input agentsessionstore.ReportActivityInput) agentsessionstore.ReportActivityReply {
@@ -172,7 +173,7 @@ func TestTimelineItemPreservesStructuredUserContentMetadata(t *testing.T) {
 	}
 	item, _, ok := timelineItemFromSessionEvent(
 		"workspace-1",
-		agentsessionstore.EventSource{Provider: "codex"},
+		canonical.EventSource{Provider: "codex"},
 		activityshared.Event{
 			EventID:  "event-1",
 			Type:     activityshared.EventMessageCreated,
@@ -212,7 +213,7 @@ func TestReporterSendsMessageOnlyReport(t *testing.T) {
 
 	err := reporter.Report(context.Background(), agentsessionstore.ReportActivityInput{
 		WorkspaceID: "room-1",
-		Source: agentsessionstore.EventSource{
+		Source: canonical.EventSource{
 			Provider: "codex",
 			AgentID:  "agent-session-1",
 		},
@@ -905,7 +906,7 @@ func TestReporterProjectsStandardACPToolLifecycleToStableMessageUpdates(t *testi
 	t.Parallel()
 
 	session := reportTestSession()
-	session.Provider = ProviderHermes
+	session.Provider = hermesExtensionTestProvider
 	updates := reportActivityInput(session, []activityshared.Event{
 		newTurnActivityEventWithID(session, "stable-tool-item", EventCallStarted, "turn-std", messageStreamStateStreaming, "", "Bash", map[string]any{
 			"callId":   "tool-std-1",
@@ -1056,11 +1057,11 @@ func TestSummarizeReportActivityInputForLogIncludesProviderAndRuntimeTurnLifecyc
 	report := agentsessionstore.ReportActivityInput{
 		StatePatches: []agentsessionstore.WorkspaceAgentStatePatch{{
 			AgentSessionID: "session-1",
-			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{
+			TurnLifecycle: &canonical.WorkspaceAgentTurnLifecycle{
 				ActiveTurnID: &activeTurnID,
 				Phase:        "waiting",
 			},
-			RootProviderTurn: &agentsessionstore.WorkspaceAgentRootProviderTurnTransition{
+			RootProviderTurn: &canonical.WorkspaceAgentRootProviderTurnTransition{
 				RootTurnID:     "root-turn-1",
 				ProviderTurnID: "provider-turn-2",
 				Phase:          agentsessionstore.RootProviderTurnPhaseCompleted,
@@ -1405,7 +1406,7 @@ func countEntityPatches(patches []agentsessionstore.WorkspaceAgentStatePatch) in
 func mixedMessageUpdateReportInput() agentsessionstore.ReportActivityInput {
 	return agentsessionstore.ReportActivityInput{
 		WorkspaceID: "room-1",
-		Source: agentsessionstore.EventSource{
+		Source: canonical.EventSource{
 			Provider: "codex",
 			AgentID:  "agent-session-1",
 		},

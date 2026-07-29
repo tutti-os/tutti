@@ -1,4 +1,5 @@
 import type {
+  BrowserNodeAutomationTargetMetadata,
   BrowserNodeLifecycle,
   BrowserNodeNavigationPolicy,
   BrowserNodeSessionMode
@@ -9,6 +10,7 @@ import {
   resolveHostBrowserNavigationUrl
 } from "../core/url.ts";
 import type {
+  BrowserGuestCookieStore,
   BrowserGuestManager,
   BrowserGuestManagerInput,
   BrowserPreferredColorScheme,
@@ -23,7 +25,15 @@ import {
   setBrowserGuestDeviceEmulation,
   setBrowserGuestZoomFactor
 } from "./guestPageActions.ts";
-import { importBrowserGuestCookies } from "./cookieImport.ts";
+import {
+  completedCookieImportResult,
+  importBrowserGuestCookies
+} from "./cookieImport.ts";
+import {
+  getBrowserGuestCookieImportSession,
+  importChromeCookiesIntoBrowserGuest,
+  reloadBrowserGuestsForCookieSession
+} from "./chromeCookieImportTarget.ts";
 import {
   canGuestGoBack,
   canGuestGoForward,
@@ -35,11 +45,15 @@ import {
   isGoogleGisOAuthPopupUrl,
   isHttpErrorStatusCode,
   resizeBrowserPreviewImage,
+  resolveOptionalBrowserNodeDesiredUrl,
   resolveBrowserNodeUrlError
 } from "./guestNavigation.ts";
 
 interface BrowserGuestSession {
   appliedColorScheme: BrowserPreferredColorScheme | null;
+  automationTarget: BrowserNodeAutomationTargetMetadata | null;
+  committedTitle: string | null;
+  committedUrl: string | null;
   contents: BrowserGuestWebContents | null;
   desiredUrl: string;
   findQuery: string;
@@ -89,6 +103,7 @@ async function applyPreferredColorSchemeToGuest(
 }
 
 export function createBrowserGuestManager({
+  automationRegistry,
   chooseDownloadDirectory,
   emit,
   getPreferredColorScheme,
@@ -96,6 +111,9 @@ export function createBrowserGuestManager({
   openDownloadedFile,
   openExternal,
   prepareSession,
+  prepareChromeCookieImport,
+  resolveOrdinaryCookieStore,
+  resolveOrdinaryCookieSession,
   resolveWebContents,
   saveScreenshot,
   selectCookieImport,
@@ -117,6 +135,7 @@ export function createBrowserGuestManager({
   const getSession = (
     nodeId: string,
     input?: {
+      automationTarget?: BrowserNodeAutomationTargetMetadata | null;
       navigationPolicy?: BrowserNodeNavigationPolicy | null;
       profileId?: string | null;
       sessionMode?: BrowserNodeSessionMode;
@@ -126,6 +145,9 @@ export function createBrowserGuestManager({
   ): BrowserGuestSession => {
     const existing = sessions.get(nodeId);
     if (existing) {
+      if (input?.automationTarget !== undefined) {
+        existing.automationTarget = input.automationTarget;
+      }
       if (input?.profileId !== undefined) {
         existing.profileId = input.profileId;
       }
@@ -146,6 +168,9 @@ export function createBrowserGuestManager({
 
     const session: BrowserGuestSession = {
       appliedColorScheme: null,
+      automationTarget: input?.automationTarget ?? null,
+      committedTitle: null,
+      committedUrl: null,
       contents: null,
       desiredUrl: input?.url ?? "about:blank",
       findQuery: "",
@@ -176,10 +201,10 @@ export function createBrowserGuestManager({
       isOccluded: session.lifecycle === "cold",
       lifecycle: session.lifecycle,
       nodeId: session.nodeId,
-      title: contents ? contents.getTitle() || null : null,
+      title: contents ? session.committedTitle : null,
       type: "state",
       url: contents
-        ? contents.getURL() || session.desiredUrl
+        ? session.committedUrl || session.desiredUrl
         : session.desiredUrl,
       zoomFactor: contents?.zoomFactor ?? 1
     });
@@ -194,8 +219,11 @@ export function createBrowserGuestManager({
       }
     }
     session.listeners = [];
+    automationRegistry?.unregister(session.nodeId, contents);
     session.contents = null;
     session.appliedColorScheme = null;
+    session.committedTitle = null;
+    session.committedUrl = null;
     session.webContentsId = null;
     if (
       webContentsId !== null &&
@@ -231,10 +259,17 @@ export function createBrowserGuestManager({
     }
 
     const onStateChange = () => publishState(session);
+    const onDidStartNavigation = () => {
+      automationRegistry?.invalidate(session.nodeId, contents);
+      publishState(session);
+    };
     const onDidNavigate = (...args: unknown[]) => {
       const url = typeof args[1] === "string" ? args[1] : undefined;
       const statusCode = typeof args[2] === "number" ? args[2] : undefined;
       const statusText = typeof args[3] === "string" ? args[3] : undefined;
+      if (url !== undefined) {
+        session.committedUrl = url || null;
+      }
       publishState(session);
       if (!isHttpErrorStatusCode(statusCode)) {
         return;
@@ -289,6 +324,21 @@ export function createBrowserGuestManager({
         nodeId: session.nodeId
       });
     };
+    const onDidNavigateInPage = (...args: unknown[]) => {
+      const url = typeof args[1] === "string" ? args[1] : undefined;
+      const isMainFrame = args[2] === true;
+      if (isMainFrame && url !== undefined) {
+        session.committedUrl = url || null;
+      }
+      publishState(session);
+    };
+    const onPageTitleUpdated = (...args: unknown[]) => {
+      const title = typeof args[1] === "string" ? args[1] : undefined;
+      if (title !== undefined) {
+        session.committedTitle = title || null;
+      }
+      publishState(session);
+    };
     const onDestroyed = () => detachGuest(session);
     const onFoundInPage = (...args: unknown[]) => {
       const result = readFoundInPageResult(args[1]);
@@ -325,10 +375,11 @@ export function createBrowserGuestManager({
 
     const records: BrowserGuestSession["listeners"] = [
       { event: "did-start-loading", listener: onStateChange },
+      { event: "did-start-navigation", listener: onDidStartNavigation },
       { event: "did-stop-loading", listener: onStateChange },
       { event: "did-navigate", listener: onDidNavigate },
-      { event: "did-navigate-in-page", listener: onStateChange },
-      { event: "page-title-updated", listener: onStateChange },
+      { event: "did-navigate-in-page", listener: onDidNavigateInPage },
+      { event: "page-title-updated", listener: onPageTitleUpdated },
       { event: "will-navigate", listener: onWillNavigate },
       { event: "did-fail-load", listener: onFailLoad },
       { event: "destroyed", listener: onDestroyed },
@@ -383,7 +434,6 @@ export function createBrowserGuestManager({
     const failureSequenceBeforeLoad = session.navigationFailureSequence;
     try {
       await contents.loadURL(resolved.url);
-      publishState(session);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger?.warn?.("Browser Node guest loadURL failed", {
@@ -431,15 +481,6 @@ export function createBrowserGuestManager({
       });
     });
     return { action: "deny" };
-  };
-
-  const resolveOptionalDesiredUrl = (
-    url: string | undefined
-  ): string | undefined => {
-    if (url === undefined) {
-      return undefined;
-    }
-    return resolveHostBrowserNavigationUrl(url).url ?? undefined;
   };
 
   return {
@@ -512,7 +553,7 @@ export function createBrowserGuestManager({
       return {
         canGoBack: contents ? canGuestGoBack(contents) : false,
         canGoForward: contents ? canGuestGoForward(contents) : false,
-        currentUrl: contents ? contents.getURL() : null,
+        currentUrl: contents ? session.committedUrl : null,
         desiredUrl: session.desiredUrl,
         isAttachedToWindow: Boolean(contents),
         isLoading: contents ? contents.isLoading() : false,
@@ -521,7 +562,7 @@ export function createBrowserGuestManager({
         profileId: session.profileId,
         sessionMode: session.sessionMode,
         sessionPartition: session.sessionPartition,
-        title: contents ? contents.getTitle() : null,
+        title: contents ? session.committedTitle : null,
         userAgent: contents?.getUserAgent?.() ?? null,
         webContentsDestroyed: session.contents
           ? session.contents.isDestroyed()
@@ -572,10 +613,86 @@ export function createBrowserGuestManager({
     async importCookies(input) {
       const contents = sessions.get(input.nodeId)?.contents;
       if (!contents || contents.isDestroyed() || !contents.session?.cookies) {
-        return { canceled: false, imported: 0, skipped: 0 };
+        return completedCookieImportResult({
+          failed: 0,
+          imported: 0,
+          skipped: 0
+        });
       }
       const source = selectCookieImport ? await selectCookieImport() : null;
       return importBrowserGuestCookies(contents, source);
+    },
+    async importChromeCookies(input, signal) {
+      const browserSession = sessions.get(input.nodeId);
+      const sessionMode = browserSession?.sessionMode ?? "shared";
+      const sessionPartition = browserSession?.sessionPartition ?? null;
+      const profileId = browserSession?.profileId ?? null;
+      const contents = browserSession?.contents ?? null;
+      let cookieStore: BrowserGuestCookieStore | null =
+        contents && !contents.isDestroyed()
+          ? (contents.session?.cookies ?? null)
+          : null;
+      if (
+        !cookieStore &&
+        sessionMode !== "incognito" &&
+        sessionPartition === null &&
+        resolveOrdinaryCookieStore
+      ) {
+        await prepareSession?.({
+          nodeId: input.nodeId,
+          profileId,
+          sessionMode,
+          sessionPartition,
+          url: undefined
+        });
+        cookieStore =
+          (await resolveOrdinaryCookieStore({
+            profileId,
+            sessionMode,
+            sessionPartition
+          })) ?? null;
+      }
+      return importChromeCookiesIntoBrowserGuest({
+        contents,
+        cookieStore,
+        importInput: input,
+        prepareChromeCookieImport,
+        signal,
+        sessionMode,
+        sessionPartition
+      });
+    },
+    getCookieImportSession(input) {
+      const browserSession = sessions.get(input.nodeId);
+      return getBrowserGuestCookieImportSession(browserSession?.contents);
+    },
+    async resolveCookieImportSession(input) {
+      const fromGuest = getBrowserGuestCookieImportSession(
+        sessions.get(input.nodeId)?.contents
+      );
+      if (fromGuest) {
+        return fromGuest;
+      }
+      const browserSession = sessions.get(input.nodeId);
+      const sessionMode = browserSession?.sessionMode ?? "shared";
+      const sessionPartition = browserSession?.sessionPartition ?? null;
+      if (
+        sessionMode === "incognito" ||
+        sessionPartition !== null ||
+        !resolveOrdinaryCookieSession
+      ) {
+        return null;
+      }
+      return (
+        (await resolveOrdinaryCookieSession({
+          profileId: browserSession?.profileId ?? null,
+          sessionMode,
+          sessionPartition
+        })) ?? null
+      );
+    },
+    reloadCookieImportSession(target) {
+      reloadBrowserGuestsForCookieSession(sessions.values(), target);
     },
     handleGuestOpenUrl(webContentsId, input) {
       const nodeId = nodeIdByWebContentsId.get(webContentsId);
@@ -640,7 +757,7 @@ export function createBrowserGuestManager({
         profileId: input.profileId,
         sessionMode: input.sessionMode,
         sessionPartition: input.sessionPartition,
-        url: resolveOptionalDesiredUrl(input.url)
+        url: resolveOptionalBrowserNodeDesiredUrl(input.url)
       });
     },
     printPage(input) {
@@ -669,16 +786,26 @@ export function createBrowserGuestManager({
       }
 
       const session = getSession(input.nodeId, {
+        automationTarget: input.automationTarget,
         navigationPolicy: input.navigationPolicy,
         profileId: input.profileId,
         sessionMode: input.sessionMode,
         sessionPartition: input.sessionPartition,
-        url: resolveOptionalDesiredUrl(input.url)
+        url: resolveOptionalBrowserNodeDesiredUrl(input.url)
       });
       if (
         session.webContentsId === input.webContentsId &&
         session.contents === contents
       ) {
+        if (session.automationTarget) {
+          automationRegistry?.register(
+            session.nodeId,
+            contents,
+            session.automationTarget
+          );
+        } else {
+          automationRegistry?.unregister(session.nodeId, contents);
+        }
         publishState(session);
         return;
       }
@@ -686,12 +813,21 @@ export function createBrowserGuestManager({
         detachGuest(session);
       }
       session.contents = contents;
+      session.committedTitle = contents.getTitle() || null;
+      session.committedUrl = contents.getURL() || null;
       session.webContentsId = input.webContentsId;
       nodeIdByWebContentsId.set(input.webContentsId, input.nodeId);
       if (contents.session) {
         downloadController.attach(contents.session);
       }
       session.lifecycle = "active";
+      if (session.automationTarget) {
+        automationRegistry?.register(
+          session.nodeId,
+          contents,
+          session.automationTarget
+        );
+      }
       contents.setWindowOpenHandler?.(({ url }) => {
         if (isGoogleGisOAuthPopupUrl(url)) {
           logger?.info?.("Browser Node allowing Google GIS OAuth popup", {
@@ -767,7 +903,23 @@ export function createBrowserGuestManager({
       detachGuest(session);
       return Promise.resolve();
     },
+    updateAutomationTarget(nodeId, metadata) {
+      const session = sessions.get(nodeId);
+      if (!session) {
+        return;
+      }
+      session.automationTarget = metadata;
+      if (metadata && session.contents && !session.contents.isDestroyed()) {
+        automationRegistry?.register(nodeId, session.contents, metadata);
+      } else {
+        automationRegistry?.unregister(nodeId, session.contents);
+      }
+    },
     dispose() {
+      for (const session of sessions.values()) {
+        detachGuest(session);
+      }
+      sessions.clear();
       unsubscribePreferredColorScheme?.();
       downloadController.dispose();
     }

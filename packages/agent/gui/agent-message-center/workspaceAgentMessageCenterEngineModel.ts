@@ -11,10 +11,20 @@ import {
   selectEngineInteractionResponse,
   selectPendingSubmitsForSession,
   selectPlanDecisionForTurn,
+  selectPlanTurnDismissed,
   selectWorkspaceAgentRootConversationSessions
 } from "@tutti-os/agent-activity-core";
 import type { AgentConversationPromptVM } from "../shared/agentConversation/contracts/agentConversationVM";
 import { normalizeAskUserQuestions } from "../shared/agentConversation/askUserQuestions";
+import {
+  extractExitPlanKeepPlanningOptionId,
+  extractExitPlanModeOptions,
+  isExitPlanSwitchModeInput
+} from "../shared/agentConversation/exitPlanOptions";
+import {
+  latestPlanTurnId,
+  planImplementationPromptFromPlanTurn
+} from "../shared/agentConversation/planImplementationPresentation";
 import {
   buildWorkspaceAgentMessageCenterItem,
   buildWorkspaceAgentMessageCenterModelFromItems,
@@ -22,6 +32,7 @@ import {
   type WorkspaceAgentMessageCenterModel,
   type WorkspaceAgentMessageCenterTurnOutcome
 } from "./workspaceAgentMessageCenterModel";
+import { workspaceAgentMessageCenterItemEqual } from "./workspaceAgentMessageCenterModelStability";
 
 /**
  * Canonical Message Center entrypoint. Session/turn/interaction truth comes
@@ -63,6 +74,7 @@ export function buildWorkspaceAgentMessageCenterModelFromEngine(
 
 export interface WorkspaceAgentMessageCenterPresentation {
   consumers: readonly WorkspaceAgentConsumerSession[];
+  dismissedPlanTurnKeys: Readonly<Record<string, true>>;
   promptStatusByKey: Readonly<
     Record<string, WorkspaceAgentMessageCenterPromptStatus>
   >;
@@ -76,6 +88,7 @@ export function selectWorkspaceAgentMessageCenterPresentation(
     string,
     WorkspaceAgentMessageCenterPromptStatus
   > = {};
+  const dismissedPlanTurnKeys: Record<string, true> = {};
   for (const consumer of consumers) {
     const sessionId = consumer.session.agentSessionId;
     for (const interaction of consumer.pendingInteractions) {
@@ -97,6 +110,9 @@ export function selectWorkspaceAgentMessageCenterPresentation(
     }
     const turnId = consumer.latestTurn?.turnId ?? "";
     if (!turnId) continue;
+    if (selectPlanTurnDismissed(state, sessionId, turnId)) {
+      dismissedPlanTurnKeys[promptStatusKey(sessionId, turnId, turnId)] = true;
+    }
     const decision = selectPlanDecisionForTurn(state, sessionId, turnId);
     if (decision) {
       promptStatusByKey[promptStatusKey(sessionId, turnId, turnId)] =
@@ -124,6 +140,7 @@ export function selectWorkspaceAgentMessageCenterPresentation(
   }
   return {
     consumers,
+    dismissedPlanTurnKeys,
     promptStatusByKey
   };
 }
@@ -133,6 +150,7 @@ export function workspaceAgentMessageCenterPresentationEqual(
   right: WorkspaceAgentMessageCenterPresentation
 ): boolean {
   return (
+    booleanMapsEqual(left.dismissedPlanTurnKeys, right.dismissedPlanTurnKeys) &&
     promptStatusMapsEqual(left.promptStatusByKey, right.promptStatusByKey) &&
     left.consumers.length === right.consumers.length &&
     left.consumers.every((item, index) => {
@@ -151,6 +169,185 @@ export function workspaceAgentMessageCenterPresentationEqual(
         )
       );
     })
+  );
+}
+
+export type WorkspaceAgentAttentionTarget =
+  | {
+      kind: "interaction";
+      workspaceId: string;
+      agentSessionId: string;
+      turnId: string;
+      requestId: string;
+    }
+  | {
+      kind: "plan-implementation";
+      workspaceId: string;
+      agentSessionId: string;
+      turnId: string;
+      requestId: string;
+    };
+
+export interface WorkspaceAgentAttentionItem {
+  item: import("./workspaceAgentMessageCenterModel").WorkspaceAgentMessageCenterItem;
+  status: WorkspaceAgentMessageCenterPromptStatus;
+  target: WorkspaceAgentAttentionTarget;
+}
+
+/**
+ * Projects every canonical actionable target instead of collapsing a root
+ * conversation to its latest interaction. The display item keeps the root
+ * conversation identity for navigation while target keeps the exact child
+ * session/turn/request identity used by the command.
+ */
+export function selectWorkspaceAgentAttentionItems(
+  presentation: WorkspaceAgentMessageCenterPresentation,
+  snapshot: Pick<AgentActivitySnapshot, "sessionMessagesById" | "workspaceId">,
+  options: BuildWorkspaceAgentMessageCenterOptions = {}
+): WorkspaceAgentAttentionItem[] {
+  const result: WorkspaceAgentAttentionItem[] = [];
+  for (const consumer of presentation.consumers) {
+    if (
+      consumer.session.visible === false ||
+      consumer.session.workspaceId !== snapshot.workspaceId
+    ) {
+      continue;
+    }
+    const messages = sessionMessages(snapshot.sessionMessagesById, consumer);
+    for (const interaction of consumer.pendingInteractions) {
+      const prompt = promptFromInteraction(interaction);
+      if (!prompt) continue;
+      const target: WorkspaceAgentAttentionTarget = {
+        kind: "interaction",
+        workspaceId: consumer.session.workspaceId,
+        agentSessionId: interaction.agentSessionId,
+        turnId: interaction.turnId,
+        requestId: interaction.requestId
+      };
+      const item = buildWorkspaceAgentMessageCenterItem({
+        session: consumer.session,
+        latestTurn: consumer.latestTurn,
+        messages,
+        status: "waiting",
+        needsAttention: needsAttentionFromInteraction(consumer, interaction),
+        pendingInteractionTarget: interactionTarget(interaction),
+        pendingPrompt: prompt,
+        latestTurnOutcome: null,
+        options
+      });
+      item.id = workspaceAgentAttentionKey(target);
+      item.sortTimeUnixMs = interaction.createdAtUnixMs;
+      result.push({
+        item,
+        status:
+          presentation.promptStatusByKey[
+            promptStatusKey(
+              interaction.agentSessionId,
+              interaction.turnId,
+              interaction.requestId
+            )
+          ] ?? "idle",
+        target
+      });
+    }
+
+    const latestTurn = consumer.latestTurn;
+    if (
+      latestTurn?.phase !== "settled" ||
+      latestTurn.outcome !== "completed" ||
+      consumer.session.capabilities?.planImplementation !== true ||
+      consumer.session.capabilities.planMode !== true ||
+      latestPlanTurnId(messages) !== latestTurn.turnId
+    ) {
+      continue;
+    }
+    const target: WorkspaceAgentAttentionTarget = {
+      kind: "plan-implementation",
+      workspaceId: consumer.session.workspaceId,
+      agentSessionId: consumer.session.agentSessionId,
+      turnId: latestTurn.turnId,
+      requestId: latestTurn.turnId
+    };
+    const statusKey = promptStatusKey(
+      target.agentSessionId,
+      target.turnId,
+      target.requestId
+    );
+    if (presentation.dismissedPlanTurnKeys[statusKey]) continue;
+    const prompt = planImplementationPromptFromPlanTurn(
+      latestTurn.turnId,
+      consumer.session.title
+    );
+    const needsAttention: AgentActivityNeedsAttentionItem = {
+      id: `plan-implementation:${latestTurn.turnId}`,
+      workspaceId: consumer.session.workspaceId,
+      agentSessionId: consumer.session.agentSessionId,
+      provider: consumer.session.provider,
+      title: prompt.title,
+      cwd: consumer.session.cwd,
+      kind: "constraint",
+      summary: prompt.title,
+      occurredAtUnixMs: latestTurn.settledAtUnixMs ?? latestTurn.updatedAtUnixMs
+    };
+    const item = buildWorkspaceAgentMessageCenterItem({
+      session: consumer.session,
+      latestTurn,
+      messages,
+      status: "waiting",
+      needsAttention,
+      pendingInteractionTarget: null,
+      pendingPrompt: prompt,
+      latestTurnOutcome: null,
+      options
+    });
+    item.id = workspaceAgentAttentionKey(target);
+    item.sortTimeUnixMs = needsAttention.occurredAtUnixMs;
+    result.push({
+      item,
+      status: presentation.promptStatusByKey[statusKey] ?? "idle",
+      target
+    });
+  }
+  return result;
+}
+
+export function workspaceAgentAttentionItemsEqual(
+  left: readonly WorkspaceAgentAttentionItem[],
+  right: readonly WorkspaceAgentAttentionItem[]
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((entry, index) => {
+      const candidate = right[index];
+      return (
+        candidate !== undefined &&
+        entry.status === candidate.status &&
+        workspaceAgentAttentionTargetEqual(entry.target, candidate.target) &&
+        workspaceAgentMessageCenterItemEqual(entry.item, candidate.item)
+      );
+    })
+  );
+}
+
+function workspaceAgentAttentionKey(target: WorkspaceAgentAttentionTarget) {
+  return [
+    target.workspaceId,
+    target.agentSessionId,
+    target.turnId,
+    target.requestId
+  ].join("\n");
+}
+
+function workspaceAgentAttentionTargetEqual(
+  left: WorkspaceAgentAttentionTarget,
+  right: WorkspaceAgentAttentionTarget
+): boolean {
+  return (
+    left.kind === right.kind &&
+    left.workspaceId === right.workspaceId &&
+    left.agentSessionId === right.agentSessionId &&
+    left.turnId === right.turnId &&
+    left.requestId === right.requestId
   );
 }
 
@@ -203,6 +400,17 @@ function promptStatusMapsEqual(
   return (
     keys.length === Object.keys(right).length &&
     keys.every((key) => left[key] === right[key])
+  );
+}
+
+function booleanMapsEqual(
+  left: Readonly<Record<string, true>>,
+  right: Readonly<Record<string, true>>
+): boolean {
+  const keys = Object.keys(left);
+  return (
+    keys.length === Object.keys(right).length &&
+    keys.every((key) => right[key] === true)
   );
 }
 
@@ -265,6 +473,24 @@ function promptFromInteraction(
   interaction: AgentActivityInteraction
 ): AgentConversationPromptVM | null {
   const input = interaction.input ?? {};
+  const normalizedToolName = (interaction.toolName ?? "")
+    .replace(/[_\s-]+/g, "")
+    .trim()
+    .toLowerCase();
+  if (
+    interaction.kind === "plan" ||
+    normalizedToolName === "exitplanmode" ||
+    isExitPlanSwitchModeInput(input)
+  ) {
+    const keepPlanningOptionId = extractExitPlanKeepPlanningOptionId(input);
+    return {
+      kind: "exit-plan",
+      requestId: interaction.requestId,
+      title: interactionSummary(interaction),
+      options: extractExitPlanModeOptions(input),
+      ...(keepPlanningOptionId ? { keepPlanningOptionId } : {})
+    };
+  }
   if (interaction.kind === "question") {
     const questions = normalizeAskUserQuestions(input.questions);
     return {
@@ -297,7 +523,10 @@ function promptFromInteraction(
           {
             id,
             label: textValue(option.label) ?? textValue(option.name) ?? id,
-            kind: textValue(option.kind) ?? id
+            kind: textValue(option.kind) ?? id,
+            ...(textValue(option.description)
+              ? { description: textValue(option.description) as string }
+              : {})
           }
         ]
       : [];

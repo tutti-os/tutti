@@ -9,7 +9,7 @@ export interface WorkspaceFilesLaunchRequest {
   workspaceId: string;
 }
 
-export type WorkspaceFilesLaunchMode = "reveal" | "open-directory";
+export type WorkspaceFilesLaunchMode = "select" | "open";
 
 export const workspaceFilesLaunchTypeId = "workspace-files";
 

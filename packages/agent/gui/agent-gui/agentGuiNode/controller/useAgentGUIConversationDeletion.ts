@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useState,
   type Dispatch,
   type RefObject,
   type SetStateAction
@@ -7,7 +8,7 @@ import {
 import { flushSync } from "react-dom";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { useAgentHostApi } from "../../../agentActivityHost";
-import type { AgentSessionViewRef } from "../../../contexts/workspace/presentation/renderer/agentSessions/useAgentSessionTransport";
+import type { AgentSessionViewRef } from "../../../contexts/workspace/presentation/renderer/agentSessions/useAgentSessionPagingState";
 import type { useAgentGUIActivation } from "./useAgentGUIActivation";
 import { type AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import type {
@@ -22,6 +23,10 @@ import {
   showAgentGUIControllerErrorToast
 } from "./agentGuiController.reporting";
 import { type ConversationIntent } from "./useAgentConversationSelection";
+import {
+  parseTuttiProtectedDeletionConflict,
+  type TuttiProtectedDeletionConflict
+} from "./tuttiProtectedDeletion";
 
 export interface UseAgentGUIConversationDeletionInput {
   isDeletingConversation: boolean;
@@ -49,6 +54,7 @@ export interface UseAgentGUIConversationDeletionInput {
   setIntent: Dispatch<SetStateAction<ConversationIntent>>;
   setActiveConversationId: Dispatch<SetStateAction<string | null>>;
   persistActiveConversation: (agentSessionId: string | null) => void;
+  removeConversations: (agentSessionIds: readonly string[]) => void;
   agentHostApi: ReturnType<typeof useAgentHostApi>;
   workspaceId: string;
 }
@@ -56,6 +62,8 @@ export interface UseAgentGUIConversationDeletionInput {
 export function useAgentGUIConversationDeletion(
   input: UseAgentGUIConversationDeletionInput
 ) {
+  const [protectedDeleteConflict, setProtectedDeleteConflict] =
+    useState<TuttiProtectedDeletionConflict | null>(null);
   const {
     isDeletingConversation,
     conversations,
@@ -74,6 +82,7 @@ export function useAgentGUIConversationDeletion(
     setIntent,
     setActiveConversationId,
     persistActiveConversation,
+    removeConversations,
     agentHostApi,
     workspaceId
   } = input;
@@ -109,24 +118,25 @@ export function useAgentGUIConversationDeletion(
     }
     setIsDeletingConversation(true);
     setDetailError(null);
-    if (activeConversationIdRef.current === target.id) {
-      activeConversationIdRef.current = null;
-      flushSync(() => {
-        setIsLoadingMessages(false);
-        setIntent({ tag: "home" });
-        setActiveConversationId(null);
-      });
-      persistActiveConversation(null);
-    }
-    void activation
-      .unactivate(target.id)
-      .then(() =>
-        agentActivityRuntime.deleteSession({
-          workspaceId,
-          agentSessionId: target.id
-        })
-      )
+    void agentActivityRuntime
+      .deleteSession({
+        workspaceId,
+        agentSessionId: target.id
+      })
       .then(() => {
+        if (activeConversationIdRef.current === target.id) {
+          activeConversationIdRef.current = null;
+          flushSync(() => {
+            setIsLoadingMessages(false);
+            setIntent({ tag: "home" });
+            setActiveConversationId(null);
+          });
+          persistActiveConversation(null);
+        }
+        return activation.unactivate(target.id);
+      })
+      .then(() => {
+        removeConversations([target.id]);
         const deletedScopeKey = resolveAgentComposerDraftScopeKey({
           agentSessionId: target.id
         });
@@ -144,6 +154,11 @@ export function useAgentGUIConversationDeletion(
         setPendingDeleteConversation(null);
       })
       .catch((error) => {
+        const conflict = parseTuttiProtectedDeletionConflict(error);
+        if (conflict) {
+          setProtectedDeleteConflict(conflict);
+          return;
+        }
         const message = getAgentGUIErrorMessage(error);
         reportAgentGUIRuntimeError({
           agentSessionId: target.id,
@@ -167,6 +182,7 @@ export function useAgentGUIConversationDeletion(
     isDeletingConversation,
     pendingDeleteConversation,
     persistActiveConversation,
+    removeConversations,
     sessionViewRef,
     setActiveConversationId,
     setDetailError,
@@ -182,6 +198,8 @@ export function useAgentGUIConversationDeletion(
   return {
     requestDeleteConversation,
     cancelDeleteConversation,
-    confirmDeleteConversation
+    confirmDeleteConversation,
+    protectedDeleteConflict,
+    dismissProtectedDeleteConflict: () => setProtectedDeleteConflict(null)
   };
 }

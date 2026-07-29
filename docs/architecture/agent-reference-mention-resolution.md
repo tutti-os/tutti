@@ -43,6 +43,22 @@ The Markdown label and optional `count` query value are presentation metadata.
 They are not resolution authority. New mentions do not embed file paths,
 credentials, app commands, or serialized `files` arrays.
 
+UI presentation hydration is also separate from artifact resolution. A
+workspace-scoped `RichTextMentionService` may resolve the current label and app
+icon into an in-memory snapshot for composer, conversation, and AgentGUI
+surfaces. That snapshot is never written back to the mention URI or Markdown;
+if it is unavailable, the stored label and `MentionPill` semantic glyph are the
+required fallback.
+
+The same workspace-scoped service is the provider authority for composer `@`
+search. AgentGUI reads providers from the nearest `RichTextMentionService`
+boundary; hosts must not propagate a second provider list through AgentGUI view
+or composer props. This keeps candidate search, mention resolution, and
+read-only rendering on one capability contract. A surface may expose an
+extended provider catalog through a composed service view, but providers already
+owned by the workspace service must keep that service's resolution cache,
+subscriptions, and invalidation lifecycle.
+
 `workspace-reference` is a passive artifact reference. It is distinct from:
 
 - `workspace-app`, which routes an agent to an app command surface;

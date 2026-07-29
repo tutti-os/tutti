@@ -14,6 +14,15 @@ describe("mentionFilePresentation", () => {
     ).toBe("back");
   });
 
+  it("resolves workspace folder back rows as back visual kind", () => {
+    expect(
+      resolveAgentMentionFileVisualKind({
+        name: "返回",
+        mentionNavigation: "workspace-folder-back"
+      })
+    ).toBe("back");
+  });
+
   it("resolves image files as image visual kind", () => {
     expect(
       resolveAgentMentionFileVisualKind({

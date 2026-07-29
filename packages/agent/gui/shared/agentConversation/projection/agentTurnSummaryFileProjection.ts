@@ -1,4 +1,4 @@
-import { resolveWorkspaceFilePathCandidate } from "../../../contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
+import { resolveWorkspaceFilePathCandidate } from "../../../actions/workspaceFilePathCandidate";
 import type { AgentTurnSummaryFileVM } from "../contracts/agentTurnSummaryRowVM";
 
 export type AgentTurnSummaryChangeType = AgentTurnSummaryFileVM["changeType"];

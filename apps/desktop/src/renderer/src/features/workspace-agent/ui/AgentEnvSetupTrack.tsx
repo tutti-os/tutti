@@ -11,9 +11,9 @@ import {
 import {
   stageRemediation,
   type AgentEnvWizardViewModel,
-  type CodexSetupStepStatus,
   type StageDetailToken
 } from "@tutti-os/agent-gui/agent-env";
+import { AgentSetupStepIcon } from "@tutti-os/agent-gui/agent-env-ui";
 import { useTranslation } from "@renderer/i18n";
 import type { AgentEnvWizardActions } from "./useAgentEnvWizard";
 import {
@@ -21,28 +21,6 @@ import {
   doneStageLabel,
   renderStageDetail
 } from "./agentEnvPanelText";
-
-function StepStatusIcon({
-  status
-}: {
-  status: CodexSetupStepStatus;
-}): JSX.Element {
-  if (status === "ok") {
-    return <SuccessFilledIcon className="size-4 text-[var(--tutti-purple)]" />;
-  }
-  if (status === "running") {
-    return <LoadingIcon className="size-4 animate-spin" />;
-  }
-  if (status === "error") {
-    return <WarningFilledIcon className="size-4 text-[var(--state-danger)]" />;
-  }
-  return (
-    <span
-      aria-hidden="true"
-      className="size-4 rounded-full border border-[var(--border-1)]"
-    />
-  );
-}
 
 function latestLogLine(log: string[]): string | null {
   for (let index = log.length - 1; index >= 0; index -= 1) {
@@ -79,6 +57,8 @@ export function AgentEnvSetupTrack({
     manualCommand,
     installPending,
     loginPending,
+    updateAvailable,
+    updating,
     redetecting,
     ready,
     busy,
@@ -89,12 +69,15 @@ export function AgentEnvSetupTrack({
     stages.find((entry) => entry.id === "detect")?.status === "running";
   return (
     <div className="flex flex-col gap-4">
-      {ready ? null : (
+      {ready && !busy ? null : (
         <p className="m-0 text-[13px] text-[var(--text-secondary)]">
           {busy
-            ? t("workspace.agentEnv.busyInstalling", {
-                provider: providerLabel
-              })
+            ? t(
+                updating
+                  ? "workspace.agentEnv.busyUpdating"
+                  : "workspace.agentEnv.busyInstalling",
+                { provider: providerLabel }
+              )
             : detectRunning
               ? t("workspace.agentEnv.detecting", { provider: providerLabel })
               : t("workspace.agentEnv.setupRemaining", {
@@ -124,6 +107,8 @@ export function AgentEnvSetupTrack({
           const problem = remediation
             ? describeStageProblem(remediation.problem, providerLabel, t)
             : null;
+          const updateActionVisible =
+            stage.id === "install" && (updateAvailable || updating);
           const actionPending =
             remediation?.actionId === "login"
               ? loginPending
@@ -151,7 +136,7 @@ export function AgentEnvSetupTrack({
                     }`}
                   />
                 ) : (
-                  <StepStatusIcon status={stage.status} />
+                  <AgentSetupStepIcon status={stage.status} />
                 )}
               </span>
               <span className="min-w-0 flex-1">
@@ -230,7 +215,21 @@ export function AgentEnvSetupTrack({
                   </pre>
                 ) : null}
               </span>
-              {remediation && problem ? (
+              {updateActionVisible ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={updating}
+                  onClick={() => actions.runStageAction("update")}
+                >
+                  {updating ? (
+                    <LoadingIcon className="size-4 animate-spin" />
+                  ) : null}
+                  {updating
+                    ? t("workspace.agentEnv.actionUpdating")
+                    : t("workspace.agentEnv.actionUpdate")}
+                </Button>
+              ) : remediation && problem ? (
                 <Button
                   type="button"
                   size="sm"

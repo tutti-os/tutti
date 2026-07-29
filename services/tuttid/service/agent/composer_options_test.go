@@ -2,9 +2,60 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"testing"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/modelcatalog"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 )
+
+func TestGetComposerOptionsUsesTargetDefaultsAndSparseRequestOverrides(t *testing.T) {
+	service := newTestService(newFakeRuntime())
+	service.AgentComposerDefaultsReader = fakeAgentComposerDefaultsReader{
+		agenttargetbiz.IDLocalCodex: {
+			Model:            "gpt-5",
+			PermissionModeID: "full-access",
+			ReasoningEffort:  "high",
+			Speed:            "fast",
+		},
+	}
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		AgentTargetID: agenttargetbiz.IDLocalCodex,
+		Provider:      "codex",
+		Settings: ComposerSettings{
+			Model: "gpt-5-codex",
+		},
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions() error = %v", err)
+	}
+	if options.EffectiveSettings.Model != "gpt-5-codex" ||
+		options.EffectiveSettings.PermissionModeID != "full-access" ||
+		options.EffectiveSettings.ReasoningEffort != "high" ||
+		options.EffectiveSettings.Speed != "fast" {
+		t.Fatalf("effective settings = %#v", options.EffectiveSettings)
+	}
+}
+
+func TestValidateAgentComposerDefaultsPatchRejectsUnknownTargetAndValue(t *testing.T) {
+	service := newTestService(newFakeRuntime())
+	unsupported := "not-a-permission"
+	err := service.ValidateAgentComposerDefaultsPatch(context.Background(), agenttargetbiz.IDLocalCodex, preferencesbiz.AgentComposerDefaultsPatch{
+		preferencesbiz.AgentComposerDefaultsFieldPermissionModeID: &unsupported,
+	})
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("unsupported permission error = %v", err)
+	}
+	model := "gpt-5"
+	err = service.ValidateAgentComposerDefaultsPatch(context.Background(), "missing-target", preferencesbiz.AgentComposerDefaultsPatch{
+		preferencesbiz.AgentComposerDefaultsFieldModel: &model,
+	})
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("missing target error = %v", err)
+	}
+}
 
 func TestComposerProviderCapabilitiesDefaults(t *testing.T) {
 	t.Parallel()
@@ -129,9 +180,10 @@ func TestNormalizeComposerSettingsClampsByProviderSupport(t *testing.T) {
 	tuttiAgent := normalizeComposerSettingsForProvider("tutti-agent", ComposerSettings{
 		Model:           "gpt-5.4",
 		ReasoningEffort: "high",
+		Speed:           "fast",
 	})
-	if tuttiAgent.Model != "gpt-5.4" || tuttiAgent.ReasoningEffort != "high" {
-		t.Fatalf("tutti-agent settings clamped unexpectedly: %+v", tuttiAgent)
+	if tuttiAgent.Model != "gpt-5.4" || tuttiAgent.ReasoningEffort != "" || tuttiAgent.Speed != "" {
+		t.Fatalf("tutti-agent provider-wide hidden settings were not clamped: %+v", tuttiAgent)
 	}
 	opencode := normalizeComposerSettingsForProvider("opencode", ComposerSettings{
 		Model:           "openai/gpt-5.3-codex-spark",
@@ -251,7 +303,7 @@ func TestComposerConfigConfigurableTruthTable(t *testing.T) {
 	}{
 		{"claude-code", false, true, true},
 		{"codex", true, true, true},
-		{"tutti-agent", true, true, true},
+		{"tutti-agent", true, false, true},
 		{"cursor", true, false, true},
 		{"opencode", true, false, true},
 		{"hermes", false, false, false},
@@ -274,32 +326,32 @@ func TestComposerConfigConfigurableTruthTable(t *testing.T) {
 	}
 }
 
-func TestComposerModelReasoningOptionsRuntimeContextPreservesCatalogOptions(t *testing.T) {
+func TestComposerModelReasoningOptionsByModelPreservesCatalogOptions(t *testing.T) {
 	t.Parallel()
 	for _, provider := range []string{"codex", "tutti-agent"} {
 		t.Run(provider, func(t *testing.T) {
-			runtimeContext := composerModelReasoningOptionsRuntimeContext(
+			profiles := composerModelReasoningOptionsByModel(
 				provider,
 				"en",
-				map[string]composerModelReasoningProfile{
+				map[string]modelcatalog.ReasoningProfile{
 					"model-1": {
-						DefaultReasoningEffort: "ultra",
-						ReasoningEfforts: []AgentModelReasoningEffortOption{
+						DefaultValue: "ultra",
+						Options: []AgentModelReasoningEffortOption{
 							{Value: "high"},
 							{Value: "ultra"},
 						},
 					},
 				},
 			)
-			modelOptions, ok := runtimeContext["model-1"].(map[string]any)
-			if !ok || modelOptions["defaultValue"] != "ultra" {
-				t.Fatalf("model options = %#v", runtimeContext["model-1"])
+			modelOptions, ok := profiles["model-1"]
+			if !ok || modelOptions.DefaultValue != "ultra" {
+				t.Fatalf("model options = %#v", profiles["model-1"])
 			}
-			options, ok := modelOptions["options"].([]map[string]string)
-			if !ok || len(options) != 2 {
-				t.Fatalf("reasoning options = %#v", modelOptions["options"])
+			options := modelOptions.Options
+			if len(options) != 2 {
+				t.Fatalf("reasoning options = %#v", options)
 			}
-			if options[1]["value"] != "ultra" {
+			if options[1].Value != "ultra" {
 				t.Fatalf("reasoning options = %#v, want runtime-advertised ultra preserved", options)
 			}
 		})
@@ -314,7 +366,7 @@ func TestNormalizeObservedComposerSettingsUsesProviderReasoningPolicy(t *testing
 		want     string
 	}{
 		{provider: "codex", selected: "none", want: "none"},
-		{provider: "tutti-agent", selected: "minimal", want: "minimal"},
+		{provider: "tutti-agent", selected: "minimal", want: ""},
 		{provider: "opencode", selected: "none", want: "none"},
 	} {
 		t.Run(tc.provider, func(t *testing.T) {

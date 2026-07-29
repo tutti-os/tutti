@@ -6,11 +6,16 @@ import {
   type Server,
   type ServerResponse
 } from "node:http";
-import type { AddressInfo } from "node:net";
+import { createConnection, type AddressInfo, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { createTuttiNodeAuthClient, readAuthJson, writeAuthJson } from "./node";
+import {
+  createTuttiNodeAuthClient,
+  isTuttiAuthUserCancelledError,
+  readAuthJson,
+  writeAuthJson
+} from "./node";
 import { DEFAULT_APP_ID } from "./shared";
 
 test("auth json read/write keeps desktop-compatible shape", async () => {
@@ -51,6 +56,12 @@ test("node login completes bridge, redeems transfer code, writes auth json", asy
       authJsonPath: file,
       appCallbackUrl: "tutti://auth/login",
       accountBaseUrl: authBase,
+      accountHeaders: {
+        "x-zk-ppe-lane": "lane-1",
+        accept: "text/plain",
+        "Content-TYPE": "text/plain",
+        cookie: "session_id=attacker"
+      },
       authLoginUrl: `${authBase}/auth/login`,
       openUrl: async (loginUrl) => {
         const state = new URL(loginUrl).searchParams.get("state") ?? "";
@@ -80,14 +91,17 @@ test("node login completes bridge, redeems transfer code, writes auth json", asy
     });
 
     const result = await auth.login();
-    assert.equal(result.session.sessionId, "session-1");
+    assert.equal(result.session.sessionId, "desktop-session-1");
     assert.deepEqual(result.user, {
       userId: "user-1",
       name: "Alice",
       email: "alice@example.com",
       avatar: undefined
     });
-    assert.equal((await readAuthJson(file))?.cookie, "session_id=session-1");
+    assert.equal(
+      (await readAuthJson(file))?.cookie,
+      "session_id=desktop-session-1"
+    );
     assert.deepEqual(accountServer.requests.redeem, {
       transfer_code: "transfer-1",
       attempt_id: accountServer.requests.redeem?.attempt_id,
@@ -95,6 +109,8 @@ test("node login completes bridge, redeems transfer code, writes auth json", asy
       app_id: DEFAULT_APP_ID,
       device_id: accountServer.requests.redeem?.device_id
     });
+    assert.equal(accountServer.requests.headers.redeem, "lane-1");
+    assert.equal(accountServer.requests.headers.userInfo, "lane-1");
   } finally {
     await accountServer.close();
     await rm(dir, { recursive: true, force: true });
@@ -139,8 +155,11 @@ test("node login callback redirects to web result after writing auth json", asyn
     });
 
     const result = await auth.login();
-    assert.equal(result.session.sessionId, "session-1");
-    assert.equal((await readAuthJson(file))?.cookie, "session_id=session-1");
+    assert.equal(result.session.sessionId, "desktop-session-1");
+    assert.equal(
+      (await readAuthJson(file))?.cookie,
+      "session_id=desktop-session-1"
+    );
     assert.deepEqual(accountServer.requests.redeem, {
       transfer_code: "transfer-1",
       attempt_id: accountServer.requests.redeem?.attempt_id,
@@ -149,6 +168,184 @@ test("node login callback redirects to web result after writing auth json", asyn
       device_id: accountServer.requests.redeem?.device_id
     });
   } finally {
+    await accountServer.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("node login preserves a typed cancellation without reopening the app", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "tutti-auth-bridge-"));
+  const file = join(dir, "auth.json");
+  const accountServer = await startAccountStub();
+  try {
+    await writeAuthJson(file, {
+      sessionId: "existing-session",
+      cookie: "session_id=existing-session",
+      userId: "existing-user",
+      name: "Existing User",
+      avatar: "",
+      email: "",
+      updatedAt: 123
+    });
+    const authBase = `http://127.0.0.1:${accountServer.port}`;
+    const auth = createTuttiNodeAuthClient({
+      authJsonPath: file,
+      appCallbackUrl: "tutti://auth/login",
+      accountBaseUrl: authBase,
+      authLoginUrl: `${authBase}/auth/login`,
+      openUrl: async (loginUrl) => {
+        const state = new URL(loginUrl).searchParams.get("state") ?? "";
+        const decoded = decodeState(state);
+        const callbackUrl = new URL(
+          "/oauth/callback",
+          decoded.localServerOrigin
+        );
+        callbackUrl.searchParams.set("state", state);
+        callbackUrl.searchParams.set("error", "user_cancelled");
+        const callbackResponse = await fetch(callbackUrl, {
+          redirect: "manual"
+        });
+        assert.equal(callbackResponse.status, 302);
+        const location = callbackResponse.headers.get("location") ?? "";
+        const resultUrl = new URL(location);
+        assert.equal(
+          resultUrl.searchParams.get("desktopBridgeStatus"),
+          "error"
+        );
+        assert.equal(
+          resultUrl.searchParams.get("desktopBridgeError"),
+          "userCancelled"
+        );
+        assert.equal(resultUrl.searchParams.get("openAppUrl"), null);
+        assert.equal(location.includes("user_cancelled"), false);
+      }
+    });
+
+    await assert.rejects(
+      () => auth.login(),
+      (error: unknown) => isTuttiAuthUserCancelledError(error)
+    );
+    assert.equal((await readAuthJson(file))?.sessionId, "existing-session");
+    assert.equal(accountServer.requests.redeem, undefined);
+  } finally {
+    await accountServer.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("node compatibility completion preserves a typed cancellation", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "tutti-auth-bridge-"));
+  const file = join(dir, "auth.json");
+  const accountServer = await startAccountStub();
+  try {
+    const authBase = `http://127.0.0.1:${accountServer.port}`;
+    const auth = createTuttiNodeAuthClient({
+      authJsonPath: file,
+      appCallbackUrl: "tutti://auth/login",
+      accountBaseUrl: authBase,
+      authLoginUrl: `${authBase}/auth/login`,
+      openUrl: async (loginUrl) => {
+        const state = new URL(loginUrl).searchParams.get("state") ?? "";
+        const decoded = decodeState(state);
+        const response = await fetch(
+          new URL("/oauth/complete", decoded.localServerOrigin),
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Origin: authBase
+            },
+            body: JSON.stringify({ state, error: "user_cancelled" })
+          }
+        );
+        assert.equal(response.status, 400);
+        assert.deepEqual(await response.json(), {
+          ok: false,
+          error: { code: "USER_CANCELLED", message: "user_cancelled" }
+        });
+      }
+    });
+
+    await assert.rejects(
+      () => auth.login(),
+      (error: unknown) => isTuttiAuthUserCancelledError(error)
+    );
+    assert.equal(await readAuthJson(file), null);
+    assert.equal(accountServer.requests.redeem, undefined);
+  } finally {
+    await accountServer.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("node login completes when another bridge connection is stalled", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "tutti-auth-bridge-"));
+  const file = join(dir, "auth.json");
+  const accountServer = await startAccountStub();
+  let stalledSocket: Socket | undefined;
+  let stalledSocketClosed: Promise<void> | undefined;
+  try {
+    const authBase = `http://127.0.0.1:${accountServer.port}`;
+    const auth = createTuttiNodeAuthClient({
+      authJsonPath: file,
+      appCallbackUrl: "tutti://auth/login",
+      accountBaseUrl: authBase,
+      authLoginUrl: `${authBase}/auth/login`,
+      openUrl: async (loginUrl) => {
+        const state = new URL(loginUrl).searchParams.get("state") ?? "";
+        const bridgeUrl = new URL(decodeState(state).localServerOrigin ?? "");
+        stalledSocket = createConnection({
+          host: bridgeUrl.hostname,
+          port: Number(bridgeUrl.port)
+        });
+        stalledSocketClosed = new Promise<void>((resolve) => {
+          stalledSocket?.once("close", resolve);
+        });
+        await new Promise<void>((resolve, reject) => {
+          stalledSocket?.once("connect", resolve);
+          stalledSocket?.once("error", reject);
+        });
+        stalledSocket.write(
+          `GET /oauth/health HTTP/1.1\r\nHost: ${bridgeUrl.host}\r\n`
+        );
+
+        const callbackUrl = new URL("/oauth/callback", bridgeUrl);
+        callbackUrl.searchParams.set("state", state);
+        callbackUrl.searchParams.set("transfer_code", "transfer-1");
+        const callbackResponse = await fetch(callbackUrl, {
+          redirect: "manual"
+        });
+        assert.equal(callbackResponse.status, 302);
+        assert.equal(callbackResponse.headers.get("connection"), "close");
+      }
+    });
+
+    let timeout: NodeJS.Timeout | undefined;
+    const result = await Promise.race([
+      auth.login(),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error("login did not close the bridge in time")),
+          2_500
+        );
+      })
+    ]).finally(() => clearTimeout(timeout));
+    assert.equal(result.session.sessionId, "desktop-session-1");
+    let socketCloseTimeout: NodeJS.Timeout | undefined;
+    await Promise.race([
+      stalledSocketClosed,
+      new Promise<never>((_, reject) => {
+        socketCloseTimeout = setTimeout(
+          () =>
+            reject(
+              new Error("stalled bridge connection did not close in time")
+            ),
+          2_500
+        );
+      })
+    ]).finally(() => clearTimeout(socketCloseTimeout));
+  } finally {
+    stalledSocket?.destroy();
     await accountServer.close();
     await rm(dir, { recursive: true, force: true });
   }
@@ -200,8 +397,8 @@ test("node getUserInfo refreshes auth json and logout clears it", async () => {
   const accountServer = await startAccountStub();
   try {
     await writeAuthJson(file, {
-      sessionId: "session-1",
-      cookie: "session_id=session-1",
+      sessionId: "desktop-session-1",
+      cookie: "session_id=desktop-session-1",
       userId: "old-user",
       name: "",
       avatar: "",
@@ -211,7 +408,13 @@ test("node getUserInfo refreshes auth json and logout clears it", async () => {
     const auth = createTuttiNodeAuthClient({
       authJsonPath: file,
       appCallbackUrl: "tutti://auth/login",
-      accountBaseUrl: `http://127.0.0.1:${accountServer.port}`
+      accountBaseUrl: `http://127.0.0.1:${accountServer.port}`,
+      accountHeaders: {
+        "x-zk-ppe-lane": "lane-1",
+        accept: "text/plain",
+        "Content-TYPE": "text/plain",
+        cookie: "session_id=attacker"
+      }
     });
     assert.deepEqual(await auth.getUserInfo(), {
       userId: "user-1",
@@ -222,7 +425,9 @@ test("node getUserInfo refreshes auth json and logout clears it", async () => {
     assert.equal((await readAuthJson(file))?.userId, "user-1");
     await auth.logout();
     assert.equal(await readAuthJson(file), null);
-    assert.equal(accountServer.requests.logout?.appId, DEFAULT_APP_ID);
+    assert.equal(accountServer.requests.logout?.app_id, DEFAULT_APP_ID);
+    assert.equal(accountServer.requests.headers.userInfo, "lane-1");
+    assert.equal(accountServer.requests.headers.logout, "lane-1");
   } finally {
     await accountServer.close();
     await rm(dir, { recursive: true, force: true });
@@ -247,21 +452,42 @@ async function startAccountStub(): Promise<{
   requests: {
     redeem?: Record<string, string>;
     logout?: Record<string, string>;
+    headers: {
+      redeem?: string;
+      userInfo?: string;
+      logout?: string;
+    };
   };
   close: () => Promise<void>;
 }> {
   const requests: {
     redeem?: Record<string, string>;
     logout?: Record<string, string>;
-  } = {};
+    headers: {
+      redeem?: string;
+      userInfo?: string;
+      logout?: string;
+    };
+  } = { headers: {} };
   const server = createServer(async (req, res) => {
     if (req.url === "/auth/v1/redeem_desktop_transfer_code") {
+      assert.equal(req.headers.accept, "application/json");
+      assert.equal(req.headers["content-type"], "application/json");
+      assert.equal(req.headers.cookie, undefined);
+      requests.headers.redeem = req.headers["x-zk-ppe-lane"] as
+        | string
+        | undefined;
       requests.redeem = (await readBody(req)) as Record<string, string>;
-      sendJson(res, { code: 0, data: { session_id: "session-1" } });
+      sendJson(res, { code: 0, data: { session_id: "desktop-session-1" } });
       return;
     }
     if (req.url === "/user/v1/user_info") {
-      assert.equal(req.headers.cookie, "session_id=session-1");
+      assert.equal(req.headers.accept, "application/json");
+      assert.equal(req.headers["content-type"], "application/json");
+      requests.headers.userInfo = req.headers["x-zk-ppe-lane"] as
+        | string
+        | undefined;
+      assert.equal(req.headers.cookie, "session_id=desktop-session-1");
       sendJson(res, {
         code: 0,
         data: { user_id: "user-1", name: "Alice", email: "alice@example.com" }
@@ -269,8 +495,13 @@ async function startAccountStub(): Promise<{
       return;
     }
     if (req.url === "/auth/v1/logout-web-session") {
+      assert.equal(req.headers.accept, "application/json");
+      assert.equal(req.headers["content-type"], "application/json");
+      requests.headers.logout = req.headers["x-zk-ppe-lane"] as
+        | string
+        | undefined;
       requests.logout = (await readBody(req)) as Record<string, string>;
-      assert.equal(req.headers.cookie, "session_id=session-1");
+      assert.equal(req.headers.cookie, "session_id=desktop-session-1");
       sendJson(res, { code: 0 });
       return;
     }

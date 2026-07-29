@@ -3,7 +3,9 @@ import type { Editor, Range } from "@tiptap/core";
 export type AgentFileMentionKind = "file" | "directory" | "unknown";
 export type AgentMentionFileNavigationAction =
   | "agent-generated-folder"
-  | "agent-generated-folder-back";
+  | "agent-generated-folder-back"
+  | "workspace-folder"
+  | "workspace-folder-back";
 export type AgentMentionScope = "my_sessions" | "collab_sessions";
 export type AgentMentionKind =
   | "file"
@@ -24,11 +26,17 @@ export interface AgentMentionFileItem {
   name: string;
   entryKind: AgentFileMentionKind;
   directoryPath: string;
+  /** Present only for a regular file attached from the local composer. */
+  attachmentId?: string;
+  attachmentStatus?: AgentComposerFileMentionStatus;
+  attachmentErrorCode?: string;
   score?: number;
   thumbnailUrl?: string | null;
   mentionNavigation?: AgentMentionFileNavigationAction;
   childCount?: number;
 }
+
+export type AgentComposerFileMentionStatus = "uploading" | "ready" | "error";
 
 export interface AgentMentionSessionItem {
   kind: "session";
@@ -39,9 +47,14 @@ export interface AgentMentionSessionItem {
   name: string;
   title: string;
   scope: AgentMentionScope;
+  initiatorUserId?: string;
   initiatorName: string;
   initiatorAvatarUrl?: string;
   agentName: string;
+  /** Structured owner segment from the matching provenance Agent option. */
+  agentOwnerLabel?: string;
+  /** Structured Agent segment from the matching provenance Agent option. */
+  agentLabel?: string;
   agentIconUrl?: string;
   status?: string;
   inputPreview?: string;
@@ -58,6 +71,7 @@ export interface AgentMentionWorkspaceIssueItem {
   name: string;
   title: string;
   creatorName?: string;
+  iconUrl?: string;
   status?: string;
   contentPreview?: string;
   updatedAtUnixMs?: number;

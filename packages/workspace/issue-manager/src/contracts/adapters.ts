@@ -23,6 +23,20 @@ import type {
   IssueManagerTaskSummary
 } from "./domain.ts";
 
+export interface IssueManagerManagedIssueSourceRequest {
+  draftPrompt: string;
+  issueId: string;
+  sourceSessionId: string;
+  taskId?: string;
+  workspaceId: string;
+}
+
+export interface IssueManagerManagedIssueActionsAdapter {
+  openSourceSession(
+    request: IssueManagerManagedIssueSourceRequest
+  ): Promise<void> | void;
+}
+
 export interface IssueManagerIdentityProfile {
   avatarUrl?: string | null;
   displayName?: string | null;
@@ -96,12 +110,33 @@ export interface IssueManagerAgentTargetOption {
   disabledReason?: string;
   iconUrl?: string | null;
   label: string;
+  modelPlanProtocol?: string;
   provider: string;
 }
 
 export interface IssueManagerAgentTargetOptionsAdapter {
   getOptions(): readonly IssueManagerAgentTargetOption[];
   subscribe?(listener: () => void): () => void;
+}
+
+export interface IssueManagerModelPlanModelOption {
+  id: string;
+  name: string;
+  tier?: string;
+}
+
+export interface IssueManagerModelPlanOption {
+  id: string;
+  name: string;
+  protocol: string;
+  defaultModel?: string;
+  models: readonly IssueManagerModelPlanModelOption[];
+}
+
+export interface IssueManagerModelPlanOptionsAdapter {
+  loadOptions():
+    | readonly IssueManagerModelPlanOption[]
+    | Promise<readonly IssueManagerModelPlanOption[]>;
 }
 
 export type IssueManagerOpenSource =

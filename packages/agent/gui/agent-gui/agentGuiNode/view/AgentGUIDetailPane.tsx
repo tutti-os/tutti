@@ -1,45 +1,16 @@
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties
-} from "react";
-import { ScrollArea } from "@tutti-os/ui-system/components";
-import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
-import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
-import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings";
-import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
+import { latestAssistantMessageText } from "../../../shared/agentConversation/projection/agentConversationProjection";
 import { AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT } from "../../../workbench/contribution";
 import { resolveAgentGuiWorkbenchProviderLabel } from "../../../workbench/providerCatalog";
-import type {
-  AgentComposerGitBranchLoader,
-  AgentComposerProps,
-  AgentComposerSlashStatusLimit,
-  WorkspaceReferencePickResult
-} from "../AgentComposer";
-import type { AgentContextMentionProvider } from "../agentContextMentionProvider";
-import type { AgentContextMentionItem } from "../agentRichText/agentFileMentionExtension";
-import type {
-  AgentHomeSuggestionAction,
-  AgentGUINodeViewModel
-} from "../model/agentGuiNodeTypes";
+import type { AgentComposerProps } from "../AgentComposer";
+import type { AgentHomeSuggestionAction } from "../model/agentGuiNodeTypes";
 import { updateAgentComposerDraft } from "../model/agentComposerDraft";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
-import { projectAgentGUIManagedHomeTargets } from "../model/agentGuiProviderRailOrder";
-import type {
-  AgentGUINodeViewProps,
-  AgentGUIProviderUnavailableStateRenderer,
-  AgentGUIViewLabels
-} from "../AgentGUINodeView";
 import {
   buildAgentConversationHandoffPrompt,
-  commandAppSource,
   handoffProjectPathForConversation,
-  workspaceAppIconKey
+  resolveAgentGUITuttiStopTargets
 } from "./agentGUIDetailModelHelpers";
 import { AgentGUIBottomDockPane } from "./AgentGUIBottomDockPane";
 import {
@@ -47,144 +18,80 @@ import {
   EMPTY_HOME_SUGGESTIONS,
   resolveAgentGUIHeroIconUrl
 } from "./AgentGUIEmptyState";
-import { AgentGUIDetailHeader } from "./AgentGUIDetailHeader";
 import { AgentGUIContentToast } from "./AgentGUIContentToast";
-import { AgentGUIConversationTimelinePane } from "./AgentGUIConversationTimelinePane";
+import { AgentGUIDetailTimeline } from "./AgentGUIDetailTimeline";
 import {
-  stringValue,
   useOptionalStableEventCallback,
   useStableEventCallback
 } from "./agentGUIViewUtils";
 import styles from "../AgentGUINode.styles";
 import { useAgentGUIDetailScroll } from "./useAgentGUIDetailScroll";
 import { useAgentGUIDetailModel } from "./useAgentGUIDetailModel";
-import { useAgentGUIProviderRailPreferences } from "./useAgentGUIProviderRailPreferences";
-import type { AgentGUIComposerEngagement } from "../engagement/agentGUIEngagement.types";
-
-const AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE: CSSProperties = {
-  width: "100%",
-  minWidth: "100%",
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr)",
-  gap: "24px"
-};
+import { useAgentGUIComposerInputHistoryProps } from "./useAgentGUIComposerInputHistoryProps";
+import { useAgentGUITuttiWorkflow } from "./useAgentGUITuttiWorkflow";
+import type { AgentTranscriptVirtualScrollController } from "../../../shared/agentConversation/components/AgentTranscriptView";
+import type { AgentGUIDetailPaneProps } from "./AgentGUINodeView.types";
 export const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
   [];
-export interface AgentGUIDetailPaneProps {
-  viewModel: AgentGUINodeViewModel;
-  referenceProvenanceFilter?: AgentComposerProps["referenceProvenanceFilter"];
-  composerEngagement?: AgentGUIComposerEngagement;
-  actions: AgentGUINodeViewProps["actions"];
-  labels: AgentGUIViewLabels;
-  workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
-  uiLanguage: UiLanguage;
-  hideDetailHeader: boolean;
-  isActive: boolean;
-  previewMode: boolean;
-  workspaceReferencePickerOpen: boolean;
-  composerFocusRequestSequence: number | null;
-  slashStatusLimits: readonly AgentComposerSlashStatusLimit[];
-  slashStatusLimitsLoading: boolean;
-  slashStatusLimitsUnavailable: boolean;
-  onSlashStatusOpen?: AgentComposerProps["onSlashStatusOpen"];
-  onLinkAction?: (action: WorkspaceLinkAction) => void;
-  onHandoffConversation?: AgentGUINodeViewProps["onHandoffConversation"];
-  capabilityMenuState?: AgentComposerProps["capabilityMenuState"];
-  onCapabilitySettingsRequest?: AgentComposerProps["onCapabilitySettingsRequest"];
-  onAgentProviderLogin?: (provider?: string | null) => void;
-  onRequestWorkspaceReferences?:
-    | ((
-        entity?: AgentContextMentionItem | null
-      ) => Promise<WorkspaceReferencePickResult>)
-    | null;
-  resolveDroppedFileReferences?: AgentComposerProps["resolveDroppedFileReferences"];
-  selectProjectDirectory?: () => Promise<{ path: string } | null>;
-  onRequestGitBranches?: AgentComposerGitBranchLoader | null;
-  onRequestComposerFocus: () => void;
-  contextMentionProviders?: readonly AgentContextMentionProvider[];
-  workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
-  renderProviderUnavailableState?: AgentGUIProviderUnavailableStateRenderer;
-}
-
-export function mergeWorkspaceAppIconsFromCommands(input: {
-  commands: AgentGUINodeViewModel["composer"]["availableCommands"];
-  workspaceAppIcons: readonly AgentMessageMarkdownWorkspaceAppIcon[];
-  workspaceId: string;
-}): readonly AgentMessageMarkdownWorkspaceAppIcon[] {
-  const seen = new Set(
-    input.workspaceAppIcons.flatMap((icon) => {
-      const appId = icon.appId.trim();
-      const iconUrl = icon.iconUrl?.trim() ?? "";
-      if (!appId || !iconUrl) {
-        return [];
-      }
-      return [
-        workspaceAppIconKey(appId, icon.workspaceId?.trim() ?? ""),
-        workspaceAppIconKey(appId, "")
-      ];
-    })
-  );
-  let next: AgentMessageMarkdownWorkspaceAppIcon[] | null = null;
-  for (const command of input.commands) {
-    const source = commandAppSource(command);
-    if (!source) {
-      continue;
-    }
-    const appId = stringValue(source.appId).trim();
-    const iconUrl = stringValue(source.iconUrl).trim();
-    if (!appId || !iconUrl) {
-      continue;
-    }
-    const key = workspaceAppIconKey(appId, input.workspaceId);
-    if (seen.has(key)) {
-      continue;
-    }
-    if (!next) {
-      next = [...input.workspaceAppIcons];
-    }
-    next.push({
-      appId,
-      iconUrl,
-      workspaceId: input.workspaceId
-    });
-    seen.add(key);
-  }
-  return next ?? input.workspaceAppIcons;
-}
-
 export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
-  viewModel,
-  referenceProvenanceFilter = null,
+  shell,
+  rail,
+  detail,
+  composer,
+  interaction,
+  readiness,
+  operations,
+  homeTargetProjection,
+  referenceProvenanceFilters = null,
+  sessionInputHistoryEnabled = false,
+  sessionForkEnabled = false,
   composerEngagement,
   actions,
   labels,
   workspaceUserProjectI18n,
   uiLanguage,
-  hideDetailHeader,
   isActive,
-  previewMode,
+  isVisible,
   workspaceReferencePickerOpen,
   composerFocusRequestSequence,
   slashStatusLimits,
   slashStatusLimitsLoading,
   slashStatusLimitsUnavailable,
+  slashStatusOverride,
   onSlashStatusOpen,
+  onSlashStatusClose,
+  onSlashStatusRefresh,
   onLinkAction,
   onHandoffConversation,
   capabilityMenuState,
+  capabilityControlsReadOnly = false,
   onCapabilitySettingsRequest,
   onAgentProviderLogin,
   onRequestWorkspaceReferences,
-  resolveDroppedFileReferences = null,
+  resolveExternalPromptEntries = null,
+  prepareExternalPromptFiles = null,
+  promptAssetLimit = null,
   selectProjectDirectory,
   onRequestGitBranches,
   onRequestComposerFocus,
-  contextMentionProviders,
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS,
-  renderProviderUnavailableState
+  renderProviderUnavailableState,
+  renderComposerFooterAccessory
 }: AgentGUIDetailPaneProps): React.JSX.Element {
   "use memo";
+  const viewModel = {
+    shell,
+    rail,
+    detail,
+    composer,
+    interaction,
+    readiness,
+    operations
+  };
   const timelineRef = useRef<HTMLDivElement | null>(null);
+  const timelineContentRef = useRef<HTMLDivElement | null>(null);
+  const virtualScrollControllerRef =
+    useRef<AgentTranscriptVirtualScrollController | null>(null);
   const bottomDockRef = useRef<HTMLDivElement | null>(null);
   const timelineScrollAnchorRef = useRef<{
     conversationId: string;
@@ -206,11 +113,10 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     activePromptRequestId,
     bottomDockLiftedPrompt,
     bottomDockReplacementPrompt,
-    canQueueWhileBusy,
     chromeLabels,
     composerActivePrompt,
-    composerDisabled,
     composerDisabledReason,
+    composerGate,
     composerLabels,
     conversation,
     conversationFlowEmpty,
@@ -218,16 +124,17 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     emptyProviderReadinessGate,
     goalBannerLabels,
     hasActiveConversation,
+    homeNoticeChrome,
     inlineNoticeChrome,
     interactivePromptLabels,
     isComposerSending,
     selectedAgentTargetComingSoon,
     sessionChrome,
     showStopButton,
+    stopDisabled,
     showTimelineSkeleton,
     showUnavailableChatEmpty,
-    slashStatus,
-    submitDisabled,
+    slashStatus: derivedSlashStatus,
     timelineConversationId,
     timelineInteractionLocked
   } = useAgentGUIDetailModel({
@@ -238,13 +145,29 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     slashStatusLimitsUnavailable,
     viewModel
   });
-  const handleInterruptCurrentTurn = useCallback(() => {
-    actions.interruptCurrentTurn(labels.noRunningResponse);
-  }, [actions.interruptCurrentTurn, labels.noRunningResponse]);
+  const slashStatus = slashStatusOverride ?? derivedSlashStatus;
+  const handleForkThroughTurn = useStableEventCallback((turnId: string) => {
+    const agentSessionId =
+      conversation?.sourceDetail.session.agentSessionId.trim() ?? "";
+    if (agentSessionId) {
+      void actions.forkConversationThroughTurn(agentSessionId, turnId);
+    }
+  });
+  const forkHandler = sessionForkEnabled ? handleForkThroughTurn : undefined;
+  const openForkSourceSession = useStableEventCallback(
+    actions.openForkSourceConversation
+  );
   const submitApprovalOption = useStableEventCallback(
     actions.submitApprovalOption
   );
   const retryActivation = useStableEventCallback(actions.retryActivation);
+  const retryTuttiModeActivation = useStableEventCallback(
+    actions.retryTuttiModeActivation
+  );
+  const retryInlineNotice =
+    viewModel.composer.tuttiModeUpdateStatus === "failed"
+      ? retryTuttiModeActivation
+      : retryActivation;
   const continueInNewConversation = useStableEventCallback(
     actions.continueInNewConversation
   );
@@ -254,6 +177,15 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   );
   const updateComposerSettings = useStableEventCallback(
     actions.updateComposerSettings
+  );
+  const retryComposerOptions = useStableEventCallback(
+    actions.retryComposerOptions
+  );
+  const setTuttiModeActive = useStableEventCallback(actions.setTuttiModeActive);
+  const setTuttiModeEffect = useStableEventCallback(actions.setTuttiModeEffect);
+  const setTuttiModeSpeed = useStableEventCallback(actions.setTuttiModeSpeed);
+  const updatePlanIssueBudgetPreset = useStableEventCallback(
+    actions.updatePlanIssueBudgetPreset
   );
   const selectHomeComposerAgentTarget = useStableEventCallback(
     actions.selectHomeComposerAgentTarget
@@ -291,39 +223,25 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const submitGuidancePrompt = useStableEventCallback(
     actions.submitGuidancePrompt
   );
-  const requestSubmittedPromptScrollToBottom = useCallback(() => {
+  const requestSubmittedPromptScrollToBottom = useStableEventCallback(() => {
     const activeConversationId = viewModel.rail.activeConversationId;
     if (!activeConversationId) {
       return;
     }
     submittedPromptScrollConversationRef.current = activeConversationId;
     pendingPrependScrollAnchorRef.current = null;
-  }, [viewModel.rail.activeConversationId]);
-  const submitPromptAndScrollToBottom = useCallback(
-    (
-      content: AgentPromptContentBlock[],
-      displayPrompt?: string,
-      options?: Parameters<AgentComposerProps["onSubmit"]>[2]
-    ): void => {
+  });
+  const submitPromptAndScrollToBottom = useStableEventCallback(
+    (...args: Parameters<typeof submitPrompt>): void => {
       requestSubmittedPromptScrollToBottom();
-      if (displayPrompt === undefined) {
-        submitPrompt(content, undefined, options);
-        return;
-      }
-      submitPrompt(content, displayPrompt, options);
-    },
-    [requestSubmittedPromptScrollToBottom, submitPrompt]
+      submitPrompt(...args);
+    }
   );
-  const submitGuidancePromptAndScrollToBottom = useCallback(
-    (content: AgentPromptContentBlock[], displayPrompt?: string): void => {
+  const submitGuidancePromptAndScrollToBottom = useStableEventCallback(
+    (...args: Parameters<typeof submitGuidancePrompt>): void => {
       requestSubmittedPromptScrollToBottom();
-      if (displayPrompt === undefined) {
-        submitGuidancePrompt(content);
-        return;
-      }
-      submitGuidancePrompt(content, displayPrompt);
-    },
-    [requestSubmittedPromptScrollToBottom, submitGuidancePrompt]
+      submitGuidancePrompt(...args);
+    }
   );
   const showPromptImagesUnsupported = useStableEventCallback(
     actions.showPromptImagesUnsupported
@@ -337,6 +255,40 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     actions.submitInteractivePrompt
   );
   const stableLinkAction = useOptionalStableEventCallback(onLinkAction);
+  const tuttiWorkflow = useAgentGUITuttiWorkflow({
+    viewModel,
+    labels,
+    stableLinkAction,
+    setTuttiModeActive: actions.setTuttiModeActive,
+    setTuttiModeEffect: actions.setTuttiModeEffect,
+    setTuttiModeSpeed: actions.setTuttiModeSpeed,
+    updateDraftContent: actions.updateDraftContent,
+    submitPromptPassthrough: submitPromptAndScrollToBottom,
+    submitGuidancePromptPassthrough: submitGuidancePromptAndScrollToBottom
+  });
+  const tuttiWorkflowComposer = tuttiWorkflow.composer;
+  const tuttiWorkflowDock = tuttiWorkflow.workflowDock;
+  const sourceActiveTurn =
+    viewModel.detail.conversationDetail?.session.activeTurn ?? null;
+  const sourceHasStoppableWork =
+    Boolean(sourceActiveTurn && sourceActiveTurn.phase !== "settled") ||
+    viewModel.composer.isCreatingConversation;
+  const handleInterruptCurrentTurn = useStableEventCallback(() => {
+    const targets = resolveAgentGUITuttiStopTargets({
+      executionActive: tuttiWorkflowComposer.tuttiExecutionActive,
+      sourceHasStoppableWork
+    });
+    if (targets.stopExecution) {
+      void tuttiWorkflowComposer
+        .stopTuttiExecution()
+        .catch((error: unknown) => {
+          console.error("tutti plan execution stop failed", error);
+        });
+    }
+    if (targets.stopSession) {
+      actions.interruptCurrentTurn(labels.noRunningResponse);
+    }
+  });
   const stableRequestWorkspaceReferences = useOptionalStableEventCallback(
     onRequestWorkspaceReferences
   );
@@ -359,13 +311,9 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     [submitInteractivePrompt]
   );
   const canSwitchComposerProvider = true;
-  const { preferences: providerRailPreferences } =
-    useAgentGUIProviderRailPreferences();
-  const homeTargetProjection = projectAgentGUIManagedHomeTargets({
-    agentTargets: viewModel.rail.agentTargets,
-    preferences: providerRailPreferences,
-    selectedAgentTarget: viewModel.rail.selectedAgentTarget
-  });
+  const isInteractionPending =
+    viewModel.interaction.isRespondingApproval ||
+    composerGate.runtime.status === "blocked";
   const homeComposerProviderTargets = homeTargetProjection.agentTargets;
   const selectedHomeComposerTarget = homeTargetProjection.selectedAgentTarget;
   const composerProviderTargets =
@@ -391,8 +339,9 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
             target.agentTargetId === agentTargetId
           );
         }) ?? viewModel.rail.selectedAgentTarget);
+  const handoffSourceSessionId = viewModel.rail.activeConversationId;
   const stableHandoffConversation = useOptionalStableEventCallback(
-    onHandoffConversation && viewModel.rail.activeConversationId !== null
+    onHandoffConversation && handoffSourceSessionId !== null
       ? (target: (typeof composerHandoffProviderTargets)[number]) =>
           onHandoffConversation({
             agentTargetId: target.agentTargetId ?? target.targetId,
@@ -405,26 +354,39 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
               workspaceId: viewModel.shell.workspaceId
             }),
             provider: target.provider,
+            sourceAgentSessionId: handoffSourceSessionId,
             userProjectPath: handoffProjectPathForConversation(
               viewModel.rail.activeConversation
             )
           })
       : undefined
   );
-  const bottomDockComposerProps = useMemo<AgentComposerProps>(
+  const composerInputHistoryProps = useAgentGUIComposerInputHistoryProps({
+    actions,
+    conversation,
+    enabled: sessionInputHistoryEnabled,
+    pendingPrependScrollAnchorRef,
+    timelineRef,
+    viewModel
+  });
+  const baseComposerProps = useMemo<AgentComposerProps>(
     () => ({
       workspaceId: viewModel.shell.workspaceId,
+      agentSessionId: viewModel.rail.activeConversationId,
       workspacePath: viewModel.shell.workspacePath,
       currentUserId: viewModel.shell.currentUserId,
       provider: composerProvider,
       slashStatus,
       onSlashStatusOpen,
+      onSlashStatusClose,
+      onSlashStatusRefresh,
       usage: viewModel.detail.usage,
       draftContent: viewModel.composer.draftContent,
       engagement: composerEngagement,
       draftScopeKey: resolveAgentComposerDraftScopeKey({
         agentSessionId: viewModel.rail.activeConversationId
       }),
+      ...composerInputHistoryProps,
       availableCommands: viewModel.composer.availableCommands,
       hasCompactableContext: viewModel.detail.hasSentUserMessage,
       compactSupported: viewModel.composer.compactSupported,
@@ -440,22 +402,33 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         viewModel.rail.activeConversationId === null
           ? selectHomeComposerAgentTargetAndFocus
           : undefined,
-      disabled: composerDisabled || timelineInteractionLocked,
+      gate: composerGate,
+      presentationEditorDisabled: timelineInteractionLocked,
       disabledReason: composerDisabledReason,
-      submitDisabled: submitDisabled || timelineInteractionLocked,
+      presentationSubmitDisabled:
+        timelineInteractionLocked ||
+        tuttiWorkflowDock.phase?.kind === "materializing",
+      tuttiModeActive: viewModel.composer.isTuttiModeActive,
+      tuttiModeUpdating: viewModel.composer.isTuttiModeUpdating,
+      tuttiModeEffect: viewModel.composer.tuttiModeEffect,
+      tuttiModeSpeed: viewModel.composer.tuttiModeSpeed,
       composerSettings: viewModel.composer.composerSettings,
       queueStatus: viewModel.composer.queueStatus,
       queuedPrompts: viewModel.composer.queuedPrompts,
       drainingQueuedPromptId: viewModel.composer.drainingQueuedPromptId,
       workspaceAppIcons,
-      canQueueWhileBusy,
       placeholder: viewModel.detail.hasSentUserMessage
         ? labels.followupPlaceholder
         : labels.initialPlaceholder,
-      showStopButton,
-      previewMode,
+      showStopButton:
+        showStopButton || tuttiWorkflowComposer.tuttiExecutionActive,
+      draftOverridesStopButton: tuttiWorkflowComposer.tuttiExecutionActive,
+      stopDisabled:
+        stopDisabled ||
+        timelineInteractionLocked ||
+        tuttiWorkflowComposer.tuttiExecutionStopping,
       workspaceReferencePickerOpen,
-      referenceProvenanceFilter,
+      referenceProvenanceFilters,
       // Plan decisions replace the composer; approval / ask-user embed here.
       activePrompt: composerActivePrompt,
       activePromptKeyboardShortcutsEnabled: isActive,
@@ -467,17 +440,52 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       handoffLabel: labels.handoffConversation,
       handoffMenuLabel: labels.handoffConversationMenu,
       isInterrupting:
-        viewModel.composer.isInterrupting || viewModel.composer.isCancelPending,
+        viewModel.composer.isInterrupting ||
+        viewModel.composer.isCancelPending ||
+        tuttiWorkflowComposer.tuttiExecutionStopping,
+      modelConsult:
+        viewModel.rail.activeConversationId !== null
+          ? {
+              agentSessionId: viewModel.rail.activeConversationId,
+              lastAssistantMessageText: latestAssistantMessageText(conversation)
+            }
+          : null,
       isSendingTurn: isComposerSending,
-      isSubmittingPrompt: viewModel.interaction.isRespondingApproval,
+      isSubmittingPrompt: isInteractionPending,
       uiLanguage,
       labels: composerLabels,
       workspaceUserProjectI18n,
       capabilityMenuState,
+      capabilityControlsReadOnly,
       onDraftContentChange: updateDraftContent,
       onProjectPathChange: updateSelectedProjectPath,
       onSettingsChange: updateComposerSettings,
-      onSubmit: submitPromptAndScrollToBottom,
+      onRetryComposerOptions: retryComposerOptions,
+      // Only wire Tutti Mode callbacks when the host explicitly enables the
+      // capability. Composer footer chip keys off callback presence; slash/badge
+      // use capabilityMenuState.tuttiMode.enabled === true (fail closed).
+      onTuttiModeChange:
+        capabilityMenuState?.tuttiMode?.enabled === true
+          ? tuttiWorkflowComposer.setTuttiModeActiveAndSettleReview
+          : undefined,
+      onTuttiModeEffectChange:
+        capabilityMenuState?.tuttiMode?.enabled === true
+          ? setTuttiModeEffect
+          : undefined,
+      onTuttiModeSpeedChange:
+        capabilityMenuState?.tuttiMode?.enabled === true
+          ? setTuttiModeSpeed
+          : undefined,
+      onPlanIssueBudgetPresetChange: updatePlanIssueBudgetPreset,
+      onSubmit: tuttiWorkflowComposer.submitPromptOrDecidePlan,
+      onSubmitEmpty: tuttiWorkflowComposer.planReviewSendActive
+        ? tuttiWorkflowComposer.acceptPendingPlan
+        : undefined,
+      emptySubmitLabel:
+        tuttiWorkflowComposer.planReviewSendActive &&
+        tuttiWorkflowComposer.planReviewPreferencesDiverged
+          ? labels.tuttiModePlanSendRequestChanges
+          : undefined,
       onSubmitGuidance: submitGuidancePromptAndScrollToBottom,
       onPromptImagesUnsupported: showPromptImagesUnsupported,
       onSendQueuedPromptNext: sendQueuedPromptNext,
@@ -489,21 +497,24 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onLinkAction: stableLinkAction,
       onHandoffConversation: stableHandoffConversation,
       onRequestWorkspaceReferences: stableRequestWorkspaceReferences,
-      resolveDroppedFileReferences,
+      resolveExternalPromptEntries,
+      prepareExternalPromptFiles,
+      promptAssetLimit,
       selectProjectDirectory: stableSelectProjectDirectory,
-      onRequestGitBranches: stableRequestGitBranches,
-      contextMentionProviders
+      onRequestGitBranches: stableRequestGitBranches
     }),
     [
-      canQueueWhileBusy,
       capabilityMenuState,
+      capabilityControlsReadOnly,
       canSwitchComposerProvider,
-      composerDisabled,
       composerDisabledReason,
+      composerGate,
       composerFocusRequestSequence,
       composerEngagement,
+      composerInputHistoryProps,
       composerHandoffProviderTargets,
       composerLabels,
+      conversation,
       composerProviderTargets,
       composerSelectedProviderTarget,
       timelineInteractionLocked,
@@ -520,21 +531,33 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels,
       stableHandoffConversation,
       onSlashStatusOpen,
-      previewMode,
+      onSlashStatusClose,
+      onSlashStatusRefresh,
       workspaceReferencePickerOpen,
       composerActivePrompt,
       editQueuedPrompt,
       onCapabilitySettingsRequest,
-      contextMentionProviders,
       removeQueuedPrompt,
-      resolveDroppedFileReferences,
+      resolveExternalPromptEntries,
+      prepareExternalPromptFiles,
+      promptAssetLimit,
       sendQueuedPromptNext,
       showPromptImagesUnsupported,
       showStopButton,
+      stopDisabled,
       slashStatus,
-      submitDisabled,
+      setTuttiModeActive,
+      setTuttiModeEffect,
+      setTuttiModeSpeed,
       submitInteractivePrompt,
-      submitPromptAndScrollToBottom,
+      tuttiWorkflowComposer.submitPromptOrDecidePlan,
+      tuttiWorkflowComposer.planReviewSendActive,
+      tuttiWorkflowComposer.tuttiExecutionActive,
+      tuttiWorkflowComposer.tuttiExecutionStopping,
+      tuttiWorkflowComposer.planReviewPreferencesDiverged,
+      tuttiWorkflowDock.phase?.kind,
+      labels.tuttiModePlanSendRequestChanges,
+      tuttiWorkflowComposer.acceptPendingPlan,
       submitGuidancePromptAndScrollToBottom,
       uiLanguage,
       stableLinkAction,
@@ -542,6 +565,8 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       stableSelectProjectDirectory,
       stableRequestWorkspaceReferences,
       updateComposerSettings,
+      retryComposerOptions,
+      updatePlanIssueBudgetPreset,
       updateDraftContent,
       updateSelectedProjectPath,
       viewModel.rail.activeConversationId,
@@ -557,18 +582,38 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       viewModel.composer.drainingQueuedPromptId,
       viewModel.detail.hasSentUserMessage,
       viewModel.composer.isInterrupting,
+      viewModel.composer.isTuttiModeActive,
+      viewModel.composer.isTuttiModeUpdating,
+      viewModel.composer.tuttiModeEffect,
+      viewModel.composer.tuttiModeSpeed,
       viewModel.interaction.isRespondingApproval,
+      composerGate.runtime.status,
       viewModel.composer.promptImagesSupported,
       viewModel.composer.queueStatus,
       viewModel.composer.queuedPrompts,
       viewModel.detail.usage,
       viewModel.shell.workspaceId,
       viewModel.shell.workspacePath,
-      referenceProvenanceFilter,
+      referenceProvenanceFilters,
       workspaceUserProjectI18n,
       workspaceAppIcons,
       selectHomeComposerAgentTargetAndFocus
     ]
+  );
+  const composerFooterAccessory =
+    renderComposerFooterAccessory?.({
+      agentSessionId: baseComposerProps.agentSessionId,
+      isActive: baseComposerProps.isActive,
+      isSendingTurn: baseComposerProps.isSendingTurn,
+      isSubmittingPrompt: baseComposerProps.isSubmittingPrompt,
+      selectedAgentTarget: baseComposerProps.selectedAgentTarget
+    }) ?? null;
+  const bottomDockComposerProps = useMemo<AgentComposerProps>(
+    () => ({
+      ...baseComposerProps,
+      footerAccessory: composerFooterAccessory
+    }),
+    [baseComposerProps, composerFooterAccessory]
   );
   const emptyHeroComposerProps = useMemo<AgentComposerProps>(
     () => ({
@@ -598,7 +643,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     viewModel.composer.queuedPrompts.map((prompt) => prompt.id).join(","),
     viewModel.composer.queueStatus,
     viewModel.composer.drainingQueuedPromptId ?? "",
-    viewModel.interaction.isRespondingApproval ? "1" : "0"
+    isInteractionPending ? "1" : "0"
   ].join("|");
 
   useEffect(() => {
@@ -606,123 +651,118 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   }, [activePromptRequestId]);
 
   const {
+    followEndMode,
     isTimelineScrolledToBottom,
     isTimelineScrolledToTop,
+    setVirtualScrollController,
     scrollTimelineToBottom
   } = useAgentGUIDetailScroll({
     actions,
     bottomDockRef,
     bottomDockStoreRevision,
     conversation,
+    isVisible,
     pendingPrependScrollAnchorRef,
     showTimelineSkeleton,
     submittedPromptScrollConversationRef,
     timelineConversationId,
+    timelineContentRef,
     timelineRef,
     timelineScrollAnchorRef,
+    virtualScrollControllerRef,
     viewModel
   });
-
+  const homeContent = !hasActiveConversation ? (
+    shouldRenderProviderUnavailableState && disabledProviderTarget ? (
+      <>
+        {renderProviderUnavailableState?.({
+          provider: disabledProviderTarget.provider,
+          providerLabel:
+            labels.emptyProviderForProvider?.(
+              disabledProviderTarget.provider
+            ) ??
+            resolveAgentGuiWorkbenchProviderLabel(
+              disabledProviderTarget.provider
+            ),
+          target: disabledProviderTarget,
+          iconUrl: resolveAgentGUIHeroIconUrl(disabledProviderTarget.provider),
+          unavailableReason: disabledProviderTarget.unavailableReason ?? null
+        })}
+      </>
+    ) : (
+      <AgentGUIEmptyHomePane
+        isActive={isActive}
+        isVisible={isVisible}
+        provider={emptyHeroProvider}
+        providerReadinessGate={emptyProviderReadinessGate}
+        showAllProviders={viewModel.rail.conversationFilter.kind === "all"}
+        agentTargets={composerProviderTargets}
+        selectedAgentTarget={composerSelectedProviderTarget}
+        onProviderSelect={
+          canSwitchComposerProvider &&
+          viewModel.rail.activeConversationId === null
+            ? selectHomeComposerAgentTargetAndFocus
+            : undefined
+        }
+        noticeChrome={homeNoticeChrome}
+        isRespondingApproval={isInteractionPending}
+        onSubmitApprovalOption={submitApprovalOption}
+        onRetryActivation={retryActivation}
+        onAuthLogin={authLogin}
+        onContinueInNewConversation={continueInNewConversation}
+        chromeLabels={chromeLabels}
+        composerProps={emptyHeroComposerProps}
+        labels={labels}
+        suggestions={labels.homeSuggestions ?? EMPTY_HOME_SUGGESTIONS}
+        suggestionsCloseLabel={labels.homeSuggestionsClose}
+        onSelectSuggestion={handleSelectHomeSuggestion}
+        onSelectSuggestionAction={handleHomeSuggestionAction}
+      />
+    )
+  ) : null;
+  const forkedFrom =
+    viewModel.detail.conversationDetail?.session.forkedFrom ?? null;
   return (
     <main
       className={styles.detail}
       aria-busy={timelineInteractionLocked || undefined}
+      data-agent-session-id={viewModel.rail.activeConversationId ?? undefined}
       inert={timelineInteractionLocked}
     >
       {viewModel.operations.goalClearNoticeSequence > 0 ? (
         <AgentGUIContentToast
           key={viewModel.operations.goalClearNoticeSequence}
-          insetTopPx={hideDetailHeader ? 16 : 80}
+          insetTopPx={16}
           message={labels.goalRemoved}
         />
       ) : null}
-      <AgentGUIDetailHeader
-        activeConversation={viewModel.rail.activeConversation}
-        hidden={hideDetailHeader}
+      <AgentGUIDetailTimeline
+        availableSkills={viewModel.composer.availableSkills}
+        conversation={conversation}
+        conversationFlowEmpty={conversationFlowEmpty}
+        conversationFlowLabels={conversationFlowLabels}
+        followEndMode={followEndMode}
+        forkedFrom={forkedFrom}
+        hasActiveConversation={hasActiveConversation}
+        homeContent={homeContent}
+        isLoadingOlderMessages={viewModel.detail.isLoadingOlderMessages}
+        isVisible={isVisible}
+        isTimelineScrolledToTop={isTimelineScrolledToTop}
         labels={labels}
-        uiLanguage={uiLanguage}
-        previewMode={previewMode}
+        onAuthLogin={authLogin}
+        onForkThroughTurn={forkHandler}
+        onOpenForkSourceSession={openForkSourceSession}
+        forkThroughTurnPendingTurnIds={
+          viewModel.operations.forkThroughTurnPendingTurnIds
+        }
+        onLinkAction={stableLinkAction}
+        showTimelineSkeleton={showTimelineSkeleton}
+        showUnavailableChatEmpty={showUnavailableChatEmpty}
+        timelineContentRef={timelineContentRef}
+        timelineRef={timelineRef}
+        virtualScrollControllerRef={setVirtualScrollController}
+        workspaceAppIcons={workspaceAppIcons}
       />
-      <ScrollArea
-        scrollbarMode="native"
-        className="flex h-full min-h-0 flex-1 flex-col [&_[data-orientation=vertical][data-slot=scroll-area-scrollbar]]:opacity-100"
-        viewportRef={timelineRef}
-        viewportTestId="agent-gui-timeline"
-        viewportClassName={`${styles.timeline} ${
-          hasActiveConversation
-            ? styles.timelineWithComposer
-            : styles.timelineCentered
-        } ${
-          !isTimelineScrolledToTop ? styles.timelineScrolledFromTop : ""
-        } ${showUnavailableChatEmpty ? styles.timelineUnavailableChatEmpty : ""}`.trim()}
-        viewportContentStyle={AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE}
-      >
-        {!hasActiveConversation ? (
-          shouldRenderProviderUnavailableState && disabledProviderTarget ? (
-            <>
-              {renderProviderUnavailableState?.({
-                provider: disabledProviderTarget.provider,
-                providerLabel:
-                  labels.emptyProviderForProvider?.(
-                    disabledProviderTarget.provider
-                  ) ??
-                  resolveAgentGuiWorkbenchProviderLabel(
-                    disabledProviderTarget.provider
-                  ),
-                target: disabledProviderTarget,
-                iconUrl: resolveAgentGUIHeroIconUrl(
-                  disabledProviderTarget.provider
-                ),
-                unavailableReason:
-                  disabledProviderTarget.unavailableReason ?? null
-              })}
-            </>
-          ) : (
-            <AgentGUIEmptyHomePane
-              provider={emptyHeroProvider}
-              providerReadinessGate={emptyProviderReadinessGate}
-              showAllProviders={
-                viewModel.rail.conversationFilter.kind === "all"
-              }
-              agentTargets={composerProviderTargets}
-              selectedAgentTarget={composerSelectedProviderTarget}
-              onProviderSelect={
-                canSwitchComposerProvider &&
-                viewModel.rail.activeConversationId === null
-                  ? selectHomeComposerAgentTargetAndFocus
-                  : undefined
-              }
-              inlineNoticeChrome={inlineNoticeChrome}
-              isRespondingApproval={viewModel.interaction.isRespondingApproval}
-              onSubmitApprovalOption={submitApprovalOption}
-              onRetryActivation={retryActivation}
-              onAuthLogin={authLogin}
-              onContinueInNewConversation={continueInNewConversation}
-              chromeLabels={chromeLabels}
-              composerProps={emptyHeroComposerProps}
-              labels={labels}
-              suggestions={labels.homeSuggestions ?? EMPTY_HOME_SUGGESTIONS}
-              suggestionsCloseLabel={labels.homeSuggestionsClose}
-              onSelectSuggestion={handleSelectHomeSuggestion}
-              onSelectSuggestionAction={handleHomeSuggestionAction}
-            />
-          )
-        ) : (
-          <AgentGUIConversationTimelinePane
-            conversation={conversation}
-            isLoading={showTimelineSkeleton}
-            isLoadingOlderMessages={viewModel.detail.isLoadingOlderMessages}
-            loadingLabel={labels.loadingConversation}
-            empty={conversationFlowEmpty}
-            onLinkAction={stableLinkAction}
-            onAuthLogin={authLogin}
-            availableSkills={viewModel.composer.availableSkills}
-            workspaceAppIcons={workspaceAppIcons}
-            previewMode={previewMode}
-            labels={conversationFlowLabels}
-          />
-        )}
-      </ScrollArea>
       {hasActiveConversation ? (
         <AgentGUIBottomDockPane
           bottomDockRef={bottomDockRef}
@@ -733,7 +773,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           bottomDockReplacementPrompt={bottomDockReplacementPrompt}
           composerProps={bottomDockComposerProps}
           inlineNoticeChrome={inlineNoticeChrome}
-          isRespondingApproval={viewModel.interaction.isRespondingApproval}
+          isRespondingApproval={isInteractionPending}
           sessionChrome={sessionChrome}
           keyboardShortcutsEnabled={isActive}
           chromeLabels={chromeLabels}
@@ -741,6 +781,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           promptLabels={interactivePromptLabels}
           onSubmitApprovalOption={submitApprovalOption}
           onRetryActivation={retryActivation}
+          onRetryInlineNotice={retryInlineNotice}
           onAuthLogin={authLogin}
           onContinueInNewConversation={continueInNewConversation}
           onSubmitBottomDockInteractivePrompt={
@@ -748,6 +789,10 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           }
           onGoalControl={goalControl}
           goalPauseSupported={viewModel.composer.goalPauseSupported}
+          tuttiWorkflowDock={tuttiWorkflowDock}
+          tuttiWorkflowDockLabels={labels.tuttiWorkflowDock}
+          tuttiPlanPanelLabels={labels.tuttiModePlanPanel}
+          tuttiPlanIssuePanelLabels={labels.tuttiModePlanIssuePanel}
         />
       ) : null}
     </main>

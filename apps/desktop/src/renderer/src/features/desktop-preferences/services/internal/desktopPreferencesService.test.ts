@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type {
   DesktopPreferencesStateResponse,
-  TuttidEventStreamClient,
-  TuttidClient
+  TuttidClient,
+  TuttidEventStreamClient
 } from "@tutti-os/client-tuttid-ts";
 import type { DesktopLocale } from "@shared/i18n";
 import {
@@ -14,6 +14,12 @@ import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
 import type { DesktopPreferencesClient } from "./adapters/desktopPreferencesClient.ts";
 import { createDesktopPreferencesClient as createDesktopPreferencesFeatureClient } from "./adapters/desktopPreferencesClient.ts";
 import { DesktopPreferencesService } from "./desktopPreferencesService.ts";
+
+type Preferences = DesktopPreferencesStateResponse["preferences"];
+type PublishedPreferences = Omit<
+  Preferences,
+  "agentComposerDefaultsByAgentTarget"
+>;
 
 test("DesktopPreferencesService bootstraps persisted preferences before connecting the event stream", async () => {
   const appliedLocales: DesktopLocale[] = [];
@@ -28,11 +34,13 @@ test("DesktopPreferencesService bootstraps persisted preferences before connecti
       return {
         initialized: true,
         preferences: {
+          agentCliUpdateCheckEnabled: true,
           agentComposerDefaultsByProvider: {},
           agentComposerDefaultsByAgentTarget: {},
           agentGuiConversationRailCollapsedByProvider: {},
           agentConversationDetailMode: "coding",
           agentDockLayout: "unified",
+          deletedAgentConversationRetentionDays: 30,
           appCatalogChannel: "production",
           browserUseConnectionMode: "isolated",
           defaultAgentProvider: "codex",
@@ -52,24 +60,11 @@ test("DesktopPreferencesService bootstraps persisted preferences before connecti
       };
     }
   });
-
-  const service = new DesktopPreferencesService({
-    applyLocale(locale) {
-      appliedLocales.push(locale);
-    },
-    applyTheme(theme) {
-      appliedThemes.push(theme);
-    },
-    client,
-    initialLocale: "en",
-    initialTheme: {
-      appearance: "light",
-      source: "system"
-    },
-    resolveTheme
+  const { service, cleanup } = await createServiceHarness({
+    appliedLocales,
+    appliedThemes,
+    client
   });
-
-  await settle();
 
   assert.deepEqual(calls, ["get", "connect"]);
   assert.equal(service.store.locale, "zh-CN");
@@ -78,63 +73,27 @@ test("DesktopPreferencesService bootstraps persisted preferences before connecti
     source: "dark"
   });
   assert.deepEqual(appliedLocales, ["zh-CN"]);
-  assert.deepEqual(appliedThemes, [
-    {
-      appearance: "dark",
-      source: "dark"
-    }
-  ]);
-
-  service.dispose();
+  assert.deepEqual(appliedThemes, [{ appearance: "dark", source: "dark" }]);
+  cleanup();
 });
 
 test("DesktopPreferencesService keeps in-memory defaults when preferences are not initialized", async () => {
-  const updatedRequests: DesktopPreferencesStateResponse["preferences"][] = [];
+  const updatedRequests: Preferences[] = [];
   const client = createDesktopPreferencesClient({
     getDesktopPreferences: async () => ({
       initialized: false,
-      preferences: {
-        agentComposerDefaultsByProvider: {},
-        agentComposerDefaultsByAgentTarget: {},
-        agentGuiConversationRailCollapsedByProvider: {},
-        agentConversationDetailMode: "coding",
-        agentDockLayout: "unified",
-        appCatalogChannel: "production",
-        browserUseConnectionMode: "isolated",
-        defaultAgentProvider: "codex",
-        featureFlags: {},
-        workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
-        dockIconStyle: "default",
-        dockPlacement: "bottom",
-        fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-        locale: "en",
-        minimizeAnimation: "scale",
-        sleepPreventionMode: "never",
-        showAppDeveloperSources: false,
-        themeSource: "system",
-        updateChannel: "stable",
-        updatePolicy: "prompt"
-      }
+      preferences: createPreferences()
     }),
     updateDesktopPreferences: async (request) => {
       updatedRequests.push(request.preferences);
       return request.preferences;
     }
   });
-
-  const service = new DesktopPreferencesService({
-    applyLocale() {},
-    applyTheme() {},
+  const { service, cleanup } = await createServiceHarness({
     client,
     initialLocale: "zh-CN",
-    initialTheme: {
-      appearance: "dark",
-      source: "dark"
-    },
-    resolveTheme
+    initialTheme: { appearance: "dark", source: "dark" }
   });
-
-  await settle();
 
   assert.deepEqual(updatedRequests, []);
   assert.equal(service.store.locale, "zh-CN");
@@ -142,98 +101,52 @@ test("DesktopPreferencesService keeps in-memory defaults when preferences are no
     appearance: "dark",
     source: "dark"
   });
-
-  service.dispose();
+  cleanup();
 });
 
-test("DesktopPreferencesService ignores persisted legacy provider defaults when publishing new writes", async () => {
+test("DesktopPreferencesService discards persisted legacy provider defaults from new writes", async () => {
   const client = createDesktopPreferencesClient({
     getDesktopPreferences: async () => ({
       initialized: true,
-      preferences: {
-        agentComposerDefaultsByProvider: {
-          codex: {
-            model: "gpt-5"
-          }
-        },
-        agentComposerDefaultsByAgentTarget: {},
-        agentGuiConversationRailCollapsedByProvider: {},
-        agentConversationDetailMode: "coding",
-        agentDockLayout: "unified",
-        appCatalogChannel: "production",
-        browserUseConnectionMode: "isolated",
-        defaultAgentProvider: "codex",
-        dockIconStyle: "default",
-        dockPlacement: "bottom",
-        featureFlags: {},
-        fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-        locale: "en",
-        minimizeAnimation: "scale",
-        sleepPreventionMode: "never",
-        showAppDeveloperSources: false,
-        themeSource: "system",
-        updateChannel: "stable",
-        updatePolicy: "prompt",
-        workbenchShortcuts: defaultDesktopWorkbenchShortcuts
-      }
+      preferences: createPreferences({
+        agentCliUpdateCheckEnabled: true,
+        agentComposerDefaultsByProvider: { codex: { model: "gpt-5" } }
+      })
     })
   });
-
-  const service = new DesktopPreferencesService({
-    applyLocale() {},
-    applyTheme() {},
-    client,
-    initialLocale: "en",
-    initialTheme: {
-      appearance: "light",
-      source: "system"
-    },
-    resolveTheme
-  });
-
-  await settle();
+  const { service, cleanup } = await createServiceHarness({ client });
 
   assert.deepEqual(service.store.agentComposerDefaultsByProvider, {});
-
-  const savedLocalePromise = service.setLocale("zh-CN");
-  assert.deepEqual(
-    client.updatedRequests.at(-1)?.agentComposerDefaultsByProvider,
-    {}
-  );
-  client.emitDesktopPreferencesUpdated(client.updatedRequests.at(-1)!);
-
-  await savedLocalePromise;
-  service.dispose();
+  const savedLocale = service.setLocale("zh-CN");
+  assert.deepEqual(client.updatedRequests, [
+    createPublishedPreferences({
+      agentCliUpdateCheckEnabled: true,
+      agentComposerDefaultsByProvider: {},
+      locale: "zh-CN"
+    })
+  ]);
+  client.emitDesktopPreferencesUpdated(createPreferences({ locale: "zh-CN" }));
+  await savedLocale;
+  cleanup();
 });
 
 test("DesktopPreferencesService publishes locale writes and converges on the authoritative event", async () => {
   const appliedLocales: DesktopLocale[] = [];
   const client = createDesktopPreferencesClient({});
-
-  const service = new DesktopPreferencesService({
-    applyLocale(locale) {
-      appliedLocales.push(locale);
-    },
-    applyTheme() {},
-    client,
-    initialLocale: "en",
-    initialTheme: {
-      appearance: "light",
-      source: "system"
-    },
-    resolveTheme
+  const { service, cleanup } = await createServiceHarness({
+    appliedLocales,
+    client
   });
 
-  await settle();
-  const savedLocalePromise = service.setLocale("zh-CN");
-
+  const savedLocale = service.setLocale("zh-CN");
   assert.deepEqual(client.updatedRequests, [
     {
+      agentCliUpdateCheckEnabled: true,
       agentComposerDefaultsByProvider: {},
-      agentComposerDefaultsByAgentTarget: {},
       agentGuiConversationRailCollapsedByProvider: {},
       agentConversationDetailMode: "coding",
       agentDockLayout: "unified",
+      deletedAgentConversationRetentionDays: 30,
       appCatalogChannel: "production",
       browserUseConnectionMode: "isolated",
       defaultAgentProvider: "codex",
@@ -255,11 +168,13 @@ test("DesktopPreferencesService publishes locale writes and converges on the aut
   assert.deepEqual(appliedLocales, ["zh-CN"]);
 
   client.emitDesktopPreferencesUpdated({
+    agentCliUpdateCheckEnabled: true,
     agentComposerDefaultsByProvider: {},
     agentComposerDefaultsByAgentTarget: {},
     agentGuiConversationRailCollapsedByProvider: {},
     agentConversationDetailMode: "coding",
     agentDockLayout: "unified",
+    deletedAgentConversationRetentionDays: 30,
     appCatalogChannel: "production",
     browserUseConnectionMode: "isolated",
     defaultAgentProvider: "codex",
@@ -277,10 +192,9 @@ test("DesktopPreferencesService publishes locale writes and converges on the aut
     updatePolicy: "prompt"
   });
 
-  assert.equal(await savedLocalePromise, "zh-CN");
+  assert.equal(await savedLocale, "zh-CN");
   assert.equal(service.store.locale, "zh-CN");
-
-  service.dispose();
+  cleanup();
 });
 
 test("DesktopPreferencesService rolls back optimistic locale changes when publishing fails", async () => {
@@ -290,118 +204,60 @@ test("DesktopPreferencesService rolls back optimistic locale changes when publis
       throw new Error("publish failed");
     }
   });
-
-  const service = new DesktopPreferencesService({
-    applyLocale(locale) {
-      appliedLocales.push(locale);
-    },
-    applyTheme() {},
-    client,
-    initialLocale: "en",
-    initialTheme: {
-      appearance: "light",
-      source: "system"
-    },
-    resolveTheme
+  const { service, cleanup } = await createServiceHarness({
+    appliedLocales,
+    client
   });
 
-  await settle();
   await assert.rejects(() => service.setLocale("zh-CN"), /publish failed/);
   assert.equal(service.store.locale, "en");
   assert.deepEqual(appliedLocales, ["zh-CN", "en"]);
+  cleanup();
+});
 
-  service.dispose();
+test("DesktopPreferencesService publishes deleted conversation retention changes", async () => {
+  const client = createDesktopPreferencesClient({});
+  const { service, cleanup } = await createServiceHarness({ client });
+
+  const saved = service.setDeletedAgentConversationRetentionDays(15);
+  assert.equal(service.store.deletedAgentConversationRetentionDays, 15);
+  assert.equal(
+    client.updatedRequests[0]?.deletedAgentConversationRetentionDays,
+    15
+  );
+  client.emitDesktopPreferencesUpdated(
+    createPreferences({ deletedAgentConversationRetentionDays: 15 })
+  );
+
+  assert.equal(await saved, 15);
+  assert.equal(
+    service.store.changingDeletedAgentConversationRetentionDays,
+    null
+  );
+  cleanup();
 });
 
 test("DesktopPreferencesService applies authoritative theme updates from the event stream", async () => {
   const appliedThemes: DesktopThemeState[] = [];
   const client = createDesktopPreferencesClient({});
-
-  const service = new DesktopPreferencesService({
-    applyLocale() {},
-    applyTheme(theme) {
-      appliedThemes.push(theme);
-    },
-    client,
-    initialLocale: "en",
-    initialTheme: {
-      appearance: "light",
-      source: "system"
-    },
-    resolveTheme
+  const { service, cleanup } = await createServiceHarness({
+    appliedThemes,
+    client
   });
 
-  await settle();
-  const savedThemePromise = service.setThemeSource("dark");
-
+  const savedTheme = service.setThemeSource("dark");
   assert.deepEqual(client.updatedRequests, [
-    {
-      agentComposerDefaultsByProvider: {},
-      agentComposerDefaultsByAgentTarget: {},
-      agentGuiConversationRailCollapsedByProvider: {},
-      agentConversationDetailMode: "coding",
-      agentDockLayout: "unified",
-      appCatalogChannel: "production",
-      browserUseConnectionMode: "isolated",
-      defaultAgentProvider: "codex",
-      featureFlags: {},
-      workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
-      dockIconStyle: "default",
-      dockPlacement: "bottom",
-      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-      locale: "en",
-      minimizeAnimation: "scale",
-      sleepPreventionMode: "never",
-      showAppDeveloperSources: false,
-      themeSource: "dark",
-      updateChannel: "stable",
-      updatePolicy: "prompt"
-    }
+    createPublishedPreferences({ themeSource: "dark" })
   ]);
-  assert.deepEqual(service.store.theme, {
-    appearance: "dark",
-    source: "dark"
-  });
-  assert.deepEqual(appliedThemes, [
-    {
-      appearance: "dark",
-      source: "dark"
-    }
-  ]);
+  assert.deepEqual(service.store.theme, { appearance: "dark", source: "dark" });
+  assert.deepEqual(appliedThemes, [{ appearance: "dark", source: "dark" }]);
+  client.emitDesktopPreferencesUpdated(
+    createPreferences({ themeSource: "dark" })
+  );
 
-  client.emitDesktopPreferencesUpdated({
-    agentComposerDefaultsByProvider: {},
-    agentComposerDefaultsByAgentTarget: {},
-    agentGuiConversationRailCollapsedByProvider: {},
-    agentConversationDetailMode: "coding",
-    agentDockLayout: "unified",
-    appCatalogChannel: "production",
-    browserUseConnectionMode: "isolated",
-    defaultAgentProvider: "codex",
-    featureFlags: {},
-    workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
-    dockIconStyle: "default",
-    dockPlacement: "bottom",
-    fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-    locale: "en",
-    minimizeAnimation: "scale",
-    sleepPreventionMode: "never",
-    showAppDeveloperSources: false,
-    themeSource: "dark",
-    updateChannel: "stable",
-    updatePolicy: "prompt"
-  });
-
-  assert.deepEqual(await savedThemePromise, {
-    appearance: "dark",
-    source: "dark"
-  });
-  assert.deepEqual(service.store.theme, {
-    appearance: "dark",
-    source: "dark"
-  });
-
-  service.dispose();
+  assert.deepEqual(await savedTheme, { appearance: "dark", source: "dark" });
+  assert.deepEqual(service.store.theme, { appearance: "dark", source: "dark" });
+  cleanup();
 });
 
 test("DesktopPreferencesService rolls back optimistic theme changes when publishing fails", async () => {
@@ -411,546 +267,179 @@ test("DesktopPreferencesService rolls back optimistic theme changes when publish
       throw new Error("publish failed");
     }
   });
-
-  const service = new DesktopPreferencesService({
-    applyLocale() {},
-    applyTheme(theme) {
-      appliedThemes.push(theme);
-    },
-    client,
-    initialLocale: "en",
-    initialTheme: {
-      appearance: "light",
-      source: "system"
-    },
-    resolveTheme
+  const { service, cleanup } = await createServiceHarness({
+    appliedThemes,
+    client
   });
 
-  await settle();
   await assert.rejects(() => service.setThemeSource("dark"), /publish failed/);
-
   assert.deepEqual(service.store.theme, {
     appearance: "light",
     source: "system"
   });
   assert.deepEqual(appliedThemes, [
-    {
-      appearance: "dark",
-      source: "dark"
-    },
-    {
-      appearance: "light",
-      source: "system"
-    }
+    { appearance: "dark", source: "dark" },
+    { appearance: "light", source: "system" }
   ]);
-
-  service.dispose();
+  cleanup();
 });
 
-test("DesktopPreferencesService publishes prevent sleep preference writes", async () => {
-  const client = createDesktopPreferencesClient({});
-
-  const service = new DesktopPreferencesService({
-    applyLocale() {},
-    applyTheme() {},
-    client,
-    initialLocale: "en",
-    initialTheme: {
-      appearance: "light",
-      source: "system"
+test("DesktopPreferencesService publishes scalar preference writes", async (t) => {
+  const cases = [
+    {
+      name: "agent CLI update check",
+      request: createPublishedPreferences({
+        agentCliUpdateCheckEnabled: false
+      }),
+      event: createPreferences({ agentCliUpdateCheckEnabled: false }),
+      publish: (service: DesktopPreferencesService) =>
+        service.setAgentCliUpdateCheckEnabled(false),
+      read: (service: DesktopPreferencesService) =>
+        service.store.agentCliUpdateCheckEnabled,
+      expected: false
     },
-    resolveTheme
-  });
+    {
+      name: "sleep prevention mode",
+      request: createPublishedPreferences({
+        sleepPreventionMode: "whileAgentRunning"
+      }),
+      event: createPreferences({ sleepPreventionMode: "whileAgentRunning" }),
+      publish: (service: DesktopPreferencesService) =>
+        service.setSleepPreventionMode("whileAgentRunning"),
+      read: (service: DesktopPreferencesService) =>
+        service.store.sleepPreventionMode,
+      expected: "whileAgentRunning"
+    },
+    {
+      name: "update policy",
+      request: createPublishedPreferences({ updatePolicy: "auto" }),
+      event: createPreferences({ updatePolicy: "auto" }),
+      publish: (service: DesktopPreferencesService) =>
+        service.setUpdatePolicy("auto"),
+      read: (service: DesktopPreferencesService) => service.store.updatePolicy,
+      expected: "auto"
+    },
+    {
+      name: "update channel",
+      request: createPublishedPreferences({ updateChannel: "rc" }),
+      event: createPreferences({ updateChannel: "rc" }),
+      publish: (service: DesktopPreferencesService) =>
+        service.setUpdateChannel("rc"),
+      read: (service: DesktopPreferencesService) => service.store.updateChannel,
+      expected: "rc"
+    },
+    {
+      name: "app catalog channel",
+      request: createPublishedPreferences({ appCatalogChannel: "staging" }),
+      event: createPreferences({ appCatalogChannel: "staging" }),
+      publish: (service: DesktopPreferencesService) =>
+        service.setAppCatalogChannel("staging"),
+      read: (service: DesktopPreferencesService) =>
+        service.store.appCatalogChannel,
+      expected: "staging"
+    },
+    {
+      name: "developer source display",
+      request: createPublishedPreferences({ showAppDeveloperSources: true }),
+      event: createPreferences({ showAppDeveloperSources: true }),
+      publish: (service: DesktopPreferencesService) =>
+        service.setShowAppDeveloperSources(true),
+      read: (service: DesktopPreferencesService) =>
+        service.store.showAppDeveloperSources,
+      expected: true
+    },
+    {
+      name: "dock placement",
+      request: createPublishedPreferences({ dockPlacement: "left" }),
+      event: createPreferences({ dockPlacement: "left" }),
+      publish: (service: DesktopPreferencesService) =>
+        service.setDockPlacement("left"),
+      read: (service: DesktopPreferencesService) => service.store.dockPlacement,
+      expected: "left"
+    }
+  ];
 
-  await settle();
-  const savedPreferencePromise =
-    service.setSleepPreventionMode("whileAgentRunning");
+  for (const scenario of cases) {
+    await t.test(scenario.name, async () => {
+      const client = createDesktopPreferencesClient({});
+      const { service, cleanup } = await createServiceHarness({ client });
+      const savedPreference = scenario.publish(service);
+
+      assert.deepEqual(client.updatedRequests, [scenario.request]);
+      assert.equal(scenario.read(service), scenario.expected);
+      client.emitDesktopPreferencesUpdated(scenario.event);
+      assert.equal(await savedPreference, scenario.expected);
+      assert.equal(scenario.read(service), scenario.expected);
+      cleanup();
+    });
+  }
+});
+
+test("DesktopPreferencesService tracks agent conversation detail mode while publishing", async () => {
+  const client = createDesktopPreferencesClient({});
+  const { service, cleanup } = await createServiceHarness({ client });
+  const savedMode = service.setAgentConversationDetailMode("general");
 
   assert.deepEqual(client.updatedRequests, [
-    {
-      agentComposerDefaultsByProvider: {},
-      agentComposerDefaultsByAgentTarget: {},
-      agentGuiConversationRailCollapsedByProvider: {},
-      agentConversationDetailMode: "coding",
-      agentDockLayout: "unified",
-      appCatalogChannel: "production",
-      browserUseConnectionMode: "isolated",
-      defaultAgentProvider: "codex",
-      featureFlags: {},
-      workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
-      dockIconStyle: "default",
-      dockPlacement: "bottom",
-      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-      locale: "en",
-      minimizeAnimation: "scale",
-      sleepPreventionMode: "whileAgentRunning",
-      showAppDeveloperSources: false,
-      themeSource: "system",
-      updateChannel: "stable",
-      updatePolicy: "prompt"
-    }
+    createPublishedPreferences({ agentConversationDetailMode: "general" })
   ]);
-  assert.equal(service.store.sleepPreventionMode, "whileAgentRunning");
-
-  client.emitDesktopPreferencesUpdated({
-    agentComposerDefaultsByProvider: {},
-    agentComposerDefaultsByAgentTarget: {},
-    agentGuiConversationRailCollapsedByProvider: {},
-    agentConversationDetailMode: "coding",
-    agentDockLayout: "unified",
-    appCatalogChannel: "production",
-    browserUseConnectionMode: "isolated",
-    defaultAgentProvider: "codex",
-    featureFlags: {},
-    workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
-    dockIconStyle: "default",
-    dockPlacement: "bottom",
-    fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-    locale: "en",
-    minimizeAnimation: "scale",
-    sleepPreventionMode: "whileAgentRunning",
-    showAppDeveloperSources: false,
-    themeSource: "system",
-    updateChannel: "stable",
-    updatePolicy: "prompt"
-  });
-
-  assert.equal(await savedPreferencePromise, "whileAgentRunning");
-  assert.equal(service.store.sleepPreventionMode, "whileAgentRunning");
-
-  service.dispose();
-});
-
-test("DesktopPreferencesService publishes update preference writes", async () => {
-  const client = createDesktopPreferencesClient({});
-
-  const service = new DesktopPreferencesService({
-    applyLocale() {},
-    applyTheme() {},
-    client,
-    initialLocale: "en",
-    initialTheme: {
-      appearance: "light",
-      source: "system"
-    },
-    resolveTheme
-  });
-
-  await settle();
-  const savedPreferencePromise = service.setUpdatePolicy("auto");
-
-  assert.deepEqual(client.updatedRequests, [
-    {
-      agentComposerDefaultsByProvider: {},
-      agentComposerDefaultsByAgentTarget: {},
-      agentGuiConversationRailCollapsedByProvider: {},
-      agentConversationDetailMode: "coding",
-      agentDockLayout: "unified",
-      appCatalogChannel: "production",
-      browserUseConnectionMode: "isolated",
-      defaultAgentProvider: "codex",
-      featureFlags: {},
-      workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
-      dockIconStyle: "default",
-      dockPlacement: "bottom",
-      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-      locale: "en",
-      minimizeAnimation: "scale",
-      sleepPreventionMode: "never",
-      showAppDeveloperSources: false,
-      themeSource: "system",
-      updateChannel: "stable",
-      updatePolicy: "auto"
-    }
-  ]);
-  assert.equal(service.store.updatePolicy, "auto");
-
-  client.emitDesktopPreferencesUpdated({
-    agentComposerDefaultsByProvider: {},
-    agentComposerDefaultsByAgentTarget: {},
-    agentGuiConversationRailCollapsedByProvider: {},
-    agentConversationDetailMode: "coding",
-    agentDockLayout: "unified",
-    appCatalogChannel: "production",
-    browserUseConnectionMode: "isolated",
-    defaultAgentProvider: "codex",
-    featureFlags: {},
-    workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
-    dockIconStyle: "default",
-    dockPlacement: "bottom",
-    fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-    locale: "en",
-    minimizeAnimation: "scale",
-    sleepPreventionMode: "never",
-    showAppDeveloperSources: false,
-    themeSource: "system",
-    updateChannel: "stable",
-    updatePolicy: "auto"
-  });
-
-  assert.equal(await savedPreferencePromise, "auto");
-  assert.equal(service.store.updatePolicy, "auto");
-
-  const savedChannelPromise = service.setUpdateChannel("rc");
-  assert.equal(client.updatedRequests.at(-1)?.updateChannel, "rc");
-  client.emitDesktopPreferencesUpdated(client.updatedRequests.at(-1)!);
-
-  assert.equal(await savedChannelPromise, "rc");
-  assert.equal(service.store.updateChannel, "rc");
-
-  service.dispose();
-});
-
-test("DesktopPreferencesService publishes app catalog channel writes", async () => {
-  const client = createDesktopPreferencesClient({});
-  const service = new DesktopPreferencesService({
-    applyLocale() {},
-    applyTheme() {},
-    client,
-    initialLocale: "en",
-    initialTheme: {
-      appearance: "light",
-      source: "system"
-    },
-    resolveTheme
-  });
-  await settle();
-
-  const savedChannelPromise = service.setAppCatalogChannel("staging");
-
-  assert.equal(client.updatedRequests.at(-1)?.appCatalogChannel, "staging");
-  assert.equal(service.store.appCatalogChannel, "staging");
-  client.emitDesktopPreferencesUpdated(client.updatedRequests.at(-1)!);
-
-  assert.equal(await savedChannelPromise, "staging");
-  assert.equal(service.store.appCatalogChannel, "staging");
-
-  service.dispose();
-});
-
-test("DesktopPreferencesService publishes app developer source display writes", async () => {
-  const client = createDesktopPreferencesClient({});
-  const service = new DesktopPreferencesService({
-    applyLocale() {},
-    applyTheme() {},
-    client,
-    initialLocale: "en",
-    initialTheme: {
-      appearance: "light",
-      source: "system"
-    },
-    resolveTheme
-  });
-  await settle();
-
-  const savedShowPromise = service.setShowAppDeveloperSources(true);
-
-  assert.equal(client.updatedRequests.at(-1)?.showAppDeveloperSources, true);
-  assert.equal(service.store.showAppDeveloperSources, true);
-  client.emitDesktopPreferencesUpdated(client.updatedRequests.at(-1)!);
-
-  assert.equal(await savedShowPromise, true);
-  assert.equal(service.store.showAppDeveloperSources, true);
-
-  service.dispose();
-});
-
-test("DesktopPreferencesService publishes agent conversation detail mode writes", async () => {
-  const client = createDesktopPreferencesClient({});
-  const service = new DesktopPreferencesService({
-    applyLocale() {},
-    applyTheme() {},
-    client,
-    initialLocale: "en",
-    initialTheme: {
-      appearance: "light",
-      source: "system"
-    },
-    resolveTheme
-  });
-  await settle();
-
-  const savedModePromise = service.setAgentConversationDetailMode("general");
-
-  assert.equal(
-    client.updatedRequests.at(-1)?.agentConversationDetailMode,
-    "general"
-  );
   assert.equal(service.store.agentConversationDetailMode, "general");
   assert.equal(service.store.changingAgentConversationDetailMode, "general");
-  client.emitDesktopPreferencesUpdated(client.updatedRequests.at(-1)!);
+  client.emitDesktopPreferencesUpdated(
+    createPreferences({ agentConversationDetailMode: "general" })
+  );
 
-  assert.equal(await savedModePromise, "general");
-  assert.equal(service.store.agentConversationDetailMode, "general");
+  assert.equal(await savedMode, "general");
   assert.equal(service.store.changingAgentConversationDetailMode, null);
-
-  service.dispose();
+  cleanup();
 });
 
-test("DesktopPreferencesService publishes dock placement preference writes", async () => {
-  const client = createDesktopPreferencesClient({});
+test("DesktopPreferencesService publishes non-default and explicit default window snapping", async (t) => {
+  for (const snapping of [
+    { enabled: true, shortcutPreset: "commandShiftArrows" as const },
+    { enabled: false, shortcutPreset: "commandArrows" as const }
+  ]) {
+    await t.test(
+      `${snapping.enabled ? "non-default" : "explicit default"} value`,
+      async () => {
+        const client = createDesktopPreferencesClient({});
+        const { service, cleanup } = await createServiceHarness({ client });
+        const savedPreference = service.setWorkbenchWindowSnapping(snapping);
 
-  const service = new DesktopPreferencesService({
-    applyLocale() {},
-    applyTheme() {},
-    client,
-    initialLocale: "en",
-    initialTheme: {
-      appearance: "light",
-      source: "system"
-    },
-    resolveTheme
-  });
-
-  await settle();
-  const savedPreferencePromise = service.setDockPlacement("left");
-
-  assert.deepEqual(client.updatedRequests, [
-    {
-      agentComposerDefaultsByProvider: {},
-      agentComposerDefaultsByAgentTarget: {},
-      agentGuiConversationRailCollapsedByProvider: {},
-      agentConversationDetailMode: "coding",
-      agentDockLayout: "unified",
-      appCatalogChannel: "production",
-      browserUseConnectionMode: "isolated",
-      defaultAgentProvider: "codex",
-      featureFlags: {},
-      workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
-      dockIconStyle: "default",
-      dockPlacement: "left",
-      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-      locale: "en",
-      minimizeAnimation: "scale",
-      sleepPreventionMode: "never",
-      showAppDeveloperSources: false,
-      themeSource: "system",
-      updateChannel: "stable",
-      updatePolicy: "prompt"
-    }
-  ]);
-  assert.equal(service.store.dockPlacement, "left");
-
-  client.emitDesktopPreferencesUpdated({
-    agentComposerDefaultsByProvider: {},
-    agentComposerDefaultsByAgentTarget: {},
-    agentGuiConversationRailCollapsedByProvider: {},
-    agentConversationDetailMode: "coding",
-    agentDockLayout: "unified",
-    appCatalogChannel: "production",
-    browserUseConnectionMode: "isolated",
-    defaultAgentProvider: "codex",
-    featureFlags: {},
-    workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
-    dockIconStyle: "default",
-    dockPlacement: "left",
-    fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-    locale: "en",
-    minimizeAnimation: "scale",
-    sleepPreventionMode: "never",
-    showAppDeveloperSources: false,
-    themeSource: "system",
-    updateChannel: "stable",
-    updatePolicy: "prompt"
-  });
-
-  assert.equal(await savedPreferencePromise, "left");
-  assert.equal(service.store.dockPlacement, "left");
-
-  service.dispose();
-});
-
-test("DesktopPreferencesService publishes workbench window snapping preference writes", async () => {
-  const client = createDesktopPreferencesClient({});
-
-  const service = new DesktopPreferencesService({
-    applyLocale() {},
-    applyTheme() {},
-    client,
-    initialLocale: "en",
-    initialTheme: {
-      appearance: "light",
-      source: "system"
-    },
-    resolveTheme
-  });
-
-  await settle();
-  const savedPreferencePromise = service.setWorkbenchWindowSnapping({
-    enabled: true,
-    shortcutPreset: "commandShiftArrows"
-  });
-
-  assert.deepEqual(client.updatedRequests, [
-    {
-      agentComposerDefaultsByProvider: {},
-      agentComposerDefaultsByAgentTarget: {},
-      agentGuiConversationRailCollapsedByProvider: {},
-      agentConversationDetailMode: "coding",
-      agentDockLayout: "unified",
-      appCatalogChannel: "production",
-      browserUseConnectionMode: "isolated",
-      defaultAgentProvider: "codex",
-      featureFlags: {},
-      workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
-      dockIconStyle: "default",
-      dockPlacement: "bottom",
-      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-      locale: "en",
-      minimizeAnimation: "scale",
-      sleepPreventionMode: "never",
-      showAppDeveloperSources: false,
-      themeSource: "system",
-      updateChannel: "stable",
-      updatePolicy: "prompt",
-      workbenchWindowSnapping: {
-        enabled: true,
-        shortcutPreset: "commandShiftArrows"
+        assert.deepEqual(client.updatedRequests, [
+          createPublishedPreferences({ workbenchWindowSnapping: snapping })
+        ]);
+        assert.deepEqual(service.store.workbenchWindowSnapping, snapping);
+        client.emitDesktopPreferencesUpdated(
+          createPreferences({ workbenchWindowSnapping: snapping })
+        );
+        assert.deepEqual(await savedPreference, snapping);
+        assert.deepEqual(service.store.workbenchWindowSnapping, snapping);
+        cleanup();
       }
-    }
-  ]);
-  assert.deepEqual(service.store.workbenchWindowSnapping, {
-    enabled: true,
-    shortcutPreset: "commandShiftArrows"
-  });
-
-  client.emitDesktopPreferencesUpdated(client.updatedRequests.at(-1)!);
-
-  assert.deepEqual(await savedPreferencePromise, {
-    enabled: true,
-    shortcutPreset: "commandShiftArrows"
-  });
-  assert.deepEqual(service.store.workbenchWindowSnapping, {
-    enabled: true,
-    shortcutPreset: "commandShiftArrows"
-  });
-
-  service.dispose();
+    );
+  }
 });
 
-test("DesktopPreferencesService includes default workbench window snapping when explicitly changed", async () => {
-  const client = createDesktopPreferencesClient({});
-
-  const service = new DesktopPreferencesService({
-    applyLocale() {},
-    applyTheme() {},
-    client,
-    initialLocale: "en",
-    initialTheme: {
-      appearance: "light",
-      source: "system"
-    },
-    resolveTheme
-  });
-
-  await settle();
-  const savedPreferencePromise = service.setWorkbenchWindowSnapping({
-    enabled: false,
-    shortcutPreset: "commandArrows"
-  });
-
-  assert.deepEqual(client.updatedRequests.at(-1)?.workbenchWindowSnapping, {
-    enabled: false,
-    shortcutPreset: "commandArrows"
-  });
-
-  client.emitDesktopPreferencesUpdated(client.updatedRequests.at(-1)!);
-
-  assert.deepEqual(await savedPreferencePromise, {
-    enabled: false,
-    shortcutPreset: "commandArrows"
-  });
-  assert.deepEqual(service.store.workbenchWindowSnapping, {
-    enabled: false,
-    shortcutPreset: "commandArrows"
-  });
-
-  service.dispose();
-});
-
-test("DesktopPreferencesService applies HTTP-confirmed authoritative preferences to store", async () => {
+test("DesktopPreferencesService refreshes from GET after the authoritative event timeout", async () => {
   const tuttidClient = createSequentialTuttidClient([
-    {
-      initialized: true,
-      preferences: {
-        agentComposerDefaultsByProvider: {},
-        agentComposerDefaultsByAgentTarget: {},
-        agentGuiConversationRailCollapsedByProvider: {},
-        agentConversationDetailMode: "coding",
-        agentDockLayout: "unified",
-        appCatalogChannel: "production",
-        browserUseConnectionMode: "isolated",
-        defaultAgentProvider: "codex",
-        featureFlags: {},
-        workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
-        dockIconStyle: "default",
-        dockPlacement: "bottom",
-        fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-        locale: "en",
-        minimizeAnimation: "scale",
-        sleepPreventionMode: "never",
-        showAppDeveloperSources: false,
-        themeSource: "system",
-        updateChannel: "stable",
-        updatePolicy: "prompt"
-      }
-    },
-    {
-      initialized: true,
-      preferences: {
-        agentComposerDefaultsByProvider: {},
-        agentComposerDefaultsByAgentTarget: {},
-        agentGuiConversationRailCollapsedByProvider: {},
-        agentConversationDetailMode: "coding",
-        agentDockLayout: "unified",
-        appCatalogChannel: "production",
-        browserUseConnectionMode: "isolated",
-        defaultAgentProvider: "codex",
-        featureFlags: {},
-        workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
-        dockIconStyle: "default",
-        dockPlacement: "bottom",
-        fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-        locale: "zh-CN",
-        minimizeAnimation: "scale",
-        sleepPreventionMode: "never",
-        showAppDeveloperSources: false,
-        themeSource: "system",
-        updateChannel: "stable",
-        updatePolicy: "prompt"
-      }
-    }
+    { initialized: true, preferences: createPreferences() },
+    { initialized: true, preferences: createPreferences({ locale: "zh-CN" }) }
   ]);
   const client = createDesktopPreferencesFeatureClient(
     tuttidClient,
     createFallbackConfirmingEventStreamClient(),
-    {
-      authoritativeEventTimeoutMs: 0
-    }
+    { authoritativeEventTimeoutMs: 0 }
   );
   const appliedLocales: DesktopLocale[] = [];
   const appliedThemes: DesktopThemeState[] = [];
-
-  const service = new DesktopPreferencesService({
-    applyLocale(locale) {
-      appliedLocales.push(locale);
-    },
-    applyTheme(theme) {
-      appliedThemes.push(theme);
-    },
-    client,
-    initialLocale: "en",
-    initialTheme: {
-      appearance: "light",
-      source: "system"
-    },
-    resolveTheme
+  const { service, cleanup } = await createServiceHarness({
+    appliedLocales,
+    appliedThemes,
+    client
   });
 
-  await settle();
-  const savedLocale = await service.setLocale("zh-CN");
-
-  assert.equal(savedLocale, "zh-CN");
+  assert.equal(await service.setLocale("zh-CN"), "zh-CN");
   assert.equal(service.store.locale, "zh-CN");
   assert.deepEqual(service.store.theme, {
     appearance: "light",
@@ -959,165 +448,52 @@ test("DesktopPreferencesService applies HTTP-confirmed authoritative preferences
   assert.deepEqual(appliedLocales, ["zh-CN"]);
   assert.deepEqual(appliedThemes, []);
   assert.equal(tuttidClient.getDesktopPreferencesCalls, 2);
-
-  service.dispose();
+  cleanup();
 });
 
-test("DesktopPreferencesService keeps featureFlags store identity when an authoritative snapshot leaves flags unchanged", async () => {
+test("DesktopPreferencesService keeps featureFlags identity when authoritative flags are unchanged", async () => {
   const initialFeatureFlags = { "lab.enabled": true };
   const client = createDesktopPreferencesClient({
     getDesktopPreferences: async () => ({
       initialized: true,
-      preferences: {
-        agentComposerDefaultsByProvider: {},
-        agentGuiConversationRailCollapsedByProvider: {},
-        agentConversationDetailMode: "coding",
+      preferences: createPreferences({
         agentDockLayout: "legacySplit",
-        appCatalogChannel: "production",
-        browserUseConnectionMode: "isolated",
-        defaultAgentProvider: "codex",
-        featureFlags: initialFeatureFlags,
-        workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
-        dockIconStyle: "default",
-        dockPlacement: "bottom",
-        fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-        locale: "en",
-        minimizeAnimation: "scale",
-        sleepPreventionMode: "never",
-        showAppDeveloperSources: false,
-        themeSource: "system",
-        updateChannel: "stable",
-        updatePolicy: "prompt"
-      }
+        deletedAgentConversationRetentionDays: 30,
+        featureFlags: initialFeatureFlags
+      })
     })
   });
-
-  const service = new DesktopPreferencesService({
-    applyLocale() {},
-    applyTheme() {},
-    client,
-    initialLocale: "en",
-    initialTheme: {
-      appearance: "light",
-      source: "system"
-    },
-    resolveTheme
-  });
-
-  await settle();
+  const { service, cleanup } = await createServiceHarness({ client });
   const featureFlagsBeforeUpdate = service.store.featureFlags;
-  assert.deepEqual(featureFlagsBeforeUpdate, { "lab.enabled": true });
 
-  client.emitDesktopPreferencesUpdated({
-    agentComposerDefaultsByProvider: {},
-    agentGuiConversationRailCollapsedByProvider: {},
-    agentConversationDetailMode: "coding",
-    agentDockLayout: "legacySplit",
-    appCatalogChannel: "production",
-    browserUseConnectionMode: "isolated",
-    defaultAgentProvider: "codex",
-    featureFlags: { "lab.enabled": true },
-    workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
-    dockIconStyle: "default",
-    dockPlacement: "bottom",
-    fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-    locale: "zh-CN",
-    minimizeAnimation: "scale",
-    sleepPreventionMode: "never",
-    showAppDeveloperSources: false,
-    themeSource: "system",
-    updateChannel: "stable",
-    updatePolicy: "prompt"
-  });
+  client.emitDesktopPreferencesUpdated(
+    createPreferences({
+      agentDockLayout: "legacySplit",
+      deletedAgentConversationRetentionDays: 30,
+      featureFlags: { "lab.enabled": true },
+      locale: "zh-CN"
+    })
+  );
 
   assert.equal(service.store.locale, "zh-CN");
   assert.ok(
-    desktopFeatureFlagsEqual(service.store.featureFlags, {
-      "lab.enabled": true
-    })
+    desktopFeatureFlagsEqual(service.store.featureFlags, initialFeatureFlags)
   );
-  assert.equal(
-    service.store.featureFlags,
-    featureFlagsBeforeUpdate,
-    "featureFlags reference should stay identical when the authoritative snapshot leaves the flags unchanged"
-  );
-
-  service.dispose();
+  assert.equal(service.store.featureFlags, featureFlagsBeforeUpdate);
+  cleanup();
 });
 
-test("DesktopPreferencesService rejects mismatched App Center source confirmations", async () => {
+test("DesktopPreferencesService rejects mismatched App Center source confirmations and rolls back", async () => {
   const tuttidClient = createSequentialTuttidClient([
-    {
-      initialized: true,
-      preferences: {
-        agentComposerDefaultsByProvider: {},
-        agentComposerDefaultsByAgentTarget: {},
-        agentGuiConversationRailCollapsedByProvider: {},
-        agentConversationDetailMode: "coding",
-        agentDockLayout: "unified",
-        appCatalogChannel: "production",
-        browserUseConnectionMode: "isolated",
-        defaultAgentProvider: "codex",
-        featureFlags: {},
-        workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
-        dockIconStyle: "default",
-        dockPlacement: "bottom",
-        fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-        locale: "en",
-        minimizeAnimation: "scale",
-        sleepPreventionMode: "never",
-        showAppDeveloperSources: false,
-        themeSource: "system",
-        updateChannel: "stable",
-        updatePolicy: "prompt"
-      }
-    },
-    {
-      initialized: true,
-      preferences: {
-        agentComposerDefaultsByProvider: {},
-        agentComposerDefaultsByAgentTarget: {},
-        agentGuiConversationRailCollapsedByProvider: {},
-        agentConversationDetailMode: "coding",
-        agentDockLayout: "unified",
-        appCatalogChannel: "production",
-        browserUseConnectionMode: "isolated",
-        defaultAgentProvider: "codex",
-        featureFlags: {},
-        workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
-        dockIconStyle: "default",
-        dockPlacement: "bottom",
-        fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-        locale: "en",
-        minimizeAnimation: "scale",
-        sleepPreventionMode: "never",
-        showAppDeveloperSources: false,
-        themeSource: "system",
-        updateChannel: "stable",
-        updatePolicy: "prompt"
-      }
-    }
+    { initialized: true, preferences: createPreferences() },
+    { initialized: true, preferences: createPreferences() }
   ]);
   const client = createDesktopPreferencesFeatureClient(
     tuttidClient,
     createFallbackConfirmingEventStreamClient(),
-    {
-      authoritativeEventTimeoutMs: 0
-    }
+    { authoritativeEventTimeoutMs: 0 }
   );
-  const service = new DesktopPreferencesService({
-    applyLocale() {},
-    applyTheme() {},
-    client,
-    initialLocale: "en",
-    initialTheme: {
-      appearance: "light",
-      source: "system"
-    },
-    resolveTheme
-  });
-
-  await settle();
+  const { service, cleanup } = await createServiceHarness({ client });
 
   await assert.rejects(
     () => service.setAppCatalogChannel("staging"),
@@ -1125,26 +501,24 @@ test("DesktopPreferencesService rejects mismatched App Center source confirmatio
   );
   assert.equal(service.store.appCatalogChannel, "production");
   assert.equal(tuttidClient.getDesktopPreferencesCalls, 2);
-
-  service.dispose();
+  cleanup();
 });
 
-test("DesktopPreferencesService remembers agent composer defaults per agent target", async () => {
-  const client = createDesktopPreferencesClient({});
-  const service = new DesktopPreferencesService({
-    applyLocale() {},
-    applyTheme() {},
-    client,
-    initialLocale: "en",
-    initialTheme: {
-      appearance: "light",
-      source: "system"
-    },
-    resolveTheme
+test("DesktopPreferencesService remembers trimmed and nullable composer defaults per agent target", async () => {
+  const patches: Array<{ agentTargetId: string; patch: unknown }> = [];
+  const deferredPublishes: Array<() => void> = [];
+  let deferPublishes = false;
+  const client = createDesktopPreferencesClient({
+    patchAgentComposerDefaultsForTarget: async (input) => {
+      patches.push({ agentTargetId: input.agentTargetId, patch: input.patch });
+      if (deferPublishes) {
+        await new Promise<void>((resolve) => deferredPublishes.push(resolve));
+      }
+    }
   });
-  await settle();
+  const { service, cleanup } = await createServiceHarness({ client });
 
-  const rememberPromise = service.rememberAgentComposerDefaultsForAgentTarget(
+  const firstResult = await service.rememberAgentComposerDefaultsForAgentTarget(
     " local:codex ",
     {
       model: " gpt-5 ",
@@ -1153,20 +527,89 @@ test("DesktopPreferencesService remembers agent composer defaults per agent targ
       speed: " fast "
     }
   );
-
-  assert.deepEqual(client.updatedRequests.at(-1), {
-    agentComposerDefaultsByProvider: {},
-    agentComposerDefaultsByAgentTarget: {
-      "local:codex": {
+  assert.deepEqual(firstResult, {
+    acknowledgedFields: [
+      "model",
+      "permissionModeId",
+      "reasoningEffort",
+      "speed"
+    ],
+    supersededFields: []
+  });
+  assert.deepEqual(patches, [
+    {
+      agentTargetId: "local:codex",
+      patch: {
         model: "gpt-5",
         permissionModeId: "full-access",
         reasoningEffort: "high",
         speed: "fast"
       }
+    }
+  ]);
+  assert.equal(client.updatedRequests.length, 0);
+
+  const secondResult =
+    await service.rememberAgentComposerDefaultsForAgentTarget("local:codex", {
+      model: "gpt-5-codex",
+      speed: null
+    });
+  assert.deepEqual(secondResult, {
+    acknowledgedFields: ["model", "speed"],
+    supersededFields: []
+  });
+  assert.deepEqual(patches.at(-1), {
+    agentTargetId: "local:codex",
+    patch: { model: "gpt-5-codex", speed: null }
+  });
+  assert.equal(client.updatedRequests.length, 0);
+
+  deferPublishes = true;
+  const superseded = service.rememberAgentComposerDefaultsForAgentTarget(
+    "local:codex",
+    { permissionModeId: "ask" }
+  );
+  const latest = service.rememberAgentComposerDefaultsForAgentTarget(
+    "local:codex",
+    { permissionModeId: "full-access" }
+  );
+  assert.deepEqual(await superseded, {
+    acknowledgedFields: [],
+    supersededFields: ["permissionModeId"]
+  });
+  deferredPublishes[0]!();
+  await settle();
+  deferredPublishes[1]!();
+  assert.deepEqual(await latest, {
+    acknowledgedFields: ["permissionModeId"],
+    supersededFields: []
+  });
+  assert.equal(client.updatedRequests.length, 0);
+  cleanup();
+});
+
+test("DesktopPreferencesService merges conversation rail collapsed state per provider", async () => {
+  const requests: Preferences[] = [];
+  const client = createDesktopPreferencesClient({
+    updateDesktopPreferences: async (request) => {
+      requests.push(request.preferences);
+      return request.preferences;
+    }
+  });
+  const { service, cleanup } = await createServiceHarness({ client });
+  await service.rememberAgentGuiConversationRailCollapsed("codex", true);
+  await service.rememberAgentGuiConversationRailCollapsed("claude-code", true);
+
+  assert.deepEqual(requests.at(-1), {
+    agentCliUpdateCheckEnabled: true,
+    agentComposerDefaultsByProvider: {},
+    agentGuiConversationRailCollapsedByProvider: {
+      codex: true,
+      "claude-code": true
     },
-    agentGuiConversationRailCollapsedByProvider: {},
     agentConversationDetailMode: "coding",
     agentDockLayout: "unified",
+    deletedAgentConversationRetentionDays: 30,
     appCatalogChannel: "production",
     browserUseConnectionMode: "isolated",
     defaultAgentProvider: "codex",
@@ -1183,121 +626,119 @@ test("DesktopPreferencesService remembers agent composer defaults per agent targ
     updateChannel: "stable",
     updatePolicy: "prompt"
   });
-  client.emitDesktopPreferencesUpdated(client.updatedRequests.at(-1)!);
-
-  await rememberPromise;
-  assert.deepEqual(service.store.agentComposerDefaultsByAgentTarget, {
-    "local:codex": {
-      model: "gpt-5",
-      permissionModeId: "full-access",
-      reasoningEffort: "high",
-      speed: "fast"
-    }
+  assert.deepEqual(service.store.agentGuiConversationRailCollapsedByProvider, {
+    codex: true,
+    "claude-code": true
   });
-
-  const partialRememberPromise =
-    service.rememberAgentComposerDefaultsForAgentTarget("local:codex", {
-      model: "gpt-5-codex",
-      // An explicit null clears the remembered value (user reset the field);
-      // untouched fields stay intact.
-      speed: null
-    });
-  const mergedRequest = client.updatedRequests.at(-1)!;
-  assert.deepEqual(mergedRequest.agentComposerDefaultsByAgentTarget, {
-    "local:codex": {
-      model: "gpt-5-codex",
-      permissionModeId: "full-access",
-      reasoningEffort: "high"
-    }
-  });
-  client.emitDesktopPreferencesUpdated(mergedRequest);
-
-  await partialRememberPromise;
-  assert.deepEqual(service.store.agentComposerDefaultsByAgentTarget, {
-    "local:codex": {
-      model: "gpt-5-codex",
-      permissionModeId: "full-access",
-      reasoningEffort: "high"
-    }
-  });
-
-  service.dispose();
+  cleanup();
 });
 
-test("DesktopPreferencesService remembers agent GUI conversation rail collapsed state per provider", async () => {
-  const client = createDesktopPreferencesClient({});
+interface FakeDesktopPreferencesClient extends DesktopPreferencesClient {
+  emitDesktopPreferencesUpdated(preferences: Preferences): void;
+  updatedRequests: Preferences[];
+}
+
+function createPreferences(overrides: Partial<Preferences> = {}): Preferences {
+  return {
+    agentCliUpdateCheckEnabled: true,
+    agentComposerDefaultsByProvider: {},
+    agentComposerDefaultsByAgentTarget: {},
+    agentGuiConversationRailCollapsedByProvider: {},
+    agentConversationDetailMode: "coding",
+    agentDockLayout: "unified",
+    deletedAgentConversationRetentionDays: 30,
+    appCatalogChannel: "production",
+    browserUseConnectionMode: "isolated",
+    defaultAgentProvider: "codex",
+    featureFlags: {},
+    workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
+    dockIconStyle: "default",
+    dockPlacement: "bottom",
+    fileDefaultOpenersByExtension: { html: "defaultBrowser" },
+    locale: "en",
+    minimizeAnimation: "scale",
+    sleepPreventionMode: "never",
+    showAppDeveloperSources: false,
+    themeSource: "system",
+    updateChannel: "stable",
+    updatePolicy: "prompt",
+    ...overrides
+  };
+}
+
+function createPublishedPreferences(
+  overrides: Partial<PublishedPreferences> = {}
+): PublishedPreferences {
+  return {
+    agentCliUpdateCheckEnabled: true,
+    agentComposerDefaultsByProvider: {},
+    agentGuiConversationRailCollapsedByProvider: {},
+    agentConversationDetailMode: "coding",
+    agentDockLayout: "unified",
+    deletedAgentConversationRetentionDays: 30,
+    appCatalogChannel: "production",
+    browserUseConnectionMode: "isolated",
+    defaultAgentProvider: "codex",
+    featureFlags: {},
+    workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
+    dockIconStyle: "default",
+    dockPlacement: "bottom",
+    fileDefaultOpenersByExtension: { html: "defaultBrowser" },
+    locale: "en",
+    minimizeAnimation: "scale",
+    sleepPreventionMode: "never",
+    showAppDeveloperSources: false,
+    themeSource: "system",
+    updateChannel: "stable",
+    updatePolicy: "prompt",
+    ...overrides
+  };
+}
+
+async function createServiceHarness(
+  options: {
+    appliedLocales?: DesktopLocale[];
+    appliedThemes?: DesktopThemeState[];
+    client?: DesktopPreferencesClient;
+    initialLocale?: DesktopLocale;
+    initialTheme?: DesktopThemeState;
+  } = {}
+) {
+  const client = options.client ?? createDesktopPreferencesClient({});
   const service = new DesktopPreferencesService({
-    applyLocale() {},
-    applyTheme() {},
+    applyLocale(locale) {
+      options.appliedLocales?.push(locale);
+    },
+    applyTheme(theme) {
+      options.appliedThemes?.push(theme);
+    },
     client,
-    initialLocale: "en",
-    initialTheme: {
+    initialLocale: options.initialLocale ?? "en",
+    initialTheme: options.initialTheme ?? {
       appearance: "light",
       source: "system"
     },
     resolveTheme
   });
   await settle();
-
-  const rememberPromise = service.rememberAgentGuiConversationRailCollapsed(
-    "codex",
-    true
-  );
-
-  assert.deepEqual(client.updatedRequests.at(-1), {
-    agentComposerDefaultsByProvider: {},
-    agentComposerDefaultsByAgentTarget: {},
-    agentGuiConversationRailCollapsedByProvider: {
-      codex: true
-    },
-    agentConversationDetailMode: "coding",
-    agentDockLayout: "unified",
-    appCatalogChannel: "production",
-    browserUseConnectionMode: "isolated",
-    defaultAgentProvider: "codex",
-    featureFlags: {},
-    workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
-    dockIconStyle: "default",
-    dockPlacement: "bottom",
-    fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-    locale: "en",
-    minimizeAnimation: "scale",
-    sleepPreventionMode: "never",
-    showAppDeveloperSources: false,
-    themeSource: "system",
-    updateChannel: "stable",
-    updatePolicy: "prompt"
-  });
-  client.emitDesktopPreferencesUpdated(client.updatedRequests.at(-1)!);
-
-  await rememberPromise;
-  assert.deepEqual(service.store.agentGuiConversationRailCollapsedByProvider, {
-    codex: true
-  });
-
-  service.dispose();
-});
-
-interface FakeDesktopPreferencesClient extends DesktopPreferencesClient {
-  emitDesktopPreferencesUpdated(
-    preferences: DesktopPreferencesStateResponse["preferences"]
-  ): void;
-  updatedRequests: DesktopPreferencesStateResponse["preferences"][];
+  return {
+    client,
+    service,
+    cleanup() {
+      service.dispose();
+    }
+  };
 }
 
 function createDesktopPreferencesClient(
   overrides: Partial<DesktopPreferencesClient>
 ): FakeDesktopPreferencesClient {
-  const listeners = new Set<
-    (preferences: DesktopPreferencesStateResponse["preferences"]) => void
-  >();
-  const updatedRequests: DesktopPreferencesStateResponse["preferences"][] = [];
+  const listeners = new Set<(preferences: Preferences) => void>();
+  const updatedRequests: Preferences[] = [];
   const pendingUpdates = new Set<{
     reject: (error: Error) => void;
-    request: DesktopPreferencesStateResponse["preferences"];
-    resolve: (
-      preferences: DesktopPreferencesStateResponse["preferences"]
-    ) => void;
+    request: Preferences;
+    resolve: (preferences: Preferences) => void;
   }>();
 
   return {
@@ -1312,104 +753,65 @@ function createDesktopPreferencesClient(
       pendingUpdates.clear();
     },
     emitDesktopPreferencesUpdated(preferences) {
-      for (const listener of listeners) {
-        listener(preferences);
-      }
-
+      for (const listener of listeners) listener(preferences);
       for (const pendingUpdate of [...pendingUpdates]) {
-        if (
-          JSON.stringify(
-            pendingUpdate.request.agentComposerDefaultsByProvider
-          ) !== JSON.stringify(preferences.agentComposerDefaultsByProvider) ||
-          JSON.stringify(
-            pendingUpdate.request.agentGuiConversationRailCollapsedByProvider
-          ) !==
-            JSON.stringify(
-              preferences.agentGuiConversationRailCollapsedByProvider
-            ) ||
-          pendingUpdate.request.agentConversationDetailMode !==
-            preferences.agentConversationDetailMode ||
-          pendingUpdate.request.agentDockLayout !==
-            preferences.agentDockLayout ||
-          pendingUpdate.request.browserUseConnectionMode !==
-            preferences.browserUseConnectionMode ||
-          pendingUpdate.request.appCatalogChannel !==
-            preferences.appCatalogChannel ||
-          pendingUpdate.request.locale !== preferences.locale ||
-          pendingUpdate.request.defaultAgentProvider !==
-            preferences.defaultAgentProvider ||
-          pendingUpdate.request.dockIconStyle !== preferences.dockIconStyle ||
-          pendingUpdate.request.dockPlacement !== preferences.dockPlacement ||
-          pendingUpdate.request.sleepPreventionMode !==
-            preferences.sleepPreventionMode ||
-          pendingUpdate.request.showAppDeveloperSources !==
-            preferences.showAppDeveloperSources ||
-          pendingUpdate.request.themeSource !== preferences.themeSource ||
-          pendingUpdate.request.updateChannel !== preferences.updateChannel ||
-          pendingUpdate.request.updatePolicy !== preferences.updatePolicy ||
-          JSON.stringify(pendingUpdate.request.workbenchWindowSnapping) !==
-            JSON.stringify(preferences.workbenchWindowSnapping)
-        ) {
+        if (!preferencesConfirmRequest(pendingUpdate.request, preferences))
           continue;
-        }
-
         pendingUpdates.delete(pendingUpdate);
         pendingUpdate.resolve(preferences);
       }
     },
     getDesktopPreferences: async () => ({
       initialized: true,
-      preferences: {
-        agentComposerDefaultsByProvider: {},
-        agentComposerDefaultsByAgentTarget: {},
-        agentGuiConversationRailCollapsedByProvider: {},
-        agentConversationDetailMode: "coding",
-        agentDockLayout: "unified",
-        appCatalogChannel: "production",
-        browserUseConnectionMode: "isolated",
-        defaultAgentProvider: "codex",
-        featureFlags: {},
-        workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
-        dockIconStyle: "default",
-        dockPlacement: "bottom",
-        fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-        locale: "en",
-        minimizeAnimation: "scale",
-        sleepPreventionMode: "never",
-        showAppDeveloperSources: false,
-        themeSource: "system",
-        updateChannel: "stable",
-        updatePolicy: "prompt"
-      }
+      preferences: createPreferences()
     }),
     updateDesktopPreferences: async (request) => {
       updatedRequests.push(request.preferences);
-      return await new Promise<DesktopPreferencesStateResponse["preferences"]>(
-        (resolve, reject) => {
-          pendingUpdates.add({
-            reject,
-            request: request.preferences,
-            resolve
-          });
-        }
-      );
+      return await new Promise<Preferences>((resolve, reject) => {
+        pendingUpdates.add({ reject, request: request.preferences, resolve });
+      });
     },
     updatedRequests,
     subscribeToDesktopPreferencesUpdated(listener) {
       listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
+      return () => listeners.delete(listener);
     },
-    ...overrides
+    ...overrides,
+    patchAgentComposerDefaultsForTarget:
+      overrides.patchAgentComposerDefaultsForTarget ?? (async () => {})
   };
 }
 
+function preferencesConfirmRequest(
+  request: Preferences,
+  preferences: Preferences
+): boolean {
+  const fields = [
+    "agentComposerDefaultsByProvider",
+    "agentGuiConversationRailCollapsedByProvider",
+    "agentConversationDetailMode",
+    "agentDockLayout",
+    "appCatalogChannel",
+    "browserUseConnectionMode",
+    "defaultAgentProvider",
+    "dockIconStyle",
+    "dockPlacement",
+    "locale",
+    "sleepPreventionMode",
+    "showAppDeveloperSources",
+    "themeSource",
+    "updateChannel",
+    "updatePolicy",
+    "workbenchWindowSnapping"
+  ] as const;
+  return fields.every(
+    (field) =>
+      JSON.stringify(request[field]) === JSON.stringify(preferences[field])
+  );
+}
+
 function resolveTheme(source: DesktopThemeSource): DesktopThemeState {
-  return {
-    appearance: source === "dark" ? "dark" : "light",
-    source
-  };
+  return { appearance: source === "dark" ? "dark" : "light", source };
 }
 
 function createSequentialTuttidClient(
@@ -1417,13 +819,9 @@ function createSequentialTuttidClient(
 ): Pick<TuttidClient, "getDesktopPreferences"> & {
   getDesktopPreferencesCalls: number;
 } {
-  assert.ok(
-    responses.length > 0,
-    "createSequentialTuttidClient requires at least one response."
-  );
+  assert.ok(responses.length > 0);
   let getDesktopPreferencesCalls = 0;
-  const fallbackResponse = responses[responses.length - 1]!;
-
+  const fallbackResponse = responses.at(-1)!;
   return {
     get getDesktopPreferencesCalls() {
       return getDesktopPreferencesCalls;
@@ -1445,19 +843,15 @@ function createFallbackConfirmingEventStreamClient(): TuttidEventStreamClient {
       version: 1;
     }) => void
   >();
-
   return {
     connect: async () => {},
-    dispose: () => {
-      listeners.clear();
-    },
+    dispose: () => listeners.clear(),
     async publishIntent(_topic, _payload) {},
     subscribe(topic, listener) {
       assert.equal(topic, "preferences.desktop.updated");
       listeners.add(listener as Parameters<typeof listeners.add>[0]);
-      return () => {
-        listeners.delete(listener as Parameters<typeof listeners.add>[0]);
-      };
+      return () =>
+        listeners.delete(listener as Parameters<typeof listeners.delete>[0]);
     },
     subscribeConnectionState() {
       return () => {};

@@ -2,6 +2,7 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
+import { buildLimitedGithubReleaseBody } from "./lib/githubReleaseBody.mjs";
 
 const SECTION_START = "<!-- tutti-desktop-release-summary:start -->";
 const SECTION_END = "<!-- tutti-desktop-release-summary:end -->";
@@ -57,9 +58,10 @@ function renderReleaseSummarySection(summary) {
 
 function buildUpdatedReleaseBody({ existingBody, summary }) {
   const cleanedBody = removeManagedSection(existingBody);
-  return [renderReleaseSummarySection(summary), "", cleanedBody, ""]
-    .join("\n")
-    .trimStart();
+  return buildLimitedGithubReleaseBody({
+    existingBody: cleanedBody,
+    leadingSections: [renderReleaseSummarySection(summary)]
+  });
 }
 
 async function main() {

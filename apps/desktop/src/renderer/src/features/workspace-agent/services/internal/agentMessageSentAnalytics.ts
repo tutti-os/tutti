@@ -4,6 +4,7 @@ import type { IReporterService } from "../../../analytics/services/reporterServi
 export interface AgentMessageSentTracker {
   track(input: {
     agentSessionId: string;
+    clientSubmitId?: string;
     isQueued?: boolean;
     prompt: string;
     provider: string;
@@ -15,8 +16,16 @@ export function createAgentMessageSentTracker(input: {
   reporterService?: Pick<IReporterService, "trackEvents">;
 }): AgentMessageSentTracker {
   const messageCountsByAgentSessionId = new Map<string, number>();
+  const reportedClientSubmitIds = new Set<string>();
   return {
     async track(message) {
+      const clientSubmitId = message.clientSubmitId?.trim() ?? "";
+      if (clientSubmitId) {
+        if (reportedClientSubmitIds.has(clientSubmitId)) {
+          return;
+        }
+        reportedClientSubmitIds.add(clientSubmitId);
+      }
       const conversationIndex =
         (messageCountsByAgentSessionId.get(message.agentSessionId) ?? 0) + 1;
       messageCountsByAgentSessionId.set(

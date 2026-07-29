@@ -41,7 +41,6 @@ export function useWorkbenchHostRuntime({
   > & {
     missionControlEnabled: boolean;
   }) {
-  const [externalStateRevision, bumpExternalStateRevision] = useState(0);
   const [, bumpHydrationRevision] = useState(0);
   const hostSession = useMemo(() => {
     logWorkbenchHostDebug("create-session", debugDiagnostics, {
@@ -86,7 +85,6 @@ export function useWorkbenchHostRuntime({
     () =>
       missionControlEnabled && !isHydrating
         ? createWorkbenchHostMissionControlAdapter({
-            activateNode: hostSession.activateNode.bind(hostSession),
             controller: hostSession.controller
           })
         : null,
@@ -148,19 +146,8 @@ export function useWorkbenchHostRuntime({
     hostSession.reconcileProjectedNodes(projectedNodes ?? []);
   }, [hostSession, projectedNodes]);
 
-  useEffect(() => {
-    if (!externalStateSource?.subscribe) {
-      return undefined;
-    }
-
-    return externalStateSource.subscribe(() => {
-      bumpExternalStateRevision((revision) => revision + 1);
-    });
-  }, [externalStateSource, workspaceId]);
-
   return {
     chromeContext,
-    externalStateRevision,
     hostI18n,
     isHydrating,
     hostSession,

@@ -8,12 +8,22 @@ import (
 )
 
 type Repository = agentstore.Repository
+type SessionTurnSummaryReader = agentstore.SessionTurnSummaryReader
 
 type ClearSessionsResult = agentstore.ClearSessionsResult
+type PurgeDeletedSessionsInput = agentstore.PurgeDeletedSessionsInput
+type PurgedSession = agentstore.PurgedSession
+type PurgeDeletedSessionsResult = agentstore.PurgeDeletedSessionsResult
 type ListSessionSectionDeletionCandidatesInput = agentstore.ListSessionSectionDeletionCandidatesInput
 type SessionSectionDeletionCandidates = agentstore.SessionSectionDeletionCandidates
 type DeleteSessionsBatchInput = agentstore.DeleteSessionsBatchInput
+type DeleteSessionsPlan = agentstore.DeleteSessionsPlan
 type DeleteSessionsBatchResult = agentstore.DeleteSessionsBatchResult
+type DeleteSessionResult = agentstore.DeleteSessionResult
+type TransactionDelta = agentstore.TransactionDelta
+type TransactionMutation = agentstore.TransactionMutation
+
+const MutationEntitySession = agentstore.MutationEntitySession
 
 type MessageOrder = agentstore.MessageOrder
 
@@ -33,6 +43,10 @@ type GeneratedFileTurnList = agentstore.GeneratedFileTurnList
 type ListSessionSectionInput = agentstore.ListSessionSectionInput
 
 type ListSessionSectionsInput = agentstore.ListSessionSectionsInput
+
+type ListSessionsPageInput = agentstore.ListSessionsPageInput
+
+type SessionListPage = agentstore.SessionListPage
 
 type SessionSectionPage = agentstore.SessionSectionPage
 
@@ -54,6 +68,7 @@ func SplitSessionRuntimeContext(runtimeContext map[string]any) (SessionMetadata,
 }
 
 type SessionStateReport = agentstore.SessionStateReport
+type RailSection = agentstore.RailSection
 
 type StateReportResult = agentstore.StateReportResult
 
@@ -73,6 +88,11 @@ type MessageSemantics = agentstore.MessageSemantics
 type MessagePage = agentstore.MessagePage
 
 type Turn = agentstore.Turn
+type SessionTurnCursor = agentstore.SessionTurnCursor
+type ListSessionTurnSummariesInput = agentstore.ListSessionTurnSummariesInput
+type SessionTurnSummary = agentstore.SessionTurnSummary
+type SessionTurnSummaryPage = agentstore.SessionTurnSummaryPage
+type CapabilityReference = agentstore.CapabilityReference
 
 type TurnTransition = agentstore.TurnTransition
 type RootProviderTurnTransition = agentstore.RootProviderTurnTransition
@@ -110,6 +130,12 @@ type ListClaimableGoalControlOperationsInput = agentstore.ListClaimableGoalContr
 type ClaimGoalControlOperationInput = agentstore.ClaimGoalControlOperationInput
 type ReleaseGoalControlOperationInput = agentstore.ReleaseGoalControlOperationInput
 type GoalControlOperationEvidence = agentstore.GoalControlOperationEvidence
+type GoalGenerationFence = agentstore.GoalGenerationFence
+type GoalGenerationFencePrepare = agentstore.GoalGenerationFencePrepare
+type ListClaimableGoalGenerationFencesInput = agentstore.ListClaimableGoalGenerationFencesInput
+type ClaimGoalGenerationFenceInput = agentstore.ClaimGoalGenerationFenceInput
+type ReleaseGoalGenerationFenceInput = agentstore.ReleaseGoalGenerationFenceInput
+type CompleteGoalGenerationFenceInput = agentstore.CompleteGoalGenerationFenceInput
 type WakeGoalControlOperationInput = agentstore.WakeGoalControlOperationInput
 type EnsureGoalRepairOperationInput = agentstore.EnsureGoalRepairOperationInput
 type GoalReconcileInboxItem = agentstore.GoalReconcileInboxItem
@@ -122,13 +148,16 @@ type SubmitClaim = agentstore.SubmitClaim
 type SubmitClaimPrepare = agentstore.SubmitClaimPrepare
 
 var (
-	ErrRuntimeOperationConflict     = agentstore.ErrRuntimeOperationConflict
-	ErrRuntimeOperationNotClaimable = agentstore.ErrRuntimeOperationNotClaimable
-	ErrRuntimeOperationLeaseLost    = agentstore.ErrRuntimeOperationLeaseLost
-	ErrRuntimeOperationSubjectState = agentstore.ErrRuntimeOperationSubjectState
-	ErrGoalOperationConflict        = agentstore.ErrGoalOperationConflict
-	ErrGoalStateAbsent              = agentstore.ErrGoalStateAbsent
-	ErrGoalReconcileConflict        = agentstore.ErrGoalReconcileConflict
+	ErrRuntimeOperationConflict         = agentstore.ErrRuntimeOperationConflict
+	ErrRuntimeOperationIdentityMismatch = agentstore.ErrRuntimeOperationIdentityMismatch
+	ErrRuntimeOperationNotClaimable     = agentstore.ErrRuntimeOperationNotClaimable
+	ErrRuntimeOperationLeaseLost        = agentstore.ErrRuntimeOperationLeaseLost
+	ErrRuntimeOperationSubjectState     = agentstore.ErrRuntimeOperationSubjectState
+	ErrGoalOperationConflict            = agentstore.ErrGoalOperationConflict
+	ErrGoalStateAbsent                  = agentstore.ErrGoalStateAbsent
+	ErrGoalReconcileConflict            = agentstore.ErrGoalReconcileConflict
+	ErrGoalGenerationFenceConflict      = agentstore.ErrGoalGenerationFenceConflict
+	ErrGoalGenerationSuperseded         = agentstore.ErrGoalGenerationSuperseded
 )
 
 const (
