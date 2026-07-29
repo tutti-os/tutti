@@ -47,6 +47,7 @@ export function composerTargetDataFromNodeData(
 }
 
 export function composerTargetDataForConversation(input: {
+  activeAgentTargetId?: string | null;
   activeConversationId: string | null;
   data: AgentGUINodeData;
   optimisticTarget: OptimisticComposerTarget | null;
@@ -60,6 +61,18 @@ export function composerTargetDataForConversation(input: {
     !nodeDataMatchesComposerTarget(input.data, input.optimisticTarget.target)
   ) {
     return input.optimisticTarget.target;
+  }
+  const activeAgentTargetId = normalizeOptionalText(input.activeAgentTargetId);
+  if (activeAgentTargetId) {
+    return {
+      agentTargetId: activeAgentTargetId,
+      provider: input.data.provider,
+      targetId: activeAgentTargetId,
+      data: {
+        ...input.data,
+        agentTargetId: activeAgentTargetId
+      }
+    };
   }
   return composerTargetDataFromNodeData(input.data);
 }

@@ -12,6 +12,8 @@ const workspaceRoot = join(scriptDirectory, "..", "..");
 
 if (isMainModule()) {
   const toolsOnly = process.argv.includes("--tools-only");
+  const packageNames = parseWorkspaceTestPackageFilters(process.argv.slice(2));
+  const shard = parseWorkspaceTestShard(process.argv.slice(2));
   const trackedFiles = gitLines([
     "ls-files",
     "--cached",
@@ -36,6 +38,12 @@ if (isMainModule()) {
     toolsOnly,
     trackedFiles
   });
+  const packageSelection = selectWorkspaceTestPackages(
+    plan.packages,
+    packageNames
+  );
+  plan.errors.push(...packageSelection.errors);
+  plan.packages = shardWorkspaceTestPackages(packageSelection.packages, shard);
 
   if (plan.errors.length > 0) {
     for (const error of plan.errors) {
@@ -116,6 +124,132 @@ export function buildWorkspaceTestPlan({
 
   packages.sort((left, right) => left.root.localeCompare(right.root));
   return { errors, packages, toolTests };
+}
+
+export function parseWorkspaceTestPackageFilters(args) {
+  let packageNames = null;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--" || arg === "--tools-only") {
+      continue;
+    }
+    if (arg === "--max-parallel" || arg === "--tail-lines") {
+      index += 1;
+      continue;
+    }
+    if (arg === "--shard") {
+      index += 1;
+      continue;
+    }
+    if (arg !== "--packages-json" || packageNames !== null) {
+      throw new Error(`unknown workspace test option: ${arg}`);
+    }
+    try {
+      packageNames = JSON.parse(args[++index] ?? "");
+    } catch {
+      throw new Error("--packages-json must contain valid JSON");
+    }
+  }
+  if (packageNames === null) {
+    return null;
+  }
+  if (
+    !Array.isArray(packageNames) ||
+    packageNames.length === 0 ||
+    packageNames.some((name) => typeof name !== "string" || name.length === 0)
+  ) {
+    throw new Error("--packages-json must contain a non-empty string array");
+  }
+  return [...new Set(packageNames)];
+}
+
+export function parseWorkspaceTestShard(args) {
+  let shard = null;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--shard") {
+      if (shard !== null) {
+        throw new Error("--shard may only be provided once");
+      }
+      const value = args[++index] ?? "";
+      const match = /^(\d+)\/(\d+)$/u.exec(value);
+      if (!match) {
+        throw new Error("--shard must use the positive index/total format");
+      }
+      const indexValue = Number.parseInt(match[1], 10);
+      const total = Number.parseInt(match[2], 10);
+      if (indexValue < 1 || total < 1 || indexValue > total) {
+        throw new Error("--shard index must be between 1 and its total");
+      }
+      shard = { index: indexValue, total };
+      continue;
+    }
+    if (arg === "--" || arg === "--tools-only" || arg === "--packages-json") {
+      if (arg === "--packages-json") {
+        index += 1;
+      }
+      continue;
+    }
+    if (arg === "--max-parallel" || arg === "--tail-lines") {
+      index += 1;
+      continue;
+    }
+  }
+  return shard;
+}
+
+export function selectWorkspaceTestPackages(packages, packageNames) {
+  if (packageNames === null) {
+    return { errors: [], packages };
+  }
+
+  const selectedNames = new Set(packageNames);
+  const packageNameSet = new Set(
+    packages.map((packageConfig) => packageConfig.name)
+  );
+  const unknownNames = packageNames.filter((name) => !packageNameSet.has(name));
+  return {
+    errors:
+      unknownNames.length === 0
+        ? []
+        : [
+            `Unknown workspace test package filter(s): ${unknownNames.join(", ")}`
+          ],
+    packages: packages.filter((packageConfig) =>
+      selectedNames.has(packageConfig.name)
+    )
+  };
+}
+
+export function shardWorkspaceTestPackages(packages, shard) {
+  if (shard === null) {
+    return packages;
+  }
+
+  const buckets = Array.from({ length: shard.total }, () => ({
+    packageNames: new Set(),
+    testFileCount: 0
+  }));
+  const packagesByWeight = packages
+    .map((packageConfig, index) => ({ index, packageConfig }))
+    .sort(
+      (left, right) =>
+        (right.packageConfig.testFileCount ?? 1) -
+          (left.packageConfig.testFileCount ?? 1) || left.index - right.index
+    );
+
+  for (const { packageConfig } of packagesByWeight) {
+    const bucket = buckets.reduce((lightest, candidate) =>
+      candidate.testFileCount < lightest.testFileCount ? candidate : lightest
+    );
+    bucket.packageNames.add(packageConfig.name);
+    bucket.testFileCount += packageConfig.testFileCount ?? 1;
+  }
+
+  const selectedNames = buckets[shard.index - 1].packageNames;
+  return packages.filter((packageConfig) =>
+    selectedNames.has(packageConfig.name)
+  );
 }
 
 function gitLines(args) {

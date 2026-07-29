@@ -1,6 +1,9 @@
 import { renderHook } from "@testing-library/react";
 import {
+  AGENT_CAPABILITY_KEYS,
   normalizeAgentActivitySession,
+  type AgentActivityComposerOptions,
+  type AgentActivitySessionCapabilities,
   type CanonicalAgentSession
 } from "@tutti-os/agent-activity-core";
 import { describe, expect, it } from "vitest";
@@ -10,6 +13,7 @@ import { createTestAgentSessionEngine } from "../../../shared/testing/createTest
 describe("useAgentGUIComposerCapabilities", () => {
   function engineSession(input: {
     agentSessionId?: string;
+    capabilities?: AgentActivitySessionCapabilities;
     usage: CanonicalAgentSession["usage"];
   }): CanonicalAgentSession {
     const normalized = normalizeAgentActivitySession({
@@ -24,6 +28,7 @@ describe("useAgentGUIComposerCapabilities", () => {
       providerSessionId: "provider-session-1",
       cwd: "/workspace/project",
       title: "OpenCode",
+      ...(input.capabilities ? { capabilities: input.capabilities } : {}),
       usage: input.usage
     });
     const {
@@ -34,6 +39,44 @@ describe("useAgentGUIComposerCapabilities", () => {
       ...activeEngineSession
     } = normalized;
     return activeEngineSession as CanonicalAgentSession;
+  }
+
+  function composerOptions(input: {
+    provider?: string;
+    capabilities?: string[];
+  }): AgentActivityComposerOptions {
+    return {
+      provider: input.provider ?? "opencode",
+      capabilities: capabilitiesFixture(input.capabilities ?? []),
+      models: [],
+      reasoningEfforts: [],
+      speeds: [],
+      modelConfigurable: false,
+      reasoningConfigurable: false,
+      permissionConfig: {
+        configurable: false,
+        defaultValue: null,
+        modes: []
+      },
+      capabilityCatalog: [],
+      skills: [],
+      behavior: {
+        collapseModelOptionsToLatest: false,
+        modelOptionsAuthoritative: false,
+        refreshModelOptionsAfterSettings: false,
+        prewarmDraftSession: false,
+        planModeExclusiveWithPermissionMode: false
+      },
+      loadedAtUnixMs: 0
+    };
+  }
+
+  function capabilitiesFixture(
+    capabilities: readonly string[]
+  ): AgentActivitySessionCapabilities {
+    return Object.fromEntries(
+      AGENT_CAPABILITY_KEYS.map((key) => [key, capabilities.includes(key)])
+    ) as unknown as AgentActivitySessionCapabilities;
   }
 
   it("projects typed canonical session usage into the composer footer", () => {
@@ -168,5 +211,55 @@ describe("useAgentGUIComposerCapabilities", () => {
     rerender();
 
     expect(result.current.usage).toBeNull();
+  });
+
+  it("keeps target-declared browser support when active session metadata lacks it", () => {
+    const activeEngineSession = engineSession({
+      capabilities: capabilitiesFixture(["interrupt"]),
+      usage: null
+    });
+    const data = {
+      provider: "acp:hermes" as const,
+      agentTargetId: "extension:hermes",
+      lastActiveAgentSessionId: "session-1"
+    };
+    const sessionEngine = createTestAgentSessionEngine("workspace-1");
+    sessionEngine.dispatch({
+      type: "composerOptions/loadRequested",
+      commandId: "composer-options-1",
+      targetKey: "extension:hermes",
+      provider: "acp:hermes",
+      workspaceId: "workspace-1"
+    });
+    sessionEngine.dispatch({
+      type: "engine/commandResult",
+      commandId: "composer-options-1",
+      commandType: "composerOptions/load",
+      correlationId: "extension:hermes",
+      outcome: "succeeded",
+      value: composerOptions({
+        provider: "acp:hermes",
+        capabilities: ["interrupt", "browserUse", "skills"]
+      })
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUIComposerCapabilities({
+        activeConversationId: "session-1",
+        activeEngineSession,
+        activeSessionState: null,
+        data,
+        draftSettingsBySessionId: {},
+        selectedComposerTargetData: {
+          agentTargetId: "extension:hermes",
+          data,
+          provider: "acp:hermes",
+          targetId: "extension:hermes"
+        },
+        sessionEngine
+      })
+    );
+
+    expect(result.current.composerSupport.browser).toBe(true);
   });
 });

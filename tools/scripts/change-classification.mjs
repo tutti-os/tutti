@@ -13,7 +13,9 @@ export function classifyChangedFiles(
   changedFiles,
   {
     isPackageManifestPackRelevant = () => true,
-    releasePackages = discoverReleasePackages()
+    isRootManifestTestRelevant = () => true,
+    releasePackages = discoverReleasePackages(),
+    workspacePackages = discoverWorkspacePackages()
   } = {}
 ) {
   const normalizedFiles = changedFiles.map((file) =>
@@ -24,6 +26,11 @@ export function classifyChangedFiles(
     isPackageManifestPackRelevant,
     releasePackages
   });
+  const testSelection = selectTypeScriptTestPackages(normalizedFiles, {
+    isRootManifestTestRelevant,
+    workspacePackages
+  });
+  const testShards = buildTypeScriptTestShards(testSelection.packageNames);
 
   return {
     packAll: packSelection.packAll,
@@ -33,8 +40,57 @@ export function classifyChangedFiles(
     runGenerated: groups.has("generated"),
     runGo: normalizedFiles.some(isGoRelevant),
     runPack: packSelection.packAll || packSelection.packageNames.length > 0,
-    runTs: normalizedFiles.some(isTypeScriptRelevant)
+    runTs: normalizedFiles.some(isTypeScriptRelevant),
+    runTsTests: testSelection.testAll || testSelection.packageNames.length > 0,
+    testAll: testSelection.testAll,
+    testPackages: testSelection.packageNames,
+    testShards
   };
+}
+
+export function discoverWorkspacePackages(root = workspaceRoot) {
+  const packageRoots = [
+    ...readChildPackageRoots(join(root, "apps")),
+    ...readGrandchildPackageRoots(join(root, "packages")),
+    ...readChildPackageRoots(join(root, "services/tuttid/builtin-apps")),
+    ...readChildPackageRoots(join(root, "tools/fixtures"))
+  ];
+  const packages = [];
+
+  for (const packageRoot of packageRoots) {
+    try {
+      const manifest = JSON.parse(
+        readFileSync(join(packageRoot, "package.json"), "utf8")
+      );
+      if (typeof manifest.name === "string") {
+        packages.push({
+          hasTests: typeof manifest.scripts?.test === "string",
+          manifest,
+          name: manifest.name,
+          root: packageRoot.slice(root.length + 1).replaceAll("\\", "/")
+        });
+      }
+    } catch {
+      // Non-package directories are outside the workspace package surface.
+    }
+  }
+
+  const workspaceNames = new Set(
+    packages.map((packageConfig) => packageConfig.name)
+  );
+  return packages
+    .map(({ manifest, ...packageConfig }) => ({
+      ...packageConfig,
+      workspaceDependencies: Object.keys({
+        ...manifest.dependencies,
+        ...manifest.devDependencies,
+        ...manifest.optionalDependencies,
+        ...manifest.peerDependencies
+      })
+        .filter((name) => workspaceNames.has(name))
+        .sort()
+    }))
+    .sort((left, right) => left.root.localeCompare(right.root));
 }
 
 export function discoverReleasePackages(root = workspaceRoot) {
@@ -75,10 +131,22 @@ export function formatClassificationOutputs(classification) {
     ["run_generated", classification.runGenerated],
     ["run_go", classification.runGo],
     ["run_pack", classification.runPack],
-    ["run_ts", classification.runTs]
+    ["run_ts", classification.runTs],
+    ["run_ts_tests", classification.runTsTests],
+    ["test_all", classification.testAll],
+    ["test_packages", JSON.stringify(classification.testPackages)],
+    ["test_shards", JSON.stringify(classification.testShards)]
   ]
     .map(([key, value]) => `${key}=${value}`)
     .join("\n");
+}
+
+export function buildTypeScriptTestShards(packageNames, maximum = 3) {
+  const shardCount = Math.max(1, Math.min(maximum, packageNames.length));
+  return Array.from(
+    { length: shardCount },
+    (_, index) => `${index + 1}/${shardCount}`
+  );
 }
 
 function isGoRelevant(file) {
@@ -96,6 +164,82 @@ function isTypeScriptRelevant(file) {
     /(?:^|\/)(?:package\.json|tsconfig[^/]*\.json)$/u.test(file) ||
     ["pnpm-lock.yaml", "pnpm-workspace.yaml"].includes(file) ||
     file.startsWith("packages/configs/")
+  );
+}
+
+export function selectTypeScriptTestPackages(
+  files,
+  { isRootManifestTestRelevant, workspacePackages }
+) {
+  const testPackages = workspacePackages.filter(
+    (packageConfig) => packageConfig.hasTests
+  );
+  const testAll =
+    files.some(isGlobalTypeScriptTestRelevant) ||
+    (files.includes("package.json") && isRootManifestTestRelevant());
+  if (testAll) {
+    return {
+      packageNames: testPackages.map((packageConfig) => packageConfig.name),
+      testAll: true
+    };
+  }
+
+  const affectedPackageNames = new Set();
+  for (const file of files) {
+    const packageConfig = workspacePackages.find(
+      ({ root }) => file === root || file.startsWith(`${root}/`)
+    );
+    if (packageConfig) {
+      affectedPackageNames.add(packageConfig.name);
+      continue;
+    }
+    if (
+      /^(?:apps\/[^/]+|packages\/[^/]+\/[^/]+|services\/tuttid\/builtin-apps\/[^/]+|tools\/fixtures\/[^/]+)\/package\.json$/u.test(
+        file
+      )
+    ) {
+      return {
+        packageNames: testPackages.map((testPackage) => testPackage.name),
+        testAll: true
+      };
+    }
+  }
+
+  addTransitiveWorkspaceDependents(affectedPackageNames, workspacePackages);
+  return {
+    packageNames: testPackages
+      .filter((packageConfig) => affectedPackageNames.has(packageConfig.name))
+      .map((packageConfig) => packageConfig.name),
+    testAll: false
+  };
+}
+
+function addTransitiveWorkspaceDependents(affectedPackageNames, packages) {
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const packageConfig of packages) {
+      if (
+        !affectedPackageNames.has(packageConfig.name) &&
+        (packageConfig.workspaceDependencies ?? []).some((name) =>
+          affectedPackageNames.has(name)
+        )
+      ) {
+        affectedPackageNames.add(packageConfig.name);
+        changed = true;
+      }
+    }
+  }
+}
+
+function isGlobalTypeScriptTestRelevant(file) {
+  return (
+    [".node-version", "pnpm-lock.yaml", "pnpm-workspace.yaml"].includes(file) ||
+    file.startsWith("packages/configs/") ||
+    [
+      "tools/scripts/run-validation-lanes.mjs",
+      "tools/scripts/run-workspace-tests.mjs"
+    ].includes(file)
   );
 }
 
@@ -186,6 +330,38 @@ export function createPackageManifestPackRelevance({
   };
 }
 
+export function createRootManifestTestRelevance({
+  baseRef,
+  root = workspaceRoot
+}) {
+  return () => {
+    try {
+      const before = normalizedManifestAtRef(
+        baseRef,
+        "package.json",
+        root,
+        testRelevantRootManifest
+      );
+      const candidates = [
+        normalizedManifestAtRef(
+          "HEAD",
+          "package.json",
+          root,
+          testRelevantRootManifest
+        ),
+        JSON.stringify(
+          testRelevantRootManifest(
+            JSON.parse(readFileSync(join(root, "package.json"), "utf8"))
+          )
+        )
+      ];
+      return candidates.some((candidate) => candidate !== before);
+    } catch {
+      return true;
+    }
+  };
+}
+
 function isPackageManifestPackRelevant(baseRef, file, root) {
   try {
     const before = normalizedManifestAtRef(baseRef, file, root);
@@ -201,7 +377,12 @@ function isPackageManifestPackRelevant(baseRef, file, root) {
   }
 }
 
-function normalizedManifestAtRef(ref, file, root) {
+function normalizedManifestAtRef(
+  ref,
+  file,
+  root,
+  normalize = withoutTestScripts
+) {
   const manifest = JSON.parse(
     execFileSync("git", ["show", `${ref}:${file}`], {
       cwd: root,
@@ -209,7 +390,7 @@ function normalizedManifestAtRef(ref, file, root) {
       env: createIsolatedGitEnvironment(root)
     })
   );
-  return JSON.stringify(withoutTestScripts(manifest));
+  return JSON.stringify(normalize(manifest));
 }
 
 function withoutTestScripts(manifest) {
@@ -227,6 +408,46 @@ function withoutTestScripts(manifest) {
     delete normalized.scripts;
   }
   return normalized;
+}
+
+function testRelevantRootManifest(manifest) {
+  const relevant = {};
+  for (const key of [
+    "dependencies",
+    "devDependencies",
+    "engines",
+    "optionalDependencies",
+    "packageManager",
+    "peerDependencies",
+    "pnpm",
+    "workspaces"
+  ]) {
+    if (manifest[key] !== undefined) {
+      relevant[key] = manifest[key];
+    }
+  }
+
+  const scripts = Object.fromEntries(
+    Object.entries(manifest.scripts ?? {}).filter(([name]) =>
+      /^(?:preinstall|install|postinstall|prepare|(?:pre|post)?test:ts(?::.*)?)$/u.test(
+        name
+      )
+    )
+  );
+  if (Object.keys(scripts).length > 0) {
+    relevant.scripts = scripts;
+  }
+  return relevant;
+}
+
+function readChildPackageRoots(root) {
+  return readDirectories(root).map((name) => join(root, name));
+}
+
+function readGrandchildPackageRoots(root) {
+  return readDirectories(root).flatMap((group) =>
+    readChildPackageRoots(join(root, group))
+  );
 }
 
 function readDirectories(root) {
@@ -267,6 +488,9 @@ if (isMainModule()) {
   const output = formatClassificationOutputs(
     classifyChangedFiles(changedFiles, {
       isPackageManifestPackRelevant: createPackageManifestPackRelevance({
+        baseRef: base
+      }),
+      isRootManifestTestRelevant: createRootManifestTestRelevance({
         baseRef: base
       })
     })

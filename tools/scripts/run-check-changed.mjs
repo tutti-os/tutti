@@ -27,6 +27,7 @@ import {
 import {
   classifyChangedFiles,
   createPackageManifestPackRelevance,
+  createRootManifestTestRelevance,
   isPackagePackRelevantPath
 } from "./change-classification.mjs";
 import {
@@ -157,7 +158,11 @@ function buildChangedLanes() {
     root: workspaceRoot
   });
   const classification = classifyChangedFiles(changedFiles, {
-    isPackageManifestPackRelevant
+    isPackageManifestPackRelevant,
+    isRootManifestTestRelevant: createRootManifestTestRelevance({
+      baseRef,
+      root: workspaceRoot
+    })
   });
   const lanesByKey = new Map();
   const addLane = (lane) => {

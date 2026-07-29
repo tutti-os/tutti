@@ -137,6 +137,10 @@ test("validates file and directory names for dialogs", () => {
   assert.equal(validateWorkspaceFileEntryName(""), "required");
   assert.equal(validateWorkspaceFileEntryName(".."), "invalid");
   assert.equal(validateWorkspaceFileEntryName("src/app"), "invalid");
+  assert.equal(validateWorkspaceFileEntryName("a".repeat(255)), null);
+  assert.equal(validateWorkspaceFileEntryName("你".repeat(85)), null);
+  assert.equal(validateWorkspaceFileEntryName("a".repeat(256)), "tooLong");
+  assert.equal(validateWorkspaceFileEntryName("你".repeat(86)), "tooLong");
   assert.equal(validateWorkspaceFileEntryName("notes.md"), null);
 });
 

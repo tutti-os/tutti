@@ -126,16 +126,22 @@ function providerSlashPolicy(
   policy?: AgentSlashCommandPolicy | null
 ): ProviderSlashPolicy | undefined {
   if (policy) {
+    const commandEffects = Array.isArray(policy.commandEffects)
+      ? policy.commandEffects
+      : [];
+    const fallbackCommands = Array.isArray(policy.fallbackCommands)
+      ? policy.fallbackCommands
+      : [];
     const commandsForEffect = (
       effect: AgentSlashCommandPolicy["commandEffects"][number]["effect"]
     ) =>
       normalizedCommandSet(
-        policy.commandEffects.flatMap((entry) =>
+        commandEffects.flatMap((entry) =>
           entry.effect === effect ? [entry.command] : []
         )
       );
     return {
-      fallbackCommands: policy.fallbackCommands.map((name) => ({ name })),
+      fallbackCommands: fallbackCommands.map((name) => ({ name })),
       immediateCommands: commandsForEffect("submitImmediate"),
       reviewPickerCommands: commandsForEffect("showReviewPicker"),
       localGoalCommands: commandsForEffect("activateGoalMode"),
@@ -413,11 +419,17 @@ function isSlashPaletteCommandVisible(
   policy?: AgentSlashCommandPolicy | null
 ): boolean {
   if (policy?.commandCatalogAuthoritative === true) {
+    const fallbackCommands = Array.isArray(policy.fallbackCommands)
+      ? policy.fallbackCommands
+      : [];
+    const commandEffects = Array.isArray(policy.commandEffects)
+      ? policy.commandEffects
+      : [];
     return (
-      policy.fallbackCommands.some(
+      fallbackCommands.some(
         (command) => command.trim().toLowerCase() === commandName
       ) ||
-      policy.commandEffects.some(
+      commandEffects.some(
         (descriptor) => descriptor.command.trim().toLowerCase() === commandName
       )
     );

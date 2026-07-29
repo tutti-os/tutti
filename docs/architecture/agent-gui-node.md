@@ -117,8 +117,9 @@ Identity, time, and state use canonical representations. Unknown enum values pro
 AgentGUI / Message Center / host surface
   -> typed intent or AgentActivityRuntime command
   -> workspace AgentSessionEngine
-  -> injected command port
-  -> Desktop or Mobile workspace activity adapter
+  -> shared typed lifecycle effect projection
+  -> Desktop or Mobile AgentSessionEffectPort
+     (host-only commands use the narrow EngineExtensionCommand adapter)
   -> tuttid HTTP and product adapter
   -> packages/agent/host
   -> canonical store transaction + provider runtime port
@@ -609,6 +610,13 @@ disable submission, but must not change editor editability.
   Event callbacks that need current canonical data read the engine snapshot at
   event time instead of retaining a whole-workspace render snapshot
 - lifecycle writes use typed intents/commands
+- the Engine alone translates shared activation, prompt send, settings update,
+  turn cancel, and Interaction response commands into
+  `AgentSessionEffectPort` calls. Desktop and Mobile implement those semantic
+  methods and must not duplicate a command-type switch for them. Platform-only
+  commands remain in each host's `EngineExtensionCommand` adapter. Every effect
+  propagates the Engine-owned AbortSignal to its transport; a required settings
+  precondition rechecks cancellation before prompt send
 - consumers do not read reducer maps directly
 - consumers do not create canonical session/message mirrors
 - optimistic records define confirmation, rejection, timeout, and uncertain-delivery paths

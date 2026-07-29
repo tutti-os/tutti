@@ -773,6 +773,8 @@ func TestForkSessionDistinguishesMissingSourceFromUnavailableBoundary(t *testing
 	t.Run("unavailable boundary", func(t *testing.T) {
 		store := newFakeSessionForkStore()
 		store.boundaryUnsupported = true
+		store.boundaryReason =
+			storesqlite.SessionForkBoundaryReasonTurnSequenceUnverified
 		runtime := &fakeSessionForkRuntime{}
 		host := New(Config{SessionForks: store, SessionForkRuntime: runtime})
 		_, err := host.ForkSession(context.Background(), ForkSessionInput{
@@ -782,6 +784,12 @@ func TestForkSessionDistinguishesMissingSourceFromUnavailableBoundary(t *testing
 		})
 		if !errors.Is(err, storesqlite.ErrSessionForkTurnState) {
 			t.Fatalf("ForkSession() error=%v, want boundary conflict", err)
+		}
+		var reasoner interface{ ForkBoundaryReason() string }
+		if !errors.As(err, &reasoner) ||
+			reasoner.ForkBoundaryReason() !=
+				string(storesqlite.SessionForkBoundaryReasonTurnSequenceUnverified) {
+			t.Fatalf("ForkSession() boundary reason=%v", err)
 		}
 		if runtime.resolveCalls != 0 || runtime.forkCalls != 0 {
 			t.Fatalf("runtime calls resolve=%d fork=%d", runtime.resolveCalls, runtime.forkCalls)
@@ -946,6 +954,7 @@ type fakeSessionForkStore struct {
 	failCommit          bool
 	sourceMissing       bool
 	boundaryUnsupported bool
+	boundaryReason      storesqlite.SessionForkBoundaryReason
 	source              storesqlite.Session
 	turnIdentities      []storesqlite.SessionForkTurnIdentity
 }
@@ -1021,7 +1030,9 @@ func (f *fakeSessionForkStore) CheckSessionForkThroughTurn(
 	context.Context, string, string, string,
 ) (storesqlite.SessionForkBoundary, bool, error) {
 	if f.boundaryUnsupported {
-		return storesqlite.SessionForkBoundary{}, false, nil
+		return storesqlite.SessionForkBoundary{
+			RejectionReason: f.boundaryReason,
+		}, false, nil
 	}
 	return storesqlite.SessionForkBoundary{
 		Session: f.session(),

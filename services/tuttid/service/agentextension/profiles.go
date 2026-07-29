@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 )
 
 type ComposerProfile struct {
@@ -53,6 +54,7 @@ type ComposerProfile struct {
 			Path  string `json:"path"`
 		} `json:"roots"`
 	} `json:"skills,omitempty"`
+	RuntimePrep *runtimeprep.ExtensionRuntimePrep `json:"runtimePrep,omitempty"`
 }
 
 type ComposerPermissionMode struct {
@@ -342,6 +344,11 @@ func validateComposerProfile(profile ComposerProfile) error {
 	}
 	if err := validateComposerWorkflowModes(profile); err != nil {
 		return err
+	}
+	if profile.RuntimePrep != nil {
+		if err := runtimeprep.ValidateExtensionRuntimePrep(*profile.RuntimePrep); err != nil {
+			return err
+		}
 	}
 	if profile.Skills == nil {
 		return nil

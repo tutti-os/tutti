@@ -2142,6 +2142,45 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [claude_sdk_fork.go](../../../packages/agent/daemon/runtime/claude_sdk_fork.go)
   [session_fork.go](../../../packages/agent/host/session_fork.go)
 
+### Fork reports only `agent_session_fork_conflict`
+
+- Symptom:
+  A through-Turn Fork returns HTTP 409 before any provider `thread/fork`
+  request. Desktop diagnostics contain only
+  `reason=agent_session_fork_conflict` or a developer-message length, so
+  provenance, attachment, descendant-lane, and provider-Turn failures are
+  indistinguishable.
+- Quick checks:
+  Read `error.params.forkBoundaryReason` from the 409 response or the promoted
+  Desktop diagnostic `reason`. For example,
+  `agent_session_fork_turn_sequence_unverified` means the selected Turn has
+  unverified sequence provenance, while
+  `agent_session_fork_prefix_sequence_unverified` identifies an earlier Turn
+  in the inclusive prefix. The developer message carries the observed phase,
+  provenance, sequence, or identity condition without message content.
+- Root cause:
+  `CheckSessionForkThroughTurn` collapsed every fail-closed boundary branch to
+  `supported=false`; Host replaced it with one generic Turn-state error, and
+  the service formatted the nested error with `%v`, which discarded the error
+  chain before transport classification.
+- Fix:
+  Preserve one stable boundary rejection reason from the Store through Host
+  and Service. Keep the public 409 reason
+  `agent_session_fork_conflict` for compatibility, add the exact stable code
+  as `error.params.forkBoundaryReason`, and promote that code only for Desktop
+  diagnostics. Do not log transcript payloads or attachment contents.
+- Validation:
+  Cover unverified selected/prefix sequences, duplicate provider Turn IDs,
+  descendant lanes, and session-local attachments at the Store. Verify Service
+  wrapping preserves both the generic conflict and typed boundary error, the
+  API includes the structured parameter, and Desktop promotes it to the
+  diagnostic reason.
+- References:
+  [session_fork.go](../../../packages/agent/store-sqlite/session_fork.go)
+  [session_fork_types.go](../../../packages/agent/store-sqlite/session_fork_types.go)
+  [daemon_agent_session_fork.go](../../../services/tuttid/api/daemon_agent_session_fork.go)
+  [desktopAgentActivityAdapter.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/desktopAgentActivityAdapter.ts)
+
 ### Claude Code cancel leaves Write/tool cards or thinking stuck in progress
 
 - Symptom:

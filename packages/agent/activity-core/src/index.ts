@@ -70,11 +70,9 @@ export type {
   EngineDiagnosticEvent,
   EngineDiagnosticSink
 } from "./engine/diagnostics.ts";
-export {
-  executeAgentActivityPromptCommand,
-  type AgentActivityPromptCommandPort
-} from "./engine/promptCommandExecution.ts";
 export type {
+  AgentSessionActivateEffectInput,
+  AgentSessionEffectPort,
   AgentSessionEngine,
   AgentSessionEngineIdentity,
   AgentSessionEngineListener,
@@ -86,14 +84,17 @@ export type {
   EngineConnectionStatus,
   EngineDispatchOptions,
   EngineDomainReducer,
+  EngineEffectOptions,
   EngineExternalCommand,
   EngineExternalCommandExceptPlanDecision,
+  EngineExtensionCommand,
   EngineIntent,
   EngineInternalCommand,
   EngineReducerResult,
   EngineRuntimeState,
   EngineScheduledTask,
-  EngineScheduler
+  EngineScheduler,
+  EngineTypedCommandPort
 } from "./engine/types.ts";
 export { AGENT_SESSION_ENGINE_LOCAL_ORIGIN } from "./engine/types.ts";
 export { selectWorkspaceReconcileState } from "./engine/engineRuntime.selectors.ts";

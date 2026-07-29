@@ -55,7 +55,21 @@ type PrepareInput struct {
 	AgentSkills               []string
 	AgentTools                []string
 	ExtraSkills               []ProviderSkillBundle
-	Metadata                  map[string]any
+	// ExtensionSkillRoots carries the skill root paths declared by an agent
+	// extension's composer profile (Skills.Roots[].Path). When non-empty,
+	// native tutti skills materialize into these roots instead of the
+	// hard-coded providerSkillRoot, so acp: extension agents (hermes and
+	// future ones) load tutti-handoff/tutti-cli. Paths are safe relative
+	// paths validated by the extension profile; the selected runtime preparer
+	// chooses whether they are resolved against Cwd or mirrored into the
+	// session RuntimeRoot for provider isolation.
+	ExtensionSkillRoots []string
+	// ExtensionRuntimePrep carries a signed agent-extension runtime overlay.
+	// It is provider-neutral: package profiles describe any required per-run
+	// home, user-home file copies, and config merges instead of Tutti core
+	// branching on a provider ID.
+	ExtensionRuntimePrep *ExtensionRuntimePrep
+	Metadata             map[string]any
 	// CommandCapabilityProjection narrows the command guide for a dedicated
 	// internal session. A non-empty AllowedIDs is an exact public/integration
 	// set; otherwise public commands remain visible unless explicitly excluded.
@@ -84,6 +98,25 @@ type PrepareInput struct {
 type PreparedRuntime struct {
 	Cwd string
 	Env []string
+}
+
+type ExtensionRuntimePrep struct {
+	InstructionsFile string                `json:"instructionsFile,omitempty"`
+	Home             *ExtensionRuntimeHome `json:"home,omitempty"`
+}
+
+type ExtensionRuntimeHome struct {
+	EnvVar             string   `json:"envVar"`
+	DirName            string   `json:"dirName"`
+	SourceEnvVar       string   `json:"sourceEnvVar,omitempty"`
+	SourceDefaultRel   string   `json:"sourceDefaultRel,omitempty"`
+	CopyFiles          []string `json:"copyFiles,omitempty"`
+	ConfigFile         string   `json:"configFile,omitempty"`
+	ConfigFormat       string   `json:"configFormat,omitempty"`
+	ExternalDirsKey    []string `json:"externalDirsKey,omitempty"`
+	UserHomeSkillDir   string   `json:"userHomeSkillDir,omitempty"`
+	IncludeSkillRoots  bool     `json:"includeSkillRoots,omitempty"`
+	IncludeUserHomeDir bool     `json:"includeUserHomeDir,omitempty"`
 }
 
 type SkillBundle struct {

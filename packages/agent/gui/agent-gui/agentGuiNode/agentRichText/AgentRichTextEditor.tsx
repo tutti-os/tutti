@@ -24,10 +24,8 @@ import {
   readWorkspaceFileDropEntries
 } from "../../terminalNode/workspaceFileDrop";
 import {
-  classifyAgentRichTextExternalFiles,
-  imageFilesFromDataTransfer,
-  nonImageFilesFromDataTransfer,
   readAgentRichTextPromptImages,
+  routeAgentRichTextExternalFiles,
   systemFileDragInfoFromDataTransfer
 } from "./agentRichTextPromptImages";
 import type {
@@ -408,17 +406,17 @@ export const AgentRichTextEditor = forwardRef<
           return true;
         },
         paste: (_view, event) => {
-          const { imageFiles, regularFiles } =
-            classifyAgentRichTextExternalFiles(event.clipboardData);
-          if (
-            imageFiles.length > 0 ||
-            (regularFiles.length > 0 && onPasteFilesRef.current)
-          ) {
+          const { externalFiles, imageFiles, imagesHandledAsFiles } =
+            routeAgentRichTextExternalFiles(event.clipboardData, {
+              externalFilesSupported: Boolean(onPasteFilesRef.current),
+              promptImagesSupported: promptImagesSupportedRef.current
+            });
+          if (imageFiles.length > 0 || externalFiles.length > 0) {
             event.preventDefault();
-            if (regularFiles.length > 0) {
-              onPasteFilesRef.current?.(regularFiles);
+            if (externalFiles.length > 0) {
+              onPasteFilesRef.current?.(externalFiles);
             }
-            if (imageFiles.length > 0) {
+            if (imageFiles.length > 0 && !imagesHandledAsFiles) {
               if (!promptImagesSupportedRef.current) {
                 onPromptImagesUnsupportedRef.current?.();
               } else {
@@ -527,10 +525,15 @@ export const AgentRichTextEditor = forwardRef<
           const canDropRegularSystemFiles =
             systemFileDragInfo.hasRegularFiles &&
             Boolean(onDropFilesRef.current);
+          const canDropImagesAsFiles =
+            systemFileDragInfo.hasImageFiles &&
+            !promptImagesSupportedRef.current &&
+            Boolean(onDropFilesRef.current);
           if (systemFileDragInfo.hasImageFiles || canDropRegularSystemFiles) {
             event.preventDefault();
             dataTransfer.dropEffect =
               canDropRegularSystemFiles ||
+              canDropImagesAsFiles ||
               (systemFileDragInfo.hasImageFiles &&
                 promptImagesSupportedRef.current)
                 ? "copy"
@@ -553,20 +556,19 @@ export const AgentRichTextEditor = forwardRef<
           if (!dataTransfer || disabled) {
             return false;
           }
-          const imageFiles = imageFilesFromDataTransfer(dataTransfer);
-          const imageFileSet = new Set(imageFiles);
-          const regularFiles = nonImageFilesFromDataTransfer(
-            dataTransfer
-          ).filter((file) => !imageFileSet.has(file));
-          const canHandleRegularFiles = Boolean(onDropFilesRef.current);
-          if (
-            imageFiles.length > 0 ||
-            (regularFiles.length > 0 && canHandleRegularFiles)
-          ) {
+          const {
+            externalFiles: filesForExternalPreparation,
+            imageFiles,
+            imagesHandledAsFiles
+          } = routeAgentRichTextExternalFiles(dataTransfer, {
+            externalFilesSupported: Boolean(onDropFilesRef.current),
+            promptImagesSupported: promptImagesSupportedRef.current
+          });
+          if (imageFiles.length > 0 || filesForExternalPreparation.length > 0) {
             event.preventDefault();
             const currentEditor = editorRef.current;
             if (
-              regularFiles.length > 0 &&
+              filesForExternalPreparation.length > 0 &&
               onDropFilesRef.current &&
               currentEditor &&
               !currentEditor.isDestroyed
@@ -575,12 +577,11 @@ export const AgentRichTextEditor = forwardRef<
                 left: event.clientX,
                 top: event.clientY
               })?.pos;
-              const fallbackSelectionPosition =
-                currentEditor.state.selection.from;
+              const selectionPosition = currentEditor.state.selection.from;
               const insertPosition =
                 coordinatePosition ??
-                (Number.isInteger(fallbackSelectionPosition)
-                  ? fallbackSelectionPosition
+                (Number.isInteger(selectionPosition)
+                  ? selectionPosition
                   : null) ??
                 currentEditor.state.doc.content.size;
               currentEditor
@@ -588,9 +589,9 @@ export const AgentRichTextEditor = forwardRef<
                 .focus()
                 .setTextSelection(insertPosition)
                 .run();
-              onDropFilesRef.current(regularFiles);
+              onDropFilesRef.current(filesForExternalPreparation);
             }
-            if (imageFiles.length === 0) {
+            if (imageFiles.length === 0 || imagesHandledAsFiles) {
               return true;
             }
             if (!promptImagesSupportedRef.current) {

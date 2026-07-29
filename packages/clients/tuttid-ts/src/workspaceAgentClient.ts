@@ -457,11 +457,17 @@ export function createWorkspaceAgentClient(
         "Workspace agent session messages request failed."
       );
     },
-    async cancelWorkspaceAgentTurn(workspaceID, agentSessionID, turnID) {
+    async cancelWorkspaceAgentTurn(
+      workspaceID,
+      agentSessionID,
+      turnID,
+      requestOptions
+    ) {
       return unwrapData(
         await cancelWorkspaceAgentTurn({
           client,
-          path: { agentSessionID, turnID, workspaceID }
+          path: { agentSessionID, turnID, workspaceID },
+          ...requestOptions
         }),
         "Cancel workspace agent turn failed."
       );
@@ -498,12 +504,18 @@ export function createWorkspaceAgentClient(
         "Reconcile workspace agent goal state failed."
       );
     },
-    async sendWorkspaceAgentSessionInput(workspaceID, agentSessionID, request) {
+    async sendWorkspaceAgentSessionInput(
+      workspaceID,
+      agentSessionID,
+      request,
+      requestOptions
+    ) {
       return unwrapData(
         await sendWorkspaceAgentSessionInput({
           client,
           body: request,
-          path: { agentSessionID, workspaceID }
+          path: { agentSessionID, workspaceID },
+          ...requestOptions
         }),
         "Send workspace agent session input failed."
       );
@@ -579,13 +591,15 @@ export function createWorkspaceAgentClient(
     async updateWorkspaceAgentSessionSettings(
       workspaceID,
       agentSessionID,
-      request
+      request,
+      requestOptions
     ) {
       return unwrapData(
         await updateWorkspaceAgentSessionSettings({
           client,
           body: request,
-          path: { agentSessionID, workspaceID }
+          path: { agentSessionID, workspaceID },
+          ...requestOptions
         }),
         "Update workspace agent session settings failed."
       ).session;
@@ -632,13 +646,15 @@ export function createWorkspaceAgentClient(
       workspaceID,
       agentSessionID,
       requestID,
-      request
+      request,
+      requestOptions
     ) {
       return unwrapData(
         await submitWorkspaceAgentInteractive({
           client,
           body: request,
-          path: { agentSessionID, requestID, workspaceID }
+          path: { agentSessionID, requestID, workspaceID },
+          ...requestOptions
         }),
         "Submit workspace agent interactive response failed."
       ).session;

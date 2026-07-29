@@ -84,6 +84,32 @@ export function classifyAgentRichTextExternalFiles(
   };
 }
 
+export function routeAgentRichTextExternalFiles(
+  dataTransfer: DataTransfer | null,
+  options: {
+    externalFilesSupported: boolean;
+    promptImagesSupported: boolean;
+  }
+): {
+  externalFiles: File[];
+  imageFiles: File[];
+  imagesHandledAsFiles: boolean;
+} {
+  const { imageFiles, regularFiles } =
+    classifyAgentRichTextExternalFiles(dataTransfer);
+  const imagesHandledAsFiles =
+    imageFiles.length > 0 &&
+    !options.promptImagesSupported &&
+    options.externalFilesSupported;
+  return {
+    externalFiles: options.externalFilesSupported
+      ? [...regularFiles, ...(imagesHandledAsFiles ? imageFiles : [])]
+      : [],
+    imageFiles,
+    imagesHandledAsFiles
+  };
+}
+
 export function systemFileDragInfoFromDataTransfer(
   dataTransfer: DataTransfer | null
 ): { hasImageFiles: boolean; hasRegularFiles: boolean } {

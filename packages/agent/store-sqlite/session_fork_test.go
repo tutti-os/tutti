@@ -791,7 +791,8 @@ WHERE workspace_id = 'ws-1' AND agent_session_id = 'source' AND turn_id = 'turn-
 		"ws-1",
 		"source",
 		"turn-2",
-	); err != nil || supported || len(boundary.RootProviderTurnIDs) != 0 {
+	); err != nil || supported || len(boundary.RootProviderTurnIDs) != 0 ||
+		boundary.RejectionReason != SessionForkBoundaryReasonProviderTurnDuplicate {
 		t.Fatalf(
 			"duplicate provider turn prefix boundary=%#v supported=%v error=%v",
 			boundary,
@@ -850,15 +851,25 @@ WHERE workspace_id = 'ws-1' AND agent_session_id = 'source' AND turn_id = 'turn-
 `); err != nil {
 		t.Fatal(err)
 	}
-	if _, supported, err := store.CheckSessionForkThroughTurn(ctx, "ws-1", "source", "turn-1"); err != nil || supported {
-		t.Fatalf("CheckSessionForkThroughTurn() supported=%v error=%v", supported, err)
+	if boundary, supported, err := store.CheckSessionForkThroughTurn(
+		ctx, "ws-1", "source", "turn-1",
+	); err != nil || supported ||
+		boundary.RejectionReason != SessionForkBoundaryReasonTurnSequenceUnverified {
+		t.Fatalf(
+			"CheckSessionForkThroughTurn() boundary=%#v supported=%v error=%v",
+			boundary,
+			supported,
+			err,
+		)
 	}
 	if _, _, err := prepareSessionForkForTest(t, store, ctx, SessionForkPrepare{
 		OperationID: "fork-op", WorkspaceID: "ws-1", RequestID: "request-1",
 		RequestHash: "hash-1", SourceAgentSessionID: "source",
 		TargetAgentSessionID: "target", SourceTurnID: "turn-1",
 		DriverKind: "codex", DriverVersion: "1", OccurredAtUnixMS: 100,
-	}); !errors.Is(err, ErrSessionForkTurnState) {
+	}); !errors.Is(err, ErrSessionForkTurnState) ||
+		sessionForkBoundaryReasonForTest(err) != SessionForkBoundaryReasonTurnSequenceUnverified ||
+		!strings.Contains(err.Error(), `provenance is "legacy_unverified"`) {
 		t.Fatalf("PrepareSessionFork() error=%v", err)
 	}
 }
@@ -882,10 +893,16 @@ func TestSessionForkThroughTurnFailsClosedForLocalAttachmentReferences(t *testin
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, supported, err := store.CheckSessionForkThroughTurn(
+	if boundary, supported, err := store.CheckSessionForkThroughTurn(
 		ctx, "ws-1", "source", "turn-1",
-	); err != nil || supported {
-		t.Fatalf("CheckSessionForkThroughTurn() supported=%v error=%v", supported, err)
+	); err != nil || supported ||
+		boundary.RejectionReason != SessionForkBoundaryReasonAttachmentUnsupported {
+		t.Fatalf(
+			"CheckSessionForkThroughTurn() boundary=%#v supported=%v error=%v",
+			boundary,
+			supported,
+			err,
+		)
 	}
 	if _, _, err := prepareSessionForkForTest(t, store, ctx, SessionForkPrepare{
 		OperationID: "fork-attachment", WorkspaceID: "ws-1",
@@ -893,7 +910,8 @@ func TestSessionForkThroughTurnFailsClosedForLocalAttachmentReferences(t *testin
 		SourceAgentSessionID: "source", TargetAgentSessionID: "target-attachment",
 		SourceTurnID: "turn-1", DriverKind: "codex", DriverVersion: "1",
 		OccurredAtUnixMS: 100,
-	}); !errors.Is(err, ErrSessionForkTurnState) {
+	}); !errors.Is(err, ErrSessionForkTurnState) ||
+		sessionForkBoundaryReasonForTest(err) != SessionForkBoundaryReasonAttachmentUnsupported {
 		t.Fatalf("PrepareSessionFork() error=%v", err)
 	}
 }
@@ -1308,10 +1326,16 @@ func TestSessionForkRejectsDescendantLaneInsideBoundary(t *testing.T) {
 		t, store, "source", "turn-3", "provider-turn-3",
 		RootProviderTurnPhaseCompleted, 42,
 	)
-	if _, supported, err := store.CheckSessionForkThroughTurn(
+	if boundary, supported, err := store.CheckSessionForkThroughTurn(
 		ctx, "ws-1", "source", "turn-3",
-	); err != nil || supported {
-		t.Fatalf("CheckSessionForkThroughTurn() supported=%v error=%v", supported, err)
+	); err != nil || supported ||
+		boundary.RejectionReason != SessionForkBoundaryReasonDescendantLaneUnsupported {
+		t.Fatalf(
+			"CheckSessionForkThroughTurn() boundary=%#v supported=%v error=%v",
+			boundary,
+			supported,
+			err,
+		)
 	}
 	if _, _, err := prepareSessionForkForTest(t, store, ctx, SessionForkPrepare{
 		OperationID: "fork-descendant", WorkspaceID: "ws-1",
@@ -1319,7 +1343,8 @@ func TestSessionForkRejectsDescendantLaneInsideBoundary(t *testing.T) {
 		SourceAgentSessionID: "source", TargetAgentSessionID: "target-descendant",
 		SourceTurnID: "turn-3", DriverKind: "codex", DriverVersion: "1",
 		OccurredAtUnixMS: 100,
-	}); !errors.Is(err, ErrSessionForkTurnState) {
+	}); !errors.Is(err, ErrSessionForkTurnState) ||
+		sessionForkBoundaryReasonForTest(err) != SessionForkBoundaryReasonDescendantLaneUnsupported {
 		t.Fatalf("PrepareSessionFork() error=%v", err)
 	}
 }
@@ -1697,6 +1722,14 @@ func TestListRecoverableSessionForkOperationsPage(t *testing.T) {
 	if err != nil || len(second) != 1 || second[0].OperationID != "recover-b" {
 		t.Fatalf("second recovery page=%#v error=%v", second, err)
 	}
+}
+
+func sessionForkBoundaryReasonForTest(err error) SessionForkBoundaryReason {
+	var boundaryErr *SessionForkBoundaryError
+	if !errors.As(err, &boundaryErr) {
+		return ""
+	}
+	return boundaryErr.Reason
 }
 
 func prepareSessionForkForTest(

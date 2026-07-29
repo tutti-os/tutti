@@ -296,7 +296,7 @@ func normalizeSessionForkError(err error) error {
 		errors.Is(err, storesqlite.ErrSessionForkTurnState),
 		errors.Is(err, storesqlite.ErrSessionForkTargetReserved),
 		errors.Is(err, storesqlite.ErrSessionForkTransition):
-		return fmt.Errorf("%w: %v", ErrSessionForkConflict, err)
+		return fmt.Errorf("%w: %w", ErrSessionForkConflict, err)
 	default:
 		return err
 	}

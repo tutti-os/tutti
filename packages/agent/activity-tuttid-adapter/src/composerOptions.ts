@@ -216,17 +216,17 @@ function slashCommandPolicyFromValue(
   value: unknown
 ): AgentActivitySlashCommandPolicy | null {
   const policy = recordValue(value);
-  if (
-    !Array.isArray(policy.fallbackCommands) ||
-    !Array.isArray(policy.commandEffects)
-  ) {
+  if (!Array.isArray(policy.fallbackCommands)) {
     return null;
   }
   const fallbackCommands = policy.fallbackCommands.flatMap((entry) => {
     const command = normalizeText(entry);
     return command ? [command] : [];
   });
-  const commandEffects = policy.commandEffects.flatMap((entry) => {
+  const rawCommandEffects = Array.isArray(policy.commandEffects)
+    ? policy.commandEffects
+    : [];
+  const commandEffects = rawCommandEffects.flatMap((entry) => {
     const descriptor = recordValue(entry);
     const command = normalizeText(descriptor.command);
     const effect = slashCommandEffectFromValue(descriptor.effect);

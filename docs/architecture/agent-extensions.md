@@ -83,6 +83,14 @@ describe an official vendor install location without adding provider-specific
 filesystem code to `tuttid`. It never loads JavaScript, React, Go plugins, or
 native modules from the extension.
 
+Composer skill roots remain declarative runtime inputs. Workspace roots must be
+safe relative paths at both installation validation and service consumption
+boundaries; absolute and parent-traversing paths are ignored before runtime
+preparation or discovery. Tutti materializes only its managed skills into those
+roots and replaces the same managed directories on repeated preparation, so a
+persistent workspace cannot accumulate suffixed copies. User-owned colliding
+directories are never replaced.
+
 The generic adapter applies declarative tool aliases before canonical activity
 normalization and maps composer permission semantics onto runtime permission
 IDs. Standard ACP content diffs continue through the shared ACP diff
