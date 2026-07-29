@@ -1,4 +1,5 @@
 import type {
+  AgentActivityEditRetryAvailability,
   AgentActivityDurableMessage,
   AgentActivitySession,
   AgentActivityTuttiModeActivation,
@@ -6,6 +7,7 @@ import type {
 } from "@tutti-os/agent-activity-core";
 import type {
   TuttiModeActivation,
+  WorkspaceAgentEditRetryAvailability,
   WorkspaceAgentSession,
   WorkspaceAgentSessionMessage,
   WorkspaceAgentTurn
@@ -95,6 +97,23 @@ export function agentActivityTurnFromTuttidTurn(
     startedAtUnixMs: turn.startedAtUnixMs,
     turnId: turn.turnId,
     updatedAtUnixMs: turn.updatedAtUnixMs
+  };
+}
+
+export function agentActivityEditRetryAvailabilityFromTuttid(
+  availability: WorkspaceAgentEditRetryAvailability
+): AgentActivityEditRetryAvailability {
+  return {
+    supported: availability.supported,
+    eligible: availability.eligible,
+    ...(availability.turnId ? { turnId: availability.turnId } : {}),
+    historyRevision: availability.historyRevision,
+    recoveryState: availability.recoveryState,
+    ...(availability.operationId
+      ? { operationId: availability.operationId }
+      : {}),
+    availableActions: [...availability.availableActions],
+    ...(availability.reasonCode ? { reasonCode: availability.reasonCode } : {})
   };
 }
 

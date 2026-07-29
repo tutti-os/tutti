@@ -1594,6 +1594,53 @@ describe("AgentInteractivePromptSurface", () => {
     });
   });
 
+  it("hides free text for option-only ask-user questions", () => {
+    const onSubmit = vi.fn();
+    render(
+      <AgentInteractivePromptSurface
+        prompt={{
+          kind: "ask-user",
+          requestId: "ask-option-only",
+          title: "Choose one",
+          questions: [
+            {
+              id: "question-1",
+              header: "Choice",
+              question: "Which option?",
+              options: [
+                { label: "First", description: "Use the first option" },
+                { label: "Second", description: "Use the second option" }
+              ],
+              multiSelect: false,
+              allowFreeText: false
+            }
+          ]
+        }}
+        variant="full"
+        isSubmitting={false}
+        onSubmit={onSubmit}
+        labels={labels}
+      />
+    );
+
+    expect(
+      screen.queryByPlaceholderText(labels.answerPlaceholder)
+    ).not.toBeInTheDocument();
+    const submit = screen.getByRole("button", { name: labels.submitAnswers });
+    expect(submit).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /First/ }));
+    fireEvent.click(submit);
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      requestId: "ask-option-only",
+      action: "submit",
+      payload: {
+        answers: ["First"],
+        answersByQuestionId: { "question-1": "First" }
+      }
+    });
+  });
+
   it("trims pure-text answers and rejects whitespace-only input", () => {
     const onSubmit = vi.fn();
     render(

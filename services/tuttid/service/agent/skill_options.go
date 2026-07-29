@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
@@ -18,19 +20,21 @@ import (
 const (
 	composerSkillSourceProject       = "project"
 	composerSkillSourcePersonal      = "personal"
+	composerSkillSourceBundled       = "bundled"
 	composerSkillSourcePlugin        = "plugin"
 	composerSkillSourceSystem        = "system"
 	composerSkillSourceTuttiInjected = "tutti-injected"
 )
 
 var hiddenTuttiProviderSkills = map[string]struct{}{
-	"tutti-cli":     {},
-	"tutti-handoff": {},
-	"issue-manager": {},
-	"workspace-app": {},
-	"reference":     {},
-	"browser-use":   {},
-	"computer-use":  {},
+	"tutti-cli":              {},
+	"tutti-handoff":          {},
+	"issue-manager":          {},
+	"workspace-app":          {},
+	"reference":              {},
+	"browser-use":            {},
+	"computer-use":           {},
+	"tutti-model-allocation": {},
 }
 
 func discoverComposerSkillOptions(provider string, cwd string, env []string) []ComposerSkillOption {
@@ -137,8 +141,9 @@ func ancestorDeclaredSkillRoots(cwd string, relativePath string) []composerSkill
 }
 
 func extensionSkillTrigger(prefix string) skillTriggerFunc {
-	prefix = strings.TrimSpace(prefix)
-	if prefix != "/" && prefix != "$" {
+	if prefix == "" || prefix != strings.TrimSpace(prefix) || utf8.RuneCountInString(prefix) > 8 ||
+		(!strings.HasPrefix(prefix, "/") && !strings.HasPrefix(prefix, "$")) ||
+		strings.ContainsFunc(prefix, unicode.IsSpace) {
 		return nil
 	}
 	return func(_ composerSkillRoot, name string) string {

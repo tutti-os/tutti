@@ -2,6 +2,7 @@ package agenthost
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -169,7 +170,7 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 	}
 	h.observeStep(ctx, "session_create", "prompt_validated", session.ID, session.Provider, startedAt, nil)
 	startedAt = h.now()
-	content, preparedDisplay, err := h.prepareContent(workspaceID, session.ID, normalized)
+	preparedContent, err := h.prepareContent(workspaceID, session.ID, normalized)
 	if err != nil {
 		h.observeStep(ctx, "session_create", "prompt_prepared", session.ID, session.Provider, startedAt, err)
 		return CreateSessionResult{}, cleanup(err, true, true)
@@ -178,7 +179,7 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 	displayPrompt := strings.TrimSpace(input.InitialDisplayPrompt)
 	initialTitle := ""
 	if !session.InitialTitleEstablished {
-		initialTitle = DeriveInitialTitle(session.Title, firstNonEmpty(displayPrompt, promptText, preparedDisplay))
+		initialTitle = DeriveInitialTitle(session.Title, firstNonEmpty(displayPrompt, promptText, preparedContent.DisplayText))
 	}
 	startedAt = h.now()
 	turnID := strings.TrimSpace(input.TurnID)
@@ -188,7 +189,7 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 	execResult, err := h.runtime.Exec(ctx, RuntimeExecInput{
 		WorkspaceID: workspaceID, AgentSessionID: session.ID, TurnID: turnID,
 		ClientSubmitID: claim.ClientSubmitID, CanonicalSubmitOccurredAtUnixMS: claim.CreatedAtUnixMS,
-		CapabilityRefs: append([]CapabilityReference(nil), input.CapabilityRefs...), Content: content,
+		CapabilityRefs: append([]CapabilityReference(nil), input.CapabilityRefs...), Content: preparedContent.Hydrated,
 		DisplayPrompt: displayPrompt, InitialTitle: initialTitle, InitialTitleBase: session.Title,
 		Metadata: cloneMap(metadata), TuttiModeSnapshot: input.TuttiModeSnapshot,
 	})
@@ -209,13 +210,20 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 		if err := reporter.DurablyReportSubmitProvenance(ctx, RuntimeSubmitProvenanceInput{
 			WorkspaceID: workspaceID, AgentSessionID: session.ID, TurnID: turnID,
 			ClientSubmitID: claim.ClientSubmitID, CanonicalSubmitOccurredAtUnixMS: claim.CreatedAtUnixMS,
-			Content: content, DisplayPrompt: displayPrompt,
+			Content: preparedContent.Hydrated, DisplayPrompt: displayPrompt,
 		}); err != nil {
 			// Provider acceptance is already possible. Keep the runtime, canonical
 			// session, and prepared claim intact so a retry cannot dispatch twice.
 			claimPending = false
 			return CreateSessionResult{}, errors.Join(ErrSubmitDeliveryUnknown, err)
 		}
+	}
+	if err := h.recordTurnSubmission(
+		ctx, ref, turnID, input.ClientSubmitID, preparedContent.Persisted,
+		displayPrompt, input.CapabilityRefs, input.TuttiModeSnapshot,
+	); err != nil {
+		claimPending = false
+		return CreateSessionResult{}, errors.Join(ErrSubmitDeliveryUnknown, err)
 	}
 	if claim.ClientSubmitID != "" {
 		claimPending = false
@@ -368,6 +376,27 @@ func (h *Host) SendInput(ctx context.Context, ref SessionRef, input SendInput) (
 			Kind: "goalControl", GoalControl: &goalResult,
 		}, nil
 	}
+	var result SendInputResult
+	err = h.withSessionMutationActor(ctx, ref.WorkspaceID, ref.AgentSessionID, func(actorCtx context.Context) error {
+		var sendErr error
+		result, sendErr = h.sendInputSerialized(actorCtx, ref, input, normalized, promptText, metadata)
+		return sendErr
+	})
+	return result, err
+}
+
+func (h *Host) sendInputSerialized(
+	ctx context.Context,
+	ref SessionRef,
+	input SendInput,
+	normalized []PromptContentBlock,
+	promptText string,
+	metadata map[string]any,
+) (SendInputResult, error) {
+	var err error
+	if err := h.requireSendAllowedByEffectiveHistory(ctx, ref); err != nil {
+		return SendInputResult{}, err
+	}
 	if !input.Guidance && strings.TrimSpace(input.TurnID) == "" {
 		input.TurnID = uuid.NewString()
 	}
@@ -408,7 +437,7 @@ func (h *Host) SendInput(ctx context.Context, ref SessionRef, input SendInput) (
 	}
 	h.observeStep(ctx, "message_send", "prompt_validated", ref.AgentSessionID, session.Provider, startedAt, nil)
 	startedAt = h.now()
-	content, preparedDisplay, err := h.prepareContent(ref.WorkspaceID, ref.AgentSessionID, normalized)
+	preparedContent, err := h.prepareContent(ref.WorkspaceID, ref.AgentSessionID, normalized)
 	if err != nil {
 		h.observeStep(ctx, "message_send", "prompt_prepared", ref.AgentSessionID, session.Provider, startedAt, err)
 		return SendInputResult{}, err
@@ -416,7 +445,7 @@ func (h *Host) SendInput(ctx context.Context, ref SessionRef, input SendInput) (
 	h.observeStep(ctx, "message_send", "prompt_prepared", ref.AgentSessionID, session.Provider, startedAt, nil)
 	displayPrompt, initialTitle := strings.TrimSpace(input.DisplayPrompt), ""
 	if !input.Guidance && !session.InitialTitleEstablished {
-		initialTitle = DeriveInitialTitle(session.Title, firstNonEmpty(displayPrompt, promptText, preparedDisplay))
+		initialTitle = DeriveInitialTitle(session.Title, firstNonEmpty(displayPrompt, promptText, preparedContent.DisplayText))
 	}
 	startedAt = h.now()
 	releaseStartup, err := h.acquireStartup(ctx, session.Provider)
@@ -434,7 +463,7 @@ func (h *Host) SendInput(ctx context.Context, ref SessionRef, input SendInput) (
 			WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID,
 			TurnID: turnID, ClientSubmitID: claim.ClientSubmitID,
 			CanonicalSubmitOccurredAtUnixMS: claim.CreatedAtUnixMS,
-			CapabilityRefs:                  append([]CapabilityReference(nil), input.CapabilityRefs...), Content: content,
+			CapabilityRefs:                  append([]CapabilityReference(nil), input.CapabilityRefs...), Content: preparedContent.Hydrated,
 			DisplayPrompt: displayPrompt, InitialTitle: initialTitle, InitialTitleBase: session.Title,
 			Guidance: input.Guidance, Metadata: cloneMap(metadata), TuttiModeSnapshot: input.TuttiModeSnapshot,
 		})
@@ -462,8 +491,17 @@ func (h *Host) SendInput(ctx context.Context, ref SessionRef, input SendInput) (
 		if err := reporter.DurablyReportSubmitProvenance(ctx, RuntimeSubmitProvenanceInput{
 			WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID, TurnID: turnID,
 			ClientSubmitID: claim.ClientSubmitID, CanonicalSubmitOccurredAtUnixMS: claim.CreatedAtUnixMS,
-			Content: content, DisplayPrompt: displayPrompt, Guidance: input.Guidance,
+			Content: preparedContent.Hydrated, DisplayPrompt: displayPrompt, Guidance: input.Guidance,
 		}); err != nil {
+			claimPending = false
+			return SendInputResult{}, errors.Join(ErrSubmitDeliveryUnknown, err)
+		}
+	}
+	if !input.Guidance {
+		if err := h.recordTurnSubmission(
+			ctx, ref, turnID, input.ClientSubmitID, preparedContent.Persisted,
+			displayPrompt, input.CapabilityRefs, input.TuttiModeSnapshot,
+		); err != nil {
 			claimPending = false
 			return SendInputResult{}, errors.Join(ErrSubmitDeliveryUnknown, err)
 		}
@@ -552,19 +590,92 @@ func (h *Host) acceptedSubmitResult(ctx context.Context, ref SessionRef, claim s
 	}, nil
 }
 
-func (h *Host) prepareContent(workspaceID, sessionID string, content []PromptContentBlock) ([]PromptContentBlock, string, error) {
+type preparedPromptContent struct {
+	Persisted   []PromptContentBlock
+	Hydrated    []PromptContentBlock
+	DisplayText string
+}
+
+func (h *Host) prepareContent(workspaceID, sessionID string, content []PromptContentBlock) (preparedPromptContent, error) {
 	if h.attachments == nil {
-		return append([]PromptContentBlock(nil), content...), "", nil
+		cloned := append([]PromptContentBlock(nil), content...)
+		return preparedPromptContent{
+			Persisted: cloned,
+			Hydrated:  append([]PromptContentBlock(nil), cloned...),
+		}, nil
 	}
 	persisted, err := h.attachments.PersistRequestContent(workspaceID, sessionID, content)
 	if err != nil {
-		return nil, "", err
+		return preparedPromptContent{}, err
 	}
 	hydrated, err := h.attachments.HydrateRuntimeContent(workspaceID, sessionID, persisted)
 	if err != nil {
-		return nil, "", err
+		return preparedPromptContent{}, err
 	}
-	return hydrated, imageOnlyDisplayText(persisted), nil
+	return preparedPromptContent{
+		Persisted:   append([]PromptContentBlock(nil), persisted...),
+		Hydrated:    append([]PromptContentBlock(nil), hydrated...),
+		DisplayText: imageOnlyDisplayText(persisted),
+	}, nil
+}
+
+func (h *Host) recordTurnSubmission(
+	ctx context.Context,
+	ref SessionRef,
+	turnID string,
+	clientSubmitID string,
+	content []PromptContentBlock,
+	displayPrompt string,
+	capabilityRefs []CapabilityReference,
+	tuttiModeSnapshot *TuttiModeTurnSnapshot,
+) error {
+	if h == nil || h.turnSubmissions == nil {
+		return nil
+	}
+	contentJSON, err := json.Marshal(content)
+	if err != nil {
+		return fmt.Errorf("encode turn submission content: %w", err)
+	}
+	capabilityRefsJSON, err := json.Marshal(capabilityRefs)
+	if err != nil {
+		return fmt.Errorf("encode turn submission capability refs: %w", err)
+	}
+	tuttiModeSnapshotJSON, err := json.Marshal(tuttiModeSnapshot)
+	if err != nil {
+		return fmt.Errorf("encode turn submission tutti mode snapshot: %w", err)
+	}
+	now := h.now().UnixMilli()
+	_, _, err = h.turnSubmissions.RecordTurnSubmission(ctx, storesqlite.TurnSubmission{
+		WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID,
+		TurnID: strings.TrimSpace(turnID), ContentJSON: string(contentJSON),
+		DisplayPrompt:         strings.TrimSpace(displayPrompt),
+		CapabilityRefsJSON:    string(capabilityRefsJSON),
+		TuttiModeSnapshotJSON: string(tuttiModeSnapshotJSON),
+		ClientSubmitID:        strings.TrimSpace(clientSubmitID),
+		CreatedAtUnixMS:       now, UpdatedAtUnixMS: now,
+	})
+	if err != nil {
+		return fmt.Errorf("record turn submission envelope: %w", err)
+	}
+	return nil
+}
+
+func (h *Host) requireSendAllowedByEffectiveHistory(ctx context.Context, ref SessionRef) error {
+	if h == nil || h.effectiveHistory == nil {
+		return nil
+	}
+	history, found, err := h.effectiveHistory.GetSessionHistory(ctx, ref.WorkspaceID, ref.AgentSessionID)
+	if err != nil || !found || history.RecoveryState == storesqlite.SessionHistoryRecoveryReady {
+		return err
+	}
+	switch history.RecoveryState {
+	case storesqlite.SessionHistoryRecoveryRollbackPending:
+		return ErrEditRetryInProgress
+	case storesqlite.SessionHistoryRecoveryRequired:
+		return ErrEditRetryRecoveryRequired
+	default:
+		return ErrEditRetryResendPending
+	}
 }
 
 func (h *Host) acquireSession(ctx context.Context, ref SessionRef) (func(), error) {

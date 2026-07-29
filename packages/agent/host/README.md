@@ -28,6 +28,8 @@ The module owns:
   repair, and goal recovery policy;
 - the provider-neutral Session Fork saga, source mutation fence, exact
   capability resolution, durable lineage, and startup recovery policy;
+- the durable edit-retry saga, effective-history revision fence, authoritative
+  provider-history reconciliation, and explicit replacement recovery policy;
 - typed conformance scenarios under `conformance`.
 
 `CreateSession` has two explicit modes: an empty session, or one command with
@@ -83,6 +85,35 @@ accept-before-response crash without duplicating Host's operation-ID
 algorithm. Startup and steady-state workers process fences before ordinary
 Goal operations; otherwise a prepared revoked Goal could be replayed during
 recovery before its fence reached the runtime.
+
+A completed latest user Turn may be edited and retried only through
+`GetEditRetryAvailability`, `EditRetry`, and `RecoverEditRetry`. Host owns the
+complete lifecycle: it snapshots the lossless submitted content, serializes the
+Session mutation, checkpoints before provider rollback, retracts exactly one
+effective Turn only after authoritative confirmation, then submits a stable
+replacement Turn. The replacement keeps attachments, mentions, capability
+references, and the Tutti mode snapshot while replacing only the first text
+block. Retraction changes model-visible history and canonical projections; it
+does not compensate filesystem changes produced by the original Turn.
+Conversation timelines hide retracted Turns, while audit reads and generated
+file projections retain their submitted content and filesystem side effects.
+
+`operationId`, replacement `turnId`, and `clientSubmitId` remain stable across
+retries and process restarts. A direct provider acceptance receipt completes
+the operation without polling. If a rollback or replacement response is lost,
+Host reads the provider's effective history and fails closed on identity
+divergence. An uncertain rollback is never dispatched twice. An uncertain
+replacement is never resent until an explicit `retry_replacement` command has
+proved its absence from authoritative history; a read-only `reconcile` command
+cannot dispatch provider work. While history is fenced in
+`rollback_pending`, `resend_pending`, or `recovery_required`, ordinary sends
+are rejected rather than appended to an uncertain model context.
+The authoritative absence proof is consumed in the same SQLite transaction
+that removes a discardable failed replacement placeholder and advances the
+stable replacement attempt. There is no separately committed redispatch
+authorization checkpoint. Replaying the same proof is idempotent; a later
+authoritative proof advances a new attempt only after the previous failed
+placeholder and claim are safely discarded.
 
 A provider-accepted Goal operation has crossed the delivery boundary. The
 steady-state worker waits for applied evidence and never resubmits that

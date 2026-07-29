@@ -1162,6 +1162,10 @@ func (s *legacyHostConformanceTurnStore) ListSessionTurns(_ context.Context, _ s
 	return result, nil
 }
 
+func (s *legacyHostConformanceTurnStore) ListEffectiveSessionTurns(ctx context.Context, workspaceID string, sessionID string) ([]agentactivitybiz.Turn, error) {
+	return s.ListSessionTurns(ctx, workspaceID, sessionID)
+}
+
 func (s *legacyHostConformanceTurnStore) ListSessionTurnSummaries(_ context.Context, input agentactivitybiz.ListSessionTurnSummariesInput) (agentactivitybiz.SessionTurnSummaryPage, error) {
 	turns := make([]agentactivitybiz.SessionTurnSummary, 0)
 	for _, turn := range s.turns {

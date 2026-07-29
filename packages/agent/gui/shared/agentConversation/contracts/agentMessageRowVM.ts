@@ -66,6 +66,11 @@ export interface AgentMessageRowVM {
   id: string;
   turnId: string;
   speaker: "user" | "assistant";
+  /**
+   * Exact first text block from the submitted structured content. Editing must
+   * not recover this value from displayPrompt, copy text, or rendered Markdown.
+   */
+  rawFirstTextBlock?: string | null;
   messages: AgentMessageContentVM[];
   thinking: AgentThinkingContentVM[];
   /**

@@ -411,6 +411,12 @@ func runtimeOperationCompletionMutations(ctx context.Context, tx *sql.Tx, op Run
 		if found {
 			mutations = append(mutations, transactionMutation(op.WorkspaceID, op.AgentSessionID, MutationEntityMessage, messageID, "upsert", int64(message.Version)))
 		}
+	case RuntimeOperationEventEditRetryCompleted:
+		mutations = append(mutations,
+			transactionMutation(op.WorkspaceID, op.AgentSessionID, MutationEntityTurn, op.TurnID, "retract", op.UpdatedAtUnixMS),
+			transactionMutation(op.WorkspaceID, op.AgentSessionID, MutationEntityTurn, payloadString(event.Payload, "replacementTurnId"), "upsert", op.UpdatedAtUnixMS),
+			transactionMutation(op.WorkspaceID, op.AgentSessionID, MutationEntitySession, op.AgentSessionID, "history_replace", payloadInt64(event.Payload, "historyRevision")),
+		)
 	}
 	return mutations, nil
 }

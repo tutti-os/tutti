@@ -31,7 +31,21 @@ func (s *Store) ListSessionMessages(
 	}
 	turnID := strings.TrimSpace(input.TurnID)
 	messageID := strings.TrimSpace(input.MessageID)
-	where := []string{"workspace_id = ?", "agent_session_id = ?", "deleted_at_unix_ms = 0"}
+	where := []string{
+		"workspace_id = ?",
+		"agent_session_id = ?",
+		"deleted_at_unix_ms = 0",
+		`(
+		  COALESCE(TRIM(turn_id), '') = ''
+		  OR NOT EXISTS (
+		    SELECT 1 FROM workspace_agent_turn_history history
+		    WHERE history.workspace_id = workspace_agent_messages.workspace_id
+		      AND history.agent_session_id = workspace_agent_messages.agent_session_id
+		      AND history.turn_id = workspace_agent_messages.turn_id
+		      AND history.history_state = 'retracted'
+		  )
+		)`,
+	}
 	args := []any{workspaceID, agentSessionID}
 	if messageID != "" {
 		where = append(where, "message_id = ?")

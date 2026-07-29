@@ -60,6 +60,10 @@ export function analyzeAgentActivityEventObservation(input: {
       hasCachedSession: input.hasCachedSession,
       hasInlineMessages: inlineMessages.length > 0,
       inlineApplied: input.hasCachedSession && canApplyInlineMessages,
+      ...(input.event.eventType === "turn_update" &&
+      input.event.data.turn?.phase === "settled"
+        ? { terminalTurn: true }
+        : {}),
       type: "session/activityObserved",
       workspaceId: input.event.workspaceId
     }

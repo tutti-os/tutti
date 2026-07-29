@@ -45,6 +45,7 @@ Provider discovery, installation, authentication, models, configuration, and run
 - [OpenCode effort changes fail with `effort not found`](./agent-provider-setup.md#opencode-effort-changes-fail-with-effort-not-found)
 - [OpenCode model picker has fewer models than the terminal](./agent-provider-setup.md#opencode-model-picker-has-fewer-models-than-the-terminal)
 - [Provider setup notice flashes after switching to an already-connected agent](./agent-provider-setup.md#provider-setup-notice-flashes-after-switching-to-an-already-connected-agent)
+- [Extension uv runtime install selects an incompatible system Python](./agent-provider-setup.md#extension-uv-runtime-install-selects-an-incompatible-system-python)
 - [Extension runtime installation stays failed after restart](./agent-provider-setup.md#extension-runtime-installation-stays-failed-after-restart)
 - [Extension slash palette is empty or ignores its command filter](./agent-provider-setup.md#extension-slash-palette-is-empty-or-ignores-its-command-filter)
 
@@ -75,6 +76,7 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - [AgentGUI new conversation does nothing after leaving a Chats session](./agent-session-lifecycle.md#agentgui-new-conversation-does-nothing-after-leaving-a-chats-session)
 - [AgentGUI restores a provisional conversation after creation fails](./agent-session-lifecycle.md#agentgui-restores-a-provisional-conversation-after-creation-fails)
 - [Agent GUI context usage is absent or has the wrong total](./agent-session-lifecycle.md#agent-gui-context-usage-is-absent-or-has-the-wrong-total)
+- [Older extension session fails because its launch identity is incomplete](./agent-session-lifecycle.md#older-extension-session-fails-because-its-launch-identity-is-incomplete)
 - [Extension history becomes non-resumable after daemon restart](./agent-session-lifecycle.md#extension-history-becomes-non-resumable-after-daemon-restart)
 - [Agent session restore breaks when durable snapshot ownership is split](./agent-session-lifecycle.md#agent-session-restore-breaks-when-durable-snapshot-ownership-is-split)
 - [Agent activity live updates fail after event schema changes](./agent-session-lifecycle.md#agent-activity-live-updates-fail-after-event-schema-changes)
@@ -105,6 +107,7 @@ Approval gates, plan exits, root/parent/child event attribution, child sessions,
 
 - [External PR review approvals do not refresh gate status](./agent-approvals-subagents.md#external-pr-review-approvals-do-not-refresh-gate-status)
 - [Cursor approval card shows only title and options, no command/path detail](./agent-approvals-subagents.md#cursor-approval-card-shows-only-title-and-options-no-commandpath-detail)
+- [Kimi Code AskUserQuestion waits without showing a question card](./agent-approvals-subagents.md#kimi-code-askuserquestion-waits-without-showing-a-question-card)
 - [Agent approval controls submit stale permission requests after restart](./agent-approvals-subagents.md#agent-approval-controls-submit-stale-permission-requests-after-restart)
 - [Claude SDK ExitPlanMode fails as interrupted after plan is ready](./agent-approvals-subagents.md#claude-sdk-exitplanmode-fails-as-interrupted-after-plan-is-ready)
 - [Codex app-server subagent output appears as the parent reply](./agent-approvals-subagents.md#codex-app-server-subagent-output-appears-as-the-parent-reply)

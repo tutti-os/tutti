@@ -8513,6 +8513,10 @@ func (*activityProjectionRepoStub) ListSessionTurns(context.Context, string, str
 	return nil, nil
 }
 
+func (*activityProjectionRepoStub) ListEffectiveSessionTurns(context.Context, string, string) ([]agentactivitybiz.Turn, error) {
+	return nil, nil
+}
+
 func (*activityProjectionRepoStub) RecordTurnTransition(_ context.Context, transition agentactivitybiz.TurnTransition) (agentactivitybiz.Turn, bool, error) {
 	return agentactivitybiz.Turn{
 		WorkspaceID:    transition.WorkspaceID,

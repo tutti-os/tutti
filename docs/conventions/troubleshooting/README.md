@@ -17,6 +17,8 @@ Use the focused runtime index or open one area directly:
 - [Agent Providers And Setup](./agent-provider-setup.md): Provider discovery, installation, authentication, models, configuration, and runtime reachability.
   Includes Codex Model Plan Responses-to-Chat routing and extension
   command/Skill palette hydration failures.
+  Also covers uv-managed Extension installs that accidentally select an
+  incompatible system Python.
   Also covers focus-driven provider CLI scans, repeated Extension Target version
   probes, extension release refresh delaying daemon startup, and CPU spikes.
 - [Agent Sessions And Lifecycle](./agent-session-lifecycle.md): Turn state, activation, planning-mode classification, Tutti workflow response contracts, loading, cancel, goal controls, restore, file-change undo, rail projection, realtime completion provenance, event updates, imports, and performance.

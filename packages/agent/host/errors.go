@@ -24,6 +24,12 @@ var (
 	ErrSessionForkInProgress             = errors.New("agent session fork is in progress")
 	ErrSessionForkDeliveryUnknown        = errors.New("agent session fork provider delivery is unknown")
 	ErrSessionForkFailed                 = errors.New("agent session fork failed")
+	ErrEditRetryNotEligible              = errors.New("only the latest completed user turn can be edited and retried")
+	ErrEditRetryHistoryConflict          = errors.New("agent effective history revision changed")
+	ErrRuntimeHistoryUnsupported         = errors.New("agent provider does not support effective history mutation")
+	ErrEditRetryInProgress               = errors.New("agent history edit is still being confirmed")
+	ErrEditRetryResendPending            = errors.New("agent history was rolled back but the edited turn still needs to be resent")
+	ErrEditRetryRecoveryRequired         = errors.New("agent provider history diverged and requires explicit recovery")
 )
 
 // ProviderError preserves a provider-owned failure across the runtime adapter

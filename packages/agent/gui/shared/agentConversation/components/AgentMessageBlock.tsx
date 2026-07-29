@@ -1,14 +1,5 @@
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useState,
-  type JSX,
-  type ReactNode
-} from "react";
+import { Fragment, useCallback, type JSX, type ReactNode } from "react";
 import { Avatar } from "@tutti-os/ui-system";
-import { CheckIcon, CopyIcon } from "@tutti-os/ui-system/icons";
-import { formatAgentMessageTimestamp } from "../../../app/renderer/shell/utils/format";
 import { AgentPlanCard } from "./AgentPlanCard";
 import { AgentCollaborationRow } from "./AgentCollaborationRow";
 import { translate } from "../../../i18n/index";
@@ -42,10 +33,14 @@ import { AgentThinkingDisclosure } from "./AgentThinkingDisclosure";
 import { RawTimelineJsonDisclosure } from "./RawTimelineJsonDisclosure";
 import { useElapsedSeconds } from "./useElapsedSeconds";
 import styles from "../../../agent-gui/agentGuiNode/AgentGUIConversation.styles";
-import { CanvasNodeGhostIconButton } from "../../../contexts/workspace/presentation/renderer/components/shared/CanvasNodeGhostIconButton";
 import { AgentUserImageGrid } from "./AgentMessageImages";
+import {
+  AgentUserMessageEditor,
+  type AgentUserMessageEditRetryControl
+} from "./AgentUserMessageEditRetry";
+import { useAgentUserMessageEditRetry } from "./useAgentUserMessageEditRetry";
+import { AgentCopyableMessageGroup } from "./AgentMessageActions";
 
-const MESSAGE_COPY_FEEDBACK_MS = 1400;
 const DEFAULT_TOOL_CALLS_LABEL = (count: number): string =>
   `${count} tool calls`;
 const TRANSPORT_RETRY_PROGRESS_PATTERN =
@@ -60,6 +55,7 @@ interface AgentMessageBlockProps {
   workspaceRoot: string | null;
   basePath: string;
   row: AgentMessageRowVM;
+  editRetry?: AgentUserMessageEditRetryControl;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   thinkingLabel: string;
   toolCallsLabel?: (count: number) => string;
@@ -81,6 +77,7 @@ export function AgentMessageBlock({
   workspaceRoot,
   basePath,
   row,
+  editRetry,
   onLinkAction,
   thinkingLabel,
   toolCallsLabel = DEFAULT_TOOL_CALLS_LABEL,
@@ -98,6 +95,18 @@ export function AgentMessageBlock({
   "use memo";
   const agentHostApi = useOptionalAgentHostApi();
   const isUser = row.speaker === "user";
+  const {
+    canEdit,
+    editableTargetMessageId,
+    editPending,
+    editState,
+    handleCancelEdit,
+    handleEditorKeyDown,
+    handleEditTextChange,
+    handleStartEdit,
+    handleSubmitEdit,
+    isEditing
+  } = useAgentUserMessageEditRetry({ editRetry, isUser, row });
   const handleLinkClick = useCallback(
     (href: string): void => {
       const action = resolveAgentConversationLinkAction({
@@ -183,6 +192,8 @@ export function AgentMessageBlock({
   const messageContent = row.messages.map((message, messageIndex) => {
     const messageFooterAction =
       messageIndex === row.messages.length - 1 ? footerAction : null;
+    const isEditTarget = canEdit && message.id === editableTargetMessageId;
+    const isEditingTarget = isEditing && isEditTarget;
     const rawTimelineJson =
       showRawTimelineJson &&
       rawTimelineJsonLabel &&
@@ -199,7 +210,7 @@ export function AgentMessageBlock({
       !isUser && !message.visibleError
         ? recoverVisibleErrorFromMessage(message, provider)
         : null;
-    const content =
+    const renderedContent =
       isUser && message.contentKind === "image-grid" ? (
         <AgentUserImageGrid message={message} />
       ) : isUser ? (
@@ -262,12 +273,44 @@ export function AgentMessageBlock({
           }
         />
       );
+    const editor =
+      isEditingTarget && editState && editRetry ? (
+        <AgentUserMessageEditor
+          value={editState.draft}
+          pending={editPending}
+          labels={editRetry.labels}
+          onChange={handleEditTextChange}
+          onCancel={handleCancelEdit}
+          onSubmit={handleSubmitEdit}
+          onKeyDown={handleEditorKeyDown}
+        />
+      ) : null;
+    const content =
+      editor && message.contentKind !== "image-grid" ? (
+        editor
+      ) : editor ? (
+        <>
+          {renderedContent}
+          {editor}
+        </>
+      ) : (
+        renderedContent
+      );
+    const editAction =
+      isEditTarget && !isEditing && editRetry
+        ? {
+            disabled: editPending,
+            label: editRetry.labels.edit,
+            onClick: handleStartEdit
+          }
+        : null;
 
     if (rawTimelineJson) {
       return (
         <AgentCopyableMessageGroup
           key={message.id}
           copyText={message.copyText ?? null}
+          editAction={editAction}
           occurredAtUnixMs={message.occurredAtUnixMs}
           speaker={row.speaker}
           onCopyMessageText={handleCopyMessageText}
@@ -280,11 +323,12 @@ export function AgentMessageBlock({
     }
 
     const copyText = message.copyText ?? null;
-    if (copyText) {
+    if (copyText || editAction || isEditingTarget) {
       return (
         <AgentCopyableMessageGroup
           key={message.id}
           copyText={copyText}
+          editAction={editAction}
           occurredAtUnixMs={message.occurredAtUnixMs}
           speaker={row.speaker}
           onCopyMessageText={handleCopyMessageText}
@@ -300,6 +344,7 @@ export function AgentMessageBlock({
         <AgentCopyableMessageGroup
           key={message.id}
           copyText={null}
+          editAction={null}
           occurredAtUnixMs={message.occurredAtUnixMs}
           speaker={row.speaker}
           onCopyMessageText={handleCopyMessageText}
@@ -435,93 +480,6 @@ function AgentConversationParticipantAvatar({
       size={28}
       src={participant.avatarUrl}
     />
-  );
-}
-
-function AgentCopyableMessageGroup({
-  children,
-  copyText,
-  occurredAtUnixMs,
-  onCopyMessageText,
-  speaker,
-  footerAction
-}: {
-  children: ReactNode;
-  copyText: string | null;
-  occurredAtUnixMs: number | null;
-  onCopyMessageText: (text: string) => Promise<boolean>;
-  speaker: AgentMessageRowVM["speaker"];
-  footerAction?: ReactNode;
-}): JSX.Element {
-  "use memo";
-  const timestamp = formatAgentMessageTimestamp(occurredAtUnixMs);
-  const hasFooter = Boolean(timestamp || copyText || footerAction);
-
-  return (
-    <div
-      className={styles.messageGroup}
-      data-agent-message-footer={hasFooter ? "true" : undefined}
-      data-agent-message-speaker={speaker}
-    >
-      {children}
-      {hasFooter ? (
-        <div className={styles.messageFooter}>
-          {timestamp ? (
-            <span className={styles.messageTimestamp}>{timestamp}</span>
-          ) : null}
-          {copyText ? (
-            <AgentMessageCopyButton
-              copyText={copyText}
-              onCopyMessageText={onCopyMessageText}
-            />
-          ) : null}
-          {footerAction}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function AgentMessageCopyButton({
-  copyText,
-  onCopyMessageText
-}: {
-  copyText: string;
-  onCopyMessageText: (text: string) => Promise<boolean>;
-}): JSX.Element {
-  "use memo";
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) {
-      return;
-    }
-    const reset = window.setTimeout(() => {
-      setCopied(false);
-    }, MESSAGE_COPY_FEEDBACK_MS);
-    return () => window.clearTimeout(reset);
-  }, [copied]);
-  const handleClick = useCallback(async () => {
-    if (await onCopyMessageText(copyText)) {
-      setCopied(true);
-    }
-  }, [copyText, onCopyMessageText]);
-  const label = copied
-    ? translate("agentHost.agentGui.messageCopied")
-    : translate("agentHost.agentGui.copyMessage");
-
-  return (
-    <CanvasNodeGhostIconButton
-      className={styles.messageCopyButton}
-      aria-label={label}
-      data-copied={copied ? "true" : "false"}
-      onClick={handleClick}
-    >
-      {copied ? (
-        <CheckIcon width={14} height={14} aria-hidden="true" />
-      ) : (
-        <CopyIcon width={14} height={14} aria-hidden="true" />
-      )}
-    </CanvasNodeGhostIconButton>
   );
 }
 

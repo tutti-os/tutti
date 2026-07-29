@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
@@ -47,9 +49,10 @@ type ComposerProfile struct {
 		} `json:"commands"`
 	} `json:"slashCommands,omitempty"`
 	Skills *struct {
-		Invocation    string `json:"invocation"`
-		TriggerPrefix string `json:"triggerPrefix"`
-		Roots         []struct {
+		Invocation               string `json:"invocation"`
+		TriggerPrefix            string `json:"triggerPrefix"`
+		RuntimeCommandProjection string `json:"runtimeCommandProjection,omitempty"`
+		Roots                    []struct {
 			Scope string `json:"scope"`
 			Path  string `json:"path"`
 		} `json:"roots"`
@@ -356,8 +359,16 @@ func validateComposerProfile(profile ComposerProfile) error {
 	if profile.Skills.Invocation != "textTrigger" && profile.Skills.Invocation != "promptItem" {
 		return errors.New("composer skill invocation is unsupported")
 	}
-	if profile.Skills.TriggerPrefix != "/" && profile.Skills.TriggerPrefix != "$" {
+	if !isSupportedComposerSkillTriggerPrefix(profile.Skills.TriggerPrefix) {
 		return errors.New("composer skill triggerPrefix is unsupported")
+	}
+	if projection := strings.TrimSpace(profile.Skills.RuntimeCommandProjection); projection != "" {
+		if projection != "unlisted-as-skills" {
+			return errors.New("composer skill runtimeCommandProjection is unsupported")
+		}
+		if profile.SlashCommands == nil || !profile.SlashCommands.CommandCatalogAuthoritative {
+			return errors.New("composer skill runtimeCommandProjection requires an authoritative slash command catalog")
+		}
 	}
 	if len(profile.Skills.Roots) == 0 {
 		return errors.New("composer skills require at least one root")
@@ -372,6 +383,16 @@ func validateComposerProfile(profile ComposerProfile) error {
 		}
 	}
 	return nil
+}
+
+func isSupportedComposerSkillTriggerPrefix(prefix string) bool {
+	if prefix == "" || prefix != strings.TrimSpace(prefix) || utf8.RuneCountInString(prefix) > 8 {
+		return false
+	}
+	if !strings.HasPrefix(prefix, "/") && !strings.HasPrefix(prefix, "$") {
+		return false
+	}
+	return !strings.ContainsFunc(prefix, unicode.IsSpace)
 }
 
 func validateComposerPermissionModes(modes []ComposerPermissionMode) error {

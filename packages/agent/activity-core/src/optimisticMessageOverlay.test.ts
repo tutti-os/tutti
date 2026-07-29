@@ -5,7 +5,7 @@ import {
   createAgentActivityOptimisticMessageOverlay,
   type AgentActivityOptimisticMessageScope
 } from "./optimisticMessageOverlay.ts";
-import type { AgentActivityMessage } from "./types.ts";
+import type { AgentActivityMessage, AgentActivityTurn } from "./types.ts";
 
 const scope: AgentActivityOptimisticMessageScope = {
   workspaceId: "workspace-1",
@@ -52,6 +52,20 @@ function canonical(
     kind: "text",
     payload: { text: "canonical", content: "canonical" },
     occurredAtUnixMs: 10,
+    ...overrides
+  };
+}
+
+function effectiveTurn(
+  overrides: Partial<AgentActivityTurn> = {}
+): AgentActivityTurn {
+  return {
+    agentSessionId: scope.agentSessionId,
+    origin: "user_prompt",
+    phase: "settled",
+    startedAtUnixMs: 10,
+    turnId: "turn-1",
+    updatedAtUnixMs: 20,
     ...overrides
   };
 }
@@ -181,6 +195,62 @@ test("keeps an explicitly terminal optimistic projection until canonical becomes
   assert.equal(canonicalTerminal[0]?.version, 3);
   assert.equal(canonicalTerminal[0]?.status, "completed");
   assert.equal(canonicalTerminal[0]?.payload.text, "canonical final");
+});
+
+test("authoritative history removes a terminal optimistic row from a retracted Turn", () => {
+  const overlay = createAgentActivityOptimisticMessageOverlay();
+  const initial = canonical({
+    payload: {
+      clientSubmitId: "submit-1",
+      text: "old answer",
+      content: "old answer"
+    }
+  });
+  overlay.reconcile(scope, [initial]);
+  overlay.apply(
+    delta({ operation: "set", value: "old final answer" }, "completed")
+  );
+  assert.equal(overlay.project(scope, [initial]).length, 1);
+
+  overlay.reconcileAuthoritativeHistory(scope, [], []);
+
+  assert.deepEqual(overlay.project(scope, []), []);
+});
+
+test("authoritative history preserves terminal optimistic rows whose stable identity remains effective", () => {
+  const overlay = createAgentActivityOptimisticMessageOverlay();
+  const initial = canonical({
+    payload: {
+      clientSubmitId: "submit-1",
+      text: "answer",
+      content: "answer"
+    }
+  });
+  overlay.reconcile(scope, [initial]);
+  overlay.apply(
+    delta({ operation: "set", value: "final answer" }, "completed")
+  );
+
+  overlay.reconcileAuthoritativeHistory(scope, [], [effectiveTurn()]);
+  assert.equal(overlay.project(scope, []).length, 1);
+
+  overlay.reconcileAuthoritativeHistory(
+    scope,
+    [
+      canonical({
+        messageId: "replacement-message",
+        turnId: "turn-2",
+        payload: { clientSubmitId: "submit-1", text: "replacement" }
+      })
+    ],
+    [effectiveTurn({ turnId: "turn-2" })]
+  );
+  assert.equal(
+    overlay
+      .project(scope, [])
+      .some((message) => message.messageId === "message-1"),
+    true
+  );
 });
 
 test("rejects a nonterminal delta after canonical terminal truth", () => {

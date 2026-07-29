@@ -5,6 +5,7 @@ import type {
 } from "../types.ts";
 import type { AgentActivitySessionMessageWindow } from "../messageWindow.types.ts";
 import type { AgentActivitySessionInput } from "../sessionNormalization.ts";
+import type { AgentActivityEditRetryAvailability } from "./editRetry.types.ts";
 
 export type SessionReconcileScope = "messages" | "state" | "state_and_messages";
 
@@ -19,11 +20,14 @@ export interface AgentActivitySessionDetailSnapshot {
   lifecycleCapabilitiesProjected: boolean;
   session: AgentActivitySession;
   childSessions: readonly AgentActivitySession[];
+  editRetry?: AgentActivityEditRetryAvailability;
   turns: readonly AgentActivityTurn[];
 }
 
 export interface SessionReconcileRecord {
   agentSessionId: string;
+  appliedHistoryRevision: number | null;
+  authoritativeMessagesRequired: boolean;
   errorCode: string | null;
   errorMessage: string | null;
   inFlightCommandId: string | null;
@@ -33,6 +37,7 @@ export interface SessionReconcileRecord {
   pendingLive: boolean;
   pendingMessages: boolean;
   pendingState: boolean;
+  requiredHistoryRevision: number | null;
   workspaceId: string;
 }
 
@@ -45,8 +50,17 @@ export interface SessionReconcileRequestedIntent {
   type: "session/reconcileRequested";
   agentSessionId: string;
   live?: boolean;
+  authoritativeMessages?: boolean;
   needsMessages: boolean;
   needsState: boolean;
+  requiredHistoryRevision?: number;
+  workspaceId: string;
+}
+
+export interface SessionHistoryRevisionObservedIntent {
+  type: "session/historyRevisionObserved";
+  agentSessionId: string;
+  historyRevision: number;
   workspaceId: string;
 }
 
@@ -57,12 +71,14 @@ export interface SessionActivityObservedIntent {
   hasCachedSession: boolean;
   hasInlineMessages: boolean;
   inlineApplied: boolean;
+  terminalTurn?: boolean;
   workspaceId: string;
 }
 
 export interface SessionDetailSnapshotReceivedIntent {
   type: "session/detailSnapshotReceived";
   childSessions: readonly AgentActivitySessionInput[];
+  editRetry?: AgentActivityEditRetryAvailability;
   live?: boolean;
   messages?: readonly AgentActivityDurableMessage[];
   session: AgentActivitySessionInput;
@@ -76,13 +92,16 @@ export interface SessionDetailSnapshotReceivedIntent {
 export type SessionReconcileIntent =
   | SessionActivityObservedIntent
   | SessionDetailSnapshotReceivedIntent
+  | SessionHistoryRevisionObservedIntent
   | SessionReconcileRequestedIntent;
 
 export interface SessionReconcileCommand {
   type: "session/reconcile";
   agentSessionId: string;
+  authoritativeMessages?: boolean;
   commandId: string;
   live: boolean;
+  requiredHistoryRevision?: number;
   scope: SessionReconcileScope;
   timeoutMs?: number;
   workspaceId: string;

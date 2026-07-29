@@ -1,10 +1,13 @@
 import type {
+  AgentActivityDurableMessage,
   AgentActivityInteraction,
   AgentActivitySession,
   AgentActivityTurn,
   AgentActivityTurnCancelResponse
 } from "../types.ts";
 import type { AgentActivitySessionInput } from "../sessionNormalization.ts";
+import type { AgentActivitySessionMessageWindow } from "../messageWindow.types.ts";
+import type { AgentActivityEditRetryAvailability } from "./editRetry.types.ts";
 
 export type SessionCancelStatus =
   | "idle"
@@ -134,6 +137,22 @@ export interface TurnUpsertedIntent {
   turn: AgentActivityTurn;
 }
 
+export interface SessionHistoryAuthoritativeSnapshotReceivedIntent {
+  type: "session/historyAuthoritativeSnapshotReceived";
+  agentSessionId: string;
+  childSessions: readonly AgentActivitySessionInput[];
+  editRetry?: AgentActivityEditRetryAvailability;
+  historyRevision: number;
+  messages: readonly AgentActivityDurableMessage[];
+  session: AgentActivitySessionInput;
+  liveTurnId?: string;
+  sessionMessageWindows?: readonly (AgentActivitySessionMessageWindow & {
+    agentSessionId: string;
+  })[];
+  turns: readonly AgentActivityTurn[];
+  workspaceId: string;
+}
+
 export interface InteractionUpsertedIntent {
   type: "interaction/upserted";
   interaction: AgentActivityInteraction;
@@ -239,6 +258,7 @@ export type SessionLifecycleIntent =
   | SessionCancelRequestedIntent
   | SessionErrorClearedIntent
   | SessionErrorRecordedIntent
+  | SessionHistoryAuthoritativeSnapshotReceivedIntent
   | SessionMetadataPatchedIntent
   | SessionRemovedIntent
   | SessionRuntimeAvailabilityChangedIntent

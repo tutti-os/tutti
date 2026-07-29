@@ -6,6 +6,7 @@ const (
 	RuntimeOperationKindInteractiveResponse = "interactive_response"
 	RuntimeOperationKindCancelTurn          = "cancel_turn"
 	RuntimeOperationKindPlanDecision        = "plan_decision"
+	RuntimeOperationKindEditRetry           = "edit_retry"
 
 	RuntimeOperationStatusPrepared  = "prepared"
 	RuntimeOperationStatusLeased    = "leased"
@@ -23,6 +24,10 @@ const (
 	RuntimeOperationEventTurnCanceled          = "turn_canceled"
 	RuntimeOperationEventPlanDecisionPending   = "plan_decision_pending_confirmation"
 	RuntimeOperationEventPlanDecisionCompleted = "plan_decision_completed"
+	RuntimeOperationEventEditRetryPending      = "edit_retry_rollback_pending"
+	RuntimeOperationEventEditRetryRollback     = "edit_retry_rollback_confirmed"
+	RuntimeOperationEventEditRetryCompleted    = "edit_retry_completed"
+	RuntimeOperationEventEditRetryRecovery     = "edit_retry_recovery_required"
 )
 
 var (
@@ -135,6 +140,62 @@ type CompletePlanDecisionRuntimeOperationInput struct {
 	OperationID string
 	LeaseOwner  string
 	Output      map[string]any
+	NowUnixMS   int64
+}
+
+type ConfirmEditRetryRollbackInput struct {
+	WorkspaceID     string
+	OperationID     string
+	LeaseOwner      string
+	Payload         EditRetryOperationPayload
+	NowUnixMS       int64
+	ProviderTurnIDs []string
+}
+
+type AbortEditRetryRollbackInput struct {
+	WorkspaceID     string
+	OperationID     string
+	LeaseOwner      string
+	ReasonCode      EditRetryReasonCode
+	Reason          string
+	NowUnixMS       int64
+	ProviderTurnIDs []string
+}
+
+type MarkEditRetryRollbackDispatchedInput struct {
+	WorkspaceID string
+	OperationID string
+	LeaseOwner  string
+	Payload     EditRetryOperationPayload
+	NowUnixMS   int64
+}
+
+type PrepareEditRetryReplacementRedispatchInput struct {
+	WorkspaceID       string
+	OperationID       string
+	LeaseOwner        string
+	ReplacementTurnID string
+	ProviderSessionID string
+	ProviderTurnIDs   []string
+	ProofAtUnixMS     int64
+	NowUnixMS         int64
+}
+
+type CompleteEditRetryRuntimeOperationInput struct {
+	WorkspaceID       string
+	OperationID       string
+	LeaseOwner        string
+	ReplacementTurnID string
+	ProviderTurnID    string
+	NowUnixMS         int64
+}
+
+type FailEditRetryRecoveryInput struct {
+	WorkspaceID string
+	OperationID string
+	LeaseOwner  string
+	ReasonCode  EditRetryReasonCode
+	Reason      string
 	NowUnixMS   int64
 }
 

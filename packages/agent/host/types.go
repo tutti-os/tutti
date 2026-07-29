@@ -1,6 +1,9 @@
 package agenthost
 
-import storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
+import (
+	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
+)
 
 // SessionRef identifies one canonical session without carrying host transport
 // or authorization state.
@@ -280,6 +283,8 @@ type RuntimeExecInput struct {
 	InitialTitleBase                string
 	Metadata                        map[string]any
 	Guidance                        bool
+	HistoryReplacement              bool
+	RequireProviderAcceptance       bool
 	TuttiModeSnapshot               *TuttiModeTurnSnapshot
 }
 
@@ -313,9 +318,80 @@ type RuntimeExecResult struct {
 	Status             string
 	TurnID             string
 	Accepted           bool
+	ProviderDispatch   RuntimeProviderDispatchResult
 	SessionStatus      string
 	TurnLifecycle      TurnLifecycle
 	SubmitAvailability SubmitAvailability
+}
+
+type RuntimeDispatchDisposition string
+
+const (
+	RuntimeDispatchDispositionApplied        RuntimeDispatchDisposition = "applied"
+	RuntimeDispatchDispositionRejected       RuntimeDispatchDisposition = "rejected"
+	RuntimeDispatchDispositionNotDispatched  RuntimeDispatchDisposition = "not_dispatched"
+	RuntimeDispatchDispositionOutcomeUnknown RuntimeDispatchDisposition = "outcome_unknown"
+)
+
+type RuntimeAcceptanceSource string
+
+const (
+	RuntimeAcceptanceSourceTurnStartResponse RuntimeAcceptanceSource = "turn_start_response"
+	RuntimeAcceptanceSourceHistoryRead       RuntimeAcceptanceSource = "history_read"
+)
+
+// RuntimeProviderAcceptanceReceipt is positive provider evidence that a
+// replacement turn crossed the provider delivery boundary.
+type RuntimeProviderAcceptanceReceipt struct {
+	ProviderSessionID string
+	ProviderTurnID    string
+	Source            RuntimeAcceptanceSource
+}
+
+// RuntimeProviderDispatchResult separates an explicit provider outcome from a
+// transport failure whose effect is unknown. Acceptance is present only when
+// the provider supplied positive evidence for the dispatched turn.
+type RuntimeProviderDispatchResult struct {
+	Disposition RuntimeDispatchDisposition
+	Acceptance  *RuntimeProviderAcceptanceReceipt
+}
+
+type RuntimeHistoryTurn struct {
+	ID                  string
+	Status              string
+	ClientUserMessageID string
+}
+
+// RuntimeHistorySnapshot is the provider runtime's authoritative effective
+// thread membership and ordering. Canonical history revisions intentionally
+// stay outside this provider observation.
+type RuntimeHistorySnapshot struct {
+	ProviderSessionID string
+	Turns             []RuntimeHistoryTurn
+}
+
+type RuntimeHistoryInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+	Provider       string
+}
+
+type RuntimeHistoryMutationResult struct {
+	Disposition RuntimeDispatchDisposition
+	Snapshot    *RuntimeHistorySnapshot
+}
+
+// RuntimeProviderTurnAcceptanceInput carries an authoritative provider-history
+// observation back through the normal durable activity projection. It is not a
+// dispatch command and must never start or retry a provider turn.
+type RuntimeProviderTurnAcceptanceInput struct {
+	WorkspaceID               string
+	AgentSessionID            string
+	Provider                  string
+	RootTurnID                string
+	ExpectedProviderSessionID string
+	ExpectedProviderTurnID    string
+	ClientUserMessageID       string
 }
 
 type RuntimeSubmitProvenanceInput struct {
@@ -505,6 +581,66 @@ type SubmitPlanDecisionInput struct {
 	PromptKind     string
 	Action         string
 	IdempotencyKey string
+}
+
+type EditRetryRecoveryAction string
+
+const (
+	EditRetryRecoveryActionReconcile        EditRetryRecoveryAction = "reconcile"
+	EditRetryRecoveryActionRetryReplacement EditRetryRecoveryAction = "retry_replacement"
+)
+
+// EditRetryReasonCode is the stable, coarse provider-neutral classification
+// shared by Host projections and durable edit-retry operations. Provider codes
+// and diagnostics must not be exposed or persisted through this type.
+type EditRetryReasonCode = canonical.EditRetryReasonCode
+
+const (
+	EditRetryReasonCodeProviderUnsupported        = canonical.EditRetryReasonProviderUnsupported
+	EditRetryReasonCodeTurnNotFound               = canonical.EditRetryReasonTurnNotFound
+	EditRetryReasonCodeTurnNotLatest              = canonical.EditRetryReasonTurnNotLatest
+	EditRetryReasonCodeTurnNotSettled             = canonical.EditRetryReasonTurnNotSettled
+	EditRetryReasonCodeHistoryRevisionConflict    = canonical.EditRetryReasonHistoryRevisionConflict
+	EditRetryReasonCodeOperationConflict          = canonical.EditRetryReasonOperationConflict
+	EditRetryReasonCodeRecoveryRequired           = canonical.EditRetryReasonRecoveryRequired
+	EditRetryReasonCodeProviderOutcomeUnknown     = canonical.EditRetryReasonProviderOutcomeUnknown
+	EditRetryReasonCodeReplacementNotProvenAbsent = canonical.EditRetryReasonReplacementNotProvenAbsent
+)
+
+type EditRetryInput struct {
+	EditedText              string
+	ClientOperationID       string
+	ExpectedHistoryRevision uint64
+}
+
+type EditRetryState string
+
+const (
+	EditRetryStatePrepared         EditRetryState = "prepared"
+	EditRetryStateRollingBack      EditRetryState = "rolling_back"
+	EditRetryStateResendPending    EditRetryState = "resend_pending"
+	EditRetryStateRecoveryRequired EditRetryState = "recovery_required"
+	EditRetryStateCompleted        EditRetryState = "completed"
+)
+
+type EditRetryResult struct {
+	OperationID       string
+	State             EditRetryState
+	RetractedTurnID   string
+	ReplacementTurnID string
+	HistoryRevision   uint64
+	ReasonCode        EditRetryReasonCode
+}
+
+type EditRetryAvailability struct {
+	Supported        bool
+	Eligible         bool
+	TurnID           string
+	HistoryRevision  uint64
+	RecoveryState    EditRetryState
+	OperationID      string
+	AvailableActions []EditRetryRecoveryAction
+	ReasonCode       EditRetryReasonCode
 }
 
 type CancelTurnInput struct {

@@ -64,6 +64,12 @@ type SessionTurnSummaryReader interface {
 	ListSessionTurnSummaries(context.Context, ListSessionTurnSummariesInput) (SessionTurnSummaryPage, error)
 }
 
+// EffectiveSessionTurnReader is the current-history projection. The ordinary
+// audit read deliberately remains complete.
+type EffectiveSessionTurnReader interface {
+	ListEffectiveSessionTurns(context.Context, string, string) ([]Turn, error)
+}
+
 // GoalProvenanceLedger is a narrow optional persistence capability. It stays
 // separate from Repository so read-only/custom activity repositories do not
 // need to implement provider-specific Goal attribution.

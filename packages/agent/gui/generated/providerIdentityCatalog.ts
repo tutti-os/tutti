@@ -99,7 +99,7 @@ export const generatedProviderIdentityCatalog = [
     target: {
       id: "local:tutti-agent",
       launchRefType: "local_cli",
-      enabled: false,
+      enabled: true,
       sortOrder: 40
     },
     desktop: {

@@ -850,6 +850,8 @@ function createDependenciesStub(): {
       markAgentSessionReplayRunRunning: fail,
       completeAgentSessionReplayRun: fail,
       failAgentSessionReplayRun: fail,
+      editRetry: fail,
+      recoverEditRetry: fail,
       createAgentQuickPrompt: fail,
       deleteAgentQuickPrompt: fail,
       listAgentQuickPrompts: fail,

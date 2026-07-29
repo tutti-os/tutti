@@ -472,6 +472,12 @@ function createTransportClient(
     async cancelWorkspaceAgentTurn() {
       throw new Error("not used");
     },
+    async editRetry() {
+      throw new Error("not used");
+    },
+    async recoverEditRetry() {
+      throw new Error("not used");
+    },
     async goalControlWorkspaceAgentSession() {
       throw new Error("not used");
     },

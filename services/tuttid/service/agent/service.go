@@ -620,8 +620,12 @@ func (s *Service) GetDetailWithProjection(
 		ChildSessions: []Session{},
 		Turns:         []agentactivitybiz.Turn{},
 	}
+	detail.EditRetry, err = s.GetEditRetryAvailability(ctx, workspaceID, agentSessionID)
+	if err != nil {
+		return SessionDetail{}, err
+	}
 	if s.TurnStore != nil {
-		turns, err := s.TurnStore.ListSessionTurns(ctx, strings.TrimSpace(workspaceID), session.ID)
+		turns, err := s.TurnStore.ListEffectiveSessionTurns(ctx, strings.TrimSpace(workspaceID), session.ID)
 		if err != nil {
 			return SessionDetail{}, err
 		}

@@ -39,6 +39,7 @@ interface PendingActivationIntentRecordBase {
   errorCode: string | null;
   errorMessage: string | null;
   expiresAtUnixMs: number;
+  initialPromptRetracted: boolean;
   initialTurnExpected: boolean;
   initialGoalControl?: Readonly<AgentActivityInitialGoalControl>;
   railSectionKey?: string;

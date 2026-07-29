@@ -125,6 +125,16 @@ func (p *ActivityProjection) PublishRuntimeOperationEvent(
 			return err
 		}
 		return p.publishPlanDecisionNoticeUpdate(ctx, event)
+	case agentactivitybiz.RuntimeOperationEventEditRetryPending,
+		agentactivitybiz.RuntimeOperationEventEditRetryRollback,
+		agentactivitybiz.RuntimeOperationEventEditRetryCompleted,
+		agentactivitybiz.RuntimeOperationEventEditRetryRecovery:
+		eventType = "session_reconcile_required"
+		payload = activitySessionUpdateEventPayload(
+			event.WorkspaceID,
+			event.AgentSessionID,
+			event.CreatedAtUnixMS,
+		)
 	}
 	if eventType == "" || payload == nil {
 		return errors.New("runtime operation event domain entity is unavailable")

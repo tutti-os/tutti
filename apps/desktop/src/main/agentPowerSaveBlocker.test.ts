@@ -165,7 +165,14 @@ function createFakeTuttidClient(input: {
         childSessions: [],
         lifecycleCapabilitiesProjected: true,
         projection: "full",
-        turns: []
+        turns: [],
+        editRetry: {
+          availableActions: [],
+          eligible: false,
+          historyRevision: 0,
+          recoveryState: "completed",
+          supported: false
+        }
       };
     },
     async listWorkspaceAgentSessions(workspaceID) {

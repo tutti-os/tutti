@@ -204,6 +204,93 @@ test("historical snapshot completion stays read unless persistence says unread",
   );
 });
 
+test("authoritative turn history removes attention for a retracted completion", () => {
+  let state = attentionReadStateReducer(
+    createInitialAttentionReadState(),
+    { type: "turn/upserted", turn },
+    { sessionsById: { "session-1": { userId: "user-1" } } }
+  ).state;
+
+  state = attentionReadStateReducer(state, {
+    agentSessionId: "session-1",
+    childSessions: [],
+    historyRevision: 1,
+    messages: [],
+    session: authoritativeSession(),
+    turns: [],
+    type: "session/historyAuthoritativeSnapshotReceived",
+    workspaceId: "workspace-1"
+  }).state;
+
+  assert.equal(
+    state.partitionsByUserId["user-1"]?.recordsBySessionId["session-1"],
+    undefined
+  );
+});
+
+test("authoritative history preserves live completion provenance atomically", () => {
+  const state = attentionReadStateReducer(
+    createInitialAttentionReadState(),
+    {
+      agentSessionId: "session-1",
+      childSessions: [],
+      historyRevision: 1,
+      liveTurnId: turn.turnId,
+      messages: [],
+      session: { ...authoritativeSession(), latestTurn: turn },
+      turns: [turn],
+      type: "session/historyAuthoritativeSnapshotReceived",
+      workspaceId: "workspace-1"
+    },
+    { sessionsById: { "session-1": { userId: "user-1" } } }
+  ).state;
+
+  assert.equal(
+    state.partitionsByUserId["user-1"]?.recordsBySessionId["session-1"]
+      ?.isUnread,
+    true
+  );
+});
+
+function authoritativeSession() {
+  return {
+    activeTurn: null,
+    activeTurnId: null,
+    agentSessionId: "session-1",
+    agentTargetId: null,
+    capabilities: null,
+    createdAtUnixMs: 1,
+    cwd: "/workspace",
+    endedAtUnixMs: null,
+    goal: null,
+    imported: false,
+    kind: "root" as const,
+    lastEventUnixMs: 2,
+    latestTurn: null,
+    latestTurnInteractions: [],
+    messageVersion: 1,
+    parentAgentSessionId: null,
+    parentToolCallId: null,
+    parentTurnId: null,
+    pendingInteractions: [],
+    permissionConfig: { configurable: false, modes: [] },
+    pinnedAtUnixMs: null,
+    provider: "codex",
+    providerSessionId: null,
+    resumable: true,
+    rootAgentSessionId: null,
+    rootTurnId: null,
+    settings: {},
+    startedAtUnixMs: 1,
+    title: "Session",
+    tuttiModeActivation: null,
+    updatedAtUnixMs: 2,
+    usage: null,
+    visible: true,
+    workspaceId: "workspace-1"
+  };
+}
+
 test("late hydration authoritatively clears an already observed unread completion", () => {
   let state = attentionReadStateReducer(
     createInitialAttentionReadState(),

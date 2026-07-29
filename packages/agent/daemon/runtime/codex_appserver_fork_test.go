@@ -720,6 +720,7 @@ func startForkCapableCodexAdapter(
 	transport := &multiProcAppServerTransport{}
 	transport.setConfigure(func(conn *scriptedAppServerConnection) {
 		conn.userAgent = "codex/0.144.1"
+		conn.threadReadTurnIDs = []string{"provider-turn-1", "provider-turn-2"}
 	})
 	adapter := NewCodexAppServerAdapter(transport)
 	source := testAppServerSession()

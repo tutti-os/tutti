@@ -1,6 +1,8 @@
 import {
   createAgentActivitySessionReconcileExecutor,
+  type AgentActivityDurableMessage,
   type AgentActivitySessionReconcileExecutor,
+  type AgentActivityTurn,
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
@@ -15,6 +17,11 @@ export function createMobileAgentActivityReconcileExecutor(input: {
   isAvailable(): boolean;
   isSessionDeleted(agentSessionId: string): boolean;
   mapping: MobileAgentActivityMapping;
+  reconcileAuthoritativeHistory(
+    agentSessionId: string,
+    canonicalMessages: readonly AgentActivityDurableMessage[],
+    effectiveTurns: readonly AgentActivityTurn[]
+  ): void;
   reconcileOptimisticMessages(agentSessionId: string): void;
   workspaceId: string;
 }): AgentActivitySessionReconcileExecutor {
@@ -62,6 +69,7 @@ export function createMobileAgentActivityReconcileExecutor(input: {
         };
       }
     },
+    reconcileAuthoritativeHistory: input.reconcileAuthoritativeHistory,
     reconcileOptimisticMessages: input.reconcileOptimisticMessages,
     workspaceId: input.workspaceId
   });

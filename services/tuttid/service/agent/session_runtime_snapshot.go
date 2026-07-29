@@ -26,27 +26,27 @@ var (
 )
 
 type sessionRuntimeSnapshot struct {
-	Version                     int
-	AgentTargetID               string
-	WorkspaceAgentRevision      int64
-	HarnessAgentTargetID        string
-	Provider                    string
-	LegacyEmptyOpenProvider     bool
-	Model                       string
-	ModelConfigurationSource    string
-	ModelPlanID                 string
-	ModelPlanRevision           uint64
-	ModelFingerprint            string
-	ModelDefaultModel           string
-	Name                        string
-	Description                 string
-	Instructions                string
-	CallConditions              []string
-	CapabilitiesExplicit        bool
-	Skills                      []string
-	Tools                       []string
-	CommandCapabilityProjection *runtimeprep.CommandCapabilityProjection
-	EffectiveConfig             map[string]any
+	Version                        int
+	AgentTargetID                  string
+	WorkspaceAgentRevision         int64
+	HarnessAgentTargetID           string
+	Provider                       string
+	LegacyEmptyProviderFingerprint bool
+	Model                          string
+	ModelConfigurationSource       string
+	ModelPlanID                    string
+	ModelPlanRevision              uint64
+	ModelFingerprint               string
+	ModelDefaultModel              string
+	Name                           string
+	Description                    string
+	Instructions                   string
+	CallConditions                 []string
+	CapabilitiesExplicit           bool
+	Skills                         []string
+	Tools                          []string
+	CommandCapabilityProjection    *runtimeprep.CommandCapabilityProjection
+	EffectiveConfig                map[string]any
 }
 
 func (s *Service) AgentSessionCommandCapabilityProjection(
@@ -228,14 +228,18 @@ func sessionRuntimeSnapshotFromContext(
 	if revision, ok := snapshotUint64(configuration["modelPlanRevision"]); ok {
 		snapshot.ModelPlanRevision = revision
 	}
-	if snapshot.Provider == "" && rawProvider == "" && len(fallbackProviders) > 0 {
+	if len(fallbackProviders) > 0 &&
+		snapshot.ModelConfigurationSource == modelConfigurationSourceProviderNative &&
+		snapshot.ModelFingerprint == legacyEmptyProviderNativeModelFingerprint(snapshot.AgentTargetID) {
 		fallbackProvider := agentprovider.NormalizeOpen(fallbackProviders[0])
-		if fallbackProvider != "" &&
-			agentprovider.Normalize(fallbackProvider) == "" &&
-			snapshot.ModelConfigurationSource == modelConfigurationSourceProviderNative &&
-			snapshot.ModelFingerprint == legacyEmptyProviderNativeModelFingerprint(snapshot.AgentTargetID) {
-			snapshot.Provider = fallbackProvider
-			snapshot.LegacyEmptyOpenProvider = true
+		if fallbackProvider != "" && agentprovider.Normalize(fallbackProvider) == "" {
+			switch {
+			case snapshot.Provider == "" && rawProvider == "":
+				snapshot.Provider = fallbackProvider
+				snapshot.LegacyEmptyProviderFingerprint = true
+			case snapshot.Provider == fallbackProvider:
+				snapshot.LegacyEmptyProviderFingerprint = true
+			}
 		}
 	}
 	if snapshot.AgentTargetID == "" || snapshot.HarnessAgentTargetID == "" || snapshot.Provider == "" || snapshot.ModelFingerprint == "" {
@@ -282,7 +286,7 @@ func (s *Service) modelEndpointFromSessionRuntimeSnapshot(
 	if snapshot.ModelConfigurationSource == modelConfigurationSourceProviderNative {
 		expected := newProviderNativeModelConfiguration(snapshot.Provider, snapshot.AgentTargetID)
 		if expected.Fingerprint != snapshot.ModelFingerprint &&
-			(!snapshot.LegacyEmptyOpenProvider ||
+			(!snapshot.LegacyEmptyProviderFingerprint ||
 				legacyEmptyProviderNativeModelFingerprint(snapshot.AgentTargetID) !=
 					snapshot.ModelFingerprint) {
 			return nil, fmt.Errorf("%w: provider-native fingerprint does not match", ErrSessionRuntimeSnapshotUnavailable)

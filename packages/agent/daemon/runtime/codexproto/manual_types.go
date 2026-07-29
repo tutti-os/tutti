@@ -109,6 +109,7 @@ type TurnStartParamsInputElem interface{}
 type TurnStartParams struct {
 	ThreadID                   string                     `json:"threadId"`
 	Input                      []TurnStartParamsInputElem `json:"input"`
+	ClientUserMessageID        *string                    `json:"clientUserMessageId,omitempty"`
 	Cwd                        *string                    `json:"cwd,omitempty"`
 	ApprovalPolicy             json.RawMessage            `json:"approvalPolicy,omitempty"`
 	SandboxPolicy              json.RawMessage            `json:"sandboxPolicy,omitempty"`

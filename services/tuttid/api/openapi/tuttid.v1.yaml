@@ -4904,6 +4904,116 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/turns/{turnID}/edit-retry:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/AgentSessionID"
+      - $ref: "#/components/parameters/AgentTurnID"
+    post:
+      operationId: editRetryWorkspaceAgentTurn
+      tags:
+        - agent-session
+      summary: Edit and retry the latest completed user turn
+      description: >-
+        Starts or resumes one idempotent durable edit-retry operation. The
+        operation retracts exactly one latest completed user turn from the
+        effective provider history and submits its edited replacement while
+        preserving non-text input. A completed operation returns 200; a
+        durable operation that still needs confirmation or explicit recovery
+        returns 202.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EditRetryWorkspaceAgentTurnRequest"
+      responses:
+        "200":
+          description: Edit-retry operation completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentEditRetryResponse"
+        "202":
+          description: Edit-retry operation is durably pending confirmation or recovery
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentEditRetryResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          description: The turn, history revision, or operation identity conflicts with current canonical state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/edit-retry-operations/{operationID}/recover:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/AgentSessionID"
+      - name: operationID
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+    post:
+      operationId: recoverWorkspaceAgentEditRetry
+      tags:
+        - agent-session
+      summary: Reconcile or safely retry one durable edit-retry operation
+      description: >-
+        Reconcile is provider-read-only. retry_replacement is accepted only
+        after Host proves from authoritative provider history that the prior
+        replacement was not dispatched.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecoverWorkspaceAgentEditRetryRequest"
+      responses:
+        "200":
+          description: Edit-retry recovery completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentEditRetryResponse"
+        "202":
+          description: Edit-retry operation remains durably pending confirmation or recovery
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentEditRetryResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          description: The operation identity or requested recovery action conflicts with current canonical state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/turns/{turnID}/plan-decisions/{requestID}:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -12181,6 +12291,7 @@ components:
         - turns
         - projection
         - lifecycleCapabilitiesProjected
+        - editRetry
       properties:
         projection:
           $ref: "#/components/schemas/WorkspaceAgentSessionDetailProjection"
@@ -12195,6 +12306,8 @@ components:
             applied as authoritative.
         session:
           $ref: "#/components/schemas/WorkspaceAgentSession"
+        editRetry:
+          $ref: "#/components/schemas/WorkspaceAgentEditRetryAvailability"
         childSessions:
           type: array
           description: >-
@@ -12210,6 +12323,123 @@ components:
             clients must not reconstruct it from provider tool payloads.
           items:
             $ref: "#/components/schemas/WorkspaceAgentTurn"
+    WorkspaceAgentEditRetryAvailability:
+      type: object
+      additionalProperties: false
+      required:
+        - supported
+        - eligible
+        - historyRevision
+        - recoveryState
+        - availableActions
+      properties:
+        supported:
+          type: boolean
+        eligible:
+          type: boolean
+        turnId:
+          type: string
+          minLength: 1
+        historyRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        recoveryState:
+          type: string
+          enum:
+            - prepared
+            - rolling_back
+            - resend_pending
+            - recovery_required
+            - completed
+        operationId:
+          type: string
+          minLength: 1
+        availableActions:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentEditRetryRecoveryAction"
+        reasonCode:
+          $ref: "#/components/schemas/WorkspaceAgentEditRetryReasonCode"
+    WorkspaceAgentEditRetryRecoveryAction:
+      type: string
+      enum:
+        - reconcile
+        - retry_replacement
+      x-enum-varnames:
+        - WorkspaceAgentEditRetryRecoveryActionReconcile
+        - WorkspaceAgentEditRetryRecoveryActionRetryReplacement
+    WorkspaceAgentEditRetryReasonCode:
+      type: string
+      enum:
+        - provider_unsupported
+        - turn_not_found
+        - turn_not_latest
+        - turn_not_settled
+        - history_revision_conflict
+        - operation_conflict
+        - recovery_required
+        - provider_outcome_unknown
+        - replacement_not_proven_absent
+    EditRetryWorkspaceAgentTurnRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - editedText
+        - clientOperationId
+        - expectedHistoryRevision
+      properties:
+        editedText:
+          type: string
+          minLength: 1
+        clientOperationId:
+          type: string
+          minLength: 1
+        expectedHistoryRevision:
+          type: integer
+          format: int64
+          minimum: 0
+    RecoverWorkspaceAgentEditRetryRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - action
+      properties:
+        action:
+          $ref: "#/components/schemas/WorkspaceAgentEditRetryRecoveryAction"
+    WorkspaceAgentEditRetryResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - operationId
+        - state
+        - retractedTurnId
+        - historyRevision
+      properties:
+        operationId:
+          type: string
+          minLength: 1
+        state:
+          type: string
+          enum:
+            - prepared
+            - rolling_back
+            - resend_pending
+            - recovery_required
+            - completed
+        retractedTurnId:
+          type: string
+          minLength: 1
+        replacementTurnId:
+          type: string
+          minLength: 1
+        historyRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        reasonCode:
+          $ref: "#/components/schemas/WorkspaceAgentEditRetryReasonCode"
     SendWorkspaceAgentSessionInputResponse:
       oneOf:
         - $ref: "#/components/schemas/SendWorkspaceAgentSessionInputTurnResponse"
@@ -15231,6 +15461,14 @@ components:
         - completed
         - failed
         - canceled
+      x-enum-varnames:
+        - WorkspaceWorkflowStatusPendingReview
+        - WorkspaceWorkflowStatusInProgress
+        - WorkspaceWorkflowStatusAccepted
+        - WorkspaceWorkflowStatusRejected
+        - WorkspaceWorkflowStatusCompleted
+        - WorkspaceWorkflowStatusFailed
+        - WorkspaceWorkflowStatusCanceled
     WorkspaceWorkflow:
       type: object
       additionalProperties: false

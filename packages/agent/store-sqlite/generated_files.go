@@ -38,6 +38,8 @@ func (s *Store) ListWorkspaceGeneratedFileTurns(
 	// Keep file_changes_json out of the 1000-row workspace candidate CTE. A
 	// canonical payload may contain large diffs, so fetch it only after section
 	// filtering has reduced the result to at most 100 turns.
+	// This projection intentionally includes retracted Turns: edit-retry changes
+	// model-visible history but does not compensate filesystem side effects.
 	rows, err := s.db.QueryContext(ctx, `
 WITH recent_workspace_turns AS MATERIALIZED (
   SELECT agent_session_id,

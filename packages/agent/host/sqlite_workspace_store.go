@@ -42,6 +42,8 @@ type RuntimeSessionInitializationObserver interface {
 }
 
 var _ CanonicalStore = (*SQLiteWorkspaceStore)(nil)
+var _ TurnSubmissionStore = (*SQLiteWorkspaceStore)(nil)
+var _ EffectiveHistoryStore = (*SQLiteWorkspaceStore)(nil)
 var _ SessionManagementStore = (*SQLiteWorkspaceStore)(nil)
 var _ SessionBatchManagementStore = (*SQLiteWorkspaceStore)(nil)
 var _ SessionForkStore = (*SQLiteWorkspaceStore)(nil)
@@ -500,6 +502,97 @@ func (s *SQLiteWorkspaceStore) ListSessionMessages(ctx context.Context, input st
 		return storesqlite.MessagePage{}, false, err
 	}
 	return store.ListSessionMessages(ctx, input)
+}
+
+func (s *SQLiteWorkspaceStore) RecordTurnSubmission(ctx context.Context, input storesqlite.TurnSubmission) (storesqlite.TurnSubmission, bool, error) {
+	store, err := s.store(input.WorkspaceID)
+	if err != nil {
+		return storesqlite.TurnSubmission{}, false, err
+	}
+	return store.RecordTurnSubmission(ctx, input)
+}
+
+func (s *SQLiteWorkspaceStore) GetTurnSubmission(ctx context.Context, workspaceID, sessionID, turnID string) (storesqlite.TurnSubmission, bool, error) {
+	store, err := s.store(workspaceID)
+	if err != nil {
+		return storesqlite.TurnSubmission{}, false, err
+	}
+	return store.GetTurnSubmission(ctx, workspaceID, sessionID, turnID)
+}
+
+func (s *SQLiteWorkspaceStore) GetSessionHistory(ctx context.Context, workspaceID, sessionID string) (storesqlite.SessionHistory, bool, error) {
+	store, err := s.store(workspaceID)
+	if err != nil {
+		return storesqlite.SessionHistory{}, false, err
+	}
+	return store.GetSessionHistory(ctx, workspaceID, sessionID)
+}
+
+func (s *SQLiteWorkspaceStore) GetTurnHistory(ctx context.Context, workspaceID, sessionID, turnID string) (storesqlite.TurnHistory, bool, error) {
+	store, err := s.store(workspaceID)
+	if err != nil {
+		return storesqlite.TurnHistory{}, false, err
+	}
+	return store.GetTurnHistory(ctx, workspaceID, sessionID, turnID)
+}
+
+func (s *SQLiteWorkspaceStore) ListEffectiveSessionTurns(ctx context.Context, workspaceID, sessionID string) ([]storesqlite.Turn, error) {
+	store, err := s.store(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	return store.ListEffectiveSessionTurns(ctx, workspaceID, sessionID)
+}
+
+func (s *SQLiteWorkspaceStore) MarkEditRetryRollbackDispatched(ctx context.Context, input storesqlite.MarkEditRetryRollbackDispatchedInput) (storesqlite.RuntimeOperation, bool, error) {
+	store, err := s.store(input.WorkspaceID)
+	if err != nil {
+		return storesqlite.RuntimeOperation{}, false, err
+	}
+	return store.MarkEditRetryRollbackDispatched(ctx, input)
+}
+
+func (s *SQLiteWorkspaceStore) ConfirmEditRetryRollback(ctx context.Context, input storesqlite.ConfirmEditRetryRollbackInput) (storesqlite.RuntimeOperation, bool, error) {
+	store, err := s.store(input.WorkspaceID)
+	if err != nil {
+		return storesqlite.RuntimeOperation{}, false, err
+	}
+	return store.ConfirmEditRetryRollback(ctx, input)
+}
+
+func (s *SQLiteWorkspaceStore) AbortEditRetryRollback(ctx context.Context, input storesqlite.AbortEditRetryRollbackInput) (storesqlite.RuntimeOperation, bool, error) {
+	store, err := s.store(input.WorkspaceID)
+	if err != nil {
+		return storesqlite.RuntimeOperation{}, false, err
+	}
+	return store.AbortEditRetryRollback(ctx, input)
+}
+
+func (s *SQLiteWorkspaceStore) PrepareEditRetryReplacementRedispatch(
+	ctx context.Context,
+	input storesqlite.PrepareEditRetryReplacementRedispatchInput,
+) (storesqlite.RuntimeOperation, bool, error) {
+	store, err := s.store(input.WorkspaceID)
+	if err != nil {
+		return storesqlite.RuntimeOperation{}, false, err
+	}
+	return store.PrepareEditRetryReplacementRedispatch(ctx, input)
+}
+
+func (s *SQLiteWorkspaceStore) CompleteEditRetryRuntimeOperation(ctx context.Context, input storesqlite.CompleteEditRetryRuntimeOperationInput) (storesqlite.RuntimeOperationCompletion, bool, error) {
+	store, err := s.store(input.WorkspaceID)
+	if err != nil {
+		return storesqlite.RuntimeOperationCompletion{}, false, err
+	}
+	return store.CompleteEditRetryRuntimeOperation(ctx, input)
+}
+
+func (s *SQLiteWorkspaceStore) FailEditRetryRecovery(ctx context.Context, input storesqlite.FailEditRetryRecoveryInput) (storesqlite.RuntimeOperation, bool, error) {
+	store, err := s.store(input.WorkspaceID)
+	if err != nil {
+		return storesqlite.RuntimeOperation{}, false, err
+	}
+	return store.FailEditRetryRecovery(ctx, input)
 }
 
 func (s *SQLiteWorkspaceStore) ListSessionTurnSummaries(ctx context.Context, input storesqlite.ListSessionTurnSummariesInput) (storesqlite.SessionTurnSummaryPage, error) {

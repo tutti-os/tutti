@@ -39,6 +39,7 @@ import {
   buildTurnGroupIndexByRowIndex,
   buildUserMessageLocatorItems,
   escapeCssString,
+  findLastMessageRowIndex,
   findTurnDividerRowIndexes,
   transcriptRowKey,
   useAgentTranscriptDisplayRows,
@@ -56,39 +57,25 @@ import {
   useAgentTranscriptVirtualizer,
   type AgentTranscriptVirtualScrollController
 } from "./useAgentTranscriptVirtualizer";
+import {
+  editRetryControlsEqual,
+  type AgentTranscriptEditRetryControl,
+  useAgentTranscriptEditRetryProjection
+} from "./useAgentTranscriptEditRetryProjection";
 
 const AGENT_TRANSCRIPT_DISCLOSURE_TURN_GAP_PX = 24;
 const AGENT_TRANSCRIPT_LEGACY_TURN_GAP_PX = 12;
 const AGENT_TRANSCRIPT_FALLBACK_TURN_COUNT = 3;
-
-function findLastMessageRowIndex(
-  rows: readonly {
-    row: AgentConversationVM["rows"][number];
-    rowIndex: number;
-  }[]
-): number | null {
-  for (let index = rows.length - 1; index >= 0; index -= 1) {
-    const entry = rows[index];
-    if (
-      entry?.row.kind === "message" &&
-      entry.row.speaker === "assistant" &&
-      entry.row.messages.length > 0
-    ) {
-      return entry.rowIndex;
-    }
-  }
-  return null;
-}
 
 export type {
   AgentTranscriptAttachmentLocator,
   AgentTranscriptTurnAttachment
 } from "./useAgentTranscriptTurnAttachments";
 export type { AgentTranscriptVirtualScrollController } from "./useAgentTranscriptVirtualizer";
-
 export interface AgentTranscriptViewProps {
   conversation: AgentConversationVM;
   isVisible?: boolean;
+  editRetry?: AgentTranscriptEditRetryControl;
   turnAttachments?: readonly AgentTranscriptTurnAttachment[];
   turnAttachmentLocatorRef?: Ref<AgentTranscriptAttachmentLocator>;
   onTurnAttachmentVisibilityChange?: (
@@ -270,6 +257,7 @@ export function areAgentTranscriptViewPropsEqual(
     previous.turnAttachmentLocatorRef === next.turnAttachmentLocatorRef &&
     previous.onTurnAttachmentVisibilityChange ===
       next.onTurnAttachmentVisibilityChange &&
+    editRetryControlsEqual(previous.editRetry, next.editRetry) &&
     previous.showRawTimelineJson === next.showRawTimelineJson &&
     previous.followEndMode === next.followEndMode &&
     previous.virtualListLayoutRevision === next.virtualListLayoutRevision &&
@@ -285,6 +273,7 @@ export function areAgentTranscriptViewPropsEqual(
 export const AgentTranscriptView = memo(function AgentTranscriptView({
   conversation,
   isVisible = true,
+  editRetry,
   turnAttachments = [],
   turnAttachmentLocatorRef,
   onTurnAttachmentVisibilityChange,
@@ -327,6 +316,12 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
   );
   const displayRows = transcriptRowSet.rows;
   const rowKeys = transcriptRowSet.rowKeys;
+  const { editableUserMessageRowId, scopedEditRetry } =
+    useAgentTranscriptEditRetryProjection(
+      displayRows,
+      conversation.sourceDetail.session.agentSessionId,
+      editRetry
+    );
   const participantTurnProjection = transcriptRowSet.participantTurnProjection;
   const turnGroups = useMemo(
     () => buildAgentTranscriptTurnGroups(displayRows, rowKeys),
@@ -557,6 +552,9 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
           workspaceRoot={workspaceRoot}
           basePath={basePath}
           row={row}
+          editRetry={
+            row.id === editableUserMessageRowId ? scopedEditRetry : undefined
+          }
           labels={labels}
           onLinkAction={onLinkAction}
           onAuthLogin={onAuthLogin}

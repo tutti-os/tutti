@@ -167,6 +167,11 @@ type ExecInput struct {
 	InitialTitleBase                string
 	Metadata                        map[string]any
 	Guidance                        bool
+	// HistoryReplacement requires a fresh provider turn. It may not steer an
+	// active turn or reinterpret the edited text as a provider slash command.
+	// The provider's complete EffectiveHistoryAdapter seam always returns one
+	// typed dispatch result before this call completes.
+	HistoryReplacement bool
 }
 
 // SubmitProvenanceInput describes the canonical user submit that an adapter
@@ -426,13 +431,41 @@ type CloseResult struct {
 }
 
 type ExecResult struct {
-	AgentSessionID     string             `json:"agentSessionId"`
-	Status             string             `json:"status"`
-	TurnID             string             `json:"turnId,omitempty"`
-	Accepted           bool               `json:"accepted"`
-	SessionStatus      string             `json:"sessionStatus"`
-	TurnLifecycle      TurnLifecycle      `json:"turnLifecycle"`
-	SubmitAvailability SubmitAvailability `json:"submitAvailability"`
+	AgentSessionID     string                  `json:"agentSessionId"`
+	Status             string                  `json:"status"`
+	TurnID             string                  `json:"turnId,omitempty"`
+	Accepted           bool                    `json:"accepted"`
+	SessionStatus      string                  `json:"sessionStatus"`
+	TurnLifecycle      TurnLifecycle           `json:"turnLifecycle"`
+	SubmitAvailability SubmitAvailability      `json:"submitAvailability"`
+	ProviderDispatch   *ProviderDispatchResult `json:"providerDispatch,omitempty"`
+}
+
+type DispatchDisposition string
+
+const (
+	DispatchDispositionApplied        DispatchDisposition = "applied"
+	DispatchDispositionRejected       DispatchDisposition = "rejected"
+	DispatchDispositionNotDispatched  DispatchDisposition = "not_dispatched"
+	DispatchDispositionOutcomeUnknown DispatchDisposition = "outcome_unknown"
+)
+
+type AcceptanceSource string
+
+const (
+	AcceptanceSourceTurnStartResponse AcceptanceSource = "turn_start_response"
+	AcceptanceSourceHistoryRead       AcceptanceSource = "history_read"
+)
+
+type ProviderAcceptanceReceipt struct {
+	Source            AcceptanceSource `json:"source"`
+	ProviderSessionID string           `json:"providerSessionId"`
+	ProviderTurnID    string           `json:"providerTurnId"`
+}
+
+type ProviderDispatchResult struct {
+	Disposition DispatchDisposition        `json:"disposition"`
+	Acceptance  *ProviderAcceptanceReceipt `json:"acceptance,omitempty"`
 }
 
 type CompletedCommand struct {

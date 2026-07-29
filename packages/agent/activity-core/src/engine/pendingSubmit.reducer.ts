@@ -126,21 +126,40 @@ export function confirmFromMessages(
   state: PendingIntentsState,
   messages: readonly AgentActivityMessage[]
 ): EngineReducerResult<PendingIntentsState> {
-  const confirmedIds = new Set(
-    messages
-      .map(messageClientSubmitId)
-      .filter((value): value is string => value !== null)
-  );
-  if (confirmedIds.size === 0) {
+  const matches = new Map<string, Set<string>>();
+  for (const message of messages) {
+    const clientSubmitId = messageClientSubmitId(message);
+    if (!clientSubmitId) continue;
+    const record = state.submitsByClientSubmitId[clientSubmitId];
+    if (
+      !record ||
+      message.agentSessionId.trim() !== record.agentSessionId ||
+      (message.workspaceId !== undefined &&
+        message.workspaceId.trim() !== record.workspaceId)
+    ) {
+      continue;
+    }
+    const turnIds = matches.get(clientSubmitId) ?? new Set<string>();
+    const turnId = message.turnId?.trim() ?? "";
+    if (turnId) turnIds.add(turnId);
+    matches.set(clientSubmitId, turnIds);
+  }
+  if (matches.size === 0) {
     return unchanged(state);
   }
   let next = state;
-  for (const clientSubmitId of confirmedIds) {
+  for (const [clientSubmitId, turnIds] of matches) {
     const record = next.submitsByClientSubmitId[clientSubmitId];
-    if (!record) {
+    if (!record || turnIds.size > 1) continue;
+    const [messageTurnId] = turnIds;
+    if (record.turnId && messageTurnId && record.turnId !== messageTurnId) {
       continue;
     }
-    next = replaceSubmit(next, { ...record, status: "confirmed" });
+    next = replaceSubmit(next, {
+      ...record,
+      status: "confirmed",
+      turnId: record.turnId ?? messageTurnId ?? null
+    });
   }
   return next === state
     ? unchanged(state)

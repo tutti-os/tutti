@@ -1777,6 +1777,43 @@ invalid_grant`. Search `tuttid.log` for
   [AgentTargetSetupGate.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/AgentTargetSetupGate.tsx)
   [agentTargetSetupNotificationController.ts](../../../packages/agent/gui/shared/agentEnv/agentTargetSetupNotificationController.ts)
 
+### Extension uv runtime install selects an incompatible system Python
+
+- Symptom:
+  Reinstalling an Agent Extension runtime fails with
+  `install command uv failed: exit status 1`. Replaying the signed
+  `uv tool install` command reports that the current Python version does not
+  satisfy the package's `Requires-Python` constraint. A common macOS example is
+  the system Python 3.9 being selected for a package that requires Python 3.11
+  or newer.
+- Quick checks:
+  Inspect the Extension manifest's exact uv package pin and the package's
+  `Requires-Python` metadata. Reproduce with the Tutti-managed uv binary and
+  the same `UV_TOOL_DIR`, `UV_TOOL_BIN_DIR`, `UV_PYTHON_INSTALL_DIR`,
+  `UV_CACHE_DIR`, and `UV_NO_CONFIG=1` values. If adding `UV_PYTHON=3.12`
+  resolves the package and downloads managed CPython beneath the install root,
+  the package pin and network path are not the root cause.
+- Root cause:
+  Setting `UV_PYTHON_INSTALL_DIR` confines Python versions that uv downloads,
+  but it does not request an interpreter version. Without an explicit request,
+  `uv tool install` may select the daemon's system Python before it resolves
+  the package metadata, making a valid pinned package appear unsatisfiable.
+- Fix:
+  Tutti's uv install environment requests Python 3.12 with
+  `UV_PYTHON=3.12` and requires uv-managed interpreters with
+  `UV_MANAGED_PYTHON=1`. Keep `UV_PYTHON_INSTALL_DIR` inside the final runtime
+  root so the tool remains isolated and does not depend on or mutate a system
+  Python installation.
+- Validation:
+  Cover the two Python selection variables in the uv installer test. Re-run
+  the real signed package installation in an isolated root, assert the
+  executable reports the pinned package version and Python 3.12, then run the
+  changed-aware repository validation.
+- References:
+  [installer_uv.go](../../../services/tuttid/service/agentextension/installer_uv.go)
+  [installer_uv_test.go](../../../services/tuttid/service/agentextension/installer_uv_test.go)
+  [Agent Extensions](../../architecture/agent-extensions.md)
+
 ### Extension runtime installation stays failed after restart
 
 - Symptom:

@@ -555,7 +555,7 @@ func (s *Service) mergeLiveComposerModelsForComposerOptions(
 					"modelOptionValues": composerConfigOptionValuesDebugValues(cached),
 					"checkedAtUnixMs":   now.UnixMilli(),
 				})
-			} else if persisted, ok := s.persistedLiveModelFallback(input.WorkspaceID, input.Cwd, provider, now, input.AgentTargetID); ok {
+			} else if persisted, ok := s.persistedLiveModelFallbackForScope(scope, now); ok {
 				liveModels = persisted
 				modelSource = runtimeLiveModelCatalogSource
 			} else {

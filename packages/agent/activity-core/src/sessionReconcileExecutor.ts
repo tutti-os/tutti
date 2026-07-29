@@ -6,16 +6,34 @@ import type {
 } from "./engine/sessionReconcile.types.ts";
 import type { AgentSessionEngine } from "./engine/types.ts";
 import { mergeAgentActivityMessages } from "./merge.ts";
-import { agentActivitySessionMessageWindowFromDescendingPage } from "./pagination.ts";
+import {
+  agentActivitySessionMessageWindowFromDescendingPage,
+  loadAllAgentSessionMessages
+} from "./pagination.ts";
+import {
+  assertMessagePageIdentity,
+  conversationReconcileAfterVersion,
+  detailSessionIds,
+  fallbackSession,
+  latestDurableMessageVersion,
+  latestMessageVersion,
+  normalizeRequiredIdentity,
+  normalizeVersion,
+  shouldRetrySessionDetailRead,
+  withoutDeletedChildren,
+  type ReconcileSessionIdentity
+} from "./sessionReconcileExecutor.helpers.ts";
 import type {
   AgentActivityDurableMessage,
   AgentActivityMessage,
   AgentActivityMessagePage,
-  AgentActivitySession
+  AgentActivitySession,
+  AgentActivityTurn
 } from "./types.ts";
 
 const MESSAGE_PAGE_SIZE = 100;
 const MAX_MESSAGE_PAGES = 1_000;
+const MAX_SESSION_DETAIL_READ_ATTEMPTS = 2;
 
 export type AgentActivityChildMessageHydration =
   | "requested_session"
@@ -83,6 +101,11 @@ export interface CreateAgentActivitySessionReconcileExecutorInput {
   isSessionDeleted(agentSessionId: string): boolean;
   onTrace?(event: AgentActivitySessionReconcileTrace): void;
   port: AgentActivitySessionReconcilePort;
+  reconcileAuthoritativeHistory(
+    agentSessionId: string,
+    canonicalMessages: readonly AgentActivityDurableMessage[],
+    effectiveTurns: readonly AgentActivityTurn[]
+  ): void;
   reconcileOptimisticMessages(agentSessionId: string): void;
   workspaceId: string;
 }
@@ -92,11 +115,6 @@ interface ReconciledMessagePage {
   page: AgentActivityMessagePage;
   startsAtNewestBoundary: boolean;
 }
-
-type ReconcileSessionIdentity = Pick<
-  AgentActivitySession,
-  "agentSessionId" | "kind" | "messageVersion"
->;
 
 export function createAgentActivitySessionReconcileExecutor(
   input: CreateAgentActivitySessionReconcileExecutorInput
@@ -137,48 +155,68 @@ export function createAgentActivitySessionReconcileExecutor(
     phase: "discovery" | "final" | "state",
     signal?: AbortSignal
   ): Promise<AgentActivitySessionDetailSnapshot> => {
-    assertExecutionActive(signal);
-    input.onTrace?.({
-      agentSessionId,
-      phase,
-      status: "requested",
-      type: "detail"
-    });
-    const detail = await input.port.getSessionDetail({
-      agentSessionId,
-      projection: phase === "discovery" ? "message_hydration" : "authoritative",
-      signal,
-      workspaceId
-    });
-    assertExecutionActive(signal);
-    const expectedProjection =
-      phase === "discovery" ? "message_hydration" : "authoritative";
-    if (detail.projection !== expectedProjection) {
-      throw new Error(
-        `session reconcile detail projection mismatch: expected ${expectedProjection}, received ${detail.projection}`
-      );
-    }
-    if (
-      detail.lifecycleCapabilitiesProjected !==
-      (expectedProjection === "authoritative")
+    for (
+      let attempt = 0;
+      attempt < MAX_SESSION_DETAIL_READ_ATTEMPTS;
+      attempt += 1
     ) {
-      throw new Error(
-        `session reconcile lifecycle capability projection mismatch for ${expectedProjection} detail`
-      );
+      assertExecutionActive(signal);
+      input.onTrace?.({
+        agentSessionId,
+        phase,
+        status: "requested",
+        type: "detail"
+      });
+      let detail: AgentActivitySessionDetailSnapshot;
+      try {
+        detail = await input.port.getSessionDetail({
+          agentSessionId,
+          projection:
+            phase === "discovery" ? "message_hydration" : "authoritative",
+          signal,
+          workspaceId
+        });
+      } catch (error) {
+        if (
+          signal?.aborted ||
+          !shouldRetrySessionDetailRead(error) ||
+          attempt === MAX_SESSION_DETAIL_READ_ATTEMPTS - 1
+        ) {
+          throw error;
+        }
+        continue;
+      }
+      assertExecutionActive(signal);
+      const expectedProjection =
+        phase === "discovery" ? "message_hydration" : "authoritative";
+      if (detail.projection !== expectedProjection) {
+        throw new Error(
+          `session reconcile detail projection mismatch: expected ${expectedProjection}, received ${detail.projection}`
+        );
+      }
+      if (
+        detail.lifecycleCapabilitiesProjected !==
+        (expectedProjection === "authoritative")
+      ) {
+        throw new Error(
+          `session reconcile lifecycle capability projection mismatch for ${expectedProjection} detail`
+        );
+      }
+      if (detail.session.agentSessionId !== agentSessionId) {
+        throw new Error(
+          `session reconcile detail identity mismatch: expected ${agentSessionId}, received ${detail.session.agentSessionId}`
+        );
+      }
+      input.onTrace?.({
+        agentSessionId,
+        detail,
+        phase,
+        status: "resolved",
+        type: "detail"
+      });
+      return detail;
     }
-    if (detail.session.agentSessionId !== agentSessionId) {
-      throw new Error(
-        `session reconcile detail identity mismatch: expected ${agentSessionId}, received ${detail.session.agentSessionId}`
-      );
-    }
-    input.onTrace?.({
-      agentSessionId,
-      detail,
-      phase,
-      status: "resolved",
-      type: "detail"
-    });
-    return detail;
+    throw new Error("session reconcile detail retry exhausted");
   };
 
   const reconcilePage = async (
@@ -303,6 +341,87 @@ export function createAgentActivitySessionReconcileExecutor(
     );
   };
 
+  const reconcileAuthoritativePage = async (
+    agentSessionId: string,
+    signal?: AbortSignal
+  ): Promise<AgentActivityMessagePage> => {
+    const messages: AgentActivityDurableMessage[] = [];
+    let anchorLatestVersion = 0;
+    let beforeVersion: number | undefined;
+    let latestVersion = 0;
+    for (let pageIndex = 0; pageIndex < MAX_MESSAGE_PAGES; pageIndex += 1) {
+      const page = await input.port.listSessionMessages({
+        agentSessionId,
+        beforeVersion,
+        limit: MESSAGE_PAGE_SIZE,
+        order: "desc",
+        signal,
+        workspaceId
+      });
+      assertExecutionActive(signal);
+      assertMessagePageIdentity(page, workspaceId, agentSessionId);
+      if (shouldSkip(agentSessionId, signal)) {
+        return { hasMore: false, latestVersion, messages: [] };
+      }
+      if (pageIndex === 0) {
+        anchorLatestVersion = normalizeVersion(page.latestVersion);
+      }
+      latestVersion = Math.max(
+        latestVersion,
+        normalizeVersion(page.latestVersion)
+      );
+      messages.push(...page.messages);
+      if (!page.hasMore || page.messages.length === 0) break;
+      if (pageIndex === MAX_MESSAGE_PAGES - 1) {
+        throw new Error(
+          `session reconcile exceeded ${MAX_MESSAGE_PAGES} authoritative message pages for ${agentSessionId}`
+        );
+      }
+      const nextBeforeVersion = page.messages.reduce(
+        (earliest, message) => Math.min(earliest, message.version),
+        Number.POSITIVE_INFINITY
+      );
+      if (
+        !Number.isSafeInteger(nextBeforeVersion) ||
+        nextBeforeVersion <= 0 ||
+        nextBeforeVersion === beforeVersion
+      ) {
+        throw new Error(
+          `session reconcile authoritative pagination did not advance for ${agentSessionId}`
+        );
+      }
+      beforeVersion = nextBeforeVersion;
+    }
+    const tail = await loadAllAgentSessionMessages({
+      afterVersion: anchorLatestVersion,
+      listPage: (cursor) =>
+        input.port.listSessionMessages({
+          afterVersion: cursor,
+          agentSessionId,
+          order: "asc",
+          signal,
+          workspaceId
+        }),
+      shouldAbort: () => shouldSkip(agentSessionId, signal)
+    });
+    for (const message of tail.messages) {
+      if (message.agentSessionId.trim() !== agentSessionId) {
+        throw new Error(
+          `session reconcile message identity mismatch: expected ${agentSessionId}, received ${message.agentSessionId}`
+        );
+      }
+    }
+    latestVersion = Math.max(
+      latestVersion,
+      latestMessageVersion(tail.messages)
+    );
+    return {
+      hasMore: false,
+      latestVersion,
+      messages: mergeAgentActivityMessages(messages, tail.messages)
+    };
+  };
+
   return {
     async execute(command, options) {
       const agentSessionId = normalizeRequiredIdentity(
@@ -322,6 +441,96 @@ export function createAgentActivitySessionReconcileExecutor(
       if (shouldSkip(agentSessionId, signal)) {
         assertExecutionActive(signal);
         return skippedResult();
+      }
+      if (command.authoritativeMessages === true) {
+        if (command.scope !== "state_and_messages") {
+          throw new Error(
+            "session reconcile authoritative messages require state_and_messages scope"
+          );
+        }
+        const requiredHistoryRevision = command.requiredHistoryRevision ?? 0;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const before = await getDetail(agentSessionId, "state", signal);
+          const page = await reconcileAuthoritativePage(agentSessionId, signal);
+          if (shouldSkip(agentSessionId, signal)) {
+            assertExecutionActive(signal);
+            return skippedResult();
+          }
+          const after = await getDetail(agentSessionId, "state", signal);
+          const beforeHistoryRevision = before.editRetry?.historyRevision ?? 0;
+          const afterHistoryRevision = after.editRetry?.historyRevision ?? 0;
+          if (
+            beforeHistoryRevision !== afterHistoryRevision ||
+            before.session.messageVersion !== after.session.messageVersion ||
+            afterHistoryRevision < requiredHistoryRevision
+          ) {
+            continue;
+          }
+          const filtered = withoutDeletedChildren(
+            after,
+            input.isSessionDeleted
+          );
+          const latestTurnId = filtered.session.latestTurn?.turnId.trim() ?? "";
+          const liveTurn = filtered.turns.find(
+            (turn) => turn.turnId.trim() === latestTurnId
+          );
+          if (
+            command.live &&
+            filtered.session.latestTurn?.phase === "settled" &&
+            !liveTurn
+          ) {
+            continue;
+          }
+          input.onTrace?.({
+            detail: filtered,
+            scope: command.scope,
+            status: "applying",
+            type: "detailApply"
+          });
+          input.engine.dispatch({
+            agentSessionId,
+            childSessions: filtered.childSessions,
+            editRetry: filtered.editRetry,
+            historyRevision: afterHistoryRevision,
+            ...(command.live && liveTurn
+              ? { liveTurnId: liveTurn.turnId }
+              : {}),
+            messages: page.messages,
+            session: filtered.session,
+            sessionMessageWindows: [
+              {
+                agentSessionId,
+                ...agentActivitySessionMessageWindowFromDescendingPage(page)
+              }
+            ],
+            turns: filtered.turns,
+            type: "session/historyAuthoritativeSnapshotReceived",
+            workspaceId
+          });
+          input.onTrace?.({
+            detail: filtered,
+            scope: command.scope,
+            status: "applied",
+            type: "detailApply"
+          });
+          const scopedTurns = filtered.turns.filter(
+            (turn) => turn.agentSessionId === agentSessionId
+          );
+          input.reconcileAuthoritativeHistory(
+            agentSessionId,
+            page.messages,
+            scopedTurns
+          );
+          return {
+            affectedSessionIds: detailSessionIds(filtered),
+            appliedMessages: page.messages,
+            session: filtered.session,
+            status: "applied"
+          };
+        }
+        throw new Error(
+          `session reconcile authoritative history changed during read for ${agentSessionId}`
+        );
       }
       if (command.scope === "state") {
         const detail = await getDetail(agentSessionId, "state", signal);
@@ -575,136 +784,4 @@ function mergeReconciledPageMessages(
   return [...messagesBySessionId.values()].flatMap((messages) =>
     mergeAgentActivityMessages([], messages)
   );
-}
-
-function withoutDeletedChildren(
-  detail: AgentActivitySessionDetailSnapshot,
-  isSessionDeleted: (agentSessionId: string) => boolean
-): AgentActivitySessionDetailSnapshot {
-  const removedIds = new Set(
-    detail.childSessions
-      .filter((session) => isSessionDeleted(session.agentSessionId))
-      .map((session) => session.agentSessionId)
-  );
-  for (;;) {
-    let removedDescendant = false;
-    for (const session of detail.childSessions) {
-      if (
-        !removedIds.has(session.agentSessionId) &&
-        session.parentAgentSessionId !== null &&
-        removedIds.has(session.parentAgentSessionId)
-      ) {
-        removedIds.add(session.agentSessionId);
-        removedDescendant = true;
-      }
-    }
-    if (!removedDescendant) break;
-  }
-  const childSessions = detail.childSessions.filter(
-    (session) => !removedIds.has(session.agentSessionId)
-  );
-  const retainedIds = new Set([
-    detail.session.agentSessionId,
-    ...childSessions.map((session) => session.agentSessionId)
-  ]);
-  return {
-    projection: detail.projection,
-    lifecycleCapabilitiesProjected: detail.lifecycleCapabilitiesProjected,
-    session: detail.session,
-    childSessions,
-    turns: detail.turns.filter((turn) => retainedIds.has(turn.agentSessionId))
-  };
-}
-
-function assertMessagePageIdentity(
-  page: AgentActivityMessagePage,
-  workspaceId: string,
-  agentSessionId: string
-): void {
-  for (const message of page.messages) {
-    if (message.agentSessionId.trim() !== agentSessionId) {
-      throw new Error(
-        `session reconcile message identity mismatch: expected ${agentSessionId}, received ${message.agentSessionId}`
-      );
-    }
-    if (
-      message.workspaceId !== undefined &&
-      message.workspaceId.trim() !== workspaceId
-    ) {
-      throw new Error(
-        `session reconcile message workspace mismatch: expected ${workspaceId}, received ${message.workspaceId}`
-      );
-    }
-  }
-}
-
-function detailSessionIds(
-  detail: AgentActivitySessionDetailSnapshot
-): string[] {
-  return [
-    detail.session.agentSessionId,
-    ...detail.childSessions.map((session) => session.agentSessionId)
-  ];
-}
-
-function latestMessageVersion(
-  messages: readonly AgentActivityMessage[]
-): number {
-  return messages.reduce(
-    (latest, message) => Math.max(latest, normalizeVersion(message.version)),
-    0
-  );
-}
-
-function latestDurableMessageVersion(
-  messages: readonly AgentActivityMessage[]
-): number {
-  return messages.reduce((latest, message) => {
-    if (
-      !Number.isSafeInteger(message.sequence) ||
-      (message.sequence ?? 0) <= 0 ||
-      !Number.isSafeInteger(message.version) ||
-      message.version <= 0
-    ) {
-      return latest;
-    }
-    return Math.max(latest, message.version);
-  }, 0);
-}
-
-function conversationReconcileAfterVersion(
-  messages: readonly AgentActivityMessage[]
-): number {
-  const latest = latestMessageVersion(messages);
-  if (
-    messages.length === 0 ||
-    messages.some((message) => message.role.trim().toLowerCase() === "user")
-  ) {
-    return latest;
-  }
-  return messages.some((message) => {
-    const role = message.role.trim().toLowerCase();
-    const kind = message.kind.trim().toLowerCase();
-    return role === "assistant" || role === "agent" || kind === "tool_call";
-  })
-    ? 0
-    : latest;
-}
-
-function normalizeVersion(value: number): number {
-  return Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
-}
-
-function normalizeRequiredIdentity(value: string, field: string): string {
-  const normalized = value.trim();
-  if (!normalized) throw new Error(`session reconcile ${field} is required`);
-  return normalized;
-}
-
-function fallbackSession(agentSessionId: string): ReconcileSessionIdentity {
-  return {
-    agentSessionId,
-    kind: "root",
-    messageVersion: 0
-  };
 }

@@ -143,6 +143,65 @@ func TestExtensionCapabilitiesRemainUnknownWithoutLiveRuntimeFacts(t *testing.T)
 	}
 }
 
+func TestExtensionPersistedModelFallbackRequiresExactRuntimeIdentity(t *testing.T) {
+	project := t.TempDir()
+	settings := ComposerSettings{}
+	oldRef := map[string]any{"kind": "agent_extension", "extensionInstallationId": "example@1.0.0"}
+	currentRef := map[string]any{"kind": "agent_extension", "extensionInstallationId": "example@2.0.0"}
+	oldContext := stampAgentExtensionComposerScope(map[string]any{
+		"configOptions": []any{map[string]any{
+			"id": "model",
+			"options": []any{
+				map[string]any{"value": "old-model", "name": "Old Model"},
+			},
+		}},
+	}, oldRef, project, settings)
+
+	runtime := newFakeRuntime()
+	runtime.startHook = func(_ RuntimeStartInput, session ProviderRuntimeSession) ProviderRuntimeSession {
+		session.RuntimeContext["configOptions"] = []any{map[string]any{
+			"id": "model",
+			"options": []any{
+				map[string]any{"value": "current-model", "name": "Current Model"},
+			},
+		}}
+		return session
+	}
+	service := newIsolatedAgentService(runtime)
+	service.SessionReader = fakeSessionReader{sessions: map[string]PersistedSession{
+		"workspace-1:old-installation": {
+			ID:                     "old-installation",
+			WorkspaceID:            "workspace-1",
+			Provider:               "acp:example",
+			AgentTargetID:          "extension:example",
+			InternalRuntimeContext: oldContext,
+			UpdatedAtUnixMS:        100,
+		},
+	}}
+	input := extensionComposerDiscoveryInput(project)
+	input.providerTargetRef = currentRef
+
+	options, err := service.mergeLiveComposerModelsForComposerOptions(
+		context.Background(),
+		input,
+		settings,
+		ComposerOptions{
+			Provider:          "acp:example",
+			EffectiveSettings: settings,
+			RuntimeContext:    map[string]any{},
+		},
+	)
+	if err != nil {
+		t.Fatalf("mergeLiveComposerModelsForComposerOptions error = %v", err)
+	}
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("runtime starts = %d, want an exact-scope discovery handshake", len(runtime.startCalls))
+	}
+	if len(options.ModelConfig.Options) != 1 || options.ModelConfig.Options[0].Value != "current-model" {
+		t.Fatalf("model options = %#v, want current installation catalog", options.ModelConfig.Options)
+	}
+}
+
 func TestExtensionBrowserCapabilityHonorsMasterSwitch(t *testing.T) {
 	t.Setenv("TUTTI_BROWSER_USE", "0")
 	options := applyExtensionComposerCapabilities(ComposerOptions{

@@ -45,6 +45,34 @@ test("snapshot decomposes protocol v2 session and turn entities", () => {
   );
 });
 
+test("authoritative turn history removes a retracted turn from canonical state", () => {
+  const source = session(activeTurn(2), 2);
+  let state = reduce(createInitialSessionLifecycleState(), {
+    type: "session/upserted",
+    session: source
+  }).state;
+  assert.ok(state.turnsById[canonicalTurnKey("session-1", "turn-1")]);
+
+  state = reduce(state, {
+    agentSessionId: "session-1",
+    childSessions: [],
+    historyRevision: 1,
+    messages: [],
+    session: {
+      ...session(null, 3),
+      latestTurn: source.latestTurn
+    },
+    turns: [],
+    type: "session/historyAuthoritativeSnapshotReceived",
+    workspaceId: "workspace-1"
+  }).state;
+
+  assert.equal(
+    state.turnsById[canonicalTurnKey("session-1", "turn-1")],
+    undefined
+  );
+});
+
 test("identical session upserts preserve canonical state references", () => {
   const source = session(activeTurn(2), 2);
   const first = reduce(createInitialSessionLifecycleState(), {

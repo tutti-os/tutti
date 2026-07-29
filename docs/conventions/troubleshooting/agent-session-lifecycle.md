@@ -2,6 +2,34 @@
 
 [Agent runtime index](./agent-runtime.md) · [All troubleshooting](./README.md)
 
+### Older extension session fails because its launch identity is incomplete
+
+- **Symptom:** Sending a new message to a previously created extension session
+  fails with `session runtime snapshot is unavailable: launch identity is
+incomplete`, while a newly created session can still launch.
+- **Quick checks:** Compare the persisted Session provider with
+  `internal_runtime_context.sessionRuntimeSnapshot.provider`. The historical
+  defect has an open extension provider such as `acp:kimi-code` on the Session,
+  an empty provider in the snapshot, and a provider-native fingerprint produced
+  with the same empty provider. An intermediate build may retain the provider
+  field while still carrying that legacy empty-provider fingerprint.
+- **Root cause:** Registered-only provider normalization was used when writing
+  the snapshot and its provider-native model fingerprint. Extension-owned ACP
+  provider IDs were therefore collapsed to empty even though the durable
+  Session retained the correct provider.
+- **Fix:** Persist and fingerprint provider-native configurations with open
+  provider normalization. For existing records, recover only when the Session
+  carries a valid extension-owned provider and the snapshot exactly matches the
+  legacy empty-provider fingerprint; keep malformed, registered-provider, plan,
+  and fingerprint-mismatched snapshots fail-closed.
+- **Validation:** Prove a newly written extension snapshot binds its provider,
+  the exact historical shape resumes through its current enabled Agent Target,
+  a strict context-only read still rejects the incomplete identity, and altered
+  fingerprints or registered-provider fallbacks remain unavailable.
+- **References:**
+  [session_runtime_snapshot.go](../../../services/tuttid/service/agent/session_runtime_snapshot.go),
+  [model_plan_binding.go](../../../services/tuttid/service/agent/model_plan_binding.go)
+
 ### One hung provider startup blocks unrelated Agent sessions
 
 - **Symptom:** One provider process starts but never reaches runtime-ready, then
@@ -453,6 +481,9 @@
   path reaches SQLite second carries a different derived `payload.seq`; the
   strict provenance guard correctly rejects it. Scheduling determines whether
   the ordinary report exists before the barrier, so this form is intermittent.
+  A compatibility reporter can still supply different transport-only sequence,
+  source, or submission timestamps for the same protected user-message
+  provenance.
 - **Fix:** Preserve the prepared submit claim, Tutti snapshot, activation, and
   Session. Ensure the host supplies `DurableActivityReporter`; decorators
   should embed or otherwise preserve that required interface instead of
@@ -467,8 +498,11 @@
   immutable creation time through the typed Host and Runtime inputs and derive
   both reports' occurrence and sequence from it. Use `clientSubmitId` only as
   the idempotency identity, not as a numeric sequence. Build both messages with
-  the shared canonical user-message constructor; do not weaken the store's
-  exact-payload conflict check.
+  the shared canonical user-message constructor. Keep the store's exact-payload
+  conflict check for all genuine conflicts; the protected provenance replay may
+  accept only transport-only metadata differences after Turn, role, kind,
+  status, semantics, `clientSubmitId`, content, content mode, display prompt,
+  and text all match.
   Reconcile only from exact durable `clientSubmitId` provenance. If it resolves
   to the reserved Turn, idempotently accept the snapshot and claim; if it is
   absent or resolves elsewhere, keep delivery unknown and never re-dispatch
@@ -484,7 +518,10 @@
   Exercise both runtime-message-first and provenance-first orderings and assert
   their complete message updates, occurrence times, and derived payload
   sequences are identical. Reopen the submit-claim store and prove an
-  idempotent retry retains the original claim creation time.
+  idempotent retry retains the original claim creation time. Exercise the
+  narrow protected replay with differing transport sequence, source, and
+  submission time, while proving a real content or semantics change still
+  conflicts.
   Assert the unknown paths execute the provider zero additional times and never
   close the provisional Session or delete its activation.
 - **References:**
@@ -1920,7 +1957,10 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   `internal_runtime_context_json.$.sessionRuntimeSnapshot.provider`. An
   extension provider such as `acp:<name>` beside an empty snapshot provider,
   followed by `launch identity is incomplete`, identifies the durable snapshot
-  path rather than a PATH or listener failure.
+  path rather than a PATH or listener failure. A second historical shape keeps
+  `acp:<name>` in both locations but has a provider-native fingerprint computed
+  from an empty provider; it fails later with
+  `provider-native fingerprint does not match`.
 - Root cause:
   Dynamic Agent Extension adapters are created on demand and cached only for
   the daemon lifetime. Computing `resumable` from that cache maps restart state
@@ -1953,16 +1993,20 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   Agent Target. For already-written empty-provider extension snapshots, recover
   only when the canonical session provider is a valid unregistered open
   identity, the snapshot declares provider-native configuration, and its
-  fingerprint exactly matches the historical empty-provider payload. Keep
-  every other malformed or mismatched snapshot fail-closed, and do not rewrite
-  the database merely to make discovery succeed.
+  fingerprint exactly matches the historical empty-provider payload. Apply the
+  same narrow compatibility check to the transitional shape that already
+  retained the open provider in the snapshot: the canonical and snapshot
+  providers must match exactly before accepting the historical fingerprint.
+  Keep every other malformed or mismatched snapshot fail-closed, and do not
+  rewrite the database merely to make discovery succeed.
 - Validation:
   Start from a controller with no cached extension adapter. Assert a persisted
   Target-bound session is resumable, malformed or mismatched bindings fail
   closed, and the eligibility check does not launch the provider. Then run
   `go test ./packages/agent/daemon/runtime ./services/tuttid/service/agent`.
   Also cover new extension snapshots preserving `acp:*`, verified legacy
-  empty-provider recovery, registered-provider fallback rejection, CLI command
+  empty-provider recovery, transitional open-provider/legacy-fingerprint
+  recovery, registered or mismatched provider fallback rejection, CLI command
   projection for the recovered session, and runtime preparation after restart.
 - References:
   [controller_session_registry.go](../../../packages/agent/daemon/runtime/controller_session_registry.go)
@@ -3110,7 +3154,7 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   cursor.
 - References:
   [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
-  [workspaceAgentActivityReconcileMessages.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileMessages.ts)
+  [sessionReconcileExecutor.ts](../../../packages/agent/activity-core/src/sessionReconcileExecutor.ts)
   [agent-gui-node.md](../../architecture/agent-gui-node.md)
 
 ### Root detail reconciliation repeatedly reloads unchanged child transcripts
@@ -3149,7 +3193,42 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   case proving its existing repair still reads from zero.
 - References:
   [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
-  [workspaceAgentActivityReconcileMessages.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileMessages.ts)
+  [sessionReconcileExecutor.ts](../../../packages/agent/activity-core/src/sessionReconcileExecutor.ts)
+
+### Completed agent output appears only after switching Sessions
+
+- Symptom:
+  A Turn finishes in the daemon, but the active AgentGUI timeline does not show
+  the final assistant output until the user selects another Session and returns.
+  This is especially visible after an edit-retry replacement Turn.
+- Quick checks:
+  Follow one exact `(workspaceId, agentSessionId, turnId)` through durable
+  `turn_update` publication, the business-event WebSocket, and
+  `WorkspaceAgentActivityReconcileBridge`. Distinguish a daemon publication
+  gap from a disconnected/stale subscription and from a renderer event that
+  updated Turn state without requesting authoritative messages. Compare the
+  cached message cursor with `listWorkspaceAgentSessionMessages`.
+- Root cause:
+  A terminal Turn event can be delivered while its final message event is
+  missed, reordered, or not folded into the active cache. Session navigation
+  performs a detail/message hydration and therefore hides the missing
+  reconcile trigger.
+- Fix:
+  Treat realtime events as hints. Every terminal `turn_update` requests one
+  combined state-and-message reconcile through the existing workspace engine.
+  An accepted edit-retry completion or recovery command remains `reconciling`
+  and blocks another edit until the same authoritative detail reconciliation
+  confirms its revision and recovery state. Never replace canonical
+  availability with recovery actions inferred by Desktop. Do not add a second
+  WebSocket, component store, or edit-retry-specific polling loop.
+- Validation:
+  Deliver a settled `turn_update` without the corresponding final
+  `message_update`; assert that the bridge fetches messages and updates the
+  mounted timeline without Session navigation. Repeat after edit retry and
+  after a transient reconcile failure.
+- References:
+  [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
+  [workspaceAgentEditRetry.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentEditRetry.ts)
   [agent-gui-node.md](../../architecture/agent-gui-node.md)
 
 ### AgentActivity replication repeatedly rejects message batches as invalid
@@ -3444,3 +3523,39 @@ convergence deadline`.
 - References:
   [run-agent-session-replay.mjs](../../../tools/scripts/run-agent-session-replay.mjs)
   [run-agent-session-replay.test.mjs](../../../tools/scripts/run-agent-session-replay.test.mjs)
+
+### Edited prompt remains after edit-and-retry
+
+- Symptom:
+  The replacement answer appears, but the original user prompt remains,
+  reappears after reconnect, or disappears only after switching Sessions.
+- Quick checks:
+  Compare the daemon Session-detail Turn projection and effective message read
+  with the renderer snapshot. If SQLite marks the old Turn `retracted`, verify
+  Session detail uses `ListEffectiveSessionTurns`, not the complete audit
+  reader. Then inspect the SessionEngine required/applied history revisions and
+  any terminal optimistic message-delta row from the retracted Turn.
+- Root cause:
+  Incremental reconciliation can add or update rows but cannot delete a cached
+  Turn missed during disconnect. A second variant replaces canonical messages
+  while leaving a confirmed optimistic projection alive; a third lets a
+  realtime event race a full-history read.
+- Fix:
+  Serialize same-Session reads, require a full authoritative replacement for a
+  changed edit-retry revision, page backward from a newest-version anchor, then
+  drain its live tail and apply one composite Session/Turn/Message snapshot.
+  Source the detail projection from effective Turns. Reconcile pending intents,
+  attention, and terminal optimistic message-delta rows from that same Turn set
+  and stable `clientSubmitId` set; preserve unresolved turnless controls. Retry
+  transient projection failures while connected and recheck cached Sessions on
+  reconnect.
+- Validation:
+  Cover missed events plus reconnect, stale unknown messages, transient
+  failures, revision changes during paging, optimistic initial prompts, and a
+  terminal delta for a retracted Turn. The final detail and transcript must
+  contain only effective Turns and messages while preserving attachments,
+  non-text input, turnless controls, and real filesystem effects.
+- References:
+  [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
+  [sessionReconcileExecutor.ts](../../../packages/agent/activity-core/src/sessionReconcileExecutor.ts)
+  [pendingIntents.authoritativeHistory.ts](../../../packages/agent/activity-core/src/engine/pendingIntents.authoritativeHistory.ts)

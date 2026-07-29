@@ -6,6 +6,81 @@ import (
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 )
 
+type observedEffectiveHistoryStore struct {
+	EffectiveHistoryStore
+	host *Host
+}
+
+func (s *observedEffectiveHistoryStore) MarkEditRetryRollbackDispatched(
+	ctx context.Context,
+	input storesqlite.MarkEditRetryRollbackDispatchedInput,
+) (storesqlite.RuntimeOperation, bool, error) {
+	op, changed, err := s.EffectiveHistoryStore.MarkEditRetryRollbackDispatched(ctx, input)
+	if err == nil && changed {
+		s.host.notifyCommitted(ctx, runtimeOperationDelta(RuntimeOperationCheckpoint, op, nil))
+	}
+	return op, changed, err
+}
+
+func (s *observedEffectiveHistoryStore) ConfirmEditRetryRollback(
+	ctx context.Context,
+	input storesqlite.ConfirmEditRetryRollbackInput,
+) (storesqlite.RuntimeOperation, bool, error) {
+	op, changed, err := s.EffectiveHistoryStore.ConfirmEditRetryRollback(ctx, input)
+	if err == nil && changed {
+		s.host.notifyCommitted(ctx, runtimeOperationDelta(RuntimeOperationCheckpoint, op, nil))
+	}
+	return op, changed, err
+}
+
+func (s *observedEffectiveHistoryStore) AbortEditRetryRollback(
+	ctx context.Context,
+	input storesqlite.AbortEditRetryRollbackInput,
+) (storesqlite.RuntimeOperation, bool, error) {
+	op, changed, err := s.EffectiveHistoryStore.AbortEditRetryRollback(ctx, input)
+	if err == nil && changed {
+		s.host.notifyCommitted(ctx, runtimeOperationDelta(RuntimeOperationFailed, op, nil))
+	}
+	return op, changed, err
+}
+
+func (s *observedEffectiveHistoryStore) PrepareEditRetryReplacementRedispatch(
+	ctx context.Context,
+	input storesqlite.PrepareEditRetryReplacementRedispatchInput,
+) (storesqlite.RuntimeOperation, bool, error) {
+	op, changed, err := s.EffectiveHistoryStore.PrepareEditRetryReplacementRedispatch(ctx, input)
+	if err == nil && changed {
+		s.host.notifyCommitted(ctx, runtimeOperationDelta(RuntimeOperationCheckpoint, op, nil))
+	}
+	return op, changed, err
+}
+
+func (s *observedEffectiveHistoryStore) CompleteEditRetryRuntimeOperation(
+	ctx context.Context,
+	input storesqlite.CompleteEditRetryRuntimeOperationInput,
+) (storesqlite.RuntimeOperationCompletion, bool, error) {
+	completion, changed, err := s.EffectiveHistoryStore.CompleteEditRetryRuntimeOperation(ctx, input)
+	if err == nil && changed {
+		event := completion.Event
+		s.host.notifyCommitted(
+			ctx,
+			runtimeOperationDelta(RuntimeOperationCompleted, completion.Operation, &event),
+		)
+	}
+	return completion, changed, err
+}
+
+func (s *observedEffectiveHistoryStore) FailEditRetryRecovery(
+	ctx context.Context,
+	input storesqlite.FailEditRetryRecoveryInput,
+) (storesqlite.RuntimeOperation, bool, error) {
+	op, changed, err := s.EffectiveHistoryStore.FailEditRetryRecovery(ctx, input)
+	if err == nil && changed {
+		s.host.notifyCommitted(ctx, runtimeOperationDelta(RuntimeOperationFailed, op, nil))
+	}
+	return op, changed, err
+}
+
 type observedRuntimeOperationStore struct {
 	RuntimeOperationStore
 	host *Host

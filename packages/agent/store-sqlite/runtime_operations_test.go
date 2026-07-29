@@ -119,6 +119,27 @@ func TestRuntimeOperationLeaseUsesClockAndAllowsExpiredTakeover(t *testing.T) {
 			t.Fatalf("claimable at %d = %#v err=%v, want %d", now, claimable, err, wantCount)
 		}
 	}
+
+	reclaimed, claimed, err := store.ClaimRuntimeOperationLease(
+		context.Background(),
+		ClaimRuntimeOperationLeaseInput{
+			WorkspaceID: "ws-1", OperationID: "operation-1",
+			LeaseOwner: "worker-c", NowUnixMS: 100, LeaseExpiresAtMS: 120,
+		},
+	)
+	if err != nil || !claimed {
+		t.Fatalf("claim at release deadline = %#v claimed=%v err=%v", reclaimed, claimed, err)
+	}
+	immediate, changed, err := store.ReleaseOrFailRuntimeOperation(
+		context.Background(),
+		ReleaseOrFailRuntimeOperationInput{
+			WorkspaceID: "ws-1", OperationID: "operation-1",
+			LeaseOwner: "worker-c", NowUnixMS: 110, NextAttemptAtMS: 110,
+		},
+	)
+	if err != nil || !changed || immediate.NextAttemptAtMS != 110 {
+		t.Fatalf("immediate release = %#v changed=%v err=%v", immediate, changed, err)
+	}
 }
 
 func TestStartupRecoveryRequeuesUnexpiredRuntimeOperationLease(t *testing.T) {

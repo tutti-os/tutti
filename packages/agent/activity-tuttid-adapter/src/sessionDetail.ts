@@ -1,6 +1,7 @@
 import type { AgentActivitySessionDetailSnapshot } from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentSessionDetailResponse } from "@tutti-os/client-tuttid-ts";
 import {
+  agentActivityEditRetryAvailabilityFromTuttid,
   agentActivitySessionFromTuttidSession,
   agentActivityTurnFromTuttidTurn,
   type AgentActivitySessionMappingOptions
@@ -23,6 +24,7 @@ export function agentActivitySessionDetailFromTuttid(
     projection:
       detail.projection === "full" ? "authoritative" : "message_hydration",
     lifecycleCapabilitiesProjected: detail.lifecycleCapabilitiesProjected,
+    editRetry: agentActivityEditRetryAvailabilityFromTuttid(detail.editRetry),
     session: agentActivitySessionFromTuttidSession(
       workspaceId,
       detail.session,

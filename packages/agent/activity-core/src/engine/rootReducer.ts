@@ -71,6 +71,10 @@ import {
   createInitialTuttiModeActivationState,
   tuttiModeActivationReducer
 } from "./tuttiModeActivation.reducer.ts";
+import {
+  createInitialEditRetryState,
+  editRetryReducer
+} from "./editRetry.reducer.ts";
 
 // Root reducer: static composition of domain reducers, zero business logic.
 // Cross-domain read-only context is passed explicitly; domains still own all
@@ -79,6 +83,7 @@ import {
 export function createInitialAgentSessionEngineState(): RootAgentSessionEngineState {
   return {
     attentionReadState: createInitialAttentionReadState(),
+    editRetry: createInitialEditRetryState(),
     engineRuntime: createInitialEngineRuntimeState(),
     pendingIntents: createInitialPendingIntentsState(),
     planDecisions: createInitialPlanDecisionState(),
@@ -372,6 +377,7 @@ export function rootEngineReducer(
     intent,
     { sessionsById: sessionLifecycle.state.sessionsById }
   );
+  const editRetry = editRetryReducer(state.editRetry, intent);
   const pendingIntents = pendingIntentsReducer(state.pendingIntents, intent, {
     deletedSessionIds: sessionLifecycle.state.deletedSessionIds,
     turnsById: sessionLifecycle.state.turnsById,
@@ -427,6 +433,7 @@ export function rootEngineReducer(
   );
   const unchanged =
     attentionReadState.state === state.attentionReadState &&
+    editRetry.state === state.editRetry &&
     engineRuntime.state === state.engineRuntime &&
     pendingIntents.state === state.pendingIntents &&
     planDecisions.state === state.planDecisions &&
@@ -443,6 +450,7 @@ export function rootEngineReducer(
     ? state
     : {
         attentionReadState: attentionReadState.state,
+        editRetry: editRetry.state,
         engineRuntime: engineRuntime.state,
         pendingIntents: pendingIntents.state,
         planDecisions: planDecisions.state,
@@ -457,6 +465,7 @@ export function rootEngineReducer(
         tuttiModeActivation: tuttiModeActivation.state
       };
   const followUpIntents = [
+    ...(editRetry.followUpIntents ?? []),
     ...(sessionReconcile.followUpIntents ?? []),
     ...(sessionMutations.followUpIntents ?? []),
     ...(pendingIntents.followUpIntents ?? []),
@@ -466,6 +475,7 @@ export function rootEngineReducer(
   return {
     commands: [
       ...attentionReadState.commands,
+      ...editRetry.commands,
       ...engineRuntime.commands,
       ...pendingIntents.commands,
       ...planDecisions.commands,

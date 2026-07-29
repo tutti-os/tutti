@@ -57,6 +57,25 @@ export function transcriptRowKey(
   return row.id;
 }
 
+export function findLastMessageRowIndex(
+  rows: readonly {
+    row: AgentConversationVM["rows"][number];
+    rowIndex: number;
+  }[]
+): number | null {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const entry = rows[index];
+    if (
+      entry?.row.kind === "message" &&
+      entry.row.speaker === "assistant" &&
+      entry.row.messages.length > 0
+    ) {
+      return entry.rowIndex;
+    }
+  }
+  return null;
+}
+
 export function buildAgentTranscriptTurnGroups(
   rows: ReadonlyArray<AgentConversationVM["rows"][number]>,
   rowKeys: ReadonlyArray<string>

@@ -52,6 +52,11 @@ const styles = {
   userImageGrid: "agent-gui-conversation__user-image-grid",
   userImageThumbnail: "agent-gui-conversation__user-image-thumbnail",
   userMessageBubble: "agent-gui-conversation__user-message-bubble",
+  userMessageEditor: "agent-gui-conversation__user-message-editor",
+  userMessageEditorTextarea:
+    "agent-gui-conversation__user-message-editor-textarea",
+  userMessageEditorActions:
+    "agent-gui-conversation__user-message-editor-actions",
   assistantMarkdown: "agent-gui-conversation__assistant-markdown"
 } as const;
 

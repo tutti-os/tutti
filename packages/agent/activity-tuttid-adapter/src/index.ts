@@ -1,4 +1,5 @@
 export {
+  agentActivityEditRetryAvailabilityFromTuttid,
   agentActivityMessageFromTuttidMessage,
   agentActivitySessionFromTuttidSession,
   agentActivityTuttiModeActivationFromTuttid,

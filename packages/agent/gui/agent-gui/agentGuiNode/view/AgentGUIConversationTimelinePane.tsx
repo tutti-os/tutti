@@ -9,6 +9,7 @@ import type {
   AgentTranscriptTurnAttachment,
   AgentTranscriptVirtualScrollController
 } from "../../../shared/agentConversation/components/AgentTranscriptView";
+import type { AgentTranscriptEditRetryControl } from "../../../shared/agentConversation/components/useAgentTranscriptEditRetryProjection";
 import { userScrollBehavior } from "./agentGUIDetailScrollHelpers";
 import type { AgentConversationFollowEndMode } from "../../../shared/agentConversation/agentConversationFollowEndController";
 
@@ -17,6 +18,7 @@ const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[]
 
 interface AgentGUIConversationTimelinePaneProps {
   conversation: AgentConversationVM | null;
+  editRetry?: AgentTranscriptEditRetryControl;
   turnAttachments?: readonly AgentTranscriptTurnAttachment[];
   turnAttachmentLocatorRef?: Ref<AgentTranscriptAttachmentLocator>;
   onTurnAttachmentVisibilityChange?: (
@@ -48,6 +50,7 @@ interface AgentGUIConversationTimelinePaneProps {
 export const AgentGUIConversationTimelinePane = memo(
   function AgentGUIConversationTimelinePane({
     conversation,
+    editRetry,
     turnAttachments,
     turnAttachmentLocatorRef,
     onTurnAttachmentVisibilityChange,
@@ -82,6 +85,7 @@ export const AgentGUIConversationTimelinePane = memo(
         <AgentConversationFlow
           conversation={conversation}
           followEndMode={followEndMode}
+          editRetry={editRetry}
           turnAttachments={turnAttachments}
           turnAttachmentLocatorRef={turnAttachmentLocatorRef}
           onTurnAttachmentVisibilityChange={onTurnAttachmentVisibilityChange}

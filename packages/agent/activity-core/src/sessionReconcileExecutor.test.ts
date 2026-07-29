@@ -16,7 +16,8 @@ import type {
   AgentActivityDurableMessage,
   AgentActivityMessage,
   AgentActivityMessagePage,
-  AgentActivitySession
+  AgentActivitySession,
+  AgentActivityTurn
 } from "./types.ts";
 
 const WORKSPACE_ID = "workspace-1";
@@ -35,6 +36,124 @@ test("state reconcile applies one mapped aggregate without reading messages", as
     harness.engine.getSnapshot().sessionLifecycle.sessionsById["root-1"]
       ?.agentSessionId,
     "root-1"
+  );
+});
+
+test("state reconcile retries one transient detail-read failure", async () => {
+  const detail = sessionDetail(session("root-1"));
+  let detailReads = 0;
+  const harness = createHarness({
+    getSessionDetail: async () => {
+      detailReads += 1;
+      if (detailReads === 1) {
+        throw new Error("temporary detail read failure");
+      }
+      return detail;
+    },
+    listSessionMessages: rejectUnexpectedMessageRead
+  });
+
+  const result = await harness.execute("state", true);
+
+  assert.equal(result.status, "applied");
+  assert.equal(detailReads, 2);
+});
+
+test("authoritative history reconcile replaces effective messages and cleans the optimistic overlay", async () => {
+  const effectiveMessage = message({
+    messageId: "replacement-message",
+    turnId: "replacement-turn",
+    version: 2
+  });
+  const root = session("root-1", { messageVersion: 2 });
+  const harness = createHarness({
+    getSessionDetail: async () => sessionDetail(root),
+    listSessionMessages: async (input) =>
+      input.order === "desc"
+        ? page([effectiveMessage], false, 2)
+        : page([], false, 2)
+  });
+
+  const result = await harness.executor.execute({
+    ...command("state_and_messages"),
+    authoritativeMessages: true
+  });
+
+  assert.equal(result.status, "applied");
+  assert.deepEqual(
+    harness
+      .project()
+      .sessionMessagesById["root-1"]?.map((candidate) => candidate.messageId),
+    ["replacement-message"]
+  );
+  assert.deepEqual(harness.reconciledAuthoritativeHistories, [
+    {
+      agentSessionId: "root-1",
+      messageIds: ["replacement-message"],
+      turnIds: []
+    }
+  ]);
+  assert.deepEqual(harness.reconciledOverlays, []);
+});
+
+test("authoritative history passes only root turns to the root overlay", async () => {
+  const root = session("root-1", { messageVersion: 2 });
+  const child = session("child-1", {
+    kind: "child",
+    parentAgentSessionId: "root-1",
+    rootAgentSessionId: "root-1"
+  });
+  const rootTurn = turn("root-1", "root-turn");
+  const childTurn = turn("child-1", "child-turn");
+  const harness = createHarness({
+    getSessionDetail: async () => ({
+      ...sessionDetail(root, [child]),
+      turns: [rootTurn, childTurn]
+    }),
+    listSessionMessages: async (input) =>
+      input.order === "desc"
+        ? page([message({ turnId: rootTurn.turnId, version: 2 })], false, 2)
+        : page([], false, 2)
+  });
+
+  const result = await harness.executor.execute({
+    ...command("state_and_messages"),
+    authoritativeMessages: true
+  });
+
+  assert.equal(result.status, "applied");
+  assert.deepEqual(result.affectedSessionIds, ["root-1", "child-1"]);
+  assert.deepEqual(harness.reconciledAuthoritativeHistories, [
+    {
+      agentSessionId: "root-1",
+      messageIds: ["message-1"],
+      turnIds: ["root-turn"]
+    }
+  ]);
+  assert.ok(
+    harness.engine.getSnapshot().sessionLifecycle.sessionsById["child-1"]
+  );
+  assert.ok(
+    Object.values(harness.engine.getSnapshot().sessionLifecycle.turnsById).some(
+      (candidate) =>
+        candidate.agentSessionId === "child-1" &&
+        candidate.turnId === "child-turn"
+    )
+  );
+});
+
+test("authoritative history reconciliation rejects a partial scope before reading", async () => {
+  const harness = createHarness({
+    getSessionDetail: rejectUnexpectedDetailRead,
+    listSessionMessages: rejectUnexpectedMessageRead
+  });
+
+  await assert.rejects(
+    harness.executor.execute({
+      ...command("messages"),
+      authoritativeMessages: true
+    }),
+    /authoritative messages require state_and_messages scope/
   );
 });
 
@@ -451,12 +570,24 @@ function createHarness(
     }
   });
   const reconciledOverlays: string[] = [];
+  const reconciledAuthoritativeHistories: Array<{
+    agentSessionId: string;
+    messageIds: string[];
+    turnIds: string[];
+  }> = [];
   const executor = createAgentActivitySessionReconcileExecutor({
     childMessageHydration,
     engine,
     ...(options.isAvailable ? { isAvailable: options.isAvailable } : {}),
     isSessionDeleted: options.isSessionDeleted ?? (() => false),
     port,
+    reconcileAuthoritativeHistory: (agentSessionId, messages, turns) => {
+      reconciledAuthoritativeHistories.push({
+        agentSessionId,
+        messageIds: messages.map((message) => message.messageId),
+        turnIds: turns.map((turn) => turn.turnId)
+      });
+    },
     reconcileOptimisticMessages: (agentSessionId) => {
       reconciledOverlays.push(agentSessionId);
     },
@@ -474,6 +605,7 @@ function createHarness(
     },
     executor,
     project: () => projector(engine.getSnapshot()),
+    reconciledAuthoritativeHistories,
     reconciledOverlays
   };
 }
@@ -559,6 +691,19 @@ function message(
     version: 1,
     workspaceId: WORKSPACE_ID,
     ...overrides
+  };
+}
+
+function turn(agentSessionId: string, turnId: string): AgentActivityTurn {
+  return {
+    agentSessionId,
+    origin: "user_prompt",
+    phase: "settled",
+    outcome: "completed",
+    settledAtUnixMs: 1,
+    startedAtUnixMs: 1,
+    turnId,
+    updatedAtUnixMs: 1
   };
 }
 

@@ -9,6 +9,7 @@ export interface AgentAskUserQuestionVM {
   question: string;
   options: AgentAskUserQuestionOptionVM[];
   multiSelect: boolean;
+  allowFreeText?: boolean;
   answer?: string | string[] | null;
 }
 

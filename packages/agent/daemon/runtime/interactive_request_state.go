@@ -25,10 +25,15 @@ type pendingInteractiveRequest struct {
 	prompt          *SessionInteractivePrompt
 	options         []map[string]any
 	response        chan pendingInteractiveResponse
-	stateMu         sync.Mutex
-	state           pendingInteractiveRequestState
-	done            chan struct{}
-	onTerminal      func(*pendingInteractiveRequest, pendingInteractiveRequestState)
+	// interactionRequested is owned by the standard ACP adapter while the
+	// request remains in its pendingApprovals map. Some ACP providers send an
+	// interactive permission request before the tool_call update that carries
+	// the question body, so publication must wait until those frames are joined.
+	interactionRequested bool
+	stateMu              sync.Mutex
+	state                pendingInteractiveRequestState
+	done                 chan struct{}
+	onTerminal           func(*pendingInteractiveRequest, pendingInteractiveRequestState)
 }
 
 const approvalPurposeEditFiles = "edit-files"

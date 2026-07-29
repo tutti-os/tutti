@@ -44,6 +44,52 @@ func TestDefaultPreparerACPExtensionMaterializesSkillsToDeclaredRoot(t *testing.
 	}
 }
 
+func TestDefaultPreparerKimiCodeMaterializesCanonicalSkillBundle(t *testing.T) {
+	t.Setenv(browserUseSwitchEnv, "")
+	stateDir := t.TempDir()
+	cwd := t.TempDir()
+	prep := newTestPreparer(stateDir)
+	prep.CLICommand = "tutti-dev"
+	input := PrepareInput{
+		WorkspaceID:         "workspace-1",
+		AgentSessionID:      "session-1",
+		AgentTargetID:       "extension:kimi-code",
+		Provider:            "acp:kimi-code",
+		Cwd:                 cwd,
+		BrowserUse:          true,
+		ExtensionSkillRoots: []string{".agents/skills"},
+	}
+	if _, err := prep.Prepare(t.Context(), input); err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+
+	materialized, err := os.ReadFile(filepath.Join(
+		cwd,
+		".agents",
+		"skills",
+		browserUseSkillName,
+		"SKILL.md",
+	))
+	if err != nil {
+		t.Fatalf("read materialized Kimi browser-use skill: %v", err)
+	}
+	bundle, err := prep.RenderSkillBundle(t.Context(), input)
+	if err != nil {
+		t.Fatalf("RenderSkillBundle() error = %v", err)
+	}
+	canonical := skillBundleRecord(bundle.Skills, browserUseSkillName).Content
+	if canonical == "" {
+		t.Fatal("canonical browser-use skill is missing from rendered bundle")
+	}
+	if string(materialized) != canonical {
+		t.Fatalf("materialized Kimi skill diverged from canonical bundle:\n%s", materialized)
+	}
+	if !strings.Contains(canonical, "tutti-dev browser navigate --url <url> --json") ||
+		strings.Contains(canonical, "{{") {
+		t.Fatalf("canonical Kimi skill was not fully rendered:\n%s", canonical)
+	}
+}
+
 func TestDefaultPreparerACPExtensionReplacesManagedSkillsWithoutSuffixes(t *testing.T) {
 	stateDir := t.TempDir()
 	cwd := t.TempDir()

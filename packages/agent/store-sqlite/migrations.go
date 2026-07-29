@@ -44,6 +44,7 @@ const schemaMigrationWorkspaceAgentRuntimeOperationsV1 = "workspace_agent_runtim
 const schemaMigrationWorkspaceAgentRuntimeOperationsV2 = "workspace_agent_runtime_operations_v2"
 const schemaMigrationWorkspaceAgentRuntimeOperationsV3 = "workspace_agent_runtime_operations_v3"
 const schemaMigrationWorkspaceAgentRuntimeOperationsV4 = "workspace_agent_runtime_operations_v4"
+const schemaMigrationWorkspaceAgentRuntimeOperationsV5 = "workspace_agent_runtime_operations_v5"
 const schemaMigrationWorkspaceAgentSubmitClaimsV1 = "workspace_agent_submit_claims_v1"
 const schemaMigrationWorkspaceAgentSubmitClaimsV2 = "workspace_agent_submit_claims_v2"
 const schemaMigrationAgentTargetsV1 = "agent_targets_v1"
@@ -76,6 +77,7 @@ const schemaMigrationWorkspaceAgentSessionForkV2 = "workspace_agent_session_fork
 const schemaMigrationWorkspaceAgentSessionForkV3 = "workspace_agent_session_fork_v3"
 const schemaMigrationWorkspaceAgentSessionForkV4 = "workspace_agent_session_fork_v4"
 const schemaMigrationWorkspaceAgentSessionForkV5 = "workspace_agent_session_fork_v5"
+const schemaMigrationWorkspaceAgentEffectiveHistoryV1 = "workspace_agent_effective_history_v1"
 
 // claimableMigrationIDs are the migration IDs that may already be recorded
 // in the legacy tuttid ledger; the claim copies exactly these.
@@ -198,6 +200,9 @@ CREATE TABLE IF NOT EXISTS `+schemaMigrationsTable+` (
 	if err := s.applyWorkspaceAgentRuntimeOperationsV4(ctx); err != nil {
 		return err
 	}
+	if err := s.applyWorkspaceAgentRuntimeOperationsV5(ctx); err != nil {
+		return err
+	}
 	if err := s.applyWorkspaceAgentSubmitClaimsV1(ctx); err != nil {
 		return err
 	}
@@ -276,7 +281,10 @@ CREATE TABLE IF NOT EXISTS `+schemaMigrationsTable+` (
 	if err := s.applyWorkspaceAgentSessionForkV4(ctx); err != nil {
 		return err
 	}
-	return s.applyWorkspaceAgentSessionForkV5(ctx)
+	if err := s.applyWorkspaceAgentSessionForkV5(ctx); err != nil {
+		return err
+	}
+	return s.applyWorkspaceAgentEffectiveHistoryV1(ctx)
 }
 
 // claimLegacyMigrations copies agent-store migration records that were

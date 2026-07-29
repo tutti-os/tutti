@@ -2423,6 +2423,7 @@ export type WorkspaceAgentSessionDetailResponse = {
    */
   lifecycleCapabilitiesProjected: boolean;
   session: WorkspaceAgentSession;
+  editRetry: WorkspaceAgentEditRetryAvailability;
   /**
    * Flat collection of every nested child session below session. Clients reconstruct the tree from the immutable parent fields.
    */
@@ -2431,6 +2432,61 @@ export type WorkspaceAgentSessionDetailResponse = {
    * Ordered durable turns owned by session. This detail-only collection is the canonical source for turn-scoped history such as file changes; clients must not reconstruct it from provider tool payloads.
    */
   turns: Array<WorkspaceAgentTurn>;
+};
+
+export type WorkspaceAgentEditRetryAvailability = {
+  supported: boolean;
+  eligible: boolean;
+  turnId?: string;
+  historyRevision: number;
+  recoveryState:
+    | "prepared"
+    | "rolling_back"
+    | "resend_pending"
+    | "recovery_required"
+    | "completed";
+  operationId?: string;
+  availableActions: Array<WorkspaceAgentEditRetryRecoveryAction>;
+  reasonCode?: WorkspaceAgentEditRetryReasonCode;
+};
+
+export type WorkspaceAgentEditRetryRecoveryAction =
+  | "reconcile"
+  | "retry_replacement";
+
+export type WorkspaceAgentEditRetryReasonCode =
+  | "provider_unsupported"
+  | "turn_not_found"
+  | "turn_not_latest"
+  | "turn_not_settled"
+  | "history_revision_conflict"
+  | "operation_conflict"
+  | "recovery_required"
+  | "provider_outcome_unknown"
+  | "replacement_not_proven_absent";
+
+export type EditRetryWorkspaceAgentTurnRequest = {
+  editedText: string;
+  clientOperationId: string;
+  expectedHistoryRevision: number;
+};
+
+export type RecoverWorkspaceAgentEditRetryRequest = {
+  action: WorkspaceAgentEditRetryRecoveryAction;
+};
+
+export type WorkspaceAgentEditRetryResponse = {
+  operationId: string;
+  state:
+    | "prepared"
+    | "rolling_back"
+    | "resend_pending"
+    | "recovery_required"
+    | "completed";
+  retractedTurnId: string;
+  replacementTurnId?: string;
+  historyRevision: number;
+  reasonCode?: WorkspaceAgentEditRetryReasonCode;
 };
 
 export type SendWorkspaceAgentSessionInputResponse =
@@ -11591,6 +11647,124 @@ export type CancelWorkspaceAgentTurnResponses = {
 
 export type CancelWorkspaceAgentTurnResponse =
   CancelWorkspaceAgentTurnResponses[keyof CancelWorkspaceAgentTurnResponses];
+
+export type EditRetryWorkspaceAgentTurnData = {
+  body: EditRetryWorkspaceAgentTurnRequest;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+    turnID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/turns/{turnID}/edit-retry";
+};
+
+export type EditRetryWorkspaceAgentTurnErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * The turn, history revision, or operation identity conflicts with current canonical state
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type EditRetryWorkspaceAgentTurnError =
+  EditRetryWorkspaceAgentTurnErrors[keyof EditRetryWorkspaceAgentTurnErrors];
+
+export type EditRetryWorkspaceAgentTurnResponses = {
+  /**
+   * Edit-retry operation completed
+   */
+  200: WorkspaceAgentEditRetryResponse;
+  /**
+   * Edit-retry operation is durably pending confirmation or recovery
+   */
+  202: WorkspaceAgentEditRetryResponse;
+};
+
+export type EditRetryWorkspaceAgentTurnResponse =
+  EditRetryWorkspaceAgentTurnResponses[keyof EditRetryWorkspaceAgentTurnResponses];
+
+export type RecoverWorkspaceAgentEditRetryData = {
+  body: RecoverWorkspaceAgentEditRetryRequest;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+    operationID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/edit-retry-operations/{operationID}/recover";
+};
+
+export type RecoverWorkspaceAgentEditRetryErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * The operation identity or requested recovery action conflicts with current canonical state
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type RecoverWorkspaceAgentEditRetryError =
+  RecoverWorkspaceAgentEditRetryErrors[keyof RecoverWorkspaceAgentEditRetryErrors];
+
+export type RecoverWorkspaceAgentEditRetryResponses = {
+  /**
+   * Edit-retry recovery completed
+   */
+  200: WorkspaceAgentEditRetryResponse;
+  /**
+   * Edit-retry operation remains durably pending confirmation or recovery
+   */
+  202: WorkspaceAgentEditRetryResponse;
+};
+
+export type RecoverWorkspaceAgentEditRetryResponse =
+  RecoverWorkspaceAgentEditRetryResponses[keyof RecoverWorkspaceAgentEditRetryResponses];
 
 export type SubmitWorkspaceAgentPlanDecisionData = {
   body: SubmitWorkspaceAgentPlanDecisionRequest;

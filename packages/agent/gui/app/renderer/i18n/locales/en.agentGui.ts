@@ -324,6 +324,14 @@ export const enAgentGui = {
   continuedFromTask: "Continued from task",
   sourceConversationNotFound: "Original conversation not found",
   copyImage: "Copy image",
+  editRetryEditMessage: "Edit message",
+  editRetryCancel: "Cancel",
+  editRetrySubmit: "Save and retry",
+  editRetryProcessing: "Updating conversation history and retrying…",
+  editRetryNeedsAction:
+    "Conversation history was updated, but the edited message still needs recovery",
+  editRetryReconcile: "Reconcile",
+  editRetryRetryReplacement: "Retry message",
   messageCopied: "Copied",
   promptTipsPrefix: "Tips: ",
   reviewPicker: {

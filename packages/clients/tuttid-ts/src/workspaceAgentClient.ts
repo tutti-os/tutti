@@ -12,6 +12,7 @@ import {
   deleteWorkspaceAgentSessionsBatch,
   forkWorkspaceAgentSession,
   getWorkspaceAgentSessionForkOperation,
+  editRetryWorkspaceAgentTurn,
   getWorkspaceAgentSession,
   getAgentSessionRecording,
   getWorkspaceAgentSessionGoal,
@@ -34,6 +35,7 @@ import {
   failAgentSessionReplayRun,
   markAgentSessionReplayRunRunning,
   prepareAgentSessionReplayRun,
+  recoverWorkspaceAgentEditRetry,
   resolveWorkspaceGitPatchSupport,
   scanWorkspaceExternalAgentSessionImports,
   sendWorkspaceAgentSessionInput,
@@ -64,6 +66,7 @@ type WorkspaceAgentClient = Pick<
   | "deleteWorkspaceAgentSessionsBatch"
   | "forkWorkspaceAgentSession"
   | "getWorkspaceAgentSessionForkOperation"
+  | "editRetry"
   | "getWorkspaceAgentSession"
   | "getAgentSessionRecording"
   | "getWorkspaceAgentSessionGoal"
@@ -86,6 +89,7 @@ type WorkspaceAgentClient = Pick<
   | "failAgentSessionReplayRun"
   | "markAgentSessionReplayRunRunning"
   | "prepareAgentSessionReplayRun"
+  | "recoverEditRetry"
   | "resolveWorkspaceGitPatchSupport"
   | "scanWorkspaceExternalAgentSessionImports"
   | "sendWorkspaceAgentSessionInput"
@@ -470,6 +474,40 @@ export function createWorkspaceAgentClient(
           ...requestOptions
         }),
         "Cancel workspace agent turn failed."
+      );
+    },
+    async editRetry(
+      workspaceID,
+      agentSessionID,
+      turnID,
+      request,
+      requestOptions
+    ) {
+      return unwrapData(
+        await editRetryWorkspaceAgentTurn({
+          client,
+          body: request,
+          path: { agentSessionID, turnID, workspaceID },
+          ...requestOptions
+        }),
+        "Edit and retry request failed."
+      );
+    },
+    async recoverEditRetry(
+      workspaceID,
+      agentSessionID,
+      operationID,
+      request,
+      requestOptions
+    ) {
+      return unwrapData(
+        await recoverWorkspaceAgentEditRetry({
+          client,
+          body: request,
+          path: { agentSessionID, operationID, workspaceID },
+          ...requestOptions
+        }),
+        "Edit and retry recovery failed."
       );
     },
     async goalControlWorkspaceAgentSession(

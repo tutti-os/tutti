@@ -84,6 +84,63 @@ session-level child summaries.
   after receiving the approval response, then stress the test and assert the
   call-resolution event always precedes the Turn terminal.
 
+### Kimi Code AskUserQuestion waits without showing a question card
+
+- Symptom: the Turn says it is waiting for an answer, and the transcript may
+  contain an `AskUserQuestion` tool row, but AgentGUI shows no selectable
+  question card.
+- A second failure can appear after the card is fixed: AgentGUI shows
+  `回答：<choice>`, but Kimi's tool output contains `answers: {}` and says the
+  user dismissed the question.
+- Check: compare the pending canonical Interaction with the matching tool-call
+  message. The broken signature has `kind=question` and
+  `tool_name=AskUserQuestion`, but its `input.questions` is absent while the
+  same-Turn tool row contains the complete questions and options.
+- For the empty-answer form, inspect the response to
+  `session/request_permission`. Kimi expects
+  `outcome.outcome=selected` with
+  `outcome.optionId=q0_opt_<index>`; a renderer-shaped
+  `outcome.outcome=submit` with an answer payload is treated as cancellation.
+- Cause: Kimi Code can send `session/request_permission` with the request
+  identity and selectable outcomes before sending the matching `tool_call`
+  update with the question body. A synchronous permission handler blocks that
+  later frame; publishing the partial Interaction first also makes the missing
+  input permanent because pending Interaction input is immutable. After the
+  user answers, ACP still requires one of the provider's opaque option IDs;
+  canonical GUI answer labels are not themselves a valid permission response.
+- Fix: keep the ACP reader active while the provider waits, correlate the two
+  frames by exact Turn and `toolCallId`, and publish `interaction.requested`
+  only after the question input is complete. Hide the same incomplete request
+  from `SessionState.PendingInteractive`; otherwise session-state reconciliation
+  can persist an immutable partial Interaction before the event is ready. Keep
+  response delivery and local call resolution ahead of the provider terminal
+  caused by that response.
+  For Kimi Code 0.29.x's one-shot question bridge, require exactly one
+  single-select question whose labels map one-to-one to the request's
+  non-rejection permission options; mark it option-only and fail the provider
+  request for multi-question, multi-select, free-text, malformed, duplicate,
+  or mismatched shapes. Preserve the accepted canonical answer payload
+  locally, resolve the single scalar `answersByQuestionId[questionId]` value
+  against the request's permission options, and send ACP `outcome=selected`
+  with the matching `optionId`. Never use the display-oriented flat `answers`
+  list as a routing fallback. Do not generalize this one-shot limit to ACP
+  providers that emit a correlated sequence of question permission requests;
+  those require an explicit multi-request transaction before Tutti may expose
+  a richer question surface.
+- Validate: replay permission-before-tool-input ordering, assert exactly one
+  question Interaction with the complete question/options, submit an answer,
+  assert the provider receives `selected` with the expected opaque option ID,
+  and assert `call.completed` precedes the provider Turn terminal. Also replay
+  multi-question and multi-select inputs and assert no
+  `interaction.requested` is published, plus submit an ambiguous canonical
+  answer and assert the Interaction is superseded rather than completed.
+  Repeat under the Go race detector.
+- References:
+  [acp_pending.go](../../../packages/agent/daemon/runtime/acp_pending.go),
+  [standard_acp_turn.go](../../../packages/agent/daemon/runtime/standard_acp_turn.go),
+  [standard_acp_stream.go](../../../packages/agent/daemon/runtime/standard_acp_stream.go),
+  [standard_acp_events.go](../../../packages/agent/daemon/runtime/standard_acp_events.go)
+
 ### Claude SDK ExitPlanMode is reported as interrupted after plan completion
 
 - Symptom: the plan is visible, but the approval row becomes interrupted or

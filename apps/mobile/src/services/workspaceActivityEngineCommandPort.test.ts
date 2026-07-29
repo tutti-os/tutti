@@ -2,12 +2,62 @@ import type {
   AgentActivitySendInput,
   AgentActivitySession,
   AgentSessionActivateEffectInput,
-  AgentSessionEngine
+  AgentSessionEngine,
+  TurnEditRetryCommand,
+  TurnRecoverEditRetryCommand
 } from "@tutti-os/agent-activity-core";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
-import { createWorkspaceActivityEffectPort } from "./workspaceActivityEngineCommandPort";
+import {
+  createWorkspaceActivityEffectPort,
+  executeWorkspaceActivityExtensionCommand
+} from "./workspaceActivityEngineCommandPort";
 
 describe("createWorkspaceActivityEffectPort", () => {
+  test("explicitly rejects edit-retry commands that Mobile does not support", async () => {
+    const context = {
+      client: {} as TuttidClient,
+      engine: {} as AgentSessionEngine,
+      loadComposerOptions() {},
+      mapSession(): AgentActivitySession {
+        throw new Error("unexpected Session mapping");
+      },
+      mapSessionDetail() {
+        throw new Error("unexpected detail mapping");
+      },
+      async reconcileSession() {},
+      async reconcileWorkspace() {}
+    };
+    const commands: readonly (
+      | TurnEditRetryCommand
+      | TurnRecoverEditRetryCommand
+    )[] = [
+      {
+        agentSessionId: "session-1",
+        clientOperationId: "operation-1",
+        commandId: "command-1",
+        editedText: "edited prompt",
+        expectedHistoryRevision: 1,
+        turnId: "turn-1",
+        type: "turn/editRetry",
+        workspaceId: "workspace-1"
+      },
+      {
+        action: "reconcile",
+        agentSessionId: "session-1",
+        commandId: "command-2",
+        operationId: "operation-1",
+        type: "turn/recoverEditRetry",
+        workspaceId: "workspace-1"
+      }
+    ];
+
+    for (const command of commands) {
+      await expect(
+        executeWorkspaceActivityExtensionCommand(context, command)
+      ).rejects.toThrow(`unsupported mobile agent command: ${command.type}`);
+    }
+  });
+
   test("preserves every prompt semantic in the mobile transport request", async () => {
     const requests: Record<string, unknown>[] = [];
     const requestOptions: unknown[] = [];

@@ -20,6 +20,7 @@ import {
   readDesktopWorkspaceAgentReadState,
   writeDesktopWorkspaceAgentReadState
 } from "../createDesktopAgentHostApi.ts";
+import { editRetryResultFromTuttid } from "./workspaceAgentEditRetry.ts";
 
 export interface WorkspaceAgentSessionEngineHost {
   adapter: AgentActivityAdapter;
@@ -226,6 +227,30 @@ export function createWorkspaceAgentSessionEngineHost(
               signal: options?.signal,
               workspaceId: command.workspaceId
             });
+          case "turn/editRetry":
+            return input.tuttidClient
+              .editRetry(
+                command.workspaceId.trim(),
+                command.agentSessionId.trim(),
+                command.turnId,
+                {
+                  clientOperationId: command.clientOperationId,
+                  editedText: command.editedText,
+                  expectedHistoryRevision: command.expectedHistoryRevision
+                },
+                { signal: options?.signal }
+              )
+              .then(editRetryResultFromTuttid);
+          case "turn/recoverEditRetry":
+            return input.tuttidClient
+              .recoverEditRetry(
+                command.workspaceId.trim(),
+                command.agentSessionId.trim(),
+                command.operationId,
+                { action: command.action },
+                { signal: options?.signal }
+              )
+              .then(editRetryResultFromTuttid);
           case "session/forkThroughTurn":
             return adapter.forkSession({
               requestId: command.requestId,

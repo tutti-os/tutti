@@ -11,11 +11,13 @@ import {
   type AgentTranscriptTurnAttachment,
   type AgentTranscriptVirtualScrollController
 } from "./AgentTranscriptView";
+import type { AgentTranscriptEditRetryControl } from "./useAgentTranscriptEditRetryProjection";
 import { AgentTurnDisclosureProvider } from "./AgentTurnDisclosureContext";
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 
 export interface AgentConversationFlowProps {
   conversation: AgentConversationVM | null;
+  editRetry?: AgentTranscriptEditRetryControl;
   turnAttachments?: readonly AgentTranscriptTurnAttachment[];
   turnAttachmentLocatorRef?: Ref<AgentTranscriptAttachmentLocator>;
   onTurnAttachmentVisibilityChange?: (
@@ -50,6 +52,7 @@ export interface AgentConversationFlowProps {
 
 export const AgentConversationFlow = memo(function AgentConversationFlow({
   conversation,
+  editRetry,
   turnAttachments,
   turnAttachmentLocatorRef,
   onTurnAttachmentVisibilityChange,
@@ -88,6 +91,7 @@ export const AgentConversationFlow = memo(function AgentConversationFlow({
       <AgentTranscriptView
         conversation={conversation}
         isVisible={isVisible}
+        editRetry={editRetry}
         turnAttachments={turnAttachments}
         turnAttachmentLocatorRef={turnAttachmentLocatorRef}
         onTurnAttachmentVisibilityChange={onTurnAttachmentVisibilityChange}

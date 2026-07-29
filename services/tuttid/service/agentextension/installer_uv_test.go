@@ -63,6 +63,12 @@ func TestAgentTargetSetupInstallsUVExtensionRuntimeInPlace(t *testing.T) {
 	if value := environmentValue(runner.env, "UV_NO_CONFIG"); value != "1" {
 		t.Fatalf("UV_NO_CONFIG = %q, want 1", value)
 	}
+	if value := environmentValue(runner.env, "UV_PYTHON"); value != managedUVPythonVersion {
+		t.Fatalf("UV_PYTHON = %q, want %q", value, managedUVPythonVersion)
+	}
+	if value := environmentValue(runner.env, "UV_MANAGED_PYTHON"); value != "1" {
+		t.Fatalf("UV_MANAGED_PYTHON = %q, want 1", value)
+	}
 	pathValue := environmentValue(runner.env, "PATH")
 	if !strings.HasPrefix(pathValue, runner.uvDir+string(os.PathListSeparator)) {
 		t.Fatalf("PATH = %q, want prefix %q", pathValue, runner.uvDir)

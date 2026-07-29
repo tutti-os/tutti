@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
@@ -38,6 +39,51 @@ func (c *Controller) reportSubmittedTurnDurable(ctx context.Context, session Ses
 	report := reportActivityInput(session, events)
 	c.enrichReportStatePatchesWithSessionMetadata(session, &report)
 	return c.reporter.Report(ctx, report)
+}
+
+// reportProviderAcceptanceDurable is the acceptance barrier for a provider
+// root turn. Edit-retry dispatch completion may only follow this report.
+func (c *Controller) reportProviderAcceptanceDurable(
+	ctx context.Context,
+	session Session,
+	events []activityshared.Event,
+) (bool, error) {
+	if c == nil || c.reporter == nil || !containsDurableProviderAcceptance(events) {
+		return false, nil
+	}
+	report := reportActivityInput(session, events)
+	c.enrichReportStatePatchesWithSessionMetadata(session, &report)
+	reportCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	request := reportRequest{
+		ctx:    reportCtx,
+		report: report,
+		done:   make(chan error, 1),
+	}
+	if c.reportQueue == nil {
+		return true, c.report(request.ctx, request)
+	}
+	c.reportQueue.enqueue(request)
+	select {
+	case err := <-request.done:
+		return true, err
+	case <-reportCtx.Done():
+		return true, reportCtx.Err()
+	}
+}
+
+func containsDurableProviderAcceptance(events []activityshared.Event) bool {
+	for _, event := range events {
+		if event.Type != activityshared.EventRootProviderTurnStarted {
+			continue
+		}
+		source, _ := event.Payload.Metadata["acceptanceSource"].(string)
+		if source == string(AcceptanceSourceTurnStartResponse) ||
+			source == string(AcceptanceSourceHistoryRead) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Controller) reportGoalReconcileControl(ctx context.Context, report agentsessionstore.ReportActivityInput) error {

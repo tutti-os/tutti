@@ -28,6 +28,7 @@ import type {
   WorkspaceAgentActivityReconcileDependencies
 } from "./workspaceAgentActivityReconcileTypes.ts";
 import { WorkspaceAgentComposerOptionsInvalidationCoordinator } from "./workspaceAgentComposerOptionsInvalidationCoordinator.ts";
+import { editRetryAvailabilityFromTuttid } from "./workspaceAgentEditRetry.ts";
 
 export abstract class WorkspaceAgentActivityReconcileBridge {
   private readonly reconcileDependencies: WorkspaceAgentActivityReconcileDependencies;
@@ -251,7 +252,10 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
         }
       });
     }
-    return mapped;
+    return {
+      ...mapped,
+      editRetry: editRetryAvailabilityFromTuttid(detail.editRetry)
+    };
   }
 
   protected upsertAuthoritativeSession(
@@ -297,6 +301,7 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     });
     this.entry(workspaceId).engine.dispatch({
       childSessions: detail.childSessions,
+      editRetry: detail.editRetry,
       ...(options.live ? { live: true } : {}),
       ...(options.messages ? { messages: options.messages } : {}),
       session: detail.session,
@@ -721,6 +726,10 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
           ),
         listSessionMessages: (query) => entry.adapter.listSessionMessages(query)
       },
+      reconcileAuthoritativeHistory: (agentSessionId, messages, turns) =>
+        this.eventCoordinator(
+          normalizedWorkspaceId
+        ).reconcileAuthoritativeHistory(agentSessionId, messages, turns),
       reconcileOptimisticMessages: (agentSessionId) =>
         this.reconcileOptimisticMessages(normalizedWorkspaceId, agentSessionId),
       workspaceId: normalizedWorkspaceId

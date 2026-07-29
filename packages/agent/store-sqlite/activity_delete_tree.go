@@ -94,6 +94,12 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 		if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_interactions WHERE workspace_id = ? AND agent_session_id = ?`, workspaceID, agentSessionID); err != nil {
 			return 0, 0, fmt.Errorf("delete workspace agent session tree interactions: %w", err)
 		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_turn_submissions WHERE workspace_id = ? AND agent_session_id = ?`, workspaceID, agentSessionID); err != nil {
+			return 0, 0, fmt.Errorf("delete workspace agent session tree turn submissions: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_turn_history WHERE workspace_id = ? AND agent_session_id = ?`, workspaceID, agentSessionID); err != nil {
+			return 0, 0, fmt.Errorf("delete workspace agent session tree turn history: %w", err)
+		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_turns WHERE workspace_id = ? AND agent_session_id = ?`, workspaceID, agentSessionID); err != nil {
 			return 0, 0, fmt.Errorf("delete workspace agent session tree turns: %w", err)
 		}

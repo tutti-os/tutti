@@ -475,6 +475,19 @@ pending -> answered | superseded
 
 Actionable UI reads canonical pending Interactions only. A transcript tool row showing `waiting_input` does not create answerable state.
 
+A provider adapter must publish `interaction.requested` with the complete
+immutable input required by the action surface. When a provider splits one
+request across ordered wire frames—for example permission identity and options
+first, then the matching question body in a tool update—the adapter correlates
+them by exact Turn and tool-call identity and delays Interaction publication
+until the input is complete. A later transcript tool update cannot repair an
+already-persisted incomplete Interaction. The adapter must also validate that
+the provider wire can represent every answer allowed by the published surface;
+an unsupported shape fails before publication instead of exposing a lossy
+Interaction. This publication gate applies equally to emitted events and
+`SessionState.PendingInteractive`; a snapshot must not leak the incomplete
+request while the adapter waits for the later frame.
+
 A child Interaction may appear in the root conversation, but submission carries the exact `(agentSessionId, turnId, requestId)` tuple.
 
 ### 3.4 Goal and operations
@@ -494,7 +507,53 @@ On daemon restart, Host recovery first restores durable operations, then settles
 
 Codex's restored Full access warning is presentation-only, device-local safety chrome. Show it only when an empty home composer restores an unacknowledged Full access target default; do not show it for another provider or permission mode, an active or historical Session, or while defaults are loading. Explicit Full access confirmation and “Don't show again” persist the same browser-local acknowledgement, while the close action affects only the current mount. This acknowledgement must not enter Session lifecycle, target defaults, Workbench node data, or `AgentActivityRuntime` state.
 
-### 3.5 Messages and ordering
+### 3.5 Edit retry and effective history
+
+Edit retry is a Host-owned lifecycle operation, not a transcript mutation and
+not a GUI-orchestrated pair of provider calls. It is available only for the
+latest settled root user Turn when the provider exposes authoritative effective
+history and the Session has no active or child work. The command carries the
+exact Turn id, expected history revision, edited text, and a caller-stable
+operation id.
+
+```text
+AgentGUI edit intent
+  -> agent-activity-core typed command + stable client operation id
+  -> Desktop transport adapter
+  -> tuttid HTTP adapter
+  -> Host durable edit-retry operation
+  -> provider rollback/read/start capability
+  -> SQLite effective-history transaction
+  -> committed activity invalidation
+  -> Desktop semantic event normalization
+  -> agent-activity-core state-and-message reconcile
+  -> AgentGUI canonical projection
+```
+
+Host checkpoints before provider mutation and treats provider `thread/read` as
+the authority after an unknown result. Confirmed rollback retracts one complete
+Turn from effective history but retains its audit row and file-change record.
+The replacement reuses the persisted structured submission and changes only
+its first text block, preserving attachments and other non-text input. Rollback
+is never represented as natural-language model input.
+
+AgentGUI projects only three presentation states: ready, processing, and
+needs-action. It may expose edit controls only on the exact eligible Turn.
+The workspace `AgentSessionEngine` owns command identity, pending/failure
+state, recovery-action dispatch, and command-result reconciliation; React keeps
+only the unsent editor draft and awaits the engine-owned command settlement.
+An accepted transport result enters an engine-owned `reconciling` state and
+does not overwrite canonical availability. Editing stays blocked until a
+session-detail read confirms the returned history revision and recovery state;
+Desktop must not manufacture recovery actions from the command response.
+`resend_pending` and `recovery_required` are explicit recovery states rather
+than indefinite loading. GUI recovery commands delegate to Host and never
+choose whether rollback or replacement should be repeated. Completion and
+terminal Turn events request both state and message reconciliation because
+events are latency hints; the authoritative detail and message reads repair
+missed WebSocket delivery without requiring a Session switch.
+
+### 3.6 Messages and ordering
 
 A durable message has two independent ordering values:
 
@@ -625,6 +684,16 @@ disable submission, but must not change editor editability.
 - consumers do not create canonical session/message mirrors
 - optimistic records define confirmation, rejection, timeout, and uncertain-delivery paths
 - business command completion returns to the engine as a result intent; controllers do not rebuild lifecycle with Promise/effect chains
+
+Edit-and-retry availability is an exact SessionEngine projection, not a fact
+inferred from transcript order. AgentGUI edits only the authoritative eligible
+latest Turn, preserves attachment and non-text blocks through the Host-owned
+submission envelope, and never optimistically splices the transcript. After
+the command is accepted, Desktop applies effective history through the
+composite authoritative snapshot; AgentGUI only renders that canonical result.
+An authoritatively retracted initial optimistic prompt is marked on its pending
+activation so it cannot be materialized again while activation metadata and
+turnless controls remain intact.
 
 ### 4.2 Historical pull and realtime push
 
@@ -1702,6 +1771,30 @@ Every surface shares the exact interaction identity
 `(workspaceId, agentSessionId, turnId, requestId)` and submitting state.
 Provider request ids remain unchanged and may repeat across Turns; no adapter
 may recover a missing Turn by scanning for a session-wide request-id match.
+An interactive provider callback must not block the transport's message reader
+while waiting for user input. If the provider can emit follow-up frames during
+that wait, the adapter keeps reading and joins them before publishing the
+canonical Interaction. When the answer is delivered, local call resolution is
+serialized ahead of provider terminal messages caused by that answer.
+When a standard ACP provider bridges a structured question through
+one `session/request_permission` as the complete question transaction, one
+selected permission option is that bridge's entire response capacity. The
+one-shot adapter therefore publishes only an exact single-question,
+single-select mapping whose question labels correspond one-to-one with the
+provider's non-rejection options. It marks that surface as option-only,
+rejects multi-question, multi-select, free-text, duplicate, or
+malformed/mismatched shapes before canonical Interaction publication, and
+never records them as answered. On submission, only the single scalar value
+in `answersByQuestionId` is authoritative; the flat `answers` list is display
+data and must not select a provider outcome. The adapter preserves the
+accepted canonical answer payload for local projection but translates its
+chosen label back to the provider's opaque option ID. The wire response
+remains ACP-native (`outcome=selected` plus `optionId`); renderer actions such
+as `submit` are not provider outcome values. A provider may model richer
+questions as a correlated sequence of permission requests, but Tutti must
+implement that sequence as an explicit transaction before publishing the
+richer surface; it must not batch answers into request ids that have not
+arrived.
 Non-DOM hosts such as React Native reuse the pure
 `agent-conversation/interactive-answer` entrypoint for canonical ask-user
 payload construction and own-property-safe question-id access. Presentation

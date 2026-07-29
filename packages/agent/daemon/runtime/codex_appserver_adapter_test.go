@@ -97,9 +97,13 @@ type scriptedAppServerConnection struct {
 	interruptTurnIDMismatch         string            // reject the first turn/interrupt with "expected active turn id X but found <this>"; a retry against the reported id succeeds
 	interruptAttempts               []string          // turnId requested on every turn/interrupt call, in order
 	childNicknames                  map[string]string // thread/read agentNickname responses by threadId
+	historyTurns                    []any             // authoritative turns returned by thread/read
+	rollbackHistoryTurns            []any             // authoritative turns returned by thread/rollback
+	rollbackUnsupported             bool
 	turnStartEntered                chan struct{}
 	turnStartRelease                chan struct{}
 	hangTurnStart                   bool
+	turnStartError                  bool
 	hangSteer                       bool
 	threadName                      string
 	commandApproval                 bool
@@ -509,6 +513,7 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			turnStartEntered := c.turnStartEntered
 			turnStartRelease := c.turnStartRelease
 			hangTurnStart := c.hangTurnStart
+			turnStartError := c.turnStartError
 			c.mu.Unlock()
 			if turnStartEntered != nil {
 				close(turnStartEntered)
@@ -517,6 +522,16 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				<-turnStartRelease
 			}
 			if hangTurnStart {
+				continue
+			}
+			if turnStartError {
+				c.sendJSON(map[string]any{
+					"id": message.ID,
+					"error": map[string]any{
+						"code":    -32000,
+						"message": "turn/start rejected by test",
+					},
+				})
 				continue
 			}
 			if steered {
@@ -709,6 +724,7 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			c.mu.Lock()
 			nickname := c.childNicknames[asString(message.Params["threadId"])]
 			turnIDs := append([]string(nil), c.threadReadTurnIDs...)
+			historyTurns := slices.Clone(c.historyTurns)
 			c.mu.Unlock()
 			thread := map[string]any{"id": message.Params["threadId"]}
 			if nickname != "" {
@@ -716,16 +732,20 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			}
 			includeTurns, _ := message.Params["includeTurns"].(bool)
 			if includeTurns {
-				if len(turnIDs) == 0 {
-					turnIDs = []string{"provider-turn-1", "provider-turn-2"}
+				if len(historyTurns) > 0 {
+					thread["turns"] = historyTurns
+				} else {
+					if len(turnIDs) == 0 {
+						turnIDs = []string{"provider-turn-1", "provider-turn-2"}
+					}
+					turns := make([]any, 0, len(turnIDs))
+					for _, turnID := range turnIDs {
+						turns = append(turns, map[string]any{
+							"id": turnID, "status": "completed",
+						})
+					}
+					thread["turns"] = turns
 				}
-				turns := make([]any, 0, len(turnIDs))
-				for _, turnID := range turnIDs {
-					turns = append(turns, map[string]any{
-						"id": turnID, "status": "completed",
-					})
-				}
-				thread["turns"] = turns
 			}
 			c.sendJSON(map[string]any{"id": message.ID, "result": map[string]any{"thread": thread}})
 		case appServerMethodTurnInterrupt:
@@ -801,9 +821,26 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				"turn":     map[string]any{"id": "turn-compact", "status": "completed", "items": []any{}},
 			})
 		case appServerMethodThreadRollback:
+			c.mu.Lock()
+			rollbackUnsupported := c.rollbackUnsupported
+			rollbackHistoryTurns := slices.Clone(c.rollbackHistoryTurns)
+			c.mu.Unlock()
+			if rollbackUnsupported {
+				c.sendJSON(map[string]any{
+					"id": message.ID,
+					"error": map[string]any{
+						"code":    -32601,
+						"message": "method not found: thread/rollback",
+					},
+				})
+				continue
+			}
 			c.sendJSON(map[string]any{
-				"id":     message.ID,
-				"result": map[string]any{"thread": map[string]any{"id": "codex-thread-1"}},
+				"id": message.ID,
+				"result": map[string]any{"thread": map[string]any{
+					"id":    "codex-thread-1",
+					"turns": rollbackHistoryTurns,
+				}},
 			})
 		case appServerMethodThreadGoalSet:
 			c.mu.Lock()
@@ -3471,7 +3508,7 @@ func TestCodexAppServerAdapterRejectedContinuationAdmissionEmitsNoTurnStart(t *t
 			streamed = append(streamed, next...)
 		},
 		nil,
-		continuation,
+		codexTurnExecOptions{continuation: continuation},
 	)
 	if !errors.Is(err, ErrSessionActiveTurn) {
 		t.Fatalf("execBlocking error = %v, want ErrSessionActiveTurn", err)

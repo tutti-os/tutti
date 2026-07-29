@@ -78,6 +78,49 @@ func (c *Controller) runExecTurn(ctx context.Context, session Session, adapter A
 		c.runAsyncExecTurn(ctx, session, asyncAdapter, content, displayPrompt, turnID)
 		return
 	}
+	c.runBlockingExecTurn(ctx, session, adapter, turnID, func(
+		emit EventSink,
+		emitCommands CommandSnapshotSink,
+	) ([]activityshared.Event, error) {
+		return adapter.Exec(ctx, session, content, displayPrompt, turnID, emit, emitCommands)
+	})
+}
+
+func (c *Controller) runHistoryReplacementTurn(
+	ctx context.Context,
+	session Session,
+	adapter EffectiveHistoryAdapter,
+	input HistoryReplacementExecInput,
+	reportDispatch ProviderDispatchSink,
+) {
+	c.runBlockingExecTurn(ctx, session, adapter, input.TurnID, func(
+		emit EventSink,
+		emitCommands CommandSnapshotSink,
+	) ([]activityshared.Event, error) {
+		events, err := adapter.ExecHistoryReplacement(
+			ctx,
+			session,
+			input,
+			emit,
+			emitCommands,
+			reportDispatch,
+		)
+		if reportDispatch != nil {
+			reportDispatch(ProviderDispatchResult{
+				Disposition: DispatchDispositionOutcomeUnknown,
+			})
+		}
+		return events, err
+	})
+}
+
+func (c *Controller) runBlockingExecTurn(
+	ctx context.Context,
+	session Session,
+	adapter Adapter,
+	turnID string,
+	exec func(EventSink, CommandSnapshotSink) ([]activityshared.Event, error),
+) {
 	var emitted []activityshared.Event
 	var emittedSummary agentSubmitRuntimeEventSummary
 	metadata := execMetadataFromContext(ctx)
@@ -102,7 +145,7 @@ func (c *Controller) runExecTurn(ctx context.Context, session Session, adapter A
 	emitCommands := func(snapshot AgentSessionCommandSnapshot) {
 		c.applyTurnCommandSnapshot(session, turnID, snapshot)
 	}
-	events, err := adapter.Exec(ctx, session, content, displayPrompt, turnID, emit, emitCommands)
+	events, err := exec(emit, emitCommands)
 	rootProviderLifecycle := adapterUsesRootProviderTurnLifecycle(adapter)
 	shouldEmitTerminalEvents := false
 	if err != nil {
