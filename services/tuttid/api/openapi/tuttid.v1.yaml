@@ -6611,6 +6611,18 @@ components:
                   code: workspace_operation_failed
                   reason: workspace_operation_failed
                   developerMessage: workspace operation failed
+            agentConfigDependencyUnavailable:
+              value:
+                error:
+                  code: workspace_operation_failed
+                  reason: agent.config_dependency_unavailable
+                  params:
+                    provider: codex
+                    configKey: model_instructions_file
+                    dependencyPath: instructions.md
+                    failureKind: missing
+                  retryable: false
+                  developerMessage: codex configuration dependency model_instructions_file is unavailable
     AgentTargetNotFoundError:
       description: Agent target was not found
       content:
@@ -8151,6 +8163,14 @@ components:
         description:
           type: string
           nullable: true
+        type:
+          type: string
+          nullable: true
+          description: Provider-declared method kind (for example "terminal").
+        terminalCommand:
+          type: string
+          nullable: true
+          description: Ready-to-run interactive sign-in command for terminal-type methods.
     InstallAgentTargetRuntimeRequest:
       type: object
       additionalProperties: false

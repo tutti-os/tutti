@@ -3,22 +3,18 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
-  useState,
-  type MutableRefObject,
-  type RefObject
+  useState
 } from "react";
-import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
-import type { AgentTranscriptVirtualScrollController } from "../../../shared/agentConversation/components/AgentTranscriptView";
 import {
   createAgentConversationFollowEndController,
   type AgentConversationFollowEndEvent
 } from "../../../shared/agentConversation/agentConversationFollowEndController";
+import type { AgentTranscriptVirtualScrollController } from "../../../shared/agentConversation/components/AgentTranscriptView";
 import {
   AgentGUIConversationScrollMemory,
   type TimelineScrollAnchor
 } from "./agentGUIScrollMemory";
-import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
-import type { AgentGUINodeViewProps } from "../AgentGUINodeView";
+import type { AgentGUIDetailScrollInput } from "./agentGUIDetailScrollTypes";
 import {
   hasStaleVirtualScrollController,
   matchingVirtualScrollController,
@@ -37,28 +33,7 @@ const AGENT_GUI_TOP_HISTORY_PREFETCH_THRESHOLD_PX = 240;
 const AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX = 1;
 const AGENT_GUI_REACHED_END_EPSILON_PX = 1;
 
-interface Input {
-  actions: AgentGUINodeViewProps["actions"];
-  bottomDockRef: RefObject<HTMLDivElement | null>;
-  bottomDockStoreRevision: string;
-  conversation: AgentConversationVM | null;
-  isVisible: boolean;
-  pendingPrependScrollAnchorRef: MutableRefObject<{
-    conversationId: string;
-    scrollHeight: number;
-    scrollTop: number;
-  } | null>;
-  showTimelineSkeleton: boolean;
-  submittedPromptScrollConversationRef: MutableRefObject<string | null>;
-  timelineConversationId: string | null;
-  timelineContentRef: RefObject<HTMLDivElement | null>;
-  timelineRef: RefObject<HTMLDivElement | null>;
-  timelineScrollAnchorRef: MutableRefObject<TimelineScrollAnchor | null>;
-  virtualScrollControllerRef: RefObject<AgentTranscriptVirtualScrollController | null>;
-  viewModel: AgentGUINodeViewModel;
-}
-
-export function useAgentGUIDetailScroll(input: Input) {
+export function useAgentGUIDetailScroll(input: AgentGUIDetailScrollInput) {
   const {
     actions,
     bottomDockRef,
@@ -369,6 +344,21 @@ export function useAgentGUIDetailScroll(input: Input) {
         return;
       }
       const measuredSafeArea = readBottomDockSafeArea(bottomDock);
+      if (
+        forceMeasurement &&
+        cachedSafeArea?.bottomDock === bottomDock &&
+        cachedSafeArea.timelineOverflowHeight ===
+          measuredSafeArea.timelineOverflowHeight &&
+        cachedSafeArea.floatingOverflowHeight ===
+          measuredSafeArea.floatingOverflowHeight
+      ) {
+        bottomDockSafeAreaRef.current = {
+          bottomDock,
+          revision: bottomDockStoreRevision,
+          ...measuredSafeArea
+        };
+        return;
+      }
       const nextSafeArea: BottomDockSafeArea = {
         bottomDock,
         revision: bottomDockStoreRevision,

@@ -1,5 +1,9 @@
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import {
+  BackgroundTaskLifecycle,
+  type DelegatedTaskCounts
+} from "./backgroundTaskLifecycle.ts";
+import {
   contentBlocksFromMessage,
   recordValue,
   type ToolState
@@ -20,6 +24,7 @@ import { TaskPlanTracker } from "./taskPlan.ts";
 export class ToolActivityProjector {
   private readonly tools: ToolEventProjector;
   private readonly taskPlan: TaskPlanTracker;
+  private readonly backgroundTasks: BackgroundTaskLifecycle;
   private readonly delegatedTasksByParentToolUseID = new Map<
     string,
     DelegatedTaskState
@@ -28,7 +33,6 @@ export class ToolActivityProjector {
   private readonly delegatedParentByTaskID = new Map<string, string>();
   private readonly activeTurnId: () => string;
   private readonly emit: ClaudeSDKSidecarEventEmitter;
-  private readonly onFinalDelegatedTaskSettling: () => void;
   private readonly lastTurnId: () => string;
 
   constructor(
@@ -39,7 +43,6 @@ export class ToolActivityProjector {
   ) {
     this.activeTurnId = activeTurnId;
     this.emit = emit;
-    this.onFinalDelegatedTaskSettling = onFinalDelegatedTaskSettling;
     this.lastTurnId = lastTurnId;
     this.taskPlan = new TaskPlanTracker(activeTurnId, emit);
     this.tools = new ToolEventProjector(
@@ -48,11 +51,54 @@ export class ToolActivityProjector {
         this.rememberDelegatedTaskFromToolPayload(tool, payload),
       emit
     );
+    this.backgroundTasks = new BackgroundTaskLifecycle({
+      activeTurnId,
+      lastTurnId,
+      delegatedTaskCounts: (turnId) => this.delegatedTaskCounts(turnId),
+      emit,
+      onContinuationPending: onFinalDelegatedTaskSettling
+    });
   }
 
   resetTurnScratch(): void {
     this.tools.reset();
     this.taskPlan.reset();
+  }
+
+  resetBackgroundTaskLevel(): void {
+    this.backgroundTasks.reset();
+  }
+
+  handleBackgroundTasksChanged(message: Record<string, unknown>): void {
+    this.backgroundTasks.handleLevelChanged(message);
+  }
+
+  beginRootTurn(): void {
+    this.backgroundTasks.beginRootTurn();
+  }
+
+  cancel(): void {
+    this.backgroundTasks.cancel();
+  }
+
+  close(): void {
+    this.backgroundTasks.close();
+  }
+
+  hasPendingBackgroundContinuation(): boolean {
+    return this.backgroundTasks.hasPendingContinuation();
+  }
+
+  markTaskNotificationContinuation(): void {
+    this.backgroundTasks.markTaskNotificationContinuation();
+  }
+
+  clearBackgroundContinuation(): boolean {
+    return this.backgroundTasks.clearContinuation();
+  }
+
+  handleRootResultSettled(succeeded: boolean): void {
+    this.backgroundTasks.handleRootResultSettled(succeeded);
   }
 
   completeToolIndex(index: number): boolean {
@@ -113,7 +159,11 @@ export class ToolActivityProjector {
   }
 
   handleTaskSystemMessage(
-    subtype: "task_started" | "task_progress" | "task_notification",
+    subtype:
+      | "task_started"
+      | "task_progress"
+      | "task_updated"
+      | "task_notification",
     message: Record<string, unknown>
   ): void {
     // task_notification is included so a terminal notice for a task launched
@@ -121,7 +171,9 @@ export class ToolActivityProjector {
     // still settles a card instead of being dropped by the fresh instance.
     const task =
       this.resolveDelegatedTaskFromMessage(message) ??
-      (subtype === "task_started" || subtype === "task_notification"
+      (subtype === "task_started" ||
+      subtype === "task_updated" ||
+      subtype === "task_notification"
         ? this.rememberBackgroundTask(message)
         : undefined);
     if (!task) {
@@ -137,13 +189,30 @@ export class ToolActivityProjector {
     if (description && !task.description) {
       task.description = description;
     }
-    if (subtype === "task_notification") {
+    if (subtype === "task_updated" || subtype === "task_notification") {
+      const status = delegatedTaskStatus(message.status);
       if (task.status !== "running") {
+        if (subtype !== "task_notification") {
+          return;
+        }
+        if (status !== "stopped") {
+          this.backgroundTasks.markTaskNotificationContinuation();
+        }
+        this.emitDelegatedTaskLifecycleEvent(
+          "task_result_updated",
+          task,
+          message
+        );
         return;
       }
-      const status = delegatedTaskStatus(message.status);
       // A user-initiated stop needs no model follow-up, so it must not open a
       // synthetic continuation turn (which would time out and interrupt).
+      // task_updated is only the SDK's lifecycle patch. The later
+      // task_notification carries the model continuation and often a richer
+      // result, so only that notification marks a pending follow-up.
+      if (subtype === "task_notification" && status !== "stopped") {
+        this.backgroundTasks.markTaskNotificationContinuation();
+      }
       if (status !== "stopped") {
         this.prepareDelegatedTaskTerminal(task);
       }
@@ -537,8 +606,26 @@ export class ToolActivityProjector {
       (candidate) => candidate.status === "running"
     );
     if (running.length === 1 && running[0] === task) {
-      this.onFinalDelegatedTaskSettling();
+      this.backgroundTasks.reserveContinuation();
     }
+  }
+
+  private delegatedTaskCounts(turnId: string): DelegatedTaskCounts {
+    const delegatedCounts: Record<DelegatedTaskStatus, number> = {
+      running: 0,
+      completed: 0,
+      failed: 0,
+      stopped: 0
+    };
+    let knownCount = 0;
+    for (const task of this.delegatedTasksByParentToolUseID.values()) {
+      if (turnId && task.turnId !== turnId) {
+        continue;
+      }
+      knownCount += 1;
+      delegatedCounts[task.status] += 1;
+    }
+    return { known: knownCount, ...delegatedCounts };
   }
 
   private emitDelegatedTaskParentUpdate(
@@ -587,7 +674,11 @@ export class ToolActivityProjector {
   }
 
   private emitDelegatedTaskLifecycleEvent(
-    type: "task_started" | "task_progress" | "task_completed",
+    type:
+      | "task_started"
+      | "task_progress"
+      | "task_completed"
+      | "task_result_updated",
     task: DelegatedTaskState,
     message: Record<string, unknown>
   ): void {

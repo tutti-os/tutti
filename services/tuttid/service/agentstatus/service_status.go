@@ -270,7 +270,13 @@ func (s Service) shouldProbeAdapterCommandForStatus(spec ProviderSpec, runtimeRe
 	if strings.TrimSpace(spec.ExternalRegistryID) != "" {
 		return true
 	}
-	return isCodexStatusSpec(spec) && s.executableFile(runtimeResolution.AdapterPath)
+	if isCodexStatusSpec(spec) {
+		return s.executableFile(runtimeResolution.AdapterPath)
+	}
+	if isStandardACPStatusSpec(spec) && sameResolvedBinary(runtimeResolution.AdapterPath, runtimeResolution.CLIPath) {
+		return s.executableFile(runtimeResolution.AdapterPath)
+	}
+	return false
 }
 
 func (s Service) probeReadyAfterForSpec(spec ProviderSpec) time.Duration {

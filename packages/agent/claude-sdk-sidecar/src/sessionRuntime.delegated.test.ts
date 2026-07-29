@@ -5,9 +5,14 @@ import { SessionRuntime } from "./sessionRuntime.ts";
 import { sidecarClaudeOptionsFromPayload } from "./options.ts";
 import {
   fakeBackgroundBashAndSubagentQuery,
+  fakeBackgroundTasksLevelContinuationQuery,
+  fakeCancelableBackgroundTaskLevelQuery,
+  fakeCoalescedDelegatedTaskContinuationQuery,
   fakeDelegatedAssistantParentQuery,
   fakeDelegatedTaskQuery,
+  fakeFailedBackgroundTaskSignalQuery,
   fakeGuidedDelegatedContinuationQuery,
+  fakeParallelDelegatedTaskContinuationQuery,
   fakeRacedDelegatedTaskAliasQuery,
   fakeStoppableDelegatedTaskQuery,
   fakeTimedOutDelegatedTaskQuery
@@ -312,6 +317,193 @@ test("delegated task continuation emits synthetic turn started", async () => {
   }
 });
 
+test("parallel delegated notifications keep the original turn open until session idle", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => fakeParallelDelegatedTaskContinuationQuery(prompt)
+    );
+
+    await session.start();
+    session.exec("turn-1", "delegate parallel tasks");
+    const deadline = Date.now() + 5000;
+    while (
+      Date.now() < deadline &&
+      events.filter((event) => event.type === "turn_completed").length < 1
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    const syntheticStarts = events.filter(
+      (event) =>
+        event.type === "turn_started" && event.payload?.synthetic === true
+    );
+    const turnCompletions = events.filter(
+      (event) => event.type === "turn_completed"
+    );
+    const continuationMessages = events.filter(
+      (event) =>
+        event.type === "assistant_completed" &&
+        String(event.payload?.content ?? "").startsWith("Continuation ")
+    );
+    const taskCompletions = events.filter(
+      (event) => event.type === "task_completed"
+    );
+    const taskResultUpdates = events.filter(
+      (event) => event.type === "task_result_updated"
+    );
+
+    assert.equal(syntheticStarts.length, 0);
+    assert.deepEqual(
+      turnCompletions.map((event) => event.payload?.turnId),
+      ["turn-1"]
+    );
+    assert.deepEqual(
+      taskCompletions.map((event) => event.payload?.summary),
+      ["Task 1", "Task 2"]
+    );
+    assert.deepEqual(
+      taskResultUpdates.map((event) => event.payload?.summary),
+      ["Result 1", "Result 2"]
+    );
+    assert.equal(continuationMessages.length, 2);
+    assert.equal(continuationMessages[0]?.payload?.turnId, "turn-1");
+    assert.equal(continuationMessages[1]?.payload?.turnId, "turn-1");
+  } finally {
+    restoreSink();
+  }
+});
+
+test("session idle settles coalesced delegated notifications without result-count pairing", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => fakeCoalescedDelegatedTaskContinuationQuery(prompt)
+    );
+
+    await session.start();
+    session.exec("turn-1", "delegate six tasks");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    assert.equal(
+      events.filter((event) => event.type === "task_completed").length,
+      6
+    );
+    assert.equal(
+      events.filter(
+        (event) =>
+          event.type === "assistant_completed" &&
+          String(event.payload?.content ?? "").startsWith("Continuation ")
+      ).length,
+      3
+    );
+    assert.equal(
+      events.filter(
+        (event) =>
+          event.type === "sdk_lifecycle_observed" &&
+          event.payload?.sdkMessageType === "result" &&
+          event.payload?.sdkMessageOrigin === "task-notification"
+      ).length,
+      3
+    );
+    assert.ok(
+      events.some(
+        (event) =>
+          event.type === "sdk_lifecycle_observed" &&
+          event.payload?.sdkMessageSubtype === "session_state_changed" &&
+          event.payload?.state === "idle"
+      )
+    );
+    assert.deepEqual(
+      events
+        .filter((event) => event.type === "turn_completed")
+        .map((event) => event.payload?.turnId),
+      ["turn-1"]
+    );
+  } finally {
+    restoreSink();
+  }
+});
+
+test("task-notification results wait for delayed session idle", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) =>
+        fakeCoalescedDelegatedTaskContinuationQuery(prompt, {
+          idleDelayMs: 40
+        })
+    );
+
+    await session.start();
+    session.exec("turn-1", "delegate six tasks");
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    assert.equal(
+      events.some((event) => event.type === "turn_completed"),
+      false
+    );
+
+    await waitForEvent(events, "turn_completed");
+    const completed = events.find((event) => event.type === "turn_completed");
+    assert.equal(completed?.payload?.turnId, "turn-1");
+    assert.equal(completed?.payload?.stopReason, "background_agent_idle");
+    assert.equal(completed?.payload?.syntheticTimeout, undefined);
+  } finally {
+    restoreSink();
+  }
+});
+
 test("delegated continuation start timeout interrupts and closes its synthetic turn", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
   let interrupts = 0;
@@ -346,17 +538,115 @@ test("delegated continuation start timeout interrupts and closes its synthetic t
     await waitForEvent(events, "task_completed");
     await new Promise((resolve) => setTimeout(resolve, 20));
 
+    const delayed = events.find(
+      (event) =>
+        event.type === "continuation_delayed" &&
+        String(event.payload?.turnId ?? "").startsWith("synthetic-")
+    );
+    assert.match(String(delayed?.payload?.turnId ?? ""), /^synthetic-/);
+    assert.equal(delayed?.payload?.waitedMs, 5);
     const timedOut = events.find(
       (event) =>
         event.type === "turn_completed" &&
         event.payload?.syntheticTimeout === true
     );
-    assert.match(String(timedOut?.payload?.turnId ?? ""), /^synthetic-/);
+    assert.equal(timedOut?.payload?.turnId, delayed?.payload?.turnId);
     assert.equal(
       timedOut?.payload?.stopReason,
       "background_agent_continuation_timeout"
     );
     assert.equal(interrupts, 1);
+  } finally {
+    restoreSink();
+  }
+});
+
+test("background task level reserves continuation when terminal task edges are missing", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => fakeBackgroundTasksLevelContinuationQuery(prompt),
+      5
+    );
+
+    await session.start();
+    session.exec("turn-1", "delegate task");
+    await waitForEvent(events, "background_tasks_quiesced");
+
+    const synthetic = events.find(
+      (event) =>
+        event.type === "turn_started" && event.payload?.synthetic === true
+    );
+    const syntheticTurnId = String(synthetic?.payload?.turnId ?? "");
+    assert.match(syntheticTurnId, /^synthetic-/u);
+    assert.ok(
+      events.some(
+        (event) =>
+          event.type === "background_tasks_changed" &&
+          event.payload?.backgroundTasksObservedCount === 1 &&
+          event.payload?.backgroundTasksRunningCount === 0 &&
+          event.payload?.backgroundTasksNoLongerLiveCount === 1 &&
+          event.payload?.delegatedTasksKnownCount === 1 &&
+          event.payload?.delegatedTasksRunningCount === 1 &&
+          event.payload?.delegatedTasksCompletedCount === 0
+      )
+    );
+    assert.ok(
+      events.some(
+        (event) =>
+          event.type === "background_tasks_quiesced" &&
+          event.payload?.runningCount === 0
+      )
+    );
+    assert.equal(
+      events.some((event) => event.type === "turn_waiting"),
+      false
+    );
+    assert.ok(
+      events.some(
+        (event) =>
+          event.type === "continuation_delayed" &&
+          event.payload?.turnId === syntheticTurnId
+      )
+    );
+    assert.equal(
+      events.some((event) => event.type === "turn_running"),
+      false
+    );
+    assert.equal(
+      events.some((event) => event.type === "task_completed"),
+      false
+    );
+    assert.ok(
+      events.some(
+        (event) =>
+          event.type === "turn_completed" &&
+          event.payload?.turnId === syntheticTurnId &&
+          event.payload?.syntheticTimeout === true &&
+          event.payload?.stopReason === "background_agent_continuation_timeout"
+      )
+    );
+    assert.equal(
+      events.filter((event) => event.type === "assistant_completed").length,
+      0
+    );
   } finally {
     restoreSink();
   }
@@ -414,6 +704,106 @@ test("cancel during delegated continuation wait disarms timeout", async () => {
   }
 });
 
+test("cancel clears a pending background-task quiescence timer", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => fakeCancelableBackgroundTaskLevelQuery(prompt)
+    );
+
+    await session.start();
+    session.exec("turn-1", "delegate task");
+    await waitForMatchingEvent(
+      events,
+      (event) =>
+        event.type === "background_tasks_changed" &&
+        event.payload?.backgroundTasksRunningCount === 0,
+      "empty background task level"
+    );
+    await session.cancel();
+    await waitForEvent(events, "turn_canceled");
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    assert.equal(
+      events.some((event) => event.type === "background_tasks_quiesced"),
+      false
+    );
+  } finally {
+    restoreSink();
+  }
+});
+
+for (const lateSignal of ["empty-level", "task-notification"] as const) {
+  test(`failed root ignores late ${lateSignal} continuation reservation`, async () => {
+    const events: Array<{ type: string; payload?: Record<string, unknown> }> =
+      [];
+    const restoreSink = withSidecarEventSinkForTest((event) =>
+      events.push(event)
+    );
+    try {
+      const session = new SessionRuntime(
+        "provider-session-1",
+        "/repo",
+        {},
+        false,
+        false,
+        {
+          model: "",
+          permissionModeId: "default",
+          planMode: false,
+          effort: "",
+          speed: ""
+        },
+        sidecarClaudeOptionsFromPayload({}),
+        undefined,
+        ({ prompt }) => fakeFailedBackgroundTaskSignalQuery(prompt, lateSignal)
+      );
+
+      await session.start();
+      session.exec("turn-1", "delegate task");
+      await waitForEvent(events, "turn_failed");
+      await waitForMatchingEvent(
+        events,
+        (event) =>
+          lateSignal === "empty-level"
+            ? event.type === "background_tasks_changed" &&
+              event.payload?.backgroundTasksRunningCount === 0
+            : event.type === "task_completed",
+        `late ${lateSignal}`
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      assert.equal(
+        events.some(
+          (event) =>
+            event.type === "turn_started" && event.payload?.synthetic === true
+        ),
+        false
+      );
+      await session.close();
+    } finally {
+      restoreSink();
+    }
+  });
+}
+
 test("guidance during delegated continuation wait stays on reserved synthetic turn", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
   const restoreSink = withSidecarEventSinkForTest((event) =>
@@ -468,6 +858,26 @@ test("guidance during delegated continuation wait stays on reserved synthetic tu
     restoreSink();
   }
 });
+
+async function waitForMatchingEvent(
+  events: Array<{ type: string; payload?: Record<string, unknown> }>,
+  predicate: (event: {
+    type: string;
+    payload?: Record<string, unknown>;
+  }) => boolean,
+  description: string
+): Promise<void> {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    if (events.some(predicate)) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.fail(
+    `timed out waiting for ${description}; events=${JSON.stringify(events)}`
+  );
+}
 
 test("background bash registers as a delegated task and defers the synthetic continuation", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];

@@ -23,7 +23,7 @@ Provider discovery, installation, authentication, models, configuration, and run
 - [Cursor read-only mode still creates files without approval](./agent-provider-setup.md#cursor-read-only-mode-still-creates-files-without-approval)
 - [Codex provider shows login required when global service tier is legacy](./agent-provider-setup.md#codex-provider-shows-login-required-when-global-service-tier-is-legacy)
 - [Codex provider shows login required when only an API key is configured](./agent-provider-setup.md#codex-provider-shows-login-required-when-only-an-api-key-is-configured)
-- [Codex session fails with not connected when model_catalog_json is relative](./agent-provider-setup.md#codex-session-fails-with-not-connected-when-modelcatalogjson-is-relative)
+- [Codex session fails with not connected when config file dependencies are relative](./agent-provider-setup.md#codex-session-fails-with-not-connected-when-config-file-dependencies-are-relative)
 - [Codex composer model and reasoning selectors stay loading](./agent-provider-setup.md#codex-composer-model-and-reasoning-selectors-stay-loading)
 - [Codex custom model_provider mixes models, duplicates replies, or shows metadata warnings](./agent-provider-setup.md#codex-custom-modelprovider-mixes-models-duplicates-replies-or-shows-metadata-warnings)
 - [Claude SDK Grep or Glob unavailable despite Claude Code preset](./agent-provider-setup.md#claude-sdk-grep-or-glob-unavailable-despite-claude-code-preset)

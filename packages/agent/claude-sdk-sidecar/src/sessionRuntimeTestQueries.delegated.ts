@@ -165,6 +165,155 @@ export function fakeDelegatedTaskQuery(
   } as AsyncIterable<SDKMessage>;
 }
 
+export function fakeParallelDelegatedTaskContinuationQuery(
+  prompt: AsyncIterable<SDKUserMessage>
+): AsyncIterable<SDKMessage> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      const firstPrompt = await prompt[Symbol.asyncIterator]().next();
+      const promptMessage = firstPrompt.value as SDKUserMessage & {
+        uuid?: string;
+      };
+      yield {
+        ...promptMessage,
+        uuid: promptMessage.uuid,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      for (const index of [1, 2]) {
+        yield delegatedAgentToolUse(`toolu-agent-${index}`, `Task ${index}`);
+        yield delegatedAgentToolResult(
+          `toolu-agent-${index}`,
+          `agent-${index}`
+        );
+        yield {
+          type: "system",
+          subtype: "task_started",
+          task_id: `task-${index}`,
+          agent_id: `agent-${index}`,
+          description: `Task ${index}`
+        } as unknown as SDKMessage;
+      }
+      for (const index of [1, 2]) {
+        yield {
+          type: "system",
+          subtype: "task_updated",
+          task_id: `task-${index}`,
+          patch: {
+            status: "completed",
+            description: `Task ${index}`
+          }
+        } as unknown as SDKMessage;
+        yield {
+          type: "system",
+          subtype: "task_notification",
+          task_id: `task-${index}`,
+          status: "completed",
+          summary: `Result ${index}`
+        } as unknown as SDKMessage;
+      }
+      for (const index of [1, 2]) {
+        yield {
+          type: "assistant",
+          uuid: `assistant-continuation-${index}`,
+          parent_tool_use_id: null,
+          session_id: "provider-session-1",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: `Continuation ${index}` }]
+          }
+        } as unknown as SDKMessage;
+        yield {
+          type: "result",
+          subtype: "success",
+          origin: { kind: "task-notification" }
+        } as unknown as SDKMessage;
+      }
+      yield {
+        type: "system",
+        subtype: "session_state_changed",
+        state: "idle",
+        uuid: "44444444-4444-4444-8444-444444444444",
+        session_id: "provider-session-1"
+      } as unknown as SDKMessage;
+    },
+    close() {}
+  } as AsyncIterable<SDKMessage>;
+}
+
+export function fakeCoalescedDelegatedTaskContinuationQuery(
+  prompt: AsyncIterable<SDKUserMessage>,
+  options: { idleDelayMs?: number } = {}
+): AsyncIterable<SDKMessage> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      const firstPrompt = await prompt[Symbol.asyncIterator]().next();
+      const promptMessage = firstPrompt.value as SDKUserMessage & {
+        uuid?: string;
+      };
+      yield {
+        ...promptMessage,
+        uuid: promptMessage.uuid,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      for (const index of [1, 2, 3, 4, 5, 6]) {
+        yield delegatedAgentToolUse(`toolu-agent-${index}`, `Task ${index}`);
+        yield delegatedAgentToolResult(
+          `toolu-agent-${index}`,
+          `agent-${index}`
+        );
+        yield {
+          type: "system",
+          subtype: "task_started",
+          task_id: `task-${index}`,
+          agent_id: `agent-${index}`,
+          description: `Task ${index}`
+        } as unknown as SDKMessage;
+        yield {
+          type: "system",
+          subtype: "task_notification",
+          task_id: `task-${index}`,
+          status: "completed",
+          summary: `Result ${index}`
+        } as unknown as SDKMessage;
+      }
+      for (const index of [1, 2, 3]) {
+        yield {
+          type: "assistant",
+          uuid: `assistant-continuation-${index}`,
+          parent_tool_use_id: null,
+          session_id: "provider-session-1",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: `Continuation ${index}` }]
+          }
+        } as unknown as SDKMessage;
+        yield {
+          type: "result",
+          subtype: "success",
+          origin: { kind: "task-notification" }
+        } as unknown as SDKMessage;
+      }
+      if (options.idleDelayMs) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, options.idleDelayMs)
+        );
+      }
+      yield {
+        type: "system",
+        subtype: "session_state_changed",
+        state: "idle",
+        uuid: "55555555-5555-4555-8555-555555555555",
+        session_id: "provider-session-1"
+      } as unknown as SDKMessage;
+    },
+    close() {}
+  } as AsyncIterable<SDKMessage>;
+}
+
 export function fakeTimedOutDelegatedTaskQuery(
   prompt: AsyncIterable<SDKUserMessage>,
   onInterrupt: () => void
@@ -187,6 +336,178 @@ export function fakeTimedOutDelegatedTaskQuery(
     },
     close() {
       releaseWait();
+    }
+  };
+}
+
+export function fakeBackgroundTasksLevelContinuationQuery(
+  prompt: AsyncIterable<SDKUserMessage>
+): AsyncIterable<SDKMessage> & { close: () => void } {
+  return {
+    async *[Symbol.asyncIterator]() {
+      const firstPrompt = await prompt[Symbol.asyncIterator]().next();
+      const promptMessage = firstPrompt.value as SDKUserMessage & {
+        uuid?: string;
+      };
+      yield {
+        ...promptMessage,
+        uuid: promptMessage.uuid,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      yield delegatedAgentToolUse("toolu-agent", "Fast child");
+      yield delegatedAgentToolResult("toolu-agent", "agent-1");
+      yield {
+        type: "system",
+        subtype: "background_tasks_changed",
+        tasks: [
+          {
+            task_id: "agent-1",
+            task_type: "agent",
+            description: "Fast child"
+          }
+        ],
+        uuid: "33333333-3333-4333-8333-333333333333",
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      yield {
+        type: "result",
+        subtype: "success"
+      } as unknown as SDKMessage;
+      // The task edge is intentionally absent. The replace-set level is the
+      // only authoritative evidence that no background work remains.
+      yield {
+        type: "system",
+        subtype: "background_tasks_changed",
+        tasks: [],
+        uuid: "44444444-4444-4444-8444-444444444444",
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      yield {
+        type: "assistant",
+        uuid: "assistant-background-summary",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "Background summary." }]
+        }
+      } as unknown as SDKMessage;
+      yield {
+        type: "result",
+        subtype: "success"
+      } as unknown as SDKMessage;
+    },
+    close() {}
+  } as AsyncIterable<SDKMessage> & { close: () => void };
+}
+
+export function fakeCancelableBackgroundTaskLevelQuery(
+  prompt: AsyncIterable<SDKUserMessage>
+): AsyncIterable<SDKMessage> & {
+  interrupt: () => Promise<void>;
+  close: () => void;
+} {
+  let releaseHold: () => void = () => {};
+  const hold = new Promise<void>((resolve) => {
+    releaseHold = resolve;
+  });
+  return {
+    async *[Symbol.asyncIterator]() {
+      const firstPrompt = await prompt[Symbol.asyncIterator]().next();
+      const promptMessage = firstPrompt.value as SDKUserMessage & {
+        uuid?: string;
+      };
+      yield {
+        ...promptMessage,
+        uuid: promptMessage.uuid,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      yield {
+        type: "system",
+        subtype: "background_tasks_changed",
+        tasks: [{ task_id: "task-1", task_type: "agent" }]
+      } as unknown as SDKMessage;
+      yield {
+        type: "system",
+        subtype: "background_tasks_changed",
+        tasks: []
+      } as unknown as SDKMessage;
+      await hold;
+    },
+    async interrupt() {
+      releaseHold();
+    },
+    close() {
+      releaseHold();
+    }
+  };
+}
+
+export function fakeFailedBackgroundTaskSignalQuery(
+  prompt: AsyncIterable<SDKUserMessage>,
+  lateSignal: "empty-level" | "task-notification"
+): AsyncIterable<SDKMessage> & { close: () => void } {
+  let releaseHold: () => void = () => {};
+  const hold = new Promise<void>((resolve) => {
+    releaseHold = resolve;
+  });
+  return {
+    async *[Symbol.asyncIterator]() {
+      const firstPrompt = await prompt[Symbol.asyncIterator]().next();
+      const promptMessage = firstPrompt.value as SDKUserMessage & {
+        uuid?: string;
+      };
+      yield {
+        ...promptMessage,
+        uuid: promptMessage.uuid,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      yield delegatedAgentToolUse("toolu-agent", "Failing parent");
+      yield delegatedAgentToolResult("toolu-agent", "agent-1");
+      yield {
+        type: "system",
+        subtype: "task_started",
+        task_id: "task-1",
+        agent_id: "agent-1",
+        description: "Failing parent"
+      } as unknown as SDKMessage;
+      yield {
+        type: "system",
+        subtype: "background_tasks_changed",
+        tasks: [{ task_id: "task-1", task_type: "agent" }]
+      } as unknown as SDKMessage;
+      yield {
+        type: "result",
+        subtype: "error_during_execution",
+        is_error: true,
+        errors: ["Root failed"]
+      } as unknown as SDKMessage;
+      if (lateSignal === "empty-level") {
+        yield {
+          type: "system",
+          subtype: "background_tasks_changed",
+          tasks: []
+        } as unknown as SDKMessage;
+      } else {
+        yield {
+          type: "system",
+          subtype: "task_notification",
+          task_id: "task-1",
+          status: "completed",
+          summary: "Late child result"
+        } as unknown as SDKMessage;
+      }
+      await hold;
+    },
+    close() {
+      releaseHold();
     }
   };
 }

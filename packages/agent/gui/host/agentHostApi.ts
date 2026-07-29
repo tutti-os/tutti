@@ -23,6 +23,19 @@ export type AgentHostClipboardApi = {
   writeText: (text: string) => AgentHostAsyncResult<void>;
 };
 
+export type AgentHostTerminalLoginHandle = {
+  close: () => void;
+  completion: Promise<"ready" | "timed_out">;
+};
+
+export type AgentHostTerminalLoginApi = {
+  run: (input: {
+    agentTargetId: string;
+    command: string;
+    cwd?: string;
+  }) => AgentHostAsyncResult<AgentHostTerminalLoginHandle | void>;
+};
+
 export type AgentHostDebugApi = {
   logRuntimeDiagnostics: (
     payload: unknown
@@ -208,6 +221,7 @@ export interface AgentHostInputApi {
   persistence?: AgentHostPersistenceApi;
   quickPrompts?: AgentHostQuickPromptsApi;
   runtime?: AgentHostEnvironmentApi;
+  terminalLogin?: AgentHostTerminalLoginApi;
   toast?: AgentHostToastApi;
   userProjects?: AgentHostUserProjectsApi;
   workspace: AgentHostWorkspaceApi;
@@ -283,6 +297,10 @@ export interface AgentHostAgentTargetAuthMethod {
   id: string;
   name: string;
   description?: string | null;
+  /** Provider-declared method kind (for example "terminal"). */
+  type?: string | null;
+  /** Ready-to-run interactive sign-in command for terminal-type methods. */
+  terminalCommand?: string | null;
 }
 
 export interface AgentHostAgentTargetSetupState {
@@ -402,6 +420,7 @@ export interface AgentHostRuntimeApi {
   persistence?: AgentHostPersistenceApi;
   quickPrompts?: AgentHostQuickPromptsApi;
   runtime?: AgentHostEnvironmentApi;
+  terminalLogin?: AgentHostTerminalLoginApi;
   toast?: AgentHostToastApi;
   userProjects?: AgentHostUserProjectsApi;
   workspace: AgentHostWorkspaceApi;
@@ -422,6 +441,7 @@ export function toAgentHostRuntimeApi(
     persistence: hostApi.persistence,
     quickPrompts: hostApi.quickPrompts,
     runtime: hostApi.runtime,
+    terminalLogin: hostApi.terminalLogin,
     toast: hostApi.toast,
     userProjects: hostApi.userProjects,
     workspace: hostApi.workspace,

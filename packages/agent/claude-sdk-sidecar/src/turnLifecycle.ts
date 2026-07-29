@@ -188,6 +188,13 @@ export class TurnLifecycle {
       if (this.active !== turn || turn.settled || !turn.awaitingContinuation) {
         return;
       }
+      this.emit({
+        type: "continuation_delayed",
+        payload: {
+          turnId: turn.turnId,
+          waitedMs: this.continuationStartTimeoutMs
+        }
+      });
       turn.awaitingContinuation = false;
       this.rejectingTimedOutContinuation = true;
       this.settleActive("turn_completed", {

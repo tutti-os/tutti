@@ -65,6 +65,18 @@ export const enAgentGui = {
   targetSetupAuthFailed: "Authentication did not complete",
   targetSetupNoAuthMethods:
     "No supported sign-in method was reported. Check the runtime again.",
+  targetSetupTerminalAuthHint:
+    "This sign-in method must be completed in a terminal. Run the command below, finish the sign-in flow, then come back and check again.",
+  targetSetupCopyCommand: "Copy command",
+  targetSetupCommandCopied: "Copied",
+  targetSetupTerminalLoginStart: "Start sign in",
+  targetSetupTerminalLoginWaiting:
+    "A terminal has been opened in the workspace. Finish signing in there; this page checks the status automatically.",
+  targetSetupTerminalLoginCancel: "Cancel",
+  targetSetupTerminalLoginTimedOut:
+    "Timed out waiting for sign in to finish. Try again.",
+  targetSetupTerminalLoginUnavailable:
+    "A terminal could not be opened in this window. Copy the command and run it in your own terminal.",
   targetSetupRetry: "Check again",
   targetSetupFailed: "Runtime setup failed",
   targetSetupPhase: {

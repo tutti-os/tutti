@@ -103,8 +103,13 @@ func userCodexModelsCacheAuthority(userCodexHome string) (string, error) {
 	if _, err := hashCodexModelsCacheAuthorityFile(digest, "auth", filepath.Join(userCodexHome, "auth.json")); err != nil {
 		return "", err
 	}
-	if catalogPath := codexModelCatalogPath(config, userCodexHome); catalogPath != "" {
+	if catalogPath := codexConfigRelativeFilePath(config, userCodexHome, "model_catalog_json"); catalogPath != "" {
 		if _, err := hashCodexModelsCacheAuthorityFile(digest, "model_catalog", catalogPath); err != nil {
+			return "", err
+		}
+	}
+	if instructionsPath := codexConfigRelativeFilePath(config, userCodexHome, "model_instructions_file"); instructionsPath != "" {
+		if _, err := hashCodexModelsCacheAuthorityFile(digest, "model_instructions", instructionsPath); err != nil {
 			return "", err
 		}
 	}
@@ -127,7 +132,7 @@ func hashCodexModelsCacheAuthorityFile(digest io.Writer, label, path string) ([]
 	}
 }
 
-func codexModelCatalogPath(config []byte, userCodexHome string) string {
+func codexConfigRelativeFilePath(config []byte, userCodexHome string, key string) string {
 	lines := strings.Split(strings.ReplaceAll(string(config), "\r\n", "\n"), "\n")
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
@@ -137,7 +142,7 @@ func codexModelCatalogPath(config []byte, userCodexHome string) string {
 		if strings.HasPrefix(trimmed, "[") {
 			return ""
 		}
-		value, ok := codexConfigStringAssignmentValue(trimmed, "model_catalog_json")
+		value, ok := codexConfigStringAssignmentValue(trimmed, key)
 		if !ok {
 			continue
 		}

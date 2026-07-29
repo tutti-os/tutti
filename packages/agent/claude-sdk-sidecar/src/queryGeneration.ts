@@ -149,7 +149,8 @@ function isTaskLifecycleTail(
       "task_started",
       "task_progress",
       "task_notification",
-      "task_updated"
+      "task_updated",
+      "background_tasks_changed"
     ].includes(stringValue(raw.subtype));
   }
   if (messageType === "attachment") {

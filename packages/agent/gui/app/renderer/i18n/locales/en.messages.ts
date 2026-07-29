@@ -12,6 +12,8 @@ export const enMessages = {
   agentSessionReconnecting: "Reconnecting to the live agent session…",
   agentSettingsRequireNewSession:
     "This model can only be used in a new session to preserve context.",
+  agentConfigDependencyUnavailable:
+    "{{provider}} configuration references a file that is unavailable. Check its local configuration and try again.",
   agentSessionTitleTooLong:
     "Session title must be {{maxCharacters}} characters or fewer.",
   agentSessionTitleTooLongWithoutLimit: "Session title is too long.",

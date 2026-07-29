@@ -52,6 +52,10 @@ export class MessageProjection {
       this.handleTaskUpdated(message);
       return;
     }
+    if (subtype === "background_tasks_changed") {
+      this.activities.handleBackgroundTasksChanged(message);
+      return;
+    }
     if (subtype === "init" || subtype === "commands_changed") {
       const commands = commandEntries(message.commands);
       if (commands.length > 0 || Array.isArray(message.commands)) {
@@ -197,7 +201,7 @@ export class MessageProjection {
     if (status !== "completed" && status !== "failed" && status !== "killed") {
       return;
     }
-    this.activities.handleTaskSystemMessage("task_notification", {
+    this.activities.handleTaskSystemMessage("task_updated", {
       task_id: stringValue(message.task_id),
       tool_use_id: stringValue(message.tool_use_id),
       status: status === "killed" ? "stopped" : status,

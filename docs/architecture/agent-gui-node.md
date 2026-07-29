@@ -1103,6 +1103,15 @@ pinned to the verified active installation.
 
 Target-managed setup uses exact `agentTargetId`; daemon persists its state and actions. Setup gates only the empty new-conversation surface. Active/history conversations follow host-projected Session runtime availability for exact-target capability and transport reachability. A blocked Session runtime disables both composer editing and submit until the host reports the Session available again.
 
+Provider-declared terminal authentication remains a Host capability, not React
+or Session lifecycle. AgentGUI's target-setup controller owns the local
+`idle`/`waiting`/`error` projection and terminal handle, while the Desktop host
+launches the workspace terminal and monitors the authoritative target-setup
+watch until it reports ready or the bounded wait expires. The view only renders
+that controller state and dispatches start/cancel intent; it must not add its
+own effect or timer polling loop, raise the AgentGUI degradation baseline, or
+infer authentication from terminal output.
+
 The built-in managed-environment wizard and Agent Extension setup have different owners. Shared UI must not combine their lifecycles by provider name.
 
 See [Agent Extensions](./agent-extensions.md) for the detailed setup contract.

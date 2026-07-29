@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "tutti.agent.composer.v1",
+  "model": {
+    "source": "acp-session-models"
+  },
+  "permission": {
+    "source": "acp-session-modes"
+  },
+  "permissionModes": [
+    {
+      "runtimeId": "plan",
+      "semantic": "read-only"
+    },
+    {
+      "runtimeId": "default",
+      "semantic": "ask-before-write"
+    },
+    {
+      "runtimeId": "auto",
+      "semantic": "accept-edits"
+    },
+    {
+      "runtimeId": "yolo",
+      "semantic": "full-access"
+    }
+  ]
+}

@@ -11,6 +11,8 @@ import { useOptionalAgentHostApi } from "../../agentActivityHost.tsx";
 import type {
   AgentHostAgentTargetSetupState,
   AgentHostAgentTargetSetupWatch,
+  AgentHostTerminalLoginApi,
+  AgentHostTerminalLoginHandle,
   AgentHostToastApi
 } from "../../host/agentHostApi.ts";
 import { useTranslation } from "../../i18n/index.ts";
@@ -35,15 +37,20 @@ export interface AgentTargetSetupControllerState {
   installPending: boolean;
   selectedAuthMethodId: string | null;
   setup: AgentHostAgentTargetSetupState;
+  terminalLoginAvailable: boolean;
+  terminalLoginError: "timed_out" | "unavailable" | null;
+  terminalLoginPhase: "error" | "idle" | "waiting";
 }
 
 export interface AgentTargetSetupController {
   authenticate(methodId: string): Promise<void>;
+  cancelTerminalLogin(): void;
   getSnapshot(): AgentTargetSetupControllerState;
   install(planDigest: string): Promise<void>;
   refresh(): Promise<void>;
   selectAuthMethod(methodId: string): void;
   setDialogOpen(open: boolean): void;
+  startTerminalLogin(command: string): Promise<void>;
   subscribe(listener: () => void): () => void;
 }
 
@@ -140,6 +147,7 @@ export function useCreateAgentTargetSetupController(
           previousState?.selectedAuthMethodId ?? null,
         logCommandError,
         onNotification: showNotification,
+        terminalLogin: hostApi?.terminalLogin,
         watch
       }),
       targetKey
@@ -151,6 +159,7 @@ export function useCreateAgentTargetSetupController(
     showNotification,
     stableAgentTarget,
     targetKey,
+    hostApi?.terminalLogin,
     watch
   ]);
   controllerRef.current = controllerEntry;
@@ -168,6 +177,7 @@ function createAgentTargetSetupController(input: {
     error: unknown
   ) => void;
   onNotification: (notification: AgentTargetSetupFailureNotification) => void;
+  terminalLogin: AgentHostTerminalLoginApi | undefined;
   watch: AgentHostAgentTargetSetupWatch | null;
 }): AgentTargetSetupController {
   const listeners = new Set<() => void>();
@@ -176,6 +186,8 @@ function createAgentTargetSetupController(input: {
     createAgentTargetSetupFailureNotificationController(initialSetup);
   let unsubscribe: (() => void) | null = null;
   let disposeGeneration = 0;
+  let terminalLoginGeneration = 0;
+  let terminalLoginHandle: AgentHostTerminalLoginHandle | null = null;
   let state: AgentTargetSetupControllerState = {
     agentTarget: input.agentTarget,
     agentTargetId: input.agentTargetId,
@@ -184,7 +196,10 @@ function createAgentTargetSetupController(input: {
     enabled: input.enabled,
     installPending: false,
     selectedAuthMethodId: input.initialSelectedAuthMethodId,
-    setup: initialSetup
+    setup: initialSetup,
+    terminalLoginAvailable: Boolean(input.terminalLogin),
+    terminalLoginError: null,
+    terminalLoginPhase: "idle"
   };
   const update = (patch: Partial<AgentTargetSetupControllerState>) => {
     state = { ...state, ...patch };
@@ -205,6 +220,79 @@ function createAgentTargetSetupController(input: {
       update({ [pendingKey]: false });
     }
   };
+  const closeTerminalLoginHandle = () => {
+    const handle = terminalLoginHandle;
+    terminalLoginHandle = null;
+    try {
+      handle?.close();
+    } catch (error) {
+      console.warn("agent-gui: terminal login close failed", error);
+    }
+  };
+  const settleTerminalLogin = (
+    generation: number,
+    result: "ready" | "timed_out" | "unavailable"
+  ) => {
+    if (generation !== terminalLoginGeneration) return;
+    terminalLoginGeneration += 1;
+    closeTerminalLoginHandle();
+    update({
+      terminalLoginError:
+        result === "ready"
+          ? null
+          : result === "timed_out"
+            ? "timed_out"
+            : "unavailable",
+      terminalLoginPhase: result === "ready" ? "idle" : "error"
+    });
+  };
+  const cancelTerminalLogin = (publish: boolean) => {
+    terminalLoginGeneration += 1;
+    closeTerminalLoginHandle();
+    if (publish) {
+      update({
+        terminalLoginError: null,
+        terminalLoginPhase: "idle"
+      });
+    }
+  };
+  const startTerminalLogin = async (command: string) => {
+    const normalizedCommand = command.trim();
+    if (!input.terminalLogin || !normalizedCommand) return;
+    cancelTerminalLogin(false);
+    const generation = terminalLoginGeneration;
+    update({
+      terminalLoginError: null,
+      terminalLoginPhase: "waiting"
+    });
+    let handle: AgentHostTerminalLoginHandle | void;
+    try {
+      handle = await input.terminalLogin.run({
+        agentTargetId: input.agentTargetId,
+        command: normalizedCommand
+      });
+    } catch {
+      settleTerminalLogin(generation, "unavailable");
+      return;
+    }
+    if (!handle) {
+      settleTerminalLogin(generation, "unavailable");
+      return;
+    }
+    if (generation !== terminalLoginGeneration) {
+      try {
+        handle.close();
+      } catch (error) {
+        console.warn("agent-gui: terminal login close failed", error);
+      }
+      return;
+    }
+    terminalLoginHandle = handle;
+    void handle.completion.then(
+      (result) => settleTerminalLogin(generation, result),
+      () => settleTerminalLogin(generation, "unavailable")
+    );
+  };
   return {
     authenticate: (methodId) =>
       runCommand(
@@ -215,6 +303,7 @@ function createAgentTargetSetupController(input: {
             clientActionId: createClientActionId()
           }) ?? Promise.resolve()
       ),
+    cancelTerminalLogin: () => cancelTerminalLogin(true),
     getSnapshot: () => state,
     install: (planDigest) =>
       runCommand(
@@ -229,6 +318,7 @@ function createAgentTargetSetupController(input: {
     selectAuthMethod: (selectedAuthMethodId) =>
       update({ selectedAuthMethodId }),
     setDialogOpen: (dialogOpen) => update({ dialogOpen }),
+    startTerminalLogin,
     subscribe(listener) {
       listeners.add(listener);
       disposeGeneration += 1;
@@ -236,6 +326,19 @@ function createAgentTargetSetupController(input: {
         unsubscribe = input.watch.subscribe((setup) => {
           const notification = notifications.observe(setup);
           if (notification) input.onNotification(notification);
+          if (
+            state.terminalLoginPhase === "waiting" &&
+            setup.snapshot?.status === "ready"
+          ) {
+            terminalLoginGeneration += 1;
+            closeTerminalLoginHandle();
+            update({
+              setup,
+              terminalLoginError: null,
+              terminalLoginPhase: "idle"
+            });
+            return;
+          }
           update({ setup });
         });
       }
@@ -250,6 +353,7 @@ function createAgentTargetSetupController(input: {
             ) {
               unsubscribe?.();
               unsubscribe = null;
+              cancelTerminalLogin(false);
             }
           });
         }

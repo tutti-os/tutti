@@ -433,6 +433,7 @@ function message(
     uuid,
     session_id: sessionId,
     message: content,
-    parent_tool_use_id: null
+    parent_tool_use_id: null,
+    parent_agent_id: null
   };
 }

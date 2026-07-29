@@ -215,9 +215,15 @@ function SubAgentProgress({
     subAgent.failureDetail ??
     subAgent.latestActivity ??
     translate(
-      subAgent.queued
-        ? "agentHost.agentTool.details.subAgentQueued"
-        : "agentHost.agentTool.details.subAgentStarting"
+      subAgent.status === "completed"
+        ? "agentHost.agentTool.statusCompleted"
+        : subAgent.status === "canceled"
+          ? "agentHost.agentTool.statusCanceled"
+          : subAgent.status === "failed"
+            ? "agentHost.agentTool.statusFailed"
+            : subAgent.queued
+              ? "agentHost.agentTool.details.subAgentQueued"
+              : "agentHost.agentTool.details.subAgentStarting"
     );
   return (
     <div

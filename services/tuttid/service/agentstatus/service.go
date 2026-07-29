@@ -540,69 +540,6 @@ func (s Service) Probe(ctx context.Context, input ProbeInput) (ProbeResult, erro
 	return s.probeAdapterRuntimeCommand(ctx, spec, runtimeResolution, now), nil
 }
 
-func (s Service) probeAdapterRuntimeCommand(
-	ctx context.Context,
-	spec ProviderSpec,
-	runtimeResolution providerRuntimeResolution,
-	now time.Time,
-) ProbeResult {
-	result := ProbeResult{
-		Provider:   spec.Provider,
-		CheckedAt:  now,
-		BinaryPath: runtimeResolution.AdapterPath,
-		Command:    cloneStrings(spec.AdapterCommand),
-	}
-	command := cloneStrings(spec.AdapterCommand)
-	if len(command) == 0 {
-		command = cloneStrings(spec.BinaryNames)
-	}
-	if len(command) == 0 || strings.TrimSpace(command[0]) == "" {
-		result.Status = ProbeSkipped
-		result.ReasonCode = "probe_command_unavailable"
-		result.Message = "Provider probe command is unavailable"
-		return result
-	}
-
-	env := s.commandResolver().Env(s.adapterCommandEnv(ctx, spec))
-	command[0] = s.commandResolver().Resolve(command[0], env)
-	result.Command = cloneStrings(command)
-	if strings.TrimSpace(runtimeResolution.AdapterPath) != "" {
-		result.BinaryPath = runtimeResolution.AdapterPath
-	} else {
-		result.BinaryPath = command[0]
-	}
-	release, acquired := s.DetectionCommands.acquire(ctx)
-	if !acquired {
-		result.Status = ProbeFailed
-		result.ReasonCode = "probe_canceled"
-		result.Message = context.Cause(ctx).Error()
-		return result
-	}
-	defer release()
-	result = s.probeCommandWithReadyAfter(ctx, result, command, env, s.probeReadyAfterForSpec(spec))
-	if result.Status == ProbeReady {
-		s.AdapterProbeCache.markReady(
-			adapterProbeCacheKey(spec, runtimeResolution),
-			result.BinaryPath,
-		)
-	}
-	if isCodexStatusSpec(spec) && result.Status == ProbeFailed {
-		if code, ok := classifyCodexRuntimeError(result.Message); ok {
-			result.LastError = &ProviderLastError{Code: string(code), Message: result.Message}
-			result.ReasonCode = codexReasonCodeFromErrorCode(string(code))
-		}
-	}
-	return result
-}
-
-func adapterProbeCacheKey(spec ProviderSpec, runtimeResolution providerRuntimeResolution) string {
-	command := runtimeResolution.AdapterCommand
-	if len(command) == 0 {
-		command = spec.AdapterCommand
-	}
-	return spec.Provider + "\x00" + strings.Join(command, "\x00")
-}
-
 func (s Service) RunAction(ctx context.Context, input RunActionInput) (RunActionResult, error) {
 	now := s.now()
 	specs, err := s.selectProviderSpecs(ctx, []string{input.Provider}, false)
