@@ -6,8 +6,10 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  buildTypeScriptTestShards,
   classifyChangedFiles,
-  createPackageManifestPackRelevance
+  createPackageManifestPackRelevance,
+  createRootManifestTestRelevance
 } from "./change-classification.mjs";
 import { createIsolatedGitEnvironment } from "./git-environment.mjs";
 import { selectRepositoryChecks } from "./repository-checks.mjs";
@@ -16,6 +18,35 @@ const releasePackages = [
   { name: "@tutti-os/agent-gui", root: "packages/agent/gui" },
   { name: "@tutti-os/ui-system", root: "packages/ui/system" }
 ];
+const workspacePackages = [
+  {
+    hasTests: true,
+    name: "@tutti-os/agent-gui",
+    root: "packages/agent/gui"
+  },
+  {
+    hasTests: true,
+    name: "@tutti-os/desktop",
+    root: "apps/desktop",
+    workspaceDependencies: ["@tutti-os/agent-gui"]
+  },
+  {
+    hasTests: false,
+    name: "@tutti-os/no-tests",
+    root: "packages/example/no-tests"
+  }
+];
+
+test("builds no more TypeScript test shards than selected packages", () => {
+  assert.deepEqual(buildTypeScriptTestShards([]), ["1/1"]);
+  assert.deepEqual(buildTypeScriptTestShards(["one"]), ["1/1"]);
+  assert.deepEqual(buildTypeScriptTestShards(["one", "two"]), ["1/2", "2/2"]);
+  assert.deepEqual(buildTypeScriptTestShards(["one", "two", "three", "four"]), [
+    "1/3",
+    "2/3",
+    "3/3"
+  ]);
+});
 
 test("Go-only changes do not select TypeScript validation", () => {
   const classification = classifyChangedFiles(
@@ -237,6 +268,138 @@ test("global release inputs select every published package", () => {
     "@tutti-os/agent-gui",
     "@tutti-os/ui-system"
   ]);
+});
+
+test("tool-only changes do not select workspace package tests", () => {
+  const classification = classifyChangedFiles(
+    ["tools/scripts/check-package-packs.mjs"],
+    {
+      isRootManifestTestRelevant: () => false,
+      releasePackages,
+      workspacePackages
+    }
+  );
+
+  assert.equal(classification.runTs, true);
+  assert.equal(classification.runTsTests, false);
+  assert.deepEqual(classification.testPackages, []);
+});
+
+test("package changes select owning and dependent package tests", () => {
+  const classification = classifyChangedFiles(
+    ["packages/agent/gui/controller.spec.ts"],
+    { releasePackages, workspacePackages }
+  );
+
+  assert.equal(classification.runTsTests, true);
+  assert.equal(classification.testAll, false);
+  assert.deepEqual(classification.testPackages, [
+    "@tutti-os/agent-gui",
+    "@tutti-os/desktop"
+  ]);
+});
+
+test("packages without tests do not select workspace package tests", () => {
+  const classification = classifyChangedFiles(
+    ["packages/example/no-tests/index.ts"],
+    { releasePackages, workspacePackages }
+  );
+
+  assert.equal(classification.runTsTests, false);
+});
+
+test("global test inputs select every workspace test package", () => {
+  const classification = classifyChangedFiles(["pnpm-lock.yaml"], {
+    releasePackages,
+    workspacePackages
+  });
+
+  assert.equal(classification.runTsTests, true);
+  assert.equal(classification.testAll, true);
+  assert.deepEqual(classification.testPackages, [
+    "@tutti-os/agent-gui",
+    "@tutti-os/desktop"
+  ]);
+});
+
+test("deleted package manifests select every workspace test package", () => {
+  const classification = classifyChangedFiles(
+    ["packages/example/deleted/package.json"],
+    { releasePackages, workspacePackages }
+  );
+
+  assert.equal(classification.testAll, true);
+});
+
+test("root manifest comparison ignores unrelated scripts", () => {
+  const root = mkdtempSync(join(tmpdir(), "root-manifest-tests-"));
+  const manifestPath = join(root, "package.json");
+  const gitEnv = createIsolatedGitEnvironment(root);
+  const runGit = (args) =>
+    execFileSync("git", args, { cwd: root, env: gitEnv });
+
+  try {
+    writeFileSync(
+      manifestPath,
+      `${JSON.stringify({
+        packageManager: "pnpm@10.11.0",
+        scripts: {
+          "release:pack:check": "old",
+          "test:ts": "node test.mjs"
+        }
+      })}\n`
+    );
+    runGit(["init", "--quiet"]);
+    runGit(["add", "."]);
+    runGit([
+      "-c",
+      "user.name=Test",
+      "-c",
+      "user.email=test@example.com",
+      "commit",
+      "--quiet",
+      "-m",
+      "init"
+    ]);
+
+    writeFileSync(
+      manifestPath,
+      `${JSON.stringify({
+        packageManager: "pnpm@10.11.0",
+        scripts: {
+          "release:pack:check": "new",
+          "test:ts": "node test.mjs"
+        }
+      })}\n`
+    );
+    assert.equal(
+      createRootManifestTestRelevance({
+        baseRef: "HEAD",
+        root
+      })(),
+      false
+    );
+
+    writeFileSync(
+      manifestPath,
+      `${JSON.stringify({
+        packageManager: "pnpm@10.11.0",
+        scripts: {
+          "release:pack:check": "new",
+          "test:ts": "node changed-test.mjs"
+        }
+      })}\n`
+    );
+    assert.equal(
+      createRootManifestTestRelevance({
+        baseRef: "HEAD",
+        root
+      })(),
+      true
+    );
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
 });
 
 test("repository check registry selects only relevant generated checks", () => {
