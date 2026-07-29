@@ -118,6 +118,11 @@ test("authoritative history drops a terminal optimistic row from a retracted Tur
     harness.coordinator.project(harness.readCanonicalSnapshot())
       .sessionMessagesById["session-1"]?.length,
     0
+  );
+  harness.coordinator.dispose();
+  harness.engine.dispose();
+});
+
 test("preserves unrelated Session message projections during an optimistic delta", () => {
   const harness = createHarness();
   harness.engine.dispatch({

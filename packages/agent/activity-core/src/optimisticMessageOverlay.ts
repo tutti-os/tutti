@@ -170,6 +170,7 @@ export function createAgentActivityOptimisticMessageOverlay(): AgentActivityOpti
           optimistic.delete(key);
         }
       }
+      markScopeChanged(scope);
     },
 
     reset(scope) {
