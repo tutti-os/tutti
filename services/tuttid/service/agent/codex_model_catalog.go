@@ -8,9 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os/exec"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/modelcatalog"
@@ -109,48 +107,20 @@ func (l CodexCLIModelLister) ListModels(ctx context.Context) (AgentModelListResu
 	if len(args) == 0 {
 		args = []string{"app-server"}
 	}
-	cmd := exec.CommandContext(processCtx, command, args...)
-	cmd.Env = env
-	cmd.WaitDelay = codexAppServerShutdownWaitDelay
-	stdin, err := cmd.StdinPipe()
+	process, err := startCodexAppServerProcess(processCtx, command, args, env)
 	if err != nil {
-		return AgentModelListResult{}, fmt.Errorf("open codex app-server stdin: %w", err)
+		return AgentModelListResult{}, err
 	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return AgentModelListResult{}, fmt.Errorf("open codex app-server stdout: %w", err)
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return AgentModelListResult{}, fmt.Errorf("open codex app-server stderr: %w", err)
-	}
-	if err := cmd.Start(); err != nil {
-		return AgentModelListResult{}, fmt.Errorf("start codex app-server: %w", err)
-	}
-
-	stderrBuf := &truncatingBuffer{max: codexModelListMaxStderrBytes}
-	var stderrWG sync.WaitGroup
-	stderrWG.Add(1)
-	go func() {
-		defer stderrWG.Done()
-		_, _ = io.Copy(stderrBuf, stderr)
-	}()
-
-	defer func() {
-		_ = stdin.Close()
-		cancel()
-		_ = cmd.Wait()
-		stderrWG.Wait()
-	}()
-
-	models, err := requestCodexModelList(stdin, stdout, l.clientName())
+	models, err := requestCodexModelList(process.stdin, process.stdout, l.clientName())
+	processErr := processCtx.Err()
+	_ = process.stop(cancel)
 	if err == nil {
 		return AgentModelListResult{Models: models}, nil
 	}
-	if processCtx.Err() != nil {
-		return AgentModelListResult{}, fmt.Errorf("codex app-server model/list timed out: %w", processCtx.Err())
+	if processErr != nil {
+		return AgentModelListResult{}, fmt.Errorf("codex app-server model/list timed out: %w", processErr)
 	}
-	if stderr := strings.TrimSpace(stderrBuf.String()); stderr != "" {
+	if stderr := strings.TrimSpace(process.stderr.String()); stderr != "" {
 		return AgentModelListResult{}, fmt.Errorf("%w: %s", err, stderr)
 	}
 	return AgentModelListResult{}, err

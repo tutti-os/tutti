@@ -7,6 +7,7 @@ export interface AgentGUIProviderIdentityCatalogEntry {
   iconKey: string;
   localeKey: string;
   modelPlanProtocol: "" | "anthropic" | "openai";
+  statusKind: "codex_cli" | "claude_cli" | "opencode_cli" | "generic_cli";
   aliases: readonly string[];
   target: {
     id: string;

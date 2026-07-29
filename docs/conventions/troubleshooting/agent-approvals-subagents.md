@@ -221,10 +221,27 @@ session-level child summaries.
     provider turn before emitting the child terminal. The expected normalized
     order is `turn_started` and then `task_completed`; the later root assistant
     confirms that reserved provider turn instead of opening another one.
-  - If root output does not begin within 30 seconds, complete the reservation
-    with `stop_reason=background_agent_continuation_timeout`, interrupt the
-    pending SDK continuation, and drop its later output. Cancellation disarms
-    the same timeout and preserves the durable canceled outcome.
+  - Identify background follow-up results from
+    `origin.kind=task-notification`. Do not compare task-notification and result
+    counts: the SDK may coalesce queued follow-ups.
+  - If the background level or task notifications make continuation pending
+    before the ordinary root result, retain the original root Turn until
+    session idle. Do not emit `turn_completed(root)` followed by
+    `turn_started(synthetic)`: with every child already terminal, durable state
+    can settle between those events and must reject the late provider start.
+  - Settle normally on `session_state_changed: idle`, after the SDK has flushed
+    its held-back result and exited the background-agent loop. Do not start a
+    post-result settlement timeout: queued follow-ups may begin several seconds
+    apart, so interrupting that wait converts valid work into provider errors.
+  - If root output does not begin within 30 seconds, emit the
+    `continuation_delayed` warning, complete the reservation with
+    `stop_reason=background_agent_continuation_timeout`, interrupt the pending
+    SDK query, and drop that continuation's later output. Cancellation disarms
+    the same timeout and the pending background-task quiescence timer, and
+    preserves the durable canceled outcome.
+  - Record a failed or canceled root result in the background-task lifecycle
+    owner. A later empty level or task notification may finish child state, but
+    must not reserve another synthetic root Turn.
 
   Do not infer native SDK order from persisted message timestamps. Use the
   per-session lifecycle sequence to verify that the adapter-established
@@ -232,9 +249,12 @@ session-level child summaries.
   output either confirms that provider turn or reaches the bounded timeout.
 
 - Validate: test both event orders—root terminal before the last child and last
-  child before root terminal—plus continuation start, timeout, cancellation,
-  and guidance during the reserved window. Confirm that composer availability
-  follows only the durable canonical root.
+  child before root terminal—plus coalesced notifications/results, session
+  idle, delayed idle without early settlement, continuation start, timeout,
+  late-output rejection, cancellation during the quiescence grace, late
+  empty-level/task-notification signals after root failure, and guidance during
+  the reserved window. Confirm that composer availability follows only the
+  durable canonical root.
 
 ### Claude child card shows a generic Agent title and no task detail
 
@@ -252,10 +272,12 @@ session-level child summaries.
   result, while the child session keeps its early generic title.
 - Fix: keep every lifecycle event for the delegation tool call on its launching
   parent turn; use only an explicit nested `parent_tool_use_id` to select a
-  parent child turn. Merge a later real description into the existing child
-  session and publish a normal child title update. The compact card may still
-  show only the latest child activity, but its name and task strip come from
-  canonical child/parent data rather than that activity label.
+  parent child turn. Resolve that same owner before applying the closed-Turn
+  fence; checking child aliases first can discard a valid parent completion
+  after the child settles. Merge a later real description into the existing
+  child session and publish a normal child title update. The compact card may
+  still show only the latest child activity, but its name and task strip come
+  from canonical child/parent data rather than that activity label.
 - Validate: start with a generic Agent event, finish the same call with a full
   description and prompt, then settle the root provider turn. Assert one
   completed parent call with full input, one updated child title, no synthetic

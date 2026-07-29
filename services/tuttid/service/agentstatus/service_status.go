@@ -3,6 +3,7 @@ package agentstatus
 import (
 	"context"
 	"log/slog"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -32,6 +33,7 @@ func (s Service) statusForSpec(
 	var postChecksDuration time.Duration
 	adapterProbeRan := false
 	adapterProbeCacheHit := false
+	adapterProbeCacheAge := time.Duration(0)
 	cliVersionRan := false
 	unsupported := false
 	defer func() {
@@ -45,6 +47,7 @@ func (s Service) statusForSpec(
 			"runtimeResolutionMs", runtimeResolutionDuration.Milliseconds(),
 			"adapterProbeRan", adapterProbeRan,
 			"adapterProbeCacheHit", adapterProbeCacheHit,
+			"adapterProbeCacheAgeMs", adapterProbeCacheAge.Milliseconds(),
 			"adapterProbeMs", adapterProbeDuration.Milliseconds(),
 			"authMs", authDuration.Milliseconds(),
 			"cliVersionRan", cliVersionRan,
@@ -61,6 +64,25 @@ func (s Service) statusForSpec(
 	runtimeResolutionStartedAt := time.Now()
 	runtimeResolution := s.resolveProviderRuntime(ctx, spec)
 	runtimeResolutionDuration = time.Since(runtimeResolutionStartedAt)
+	if isCodexStatusSpec(spec) && codexRuntimeSelectionNeedsUserInput(runtimeResolution) {
+		return ProviderStatus{
+			Provider: spec.Provider,
+			Availability: Availability{
+				CheckedAt:  &now,
+				ReasonCode: runtimeResolution.ReasonCode,
+				Status:     AvailabilityUnknown,
+			},
+			CLI: CLIStatus{
+				Installed:  strings.TrimSpace(runtimeResolution.CLIPath) != "",
+				BinaryPath: runtimeResolution.CLIPath,
+				MinVersion: spec.MinVersion,
+			},
+			Adapter: AdapterStatus{
+				BinaryPath: runtimeResolution.AdapterPath,
+				Command:    cloneStrings(runtimeResolution.AdapterCommand),
+			},
+		}
+	}
 	installed := strings.TrimSpace(runtimeResolution.CLIPath) != ""
 	adapterInstalled := strings.TrimSpace(runtimeResolution.AdapterPath) != ""
 	adapterReady := adapterInstalled && adapterPackageRequirementSatisfied(spec.AdapterPackage, runtimeResolution.AdapterVersion)
@@ -75,17 +97,22 @@ func (s Service) statusForSpec(
 	cliVersion := ""
 	reuseCursorAboutVersion := installed && isCursorAuthCommandSpec(spec) && s.RunAuthStatusCommand == nil
 	var checks errgroup.Group
+	// adapterProbe captures the full probe result so availability can surface a
+	// probe-classified failure reason, rather than only a boolean result.
+	var adapterProbe ProbeResult
 	if installed && adapterReady && !options.skipAdapterProbe &&
 		s.shouldProbeAdapterCommandForStatus(spec, runtimeResolution) {
-		probeCacheKey := adapterProbeCacheKey(spec, runtimeResolution)
+		probeCacheKey := s.adapterProbeCacheKey(ctx, spec, runtimeResolution)
 		if !options.forceRefresh &&
-			s.AdapterProbeCache.ready(probeCacheKey, runtimeResolution.AdapterPath) {
+			s.AdapterProbeCache.readyWithin(probeCacheKey, runtimeResolution.AdapterPath, now, s.providerStatusCacheTTL()) {
 			adapterProbeCacheHit = true
+			adapterProbeCacheAge, _ = s.AdapterProbeCache.age(probeCacheKey, runtimeResolution.AdapterPath, now)
 		} else {
 			adapterProbeRan = true
 			checks.Go(func() error {
 				probeStartedAt := time.Now()
-				if probe := s.probeAdapterRuntimeCommand(ctx, spec, runtimeResolution, now); probe.Status == ProbeFailed {
+				adapterProbe = s.probeAdapterRuntimeCommand(ctx, spec, runtimeResolution, now)
+				if adapterProbe.Status == ProbeFailed {
 					adapterReady = false
 					adapterLaunchFailed = true
 				}
@@ -121,10 +148,6 @@ func (s Service) statusForSpec(
 	}
 	postChecksStartedAt := time.Now()
 
-	codexPlatformOK := true
-	if isCodexStatusSpec(spec) && installed {
-		codexPlatformOK = s.codexPlatformBinaryOK(runtimeResolution.CLIPath)
-	}
 	availability := Availability{
 		CheckedAt: &now,
 		Status:    AvailabilityReady,
@@ -134,7 +157,7 @@ func (s Service) statusForSpec(
 
 	if !installed {
 		availability.Status = AvailabilityNotInstalled
-		availability.ReasonCode = "cli_not_found"
+		availability.ReasonCode = firstNonBlank(runtimeResolution.ReasonCode, "cli_not_found")
 		actions = append(actions, daemonAction(ActionInstall))
 	} else if !isCodexStatusSpec(spec) && cliBelowFloor {
 		// Descriptor-owned version floors are a CLI capability gate. Surface
@@ -149,15 +172,17 @@ func (s Service) statusForSpec(
 		actions = append(actions, daemonAction(ActionInstall))
 	} else if adapterLaunchFailed {
 		availability.Status = AvailabilityNotInstalled
-		availability.ReasonCode = "acp_adapter_launch_failed"
+		// When the adapter probe classified its failure (e.g. a Codex launch
+		// failed because the @openai/codex-<platform> subpackage was missing,
+		// reported as an ENOENT), surface that precise reason code instead of
+		// the generic launch-failed label. Unclassified failures — including
+		// all non-codex providers and any error the probe did not match — keep
+		// the generic code, preserving prior behavior.
+		availability.ReasonCode = adapterLaunchFailureReasonCode(adapterProbe)
 		actions = append(actions, daemonAction(ActionInstall))
 	} else if !adapterReady {
 		availability.Status = AvailabilityNotInstalled
 		availability.ReasonCode = "acp_adapter_version_mismatch"
-		actions = append(actions, daemonAction(ActionInstall))
-	} else if isCodexStatusSpec(spec) && !codexPlatformOK {
-		availability.Status = AvailabilityNotInstalled
-		availability.ReasonCode = codexReasonCodeFromErrorCode(string(CodexErrPlatformPkgIncomplete))
 		actions = append(actions, daemonAction(ActionInstall))
 	} else if cliBelowFloor {
 		availability.Status = AvailabilityNotInstalled
@@ -243,16 +268,54 @@ func (s Service) statusForSpec(
 			"sdkSidecarInstalled", status.Adapter.Installed,
 		)
 	}
-	if isCodexStatusSpec(spec) {
-		status.Checks = codexProviderChecks(status, codexPlatformOK, s.codexNodeRuntimeCheck(spec))
+	if isCodexStatusSpec(spec) && status.CLI.Installed && adapterInstalled {
+		assessment := s.assessCodexRuntime(spec, runtimeResolution.CLIPath, adapterProbe, adapterProbeRan, adapterProbeCacheHit)
+		switch {
+		case assessment.RuntimeReady && status.Auth.Status == AuthAuthenticated && !cliBelowFloor:
+			status.Availability = Availability{Status: AvailabilityReady, CheckedAt: &now}
+			status.Actions = []Action{terminalAction(ActionLogin, loginCommandForRuntime(spec, runtimeResolution))}
+		case assessment.RuntimeReady && cliBelowFloor:
+			status.Availability = Availability{Status: AvailabilityUnsupported, ReasonCode: "codex_version_unsupported", CheckedAt: &now}
+			status.Actions = []Action{daemonAction(ActionUpdate)}
+		case assessment.RuntimeReady:
+			reason := "auth_required"
+			if status.Auth.Status == AuthUnknown {
+				reason = "auth_unknown"
+			}
+			status.Availability = Availability{Status: AvailabilityAuthRequired, ReasonCode: reason, CheckedAt: &now}
+			status.Actions = []Action{terminalAction(ActionLogin, loginCommandForRuntime(spec, runtimeResolution)), {ID: ActionRefresh, Kind: ActionKindRefresh}}
+		case assessment.ReasonCode == "app_server_unsupported":
+			status.Availability = Availability{Status: AvailabilityUnsupported, ReasonCode: assessment.ReasonCode, CheckedAt: &now}
+			status.Actions = []Action{daemonAction(ActionUpdate)}
+		default:
+			status.Availability = Availability{Status: AvailabilityNotInstalled, ReasonCode: assessment.ReasonCode, CheckedAt: &now}
+			if assessment.RepairPlan.Allowed {
+				status.Actions = []Action{daemonAction(ActionInstall)}
+			} else {
+				status.Actions = []Action{{ID: ActionRefresh, Kind: ActionKindRefresh}}
+			}
+		}
 		status.LastError = codexProviderLastError(status)
+		resolvedRealPath := runtimeResolution.CLIPath
+		if realPath, err := filepath.EvalSymlinks(runtimeResolution.CLIPath); err == nil {
+			resolvedRealPath = realPath
+		}
 		slog.Info(
 			"codex agent provider status checked",
+			"provider", spec.Provider,
 			"availability", status.Availability.Status,
 			"reasonCode", status.Availability.ReasonCode,
+			"resolvedCLIPath", runtimeResolution.CLIPath,
+			"resolvedRealPath", resolvedRealPath,
 			"version", status.CLI.Version,
 			"lastErrorCode", providerLastErrorCode(status.LastError),
-			"missingPlatformPath", s.codexPlatformPackageMissingPath(runtimeResolution.CLIPath),
+			"runtimeVerified", assessment.RuntimeReady,
+			"commandProbeResult", adapterProbe.CommandCategory,
+			"protocolProbeResult", adapterProbe.ProtocolCategory,
+			"probeCacheHit", adapterProbeCacheHit,
+			"probeCacheAgeMs", adapterProbeCacheAge.Milliseconds(),
+			"repairAllowed", assessment.RepairPlan.Allowed,
+			"repairReason", assessment.RepairPlan.ReasonCode,
 		)
 	}
 	postChecksDuration = time.Since(postChecksStartedAt)
@@ -270,7 +333,30 @@ func (s Service) shouldProbeAdapterCommandForStatus(spec ProviderSpec, runtimeRe
 	if strings.TrimSpace(spec.ExternalRegistryID) != "" {
 		return true
 	}
-	return isCodexStatusSpec(spec) && s.executableFile(runtimeResolution.AdapterPath)
+	if isCodexStatusSpec(spec) {
+		// The resolver can return a symlinked launcher whose target is executable
+		// even when a shallow stat hook cannot prove it. Codex command capability is
+		// determined by the real protocol probe, not a pre-flight file-mode guess.
+		return strings.TrimSpace(runtimeResolution.AdapterPath) != ""
+	}
+	if isStandardACPStatusSpec(spec) && sameResolvedBinary(runtimeResolution.AdapterPath, runtimeResolution.CLIPath) {
+		return s.executableFile(runtimeResolution.AdapterPath)
+	}
+	return false
+}
+
+// adapterLaunchFailureReasonCode surfaces a probe-classified failure reason
+// when the adapter probe identified a specific provider error (e.g. a Codex
+// launch failed because the @openai/codex-<platform> subpackage was missing,
+// classified from an ENOENT message), and otherwise falls back to the generic
+// adapter-launch-failed code. The probe sets LastError only when it matched a
+// known error pattern, so unclassified failures and all non-codex providers
+// are unaffected.
+func adapterLaunchFailureReasonCode(probe ProbeResult) string {
+	if probe.LastError != nil && strings.TrimSpace(probe.ReasonCode) != "" {
+		return probe.ReasonCode
+	}
+	return "acp_adapter_launch_failed"
 }
 
 func (s Service) probeReadyAfterForSpec(spec ProviderSpec) time.Duration {

@@ -604,12 +604,18 @@ export function createWorkspaceAgentClient(
         "Update workspace agent session settings failed."
       ).session;
     },
-    async updateWorkspaceAgentSessionPin(workspaceID, agentSessionID, request) {
+    async updateWorkspaceAgentSessionPin(
+      workspaceID,
+      agentSessionID,
+      request,
+      requestOptions
+    ) {
       return unwrapData(
         await updateWorkspaceAgentSessionPin({
           client,
           body: request,
-          path: { agentSessionID, workspaceID }
+          path: { agentSessionID, workspaceID },
+          ...requestOptions
         }),
         "Update workspace agent session pin failed."
       ).session;

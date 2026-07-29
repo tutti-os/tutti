@@ -834,9 +834,15 @@ test("shared tuttid client forwards AbortSignal for Agent effect writes", async 
     { turnId: "turn-1" },
     options
   );
+  await client.updateWorkspaceAgentSessionPin(
+    "ws-1",
+    "session-1",
+    { pinned: true },
+    options
+  );
 
   abortController.abort();
-  assert.equal(requests.length, 4);
+  assert.equal(requests.length, 5);
   assert.equal(
     requests.every((request) => request.signal.aborted),
     true

@@ -15,6 +15,26 @@ type composerModelCatalogProjection struct {
 	Source            string
 }
 
+type composerModelCatalogLoadResult struct {
+	projection composerModelCatalogProjection
+	ok         bool
+}
+
+func startComposerModelCatalogLoad(
+	ctx context.Context,
+	catalog AgentModelCatalog,
+	provider string,
+	cwd string,
+	selectedModel string,
+) <-chan composerModelCatalogLoadResult {
+	result := make(chan composerModelCatalogLoadResult, 1)
+	go func() {
+		projection, ok := composerModelOptionsFromCatalog(ctx, catalog, provider, cwd, selectedModel)
+		result <- composerModelCatalogLoadResult{projection: projection, ok: ok}
+	}()
+	return result
+}
+
 func composerModelOptionsFromCatalog(ctx context.Context, catalog AgentModelCatalog, provider string, cwd string, selectedModel string) (composerModelCatalogProjection, bool) {
 	if catalog == nil {
 		return composerModelCatalogProjection{}, false

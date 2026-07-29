@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useState } from "react";
 import { useExternalStoreSnapshot } from "@tutti-os/ui-react-hooks";
 import {
   Button,
@@ -16,6 +17,7 @@ import {
   type AgentSetupStepStatus
 } from "../../../shared/agentEnv/AgentSetupDialog.tsx";
 import { useAgentTargetSetupController } from "../../../shared/agentEnv/agentTargetSetupController.tsx";
+import { useAgentHostApi } from "../../../agentActivityHost.tsx";
 import type { AgentHostAgentTargetSetupSnapshot } from "../../../host/agentHostApi.ts";
 import { useTranslation } from "../../../i18n/index.ts";
 import styles from "../AgentGUINode.styles.ts";
@@ -44,7 +46,10 @@ export function AgentTargetSetupGate({
     enabled,
     installPending,
     selectedAuthMethodId,
-    setup
+    setup,
+    terminalLoginAvailable,
+    terminalLoginError,
+    terminalLoginPhase
   } = state;
   const { snapshot, loading, failed } = setup;
   const authMethods = snapshot?.authMethods ?? [];
@@ -56,6 +61,13 @@ export function AgentTargetSetupGate({
     : authMethods.some((method) => method.id === account?.authMethodId)
       ? (account?.authMethodId ?? "")
       : (authMethods[0]?.id ?? "");
+  const effectiveAuthMethod = authMethods.find(
+    (method) => method.id === effectiveAuthMethodId
+  );
+  const terminalLoginCommand =
+    effectiveAuthMethod?.type === "terminal"
+      ? (effectiveAuthMethod.terminalCommand?.trim() ?? "") || null
+      : null;
 
   if (!enabled) {
     return <>{children}</>;
@@ -71,6 +83,13 @@ export function AgentTargetSetupGate({
     if (!effectiveAuthMethodId) return;
     await controller.authenticate(effectiveAuthMethodId);
   };
+  const terminalLoginLaunchAvailable =
+    terminalLoginAvailable && Boolean(terminalLoginCommand);
+  const handleTerminalLoginStart = async () => {
+    if (!terminalLoginCommand) return;
+    await controller.startTerminalLogin(terminalLoginCommand);
+  };
+  const handleTerminalLoginCancel = () => controller.cancelTerminalLogin();
   const actionRunning = isSetupActionRunning(snapshot?.action?.status);
   const actionFailed = isSetupActionFailed(snapshot?.action?.status);
   const installRetryAvailable =
@@ -237,7 +256,9 @@ export function AgentTargetSetupGate({
                   snapshot?.status === "ready" ? accountDetail : undefined
                 }
                 action={
-                  authenticationAvailable && authMethods.length > 0 ? (
+                  authenticationAvailable &&
+                  authMethods.length > 0 &&
+                  !terminalLoginCommand ? (
                     <Button
                       type="button"
                       size="sm"
@@ -250,9 +271,41 @@ export function AgentTargetSetupGate({
                           ? t("agentHost.agentGui.targetSetupReauthenticate")
                           : t("agentHost.agentGui.targetSetupAuthenticate")}
                     </Button>
+                  ) : terminalLoginCommand &&
+                    terminalLoginLaunchAvailable &&
+                    terminalLoginPhase !== "waiting" ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => void handleTerminalLoginStart()}
+                    >
+                      {t("agentHost.agentGui.targetSetupTerminalLoginStart")}
+                    </Button>
                   ) : undefined
                 }
               >
+                {terminalLoginCommand ? (
+                  <TerminalLoginGuide
+                    command={terminalLoginCommand}
+                    error={
+                      terminalLoginError === "timed_out"
+                        ? t(
+                            "agentHost.agentGui.targetSetupTerminalLoginTimedOut"
+                          )
+                        : terminalLoginError === "unavailable"
+                          ? t(
+                              "agentHost.agentGui.targetSetupTerminalLoginUnavailable"
+                            )
+                          : null
+                    }
+                    onCancelLogin={
+                      terminalLoginPhase === "waiting"
+                        ? handleTerminalLoginCancel
+                        : undefined
+                    }
+                    waiting={terminalLoginPhase === "waiting"}
+                  />
+                ) : null}
                 {snapshot?.status === "auth_required" &&
                 authMethods.length > 0 ? (
                   <label className="mt-2 flex flex-col gap-1 text-[12px] text-[var(--text-secondary)]">
@@ -305,6 +358,61 @@ export function AgentTargetSetupGate({
         </AgentSetupDialog>
       ) : null}
     </>
+  );
+}
+
+function TerminalLoginGuide({
+  command,
+  error,
+  onCancelLogin,
+  waiting = false
+}: {
+  command: string;
+  error?: string | null;
+  onCancelLogin?: () => void;
+  waiting?: boolean;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const { clipboard } = useAgentHostApi();
+  const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
+  const copied = copiedCommand === command;
+  const handleCopy = async () => {
+    try {
+      await clipboard.writeText(command);
+      setCopiedCommand(command);
+    } catch (error) {
+      // Clipboard unavailable; the command text remains selectable.
+      console.warn("agent-gui: clipboard copy failed", error);
+    }
+  };
+  return (
+    <div className="mt-2 flex flex-col gap-2">
+      <p className="m-0 text-[12px] text-[var(--text-secondary)]">
+        {waiting
+          ? t("agentHost.agentGui.targetSetupTerminalLoginWaiting")
+          : t("agentHost.agentGui.targetSetupTerminalAuthHint")}
+      </p>
+      <div className="flex items-start gap-2">
+        <code className="min-w-0 flex-1 select-all break-all rounded-md border border-[var(--line-2)] bg-[var(--background-fronted)] px-3 py-2 font-mono text-[11px] leading-5 text-[var(--text-primary)]">
+          {command}
+        </code>
+        <Button type="button" size="sm" onClick={() => void handleCopy()}>
+          {copied
+            ? t("agentHost.agentGui.targetSetupCommandCopied")
+            : t("agentHost.agentGui.targetSetupCopyCommand")}
+        </Button>
+      </div>
+      {waiting && onCancelLogin ? (
+        <div className="flex items-center gap-2">
+          <Button type="button" size="sm" onClick={onCancelLogin}>
+            {t("agentHost.agentGui.targetSetupTerminalLoginCancel")}
+          </Button>
+        </div>
+      ) : null}
+      {error ? (
+        <p className="m-0 text-[12px] text-[var(--state-danger)]">{error}</p>
+      ) : null}
+    </div>
   );
 }
 

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -120,8 +121,12 @@ type recordingIssueMutator struct {
 }
 
 type recordingIssueDetails struct {
-	detail workspaceissues.IssueDetail
-	err    error
+	detail                workspaceissues.IssueDetail
+	err                   error
+	resumeWorkspaceID     string
+	resumeIssueID         string
+	resumeSourceSessionID string
+	resumeErr             error
 }
 
 func (reader *recordingIssueDetails) GetIssueDetail(
@@ -130,6 +135,22 @@ func (reader *recordingIssueDetails) GetIssueDetail(
 	_ string,
 ) (workspaceissues.IssueDetail, error) {
 	return reader.detail, reader.err
+}
+
+func (reader *recordingIssueDetails) ResumeTuttiModeIssueExecution(
+	_ context.Context,
+	workspaceID string,
+	issueID string,
+	sourceSessionID string,
+) (workspaceissues.Issue, error) {
+	reader.resumeWorkspaceID = workspaceID
+	reader.resumeIssueID = issueID
+	reader.resumeSourceSessionID = sourceSessionID
+	if reader.resumeErr != nil {
+		return workspaceissues.Issue{}, reader.resumeErr
+	}
+	reader.detail.Issue.DispatchPaused = false
+	return reader.detail.Issue, nil
 }
 
 type recordingExecutionReads struct {
@@ -253,8 +274,8 @@ func TestProviderExposesSourceScopedIssueExecutionSnapshot(t *testing.T) {
 		&recordingExecutionReads{},
 	)
 	commands := provider.Commands()
-	if len(commands) != 9 {
-		t.Fatalf("commands = %#v, want execution snapshot command", commands)
+	if len(commands) != 10 {
+		t.Fatalf("commands = %#v, want execution snapshot and resume commands", commands)
 	}
 	command := commands[8]
 	if command.Capability.ID != "tutti-mode-plan.plan.issue.get" {
@@ -266,6 +287,17 @@ func TestProviderExposesSourceScopedIssueExecutionSnapshot(t *testing.T) {
 	}
 	if _, exists := properties["source-session-id"]; exists {
 		t.Fatalf("execution snapshot exposes untrusted source-session-id: %#v", properties)
+	}
+	resume := commands[9]
+	if resume.Capability.ID != "tutti-mode-plan.plan.issue.resume" {
+		t.Fatalf("resume command id = %q", resume.Capability.ID)
+	}
+	resumeProperties := resume.Capability.InputSchema["properties"].(map[string]any)
+	if _, ok := resumeProperties["issue-id"]; !ok {
+		t.Fatalf("resume properties = %#v", resumeProperties)
+	}
+	if _, exists := resumeProperties["source-session-id"]; exists {
+		t.Fatalf("resume exposes untrusted source-session-id: %#v", resumeProperties)
 	}
 }
 
@@ -924,6 +956,102 @@ func TestRunIssueGetReturnsAuthoritativeRecoverySnapshot(t *testing.T) {
 	}
 }
 
+func TestPausedIssueSnapshotAdvertisesResumeInsteadOfSchedule(t *testing.T) {
+	value := issueExecutionSnapshotJSON(
+		executionbiz.Aggregate{
+			Execution: executionbiz.Execution{
+				ID:                 "execution-paused",
+				IssueID:            "issue-paused",
+				Status:             executionbiz.StatusAwaitingMain,
+				GraphRevision:      3,
+				ActiveCheckpointID: "checkpoint-paused",
+			},
+			Checkpoints: []executionbiz.Checkpoint{{
+				ID:            "checkpoint-paused",
+				Kind:          executionbiz.CheckpointKindTaskSettled,
+				Status:        executionbiz.CheckpointStatusActive,
+				GraphRevision: 3,
+			}},
+		},
+		workspaceissues.IssueDetail{
+			Issue: workspaceissues.Issue{DispatchPaused: true},
+			Tasks: []workspaceissues.Task{{
+				TaskID: "task-ready", Status: workspaceissues.StatusNotStarted,
+				AgentTargetID: "local:codex",
+			}},
+		},
+	)
+	actions := value["allowedActions"].([]string)
+	if value["dispatchPaused"] != true ||
+		slices.Contains(actions, "plan issue schedule") ||
+		!slices.Contains(actions, "plan issue resume") ||
+		!strings.Contains(
+			value["recoveryHint"].(string),
+			"tutti plan issue resume --issue-id issue-paused --json",
+		) {
+		t.Fatalf("paused execution snapshot = %#v", value)
+	}
+}
+
+func TestRunIssueResumeDerivesSourceAndReturnsRefreshedSnapshot(t *testing.T) {
+	details := &recordingIssueDetails{detail: workspaceissues.IssueDetail{
+		Issue: workspaceissues.Issue{DispatchPaused: true},
+		Tasks: []workspaceissues.Task{{
+			TaskID: "task-ready", Status: workspaceissues.StatusNotStarted,
+			AgentTargetID: "local:codex",
+		}},
+	}}
+	executions := &recordingExecutionReads{aggregate: executionbiz.Aggregate{
+		Execution: executionbiz.Execution{
+			ID:                 "execution-resume",
+			IssueID:            "issue-resume",
+			SourceSessionID:    "source-resume",
+			Status:             executionbiz.StatusAwaitingMain,
+			GraphRevision:      2,
+			ActiveCheckpointID: "checkpoint-resume",
+		},
+		Checkpoints: []executionbiz.Checkpoint{{
+			ID:            "checkpoint-resume",
+			Kind:          executionbiz.CheckpointKindInitialSchedule,
+			Status:        executionbiz.CheckpointStatusActive,
+			GraphRevision: 2,
+		}},
+	}}
+	provider := Provider{
+		issueDetails:   details,
+		executionReads: executions,
+		resumes:        details,
+	}
+	result, err := provider.runIssueResume(
+		context.Background(),
+		framework.InvokeContext{
+			WorkspaceID: "workspace-resume",
+			Request: cliservice.InvokeRequest{Context: cliservice.InvokeContext{
+				AgentSessionID: " source-resume ",
+			}},
+		},
+		issueResumeInput{IssueID: " issue-resume "},
+	)
+	if err != nil {
+		t.Fatalf("runIssueResume() error = %v", err)
+	}
+	if details.resumeWorkspaceID != "workspace-resume" ||
+		details.resumeIssueID != "issue-resume" ||
+		details.resumeSourceSessionID != "source-resume" {
+		t.Fatalf(
+			"resume scope = %q/%q/%q",
+			details.resumeWorkspaceID,
+			details.resumeIssueID,
+			details.resumeSourceSessionID,
+		)
+	}
+	value := result.(map[string]any)
+	if value["dispatchPaused"] != false ||
+		!slices.Contains(value["allowedActions"].([]string), "plan issue schedule") {
+		t.Fatalf("resumed snapshot = %#v", value)
+	}
+}
+
 func TestRunIssueGetRejectsDifferentSourceSessionWithStableReason(t *testing.T) {
 	provider := Provider{
 		issueDetails: &recordingIssueDetails{},
@@ -1003,6 +1131,20 @@ func TestScheduleRejectionCarriesStableReasonAndHint(t *testing.T) {
 		cliservice.InvokeErrorReason(err) != string(executionbiz.RejectionMissingAgentTarget) ||
 		!strings.Contains(err.Error(), "agentTargetId") {
 		t.Fatalf("agentScheduleError() = %v, reason = %q", err, cliservice.InvokeErrorReason(err))
+	}
+	paused := agentScheduleError(
+		executionbiz.Reject(
+			executionbiz.ErrScheduleRejected,
+			executionbiz.RejectionDispatchPaused,
+			"",
+		),
+		"issue-paused",
+	)
+	if !strings.Contains(
+		paused.Error(),
+		"tutti plan issue resume --issue-id issue-paused --json",
+	) {
+		t.Fatalf("dispatch-paused hint = %v", paused)
 	}
 }
 

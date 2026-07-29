@@ -232,6 +232,9 @@ import type {
   GetAgentProviderComposerOptionsData,
   GetAgentProviderComposerOptionsErrors,
   GetAgentProviderComposerOptionsResponses,
+  GetAgentProviderRuntimeCandidatesData,
+  GetAgentProviderRuntimeCandidatesErrors,
+  GetAgentProviderRuntimeCandidatesResponses,
   GetAgentProviderStatusesData,
   GetAgentProviderStatusesErrors,
   GetAgentProviderStatusesResponses,
@@ -595,6 +598,9 @@ import type {
   SetAgentModelBindingData,
   SetAgentModelBindingErrors,
   SetAgentModelBindingResponses,
+  SetAgentProviderRuntimeSelectionData,
+  SetAgentProviderRuntimeSelectionErrors,
+  SetAgentProviderRuntimeSelectionResponses,
   SetAgentSessionAutomationRuleOverrideData,
   SetAgentSessionAutomationRuleOverrideErrors,
   SetAgentSessionAutomationRuleOverrideResponses,
@@ -3215,6 +3221,46 @@ export const getAgentProviderComposerOptions = <
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/agent-providers/{provider}/composer-options",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Discover and validate local runtime candidates for an agent provider
+ */
+export const getAgentProviderRuntimeCandidates = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetAgentProviderRuntimeCandidatesData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetAgentProviderRuntimeCandidatesResponses,
+    GetAgentProviderRuntimeCandidatesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/agent-providers/{provider}/runtime-candidates",
+    ...options
+  });
+
+/**
+ * Select one currently discovered runtime candidate
+ */
+export const setAgentProviderRuntimeSelection = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<SetAgentProviderRuntimeSelectionData, ThrowOnError>
+) =>
+  (options.client ?? client).put<
+    SetAgentProviderRuntimeSelectionResponses,
+    SetAgentProviderRuntimeSelectionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/agent-providers/{provider}/runtime-selection",
     ...options,
     headers: {
       "Content-Type": "application/json",

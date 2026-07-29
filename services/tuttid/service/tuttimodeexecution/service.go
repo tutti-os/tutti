@@ -90,6 +90,9 @@ type WakeStore interface {
 	GetTuttiModeExecutionWake(context.Context, string, string) (executionbiz.Wake, bool, error)
 	ClaimTuttiModeExecutionWake(context.Context, string, string, string, time.Time, time.Time) (bool, error)
 	ReleaseTuttiModeExecutionWake(context.Context, string, string, string, string, time.Time) error
+	RotateTuttiModeExecutionWakeAfterCanceledDelivery(
+		context.Context, string, string, string, string, time.Time,
+	) error
 	MarkTuttiModeExecutionWakeDispatched(
 		context.Context, string, string, string, string, string, time.Time, time.Time,
 	) error

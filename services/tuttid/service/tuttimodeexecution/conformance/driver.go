@@ -449,6 +449,9 @@ type Driver interface {
 	CommitCanonicalSourceActivityDuringNextWakeSend(
 		context.Context, SourceSessionActivity, string,
 	)
+	PauseIssueDuringNextWakeSend(context.Context, string, string, string)
+	ResumeIssueDispatch(context.Context, string, string, string) error
+	FailNextAutomationTurnCancellation()
 	StopSourceSessionDuringNextWakeSend(string, string)
 	RunWatchdog(context.Context, string, string) error
 	// StartupRecoverWatchdog must construct a fresh worker over the same

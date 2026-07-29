@@ -73,7 +73,6 @@ func testWorkspaceAgentView() workspaceagentbiz.View {
 func TestCreateWorkspaceAgentMapsRequestAndProjection(t *testing.T) {
 	service := &stubWorkspaceAgentService{view: testWorkspaceAgentView()}
 	api := DaemonAPI{
-		PreferencesService:    gateTestPreferences(map[string]bool{WorkspaceAgentsFeatureFlag: true}, nil),
 		WorkspaceAgentService: service,
 	}
 	response, err := api.CreateWorkspaceAgent(context.Background(), tuttigenerated.CreateWorkspaceAgentRequestObject{

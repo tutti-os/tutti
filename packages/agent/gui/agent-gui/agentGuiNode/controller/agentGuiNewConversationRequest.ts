@@ -1,4 +1,5 @@
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
+import type { AgentGUIConversationUserProject } from "../model/agentGuiConversationProjectResolver";
 import { resolveConversationSummaryById } from "./useAgentConversationSelection";
 
 export interface AgentGUINewConversationRequestOptions {
@@ -16,6 +17,7 @@ export function requestAgentGUINewConversation(input: {
   activeConversationId: string | null;
   conversations: readonly AgentGUIConversationSummary[];
   transientConversation: AgentGUIConversationSummary | null;
+  userProjects: readonly AgentGUIConversationUserProject[];
   options?: AgentGUINewConversationRequestOptions;
 }): boolean {
   if (input.options && "projectPath" in input.options) {
@@ -25,7 +27,8 @@ export function requestAgentGUINewConversation(input: {
   const selection = resolveAgentGUINewConversationProjectSelection({
     activeConversationId: input.activeConversationId,
     conversations: input.conversations,
-    transientConversation: input.transientConversation
+    transientConversation: input.transientConversation,
+    userProjects: input.userProjects
   });
   if (selection.kind === "unresolved") {
     return false;
@@ -45,6 +48,7 @@ export function resolveAgentGUINewConversationProjectSelection(input: {
   activeConversationId: string | null;
   conversations: readonly AgentGUIConversationSummary[];
   transientConversation: AgentGUIConversationSummary | null;
+  userProjects: readonly AgentGUIConversationUserProject[];
 }): AgentGUINewConversationProjectSelection {
   if (input.activeConversationId === null) {
     return { kind: "preserve_home" };
@@ -61,9 +65,14 @@ export function resolveAgentGUINewConversationProjectSelection(input: {
   if (sectionKey === "conversations") {
     return { kind: "replace", projectPath: null };
   }
-  const projectPath = activeConversation.cwd.trim();
-  if (!sectionKey || !projectPath) {
+  if (!sectionKey) {
     return { kind: "unresolved" };
   }
-  return { kind: "replace", projectPath };
+  const projectPath =
+    input.userProjects
+      .find((project) => project.sectionKey?.trim() === sectionKey)
+      ?.path.trim() ?? "";
+  return projectPath
+    ? { kind: "replace", projectPath }
+    : { kind: "unresolved" };
 }

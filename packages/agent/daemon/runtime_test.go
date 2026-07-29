@@ -30,6 +30,30 @@ func TestNewRuntimeCreatesDefaultController(t *testing.T) {
 	}
 }
 
+func TestNewRuntimeAppliesCommandNetworkAccessPolicyToDefaultAppServerAdapters(t *testing.T) {
+	t.Parallel()
+
+	policyProviders := make(map[string]int)
+	runtime, err := NewRuntime(Config{
+		ProcessTransport: NewLocalProcessTransport(),
+		HostMetadata:     testHostMetadata(),
+		CommandNetworkAccessPolicy: func(provider string) bool {
+			policyProviders[provider]++
+			return provider == agentruntime.ProviderTuttiAgent
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRuntime() error = %v", err)
+	}
+	t.Cleanup(runtime.Close)
+
+	if policyProviders[agentruntime.ProviderCodex] != 1 ||
+		policyProviders[agentruntime.ProviderTuttiAgent] != 1 ||
+		len(policyProviders) != 2 {
+		t.Fatalf("command network access policy providers = %#v", policyProviders)
+	}
+}
+
 func TestNewRuntimeRequiresHostMetadataForDefaultAdapters(t *testing.T) {
 	t.Parallel()
 

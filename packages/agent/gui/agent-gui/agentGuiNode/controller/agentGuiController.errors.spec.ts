@@ -8,6 +8,22 @@ import {
 describe("getAgentGUIErrorMessage", () => {
   afterEach(() => setAgentGuiI18nTestLocale("en"));
 
+  it("localizes unavailable configuration dependencies", () => {
+    setAgentGuiI18nTestLocale("zh-CN");
+
+    expect(
+      getAgentGUIErrorMessage({
+        reason: "agent.config_dependency_unavailable",
+        params: {
+          provider: "codex",
+          configKey: "model_instructions_file",
+          dependencyPath: "instructions.md",
+          failureKind: "missing"
+        }
+      })
+    ).toBe("Codex 的配置引用了当前不可用的文件，请检查本机配置后重试");
+  });
+
   it("localizes the structured session title limit error", () => {
     setAgentGuiI18nTestLocale("zh-CN");
 

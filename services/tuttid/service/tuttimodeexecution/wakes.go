@@ -461,11 +461,37 @@ func (service Service) DispatchClaimedMainWake(
 			"source activity advanced the wake deadline during delivery",
 		)
 	}
+	if service.ArchiveAutomationTurns == nil {
+		return finalizeErr
+	}
 	cancelErr := service.cancelAutomationTurn(
 		finalizeCtx, wake.WorkspaceID,
 		delivery.CanonicalSessionID, delivery.CanonicalTurnID,
 	)
-	return errors.Join(finalizeErr, cancelErr)
+	if cancelErr != nil {
+		return errors.Join(finalizeErr, cancelErr)
+	}
+	if !found ||
+		current.Status != executionbiz.WakeStatusLeased ||
+		current.LeaseOwner != wake.LeaseOwner {
+		return finalizeErr
+	}
+	if current.LeaseExpiresAt.IsZero() ||
+		!current.LeaseExpiresAt.After(finalizedAt) {
+		return finalizeErr
+	}
+	rotateErr := store.RotateTuttiModeExecutionWakeAfterCanceledDelivery(
+		finalizeCtx,
+		current.WorkspaceID,
+		current.ID,
+		current.LeaseOwner,
+		"canonical Turn canceled after wake dispatch finalization was rejected",
+		service.now(),
+	)
+	if rotateErr != nil {
+		return errors.Join(finalizeErr, rotateErr)
+	}
+	return nil
 }
 
 func (service Service) releaseClaimedMainWake(

@@ -500,7 +500,9 @@ func (c *acpClient) readLoop() {
 func (c *acpClient) setStderrTail(tail []byte) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.stderrTail = append(c.stderrTail[:0], tail...)
+	// Process frames can split UTF-8 runes. Diagnostics must remain valid text
+	// even after the bounded tail discards a prefix.
+	c.stderrTail = []byte(strings.ToValidUTF8(string(tail), "�"))
 }
 
 func (c *acpClient) setStdoutTail(tail []byte) {
@@ -760,6 +762,11 @@ func acpErrorSummary(err *acpError) string {
 		message = fmt.Sprintf("code %d", err.Code)
 	}
 	data := strings.TrimSpace(string(err.Data))
+	// A JSON null payload carries no information; rendering it as
+	// "data: null" only adds noise to user-visible error text.
+	if data == "null" {
+		data = ""
+	}
 	if data != "" {
 		return fmt.Sprintf("%s (code %d, data: %s)", message, err.Code, truncateACPLogValue(data, 1200))
 	}

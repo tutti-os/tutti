@@ -20,6 +20,9 @@ const (
 	CodexErrAuthRequired CodexErrorCode = "CODEX_AUTH_REQUIRED"
 	// CodexErrNetwork: an install or request failed for a network reason.
 	CodexErrNetwork CodexErrorCode = "CODEX_NETWORK"
+	// CodexErrRuntimeBug: app-server failed after the supported CLI and its
+	// package/native-binary evidence were verified.
+	CodexErrRuntimeBug CodexErrorCode = "CODEX_RUNTIME_BUG"
 )
 
 // classifyCodexRuntimeError maps a raw error/message string from spawning or

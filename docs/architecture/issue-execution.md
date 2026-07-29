@@ -28,6 +28,27 @@ supersession, dependency readiness, allowed actions, and recovery guidance.
 The projection is scoped by trusted Agent Session context; callers cannot
 supply a source Session ID.
 
+`dispatchPaused` is also a Tutti automation delivery gate, not only a generic
+task-launch gate. While it is true, watchdog sweeps retain existing checkpoint
+and wake history but do not create a later wake sequence, list or claim a
+prepared main wake, or finalize a wake that raced with the pause. Resuming
+therefore continues from the same active checkpoint and graph revision instead
+of inventing replacement orchestration state. The original source Agent may
+resume through `plan issue resume`; the compatibility form
+`issue update --dispatch-paused=false` routes to the same source-scoped product
+control for Sessions whose frozen command snapshot predates the dedicated
+command. Neither path weakens the generic managed-Issue mutation guard.
+
+There is one delivery-race exception to retaining the exact wake identity. If
+pause wins the final dispatch CAS after Agent Host has already accepted a
+canonical Turn, Tutti cancels that Turn. Once cancellation succeeds, it
+atomically marks the leased wake canceled and prepares the next wake sequence
+under the same active checkpoint. The new `clientSubmitId` is required because
+Host idempotency must never execute an already accepted submit identity twice.
+The replacement wake remains hidden while paused and is immediately eligible
+after source-scoped resume. If Turn cancellation fails, Tutti retains the lease
+until expiry rather than risk overlapping Turns.
+
 Graph transition semantics belong to
 `services/tuttid/biz/tuttimodeexecution`. That business layer applies
 presence-aware updates, sparse rework inheritance, logical supersession,
@@ -46,6 +67,19 @@ Generic Issue dispatch is split into two phases:
 2. After releasing the lock, the Issue run launcher prepares any worktree and
    creates the Agent Session. A launch failure settles the claimed Run through
    the normal idempotent completion command.
+
+The source planning Session supplies two independent launch facts: its working
+directory is the fallback execution base, while its canonical rail placement
+is the delegate Session's logical project/conversation ownership. Preparing an
+isolated task worktree changes only the execution directory. Issue dispatch
+must carry the source `RailPlacement` unchanged into the Agent Host create
+contract and must never infer placement from the temporary worktree path.
+When an Issue names a source Session, that projection is a launch
+precondition: an unavailable/deleted source leaves the Task unclaimed for a
+later reconcile instead of creating a detached Run and Session. Each dispatch
+pass resolves the source once, so worktree planning and Agent creation consume
+the same immutable source snapshot. A project placement with an empty runtime
+cwd falls back to its canonical project path.
 
 Stopping is also split:
 
@@ -166,6 +200,12 @@ that same checkpoint, each with the normal deterministic wake and
 `clientSubmitID` identity. A valid command acknowledges every wake for the
 resolved checkpoint; later inactivity creates a new watchdog checkpoint
 rather than another generation on resolved history.
+
+An Issue dispatch pause freezes this wake loop without resolving or canceling
+its active checkpoint. The due deadline may remain in the past, but no wake
+sequence is materialized or delivered until the source-scoped resume control
+clears the durable pause. The next worker sweep then continues normal recovery
+from the retained operation.
 
 Source activity that arrives while a prepared or leased watchdog wake is
 suppressed moves that same durable operation to the new five-minute deadline;

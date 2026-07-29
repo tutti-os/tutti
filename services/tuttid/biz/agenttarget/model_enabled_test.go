@@ -2,14 +2,14 @@ package agenttarget
 
 import "testing"
 
-func TestDefaultSystemTargetsDisableTuttiAgent(t *testing.T) {
+func TestDefaultSystemTargetsEnableTuttiAgent(t *testing.T) {
 	targets := DefaultSystemTargets(1)
 	for _, target := range targets {
 		if target.ID != IDLocalTuttiAgent {
 			continue
 		}
-		if target.Enabled {
-			t.Fatal("Tutti Agent target is enabled by default, want disabled")
+		if !target.Enabled {
+			t.Fatal("Tutti Agent target is disabled by default, want enabled")
 		}
 		return
 	}

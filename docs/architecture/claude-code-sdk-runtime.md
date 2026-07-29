@@ -150,6 +150,56 @@ result during resume, the new generation consumes that tail without attaching
 it to the new canonical Turn. Session close remains permanent and closes the
 current generation without creating a resumable successor.
 
+Background-task lifecycle uses the SDK's `background_tasks_changed` system
+message as a level signal. Its `tasks` array fully replaces the previous live
+set. An empty set means the background children have quiesced; it does not mean
+the root Turn is complete. When a successful ordinary root result arrives while
+a background continuation is already pending, the sidecar retains the original
+root Turn until session idle instead of emitting a terminal/start pair. If the
+root result already settled before the pending signal, the sidecar reserves a
+synthetic continuation. It remains in the existing running phase,
+and results with `origin.kind = task-notification` confirm background
+follow-up output without settling it by notification/result count. The SDK's
+`session_state_changed: idle` event is the authoritative turn-over edge after
+the held-back result and background-agent loop drain. The sidecar does not
+start a post-result settlement timer: queued follow-ups may legitimately begin
+several seconds apart, and interrupting that queue fabricates provider errors.
+If root output does not begin within 30 seconds, the sidecar emits the
+`continuation_delayed` warning, completes the synthetic reservation with
+`background_agent_continuation_timeout`, interrupts the pending SDK query, and
+rejects that continuation's late output so it cannot attach to a later Turn.
+
+Exact task terminal events and the level signal are not ordered by contract.
+The sidecar therefore waits for a short quiescence grace after the live set
+becomes empty. Exact terminal edges received during that window win; after the
+window, the daemon marks only still-unresolved asynchronous child Turns as
+interrupted. Background-level diagnostics record aggregate counts for tasks
+observed by the SDK level signal and exact delegated-task states known to Tutti.
+This makes missing terminal edges visible in logs while leaving the GUI's
+existing running/processing presentation unchanged.
+
+The background-task level tracker owns its quiescence timer and continuation
+reservation state. Query cancellation clears both before interrupting the SDK.
+A failed or canceled root result fences later empty-level and task-notification
+signals from opening a synthetic continuation, while those signals may still
+report diagnostics or settle their exact child lifecycle.
+
+The daemon resolves one owner for each Claude tool event before both closed-Turn
+admission and activity projection. A delegation call belongs to the Session
+that launched the child; an ordinary tool executed by a child belongs to that
+child. Settling the child therefore cannot suppress a later completion of its
+still-open parent Agent call, and repeated parent updates cannot move a terminal
+child back to running.
+
+The SDK may also report one completed child twice: first as `task_updated` with
+only its task description, then as `task_notification` with the actual result.
+The first edge settles the child lifecycle; the later notification updates the
+same child assistant-message snapshot and marks its root continuation pending.
+Several queued notifications may be coalesced into fewer follow-up results, so
+they share the currently active root provider Turn or one reserved synthetic
+Turn. Result origin identifies those follow-ups; session idle, rather than a
+cardinality comparison, terminates the shared continuation.
+
 ## Protocol and compatibility
 
 The daemon and sidecar exchange newline-delimited JSON over standard input and

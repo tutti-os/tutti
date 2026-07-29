@@ -91,6 +91,7 @@ const (
 	ReasonWorkspaceAgentSessionTitleTooLong              = "workspace_agent_session_title_too_long"
 	ReasonWorkspaceAgentSessionUnavailable               = "workspace_agent_session_service_unavailable"
 	ReasonUnsupportedPermissionModeID                    = "unsupported_permission_mode_id"
+	ReasonAgentConfigDependencyUnavailable               = "agent.config_dependency_unavailable"
 	ReasonAgentProviderUnavailable                       = "agent_provider_unavailable"
 	ReasonAgentRuntimeOperationReconciling               = "agent_runtime_operation_reconciling"
 	ReasonAgentRuntimeOperationFailed                    = "agent_runtime_operation_failed"
@@ -314,6 +315,23 @@ func AgentProviderUnavailable(err *agentservice.ProviderUnavailableError) *Proto
 	)
 }
 
+func AgentConfigDependencyUnavailable(err *runtimeprep.ConfigDependencyUnavailableError) *ProtocolError {
+	params := map[string]any{}
+	if err != nil {
+		params["provider"] = strings.TrimSpace(err.Provider)
+		params["configKey"] = strings.TrimSpace(err.ConfigKey)
+		params["dependencyPath"] = strings.TrimSpace(err.DependencyPath)
+		params["failureKind"] = strings.TrimSpace(err.FailureKind)
+	}
+	return New(
+		StatusWorkspaceOperationFailed,
+		tuttigenerated.WorkspaceOperationFailed,
+		ReasonAgentConfigDependencyUnavailable,
+		WithCause(err),
+		WithParams(params),
+	)
+}
+
 func PreferencesOperationFailed(options ...Option) *ProtocolError {
 	return New(StatusPreferencesOperationFailed, tuttigenerated.PreferencesOperationFailed, ReasonPreferencesOperationFailed, options...)
 }
@@ -358,6 +376,10 @@ func Classify(err error) *ProtocolError {
 	var providerUnavailableErr *agentservice.ProviderUnavailableError
 	if errors.As(err, &providerUnavailableErr) {
 		return AgentProviderUnavailable(providerUnavailableErr)
+	}
+	var configDependencyErr *runtimeprep.ConfigDependencyUnavailableError
+	if errors.As(err, &configDependencyErr) {
+		return AgentConfigDependencyUnavailable(configDependencyErr)
 	}
 	var invalidModelErr *agentservice.InvalidModelError
 	if errors.As(err, &invalidModelErr) {

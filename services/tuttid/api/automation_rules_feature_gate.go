@@ -14,8 +14,7 @@ const AutomationRulesFeatureFlag = "lab.automationRules"
 // automationRulesWritesEnabled reports whether automation rule and
 // collaboration run write routes are enabled. The lab flag defaults off:
 // writes are rejected unless the flag is explicitly true, while reads and
-// already-established rules and runs keep working. Mirrors
-// workspaceAgentsWritesEnabled.
+// already-established rules and runs keep working.
 func (api DaemonAPI) automationRulesWritesEnabled(ctx context.Context) bool {
 	if api.PreferencesService == nil {
 		return false

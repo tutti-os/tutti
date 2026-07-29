@@ -31,6 +31,9 @@ func TestCodexComposerProfileComesFromProviderDescriptor(t *testing.T) {
 	if profile.CapabilityCatalogKind != providerregistry.CapabilityCatalogKindCodexAppServer {
 		t.Fatalf("capability catalog profile = %#v", profile)
 	}
+	if !profile.Behavior.NativePluginCatalogAuthoritative {
+		t.Fatalf("composer behavior = %#v", profile.Behavior)
+	}
 }
 
 func TestClaudeCodeComposerProfileComesFromProviderDescriptor(t *testing.T) {

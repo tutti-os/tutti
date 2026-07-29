@@ -161,6 +161,7 @@ test("notification-reserved synthetic turn times out and rejects late continuati
 
   assert.equal(timeouts.count, 1);
   assert.equal(lifecycle.activeId, "");
+  assert.ok(events.some((event) => event.type === "continuation_delayed"));
   assert.deepEqual(events.at(-1), {
     type: "turn_completed",
     payload: {

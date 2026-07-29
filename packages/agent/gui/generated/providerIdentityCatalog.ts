@@ -8,6 +8,7 @@ export const generatedProviderIdentityCatalog = [
     localeKey: "agentHost.agentGui.conversationFilterCodex",
     aliases: [],
     modelPlanProtocol: "openai",
+    statusKind: "codex_cli",
     target: {
       id: "local:codex",
       launchRefType: "local_cli",
@@ -36,6 +37,7 @@ export const generatedProviderIdentityCatalog = [
     localeKey: "agentHost.agentGui.conversationFilterClaudeCode",
     aliases: ["claude", "claude code"],
     modelPlanProtocol: "anthropic",
+    statusKind: "claude_cli",
     target: {
       id: "local:claude-code",
       launchRefType: "local_cli",
@@ -64,6 +66,7 @@ export const generatedProviderIdentityCatalog = [
     localeKey: "agentHost.agentGui.conversationFilterCursor",
     aliases: ["cursor-agent", "cursor agent", "cursor-cli"],
     modelPlanProtocol: "",
+    statusKind: "generic_cli",
     target: {
       id: "local:cursor",
       launchRefType: "local_cli",
@@ -92,10 +95,11 @@ export const generatedProviderIdentityCatalog = [
     localeKey: "agentHost.agentGui.conversationFilterTutti",
     aliases: ["tutti agent"],
     modelPlanProtocol: "openai",
+    statusKind: "generic_cli",
     target: {
       id: "local:tutti-agent",
       launchRefType: "local_cli",
-      enabled: false,
+      enabled: true,
       sortOrder: 40
     },
     desktop: {
@@ -120,6 +124,7 @@ export const generatedProviderIdentityCatalog = [
     localeKey: "agentHost.agentGui.conversationFilterOpenCode",
     aliases: ["open-code", "open code", "opencode-ai", "opencode_ai"],
     modelPlanProtocol: "openai",
+    statusKind: "opencode_cli",
     target: {
       id: "local:opencode",
       launchRefType: "local_cli",
@@ -148,6 +153,7 @@ export const generatedProviderIdentityCatalog = [
     localeKey: "agentHost.agentGui.conversationFilterNexight",
     aliases: ["tutti"],
     modelPlanProtocol: "",
+    statusKind: "generic_cli",
     target: {
       id: "local:nexight",
       launchRefType: "local_cli",
@@ -176,6 +182,7 @@ export const generatedProviderIdentityCatalog = [
     localeKey: "agentHost.agentGui.conversationFilterOpenClaw",
     aliases: ["open-claw"],
     modelPlanProtocol: "",
+    statusKind: "generic_cli",
     target: {
       id: "local:openclaw",
       launchRefType: "local_cli",

@@ -1,11 +1,15 @@
 import {
   selectSessionMessages,
   selectSessionMessageWindow,
+  type AgentSessionFamilySnapshot,
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
 import type { RefObject } from "react";
 import { useCallback } from "react";
-import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
+import {
+  useAgentActivitySessionMessages,
+  type AgentActivityRuntime
+} from "../../../agentActivityRuntime";
 import { useAgentSessionControllerState } from "../../../contexts/workspace/presentation/renderer/agentSessions/useAgentSessionControllerState";
 import type { AgentGUINodeData } from "../../../types";
 import {
@@ -22,6 +26,7 @@ export function useAgentGUISessionDetailTransport(input: {
   agentActivityRuntimeOrigin: string;
   dataRef: RefObject<AgentGUINodeData>;
   isMountedRef: RefObject<boolean>;
+  sessionFamily: AgentSessionFamilySnapshot;
   sessionEngine: AgentSessionEngine;
   workspaceId: string;
 }) {
@@ -32,6 +37,7 @@ export function useAgentGUISessionDetailTransport(input: {
     agentActivityRuntimeOrigin,
     dataRef,
     isMountedRef,
+    sessionFamily,
     sessionEngine,
     workspaceId
   } = input;
@@ -47,6 +53,14 @@ export function useAgentGUISessionDetailTransport(input: {
     sessionEngine,
     (engineState) => selectSessionMessages(engineState, activeConversationId)
   );
+  const projectedSessionMessagesById = useAgentActivitySessionMessages(
+    workspaceId,
+    [
+      activeConversationId,
+      sessionFamily.rootSession?.agentSessionId,
+      ...sessionFamily.childSessions.map((session) => session.agentSessionId)
+    ]
+  );
   const activeCanonicalWindow = useEngineSelector(
     sessionEngine,
     (engineState) =>
@@ -60,11 +74,13 @@ export function useAgentGUISessionDetailTransport(input: {
   const resolveSessionMessages = useCallback(
     (agentSessionId: string | null | undefined) => {
       const normalized = agentSessionId?.trim() ?? "";
-      return normalized
-        ? selectSessionMessages(sessionEngine.getSnapshot(), normalized)
-        : [];
+      if (!normalized) return [];
+      return (
+        projectedSessionMessagesById[normalized] ??
+        selectSessionMessages(sessionEngine.getSnapshot(), normalized)
+      );
     },
-    [sessionEngine]
+    [projectedSessionMessagesById, sessionEngine]
   );
   const loadSessionState = useCallback(
     (agentSessionId: string) => {
@@ -131,6 +147,7 @@ export function useAgentGUISessionDetailTransport(input: {
     loadSelectedConversationMessages: paging.loadInitialMessages,
     loadSessionState,
     markSelectedConversationDetailPending,
+    projectedSessionMessagesById,
     resolveSessionMessages,
     setActiveMessageSession: paging.setActiveSession,
     sessionViewRef

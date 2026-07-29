@@ -21,13 +21,52 @@ import (
 )
 
 type sequentialSessionCreatorRecorder struct {
-	inputs []agentservice.CreateSessionInput
+	inputs   []agentservice.CreateSessionInput
+	launches []IssueRunLaunch
 }
 
 func (r *sequentialSessionCreatorRecorder) Launch(_ context.Context, launch IssueRunLaunch) error {
 	input := createSessionInputFromLaunch(launch)
+	r.launches = append(r.launches, launch)
 	r.inputs = append(r.inputs, input)
 	return nil
+}
+
+type staticIssueSourceSessionContextResolver struct {
+	context IssueSourceSessionContext
+	ok      bool
+}
+
+func (r staticIssueSourceSessionContextResolver) ResolveSourceSessionContext(
+	_ string,
+	_ string,
+) (IssueSourceSessionContext, bool) {
+	return r.context, r.ok
+}
+
+type countingIssueSourceSessionContextResolver struct {
+	context IssueSourceSessionContext
+	calls   int
+}
+
+func (r *countingIssueSourceSessionContextResolver) ResolveSourceSessionContext(
+	_ string,
+	_ string,
+) (IssueSourceSessionContext, bool) {
+	r.calls++
+	return r.context, r.calls == 1
+}
+
+func availableIssueSourceSessionContextResolver() IssueSourceSessionContextResolver {
+	return staticIssueSourceSessionContextResolver{
+		context: IssueSourceSessionContext{
+			RailPlacement: &IssueRunRailPlacement{
+				Kind:       "conversations",
+				SectionKey: "conversations",
+			},
+		},
+		ok: true,
+	}
 }
 
 func createSessionInputFromLaunch(launch IssueRunLaunch) agentservice.CreateSessionInput {
@@ -70,9 +109,10 @@ func TestIssueSequentialExecutionDispatchesSuccessorOnlyAfterUserAcceptance(t *t
 	}
 	creator := &sequentialSessionCreatorRecorder{}
 	service := IssueManagerService{
-		RunLauncher:       creator,
-		Store:             store,
-		AgentTargetReader: store,
+		RunLauncher:                  creator,
+		Store:                        store,
+		AgentTargetReader:            store,
+		SourceSessionContextResolver: availableIssueSourceSessionContextResolver(),
 	}
 	detail, err := service.CreateIssueFromPlan(ctx, "workspace-sequential", CreateIssueManagerIssueFromPlanInput{
 		Issue: CreateIssueManagerIssueInput{
@@ -843,6 +883,93 @@ func TestSequentialIssueRunsParallelizableTasksInIsolatedWorktrees(t *testing.T)
 	}
 }
 
+func TestSequentialIssueWorktreeDelegatesKeepSourceProjectRailPlacement(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := initIssueTaskGitRepo(t)
+	service, creator, worktreeRoot := newParallelizableDispatchService(t, "ws-par-source-placement")
+	sectionKey := "project:" + repo
+	sourcePlacement := &IssueRunRailPlacement{
+		Kind:        "project",
+		ProjectPath: repo,
+		SectionKey:  sectionKey,
+	}
+	resolver := &countingIssueSourceSessionContextResolver{
+		context: IssueSourceSessionContext{
+			WorkingDirectory: repo,
+			RailPlacement:    sourcePlacement,
+		},
+	}
+	service.SourceSessionContextResolver = resolver
+	if _, err := service.CreateIssueFromPlan(ctx, "ws-par-source-placement", CreateIssueManagerIssueFromPlanInput{
+		Issue: CreateIssueManagerIssueInput{
+			IssueID:             "issue-source-placement",
+			TopicID:             workspaceissues.DefaultTopicID,
+			Title:               "Source placement issue",
+			PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
+			SourceSessionID:     "planning-session",
+			SequentialExecution: true,
+		},
+		Tasks: []CreateIssueManagerTaskItemInput{
+			{TaskID: "p1", Title: "First parallel", AgentTargetID: agenttargetbiz.IDLocalCodex, Parallelizable: true},
+			{TaskID: "p2", Title: "Second parallel", AgentTargetID: agenttargetbiz.IDLocalCodex, Parallelizable: true},
+		},
+	}); err != nil {
+		t.Fatalf("CreateIssueFromPlan() error = %v", err)
+	}
+	if len(creator.launches) != 2 {
+		t.Fatalf("launches = %d, want both parallelizable tasks", len(creator.launches))
+	}
+	for _, launch := range creator.launches {
+		if launch.ExecutionDirectory == repo || !strings.HasPrefix(launch.ExecutionDirectory, worktreeRoot) {
+			t.Fatalf(
+				"launch execution directory = %q, want isolated worktree under %q",
+				launch.ExecutionDirectory,
+				worktreeRoot,
+			)
+		}
+		if launch.RailPlacement == nil {
+			t.Fatalf("launch rail placement is nil")
+		}
+		if *launch.RailPlacement != *sourcePlacement {
+			t.Fatalf("launch rail placement = %#v, want %#v", launch.RailPlacement, sourcePlacement)
+		}
+	}
+	if resolver.calls != 1 {
+		t.Fatalf("source context resolver calls = %d, want one immutable dispatch snapshot", resolver.calls)
+	}
+}
+
+func TestIssueWithMissingSourceSessionDoesNotClaimOrLaunchRun(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	service, creator, _ := newParallelizableDispatchService(t, "ws-missing-source")
+	service.SourceSessionContextResolver = staticIssueSourceSessionContextResolver{}
+
+	detail, err := service.CreateIssueFromPlan(ctx, "ws-missing-source", CreateIssueManagerIssueFromPlanInput{
+		Issue: CreateIssueManagerIssueInput{
+			IssueID:             "issue-missing-source",
+			TopicID:             workspaceissues.DefaultTopicID,
+			Title:               "Missing source",
+			PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
+			SourceSessionID:     "deleted-planning-session",
+			SequentialExecution: true,
+		},
+		Tasks: []CreateIssueManagerTaskItemInput{{
+			TaskID: "task-1", Title: "Must wait", AgentTargetID: agenttargetbiz.IDLocalCodex,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueFromPlan() error = %v", err)
+	}
+	if len(creator.launches) != 0 {
+		t.Fatalf("launches = %#v, want none while source Session is unavailable", creator.launches)
+	}
+	if detail.Tasks[0].Status != workspaceissues.StatusNotStarted || detail.Tasks[0].LatestRunID != "" {
+		t.Fatalf("task = %#v, want unclaimed not_started task", detail.Tasks[0])
+	}
+}
+
 func TestSequentialIssueDegradesSharedNonGitParallelizableTasksToExclusive(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -927,9 +1054,10 @@ func TestAutoAcceptTaskCompletionAdvancesDispatchWithoutHumanGate(t *testing.T) 
 	}
 	creator := &sequentialSessionCreatorRecorder{}
 	service := IssueManagerService{
-		RunLauncher:       creator,
-		Store:             store,
-		AgentTargetReader: store,
+		RunLauncher:                  creator,
+		Store:                        store,
+		AgentTargetReader:            store,
+		SourceSessionContextResolver: availableIssueSourceSessionContextResolver(),
 	}
 	detail, err := service.CreateIssueFromPlan(ctx, "workspace-auto-accept", CreateIssueManagerIssueFromPlanInput{
 		Issue: CreateIssueManagerIssueInput{
@@ -984,9 +1112,10 @@ func TestReworkFromPendingAcceptanceRedispatchesSequentialHead(t *testing.T) {
 	}
 	creator := &sequentialSessionCreatorRecorder{}
 	service := IssueManagerService{
-		RunLauncher:       creator,
-		Store:             store,
-		AgentTargetReader: store,
+		RunLauncher:                  creator,
+		Store:                        store,
+		AgentTargetReader:            store,
+		SourceSessionContextResolver: availableIssueSourceSessionContextResolver(),
 	}
 	detail, err := service.CreateIssueFromPlan(ctx, "workspace-rework", CreateIssueManagerIssueFromPlanInput{
 		Issue: CreateIssueManagerIssueInput{
@@ -1051,10 +1180,11 @@ func TestTuttiModePlanInitialScheduleMaterializationIsInert(t *testing.T) {
 		Clock: func() time.Time { return now },
 	}
 	service := IssueManagerService{
-		RunLauncher:         creator,
-		Store:               store,
-		AgentTargetReader:   store,
-		TuttiModeExecutions: executions,
+		RunLauncher:                  creator,
+		Store:                        store,
+		AgentTargetReader:            store,
+		SourceSessionContextResolver: availableIssueSourceSessionContextResolver(),
+		TuttiModeExecutions:          executions,
 	}
 	detail, err := service.CreateIssueFromPlan(ctx, "ws-inert-tutti", CreateIssueManagerIssueFromPlanInput{
 		Issue: CreateIssueManagerIssueInput{
@@ -1155,10 +1285,11 @@ func TestCancelIssueExecutionCancelsAllRunningTraditionalPlanRuns(t *testing.T) 
 	creator := &sequentialSessionCreatorRecorder{}
 	canceller := &runSessionCancellerRecorder{}
 	service := IssueManagerService{
-		RunLauncher:       creator,
-		Store:             store,
-		AgentTargetReader: store,
-		MutationLocks:     NewIssueMutationLocks(),
+		RunLauncher:                  creator,
+		Store:                        store,
+		AgentTargetReader:            store,
+		MutationLocks:                NewIssueMutationLocks(),
+		SourceSessionContextResolver: availableIssueSourceSessionContextResolver(),
 	}
 	coordinator := IssueExecutionCoordinator{Issues: &service, RunSessionCanceller: canceller}
 	detail, err := service.CreateIssueFromPlan(ctx, "ws-stop-cascade", CreateIssueManagerIssueFromPlanInput{
@@ -1496,9 +1627,10 @@ func TestTraditionalPlanFailedRunCanBeReworkedAndRedispatched(t *testing.T) {
 	}
 	creator := &sequentialSessionCreatorRecorder{}
 	service := IssueManagerService{
-		RunLauncher:       creator,
-		Store:             store,
-		AgentTargetReader: store,
+		RunLauncher:                  creator,
+		Store:                        store,
+		AgentTargetReader:            store,
+		SourceSessionContextResolver: availableIssueSourceSessionContextResolver(),
 	}
 	detail, err := service.CreateIssueFromPlan(ctx, "workspace-fail-notify", CreateIssueManagerIssueFromPlanInput{
 		Issue: CreateIssueManagerIssueInput{

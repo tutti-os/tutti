@@ -71,7 +71,21 @@ type ExecutionInput struct {
 	// every automatically launched Agent in a bounded rescue chain.
 	AutomationDepth int
 	TriggerID       string
-	SourceCwd       string
+	SourceContext   AutomationSourceSessionContext
+}
+
+// AutomationSourceSessionContext is the narrow source-session projection an
+// automation launch inherits. Runtime cwd and logical rail identity stay
+// separate because the source may itself be running in an isolated worktree.
+type AutomationSourceSessionContext struct {
+	WorkingDirectory string
+	RailPlacement    *AutomationSourceRailPlacement
+}
+
+type AutomationSourceRailPlacement struct {
+	Kind        string
+	ProjectPath string
+	SectionKey  string
 }
 
 type ExecutionResult struct {
@@ -84,12 +98,11 @@ type Executor interface {
 	ExecuteAutomationRule(context.Context, ExecutionInput) (ExecutionResult, error)
 }
 
-// SourceReader resolves the source session's working directory so the
-// launched follow-up session starts in the same project. Source conversation
-// content travels through the session mention, not through an inline
-// transcript copy.
+// SourceReader resolves both the source session's execution directory and its
+// immutable logical rail identity. Source conversation content travels through
+// the session mention, not through an inline transcript copy.
 type SourceReader interface {
-	AutomationSourceCwd(context.Context, string, string) (string, error)
+	AutomationSourceContext(context.Context, string, string) (AutomationSourceSessionContext, error)
 }
 
 type Service struct {
@@ -559,10 +572,10 @@ func (s *Service) runRule(key string, workspaceID string, sessionID string, sour
 			return
 		}
 	}
-	cwd := ""
+	sourceContext := AutomationSourceSessionContext{}
 	if s.Sources != nil {
 		var err error
-		cwd, err = s.Sources.AutomationSourceCwd(ctx, workspaceID, sessionID)
+		sourceContext, err = s.Sources.AutomationSourceContext(ctx, workspaceID, sessionID)
 		if err != nil {
 			slog.Warn("automation rule source lookup failed", "event", "automation_rule.source_failed", "rule_id", rule.ID, "error", err)
 			return
@@ -575,7 +588,7 @@ func (s *Service) runRule(key string, workspaceID string, sessionID string, sour
 		SourceAgentID:   sourceAgentID,
 		AutomationDepth: automationDepth,
 		TriggerID:       triggerID,
-		SourceCwd:       cwd,
+		SourceContext:   sourceContext,
 	}); err != nil {
 		slog.Warn("automation rule execution failed", "event", "automation_rule.execute_failed", "rule_id", rule.ID, "error", err)
 	}

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   AddIcon,
   Button,
@@ -11,8 +10,8 @@ import {
 import { useTranslation } from "@renderer/i18n";
 import type { DesktopI18nKey } from "../../../../../shared/i18n/index.ts";
 import {
-  workspaceModelPlanTemplateGroups,
-  type WorkspaceModelPlanTemplateGroup
+  workspaceModelPlanCreationSeed,
+  workspaceModelPlanTemplateGroups
 } from "../services/workspaceModelPlanTemplates";
 import type {
   WorkspaceModelPlan,
@@ -65,119 +64,33 @@ const protocolLabelKeys: Record<
 };
 
 /**
- * Workspace "model plans" settings: named model access plans per access
- * scheme, with staged detection status and lifecycle actions.
+ * Workspace "model plans" settings: named endpoint configurations with staged
+ * detection status and lifecycle actions.
  */
 export function WorkspaceModelPlansSection() {
   const { t } = useTranslation();
   const { service, state } = useWorkspaceSettingsService();
   const modelPlans = state.modelPlans;
-  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
-
-  const beginDraftFromGroup = (group: WorkspaceModelPlanTemplateGroup) => {
-    const preset = group.presets[0];
-    if (!preset) {
-      return;
-    }
-    service.modelPlans.beginDraft({
-      baseUrl: preset.baseUrl,
-      name: t(preset.labelKey),
-      protocol: preset.protocol,
-      templateId: preset.id,
-      templateKind: group.kind
-    });
-    setTemplatePickerOpen(false);
-  };
 
   const draft = modelPlans.draft;
   const isEmpty = modelPlans.plans.length === 0 && draft === null;
 
   return (
     <div className="flex w-full flex-col gap-3">
-      <div className="flex w-full items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-2">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.settings.apps.modelPlans.title")}
-          </strong>
-          <p className="m-0 text-[13px] leading-[1.35] text-[var(--text-secondary)]">
-            {t("workspace.settings.apps.modelPlans.description")}
-          </p>
-        </div>
-        <Button
-          className="shrink-0"
-          disabled={draft !== null}
-          size="sm"
-          type="button"
-          onClick={() => setTemplatePickerOpen((open) => !open)}
-        >
-          <AddIcon className="size-3.5" />
-          {t("workspace.settings.apps.modelPlans.addPlan")}
-        </Button>
+      <div className="flex min-w-0 flex-col gap-2">
+        <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+          {t("workspace.settings.apps.modelPlans.title")}
+        </strong>
+        <p className="m-0 text-[13px] leading-[1.35] text-[var(--text-secondary)]">
+          {t("workspace.settings.apps.modelPlans.description")}
+        </p>
       </div>
 
-      {templatePickerOpen && draft === null ? (
-        <div className="flex flex-col gap-1.5 rounded-[10px] border border-[var(--border-1)] bg-[var(--transparency-block)] p-3">
-          <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-            {t("workspace.settings.apps.modelPlans.templatePickerTitle")}
-          </span>
-          {workspaceModelPlanTemplateGroups.map((group) => (
-            <button
-              key={group.kind}
-              className="flex flex-col gap-0.5 rounded-[8px] px-2.5 py-2 text-left outline-none transition-colors duration-150 hover:bg-[var(--transparency-hover)] focus-visible:bg-[var(--transparency-hover)]"
-              type="button"
-              onClick={() => beginDraftFromGroup(group)}
-            >
-              <span className="text-[13px] font-medium text-[var(--text-primary)]">
-                {t(group.labelKey)}
-              </span>
-              <span className="text-[11px] leading-[1.4] text-[var(--text-secondary)]">
-                {t(group.guidanceKey)}
-              </span>
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      {isEmpty && !templatePickerOpen ? (
-        <div className="flex flex-col items-center gap-1.5 rounded-[10px] border border-dashed border-[var(--border-1)] bg-[var(--transparency-block)] px-4 py-8 text-center">
-          <p className="m-0 text-[13px] font-medium text-[var(--text-primary)]">
-            {t("workspace.settings.apps.modelPlans.emptyTitle")}
-          </p>
-          <p className="m-0 text-[12px] leading-[1.4] text-[var(--text-secondary)]">
-            {t("workspace.settings.apps.modelPlans.emptyDescription")}
-          </p>
-        </div>
-      ) : (
-        <div className="flex w-full flex-col gap-2">
-          {modelPlans.plans.map((plan) =>
-            draft && draft.planId === plan.id ? (
-              <WorkspaceModelPlanEditor
-                key={plan.id}
-                discoveredModels={modelPlans.draftDiscoveredModels}
-                draft={draft}
-                feedback={modelPlans.draftFeedback}
-                fetchingModels={modelPlans.fetchingDraftModels}
-                saveImpact={modelPlans.draftSaveImpact}
-                saving={modelPlans.saving}
-                onCancel={() => service.modelPlans.cancelDraft()}
-                onFetchModels={() => {
-                  void service.modelPlans.fetchDraftModels();
-                }}
-                onSave={() => {
-                  void service.modelPlans.saveDraft();
-                }}
-                onUpdate={(patch) => service.modelPlans.updateDraft(patch)}
-              />
-            ) : (
-              <WorkspaceModelPlanRow
-                key={plan.id}
-                modelPlans={modelPlans}
-                plan={plan}
-              />
-            )
-          )}
-          {draft && draft.planId === null ? (
+      <div className="flex w-full flex-col gap-2">
+        {modelPlans.plans.map((plan) =>
+          draft && draft.planId === plan.id ? (
             <WorkspaceModelPlanEditor
+              key={plan.id}
               discoveredModels={modelPlans.draftDiscoveredModels}
               draft={draft}
               feedback={modelPlans.draftFeedback}
@@ -193,9 +106,57 @@ export function WorkspaceModelPlansSection() {
               }}
               onUpdate={(patch) => service.modelPlans.updateDraft(patch)}
             />
+          ) : (
+            <WorkspaceModelPlanRow
+              key={plan.id}
+              modelPlans={modelPlans}
+              plan={plan}
+            />
+          )
+        )}
+        {draft && draft.planId === null ? (
+          <WorkspaceModelPlanEditor
+            discoveredModels={modelPlans.draftDiscoveredModels}
+            draft={draft}
+            feedback={modelPlans.draftFeedback}
+            fetchingModels={modelPlans.fetchingDraftModels}
+            saveImpact={modelPlans.draftSaveImpact}
+            saving={modelPlans.saving}
+            onCancel={() => service.modelPlans.cancelDraft()}
+            onFetchModels={() => {
+              void service.modelPlans.fetchDraftModels();
+            }}
+            onSave={() => {
+              void service.modelPlans.saveDraft();
+            }}
+            onUpdate={(patch) => service.modelPlans.updateDraft(patch)}
+          />
+        ) : null}
+        <div className="flex flex-col items-center justify-center gap-1.5 rounded-[10px] border border-dashed border-[var(--border-1)] bg-[var(--transparency-block)] px-4 py-5 text-center">
+          {isEmpty ? (
+            <>
+              <p className="m-0 text-[13px] font-medium text-[var(--text-primary)]">
+                {t("workspace.settings.apps.modelPlans.emptyTitle")}
+              </p>
+              <p className="m-0 text-[12px] leading-[1.4] text-[var(--text-secondary)]">
+                {t("workspace.settings.apps.modelPlans.emptyDescription")}
+              </p>
+            </>
           ) : null}
+          <Button
+            className={isEmpty ? "mt-2" : undefined}
+            disabled={draft !== null}
+            size="sm"
+            type="button"
+            onClick={() =>
+              service.modelPlans.beginDraft(workspaceModelPlanCreationSeed)
+            }
+          >
+            <AddIcon aria-hidden="true" className="size-3.5" />
+            {t("workspace.settings.apps.modelPlans.addPlan")}
+          </Button>
         </div>
-      )}
+      </div>
     </div>
   );
 }

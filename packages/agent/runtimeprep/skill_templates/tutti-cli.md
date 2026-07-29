@@ -73,6 +73,10 @@ The `plan issue ...` scope is the source Agent's execution control plane. At eve
 
 Checkpoint actions:
 
+{{if has "tutti-mode-plan.plan.issue.resume"}}
+
+- If the snapshot reports `dispatchPaused: true`, do not retry schedule. Run `{{command "tutti-mode-plan.plan.issue.resume" (args "issue-id" "<issue-id>")}}` from the original source conversation, then continue with the same active checkpoint and graph revision returned by the refreshed snapshot.
+  {{end}}
 - `initial_schedule`: schedule an exact ready task set, mutate the graph, or stop. Do not acknowledge.
 - `task_settled`: schedule or mutate follow-up work. Acknowledge only when another Run is active or a later checkpoint is pending.
 - `task_failed` or `task_canceled`: never update or reschedule the terminal task. Rework it with a new `taskId`; omitted launch settings and dependencies inherit from the old task. Then schedule the replacement with the `graphRevision` returned by the successful mutation.

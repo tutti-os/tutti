@@ -6,6 +6,7 @@ import {
   createInitialSettingsUpdate,
   reconcileSettingsUpdates,
   requestSettingsUpdate,
+  resumeSettingsQueueAfterPrompt,
   resumeSettingsUpdateWhenRuntimeAvailable,
   settleSettingsUpdate
 } from "./sessionSettings.reducer.ts";
@@ -120,7 +121,11 @@ export function sessionLifecycleReducer(
     case "session/stopRequested":
       return requestCancel(state, intent);
     case "session/settingsUpdateRequested":
+    case "session/settingsActivationRequested":
+    case "session/settingsPreconditionRequested":
       return requestSettingsUpdate(state, intent);
+    case "session/settingsQueueResumeRequested":
+      return resumeSettingsQueueAfterPrompt(state, intent);
     case "submit/requested":
       return context.sendNowSubmitRequiresCancel
         ? requestCancel(state, {

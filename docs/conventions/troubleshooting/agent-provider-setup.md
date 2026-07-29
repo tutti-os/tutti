@@ -327,6 +327,66 @@ provider-status-focus-refresh --all-process-time-profile` on macOS when a
   [main.test.ts](../../../packages/agent/claude-sdk-sidecar/src/main.test.ts)
   [claude_sdk_adapter.go](../../../packages/agent/daemon/runtime/claude_sdk_adapter.go)
 
+### Bun-installed Codex works in a terminal but Tutti cannot use it
+
+- Symptom:
+  `codex --version` works in an interactive terminal after `bun add -g
+@openai/codex`, while the desktop reports `cli_not_found`,
+  `codex_platform_pkg_incomplete`, or a generic app-server launch failure.
+- Quick checks:
+  Compare the terminal's `command -v codex` and `bun pm bin -g` with the
+  daemon's effective PATH. Then run the exact resolved command with
+  `app-server` and verify the formal `initialize` response followed by the
+  `initialized` notification. Do not infer runtime failure from the absence of
+  npm's nested `@openai/codex/node_modules/@openai/codex-<platform>` path:
+  inspect the package root and ancestor `node_modules` directories as well.
+- Root cause:
+  Desktop processes do not source interactive shell startup files. Bun's
+  default global binary directory is `~/.bun/bin`, `BUN_INSTALL` can relocate
+  the Bun installation, and `globalBinDir` can point somewhere else entirely.
+  Bun may also hoist the Codex platform package or place it behind an isolated
+  `.bun` store, so an npm-nested-only check can reject a working CLI. Finally,
+  the actionable missing-optional-dependency message is written to stderr after
+  the app-server process starts; classifying only the protocol error loses that
+  evidence.
+- Fix:
+  Resolve Codex from the effective PATH, `BUN_INSTALL/bin`, the default
+  `~/.bun/bin`, and, only when those fail, a bounded `bun pm bin -g` discovery.
+  Cache a successful configured-bin result by the Bun executable fingerprint.
+  Rewrite the provider command to the resolved absolute Codex launcher and pass
+  the same environment to status probes and real sessions. Treat a completed
+  app-server initialize handshake as the readiness source of truth. Scan the
+  package from the resolved launcher using Node-style ancestor `node_modules`
+  lookup across npm, Bun, and pnpm layouts; layout evidence must never override
+  a successful protocol probe. Classify the current platform package from
+  bounded stderr even when the message says `Missing optional dependency`
+  without an `ENOENT` token. Preserve Bun/pnpm provenance and never run npm
+  repair in those package-manager-owned directories.
+- Validation:
+  Use a minimal GUI PATH (`/usr/bin:/bin`) and cover default `~/.bun/bin`,
+  `BUN_INSTALL/bin`, and a custom `bun pm bin -g` result. Include a real
+  single-process initialize/initialized handshake, Bun hoisted and isolated
+  package layouts, missing optional-dependency stderr without `ENOENT`,
+  unsupported `app-server`, and a broken Bun install that must not invoke npm.
+- Multiple installations:
+  Do not stop at the first PATH result. Enumerate PATH, Bun, pnpm, npm, and
+  Homebrew launchers; deduplicate logical package roots; then validate each
+  launcher's version, package layout, and app-server handshake. A single ready
+  candidate is used implicitly. Two or more ready candidates are not ranked by
+  PATH or package-manager order: Tutti blocks startup and asks the user to
+  choose one in the Agent environment panel. Persist that choice as its absolute
+  launcher path (not an ephemeral list id), selected from the current catalog
+  revision. A stale, broken, or unsupported saved choice also requires a new
+  user selection; never silently fall back to another installation or run an
+  installer. Read `GET /v1/agent-providers/codex/runtime-candidates` before
+  changing it with `PUT /v1/agent-providers/codex/runtime-selection`.
+- References:
+  [resolver.go](../../../packages/agent/daemon/runtimecmd/resolver.go)
+  [codex_bun_discovery.go](../../../services/tuttid/service/agentstatus/codex_bun_discovery.go)
+  [codex_layout_scan.go](../../../services/tuttid/service/agentstatus/codex_layout_scan.go)
+  [codex_protocol_probe.go](../../../services/tuttid/service/agentstatus/codex_protocol_probe.go)
+  [codex_appserver_probe.go](../../../packages/agent/daemon/runtime/codex_appserver_probe.go)
+
 ### Codex npm install misses the platform package
 
 - Symptom:
@@ -364,9 +424,14 @@ provider-status-focus-refresh --all-process-time-profile` on macOS when a
   `TUTTI_APP_NPM`, managed `PATH`) when user Node is missing. Ensure the Codex
   app-server adapter consumes that provider command resolution; otherwise status
   probes can pass while session startup still fails with `env: node: No such
-file or directory`. If the CLI path exists but `codex app-server` cannot
-  launch, treat the failed probe as a repair trigger so the install action does
-  not clear immediately without running an installer.
+file or directory`. A failed `codex app-server` probe is diagnostic evidence,
+  not repair authorization by itself. Require a fresh, platform-specific
+  missing-dependency classification plus a package-relative scan that confirms
+  the same package or binary is missing. Keep npm repair limited to npm-owned
+  layouts; Bun and pnpm installations must be repaired by their owning package
+  manager rather than overwritten in place by npm. If the supported CLI and
+  platform binary are complete but the formal protocol handshake still fails,
+  report a runtime bug and do not reinstall.
 - Validation:
   Reproduce in a temporary prefix/cache using the Tutti-managed npm. Confirm
   `codex --version`, the platform package metadata and vendor binary, and a
@@ -455,35 +520,50 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
 ### Agent sandbox cannot reach local daemon
 
 - Symptom:
-  An AgentGUI-backed Codex turn runs a dynamic Tutti CLI command such as
-  `tutti-dev automation --help` and gets `daemon is not reachable`, while
-  `~/.tutti-dev/run/tuttid.listener.json` exists and the desktop daemon is
-  running.
+  An AgentGUI-backed Codex-compatible turn runs a dynamic Tutti CLI command
+  such as `tutti agent get --session-id <id>` and gets
+  `reasonCode=daemon_unavailable` or `daemon is not reachable`, while the
+  listener file exists and the desktop daemon is serving other requests.
 - Quick checks:
   Inspect the turn context in the provider session JSONL. If
   `network_access=false`, a plain `exec_command` cannot reach localhost/IPC.
-  For Codex sessions, also confirm the command was not rerun with
+  Identify the executing provider from that same session instead of inferring
+  it from a queried session ID. For Codex sessions, also confirm the command
+  was not rerun with
   `sandbox_permissions=require_escalated`. Other providers need their own
   local-daemon-capable shell/runtime path, not Codex-specific sandbox syntax.
 - Root cause:
   Dynamic CLI scopes fetch command capabilities from the local daemon before
   printing scope help. In a sandboxed provider command environment, localhost
-  access can be blocked even though the daemon is reachable from the host.
+  access can be blocked even though the daemon is reachable from the host. For
+  a Codex-compatible app-server, omitting
+  `sandboxPolicy.networkAccess=true` from a `readOnly` or `workspaceWrite` turn
+  creates this exact split between successful host requests and failed
+  in-sandbox CLI requests.
 - Fix:
-  In agent environments, keep the CLI's transport failure message explicit
-  about the sandbox but provider-neutral. Put provider-specific recovery steps
-  in the injected runtime policy: Codex can use
-  `sandbox_permissions=require_escalated`, while ACP providers should be told to
-  use an execution environment with localhost/IPC access and not to invent Codex
+  Keep the CLI's transport failure message explicit about the sandbox but
+  provider-neutral. The Tutti Desktop host explicitly enables command network
+  access for the built-in `codex` and `tutti-agent` app-servers through
+  `agentdaemon.Config.CommandNetworkAccessPolicy`. Keep this an explicit
+  provider-registry Desktop opt-in instead of branching on provider identity or
+  granting every future app-server network access. This preserves the
+  permission-mode filesystem sandbox and approval policy. Codex should run the
+  CLI normally first and use `sandbox_permissions=require_escalated` only as a
+  fallback for hosts that do not grant command networking. ACP providers should
+  use an execution environment with localhost/IPC access and not invent Codex
   flags.
 - Validation:
-  Add CLI daemon-client coverage that non-agent failures keep the plain
-  `daemon is not reachable` message, while agent failures include the
-  localhost/IPC execution-environment hint. Add provider policy coverage so only
-  Codex receives `sandbox_permissions=require_escalated`.
+  Verify the default adapter policy enables
+  `sandboxPolicy.networkAccess=true` for Codex and `tutti-agent` read-only and
+  workspace-write turns. Verify the Desktop host policy rejects Claude Code,
+  external ACP IDs, and empty provider IDs. Retain CLI daemon-client coverage
+  for provider-neutral agent hints and Codex fallback coverage for
+  `sandbox_permissions=require_escalated`.
 - References:
   [client.go](../../../apps/cli/internal/daemon/client.go)
   [run.go](../../../apps/cli/internal/app/run.go)
+  [agent daemon runtime.go](../../../packages/agent/daemon/runtime.go)
+  [tuttid command network policy](../../../services/tuttid/agent_command_network_policy.go)
 
 ### Codex provider install fails with missing npm
 
@@ -686,7 +766,7 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
   API-key-without-login readiness, then run
   `cd services/tuttid && go test ./service/agentstatus`.
 
-### Codex session fails with not connected when model_catalog_json is relative
+### Codex session fails with not connected when config file dependencies are relative
 
 - Symptom:
   Codex is installed and `codex login status` reports logged in, but Tutti
@@ -695,26 +775,34 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
   `failed to load configuration: No such file or directory (os error 2)`.
   Tools such as CC Switch often set
   `model_catalog_json = "cc-switch-model-catalog.json"` in `~/.codex/config.toml`.
+  User-managed instruction files can reproduce the same failure with
+  `model_instructions_file = "gpt5.5-unrestricted.md"`.
   If that catalog file is missing entirely, the same config error can also make
   provider status show login required (`auth_unknown`) even though OAuth tokens
   exist.
 - Quick checks:
-  `grep model_catalog_json ~/.codex/config.toml` and confirm the referenced
-  file exists under `~/.codex/`. Inspect the run-scoped
+  `grep -E 'model_catalog_json|model_instructions_file' ~/.codex/config.toml`
+  and confirm each relative referenced file exists under `~/.codex/`.
+  Inspect the run-scoped
   `~/.tutti-dev/agent/runs/<session>/codex-home/` (or `~/.tutti/...` in prod):
-  `config.toml` is copied, but a relative catalog must also be present there.
+  `config.toml` is copied, but relative catalog and instruction files must also
+  be present there.
 - Root cause:
   Tutti prepares a run-scoped `CODEX_HOME` and copies only `config.toml` (plus
-  auth/plugin/skill exposure). Relative `model_catalog_json` paths resolve
-  against that sandbox home, so the catalog is missing unless Tutti mirrors it.
+  auth/plugin/skill exposure). Relative `model_catalog_json` and
+  `model_instructions_file` paths resolve against that sandbox home, so the
+  dependency is missing unless Tutti mirrors it.
 - Fix:
-  After copying `config.toml`, resolve top-level `model_catalog_json`. For
-  relative paths under `~/.codex`, symlink (or copy) the catalog into the
-  run-scoped `CODEX_HOME` at the same relative path. Absolute catalog paths
-  need no mirror. Do not mutate the user's global config.
+  After copying `config.toml`, resolve top-level `model_catalog_json` and
+  `model_instructions_file`. For relative paths under `~/.codex`, symlink (or
+  copy) the file into the run-scoped `CODEX_HOME` at the same relative path.
+  Absolute paths need no mirror but must be validated in place. Missing,
+  unreadable, non-regular, or illegal dependencies should fail preparation
+  before provider startup with a safe `agent.config_dependency_unavailable`
+  diagnostic. Do not mutate the user's global config.
 - Validation:
-  Add or update `runtimeprep` tests that set a relative catalog beside
-  `config.toml` and assert the sandbox exposes it. Run
+  Add or update `runtimeprep` tests that set relative catalog and instruction
+  files beside `config.toml` and assert the sandbox exposes them. Run
   `cd packages/agent/runtimeprep && go test ./...`.
 - References:
   [codex.go](../../../packages/agent/runtimeprep/codex.go)
@@ -752,6 +840,44 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
 - References:
   [codex_model_catalog.go](../../../services/tuttid/service/agent/codex_model_catalog.go)
   [codex_model_catalog_test.go](../../../services/tuttid/service/agent/codex_model_catalog_test.go)
+
+### Codex composer model and reasoning selectors stay loading
+
+- Symptom:
+  The empty Codex composer shows loading placeholders for both model and
+  reasoning, even though provider status reports Codex as ready.
+- Quick checks:
+  Correlate a ready Codex provider snapshot in `tuttid.log` with
+  `agent.composer_options.load` in `tutti-desktop.log`. A duration near 15
+  seconds with `errorCode=ETIMEDOUT` means the Desktop request deadline expired
+  before Composer Options returned. If tuttid later logs
+  `superfluous response.WriteHeader`, or a detached `codex app-server` remains
+  after the request, the canceled handler did not finish cleaning up its
+  discovery subprocess.
+- Root cause:
+  Codex Composer Options needs both `model/list` and the app-server capability
+  catalog. Running those independent, individually bounded probes in series
+  can exceed the Desktop's aggregate request deadline. A second failure mode
+  occurs when timeout kills only the JavaScript launcher: its native child
+  inherits stdout, the response scanner never receives EOF, and deferred
+  `Wait` cannot run because it sits behind that scanner.
+- Fix:
+  Start model-catalog loading before capability discovery so the two independent
+  app-server exchanges overlap. Run every short-lived Codex app-server in its
+  own process group, begin process reaping immediately, and make timeout cancel
+  the entire group. Keep the Desktop deadline unchanged so a genuinely stuck
+  daemon request still fails closed.
+- Validation:
+  Block both catalog fixtures and assert both start before either is released.
+  Use a fake app-server whose child retains stdout and assert model and
+  capability timeouts return promptly with no surviving child. Finally, time a
+  cold Composer Options request and confirm it completes within the Desktop
+  deadline.
+- References:
+  [composer_options.go](../../../services/tuttid/service/agent/composer_options.go)
+  [codex_appserver_process.go](../../../services/tuttid/service/agent/codex_appserver_process.go)
+  [codex_model_catalog.go](../../../services/tuttid/service/agent/codex_model_catalog.go)
+  [codex_capability_catalog.go](../../../services/tuttid/service/agent/codex_capability_catalog.go)
 
 ### Codex custom model_provider mixes models, duplicates replies, or shows metadata warnings
 
@@ -1904,3 +2030,49 @@ invalid_grant`. Search `tuttid.log` for
   [agent-extensions.md](../../architecture/agent-extensions.md)
   [manager.go](../../../services/tuttid/service/agentextension/manager.go)
   [wiring_daemon_api.go](../../../services/tuttid/wiring_daemon_api.go)
+
+### Codex composer Plugins list is empty for Browser, Sites, or Computer Use
+
+- Symptom:
+  Codex sessions show no bundled plugins in the composer Plugins group, or only
+  plugin-derived skills appear while `browser@openai-bundled` / `sites@openai-bundled`
+  / `computer-use@openai-bundled` never surface as selectable entries. The
+  composer may stay on Loading when cold discovery approaches the desktop
+  request deadline.
+- Quick checks:
+  Run `codex app-server`, complete `initialize` / `initialized`, then call
+  `plugin/list` with `{"cwds":[<workspace>]}`. Confirm the response uses
+  `marketplaces[].plugins[]`, not a top-level `data[]` array. Inspect tuttid logs
+  for `plugin/list failed` or `plugin marketplace load failed` soft errors; those
+  responses must not be cached as an empty success catalog. Composer Options
+  should project exactly three semantic native plugins in this order: Sites,
+  Browser, Computer Use. `$` must not show Skills, MCP servers, connectors, or
+  other marketplace entries.
+- Root cause:
+  Older tuttid catalog code sent unsupported `plugin/list` params, skipped the
+  initialize handshake, and parsed the legacy `data[]` shape. Valid plugin RPC
+  answers were discarded, and partial failures could be cached for 30 seconds.
+  The Agent GUI also previously treated every discovered Skill, connector, and
+  plugin as one interchangeable palette candidate. That made the native entry
+  points hard to find and let `$` and `/` manufacture aliases for each other.
+  Marketplace catalogs can contain thousands of remote entries, so projecting
+  them directly also inflates the bootstrap snapshot.
+- Fix:
+  Use the current `codex_capability_catalog` handshake and marketplace parser,
+  surface RPC/marketplace errors without caching failed results, then project
+  only `sites@openai-bundled`, `browser@openai-bundled`, and
+  `computer-use@openai-bundled` as semantic native plugins. Keep Computer Use
+  visible as `setupRequired` when it is not installed; selecting it must open
+  explicit setup and must never silently install or authorize it. Use semantic
+  UI icons rather than app-server absolute icon paths. `$` selects native
+  plugins and inserts a `plugin://<plugin.id>` mention only when available;
+  `/` stays a command/capability surface. Allow the desktop cold request enough
+  time for bounded discovery. Native-first routing and Tutti fallback live in
+  `packages/agent/runtimeprep` (`NativeCapabilityPlan` + exclusivity).
+- Validation:
+  `go test ./service/agent -run 'TestCodexNative.*Plugin|TestParseCodexPluginCapabilities'`
+  `pnpm --filter @tutti-os/agent-gui test -- agentGuiNode/controller/agentGuiController.composerHelpers.spec.ts agentGuiNode/AgentSlashCommandPalette.spec.tsx`
+- References:
+  [codex_capability_catalog.go](../../../services/tuttid/service/agent/codex_capability_catalog.go)
+  [agentGuiController.composerHelpers.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/agentGuiController.composerHelpers.ts)
+  [codex_native_capability.go](../../../packages/agent/runtimeprep/codex_native_capability.go)

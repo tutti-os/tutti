@@ -19,14 +19,17 @@ import (
 )
 
 type providerRuntimeResolution struct {
-	CLIPath        string
-	AdapterPath    string
-	AdapterVersion string
-	AdapterCommand []string
-	AdapterEnv     []string
-	ReasonCode     string
-	InstallDir     string
-	Env            []string
+	CLIPath                string
+	AdapterPath            string
+	AdapterVersion         string
+	AdapterCommand         []string
+	AdapterEnv             []string
+	ReasonCode             string
+	InstallDir             string
+	Env                    []string
+	CodexRepairPlan        *CodexRepairPlan
+	CodexSelectionExplicit bool
+	CodexSelectionState    CodexRuntimeSelectionState
 }
 
 type installerExecutionSummary struct {
@@ -34,6 +37,11 @@ type installerExecutionSummary struct {
 	Stdout   []string
 	Stderr   []string
 	ExitCode *int
+}
+
+func codexRuntimeSelectionNeedsUserInput(runtime providerRuntimeResolution) bool {
+	return runtime.CodexSelectionState == CodexRuntimeSelectionSelectionRequired ||
+		runtime.CodexSelectionState == CodexRuntimeSelectionStale
 }
 
 func (s Service) resolveProviderRuntime(ctx context.Context, spec ProviderSpec) providerRuntimeResolution {
@@ -45,9 +53,46 @@ func (s Service) resolveProviderRuntime(ctx context.Context, spec ProviderSpec) 
 	if strings.TrimSpace(spec.ExternalRegistryID) != "" {
 		return s.resolveExternalProviderRuntime(ctx, spec, resolver, env)
 	}
+	if isCodexStatusSpec(spec) && s.CodexRuntimeSelectionStore != nil {
+		selection, err := s.resolveCodexRuntimeSelection(ctx, spec)
+		result := providerRuntimeResolution{
+			AdapterEnv: cloneStrings(spec.AdapterEnv),
+			Env:        env,
+		}
+		if err != nil {
+			result.ReasonCode = "codex_runtime_selection_unavailable"
+			return result
+		}
+		result.ReasonCode = selection.ReasonCode
+		result.CodexSelectionExplicit = selection.Explicit
+		result.CodexSelectionState = selection.State
+		candidate, found := selection.candidate()
+		if !found {
+			return result
+		}
+		result.CLIPath = candidate.Candidate.LauncherPath
+		if !selection.Launchable {
+			return result
+		}
+		result.AdapterPath = candidate.Candidate.LauncherPath
+		result.AdapterCommand = cloneStrings(spec.AdapterCommand)
+		if len(result.AdapterCommand) > 0 {
+			result.AdapterCommand[0] = candidate.Candidate.LauncherPath
+		}
+		return result
+	}
+	cliPath := resolveBinaryWithResolver(resolver, spec.BinaryNames, nil)
 	adapterPath := resolveBinaryWithResolver(resolver, adapterBinaryNames(spec), spec.AdapterEnv)
+	if isCodexStatusSpec(spec) && len(spec.AdapterCommand) > 0 && s.executableFile(spec.AdapterCommand[0]) {
+		if cliPath == "" {
+			cliPath = spec.AdapterCommand[0]
+		}
+		if adapterPath == "" {
+			adapterPath = spec.AdapterCommand[0]
+		}
+	}
 	return providerRuntimeResolution{
-		CLIPath:        resolveBinaryWithResolver(resolver, spec.BinaryNames, nil),
+		CLIPath:        cliPath,
 		AdapterPath:    adapterPath,
 		AdapterVersion: resolveAdapterPackageVersion(adapterPath, spec.AdapterPackage),
 		AdapterCommand: cloneStrings(spec.AdapterCommand),
@@ -290,7 +335,15 @@ func (s Service) installMissingProviderRuntime(
 }
 
 func (s Service) nextMissingInstaller(spec ProviderSpec, runtime providerRuntimeResolution) (InstallerSpec, bool, string) {
-	if strings.TrimSpace(runtime.ReasonCode) == "acp_adapter_launch_failed" {
+	if isCodexStatusSpec(spec) && runtime.CodexRepairPlan != nil && runtime.CodexRepairPlan.Allowed {
+		if spec.AdapterInstall.Kind != "" {
+			return spec.AdapterInstall, true, "adapter"
+		}
+		if spec.Install.Kind != "" {
+			return spec.Install, true, "cli"
+		}
+	}
+	if legacyRuntimeFailureRequiresRepair(spec, runtime.ReasonCode) {
 		if spec.AdapterInstall.Kind != "" {
 			return spec.AdapterInstall, true, "adapter"
 		}
@@ -303,6 +356,14 @@ func (s Service) nextMissingInstaller(spec ProviderSpec, runtime providerRuntime
 			return InstallerSpec{}, false, ""
 		}
 		return spec.Install, true, "cli"
+	}
+	// A resolved Codex CLI is user-managed unless the current diagnostic
+	// snapshot has explicitly authorized a platform-package repair above. Do
+	// not let the generic version or adapter-install fallbacks turn an ordinary
+	// protocol failure (or an unsupported version) into an npm overwrite.
+	// Upgrade and refresh remain separate daemon actions.
+	if isCodexStatusSpec(spec) && isCodexAppServerCommand(runtime.AdapterCommand) {
+		return InstallerSpec{}, false, ""
 	}
 	if s.providerCLIRequiresInstall(spec, runtime) {
 		if spec.Install.Kind == "" {
@@ -343,9 +404,6 @@ func installNodeForTarget(target string) string {
 }
 
 func (s Service) providerCLIRequiresInstall(spec ProviderSpec, runtime providerRuntimeResolution) bool {
-	if isCodexStatusSpec(spec) && !s.codexPlatformBinaryOK(runtime.CLIPath) {
-		return true
-	}
 	if strings.TrimSpace(spec.MinVersion) == "" {
 		return false
 	}

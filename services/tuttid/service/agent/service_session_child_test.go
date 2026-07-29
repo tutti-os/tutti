@@ -26,19 +26,23 @@ func TestPersistedChildSessionCannotResumeIndependently(t *testing.T) {
 	}
 }
 
-func TestSessionFromPersistedPreservesRailSectionKey(t *testing.T) {
+func TestSessionFromPersistedPreservesRailPlacement(t *testing.T) {
 	t.Parallel()
 
 	session := sessionFromPersisted(PersistedSession{
-		ID:             "session-1",
-		Kind:           agentactivitybiz.SessionKindRoot,
-		MessageVersion: 17,
-		Provider:       "codex",
-		RailSectionKey: " project:repo-1 ",
+		ID:              "session-1",
+		Kind:            agentactivitybiz.SessionKindRoot,
+		MessageVersion:  17,
+		Provider:        "codex",
+		RailSectionKind: " project ",
+		RailProjectPath: " /workspace/repo-1 ",
+		RailSectionKey:  " project:repo-1 ",
 	}, false)
 
-	if session.RailSectionKey != "project:repo-1" {
-		t.Fatalf("rail section key = %q, want project:repo-1", session.RailSectionKey)
+	if session.RailSectionKind != "project" ||
+		session.RailProjectPath != "/workspace/repo-1" ||
+		session.RailSectionKey != "project:repo-1" {
+		t.Fatalf("rail placement = %#v", session)
 	}
 	if session.MessageVersion != 17 {
 		t.Fatalf("message version = %d, want 17", session.MessageVersion)
@@ -50,30 +54,40 @@ func TestPersistedSessionFromActivityPreservesMessageVersion(t *testing.T) {
 
 	session := persistedSessionFromActivity(agentactivitybiz.Session{
 		ID: "session-1", WorkspaceID: "workspace-1", MessageVersion: 23,
+		RailSectionKind: "project", RailProjectPath: "/workspace/repo-1", RailSectionKey: "project:repo-1",
 	})
 
 	if session.MessageVersion != 23 {
 		t.Fatalf("message version = %d, want 23", session.MessageVersion)
 	}
+	if session.RailSectionKind != "project" ||
+		session.RailProjectPath != "/workspace/repo-1" ||
+		session.RailSectionKey != "project:repo-1" {
+		t.Fatalf("rail placement = %#v", session)
+	}
 }
 
-func TestServiceSessionResponseMergesPersistedRailSectionKey(t *testing.T) {
+func TestServiceSessionResponseMergesPersistedRailPlacement(t *testing.T) {
 	t.Parallel()
 
 	session := serviceSessionWithPersistedFreshness(
 		ProviderRuntimeSession{ID: "session-1", WorkspaceID: "workspace-1", Provider: "codex"},
 		PersistedSession{
-			ID:             "session-1",
-			WorkspaceID:    "workspace-1",
-			MessageVersion: 19,
-			Provider:       "codex",
-			RailSectionKey: "project:repo-1",
+			ID:              "session-1",
+			WorkspaceID:     "workspace-1",
+			MessageVersion:  19,
+			Provider:        "codex",
+			RailSectionKind: "project",
+			RailProjectPath: "/workspace/repo-1",
+			RailSectionKey:  "project:repo-1",
 		},
 		false,
 	)
 
-	if session.RailSectionKey != "project:repo-1" {
-		t.Fatalf("rail section key = %q, want project:repo-1", session.RailSectionKey)
+	if session.RailSectionKind != "project" ||
+		session.RailProjectPath != "/workspace/repo-1" ||
+		session.RailSectionKey != "project:repo-1" {
+		t.Fatalf("rail placement = %#v", session)
 	}
 	if session.MessageVersion != 19 {
 		t.Fatalf("message version = %d, want 19", session.MessageVersion)

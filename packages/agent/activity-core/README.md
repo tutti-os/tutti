@@ -19,10 +19,11 @@ transport commands and normalize observations before they enter the engine.
 - merges persisted and live messages with version-aware conflict handling
 - analyzes normalized activity events into one inline-observation intent plus
   an explicit authoritative-reconcile requirement
-- projects shared activation, prompt send, settings update, turn cancel, and
-  Interaction response commands onto one typed host effect port
-- executes the shared prompt sequence, including required settings persistence
-  before send
+- projects shared activation, prompt send, settings update, turn cancel,
+  Interaction response, pin, and batch-delete commands onto one typed host
+  effect port
+- executes the shared prompt state machine, including serialized required
+  settings persistence before send
 - exposes selectors such as `selectNeedsAttentionCount`
 
 It intentionally does not render UI, open network connections directly, persist
@@ -57,11 +58,12 @@ Engine rules:
   every settlement (success, failure, timeout) back into the loop as
   command-result intents.
 - New hosts implement `AgentSessionEffectPort` for activation, prompt send,
-  settings update, turn cancellation, and Interaction response. The Engine
-  owns command-to-capability projection and required-settings-before-send
-  ordering. A typed port declares `kind: "typed"` and its `execute` callback
-  receives only `EngineExtensionCommand`; the discriminated legacy shape keeps
-  the complete-command callback while existing package consumers migrate.
+  settings update, turn cancellation, Interaction response, pin, and batch
+  delete. The Engine owns command-to-capability projection and
+  the settings-precondition state machine. A typed port declares
+  `kind: "typed"` and its `execute` callback receives only
+  `EngineExtensionCommand`; the discriminated legacy shape keeps the
+  complete-command callback while existing package consumers migrate.
 - Timing is never read inside reducers. Deadlines are `scheduleExpiry`
   commands handled by the expiry clock, which re-enters the loop with expiry
   intents through the injected host scheduler.
@@ -270,26 +272,37 @@ identity exists, with identical attention semantics on Desktop and Mobile.
 
 The Engine projects shared lifecycle command descriptions onto
 `AgentSessionEffectPort`: `activateSession`, `sendInput`,
-`updateSessionSettings`, `cancelTurn`, and `respondToInteraction`. Hosts
-implement transport and result mapping without switching on those command
-types. When a queued prompt includes a required settings patch, the Engine
-waits for that exact settings write before sending; a failed write prevents the
-send. Capability references, structured content, display prompt, guidance,
-activation placement, Tutti-mode intent, and diagnostics survive the shared
-projection. Goal-on-create and settings command/correlation identities are also
-retained for external hosts that use them for goal setup or idempotency.
+`updateSessionSettings`, `cancelTurn`, `respondToInteraction`,
+`setSessionPinned`, and `deleteSessions`. Hosts implement transport and result
+mapping without switching on those command types. When a queued prompt includes
+a required settings patch, the Engine records a prompt continuation and enters
+that patch into the same per-Session settings lane as direct UI changes and
+post-activation settings persistence. Only one settings write for a Session
+reaches the host at a time. Owner boundaries are queue barriers, so updates
+from activation, prompt preparation, and direct UI changes are never
+accidentally coalesced together. A validated settings result first updates the
+canonical Session, then starts the prompt send, and only then releases later
+settings writes. A failed or timed-out precondition fails the logical prompt
+without attempting delivery. Capability references, structured content,
+display prompt, guidance, activation placement, Tutti-mode intent, and
+diagnostics survive the shared projection.
+Goal-on-create and settings command/correlation identities are also retained
+for external hosts that use them for goal setup or idempotency.
 
 Prompt command ordering is an Engine implementation detail. Consumers implement
 `AgentSessionEffectPort`; the package root does not expose the internal prompt
-execution helper or its precondition port.
+execution helper or its precondition port. The reducer-only continuation is not
+part of public `EngineIntent`, and its execution ledger is omitted from
+`AgentSessionEngineState`, `getSnapshot()`, and subscription callbacks.
 
-Host-only commands such as Desktop attention persistence or Mobile composer
-option loading remain in an `EngineExtensionCommand` adapter. Timeout, abort,
-observation, and command-result dispatch remain owned by the Engine effect
-executor. Every typed effect receives the Engine command's `AbortSignal`; hosts
-must propagate it through their transport. Prompt execution checks that signal
-again after a required settings write and before send, so a timeout cannot
-start a Turn in the precondition gap. The legacy full-command `execute` path is
+Host-only commands such as Desktop attention persistence or composer-options
+transport loading remain in an `EngineExtensionCommand` adapter. The Engine,
+not the host adapter, decides whether a validated settings result requires a
+provider-declared options refresh. That refresh is target-scoped and
+non-blocking for the current send. Timeout, abort, observation, and
+command-result dispatch remain owned by the Engine effect executor. Every typed
+effect receives its own Engine command's `AbortSignal`; hosts must propagate it
+through their transport. The legacy full-command `execute` path is
 compatibility-only for existing published-package consumers such as tsh.
 
 ## Message Merge Rules

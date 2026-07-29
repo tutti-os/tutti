@@ -24,7 +24,6 @@ import { toTuttidPromptContent } from "./workspaceActivityCommandSupport";
 interface WorkspaceActivityEngineCommandContext {
   client: TuttidClient;
   engine: AgentSessionEngine;
-  loadComposerOptions(options?: { force?: boolean }): void;
   mapSession(
     session: Parameters<typeof agentActivitySessionFromTuttidSession>[1]
   ): AgentActivitySession;
@@ -47,10 +46,14 @@ export function createWorkspaceActivityEffectPort(
       activateSession(getContext(), input, options?.signal),
     cancelTurn: (input, options) =>
       cancelTurn(getContext(), input, options?.signal),
+    deleteSessions: (input, options) =>
+      deleteSessions(getContext(), input, options?.signal),
     respondToInteraction: (input, options) =>
       respondToInteraction(getContext(), input, options?.signal),
     sendInput: (input, options) =>
       sendPrompt(getContext(), input, options?.signal),
+    setSessionPinned: (input, options) =>
+      setSessionPinned(getContext(), input, options?.signal),
     updateSessionSettings: (input, options) =>
       updateSessionSettings(getContext(), input, options?.signal)
   };
@@ -87,27 +90,6 @@ export function executeWorkspaceActivityExtensionCommand(
         .then((result) =>
           agentActivityComposerOptionsFromTuttidResult(command.provider, result)
         );
-    case "session/setPinned":
-      return context.client
-        .updateWorkspaceAgentSessionPin(
-          command.workspaceId,
-          command.agentSessionId,
-          { pinned: command.pinned }
-        )
-        .then((session) => ({ session: context.mapSession(session) }));
-    case "sessions/delete":
-      return context.client
-        .deleteWorkspaceAgentSessionsBatch(
-          command.workspaceId,
-          { sessionIds: [...command.agentSessionIds] },
-          { signal }
-        )
-        .then((response) => ({
-          cleanupFailedSessionIds: response.cleanupFailedSessionIds,
-          removedMessages: response.removedMessages,
-          removedSessionIds: response.removedSessionIds,
-          removedSessions: response.removedSessions
-        }));
     case "attention/readState/read":
     case "attention/readState/write":
     case "session/ackForkObserved":
@@ -229,6 +211,28 @@ function cancelTurn(
     }));
 }
 
+function deleteSessions(
+  context: WorkspaceActivityEngineCommandContext,
+  input: {
+    agentSessionIds: readonly string[];
+    workspaceId: string;
+  },
+  signal?: AbortSignal
+): Promise<unknown> {
+  return context.client
+    .deleteWorkspaceAgentSessionsBatch(
+      input.workspaceId,
+      { sessionIds: [...input.agentSessionIds] },
+      ...requestOptionsArgs(signal)
+    )
+    .then((response) => ({
+      cleanupFailedSessionIds: response.cleanupFailedSessionIds,
+      removedMessages: response.removedMessages,
+      removedSessionIds: response.removedSessionIds,
+      removedSessions: response.removedSessions
+    }));
+}
+
 function respondToInteraction(
   context: WorkspaceActivityEngineCommandContext,
   input: AgentActivitySubmitInteractiveInput,
@@ -245,6 +249,25 @@ function respondToInteraction(
         payload: input.payload ?? null,
         turnId: input.turnId
       },
+      ...requestOptionsArgs(signal)
+    )
+    .then((session) => ({ session: context.mapSession(session) }));
+}
+
+function setSessionPinned(
+  context: WorkspaceActivityEngineCommandContext,
+  input: {
+    agentSessionId: string;
+    pinned: boolean;
+    workspaceId: string;
+  },
+  signal?: AbortSignal
+): Promise<unknown> {
+  return context.client
+    .updateWorkspaceAgentSessionPin(
+      input.workspaceId,
+      input.agentSessionId,
+      { pinned: input.pinned },
       ...requestOptionsArgs(signal)
     )
     .then((session) => ({ session: context.mapSession(session) }));
@@ -268,19 +291,11 @@ function updateSessionSettings(
     )
     .then((session) => {
       const activitySession = context.mapSession(session);
-      context.engine.dispatch({
+      return {
+        agentSessionId: input.agentSessionId,
         session: activitySession,
-        type: "session/upserted"
-      });
-      const options = activitySession.agentTargetId
-        ? context.engine.getSnapshot().composerOptions.optionsByTargetKey[
-            activitySession.agentTargetId
-          ]
-        : null;
-      if (options?.behavior.refreshModelOptionsAfterSettings === true) {
-        context.loadComposerOptions({ force: true });
-      }
-      return { session: activitySession };
+        settings: activitySession.settings
+      };
     });
 }
 

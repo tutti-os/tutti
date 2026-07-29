@@ -199,6 +199,63 @@ func (launcher *scheduledLaunchRecorder) Launch(context.Context, IssueRunLaunch)
 	return nil
 }
 
+func TestTuttiModeLaunchPreservesSourceRailPlacement(t *testing.T) {
+	t.Parallel()
+
+	placement := &IssueRunRailPlacement{
+		Kind:        "project",
+		ProjectPath: "/repo",
+		SectionKey:  "project:/repo",
+	}
+	issue := workspaceissues.Issue{
+		WorkspaceID:     "workspace",
+		IssueID:         "issue",
+		SourceSessionID: "source",
+	}
+	task := workspaceissues.Task{
+		WorkspaceID:   issue.WorkspaceID,
+		IssueID:       issue.IssueID,
+		TaskID:        "task",
+		Title:         "Task",
+		AgentTargetID: "local:codex",
+	}
+	run := workspaceissues.Run{
+		WorkspaceID:        issue.WorkspaceID,
+		IssueID:            issue.IssueID,
+		TaskID:             task.TaskID,
+		RunID:              "run",
+		AgentSessionID:     "delegate",
+		AgentTargetID:      task.AgentTargetID,
+		ExecutionDirectory: "/repo",
+	}
+	launches := (IssueManagerService{}).tuttiModeLaunchesForRuns(
+		context.Background(),
+		issue,
+		[]workspaceissues.Task{task},
+		[]executionbiz.PreparedRunLaunch{{
+			Run:            run,
+			ClientSubmitID: "submit",
+		}},
+		IssueSourceSessionContext{
+			WorkingDirectory: "/repo",
+			RailPlacement:    placement,
+		},
+	)
+	if len(launches) != 1 {
+		t.Fatalf("launches = %d, want one", len(launches))
+	}
+	launch := launches[0]
+	if launch.ExecutionDirectory != "/repo" {
+		t.Fatalf("execution directory = %q, want source runtime directory", launch.ExecutionDirectory)
+	}
+	if launch.RailPlacement == nil || *launch.RailPlacement != *placement {
+		t.Fatalf("rail placement = %#v, want %#v", launch.RailPlacement, placement)
+	}
+	if launch.RailPlacement == placement {
+		t.Fatal("rail placement aliases the source snapshot")
+	}
+}
+
 func TestScheduledRunDeliveryUsesSharedSeamAndRenewsDurableLease(t *testing.T) {
 	t.Parallel()
 

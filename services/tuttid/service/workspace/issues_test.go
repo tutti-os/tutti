@@ -111,6 +111,59 @@ func TestCancelIssueExecutionRejectsGenericMutationOfManagedIssue(t *testing.T) 
 	}
 }
 
+func TestResumeTuttiModeIssueExecutionIsSourceScopedAndIdempotent(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := openIssueServiceStore(t)
+	const (
+		workspaceID = "workspace-managed-resume"
+		issueID     = "issue-managed-resume"
+		sourceID    = "source-managed-resume"
+	)
+	if err := store.Create(ctx, workspacebiz.Summary{
+		ID: workspaceID, Name: "Managed resume",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateIssue(ctx, workspaceissues.Issue{
+		IssueID: issueID, WorkspaceID: workspaceID,
+		TopicID: workspaceissues.DefaultTopicID, Title: "Managed",
+		PlanningSource:  workspaceissues.PlanningSourceTuttiModePlan,
+		SourceSessionID: sourceID,
+		DispatchPaused:  true,
+		Budget:          workspaceissues.DefaultBudget(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	service := IssueManagerService{
+		Store: store, MutationLocks: NewIssueMutationLocks(),
+	}
+	_, err := service.ResumeTuttiModeIssueExecution(
+		ctx, workspaceID, issueID, "other-source",
+	)
+	reason, _, ok := executionbiz.RejectionDetails(err)
+	if !ok || reason != executionbiz.RejectionWrongSourceSession {
+		t.Fatalf("wrong-source resume error = %v, reason = %q", err, reason)
+	}
+	paused, err := store.GetIssue(ctx, workspaceID, issueID)
+	if err != nil || !paused.DispatchPaused {
+		t.Fatalf("wrong-source resume changed Issue = %#v, error = %v", paused, err)
+	}
+
+	resumed, err := service.ResumeTuttiModeIssueExecution(
+		ctx, workspaceID, issueID, sourceID,
+	)
+	if err != nil || resumed.DispatchPaused {
+		t.Fatalf("ResumeTuttiModeIssueExecution() = %#v, error = %v", resumed, err)
+	}
+	replayed, err := service.ResumeTuttiModeIssueExecution(
+		ctx, workspaceID, issueID, sourceID,
+	)
+	if err != nil || replayed.DispatchPaused {
+		t.Fatalf("replayed ResumeTuttiModeIssueExecution() = %#v, error = %v", replayed, err)
+	}
+}
+
 func TestCancelIssueExecutionSettlesPreparedRunWithoutCanonicalTurn(t *testing.T) {
 	ctx := context.Background()
 	store := openIssueServiceStore(t)

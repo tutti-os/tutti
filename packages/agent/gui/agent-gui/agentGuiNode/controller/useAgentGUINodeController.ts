@@ -340,6 +340,7 @@ export function useAgentGUINodeController({
     agentActivityRuntimeOrigin,
     dataRef,
     isMountedRef,
+    sessionFamily: activeSessionFamily,
     sessionEngine,
     workspaceId
   });

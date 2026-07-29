@@ -118,6 +118,7 @@ export class SessionRuntime {
       onSettled: () => this.emitSessionState(),
       continuationStartTimeoutMs,
       onContinuationStartTimeout: () => {
+        this.activities.clearBackgroundContinuation();
         void this.query?.interrupt?.().catch((error) => {
           emit({
             type: "error",
@@ -460,6 +461,7 @@ export class SessionRuntime {
     } else {
       hasActiveTurn = this.turns.cancelQueued();
     }
+    this.activities.cancel();
     this.executionEpoch += 1;
     this.canceledQueryTailPending = true;
     this.interactions.rejectAll(new Error("Tool use aborted"));
@@ -501,6 +503,7 @@ export class SessionRuntime {
     this.sessionClosed = true;
     this.executionEpoch += 1;
     this.interactions.rejectAll(new Error("Tool use aborted"));
+    this.activities.close();
     this.turns.close();
     const generation = this.queryGeneration;
     this.queryGeneration = undefined;
@@ -639,6 +642,7 @@ export class SessionRuntime {
       ++this.nextQueryGenerationId,
       this.canceledQueryTailPending
     );
+    this.activities.resetBackgroundTaskLevel();
     this.queryGeneration = generation;
     const permissionMode = effectivePermissionMode(this.configuration.settings);
     const allowBypassPermissions = canBypassPermissions();

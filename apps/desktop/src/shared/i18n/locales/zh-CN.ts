@@ -278,6 +278,20 @@ export const zhCN = {
       actionRelogin: "重新登录",
       actionLogin: "登录",
       actionRetry: "重试",
+      runtimeTitle: "选择 Codex CLI",
+      runtimeDiscovering: "正在检测本机的 Codex CLI 安装…",
+      runtimeSelectionRequiredDescription:
+        "发现多个可用的 Codex CLI，请选择 Tutti 要使用的实例",
+      runtimeStaleDescription:
+        "之前选择的 Codex CLI 已不可用，请选择其他可用实例",
+      runtimeChangeDescription: "选择 Tutti 要使用的 Codex CLI 实例",
+      runtimeSelected: "正在使用",
+      runtimeUnavailableTitle: "其他已发现的安装",
+      runtimeSourceBun: "Bun",
+      runtimeSourcePnpm: "pnpm",
+      runtimeSourceNpm: "npm",
+      runtimeSourceHomebrew: "Homebrew",
+      runtimeSourcePath: "PATH",
       stepCli: "{{provider}} CLI",
       stepVersion: "受支持的版本",
       stepAuth: "已登录",
@@ -400,7 +414,21 @@ export const zhCN = {
         "Claude 导出扫描完成，有 {{count}} 个对话可供检查。",
       archiveSelectDescription: "搜索并勾选要导入的 Claude 对话",
       back: "返回",
+      chatgptEmpty: "这个 ChatGPT 导出中没有找到受支持的对话",
+      chatgptGroupLabel: "ChatGPT 对话",
+      chatgptOptionDescription: "选择从 ChatGPT 数据导出中下载的 ZIP 文件",
+      chatgptOptionTitle: "ChatGPT 导出数据导入",
+      chatgptPickFailed: "无法打开 ChatGPT 导出文件选择器。",
+      chatgptResult:
+        "已从 ChatGPT 导出中导入 {{sessions}} 个对话和 {{messages}} 条消息",
+      chatgptScanFailed: "无法将这个 ZIP 读取为支持的 ChatGPT 数据导出。",
+      chatgptScanning: "正在读取 ChatGPT 导出对话...",
+      chatgptSearchPlaceholder: "搜索 ChatGPT 对话",
+      chatgptSelectDescription: "搜索并勾选要导入的 ChatGPT 对话",
+      chatgptSelectionReady:
+        "ChatGPT 导出扫描完成，有 {{count}} 个对话可供检查。",
       chooseArchive: "选择 ZIP",
+      chooseChatgptArchive: "选择 ZIP",
       description: "导入本机 Codex、Claude Code 历史或 Claude 数据导出",
       done: "完成",
       empty: "未找到本机 Codex 或 Claude Code 的项目历史",
@@ -870,15 +898,13 @@ export const zhCN = {
           deleteConfirm: "删除这个 Agent？",
           deleteFailed: "Agent 删除失败，请重试",
           deleting: "删除中...",
-          description:
-            "将 Agent Runtime 与模型方案、指令组合成具名的 Agent 选项",
-          disabled: "已停用",
+          description: "选择 Agent Runtime、模型和指令，创建可重复使用的 Agent",
           edit: "编辑",
           editTitle: "编辑 {{agent}}",
           editorDescription: "保存后，它会成为新会话中可选择的一个 Agent",
           emptyDescription:
-            "添加 Agent，把 Agent Runtime 和模型方案映射成可复用的会话选项",
-          emptyTitle: "还没有工作区 Agent",
+            "添加一个 Agent，为它选择 Agent Runtime、模型和工作指令",
+          emptyTitle: "还没有自定义 Agent",
           ready: "可用",
           harnessLabel: "Agent Runtime",
           harnessUnavailable: "Agent Runtime 不可用",
@@ -971,8 +997,7 @@ export const zhCN = {
           deleteConfirm: "删除此方案？",
           deleteFailed: "删除失败，请重试",
           deleting: "删除中...",
-          description:
-            "配置具名的模型接入方案——官方订阅、Coding Plan、国内模型、中转服务或自定义接口，供工作区的 Agent 和应用使用",
+          description: "配置模型接口及可用模型，供工作区的 Agent 和应用使用",
           confirmModelRangeImpact: "确认影响并保存",
           detect: "检测连接",
           detectFailed: "连接检测失败，请重试",
@@ -982,7 +1007,7 @@ export const zhCN = {
           edit: "编辑",
           editTitle: "编辑 {{plan}}",
           emptyDescription:
-            "点「添加方案」用你的 API 密钥接入订阅、中转或自定义接口",
+            "点「添加方案」，填写接口协议、Base URL、API 密钥和可用模型",
           emptyTitle: "还没有模型方案",
           enabled: "启用 {{plan}}",
           fetchModels: "拉取模型",
@@ -990,7 +1015,6 @@ export const zhCN = {
           fetchModelsFailed: "拉取模型失败，请检查凭证与 Base URL 后重试",
           fetchModelsResult: "已拉取 {{count}} 个可选模型",
           fetchingModels: "拉取中...",
-          getApiKey: "获取 {{provider}} API 密钥",
           hideApiKey: "隐藏密钥",
           keepExistingKey: "留空则继续使用已保存的密钥",
           lastDetectedAt: "上次检测 {{time}}",
@@ -1010,23 +1034,6 @@ export const zhCN = {
           nameLabel: "名称",
           namePlaceholder: "我的模型方案",
           neverDetected: "尚未检测",
-          presetLabel: "服务商预设",
-          presets: {
-            agnes: "Agnes",
-            anthropicOfficial: "Anthropic (Claude)",
-            codingPlanAnthropic: "Claude Coding Plan",
-            codingPlanCustom: "其他 Coding Plan",
-            customAnthropic: "自定义 Anthropic 兼容接口",
-            customOpenai: "自定义 OpenAI 兼容接口",
-            deepseekAnthropic: "DeepSeek - Anthropic",
-            deepseekOpenai: "DeepSeek - OpenAI",
-            mimoAnthropic: "MiMo (Xiaomi) - Anthropic",
-            mimoOpenai: "MiMo (Xiaomi) - OpenAI",
-            minimaxAnthropic: "MiniMax - Anthropic",
-            minimaxOpenai: "MiniMax - OpenAI",
-            openaiOfficial: "OpenAI 官方",
-            relayCustom: "中转接入点"
-          },
           protocolLabel: "接口协议",
           protocols: {
             anthropic: "Anthropic 兼容",
@@ -1059,8 +1066,9 @@ export const zhCN = {
               label: "Coding Plan"
             },
             custom: {
-              guidance: "使用你自己的密钥接入任意 OpenAI 或 Anthropic 兼容接口",
-              label: "自定义兼容接口"
+              guidance:
+                "填写 OpenAI 或 Anthropic 兼容接口的 Base URL、API 密钥和模型",
+              label: "模型接口"
             },
             domestic: {
               guidance: "接入 DeepSeek、MiniMax、MiMo 等国内模型服务",
@@ -1075,7 +1083,6 @@ export const zhCN = {
               label: "中转服务"
             }
           },
-          templatePickerTitle: "选择接入方式",
           title: "模型方案",
           toggleFailed: "状态更新失败，请重试"
         }
@@ -1177,25 +1184,22 @@ export const zhCN = {
         agentInputHistoryDescription:
           "在 Agent 输入框中使用上下键切换当前会话的历史输入",
         agentInputHistoryLabel: "Agent 输入历史",
+        agentSessionForkDescription:
+          "允许从支持的已完成轮次创建新的 Agent 会话分支",
+        agentSessionForkLabel: "Agent 会话分支",
         backLabel: "返回",
         automationRulesDescription: "显示自动化规则配置与会话覆盖选项",
         automationRulesLabel: "自动化规则",
         clearShortcutLabel: "清除 {{label}}",
-        modelPlansDescription: "显示用于配置模型方案的模型设置",
-        modelPlansLabel: "模型方案",
         newAgentConversationShortcutLabel: "新建 Agent 对话",
         newSameTypeWindowShortcutLabel: "新建同类型窗口",
         preferencesSaveFailed: "暂时无法更新实验室设置",
         previewAgentsDescription: "显示仍在 Tutti 中测试和验证的 Agent 集成",
         previewAgentsLabel: "抢先体验 Agent 集成",
         shortcutUnbound: "未绑定",
-        tuttiModeDescription: "启用 Agent 对话中的 Tutti 模式规划与编排控制",
-        tuttiModeLabel: "Tutti 模式",
         workbenchShortcutsDescription: "启用可配置的工作台快捷键操作",
         workbenchShortcutsLabel: "工作台快捷键",
-        workbenchShortcutsManageLabel: "配置键盘快捷键",
-        workspaceAgentsDescription: "显示自定义 Agent 的创建与配置",
-        workspaceAgentsLabel: "自定义 Agent"
+        workbenchShortcutsManageLabel: "配置键盘快捷键"
       },
       title: "设置",
       trigger: "设置"

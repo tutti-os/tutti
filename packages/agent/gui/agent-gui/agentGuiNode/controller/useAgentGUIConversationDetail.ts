@@ -82,6 +82,9 @@ interface UseAgentGUIConversationDetailInput {
   >[0];
   selectedComposerTargetData: AgentGUIComposerTargetData;
   selectedProjectPath: string | null;
+  projectedSessionMessagesById: Readonly<
+    Record<string, readonly AgentActivityMessage[]>
+  >;
   sessionEngine: AgentSessionEngine;
   workspaceId: string;
   workspacePath: string;
@@ -174,16 +177,16 @@ export function useAgentGUIConversationDetail(
       conversation: projectionConversation,
       canonicalSession: input.activeSessionFamily.rootSession,
       childSessions: input.activeSessionFamily.childSessions,
-      childMessagesBySessionId: input.activeSessionFamily.messagesBySessionId,
+      childMessagesBySessionId: input.projectedSessionMessagesById,
       workspaceRoot: input.workspacePath,
       avoidGroupingEdits: input.avoidGroupingEdits
     });
   }, [
     input.activeTimelineItems,
     input.activeSessionFamily.childSessions,
-    input.activeSessionFamily.messagesBySessionId,
     input.activeSessionFamily.rootSession,
     input.avoidGroupingEdits,
+    input.projectedSessionMessagesById,
     input.workspacePath,
     projectionConversation
   ]);

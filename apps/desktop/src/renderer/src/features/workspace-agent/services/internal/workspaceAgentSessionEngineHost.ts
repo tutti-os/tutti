@@ -147,6 +147,11 @@ export function createWorkspaceAgentSessionEngineHost(
           }),
         cancelTurn: (effectInput, options) =>
           input.cancelTurn({ ...effectInput, signal: options?.signal }),
+        deleteSessions: (effectInput, options) =>
+          adapter.deleteSessions({
+            ...effectInput,
+            signal: options?.signal
+          }),
         respondToInteraction: (effectInput, options) =>
           input.submitInteractive({
             ...effectInput,
@@ -157,6 +162,13 @@ export function createWorkspaceAgentSessionEngineHost(
             ...effectInput,
             signal: options?.signal
           }),
+        setSessionPinned: async (effectInput, options) => {
+          const session = await adapter.setSessionPinned({
+            ...effectInput,
+            signal: options?.signal
+          });
+          return { session };
+        },
         updateSessionSettings: (
           { agentSessionId, settings, workspaceId },
           options
@@ -214,15 +226,6 @@ export function createWorkspaceAgentSessionEngineHost(
               signal: options?.signal,
               workspaceId: command.workspaceId
             });
-          case "session/setPinned": {
-            const session = await adapter.setSessionPinned({
-              agentSessionId: command.agentSessionId,
-              pinned: command.pinned,
-              signal: options?.signal,
-              workspaceId: command.workspaceId
-            });
-            return { session };
-          }
           case "session/forkThroughTurn":
             return adapter.forkSession({
               requestId: command.requestId,
@@ -238,12 +241,6 @@ export function createWorkspaceAgentSessionEngineHost(
               command,
               options?.signal
             );
-          case "sessions/delete":
-            return adapter.deleteSessions({
-              agentSessionIds: command.agentSessionIds,
-              signal: options?.signal,
-              workspaceId: command.workspaceId
-            });
           case "tuttiMode/update":
             return executeWorkspaceAgentTuttiModeUpdateCommand(
               input,

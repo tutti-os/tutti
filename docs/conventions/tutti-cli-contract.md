@@ -428,9 +428,17 @@ The public command set is deliberately narrow:
   authoritative execution snapshot: execution status, active checkpoint,
   graph revision, visible pending checkpoints, task launch settings,
   supersession and dependency facts, per-task readiness blockers, ready task
-  IDs, allowed actions, and a checkpoint-specific recovery hint. It is the
-  only supported refresh operation after a fenced execution command is
-  rejected;
+  IDs, `dispatchPaused`, allowed actions, and a checkpoint-specific recovery
+  hint. It is the only supported refresh operation after a fenced execution
+  command is rejected;
+- `tutti plan issue resume --issue-id <id>` clears a durable dispatch pause
+  without changing the active checkpoint or graph revision. Caller authority
+  comes only from the original source Agent Session. A Session whose frozen
+  runtime snapshot predates this command may use
+  `tutti issue update --issue-id <id> --dispatch-paused=false`; the Issue
+  provider recognizes only that exact managed-Issue resume shape and routes it
+  through the same source-scoped control. Other generic mutations of a
+  Tutti-owned Issue remain rejected;
 - `tutti plan issue schedule --issue-id <id> --checkpoint-id <id>
 --expected-graph-revision <revision> --task-ids-json <json-array>
 --request-id <stable-id>` resolves the active execution checkpoint by
@@ -485,6 +493,11 @@ The active checkpoint defines the legal action set:
 | `task_settled`                 | schedule or mutate; acknowledge only when another Run is active or a later checkpoint is pending; or stop                                                                |
 | `task_failed`, `task_canceled` | rework the terminal task with a new task ID, then schedule the replacement with the mutation result revision; acknowledge only under the same backlog condition; or stop |
 | `all_tasks_terminal`           | complete Goal Review, or mutate and schedule exact follow-up work; or stop                                                                                               |
+
+When `dispatchPaused=true`, remove `schedule` from the table's current action
+set and add `resume`. Mutation, acknowledgement, completion, and terminal stop
+retain their normal checkpoint rules. A pause does not mint a new checkpoint
+or revision.
 
 The source Agent refreshes `plan issue get` at most once for an
 `inactive_checkpoint` or `stale_graph_revision` rejection and retries the

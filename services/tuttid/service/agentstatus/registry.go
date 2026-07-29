@@ -47,6 +47,7 @@ type ProviderSpec struct {
 	AdapterInstall               InstallerSpec
 	LoginArgs                    []string
 	LoginActionKind              ActionKind
+	resolvedCLIManager           string
 }
 
 type ProviderUpdateStrategy string
@@ -194,6 +195,17 @@ func isClaudeStatusSpec(spec ProviderSpec) bool {
 		}
 	}
 	return kind == providerregistry.StatusKindClaudeCLI
+}
+
+// isStandardACPStatusSpec reports whether spec's runtime is a "standard ACP"
+// provider (e.g. cursor-agent, opencode): the CLI binary itself, invoked with
+// an `acp` subcommand, IS the ACP adapter. This is the same architecture
+// Codex has (see isCodexStatusSpec), so these providers are exposed to the
+// same "process started but never actually spoke ACP" false-positive risk
+// described in Agent 可用性需求摘要 issue #1.
+func isStandardACPStatusSpec(spec ProviderSpec) bool {
+	descriptor, ok := providerregistry.Find(spec.Provider)
+	return ok && descriptor.Runtime.Kind == providerregistry.RuntimeKindStandardACP
 }
 
 func migratedProviderStatus(provider string) (providerregistry.StatusDescriptor, bool) {

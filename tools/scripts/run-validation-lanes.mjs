@@ -9,6 +9,8 @@ import {
 import { join, relative } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
+import { createGitDiscoveryEnvironment } from "./git-environment.mjs";
+
 export async function runValidationLanes({
   lanes,
   maxParallel,
@@ -117,7 +119,7 @@ function runLane({ index, lane, runDirectory, tailLines, workspaceRoot }) {
     let settled = false;
     const child = spawn(lane.command[0], lane.command.slice(1), {
       cwd: lane.cwd ?? workspaceRoot,
-      env: process.env,
+      env: createGitDiscoveryEnvironment(),
       stdio: ["ignore", "pipe", "pipe"]
     });
 

@@ -92,6 +92,10 @@ export interface EngineIntentExpiredIntent {
   dueAtUnixMs: number;
 }
 
+/**
+ * Host-dispatchable and host-observable Engine input. Reducer-only
+ * continuations belong to the private root-reducer contract.
+ */
 export type EngineIntent =
   | AttentionReadIntent
   | EngineCommandResultIntent
@@ -191,6 +195,10 @@ export type EngineExternalCommandExceptPlanDecision = Exclude<
 >;
 
 type AgentSessionEffectCommand =
+  | Extract<
+      SessionMutationCommand,
+      { type: "session/setPinned" | "sessions/delete" }
+    >
   | InteractionRespondCommand
   | PromptQueueSendCommand
   | SessionActivateCommand
@@ -239,6 +247,10 @@ export interface EngineRuntimeState {
   };
 }
 
+/**
+ * Host-observable Engine snapshot. Reducer execution ledgers are deliberately
+ * omitted from this public state contract.
+ */
 export interface AgentSessionEngineState {
   attentionReadState: AttentionReadState;
   engineRuntime: EngineRuntimeState;
@@ -331,12 +343,20 @@ export interface AgentSessionEffectPort {
     input: AgentActivityCancelTurnInput,
     options?: EngineEffectOptions
   ): Promise<unknown>;
+  deleteSessions(
+    input: Omit<AgentActivityDeleteSessionsInput, "signal">,
+    options?: EngineEffectOptions
+  ): Promise<unknown>;
   respondToInteraction(
     input: AgentActivitySubmitInteractiveInput,
     options?: EngineEffectOptions
   ): Promise<unknown>;
   sendInput(
     input: AgentActivitySendInput,
+    options?: EngineEffectOptions
+  ): Promise<unknown>;
+  setSessionPinned(
+    input: Omit<AgentActivitySetSessionPinnedInput, "signal">,
     options?: EngineEffectOptions
   ): Promise<unknown>;
   updateSessionSettings(
@@ -467,8 +487,10 @@ import type {
 } from "./tuttiModeActivation.types.ts";
 import type {
   AgentActivityCancelTurnInput,
+  AgentActivityDeleteSessionsInput,
   AgentActivityInitialGoalControl,
   AgentActivitySendInput,
+  AgentActivitySetSessionPinnedInput,
   AgentActivitySessionSettings,
   AgentActivitySubmitDiagnostics,
   AgentActivitySubmitInteractiveInput,

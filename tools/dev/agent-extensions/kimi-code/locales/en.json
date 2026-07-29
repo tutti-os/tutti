@@ -1,0 +1,7 @@
+{
+  "agent.name": "Kimi Code",
+  "agent.description": "Kimi Code through the standard Agent Client Protocol",
+  "runtime.install.title": "Install the managed Kimi Code runtime",
+  "runtime.install.description": "Installs the pinned runtime in Tutti's target-scoped managed directory without changing your project.",
+  "runtime.authRequired": "Run `kimi login` on the host before starting an ACP session."
+}

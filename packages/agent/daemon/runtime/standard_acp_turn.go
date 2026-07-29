@@ -30,21 +30,9 @@ func (a *standardACPAdapter) Exec(
 		)}, ErrSessionDisconnected
 	}
 	session.ProviderSessionID = acpSession.providerSessionID
-	a.rememberSessionTurn(session.AgentSessionID, turnID)
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
 	mentionRoutingApplied, mentionRoutingSkills := tuttiMentionRoutingSkills(visibleText)
-	acpPromptContent := promptContentForACP(content)
-	if mentionRoutingApplied {
-		acpPromptContent = appendTuttiMentionRoutingPrompt(acpPromptContent, mentionRoutingSkills)
-	}
-	// ACP v1 has no developer/system or synthetic-message channel. Keep the
-	// canonical Tutti-owned context in the provider-only prompt payload; the
-	// activity event below is still projected exclusively from the original
-	// user content.
-	acpPromptContent = appendTuttiModeHostContextPrompt(
-		acpPromptContent,
-		tuttiModeTurnSnapshotFromContext(ctx),
-	)
+	a.rememberSessionTurn(session.AgentSessionID, turnID)
 	normalizer := newACPTurnNormalizer()
 	var events []activityshared.Event
 	var eventsMu sync.Mutex
@@ -72,6 +60,38 @@ func (a *standardACPAdapter) Exec(
 		standardACPRootProviderTurnStartedEvent(session, turnID),
 	}
 	emitEvents(startEvents)
+
+	providerContent, err := materializeProviderPromptImagesAtBoundary(ctx, content, a.promptImageMaterializer)
+	if err != nil {
+		outcome := activityshared.TurnOutcomeFailed
+		terminalEvents := normalizer.FinishFailed(session, turnID)
+		if errors.Is(err, context.Canceled) || errors.Is(err, errPermissionRequestCanceled) {
+			outcome = activityshared.TurnOutcomeCanceled
+			terminalEvents = normalizer.FinishInterrupted(session, turnID, "interrupted")
+		}
+		terminalEvents = append(terminalEvents, standardACPRootProviderTurnCompletedEvent(
+			session,
+			turnID,
+			outcome,
+			map[string]any{"error": err.Error()},
+		))
+		emitEvents(terminalEvents)
+		// Standard ACP reports provider failures through lifecycle events. Return
+		// nil so the controller does not replay the already-emitted event batch.
+		return events, nil
+	}
+	acpPromptContent := promptContentForACP(providerContent)
+	if mentionRoutingApplied {
+		acpPromptContent = appendTuttiMentionRoutingPrompt(acpPromptContent, mentionRoutingSkills)
+	}
+	// ACP v1 has no developer/system or synthetic-message channel. Keep the
+	// canonical Tutti-owned context in the provider-only prompt payload; the
+	// activity event above is still projected exclusively from the original
+	// user content.
+	acpPromptContent = appendTuttiModeHostContextPrompt(
+		acpPromptContent,
+		tuttiModeTurnSnapshotFromContext(ctx),
+	)
 	slog.Info("agent session ACP exec started",
 		"event", "agent_session.acp.exec.start",
 		"provider", a.config.provider,

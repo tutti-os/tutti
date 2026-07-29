@@ -284,6 +284,21 @@ export const en = {
       actionRelogin: "Sign in again",
       actionLogin: "Sign in",
       actionRetry: "Retry",
+      runtimeTitle: "Choose Codex CLI",
+      runtimeDiscovering: "Checking local Codex CLI installations…",
+      runtimeSelectionRequiredDescription:
+        "More than one working Codex CLI was found. Choose the one Tutti should use.",
+      runtimeStaleDescription:
+        "The Codex CLI you chose is no longer available. Choose another working installation.",
+      runtimeChangeDescription:
+        "Choose which working Codex CLI Tutti should use.",
+      runtimeSelected: "In use",
+      runtimeUnavailableTitle: "Other detected installations",
+      runtimeSourceBun: "Bun",
+      runtimeSourcePnpm: "pnpm",
+      runtimeSourceNpm: "npm",
+      runtimeSourceHomebrew: "Homebrew",
+      runtimeSourcePath: "PATH",
       stepCli: "{{provider}} CLI",
       stepVersion: "Supported version",
       stepAuth: "Signed in",
@@ -414,7 +429,25 @@ export const en = {
       archiveSelectDescription:
         "Search and check the Claude conversations to import",
       back: "Back",
+      chatgptEmpty:
+        "No supported conversations were found in this ChatGPT export",
+      chatgptGroupLabel: "ChatGPT chats",
+      chatgptOptionDescription:
+        "Choose the ZIP file downloaded from ChatGPT's data export",
+      chatgptOptionTitle: "Import ChatGPT export data",
+      chatgptPickFailed: "We couldn't open the ChatGPT export file picker.",
+      chatgptResult:
+        "Imported {{sessions}} conversations and {{messages}} messages from the ChatGPT export",
+      chatgptScanFailed:
+        "This ZIP could not be read as a supported ChatGPT data export.",
+      chatgptScanning: "Reading ChatGPT export conversations...",
+      chatgptSearchPlaceholder: "Search ChatGPT conversations",
+      chatgptSelectDescription:
+        "Search and check the ChatGPT conversations to import",
+      chatgptSelectionReady:
+        "ChatGPT export scan complete. {{count}} conversations are ready to review.",
       chooseArchive: "Choose ZIP",
+      chooseChatgptArchive: "Choose ZIP",
       description:
         "Import local Codex and Claude Code history or a Claude data export",
       done: "Done",
@@ -920,15 +953,14 @@ export const en = {
           deleteFailed: "Couldn't delete the Agent — try again.",
           deleting: "Deleting...",
           description:
-            "Create named Agent options by combining an Agent Runtime with a model plan and instructions.",
-          disabled: "Disabled",
+            "Choose an Agent Runtime, model, and instructions to create a reusable Agent.",
           edit: "Edit",
           editTitle: "Edit {{agent}}",
           editorDescription:
             "This configuration becomes one selectable Agent in new conversations.",
           emptyDescription:
-            "Add an Agent to map an Agent Runtime and model plan into a reusable conversation option.",
-          emptyTitle: "No workspace Agents yet",
+            "Add an Agent, then choose its Agent Runtime, model, and instructions.",
+          emptyTitle: "No custom Agents yet",
           ready: "Ready",
           harnessLabel: "Agent Runtime",
           harnessUnavailable: "Agent Runtime unavailable",
@@ -1034,7 +1066,7 @@ export const en = {
           deleteFailed: "Couldn't delete — try again.",
           deleting: "Deleting...",
           description:
-            "Set up named model access plans — official subscriptions, coding plans, domestic providers, relays, or custom endpoints — for your workspace agents and apps",
+            "Configure model endpoints and available models for workspace Agents and apps",
           confirmModelRangeImpact: "Confirm impact and save",
           detect: "Test connection",
           detectFailed: "Couldn't run the connection check — try again.",
@@ -1044,7 +1076,7 @@ export const en = {
           edit: "Edit",
           editTitle: "Edit {{plan}}",
           emptyDescription:
-            "Click \u201cAdd plan\u201d to connect a subscription, relay, or custom endpoint with your API key",
+            "Click “Add plan”, then enter the API protocol, Base URL, API key, and available models",
           emptyTitle: "No model plans yet",
           enabled: "Enable {{plan}}",
           fetchModels: "Fetch models",
@@ -1054,7 +1086,6 @@ export const en = {
             "Couldn't fetch the model list — check the credentials and Base URL, then try again.",
           fetchModelsResult: "Fetched {{count}} selectable models",
           fetchingModels: "Fetching...",
-          getApiKey: "Get {{provider}} API key",
           hideApiKey: "Hide key",
           keepExistingKey: "Leave blank to keep the saved key",
           lastDetectedAt: "Checked {{time}}",
@@ -1074,23 +1105,6 @@ export const en = {
           nameLabel: "Name",
           namePlaceholder: "My model plan",
           neverDetected: "Not checked yet",
-          presetLabel: "Provider preset",
-          presets: {
-            agnes: "Agnes",
-            anthropicOfficial: "Anthropic (Claude)",
-            codingPlanAnthropic: "Claude coding plan",
-            codingPlanCustom: "Other coding plan",
-            customAnthropic: "Custom Anthropic-compatible",
-            customOpenai: "Custom OpenAI-compatible",
-            deepseekAnthropic: "DeepSeek - Anthropic",
-            deepseekOpenai: "DeepSeek - OpenAI",
-            mimoAnthropic: "MiMo (Xiaomi) - Anthropic",
-            mimoOpenai: "MiMo (Xiaomi) - OpenAI",
-            minimaxAnthropic: "MiniMax - Anthropic",
-            minimaxOpenai: "MiniMax - OpenAI",
-            openaiOfficial: "OpenAI official",
-            relayCustom: "Relay endpoint"
-          },
           protocolLabel: "API protocol",
           protocols: {
             anthropic: "Anthropic-compatible",
@@ -1124,8 +1138,8 @@ export const en = {
             },
             custom: {
               guidance:
-                "Connect any OpenAI- or Anthropic-compatible endpoint with your own key.",
-              label: "Custom compatible endpoint"
+                "Enter the Base URL, API key, and models for an OpenAI- or Anthropic-compatible endpoint.",
+              label: "Model endpoint"
             },
             domestic: {
               guidance:
@@ -1143,7 +1157,6 @@ export const en = {
               label: "Relay service"
             }
           },
-          templatePickerTitle: "Choose an access scheme",
           title: "Model plans",
           toggleFailed: "Couldn't update the plan state — try again."
         }
@@ -1253,13 +1266,14 @@ export const en = {
         agentInputHistoryDescription:
           "Use Up and Down in Agent input to recall earlier prompts from the current session.",
         agentInputHistoryLabel: "Agent input history",
+        agentSessionForkDescription:
+          "Allow branching a new Agent conversation from a supported completed turn.",
+        agentSessionForkLabel: "Agent session fork",
         backLabel: "Back",
         automationRulesDescription:
           "Shows Automation Rule configuration and session overrides.",
         automationRulesLabel: "Automation Rules",
         clearShortcutLabel: "Clear {{label}}",
-        modelPlansDescription: "Shows Model settings for configuring plans.",
-        modelPlansLabel: "Model plans",
         newAgentConversationShortcutLabel: "New Agent conversation",
         newSameTypeWindowShortcutLabel: "New same-type window",
         preferencesSaveFailed: "We couldn't update Lab preferences.",
@@ -1267,16 +1281,10 @@ export const en = {
           "Show agent integrations that Tutti is still testing and validating.",
         previewAgentsLabel: "Early access agent integrations",
         shortcutUnbound: "Unbound",
-        tuttiModeDescription:
-          "Enables Tutti Mode planning and orchestration controls in Agent conversations.",
-        tuttiModeLabel: "Tutti Mode",
         workbenchShortcutsDescription:
           "Enables configurable workbench shortcut actions.",
         workbenchShortcutsLabel: "Workbench shortcuts",
-        workbenchShortcutsManageLabel: "Configure keyboard shortcuts",
-        workspaceAgentsDescription:
-          "Shows Custom Agent creation and configuration.",
-        workspaceAgentsLabel: "Custom Agents"
+        workbenchShortcutsManageLabel: "Configure keyboard shortcuts"
       },
       title: "Settings",
       trigger: "Settings"

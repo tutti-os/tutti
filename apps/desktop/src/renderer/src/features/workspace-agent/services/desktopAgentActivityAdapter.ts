@@ -521,7 +521,8 @@ export function createDesktopAgentActivityAdapter({
       const session = await tuttidClient.updateWorkspaceAgentSessionPin(
         input.workspaceId,
         input.agentSessionId,
-        { pinned: input.pinned }
+        { pinned: input.pinned },
+        { signal: input.signal }
       );
       return agentActivitySessionFromTuttidSession(input.workspaceId, session);
     },

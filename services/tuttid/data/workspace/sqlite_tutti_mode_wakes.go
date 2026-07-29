@@ -114,11 +114,14 @@ func (s *SQLiteStore) PrepareDueTuttiModeExecutionWatchdogs(
 	}
 	rows, err := tx.QueryContext(ctx, `
 SELECT execution_id, graph_revision, watchdog_due_at_unix_ms
-FROM workspace_tutti_executions
-WHERE workspace_id = ?
-  AND status IN ('awaiting_schedule', 'running', 'awaiting_main', 'pending_goal_review')
-  AND watchdog_due_at_unix_ms <= ?
-ORDER BY watchdog_due_at_unix_ms ASC, execution_id ASC
+FROM workspace_tutti_executions e
+JOIN workspace_issues i
+  ON i.workspace_id = e.workspace_id AND i.issue_id = e.issue_id
+WHERE e.workspace_id = ?
+  AND e.status IN ('awaiting_schedule', 'running', 'awaiting_main', 'pending_goal_review')
+  AND i.dispatch_paused = 0
+  AND e.watchdog_due_at_unix_ms <= ?
+ORDER BY e.watchdog_due_at_unix_ms ASC, e.execution_id ASC
 `, workspaceID, unixMs(now))
 	if err != nil {
 		return fmt.Errorf("list due Tutti mode watchdogs: %w", err)
@@ -375,6 +378,13 @@ WHERE e.workspace_id = ?
   AND c.status = 'active'
   AND w.target_kind = 'main' AND w.status = 'prepared'
   AND w.due_at_unix_ms <= ?
+  AND EXISTS (
+    SELECT 1
+    FROM workspace_issues i
+    WHERE i.workspace_id = e.workspace_id
+      AND i.issue_id = e.issue_id
+      AND i.dispatch_paused = 0
+  )
 ORDER BY w.due_at_unix_ms ASC, e.execution_id ASC, c.sequence ASC, w.wake_sequence ASC
 `, strings.TrimSpace(workspaceID), unixMs(now))
 	if err != nil {
@@ -484,10 +494,13 @@ WHERE workspace_id = ? AND wake_id = ? AND status = 'prepared'
     FROM workspace_tutti_executions e
     JOIN workspace_tutti_execution_checkpoints c
       ON c.workspace_id = e.workspace_id AND c.execution_id = e.execution_id
+    JOIN workspace_issues i
+      ON i.workspace_id = e.workspace_id AND i.issue_id = e.issue_id
     WHERE e.workspace_id = workspace_tutti_execution_wakes.workspace_id
       AND e.execution_id = workspace_tutti_execution_wakes.execution_id
       AND e.source_session_id = workspace_tutti_execution_wakes.target_session_id
       AND e.status IN ('awaiting_schedule', 'running', 'awaiting_main', 'pending_goal_review')
+      AND i.dispatch_paused = 0
       AND c.checkpoint_id = workspace_tutti_execution_wakes.checkpoint_id
       AND c.status = 'active'
   )
@@ -560,10 +573,13 @@ WHERE workspace_id = ? AND wake_id = ? AND status = 'leased' AND lease_owner = ?
     FROM workspace_tutti_executions e
     JOIN workspace_tutti_execution_checkpoints c
       ON c.workspace_id = e.workspace_id AND c.execution_id = e.execution_id
+    JOIN workspace_issues i
+      ON i.workspace_id = e.workspace_id AND i.issue_id = e.issue_id
     WHERE e.workspace_id = workspace_tutti_execution_wakes.workspace_id
       AND e.execution_id = workspace_tutti_execution_wakes.execution_id
       AND e.source_session_id = workspace_tutti_execution_wakes.target_session_id
       AND e.status IN ('awaiting_schedule', 'running', 'awaiting_main', 'pending_goal_review')
+      AND i.dispatch_paused = 0
       AND c.checkpoint_id = workspace_tutti_execution_wakes.checkpoint_id
       AND c.status = 'active'
   )

@@ -125,6 +125,8 @@ func TestRenderTuttiModeHostContextCarriesWorkedWorkflowExamples(t *testing.T) {
 		"the first task must initialize one (`git init` plus an initial commit)",
 		"this conversation becomes the plan's orchestrator",
 		"stopping this conversation stops every running task",
+		"A dispatch-paused Issue must stay quiet",
+		"`tutti plan issue resume --issue-id <issueId> --json`",
 		"all tasks becoming terminal starts Goal Review",
 		"`tutti plan issue complete --issue-id <issueId> --checkpoint-id <checkpointId>",
 		"review whether the user's goal is actually satisfied",
@@ -199,6 +201,10 @@ func TestRenderTuttiModeHostContextCarriesTypedActiveState(t *testing.T) {
 		`"revisionId":"revision-7"`,
 		`"revision":7`,
 		`"state":"active"`,
+		"The JSON `state` field is authoritative",
+		"Determine and report Tutti Mode status only from that field",
+		"Provider collaboration mode and Tutti workflow existence are independent facts",
+		"When the user requests a plan and the request is clear",
 		"Do not execute the user's request directly in this turn.",
 		"ask the user focused clarifying questions",
 		"`tutti plan propose` shell command",
@@ -244,6 +250,9 @@ func TestRenderTuttiModeHostContextCarriesExplicitInactiveState(t *testing.T) {
 		`"revision":8`,
 		`"state":"inactive"`,
 		"Tutti mode is inactive for this turn.",
+		"The JSON `state` field is authoritative",
+		"Determine and report Tutti Mode status only from that field",
+		"Provider collaboration mode and Tutti workflow existence are independent facts",
 		"Tutti CLI capabilities remain available",
 	} {
 		if !strings.Contains(contextText, expected) {
@@ -259,6 +268,19 @@ func TestRenderTuttiModeHostContextCarriesExplicitInactiveState(t *testing.T) {
 	} {
 		if strings.Contains(contextText, forbidden) {
 			t.Fatalf("inactive host context = %q, must not contain active-only directive %q", contextText, forbidden)
+		}
+	}
+}
+
+func TestRenderTuttiModeHostContextSeparatesActivationFromWorkflowExistence(t *testing.T) {
+	t.Parallel()
+	contextText := renderTuttiModeHostContextForCLI(testActiveTuttiModeSnapshot(), "tutti")
+	for _, expected := range []string{
+		"must not override the activation state",
+		"A Tutti plan exists only after plan propose returns a workflowId",
+	} {
+		if !strings.Contains(contextText, expected) {
+			t.Fatalf("host context = %q, want %q", contextText, expected)
 		}
 	}
 }

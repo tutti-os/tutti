@@ -86,6 +86,51 @@ test("projects message deltas and clears them on authoritative deletion", () => 
   harness.engine.dispose();
 });
 
+test("preserves unrelated Session message projections during an optimistic delta", () => {
+  const harness = createHarness();
+  harness.engine.dispatch({
+    messages: [
+      message("session-a", "message-a", "canonical a"),
+      message("session-b", "message-b", "canonical b")
+    ],
+    type: "message/snapshotReceived",
+    workspaceId: "workspace-1"
+  });
+  const before = harness.coordinator.project(harness.readCanonicalSnapshot());
+
+  harness.coordinator.ingestEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-a",
+    eventType: "message_delta",
+    data: {
+      workspaceId: "workspace-1",
+      agentSessionId: "session-a",
+      messageId: "message-a",
+      turnId: "turn-1",
+      role: "assistant",
+      kind: "text",
+      occurredAtUnixMs: 10,
+      content: { operation: "set", value: "canonical a live" }
+    }
+  });
+
+  const after = harness.coordinator.project(harness.readCanonicalSnapshot());
+  assert.notEqual(
+    after.sessionMessagesById["session-a"],
+    before.sessionMessagesById["session-a"]
+  );
+  assert.equal(
+    after.sessionMessagesById["session-a"]?.[0]?.payload.text,
+    "canonical a live"
+  );
+  assert.equal(
+    after.sessionMessagesById["session-b"],
+    before.sessionMessagesById["session-b"]
+  );
+  harness.coordinator.dispose();
+  harness.engine.dispose();
+});
+
 test("reconnect hydrates the workspace, priority session, and cached messages", () => {
   const harness = createHarness();
   harness.engine.dispatch({
@@ -168,6 +213,21 @@ test("reconnect hydrates the workspace, priority session, and cached messages", 
   harness.coordinator.dispose();
   harness.engine.dispose();
 });
+
+function message(agentSessionId: string, messageId: string, text: string) {
+  return {
+    workspaceId: "workspace-1",
+    agentSessionId,
+    messageId,
+    version: 1,
+    sequence: 1,
+    turnId: "turn-1",
+    role: "assistant" as const,
+    kind: "text",
+    payload: { text },
+    occurredAtUnixMs: 1
+  };
+}
 
 test("invalid wire delta stays inside the coordinator and requests reconcile", () => {
   const harness = createHarness();

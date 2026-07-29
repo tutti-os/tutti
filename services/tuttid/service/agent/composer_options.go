@@ -109,6 +109,10 @@ type ComposerCapabilityOption struct {
 	Trigger     string
 	Path        string
 	Invocation  string
+	// Semantic is a stable presentation and interaction key for a
+	// provider-native capability. It deliberately does not expose provider
+	// implementation identifiers or filesystem-owned icon paths to clients.
+	Semantic string
 }
 
 type ComposerCommandOption struct {
@@ -244,16 +248,37 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	if planEndpoint != nil {
 		settings.Model = planEndpoint.Model
 	}
-	catalogProjection := composerModelCatalogProjection{}
-	catalogProjectionOK := false
+	var catalogLoad <-chan composerModelCatalogLoadResult
 	if planEndpoint == nil && composerOptionsProviderUsesModelCatalog(provider) {
-		catalogProjection, catalogProjectionOK = composerModelOptionsFromCatalog(
+		catalogLoad = startComposerModelCatalogLoad(
 			ctx,
 			s.ModelCatalog,
 			provider,
 			input.Cwd,
 			settings.Model,
 		)
+	}
+	skills := filterWorkspaceAgentComposerSkills(
+		s.discoverComposerSkillOptionsForLaunch(ctx, provider, input.Cwd, nil, input.providerTargetRef),
+		launchInput.AgentSkills,
+		launchInput.AgentCapabilitiesExplicit,
+	)
+	capabilityCatalog := []ComposerCapabilityOption{}
+	capabilityErrors := []string(nil)
+	if composerOptionsIncludeCapabilityCatalog(input) {
+		capabilityCatalog, capabilityErrors = s.listComposerCapabilityOptions(ctx, provider, input.Cwd, skills)
+		capabilityCatalog = filterWorkspaceAgentComposerCapabilities(
+			capabilityCatalog,
+			launchInput.AgentTools,
+			launchInput.AgentCapabilitiesExplicit,
+		)
+	}
+	catalogProjection := composerModelCatalogProjection{}
+	catalogProjectionOK := false
+	if catalogLoad != nil {
+		result := <-catalogLoad
+		catalogProjection = result.projection
+		catalogProjectionOK = result.ok
 	}
 	defaultModel := composerConfiguredDefaultModel(provider)
 	if catalogProjectionOK && catalogProjection.Selection.Found {
@@ -322,21 +347,6 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	if launchInput.WorkspaceAgentRevision > 0 {
 		runtimeContext["workspaceAgentRevision"] = launchInput.WorkspaceAgentRevision
 		runtimeContext["harnessAgentTargetId"] = launchInput.HarnessAgentTargetID
-	}
-	skills := filterWorkspaceAgentComposerSkills(
-		s.discoverComposerSkillOptionsForLaunch(ctx, provider, input.Cwd, nil, input.providerTargetRef),
-		launchInput.AgentSkills,
-		launchInput.AgentCapabilitiesExplicit,
-	)
-	capabilityCatalog := []ComposerCapabilityOption{}
-	capabilityErrors := []string(nil)
-	if composerOptionsIncludeCapabilityCatalog(input) {
-		capabilityCatalog, capabilityErrors = s.listComposerCapabilityOptions(ctx, provider, input.Cwd, skills)
-		capabilityCatalog = filterWorkspaceAgentComposerCapabilities(
-			capabilityCatalog,
-			launchInput.AgentTools,
-			launchInput.AgentCapabilitiesExplicit,
-		)
 	}
 	runtimeContext["skills"] = composerSkillOptionsRuntimeContext(skills)
 	if launchInput.WorkspaceAgentRevision > 0 {

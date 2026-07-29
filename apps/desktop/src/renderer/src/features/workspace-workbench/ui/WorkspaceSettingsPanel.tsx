@@ -89,10 +89,8 @@ import {
   EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG,
   isFeatureEnabled,
   LAB_ENABLED_FLAG,
-  LAB_MODEL_PLANS_FLAG,
   LAB_WORKBENCH_SHORTCUTS_FLAG,
   LAB_AUTOMATION_RULES_FLAG,
-  LAB_WORKSPACE_AGENTS_FLAG,
   MOBILE_REMOTE_ACCESS_SETTINGS_FLAG,
   resolveDesktopWorkspaceUiMode
 } from "../../../../../shared/featureFlags/catalog.ts";
@@ -194,14 +192,6 @@ export function WorkspaceSettingsPanel({
   const agentsService = useService(IAgentsService);
   const agentProviderStatusService = useService(IAgentProviderStatusService);
   const agentEnvService = useService(IAgentEnvService);
-  const modelPlansEnabled = isFeatureEnabled(
-    pendingFeatureFlags,
-    LAB_MODEL_PLANS_FLAG
-  );
-  const workspaceAgentsEnabled = isFeatureEnabled(
-    pendingFeatureFlags,
-    LAB_WORKSPACE_AGENTS_FLAG
-  );
   const automationRulesEnabled = isFeatureEnabled(
     pendingFeatureFlags,
     LAB_AUTOMATION_RULES_FLAG
@@ -224,12 +214,6 @@ export function WorkspaceSettingsPanel({
   }, [labSectionVisible, settingsService, settingsState.activeSection]);
 
   useEffect(() => {
-    if (!modelPlansEnabled && settingsState.activeSection === "model") {
-      settingsService.selectSection("general");
-    }
-  }, [modelPlansEnabled, settingsService, settingsState.activeSection]);
-
-  useEffect(() => {
     if (
       !mobileRemoteAccessSettingsEnabled &&
       settingsState.activeSection === "connection"
@@ -243,18 +227,10 @@ export function WorkspaceSettingsPanel({
   ]);
 
   useEffect(() => {
-    if (
-      (!workspaceAgentsEnabled && settingsState.agentTab === "customAgents") ||
-      (!automationRulesEnabled && settingsState.agentTab === "automation")
-    ) {
+    if (!automationRulesEnabled && settingsState.agentTab === "automation") {
       settingsService.selectAgentTab("general");
     }
-  }, [
-    automationRulesEnabled,
-    settingsService,
-    settingsState.agentTab,
-    workspaceAgentsEnabled
-  ]);
+  }, [automationRulesEnabled, settingsService, settingsState.agentTab]);
 
   const handleVersionTap = () => {
     if (settingsState.developerPanelVisible) {
@@ -324,14 +300,10 @@ export function WorkspaceSettingsPanel({
               id: "agent" as const,
               label: t("workspace.settings.nav.agent")
             },
-            ...(modelPlansEnabled
-              ? [
-                  {
-                    id: "model" as const,
-                    label: t("workspace.settings.nav.model")
-                  }
-                ]
-              : []),
+            {
+              id: "model" as const,
+              label: t("workspace.settings.nav.model")
+            },
             {
               id: "appearance" as const,
               label: t("workspace.settings.nav.appearance")
@@ -442,16 +414,10 @@ export function WorkspaceSettingsPanel({
                       value: "agents" as const,
                       label: t("workspace.settings.agent.tabs.agents")
                     },
-                    ...(workspaceAgentsEnabled
-                      ? [
-                          {
-                            value: "customAgents" as const,
-                            label: t(
-                              "workspace.settings.agent.tabs.customAgents"
-                            )
-                          }
-                        ]
-                      : []),
+                    {
+                      value: "customAgents" as const,
+                      label: t("workspace.settings.agent.tabs.customAgents")
+                    },
                     ...(automationRulesEnabled
                       ? [
                           {
@@ -516,8 +482,7 @@ export function WorkspaceSettingsPanel({
                       agentEnvService.open({ focus: "detect", provider })
                     }
                   />
-                ) : settingsState.agentTab === "customAgents" &&
-                  workspaceAgentsEnabled ? (
+                ) : settingsState.agentTab === "customAgents" ? (
                   <SettingsRows>
                     <WorkspaceAgentsSection />
                   </SettingsRows>
@@ -601,7 +566,7 @@ export function WorkspaceSettingsPanel({
                   desktopPreferencesState.workbenchWindowSnapping
                 }
               />
-            ) : settingsState.activeSection === "model" && modelPlansEnabled ? (
+            ) : settingsState.activeSection === "model" ? (
               <WorkspaceModelSettingsSection />
             ) : settingsState.activeSection === "lab" ? (
               <WorkspaceLabSettingsSection

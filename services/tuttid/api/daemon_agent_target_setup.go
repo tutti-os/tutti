@@ -45,7 +45,9 @@ func (api DaemonAPI) AuthenticateAgentTargetRuntime(ctx context.Context, request
 		case errors.Is(err, workspacedata.ErrAgentTargetNotFound),
 			errors.Is(err, agentextensionservice.ErrInvalidInstallPlanRequest),
 			errors.Is(err, agentextensionservice.ErrUnsupportedInstallTarget),
-			errors.Is(err, agentruntime.ErrACPAuthMethodUnavailable):
+			errors.Is(err, agentextensionservice.ErrTerminalAuthMethod),
+			errors.Is(err, agentruntime.ErrACPAuthMethodUnavailable),
+			errors.Is(err, agentruntime.ErrACPAuthMethodTerminal):
 			return invalidAuthenticateAgentTargetRuntimeRequest(err.Error()), nil
 		default:
 			return tuttigenerated.AuthenticateAgentTargetRuntime502JSONResponse{
@@ -123,6 +125,12 @@ func projectAgentTargetSetupSnapshot(snapshot agentextensionservice.SetupSnapsho
 		projected := tuttigenerated.AgentTargetAuthMethod{Id: method.ID, Name: method.Name}
 		if method.Description != "" {
 			projected.Description = &method.Description
+		}
+		if method.Type != "" {
+			projected.Type = &method.Type
+		}
+		if method.TerminalCommand != "" {
+			projected.TerminalCommand = &method.TerminalCommand
 		}
 		result.AuthMethods = append(result.AuthMethods, projected)
 	}

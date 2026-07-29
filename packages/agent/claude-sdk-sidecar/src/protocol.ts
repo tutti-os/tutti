@@ -1,4 +1,4 @@
-export const CLAUDE_SDK_SIDECAR_PROTOCOL_VERSION = 5 as const;
+export const CLAUDE_SDK_SIDECAR_PROTOCOL_VERSION = 6 as const;
 
 export type ClaudeSDKSidecarRequestType =
   | "start"

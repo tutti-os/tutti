@@ -11,7 +11,7 @@ const (
 	// The official SDK forkSession API allocates the provider child identity.
 	// Host therefore permits one dispatch and fails closed instead of replaying
 	// an unknown result that could create a duplicate provider child.
-	claudeSDKForkDriverVersion = "0.3.201/sidecar-v6-official-fork-api"
+	claudeSDKForkDriverVersion = "0.3.220/sidecar-v6-official-fork-api"
 )
 
 func (a *ClaudeCodeSDKAdapter) ForkCapabilities(

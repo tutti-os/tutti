@@ -137,6 +137,9 @@ func Validate(descriptor ProviderDescriptor) error {
 	default:
 		return fmt.Errorf("provider %q desktop runtime probe fallback %q is unsupported", providerID, descriptor.Desktop.RuntimeProbeFallback)
 	}
+	if descriptor.Desktop.CommandNetworkAccess && descriptor.Runtime.Kind != RuntimeKindCodexAppServer {
+		return fmt.Errorf("provider %q desktop command network access requires a Codex app-server runtime", providerID)
+	}
 	if descriptor.Desktop.UnavailableDockOrderOffset < 0 {
 		return fmt.Errorf("provider %q desktop unavailable dock order offset must be non-negative", providerID)
 	}

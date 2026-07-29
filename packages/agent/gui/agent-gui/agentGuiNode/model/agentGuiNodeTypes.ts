@@ -117,7 +117,15 @@ export interface AgentGUIProviderSkillOption {
   description?: string;
   pluginName?: string;
   path?: string;
-  kind?: "skill" | "connector";
+  kind?: "skill" | "connector" | "plugin";
+  /** Native-plugin presentation and setup contract supplied by the daemon. */
+  semantic?: "sites" | "browserUse" | "computerUse";
+  status?:
+    | "available"
+    | "disabled"
+    | "authRequired"
+    | "setupRequired"
+    | "unsupported";
 }
 
 export interface AgentComposerTextBlock {

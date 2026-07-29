@@ -6,12 +6,10 @@ import {
 
 export const LAB_ENABLED_FLAG = "lab.enabled";
 export const BROWSER_CHROME_COOKIE_IMPORT_FLAG = "browser.chromeCookieImport";
-export const LAB_TUTTI_MODE_FLAG = "lab.tuttiMode";
-export const LAB_MODEL_PLANS_FLAG = "lab.modelPlans";
-export const LAB_WORKSPACE_AGENTS_FLAG = "lab.workspaceAgents";
 export const LAB_AUTOMATION_RULES_FLAG = "lab.automationRules";
 export const LAB_WORKBENCH_SHORTCUTS_FLAG = "lab.workbenchShortcuts";
 export const LAB_AGENT_INPUT_HISTORY_FLAG = "lab.agentInputHistory";
+export const LAB_AGENT_SESSION_FORK_FLAG = "lab.agentSessionFork";
 // Keep the durable key for existing profiles while naming the product concept
 // after Tutti's integration maturity rather than the upstream Agent maturity.
 export const EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG = "lab.previewAgents";
@@ -170,27 +168,6 @@ export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
   },
   { key: LAB_ENABLED_FLAG, default: false, group: "lab-master" },
   {
-    key: LAB_TUTTI_MODE_FLAG,
-    default: false,
-    group: "lab",
-    labelKey: "workspace.settings.lab.tuttiModeLabel",
-    descriptionKey: "workspace.settings.lab.tuttiModeDescription"
-  },
-  {
-    key: LAB_MODEL_PLANS_FLAG,
-    default: false,
-    group: "lab",
-    labelKey: "workspace.settings.lab.modelPlansLabel",
-    descriptionKey: "workspace.settings.lab.modelPlansDescription"
-  },
-  {
-    key: LAB_WORKSPACE_AGENTS_FLAG,
-    default: false,
-    group: "lab",
-    labelKey: "workspace.settings.lab.workspaceAgentsLabel",
-    descriptionKey: "workspace.settings.lab.workspaceAgentsDescription"
-  },
-  {
     key: LAB_AUTOMATION_RULES_FLAG,
     default: false,
     group: "lab",
@@ -210,6 +187,13 @@ export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
     group: "lab",
     labelKey: "workspace.settings.lab.agentInputHistoryLabel",
     descriptionKey: "workspace.settings.lab.agentInputHistoryDescription"
+  },
+  {
+    key: LAB_AGENT_SESSION_FORK_FLAG,
+    default: false,
+    group: "lab",
+    labelKey: "workspace.settings.lab.agentSessionForkLabel",
+    descriptionKey: "workspace.settings.lab.agentSessionForkDescription"
   },
   {
     key: EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG,

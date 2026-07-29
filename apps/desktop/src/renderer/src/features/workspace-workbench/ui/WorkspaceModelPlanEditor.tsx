@@ -6,7 +6,6 @@ import {
   Combobox,
   DeleteIcon,
   EyeIcon,
-  OpenLinkLinedIcon,
   RadioIndicator,
   Select,
   SelectContent,
@@ -19,8 +18,6 @@ import { cn } from "@renderer/lib/format";
 import type { DesktopI18nKey } from "../../../../../shared/i18n/index.ts";
 import {
   getWorkspaceModelPlanTemplateGroup,
-  getWorkspaceModelPlanTemplatePreset,
-  toWorkspaceModelPlanPresetModels,
   workspaceModelPlanUsesNativeLogin
 } from "../services/workspaceModelPlanTemplates";
 import {
@@ -30,7 +27,6 @@ import {
 } from "../services/workspaceModelPlanCandidates";
 import {
   createEmptyWorkspaceModelPlanDraftModel,
-  reconcileWorkspaceModelPlanDraftModelsForPreset,
   removeWorkspaceModelPlanDraftModel,
   replaceWorkspaceModelPlanDraftModel
 } from "../services/workspaceModelPlanDraftModels";
@@ -148,11 +144,8 @@ export function WorkspaceModelPlanEditor({
 
   const group = getWorkspaceModelPlanTemplateGroup(draft.templateKind);
   const usesNativeLogin = workspaceModelPlanUsesNativeLogin(draft.templateKind);
-  const preset = getWorkspaceModelPlanTemplatePreset(draft.templateId);
-  const apiKeyUrl = preset?.apiKeyUrl ?? null;
-  const protocolLocked = preset?.protocolLocked ?? false;
   const candidateCatalog = buildWorkspaceModelPlanCandidateCatalog(
-    preset ? toWorkspaceModelPlanPresetModels(preset) : [],
+    [],
     discoveredModels
   );
   const editing = draft.planId !== null;
@@ -208,58 +201,12 @@ export function WorkspaceModelPlanEditor({
       </div>
 
       <div className="grid grid-cols-2 gap-3 max-[640px]:grid-cols-1">
-        {group && group.presets.length > 1 && !editing ? (
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-              {t("workspace.settings.apps.modelPlans.presetLabel")}
-            </span>
-            <Select
-              value={draft.templateId ?? group.presets[0]?.id ?? ""}
-              onValueChange={(value) => {
-                const nextPreset = group.presets.find(
-                  (candidate) => candidate.id === value
-                );
-                if (!nextPreset) {
-                  return;
-                }
-                onUpdate({
-                  baseUrl: nextPreset.baseUrl,
-                  protocol: nextPreset.protocol,
-                  templateId: nextPreset.id,
-                  ...reconcileWorkspaceModelPlanDraftModelsForPreset({
-                    defaultModel: draft.defaultModel,
-                    models: draft.models,
-                    presetModels: toWorkspaceModelPlanPresetModels(nextPreset)
-                  })
-                });
-              }}
-            >
-              <SelectTrigger
-                aria-label={t("workspace.settings.apps.modelPlans.presetLabel")}
-                className={workspaceSettingsSelectTriggerClass}
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent
-                className={workspaceSettingsSelectContentClass}
-                style={{ zIndex: "var(--z-panel-popover)" }}
-              >
-                {group.presets.map((candidate) => (
-                  <SelectItem key={candidate.id} value={candidate.id}>
-                    {t(candidate.labelKey)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
-        ) : null}
-
         <label className="flex flex-col gap-1.5">
           <span className="text-[11px] font-medium text-[var(--text-secondary)]">
             {t("workspace.settings.apps.modelPlans.protocolLabel")}
           </span>
           <Select
-            disabled={protocolLocked || editing}
+            disabled={editing}
             value={draft.protocol}
             onValueChange={(value) => {
               onUpdate({ protocol: value as WorkspaceModelPlanProtocol });
@@ -361,21 +308,6 @@ export function WorkspaceModelPlanEditor({
           </>
         )}
       </div>
-
-      {apiKeyUrl ? (
-        <button
-          className="inline-flex w-fit items-center gap-1.5 rounded-[5px] text-left text-[12px] font-medium text-[var(--text-primary)] transition-opacity duration-150 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]"
-          type="button"
-          onClick={() => {
-            window.open(apiKeyUrl, "_blank", "noopener,noreferrer");
-          }}
-        >
-          {t("workspace.settings.apps.modelPlans.getApiKey", {
-            provider: preset ? t(preset.labelKey) : ""
-          })}
-          <OpenLinkLinedIcon aria-hidden="true" size={13} />
-        </button>
-      ) : null}
 
       <div className="flex flex-col gap-1.5">
         <div className="flex flex-wrap items-center gap-2">

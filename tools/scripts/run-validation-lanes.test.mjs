@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { createIsolatedGitEnvironment } from "./git-environment.mjs";
 import {
   formatFailureExcerpt,
   formatSlowestLanes,
@@ -123,6 +125,70 @@ test("runValidationLanes prints a filtered failure as soon as its lane ends", as
     assert.match(output, /full logs:/u);
   } finally {
     console.error = originalError;
+    rmSync(workspaceRoot, { force: true, recursive: true });
+  }
+});
+
+test("runValidationLanes removes inherited Git repository selectors from child lanes", async () => {
+  const workspaceRoot = mkdtempSync(join(tmpdir(), "validation-git-env-"));
+  const nestedDirectory = join(workspaceRoot, "nested");
+  mkdirSync(nestedDirectory);
+  const initResult = spawnSync("git", ["init", "--quiet"], {
+    cwd: workspaceRoot,
+    encoding: "utf8",
+    env: createIsolatedGitEnvironment(workspaceRoot)
+  });
+  assert.equal(initResult.status, 0, initResult.stderr || initResult.stdout);
+  const poisonedEnvironment = {
+    GIT_CONFIG_VALUE_0: "true",
+    GIT_DIR: "/poison/git-dir",
+    Git_Config_Key_0: "core.bare",
+    Git_Work_Tree: "/poison/worktree",
+    PRESERVED_VALIDATION_VALUE: "preserved"
+  };
+  const originalEnvironment = Object.fromEntries(
+    Object.keys(poisonedEnvironment).map((name) => [name, process.env[name]])
+  );
+  Object.assign(process.env, poisonedEnvironment);
+
+  try {
+    const result = await runValidationLanes({
+      lanes: [
+        {
+          command: [
+            process.execPath,
+            "-e",
+            [
+              "const env = process.env",
+              'const { spawnSync } = require("node:child_process")',
+              'const forbidden = ["GIT_DIR", "Git_Work_Tree", "Git_Config_Key_0", "GIT_CONFIG_VALUE_0"]',
+              "if (forbidden.some((name) => Object.hasOwn(env, name))) process.exit(1)",
+              'if (env.PRESERVED_VALIDATION_VALUE !== "preserved") process.exit(1)',
+              'const git = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], { encoding: "utf8" })',
+              'if (git.status !== 0 || git.stdout.trim() !== "true") process.exit(1)'
+            ].join(";")
+          ],
+          cwd: nestedDirectory,
+          key: "git-environment",
+          label: "Git environment"
+        }
+      ],
+      maxParallel: 1,
+      summaryLabel: "fixture tests",
+      tailLines: 80,
+      tmpDirectoryName: "test-runs/git-environment",
+      workspaceRoot
+    });
+
+    assert.equal(result.exitCode, 0);
+  } finally {
+    for (const [name, value] of Object.entries(originalEnvironment)) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
+    }
     rmSync(workspaceRoot, { force: true, recursive: true });
   }
 });

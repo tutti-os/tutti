@@ -71,6 +71,43 @@ func TestCLIVersionCacheDoesNotStoreFailedReads(t *testing.T) {
 	}
 }
 
+func TestGlobalBinDiscoveryCacheReusesResultUntilManagerChanges(t *testing.T) {
+	managerPath := filepath.Join(t.TempDir(), "pnpm")
+	if err := os.WriteFile(managerPath, []byte("first"), 0o700); err != nil {
+		t.Fatalf("write manager: %v", err)
+	}
+	cache := NewGlobalBinDiscoveryCache()
+	loads := 0
+	load := func() string {
+		loads++
+		return "/global/bin"
+	}
+
+	if got := cache.load(managerPath, "bin\x00-g", load); got != "/global/bin" {
+		t.Fatalf("first bin dir = %q, want /global/bin", got)
+	}
+	if got := cache.load(managerPath, "bin\x00-g", load); got != "/global/bin" {
+		t.Fatalf("cached bin dir = %q, want /global/bin", got)
+	}
+	if loads != 1 {
+		t.Fatalf("loads = %d, want 1 before manager changes", loads)
+	}
+
+	replacementPath := filepath.Join(filepath.Dir(managerPath), "replacement")
+	if err := os.WriteFile(replacementPath, []byte("second manager"), 0o700); err != nil {
+		t.Fatalf("write replacement manager: %v", err)
+	}
+	if err := os.Rename(replacementPath, managerPath); err != nil {
+		t.Fatalf("replace manager: %v", err)
+	}
+	if got := cache.load(managerPath, "bin\x00-g", load); got != "/global/bin" {
+		t.Fatalf("bin dir after manager replacement = %q, want /global/bin", got)
+	}
+	if loads != 2 {
+		t.Fatalf("loads = %d, want 2 after manager replacement", loads)
+	}
+}
+
 func TestAdapterProbeCacheStoresOnlyMatchingExecutable(t *testing.T) {
 	binaryPath := filepath.Join(t.TempDir(), "adapter")
 	if err := os.WriteFile(binaryPath, []byte("first"), 0o700); err != nil {
@@ -91,6 +128,22 @@ func TestAdapterProbeCacheStoresOnlyMatchingExecutable(t *testing.T) {
 	}
 	if cache.ready("codex", binaryPath) {
 		t.Fatal("ready = true after adapter replacement")
+	}
+}
+
+func TestAdapterProbeCacheExpiresPositiveHandshakeEvidence(t *testing.T) {
+	binaryPath := filepath.Join(t.TempDir(), "codex")
+	if err := os.WriteFile(binaryPath, []byte("codex"), 0o700); err != nil {
+		t.Fatalf("write binary: %v", err)
+	}
+	cache := NewAdapterProbeCache()
+	checkedAt := time.Unix(100, 0)
+	cache.markReadyAt("codex", binaryPath, checkedAt)
+	if !cache.readyWithin("codex", binaryPath, checkedAt.Add(time.Second), time.Minute) {
+		t.Fatal("fresh positive handshake cache = false, want true")
+	}
+	if cache.readyWithin("codex", binaryPath, checkedAt.Add(time.Minute+time.Nanosecond), time.Minute) {
+		t.Fatal("expired positive handshake cache = true, want false")
 	}
 }
 

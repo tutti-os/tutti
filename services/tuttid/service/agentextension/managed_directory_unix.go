@@ -119,6 +119,32 @@ func (w *managedRuntimeWorkspace) createTemp(prefix string) (*managedRuntimeDire
 	return nil, errors.New("allocate managed runtime temporary directory")
 }
 
+// createDirectory creates a fresh named directory inside the agent workspace.
+// It fails when the name already exists, so callers must remove or rename any
+// prior entry first.
+func (w *managedRuntimeWorkspace) createDirectory(name string) (*managedRuntimeDirectory, error) {
+	if err := w.verify(); err != nil {
+		return nil, err
+	}
+	if name == "" || name == "." || name == ".." || strings.ContainsRune(name, filepath.Separator) {
+		return nil, errors.New("managed runtime directory name is invalid")
+	}
+	if err := unix.Mkdirat(int(w.agentDir.Fd()), name, 0o700); err != nil {
+		return nil, err
+	}
+	fd, err := unix.Openat(int(w.agentDir.Fd()), name, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		_ = unix.Unlinkat(int(w.agentDir.Fd()), name, unix.AT_REMOVEDIR)
+		return nil, err
+	}
+	directory := &managedRuntimeDirectory{workspace: w, name: name, path: filepath.Join(w.agentPath, name), file: os.NewFile(uintptr(fd), name)}
+	if err := directory.verify(); err != nil {
+		directory.Close()
+		return nil, err
+	}
+	return directory, nil
+}
+
 func (w *managedRuntimeWorkspace) openDirectory(path string) (*managedRuntimeDirectory, error) {
 	if filepath.Dir(filepath.Clean(path)) != w.agentPath {
 		return nil, errors.New("managed runtime directory escapes agent root")

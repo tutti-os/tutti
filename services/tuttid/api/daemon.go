@@ -83,6 +83,8 @@ type AgentProviderStatusService interface {
 	List(context.Context, agentstatusservice.ListInput) (agentstatusservice.Snapshot, error)
 	Probe(context.Context, agentstatusservice.ProbeInput) (agentstatusservice.ProbeResult, error)
 	RunAction(context.Context, agentstatusservice.RunActionInput) (agentstatusservice.RunActionResult, error)
+	GetCodexRuntimeCatalog(context.Context, string) (agentstatusservice.CodexRuntimeCatalog, error)
+	SetCodexRuntimeSelection(context.Context, agentstatusservice.SetCodexRuntimeSelectionInput) (agentstatusservice.CodexRuntimeCatalog, error)
 }
 
 var _ tuttigenerated.StrictServerInterface = (*DaemonAPI)(nil)

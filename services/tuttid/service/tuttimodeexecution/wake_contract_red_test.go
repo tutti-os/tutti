@@ -610,6 +610,42 @@ func (driver *sqliteConformanceDriver) CommitCanonicalSourceActivityDuringNextWa
 	driver.wakeTarget.mu.Unlock()
 }
 
+func (driver *sqliteConformanceDriver) PauseIssueDuringNextWakeSend(
+	ctx context.Context,
+	workspaceID string,
+	issueID string,
+	sourceSessionID string,
+) {
+	key := wakeTargetKey(workspaceID, sourceSessionID)
+	driver.wakeTarget.mu.Lock()
+	driver.wakeTarget.activityDuringSend[key] = func() error {
+		detail, err := driver.issues.GetIssueDetail(ctx, workspaceID, issueID)
+		if err != nil {
+			return err
+		}
+		issue := detail.Issue
+		issue.DispatchPaused = true
+		_, err = driver.store.UpdateIssue(ctx, issue)
+		return err
+	}
+	driver.wakeTarget.mu.Unlock()
+}
+
+func (driver *sqliteConformanceDriver) ResumeIssueDispatch(
+	ctx context.Context,
+	workspaceID string,
+	issueID string,
+	sourceSessionID string,
+) error {
+	_, err := driver.issues.ResumeTuttiModeIssueExecution(
+		ctx,
+		workspaceID,
+		issueID,
+		sourceSessionID,
+	)
+	return err
+}
+
 func (driver *sqliteConformanceDriver) StopSourceSessionDuringNextWakeSend(
 	workspaceID string,
 	sourceSessionID string,

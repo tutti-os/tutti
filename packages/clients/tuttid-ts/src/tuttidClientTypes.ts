@@ -10,6 +10,7 @@ import type {
   AccountProductSummaryResponse,
   AccountUserInfo,
   AgentProviderComposerOptionsResponse,
+  AgentProviderRuntimeCatalogResponse,
   AgentProviderProbeResponse,
   AgentProviderActionId,
   AgentProviderActionRunResponse,
@@ -32,6 +33,7 @@ import type {
   CliCapabilitiesResponse,
   AgentSessionComposerSettings,
   GetAgentProviderComposerOptionsRequest,
+  SetAgentProviderRuntimeSelectionRequest,
   GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest,
   CompleteIssueManagerRunRequest,
   CheckUserProjectPathRequest,
@@ -471,6 +473,13 @@ export interface TuttidClient
      */
     refreshUpdates?: boolean;
   }): Promise<AgentProviderStatusListResponse>;
+  getAgentProviderRuntimeCandidates(
+    provider: WorkspaceAgentProvider
+  ): Promise<AgentProviderRuntimeCatalogResponse>;
+  setAgentProviderRuntimeSelection(
+    provider: WorkspaceAgentProvider,
+    request: SetAgentProviderRuntimeSelectionRequest
+  ): Promise<AgentProviderRuntimeCatalogResponse>;
   probeAgentProvider(
     provider: WorkspaceAgentProvider
   ): Promise<AgentProviderProbeResponse>;
@@ -917,7 +926,8 @@ export interface TuttidClient
   updateWorkspaceAgentSessionPin(
     workspaceID: string,
     agentSessionID: string,
-    request: UpdateWorkspaceAgentSessionPinRequest
+    request: UpdateWorkspaceAgentSessionPinRequest,
+    requestOptions?: TuttidRequestOptions
   ): Promise<WorkspaceAgentSession>;
   updateWorkspaceAgentSessionTitle(
     workspaceID: string,

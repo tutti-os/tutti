@@ -31,6 +31,12 @@ already generic (`DesktopPreferences.FeatureFlags`,
 `NormalizeDesktopFeatureFlags`, preferences eventstream updates), so a new
 flag only needs registry entries and copy.
 
+When a feature graduates, remove its registry entries and every owning-feature
+gate in the same change. Historical stored values may remain in generic
+preferences for compatibility, but graduated features must not consult them;
+this makes the feature available to existing profiles even when their old
+value was `false`.
+
 Resolution rule on both sides: a stored value wins; absent keys fall back to
 the registry default; absent unregistered keys resolve to `false`
 (`IsLabFlagEnabled` in Go, `isFeatureEnabled` in TS).
@@ -52,6 +58,11 @@ the registry default; absent unregistered keys resolve to `false`
 - Keys are lowercase camelCase segments joined by dots.
 
 ## Existing reference pattern
+
+`lab.agentSessionFork` is a capability flag. Desktop hides new Session Fork
+actions unless the flag is enabled, and tuttid rejects direct Fork writes when
+it is absent, false, or unreadable. Existing fork lineage plus operation reads
+and acknowledgements remain available while the flag is off.
 
 `services/tuttid/service/agentextension/manager.go` is the existing example
 of feature-owned semantics: it reads the raw flag map, derives its own keys

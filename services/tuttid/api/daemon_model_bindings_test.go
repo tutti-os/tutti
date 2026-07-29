@@ -10,7 +10,6 @@ import (
 
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	modelbindingbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelbinding"
-	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	modelbindingservice "github.com/tutti-os/tutti/services/tuttid/service/modelbinding"
 )
 
@@ -44,7 +43,6 @@ func TestSetAgentModelBindingReferenceRaceMapsToNeutralInvalidRequest(t *testing
 	ctx := context.Background()
 
 	api := DaemonAPI{
-		PreferencesService:       gateTestPreferences(map[string]bool{preferencesbiz.LabFlagModelPlans: true}, nil),
 		AgentModelBindingService: referenceUnusableBindingService{},
 	}
 
@@ -91,7 +89,6 @@ func TestSetAgentModelBindingRejectsUnknownPolicyAsInvalidRequest(t *testing.T) 
 	ctx := context.Background()
 
 	api := DaemonAPI{
-		PreferencesService:       gateTestPreferences(map[string]bool{preferencesbiz.LabFlagModelPlans: true}, nil),
 		AgentModelBindingService: policyRejectingBindingService{},
 	}
 

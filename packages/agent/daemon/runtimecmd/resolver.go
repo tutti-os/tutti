@@ -60,13 +60,50 @@ func (r Resolver) Resolve(command string, env []string) string {
 	if command == "" || strings.ContainsAny(command, `/\`) {
 		return command
 	}
-	for _, dir := range filepath.SplitList(envValue(env, pathEnvKey(env))) {
-		candidate := filepath.Join(dir, command)
-		if r.isExecutableFile(candidate) {
-			return candidate
-		}
+	if candidates := r.ResolveAll(command, env); len(candidates) > 0 {
+		return candidates[0]
 	}
 	return command
+}
+
+// ResolveAll returns every executable match for command in the effective PATH,
+// preserving directory order and removing duplicate paths. It deliberately
+// does not call LookPath: callers that need an OS-specific fallback can append
+// that result explicitly, while discovery callers get a complete, stable view
+// of the resolver's own search plan.
+func (r Resolver) ResolveAll(command string, env []string) []string {
+	command = strings.TrimSpace(command)
+	if command == "" || strings.ContainsAny(command, "/\\") {
+		return nil
+	}
+	return r.ResolveAllNames([]string{command}, env)
+}
+
+// ResolveAllNames returns every executable match for a set of command names.
+// Directory order is primary and name order is secondary, which lets callers
+// enumerate platform launcher variants without changing PATH precedence.
+func (r Resolver) ResolveAllNames(commandNames []string, env []string) []string {
+	result := []string{}
+	seen := map[string]struct{}{}
+	for _, dir := range filepath.SplitList(envValue(env, pathEnvKey(env))) {
+		for _, command := range commandNames {
+			command = strings.TrimSpace(command)
+			if command == "" || strings.ContainsAny(command, `/\\`) {
+				continue
+			}
+			candidate := filepath.Join(dir, command)
+			if !r.isExecutableFile(candidate) {
+				continue
+			}
+			key := executablePathKey(candidate)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			result = append(result, candidate)
+		}
+	}
+	return result
 }
 
 func (r Resolver) ResolveBinary(binaryNames []string, overrides []string) string {
@@ -278,6 +315,10 @@ func pathDirKey(dir string) string {
 		key = strings.ToLower(key)
 	}
 	return key
+}
+
+func executablePathKey(path string) string {
+	return pathDirKey(path)
 }
 
 func pathEnvKey(env []string) string {

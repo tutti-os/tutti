@@ -105,6 +105,7 @@ func buildDaemonAPI(
 	modelPlansStore, _ := store.(workspacedata.ModelPlansStore)
 	agentActivityRepo, _ := store.(workspacedata.AgentActivityStore)
 	agentQuickPromptStore, _ := store.(workspacedata.AgentQuickPromptStore)
+	agentProviderRuntimeSelectionStore, _ := store.(workspacedata.AgentProviderRuntimeSelectionStore)
 	userProjectStore, _ := store.(workspacedata.UserProjectStore)
 	appStore, _ := store.(workspacedata.AppStore)
 	appFactoryStore, _ := store.(workspacedata.AppFactoryStore)
@@ -114,20 +115,9 @@ func buildDaemonAPI(
 
 	events := eventstreamservice.NewService(eventstreamservice.DefaultCatalog(), nil)
 	preferencesPublisher := eventstreamservice.DesktopPreferencesPublisher{Service: events}
-	tuttiModeFeatureFlags := func(ctx context.Context) (map[string]bool, error) {
-		if preferencesStore == nil {
-			return map[string]bool{}, nil
-		}
-		preferences, err := preferencesStore.GetDesktopPreferences(ctx)
-		if err != nil {
-			return nil, err
-		}
-		return preferences.FeatureFlags, nil
-	}
 	tuttiModeActivations := &tuttimodeactivationservice.Service{
-		Store:        tuttiModeActivationStore,
-		Publisher:    eventstreamservice.TuttiModeActivationPublisher{Service: events},
-		FeatureFlags: tuttiModeFeatureFlags,
+		Store:     tuttiModeActivationStore,
+		Publisher: eventstreamservice.TuttiModeActivationPublisher{Service: events},
 	}
 	preferences := &preferencesservice.Service{
 		Store:                          preferencesStore,
@@ -235,20 +225,15 @@ func buildDaemonAPI(
 		agentActivityProjection.SetAgentTargetResolver(agentTargetResolver)
 	}
 	managedRuntimeResolver := managedruntime.DefaultResolver{}
+	agentStatusService := agentstatusservice.NewService(agentstatusservice.ServiceDependencies{
+		AnalyticsReporter:          analyticsReporter,
+		ManagedRuntime:             managedRuntimeResolver,
+		ClaudeCodeRuntimeDir:       filepath.Join(agentRuntimeDir, "claude-code"),
+		CodexRuntimeSelectionStore: agentProviderRuntimeSelectionStore,
+	})
 	// Shared so a runtime auth failure (reporter side) surfaces in the status
 	// probe (List side) — see agentRunOutcomeReporter.
-	runOutcomes := agentstatusservice.NewRunOutcomeStore()
-	agentStatusService := agentstatusservice.Service{
-		AnalyticsReporter:    analyticsReporter,
-		ManagedRuntime:       managedRuntimeResolver,
-		ClaudeCodeRuntimeDir: filepath.Join(agentRuntimeDir, "claude-code"),
-		RunOutcomes:          runOutcomes,
-		StatusCache:          agentstatusservice.NewProviderStatusCache(),
-		CLIVersionCache:      agentstatusservice.NewCLIVersionCache(),
-		AdapterProbeCache:    agentstatusservice.NewAdapterProbeCache(),
-		DetectionCommands:    agentstatusservice.NewDetectionCommandLimiter(4),
-		UpdateCache:          agentstatusservice.NewProviderUpdateCache(),
-	}
+	runOutcomes := agentStatusService.RunOutcomes
 	accountService := accountservice.NewService("")
 	mobileRemoteService, err := buildMobileRemoteService(
 		agentExtensionStateDir,
@@ -284,7 +269,8 @@ func buildDaemonAPI(
 		AdapterResolver: agentextensionservice.RuntimeResolver{
 			Manager: agentExtensionManager, Transport: sessionRecordingTransport, Host: agentHostMetadata,
 		},
-		ProviderCommandResolver: agentProviderCommandResolver(&agentStatusService),
+		ProviderCommandResolver:    agentProviderCommandResolver(&agentStatusService),
+		CommandNetworkAccessPolicy: tuttiDesktopCommandNetworkAccessPolicy,
 	}
 	agentRuntimeConfig = applyAgentReplayRuntimeComposition(agentRuntimeConfig, replayComposition)
 	agentRuntime, err := agentdaemon.NewRuntime(agentRuntimeConfig)
@@ -496,23 +482,22 @@ func buildDaemonAPI(
 		Delegate: tuttiModeExecutions,
 	}
 	issueService := workspaceservice.IssueManagerService{
-		RunLauncher:                    issueRunAgentLauncher{Sessions: agentSessionService, Host: agentHost},
-		RunLaunchGate:                  issueRunLaunchGate,
-		RunCancellationRequester:       issueRunCanceller,
-		SourceSessionDirectoryResolver: issueSourceSessionDirectoryResolver{Sessions: agentActivityProjection},
-		Publisher:                      eventstreamservice.WorkspaceIssuePublisher{Service: events},
-		Store:                          issueStore,
-		AgentTargetReader:              agentTargetStore,
-		PlanningTimeline:               agentservice.IssuePlanningTimelineReporter{Projection: agentActivityProjection},
-		TuttiModeExecutions:            tuttiModeExecutions,
-		MutationLocks:                  workspaceservice.NewIssueMutationLocks(),
+		RunLauncher:                  issueRunAgentLauncher{Sessions: agentSessionService, Host: agentHost},
+		RunLaunchGate:                issueRunLaunchGate,
+		RunCancellationRequester:     issueRunCanceller,
+		SourceSessionContextResolver: issueSourceSessionContextResolver{Sessions: agentActivityProjection},
+		Publisher:                    eventstreamservice.WorkspaceIssuePublisher{Service: events},
+		Store:                        issueStore,
+		AgentTargetReader:            agentTargetStore,
+		PlanningTimeline:             agentservice.IssuePlanningTimelineReporter{Projection: agentActivityProjection},
+		TuttiModeExecutions:          tuttiModeExecutions,
+		MutationLocks:                workspaceservice.NewIssueMutationLocks(),
 	}
 	tuttiModePlans := &tuttimodeplanservice.Service{
 		Store:             workflowStore,
 		Revisions:         workspacedata.WorkflowRevisionFiles{StateDir: tuttitypes.DefaultStateDir()},
 		Publisher:         eventstreamservice.WorkspaceWorkflowPublisher{Service: events},
 		IssueMaterializer: tuttimodeplanservice.WorkspaceIssueMaterializer{Issues: &issueService},
-		FeatureFlags:      tuttiModeFeatureFlags,
 		FeedbackDispatcher: &tuttiModePlanFeedbackDispatcher{
 			Agents:    agentSessionService,
 			TurnLinks: workflowStore,

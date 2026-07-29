@@ -1,4 +1,5 @@
 import type { EngineDiagnosticSink } from "./diagnostics.ts";
+import { projectPublicAgentSessionEngineState } from "./engineState.publicProjection.ts";
 import { createEngineEffectExecutor } from "./effectExecutor.ts";
 import { createEngineExpiryClock } from "./expiryClock.ts";
 import {
@@ -11,7 +12,6 @@ import {
   type AgentSessionEngineIdentity,
   type AgentSessionEngineIntentObserver,
   type AgentSessionEngineListener,
-  type AgentSessionEngineState,
   type EngineClock,
   type EngineCommandPort,
   type EngineDispatchOptions,
@@ -20,6 +20,10 @@ import {
   type EngineScheduler,
   type EngineTypedCommandPort
 } from "./types.ts";
+import type {
+  RootAgentSessionEngineState,
+  RootEngineIntent
+} from "./rootReducer.types.ts";
 
 // Session engine factory (docs/architecture/agent-gui-refactor-plan.md,
 // sections 3.3 and 4.1, engine skeleton slice).
@@ -66,9 +70,11 @@ export function createAgentSessionEngine({
     workspaceId: identity.workspaceId
   });
 
-  let state: AgentSessionEngineState = createInitialAgentSessionEngineState();
+  let state: RootAgentSessionEngineState =
+    createInitialAgentSessionEngineState();
+  let publicSnapshot = projectPublicAgentSessionEngineState(state);
   const listeners = new Set<AgentSessionEngineListener>();
-  const intentQueue: EngineIntent[] = [];
+  const intentQueue: RootEngineIntent[] = [];
   const batchedIntents: EngineIntent[] = [];
   let batchFlushTask: EngineScheduledTask | null = null;
   let draining = false;
@@ -94,7 +100,7 @@ export function createAgentSessionEngine({
   function notifyListeners(): void {
     for (const listener of listeners) {
       try {
-        listener(state);
+        listener(publicSnapshot);
       } catch (error) {
         if (diagnosticSink) {
           diagnosticSink({ error, type: "listenerError" });
@@ -118,7 +124,7 @@ export function createAgentSessionEngine({
       return;
     }
     draining = true;
-    const stateBeforeDrain = state;
+    const publicSnapshotBeforeDrain = publicSnapshot;
     try {
       for (
         let intent = intentQueue.shift();
@@ -126,7 +132,13 @@ export function createAgentSessionEngine({
         intent = intentQueue.shift()
       ) {
         const result = rootEngineReducer(state, intent);
-        state = result.state;
+        if (result.state !== state) {
+          state = result.state;
+          publicSnapshot = projectPublicAgentSessionEngineState(
+            state,
+            publicSnapshot
+          );
+        }
         if (result.followUpIntents?.length) {
           intentQueue.unshift(...result.followUpIntents);
         }
@@ -143,7 +155,7 @@ export function createAgentSessionEngine({
     } finally {
       draining = false;
     }
-    if (state !== stateBeforeDrain) {
+    if (publicSnapshot !== publicSnapshotBeforeDrain) {
       notifyListeners();
     }
   }
@@ -228,7 +240,7 @@ export function createAgentSessionEngine({
       listeners.clear();
     },
     getSnapshot() {
-      return state;
+      return publicSnapshot;
     },
     subscribe(listener) {
       listeners.add(listener);

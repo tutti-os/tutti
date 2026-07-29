@@ -156,7 +156,7 @@ func TestDefaultRegistryUsesTuttiAgentManagedNPMInstaller(t *testing.T) {
 }
 
 func TestServiceListUsesDescriptorOwnedDaemonLoginAction(t *testing.T) {
-	service, _ := updateTestService(t, "0.0.8")
+	service, _ := updateTestService(t, "0.0.10")
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"tutti-agent"}})
 	if err != nil {
@@ -338,6 +338,10 @@ func specWithSeparateAdapter() ProviderSpec {
 
 func TestNextMissingInstallerRepairsAdapterLaunchFailureBeforeCLI(t *testing.T) {
 	spec := specWithSeparateAdapter()
+	// Codex repair is deliberately stricter. This preserves the existing
+	// separate-adapter behavior for providers that do not have Codex's
+	// first-party app-server diagnostics.
+	spec.Provider = "nexight"
 	installer, missing, target := (Service{}).nextMissingInstaller(spec, providerRuntimeResolution{
 		ReasonCode: "acp_adapter_launch_failed",
 	})
@@ -525,7 +529,7 @@ func TestServiceListReportsCodexChecksVersionAndLastError(t *testing.T) {
 	pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
 	writePackageManifest(t, pkgDir, "@openai/codex", "0.100.0")
 	codexPath := filepath.Join(pkgDir, "bin", "codex")
-	writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex 0.100.0'; exit 0; fi\nexit 0\n")
+	writeExecutable(t, codexPath, codexAppServerFakeScript("if [ \"$1\" = \"--version\" ]; then echo 'codex 0.100.0'; exit 0; fi\nexit 0\n"))
 	visiblePath := filepath.Join(binDir, "codex")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir bin dir: %v", err)
@@ -533,21 +537,19 @@ func TestServiceListReportsCodexChecksVersionAndLastError(t *testing.T) {
 	if err := os.Symlink(codexPath, visiblePath); err != nil {
 		t.Fatalf("symlink codex: %v", err)
 	}
-	platformPath := requireTestCodexPlatformBinaryPath(t, pkgDir)
-	writeExecutable(t, platformPath, "#!/bin/sh\nexit 0\n")
-
 	service := probeTestService(home)
+	// The default 1s probe timeout is tuned for the old "still alive after
+	// 200ms" liveness check; the real ACP handshake needs to actually spawn,
+	// write, and read a response, which is slower under test-suite load.
+	service.ProbeTimeout = 5 * time.Second
 	service.Environ = func() []string {
 		return []string{"PATH=" + binDir}
 	}
 	service.IsExecutableFile = isTestExecutable
+	service.CodexProtocolProbe = codexProtocolReadyFixture
 	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
 		return AuthInfo{Status: AuthAuthenticated}, true
 	}
-	if _, ok := service.codexPlatformBinaryComplete(pkgDir, runtime.GOOS, runtime.GOARCH); !ok {
-		t.Fatalf("test codex platform binary is not complete at %s", platformPath)
-	}
-
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
@@ -560,10 +562,363 @@ func TestServiceListReportsCodexChecksVersionAndLastError(t *testing.T) {
 	if status.LastError == nil || status.LastError.Code != string(CodexErrVersionTooOld) {
 		t.Fatalf("LastError = %#v, CLI.BinaryPath=%q, packageDir=%q, want codex version too old", status.LastError, status.CLI.BinaryPath, codexPackageDirForBinary(status.CLI.BinaryPath))
 	}
-	assertProviderCheck(t, status.Checks, "cli_present", true)
-	assertProviderCheck(t, status.Checks, "platform_binary", true)
-	assertProviderCheck(t, status.Checks, "version_floor", false)
-	assertProviderCheck(t, status.Checks, "auth", true)
+	if status.Availability.Status != AvailabilityUnsupported {
+		t.Fatalf("Availability.Status = %q, want unsupported", status.Availability.Status)
+	}
+}
+
+// TestServiceListReportsCodexNotReadyWhenAppServerNeverRespondsToInitialize
+// covers Agent 可用性需求摘要 issue #1: a `codex` binary can be present on
+// PATH and start successfully (e.g. a launcher shim bundled with a desktop
+// app) without ever actually being able to serve ACP. The old probe only
+// checked that the process stayed alive, which this fake satisfies; the real
+// `initialize` handshake must still catch it and report "not installed"
+// instead of "ready".
+func TestServiceListReportsCodexNotReadyWhenAppServerNeverRespondsToInitialize(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
+	writePackageManifest(t, pkgDir, "@openai/codex", MinSupportedCodexVersion)
+	codexPath := filepath.Join(pkgDir, "bin", "codex")
+	writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nsleep 5\n")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin dir: %v", err)
+	}
+	if err := os.Symlink(codexPath, filepath.Join(binDir, "codex")); err != nil {
+		t.Fatalf("symlink codex: %v", err)
+	}
+	platformBinary := requireTestCodexPlatformBinaryPath(t, pkgDir)
+	writeExecutable(t, platformBinary, "#!/bin/sh\nexit 0\n")
+
+	service := probeTestService(home)
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir}
+	}
+	service.IsExecutableFile = isTestExecutable
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+
+	status := onlyStatus(t, snapshot)
+	if !status.CLI.Installed {
+		t.Fatal("CLI.Installed = false, want true (the binary is on PATH)")
+	}
+	if status.Adapter.Installed {
+		t.Fatal("Adapter.Installed = true, want false (it never answered the ACP handshake)")
+	}
+	if status.Availability.Status != AvailabilityNotInstalled {
+		t.Fatalf("Availability.Status = %q, want %q; status=%#v", status.Availability.Status, AvailabilityNotInstalled, status)
+	}
+	if status.Availability.ReasonCode != "acp_adapter_launch_failed" {
+		t.Fatalf("ReasonCode = %q, want acp_adapter_launch_failed", status.Availability.ReasonCode)
+	}
+}
+
+// TestServiceListReportsCodexNotReadyWhenAppServerRejectsInitialize covers the
+// same gap for a binary that does speak JSON-RPC but answers `initialize`
+// with a protocol error instead of a real result.
+func TestServiceListReportsCodexNotReadyWhenAppServerRejectsInitialize(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
+	writePackageManifest(t, pkgDir, "@openai/codex", MinSupportedCodexVersion)
+	codexPath := filepath.Join(pkgDir, "bin", "codex")
+	writeExecutable(t, codexPath, "#!/bin/sh\n"+
+		"if [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\n"+
+		"case \"$*\" in\n"+
+		"*app-server*) echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"unsupported\"}}'; exit 1 ;;\n"+
+		"esac\n"+
+		"exit 0\n")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin dir: %v", err)
+	}
+	if err := os.Symlink(codexPath, filepath.Join(binDir, "codex")); err != nil {
+		t.Fatalf("symlink codex: %v", err)
+	}
+	platformBinary := requireTestCodexPlatformBinaryPath(t, pkgDir)
+	writeExecutable(t, platformBinary, "#!/bin/sh\nexit 0\n")
+
+	service := probeTestService(home)
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir}
+	}
+	service.IsExecutableFile = isTestExecutable
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+
+	status := onlyStatus(t, snapshot)
+	if status.Availability.Status != AvailabilityNotInstalled {
+		t.Fatalf("Availability.Status = %q, want %q; status=%#v", status.Availability.Status, AvailabilityNotInstalled, status)
+	}
+	if status.Availability.ReasonCode != "acp_adapter_launch_failed" {
+		t.Fatalf("ReasonCode = %q, want acp_adapter_launch_failed", status.Availability.ReasonCode)
+	}
+}
+
+// TestServiceListReportsCodexNotReadyWhenAppServerSpoofsHandshake covers a
+// "fake shell" binary that never reads stdin (so it cannot possibly have
+// parsed our `initialize` request, let alone learned the unpredictable id
+// this probe run generated for it) but still races to print a
+// response-shaped line before exiting. Every case below hardcodes id 1,
+// which the one-shot runtime probe deliberately never generates, so these
+// can never accidentally match by chance; the handshake match must still
+// reject them for the reasons in each case's name. Unlike Standard
+// ACP, this deliberately does NOT test a missing "jsonrpc" field: the real
+// codex app-server wire format omits that field too (see
+// TestServiceListReportsCodexReadyWhenAppServerOmitsJSONRPCVersion), so
+// that alone must not be treated as a spoof signal.
+func TestServiceListReportsCodexNotReadyWhenAppServerSpoofsHandshake(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		line string
+	}{
+		{name: "hardcoded id, never reads the request", line: `{"id":1,"result":{}}`},
+		{name: "hardcoded id and echoes a method", line: `{"id":1,"method":"initialize","result":{}}`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			binDir := filepath.Join(home, "bin")
+			pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
+			writePackageManifest(t, pkgDir, "@openai/codex", MinSupportedCodexVersion)
+			codexPath := filepath.Join(pkgDir, "bin", "codex")
+			writeExecutable(t, codexPath, "#!/bin/sh\n"+
+				"if [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\n"+
+				"case \"$*\" in\n"+
+				"*app-server*) echo '"+tt.line+"'; exit 0 ;;\n"+
+				"esac\n"+
+				"exit 0\n")
+			if err := os.MkdirAll(binDir, 0o755); err != nil {
+				t.Fatalf("mkdir bin dir: %v", err)
+			}
+			if err := os.Symlink(codexPath, filepath.Join(binDir, "codex")); err != nil {
+				t.Fatalf("symlink codex: %v", err)
+			}
+			platformBinary := requireTestCodexPlatformBinaryPath(t, pkgDir)
+			writeExecutable(t, platformBinary, "#!/bin/sh\nexit 0\n")
+
+			service := probeTestService(home)
+			service.Environ = func() []string {
+				return []string{"PATH=" + binDir}
+			}
+			service.IsExecutableFile = isTestExecutable
+			service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+				return AuthInfo{Status: AuthAuthenticated}, true
+			}
+
+			snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
+			if err != nil {
+				t.Fatalf("List() error = %v", err)
+			}
+
+			status := onlyStatus(t, snapshot)
+			if status.Availability.Status != AvailabilityNotInstalled {
+				t.Fatalf("Availability.Status = %q, want %q; status=%#v", status.Availability.Status, AvailabilityNotInstalled, status)
+			}
+			if status.Availability.ReasonCode != "acp_adapter_launch_failed" {
+				t.Fatalf("ReasonCode = %q, want acp_adapter_launch_failed", status.Availability.ReasonCode)
+			}
+		})
+	}
+}
+
+// TestServiceListReportsCodexReadyWhenAppServerOmitsJSONRPCVersion locks in
+// that the real codex app-server wire format - which omits the "jsonrpc"
+// version header entirely (see
+// TestCodexAppServerAdapterWireFormatOmitsJSONRPCVersion in
+// packages/agent/daemon/runtime) - is accepted by the handshake probe. The
+// probe must not require a "jsonrpc" field the way the Standard ACP probe
+// does, or it would misreport a working codex install as not installed.
+func TestServiceListReportsCodexReadyWhenAppServerOmitsJSONRPCVersion(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
+	writePackageManifest(t, pkgDir, "@openai/codex", MinSupportedCodexVersion)
+	codexPath := filepath.Join(pkgDir, "bin", "codex")
+	// codexAppServerFakeScript omits "jsonrpc" (this test's whole point) but
+	// still reads stdin and echoes back the real request id.
+	writeExecutable(t, codexPath, codexAppServerFakeScript(
+		"if [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nexit 0\n"))
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin dir: %v", err)
+	}
+	if err := os.Symlink(codexPath, filepath.Join(binDir, "codex")); err != nil {
+		t.Fatalf("symlink codex: %v", err)
+	}
+	platformBinary := requireTestCodexPlatformBinaryPath(t, pkgDir)
+	writeExecutable(t, platformBinary, "#!/bin/sh\nexit 0\n")
+
+	service := probeTestService(home)
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir}
+	}
+	service.IsExecutableFile = isTestExecutable
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+
+	status := onlyStatus(t, snapshot)
+	if status.Availability.Status != AvailabilityReady {
+		t.Fatalf("Availability.Status = %q, want %q; status=%#v", status.Availability.Status, AvailabilityReady, status)
+	}
+}
+
+// TestServiceListStandardACPHandshakeProbe covers cursor and opencode: both
+// are RuntimeKindStandardACP providers where the CLI binary itself, invoked
+// as `<binary> acp`, IS the ACP adapter (the same "CLI is the adapter" shape
+// codex has). Each gets the same three scenarios already covered for codex
+// above: a real handshake succeeds, the adapter starts but never answers
+// `initialize`, and the adapter answers with a JSON-RPC error.
+func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		provider   string
+		binaryName string
+		script     string
+		wantStatus AvailabilityStatus
+		wantReason string
+	}{
+		{
+			name:       "cursor ready when handshake succeeds",
+			provider:   "cursor",
+			binaryName: "cursor-agent",
+			script:     standardACPFakeScript("exit 0\n"),
+			wantStatus: AvailabilityReady,
+		},
+		{
+			name:       "cursor not ready when acp never responds to initialize",
+			provider:   "cursor",
+			binaryName: "cursor-agent",
+			script:     "#!/bin/sh\ncase \"$*\" in\n*acp*) sleep 5 ;;\nesac\nexit 0\n",
+			wantStatus: AvailabilityNotInstalled,
+			wantReason: "acp_adapter_launch_failed",
+		},
+		{
+			name:       "cursor not ready when acp rejects initialize",
+			provider:   "cursor",
+			binaryName: "cursor-agent",
+			script: "#!/bin/sh\ncase \"$*\" in\n" +
+				"*acp*) echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"unsupported\"}}'; exit 1 ;;\n" +
+				"esac\nexit 0\n",
+			wantStatus: AvailabilityNotInstalled,
+			wantReason: "acp_adapter_launch_failed",
+		},
+		{
+			name:       "opencode ready when handshake succeeds",
+			provider:   "opencode",
+			binaryName: "opencode",
+			script:     standardACPFakeScript("exit 0\n"),
+			wantStatus: AvailabilityReady,
+		},
+		{
+			name:       "opencode not ready when acp never responds to initialize",
+			provider:   "opencode",
+			binaryName: "opencode",
+			script:     "#!/bin/sh\ncase \"$*\" in\n*acp*) sleep 5 ;;\nesac\nexit 0\n",
+			wantStatus: AvailabilityNotInstalled,
+			wantReason: "acp_adapter_launch_failed",
+		},
+		{
+			name:       "opencode not ready when acp rejects initialize",
+			provider:   "opencode",
+			binaryName: "opencode",
+			script: "#!/bin/sh\ncase \"$*\" in\n" +
+				"*acp*) echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"unsupported\"}}'; exit 1 ;;\n" +
+				"esac\nexit 0\n",
+			wantStatus: AvailabilityNotInstalled,
+			wantReason: "acp_adapter_launch_failed",
+		},
+		{
+			// A "fake shell" that never reads stdin but races to print a
+			// response-shaped line with the wrong id before exiting must
+			// not be able to satisfy the handshake match.
+			// newStandardACPHandshakeRequestID never generates 1 (see its doc
+			// comment), so this hardcoded id can never accidentally match by
+			// chance. This is the exact "never reads stdin" shim shape a
+			// canned/fake ACP adapter would use.
+			name:       "cursor not ready when acp spoofs handshake with hardcoded id, never reads the request",
+			provider:   "cursor",
+			binaryName: "cursor-agent",
+			script: "#!/bin/sh\ncase \"$*\" in\n" +
+				"*acp*) echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}'; exit 0 ;;\n" +
+				"esac\nexit 0\n",
+			wantStatus: AvailabilityNotInstalled,
+			wantReason: "acp_adapter_launch_failed",
+		},
+		{
+			name:       "cursor not ready when acp spoofs handshake without jsonrpc version",
+			provider:   "cursor",
+			binaryName: "cursor-agent",
+			script: "#!/bin/sh\ncase \"$*\" in\n" +
+				"*acp*) echo '{\"id\":1,\"result\":{}}'; exit 0 ;;\n" +
+				"esac\nexit 0\n",
+			wantStatus: AvailabilityNotInstalled,
+			wantReason: "acp_adapter_launch_failed",
+		},
+		{
+			name:       "opencode not ready when acp spoofs handshake with hardcoded id, never reads the request",
+			provider:   "opencode",
+			binaryName: "opencode",
+			script: "#!/bin/sh\ncase \"$*\" in\n" +
+				"*acp*) echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}'; exit 0 ;;\n" +
+				"esac\nexit 0\n",
+			wantStatus: AvailabilityNotInstalled,
+			wantReason: "acp_adapter_launch_failed",
+		},
+		{
+			name:       "opencode not ready when acp spoofs handshake without jsonrpc version",
+			provider:   "opencode",
+			binaryName: "opencode",
+			script: "#!/bin/sh\ncase \"$*\" in\n" +
+				"*acp*) echo '{\"id\":1,\"result\":{}}'; exit 0 ;;\n" +
+				"esac\nexit 0\n",
+			wantStatus: AvailabilityNotInstalled,
+			wantReason: "acp_adapter_launch_failed",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			binDir := filepath.Join(home, "bin")
+			writeExecutable(t, filepath.Join(binDir, tt.binaryName), tt.script)
+
+			service := probeTestService(home)
+			service.Environ = func() []string {
+				return []string{"PATH=" + binDir}
+			}
+			service.IsExecutableFile = isTestExecutable
+			service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+				return AuthInfo{Status: AuthAuthenticated}, true
+			}
+
+			snapshot, err := service.List(context.Background(), ListInput{Providers: []string{tt.provider}})
+			if err != nil {
+				t.Fatalf("List() error = %v", err)
+			}
+
+			status := onlyStatus(t, snapshot)
+			if status.Availability.Status != tt.wantStatus {
+				t.Fatalf("Availability.Status = %q, want %q; status=%#v", status.Availability.Status, tt.wantStatus, status)
+			}
+			if tt.wantReason != "" && status.Availability.ReasonCode != tt.wantReason {
+				t.Fatalf("ReasonCode = %q, want %q", status.Availability.ReasonCode, tt.wantReason)
+			}
+		})
+	}
 }
 
 func TestServiceListRunsCodexLauncherWithManagedNodePath(t *testing.T) {
@@ -584,9 +939,14 @@ func TestServiceListRunsCodexLauncherWithManagedNodePath(t *testing.T) {
 
 	runtimeRoot := fakeManagedRuntimeRoot(t)
 	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
-	writeExecutable(t, managedNode, "#!/bin/sh\nif [ \"$2\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nexit 0\n")
+	writeExecutable(t, managedNode, codexAppServerFakeScript("if [ \"$2\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nexit 0\n"))
 
 	service := probeTestService(home)
+	// The handshake probe execs through an extra `env`+managed-node hop here
+	// (unlike the direct-binary fakes elsewhere in this file), which is
+	// measurably slower under test-suite load; give it more headroom than the
+	// default 1s probe timeout so this isn't flaky.
+	service.ProbeTimeout = 15 * time.Second
 	service.Environ = func() []string {
 		return []string{"PATH=" + binDir}
 	}
@@ -616,7 +976,12 @@ func TestServiceProbeReportsCodexPlatformPackageIncomplete(t *testing.T) {
 	pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
 	writePackageManifest(t, pkgDir, "@openai/codex", MinSupportedCodexVersion)
 	codexPath := filepath.Join(pkgDir, "bin", "codex")
-	writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nsleep 5\n")
+	// The launcher simulates the field ENOENT: `codex app-server` fails because
+	// the @openai/codex-<platform> subpackage is missing. The structural nested
+	// platform binary is also absent (genuine incomplete install). Under the
+	// behavior-first availability model the probe — not the npm layout — detects
+	// this, classifying the ENOENT as codex_platform_pkg_incomplete.
+	writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nif [ \"$1\" = \"app-server\" ]; then echo 'Cannot find module @openai/codex-darwin-arm64 (enoent)' >&2; exit 127; fi\nexit 0\n")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir bin dir: %v", err)
 	}
@@ -627,10 +992,16 @@ func TestServiceProbeReportsCodexPlatformPackageIncomplete(t *testing.T) {
 	}
 
 	service := probeTestService(home)
+	// Widen the probe ready-after window past shell-startup latency so a failing
+	// app-server (exit 127) is observed as ProbeFailed rather than racing the
+	// ready timer.
+	service.ProbeReadyAfter = 1500 * time.Millisecond
+	service.ProbeTimeout = 5 * time.Second
 	service.Environ = func() []string {
 		return []string{"PATH=" + binDir}
 	}
 	service.IsExecutableFile = isTestExecutable
+	service.CodexProtocolProbe = codexProtocolFixture(codexPlatformENOENTFixture())
 	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
 		return AuthInfo{Status: AuthAuthenticated}, true
 	}
@@ -645,7 +1016,6 @@ func TestServiceProbeReportsCodexPlatformPackageIncomplete(t *testing.T) {
 	if result.LastError == nil || result.LastError.Code != string(CodexErrPlatformPkgIncomplete) {
 		t.Fatalf("LastError = %#v, want platform package incomplete", result.LastError)
 	}
-	assertProviderCheck(t, result.Checks, "platform_binary", false)
 }
 
 func TestServiceRunActionReinstallsCodexWhenPlatformPackageIncomplete(t *testing.T) {
@@ -654,7 +1024,7 @@ func TestServiceRunActionReinstallsCodexWhenPlatformPackageIncomplete(t *testing
 	pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
 	writePackageManifest(t, pkgDir, "@openai/codex", MinSupportedCodexVersion)
 	codexPath := filepath.Join(pkgDir, "bin", "codex")
-	writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nsleep 5\n")
+	writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nif [ \"$1\" = \"app-server\" ]; then echo 'Cannot find module @openai/codex-darwin-arm64 (enoent)' >&2; exit 127; fi\nexit 0\n")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir bin dir: %v", err)
 	}
@@ -664,10 +1034,20 @@ func TestServiceRunActionReinstallsCodexWhenPlatformPackageIncomplete(t *testing
 	platformBinary := requireTestCodexPlatformBinaryPath(t, pkgDir)
 
 	service := probeTestService(home)
+	// The default 1s probe timeout is tuned for the old "still alive after
+	// 200ms" liveness check; the real ACP handshake needs to actually spawn,
+	// write, and read a response, which is slower under test-suite load.
+	service.ProbeReadyAfter = 1500 * time.Millisecond
+	service.ProbeTimeout = 5 * time.Second
 	service.Environ = func() []string {
 		return []string{"PATH=" + binDir, agentNPMRegistryEnv + "=https://registry.example.test"}
 	}
 	service.IsExecutableFile = isTestExecutable
+	service.CodexProtocolProbe = codexProtocolSequence(
+		codexPlatformENOENTFixture(),
+		codexPlatformENOENTFixture(),
+		CodexProbeEvidence{CommandStarted: true, ProtocolReady: true},
+	)
 	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
 		return AuthInfo{Status: AuthAuthenticated}, true
 	}
@@ -716,7 +1096,7 @@ func TestServiceRunActionReinstallsCodexWhenPlatformPackageIncomplete(t *testing
 	}
 }
 
-func TestServiceRunActionRepairsCodexWhenAppServerLaunchFails(t *testing.T) {
+func TestServiceRunActionDoesNotRepairCodexForGenericAppServerFailure(t *testing.T) {
 	home := t.TempDir()
 	binDir := filepath.Join(home, "bin")
 	pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
@@ -733,10 +1113,20 @@ func TestServiceRunActionRepairsCodexWhenAppServerLaunchFails(t *testing.T) {
 	writeExecutable(t, platformBinary, "#!/bin/sh\nexit 0\n")
 
 	service := probeTestService(home)
+	// The default 1s probe timeout is tuned for the old "still alive after
+	// 200ms" liveness check; the real ACP handshake needs to actually spawn,
+	// write, and read a response, which is slower under test-suite load.
+	service.ProbeReadyAfter = 1500 * time.Millisecond
+	service.ProbeTimeout = 5 * time.Second
 	service.Environ = func() []string {
 		return []string{"PATH=" + binDir, agentNPMRegistryEnv + "=https://registry.example.test"}
 	}
 	service.IsExecutableFile = isTestExecutable
+	service.CodexProtocolProbe = codexProtocolFixture(CodexProbeEvidence{CommandStarted: true, Category: "process_exited_early", Message: "app-server failed"})
+	// A stale, previously repairable status cannot authorize a new repair. The
+	// install path always takes fresh structured probe/layout evidence.
+	service.StatusCache = NewProviderStatusCache()
+	service.StatusCache.set("codex", service.Now().Add(-time.Hour), "", ProviderStatus{Provider: "codex"})
 	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
 		return AuthInfo{Status: AuthAuthenticated}, true
 	}
@@ -744,8 +1134,8 @@ func TestServiceRunActionRepairsCodexWhenAppServerLaunchFails(t *testing.T) {
 	var command InstallCommandInput
 	service.InstallCommand = func(_ context.Context, input InstallCommandInput) (InstallCommandResult, error) {
 		command = input
-		writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nif [ \"$1\" = \"app-server\" ]; then sleep 5; fi\nexit 0\n")
-		return InstallCommandResult{ExitCode: 0, Stdout: "installed"}, nil
+		t.Fatal("InstallCommand called for a generic app-server failure without triple repair evidence")
+		return InstallCommandResult{}, nil
 	}
 
 	result, err := service.RunAction(context.Background(), RunActionInput{
@@ -755,28 +1145,30 @@ func TestServiceRunActionRepairsCodexWhenAppServerLaunchFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunAction() error = %v", err)
 	}
-	if result.Status != RunActionCompleted {
-		t.Fatalf("Status = %q, want %q; result=%#v", result.Status, RunActionCompleted, result)
+	if result.Status != RunActionFailed {
+		t.Fatalf("Status = %q, want %q; result=%#v", result.Status, RunActionFailed, result)
 	}
-	if !strings.Contains(command.Command, "@openai/codex") ||
-		!strings.Contains(command.Command, "--include=optional") {
-		t.Fatalf("Command = %q, want Codex CLI repair install with optional deps", command.Command)
+	if command.Command != "" {
+		t.Fatalf("Command = %q, want no repair installer", command.Command)
 	}
-	if result.Probe == nil || result.Probe.Status != ProbeReady {
-		t.Fatalf("Probe = %#v, want ready probe", result.Probe)
+	if result.ReasonCode != "post_install_probe_failed" {
+		t.Fatalf("ReasonCode = %q, want post_install_probe_failed", result.ReasonCode)
 	}
 }
 
-func TestServiceListReportsInstallActionWhenCodexAdapterCommandFails(t *testing.T) {
+func TestServiceListReportsRuntimeBugWhenCodexAppServerFails(t *testing.T) {
 	home := t.TempDir()
 	binDir := filepath.Join(home, "bin")
 	codexPath := filepath.Join(binDir, "codex")
-	adapterPath := filepath.Join(binDir, "codex-acp")
 	writeExecutable(t, codexPath, "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, adapterPath, "#!/bin/sh\necho 'codex-acp failed to start' >&2\nexit 127\n")
 
 	service := Service{
-		Registry: Registry{Specs: []ProviderSpec{specWithSeparateAdapter()}},
+		Registry: Registry{Specs: []ProviderSpec{{
+			Provider:       "codex",
+			BinaryNames:    []string{"codex"},
+			AdapterCommand: []string{"codex", "app-server"},
+			LoginArgs:      []string{"login"},
+		}}},
 		Environ: func() []string {
 			return []string{"PATH=" + binDir}
 		},
@@ -787,14 +1179,10 @@ func TestServiceListReportsInstallActionWhenCodexAdapterCommandFails(t *testing.
 			return home, nil
 		},
 		LookPath: func(name string) (string, error) {
-			switch name {
-			case "codex":
+			if name == "codex" {
 				return codexPath, nil
-			case "codex-acp":
-				return adapterPath, nil
-			default:
-				return "", errors.New("not found")
 			}
+			return "", errors.New("not found")
 		},
 		IsExecutableFile: isTestExecutableUnderHome(home),
 		Now: func() time.Time {
@@ -805,6 +1193,7 @@ func TestServiceListReportsInstallActionWhenCodexAdapterCommandFails(t *testing.
 		RunAuthStatusCommand: func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
 			return AuthInfo{Status: AuthAuthenticated}, true
 		},
+		CodexProtocolProbe: codexProtocolFixture(CodexProbeEvidence{CommandStarted: true, Category: "process_exited_early", Message: "app-server failed"}),
 	}
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
@@ -822,12 +1211,9 @@ func TestServiceListReportsInstallActionWhenCodexAdapterCommandFails(t *testing.
 	if !status.CLI.Installed {
 		t.Fatal("CLI.Installed = false, want true")
 	}
-	if status.Adapter.Installed {
-		t.Fatal("Adapter.Installed = true, want false")
-	}
 	action := firstAction(t, status.Actions)
-	if action.ID != ActionInstall || action.Kind != ActionKindDaemonAction {
-		t.Fatalf("first action = %#v, want daemon install", action)
+	if action.ID != ActionRefresh || action.Kind != ActionKindRefresh {
+		t.Fatalf("first action = %#v, want refresh; generic Codex failure is not repairable", action)
 	}
 }
 
@@ -939,6 +1325,7 @@ func TestServiceListUsesRuntimeCommandResolverForKnownNodeGlobalBin(t *testing.T
 		Now: func() time.Time {
 			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
 		},
+		CodexProtocolProbe: codexProtocolReadyFixture,
 	}
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
@@ -969,6 +1356,7 @@ func TestServiceProbeReportsReadyWhenAdapterStarts(t *testing.T) {
 	writeExecutable(t, adapterPath, "#!/bin/sh\nsleep 5\n")
 
 	service := probeTestService(home)
+	service.CodexProtocolProbe = codexProtocolReadyFixture
 	service.Registry = Registry{Specs: []ProviderSpec{specWithSeparateAdapter()}}
 	result, err := service.Probe(context.Background(), ProbeInput{Provider: "codex"})
 	if err != nil {
@@ -993,6 +1381,7 @@ func TestServiceProbeReportsFailureWhenAdapterCommandCannotStart(t *testing.T) {
 	missingAdapterPath := filepath.Join(binDir, "missing-codex-acp")
 
 	service := probeTestService(home)
+	service.CodexProtocolProbe = codexProtocolFixture(CodexProbeEvidence{Category: "spawn_failed", Message: "missing command"})
 	service.Registry = Registry{Specs: []ProviderSpec{{
 		Provider:           "codex",
 		BinaryNames:        []string{"codex"},
@@ -1020,8 +1409,8 @@ func TestServiceProbeReportsFailureWhenAdapterCommandCannotStart(t *testing.T) {
 	if result.Status != ProbeFailed {
 		t.Fatalf("Status = %q, want %q; result=%#v", result.Status, ProbeFailed, result)
 	}
-	if result.ReasonCode != "probe_start_failed" {
-		t.Fatalf("ReasonCode = %q, want probe_start_failed", result.ReasonCode)
+	if result.ReasonCode != "acp_adapter_launch_failed" {
+		t.Fatalf("ReasonCode = %q, want acp_adapter_launch_failed", result.ReasonCode)
 	}
 	if result.Message == "" {
 		t.Fatal("Message is empty, want start failure detail")
@@ -1070,16 +1459,16 @@ func TestServiceRunActionInstallsThenProbesProvider(t *testing.T) {
 	service := probeTestService(home)
 	service.InstallCommand = func(_ context.Context, input InstallCommandInput) (InstallCommandResult, error) {
 		commands = append(commands, input)
-		writeExecutable(t, filepath.Join(binDir, "codex"), "#!/bin/sh\nexit 0\n")
+		writeExecutable(t, filepath.Join(binDir, "nexight"), "#!/bin/sh\nexit 0\n")
 		return InstallCommandResult{ExitCode: 0, Stdout: "installed"}, nil
 	}
 	service.HTTPClient = installerServer.Client()
 	service.Registry = Registry{Specs: []ProviderSpec{{
-		Provider:           "codex",
-		BinaryNames:        []string{"codex"},
+		Provider:           "nexight",
+		BinaryNames:        []string{"nexight"},
 		AdapterBinaryNames: []string{"codex-acp"},
 		AdapterCommand:     []string{"codex-acp"},
-		AuthMarkerPaths:    []string{"~/.codex/auth.json"},
+		AuthMarkerPaths:    []string{"~/.nexight/auth.json"},
 		Install: InstallerSpec{
 			Kind:           InstallerKindOfficialScript,
 			DisplayCommand: "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
@@ -1104,7 +1493,7 @@ func TestServiceRunActionInstallsThenProbesProvider(t *testing.T) {
 	}}}
 
 	result, err := service.RunAction(context.Background(), RunActionInput{
-		Provider: "codex",
+		Provider: "nexight",
 		ActionID: ActionInstall,
 	})
 	if err != nil {
@@ -1193,6 +1582,10 @@ func TestServiceRunCodexInstallerReportsManagedNPMActiveAction(t *testing.T) {
 	managedNPM := filepath.Join(runtimeRoot, "node", "bin", npmBinaryNameForTest())
 	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
 	service := probeTestService(home)
+	// The default 1s probe timeout is tuned for the old "still alive after
+	// 200ms" liveness check; the real ACP handshake needs to actually spawn,
+	// write, and read a response, which is slower under test-suite load.
+	service.ProbeTimeout = 5 * time.Second
 	service.Environ = func() []string {
 		return []string{"PATH=" + binDir, agentNPMRegistryEnv + "=https://registry.example.test"}
 	}
@@ -1243,7 +1636,7 @@ func TestServiceRunCodexInstallerReportsManagedNPMActiveAction(t *testing.T) {
 		}
 		writePackageManifest(t, pkgDir, "@openai/codex", MinSupportedCodexVersion)
 		codexPath := filepath.Join(pkgDir, "bin", "codex")
-		writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nsleep 5\n")
+		writeExecutable(t, codexPath, codexAppServerFakeScript("if [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nexit 0\n"))
 		// Platform support was already checked on the test goroutine below, so ok
 		// is true here.
 		platformPath := requireTestCodexPlatformBinaryPath(t, pkgDir)
@@ -1553,8 +1946,8 @@ func TestServiceResolveProviderCommandPrefersUserNodeForCodex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveProviderCommand() error = %v", err)
 	}
-	if !slices.Equal(result.Command, []string{"codex", "app-server"}) {
-		t.Fatalf("Command = %#v, want codex app-server", result.Command)
+	if !slices.Equal(result.Command, []string{filepath.Join(binDir, "codex"), "app-server"}) {
+		t.Fatalf("Command = %#v, want resolved codex app-server", result.Command)
 	}
 	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
 	if slices.Contains(result.Env, "TUTTI_APP_NODE="+managedNode) {
@@ -1578,8 +1971,8 @@ func TestServiceResolveProviderCommandFallsBackToManagedNodeForCodex(t *testing.
 	if err != nil {
 		t.Fatalf("ResolveProviderCommand() error = %v", err)
 	}
-	if !slices.Equal(result.Command, []string{"codex", "app-server"}) {
-		t.Fatalf("Command = %#v, want codex app-server", result.Command)
+	if !slices.Equal(result.Command, []string{filepath.Join(binDir, "codex"), "app-server"}) {
+		t.Fatalf("Command = %#v, want resolved codex app-server", result.Command)
 	}
 	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
 	if !slices.Contains(result.Env, "TUTTI_APP_NODE="+managedNode) {
@@ -1624,7 +2017,7 @@ func TestServiceListUsesManagedNodeForTuttiAgentVersionProbe(t *testing.T) {
 	writeExecutable(
 		t,
 		filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest()),
-		"#!/bin/sh\necho 'tutti-agent 0.0.8'\n",
+		"#!/bin/sh\necho 'tutti-agent 0.0.10'\n",
 	)
 
 	service := probeTestService(home)
@@ -1644,8 +2037,8 @@ func TestServiceListUsesManagedNodeForTuttiAgentVersionProbe(t *testing.T) {
 		t.Fatalf("List() error = %v", err)
 	}
 	status := onlyStatus(t, snapshot)
-	if status.CLI.Version != "0.0.8" {
-		t.Fatalf("CLI.Version = %q, want 0.0.8", status.CLI.Version)
+	if status.CLI.Version != "0.0.10" {
+		t.Fatalf("CLI.Version = %q, want 0.0.10", status.CLI.Version)
 	}
 	if status.Availability.Status != AvailabilityReady {
 		t.Fatalf(
@@ -2114,6 +2507,7 @@ func TestServiceRunActionStartsInstallTimeoutAfterLockAcquisition(t *testing.T) 
 		t.Fatalf("mkdir bin dir: %v", err)
 	}
 	service := probeTestService(home)
+	service.CodexProtocolProbe = codexProtocolReadyFixture
 	service.InstallTimeout = installTimeout
 	service.Registry = Registry{Specs: []ProviderSpec{{
 		Provider:           "codex",
@@ -2595,6 +2989,7 @@ func testService(lookPath func(string) (string, error), files map[string]bool) S
 		Now: func() time.Time {
 			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
 		},
+		CodexProtocolProbe: codexProtocolReadyFixture,
 	}
 }
 
@@ -2617,8 +3012,50 @@ func probeTestService(home string) Service {
 			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
 		},
 		ProbeReadyAfter: 200 * time.Millisecond,
-		ProbeTimeout:    time.Second,
+		// Match production defaultProbeTimeout (3s). 1s was too tight for the
+		// real ACP initialize round-trip in fake shell scripts under parallel
+		// `go test` load and caused flaky acp_adapter_launch_failed failures.
+		ProbeTimeout: defaultProbeTimeout,
 	}
+}
+
+// The service layer consumes the same structured command/protocol evidence as
+// production. It never treats a shell process surviving for a short interval
+// as readiness; formal JSON-RPC lifecycle coverage lives in the runtime probe
+// tests, while these fixtures make product-policy scenarios explicit.
+func codexProtocolFixture(evidence CodexProbeEvidence) func(context.Context, []string, []string) CodexProbeEvidence {
+	return func(context.Context, []string, []string) CodexProbeEvidence { return evidence }
+}
+
+func codexProtocolReadyFixture(context.Context, []string, []string) CodexProbeEvidence {
+	return CodexProbeEvidence{CommandStarted: true, ProtocolReady: true}
+}
+
+func codexProtocolSequence(evidence ...CodexProbeEvidence) func(context.Context, []string, []string) CodexProbeEvidence {
+	var next atomic.Int32
+	return func(context.Context, []string, []string) CodexProbeEvidence {
+		index := int(next.Add(1) - 1)
+		if index >= len(evidence) {
+			return evidence[len(evidence)-1]
+		}
+		return evidence[index]
+	}
+}
+
+func codexPlatformENOENTFixture() CodexProbeEvidence {
+	return CodexProbeEvidence{
+		Category:            "platform_package_enoent",
+		PlatformPackageName: "@openai/" + testCodexPlatformPackageName(),
+		Message:             "ENOENT: cannot find @openai/" + testCodexPlatformPackageName(),
+	}
+}
+
+func testCodexPlatformPackageName() string {
+	platform, ok := codexNpmPlatformDir(runtime.GOOS, runtime.GOARCH)
+	if !ok {
+		return "codex-unknown"
+	}
+	return platform
 }
 
 func onlyStatus(t *testing.T, snapshot Snapshot) ProviderStatus {
@@ -2637,17 +3074,35 @@ func firstAction(t *testing.T, actions []Action) Action {
 	return actions[0]
 }
 
-func assertProviderCheck(t *testing.T, checks []ProviderCheck, name string, passed bool) {
-	t.Helper()
-	for _, check := range checks {
-		if check.Name == name {
-			if check.Passed != passed {
-				t.Fatalf("check %q passed = %v, want %v; checks=%#v", name, check.Passed, passed, checks)
-			}
-			return
-		}
-	}
-	t.Fatalf("check %q missing in %#v", name, checks)
+// codexAppServerHandshakeOKCase is a POSIX `case` arm that answers the Codex
+// runtime probe's `initialize` request by actually reading the request line
+// from stdin, extracting the id the probe generated for this run, and echoing
+// it back. It then consumes the formal `initialized` notification before
+// exiting. The probe uses an unpredictable id per run specifically so a
+// canned response (one that never reads stdin) cannot pass as a real
+// handshake reply.
+const codexAppServerHandshakeOKCase = `*app-server*) read -r line; id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9]*\).*/\1/p'); printf '{"id":%s,"result":{}}\n' "$id"; read -r initialized; exit 0 ;;`
+
+// codexAppServerFakeScript builds a POSIX shell fake CLI that answers the
+// real ACP handshake probe for any invocation whose args contain
+// "app-server" (matching the probe's request instead of just staying alive),
+// then falls through to extraBody for every other invocation (e.g.
+// `--version`).
+func codexAppServerFakeScript(extraBody string) string {
+	return "#!/bin/sh\ncase \"$*\" in\n" + codexAppServerHandshakeOKCase + "\nesac\n" + extraBody
+}
+
+// standardACPHandshakeOKCase is the Standard ACP equivalent of
+// codexAppServerHandshakeOKCase: it reads the `initialize` request from
+// stdin and echoes back the id it was sent, rather than a hardcoded value.
+const standardACPHandshakeOKCase = `*acp*) read -r line; id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9]*\).*/\1/p'); printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id"; exit 0 ;;`
+
+// standardACPFakeScript builds a POSIX shell fake CLI that answers the real
+// ACP handshake probe for any invocation whose args contain "acp" (matching
+// cursor-agent/opencode's `<binary> acp` adapter command), then falls
+// through to extraBody for every other invocation (e.g. `--version`).
+func standardACPFakeScript(extraBody string) string {
+	return "#!/bin/sh\ncase \"$*\" in\n" + standardACPHandshakeOKCase + "\nesac\n" + extraBody
 }
 
 func isTestExecutable(path string) bool {

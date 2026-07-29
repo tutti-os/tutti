@@ -111,6 +111,17 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 	applyACPConfigOptionsResult(&acpSession.acpLiveState, newSessionResult)
 	applyACPModelsResult(&acpSession.acpLiveState, newSessionResult)
 	applyACPModesResult(&acpSession.acpLiveState, newSessionResult)
+	if a.config.validateNewSessionResult != nil {
+		if err := a.config.validateNewSessionResult(newSessionResult); err != nil {
+			a.logStandardACPStartupDiagnostics("session_new.validation_failed", map[string]any{
+				"room_id":             session.RoomID,
+				"agent_session_id":    session.AgentSessionID,
+				"provider_session_id": session.ProviderSessionID,
+				"error":               err.Error(),
+			})
+			return nil, err
+		}
+	}
 	if err := a.applySessionConfigOptions(ctx, client, session, newSessionResult); err != nil {
 		a.logStandardACPStartupDiagnostics("config_options.failed", map[string]any{
 			"room_id":             session.RoomID,

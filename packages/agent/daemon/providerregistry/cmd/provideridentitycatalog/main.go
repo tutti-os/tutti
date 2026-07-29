@@ -17,6 +17,7 @@ type catalogEntry struct {
 	LocaleKey         string   `json:"localeKey"`
 	Aliases           []string `json:"aliases"`
 	ModelPlanProtocol string   `json:"modelPlanProtocol"`
+	StatusKind        string   `json:"statusKind"`
 	Target            target   `json:"target"`
 	Desktop           desktop  `json:"desktop"`
 }
@@ -58,6 +59,7 @@ func main() {
 			LocaleKey:         descriptor.Identity.LocaleKey,
 			Aliases:           append([]string{}, descriptor.Identity.Aliases...),
 			ModelPlanProtocol: string(descriptor.Runtime.Endpoint.ModelPlanProtocol),
+			StatusKind:        string(descriptor.Status.Kind),
 			Target: target{
 				ID:            descriptor.Target.ID,
 				LaunchRefType: descriptor.Target.LaunchRefType,

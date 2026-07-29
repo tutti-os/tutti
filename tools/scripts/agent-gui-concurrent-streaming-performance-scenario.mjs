@@ -33,7 +33,7 @@ export const concurrentAgentStreamingScenario = {
     },
     {
       key: "bothMutated",
-      label: "both transcripts first mutated",
+      label: "both transcripts first rendered streamed text",
       marker: markers.bothMutated
     },
     {
@@ -69,8 +69,8 @@ export const concurrentAgentStreamingScenario = {
           passed: result.startedCount === 2 && result.submitDeltaMs <= 5
         },
         {
-          name: "both transcripts mutated repeatedly",
-          passed: result.mutationBatches.every((count) => count >= 8)
+          name: "both transcripts rendered intermediate streamed text",
+          passed: result.streamingTextSamples.every((count) => count >= 3)
         },
         {
           name: "both streams settled",
@@ -95,9 +95,17 @@ export const concurrentAgentStreamingScenario = {
           label: "DOM mutations",
           value: result.mutations.join(" + ")
         },
+        {
+          label: "Streaming text samples",
+          value: result.streamingTextSamples.join(" + ")
+        },
+        {
+          label: "Final streaming text lengths",
+          value: result.finalStreamingTextLengths.join(" + ")
+        },
         { label: "Provider", value: "two isolated fake Cursor ACP sessions" }
       ],
-      "two non-overlapping AgentGUI bodies show different restored sessions; both forms submit in one renderer task; each local ACP stream produces at least eight MutationObserver batches and settles"
+      "two non-overlapping AgentGUI bodies show different restored sessions; both forms submit in one renderer task; each local ACP stream renders at least three distinct intermediate text lengths, reaches the final chunk, and settles"
     );
   }
 };
@@ -377,15 +385,35 @@ async function executeConcurrentAgentStreaming(context, prepared, options) {
         windowState.state = {
           firstMutation: false,
           mutationBatches: 0,
-          mutations: 0
+          mutations: 0,
+          streamingTextLengths: []
         };
+        const sampleStreamingText = () => {
+          const text =
+            [...windowState.timeline.querySelectorAll(
+              '.agent-gui-conversation__assistant-message-flow'
+            )]
+              .map((element) => element.textContent ?? '')
+              .find((value) =>
+                value.includes('Virtualized streaming fixture chunk')
+              ) ?? '';
+          const lengths = windowState.state.streamingTextLengths;
+          if (text.length > 0 && lengths.at(-1) !== text.length) {
+            lengths.push(text.length);
+          }
+          return text;
+        };
+        windowState.sampleStreamingText = sampleStreamingText;
         const observer = new MutationObserver((records) => {
           windowState.state.mutationBatches += 1;
           windowState.state.mutations += records.length;
           windowState.state.firstMutation = true;
+          sampleStreamingText();
           if (
             runtime.windows.every(
-              (candidate) => candidate.state.firstMutation
+              (candidate) =>
+                candidate.state.firstMutation &&
+                candidate.state.streamingTextLengths.length > 0
             ) &&
             !runtime.bothMutated
           ) {
@@ -462,13 +490,29 @@ async function executeConcurrentAgentStreaming(context, prepared, options) {
         state?.windows?.map(({ state: windowState }) =>
           windowState.mutations
         ) ?? [];
+      const streamingTextSamples =
+        state?.windows?.map(({ state: windowState }) =>
+          windowState.streamingTextLengths.length
+        ) ?? [];
+      const finalStreamingTexts =
+        state?.windows?.map((windowState) =>
+          windowState.sampleStreamingText()
+        ) ?? [];
       return {
         ready:
           settledCount === 2 &&
           mutationBatches.length === 2 &&
-          mutationBatches.every((count) => count >= 8),
+          mutationBatches.every((count) => count >= 8) &&
+          streamingTextSamples.every((count) => count >= 3) &&
+          finalStreamingTexts.every((text) =>
+            text.includes('Virtualized streaming fixture chunk 48')
+          ),
+        finalStreamingTextLengths: finalStreamingTexts.map(
+          (text) => text.length
+        ),
         mutationBatches,
         mutations,
+        streamingTextSamples,
         settledCount
       };
     })()`,
@@ -490,6 +534,8 @@ async function executeConcurrentAgentStreaming(context, prepared, options) {
   return {
     mutationBatches: settled.mutationBatches,
     mutations: settled.mutations,
+    finalStreamingTextLengths: settled.finalStreamingTextLengths,
+    streamingTextSamples: settled.streamingTextSamples,
     settledCount: settled.settledCount,
     startedCount: started.startedCount,
     submitDeltaMs: submit.submitDeltaMs

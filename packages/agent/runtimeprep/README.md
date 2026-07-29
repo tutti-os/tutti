@@ -64,6 +64,55 @@ runtimeprep leaves auth unprojected and does not fall back to the VM user's
 `~/.tutti-agent`. Tutti Agent preparation also materializes the same resolved
 native Skills used by the other supported providers.
 
+## Codex Native Capability Plan
+
+After Codex session home preparation, `BuildCodexNativeCapabilityPlan`
+inspects the session `CODEX_HOME` (not only `~/.codex`) and resolves a
+Native-first routing table for:
+
+- `browser@openai-bundled`
+- `computer-use@openai-bundled`
+- `sites@openai-bundled`
+
+Auto mode prefers `codex-native` when the session evidence is ready. Browser
+and Computer may fall back to `tutti-daemon`. Sites never falls back. An
+explicit `native` preference fails closed instead of silently selecting Tutti.
+The plan is attached to `PreparedRuntime.NativeCapabilityPlan` for Host and
+adapter consumers; mutual exclusion of Tutti skill/policy injection is applied
+by later exclusivity wiring.
+
+## Codex Native Computer Use Prepare
+
+`prepareCodexNativeComputerUse` reads the installed plugin `.mcp.json`, resolves
+the launcher to an absolute path, exposes the user `computer-use` client under
+the session `CODEX_HOME`, and writes a session-scoped
+`[mcp_servers.computer-use]` block. It never edits `~/.codex/config.toml`.
+
+Enabling a previously disabled Computer Use MCP requires
+`AuthorizeCodexNativeComputerUse` or an explicit native backend preference.
+Repairing an already-enabled relative command to a verified absolute path does
+not. `VerifyCodexNativeComputerMCPStatus` interprets post-start
+`mcpServerStatus/list` evidence and fails closed when the server is missing,
+unhealthy, or tool-less.
+
+## Codex Native Browser Prepare
+
+`prepareCodexNativeBrowser` requires the Browser plugin package,
+`scripts/browser-client.mjs`, an absolute executable `node_repl` command, and a
+Tutti-usable backend that includes `chrome`. An `iab`-only backend is
+`host_unsupported`. On success it rewrites session `node_repl` env to the
+session `CODEX_HOME`, enables `features.js_repl`, and enables
+`browser@openai-bundled` in the session config only.
+
+## Native/Tutti Exclusivity
+
+`ApplyNativeCapabilityExclusivity` runs after the session plan is built. When
+`codex-native` is selected for Browser or Computer, Tutti removes the matching
+`browser-use` / `computer-use` skill bundle, handoff policy sections, and
+`TUTTI_*_USE_ENABLED` session env markers before provider instructions are
+written. Browser and Computer never run both backends in one prepared session.
+Sites has no Tutti fallback.
+
 ## Capability Packs
 
 A deployment capability resolves once into its policy, skills, and environment

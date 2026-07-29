@@ -243,6 +243,53 @@ test("agent composer options project typed pre-session capabilities separately f
   );
 });
 
+test("agent composer options preserve native plugin semantics", () => {
+  const options = agentActivityComposerOptionsFromTuttidResult("codex", {
+    capabilityCatalog: [
+      {
+        id: "plugin:sites@openai-bundled",
+        invocation: "promptItem",
+        kind: "plugin",
+        label: "Sites",
+        name: "sites",
+        semantic: "sites",
+        status: "available",
+        trigger: "$sites"
+      },
+      {
+        id: "plugin:unrelated",
+        invocation: "promptItem",
+        kind: "plugin",
+        label: "Unrelated",
+        name: "unrelated",
+        semantic: "not-a-supported-semantic",
+        status: "available"
+      }
+    ]
+  });
+
+  assert.deepEqual(options.capabilityCatalog, [
+    {
+      id: "plugin:sites@openai-bundled",
+      invocation: "promptItem",
+      kind: "plugin",
+      label: "Sites",
+      name: "sites",
+      semantic: "sites",
+      status: "available",
+      trigger: "$sites"
+    },
+    {
+      id: "plugin:unrelated",
+      invocation: "promptItem",
+      kind: "plugin",
+      label: "Unrelated",
+      name: "unrelated",
+      status: "available"
+    }
+  ]);
+});
+
 test("agent composer options preserve effective pre-session settings", () => {
   const options = agentActivityComposerOptionsFromTuttidResult("codex", {
     effectiveSettings: {

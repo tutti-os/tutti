@@ -64,6 +64,7 @@ func TestTuttiCLIPolicyUsesPreparedCLIAndProviderRules(t *testing.T) {
 		"tutti-dev agent start --agent-id <agent-id> --prompt <prompt> --show --json",
 		"tutti-dev agent wait --session-id <session-id> --json",
 		"tutti-dev app open --app-id <appId> --json",
+		"Run it normally first",
 		"sandbox_permissions=require_escalated",
 		"# Host App Context",
 	} {
@@ -129,6 +130,8 @@ func TestRenderSkillBundleIncludesGuideAndOptionalSkills(t *testing.T) {
 	for _, expected := range []string{
 		"Never inspect or modify `~/.tutti*/*.db`",
 		"tutti-dev plan issue get --issue-id <issue-id> --json",
+		"tutti-dev plan issue resume --issue-id <issue-id> --json",
+		"If the snapshot reports `dispatchPaused: true`, do not retry schedule",
 		"`task_failed` or `task_canceled`",
 		"Rework it with a new `taskId`",
 		"Recovery is bounded",

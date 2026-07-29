@@ -13,6 +13,7 @@ func newMigratedProviderAdapters(
 	transport ProcessTransport,
 	host HostMetadata,
 	commandResolver ProviderCommandResolver,
+	commandNetworkAccessPolicy CommandNetworkAccessPolicy,
 ) []Adapter {
 	descriptors := providerregistry.Migrated()
 	adapters := make([]Adapter, 0, len(descriptors))
@@ -20,7 +21,12 @@ func newMigratedProviderAdapters(
 		if err := providerregistry.Validate(descriptor); err != nil {
 			panic(fmt.Sprintf("invalid migrated provider descriptor: %v", err))
 		}
-		adapter := newAdapterFromProviderDescriptor(descriptor, transport, host, commandResolver)
+		options := providerAdapterOptions{}
+		if descriptor.Runtime.Kind == providerregistry.RuntimeKindCodexAppServer &&
+			commandNetworkAccessPolicy != nil {
+			options.commandNetworkAccess = commandNetworkAccessPolicy(descriptor.Identity.ID)
+		}
+		adapter := newAdapterFromProviderDescriptor(descriptor, transport, host, commandResolver, options)
 		if adapter == nil {
 			panic(fmt.Sprintf("provider %q has unsupported runtime kind %q", descriptor.Identity.ID, descriptor.Runtime.Kind))
 		}
@@ -32,11 +38,16 @@ func newMigratedProviderAdapters(
 	return adapters
 }
 
+type providerAdapterOptions struct {
+	commandNetworkAccess bool
+}
+
 func newAdapterFromProviderDescriptor(
 	descriptor providerregistry.ProviderDescriptor,
 	transport ProcessTransport,
 	host HostMetadata,
 	commandResolver ProviderCommandResolver,
+	options providerAdapterOptions,
 ) Adapter {
 	switch descriptor.Runtime.Kind {
 	case providerregistry.RuntimeKindCodexAppServer:
@@ -44,14 +55,15 @@ func newAdapterFromProviderDescriptor(
 			transport,
 			host,
 			appServerAdapterConfig{
-				provider:            descriptor.Identity.ID,
-				runtimeName:         descriptor.Runtime.Name,
-				displayName:         descriptor.Identity.DisplayName,
-				command:             append([]string(nil), descriptor.Runtime.Command...),
-				clientInfoName:      descriptor.Runtime.ClientInfoName,
-				authRequiredMessage: descriptor.Runtime.AuthRequiredMessage,
-				rateLimits:          providerDescriptorHasCapability(descriptor, CapabilityRateLimits),
-				nativeSessionFork:   descriptor.Runtime.NativeSessionFork,
+				provider:             descriptor.Identity.ID,
+				runtimeName:          descriptor.Runtime.Name,
+				displayName:          descriptor.Identity.DisplayName,
+				command:              append([]string(nil), descriptor.Runtime.Command...),
+				clientInfoName:       descriptor.Runtime.ClientInfoName,
+				authRequiredMessage:  descriptor.Runtime.AuthRequiredMessage,
+				rateLimits:           providerDescriptorHasCapability(descriptor, CapabilityRateLimits),
+				nativeSessionFork:    descriptor.Runtime.NativeSessionFork,
+				commandNetworkAccess: options.commandNetworkAccess,
 			},
 			commandResolver,
 		)

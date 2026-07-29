@@ -23,13 +23,15 @@ func (CodexPreparer) Provider() string {
 func (CodexPreparer) Prepare(_ context.Context, input ProviderPrepareInput) (ProviderPrepareResult, error) {
 	codexHome := filepath.Join(input.RuntimeRoot, "codex-home")
 	logRuntimePrepareTrace("runtime_prepare.codex.entered", input.PrepareInput, nil)
-	if err := prepareCodexHome(codexHome, input.PrepareInput); err != nil {
+	prepareInput := input.PrepareInput
+	plan, err := prepareCodexHome(codexHome, &prepareInput)
+	if err != nil {
 		return ProviderPrepareResult{}, err
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.home_prepared", input.PrepareInput, nil)
 	instructionsPath := filepath.Join(codexHome, "AGENTS.md")
 	logRuntimePrepareTrace("runtime_prepare.codex.instructions_write_requested", input.PrepareInput, nil)
-	policy, err := tuttiCLIPolicy(input.PrepareInput)
+	policy, err := tuttiCLIPolicy(prepareInput)
 	if err != nil {
 		return ProviderPrepareResult{}, err
 	}
@@ -51,52 +53,90 @@ func (CodexPreparer) Prepare(_ context.Context, input ProviderPrepareInput) (Pro
 	if input.ModelEndpoint.supportsCodex() {
 		env = append(env, codexModelPlanAPIKeyEnv+"="+input.ModelEndpoint.APIKey)
 	}
+	logRuntimePrepareTrace("runtime_prepare.codex.native_capability_plan", prepareInput, map[string]any{
+		"entries": len(plan.Entries),
+	})
 	return ProviderPrepareResult{
-		Cwd: input.Cwd,
-		Env: env,
+		Cwd:                  input.Cwd,
+		Env:                  env,
+		NativeCapabilityPlan: &plan,
 	}, nil
 }
 
-func prepareCodexHome(codexHome string, input PrepareInput) error {
-	logRuntimePrepareTrace("runtime_prepare.codex.home_dir_requested", input, nil)
+func prepareCodexHome(codexHome string, input *PrepareInput) (NativeCapabilityPlan, error) {
+	if input == nil {
+		return NativeCapabilityPlan{}, fmt.Errorf("prepare input is required")
+	}
+	logRuntimePrepareTrace("runtime_prepare.codex.home_dir_requested", *input, nil)
 	if err := os.MkdirAll(codexHome, 0o700); err != nil {
-		return fmt.Errorf("create codex home: %w", err)
+		return NativeCapabilityPlan{}, fmt.Errorf("create codex home: %w", err)
 	}
-	logRuntimePrepareTrace("runtime_prepare.codex.home_dir_resolved", input, nil)
-	logRuntimePrepareTrace("runtime_prepare.codex.user_files_requested", input, nil)
+	logRuntimePrepareTrace("runtime_prepare.codex.home_dir_resolved", *input, nil)
+	logRuntimePrepareTrace("runtime_prepare.codex.user_files_requested", *input, nil)
 	if err := exposeUserCodexFiles(codexHome); err != nil {
-		return err
+		return NativeCapabilityPlan{}, err
 	}
-	logRuntimePrepareTrace("runtime_prepare.codex.user_files_resolved", input, nil)
-	logRuntimePrepareTrace("runtime_prepare.codex.imported_rollout_requested", input, nil)
+	logRuntimePrepareTrace("runtime_prepare.codex.user_files_resolved", *input, nil)
+	logRuntimePrepareTrace("runtime_prepare.codex.imported_rollout_requested", *input, nil)
 	if err := exposeCodexImportedRolloutFile(codexHome, input.ExternalRolloutSourcePath); err != nil {
-		return err
+		return NativeCapabilityPlan{}, err
 	}
-	logRuntimePrepareTrace("runtime_prepare.codex.imported_rollout_resolved", input, nil)
-	logRuntimePrepareTrace("runtime_prepare.codex.session_config_requested", input, nil)
-	if err := ensureCodexSessionConfig(filepath.Join(codexHome, "config.toml"), input); err != nil {
-		return err
+	logRuntimePrepareTrace("runtime_prepare.codex.imported_rollout_resolved", *input, nil)
+	logRuntimePrepareTrace("runtime_prepare.codex.session_config_requested", *input, nil)
+	if err := ensureCodexSessionConfig(filepath.Join(codexHome, "config.toml"), *input); err != nil {
+		return NativeCapabilityPlan{}, err
 	}
-	logRuntimePrepareTrace("runtime_prepare.codex.session_config_resolved", input, nil)
-	logRuntimePrepareTrace("runtime_prepare.codex.user_skills_requested", input, nil)
-	if err := exposeUserCodexSkillFolders(filepath.Join(codexHome, "skills"), input); err != nil {
-		return err
+	logRuntimePrepareTrace("runtime_prepare.codex.session_config_resolved", *input, nil)
+
+	logRuntimePrepareTrace("runtime_prepare.codex.native_computer_requested", *input, nil)
+	computerAuth := input.AuthorizeCodexNativeComputerUse ||
+		normalizeCapabilityBackendPreference(input.ComputerBackendPreference) == CapabilityBackendPreferenceNative
+	if _, err := prepareCodexNativeComputerUse(codexHome, computerAuth); err != nil {
+		return NativeCapabilityPlan{}, err
 	}
-	logRuntimePrepareTrace("runtime_prepare.codex.user_skills_resolved", input, nil)
-	logRuntimePrepareTrace("runtime_prepare.codex.native_skills_requested", input, nil)
-	skillPaths, err := installProviderNativeSkills(filepath.Join(codexHome, "skills"), input)
+	logRuntimePrepareTrace("runtime_prepare.codex.native_computer_resolved", *input, nil)
+	logRuntimePrepareTrace("runtime_prepare.codex.native_browser_requested", *input, nil)
+	if _, err := prepareCodexNativeBrowser(codexHome); err != nil {
+		return NativeCapabilityPlan{}, err
+	}
+	logRuntimePrepareTrace("runtime_prepare.codex.native_browser_resolved", *input, nil)
+	logRuntimePrepareTrace("runtime_prepare.codex.native_sites_requested", *input, nil)
+	if _, err := prepareCodexNativeSites(codexHome); err != nil {
+		return NativeCapabilityPlan{}, err
+	}
+	logRuntimePrepareTrace("runtime_prepare.codex.native_sites_resolved", *input, nil)
+
+	plan, err := BuildCodexNativeCapabilityPlan(codexHome, NativeCapabilityResolveInput{
+		BrowserPreference:  input.BrowserBackendPreference,
+		ComputerPreference: input.ComputerBackendPreference,
+		SitesPreference:    input.SitesBackendPreference,
+		TuttiBrowserOK:     input.BrowserUse && BrowserUseDefaultEnabled(),
+		TuttiComputerOK:    input.ComputerUse && ComputerUseDefaultEnabled(),
+	})
 	if err != nil {
-		return err
+		return NativeCapabilityPlan{}, err
 	}
-	logRuntimePrepareTrace("runtime_prepare.codex.native_skills_resolved", input, map[string]any{
+	ApplyNativeCapabilityExclusivity(input, plan)
+
+	logRuntimePrepareTrace("runtime_prepare.codex.user_skills_requested", *input, nil)
+	if err := exposeUserCodexSkillFolders(filepath.Join(codexHome, "skills"), *input); err != nil {
+		return NativeCapabilityPlan{}, err
+	}
+	logRuntimePrepareTrace("runtime_prepare.codex.user_skills_resolved", *input, nil)
+	logRuntimePrepareTrace("runtime_prepare.codex.native_skills_requested", *input, nil)
+	skillPaths, err := installProviderNativeSkills(filepath.Join(codexHome, "skills"), *input)
+	if err != nil {
+		return NativeCapabilityPlan{}, err
+	}
+	logRuntimePrepareTrace("runtime_prepare.codex.native_skills_resolved", *input, map[string]any{
 		"skill_count": len(skillPaths),
 	})
-	logRuntimePrepareTrace("runtime_prepare.codex.approval_rules_requested", input, nil)
-	if err := installCodexApprovalRules(codexHome, input); err != nil {
-		return err
+	logRuntimePrepareTrace("runtime_prepare.codex.approval_rules_requested", *input, nil)
+	if err := installCodexApprovalRules(codexHome, *input); err != nil {
+		return NativeCapabilityPlan{}, err
 	}
-	logRuntimePrepareTrace("runtime_prepare.codex.approval_rules_resolved", input, nil)
-	return nil
+	logRuntimePrepareTrace("runtime_prepare.codex.approval_rules_resolved", *input, nil)
+	return plan, nil
 }
 
 func installCodexApprovalRules(codexHome string, input PrepareInput) error {
@@ -177,7 +217,10 @@ func exposeUserCodexFiles(codexHome string) error {
 	if err := exposeUserCodexConfig(codexHome, userCodexHome); err != nil {
 		return err
 	}
-	return exposeUserCodexModelCatalog(codexHome, userCodexHome)
+	if err := exposeUserCodexModelCatalog(codexHome, userCodexHome); err != nil {
+		return err
+	}
+	return exposeUserCodexInstructionsFile(codexHome, userCodexHome)
 }
 
 // exposeCodexImportedRolloutFile symlinks the single Codex CLI rollout
@@ -278,67 +321,6 @@ func exposeUserCodexConfig(codexHome string, userCodexHome string) error {
 	}
 	if err := copyFile(source, target, 0o600); err != nil {
 		return fmt.Errorf("copy codex config: %w", err)
-	}
-	return nil
-}
-
-// exposeUserCodexModelCatalog mirrors a relative model_catalog_json path into
-// the run-scoped CODEX_HOME. Tutti copies config.toml alone; tools such as
-// CC Switch write model_catalog_json = "cc-switch-model-catalog.json", which
-// Codex resolves against CODEX_HOME. Without the catalog file, thread/start
-// fails with ENOENT and Tutti surfaces "agent session is not connected".
-//
-// Absolute catalog paths stay readable from the host filesystem and need no
-// mirror. Missing keys or missing source files are no-ops.
-func exposeUserCodexModelCatalog(codexHome string, userCodexHome string) error {
-	configPath := filepath.Join(codexHome, "config.toml")
-	contentBytes, err := os.ReadFile(configPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("read codex config for model catalog path: %w", err)
-	}
-	lines := strings.Split(strings.ReplaceAll(string(contentBytes), "\r\n", "\n"), "\n")
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-		if strings.HasPrefix(trimmed, "[") {
-			break
-		}
-		value, ok := codexConfigStringAssignmentValue(trimmed, "model_catalog_json")
-		if !ok {
-			continue
-		}
-		value = strings.TrimSpace(value)
-		if value == "" || filepath.IsAbs(value) {
-			return nil
-		}
-		cleanRel := filepath.Clean(value)
-		if cleanRel == "." || cleanRel == ".." || strings.HasPrefix(cleanRel, ".."+string(filepath.Separator)) {
-			return nil
-		}
-		source := filepath.Join(userCodexHome, cleanRel)
-		if info, err := os.Stat(source); err != nil || info.IsDir() {
-			return nil
-		}
-		target := filepath.Join(codexHome, cleanRel)
-		if _, err := os.Lstat(target); err == nil {
-			return nil
-		} else if !os.IsNotExist(err) {
-			return fmt.Errorf("inspect codex model catalog: %w", err)
-		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-			return fmt.Errorf("create codex model catalog parent: %w", err)
-		}
-		if err := os.Symlink(source, target); err != nil {
-			if copyErr := copyFile(source, target, 0o600); copyErr != nil {
-				return fmt.Errorf("expose codex model catalog %s: symlink failed: %v; copy failed: %w", cleanRel, err, copyErr)
-			}
-		}
-		return nil
 	}
 	return nil
 }

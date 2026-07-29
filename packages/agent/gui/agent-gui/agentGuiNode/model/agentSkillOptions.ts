@@ -30,7 +30,7 @@ export function promptForProviderSkills(input: {
 }): string {
   let prompt = input.prompt;
   for (const skill of input.skills) {
-    if (!skill.invocation) {
+    if (!skill.invocation || skill.kind === "plugin") {
       continue;
     }
     const nativePrefix = skill.invocation === "promptItem" ? "$" : "/";

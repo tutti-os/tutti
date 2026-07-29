@@ -378,6 +378,12 @@ transactionally rejects an unverified prefix, descendant lane, or
 session-scoped local attachment. This prevents a later unavailable Turn from
 hiding an earlier valid Turn while preserving a fail-closed commit.
 
+Session Fork is also a default-off Lab capability. Desktop maps
+`lab.agentSessionFork` to an explicit AgentGUI host opt-in, so provider support
+alone does not expose the action. Tuttid independently enforces the same flag
+on new Fork writes; disabling it leaves existing lineage, operation reads, and
+operation acknowledgements available.
+
 Tuttid currently rejects worktree-isolated sources at the Session capability
 layer. A provider-native thread Fork keeps the provider cwd; copying the
 source worktree ownership or silently selecting another checkout would be
@@ -605,18 +611,29 @@ disable submission, but must not change editor editability.
   command. Concurrent AgentGUI surfaces subscribe through exact
   Session-family or target selectors; a selector preserves its selected
   reference when another root Session changes
+- AgentGUI transcript presentation subscribes to projected messages for only
+  the selected root Session and its current child Sessions. This projection
+  includes optimistic `message_delta` text before durable confirmation, while
+  preserving message-array references for every unrelated Session
 - whole-workspace `AgentActivitySnapshot` projections remain valid for bounded
   aggregate reads, but do not belong in high-frequency AgentGUI render paths.
   Event callbacks that need current canonical data read the engine snapshot at
   event time instead of retaining a whole-workspace render snapshot
 - lifecycle writes use typed intents/commands
 - the Engine alone translates shared activation, prompt send, settings update,
-  turn cancel, and Interaction response commands into
+  turn cancel, Interaction response, pin, and batch-delete commands into
   `AgentSessionEffectPort` calls. Desktop and Mobile implement those semantic
   methods and must not duplicate a command-type switch for them. Platform-only
   commands remain in each host's `EngineExtensionCommand` adapter. Every effect
-  propagates the Engine-owned AbortSignal to its transport; a required settings
-  precondition rechecks cancellation before prompt send
+  propagates the Engine-owned AbortSignal to its transport. Direct settings
+  changes, post-activation persistence, and prompt-required settings share one
+  per-Session Engine lane. Owner boundaries are serialization barriers rather
+  than coalescing opportunities. A validated precondition updates canonical
+  Session state before the Engine starts send, while a failed or timed-out
+  precondition prevents delivery. A timed-out settings write remains
+  delivery-unknown and does not release queued writes automatically. A fresh
+  explicit settings selection is the user's retry: Desktop AgentGUI and Native
+  Mobile derive that retry from the exact Engine settings-operation state
 - consumers do not read reducer maps directly
 - consumers do not create canonical session/message mirrors
 - optimistic records define confirmation, rejection, timeout, and uncertain-delivery paths
@@ -628,6 +645,9 @@ disable submission, but must not change editor editability.
 - newest-to-oldest reads attach their authoritative message-window coverage to
   the same snapshot intent; incremental/realtime updates preserve that coverage
 - realtime authoritative entities use upsert intents
+- optimistic `message_delta` updates invalidate the exact Session projection;
+  they do not write an unconfirmed message into canonical Engine state.
+  Terminal `message_update` reconciliation replaces that optimistic projection
 - an authoritative Session detail result enters through
   `session/detailSnapshotReceived`; `agent-activity-core` expands the root
   Session, Turns, child Sessions, and optional message coverage in one engine
@@ -700,6 +720,11 @@ The busy-session prompt queue is ephemeral durable-intent coordination in the wo
 - a provider with native guidance capability may guide the active Turn
 - otherwise send-now performs exact cancel-then-send
 - user Stop pauses the queue; cancellation must not leak the next prompt
+- a prompt settings precondition is an explicit preparation stage, not a nested
+  host effect. It serializes with direct and post-activation settings writes,
+  updates the canonical Session on success, starts send before releasing later
+  settings writes, and fails the logical prompt without delivery when the
+  settings result is not valid
 - a visible failed queue entry continues to own its submitted content for retry;
   draft settlement must not duplicate that content back into the composer
 - uncertain delivery reconciles by `clientSubmitId` and exact `turnId`; it never resends merely because the Session appears idle
@@ -922,10 +947,16 @@ High-frequency transcript updates must not pair DOM mutation with unconditional 
 Transcript end-following is one UI-local state machine shared by DOM, TanStack
 Virtual, and React Native adapters. It has only `following` and `detached`
 modes. User scroll-away intent detaches synchronously, before the first scroll
-frame. Conversation selection, prompt submission, an explicit scroll-to-end
-request, or the user actually reaching the end may reattach. Content growth,
-layout effects, observers, virtualizer geometry, and near-end thresholds are
-sensors or executors only; they must not transition the mode.
+frame. A mounted detail view retains the scroll anchor and follow-end mode for
+each exact Agent Session it visits. First selection follows the end; returning
+to a detached Session restores its retained position, while returning to a
+following Session stays at the end. This mounted-view memory retains at most 64
+recently used Sessions and evicts the least recently used entry beyond that
+limit. It expires with the mounted view and never enters navigation, Engine, or
+Session state. Prompt submission, an explicit scroll-to-end request, or the
+user actually reaching the end may reattach. Content growth, layout effects,
+observers, virtualizer geometry, and near-end thresholds are sensors or
+executors only; they must not transition the mode.
 
 Turn-level virtualization has one geometry owner. When the transcript is
 virtualized and the state machine is `following`, TanStack Virtual owns append
@@ -1038,12 +1069,29 @@ provider ID
 
 An unknown provider produces explicit unsupported behavior. Provider adapters normalize their own wire; shared renderers consume canonical message/tool/notice contracts only.
 
+Desktop managed-provider setup reads the generated provider catalog's
+`statusKind` strategy before requesting a provider-specific runtime candidate
+catalog. The setup service and view must not keep a second provider-id list or
+branch directly on provider names.
+
 Skill invocation follows the same boundary. Filesystem and runtime adapters
 discover skill identity, source, and plugin ownership; `providerregistry`
 projects the provider-authored trigger and invocation strategy. Composer and
 host adapters consume that projection and must not rebuild `$` versus `/`,
 plugin namespaces, or prompt-item versus text-trigger behavior from provider
 names.
+
+Native Composer plugins are a separate projection from Skills and MCP
+discovery. The daemon issues a small descriptor with a stable `semantic`,
+status, trigger, and `plugin://` path; AgentGUI uses that descriptor for
+presentation, setup actions, and structured mentions without branching on a
+provider id or reading local plugin icon paths. For Codex, `$` is the native
+plugin surface while `/` remains commands and product capabilities. A
+session-scoped runtime-preparation plan remains authoritative for whether a
+selected native plugin can actually run. The provider descriptor carries
+`behavior.nativePluginCatalogAuthoritative` to say that this native catalog is
+the complete Composer plugin surface, including when it is empty; other
+providers retain the ordinary Skills and connector projection.
 
 ### 5.3 Agent Directory and setup
 
@@ -1098,6 +1146,15 @@ optional package `maskIcon` is the conversation-row glyph. All assets remain
 pinned to the verified active installation.
 
 Target-managed setup uses exact `agentTargetId`; daemon persists its state and actions. Setup gates only the empty new-conversation surface. Active/history conversations follow host-projected Session runtime availability for exact-target capability and transport reachability. A blocked Session runtime disables both composer editing and submit until the host reports the Session available again.
+
+Provider-declared terminal authentication remains a Host capability, not React
+or Session lifecycle. AgentGUI's target-setup controller owns the local
+`idle`/`waiting`/`error` projection and terminal handle, while the Desktop host
+launches the workspace terminal and monitors the authoritative target-setup
+watch until it reports ready or the bounded wait expires. The view only renders
+that controller state and dispatches start/cancel intent; it must not add its
+own effect or timer polling loop, raise the AgentGUI degradation baseline, or
+infer authentication from terminal output.
 
 The built-in managed-environment wizard and Agent Extension setup have different owners. Shared UI must not combine their lifecycles by provider name.
 
@@ -1212,7 +1269,8 @@ remains a separate adjacent action, and all controls stay disabled while an
 activation update is unresolved. The Desktop command host and HTTP adapter must
 preserve the optimistic CAS revision and both optional preferences; dropping
 any field turns a valid UI intent into a stale or semantically mismatched
-response.
+response. Tutti Desktop always advertises the Tutti Mode host capability;
+historical `lab.tuttiMode` preference values do not hide or disable it.
 
 The preference popup uses two independent 0-100 sliders. `effect` raises the
 minimum model capability and task-verification breadth. `speed` asks the
@@ -1610,14 +1668,23 @@ The controller's new-conversation command must distinguish rail placement from
 the active Session's runtime working directory before entering the home
 composer. A Session in the Chats section may have a generated `cwd`, but that
 path is not a selected user project and must be cleared. A Session in a
-canonical project section keeps its working directory, while a command already
-on the home composer preserves the user's explicit project selection. Views
-only forward new-conversation intent; unresolved active rail membership fails
-closed rather than guessing from composer presentation fields.
+canonical project section resolves that section key back to the registered
+project root; its runtime `cwd` may instead be a nested directory or isolated
+worktree and is never reused as project identity. “Continue in new
+conversation” uses the same resolution before moving the mention draft to
+Home. A command already on the home composer preserves the user's explicit
+project selection. Views only forward new-conversation intent; unresolved
+active rail membership fails closed rather than guessing from composer
+presentation fields.
 For delegated/shared execution, the initiating caller remains the placement
 authority: the adapter forwards that caller-selected `RailPlacement` through
 the binding to the owner Host. The owner persists the same section key and does
 not recompute it from the owner's user-project list.
+The Agent CLI handoff adapter also inherits the caller Session's runtime `cwd`
+so the delegate starts inside the same checkout or linked worktree. If a
+project-backed caller has no runtime `cwd`, its canonical project path is the
+fallback. A supplied caller Session ID that cannot be resolved fails the start
+instead of creating a detached Session in an allocator directory.
 
 ### 7.2 Existing conversation submit
 
@@ -1776,8 +1843,9 @@ Do not start by adding a fallback to the visible component.
 
 ### 8.1 Agent settings surface
 
-The desktop settings panel's Agent section has four independently gated tabs:
-General Settings, Agent Runtime, Custom Agents, and Automation. The Agent
+The desktop settings panel's Agent section has General Settings, Agent Runtime,
+and Custom Agents available by default; Automation remains independently
+gated. The Agent
 Runtime tab renders provider rows from the authoritative
 identity catalog plus the live `IAgentProviderStatusService`; it does not copy
 a provider registry. Its Enable/Disable control reads all Agent Targets from

@@ -1,4 +1,7 @@
-import { canonicalInteractionKey } from "@tutti-os/agent-activity-core";
+import {
+  canonicalInteractionKey,
+  type AgentSessionEngine
+} from "@tutti-os/agent-activity-core";
 import type {
   TuttidClient,
   WorkspaceAgentInteraction,
@@ -286,6 +289,58 @@ describe("WorkspaceActivityService", () => {
 
     expect(settingsRequests).toEqual([{ planMode: true }]);
     expect(service.getSnapshot().selectedSession?.settings.planMode).toBe(true);
+
+    service.dispose();
+  });
+
+  test("treats a new Mobile settings selection as a retry after unknown delivery", async () => {
+    const settingsRequests: Array<Record<string, unknown>> = [];
+    const client = createClient({
+      listMessages: emptyMessagePage,
+      session: () => ({ ...createSession(), agentTargetId: "target-1" }),
+      settings: (_workspaceId, _sessionId, settings) => {
+        settingsRequests.push(settings);
+        if (settingsRequests.length === 1) {
+          return new Promise<WorkspaceAgentSession>(() => undefined);
+        }
+        return Promise.resolve({
+          ...createSession(),
+          agentTargetId: "target-1",
+          settings
+        });
+      }
+    });
+    const service = createService(client);
+
+    await service.start();
+    await flushAsyncWork();
+    service.updateComposerSettings({ planMode: true });
+    await flushAsyncWork();
+
+    const engine = (
+      service as unknown as {
+        engine: AgentSessionEngine;
+      }
+    ).engine;
+    const firstCommandId =
+      engine.getSnapshot().sessionLifecycle.operationBySessionId["session-1"]
+        ?.settingsUpdate.commandId;
+    expect(firstCommandId).toBeTruthy();
+    engine.dispatch({
+      commandId: firstCommandId!,
+      commandType: "session/updateSettings",
+      correlationId: "session-1",
+      outcome: "timedOut",
+      type: "engine/commandResult"
+    });
+
+    service.updateComposerSettings({ model: "model-2" });
+    await flushAsyncWork();
+
+    expect(settingsRequests).toEqual([
+      { planMode: true },
+      { model: "model-2", planMode: true }
+    ]);
 
     service.dispose();
   });

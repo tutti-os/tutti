@@ -20,11 +20,17 @@ test("projects shared commands onto typed lifecycle effects without host switche
     async cancelTurn(input, options) {
       calls.push({ input, kind: "cancel", signal: options?.signal });
     },
+    async deleteSessions(input, options) {
+      calls.push({ input, kind: "delete", signal: options?.signal });
+    },
     async respondToInteraction(input, options) {
       calls.push({ input, kind: "respond", signal: options?.signal });
     },
     async sendInput(input, options) {
       calls.push({ input, kind: "send", signal: options?.signal });
+    },
+    async setSessionPinned(input, options) {
+      calls.push({ input, kind: "pin", signal: options?.signal });
     },
     async updateSessionSettings(input, options) {
       calls.push({ input, kind: "settings", signal: options?.signal });
@@ -79,7 +85,6 @@ test("projects shared commands onto typed lifecycle effects without host switche
     correlationId: "submit-send",
     displayPrompt: "Continue",
     promptId: "prompt-1",
-    requiredSettingsPatch: { browserUse: true },
     type: "queue/sendPrompt",
     workspaceId: "workspace-1"
   });
@@ -99,6 +104,21 @@ test("projects shared commands onto typed lifecycle effects without host switche
     workspaceId: "workspace-1"
   });
   await executeAndWait(port, {
+    agentSessionId: "session-1",
+    commandId: "pin-1",
+    correlationId: "pin-1",
+    pinned: true,
+    type: "session/setPinned",
+    workspaceId: "workspace-1"
+  });
+  await executeAndWait(port, {
+    agentSessionIds: ["session-1", "session-2"],
+    commandId: "delete-1",
+    correlationId: "delete-1",
+    type: "sessions/delete",
+    workspaceId: "workspace-1"
+  });
+  await executeAndWait(port, {
     action: "accept",
     agentSessionId: "session-1",
     commandId: "respond-1",
@@ -114,7 +134,7 @@ test("projects shared commands onto typed lifecycle effects without host switche
   assert.equal(extensionCalls, 0);
   assert.deepEqual(
     calls.map((call) => call.kind),
-    ["activate", "settings", "send", "settings", "cancel", "respond"]
+    ["activate", "send", "settings", "cancel", "pin", "delete", "respond"]
   );
   assert.deepEqual(calls[0]?.input, {
     agentSessionId: "session-1",
@@ -146,24 +166,26 @@ test("projects shared commands onto typed lifecycle effects without host switche
   });
   assert.deepEqual(calls[1]?.input, {
     agentSessionId: "session-1",
-    commandId: "send-1",
-    correlationId: "submit-send",
-    settings: { browserUse: true },
-    workspaceId: "workspace-1"
-  });
-  assert.deepEqual(calls[2]?.input, {
-    agentSessionId: "session-1",
     capabilityRefs: [{ capability: "tutti", source: "slash_command" }],
     clientSubmitId: "submit-send",
     content: [{ text: "continue", type: "text" }],
     displayPrompt: "Continue",
     workspaceId: "workspace-1"
   });
-  assert.deepEqual(calls[3]?.input, {
+  assert.deepEqual(calls[2]?.input, {
     agentSessionId: "session-1",
     commandId: "settings-1",
     correlationId: "settings-1",
     settings: { speed: "fast" },
+    workspaceId: "workspace-1"
+  });
+  assert.deepEqual(calls[4]?.input, {
+    agentSessionId: "session-1",
+    pinned: true,
+    workspaceId: "workspace-1"
+  });
+  assert.deepEqual(calls[5]?.input, {
+    agentSessionIds: ["session-1", "session-2"],
     workspaceId: "workspace-1"
   });
   assert.ok(calls.every((call) => call.signal instanceof AbortSignal));
@@ -193,6 +215,34 @@ test("keeps the complete command union available to legacy hosts", async () => {
 
   assert.deepEqual(executed, [command]);
   assert.deepEqual(observed, ["cancel-legacy"]);
+});
+
+test("rejects prompt settings preconditions that bypass the Engine state machine", async () => {
+  let executed = false;
+  const result = await executeAndWait(
+    {
+      async execute() {
+        executed = true;
+      }
+    },
+    {
+      agentSessionId: "session-1",
+      clientSubmitId: "submit-1",
+      commandId: "send-1",
+      content: [{ text: "continue", type: "text" }],
+      promptId: "prompt-1",
+      requiredSettingsPatch: { browserUse: true },
+      type: "queue/sendPrompt",
+      workspaceId: "workspace-1"
+    }
+  );
+
+  assert.equal(executed, false);
+  assert.equal(result.outcome, "failed");
+  assert.match(
+    result.errorMessage ?? "",
+    /settings preconditions must be resolved by the Engine/
+  );
 });
 
 function executeAndWait(

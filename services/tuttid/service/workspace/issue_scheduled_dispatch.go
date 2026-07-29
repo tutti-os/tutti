@@ -76,11 +76,30 @@ func (s IssueManagerService) ScheduleTuttiModeIssue(
 	detail.Tasks = s.projectReviewedSettlementSubjectForSchedule(
 		ctx, workspaceID, input.IssueID, input.CheckpointID, detail.Tasks,
 	)
-	if err := s.validateTuttiModeScheduleIsolation(detail.Issue, detail.Tasks, input.TaskIDs); err != nil {
+	sourceContext, ok := s.resolveIssueSourceSessionContext(detail.Issue)
+	if !ok {
+		unlockIssue()
+		return ScheduleTuttiModeIssueResult{}, executionbiz.Reject(
+			executionbiz.ErrScheduleRejected,
+			executionbiz.RejectionWrongSourceSession,
+			"",
+		)
+	}
+	if err := s.validateTuttiModeScheduleIsolation(
+		detail.Issue,
+		detail.Tasks,
+		input.TaskIDs,
+		sourceContext,
+	); err != nil {
 		unlockIssue()
 		return ScheduleTuttiModeIssueResult{}, err
 	}
-	runs, err := s.prepareTuttiModeScheduleRuns(detail.Issue, detail.Tasks, input.TaskIDs)
+	runs, err := s.prepareTuttiModeScheduleRuns(
+		detail.Issue,
+		detail.Tasks,
+		input.TaskIDs,
+		sourceContext,
+	)
 	if err != nil {
 		unlockIssue()
 		return ScheduleTuttiModeIssueResult{}, err
@@ -114,7 +133,13 @@ func (s IssueManagerService) ScheduleTuttiModeIssue(
 		unlockIssue()
 		return ScheduleTuttiModeIssueResult{}, err
 	}
-	launches := s.tuttiModeLaunchesForRuns(ctx, detail.Issue, detail.Tasks, preparedRuns)
+	launches := s.tuttiModeLaunchesForRuns(
+		ctx,
+		detail.Issue,
+		detail.Tasks,
+		preparedRuns,
+		sourceContext,
+	)
 	unlockIssue()
 
 	s.launchScheduledTuttiModeRuns(ctx, launches)
@@ -165,10 +190,11 @@ func (s IssueManagerService) projectReviewedSettlementSubjectForSchedule(
 	return projected
 }
 
-func (s IssueManagerService) validateTuttiModeScheduleIsolation(
+func (IssueManagerService) validateTuttiModeScheduleIsolation(
 	issue workspaceissues.Issue,
 	tasks []workspaceissues.Task,
 	taskIDs []string,
+	sourceContext IssueSourceSessionContext,
 ) error {
 	byID := make(map[string]workspaceissues.Task, len(tasks))
 	activeOther := false
@@ -217,7 +243,7 @@ func (s IssueManagerService) validateTuttiModeScheduleIsolation(
 			)
 		}
 		if issue.SequentialExecution {
-			if _, concurrent := s.sequentialTaskIsolation(issue, tasks, task); !concurrent {
+			if _, concurrent := sequentialTaskIsolation(tasks, task, sourceContext); !concurrent {
 				return executionbiz.Reject(
 					executionbiz.ErrScheduleRejected,
 					executionbiz.RejectionParallelismRejected,
@@ -229,10 +255,11 @@ func (s IssueManagerService) validateTuttiModeScheduleIsolation(
 	return nil
 }
 
-func (s IssueManagerService) prepareTuttiModeScheduleRuns(
+func (IssueManagerService) prepareTuttiModeScheduleRuns(
 	issue workspaceissues.Issue,
 	tasks []workspaceissues.Task,
 	taskIDs []string,
+	sourceContext IssueSourceSessionContext,
 ) ([]workspaceissues.Run, error) {
 	if issue.PlanningSource != workspaceissues.PlanningSourceTuttiModePlan {
 		return nil, executionbiz.Reject(
@@ -267,7 +294,7 @@ func (s IssueManagerService) prepareTuttiModeScheduleRuns(
 		}
 		seen[taskID] = struct{}{}
 		runID := uuid.NewString()
-		executionDirectory := s.resolveIssueTaskBaseDirectory(issue, task)
+		executionDirectory := resolveIssueTaskBaseDirectory(task, sourceContext)
 		runs = append(runs, workspaceissues.Run{
 			RunID:              runID,
 			TaskID:             task.TaskID,
@@ -296,6 +323,7 @@ func (s IssueManagerService) tuttiModeLaunchesForRuns(
 	issue workspaceissues.Issue,
 	tasks []workspaceissues.Task,
 	preparedRuns []executionbiz.PreparedRunLaunch,
+	sourceContext IssueSourceSessionContext,
 ) []IssueRunLaunch {
 	byID := make(map[string]workspaceissues.Task, len(tasks))
 	for _, task := range tasks {
@@ -310,7 +338,7 @@ func (s IssueManagerService) tuttiModeLaunchesForRuns(
 		}
 		isolation := issueTaskIsolation{}
 		if task.Parallelizable {
-			isolation, _ = s.sequentialTaskIsolation(issue, tasks, task)
+			isolation, _ = sequentialTaskIsolation(tasks, task, sourceContext)
 		}
 		executionDirectory := run.ExecutionDirectory
 		worktreeBase := ""
@@ -339,6 +367,7 @@ func (s IssueManagerService) tuttiModeLaunchesForRuns(
 			PermissionModeID:   task.PermissionModeID,
 			WorktreeBase:       worktreeBase,
 			WorktreeBranch:     worktreeBranch,
+			RailPlacement:      cloneIssueRunRailPlacement(sourceContext.RailPlacement),
 		})
 	}
 	return launches
@@ -542,7 +571,18 @@ func (s IssueManagerService) RecoverTuttiModeRunLaunchIntents(
 			unlockIssue()
 			return getErr
 		}
-		launches := s.tuttiModeLaunchesForRuns(ctx, detail.Issue, detail.Tasks, byIssue[issueID])
+		sourceContext, ok := s.resolveIssueSourceSessionContext(detail.Issue)
+		if !ok {
+			unlockIssue()
+			continue
+		}
+		launches := s.tuttiModeLaunchesForRuns(
+			ctx,
+			detail.Issue,
+			detail.Tasks,
+			byIssue[issueID],
+			sourceContext,
+		)
 		unlockIssue()
 		s.launchScheduledTuttiModeRuns(ctx, launches)
 	}

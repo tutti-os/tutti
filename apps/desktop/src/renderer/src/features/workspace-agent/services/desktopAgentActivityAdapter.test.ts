@@ -841,6 +841,47 @@ test("desktop agent activity adapter submits interactive responses through tutti
   assert.equal(result.session.activeTurn?.phase, "waiting");
 });
 
+test("desktop agent activity adapter forwards pin cancellation to tuttid", async () => {
+  const calls: unknown[] = [];
+  const controller = new AbortController();
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async updateWorkspaceAgentSessionPin(
+        requestWorkspaceId,
+        agentSessionId,
+        request,
+        requestOptions
+      ) {
+        calls.push([
+          requestWorkspaceId,
+          agentSessionId,
+          request,
+          requestOptions
+        ]);
+        return createSession({ id: agentSessionId, pinnedAtUnixMs: 10 });
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  const result = await adapter.setSessionPinned({
+    agentSessionId: "agent-session-1",
+    pinned: true,
+    signal: controller.signal,
+    workspaceId
+  });
+
+  assert.deepEqual(calls, [
+    [
+      workspaceId,
+      "agent-session-1",
+      { pinned: true },
+      { signal: controller.signal }
+    ]
+  ]);
+  assert.equal(result.pinnedAtUnixMs, 10);
+});
+
 test("desktop agent activity adapter normalizes provider composer options", async () => {
   const calls: unknown[] = [];
   const diagnostics: unknown[] = [];

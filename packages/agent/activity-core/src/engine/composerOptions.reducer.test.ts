@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { AgentActivityComposerOptions } from "../types.ts";
+import type {
+  AgentActivityComposerOptions,
+  AgentActivitySession
+} from "../types.ts";
+import { normalizeAgentActivitySession } from "../sessionNormalization.ts";
 import {
   composerOptionsReducer,
   createInitialComposerOptionsState
@@ -132,6 +136,95 @@ test("force reloads even when a ready cache exists", () => {
   });
   assert.equal(result.commands.length, 1);
   assert.equal(result.state.entriesByTargetKey["target-1"]?.status, "loading");
+});
+
+test("validated settings success refreshes provider-declared target options", () => {
+  let state = composerOptionsReducer(
+    createInitialComposerOptionsState(),
+    loadRequest()
+  ).state;
+  state = composerOptionsReducer(state, {
+    commandId: "cmd-1",
+    commandType: "composerOptions/load",
+    correlationId: "target-1",
+    outcome: "succeeded",
+    type: "engine/commandResult",
+    value: options({
+      behavior: {
+        refreshModelOptionsAfterSettings: true
+      } as AgentActivityComposerOptions["behavior"]
+    })
+  }).state;
+  const session = settingsSession();
+  const refreshed = composerOptionsReducer(
+    state,
+    {
+      commandId: "settings-1",
+      commandType: "session/updateSettings",
+      correlationId: "session-1",
+      outcome: "succeeded",
+      type: "engine/commandResult",
+      value: { agentSessionId: "session-1", session }
+    },
+    { settingsResultValidation: { kind: "valid", session } }
+  );
+
+  assert.deepEqual(refreshed.commands, [
+    {
+      commandId: "composer-options:after-settings:settings-1",
+      correlationId: "target-1",
+      cwd: "/workspace",
+      provider: "codex",
+      settings: {
+        model: "model-2",
+        permissionModeId: "acceptEdits",
+        planMode: true,
+        reasoningEffort: "high",
+        speed: "fast"
+      },
+      targetKey: "target-1",
+      type: "composerOptions/load",
+      workspaceId: "workspace-1"
+    }
+  ]);
+  assert.equal(
+    refreshed.state.entriesByTargetKey["target-1"]?.status,
+    "loading"
+  );
+});
+
+test("settings success does not refresh options when provider behavior disables it", () => {
+  let state = composerOptionsReducer(
+    createInitialComposerOptionsState(),
+    loadRequest()
+  ).state;
+  state = composerOptionsReducer(state, {
+    commandId: "cmd-1",
+    commandType: "composerOptions/load",
+    correlationId: "target-1",
+    outcome: "succeeded",
+    type: "engine/commandResult",
+    value: options({
+      behavior: {
+        refreshModelOptionsAfterSettings: false
+      } as AgentActivityComposerOptions["behavior"]
+    })
+  }).state;
+  const session = settingsSession();
+  const unchanged = composerOptionsReducer(
+    state,
+    {
+      commandId: "settings-1",
+      commandType: "session/updateSettings",
+      correlationId: "session-1",
+      outcome: "succeeded",
+      type: "engine/commandResult"
+    },
+    { settingsResultValidation: { kind: "valid", session } }
+  );
+
+  assert.equal(unchanged.state, state);
+  assert.deepEqual(unchanged.commands, []);
 });
 
 test("a superseded load result is ignored", () => {
@@ -297,3 +390,26 @@ test("target invalidation only clears the exact target and is harmless when repe
   }).state;
   assert.equal(repeated.entriesByTargetKey["target-1"]?.settledSignature, null);
 });
+
+function settingsSession(): AgentActivitySession {
+  return normalizeAgentActivitySession({
+    activeTurn: null,
+    activeTurnId: null,
+    agentSessionId: "session-1",
+    agentTargetId: "target-1",
+    cwd: "/workspace",
+    latestTurnInteractions: [],
+    pendingInteractions: [],
+    provider: "codex",
+    settings: {
+      model: "model-2",
+      permissionModeId: "acceptEdits",
+      planMode: true,
+      reasoningEffort: "high",
+      speed: "fast"
+    },
+    title: "Session",
+    updatedAtUnixMs: 2,
+    workspaceId: "workspace-1"
+  });
+}

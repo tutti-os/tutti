@@ -1,4 +1,5 @@
 import type {
+  AgentProviderRuntimeCatalogResponse,
   AgentProviderStatus,
   AgentProviderStatusListResponse,
   TuttidClient,
@@ -159,6 +160,31 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     return (
       this.snapshot.statuses.find((status) => status.provider === provider) ??
       null
+    );
+  }
+
+  async getRuntimeCatalog(
+    provider: WorkspaceAgentProvider
+  ): Promise<AgentProviderRuntimeCatalogResponse> {
+    return withAgentProviderRequestTimeout(
+      this.dependencies.tuttidClient.getAgentProviderRuntimeCandidates(
+        provider
+      ),
+      this.dependencies.requestTimeoutMs ?? defaultRequestTimeoutMs
+    );
+  }
+
+  async selectRuntime(
+    provider: WorkspaceAgentProvider,
+    candidateId: string,
+    revision: string
+  ): Promise<AgentProviderRuntimeCatalogResponse> {
+    return withAgentProviderRequestTimeout(
+      this.dependencies.tuttidClient.setAgentProviderRuntimeSelection(
+        provider,
+        { candidateId, revision }
+      ),
+      this.dependencies.requestTimeoutMs ?? defaultRequestTimeoutMs
     );
   }
 

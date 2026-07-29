@@ -6,6 +6,7 @@
   "files": [
     "src/assistantStream.ts",
     "src/authDiagnostics.ts",
+    "src/backgroundTaskLifecycle.ts",
     "src/compaction.ts",
     "src/errors.ts",
     "src/eventSink.ts",
@@ -54,7 +55,7 @@
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.3.201",
+    "@anthropic-ai/claude-agent-sdk": "0.3.220",
     "zod": "^4.0.0"
   },
   "devDependencies": {

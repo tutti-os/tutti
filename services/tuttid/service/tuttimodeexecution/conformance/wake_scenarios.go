@@ -34,6 +34,14 @@ func WakeCatalog() []Scenario {
 			run:  runWakeDeliveryFailuresRetainOneCanonicalIdentity,
 		},
 		{
+			Name: "PausedFinalizeRotatesWakeForImmediateResume",
+			run:  runPausedFinalizeRotatesWakeForImmediateResume,
+		},
+		{
+			Name: "FailedPausedTurnCancellationRetainsWakeLease",
+			run:  runFailedPausedTurnCancellationRetainsWakeLease,
+		},
+		{
 			Name: "SettledWakeTurnDoesNotResolveCheckpoint",
 			run:  runSettledWakeTurnDoesNotResolveCheckpoint,
 		},
@@ -323,6 +331,141 @@ func runExpiredWakeLeaseRecoversWithOwnerFence(ctx context.Context, driver Drive
 	}
 	if driver.WakeDeliveryCallCount() != 1 {
 		return fmt.Errorf("stale finalization duplicated SendInput")
+	}
+	return nil
+}
+
+func runPausedFinalizeRotatesWakeForImmediateResume(
+	ctx context.Context,
+	driver Driver,
+) error {
+	fixture := wakeFixture("pause-finalize-race")
+	issueID, err := driver.AcceptPlan(ctx, fixture)
+	if err != nil {
+		return fmt.Errorf("AcceptPlan() error = %w", err)
+	}
+	before, err := driver.ListWakes(ctx, fixture.WorkspaceID, issueID)
+	if err != nil || len(before) != 1 {
+		return fmt.Errorf("ListWakes(before pause) = %#v error=%v", before, err)
+	}
+	beforeCalls := driver.WakeDeliveryCallCount()
+	beforeCanonical := driver.WakeDeliveryCanonicalTurnCount()
+	driver.PauseIssueDuringNextWakeSend(
+		ctx,
+		fixture.WorkspaceID,
+		issueID,
+		fixture.SourceSessionID,
+	)
+	if err := driver.RecoverWakes(
+		ctx,
+		fixture.WorkspaceID,
+		"wake-owner-pause-finalize",
+	); err != nil {
+		return fmt.Errorf("RecoverWakes(paused finalize) error = %w", err)
+	}
+	paused, err := driver.ListWakes(ctx, fixture.WorkspaceID, issueID)
+	if err != nil || len(paused) != 2 ||
+		paused[0].Status != "canceled" ||
+		paused[1].Status != "prepared" ||
+		paused[1].LeaseOwner != "" ||
+		paused[1].WakeSequence != paused[0].WakeSequence+1 ||
+		paused[1].ClientSubmitID == paused[0].ClientSubmitID ||
+		driver.WakeDeliveryCallCount() != beforeCalls+1 ||
+		driver.WakeDeliveryCanonicalTurnCount() != beforeCanonical+1 {
+		return fmt.Errorf(
+			"paused finalize did not rotate wake identity: wakes=%#v calls=%d canonical=%d error=%v",
+			paused,
+			driver.WakeDeliveryCallCount()-beforeCalls,
+			driver.WakeDeliveryCanonicalTurnCount()-beforeCanonical,
+			err,
+		)
+	}
+	if err := driver.RecoverWakes(
+		ctx,
+		fixture.WorkspaceID,
+		"wake-owner-still-paused",
+	); err != nil {
+		return fmt.Errorf("RecoverWakes(still paused) error = %w", err)
+	}
+	if driver.WakeDeliveryCallCount() != beforeCalls+1 {
+		return fmt.Errorf(
+			"paused retry delivered wake: calls=%d",
+			driver.WakeDeliveryCallCount()-beforeCalls,
+		)
+	}
+	if err := driver.ResumeIssueDispatch(
+		ctx,
+		fixture.WorkspaceID,
+		issueID,
+		fixture.SourceSessionID,
+	); err != nil {
+		return fmt.Errorf("ResumeIssueDispatch() error = %w", err)
+	}
+	if err := driver.RecoverWakes(
+		ctx,
+		fixture.WorkspaceID,
+		"wake-owner-resumed",
+	); err != nil {
+		return fmt.Errorf("RecoverWakes(resumed) error = %w", err)
+	}
+	resumed, err := driver.ListWakes(ctx, fixture.WorkspaceID, issueID)
+	if err != nil || len(resumed) != 2 ||
+		resumed[1].WakeID != paused[1].WakeID ||
+		resumed[1].Status != "dispatched" ||
+		driver.WakeDeliveryCallCount() != beforeCalls+2 ||
+		driver.WakeDeliveryCanonicalTurnCount() != beforeCanonical+2 {
+		return fmt.Errorf(
+			"resume did not dispatch fresh wake immediately: wakes=%#v calls=%d canonical=%d error=%v",
+			resumed,
+			driver.WakeDeliveryCallCount()-beforeCalls,
+			driver.WakeDeliveryCanonicalTurnCount()-beforeCanonical,
+			err,
+		)
+	}
+	cancellations := driver.AutomationTurnCancellations()
+	if len(cancellations) == 0 ||
+		cancellations[len(cancellations)-1].SessionID != fixture.SourceSessionID ||
+		cancellations[len(cancellations)-1].TurnID == "" {
+		return fmt.Errorf(
+			"paused finalize did not cancel canonical Turn: %#v",
+			cancellations,
+		)
+	}
+	return nil
+}
+
+func runFailedPausedTurnCancellationRetainsWakeLease(
+	ctx context.Context,
+	driver Driver,
+) error {
+	fixture := wakeFixture("pause-finalize-cancel-failure")
+	issueID, err := driver.AcceptPlan(ctx, fixture)
+	if err != nil {
+		return fmt.Errorf("AcceptPlan() error = %w", err)
+	}
+	driver.PauseIssueDuringNextWakeSend(
+		ctx,
+		fixture.WorkspaceID,
+		issueID,
+		fixture.SourceSessionID,
+	)
+	driver.FailNextAutomationTurnCancellation()
+	if err := driver.RecoverWakes(
+		ctx,
+		fixture.WorkspaceID,
+		"wake-owner-pause-cancel-failure",
+	); err == nil {
+		return fmt.Errorf("RecoverWakes() error=nil, want cancellation failure")
+	}
+	wakes, err := driver.ListWakes(ctx, fixture.WorkspaceID, issueID)
+	if err != nil || len(wakes) != 1 ||
+		wakes[0].Status != "leased" ||
+		wakes[0].LeaseOwner != "wake-owner-pause-cancel-failure" {
+		return fmt.Errorf(
+			"failed cancellation released wake unsafely: wakes=%#v error=%v",
+			wakes,
+			err,
+		)
 	}
 	return nil
 }

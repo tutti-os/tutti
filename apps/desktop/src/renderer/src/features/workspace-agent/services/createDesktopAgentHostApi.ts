@@ -23,12 +23,14 @@ import type {
 } from "@preload/types";
 import { pathFromFileReadPayload } from "./internal/desktopAgentHostProjection.ts";
 import { createDesktopAgentTargetSetupWatch } from "./internal/desktopAgentTargetSetupWatch.ts";
+import { createDesktopTerminalLoginReadinessMonitor } from "./internal/desktopTerminalLoginReadinessMonitor.ts";
 import {
   DesktopWorkspaceUserProjectService,
   type IWorkspaceUserProjectService
 } from "../../workspace-user-project/index.ts";
 import type { WorkspaceUserProject } from "@tutti-os/workspace-user-project";
 import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface.ts";
+import { requestWorkspaceTerminalLoginLaunch } from "./workspaceTerminalLoginLaunchCoordinator.ts";
 
 interface CreateDesktopAgentHostApiInput {
   agentQuickPromptService?: AgentHostQuickPromptsApi;
@@ -55,7 +57,9 @@ export function projectDesktopAgentTargetSetupSnapshot(
     authMethods: snapshot.authMethods.map((method) => ({
       id: method.id,
       name: method.name,
-      description: method.description ?? null
+      description: method.description ?? null,
+      type: method.type ?? null,
+      terminalCommand: method.terminalCommand ?? null
     })),
     account: snapshot.account
       ? {
@@ -144,6 +148,31 @@ export function createDesktopAgentHostApi({
         }
       )
     );
+  const getAgentTargetSetupWatch = (
+    requestedAgentTargetId: string
+  ): AgentHostAgentTargetSetupWatch => {
+    const agentTargetId = requestedAgentTargetId.trim();
+    const existing = agentTargetSetupWatches.get(agentTargetId);
+    if (existing) return existing;
+    const watch = createDesktopAgentTargetSetupWatch({
+      agentTargetId,
+      get: () => getAgentTargetSetup({ agentTargetId }),
+      install: ({ planDigest, clientActionId }) =>
+        installAgentTargetRuntime({
+          agentTargetId,
+          planDigest,
+          clientActionId
+        }),
+      authenticate: ({ methodId, clientActionId }) =>
+        authenticateAgentTargetRuntime({
+          agentTargetId,
+          methodId,
+          clientActionId
+        })
+    });
+    agentTargetSetupWatches.set(agentTargetId, watch);
+    return watch;
+  };
   const api = {
     ...(agentQuickPromptService
       ? { quickPrompts: agentQuickPromptService }
@@ -166,6 +195,35 @@ export function createDesktopAgentHostApi({
       writeImage: (input: { data: string; mimeType: "image/png" }) =>
         hostFilesApi.copyImageToClipboard(input),
       writeText: (text: string) => navigator.clipboard.writeText(text)
+    },
+    terminalLogin: {
+      run: async (input: {
+        agentTargetId: string;
+        command: string;
+        cwd?: string;
+      }) => {
+        const launchHandle = await requestWorkspaceTerminalLoginLaunch({
+          command: input.command,
+          cwd: input.cwd,
+          workspaceId
+        });
+        if (!launchHandle) {
+          throw new Error("Terminal login is unavailable in this window.");
+        }
+        const readinessMonitor = createDesktopTerminalLoginReadinessMonitor({
+          watch: getAgentTargetSetupWatch(input.agentTargetId)
+        });
+        let closed = false;
+        return {
+          close: () => {
+            if (closed) return;
+            closed = true;
+            readinessMonitor.cancel();
+            launchHandle.close();
+          },
+          completion: readinessMonitor.completion
+        };
+      }
     },
     debug: {
       logRuntimeDiagnostics: (payload: unknown) => {
@@ -195,29 +253,8 @@ export function createDesktopAgentHostApi({
       batchGetUserInfo: () => Promise.resolve({ users: [] })
     },
     agentTargetSetup: {
-      watch: (payload: { agentTargetId: string }) => {
-        const agentTargetId = payload.agentTargetId.trim();
-        const existing = agentTargetSetupWatches.get(agentTargetId);
-        if (existing) return existing;
-        const watch = createDesktopAgentTargetSetupWatch({
-          agentTargetId,
-          get: () => getAgentTargetSetup({ agentTargetId }),
-          install: ({ planDigest, clientActionId }) =>
-            installAgentTargetRuntime({
-              agentTargetId,
-              planDigest,
-              clientActionId
-            }),
-          authenticate: ({ methodId, clientActionId }) =>
-            authenticateAgentTargetRuntime({
-              agentTargetId,
-              methodId,
-              clientActionId
-            })
-        });
-        agentTargetSetupWatches.set(agentTargetId, watch);
-        return watch;
-      }
+      watch: (payload: { agentTargetId: string }) =>
+        getAgentTargetSetupWatch(payload.agentTargetId)
     },
     workspaceAgentProbes: {
       list: (payload: AgentProviderProbeListInput) =>

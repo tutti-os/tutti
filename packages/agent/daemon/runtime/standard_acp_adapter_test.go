@@ -655,6 +655,172 @@ func TestRunStandardACPSetupPreservesExplicitAuthenticationFailure(t *testing.T)
 	}
 }
 
+func TestRunStandardACPSetupRejectsTerminalMethodWithoutAuthenticate(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Example Agent", "setup-session")
+	transport.conn.authMethods = []map[string]any{{
+		"id": "login", "name": "Login with Example account",
+		"description": "Run `example login` in a terminal",
+		"type":        "terminal", "args": []any{"login"},
+	}}
+	transport.conn.requireAuthentication = true
+	result, err := runStandardACPSetupTest(t, transport, "login")
+	if !errors.Is(err, ErrACPAuthMethodTerminal) {
+		t.Fatalf("error = %v, want ErrACPAuthMethodTerminal", err)
+	}
+	if result.Status != StandardACPSetupAuthRequired || len(result.AuthMethods) != 1 {
+		t.Fatalf("setup result = %#v", result)
+	}
+	method := result.AuthMethods[0]
+	if method.Type != "terminal" || len(method.Args) != 1 || method.Args[0] != "login" {
+		t.Fatalf("terminal auth method = %#v", method)
+	}
+	if got := transport.conn.authenticatedMethodID(); got != "" {
+		t.Fatalf("authenticated method id = %q, want no ACP authenticate call", got)
+	}
+}
+
+func TestRunStandardACPSetupParsesAuthMethodTypeAndArgs(t *testing.T) {
+	t.Parallel()
+
+	initializeResult := json.RawMessage(`{"authMethods":[
+		{"id":"browser","name":"Browser","description":"d"},
+		{"id":"login","name":"Terminal login","type":"terminal","args":["login","--device"]},
+		{"id":"bad","name":"Bad","type":"terminal","args":["", "ok"]}
+	]}`)
+	methods := parseStandardACPAuthMethods(initializeResult)
+	if len(methods) != 3 {
+		t.Fatalf("auth methods = %#v", methods)
+	}
+	if methods[0].Type != "" || methods[0].Args != nil {
+		t.Fatalf("browser method = %#v", methods[0])
+	}
+	if methods[1].Type != "terminal" || strings.Join(methods[1].Args, " ") != "login --device" {
+		t.Fatalf("terminal method = %#v", methods[1])
+	}
+	if methods[2].Type != "terminal" || methods[2].Args != nil {
+		t.Fatalf("method with invalid args = %#v", methods[2])
+	}
+}
+
+func TestRunStandardACPSetupParsesAuthMethodTerminalMeta(t *testing.T) {
+	t.Parallel()
+
+	// Kimi Code declares the terminal login metadata inside the ACP _meta
+	// extension, not as top-level type/args fields.
+	initializeResult := json.RawMessage(`{"authMethods":[
+		{"id":"login","name":"Login with Kimi account","description":"Run ` + "`kimi login`" + ` in a terminal",
+			"_meta":{"terminal-auth":{"command":"/opt/kimi/bin/kimi","args":["login"],"label":"Kimi Code Login","env":{},"type":"terminal"}}},
+		{"id":"both","name":"Both","type":"browser","args":["--top"],
+			"_meta":{"terminal-auth":{"type":"terminal","args":["login"]}}},
+		{"id":"weird","name":"Weird","_meta":{"other":{"type":"terminal"}}}
+	]}`)
+	methods := parseStandardACPAuthMethods(initializeResult)
+	if len(methods) != 3 {
+		t.Fatalf("auth methods = %#v", methods)
+	}
+	if methods[0].Type != "terminal" || len(methods[0].Args) != 1 || methods[0].Args[0] != "login" {
+		t.Fatalf("meta terminal method = %#v", methods[0])
+	}
+	if methods[1].Type != "browser" || strings.Join(methods[1].Args, " ") != "--top" {
+		t.Fatalf("top-level fields must win over _meta = %#v", methods[1])
+	}
+	if methods[2].Type != "" || methods[2].Args != nil {
+		t.Fatalf("unrelated _meta must be ignored = %#v", methods[2])
+	}
+}
+
+func TestRunStandardACPSetupRejectsTerminalMetaMethodWithoutAuthenticate(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Example Agent", "setup-session")
+	transport.conn.authMethods = []map[string]any{{
+		"id": "login", "name": "Login with Example account",
+		"description": "Run `example login` in a terminal",
+		"_meta": map[string]any{
+			"terminal-auth": map[string]any{"type": "terminal", "args": []any{"login"}},
+		},
+	}}
+	transport.conn.requireAuthentication = true
+	result, err := runStandardACPSetupTest(t, transport, "login")
+	if !errors.Is(err, ErrACPAuthMethodTerminal) {
+		t.Fatalf("error = %v, want ErrACPAuthMethodTerminal", err)
+	}
+	if result.Status != StandardACPSetupAuthRequired || len(result.AuthMethods) != 1 {
+		t.Fatalf("setup result = %#v", result)
+	}
+	if got := transport.conn.authenticatedMethodID(); got != "" {
+		t.Fatalf("authenticated method id = %q, want no ACP authenticate call", got)
+	}
+}
+
+func TestRunStandardACPSetupFlagsSessionWithoutUsableModel(t *testing.T) {
+	t.Parallel()
+
+	// Kimi Code with a saved OAuth token but an unseeded model config:
+	// session/new succeeds yet advertises zero models, and every prompt would
+	// fail. The probe must keep the target in auth_required so the gate
+	// re-offers the terminal login that seeds the config.
+	transport := newStandardACPTransport("Example Agent", "setup-session")
+	transport.conn.authMethods = []map[string]any{{
+		"id": "login", "name": "Login with Example account",
+		"_meta": map[string]any{
+			"terminal-auth": map[string]any{"type": "terminal", "args": []any{"login"}},
+		},
+	}}
+	transport.conn.models = map[string]any{"availableModels": []any{}, "currentModelId": ""}
+	result, err := runStandardACPSetupTest(t, transport, "")
+	if err != nil {
+		t.Fatalf("probe without method must not fail hard: %v", err)
+	}
+	if result.Status != StandardACPSetupAuthRequired || len(result.AuthMethods) != 1 {
+		t.Fatalf("setup result = %#v", result)
+	}
+	if method := result.AuthMethods[0]; method.Type != "terminal" || len(method.Args) != 1 || method.Args[0] != "login" {
+		t.Fatalf("terminal auth method = %#v", method)
+	}
+}
+
+func TestRunStandardACPSetupReadyWithSeededModels(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Example Agent", "setup-session")
+	transport.conn.models = map[string]any{
+		"availableModels": []any{map[string]any{"modelId": "example-model", "name": "Example Model"}},
+		"currentModelId":  "example-model",
+	}
+	result, err := runStandardACPSetupTest(t, transport, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != StandardACPSetupReady {
+		t.Fatalf("setup result = %#v", result)
+	}
+}
+
+func TestACPSessionHasNoUsableModel(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		raw  string
+		want bool
+	}{
+		{"empty list and no current model", `{"models":{"availableModels":[],"currentModelId":""}}`, true},
+		{"populated list", `{"models":{"availableModels":[{"modelId":"m"}],"currentModelId":"m"}}`, false},
+		{"empty list but current model set", `{"models":{"availableModels":[],"currentModelId":"m"}}`, false},
+		{"models state without list", `{"models":{"currentModelId":"m"}}`, false},
+		{"no models state", `{"sessionId":"s"}`, false},
+		{"null models state", `{"models":null}`, false},
+	}
+	for _, tc := range cases {
+		if got := acpSessionHasNoUsableModel(json.RawMessage(tc.raw)); got != tc.want {
+			t.Fatalf("%s: acpSessionHasNoUsableModel = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
 func runStandardACPSetupTest(t *testing.T, transport *standardACPTransport, methodID string) (StandardACPSetupResult, error) {
 	t.Helper()
 	return RunStandardACPSetup(
@@ -1660,6 +1826,89 @@ func TestCursorAdapterAllowsImagePromptWithoutInitializeCapability(t *testing.T)
 	capabilities, _ := snapshot.RuntimeContext["capabilities"].([]string)
 	if !containsString(capabilities, CapabilityImageInput) {
 		t.Fatalf("runtime capabilities = %#v, want imageInput", snapshot.RuntimeContext["capabilities"])
+	}
+}
+
+func TestStandardACPAdapterExecMaterializesRemoteImageAtProviderBoundary(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("OpenCode", "opencode-session-remote-image")
+	adapter := newOpenCodeTestAdapter(transport)
+	imageURL, materializer := testRemotePromptImageMaterializer(t)
+	adapter.promptImageMaterializer = materializer
+	session := standardTestSession(ProviderOpenCode)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "opencode-session-remote-image"
+
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{
+		{Type: "text", Text: "what is in this screenshot?"},
+		{Type: "image", MimeType: "image/png", URL: imageURL},
+	}, "", "turn-remote-image", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	params := transport.conn.lastPromptParams()
+	prompt, _ := params["prompt"].([]any)
+	if len(prompt) != 2 {
+		t.Fatalf("session/prompt content = %#v, want text+image", params["prompt"])
+	}
+	image, _ := prompt[1].(map[string]any)
+	if image["mimeType"] != "image/png" || image["data"] != "aGk=" {
+		t.Fatalf("session/prompt image = %#v, want inline image data", image)
+	}
+}
+
+func TestStandardACPAdapterRemoteImageFailurePreservesPromptAndClosesProviderTurn(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("OpenCode", "opencode-session-remote-image-failure")
+	adapter := newOpenCodeTestAdapter(transport)
+	materializeErr := errors.New("remote image unavailable")
+	adapter.promptImageMaterializer = func(context.Context, []PromptContentBlock) ([]PromptContentBlock, error) {
+		return nil, materializeErr
+	}
+	session := standardTestSession(ProviderOpenCode)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "opencode-session-remote-image-failure"
+
+	var streamed []activityshared.Event
+	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{
+		{Type: "text", Text: "what is in this screenshot?"},
+		{Type: "image", MimeType: "image/png", URL: "https://images.example/screenshot.png"},
+	}, "", "turn-remote-image-failure", func(next []activityshared.Event) {
+		streamed = append(streamed, next...)
+	}, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	if params := transport.conn.lastPromptParams(); len(params) != 0 {
+		t.Fatalf("session/prompt params = %#v, want no provider request after materialization failure", params)
+	}
+	messages := eventsOfType(events, activityshared.EventMessageAppended)
+	if len(messages) != 1 || messages[0].Payload.Role != activityshared.MessageRoleUser ||
+		messages[0].Payload.Content != "what is in this screenshot?" {
+		t.Fatalf("user prompt events = %#v, want original prompt preserved", messages)
+	}
+	if turnStarted := eventsOfType(events, activityshared.EventTurnStarted); len(turnStarted) != 1 {
+		t.Fatalf("turn started events = %#v, want one", turnStarted)
+	}
+	started := eventsOfType(events, activityshared.EventRootProviderTurnStarted)
+	if len(started) != 1 || started[0].Payload.ProviderTurnID != "turn-remote-image-failure" {
+		t.Fatalf("provider turn started events = %#v, want one", started)
+	}
+	completed := eventsOfType(events, activityshared.EventRootProviderTurnCompleted)
+	if len(completed) != 1 ||
+		completed[0].Payload.ProviderTurnID != "turn-remote-image-failure" ||
+		completed[0].Payload.TurnOutcome != string(activityshared.TurnOutcomeFailed) ||
+		completed[0].Payload.Metadata["error"] != materializeErr.Error() {
+		t.Fatalf("provider turn completed events = %#v, want failed materialization lifecycle", completed)
+	}
+	if len(streamed) != len(events) {
+		t.Fatalf("streamed event count = %d, returned = %d", len(streamed), len(events))
 	}
 }
 

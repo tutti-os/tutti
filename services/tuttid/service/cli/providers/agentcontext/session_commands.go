@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/google/uuid"
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
@@ -140,7 +142,7 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 		return nil, fmt.Errorf("%w: agent target id is required", cliservice.ErrInvalidInput)
 	}
 	provider := strings.TrimSpace(target.Provider)
-	cwd, err := p.resolveStartCwd(ctx, invoke.WorkspaceID, input.Cwd, invoke.Request.Context)
+	launchContext, err := p.resolveStartLaunchContext(ctx, invoke.WorkspaceID, input.Cwd, invoke.Request.Context)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +153,7 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 	created, err := p.sessions.CreateWithResult(ctx, invoke.WorkspaceID, agentservice.CreateSessionInput{
 		Provider:               provider,
 		AgentTargetID:          agentTargetID,
-		Cwd:                    optionalStringPointer(cwd),
+		Cwd:                    optionalStringPointer(launchContext.cwd),
 		InitialContent:         initialContent,
 		InitialDisplayPrompt:   input.DisplayPrompt,
 		Model:                  optionalStringPointer(input.Model),
@@ -162,6 +164,8 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 		Visible:                hiddenVisibleOverride(input.Hidden),
 		ConversationDetailMode: p.composerConversationDetailMode(ctx),
 		Isolation:              input.Isolation,
+		RailPlacement:          launchContext.railPlacement,
+		ClientSubmitID:         uuid.NewString(),
 	})
 	if err != nil {
 		return nil, err
@@ -203,30 +207,62 @@ func hiddenVisibleOverride(hidden bool) *bool {
 	return &visible
 }
 
-func (p Provider) resolveStartCwd(
+type startLaunchContext struct {
+	cwd           string
+	railPlacement *agenthost.RailPlacement
+}
+
+func (p Provider) resolveStartLaunchContext(
 	ctx context.Context,
 	workspaceID string,
 	explicit string,
 	invokeContext cliservice.InvokeContext,
-) (string, error) {
+) (startLaunchContext, error) {
 	if cwd := strings.TrimSpace(explicit); cwd != "" {
-		return cwd, nil
+		return startLaunchContext{cwd: cwd}, nil
 	}
 	callerID := strings.TrimSpace(invokeContext.AgentSessionID)
 	if callerID == "" {
-		return "", nil
+		return startLaunchContext{}, nil
 	}
 	session, err := p.sessions.Get(ctx, workspaceID, callerID)
 	if err != nil {
-		if errors.Is(err, agentservice.ErrSessionNotFound) {
-			return "", nil
+		return startLaunchContext{}, err
+	}
+	kind := agenthost.RailPlacementKind(strings.TrimSpace(session.RailSectionKind))
+	projectPath := strings.TrimSpace(session.RailProjectPath)
+	cwd := strings.TrimSpace(session.Cwd)
+	if cwd == "" && kind == agenthost.RailPlacementKindProject {
+		cwd = projectPath
+	}
+	return startLaunchContext{
+		cwd:           cwd,
+		railPlacement: railPlacementFromCallerSession(session),
+	}, nil
+}
+
+func railPlacementFromCallerSession(session agentservice.Session) *agenthost.RailPlacement {
+	kind := agenthost.RailPlacementKind(strings.TrimSpace(session.RailSectionKind))
+	projectPath := strings.TrimSpace(session.RailProjectPath)
+	sectionKey := strings.TrimSpace(session.RailSectionKey)
+	switch kind {
+	case agenthost.RailPlacementKindConversations:
+		if projectPath != "" || sectionKey != "conversations" {
+			return nil
 		}
-		return "", err
+	case agenthost.RailPlacementKindProject:
+		if projectPath == "" || sectionKey == "" || sectionKey == "conversations" {
+			return nil
+		}
+	default:
+		return nil
 	}
-	if cwd := strings.TrimSpace(session.Cwd); cwd != "" {
-		return cwd, nil
+	return &agenthost.RailPlacement{
+		Version:     1,
+		Kind:        kind,
+		ProjectPath: projectPath,
+		SectionKey:  sectionKey,
 	}
-	return "", nil
 }
 
 func (p Provider) newOpenCommand() cliservice.Command {
@@ -314,8 +350,9 @@ func (p Provider) runSend(ctx context.Context, invoke framework.InvokeContext, i
 	}
 	waitAfterVersion := messagePage.LatestVersion
 	result, err := p.sessions.SendInput(ctx, invoke.WorkspaceID, input.SessionID, agentservice.SendInput{
-		Content:  content,
-		Guidance: input.Guidance,
+		Content:        content,
+		Guidance:       input.Guidance,
+		ClientSubmitID: uuid.NewString(),
 	})
 	if err != nil {
 		return nil, err
