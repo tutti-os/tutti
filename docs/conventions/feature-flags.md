@@ -59,6 +59,11 @@ the registry default; absent unregistered keys resolve to `false`
 
 ## Existing reference pattern
 
+`lab.agentSessionFork` is a capability flag. Desktop hides new Session Fork
+actions unless the flag is enabled, and tuttid rejects direct Fork writes when
+it is absent, false, or unreadable. Existing fork lineage plus operation reads
+and acknowledgements remain available while the flag is off.
+
 `services/tuttid/service/agentextension/manager.go` is the existing example
 of feature-owned semantics: it reads the raw flag map, derives its own keys
 (`"agent.extension."+source.Key`), and decides what disabled means for Agent

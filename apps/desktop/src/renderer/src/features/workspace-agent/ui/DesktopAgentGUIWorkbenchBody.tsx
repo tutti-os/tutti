@@ -86,7 +86,8 @@ import {
   AGENT_SESSION_RECORDING_FLAG,
   AGENT_REFERENCE_PROVENANCE_FILTER_FLAG,
   isFeatureEnabled,
-  LAB_AGENT_INPUT_HISTORY_FLAG
+  LAB_AGENT_INPUT_HISTORY_FLAG,
+  LAB_AGENT_SESSION_FORK_FLAG
 } from "../../../../../shared/featureFlags/catalog.ts";
 
 function DesktopAgentGUISurfaceImpl({
@@ -577,6 +578,10 @@ function DesktopAgentGUISurfaceImpl({
     desktopPreferencesState.featureFlags,
     LAB_AGENT_INPUT_HISTORY_FLAG
   );
+  const sessionForkEnabled = isFeatureEnabled(
+    desktopPreferencesState.featureFlags,
+    LAB_AGENT_SESSION_FORK_FLAG
+  );
   const providerAuthAccountLabels = useDesktopAgentGUIProviderAuthAccountLabels(
     providerStatusSnapshot.statuses
   );
@@ -647,6 +652,7 @@ function DesktopAgentGUISurfaceImpl({
     hostCapabilities: {
       referenceProvenanceFilterEnabled,
       sessionInputHistoryEnabled,
+      sessionForkEnabled,
       capabilityMenuState,
       visibleErrorPresentationOverrides,
       comingSoonProviders: comingSoonAgentProviders,

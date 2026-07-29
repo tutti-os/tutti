@@ -140,19 +140,24 @@ deadline exceeded`. The failing test can take several seconds even though its
   Later fixture `add` and `commit` commands can then stage the fixture tree
   against the real branch.
 - Fix:
-  Remove repository-local Git environment variables for every fixture Git
-  command using case-insensitive name matching, set `GIT_CEILING_DIRECTORIES` to
-  the fixture root, stop on any command failure, verify `--absolute-git-dir`
-  after initialization, and pass fixture author identity through commit-local
-  `-c` arguments instead of `git config`.
+  Remove repository-local Git environment variables at the validation-lane
+  spawn boundary and for every fixture Git command using case-insensitive name
+  matching. Let normal lanes rediscover the repository from their cwd. For
+  fixtures, also set `GIT_CEILING_DIRECTORIES` to the fixture root, stop on any
+  command failure, verify `--absolute-git-dir` after initialization, and pass
+  fixture author identity through commit-local `-c` arguments instead of
+  `git config`.
 - Validation:
-  Run `git-environment.test.mjs`, which launches the temporary-repository test
-  suites with a poisoned linked-worktree `GIT_DIR` that points only at a
-  disposable repository. Confirm each fixture initializes its own `.git`, then
-  verify the caller's config and branch remain unchanged. Keep the lower-level
-  environment test coverage for `GIT_WORK_TREE` and `GIT_CONFIG_*` inputs.
+  Run `run-validation-lanes.test.mjs` to confirm spawned lanes remove poisoned
+  Git selectors while preserving unrelated environment, then run
+  `git-environment.test.mjs`, which launches the temporary-repository test suites
+  with a poisoned linked-worktree `GIT_DIR` that points only at a disposable
+  repository. Confirm each fixture initializes its own `.git`, then verify the
+  caller's config and branch remain unchanged. Keep the lower-level environment
+  test coverage for `GIT_WORK_TREE` and `GIT_CONFIG_*` inputs.
 - References:
   [git-environment.mjs](../../../tools/scripts/git-environment.mjs)
+  [run-validation-lanes.mjs](../../../tools/scripts/run-validation-lanes.mjs)
   [check-agent-gui-degradation.test.mjs](../../../tools/scripts/check-agent-gui-degradation.test.mjs)
   [push-checked.test.mjs](../../../tools/scripts/push-checked.test.mjs)
   [run-check-changed.test.mjs](../../../tools/scripts/run-check-changed.test.mjs)

@@ -17,6 +17,7 @@ import {
   labFeatureDefinitions,
   LAB_ENABLED_FLAG,
   LAB_AGENT_INPUT_HISTORY_FLAG,
+  LAB_AGENT_SESSION_FORK_FLAG,
   LAB_AUTOMATION_RULES_FLAG,
   MOBILE_REMOTE_ACCESS_SETTINGS_FLAG,
   resolveDesktopWorkspaceUiMode,
@@ -93,7 +94,11 @@ test("labFeatureDefinitions excludes the master switch", () => {
 });
 
 test("experimental Agent features require independent Lab opt-ins", () => {
-  const flags = [LAB_AGENT_INPUT_HISTORY_FLAG, LAB_AUTOMATION_RULES_FLAG];
+  const flags = [
+    LAB_AGENT_INPUT_HISTORY_FLAG,
+    LAB_AGENT_SESSION_FORK_FLAG,
+    LAB_AUTOMATION_RULES_FLAG
+  ];
 
   for (const flag of flags) {
     assert.equal(isFeatureEnabled({}, flag), false);

@@ -1156,6 +1156,9 @@ export const zhCN = {
         agentInputHistoryDescription:
           "在 Agent 输入框中使用上下键切换当前会话的历史输入",
         agentInputHistoryLabel: "Agent 输入历史",
+        agentSessionForkDescription:
+          "允许从支持的已完成轮次创建新的 Agent 会话分支",
+        agentSessionForkLabel: "Agent 会话分支",
         backLabel: "返回",
         automationRulesDescription: "显示自动化规则配置与会话覆盖选项",
         automationRulesLabel: "自动化规则",

@@ -81,6 +81,19 @@ test("forwards the host-owned composer footer accessory slot", () => {
   );
 });
 
+test("forwards the host-owned Session fork experiment opt-in", () => {
+  const result = useStableDesktopAgentGUIHostProps({
+    hostActions: {},
+    hostCapabilities: { sessionForkEnabled: true },
+    identity: { currentUserId: null, nodeId: "node-1", workspaceId: "ws-1" },
+    renderSlots: {},
+    runtimeRequests: {},
+    workspace: {}
+  } as never);
+
+  assert.equal(result.hostCapabilities.sessionForkEnabled, true);
+});
+
 test("forwards every runtimeRequests field instead of silently dropping new ones", () => {
   // The manual field-keyed reconstruction below is exactly the pattern that
   // let `sessionAction` silently vanish (dropped this exact way, then wired

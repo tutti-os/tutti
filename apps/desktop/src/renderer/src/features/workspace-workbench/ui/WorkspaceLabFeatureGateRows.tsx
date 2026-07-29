@@ -3,6 +3,7 @@ import { useTranslation } from "@renderer/i18n";
 import {
   EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG,
   LAB_AGENT_INPUT_HISTORY_FLAG,
+  LAB_AGENT_SESSION_FORK_FLAG,
   LAB_AUTOMATION_RULES_FLAG,
   LAB_WORKBENCH_SHORTCUTS_FLAG,
   isFeatureEnabled
@@ -26,6 +27,12 @@ const featureGateRows = [
     labelKey: "workspace.settings.lab.agentInputHistoryLabel" as const,
     descriptionKey:
       "workspace.settings.lab.agentInputHistoryDescription" as const
+  },
+  {
+    key: LAB_AGENT_SESSION_FORK_FLAG,
+    labelKey: "workspace.settings.lab.agentSessionForkLabel" as const,
+    descriptionKey:
+      "workspace.settings.lab.agentSessionForkDescription" as const
   },
   {
     key: EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG,
