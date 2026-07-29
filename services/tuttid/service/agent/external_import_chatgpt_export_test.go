@@ -250,6 +250,7 @@ func TestImportChatGPTExportArchivePersistsSessionsWithoutLeakingPath(t *testing
 		}),
 	})
 	service := NewService(newFakeRuntime())
+	configureTestApplicationHost(service)
 	projection := NewActivityProjection(store)
 	service.SessionReader = projection
 	service.MessageReader = projection
