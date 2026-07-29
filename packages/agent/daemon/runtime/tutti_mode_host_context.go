@@ -118,11 +118,16 @@ func renderTuttiModeHostContextForCLI(snapshot *TuttiModeTurnSnapshot, cliName s
 	if err != nil {
 		return ""
 	}
-	stateSentence := "Tutti mode is inactive for this turn."
+	activationRule := "The JSON `state` field is authoritative for whether Tutti Mode is active for this turn. " +
+		"Determine and report Tutti Mode status only from that field. " +
+		"Provider collaboration mode and Tutti workflow existence are independent facts and must not override the activation state. "
+	stateSentence := "Tutti mode is inactive for this turn. " + activationRule
 	workflowGuide := ""
 	if normalized.State == TuttiModeStateActive {
-		stateSentence = "Tutti mode is active for this turn. Do not execute the user's request directly in this turn. " +
+		stateSentence = "Tutti mode is active for this turn. " + activationRule +
+			"Do not execute the user's request directly in this turn. " +
 			"Step 1, clarify: if the request is ambiguous or missing key constraints, ask the user focused clarifying questions and end the turn; if the request is already clear, go directly to step 2. " +
+			fmt.Sprintf("When the user requests a plan and the request is clear, follow step 2 and submit it through `%s plan propose`; a chat-only plan is not a proposal. ", cliName) +
 			fmt.Sprintf("Step 2, plan: write one complete tutti-mode-plan/v1 Markdown document (plan narrative plus the full task graph, every task carrying its full launch configuration) to an absolute path, submit it in a single run of the `%s plan propose` shell command, then end the turn immediately — never run a wait or poll command; the user's review decision always arrives as a new user message. ", cliName) +
 			"Treat effect and speed as independent 0-100 preferences. Effect drives outcome quality: higher values require stronger suitable models and stronger task verification. Speed drives completion latency: higher values favor faster suitable models and raise the parallel Agent target carried in parallelTarget. Combine them rather than averaging them: first satisfy the requested effect, then choose the fastest suitable option; never satisfy speed by selecting a model that cannot meet the requested effect. " +
 			"Use the injected `$tutti-model-allocation` skill as the assignment policy: classify every task on its C0-C3 capability ladder, combine the task tier with the effect floor, use speed to rank models that clear that floor, and shape independent work toward parallelTarget. " +

@@ -69,13 +69,28 @@ type IssueRunLaunch struct {
 	PermissionModeID   string
 	WorktreeBase       string
 	WorktreeBranch     string
+	RailPlacement      *IssueRunRailPlacement
 }
 
-// IssueSourceSessionDirectoryResolver is the narrow read needed to inherit
-// the planning session's working directory. Agent session lifecycle and
-// projection details stay outside Issue Manager.
-type IssueSourceSessionDirectoryResolver interface {
-	ResolveSourceSessionDirectory(workspaceID string, agentSessionID string) (string, bool)
+// IssueRunRailPlacement is the source conversation's logical rail identity.
+// It stays independent from ExecutionDirectory because a delegate may execute
+// inside an isolated worktree while remaining grouped with the source project.
+type IssueRunRailPlacement struct {
+	Kind        string
+	ProjectPath string
+	SectionKey  string
+}
+
+// IssueSourceSessionContext is the narrow source-session projection needed by
+// Issue dispatch. Agent lifecycle and persistence DTOs stay outside Issue
+// Manager.
+type IssueSourceSessionContext struct {
+	WorkingDirectory string
+	RailPlacement    *IssueRunRailPlacement
+}
+
+type IssueSourceSessionContextResolver interface {
+	ResolveSourceSessionContext(workspaceID string, agentSessionID string) (IssueSourceSessionContext, bool)
 }
 
 type IssueRunCancelState string

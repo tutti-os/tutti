@@ -199,7 +199,13 @@ uses a coordinator-owned synthetic message. These fallbacks are transport
 details, not user-authored messages: Tutti's visible user message, prompt
 preview, and activity transcript remain unchanged. The context explicitly
 distinguishes Tutti activation from provider Default/Plan mode and reasoning
-effort. An active snapshot is a directive, not a suggestion: the Agent must
+effort. Reusing an existing provider Session does not weaken that boundary:
+each new Turn receives the current immutable activation snapshot before
+dispatch. The snapshot's `state` is the sole authority for reporting Tutti Mode
+status; provider Default/Plan mode and workflow existence are independent facts
+that cannot override it. A clear plan request still enters the Tutti proposal
+workflow instead of returning a chat-only plan. An active snapshot is a
+directive, not a suggestion: the Agent must
 not execute the user's request directly in that turn. It first asks focused
 clarifying questions when the request is ambiguous or missing key
 constraints, then submits one complete tutti-mode-plan/v1 document through a

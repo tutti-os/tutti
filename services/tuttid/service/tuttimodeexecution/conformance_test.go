@@ -44,6 +44,15 @@ type sqliteConformanceDriver struct {
 	cancelAuto         context.CancelFunc
 }
 
+type conformanceSourceSessionContextResolver struct{}
+
+func (conformanceSourceSessionContextResolver) ResolveSourceSessionContext(
+	_ string,
+	_ string,
+) (workspaceservice.IssueSourceSessionContext, bool) {
+	return workspaceservice.IssueSourceSessionContext{}, true
+}
+
 type controlledClock struct {
 	mu  sync.Mutex
 	now time.Time
@@ -320,6 +329,7 @@ func newSQLiteConformanceDriver(t *testing.T) *sqliteConformanceDriver {
 		dbPath: dbPath, store: store,
 		issues: workspaceservice.IssueManagerService{
 			Store: store, RunLauncher: launcher, TuttiModeExecutions: executions,
+			SourceSessionContextResolver:    conformanceSourceSessionContextResolver{},
 			MutationLocks:                   workspaceservice.NewIssueMutationLocks(),
 			TuttiModeRunLaunchLeaseDuration: time.Minute,
 			RunLaunchLeaseRenewalScheduler:  renewals,

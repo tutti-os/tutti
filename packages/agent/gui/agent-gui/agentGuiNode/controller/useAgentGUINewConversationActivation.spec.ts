@@ -40,6 +40,28 @@ describe("resolveInitialRailPlacement", () => {
     });
   });
 
+  it("writes the canonical project root when the selected path is nested", () => {
+    expect(
+      resolveInitialRailPlacement({
+        selectedProjectPath: "/workspace/packages/agent",
+        userProjects: [
+          {
+            id: "project-1",
+            label: "Workspace",
+            path: "/workspace",
+            pinnedAtUnixMs: 0,
+            sectionKey: "project:/workspace"
+          }
+        ]
+      })
+    ).toEqual({
+      version: 1,
+      kind: "project",
+      projectPath: "/workspace",
+      sectionKey: "project:/workspace"
+    });
+  });
+
   it("fails closed when the selected project has no canonical section", () => {
     expect(
       resolveInitialRailPlacement({

@@ -139,6 +139,18 @@ func (e recordingExecutor) ExecuteAutomationRule(_ context.Context, input Execut
 	return ExecutionResult{TargetSessionID: "target-1"}, nil
 }
 
+type staticAutomationSourceReader struct {
+	context AutomationSourceSessionContext
+}
+
+func (r staticAutomationSourceReader) AutomationSourceContext(
+	context.Context,
+	string,
+	string,
+) (AutomationSourceSessionContext, error) {
+	return r.context, nil
+}
+
 type staticUsage struct {
 	runs     int
 	tokens   int64
@@ -288,7 +300,20 @@ func TestObserveAgentSessionStateRunsOncePerRuleAndTurn(t *testing.T) {
 	rule.SourceWorkspaceAgentID = "workspace-agent:source"
 	_ = store.CreateAutomationRule(context.Background(), rule)
 	calls := make(chan ExecutionInput, 2)
-	service := &Service{Store: store, Executor: recordingExecutor{calls: calls}, Usage: staticUsage{}}
+	sourceContext := AutomationSourceSessionContext{
+		WorkingDirectory: "/state/task-worktrees/issue/task-run",
+		RailPlacement: &AutomationSourceRailPlacement{
+			Kind:        "project",
+			ProjectPath: "/workspace/project-a",
+			SectionKey:  "project:/workspace/project-a",
+		},
+	}
+	service := &Service{
+		Store:    store,
+		Executor: recordingExecutor{calls: calls},
+		Usage:    staticUsage{},
+		Sources:  staticAutomationSourceReader{context: sourceContext},
+	}
 	outcome := "completed"
 	turnID := "turn-1"
 	input := canonical.ReportSessionStateInput{
@@ -306,6 +331,11 @@ func TestObserveAgentSessionStateRunsOncePerRuleAndTurn(t *testing.T) {
 	case call := <-calls:
 		if call.Rule.ID != "rule-1" || call.SourceAgentID != "workspace-agent:source" || call.TriggerID != "turn-1" {
 			t.Fatalf("execution call = %#v", call)
+		}
+		if call.SourceContext.WorkingDirectory != sourceContext.WorkingDirectory ||
+			call.SourceContext.RailPlacement == nil ||
+			*call.SourceContext.RailPlacement != *sourceContext.RailPlacement {
+			t.Fatalf("source context = %#v, want %#v", call.SourceContext, sourceContext)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for automation execution")

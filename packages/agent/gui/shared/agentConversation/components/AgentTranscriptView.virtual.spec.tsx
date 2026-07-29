@@ -20,6 +20,7 @@ const virtualizerMockState = vi.hoisted(() => ({
   containerRef: vi.fn(),
   isAtEnd: vi.fn(() => true),
   scrollToEnd: vi.fn(),
+  scrollToOffset: vi.fn(),
   scrollToIndex: vi.fn(),
   instance: {
     shouldAdjustScrollPositionOnItemSizeChange: undefined as
@@ -54,6 +55,7 @@ vi.mock("@tanstack/react-virtual", () => ({
       scrollOffset: virtualizerMockState.scrollOffset,
       scrollRect: virtualizerMockState.scrollRect,
       scrollToEnd: virtualizerMockState.scrollToEnd,
+      scrollToOffset: virtualizerMockState.scrollToOffset,
       scrollToIndex: virtualizerMockState.scrollToIndex
     })
   )
@@ -99,6 +101,7 @@ describe("AgentTranscriptView virtual rendering", () => {
     virtualizerMockState.isAtEnd.mockReset();
     virtualizerMockState.isAtEnd.mockReturnValue(true);
     virtualizerMockState.scrollToEnd.mockClear();
+    virtualizerMockState.scrollToOffset.mockClear();
     virtualizerMockState.scrollToIndex.mockClear();
     virtualizerMockState.instance.shouldAdjustScrollPositionOnItemSizeChange =
       undefined;
@@ -342,6 +345,12 @@ describe("AgentTranscriptView virtual rendering", () => {
     expect(virtualScrollController.current?.agentSessionId).toBe("session-1");
     expect(virtualScrollController.current?.enabled).toBe(true);
     expect(virtualScrollController.current?.isAtEnd()).toBe(true);
+    virtualScrollController.current?.scrollToOffset(640, {
+      behavior: "auto"
+    });
+    expect(virtualizerMockState.scrollToOffset).toHaveBeenCalledWith(640, {
+      behavior: "auto"
+    });
     virtualScrollController.current?.scrollToEnd({ behavior: "smooth" });
     expect(virtualizerMockState.scrollToEnd).toHaveBeenCalledWith({
       behavior: "smooth"

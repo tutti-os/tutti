@@ -1553,7 +1553,13 @@ func TestStartCommandPreservesCommaInImagePath(t *testing.T) {
 
 func TestStartCommandInheritsCallerSessionCwd(t *testing.T) {
 	sessions := &fakeAgentSessions{
-		getSession: agentservice.Session{ID: "CALLER-1", Cwd: "/workspace/a"},
+		getSession: agentservice.Session{
+			ID:              "CALLER-1",
+			Cwd:             "/workspace/a-worktree",
+			RailSectionKind: "project",
+			RailProjectPath: "/workspace/a",
+			RailSectionKey:  "project:/workspace/a",
+		},
 	}
 	command := newTestClaudeStartCommand(newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 
@@ -1569,8 +1575,43 @@ func TestStartCommandInheritsCallerSessionCwd(t *testing.T) {
 	if sessions.sessionID != "CALLER-1" {
 		t.Fatalf("sessionID = %q, want CALLER-1", sessions.sessionID)
 	}
+	if sessions.createInput.Cwd == nil || *sessions.createInput.Cwd != "/workspace/a-worktree" {
+		t.Fatalf("Cwd = %#v, want /workspace/a-worktree", sessions.createInput.Cwd)
+	}
+	placement := sessions.createInput.RailPlacement
+	if placement == nil ||
+		placement.Kind != "project" ||
+		placement.ProjectPath != "/workspace/a" ||
+		placement.SectionKey != "project:/workspace/a" {
+		t.Fatalf("RailPlacement = %#v, want caller project placement", placement)
+	}
+}
+
+func TestStartCommandFallsBackToCallerProjectPathWhenCwdIsEmpty(t *testing.T) {
+	sessions := &fakeAgentSessions{
+		getSession: agentservice.Session{
+			ID:              "CALLER-1",
+			RailSectionKind: "project",
+			RailProjectPath: "/workspace/a",
+			RailSectionKey:  "project:/workspace/a",
+		},
+	}
+	command := newTestCodexStartCommand(newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
+
+	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"agent-id": agenttargetbiz.IDLocalCodex, "prompt": "do work"},
+		Context: cliservice.InvokeContext{
+			AgentSessionID: "CALLER-1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
 	if sessions.createInput.Cwd == nil || *sessions.createInput.Cwd != "/workspace/a" {
-		t.Fatalf("Cwd = %#v, want /workspace/a", sessions.createInput.Cwd)
+		t.Fatalf("Cwd = %#v, want caller project path fallback", sessions.createInput.Cwd)
+	}
+	if sessions.createInput.RailPlacement == nil {
+		t.Fatal("RailPlacement = nil, want caller project placement")
 	}
 }
 
@@ -1627,6 +1668,9 @@ func TestStartCommandExplicitCwdOverridesCallerSessionCwd(t *testing.T) {
 	if sessions.createInput.Cwd == nil || *sessions.createInput.Cwd != "/workspace/other" {
 		t.Fatalf("Cwd = %#v, want /workspace/other", sessions.createInput.Cwd)
 	}
+	if sessions.createInput.RailPlacement != nil {
+		t.Fatalf("RailPlacement = %#v, want explicit cwd to retain its own placement policy", sessions.createInput.RailPlacement)
+	}
 }
 
 func TestStartCommandWithoutCallerSessionLeavesCwdForAllocator(t *testing.T) {
@@ -1644,7 +1688,7 @@ func TestStartCommandWithoutCallerSessionLeavesCwdForAllocator(t *testing.T) {
 	}
 }
 
-func TestStartCommandMissingCallerSessionLeavesCwdForAllocator(t *testing.T) {
+func TestStartCommandMissingCallerSessionFailsClosed(t *testing.T) {
 	sessions := &fakeAgentSessions{getErr: agentservice.ErrSessionNotFound}
 	command := newTestCodexStartCommand(newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 
@@ -1654,11 +1698,11 @@ func TestStartCommandMissingCallerSessionLeavesCwdForAllocator(t *testing.T) {
 			AgentSessionID: "CALLER-1",
 		},
 	})
-	if err != nil {
-		t.Fatalf("Handler: %v", err)
+	if !errors.Is(err, agentservice.ErrSessionNotFound) {
+		t.Fatalf("Handler error = %v, want ErrSessionNotFound", err)
 	}
-	if sessions.createInput.Cwd != nil {
-		t.Fatalf("Cwd = %#v, want nil", sessions.createInput.Cwd)
+	if sessions.createCallCount != 0 {
+		t.Fatalf("createCallCount = %d, want no detached session", sessions.createCallCount)
 	}
 }
 

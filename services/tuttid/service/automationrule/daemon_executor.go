@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	automationrulebiz "github.com/tutti-os/tutti/services/tuttid/biz/automationrule"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
@@ -42,7 +43,7 @@ func (e *DaemonExecutor) ExecuteAutomationRule(ctx context.Context, input Execut
 	}
 	rule := input.Rule
 	prompt := automationLaunchPrompt(rule, input.WorkspaceID, input.SourceSessionID)
-	cwd := strings.TrimSpace(input.SourceCwd)
+	cwd := strings.TrimSpace(input.SourceContext.WorkingDirectory)
 	var cwdPointer *string
 	if cwd != "" {
 		cwdPointer = &cwd
@@ -88,6 +89,7 @@ func (e *DaemonExecutor) ExecuteAutomationRule(ctx context.Context, input Execut
 		InitialContent:         []agentservice.PromptContentBlock{{Type: "text", Text: prompt}},
 		InitialDisplayPrompt:   automationLaunchDisplayPrompt(rule, input.SourceSessionID),
 		Cwd:                    cwdPointer,
+		RailPlacement:          agentRailPlacementFromAutomationSource(input.SourceContext.RailPlacement),
 		PermissionModeID:       permissionModeID,
 		StrictPermissionMode:   permissionModeID != nil,
 		AgentTools:             append([]string(nil), rule.Permissions.AllowedTools...),
@@ -158,18 +160,54 @@ func (e *DaemonExecutor) failIssueRescue(
 	return cause
 }
 
-// AutomationSourceCwd implements SourceReader. Only the working directory is
-// copied from the source session; conversation context travels through the
-// session mention in the first message.
-func (e *DaemonExecutor) AutomationSourceCwd(ctx context.Context, workspaceID string, sessionID string) (string, error) {
+// AutomationSourceContext implements SourceReader. Runtime cwd and canonical
+// rail identity are copied independently; conversation content still travels
+// through the session mention in the first message.
+func (e *DaemonExecutor) AutomationSourceContext(
+	ctx context.Context,
+	workspaceID string,
+	sessionID string,
+) (AutomationSourceSessionContext, error) {
 	if e == nil || e.Agents == nil {
-		return "", fmt.Errorf("automation agent session service is unavailable")
+		return AutomationSourceSessionContext{}, fmt.Errorf("automation agent session service is unavailable")
 	}
 	session, err := e.Agents.Get(ctx, workspaceID, sessionID)
 	if err != nil {
-		return "", err
+		return AutomationSourceSessionContext{}, err
 	}
-	return strings.TrimSpace(session.Cwd), nil
+	return automationSourceContextFromSession(session), nil
+}
+
+func automationSourceContextFromSession(session agentservice.Session) AutomationSourceSessionContext {
+	sourceContext := AutomationSourceSessionContext{
+		WorkingDirectory: strings.TrimSpace(session.Cwd),
+	}
+	if strings.TrimSpace(session.RailSectionKey) != "" {
+		sourceContext.RailPlacement = &AutomationSourceRailPlacement{
+			Kind:        strings.TrimSpace(session.RailSectionKind),
+			ProjectPath: strings.TrimSpace(session.RailProjectPath),
+			SectionKey:  strings.TrimSpace(session.RailSectionKey),
+		}
+		if sourceContext.WorkingDirectory == "" &&
+			sourceContext.RailPlacement.Kind == string(agenthost.RailPlacementKindProject) {
+			sourceContext.WorkingDirectory = sourceContext.RailPlacement.ProjectPath
+		}
+	}
+	return sourceContext
+}
+
+func agentRailPlacementFromAutomationSource(
+	placement *AutomationSourceRailPlacement,
+) *agenthost.RailPlacement {
+	if placement == nil {
+		return nil
+	}
+	return &agenthost.RailPlacement{
+		Version:     1,
+		Kind:        agenthost.RailPlacementKind(strings.TrimSpace(placement.Kind)),
+		ProjectPath: strings.TrimSpace(placement.ProjectPath),
+		SectionKey:  strings.TrimSpace(placement.SectionKey),
+	}
 }
 
 // automationLaunchPrompt composes the fixed first-message contract: rule

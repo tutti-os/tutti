@@ -17,6 +17,7 @@ export interface AgentTranscriptVirtualScrollController {
   agentSessionId: string;
   enabled: boolean;
   isAtEnd(threshold?: number): boolean;
+  scrollToOffset(offset: number, options?: { behavior?: ScrollBehavior }): void;
   scrollToEnd(options?: { behavior?: ScrollBehavior }): void;
 }
 
@@ -77,6 +78,11 @@ export function useAgentTranscriptVirtualizer({
       enabled: shouldVirtualize,
       isAtEnd: (threshold) =>
         shouldVirtualize && rowVirtualizer.isAtEnd(threshold),
+      scrollToOffset: (offset, options) => {
+        if (shouldVirtualize) {
+          rowVirtualizer.scrollToOffset(offset, options);
+        }
+      },
       scrollToEnd: (options) => {
         if (shouldVirtualize) {
           rowVirtualizer.scrollToEnd(options);

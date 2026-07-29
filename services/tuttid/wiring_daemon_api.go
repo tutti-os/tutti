@@ -485,16 +485,16 @@ func buildDaemonAPI(
 		Delegate: tuttiModeExecutions,
 	}
 	issueService := workspaceservice.IssueManagerService{
-		RunLauncher:                    issueRunAgentLauncher{Sessions: agentSessionService, Host: agentHost},
-		RunLaunchGate:                  issueRunLaunchGate,
-		RunCancellationRequester:       issueRunCanceller,
-		SourceSessionDirectoryResolver: issueSourceSessionDirectoryResolver{Sessions: agentActivityProjection},
-		Publisher:                      eventstreamservice.WorkspaceIssuePublisher{Service: events},
-		Store:                          issueStore,
-		AgentTargetReader:              agentTargetStore,
-		PlanningTimeline:               agentservice.IssuePlanningTimelineReporter{Projection: agentActivityProjection},
-		TuttiModeExecutions:            tuttiModeExecutions,
-		MutationLocks:                  workspaceservice.NewIssueMutationLocks(),
+		RunLauncher:                  issueRunAgentLauncher{Sessions: agentSessionService, Host: agentHost},
+		RunLaunchGate:                issueRunLaunchGate,
+		RunCancellationRequester:     issueRunCanceller,
+		SourceSessionContextResolver: issueSourceSessionContextResolver{Sessions: agentActivityProjection},
+		Publisher:                    eventstreamservice.WorkspaceIssuePublisher{Service: events},
+		Store:                        issueStore,
+		AgentTargetReader:            agentTargetStore,
+		PlanningTimeline:             agentservice.IssuePlanningTimelineReporter{Projection: agentActivityProjection},
+		TuttiModeExecutions:          tuttiModeExecutions,
+		MutationLocks:                workspaceservice.NewIssueMutationLocks(),
 	}
 	tuttiModePlans := &tuttimodeplanservice.Service{
 		Store:             workflowStore,

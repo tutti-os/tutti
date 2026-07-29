@@ -39,6 +39,14 @@ func (s IssueManagerService) claimEligibleIssueRunsLocked(ctx context.Context, w
 	if detail.Issue.Budget.Status != workspaceissues.BudgetStatusActive {
 		return nil
 	}
+	sourceContext := IssueSourceSessionContext{}
+	if strings.TrimSpace(detail.Issue.SourceSessionID) != "" {
+		var ok bool
+		sourceContext, ok = s.resolveIssueSourceSessionContext(detail.Issue)
+		if !ok {
+			return nil
+		}
+	}
 	inflight := 0
 	for _, task := range detail.Tasks {
 		switch task.Status {
@@ -99,13 +107,13 @@ func (s IssueManagerService) claimEligibleIssueRunsLocked(ctx context.Context, w
 			if concurrent {
 				// A parallelizable task without a safe isolation story
 				// degrades to exclusive dispatch instead of trampling.
-				isolation, concurrent = s.sequentialTaskIsolation(detail.Issue, tasks, task)
+				isolation, concurrent = sequentialTaskIsolation(tasks, task, sourceContext)
 			}
 			if !concurrent {
 				// Exclusive task: launch only into an idle Issue, and bar
 				// everything behind it until it completes and is accepted.
 				if inflight == 0 && launchedConcurrent == 0 {
-					if launch, ok := s.claimIssueTaskRunLocked(ctx, detail.Issue, task, issueTaskIsolation{}, s.dependencyWorktreeOutputs(ctx, detail.Issue, task, byID)); ok {
+					if launch, ok := s.claimIssueTaskRunLocked(ctx, detail.Issue, task, issueTaskIsolation{}, sourceContext, s.dependencyWorktreeOutputs(ctx, detail.Issue, task, byID)); ok {
 						launches = append(launches, launch)
 					}
 				}
@@ -114,14 +122,14 @@ func (s IssueManagerService) claimEligibleIssueRunsLocked(ctx context.Context, w
 			if concurrentSlots <= 0 {
 				return launches
 			}
-			if launch, ok := s.claimIssueTaskRunLocked(ctx, detail.Issue, task, isolation, s.dependencyWorktreeOutputs(ctx, detail.Issue, task, byID)); ok {
+			if launch, ok := s.claimIssueTaskRunLocked(ctx, detail.Issue, task, isolation, sourceContext, s.dependencyWorktreeOutputs(ctx, detail.Issue, task, byID)); ok {
 				launches = append(launches, launch)
 			}
 			concurrentSlots--
 			launchedConcurrent++
 			continue
 		}
-		if launch, ok := s.claimIssueTaskRunLocked(ctx, detail.Issue, task, issueTaskIsolation{}, s.dependencyWorktreeOutputs(ctx, detail.Issue, task, byID)); ok {
+		if launch, ok := s.claimIssueTaskRunLocked(ctx, detail.Issue, task, issueTaskIsolation{}, sourceContext, s.dependencyWorktreeOutputs(ctx, detail.Issue, task, byID)); ok {
 			launches = append(launches, launch)
 		}
 		concurrentSlots--
@@ -181,11 +189,15 @@ func (s IssueManagerService) claimIssueTaskRunLocked(
 	issue workspaceissues.Issue,
 	task workspaceissues.Task,
 	isolation issueTaskIsolation,
+	sourceContext IssueSourceSessionContext,
 	dependencyOutputs []issueTaskDependencyOutput,
 ) (IssueRunLaunch, bool) {
 	agentSessionID := uuid.NewString()
 	runID := uuid.NewString()
-	executionDirectory := s.resolveIssueTaskBaseDirectory(issue, task)
+	executionDirectory := strings.TrimSpace(task.ExecutionDirectory)
+	if executionDirectory == "" {
+		executionDirectory = strings.TrimSpace(sourceContext.WorkingDirectory)
+	}
 	worktreeBranch := ""
 	worktreeBase := ""
 	if isolation.worktreeBase != "" {
@@ -223,7 +235,16 @@ func (s IssueManagerService) claimIssueTaskRunLocked(
 		PermissionModeID:   task.PermissionModeID,
 		WorktreeBase:       worktreeBase,
 		WorktreeBranch:     worktreeBranch,
+		RailPlacement:      cloneIssueRunRailPlacement(sourceContext.RailPlacement),
 	}, true
+}
+
+func cloneIssueRunRailPlacement(placement *IssueRunRailPlacement) *IssueRunRailPlacement {
+	if placement == nil {
+		return nil
+	}
+	cloned := *placement
+	return &cloned
 }
 
 func (s IssueManagerService) launchClaimedIssueRuns(ctx context.Context, launches []IssueRunLaunch) {

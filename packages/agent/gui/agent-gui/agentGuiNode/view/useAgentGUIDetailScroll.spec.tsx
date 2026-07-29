@@ -38,6 +38,115 @@ describe("useAgentGUIDetailScroll", () => {
     expect(harness.timeline.scrollTop).toBe(7_900);
   });
 
+  it("restores a conversation's detached scroll position when it is reselected", () => {
+    const harness = createHarness({ scrollHeight: 5_000 });
+    const { result, rerender } = renderHook(
+      ({ activeConversationId }) =>
+        useAgentGUIDetailScroll(
+          harness.input({ activeConversationId, showTimelineSkeleton: false })
+        ),
+      { initialProps: { activeConversationId: "conversation-a" } }
+    );
+
+    act(() => {
+      harness.timeline.dispatchEvent(new WheelEvent("wheel", { deltaY: -100 }));
+      harness.timeline.scrollTop = 2_000;
+      harness.timeline.dispatchEvent(new Event("scroll"));
+    });
+    expect(result.current.isTimelineScrolledToBottom).toBe(false);
+
+    harness.setScrollHeight(8_000);
+    rerender({ activeConversationId: "conversation-b" });
+    expect(harness.timeline.scrollTop).toBe(7_900);
+    expect(result.current.isTimelineScrolledToBottom).toBe(true);
+
+    harness.setScrollHeight(5_000);
+    rerender({ activeConversationId: "conversation-a" });
+    expect(harness.timeline.scrollTop).toBe(2_000);
+    expect(result.current.isTimelineScrolledToBottom).toBe(false);
+  });
+
+  it("keeps a detached position while the reselected conversation hydrates", () => {
+    const harness = createHarness({ scrollHeight: 5_000 });
+    const { result, rerender } = renderHook(
+      ({ activeConversationId, showTimelineSkeleton }) =>
+        useAgentGUIDetailScroll(
+          harness.input({ activeConversationId, showTimelineSkeleton })
+        ),
+      {
+        initialProps: {
+          activeConversationId: "conversation-a",
+          showTimelineSkeleton: false
+        }
+      }
+    );
+
+    act(() => {
+      harness.timeline.dispatchEvent(new WheelEvent("wheel", { deltaY: -100 }));
+      harness.timeline.scrollTop = 2_000;
+      harness.timeline.dispatchEvent(new Event("scroll"));
+    });
+
+    harness.setScrollHeight(8_000);
+    rerender({
+      activeConversationId: "conversation-b",
+      showTimelineSkeleton: false
+    });
+    expect(harness.timeline.scrollTop).toBe(7_900);
+
+    rerender({
+      activeConversationId: "conversation-a",
+      showTimelineSkeleton: true
+    });
+    expect(harness.timeline.scrollTop).toBe(7_900);
+    expect(result.current.isTimelineScrolledToBottom).toBe(false);
+
+    harness.setScrollHeight(5_000);
+    rerender({
+      activeConversationId: "conversation-a",
+      showTimelineSkeleton: false
+    });
+    expect(harness.timeline.scrollTop).toBe(2_000);
+    expect(result.current.isTimelineScrolledToBottom).toBe(false);
+  });
+
+  it("restores a virtualized conversation's detached scroll position", () => {
+    const harness = createHarness({ scrollHeight: 5_000 });
+    const firstController = virtualScrollController("conversation-a", false);
+    harness.virtualScrollControllerRef.current = firstController;
+    const { result, rerender } = renderHook(
+      ({ activeConversationId }) =>
+        useAgentGUIDetailScroll(
+          harness.input({ activeConversationId, showTimelineSkeleton: false })
+        ),
+      { initialProps: { activeConversationId: "conversation-a" } }
+    );
+
+    act(() => {
+      harness.timeline.dispatchEvent(new WheelEvent("wheel", { deltaY: -100 }));
+      harness.timeline.scrollTop = 2_000;
+      harness.timeline.dispatchEvent(new Event("scroll"));
+    });
+    expect(result.current.isTimelineScrolledToBottom).toBe(false);
+
+    const secondController = virtualScrollController("conversation-b");
+    harness.virtualScrollControllerRef.current = secondController;
+    rerender({ activeConversationId: "conversation-b" });
+    expect(secondController.scrollToEnd).toHaveBeenCalledWith({
+      behavior: "auto"
+    });
+
+    harness.virtualScrollControllerRef.current = firstController;
+    firstController.scrollToEnd.mockClear();
+    rerender({ activeConversationId: "conversation-a" });
+
+    expect(firstController.scrollToOffset).toHaveBeenCalledWith(2_000, {
+      behavior: "auto"
+    });
+    expect(firstController.scrollToEnd).not.toHaveBeenCalled();
+    expect(result.current.isTimelineScrolledToBottom).toBe(false);
+  });
+
   it("reads timeline geometry once for a semantic conversation switch", () => {
     const harness = createHarness({ scrollHeight: 5_000 });
     const { rerender } = renderHook(
@@ -1327,12 +1436,17 @@ function virtualScrollController(
 ): AgentTranscriptVirtualScrollController & {
   isAtEnd: Mock<() => boolean>;
   scrollToEnd: Mock<(options?: { behavior?: ScrollBehavior }) => void>;
+  scrollToOffset: Mock<
+    (offset: number, options?: { behavior?: ScrollBehavior }) => void
+  >;
 } {
   return {
     agentSessionId,
     enabled: true,
     isAtEnd: vi.fn(() => atEnd),
-    scrollToEnd: vi.fn<(options?: { behavior?: ScrollBehavior }) => void>()
+    scrollToEnd: vi.fn<(options?: { behavior?: ScrollBehavior }) => void>(),
+    scrollToOffset:
+      vi.fn<(offset: number, options?: { behavior?: ScrollBehavior }) => void>()
   };
 }
 

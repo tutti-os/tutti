@@ -47,6 +47,19 @@ Generic Issue dispatch is split into two phases:
    creates the Agent Session. A launch failure settles the claimed Run through
    the normal idempotent completion command.
 
+The source planning Session supplies two independent launch facts: its working
+directory is the fallback execution base, while its canonical rail placement
+is the delegate Session's logical project/conversation ownership. Preparing an
+isolated task worktree changes only the execution directory. Issue dispatch
+must carry the source `RailPlacement` unchanged into the Agent Host create
+contract and must never infer placement from the temporary worktree path.
+When an Issue names a source Session, that projection is a launch
+precondition: an unavailable/deleted source leaves the Task unclaimed for a
+later reconcile instead of creating a detached Run and Session. Each dispatch
+pass resolves the source once, so worktree planning and Agent creation consume
+the same immutable source snapshot. A project placement with an empty runtime
+cwd falls back to its canonical project path.
+
 Stopping is also split:
 
 1. Under the Issue lock, set `dispatchPaused=true` and snapshot the Issue's

@@ -21,20 +21,22 @@ Use the focused runtime index or open one area directly:
   probes, extension release refresh delaying daemon startup, and CPU spikes.
 - [Agent Sessions And Lifecycle](./agent-session-lifecycle.md): Turn state, activation, planning-mode classification, Tutti workflow response contracts, loading, cancel, goal controls, restore, file-change undo, rail projection, realtime completion provenance, event updates, imports, and performance.
   Includes shared-device recovery that looks terminal while the host is still retrying.
-  Also covers new-conversation requests that silently fail after a Chats
-  Session working directory is mistaken for a selected project, and one hung
-  provider startup blocking unrelated Agent sessions. Extension snapshot
+  Also covers new or derived conversations that silently fail or lose
+  project/Git ownership when a runtime worktree is mistaken for a canonical
+  project (or the source Session is unavailable), and one hung provider startup
+  blocking unrelated Agent sessions. Extension snapshot
   failures that erase the Agent's Tutti CLI command catalog or block restart
   resume are covered here as well. Includes cassette replay
   startup that fails when concurrent provider input and output are treated as a
   strict scheduling order, false final-state mismatches caused by replay-generated
   child identities, and canonical completion delayed behind a streaming activity-report
-  backlog. It also covers stopped Tutti Mode conversations revived by legacy
-  startup wakes, provider-completed submissions reported as delivery unknown
-  after canonical message provenance conflicts, completed Claude Code Turns
-  that lack a Fork entry because provider identity was not observed from the
-  durable transcript, and Claude Fork operations that fail because an empty SDK
-  query never creates a durable provider child.
+  backlog. It also covers an active existing-Session Tutti snapshot being
+  misread as provider Default mode, stopped Tutti Mode conversations revived by
+  legacy startup wakes, provider-completed submissions reported as delivery
+  unknown after canonical message provenance conflicts, completed Claude Code
+  Turns that lack a Fork entry because provider identity was not observed from
+  the durable transcript, and Claude Fork operations that fail because an empty
+  SDK query never creates a durable provider child.
 - [Agent Approvals And Child Sessions](./agent-approvals-subagents.md): Approval gates, plan exits, root/parent/child event attribution, child sessions, and Message Center.
   Includes provider-native work that continues invisibly after root cancellation
   and late child creation racing the durable cancel boundary.
