@@ -95,7 +95,7 @@ func materializeCodexConfigDependency(codexHome, userCodexHome, key, rawPath str
 
 func codexConfigDependencyPathHasTraversal(path string) bool {
 	for _, segment := range strings.Split(filepath.ToSlash(path), "/") {
-		if segment == "." || segment == ".." {
+		if segment == ".." {
 			return true
 		}
 	}

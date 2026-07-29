@@ -1954,7 +1954,7 @@ func TestDefaultPreparerCodexExposesRelativeModelInstructionsFile(t *testing.T) 
 		t.Fatal(err)
 	}
 	userCodexConfig := strings.Join([]string{
-		`model_instructions_file = "gpt5.5-unrestricted.md"`,
+		`model_instructions_file = "./gpt5.5-unrestricted.md"`,
 		`model = "gpt-5.5"`,
 		"",
 	}, "\n")
