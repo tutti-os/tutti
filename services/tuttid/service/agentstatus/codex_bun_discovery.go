@@ -12,7 +12,7 @@ import (
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 )
 
-const bunGlobalBinDiscoveryTimeout = 1500 * time.Millisecond
+const globalBinDiscoveryTimeout = 3 * time.Second
 const bunGlobalBinOutputLimit = 4096
 
 func (s Service) resolveCodexProviderSpec(ctx context.Context, spec ProviderSpec) ProviderSpec {
@@ -73,7 +73,7 @@ func (s Service) discoverBunGlobalBinDir(ctx context.Context, resolver runtimecm
 		if ctx == nil {
 			ctx = context.Background()
 		}
-		commandCtx, cancel := context.WithTimeout(ctx, bunGlobalBinDiscoveryTimeout)
+		commandCtx, cancel := context.WithTimeout(ctx, globalBinDiscoveryTimeout)
 		defer cancel()
 		command := exec.CommandContext(commandCtx, bunPath, "pm", "bin", "-g")
 		command.Env = resolver.Env(overrides)

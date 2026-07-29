@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 )
@@ -49,19 +50,59 @@ func (s Service) discoverCodexRuntimeCandidates(ctx context.Context, spec Provid
 	if path := resolver.ResolveBinary([]string{"codex"}, spec.AdapterEnv); path != "" {
 		result.add(path, codexRuntimeCandidateSourcePath)
 	}
-	if binDir := s.discoverBunGlobalBinDir(ctx, resolver, spec.AdapterEnv); binDir != "" {
-		result.addAll(resolveCodexLaunchersInDir(resolver, binDir), codexRuntimeCandidateSourceBunGlobal)
-	}
-	if binDir := s.discoverPnpmGlobalBinDir(ctx, resolver, spec.AdapterEnv); binDir != "" {
-		result.addAll(resolveCodexLaunchersInDir(resolver, binDir), codexRuntimeCandidateSourcePNPMGlobal)
-	}
-	if binDir := s.discoverNpmGlobalBinDir(ctx, resolver, spec.AdapterEnv); binDir != "" {
-		result.addAll(resolveCodexLaunchersInDir(resolver, binDir), codexRuntimeCandidateSourceNPMGlobal)
-	}
-	if binDir := s.discoverHomebrewBinDir(ctx, resolver, spec.AdapterEnv); binDir != "" {
-		result.addAll(resolveCodexLaunchersInDir(resolver, binDir), codexRuntimeCandidateSourceHomebrew)
+	globalBins := s.discoverCodexGlobalBins(ctx, resolver, spec.AdapterEnv)
+	for _, discovery := range []struct {
+		binDir string
+		source codexRuntimeCandidateSource
+	}{
+		{globalBins.bun, codexRuntimeCandidateSourceBunGlobal},
+		{globalBins.pnpm, codexRuntimeCandidateSourcePNPMGlobal},
+		{globalBins.npm, codexRuntimeCandidateSourceNPMGlobal},
+		{globalBins.homebrew, codexRuntimeCandidateSourceHomebrew},
+	} {
+		if discovery.binDir != "" {
+			result.addAll(resolveCodexLaunchersInDir(resolver, discovery.binDir), discovery.source)
+		}
 	}
 	return result.candidates
+}
+
+type codexGlobalBins struct {
+	bun      string
+	pnpm     string
+	npm      string
+	homebrew string
+}
+
+// discoverCodexGlobalBins runs independent package-manager queries together so
+// one slow manager does not hide later valid Codex installations. Candidates
+// are still added in a stable source order after every query completes.
+func (s Service) discoverCodexGlobalBins(
+	ctx context.Context,
+	resolver runtimecmd.Resolver,
+	overrides []string,
+) codexGlobalBins {
+	var result codexGlobalBins
+	var queries sync.WaitGroup
+	queries.Add(4)
+	go func() {
+		defer queries.Done()
+		result.bun = s.discoverBunGlobalBinDir(ctx, resolver, overrides)
+	}()
+	go func() {
+		defer queries.Done()
+		result.pnpm = s.discoverPnpmGlobalBinDir(ctx, resolver, overrides)
+	}()
+	go func() {
+		defer queries.Done()
+		result.npm = s.discoverNpmGlobalBinDir(ctx, resolver, overrides)
+	}()
+	go func() {
+		defer queries.Done()
+		result.homebrew = s.discoverHomebrewBinDir(ctx, resolver, overrides)
+	}()
+	queries.Wait()
+	return result
 }
 
 func resolveCodexLaunchersInDir(resolver runtimecmd.Resolver, dir string) []string {
@@ -137,7 +178,7 @@ func (s Service) runGlobalBinDirCommand(
 		}
 		defer release()
 
-		commandCtx, cancel := context.WithTimeout(baseContext(ctx), bunGlobalBinDiscoveryTimeout)
+		commandCtx, cancel := context.WithTimeout(baseContext(ctx), globalBinDiscoveryTimeout)
 		defer cancel()
 		command := exec.CommandContext(commandCtx, binaryPath, args...)
 		command.Env = resolver.Env(overrides)

@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"runtime"
 	"testing"
+	"time"
 )
 
 func TestDiscoverCodexRuntimeCandidatesEnumeratesAllManagerBinsAfterPathMatch(t *testing.T) {
@@ -29,16 +30,20 @@ func TestDiscoverCodexRuntimeCandidatesEnumeratesAllManagerBinsAfterPathMatch(t 
 	for _, path := range []string{pathCodex, bunCodex, pnpmCodex, npmCodex, brewCodex} {
 		writeExecutable(t, path, "#!/bin/sh\nexit 0\n")
 	}
-	writeExecutable(t, filepath.Join(managerBin, "bun"), "#!/bin/sh\nif [ \"$1\" = pm ] && [ \"$2\" = bin ] && [ \"$3\" = -g ]; then echo \""+bunBin+"\"; fi\n")
-	writeExecutable(t, filepath.Join(managerBin, "pnpm"), "#!/bin/sh\nif [ \"$1\" = bin ] && [ \"$2\" = -g ]; then echo \""+pnpmBin+"\"; fi\n")
-	writeExecutable(t, filepath.Join(managerBin, "npm"), "#!/bin/sh\nif [ \"$1\" = prefix ] && [ \"$2\" = -g ]; then echo \""+npmPrefix+"\"; fi\n")
-	writeExecutable(t, filepath.Join(managerBin, "brew"), "#!/bin/sh\nif [ \"$1\" = --prefix ]; then echo \""+brewPrefix+"\"; fi\n")
+	writeExecutable(t, filepath.Join(managerBin, "bun"), "#!/bin/sh\nsleep 1\nif [ \"$1\" = pm ] && [ \"$2\" = bin ] && [ \"$3\" = -g ]; then echo \""+bunBin+"\"; fi\n")
+	writeExecutable(t, filepath.Join(managerBin, "pnpm"), "#!/bin/sh\nsleep 1\nif [ \"$1\" = bin ] && [ \"$2\" = -g ]; then echo \""+pnpmBin+"\"; fi\n")
+	writeExecutable(t, filepath.Join(managerBin, "npm"), "#!/bin/sh\nsleep 1\nif [ \"$1\" = prefix ] && [ \"$2\" = -g ]; then echo \""+npmPrefix+"\"; fi\n")
+	writeExecutable(t, filepath.Join(managerBin, "brew"), "#!/bin/sh\nsleep 1\nif [ \"$1\" = --prefix ]; then echo \""+brewPrefix+"\"; fi\n")
 
 	service := probeTestService(home)
 	service.Environ = func() []string {
 		return []string{"PATH=" + managerBin + string(os.PathListSeparator) + pathBin + string(os.PathListSeparator) + "/usr/bin:/bin"}
 	}
+	startedAt := time.Now()
 	candidates := service.discoverCodexRuntimeCandidates(context.Background(), ProviderSpec{Provider: "codex"})
+	if elapsed := time.Since(startedAt); elapsed >= 3*time.Second {
+		t.Fatalf("global manager discovery took %s, want concurrent queries", elapsed)
+	}
 
 	if got, want := candidateLaunchers(candidates), []string{pathCodex, bunCodex, pnpmCodex, npmCodex, brewCodex}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("launchers = %#v, want %#v", got, want)
