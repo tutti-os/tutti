@@ -298,6 +298,35 @@ type Service struct {
 	CodexRuntimeSelectionStore CodexRuntimeSelectionStore
 }
 
+// ServiceDependencies are the daemon-owned dependencies required to construct
+// a production provider status service. Probe caches and other implementation
+// details remain owned by Service so callers cannot accidentally omit them.
+type ServiceDependencies struct {
+	AnalyticsReporter          reporterservice.Reporter
+	ManagedRuntime             managedruntime.Resolver
+	ClaudeCodeRuntimeDir       string
+	CodexRuntimeSelectionStore CodexRuntimeSelectionStore
+}
+
+// NewService constructs the production provider status service with its shared
+// caches, bounded detection command fan-out, and runtime auth outcome store.
+func NewService(dependencies ServiceDependencies) Service {
+	return Service{
+		AnalyticsReporter:          dependencies.AnalyticsReporter,
+		ManagedRuntime:             dependencies.ManagedRuntime,
+		ClaudeCodeRuntimeDir:       dependencies.ClaudeCodeRuntimeDir,
+		RunOutcomes:                NewRunOutcomeStore(),
+		StatusCache:                NewProviderStatusCache(),
+		CLIVersionCache:            NewCLIVersionCache(),
+		AdapterProbeCache:          NewAdapterProbeCache(),
+		BunGlobalBinCache:          NewBunGlobalBinCache(),
+		GlobalBinDiscoveryCache:    NewGlobalBinDiscoveryCache(),
+		DetectionCommands:          NewDetectionCommandLimiter(4),
+		UpdateCache:                NewProviderUpdateCache(),
+		CodexRuntimeSelectionStore: dependencies.CodexRuntimeSelectionStore,
+	}
+}
+
 type CodexRuntimeSelectionStore interface {
 	GetAgentProviderRuntimeSelection(context.Context, string) (agentproviderbiz.RuntimeSelection, bool, error)
 	PutAgentProviderRuntimeSelection(context.Context, agentproviderbiz.RuntimeSelection) (agentproviderbiz.RuntimeSelection, error)

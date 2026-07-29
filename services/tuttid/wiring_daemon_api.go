@@ -225,23 +225,15 @@ func buildDaemonAPI(
 		agentActivityProjection.SetAgentTargetResolver(agentTargetResolver)
 	}
 	managedRuntimeResolver := managedruntime.DefaultResolver{}
-	// Shared so a runtime auth failure (reporter side) surfaces in the status
-	// probe (List side) — see agentRunOutcomeReporter.
-	runOutcomes := agentstatusservice.NewRunOutcomeStore()
-	agentStatusService := agentstatusservice.Service{
+	agentStatusService := agentstatusservice.NewService(agentstatusservice.ServiceDependencies{
 		AnalyticsReporter:          analyticsReporter,
 		ManagedRuntime:             managedRuntimeResolver,
 		ClaudeCodeRuntimeDir:       filepath.Join(agentRuntimeDir, "claude-code"),
-		RunOutcomes:                runOutcomes,
-		StatusCache:                agentstatusservice.NewProviderStatusCache(),
-		CLIVersionCache:            agentstatusservice.NewCLIVersionCache(),
-		AdapterProbeCache:          agentstatusservice.NewAdapterProbeCache(),
-		BunGlobalBinCache:          agentstatusservice.NewBunGlobalBinCache(),
-		GlobalBinDiscoveryCache:    agentstatusservice.NewGlobalBinDiscoveryCache(),
-		DetectionCommands:          agentstatusservice.NewDetectionCommandLimiter(4),
-		UpdateCache:                agentstatusservice.NewProviderUpdateCache(),
 		CodexRuntimeSelectionStore: agentProviderRuntimeSelectionStore,
-	}
+	})
+	// Shared so a runtime auth failure (reporter side) surfaces in the status
+	// probe (List side) — see agentRunOutcomeReporter.
+	runOutcomes := agentStatusService.RunOutcomes
 	accountService := accountservice.NewService("")
 	mobileRemoteService, err := buildMobileRemoteService(
 		agentExtensionStateDir,
