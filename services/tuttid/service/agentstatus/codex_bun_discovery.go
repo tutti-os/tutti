@@ -59,7 +59,7 @@ func codexPathBelongsToBunInstall(path string, env []string) bool {
 }
 
 func (s Service) discoverBunGlobalBinDir(ctx context.Context, resolver runtimecmd.Resolver, overrides []string) string {
-	bunPath := resolver.ResolveBinary([]string{bunBinaryName()}, overrides)
+	bunPath := resolveBunBinary(resolver, overrides)
 	if bunPath == "" {
 		return ""
 	}
@@ -88,6 +88,19 @@ func (s Service) discoverBunGlobalBinDir(ctx context.Context, resolver runtimecm
 		}
 		return filepath.Clean(binDir)
 	})
+}
+
+func resolveBunBinary(resolver runtimecmd.Resolver, overrides []string) string {
+	env := resolver.Env(overrides)
+	if bunInstall := strings.TrimSpace(envValueForKey(env, "BUN_INSTALL")); bunInstall != "" {
+		bunPath := resolver.Resolve(bunBinaryName(), []string{
+			"PATH=" + filepath.Join(bunInstall, "bin"),
+		})
+		if bunPath != bunBinaryName() {
+			return bunPath
+		}
+	}
+	return resolver.ResolveBinary([]string{bunBinaryName()}, overrides)
 }
 
 type boundedCommandOutput struct {

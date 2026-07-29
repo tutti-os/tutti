@@ -147,9 +147,6 @@ func (r Resolver) UserBinInstallDirs(overrides []string) []string {
 
 func preferredExecutableDirs(env []string) []string {
 	dirs := []string{}
-	if bunInstall := strings.TrimSpace(envValue(env, "BUN_INSTALL")); bunInstall != "" {
-		dirs = append([]string{filepath.Join(bunInstall, "bin")}, dirs...)
-	}
 	if nPrefix := strings.TrimSpace(envValue(env, "N_PREFIX")); nPrefix != "" {
 		dirs = append([]string{filepath.Join(nPrefix, "bin")}, dirs...)
 	}

@@ -279,20 +279,24 @@ func TestResolverPrefersFnmNodeBinOverExistingPathNode(t *testing.T) {
 	}
 }
 
-func TestResolverFindsBunInstallBin(t *testing.T) {
+func TestResolverPrefersInheritedPathOverBunInstallBin(t *testing.T) {
 	home := t.TempDir()
 	bunInstall := filepath.Join(home, "custom-bun")
-	binDir := filepath.Join(bunInstall, "bin")
-	if err := os.MkdirAll(binDir, 0o755); err != nil {
-		t.Fatalf("mkdir bin dir: %v", err)
+	bunBinDir := filepath.Join(bunInstall, "bin")
+	pathBinDir := filepath.Join(home, "path-bin")
+	for _, dir := range []string{bunBinDir, pathBinDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir bin dir: %v", err)
+		}
 	}
-	codexPath := filepath.Join(binDir, "codex")
-	writeExecutable(t, codexPath)
+	writeExecutable(t, filepath.Join(bunBinDir, "claude"))
+	pathClaude := filepath.Join(pathBinDir, "claude")
+	writeExecutable(t, pathClaude)
 
 	resolver := Resolver{
 		Environ: func() []string {
 			return []string{
-				"PATH=/usr/bin:/bin",
+				"PATH=" + pathBinDir + string(os.PathListSeparator) + "/usr/bin:/bin",
 				"BUN_INSTALL=" + bunInstall,
 			}
 		},
@@ -305,8 +309,8 @@ func TestResolverFindsBunInstallBin(t *testing.T) {
 	}
 
 	env := resolver.Env(nil)
-	if got := resolver.Resolve("codex", env); got != codexPath {
-		t.Fatalf("Resolve() = %q, want BUN_INSTALL codex %q", got, codexPath)
+	if got := resolver.Resolve("claude", env); got != pathClaude {
+		t.Fatalf("Resolve() = %q, want inherited PATH claude %q", got, pathClaude)
 	}
 }
 

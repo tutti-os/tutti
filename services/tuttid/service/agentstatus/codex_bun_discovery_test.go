@@ -13,7 +13,8 @@ func TestCodexDiscoveryUsesBunConfiguredGlobalBinForStatusAndLaunch(t *testing.T
 		t.Skip("shell fixture is Unix-only")
 	}
 	home := t.TempDir()
-	bunBin := filepath.Join(home, ".bun", "bin")
+	bunInstall := filepath.Join(home, "custom-bun-install")
+	bunBin := filepath.Join(bunInstall, "bin")
 	customGlobalBin := filepath.Join(home, "configured-bun-global-bin")
 	if err := os.MkdirAll(bunBin, 0o755); err != nil {
 		t.Fatalf("mkdir bun bin: %v", err)
@@ -35,6 +36,12 @@ func TestCodexDiscoveryUsesBunConfiguredGlobalBinForStatusAndLaunch(t *testing.T
 		"exit 1\n")
 
 	service := probeTestService(home)
+	service.Environ = func() []string {
+		return []string{
+			"PATH=/usr/bin:/bin",
+			"BUN_INSTALL=" + bunInstall,
+		}
+	}
 	service.BunGlobalBinCache = NewBunGlobalBinCache()
 	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
 		return AuthInfo{Status: AuthAuthenticated}, true
