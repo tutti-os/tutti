@@ -29,6 +29,7 @@ type ClaudeCodeSDKAdapter struct {
 	interactiveDispositionSink InteractiveDispositionSink
 	commandSink                CommandSnapshotSink
 	eventSink                  SessionEventSink
+	promptImageMaterializer    providerPromptImageMaterializer
 	interactiveAckTimeout      time.Duration
 }
 

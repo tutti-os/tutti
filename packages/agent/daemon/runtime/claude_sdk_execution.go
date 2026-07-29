@@ -51,13 +51,18 @@ func (a *ClaudeCodeSDKAdapter) Exec(
 	}
 	emitEvents(a.stampTurnLifecycleSnapshots(adapterSession, startEvents))
 
+	providerContent, err := materializeProviderPromptImagesAtBoundary(ctx, content, a.promptImageMaterializer)
+	if err != nil {
+		events = append(events, a.claudeSDKRootProviderFailureEvents(adapterSession, session, turnID, promptCorrelationID, err)...)
+		return events, err
+	}
 	waiter := a.registerClaudeSDKTurn(adapterSession, turnID, emit)
 	if err := a.startClaudeSDKReader(session.AgentSessionID, adapterSession); err != nil {
 		a.unregisterClaudeSDKTurn(adapterSession, turnID, waiter)
 		events = append(events, a.claudeSDKRootProviderFailureEvents(adapterSession, session, turnID, promptCorrelationID, err)...)
 		return events, err
 	}
-	payload := claudeSDKExecPayload(ctx, session, turnID, promptCorrelationID, content, visibleText)
+	payload := claudeSDKExecPayload(ctx, session, turnID, promptCorrelationID, providerContent, visibleText)
 	if err := adapterSession.send(claudeSDKSidecarRequest{
 		ID:      newID(),
 		Type:    "exec",
@@ -146,6 +151,10 @@ func (a *ClaudeCodeSDKAdapter) GuideActiveTurn(
 	}
 	session.ProviderSessionID = adapterSession.providerSessionID
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
+	providerContent, err := materializeProviderPromptImagesAtBoundary(ctx, content, a.promptImageMaterializer)
+	if err != nil {
+		return nil, err
+	}
 	events := []activityshared.Event{
 		newUserPromptActivityEvent(ctx, session, content, explicitDisplayPrompt, visibleText, turnID, map[string]any{
 			"adapter":  claudeSDKSidecarAdapterName,
@@ -163,8 +172,8 @@ func (a *ClaudeCodeSDKAdapter) GuideActiveTurn(
 		Type: "guide",
 		Payload: map[string]any{
 			"agentSessionId": session.AgentSessionID,
-			"prompt":         promptTextForClaudeSDK(content, visibleText),
-			"content":        promptContentForClaudeSDK(content, visibleText),
+			"prompt":         promptTextForClaudeSDK(providerContent, visibleText),
+			"content":        promptContentForClaudeSDK(providerContent, visibleText),
 		},
 	}); err != nil {
 		return events, err

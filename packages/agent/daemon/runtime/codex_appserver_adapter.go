@@ -154,6 +154,7 @@ type CodexAppServerAdapter struct {
 	eventSink                  SessionEventSink
 	goalReconcileSink          GoalReconcileDurableSink
 	goalProvenanceSink         GoalProvenanceDurableSink
+	promptImageMaterializer    providerPromptImageMaterializer
 	goalReconcileAckTimeout    time.Duration
 	configSink                 ConfigOptionsUpdateSink
 	// lifecycleMu guards lifecycleLocks; the per-session locks serialize

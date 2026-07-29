@@ -759,6 +759,60 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [controller.go](../../../packages/agent/daemon/runtime/controller.go)
   [service_send_input.go](../../../services/tuttid/service/agent/service_send_input.go)
 
+### Remote Agent image reaches the provider as an unsupported URL
+
+- Symptom:
+  A URL-backed PNG, JPEG, or WebP is accepted and appears in the user activity,
+  but Codex rejects the turn with `remote image URLs are not supported; use an
+inline data URL instead`. Claude or standard ACP may instead receive no
+  usable image data.
+- Quick checks:
+  Confirm the durable prompt block intentionally contains an HTTPS `url`, then
+  inspect the final provider payload. Codex must receive a `data:` URL; Claude
+  SDK and standard ACP must receive base64 `data`. Search every provider send
+  and guidance path for `materializeProviderPromptImagesAtBoundary`; the helper
+  and its unit test can remain green even when a refactor removes all production
+  callers.
+- Root cause:
+  Remote image URLs are the durable transport representation, while current
+  Codex app-server, Claude SDK, and standard ACP provider wires require inline
+  data. A provider-adapter refactor can preserve the materialization helper but
+  omit its call sites in newly split turn files.
+- Fix:
+  Materialize only at the final provider boundary. Keep the original URL-backed
+  content for activity projection, and convert the provider-only copy after
+  local slash/control handling but immediately before Codex `turn/start` or
+  `turn/steer`, Claude SDK `exec` or `guide`, and standard ACP
+  `session/prompt`. Resolve and pin every download or redirect hop to a public
+  Internet address so prompt content cannot reach loopback, private, link-local,
+  transition-mapped, or other IANA special-purpose networks. Preserve the
+  configured proxy decision using the original URL, but send the proxy a pinned
+  public-IP tunnel target while retaining the original TLS server name and HTTP
+  Host. Strip redirect `Referer` headers so signed URL query parameters cannot
+  cross origins. Admit an asynchronous Codex guidance continuation before
+  publishing its provisional provider turn, and settle that exact attempt when
+  preparation ends without starting a real provider turn. For standard ACP,
+  publish the original user activity and provider-turn start before remote
+  materialization; if preparation fails, complete that same provider turn as
+  failed so the message remains durable and root settlement cannot strand.
+- Validation:
+  Exercise URL-only content through the real adapter request paths and assert
+  the captured provider payload contains inline data. Cover Codex send and
+  guidance, Claude SDK exec and guide, and standard ACP exec; do not rely only
+  on direct helper tests. Also reject loopback literals and redirects whose
+  target resolves to an internal or transition-mapped address, verify proxy
+  CONNECT uses the pinned public IP, and assert redirects omit signed-URL
+  referrers. Cover failed and concurrent guidance continuation admission so
+  every published provisional attempt either yields a real provider lifecycle
+  or receives its matching provider-turn completion. Also fail standard ACP
+  materialization and assert the original user message, turn start, and failed
+  provider-turn completion are all emitted without sending `session/prompt`.
+- References:
+  [prompt_content.go](../../../packages/agent/daemon/runtime/prompt_content.go)
+  [codex_appserver_turn.go](../../../packages/agent/daemon/runtime/codex_appserver_turn.go)
+  [claude_sdk_execution.go](../../../packages/agent/daemon/runtime/claude_sdk_execution.go)
+  [standard_acp_turn.go](../../../packages/agent/daemon/runtime/standard_acp_turn.go)
+
 ### AgentGUI Stop reports no active turn after cancel succeeds
 
 - Symptom:

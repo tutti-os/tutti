@@ -2,17 +2,22 @@ package agentruntime
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"mime"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
+	"time"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/daemon/httpx"
 )
 
 var ErrPromptImageUnsupported = errors.New("agent prompt image input is unsupported")
@@ -20,6 +25,36 @@ var ErrPromptImageUnsupported = errors.New("agent prompt image input is unsuppor
 const clientSubmitUserMessageIDPrefix = "client-submit:user:"
 
 const maxProviderPromptImageBytes int64 = 20 << 20
+
+var (
+	providerPromptImageGlobalIPv6UnicastPrefix = netip.MustParsePrefix("2000::/3")
+	// Fail closed for IANA special-purpose ranges, including transition
+	// addresses that can encode an otherwise blocked IPv4 destination.
+	providerPromptImageNonPublicPrefixes = []netip.Prefix{
+		netip.MustParsePrefix("0.0.0.0/8"),
+		netip.MustParsePrefix("10.0.0.0/8"),
+		netip.MustParsePrefix("100.64.0.0/10"),
+		netip.MustParsePrefix("127.0.0.0/8"),
+		netip.MustParsePrefix("169.254.0.0/16"),
+		netip.MustParsePrefix("172.16.0.0/12"),
+		netip.MustParsePrefix("192.0.0.0/24"),
+		netip.MustParsePrefix("192.0.2.0/24"),
+		netip.MustParsePrefix("192.31.196.0/24"),
+		netip.MustParsePrefix("192.52.193.0/24"),
+		netip.MustParsePrefix("192.88.99.0/24"),
+		netip.MustParsePrefix("192.168.0.0/16"),
+		netip.MustParsePrefix("192.175.48.0/24"),
+		netip.MustParsePrefix("198.18.0.0/15"),
+		netip.MustParsePrefix("198.51.100.0/24"),
+		netip.MustParsePrefix("203.0.113.0/24"),
+		netip.MustParsePrefix("240.0.0.0/4"),
+		netip.MustParsePrefix("2001::/23"),
+		netip.MustParsePrefix("2001:db8::/32"),
+		netip.MustParsePrefix("2002::/16"),
+		netip.MustParsePrefix("2620:4f:8000::/48"),
+		netip.MustParsePrefix("3fff::/20"),
+	}
+)
 
 type canonicalSubmitFactContextKey struct{}
 
@@ -61,6 +96,8 @@ func canonicalSubmitFactFromContext(ctx context.Context) canonicalSubmitFact {
 	fact, _ := ctx.Value(canonicalSubmitFactContextKey{}).(canonicalSubmitFact)
 	return fact
 }
+
+type providerPromptImageMaterializer func(context.Context, []PromptContentBlock) ([]PromptContentBlock, error)
 
 func normalizeRuntimePromptContent(content []PromptContentBlock) []PromptContentBlock {
 	out := make([]PromptContentBlock, 0, len(content))
@@ -352,10 +389,161 @@ func promptContentForACP(content []PromptContentBlock) []map[string]any {
 // require inline image data. AgentGUI and durable activity state intentionally
 // keep the uploaded URL; when a provider gains native URL support, only its
 // final adapter needs to stop calling this compatibility conversion.
+func materializeProviderPromptImages(ctx context.Context, content []PromptContentBlock) ([]PromptContentBlock, error) {
+	return materializeProviderPromptImagesWithClient(ctx, content, newProviderPromptImageHTTPClient(30*time.Second))
+}
+
+func materializeProviderPromptImagesAtBoundary(
+	ctx context.Context,
+	content []PromptContentBlock,
+	materializer providerPromptImageMaterializer,
+) ([]PromptContentBlock, error) {
+	if materializer == nil {
+		materializer = materializeProviderPromptImages
+	}
+	return materializer(ctx, content)
+}
+
+type providerPromptImageResolver interface {
+	LookupNetIP(context.Context, string, string) ([]netip.Addr, error)
+}
+
+type providerPromptImageTransport struct {
+	base     *http.Transport
+	resolver providerPromptImageResolver
+}
+
+func newProviderPromptImageHTTPClient(timeout time.Duration) *http.Client {
+	client := httpx.NewClient(timeout)
+	client.Transport = &providerPromptImageTransport{
+		base:     client.Transport.(*http.Transport),
+		resolver: net.DefaultResolver,
+	}
+	return client
+}
+
+func newProviderPromptImageHTTPClientWithNetwork(
+	timeout time.Duration,
+	resolver providerPromptImageResolver,
+	transport *http.Transport,
+) *http.Client {
+	client := httpx.NewClient(timeout)
+	if transport == nil {
+		transport = client.Transport.(*http.Transport)
+	}
+	client.Transport = &providerPromptImageTransport{base: transport, resolver: resolver}
+	return client
+}
+
+func (t *providerPromptImageTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if t == nil || t.base == nil || t.resolver == nil || request == nil || request.URL == nil ||
+		request.Method != http.MethodGet || request.Body != nil || !runtimePromptImageURLSafe(request.URL.String()) {
+		return nil, ErrPromptImageUnsupported
+	}
+	addresses, err := t.resolver.LookupNetIP(request.Context(), "ip", request.URL.Hostname())
+	if err != nil {
+		return nil, errors.New("resolve remote prompt image: request failed")
+	}
+	port := request.URL.Port()
+	if port == "" {
+		port = "443"
+	}
+	var proxyURL *url.URL
+	if t.base.Proxy != nil {
+		proxyURL, err = t.base.Proxy(request)
+		if err != nil {
+			return nil, errors.New("resolve remote prompt image proxy: request failed")
+		}
+	}
+	var lastErr error
+	for _, resolved := range addresses {
+		if !providerPromptImageAddressPublic(resolved) {
+			continue
+		}
+		pinnedRequest := request.Clone(request.Context())
+		pinnedURL := *request.URL
+		pinnedURL.Host = net.JoinHostPort(resolved.String(), port)
+		pinnedRequest.URL = &pinnedURL
+		pinnedRequest.Host = request.URL.Host
+
+		transport := t.base.Clone()
+		transport.DisableKeepAlives = true
+		if proxyURL == nil {
+			transport.Proxy = nil
+		} else {
+			transport.Proxy = http.ProxyURL(proxyURL)
+		}
+		baseTLSConfig := &tls.Config{}
+		if transport.TLSClientConfig != nil {
+			baseTLSConfig = transport.TLSClientConfig.Clone()
+		}
+		transport.TLSClientConfig = baseTLSConfig.Clone()
+		transport.TLSClientConfig.ServerName = request.URL.Hostname()
+		if proxyURL != nil && proxyURL.Scheme == "https" && transport.DialTLSContext == nil {
+			proxyTLSConfig := baseTLSConfig.Clone()
+			proxyTLSConfig.ServerName = proxyURL.Hostname()
+			dialContext := transport.DialContext
+			if dialContext == nil {
+				dialContext = (&net.Dialer{}).DialContext
+			}
+			handshakeTimeout := transport.TLSHandshakeTimeout
+			transport.DialTLSContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+				connection, dialErr := dialContext(ctx, network, address)
+				if dialErr != nil {
+					return nil, dialErr
+				}
+				tlsConnection := tls.Client(connection, proxyTLSConfig)
+				handshakeCtx := ctx
+				cancel := func() {}
+				if handshakeTimeout > 0 {
+					handshakeCtx, cancel = context.WithTimeout(ctx, handshakeTimeout)
+				}
+				defer cancel()
+				if handshakeErr := tlsConnection.HandshakeContext(handshakeCtx); handshakeErr != nil {
+					_ = connection.Close()
+					return nil, handshakeErr
+				}
+				return tlsConnection, nil
+			}
+		}
+
+		response, requestErr := transport.RoundTrip(pinnedRequest)
+		if requestErr == nil {
+			response.Request = request
+			return response, nil
+		}
+		lastErr = requestErr
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, ErrPromptImageUnsupported
+}
+
+func providerPromptImageAddressPublic(address netip.Addr) bool {
+	if !address.IsValid() || address.Zone() != "" {
+		return false
+	}
+	address = address.Unmap()
+	if !address.IsGlobalUnicast() || address.IsPrivate() || address.IsLoopback() || address.IsLinkLocalUnicast() {
+		return false
+	}
+	if address.Is6() && !providerPromptImageGlobalIPv6UnicastPrefix.Contains(address) {
+		return false
+	}
+	for _, prefix := range providerPromptImageNonPublicPrefixes {
+		if prefix.Contains(address) {
+			return false
+		}
+	}
+	return true
+}
+
 func materializeProviderPromptImagesWithClient(ctx context.Context, content []PromptContentBlock, client *http.Client) ([]PromptContentBlock, error) {
 	requestClient := *client
 	existingRedirectCheck := client.CheckRedirect
 	requestClient.CheckRedirect = func(request *http.Request, via []*http.Request) error {
+		request.Header.Del("Referer")
 		if !runtimePromptImageURLSafe(request.URL.String()) {
 			return ErrPromptImageUnsupported
 		}

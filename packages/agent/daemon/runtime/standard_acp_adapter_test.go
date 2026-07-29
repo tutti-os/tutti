@@ -1829,6 +1829,89 @@ func TestCursorAdapterAllowsImagePromptWithoutInitializeCapability(t *testing.T)
 	}
 }
 
+func TestStandardACPAdapterExecMaterializesRemoteImageAtProviderBoundary(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("OpenCode", "opencode-session-remote-image")
+	adapter := newOpenCodeTestAdapter(transport)
+	imageURL, materializer := testRemotePromptImageMaterializer(t)
+	adapter.promptImageMaterializer = materializer
+	session := standardTestSession(ProviderOpenCode)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "opencode-session-remote-image"
+
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{
+		{Type: "text", Text: "what is in this screenshot?"},
+		{Type: "image", MimeType: "image/png", URL: imageURL},
+	}, "", "turn-remote-image", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	params := transport.conn.lastPromptParams()
+	prompt, _ := params["prompt"].([]any)
+	if len(prompt) != 2 {
+		t.Fatalf("session/prompt content = %#v, want text+image", params["prompt"])
+	}
+	image, _ := prompt[1].(map[string]any)
+	if image["mimeType"] != "image/png" || image["data"] != "aGk=" {
+		t.Fatalf("session/prompt image = %#v, want inline image data", image)
+	}
+}
+
+func TestStandardACPAdapterRemoteImageFailurePreservesPromptAndClosesProviderTurn(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("OpenCode", "opencode-session-remote-image-failure")
+	adapter := newOpenCodeTestAdapter(transport)
+	materializeErr := errors.New("remote image unavailable")
+	adapter.promptImageMaterializer = func(context.Context, []PromptContentBlock) ([]PromptContentBlock, error) {
+		return nil, materializeErr
+	}
+	session := standardTestSession(ProviderOpenCode)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "opencode-session-remote-image-failure"
+
+	var streamed []activityshared.Event
+	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{
+		{Type: "text", Text: "what is in this screenshot?"},
+		{Type: "image", MimeType: "image/png", URL: "https://images.example/screenshot.png"},
+	}, "", "turn-remote-image-failure", func(next []activityshared.Event) {
+		streamed = append(streamed, next...)
+	}, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	if params := transport.conn.lastPromptParams(); len(params) != 0 {
+		t.Fatalf("session/prompt params = %#v, want no provider request after materialization failure", params)
+	}
+	messages := eventsOfType(events, activityshared.EventMessageAppended)
+	if len(messages) != 1 || messages[0].Payload.Role != activityshared.MessageRoleUser ||
+		messages[0].Payload.Content != "what is in this screenshot?" {
+		t.Fatalf("user prompt events = %#v, want original prompt preserved", messages)
+	}
+	if turnStarted := eventsOfType(events, activityshared.EventTurnStarted); len(turnStarted) != 1 {
+		t.Fatalf("turn started events = %#v, want one", turnStarted)
+	}
+	started := eventsOfType(events, activityshared.EventRootProviderTurnStarted)
+	if len(started) != 1 || started[0].Payload.ProviderTurnID != "turn-remote-image-failure" {
+		t.Fatalf("provider turn started events = %#v, want one", started)
+	}
+	completed := eventsOfType(events, activityshared.EventRootProviderTurnCompleted)
+	if len(completed) != 1 ||
+		completed[0].Payload.ProviderTurnID != "turn-remote-image-failure" ||
+		completed[0].Payload.TurnOutcome != string(activityshared.TurnOutcomeFailed) ||
+		completed[0].Payload.Metadata["error"] != materializeErr.Error() {
+		t.Fatalf("provider turn completed events = %#v, want failed materialization lifecycle", completed)
+	}
+	if len(streamed) != len(events) {
+		t.Fatalf("streamed event count = %d, returned = %d", len(streamed), len(events))
+	}
+}
+
 func TestStandardACPAdapterRejectsImagePromptWithoutCapability(t *testing.T) {
 	t.Parallel()
 
