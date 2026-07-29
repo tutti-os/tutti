@@ -403,7 +403,11 @@ export class AgentEnvService implements IAgentEnvService {
     provider: AgentEnvSnapshot["provider"],
     requestSequence: number
   ): void {
-    if (this.disposed || !supportsRuntimeCandidateCatalog(provider)) {
+    if (
+      this.disposed ||
+      !supportsRuntimeCandidateCatalog(provider) ||
+      this.controller.getSnapshot().runtimeSelectionPendingId !== null
+    ) {
       return;
     }
     const requestID = this.runtimeCatalogRequestSequence + 1;

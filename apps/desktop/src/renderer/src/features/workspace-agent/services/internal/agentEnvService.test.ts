@@ -37,6 +37,8 @@ class FakeProviderStatusService implements IAgentProviderStatusService {
     provider: WorkspaceAgentProvider;
     revision: string;
   }> = [];
+  runtimeSelectionResponse: Promise<AgentProviderRuntimeCatalogResponse> | null =
+    null;
   refreshCalls = 0;
   ensureLoadedCalls = 0;
   reportCalls = 0;
@@ -91,6 +93,9 @@ class FakeProviderStatusService implements IAgentProviderStatusService {
     revision: string
   ): Promise<AgentProviderRuntimeCatalogResponse> {
     this.runtimeSelectionCalls.push({ candidateId, provider, revision });
+    if (this.runtimeSelectionResponse) {
+      return this.runtimeSelectionResponse;
+    }
     this.runtimeCatalog = {
       ...this.runtimeCatalog,
       provider,
@@ -412,6 +417,73 @@ test("selecting a Codex runtime persists the catalog candidate then refreshes re
   service.dispose();
 });
 
+test("redetect does not supersede an in-flight Codex runtime selection", async () => {
+  const providerStatusService = new FakeProviderStatusService(
+    codexSelectionRequiredStatus()
+  );
+  providerStatusService.runtimeCatalog = {
+    capturedAt: "2026-07-18T00:00:00Z",
+    provider: "codex",
+    revision: "revision-2",
+    selection: {
+      candidateId: null,
+      launcherPath: null,
+      state: "selection_required",
+      updatedAt: null
+    },
+    candidates: [
+      {
+        id: "bun",
+        launcherPath: "/bun/bin/codex",
+        packageRoot: "/bun/install/global/node_modules/@openai/codex",
+        sources: ["bun_global"],
+        version: "0.142.0",
+        state: "ready",
+        reasonCode: null,
+        appServerReady: true,
+        packageLayoutOk: true
+      }
+    ]
+  };
+  const selection = deferred<AgentProviderRuntimeCatalogResponse>();
+  providerStatusService.runtimeSelectionResponse = selection.promise;
+  const service = new AgentEnvService({
+    clipboard: { writeText: async () => {} },
+    providerStatusService,
+    scheduler: {
+      clearTimeout: () => {},
+      setTimeout: () => 1
+    },
+    workspaceId: "workspace-1"
+  });
+  service.open({ provider: "codex" });
+  await flushAsyncWork();
+
+  const selecting = service.selectCodexRuntime("bun");
+  assert.equal(service.getSnapshot().runtimeSelectionPendingId, "bun");
+
+  service.redetect();
+  assert.deepEqual(providerStatusService.runtimeCatalogCalls, ["codex"]);
+
+  selection.resolve({
+    ...providerStatusService.runtimeCatalog,
+    selection: {
+      candidateId: "bun",
+      launcherPath: "/bun/bin/codex",
+      state: "selected",
+      updatedAt: "2026-07-18T00:00:00Z"
+    }
+  });
+  await selecting;
+
+  assert.equal(service.getSnapshot().runtimeSelectionPendingId, null);
+  assert.equal(
+    service.getSnapshot().runtimeCatalog?.selection.candidateId,
+    "bun"
+  );
+  service.dispose();
+});
+
 test("environment setup owns update discovery, pending state, and execution", async () => {
   const harness = createHarness(authRequiredStatus(), null);
 
@@ -438,4 +510,12 @@ test("environment setup owns update discovery, pending state, and execution", as
 
 function flushAsyncWork(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
 }
