@@ -658,8 +658,15 @@ disable submission, but must not change editor editability.
   `AgentSessionEffectPort` calls. Desktop and Mobile implement those semantic
   methods and must not duplicate a command-type switch for them. Platform-only
   commands remain in each host's `EngineExtensionCommand` adapter. Every effect
-  propagates the Engine-owned AbortSignal to its transport; a required settings
-  precondition rechecks cancellation before prompt send
+  propagates the Engine-owned AbortSignal to its transport. Direct settings
+  changes, post-activation persistence, and prompt-required settings share one
+  per-Session Engine lane. Owner boundaries are serialization barriers rather
+  than coalescing opportunities. A validated precondition updates canonical
+  Session state before the Engine starts send, while a failed or timed-out
+  precondition prevents delivery. A timed-out settings write remains
+  delivery-unknown and does not release queued writes automatically. A fresh
+  explicit settings selection is the user's retry: Desktop AgentGUI and Native
+  Mobile derive that retry from the exact Engine settings-operation state
 - consumers do not read reducer maps directly
 - consumers do not create canonical session/message mirrors
 - optimistic records define confirmation, rejection, timeout, and uncertain-delivery paths
@@ -756,6 +763,11 @@ The busy-session prompt queue is ephemeral durable-intent coordination in the wo
 - a provider with native guidance capability may guide the active Turn
 - otherwise send-now performs exact cancel-then-send
 - user Stop pauses the queue; cancellation must not leak the next prompt
+- a prompt settings precondition is an explicit preparation stage, not a nested
+  host effect. It serializes with direct and post-activation settings writes,
+  updates the canonical Session on success, starts send before releasing later
+  settings writes, and fails the logical prompt without delivery when the
+  settings result is not valid
 - a visible failed queue entry continues to own its submitted content for retry;
   draft settlement must not duplicate that content back into the composer
 - uncertain delivery reconciles by `clientSubmitId` and exact `turnId`; it never resends merely because the Session appears idle

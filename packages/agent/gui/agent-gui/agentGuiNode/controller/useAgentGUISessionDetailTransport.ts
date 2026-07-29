@@ -61,10 +61,6 @@ export function useAgentGUISessionDetailTransport(input: {
       ...sessionFamily.childSessions.map((session) => session.agentSessionId)
     ]
   );
-  const activeProjectedMessages = activeConversationId
-    ? (projectedSessionMessagesById[activeConversationId] ??
-      activeCanonicalMessages)
-    : activeCanonicalMessages;
   const activeCanonicalWindow = useEngineSelector(
     sessionEngine,
     (engineState) =>
@@ -72,7 +68,7 @@ export function useAgentGUISessionDetailTransport(input: {
   );
   const state = useAgentSessionControllerState(
     sessionViewRef(activeConversationId),
-    activeProjectedMessages,
+    activeCanonicalMessages,
     activeCanonicalWindow
   );
   const resolveSessionMessages = useCallback(

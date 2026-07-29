@@ -37,6 +37,11 @@ import {
 } from "./sessionLifecycle.availability.ts";
 import { canonicalTurnKey } from "./sessionEntityKeys.ts";
 import { queuedPromptFromSubmitIntent } from "./promptQueue.submit.ts";
+import {
+  requestPromptExecution,
+  settlePromptSettingsPrecondition
+} from "./promptQueue.precondition.ts";
+import type { RootEngineReducerResult } from "./rootReducer.types.ts";
 
 const NO_COMMANDS: readonly EngineCommand[] = [];
 const QUEUE_SEND_TIMEOUT_MS = 30_000;
@@ -52,6 +57,7 @@ export interface PromptQueueReducerContext {
   interactionResultValidation?: ScopedSessionResultValidation | null;
   sendResultValidation?: SendInputResultValidation | null;
   sendNowStrategy?: PromptQueueSendNowStrategy | null;
+  settingsPreconditionPromptCommandId?: string | null;
   settingsResultValidation?: ScopedSessionResultValidation | null;
 }
 
@@ -59,7 +65,7 @@ export function promptQueueReducer(
   state: PromptQueueState,
   intent: EngineIntent,
   context: PromptQueueReducerContext
-): EngineReducerResult<PromptQueueState> {
+): RootEngineReducerResult<PromptQueueState> {
   const reduced = reduceQueueOwnedState(state, intent, context);
   if (intent.type === "submit/requested" && intent.routing === "immediate") {
     return reduced;
@@ -78,7 +84,7 @@ function reduceQueueOwnedState(
   state: PromptQueueState,
   intent: EngineIntent,
   context: PromptQueueReducerContext
-): EngineReducerResult<PromptQueueState> {
+): RootEngineReducerResult<PromptQueueState> {
   switch (intent.type) {
     case "session/removed":
     case "queue/sessionCleaned":
@@ -148,11 +154,20 @@ function reduceQueueOwnedState(
         ? unchanged(state)
         : resumeQueue(state, intent.agentSessionId);
     case "engine/commandResult":
-      return intent.commandType === "queue/sendPrompt"
-        ? settleQueueCommand(
+      if (intent.commandType === "queue/sendPrompt") {
+        return settleQueueCommand(
+          state,
+          intent,
+          context.sendResultValidation ?? null
+        );
+      }
+      return intent.commandType === "session/updateSettings" &&
+        context.settingsPreconditionPromptCommandId
+        ? settlePromptSettingsPrecondition(
             state,
+            context.settingsPreconditionPromptCommandId,
             intent,
-            context.sendResultValidation ?? null
+            context.settingsResultValidation ?? null
           )
         : unchanged(state);
     default:
@@ -189,12 +204,12 @@ function enqueueSubmit(
   state: PromptQueueState,
   intent: Extract<EngineIntent, { type: "submit/requested" }>,
   lifecycle: CanonicalSessionLifecycleView
-): EngineReducerResult<PromptQueueState> {
+): RootEngineReducerResult<PromptQueueState> {
   if (intent.routing === "immediate") {
-    return {
-      commands: [sendCommandFromImmediateSubmit(intent)],
-      state
-    };
+    const command = sendCommandFromImmediateSubmit(intent);
+    return command.requiredSettingsPatch
+      ? requestPromptExecution(state, command)
+      : { commands: [command], state };
   }
   const agentSessionId = intent.agentSessionId.trim();
   const current = state.recordsBySessionId[agentSessionId];
@@ -523,27 +538,35 @@ function exactConfirmedTurns(
 }
 
 function drainAffectedSessions(
-  reduced: EngineReducerResult<PromptQueueState>,
+  reduced: RootEngineReducerResult<PromptQueueState>,
   affected: readonly string[],
   lifecycle: CanonicalSessionLifecycleView
-): EngineReducerResult<PromptQueueState> {
+): RootEngineReducerResult<PromptQueueState> {
   let state = reduced.state;
   const commands = [...reduced.commands];
+  const followUpIntents = [...(reduced.followUpIntents ?? [])];
   for (const agentSessionId of [...new Set(affected)].sort()) {
     const drained = drainSession(state, agentSessionId, lifecycle);
     state = drained.state;
     commands.push(...drained.commands);
+    followUpIntents.push(...(drained.followUpIntents ?? []));
   }
-  return state === reduced.state && commands.length === reduced.commands.length
+  return state === reduced.state &&
+    commands.length === reduced.commands.length &&
+    followUpIntents.length === (reduced.followUpIntents?.length ?? 0)
     ? reduced
-    : { commands, state };
+    : {
+        commands,
+        ...(followUpIntents.length > 0 ? { followUpIntents } : {}),
+        state
+      };
 }
 
 function drainSession(
   state: PromptQueueState,
   agentSessionId: string,
   lifecycle: CanonicalSessionLifecycleView
-): EngineReducerResult<PromptQueueState> {
+): RootEngineReducerResult<PromptQueueState> {
   const originalState = state;
   let record = state.recordsBySessionId[agentSessionId];
   if (!record) return unchanged(state);
@@ -587,23 +610,32 @@ function drainSession(
   const head = record.prompts[0]!;
   const sequence = state.nextCommandSequence;
   const commandId = queueSendCommandId(record.agentSessionId, sequence);
-  return {
-    commands: [
-      sendCommandFromQueuedPrompt(record, head, commandId, decision.guidance)
-    ],
-    state: replaceRecord(
-      { ...state, nextCommandSequence: sequence + 1 },
-      record.agentSessionId,
-      {
-        ...record,
-        inFlight: {
-          commandId,
-          ...(decision.guidance ? { guidance: true as const } : {}),
-          kind: "send",
-          promptId: head.id
-        }
+  const command = sendCommandFromQueuedPrompt(
+    record,
+    head,
+    commandId,
+    decision.guidance
+  );
+  const nextState = replaceRecord(
+    { ...state, nextCommandSequence: sequence + 1 },
+    record.agentSessionId,
+    {
+      ...record,
+      inFlight: {
+        commandId,
+        ...(decision.guidance ? { guidance: true as const } : {}),
+        kind: "send",
+        promptId: head.id,
+        stage: command.requiredSettingsPatch ? "preparingSettings" : "sending"
       }
-    )
+    }
+  );
+  if (command.requiredSettingsPatch) {
+    return requestPromptExecution(nextState, command);
+  }
+  return {
+    commands: [command],
+    state: nextState
   };
 }
 

@@ -28,6 +28,7 @@ export interface PromptQueueInFlightCommand {
   kind: "send";
   promptId: string;
   runtimeContent?: readonly AgentPromptContentBlock[];
+  stage?: "preparingSettings" | "sending";
 }
 
 export interface PromptQueueRecord {

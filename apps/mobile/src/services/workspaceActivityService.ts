@@ -3,6 +3,7 @@ import {
   createAgentActivitySnapshotProjector,
   createAgentSessionEngine,
   dispatchSessionMutation,
+  selectEngineSessionSettingsUpdate,
   selectEngineSessionRuntimeAvailability,
   type AgentActivitySessionSettings,
   type AgentActivityInteraction,
@@ -101,8 +102,6 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
     const commandContext = () => ({
       client: this.client,
       engine: this.engine,
-      loadComposerOptions: (options?: { force?: boolean }) =>
-        this.loadComposerOptions(options),
       mapSession: this.mapping.mapSession,
       mapSessionDetail: this.mapping.mapSessionDetail,
       reconcileSession: (
@@ -337,9 +336,14 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
       return;
     }
     if (!target.agentSessionId) return;
+    const settingsUpdate = selectEngineSessionSettingsUpdate(
+      this.engine.getSnapshot(),
+      target.agentSessionId
+    );
     this.engine.dispatch({
       agentSessionId: target.agentSessionId,
       commandId: createMobileActivityCommandId(),
+      retry: settingsUpdate?.status === "unknown",
       settings,
       timeoutMs: COMMAND_TIMEOUT_MS,
       type: "session/settingsUpdateRequested",

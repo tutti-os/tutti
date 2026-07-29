@@ -194,6 +194,210 @@ test("settings timeout requires an explicit retry before sending again", () => {
   });
 });
 
+test("prompt settings preconditions serialize later user settings until send starts", () => {
+  let state = reduce(createInitialSessionLifecycleState(), {
+    type: "session/snapshotReceived",
+    sessions: [session(null, 1)]
+  }).state;
+  const precondition = reduce(state, {
+    agentSessionId: "session-1",
+    commandId: "prompt:settings:send-1",
+    settings: { browserUse: true },
+    type: "session/settingsPreconditionRequested",
+    workspaceId: "workspace-1"
+  });
+  assert.equal(precondition.commands[0]?.type, "session/updateSettings");
+
+  const queued = reduce(
+    precondition.state,
+    settingsUpdateRequested("settings-after", { model: "model-2" })
+  );
+  assert.deepEqual(queued.commands, []);
+  assert.equal(
+    queued.state.operationBySessionId["session-1"]?.settingsUpdate
+      .queuedRequests[0]?.commandId,
+    "settings-after"
+  );
+
+  const acceptedSession = {
+    ...session(null, 2),
+    settings: { browserUse: true }
+  };
+  const accepted = sessionLifecycleReducer(
+    queued.state,
+    {
+      commandId: "prompt:settings:send-1",
+      commandType: "session/updateSettings",
+      correlationId: "session-1",
+      outcome: "succeeded",
+      type: "engine/commandResult",
+      value: {
+        agentSessionId: "session-1",
+        session: acceptedSession
+      }
+    },
+    {
+      queueSendNowRequiresCancel: false,
+      settingsResultValidation: {
+        kind: "valid",
+        session: acceptedSession
+      }
+    }
+  );
+  assert.deepEqual(accepted.commands, []);
+  assert.equal(
+    accepted.state.operationBySessionId["session-1"]?.settingsUpdate.status,
+    "waitingForPromptSend"
+  );
+
+  const resumed = reduce(accepted.state, {
+    agentSessionId: "session-1",
+    settingsCommandId: "prompt:settings:send-1",
+    type: "session/settingsQueueResumeRequested"
+  });
+  assert.deepEqual(resumed.commands, [
+    {
+      agentSessionId: "session-1",
+      commandId: "settings-after",
+      correlationId: "session-1",
+      settings: { model: "model-2" },
+      type: "session/updateSettings",
+      workspaceId: "workspace-1"
+    }
+  ]);
+});
+
+test("prompt settings preconditions wait behind an existing user settings write", () => {
+  let state = reduce(createInitialSessionLifecycleState(), {
+    type: "session/snapshotReceived",
+    sessions: [session(null, 1)]
+  }).state;
+  state = reduce(state, settingsUpdateRequested("settings-first")).state;
+  const queued = reduce(state, {
+    agentSessionId: "session-1",
+    commandId: "prompt:settings:send-1",
+    settings: { computerUse: true },
+    type: "session/settingsPreconditionRequested",
+    workspaceId: "workspace-1"
+  });
+  assert.deepEqual(queued.commands, []);
+
+  const acceptedSession = {
+    ...session(null, 2),
+    settings: { permissionModeId: "acceptEdits" }
+  };
+  const accepted = sessionLifecycleReducer(
+    queued.state,
+    {
+      commandId: "settings-first",
+      commandType: "session/updateSettings",
+      correlationId: "session-1",
+      outcome: "succeeded",
+      type: "engine/commandResult",
+      value: {
+        agentSessionId: "session-1",
+        session: acceptedSession
+      }
+    },
+    {
+      queueSendNowRequiresCancel: false,
+      settingsResultValidation: {
+        kind: "valid",
+        session: acceptedSession
+      }
+    }
+  );
+  assert.deepEqual(accepted.commands, [
+    {
+      agentSessionId: "session-1",
+      commandId: "prompt:settings:send-1",
+      correlationId: "session-1",
+      settings: { computerUse: true },
+      type: "session/updateSettings",
+      workspaceId: "workspace-1"
+    }
+  ]);
+});
+
+test("activation settings use the same serialized lane without coalescing owners", () => {
+  let state = reduce(createInitialSessionLifecycleState(), {
+    type: "session/snapshotReceived",
+    sessions: [session(null, 1)]
+  }).state;
+  state = reduce(state, settingsUpdateRequested("settings-first")).state;
+  state = reduce(state, {
+    agentSessionId: "session-1",
+    commandId: "activation-settings:activation-1",
+    settings: { model: "model-from-activation" },
+    type: "session/settingsActivationRequested",
+    workspaceId: "workspace-1"
+  }).state;
+  state = reduce(
+    state,
+    settingsUpdateRequested("settings-after", { speed: "fast" })
+  ).state;
+
+  const firstSession = {
+    ...session(null, 2),
+    settings: { permissionModeId: "acceptEdits" }
+  };
+  const firstSettled = sessionLifecycleReducer(
+    state,
+    {
+      commandId: "settings-first",
+      commandType: "session/updateSettings",
+      correlationId: "session-1",
+      outcome: "succeeded",
+      type: "engine/commandResult",
+      value: { agentSessionId: "session-1", session: firstSession }
+    },
+    {
+      queueSendNowRequiresCancel: false,
+      settingsResultValidation: { kind: "valid", session: firstSession }
+    }
+  );
+  assert.deepEqual(firstSettled.commands, [
+    {
+      agentSessionId: "session-1",
+      commandId: "activation-settings:activation-1",
+      correlationId: "session-1",
+      settings: { model: "model-from-activation" },
+      type: "session/updateSettings",
+      workspaceId: "workspace-1"
+    }
+  ]);
+
+  const activationSession = {
+    ...session(null, 3),
+    settings: { model: "model-from-activation" }
+  };
+  const activationSettled = sessionLifecycleReducer(
+    firstSettled.state,
+    {
+      commandId: "activation-settings:activation-1",
+      commandType: "session/updateSettings",
+      correlationId: "session-1",
+      outcome: "succeeded",
+      type: "engine/commandResult",
+      value: { agentSessionId: "session-1", session: activationSession }
+    },
+    {
+      queueSendNowRequiresCancel: false,
+      settingsResultValidation: { kind: "valid", session: activationSession }
+    }
+  );
+  assert.deepEqual(activationSettled.commands, [
+    {
+      agentSessionId: "session-1",
+      commandId: "settings-after",
+      correlationId: "session-1",
+      settings: { speed: "fast" },
+      type: "session/updateSettings",
+      workspaceId: "workspace-1"
+    }
+  ]);
+});
+
 test("blocked runtime availability rejects settings and interactive commands", () => {
   const source = session(activeTurn(2), 2);
   source.latestTurnInteractions = [interaction("pending", 3)];

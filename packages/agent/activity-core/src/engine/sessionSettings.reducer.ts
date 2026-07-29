@@ -2,15 +2,25 @@ import type { ScopedSessionResultValidation } from "./commandResult.validation.t
 import type {
   SessionLifecycleState,
   SessionOperationState,
+  SessionSettingsActivationRequestedIntent,
+  SessionSettingsPreconditionRequestedIntent,
+  SessionSettingsQueueResumeRequestedIntent,
+  SessionSettingsUpdateRequestedIntent,
   SessionSettingsUpdateState
 } from "./sessionLifecycle.types.ts";
 import type {
   EngineCommand,
-  EngineIntent,
+  EngineCommandResultIntent,
   EngineReducerResult
 } from "./types.ts";
 
 const NO_COMMANDS: readonly EngineCommand[] = [];
+
+type SettingsRequestIntent =
+  | SessionSettingsActivationRequestedIntent
+  | SessionSettingsPreconditionRequestedIntent
+  | SessionSettingsUpdateRequestedIntent;
+type SettingsRequest = SessionSettingsUpdateState["queuedRequests"][number];
 
 export function createInitialSettingsUpdate(): SessionSettingsUpdateState {
   return {
@@ -18,74 +28,104 @@ export function createInitialSettingsUpdate(): SessionSettingsUpdateState {
     errorCode: null,
     errorMessage: null,
     queuedCommandId: null,
+    queuedRequests: [],
     queuedSettings: null,
+    requestKind: null,
     settings: null,
-    status: "idle"
+    status: "idle",
+    timeoutMs: null
   };
 }
 
 export function requestSettingsUpdate(
   state: SessionLifecycleState,
-  intent: Extract<EngineIntent, { type: "session/settingsUpdateRequested" }>
+  intent: SettingsRequestIntent
 ): EngineReducerResult<SessionLifecycleState> {
   const id = intent.agentSessionId.trim();
   const commandId = intent.commandId.trim();
   const workspaceId = intent.workspaceId.trim();
   const operation = state.operationBySessionId[id];
+  const kind =
+    intent.type === "session/settingsPreconditionRequested"
+      ? "promptPrecondition"
+      : intent.type === "session/settingsActivationRequested"
+        ? "activation"
+        : "user";
   if (
     !id ||
     !commandId ||
     !workspaceId ||
     !operation ||
-    operation.runtimeAvailability.state === "blocked" ||
     state.sessionsById[id]?.workspaceId !== workspaceId ||
-    Object.keys(intent.settings).length === 0
-  )
+    Object.keys(intent.settings).length === 0 ||
+    (operation.runtimeAvailability.state === "blocked" && kind === "user")
+  ) {
     return unchanged(state);
-  if (operation.settingsUpdate.status === "inFlight") {
+  }
+  const request: SettingsRequest = {
+    commandId,
+    kind,
+    settings: { ...intent.settings },
+    ...(intent.timeoutMs !== undefined ? { timeoutMs: intent.timeoutMs } : {})
+  };
+  const update = operation.settingsUpdate;
+  if (
+    update.status === "inFlight" ||
+    update.status === "waitingForPromptSend" ||
+    update.status === "waitingForRuntime"
+  ) {
     return result(
-      setOperation(state, id, {
-        ...operation,
-        settingsUpdate: {
-          ...operation.settingsUpdate,
-          queuedCommandId: commandId,
-          queuedSettings: {
-            ...(operation.settingsUpdate.queuedSettings ?? {}),
-            ...intent.settings
-          }
-        }
-      })
+      replaceSettingsUpdate(
+        state,
+        id,
+        operation,
+        withQueuedRequests(
+          update,
+          enqueueSettingsRequest(update.queuedRequests, request)
+        )
+      )
     );
   }
-  if (operation.settingsUpdate.status === "unknown" && intent.retry !== true)
-    return unchanged(state);
-  const settings =
-    operation.settingsUpdate.status === "unknown"
-      ? {
-          ...(operation.settingsUpdate.settings ?? {}),
-          ...(operation.settingsUpdate.queuedSettings ?? {}),
-          ...intent.settings
+  if (update.status === "unknown") {
+    if (
+      intent.type === "session/settingsUpdateRequested" &&
+      intent.retry !== true
+    ) {
+      return unchanged(state);
+    }
+    const queued = enqueueSettingsRequest(update.queuedRequests, request);
+    const next = queued[0];
+    if (!next) return unchanged(state);
+    return startSettingsRequest(
+      state,
+      id,
+      operation,
+      {
+        ...next,
+        settings: {
+          ...(update.settings ?? {}),
+          ...next.settings
         }
-      : { ...intent.settings };
-  return {
-    commands: [
-      settingsCommand(id, workspaceId, commandId, settings, intent.timeoutMs)
-    ],
-    state: setOperation(state, id, {
-      ...operation,
-      settingsUpdate: {
-        ...createInitialSettingsUpdate(),
-        commandId,
-        settings,
-        status: "inFlight"
-      }
-    })
-  };
+      },
+      queued.slice(1)
+    );
+  }
+  if (update.status === "failed" && update.queuedRequests.length > 0) {
+    const queued = enqueueSettingsRequest(update.queuedRequests, request);
+    return startSettingsRequest(
+      state,
+      id,
+      operation,
+      queued[0]!,
+      queued.slice(1)
+    );
+  }
+  return startSettingsRequest(state, id, operation, request, []);
 }
 
 export function settleSettingsUpdate(
   state: SessionLifecycleState,
-  intent: Extract<EngineIntent, { type: "engine/commandResult" }>,
+  intent: EngineCommandResultIntent,
   validation: ScopedSessionResultValidation | null
 ): EngineReducerResult<SessionLifecycleState> {
   const entry = Object.entries(state.operationBySessionId).find(
@@ -96,67 +136,52 @@ export function settleSettingsUpdate(
   if (!entry) return unchanged(state);
   const [id, operation] = entry;
   const update = operation.settingsUpdate;
-  if (
-    intent.outcome === "succeeded" &&
-    validation?.kind === "valid" &&
-    update.queuedSettings &&
-    update.queuedCommandId
-  ) {
-    const settings = update.queuedSettings;
-    const commandId = update.queuedCommandId;
-    if (operation.runtimeAvailability.state === "blocked") {
+  if (intent.outcome === "succeeded" && validation?.kind === "valid") {
+    if (update.requestKind === "promptPrecondition") {
       return result(
-        setOperation(state, id, {
-          ...operation,
-          settingsUpdate: {
-            ...createInitialSettingsUpdate(),
-            queuedCommandId: commandId,
-            queuedSettings: settings,
-            status: "waitingForRuntime"
-          }
+        replaceSettingsUpdate(state, id, operation, {
+          ...update,
+          errorCode: null,
+          errorMessage: null,
+          status: "waitingForPromptSend"
         })
       );
     }
-    return {
-      commands: [
-        settingsCommand(
-          id,
-          state.sessionsById[id]?.workspaceId ?? "",
-          commandId,
-          settings
-        )
-      ],
-      state: setOperation(state, id, {
-        ...operation,
-        settingsUpdate: {
-          ...createInitialSettingsUpdate(),
-          commandId,
-          settings,
-          status: "inFlight"
-        }
-      })
-    };
+    return advanceSettingsQueue(state, id, operation);
   }
-  const status =
-    intent.outcome === "succeeded" && validation?.kind === "valid"
-      ? "idle"
-      : intent.outcome === "timedOut" || intent.outcome === "succeeded"
-        ? "unknown"
-        : "failed";
   return result(
-    setOperation(state, id, {
-      ...operation,
-      settingsUpdate: {
-        ...update,
-        errorCode:
-          intent.outcome === "succeeded" && validation?.kind === "invalid"
-            ? "invalid_command_result"
-            : (intent.errorCode ?? null),
-        errorMessage: intent.errorMessage?.trim() || null,
-        status
-      }
+    replaceSettingsUpdate(state, id, operation, {
+      ...update,
+      errorCode:
+        intent.outcome === "succeeded" && validation?.kind === "invalid"
+          ? "invalid_command_result"
+          : (intent.errorCode ?? null),
+      errorMessage: intent.errorMessage?.trim() || null,
+      status:
+        intent.outcome === "timedOut" || intent.outcome === "succeeded"
+          ? "unknown"
+          : "failed"
     })
   );
+}
+
+export function resumeSettingsQueueAfterPrompt(
+  state: SessionLifecycleState,
+  intent: SessionSettingsQueueResumeRequestedIntent
+): EngineReducerResult<SessionLifecycleState> {
+  const id = intent.agentSessionId.trim();
+  const operation = state.operationBySessionId[id];
+  const update = operation?.settingsUpdate;
+  if (
+    !operation ||
+    !update ||
+    update.requestKind !== "promptPrecondition" ||
+    update.commandId !== intent.settingsCommandId.trim() ||
+    (update.status !== "waitingForPromptSend" && update.status !== "failed")
+  ) {
+    return unchanged(state);
+  }
+  return advanceSettingsQueue(state, id, operation);
 }
 
 export function reconcileSettingsUpdates(
@@ -165,52 +190,21 @@ export function reconcileSettingsUpdates(
 ): EngineReducerResult<SessionLifecycleState> {
   const commands: EngineCommand[] = [];
   let state = next;
-  for (const [id, operation] of Object.entries(next.operationBySessionId)) {
-    const session = next.sessionsById[id];
+  for (const [id, initialOperation] of Object.entries(
+    next.operationBySessionId
+  )) {
+    const operation = state.operationBySessionId[id] ?? initialOperation;
+    const session = state.sessionsById[id];
     if (
       operation.settingsUpdate.status !== "unknown" ||
       !session ||
       !settingsMatch(session.settings, operation.settingsUpdate.settings)
-    )
+    ) {
       continue;
-    const queuedSettings = operation.settingsUpdate.queuedSettings;
-    const queuedCommandId = operation.settingsUpdate.queuedCommandId;
-    if (queuedSettings && queuedCommandId) {
-      if (operation.runtimeAvailability.state === "blocked") {
-        state = setOperation(state, id, {
-          ...operation,
-          settingsUpdate: {
-            ...createInitialSettingsUpdate(),
-            queuedCommandId,
-            queuedSettings,
-            status: "waitingForRuntime"
-          }
-        });
-        continue;
-      }
-      commands.push(
-        settingsCommand(
-          id,
-          session.workspaceId,
-          queuedCommandId,
-          queuedSettings
-        )
-      );
-      state = setOperation(state, id, {
-        ...operation,
-        settingsUpdate: {
-          ...createInitialSettingsUpdate(),
-          commandId: queuedCommandId,
-          settings: queuedSettings,
-          status: "inFlight"
-        }
-      });
-    } else {
-      state = setOperation(state, id, {
-        ...operation,
-        settingsUpdate: createInitialSettingsUpdate()
-      });
     }
+    const advanced = advanceSettingsQueue(state, id, operation);
+    state = advanced.state;
+    commands.push(...advanced.commands);
   }
   return state === previous && commands.length === 0
     ? unchanged(previous)
@@ -228,8 +222,8 @@ export function resumeSettingsUpdateWhenRuntimeAvailable(
     !operation ||
     operation.runtimeAvailability.state !== "available" ||
     update?.status !== "waitingForRuntime" ||
-    !update.queuedCommandId ||
-    !update.queuedSettings
+    !update.commandId ||
+    !update.settings
   ) {
     return unchanged(state);
   }
@@ -238,19 +232,98 @@ export function resumeSettingsUpdateWhenRuntimeAvailable(
       settingsCommand(
         id,
         state.sessionsById[id]?.workspaceId ?? "",
-        update.queuedCommandId,
-        update.queuedSettings
+        update.commandId,
+        update.settings,
+        update.timeoutMs ?? undefined
       )
     ],
-    state: setOperation(state, id, {
-      ...operation,
-      settingsUpdate: {
-        ...createInitialSettingsUpdate(),
-        commandId: update.queuedCommandId,
-        settings: update.queuedSettings,
-        status: "inFlight"
-      }
+    state: replaceSettingsUpdate(state, id, operation, {
+      ...update,
+      status: "inFlight"
     })
+  };
+}
+
+function advanceSettingsQueue(
+  state: SessionLifecycleState,
+  id: string,
+  operation: SessionOperationState
+): EngineReducerResult<SessionLifecycleState> {
+  const [next, ...queued] = operation.settingsUpdate.queuedRequests;
+  if (!next) {
+    return result(
+      replaceSettingsUpdate(state, id, operation, createInitialSettingsUpdate())
+    );
+  }
+  return startSettingsRequest(state, id, operation, next, queued);
+}
+
+function startSettingsRequest(
+  state: SessionLifecycleState,
+  id: string,
+  operation: SessionOperationState,
+  request: SettingsRequest,
+  queued: readonly SettingsRequest[]
+): EngineReducerResult<SessionLifecycleState> {
+  const waitingForRuntime = operation.runtimeAvailability.state === "blocked";
+  const update = withQueuedRequests(
+    {
+      ...createInitialSettingsUpdate(),
+      commandId: request.commandId,
+      requestKind: request.kind,
+      settings: { ...request.settings },
+      status: waitingForRuntime ? "waitingForRuntime" : "inFlight",
+      timeoutMs: request.timeoutMs ?? null
+    },
+    queued
+  );
+  const nextState = replaceSettingsUpdate(state, id, operation, update);
+  return waitingForRuntime
+    ? result(nextState)
+    : {
+        commands: [
+          settingsCommand(
+            id,
+            state.sessionsById[id]?.workspaceId ?? "",
+            request.commandId,
+            request.settings,
+            request.timeoutMs
+          )
+        ],
+        state: nextState
+      };
+}
+
+function enqueueSettingsRequest(
+  queued: readonly SettingsRequest[],
+  request: SettingsRequest
+): readonly SettingsRequest[] {
+  const last = queued.at(-1);
+  if (last?.kind === "user" && request.kind === "user") {
+    return [
+      ...queued.slice(0, -1),
+      {
+        ...request,
+        settings: { ...last.settings, ...request.settings }
+      }
+    ];
+  }
+  return [...queued, request];
+}
+
+function withQueuedRequests(
+  update: SessionSettingsUpdateState,
+  queuedRequests: readonly SettingsRequest[]
+): SessionSettingsUpdateState {
+  const queuedSettings =
+    queuedRequests.length === 0
+      ? null
+      : Object.assign({}, ...queuedRequests.map((request) => request.settings));
+  return {
+    ...update,
+    queuedCommandId: queuedRequests.at(-1)?.commandId ?? null,
+    queuedRequests,
+    queuedSettings
   };
 }
 
@@ -271,6 +344,7 @@ function settingsCommand(
     workspaceId
   };
 }
+
 function settingsMatch(
   canonical: Readonly<Record<string, unknown>> | null | undefined,
   patch: Readonly<Record<string, unknown>> | null
@@ -281,6 +355,16 @@ function settingsMatch(
     Object.entries(patch).every(([key, value]) => canonical[key] === value)
   );
 }
+
+function replaceSettingsUpdate(
+  state: SessionLifecycleState,
+  id: string,
+  operation: SessionOperationState,
+  settingsUpdate: SessionSettingsUpdateState
+): SessionLifecycleState {
+  return setOperation(state, id, { ...operation, settingsUpdate });
+}
+
 function setOperation(
   state: SessionLifecycleState,
   id: string,
@@ -291,11 +375,13 @@ function setOperation(
     operationBySessionId: { ...state.operationBySessionId, [id]: operation }
   };
 }
+
 function result(
   state: SessionLifecycleState
 ): EngineReducerResult<SessionLifecycleState> {
   return { commands: NO_COMMANDS, state };
 }
+
 function unchanged(
   state: SessionLifecycleState
 ): EngineReducerResult<SessionLifecycleState> {

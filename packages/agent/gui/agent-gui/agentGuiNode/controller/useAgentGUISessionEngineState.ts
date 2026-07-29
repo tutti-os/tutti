@@ -280,5 +280,6 @@ const SESSION_SETTINGS_STATUS_SHOWS_OPTIMISTIC_VALUE = {
   idle: false,
   inFlight: true,
   unknown: true,
+  waitingForPromptSend: true,
   waitingForRuntime: true
 } satisfies Record<SessionSettingsUpdateStatus, boolean>;
