@@ -520,7 +520,8 @@ function isSpecialAssistantMessage(message: {
     message.visibleError ||
     message.systemNotice ||
     message.contentKind === "plan" ||
-    message.contentKind === "collaboration"
+    message.contentKind === "collaboration" ||
+    message.contentKind === "tutti-plan-issue-link"
   );
 }
 

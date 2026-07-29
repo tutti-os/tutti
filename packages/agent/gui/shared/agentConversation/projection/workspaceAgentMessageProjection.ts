@@ -7,6 +7,7 @@ import { buildWorkspaceAgentActivityListViewModel } from "../../workspaceAgentAc
 import type { BuildWorkspaceAgentSessionDetailInput } from "../../workspaceAgentSessionDetailViewModel";
 import { buildCanonicalWorkspaceAgentDetailView } from "../../workspaceAgentTimelineCanonical";
 import { resolveWorkspaceAgentNoticeCommandSemantics } from "../../workspaceAgentSystemNoticeSemantics";
+import { isTuttiPlanIssueLinkMessageId } from "../tuttiModePlanIssueLinkMarker";
 import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentTimelineTypes";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
 import {
@@ -223,6 +224,33 @@ export function projectWorkspaceAgentMessagesToTimelineItems(
         actorType: "user",
         itemType: "message.user",
         role: "user",
+        content: messageText(message),
+        occurredAtUnixMs
+      });
+    }
+
+    // The durable plan→Issue reverse link (daemon ReportIssuePlanningLink) is
+    // a session-level annotation: kind "session_audit", assistant role,
+    // messageId "plan-issue:<issueID>". Keyed on that stable identity — never
+    // the prose — it projects as a normal assistant message so the
+    // workspace-issue mention renders through the standard chip pipeline
+    // instead of the notice/error fallback below. The daemon deliberately
+    // writes no TurnID, so the messageId doubles as a stable synthetic turn
+    // that keeps the row standalone.
+    if (
+      kind === "session_audit" &&
+      (role === "assistant" || role === "agent") &&
+      isTuttiPlanIssueLinkMessageId(message.messageId)
+    ) {
+      return messageTimelineItem({
+        message,
+        id,
+        seq,
+        eventId,
+        turnId: turnId ?? eventId,
+        actorType: "agent",
+        itemType: "message.assistant",
+        role: "assistant",
         content: messageText(message),
         occurredAtUnixMs
       });

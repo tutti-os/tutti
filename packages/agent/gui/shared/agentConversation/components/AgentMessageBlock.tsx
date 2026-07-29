@@ -30,6 +30,8 @@ import {
   recoverVisibleErrorFromMessage
 } from "./AgentVisibleErrorMessage";
 import { AgentThinkingDisclosure } from "./AgentThinkingDisclosure";
+import { AgentTuttiModeCheckpointWakeCard } from "./AgentTuttiModeCheckpointWakeCard";
+import { AgentTuttiPlanIssueLinkCard } from "./AgentTuttiPlanIssueLinkCard";
 import { RawTimelineJsonDisclosure } from "./RawTimelineJsonDisclosure";
 import { useElapsedSeconds } from "./useElapsedSeconds";
 import styles from "../../../agent-gui/agentGuiNode/AgentGUIConversation.styles";
@@ -213,6 +215,13 @@ export function AgentMessageBlock({
     const renderedContent =
       isUser && message.contentKind === "image-grid" ? (
         <AgentUserImageGrid message={message} />
+      ) : isUser &&
+        message.contentKind === "tutti-checkpoint-wake" &&
+        message.checkpointWake ? (
+        <AgentTuttiModeCheckpointWakeCard
+          checkpointWake={message.checkpointWake}
+          fullText={message.body}
+        />
       ) : isUser ? (
         <AgentRichTextReadonly
           value={message.body}
@@ -221,6 +230,15 @@ export function AgentMessageBlock({
           editorClassName="text-[inherit]"
           onLinkClick={handleLinkClick}
           availableSkills={availableSkills}
+          workspaceAppIcons={workspaceAppIcons}
+        />
+      ) : message.contentKind === "tutti-plan-issue-link" &&
+        message.planIssueLink ? (
+        <AgentTuttiPlanIssueLinkCard
+          planIssueLink={message.planIssueLink}
+          workspaceRoot={workspaceRoot}
+          basePath={basePath}
+          onLinkAction={onLinkAction}
           workspaceAppIcons={workspaceAppIcons}
         />
       ) : message.visibleError ? (

@@ -445,6 +445,112 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
     ).toContain("Provider notice\n\nNotice text");
   });
 
+  it("projects the plan Issue reverse link as a friendly assistant mention, not an error banner", () => {
+    const mention =
+      "[@修复登录问题](mention://workspace-issue/tutti-mode-plan-wf-1?topicId=topic-1&workspaceId=workspace-1)";
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session({
+        effectiveStatus: "completed",
+        turnPhase: "completed"
+      }),
+      messages: [
+        message({
+          messageId: "plan-issue:tutti-mode-plan-wf-1",
+          version: 1,
+          turnId: undefined,
+          role: "assistant",
+          kind: "session_audit",
+          status: "completed",
+          payload: { content: mention },
+          occurredAtUnixMs: 100
+        })
+      ]
+    });
+
+    const assistantRow = conversation.rows.find(
+      (row) => row.kind === "message" && row.speaker === "assistant"
+    );
+    const item =
+      assistantRow?.kind === "message" ? assistantRow.messages[0] : null;
+    expect(item?.contentKind).toBe("tutti-plan-issue-link");
+    expect(item?.planIssueLink).toEqual({
+      issueId: "tutti-mode-plan-wf-1",
+      title: "修复登录问题",
+      mentionMarkdown: mention
+    });
+    expect(item?.body).toBe(mention);
+    expect(item?.systemNotice ?? null).toBeNull();
+    expect(item?.visibleError ?? null).toBeNull();
+  });
+
+  it("degrades a malformed plan Issue link body to plain assistant markdown", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session({
+        effectiveStatus: "completed",
+        turnPhase: "completed"
+      }),
+      messages: [
+        message({
+          messageId: "plan-issue:tutti-mode-plan-wf-2",
+          version: 1,
+          turnId: undefined,
+          role: "assistant",
+          kind: "session_audit",
+          status: "completed",
+          payload: { content: "Issue created without a mention link" },
+          occurredAtUnixMs: 100
+        })
+      ]
+    });
+
+    const assistantRow = conversation.rows.find(
+      (row) => row.kind === "message" && row.speaker === "assistant"
+    );
+    const item =
+      assistantRow?.kind === "message" ? assistantRow.messages[0] : null;
+    expect(item?.body).toBe("Issue created without a mention link");
+    expect(item?.contentKind).toBeUndefined();
+    expect(item?.planIssueLink ?? null).toBeNull();
+    expect(item?.systemNotice ?? null).toBeNull();
+    expect(item?.visibleError ?? null).toBeNull();
+  });
+
+  it("keeps non plan-issue assistant session audits on the notice fallback", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session({
+        effectiveStatus: "completed",
+        turnPhase: "completed"
+      }),
+      messages: [
+        message({
+          messageId: "session-audit:other",
+          version: 1,
+          turnId: undefined,
+          role: "assistant",
+          kind: "session_audit",
+          status: "completed",
+          payload: { content: "Some other session annotation" },
+          occurredAtUnixMs: 100
+        })
+      ]
+    });
+
+    const assistantRow = conversation.rows.find(
+      (row) => row.kind === "message" && row.speaker === "assistant"
+    );
+    const item =
+      assistantRow?.kind === "message" ? assistantRow.messages[0] : null;
+    expect(item?.systemNotice).toEqual(
+      expect.objectContaining({
+        noticeKind: "session_audit",
+        severity: "info"
+      })
+    );
+  });
+
   it("keeps turnless session audits in chronological conversation order", () => {
     const conversation = projectWorkspaceAgentMessagesToConversationVM({
       activity: activity(),

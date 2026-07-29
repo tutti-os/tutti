@@ -18,6 +18,7 @@ import {
   projectAgentCollaborationVM
 } from "./agentCollaborationProjection";
 import { projectConversationUserRow } from "./agentConversationUserProjection";
+import { parseTuttiPlanIssueLink } from "../tuttiModePlanIssueLinkMarker";
 
 export type AgentTurnSequenceItemVM =
   | {
@@ -205,6 +206,14 @@ function projectMessage(
         projected.collaboration = collaboration;
       }
     }
+  }
+  // Message id carries the stable "plan-issue:<issueID>" identity (it is the
+  // daemon messageId via the timeline eventId). A malformed body parses to
+  // null and stays a plain assistant markdown message.
+  const planIssueLink = parseTuttiPlanIssueLink(message.id, message.body);
+  if (planIssueLink) {
+    projected.contentKind = "tutti-plan-issue-link";
+    projected.planIssueLink = planIssueLink;
   }
   return projected;
 }

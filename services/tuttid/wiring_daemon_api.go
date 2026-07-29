@@ -39,6 +39,7 @@ import (
 	managedmodelscli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/managedmodels"
 	referencescli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/references"
 	tuttigoalreviewcli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/tuttigoalreview"
+	tuttimodeactivationcli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/tuttimodeactivation"
 	tuttimodeplancli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/tuttimodeplan"
 	workbenchappscli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/workbenchapps"
 	collabrunservice "github.com/tutti-os/tutti/services/tuttid/service/collabrun"
@@ -722,11 +723,12 @@ func buildDaemonAPI(
 			workspaceService, tuttiModePlans, agentSessionService,
 			&issueService, &issueService, tuttiModeExecutions,
 			&issueService, tuttiModeExecutions, tuttiModeExecutions,
-		),
+		).WithTuttiModeActivations(tuttiModeActivations),
 		tuttigoalreviewcli.NewProvider(
 			tuttiModeExecutions,
 			agentSessionService,
 		),
+		tuttimodeactivationcli.NewProvider(tuttiModeActivations),
 	}
 	if browserService != nil {
 		cliProviders = append(cliProviders, browsercli.NewProvider(workspaceService, browserService))

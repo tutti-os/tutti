@@ -52,10 +52,30 @@ type Source string
 const (
 	SourceSlashCommand Source = "slash_command"
 	SourceBadgeRemove  Source = "badge_remove"
+	// SourceAgentCommand is an Agent self-service transition issued through the
+	// `tutti mode set` CLI capability. Unlike the human slash command and badge
+	// removal, it may originate either activation state.
+	SourceAgentCommand Source = "agent_command"
 )
 
 func IsSource(value Source) bool {
-	return value == SourceSlashCommand || value == SourceBadgeRemove
+	return value == SourceSlashCommand || value == SourceBadgeRemove || value == SourceAgentCommand
+}
+
+// IsStateSource reports whether the source may originate the given activation
+// state. Human sources remain single-direction (slash command activates, badge
+// removal deactivates), while the Agent command may drive both directions.
+func IsStateSource(state State, source Source) bool {
+	switch source {
+	case SourceAgentCommand:
+		return state == StateActive || state == StateInactive
+	case SourceSlashCommand:
+		return state == StateActive
+	case SourceBadgeRemove:
+		return state == StateInactive
+	default:
+		return false
+	}
 }
 
 type Revision struct {
@@ -145,11 +165,8 @@ func NormalizeRevision(value Revision) (Revision, error) {
 	if !IsState(value.State) || !IsSource(value.Source) {
 		return Revision{}, fmt.Errorf("%w: unsupported state or source", ErrInvalidActivation)
 	}
-	if value.State == StateActive && value.Source != SourceSlashCommand {
-		return Revision{}, fmt.Errorf("%w: active state must originate from slash command", ErrInvalidActivation)
-	}
-	if value.State == StateInactive && value.Source != SourceBadgeRemove {
-		return Revision{}, fmt.Errorf("%w: inactive state must originate from badge removal", ErrInvalidActivation)
+	if !IsStateSource(value.State, value.Source) {
+		return Revision{}, fmt.Errorf("%w: state and source do not describe a valid activation transition", ErrInvalidActivation)
 	}
 	if !IsPreference(value.Effect) || !IsPreference(value.Speed) {
 		return Revision{}, fmt.Errorf("%w: effect and speed must be between 0 and 100", ErrInvalidActivation)
@@ -175,11 +192,8 @@ func NormalizeTurnSnapshot(value TurnSnapshot) (TurnSnapshot, error) {
 	if !IsState(value.State) || !IsSource(value.Source) {
 		return TurnSnapshot{}, fmt.Errorf("%w: unsupported snapshot state or source", ErrInvalidActivation)
 	}
-	if value.State == StateActive && value.Source != SourceSlashCommand {
-		return TurnSnapshot{}, fmt.Errorf("%w: active snapshot must originate from slash command", ErrInvalidActivation)
-	}
-	if value.State == StateInactive && value.Source != SourceBadgeRemove {
-		return TurnSnapshot{}, fmt.Errorf("%w: inactive snapshot must originate from badge removal", ErrInvalidActivation)
+	if !IsStateSource(value.State, value.Source) {
+		return TurnSnapshot{}, fmt.Errorf("%w: snapshot state and source do not describe a valid activation transition", ErrInvalidActivation)
 	}
 	if !IsPreference(value.Effect) || !IsPreference(value.Speed) {
 		return TurnSnapshot{}, fmt.Errorf("%w: effect and speed must be between 0 and 100", ErrInvalidActivation)

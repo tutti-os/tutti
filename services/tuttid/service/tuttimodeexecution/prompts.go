@@ -1,10 +1,51 @@
 package tuttimodeexecution
 
 import (
+	"encoding/json"
 	"fmt"
 
 	executionbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeexecution"
 )
+
+// MainWakeMarkerPrefix and mainWakeMarkerSuffix delimit a machine-readable,
+// agent-inert sentinel line prepended to every checkpoint-wake prompt. The
+// source agent still receives the full prompt verbatim (a leading HTML comment
+// it tolerates); the desktop GUI keys a friendly, collapsed summary card off
+// this marker instead of rendering the wall of CLI-usage text. The payload
+// between the delimiters is the compact JSON object described by mainWakeMarker.
+const (
+	MainWakeMarkerPrefix = "<!-- TUTTI_MODE_CHECKPOINT_WAKE "
+	mainWakeMarkerSuffix = " -->"
+)
+
+// mainWakeMarker is the JSON payload embedded in the checkpoint-wake sentinel.
+// The field names are a stable wire contract shared with the GUI parser; do not
+// rename them without updating
+// packages/agent/gui/shared/agentConversation/tuttiModeCheckpointWakeMarker.ts.
+type mainWakeMarker struct {
+	Version       int    `json:"v"`
+	Kind          string `json:"kind"`
+	IssueID       string `json:"issueId"`
+	CheckpointID  string `json:"checkpointId"`
+	GraphRevision int64  `json:"graphRevision"`
+}
+
+// mainWakeMarkerLine renders the sentinel line for a wake. It never fails in
+// practice (the payload is plain scalars); an empty return degrades to the
+// legacy raw prompt so the agent contract is never weakened.
+func mainWakeMarkerLine(wake executionbiz.Wake) string {
+	payload, err := json.Marshal(mainWakeMarker{
+		Version:       1,
+		Kind:          string(wake.CheckpointKind),
+		IssueID:       wake.IssueID,
+		CheckpointID:  wake.CheckpointID,
+		GraphRevision: wake.CheckpointRevision,
+	})
+	if err != nil {
+		return ""
+	}
+	return MainWakeMarkerPrefix + string(payload) + mainWakeMarkerSuffix
+}
 
 func MainWakePrompt(wake executionbiz.Wake) string {
 	schedule := fmt.Sprintf(
@@ -49,6 +90,12 @@ If this Issue has been replaced or should not continue, stop it explicitly so no
 		wake.IssueID, wake.CheckpointID, wake.CheckpointKind,
 		wake.CheckpointRevision, wake.IssueID, schedule, mutate, mutate, stop,
 	)
+	// Prepend the agent-inert sentinel so the GUI can render a compact summary
+	// while the agent still sees the complete prompt below it. Every switch
+	// branch returns header + suffix, so marking header marks every variant.
+	if marker := mainWakeMarkerLine(wake); marker != "" {
+		header = marker + "\n\n" + header
+	}
 	switch wake.CheckpointKind {
 	case executionbiz.CheckpointKindTaskFailed,
 		executionbiz.CheckpointKindTaskCanceled:
