@@ -100,6 +100,9 @@ func (h *Host) forkSessionSerialized(
 		return ForkSessionResult{}, err
 	}
 	if !supported {
+		if rejectionErr := boundary.RejectionError(); rejectionErr != nil {
+			return ForkSessionResult{}, rejectionErr
+		}
 		return ForkSessionResult{}, storesqlite.ErrSessionForkTurnState
 	}
 	runtimeSource, err := h.sessionForkRuntimeSource(ctx, boundary.Session)
@@ -383,9 +386,13 @@ func (h *Host) processSessionForkOperationWithSource(
 		)
 	}
 	if !supported {
+		cause := storesqlite.ErrSessionForkTurnState
+		if rejectionErr := boundary.RejectionError(); rejectionErr != nil {
+			cause = rejectionErr
+		}
 		return failBeforeDispatch(
 			"canonical through-turn boundary is no longer forkable",
-			storesqlite.ErrSessionForkTurnState,
+			cause,
 		)
 	}
 	var source ProviderRuntimeSession

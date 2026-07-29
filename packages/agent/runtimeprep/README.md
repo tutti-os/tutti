@@ -34,6 +34,18 @@ prepared, err := preparer.Prepare(ctx, runtimeprep.PrepareInput{
 process environment. `Cleanup` removes only paths recorded in the session
 manifest or the session-scoped runtime root.
 
+Agent Extension hosts may pass a signed, validated
+`PrepareInput.ExtensionRuntimePrep` overlay for ACP providers that need
+provider-owned state projected into the session. The overlay is declarative and
+provider-neutral: it may write the instructions file, create a per-session home,
+copy declared opaque files from a user-home source, expose that home through one
+validated environment variable, materialize Tutti-managed skills into declared
+extension skill roots, and merge those roots into supported YAML config keys.
+Runtimeprep must not add provider-ID branches for third-party extensions. YAML
+config projection must use the shared parser-backed merge helpers and fail
+closed on invalid or incompatible config instead of maintaining provider-specific
+line parsers.
+
 Codex preparation keeps session state isolated under the run-scoped
 `CODEX_HOME`, while linking its writable `models_cache.json` to the provider
 user's process-default `~/.codex/models_cache.json`. The link may initially be

@@ -1761,17 +1761,21 @@ invalid_grant`. Search `tuttid.log` for
   [turn_lifecycle_stamp.go](../../../packages/agent/daemon/runtime/turn_lifecycle_stamp.go)
   [reporter_state.go](../../../packages/agent/daemon/runtime/reporter_state.go)
 
-### Extension slash palette is empty even though ACP advertised commands
+### Extension slash palette is empty or ignores its command filter
 
 - Symptom:
   Typing `/` in an extension conversation opens no command or Skill list, while
-  the ACP process otherwise starts successfully.
+  the ACP process otherwise starts successfully. A related failure shows every
+  provider-advertised command instead of the signed profile's smaller catalog.
 - Quick checks:
   Inspect the persisted session `internal_runtime_context_json`. If `commands`
   contains provider command names, the ACP command update was received and the
-  remaining fault is command hydration. Separately inspect the installed
-  `profiles/composer.json`; Skills remain empty unless it declares validated
-  roots and the matching capabilities profile advertises Skill support.
+  remaining fault is command hydration or filtering. Confirm the composer
+  request uses the active Session's exact `agentTargetId`, then compare the
+  response `commands` and `slashCommandPolicy` with the installed
+  `profiles/composer.json`. Skills remain empty unless the profile declares
+  validated roots and the matching capabilities profile advertises Skill
+  support.
 - Root cause:
   Runtime command updates were available only through a transient renderer
   event. A renderer that subscribed after the startup update, or reloaded an
@@ -1782,16 +1786,24 @@ invalid_grant`. Search `tuttid.log` for
   hydration succeeded.
   Open extension providers also have no built-in composer profile, so the
   built-in provider Skill discovery table correctly returned no roots.
+  Active-session composer reads could also fall back to node-level provider
+  metadata and miss the extension Target. Conversely, an authoritative signed
+  catalog that repeated every ACP command correctly preserved every command;
+  that was a package declaration error, not a renderer filtering failure.
 - Fix:
   Persist the detailed ACP command catalog in session runtime context and let
   composer options restore it when no live engine snapshot is present. Treat
   provider-advertised commands as runtime capabilities even without a built-in
-  policy, and keep their selection provider-native. Declare extension Skill
-  roots, invocation, and trigger prefix in the signed composer profile; resolve
-  only safe relative workspace/user paths.
+  policy, and keep their selection provider-native. Scope active-session
+  composer reads and cache lookup by the Session's exact `agentTargetId`.
+  Declare only the intended product command subset in an authoritative signed
+  catalog; do not add a provider-name filter in AgentGUI. Declare extension
+  Skill roots, invocation, and trigger prefix in the signed composer profile;
+  resolve only safe relative workspace/user paths.
 - Validation:
   Cover startup command projection, legacy command-name recovery, composer
-  option parsing, declared extension Skill roots, and unsafe path rejection.
+  option parsing, active-session Target selection, authoritative command
+  narrowing, declared extension Skill roots, and unsafe path rejection.
 - References:
   [standard_acp_settings.go](../../../packages/agent/daemon/runtime/standard_acp_settings.go)
   [composer_commands.go](../../../services/tuttid/service/agent/composer_commands.go)

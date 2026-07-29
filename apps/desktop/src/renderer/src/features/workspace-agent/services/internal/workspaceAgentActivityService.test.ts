@@ -175,10 +175,11 @@ test("WorkspaceAgentActivityService.sendInput preserves the authoritative ready 
 });
 
 test("WorkspaceAgentActivityService.cancelTurn delegates the exact turn", async () => {
-  const calls: string[][] = [];
+  const calls: unknown[][] = [];
+  const controller = new AbortController();
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
-      cancelWorkspaceAgentTurn: async (...args: string[]) => {
+      cancelWorkspaceAgentTurn: async (...args: unknown[]) => {
         calls.push(args);
         return { cancel: { canceled: true, reason: "turn_canceled" } };
       }
@@ -188,11 +189,14 @@ test("WorkspaceAgentActivityService.cancelTurn delegates the exact turn", async 
 
   const result = await service.cancelTurn({
     agentSessionId: "session-1",
+    signal: controller.signal,
     turnId: "turn-1",
     workspaceId: " ws-1 "
   });
 
-  assert.deepEqual(calls, [["ws-1", "session-1", "turn-1"]]);
+  assert.deepEqual(calls, [
+    ["ws-1", "session-1", "turn-1", { signal: controller.signal }]
+  ]);
   assert.deepEqual(result, {
     cancel: { canceled: true, reason: "turn_canceled" }
   });
@@ -735,6 +739,8 @@ test("WorkspaceAgentActivityService reads existing session settings from the dae
 });
 
 test("WorkspaceAgentActivityService does not reinterpret a failed Turn as activation failure", async () => {
+  const controller = new AbortController();
+  let existingActivationSignal: AbortSignal | undefined;
   const failedSession = workspaceAgentSession({
     latestTurn: {
       ...workspaceAgentTurn({ outcome: "failed", phase: "settled" }),
@@ -747,12 +753,15 @@ test("WorkspaceAgentActivityService does not reinterpret a failed Turn as activa
       createWorkspaceAgentSession: async () => failedSession,
       getWorkspaceAgentSession: async (
         ...args: Parameters<TuttidClient["getWorkspaceAgentSession"]>
-      ) => ({
-        ...sessionDetailProjection(args[2]),
-        childSessions: [],
-        session: failedSession,
-        turns: []
-      })
+      ) => {
+        existingActivationSignal = args[3]?.signal ?? undefined;
+        return {
+          ...sessionDetailProjection(args[2]),
+          childSessions: [],
+          session: failedSession,
+          turns: []
+        };
+      }
     } as unknown as TuttidClient,
     runtimeApi: { logTerminalDiagnostic: async () => {} }
   });
@@ -769,6 +778,7 @@ test("WorkspaceAgentActivityService does not reinterpret a failed Turn as activa
   const reopened = await service.activateSession({
     agentSessionId: "session-1",
     mode: "existing",
+    signal: controller.signal,
     visible: true,
     workspaceId: "ws-1"
   });
@@ -780,9 +790,12 @@ test("WorkspaceAgentActivityService does not reinterpret a failed Turn as activa
     status: "already_attached"
   });
   assert.equal(reopened.error, undefined);
+  assert.equal(existingActivationSignal, controller.signal);
 });
 
 test("WorkspaceAgentActivityService returns the authoritative canonical session after settings update", async () => {
+  const controller = new AbortController();
+  let requestSignal: AbortSignal | undefined;
   const updatedSession = workspaceAgentSession({
     provider: "claude-code",
     settings: { model: "opus", planMode: true },
@@ -790,18 +803,25 @@ test("WorkspaceAgentActivityService returns the authoritative canonical session 
   });
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
-      updateWorkspaceAgentSessionSettings: async () => updatedSession
+      updateWorkspaceAgentSessionSettings: async (
+        ...args: Parameters<TuttidClient["updateWorkspaceAgentSessionSettings"]>
+      ) => {
+        requestSignal = args[3]?.signal ?? undefined;
+        return updatedSession;
+      }
     } as unknown as TuttidClient,
     runtimeApi: { logTerminalDiagnostic: async () => {} }
   });
 
   const result = await service.updateSessionSettings({
     agentSessionId: "session-1",
+    signal: controller.signal,
     settings: { model: "opus", planMode: true },
     workspaceId: "ws-1"
   });
 
   assert.equal(result.agentSessionId, "session-1");
+  assert.equal(requestSignal, controller.signal);
   assert.deepEqual(result.settings, {
     model: "opus",
     permissionModeId: null,

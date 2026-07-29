@@ -168,8 +168,8 @@ export class WorkspaceAgentActivityService
       tuttidClient: dependencies.tuttidClient
     });
     this.mutationOperations = new WorkspaceAgentActivityMutationOperations({
-      getSession: (workspaceId, agentSessionId) =>
-        this.getSession(workspaceId, agentSessionId),
+      getSession: (workspaceId, agentSessionId, signal) =>
+        this.getSession(workspaceId, agentSessionId, signal),
       hostFilesApi: dependencies.hostFilesApi,
       load: (workspaceId, signal) => this.load(workspaceId, signal),
       markSessionDeleted: (input) => this.markSessionDeleted(input),
@@ -582,7 +582,11 @@ export class WorkspaceAgentActivityService
     }
     let session: AgentActivitySession;
     if (input.mode === "existing") {
-      session = await this.getSession(workspaceId, requestedAgentSessionId);
+      session = await this.getSession(
+        workspaceId,
+        requestedAgentSessionId,
+        input.signal
+      );
     } else {
       reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
         agentSessionId: requestedAgentSessionId,
@@ -713,6 +717,7 @@ export class WorkspaceAgentActivityService
 
   async cancelTurn(input: {
     agentSessionId: string;
+    signal?: AbortSignal;
     turnId: string;
     workspaceId: string;
   }): Promise<
@@ -898,12 +903,15 @@ export class WorkspaceAgentActivityService
 
   async getSession(
     workspaceId: string,
-    agentSessionId: string
+    agentSessionId: string,
+    signal?: AbortSignal
   ): Promise<AgentActivitySession> {
     const detail = await this.fetchActivitySessionDetail(
       workspaceId,
       agentSessionId,
-      "get_session"
+      "get_session",
+      "full",
+      signal
     );
     this.upsertAuthoritativeSessionDetail(detail, "get_session_result");
     return detail.session;
@@ -936,6 +944,7 @@ export class WorkspaceAgentActivityService
 
   async updateSessionSettings(input: {
     agentSessionId: string;
+    signal?: AbortSignal;
     settings: Parameters<typeof normalizeComposerSettings>[0];
     workspaceId: string;
   }): ReturnType<IWorkspaceAgentActivityService["updateSessionSettings"]> {

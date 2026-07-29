@@ -178,6 +178,10 @@ dispatch; an existing live observation bypasses preparation. Consumers hide
 settled Turn actions when that capability is absent.
 Boundary validity remains a separate transactional proof, so an unavailable
 latest Turn does not suppress an earlier valid boundary.
+Every fail-closed boundary rejection retains a stable, content-free reason
+through Host. HTTP adapters may project it as structured diagnostic metadata
+while preserving their existing coarse conflict reason; transcript payloads
+and attachment contents never enter that reason.
 
 Fork uses a durable `prepared -> dispatching -> provider_accepted -> committed`
 saga. `RequestID` is the replay key. A source fence serializes the snapshot

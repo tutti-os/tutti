@@ -1,7 +1,6 @@
 import {
   AGENT_SESSION_ENGINE_LOCAL_ORIGIN,
   createAgentSessionEngine,
-  executeAgentActivityPromptCommand,
   type AgentActivityAdapter,
   type AgentActivitySendInput,
   type AgentSessionEngine,
@@ -9,7 +8,6 @@ import {
   type EngineIntent,
   type PlanSubmitDecisionResult,
   type SessionAcknowledgeForkObservedCommand,
-  type SessionActivateCommand,
   type SessionReconcileCommand,
   type TuttiModeActivationUpdateCommand
 } from "@tutti-os/agent-activity-core";
@@ -39,6 +37,7 @@ interface CreateWorkspaceAgentSessionEngineHostInput {
   activateSession: AgentActivityRuntime["activateSession"];
   cancelTurn(input: {
     agentSessionId: string;
+    signal?: AbortSignal;
     turnId: string;
     workspaceId: string;
   }): Promise<unknown>;
@@ -133,11 +132,43 @@ export function createWorkspaceAgentSessionEngineHost(
   const engine = createAgentSessionEngine({
     clock: { nowUnixMs: () => Date.now() },
     commandPort: {
+      kind: "typed",
+      effects: {
+        activateSession: (effectInput, options) =>
+          input.activateSession({
+            ...effectInput,
+            ...(effectInput.settings
+              ? {
+                  settings:
+                    effectInput.settings as AgentHostAgentSessionComposerSettings
+                }
+              : {}),
+            signal: options?.signal
+          }),
+        cancelTurn: (effectInput, options) =>
+          input.cancelTurn({ ...effectInput, signal: options?.signal }),
+        respondToInteraction: (effectInput, options) =>
+          input.submitInteractive({
+            ...effectInput,
+            signal: options?.signal
+          }),
+        sendInput: (effectInput, options) =>
+          input.sendInput({
+            ...effectInput,
+            signal: options?.signal
+          }),
+        updateSessionSettings: (
+          { agentSessionId, settings, workspaceId },
+          options
+        ) =>
+          input.updateSessionSettings({
+            agentSessionId,
+            signal: options?.signal,
+            settings: settings as AgentHostAgentSessionComposerSettings,
+            workspaceId
+          })
+      },
       executePlanDecision: (command) => {
-        observeWorkspaceAgentEngineCommand(
-          input.activityEventObserver,
-          command
-        );
         return input.submitPlanDecision({
           action: command.action,
           agentSessionId: command.agentSessionId,
@@ -148,11 +179,7 @@ export function createWorkspaceAgentSessionEngineHost(
           workspaceId: command.workspaceId
         });
       },
-      execute: async (command, options) => {
-        observeWorkspaceAgentEngineCommand(
-          input.activityEventObserver,
-          command
-        );
+      execute: async (command, options): Promise<unknown> => {
         switch (command.type) {
           case "attention/readState/read":
             return readDesktopWorkspaceAgentReadState({
@@ -185,41 +212,6 @@ export function createWorkspaceAgentSessionEngineHost(
                 ? { settings: command.settings }
                 : {}),
               signal: options?.signal,
-              workspaceId: command.workspaceId
-            });
-          case "turn/cancel":
-            return input.cancelTurn({
-              agentSessionId: command.agentSessionId,
-              turnId: command.turnId,
-              workspaceId: command.workspaceId
-            });
-          case "queue/sendPrompt":
-            return executeAgentActivityPromptCommand(
-              {
-                sendInput: input.sendInput,
-                updateSessionSettings: input.updateSessionSettings
-              },
-              command
-            );
-          case "interaction/respond":
-            return input.submitInteractive({
-              ...(command.action ? { action: command.action } : {}),
-              agentSessionId: command.agentSessionId,
-              ...(command.optionId ? { optionId: command.optionId } : {}),
-              ...(command.payload ? { payload: { ...command.payload } } : {}),
-              requestId: command.requestId,
-              turnId: command.turnId,
-              workspaceId: command.workspaceId
-            });
-          case "session/activate":
-            return input.activateSession({
-              ...activationInput(command),
-              signal: options?.signal
-            });
-          case "session/updateSettings":
-            return input.updateSessionSettings({
-              agentSessionId: command.agentSessionId,
-              settings: command.settings,
               workspaceId: command.workspaceId
             });
           case "session/setPinned": {
@@ -282,7 +274,9 @@ export function createWorkspaceAgentSessionEngineHost(
               workspaceId: command.workspaceId
             });
         }
-      }
+      },
+      observe: (command) =>
+        observeWorkspaceAgentEngineCommand(input.activityEventObserver, command)
     },
     identity: {
       origin: AGENT_SESSION_ENGINE_LOCAL_ORIGIN,
@@ -344,55 +338,4 @@ function observeWorkspaceAgentEngineCommand(
     // Recording is optional developer instrumentation. It must not block the
     // command that owns the actual product behavior.
   }
-}
-
-function activationInput(
-  command: SessionActivateCommand
-): Parameters<AgentActivityRuntime["activateSession"]>[0] {
-  const shared = {
-    agentSessionId: command.agentSessionId,
-    ...(command.capabilityRefs?.length
-      ? { capabilityRefs: command.capabilityRefs }
-      : {}),
-    ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-    ...(command.initialContent
-      ? { initialContent: [...command.initialContent] }
-      : {}),
-    ...(command.initialDisplayPrompt !== undefined
-      ? { initialDisplayPrompt: command.initialDisplayPrompt }
-      : {}),
-    ...(command.initialTuttiModeActivation
-      ? {
-          initialTuttiModeActivation: {
-            ...command.initialTuttiModeActivation
-          }
-        }
-      : {}),
-    ...(command.railPlacement
-      ? { railPlacement: { ...command.railPlacement } }
-      : {}),
-    ...(command.submitDiagnostics
-      ? { submitDiagnostics: { ...command.submitDiagnostics } }
-      : {}),
-    ...(command.settings
-      ? {
-          settings: command.settings as AgentHostAgentSessionComposerSettings
-        }
-      : {}),
-    ...(command.title !== undefined ? { title: command.title } : {}),
-    ...(command.visible !== undefined ? { visible: command.visible } : {}),
-    workspaceId: command.workspaceId
-  };
-  return command.mode === "new"
-    ? {
-        ...shared,
-        agentTargetId: command.agentTargetId ?? "",
-        clientSubmitId: command.clientSubmitId,
-        mode: "new"
-      }
-    : {
-        ...shared,
-        agentTargetId: command.agentTargetId,
-        mode: "existing"
-      };
 }

@@ -84,6 +84,31 @@ describe("composer target presentation", () => {
     ).toBeNull();
   });
 
+  it("uses the active session agent target when node data lacks the target id", () => {
+    const staleNodeData: AgentGUINodeData = {
+      provider: "acp:hermes",
+      lastActiveAgentSessionId: "session-1"
+    };
+
+    expect(
+      composerTargetDataForConversation({
+        activeAgentTargetId: "extension:hermes",
+        activeConversationId: "session-1",
+        data: staleNodeData,
+        optimisticTarget: null,
+        selectedTarget
+      })
+    ).toMatchObject({
+      agentTargetId: "extension:hermes",
+      provider: "acp:hermes",
+      targetId: "extension:hermes",
+      data: {
+        agentTargetId: "extension:hermes",
+        provider: "acp:hermes"
+      }
+    });
+  });
+
   it("treats live model discovery as foreground loading only without usable cached options", () => {
     expect(
       isForegroundModelOptionsLoading({

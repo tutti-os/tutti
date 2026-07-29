@@ -4336,7 +4336,7 @@ paths:
         "405":
           $ref: "#/components/responses/MethodNotAllowedError"
         "409":
-          description: The source session or requested fork boundary is not forkable
+          description: The source session or requested fork boundary is not forkable. Boundary validation failures keep reason `agent_session_fork_conflict` and include the stable rejection code in `error.params.forkBoundaryReason`.
           content:
             application/json:
               schema:

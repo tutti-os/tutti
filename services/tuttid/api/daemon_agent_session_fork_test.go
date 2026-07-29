@@ -3,11 +3,15 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
+	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
@@ -145,6 +149,62 @@ func TestForkWorkspaceAgentSessionUnsupportedIsConflict(t *testing.T) {
 	)
 	if recorder.Code != http.StatusConflict {
 		t.Fatalf("status = %d, want 409; body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestForkWorkspaceAgentSessionReportsBoundaryRejectionReason(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			forkFn: func(
+				context.Context,
+				string,
+				string,
+				agentservice.ForkSessionInput,
+			) (agentservice.SessionForkOperation, error) {
+				boundaryErr := &storesqlite.SessionForkBoundaryError{
+					Reason: storesqlite.SessionForkBoundaryReasonTurnSequenceUnverified,
+				}
+				return agentservice.SessionForkOperation{}, fmt.Errorf(
+					"%w: %w",
+					agentservice.ErrSessionForkConflict,
+					boundaryErr,
+				)
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPost,
+		"/v1/workspaces/workspace-1/agent-sessions/source-1/fork",
+		map[string]any{
+			"targetAgentSessionId": "f0f21d94-af7c-4bdd-8f24-bffd169474bc",
+			"requestId":            "request-1",
+			"point": map[string]any{
+				"type": "throughTurn", "turnId": "turn-7",
+			},
+		},
+	)
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409; body=%s", recorder.Code, recorder.Body.String())
+	}
+	var body tuttigenerated.ApiErrorResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Error.Reason == nil || *body.Error.Reason != "agent_session_fork_conflict" {
+		t.Fatalf("reason=%v", body.Error.Reason)
+	}
+	if body.Error.Params == nil ||
+		(*body.Error.Params)["forkBoundaryReason"] !=
+			string(storesqlite.SessionForkBoundaryReasonTurnSequenceUnverified) {
+		t.Fatalf("params=%v", body.Error.Params)
+	}
+	if body.Error.DeveloperMessage == nil ||
+		!strings.Contains(*body.Error.DeveloperMessage, storesqlite.ErrSessionForkTurnState.Error()) {
+		t.Fatalf("developerMessage=%v", body.Error.DeveloperMessage)
 	}
 }
 

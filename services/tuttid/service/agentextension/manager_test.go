@@ -601,6 +601,43 @@ func TestValidateComposerProfileAcceptsDeclarativeSkillRoots(t *testing.T) {
 	}
 }
 
+func TestValidateComposerProfileAcceptsDeclarativeRuntimePrep(t *testing.T) {
+	var profile ComposerProfile
+	if err := json.Unmarshal([]byte(`{
+		"schemaVersion":"tutti.agent.composer.v1",
+		"runtimePrep":{
+			"instructionsFile":"AGENTS.md",
+			"home":{
+				"envVar":"HERMES_HOME",
+				"dirName":"hermes",
+				"sourceEnvVar":"HERMES_HOME",
+				"sourceDefaultRel":".hermes",
+				"copyFiles":["config.yaml","auth.json",".env"],
+				"configFile":"config.yaml",
+				"configFormat":"yaml",
+				"externalDirsKey":["skills","external_dirs"],
+				"userHomeSkillDir":"skills",
+				"includeSkillRoots":true,
+				"includeUserHomeDir":true
+			}
+		}
+	}`), &profile); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateComposerProfile(profile); err != nil {
+		t.Fatalf("validateComposerProfile() error = %v", err)
+	}
+	profile.RuntimePrep.Home.EnvVar = "Hermes Home"
+	if err := validateComposerProfile(profile); err == nil {
+		t.Fatal("validateComposerProfile() error = nil, want unsafe env rejection")
+	}
+	profile.RuntimePrep.Home.EnvVar = "HERMES_HOME"
+	profile.RuntimePrep.Home.CopyFiles[0] = "../config.yaml"
+	if err := validateComposerProfile(profile); err == nil {
+		t.Fatal("validateComposerProfile() error = nil, want unsafe copy file rejection")
+	}
+}
+
 func TestComposerAutomaticPermissionDecisionsAreRestrictedBySemantic(t *testing.T) {
 	var profile ComposerProfile
 	if err := json.Unmarshal([]byte(`{

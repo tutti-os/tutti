@@ -40,6 +40,7 @@ export function useAgentGUIComposerCapabilities(
     new Map<string, AgentActivityUsage>()
   );
   const composerTargetData = composerTargetDataForConversation({
+    activeAgentTargetId: input.activeEngineSession?.agentTargetId,
     activeConversationId: input.activeConversationId,
     data: input.data,
     optimisticTarget: null,
@@ -98,10 +99,16 @@ export function useAgentGUIComposerCapabilities(
       providerComposerOptions,
       sessionCapabilities
     );
+    const targetSupport = composerSettingsSupportFromOptions(
+      providerComposerOptions,
+      null
+    );
     return {
       ...fallback,
-      browser: sessionCapabilities?.browserUse ?? fallback.browser,
-      computer: sessionCapabilities?.computerUse ?? fallback.computer,
+      browser:
+        sessionCapabilities?.browserUse === true || targetSupport.browser,
+      computer:
+        sessionCapabilities?.computerUse === true || targetSupport.computer,
       permissionModeChangeDeferred:
         sessionCapabilities?.permissionModeChangeDeferred ??
         fallback.permissionModeChangeDeferred,

@@ -209,6 +209,14 @@ func installProviderNativeSkills(root string, input PrepareInput) ([]string, err
 	return installProviderNativeSkillSpecs(root, skills)
 }
 
+func installProviderNativeSkillsStable(root string, input PrepareInput) ([]string, error) {
+	skills, err := providerSkills(input)
+	if err != nil {
+		return nil, err
+	}
+	return installProviderNativeSkillSpecsStable(root, skills)
+}
+
 func renderProviderSkillBundle(input PrepareInput) (SkillBundle, error) {
 	skills, err := providerSkills(input)
 	if err != nil {
@@ -300,6 +308,65 @@ func installProviderNativeSkillSpecs(root string, skills []providerSkillSpec) ([
 	return skillPaths, nil
 }
 
+func installProviderNativeSkillSpecsStable(root string, skills []providerSkillSpec) ([]string, error) {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return nil, fmt.Errorf("provider skill root is required")
+	}
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return nil, fmt.Errorf("create provider skill root: %w", err)
+	}
+	skillPaths := make([]string, 0, len(skills))
+	for _, spec := range skills {
+		skillName, err := stableManagedSkillName(root, spec.baseName)
+		if err != nil {
+			return nil, err
+		}
+		skillPath := filepath.Join(root, skillName)
+		if err := os.RemoveAll(skillPath); err != nil {
+			return nil, fmt.Errorf("replace tutti provider skill: %w", err)
+		}
+		if err := installProviderSkillFiles(skillPath, spec); err != nil {
+			return nil, err
+		}
+		skillPaths = append(skillPaths, skillPath)
+	}
+	return skillPaths, nil
+}
+
+func stableManagedSkillName(root string, baseName string) (string, error) {
+	baseName = strings.TrimSpace(baseName)
+	if baseName == "" {
+		return "", fmt.Errorf("provider skill name is required")
+	}
+	candidates := []string{baseName, baseName + "-tutti"}
+	for index := 2; index <= 99; index++ {
+		candidates = append(candidates, fmt.Sprintf("%s-tutti-%d", baseName, index))
+	}
+	for _, candidate := range candidates {
+		path := filepath.Join(root, candidate)
+		info, err := os.Stat(path)
+		if err == nil {
+			if info.IsDir() && providerSkillDirectoryLooksManaged(path) {
+				return candidate, nil
+			}
+			continue
+		}
+		if !os.IsNotExist(err) {
+			return "", fmt.Errorf("inspect provider skill directory: %w", err)
+		}
+		return candidate, nil
+	}
+	return "", fmt.Errorf("allocate stable provider skill directory: exhausted names for %s", baseName)
+}
+
+func providerSkillDirectoryLooksManaged(path string) bool {
+	if _, err := os.Stat(filepath.Join(path, ".tutti-managed-skill")); err == nil {
+		return true
+	}
+	return false
+}
+
 func copySkillBundleFiles(files map[string]string) map[string]string {
 	if len(files) == 0 {
 		return nil
@@ -330,6 +397,9 @@ func installProviderSkillFiles(skillPath string, spec providerSkillSpec) error {
 		if err := os.WriteFile(targetPath, []byte(content), 0o644); err != nil {
 			return fmt.Errorf("write tutti provider skill: %w", err)
 		}
+	}
+	if err := os.WriteFile(filepath.Join(skillPath, ".tutti-managed-skill"), []byte(spec.skillID+"\n"), 0o644); err != nil {
+		return fmt.Errorf("write tutti provider skill marker: %w", err)
 	}
 	return nil
 }

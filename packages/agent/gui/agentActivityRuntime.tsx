@@ -138,6 +138,7 @@ export interface AgentActivityRuntimeGetComposerOptionsInput {
 
 export interface AgentActivityRuntimeUpdateSessionSettingsInput {
   agentSessionId: string;
+  signal?: AbortSignal;
   settings: AgentHostAgentSessionComposerSettings;
   workspaceId: string;
 }

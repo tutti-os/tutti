@@ -17,7 +17,8 @@ import {
   type EngineDispatchOptions,
   type EngineIntent,
   type EngineScheduledTask,
-  type EngineScheduler
+  type EngineScheduler,
+  type EngineTypedCommandPort
 } from "./types.ts";
 
 // Session engine factory (docs/architecture/agent-gui-refactor-plan.md,
@@ -38,7 +39,7 @@ export const ENGINE_INTENT_BATCH_DELAY_MS = 33;
 export interface CreateAgentSessionEngineInput {
   batchDelayMs?: number;
   clock: EngineClock;
-  commandPort: EngineCommandPort;
+  commandPort: EngineCommandPort | EngineTypedCommandPort;
   diagnosticSink?: EngineDiagnosticSink;
   identity: AgentSessionEngineIdentity;
   intentObserver?: AgentSessionEngineIntentObserver;

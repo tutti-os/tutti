@@ -48,9 +48,47 @@ ORDER BY turn_sequence
 		if err != nil {
 			return snapshot, err
 		}
-		if !found || !isVerifiedSessionForkSequence(boundary.provenance) ||
-			turn.Phase != TurnPhaseSettled || strings.TrimSpace(turn.RootProviderTurnID) == "" {
-			return snapshot, ErrSessionForkTurnState
+		if !found {
+			return snapshot, newSessionForkBoundaryError(
+				SessionForkBoundaryReasonPrefixTurnMissing,
+				fmt.Sprintf(
+					"turn sequence %d references missing turn %q",
+					boundary.sequence,
+					boundary.turnID,
+				),
+			)
+		}
+		if !isVerifiedSessionForkSequence(boundary.provenance) {
+			return snapshot, newSessionForkBoundaryError(
+				SessionForkBoundaryReasonPrefixSequenceUnverified,
+				fmt.Sprintf(
+					"turn %q at sequence %d has provenance %q",
+					boundary.turnID,
+					boundary.sequence,
+					boundary.provenance,
+				),
+			)
+		}
+		if turn.Phase != TurnPhaseSettled {
+			return snapshot, newSessionForkBoundaryError(
+				SessionForkBoundaryReasonPrefixTurnNotSettled,
+				fmt.Sprintf(
+					"turn %q at sequence %d has phase %q",
+					boundary.turnID,
+					boundary.sequence,
+					turn.Phase,
+				),
+			)
+		}
+		if strings.TrimSpace(turn.RootProviderTurnID) == "" {
+			return snapshot, newSessionForkBoundaryError(
+				SessionForkBoundaryReasonPrefixProviderTurnMissing,
+				fmt.Sprintf(
+					"turn %q at sequence %d has no root provider turn id",
+					boundary.turnID,
+					boundary.sequence,
+				),
+			)
 		}
 		snapshot.Turns = append(snapshot.Turns, sessionForkTurnSnapshot{Sequence: boundary.sequence, Turn: turn})
 	}
@@ -72,7 +110,10 @@ WHERE message.workspace_id = ?
 		}
 	}
 	if boundaryMessageID <= 0 {
-		return snapshot, ErrSessionForkTurnState
+		return snapshot, newSessionForkBoundaryError(
+			SessionForkBoundaryReasonBoundaryMessagesMissing,
+			"fork boundary contains no canonical messages",
+		)
 	}
 	snapshot.BoundaryMessageID = boundaryMessageID
 	var unsupportedTurnless int
@@ -91,7 +132,10 @@ SELECT EXISTS(
 		return snapshot, fmt.Errorf("read unsupported turnless session fork messages: %w", err)
 	}
 	if unsupportedTurnless != 0 {
-		return snapshot, ErrSessionForkTurnState
+		return snapshot, newSessionForkBoundaryError(
+			SessionForkBoundaryReasonTurnlessMessageUnsupported,
+			"fork boundary contains a non-audit message without a turn",
+		)
 	}
 	messageRows, err := tx.QueryContext(ctx, `
 SELECT message.id, message.agent_session_id, message.message_id, message.version,

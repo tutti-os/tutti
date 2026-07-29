@@ -10716,7 +10716,7 @@ export type ForkWorkspaceAgentSessionErrors = {
    */
   405: ApiErrorResponse;
   /**
-   * The source session or requested fork boundary is not forkable
+   * The source session or requested fork boundary is not forkable. Boundary validation failures keep reason `agent_session_fork_conflict` and include the stable rejection code in `error.params.forkBoundaryReason`.
    */
   409: ApiErrorResponse;
   /**

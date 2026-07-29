@@ -33,7 +33,6 @@ func NewDefaultPreparer(stateDir string) *DefaultPreparer {
 	preparer.RegisterProvider(CursorPreparer{})
 	preparer.RegisterProvider(OpenCodePreparer{})
 	preparer.RegisterProvider(InstructionFilePreparer{ProviderID: "nexight", FileName: "AGENTS.md"})
-	preparer.RegisterProvider(InstructionFilePreparer{ProviderID: "hermes", FileName: "AGENTS.md"})
 	preparer.RegisterProvider(InstructionFilePreparer{ProviderID: "openclaw", FileName: "AGENTS.md"})
 	return preparer
 }
@@ -125,7 +124,7 @@ func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (Prep
 	})
 
 	result := ProviderPrepareResult{Cwd: cwd}
-	if provider := p.provider(providerID); provider != nil {
+	if provider := p.provider(input); provider != nil {
 		logRuntimePrepareTrace("runtime_prepare.provider_requested", input, map[string]any{
 			"provider": providerID,
 		})
@@ -219,11 +218,24 @@ func ensureCwdDirectory(cwd string) error {
 	return nil
 }
 
-func (p *DefaultPreparer) provider(providerID string) ProviderPreparer {
+func (p *DefaultPreparer) provider(input PrepareInput) ProviderPreparer {
 	if p == nil {
 		return nil
 	}
-	return p.providers[strings.TrimSpace(providerID)]
+	providerID := strings.TrimSpace(input.Provider)
+	if provider := p.providers[providerID]; provider != nil {
+		return provider
+	}
+	if input.ExtensionRuntimePrep != nil {
+		return ExtensionRuntimePreparer{}
+	}
+	// Other acp: extensions share a generic instruction+skill preparer; their
+	// skill roots arrive via PrepareInput.ExtensionSkillRoots from the
+	// extension composer profile, so they need no per-key entry.
+	if strings.HasPrefix(providerID, "acp:") {
+		return InstructionFilePreparer{}
+	}
+	return nil
 }
 
 func (p *DefaultPreparer) runtimeStore() RuntimeStore {

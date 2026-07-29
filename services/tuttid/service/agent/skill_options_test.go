@@ -65,6 +65,42 @@ description: Review any project.
 	}
 }
 
+func TestDiscoverComposerSkillOptionsForExtensionHidesTuttiInjectedSkills(t *testing.T) {
+	tempDir := t.TempDir()
+	repoDir := filepath.Join(tempDir, "repo")
+	cwd := filepath.Join(repoDir, "packages", "app")
+	writeSkill(t, filepath.Join(repoDir, ".agent_context", "skills", "browser-use", "SKILL.md"), `---
+name: browser-use
+description: Use Tutti browser automation.
+---
+`)
+	writeSkill(t, filepath.Join(repoDir, ".agent_context", "skills", "hermes-native", "SKILL.md"), `---
+name: hermes-native
+description: Native Hermes skill.
+---
+`)
+	service := newIsolatedAgentService(newFakeRuntime())
+	service.ExtensionComposerProfiles = extensionComposerProfileResolverStub{
+		profile: ExtensionComposerProfile{Skills: &ExtensionComposerSkillProfile{
+			Invocation:    "textTrigger",
+			TriggerPrefix: "/",
+			Roots: []ExtensionComposerSkillRoot{
+				{Scope: "workspace", Path: ".agent_context/skills"},
+			},
+		}},
+	}
+	options := service.discoverComposerSkillOptionsForLaunch(
+		context.Background(),
+		"acp:hermes",
+		cwd,
+		nil,
+		map[string]any{"kind": "agent_extension", "extensionInstallationId": "hermes@0.1.0"},
+	)
+	if got := composerSkillOptionTriggers(options); !slices.Equal(got, []string{"/hermes-native"}) {
+		t.Fatalf("extension skill triggers = %#v, want native Hermes skills without Tutti-injected browser-use", got)
+	}
+}
+
 func TestDiscoverComposerSkillOptionsCodexUsesProviderNativeTriggers(t *testing.T) {
 	tempDir := t.TempDir()
 	homeDir := filepath.Join(tempDir, "home")

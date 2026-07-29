@@ -361,16 +361,19 @@ test("desktop agent activity adapter preserves session-level turnless messages",
 
 test("desktop agent activity adapter forwards typed submit diagnostics", async () => {
   const calls: unknown[] = [];
+  const controller = new AbortController();
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: createTuttidClient({
       async sendWorkspaceAgentSessionInput(
         requestWorkspaceId,
         agentSessionId,
-        request
+        request,
+        requestOptions
       ) {
         calls.push({
           agentSessionId,
           request,
+          signal: requestOptions?.signal,
           workspaceId: requestWorkspaceId
         });
         return createSendInputResponse(
@@ -388,6 +391,7 @@ test("desktop agent activity adapter forwards typed submit diagnostics", async (
     capabilityRefs: [{ capability: "tutti", source: "slash_command" }],
     content: [{ type: "text", text: "hello" }],
     guidance: true,
+    signal: controller.signal,
     submitDiagnostics: {
       submittedAtUnixMs: 1234,
       source: "agent-gui"
@@ -408,6 +412,7 @@ test("desktop agent activity adapter forwards typed submit diagnostics", async (
           source: "agent-gui"
         }
       } satisfies SendWorkspaceAgentSessionInputRequest,
+      signal: controller.signal,
       workspaceId
     }
   ]);
@@ -784,15 +789,23 @@ test("desktop agent activity adapter leaves session event subscription to the se
 
 test("desktop agent activity adapter submits interactive responses through tuttid", async () => {
   const calls: unknown[] = [];
+  const controller = new AbortController();
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: createTuttidClient({
       async submitWorkspaceAgentInteractive(
         requestWorkspaceId,
         agentSessionId,
         requestId,
-        request
+        request,
+        requestOptions
       ) {
-        calls.push([requestWorkspaceId, agentSessionId, requestId, request]);
+        calls.push([
+          requestWorkspaceId,
+          agentSessionId,
+          requestId,
+          request,
+          requestOptions
+        ]);
         return createSession({ id: agentSessionId, status: "waiting" });
       }
     }),
@@ -804,6 +817,7 @@ test("desktop agent activity adapter submits interactive responses through tutti
     optionId: "acceptEdits",
     payload: { path: "/Users/example/demo/src/styles.css" },
     requestId: "interactive-1",
+    signal: controller.signal,
     turnId: "turn-1",
     workspaceId
   });
@@ -818,7 +832,8 @@ test("desktop agent activity adapter submits interactive responses through tutti
         optionId: "acceptEdits",
         payload: { path: "/Users/example/demo/src/styles.css" },
         turnId: "turn-1"
-      }
+      },
+      { signal: controller.signal }
     ]
   ]);
   assert.equal(result.session.workspaceId, workspaceId);
@@ -1909,6 +1924,42 @@ test("desktop agent activity adapter classifies an ambiguous POST failure as del
       error instanceof Error &&
       (error as Error & { reason?: string }).reason ===
         "agent_session_fork_delivery_unknown"
+  );
+});
+
+test("desktop agent activity adapter promotes the exact fork boundary reason", async () => {
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async forkWorkspaceAgentSession() {
+        throw new TuttidProtocolError({
+          code: "workspace_operation_failed",
+          developerMessage:
+            "agent session fork turn is not a verified settled boundary: selected turn sequence provenance is legacy_unverified",
+          params: {
+            forkBoundaryReason: "agent_session_fork_turn_sequence_unverified"
+          },
+          reason: "agent_session_fork_conflict",
+          statusCode: 409
+        });
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  await assert.rejects(
+    adapter.forkSession({
+      requestId: "fork-request",
+      sourceAgentSessionId: "source-session",
+      targetAgentSessionId: "target-session",
+      turnId: "source-turn",
+      workspaceId
+    }),
+    (error: unknown) =>
+      error instanceof TuttidProtocolError &&
+      error.reason === "agent_session_fork_turn_sequence_unverified" &&
+      error.params.forkBoundaryReason ===
+        "agent_session_fork_turn_sequence_unverified" &&
+      error.message.includes("legacy_unverified")
   );
 });
 

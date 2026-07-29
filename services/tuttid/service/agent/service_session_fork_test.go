@@ -16,6 +16,23 @@ type sessionForkCapabilityStore struct {
 	workspaceID, sourceSessionID, throughTurnID string
 }
 
+func TestNormalizeSessionForkErrorPreservesBoundaryReason(t *testing.T) {
+	input := &storesqlite.SessionForkBoundaryError{
+		Reason: storesqlite.SessionForkBoundaryReasonAttachmentUnsupported,
+	}
+	normalized := normalizeSessionForkError(input)
+	if !errors.Is(normalized, ErrSessionForkConflict) ||
+		!errors.Is(normalized, storesqlite.ErrSessionForkTurnState) {
+		t.Fatalf("normalized error=%v", normalized)
+	}
+	var reasoner interface{ ForkBoundaryReason() string }
+	if !errors.As(normalized, &reasoner) ||
+		reasoner.ForkBoundaryReason() !=
+			string(storesqlite.SessionForkBoundaryReasonAttachmentUnsupported) {
+		t.Fatalf("boundary reason not preserved: %v", normalized)
+	}
+}
+
 func (s *sessionForkCapabilityStore) CheckSessionForkThroughTurn(
 	_ context.Context,
 	workspaceID, sourceSessionID, throughTurnID string,

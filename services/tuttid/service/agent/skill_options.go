@@ -25,8 +25,12 @@ const (
 
 var hiddenTuttiProviderSkills = map[string]struct{}{
 	"tutti-cli":     {},
+	"tutti-handoff": {},
 	"issue-manager": {},
 	"workspace-app": {},
+	"reference":     {},
+	"browser-use":   {},
+	"computer-use":  {},
 }
 
 func discoverComposerSkillOptions(provider string, cwd string, env []string) []ComposerSkillOption {
@@ -89,8 +93,8 @@ func (s *Service) discoverComposerSkillOptionsForLaunch(
 func extensionComposerSkillRoots(cwd string, declarations []ExtensionComposerSkillRoot) []composerSkillRoot {
 	roots := make([]composerSkillRoot, 0, len(declarations))
 	for _, declaration := range declarations {
-		relativePath := filepath.Clean(strings.TrimSpace(declaration.Path))
-		if relativePath == "." || filepath.IsAbs(relativePath) || relativePath == ".." || strings.HasPrefix(relativePath, ".."+string(filepath.Separator)) {
+		relativePath, ok := safeExtensionSkillRootPath(declaration.Path)
+		if !ok {
 			continue
 		}
 		switch strings.TrimSpace(declaration.Scope) {

@@ -858,7 +858,8 @@ export interface TuttidClient
   cancelWorkspaceAgentTurn(
     workspaceID: string,
     agentSessionID: string,
-    turnID: string
+    turnID: string,
+    requestOptions?: TuttidRequestOptions
   ): Promise<WorkspaceAgentTurnCancelResponse>;
   goalControlWorkspaceAgentSession(
     workspaceID: string,
@@ -876,7 +877,8 @@ export interface TuttidClient
   sendWorkspaceAgentSessionInput(
     workspaceID: string,
     agentSessionID: string,
-    request: SendWorkspaceAgentSessionInputRequest
+    request: SendWorkspaceAgentSessionInputRequest,
+    requestOptions?: TuttidRequestOptions
   ): Promise<SendWorkspaceAgentSessionInputResponse>;
   submitWorkspaceAgentPlanDecision(
     workspaceID: string,
@@ -909,7 +911,8 @@ export interface TuttidClient
   updateWorkspaceAgentSessionSettings(
     workspaceID: string,
     agentSessionID: string,
-    request: AgentSessionComposerSettings
+    request: AgentSessionComposerSettings,
+    requestOptions?: TuttidRequestOptions
   ): Promise<WorkspaceAgentSession>;
   updateWorkspaceAgentSessionPin(
     workspaceID: string,
@@ -930,7 +933,8 @@ export interface TuttidClient
     workspaceID: string,
     agentSessionID: string,
     requestID: string,
-    request: SubmitWorkspaceAgentInteractiveRequest
+    request: SubmitWorkspaceAgentInteractiveRequest,
+    requestOptions?: TuttidRequestOptions
   ): Promise<WorkspaceAgentSession>;
   searchWorkspaceFiles(
     workspaceID: string,
