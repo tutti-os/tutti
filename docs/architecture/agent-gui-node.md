@@ -901,10 +901,15 @@ High-frequency transcript updates must not pair DOM mutation with unconditional 
 Transcript end-following is one UI-local state machine shared by DOM, TanStack
 Virtual, and React Native adapters. It has only `following` and `detached`
 modes. User scroll-away intent detaches synchronously, before the first scroll
-frame. Conversation selection, prompt submission, an explicit scroll-to-end
-request, or the user actually reaching the end may reattach. Content growth,
-layout effects, observers, virtualizer geometry, and near-end thresholds are
-sensors or executors only; they must not transition the mode.
+frame. A mounted detail view retains the scroll anchor and follow-end mode for
+each exact Agent Session it visits. First selection follows the end; returning
+to a detached Session restores its retained position, while returning to a
+following Session stays at the end. This memory expires with the mounted view
+and never enters navigation, Engine, or Session state. Prompt submission, an
+explicit scroll-to-end request, or the user actually reaching the end may
+reattach. Content growth, layout effects, observers, virtualizer geometry, and
+near-end thresholds are sensors or executors only; they must not transition the
+mode.
 
 Turn-level virtualization has one geometry owner. When the transcript is
 virtualized and the state machine is `following`, TanStack Virtual owns append
