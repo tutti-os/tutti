@@ -311,18 +311,21 @@ first resolves a Tutti-managed uv toolchain — a pinned uv version declared in
 archives, SHA-256, and byte sizes — downloaded with the same streaming
 verification as binary artifacts, extracted as a single pinned member, and
 cached under `~/.local/share/tutti/agent-runtimes/_tools/uv/<platform>/<version>`.
-The user machine needs no preinstalled uv or Python. The install runs `uv` by
-bare name with the toolchain directory prepended to PATH and confinement
-variables pointing into the final root: `UV_TOOL_DIR=<installRoot>/tools`,
-`UV_TOOL_BIN_DIR=<installRoot>/bin`, `UV_PYTHON_INSTALL_DIR=<installRoot>/python`,
-a shared content-addressed `UV_CACHE_DIR` under `_tools/uv/cache`, and
-`UV_NO_CONFIG=1`. A previously committed root (valid `activation.json`) is moved
-to `<runtimeIdentity>.previous` before installing and restored on any failure;
-an uncommitted partial root is discarded, and a missing root with a
-self-consistent backup (matching activation identity plus executable
-fingerprint) is restored instead of reinstalling. `activation.json` remains the
-commit marker, and the fingerprint/version/ACP-probe verification chain is
-unchanged.
+The user machine needs no preinstalled uv or Python. The install invokes the
+managed uv executable by absolute path, while also prepending its directory to
+`PATH` for uv subprocesses. Confinement variables point into the final root:
+`UV_TOOL_DIR=<installRoot>/tools`, `UV_TOOL_BIN_DIR=<installRoot>/bin`,
+`UV_PYTHON_INSTALL_DIR=<installRoot>/python`, a shared content-addressed
+`UV_CACHE_DIR` under `_tools/uv/cache`, and `UV_NO_CONFIG=1`. Tutti also sets
+`UV_PYTHON=3.12` and `UV_MANAGED_PYTHON=1`, so package resolution and execution
+use a Tutti-owned Python 3.12 instead of whichever system Python happens to
+appear on the daemon PATH. A previously committed root (valid
+`activation.json`) is moved to `<runtimeIdentity>.previous` before installing
+and restored on any failure; an uncommitted partial root is discarded, and a
+missing root with a self-consistent backup (matching activation identity plus
+executable fingerprint) is restored instead of reinstalling. `activation.json`
+remains the commit marker, and the fingerprint/version/ACP-probe verification
+chain is unchanged.
 
 For both install kinds, Tutti fingerprints the ordinary in-root executable,
 runs the discovery profile's version check, then performs ACP `initialize` and

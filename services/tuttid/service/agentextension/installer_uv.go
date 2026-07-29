@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+const managedUVPythonVersion = "3.12"
+
 // executeUVInstallInPlace installs uv-runner runtimes directly into the final
 // install root. Unlike npm/pnpm packages, uv tool environments embed absolute
 // paths (bin symlinks, venv shebangs, pyvenv.cfg) and cannot survive the
@@ -310,12 +312,12 @@ func uvCommittedActivation(
 }
 
 // uvInstallEnvironment builds the hermetic install environment for the uv
-// runner. The managed uv directory is prepended to PATH so the runner is still
-// executed by bare name, and the UV_* variables confine the tool environment,
-// executables, managed CPython, and cache to Tutti-owned directories.
+// runner. The managed uv directory is prepended to PATH for uv subprocesses,
+// and the UV_* variables confine the tool environment, executables, managed
+// CPython, and cache to Tutti-owned directories.
 func uvInstallEnvironment(scratch, installRoot, uvDir, cacheDir string) []string {
 	base := cleanInstallEnvironment(scratch)
-	result := make([]string, 0, len(base)+6)
+	result := make([]string, 0, len(base)+8)
 	pathValue := uvDir
 	for _, entry := range base {
 		key, value, _ := strings.Cut(entry, "=")
@@ -332,5 +334,7 @@ func uvInstallEnvironment(scratch, installRoot, uvDir, cacheDir string) []string
 		"UV_PYTHON_INSTALL_DIR="+filepath.Join(installRoot, "python"),
 		"UV_CACHE_DIR="+cacheDir,
 		"UV_NO_CONFIG=1",
+		"UV_PYTHON="+managedUVPythonVersion,
+		"UV_MANAGED_PYTHON=1",
 	)
 }
