@@ -204,8 +204,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   );
   const handleSelectHomeSuggestion = useCallback(
     (prompt: string) => {
-      // Don't request focus here: replacing the draft already focuses the
-      // filled prompt at the end. A second focus request would race it.
       updateDraftContent(
         updateAgentComposerDraft(viewModel.composer.draftContent, { prompt })
       );
