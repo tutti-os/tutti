@@ -53,9 +53,10 @@ func (r agentExtensionComposerProfileResolver) ResolveExtensionComposerProfile(
 			})
 		}
 		result.Skills = &agentservice.ExtensionComposerSkillProfile{
-			Invocation:    profile.Skills.Invocation,
-			TriggerPrefix: profile.Skills.TriggerPrefix,
-			Roots:         roots,
+			Invocation:               profile.Skills.Invocation,
+			TriggerPrefix:            profile.Skills.TriggerPrefix,
+			RuntimeCommandProjection: profile.Skills.RuntimeCommandProjection,
+			Roots:                    roots,
 		}
 	}
 	if profile.SlashCommands != nil {

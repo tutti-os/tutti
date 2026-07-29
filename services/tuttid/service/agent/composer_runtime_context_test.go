@@ -4,6 +4,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
@@ -141,5 +142,74 @@ func TestMergeRuntimeComposerContextFailsClosedWithoutExactCapabilityEvidence(t 
 				t.Fatalf("capabilities = %#v, want fail-closed result for mismatched %s identity", got, tt.name)
 			}
 		})
+	}
+}
+
+func TestMergeRuntimeComposerContextRoutesUnlistedCommandsToSkills(t *testing.T) {
+	project := t.TempDir()
+	ref := map[string]any{
+		"kind":                    "agent_extension",
+		"extensionInstallationId": "example@1.0.0",
+	}
+	runtime := newFakeRuntime()
+	runtime.sessions["workspace-1:live"] = ProviderRuntimeSession{
+		ID:            "live",
+		WorkspaceID:   "workspace-1",
+		Provider:      "acp:example",
+		AgentTargetID: "extension:example",
+		RuntimeContext: stampAgentExtensionComposerScope(map[string]any{
+			"availableCommands": []any{
+				map[string]any{"name": "status", "description": "Show status"},
+				map[string]any{"name": "custom-theme", "description": "Edit a theme"},
+				map[string]any{"name": "skill:browser-use", "description": "Use browser"},
+			},
+		}, ref, project, ComposerSettings{}),
+		CreatedAtUnixMS: 100,
+	}
+	service := newIsolatedAgentService(runtime)
+	profile := ExtensionComposerProfile{
+		Skills: &ExtensionComposerSkillProfile{
+			Invocation:               "textTrigger",
+			RuntimeCommandProjection: "unlisted-as-skills",
+		},
+		SlashCommands: []ExtensionComposerSlashCommand{{
+			Name:   "status",
+			Effect: string(providerregistry.SlashCommandEffectShowStatus),
+		}},
+		SlashCommandCatalogAuthoritative: true,
+	}
+	policy := composerSlashCommandPolicyFromExtensionProfile(profile)
+	options, err := service.mergeRuntimeComposerContextForComposerOptions(
+		ComposerOptionsInput{
+			Provider:          "acp:example",
+			WorkspaceID:       "workspace-1",
+			Cwd:               project,
+			AgentTargetID:     "extension:example",
+			providerTargetRef: ref,
+		},
+		ComposerSettings{},
+		"en",
+		profile,
+		"",
+		ComposerOptions{
+			RuntimeContext:     map[string]any{},
+			SlashCommandPolicy: policy,
+		},
+	)
+	if err != nil {
+		t.Fatalf("mergeRuntimeComposerContextForComposerOptions error = %v", err)
+	}
+	if len(options.Commands) != 1 || options.Commands[0].Name != "status" {
+		t.Fatalf("commands = %#v, want only signed core command", options.Commands)
+	}
+	if len(options.Skills) != 1 ||
+		options.Skills[0].Name != "custom-theme" ||
+		options.Skills[0].Trigger != "/custom-theme" ||
+		options.Skills[0].SourceKind != composerSkillSourceBundled ||
+		options.Skills[0].Description != "Edit a theme" {
+		t.Fatalf("skills = %#v, want unlisted runtime command projected as a Skill", options.Skills)
+	}
+	if got := runtimeConfigOptionsAsMapSlice(options.RuntimeContext["skills"]); len(got) != 1 {
+		t.Fatalf("runtime skills = %#v, want typed projection mirrored for diagnostics", options.RuntimeContext["skills"])
 	}
 }

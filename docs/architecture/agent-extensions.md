@@ -186,9 +186,17 @@ catalog and attach shared command effects such as submit-immediate, show-status,
 activate-goal-mode, and toggle-plan-mode. `tuttid` applies that declarative
 policy before returning composer options, so extension commands can reuse the
 shared AgentGUI slash-command behavior without a provider-name branch. Signed
-capability profiles may declare canonical GUI capabilities such as `compact`
-and `planMode`. A declaration becomes effective only when current ACP runtime
-facts and host support also establish it. The closed, signed
+profiles may also set
+`skills.runtimeCommandProjection: "unlisted-as-skills"` alongside an
+authoritative slash-command catalog. In that mode, runtime-advertised entries
+outside the signed core-command list are projected through the typed `skills`
+field with their exact slash trigger and runtime description. AgentGUI then
+renders separate command, capability, and skill groups without a
+provider-name branch; known Tutti-injected routing skills remain hidden from
+the composer picker.
+Signed capability profiles may declare canonical GUI capabilities such as
+`compact` and `planMode`. A declaration becomes effective only when current ACP
+runtime facts and host support also establish it. The closed, signed
 `workflowModes.plan` enabled/disabled ID pair is itself sufficient runtime
 contract evidence for `planMode`, including agents that implement
 `session/set_mode` without advertising a mode catalog from `session/new`.

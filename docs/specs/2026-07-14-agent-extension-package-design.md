@@ -765,6 +765,7 @@ Manifest 声明不能覆盖实际 ACP handshake，也不能开启当前 host 不
   "skills": {
     "invocation": "textTrigger",
     "triggerPrefix": "/",
+    "runtimeCommandProjection": "unlisted-as-skills",
     "roots": [
       {
         "scope": "workspace",
@@ -814,6 +815,15 @@ opaque provider-native context.
 catalog. It cannot admit a command the runtime did not advertise. Runtime
 descriptions and input hints survive filtering, while effects select only
 shared host behaviors.
+
+When `skills.runtimeCommandProjection` is `unlisted-as-skills`, the profile
+must also declare an authoritative slash-command catalog. Runtime commands not
+listed in that catalog are returned through the typed composer `skills` field
+with their exact `/<runtime-command-name>` trigger and runtime description.
+This supports providers that expose native Skills through ACP
+`available_commands_update` while keeping command, capability, and Skill
+sections distinct. Known Tutti-injected routing Skills are not re-exposed in
+the picker.
 
 `skills.roots` 是扩展拥有的声明式 Skill discovery contract。`scope` 只能是
 `workspace` 或 `user`，`path` 必须是安全的相对路径；host 分别从当前工作目录的

@@ -215,9 +215,10 @@ type ExtensionComposerPermissionMode struct {
 }
 
 type ExtensionComposerSkillProfile struct {
-	Invocation    string
-	TriggerPrefix string
-	Roots         []ExtensionComposerSkillRoot
+	Invocation               string
+	TriggerPrefix            string
+	RuntimeCommandProjection string
+	Roots                    []ExtensionComposerSkillRoot
 }
 
 type ExtensionComposerSkillRoot struct {

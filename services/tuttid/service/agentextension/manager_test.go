@@ -584,16 +584,24 @@ func TestValidateComposerProfileAcceptsDeclarativeSkillRoots(t *testing.T) {
 		"skills":{
 			"invocation":"textTrigger",
 			"triggerPrefix":"/skill:",
+			"runtimeCommandProjection":"unlisted-as-skills",
 			"roots":[
 				{"scope":"workspace","path":".gemini/skills"},
 				{"scope":"user","path":".agents/skills"}
 			]
+		},
+		"slashCommands":{
+			"commandCatalogAuthoritative":true,
+			"commands":[{"name":"status"}]
 		}
 	}`), &profile); err != nil {
 		t.Fatal(err)
 	}
 	if err := validateComposerProfile(profile); err != nil {
 		t.Fatalf("validateComposerProfile() error = %v", err)
+	}
+	if profile.Skills.RuntimeCommandProjection != "unlisted-as-skills" {
+		t.Fatalf("runtime command projection = %q", profile.Skills.RuntimeCommandProjection)
 	}
 	profile.Skills.Roots[0].Path = "../outside"
 	if err := validateComposerProfile(profile); err == nil {
@@ -603,6 +611,11 @@ func TestValidateComposerProfileAcceptsDeclarativeSkillRoots(t *testing.T) {
 	profile.Skills.TriggerPrefix = "skill:"
 	if err := validateComposerProfile(profile); err == nil {
 		t.Fatal("validateComposerProfile() error = nil, want non-composer trigger prefix rejection")
+	}
+	profile.Skills.TriggerPrefix = "/skill:"
+	profile.Skills.RuntimeCommandProjection = "unsupported"
+	if err := validateComposerProfile(profile); err == nil {
+		t.Fatal("validateComposerProfile() error = nil, want runtime command projection rejection")
 	}
 }
 

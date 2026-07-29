@@ -20,19 +20,21 @@ import (
 const (
 	composerSkillSourceProject       = "project"
 	composerSkillSourcePersonal      = "personal"
+	composerSkillSourceBundled       = "bundled"
 	composerSkillSourcePlugin        = "plugin"
 	composerSkillSourceSystem        = "system"
 	composerSkillSourceTuttiInjected = "tutti-injected"
 )
 
 var hiddenTuttiProviderSkills = map[string]struct{}{
-	"tutti-cli":     {},
-	"tutti-handoff": {},
-	"issue-manager": {},
-	"workspace-app": {},
-	"reference":     {},
-	"browser-use":   {},
-	"computer-use":  {},
+	"tutti-cli":              {},
+	"tutti-handoff":          {},
+	"issue-manager":          {},
+	"workspace-app":          {},
+	"reference":              {},
+	"browser-use":            {},
+	"computer-use":           {},
+	"tutti-model-allocation": {},
 }
 
 func discoverComposerSkillOptions(provider string, cwd string, env []string) []ComposerSkillOption {

@@ -1806,7 +1806,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   `internal_runtime_context_json.$.sessionRuntimeSnapshot.provider`. An
   extension provider such as `acp:<name>` beside an empty snapshot provider,
   followed by `launch identity is incomplete`, identifies the durable snapshot
-  path rather than a PATH or listener failure.
+  path rather than a PATH or listener failure. A second historical shape keeps
+  `acp:<name>` in both locations but has a provider-native fingerprint computed
+  from an empty provider; it fails later with
+  `provider-native fingerprint does not match`.
 - Root cause:
   Dynamic Agent Extension adapters are created on demand and cached only for
   the daemon lifetime. Computing `resumable` from that cache maps restart state
@@ -1839,16 +1842,20 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   Agent Target. For already-written empty-provider extension snapshots, recover
   only when the canonical session provider is a valid unregistered open
   identity, the snapshot declares provider-native configuration, and its
-  fingerprint exactly matches the historical empty-provider payload. Keep
-  every other malformed or mismatched snapshot fail-closed, and do not rewrite
-  the database merely to make discovery succeed.
+  fingerprint exactly matches the historical empty-provider payload. Apply the
+  same narrow compatibility check to the transitional shape that already
+  retained the open provider in the snapshot: the canonical and snapshot
+  providers must match exactly before accepting the historical fingerprint.
+  Keep every other malformed or mismatched snapshot fail-closed, and do not
+  rewrite the database merely to make discovery succeed.
 - Validation:
   Start from a controller with no cached extension adapter. Assert a persisted
   Target-bound session is resumable, malformed or mismatched bindings fail
   closed, and the eligibility check does not launch the provider. Then run
   `go test ./packages/agent/daemon/runtime ./services/tuttid/service/agent`.
   Also cover new extension snapshots preserving `acp:*`, verified legacy
-  empty-provider recovery, registered-provider fallback rejection, CLI command
+  empty-provider recovery, transitional open-provider/legacy-fingerprint
+  recovery, registered or mismatched provider fallback rejection, CLI command
   projection for the recovered session, and runtime preparation after restart.
 - References:
   [controller_session_registry.go](../../../packages/agent/daemon/runtime/controller_session_registry.go)

@@ -33,8 +33,17 @@ func (s *Service) mergeRuntimeComposerContextForComposerOptions(
 	if capabilities := stringSliceFromAny(runtimeContext["capabilities"]); len(capabilities) > 0 {
 		options.RuntimeContext["capabilities"] = capabilities
 	}
+	runtimeCommands := composerCommandsFromRuntimeContext(runtimeContext)
+	if runtimeSkills := extensionRuntimeCommandSkillOptions(
+		runtimeCommands,
+		options.SlashCommandPolicy,
+		extensionProfile.Skills,
+	); len(runtimeSkills) > 0 {
+		options.Skills = mergeComposerSkillOptions(options.Skills, runtimeSkills)
+		options.RuntimeContext["skills"] = composerSkillOptionsRuntimeContext(options.Skills)
+	}
 	if commands := filterComposerCommandsBySlashPolicy(
-		composerCommandsFromRuntimeContext(runtimeContext),
+		runtimeCommands,
 		options.SlashCommandPolicy,
 	); len(commands) > 0 {
 		options.Commands = composerCommandOptions(commands)
@@ -417,14 +426,79 @@ func composerSlashCommandPolicyFromExtensionProfile(
 	}
 }
 
-func filterComposerCommandsBySlashPolicy(
+func extensionRuntimeCommandSkillOptions(
 	commands []map[string]any,
 	policy *providerregistry.SlashCommandPolicyDescriptor,
-) []map[string]any {
-	if len(commands) == 0 || policy == nil || !policy.CommandCatalogAuthoritative {
-		return commands
+	profile *ExtensionComposerSkillProfile,
+) []ComposerSkillOption {
+	if profile == nil ||
+		strings.TrimSpace(profile.RuntimeCommandProjection) != "unlisted-as-skills" ||
+		policy == nil ||
+		!policy.CommandCatalogAuthoritative {
+		return nil
 	}
+	allowed := composerSlashCommandAllowedNames(policy)
+	result := make([]ComposerSkillOption, 0, len(commands))
+	seen := map[string]struct{}{}
+	for _, command := range commands {
+		name := strings.TrimSpace(stringFromAny(command["name"]))
+		key := strings.ToLower(name)
+		if name == "" {
+			continue
+		}
+		if _, ok := allowed[key]; ok {
+			continue
+		}
+		normalizedSkillName := strings.TrimPrefix(key, "skill:")
+		if _, hidden := hiddenTuttiProviderSkills[normalizedSkillName]; hidden {
+			continue
+		}
+		trigger := "/" + name
+		if _, exists := seen[strings.ToLower(trigger)]; exists {
+			continue
+		}
+		seen[strings.ToLower(trigger)] = struct{}{}
+		result = append(result, ComposerSkillOption{
+			Name:        name,
+			Trigger:     trigger,
+			SourceKind:  composerSkillSourceBundled,
+			Description: strings.TrimSpace(stringFromAny(command["description"])),
+			Invocation:  strings.TrimSpace(profile.Invocation),
+		})
+	}
+	return result
+}
+
+func mergeComposerSkillOptions(
+	existing []ComposerSkillOption,
+	additional []ComposerSkillOption,
+) []ComposerSkillOption {
+	result := make([]ComposerSkillOption, 0, len(existing)+len(additional))
+	seen := make(map[string]struct{}, len(existing)+len(additional))
+	for _, group := range [][]ComposerSkillOption{existing, additional} {
+		for _, option := range group {
+			trigger := strings.TrimSpace(option.Trigger)
+			if trigger == "" {
+				continue
+			}
+			key := strings.ToLower(trigger)
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+			result = append(result, option)
+		}
+	}
+	return result
+}
+
+func composerSlashCommandAllowedNames(
+	policy *providerregistry.SlashCommandPolicyDescriptor,
+) map[string]struct{} {
 	allowed := map[string]struct{}{}
+	if policy == nil {
+		return allowed
+	}
 	for _, command := range policy.FallbackCommands {
 		if name := strings.ToLower(strings.TrimSpace(command)); name != "" {
 			allowed[name] = struct{}{}
@@ -435,6 +509,17 @@ func filterComposerCommandsBySlashPolicy(
 			allowed[name] = struct{}{}
 		}
 	}
+	return allowed
+}
+
+func filterComposerCommandsBySlashPolicy(
+	commands []map[string]any,
+	policy *providerregistry.SlashCommandPolicyDescriptor,
+) []map[string]any {
+	if len(commands) == 0 || policy == nil || !policy.CommandCatalogAuthoritative {
+		return commands
+	}
+	allowed := composerSlashCommandAllowedNames(policy)
 	if len(allowed) == 0 {
 		return nil
 	}
