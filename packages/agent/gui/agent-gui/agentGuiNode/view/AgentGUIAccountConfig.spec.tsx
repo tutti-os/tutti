@@ -97,6 +97,7 @@ describe("AgentGUIConfigMenu", () => {
         labels={labels}
         providerScopedActionsVisible
         provider="acp:kimi-code"
+        providerIconUrl="kimi-code.svg"
         providerLabel="Kimi Code"
         providerAuthAccountLabel="API Usage Billing"
         slashStatusLimits={[]}

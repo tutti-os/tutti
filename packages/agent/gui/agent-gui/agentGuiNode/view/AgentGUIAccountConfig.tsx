@@ -22,6 +22,7 @@ interface AgentGUIConfigMenuProps {
   slashStatusUsageDidFail: boolean;
   slashStatusUsageAttempted: boolean;
   provider?: string | null;
+  providerIconUrl?: string | null;
   providerLabel?: string | null;
   providerAuthAccountLabel?: string | null;
   onAgentConfigMenuOpen?: () => void;
@@ -43,6 +44,7 @@ export function AgentGUIConfigMenu({
   slashStatusUsageDidFail,
   slashStatusUsageAttempted,
   provider,
+  providerIconUrl,
   providerLabel,
   providerAuthAccountLabel,
   onAgentConfigMenuOpen,
@@ -52,9 +54,10 @@ export function AgentGUIConfigMenu({
   onOpenAgentSettings
 }: AgentGUIConfigMenuProps): React.JSX.Element {
   const [open, setOpen] = useState(false);
-  const providerFlatIconUrl = resolveAgentGuiSessionProviderFlatIconUrl(
-    provider ?? undefined
-  );
+  const providerFlatIconUrl =
+    resolveAgentGuiSessionProviderFlatIconUrl(provider ?? undefined) ??
+    providerIconUrl?.trim() ??
+    null;
   const providerDisplayName = providerLabel?.trim() || provider?.trim();
   const providerDisplayTitle = providerDisplayName
     ? labels.slashStatusProviderAccount(providerDisplayName)
