@@ -146,6 +146,38 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
     ).toBe("");
   });
 
+  it("renders the original Kimi Code icon instead of its mask", () => {
+    const iconUrl = "data:image/png;base64,kimi-colored";
+    const maskIconUrl = "data:image/png;base64,kimi-mask";
+    const { container } = renderRailItem({
+      agentTargets: [
+        {
+          agentTargetId: "extension:kimi-code",
+          iconUrl,
+          maskIconUrl,
+          provider: "acp:kimi-code",
+          workspaceId: "workspace-1"
+        }
+      ],
+      isRailInteractionLocked: () => false,
+      item: {
+        agentTargetId: "extension:kimi-code",
+        provider: "acp:kimi-code"
+      }
+    });
+
+    expect(
+      container.querySelector<HTMLImageElement>(
+        ".agent-gui-node__conversation-provider-image"
+      )?.src
+    ).toBe(iconUrl);
+    expect(
+      container.querySelector(
+        ".agent-gui-node__conversation-provider-mask-icon"
+      )
+    ).toBeNull();
+  });
+
   it("renders a target identity image without treating it as a mask", () => {
     const iconUrl = "data:image/png;base64,kilo-colored";
     const { container } = renderRailItem({

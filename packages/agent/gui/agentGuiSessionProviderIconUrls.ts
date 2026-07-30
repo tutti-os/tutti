@@ -46,3 +46,9 @@ export function resolveAgentGuiSessionProviderFlatIconUrl(
   );
   return resolveProviderIconAsset(identity?.iconKey, "sessionFlat");
 }
+
+export function shouldPreferAgentGuiSessionProviderIconImage(
+  provider: string | undefined
+): boolean {
+  return provider?.trim().toLowerCase() === "acp:kimi-code";
+}

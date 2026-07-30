@@ -9,7 +9,10 @@ import { PinFilledIcon } from "../../../app/renderer/components/icons/PinFilledI
 import { PinLinedIcon } from "../../../app/renderer/components/icons/PinLinedIcon";
 import { useAgentHostApi } from "../../../agentActivityHost";
 import { createAgentGUIUserProjectSelectionApi } from "../agentGuiUserProjectSelectionApi";
-import { resolveAgentGuiSessionProviderFlatIconUrl } from "../../../agentGuiSessionProviderIconUrls";
+import {
+  resolveAgentGuiSessionProviderFlatIconUrl,
+  shouldPreferAgentGuiSessionProviderIconImage
+} from "../../../agentGuiSessionProviderIconUrls";
 import {
   resolveAgentTargetPresentation,
   useAgentTargetPresentations
@@ -47,11 +50,19 @@ function agentGUIConversationIconPresentation(
     agentTargets,
     workspaceId
   });
+  const iconUrl = targetPresentation?.iconUrl?.trim() ?? "";
+  if (
+    iconUrl &&
+    shouldPreferAgentGuiSessionProviderIconImage(
+      targetPresentation?.provider ?? provider
+    )
+  ) {
+    return { kind: "image", url: iconUrl };
+  }
   const maskIconUrl = targetPresentation?.maskIconUrl?.trim() ?? "";
   if (maskIconUrl) {
     return { kind: "mask", url: maskIconUrl };
   }
-  const iconUrl = targetPresentation?.iconUrl?.trim() ?? "";
   if (iconUrl) {
     return { kind: "image", url: iconUrl };
   }

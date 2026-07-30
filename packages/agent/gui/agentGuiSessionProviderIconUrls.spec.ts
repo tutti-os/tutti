@@ -5,6 +5,7 @@ import {
   opencodeFlatFilledIconUrl,
   resolveAgentGuiSessionProviderFlatIconUrl,
   resolveAgentGuiSessionProviderIconUrl,
+  shouldPreferAgentGuiSessionProviderIconImage,
   tuttiFlatFilledIconUrl
 } from "./agentGuiSessionProviderIconUrls.ts";
 import {
@@ -75,6 +76,17 @@ describe("resolveAgentGuiSessionProviderFlatIconUrl", () => {
   it("returns the flat filled opencode icon for masked surfaces", () => {
     expect(resolveAgentGuiSessionProviderFlatIconUrl("opencode")).toBe(
       opencodeFlatFilledIconUrl
+    );
+  });
+});
+
+describe("shouldPreferAgentGuiSessionProviderIconImage", () => {
+  it("keeps Kimi Code's original branded icon on session surfaces", () => {
+    expect(shouldPreferAgentGuiSessionProviderIconImage("acp:kimi-code")).toBe(
+      true
+    );
+    expect(shouldPreferAgentGuiSessionProviderIconImage("acp:kilo")).toBe(
+      false
     );
   });
 });
