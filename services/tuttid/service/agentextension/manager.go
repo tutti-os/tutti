@@ -29,6 +29,8 @@ import (
 
 var safeKey = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$`)
 
+const runtimeVersionProbeTimeout = 30 * time.Second
+
 type Manager struct {
 	Sources           []tuttitypes.AgentExtensionSource
 	RuntimeInstallDir string
@@ -678,13 +680,13 @@ func runtimeVersionWithEnv(ctx context.Context, executable string, args []string
 	if len(args) == 0 {
 		return "", nil
 	}
-	probeCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	probeCtx, cancel := context.WithTimeout(ctx, runtimeVersionProbeTimeout)
 	defer cancel()
 	command := exec.CommandContext(probeCtx, executable, args...)
 	command.Env = env
 	output, err := command.CombinedOutput()
 	if err != nil {
-		return "", err
+		return "", runtimeVersionProbeError(ctx, probeCtx, err)
 	}
 	version := regexp.MustCompile(`\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?`).FindString(string(output))
 	if !validSemver(version) || !matchesConstraint(version, constraint) {
@@ -734,7 +736,7 @@ func runtimeVersionWithIdentity(
 	if len(args) == 0 {
 		return "", nil
 	}
-	probeCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	probeCtx, cancel := context.WithTimeout(ctx, runtimeVersionProbeTimeout)
 	defer cancel()
 	var output []byte
 	var err error
@@ -744,13 +746,27 @@ func runtimeVersionWithIdentity(
 		output, err = exec.CommandContext(probeCtx, executable, args...).CombinedOutput()
 	}
 	if err != nil {
-		return "", err
+		return "", runtimeVersionProbeError(ctx, probeCtx, err)
 	}
 	version := regexp.MustCompile(`\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?`).FindString(string(output))
 	if !validSemver(version) || !matchesConstraint(version, constraint) {
 		return "", errors.New("runtime version is incompatible")
 	}
 	return version, nil
+}
+
+func runtimeVersionProbeError(ctx, probeCtx context.Context, err error) error {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return fmt.Errorf("runtime version probe aborted: %w", ctxErr)
+	}
+	if errors.Is(probeCtx.Err(), context.DeadlineExceeded) {
+		return fmt.Errorf(
+			"runtime version probe timed out after %s: %w",
+			runtimeVersionProbeTimeout,
+			context.DeadlineExceeded,
+		)
+	}
+	return err
 }
 
 func matchesConstraint(version, constraint string) bool {

@@ -37,6 +37,37 @@ type preferencesStoreStub struct {
 	preferences preferencesbiz.DesktopPreferences
 }
 
+func TestRuntimeVersionProbeErrorClassifiesTimeoutAndCancellation(t *testing.T) {
+	t.Run("probe timeout", func(t *testing.T) {
+		probeCtx, cancel := context.WithDeadline(
+			context.Background(),
+			time.Now().Add(-time.Second),
+		)
+		defer cancel()
+
+		err := runtimeVersionProbeError(
+			context.Background(),
+			probeCtx,
+			errors.New("signal: killed"),
+		)
+		if !errors.Is(err, context.DeadlineExceeded) ||
+			!strings.Contains(err.Error(), "runtime version probe timed out after 30s") {
+			t.Fatalf("runtimeVersionProbeError() = %v", err)
+		}
+	})
+
+	t.Run("parent cancellation", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		err := runtimeVersionProbeError(ctx, ctx, errors.New("signal: killed"))
+		if !errors.Is(err, context.Canceled) ||
+			!strings.Contains(err.Error(), "runtime version probe aborted") {
+			t.Fatalf("runtimeVersionProbeError() = %v", err)
+		}
+	})
+}
+
 func (s *preferencesStoreStub) GetDesktopPreferences(context.Context) (preferencesbiz.DesktopPreferences, error) {
 	return s.preferences, nil
 }
