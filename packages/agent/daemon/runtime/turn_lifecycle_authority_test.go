@@ -64,7 +64,7 @@ func TestControllerCodexStreamNeverIdlesMidTurn(t *testing.T) {
 	t.Parallel()
 
 	transport := newScriptedAppServerTransport()
-	transport.conn.holdTurn = true
+	transport.server.holdTurn = true
 	adapter := NewCodexAppServerAdapter(transport)
 	controller := NewController([]Adapter{adapter}, nil)
 	started, err := controller.Start(context.Background(), StartInput{
@@ -108,7 +108,7 @@ func TestControllerCodexStreamNeverIdlesMidTurn(t *testing.T) {
 		session, ok := controller.get("room-1", agentSessionID)
 		return ok && len(session.RuntimeContext) > 0
 	})
-	transport.conn.completePendingTurn()
+	transport.server.completePendingTurn()
 	waitForCondition(t, func() bool {
 		return adapter.sessionActiveTurnID(agentSessionID) == ""
 	})
@@ -334,7 +334,7 @@ func TestCodexAppServerAdapterApprovalErrorPathResumesLifecycle(t *testing.T) {
 	t.Parallel()
 
 	adapter, transport, session := startedAppServerAdapter(t)
-	transport.conn.commandApproval = true
+	transport.server.commandApproval = true
 
 	var streamedMu sync.Mutex
 	var streamed []activityshared.Event
@@ -375,7 +375,7 @@ func TestCodexAppServerAdapterApprovalErrorPathResumesLifecycle(t *testing.T) {
 		return false
 	})
 
-	transport.conn.completePendingTurn()
+	transport.server.completePendingTurn()
 	select {
 	case <-execDone:
 	case <-time.After(5 * time.Second):

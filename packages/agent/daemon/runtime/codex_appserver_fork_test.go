@@ -27,8 +27,8 @@ func TestCodexAppServerForkCapabilitiesRequireExactSupportedRuntime(t *testing.T
 
 	t.Run("older codex", func(t *testing.T) {
 		transport := &multiProcAppServerTransport{}
-		transport.setConfigure(func(conn *scriptedAppServerConnection) {
-			conn.userAgent = "codex/0.143.9"
+		transport.setConfigure(func(server *fakeCodexAppServer) {
+			server.userAgent = "codex/0.143.9"
 		})
 		adapter := NewCodexAppServerAdapter(transport)
 		source := testAppServerSession()
@@ -47,8 +47,8 @@ func TestCodexAppServerForkCapabilitiesRequireExactSupportedRuntime(t *testing.T
 
 	t.Run("tutti agent does not inherit codex capability", func(t *testing.T) {
 		transport := &multiProcAppServerTransport{}
-		transport.setConfigure(func(conn *scriptedAppServerConnection) {
-			conn.userAgent = "codex/0.144.1"
+		transport.setConfigure(func(server *fakeCodexAppServer) {
+			server.userAgent = "codex/0.144.1"
 		})
 		adapter := NewTuttiAgentAppServerAdapterWithHostMetadata(
 			transport,
@@ -180,9 +180,9 @@ func TestCodexAppServerForkedChildCanResumeAndStartTurn(t *testing.T) {
 		t.Fatalf("Fork: %v", err)
 	}
 
-	transport.setConfigure(func(conn *scriptedAppServerConnection) {
-		conn.userAgent = "codex/0.144.1"
-		conn.holdTurn = true
+	transport.setConfigure(func(server *fakeCodexAppServer) {
+		server.userAgent = "codex/0.144.1"
+		server.holdTurn = true
 	})
 	target := source
 	target.AgentSessionID = "agent-session-fork"
@@ -237,9 +237,9 @@ func TestCodexAppServerForkRejectsUnavailableBoundaryBeforeProviderMutation(
 	t *testing.T,
 ) {
 	adapter, source, transport := startForkCapableCodexAdapter(t)
-	transport.setConfigure(func(conn *scriptedAppServerConnection) {
-		conn.userAgent = "codex/0.144.1"
-		conn.threadReadTurnIDs = []string{"provider-turn-1"}
+	transport.setConfigure(func(server *fakeCodexAppServer) {
+		server.userAgent = "codex/0.144.1"
+		server.threadReadTurnIDs = []string{"provider-turn-1"}
 	})
 
 	result, err := adapter.Fork(t.Context(), SessionForkInput{
@@ -262,45 +262,45 @@ func TestCodexAppServerForkRejectsUnavailableBoundaryBeforeProviderMutation(
 func TestCodexAppServerForkRejectsUnverifiedChild(t *testing.T) {
 	tests := []struct {
 		name      string
-		configure func(*scriptedAppServerConnection)
+		configure func(*fakeCodexAppServer)
 	}{
 		{
 			name: "lineage missing",
-			configure: func(conn *scriptedAppServerConnection) {
-				conn.omitForkedFromThreadID = true
+			configure: func(server *fakeCodexAppServer) {
+				server.omitForkedFromThreadID = true
 			},
 		},
 		{
 			name: "lineage empty",
-			configure: func(conn *scriptedAppServerConnection) {
-				conn.emptyForkedFromThreadID = true
+			configure: func(server *fakeCodexAppServer) {
+				server.emptyForkedFromThreadID = true
 			},
 		},
 		{
 			name: "lineage mismatch",
-			configure: func(conn *scriptedAppServerConnection) {
-				conn.forkedFromThreadID = "different-source"
+			configure: func(server *fakeCodexAppServer) {
+				server.forkedFromThreadID = "different-source"
 			},
 		},
 		{
 			name: "boundary mismatch",
-			configure: func(conn *scriptedAppServerConnection) {
-				conn.forkResponseLastTurnID = "different-turn"
+			configure: func(server *fakeCodexAppServer) {
+				server.forkResponseLastTurnID = "different-turn"
 			},
 		},
 		{
 			name: "source returned as child",
-			configure: func(conn *scriptedAppServerConnection) {
-				conn.forkChildThreadID = "codex-thread-1"
+			configure: func(server *fakeCodexAppServer) {
+				server.forkChildThreadID = "codex-thread-1"
 			},
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			adapter, source, transport := startForkCapableCodexAdapter(t)
-			transport.setConfigure(func(conn *scriptedAppServerConnection) {
-				conn.userAgent = "codex/0.144.1"
-				test.configure(conn)
+			transport.setConfigure(func(server *fakeCodexAppServer) {
+				server.userAgent = "codex/0.144.1"
+				test.configure(server)
 			})
 			result, err := adapter.Fork(context.Background(), SessionForkInput{
 				Source:         source,
@@ -322,9 +322,9 @@ func TestCodexAppServerForkRejectsUnverifiedChild(t *testing.T) {
 
 func TestCodexAppServerForkClassifiesExplicitRPCRejection(t *testing.T) {
 	adapter, source, transport := startForkCapableCodexAdapter(t)
-	transport.setConfigure(func(conn *scriptedAppServerConnection) {
-		conn.userAgent = "codex/0.144.1"
-		conn.forkRPCError = true
+	transport.setConfigure(func(server *fakeCodexAppServer) {
+		server.userAgent = "codex/0.144.1"
+		server.forkRPCError = true
 	})
 	result, err := adapter.Fork(context.Background(), SessionForkInput{
 		Source:         source,
@@ -344,9 +344,9 @@ func TestCodexAppServerForkClassifiesExplicitRPCRejection(t *testing.T) {
 
 func TestCodexAppServerForkVerifiesSelectedProviderTurnBinding(t *testing.T) {
 	adapter, source, transport := startForkCapableCodexAdapter(t)
-	transport.setConfigure(func(conn *scriptedAppServerConnection) {
-		conn.userAgent = "codex/0.144.1"
-		conn.forkResponseTurnIDs = []string{"provider-turn-1", "provider-turn-2"}
+	transport.setConfigure(func(server *fakeCodexAppServer) {
+		server.userAgent = "codex/0.144.1"
+		server.forkResponseTurnIDs = []string{"provider-turn-1", "provider-turn-2"}
 	})
 	result, err := adapter.Fork(context.Background(), SessionForkInput{
 		Source:         source,
@@ -359,9 +359,9 @@ func TestCodexAppServerForkVerifiesSelectedProviderTurnBinding(t *testing.T) {
 		t.Fatalf("result = %#v", result)
 	}
 
-	transport.setConfigure(func(conn *scriptedAppServerConnection) {
-		conn.userAgent = "codex/0.144.1"
-		conn.forkResponseTurnIDs = []string{"provider-turn-2"}
+	transport.setConfigure(func(server *fakeCodexAppServer) {
+		server.userAgent = "codex/0.144.1"
+		server.forkResponseTurnIDs = []string{"provider-turn-2"}
 	})
 	selectedOnly, err := adapter.Fork(context.Background(), SessionForkInput{
 		Source:         source,
@@ -371,9 +371,9 @@ func TestCodexAppServerForkVerifiesSelectedProviderTurnBinding(t *testing.T) {
 		t.Fatalf("selected-only Fork result=%#v error=%v", selectedOnly, err)
 	}
 
-	transport.setConfigure(func(conn *scriptedAppServerConnection) {
-		conn.userAgent = "codex/0.144.1"
-		conn.forkResponseTurnIDs = []string{"provider-turn-1"}
+	transport.setConfigure(func(server *fakeCodexAppServer) {
+		server.userAgent = "codex/0.144.1"
+		server.forkResponseTurnIDs = []string{"provider-turn-1"}
 	})
 	rejected, err := adapter.Fork(context.Background(), SessionForkInput{
 		Source:         source,
@@ -386,8 +386,8 @@ func TestCodexAppServerForkVerifiesSelectedProviderTurnBinding(t *testing.T) {
 
 func TestControllerForkUsesOptionalSessionForkAdapter(t *testing.T) {
 	transport := &multiProcAppServerTransport{}
-	transport.setConfigure(func(conn *scriptedAppServerConnection) {
-		conn.userAgent = "codex/0.144.1"
+	transport.setConfigure(func(server *fakeCodexAppServer) {
+		server.userAgent = "codex/0.144.1"
 	})
 	adapter := NewCodexAppServerAdapter(transport)
 	source := testAppServerSession()
@@ -526,9 +526,9 @@ func startForkCapableCodexAdapter(
 ) (*CodexAppServerAdapter, Session, *multiProcAppServerTransport) {
 	t.Helper()
 	transport := &multiProcAppServerTransport{}
-	transport.setConfigure(func(conn *scriptedAppServerConnection) {
-		conn.userAgent = "codex/0.144.1"
-		conn.threadReadTurnIDs = []string{"provider-turn-1", "provider-turn-2"}
+	transport.setConfigure(func(server *fakeCodexAppServer) {
+		server.userAgent = "codex/0.144.1"
+		server.threadReadTurnIDs = []string{"provider-turn-1", "provider-turn-2"}
 	})
 	adapter := NewCodexAppServerAdapter(transport)
 	source := testAppServerSession()

@@ -18,7 +18,7 @@ type multiProcAppServerTransport struct {
 	mu        sync.Mutex
 	conns     []*scriptedAppServerConnection
 	startErr  error
-	configure func(conn *scriptedAppServerConnection)
+	configure func(server *fakeCodexAppServer)
 }
 
 func (t *multiProcAppServerTransport) Start(_ context.Context, _ ProcessSpec) (ProcessConnection, error) {
@@ -27,9 +27,9 @@ func (t *multiProcAppServerTransport) Start(_ context.Context, _ ProcessSpec) (P
 	if t.startErr != nil {
 		return nil, t.startErr
 	}
-	conn := newScriptedAppServerConnection()
+	conn, server := newScriptedAppServerHarness()
 	if t.configure != nil {
-		t.configure(conn)
+		t.configure(server)
 	}
 	t.conns = append(t.conns, conn)
 	return conn, nil
@@ -41,7 +41,7 @@ func (t *multiProcAppServerTransport) setStartErr(err error) {
 	t.mu.Unlock()
 }
 
-func (t *multiProcAppServerTransport) setConfigure(configure func(conn *scriptedAppServerConnection)) {
+func (t *multiProcAppServerTransport) setConfigure(configure func(server *fakeCodexAppServer)) {
 	t.mu.Lock()
 	t.configure = configure
 	t.mu.Unlock()
@@ -354,8 +354,8 @@ func TestCodexAppServerAdapterResumeThreadFailureKeepsPreviousSessionLive(t *tes
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	transport.setConfigure(func(conn *scriptedAppServerConnection) {
-		conn.threadResumeError = true
+	transport.setConfigure(func(server *fakeCodexAppServer) {
+		server.threadResumeError = true
 	})
 	session.ProviderSessionID = "codex-thread-1"
 	if err := adapter.Resume(context.Background(), session); err == nil {

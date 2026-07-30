@@ -53,7 +53,7 @@
       "packages/agent/gui/app/renderer/i18n/locales/en.ts": 1893,
       "packages/agent/gui/app/renderer/i18n/locales/zh-CN.ts": 1773
     },
-    "goFileLengthExemptions": 2,
+    "goFileLengthExemptions": 1,
     "identityProviderBranches": 1,
     "inlineCompositorHints": {
       "packages/agent/gui/shared/AgentMessageMermaid.tsx": 1,

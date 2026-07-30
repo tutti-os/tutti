@@ -33,7 +33,7 @@ func TestCodexAppServerAdapterTurnStartAckTimeoutInvalidatesClient(t *testing.T)
 	adapter, transport, session := startedAppServerAdapter(t)
 	t.Cleanup(func() { _ = adapter.Close(context.Background(), session) })
 	adapter.turnStartAckTimeout = 25 * time.Millisecond
-	transport.conn.hangTurnStart = true
+	transport.server.hangTurnStart = true
 
 	startedAt := time.Now()
 	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
@@ -69,8 +69,8 @@ func TestCodexAppServerAdapterTurnStartCancelBeforeAckInvalidatesClient(t *testi
 	adapter, transport, session := startedAppServerAdapter(t)
 	t.Cleanup(func() { _ = adapter.Close(context.Background(), session) })
 	adapter.turnStartAckTimeout = time.Second
-	transport.conn.hangTurnStart = true
-	transport.conn.turnStartEntered = make(chan struct{})
+	transport.server.hangTurnStart = true
+	transport.server.turnStartEntered = make(chan struct{})
 
 	execCtx, cancelExec := context.WithCancel(context.Background())
 	execDone := make(chan []activityshared.Event, 1)
@@ -82,7 +82,7 @@ func TestCodexAppServerAdapterTurnStartCancelBeforeAckInvalidatesClient(t *testi
 	}()
 
 	select {
-	case <-transport.conn.turnStartEntered:
+	case <-transport.server.turnStartEntered:
 	case <-time.After(time.Second):
 		t.Fatalf("turn/start was not sent")
 	}
@@ -104,8 +104,8 @@ func TestCodexAppServerAdapterTurnStartCancelBeforeAckInvalidatesClient(t *testi
 }
 
 func TestCodexAppServerAdapterCanResumeAfterTurnStartAckTimeout(t *testing.T) {
-	firstConnection := newScriptedAppServerConnection()
-	firstConnection.hangTurnStart = true
+	firstConnection, firstServer := newScriptedAppServerHarness()
+	firstServer.hangTurnStart = true
 	secondConnection := newScriptedAppServerConnection()
 	transport := &sequentialAppServerTransport{
 		connections: []*scriptedAppServerConnection{firstConnection, secondConnection},
@@ -154,7 +154,7 @@ func TestCodexAppServerAdapterTurnStartAckTimeoutDoesNotBoundRunningTurn(t *test
 	adapter, transport, session := startedAppServerAdapter(t)
 	t.Cleanup(func() { _ = adapter.Close(context.Background(), session) })
 	adapter.turnStartAckTimeout = 25 * time.Millisecond
-	transport.conn.holdTurn = true
+	transport.server.holdTurn = true
 
 	execDone := make(chan []activityshared.Event, 1)
 	go func() {
@@ -171,7 +171,7 @@ func TestCodexAppServerAdapterTurnStartAckTimeoutDoesNotBoundRunningTurn(t *test
 	if !adapter.HasLiveSession(session) {
 		t.Fatalf("acknowledged running turn was closed by acknowledgement timeout")
 	}
-	transport.conn.completePendingTurn()
+	transport.server.completePendingTurn()
 
 	select {
 	case events := <-execDone:
@@ -189,7 +189,7 @@ func TestCodexAppServerAdapterTurnSteerTimesOut(t *testing.T) {
 	adapter, transport, session := startedAppServerAdapter(t)
 	t.Cleanup(func() { _ = adapter.Close(context.Background(), session) })
 	adapter.turnSteerTimeout = 25 * time.Millisecond
-	transport.conn.holdTurn = true
+	transport.server.holdTurn = true
 
 	execDone := make(chan struct{}, 1)
 	go func() {
@@ -201,9 +201,9 @@ func TestCodexAppServerAdapterTurnSteerTimesOut(t *testing.T) {
 	waitForCondition(t, func() bool {
 		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
 	})
-	transport.conn.mu.Lock()
-	transport.conn.hangSteer = true
-	transport.conn.mu.Unlock()
+	transport.server.mu.Lock()
+	transport.server.hangSteer = true
+	transport.server.mu.Unlock()
 
 	startedAt := time.Now()
 	_, err := adapter.GuideActiveTurn(context.Background(), session, []PromptContentBlock{{
@@ -216,7 +216,7 @@ func TestCodexAppServerAdapterTurnSteerTimesOut(t *testing.T) {
 		t.Fatalf("GuideActiveTurn elapsed = %s, want bounded turn/steer", elapsed)
 	}
 
-	transport.conn.completePendingTurn()
+	transport.server.completePendingTurn()
 	select {
 	case <-execDone:
 	case <-time.After(time.Second):

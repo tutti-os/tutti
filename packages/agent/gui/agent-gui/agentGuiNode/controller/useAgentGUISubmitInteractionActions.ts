@@ -1,6 +1,4 @@
 import {
-  selectEngineHasVisibleQueuedSubmit,
-  selectPendingSubmitsForSession,
   type AgentActivityGoalControlAction,
   type AgentActivityInteraction,
   type AgentActivityTurn,
@@ -295,17 +293,15 @@ export function useAgentGUISubmitInteractionActions(
           targetMode: "existing"
         }
       });
-      sessionEngine.dispatch({
+      const { accepted, queued } = sessionEngine.submitPrompt({
         agentSessionId,
         ...(options?.capabilityRefs?.length
           ? { capabilityRefs: options.capabilityRefs }
           : {}),
         clientSubmitId: submitTrace.clientSubmitId,
         content: normalizedContent,
-        expiresAtUnixMs: submittedAtUnixMs + 120_000,
         ...(displayPrompt && displayPrompt.trim() ? { displayPrompt } : {}),
         submitDiagnostics: agentSubmitTraceDiagnostics(submitTrace),
-        requestedAtUnixMs: submittedAtUnixMs,
         ...(options?.requiredSettingsPatch
           ? {
               requiredSettingsPatch: {
@@ -318,21 +314,8 @@ export function useAgentGUISubmitInteractionActions(
           : options?.sendNow === true
             ? { routing: "send_now" as const }
             : {}),
-        runtimeContent: toRuntimeSendContent(normalizedContent),
-        type: "submit/requested",
-        workspaceId
+        runtimeContent: toRuntimeSendContent(normalizedContent)
       });
-      const queued = Boolean(
-        selectEngineHasVisibleQueuedSubmit(
-          sessionEngine.getSnapshot(),
-          agentSessionId,
-          submitTrace.clientSubmitId
-        )
-      );
-      const accepted = selectPendingSubmitsForSession(
-        sessionEngine.getSnapshot(),
-        agentSessionId
-      ).some((record) => record.clientSubmitId === submitTrace.clientSubmitId);
       submitTrace.queued = queued;
       setDetailError(null);
       // Clear the composer optimistically the instant the engine takes the

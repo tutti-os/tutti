@@ -175,10 +175,29 @@ describe("WorkspaceActivityService", () => {
 
     await service.start();
     await flushAsyncWork();
+    const engine = (
+      service as unknown as {
+        engine: AgentSessionEngine;
+      }
+    ).engine;
+    const submitPrompt = jest.spyOn(engine, "submitPrompt");
     service.setDraft("continue");
     await service.send();
     await flushAsyncWork();
 
+    expect(submitPrompt).toHaveBeenCalledWith({
+      agentSessionId: "session-1",
+      clientSubmitId: expect.any(String),
+      content: [{ text: "continue", type: "text" }],
+      routing: "auto",
+      runtimeContent: [{ text: "continue", type: "text" }],
+      submitDiagnostics: {
+        blockCount: 1,
+        promptLength: 8,
+        source: "mobile",
+        submittedAtUnixMs: expect.any(Number)
+      }
+    });
     expect(sends).toHaveLength(1);
     expect(sends[0]).toMatchObject({
       agentSessionId: "session-1",
@@ -190,6 +209,30 @@ describe("WorkspaceActivityService", () => {
     expect(service.getSnapshot().draft).toBe("");
     expect(service.getSnapshot().sending).toBe(true);
 
+    service.dispose();
+  });
+
+  test("preserves the Mobile draft when the Engine rejects submission admission", async () => {
+    const service = createService(
+      createClient({ listMessages: emptyMessagePage })
+    );
+
+    await service.start();
+    await flushAsyncWork();
+    const engine = (
+      service as unknown as {
+        engine: AgentSessionEngine;
+      }
+    ).engine;
+    jest.spyOn(engine, "submitPrompt").mockReturnValue({
+      accepted: false,
+      queued: false
+    });
+    service.setDraft("continue");
+
+    await service.send();
+
+    expect(service.getSnapshot().draft).toBe("continue");
     service.dispose();
   });
 

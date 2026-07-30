@@ -46,7 +46,7 @@ import { WorkspaceMediaService } from "./workspaceMediaService";
 export type { WorkspaceActivitySnapshot } from "./workspaceActivityTypes";
 
 const MESSAGE_POLL_MS = 1_000;
-const PENDING_EXPIRY_MS = 60_000;
+const ACTIVATION_EXPIRY_MS = 60_000;
 
 export class WorkspaceActivityService extends ObservableService<WorkspaceActivitySnapshot> {
   readonly _serviceBrand: undefined;
@@ -436,7 +436,7 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
         agentTargetId: submission.agentTargetId!,
         clientSubmitId: submission.clientSubmitId,
         content,
-        expiresAtUnixMs: now + PENDING_EXPIRY_MS,
+        expiresAtUnixMs: now + ACTIVATION_EXPIRY_MS,
         initialTurnExpected: true,
         mode: "new",
         requestId: submission.clientSubmitId,
@@ -452,19 +452,17 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
       return;
     }
     if (!snapshot.selectedAgentSessionId) return;
-    this.engine.dispatch({
+    const { accepted, queued } = this.engine.submitPrompt({
       agentSessionId: snapshot.selectedAgentSessionId,
       clientSubmitId: submission.clientSubmitId,
       content,
-      expiresAtUnixMs: now + PENDING_EXPIRY_MS,
-      requestedAtUnixMs: now,
       routing: "auto",
       runtimeContent: content,
-      submitDiagnostics,
-      type: "submit/requested",
-      workspaceId: this.workspace.id
+      submitDiagnostics
     });
-    this.drafts.clear(snapshot.selectedAgentSessionId);
+    if (accepted || queued) {
+      this.drafts.clear(snapshot.selectedAgentSessionId);
+    }
   }
 
   stop(): void {

@@ -197,12 +197,17 @@ It owns:
   shared mutation settlement, and a serialized settings-precondition state
   machine
 - semantic `AgentSessionEngine` methods for composer-option loading,
-  Session stop, Interaction response submission, existing-Session settings
-  updates, rename, pin, and batch delete. Stop, Interaction, and settings
-  updates are intent admission: the Engine owns workspace and command identity
-  plus the 30-second delivery timeout. Session stop additionally owns the
-  30-second first-Turn waiting window and duplicate admission across Desktop
-  and Mobile. Interaction submission owns canonical pending-target admission,
+  existing-Session Prompt submission, Session stop, Interaction response
+  submission, existing-Session settings updates, rename, pin, and batch
+  delete. Prompt, stop, Interaction, and settings updates are intent admission:
+  the Engine owns workspace and protocol construction. Prompt submission owns
+  routing, the 120-second confirmation window, and the accepted/queued
+  admission result while the caller retains the stable client submit identity
+  used by draft recovery and idempotent retry. Stop, Interaction, and settings
+  additionally own command identity plus the 30-second delivery timeout.
+  Session stop owns the 30-second first-Turn waiting window and duplicate
+  admission across Desktop and Mobile. Interaction submission owns canonical
+  pending-target admission,
   in-flight deduplication, and exact failed-response retry; it never recovers
   omitted answer fields from a prior attempt. Settings updates own serialized
   patch merging and recognition of a fresh user update as retry after unknown
@@ -224,6 +229,12 @@ Desktop AgentGUI and Mobile call `stopSession` instead of constructing
 `session/stopRequested` protocol fields. The same method stops an active Turn
 or records a bounded request that cancels the first Turn produced by an
 in-flight activation.
+Desktop AgentGUI and Mobile call `submitPrompt` for an existing Session instead
+of constructing `submit/requested` protocol fields or reading multiple Engine
+selectors to infer whether the submission was admitted. The Engine fixes the
+same confirmation window and routing semantics for both surfaces; each surface
+uses the returned accepted/queued result to decide whether its submitted draft
+may be cleared. New-Session initial content remains part of activation.
 AgentGUI, Message Center, Desktop notifications, and Mobile call
 `submitInteractionResponse` for a canonical pending Interaction instead of
 constructing `interaction/responseRequested` protocol fields. A failed

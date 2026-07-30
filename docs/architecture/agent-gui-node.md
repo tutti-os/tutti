@@ -681,10 +681,11 @@ disable submission, but must not change editor editability.
   into `AgentSessionEffectPort` calls. Desktop and Mobile effect ports retain
   transport and DTO mapping but must not duplicate a command-type switch for
   these shared effects. Host activity facades call
-  `engine.stopSession`, `engine.updateSessionSettings`, `engine.renameSession`,
-  `engine.setSessionPinned`, and `engine.deleteSessions`; these deep methods
-  own the applicable workspace projection, command or mutation identity,
-  timeout, cancellation, settlement, and canonical result projection. Settings
+  `engine.submitPrompt`, `engine.stopSession`,
+  `engine.updateSessionSettings`, `engine.renameSession`,
+  `engine.setSessionPinned`, and `engine.deleteSessions`; these deep methods own
+  the applicable workspace projection, protocol or mutation identity, timeout,
+  cancellation, settlement, and canonical result projection. Settings
   update is fire-and-observe intent admission rather than a settlement Promise:
   the existing settings-operation selector remains the source of pending,
   failed, and unknown state. Hosts must not reconstruct mutation protocol with
@@ -694,6 +695,14 @@ disable submission, but must not change editor editability.
   identity, 30-second cancellation timeout, duplicate fence, and 30-second
   first-Turn waiting window. Desktop AgentGUI and Native Mobile call
   `engine.stopSession` and never construct raw `session/stopRequested` fields.
+  Existing-Session Prompt submission enters through `engine.submitPrompt`.
+  The surface keeps the stable `clientSubmitId` used by its draft-recovery and
+  idempotent-retry bookkeeping; the Engine owns workspace scope, timestamps,
+  routing protocol, the shared 120-second confirmation window, and the
+  accepted/queued admission result. Desktop AgentGUI and Native Mobile clear a
+  submitted draft only after that result confirms admission, and never
+  construct raw `submit/requested` fields or rebuild admission from selectors.
+  New-Session initial content continues to travel with activation.
   Platform-only commands remain in each host's `EngineExtensionCommand`
   adapter. Every effect propagates the Engine-owned AbortSignal to its
   transport. Rename, pin, and delete settle through the shared Session-mutation
@@ -916,6 +925,9 @@ the activation intent instead; provider-independent draft projection and
 Desktop-persisted defaults remain surface policy until activation. A renderer
 must not call the settings endpoint from a component or invent a
 provider-specific settings schema.
+Existing-Session Prompt sends similarly enter through `engine.submitPrompt`;
+Desktop and Mobile provide content plus a stable client submit identity, while
+the Engine owns common routing, confirmation expiry, and admission projection.
 
 An activation intent's shared Session settings are not an HTTP create-field
 allowlist. Each host must construct a typed

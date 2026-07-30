@@ -15,6 +15,8 @@ import {
   selectEngineSession,
   selectEngineSessionSettingsUpdate
 } from "./sessionLifecycle.selectors.ts";
+import { selectPendingSubmitsForSession } from "./pendingIntents.selectors.ts";
+import { selectEngineHasVisibleQueuedSubmit } from "./promptQueue.selectors.ts";
 import {
   dispatchSessionMutationWithCancellation,
   type SessionMutationCancellation
@@ -32,6 +34,8 @@ import {
   type AgentSessionLoadComposerOptionsInput,
   type AgentSessionStopInput,
   type AgentSessionSubmitInteractionResponseInput,
+  type AgentSessionSubmitPromptInput,
+  type AgentSessionSubmitPromptResult,
   type AgentSessionUpdateSettingsInput,
   type EngineClock,
   type EngineCommandPort,
@@ -64,6 +68,7 @@ const SESSION_MUTATION_TIMEOUT_MS = 30_000;
 const SESSION_SETTINGS_UPDATE_TIMEOUT_MS = 30_000;
 const SESSION_STOP_TIMEOUT_MS = 30_000;
 const INTERACTION_RESPONSE_TIMEOUT_MS = 30_000;
+const SESSION_PROMPT_CONFIRMATION_TIMEOUT_MS = 120_000;
 
 export interface CreateAgentSessionEngineInput {
   batchDelayMs?: number;
@@ -454,6 +459,62 @@ export function createAgentSessionEngine({
     );
   }
 
+  function submitPrompt(
+    input: AgentSessionSubmitPromptInput
+  ): AgentSessionSubmitPromptResult {
+    const agentSessionId = input.agentSessionId.trim();
+    const clientSubmitId = input.clientSubmitId.trim();
+    const content = input.content.map((block) => ({ ...block }));
+    if (!agentSessionId || !clientSubmitId || content.length === 0) {
+      return { accepted: false, queued: false };
+    }
+    const requestedAtUnixMs = clock.nowUnixMs();
+    const displayPrompt = input.displayPrompt?.trim() || undefined;
+    dispatch({
+      agentSessionId,
+      ...(input.capabilityRefs?.length
+        ? {
+            capabilityRefs: input.capabilityRefs.map((reference) => ({
+              ...reference
+            }))
+          }
+        : {}),
+      clientSubmitId,
+      content,
+      ...(displayPrompt ? { displayPrompt } : {}),
+      expiresAtUnixMs:
+        requestedAtUnixMs + SESSION_PROMPT_CONFIRMATION_TIMEOUT_MS,
+      ...(input.requiredSettingsPatch
+        ? { requiredSettingsPatch: { ...input.requiredSettingsPatch } }
+        : {}),
+      requestedAtUnixMs,
+      routing: input.routing ?? "auto",
+      ...(input.runtimeContent
+        ? {
+            runtimeContent: input.runtimeContent.map((block) => ({
+              ...block
+            }))
+          }
+        : {}),
+      ...(input.submitDiagnostics
+        ? { submitDiagnostics: { ...input.submitDiagnostics } }
+        : {}),
+      type: "submit/requested",
+      workspaceId: engineIdentity.workspaceId
+    });
+    const snapshot = publicSnapshot;
+    return {
+      accepted: selectPendingSubmitsForSession(snapshot, agentSessionId).some(
+        (record) => record.clientSubmitId === clientSubmitId
+      ),
+      queued: selectEngineHasVisibleQueuedSubmit(
+        snapshot,
+        agentSessionId,
+        clientSubmitId
+      )
+    };
+  }
+
   function updateSessionSettings(input: AgentSessionUpdateSettingsInput): void {
     const agentSessionId = input.agentSessionId.trim();
     const settings = { ...input.settings };
@@ -595,6 +656,7 @@ export function createAgentSessionEngine({
       return session;
     },
     submitInteractionResponse,
+    submitPrompt,
     stopSession,
     subscribe(listener) {
       listeners.add(listener);
