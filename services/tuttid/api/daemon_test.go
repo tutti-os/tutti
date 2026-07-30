@@ -2900,6 +2900,28 @@ func TestDaemonAPIGeneratedRoutesSetSystemAgentTargetEnabledRejectsUserTarget(t 
 	}
 }
 
+func TestDaemonAPIGeneratedRoutesRejectsDisablingTuttiAgent(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentTargetService: stubAgentTargetService{
+			setEnabledFn: func(context.Context, agenttargetservice.SetEnabledInput) (agenttargetbiz.Target, error) {
+				return agenttargetbiz.Target{}, agenttargetservice.ErrTuttiAgentAlwaysEnabled
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPatch,
+		"/v1/agent-targets/local:tutti-agent/enabled",
+		map[string]any{"enabled": false},
+	)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+	}
+}
+
 func TestDaemonAPIGeneratedRoutesSetSystemAgentTargetEnabledRequiresEnabled(t *testing.T) {
 	t.Parallel()
 

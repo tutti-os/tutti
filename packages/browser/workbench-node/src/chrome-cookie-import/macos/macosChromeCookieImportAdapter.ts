@@ -128,7 +128,8 @@ export function createChromeCookieProfileDiscovery(input: {
             ? {
                 profiles: profiles.map((profile) => ({
                   ...profile,
-                  id: profile.id as BrowserNodeChromeProfileId
+                  id: profile.id as BrowserNodeChromeProfileId,
+                  source: profile.source ?? "chrome"
                 })),
                 status: "available"
               }

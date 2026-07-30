@@ -11,6 +11,7 @@ import { CanvasNodeGhostIconButton } from "../shared/CanvasNodeGhostIconButton";
 import { CanvasNodePanelLinedIcon } from "../shared/canvasNodeChromeIcons";
 import { useAgentGUINodeController } from "./controller/useAgentGUINodeController";
 import { useAgentGUIStatus } from "./controller/useAgentGUIStatus";
+import { agentTargetForConversation } from "./controller/agentGuiController.providerHelpers";
 import { AgentGUINodeView } from "./AgentGUINodeView";
 import {
   normalizeAgentGUIProviderIdentity,
@@ -323,12 +324,17 @@ export const AgentGUINode = memo(function AgentGUINode({
   const fallbackAgentTitle = t("sidebar.fallbackAgentLabel");
   const activeProvider =
     viewModel.rail.activeConversation?.provider ?? state.provider;
-  const selectedAgentTargetLabel =
-    viewModel.rail.selectedAgentTarget?.label ??
-    resolveAgentGUIProviderDisplayLabel(state.provider, fallbackAgentTitle);
-  const displayProviderLabel = viewModel.rail.activeConversation
-    ? resolveAgentGUIProviderDisplayLabel(activeProvider, fallbackAgentTitle)
-    : selectedAgentTargetLabel;
+  const activeConversationAgentTarget = agentTargetForConversation(
+    viewModel.rail.activeConversation,
+    viewModel.rail.agentTargets
+  );
+  const displayProviderLabel = resolveAgentGUIProviderDisplayLabel(
+    activeProvider,
+    fallbackAgentTitle,
+    viewModel.rail.activeConversation
+      ? activeConversationAgentTarget?.label
+      : viewModel.rail.selectedAgentTarget?.label
+  );
   const conversationRailLabels = useAgentGUIConversationRailLabels(t);
   const labels = useAgentGUIViewLabels({
     disabledHomeSuggestions,

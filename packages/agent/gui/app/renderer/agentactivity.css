@@ -3892,6 +3892,7 @@ aside.workspace-agents-status-panel
   min-width: 0;
   min-height: 36px;
   max-height: 132px;
+  overflow-y: auto;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -3900,11 +3901,34 @@ aside.workspace-agents-status-panel
   line-height: 1.45;
   padding: 9px 10px;
   resize: vertical;
+  scrollbar-width: thin;
+  scrollbar-color: var(--transparency-hover) transparent;
+  scrollbar-gutter: stable;
 }
 
 .agent-gui-conversation__interactive-feedback-composer
   .agent-gui-conversation__interactive-prompt-textarea::placeholder {
   color: var(--text-placeholder);
+}
+
+.agent-gui-conversation__interactive-feedback-composer
+  .agent-gui-conversation__interactive-prompt-textarea::-webkit-scrollbar {
+  display: block;
+  width: 4px;
+  height: 4px;
+}
+
+.agent-gui-conversation__interactive-feedback-composer
+  .agent-gui-conversation__interactive-prompt-textarea::-webkit-scrollbar-track,
+.agent-gui-conversation__interactive-feedback-composer
+  .agent-gui-conversation__interactive-prompt-textarea::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.agent-gui-conversation__interactive-feedback-composer
+  .agent-gui-conversation__interactive-prompt-textarea::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--transparency-hover);
 }
 
 .agent-gui-conversation__interactive-feedback-send-button {

@@ -64,6 +64,9 @@ export function createWorkbenchHostNodeBodyContext<
       selectFocusedWorkbenchNode(host.getSnapshot())?.id === context.node.id,
     isResizing: context.isResizing,
     isVisible,
+    isPresentationVisible:
+      context.layout.presentation?.mode === "mission-control" &&
+      context.layout.presentation.visibleNodeIds.has(context.node.id),
     presentationMode: context.layout.presentation?.mode ?? null,
     node: context.node,
     setNodeRuntimeState(state) {

@@ -153,6 +153,23 @@ describe("AgentConfigCommerceContent", () => {
     expect(onRefresh).toHaveBeenCalledOnce();
   });
 
+  it("can omit the account identity row for compact Agent config menus", () => {
+    render(
+      <AgentConfigCommerceContent
+        accountName="Mia"
+        showAccountIdentity={false}
+        state={state()}
+        labels={labels}
+        onRefresh={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByText("Tutti Agent account")).not.toBeInTheDocument();
+    expect(screen.queryByText("Mia")).not.toBeInTheDocument();
+    expect(screen.getByText("Credits")).toBeInTheDocument();
+    expect(screen.getByText("Membership")).toBeInTheDocument();
+  });
+
   it("uses the free membership fallback without inventing a paid tier", () => {
     render(
       <AgentConfigCommerceContent

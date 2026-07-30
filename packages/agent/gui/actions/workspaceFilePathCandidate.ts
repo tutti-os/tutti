@@ -32,7 +32,9 @@ export function resolveWorkspaceFilePathCandidate({
     return null;
   }
 
-  const normalizedPath = normalizeWorkspaceFilePath(rawPath);
+  const normalizedPath = normalizeWorkspaceFilePath(
+    stripWorkspaceFileLineAnchor(rawPath)
+  );
   if (isUnsupportedSpecialWorkspaceFilePath(normalizedPath)) {
     return null;
   }
@@ -140,6 +142,15 @@ export function decodeWorkspaceLinkPath(path: string): string {
   } catch {
     return path;
   }
+}
+
+/**
+ * Agent Markdown source links use a terminal `:line` suffix. File launchers
+ * operate on filesystem paths, so remove that presentation-only location
+ * anchor before resolving the path.
+ */
+function stripWorkspaceFileLineAnchor(path: string): string {
+  return path.replace(/:[1-9]\d*$/, "");
 }
 
 export function workspaceFilePathBasename(path: string): string {

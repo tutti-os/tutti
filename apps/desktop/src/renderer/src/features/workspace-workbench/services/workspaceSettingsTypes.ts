@@ -418,7 +418,6 @@ export interface WorkspaceSettingsStoreState {
   modelPlans: WorkspaceSettingsModelPlansMutableState;
   open: boolean;
   purgingDeletedConversations: boolean;
-  tuttiAgentSwitchEnabled: boolean;
   workspaceID: string | null;
 }
 
@@ -436,6 +435,5 @@ export interface WorkspaceSettingsReadableStoreState {
   readonly modelPlans: WorkspaceSettingsModelPlansSnapshotState;
   readonly open: boolean;
   readonly purgingDeletedConversations: boolean;
-  readonly tuttiAgentSwitchEnabled: boolean;
   readonly workspaceID: string | null;
 }

@@ -31,6 +31,7 @@ export class SDKMessageRouter {
   private readonly onRuntimeModel: (value: string) => void;
   private readonly onSessionState: () => void;
   private readonly onMaybeTitle: (shouldEmit?: () => boolean) => Promise<void>;
+  private readonly onTerminalConnectionError: () => void;
   private readonly turns: TurnLifecycle;
   private readonly assistant: AssistantStreamProjector;
   private readonly activities: ToolActivityProjector;
@@ -39,6 +40,7 @@ export class SDKMessageRouter {
   private readonly emit: ClaudeSDKSidecarEventEmitter;
   private contextUsageGeneration = 0;
   private activeRootAssistantError = "";
+  private activeRootConnectionRetry = false;
 
   constructor(options: {
     getProviderSessionId: () => string;
@@ -47,6 +49,7 @@ export class SDKMessageRouter {
     onRuntimeModel: (value: string) => void;
     onSessionState: () => void;
     onMaybeTitle: (shouldEmit?: () => boolean) => Promise<void>;
+    onTerminalConnectionError: () => void;
     turns: TurnLifecycle;
     assistant: AssistantStreamProjector;
     activities: ToolActivityProjector;
@@ -60,6 +63,7 @@ export class SDKMessageRouter {
     this.onRuntimeModel = options.onRuntimeModel;
     this.onSessionState = options.onSessionState;
     this.onMaybeTitle = options.onMaybeTitle;
+    this.onTerminalConnectionError = options.onTerminalConnectionError;
     this.turns = options.turns;
     this.assistant = options.assistant;
     this.activities = options.activities;
@@ -100,6 +104,13 @@ export class SDKMessageRouter {
     if (message.type === "system") {
       const raw = message as unknown as Record<string, unknown>;
       const systemSubtype = stringValue(raw.subtype);
+      if (
+        systemSubtype === "api_retry" &&
+        raw.error_status === null &&
+        this.turns.activeId
+      ) {
+        this.activeRootConnectionRetry = true;
+      }
       if (
         systemSubtype === "session_state_changed" &&
         stringValue(raw.state) === "idle" &&
@@ -178,6 +189,7 @@ export class SDKMessageRouter {
         messageSubtype === "task_updated" ||
         messageSubtype === "background_tasks_changed" ||
         messageSubtype === "session_state_changed");
+    const apiRetry = messageType === "system" && messageSubtype === "api_retry";
     const rootContinuationCandidate =
       messageType === "assistant" &&
       !parentToolUseID &&
@@ -186,6 +198,7 @@ export class SDKMessageRouter {
     if (
       !taskNotification &&
       !systemTaskLifecycle &&
+      !apiRetry &&
       !rootContinuationCandidate &&
       !result
     ) {
@@ -201,6 +214,7 @@ export class SDKMessageRouter {
         ...(rootContinuationCandidate
           ? { rootContinuationCandidate: true }
           : {}),
+        ...(apiRetry ? { apiRetry: true } : {}),
         activeTurnIdBefore: this.turns.activeId,
         ...(parentToolUseID ? { parentToolUseId: parentToolUseID } : {}),
         ...(stringValue(raw.task_id)
@@ -220,6 +234,24 @@ export class SDKMessageRouter {
         ...(raw.is_error === true ? { sdkResultIsError: true } : {}),
         ...(typeof raw.api_error_status === "number"
           ? { sdkApiErrorStatus: raw.api_error_status }
+          : {}),
+        ...(apiRetry && raw.error_status === null
+          ? { sdkConnectionError: true }
+          : {}),
+        ...(apiRetry && typeof raw.error_status === "number"
+          ? { sdkApiErrorStatus: raw.error_status }
+          : {}),
+        ...(apiRetry && typeof raw.attempt === "number"
+          ? { sdkRetryAttempt: raw.attempt }
+          : {}),
+        ...(apiRetry && typeof raw.max_retries === "number"
+          ? { sdkMaxRetries: raw.max_retries }
+          : {}),
+        ...(apiRetry && typeof raw.retry_delay_ms === "number"
+          ? { sdkRetryDelayMs: raw.retry_delay_ms }
+          : {}),
+        ...(apiRetry && stringValue(raw.error)
+          ? { sdkAssistantError: stringValue(raw.error) }
           : {})
       }
     });
@@ -393,6 +425,7 @@ export class SDKMessageRouter {
       this.activities.beginRootTurn();
       this.contextUsageGeneration += 1;
       this.activeRootAssistantError = "";
+      this.activeRootConnectionRetry = false;
     }
     const blocks = contentBlocksFromMessage(message);
     if (
@@ -442,7 +475,16 @@ export class SDKMessageRouter {
     const turnId = this.turns.activeId;
     const contextUsageGeneration = this.contextUsageGeneration;
     const assistantError = this.activeRootAssistantError;
+    const terminalConnectionError =
+      result.is_error === true &&
+      (result.api_error_status === null ||
+        (result.api_error_status === undefined &&
+          this.activeRootConnectionRetry));
     this.activeRootAssistantError = "";
+    this.activeRootConnectionRetry = false;
+    if (terminalConnectionError) {
+      this.onTerminalConnectionError();
+    }
     const succeeded =
       !this.turns.cancelled &&
       result.subtype === "success" &&

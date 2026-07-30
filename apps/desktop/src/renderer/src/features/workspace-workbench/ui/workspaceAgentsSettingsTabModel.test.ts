@@ -7,26 +7,16 @@ import {
 
 test("Agents list hides early-access integrations only while the gate is off", () => {
   const providers = ["codex", "claude-code", "openclaw"];
-  assert.deepEqual(filterVisibleAgentProviders(providers, false, false), [
+  assert.deepEqual(filterVisibleAgentProviders(providers, false), [
     "codex",
     "claude-code"
   ]);
-  assert.deepEqual(
-    filterVisibleAgentProviders(providers, true, false),
-    providers
-  );
+  assert.deepEqual(filterVisibleAgentProviders(providers, true), providers);
 });
 
-test("Agents list only shows Tutti Agent while Tutti Agent Switch is on", () => {
+test("Agents list always shows Tutti Agent", () => {
   const providers = ["codex", "tutti-agent", "opencode"];
-  assert.deepEqual(filterVisibleAgentProviders(providers, true, false), [
-    "codex",
-    "opencode"
-  ]);
-  assert.deepEqual(
-    filterVisibleAgentProviders(providers, true, true),
-    providers
-  );
+  assert.deepEqual(filterVisibleAgentProviders(providers, false), providers);
 });
 
 test("deep link focuses a visible provider row", () => {

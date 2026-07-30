@@ -413,6 +413,11 @@ export interface WorkbenchHostNodeBodyContext<
    * False while minimized, Genie-hidden, or inside Mission Control.
    */
   isVisible: boolean;
+  /**
+   * True when a non-normal Workbench presentation currently paints this node.
+   * Omitted by direct hosts that do not use a Workbench presentation.
+   */
+  isPresentationVisible?: boolean;
   /** Current host presentation mode; null for the normal window layout. */
   presentationMode?: WorkbenchSurfacePresentation["mode"] | null;
   node: WorkbenchNode<WorkbenchHostNodeData>;

@@ -402,7 +402,7 @@ describe("AgentSlashCommandPalette", () => {
     expect(onSelectCapabilitySettings).not.toHaveBeenCalled();
   });
 
-  it("separates plugin and connector skill entries into source groups", () => {
+  it("separates catalog skills, plugins, and connectors into source groups", () => {
     render(
       <AgentSlashCommandPalette
         label="Slash commands"
@@ -414,6 +414,17 @@ describe("AgentSlashCommandPalette", () => {
         mcpGroupLabel="MCP"
         highlightedIndex={0}
         entries={[
+          {
+            type: "skill",
+            key: "skill:catalog-review",
+            label: "catalog-review",
+            skill: {
+              name: "catalog-review",
+              trigger: "$catalog-review",
+              sourceKind: "plugin",
+              kind: "skill"
+            }
+          },
           {
             type: "skill",
             key: "skill:plugin-review",
@@ -444,6 +455,7 @@ describe("AgentSlashCommandPalette", () => {
       />
     );
 
+    expect(screen.getByText("Skills")).toBeInTheDocument();
     expect(screen.getByText("Plugins")).toBeInTheDocument();
     expect(screen.getByText("Connectors")).toHaveClass(
       "mt-3",
@@ -452,6 +464,5 @@ describe("AgentSlashCommandPalette", () => {
       "before:border-t",
       "before:border-[var(--border-1)]"
     );
-    expect(screen.queryByText("Skills")).toBeNull();
   });
 });

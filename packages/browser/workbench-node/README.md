@@ -18,9 +18,9 @@ operating-system file open/reveal behavior are supplied by the host. Cookie
 file contents stay in the main process and are written only to the registered
 guest session.
 
-## Chrome login-state import
+## Chrome and Dia login-state import
 
-The optional Chrome import capability is host-injected. The Browser package
+The optional Chrome and Dia import capability is host-injected. The Browser package
 owns renderer-safe profile contracts, Profile selection and prompt UI,
 normalized non-partitioned Cookie writes, aggregate results, and refreshing
 every registered ordinary Browser Node that shares the target Electron
@@ -30,12 +30,13 @@ feature-toggle and logging policy, then inject the returned discovery and
 preparation callbacks into the Electron main registration. The package does
 not own a product preference key.
 
-The macOS adapter currently supports only Google Chrome Stable at the standard
-`~/Library/Application Support/Google/Chrome` location. It
-discovers `Default` and `Profile N` entries from `Local State`, prepares a
-consistent SQLite snapshot, obtains Chrome Safe Storage from Keychain only
-after an explicit import, decrypts `v10` values, and validates the version 24+
-host hash before returning normalized Cookies to the Browser package. Paths,
+The macOS adapter supports Google Chrome Stable at the standard
+`~/Library/Application Support/Google/Chrome` location and Dia at
+`~/Library/Application Support/Dia/User Data`. It discovers `Default` and
+`Profile N` entries from each browser's `Local State`, prepares a consistent
+SQLite snapshot, obtains the selected browser's Safe Storage secret from
+Keychain only after an explicit import, decrypts `v10` values, and validates
+the version 24+ host hash before returning normalized Cookies to the Browser package. Paths,
 database contents, secrets, keys, decrypted values, and Cookie identifiers
 never cross into renderer code. A validated local Profile picture may cross as
 a size-limited PNG/JPEG data URL; local paths and Chrome-internal avatar URIs
@@ -73,14 +74,14 @@ registerBrowserNodeElectronMain({
 
 For manual verification on macOS:
 
-1. Open a normal persistent Browser Node and choose a discovered Chrome
+1. Open a normal persistent Browser Node and choose a discovered Chrome or Dia
    Profile from the prompt or Browser settings.
-2. Allow the Chrome Safe Storage Keychain request and verify signed-in sites
+2. Allow the selected browser's Safe Storage Keychain request and verify signed-in sites
    reload in every open Browser Node sharing that Electron session.
 3. Verify independent Profiles, incognito nodes, and Workspace App browsers do
    not reload or inherit the imported Cookies.
-4. With Chrome writing Cookies, repeat the import; if snapshot validation
-   fails, quit Chrome and retry as prompted.
+4. With Chrome or Dia writing Cookies, repeat the import; if snapshot validation
+   fails, quit that browser and retry as prompted.
 
 The package supports ordinary HTTP and HTTPS browser navigation by default. For
 hosts that need local runtime previews, the Electron main integration can also

@@ -99,6 +99,7 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - [Shared Agent composer stays disabled after the target connects](./agent-session-lifecycle.md#shared-agent-composer-stays-disabled-after-the-target-connects)
 - [Goal clear stays planning and leaves the session running](./agent-session-lifecycle.md#goal-clear-stays-planning-and-leaves-the-session-running)
 - [Cursor session/new is canceled before its 30-second timeout](./agent-session-lifecycle.md#cursor-sessionnew-is-canceled-before-its-30-second-timeout)
+- [Claude Code keeps returning ConnectionRefused after network recovery](./agent-session-lifecycle.md#claude-code-keeps-returning-connectionrefused-after-network-recovery)
 - [Cursor auto-continue invents interrupted work after a network drop](./agent-session-lifecycle.md#cursor-auto-continue-invents-interrupted-work-after-a-network-drop)
 
 ## [Agent Approvals And Sub-Agents](./agent-approvals-subagents.md)

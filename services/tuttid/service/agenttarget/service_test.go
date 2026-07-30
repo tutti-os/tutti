@@ -151,7 +151,7 @@ func TestServiceAllowsUserAgentTargetMutation(t *testing.T) {
 	}
 }
 
-func TestServiceSetEnabledOnlyChangesSystemTargetVisibility(t *testing.T) {
+func TestServiceKeepsTuttiAgentEnabled(t *testing.T) {
 	t.Parallel()
 
 	var original agenttargetbiz.Target
@@ -167,8 +167,36 @@ func TestServiceSetEnabledOnlyChangesSystemTargetVisibility(t *testing.T) {
 	store := &agentTargetStoreStub{targets: map[string]agenttargetbiz.Target{original.ID: original}}
 	service := Service{Store: store}
 
-	updated, err := service.SetEnabled(context.Background(), SetEnabledInput{
+	_, err := service.SetEnabled(context.Background(), SetEnabledInput{
 		ID:      agenttargetbiz.IDLocalTuttiAgent,
+		Enabled: false,
+	})
+	if !errors.Is(err, ErrTuttiAgentAlwaysEnabled) {
+		t.Fatalf("SetEnabled() error = %v, want ErrTuttiAgentAlwaysEnabled", err)
+	}
+	if !store.targets[original.ID].Enabled {
+		t.Fatal("Tutti Agent target was disabled")
+	}
+}
+
+func TestServiceSetEnabledOnlyChangesSystemTargetVisibility(t *testing.T) {
+	t.Parallel()
+
+	var original agenttargetbiz.Target
+	for _, target := range agenttargetbiz.DefaultSystemTargets(100) {
+		if target.ID == agenttargetbiz.IDLocalCodex {
+			original = target
+			break
+		}
+	}
+	if original.ID == "" {
+		t.Fatal("default Codex target not found")
+	}
+	store := &agentTargetStoreStub{targets: map[string]agenttargetbiz.Target{original.ID: original}}
+	service := Service{Store: store}
+
+	updated, err := service.SetEnabled(context.Background(), SetEnabledInput{
+		ID:      agenttargetbiz.IDLocalCodex,
 		Enabled: false,
 	})
 	if err != nil {

@@ -60,19 +60,21 @@ const browserNodeEn = {
   chromeImport: {
     cancel: "Cancel",
     dialogDescription:
-      "Choose a Chrome profile. Tutti imports only login Cookies, not passwords, bookmarks, or history.",
-    dialogTitle: "Import login state from Chrome",
+      "Choose a Chrome or Dia profile. Tutti imports only login Cookies, not passwords, bookmarks, or history.",
+    dialogTitle: "Import login state",
     dismissTooltip: "Close and never show again",
-    fromChrome: "Import from Chrome",
+    fromChrome: "Import from browser",
     import: "Import Cookies",
     importing: "Importing…",
     keychainFailed:
-      "Chrome Safe Storage access was not granted. Try again and allow Keychain access.",
+      "Browser Safe Storage access was not granted. Try again and allow Keychain access.",
     promptDescription:
       "Bring your signed-in website sessions into this browser. Only Cookies are imported.",
-    promptTitle: "Import login state from Chrome",
+    promptTitle: "Import login state",
     selectProfile: "Choose Profile",
-    snapshotFailed: "Close Chrome and try the import again."
+    snapshotFailed: "Close the selected browser and try the import again.",
+    sourceChrome: "Chrome",
+    sourceDia: "Dia"
   },
   dockLabel: "Browser",
   downloads: {
@@ -188,17 +190,19 @@ const browserNodeZhCN = {
   chromeImport: {
     cancel: "取消",
     dialogDescription:
-      "选择 Chrome Profile。Tutti 只导入登录 Cookie，不导入密码、书签或历史记录",
-    dialogTitle: "从 Chrome 导入登录状态",
+      "选择 Chrome 或 Dia Profile。Tutti 只导入登录 Cookie，不导入密码、书签或历史记录",
+    dialogTitle: "导入登录状态",
     dismissTooltip: "关闭且不再显示",
-    fromChrome: "从 Chrome 导入",
+    fromChrome: "从浏览器导入",
     import: "导入 Cookie",
     importing: "正在导入…",
-    keychainFailed: "未获准访问 Chrome 安全存储，请重试并允许钥匙串访问",
+    keychainFailed: "未获准访问浏览器安全存储，请重试并允许钥匙串访问",
     promptDescription: "将网站登录状态带入此浏览器，只会导入 Cookie",
-    promptTitle: "从 Chrome 导入登录状态",
+    promptTitle: "导入登录状态",
     selectProfile: "选择 Profile",
-    snapshotFailed: "请退出 Chrome 后重试导入"
+    snapshotFailed: "请退出所选浏览器后重试导入",
+    sourceChrome: "Chrome",
+    sourceDia: "Dia"
   },
   dockLabel: "浏览器",
   downloads: {
@@ -312,6 +316,8 @@ export type BrowserNodeI18nKey =
   | "chromeImport.promptTitle"
   | "chromeImport.selectProfile"
   | "chromeImport.snapshotFailed"
+  | "chromeImport.sourceChrome"
+  | "chromeImport.sourceDia"
   | "dockLabel"
   | "downloads.empty"
   | "downloads.status.cancelled"

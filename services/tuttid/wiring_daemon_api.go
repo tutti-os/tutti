@@ -762,28 +762,9 @@ func buildDaemonAPI(
 		replayComposition, accountService, &agentStatusService, agentTargets,
 	)
 
-	// External credential switchers (for example cc-switch) rewrite provider
-	// auth/config files without notifying tuttid. Watch those files so cached
-	// model catalogs are dropped and the GUI hears about it immediately.
-	agentModelCatalogPublisher := eventstreamservice.AgentModelCatalogPublisher{Service: events}
-	providerAuthWatcher := startProviderAuthWatcher(replayComposition, func(providers []string) {
-		agentModelCatalog.Invalidate(providers...)
-		for _, provider := range providers {
-			agentSessionService.InvalidateLiveComposerModels(provider)
-		}
-		if err := agentModelCatalogPublisher.PublishAgentModelCatalogInvalidated(context.Background(), providers); err != nil {
-			slog.Warn("agent model catalog invalidation publish failed",
-				"event", "agent.model_catalog.invalidation_publish_failed",
-				"providers", providers,
-				"error", err,
-			)
-			return
-		}
-		slog.Info("agent provider auth files changed; model catalog invalidated",
-			"event", "agent.model_catalog.invalidated",
-			"providers", providers,
-		)
-	})
+	providerAuthWatcher := startAgentModelInvalidationAuthWatcher(
+		replayComposition, agentModelCatalog, agentSessionService, events,
+	)
 
 	if refreshAgentExtensionsInBackground {
 		startAgentExtensionBackgroundRefresh(agentExtensionManager)

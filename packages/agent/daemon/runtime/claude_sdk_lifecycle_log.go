@@ -32,6 +32,7 @@ func claudeSDKLifecycleLogArgs(payload map[string]any) []any {
 		{logKey: "status", payloadKey: "status"},
 		{logKey: "state", payloadKey: "state"},
 		{logKey: "stop_reason", payloadKey: "stopReason"},
+		{logKey: "sdk_assistant_error", payloadKey: "sdkAssistantError"},
 	} {
 		if value := strings.TrimSpace(payloadString(payload, field.payloadKey)); value != "" {
 			args = append(args, field.logKey, value)
@@ -49,6 +50,7 @@ func claudeSDKLifecycleLogArgs(payload map[string]any) []any {
 	if payloadBoolValue(payload, "sdkResultIsError") {
 		args = append(args, "sdk_result_is_error", true)
 	}
+	args = appendClaudeSDKRetryDiagnostics(args, payload)
 	if apiErrorStatus := payloadInt64(payload, "sdkApiErrorStatus"); apiErrorStatus > 0 {
 		args = append(args, "sdk_api_error_status", apiErrorStatus)
 	}

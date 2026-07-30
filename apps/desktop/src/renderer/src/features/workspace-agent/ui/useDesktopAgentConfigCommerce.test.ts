@@ -38,7 +38,7 @@ test("agent config Commerce is scoped to the self-owned Tutti Agent target", () 
   );
 });
 
-test("agent config Commerce falls back while disabled or signed out", () => {
+test("agent config Commerce renders content only while enabled and signed in", () => {
   assert.equal(
     shouldRenderDesktopAgentConfigCommerce({
       context: context(),

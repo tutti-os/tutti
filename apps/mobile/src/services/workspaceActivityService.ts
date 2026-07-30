@@ -37,7 +37,6 @@ import {
   resolveWorkspaceComposerTarget
 } from "./workspaceActivityProjection";
 import { WorkspaceConversationRailService } from "./workspaceConversationRailService";
-import { createMobileActivityCommandId } from "./workspaceActivityCommandSupport";
 import type { WorkspaceActivitySnapshot } from "./workspaceActivityTypes";
 import { WorkspaceAgentLiveLane } from "./workspaceAgentLiveLane";
 import { selectWorkspaceConversationRailSessionIds } from "./workspaceConversationRailProjection";
@@ -47,7 +46,6 @@ import { WorkspaceMediaService } from "./workspaceMediaService";
 export type { WorkspaceActivitySnapshot } from "./workspaceActivityTypes";
 
 const MESSAGE_POLL_MS = 1_000;
-const COMMAND_TIMEOUT_MS = 30_000;
 const PENDING_EXPIRY_MS = 60_000;
 
 export class WorkspaceActivityService extends ObservableService<WorkspaceActivitySnapshot> {
@@ -474,14 +472,8 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
     if (!snapshot.commandsAvailable) return;
     const selected = snapshot.selectedSession;
     if (!selected) return;
-    const now = this.clock.now();
-    this.engine.dispatch({
-      agentSessionId: selected.agentSessionId,
-      awaitingTurnExpiresAtUnixMs: now + PENDING_EXPIRY_MS,
-      commandId: createMobileActivityCommandId(),
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      type: "session/stopRequested",
-      workspaceId: this.workspace.id
+    this.engine.stopSession({
+      agentSessionId: selected.agentSessionId
     });
   }
 

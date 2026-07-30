@@ -454,6 +454,10 @@ export interface AgentSessionSubmitInteractionResponseInput {
   turnId: string;
 }
 
+export interface AgentSessionStopInput {
+  agentSessionId: string;
+}
+
 export interface AgentSessionEngine {
   readonly identity: AgentSessionEngineIdentity;
   deleteSessions(
@@ -483,6 +487,7 @@ export interface AgentSessionEngine {
   submitInteractionResponse(
     input: AgentSessionSubmitInteractionResponseInput
   ): boolean;
+  stopSession(input: AgentSessionStopInput): void;
   subscribe(listener: AgentSessionEngineListener): () => void;
   updateSessionSettings(input: AgentSessionUpdateSettingsInput): void;
 }

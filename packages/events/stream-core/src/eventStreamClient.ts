@@ -321,7 +321,7 @@ export function createEventStreamClient<
       return connectPromise;
     }
 
-    connectPromise = (async () => {
+    const currentConnectPromise = (async () => {
       notifyConnectionState("connecting");
       const url = await input.resolveUrl();
       const nextSocket = webSocketFactory(url);
@@ -439,9 +439,22 @@ export function createEventStreamClient<
         nextSocket.addEventListener("close", closeListener);
       });
     })();
+    connectPromise = currentConnectPromise;
+    void currentConnectPromise.catch(() => {
+      if (connectPromise !== currentConnectPromise) {
+        return;
+      }
 
-    connectPromise.catch(() => {});
-    return connectPromise;
+      const failedSocket = socket;
+      if (failedSocket) {
+        resetSocketState(failedSocket);
+        failedSocket.close(handshakeFailureCloseCode, "handshake_failed");
+      } else {
+        resetConnectionState();
+      }
+      scheduleReconnect();
+    });
+    return currentConnectPromise;
   }
 
   function createRequestID(): string {
@@ -573,6 +586,10 @@ export function createEventStreamClient<
     if (socket === nextSocket) {
       socket = null;
     }
+    resetConnectionState();
+  }
+
+  function resetConnectionState(): void {
     connectPromise = null;
     ready = false;
     stopHeartbeat();

@@ -138,8 +138,8 @@ The Browser Node package owns:
 - guest preload bridge framework
 - guest `window.open` and link interception
 - generic runtime preview proxy mechanics
-- the reusable macOS Chrome Stable Profile, SQLite snapshot, Keychain, and
-  Cookie decryption adapter
+- the reusable macOS Chrome Stable and Dia Profile, SQLite snapshot, Keychain,
+  and Cookie decryption adapter
 - default package i18n resources for generic browser behavior
 - an optional host-rendered Browser Home slot for empty tabs; the host owns
   service discovery and product-specific shortcuts while the package owns
@@ -251,10 +251,10 @@ The package validates each entry and writes it only to the registered guest's
 Electron session Cookie store. Invalid or rejected entries are counted and
 skipped without logging their values.
 
-Hosts may additionally inject a renderer-safe Chrome Cookie capability. The
+Hosts may additionally inject a renderer-safe Chrome and Dia Cookie capability. The
 Browser package owns its opaque Profile/display contracts, selection and
 prompt state model, normalized write aggregation, and same-`Electron.Session`
-Browser refresh behavior. Its macOS adapter owns Chrome-specific discovery,
+Browser refresh behavior. Its macOS adapter owns Chrome- and Dia-specific discovery,
 absolute paths, database snapshots, OS credential access, decryption, and
 schema/integrity compatibility checks. Hosts own only enablement, diagnostics,
 notification, and registration policy. Preparation must complete before the
@@ -271,10 +271,11 @@ refresh additionally requires `sessionPartition === null`, so custom Workspace
 App Sessions are excluded even if a host accidentally shares an Electron
 Session object with an ordinary Browser.
 
-Tutti's first adapter supports macOS Chrome Stable at its standard User Data
-root and imports only ordinary, non-partitioned Cookies. It deliberately omits
-CHIPS, custom Chrome roots, non-Chrome Chromium browsers, incognito and Guest
-profiles, Workspace App sessions, and all non-Cookie browser data. The Desktop
+Tutti's macOS adapter supports Chrome Stable at its standard User Data root and
+Dia at `~/Library/Application Support/Dia/User Data`; it imports only ordinary,
+non-partitioned Cookies. It deliberately omits CHIPS, custom browser roots,
+other Chromium browsers, incognito and Guest profiles, Workspace App sessions,
+and all non-Cookie browser data. The Desktop
 renderer supplies the global versioned prompt-dismissal adapter; the reusable
 package does not embed a Tutti preference key.
 

@@ -316,6 +316,29 @@ describe("WorkspaceActivityService", () => {
     service.dispose();
   });
 
+  test("routes Session stop through the Engine semantic operation", async () => {
+    const service = createService(
+      createClient({ listMessages: emptyMessagePage })
+    );
+
+    await service.start();
+    await flushAsyncWork();
+    const engine = (
+      service as unknown as {
+        engine: AgentSessionEngine;
+      }
+    ).engine;
+    const stopSession = jest.spyOn(engine, "stopSession");
+
+    service.stop();
+
+    expect(stopSession).toHaveBeenCalledTimes(1);
+    expect(stopSession).toHaveBeenCalledWith({
+      agentSessionId: "session-1"
+    });
+    service.dispose();
+  });
+
   test("treats a new Mobile settings selection as a retry after unknown delivery", async () => {
     const settingsRequests: Array<Record<string, unknown>> = [];
     const client = createClient({

@@ -328,6 +328,9 @@ function entryGroupType(
   ) {
     return "connector";
   }
+  if (entry.skill.kind === "skill") {
+    return "skill";
+  }
   if (entry.skill.sourceKind === "plugin") {
     return "plugin";
   }

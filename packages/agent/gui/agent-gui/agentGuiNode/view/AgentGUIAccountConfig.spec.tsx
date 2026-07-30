@@ -2,7 +2,10 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentGUIViewLabels } from "../AgentGUINodeView";
-import { AgentGUIConfigMenu } from "./AgentGUIAccountConfig";
+import {
+  AgentGUIConfigAccountFallbackSuppressed,
+  AgentGUIConfigMenu
+} from "./AgentGUIAccountConfig";
 
 afterEach(cleanup);
 
@@ -186,4 +189,35 @@ describe("AgentGUIConfigMenu", () => {
       expect(screen.getByText("Weekly")).toBeInTheDocument();
     }
   );
+
+  it("hides generic account and usage rows when Host claims the surface without content", () => {
+    render(
+      <AgentGUIConfigMenu
+        environmentSetupVisible={false}
+        labels={labels}
+        providerScopedActionsVisible
+        accountContent={<AgentGUIConfigAccountFallbackSuppressed />}
+        provider="tutti-agent"
+        providerAuthAccountLabel="233749"
+        slashStatusLimits={[]}
+        slashStatusLimitsLoading={false}
+        slashStatusLimitsResolvedEmpty={false}
+        slashStatusUsageCapturedAtUnixMs={null}
+        slashStatusUsageDidFail
+        slashStatusUsageAttempted
+        onAgentConfigMenuOpen={vi.fn()}
+        onOpenAgentEnvSetup={vi.fn()}
+        onOpenAgentSettings={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+
+    expect(screen.queryByText("Limits")).not.toBeInTheDocument();
+    expect(screen.queryByText("Unavailable")).not.toBeInTheDocument();
+    expect(screen.queryByText("Refresh failed")).not.toBeInTheDocument();
+    expect(screen.queryByText("tutti-agent account")).not.toBeInTheDocument();
+    expect(screen.queryByText("233749")).not.toBeInTheDocument();
+    expect(screen.getByText("Settings")).toBeInTheDocument();
+  });
 });

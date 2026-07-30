@@ -1,7 +1,12 @@
 import "@testing-library/jest-dom/vitest";
 import { render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AgentGUINodeData, NodeFrame } from "../../types";
+import type {
+  AgentGUIAgentTarget,
+  AgentGUINodeData,
+  NodeFrame
+} from "../../types";
+import type { AgentGUIConversationSummary } from "./model/agentGuiConversationModel";
 import type {
   AgentComposerDraft,
   AgentGUINodeViewModel
@@ -21,6 +26,9 @@ const { agentGuiNodeViewSpy, translate } = vi.hoisted(() => ({
   translate: (key: string, options?: Record<string, unknown>) => {
     if (key === "agentHost.workspaceAgentSessionDetailToolCalls") {
       return `${options?.count ?? 0} tool calls`;
+    }
+    if (key === "agentHost.agentGui.followupPlaceholder") {
+      return `Request ${options?.provider ?? ""} to continue`;
     }
     return key;
   }
@@ -429,6 +437,46 @@ describe("AgentGUINode memoization", () => {
     expect(secondViewProps!.labels).not.toBe(firstViewProps!.labels);
     expect(secondViewProps!.conversationRailLabels).toBe(
       firstViewProps!.conversationRailLabels
+    );
+  });
+
+  it("uses the exact active Agent target label in provider-facing copy", () => {
+    const kimiTarget: AgentGUIAgentTarget = {
+      agentTargetId: "extension:kimi-code",
+      label: "Kimi Code",
+      provider: "acp:kimi-code",
+      ref: {
+        kind: "agent_extension",
+        provider: "acp:kimi-code"
+      },
+      targetId: "extension:kimi-code"
+    };
+    const activeConversation: AgentGUIConversationSummary = {
+      agentTargetId: kimiTarget.agentTargetId,
+      cwd: "/workspace",
+      id: "session-1",
+      provider: kimiTarget.provider,
+      status: "ready",
+      title: "Hello",
+      updatedAtUnixMs: 1
+    };
+    mockViewModel = createViewModel({
+      activeConversation,
+      activeConversationId: activeConversation.id,
+      agentTargets: [kimiTarget]
+    });
+
+    render(<AgentGUINode {...createProps()} />);
+
+    const viewProps = agentGuiNodeViewSpy.mock.calls.at(-1)?.[0] as
+      | {
+          labels: {
+            followupPlaceholder: string;
+          };
+        }
+      | undefined;
+    expect(viewProps?.labels.followupPlaceholder).toBe(
+      "Request Kimi Code to continue"
     );
   });
 });

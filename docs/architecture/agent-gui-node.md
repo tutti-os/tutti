@@ -681,7 +681,7 @@ disable submission, but must not change editor editability.
   into `AgentSessionEffectPort` calls. Desktop and Mobile effect ports retain
   transport and DTO mapping but must not duplicate a command-type switch for
   these shared effects. Host activity facades call
-  `engine.updateSessionSettings`, `engine.renameSession`,
+  `engine.stopSession`, `engine.updateSessionSettings`, `engine.renameSession`,
   `engine.setSessionPinned`, and `engine.deleteSessions`; these deep methods
   own the applicable workspace projection, command or mutation identity,
   timeout, cancellation, settlement, and canonical result projection. Settings
@@ -690,6 +690,10 @@ disable submission, but must not change editor editability.
   failed, and unknown state. Hosts must not reconstruct mutation protocol with
   `dispatchSessionMutation` and snapshot reads or construct raw
   `session/settingsUpdateRequested` fields for an existing Session.
+  Session stop is also fire-and-observe admission: the Engine owns its command
+  identity, 30-second cancellation timeout, duplicate fence, and 30-second
+  first-Turn waiting window. Desktop AgentGUI and Native Mobile call
+  `engine.stopSession` and never construct raw `session/stopRequested` fields.
   Platform-only commands remain in each host's `EngineExtensionCommand`
   adapter. Every effect propagates the Engine-owned AbortSignal to its
   transport. Rename, pin, and delete settle through the shared Session-mutation
@@ -1537,16 +1541,20 @@ start a Commerce request.
 The optional `renderSlots.agentConfigAccount` is a presentation-only Host
 chrome seam for the exact selected Agent Target. Its paired
 `hostActions.onAgentConfigMenuOpen` notification lets the Host refresh account
-state without hiding workflow in the render slot. Returning no content keeps
-the provider account and quota block unchanged. AgentGUI never derives billing
-ownership from provider identity.
+state without hiding workflow in the render slot. Returning no renderable
+content keeps the provider account and quota block unchanged. Returning the
+package-owned `AgentGUIConfigAccountFallbackSuppressed` marker suppresses those
+generic fallback rows without adding Host content.
 
 Tutti Desktop fills this seam only for its self-owned local Tutti Agent target.
 The Desktop Account service remains the source of account, membership, credit,
 and Commerce-link state; opening the target menu asks that service to refresh,
-and the render slot stays request-free. Signed-out, shared, and non-Tutti
-targets return no Host content and retain AgentGUI's provider account and quota
-presentation.
+and the render slot stays request-free. Its compact Agent menu omits the
+redundant Tutti account identity row while retaining credit, membership, and
+account-center actions. A signed-out local Tutti Agent returns the suppression
+marker because the generic provider-account and quota rows do not describe its
+Host-owned account model. Other providers return `null` and retain AgentGUI's
+default provider-account and quota presentation.
 The optional `renderSlots.agentTargetInfo` seam enriches the exact target icon
 in the provider Rail and Conversation Rail. The same
 `AgentGUIAgentTargetInfoRenderer` may be passed to
@@ -1966,7 +1974,9 @@ activation flags, and those rows consume their live `IAgentsService` Targets
 and package-provided identity assets rather than becoming built-in provider
 descriptors. Its Enable/Disable control reads all Agent Targets from
 `IAgentsService` and persists the daemon-owned Agent Target `enabled` field.
-Disabled targets remain in this settings control plane so they can be
+Tutti Agent is the built-in exception: its target is always enabled, its row
+cannot be disabled, and it has no separate developer visibility switch.
+Other disabled targets remain in this settings control plane so they can be
 re-enabled, but they are excluded from the AgentGUI agent projection and from
 CLI discovery and launch. The device-global provider-rail preferences remain
 presentation-only (ordering and optional sidebar personalization); they do not

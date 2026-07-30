@@ -443,9 +443,6 @@ export function WorkspaceSettingsPanel({
                     agentsService={agentsService}
                     focusProvider={settingsState.agentFocusProvider}
                     focusRequestID={settingsState.agentFocusRequestID}
-                    tuttiAgentSwitchEnabled={
-                      settingsState.tuttiAgentSwitchEnabled
-                    }
                     earlyAccessEnabled={earlyAccessIntegrationsEnabled}
                     featureFlags={pendingFeatureFlags}
                     featureFlagsPending={

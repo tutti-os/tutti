@@ -379,8 +379,13 @@ export function resolveAgentGUIExplicitConversationTitleFromMessages(input: {
 
 export function resolveAgentGUIProviderDisplayLabel(
   provider: string | null | undefined,
-  fallbackAgentLabel: string
+  fallbackAgentLabel: string,
+  exactAgentTargetLabel?: string | null
 ): string {
+  const normalizedAgentTargetLabel = exactAgentTargetLabel?.trim() ?? "";
+  if (normalizedAgentTargetLabel) {
+    return normalizedAgentTargetLabel;
+  }
   const resolvedProvider = normalizeAgentGUIProviderIdentity(provider);
   if (resolvedProvider === "unknown") {
     return fallbackAgentLabel;

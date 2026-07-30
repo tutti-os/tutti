@@ -1,5 +1,8 @@
 import { useCallback, useMemo } from "react";
-import type { AgentGUIProps } from "@tutti-os/agent-gui";
+import {
+  AgentGUIConfigAccountFallbackSuppressed,
+  type AgentGUIProps
+} from "@tutti-os/agent-gui";
 import type { CommerceMenuState } from "@tutti-os/commerce";
 import { AgentConfigCommerceContent } from "@tutti-os/commerce/react";
 import { useService } from "@tutti-os/infra/di";
@@ -99,18 +102,22 @@ export function useDesktopAgentConfigCommerce(enabled: boolean) {
     NonNullable<AgentGUIProps["renderSlots"]["agentConfigAccount"]>
   >(
     (context) => {
+      if (!enabled || !isDesktopLocalTuttiAgentConfigContext(context)) {
+        return null;
+      }
       if (
         !shouldRenderDesktopAgentConfigCommerce({
           context,
-          enabled: enabled && commerceProjection.commerceVisible,
+          enabled: commerceProjection.commerceVisible,
           hasAccount
         })
       ) {
-        return null;
+        return <AgentGUIConfigAccountFallbackSuppressed />;
       }
       return (
         <AgentConfigCommerceContent
           accountName={accountName}
+          showAccountIdentity={false}
           state={commerceState}
           labels={{
             account: t("workspace.accountMenu.title"),

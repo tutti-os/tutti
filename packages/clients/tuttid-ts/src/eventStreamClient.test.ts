@@ -843,6 +843,72 @@ test("tuttid event stream client tears down a failed handshake before retrying",
   client.dispose();
 });
 
+test("tuttid event stream client reconnects after URL resolution recovers", async () => {
+  const sockets: FakeEventStreamSocket[] = [];
+  const reconnectScheduler = new FakeReconnectScheduler();
+  const connectionStates: string[] = [];
+  let resolveCalls = 0;
+  const client = createTuttidEventStreamClient({
+    reconnect: reconnectScheduler.config,
+    async resolveUrl() {
+      resolveCalls += 1;
+      if (resolveCalls === 1) {
+        throw new Error("Desktop daemon endpoint is not ready yet.");
+      }
+      return "ws://127.0.0.1:4545/v1/events/ws?access_token=token-1";
+    },
+    webSocketFactory(url) {
+      const socket = new FakeEventStreamSocket(url);
+      sockets.push(socket);
+      return socket;
+    }
+  });
+
+  client.subscribeConnectionState((state) => {
+    connectionStates.push(state);
+  });
+  const unsubscribe = client.subscribe("preferences.desktop.updated", () => {});
+
+  await assert.rejects(
+    client.connect(),
+    /Desktop daemon endpoint is not ready yet/
+  );
+  assert.equal(resolveCalls, 1);
+  assert.equal(reconnectScheduler.timeoutCount(), 1);
+  assert.deepEqual(connectionStates, ["connecting", "disconnected"]);
+
+  reconnectScheduler.tickTimeout();
+  await Promise.resolve();
+  const reconnectSocket = sockets[0];
+  assert.ok(reconnectSocket);
+  assert.equal(resolveCalls, 2);
+
+  reconnectSocket.emitMessage({
+    catalogRevision: businessEventCatalogRevision,
+    kind: "ready",
+    protocolVersion: 1,
+    serverTime: "2026-05-30T08:00:00Z"
+  });
+  await Promise.resolve();
+
+  assert.deepEqual(reconnectSocket.sent, [
+    {
+      kind: "subscribe",
+      requestId: "1",
+      topics: ["preferences.desktop.updated"]
+    }
+  ]);
+  assert.deepEqual(connectionStates, [
+    "connecting",
+    "disconnected",
+    "connecting",
+    "connected"
+  ]);
+
+  unsubscribe();
+  client.dispose();
+});
+
 test("tuttid event stream client sends heartbeat pings after ready and clears pong timeout on pong", async () => {
   const sockets: FakeEventStreamSocket[] = [];
   const scheduler = new FakeHeartbeatScheduler();

@@ -1,5 +1,4 @@
 import {
-  selectEngineCancelState,
   selectEngineHasVisibleQueuedSubmit,
   selectPendingSubmitsForSession,
   type AgentActivityGoalControlAction,
@@ -47,7 +46,6 @@ import {
   getAgentGUIErrorMessage,
   isNonRetryableResumeErrorCode
 } from "./agentGuiController.errors";
-import { createAgentGUIConversationId } from "./agentGuiController.promptHelpers";
 import {
   agentSubmitTraceDiagnostics,
   createAgentSubmitTraceState,
@@ -705,29 +703,12 @@ export function useAgentGUISubmitInteractionActions(
   const interruptCurrentTurn = useCallback(
     (noRunningResponseMessage: string) => {
       const agentSessionId = activeConversationIdRef.current;
-      const cancelStatus = agentSessionId
-        ? selectEngineCancelState(sessionEngine.getSnapshot(), agentSessionId)
-            ?.status
-        : null;
-      if (
-        !agentSessionId ||
-        cancelStatus === "requested" ||
-        cancelStatus === "awaitingTurn"
-      ) {
-        return;
-      }
+      if (!agentSessionId) return;
       void noRunningResponseMessage;
       setDetailError(null);
-      sessionEngine.dispatch({
-        agentSessionId,
-        awaitingTurnExpiresAtUnixMs: Date.now() + 30_000,
-        commandId: createAgentGUIConversationId(),
-        timeoutMs: 30_000,
-        type: "session/stopRequested",
-        workspaceId
-      });
+      sessionEngine.stopSession({ agentSessionId });
     },
-    [sessionEngine, workspaceId]
+    [sessionEngine]
   );
 
   const updateDraftContent = useCallback(

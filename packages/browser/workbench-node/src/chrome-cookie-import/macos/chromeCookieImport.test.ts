@@ -48,7 +48,7 @@ interface CookieFixture {
   value?: string;
 }
 
-test("discovers renderer-safe metadata for all Local State profiles with old and new Cookie DB paths", async (t) => {
+test("discovers renderer-safe Chrome metadata for all Local State profiles with old and new Cookie DB paths", async (t) => {
   const root = await chromeRoot(t);
   await createProfileDatabase(root, "Default", [], 24, "new");
   await createProfileDatabase(root, "Profile 1", [], 24, "old");
@@ -85,6 +85,7 @@ test("discovers renderer-safe metadata for all Local State profiles with old and
     ["Personal", "Work account", "No unsafe avatar"]
   );
   assert.equal(profiles[0]?.email, "person@example.com");
+  assert.ok(profiles.every((profile) => profile.source === "chrome"));
   assert.equal(
     profiles[0]?.avatarDataUrl,
     `data:image/png;base64,${avatarBytes.toString("base64")}`
@@ -97,6 +98,52 @@ test("discovers renderer-safe metadata for all Local State profiles with old and
     profiles.every((profile) => !JSON.stringify(profile).includes("chrome://"))
   );
   assert.equal(new Set(profiles.map((profile) => profile.id)).size, 3);
+});
+
+test("discovers Dia profiles from its User Data root and decrypts with Dia Safe Storage", async (t) => {
+  const root = await diaRoot(t);
+  const secret = Buffer.from("dia-safe-storage-secret");
+  await createProfileDatabase(
+    root,
+    "Default",
+    [
+      {
+        encryptedValue: encryptCookie("dia-session", secret, ".dia.test", 24),
+        expiresUtc: FUTURE_CHROME_TIME,
+        hasExpires: 1,
+        hostKey: ".dia.test",
+        name: "session",
+        persistent: 1,
+        secure: 1
+      }
+    ],
+    24,
+    "old"
+  );
+  await writeLocalState(root, { Default: { name: "Dia profile" } });
+  const requestedSources: string[] = [];
+  const sourceDependencies = {
+    chromeUserDataRoot: join(root, "missing-chrome"),
+    diaUserDataRoot: root,
+    now: () => NOW_MS,
+    platform: "darwin" as const,
+    readKeychainSecret: async (source: "chrome" | "dia") => {
+      requestedSources.push(source);
+      return Buffer.from(secret);
+    }
+  };
+
+  const profiles = await discoverChromeCookieProfiles(sourceDependencies);
+
+  assert.deepEqual(
+    profiles.map(({ name, source }) => ({ name, source })),
+    [{ name: "Dia profile", source: "dia" }]
+  );
+  const [profile] = profiles;
+  assert.ok(profile);
+  const prepared = await prepareChromeCookies(profile.id, sourceDependencies);
+  assert.deepEqual(requestedSources, ["dia"]);
+  assert.equal(prepared.cookies[0]?.value, "dia-session");
 });
 
 test("rejects symlinked Chrome Profile avatar files", async (t) => {
@@ -518,11 +565,19 @@ test("rejects missing required schema before requesting Keychain", async (t) => 
 });
 
 function dependencies(root: string) {
-  return { chromeUserDataRoot: root, platform: "darwin" as const };
+  return {
+    chromeUserDataRoot: root,
+    diaUserDataRoot: join(root, "missing-dia"),
+    platform: "darwin" as const
+  };
 }
 
 async function chromeRoot(t: test.TestContext): Promise<string> {
   return testDirectory(t, "tutti-chrome-root-");
+}
+
+async function diaRoot(t: test.TestContext): Promise<string> {
+  return testDirectory(t, "tutti-dia-user-data-");
 }
 
 async function testDirectory(

@@ -236,6 +236,7 @@ export function areDesktopAgentGUIWorkbenchBodyContextsEqual(
       previous.isFocused === next.isFocused &&
       previous.isResizing === next.isResizing &&
       previous.isVisible === next.isVisible &&
+      previous.isPresentationVisible === next.isPresentationVisible &&
       previous.presentationMode === next.presentationMode &&
       previous.node.id === next.node.id &&
       previous.node.isMinimized === next.node.isMinimized &&

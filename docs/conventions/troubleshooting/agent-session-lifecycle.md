@@ -2945,6 +2945,45 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   [pendingIntents.reducer.ts](../../../packages/agent/activity-core/src/engine/pendingIntents.reducer.ts)
   [acp_shared.go](../../../packages/agent/daemon/runtime/acp_shared.go)
 
+### Claude Code keeps returning ConnectionRefused after network recovery
+
+- Symptom:
+  A Claude Code Turn loses network access while sending and eventually reports
+  `API Error: Unable to connect to API (ConnectionRefused)`. After the machine
+  network recovers, later sends in the same Session keep failing, while a newly
+  created Claude Session succeeds.
+- Quick checks:
+  Correlate `agent_session.claude_sdk.lifecycle_event` by Agent Session and
+  provider Session id. An SDK `system/api_retry` event now records
+  `sdk_connection_error`, `sdk_retry_attempt`, `sdk_max_retries`, and
+  `sdk_retry_delay_ms`. A terminal result should carry
+  `sdk_result_is_error=true`; a numeric `sdk_api_error_status` instead points to
+  an HTTP/auth/provider response rather than a connection failure.
+- Root cause:
+  The Claude Agent SDK owns one long-lived Query and Claude Code subprocess for
+  streaming multi-Turn input. A connection failure can terminate the Turn while
+  leaving that Query unsuitable for later requests. Reusing it preserves the
+  bad per-process state even though host and VM networking have recovered.
+  Older sidecars also treated every `result/subtype=success` as a completed
+  Turn, ignoring the SDK's independent `is_error` flag.
+- Fix:
+  Preserve the failed Turn and its provider error. When the SDK terminal result
+  explicitly reports a connection failure, revoke and close that Query. The
+  next user send creates a fresh Query with `resume` set to the same provider
+  Session id. Do not automatically resend the failed prompt because delivery
+  may be ambiguous. Do not recycle the Query for a transient retry that
+  eventually succeeds or for a terminal HTTP/authentication error.
+- Validation:
+  Simulate `api_retry/error_status=null` followed by
+  `result/is_error=true/api_error_status=null`, then send a second Turn. Require
+  two Query generations, closure of the first, and `resume` on the second.
+  Also prove that retry-then-success and HTTP 401 failures retain the existing
+  Query.
+- References:
+  [messageRouter.ts](../../../packages/agent/claude-sdk-sidecar/src/messageRouter.ts)
+  [sessionRuntime.ts](../../../packages/agent/claude-sdk-sidecar/src/sessionRuntime.ts)
+  [sessionRuntime.recovery.test.ts](../../../packages/agent/claude-sdk-sidecar/src/sessionRuntime.recovery.test.ts)
+
 ### Cursor auto-continue invents interrupted work after a network drop
 
 - Symptom:

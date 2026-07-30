@@ -49,6 +49,7 @@ const schemaMigrationDesktopPreferencesFeatureFlagsV1 = "desktop_preferences_fea
 const schemaMigrationDesktopPreferencesDeletedAgentRetentionV1 = "desktop_preferences_deleted_agent_retention_v1"
 const schemaMigrationDesktopPreferencesAgentCLIUpdateCheckV1 = "desktop_preferences_agent_cli_update_check_v1"
 const schemaMigrationAgentDataMaintenanceV1 = "agent_data_maintenance_v1"
+const schemaMigrationAgentTargetsEnableTuttiAgentV1 = "agent_targets_enable_tutti_agent_v1"
 const schemaMigrationUserProjectsV1 = "user_projects_v1"
 const schemaMigrationUserProjectsV2 = "user_projects_v2"
 const schemaMigrationUserProjectsV3 = "user_projects_v3"
@@ -256,6 +257,9 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	// store. They must run after user_projects_v1: the rail section backfill
 	// reads project paths through userProjectPathsQuerier.
 	if err := s.agentStore().Migrate(ctx); err != nil {
+		return err
+	}
+	if err := s.applyAgentTargetsEnableTuttiAgentV1(ctx); err != nil {
 		return err
 	}
 	if err := s.applyWorkspaceWorkbenchAgentTargetIdentityV1(ctx); err != nil {

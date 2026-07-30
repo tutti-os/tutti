@@ -10,7 +10,10 @@ import (
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 )
 
-var ErrSystemTargetImmutable = errors.New("system agent target is immutable")
+var (
+	ErrSystemTargetImmutable   = errors.New("system agent target is immutable")
+	ErrTuttiAgentAlwaysEnabled = errors.New("tutti agent is always enabled")
+)
 
 type Service struct {
 	Store                workspacedata.AgentTargetStore
@@ -103,6 +106,9 @@ func (s Service) SetEnabled(ctx context.Context, input SetEnabledInput) (agentta
 	}
 	if !agenttargetbiz.IsSystemTarget(existing) {
 		return agenttargetbiz.Target{}, ErrSystemTargetImmutable
+	}
+	if existing.ID == agenttargetbiz.IDLocalTuttiAgent && !input.Enabled {
+		return agenttargetbiz.Target{}, ErrTuttiAgentAlwaysEnabled
 	}
 	if existing.Enabled == input.Enabled {
 		return existing, nil

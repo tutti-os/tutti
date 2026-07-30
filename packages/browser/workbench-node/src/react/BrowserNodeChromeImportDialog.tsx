@@ -124,6 +124,7 @@ export function BrowserNodeChromeImportDialog({
               buttonRef={(button) => {
                 profileButtons.current[index] = button;
               }}
+              feature={feature}
               index={index}
               profileCount={profiles.length}
               profile={profile}
@@ -164,6 +165,7 @@ export function BrowserNodeChromeImportDialog({
 
 function ChromeProfileButton({
   buttonRef,
+  feature,
   index,
   onMove,
   onSelect,
@@ -173,6 +175,7 @@ function ChromeProfileButton({
   tabStop
 }: {
   buttonRef(button: HTMLButtonElement | null): void;
+  feature: BrowserNodeFeature;
   index: number;
   onMove(index: number): void;
   onSelect(): void;
@@ -224,6 +227,11 @@ function ChromeProfileButton({
             {profile.email}
           </span>
         ) : null}
+        <span className="block truncate text-[11px] text-[var(--text-secondary)]">
+          {profile.source === "dia"
+            ? feature.i18n.t("chromeImport.sourceDia")
+            : feature.i18n.t("chromeImport.sourceChrome")}
+        </span>
       </span>
       <RadioIndicator checked={selected} className="ml-auto" />
     </button>

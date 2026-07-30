@@ -67,6 +67,10 @@ Rules:
 - project normal-window visibility through the mounted body context; it is
   false while minimized, Genie-hidden, or in Mission Control, so heavy child
   presentation can wait without importing Workbench animation state
+- project Mission Control preview visibility separately from normal-window
+  visibility. A preview that Workbench paints must keep its body rendering even
+  when normal-window visibility is false; a preview filtered out of the
+  presentation must remain paused
 - separate a node's own exposure from whether it may occlude lower nodes.
   Scale restore, shell frame transitions, and onboarding entry keep their own
   body visible but do not cover lower bodies until the matching DOM animation

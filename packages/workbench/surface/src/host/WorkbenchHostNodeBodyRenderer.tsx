@@ -35,6 +35,8 @@ function areWorkbenchHostNodeBodyRendererPropsEqual(
     previousContext.isFocused !== nextContext.isFocused ||
     previousContext.isResizing !== nextContext.isResizing ||
     previousContext.isVisible !== nextContext.isVisible ||
+    previousContext.isPresentationVisible !==
+      nextContext.isPresentationVisible ||
     previousContext.presentationMode !== nextContext.presentationMode ||
     !areWorkbenchOptionalSizesEqual(
       previousContext.previewViewport,

@@ -77,7 +77,6 @@ export function createWorkspaceSettingsStore(): WorkspaceSettingsStoreState {
     modelPlans: createWorkspaceSettingsModelPlansState(),
     open: false,
     purgingDeletedConversations: false,
-    tuttiAgentSwitchEnabled: false,
     workspaceID: null
   });
 }

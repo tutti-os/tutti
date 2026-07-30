@@ -17,6 +17,7 @@ export type {
   AgentGUIReferenceProvenanceFilterCatalog
 } from "./AgentGUI";
 export type { AgentGUIAgentConfigMenuContext } from "./agent-gui/agentGuiNode/AgentGUINode.types";
+export { AgentGUIConfigAccountFallbackSuppressed } from "./agent-gui/agentGuiNode/view/AgentGUIAccountConfig";
 export type {
   TuttiModePlanAssignmentAgentDetail,
   TuttiModePlanAssignmentAgentOption,

@@ -12,6 +12,7 @@ import { DatabaseSync, backup } from "node:sqlite";
 import { readChromeProfileAvatarDataUrl } from "./chromeProfileMetadata.ts";
 
 const CHROME_KEYCHAIN_SERVICE = "Chrome Safe Storage";
+const DIA_KEYCHAIN_SERVICE = "Dia Safe Storage";
 const CHROME_KEYCHAIN_TIMEOUT_MS = 60_000;
 const CHROME_COOKIE_EPOCH_OFFSET_SECONDS = 11_644_473_600;
 const CHROME_V10_PREFIX = Buffer.from("v10");
@@ -19,11 +20,14 @@ const MACOS_CHROME_IV = Buffer.alloc(16, 0x20);
 const MACOS_CHROME_SALT = Buffer.from("saltysalt");
 const PROFILE_DIRECTORY_PATTERN = /^(?:Default|Profile \d+)$/;
 
+export type ChromeCookieProfileSource = "chrome" | "dia";
+
 export interface ChromeCookieProfile {
   avatarDataUrl?: string;
   email?: string;
   id: string;
   name: string;
+  source?: ChromeCookieProfileSource;
 }
 
 export interface PreparedChromeCookie {
@@ -70,9 +74,10 @@ export class ChromeCookieImportError extends Error {
 
 interface ChromeCookieImportDependencies {
   chromeUserDataRoot: string;
+  diaUserDataRoot: string;
   now: () => number;
   platform: NodeJS.Platform;
-  readKeychainSecret: () => Promise<Buffer>;
+  readKeychainSecret: (source: ChromeCookieProfileSource) => Promise<Buffer>;
   withSnapshot: <T>(
     sourcePath: string,
     readSnapshot: (snapshotPath: string) => Promise<T>
@@ -82,9 +87,11 @@ interface ChromeCookieImportDependencies {
 export type ChromeCookieImportDependencyOverrides =
   Partial<ChromeCookieImportDependencies>;
 
-interface ResolvedChromeProfile extends ChromeCookieProfile {
+interface ResolvedChromeProfile extends Omit<ChromeCookieProfile, "source"> {
   cookieDatabasePath: string;
   directoryName: string;
+  source: ChromeCookieProfileSource;
+  userDataRoot: string;
 }
 
 interface ChromeLocalState {
@@ -123,9 +130,16 @@ const defaultDependencies: ChromeCookieImportDependencies = {
     "Google",
     "Chrome"
   ),
+  diaUserDataRoot: join(
+    homedir(),
+    "Library",
+    "Application Support",
+    "Dia",
+    "User Data"
+  ),
   now: Date.now,
   platform: process.platform,
-  readKeychainSecret: readChromeSafeStorageSecret,
+  readKeychainSecret: readChromiumSafeStorageSecret,
   withSnapshot: withChromeCookieDatabaseSnapshot
 };
 
@@ -137,11 +151,12 @@ export async function discoverChromeCookieProfiles(
     return [];
   }
   return (await resolveChromeProfiles(dependencies)).map(
-    ({ avatarDataUrl, email, id, name }) => ({
+    ({ avatarDataUrl, email, id, name, source }) => ({
       ...(avatarDataUrl ? { avatarDataUrl } : {}),
       ...(email ? { email } : {}),
       id,
-      name
+      name,
+      source
     })
   );
 }
@@ -164,7 +179,7 @@ export async function prepareChromeCookies(
     throw new ChromeCookieImportError("profile_not_found");
   }
   await validateProfileAndDatabase(
-    dependencies.chromeUserDataRoot,
+    profile.userDataRoot,
     profile.directoryName,
     profile.cookieDatabasePath
   );
@@ -183,7 +198,7 @@ export async function prepareChromeCookies(
     let key: Buffer | null = null;
     try {
       if (needsKeychain) {
-        secret = await dependencies.readKeychainSecret();
+        secret = await dependencies.readKeychainSecret(profile.source);
         signal?.throwIfAborted();
         if (secret.length === 0) {
           throw new ChromeCookieImportError("keychain_failed");
@@ -223,7 +238,23 @@ export function decryptChromeV10CookieForTesting(
 async function resolveChromeProfiles(
   dependencies: ChromeCookieImportDependencies
 ): Promise<ResolvedChromeProfile[]> {
-  const root = resolve(dependencies.chromeUserDataRoot);
+  const profiles: ResolvedChromeProfile[] = [];
+  for (const source of [
+    { id: "chrome" as const, userDataRoot: dependencies.chromeUserDataRoot },
+    { id: "dia" as const, userDataRoot: dependencies.diaUserDataRoot }
+  ]) {
+    profiles.push(
+      ...(await resolveChromeProfilesAtRoot(source.id, source.userDataRoot))
+    );
+  }
+  return profiles;
+}
+
+async function resolveChromeProfilesAtRoot(
+  source: ChromeCookieProfileSource,
+  userDataRoot: string
+): Promise<ResolvedChromeProfile[]> {
+  const root = resolve(userDataRoot);
   try {
     const rootStat = await lstat(root);
     if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
@@ -281,8 +312,10 @@ async function resolveChromeProfiles(
       cookieDatabasePath,
       directoryName,
       ...(email ? { email } : {}),
-      id: opaqueProfileId(directoryName),
-      name
+      id: opaqueProfileId(source, directoryName),
+      name,
+      source,
+      userDataRoot: root
     });
   }
   return profiles;
@@ -667,11 +700,15 @@ export function classifyChromeKeychainFailure(
     : "keychain_failed";
 }
 
-export async function readChromeSafeStorageSecret(): Promise<Buffer> {
+export async function readChromiumSafeStorageSecret(
+  source: ChromeCookieProfileSource
+): Promise<Buffer> {
+  const service =
+    source === "dia" ? DIA_KEYCHAIN_SERVICE : CHROME_KEYCHAIN_SERVICE;
   return new Promise((resolvePromise, rejectPromise) => {
     execFile(
       "/usr/bin/security",
-      ["find-generic-password", "-w", "-s", CHROME_KEYCHAIN_SERVICE],
+      ["find-generic-password", "-w", "-s", service],
       {
         encoding: "buffer",
         maxBuffer: 64 * 1024,
@@ -715,9 +752,14 @@ export async function readChromeSafeStorageSecret(): Promise<Buffer> {
   });
 }
 
-function opaqueProfileId(directoryName: string): string {
+function opaqueProfileId(
+  source: ChromeCookieProfileSource,
+  directoryName: string
+): string {
   return createHash("sha256")
-    .update("tutti:chrome-stable-profile:v1:\0")
+    .update("tutti:chromium-profile:v2:\0")
+    .update(source)
+    .update("\0")
     .update(directoryName)
     .digest("base64url");
 }

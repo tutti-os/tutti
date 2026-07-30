@@ -69,6 +69,7 @@ func (api DaemonAPI) SetSystemAgentTargetEnabled(ctx context.Context, request tu
 	if err != nil {
 		if errors.Is(err, workspacedata.ErrAgentTargetNotFound) ||
 			errors.Is(err, agenttargetservice.ErrSystemTargetImmutable) ||
+			errors.Is(err, agenttargetservice.ErrTuttiAgentAlwaysEnabled) ||
 			errors.Is(err, agenttargetbiz.ErrInvalidTarget) {
 			return invalidSetSystemAgentTargetEnabledRequest(err.Error()), nil
 		}

@@ -67,13 +67,6 @@ import { formatWorkspaceSettingsBytes } from "../workspaceSettingsFormat.ts";
 import { createWorkspaceSettingsStore } from "./workspaceSettingsStore.ts";
 import { writeDeveloperPanelVisible } from "./developerPanelVisibility.ts";
 import {
-  clearTuttiAgentSwitchDaemonMigration,
-  hasMigratedTuttiAgentSwitchToDaemon,
-  type LegacyTuttiAgentSwitchReadResult,
-  markTuttiAgentSwitchDaemonMigrationComplete,
-  readLegacyTuttiAgentSwitchEnabled
-} from "../tuttiAgentSwitchPreference.ts";
-import {
   createWorkspaceFeatureFlagSettings,
   type WorkspaceFeatureFlagSettings
 } from "./workspaceFeatureFlagSettings.ts";
@@ -88,15 +81,7 @@ export interface WorkspaceSettingsServiceDependencies {
     mode: "agent" | "os";
     workspaceId: string;
   }) => Promise<void>;
-  tuttiAgentSwitchMigration?: {
-    clearComplete(): void;
-    hasMigrated(): boolean;
-    markComplete(): boolean;
-    readLegacyEnabled(): LegacyTuttiAgentSwitchReadResult;
-  };
 }
-
-const tuttiAgentTargetID = "local:tutti-agent";
 
 export class WorkspaceSettingsService implements IWorkspaceSettingsService {
   readonly _serviceBrand: undefined;
@@ -116,9 +101,6 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
   > | null;
   private readonly reporterNow?: () => number;
   private logsLoadSequence = 0;
-  private tuttiAgentSwitchInitializationPending = false;
-  private tuttiAgentSwitchInitialized = false;
-  private tuttiAgentSwitchOperation: Promise<void> = Promise.resolve();
 
   constructor(
     dependencies: WorkspaceSettingsServiceDependencies,
@@ -156,14 +138,12 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       client: dependencies.client,
       store: this.store
     });
-    this.scheduleTuttiAgentSwitchInitialization();
   }
 
   openPanel(
     workspace: WorkspaceSettingsWorkspaceInput,
     options?: WorkspaceSettingsOpenOptions
   ): void {
-    this.scheduleTuttiAgentSwitchInitialization();
     this.syncWorkspace(workspace);
     // Normalize every legacy/plain-string settings request at this single
     // host-owned seam. Callers publish intent; only Settings understands its
@@ -327,112 +307,11 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       throw new Error("Agent target ID is required");
     }
 
-    const target = await this.dependencies.client.setSystemAgentTargetEnabled(
+    await this.dependencies.client.setSystemAgentTargetEnabled(
       normalizedAgentTargetID,
       enabled
     );
-    if (target.id === tuttiAgentTargetID) {
-      this.tuttiAgentSwitchInitialized = true;
-      this.applyTuttiAgentTargetEnabled(target.enabled);
-    }
     await this.refreshAgentTargetConsumers();
-  }
-
-  async setTuttiAgentSwitchEnabled(enabled: boolean): Promise<void> {
-    return this.enqueueTuttiAgentSwitchOperation(async () => {
-      if (
-        this.tuttiAgentSwitchInitialized &&
-        this.store.tuttiAgentSwitchEnabled === enabled
-      ) {
-        return;
-      }
-
-      try {
-        await this.setAgentTargetEnabled(tuttiAgentTargetID, enabled);
-      } catch {
-        this.notifications.error({
-          title: createActiveTranslator().t(
-            "workspace.settings.developer.tuttiAgentSwitchSaveFailed"
-          )
-        });
-      }
-    });
-  }
-
-  private async initializeTuttiAgentSwitch(): Promise<void> {
-    if (this.tuttiAgentSwitchInitialized) {
-      return;
-    }
-    try {
-      const targets = await this.dependencies.client.listAgentTargets();
-      let target = targets.find((item) => item.id === tuttiAgentTargetID);
-      if (!target) {
-        return;
-      }
-      const migration =
-        this.dependencies.tuttiAgentSwitchMigration ??
-        defaultTuttiAgentSwitchMigration;
-      if (!migration.hasMigrated()) {
-        const legacyEnabled = migration.readLegacyEnabled();
-        if (legacyEnabled.status === "error") {
-          return;
-        }
-        // Persist the one-shot marker before mutating daemon state. If storage
-        // is unavailable, leave migration pending instead of repeatedly
-        // overwriting an explicit daemon-side choice on future launches.
-        if (!migration.markComplete()) {
-          return;
-        }
-        if (
-          legacyEnabled.status === "value" &&
-          legacyEnabled.enabled !== target.enabled
-        ) {
-          try {
-            target = await this.dependencies.client.setSystemAgentTargetEnabled(
-              tuttiAgentTargetID,
-              legacyEnabled.enabled
-            );
-          } catch (error) {
-            migration.clearComplete();
-            throw error;
-          }
-          await this.refreshAgentTargetConsumers();
-        }
-      }
-      this.tuttiAgentSwitchInitialized = true;
-      this.applyTuttiAgentTargetEnabled(target.enabled);
-    } catch {
-      // Keep the safe hidden state until the daemon can provide authority.
-    }
-  }
-
-  private scheduleTuttiAgentSwitchInitialization(): void {
-    if (
-      this.tuttiAgentSwitchInitialized ||
-      this.tuttiAgentSwitchInitializationPending
-    ) {
-      return;
-    }
-    this.tuttiAgentSwitchInitializationPending = true;
-    void this.enqueueTuttiAgentSwitchOperation(async () => {
-      try {
-        await this.initializeTuttiAgentSwitch();
-      } finally {
-        this.tuttiAgentSwitchInitializationPending = false;
-      }
-    });
-  }
-
-  private enqueueTuttiAgentSwitchOperation(
-    operation: () => Promise<void>
-  ): Promise<void> {
-    const next = this.tuttiAgentSwitchOperation.then(operation, operation);
-    this.tuttiAgentSwitchOperation = next.catch(() => undefined);
-    return next;
-  }
-
-  private applyTuttiAgentTargetEnabled(enabled: boolean): void {
-    this.store.tuttiAgentSwitchEnabled = enabled;
   }
 
   private async refreshAgentTargetConsumers(): Promise<void> {
@@ -1059,13 +938,6 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }).report();
   }
 }
-
-const defaultTuttiAgentSwitchMigration = {
-  clearComplete: clearTuttiAgentSwitchDaemonMigration,
-  hasMigrated: hasMigratedTuttiAgentSwitchToDaemon,
-  markComplete: markTuttiAgentSwitchDaemonMigrationComplete,
-  readLegacyEnabled: readLegacyTuttiAgentSwitchEnabled
-};
 
 function createActiveTranslator() {
   return createTranslator(getActiveLocale());

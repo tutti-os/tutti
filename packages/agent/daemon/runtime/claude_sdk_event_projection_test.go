@@ -1,16 +1,65 @@
 package agentruntime
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"log/slog"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
+
+func TestClaudeCodeSDKAdapterLogsAPIRetryDiagnostics(t *testing.T) {
+	previousLogger := slog.Default()
+	var output bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
+	t.Cleanup(func() {
+		slog.SetDefault(previousLogger)
+	})
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	adapterSession := &claudeSDKAdapterSession{
+		providerSessionID: "provider-session-retry",
+		rootTurnID:        "turn-retry",
+	}
+	adapter.logClaudeSDKLifecycleEvent(
+		"agent-session-retry",
+		adapterSession,
+		claudeSDKSidecarEvent{
+			Type: "sdk_lifecycle_observed",
+			Payload: map[string]any{
+				"sdkMessageType":     "system",
+				"sdkMessageSubtype":  "api_retry",
+				"apiRetry":           true,
+				"sdkConnectionError": true,
+				"sdkRetryAttempt":    2,
+				"sdkMaxRetries":      3,
+				"sdkRetryDelayMs":    400,
+				"sdkAssistantError":  "unknown",
+			},
+		},
+	)
+
+	logged := output.String()
+	for _, expected := range []string{
+		"sdk_message_subtype=api_retry",
+		"api_retry=true",
+		"sdk_connection_error=true",
+		"sdk_retry_attempt=2",
+		"sdk_max_retries=3",
+		"sdk_retry_delay_ms=400",
+		"sdk_assistant_error=unknown",
+	} {
+		if !strings.Contains(logged, expected) {
+			t.Fatalf("log = %q, want %q", logged, expected)
+		}
+	}
+}
 
 func TestClaudeCodeSDKAdapterMapsSyntheticTurnStarted(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(nil)

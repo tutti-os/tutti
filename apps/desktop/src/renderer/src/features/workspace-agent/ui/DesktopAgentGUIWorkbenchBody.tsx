@@ -70,6 +70,7 @@ import { useDesktopAgentGUIOpenConversationWindow } from "./useDesktopAgentGUIOp
 import { useStableDesktopAgentGUIHostProps } from "./useStableDesktopAgentGUIHostProps.ts";
 import { resolveDesktopAgentGUIEmbeddedDesktopSize } from "./desktopAgentGUIEmbeddedFrame.ts";
 import { scheduleDesktopAgentGUIWorkbenchHydration } from "./desktopAgentGUIWorkbenchHydration.ts";
+import { resolveDesktopAgentGUIWorkbenchBodyVisibility } from "./desktopAgentGUIWorkbenchVisibility.ts";
 import { useDesktopAgentConfigCommerce } from "./useDesktopAgentConfigCommerce.tsx";
 import { hasDesktopLocalTuttiAgent } from "./desktopAgentConfigCommerceContext.ts";
 import { useDesktopAgentGUIComposerFooterAccessory } from "./useDesktopAgentGUIComposerFooterAccessory.tsx";
@@ -718,7 +719,11 @@ function DesktopAgentGUIWorkbenchBodyAdapter({
       visualOcclusionPresentation
     )
   );
-  const isBodyVisible = context.isVisible && isVisuallyExposed;
+  const isBodyVisible = resolveDesktopAgentGUIWorkbenchBodyVisibility({
+    isPresentationVisible: context.isPresentationVisible,
+    isVisible: context.isVisible,
+    isVisuallyExposed
+  });
   const [bodyHydrated, setBodyHydrated] = useState(
     context.isFocused || isBodyVisible
   );

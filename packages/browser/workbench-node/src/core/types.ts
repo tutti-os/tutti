@@ -265,11 +265,14 @@ export type BrowserNodeChromeProfileId = string & {
   readonly [browserNodeChromeProfileIdBrand]: true;
 };
 
+export type BrowserNodeChromeProfileSource = "chrome" | "dia";
+
 export interface BrowserNodeChromeProfile {
   avatarDataUrl?: string;
   email?: string;
   id: BrowserNodeChromeProfileId;
   name: string;
+  source?: BrowserNodeChromeProfileSource;
 }
 
 export type BrowserNodeChromeProfileDiscoveryResult =

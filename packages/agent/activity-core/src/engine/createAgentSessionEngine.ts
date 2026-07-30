@@ -30,6 +30,7 @@ import {
   type AgentSessionEngineIntentObserver,
   type AgentSessionEngineListener,
   type AgentSessionLoadComposerOptionsInput,
+  type AgentSessionStopInput,
   type AgentSessionSubmitInteractionResponseInput,
   type AgentSessionUpdateSettingsInput,
   type EngineClock,
@@ -61,6 +62,7 @@ import type {
 export const ENGINE_INTENT_BATCH_DELAY_MS = 33;
 const SESSION_MUTATION_TIMEOUT_MS = 30_000;
 const SESSION_SETTINGS_UPDATE_TIMEOUT_MS = 30_000;
+const SESSION_STOP_TIMEOUT_MS = 30_000;
 const INTERACTION_RESPONSE_TIMEOUT_MS = 30_000;
 
 export interface CreateAgentSessionEngineInput {
@@ -106,6 +108,7 @@ export function createAgentSessionEngine({
   let interactionResponseCommandSequence = 1;
   let sessionMutationSequence = 1;
   let sessionSettingsUpdateSequence = 1;
+  let sessionStopCommandSequence = 1;
   const pendingComposerOptionsDisposals = new Set<() => void>();
 
   const expiryClock = createEngineExpiryClock({
@@ -391,6 +394,23 @@ export function createAgentSessionEngine({
     return `interaction:${clock.nowUnixMs()}:${sequence}`;
   }
 
+  function stopSession(input: AgentSessionStopInput): void {
+    const agentSessionId = input.agentSessionId.trim();
+    if (!agentSessionId) {
+      return;
+    }
+    const requestedAtUnixMs = clock.nowUnixMs();
+    const sequence = sessionStopCommandSequence++;
+    dispatch({
+      agentSessionId,
+      awaitingTurnExpiresAtUnixMs: requestedAtUnixMs + SESSION_STOP_TIMEOUT_MS,
+      commandId: `stop:${requestedAtUnixMs}:${sequence}`,
+      timeoutMs: SESSION_STOP_TIMEOUT_MS,
+      type: "session/stopRequested",
+      workspaceId: engineIdentity.workspaceId
+    });
+  }
+
   function submitInteractionResponse(
     input: AgentSessionSubmitInteractionResponseInput
   ): boolean {
@@ -575,6 +595,7 @@ export function createAgentSessionEngine({
       return session;
     },
     submitInteractionResponse,
+    stopSession,
     subscribe(listener) {
       listeners.add(listener);
       return () => {

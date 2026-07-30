@@ -33,7 +33,6 @@ import {
   workspaceAppCenterNodeID
 } from "@renderer/features/workspace-app-center";
 import { useTranslation } from "@renderer/i18n";
-import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService.ts";
 import {
   isWorkspaceAgentGuiComingSoonProvider,
   workspaceAgentGuiProviders
@@ -76,7 +75,6 @@ export function WorkspaceLaunchpadOverlay({
   const { service: appCenterService, state: appCenterState } =
     useWorkspaceAppCenterService();
   const agentProviderStatusService = useService(IAgentProviderStatusService);
-  const { state: workspaceSettingsState } = useWorkspaceSettingsService();
   const reporterService = useService(IReporterService);
   const agentProviderSnapshot = useSyncExternalStore(
     (listener) => agentProviderStatusService.subscribe(listener),
@@ -84,15 +82,10 @@ export function WorkspaceLaunchpadOverlay({
     () => agentProviderStatusService.getSnapshot()
   );
   const { t } = useTranslation();
-  const hiddenAgentProviders = useMemo<
-    ReadonlySet<WorkspaceAgentProvider>
-  >(() => {
-    const hidden: WorkspaceAgentProvider[] = [];
-    if (workspaceSettingsState.tuttiAgentSwitchEnabled !== true) {
-      hidden.push("tutti-agent");
-    }
-    return new Set<WorkspaceAgentProvider>(hidden);
-  }, [workspaceSettingsState.tuttiAgentSwitchEnabled]);
+  const hiddenAgentProviders = useMemo<ReadonlySet<WorkspaceAgentProvider>>(
+    () => new Set<WorkspaceAgentProvider>(),
+    []
+  );
   const wasOpenRef = useRef(false);
   const launchpadAnalytics = useMemo(
     () =>

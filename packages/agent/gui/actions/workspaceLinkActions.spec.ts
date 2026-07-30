@@ -42,6 +42,35 @@ describe("resolveWorkspaceFileLinkAction", () => {
     });
   });
 
+  it("opens Markdown source links by removing their terminal line anchor", () => {
+    expect(
+      resolveWorkspaceFileLinkAction({
+        path: "/Users/test/project/tutti/src/App.tsx:87",
+        workspaceRoot: "/Users/test/project/tutti",
+        basePath: "/Users/test/project/tutti",
+        source: "agent-markdown"
+      })
+    ).toMatchObject({
+      type: "open-workspace-file",
+      path: "/Users/test/project/tutti/src/App.tsx",
+      directoryPath: "/Users/test/project/tutti/src",
+      workspaceRoot: "/Users/test/project/tutti"
+    });
+
+    expect(
+      resolveWorkspaceFileLinkAction({
+        path: "C:\\Users\\test\\project\\tutti\\src\\App.tsx:87",
+        workspaceRoot: "C:\\Users\\test\\project\\tutti",
+        source: "agent-markdown"
+      })
+    ).toMatchObject({
+      type: "open-workspace-file",
+      path: "C:/Users/test/project/tutti/src/App.tsx",
+      directoryPath: "C:/Users/test/project/tutti/src",
+      workspaceRoot: "C:/Users/test/project/tutti"
+    });
+  });
+
   it("allows local absolute paths when the workspace root is the filesystem root", () => {
     expect(
       resolveWorkspaceFileLinkAction({

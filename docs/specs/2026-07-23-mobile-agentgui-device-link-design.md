@@ -249,10 +249,10 @@ Cookie，也不新增移动端账号实体。
 5. tsh-server 校验同账号和 challenge 状态；
 6. Desktop 显式确认配对。
 
-Desktop 的账号登录入口与手机远程访问入口独立发布。开发者设置中的
-`Tutti Agent Switch` 控制工作区账号菜单和 Agent 开发控制项是否显示。独立持久化的
+Desktop 的账号登录入口与手机远程访问入口独立发布。Tutti Agent 及工作区账号菜单
+默认显示且不再提供独立的开发者可见性开关。独立持久化的
 `mobile.remoteAccessSettings` feature flag 控制「连接」设置入口是否显示；「连接」
-页承载账号登录、退出、刷新、手机配对和远程访问能力。两个开关都只控制 Desktop
+页承载账号登录、退出、刷新、手机配对和远程访问能力。该开关只控制 Desktop
 入口可见性，不创建第二套登录态、设备实体或协议能力。
 
 QR 不包含 bearer token、私钥、原始候选或可长期使用的连接凭据。

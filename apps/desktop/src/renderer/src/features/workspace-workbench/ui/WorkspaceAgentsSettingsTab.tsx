@@ -165,7 +165,6 @@ export function WorkspaceAgentsSettingsTab({
   featureFlagsPending,
   focusProvider,
   focusRequestID,
-  tuttiAgentSwitchEnabled,
   onAgentEnabledChange,
   onAutoCheckEnabledChange,
   onOpenEnvironment,
@@ -180,7 +179,6 @@ export function WorkspaceAgentsSettingsTab({
   featureFlagsPending: boolean;
   focusProvider: string | null;
   focusRequestID: number;
-  tuttiAgentSwitchEnabled: boolean;
   onAgentEnabledChange: (
     agentTargetID: string,
     enabled: boolean
@@ -264,12 +262,8 @@ export function WorkspaceAgentsSettingsTab({
 
   const visibleProviders = useMemo(
     () =>
-      filterVisibleAgentProviders(
-        managedAgentProviders,
-        earlyAccessEnabled,
-        tuttiAgentSwitchEnabled
-      ),
-    [earlyAccessEnabled, tuttiAgentSwitchEnabled]
+      filterVisibleAgentProviders(managedAgentProviders, earlyAccessEnabled),
+    [earlyAccessEnabled]
   );
 
   const checkingUpdates = agentProviderStatusService.isCheckingUpdates();
@@ -473,6 +467,8 @@ export function WorkspaceAgentsSettingsTab({
             const agentEnabledPending = targetID
               ? pendingAgentTargetIDs.has(targetID)
               : false;
+            const alwaysEnabled =
+              targetID === "local:tutti-agent" && agentEnabled;
             const isEarlyAccess =
               isWorkspaceAgentGuiEarlyAccessProvider(provider);
             const environmentLabel = t("workspace.agentEnv.configTitle", {
@@ -583,6 +579,7 @@ export function WorkspaceAgentsSettingsTab({
                     disabled={
                       agentsSnapshot.status === "loading" ||
                       !agentTarget ||
+                      alwaysEnabled ||
                       agentEnabledPending
                     }
                     size="sm"
