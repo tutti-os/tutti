@@ -20,7 +20,10 @@ import type {
   AgentMentionGroup,
   AgentMentionGroupId
 } from "./AgentMentionSearchController";
-import type { AgentMentionRawGroups } from "./AgentMentionSearchContracts";
+import type {
+  AgentMentionRawGroups,
+  AgentMentionSearchState
+} from "./AgentMentionSearchContracts";
 import type {
   AgentActivityMessage,
   AgentActivitySession
@@ -359,6 +362,27 @@ export function resolveMentionGroupTotalCount(
 
 export function normalizeQuery(value: string): string {
   return value.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * A settled multi-word search with zero visible results reads as "the user
+ * typed past the mention query" (e.g. `@hello world` as plain prose), so the
+ * palette dismisses instead of pinning an empty panel over the composer —
+ * mirroring how the slash palette hides once its query stops matching.
+ * Single-word misses keep the palette open: search only covers the active
+ * filter tab, so another category may still match and tab cycling must stay
+ * reachable.
+ */
+export function shouldDismissMentionSearchAsNonQuery(
+  state: AgentMentionSearchState
+): boolean {
+  if (state.mode !== "results" || state.status !== "ready") {
+    return false;
+  }
+  if (!state.query.includes(" ")) {
+    return false;
+  }
+  return state.groups.every((group) => group.items.length === 0);
 }
 
 export function compactText(value: string | null | undefined): string {

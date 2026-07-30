@@ -292,13 +292,6 @@ export const EMPTY_PROVIDER_SKILLS: readonly AgentGUIProviderSkillOption[] = [];
 export const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
   [];
 export const GOAL_MODE_SLASH_COMMAND = "/goal";
-export const MENTION_PALETTE_DISMISS_INTERACTION_SELECTOR = [
-  "[data-node-drag-handle]",
-  '[data-workbench-drag-handle="true"]',
-  ".workspace-node-window__resizer",
-  ".workbench-window__resize-handle",
-  "#agent-gui-conversation-rail-resize"
-].join(",");
 
 export function resolveComposerProviderIconUrl(
   provider: AgentGUIProvider

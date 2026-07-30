@@ -13,6 +13,7 @@ import {
   isAgentMentionItemDisabled
 } from "./AgentFileMentionPalette";
 import { type AgentFileMentionSuggestionState } from "./agentRichText/agentFileMentionExtension";
+import { shouldDismissMentionSearchAsNonQuery } from "./agentMentionSearchHelpers";
 import { formatSlashStatusTokenCount } from "./AgentSlashStatusPanel";
 import { useOptionalAgentActivityRuntime } from "../../agentActivityRuntime";
 import { useComposerDraftAttachments } from "./composer/useComposerDraftAttachments";
@@ -319,7 +320,10 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     promptBeforeSelection
   } = paletteCatalog;
   const showFileMentionPalette =
-    !disabled && isPaletteOpen && fileMentionSuggestion !== null;
+    !disabled &&
+    isPaletteOpen &&
+    fileMentionSuggestion !== null &&
+    !shouldDismissMentionSearchAsNonQuery(mentionSearchState);
   const showSlashPalette =
     !showFileMentionPalette &&
     !disabled &&
@@ -511,6 +515,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     workspaceReferencePickerOpen,
     composerRef,
     paletteContentRef,
+    promptInputAreaRef,
     shouldCenterMentionHighlight
   });
   const { clearActiveFileMentionTrigger } = mentionActions;
