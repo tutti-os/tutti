@@ -678,7 +678,7 @@ func runtimeVersionWithEnv(ctx context.Context, executable string, args []string
 	if len(args) == 0 {
 		return "", nil
 	}
-	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	probeCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	command := exec.CommandContext(probeCtx, executable, args...)
 	command.Env = env
@@ -734,7 +734,7 @@ func runtimeVersionWithIdentity(
 	if len(args) == 0 {
 		return "", nil
 	}
-	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	probeCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	var output []byte
 	var err error

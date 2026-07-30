@@ -41,7 +41,11 @@ func (localInstallCommandRunner) Run(ctx context.Context, command []string, cwd 
 		if errors.Is(err, exec.ErrNotFound) {
 			return fmt.Errorf("install command %s failed: %[1]s is not installed or not on the daemon PATH", filepath.Base(command[0]))
 		}
-		return fmt.Errorf("install command %s failed: %w", filepath.Base(command[0]), err)
+		detail := strings.TrimSpace(output.buffer.String())
+		if detail == "" {
+			return fmt.Errorf("install command %s failed: %w", filepath.Base(command[0]), err)
+		}
+		return fmt.Errorf("install command %s failed: %w: %s", filepath.Base(command[0]), err, detail)
 	}
 	return nil
 }
