@@ -1,6 +1,7 @@
 import type { AgentSessionEngineState } from "./types.ts";
 import type {
   AgentActivityEditRetryAvailability,
+  EditRetryTailPresentation,
   EditRetryOperationRecord
 } from "./editRetry.types.ts";
 
@@ -49,6 +50,14 @@ export function selectEditRetryAvailabilityIsNewer(
     editRetryRecoveryRank(current.recoveryState) >
     editRetryRecoveryRank(incoming.recoveryState)
   );
+}
+
+export function selectSessionEditRetryTailPresentation(
+  state: AgentSessionEngineState,
+  agentSessionId: string | null | undefined
+): EditRetryTailPresentation | null {
+  const normalized = agentSessionId?.trim() ?? "";
+  return state.editRetry.tailBySessionId[normalized] ?? null;
 }
 
 export function editRetryPresentationRecordsEqual(

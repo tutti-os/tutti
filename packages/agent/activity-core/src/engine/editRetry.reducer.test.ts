@@ -33,6 +33,14 @@ test("edit retry owns stable identity and command settlement in the engine", () 
   const command = first.commands[0];
   assert.equal(command?.type, "turn/editRetry");
   if (command?.type !== "turn/editRetry") return;
+  assert.deepEqual(first.state.editRetry.tailBySessionId["session-1"], {
+    clientOperationId: command.clientOperationId,
+    editedText: "edited",
+    operationId: null,
+    replacementTurnId: null,
+    retractedTurnId: "turn-1",
+    workspaceId: "workspace-1"
+  });
 
   const failed = rootEngineReducer(first.state, {
     commandId: command.commandId,
@@ -53,6 +61,10 @@ test("edit retry owns stable identity and command settlement in the engine", () 
   assert.equal(retryCommand?.type, "turn/editRetry");
   if (retryCommand?.type !== "turn/editRetry") return;
   assert.equal(retryCommand.clientOperationId, command.clientOperationId);
+  assert.equal(
+    failed.state.editRetry.tailBySessionId["session-1"]?.retractedTurnId,
+    "turn-1"
+  );
 
   const changed = rootEngineReducer(failed.state, {
     agentSessionId: "session-1",
@@ -107,6 +119,14 @@ test("successful edit retry waits for authoritative availability and requests re
   assert.equal(
     settled.state.editRetry.operationBySessionId["session-1"]?.status,
     "reconciling"
+  );
+  assert.equal(
+    settled.state.editRetry.tailBySessionId["session-1"]?.replacementTurnId,
+    "turn-2"
+  );
+  assert.equal(
+    settled.state.editRetry.tailBySessionId["session-1"]?.operationId,
+    "operation-1"
   );
   assert.deepEqual(settled.followUpIntents, [
     {

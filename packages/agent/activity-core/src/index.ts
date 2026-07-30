@@ -103,6 +103,7 @@ export {
   editRetryPresentationRecordsEqual,
   selectEditRetryAvailabilityIsNewer,
   selectEditRetryPresentation,
+  selectSessionEditRetryTailPresentation,
   type EditRetryPresentationRecord
 } from "./engine/editRetry.selectors.ts";
 export {
@@ -122,6 +123,7 @@ export type {
   EditRetryOperationRecord,
   EditRetryOperationStatus,
   EditRetryState,
+  EditRetryTailPresentation,
   TurnEditRetryCommand,
   TurnRecoverEditRetryCommand
 } from "./engine/editRetry.types.ts";

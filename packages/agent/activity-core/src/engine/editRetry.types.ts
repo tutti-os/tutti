@@ -76,12 +76,29 @@ export interface EditRetryOperationRecord {
   workspaceId: string | null;
 }
 
+/**
+ * A bounded local projection of the committed-history replacement that an
+ * edit retry is driving. It is deliberately scoped to the last Turn: the
+ * canonical history remains the daemon's authority, while this fence prevents
+ * a cached or late projection of the retracted tail from flashing back into
+ * the conversation before normal reconciliation observes the replacement.
+ */
+export interface EditRetryTailPresentation {
+  clientOperationId: string;
+  editedText: string;
+  operationId: string | null;
+  replacementTurnId: string | null;
+  retractedTurnId: string;
+  workspaceId: string;
+}
+
 export interface EditRetryState {
   availabilityBySessionId: Readonly<
     Record<string, AgentActivityEditRetryAvailability>
   >;
   nextCommandSequence: number;
   operationBySessionId: Readonly<Record<string, EditRetryOperationRecord>>;
+  tailBySessionId: Readonly<Record<string, EditRetryTailPresentation>>;
 }
 
 export interface EditRetryAvailabilityReceivedIntent {

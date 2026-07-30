@@ -421,6 +421,11 @@ export function rootEngineReducer(
     intent,
     {
       previousSessionsById: state.sessionLifecycle.sessionsById,
+      retractedTurnIdsBySessionId: Object.fromEntries(
+        Object.entries(editRetry.state.tailBySessionId).map(
+          ([sessionId, tail]) => [sessionId, tail.retractedTurnId]
+        )
+      ),
       sessionsById: sessionLifecycle.state.sessionsById
     }
   );

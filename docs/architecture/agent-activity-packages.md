@@ -304,6 +304,13 @@ newest-page anchor, drains the ascending tail, fences the read with session
 detail before and after, and retries transient projection failures while the
 event stream is connected. Reconnect rechecks every cached Session.
 
+Before that authoritative replacement completes, the edit-retry slice retains
+only the exact last-Turn fence and edited prompt. The message and pending-submit
+projections use it to discard the retracted Turn while leaving the already
+rendered prefix intact, then render the edited prompt as the new local tail.
+The fence is not an event log or history cache: the committed daemon revision
+remains the only authority and a mismatch falls back to the composite snapshot.
+
 That composite snapshot also reconciles settled optimistic submissions and
 completion attention. It removes an optimistic row only when its stable Turn
 and client-submit identity are both absent from effective history; unresolved

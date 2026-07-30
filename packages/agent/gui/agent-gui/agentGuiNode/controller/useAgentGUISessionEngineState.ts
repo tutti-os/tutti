@@ -21,6 +21,7 @@ import {
   selectLatestActivationForSession,
   selectLatestPendingSubmitForSession,
   selectPendingSubmitsForSession,
+  selectSessionEditRetryTailPresentation,
   selectSessionHasUnconfirmedSubmit,
   selectSessionIsSubmitting,
   type AgentSessionEngine,
@@ -62,6 +63,9 @@ export function useAgentGUISessionEngineState(input: {
     sessionEngine,
     (state) => selectPendingSubmitsForSession(state, activeConversationId),
     pendingSubmitRecordListsEqual
+  );
+  const activeEditRetryTail = useEngineSelector(sessionEngine, (state) =>
+    selectSessionEditRetryTailPresentation(state, activeConversationId)
   );
   const activeLatestPendingSubmit = useEngineSelector(sessionEngine, (state) =>
     selectLatestPendingSubmitForSession(state, activeConversationId)
@@ -211,6 +215,7 @@ export function useAgentGUISessionEngineState(input: {
     activeEngineRuntimeAvailability,
     activeEngineSession,
     activeEngineSessionDeleted,
+    activeEditRetryTail,
     activeLatestPendingSubmit,
     activePendingActivation,
     activePendingSubmits,

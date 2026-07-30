@@ -37,6 +37,11 @@ const context: SessionMessagesReducerContext = {
   }
 };
 
+const retractedContext: SessionMessagesReducerContext = {
+  ...context,
+  retractedTurnIdsBySessionId: { "session-1": "turn-retracted" }
+};
+
 test("merges messages into the canonical session bucket", () => {
   const state = sessionMessagesReducer(
     createInitialSessionMessagesState(),
@@ -49,6 +54,59 @@ test("merges messages into the canonical session bucket", () => {
   assert.deepEqual(
     state.messagesBySessionId["session-1"]?.map((item) => item.messageId),
     ["m1"]
+  );
+});
+
+test("tail rewind drops the retracted Turn and rejects its late message", () => {
+  let state = sessionMessagesReducer(
+    createInitialSessionMessagesState(),
+    {
+      type: "message/snapshotReceived",
+      messages: [
+        message({
+          messageId: "before",
+          agentSessionId: "session-1",
+          turnId: "turn-before"
+        }),
+        message({
+          messageId: "retracted",
+          agentSessionId: "session-1",
+          turnId: "turn-retracted",
+          version: 2
+        })
+      ]
+    },
+    context
+  ).state;
+  state = sessionMessagesReducer(
+    state,
+    {
+      agentSessionId: "session-1",
+      editedText: "replacement",
+      turnId: "turn-retracted",
+      type: "editRetry/requested",
+      workspaceId: "workspace-1"
+    },
+    retractedContext
+  ).state;
+  state = sessionMessagesReducer(
+    state,
+    {
+      type: "message/snapshotReceived",
+      messages: [
+        message({
+          messageId: "late-retracted",
+          agentSessionId: "session-1",
+          turnId: "turn-retracted",
+          version: 3
+        })
+      ]
+    },
+    retractedContext
+  ).state;
+  assert.deepEqual(
+    state.messagesBySessionId["session-1"]?.map((item) => item.messageId),
+    ["before"]
   );
 });
 

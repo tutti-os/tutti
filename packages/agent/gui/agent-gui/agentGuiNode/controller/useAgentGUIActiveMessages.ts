@@ -3,6 +3,7 @@ import {
   selectLatestActivationForSession,
   selectPendingSubmitsForSession,
   type AgentActivityMessage,
+  type EditRetryTailPresentation,
   type EngineQueuedPrompt
 } from "@tutti-os/agent-activity-core";
 import { useMemo } from "react";
@@ -16,6 +17,7 @@ import {
 
 export function useAgentGUIActiveMessages(input: {
   activeConversationId: string | null;
+  editRetryTail: EditRetryTailPresentation | null;
   activePendingActivation: ReturnType<typeof selectLatestActivationForSession>;
   activePendingSubmits: ReturnType<typeof selectPendingSubmitsForSession>;
   activeQueuedPrompts: readonly EngineQueuedPrompt[];
@@ -25,6 +27,7 @@ export function useAgentGUIActiveMessages(input: {
 }) {
   const {
     activeConversationId,
+    editRetryTail,
     activePendingActivation,
     activePendingSubmits,
     activeQueuedPrompts,
@@ -34,6 +37,11 @@ export function useAgentGUIActiveMessages(input: {
   } = input;
   const activeMessages = useMemo(() => {
     if (!activeConversationId) return storedMessages;
+    const durableMessages = editRetryTail
+      ? storedMessages.filter(
+          (message) => message.turnId?.trim() !== editRetryTail.retractedTurnId
+        )
+      : storedMessages;
     const visibleQueuedSubmitIds = new Set(
       activeQueuedPrompts
         .map((prompt) =>
@@ -95,14 +103,47 @@ export function useAgentGUIActiveMessages(input: {
               workspaceId
             })
         : null;
+    const replacementClientSubmitId = editRetryTail
+      ? `edit-retry:${editRetryTail.operationId ?? editRetryTail.clientOperationId}`
+      : null;
+    const replacementAlreadyDurable = replacementClientSubmitId
+      ? durableMessages.some(
+          (message) =>
+            message.payload?.clientSubmitId === replacementClientSubmitId ||
+            (editRetryTail?.replacementTurnId !== null &&
+              message.turnId === editRetryTail?.replacementTurnId)
+        )
+      : false;
+    const latestOccurredAtUnixMs = durableMessages.reduce(
+      (latest, message) => Math.max(latest, message.occurredAtUnixMs),
+      0
+    );
+    const replacementMessage =
+      editRetryTail && replacementClientSubmitId && !replacementAlreadyDurable
+        ? createOptimisticPromptMessage({
+            agentSessionId: activeConversationId,
+            clientSubmitId: replacementClientSubmitId,
+            content: [{ type: "text", text: editRetryTail.editedText }],
+            occurredAtUnixMs: latestOccurredAtUnixMs + 1,
+            turnId:
+              editRetryTail.replacementTurnId ??
+              createPendingOptimisticTurnId(replacementClientSubmitId),
+            userId: currentUserId?.trim() || "user",
+            workspaceId
+          })
+        : null;
     const optimisticMessages = pendingActivationMessage
       ? [...pendingMessages, pendingActivationMessage]
       : pendingMessages;
-    return optimisticMessages.length > 0
-      ? mergeWorkspaceAgentMessages(storedMessages, optimisticMessages)
-      : storedMessages;
+    const mergedOptimisticMessages = replacementMessage
+      ? [...optimisticMessages, replacementMessage]
+      : optimisticMessages;
+    return mergedOptimisticMessages.length > 0
+      ? mergeWorkspaceAgentMessages(durableMessages, mergedOptimisticMessages)
+      : durableMessages;
   }, [
     activeConversationId,
+    editRetryTail,
     activePendingActivation,
     activePendingSubmits,
     activeQueuedPrompts,

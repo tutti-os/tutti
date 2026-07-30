@@ -237,6 +237,7 @@ export function useAgentGUINodeController({
   });
   const {
     activeEngineSession,
+    activeEditRetryTail,
     activePendingActivation,
     activePendingSubmits,
     activeQueuedPrompts,
@@ -356,6 +357,7 @@ export function useAgentGUINodeController({
     : EMPTY_AGENT_GUI_MESSAGES;
   const { activeMessages, activeTimelineItems } = useAgentGUIActiveMessages({
     activeConversationId,
+    editRetryTail: activeEditRetryTail,
     activePendingActivation,
     activePendingSubmits,
     activeQueuedPrompts,

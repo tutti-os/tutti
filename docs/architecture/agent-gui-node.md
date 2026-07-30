@@ -535,6 +535,13 @@ An accepted transport result enters an engine-owned `reconciling` state and
 does not overwrite canonical availability. Editing stays blocked until a
 session-detail read confirms the returned history revision and recovery state;
 Desktop must not manufacture recovery actions from the command response.
+While that confirmation is pending, the Engine keeps a Session-scoped tail
+fence for the exact retracted Turn and projects the edited prompt as its local
+replacement. Cached messages, late realtime messages, and confirmed optimistic
+submits for that Turn are all excluded by the same fence, so the old tail
+cannot flash back. This is a bounded presentation checkpoint over the retained
+prefix, not a second history authority; any identity or revision mismatch
+continues through the existing authoritative reconcile path.
 `resend_pending` and `recovery_required` are explicit recovery states rather
 than indefinite loading. GUI recovery commands delegate to Host and never
 choose whether rollback or replacement should be repeated. Completion and

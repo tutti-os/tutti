@@ -25,6 +25,9 @@ export interface SessionMessagesReducerContext {
   previousSessionsById?: Readonly<
     Record<string, SessionMessagesSessionIdentity>
   >;
+  retractedTurnIdsBySessionId?: Readonly<
+    Record<string, string | null | undefined>
+  >;
   sessionsById: Readonly<Record<string, SessionMessagesSessionIdentity>>;
 }
 
@@ -62,9 +65,15 @@ export function sessionMessagesReducer(
         intent.messages,
         intent.sessionMessageWindows ?? []
       );
+    case "editRetry/requested":
+      return removeRetractedTurnMessages(state, context, intent.agentSessionId);
     case "session/snapshotReceived":
     case "session/upserted":
-      return canonicalizeSessionBuckets(state, context.sessionsById);
+      return canonicalizeSessionBuckets(
+        state,
+        context.sessionsById,
+        context.retractedTurnIdsBySessionId
+      );
     case "session/removed":
       return dropSessionBuckets(
         state,
@@ -88,7 +97,11 @@ function replaceSessionMessages(
     rawAgentSessionId
   );
   if (!canonicalAgentSessionId) return unchanged(state);
-  const replacement = canonicalizeMessages(messages, canonicalAgentSessionId);
+  const replacement = canonicalizeMessages(
+    messages,
+    canonicalAgentSessionId,
+    retractedTurnId(context, canonicalAgentSessionId)
+  );
   const current = state.messagesBySessionId[canonicalAgentSessionId] ?? [];
   const windowsBySessionId = window
     ? mergeSessionMessageWindow(state.windowsBySessionId, context, window)
@@ -215,12 +228,20 @@ function mergeSessionMessages(
     aliasMessages.length > 0
       ? mergeAgentActivityMessages(
           currentMessages,
-          canonicalizeMessages(aliasMessages, canonicalAgentSessionId)
+          canonicalizeMessages(
+            aliasMessages,
+            canonicalAgentSessionId,
+            retractedTurnId(context, canonicalAgentSessionId)
+          )
         )
       : currentMessages;
   const mergedMessages = mergeAgentActivityMessages(
     currentCanonicalMessages,
-    canonicalizeMessages(messages, canonicalAgentSessionId)
+    canonicalizeMessages(
+      messages,
+      canonicalAgentSessionId,
+      retractedTurnId(context, canonicalAgentSessionId)
+    )
   );
   if (areAgentActivityMessageArraysEqual(currentMessages, mergedMessages)) {
     return hasAliasBucket
@@ -239,7 +260,8 @@ function mergeSessionMessages(
 
 function canonicalizeSessionBuckets(
   state: SessionMessagesState,
-  sessionsById: Readonly<Record<string, SessionMessagesSessionIdentity>>
+  sessionsById: Readonly<Record<string, SessionMessagesSessionIdentity>>,
+  retractedTurnIdsBySessionId: SessionMessagesReducerContext["retractedTurnIdsBySessionId"]
 ): EngineReducerResult<SessionMessagesState> {
   let nextMessages = state.messagesBySessionId;
   for (const [rawAgentSessionId, messages] of Object.entries(
@@ -257,7 +279,11 @@ function canonicalizeSessionBuckets(
     }
     const merged = mergeAgentActivityMessages(
       nextMessages[canonicalAgentSessionId] ?? [],
-      canonicalizeMessages(messages, canonicalAgentSessionId)
+      canonicalizeMessages(
+        messages,
+        canonicalAgentSessionId,
+        retractedTurnIdsBySessionId?.[canonicalAgentSessionId]?.trim() ?? ""
+      )
     );
     nextMessages = deleteBucket(
       {
@@ -297,6 +323,31 @@ function canonicalizeSessionBuckets(
         messagesBySessionId: nextMessages,
         windowsBySessionId: nextWindows
       });
+}
+
+function removeRetractedTurnMessages(
+  state: SessionMessagesState,
+  context: SessionMessagesReducerContext,
+  rawAgentSessionId: string
+): EngineReducerResult<SessionMessagesState> {
+  const agentSessionId = resolveCanonicalAgentSessionId(
+    context.sessionsById,
+    rawAgentSessionId
+  );
+  const turnId = retractedTurnId(context, agentSessionId);
+  const current = state.messagesBySessionId[agentSessionId];
+  if (!agentSessionId || !turnId || !current) return unchanged(state);
+  const messages = current.filter(
+    (message) => message.turnId?.trim() !== turnId
+  );
+  if (messages.length === current.length) return unchanged(state);
+  return changed({
+    ...state,
+    messagesBySessionId: {
+      ...state.messagesBySessionId,
+      [agentSessionId]: messages
+    }
+  });
 }
 
 function dropSessionBuckets(
@@ -371,13 +422,23 @@ export function resolveCanonicalAgentSessionId(
 
 function canonicalizeMessages(
   messages: readonly AgentActivityMessage[],
-  agentSessionId: string
+  agentSessionId: string,
+  retractedTurnId = ""
 ): AgentActivityMessage[] {
-  return messages.map((message) =>
-    message.agentSessionId === agentSessionId
-      ? message
-      : { ...message, agentSessionId }
-  );
+  return messages
+    .filter((message) => message.turnId?.trim() !== retractedTurnId)
+    .map((message) =>
+      message.agentSessionId === agentSessionId
+        ? message
+        : { ...message, agentSessionId }
+    );
+}
+
+function retractedTurnId(
+  context: SessionMessagesReducerContext,
+  agentSessionId: string
+): string {
+  return context.retractedTurnIdsBySessionId?.[agentSessionId]?.trim() ?? "";
 }
 
 function deleteBucket<T>(

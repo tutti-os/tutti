@@ -4,6 +4,7 @@ import type {
   PendingSubmitIntentRecord
 } from "./pendingIntents.types.ts";
 import { canonicalTurnKey } from "./sessionEntityKeys.ts";
+import { selectSessionEditRetryTailPresentation } from "./editRetry.selectors.ts";
 
 export function selectPendingActivations(
   state: AgentSessionEngineState
@@ -37,9 +38,15 @@ export function selectPendingSubmitsForSession(
   agentSessionId: string | null | undefined
 ): readonly PendingSubmitIntentRecord[] {
   const id = agentSessionId?.trim() ?? "";
+  const retractedTurnId =
+    selectSessionEditRetryTailPresentation(state, id)?.retractedTurnId ?? "";
   const matches = Object.values(
     state.pendingIntents.submitsByClientSubmitId
-  ).filter((pending) => pending.agentSessionId === id);
+  ).filter(
+    (pending) =>
+      pending.agentSessionId === id &&
+      (!retractedTurnId || pending.turnId?.trim() !== retractedTurnId)
+  );
   return matches.length > 0 ? matches : EMPTY_PENDING_SUBMITS;
 }
 

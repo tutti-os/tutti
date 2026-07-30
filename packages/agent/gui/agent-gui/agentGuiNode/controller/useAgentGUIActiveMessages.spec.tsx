@@ -1,6 +1,7 @@
 import { renderHook } from "@testing-library/react";
 import type {
   AgentActivityMessage,
+  EditRetryTailPresentation,
   PendingActivationIntentRecord
 } from "@tutti-os/agent-activity-core";
 import { describe, expect, it } from "vitest";
@@ -17,6 +18,7 @@ describe("useAgentGUIActiveMessages", () => {
     const { result } = renderHook(() =>
       useAgentGUIActiveMessages({
         activeConversationId: "session-1",
+        editRetryTail: null,
         activePendingActivation: activation({ initialPromptRetracted: true }),
         activePendingSubmits: [],
         activeQueuedPrompts: [],
@@ -33,6 +35,7 @@ describe("useAgentGUIActiveMessages", () => {
     const { result } = renderHook(() =>
       useAgentGUIActiveMessages({
         activeConversationId: "session-1",
+        editRetryTail: null,
         activePendingActivation: activation({
           initialPromptRetracted: false
         }),
@@ -50,7 +53,46 @@ describe("useAgentGUIActiveMessages", () => {
       clientSubmitId: "initial-submit"
     });
   });
+
+  it("replaces the retracted tail with the edited optimistic prompt", () => {
+    const { result } = renderHook(() =>
+      useAgentGUIActiveMessages({
+        activeConversationId: "session-1",
+        activePendingActivation: null,
+        activePendingSubmits: [],
+        activeQueuedPrompts: [],
+        currentUserId: "user-1",
+        editRetryTail: tail(),
+        storedMessages: [
+          message("before", "before-submit", "turn-before"),
+          message("retracted", "old-submit", "turn-retracted")
+        ],
+        workspaceId: "workspace-1"
+      })
+    );
+
+    expect(result.current.activeMessages).toHaveLength(2);
+    expect(result.current.activeMessages.map((item) => item.turnId)).toEqual([
+      "turn-before",
+      "pending:edit-retry:operation-1"
+    ]);
+    expect(result.current.activeMessages[1]?.payload).toMatchObject({
+      clientSubmitId: "edit-retry:operation-1",
+      text: "edited prompt"
+    });
+  });
 });
+
+function tail(): EditRetryTailPresentation {
+  return {
+    clientOperationId: "operation-1",
+    editedText: "edited prompt",
+    operationId: null,
+    replacementTurnId: null,
+    retractedTurnId: "turn-retracted",
+    workspaceId: "workspace-1"
+  };
+}
 
 function activation(
   patch: Partial<NewPendingActivationIntentRecord>
@@ -78,7 +120,8 @@ function activation(
 
 function message(
   messageId: string,
-  clientSubmitId: string
+  clientSubmitId: string,
+  turnId = "replacement-turn"
 ): AgentActivityMessage {
   return {
     agentSessionId: "session-1",
@@ -87,7 +130,7 @@ function message(
     occurredAtUnixMs: 2,
     payload: { clientSubmitId, text: "replacement prompt" },
     role: "user",
-    turnId: "replacement-turn",
+    turnId,
     version: 1,
     workspaceId: "workspace-1"
   };

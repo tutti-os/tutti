@@ -8,7 +8,8 @@ import type {
   AgentActivityEditRetryAvailability,
   AgentActivityEditRetryResult,
   EditRetryOperationRecord,
-  EditRetryState
+  EditRetryState,
+  EditRetryTailPresentation
 } from "./editRetry.types.ts";
 
 const NO_COMMANDS: readonly EngineCommand[] = [];
@@ -27,7 +28,8 @@ export function createInitialEditRetryState(): EditRetryState {
   return {
     availabilityBySessionId: {},
     nextCommandSequence: 1,
-    operationBySessionId: {}
+    operationBySessionId: {},
+    tailBySessionId: {}
   };
 }
 
@@ -158,6 +160,17 @@ function requestEditRetry(
           status: "pending",
           workspaceId
         }
+      },
+      tailBySessionId: {
+        ...state.tailBySessionId,
+        [agentSessionId]: {
+          clientOperationId,
+          editedText: intent.editedText,
+          operationId: null,
+          replacementTurnId: null,
+          retractedTurnId: turnId,
+          workspaceId
+        }
       }
     }
   };
@@ -257,6 +270,15 @@ function settleCommand(
       })
     };
   }
+  const tail = state.tailBySessionId[agentSessionId];
+  const nextState = replaceOperation(state, agentSessionId, {
+    ...operation,
+    commandId: null,
+    errorCode: null,
+    errorMessage: null,
+    result,
+    status: "reconciling"
+  });
   return {
     commands: NO_COMMANDS,
     followUpIntents: [
@@ -270,14 +292,14 @@ function settleCommand(
         workspaceId
       }
     ],
-    state: replaceOperation(state, agentSessionId, {
-      ...operation,
-      commandId: null,
-      errorCode: null,
-      errorMessage: null,
-      result,
-      status: "reconciling"
-    })
+    state:
+      tail && tail.retractedTurnId === result.retractedTurnId
+        ? replaceTail(nextState, agentSessionId, {
+            ...tail,
+            operationId: result.operationId,
+            replacementTurnId: result.replacementTurnId?.trim() || null
+          })
+        : nextState
   };
 }
 
@@ -357,6 +379,20 @@ function replaceOperation(
   };
 }
 
+function replaceTail(
+  state: EditRetryState,
+  agentSessionId: string,
+  tail: EditRetryTailPresentation
+): EditRetryState {
+  return {
+    ...state,
+    tailBySessionId: {
+      ...state.tailBySessionId,
+      [agentSessionId]: tail
+    }
+  };
+}
+
 function removeSession(
   state: EditRetryState,
   rawAgentSessionId: string
@@ -364,17 +400,25 @@ function removeSession(
   const agentSessionId = rawAgentSessionId.trim();
   if (
     !state.availabilityBySessionId[agentSessionId] &&
-    !state.operationBySessionId[agentSessionId]
+    !state.operationBySessionId[agentSessionId] &&
+    !state.tailBySessionId[agentSessionId]
   ) {
     return unchanged(state);
   }
   const availabilityBySessionId = { ...state.availabilityBySessionId };
   const operationBySessionId = { ...state.operationBySessionId };
+  const tailBySessionId = { ...state.tailBySessionId };
   delete availabilityBySessionId[agentSessionId];
   delete operationBySessionId[agentSessionId];
+  delete tailBySessionId[agentSessionId];
   return {
     commands: NO_COMMANDS,
-    state: { ...state, availabilityBySessionId, operationBySessionId }
+    state: {
+      ...state,
+      availabilityBySessionId,
+      operationBySessionId,
+      tailBySessionId
+    }
   };
 }
 
