@@ -120,19 +120,21 @@ describe("AgentGUIConfigMenu", () => {
     expect(screen.getByText("Kimi Code account")).toBeInTheDocument();
     expect(screen.getByText("API Usage Billing")).toBeInTheDocument();
     expect(
-      document.querySelector('span[style*="kimi-code-mask.png"]')
+      document.querySelector('img[src="kimi-code.png"]')
     ).toBeInTheDocument();
-    expect(document.querySelector('img[src="kimi-code.png"]')).toBeNull();
+    expect(
+      document.querySelector('span[style*="kimi-code-mask.png"]')
+    ).toBeNull();
   });
 
-  it("renders a custom color icon as an image when no mask exists", () => {
+  it("uses a custom mask only when no original icon exists", () => {
     render(
       <AgentGUIConfigMenu
         environmentSetupVisible={false}
         labels={labels}
         providerScopedActionsVisible
         provider="acp:custom"
-        providerIconUrl="custom.png"
+        providerMaskIconUrl="custom-mask.png"
         providerLabel="Custom"
         providerAuthAccountLabel="Signed in"
         slashStatusLimits={[]}
@@ -148,7 +150,9 @@ describe("AgentGUIConfigMenu", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "More" }));
 
-    expect(document.querySelector('img[src="custom.png"]')).toBeInTheDocument();
+    expect(
+      document.querySelector('span[style*="custom-mask.png"]')
+    ).toBeInTheDocument();
   });
 
   it.each([false, true, 0, ""])(

@@ -60,13 +60,15 @@ export function AgentGUIConfigMenu({
   onOpenAgentSettings
 }: AgentGUIConfigMenuProps): React.JSX.Element {
   const [open, setOpen] = useState(false);
-  const providerMaskIconUrl =
-    resolveAgentGuiSessionProviderFlatIconUrl(provider ?? undefined) ??
-    targetMaskIconUrl?.trim() ??
-    null;
-  const providerImageIconUrl = providerMaskIconUrl
+  const builtInMaskIconUrl = resolveAgentGuiSessionProviderFlatIconUrl(
+    provider ?? undefined
+  );
+  const providerImageIconUrl = builtInMaskIconUrl
     ? null
     : (providerIconUrl?.trim() ?? null);
+  const providerMaskIconUrl =
+    builtInMaskIconUrl ??
+    (providerImageIconUrl ? null : (targetMaskIconUrl?.trim() ?? null));
   const providerDisplayName = providerLabel?.trim() || provider?.trim();
   const providerDisplayTitle = providerDisplayName
     ? labels.slashStatusProviderAccount(providerDisplayName)
