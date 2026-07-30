@@ -141,6 +141,16 @@ describe("agentGuiProviderIdentity", () => {
     );
   });
 
+  it("prefers an exact Agent target label for extension providers", () => {
+    expect(
+      resolveAgentGUIProviderDisplayLabel(
+        "acp:kimi-code",
+        "Agent",
+        " Kimi Code "
+      )
+    ).toBe("Kimi Code");
+  });
+
   it("resolves dock conversation titles only from real conversation titles", () => {
     expect(
       resolveAgentGUIDockConversationTitle({
