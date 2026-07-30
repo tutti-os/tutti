@@ -21,6 +21,8 @@ export interface AgentStatusQuery {
 
 export interface AgentStatusValue {
   agentSessionId?: string | null;
+  /** Host-projected account or billing label for the active provider mode. */
+  accountLabel?: string | null;
   contextWindow?: {
     usedTokens?: number | null;
     totalTokens?: number | null;

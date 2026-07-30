@@ -90,6 +90,32 @@ describe("AgentGUIConfigMenu", () => {
     expect(screen.getByText("Weekly")).toBeInTheDocument();
   });
 
+  it("uses the Agent Target label in the account heading", () => {
+    render(
+      <AgentGUIConfigMenu
+        environmentSetupVisible={false}
+        labels={labels}
+        providerScopedActionsVisible
+        provider="acp:kimi-code"
+        providerLabel="Kimi Code"
+        providerAuthAccountLabel="API Usage Billing"
+        slashStatusLimits={[]}
+        slashStatusLimitsLoading={false}
+        slashStatusLimitsResolvedEmpty
+        slashStatusUsageCapturedAtUnixMs={100}
+        slashStatusUsageDidFail={false}
+        slashStatusUsageAttempted
+        onOpenAgentEnvSetup={vi.fn()}
+        onOpenAgentSettings={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+
+    expect(screen.getByText("Kimi Code account")).toBeInTheDocument();
+    expect(screen.getByText("API Usage Billing")).toBeInTheDocument();
+  });
+
   it.each([false, true, 0, ""])(
     "preserves the provider fallback for non-rendering Host content %#",
     (accountContent) => {

@@ -104,6 +104,7 @@ export function useAgentGUIStatus(input: {
       (value.limitsState === "available" || value.quotas.length > 0)
         ? {
             usage: {
+              accountTier: value.accountLabel ?? undefined,
               quotas: [...value.quotas],
               capturedAtUnixMs: value.limitsCapturedAtUnixMs ?? 0
             }
@@ -263,6 +264,7 @@ export function useAgentGUIStatus(input: {
   ]);
   const controllerRailStatus = agentStatusController
     ? {
+        accountLabel: railAgentStatusSnapshot.value?.accountLabel ?? null,
         limits: railAgentStatusLimits,
         loading:
           railAgentStatusSnapshot.phase === "loading" &&

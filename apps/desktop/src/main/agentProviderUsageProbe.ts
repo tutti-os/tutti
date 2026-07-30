@@ -15,6 +15,7 @@ import {
 import { getDesktopLogger } from "./logging.ts";
 import { outboundFetch } from "./net/outboundFetch.ts";
 import { probeClaudeCodeProvider } from "./claudeProviderUsageProbe.ts";
+import { probeKimiCodeProvider } from "./kimiCodeProviderUsageProbe.ts";
 export { setClaudeOAuthKeychainReaderForTesting } from "./claudeProviderUsageProbe.ts";
 
 const CODEX_DEFAULT_CHATGPT_BASE_URL = "https://chatgpt.com/backend-api/";
@@ -166,7 +167,7 @@ async function resolveDesktopAgentProbe(
 ): Promise<AgentProbeProvider> {
   const probeKind =
     resolveAgentGUIProviderCatalogIdentity(provider)?.desktop.usageProbeKind ??
-    "";
+    (provider === "acp:kimi-code" ? "kimi_code" : "");
   const handler = desktopAgentUsageProbeHandlers.get(probeKind);
   if (handler) {
     return handler(input, capturedAtUnixMs);
@@ -195,7 +196,8 @@ const desktopAgentUsageProbeHandlers = new Map<
   DesktopAgentUsageProbeHandler
 >([
   ["codex", probeCodexProvider],
-  ["claude_code", probeClaudeCodeProvider]
+  ["claude_code", probeClaudeCodeProvider],
+  ["kimi_code", probeKimiCodeProvider]
 ]);
 
 // The usage probe runs in the Electron main process and hits the vendor account

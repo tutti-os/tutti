@@ -197,6 +197,19 @@ frames from the canceled request must not mutate AgentGUI. Errors crossing the
 port are structured codes, never provider stderr, account material, endpoints,
 or transport diagnostics.
 
+An explicit unsupported usage probe is a successful bounded read with no
+quotas and `limitsState: unavailable`; it must not become a refresh failure.
+Only real authentication, transport, parsing, timeout, or execution failures
+project `limitsState: error`.
+
+Provider-mode projection also belongs to the host adapter. For Kimi Code, the
+active `default_model -> models.<alias>.provider` mapping is authoritative:
+non-managed/API-key providers produce a successful empty usage snapshot with
+the `API Usage Billing` account label, while `managed:kimi-code` reads the
+Coding Plan usage endpoint and projects its periodic limits. Stored OAuth
+credentials alone never select Coding Plan mode because they may remain after
+the user switches to an API-key provider.
+
 Closing `/status`, Agent Info, or Agent Config cancels only the request owned
 by that surface. Replaced requests remain fenced. A stream that completes
 without a frame is a failed refresh: a retained value may remain visible, but

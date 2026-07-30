@@ -2067,3 +2067,40 @@ invalid_grant`. Search `tuttid.log` for
   [agent-extensions.md](../../architecture/agent-extensions.md)
   [manager.go](../../../services/tuttid/service/agentextension/manager.go)
   [wiring_daemon_api.go](../../../services/tuttid/wiring_daemon_api.go)
+
+### Kimi Code limits refresh fails or shows the wrong billing mode
+
+- Symptom:
+  The Agent Config menu shows `刷新失败` for Kimi Code, an API-key setup is
+  mistaken for Coding Plan because an old OAuth credential still exists, or a
+  Coding Plan account never shows its periodic limit and reset time.
+- Quick checks:
+  Inspect only `default_model` and the matching
+  `models.<alias>.provider` in `~/.kimi-code/config.toml` (or
+  `$KIMI_CODE_HOME/config.toml`). `managed:kimi-code` means Coding Plan; every
+  other active provider is API-key billing. Do not infer the mode from
+  `credentials/kimi-code.json`, and never print provider config as raw JSON
+  because it can contain API keys.
+- Root cause:
+  Standard ACP reports session context usage but not the managed account's
+  periodic quota. The desktop probe previously had no Kimi adapter, projected
+  its explicit `unsupported` result as a failed refresh, and had no safe way
+  to distinguish current API-key billing from leftover OAuth state.
+- Fix:
+  Resolve the active provider from Kimi's model mapping in the desktop host
+  adapter. API-key mode returns a successful empty usage snapshot labeled
+  `API Usage Billing` and never calls the Coding Plan endpoint. Coding Plan
+  mode refreshes the file-backed OAuth token under Kimi's cross-process lock,
+  atomically persists rotated credentials, calls `/usages`, and maps its
+  windows to AgentGUI quota types. Keep the extension package declarative and
+  keep provider-specific parsing out of AgentGUI.
+- Validation:
+  Cover API-key mode with a leftover OAuth file, Coding Plan limits and reset
+  timestamps, expired-token rotation, an explicit unsupported fallback, and a
+  real fetch failure that remains an error. A local API-key smoke probe should
+  report `API Usage Billing`, zero quotas, and no error without calling the
+  managed endpoint.
+- References:
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+  [kimiCodeProviderUsageProbe.ts](../../../apps/desktop/src/main/kimiCodeProviderUsageProbe.ts)
+  [createDesktopAgentStatusSource.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/createDesktopAgentStatusSource.ts)

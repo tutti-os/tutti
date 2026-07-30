@@ -16,7 +16,8 @@ Use the focused runtime index or open one area directly:
 
 - [Agent Providers And Setup](./agent-provider-setup.md): Provider discovery, installation, authentication, models, configuration, and runtime reachability.
   Includes Codex Model Plan Responses-to-Chat routing and extension
-  command/Skill palette hydration failures.
+  command/Skill palette hydration failures. Also covers a Kimi Code limits
+  refresh that fails or shows the wrong API Key/Coding Plan mode.
   Also covers uv-managed Extension installs that accidentally select an
   incompatible system Python.
   Also covers focus-driven provider CLI scans, repeated Extension Target version

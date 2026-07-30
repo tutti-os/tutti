@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, test } from "node:test";
@@ -9,6 +9,7 @@ import {
   resetUsageProbeCacheForTesting,
   setClaudeOAuthKeychainReaderForTesting
 } from "./agentProviderUsageProbe.ts";
+import { kimiTokenStorageName } from "./kimiCodeConfigProjection.ts";
 import { setOutboundFetcherForTesting } from "./net/outboundFetch.ts";
 
 // The probe caches usage results per provider in module state; clear it so one
@@ -407,6 +408,243 @@ test("listDesktopWorkspaceAgentProbes requires a Claude custom API token", async
     restoreOptionalEnv("ANTHROPIC_API_BASE_URL", previousAnthropicAPIBaseUrl);
     restoreOptionalEnv("ANTHROPIC_AUTH_TOKEN", previousAnthropicAuthToken);
     restoreOptionalEnv("ANTHROPIC_API_KEY", previousAnthropicAPIKey);
+    await rm(directory, { force: true, recursive: true });
+  }
+});
+
+test("listDesktopWorkspaceAgentProbes treats Kimi API-key mode as usage billing", async () => {
+  const previousKimiCodeHome = process.env.KIMI_CODE_HOME;
+  const previousKimiModelName = process.env.KIMI_MODEL_NAME;
+  const previousKimiModelAPIKey = process.env.KIMI_MODEL_API_KEY;
+  const directory = await mkdtemp(join(tmpdir(), "tutti-kimi-api-key-"));
+  try {
+    process.env.KIMI_CODE_HOME = directory;
+    delete process.env.KIMI_MODEL_NAME;
+    delete process.env.KIMI_MODEL_API_KEY;
+    await writeFile(
+      join(directory, "config.toml"),
+      [
+        'default_model = "moonshot-cn/kimi-k2.7-code"',
+        "",
+        "[providers.moonshot-cn]",
+        'type = "kimi"',
+        'api_key = "secret-that-must-not-be-read-by-the-probe"',
+        "",
+        '[models."moonshot-cn/kimi-k2.7-code"]',
+        'provider = "moonshot-cn"',
+        'model = "kimi-k2.7-code"'
+      ].join("\n")
+    );
+    setOutboundFetcherForTesting(async () => {
+      throw new Error("Kimi API-key mode must not call the Coding Plan API");
+    });
+
+    const result = await listDesktopWorkspaceAgentProbes({
+      includeUsage: true,
+      providers: ["acp:kimi-code"],
+      refresh: true,
+      workspaceId: "workspace-1"
+    });
+
+    const provider = result.providers[0];
+    assert.equal(provider?.provider, "acp:kimi-code");
+    assert.equal(provider?.availability.status, "available");
+    assert.equal(provider?.lastError, undefined);
+    assert.equal(provider?.usage?.accountTier, "API Usage Billing");
+    assert.deepEqual(provider?.usage?.quotas, []);
+    assert.deepEqual(provider?.attempts, [
+      {
+        strategy: "kimi-code-api-key-config",
+        success: true
+      }
+    ]);
+  } finally {
+    restoreOptionalEnv("KIMI_CODE_HOME", previousKimiCodeHome);
+    restoreOptionalEnv("KIMI_MODEL_NAME", previousKimiModelName);
+    restoreOptionalEnv("KIMI_MODEL_API_KEY", previousKimiModelAPIKey);
+    setOutboundFetcherForTesting(null);
+    await rm(directory, { force: true, recursive: true });
+  }
+});
+
+test("kimiTokenStorageName rejects nested credential paths", () => {
+  assert.equal(kimiTokenStorageName("oauth/kimi-code"), "kimi-code");
+  assert.equal(kimiTokenStorageName("oauth/../outside"), null);
+  assert.equal(kimiTokenStorageName("../outside"), null);
+});
+
+test("listDesktopWorkspaceAgentProbes maps Kimi Coding Plan limits", async () => {
+  const previousKimiCodeHome = process.env.KIMI_CODE_HOME;
+  const previousKimiModelName = process.env.KIMI_MODEL_NAME;
+  const previousKimiModelAPIKey = process.env.KIMI_MODEL_API_KEY;
+  const directory = await mkdtemp(join(tmpdir(), "tutti-kimi-plan-"));
+  try {
+    process.env.KIMI_CODE_HOME = directory;
+    delete process.env.KIMI_MODEL_NAME;
+    delete process.env.KIMI_MODEL_API_KEY;
+    await mkdir(join(directory, "credentials"), { recursive: true });
+    await writeFile(
+      join(directory, "config.toml"),
+      [
+        'default_model = "kimi-code/kimi-k2.7-code"',
+        "",
+        '[providers."managed:kimi-code"]',
+        'type = "kimi"',
+        'base_url = "https://api.kimi.com/coding/v1"',
+        "",
+        '[providers."managed:kimi-code".oauth]',
+        'key = "oauth/kimi-code"',
+        'oauth_host = "https://auth.kimi.com"',
+        "",
+        '[models."kimi-code/kimi-k2.7-code"]',
+        'provider = "managed:kimi-code"',
+        'model = "kimi-k2.7-code"'
+      ].join("\n")
+    );
+    await writeFile(
+      join(directory, "credentials", "kimi-code.json"),
+      JSON.stringify({
+        access_token: "kimi-access-token-1",
+        expires_at: 4102444800,
+        expires_in: 3600,
+        refresh_token: "kimi-refresh-token-1",
+        token_type: "Bearer"
+      })
+    );
+    setOutboundFetcherForTesting(async (url, init) => {
+      assert.equal(url, "https://api.kimi.com/coding/v1/usages");
+      const headers = new Headers(init?.headers);
+      assert.equal(headers.get("authorization"), "Bearer kimi-access-token-1");
+      return new Response(
+        JSON.stringify({
+          usage: { limit: 100, used: 30 },
+          limits: [
+            {
+              detail: {
+                limit: 100,
+                resetAt: "2026-08-05T04:09:00.000Z",
+                used: 30
+              },
+              window: { duration: 7, timeUnit: "DAY" }
+            }
+          ]
+        }),
+        { status: 200 }
+      );
+    });
+
+    const result = await listDesktopWorkspaceAgentProbes({
+      includeUsage: true,
+      providers: ["acp:kimi-code"],
+      refresh: true,
+      workspaceId: "workspace-1"
+    });
+
+    const provider = result.providers[0];
+    assert.equal(provider?.provider, "acp:kimi-code");
+    assert.equal(provider?.availability.status, "available");
+    assert.equal(provider?.lastError, undefined);
+    assert.equal(provider?.usage?.accountTier, "Coding Plan");
+    assert.deepEqual(provider?.usage?.quotas, [
+      {
+        percentRemaining: 70,
+        quotaType: "weekly",
+        resetsAtUnixMs: 1785902940000
+      }
+    ]);
+  } finally {
+    restoreOptionalEnv("KIMI_CODE_HOME", previousKimiCodeHome);
+    restoreOptionalEnv("KIMI_MODEL_NAME", previousKimiModelName);
+    restoreOptionalEnv("KIMI_MODEL_API_KEY", previousKimiModelAPIKey);
+    setOutboundFetcherForTesting(null);
+    await rm(directory, { force: true, recursive: true });
+  }
+});
+
+test("listDesktopWorkspaceAgentProbes refreshes an expired Kimi Coding Plan token", async () => {
+  const previousKimiCodeHome = process.env.KIMI_CODE_HOME;
+  const previousKimiModelName = process.env.KIMI_MODEL_NAME;
+  const previousKimiModelAPIKey = process.env.KIMI_MODEL_API_KEY;
+  const directory = await mkdtemp(join(tmpdir(), "tutti-kimi-refresh-"));
+  let requestCount = 0;
+  try {
+    process.env.KIMI_CODE_HOME = directory;
+    delete process.env.KIMI_MODEL_NAME;
+    delete process.env.KIMI_MODEL_API_KEY;
+    await mkdir(join(directory, "credentials"), { recursive: true });
+    await writeFile(
+      join(directory, "config.toml"),
+      [
+        'default_model = "kimi-code/kimi-k2.7-code"',
+        '[providers."managed:kimi-code"]',
+        'base_url = "https://api.kimi.com/coding/v1"',
+        'oauth = { storage = "file", key = "oauth/kimi-code", oauth_host = "https://auth.kimi.com" }',
+        '[models."kimi-code/kimi-k2.7-code"]',
+        'provider = "managed:kimi-code"'
+      ].join("\n")
+    );
+    await writeFile(
+      join(directory, "credentials", "kimi-code.json"),
+      JSON.stringify({
+        access_token: "expired-access-token",
+        expires_at: 1,
+        expires_in: 3600,
+        refresh_token: "kimi-refresh-token-1",
+        token_type: "Bearer"
+      })
+    );
+    setOutboundFetcherForTesting(async (url, init) => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        assert.equal(url, "https://auth.kimi.com/api/oauth/token");
+        assert.equal(init?.method, "POST");
+        assert.match(String(init?.body), /grant_type=refresh_token/u);
+        assert.match(String(init?.body), /refresh_token=kimi-refresh-token-1/u);
+        return new Response(
+          JSON.stringify({
+            access_token: "fresh-access-token",
+            expires_in: 3600,
+            refresh_token: "kimi-refresh-token-2",
+            token_type: "Bearer"
+          }),
+          { status: 200 }
+        );
+      }
+      assert.equal(url, "https://api.kimi.com/coding/v1/usages");
+      const headers = new Headers(init?.headers);
+      assert.equal(headers.get("authorization"), "Bearer fresh-access-token");
+      return new Response(
+        JSON.stringify({
+          usage: {
+            limit: 100,
+            resetAt: "2026-08-05T04:09:00.000Z",
+            used: 30
+          }
+        }),
+        { status: 200 }
+      );
+    });
+
+    const result = await listDesktopWorkspaceAgentProbes({
+      includeUsage: true,
+      providers: ["acp:kimi-code"],
+      refresh: true,
+      workspaceId: "workspace-1"
+    });
+
+    assert.equal(requestCount, 2);
+    assert.equal(result.providers[0]?.lastError, undefined);
+    assert.equal(result.providers[0]?.usage?.quotas?.[0]?.percentRemaining, 70);
+    const stored = JSON.parse(
+      await readFile(join(directory, "credentials", "kimi-code.json"), "utf8")
+    ) as Record<string, unknown>;
+    assert.equal(stored.access_token, "fresh-access-token");
+    assert.equal(stored.refresh_token, "kimi-refresh-token-2");
+  } finally {
+    restoreOptionalEnv("KIMI_CODE_HOME", previousKimiCodeHome);
+    restoreOptionalEnv("KIMI_MODEL_NAME", previousKimiModelName);
+    restoreOptionalEnv("KIMI_MODEL_API_KEY", previousKimiModelAPIKey);
+    setOutboundFetcherForTesting(null);
     await rm(directory, { force: true, recursive: true });
   }
 });

@@ -624,6 +624,12 @@ export function AgentGUINodeView({
                   slashStatusUsageDidFail={slashStatusUsageDidFail}
                   slashStatusUsageAttempted={slashStatusUsageAttempted}
                   provider={effectiveRailConfigProvider}
+                  providerLabel={
+                    viewModel.rail.agentTargets.find(
+                      (target) =>
+                        target.provider === effectiveRailConfigProvider
+                    )?.label
+                  }
                   providerAuthAccountLabel={effectiveProviderAuthAccountLabel}
                   accountContent={agentConfigAccountContent}
                   onAgentConfigMenuClose={onAgentConfigMenuClose}

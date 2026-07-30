@@ -30,6 +30,7 @@ test("desktop status combines an exact canonical session with one host probe rea
           provider: "codex",
           availability: { status: "available", detailsVisible: false },
           usage: {
+            accountTier: "API Usage Billing",
             capturedAtUnixMs: 450,
             quotas: [{ quotaType: "weekly", percentRemaining: 72 }]
           }
@@ -78,6 +79,7 @@ test("desktop status combines an exact canonical session with one host probe rea
     {
       kind: "refreshed",
       value: {
+        accountLabel: "API Usage Billing",
         agentSessionId: "session-1",
         contextState: "available",
         contextWindow: { usedTokens: 120, totalTokens: 1_000 },
@@ -88,6 +90,94 @@ test("desktop status combines an exact canonical session with one host probe rea
       }
     }
   ]);
+  assert.deepEqual(observed.errors, []);
+});
+
+test("desktop status treats an unsupported extension usage probe as unavailable", async () => {
+  const kimiAgent = {
+    agentTargetId: "extension:kimi-code",
+    name: "Kimi Code",
+    iconUrl: "kimi-code.svg",
+    availability: { status: "ready" },
+    provider: "acp:kimi-code"
+  } as const;
+  const observed = createObserver();
+  const source = createDesktopAgentStatusSource({
+    agentActivityRuntime: runtimeWithSessions([]),
+    agents: [kimiAgent] as never,
+    workspaceAgentProbes: {
+      list: async () => ({
+        workspaceId: "workspace-1",
+        capturedAtUnixMs: 500,
+        providers: [
+          {
+            provider: "acp:kimi-code",
+            availability: { status: "unknown", detailsVisible: false },
+            lastError: { code: "unsupported" }
+          }
+        ]
+      })
+    } as never,
+    workspaceId: "workspace-1"
+  });
+
+  source.open(
+    {
+      scopeKey: "extension:kimi-code",
+      reason: "agent-info"
+    },
+    observed.observer
+  );
+  await observed.completed;
+
+  assert.deepEqual(observed.frames, [
+    {
+      kind: "refreshed",
+      value: {
+        agentSessionId: null,
+        contextState: "unavailable",
+        contextWindow: null,
+        quotas: [],
+        limitsState: "unavailable",
+        limitsCapturedAtUnixMs: null,
+        limitsStale: false
+      }
+    }
+  ]);
+  assert.deepEqual(observed.errors, []);
+});
+
+test("desktop status preserves real usage probe failures", async () => {
+  const observed = createObserver();
+  const source = createDesktopAgentStatusSource({
+    agentActivityRuntime: runtimeWithSessions([]),
+    agents: [agent] as never,
+    workspaceAgentProbes: {
+      list: async () => ({
+        workspaceId: "workspace-1",
+        capturedAtUnixMs: 500,
+        providers: [
+          {
+            provider: "codex",
+            availability: { status: "unavailable", detailsVisible: false },
+            lastError: { code: "execution_failed" }
+          }
+        ]
+      })
+    } as never,
+    workspaceId: "workspace-1"
+  });
+
+  source.open(
+    {
+      scopeKey: "local:codex",
+      reason: "agent-info"
+    },
+    observed.observer
+  );
+  await observed.completed;
+
+  assert.equal(observed.frames[0]?.value.limitsState, "error");
   assert.deepEqual(observed.errors, []);
 });
 
