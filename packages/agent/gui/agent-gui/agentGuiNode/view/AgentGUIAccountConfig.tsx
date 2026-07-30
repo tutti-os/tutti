@@ -23,6 +23,7 @@ interface AgentGUIConfigMenuProps {
   slashStatusUsageAttempted: boolean;
   provider?: string | null;
   providerIconUrl?: string | null;
+  providerMaskIconUrl?: string | null;
   providerLabel?: string | null;
   providerAuthAccountLabel?: string | null;
   onAgentConfigMenuOpen?: () => void;
@@ -45,6 +46,7 @@ export function AgentGUIConfigMenu({
   slashStatusUsageAttempted,
   provider,
   providerIconUrl,
+  providerMaskIconUrl: targetMaskIconUrl,
   providerLabel,
   providerAuthAccountLabel,
   onAgentConfigMenuOpen,
@@ -54,10 +56,13 @@ export function AgentGUIConfigMenu({
   onOpenAgentSettings
 }: AgentGUIConfigMenuProps): React.JSX.Element {
   const [open, setOpen] = useState(false);
-  const providerFlatIconUrl =
+  const providerMaskIconUrl =
     resolveAgentGuiSessionProviderFlatIconUrl(provider ?? undefined) ??
-    providerIconUrl?.trim() ??
+    targetMaskIconUrl?.trim() ??
     null;
+  const providerImageIconUrl = providerMaskIconUrl
+    ? null
+    : (providerIconUrl?.trim() ?? null);
   const providerDisplayName = providerLabel?.trim() || provider?.trim();
   const providerDisplayTitle = providerDisplayName
     ? labels.slashStatusProviderAccount(providerDisplayName)
@@ -111,14 +116,21 @@ export function AgentGUIConfigMenu({
             <>
               <div className="flex min-w-0 flex-col gap-2 p-2">
                 <div className="flex min-w-0 items-center gap-2">
-                  {providerFlatIconUrl ? (
+                  {providerMaskIconUrl ? (
                     <span
                       aria-hidden="true"
                       className="size-4 shrink-0 bg-current"
                       style={{
-                        mask: `url("${providerFlatIconUrl}") center / contain no-repeat`,
-                        WebkitMask: `url("${providerFlatIconUrl}") center / contain no-repeat`
+                        mask: `url("${providerMaskIconUrl}") center / contain no-repeat`,
+                        WebkitMask: `url("${providerMaskIconUrl}") center / contain no-repeat`
                       }}
+                    />
+                  ) : providerImageIconUrl ? (
+                    <img
+                      alt=""
+                      aria-hidden="true"
+                      className="size-4 shrink-0 object-contain"
+                      src={providerImageIconUrl}
                     />
                   ) : null}
                   <span className="text-[13px] font-semibold leading-4">

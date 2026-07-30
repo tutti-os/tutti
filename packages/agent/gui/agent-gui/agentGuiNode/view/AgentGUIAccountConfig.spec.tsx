@@ -97,7 +97,8 @@ describe("AgentGUIConfigMenu", () => {
         labels={labels}
         providerScopedActionsVisible
         provider="acp:kimi-code"
-        providerIconUrl="kimi-code.svg"
+        providerIconUrl="kimi-code.png"
+        providerMaskIconUrl="kimi-code-mask.png"
         providerLabel="Kimi Code"
         providerAuthAccountLabel="API Usage Billing"
         slashStatusLimits={[]}
@@ -115,6 +116,36 @@ describe("AgentGUIConfigMenu", () => {
 
     expect(screen.getByText("Kimi Code account")).toBeInTheDocument();
     expect(screen.getByText("API Usage Billing")).toBeInTheDocument();
+    expect(
+      document.querySelector('span[style*="kimi-code-mask.png"]')
+    ).toBeInTheDocument();
+    expect(document.querySelector('img[src="kimi-code.png"]')).toBeNull();
+  });
+
+  it("renders a custom color icon as an image when no mask exists", () => {
+    render(
+      <AgentGUIConfigMenu
+        environmentSetupVisible={false}
+        labels={labels}
+        providerScopedActionsVisible
+        provider="acp:custom"
+        providerIconUrl="custom.png"
+        providerLabel="Custom"
+        providerAuthAccountLabel="Signed in"
+        slashStatusLimits={[]}
+        slashStatusLimitsLoading={false}
+        slashStatusLimitsResolvedEmpty
+        slashStatusUsageCapturedAtUnixMs={null}
+        slashStatusUsageDidFail={false}
+        slashStatusUsageAttempted
+        onOpenAgentEnvSetup={vi.fn()}
+        onOpenAgentSettings={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+
+    expect(document.querySelector('img[src="custom.png"]')).toBeInTheDocument();
   });
 
   it.each([false, true, 0, ""])(

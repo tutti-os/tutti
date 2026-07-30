@@ -121,20 +121,32 @@ function normalizeSlashStatusModelName(
   );
 }
 
+export function resolveAgentGUIRailStatusTarget(input: {
+  conversationFilter: ReturnType<
+    typeof useAgentGUINodeController
+  >["viewModel"]["rail"]["conversationFilter"];
+  agentTargets: readonly AgentGUIAgentTarget[];
+}): AgentGUIAgentTarget | null {
+  const filter = input.conversationFilter;
+  if (filter.kind !== "agentTarget") {
+    return null;
+  }
+  return (
+    input.agentTargets.find(
+      (candidate) =>
+        candidate.disabled !== true &&
+        ((candidate.agentTargetId?.trim() ?? "") === filter.agentTargetId ||
+          candidate.targetId.trim() === filter.agentTargetId)
+    ) ?? null
+  );
+}
+
 export function resolveAgentGUIRailStatusProvider(input: {
   conversationFilter: ReturnType<
     typeof useAgentGUINodeController
   >["viewModel"]["rail"]["conversationFilter"];
   agentTargets: readonly AgentGUIAgentTarget[];
 }): AgentProvider | null {
-  const filter = input.conversationFilter;
-  if (filter.kind !== "agentTarget") {
-    return null;
-  }
-  const target = input.agentTargets.find(
-    (candidate) =>
-      candidate.disabled !== true &&
-      (candidate.agentTargetId?.trim() ?? "") === filter.agentTargetId
-  );
+  const target = resolveAgentGUIRailStatusTarget(input);
   return target ? (target.provider as AgentProvider) : null;
 }

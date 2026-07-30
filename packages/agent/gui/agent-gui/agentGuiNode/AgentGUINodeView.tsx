@@ -46,6 +46,7 @@ import { useAgentGUIWorkspaceReferencePicker } from "./view/useAgentGUIWorkspace
 import type { AgentGUINodeViewProps } from "./view/AgentGUINodeView.types";
 import { useAgentGUINodeEngagement } from "./engagement/useAgentGUINodeEngagement";
 import { isAgentGUIProviderReady } from "./model/agentGuiProviderReadiness";
+import { resolveAgentGUIRailStatusTarget } from "./AgentGUINode.usage";
 import {
   useAgentGUIConversationRailResizePointerMove,
   type AgentGUIConversationRailResizeInteraction
@@ -381,9 +382,8 @@ export function AgentGUINodeView({
       "var(--agent-gui-provider-rail-width) var(--agent-gui-conversation-rail-width) minmax(var(--agent-gui-detail-min-width), 1fr)"
   } as CSSProperties;
   const effectiveRailConfigProvider =
-    railConfigProvider === undefined
-      ? viewModel.shell.data.provider
-      : railConfigProvider;
+    railConfigProvider ?? viewModel.shell.data.provider;
+  const railConfigTarget = resolveAgentGUIRailStatusTarget(viewModel.rail);
   const effectiveRailSlashStatusLimits =
     railSlashStatusLimits ?? slashStatusLimits;
   const shouldShowProviderRailConfigButton =
@@ -623,9 +623,12 @@ export function AgentGUINodeView({
                   }
                   slashStatusUsageDidFail={slashStatusUsageDidFail}
                   slashStatusUsageAttempted={slashStatusUsageAttempted}
-                  provider={effectiveRailConfigProvider}
-                  providerIconUrl={viewModel.rail.selectedAgentTarget.iconUrl}
-                  providerLabel={viewModel.rail.selectedAgentTarget.label}
+                  provider={
+                    effectiveRailConfigProvider ?? railConfigTarget?.provider
+                  }
+                  providerIconUrl={railConfigTarget?.iconUrl ?? null}
+                  providerMaskIconUrl={railConfigTarget?.maskIconUrl ?? null}
+                  providerLabel={railConfigTarget?.label}
                   providerAuthAccountLabel={effectiveProviderAuthAccountLabel}
                   accountContent={agentConfigAccountContent}
                   onAgentConfigMenuClose={onAgentConfigMenuClose}
