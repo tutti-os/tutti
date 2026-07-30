@@ -1037,6 +1037,25 @@ lifetime, transport mapping, diagnostics, and initial/older commands; it does
 not call back into selection or Rail state. There is no separate messages-only
 Engine reconcile helper.
 
+For a newly hydrated Session, the authoritative newest message window renders
+first. When that window reports older history, the focused paging controller
+loads older pages through one cancellable sequential request chain until the
+authoritative window reports completion. There is no renderer task scheduler
+between pages; request priority is only a runtime capability, not something the
+view may emulate. Background pages stay outside the
+React view while that run is incomplete, then publish through one merged
+history update; this prevents every page from rebuilding the growing transcript.
+Near-top prefetch still publishes its requested page immediately. Both paths
+share the same request state, so they cannot fetch the same cursor twice.
+Near-top prefetch remains an accelerator, not the only history-loading entry.
+Each paging run carries a request generation. Switching or reloading Sessions
+invalidates that generation, clears its loading ownership, and cancels pending
+requests, so an A-to-B-to-A response cannot merge into the newer A view.
+Unmounting the paging owner aborts every request it still owns. A failed page
+stops the background chain instead of entering an automatic retry loop.
+Complete logical history does not imply a complete DOM: transcript virtualization
+continues mounting only its visible Turn window.
+
 Timeline projection is pure, deterministic, and provider-neutral. React views render rows/cards and dispatch actions.
 Transcript Turn membership and order come only from timeline items in the
 hydrated message window. Session-wide canonical Turn metadata may enrich an
@@ -1080,31 +1099,100 @@ Session state. Prompt submission, an explicit scroll-to-end request, or the
 user actually reaching the end may reattach. Content growth, layout effects,
 observers, virtualizer geometry, and near-end thresholds are sensors or
 executors only; they must not transition the mode.
+The bottom-dock control is a geometry projection, not a follow-mode projection:
+the cached physical bottom distance at or below 24px is at the end even while
+user intent remains `detached`, and a `following` viewport farther away still
+shows the control.
 
 Turn-level virtualization has one geometry owner. When the transcript is
-virtualized and the state machine is `following`, TanStack Virtual owns append
-following, streaming size adjustments, prepend anchoring, end detection, list
-height, and item transforms. While `detached`, AgentGUI disables append
-following so TanStack cannot bypass the shared intent owner, but retains
-stable-item mutation anchoring so prepending an older page preserves the
-visible viewport without reattaching to the end. AgentGUI retains Session
-selection, explicit user intent, top-page loading, bottom-dock safe-area
-measurement, and the non-virtualized short-transcript branch. It must not apply
-native `scrollHeight`-delta prepend compensation or a content-resize bottom
-write after the virtualizer accepts ownership.
+mounted, the transcript virtualizer owns append following, streaming size
+adjustments, prepend anchoring, end detection, and list height. It keeps a
+Turn-keyed measured-height table, derives the visible range from
+`distanceFromBottomPx`, and renders that range in normal document flow inside
+a full-height spacer. The active timeline viewport uses
+`flex-direction: column-reverse`, so native `-scrollTop` is the bottom
+distance. Do not reconstruct that distance from
+`scrollHeight - clientHeight`, and do not clamp native scrolling to an
+estimated virtual height. The window uses one `margin-top`; individual Turns do
+not use absolute positioning or transforms. Two Turns of overscan are kept on
+each side, and an existing rendered range is retained while it still contains
+the next required range. When Turn keys change, the render-time range is
+projected by stable Turn key instead of combining a new layout with an old
+index window. Resize observations from one delivery commit measured heights,
+the next layout, and the next range in one synchronous React transaction;
+DOM compensation happens after that commit and immediately reads back the
+browser-accepted scroll position. An unmeasured settled Turn keeps its estimated
+height and clipping on an outer slot while an unconstrained inner node reports
+the real content height. Newly mounted Turns are checked from that inner node
+so a delayed observer delivery cannot leave an estimated slot behind.
+Subsequent latest-Turn growth is measured by `ResizeObserver`; a changed active
+content-Turn identity requests one synchronous mounted-node check instead of
+adding an unconditional layout-effect geometry read. Scroll padding is cached
+outside the scroll hot path. Before a measurement
+layout, the scroll owner snapshots bottom distance and native scroll height;
+wheel input received before that layout settles is accumulated into the
+restored distance. A following transcript starts at native `scrollTop = 0`.
+The bottom-origin scroll controller owns physical distance as
+`max(0, -scrollTop)`. The virtualizer separately subtracts the retained
+latest-Turn response spacer when it calculates the rendered range. The spacer
+is a real sibling after the virtual list; it is not folded into composer
+`scroll-padding`. A running latest Turn activates it; settlement may retain it
+only within that mounted Session. An explicit scroll-to-end dismisses the
+spacer for that Session and Turn, including while it is running; viewport
+synchronization must not recreate it. A new Session or Turn may activate a new
+spacer, while selecting settled history starts with none. Turn measurement
+reports latest-Turn height changes
+separately and compensates measured rows from their previous bottom offsets.
+Whether ordinary measured rows preserve the viewport is controlled only by the
+latest Turn phase, not by tool or disclosure type. The scroll viewport disables
+native CSS scroll anchoring, leaving the virtualizer as the only scroll owner. An
+unmeasured settled Turn outside the active/latest slots stays
+inside its estimated-height slot until measurement; active and latest Turns
+keep natural height. While `detached`, growth below the viewport changes the
+bottom distance so the first rendered Turn keeps the same visual anchor.
+AgentGUI retains Session selection, explicit user intent, top-page loading,
+and bottom-dock safe-area measurement. It must not also apply native
+`scrollHeight`-delta prepend compensation or a content-resize bottom write.
+The Detail controller supplies the top-page callback and consumes the
+virtualizer's cached viewport snapshot for follow-state semantics. The scroll
+owner starts top paging only from real upward user input at the native top,
+awaits each page, then rereads committed DOM geometry. It stops when content
+moves the viewport beyond 64px or when a page makes no viewport progress.
+It must not install a second native
+scroll listener or timeline/content size observer, and it must not query
+timeline geometry.
+The message locator consumes the same snapshot for its visible height and
+scroll-padding inset. Its horizontal-space observer uses delivered widths,
+keeps the last valid layout through zero-size resize frames, and does not add a
+global window-resize reader.
 
 The detail view reaches that owner through a narrow controller containing the
-exact `agentSessionId`, `isAtEnd`, and `scrollToEnd`. Every read or write checks
-the current Session identity; a stale controller is inert. Controller readiness
-is reported back to the detail scroll controller so initial end positioning
-still runs when the virtualizer acquires its scroll element after the first
-detail layout. Virtual measurement keys also include the exact Agent Session
-id, so replacing a conversation cannot reuse another Session's measured Turn
-height. The virtual list measures its offset from the timeline scroll origin as
-`scrollMargin`, including changes caused by the older-page loading indicator.
-Direct DOM transform mode owns the virtual sizer height and item transforms;
-React keeps only row content, measurement refs, cross-axis sizing, and
-disclosure spacing.
+exact `agentSessionId`, `subscribeViewport`, `syncViewport`,
+`subscribeUserScroll`, `setTopLoadingHandler`, `cancelScroll`, and
+`scrollToEnd`. The scroll owner
+normalizes wheel delta modes, filters editable keyboard targets, classifies
+pointer/touch direction, and cancels active animation before publishing user
+intent. Detail subscribes to that intent; it does not install duplicate native
+input listeners. Every
+read or write checks the current Session identity; a stale controller is inert.
+Virtual range reveal and scroll-to-end writes use the same imperative scroll
+primitive. Running latest-Turn or retained-spacer requests dismiss the spacer
+and reach the end immediately; other smooth requests run as a 260ms
+interruptible animation.
+Mounted message-locator targets use native `scrollIntoView`, matching the
+Codex rail. Wheel, keyboard, pointer, and directional touch intent cancel the
+active animation and any pending layout-preservation transaction. Virtual Turn
+measurement, viewport resize, bottom-dock synchronization, and pending layout
+preservation may update cached layout during an explicit smooth scroll, but
+their internal compensation must not cancel or replace that user-requested
+target.
+On unmount, an in-memory Session-scoped store retains measured Turn heights
+only. Switching Sessions never restores the previous rendered window or bottom
+distance; the selected Session starts at the end. The height cache is
+UI-process memory, not daemon state or durable user preference, and a bounded
+store evicts old Sessions. The virtual list also measures its offset from the
+timeline scroll origin as `scrollMargin`, including changes caused by the
+older-page loading indicator.
 
 Virtualizer- or layout-driven scroll events do not change the end-following
 mode or trigger older-page loading without explicit user scroll-away intent. A
@@ -1119,7 +1207,41 @@ TipTap treats a controlled value as a local acknowledgement only when its
 draft scope and local edit revision match; a scope change or other external
 replacement may rebuild the document.
 
-A virtualized transcript derives message-locator selection from the virtualizer's measured turn positions and explicit transcript identity. The currently mounted DOM window is rendering output, not a selection source; range changes must not make the locator temporarily select a neighboring message. Recent wheel and keyboard direction fences locator selection from reversing because of estimate-to-measurement scroll compensation or an item-list identity shift; the previous stable locator index is reconciled in a layout effect before paint. A genuine opposite input replaces that intent.
+A message locator appears only after conversation history is complete and at
+least two non-empty user messages exist. Agent messages and tool calls do not
+count toward that threshold. It observes mounted user-message targets against
+the timeline viewport, reconciles targets as virtualization mounts and unmounts
+Turns, and marks the contiguous range from the first intersecting message to the
+last. The first message in that real visible range selects the active large
+dot. A virtualized frame with no mounted intersection retains the previous
+visible range until another target intersects, so it cannot fall back to the
+last message. Its connected dot rail stays vertically centered on the trailing
+edge and scrolls internally when needed, but remains fixed during pointer
+scrubbing so content movement cannot change the mark under the pointer. Hover
+or focus opens the complete single-line user-message list to its left; hover
+controls preview only and never overrides the visible active dot or realigns
+the internally scrolled rail. Visible-selection and viewport-size changes may
+still keep the selected mark in view. The expanded list preserves the visible
+selection with accent styling while hover uses a separate transient surface.
+`Alt+ArrowUp` and `Alt+ArrowDown` navigate logical user messages from a 24px top
+threshold. The rail mounts during browser idle time. A mounted target is
+scrolled natively by the rail. An unmounted target asks the virtualizer only
+to reveal and align its stable Turn without smooth scrolling, then the rail
+re-queries the exact nested target.
+Keyboard reveal waits up to 1500ms for that DOM target, scrolls it natively,
+then after 350ms corrects once when the real top error exceeds 24px. Following
+and layout compensation do not overwrite an active locate. Every locate path shares one per-timeline
+operation generation; a newer locate or unmount invalidates the previous
+reveal. Keyboard shortcuts
+apply only when the originating event path belongs to that exact timeline.
+Pointer capture lets dragging across locator marks reveal messages immediately.
+Locating an unmounted message or Turn attachment first selects the stable Turn
+key, waits for the virtual window to mount the target, and only then performs
+the exact nested-element alignment and highlight. A Turn attachment normally
+names an exact Turn present in the transcript projection; an attachment with
+explicit `missingAnchorBehavior: "hide"` stays absent while its Turn is not yet
+loaded. It is rendered inside that Turn's virtual geometry and never falls back
+to an unmeasured trailing region.
 
 Historical rich text renders from the canonical Tiptap document through a static schema renderer. Only interactive composer surfaces own a Tiptap Editor/ProseMirror EditorView; read-only transcript surfaces reuse the same mention/token presentation without mounting editor lifecycle. Settled transcript messages reuse a bounded cache of pure Markdown ASTs and Tiptap JSON documents keyed by message identity and exact parser input; rendered React elements are never cached, and streaming Markdown bypasses this cache. Conversation titles are a separate plain-text projection: Markdown mention links are normalized to their `@label` text and never render mention SVGs or interactive rich-text tokens.
 
@@ -1471,24 +1593,16 @@ read while preserving the timeline prepend scroll anchor. The history cursor
 is UI-local and resets when the draft Session scope changes; Home has no
 Session history.
 
-The dock observes geometry through one coalesced animation-frame measurement
-entry point. Editor document updates, attachment membership or intrinsic
-attachment size changes, and changes to the stable input-shell width may
-invalidate that entry point.
-`ResizeObserver` must not observe the animated input area or editor block size:
-their height transition is an output of measurement and must never feed back
-into another measurement cycle. Width observations compare inline size before
-invalidating, while attachment observers cover asynchronous chip and preview
-sizes without a duplicate global resize listener.
-
-The measurement pass is read-only. It derives natural text height from the
-editor document blocks, reads attachment heights, and publishes one atomic
-composer-metrics snapshot only when the snapshot changes. It must not
-temporarily collapse or restyle either the editor or transitioned input
-container. The dock input area establishes a local layout-containment boundary
-so a composer read cannot invalidate the conversation root. Composer paragraphs
-and the viewport calculation share the same line-height token so the 3.5-line
-cap remains exact. Regression coverage must expand across explicit newline
+The dock has one geometry owner. During normal editing and continuing window
+resize, editor and attachment `ResizeObserver` entries are the canonical size
+input. Their delivered block sizes publish one atomic composer-metrics snapshot
+without a later animation-frame DOM geometry read. The observer targets the
+editor's intrinsic capped box and attachment rows, not the animated outer input
+area. Explicit DOM measurement exists only when `ResizeObserver` is unavailable;
+it is not part of the continuous resize path. The dock input area keeps its
+local layout-containment boundary. Composer paragraphs and the viewport
+calculation share the same line-height token so the 3.5-line cap remains exact.
+Regression coverage must expand across explicit newline
 rows, delete back to one row, and verify stable action-button placement.
 
 Dynamic Agent surfaces must not use `:has()` on `.workbench-window`, the

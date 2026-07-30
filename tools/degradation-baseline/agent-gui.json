@@ -24,7 +24,6 @@
     "packages/agent/gui/app/renderer/agentactivity.css | .agent-gui-node__provider-rail-tile[data-loading=\"true\"] .agent-gui-node__provider-rail-avatar | animation: agent-gui-provider-target-loading 1.2s ease-in-out infinite": "Runs only while a provider target is loading; fully occluded AgentGUI roots pause it",
     "packages/agent/gui/app/renderer/agentactivity.css | .agent-gui-node__transcript-skeleton-line::after,.agent-gui-node__transcript-skeleton-bubble::after | animation: agent-gui-transcript-skeleton-shimmer 1.2s ease-in-out infinite": "Exists only during transcript loading; fully occluded AgentGUI roots pause it",
     "packages/agent/gui/app/renderer/agentactivity.css | .agent-gui-provider-manager-tile[data-editing=\"true\"] | animation: agent-gui-provider-manager-wiggle 180ms ease-in-out infinite alternate": "Runs only while the provider manager is in explicit edit mode and stops during drag or reduced motion",
-    "packages/agent/gui/app/renderer/agentactivity.css | .agent-gui-transcript-virtual-item | will-change: transform": "Virtualized transcript rows are translated during visible scrolling; fully occluded AgentGUI content is not painted",
     "packages/agent/gui/app/renderer/agentactivity.css | .agent-gui-vinyl-player__record | animation: agent-gui-vinyl-player-record-spin 4s linear infinite paused": "The base animation is paused and runs only when the record receives its playing state",
     "packages/agent/gui/app/renderer/agentactivity.css | .agent-gui-workbench-header__session-icon--pending | animation: agent-gui-workbench-header-icon-pending 1.2s ease-in-out infinite": "Runs only while the Workbench session icon is pending",
     "packages/agent/gui/app/renderer/agentactivity.css | .agent-markdown-mermaid__placeholder::after | animation: agent-markdown-mermaid-shimmer 1.25s ease-in-out infinite": "Exists only while a Mermaid block is rendering; hidden AgentGUI descendants are paused",
@@ -46,9 +45,9 @@
       "packages/agent/gui/agent-message-center/WorkspaceAgentMessageCenterPanel.tsx": 22,
       "packages/agent/gui/app/renderer/components/ZoomableImage.tsx": 9,
       "packages/agent/gui/shared/AgentMessageMarkdown.tsx": 7,
-      "packages/agent/gui/shared/agentConversation/components/AgentTranscriptView.tsx": 9
+      "packages/agent/gui/shared/agentConversation/components/AgentTranscriptView.tsx": 8
     },
-    "effectCount": 135,
+    "effectCount": 134,
     "fileLines": {
       "packages/agent/gui/app/renderer/i18n/locales/en.ts": 1893,
       "packages/agent/gui/app/renderer/i18n/locales/zh-CN.ts": 1773
@@ -73,7 +72,6 @@
       "packages/agent/gui/app/renderer/agentactivity.css | .tsh-inline-loading-ellipsis--entry-timing span | animation: tsh-inline-loading-dot 1.05s ease-in-out infinite": 1,
       "packages/agent/gui/app/renderer/agentactivity.css | .agent-gui-workbench-header__session-icon--pending | animation: agent-gui-workbench-header-icon-pending 1.2s ease-in-out infinite": 1,
       "packages/agent/gui/app/renderer/agentactivity.css | .agent-gui-node__conversation-list-skeleton-row::after | animation: agent-gui-conversation-list-skeleton-shimmer 1.18s ease-in-out infinite": 1,
-      "packages/agent/gui/app/renderer/agentactivity.css | .agent-gui-transcript-virtual-item | will-change: transform": 1,
       "packages/agent/gui/app/renderer/agentactivity.css | .agent-gui-node__transcript-skeleton-line::after,.agent-gui-node__transcript-skeleton-bubble::after | animation: agent-gui-transcript-skeleton-shimmer 1.2s ease-in-out infinite": 1,
       "packages/agent/gui/app/renderer/agentactivity.css | .agent-gui-node__layout [data-slot=\"status-dot\"][data-pulse=\"true\"],[data-testid=\"workspace-agent-message-center\"] [data-slot=\"status-dot\"][data-pulse=\"true\"] | animation: agent-gui-status-dot-pulse 1.8s ease-in-out infinite": 1,
       "packages/agent/gui/app/renderer/agentactivity.css | .agent-gui-edge-glow::before,.agent-gui-node__composer-input-group[data-edge-glow=\"true\"]::before | animation: agent-gui-star-border-path var(--agent-gui-star-border-duration) linear infinite": 1,
@@ -108,14 +106,13 @@
       "packages/agent/gui/agent-gui/agentGuiNode/composerFloatingMenu/ComposerFloatingMenuSurface.tsx": 1,
       "packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIProjectDrag.ts": 2,
       "packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIEmptyHeroCarouselStage.tsx": 2,
-      "packages/agent/gui/agent-gui/agentGuiNode/view/useAgentGUIDetailScroll.ts": 3,
+      "packages/agent/gui/agent-gui/agentGuiNode/view/useAgentGUIDetailScroll.ts": 1,
       "packages/agent/gui/agent-message-center/WorkspaceAgentMessageCenterCard.tsx": 1,
       "packages/agent/gui/app/renderer/components/ui/custom-scroll-area.tsx": 2,
       "packages/agent/gui/shared/AgentMessageMermaid.tsx": 1,
-      "packages/agent/gui/shared/agentConversation/components/AgentMessageLocatorRail.tsx": 4,
+      "packages/agent/gui/shared/agentConversation/components/AgentMessageLocatorRail.tsx": 1,
       "packages/agent/gui/shared/agentConversation/components/CollapsibleReveal.tsx": 6,
-      "packages/agent/gui/shared/agentConversation/components/useAgentMessageLocatorSelection.ts": 1,
-      "packages/agent/gui/shared/agentConversation/components/useAgentTranscriptTurnAttachments.tsx": 1,
+      "packages/agent/gui/shared/agentConversation/components/agentTranscriptPresentationScheduler.ts": 1,
       "packages/agent/gui/workbench/AgentGuiWorkbenchSessionMenu.tsx": 1,
       "packages/agent/gui/workbench/browser-element-context/browserElementContextSelectionController.ts": 1,
       "packages/agent/gui/workbench/tool-sidebar/useAgentToolSidebarController.ts": 3

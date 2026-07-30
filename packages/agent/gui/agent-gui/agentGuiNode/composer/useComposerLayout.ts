@@ -194,31 +194,10 @@ export function useComposerLayout({
       }
     });
     const editorContentHeight = readEditorIntrinsicContentHeight(editor);
-    const textHeight = Math.min(
-      DOCK_COMPOSER_INPUT_MAX_HEIGHT,
-      Math.max(
-        DOCK_COMPOSER_INPUT_MIN_HEIGHT,
-        editorContentHeight + DOCK_COMPOSER_INPUT_TEXT_MEASUREMENT_CHROME_HEIGHT
-      )
+    const nextMetrics = dockComposerMetricsFromObservedSizes(
+      editorContentHeight,
+      attachmentHeight
     );
-    const attachmentChromeHeight =
-      attachmentHeight > 0 ? DOCK_COMPOSER_INPUT_PADDING_BLOCK_HEIGHT : 0;
-    const inputMaxHeight =
-      DOCK_COMPOSER_INPUT_MAX_HEIGHT +
-      Math.max(0, attachmentHeight) +
-      attachmentChromeHeight;
-    const measuredHeight =
-      attachmentHeight + textHeight + attachmentChromeHeight;
-    const inputHeight = Math.min(
-      inputMaxHeight,
-      Math.max(DOCK_COMPOSER_INPUT_MIN_HEIGHT, measuredHeight)
-    );
-    const nextMetrics: DockComposerMetrics = {
-      attachmentHeight,
-      inputHeight,
-      inputMaxHeight,
-      textHeight
-    };
     setDockComposerMetrics((currentMetrics) =>
       areDockComposerMetricsEqual(currentMetrics, nextMetrics)
         ? currentMetrics
@@ -227,6 +206,9 @@ export function useComposerLayout({
   }, [isHeroLayout, promptInputAreaRef, setDockComposerMetrics]);
 
   const invalidateComposerMeasurement = useCallback((): void => {
+    if (!isHeroLayout && typeof ResizeObserver === "function") {
+      return;
+    }
     if (composerMeasurementFrameRef.current !== null) {
       return;
     }
@@ -236,7 +218,7 @@ export function useComposerLayout({
     }
     composerMeasurementFrameRef.current =
       window.requestAnimationFrame(measureDockComposer);
-  }, [measureDockComposer]);
+  }, [isHeroLayout, measureDockComposer]);
 
   useLayoutEffect(() => {
     if (isHeroLayout) {
@@ -249,37 +231,64 @@ export function useComposerLayout({
       };
     }
     const inputArea = promptInputAreaRef.current;
-    const widthHost = inputArea?.parentElement ?? null;
-    let observedWidth: number | null = null;
+    const editor = inputArea?.querySelector(
+      ".agent-gui-node__composer-textarea"
+    );
+    const attachmentAreas = Array.from(
+      inputArea?.querySelectorAll(COMPOSER_ATTACHMENT_SELECTOR) ?? []
+    );
+    const observedAttachmentHeights = new Map<Element, number>();
+    let observedEditorHeight = DOCK_COMPOSER_INPUT_MIN_HEIGHT;
+    const commitObservedMetrics = (): void => {
+      let attachmentHeight = 0;
+      for (const height of observedAttachmentHeights.values()) {
+        attachmentHeight += height;
+      }
+      const nextMetrics = dockComposerMetricsFromObservedSizes(
+        observedEditorHeight,
+        attachmentHeight
+      );
+      setDockComposerMetrics((currentMetrics) =>
+        areDockComposerMetricsEqual(currentMetrics, nextMetrics)
+          ? currentMetrics
+          : nextMetrics
+      );
+    };
     const resizeObserver =
       typeof ResizeObserver === "undefined"
         ? null
         : new ResizeObserver((entries) => {
-            let shouldInvalidate = false;
+            let changed = false;
             for (const entry of entries) {
-              if (entry.target === widthHost) {
-                const nextWidth = entry.contentRect.width;
-                if (nextWidth !== observedWidth) {
-                  observedWidth = nextWidth;
-                  shouldInvalidate = true;
+              const nextHeight =
+                entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
+              if (entry.target === editor) {
+                if (nextHeight > 0 && nextHeight !== observedEditorHeight) {
+                  observedEditorHeight = nextHeight;
+                  changed = true;
                 }
-              } else {
-                shouldInvalidate = true;
+              } else if (
+                observedAttachmentHeights.has(entry.target) &&
+                observedAttachmentHeights.get(entry.target) !== nextHeight
+              ) {
+                observedAttachmentHeights.set(entry.target, nextHeight);
+                changed = true;
               }
             }
-            if (shouldInvalidate) {
-              invalidateComposerMeasurement();
+            if (changed) {
+              commitObservedMetrics();
             }
           });
-    if (widthHost) {
-      resizeObserver?.observe(widthHost);
+    if (editor instanceof HTMLElement) {
+      resizeObserver?.observe(editor);
     }
-    for (const attachmentArea of Array.from(
-      inputArea?.querySelectorAll(COMPOSER_ATTACHMENT_SELECTOR) ?? []
-    )) {
+    for (const attachmentArea of attachmentAreas) {
+      observedAttachmentHeights.set(attachmentArea, 0);
       resizeObserver?.observe(attachmentArea);
     }
-    invalidateComposerMeasurement();
+    if (!resizeObserver) {
+      invalidateComposerMeasurement();
+    }
     return () => {
       if (composerMeasurementFrameRef.current !== null) {
         window.cancelAnimationFrame(composerMeasurementFrameRef.current);
@@ -367,6 +376,38 @@ function readEditorIntrinsicContentHeight(editor: HTMLElement): number {
     }
   }
   return editor.scrollHeight;
+}
+
+function dockComposerMetricsFromObservedSizes(
+  editorContentHeight: number,
+  attachmentHeight: number
+): DockComposerMetrics {
+  const textHeight = Math.min(
+    DOCK_COMPOSER_INPUT_MAX_HEIGHT,
+    Math.max(
+      DOCK_COMPOSER_INPUT_MIN_HEIGHT,
+      editorContentHeight + DOCK_COMPOSER_INPUT_TEXT_MEASUREMENT_CHROME_HEIGHT
+    )
+  );
+  const attachmentChromeHeight =
+    attachmentHeight > 0 ? DOCK_COMPOSER_INPUT_PADDING_BLOCK_HEIGHT : 0;
+  const inputMaxHeight =
+    DOCK_COMPOSER_INPUT_MAX_HEIGHT +
+    Math.max(0, attachmentHeight) +
+    attachmentChromeHeight;
+  const inputHeight = Math.min(
+    inputMaxHeight,
+    Math.max(
+      DOCK_COMPOSER_INPUT_MIN_HEIGHT,
+      attachmentHeight + textHeight + attachmentChromeHeight
+    )
+  );
+  return {
+    attachmentHeight,
+    inputHeight,
+    inputMaxHeight,
+    textHeight
+  };
 }
 
 function parseCssPixelValue(value: string): number {

@@ -106,7 +106,7 @@ describe("useComposerLayout", () => {
     expect(setIsPromptTipOverflowing).toHaveBeenLastCalledWith(true);
   });
 
-  it("coalesces content invalidations and does not observe animated heights", () => {
+  it("consumes observed editor height without active geometry reads", () => {
     const resizeObservers: ResizeObserverMock[] = [];
     const animationFrames: FrameRequestCallback[] = [];
     class ResizeObserverMock implements ResizeObserver {
@@ -134,24 +134,14 @@ describe("useComposerLayout", () => {
       return animationFrames.length;
     });
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
-    const inputShell = document.createElement("div");
     const inputArea = document.createElement("div");
     const editor = document.createElement("div");
     editor.className = "agent-gui-node__composer-textarea";
     editor.style.paddingTop = "12px";
-    const firstParagraph = document.createElement("p");
-    const lastParagraph = document.createElement("p");
-    editor.append(firstParagraph, lastParagraph);
     inputArea.appendChild(editor);
-    inputShell.appendChild(inputArea);
-    let contentHeight = 24;
-    vi.spyOn(firstParagraph, "getBoundingClientRect").mockImplementation(() =>
-      createRect({ bottom: 24, top: 0 })
-    );
-    vi.spyOn(lastParagraph, "getBoundingClientRect").mockImplementation(() =>
-      createRect({ bottom: contentHeight, top: contentHeight - 24 })
-    );
     const editorScrollHeight = vi.spyOn(editor, "scrollHeight", "get");
+    const editorRect = vi.spyOn(editor, "getBoundingClientRect");
+    const getComputedStyle = vi.spyOn(window, "getComputedStyle");
     const setDockComposerMetrics = vi.fn();
 
     const input = createComposerLayoutInput({
@@ -159,15 +149,18 @@ describe("useComposerLayout", () => {
       setDockComposerMetrics
     });
 
-    const rendered = renderHook(() => useComposerLayout(input));
+    renderHook(() => useComposerLayout(input));
 
     expect(editorScrollHeight).not.toHaveBeenCalled();
     expect(resizeObservers).toHaveLength(1);
-    expect(resizeObservers[0]?.observed).toEqual(new Set([inputShell]));
-    expect(animationFrames).toHaveLength(1);
+    expect(resizeObservers[0]?.observed).toEqual(new Set([editor]));
+    expect(animationFrames).toHaveLength(0);
 
     act(() => {
-      animationFrames[0]?.(0);
+      resizeObservers[0]?.callback(
+        [createResizeObserverEntry(editor, 100, 36)],
+        resizeObservers[0]
+      );
     });
 
     expect(editorScrollHeight).not.toHaveBeenCalled();
@@ -185,16 +178,11 @@ describe("useComposerLayout", () => {
       textHeight: 56
     });
 
-    contentHeight = 72;
     act(() => {
-      rendered.result.current.invalidateComposerMeasurement();
-      rendered.result.current.invalidateComposerMeasurement();
-    });
-
-    expect(animationFrames).toHaveLength(2);
-
-    act(() => {
-      animationFrames[1]?.(16);
+      resizeObservers[0]?.callback(
+        [createResizeObserverEntry(editor, 100, 84)],
+        resizeObservers[0]
+      );
     });
 
     expect(
@@ -206,14 +194,11 @@ describe("useComposerLayout", () => {
       }).inputHeight
     ).toBe(98);
 
-    contentHeight = 24;
     act(() => {
-      rendered.result.current.invalidateComposerMeasurement();
-    });
-    expect(animationFrames).toHaveLength(3);
-
-    act(() => {
-      animationFrames[2]?.(32);
+      resizeObservers[0]?.callback(
+        [createResizeObserverEntry(editor, 100, 36)],
+        resizeObservers[0]
+      );
     });
 
     expect(
@@ -224,9 +209,12 @@ describe("useComposerLayout", () => {
         textHeight: 98
       }).inputHeight
     ).toBe(56);
+    expect(editorScrollHeight).not.toHaveBeenCalled();
+    expect(editorRect).not.toHaveBeenCalled();
+    expect(getComputedStyle).not.toHaveBeenCalled();
   });
 
-  it("remeasures only when the stable host width changes", () => {
+  it("does not observe the width host", () => {
     const resizeObservers: ResizeObserverMock[] = [];
     const animationFrames: FrameRequestCallback[] = [];
     class ResizeObserverMock implements ResizeObserver {
@@ -256,8 +244,12 @@ describe("useComposerLayout", () => {
       )
     );
     act(() => {
-      animationFrames[0]?.(0);
+      resizeObservers[0]?.callback(
+        [createResizeObserverEntry(inputShell, 600)],
+        resizeObservers[0]
+      );
     });
+    expect(animationFrames).toHaveLength(0);
 
     act(() => {
       resizeObservers[0]?.callback(
@@ -265,18 +257,7 @@ describe("useComposerLayout", () => {
         resizeObservers[0]
       );
     });
-    expect(animationFrames).toHaveLength(2);
-    act(() => {
-      animationFrames[1]?.(16);
-    });
-
-    act(() => {
-      resizeObservers[0]?.callback(
-        [createResizeObserverEntry(inputShell, 600)],
-        resizeObservers[0]
-      );
-    });
-    expect(animationFrames).toHaveLength(2);
+    expect(animationFrames).toHaveLength(0);
 
     act(() => {
       resizeObservers[0]?.callback(
@@ -284,7 +265,61 @@ describe("useComposerLayout", () => {
         resizeObservers[0]
       );
     });
-    expect(animationFrames).toHaveLength(3);
+    expect(animationFrames).toHaveLength(0);
+  });
+
+  it("does not schedule geometry reads from continuing width observations", () => {
+    const resizeObservers: ResizeObserverMock[] = [];
+    const animationFrames: FrameRequestCallback[] = [];
+    class ResizeObserverMock implements ResizeObserver {
+      constructor(readonly callback: ResizeObserverCallback) {
+        resizeObservers.push(this);
+      }
+
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    }
+    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      animationFrames.push(callback);
+      return animationFrames.length;
+    });
+    const inputShell = document.createElement("div");
+    const inputArea = document.createElement("div");
+    const editor = document.createElement("div");
+    editor.className = "agent-gui-node__composer-textarea";
+    inputArea.appendChild(editor);
+    inputShell.appendChild(inputArea);
+    const editorScrollHeight = vi.spyOn(editor, "scrollHeight", "get");
+    const editorRect = vi.spyOn(editor, "getBoundingClientRect");
+    const getComputedStyle = vi.spyOn(window, "getComputedStyle");
+
+    renderHook(() =>
+      useComposerLayout(
+        createComposerLayoutInput({
+          promptInputAreaRef: { current: inputArea }
+        })
+      )
+    );
+    act(() => {
+      animationFrames.shift()?.(0);
+    });
+    editorScrollHeight.mockClear();
+    editorRect.mockClear();
+    getComputedStyle.mockClear();
+
+    act(() => {
+      resizeObservers[0]?.callback(
+        [createResizeObserverEntry(inputShell, 540)],
+        resizeObservers[0]
+      );
+    });
+
+    expect(animationFrames).toHaveLength(0);
+    expect(editorScrollHeight).not.toHaveBeenCalled();
+    expect(editorRect).not.toHaveBeenCalled();
+    expect(getComputedStyle).not.toHaveBeenCalled();
   });
 });
 
@@ -320,13 +355,14 @@ function createRect({ bottom, top }: { bottom: number; top: number }): DOMRect {
 
 function createResizeObserverEntry(
   target: Element,
-  width: number
+  width: number,
+  height = 0
 ): ResizeObserverEntry {
   return {
     borderBoxSize: [],
     contentBoxSize: [],
     contentRect: {
-      ...createRect({ bottom: 0, top: 0 }),
+      ...createRect({ bottom: height, top: 0 }),
       right: width,
       width
     },

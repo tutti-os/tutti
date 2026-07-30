@@ -8,6 +8,11 @@ Use it for narrow reusable React hook patterns such as external-store snapshot
 subscription, selector reads, and IME-safe controlled input state. Keep domain
 hooks and UI components in their owning packages.
 
+`useElementResizeObserver` shares one observer across a mounted React owner and
+routes each observed element to its own callback. Consumers explicitly attach
+and detach elements; the owning callback ref disconnects remaining observations
+on unmount.
+
 Prefer this package over adding new direct `useSyncExternalStore` wrappers in
 shared frontend packages so subscription semantics stay consistent.
 `useExternalStoreSnapshot` keeps its React subscription callbacks stable while

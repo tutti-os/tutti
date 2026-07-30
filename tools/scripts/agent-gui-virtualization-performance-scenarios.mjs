@@ -665,7 +665,7 @@ async function executeBrowserBehindAgentGUIPixels(context, prepared, options) {
       const timeline = document.querySelector('[data-testid="agent-gui-timeline"]');
       if (!(timeline instanceof HTMLElement)) throw new Error('timeline is unavailable');
       const start = timeline.scrollTop;
-      const target = Math.max(0, start - timeline.clientHeight * 3);
+      const target = start - timeline.clientHeight * 3;
       const startedAt = performance.now();
       const step = () => {
         const progress = Math.min((performance.now() - startedAt) / 800, 1);

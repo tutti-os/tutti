@@ -605,7 +605,7 @@ export interface AgentGUINodeViewProps {
       displayPrompt?: string,
       options?: Parameters<AgentComposerProps["onSubmit"]>[2]
     ) => void;
-    loadOlderConversationMessages: () => void;
+    loadOlderConversationMessages: () => void | Promise<void>;
     showPromptImagesUnsupported: () => void;
     submitApprovalOption: (requestId: string, optionId: string) => void;
     submitInteractivePrompt: (input: {

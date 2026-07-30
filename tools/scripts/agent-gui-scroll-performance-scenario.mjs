@@ -335,7 +335,8 @@ async function executeVirtualizedScrollLocator(context, _prepared, options) {
       }
       const startScrollTop = timeline.scrollTop;
       const viewportHeight = timeline.clientHeight;
-      const targetScrollTop = 0;
+      const targetScrollTop =
+        startScrollTop - viewportHeight * (${minimumViewportTravel} + 2);
       timeline.dispatchEvent(new WheelEvent('wheel', { deltaY: -100 }));
       const startedAt = performance.now();
       let frame = 0;

@@ -5,11 +5,16 @@ import {
   useRef,
   useState
 } from "react";
+import type {
+  AgentTranscriptViewportSnapshot,
+  AgentTranscriptVirtualScrollController
+} from "../../../shared/agentConversation/components/AgentTranscriptView";
+import { AGENT_TRANSCRIPT_TOP_LOADING_THRESHOLD_PX } from "../../../shared/agentConversation/components/agentTranscriptScrollController";
 import {
   createAgentConversationFollowEndController,
+  isAgentConversationViewportAtEnd,
   type AgentConversationFollowEndEvent
 } from "../../../shared/agentConversation/agentConversationFollowEndController";
-import type { AgentTranscriptVirtualScrollController } from "../../../shared/agentConversation/components/AgentTranscriptView";
 import {
   AgentGUIConversationScrollMemory,
   type TimelineScrollAnchor
@@ -19,19 +24,12 @@ import {
   hasStaleVirtualScrollController,
   matchingVirtualScrollController,
   readBottomDockSafeArea,
-  readTimelineGeometry,
   userScrollBehavior,
   writeBottomDockSafeArea,
   type BottomDockSafeArea
 } from "./agentGUIDetailScrollHelpers";
-import {
-  setTimelineScrollTopInstantly,
-  setTimelineScrollTopWithUserTransition
-} from "./AgentGUIConversationTimelinePane";
 
-const AGENT_GUI_TOP_HISTORY_PREFETCH_THRESHOLD_PX = 240;
 const AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX = 1;
-const AGENT_GUI_REACHED_END_EPSILON_PX = 1;
 
 export function useAgentGUIDetailScroll(input: AgentGUIDetailScrollInput) {
   const {
@@ -44,13 +42,14 @@ export function useAgentGUIDetailScroll(input: AgentGUIDetailScrollInput) {
     showTimelineSkeleton,
     submittedPromptScrollConversationRef,
     timelineConversationId,
-    timelineContentRef,
     timelineRef,
     timelineScrollAnchorRef,
     virtualScrollControllerRef,
     viewModel
   } = input;
   const [isTimelineScrolledToTop, setIsTimelineScrolledToTop] = useState(true);
+  const [isTimelineScrolledToBottom, setIsTimelineScrolledToBottom] =
+    useState(true);
   const followEndControllerRef = useRef(
     createAgentConversationFollowEndController()
   );
@@ -82,8 +81,12 @@ export function useAgentGUIDetailScroll(input: AgentGUIDetailScrollInput) {
     },
     [followEndController, timelineScrollAnchorRef]
   );
-  const pointerScrollConversationRef = useRef<string | null>(null);
   const userScrollDirectionRef = useRef<"away" | "toward-end" | null>(null);
+  const lastTopLoadViewportRef = useRef<{
+    contentHeightPx: number;
+    conversationId: string;
+    scrollTopPx: number;
+  } | null>(null);
   const lastShowTimelineSkeletonRef = useRef(showTimelineSkeleton);
   const bottomDockSafeAreaRef = useRef<BottomDockSafeArea | null>(null);
   const [virtualScrollControllerRevision, setVirtualScrollControllerRevision] =
@@ -118,8 +121,8 @@ export function useAgentGUIDetailScroll(input: AgentGUIDetailScrollInput) {
     if (!activeConversationId) {
       timelineScrollAnchorRef.current = null;
       pendingPrependScrollAnchorRef.current = null;
-      pointerScrollConversationRef.current = null;
       userScrollDirectionRef.current = null;
+      lastTopLoadViewportRef.current = null;
       submittedPromptScrollConversationRef.current = null;
       setIsTimelineScrolledToTop(true);
       return;
@@ -148,8 +151,8 @@ export function useAgentGUIDetailScroll(input: AgentGUIDetailScrollInput) {
             : "conversation-changed"
         )
       );
-      pointerScrollConversationRef.current = null;
       userScrollDirectionRef.current = null;
+      lastTopLoadViewportRef.current = null;
       if (showTimelineSkeleton) {
         timelineScrollAnchorRef.current = null;
         setIsTimelineScrolledToTop(true);
@@ -202,95 +205,46 @@ export function useAgentGUIDetailScroll(input: AgentGUIDetailScrollInput) {
       virtualScrollControllerRef,
       activeConversationId
     );
-    if (virtualScrollController) {
-      const followsEnd = followEndController.getSnapshot() === "following";
-      if (
-        shouldScrollSubmittedPromptToBottom ||
-        (followsEnd && (conversationChanged || virtualScrollControllerChanged))
-      ) {
-        if (shouldScrollSubmittedPromptToBottom) {
-          dispatchFollowEnd("prompt-submitted");
-        }
-        pointerScrollConversationRef.current = null;
-        userScrollDirectionRef.current = null;
-        virtualScrollController.scrollToEnd({ behavior: "auto" });
-        submittedPromptScrollConversationRef.current = null;
-        if (shouldScrollSubmittedPromptToBottom) {
-          pendingPrependScrollAnchorRef.current = null;
-        }
-      } else if (
-        !followsEnd &&
-        (conversationChanged ||
-          virtualScrollControllerChanged ||
-          (timelineSkeletonChanged && !showTimelineSkeleton))
-      ) {
-        virtualScrollController.scrollToOffset(anchor.scrollTop, {
-          behavior: "auto"
-        });
-      }
-      if (
-        shouldRestorePrependAnchor &&
-        !viewModel.detail.isLoadingOlderMessages
-      ) {
-        pendingPrependScrollAnchorRef.current = null;
-      }
-      const virtualAnchor = anchor;
-      writeTimelineScrollAnchor({
-        ...virtualAnchor,
-        conversationId: activeConversationId
-      });
-      setIsTimelineScrolledToTop(
-        virtualAnchor.scrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
-      );
+    if (!virtualScrollController) {
       return;
     }
-    const geometry = readTimelineGeometry(timeline);
-    const maxScrollTop = geometry.maxScrollTop;
-    let nextScrollTop: number;
-    if (conversationChanged || shouldScrollSubmittedPromptToBottom) {
+    const followsEnd = followEndController.getSnapshot() === "following";
+    if (
+      shouldScrollSubmittedPromptToBottom ||
+      (followsEnd && (conversationChanged || virtualScrollControllerChanged))
+    ) {
       if (shouldScrollSubmittedPromptToBottom) {
         dispatchFollowEnd("prompt-submitted");
       }
-      pointerScrollConversationRef.current = null;
       userScrollDirectionRef.current = null;
-    }
-    const shouldKeepBottomLocked =
-      followEndController.getSnapshot() === "following";
-
-    if (shouldScrollSubmittedPromptToBottom || shouldKeepBottomLocked) {
-      setTimelineScrollTopInstantly(timeline, maxScrollTop);
-      nextScrollTop = maxScrollTop;
+      virtualScrollController.scrollToEnd({ behavior: "auto" });
       submittedPromptScrollConversationRef.current = null;
       if (shouldScrollSubmittedPromptToBottom) {
         pendingPrependScrollAnchorRef.current = null;
       }
-    } else if (shouldRestorePrependAnchor && prependAnchor) {
-      const nextScrollHeight = geometry.scrollHeight;
-      const delta = nextScrollHeight - prependAnchor.scrollHeight;
-      nextScrollTop = Math.max(0, prependAnchor.scrollTop + delta);
-      timeline.scrollTop = nextScrollTop;
-      if (viewModel.detail.isLoadingOlderMessages) {
-        pendingPrependScrollAnchorRef.current = {
-          conversationId: activeConversationId,
-          scrollHeight: nextScrollHeight,
-          scrollTop: nextScrollTop
-        };
-      } else {
-        pendingPrependScrollAnchorRef.current = null;
-      }
-    } else {
-      nextScrollTop = Math.min(maxScrollTop, anchor.scrollTop);
-      timeline.scrollTop = nextScrollTop;
+    } else if (
+      !followsEnd &&
+      (conversationChanged ||
+        virtualScrollControllerChanged ||
+        (timelineSkeletonChanged && !showTimelineSkeleton))
+    ) {
+      virtualScrollController.scrollToOffset(anchor.scrollTop, {
+        behavior: "auto"
+      });
+    }
+    if (
+      shouldRestorePrependAnchor &&
+      !viewModel.detail.isLoadingOlderMessages
+    ) {
+      pendingPrependScrollAnchorRef.current = null;
     }
 
     writeTimelineScrollAnchor({
-      conversationId: activeConversationId,
-      scrollHeight: geometry.scrollHeight,
-      scrollTop: nextScrollTop,
-      clientHeight: geometry.clientHeight
+      ...anchor,
+      conversationId: activeConversationId
     });
     setIsTimelineScrolledToTop(
-      nextScrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
+      anchor.scrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
     );
   }, [
     conversation,
@@ -316,23 +270,6 @@ export function useAgentGUIDetailScroll(input: AgentGUIDetailScrollInput) {
       return;
     }
 
-    let animationFrameId: number | null = null;
-    const resolveBottomLockConversation = (): string | null => {
-      const activeConversationId =
-        timelineScrollAnchorRef.current?.conversationId ?? null;
-      if (
-        !activeConversationId ||
-        followEndController.getSnapshot() !== "following"
-      ) {
-        return null;
-      }
-      const anchor = timelineScrollAnchorRef.current;
-      if (!anchor || anchor.conversationId !== activeConversationId) {
-        return null;
-      }
-      return activeConversationId;
-    };
-
     const syncBottomDockSafeArea = (forceMeasurement: boolean): void => {
       const cachedSafeArea = bottomDockSafeAreaRef.current;
       if (
@@ -341,24 +278,16 @@ export function useAgentGUIDetailScroll(input: AgentGUIDetailScrollInput) {
         cachedSafeArea.revision === bottomDockStoreRevision
       ) {
         writeBottomDockSafeArea(timeline, cachedSafeArea);
+        matchingVirtualScrollController(
+          virtualScrollControllerRef,
+          timelineConversationId
+        )?.syncViewport({
+          followEnd: followEndController.getSnapshot() === "following",
+          scrollPaddingBottomAdjustmentPx: cachedSafeArea.timelineOverflowHeight
+        });
         return;
       }
       const measuredSafeArea = readBottomDockSafeArea(bottomDock);
-      if (
-        forceMeasurement &&
-        cachedSafeArea?.bottomDock === bottomDock &&
-        cachedSafeArea.timelineOverflowHeight ===
-          measuredSafeArea.timelineOverflowHeight &&
-        cachedSafeArea.floatingOverflowHeight ===
-          measuredSafeArea.floatingOverflowHeight
-      ) {
-        bottomDockSafeAreaRef.current = {
-          bottomDock,
-          revision: bottomDockStoreRevision,
-          ...measuredSafeArea
-        };
-        return;
-      }
       const nextSafeArea: BottomDockSafeArea = {
         bottomDock,
         revision: bottomDockStoreRevision,
@@ -366,73 +295,27 @@ export function useAgentGUIDetailScroll(input: AgentGUIDetailScrollInput) {
       };
       bottomDockSafeAreaRef.current = nextSafeArea;
       writeBottomDockSafeArea(timeline, nextSafeArea);
-    };
-
-    const syncConversationBottomLock = (): void => {
-      const scheduledConversationId = resolveBottomLockConversation();
-      if (!scheduledConversationId) {
-        return;
-      }
-
-      if (animationFrameId !== null) {
-        window.cancelAnimationFrame(animationFrameId);
-      }
-      animationFrameId = window.requestAnimationFrame(() => {
-        animationFrameId = null;
-        if (
-          resolveBottomLockConversation() !== scheduledConversationId ||
-          timelineRef.current !== timeline
-        ) {
-          return;
-        }
-        if (
-          hasStaleVirtualScrollController(
-            virtualScrollControllerRef,
-            scheduledConversationId
-          )
-        ) {
-          return;
-        }
-        const virtualScrollController = matchingVirtualScrollController(
-          virtualScrollControllerRef,
-          scheduledConversationId
-        );
-        if (virtualScrollController) {
-          virtualScrollController.scrollToEnd({ behavior: "auto" });
-          return;
-        }
-        const geometry = readTimelineGeometry(timeline);
-        const maxScrollTop = geometry.maxScrollTop;
-        timeline.scrollTop = maxScrollTop;
-        writeTimelineScrollAnchor({
-          conversationId: scheduledConversationId,
-          scrollHeight: geometry.scrollHeight,
-          scrollTop: maxScrollTop,
-          clientHeight: geometry.clientHeight
-        });
-        setIsTimelineScrolledToTop(
-          maxScrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
-        );
+      matchingVirtualScrollController(
+        virtualScrollControllerRef,
+        timelineConversationId
+      )?.syncViewport({
+        followEnd: followEndController.getSnapshot() === "following",
+        scrollPaddingBottomAdjustmentPx: nextSafeArea.timelineOverflowHeight
       });
     };
 
     syncBottomDockSafeArea(false);
-    syncConversationBottomLock();
     if (typeof ResizeObserver === "undefined") {
       return () => {
         timeline.style.removeProperty("--agent-gui-bottom-dock-safe-area");
         bottomDock.style.removeProperty(
           "--agent-gui-bottom-dock-floating-safe-area"
         );
-        if (animationFrameId !== null) {
-          window.cancelAnimationFrame(animationFrameId);
-        }
       };
     }
 
     const observer = new ResizeObserver(() => {
       syncBottomDockSafeArea(true);
-      syncConversationBottomLock();
     });
     observer.observe(bottomDock);
     const promptInputArea = bottomDock.querySelector(
@@ -446,17 +329,13 @@ export function useAgentGUIDetailScroll(input: AgentGUIDetailScrollInput) {
       bottomDock.style.removeProperty(
         "--agent-gui-bottom-dock-floating-safe-area"
       );
-      if (animationFrameId !== null) {
-        window.cancelAnimationFrame(animationFrameId);
-      }
       observer.disconnect();
     };
   }, [
     bottomDockStoreRevision,
     followEndController,
     hasTimelineConversation,
-    isVisible,
-    writeTimelineScrollAnchor
+    isVisible
   ]);
 
   useEffect(() => {
@@ -464,254 +343,102 @@ export function useAgentGUIDetailScroll(input: AgentGUIDetailScrollInput) {
       return;
     }
     const timeline = timelineRef.current;
-    const timelineContent = timelineContentRef.current;
     const activeConversationId = timelineConversationId;
     if (!timeline || !activeConversationId) {
       return;
     }
+    const virtualScrollController = matchingVirtualScrollController(
+      virtualScrollControllerRef,
+      activeConversationId
+    );
+    if (!virtualScrollController) {
+      return;
+    }
 
-    const loadOlderMessagesNearTop = (
-      scrollTop: number,
-      scrollHeight: number,
-      clientHeight: number
-    ): void => {
+    const loadOlderMessagesAtTop = async (): Promise<"stop" | void> => {
+      const anchor = timelineScrollAnchorRef.current;
+      const previousLoadViewport = lastTopLoadViewportRef.current;
       const bottomLocked = followEndController.getSnapshot() === "following";
-      const virtualScrollController = matchingVirtualScrollController(
-        virtualScrollControllerRef,
-        activeConversationId
-      );
-      const transcriptGeometryIsReady =
-        timelineContent?.querySelector("[data-agent-transcript-row]") !== null;
       const needsMoreContentToFillViewport =
-        !virtualScrollController &&
-        transcriptGeometryIsReady &&
-        scrollHeight <= clientHeight;
+        anchor !== null && anchor.scrollHeight <= anchor.clientHeight;
       if (
+        anchor?.conversationId === activeConversationId &&
         activeConversationId === viewModel.rail.activeConversationId &&
         viewModel.detail.hasOlderMessages &&
         !viewModel.detail.isLoadingOlderMessages &&
         !showTimelineSkeleton &&
-        (!bottomLocked || needsMoreContentToFillViewport) &&
-        scrollTop <= AGENT_GUI_TOP_HISTORY_PREFETCH_THRESHOLD_PX
+        (!bottomLocked || needsMoreContentToFillViewport)
       ) {
+        if (
+          previousLoadViewport?.conversationId === activeConversationId &&
+          previousLoadViewport.contentHeightPx === anchor.scrollHeight &&
+          previousLoadViewport.scrollTopPx === anchor.scrollTop
+        ) {
+          lastTopLoadViewportRef.current = null;
+          return "stop";
+        }
+        lastTopLoadViewportRef.current = {
+          contentHeightPx: anchor.scrollHeight,
+          conversationId: activeConversationId,
+          scrollTopPx: anchor.scrollTop
+        };
         pendingPrependScrollAnchorRef.current = {
           conversationId: activeConversationId,
-          scrollHeight,
-          scrollTop
+          scrollHeight: anchor.scrollHeight,
+          scrollTop: anchor.scrollTop
         };
-        actions.loadOlderConversationMessages();
-      }
-    };
-
-    const captureScrollAnchor = (): void => {
-      const previousAnchor = timelineScrollAnchorRef.current;
-      if (
-        !previousAnchor ||
-        previousAnchor.conversationId !== activeConversationId
-      ) {
+        await actions.loadOlderConversationMessages();
         return;
       }
-      let scrollTop = timeline.scrollTop;
-      const pointerDrivenScrollAway =
-        pointerScrollConversationRef.current === activeConversationId &&
-        scrollTop < previousAnchor.scrollTop - AGENT_GUI_REACHED_END_EPSILON_PX;
-      const pointerDrivenScrollTowardEnd =
-        pointerScrollConversationRef.current === activeConversationId &&
-        scrollTop > previousAnchor.scrollTop + AGENT_GUI_REACHED_END_EPSILON_PX;
-      if (pointerDrivenScrollAway) {
-        userScrollDirectionRef.current = "away";
-        dispatchFollowEnd("user-scrolled-away");
-      } else if (pointerDrivenScrollTowardEnd) {
-        userScrollDirectionRef.current = "toward-end";
-      }
-      const virtualScrollController = matchingVirtualScrollController(
-        virtualScrollControllerRef,
-        activeConversationId
+      return "stop";
+    };
+    virtualScrollController.setTopLoadingHandler(loadOlderMessagesAtTop);
+
+    const captureVirtualViewport = (
+      snapshot: AgentTranscriptViewportSnapshot
+    ): void => {
+      const isAtEnd = isAgentConversationViewportAtEnd(
+        snapshot.distanceFromBottomPx
       );
-      if (
-        !virtualScrollController &&
-        followEndController.getSnapshot() === "following"
-      ) {
-        const anchoredMaxScrollTop = Math.max(
-          0,
-          previousAnchor.scrollHeight - previousAnchor.clientHeight
-        );
-        if (
-          anchoredMaxScrollTop - scrollTop >
-          AGENT_GUI_REACHED_END_EPSILON_PX
-        ) {
-          setTimelineScrollTopInstantly(timeline, anchoredMaxScrollTop);
-          scrollTop = anchoredMaxScrollTop;
-        }
-      }
+      setIsTimelineScrolledToBottom(
+        isAgentConversationViewportAtEnd(snapshot.contentDistanceFromBottomPx)
+      );
       if (
         followEndController.getSnapshot() === "detached" &&
         userScrollDirectionRef.current === "toward-end" &&
-        (virtualScrollController
-          ? virtualScrollController.isAtEnd(AGENT_GUI_REACHED_END_EPSILON_PX)
-          : previousAnchor.scrollHeight -
-              scrollTop -
-              previousAnchor.clientHeight <=
-            AGENT_GUI_REACHED_END_EPSILON_PX)
+        isAtEnd
       ) {
         dispatchFollowEnd("user-reached-end");
       }
       writeTimelineScrollAnchor({
+        clientHeight: snapshot.viewportHeightPx,
         conversationId: activeConversationId,
-        scrollHeight: previousAnchor.scrollHeight,
-        scrollTop,
-        clientHeight: previousAnchor.clientHeight
+        scrollHeight: snapshot.contentHeightPx,
+        scrollTop: snapshot.scrollTopPx
       });
+      if (snapshot.scrollTopPx > AGENT_TRANSCRIPT_TOP_LOADING_THRESHOLD_PX) {
+        lastTopLoadViewportRef.current = null;
+      }
       setIsTimelineScrolledToTop(
-        scrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
-      );
-      loadOlderMessagesNearTop(
-        scrollTop,
-        previousAnchor.scrollHeight,
-        previousAnchor.clientHeight
+        snapshot.scrollTopPx <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
       );
     };
-
-    const syncObservedTimelineGeometry = (
-      entries: readonly ResizeObserverEntry[]
-    ): void => {
-      const anchor = timelineScrollAnchorRef.current;
-      if (!anchor || anchor.conversationId !== activeConversationId) {
-        return;
-      }
-
-      const virtualScrollController = matchingVirtualScrollController(
-        virtualScrollControllerRef,
-        activeConversationId
-      );
-      if (virtualScrollController) {
-        const scrollTop = timeline.scrollTop;
-        const observedClientHeight = entries.find(
-          (entry) => entry.target === timeline
-        )?.contentRect.height;
-        const observedScrollHeight = entries.find(
-          (entry) => entry.target === timelineContent
-        )?.contentRect.height;
-        const clientHeight = observedClientHeight ?? anchor.clientHeight;
-        const scrollHeight =
-          observedScrollHeight === undefined
-            ? anchor.scrollHeight
-            : Math.max(clientHeight, observedScrollHeight);
-        writeTimelineScrollAnchor({
-          ...anchor,
-          clientHeight,
-          scrollHeight,
-          scrollTop
-        });
-        setIsTimelineScrolledToTop(
-          scrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
-        );
-        loadOlderMessagesNearTop(scrollTop, scrollHeight, clientHeight);
-        return;
-      }
-      const geometry = readTimelineGeometry(timeline);
-      const { clientHeight, maxScrollTop, scrollHeight } = geometry;
-      const bottomLocked = followEndController.getSnapshot() === "following";
-      let scrollTop = Math.min(maxScrollTop, timeline.scrollTop);
-      if (bottomLocked) {
-        setTimelineScrollTopInstantly(timeline, maxScrollTop);
-        scrollTop = maxScrollTop;
-      }
-      writeTimelineScrollAnchor({
-        conversationId: activeConversationId,
-        scrollHeight,
-        scrollTop,
-        clientHeight
-      });
-      setIsTimelineScrolledToTop(
-        scrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
-      );
-    };
-
-    const captureWheelIntent = (event: WheelEvent): void => {
-      if (event.deltaY < 0) {
-        userScrollDirectionRef.current = "away";
-        dispatchFollowEnd("user-scrolled-away");
-      } else if (event.deltaY > 0) {
-        userScrollDirectionRef.current = "toward-end";
-      }
-    };
-    const captureKeyboardIntent = (event: KeyboardEvent): void => {
-      if (
-        event.key === "ArrowUp" ||
-        event.key === "Home" ||
-        event.key === "PageUp"
-      ) {
-        userScrollDirectionRef.current = "away";
-        dispatchFollowEnd("user-scrolled-away");
-      } else if (
-        event.key === "ArrowDown" ||
-        event.key === "End" ||
-        event.key === "PageDown" ||
-        (event.key === " " && !event.shiftKey)
-      ) {
-        userScrollDirectionRef.current = "toward-end";
-      }
-    };
-    const captureSemanticScrollAwayIntent = (event: MouseEvent): void => {
-      if (
-        event.target instanceof Element &&
-        event.target.closest("[data-agent-transcript-scroll-away-intent]")
-      ) {
-        userScrollDirectionRef.current = "away";
+    const captureUserScroll = (direction: "away" | "toward-end"): void => {
+      userScrollDirectionRef.current = direction;
+      if (direction === "away") {
         dispatchFollowEnd("user-scrolled-away");
       }
     };
-    const capturePointerIntent = (): void => {
-      pointerScrollConversationRef.current = activeConversationId;
-    };
-    const clearPointerIntent = (): void => {
-      if (pointerScrollConversationRef.current === activeConversationId) {
-        pointerScrollConversationRef.current = null;
-      }
-    };
-    const clearScrollDirection = (): void => {
-      userScrollDirectionRef.current = null;
-    };
 
-    const initialAnchor = timelineScrollAnchorRef.current;
-    if (initialAnchor?.conversationId === activeConversationId) {
-      loadOlderMessagesNearTop(
-        initialAnchor.scrollTop,
-        initialAnchor.scrollHeight,
-        initialAnchor.clientHeight
-      );
-    }
-    timeline.addEventListener("scroll", captureScrollAnchor, { passive: true });
-    timeline.addEventListener("scrollend", clearScrollDirection);
-    timeline.addEventListener("wheel", captureWheelIntent, { passive: true });
-    timeline.addEventListener("keydown", captureKeyboardIntent);
-    timeline.addEventListener("click", captureSemanticScrollAwayIntent);
-    timeline.addEventListener("pointerdown", capturePointerIntent, {
-      passive: true
-    });
-    window.addEventListener("pointerup", clearPointerIntent, { passive: true });
-    window.addEventListener("pointercancel", clearPointerIntent, {
-      passive: true
-    });
-    const geometryObserver =
-      timelineContent && typeof ResizeObserver !== "undefined"
-        ? new ResizeObserver(syncObservedTimelineGeometry)
-        : null;
-    geometryObserver?.observe(timeline);
-    if (timelineContent) {
-      geometryObserver?.observe(timelineContent);
-    }
+    const unsubscribeViewport = virtualScrollController.subscribeViewport(
+      captureVirtualViewport
+    );
+    const unsubscribeUserScroll =
+      virtualScrollController.subscribeUserScroll(captureUserScroll);
     return () => {
-      geometryObserver?.disconnect();
-      timeline.removeEventListener("scroll", captureScrollAnchor);
-      timeline.removeEventListener("scrollend", clearScrollDirection);
-      timeline.removeEventListener("wheel", captureWheelIntent);
-      timeline.removeEventListener("keydown", captureKeyboardIntent);
-      timeline.removeEventListener("click", captureSemanticScrollAwayIntent);
-      timeline.removeEventListener("pointerdown", capturePointerIntent);
-      window.removeEventListener("pointerup", clearPointerIntent);
-      window.removeEventListener("pointercancel", clearPointerIntent);
+      virtualScrollController.setTopLoadingHandler(null);
+      unsubscribeViewport();
+      unsubscribeUserScroll();
     };
   }, [
     actions,
@@ -748,38 +475,25 @@ export function useAgentGUIDetailScroll(input: AgentGUIDetailScrollInput) {
       virtualScrollControllerRef,
       activeConversationId
     );
-    dispatchFollowEnd("scroll-to-end-requested");
-    userScrollDirectionRef.current = null;
-    if (virtualScrollController) {
-      virtualScrollController.scrollToEnd({
-        behavior: userScrollBehavior()
-      });
+    if (!virtualScrollController) {
       return;
     }
-    const geometry = readTimelineGeometry(timeline);
-    const maxScrollTop = geometry.maxScrollTop;
-    setTimelineScrollTopWithUserTransition(timeline, maxScrollTop);
-    writeTimelineScrollAnchor({
-      conversationId: activeConversationId,
-      scrollHeight: geometry.scrollHeight,
-      scrollTop: maxScrollTop,
-      clientHeight: geometry.clientHeight
+    dispatchFollowEnd("scroll-to-end-requested");
+    userScrollDirectionRef.current = null;
+    virtualScrollController.scrollToEnd({
+      behavior: userScrollBehavior()
     });
-    setIsTimelineScrolledToTop(
-      maxScrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
-    );
   }, [
     dispatchFollowEnd,
     isVisible,
     timelineConversationId,
     viewModel.rail.activeConversationId,
-    virtualScrollControllerRef,
-    writeTimelineScrollAnchor
+    virtualScrollControllerRef
   ]);
 
   return {
     followEndMode,
-    isTimelineScrolledToBottom: followEndMode === "following",
+    isTimelineScrolledToBottom,
     isTimelineScrolledToTop,
     setVirtualScrollController,
     scrollTimelineToBottom

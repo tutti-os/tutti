@@ -7317,6 +7317,7 @@ button.agent-gui-node__conversation-section-toggle:hover
       var(--agent-message-locator-hit-size) / 2 -
       var(--agent-message-locator-inline-shift)
   );
+  z-index: 1;
   width: var(--agent-message-locator-hit-size);
   height: 100%;
   overflow-x: hidden;
@@ -7325,7 +7326,6 @@ button.agent-gui-node__conversation-section-toggle:hover
   pointer-events: auto;
   scrollbar-width: none;
   cursor: pointer;
-  z-index: 1;
 }
 
 .agent-gui-message-locator__viewport::-webkit-scrollbar {
@@ -7338,14 +7338,20 @@ button.agent-gui-node__conversation-section-toggle:hover
   height: var(--agent-message-locator-height);
 }
 
-.agent-gui-message-locator__track-segment {
+.agent-gui-message-locator__content::before {
   position: absolute;
-  top: var(--agent-message-locator-segment-position);
+  top: var(--agent-message-locator-center-offset);
+  bottom: var(--agent-message-locator-center-offset);
   left: calc(var(--agent-message-locator-hit-size) / 2);
   width: 1px;
-  height: 8px;
-  transform: translate(-50%, -50%);
-  background: var(--line-1, var(--nexight-line-1));
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0 11px,
+    var(--line-1, var(--nexight-line-1)) 11px 19px,
+    transparent 19px 30px
+  );
+  content: "";
+  transform: translateX(-50%);
 }
 
 .agent-gui-message-locator__tick {
@@ -7357,12 +7363,12 @@ button.agent-gui-node__conversation-section-toggle:hover
   height: var(--agent-message-locator-hit-size);
   padding: 0;
   border: 0;
-  place-items: center;
   background: transparent;
   color: inherit;
   transform: translateY(-50%);
   cursor: pointer;
   pointer-events: auto;
+  place-items: center;
   touch-action: manipulation;
   -webkit-appearance: none;
   appearance: none;
@@ -7387,7 +7393,7 @@ button.agent-gui-node__conversation-section-toggle:hover
 
 .agent-gui-message-locator__tick:hover .agent-gui-message-locator__dot,
 .agent-gui-message-locator__tick:focus-visible .agent-gui-message-locator__dot,
-.agent-gui-message-locator__tick[data-selected="true"]
+.agent-gui-message-locator__tick[data-active="true"]
   .agent-gui-message-locator__dot {
   transform: scale(1.6667);
 }
@@ -7400,7 +7406,9 @@ button.agent-gui-node__conversation-section-toggle:hover
 }
 
 .agent-gui-message-locator__tick:hover .agent-gui-message-locator__dot,
-.agent-gui-message-locator__tick:focus-visible .agent-gui-message-locator__dot {
+.agent-gui-message-locator__tick:focus-visible .agent-gui-message-locator__dot,
+.agent-gui-message-locator__tick[data-active="true"]
+  .agent-gui-message-locator__dot {
   border-width: 2px;
   border-color: var(--text-primary, var(--tutti-text-primary));
   background: transparent;
@@ -7411,9 +7419,13 @@ button.agent-gui-node__conversation-section-toggle:hover
   background: var(--tutti-purple);
 }
 
+.agent-gui-message-locator__tick[data-unread-agent-response="true"][data-selected="true"]
+  .agent-gui-message-locator__dot,
 .agent-gui-message-locator__tick[data-unread-agent-response="true"]:hover
   .agent-gui-message-locator__dot,
 .agent-gui-message-locator__tick[data-unread-agent-response="true"]:focus-visible
+  .agent-gui-message-locator__dot,
+.agent-gui-message-locator__tick[data-unread-agent-response="true"][data-active="true"]
   .agent-gui-message-locator__dot {
   border-width: 2px;
   border-color: var(--tutti-purple);
@@ -7433,7 +7445,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   padding: 16px;
   border: 1px solid
     color-mix(in srgb, var(--line-2, var(--tutti-line-2)) 72%, transparent);
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(
     --background-fronted,
     var(--surface-1, var(--tutti-surface-1))
@@ -7482,7 +7494,12 @@ button.agent-gui-node__conversation-section-toggle:hover
   color: var(--text-primary, var(--tutti-text-primary));
 }
 
+.agent-gui-message-locator__panel-item[data-selected="true"] {
+  color: var(--text-primary, var(--tutti-text-primary));
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .agent-gui-message-locator__dot,
   .agent-gui-message-locator__panel,
   .agent-gui-message-locator__panel-item {
     transition: none;
@@ -7502,23 +7519,18 @@ button.agent-gui-node__conversation-section-toggle:hover
 }
 
 .agent-gui-transcript-virtual {
-  position: relative;
   width: 100%;
   min-width: 0;
   contain: layout;
   overflow-anchor: none;
 }
 
+.agent-gui-transcript-virtual-window,
 .agent-gui-transcript-virtual-item {
-  position: absolute;
-  top: 0;
-  left: 0;
   display: grid;
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  padding-bottom: 16px;
-  will-change: transform;
 }
 
 .agent-gui-transcript-virtual-item
@@ -7564,6 +7576,19 @@ button.agent-gui-node__conversation-section-toggle:hover
   scroll-padding-bottom: calc(
     120px + var(--agent-gui-bottom-dock-safe-area, 0px)
   );
+}
+
+.agent-gui-node__timeline-bottom-origin {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 0;
+  overflow-anchor: none;
+}
+
+.agent-gui-transcript-response-spacer {
+  flex: none;
+  min-height: 0;
+  pointer-events: none;
 }
 
 .agent-gui-node__timeline-with-composer.agent-gui-node__timeline--scrolled-from-top {

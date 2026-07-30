@@ -10,7 +10,6 @@ import type {
   AgentTranscriptVirtualScrollController
 } from "../../../shared/agentConversation/components/AgentTranscriptView";
 import type { AgentTranscriptEditRetryControl } from "../../../shared/agentConversation/components/useAgentTranscriptEditRetryProjection";
-import { userScrollBehavior } from "./agentGUIDetailScrollHelpers";
 import type { AgentConversationFollowEndMode } from "../../../shared/agentConversation/agentConversationFollowEndController";
 
 const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
@@ -26,6 +25,7 @@ interface AgentGUIConversationTimelinePaneProps {
     visible: boolean
   ) => void;
   isLoading: boolean;
+  isConversationHistoryComplete: boolean;
   isLoadingOlderMessages: boolean;
   isVisible: boolean;
   followEndMode: AgentConversationFollowEndMode;
@@ -55,6 +55,7 @@ export const AgentGUIConversationTimelinePane = memo(
     turnAttachmentLocatorRef,
     onTurnAttachmentVisibilityChange,
     isLoading,
+    isConversationHistoryComplete,
     isLoadingOlderMessages,
     isVisible,
     followEndMode,
@@ -84,6 +85,7 @@ export const AgentGUIConversationTimelinePane = memo(
         ) : null}
         <AgentConversationFlow
           conversation={conversation}
+          isConversationHistoryComplete={isConversationHistoryComplete}
           followEndMode={followEndMode}
           editRetry={editRetry}
           turnAttachments={turnAttachments}
@@ -107,26 +109,3 @@ export const AgentGUIConversationTimelinePane = memo(
     );
   }
 );
-
-export function setTimelineScrollTopInstantly(
-  element: HTMLElement,
-  top: number
-): void {
-  // Timeline anchoring runs for high-frequency streaming updates. Smooth scrolling
-  // queues animations that can overlap with incoming layout commits and make the transcript flicker.
-  element.scrollTop = top;
-}
-
-export function setTimelineScrollTopWithUserTransition(
-  element: HTMLElement,
-  top: number
-): void {
-  if (typeof element.scrollTo === "function") {
-    element.scrollTo({
-      top,
-      behavior: userScrollBehavior()
-    });
-    return;
-  }
-  element.scrollTop = top;
-}

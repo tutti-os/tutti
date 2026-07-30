@@ -42,6 +42,27 @@ describe("buildAgentTranscriptTurnGroups", () => {
     ]);
     expect(groups[1]?.turnId).toBeNull();
   });
+
+  it("keeps consecutive turnless controls inside the same surrounding Turn", () => {
+    const rows = [
+      row("turn-1"),
+      goalControlRow("clear"),
+      goalControlRow("set"),
+      row("turn-1")
+    ];
+    const groups = buildAgentTranscriptTurnGroups(
+      rows,
+      rows.map(transcriptRowKey)
+    );
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.rows.map(({ row: item }) => item.id)).toEqual([
+      "row:turn-1:content",
+      "goal-control:clear",
+      "goal-control:set",
+      "row:turn-1:content"
+    ]);
+  });
 });
 
 describe("findTurnDividerRowIndexes", () => {
@@ -106,13 +127,15 @@ function row(
   };
 }
 
-function goalControlRow(): AgentTranscriptRowVM {
+function goalControlRow(
+  action: "clear" | "set" = "clear"
+): AgentTranscriptRowVM {
   return {
     kind: "goal-control",
-    id: "goal-control:clear",
+    id: `goal-control:${action}`,
     turnId: null,
-    action: "clear",
-    body: "/goal clear",
+    action,
+    body: `/goal ${action}`,
     occurredAtUnixMs: 2
   };
 }

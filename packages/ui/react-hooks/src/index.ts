@@ -12,3 +12,7 @@ export {
 } from "./useComposedInputValue.ts";
 export { useExternalStoreSelector } from "./useExternalStoreSelector.ts";
 export { useExternalStoreSnapshot } from "./useExternalStoreSnapshot.ts";
+export {
+  useElementResizeObserver,
+  type ElementResizeObservation
+} from "./useElementResizeObserver.ts";

@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { createAgentConversationFollowEndController } from "./agentConversationFollowEndController";
+import {
+  createAgentConversationFollowEndController,
+  isAgentConversationViewportAtEnd
+} from "./agentConversationFollowEndController";
+
+describe("isAgentConversationViewportAtEnd", () => {
+  it.each([
+    [0, true],
+    [24, true],
+    [24.01, false]
+  ])("classifies a %spx bottom distance as %s", (distance, expected) => {
+    expect(isAgentConversationViewportAtEnd(distance)).toBe(expected);
+  });
+});
 
 describe("createAgentConversationFollowEndController", () => {
   it("starts by following the conversation end", () => {

@@ -19,7 +19,6 @@ export interface AgentGUIDetailScrollInput {
   showTimelineSkeleton: boolean;
   submittedPromptScrollConversationRef: MutableRefObject<string | null>;
   timelineConversationId: string | null;
-  timelineContentRef: RefObject<HTMLDivElement | null>;
   timelineRef: RefObject<HTMLDivElement | null>;
   timelineScrollAnchorRef: MutableRefObject<TimelineScrollAnchor | null>;
   virtualScrollControllerRef: RefObject<AgentTranscriptVirtualScrollController | null>;

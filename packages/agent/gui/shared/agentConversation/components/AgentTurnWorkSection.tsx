@@ -1,4 +1,4 @@
-import { useCallback, useRef, type JSX, type ReactNode } from "react";
+import type { JSX, ReactNode } from "react";
 import { Button } from "@tutti-os/ui-system/components";
 import { ChevronDownIcon } from "@tutti-os/ui-system/icons";
 import { useTranslation } from "../../../i18n/index";
@@ -19,11 +19,6 @@ interface AgentTurnWorkSectionProps {
   turnKey: string;
   showDivider?: boolean;
   disclosureStore: AgentTurnDisclosureStore;
-  onDisclosureMotionChange?: (
-    turnKey: string,
-    active: boolean,
-    anchorElement?: HTMLElement | null
-  ) => void;
   footer?: ReactNode;
   renderRow: (
     row: AgentTurnWorkSectionRow["row"],
@@ -38,7 +33,6 @@ export function AgentTurnWorkSection({
   turnKey,
   showDivider = false,
   disclosureStore,
-  onDisclosureMotionChange,
   renderRow,
   footer
 }: AgentTurnWorkSectionProps): JSX.Element {
@@ -51,42 +45,6 @@ export function AgentTurnWorkSection({
   const toggleLabel = expanded
     ? t("agentHost.agentGui.collapseTurnWork")
     : t("agentHost.agentGui.expandTurnWork");
-  const pendingRevealTransitionsRef = useRef(0);
-  const disclosureMotionActiveRef = useRef(false);
-  const collapsibleSectionCount = model.sections.reduce(
-    (count, section) =>
-      count + (section.kind === "work" && model.collapseEligible ? 1 : 0),
-    0
-  );
-  const finishDisclosureMotion = useCallback(() => {
-    if (!disclosureMotionActiveRef.current) {
-      return;
-    }
-    disclosureMotionActiveRef.current = false;
-    pendingRevealTransitionsRef.current = 0;
-    onDisclosureMotionChange?.(turnKey, false);
-  }, [onDisclosureMotionChange, turnKey]);
-  const startDisclosureMotion = useCallback(
-    (anchorElement: HTMLElement | null) => {
-      pendingRevealTransitionsRef.current = collapsibleSectionCount;
-      if (collapsibleSectionCount === 0) {
-        return;
-      }
-      disclosureMotionActiveRef.current = true;
-      onDisclosureMotionChange?.(turnKey, true, anchorElement);
-    },
-    [collapsibleSectionCount, onDisclosureMotionChange, turnKey]
-  );
-  const handleRevealTransitionEnd = useCallback(() => {
-    if (!disclosureMotionActiveRef.current) {
-      return;
-    }
-    pendingRevealTransitionsRef.current -= 1;
-    if (pendingRevealTransitionsRef.current <= 0) {
-      finishDisclosureMotion();
-    }
-  }, [finishDisclosureMotion]);
-
   return (
     <div className="grid min-w-0" data-agent-turn-work-section={turnKey}>
       {showDivider ? (
@@ -114,12 +72,7 @@ export function AgentTurnWorkSection({
             aria-label={toggleLabel}
             aria-expanded={expanded}
             title={toggleLabel}
-            onClick={(event) => {
-              startDisclosureMotion(
-                event.currentTarget.closest<HTMLElement>(
-                  "[data-agent-turn-work-header]"
-                )
-              );
+            onClick={() => {
               disclosureStore.setExpandedOverride(disclosureKey, !expanded);
             }}
           >
@@ -155,7 +108,6 @@ export function AgentTurnWorkSection({
             key={`work:${firstRow?.renderKey ?? firstRow?.row.id ?? sectionIndex}`}
             expanded={expanded}
             innerClassName="grid gap-4 pt-4"
-            onHeightTransitionEnd={handleRevealTransitionEnd}
           >
             {content}
           </CollapsibleReveal>

@@ -165,6 +165,8 @@ LIMIT 1;
     ? `UPDATE workspace_agent_messages
 SET payload_json = json_set(
       payload_json,
+      '$.displayPrompt',
+      '${sqlString(richTextFixture)}',
       '$.text',
       '${sqlString(richTextFixture)}'
     ),
@@ -204,13 +206,53 @@ WHERE workspace_id = '${sqlString(workspaceID)}'
 ${richTextFixtureUpdate}
 `
   );
+  const verifiedRichTextRows = options.richTextFixture
+    ? await context.sqliteJSON(
+        context.databasePath,
+        `
+SELECT json_extract(payload_json, '$.displayPrompt') AS displayPrompt,
+       json_extract(payload_json, '$.text') AS text
+FROM workspace_agent_messages
+WHERE workspace_id = '${sqlString(workspaceID)}'
+  AND agent_session_id = '${sqlString(candidate.sessionID)}'
+  AND deleted_at_unix_ms = 0
+  AND role = 'user'
+  AND kind = 'text'
+ORDER BY version ASC, id ASC;
+`
+      )
+    : [];
+  if (
+    options.richTextFixture &&
+    (verifiedRichTextRows.length !== Number(candidate.userTextMessageCount) ||
+      verifiedRichTextRows.some(
+        (row) =>
+          row.displayPrompt !== richTextFixture || row.text !== richTextFixture
+      ))
+  ) {
+    throw new Error(
+      "virtualized-scroll-locator failed to verify the persisted rich-text fixture"
+    );
+  }
+  const verifiedMentionCounts = verifiedRichTextRows.map(
+    (row) => row.displayPrompt.match(/mention:\/\/agent-target\//g)?.length ?? 0
+  );
+  const verifiedParagraphCounts = verifiedRichTextRows.map(
+    (row) => row.displayPrompt.split("\n").length
+  );
   return {
     data: {
       sessionID: candidate.sessionID,
       turnCount: Number(candidate.turnCount),
-      richTextMessageCount: Number(candidate.userTextMessageCount),
-      richTextMentionsPerMessage: options.richTextFixture ? 3 : 0,
-      richTextParagraphsPerMessage: options.richTextFixture ? 8 : 0,
+      richTextMessageCount: options.richTextFixture
+        ? verifiedRichTextRows.length
+        : Number(candidate.userTextMessageCount),
+      richTextMentionsPerMessage: options.richTextFixture
+        ? Math.min(...verifiedMentionCounts)
+        : 0,
+      richTextParagraphsPerMessage: options.richTextFixture
+        ? Math.min(...verifiedParagraphCounts)
+        : 0,
       workspaceID
     },
     environment: fixtureEnvironment

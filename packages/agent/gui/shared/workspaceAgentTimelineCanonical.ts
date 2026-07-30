@@ -53,6 +53,7 @@ export function buildCanonicalWorkspaceAgentDetailView({
   workspaceRoot = null
 }: BuildWorkspaceAgentSessionDetailInput): WorkspaceAgentSessionDetailViewModel {
   const turns = new Map<string, WorkspaceAgentSessionDetailTurn>();
+  const toolCallIndexes = new Map<string, ToolCallBuildIndex>();
   const goalControls: WorkspaceAgentSessionDetailGoalControl[] = [];
   const recentUserMessages = new Map<
     string,
@@ -144,7 +145,11 @@ export function buildCanonicalWorkspaceAgentDetailView({
       if (shouldSuppressToolCall(item, suppressedToolCallIds)) {
         continue;
       }
-      upsertToolCall(turn, item);
+      upsertToolCall(
+        turn,
+        item,
+        getToolCallBuildIndex(toolCallIndexes, turnId)
+      );
       continue;
     }
 
@@ -309,54 +314,78 @@ function itemId(item: WorkspaceAgentActivityTimelineItem): string {
   return seq > 0 ? `seq:${seq}` : `id:${item.id}`;
 }
 
+type ToolCallAgentItem = Extract<
+  WorkspaceAgentSessionDetailAgentItem,
+  { kind: "tool-calls" }
+>;
+
+interface ToolCallBuildIndex {
+  agentItemByCallId: Map<
+    string,
+    { entry: ToolCallAgentItem; toolCallIndex: number }
+  >;
+  failedCallIds: Set<string>;
+  toolCallIndexById: Map<string, number>;
+}
+
+function getToolCallBuildIndex(
+  indexes: Map<string, ToolCallBuildIndex>,
+  turnId: string
+): ToolCallBuildIndex {
+  const existing = indexes.get(turnId);
+  if (existing) return existing;
+  const created: ToolCallBuildIndex = {
+    agentItemByCallId: new Map(),
+    failedCallIds: new Set(),
+    toolCallIndexById: new Map()
+  };
+  indexes.set(turnId, created);
+  return created;
+}
+
 function upsertToolCall(
   turn: WorkspaceAgentSessionDetailTurn,
-  item: WorkspaceAgentActivityTimelineItem
+  item: WorkspaceAgentActivityTimelineItem,
+  index: ToolCallBuildIndex
 ): void {
   const call = toolCallView(item);
-  const existingIndex = turn.toolCalls.findIndex(
-    (existing) => existing.id === call.id
-  );
-  if (existingIndex >= 0) {
+  const existingIndex = index.toolCallIndexById.get(call.id);
+  let resolvedCall = call;
+  if (existingIndex !== undefined) {
     const existing = turn.toolCalls[existingIndex];
     if (!existing) {
       return;
     }
-    turn.toolCalls[existingIndex] = mergeToolCallDetail(existing, call);
+    resolvedCall = mergeToolCallDetail(existing, call);
+    turn.toolCalls[existingIndex] = resolvedCall;
   } else {
     turn.toolCalls.push(call);
+    index.toolCallIndexById.set(call.id, turn.toolCalls.length - 1);
+  }
+  if (resolvedCall.statusKind === "failed") {
+    index.failedCallIds.add(call.id);
+  } else {
+    index.failedCallIds.delete(call.id);
   }
   turn.toolCallCount = turn.toolCalls.length;
-  turn.hasFailedToolCall = turn.toolCalls.some(
-    (existing) => existing.statusKind === "failed"
-  );
-  upsertToolCallAgentItem(turn, call, itemId(item));
+  turn.hasFailedToolCall = index.failedCallIds.size > 0;
+  upsertToolCallAgentItem(turn, resolvedCall, itemId(item), index);
 }
 
 function upsertToolCallAgentItem(
   turn: WorkspaceAgentSessionDetailTurn,
   call: WorkspaceAgentSessionDetailToolCall,
-  sourceId: string
+  sourceId: string,
+  index: ToolCallBuildIndex
 ): void {
-  for (const entry of turn.agentItems) {
-    if (entry.kind !== "tool-calls") {
-      continue;
-    }
-    const existingIndex = entry.toolCalls.findIndex(
-      (existing) => existing.id === call.id
-    );
-    if (existingIndex >= 0) {
-      const existing = entry.toolCalls[existingIndex];
-      if (!existing) {
-        continue;
-      }
-      entry.toolCalls[existingIndex] = mergeToolCallDetail(existing, call);
-      refreshToolCallAgentItem(entry);
-      return;
-    }
+  const existingAgentItem = index.agentItemByCallId.get(call.id);
+  if (existingAgentItem) {
+    existingAgentItem.entry.toolCalls[existingAgentItem.toolCallIndex] = call;
+    refreshToolCallAgentItem(existingAgentItem.entry);
+    return;
   }
 
-  const entry: WorkspaceAgentSessionDetailAgentItem = {
+  const entry: ToolCallAgentItem = {
     kind: "tool-calls",
     id: `tools:${sourceId}`,
     toolCalls: [call],
@@ -364,6 +393,7 @@ function upsertToolCallAgentItem(
     hasFailedToolCall: call.statusKind === "failed"
   };
   turn.agentItems.push(entry);
+  index.agentItemByCallId.set(call.id, { entry, toolCallIndex: 0 });
 }
 
 function refreshToolCallAgentItem(

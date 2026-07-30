@@ -188,6 +188,7 @@ const styles = {
   rowMeta: "agent-gui-node__row-meta",
   shell: "agent-gui-node__shell",
   timeline: "agent-gui-node__timeline",
+  timelineBottomOrigin: "agent-gui-node__timeline-bottom-origin",
   timelineCentered: "agent-gui-node__timeline-centered",
   timelineScrolledFromTop: "agent-gui-node__timeline--scrolled-from-top",
   transcriptSkeleton: "agent-gui-node__transcript-skeleton",
