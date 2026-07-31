@@ -241,6 +241,9 @@ func validTurnMutation(mutation Mutation) bool {
 	if turn.RootProviderTurnOutcome != nil && !canonical.IsKnownTurnOutcome(*turn.RootProviderTurnOutcome) {
 		return false
 	}
+	if !jsonObject(turn.ProviderTurnBindingJSON) {
+		return false
+	}
 	return nonnegative(turn.StartedAtUnixMS, turn.CreatedAtUnixMS, turn.UpdatedAtUnixMS, turn.RootProviderTurnUpdatedAtUnixMS) &&
 		(turn.SettledAtUnixMS == nil || *turn.SettledAtUnixMS >= 0)
 }

@@ -54,6 +54,15 @@ func TestMigratedTuttiAgentDescriptorRequiresRefreshCapableVersion(t *testing.T)
 	if descriptor.Status.MinVersion != TuttiAgentMinVersion {
 		t.Fatalf("Status.MinVersion = %q, want %q", descriptor.Status.MinVersion, TuttiAgentMinVersion)
 	}
+	if !descriptor.Runtime.NativeSessionFork {
+		t.Fatal("Runtime.NativeSessionFork = false, want true")
+	}
+	if descriptor.Runtime.AppServerFork != (AppServerForkDescriptor{
+		UserAgentBrand:        "tutti-agent",
+		ThroughTurnMinVersion: TuttiAgentThroughTurnForkMinVersion,
+	}) {
+		t.Fatalf("Runtime.AppServerFork = %#v", descriptor.Runtime.AppServerFork)
+	}
 	if descriptor.Status.StaticSpecResolverKind != StaticSpecResolverKindManagedNode {
 		t.Fatalf(
 			"Status.StaticSpecResolverKind = %q, want %q",
@@ -155,6 +164,12 @@ func TestMigratedCodexDescriptorIsComplete(t *testing.T) {
 	if descriptor.Runtime.Kind != RuntimeKindCodexAppServer {
 		t.Fatalf("Runtime.Kind = %q", descriptor.Runtime.Kind)
 	}
+	if descriptor.Runtime.AppServerFork != (AppServerForkDescriptor{
+		UserAgentBrand:        "codex",
+		ThroughTurnMinVersion: CodexThroughTurnForkMinVersion,
+	}) {
+		t.Fatalf("Runtime.AppServerFork = %#v", descriptor.Runtime.AppServerFork)
+	}
 	if descriptor.Runtime.Name != "codex-app-server" {
 		t.Fatalf("Runtime.Name = %q", descriptor.Runtime.Name)
 	}
@@ -181,6 +196,10 @@ func TestMigratedCodexDescriptorIsComplete(t *testing.T) {
 	}
 	if descriptor.Status.MinVersion != CodexMinVersion {
 		t.Fatalf("Status.MinVersion = %q", descriptor.Status.MinVersion)
+	}
+	if descriptor.Status.AuthCommandRunnerKind != AuthCommandRunnerKindCodexAppServerAccount ||
+		!slices.Equal(descriptor.Status.AuthStatusCommand, []string{"-c", `service_tier="fast"`, "app-server"}) {
+		t.Fatalf("Status auth probe = %q / %#v", descriptor.Status.AuthCommandRunnerKind, descriptor.Status.AuthStatusCommand)
 	}
 	if descriptor.Status.Install.PackageName != "@openai/codex" ||
 		descriptor.Status.Install.BinaryName != "codex" ||

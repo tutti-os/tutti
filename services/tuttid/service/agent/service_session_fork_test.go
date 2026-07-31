@@ -671,6 +671,13 @@ func (*serviceSessionForkOperationRuntime) ResolveSessionFork(
 	}, nil
 }
 
+func (*serviceSessionForkOperationRuntime) CanForkProviderTurn(
+	context.Context,
+	agenthost.RuntimeProviderTurnForkabilityInput,
+) (bool, error) {
+	return true, nil
+}
+
 func (r *serviceSessionForkOperationRuntime) ForkSession(
 	context.Context,
 	agenthost.RuntimeSessionForkInput,
@@ -712,7 +719,8 @@ func (*serviceSessionForkOperationStore) CheckSessionForkThroughTurn(
 		},
 		Turn: storesqlite.Turn{
 			TurnID: throughTurnID, Phase: storesqlite.TurnPhaseSettled,
-			RootProviderTurnID: "provider-turn",
+			RootProviderTurnID:      "provider-turn",
+			ProviderTurnBindingJSON: []byte(`{"schemaVersion":1}`),
 		},
 	}, true, nil
 }
@@ -728,7 +736,8 @@ func (s *serviceSessionForkOperationStore) PrepareSessionFork(
 		TargetAgentSessionID:    input.TargetAgentSessionID,
 		SourceProviderSessionID: "provider-source",
 		SourceTurnID:            input.SourceTurnID, SourceProviderTurnID: "provider-turn",
-		DriverKind: input.DriverKind, DriverVersion: input.DriverVersion,
+		SourceProviderTurnBindingJSON: []byte(`{"schemaVersion":1}`),
+		DriverKind:                    input.DriverKind, DriverVersion: input.DriverVersion,
 		Status: storesqlite.SessionForkStatusPrepared,
 	}
 	return s.operation, true, nil

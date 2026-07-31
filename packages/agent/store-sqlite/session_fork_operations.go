@@ -297,10 +297,13 @@ WHERE workspace_id = ? AND target_agent_session_id = ?
 		}
 		if op.StateBindingMode == "provider_owned" {
 			turn.RootProviderTurnID = ""
-			turn.ProviderCheckpointMessageID = ""
+			turn.ProviderTurnBindingJSON = nil
 			if binding, ok := targetProviderTurnBindings[item.Turn.TurnID]; ok {
 				turn.RootProviderTurnID = binding.ProviderTurnID
-				turn.ProviderCheckpointMessageID = binding.CheckpointMessageID
+				turn.ProviderTurnBindingJSON = append(
+					[]byte(nil),
+					binding.ProviderTurnBindingJSON...,
+				)
 			}
 		}
 		if err := insertForkedTurnTx(ctx, tx, workspaceID, op.TargetAgentSessionID, turn); err != nil {
@@ -487,7 +490,7 @@ func sessionForkTargetProviderTurnBindings(
 	}
 	sourceTurnIDs := make([]string, 0, len(snapshot.Turns))
 	for _, item := range snapshot.Turns {
-		if !HasUsableProviderTurnBinding(item.Turn) {
+		if !HasPersistedProviderTurnBinding(item.Turn) {
 			continue
 		}
 		sourceTurnIDs = append(sourceTurnIDs, item.Turn.TurnID)
@@ -512,7 +515,7 @@ func sessionForkTargetProviderTurnBindings(
 	boundaryBinding, ok := result[op.SourceTurnID]
 	if !ok ||
 		strings.TrimSpace(boundaryBinding.ProviderTurnID) == "" ||
-		strings.TrimSpace(boundaryBinding.CheckpointMessageID) == "" {
+		len(boundaryBinding.ProviderTurnBindingJSON) == 0 {
 		return nil, errors.Join(
 			ErrSessionForkTurnState,
 			errors.New("provider-owned session fork omitted the canonical boundary binding"),

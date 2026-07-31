@@ -64,6 +64,14 @@ func (c *Controller) confirmProviderDispatchDurable(
 		turnID,
 		receipt.ProviderTurnID,
 	)
+	accepted.Payload.ProviderTurnBindingJSON = c.providerTurnBindingJSON(
+		ctx,
+		session,
+		ProviderTurnBindingWriteInput{
+			Kind:           ProviderTurnBindingWriteStarted,
+			ProviderTurnID: receipt.ProviderTurnID,
+		},
+	)
 	accepted.Payload.Metadata = map[string]any{
 		"acceptanceSource": string(receipt.Source),
 	}

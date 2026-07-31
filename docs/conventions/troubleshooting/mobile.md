@@ -220,6 +220,36 @@ dev.tutti.mobile` and inspect a narrow logcat window for the Go fatal message.
 - **References:** `packages/device-link/mobile/link.go`,
   `apps/mobile/android/app/src/main/java/dev/tutti/mobile/DeviceLinkModule.kt`
 
+## Mobile stays connected after a long lock-screen interval but sends fail
+
+- **Symptom:** After Mobile remains locked or backgrounded for at least the
+  DeviceLink grace interval, the previous conversation is still visible but the
+  next command fails. Returning to the computer list and connecting again
+  restores service.
+- **Quick checks:** Compare `application.lifecycle_changed` and
+  `device_connection.phase_changed` diagnostics with Native `TuttiDeviceLink`
+  logs. If Native closed the link after its grace deadline while JavaScript
+  never published its own delayed disconnect, verify whether the foreground
+  transition used elapsed background time. Confirm the workspace runtime is
+  blocked until a replacement live lane reports ready.
+- **Root cause:** Native lifecycle handlers continue running while React Native
+  timers may be suspended. When both layers independently scheduled the same
+  background deadline, Native closed the real link but JavaScript canceled its
+  still pending timer on foreground and resumed a stale connected workspace.
+- **Fix:** Keep the close deadline Native-owned. Record background entry time in
+  the application service and decide short resume versus full reconnect from
+  elapsed time on foreground. Project one application-scoped connection phase,
+  retain the paused workspace until a hydrated replacement is ready, and let a
+  root overlay render that phase without owning recovery logic.
+- **Validation:** Cover foreground before and after the grace boundary, an
+  active live-stream loss, failed reconnect plus explicit retry, and generation
+  fencing when the app backgrounds during recovery. On a physical device, lock
+  beyond the deadline, unlock, observe reconnect/synchronize presentation, and
+  send from the original conversation without revisiting the computer list.
+- **References:**
+  `apps/mobile/src/services/mobileApplicationService.ts`,
+  `apps/mobile/android/app/src/main/java/dev/tutti/mobile/DeviceLinkModule.kt`
+
 ## iOS pod install intermittently reports pathname contains null byte
 
 - **Symptom:** `pnpm --filter @tutti-os/mobile ios:pods` downloads and installs

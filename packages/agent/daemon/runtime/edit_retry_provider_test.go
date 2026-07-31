@@ -137,7 +137,7 @@ func TestCodexProviderTurnBindingRecoveryRequiresOneExactOpaqueToken(t *testing.
 	if err != nil ||
 		recovered.ProviderSessionID != session.ProviderSessionID ||
 		recovered.ProviderTurnID != "provider-turn-2" ||
-		recovered.ProviderCheckpointMessageID != "" {
+		string(recovered.ProviderTurnBindingJSON) != `{"schemaVersion":1}` {
 		t.Fatalf("recovered binding = %#v error=%v", recovered, err)
 	}
 	ambiguousHistory := append(

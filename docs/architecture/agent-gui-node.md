@@ -925,6 +925,24 @@ foreground/background pause-resume around the shared controller. Native hosts
 also own their renderer, localized status projection, and interaction layout;
 those host concerns must not leak back into the shared query controller.
 
+Mobile DeviceLink recovery is application-scoped rather than screen-scoped.
+`MobileApplicationService` is the single owner of the paired-device connection
+phase (`idle`, `reconnecting`, `synchronizing`, `connected`, or `failed`).
+Native owns the actual background-grace link close; JavaScript records the
+background entry time and uses elapsed time on foreground instead of relying on
+a timer that the runtime may suspend. An unexpected live-lane disconnect first
+allows one bounded stream retry, then rebuilds DeviceLink if the stream remains
+offline. Runtime commands stay blocked until the replacement live lane reports
+ready.
+
+Recovery retains the current device, workspace, navigation, and drafts behind a
+global blocking presentation. A replacement workspace scope is started and
+authoritatively hydrated before it atomically replaces the paused scope; a
+failed candidate cannot clear the visible conversation. The App-root overlay
+only projects the service phase and exposes retry or explicit return-to-device
+commands. It does not own timers, transport checks, retry policy, or copied
+connection state.
+
 Cross-platform hosts may reuse the DOM-free canonical Rail summary projection
 from `@tutti-os/agent-gui/conversation-rail-projection`. They must still obtain
 ordered membership, project labels, totals, and cursors from the authoritative

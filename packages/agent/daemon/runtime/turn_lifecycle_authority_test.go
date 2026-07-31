@@ -260,7 +260,7 @@ func TestGoalRootProviderStartProjectsAtomicCanonicalTurn(t *testing.T) {
 		RoomID: "room-1", AgentSessionID: "agent-1", Provider: ProviderClaudeCode,
 		ProviderSessionID: "claude-1",
 	}
-	event := claudeSDKRootProviderTurnStartedEvent(session, "goal-turn-1", "provider-turn-1", map[string]any{
+	event := new(ClaudeCodeSDKAdapter).claudeSDKRootProviderTurnStartedEvent(session, "goal-turn-1", "provider-turn-1", map[string]any{
 		"turnOrigin":            "goal_arm",
 		"sourceGoalOperationId": "goal-op-1",
 		"sourceGoalRevision":    int64(4),
@@ -283,7 +283,7 @@ func TestOrdinaryRootProviderStartCannotCreateCanonicalTurn(t *testing.T) {
 	t.Parallel()
 
 	session := Session{RoomID: "room-1", AgentSessionID: "agent-1", Provider: ProviderClaudeCode}
-	event := claudeSDKRootProviderTurnStartedEvent(session, "missing-turn", "provider-turn-1", map[string]any{"adapter": "claude"})
+	event := new(ClaudeCodeSDKAdapter).claudeSDKRootProviderTurnStartedEvent(session, "missing-turn", "provider-turn-1", map[string]any{"adapter": "claude"})
 	event = stampAdapterTurnLifecycleEvents([]activityshared.Event{event}, func() uint64 { return 1 })[0]
 	patch, ok := statePatchFromSessionEvent(canonical.EventSource{Provider: ProviderClaudeCode}, event, session.AgentSessionID, 100)
 	if !ok || patch.RootProviderTurn == nil {
@@ -298,7 +298,7 @@ func TestRootProviderStartWaitsForDurableCanonicalSettlement(t *testing.T) {
 	t.Parallel()
 
 	session := Session{RoomID: "room-1", AgentSessionID: "agent-1", Provider: ProviderClaudeCode}
-	started := claudeSDKRootProviderTurnStartedEvent(session, "goal-turn-1", "provider-turn-1", map[string]any{
+	started := new(ClaudeCodeSDKAdapter).claudeSDKRootProviderTurnStartedEvent(session, "goal-turn-1", "provider-turn-1", map[string]any{
 		"turnOrigin":            "goal_arm",
 		"sourceGoalOperationId": "goal-op-1",
 		"sourceGoalRevision":    int64(1),

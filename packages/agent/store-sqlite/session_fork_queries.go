@@ -43,7 +43,7 @@ func getSessionForkOperationWithSnapshotTx(ctx context.Context, tx *sql.Tx, work
 SELECT operation_id, workspace_id, request_id, request_hash,
        source_agent_session_id, target_agent_session_id,
        source_provider_session_id, source_turn_id, source_provider_turn_id,
-       COALESCE(source_provider_checkpoint_message_id, ''),
+       source_provider_turn_binding_json,
        COALESCE(target_turn_id, ''),
        point_kind, driver_kind, driver_version, status,
        COALESCE(target_provider_session_id, ''),
@@ -70,12 +70,13 @@ func scanSessionForkOperation(scanner rowScanner) (SessionForkOperation, error) 
 
 func scanSessionForkOperationWithExtra(scanner rowScanner, extra ...any) (SessionForkOperation, error) {
 	var op SessionForkOperation
+	var sourceProviderTurnBindingJSON string
 	var targetProviderTurnBindingsJSON string
 	destinations := []any{
 		&op.OperationID, &op.WorkspaceID, &op.RequestID, &op.RequestHash,
 		&op.SourceAgentSessionID, &op.TargetAgentSessionID,
 		&op.SourceProviderSessionID, &op.SourceTurnID, &op.SourceProviderTurnID,
-		&op.SourceProviderCheckpointMessageID,
+		&sourceProviderTurnBindingJSON,
 		&op.TargetTurnID,
 		&op.PointKind, &op.DriverKind, &op.DriverVersion, &op.Status, &op.TargetProviderSessionID,
 		&op.TargetTitle, &targetProviderTurnBindingsJSON,
@@ -88,6 +89,9 @@ func scanSessionForkOperationWithExtra(scanner rowScanner, extra ...any) (Sessio
 	if err := scanner.Scan(destinations...); err != nil {
 		return SessionForkOperation{}, err
 	}
+	op.SourceProviderTurnBindingJSON = json.RawMessage(
+		sourceProviderTurnBindingJSON,
+	)
 	if err := json.Unmarshal(
 		[]byte(targetProviderTurnBindingsJSON),
 		&op.TargetProviderTurnBindings,
@@ -111,21 +115,19 @@ func normalizedProviderTurnBindings(
 ) []SessionForkProviderTurnBinding {
 	result := make([]SessionForkProviderTurnBinding, 0, len(values))
 	seenProviderTurnIDs := make(map[string]struct{}, len(values))
-	seenCheckpointMessageIDs := make(map[string]struct{}, len(values))
 	for _, value := range values {
 		value.ProviderTurnID = strings.TrimSpace(value.ProviderTurnID)
-		value.CheckpointMessageID = strings.TrimSpace(value.CheckpointMessageID)
-		if value.ProviderTurnID == "" || value.CheckpointMessageID == "" {
+		normalized, err := normalizeProviderTurnBindingJSON(
+			value.ProviderTurnBindingJSON,
+		)
+		if err != nil || len(normalized) == 0 {
 			return nil
 		}
+		value.ProviderTurnBindingJSON = normalized
 		if _, duplicate := seenProviderTurnIDs[value.ProviderTurnID]; duplicate {
 			return nil
 		}
-		if _, duplicate := seenCheckpointMessageIDs[value.CheckpointMessageID]; duplicate {
-			return nil
-		}
 		seenProviderTurnIDs[value.ProviderTurnID] = struct{}{}
-		seenCheckpointMessageIDs[value.CheckpointMessageID] = struct{}{}
 		result = append(result, value)
 	}
 	return result

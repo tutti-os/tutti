@@ -33,6 +33,31 @@ func codexProviderDescriptorForTest(t *testing.T) providerregistry.ProviderDescr
 	return descriptor
 }
 
+func appServerForkStrategyForTest(
+	t *testing.T,
+	provider string,
+) appServerForkStrategy {
+	t.Helper()
+	descriptor, ok := providerregistry.Find(provider)
+	if !ok {
+		t.Fatalf("migrated provider descriptor %q is missing", provider)
+	}
+	minimumVersion, ok := parseVersionTriplet(
+		descriptor.Runtime.AppServerFork.ThroughTurnMinVersion,
+	)
+	if !ok {
+		t.Fatalf(
+			"provider %q fork minimum version = %q",
+			provider,
+			descriptor.Runtime.AppServerFork.ThroughTurnMinVersion,
+		)
+	}
+	return appServerForkStrategy{
+		userAgentBrand:            descriptor.Runtime.AppServerFork.UserAgentBrand,
+		throughTurnMinimumVersion: minimumVersion,
+	}
+}
+
 func appServerRequestParamsList(t *testing.T, conn *scriptedAppServerConnection, method string) []map[string]any {
 	t.Helper()
 	conn.mu.Lock()

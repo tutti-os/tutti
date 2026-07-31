@@ -3,9 +3,10 @@ package providerregistry
 import canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 
 const (
-	CodexProviderID = canonical.CodexProviderID
-	CodexTargetID   = "local:codex"
-	CodexMinVersion = "0.126.0"
+	CodexProviderID                = canonical.CodexProviderID
+	CodexTargetID                  = "local:codex"
+	CodexMinVersion                = "0.126.0"
+	CodexThroughTurnForkMinVersion = "0.144.0"
 )
 
 func codexDescriptor() ProviderDescriptor {
@@ -18,6 +19,10 @@ func codexDescriptor() ProviderDescriptor {
 			ClientInfoName:      "codex_cli_rs",
 			AuthRequiredMessage: "Codex requires authentication. Run `codex login` on the host (or sync Codex credentials), then retry this session.",
 			NativeSessionFork:   true,
+			AppServerFork: AppServerForkDescriptor{
+				UserAgentBrand:        "codex",
+				ThroughTurnMinVersion: CodexThroughTurnForkMinVersion,
+			},
 			Endpoint: RuntimeEndpointDescriptor{
 				BaseURLEnvVars: []string{
 					"OPENAI_BASE_URL",
@@ -34,11 +39,11 @@ func codexDescriptor() ProviderDescriptor {
 			Kind:                   StatusKindCodexCLI,
 			AuthOutputParserKind:   AuthOutputParserKindCodex,
 			AuthMarkerParserKind:   AuthMarkerParserKindFileExists,
-			AuthCommandRunnerKind:  AuthCommandRunnerKindGeneric,
+			AuthCommandRunnerKind:  AuthCommandRunnerKindCodexAppServerAccount,
 			StaticSpecResolverKind: StaticSpecResolverKindManagedNode,
 			MinVersion:             CodexMinVersion,
 			BinaryNames:            []string{"codex"},
-			AuthStatusCommand:      []string{"login", "-c", `service_tier="fast"`, "status"},
+			AuthStatusCommand:      []string{"-c", `service_tier="fast"`, "app-server"},
 			AuthMarkerPaths:        []string{"~/.codex/auth.json"},
 			APIEndpoints: []string{
 				"https://chatgpt.com/backend-api/codex",

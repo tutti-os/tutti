@@ -13,7 +13,7 @@ SELECT workspace_id, agent_session_id, turn_id, phase, outcome, error_json,
 	       started_at_unix_ms, settled_at_unix_ms, created_at_unix_ms, updated_at_unix_ms,
 	       turn_origin, COALESCE(source_goal_operation_id, ''), COALESCE(source_goal_revision, 0),
 	       COALESCE(source_goal_repair_epoch, 0),
-	       root_provider_turn_id, COALESCE(provider_checkpoint_message_id, ''),
+	       root_provider_turn_id, provider_turn_binding_json,
 	       root_provider_turn_phase, root_provider_turn_outcome,
        root_provider_turn_error_json, root_provider_turn_completed_command_json,
        root_provider_turn_updated_at_unix_ms, capability_refs_json
@@ -27,6 +27,7 @@ func scanAgentTurn(scanner rowScanner) (Turn, error) {
 	var completedCommandJSON sql.NullString
 	var settledAt sql.NullInt64
 	var rootProviderTurnID, rootProviderTurnPhase, rootProviderTurnOutcome sql.NullString
+	var providerTurnBindingJSON string
 	var rootProviderTurnErrorJSON, rootProviderTurnCompletedCommandJSON sql.NullString
 	var capabilityRefsJSON string
 	var backfilled int
@@ -49,7 +50,7 @@ func scanAgentTurn(scanner rowScanner) (Turn, error) {
 		&turn.SourceGoalRevision,
 		&turn.SourceGoalRepairEpoch,
 		&rootProviderTurnID,
-		&turn.ProviderCheckpointMessageID,
+		&providerTurnBindingJSON,
 		&rootProviderTurnPhase,
 		&rootProviderTurnOutcome,
 		&rootProviderTurnErrorJSON,
@@ -64,6 +65,10 @@ func scanAgentTurn(scanner rowScanner) (Turn, error) {
 	turn.Backfilled = backfilled != 0
 	turn.SettledAtUnixMS = settledAt.Int64
 	turn.RootProviderTurnID = strings.TrimSpace(rootProviderTurnID.String)
+	turn.ProviderTurnBindingJSON = append(
+		json.RawMessage(nil),
+		[]byte(providerTurnBindingJSON)...,
+	)
 	turn.RootProviderTurnPhase = strings.TrimSpace(rootProviderTurnPhase.String)
 	turn.RootProviderTurnOutcome = strings.TrimSpace(rootProviderTurnOutcome.String)
 	if err := json.Unmarshal([]byte(capabilityRefsJSON), &turn.CapabilityRefs); err != nil {

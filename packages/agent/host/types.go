@@ -1,6 +1,8 @@
 package agenthost
 
 import (
+	"encoding/json"
+
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
@@ -146,6 +148,14 @@ type SessionForkCapabilityInput struct {
 	SourceAgentSessionID string
 }
 
+type SessionTurnForkabilityInput struct {
+	WorkspaceID             string
+	SourceAgentSessionID    string
+	CanonicalTurnID         string
+	ProviderTurnID          string
+	ProviderTurnBindingJSON json.RawMessage
+}
+
 type SessionForkCapabilities struct {
 	FullSession bool
 	ThroughTurn bool
@@ -168,12 +178,12 @@ type SessionForkDriverDescriptor struct {
 }
 
 type RuntimeSessionForkInput struct {
-	Source                            ProviderRuntimeSession
-	SourceProviderTurnID              string
-	SourceProviderCheckpointMessageID string
-	TargetTitle                       string
-	RequestID                         string
-	Driver                            SessionForkDriverDescriptor
+	Source                        ProviderRuntimeSession
+	SourceProviderTurnID          string
+	SourceProviderTurnBindingJSON json.RawMessage
+	TargetTitle                   string
+	RequestID                     string
+	Driver                        SessionForkDriverDescriptor
 }
 
 type SessionForkDeliveryDisposition string
@@ -194,8 +204,15 @@ type RuntimeSessionForkResult struct {
 }
 
 type SessionForkProviderTurnBinding struct {
-	ProviderTurnID      string
-	CheckpointMessageID string
+	ProviderTurnID          string
+	ProviderTurnBindingJSON json.RawMessage
+}
+
+type RuntimeProviderTurnForkabilityInput struct {
+	Source                  ProviderRuntimeSession
+	CanonicalTurnID         string
+	ProviderTurnID          string
+	ProviderTurnBindingJSON json.RawMessage
 }
 
 type RuntimeProviderTurnBindingRecoveryInput struct {
@@ -207,9 +224,9 @@ type RuntimeProviderTurnBindingRecoveryInput struct {
 }
 
 type RuntimeProviderTurnBindingRecoveryResult struct {
-	ProviderSessionID           string
-	ProviderTurnID              string
-	ProviderCheckpointMessageID string
+	ProviderSessionID       string
+	ProviderTurnID          string
+	ProviderTurnBindingJSON json.RawMessage
 }
 
 type SessionForkStateBindingMode string

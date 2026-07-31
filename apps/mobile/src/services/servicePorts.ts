@@ -139,6 +139,16 @@ export type MobileDiagnosticEvent =
       state: AppLifecycleState;
     }
   | {
+      name: "device_connection.phase_changed";
+      phase: "connected" | "failed" | "idle" | "reconnecting" | "synchronizing";
+      trigger?:
+        | "background_expired"
+        | "foreground_resume"
+        | "initial_connect"
+        | "manual_retry"
+        | "transport_lost";
+    }
+  | {
       name: "device_pairing.phase_changed";
       phase: DevicePairingPhase;
       source?: "manual" | "scanner";

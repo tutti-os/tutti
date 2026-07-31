@@ -2,6 +2,7 @@ package storesqlite
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 )
@@ -15,12 +16,12 @@ func TestRecoverProviderTurnBindingIsCASAndIdempotent(t *testing.T) {
 	input := ProviderTurnBindingRecovery{
 		WorkspaceID: "ws-recovery", AgentSessionID: "root", TurnID: "turn-1",
 		ExpectedProviderSessionID: "provider-session", ProviderTurnID: "provider-turn-1",
-		ProviderCheckpointMessageID: "checkpoint-1", OccurredAtUnixMS: 20,
+		ProviderTurnBindingJSON: json.RawMessage(`{"schemaVersion":1}`), OccurredAtUnixMS: 20,
 	}
 	result, err := store.RecoverProviderTurnBinding(ctx, input)
 	if err != nil || !result.Changed ||
 		result.Turn.RootProviderTurnID != "provider-turn-1" ||
-		result.Turn.ProviderCheckpointMessageID != "checkpoint-1" {
+		string(result.Turn.ProviderTurnBindingJSON) != `{"schemaVersion":1}` {
 		t.Fatalf("first recovery = %#v error=%v", result, err)
 	}
 	replay, err := store.RecoverProviderTurnBinding(ctx, input)
@@ -55,14 +56,14 @@ WHERE workspace_id = 'ws-recovery'
 
 	result, err := store.RecoverProviderTurnBinding(ctx, ProviderTurnBindingRecovery{
 		WorkspaceID: "ws-recovery", AgentSessionID: "root", TurnID: "turn-1",
-		ExpectedProviderSessionID:   "provider-session",
-		ProviderTurnID:              "provider-turn-1",
-		ProviderCheckpointMessageID: "checkpoint-1",
-		OccurredAtUnixMS:            20,
+		ExpectedProviderSessionID: "provider-session",
+		ProviderTurnID:            "provider-turn-1",
+		ProviderTurnBindingJSON:   json.RawMessage(`{"schemaVersion":1}`),
+		OccurredAtUnixMS:          20,
 	})
 	if err != nil || !result.Changed ||
 		result.Turn.RootProviderTurnID != "provider-turn-1" ||
-		result.Turn.ProviderCheckpointMessageID != "checkpoint-1" {
+		string(result.Turn.ProviderTurnBindingJSON) != `{"schemaVersion":1}` {
 		t.Fatalf("legacy binding recovery = %#v error=%v", result, err)
 	}
 }
@@ -77,6 +78,7 @@ func TestRecoverProviderTurnBindingRejectsCanonicalIdentityEcho(t *testing.T) {
 		WorkspaceID: "ws-recovery", AgentSessionID: "root", TurnID: "turn-1",
 		ExpectedProviderSessionID: "provider-session",
 		ProviderTurnID:            "turn-1",
+		ProviderTurnBindingJSON:   json.RawMessage(`{"schemaVersion":1}`),
 		OccurredAtUnixMS:          20,
 	})
 	if err == nil {
@@ -93,7 +95,8 @@ func TestRecoverProviderTurnBindingRejectsDuplicateProviderIdentity(t *testing.T
 	first := ProviderTurnBindingRecovery{
 		WorkspaceID: "ws-recovery", AgentSessionID: "root", TurnID: "turn-1",
 		ExpectedProviderSessionID: "provider-session", ProviderTurnID: "provider-turn",
-		OccurredAtUnixMS: 40,
+		ProviderTurnBindingJSON: json.RawMessage(`{"schemaVersion":1}`),
+		OccurredAtUnixMS:        40,
 	}
 	if _, err := store.RecoverProviderTurnBinding(ctx, first); err != nil {
 		t.Fatal(err)
@@ -129,7 +132,8 @@ func TestRecoverProviderTurnBindingRejectsDuplicateAcrossCanonicalSessions(t *te
 	input := ProviderTurnBindingRecovery{
 		WorkspaceID: "ws-recovery", AgentSessionID: "root-a", TurnID: "turn-a",
 		ExpectedProviderSessionID: "provider-session", ProviderTurnID: "provider-turn",
-		OccurredAtUnixMS: 40,
+		ProviderTurnBindingJSON: json.RawMessage(`{"schemaVersion":1}`),
+		OccurredAtUnixMS:        40,
 	}
 	if _, err := store.RecoverProviderTurnBinding(ctx, input); err != nil {
 		t.Fatal(err)

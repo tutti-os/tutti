@@ -27,6 +27,23 @@ func (c *Controller) ForkCapabilities(
 	return capabilities, nil
 }
 
+func (c *Controller) CanForkProviderTurn(
+	ctx context.Context,
+	input ProviderTurnForkabilityInput,
+) (bool, error) {
+	source, adapter, err := c.sessionForkSource(ctx, input.Source)
+	if err != nil {
+		return false, err
+	}
+	bindingAdapter, ok := adapter.(ProviderTurnBindingAdapter)
+	if !ok {
+		return false, nil
+	}
+	input.Source = source
+	input.ProviderTurnID = strings.TrimSpace(input.ProviderTurnID)
+	return bindingAdapter.CanForkProviderTurn(ctx, input)
+}
+
 // Fork creates only the provider-native child context. The host remains
 // responsible for allocating/copying the canonical AgentSession and attaching
 // it after the canonical commit.
@@ -65,6 +82,32 @@ func (c *Controller) Fork(
 	}
 	if providerTurnID == "" && !capabilities.FullSession {
 		return SessionForkResult{DeliveryDisposition: SessionForkDeliveryNotStarted}, ErrSessionForkUnsupported
+	}
+	if providerTurnID != "" {
+		bindingAdapter, ok := adapter.(ProviderTurnBindingAdapter)
+		if !ok {
+			return SessionForkResult{
+				DeliveryDisposition: SessionForkDeliveryNotStarted,
+			}, ErrSessionForkUnsupported
+		}
+		forkable, err := bindingAdapter.CanForkProviderTurn(
+			ctx,
+			ProviderTurnForkabilityInput{
+				Source:                  source,
+				ProviderTurnID:          providerTurnID,
+				ProviderTurnBindingJSON: input.ProviderTurnBindingJSON,
+			},
+		)
+		if err != nil {
+			return SessionForkResult{
+				DeliveryDisposition: SessionForkDeliveryNotStarted,
+			}, err
+		}
+		if !forkable {
+			return SessionForkResult{
+				DeliveryDisposition: SessionForkDeliveryNotStarted,
+			}, ErrSessionForkUnsupported
+		}
 	}
 	input.Source = source
 	input.ProviderTurnID = providerTurnID

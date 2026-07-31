@@ -1,6 +1,9 @@
 package storesqlite
 
-import "errors"
+import (
+	"encoding/json"
+	"errors"
+)
 
 const (
 	SessionForkPointThroughTurn       = "through_turn"
@@ -95,36 +98,36 @@ type SessionForkLineage struct {
 }
 
 type SessionForkOperation struct {
-	CommitTransactionID               string           `json:"-"`
-	CommitDelta                       TransactionDelta `json:"-"`
-	OperationID                       string
-	WorkspaceID                       string
-	RequestID                         string
-	RequestHash                       string
-	SourceAgentSessionID              string
-	TargetAgentSessionID              string
-	SourceProviderSessionID           string
-	SourceTurnID                      string
-	SourceProviderTurnID              string
-	SourceProviderCheckpointMessageID string
-	TargetTurnID                      string
-	PointKind                         string
-	DriverKind                        string
-	DriverVersion                     string
-	Status                            string
-	TargetProviderSessionID           string
-	TargetProviderTurnBindings        []SessionForkProviderTurnBinding
-	TargetTitle                       string
-	StateBindingMode                  string
-	StateBindingReceipt               string
-	SnapshotHash                      string
-	LastError                         string
-	CreatedAtUnixMS                   int64
-	UpdatedAtUnixMS                   int64
-	DispatchedAtUnixMS                int64
-	AcceptedAtUnixMS                  int64
-	CompletedAtUnixMS                 int64
-	ClientObservedAtUnixMS            int64
+	CommitTransactionID           string           `json:"-"`
+	CommitDelta                   TransactionDelta `json:"-"`
+	OperationID                   string
+	WorkspaceID                   string
+	RequestID                     string
+	RequestHash                   string
+	SourceAgentSessionID          string
+	TargetAgentSessionID          string
+	SourceProviderSessionID       string
+	SourceTurnID                  string
+	SourceProviderTurnID          string
+	SourceProviderTurnBindingJSON json.RawMessage
+	TargetTurnID                  string
+	PointKind                     string
+	DriverKind                    string
+	DriverVersion                 string
+	Status                        string
+	TargetProviderSessionID       string
+	TargetProviderTurnBindings    []SessionForkProviderTurnBinding
+	TargetTitle                   string
+	StateBindingMode              string
+	StateBindingReceipt           string
+	SnapshotHash                  string
+	LastError                     string
+	CreatedAtUnixMS               int64
+	UpdatedAtUnixMS               int64
+	DispatchedAtUnixMS            int64
+	AcceptedAtUnixMS              int64
+	CompletedAtUnixMS             int64
+	ClientObservedAtUnixMS        int64
 }
 
 type SessionForkPrepare struct {
@@ -157,8 +160,8 @@ type SessionForkProviderResult struct {
 }
 
 type SessionForkProviderTurnBinding struct {
-	ProviderTurnID      string `json:"providerTurnId"`
-	CheckpointMessageID string `json:"checkpointMessageId"`
+	ProviderTurnID          string          `json:"providerTurnId"`
+	ProviderTurnBindingJSON json.RawMessage `json:"providerTurnBindingJson"`
 }
 
 type SessionForkCommitResult struct {

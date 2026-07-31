@@ -292,6 +292,9 @@ type Service struct {
 	// CodexProtocolProbe is injectable for deterministic status tests. Nil uses
 	// the production app-server transport and formal initialize handshake.
 	CodexProtocolProbe func(context.Context, []string, []string) CodexProbeEvidence
+	// CodexAuthProbe is injectable for deterministic auth tests. Nil uses the
+	// production app-server transport and account/read, matching TUI startup.
+	CodexAuthProbe func(context.Context, []string, []string) CodexAuthProbeEvidence
 	// CodexRuntimeSelectionStore persists only an explicit Codex launcher
 	// choice. A missing selection permits only one uniquely ready candidate;
 	// multiple ready candidates require the user to choose one.

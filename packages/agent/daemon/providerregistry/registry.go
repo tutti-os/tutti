@@ -172,11 +172,33 @@ func Validate(descriptor ProviderDescriptor) error {
 		if strings.TrimSpace(descriptor.Runtime.ClientInfoName) == "" {
 			return fmt.Errorf("provider %q runtime client info name is required", providerID)
 		}
+		fork := descriptor.Runtime.AppServerFork
+		if descriptor.Runtime.NativeSessionFork {
+			if strings.TrimSpace(fork.UserAgentBrand) == "" {
+				return fmt.Errorf("provider %q app-server fork user-agent brand is required", providerID)
+			}
+			if !minimumVersionPattern.MatchString(strings.TrimSpace(fork.ThroughTurnMinVersion)) {
+				return fmt.Errorf(
+					"provider %q app-server fork minimum version %q is invalid",
+					providerID,
+					fork.ThroughTurnMinVersion,
+				)
+			}
+		} else if strings.TrimSpace(fork.UserAgentBrand) != "" ||
+			strings.TrimSpace(fork.ThroughTurnMinVersion) != "" {
+			return fmt.Errorf("provider %q app-server fork strategy requires native session fork", providerID)
+		}
 	case RuntimeKindStandardACP:
+		if descriptor.Runtime.AppServerFork != (AppServerForkDescriptor{}) {
+			return fmt.Errorf("provider %q non-app-server runtime declares app-server fork strategy", providerID)
+		}
 		if err := validateStandardACPRuntime(descriptor.Runtime.StandardACP); err != nil {
 			return fmt.Errorf("provider %q standard ACP runtime: %w", providerID, err)
 		}
 	case RuntimeKindClaudeSDK:
+		if descriptor.Runtime.AppServerFork != (AppServerForkDescriptor{}) {
+			return fmt.Errorf("provider %q non-app-server runtime declares app-server fork strategy", providerID)
+		}
 	case "":
 		return fmt.Errorf("provider %q runtime kind is required", providerID)
 	default:
@@ -256,7 +278,7 @@ func Validate(descriptor ProviderDescriptor) error {
 		return fmt.Errorf("provider %q auth marker parser kind %q is unsupported", providerID, descriptor.Status.AuthMarkerParserKind)
 	}
 	switch descriptor.Status.AuthCommandRunnerKind {
-	case AuthCommandRunnerKindGeneric, AuthCommandRunnerKindClaudeGate, AuthCommandRunnerKindCursor:
+	case AuthCommandRunnerKindGeneric, AuthCommandRunnerKindClaudeGate, AuthCommandRunnerKindCodexAppServerAccount, AuthCommandRunnerKindCursor:
 	default:
 		return fmt.Errorf("provider %q auth command runner kind %q is unsupported", providerID, descriptor.Status.AuthCommandRunnerKind)
 	}

@@ -55,6 +55,16 @@ func (s *Service) GetDetailWithProjection(
 		if err != nil {
 			return SessionDetail{}, err
 		}
+		if resolveProviderCapabilities {
+			for index := range turns {
+				turns[index] = s.withProviderTurnForkability(
+					ctx,
+					workspaceID,
+					session.ID,
+					turns[index],
+				)
+			}
+		}
 		detail.Turns = turns
 	}
 	reader, ok := s.SessionReader.(ChildSessionReader)

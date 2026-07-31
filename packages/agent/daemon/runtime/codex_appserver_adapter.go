@@ -88,15 +88,17 @@ const (
 // Codex-compatible forks (Tutti Agent) without sharing brand, command, or
 // auth assumptions.
 type appServerAdapterConfig struct {
-	provider             string
-	runtimeName          string
-	displayName          string
-	command              []string
-	clientInfoName       string
-	authRequiredMessage  string
-	commandNetworkAccess bool
-	rateLimits           bool
-	nativeSessionFork    bool
+	provider                         string
+	runtimeName                      string
+	displayName                      string
+	command                          []string
+	clientInfoName                   string
+	authRequiredMessage              string
+	commandNetworkAccess             bool
+	rateLimits                       bool
+	nativeSessionFork                bool
+	sessionForkUserAgentBrand        string
+	sessionForkThroughTurnMinVersion string
 }
 
 // CodexAppServerAdapterOptions controls host-owned app-server execution policy

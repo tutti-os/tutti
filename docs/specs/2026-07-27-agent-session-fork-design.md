@@ -60,6 +60,7 @@ AgentGUI Turn action
   -> store-sqlite snapshot/operation/commit
   -> provider-neutral runtime Fork
        - Codex app-server thread/fork(lastTurnId)
+       - Tutti Agent app-server thread/fork(lastTurnId)
        - Claude Agent SDK forkSession(upToMessageId, title)
 ```
 
@@ -75,6 +76,7 @@ AgentGUI Turn action
 | store-sqlite       | source fence、snapshot、operation、ID remap、canonical atomic commit |
 | daemon runtime     | 按确切 provider runtime 解析能力并调用 provider Driver               |
 | Codex Driver       | `thread/fork`、版本门槛、完整 provider Turn prefix 验证              |
+| Tutti Agent Driver | 复用 app-server Fork 协议，使用独立版本门槛和 `TUTTI_AGENT_HOME`     |
 | Claude SDK Driver  | stateless inspect/fork、消息 checkpoint、child UUID 映射与复验       |
 
 这符合 AgentGUI 的既有约束：canonical lifecycle 和 mutation 状态属于 Activity Engine；
@@ -127,11 +129,22 @@ interface AgentActivitySessionLifecycleCapabilities {
 
 - Codex app-server 版本满足门槛且协议支持 `lastTurnId`：
   `forkThroughTurn=true`；
+- Tutti Agent app-server 版本不低于 `0.0.10` 且协议支持 `lastTurnId`：
+  `forkThroughTurn=true`；
 - Claude Agent SDK 能读取 exact transcript、且 canonical provider Turn UUID
-  与其 root user-message prefix 匹配：`forkThroughTurn=true`；
-- 其他 Agent、不满足门槛的 Codex runtime、以及没有真实 SDK UUID 的旧 Claude
+  与其 root user-message prefix 匹配：
+  `forkThroughTurn=true`；
+- 其他 Agent、不满足门槛的 Codex/Tutti Agent runtime、以及没有真实 SDK UUID 的旧 Claude
   Turn：`forkThroughTurn=false`；
 - 当前所有接入：`fork=false`，完整会话按钮不展示。
+
+provider Turn 绑定不能仅凭 ID 非空成立。Turn 只保存通用
+`RootProviderTurnID` 和 opaque `provider_turn_binding_json`；JSON 的 schema、写入和
+forkability 判断均由具体 Agent 的 `ProviderTurnBindingAdapter` 维护。服务端展示按钮和
+实际 Fork 都调用同一个 `CanForkProviderTurn` hook，Host/Store 不解析 Claude checkpoint
+或其他 Agent 私有字段。迁移只把确有旧 checkpoint 证据的行转换为 Agent JSON；仅有
+synthetic/provider-looking ID 的历史行仍为 `{}`，投影为 `recovery_required`，GUI
+不展示 Fork。转换完成后旧 Claude 专属列会被删除。
 
 结构 capability 与瞬时 availability 分开：
 
@@ -325,7 +338,7 @@ cwd、env 以及已解析 executable 的 size/mtime/verified identity 都必须�
 executable identity 的 shell/package-manager wrapper 不缓存。CLI 升降级或不同 Session
 runtime identity 会重新 initialize probe，避免跨 Session 误展示按钮。
 
-## 7. Provider Driver、Codex 与 Claude SDK 接入
+## 7. Provider Driver、Codex、Tutti Agent 与 Claude SDK 接入
 
 provider-neutral输入：
 
@@ -352,6 +365,11 @@ Codex Driver：
    size/SHA-256，只将该 rollout crash-durable 地原子复制到 target `CODEX_HOME`，不复制
    整个 provider home，也不建立依赖 source 生命周期的软链接。
 
+Tutti Agent Driver 复用同一 app-server typed `thread/read` / `thread/fork(lastTurnId)`
+协议和 Turn binding JSON，但不冒充 Codex 版本：能力由 `tutti_agent/<version>` 独立证明，
+当前门槛为 `0.0.10`。provider-state binder 从 source `TUTTI_AGENT_HOME` 精确复制已验证的
+child rollout 到 target `TUTTI_AGENT_HOME`，不会写入 `CODEX_HOME`。
+
 provider-state binding 也是 provider 接入能力的一部分。每个 Agent 必须显式选择
 `host_copy` 或 `provider_owned` 并提交相应 evidence；`host_copy` binder 缺失或不支持当前
 provider 时必须在 provider dispatch 前 fail closed，provider 调用后的 binder 失败进入
@@ -372,12 +390,13 @@ Claude SDK Driver 使用固定版本的官方公开 API：
    user-message 回显，读取 Claude 实际 UUID 后发出 `provider_turn_started`，canonical
    `RootProviderTurnID` 只接受该已观察身份；
 2. sidecar 为主链 user/assistant/system 消息发出
-   `provider_turn_checkpoint`，Store 将最新外层 UUID 持久化为 Turn 的
-   `ProviderCheckpointMessageID`；Turn settlement 不冻结该字段，因为尾随 system
-   message 可能稍后到达；
+   `provider_turn_checkpoint`；Claude adapter 的写入 hook 将最新外层 UUID 写进自己的
+   binding JSON（当前为 `checkpointMessageId`），Store 只做 opaque JSON 持久化；Turn
+   settlement 不冻结 JSON，因为尾随 system message 可能稍后到达；
 3. capability 只声明固定 SDK/sidecar 的结构能力，不读取 transcript。Prepare 将所选
-   Turn 的 `RootProviderTurnID` 与 `ProviderCheckpointMessageID` 一起冻结到 operation；
-   新 Turn 在 dispatch 时 O(1) 取得 checkpoint。迁移前的旧 Turn 字段为空时，才读取一次
+   Turn 的 `RootProviderTurnID` 与 `provider_turn_binding_json` 一起冻结到 operation；
+   新 Turn 在 dispatch 时 O(1) 由 Claude adapter 解出 checkpoint。迁移前的旧 Turn JSON
+   为空时，才读取一次
    source transcript，查找所选 origin root user UUID，并取下一个 origin root user
    之前的最后消息 UUID；task notification 与内部 synthetic user 不作为新 Turn 边界；
 4. 调用 `forkSession(source, {upToMessageId, title: frozenTargetTitle})`；
@@ -388,8 +407,8 @@ Claude SDK Driver 使用固定版本的官方公开 API：
    checkpoint；它不验证更早历史消息的 UUID 完整性，最终返回只绑定 source/child
    session、所选 source/child Turn 与两端 checkpoint 的 `provider_owned` receipt；
 7. Store 在 `provider_accepted` checkpoint 原子保存 mapping/receipt，并在 canonical clone
-   时重写所选 child Turn 的 `RootProviderTurnID` 与
-   `ProviderCheckpointMessageID`，使 fork child 可以继续 Fork；
+   时重写所选 child Turn 的 `RootProviderTurnID` 与 Claude adapter 返回的 binding JSON，
+   使 fork child 可以继续 Fork；
 8. child 恢复时拒绝 source 的 stale `resumeCursor`，只从 canonical child
    `providerSessionId` 启动；该约束覆盖进程重启后的首次续聊。
 
@@ -590,7 +609,7 @@ fail closed。
 当前明确不支持：
 
 - 完整会话 Fork 产品入口；
-- 除 Codex 与 Claude Code 外的其他 Agent Driver；
+- 除 Codex、Tutti Agent 与 Claude Code 外的其他 Agent Driver；
 - 没有原生历史边界能力时的消息 replay 模拟；
 - 从 Message 中间位置 Fork；
 - 包含 session-local attachment 的 boundary；
@@ -622,6 +641,7 @@ fail closed。
 - Store snapshot、source fence、deterministic ID remap、replay、二次 Fork和 race test；
 - Host live/historical RuntimePreparation、re-attestation、recovery 和 disposition；
 - Codex exact ordered provider prefix、版本门槛、RPC rejection/timeout；
+- Tutti Agent 独立版本门槛、binding hook、`TUTTI_AGENT_HOME` state binding；
 - Service/API 200/202/4xx 和 POST/GET typed operation；
 - generated API 幂等检查；
 - Activity Engine accepted/failed/unknown/committed 和 identity reuse；

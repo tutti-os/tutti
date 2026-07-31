@@ -1,12 +1,13 @@
 package agentruntime
 
 import (
+	"encoding/json"
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
-func claudeSDKRootProviderTurnStartedEvent(
+func (a *ClaudeCodeSDKAdapter) claudeSDKRootProviderTurnStartedEvent(
 	session Session,
 	rootTurnID string,
 	providerTurnID string,
@@ -25,11 +26,18 @@ func claudeSDKRootProviderTurnStartedEvent(
 		rootTurnID,
 		providerTurnID,
 	)
+	binding, err := a.WriteProviderTurnBinding(ProviderTurnBindingWriteInput{
+		Kind:           ProviderTurnBindingWriteStarted,
+		ProviderTurnID: providerTurnID,
+	})
+	if err == nil {
+		event.Payload.ProviderTurnBindingJSON = binding
+	}
 	event.Payload.Metadata = clonePayload(metadata)
 	return event
 }
 
-func claudeSDKRootProviderTurnCheckpointEvent(
+func (a *ClaudeCodeSDKAdapter) claudeSDKRootProviderTurnCheckpointEvent(
 	session Session,
 	rootTurnID string,
 	providerTurnID string,
@@ -43,11 +51,21 @@ func claudeSDKRootProviderTurnCheckpointEvent(
 	if !ok {
 		return activityshared.Event{}
 	}
+	binding, err := a.WriteProviderTurnBinding(ProviderTurnBindingWriteInput{
+		Kind:           ProviderTurnBindingWriteCheckpoint,
+		ProviderTurnID: providerTurnID,
+		Payload: map[string]any{
+			"checkpointMessageId": checkpointMessageID,
+		},
+	})
+	if err != nil {
+		binding = json.RawMessage(`{}`)
+	}
 	return activityshared.NewRootProviderTurnCheckpoint(
 		ctx,
 		rootTurnID,
 		providerTurnID,
-		checkpointMessageID,
+		binding,
 	)
 }
 

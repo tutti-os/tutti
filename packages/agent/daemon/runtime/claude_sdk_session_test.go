@@ -341,6 +341,10 @@ func TestClaudeCodeSDKAdapterStartPassesPreparedClaudeMetaPathsToSidecar(t *test
 	if got, _ := payload["planModeInstructions"].(string); !strings.Contains(got, "do not edit files") || !strings.Contains(got, "implementation plan") {
 		t.Fatalf("planModeInstructions = %#v, want Tutti plan workflow instructions", payload["planModeInstructions"])
 	}
+	settings := payloadMap(payload, "settings")
+	if _, ok := settings["plansDirectory"]; ok {
+		t.Fatalf("settings.plansDirectory = %#v, want Claude SDK default", settings["plansDirectory"])
+	}
 	allowedTools, ok := payload["allowedTools"].([]any)
 	grepAllowed := false
 	globAllowed := false

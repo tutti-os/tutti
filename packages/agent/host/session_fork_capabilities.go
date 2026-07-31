@@ -56,6 +56,44 @@ func (h *Host) GetSessionForkCapabilities(
 	return capabilities, nil
 }
 
+func (h *Host) CanForkSessionTurn(
+	ctx context.Context,
+	input SessionTurnForkabilityInput,
+) (bool, error) {
+	input.WorkspaceID = strings.TrimSpace(input.WorkspaceID)
+	input.SourceAgentSessionID = strings.TrimSpace(input.SourceAgentSessionID)
+	input.CanonicalTurnID = strings.TrimSpace(input.CanonicalTurnID)
+	input.ProviderTurnID = strings.TrimSpace(input.ProviderTurnID)
+	if h == nil || h.sessionForks == nil || h.sessionForkRuntime == nil ||
+		input.WorkspaceID == "" || input.SourceAgentSessionID == "" ||
+		input.CanonicalTurnID == "" || input.ProviderTurnID == "" ||
+		len(input.ProviderTurnBindingJSON) == 0 {
+		return false, nil
+	}
+	sourceSession, found, err := h.sessionForks.GetSessionForkSource(
+		ctx,
+		input.WorkspaceID,
+		input.SourceAgentSessionID,
+	)
+	if err != nil || !found {
+		return false, err
+	}
+	runtimeSource := h.sessionForkCapabilityRuntimeSource(sourceSession)
+	if strings.TrimSpace(runtimeSource.ProviderSessionID) !=
+		strings.TrimSpace(sourceSession.ProviderSessionID) {
+		return false, nil
+	}
+	return h.sessionForkRuntime.CanForkProviderTurn(
+		ctx,
+		RuntimeProviderTurnForkabilityInput{
+			Source:                  cloneSessionForkRuntimeSource(runtimeSource),
+			CanonicalTurnID:         input.CanonicalTurnID,
+			ProviderTurnID:          input.ProviderTurnID,
+			ProviderTurnBindingJSON: append([]byte(nil), input.ProviderTurnBindingJSON...),
+		},
+	)
+}
+
 // sessionForkCapabilityRuntimeSource is intentionally preparation-free.
 // Capability projection runs on Session detail reads and may only consume a
 // live runtime observation or persisted canonical attestation. Full runtime,

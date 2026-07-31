@@ -2,6 +2,7 @@ package agentruntime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand/v2"
@@ -17,11 +18,23 @@ type CodexAppServerProbeInput struct {
 	Env              []string
 	CWD              string
 	Host             HostMetadata
+	ReadAccount      bool
 	StartupTimeout   time.Duration
 	HandshakeTimeout time.Duration
 	ShutdownTimeout  time.Duration
 	Transport        ProcessTransport
 }
+
+// CodexAppServerAccountState is the account/read authentication result. An
+// unknown state means the app-server could not return a structurally valid
+// account response and must not be treated as authenticated.
+type CodexAppServerAccountState string
+
+const (
+	CodexAppServerAccountUnknown       CodexAppServerAccountState = "unknown"
+	CodexAppServerAccountAuthenticated CodexAppServerAccountState = "authenticated"
+	CodexAppServerAccountRequired      CodexAppServerAccountState = "required"
+)
 
 // CodexAppServerProbeResult keeps command-start and protocol-handshake facts
 // separate. Callers must use ProtocolReady, not CommandStarted, as runtime
@@ -29,8 +42,13 @@ type CodexAppServerProbeInput struct {
 type CodexAppServerProbeResult struct {
 	CommandStarted   bool
 	ProtocolReady    bool
+	AccountRead      bool
+	AccountState     CodexAppServerAccountState
+	AccountLabel     string
+	AuthMethod       string
 	CommandCategory  string
 	ProtocolCategory string
+	AccountCategory  string
 	// Category is the compatibility projection of the failing stage.
 	Category   string
 	Message    string
@@ -50,11 +68,16 @@ const (
 )
 
 // ProbeCodexAppServer reuses the production ProcessTransport, JSON-RPC client,
-// typed initialize request and initialized notification. The connection is
-// always closed before returning; no user-facing Codex state is created.
+// typed initialize request and initialized notification. When ReadAccount is
+// set, it also calls the same account/read method used during session startup.
+// The connection is always closed before returning; no user-facing Codex state
+// is created.
 func ProbeCodexAppServer(ctx context.Context, input CodexAppServerProbeInput) (result CodexAppServerProbeResult) {
 	startedAt := time.Now()
-	result = CodexAppServerProbeResult{Category: CodexProbeUnknownRuntimeFail}
+	result = CodexAppServerProbeResult{
+		AccountState: CodexAppServerAccountUnknown,
+		Category:     CodexProbeUnknownRuntimeFail,
+	}
 	defer func() { result.Duration = time.Since(startedAt) }()
 	if ctx == nil {
 		ctx = context.Background()
@@ -163,7 +186,66 @@ func ProbeCodexAppServer(ctx context.Context, input CodexAppServerProbeInput) (r
 	// final protocol fact.
 	result.CommandStarted = true
 	result.Category = ""
+	if !input.ReadAccount {
+		return result
+	}
+	accountRaw, err := client.AccountRead(handshakeCtx, handshakeTimeout, map[string]any{},
+		func(context.Context, acpMessage) error { return nil })
+	if err != nil {
+		result.AccountCategory = codexProbeErrorCategory(handshakeCtx, err)
+		result.Category = result.AccountCategory
+		result.Message = err.Error()
+		return result
+	}
+	account, ok := parseCodexProbeAccount(accountRaw)
+	if !ok {
+		result.AccountCategory = CodexProbeInvalidResponse
+		result.Category = result.AccountCategory
+		result.Message = "account/read returned an invalid account response"
+		return result
+	}
+	result.AccountRead = true
+	result.AccountState = account.State
+	result.AccountLabel = account.Label
+	result.AuthMethod = account.AuthMethod
 	return result
+}
+
+type codexProbeAccount struct {
+	State      CodexAppServerAccountState
+	Label      string
+	AuthMethod string
+}
+
+func parseCodexProbeAccount(raw json.RawMessage) (codexProbeAccount, bool) {
+	var payload struct {
+		Account            map[string]any `json:"account"`
+		RequiresOpenaiAuth *bool          `json:"requiresOpenaiAuth"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil || payload.RequiresOpenaiAuth == nil {
+		return codexProbeAccount{}, false
+	}
+	if payload.Account == nil {
+		if *payload.RequiresOpenaiAuth {
+			return codexProbeAccount{State: CodexAppServerAccountRequired}, true
+		}
+		return codexProbeAccount{State: CodexAppServerAccountUnknown}, true
+	}
+	authMethod := strings.TrimSpace(asString(payload.Account["type"]))
+	switch authMethod {
+	case "chatgpt":
+		if strings.TrimSpace(asString(payload.Account["planType"])) == "" {
+			return codexProbeAccount{}, false
+		}
+	case "apiKey", "amazonBedrock":
+	default:
+		return codexProbeAccount{}, false
+	}
+	return codexProbeAccount{
+		State:      CodexAppServerAccountAuthenticated,
+		Label:      strings.TrimSpace(asString(payload.Account["email"])),
+		AuthMethod: authMethod,
+	}, true
 }
 
 func closeCodexProbeConnection(conn ProcessConnection, _ time.Duration) {

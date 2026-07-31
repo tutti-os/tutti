@@ -2,6 +2,7 @@ package storesqlite
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 )
 
@@ -122,8 +123,10 @@ func TestProviderCheckpointPersistsThroughAndAfterTurnSettlement(t *testing.T) {
 			RootProviderTurn: &RootProviderTurnTransition{
 				WorkspaceID: "ws-1", RootAgentSessionID: "root",
 				RootTurnID: "turn-1", ProviderTurnID: "provider-user-1",
-				ProviderCheckpointMessageID: checkpoint.id,
-				OccurredAtUnixMS:            checkpoint.occurred,
+				ProviderTurnBindingJSON: json.RawMessage(
+					`{"checkpointMessageId":"` + checkpoint.id + `"}`,
+				),
+				OccurredAtUnixMS: checkpoint.occurred,
 			},
 		}); err != nil {
 			t.Fatalf("persist checkpoint %q: %v", checkpoint.id, err)
@@ -137,17 +140,71 @@ func TestProviderCheckpointPersistsThroughAndAfterTurnSettlement(t *testing.T) {
 		RootProviderTurn: &RootProviderTurnTransition{
 			WorkspaceID: "ws-1", RootAgentSessionID: "root",
 			RootTurnID: "turn-1", ProviderTurnID: "provider-user-1",
-			ProviderCheckpointMessageID: "provider-assistant-stale",
-			OccurredAtUnixMS:            12,
+			ProviderTurnBindingJSON: json.RawMessage(
+				`{"checkpointMessageId":"provider-assistant-stale"}`,
+			),
+			OccurredAtUnixMS: 12,
 		},
 	}); err != nil {
 		t.Fatalf("persist stale checkpoint: %v", err)
 	}
 	turn, found, err := store.GetTurn(ctx, "ws-1", "root", "turn-1")
 	if err != nil || !found ||
-		turn.ProviderCheckpointMessageID != "provider-system-1" ||
+		string(turn.ProviderTurnBindingJSON) !=
+			`{"checkpointMessageId":"provider-system-1"}` ||
 		turn.RootProviderTurnUpdatedAtUnixMS != 14 {
 		t.Fatalf("persisted turn=%#v found=%v error=%v", turn, found, err)
+	}
+}
+
+func TestProviderTurnBindingJSONDoesNotSurviveIdentityReplacement(
+	t *testing.T,
+) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	reportSessionWithTurn(t, store, SessionStateReport{
+		WorkspaceID: "ws-1", AgentSessionID: "root",
+		Provider: "claude-code", OccurredAtUnixMS: 10,
+	}, "turn-1", 10)
+	if _, err := store.ReportActivityState(ctx, ActivityStateReport{
+		Session: SessionStateReport{
+			WorkspaceID: "ws-1", AgentSessionID: "root",
+			OccurredAtUnixMS: 11,
+		},
+		RootProviderTurn: &RootProviderTurnTransition{
+			WorkspaceID: "ws-1", RootAgentSessionID: "root",
+			RootTurnID: "turn-1", ProviderTurnID: "provider-observed",
+			ProviderTurnBindingJSON: json.RawMessage(
+				`{"checkpointMessageId":"checkpoint-observed"}`,
+			),
+			Phase:            RootProviderTurnPhaseRunning,
+			OccurredAtUnixMS: 11,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ReportActivityState(ctx, ActivityStateReport{
+		Session: SessionStateReport{
+			WorkspaceID: "ws-1", AgentSessionID: "root",
+			OccurredAtUnixMS: 12,
+		},
+		RootProviderTurn: &RootProviderTurnTransition{
+			WorkspaceID: "ws-1", RootAgentSessionID: "root",
+			RootTurnID: "turn-1", ProviderTurnID: "synthetic-replacement",
+			Phase: RootProviderTurnPhaseRunning, OccurredAtUnixMS: 12,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	turn, found, err := store.GetTurn(ctx, "ws-1", "root", "turn-1")
+	if err != nil || !found {
+		t.Fatalf("GetTurn() found=%v error=%v", found, err)
+	}
+	if turn.RootProviderTurnID != "synthetic-replacement" ||
+		string(turn.ProviderTurnBindingJSON) != "{}" ||
+		HasPersistedProviderTurnBinding(turn) {
+		t.Fatalf("replacement inherited stale provider evidence: %#v", turn)
 	}
 }
 
@@ -509,7 +566,11 @@ func reportRootProviderTurn(
 		},
 		RootProviderTurn: &RootProviderTurnTransition{
 			WorkspaceID: "ws-1", RootAgentSessionID: rootSessionID, RootTurnID: rootTurnID,
-			ProviderTurnID: providerTurnID, Phase: phase, Outcome: outcome,
+			ProviderTurnID: providerTurnID,
+			ProviderTurnBindingJSON: json.RawMessage(
+				`{"schemaVersion":1}`,
+			),
+			Phase: phase, Outcome: outcome,
 			OccurredAtUnixMS: occurredAtUnixMS,
 		},
 	})

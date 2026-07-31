@@ -242,12 +242,12 @@ func statePatchFromActivityEvent(source EventSource, event activityshared.Event,
 			phase = ""
 		}
 		patch.RootProviderTurn = &WorkspaceAgentRootProviderTurnTransition{
-			RootTurnID:                  strings.TrimSpace(event.Payload.TurnID),
-			ProviderTurnID:              strings.TrimSpace(event.Payload.ProviderTurnID),
-			ProviderCheckpointMessageID: strings.TrimSpace(event.Payload.ProviderCheckpointMessageID),
-			Phase:                       phase,
-			Outcome:                     strings.TrimSpace(event.Payload.TurnOutcome),
-			ErrorMessage:                activityshared.BestEffortErrorMessage(event.Payload),
+			RootTurnID:              strings.TrimSpace(event.Payload.TurnID),
+			ProviderTurnID:          strings.TrimSpace(event.Payload.ProviderTurnID),
+			ProviderTurnBindingJSON: append([]byte(nil), event.Payload.ProviderTurnBindingJSON...),
+			Phase:                   phase,
+			Outcome:                 strings.TrimSpace(event.Payload.TurnOutcome),
+			ErrorMessage:            activityshared.BestEffortErrorMessage(event.Payload),
 		}
 	}
 	return patch, true

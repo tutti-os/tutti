@@ -8,10 +8,15 @@ export interface ComposerDraftSnapshot {
 
 export class ComposerDraftService extends ObservableService<ComposerDraftSnapshot> {
   readonly _serviceBrand: undefined;
-  private snapshot: ComposerDraftSnapshot = {
-    drafts: {},
-    settingsByTargetId: {}
-  };
+  private snapshot: ComposerDraftSnapshot;
+
+  constructor(previous?: ComposerDraftSnapshot) {
+    super();
+    this.snapshot = {
+      drafts: { ...previous?.drafts },
+      settingsByTargetId: { ...previous?.settingsByTargetId }
+    };
+  }
 
   getSnapshot = (): ComposerDraftSnapshot => this.snapshot;
 

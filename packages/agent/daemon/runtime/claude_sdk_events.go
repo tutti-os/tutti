@@ -83,7 +83,7 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 			return nil, false, errors.New("claude SDK provider turn start omitted identity")
 		}
 		a.beginClaudeSDKRootTurn(adapterSession, eventTurnID, providerTurnID)
-		return []activityshared.Event{claudeSDKRootProviderTurnStartedEvent(
+		return []activityshared.Event{a.claudeSDKRootProviderTurnStartedEvent(
 			session,
 			eventTurnID,
 			providerTurnID,
@@ -99,7 +99,7 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 				"claude SDK provider turn checkpoint omitted identity",
 			)
 		}
-		return []activityshared.Event{claudeSDKRootProviderTurnCheckpointEvent(
+		return []activityshared.Event{a.claudeSDKRootProviderTurnCheckpointEvent(
 			session,
 			eventTurnID,
 			providerTurnID,
@@ -156,7 +156,12 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 		if payloadBoolValue(event.Payload, "synthetic") {
 			metadata["synthetic"] = true
 		}
-		return []activityshared.Event{claudeSDKRootProviderTurnStartedEvent(session, rootTurnID, providerTurnID, metadata)}, false, nil
+		return []activityshared.Event{a.claudeSDKRootProviderTurnStartedEvent(
+			session,
+			rootTurnID,
+			providerTurnID,
+			metadata,
+		)}, false, nil
 	case "goal_command_started":
 		evidence := map[string]any{
 			"source":         "claude_goal_command_started",

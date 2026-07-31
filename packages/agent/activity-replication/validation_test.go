@@ -57,6 +57,7 @@ func TestValidateMutationAcceptsEveryProjectionSnapshot(t *testing.T) {
 				mutation.Turn = &activityreplication.Turn{
 					WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: turnID,
 					Phase: canonical.TurnPhaseRunning, Origin: canonical.TurnOriginUserPrompt,
+					ProviderTurnBindingJSON: json.RawMessage(`{}`),
 				}
 				mutation.SessionScope = sessionScope
 				return mutation

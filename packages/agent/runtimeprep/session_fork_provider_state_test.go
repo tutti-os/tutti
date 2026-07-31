@@ -13,8 +13,76 @@ func TestDefaultPreparerDeclaresForkProviderStateBindingPerProvider(t *testing.T
 	if !preparer.SupportsSessionForkProviderStateBinding("codex") {
 		t.Fatal("Codex provider state binding = false, want true")
 	}
+	if !preparer.SupportsSessionForkProviderStateBinding("tutti-agent") {
+		t.Fatal("Tutti Agent provider state binding = false, want true")
+	}
 	if preparer.SupportsSessionForkProviderStateBinding("claude-code") {
 		t.Fatal("Claude provider state binding = true before explicit integration")
+	}
+}
+
+func TestDefaultPreparerBindsExactTuttiAgentForkRolloutToIndependentTargetRuntime(
+	t *testing.T,
+) {
+	stateDir := t.TempDir()
+	preparer := NewDefaultPreparer(stateDir)
+	store := LocalStore{StateDir: stateDir}
+	sourceRoot, err := store.RuntimeRoot("workspace-1", "source-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetRoot, err := store.RuntimeRoot("workspace-1", "target-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourcePath := filepath.Join(
+		sourceRoot,
+		tuttiAgentHomeDirectory,
+		"sessions",
+		"2026",
+		"07",
+		"30",
+		"rollout-2026-07-30T11-38-33-target-thread.jsonl",
+	)
+	writeTestCodexRollout(t, sourcePath, "target-thread")
+
+	if err := preparer.BindSessionForkProviderState(
+		t.Context(),
+		SessionForkProviderStateBindingInput{
+			WorkspaceID:             "workspace-1",
+			Provider:                "tutti-agent",
+			SourceAgentSessionID:    "source-session",
+			TargetAgentSessionID:    "target-session",
+			SourceProviderSessionID: "source-thread",
+			TargetProviderSessionID: "target-thread",
+		},
+	); err != nil {
+		t.Fatalf("BindSessionForkProviderState() error = %v", err)
+	}
+
+	targetPath := filepath.Join(
+		targetRoot,
+		tuttiAgentHomeDirectory,
+		"sessions",
+		"2026",
+		"07",
+		"30",
+		filepath.Base(sourcePath),
+	)
+	if targetInfo, err := os.Lstat(targetPath); err != nil {
+		t.Fatalf("target rollout stat: %v", err)
+	} else if !targetInfo.Mode().IsRegular() ||
+		targetInfo.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf(
+			"target rollout mode = %v, want independent regular file",
+			targetInfo.Mode(),
+		)
+	}
+	if _, err := os.Stat(filepath.Join(
+		targetRoot,
+		codexHomeDirectory,
+	)); !os.IsNotExist(err) {
+		t.Fatalf("Tutti Agent rollout leaked into Codex home: %v", err)
 	}
 }
 

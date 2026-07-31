@@ -46,15 +46,27 @@ func (a *ClaudeCodeSDKAdapter) RecoverProviderTurnBinding(
 		ProviderTurnID: strings.TrimSpace(
 			payloadString(event.Payload, "providerTurnId"),
 		),
-		ProviderCheckpointMessageID: strings.TrimSpace(
-			payloadString(event.Payload, "providerCheckpointMessageId"),
-		),
 	}
+	checkpointMessageID := strings.TrimSpace(
+		payloadString(event.Payload, "providerCheckpointMessageId"),
+	)
 	if result.ProviderSessionID != expectedSessionID ||
 		result.ProviderTurnID == "" ||
-		result.ProviderCheckpointMessageID == "" {
+		checkpointMessageID == "" {
 		return ProviderTurnBindingRecoveryResult{},
 			errors.New("claude provider turn recovery returned incomplete identity")
+	}
+	result.ProviderTurnBindingJSON, err = a.WriteProviderTurnBinding(
+		ProviderTurnBindingWriteInput{
+			Kind:           ProviderTurnBindingWriteRecovered,
+			ProviderTurnID: result.ProviderTurnID,
+			Payload: map[string]any{
+				"checkpointMessageId": checkpointMessageID,
+			},
+		},
+	)
+	if err != nil {
+		return ProviderTurnBindingRecoveryResult{}, err
 	}
 	return result, nil
 }

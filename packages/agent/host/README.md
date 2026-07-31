@@ -249,11 +249,14 @@ scenario verifies live and too-new preservation, exact-cutoff removal, and
 idempotent replay through Host.
 
 `ForkSession` creates an independent root Session through an inclusive
-canonical `SessionForkPoint`. Availability is intentionally optimistic:
-the provider driver must attest native `throughTurn` support and the selected
-canonical Turn must be settled and carry a non-empty provider root Turn
-binding. Historical prefix provenance, descendants, active work on other Turns,
-and pending Interactions are not eligibility inputs.
+canonical `SessionForkPoint`. The provider driver must attest native
+`throughTurn` support and the selected canonical Turn must be settled. A
+non-empty provider Turn id is not sufficient: the owning Agent must also have
+written opaque `provider_turn_binding_json`, and its `CanForkProviderTurn` hook
+must accept that exact id/JSON pair. Session-detail projection and Fork
+execution call the same hook. Rows created before the JSON binding existed
+intentionally remain unbound. Descendants, active work on other Turns, and
+pending Interactions are not eligibility inputs.
 If an otherwise eligible historical Turn is missing only that binding,
 `ForkSession` performs one read-only provider-history repair before repeating
 the canonical boundary check. The primary proof is the durable submit claim's
@@ -264,8 +267,11 @@ history fails closed. Codex has no legacy text recovery because its stable
 `thread/read` shape does not expose an equally authoritative complete prompt.
 No provider Turn is ever selected by index. The SQLite repair is an idempotent
 empty-binding compare-and-swap and rejects provider Turn identities already
-owned by another canonical Turn. Claude additionally persists the recovered
-checkpoint; Codex `thread/fork(lastTurnId)` consumes only its provider Turn id.
+owned by another canonical Turn. Recovery and provider-owned Fork results pass
+through the owning Agent's binding writer. Claude stores its checkpoint inside
+its private JSON payload; Codex and Tutti Agent `thread/fork(lastTurnId)` use
+the shared app-server payload schema and provider Turn id while retaining
+separate runtime version attestations and isolated provider homes.
 Target titles use one lineage-family sequence (`Title (2)`, `Title (3)`, ...)
 rather than restarting the suffix when a child Session becomes the next source.
 Every fail-closed boundary rejection retains a stable, content-free reason

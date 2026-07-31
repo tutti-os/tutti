@@ -27,6 +27,7 @@ describe("mobile navigation access", () => {
   test("uses Devices as the authenticated root without a workspace route", () => {
     expect(
       availableMobileRoutes({
+        connection: { phase: "idle" },
         device: null,
         session,
         status: "authenticated",
@@ -38,6 +39,7 @@ describe("mobile navigation access", () => {
   test("opens conversation routes only after the Personal workspace resolves", () => {
     expect(
       availableMobileRoutes({
+        connection: { phase: "connected" },
         device: { name: "Desktop", pairingId: "pairing-1" },
         session,
         status: "authenticated",

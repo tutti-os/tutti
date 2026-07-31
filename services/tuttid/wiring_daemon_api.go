@@ -433,6 +433,7 @@ func buildDaemonAPI(
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("compose agent host")
 	}
 	configureAgentProviderGoalAdoption(agentRuntime.Controller(), agentHost)
+	agentActivityProjection.SetTurnForkabilityResolver(agentHost)
 	agentSessionConfig.Host = agentservice.ServiceHostConfig{
 		ApplicationHost: agentHost,
 		Components:      agentServiceComponents,

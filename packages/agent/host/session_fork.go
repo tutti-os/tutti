@@ -120,6 +120,53 @@ func (h *Host) forkSessionSerialized(
 		strings.TrimSpace(boundary.Session.ProviderSessionID) {
 		return ForkSessionResult{}, ErrSessionForkFailed
 	}
+	forkable, err := h.sessionForkRuntime.CanForkProviderTurn(
+		ctx,
+		RuntimeProviderTurnForkabilityInput{
+			Source:                  cloneSessionForkRuntimeSource(runtimeSource),
+			CanonicalTurnID:         boundary.Turn.TurnID,
+			ProviderTurnID:          boundary.Turn.RootProviderTurnID,
+			ProviderTurnBindingJSON: append([]byte(nil), boundary.Turn.ProviderTurnBindingJSON...),
+		},
+	)
+	if err != nil {
+		return ForkSessionResult{}, err
+	}
+	if !forkable {
+		if recoveryErr := h.recoverSessionForkTurnBinding(
+			ctx,
+			input.WorkspaceID,
+			input.SourceAgentSessionID,
+			input.Point.TurnID,
+		); recoveryErr == nil {
+			boundary, supported, err = h.sessionForks.CheckSessionForkThroughTurn(
+				ctx,
+				input.WorkspaceID,
+				input.SourceAgentSessionID,
+				input.Point.TurnID,
+			)
+			if err != nil {
+				return ForkSessionResult{}, err
+			}
+			if supported {
+				forkable, err = h.sessionForkRuntime.CanForkProviderTurn(
+					ctx,
+					RuntimeProviderTurnForkabilityInput{
+						Source:                  cloneSessionForkRuntimeSource(runtimeSource),
+						CanonicalTurnID:         boundary.Turn.TurnID,
+						ProviderTurnID:          boundary.Turn.RootProviderTurnID,
+						ProviderTurnBindingJSON: append([]byte(nil), boundary.Turn.ProviderTurnBindingJSON...),
+					},
+				)
+				if err != nil {
+					return ForkSessionResult{}, err
+				}
+			}
+		}
+		if !forkable {
+			return ForkSessionResult{}, storesqlite.ErrSessionForkTurnState
+		}
+	}
 	descriptor, err := h.sessionForkRuntime.ResolveSessionFork(
 		ctx,
 		cloneSessionForkRuntimeSource(runtimeSource),
@@ -461,12 +508,12 @@ func (h *Host) processSessionForkOperationWithSource(
 	}
 	providerResult, dispatchErr := h.sessionForkRuntime.ForkSession(
 		ctx, RuntimeSessionForkInput{
-			Source:                            cloneSessionForkRuntimeSource(source),
-			SourceProviderTurnID:              operation.SourceProviderTurnID,
-			SourceProviderCheckpointMessageID: operation.SourceProviderCheckpointMessageID,
-			TargetTitle:                       operation.TargetTitle,
-			RequestID:                         operation.RequestID,
-			Driver:                            descriptor,
+			Source:                        cloneSessionForkRuntimeSource(source),
+			SourceProviderTurnID:          operation.SourceProviderTurnID,
+			SourceProviderTurnBindingJSON: append([]byte(nil), operation.SourceProviderTurnBindingJSON...),
+			TargetTitle:                   operation.TargetTitle,
+			RequestID:                     operation.RequestID,
+			Driver:                        descriptor,
 		},
 	)
 	targetProviderSessionID := strings.TrimSpace(providerResult.ProviderSessionID)
@@ -546,8 +593,11 @@ func storeSessionForkProviderTurnBindings(
 	)
 	for _, binding := range bindings {
 		result = append(result, storesqlite.SessionForkProviderTurnBinding{
-			ProviderTurnID:      strings.TrimSpace(binding.ProviderTurnID),
-			CheckpointMessageID: strings.TrimSpace(binding.CheckpointMessageID),
+			ProviderTurnID: strings.TrimSpace(binding.ProviderTurnID),
+			ProviderTurnBindingJSON: append(
+				[]byte(nil),
+				binding.ProviderTurnBindingJSON...,
+			),
 		})
 	}
 	return result

@@ -267,6 +267,18 @@ func (s *Service) withProtocolV2TurnStateProjectionOptions(
 	}
 	if resolveProviderCapabilities {
 		session = s.withSessionForkCapabilities(ctx, workspaceID, session)
+		if session.ActiveTurn != nil {
+			value := s.withProviderTurnForkability(
+				ctx, workspaceID, session.ID, *session.ActiveTurn,
+			)
+			session.ActiveTurn = &value
+		}
+		if session.LatestTurn != nil {
+			value := s.withProviderTurnForkability(
+				ctx, workspaceID, session.ID, *session.LatestTurn,
+			)
+			session.LatestTurn = &value
+		}
 	}
 	session, err = s.withSessionForkLineage(ctx, workspaceID, session)
 	if err != nil {

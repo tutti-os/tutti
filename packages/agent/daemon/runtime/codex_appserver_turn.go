@@ -311,6 +311,14 @@ func (a *CodexAppServerAdapter) GuideActiveTurn(
 		return nil, ErrSessionDisconnected
 	}
 	started := activityshared.NewRootProviderTurnStarted(eventContext, turnID, attemptID)
+	if binding, err := a.WriteProviderTurnBinding(
+		ProviderTurnBindingWriteInput{
+			Kind:           ProviderTurnBindingWriteStarted,
+			ProviderTurnID: attemptID,
+		},
+	); err == nil {
+		started.Payload.ProviderTurnBindingJSON = binding
+	}
 	started.Payload.Metadata = map[string]any{"guidanceContinuation": true}
 	continuation := newCodexGuidanceContinuationAdmission(attemptID)
 	if err := a.execAsync(

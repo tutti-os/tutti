@@ -45,6 +45,13 @@ func (workspaceStoreForkRuntime) ResolveSessionFork(
 	}, nil
 }
 
+func (workspaceStoreForkRuntime) CanForkProviderTurn(
+	context.Context,
+	agenthost.RuntimeProviderTurnForkabilityInput,
+) (bool, error) {
+	return true, nil
+}
+
 func (workspaceStoreForkRuntime) ForkSession(
 	_ context.Context,
 	_ agenthost.RuntimeSessionForkInput,

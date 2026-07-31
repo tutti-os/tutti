@@ -1,8 +1,10 @@
 package storesqlite
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -13,13 +15,13 @@ var ErrProviderTurnBindingConflict = errors.New(
 )
 
 type ProviderTurnBindingRecovery struct {
-	WorkspaceID                 string
-	AgentSessionID              string
-	TurnID                      string
-	ExpectedProviderSessionID   string
-	ProviderTurnID              string
-	ProviderCheckpointMessageID string
-	OccurredAtUnixMS            int64
+	WorkspaceID               string
+	AgentSessionID            string
+	TurnID                    string
+	ExpectedProviderSessionID string
+	ProviderTurnID            string
+	ProviderTurnBindingJSON   json.RawMessage
+	OccurredAtUnixMS          int64
 }
 
 type ProviderTurnBindingRecoveryResult struct {
@@ -43,13 +45,14 @@ func (s *Store) RecoverProviderTurnBinding(
 		input.ExpectedProviderSessionID,
 	)
 	input.ProviderTurnID = strings.TrimSpace(input.ProviderTurnID)
-	input.ProviderCheckpointMessageID = strings.TrimSpace(
-		input.ProviderCheckpointMessageID,
+	bindingJSON, bindingErr := normalizeProviderTurnBindingJSON(
+		input.ProviderTurnBindingJSON,
 	)
 	if s == nil || s.db == nil || input.WorkspaceID == "" ||
 		input.AgentSessionID == "" || input.TurnID == "" ||
 		input.ExpectedProviderSessionID == "" || input.ProviderTurnID == "" ||
 		input.ProviderTurnID == input.TurnID ||
+		bindingErr != nil || len(bindingJSON) == 0 ||
 		input.OccurredAtUnixMS <= 0 {
 		return ProviderTurnBindingRecoveryResult{}, errors.New(
 			"invalid provider turn binding recovery",
@@ -96,14 +99,8 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 		return ProviderTurnBindingRecoveryResult{},
 			ErrProviderTurnBindingConflict
 	}
-	if HasUsableProviderTurnBinding(turn) &&
+	if HasPersistedProviderTurnBinding(turn) &&
 		turn.RootProviderTurnID != input.ProviderTurnID {
-		return ProviderTurnBindingRecoveryResult{},
-			ErrProviderTurnBindingConflict
-	}
-	if input.ProviderCheckpointMessageID != "" &&
-		turn.ProviderCheckpointMessageID != "" &&
-		turn.ProviderCheckpointMessageID != input.ProviderCheckpointMessageID {
 		return ProviderTurnBindingRecoveryResult{},
 			ErrProviderTurnBindingConflict
 	}
@@ -136,10 +133,9 @@ LIMIT 1
 		return ProviderTurnBindingRecoveryResult{},
 			ErrProviderTurnBindingConflict
 	}
-	if turn.RootProviderTurnID == input.ProviderTurnID &&
-		(input.ProviderCheckpointMessageID == "" ||
-			turn.ProviderCheckpointMessageID ==
-				input.ProviderCheckpointMessageID) {
+	if HasPersistedProviderTurnBinding(turn) &&
+		turn.RootProviderTurnID == input.ProviderTurnID &&
+		bytes.Equal(turn.ProviderTurnBindingJSON, bindingJSON) {
 		if err := tx.Commit(); err != nil {
 			return ProviderTurnBindingRecoveryResult{}, fmt.Errorf(
 				"commit provider turn binding replay: %w",
@@ -151,6 +147,7 @@ LIMIT 1
 	result, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_turns
 SET root_provider_turn_id = ?,
+    provider_turn_binding_json = ?,
     root_provider_turn_phase = CASE
       WHEN root_provider_turn_phase IS NULL OR TRIM(root_provider_turn_phase) = ''
       THEN 'completed'
@@ -161,18 +158,14 @@ SET root_provider_turn_id = ?,
       THEN outcome
       ELSE root_provider_turn_outcome
     END,
-    provider_checkpoint_message_id = CASE
-      WHEN ? = '' THEN provider_checkpoint_message_id
-      ELSE ?
-    END,
     root_provider_turn_updated_at_unix_ms = ?
 WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ?
   AND (root_provider_turn_id IS NULL OR TRIM(root_provider_turn_id) = ?
        OR root_provider_turn_id = ?
-       OR root_provider_turn_id = turn_id)
+       OR root_provider_turn_id = turn_id
+       OR provider_turn_binding_json = '{}')
 `, input.ProviderTurnID,
-		input.ProviderCheckpointMessageID,
-		input.ProviderCheckpointMessageID,
+		string(bindingJSON),
 		input.OccurredAtUnixMS,
 		input.WorkspaceID,
 		input.AgentSessionID,

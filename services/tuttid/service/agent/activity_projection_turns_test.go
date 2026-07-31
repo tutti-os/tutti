@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"reflect"
 	"testing"
 
@@ -65,9 +66,10 @@ func TestTurnTransitionFromStateInputRequiresExplicitTurnPatch(t *testing.T) {
 				Phase:        agentactivitybiz.TurnPhaseWaiting,
 			},
 			RootProviderTurn: &canonical.WorkspaceAgentRootProviderTurnTransition{
-				RootTurnID:     "root-turn-1",
-				ProviderTurnID: "provider-turn-1",
-				Phase:          agentsessionstore.RootProviderTurnPhaseCompleted,
+				RootTurnID:              "root-turn-1",
+				ProviderTurnID:          "provider-turn-1",
+				ProviderTurnBindingJSON: json.RawMessage(`{"schemaVersion":1}`),
+				Phase:                   agentsessionstore.RootProviderTurnPhaseCompleted,
 			},
 		},
 	}
@@ -79,6 +81,8 @@ func TestTurnTransitionFromStateInputRequiresExplicitTurnPatch(t *testing.T) {
 	providerTransition, providerOK := rootProviderTurnTransitionFromStateInput(input)
 	if !providerOK || providerTransition.RootTurnID != "root-turn-1" ||
 		providerTransition.ProviderTurnID != "provider-turn-1" ||
+		string(providerTransition.ProviderTurnBindingJSON) !=
+			`{"schemaVersion":1}` ||
 		providerTransition.Phase != agentsessionstore.RootProviderTurnPhaseCompleted {
 		t.Fatalf("root provider transition = %#v, want explicit provider terminal preserved", providerTransition)
 	}
@@ -95,26 +99,27 @@ func TestGeneratedWorkspaceAgentTurnCoversAllFields(t *testing.T) {
 	t.Parallel()
 
 	projected := GeneratedWorkspaceAgentTurn(agentactivitybiz.Turn{
-		WorkspaceID:            "ws-1",
-		AgentSessionID:         "session-1",
-		TurnID:                 "turn-1",
-		CapabilityRefs:         []agentactivitybiz.CapabilityReference{{Capability: "tutti", Source: "slash_command"}},
-		Origin:                 agentactivitybiz.TurnOriginGoalContinuation,
-		SourceGoalOperationID:  "goal-op-1",
-		SourceGoalRevision:     2,
-		SourceGoalRepairEpoch:  3,
-		Phase:                  agentactivitybiz.TurnPhaseSettled,
-		Outcome:                agentactivitybiz.TurnOutcomeFailed,
-		ErrorMessage:           "provider exploded",
-		ErrorCode:              "provider_error",
-		FileChanges:            map[string]any{"added": 1},
-		CompletedCommandKind:   "review",
-		CompletedCommandStatus: "completed",
-		StartedAtUnixMS:        1717200000000,
-		SettledAtUnixMS:        1717200001000,
-		CreatedAtUnixMS:        1717200000000,
-		UpdatedAtUnixMS:        1717200001000,
-		RootProviderTurnID:     "provider-turn-1",
+		WorkspaceID:                  "ws-1",
+		AgentSessionID:               "session-1",
+		TurnID:                       "turn-1",
+		CapabilityRefs:               []agentactivitybiz.CapabilityReference{{Capability: "tutti", Source: "slash_command"}},
+		Origin:                       agentactivitybiz.TurnOriginGoalContinuation,
+		SourceGoalOperationID:        "goal-op-1",
+		SourceGoalRevision:           2,
+		SourceGoalRepairEpoch:        3,
+		Phase:                        agentactivitybiz.TurnPhaseSettled,
+		Outcome:                      agentactivitybiz.TurnOutcomeFailed,
+		ErrorMessage:                 "provider exploded",
+		ErrorCode:                    "provider_error",
+		FileChanges:                  map[string]any{"added": 1},
+		CompletedCommandKind:         "review",
+		CompletedCommandStatus:       "completed",
+		StartedAtUnixMS:              1717200000000,
+		SettledAtUnixMS:              1717200001000,
+		CreatedAtUnixMS:              1717200000000,
+		UpdatedAtUnixMS:              1717200001000,
+		RootProviderTurnID:           "provider-turn-1",
+		ProviderForkBindingAvailable: true,
 	})
 	assertGeneratedFieldsPopulated(t, projected)
 }
@@ -122,7 +127,7 @@ func TestGeneratedWorkspaceAgentTurnCoversAllFields(t *testing.T) {
 func TestGeneratedWorkspaceAgentTurnMarksSettledMissingBindingForRecovery(t *testing.T) {
 	t.Parallel()
 
-	for _, rootProviderTurnID := range []string{"", "turn-1"} {
+	for _, rootProviderTurnID := range []string{"", "turn-1", "provider-turn-legacy"} {
 		rootProviderTurnID := rootProviderTurnID
 		t.Run(rootProviderTurnID, func(t *testing.T) {
 			t.Parallel()
@@ -152,16 +157,17 @@ func TestGeneratedTurnUpdatePayloadPassesEventstreamCatalog(t *testing.T) {
 	service := eventstreamservice.NewService(eventstreamservice.DefaultCatalog(), nil)
 	publisher := eventstreamservice.AgentActivityPublisher{Service: service}
 	turn := agentactivitybiz.Turn{
-		WorkspaceID:        "ws-1",
-		AgentSessionID:     "session-1",
-		TurnID:             "turn-1",
-		Origin:             agentactivitybiz.TurnOriginUserPrompt,
-		Phase:              agentactivitybiz.TurnPhaseSettled,
-		Outcome:            agentactivitybiz.TurnOutcomeCompleted,
-		StartedAtUnixMS:    1717200000000,
-		SettledAtUnixMS:    1717200001000,
-		UpdatedAtUnixMS:    1717200001000,
-		RootProviderTurnID: "provider-turn-1",
+		WorkspaceID:                  "ws-1",
+		AgentSessionID:               "session-1",
+		TurnID:                       "turn-1",
+		Origin:                       agentactivitybiz.TurnOriginUserPrompt,
+		Phase:                        agentactivitybiz.TurnPhaseSettled,
+		Outcome:                      agentactivitybiz.TurnOutcomeCompleted,
+		StartedAtUnixMS:              1717200000000,
+		SettledAtUnixMS:              1717200001000,
+		UpdatedAtUnixMS:              1717200001000,
+		RootProviderTurnID:           "provider-turn-1",
+		ProviderForkBindingAvailable: true,
 	}
 
 	if err := publisher.PublishAgentActivityUpdated(

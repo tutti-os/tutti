@@ -66,7 +66,7 @@ func (p *ActivityProjection) ObserveCommitted(ctx context.Context, delta agentho
 			continue
 		}
 		p.publishActivityUpdated(ctx, mutation.WorkspaceID, mutation.AgentSessionID, "turn_update",
-			activityTurnUpdateEventPayload(mutation.WorkspaceID, mutation.AgentSessionID, turn, time.Now().UnixMilli()))
+			p.activityTurnUpdateEventPayload(ctx, mutation.WorkspaceID, mutation.AgentSessionID, turn, time.Now().UnixMilli()))
 	}
 	return nil
 }

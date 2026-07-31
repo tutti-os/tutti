@@ -2,6 +2,7 @@ package agentruntime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 )
@@ -41,6 +42,12 @@ func (a *ClaudeCodeSDKAdapter) Fork(
 	if a == nil || a.transport == nil {
 		return result, ErrSessionForkUnsupported
 	}
+	var sourceBinding claudeProviderTurnBinding
+	if json.Unmarshal(input.ProviderTurnBindingJSON, &sourceBinding) != nil ||
+		sourceBinding.SchemaVersion != providerTurnBindingSchemaVersion ||
+		strings.TrimSpace(sourceBinding.CheckpointMessageID) == "" {
+		return result, ErrSessionForkUnsupported
+	}
 	event, sent, err := a.statelessClaudeSDKForkRequest(
 		ctx,
 		input.Source,
@@ -48,13 +55,11 @@ func (a *ClaudeCodeSDKAdapter) Fork(
 			ID:   newID(),
 			Type: "fork_session",
 			Payload: map[string]any{
-				"providerSessionId": strings.TrimSpace(input.Source.ProviderSessionID),
-				"providerTurnId":    strings.TrimSpace(input.ProviderTurnID),
-				"providerCheckpointMessageId": strings.TrimSpace(
-					input.ProviderCheckpointMessageID,
-				),
-				"cwd":   strings.TrimSpace(input.Source.CWD),
-				"title": strings.TrimSpace(input.TargetTitle),
+				"providerSessionId":           strings.TrimSpace(input.Source.ProviderSessionID),
+				"providerTurnId":              strings.TrimSpace(input.ProviderTurnID),
+				"providerCheckpointMessageId": strings.TrimSpace(sourceBinding.CheckpointMessageID),
+				"cwd":                         strings.TrimSpace(input.Source.CWD),
+				"title":                       strings.TrimSpace(input.TargetTitle),
 			},
 		},
 	)
@@ -70,7 +75,7 @@ func (a *ClaudeCodeSDKAdapter) Fork(
 		}
 		return result, err
 	}
-	targetTurnBindings, ok := claudeSDKPayloadTurnBindings(
+	targetTurnBindings, ok := a.claudeSDKPayloadTurnBindings(
 		event.Payload,
 		"targetProviderTurnBindings",
 	)
@@ -137,7 +142,7 @@ func (a *ClaudeCodeSDKAdapter) statelessClaudeSDKForkRequest(
 	return event, true, nil
 }
 
-func claudeSDKPayloadTurnBindings(
+func (a *ClaudeCodeSDKAdapter) claudeSDKPayloadTurnBindings(
 	payload map[string]any,
 	key string,
 ) ([]SessionForkProviderTurnBinding, bool) {
@@ -157,25 +162,39 @@ func claudeSDKPayloadTurnBindings(
 		if !ok {
 			return nil, false
 		}
+		providerTurnID := strings.TrimSpace(
+			payloadString(value, "providerTurnId"),
+		)
+		checkpointMessageID := strings.TrimSpace(
+			payloadString(value, "checkpointMessageId"),
+		)
+		if providerTurnID == "" || checkpointMessageID == "" {
+			return nil, false
+		}
+		if _, duplicate := seenProviderTurnIDs[providerTurnID]; duplicate {
+			return nil, false
+		}
+		if _, duplicate := seenCheckpointMessageIDs[checkpointMessageID]; duplicate {
+			return nil, false
+		}
+		bindingJSON, err := a.WriteProviderTurnBinding(
+			ProviderTurnBindingWriteInput{
+				Kind:           ProviderTurnBindingWriteForked,
+				ProviderTurnID: providerTurnID,
+				Payload: map[string]any{
+					"checkpointMessageId": checkpointMessageID,
+				},
+			},
+		)
+		if err != nil {
+			return nil, false
+		}
+		seenProviderTurnIDs[providerTurnID] = struct{}{}
+		seenCheckpointMessageIDs[checkpointMessageID] = struct{}{}
 		binding := SessionForkProviderTurnBinding{
-			ProviderTurnID: strings.TrimSpace(
-				payloadString(value, "providerTurnId"),
-			),
-			CheckpointMessageID: strings.TrimSpace(
-				payloadString(value, "checkpointMessageId"),
-			),
+			ProviderTurnID:          providerTurnID,
+			ProviderTurnBindingJSON: bindingJSON,
 		}
-		if binding.ProviderTurnID == "" || binding.CheckpointMessageID == "" {
-			return nil, false
-		}
-		if _, duplicate := seenProviderTurnIDs[binding.ProviderTurnID]; duplicate {
-			return nil, false
-		}
-		if _, duplicate := seenCheckpointMessageIDs[binding.CheckpointMessageID]; duplicate {
-			return nil, false
-		}
-		seenProviderTurnIDs[binding.ProviderTurnID] = struct{}{}
-		seenCheckpointMessageIDs[binding.CheckpointMessageID] = struct{}{}
 		result = append(result, binding)
 	}
 	return result, len(result) > 0

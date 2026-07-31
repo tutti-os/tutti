@@ -11,23 +11,38 @@ import (
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtime/codexproto"
 )
 
-// lastTurnId first appears on the stable app-server surface shipped by the
-// 0.144 line. Unknown or non-Codex runtimes fail closed even when they share
-// the app-server adapter. A prerelease of a later core version keeps that core
-// protocol level (for example the Codex build bundled with ChatGPT.app).
-var (
-	codexThroughTurnMinimumVersion = [3]int{0, 144, 0}
-)
-
 type codexForkThreadReadResponse struct {
 	Thread *codexproto.Thread `json:"thread,omitempty"`
+}
+
+type appServerForkStrategy struct {
+	userAgentBrand            string
+	throughTurnMinimumVersion [3]int
+}
+
+func (a *CodexAppServerAdapter) forkStrategy() (appServerForkStrategy, bool) {
+	if a == nil || !a.config.nativeSessionFork {
+		return appServerForkStrategy{}, false
+	}
+	minimumVersion, ok := parseVersionTriplet(
+		a.config.sessionForkThroughTurnMinVersion,
+	)
+	userAgentBrand := strings.TrimSpace(a.config.sessionForkUserAgentBrand)
+	if !ok || userAgentBrand == "" {
+		return appServerForkStrategy{}, false
+	}
+	return appServerForkStrategy{
+		userAgentBrand:            userAgentBrand,
+		throughTurnMinimumVersion: minimumVersion,
+	}, true
 }
 
 func (a *CodexAppServerAdapter) ForkCapabilities(
 	_ context.Context,
 	source Session,
 ) (SessionForkCapabilities, error) {
-	if a == nil || !a.config.nativeSessionFork {
+	strategy, ok := a.forkStrategy()
+	if !ok {
 		return SessionForkCapabilities{}, nil
 	}
 	sourceThreadID := strings.TrimSpace(source.ProviderSessionID)
@@ -37,21 +52,24 @@ func (a *CodexAppServerAdapter) ForkCapabilities(
 		appSession.threadID == sourceThreadID {
 		serverInfo := clonePayload(appSession.serverInfo)
 		a.mu.Unlock()
-		if version, ok := codexAppServerUserAgentVersion(serverInfo); ok {
-			return codexForkCapabilitiesForVersion(version), nil
+		if version, ok := appServerForkVersion(strategy, serverInfo); ok {
+			return appServerForkCapabilitiesForVersion(strategy, version), nil
 		}
 	} else {
 		a.mu.Unlock()
 	}
 	persistedServerInfo, _ := source.RuntimeContext["agent"].(map[string]any)
-	version, ok := codexAppServerUserAgentVersion(persistedServerInfo)
+	version, ok := appServerForkVersion(strategy, persistedServerInfo)
 	if !ok {
 		return SessionForkCapabilities{}, nil
 	}
-	return codexForkCapabilitiesForVersion(version), nil
+	return appServerForkCapabilitiesForVersion(strategy, version), nil
 }
 
-func codexForkCapabilitiesForVersion(version [3]int) SessionForkCapabilities {
+func appServerForkCapabilitiesForVersion(
+	strategy appServerForkStrategy,
+	version [3]int,
+) SessionForkCapabilities {
 	return SessionForkCapabilities{
 		StateBindingMode: "host_copy",
 		// The provider protocol can fork a whole thread, but Tutti must not
@@ -59,7 +77,10 @@ func codexForkCapabilitiesForVersion(version [3]int) SessionForkCapabilities {
 		// full-session Point is end-to-end. Capabilities describe the product
 		// chain, not an isolated provider method.
 		FullSession: false,
-		ThroughTurn: versionAtLeast(version, codexThroughTurnMinimumVersion),
+		ThroughTurn: versionAtLeast(
+			version,
+			strategy.throughTurnMinimumVersion,
+		),
 	}
 }
 
@@ -108,7 +129,8 @@ func (a *CodexAppServerAdapter) Fork(
 		return sessionForkNotStarted(), errors.New("source provider session id is required")
 	}
 	providerTurnID := strings.TrimSpace(input.ProviderTurnID)
-	if a == nil || !a.config.nativeSessionFork || providerTurnID == "" {
+	strategy, supportedProvider := a.forkStrategy()
+	if !supportedProvider || providerTurnID == "" {
 		return sessionForkNotStarted(), ErrSessionForkUnsupported
 	}
 
@@ -125,9 +147,13 @@ func (a *CodexAppServerAdapter) Fork(
 		return sessionForkNotStarted(), err
 	}
 	defer client.Close()
-	minimumVersion := codexThroughTurnMinimumVersion
-	if version, ok := codexAppServerInitializeVersion(initializeResult); !ok ||
-		!versionAtLeast(version, minimumVersion) {
+	if version, ok := appServerInitializeForkVersion(
+		strategy,
+		initializeResult,
+	); !ok || !versionAtLeast(
+		version,
+		strategy.throughTurnMinimumVersion,
+	) {
 		return sessionForkNotStarted(), ErrSessionForkUnsupported
 	}
 	actualProviderTurnIDs, err := readCodexForkSourceTurnIDs(
@@ -249,8 +275,12 @@ func sessionForkUnknown() SessionForkResult {
 	return SessionForkResult{DeliveryDisposition: SessionForkDeliveryUnknown}
 }
 
-func codexAppServerInitializeVersion(raw json.RawMessage) ([3]int, bool) {
-	return codexAppServerUserAgentVersion(
+func appServerInitializeForkVersion(
+	strategy appServerForkStrategy,
+	raw json.RawMessage,
+) ([3]int, bool) {
+	return appServerForkVersion(
+		strategy,
 		func() map[string]any {
 			var result map[string]any
 			if json.Unmarshal(raw, &result) != nil {
@@ -261,11 +291,29 @@ func codexAppServerInitializeVersion(raw json.RawMessage) ([3]int, bool) {
 	)
 }
 
-func codexAppServerUserAgentVersion(serverInfo map[string]any) ([3]int, bool) {
+func appServerForkVersion(
+	strategy appServerForkStrategy,
+	serverInfo map[string]any,
+) ([3]int, bool) {
 	userAgent := strings.TrimSpace(asString(serverInfo["userAgent"]))
-	if userAgent == "" || !strings.Contains(strings.ToLower(userAgent), "codex") {
+	normalizedUserAgent := strings.ReplaceAll(
+		strings.ToLower(userAgent),
+		"_",
+		"-",
+	)
+	normalizedBrand := strings.ReplaceAll(
+		strings.ToLower(strings.TrimSpace(strategy.userAgentBrand)),
+		"_",
+		"-",
+	)
+	if normalizedBrand == "" ||
+		!strings.Contains(normalizedUserAgent, normalizedBrand) {
 		return [3]int{}, false
 	}
+	return appServerUserAgentVersion(userAgent)
+}
+
+func appServerUserAgentVersion(userAgent string) ([3]int, bool) {
 	fields := strings.FieldsFunc(userAgent, func(r rune) bool {
 		return r == '/' || r == ' '
 	})

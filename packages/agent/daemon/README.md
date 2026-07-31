@@ -118,9 +118,12 @@ The host daemon owns:
 
 ## Provider Authentication Status
 
-`providerregistry` owns each provider's auth status command and parser kind.
-Hosts execute that descriptor-owned command in their provider runtime, then use
-`providerstatus.ParseAuthStatusOutput` to interpret the output consistently.
+`providerregistry` owns each provider's auth status command, runner kind, and
+parser kind. Hosts execute the descriptor-owned runner in their provider
+runtime, then use `providerstatus.ParseAuthStatusOutput` for text-command
+results. Codex uses the dedicated `codex_app_server_account` runner: it
+initializes `codex app-server` and calls `account/read`, matching session
+startup instead of trusting the shallower `codex login status` output.
 The same package exposes narrow helpers for explicit Codex and Claude API
 billing configuration. Credential-file or token presence must not be used as
 proof that an OAuth session is still authenticated.

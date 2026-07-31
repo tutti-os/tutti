@@ -35,6 +35,23 @@ import type { WorkspaceConversationRailService } from "./workspaceConversationRa
 import { WorkspaceNavigationService } from "./workspaceNavigationService";
 
 const BACKGROUND_GRACE_MS = 15_000;
+const CONNECTION_READY_TIMEOUT_MS = 15_000;
+const TRANSPORT_RECOVERY_GRACE_MS = 1_500;
+
+export type MobileConnectionRecoveryTrigger =
+  | "background_expired"
+  | "foreground_resume"
+  | "initial_connect"
+  | "manual_retry"
+  | "transport_lost";
+
+export type MobileConnectionSnapshot =
+  | { phase: "idle" }
+  | { phase: "connected" }
+  | {
+      phase: "failed" | "reconnecting" | "synchronizing";
+      trigger: MobileConnectionRecoveryTrigger;
+    };
 
 export type MobileApplicationSnapshot =
   | { status: "bootstrapping" }
@@ -42,6 +59,7 @@ export type MobileApplicationSnapshot =
   | {
       status: "authenticated";
       device: ConnectedDevice | null;
+      connection: MobileConnectionSnapshot;
       session: AccountSession;
       workspace: WorkspaceSummary | null;
     };
@@ -61,6 +79,7 @@ interface WorkspaceScope {
   activity: WorkspaceActivityService;
   container: IInstantiationService;
   drafts: ComposerDraftService;
+  generation: number;
   navigation: WorkspaceNavigationService;
   rail: WorkspaceConversationRailService;
   workspace: WorkspaceSummary;
@@ -77,11 +96,15 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
   private workspaceScope: WorkspaceScope | null = null;
   private workspaceCandidate: WorkspaceScope | null = null;
   private lifecycleDispose: (() => void) | null = null;
-  private backgroundTask: { cancel(): void } | null = null;
+  private connectionReadyTask: { cancel(): void } | null = null;
+  private transportRecoveryTask: { cancel(): void } | null = null;
   private deviceDisconnectTask: Promise<void> | null = null;
+  private deviceReconnectTask: Promise<void> | null = null;
   private deviceLinkCloseTask: Promise<void> | null = null;
+  private backgroundStartedAtUnixMs: number | null = null;
   private appForeground = true;
   private startPromise: Promise<void> | null = null;
+  private connectionRecoveryGeneration = 0;
   private workspaceGeneration = 0;
   private disposed = false;
 
@@ -145,6 +168,7 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
 
   disconnectDevice(): Promise<void> {
     if (this.deviceDisconnectTask) return this.deviceDisconnectTask;
+    this.cancelConnectionRecovery();
     const scope = this.authenticatedScope;
     const task = this.closeDeviceLink().finally(() => {
       if (this.deviceDisconnectTask === task) {
@@ -165,13 +189,30 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
     return task;
   }
 
-  private async selectWorkspace(workspace: WorkspaceSummary): Promise<boolean> {
+  retryDeviceConnection(): Promise<void> {
+    return this.recoverDeviceConnection("manual_retry");
+  }
+
+  private async selectWorkspace(
+    workspace: WorkspaceSummary,
+    trigger: MobileConnectionRecoveryTrigger
+  ): Promise<boolean> {
     const authenticated = this.authenticatedScope;
     if (!authenticated?.device) return false;
-    this.disposeWorkspaceScope();
+    const previousCandidate = this.workspaceCandidate;
+    this.workspaceCandidate = null;
+    previousCandidate?.container.dispose();
     const generation = ++this.workspaceGeneration;
-    const navigation = new WorkspaceNavigationService();
-    const drafts = new ComposerDraftService();
+    const previousWorkspace =
+      this.workspaceScope?.workspace.id === workspace.id
+        ? this.workspaceScope
+        : null;
+    const navigation = new WorkspaceNavigationService(
+      previousWorkspace?.navigation.getSnapshot()
+    );
+    const drafts = new ComposerDraftService(
+      previousWorkspace?.drafts.getSnapshot()
+    );
     const activity = new WorkspaceActivityService(
       workspace,
       authenticated.client,
@@ -180,7 +221,9 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
       drafts,
       this.ports.clock,
       authenticated.session.userId,
-      this.ports.deviceLink
+      this.ports.deviceLink,
+      (connected) =>
+        this.handleWorkspaceTransportConnectionChanged(generation, connected)
     );
     const rail = activity.rail;
     const services = new ServiceCollection();
@@ -194,6 +237,7 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
       activity,
       container,
       drafts,
+      generation,
       navigation,
       rail,
       workspace
@@ -214,30 +258,22 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
         return false;
       }
       this.workspaceCandidate = null;
+      const previousScope = this.workspaceScope;
       this.workspaceScope = candidate;
-      this.publish({
-        device: authenticated.device,
-        session: authenticated.session,
-        status: "authenticated",
-        workspace
-      });
+      previousScope?.container.dispose();
+      const connection: MobileConnectionSnapshot =
+        candidate.activity.isTransportConnected()
+          ? { phase: "connected" }
+          : { phase: "synchronizing", trigger };
+      this.publishAuthenticated(authenticated, connection, workspace);
+      if (connection.phase === "synchronizing") {
+        this.scheduleConnectionReadyDeadline(candidate, trigger);
+      }
       return true;
     } catch {
       if (this.workspaceCandidate === candidate) {
         this.workspaceCandidate = null;
         candidate.container.dispose();
-      }
-      if (
-        generation === this.workspaceGeneration &&
-        this.authenticatedScope === authenticated &&
-        authenticated.device
-      ) {
-        this.publish({
-          device: authenticated.device,
-          session: authenticated.session,
-          status: "authenticated",
-          workspace: null
-        });
       }
       return false;
     }
@@ -246,8 +282,7 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.backgroundTask?.cancel();
-    this.backgroundTask = null;
+    this.cancelConnectionRecovery();
     this.lifecycleDispose?.();
     this.lifecycleDispose = null;
     this.disposeWorkspaceScope();
@@ -310,6 +345,7 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
       workspaceCatalog
     };
     this.publish({
+      connection: { phase: "idle" },
       device: null,
       session,
       status: "authenticated",
@@ -321,15 +357,29 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
   private async onDeviceConnected(device: ConnectedDevice): Promise<void> {
     const scope = this.authenticatedScope;
     if (!scope) return;
+    const current =
+      this.snapshot.status === "authenticated" ? this.snapshot : null;
+    const preservingWorkspace = Boolean(
+      current?.device &&
+      current.workspace &&
+      current.device.pairingId === device.pairingId
+    );
+    const trigger: MobileConnectionRecoveryTrigger =
+      current?.connection.phase === "reconnecting" ||
+      current?.connection.phase === "synchronizing" ||
+      current?.connection.phase === "failed"
+        ? current.connection.trigger
+        : "initial_connect";
     scope.device = device;
     void scope.directory.load();
     void scope.quickPrompts.refresh();
-    this.publish({
-      device,
-      session: scope.session,
-      status: "authenticated",
-      workspace: null
-    });
+    if (!preservingWorkspace) {
+      this.publishAuthenticated(
+        scope,
+        { phase: "synchronizing", trigger },
+        null
+      );
+    }
     await scope.workspaceCatalog.start();
     if (this.authenticatedScope !== scope || scope.device !== device) return;
     const catalog = scope.workspaceCatalog.getSnapshot();
@@ -338,12 +388,12 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
       catalog.errorCode ||
       catalog.workspaces.length !== 1
     ) {
-      this.clearConnectedDevice(scope);
+      if (!preservingWorkspace) this.clearConnectedDevice(scope);
       await this.closeDeviceLink();
       throw new DeviceConnectionSetupError("workspace_unavailable");
     }
-    if (!(await this.selectWorkspace(catalog.workspaces[0]!))) {
-      this.clearConnectedDevice(scope);
+    if (!(await this.selectWorkspace(catalog.workspaces[0]!, trigger))) {
+      if (!preservingWorkspace) this.clearConnectedDevice(scope);
       await this.closeDeviceLink();
       throw new DeviceConnectionSetupError("workspace_unavailable");
     }
@@ -357,30 +407,200 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
       state
     });
     if (foreground) {
-      const hadPendingGrace = this.backgroundTask !== null;
-      this.backgroundTask?.cancel();
-      this.backgroundTask = null;
-      if (hadPendingGrace) {
-        this.workspaceScope?.activity.resume();
-        this.workspaceCandidate?.activity.resume();
-      }
+      const backgroundStartedAtUnixMs = this.backgroundStartedAtUnixMs;
+      this.backgroundStartedAtUnixMs = null;
+      const backgroundElapsedMs =
+        backgroundStartedAtUnixMs === null
+          ? 0
+          : Math.max(0, this.ports.clock.now() - backgroundStartedAtUnixMs);
+      const authenticated = this.authenticatedScope;
+      authenticated?.deviceService.resumeRemoteOperations();
       if (
         this.snapshot.status === "authenticated" &&
-        this.snapshot.device === null &&
-        this.deviceDisconnectTask === null
+        this.snapshot.device &&
+        this.snapshot.workspace
       ) {
-        this.authenticatedScope?.deviceService.resumeRemoteOperations();
+        if (
+          backgroundElapsedMs >= BACKGROUND_GRACE_MS ||
+          this.snapshot.connection.phase === "reconnecting" ||
+          this.snapshot.connection.phase === "failed"
+        ) {
+          void this.recoverDeviceConnection("background_expired");
+        } else {
+          this.resumeWorkspaceConnection("foreground_resume");
+        }
       }
       return;
     }
-    if (this.backgroundTask) return;
+    if (this.backgroundStartedAtUnixMs !== null) return;
+    this.backgroundStartedAtUnixMs = this.ports.clock.now();
+    this.cancelConnectionRecovery();
     this.workspaceScope?.activity.pause();
     this.workspaceCandidate?.activity.pause();
     this.authenticatedScope?.deviceService.suspendRemoteOperations();
-    this.backgroundTask = this.ports.clock.schedule(BACKGROUND_GRACE_MS, () => {
-      this.backgroundTask = null;
-      void this.disconnectDevice();
+  }
+
+  private resumeWorkspaceConnection(
+    trigger: MobileConnectionRecoveryTrigger
+  ): void {
+    const authenticated = this.authenticatedScope;
+    const workspace = this.workspaceScope;
+    if (!authenticated?.device || !workspace) return;
+    this.cancelConnectionTimers();
+    this.publishAuthenticated(authenticated, {
+      phase: "synchronizing",
+      trigger
     });
+    workspace.activity.resume();
+    if (workspace.activity.isTransportConnected()) {
+      this.publishAuthenticated(authenticated, { phase: "connected" });
+      return;
+    }
+    this.scheduleConnectionReadyDeadline(workspace, trigger);
+  }
+
+  private recoverDeviceConnection(
+    trigger: MobileConnectionRecoveryTrigger
+  ): Promise<void> {
+    if (this.deviceReconnectTask) return this.deviceReconnectTask;
+    const authenticated = this.authenticatedScope;
+    const current =
+      this.snapshot.status === "authenticated" ? this.snapshot : null;
+    const device = current?.device ?? null;
+    const workspace = current?.workspace ?? null;
+    if (!authenticated || !device || !workspace || !this.appForeground) {
+      return Promise.resolve();
+    }
+    const recoveryGeneration = ++this.connectionRecoveryGeneration;
+    this.cancelConnectionTimers();
+    this.publishAuthenticated(
+      authenticated,
+      { phase: "reconnecting", trigger },
+      workspace
+    );
+    this.workspaceScope?.activity.pause();
+    authenticated.deviceService.resumeRemoteOperations();
+    const task = this.closeDeviceLink()
+      .then(async () => {
+        if (!this.isConnectionRecoveryCurrent(recoveryGeneration, device)) {
+          return;
+        }
+        const connected = await authenticated.deviceService.reconnect(device);
+        if (
+          !connected &&
+          this.isConnectionRecoveryCurrent(recoveryGeneration, device)
+        ) {
+          this.markConnectionFailed(trigger);
+        }
+      })
+      .finally(() => {
+        if (this.deviceReconnectTask === task) {
+          this.deviceReconnectTask = null;
+        }
+      });
+    this.deviceReconnectTask = task;
+    return task;
+  }
+
+  private handleWorkspaceTransportConnectionChanged(
+    generation: number,
+    connected: boolean
+  ): void {
+    if (
+      this.disposed ||
+      !this.appForeground ||
+      generation !== this.workspaceGeneration
+    ) {
+      return;
+    }
+    const workspace = this.workspaceScope;
+    if (!workspace || workspace.generation !== generation) return;
+    const authenticated = this.authenticatedScope;
+    if (!authenticated?.device) return;
+    if (connected) {
+      this.cancelConnectionTimers();
+      this.publishAuthenticated(authenticated, { phase: "connected" });
+      return;
+    }
+    const current =
+      this.snapshot.status === "authenticated"
+        ? this.snapshot.connection
+        : null;
+    if (current?.phase === "reconnecting" || current?.phase === "failed") {
+      return;
+    }
+    this.cancelConnectionTimers();
+    this.publishAuthenticated(authenticated, {
+      phase: "synchronizing",
+      trigger: "transport_lost"
+    });
+    this.scheduleConnectionReadyDeadline(workspace, "transport_lost");
+    this.transportRecoveryTask = this.ports.clock.schedule(
+      TRANSPORT_RECOVERY_GRACE_MS,
+      () => {
+        this.transportRecoveryTask = null;
+        if (
+          this.appForeground &&
+          this.workspaceScope === workspace &&
+          !workspace.activity.isTransportConnected()
+        ) {
+          void this.recoverDeviceConnection("transport_lost");
+        }
+      }
+    );
+  }
+
+  private scheduleConnectionReadyDeadline(
+    workspace: WorkspaceScope,
+    trigger: MobileConnectionRecoveryTrigger
+  ): void {
+    this.connectionReadyTask?.cancel();
+    this.connectionReadyTask = this.ports.clock.schedule(
+      CONNECTION_READY_TIMEOUT_MS,
+      () => {
+        this.connectionReadyTask = null;
+        if (
+          this.appForeground &&
+          this.workspaceScope === workspace &&
+          !workspace.activity.isTransportConnected()
+        ) {
+          this.markConnectionFailed(trigger);
+        }
+      }
+    );
+  }
+
+  private markConnectionFailed(trigger: MobileConnectionRecoveryTrigger): void {
+    const authenticated = this.authenticatedScope;
+    if (!authenticated?.device || !this.appForeground) return;
+    this.cancelConnectionTimers();
+    this.workspaceScope?.activity.pause();
+    this.publishAuthenticated(authenticated, { phase: "failed", trigger });
+  }
+
+  private isConnectionRecoveryCurrent(
+    generation: number,
+    device: ConnectedDevice
+  ): boolean {
+    return (
+      !this.disposed &&
+      this.appForeground &&
+      generation === this.connectionRecoveryGeneration &&
+      this.authenticatedScope?.device?.pairingId === device.pairingId
+    );
+  }
+
+  private cancelConnectionRecovery(): void {
+    this.connectionRecoveryGeneration += 1;
+    this.deviceReconnectTask = null;
+    this.cancelConnectionTimers();
+  }
+
+  private cancelConnectionTimers(): void {
+    this.connectionReadyTask?.cancel();
+    this.connectionReadyTask = null;
+    this.transportRecoveryTask?.cancel();
+    this.transportRecoveryTask = null;
   }
 
   private disposeWorkspaceScope(): void {
@@ -397,6 +617,7 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
   }
 
   private disposeAuthenticatedScope(): void {
+    this.cancelConnectionRecovery();
     this.disposeWorkspaceScope();
     const scope = this.authenticatedScope;
     this.authenticatedScope = null;
@@ -416,17 +637,47 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
     this.emitChange();
   }
 
+  private publishAuthenticated(
+    scope: AuthenticatedScope,
+    connection: MobileConnectionSnapshot,
+    workspace: WorkspaceSummary | null = this.workspaceScope?.workspace ?? null
+  ): void {
+    if (this.authenticatedScope !== scope) return;
+    const previousConnection =
+      this.snapshot.status === "authenticated"
+        ? this.snapshot.connection
+        : null;
+    const previousTrigger =
+      previousConnection && "trigger" in previousConnection
+        ? previousConnection.trigger
+        : null;
+    const nextTrigger = "trigger" in connection ? connection.trigger : null;
+    if (
+      previousConnection?.phase !== connection.phase ||
+      previousTrigger !== nextTrigger
+    ) {
+      this.ports.diagnostics.record({
+        name: "device_connection.phase_changed",
+        phase: connection.phase,
+        ...(nextTrigger ? { trigger: nextTrigger } : {})
+      });
+    }
+    this.publish({
+      connection,
+      device: scope.device,
+      session: scope.session,
+      status: "authenticated",
+      workspace
+    });
+  }
+
   private clearConnectedDevice(scope: AuthenticatedScope): void {
     if (this.authenticatedScope !== scope) return;
+    this.cancelConnectionRecovery();
     this.disposeWorkspaceScope();
     scope.device = null;
     scope.quickPrompts.reset();
-    this.publish({
-      device: null,
-      session: scope.session,
-      status: "authenticated",
-      workspace: null
-    });
+    this.publishAuthenticated(scope, { phase: "idle" }, null);
   }
 
   private closeDeviceLink(): Promise<void> {

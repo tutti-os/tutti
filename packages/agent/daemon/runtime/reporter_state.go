@@ -160,13 +160,13 @@ func statePatchFromSessionEvent(source canonical.EventSource, event activityshar
 			errorCode = visibleFailureCode(errorMessage)
 		}
 		patch.RootProviderTurn = &canonical.WorkspaceAgentRootProviderTurnTransition{
-			RootTurnID:                  strings.TrimSpace(event.Payload.TurnID),
-			ProviderTurnID:              strings.TrimSpace(event.Payload.ProviderTurnID),
-			ProviderCheckpointMessageID: strings.TrimSpace(event.Payload.ProviderCheckpointMessageID),
-			Phase:                       phase,
-			Outcome:                     strings.TrimSpace(event.Payload.TurnOutcome),
-			ErrorMessage:                errorMessage,
-			ErrorCode:                   errorCode,
+			RootTurnID:              strings.TrimSpace(event.Payload.TurnID),
+			ProviderTurnID:          strings.TrimSpace(event.Payload.ProviderTurnID),
+			ProviderTurnBindingJSON: append([]byte(nil), event.Payload.ProviderTurnBindingJSON...),
+			Phase:                   phase,
+			Outcome:                 strings.TrimSpace(event.Payload.TurnOutcome),
+			ErrorMessage:            errorMessage,
+			ErrorCode:               errorCode,
 		}
 		if started {
 			applyProviderCreatedGoalTurnToPatch(&patch, event, timestamp)

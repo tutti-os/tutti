@@ -2,6 +2,8 @@ import type { PermissionMode, Settings } from "@anthropic-ai/claude-agent-sdk";
 import { recordValue } from "./normalizer.ts";
 import { booleanValue, stringValue } from "./runtimeValues.ts";
 
+const claudePlansDirectoryEnv = "TUTTI_CLAUDE_PLANS_DIRECTORY";
+
 export type PendingFlagSettings = {
   [K in keyof Settings]?: Settings[K] | null;
 };
@@ -10,6 +12,7 @@ export type SidecarSessionSettings = {
   model: string;
   permissionModeId: string;
   planMode: boolean;
+  plansDirectory?: string;
   effort: string;
   speed: string;
 };
@@ -37,6 +40,7 @@ export function sidecarSessionSettings(
   payload: Record<string, unknown>
 ): SidecarSessionSettings {
   const settings = recordValue(payload.settings) ?? {};
+  const env = recordValue(payload.env) ?? {};
   return {
     model: stringValue(settings.model),
     permissionModeId:
@@ -44,6 +48,7 @@ export function sidecarSessionSettings(
       stringValue(settings.permissionModeId) ||
       "default",
     planMode: booleanValue(settings.planMode),
+    plansDirectory: stringValue(env[claudePlansDirectoryEnv]),
     effort:
       stringValue(payload.effort) ||
       stringValue(settings.effort) ||
@@ -162,6 +167,9 @@ export function querySettingsFromSessionSettings(
   settings: SidecarSessionSettings
 ): Partial<Settings> {
   const result: Partial<Settings> = {};
+  if (settings.plansDirectory) {
+    result.plansDirectory = settings.plansDirectory;
+  }
   if (settings.speed === "fast") {
     result.fastMode = true;
   } else if (settings.speed === "standard") {

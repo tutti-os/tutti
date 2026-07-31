@@ -32,7 +32,7 @@ const sessionForkOperationSelectSQL = `
 SELECT operation_id, workspace_id, request_id, request_hash,
        source_agent_session_id, target_agent_session_id,
        source_provider_session_id, source_turn_id, source_provider_turn_id,
-       COALESCE(source_provider_checkpoint_message_id, ''),
+       source_provider_turn_binding_json,
        COALESCE(target_turn_id, ''),
        point_kind, driver_kind, driver_version, status,
        COALESCE(target_provider_session_id, ''),
@@ -113,7 +113,7 @@ WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ?
 		}
 		return SessionForkOperation{}, false, fmt.Errorf("read session fork turn sequence: %w", err)
 	}
-	if !HasUsableProviderTurnBinding(selected) {
+	if !HasPersistedProviderTurnBinding(selected) {
 		return SessionForkOperation{}, false, newSessionForkBoundaryError(
 			SessionForkBoundaryReasonProviderTurnMissing,
 			"selected turn has no usable provider turn binding",
@@ -195,7 +195,7 @@ INSERT INTO workspace_agent_session_fork_operations (
   operation_id, workspace_id, request_id, request_hash,
   source_agent_session_id, target_agent_session_id,
   source_provider_session_id, source_turn_id, source_provider_turn_id,
-  source_provider_checkpoint_message_id,
+  source_provider_turn_binding_json,
   point_kind, driver_kind, driver_version, status, target_title,
   snapshot_json, snapshot_hash,
   created_at_unix_ms, updated_at_unix_ms
@@ -203,7 +203,7 @@ INSERT INTO workspace_agent_session_fork_operations (
 `, input.OperationID, input.WorkspaceID, input.RequestID, input.RequestHash,
 		input.SourceAgentSessionID, input.TargetAgentSessionID,
 		source.ProviderSessionID, input.SourceTurnID, selected.RootProviderTurnID,
-		nullString(selected.ProviderCheckpointMessageID),
+		string(firstNonEmptyJSON(selected.ProviderTurnBindingJSON)),
 		input.PointKind, input.DriverKind, input.DriverVersion, SessionForkStatusPrepared,
 		snapshot.TargetTitle, string(snapshotJSON), snapshotHash,
 		input.OccurredAtUnixMS, input.OccurredAtUnixMS); err != nil {
@@ -463,7 +463,7 @@ WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ?
 		return SessionForkBoundary{}, false, err
 	}
 	providerTurnID := strings.TrimSpace(turn.RootProviderTurnID)
-	if !HasUsableProviderTurnBinding(turn) {
+	if !HasPersistedProviderTurnBinding(turn) {
 		return rejectedSessionForkBoundary(
 			SessionForkBoundaryReasonProviderTurnMissing,
 			"selected turn has no usable provider turn binding",

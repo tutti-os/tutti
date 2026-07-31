@@ -16,6 +16,7 @@ import (
 )
 
 const codexHomeDirectory = "codex-home"
+const tuttiAgentHomeDirectory = "tutti-agent-home"
 
 var errCodexRolloutNotFound = errors.New("codex rollout was not found")
 
@@ -45,7 +46,8 @@ type codexRolloutMetadata struct {
 }
 
 func (*DefaultPreparer) SupportsSessionForkProviderStateBinding(provider string) bool {
-	return strings.EqualFold(strings.TrimSpace(provider), "codex")
+	_, supported := sessionForkProviderHomeDirectory(provider)
+	return supported
 }
 
 func (p *DefaultPreparer) BindSessionForkProviderState(
@@ -56,7 +58,9 @@ func (p *DefaultPreparer) BindSessionForkProviderState(
 		return err
 	}
 	input.Provider = strings.TrimSpace(input.Provider)
-	if !strings.EqualFold(input.Provider, "codex") {
+	providerHomeDirectory, supported :=
+		sessionForkProviderHomeDirectory(input.Provider)
+	if !supported {
 		return nil
 	}
 	input.WorkspaceID = strings.TrimSpace(input.WorkspaceID)
@@ -71,7 +75,7 @@ func (p *DefaultPreparer) BindSessionForkProviderState(
 		input.TargetProviderSessionID == "" ||
 		input.SourceAgentSessionID == input.TargetAgentSessionID ||
 		input.SourceProviderSessionID == input.TargetProviderSessionID {
-		return errors.New("codex session fork provider state binding requires distinct source and target identities")
+		return errors.New("app-server session fork provider state binding requires distinct source and target identities")
 	}
 
 	store := p.runtimeStore()
@@ -90,38 +94,38 @@ func (p *DefaultPreparer) BindSessionForkProviderState(
 		return fmt.Errorf("sync target runtime parent directory: %w", err)
 	}
 
-	sourceCodexHome := filepath.Join(sourceRoot, codexHomeDirectory)
-	targetCodexHome := filepath.Join(targetRoot, codexHomeDirectory)
+	sourceProviderHome := filepath.Join(sourceRoot, providerHomeDirectory)
+	targetProviderHome := filepath.Join(targetRoot, providerHomeDirectory)
 	if err := ensureDirectoryTreeWithoutSymlinks(
 		targetRoot,
-		targetCodexHome,
+		targetProviderHome,
 	); err != nil {
-		return fmt.Errorf("prepare target Codex home: %w", err)
+		return fmt.Errorf("prepare target app-server provider home: %w", err)
 	}
 	targetPath, _, targetFingerprint, targetErr := findCodexRollout(
 		ctx,
-		targetCodexHome,
+		targetProviderHome,
 		input.TargetProviderSessionID,
 		true,
 	)
 	if targetErr != nil && !errors.Is(targetErr, errCodexRolloutNotFound) {
 		var contentErr *codexRolloutContentError
 		if targetPath == "" || !errors.As(targetErr, &contentErr) {
-			return fmt.Errorf("inspect target Codex fork rollout: %w", targetErr)
+			return fmt.Errorf("inspect target app-server fork rollout: %w", targetErr)
 		}
 	}
 	if err := validateExistingDirectoryTreeWithoutSymlinks(
 		sourceRoot,
-		sourceCodexHome,
+		sourceProviderHome,
 	); err != nil {
 		if errors.Is(err, fs.ErrNotExist) && targetErr == nil {
 			return nil
 		}
-		return fmt.Errorf("validate source Codex home: %w", err)
+		return fmt.Errorf("validate source app-server provider home: %w", err)
 	}
 	sourcePath, relativePath, sourceFingerprint, err := findCodexRollout(
 		ctx,
-		sourceCodexHome,
+		sourceProviderHome,
 		input.TargetProviderSessionID,
 		false,
 	)
@@ -134,7 +138,7 @@ func (p *DefaultPreparer) BindSessionForkProviderState(
 	if targetErr != nil && targetPath != "" {
 		if targetFingerprint.Size == 0 ||
 			targetFingerprint.Size >= sourceFingerprint.Size {
-			return errors.New("damaged target Codex rollout diverges from accepted provider child state")
+			return errors.New("damaged target app-server rollout diverges from accepted provider child state")
 		}
 		sourceExtendsDamagedTarget, err := regularFileHasExactPrefix(
 			sourcePath,
@@ -143,10 +147,10 @@ func (p *DefaultPreparer) BindSessionForkProviderState(
 			targetFingerprint,
 		)
 		if err != nil {
-			return fmt.Errorf("compare damaged target Codex rollout with fork baseline: %w", err)
+			return fmt.Errorf("compare damaged target app-server rollout with fork baseline: %w", err)
 		}
 		if !sourceExtendsDamagedTarget {
-			return errors.New("damaged target Codex rollout diverges from accepted provider child state")
+			return errors.New("damaged target app-server rollout diverges from accepted provider child state")
 		}
 	}
 	if targetErr == nil && targetFingerprint == sourceFingerprint {
@@ -162,12 +166,12 @@ func (p *DefaultPreparer) BindSessionForkProviderState(
 				sourceFingerprint,
 			)
 			if err != nil {
-				return fmt.Errorf("compare target Codex rollout with fork baseline: %w", err)
+				return fmt.Errorf("compare target app-server rollout with fork baseline: %w", err)
 			}
 			if targetExtendsSource {
 				return nil
 			}
-			return errors.New("target Codex rollout diverges from accepted provider child state")
+			return errors.New("target app-server rollout diverges from accepted provider child state")
 		case targetFingerprint.Size < sourceFingerprint.Size:
 			sourceExtendsTarget, err := regularFileHasExactPrefix(
 				sourcePath,
@@ -176,45 +180,56 @@ func (p *DefaultPreparer) BindSessionForkProviderState(
 				targetFingerprint,
 			)
 			if err != nil {
-				return fmt.Errorf("compare truncated target Codex rollout with fork baseline: %w", err)
+				return fmt.Errorf("compare truncated target app-server rollout with fork baseline: %w", err)
 			}
 			if !sourceExtendsTarget {
-				return errors.New("target Codex rollout diverges from accepted provider child state")
+				return errors.New("target app-server rollout diverges from accepted provider child state")
 			}
 		default:
-			return errors.New("target Codex rollout diverges from accepted provider child state")
+			return errors.New("target app-server rollout diverges from accepted provider child state")
 		}
 	}
 	if targetPath == "" {
-		targetPath = filepath.Join(targetCodexHome, relativePath)
+		targetPath = filepath.Join(targetProviderHome, relativePath)
 	}
-	if err := ensurePathWithin(targetCodexHome, targetPath); err != nil {
+	if err := ensurePathWithin(targetProviderHome, targetPath); err != nil {
 		return err
 	}
 	if err := ensureDirectoryTreeWithoutSymlinks(
-		targetCodexHome,
+		targetProviderHome,
 		filepath.Dir(targetPath),
 	); err != nil {
-		return fmt.Errorf("prepare target Codex rollout directory: %w", err)
+		return fmt.Errorf("prepare target app-server rollout directory: %w", err)
 	}
 	if err := copyRegularFileAtomically(
 		sourcePath,
 		targetPath,
 		sourceFingerprint,
 	); err != nil {
-		return fmt.Errorf("copy Codex fork rollout into target runtime: %w", err)
+		return fmt.Errorf("copy app-server fork rollout into target runtime: %w", err)
 	}
 	targetMatches, targetFingerprint, err := inspectCodexRollout(
 		targetPath,
 		input.TargetProviderSessionID,
 	)
 	if err != nil {
-		return fmt.Errorf("verify target Codex rollout: %w", err)
+		return fmt.Errorf("verify target app-server rollout: %w", err)
 	}
 	if !targetMatches || targetFingerprint != sourceFingerprint {
-		return errors.New("copied Codex fork rollout does not exactly match accepted provider child state")
+		return errors.New("copied app-server fork rollout does not exactly match accepted provider child state")
 	}
 	return nil
+}
+
+func sessionForkProviderHomeDirectory(provider string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "codex":
+		return codexHomeDirectory, true
+	case "tutti-agent":
+		return tuttiAgentHomeDirectory, true
+	default:
+		return "", false
+	}
 }
 
 func findCodexRollout(

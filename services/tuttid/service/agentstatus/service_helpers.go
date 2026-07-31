@@ -298,13 +298,17 @@ func (s Service) resolveAuthFromCommand(ctx context.Context, spec ProviderSpec, 
 }
 
 func isCursorAuthCommandSpec(spec ProviderSpec) bool {
-	runnerKind := spec.AuthCommandRunnerKind
-	if runnerKind == "" {
-		if status, ok := migratedProviderStatus(spec.Provider); ok {
-			runnerKind = status.AuthCommandRunnerKind
-		}
+	return authCommandRunnerKind(spec) == providerregistry.AuthCommandRunnerKindCursor
+}
+
+func authCommandRunnerKind(spec ProviderSpec) providerregistry.AuthCommandRunnerKind {
+	if spec.AuthCommandRunnerKind != "" {
+		return spec.AuthCommandRunnerKind
 	}
-	return runnerKind == providerregistry.AuthCommandRunnerKindCursor
+	if status, ok := migratedProviderStatus(spec.Provider); ok {
+		return status.AuthCommandRunnerKind
+	}
+	return ""
 }
 
 func (s Service) runAuthStatusCommand(ctx context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {
@@ -316,7 +320,16 @@ func (s Service) runAuthStatusCommand(ctx context.Context, spec ProviderSpec, bi
 		return AuthInfo{}, false
 	}
 	defer release()
-	return runAuthStatusCommand(ctx, spec, binaryPath, s.commandResolver().Env(spec.AdapterEnv))
+	env := s.commandResolver().Env(spec.AdapterEnv)
+	if authCommandRunnerKind(spec) == providerregistry.AuthCommandRunnerKindCodexAppServerAccount {
+		command := append([]string{binaryPath}, spec.AuthStatusCommand...)
+		evidence := s.probeCodexAuth(ctx, command, env, authStatusTimeout(spec))
+		// account/read is the canonical authentication check used by Codex
+		// startup. Even a failed probe is authoritative as "unknown": falling
+		// back to auth.json file existence would recreate the false positive.
+		return authInfoFromCodexProbe(evidence), true
+	}
+	return runAuthStatusCommand(ctx, spec, binaryPath, env)
 }
 
 // cliVersionTokenPattern matches the first semver-ish token in `--version`
@@ -411,12 +424,7 @@ func (s Service) authStatusCommandRetryDelay() time.Duration {
 }
 
 func runAuthStatusCommand(ctx context.Context, spec ProviderSpec, binaryPath string, env []string) (AuthInfo, bool) {
-	runnerKind := spec.AuthCommandRunnerKind
-	if runnerKind == "" {
-		if status, ok := migratedProviderStatus(spec.Provider); ok {
-			runnerKind = status.AuthCommandRunnerKind
-		}
-	}
+	runnerKind := authCommandRunnerKind(spec)
 	if runnerKind == providerregistry.AuthCommandRunnerKindCursor {
 		auth, _, ok := runCursorAuthStatusCommand(ctx, binaryPath, env)
 		return auth, ok

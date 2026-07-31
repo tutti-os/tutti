@@ -360,9 +360,9 @@ func TestSessionForkProviderOwnedResultRewritesEveryChildProviderTurnBinding(t *
 	seedForkSession(t, store)
 	if _, err := store.db.ExecContext(ctx, `
 UPDATE workspace_agent_turns
-SET provider_checkpoint_message_id = CASE turn_id
-  WHEN 'turn-1' THEN 'claude-source-checkpoint-1'
-  WHEN 'turn-2' THEN 'claude-source-checkpoint-2'
+SET provider_turn_binding_json = CASE turn_id
+  WHEN 'turn-1' THEN '{"schemaVersion":1,"checkpointMessageId":"claude-source-checkpoint-1"}'
+  WHEN 'turn-2' THEN '{"schemaVersion":1,"checkpointMessageId":"claude-source-checkpoint-2"}'
 END
 WHERE workspace_id = 'ws-1' AND agent_session_id = 'source'
   AND turn_id IN ('turn-1', 'turn-2')
@@ -388,8 +388,8 @@ WHERE workspace_id = 'ws-1' AND agent_session_id = 'source'
 	if operation.TargetTitle == "" {
 		t.Fatal("prepared operation omitted the frozen target title")
 	}
-	if operation.SourceProviderCheckpointMessageID !=
-		"claude-source-checkpoint-2" {
+	if string(operation.SourceProviderTurnBindingJSON) !=
+		`{"schemaVersion":1,"checkpointMessageId":"claude-source-checkpoint-2"}` {
 		t.Fatalf("prepared operation=%#v", operation)
 	}
 	if _, _, err := store.MarkSessionForkDispatching(
@@ -405,12 +405,16 @@ WHERE workspace_id = 'ws-1' AND agent_session_id = 'source'
 			TargetProviderSessionID: "claude-child",
 			TargetProviderTurnBindings: []SessionForkProviderTurnBinding{
 				{
-					ProviderTurnID:      "claude-child-turn-1",
-					CheckpointMessageID: "claude-child-checkpoint-1",
+					ProviderTurnID: "claude-child-turn-1",
+					ProviderTurnBindingJSON: json.RawMessage(
+						`{"checkpointMessageId":"claude-child-checkpoint-1","schemaVersion":1}`,
+					),
 				},
 				{
-					ProviderTurnID:      "claude-child-turn-2",
-					CheckpointMessageID: "claude-child-checkpoint-2",
+					ProviderTurnID: "claude-child-turn-2",
+					ProviderTurnBindingJSON: json.RawMessage(
+						`{"checkpointMessageId":"claude-child-checkpoint-2","schemaVersion":1}`,
+					),
 				},
 			},
 			StateBindingMode:    "provider_owned",
@@ -427,12 +431,16 @@ WHERE workspace_id = 'ws-1' AND agent_session_id = 'source'
 			operation.TargetProviderTurnBindings,
 			[]SessionForkProviderTurnBinding{
 				{
-					ProviderTurnID:      "claude-child-turn-1",
-					CheckpointMessageID: "claude-child-checkpoint-1",
+					ProviderTurnID: "claude-child-turn-1",
+					ProviderTurnBindingJSON: json.RawMessage(
+						`{"checkpointMessageId":"claude-child-checkpoint-1","schemaVersion":1}`,
+					),
 				},
 				{
-					ProviderTurnID:      "claude-child-turn-2",
-					CheckpointMessageID: "claude-child-checkpoint-2",
+					ProviderTurnID: "claude-child-turn-2",
+					ProviderTurnBindingJSON: json.RawMessage(
+						`{"checkpointMessageId":"claude-child-checkpoint-2","schemaVersion":1}`,
+					),
 				},
 			},
 		) {
@@ -458,17 +466,17 @@ WHERE workspace_id = 'ws-1' AND agent_session_id = 'source'
 			t.Fatalf("GetTurn(%s) found=%v error=%v", targetTurnID, found, err)
 		}
 		wantProviderTurnID := fmt.Sprintf("claude-child-turn-%d", index+1)
-		wantCheckpointMessageID := fmt.Sprintf(
-			"claude-child-checkpoint-%d",
+		wantBindingJSON := fmt.Sprintf(
+			`{"checkpointMessageId":"claude-child-checkpoint-%d","schemaVersion":1}`,
 			index+1,
 		)
 		if turn.RootProviderTurnID != wantProviderTurnID ||
-			turn.ProviderCheckpointMessageID != wantCheckpointMessageID {
+			string(turn.ProviderTurnBindingJSON) != wantBindingJSON {
 			t.Fatalf(
-				"child provider binding=%#v, want turn=%q checkpoint=%q",
+				"child provider binding=%#v, want turn=%q binding=%q",
 				turn,
 				wantProviderTurnID,
-				wantCheckpointMessageID,
+				wantBindingJSON,
 			)
 		}
 		if _, supported, err := store.CheckSessionForkThroughTurn(
@@ -533,8 +541,10 @@ WHERE workspace_id = 'ws-1' AND agent_session_id = 'source'
 			Status:                  SessionForkStatusProviderAccepted,
 			TargetProviderSessionID: "claude-grandchild",
 			TargetProviderTurnBindings: []SessionForkProviderTurnBinding{{
-				ProviderTurnID:      "claude-grandchild-turn-1",
-				CheckpointMessageID: "claude-grandchild-checkpoint-1",
+				ProviderTurnID: "claude-grandchild-turn-1",
+				ProviderTurnBindingJSON: json.RawMessage(
+					`{"schemaVersion":1,"checkpointMessageId":"claude-grandchild-checkpoint-1"}`,
+				),
 			}},
 			StateBindingMode:    "provider_owned",
 			StateBindingReceipt: "claude-sdk-fork-v3:grandchild-receipt",
@@ -1106,6 +1116,39 @@ WHERE workspace_id = 'ws-1'
 		!errors.As(err, &boundaryErr) ||
 		boundaryErr.Reason != SessionForkBoundaryReasonProviderTurnMissing {
 		t.Fatalf("PrepareSessionFork() changed=%v error=%v", changed, err)
+	}
+}
+
+func TestSessionForkRejectsUnverifiedHistoricalProviderTurnBinding(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	seedForkSession(t, store)
+	if _, err := store.db.ExecContext(ctx, `
+UPDATE workspace_agent_turns
+SET root_provider_turn_id = 'synthetic-legacy',
+    provider_turn_binding_json = '{}'
+WHERE workspace_id = 'ws-1'
+  AND agent_session_id = 'source'
+  AND turn_id = 'turn-2'
+`); err != nil {
+		t.Fatal(err)
+	}
+
+	boundary, supported, err := store.CheckSessionForkThroughTurn(
+		ctx,
+		"ws-1",
+		"source",
+		"turn-2",
+	)
+	if err != nil || supported ||
+		boundary.RejectionReason != SessionForkBoundaryReasonProviderTurnMissing {
+		t.Fatalf(
+			"CheckSessionForkThroughTurn() boundary=%#v supported=%v error=%v",
+			boundary,
+			supported,
+			err,
+		)
 	}
 }
 

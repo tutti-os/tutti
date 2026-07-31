@@ -409,7 +409,8 @@ func (a *LoginAttempt) handleComplete(w http.ResponseWriter, r *http.Request) {
 	var payload map[string]any
 	if err := readJSON(r.Body, &payload); err != nil {
 		sendBridgeJSON(w, http.StatusBadRequest, map[string]any{"ok": false})
-		go a.fail(err)
+		a.markFailed(err)
+		a.closeGracefully()
 		return
 	}
 	callbackError := stringField(payload, "error")
@@ -418,7 +419,8 @@ func (a *LoginAttempt) handleComplete(w http.ResponseWriter, r *http.Request) {
 	if !a.stateMatches(callbackState) {
 		err := errors.New("invalid state")
 		sendBridgeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": map[string]string{"code": "INVALID_STATE", "message": err.Error()}})
-		go a.fail(err)
+		a.markFailed(err)
+		a.closeGracefully()
 		return
 	}
 	if strings.TrimSpace(callbackError) != "" {
@@ -428,13 +430,15 @@ func (a *LoginAttempt) handleComplete(w http.ResponseWriter, r *http.Request) {
 			errorCode = "USER_CANCELLED"
 		}
 		sendBridgeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": map[string]string{"code": errorCode, "message": err.Error()}})
-		go a.fail(err)
+		a.markFailed(err)
+		a.closeGracefully()
 		return
 	}
 	if strings.TrimSpace(transferCode) == "" {
 		err := errors.New("missing transfer_code")
 		sendBridgeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": map[string]string{"code": "MISSING_TRANSFER_CODE", "message": err.Error()}})
-		go a.fail(err)
+		a.markFailed(err)
+		a.closeGracefully()
 		return
 	}
 	sendBridgeJSON(w, http.StatusOK, map[string]any{"ok": true, "data": map[string]string{"status": statusCompleted}})

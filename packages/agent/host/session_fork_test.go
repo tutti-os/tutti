@@ -2,6 +2,7 @@ package agenthost
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -87,6 +88,50 @@ func TestForkSessionRepairsMissingProviderBindingFromOpaqueSubmitClaim(t *testin
 			store.recovery,
 			store.checkCalls,
 		)
+	}
+}
+
+func TestForkSessionRepairsBindingRejectedByOwningAgent(t *testing.T) {
+	store := &recoverableSessionForkStore{
+		fakeSessionForkStore: newFakeSessionForkStore(),
+		claim: storesqlite.SubmitClaim{
+			WorkspaceID: "ws", AgentSessionID: "source", TurnID: "turn",
+			ClientSubmitID: "opaque-submit-1",
+		},
+	}
+	runtime := &recoverableSessionForkRuntime{
+		fakeSessionForkRuntime: fakeSessionForkRuntime{
+			providerSessionID: "provider-child",
+		},
+		forkability: []bool{false, true},
+	}
+	canonical := turnReadCanonicalStore{
+		turn: storesqlite.Turn{
+			WorkspaceID: "ws", AgentSessionID: "source", TurnID: "turn",
+			Phase:                        storesqlite.TurnPhaseSettled,
+			RootProviderTurnID:           "provider-turn",
+			ProviderTurnBindingJSON:      json.RawMessage(`{"schemaVersion":1}`),
+			ProviderForkBindingAvailable: false,
+		},
+	}
+	host := New(Config{
+		CanonicalStore: canonical, SessionForks: store,
+		SessionForkRuntime: runtime,
+	})
+
+	result, err := host.ForkSession(t.Context(), ForkSessionInput{
+		WorkspaceID: "ws", SourceAgentSessionID: "source",
+		TargetAgentSessionID: "target", RequestID: "request",
+		Point: SessionForkPoint{Kind: SessionForkPointThroughTurn, TurnID: "turn"},
+	})
+	if err != nil || result.Operation.Status != storesqlite.SessionForkStatusCommitted {
+		t.Fatalf("ForkSession() result=%#v error=%v", result, err)
+	}
+	if runtime.forkabilityCalls != 2 {
+		t.Fatalf("forkability hook calls=%d, want 2", runtime.forkabilityCalls)
+	}
+	if store.recovery.ProviderTurnID != "provider-turn" {
+		t.Fatalf("recovery=%#v", store.recovery)
 	}
 }
 
@@ -887,7 +932,24 @@ type fakeSessionForkRuntime struct {
 
 type recoverableSessionForkRuntime struct {
 	fakeSessionForkRuntime
-	recoveryInput RuntimeProviderTurnBindingRecoveryInput
+	recoveryInput    RuntimeProviderTurnBindingRecoveryInput
+	forkability      []bool
+	forkabilityCalls int
+}
+
+func (r *recoverableSessionForkRuntime) CanForkProviderTurn(
+	ctx context.Context,
+	input RuntimeProviderTurnForkabilityInput,
+) (bool, error) {
+	if len(r.forkability) == 0 {
+		return r.fakeSessionForkRuntime.CanForkProviderTurn(ctx, input)
+	}
+	index := r.forkabilityCalls
+	if index >= len(r.forkability) {
+		index = len(r.forkability) - 1
+	}
+	r.forkabilityCalls++
+	return r.forkability[index], nil
 }
 
 func (r *recoverableSessionForkRuntime) RecoverProviderTurnBinding(
@@ -896,9 +958,9 @@ func (r *recoverableSessionForkRuntime) RecoverProviderTurnBinding(
 ) (RuntimeProviderTurnBindingRecoveryResult, error) {
 	r.recoveryInput = input
 	return RuntimeProviderTurnBindingRecoveryResult{
-		ProviderSessionID:           input.Source.ProviderSessionID,
-		ProviderTurnID:              "provider-turn",
-		ProviderCheckpointMessageID: "checkpoint-turn",
+		ProviderSessionID:       input.Source.ProviderSessionID,
+		ProviderTurnID:          "provider-turn",
+		ProviderTurnBindingJSON: json.RawMessage(`{"schemaVersion":1}`),
 	}, nil
 }
 
@@ -957,6 +1019,14 @@ func (f *fakeSessionForkRuntime) ResolveSessionFork(
 	}, f.resolveErr
 }
 
+func (*fakeSessionForkRuntime) CanForkProviderTurn(
+	_ context.Context,
+	input RuntimeProviderTurnForkabilityInput,
+) (bool, error) {
+	return strings.TrimSpace(input.ProviderTurnID) != "" &&
+		len(input.ProviderTurnBindingJSON) > 0, nil
+}
+
 func (f *fakeSessionForkRuntime) effectiveStateBindingMode() SessionForkStateBindingMode {
 	if f.stateBindingMode != "" {
 		return f.stateBindingMode
@@ -984,8 +1054,10 @@ func (f *fakeSessionForkRuntime) ForkSession(
 	if mode == SessionForkStateBindingProviderOwned {
 		receipt = "fake-provider-owned-receipt"
 		targetProviderTurnBindings = []SessionForkProviderTurnBinding{{
-			ProviderTurnID:      "forked-" + input.SourceProviderTurnID,
-			CheckpointMessageID: "checkpoint-" + input.SourceProviderTurnID,
+			ProviderTurnID: "forked-" + input.SourceProviderTurnID,
+			ProviderTurnBindingJSON: json.RawMessage(
+				`{"schemaVersion":1}`,
+			),
 		}}
 	}
 	return RuntimeSessionForkResult{
@@ -1188,7 +1260,8 @@ func (f *fakeSessionForkStore) CheckSessionForkThroughTurn(
 		Session: f.session(),
 		Turn: storesqlite.Turn{
 			TurnID: "turn", Phase: storesqlite.TurnPhaseSettled,
-			RootProviderTurnID: "provider-turn",
+			RootProviderTurnID:      "provider-turn",
+			ProviderTurnBindingJSON: json.RawMessage(`{"schemaVersion":1}`),
 		},
 		RootProviderTurnIDs: []string{"provider-turn"},
 	}, true, nil
@@ -1222,7 +1295,8 @@ func (f *fakeSessionForkStore) PrepareSessionFork(
 		TargetAgentSessionID:    input.TargetAgentSessionID,
 		SourceProviderSessionID: "provider-source",
 		SourceTurnID:            input.SourceTurnID, SourceProviderTurnID: "provider-turn",
-		DriverKind: input.DriverKind, DriverVersion: input.DriverVersion,
+		SourceProviderTurnBindingJSON: json.RawMessage(`{"schemaVersion":1}`),
+		DriverKind:                    input.DriverKind, DriverVersion: input.DriverVersion,
 		Status: storesqlite.SessionForkStatusPrepared,
 	}
 	return f.operation, true, nil

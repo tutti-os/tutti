@@ -375,7 +375,9 @@ func turnSnapshot(stored storesqlite.Turn) *activityreplication.Turn {
 		SourceGoalRepairEpoch: nullableInt64(stored.SourceGoalOperationID, stored.SourceGoalRepairEpoch),
 		StartedAtUnixMS:       stored.StartedAtUnixMS, SettledAtUnixMS: nullableInt64(stored.Outcome, stored.SettledAtUnixMS),
 		CreatedAtUnixMS: stored.CreatedAtUnixMS, UpdatedAtUnixMS: stored.UpdatedAtUnixMS,
-		RootProviderTurnID: nullable(stored.RootProviderTurnID), RootProviderTurnPhase: nullable(stored.RootProviderTurnPhase),
+		RootProviderTurnID:               nullable(stored.RootProviderTurnID),
+		ProviderTurnBindingJSON:          rawJSONOrEmptyObject(stored.ProviderTurnBindingJSON),
+		RootProviderTurnPhase:            nullable(stored.RootProviderTurnPhase),
 		RootProviderTurnOutcome:          nullable(stored.RootProviderTurnOutcome),
 		RootProviderTurnError:            structuredResult(stored.RootProviderTurnErrorMessage, stored.RootProviderTurnErrorCode),
 		RootProviderTurnCompletedCommand: structuredResult(stored.RootProviderTurnCompletedCommandKind, stored.RootProviderTurnCompletedCommandStatus),
@@ -455,6 +457,13 @@ func rawObject(value map[string]any) json.RawMessage {
 	}
 	raw, _ := json.Marshal(value)
 	return raw
+}
+
+func rawJSONOrEmptyObject(value json.RawMessage) json.RawMessage {
+	if len(value) == 0 {
+		return json.RawMessage(`{}`)
+	}
+	return append(json.RawMessage(nil), value...)
 }
 
 func structuredResult(first, second string) json.RawMessage {

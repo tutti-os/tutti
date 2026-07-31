@@ -1,8 +1,10 @@
 package storesqlite
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -18,16 +20,19 @@ func (s *Store) applyRootProviderTurnTransitionTx(
 	rootAgentSessionID := strings.TrimSpace(transition.RootAgentSessionID)
 	rootTurnID := strings.TrimSpace(transition.RootTurnID)
 	providerTurnID := strings.TrimSpace(transition.ProviderTurnID)
-	checkpointMessageID := strings.TrimSpace(
-		transition.ProviderCheckpointMessageID,
+	bindingJSON, err := normalizeProviderTurnBindingJSON(
+		transition.ProviderTurnBindingJSON,
 	)
+	if err != nil {
+		return Turn{}, false, err
+	}
 	phase := strings.TrimSpace(transition.Phase)
 	if workspaceID == "" || rootAgentSessionID == "" || rootTurnID == "" || providerTurnID == "" {
 		return Turn{}, false, errors.New("workspace id, root session id, root turn id, and provider turn id are required")
 	}
-	if phase == "" && checkpointMessageID == "" {
+	if phase == "" && len(bindingJSON) == 0 {
 		return Turn{}, false, errors.New(
-			"root provider turn transition requires lifecycle or checkpoint data",
+			"root provider turn transition requires lifecycle or binding data",
 		)
 	}
 	if phase != "" &&
@@ -54,7 +59,7 @@ func (s *Store) applyRootProviderTurnTransitionTx(
 	}
 
 	var sessionKind, providerSessionID string
-	err := tx.QueryRowContext(ctx, `
+	err = tx.QueryRowContext(ctx, `
 SELECT session_kind, COALESCE(provider_session_id, '')
 FROM workspace_agent_sessions
 WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
@@ -84,17 +89,17 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 		if rootTurn.RootProviderTurnUpdatedAtUnixMS > occurred {
 			return rootTurn, false, nil
 		}
-		if rootTurn.ProviderCheckpointMessageID == checkpointMessageID {
+		if bytes.Equal(rootTurn.ProviderTurnBindingJSON, bindingJSON) {
 			return rootTurn, false, nil
 		}
 		if _, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_turns
-SET provider_checkpoint_message_id = ?,
+SET provider_turn_binding_json = ?,
     root_provider_turn_updated_at_unix_ms = ?
 WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ?
-`, checkpointMessageID, occurred, workspaceID, rootAgentSessionID, rootTurnID); err != nil {
+`, string(bindingJSON), occurred, workspaceID, rootAgentSessionID, rootTurnID); err != nil {
 			return Turn{}, false, fmt.Errorf(
-				"record root provider turn checkpoint: %w",
+				"record root provider turn binding: %w",
 				err,
 			)
 		}
@@ -110,7 +115,7 @@ WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ?
 		}
 		if !found {
 			return Turn{}, false, errors.New(
-				"updated root provider checkpoint references an unknown root turn",
+				"updated root provider binding references an unknown root turn",
 			)
 		}
 		return updated, false, nil
@@ -170,20 +175,24 @@ LIMIT 1
 		}
 	}
 
+	persistedBindingJSON := bindingJSON
+	if rootTurn.RootProviderTurnID == providerTurnID && len(persistedBindingJSON) == 0 {
+		persistedBindingJSON = rootTurn.ProviderTurnBindingJSON
+	}
+	if len(persistedBindingJSON) == 0 {
+		persistedBindingJSON = json.RawMessage(`{}`)
+	}
 	if _, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_turns
 SET root_provider_turn_id = ?, root_provider_turn_phase = ?, root_provider_turn_outcome = ?,
     root_provider_turn_error_json = ?, root_provider_turn_completed_command_json = ?,
-    provider_checkpoint_message_id = CASE
-      WHEN ? = '' THEN provider_checkpoint_message_id
-      ELSE ?
-    END,
+    provider_turn_binding_json = ?,
     root_provider_turn_updated_at_unix_ms = ?
 WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ?
-`, providerTurnID, phase, nullString(outcome),
+	`, providerTurnID, phase, nullString(outcome),
 		encodeTurnErrorJSON(transition.ErrorMessage, transition.ErrorCode),
 		encodeCompletedCommandJSON(transition.CompletedCommandKind, transition.CompletedCommandStatus),
-		checkpointMessageID, checkpointMessageID,
+		string(persistedBindingJSON),
 		occurred, workspaceID, rootAgentSessionID, rootTurnID); err != nil {
 		return Turn{}, false, fmt.Errorf("record root provider turn transition: %w", err)
 	}

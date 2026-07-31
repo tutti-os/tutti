@@ -52,6 +52,75 @@ func TestProbeCodexAppServerStartsExactlyOneProcess(t *testing.T) {
 	}
 }
 
+func TestProbeCodexAppServerReadsAuthenticatedAccount(t *testing.T) {
+	t.Parallel()
+	transport := newScriptedAppServerTransport()
+	result := ProbeCodexAppServer(context.Background(), CodexAppServerProbeInput{
+		Command: []string{"codex", "app-server"}, Transport: transport,
+		HandshakeTimeout: time.Second, ReadAccount: true,
+	})
+	if !result.ProtocolReady || !result.AccountRead ||
+		result.AccountState != CodexAppServerAccountAuthenticated {
+		t.Fatalf("probe = %#v, want authenticated account/read", result)
+	}
+	if result.AuthMethod != "chatgpt" || result.AccountLabel != "dev@example.com" {
+		t.Fatalf("account identity = %q / %q, want chatgpt / dev@example.com", result.AuthMethod, result.AccountLabel)
+	}
+	if got := len(appServerRequestParamsList(t, transport.conn, appServerMethodAccountRead)); got != 1 {
+		t.Fatalf("account/read calls = %d, want 1", got)
+	}
+	assertScriptedProbeConnectionClosed(t, transport.conn)
+}
+
+func TestProbeCodexAppServerReadsRequiredAccount(t *testing.T) {
+	t.Parallel()
+	transport := newScriptedAppServerTransport()
+	transport.server.requiresAuth = true
+	result := ProbeCodexAppServer(context.Background(), CodexAppServerProbeInput{
+		Command: []string{"codex", "app-server"}, Transport: transport,
+		HandshakeTimeout: time.Second, ReadAccount: true,
+	})
+	if !result.ProtocolReady || !result.AccountRead ||
+		result.AccountState != CodexAppServerAccountRequired {
+		t.Fatalf("probe = %#v, want required account/read", result)
+	}
+	assertScriptedProbeConnectionClosed(t, transport.conn)
+}
+
+func TestProbeCodexAppServerDoesNotAuthenticateAccountReadFailure(t *testing.T) {
+	t.Parallel()
+	transport := newScriptedAppServerTransport()
+	transport.server.accountReadError = true
+	transport.server.accountReadErrorCode = -32600
+	transport.server.accountReadErrorMessage = "plan type is required for chatgpt authentication"
+	result := ProbeCodexAppServer(context.Background(), CodexAppServerProbeInput{
+		Command: []string{"codex", "app-server"}, Transport: transport,
+		HandshakeTimeout: time.Second, ReadAccount: true,
+	})
+	if !result.ProtocolReady || result.AccountRead ||
+		result.AccountState != CodexAppServerAccountUnknown {
+		t.Fatalf("probe = %#v, want unknown account after account/read failure", result)
+	}
+	if result.AccountCategory != CodexProbeProtocolFailure {
+		t.Fatalf("account category = %q, want %q", result.AccountCategory, CodexProbeProtocolFailure)
+	}
+	assertScriptedProbeConnectionClosed(t, transport.conn)
+}
+
+func TestParseCodexProbeAccountRejectsIncompleteResponses(t *testing.T) {
+	t.Parallel()
+	for _, raw := range []string{
+		`{}`,
+		`{"requiresOpenaiAuth":false,"account":{}}`,
+		`{"requiresOpenaiAuth":false,"account":{"type":"chatgpt","email":"dev@example.com"}}`,
+		`{"requiresOpenaiAuth":false,"account":{"type":"unexpected"}}`,
+	} {
+		if account, ok := parseCodexProbeAccount(json.RawMessage(raw)); ok {
+			t.Fatalf("parseCodexProbeAccount(%s) = %#v, true; want invalid", raw, account)
+		}
+	}
+}
+
 func TestProbeCodexAppServerTimesOutDuringStart(t *testing.T) {
 	t.Parallel()
 	transport := &blockingStartProbeTransport{entered: make(chan struct{})}

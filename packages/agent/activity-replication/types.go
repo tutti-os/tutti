@@ -119,6 +119,7 @@ type Turn struct {
 	CreatedAtUnixMS                  int64           `json:"createdAtUnixMs"`
 	UpdatedAtUnixMS                  int64           `json:"updatedAtUnixMs"`
 	RootProviderTurnID               *string         `json:"rootProviderTurnId"`
+	ProviderTurnBindingJSON          json.RawMessage `json:"providerTurnBindingJson"`
 	RootProviderTurnPhase            *string         `json:"rootProviderTurnPhase"`
 	RootProviderTurnOutcome          *string         `json:"rootProviderTurnOutcome"`
 	RootProviderTurnError            json.RawMessage `json:"rootProviderTurnError"`

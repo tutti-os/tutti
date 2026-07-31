@@ -295,6 +295,43 @@ func (s *Service) withSessionForkCapabilities(
 	return session
 }
 
+func (s *Service) withProviderTurnForkability(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	turn storesqlite.Turn,
+) storesqlite.Turn {
+	turn.ProviderForkBindingAvailable = false
+	if s == nil ||
+		strings.TrimSpace(turn.Phase) != storesqlite.TurnPhaseSettled {
+		return turn
+	}
+	s.applicationHostMu.Lock()
+	hostProvider := s.applicationHostProvider
+	s.applicationHostMu.Unlock()
+	if hostProvider == nil {
+		return turn
+	}
+	host := hostProvider()
+	if host == nil {
+		return turn
+	}
+	forkable, err := host.CanForkSessionTurn(
+		ctx,
+		agenthost.SessionTurnForkabilityInput{
+			WorkspaceID:             strings.TrimSpace(workspaceID),
+			SourceAgentSessionID:    strings.TrimSpace(agentSessionID),
+			CanonicalTurnID:         strings.TrimSpace(turn.TurnID),
+			ProviderTurnID:          strings.TrimSpace(turn.RootProviderTurnID),
+			ProviderTurnBindingJSON: append([]byte(nil), turn.ProviderTurnBindingJSON...),
+		},
+	)
+	if err == nil {
+		turn.ProviderForkBindingAvailable = forkable
+	}
+	return turn
+}
+
 func normalizeSessionForkError(err error) error {
 	switch {
 	case err == nil:

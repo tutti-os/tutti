@@ -123,6 +123,7 @@ type SessionForkRecoveryStore interface {
 // false, so Host never dispatches an emulated provider fork.
 type SessionForkRuntime interface {
 	ResolveSessionFork(context.Context, ProviderRuntimeSession) (SessionForkDriverDescriptor, error)
+	CanForkProviderTurn(context.Context, RuntimeProviderTurnForkabilityInput) (bool, error)
 	ForkSession(context.Context, RuntimeSessionForkInput) (RuntimeSessionForkResult, error)
 }
 

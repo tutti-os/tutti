@@ -83,6 +83,11 @@ promise twice, while a changed replay reports `conflict`.
 applied but its acknowledgment was lost; transport ambiguity therefore remains
 non-terminal until the sidecar reports an authoritative disposition.
 
+Claude plan files keep the SDK default directory unless the host opts in to a
+different location. A host can set `TUTTI_CLAUDE_PLANS_DIRECTORY` in the
+session environment; the sidecar forwards its non-empty value through the
+SDK-native `plansDirectory` setting.
+
 ## Module layout
 
 `src/main.ts` only owns the stdio server and request routing. Session lifecycle,

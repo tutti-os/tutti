@@ -22,7 +22,8 @@ func TestCodexStatusSpecComesFromProviderDescriptor(t *testing.T) {
 	if !reflect.DeepEqual(spec.AdapterCommand, []string{"codex", "app-server"}) {
 		t.Fatalf("AdapterCommand = %#v", spec.AdapterCommand)
 	}
-	if !reflect.DeepEqual(spec.AuthStatusCommand, []string{"login", "-c", `service_tier="fast"`, "status"}) {
+	if !reflect.DeepEqual(spec.AuthStatusCommand, []string{"-c", `service_tier="fast"`, "app-server"}) ||
+		spec.AuthCommandRunnerKind != providerregistry.AuthCommandRunnerKindCodexAppServerAccount {
 		t.Fatalf("AuthStatusCommand = %#v", spec.AuthStatusCommand)
 	}
 	if spec.Install.Kind != InstallerKindCodexCLILatest || spec.Install.CodexCLI == nil {

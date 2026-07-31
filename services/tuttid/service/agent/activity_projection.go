@@ -28,6 +28,7 @@ type ActivityProjection struct {
 	agentTargetResolver          AgentTargetResolver
 	workspaceAgentTargetResolver WorkspaceAgentTargetResolver
 	rootTurnObserver             RootTurnObserver
+	turnForkabilityResolver      TurnForkabilityResolver
 	// rootTurnSettleStateObserver is the dedicated, opt-in consumer list for
 	// synthesized canonical root-turn settlement states. It is deliberately
 	// separate from sessionStateObserver: the general observers historically
@@ -82,6 +83,21 @@ type SessionMessageObserver interface {
 
 type RootTurnObserver interface {
 	ObserveRootTurnSettled(context.Context, string, string, agentactivitybiz.Turn)
+}
+
+type TurnForkabilityResolver interface {
+	CanForkSessionTurn(
+		context.Context,
+		agenthost.SessionTurnForkabilityInput,
+	) (bool, error)
+}
+
+func (p *ActivityProjection) SetTurnForkabilityResolver(
+	resolver TurnForkabilityResolver,
+) {
+	if p != nil {
+		p.turnForkabilityResolver = resolver
+	}
 }
 
 type GoalReconcileRequiredInput = agenthost.GoalReconcileRequiredInput

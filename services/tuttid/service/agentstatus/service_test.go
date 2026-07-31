@@ -24,6 +24,7 @@ import (
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerstatus"
+	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	externalagentregistry "github.com/tutti-os/tutti/services/tuttid/service/externalagentregistry"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
@@ -276,6 +277,9 @@ func TestServiceListReportsLoginAndRefreshActionsWhenAuthMarkerMissing(t *testin
 	service := testService(func(name string) (string, error) {
 		return "/usr/local/bin/" + name, nil
 	}, map[string]bool{})
+	service.CodexAuthProbe = func(context.Context, []string, []string) CodexAuthProbeEvidence {
+		return CodexAuthProbeEvidence{State: agentruntime.CodexAppServerAccountRequired}
+	}
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
 	if err != nil {
@@ -402,6 +406,13 @@ func TestServiceListReportsReadyWhenInstalledAndAuthenticated(t *testing.T) {
 	service := testService(func(name string) (string, error) {
 		return "/usr/local/bin/" + name, nil
 	}, map[string]bool{"/home/test/.codex/auth.json": true})
+	service.CodexAuthProbe = func(context.Context, []string, []string) CodexAuthProbeEvidence {
+		return CodexAuthProbeEvidence{
+			State:        agentruntime.CodexAppServerAccountAuthenticated,
+			AccountLabel: "dev@example.com",
+			AuthMethod:   "chatgpt",
+		}
+	}
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
 	if err != nil {
@@ -431,7 +442,7 @@ func TestServiceListReportsReadyWhenInstalledAndAuthenticated(t *testing.T) {
 	}
 }
 
-func TestServiceListUsesCodexLoginStatusCommand(t *testing.T) {
+func TestServiceListUsesCodexAppServerAccountCommand(t *testing.T) {
 	service := testService(func(name string) (string, error) {
 		return "/usr/local/bin/" + name, nil
 	}, map[string]bool{})
@@ -439,8 +450,11 @@ func TestServiceListUsesCodexLoginStatusCommand(t *testing.T) {
 		if spec.Provider != "codex" {
 			t.Fatalf("Provider = %q, want codex", spec.Provider)
 		}
-		if strings.Join(spec.AuthStatusCommand, " ") != `login -c service_tier="fast" status` {
-			t.Fatalf("AuthStatusCommand = %v, want login service tier override status", spec.AuthStatusCommand)
+		if strings.Join(spec.AuthStatusCommand, " ") != `-c service_tier="fast" app-server` {
+			t.Fatalf("AuthStatusCommand = %v, want app-server with service tier override", spec.AuthStatusCommand)
+		}
+		if spec.AuthCommandRunnerKind != providerregistry.AuthCommandRunnerKindCodexAppServerAccount {
+			t.Fatalf("AuthCommandRunnerKind = %q, want Codex app-server account probe", spec.AuthCommandRunnerKind)
 		}
 		if binaryPath != "/usr/local/bin/codex" {
 			t.Fatalf("binaryPath = %q, want /usr/local/bin/codex", binaryPath)

@@ -9,6 +9,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { type NativeTheme, useNativeTheme } from "@tutti-os/ui-system/native";
 import { useServiceSnapshot } from "./bindings/useServiceSnapshot";
+import { MobileConnectionRecoveryOverlay } from "./components/MobileConnectionRecoveryOverlay";
 import { MobileUIProviders } from "./components/MobileUIProviders";
 import { NativeComponentGallery } from "./dev/NativeComponentGallery";
 import { t } from "./i18n";
@@ -43,18 +44,33 @@ function AppContent() {
         barStyle={theme.mode === "dark" ? "light-content" : "dark-content"}
       />
       <SafeAreaView edges={["top", "bottom"]} style={styles.safeArea}>
-        {galleryOpen ? (
-          <NativeComponentGallery onClose={() => setGalleryOpen(false)} />
-        ) : snapshot.status === "bootstrapping" ? (
-          <View style={styles.loading}>
-            <ActivityIndicator color={theme.color.accent} size="large" />
-          </View>
-        ) : (
-          <MobileNavigator
-            application={mobileApplicationService}
-            snapshot={snapshot}
-          />
-        )}
+        <View style={styles.content}>
+          {galleryOpen ? (
+            <NativeComponentGallery onClose={() => setGalleryOpen(false)} />
+          ) : snapshot.status === "bootstrapping" ? (
+            <View style={styles.loading}>
+              <ActivityIndicator color={theme.color.accent} size="large" />
+            </View>
+          ) : (
+            <MobileNavigator
+              application={mobileApplicationService}
+              snapshot={snapshot}
+            />
+          )}
+          {snapshot.status === "authenticated" &&
+          snapshot.device &&
+          snapshot.workspace ? (
+            <MobileConnectionRecoveryOverlay
+              connection={snapshot.connection}
+              onBackToDevices={() =>
+                void mobileApplicationService.disconnectDevice()
+              }
+              onRetry={() =>
+                void mobileApplicationService.retryDeviceConnection()
+              }
+            />
+          ) : null}
+        </View>
       </SafeAreaView>
     </>
   );
@@ -62,6 +78,7 @@ function AppContent() {
 
 function createStyles(theme: NativeTheme) {
   return StyleSheet.create({
+    content: { flex: 1 },
     loading: {
       alignItems: "center",
       flex: 1,

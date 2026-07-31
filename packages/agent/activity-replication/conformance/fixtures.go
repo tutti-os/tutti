@@ -265,6 +265,7 @@ func turnMutation(mutationID, transactionID, phase string, outcome *string, upda
 	turn := &activityreplication.Turn{
 		WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: "turn-1", Phase: phase, Outcome: outcome,
 		Origin: canonical.TurnOriginUserPrompt, StartedAtUnixMS: updatedAt, CreatedAtUnixMS: 50, UpdatedAtUnixMS: updatedAt,
+		ProviderTurnBindingJSON: json.RawMessage(`{}`),
 	}
 	return activityreplication.Mutation{
 		SchemaVersion: activityreplication.SchemaVersion, MutationID: mutationID, TransactionID: transactionID,

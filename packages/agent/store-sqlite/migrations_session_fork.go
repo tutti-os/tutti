@@ -499,6 +499,30 @@ WHERE status IN ('prepared','dispatching','provider_accepted')
 			nonterminal,
 		)
 	}
+	hasSourceBindingJSON, err := hasColumnTx(
+		ctx,
+		tx,
+		"workspace_agent_session_fork_operations",
+		"source_provider_turn_binding_json",
+	)
+	if err != nil {
+		return err
+	}
+	if !hasSourceBindingJSON {
+		if _, err := tx.ExecContext(ctx, `
+ALTER TABLE workspace_agent_session_fork_operations
+ADD COLUMN source_provider_turn_binding_json TEXT NOT NULL DEFAULT '{}'
+CHECK (
+  json_valid(source_provider_turn_binding_json)
+  AND json_type(source_provider_turn_binding_json) = 'object'
+);
+`); err != nil {
+			return fmt.Errorf(
+				"add session fork source provider binding json: %w",
+				err,
+			)
+		}
+	}
 	if _, err := tx.ExecContext(ctx, `
 ALTER TABLE workspace_agent_session_fork_operations
 ADD COLUMN target_provider_turn_bindings_json TEXT NOT NULL DEFAULT '[]'
@@ -506,21 +530,41 @@ CHECK (
   json_valid(target_provider_turn_bindings_json)
   AND json_type(target_provider_turn_bindings_json) = 'array'
 );
-
+`); err != nil {
+		return fmt.Errorf("add workspace agent session fork full turn bindings: %w", err)
+	}
+	hasLegacyCheckpoint, err := hasColumnTx(
+		ctx,
+		tx,
+		"workspace_agent_session_fork_operations",
+		"target_provider_checkpoint_message_id",
+	)
+	if err != nil {
+		return err
+	}
+	if hasLegacyCheckpoint {
+		if _, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_session_fork_operations
 SET target_provider_turn_bindings_json = json_array(
   json_object(
     'providerTurnId',
     json_extract(target_provider_turn_ids_json, '$[#-1]'),
-    'checkpointMessageId',
-    target_provider_checkpoint_message_id
+    'providerTurnBindingJson',
+    json_object(
+      'schemaVersion', 1,
+      'checkpointMessageId', target_provider_checkpoint_message_id
+    )
   )
 )
 WHERE provider_state_binding_mode = 'provider_owned'
   AND json_array_length(target_provider_turn_ids_json) > 0
   AND TRIM(COALESCE(target_provider_checkpoint_message_id, '')) <> '';
 `); err != nil {
-		return fmt.Errorf("add workspace agent session fork full turn bindings: %w", err)
+			return fmt.Errorf(
+				"backfill legacy session fork provider binding json: %w",
+				err,
+			)
+		}
 	}
 	if err := recordMigrationTx(ctx, tx, schemaMigrationWorkspaceAgentSessionForkV7); err != nil {
 		return err

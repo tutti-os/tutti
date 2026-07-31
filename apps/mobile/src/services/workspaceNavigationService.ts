@@ -8,12 +8,20 @@ export interface WorkspaceNavigationSnapshot {
 
 export class WorkspaceNavigationService extends ObservableService<WorkspaceNavigationSnapshot> {
   readonly _serviceBrand: undefined;
-  private sessionSelectionExplicit = false;
-  private snapshot: WorkspaceNavigationSnapshot = {
-    creating: false,
-    selectedAgentSessionId: null,
-    selectedAgentTargetId: null
-  };
+  private sessionSelectionExplicit: boolean;
+  private snapshot: WorkspaceNavigationSnapshot;
+
+  constructor(previous?: WorkspaceNavigationSnapshot) {
+    super();
+    this.sessionSelectionExplicit = previous !== undefined;
+    this.snapshot = previous
+      ? { ...previous }
+      : {
+          creating: false,
+          selectedAgentSessionId: null,
+          selectedAgentTargetId: null
+        };
+  }
 
   getSnapshot = (): WorkspaceNavigationSnapshot => this.snapshot;
 

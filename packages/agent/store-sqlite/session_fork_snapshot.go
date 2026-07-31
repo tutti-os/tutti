@@ -396,7 +396,7 @@ INSERT INTO workspace_agent_turns (
   error_json, file_changes_json, completed_command_json, backfilled,
   started_at_unix_ms, settled_at_unix_ms, created_at_unix_ms, updated_at_unix_ms,
   turn_origin, source_goal_operation_id, source_goal_revision, source_goal_repair_epoch,
-  root_provider_turn_id, provider_checkpoint_message_id,
+  root_provider_turn_id, provider_turn_binding_json,
   root_provider_turn_phase, root_provider_turn_outcome,
   root_provider_turn_error_json, root_provider_turn_completed_command_json,
   root_provider_turn_updated_at_unix_ms
@@ -410,7 +410,7 @@ INSERT INTO workspace_agent_turns (
 		turn.Backfilled, turn.StartedAtUnixMS, nullInt64(turn.SettledAtUnixMS),
 		turn.CreatedAtUnixMS, turn.UpdatedAtUnixMS, turn.Origin,
 		nullString(turn.RootProviderTurnID),
-		nullString(turn.ProviderCheckpointMessageID),
+		string(firstNonEmptyJSON(turn.ProviderTurnBindingJSON)),
 		nullString(turn.RootProviderTurnPhase),
 		nullString(turn.RootProviderTurnOutcome),
 		encodeTurnErrorJSON(turn.RootProviderTurnErrorMessage, turn.RootProviderTurnErrorCode),

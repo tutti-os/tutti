@@ -4,6 +4,7 @@ package conformance
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
@@ -34,6 +35,7 @@ type TurnSeed struct {
 	Phase                   string
 	Outcome                 string
 	RootProviderTurnID      string
+	ProviderTurnBindingJSON json.RawMessage
 	FinalAssistantMessageID string
 	StartedAtUnixMS         int64
 	SettledAtUnixMS         int64

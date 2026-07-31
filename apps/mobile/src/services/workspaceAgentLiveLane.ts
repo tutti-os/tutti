@@ -138,7 +138,7 @@ export class WorkspaceAgentLiveLane {
       this.coordinator.eventStreamConnectionChanged({
         status: "disconnected"
       });
-      this.setConnected(false);
+      this.setConnected(false, true);
       this.scheduleRetry();
       return;
     }
@@ -208,7 +208,7 @@ export class WorkspaceAgentLiveLane {
     this.coordinator.eventStreamConnectionChanged({
       status: "disconnected"
     });
-    this.setConnected(false);
+    this.setConnected(false, true);
     this.reconcileDiscontinuity({
       kind: "discontinuity",
       reason,
@@ -262,11 +262,16 @@ export class WorkspaceAgentLiveLane {
     );
   }
 
-  private setConnected(connected: boolean): void {
-    if (this.connected === connected) return;
-    this.connected = connected;
-    this.options.rail.setLiveConnected(connected);
-    this.options.onConnectionChanged(connected);
+  private setConnected(connected: boolean, observedFailure = false): void {
+    if (this.connected !== connected) {
+      this.connected = connected;
+      this.options.rail.setLiveConnected(connected);
+      this.options.onConnectionChanged(connected);
+      return;
+    }
+    if (observedFailure) {
+      this.options.onConnectionChanged(false);
+    }
   }
 }
 

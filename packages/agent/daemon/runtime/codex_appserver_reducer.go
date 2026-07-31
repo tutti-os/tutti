@@ -164,7 +164,20 @@ func (r codexAppServerReducer) reduceNotification(
 			return emit(nil)
 		}
 		if ctx, ok := activityEventContext(session, "root-provider-turn-started:"+providerTurnID, turnID); ok {
-			return emit([]activityshared.Event{activityshared.NewRootProviderTurnStarted(ctx, turnID, providerTurnID)})
+			started := activityshared.NewRootProviderTurnStarted(
+				ctx,
+				turnID,
+				providerTurnID,
+			)
+			if binding, err := a.WriteProviderTurnBinding(
+				ProviderTurnBindingWriteInput{
+					Kind:           ProviderTurnBindingWriteStarted,
+					ProviderTurnID: providerTurnID,
+				},
+			); err == nil {
+				started.Payload.ProviderTurnBindingJSON = binding
+			}
+			return emit([]activityshared.Event{started})
 		}
 		return emit(nil)
 	case appServerNotifyTurnCompleted:

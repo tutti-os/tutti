@@ -268,7 +268,7 @@
   `CSSMERR_TP_CERT_REVOKED`, remove or reinstall that specific Codex package.
 - Root cause:
   Provider status and composer capability discovery intentionally start Codex
-  commands such as `codex login status` and `codex app-server`. If the daemon
+  commands such as `codex app-server`. If the daemon
   resolves an older nvm global Codex package whose Developer ID certificate has
   been revoked, each otherwise harmless background probe can become a
   Gatekeeper dialog. This can happen even when `which codex` in the user's shell

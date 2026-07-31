@@ -16,6 +16,8 @@ type scriptedSessionState struct {
 	requiresAuth                 bool
 	collaborationModeUnsupported bool
 	accountReadError             bool
+	accountReadErrorCode         int
+	accountReadErrorMessage      string
 	childNicknames               map[string]string
 	historyTurns                 []any
 	rollbackHistoryTurns         []any
@@ -41,9 +43,17 @@ func (s *fakeCodexAppServer) handleSessionRPC(message scriptedAppServerMessage) 
 		// notification, no response
 	case appServerMethodAccountRead:
 		if s.accountReadError {
+			errorMessage := s.accountReadErrorMessage
+			if errorMessage == "" {
+				errorMessage = "account backend unavailable"
+			}
+			errorCode := s.accountReadErrorCode
+			if errorCode == 0 {
+				errorCode = -32000
+			}
 			s.sendJSON(map[string]any{
 				"id":    message.ID,
-				"error": map[string]any{"code": -32000, "message": "account backend unavailable"},
+				"error": map[string]any{"code": errorCode, "message": errorMessage},
 			})
 			return true
 		}

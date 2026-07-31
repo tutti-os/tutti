@@ -61,6 +61,14 @@ func (c *Controller) ReconcileProviderTurnAcceptance(
 		input.RootTurnID,
 		input.ExpectedProviderTurnID,
 	)
+	accepted.Payload.ProviderTurnBindingJSON = c.providerTurnBindingJSON(
+		ctx,
+		session,
+		ProviderTurnBindingWriteInput{
+			Kind:           ProviderTurnBindingWriteRecovered,
+			ProviderTurnID: input.ExpectedProviderTurnID,
+		},
+	)
 	accepted.Payload.Metadata = map[string]any{
 		"acceptanceSource": string(AcceptanceSourceHistoryRead),
 	}

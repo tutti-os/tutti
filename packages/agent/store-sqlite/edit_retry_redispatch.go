@@ -217,6 +217,7 @@ func validateDiscardableEditRetryReplacementTx(
 		(turn.Outcome != TurnOutcomeFailed && turn.Outcome != TurnOutcomeInterrupted) ||
 		turn.Origin != TurnOriginUserPrompt ||
 		strings.TrimSpace(turn.RootProviderTurnID) != "" ||
+		HasPersistedProviderTurnBinding(turn) ||
 		strings.TrimSpace(turn.RootProviderTurnPhase) != "" ||
 		strings.TrimSpace(turn.RootProviderTurnOutcome) != "" ||
 		strings.TrimSpace(turn.RootProviderTurnErrorMessage) != "" ||

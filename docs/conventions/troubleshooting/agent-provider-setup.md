@@ -410,7 +410,7 @@ provider-status-focus-refresh --all-process-time-profile` on macOS when a
   but unable to start. A registry can also be reachable but too slow for the
   platform tarball, so retrying the same source burns the install timeout before
   mirrors are tried. The launcher itself uses `#!/usr/bin/env node`, so
-  daemon-run Codex commands (`--version`, `login status`, and `app-server`) need
+  daemon-run Codex commands (`--version`, login, and `app-server`) need
   a usable Node on `PATH`. Tutti should prefer the user's Node environment, but
   fall back to the managed Node runtime when the visible `codex` shim exists and
   no user Node is resolvable.
@@ -713,6 +713,30 @@ file or directory`. A failed `codex app-server` probe is diagnostic evidence,
   [providers.go](../../../packages/agent/daemon/providerregistry/providers.go)
   [acp_provider_cursor.go](../../../packages/agent/daemon/runtime/acp_provider_cursor.go)
   [standard_acp_adapter_test.go](../../../packages/agent/daemon/runtime/standard_acp_adapter_test.go)
+
+### Codex provider appears logged in with an empty auth.json
+
+- Symptom:
+  Provider management reports Codex as logged in when `~/.codex/auth.json` is
+  `{}`, but starting Codex fails during TUI bootstrap with
+  `account/read failed: plan type is required for chatgpt authentication`.
+- Quick checks:
+  Compare `codex login status` with a direct app-server `account/read`. The
+  former may print `Logged in using ChatGPT` and exit successfully solely
+  because `auth.json` exists, while the latter rejects the incomplete account.
+- Root cause:
+  Codex provider status used the generic text-command runner and accepted
+  `codex login status` as authoritative. That command's file-level check is
+  weaker than the account validation performed by the TUI and app-server.
+- Fix:
+  Use the descriptor-owned `codex_app_server_account` auth runner. It performs
+  the formal app-server initialize handshake and calls `account/read`; only a
+  structurally valid returned account is authenticated. A failed or malformed
+  response remains unknown and never falls back to auth-file existence.
+- Validation:
+  Cover authenticated, login-required, and account/read-error responses in the
+  shared app-server probe, then verify tuttID does not authenticate from a
+  present marker when account/read is unknown.
 
 ### Codex provider shows login required when global service tier is legacy
 

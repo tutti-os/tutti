@@ -1,6 +1,7 @@
 package agentruntime
 
 import (
+	"encoding/json"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -120,10 +121,10 @@ type SessionForkCapabilities struct {
 // provider-turn boundary. ProviderTurnID is deliberately distinct from the
 // canonical WorkspaceAgentTurn id.
 type SessionForkInput struct {
-	Source                      Session `json:"-"`
-	ProviderTurnID              string  `json:"providerTurnId,omitempty"`
-	ProviderCheckpointMessageID string  `json:"providerCheckpointMessageId,omitempty"`
-	TargetTitle                 string  `json:"targetTitle,omitempty"`
+	Source                  Session         `json:"-"`
+	ProviderTurnID          string          `json:"providerTurnId,omitempty"`
+	ProviderTurnBindingJSON json.RawMessage `json:"providerTurnBindingJson,omitempty"`
+	TargetTitle             string          `json:"targetTitle,omitempty"`
 }
 
 type SessionForkDeliveryDisposition string
@@ -148,8 +149,30 @@ type SessionForkResult struct {
 }
 
 type SessionForkProviderTurnBinding struct {
-	ProviderTurnID      string `json:"providerTurnId"`
-	CheckpointMessageID string `json:"checkpointMessageId"`
+	ProviderTurnID          string          `json:"providerTurnId"`
+	ProviderTurnBindingJSON json.RawMessage `json:"providerTurnBindingJson"`
+}
+
+const (
+	ProviderTurnBindingWriteStarted    = "started"
+	ProviderTurnBindingWriteCheckpoint = "checkpoint"
+	ProviderTurnBindingWriteForked     = "forked"
+	ProviderTurnBindingWriteRecovered  = "recovered"
+)
+
+// ProviderTurnBindingWriteInput is deliberately provider-neutral. Payload is
+// supplied by the provider adapter and interpreted only by that adapter.
+type ProviderTurnBindingWriteInput struct {
+	Kind           string
+	ProviderTurnID string
+	Payload        map[string]any
+}
+
+type ProviderTurnForkabilityInput struct {
+	Source                  Session
+	CanonicalTurnID         string
+	ProviderTurnID          string
+	ProviderTurnBindingJSON json.RawMessage
 }
 
 type ProviderTurnBindingRecoveryInput struct {
@@ -161,9 +184,9 @@ type ProviderTurnBindingRecoveryInput struct {
 }
 
 type ProviderTurnBindingRecoveryResult struct {
-	ProviderSessionID           string
-	ProviderTurnID              string
-	ProviderCheckpointMessageID string
+	ProviderSessionID       string
+	ProviderTurnID          string
+	ProviderTurnBindingJSON json.RawMessage
 }
 
 type ExecInput struct {

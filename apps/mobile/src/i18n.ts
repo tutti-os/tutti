@@ -25,6 +25,13 @@ const messages = {
     connecting: "Connecting securely…",
     connectionFailed:
       "Could not reach this computer. Make sure Tutti is running and try again.",
+    connectionReconnectingTitle: "Reconnecting to your computer",
+    connectionRecoveryDescription:
+      "Your current screen will remain available while the latest data is restored.",
+    connectionRecoveryFailedDescription:
+      "Make sure Tutti is running on your computer, then try again or return to your computers.",
+    connectionRecoveryFailedTitle: "Could not reconnect",
+    connectionSynchronizingTitle: "Syncing the latest data",
     deviceEmpty:
       "Pair your computer to start using Agent sessions on your phone.",
     deviceEmptyTitle: "No computer paired",
@@ -104,6 +111,7 @@ const messages = {
       "This pairing code could not be used. Create a new code on your computer.",
     pairingWaiting: "Waiting for your computer to confirm…",
     retry: "Retry",
+    retryConnection: "Reconnect",
     running: "Running",
     ready: "Ready",
     recentSessions: "Recent",
@@ -165,6 +173,13 @@ const messages = {
     collapseSection: "收起分组",
     connecting: "正在建立安全连接…",
     connectionFailed: "无法连接这台电脑，请确认 Tutti 正在运行后重试",
+    connectionReconnectingTitle: "正在重新连接电脑",
+    connectionRecoveryDescription:
+      "恢复连接并同步最新数据后，会继续显示当前页面",
+    connectionRecoveryFailedDescription:
+      "请确认电脑端 Tutti 正在运行，然后重试或返回电脑列表",
+    connectionRecoveryFailedTitle: "无法重新连接",
+    connectionSynchronizingTitle: "正在同步最新数据",
     deviceEmpty: "先配对你的电脑，即可在手机上使用 Agent 会话",
     deviceEmptyTitle: "还没有配对电脑",
     devices: "你的电脑",
@@ -238,6 +253,7 @@ const messages = {
     pairingFailed: "无法使用此配对二维码，请在电脑上重新生成",
     pairingWaiting: "等待电脑确认…",
     retry: "重试",
+    retryConnection: "重新连接",
     running: "运行中",
     ready: "就绪",
     recentSessions: "最近会话",

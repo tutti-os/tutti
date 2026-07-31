@@ -3,6 +3,7 @@ package agenthost_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -129,12 +130,13 @@ func (d *sqliteSessionForkConformanceDriver) ResetSessionFork(
 			OccurredAtUnixMS: 20,
 		},
 		RootProviderTurn: &storesqlite.RootProviderTurnTransition{
-			WorkspaceID:        "workspace-fork",
-			RootAgentSessionID: "session-source",
-			RootTurnID:         "turn-boundary",
-			ProviderTurnID:     "provider-turn",
-			Phase:              storesqlite.RootProviderTurnPhaseRunning,
-			OccurredAtUnixMS:   20,
+			WorkspaceID:             "workspace-fork",
+			RootAgentSessionID:      "session-source",
+			RootTurnID:              "turn-boundary",
+			ProviderTurnID:          "provider-turn",
+			ProviderTurnBindingJSON: json.RawMessage(`{"schemaVersion":1}`),
+			Phase:                   storesqlite.RootProviderTurnPhaseRunning,
+			OccurredAtUnixMS:        20,
 		},
 	}); err != nil || !result.TurnAccepted || !result.RootTurnAccepted {
 		return errors.Join(err, errors.New("seed running fork boundary was rejected"))
@@ -167,13 +169,14 @@ func (d *sqliteSessionForkConformanceDriver) ResetSessionFork(
 			OccurredAtUnixMS:  30,
 		},
 		RootProviderTurn: &storesqlite.RootProviderTurnTransition{
-			WorkspaceID:        "workspace-fork",
-			RootAgentSessionID: "session-source",
-			RootTurnID:         "turn-boundary",
-			ProviderTurnID:     "provider-turn",
-			Phase:              storesqlite.RootProviderTurnPhaseCompleted,
-			Outcome:            storesqlite.TurnOutcomeCompleted,
-			OccurredAtUnixMS:   30,
+			WorkspaceID:             "workspace-fork",
+			RootAgentSessionID:      "session-source",
+			RootTurnID:              "turn-boundary",
+			ProviderTurnID:          "provider-turn",
+			ProviderTurnBindingJSON: json.RawMessage(`{"schemaVersion":1}`),
+			Phase:                   storesqlite.RootProviderTurnPhaseCompleted,
+			Outcome:                 storesqlite.TurnOutcomeCompleted,
+			OccurredAtUnixMS:        30,
 		},
 	}); err != nil || !result.RootTurnAccepted {
 		return errors.Join(err, errors.New("seed settled fork boundary was rejected"))
@@ -198,12 +201,13 @@ func (d *sqliteSessionForkConformanceDriver) ResetSessionFork(
 				OccurredAtUnixMS: 31,
 			},
 			RootProviderTurn: &storesqlite.RootProviderTurnTransition{
-				WorkspaceID:        "workspace-fork",
-				RootAgentSessionID: "session-source",
-				RootTurnID:         "turn-active",
-				ProviderTurnID:     "provider-turn-active",
-				Phase:              storesqlite.RootProviderTurnPhaseRunning,
-				OccurredAtUnixMS:   31,
+				WorkspaceID:             "workspace-fork",
+				RootAgentSessionID:      "session-source",
+				RootTurnID:              "turn-active",
+				ProviderTurnID:          "provider-turn-active",
+				ProviderTurnBindingJSON: json.RawMessage(`{"schemaVersion":1}`),
+				Phase:                   storesqlite.RootProviderTurnPhaseRunning,
+				OccurredAtUnixMS:        31,
 			},
 		}); err != nil || !result.TurnAccepted || !result.RootTurnAccepted {
 			return errors.Join(err, errors.New("seed active source turn was rejected"))
@@ -268,8 +272,8 @@ func (d *sqliteSessionForkConformanceDriver) ResetSessionFork(
 			Status:                  storesqlite.SessionForkStatusProviderAccepted,
 			TargetProviderSessionID: "provider-target",
 			TargetProviderTurnBindings: []storesqlite.SessionForkProviderTurnBinding{{
-				ProviderTurnID:      "forked-provider-turn",
-				CheckpointMessageID: "forked-provider-checkpoint",
+				ProviderTurnID:          "forked-provider-turn",
+				ProviderTurnBindingJSON: json.RawMessage(`{"schemaVersion":1}`),
 			}},
 			StateBindingMode:    string(agenthost.SessionForkStateBindingProviderOwned),
 			StateBindingReceipt: "conformance-provider-owned-receipt",
@@ -336,6 +340,14 @@ func (*sessionForkConformanceRuntime) ResolveSessionFork(
 	}, nil
 }
 
+func (*sessionForkConformanceRuntime) CanForkProviderTurn(
+	_ context.Context,
+	input agenthost.RuntimeProviderTurnForkabilityInput,
+) (bool, error) {
+	return input.ProviderTurnID != "" &&
+		len(input.ProviderTurnBindingJSON) > 0, nil
+}
+
 func (r *sessionForkConformanceRuntime) ForkSession(
 	_ context.Context,
 	input agenthost.RuntimeSessionForkInput,
@@ -344,8 +356,8 @@ func (r *sessionForkConformanceRuntime) ForkSession(
 	return agenthost.RuntimeSessionForkResult{
 		ProviderSessionID: "provider-target",
 		TargetProviderTurnBindings: []agenthost.SessionForkProviderTurnBinding{{
-			ProviderTurnID:      "forked-" + input.SourceProviderTurnID,
-			CheckpointMessageID: "checkpoint-" + input.SourceProviderTurnID,
+			ProviderTurnID:          "forked-" + input.SourceProviderTurnID,
+			ProviderTurnBindingJSON: json.RawMessage(`{"schemaVersion":1}`),
 		}},
 		StateBindingMode:    agenthost.SessionForkStateBindingProviderOwned,
 		StateBindingReceipt: "conformance-provider-owned-receipt",

@@ -93,7 +93,8 @@ func TestClaudeSessionForkTraversesProductionWiringAcrossRestart(t *testing.T) {
 		t.Fatalf("get child turn found=%v error=%v", found, err)
 	}
 	if childTurn.RootProviderTurnID != "child-prompt-1" ||
-		childTurn.ProviderCheckpointMessageID != "checkpoint-claude-child" {
+		string(childTurn.ProviderTurnBindingJSON) !=
+			`{"checkpointMessageId":"checkpoint-claude-child","schemaVersion":1}` {
 		t.Fatalf(
 			"child provider binding=%#v, want remapped UUIDs",
 			childTurn,
@@ -295,8 +296,11 @@ func seedClaudeForkIntegrationSource(
 				RootAgentSessionID: session.AgentSessionID,
 				RootTurnID:         "turn-source",
 				ProviderTurnID:     "source-prompt-1",
-				Phase:              storesqlite.RootProviderTurnPhaseRunning,
-				OccurredAtUnixMS:   10,
+				ProviderTurnBindingJSON: json.RawMessage(
+					`{"schemaVersion":1,"checkpointMessageId":"source-answer-1"}`,
+				),
+				Phase:            storesqlite.RootProviderTurnPhaseRunning,
+				OccurredAtUnixMS: 10,
 			},
 		},
 	); err != nil || !result.TurnAccepted || !result.RootTurnAccepted {
@@ -331,9 +335,12 @@ func seedClaudeForkIntegrationSource(
 				RootAgentSessionID: session.AgentSessionID,
 				RootTurnID:         "turn-source",
 				ProviderTurnID:     "source-prompt-1",
-				Phase:              storesqlite.RootProviderTurnPhaseCompleted,
-				Outcome:            storesqlite.TurnOutcomeCompleted,
-				OccurredAtUnixMS:   12,
+				ProviderTurnBindingJSON: json.RawMessage(
+					`{"schemaVersion":1,"checkpointMessageId":"source-answer-1"}`,
+				),
+				Phase:            storesqlite.RootProviderTurnPhaseCompleted,
+				Outcome:          storesqlite.TurnOutcomeCompleted,
+				OccurredAtUnixMS: 12,
 			},
 		},
 	); err != nil || !result.RootTurnAccepted {

@@ -69,6 +69,8 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
   private errorCode: "request_failed" | null = null;
   private loading = true;
   private observedSelectedSessionId: string | null = null;
+  private readonly requiresLiveTransport: boolean;
+  private transportConnected: boolean;
   private previousConversation: WorkspaceActivitySnapshot["conversation"] =
     null;
   private snapshotCache: WorkspaceActivitySnapshot | null = null;
@@ -87,9 +89,12 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
     private readonly drafts: ComposerDraftService,
     private readonly clock: ClockPort,
     currentUserId: string,
-    deviceLink?: DeviceLinkPort
+    deviceLink?: DeviceLinkPort,
+    private readonly onTransportConnectionChanged?: (connected: boolean) => void
   ) {
     super();
+    this.requiresLiveTransport = deviceLink !== undefined;
+    this.transportConnected = !this.requiresLiveTransport;
     this.media = new WorkspaceMediaService(workspace.id, client);
     this.mapping = createMobileAgentActivityMapping({
       currentUserId,
@@ -142,12 +147,14 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
       navigation: this.navigation,
       onActivityChanged: () => this.onDependencyChanged(),
       onConnectionChanged: (connected) => {
+        this.setTransportConnected(connected);
         if (connected) {
           this.messagePollTask?.cancel();
           this.messagePollTask = null;
         } else {
           this.scheduleMessagesPoll();
         }
+        this.onTransportConnectionChanged?.(connected);
       },
       rail: this.rail,
       readCanonicalActivity: () =>
@@ -277,18 +284,7 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
   start(): Promise<void> {
     if (this.initializePromise) return this.initializePromise;
     if (this.disposed) return Promise.resolve();
-    this.engine.dispatch({
-      status: "connected",
-      type: "engine/connectionChanged",
-      workspaceId: this.workspace.id
-    });
-    for (const session of this.getSnapshot().activity.sessions) {
-      this.engine.dispatch({
-        agentSessionId: session.agentSessionId,
-        availability: { state: "available" },
-        type: "session/runtimeAvailabilityChanged"
-      });
-    }
+    this.setTransportConnected(this.transportConnected, true);
     this.initializePromise = Promise.all([
       this.directory.load(),
       this.rail.start()
@@ -302,6 +298,10 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
         this.onDependencyChanged();
       });
     return this.initializePromise;
+  }
+
+  isTransportConnected(): boolean {
+    return this.transportConnected;
   }
 
   setDraft(value: string): void {
@@ -528,21 +528,7 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
     this.liveLane.stop();
     this.cancelPolls();
     this.rail.pause();
-    this.engine.dispatch({
-      status: "disconnected",
-      type: "engine/connectionChanged",
-      workspaceId: this.workspace.id
-    });
-    for (const session of this.getSnapshot().activity.sessions) {
-      this.engine.dispatch({
-        agentSessionId: session.agentSessionId,
-        availability: {
-          reason: "transport_unavailable",
-          state: "blocked"
-        },
-        type: "session/runtimeAvailabilityChanged"
-      });
-    }
+    this.setTransportConnected(false, true);
   }
 
   resume(): void {
@@ -550,19 +536,7 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
     this.paused = false;
     this.rail.resume();
     this.liveLane.start();
-    this.engine.dispatch({
-      status: "connected",
-      type: "engine/connectionChanged",
-      workspaceId: this.workspace.id
-    });
-    for (const session of this.projectActivity(this.engine.getSnapshot())
-      .sessions) {
-      this.engine.dispatch({
-        agentSessionId: session.agentSessionId,
-        availability: { state: "available" },
-        type: "session/runtimeAvailabilityChanged"
-      });
-    }
+    this.setTransportConnected(!this.requiresLiveTransport, true);
     this.engine.dispatch({
       retry: true,
       type: "workspace/reconcileRequested",
@@ -697,21 +671,51 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
 
   private markRailSessionsAvailable(agentSessionIds: readonly string[]): void {
     const state = this.engine.getSnapshot();
+    const availability = this.transportConnected
+      ? ({ state: "available" } as const)
+      : ({
+          reason: "transport_unavailable",
+          state: "blocked"
+        } as const);
     for (const agentSessionId of agentSessionIds) {
       if (
         selectEngineSessionRuntimeAvailability(state, agentSessionId)?.state ===
-        "available"
+        availability.state
       ) {
         continue;
       }
       this.engine.dispatch(
         {
           agentSessionId,
-          availability: { state: "available" },
+          availability,
           type: "session/runtimeAvailabilityChanged"
         },
         { batch: true }
       );
+    }
+  }
+
+  private setTransportConnected(connected: boolean, force = false): void {
+    if (!force && this.transportConnected === connected) return;
+    this.transportConnected = connected;
+    this.engine.dispatch({
+      status: connected ? "connected" : "disconnected",
+      type: "engine/connectionChanged",
+      workspaceId: this.workspace.id
+    });
+    const availability = connected
+      ? ({ state: "available" } as const)
+      : ({
+          reason: "transport_unavailable",
+          state: "blocked"
+        } as const);
+    for (const session of this.projectActivity(this.engine.getSnapshot())
+      .sessions) {
+      this.engine.dispatch({
+        agentSessionId: session.agentSessionId,
+        availability,
+        type: "session/runtimeAvailabilityChanged"
+      });
     }
   }
 

@@ -42,8 +42,7 @@ func (h *Host) recoverSessionForkTurnBinding(
 	if err != nil {
 		return err
 	}
-	if !found || turn.Phase != storesqlite.TurnPhaseSettled ||
-		storesqlite.HasUsableProviderTurnBinding(turn) {
+	if !found || turn.Phase != storesqlite.TurnPhaseSettled {
 		return storesqlite.ErrSessionForkTurnState
 	}
 
@@ -97,8 +96,9 @@ func (h *Host) recoverSessionForkTurnBinding(
 			TurnID:                    turnID,
 			ExpectedProviderSessionID: strings.TrimSpace(recovered.ProviderSessionID),
 			ProviderTurnID:            strings.TrimSpace(recovered.ProviderTurnID),
-			ProviderCheckpointMessageID: strings.TrimSpace(
-				recovered.ProviderCheckpointMessageID,
+			ProviderTurnBindingJSON: append(
+				[]byte(nil),
+				recovered.ProviderTurnBindingJSON...,
 			),
 			OccurredAtUnixMS: h.now().UnixMilli(),
 		},

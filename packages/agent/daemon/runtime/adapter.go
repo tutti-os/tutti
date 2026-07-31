@@ -2,6 +2,7 @@ package agentruntime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
@@ -82,6 +83,19 @@ type Adapter interface {
 type SessionForkAdapter interface {
 	ForkCapabilities(context.Context, Session) (SessionForkCapabilities, error)
 	Fork(context.Context, SessionForkInput) (SessionForkResult, error)
+}
+
+// ProviderTurnBindingAdapter owns the provider-specific Turn binding payload.
+// The host and store persist ProviderTurnBindingJSON opaquely and never infer
+// forkability from provider-specific fields.
+type ProviderTurnBindingAdapter interface {
+	WriteProviderTurnBinding(
+		ProviderTurnBindingWriteInput,
+	) (json.RawMessage, error)
+	CanForkProviderTurn(
+		context.Context,
+		ProviderTurnForkabilityInput,
+	) (bool, error)
 }
 
 type ProviderTurnBindingRecoveryAdapter interface {

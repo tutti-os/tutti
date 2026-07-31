@@ -62,10 +62,20 @@ func (a *CodexAppServerAdapter) RecoverProviderTurnBinding(
 		return ProviderTurnBindingRecoveryResult{},
 			errors.New("codex provider turn recovery token is absent or ambiguous")
 	}
-	return ProviderTurnBindingRecoveryResult{
+	result := ProviderTurnBindingRecoveryResult{
 		ProviderSessionID: expectedThreadID,
 		ProviderTurnID:    strings.TrimSpace(matched.ID),
-	}, nil
+	}
+	result.ProviderTurnBindingJSON, err = a.WriteProviderTurnBinding(
+		ProviderTurnBindingWriteInput{
+			Kind:           ProviderTurnBindingWriteRecovered,
+			ProviderTurnID: result.ProviderTurnID,
+		},
+	)
+	if err != nil {
+		return ProviderTurnBindingRecoveryResult{}, err
+	}
+	return result, nil
 }
 
 var _ ProviderTurnBindingRecoveryAdapter = (*CodexAppServerAdapter)(nil)

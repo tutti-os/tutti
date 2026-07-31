@@ -59,7 +59,8 @@ CREATE TABLE IF NOT EXISTS workspace_agent_turns (
   created_at_unix_ms INTEGER NOT NULL,
   updated_at_unix_ms INTEGER NOT NULL,
   root_provider_turn_id TEXT,
-  provider_checkpoint_message_id TEXT,
+  provider_turn_binding_json TEXT NOT NULL DEFAULT '{}'
+    CHECK (json_valid(provider_turn_binding_json) AND json_type(provider_turn_binding_json) = 'object'),
   root_provider_turn_phase TEXT CHECK (root_provider_turn_phase IS NULL OR root_provider_turn_phase IN ('running','completed')),
   root_provider_turn_outcome TEXT CHECK (root_provider_turn_outcome IS NULL OR root_provider_turn_outcome IN ('completed','failed','canceled','interrupted')),
   root_provider_turn_error_json TEXT,

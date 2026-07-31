@@ -1438,6 +1438,7 @@ describe("WorkspaceActivityService", () => {
 
     await service.start();
     await flushAsyncWork();
+    liveListener!({ kind: "connection", status: "connected" });
     liveListener!({
       kind: "discontinuity",
       reason: "canonical_update",
@@ -1487,6 +1488,11 @@ describe("WorkspaceActivityService", () => {
         ?.runtimeAvailable
     ).toBe(false);
     service.resume();
+    expect(
+      service.getSnapshot().interactionStates[childInteractionKey]
+        ?.runtimeAvailable
+    ).toBe(false);
+    liveListener!({ kind: "connection", status: "connected" });
     expect(
       service.getSnapshot().interactionStates[childInteractionKey]
         ?.runtimeAvailable
