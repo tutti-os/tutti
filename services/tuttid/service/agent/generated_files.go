@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	workspacefiles "github.com/tutti-os/tutti/packages/workspace/files"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
 const (

@@ -45,6 +45,7 @@ func TestTuttidBlackBoxEventStreamWebSocketRejectsMissingAccessToken(t *testing.
 	}
 	if response == nil {
 		t.Fatalf("websocket response = nil, want HTTP 401; err = %v", err)
+		return
 	}
 	if response.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want %d; err = %v", response.StatusCode, http.StatusUnauthorized, err)

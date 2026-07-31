@@ -7,7 +7,7 @@ import (
 	"time"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 )
 

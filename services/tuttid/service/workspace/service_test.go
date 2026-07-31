@@ -91,6 +91,7 @@ func TestCatalogServiceStartupReturnsExistingStartupWorkspace(t *testing.T) {
 	}
 	if workspace == nil {
 		t.Fatal("Startup() workspace = nil")
+		return
 	}
 	if workspace.ID != "ws-start" {
 		t.Fatalf("Startup() id = %q", workspace.ID)
@@ -128,6 +129,7 @@ func TestCatalogServiceStartupOpensExistingWorkspaceWhenNoStartupWorkspaceIsSet(
 	}
 	if workspace == nil {
 		t.Fatal("Startup() workspace = nil")
+		return
 	}
 	if workspace.ID != "ws-existing" {
 		t.Fatalf("Startup() id = %q, want ws-existing", workspace.ID)

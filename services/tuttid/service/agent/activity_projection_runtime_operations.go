@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
 func (p *ActivityProjection) PublishRuntimeOperationEvent(

@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
 func TestSettleStaleTurnsOnStartupReturnsRepositoryFailure(t *testing.T) {
@@ -19,7 +18,7 @@ func TestSettleStaleTurnsOnStartupReturnsRepositoryFailure(t *testing.T) {
 
 func TestSettleStaleTurnsOnStartupPublishesCommittedDelta(t *testing.T) {
 	repo := &activityProjectionRepoStub{
-		settlements: []agentactivitybiz.StaleTurnSettlement{{
+		settlements: []storesqlite.StaleTurnSettlement{{
 			TransactionID: "transaction-1", WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
 			CommitDelta: storesqlite.TransactionDelta{TransactionID: "transaction-1", Mutations: []storesqlite.TransactionMutation{
 				{
@@ -32,9 +31,9 @@ func TestSettleStaleTurnsOnStartupPublishesCommittedDelta(t *testing.T) {
 				},
 			}},
 		}},
-		turnResults: map[string]agentactivitybiz.Turn{"session-1\x00turn-1": {
+		turnResults: map[string]storesqlite.Turn{"session-1\x00turn-1": {
 			WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
-			Phase: agentactivitybiz.TurnPhaseSettled, Outcome: agentactivitybiz.TurnOutcomeInterrupted,
+			Phase: storesqlite.TurnPhaseSettled, Outcome: storesqlite.TurnOutcomeInterrupted,
 		}},
 	}
 	publisher := &activityUpdatePublisherStub{}

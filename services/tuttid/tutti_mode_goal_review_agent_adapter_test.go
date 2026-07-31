@@ -7,8 +7,7 @@ import (
 	"testing"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
-	agentstoresqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	executionbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeexecution"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	tuttimodeexecutionservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeexecution"
@@ -32,7 +31,7 @@ func (creator *recordingReviewerSessionCreator) CreateWithResult(
 }
 
 type reviewerAdapterHost struct {
-	session agentstoresqlite.Session
+	session agentactivitybiz.Session
 	getErr  error
 	turnID  string
 	found   bool
@@ -58,8 +57,8 @@ func (reviewerAdapterHost) GetTurn(
 	context.Context,
 	agenthost.SessionRef,
 	string,
-) (agentstoresqlite.Turn, bool, error) {
-	return agentstoresqlite.Turn{}, false, nil
+) (agentactivitybiz.Turn, bool, error) {
+	return agentactivitybiz.Turn{}, false, nil
 }
 
 func TestTuttiModeReviewerAdapterCreatesDedicatedVerdictOnlySession(t *testing.T) {
@@ -164,7 +163,7 @@ func TestTuttiModeReviewerAdapterRecoversCanonicalTurnBySubmitIdentity(t *testin
 
 func TestTuttiModeReviewerAdapterObservesCanonicalBusyStateAndMissingSession(t *testing.T) {
 	busy, err := (tuttiModeReviewerAgentAdapter{
-		Host: reviewerAdapterHost{session: agentstoresqlite.Session{
+		Host: reviewerAdapterHost{session: agentactivitybiz.Session{
 			ID: "review-session-1", ActiveTurnID: "review-turn-1",
 		}},
 	}).ObserveReviewerSession(

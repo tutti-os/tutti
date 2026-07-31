@@ -7,7 +7,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 )
 
 const defaultWaitMessageLimit = 20

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"testing"
 
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	tuttimodeexecutionconformance "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeexecution/conformance"
 )
 

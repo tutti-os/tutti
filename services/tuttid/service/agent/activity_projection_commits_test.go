@@ -7,20 +7,19 @@ import (
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
-	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
 func TestActivityProjectionConsumesCanonicalViewInvalidation(t *testing.T) {
 	publisher := &activityUpdatePublisherStub{}
 	projection := NewActivityProjection(&activityProjectionRepoStub{})
 	projection.SetPublisher(publisher)
-	delta := agenthost.CanonicalDelta(storesqlite.TransactionDelta{
+	delta := agenthost.CanonicalDelta(agentactivitybiz.TransactionDelta{
 		TransactionID: "transaction-1",
-		Mutations: []storesqlite.TransactionMutation{{
+		Mutations: []agentactivitybiz.TransactionMutation{{
 			MutationID: "transaction-1:1", WorkspaceID: "workspace-1", AgentSessionID: "session-1",
-			EntityKind: storesqlite.MutationEntitySession, EntityID: "session-1", Operation: "upsert", Version: 42,
+			EntityKind: agentactivitybiz.MutationEntitySession, EntityID: "session-1", Operation: "upsert", Version: 42,
 		}},
 	})
 

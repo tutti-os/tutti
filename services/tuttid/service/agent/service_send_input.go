@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	tuttimodeactivationbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeactivation"
 )
 

@@ -8,8 +8,7 @@ import (
 	"strings"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
-	agentstore "github.com/tutti-os/tutti/packages/agent/store-sqlite"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 )
 
@@ -26,8 +25,8 @@ var _ AgentActivityStore = (*SQLiteStore)(nil)
 const legacyIDLocalCodex = "local-codex"
 const legacyIDLocalClaudeCode = "local-claude-code"
 
-func newAgentStore(db *sql.DB) *agentstore.Store {
-	return agentstore.New(db, agentstore.Options{
+func newAgentStore(db *sql.DB) *agentactivitybiz.Store {
+	return agentactivitybiz.New(db, agentactivitybiz.Options{
 		WorkspaceExists: func(ctx context.Context, workspaceID string) error {
 			return ensureWorkspaceExistsOn(ctx, db, workspaceID)
 		},
@@ -55,7 +54,7 @@ func defaultTargetIDBackfillByProvider() map[string]string {
 	return result
 }
 
-func (s *SQLiteStore) agentStore() *agentstore.Store {
+func (s *SQLiteStore) agentStore() *agentactivitybiz.Store {
 	if s == nil {
 		return nil
 	}
@@ -64,11 +63,11 @@ func (s *SQLiteStore) agentStore() *agentstore.Store {
 
 // AgentCanonicalStore exposes the official canonical agent store for Host
 // composition. Product services must not wrap its lifecycle mutations.
-func (s *SQLiteStore) AgentCanonicalStore() *agentstore.Store {
+func (s *SQLiteStore) AgentCanonicalStore() *agentactivitybiz.Store {
 	return s.agentStore()
 }
 
-func (s *SQLiteStore) agentReadStore() *agentstore.Store {
+func (s *SQLiteStore) agentReadStore() *agentactivitybiz.Store {
 	if s == nil {
 		return nil
 	}
@@ -83,7 +82,7 @@ func (s *SQLiteStore) agentReadStore() *agentstore.Store {
 // or database) the store is currently running on.
 type userProjectPathsQuerier struct{}
 
-func (userProjectPathsQuerier) ProjectPaths(ctx context.Context, q agentstore.Querier) ([]string, error) {
+func (userProjectPathsQuerier) ProjectPaths(ctx context.Context, q agentactivitybiz.Querier) ([]string, error) {
 	rows, err := q.QueryContext(ctx, `
 SELECT path
 FROM user_projects
@@ -573,8 +572,8 @@ func (*SQLiteStore) ResolveAgentTargetAlias(context.Context, string) (string, bo
 	return "", false
 }
 
-func agentTargetToStore(target agenttargetbiz.Target) agentstore.Target {
-	return agentstore.Target{
+func agentTargetToStore(target agenttargetbiz.Target) agentactivitybiz.Target {
+	return agentactivitybiz.Target{
 		ID:              target.ID,
 		Provider:        target.Provider,
 		LaunchRefJSON:   target.LaunchRefJSON,
@@ -591,7 +590,7 @@ func agentTargetToStore(target agenttargetbiz.Target) agentstore.Target {
 	}
 }
 
-func agentTargetFromStore(target agentstore.Target) agenttargetbiz.Target {
+func agentTargetFromStore(target agentactivitybiz.Target) agenttargetbiz.Target {
 	return agenttargetbiz.Target{
 		ID:              target.ID,
 		Provider:        target.Provider,
@@ -609,10 +608,10 @@ func agentTargetFromStore(target agentstore.Target) agenttargetbiz.Target {
 	}
 }
 
-func normalizeStoreAgentTarget(target agentstore.Target) (agentstore.Target, error) {
+func normalizeStoreAgentTarget(target agentactivitybiz.Target) (agentactivitybiz.Target, error) {
 	normalized, err := agenttargetbiz.NormalizeTarget(agentTargetFromStore(target))
 	if err != nil {
-		return agentstore.Target{}, err
+		return agentactivitybiz.Target{}, err
 	}
 	return agentTargetToStore(normalized), nil
 }
@@ -622,9 +621,9 @@ func isSkippableAgentTargetRowError(err error) bool {
 		errors.Is(err, agenttargetbiz.ErrInvalidLaunchRef)
 }
 
-func defaultSystemStoreAgentTargets(nowUnixMS int64) []agentstore.Target {
+func defaultSystemStoreAgentTargets(nowUnixMS int64) []agentactivitybiz.Target {
 	defaults := agenttargetbiz.DefaultSystemTargets(nowUnixMS)
-	targets := make([]agentstore.Target, 0, len(defaults))
+	targets := make([]agentactivitybiz.Target, 0, len(defaults))
 	for _, target := range defaults {
 		targets = append(targets, agentTargetToStore(target))
 	}

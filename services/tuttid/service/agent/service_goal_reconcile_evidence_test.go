@@ -8,8 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 )
 
 type goalEvidenceFenceStore struct {
@@ -264,18 +263,18 @@ func TestGoalReconcileEvidenceDistinctProviderTurnsConsumePersistentIncidentBudg
 		t.Fatal(err)
 	}
 	defer db.Close()
-	store := storesqlite.New(db, storesqlite.Options{})
+	store := agentactivitybiz.New(db, agentactivitybiz.Options{})
 	ctx := context.Background()
 	if err := store.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.ReportSessionState(ctx, storesqlite.SessionStateReport{WorkspaceID: "ws", AgentSessionID: "session", Provider: "codex", OccurredAtUnixMS: 1}); err != nil {
+	if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{WorkspaceID: "ws", AgentSessionID: "session", Provider: "codex", OccurredAtUnixMS: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := store.PrepareGoalControlOperation(ctx, storesqlite.GoalControlOperationPrepare{OperationID: "goal-origin", WorkspaceID: "ws", AgentSessionID: "session", Action: "set", Objective: "ship", OccurredAtUnixMS: 2}); err != nil {
+	if _, _, _, err := store.PrepareGoalControlOperation(ctx, agentactivitybiz.GoalControlOperationPrepare{OperationID: "goal-origin", WorkspaceID: "ws", AgentSessionID: "session", Action: "set", Objective: "ship", OccurredAtUnixMS: 2}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.ReconcileSessionGoalObservation(ctx, storesqlite.GoalObservationReconcile{WorkspaceID: "ws", AgentSessionID: "session", Observed: map[string]any{"objective": "ship"}, Evidence: map[string]any{"confidence": "authoritative"}, OccurredAtUnixMS: 3}); err != nil {
+	if _, err := store.ReconcileSessionGoalObservation(ctx, agentactivitybiz.GoalObservationReconcile{WorkspaceID: "ws", AgentSessionID: "session", Observed: map[string]any{"objective": "ship"}, Evidence: map[string]any{"confidence": "authoritative"}, OccurredAtUnixMS: 3}); err != nil {
 		t.Fatal(err)
 	}
 	service := newIsolatedAgentService(newFakeRuntime())
@@ -286,7 +285,7 @@ func TestGoalReconcileEvidenceDistinctProviderTurnsConsumePersistentIncidentBudg
 		}
 	}
 	state, found, err := store.GetSessionGoalState(ctx, "ws", "session")
-	if err != nil || !found || state.SyncStatus != storesqlite.GoalSyncStatusUnknown || state.PendingOperationID != "" {
+	if err != nil || !found || state.SyncStatus != agentactivitybiz.GoalSyncStatusUnknown || state.PendingOperationID != "" {
 		t.Fatalf("budget state=%#v found=%v err=%v", state, found, err)
 	}
 }

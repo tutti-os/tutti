@@ -8,8 +8,7 @@ import (
 	"time"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
-	agentstoresqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	tuttimodeexecutionservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeexecution"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
@@ -80,8 +79,8 @@ func (wrappedMissingWakeSessionHost) GetTurn(
 	context.Context,
 	agenthost.SessionRef,
 	string,
-) (agentstoresqlite.Turn, bool, error) {
-	return agentstoresqlite.Turn{}, false, nil
+) (agentactivitybiz.Turn, bool, error) {
+	return agentactivitybiz.Turn{}, false, nil
 }
 
 func TestTuttiModeMainWakeAdapterTreatsWrappedSessionNotFoundAsAbsent(t *testing.T) {
@@ -119,10 +118,10 @@ func (host canonicalWakeTurnHost) GetTurn(
 	context.Context,
 	agenthost.SessionRef,
 	string,
-) (agentstoresqlite.Turn, bool, error) {
-	return agentstoresqlite.Turn{
+) (agentactivitybiz.Turn, bool, error) {
+	return agentactivitybiz.Turn{
 		TurnID:          "turn-canonical-wake",
-		Phase:           agentstoresqlite.TurnPhaseSettled,
+		Phase:           agentactivitybiz.TurnPhaseSettled,
 		SettledAtUnixMS: host.settledAt.UnixMilli(),
 	}, true, nil
 }

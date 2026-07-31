@@ -5,8 +5,7 @@ import (
 	"errors"
 	"time"
 
-	agentstore "github.com/tutti-os/tutti/packages/agent/store-sqlite"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	agentquickpromptbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentquickprompt"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
@@ -38,7 +37,7 @@ var ErrTuttiModeActivationRevisionConflict = errors.New("tutti mode activation r
 
 // ErrAgentTargetNotFound aliases the embedded agent store's sentinel so
 // existing errors.Is checks keep working across the delegation boundary.
-var ErrAgentTargetNotFound = agentstore.ErrAgentTargetNotFound
+var ErrAgentTargetNotFound = agentactivitybiz.ErrAgentTargetNotFound
 
 type CatalogStore interface {
 	Create(context.Context, workspacebiz.Summary) error

@@ -3,8 +3,8 @@ package api
 import (
 	"strings"
 
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
 // generatedWorkspaceAgentTurn is the HTTP transport projection for the

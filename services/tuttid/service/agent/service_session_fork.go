@@ -8,7 +8,6 @@ import (
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
 var (
@@ -279,7 +278,7 @@ func (s *Service) withSessionForkCapabilities(
 	session.LifecycleCapabilities.Fork = false
 	if s == nil || strings.TrimSpace(workspaceID) == "" ||
 		strings.TrimSpace(session.ID) == "" ||
-		strings.TrimSpace(session.Kind) != agentactivitybiz.SessionKindRoot {
+		strings.TrimSpace(session.Kind) != storesqlite.SessionKindRoot {
 		return session
 	}
 	capabilities, err := s.ApplicationHost().GetSessionForkCapabilities(

@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"strings"
 
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
 // Protocol v2 turn persistence (agent-gui refactor plan, slice P3).

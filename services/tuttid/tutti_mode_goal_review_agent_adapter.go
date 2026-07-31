@@ -9,8 +9,7 @@ import (
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
-	agentstoresqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	executionbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeexecution"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	tuttimodeexecutionservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeexecution"
@@ -177,7 +176,7 @@ func (adapter tuttiModeReviewerAgentAdapter) ReadReviewer(
 		CanonicalSessionID: sessionID,
 		CanonicalTurnID:    strings.TrimSpace(turnID),
 		Settled: turnFound &&
-			strings.TrimSpace(turn.Phase) == agentstoresqlite.TurnPhaseSettled,
+			strings.TrimSpace(turn.Phase) == agentactivitybiz.TurnPhaseSettled,
 	}, true, nil
 }
 

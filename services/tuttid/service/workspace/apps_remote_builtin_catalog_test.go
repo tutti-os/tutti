@@ -74,6 +74,7 @@ func TestAppCenterServiceListExposesInstalledRemoteBuiltinUpdate(t *testing.T) {
 	app := findWorkspaceAppForTest(apps, "large-builtin")
 	if app == nil {
 		t.Fatalf("large-builtin missing: %#v", apps)
+		return
 	}
 	if app.Package.Version != "1.0.0" || !app.UpdateAvailable || app.AvailableVersion == nil || *app.AvailableVersion != "1.1.0" {
 		t.Fatalf("installed remote builtin update projection = %#v", app)
@@ -199,6 +200,7 @@ func TestAppCenterServiceCachedRemoteBuiltinUpdateDoesNotReplaceActiveInstall(t 
 	app := findWorkspaceAppForTest(apps, "large-builtin")
 	if app == nil {
 		t.Fatalf("large-builtin missing: %#v", apps)
+		return
 	}
 	if app.Package.Version != "1.0.0" || app.Package.DisplayName() != "Large Builtin v1" {
 		t.Fatalf("projected active package = version %q name %q, want v1", app.Package.Version, app.Package.DisplayName())
@@ -272,6 +274,7 @@ func TestAppCenterServiceListsRemoteBuiltinWhenOlderLocalPackageExists(t *testin
 	app := findWorkspaceAppForTest(apps, "design-app")
 	if app == nil {
 		t.Fatalf("design app missing: %#v", apps)
+		return
 	}
 	if app.Package.Version != "0.1.0+abc123" || app.Package.PackageDir != "" || app.Package.Description() != "Remote design app" {
 		t.Fatalf("design app projection = %#v", app.Package)
@@ -373,6 +376,7 @@ func TestAppCenterServiceKeepsUserPackageWhenRemoteBuiltinSharesAppID(t *testing
 	app := findWorkspaceAppForTest(apps, "design-app")
 	if app == nil {
 		t.Fatalf("design app missing: %#v", apps)
+		return
 	}
 	if app.Package.Version != "0.1.0" || app.Package.PackageDir != packageDir || app.Package.Source != workspacebiz.AppPackageSourceImported {
 		t.Fatalf("user package projection = %#v", app.Package)
@@ -454,6 +458,7 @@ func TestAppCenterServiceKeepsInstalledLocalBuiltinRuntimeWhenRemoteBuiltinVersi
 	app := findWorkspaceAppForTest(apps, "design-app")
 	if app == nil {
 		t.Fatalf("design app missing: %#v", apps)
+		return
 	}
 	if app.Package.Version != "0.1.0" || app.Package.PackageDir != packageDir || app.Installation == nil {
 		t.Fatalf("installed package projection = %#v", app)

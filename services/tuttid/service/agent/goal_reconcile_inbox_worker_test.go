@@ -7,8 +7,7 @@ import (
 	"testing"
 	"time"
 
-	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 )
 
 const (
@@ -100,18 +99,18 @@ func TestGoalReconcileInboxWorkerExhaustionPersistsRevisionTerminalFence(t *test
 		t.Fatal(err)
 	}
 	defer db.Close()
-	goalStore := storesqlite.New(db, storesqlite.Options{})
+	goalStore := agentactivitybiz.New(db, agentactivitybiz.Options{})
 	ctx := context.Background()
 	if err := goalStore.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := goalStore.ReportSessionState(ctx, storesqlite.SessionStateReport{WorkspaceID: "ws", AgentSessionID: "session", Provider: "codex", OccurredAtUnixMS: 1}); err != nil {
+	if _, err := goalStore.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{WorkspaceID: "ws", AgentSessionID: "session", Provider: "codex", OccurredAtUnixMS: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := goalStore.PrepareGoalControlOperation(ctx, storesqlite.GoalControlOperationPrepare{OperationID: "goal-1", WorkspaceID: "ws", AgentSessionID: "session", Action: "set", Objective: "ship", OccurredAtUnixMS: 2}); err != nil {
+	if _, _, _, err := goalStore.PrepareGoalControlOperation(ctx, agentactivitybiz.GoalControlOperationPrepare{OperationID: "goal-1", WorkspaceID: "ws", AgentSessionID: "session", Action: "set", Objective: "ship", OccurredAtUnixMS: 2}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := goalStore.ReconcileSessionGoalObservation(ctx, storesqlite.GoalObservationReconcile{WorkspaceID: "ws", AgentSessionID: "session", Observed: map[string]any{"objective": "ship"}, Evidence: map[string]any{"confidence": "authoritative"}, OccurredAtUnixMS: 3}); err != nil {
+	if _, err := goalStore.ReconcileSessionGoalObservation(ctx, agentactivitybiz.GoalObservationReconcile{WorkspaceID: "ws", AgentSessionID: "session", Observed: map[string]any{"objective": "ship"}, Evidence: map[string]any{"confidence": "authoritative"}, OccurredAtUnixMS: 3}); err != nil {
 		t.Fatal(err)
 	}
 	inbox := &goalReconcileInboxWorkerStore{item: agentactivitybiz.GoalReconcileInboxItem{RequestID: "request-exhausted", WorkspaceID: "ws", AgentSessionID: "session", Attempt: wantGoalReconcileInboxMaxAttempts - 1, PayloadError: "corrupt durable payload"}}
@@ -124,8 +123,8 @@ func TestGoalReconcileInboxWorkerExhaustionPersistsRevisionTerminalFence(t *test
 	if !inbox.release.Fail {
 		t.Fatalf("inbox was failed before durable terminal escalation: %#v", inbox.release)
 	}
-	state, err := goalStore.ReconcileSessionGoalObservation(ctx, storesqlite.GoalObservationReconcile{WorkspaceID: "ws", AgentSessionID: "session", Observed: map[string]any{"objective": "ship"}, Evidence: map[string]any{"confidence": "authoritative"}, OccurredAtUnixMS: 10})
-	if err != nil || state.SyncStatus != storesqlite.GoalSyncStatusUnknown || state.LastError == "" {
+	state, err := goalStore.ReconcileSessionGoalObservation(ctx, agentactivitybiz.GoalObservationReconcile{WorkspaceID: "ws", AgentSessionID: "session", Observed: map[string]any{"objective": "ship"}, Evidence: map[string]any{"confidence": "authoritative"}, OccurredAtUnixMS: 10})
+	if err != nil || state.SyncStatus != agentactivitybiz.GoalSyncStatusUnknown || state.LastError == "" {
 		t.Fatalf("authoritative reconcile unlocked exhausted inbox state=%#v err=%v", state, err)
 	}
 }

@@ -7,9 +7,8 @@ import (
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
-	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
 var _ agenthost.CommitObserver = (*ActivityProjection)(nil)
@@ -59,7 +58,7 @@ func (p *ActivityProjection) ObserveCommitted(ctx context.Context, delta agentho
 		}
 	}
 	for _, mutation := range delta.ProjectionDirty {
-		if mutation.EntityKind != storesqlite.MutationEntityTurn || mutation.Operation != "settle" {
+		if mutation.EntityKind != agentactivitybiz.MutationEntityTurn || mutation.Operation != "settle" {
 			continue
 		}
 		turn, found, err := p.repo.GetTurn(ctx, mutation.WorkspaceID, mutation.AgentSessionID, mutation.EntityID)
@@ -75,7 +74,7 @@ func (p *ActivityProjection) ObserveCommitted(ctx context.Context, delta agentho
 func canonicalSessionDeleted(delta agenthost.CommittedDelta, invalidated agenthost.CanonicalViewInvalidated) bool {
 	for _, mutation := range delta.ProjectionDirty {
 		if mutation.WorkspaceID == invalidated.WorkspaceID && mutation.AgentSessionID == invalidated.AgentSessionID &&
-			mutation.EntityKind == storesqlite.MutationEntitySession && mutation.Operation == "delete" {
+			mutation.EntityKind == agentactivitybiz.MutationEntitySession && mutation.Operation == "delete" {
 			return true
 		}
 	}
@@ -86,7 +85,7 @@ func committedSessionVersion(delta agenthost.CommittedDelta, invalidated agentho
 	var version int64
 	for _, mutation := range delta.ProjectionDirty {
 		if mutation.WorkspaceID == invalidated.WorkspaceID && mutation.AgentSessionID == invalidated.AgentSessionID &&
-			mutation.EntityKind == storesqlite.MutationEntitySession && mutation.Version > version {
+			mutation.EntityKind == agentactivitybiz.MutationEntitySession && mutation.Version > version {
 			version = mutation.Version
 		}
 	}

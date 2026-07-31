@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 )
 
 func (s *Service) Respond(ctx context.Context, input RespondInput) (RespondResult, error) {

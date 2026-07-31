@@ -13,7 +13,6 @@ import (
 
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
@@ -128,7 +127,7 @@ func TestForkWorkspaceAgentSessionPreservesExactThroughTurnIdentity(t *testing.T
 			observedWorkspaceID, observedSourceID, observedInput = workspaceID, sourceID, input
 			now := time.UnixMilli(100)
 			session := agentservice.Session{
-				ID: input.TargetAgentSessionID, Kind: agentactivitybiz.SessionKindRoot,
+				ID: input.TargetAgentSessionID, Kind: storesqlite.SessionKindRoot,
 				Provider: "codex", RailSectionKey: "conversations", CreatedAt: now,
 				LifecycleCapabilities: agentservice.SessionLifecycleCapabilities{
 					ForkThroughTurn: true,
@@ -410,7 +409,7 @@ func TestGetWorkspaceAgentSessionForkOperationReturnsDurableSnapshot(t *testing.
 					ForkedAtUnixMS:       200,
 				}
 				session := agentservice.Session{
-					ID: "target-1", Kind: agentactivitybiz.SessionKindRoot,
+					ID: "target-1", Kind: storesqlite.SessionKindRoot,
 					Provider: "codex", RailSectionKey: "conversations",
 					CreatedAt: now, ForkedFrom: &lineage,
 				}
@@ -494,7 +493,7 @@ func TestAcknowledgeWorkspaceAgentSessionForkOperationReturnsDurableSnapshot(t *
 			) (agentservice.SessionForkOperation, error) {
 				observedWorkspaceID, observedOperationID = workspaceID, operationID
 				session := agentservice.Session{
-					ID: "target-1", Kind: agentactivitybiz.SessionKindRoot,
+					ID: "target-1", Kind: storesqlite.SessionKindRoot,
 					Provider: "codex", RailSectionKey: "conversations",
 					CreatedAt: now,
 				}

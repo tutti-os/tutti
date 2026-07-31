@@ -9,8 +9,7 @@ import (
 	"time"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
-	agentstoresqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	tuttimodeexecutionservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeexecution"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
@@ -19,7 +18,7 @@ import (
 type tuttiModeMainWakeHost interface {
 	GetSession(context.Context, agenthost.SessionRef) (agenthost.GetSessionResult, error)
 	FindTurnByClientSubmitID(context.Context, agenthost.SessionRef, string) (string, bool, error)
-	GetTurn(context.Context, agenthost.SessionRef, string) (agentstoresqlite.Turn, bool, error)
+	GetTurn(context.Context, agenthost.SessionRef, string) (agentactivitybiz.Turn, bool, error)
 }
 
 type tuttiModeMainWakeAgentAdapter struct {
@@ -116,7 +115,7 @@ func (adapter tuttiModeMainWakeAgentAdapter) ReadMainWakeTurn(
 	observation := tuttimodeexecutionservice.MainWakeTurnObservation{
 		CanonicalTurnID: strings.TrimSpace(turn.TurnID),
 	}
-	if strings.TrimSpace(turn.Phase) == agentstoresqlite.TurnPhaseSettled &&
+	if strings.TrimSpace(turn.Phase) == agentactivitybiz.TurnPhaseSettled &&
 		turn.SettledAtUnixMS > 0 {
 		observation.SettledAt = time.UnixMilli(turn.SettledAtUnixMS).UTC()
 	}

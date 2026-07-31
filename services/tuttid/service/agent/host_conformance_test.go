@@ -12,8 +12,7 @@ import (
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	hostconformance "github.com/tutti-os/tutti/packages/agent/host/conformance"
-	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
@@ -1005,8 +1004,8 @@ type conformanceDeletionStore struct {
 
 func (s *conformanceDeletionStore) PlanDeleteSessions(
 	ctx context.Context,
-	input storesqlite.DeleteSessionsBatchInput,
-) (storesqlite.DeleteSessionsPlan, error) {
+	input agentactivitybiz.DeleteSessionsBatchInput,
+) (agentactivitybiz.DeleteSessionsPlan, error) {
 	if len(s.plans) == 0 {
 		return s.SessionBatchManagementStore.PlanDeleteSessions(ctx, input)
 	}
@@ -1014,7 +1013,7 @@ func (s *conformanceDeletionStore) PlanDeleteSessions(
 	if index >= len(s.plans) {
 		index = len(s.plans) - 1
 	}
-	return storesqlite.DeleteSessionsPlan{
+	return agentactivitybiz.DeleteSessionsPlan{
 		WorkspaceID: input.WorkspaceID,
 		SessionIDs:  append([]string(nil), s.plans[index]...),
 	}, nil
@@ -1022,15 +1021,15 @@ func (s *conformanceDeletionStore) PlanDeleteSessions(
 
 func (s *conformanceDeletionStore) DeleteSessionsBatch(
 	ctx context.Context,
-	input storesqlite.DeleteSessionsBatchInput,
-) (storesqlite.DeleteSessionsBatchResult, error) {
+	input agentactivitybiz.DeleteSessionsBatchInput,
+) (agentactivitybiz.DeleteSessionsBatchResult, error) {
 	s.deleteCalls++
 	if s.events != nil {
 		*s.events = append(*s.events, "delete:"+strings.Join(input.ExpectedSessionIDs, ","))
 	}
 	if s.planIndex+1 < len(s.plans) {
 		s.planIndex++
-		return storesqlite.DeleteSessionsBatchResult{}, storesqlite.ErrDeleteSessionsPlanChanged
+		return agentactivitybiz.DeleteSessionsBatchResult{}, agentactivitybiz.ErrDeleteSessionsPlanChanged
 	}
 	return s.SessionBatchManagementStore.DeleteSessionsBatch(ctx, input)
 }

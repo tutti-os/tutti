@@ -9,7 +9,6 @@ import (
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
 type sessionForkCapabilityStore struct {
@@ -104,9 +103,9 @@ func TestWithSessionForkCapabilitiesUsesProviderSessionCapability(t *testing.T) 
 		t.Context(),
 		"workspace-1",
 		Session{
-			ID: "source-1", Kind: agentactivitybiz.SessionKindRoot,
-			LatestTurn: &agentactivitybiz.Turn{
-				TurnID: "turn-7", Phase: agentactivitybiz.TurnPhaseSettled,
+			ID: "source-1", Kind: storesqlite.SessionKindRoot,
+			LatestTurn: &storesqlite.Turn{
+				TurnID: "turn-7", Phase: storesqlite.TurnPhaseSettled,
 			},
 		},
 	)
@@ -163,7 +162,7 @@ func TestProtocolV2BatchProjectionDoesNotProbeSessionForkCapabilities(t *testing
 		t.Context(),
 		"workspace-1",
 		[]Session{{
-			ID: "source-1", Kind: agentactivitybiz.SessionKindRoot,
+			ID: "source-1", Kind: storesqlite.SessionKindRoot,
 		}},
 	)
 	if err != nil {
@@ -196,7 +195,7 @@ func TestMessageHydrationProjectionDoesNotProbeSessionForkCapabilities(t *testin
 		t.Context(),
 		"workspace-1",
 		Session{
-			ID: "source-1", Kind: agentactivitybiz.SessionKindRoot,
+			ID: "source-1", Kind: storesqlite.SessionKindRoot,
 		},
 		false,
 	)
@@ -376,9 +375,9 @@ func TestWithSessionForkCapabilitiesKeepsProviderCapabilityWhileBusy(t *testing.
 		t.Context(),
 		"workspace-1",
 		Session{
-			ID: "source-1", Kind: agentactivitybiz.SessionKindRoot,
-			LatestTurn: &agentactivitybiz.Turn{
-				TurnID: "turn-7", Phase: agentactivitybiz.TurnPhaseRunning,
+			ID: "source-1", Kind: storesqlite.SessionKindRoot,
+			LatestTurn: &storesqlite.Turn{
+				TurnID: "turn-7", Phase: storesqlite.TurnPhaseRunning,
 			},
 			ActiveTurnID: "turn-7",
 			LifecycleCapabilities: SessionLifecycleCapabilities{

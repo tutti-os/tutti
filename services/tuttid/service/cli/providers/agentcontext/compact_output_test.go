@@ -3,7 +3,7 @@ package agentcontext
 import (
 	"testing"
 
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
 

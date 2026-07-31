@@ -219,6 +219,7 @@ func TestAppCenterServiceInitializesBuiltinCatalogAndInstallState(t *testing.T) 
 	onboarding := findWorkspaceAppForTest(apps, "tutti-onboarding")
 	if onboarding == nil {
 		t.Fatalf("List() = %#v, want embedded onboarding", apps)
+		return
 	}
 	if onboarding.Package.Manifest.Runtime.Profile != workspaceAppStandaloneRuntimeProfile {
 		t.Fatalf("onboarding runtime profile = %q, want standalone", onboarding.Package.Manifest.Runtime.Profile)
@@ -384,6 +385,7 @@ func TestAppCenterServiceListsRemoteBuiltinBeforeDownloadAndMaterializesOnDemand
 	remoteApp = findWorkspaceAppForTest(apps, "large-builtin")
 	if remoteApp == nil {
 		t.Fatalf("remote builtin missing after materialize: %#v", apps)
+		return
 	}
 	if actualIconURL := remoteApp.ResolvedIconURL(); actualIconURL == nil || *actualIconURL != iconURL {
 		t.Fatalf("listed materialized remote builtin icon url = %v, want %q", actualIconURL, iconURL)

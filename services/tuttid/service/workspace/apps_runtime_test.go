@@ -470,6 +470,7 @@ func TestAppCenterServiceStartEnabledSkipsFailedAndStoppingApps(t *testing.T) {
 			app := findWorkspaceAppForTest(apps, "local-app")
 			if app == nil {
 				t.Fatal("StartEnabled() did not return local-app")
+				return
 			}
 			if app.Runtime.Status != status {
 				t.Fatalf("StartEnabled() status = %q, want %q", app.Runtime.Status, status)
