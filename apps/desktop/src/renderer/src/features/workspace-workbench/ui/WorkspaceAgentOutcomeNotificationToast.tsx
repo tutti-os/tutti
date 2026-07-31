@@ -18,7 +18,9 @@ export function createWorkspaceAgentOutcomeForegroundNotificationPresenter(): Wo
         (id) => (
           <WorkspaceAgentOutcomeToast
             agentSessionId={notification.agentSessionId}
-            agentIconUrl={managedAgentRoundedIconUrl(notification.provider)}
+            agentIconUrl={
+              notification.agentIconUrl || managedAgentRoundedIconUrl(undefined)
+            }
             agentName={notification.agentName}
             body={notification.body}
             closeLabel={notification.closeLabel}

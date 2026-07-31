@@ -244,6 +244,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
   windowLifecycle.start();
   const agentOutcomeNotificationController =
     createWorkspaceAgentOutcomeNotificationController({
+      agentDirectory: workspaceAgentServices.agentsService,
       foreground: createWorkspaceAgentOutcomeForegroundNotificationPresenter(),
       notifications: notificationService,
       translate,

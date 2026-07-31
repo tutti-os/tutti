@@ -14,6 +14,7 @@ export interface WorkspaceAgentOutcomeNotificationController {
 }
 
 export interface WorkspaceAgentOutcomeNotification {
+  agentTargetId: string | null;
   agentSessionId: string;
   conversationTitle: string;
   level: "error" | "success";
@@ -24,6 +25,7 @@ export interface WorkspaceAgentOutcomeNotification {
 }
 
 export interface WorkspaceAgentOutcomeForegroundNotification {
+  agentIconUrl: string | null;
   agentName: string;
   agentSessionId: string;
   body: string;
@@ -40,7 +42,15 @@ export interface WorkspaceAgentOutcomeForegroundNotificationPresenter {
   show(notification: WorkspaceAgentOutcomeForegroundNotification): void;
 }
 
+export interface WorkspaceAgentOutcomeAgentDirectory {
+  getAgentTarget(input: { agentTargetId: string }): {
+    iconUrl: string;
+    name: string;
+  } | null;
+}
+
 export interface WorkspaceAgentOutcomeNotificationControllerInput {
+  agentDirectory: WorkspaceAgentOutcomeAgentDirectory;
   foreground?: WorkspaceAgentOutcomeForegroundNotificationPresenter;
   notifications: Pick<NotificationService, "notify">;
   translate(key: DesktopI18nKey, params?: I18nParams): string;
@@ -89,14 +99,24 @@ export function createWorkspaceAgentOutcomeNotificationController(
         });
       if (!notification) continue;
       input.onNotificationEmitted?.(notification);
+      const agentPresentation = workspaceAgentOutcomePresentation(
+        notification,
+        input.agentDirectory,
+        input.translate
+      );
       input.foreground?.show(
         workspaceAgentOutcomeForegroundNotification(
           notification,
+          agentPresentation,
           input.translate
         )
       );
       input.notifications.notify(
-        workspaceAgentOutcomeNotificationMessage(notification, input.translate)
+        workspaceAgentOutcomeNotificationMessage(
+          notification,
+          agentPresentation,
+          input.translate
+        )
       );
     }
   };
@@ -155,6 +175,7 @@ export function buildWorkspaceAgentOutcomeNotificationFromSettledTurn(input: {
   const provider = input.session.provider.trim();
   if (!status || !workspaceId || !agentSessionId || !provider) return null;
   return {
+    agentTargetId: input.session.agentTargetId?.trim() || null,
     agentSessionId,
     conversationTitle: input.session.title,
     level: status === "completed" ? "success" : "error",
@@ -167,11 +188,11 @@ export function buildWorkspaceAgentOutcomeNotificationFromSettledTurn(input: {
 
 function workspaceAgentOutcomeNotificationMessage(
   notification: WorkspaceAgentOutcomeNotification,
+  agentPresentation: WorkspaceAgentOutcomeAgentPresentation,
   translate: WorkspaceAgentOutcomeNotificationControllerInput["translate"]
 ): CompositeNotificationMessage {
   const titleFallback =
-    notification.conversationTitle ||
-    formatWorkspaceAgentProviderName(notification.provider);
+    notification.conversationTitle || agentPresentation.agentName;
   return {
     description: translate(
       notification.status === "completed"
@@ -199,13 +220,12 @@ function workspaceAgentOutcomeNotificationMessage(
 
 function workspaceAgentOutcomeForegroundNotification(
   notification: WorkspaceAgentOutcomeNotification,
+  agentPresentation: WorkspaceAgentOutcomeAgentPresentation,
   translate: WorkspaceAgentOutcomeNotificationControllerInput["translate"]
 ): WorkspaceAgentOutcomeForegroundNotification {
-  const agentName =
-    formatWorkspaceAgentProviderName(notification.provider) ||
-    translate("workspace.agentGui.fallbackAgentLabel");
   return {
-    agentName,
+    agentIconUrl: agentPresentation.agentIconUrl,
+    agentName: agentPresentation.agentName,
     agentSessionId: notification.agentSessionId,
     body: translate(
       notification.status === "completed"
@@ -223,6 +243,28 @@ function workspaceAgentOutcomeForegroundNotification(
     ),
     turnId: notification.turnId,
     workspaceId: notification.workspaceId
+  };
+}
+
+interface WorkspaceAgentOutcomeAgentPresentation {
+  agentIconUrl: string | null;
+  agentName: string;
+}
+
+function workspaceAgentOutcomePresentation(
+  notification: WorkspaceAgentOutcomeNotification,
+  agentDirectory: WorkspaceAgentOutcomeAgentDirectory,
+  translate: WorkspaceAgentOutcomeNotificationControllerInput["translate"]
+): WorkspaceAgentOutcomeAgentPresentation {
+  const target = notification.agentTargetId
+    ? agentDirectory.getAgentTarget({
+        agentTargetId: notification.agentTargetId
+      })
+    : null;
+  return {
+    agentIconUrl: target?.iconUrl.trim() || null,
+    agentName:
+      target?.name.trim() || translate("workspace.agentGui.fallbackAgentLabel")
   };
 }
 
@@ -255,15 +297,6 @@ function outcomeStatusFromTurnOutcome(
     default:
       return null;
   }
-}
-
-function formatWorkspaceAgentProviderName(provider: string): string {
-  return provider
-    .trim()
-    .split(/[-_\s]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
 }
 
 function sessionTurnKey(agentSessionId: string, turnId: string): string {

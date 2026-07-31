@@ -22,6 +22,7 @@ test("outcome builder projects canonical completed and failed settled turns", ()
       turn: canonicalTurn("settled", "completed")
     }),
     {
+      agentTargetId: "local:codex",
       agentSessionId: "session-1",
       conversationTitle: "Build feature",
       level: "success",
@@ -103,6 +104,7 @@ test("controller notifies once for a canonical running to settled transition", (
 
   assert.deepEqual(harness.foregroundNotifications, [
     {
+      agentIconUrl: "agent-icon://codex",
       agentName: "Codex",
       agentSessionId: "session-1",
       body: "The agent finished this run.",
@@ -118,6 +120,37 @@ test("controller notifies once for a canonical running to settled transition", (
   assert.equal(harness.notifications.length, 1);
   assert.equal(harness.notifications[0]?.title, "Build feature completed");
 
+  harness.controller.dispose();
+});
+
+test("controller uses the exact Agent Target name and icon for extension outcomes", () => {
+  const engine = createTestEngine();
+  dispatchSession(engine, {
+    agentTargetId: "extension:kimi-code",
+    provider: "acp:kimi-code"
+  });
+  markWorkspaceReconcileReady(engine);
+  const harness = createOutcomeNotificationHarness(engine);
+
+  dispatchTurn(engine, "running");
+  dispatchTurn(engine, "settled", "completed");
+  harness.events[0]?.(turnUpdateEvent("settled", "completed"));
+
+  assert.deepEqual(harness.foregroundNotifications, [
+    {
+      agentIconUrl: "agent-icon://kimi-code",
+      agentName: "Kimi Code",
+      agentSessionId: "session-1",
+      body: "The agent finished this run.",
+      closeLabel: "Close",
+      conversationTitle: "Build feature",
+      level: "success",
+      provider: "acp:kimi-code",
+      statusLabel: "Completed",
+      turnId: "turn-1",
+      workspaceId: "ws-1"
+    }
+  ]);
   harness.controller.dispose();
 });
 
@@ -189,8 +222,14 @@ function createTestEngine(): AgentSessionEngine {
   });
 }
 
-function dispatchSession(engine: AgentSessionEngine): void {
-  engine.dispatch({ session: activitySession(), type: "session/upserted" });
+function dispatchSession(
+  engine: AgentSessionEngine,
+  overrides: Partial<AgentActivitySession> = {}
+): void {
+  engine.dispatch({
+    session: { ...activitySession(), ...overrides },
+    type: "session/upserted"
+  });
 }
 
 function dispatchTurn(
@@ -261,6 +300,7 @@ function activitySession(): AgentActivitySession {
     },
     activeTurn: null,
     agentSessionId: "session-1",
+    agentTargetId: "local:codex",
     cwd: "/workspace",
     provider: "codex",
     title: "Build feature",
@@ -295,6 +335,24 @@ function createOutcomeNotificationHarness(engine: AgentSessionEngine): {
   const foregroundNotifications: unknown[] = [];
   const notifications: NotificationMessage[] = [];
   const controller = createWorkspaceAgentOutcomeNotificationController({
+    agentDirectory: {
+      getAgentTarget({ agentTargetId }) {
+        switch (agentTargetId) {
+          case "local:codex":
+            return {
+              iconUrl: "agent-icon://codex",
+              name: "Codex"
+            };
+          case "extension:kimi-code":
+            return {
+              iconUrl: "agent-icon://kimi-code",
+              name: "Kimi Code"
+            };
+          default:
+            return null;
+        }
+      }
+    },
     foreground: {
       show(notification) {
         foregroundNotifications.push(notification);
