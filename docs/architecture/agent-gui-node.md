@@ -1175,8 +1175,11 @@ Standalone hosts may opt a transcript into participant avatars through the
 disabled presentation preserves the existing transcript DOM. Enabled
 presentation has distinct `loading` and `ready` states, so the renderer never
 infers identity readiness from a missing image URL. The host supplies user and
-Agent names and optional avatar URLs; AgentGUI owns the UI System Avatar,
-fixed-size loading slot, fallback initial, and user-right/Agent-left layout.
+Agent names, optional avatar URLs, and the avatar delivery capability projected
+by the owning identity service. AgentGUI forwards client-side transformation
+only when that explicit capability is true; it never infers support from the
+URL. AgentGUI owns the UI System Avatar, fixed-size loading slot, fallback
+initial, and user-right/Agent-left layout.
 Participant-header placement is projected from presentation turns rather than
 individual message, tool-progress, or canonical Turn rows. A presentation turn
 starts at a user message and continues until the next user message, so recovery

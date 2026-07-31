@@ -127,8 +127,10 @@ function participantPresentationEqual(
   return (
     previous.user.name === next.user.name &&
     previous.user.avatarUrl === next.user.avatarUrl &&
+    previous.user.avatarClientTransform === next.user.avatarClientTransform &&
     previous.agent.name === next.agent.name &&
-    previous.agent.avatarUrl === next.agent.avatarUrl
+    previous.agent.avatarUrl === next.agent.avatarUrl &&
+    previous.agent.avatarClientTransform === next.agent.avatarClientTransform
   );
 }
 

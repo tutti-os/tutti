@@ -1,6 +1,7 @@
 export interface AgentConversationParticipantIdentity {
   name: string;
   avatarUrl?: string | null;
+  avatarClientTransform?: boolean;
 }
 
 export type AgentConversationParticipantPresentation =

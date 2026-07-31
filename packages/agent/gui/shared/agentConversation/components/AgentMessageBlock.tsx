@@ -497,6 +497,7 @@ function AgentConversationParticipantAvatar({
       label={participant.name}
       size={28}
       src={participant.avatarUrl}
+      transform={participant.avatarClientTransform}
     />
   );
 }

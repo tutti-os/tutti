@@ -866,6 +866,36 @@ describe("AgentTranscriptView", () => {
         }
       )
     ).toBe(false);
+    expect(
+      areAgentTranscriptViewPropsEqual(
+        {
+          ...baseProps,
+          participantPresentation: {
+            enabled: true,
+            status: "ready",
+            user: {
+              name: "Alice",
+              avatarUrl: "user.png",
+              avatarClientTransform: false
+            },
+            agent: { name: "Codex", avatarUrl: "agent.png" }
+          }
+        },
+        {
+          ...baseProps,
+          participantPresentation: {
+            enabled: true,
+            status: "ready",
+            user: {
+              name: "Alice",
+              avatarUrl: "user.png",
+              avatarClientTransform: true
+            },
+            agent: { name: "Codex", avatarUrl: "agent.png" }
+          }
+        }
+      )
+    ).toBe(false);
   });
 
   it("renders each participant header once per turn across tool progress rows", async () => {

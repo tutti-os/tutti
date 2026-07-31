@@ -11,7 +11,8 @@ const presentation: AgentConversationParticipantPresentation = {
   status: "ready",
   user: {
     name: "Alice",
-    avatarUrl: "https://example.test/alice.png"
+    avatarUrl: "https://example.test/alice.png",
+    avatarClientTransform: true
   },
   agent: {
     name: "Codex",
