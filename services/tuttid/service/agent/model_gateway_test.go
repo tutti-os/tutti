@@ -90,6 +90,47 @@ func TestPrepareRuntimeCodexGatewayUsesTemporaryCredentialAndRollsBackFailure(t 
 	}
 }
 
+func TestPrepareRuntimeTuttiAgentGatewayUsesResponsesEndpoint(t *testing.T) {
+	t.Parallel()
+
+	var preparedInput runtimeprep.PrepareInput
+	registerCalls := 0
+	service := &Service{
+		RuntimePreparer: fakeRuntimePreparer{input: &preparedInput},
+		ModelGateway: fakeModelGateway{
+			endpoint: modelgatewayservice.ClientEndpoint{
+				BaseURL: "http://127.0.0.1:40000/v1",
+				Token:   "temporary-token",
+				WireAPI: "responses",
+			},
+			registerCalls: &registerCalls,
+		},
+	}
+	if _, err := service.prepareRuntimeWithModelEndpoint(
+		context.Background(),
+		"workspace",
+		"/repo",
+		CreateSessionInput{AgentSessionID: "session", Provider: "tutti-agent"},
+		&runtimeprep.ModelEndpointConfig{
+			Protocol: "openai",
+			BaseURL:  "https://upstream.example/v1",
+			APIKey:   "sk-upstream-secret",
+			Model:    "model-a",
+		},
+	); err != nil {
+		t.Fatalf("prepareRuntimeWithModelEndpoint() error = %v", err)
+	}
+	if registerCalls != 1 {
+		t.Fatalf("gateway Register() calls = %d, want 1", registerCalls)
+	}
+	if preparedInput.ModelEndpoint == nil ||
+		preparedInput.ModelEndpoint.BaseURL != "http://127.0.0.1:40000/v1" ||
+		preparedInput.ModelEndpoint.APIKey != "temporary-token" ||
+		preparedInput.ModelEndpoint.WireAPI != "responses" {
+		t.Fatalf("Tutti Agent endpoint = %#v, want temporary Responses endpoint", preparedInput.ModelEndpoint)
+	}
+}
+
 func TestPrepareRuntimeOpenCodeKeepsDirectModelPlanEndpoint(t *testing.T) {
 	t.Parallel()
 

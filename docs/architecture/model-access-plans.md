@@ -127,9 +127,9 @@ path.
 WorkspaceAgent primary Plan/default model
   -> agent.Service.resolveModelPlanEndpoint (Create + prepareRuntime)
   -> runtimeprep.PrepareInput.ModelEndpoint
-  -> Codex:
+  -> Codex / Tutti Agent:
      agent.Service registers workspace/session route in loopback Model Gateway
-     -> CodexPreparer writes local /v1 + temporary env_key + wire_api=responses
+     -> provider preparer writes local /v1 + temporary env_key + wire_api=responses
      -> gateway translates POST /v1/responses to upstream /v1/chat/completions
      ClaudeCodePreparer: ANTHROPIC_BASE_URL + ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN
      OpenCodePreparer: session opencode.json provider block via OPENCODE_CONFIG
@@ -248,7 +248,7 @@ policy.
 - Do not add a "global current model" or a second AgentTarget binding editor.
   New model selection is owned by explicit WorkspaceAgents.
 - Do not surface plan credentials to the renderer, tests, or snapshots.
-- Do not point Codex directly at a Chat-only Plan while declaring
+- Do not point Codex or Tutti Agent directly at a Chat-only Plan while declaring
   `wire_api = "responses"`; the loopback Model Gateway is the protocol
   boundary.
 - Do not advertise `modelPlanBinding` for providers without a real injection

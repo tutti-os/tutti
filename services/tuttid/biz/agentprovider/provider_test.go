@@ -30,10 +30,12 @@ func TestNormalizeUsesMigratedProviderIdentity(t *testing.T) {
 }
 
 func TestModelPlanResponsesToChatGatewayUsesRuntimeStrategy(t *testing.T) {
-	if !ModelPlanUsesResponsesToChatGateway(Codex) {
-		t.Fatal("Codex model plans must use the Responses-to-Chat gateway")
+	for _, provider := range []string{Codex, TuttiAgent} {
+		if !ModelPlanUsesResponsesToChatGateway(provider) {
+			t.Fatalf("%q model plans must use the Responses-to-Chat gateway", provider)
+		}
 	}
-	for _, provider := range []string{ClaudeCode, OpenCode, TuttiAgent, "unknown"} {
+	for _, provider := range []string{ClaudeCode, OpenCode, "unknown"} {
 		if ModelPlanUsesResponsesToChatGateway(provider) {
 			t.Fatalf("%q model plans must use the direct endpoint strategy", provider)
 		}
