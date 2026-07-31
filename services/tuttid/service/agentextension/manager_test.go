@@ -668,6 +668,51 @@ func TestManagerStartupAndPreferenceReconcileUseDesktopAgentExtensionFeatureFlag
 	}
 }
 
+func TestStableSourceIgnoresRetiredActivationFlag(t *testing.T) {
+	source := tuttitypes.AgentExtensionSource{Key: "hermes", Enabled: true}
+	if !sourceEnabled(source, map[string]bool{"agent.extension.hermes": false}) {
+		t.Fatal("stable source was disabled by its retired activation flag")
+	}
+	manager := Manager{Sources: []tuttitypes.AgentExtensionSource{source}}
+	if manager.sourceActivationChanged(
+		map[string]bool{"agent.extension.hermes": false},
+		map[string]bool{"agent.extension.hermes": true},
+	) {
+		t.Fatal("retired stable-source flag unexpectedly triggered reconciliation")
+	}
+}
+
+func TestRegisterTargetPreservesExistingEnabledPreference(t *testing.T) {
+	manager := &Manager{
+		Installations: agentextensiondata.NewFileInstallationStore(t.TempDir()),
+		Store: &targetStoreStub{targets: map[string]agenttargetbiz.Target{
+			"extension:gemini": {
+				ID:      "extension:gemini",
+				Enabled: false,
+			},
+		}},
+	}
+	installation, err := installTestPackage(
+		t,
+		manager,
+		Release{AgentKey: "gemini", Version: "1.0.0"},
+		testPackageZIP(t),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.registerTarget(context.Background(), installation); err != nil {
+		t.Fatal(err)
+	}
+	target, err := manager.Store.GetAgentTarget(context.Background(), "extension:gemini")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target.Enabled {
+		t.Fatal("extension target reconciliation overwrote the disabled preference")
+	}
+}
+
 func TestCopyLocalPackageRejectsExecutableAndSymlink(t *testing.T) {
 	t.Run("executable", func(t *testing.T) {
 		sourceDir := t.TempDir()

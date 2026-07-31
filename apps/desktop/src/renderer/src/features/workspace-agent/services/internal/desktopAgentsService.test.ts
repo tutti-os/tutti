@@ -303,7 +303,7 @@ test("desktop agents service preserves Extension primary and mask icons", () => 
   );
 });
 
-test("desktop agents service gates extension agents behind the Early Access toggle", () => {
+test("desktop agents service keeps stable extensions visible without Early Access", () => {
   const presentations = mapAgentTargetsToPresentations([
     {
       createdAtUnixMs: 1780272000000,
@@ -322,24 +322,65 @@ test("desktop agents service gates extension agents behind the Early Access togg
       sortOrder: 700,
       source: "system",
       updatedAtUnixMs: 1780272000000
+    },
+    {
+      createdAtUnixMs: 1780272000000,
+      enabled: true,
+      heroImageUrl: null,
+      iconKey: "extension:hermes",
+      iconUrl: "data:image/svg+xml;base64,hermes",
+      maskIconUrl: null,
+      id: "extension:hermes",
+      launchRef: {
+        extensionInstallationId: "hermes@1.0.0",
+        type: "agent_extension"
+      },
+      name: "Hermes Agent",
+      provider: "acp:hermes",
+      sortOrder: 700,
+      source: "system",
+      updatedAtUnixMs: 1780272000000
+    },
+    {
+      createdAtUnixMs: 1780272000000,
+      enabled: true,
+      heroImageUrl: null,
+      iconKey: "extension:kimi-code",
+      iconUrl: "data:image/svg+xml;base64,kimi-code",
+      maskIconUrl: null,
+      id: "extension:kimi-code",
+      launchRef: {
+        extensionInstallationId: "kimi-code@1.0.0",
+        type: "agent_extension"
+      },
+      name: "Kimi Code",
+      provider: "acp:kimi-code",
+      sortOrder: 700,
+      source: "system",
+      updatedAtUnixMs: 1780272000000
     }
   ]);
 
-  // Early Access off: an enabled extension stays out of the launchable
-  // directory even though its daemon target is enabled.
-  assert.deepEqual(mapAgentTargetPresentationsToAgents(presentations), []);
+  // Stable extensions stay launchable without the Early Access switch, while
+  // integrations still under validation remain hidden.
+  assert.deepEqual(
+    mapAgentTargetPresentationsToAgents(presentations).map(
+      (agent) => agent.agentTargetId
+    ),
+    ["extension:hermes", "extension:kimi-code"]
+  );
   assert.deepEqual(
     mapAgentTargetPresentationsToAgents(presentations, {
       earlyAccessEnabled: false
-    }),
-    []
+    }).map((agent) => agent.agentTargetId),
+    ["extension:hermes", "extension:kimi-code"]
   );
-  // Early Access on: the extension becomes launchable.
+  // Early Access on: the remaining extension also becomes launchable.
   assert.deepEqual(
     mapAgentTargetPresentationsToAgents(presentations, {
       earlyAccessEnabled: true
     }).map((agent) => agent.agentTargetId),
-    ["extension:gemini"]
+    ["extension:gemini", "extension:hermes", "extension:kimi-code"]
   );
 });
 

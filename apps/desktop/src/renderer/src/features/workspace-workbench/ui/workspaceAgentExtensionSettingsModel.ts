@@ -5,17 +5,20 @@ import type { DesktopAgentProviderManageRowStatus } from "../../workspace-agent/
 import {
   EARLY_ACCESS_AGENT_EXTENSION_INTEGRATIONS,
   isFeatureEnabled,
+  STABLE_AGENT_EXTENSION_INTEGRATIONS,
   type AgentExtensionActivationFlag
 } from "../../../../../shared/featureFlags/catalog.ts";
 
 export interface WorkspaceAgentExtensionSettingsRow {
-  activationFlag: AgentExtensionActivationFlag;
+  activationFlag: AgentExtensionActivationFlag | null;
   agentTargetId: string;
+  earlyAccess: boolean;
   enabled: boolean;
   iconUrl: string;
   key: string;
   labelKey: DesktopI18nKey;
   status: DesktopAgentProviderManageRowStatus;
+  toggleDisabled: boolean;
 }
 
 export function projectWorkspaceAgentExtensionSettingsRows(input: {
@@ -24,23 +27,16 @@ export function projectWorkspaceAgentExtensionSettingsRows(input: {
   earlyAccessEnabled: boolean;
   featureFlags: DesktopFeatureFlags;
 }): WorkspaceAgentExtensionSettingsRow[] {
-  if (!input.earlyAccessEnabled) {
-    return [];
-  }
-
   const targetById = new Map(
     input.agentTargets.map((target) => [target.agentTargetId, target])
   );
-
-  return EARLY_ACCESS_AGENT_EXTENSION_INTEGRATIONS.map((integration) => {
-    const enabled = isFeatureEnabled(
-      input.featureFlags,
-      integration.activationFlag
-    );
+  const stableRows = STABLE_AGENT_EXTENSION_INTEGRATIONS.map((integration) => {
     const target = targetById.get(integration.targetId) ?? null;
+    const enabled = target?.enabled ?? true;
     return {
-      activationFlag: integration.activationFlag,
+      activationFlag: null,
       agentTargetId: integration.targetId,
+      earlyAccess: false,
       enabled,
       iconUrl: target?.iconUrl ?? "",
       key: integration.key,
@@ -49,9 +45,40 @@ export function projectWorkspaceAgentExtensionSettingsRows(input: {
         directoryLoading: input.directoryLoading,
         enabled,
         target
-      })
+      }),
+      toggleDisabled: target === null
     };
   });
+
+  if (!input.earlyAccessEnabled) {
+    return stableRows;
+  }
+
+  const earlyAccessRows = EARLY_ACCESS_AGENT_EXTENSION_INTEGRATIONS.map(
+    (integration) => {
+      const enabled = isFeatureEnabled(
+        input.featureFlags,
+        integration.activationFlag
+      );
+      const target = targetById.get(integration.targetId) ?? null;
+      return {
+        activationFlag: integration.activationFlag,
+        agentTargetId: integration.targetId,
+        earlyAccess: true,
+        enabled,
+        iconUrl: target?.iconUrl ?? "",
+        key: integration.key,
+        labelKey: integration.labelKey,
+        status: resolveExtensionEnvironmentStatus({
+          directoryLoading: input.directoryLoading,
+          enabled,
+          target
+        }),
+        toggleDisabled: false
+      };
+    }
+  );
+  return [...stableRows, ...earlyAccessRows];
 }
 
 function resolveExtensionEnvironmentStatus(input: {

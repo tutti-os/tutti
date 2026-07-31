@@ -5,8 +5,6 @@ import {
   AGENT_EXTENSION_CODEBUDDY_FLAG,
   AGENT_EXTENSION_COPILOT_FLAG,
   AGENT_EXTENSION_GEMINI_FLAG,
-  AGENT_EXTENSION_HERMES_FLAG,
-  AGENT_EXTENSION_KIMI_CODE_FLAG,
   AGENT_EXTENSION_GROK_FLAG,
   AGENT_EXTENSION_KILO_FLAG,
   AGENT_EXTENSION_QWEN_FLAG,
@@ -20,7 +18,9 @@ import {
   LAB_AGENT_SESSION_FORK_FLAG,
   LAB_AUTOMATION_RULES_FLAG,
   MOBILE_REMOTE_ACCESS_SETTINGS_FLAG,
+  isStableAgentExtensionTarget,
   resolveDesktopWorkspaceUiMode,
+  STABLE_AGENT_EXTENSION_INTEGRATIONS,
   withDesktopWorkspaceUiMode,
   WORKSPACE_STANDALONE_AGENT_MODE_FLAG
 } from "./catalog.ts";
@@ -32,13 +32,23 @@ test("Agent Extension activation flags stay catalog-driven", () => {
     AGENT_EXTENSION_COPILOT_FLAG,
     AGENT_EXTENSION_KILO_FLAG,
     AGENT_EXTENSION_QWEN_FLAG,
-    AGENT_EXTENSION_HERMES_FLAG,
-    AGENT_EXTENSION_KIMI_CODE_FLAG,
     AGENT_EXTENSION_GROK_FLAG
   ]);
   for (const flag of AGENT_EXTENSION_ACTIVATION_FLAGS) {
     assert.equal(isFeatureEnabled({}, flag), false);
   }
+});
+
+test("stable Agent Extensions do not depend on activation flags", () => {
+  assert.deepEqual(
+    STABLE_AGENT_EXTENSION_INTEGRATIONS.map(
+      (integration) => integration.targetId
+    ),
+    ["extension:hermes", "extension:kimi-code"]
+  );
+  assert.equal(isStableAgentExtensionTarget("extension:hermes"), true);
+  assert.equal(isStableAgentExtensionTarget("extension:kimi-code"), true);
+  assert.equal(isStableAgentExtensionTarget("extension:gemini"), false);
 });
 
 test("isFeatureEnabled falls back to catalog default when key absent", () => {

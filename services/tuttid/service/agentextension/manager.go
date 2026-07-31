@@ -162,6 +162,9 @@ func (m *Manager) sourceActivationChanged(previous, current map[string]bool) boo
 }
 
 func sourceEnabled(source tuttitypes.AgentExtensionSource, featureFlags map[string]bool) bool {
+	if source.Enabled {
+		return true
+	}
 	enabled, ok := featureFlags["agent.extension."+source.Key]
 	if ok {
 		return enabled
@@ -467,6 +470,13 @@ func (m *Manager) registerTarget(ctx context.Context, installation Installation)
 	if m.Store == nil {
 		return errors.New("agent target store is not configured")
 	}
+	enabled := true
+	existing, err := m.Store.GetAgentTarget(ctx, targetID(installation.AgentKey))
+	if err == nil {
+		enabled = existing.Enabled
+	} else if !errors.Is(err, workspacedata.ErrAgentTargetNotFound) {
+		return fmt.Errorf("read existing agent extension target: %w", err)
+	}
 	launchRef, err := agenttargetbiz.CanonicalLaunchRefJSON(installation.Provider, agenttargetbiz.LaunchRef{
 		Type: agenttargetbiz.LaunchRefTypeAgentExtension, ExtensionInstallationID: installation.ID,
 	})
@@ -494,7 +504,7 @@ func (m *Manager) registerTarget(ctx context.Context, installation Installation)
 	_, err = m.Store.PutAgentTarget(ctx, agenttargetbiz.Target{
 		ID: targetID(installation.AgentKey), Provider: installation.Provider, LaunchRefJSON: launchRef,
 		Name: installation.DisplayName, IconKey: "extension:" + installation.AgentKey,
-		IconURL: iconURL, MaskIconURL: maskIconURL, HeroImageURL: heroImageURL, Enabled: true, Source: agenttargetbiz.SourceSystem, SortOrder: 700,
+		IconURL: iconURL, MaskIconURL: maskIconURL, HeroImageURL: heroImageURL, Enabled: enabled, Source: agenttargetbiz.SourceSystem, SortOrder: 700,
 	})
 	return err
 }

@@ -1909,10 +1909,12 @@ Do not start by adding a fallback to the visible component.
 
 The desktop settings panel's Agent section has General Settings, Agent Runtime,
 and Custom Agents available by default; Automation remains independently
-gated. The Agent
-Runtime tab renders provider rows from the authoritative
-identity catalog plus the live `IAgentProviderStatusService`; it does not copy
-a provider registry. Its Enable/Disable control reads all Agent Targets from
+gated. The Agent Runtime tab renders built-in provider rows from the
+authoritative identity catalog plus the live `IAgentProviderStatusService`.
+Stable Agent Extension maturity is declared separately from Early Access
+activation flags, and those rows consume their live `IAgentsService` Targets
+and package-provided identity assets rather than becoming built-in provider
+descriptors. Its Enable/Disable control reads all Agent Targets from
 `IAgentsService` and persists the daemon-owned Agent Target `enabled` field.
 Tutti Agent is the built-in exception: its target is always enabled, its row
 cannot be disabled, and it has no separate developer visibility switch.
@@ -1922,8 +1924,9 @@ CLI discovery and launch. The device-global provider-rail preferences remain
 presentation-only (ordering and optional sidebar personalization); they do not
 authorize an Agent Target or replace daemon enablement. Staged
 (Beta/Preview/in-progress) rows are gated by the `lab.previewAgents` switch via
-the provider-neutral `agentGuiWorkbenchPreviewProviders` predicate; stable rows
-always show in settings. Deep links publish the existing
+the provider-neutral `agentGuiWorkbenchPreviewProviders` predicate; stable
+built-in and Agent Extension rows always show in settings and launch surfaces.
+Deep links publish the existing
 `openWorkspaceSettingsPanel` intent with optional `pane`/`provider`; the
 Desktop Settings service is the single adapter that resolves legacy aliases
 and current destinations for workspace and standalone windows. An Agent

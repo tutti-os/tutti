@@ -17,7 +17,11 @@ export function normalizeManagedAgentProvider(
 /** Providers still shipping in preview; the hero surfaces a "Beta" tag for them. */
 const BETA_AGENT_PROVIDERS: ReadonlySet<string> = new Set([
   "opencode",
-  "cursor"
+  "cursor",
+  "acp:hermes",
+  "hermes",
+  "acp:kimi-code",
+  "kimi-code"
 ]);
 
 export function isBetaAgentProvider(

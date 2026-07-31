@@ -25,8 +25,6 @@ export const AGENT_EXTENSION_CODEBUDDY_FLAG = "agent.extension.codebuddy";
 export const AGENT_EXTENSION_COPILOT_FLAG = "agent.extension.copilot";
 export const AGENT_EXTENSION_KILO_FLAG = "agent.extension.kilo";
 export const AGENT_EXTENSION_QWEN_FLAG = "agent.extension.qwen";
-export const AGENT_EXTENSION_HERMES_FLAG = "agent.extension.hermes";
-export const AGENT_EXTENSION_KIMI_CODE_FLAG = "agent.extension.kimi-code";
 export const AGENT_EXTENSION_GROK_FLAG = "agent.extension.grok";
 export const AGENT_EXTENSION_ACTIVATION_FLAGS = [
   AGENT_EXTENSION_GEMINI_FLAG,
@@ -34,12 +32,23 @@ export const AGENT_EXTENSION_ACTIVATION_FLAGS = [
   AGENT_EXTENSION_COPILOT_FLAG,
   AGENT_EXTENSION_KILO_FLAG,
   AGENT_EXTENSION_QWEN_FLAG,
-  AGENT_EXTENSION_HERMES_FLAG,
-  AGENT_EXTENSION_KIMI_CODE_FLAG,
   AGENT_EXTENSION_GROK_FLAG
 ] as const;
 export type AgentExtensionActivationFlag =
   (typeof AGENT_EXTENSION_ACTIVATION_FLAGS)[number];
+
+export const STABLE_AGENT_EXTENSION_INTEGRATIONS = [
+  {
+    key: "hermes",
+    labelKey: "workspace.settings.agent.agents.extensionHermes",
+    targetId: "extension:hermes"
+  },
+  {
+    key: "kimi-code",
+    labelKey: "workspace.settings.agent.agents.extensionKimiCode",
+    targetId: "extension:kimi-code"
+  }
+] as const;
 
 export const EARLY_ACCESS_AGENT_EXTENSION_INTEGRATIONS = [
   {
@@ -71,18 +80,6 @@ export const EARLY_ACCESS_AGENT_EXTENSION_INTEGRATIONS = [
     key: "qwen",
     labelKey: "workspace.settings.agent.agents.extensionQwen",
     targetId: "extension:qwen"
-  },
-  {
-    activationFlag: AGENT_EXTENSION_HERMES_FLAG,
-    key: "hermes",
-    labelKey: "workspace.settings.agent.agents.extensionHermes",
-    targetId: "extension:hermes"
-  },
-  {
-    activationFlag: AGENT_EXTENSION_KIMI_CODE_FLAG,
-    key: "kimi-code",
-    labelKey: "workspace.settings.agent.agents.extensionKimiCode",
-    targetId: "extension:kimi-code"
   },
   {
     activationFlag: AGENT_EXTENSION_GROK_FLAG,
@@ -128,16 +125,6 @@ export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
   },
   {
     key: AGENT_EXTENSION_QWEN_FLAG,
-    default: false,
-    group: "agent"
-  },
-  {
-    key: AGENT_EXTENSION_HERMES_FLAG,
-    default: false,
-    group: "agent"
-  },
-  {
-    key: AGENT_EXTENSION_KIMI_CODE_FLAG,
     default: false,
     group: "agent"
   },
@@ -220,6 +207,14 @@ export function isFeatureEnabled(
 
 export function labFeatureDefinitions(): readonly FeatureFlagDefinition[] {
   return FEATURE_FLAG_DEFINITIONS.filter((d) => d.group === "lab");
+}
+
+const STABLE_AGENT_EXTENSION_TARGET_IDS = new Set<string>(
+  STABLE_AGENT_EXTENSION_INTEGRATIONS.map((integration) => integration.targetId)
+);
+
+export function isStableAgentExtensionTarget(agentTargetId: string): boolean {
+  return STABLE_AGENT_EXTENSION_TARGET_IDS.has(agentTargetId);
 }
 
 export function resolveDesktopWorkspaceUiMode(

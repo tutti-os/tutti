@@ -65,9 +65,10 @@ it is absent, false, or unreadable. Existing fork lineage plus operation reads
 and acknowledgements remain available while the flag is off.
 
 `services/tuttid/service/agentextension/manager.go` is the existing example
-of feature-owned semantics: it reads the raw flag map, derives its own keys
-(`"agent.extension."+source.Key`), and decides what disabled means for Agent
-Extension sources (reconcile and stop). New consumers should prefer the
-registry constants and `IsLabFlagEnabled` over poking the raw map, while
-keeping their own off semantics in the owning feature, exactly as the Agent
+of feature-owned semantics: stable sources are enabled by generated product
+configuration and ignore retired stored activation values, while Early Access
+sources derive their own keys (`"agent.extension."+source.Key`) and decide what
+disabled means (reconcile and stop). New consumers should prefer registry
+constants and `IsLabFlagEnabled` over poking the raw map, while keeping their
+own off and graduation semantics in the owning feature, exactly as the Agent
 Extension manager does.

@@ -53,7 +53,7 @@ func TestResolveDefaultsFromEnvAppliesOverrides(t *testing.T) {
 	assertEqual(t, got.Transport.TCPAddr, "127.0.0.1:1111")
 }
 
-func TestResolveAgentExtensionSourcesIgnoresRemovedEnabledOverride(t *testing.T) {
+func TestResolveAgentExtensionSourcesUsesGeneratedActivationDefaults(t *testing.T) {
 	t.Setenv("TUTTI_AGENT_EXTENSION_GEMINI_ENABLED", "true")
 
 	sources := ResolveAgentExtensionSources()
@@ -79,6 +79,15 @@ func TestResolveAgentExtensionSourcesIgnoresRemovedEnabledOverride(t *testing.T)
 		}
 		if source.SigningKeyID == "" || source.SigningPublicKey == "" {
 			t.Fatalf("agent extension trust configuration is incomplete: %#v", source)
+		}
+	}
+	for _, key := range []string{"hermes", "kimi-code"} {
+		source := agentExtensionSourceByKey(t, sources, key)
+		if !source.Enabled {
+			t.Fatalf("stable agent extension source must be enabled: %#v", source)
+		}
+		if source.SigningKeyID == "" || source.SigningPublicKey == "" {
+			t.Fatalf("stable agent extension trust configuration is incomplete: %#v", source)
 		}
 	}
 }

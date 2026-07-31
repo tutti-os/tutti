@@ -298,10 +298,9 @@ export function WorkspaceAgentsSettingsTab({
     ]
   );
 
-  const toggleAgentEnabled = useCallback(
-    async (provider: string, enabled: boolean) => {
-      const targetID = agentTargetId(provider);
-      if (!targetID || pendingAgentTargetIDs.has(targetID)) {
+  const toggleAgentTargetEnabled = useCallback(
+    async (targetID: string, label: string, enabled: boolean) => {
+      if (pendingAgentTargetIDs.has(targetID)) {
         return;
       }
       setPendingAgentTargetIDs((current) => new Set(current).add(targetID));
@@ -314,7 +313,7 @@ export function WorkspaceAgentsSettingsTab({
               ? error.message
               : undefined,
           title: t("workspace.settings.agent.agents.enableChangeFailed", {
-            agent: resolveWorkspaceAgentGuiLabel(provider)
+            agent: label
           })
         });
       } finally {
@@ -326,6 +325,21 @@ export function WorkspaceAgentsSettingsTab({
       }
     },
     [notifications, onAgentEnabledChange, pendingAgentTargetIDs, t]
+  );
+
+  const toggleAgentEnabled = useCallback(
+    async (provider: string, enabled: boolean) => {
+      const targetID = agentTargetId(provider);
+      if (!targetID) {
+        return;
+      }
+      await toggleAgentTargetEnabled(
+        targetID,
+        resolveWorkspaceAgentGuiLabel(provider),
+        enabled
+      );
+    },
+    [toggleAgentTargetEnabled]
   );
 
   const focusRow = useCallback((provider: string) => {
@@ -613,9 +627,13 @@ export function WorkspaceAgentsSettingsTab({
                       <span className="truncate font-semibold text-[var(--text-primary)]">
                         {label}
                       </span>
-                      <span className="shrink-0 rounded-full border border-[var(--border-1)] px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none text-[var(--text-secondary)]">
-                        {t("workspace.settings.agent.agents.earlyAccessBadge")}
-                      </span>
+                      {row.earlyAccess ? (
+                        <span className="shrink-0 rounded-full border border-[var(--border-1)] px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none text-[var(--text-secondary)]">
+                          {t(
+                            "workspace.settings.agent.agents.earlyAccessBadge"
+                          )}
+                        </span>
+                      ) : null}
                     </span>
                     <AgentConnectionStatus
                       className="hidden w-fit text-[11px] text-[var(--text-secondary)] max-[560px]:flex"
@@ -653,11 +671,23 @@ export function WorkspaceAgentsSettingsTab({
                       }
                     )}
                     checked={row.enabled}
-                    disabled={featureFlagsPending}
+                    disabled={
+                      row.toggleDisabled ||
+                      pendingAgentTargetIDs.has(row.agentTargetId) ||
+                      (row.activationFlag !== null && featureFlagsPending)
+                    }
                     size="sm"
                     onCheckedChange={(enabled) => {
-                      void onExtensionEnabledChange(
-                        row.activationFlag,
+                      if (row.activationFlag !== null) {
+                        void onExtensionEnabledChange(
+                          row.activationFlag,
+                          enabled
+                        );
+                        return;
+                      }
+                      void toggleAgentTargetEnabled(
+                        row.agentTargetId,
+                        label,
                         enabled
                       );
                     }}

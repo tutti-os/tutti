@@ -8,6 +8,7 @@ import {
   isAgentGuiWorkbenchProvider,
   isAgentGuiWorkbenchProviderVisibleWithEarlyAccess
 } from "@tutti-os/agent-gui/workbench/providerCatalog";
+import { isStableAgentExtensionTarget } from "../../../../../../shared/featureFlags/catalog.ts";
 import type {
   AgentsSnapshot,
   AgentTargetPresentation,
@@ -336,7 +337,8 @@ export function mapAgentTargetPresentationsToAgents(
       (target) =>
         target.enabled &&
         (options.earlyAccessEnabled === true ||
-          (target.launchRefType !== "agent_extension" &&
+          ((target.launchRefType !== "agent_extension" ||
+            isStableAgentExtensionTarget(target.agentTargetId)) &&
             (!isAgentGuiWorkbenchProvider(target.provider) ||
               isAgentGuiWorkbenchProviderVisibleWithEarlyAccess(
                 target.provider,

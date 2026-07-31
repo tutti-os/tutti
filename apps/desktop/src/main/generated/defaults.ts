@@ -87,7 +87,7 @@ export const generatedDefaults = {
         signingKeyId: "tutti-hermes-release-v1",
         signingPublicKey:
           "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAIeel8ddNiN3b4qOq0KucF3BRxfi3zourM0BVyGuP8eY=\n-----END PUBLIC KEY-----\n",
-        enabled: false
+        enabled: true
       },
       {
         key: "kimi-code",
@@ -96,7 +96,7 @@ export const generatedDefaults = {
         signingKeyId: "tutti-kimi-code-release-v1",
         signingPublicKey:
           "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAnO+V8MpPIY90uDINyaJjtENg/vPQpURo0AltBZLqvgw=\n-----END PUBLIC KEY-----\n",
-        enabled: false
+        enabled: true
       },
       {
         key: "grok",

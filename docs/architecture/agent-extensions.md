@@ -10,10 +10,10 @@ profiles, locale resources, and static assets.
 ## Trust And Distribution
 
 Configured sources live in `config/tutti.defaults.json`. Each source pins an
-agent key, HTTPS `versions.json` URL, feature flag, signing key ID, and Ed25519
-public key. `tuttid` accepts only active compatible releases whose canonical
-release JSON signature, artifact SHA-256, byte size, manifest identity, and
-package contents all validate.
+agent key, HTTPS `versions.json` URL, default activation state, signing key ID,
+and Ed25519 public key. `tuttid` accepts only active compatible releases whose
+canonical release JSON signature, artifact SHA-256, byte size, manifest
+identity, and package contents all validate.
 
 Release ZIPs are data-only. Installation rejects path traversal, symlinks,
 executable regular files, unsupported file types, excessive entry counts, and
@@ -224,9 +224,10 @@ daemon lifetime. A cached generic adapter now fails closed when the requested
 Target or fixed installation differs, while composer-context reuse uses the
 full scope above. Sessions persist `agentTargetId` and resume re-derives the
 extension installation from that Target. A composite session-pinned
-runtime/profile fingerprint remains required before automatic extension
-upgrades; until then, sources remain feature-gated and releases are activated
-deliberately.
+runtime/profile fingerprint remains required before automatic in-session
+extension upgrades. Stable sources may still be active by default; release
+activation remains deliberate and existing sessions stay pinned to their
+recorded Target installation.
 
 ## Target-managed Runtime Setup
 
@@ -498,22 +499,25 @@ than starting duplicate polls. Closing remains controlled, and the Dialog
 stays mounted through ready transitions so its pointer/scroll lock can clean
 up. Active conversations are never replaced by setup UI.
 
-## Feature Gate And Failure Behavior
+## Activation And Failure Behavior
 
-Source defaults come from generated configuration. Desktop Developer settings
-override them through generic `agent.extension.<key>` feature flags. A
-preference write reconciles only when an extension source changes effective
+Source defaults come from generated configuration. A source with `enabled:
+true` is a stable integration and is always reconciled; historical
+`agent.extension.<key>` preference values no longer override it. Sources with
+`enabled: false` remain Early Access integrations that Desktop settings can
+activate through the generic `agent.extension.<key>` feature flag. A preference
+write reconciles only when one of those opt-in sources changes effective
 activation, then the desktop refreshes its Agent Target catalog. The daemon
-keeps this source-key driven; it has no Gemini or CodeBuddy branch.
+keeps this source-key driven rather than branching on individual providers.
 
-Disabled sources do not perform network requests and their system Target is
-removed. When an enabled source cannot reach its index, a previously verified
-active installation remains available. If no verified installation exists,
-the source is not registered and `tuttid` logs one
+Disabled Early Access sources do not perform network requests and their system
+Target is removed. When an active source cannot reach its index, a previously
+verified active installation remains available. If no verified installation
+exists, the source is not registered and `tuttid` logs one
 `agent_extension.reconcile_failed` record with a JSON payload.
 
-Daemon startup restores and verifies every enabled source's local active
-installation before serving Agent Target reads. When every enabled source has
+Daemon startup restores and verifies every active source's local active
+installation before serving Agent Target reads. When every active source has
 a usable local installation, release-index refresh runs in the background and
 does not delay the daemon listener. If any enabled source has no usable local
 installation, startup keeps the synchronous reconcile path so that a first
