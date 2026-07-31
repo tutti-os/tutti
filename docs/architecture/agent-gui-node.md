@@ -1272,6 +1272,11 @@ idle | loading | ready | error
 
 `ready` may contain an authoritative empty list. `error` may retain the last successful snapshot. Components must not infer loading from `agents.length`.
 
+One-shot Desktop surfaces that emit Agent identity, such as outcome
+notifications, start and await their own Agent Directory load attempt before
+resolving presentation. They must not depend on an AgentGUI or Workbench React
+effect to initialize the directory.
+
 The provider descriptor's target sort order owns the default built-in Agent
 order. Tutti Agent is the first built-in target; an explicit device-local
 Provider Rail reorder remains a presentation preference and takes precedence

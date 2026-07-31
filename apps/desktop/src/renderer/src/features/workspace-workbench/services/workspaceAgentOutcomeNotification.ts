@@ -7,7 +7,10 @@ import {
 import type { NotificationService } from "@tutti-os/ui-notifications";
 import type { CompositeNotificationMessage } from "@renderer/lib/compositeNotificationService";
 import type { DesktopI18nKey, I18nParams } from "@shared/i18n";
-import type { IWorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
+import type {
+  AgentsService,
+  IWorkspaceAgentActivityService
+} from "@renderer/features/workspace-agent";
 
 export interface WorkspaceAgentOutcomeNotificationController {
   dispose(): void;
@@ -42,15 +45,10 @@ export interface WorkspaceAgentOutcomeForegroundNotificationPresenter {
   show(notification: WorkspaceAgentOutcomeForegroundNotification): void;
 }
 
-export interface WorkspaceAgentOutcomeAgentDirectory {
-  getAgentTarget(input: { agentTargetId: string }): {
-    iconUrl: string;
-    name: string;
-  } | null;
-}
-
 export interface WorkspaceAgentOutcomeNotificationControllerInput {
-  agentDirectory: WorkspaceAgentOutcomeAgentDirectory;
+  agentDirectory: Pick<AgentsService, "getAgentPresentation"> & {
+    load(signal?: AbortSignal): Promise<unknown>;
+  };
   foreground?: WorkspaceAgentOutcomeForegroundNotificationPresenter;
   notifications: Pick<NotificationService, "notify">;
   translate(key: DesktopI18nKey, params?: I18nParams): string;
@@ -72,8 +70,48 @@ export function createWorkspaceAgentOutcomeNotificationController(
     input.workspaceAgentActivityService.getSessionEngine(workspaceId);
   const settledTurns = new Set<string>();
   const liveSettledTurns = new Set<string>();
+  const pendingNotifications: WorkspaceAgentOutcomeNotification[] = [];
+  let disposed = false;
+  let agentDirectoryLoadSettled = false;
   let hasAuthoritativeBaseline =
     engine.getSnapshot().engineRuntime.workspaceReconcile.status === "ready";
+
+  const emitNotification = (
+    notification: WorkspaceAgentOutcomeNotification
+  ) => {
+    if (disposed) return;
+    const agentPresentation = workspaceAgentOutcomePresentation(
+      notification,
+      input.agentDirectory,
+      input.translate
+    );
+    input.onNotificationEmitted?.(notification);
+    input.foreground?.show(
+      workspaceAgentOutcomeForegroundNotification(
+        notification,
+        agentPresentation,
+        input.translate
+      )
+    );
+    input.notifications.notify(
+      workspaceAgentOutcomeNotificationMessage(
+        notification,
+        agentPresentation,
+        input.translate
+      )
+    );
+  };
+  const settleAgentDirectoryLoad = () => {
+    if (agentDirectoryLoadSettled) return;
+    agentDirectoryLoadSettled = true;
+    const notifications = pendingNotifications.splice(0);
+    for (const notification of notifications) {
+      emitNotification(notification);
+    }
+  };
+  void input.agentDirectory
+    .load()
+    .then(settleAgentDirectoryLoad, settleAgentDirectoryLoad);
 
   const inspectEngineState = (
     state: AgentSessionEngineState,
@@ -98,26 +136,11 @@ export function createWorkspaceAgentOutcomeNotificationController(
           turn
         });
       if (!notification) continue;
-      input.onNotificationEmitted?.(notification);
-      const agentPresentation = workspaceAgentOutcomePresentation(
-        notification,
-        input.agentDirectory,
-        input.translate
-      );
-      input.foreground?.show(
-        workspaceAgentOutcomeForegroundNotification(
-          notification,
-          agentPresentation,
-          input.translate
-        )
-      );
-      input.notifications.notify(
-        workspaceAgentOutcomeNotificationMessage(
-          notification,
-          agentPresentation,
-          input.translate
-        )
-      );
+      if (agentDirectoryLoadSettled) {
+        emitNotification(notification);
+      } else {
+        pendingNotifications.push(notification);
+      }
     }
   };
 
@@ -144,6 +167,8 @@ export function createWorkspaceAgentOutcomeNotificationController(
     });
   return {
     dispose() {
+      disposed = true;
+      pendingNotifications.length = 0;
       unsubscribeEngine();
       unsubscribeSessionEvents();
     }
@@ -253,11 +278,11 @@ interface WorkspaceAgentOutcomeAgentPresentation {
 
 function workspaceAgentOutcomePresentation(
   notification: WorkspaceAgentOutcomeNotification,
-  agentDirectory: WorkspaceAgentOutcomeAgentDirectory,
+  agentDirectory: WorkspaceAgentOutcomeNotificationControllerInput["agentDirectory"],
   translate: WorkspaceAgentOutcomeNotificationControllerInput["translate"]
 ): WorkspaceAgentOutcomeAgentPresentation {
   const target = notification.agentTargetId
-    ? agentDirectory.getAgentTarget({
+    ? agentDirectory.getAgentPresentation({
         agentTargetId: notification.agentTargetId
       })
     : null;

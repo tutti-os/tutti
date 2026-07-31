@@ -10,6 +10,7 @@ import {
 } from "@tutti-os/agent-gui/workbench/providerCatalog";
 import { isStableAgentExtensionTarget } from "../../../../../../shared/featureFlags/catalog.ts";
 import type {
+  AgentPresentation,
   AgentsSnapshot,
   AgentTargetPresentation,
   IAgentsService
@@ -60,6 +61,31 @@ export class DesktopAgentsService implements IAgentsService {
 
   getSnapshot(): AgentsSnapshot {
     return this.snapshot;
+  }
+
+  getAgentPresentation(input: {
+    agentTargetId: string;
+  }): AgentPresentation | null {
+    const agentTargetId = input.agentTargetId.trim();
+    if (!agentTargetId) {
+      return null;
+    }
+    const agent = this.snapshot.agents.find(
+      (candidate) => candidate.agentTargetId === agentTargetId
+    );
+    if (agent) {
+      return {
+        iconUrl: agent.iconUrl,
+        name: agent.name
+      };
+    }
+    const target = this.getAgentTarget({ agentTargetId });
+    return target
+      ? {
+          iconUrl: target.iconUrl,
+          name: target.name
+        }
+      : null;
   }
 
   dispose(): void {

@@ -244,6 +244,15 @@ test("desktop agents service lists a custom Agent with its Harness target catalo
 
   assert.equal(listedWorkspaceId, "workspace-1");
   assert.equal(customAgent?.iconUrl, "catalog://codex-target");
+  assert.deepEqual(
+    service.getAgentPresentation({
+      agentTargetId: "workspace-agent:reviewer"
+    }),
+    {
+      iconUrl: "catalog://codex-target",
+      name: "Reviewer"
+    }
+  );
   assert.deepEqual(customTarget, {
     agentTargetId: "workspace-agent:reviewer",
     availability: { status: "ready" },
