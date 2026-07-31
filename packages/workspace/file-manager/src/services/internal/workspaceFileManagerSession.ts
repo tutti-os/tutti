@@ -72,6 +72,7 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
   private readonly onMutationErrorMessage?: (
     message: WorkspaceFileManagerMutationErrorMessage
   ) => boolean | void;
+  private activeSearchController: AbortController | null = null;
   private searchRequestSeq = 0;
   private readonly activationController: WorkspaceFileManagerActivationController;
   private copy: WorkspaceFileManagerI18nRuntime;
@@ -321,6 +322,7 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
     this.initializePromise = null;
     this.isActive = false;
     this.searchRequestSeq += 1;
+    this.cancelActiveSearch();
     this.store.isSearching = false;
     this.unsubscribeStore?.();
     this.unsubscribeStore = null;
@@ -624,6 +626,7 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
 
   async search(query: string): Promise<void> {
     const requestID = ++this.searchRequestSeq;
+    this.cancelActiveSearch();
     this.store.searchQuery = query;
     this.store.searchError = null;
     const trimmedQuery = query.trim();
@@ -634,11 +637,17 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
     }
 
     this.store.isSearching = true;
+    const searchController = new AbortController();
+    this.activeSearchController = searchController;
     try {
       const selectedLocation = this.selectedLocation();
       const entries = isWorkspaceFileRecentLocation(selectedLocation)
-        ? await this.searchRecentEntries(trimmedQuery)
-        : await this.searchDirectoryEntries(query, selectedLocation);
+        ? await this.searchRecentEntries(trimmedQuery, searchController.signal)
+        : await this.searchDirectoryEntries(
+            query,
+            selectedLocation,
+            searchController.signal
+          );
       if (this.isDisposed || requestID !== this.searchRequestSeq) {
         return;
       }
@@ -648,6 +657,9 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
         this.store.searchError = this.resolveErrorMessage(error);
       }
     } finally {
+      if (this.activeSearchController === searchController) {
+        this.activeSearchController = null;
+      }
       if (!this.isDisposed && requestID === this.searchRequestSeq) {
         this.store.isSearching = false;
       }
@@ -915,7 +927,9 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
   }
 
   private clearSearchState(): void {
+    const canceledSearch = this.cancelActiveSearch();
     if (
+      !canceledSearch &&
       this.store.searchQuery === "" &&
       this.store.searchEntries.length === 0 &&
       this.store.searchError === null &&
@@ -930,15 +944,27 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
     this.store.isSearching = false;
   }
 
+  private cancelActiveSearch(): boolean {
+    const searchController = this.activeSearchController;
+    if (!searchController) {
+      return false;
+    }
+    this.activeSearchController = null;
+    searchController.abort();
+    return true;
+  }
+
   private async searchDirectoryEntries(
     query: string,
-    selectedLocation: WorkspaceFileLocation | null
+    selectedLocation: WorkspaceFileLocation | null,
+    signal: AbortSignal
   ): Promise<WorkspaceFileSearchEntry[]> {
     if (!this.host.search) {
       return [];
     }
     const result = await this.host.search({
       query,
+      signal,
       workspaceID: this.store.workspaceID,
       ...(selectedLocation?.kind === "directory"
         ? { within: selectedLocation.path }
@@ -948,13 +974,15 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
   }
 
   private async searchRecentEntries(
-    query: string
+    query: string,
+    signal: AbortSignal
   ): Promise<WorkspaceFileSearchEntry[]> {
     if (!this.host.listRecentEntries) {
       return [];
     }
     const listing = await this.host.listRecentEntries({
       limit: 100,
+      signal,
       workspaceID: this.store.workspaceID
     });
     const normalizedQuery = query.trim().toLowerCase();

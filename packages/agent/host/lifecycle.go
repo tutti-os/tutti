@@ -122,10 +122,11 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 	}
 	session, err := func() (ProviderRuntimeSession, error) {
 		defer release()
+		runtimeTitle, initialTitleEstablished := initialGoalRuntimeTitle(value(input.Title), input.InitialDisplayPrompt, typedGoal, isTypedGoal)
 		return h.runtime.Start(ctx, RuntimeStartInput{
 			WorkspaceID: workspaceID, AgentSessionID: input.AgentSessionID, AgentTargetID: input.AgentTargetID,
 			Provider: input.Provider, Cwd: prepared.Cwd, Env: append([]string(nil), prepared.Env...),
-			Title: value(input.Title), InitialTitleEstablished: NormalizeTitle(value(input.Title)) != "",
+			Title: runtimeTitle, InitialTitleEstablished: initialTitleEstablished,
 			PermissionModeID: value(input.PermissionModeID), Model: value(input.Model), PlanMode: valueBool(input.PlanMode),
 			BrowserUse: input.BrowserUse, ComputerUse: input.ComputerUse,
 			ProviderTargetRef: cloneMap(firstMap(prepared.ProviderTargetRef, input.ProviderTargetRef)),

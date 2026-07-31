@@ -644,9 +644,11 @@ test("copyToClipboard reports false when the host cannot copy", async () => {
 test("stale search results do not overwrite newer query results", async () => {
   const firstSearch = createDeferred<WorkspaceFileSearchResult>();
   const secondSearch = createDeferred<WorkspaceFileSearchResult>();
+  const searchSignals: AbortSignal[] = [];
   const session = createSession({
     host: {
       async search(input) {
+        searchSignals.push(input.signal);
         return input.query === "first"
           ? firstSearch.promise
           : secondSearch.promise;
@@ -659,6 +661,9 @@ test("stale search results do not overwrite newer query results", async () => {
   await flushMicrotasks();
   const secondPromise = session.search("second");
   await flushMicrotasks();
+
+  assert.equal(searchSignals[0]?.aborted, true);
+  assert.equal(searchSignals[1]?.aborted, false);
 
   secondSearch.resolve(createSearchResult("/Users/demo/project/second.txt"));
   await secondPromise;
@@ -676,8 +681,38 @@ test("stale search results do not overwrite newer query results", async () => {
   session.dispose();
 });
 
+test("clearing a search query aborts its active host request", async () => {
+  const deferredSearch = createDeferred<WorkspaceFileSearchResult>();
+  const searchSignals: AbortSignal[] = [];
+  const session = createSession({
+    host: {
+      async search(input) {
+        searchSignals.push(input.signal);
+        return deferredSearch.promise;
+      }
+    }
+  });
+
+  await session.initialize();
+  const searchPromise = session.search("notes");
+  await flushMicrotasks();
+
+  await session.search("");
+
+  assert.equal(searchSignals[0]?.aborted, true);
+  assert.equal(session.store.searchQuery, "");
+  assert.equal(session.store.isSearching, false);
+
+  deferredSearch.resolve(createSearchResult("/Users/demo/project/notes.txt"));
+  await searchPromise;
+  assert.deepEqual(session.store.searchEntries, []);
+
+  session.dispose();
+});
+
 test("entering directories clears search state and ignores stale results", async () => {
   const deferredSearch = createDeferred<WorkspaceFileSearchResult>();
+  const searchSignals: AbortSignal[] = [];
   const srcEntry = createEntry("/Users/demo/project/src", {
     hasChildren: true,
     kind: "directory",
@@ -693,7 +728,8 @@ test("entering directories clears search state and ignores stale results", async
           directoryPath === defaultRoot ? [srcEntry] : [appEntry]
         );
       },
-      async search() {
+      async search(input) {
+        searchSignals.push(input.signal);
         return deferredSearch.promise;
       }
     }
@@ -707,6 +743,7 @@ test("entering directories clears search state and ignores stale results", async
 
   await session.openEntry(srcEntry);
 
+  assert.equal(searchSignals[0]?.aborted, true);
   assert.equal(session.store.currentDirectoryPath, "/Users/demo/project/src");
   assert.equal(session.store.searchQuery, "");
   assert.deepEqual(session.store.searchEntries, []);
@@ -1074,6 +1111,7 @@ test("recent locations load recent entries, search locally, and block mutations"
   let hostSearchCalls = 0;
   let listDirectoryCalls = 0;
   let listRecentCalls = 0;
+  const recentSignals: Array<AbortSignal | undefined> = [];
   const session = createWorkspaceFileManagerService().createSession({
     host: {
       async listDirectory(input) {
@@ -1087,6 +1125,7 @@ test("recent locations load recent entries, search locally, and block mutations"
       },
       async listRecentEntries(input) {
         listRecentCalls += 1;
+        recentSignals.push(input.signal);
         return {
           directoryPath: "/Users/demo",
           entries: [
@@ -1164,6 +1203,12 @@ test("recent locations load recent entries, search locally, and block mutations"
   assert.equal(hostSearchCalls, 0);
   assert.equal(listDirectoryCalls, 0);
   assert.equal(listRecentCalls, 4);
+  assert.deepEqual(
+    recentSignals.map((signal) =>
+      signal === undefined ? "none" : signal.aborted
+    ),
+    ["none", false, false, "none"]
+  );
   session.dispose();
 });
 
@@ -1243,6 +1288,7 @@ test("explicit directory loads leave recent read-only mode", async () => {
 
 test("directory location search is scoped with within", async () => {
   const withinValues: Array<string | undefined> = [];
+  const searchSignals: AbortSignal[] = [];
   const session = createWorkspaceFileManagerService().createSession({
     host: {
       async listDirectory(input) {
@@ -1255,6 +1301,7 @@ test("directory location search is scoped with within", async () => {
       },
       async search(input) {
         withinValues.push(input.within);
+        searchSignals.push(input.signal);
         return {
           entries: [],
           root: "/Users/demo",
@@ -1285,11 +1332,13 @@ test("directory location search is scoped with within", async () => {
   await session.search("app");
 
   assert.deepEqual(withinValues, ["/Users/demo/repo"]);
+  assert.equal(searchSignals[0]?.aborted, false);
   session.dispose();
 });
 
 test("pending search results do not mutate disposed sessions", async () => {
   const deferredSearch = createDeferred<WorkspaceFileSearchResult>();
+  const searchSignals: AbortSignal[] = [];
   const session = createWorkspaceFileManagerService().createSession({
     host: {
       async listDirectory(input) {
@@ -1300,7 +1349,8 @@ test("pending search results do not mutate disposed sessions", async () => {
           workspaceID: input.workspaceID
         };
       },
-      async search() {
+      async search(input) {
+        searchSignals.push(input.signal);
         return deferredSearch.promise;
       }
     },
@@ -1314,6 +1364,7 @@ test("pending search results do not mutate disposed sessions", async () => {
   assert.equal(session.store.isSearching, true);
 
   session.dispose();
+  assert.equal(searchSignals[0]?.aborted, true);
   assert.equal(session.store.isSearching, false);
   deferredSearch.resolve({
     entries: [

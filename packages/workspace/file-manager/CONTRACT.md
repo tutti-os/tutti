@@ -120,6 +120,10 @@ keep truly product-specific flows outside the shared session.
 - Location selection (`selectedLocationId`) and host-supplied
   `locationSections`
 - Search query/results projection when `canSearch`
+- Search request lifecycle: starting a replacement search, clearing search
+  state, or disposing the session aborts the active request. The session passes
+  that lifecycle through `AbortSignal` on `search`; recent-location filtering
+  passes the same signal to `listRecentEntries`.
 - Mutation busy state and shared error projection helpers
 - Entry-name validation for create and rename operations before host mutation;
   one name segment is limited to 255 UTF-8 bytes
@@ -267,6 +271,9 @@ Hosts own:
   the OS edge)
 - Implementing required `listDirectory` plus whichever optional Host methods
   they want capabilities for
+- Forwarding the session-provided search `AbortSignal` through the host
+  transport so superseded work can stop promptly; hosts must still tolerate a
+  request completing after cancellation
 - Import / export / upload / download pipelines, including any transfer-center
   integration
 - Context-menu action trees through `resolveContextMenu`

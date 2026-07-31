@@ -169,7 +169,8 @@ export function createDesktopWorkspaceFileManagerAdapter(
     async listRecentEntries(input): Promise<WorkspaceFileDirectoryListing> {
       const response = await tuttidClient.listWorkspaceRecentFiles(
         input.workspaceID,
-        { limit: input.limit }
+        { limit: input.limit },
+        input.signal ? { signal: input.signal } : undefined
       );
       return {
         directoryPath: response.directoryPath,
@@ -195,7 +196,8 @@ export function createDesktopWorkspaceFileManagerAdapter(
           limit: input.limit,
           query: input.query,
           within: input.within
-        }
+        },
+        { signal: input.signal }
       );
       return {
         entries: response.entries.map((entry) => ({

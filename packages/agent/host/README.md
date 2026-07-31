@@ -53,6 +53,9 @@ eligibility is decided by `ResolveResumePolicy`: root sessions resume normally,
 explicit imports may recreate a missing provider session, and child,
 tombstoned, or non-resumable imports are rejected. Canonical titles may be
 empty; only an explicit title or the first eligible prompt establishes one.
+For typed initial Goal, the display prompt (or a synthesized `/goal` command)
+is the eligible prompt and is established before provider startup, even though
+the Goal path does not create a Turn.
 `CreateSessionInput.RailPlacement` optionally carries the caller-selected,
 versioned canonical rail identity. Host validates it before provider startup
 and persists its opaque `SectionKey` exactly on first creation. An idempotent

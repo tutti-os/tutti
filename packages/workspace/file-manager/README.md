@@ -18,6 +18,12 @@ package keeps shared state in logical workspace paths such as
 `/workspace/src/index.ts` and does not depend on tuttid, TSH, TACH, VM paths,
 or host absolute paths.
 
+The session owns search cancellation. It aborts the active host request when a
+new search replaces it, search state is cleared, or the session is disposed.
+Hosts that implement `search` must forward the supplied `AbortSignal` to their
+transport; `listRecentEntries` receives the same optional signal when it is
+called for recent-location filtering.
+
 This package is intentionally a reusable frontend workspace-domain surface, not
 only a transport-agnostic data kernel. Shared session orchestration, preview
 flow, activation flow, and React-facing interaction state may live here when

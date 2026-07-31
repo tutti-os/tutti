@@ -80,7 +80,7 @@ beforeEach(() => {
 });
 
 describe("AgentTranscriptItemView render stability", () => {
-  it("renders a goal control as a dedicated transcript row", () => {
+  it("renders and copies a goal control as a dedicated transcript row", async () => {
     const row: AgentGoalControlRowVM = {
       kind: "goal-control",
       id: "goal-control:client-submit:user:submit-goal-1",
@@ -89,6 +89,8 @@ describe("AgentTranscriptItemView render stability", () => {
       body: "/goal ship it",
       occurredAtUnixMs: 1
     };
+    const writeText = vi.fn(async () => undefined);
+    installAgentHostClipboard(writeText);
 
     const { container } = render(
       <AgentTranscriptItemView
@@ -103,6 +105,20 @@ describe("AgentTranscriptItemView render stability", () => {
     expect(
       container.querySelector('[data-agent-goal-control-action="set"]')
     ).toBeInTheDocument();
+    expect(
+      container.querySelector(
+        '[data-agent-message-footer="true"] [aria-label="agentHost.agentGui.copyMessage"]'
+      )
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.copyMessage"
+      })
+    );
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("/goal ship it");
+    });
   });
 
   it("renders a generated image artifact independently from tool-call expansion", () => {

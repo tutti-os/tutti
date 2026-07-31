@@ -29,11 +29,13 @@ export interface WorkspaceFileManagerHost {
   }): Promise<WorkspaceFileDirectoryListing>;
   search?(
     input: WorkspaceFileSearchInput & {
+      signal: AbortSignal;
       workspaceID: string;
     }
   ): Promise<WorkspaceFileSearchResult>;
   listRecentEntries?(input: {
     limit?: number;
+    signal?: AbortSignal;
     workspaceID: string;
   }): Promise<WorkspaceFileDirectoryListing>;
   createDirectory?(input: {

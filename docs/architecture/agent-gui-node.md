@@ -507,7 +507,7 @@ Interaction responses.
 
 Goal is a Session-level durable entity, not a Turn command. It owns desired/observed state, revision, and an independent operation.
 
-A Goal operation may produce zero or more provider Turns, but it cannot reserve or fabricate Turn IDs. Goal control bypasses the prompt pipeline and does not create a user transcript Turn message. AgentGUI may project its durable session audit as a dedicated `goal-control` timeline row; that row has no Turn ID and does not participate in Turn counts, processing ownership, cancellation, or settlement.
+A Goal operation may produce zero or more provider Turns, but it cannot reserve or fabricate Turn IDs. Goal control bypasses the prompt pipeline and does not create a user transcript Turn message. AgentGUI dispatches `goal/controlRequested`; the workspace Engine owns the provider-neutral `goal/control` command, typed effect execution, and exact Session-scoped result reconciliation. AgentGUI may project its durable session audit as a dedicated `goal-control` timeline row; that row has no Turn ID and does not participate in Turn counts, processing ownership, cancellation, or settlement. When the audit carries a user-visible command body, the dedicated row also uses the shared user-message action surface, including copy.
 
 When a session-level timeline row occurs chronologically between two rows from
 the same Turn, transcript presentation keeps one Turn group and renders the

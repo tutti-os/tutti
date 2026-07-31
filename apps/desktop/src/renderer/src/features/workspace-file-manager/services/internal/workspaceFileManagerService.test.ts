@@ -638,12 +638,16 @@ test("desktop workspace file locations include projects and local entries", () =
 test("desktop workspace file manager adapter forwards recent and scoped search requests", async () => {
   const dependencies = createDependenciesStub();
   let recentLimit: number | undefined;
+  let recentSignal: AbortSignal | null = null;
   let searchWithin: string | undefined;
+  let searchSignal: AbortSignal | null = null;
   dependencies.tuttidClient.listWorkspaceRecentFiles = async (
     workspaceId,
-    input
+    input,
+    requestOptions
   ) => {
     recentLimit = input?.limit;
+    recentSignal = requestOptions?.signal ?? null;
     return {
       directoryPath: "/Users/local",
       entries: [],
@@ -653,9 +657,11 @@ test("desktop workspace file manager adapter forwards recent and scoped search r
   };
   dependencies.tuttidClient.searchWorkspaceFiles = async (
     workspaceId,
-    input
+    input,
+    requestOptions
   ) => {
     searchWithin = input.within;
+    searchSignal = requestOptions?.signal ?? null;
     return {
       entries: [],
       root: "/Users/local",
@@ -670,19 +676,25 @@ test("desktop workspace file manager adapter forwards recent and scoped search r
     },
     () => "en"
   );
+  const recentController = new AbortController();
+  const searchController = new AbortController();
 
   await adapter.listRecentEntries?.({
     limit: 7,
+    signal: recentController.signal,
     workspaceID: "workspace-1"
   });
   await adapter.search?.({
     query: "app",
+    signal: searchController.signal,
     within: "/Users/local/repo",
     workspaceID: "workspace-1"
   });
 
   assert.equal(recentLimit, 7);
+  assert.equal(recentSignal, recentController.signal);
   assert.equal(searchWithin, "/Users/local/repo");
+  assert.equal(searchSignal, searchController.signal);
 });
 
 async function flushMicrotasks(): Promise<void> {

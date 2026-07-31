@@ -30,6 +30,56 @@ incomplete`, while a newly created session can still launch.
   [session_runtime_snapshot.go](../../../services/tuttid/service/agent/session_runtime_snapshot.go),
   [model_plan_binding.go](../../../services/tuttid/service/agent/model_plan_binding.go)
 
+### Initial Goal session remains unnamed
+
+- Symptom:
+  A new session created from `/goal <objective>` keeps an empty canonical title
+  and the UI shows the localized unnamed-conversation label after the optimistic
+  activation disappears.
+- Quick checks:
+  Read `workspace_agent_sessions.title` and the first
+  `workspace_agent_messages` row. The affected shape has `kind=session_audit`,
+  `role=user`, `goalControl=true`, and no normal text Turn.
+- Root cause:
+  Typed initial Goal intentionally skips the ordinary initial Turn. Title
+  derivation existed only in the normal initial-content `Exec` path, so the
+  session was persisted without a title even though the Goal audit contained the
+  submitted command.
+- Fix:
+  Derive the title in Host before provider startup from `InitialDisplayPrompt`;
+  when that field is absent, synthesize `/goal <objective>` or `/goal <action>`.
+  Mark the derived title established so later runtime state cannot replace it.
+- Validation:
+  Run the shared initial-Goal conformance scenario through both direct Host and
+  service-adapter drivers. Assert the returned canonical title and verify the
+  zero-Turn Goal operation still replays without a second provider startup.
+- References:
+  [packages/agent/host/README.md](../../../packages/agent/host/README.md)
+  [lifecycle.go](../../../packages/agent/host/lifecycle.go)
+  [session_lifecycle_scenarios.go](../../../packages/agent/host/conformance/session_lifecycle_scenarios.go)
+
+### Goal-control row has no copy action
+
+- Symptom:
+  A visible `/goal ...` user bubble has no copy button on hover, while ordinary
+  user text bubbles have one.
+- Quick checks:
+  Inspect the row kind. `goal-control` renders through `AgentGoalControlRow`,
+  not `AgentMessageBlock`; search direct `AgentRichTextReadonly` uses for a
+  renderer that bypasses `AgentCopyableMessageGroup`.
+- Root cause:
+  The special row reused the read-only rich-text renderer but not the shared
+  message action wrapper.
+- Fix:
+  Wrap the row in `AgentCopyableMessageGroup` and write through the host
+  clipboard, with the browser clipboard as the renderer fallback.
+- Validation:
+  Render a durable goal-control row, hover it, assert the copy button exists,
+  click it, and verify the exact command body is written.
+- References:
+  [AgentGoalControlRow.tsx](../../../packages/agent/gui/shared/agentConversation/components/AgentGoalControlRow.tsx)
+  [AgentMessageActions.tsx](../../../packages/agent/gui/shared/agentConversation/components/AgentMessageActions.tsx)
+
 ### One hung provider startup blocks unrelated Agent sessions
 
 - **Symptom:** One provider process starts but never reaches runtime-ready, then

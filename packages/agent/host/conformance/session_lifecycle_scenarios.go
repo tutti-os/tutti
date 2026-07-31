@@ -86,10 +86,11 @@ func runCreateWithInitialGoal(ctx context.Context, driver Driver) error {
 		return err
 	}
 	input := agenthost.CreateSessionInput{
-		AgentSessionID: "session-initial-goal",
-		AgentTargetID:  "target-1",
-		Provider:       "codex",
-		ClientSubmitID: "create-goal-submit-1",
+		AgentSessionID:       "session-initial-goal",
+		AgentTargetID:        "target-1",
+		Provider:             "codex",
+		ClientSubmitID:       "create-goal-submit-1",
+		InitialDisplayPrompt: "/goal ship the feature",
 		InitialGoalControl: &agenthost.TypedGoalControl{
 			Action:    "set",
 			Objective: "ship the feature",
@@ -101,6 +102,9 @@ func runCreateWithInitialGoal(ctx context.Context, driver Driver) error {
 	}
 	if session.SessionID != "session-initial-goal" || turnID != "" {
 		return fmt.Errorf("create with typed initial goal = %#v turn %q", session, turnID)
+	}
+	if session.Title != "/goal ship the feature" {
+		return fmt.Errorf("typed initial goal title=%q", session.Title)
 	}
 	goal, err := driver.GetGoalState(ctx, agenthost.SessionRef{
 		WorkspaceID:    "workspace-1",

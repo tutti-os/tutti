@@ -262,9 +262,11 @@ migrate without payload-shape heuristics.
 New-Session Goal Control uses the same activation path. The Engine carries a
 typed `initialGoalControl`; Desktop and Mobile send it through the typed Create
 contract with empty initial content. Agent Host creates the Session and durable
-Goal operation without creating a Turn. Non-empty initial content and typed
-initial Goal are mutually exclusive, and product adapters must not reconstruct
-the command from display text.
+Goal operation without creating a Turn. It establishes the canonical Session
+title from the display prompt, or from a synthesized `/goal` command when the
+display prompt is absent. Non-empty initial content and typed initial Goal are
+mutually exclusive, and product adapters must not reconstruct the command from
+display text.
 Desktop AgentGUI and Mobile call `stopSession` instead of constructing
 `session/stopRequested` protocol fields. The same method stops an active Turn
 or records a bounded request that cancels the first Turn produced by an

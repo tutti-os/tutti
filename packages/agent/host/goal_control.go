@@ -177,6 +177,29 @@ func ParseTypedGoalControl(content []PromptContentBlock, guidance bool) (TypedGo
 	}
 }
 
+func typedGoalDisplayPrompt(goal TypedGoalControl) string {
+	if goal.Action == "set" {
+		return firstNonEmpty("/goal "+strings.TrimSpace(goal.Objective), "")
+	}
+	return firstNonEmpty("/goal "+strings.TrimSpace(goal.Action), "")
+}
+
+func initialGoalRuntimeTitle(
+	explicitTitle string,
+	displayPrompt string,
+	goal TypedGoalControl,
+	isTypedGoal bool,
+) (string, bool) {
+	title := strings.TrimSpace(explicitTitle)
+	if isTypedGoal && NormalizeTitle(title) == "" {
+		title = DeriveInitialTitle(
+			"",
+			firstNonEmpty(strings.TrimSpace(displayPrompt), typedGoalDisplayPrompt(goal)),
+		)
+	}
+	return title, NormalizeTitle(title) != ""
+}
+
 // GoalControl performs a direct goal action (pause/resume/clear/set) on the
 // session's thread. Like Cancel it is a control operation: it never opens a
 // turn, so it works while a turn is running.
