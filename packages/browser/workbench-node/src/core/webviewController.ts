@@ -60,6 +60,7 @@ interface BrowserNodeWebviewControllerEntry {
   refCount: number;
   registeredGuestId: number | null;
   registeringGuestId: number | null;
+  requestGuestRegistration: (() => void) | null;
   state: BrowserNodeWebviewControllerState;
   webview: BrowserNodeWebviewTag | null;
 }
@@ -136,6 +137,7 @@ function createBrowserNodeWebviewControllerEntry(
     refCount: 0,
     registeredGuestId: null,
     registeringGuestId: null,
+    requestGuestRegistration: null,
     state,
     webview: null
   } as BrowserNodeWebviewControllerEntry;
@@ -186,6 +188,7 @@ function createBrowserNodeWebviewControllerEntry(
         notifyListeners: true,
         rebindWebview: true
       });
+      entry.requestGuestRegistration?.();
     },
     setWebview(element) {
       if (entry.webview === element) {
@@ -223,7 +226,10 @@ function resolveBrowserNodeWebviewControllerState(
   });
   return {
     devToolsContextMenu: null,
-    shouldRenderWebview: context.lifecycle !== "cold",
+    // Automation creates about:blank first so main can attach its request guard
+    // before any external navigation. That blank guest must mount while cold.
+    shouldRenderWebview:
+      context.lifecycle !== "cold" || context.automationTarget != null,
     webviewKey: `${context.nodeId}:${webviewPartition}`,
     webviewPartition,
     webviewSrc: browserNodeInitialWebviewSrc
@@ -255,7 +261,7 @@ function reconcileBrowserNodeWebviewControllerState(
         })
         .catch(() => undefined);
     }
-    if (entry.context.lifecycle === "cold") {
+    if (!nextState.shouldRenderWebview) {
       scheduleBrowserNodeGuestUnregister(entry);
     } else {
       const pendingGuestId = clearPendingBrowserNodeGuestUnregister(
@@ -264,16 +270,18 @@ function reconcileBrowserNodeWebviewControllerState(
       if (entry.registeredGuestId === null && pendingGuestId !== null) {
         entry.registeredGuestId = pendingGuestId;
       }
-      void entry.context.feature.hostApi
-        .prepareSession({
-          navigationPolicy: entry.context.navigationPolicy,
-          nodeId: entry.context.nodeId,
-          profileId: entry.context.profileId,
-          sessionMode: entry.context.sessionMode,
-          sessionPartition: entry.context.sessionPartition,
-          url: entry.context.initialUrl
-        })
-        .catch(() => undefined);
+      if (entry.context.lifecycle !== "cold") {
+        void entry.context.feature.hostApi
+          .prepareSession({
+            navigationPolicy: entry.context.navigationPolicy,
+            nodeId: entry.context.nodeId,
+            profileId: entry.context.profileId,
+            sessionMode: entry.context.sessionMode,
+            sessionPartition: entry.context.sessionPartition,
+            url: entry.context.initialUrl
+          })
+          .catch(() => undefined);
+      }
     }
   }
 
@@ -383,6 +391,7 @@ function scheduleBrowserNodeGuestUnregister(
 function detachBrowserNodeWebview(
   entry: BrowserNodeWebviewControllerEntry
 ): void {
+  entry.requestGuestRegistration = null;
   if (!entry.webview) {
     entry.attachedListeners = [];
     return;
@@ -434,12 +443,25 @@ function attachBrowserNodeWebview(
     }
   };
 
-  const handleDidAttach: EventListener = () => {
-    void registerGuest().catch(() => undefined);
+  const requestGuestRegistration = (): void => {
+    if (entry.refCount === 0) {
+      return;
+    }
+    void registerGuest().catch((error: unknown) => {
+      reportBrowserNodeWebviewDiagnostic(
+        entry,
+        "guest.registration.failed",
+        {
+          error: error instanceof Error ? error.message : String(error),
+          webContentsId: readBrowserNodeWebContentsId(webview),
+          webviewPartition: entry.state.webviewPartition
+        },
+        "warn"
+      );
+    });
   };
-  const handleDomReady: EventListener = () => {
-    void registerGuest().catch(() => undefined);
-  };
+  const handleDidAttach: EventListener = requestGuestRegistration;
+  const handleDomReady: EventListener = requestGuestRegistration;
   const handleGuestInteraction: EventListener = () => {
     entry.context.onGuestInteraction?.();
     if (entry.context.automationTarget) {
@@ -509,6 +531,10 @@ function attachBrowserNodeWebview(
     webview.addEventListener(record.event, record.listener);
   }
   entry.attachedListeners = records;
+  entry.requestGuestRegistration = requestGuestRegistration;
+  // A restored or already-ready webview may have emitted both events before
+  // this controller bound its listeners. Registration is safe to retry.
+  requestGuestRegistration();
 }
 
 function resolveBrowserNodeContextMenuPoint(

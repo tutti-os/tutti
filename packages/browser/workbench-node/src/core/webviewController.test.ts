@@ -56,6 +56,96 @@ test("Browser Node webview controller derives render state and partition", () =>
   assert.equal(state.webviewSrc, "about:blank");
 });
 
+test("Browser Node webview controller renders and registers cold automation targets", async () => {
+  const registerCalls: Array<{
+    automationTarget: unknown;
+    url: string | undefined;
+    webContentsId: number;
+  }> = [];
+  const feature = createBrowserNodeFeature({
+    hostApi: createBrowserNodeHostApi({
+      registerGuest(payload) {
+        registerCalls.push({
+          automationTarget: payload.automationTarget,
+          url: payload.url,
+          webContentsId: payload.webContentsId
+        });
+        return Promise.resolve();
+      }
+    })
+  });
+
+  const automationTarget = {
+    agentSessionId: "agent-a",
+    focused: false,
+    selected: true,
+    surfaceId: "agent-browser",
+    surfaceRole: "agent" as const,
+    tabId: "tab-1",
+    workspaceId: "workspace-a"
+  };
+  const controller = acquireBrowserNodeWebviewController({
+    automationTarget,
+    feature,
+    initialUrl: "about:blank",
+    lifecycle: "cold",
+    nodeId: "browser-cold-automation",
+    profileId: null,
+    sessionMode: "shared"
+  });
+
+  controller.retain();
+  assert.equal(controller.getState().shouldRenderWebview, true);
+  controller.setWebview(
+    new MockBrowserNodeWebviewTag(17) as unknown as BrowserNodeWebviewTag
+  );
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.deepEqual(registerCalls, [
+    {
+      automationTarget,
+      url: "about:blank",
+      webContentsId: 17
+    }
+  ]);
+  controller.release();
+});
+
+test("Browser Node webview controller immediately registers an already-ready webview", async () => {
+  const registerCalls: number[] = [];
+  const feature = createBrowserNodeFeature({
+    hostApi: createBrowserNodeHostApi({
+      registerGuest(payload) {
+        registerCalls.push(payload.webContentsId);
+        return Promise.resolve();
+      }
+    })
+  });
+
+  const controller = acquireBrowserNodeWebviewController({
+    feature,
+    initialUrl: "https://example.com/",
+    lifecycle: "active",
+    nodeId: "browser-already-ready",
+    profileId: null,
+    sessionMode: "shared"
+  });
+
+  controller.setWebview(
+    new MockBrowserNodeWebviewTag(19) as unknown as BrowserNodeWebviewTag
+  );
+  await Promise.resolve();
+  assert.deepEqual(registerCalls, []);
+
+  controller.retain();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.deepEqual(registerCalls, [19]);
+  controller.release();
+});
+
 test("Browser Node webview controller tolerates webviews before dom-ready exposes webContentsId", async () => {
   const registerCalls: number[] = [];
   const feature = createBrowserNodeFeature({

@@ -107,10 +107,15 @@ Agent Browser surfaces. The package registry then exposes the current
 workspace's User tabs and only the calling Agent session's Agent tabs, with
 stable page selection and per-tab leases. Website Apps remain excluded unless
 a host explicitly opts them in. `new_page` is created as `about:blank`; the
-package attaches request interception before navigating to the requested URL,
-so the initial document, redirects, and subresources all cross the same guard.
-Agent release is a lifecycle barrier: queued target work drains before guards
-are disabled and retained Agent pages are closed, and later calls fail closed.
+package keeps automation-projected blank tabs mounted even while their runtime
+is cold so the Electron guest can register, then attaches request interception
+before navigating to the requested URL. Ordinary cold tabs remain lazy. Guest
+binding also attempts registration immediately and again on Electron attach
+events, allowing an already-ready or restored webview to re-register with a
+fresh host registry. The initial document, redirects, and subresources
+therefore all cross the same guard. Agent release is a lifecycle barrier:
+queued target work drains before guards are disabled and retained Agent pages
+are closed, and later calls fail closed.
 
 `createBrowserNodeAutomationServer` publishes the registry on authenticated
 loopback and writes a private listener-info file for an explicitly configured

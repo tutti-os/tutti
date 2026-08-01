@@ -356,34 +356,52 @@ delimited by ---`, and the composer skill picker may show partial or
 - Symptom:
   The standalone Agent window opens its Browser sidebar with the expected
   title and panel background, but no page, error card, or Browser Node guest
-  appears. Desktop logs contain no `Browser Node webview will attach` entry for
-  the standalone browser node.
+  appears. Desktop logs may contain no `Browser Node webview will attach` entry
+  for the standalone browser node. Browser CLI calls may instead fail with
+  `In-app Browser page did not attach`, followed by `No in-app Browser pages
+are available`.
 - Quick checks:
   Inspect `window.tutti.browser` in the `view=agent` renderer before debugging
   BrowserNode lifecycle or network access. Compare the preload route gate for
-  `view=agent` with `view=workspace`. An absent browser API explains a panel
-  that renders only host chrome and never reaches Electron guest attachment.
+  `view=agent` with `view=workspace`. If the browser API exists, inspect the
+  requested tab's URL, runtime lifecycle, and automation metadata. An
+  `about:blank` automation target that remains cold must still render a webview.
+  For a restored visible page that is missing from `list-pages`, check whether
+  guest registration depended only on attach events that already fired.
 - Root cause:
-  The desktop preload exposed browser and workspace-app bridges only when the
-  renderer query used `view=workspace`. Standalone Agent windows use
-  `view=agent`, so their renderer received no `DesktopBrowserApi`; the sidebar
-  correctly reserved panel space but had no host API with which to activate or
-  register a `<webview>` guest.
+  Two lifecycle gaps can produce the same blank panel. The desktop preload may
+  expose browser and workspace-app bridges only for `view=workspace`, leaving
+  a `view=agent` renderer without `DesktopBrowserApi`. Separately, automation
+  deliberately creates `about:blank` before installing its request guard, but
+  the ordinary Browser Node cold policy does not auto-activate blank URLs and
+  does not render cold webviews. The target then cannot register and the main
+  process times out waiting for attachment. Registration that runs only from
+  `did-attach` or `dom-ready` can also miss an already-ready restored webview
+  after the host registry is recreated.
 - Fix:
   Treat both `workspace` and `agent` as workspace surfaces in the preload route
-  gate. Keep dashboard and unrelated window routes excluded. Because preload
-  code is loaded when the Electron renderer is created, restart the Electron
-  process after changing this gate; renderer HMR is insufficient.
+  gate. Keep dashboard and unrelated window routes excluded. Keep
+  automation-projected blank tabs mounted while cold, without navigating them,
+  so their guest can register before the request guard loads the requested URL.
+  Attempt guest registration immediately when binding a webview and retry
+  idempotently on Electron attach events. Because preload code is loaded when
+  the Electron renderer is created, restart the Electron process after changing
+  that gate; renderer HMR is insufficient.
 - Validation:
   Unit-test the route predicate for `workspace`, `agent`, `dashboard`, and an
-  absent view. Run the desktop typecheck, Electron runtime-boundary check, and
-  desktop build. Confirm the preload remains a self-contained `index.cjs`, then
-  open the Agent Browser panel and verify desktop logs record the shared
-  Browser Node partition attaching with the browser guest preload.
+  absent view. Add Browser Node controller coverage that ordinary cold tabs
+  remain lazy, cold automation targets render and register, and an already-ready
+  webview registers without another attach event. Run the desktop typecheck,
+  Electron runtime-boundary check, and desktop build. Confirm the preload
+  remains a self-contained `index.cjs`, then open the Agent Browser panel and
+  verify desktop logs record the shared Browser Node partition attaching with
+  the browser guest preload.
 - References:
   [main.ts](../../../apps/desktop/src/preload/entries/main.ts)
   [workspaceSurfacePreload.ts](../../../apps/desktop/src/preload/entries/workspaceSurfacePreload.ts)
   [StandaloneAgentToolSidebar.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/StandaloneAgentToolSidebar.tsx)
+  [webviewController.ts](../../../packages/browser/workbench-node/src/core/webviewController.ts)
+  [automationRegistry.ts](../../../packages/browser/workbench-node/src/electron-main/automationRegistry.ts)
 
 ### Browser Node action finds a webview but page injection does nothing
 
