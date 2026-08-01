@@ -114,7 +114,7 @@ The runtime must:
 
 - Bind `$TUTTI_APP_HOST:$TUTTI_APP_PORT`, defaulting the host to `127.0.0.1` only when the host variable is absent.
 - Fail startup with a clear error when `$TUTTI_APP_PORT` is absent. Do not guess, reserve, or hard-code a fallback port; the daemon owns port allocation.
-- Serve the manifest healthcheck path with a 2xx response.
+- Serve the manifest healthcheck path with a 2xx response, and echo `$TUTTI_APP_INSTANCE_TOKEN` back in the `X-Tutti-App-Instance` response header so the daemon can confirm the responding server is this app and not another local process that grabbed the port.
 - Treat `$TUTTI_APP_PACKAGE_DIR` as read-only after startup.
 - Write durable app artifacts and non-database state only under `$TUTTI_APP_DATA_DIR`.
 - Write active SQLite databases, WAL/SHM files, indexes, and other database-managed files only under `$TUTTI_APP_DATABASE_DIR`. The directory is host-local and durable for the installation; apps may create multiple databases beneath it.
