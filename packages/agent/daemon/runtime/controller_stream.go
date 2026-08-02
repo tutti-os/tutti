@@ -141,16 +141,17 @@ func sessionStateSnapshotStreamEvent(session Session) StreamEvent {
 func statePatchFromSessionStateSnapshot(snapshot SessionStateSnapshot) agentsessionstore.WorkspaceAgentStatePatch {
 	runtimeContext := clonePayload(snapshot.RuntimeContext)
 	return agentsessionstore.WorkspaceAgentStatePatch{
-		AgentSessionID:    strings.TrimSpace(snapshot.AgentSessionID),
-		AgentTargetID:     strings.TrimSpace(snapshot.AgentTargetID),
-		Provider:          strings.TrimSpace(snapshot.Provider),
-		ProviderSessionID: strings.TrimSpace(snapshot.ProviderSessionID),
-		Model:             strings.TrimSpace(runtimeContextString(runtimeContext, "model")),
-		PermissionModeID:  strings.TrimSpace(snapshot.PermissionModeID),
-		Settings:          sessionSettingsPayload(snapshot.Settings),
-		Capabilities:      canonical.CloneCapabilitySnapshot(snapshot.Capabilities),
-		RuntimeContext:    runtimeContext,
-		TurnLifecycle:     activityTurnLifecycleFromRuntime(snapshot.TurnLifecycle),
+		AgentSessionID:          strings.TrimSpace(snapshot.AgentSessionID),
+		AgentTargetID:           strings.TrimSpace(snapshot.AgentTargetID),
+		Provider:                strings.TrimSpace(snapshot.Provider),
+		ProviderSessionID:       strings.TrimSpace(snapshot.ProviderSessionID),
+		Model:                   strings.TrimSpace(runtimeContextString(runtimeContext, "model")),
+		PermissionModeID:        strings.TrimSpace(snapshot.PermissionModeID),
+		Settings:                sessionSettingsPayload(snapshot.Settings),
+		Capabilities:            canonical.CloneCapabilitySnapshot(snapshot.Capabilities),
+		RuntimeContext:          runtimeContext,
+		GoalProjectionAuthority: goalProjectionAuthorityForProvider(snapshot.Provider),
+		TurnLifecycle:           activityTurnLifecycleFromRuntime(snapshot.TurnLifecycle),
 		SubmitAvailability: activitySubmitAvailabilityFromRuntime(
 			snapshot.SubmitAvailability,
 		),
@@ -160,6 +161,13 @@ func statePatchFromSessionStateSnapshot(snapshot SessionStateSnapshot) agentsess
 		CurrentPhase:     snapshotStatusPhase(snapshot.Status),
 		OccurredAtUnixMS: snapshot.UpdatedAtUnixMS,
 	}
+}
+
+func goalProjectionAuthorityForProvider(provider string) string {
+	if providerUsesHostGoalProjection(provider) {
+		return canonical.GoalProjectionAuthorityHost
+	}
+	return ""
 }
 
 func activityTurnLifecycleFromRuntime(value *TurnLifecycle) *canonical.WorkspaceAgentTurnLifecycle {

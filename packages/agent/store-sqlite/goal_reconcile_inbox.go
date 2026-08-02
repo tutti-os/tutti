@@ -12,9 +12,10 @@ import (
 var ErrGoalReconcileInboxConflict = errors.New("goal reconcile inbox request identity conflict")
 
 const (
-	goalReconcilePhasePending   = "quiesce_pending"
-	goalReconcilePhaseFinalized = "finalized"
-	goalReconcileFinalizeGrace  = 5 * time.Second
+	goalReconcilePhasePending          = "quiesce_pending"
+	goalReconcilePhaseFinalized        = "finalized"
+	goalReconcilePhaseProviderObserved = "provider_observed"
+	goalReconcileFinalizeGrace         = 5 * time.Second
 )
 
 func (s *Store) PutGoalReconcileInbox(ctx context.Context, input GoalReconcileInboxItem) (bool, error) {
@@ -123,13 +124,26 @@ func normalizeGoalReconcileInboxPhase(payload map[string]any) (string, error) {
 		// Rows written by older runtimes carried the post-quiesce result only.
 		return goalReconcilePhaseFinalized, nil
 	}
-	if phase != goalReconcilePhasePending && phase != goalReconcilePhaseFinalized {
+	if phase != goalReconcilePhasePending && phase != goalReconcilePhaseFinalized && phase != goalReconcilePhaseProviderObserved {
 		return "", fmt.Errorf("unsupported goal reconcile inbox phase %q", phase)
 	}
 	return phase, nil
 }
 
 func goalReconcileInboxIdentityEqual(left, right map[string]any) bool {
+	leftPhase, leftPhaseErr := normalizeGoalReconcileInboxPhase(left)
+	rightPhase, rightPhaseErr := normalizeGoalReconcileInboxPhase(right)
+	if leftPhaseErr != nil || rightPhaseErr != nil {
+		return false
+	}
+	if leftPhase == goalReconcilePhaseProviderObserved || rightPhase == goalReconcilePhaseProviderObserved {
+		if leftPhase != rightPhase {
+			return false
+		}
+		leftJSON, leftErr := json.Marshal(left)
+		rightJSON, rightErr := json.Marshal(right)
+		return leftErr == nil && rightErr == nil && string(leftJSON) == string(rightJSON)
+	}
 	immutable := []string{
 		"providerTurnId", "reason", "fenceMode", "expectedOperationId",
 		"expectedRevision", "expectedRepairEpoch",
@@ -147,10 +161,18 @@ func (s *Store) ListClaimableGoalReconcileInbox(ctx context.Context, now int64, 
 	if limit <= 0 || limit > 1000 {
 		limit = 64
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT request_id,workspace_id,agent_session_id,payload_json,status,attempt,
-COALESCE(lease_owner,''),COALESCE(lease_expires_at_unix_ms,0),COALESCE(next_attempt_at_unix_ms,0),last_error,created_at_unix_ms,updated_at_unix_ms
-FROM workspace_agent_goal_reconcile_inbox WHERE (status='prepared' AND next_attempt_at_unix_ms<=?) OR (status='leased' AND lease_expires_at_unix_ms<=?)
-ORDER BY created_at_unix_ms LIMIT ?`, now, now, limit)
+	rows, err := s.db.QueryContext(ctx, `SELECT candidate.request_id,candidate.workspace_id,candidate.agent_session_id,candidate.payload_json,candidate.status,candidate.attempt,
+COALESCE(candidate.lease_owner,''),COALESCE(candidate.lease_expires_at_unix_ms,0),COALESCE(candidate.next_attempt_at_unix_ms,0),candidate.last_error,candidate.created_at_unix_ms,candidate.updated_at_unix_ms
+FROM workspace_agent_goal_reconcile_inbox AS candidate
+WHERE ((candidate.status='prepared' AND candidate.next_attempt_at_unix_ms<=?) OR (candidate.status='leased' AND candidate.lease_expires_at_unix_ms<=?))
+  AND NOT EXISTS (
+    SELECT 1 FROM workspace_agent_goal_reconcile_inbox AS earlier
+    WHERE earlier.workspace_id=candidate.workspace_id AND earlier.agent_session_id=candidate.agent_session_id
+      AND earlier.status IN ('prepared','leased')
+      AND (earlier.created_at_unix_ms<candidate.created_at_unix_ms OR
+           (earlier.created_at_unix_ms=candidate.created_at_unix_ms AND earlier.rowid<candidate.rowid))
+  )
+ORDER BY candidate.created_at_unix_ms,candidate.rowid LIMIT ?`, now, now, limit)
 	if err != nil {
 		return nil, err
 	}

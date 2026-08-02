@@ -167,7 +167,10 @@ export function fakeDelegatedTaskQuery(
 
 export function fakeParallelDelegatedTaskContinuationQuery(
   prompt: AsyncIterable<SDKUserMessage>,
-  options: { rootResultBeforeContinuations?: boolean } = {}
+  options: {
+    rootResultBeforeContinuations?: boolean;
+    beforeTaskNotificationResult?: (index: number) => void | Promise<void>;
+  } = {}
 ): AsyncIterable<SDKMessage> {
   return {
     async *[Symbol.asyncIterator]() {
@@ -231,6 +234,7 @@ export function fakeParallelDelegatedTaskContinuationQuery(
             content: [{ type: "text", text: `Continuation ${index}` }]
           }
         } as unknown as SDKMessage;
+        await options.beforeTaskNotificationResult?.(index);
         yield {
           type: "result",
           subtype: "success",

@@ -140,6 +140,7 @@ func (a agentRuntimeAdapter) CanResume(input agentservice.RuntimeResumeInput) bo
 		Visible:           input.Visible,
 		RuntimeContext:    cloneRuntimeContext(input.RuntimeContext),
 		ProviderTargetRef: cloneRuntimeContext(input.ProviderTargetRef),
+		GoalGeneration:    agentRuntimeGoalGeneration(input.GoalGeneration),
 	})
 }
 
@@ -383,12 +384,26 @@ func (a agentRuntimeAdapter) Resume(ctx context.Context, input agentservice.Runt
 		Visible:           input.Visible,
 		RuntimeContext:    cloneRuntimeContext(input.RuntimeContext),
 		ProviderTargetRef: cloneRuntimeContext(input.ProviderTargetRef),
+		GoalGeneration:    agentRuntimeGoalGeneration(input.GoalGeneration),
 		RecreateIfMissing: input.RecreateIfMissing,
 	})
 	if err != nil {
 		return agentservice.ProviderRuntimeSession{}, mapAgentRuntimeError(err)
 	}
 	return a.runtimeSessionWithState(session), nil
+}
+
+func agentRuntimeGoalGeneration(value *agenthost.RuntimeGoalGeneration) *agentruntime.GoalRuntimeGeneration {
+	if value == nil {
+		return nil
+	}
+	return &agentruntime.GoalRuntimeGeneration{
+		OperationID:       strings.TrimSpace(value.OperationID),
+		Revision:          value.Revision,
+		RepairEpoch:       value.RepairEpoch,
+		ActivatedAtUnixMS: value.ActivatedAtUnixMS,
+		Goal:              cloneRuntimeContext(value.Goal),
+	}
 }
 
 func (a agentRuntimeAdapter) Session(workspaceID string, agentSessionID string) (agentservice.ProviderRuntimeSession, bool) {

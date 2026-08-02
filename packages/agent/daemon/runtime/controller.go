@@ -46,6 +46,7 @@ type Controller struct {
 	hub                         *EventHub
 	reporter                    DurableActivityReporter
 	reportQueue                 *reportRequestQueue
+	goalObservationQueue        *goalObservationRequestQueue
 	providerGoalAdoptionSink    ProviderGoalAdoptionSink
 	terminalInteractions        terminalInteractiveDispositionStore
 	streamObserver              RuntimeStreamEventObserver
@@ -92,8 +93,12 @@ type GoalControlAppliedObservation struct {
 	OccurredAtUnixMS int64
 }
 
+type GoalControlAppliedObservationResult struct {
+	Accepted bool
+}
+
 type GoalControlLifecycleObserver interface {
-	ObserveGoalControlApplied(context.Context, GoalControlAppliedObservation) error
+	ObserveGoalControlApplied(context.Context, GoalControlAppliedObservation) (GoalControlAppliedObservationResult, error)
 }
 
 type controllerLifecycleLock struct {
@@ -128,6 +133,7 @@ type reportRequest struct {
 	submitProvenance bool
 	barrier          bool
 	done             chan error
+	goalTransition   *controllerGoalGenerationTransition
 }
 
 type ReleaseIdleLiveSessionsInput struct {
@@ -193,6 +199,7 @@ func NewControllerWithAdapterResolver(adapters []Adapter, reporter DurableActivi
 		reporter:                    reporter,
 	}
 	if reporter != nil {
+		controller.goalObservationQueue = newGoalObservationRequestQueue()
 		if _, ok := reporter.(asyncActivityReporter); !ok {
 			controller.reportQueue = newReportRequestQueue()
 			go controller.runReportWorker()

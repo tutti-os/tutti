@@ -40,6 +40,7 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 		return nil, err
 	}
 	conn = wrapProviderLaunchCleanup(conn, cleanup)
+	liveState, restoredGoalIdentity := restoredClaudeSDKGoalRuntimeState(session.GoalGeneration)
 	adapterSession := &claudeSDKAdapterSession{
 		conn:              conn,
 		reader:            &claudeSDKLineReader{conn: conn},
@@ -52,7 +53,10 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 		pendingRequests:   make(map[string]*pendingInteractiveRequest),
 		pendingResponses:  make(map[string]chan claudeSDKSidecarEvent),
 		turns:             make(map[string]*claudeSDKTurnWaiter),
-		liveState:         newClaudeSDKLiveState(),
+		liveState:         liveState,
+		goalOperationID:   restoredGoalIdentity.operationID,
+		goalRevision:      restoredGoalIdentity.revision,
+		goalRepairEpoch:   restoredGoalIdentity.repairEpoch,
 	}
 	a.storeSession(session.AgentSessionID, adapterSession)
 	a.emitCommandSnapshot(claudeSDKCommandSnapshot(session.AgentSessionID, adapterSession.liveState))
@@ -68,6 +72,17 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 	}
 	for key, value := range claudeCodeSDKStartOptions(session) {
 		startPayload[key] = value
+	}
+	if goal := clonePayload(adapterSession.liveState.goal); len(goal) > 0 {
+		startPayload["goal"] = goal
+	}
+	if restoredGoalIdentity.valid() {
+		startPayload["goalGeneration"] = map[string]any{
+			"operationId":       restoredGoalIdentity.operationID,
+			"revision":          restoredGoalIdentity.revision,
+			"repairEpoch":       restoredGoalIdentity.repairEpoch,
+			"activatedAtUnixMs": session.GoalGeneration.ActivatedAtUnixMS,
+		}
 	}
 	if err := adapterSession.send(claudeSDKSidecarRequest{
 		ID:      newID(),
@@ -98,6 +113,25 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 			return nil, errors.New(payloadString(event.Payload, "error"))
 		}
 	}
+}
+
+func restoredClaudeSDKGoalRuntimeState(generation *GoalRuntimeGeneration) (claudeSDKLiveState, goalOperationIdentity) {
+	liveState := newClaudeSDKLiveState()
+	if generation == nil {
+		return liveState, goalOperationIdentity{}
+	}
+	goal := clonePayload(generation.Goal)
+	identity := goalOperationIdentity{
+		operationID: strings.TrimSpace(generation.OperationID),
+		revision:    generation.Revision,
+		repairEpoch: generation.RepairEpoch,
+	}
+	if !identity.valid() || strings.TrimSpace(asString(goal["status"])) != "active" ||
+		strings.TrimSpace(asString(goal["objective"])) == "" {
+		return liveState, goalOperationIdentity{}
+	}
+	liveState.goal = clonePayload(goal)
+	return liveState, identity
 }
 
 func (a *ClaudeCodeSDKAdapter) Resume(ctx context.Context, session Session) error {

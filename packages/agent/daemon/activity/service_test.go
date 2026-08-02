@@ -922,8 +922,9 @@ func TestCapabilityAndRuntimeContextPatchSurviveCompatibilityRoundTrip(t *testin
 	t.Parallel()
 
 	patch := WorkspaceAgentStatePatch{
-		AgentSessionID: "session",
-		Capabilities:   canonical.NewCapabilitySnapshot([]string{canonical.CapabilityGoalPause}),
+		AgentSessionID:          "session",
+		Capabilities:            canonical.NewCapabilitySnapshot([]string{canonical.CapabilityGoalPause}),
+		GoalProjectionAuthority: canonical.GoalProjectionAuthorityHost,
 		RuntimeContextPatch: &canonical.RuntimeContextPatch{
 			Set:   map[string]any{"planMode": true},
 			Unset: []string{"stale"},
@@ -936,6 +937,9 @@ func TestCapabilityAndRuntimeContextPatchSurviveCompatibilityRoundTrip(t *testin
 	}
 	if roundTrip.RuntimeContextPatch == nil || roundTrip.RuntimeContextPatch.Set["planMode"] != true || len(roundTrip.RuntimeContextPatch.Unset) != 1 || roundTrip.RuntimeContextPatch.Unset[0] != "stale" {
 		t.Fatalf("runtime context patch = %#v", roundTrip.RuntimeContextPatch)
+	}
+	if roundTrip.GoalProjectionAuthority != canonical.GoalProjectionAuthorityHost {
+		t.Fatalf("goal projection authority = %q", roundTrip.GoalProjectionAuthority)
 	}
 }
 

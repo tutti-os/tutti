@@ -41,7 +41,7 @@ func claudeGoalSlashPromptUpdate(prompt string) (map[string]any, string, bool) {
 // Claude Code's goal is a session-level entity inside the CLI (a condition
 // whose evaluator drives autonomous new turns until it is met), but the SDK
 // exposes no control API for it: commands go in as /goal prompt text, state
-// comes out as active_goal lifecycle messages, and there is no paused state — an
+// comes out through the SDK transcript mirror, and there is no paused state — an
 // interrupted goal stays active and resumes continuation after the next user
 // message. The adapter therefore keeps goal interaction 1:1 with that
 // surface: set and clear forward the native /goal command (the sidecar
@@ -706,59 +706,81 @@ func (a *ClaudeCodeSDKAdapter) goalEventsOnArmTurnFailed(
 }
 
 // applyClaudeSDKGoalObservation consumes the sidecar's normalized projection
-// of Claude active_goal messages and native goal_status attachments.
+// of Claude's durable goal-status transcript records.
 func (a *ClaudeCodeSDKAdapter) applyClaudeSDKGoalObservation(
 	adapterSession *claudeSDKAdapterSession,
 	payload map[string]any,
-) string {
+) (string, map[string]any) {
+	identity := goalOperationIdentity{
+		operationID: strings.TrimSpace(payloadString(payload, "goalOperationId")),
+		revision:    payloadInt64(payload, "goalRevision"),
+		repairEpoch: payloadInt64(payload, "goalRepairEpoch"),
+	}
+	if !identity.valid() {
+		return "", nil
+	}
 	updateType := strings.TrimSpace(payloadString(payload, "updateType"))
-	switch updateType {
-	case "thread_goal_cleared":
-		a.mu.Lock()
-		defer a.mu.Unlock()
-		adapterSession.goalArmTurnID = ""
-		adapterSession.liveState.goal = nil
-		return updateType
-	case "thread_goal_completed":
-		a.mu.Lock()
-		defer a.mu.Unlock()
-		adapterSession.goalArmTurnID = ""
-		if len(adapterSession.liveState.goal) == 0 {
-			return ""
-		}
-		next := clonePayload(adapterSession.liveState.goal)
-		next["status"] = "complete"
-		delete(next, "reason")
-		adapterSession.liveState.goal = next
-		return "thread_goal_update"
-	case "thread_goal_update":
-		// Continue below and validate the normalized Goal payload.
-	default:
-		return ""
+	if updateType != "thread_goal_update" && updateType != "thread_goal_completed" {
+		return "", nil
 	}
 	goal := payloadObject(payload["goal"])
 	objective := strings.TrimSpace(asString(goal["objective"]))
 	status := strings.TrimSpace(asString(goal["status"]))
-	if objective == "" || status != "active" && status != "complete" {
-		return ""
+	if objective == "" || status != "active" && status != "blocked" && status != "complete" ||
+		updateType == "thread_goal_completed" && status != "complete" {
+		return "", nil
 	}
 	next := map[string]any{"objective": objective, "status": status}
 	if reason := strings.TrimSpace(asString(goal["reason"])); reason != "" {
 		next["reason"] = reason
 	}
-	for _, key := range []string{"iterations", "durationMs", "tokens"} {
-		if value, ok := firstInt64Value(goal, key); ok && value >= 0 {
-			next[key] = value
-		}
-	}
-	if sentinel, ok := goal["sentinel"].(bool); ok {
-		next["sentinel"] = sentinel
-	}
+	copyClaudeGoalCounters(goal, next)
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if strings.TrimSpace(adapterSession.goalOperationID) != identity.operationID ||
+		adapterSession.goalRevision != identity.revision ||
+		adapterSession.goalRepairEpoch != identity.repairEpoch ||
+		len(adapterSession.liveState.goal) == 0 ||
+		objective != strings.TrimSpace(asString(adapterSession.liveState.goal["objective"])) {
+		return "", nil
+	}
 	adapterSession.goalArmTurnID = ""
 	adapterSession.liveState.goal = next
-	return updateType
+	return updateType, clonePayload(next)
+}
+
+func copyClaudeGoalCounters(source, target map[string]any) {
+	for _, key := range []string{"iterations", "durationMs", "tokens"} {
+		if value, ok := firstInt64Value(source, key); ok && value >= 0 {
+			target[key] = value
+		}
+	}
+}
+
+func claudeSDKProviderGoalObservedEvent(
+	session Session,
+	payload map[string]any,
+	updateType string,
+	goal map[string]any,
+) (activityshared.Event, bool) {
+	ctx, ok := activityEventContext(session, newID(), "")
+	if !ok {
+		return activityshared.Event{}, false
+	}
+	metadata := map[string]any{
+		"operationId":    strings.TrimSpace(payloadString(payload, "goalOperationId")),
+		"revision":       payloadInt64(payload, "goalRevision"),
+		"repairEpoch":    payloadInt64(payload, "goalRepairEpoch"),
+		"providerTurnId": payloadString(payload, "providerTurnId"),
+		"source":         payloadString(payload, "source"),
+		"updateType":     strings.TrimSpace(updateType),
+		"goal":           goal,
+	}
+	event := activityshared.NewGoalProviderObserved(ctx, metadata)
+	if occurredAt := payloadInt64(payload, "occurredAtUnixMs"); occurredAt > 0 {
+		event.OccurredAtUnixMS = occurredAt
+	}
+	return event, true
 }
 
 // localGoal returns a copy of the adapter-local goal mirror.

@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { SessionStoreEntry } from "@anthropic-ai/claude-agent-sdk";
 import { withSidecarEventSinkForTest } from "./eventSink.ts";
 import { SessionRuntime } from "./sessionRuntime.ts";
 import { sidecarClaudeOptionsFromPayload } from "./options.ts";
 import { isRecord, testCanUseToolOptions } from "./sessionRuntimeTestCommon.ts";
 import {
   fakeContextUsageQuery,
+  fakeParallelDelegatedTaskContinuationQuery,
   fakeSimpleResultQuery
 } from "./sessionRuntimeTestQueries.delegated.ts";
 import { fakeQueryWithInitializationModels } from "./sessionRuntimeTestQueries.assistant.ts";
@@ -944,7 +946,7 @@ test("goal set scheduling ack followed by immediate clear coalesces before SDK a
   }
 });
 
-test("SDK active_goal messages normalize provider goal lifecycle", async () => {
+test("SDK transcript mirror normalizes provider goal lifecycle", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
   const restoreSink = withSidecarEventSinkForTest((event) =>
     events.push(event)
@@ -965,7 +967,7 @@ test("SDK active_goal messages normalize provider goal lifecycle", async () => {
       },
       sidecarClaudeOptionsFromPayload({}),
       undefined,
-      ({ prompt }) => ({
+      ({ prompt, options }) => ({
         async *[Symbol.asyncIterator]() {
           const outbound = await prompt[Symbol.asyncIterator]().next();
           yield {
@@ -975,185 +977,65 @@ test("SDK active_goal messages normalize provider goal lifecycle", async () => {
             parent_tool_use_id: null,
             session_id: "provider-session-active-goal"
           } as never;
-          yield {
-            type: "active_goal",
-            value: "malformed",
-            uuid: "active-goal-malformed",
-            session_id: "provider-session-active-goal"
-          } as never;
-          yield {
-            type: "active_goal",
-            value: {
-              condition: "count to three",
-              iterations: 2,
-              set_at: "2026-08-02T00:00:00.000Z",
-              tokens_at_start: 100,
-              last_reason: "only reached two"
+          await options.sessionStore?.append(
+            {
+              projectKey: "repo",
+              sessionId: "provider-session-active-goal"
             },
-            uuid: "active-goal-1",
-            session_id: "provider-session-active-goal"
-          } as never;
-          yield {
-            type: "active_goal",
-            value: null,
-            uuid: "active-goal-2",
-            session_id: "provider-session-active-goal"
-          } as never;
-          yield { type: "result", subtype: "success" } as never;
-        },
-        close() {}
-      })
-    );
-
-    await session.start();
-    session.exec("goal-work-turn", "continue");
-    await waitForEvent(events, "turn_completed");
-
-    const updates = events.filter((event) => event.type === "goal_observed");
-    assert.equal(updates.length, 2);
-    assert.deepEqual(updates[0]?.payload, {
-      turnId: "goal-work-turn",
-      providerTurnId: "provider-goal-turn",
-      source: "active_goal",
-      updateType: "thread_goal_update",
-      goal: {
-        objective: "count to three",
-        status: "active",
-        iterations: 2,
-        reason: "only reached two"
-      }
-    });
-    assert.deepEqual(updates[1]?.payload, {
-      turnId: "goal-work-turn",
-      providerTurnId: "provider-goal-turn",
-      source: "active_goal",
-      updateType: "thread_goal_completed"
-    });
-  } finally {
-    restoreSink();
-  }
-});
-
-test("SDK active_goal clear keeps the exact goal command action", async () => {
-  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
-  const restoreSink = withSidecarEventSinkForTest((event) =>
-    events.push(event)
-  );
-  try {
-    const session = new SessionRuntime(
-      "provider-session-goal-clear",
-      "/repo",
-      {},
-      false,
-      false,
-      {
-        model: "",
-        permissionModeId: "default",
-        planMode: false,
-        effort: "",
-        speed: ""
-      },
-      sidecarClaudeOptionsFromPayload({}),
-      undefined,
-      ({ prompt }) => ({
-        async *[Symbol.asyncIterator]() {
-          const outbound = await prompt[Symbol.asyncIterator]().next();
-          yield {
-            ...outbound.value,
-            uuid: "provider-goal-clear-turn",
-            type: "user",
-            parent_tool_use_id: null,
-            session_id: "provider-session-goal-clear"
-          } as never;
-          yield {
-            type: "active_goal",
-            value: null,
-            uuid: "active-goal-clear",
-            session_id: "provider-session-goal-clear"
-          } as never;
-          yield { type: "result", subtype: "success" } as never;
-        },
-        close() {}
-      })
-    );
-
-    await session.start();
-    session.exec("goal-clear-turn", "/goal clear", undefined, undefined, {
-      operationId: "goal-op-clear",
-      revision: 2,
-      action: "clear"
-    });
-    await waitForEvent(events, "turn_completed");
-
-    const update = events.find((event) => event.type === "goal_observed");
-    assert.equal(update?.payload?.action, "clear");
-    assert.equal(update?.payload?.source, "active_goal");
-    assert.equal(update?.payload?.updateType, "thread_goal_cleared");
-  } finally {
-    restoreSink();
-  }
-});
-
-test("native goal_status attachments normalize the live Stop hook lifecycle", async () => {
-  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
-  const restoreSink = withSidecarEventSinkForTest((event) =>
-    events.push(event)
-  );
-  try {
-    const session = new SessionRuntime(
-      "provider-session-goal-status",
-      "/repo",
-      {},
-      false,
-      false,
-      {
-        model: "",
-        permissionModeId: "default",
-        planMode: false,
-        effort: "",
-        speed: ""
-      },
-      sidecarClaudeOptionsFromPayload({}),
-      undefined,
-      ({ prompt }) => ({
-        async *[Symbol.asyncIterator]() {
-          const outbound = await prompt[Symbol.asyncIterator]().next();
-          yield {
-            ...outbound.value,
-            uuid: "provider-goal-status-turn",
-            type: "user",
-            parent_tool_use_id: null,
-            session_id: "provider-session-goal-status"
-          } as never;
-          yield {
-            type: "attachment",
-            attachment: {
-              type: "goal_status",
-              condition: "count to three"
-            }
-          } as never;
-          yield {
-            type: "attachment",
-            attachment: {
-              type: "goal_status",
-              met: false,
-              condition: "count to three",
-              reason: "only reached two",
-              iterations: 2
-            }
-          } as never;
-          yield {
-            type: "attachment",
-            attachment: {
-              type: "goal_status",
-              met: true,
-              condition: "count to three",
-              reason: "counted one number per turn",
-              iterations: 3,
-              durationMs: 16_386,
-              tokens: 1_479
-            }
-          } as never;
+            [
+              {
+                type: "attachment",
+                uuid: "attachment-other",
+                attachment: { type: "other" }
+              },
+              {
+                type: "attachment",
+                uuid: "goal-status-sentinel",
+                timestamp: "2026-08-02T05:26:47.783Z",
+                attachment: {
+                  type: "goal_status",
+                  met: false,
+                  sentinel: true,
+                  condition: "count to three"
+                }
+              },
+              {
+                type: "attachment",
+                uuid: "goal-status-active",
+                timestamp: "2026-08-02T05:26:53.921Z",
+                attachment: {
+                  type: "goal_status",
+                  met: false,
+                  condition: "count to three",
+                  iterations: 2,
+                  reason: "only reached two"
+                }
+              },
+              {
+                type: "attachment",
+                uuid: "goal-status-complete",
+                timestamp: "2026-08-02T05:27:01.472Z",
+                attachment: {
+                  type: "goal_status",
+                  met: true,
+                  condition: "count to three",
+                  iterations: 3,
+                  durationMs: 1200,
+                  tokens: 420,
+                  reason: "counted all three"
+                }
+              },
+              {
+                type: "attachment",
+                uuid: "goal-status-complete",
+                attachment: {
+                  type: "goal_status",
+                  met: true,
+                  condition: "count to three"
+                }
+              }
+            ]
+          );
           yield { type: "result", subtype: "success" } as never;
         },
         close() {}
@@ -1162,41 +1044,576 @@ test("native goal_status attachments normalize the live Stop hook lifecycle", as
 
     await session.start();
     session.exec(
-      "goal-status-turn",
+      "goal-work-turn",
       "/goal count to three",
       undefined,
-      undefined,
+      "goal_arm",
       {
-        operationId: "goal-op-status",
-        revision: 1,
+        operationId: "goal-op-1",
+        revision: 7,
+        repairEpoch: 2,
         action: "set"
       }
     );
     await waitForEvent(events, "turn_completed");
 
     const updates = events.filter((event) => event.type === "goal_observed");
-    assert.equal(updates.length, 2);
-    assert.deepEqual(updates[0]?.payload?.goal, {
-      objective: "count to three",
-      status: "active",
-      reason: "only reached two",
-      iterations: 2
-    });
-    assert.deepEqual(updates[1]?.payload, {
-      turnId: "goal-status-turn",
-      providerTurnId: "provider-goal-status-turn",
+    assert.equal(updates.length, 3);
+    assert.deepEqual(updates[0]?.payload, {
+      turnId: "goal-work-turn",
+      providerTurnId: "provider-goal-turn",
       action: "set",
-      source: "goal_status",
+      goalOperationId: "goal-op-1",
+      goalRevision: 7,
+      goalRepairEpoch: 2,
+      occurredAtUnixMs: Date.parse("2026-08-02T05:26:47.783Z"),
+      source: "transcript_mirror",
       updateType: "thread_goal_update",
       goal: {
         objective: "count to three",
-        status: "complete",
-        reason: "counted one number per turn",
-        iterations: 3,
-        durationMs: 16_386,
-        tokens: 1_479
+        status: "active"
       }
     });
+    assert.deepEqual(updates[1]?.payload, {
+      turnId: "goal-work-turn",
+      providerTurnId: "provider-goal-turn",
+      action: "set",
+      goalOperationId: "goal-op-1",
+      goalRevision: 7,
+      goalRepairEpoch: 2,
+      occurredAtUnixMs: Date.parse("2026-08-02T05:26:53.921Z"),
+      source: "transcript_mirror",
+      updateType: "thread_goal_update",
+      goal: {
+        objective: "count to three",
+        status: "active",
+        iterations: 2,
+        reason: "only reached two"
+      }
+    });
+    assert.deepEqual(updates[2]?.payload, {
+      turnId: "goal-work-turn",
+      providerTurnId: "provider-goal-turn",
+      action: "set",
+      goalOperationId: "goal-op-1",
+      goalRevision: 7,
+      goalRepairEpoch: 2,
+      occurredAtUnixMs: Date.parse("2026-08-02T05:27:01.472Z"),
+      source: "transcript_mirror",
+      updateType: "thread_goal_completed",
+      goal: {
+        objective: "count to three",
+        status: "complete",
+        iterations: 3,
+        durationMs: 1200,
+        tokens: 420,
+        reason: "counted all three"
+      }
+    });
+  } finally {
+    restoreSink();
+  }
+});
+
+test("terminal result replays durable goal status when live mirror omits attachments", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const currentSentinelTimestamp = new Date(Date.now() + 1_000).toISOString();
+  const currentCompletionTimestamp = new Date(Date.now() + 2_000).toISOString();
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-replayed-goal",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => ({
+        async *[Symbol.asyncIterator]() {
+          await prompt[Symbol.asyncIterator]().next();
+          // Claude has already durably written goal_status here, but the live
+          // sessionStore mirror did not include either attachment.
+          yield { type: "result", subtype: "success" } as never;
+        },
+        close() {}
+      }),
+      30_000,
+      async (input) => ({
+        providerSessionId: input.sessionId,
+        providerTurnId: "provider-replayed-goal-turn",
+        providerCheckpointMessageId: "provider-replayed-goal-result"
+      }),
+      5_000,
+      {
+        replayNativeSession: async (sessionId, destination, options) => {
+          assert.equal(sessionId, "provider-session-replayed-goal");
+          assert.deepEqual(options, {
+            dir: "/repo",
+            includeSubagents: false
+          });
+          await destination.append(
+            {
+              projectKey: "repo",
+              sessionId: "provider-session-replayed-goal"
+            },
+            [
+              {
+                type: "attachment",
+                uuid: "historical-goal-sentinel",
+                timestamp: "2026-01-01T00:00:00.000Z",
+                attachment: {
+                  type: "goal_status",
+                  met: false,
+                  sentinel: true,
+                  condition: "historical goal"
+                }
+              },
+              {
+                type: "attachment",
+                uuid: "historical-goal-complete",
+                parentUuid: "historical-goal-sentinel",
+                timestamp: "2026-01-01T00:00:01.000Z",
+                attachment: {
+                  type: "goal_status",
+                  met: true,
+                  condition: "historical goal"
+                }
+              },
+              {
+                type: "attachment",
+                uuid: "replayed-goal-sentinel",
+                timestamp: currentSentinelTimestamp,
+                attachment: {
+                  type: "goal_status",
+                  met: false,
+                  sentinel: true,
+                  condition: "count to three"
+                }
+              },
+              {
+                type: "attachment",
+                uuid: "sibling-goal-complete",
+                parentUuid: "replayed-goal-sentinel",
+                timestamp: currentCompletionTimestamp,
+                attachment: {
+                  type: "goal_status",
+                  met: true,
+                  condition: "count to three"
+                }
+              },
+              {
+                type: "user",
+                uuid: "provider-replayed-goal-turn",
+                parentUuid: "replayed-goal-sentinel",
+                timestamp: currentSentinelTimestamp,
+                message: {
+                  role: "user",
+                  content: "/goal count to three"
+                }
+              },
+              {
+                type: "attachment",
+                uuid: "replayed-goal-complete",
+                parentUuid: "provider-replayed-goal-turn",
+                timestamp: currentCompletionTimestamp,
+                attachment: {
+                  type: "goal_status",
+                  met: true,
+                  condition: "count to three",
+                  iterations: 3
+                }
+              }
+            ]
+          );
+        }
+      }
+    );
+
+    await session.start();
+    session.exec(
+      "goal-replay-turn",
+      "/goal count to three",
+      undefined,
+      "goal_arm",
+      {
+        operationId: "goal-replay-operation",
+        revision: 3,
+        repairEpoch: 1,
+        action: "set"
+      }
+    );
+    await waitForEvent(events, "turn_completed");
+
+    const completions = events.filter(
+      (event) =>
+        event.type === "goal_observed" &&
+        event.payload?.updateType === "thread_goal_completed"
+    );
+    assert.equal(completions.length, 1);
+    const completed = completions[0];
+    assert.equal(completed?.payload?.goalOperationId, "goal-replay-operation");
+    assert.equal(
+      completed?.payload?.providerTurnId,
+      "provider-replayed-goal-turn"
+    );
+    assert.deepEqual(completed?.payload?.goal, {
+      objective: "count to three",
+      status: "complete",
+      iterations: 3
+    });
+    const replay = events.find(
+      (event) =>
+        event.type === "goal_transcript_replay" &&
+        event.payload?.phase === "completed"
+    );
+    assert.equal(replay?.payload?.liveGoalStatusEntryCount, 0);
+    assert.equal(replay?.payload?.replayedGoalStatusEntryCount, 5);
+    const replayedBatch = events.find(
+      (event) =>
+        event.type === "goal_transcript_observed" &&
+        event.payload?.transcriptSource === "native_replay"
+    );
+    assert.equal(replayedBatch?.payload?.projectedUpdateCount, 1);
+    assert.equal(replayedBatch?.payload?.projectedTerminalCount, 1);
+    assert.equal(replayedBatch?.payload?.ignoredOutsideCurrentTurnCount, 3);
+    assert.equal(replayedBatch?.payload?.ignoredUnboundGenerationCount, 0);
+  } finally {
+    restoreSink();
+  }
+});
+
+test("terminal replay reconsiders eager goal entries observed before Turn activation", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const timestamp = new Date(Date.now() + 1_000).toISOString();
+  const key = {
+    projectKey: "repo",
+    sessionId: "provider-session-eager-goal"
+  };
+  const entries: SessionStoreEntry[] = [
+    {
+      type: "attachment",
+      uuid: "eager-goal-sentinel",
+      timestamp,
+      attachment: {
+        type: "goal_status",
+        met: false,
+        sentinel: true,
+        condition: "ship it"
+      }
+    },
+    {
+      type: "user",
+      uuid: "provider-eager-goal-turn",
+      parentUuid: "eager-goal-sentinel",
+      timestamp
+    },
+    {
+      type: "attachment",
+      uuid: "eager-goal-complete",
+      parentUuid: "provider-eager-goal-turn",
+      timestamp,
+      attachment: {
+        type: "goal_status",
+        met: true,
+        condition: "ship it"
+      }
+    }
+  ];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      key.sessionId,
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt, options }) => ({
+        async *[Symbol.asyncIterator]() {
+          await prompt[Symbol.asyncIterator]().next();
+          await options.sessionStore?.append(key, entries);
+          yield { type: "result", subtype: "success" } as never;
+        },
+        close() {}
+      }),
+      30_000,
+      async (input) => ({
+        providerSessionId: input.sessionId,
+        providerTurnId: "provider-eager-goal-turn",
+        providerCheckpointMessageId: "provider-eager-goal-result"
+      }),
+      5_000,
+      {
+        replayNativeSession: async (_sessionId, destination) => {
+          await destination.append(key, entries);
+        }
+      }
+    );
+
+    await session.start();
+    session.exec("eager-goal-turn", "/goal ship it", undefined, "goal_arm", {
+      operationId: "eager-goal-operation",
+      revision: 1,
+      action: "set"
+    });
+    await waitForEvent(events, "turn_completed");
+
+    const completions = events.filter(
+      (event) =>
+        event.type === "goal_observed" &&
+        event.payload?.updateType === "thread_goal_completed"
+    );
+    assert.equal(completions.length, 1);
+    assert.equal(
+      completions[0]?.payload?.goalOperationId,
+      "eager-goal-operation"
+    );
+    const replay = events.find(
+      (event) =>
+        event.type === "goal_transcript_replay" &&
+        event.payload?.phase === "completed"
+    );
+    assert.equal(replay?.payload?.liveGoalStatusEntryCount, 2);
+    assert.equal(replay?.payload?.replayedGoalStatusEntryCount, 2);
+  } finally {
+    restoreSink();
+  }
+});
+
+test("task-notification result recovers a terminal goal before idle settlement", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const timestamp = new Date(Date.now() + 1_000).toISOString();
+  const key = { projectKey: "repo", sessionId: "provider-session-1" };
+  const activeEntries: SessionStoreEntry[] = [
+    {
+      type: "attachment",
+      uuid: "background-goal-sentinel",
+      timestamp,
+      attachment: {
+        type: "goal_status",
+        met: false,
+        sentinel: true,
+        condition: "finish background work"
+      }
+    },
+    {
+      type: "user",
+      uuid: "background-goal-provider-turn",
+      parentUuid: "background-goal-sentinel",
+      timestamp
+    }
+  ];
+  const terminalEntry: SessionStoreEntry = {
+    type: "attachment",
+    uuid: "background-goal-complete",
+    parentUuid: "background-goal-provider-turn",
+    timestamp,
+    attachment: {
+      type: "goal_status",
+      met: true,
+      condition: "finish background work"
+    }
+  };
+  let terminalAvailable = false;
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      key.sessionId,
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) =>
+        fakeParallelDelegatedTaskContinuationQuery(prompt, {
+          rootResultBeforeContinuations: true,
+          beforeTaskNotificationResult: () => {
+            terminalAvailable = true;
+          }
+        }),
+      30_000,
+      undefined,
+      5_000,
+      {
+        replayNativeSession: async (_sessionId, destination) => {
+          await destination.append(key, [
+            ...activeEntries,
+            ...(terminalAvailable ? [terminalEntry] : [])
+          ]);
+        }
+      }
+    );
+
+    await session.start();
+    session.exec(
+      "background-goal-turn",
+      "/goal finish background work",
+      undefined,
+      "goal_arm",
+      {
+        operationId: "background-goal-operation",
+        revision: 1,
+        action: "set"
+      },
+      "",
+      "background-goal-provider-turn"
+    );
+    await waitForEvent(events, "turn_completed");
+
+    const completionIndex = events.findIndex(
+      (event) =>
+        event.type === "goal_observed" &&
+        event.payload?.updateType === "thread_goal_completed"
+    );
+    const turnCompletionIndex = events.findIndex(
+      (event) => event.type === "turn_completed"
+    );
+    assert.ok(completionIndex >= 0 && completionIndex < turnCompletionIndex);
+    assert.equal(
+      events[turnCompletionIndex]?.payload?.stopReason,
+      "background_agent_idle"
+    );
+    assert.ok(
+      events.some(
+        (event) =>
+          event.type === "sdk_lifecycle_observed" &&
+          event.payload?.sdkMessageOrigin === "task-notification"
+      )
+    );
+  } finally {
+    restoreSink();
+  }
+});
+
+test("timed-out goal replay cannot delay turn settlement or publish a partial batch", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const timestamp = new Date(Date.now() + 1_000).toISOString();
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-replay-timeout",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => ({
+        async *[Symbol.asyncIterator]() {
+          await prompt[Symbol.asyncIterator]().next();
+          yield { type: "result", subtype: "success" } as never;
+        },
+        close() {}
+      }),
+      30_000,
+      async (input) => ({
+        providerSessionId: input.sessionId,
+        providerTurnId: "provider-replay-timeout-turn",
+        providerCheckpointMessageId: "provider-replay-timeout-result"
+      }),
+      5_000,
+      {
+        goalTranscriptReplayTimeoutMs: 20,
+        replayNativeSession: async (_sessionId, destination) => {
+          await destination.append(
+            {
+              projectKey: "repo",
+              sessionId: "provider-session-replay-timeout"
+            },
+            [
+              {
+                type: "attachment",
+                uuid: "timeout-goal-sentinel",
+                timestamp,
+                attachment: {
+                  type: "goal_status",
+                  met: false,
+                  sentinel: true,
+                  condition: "ship it"
+                }
+              },
+              {
+                type: "user",
+                uuid: "provider-replay-timeout-turn",
+                parentUuid: "timeout-goal-sentinel",
+                timestamp
+              },
+              {
+                type: "attachment",
+                uuid: "timeout-goal-complete",
+                parentUuid: "provider-replay-timeout-turn",
+                timestamp,
+                attachment: {
+                  type: "goal_status",
+                  met: true,
+                  condition: "ship it"
+                }
+              }
+            ]
+          );
+          await new Promise<never>(() => {});
+        }
+      }
+    );
+
+    await session.start();
+    session.exec("goal-timeout-turn", "/goal ship it", undefined, "goal_arm", {
+      operationId: "goal-timeout-operation",
+      revision: 1,
+      action: "set"
+    });
+    await waitForEvent(events, "turn_completed");
+
+    assert.equal(
+      events.some((event) => event.type === "goal_observed"),
+      false
+    );
+    const replayFailure = events.find(
+      (event) =>
+        event.type === "goal_transcript_replay" &&
+        event.payload?.reason === "native_replay_timeout"
+    );
+    assert.equal(replayFailure?.payload?.phase, "failed");
+    assert.equal(replayFailure?.payload?.attempt, 1);
   } finally {
     restoreSink();
   }

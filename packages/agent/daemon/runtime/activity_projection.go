@@ -314,10 +314,29 @@ func isReportableActivityType(eventType activityshared.EventType) bool {
 }
 
 func goalReconcileRequestFromSessionEvent(event activityshared.Event, sessionID string) (agentsessionstore.WorkspaceAgentGoalReconcileRequest, bool) {
-	if event.Type != activityshared.EventGoalReconcileRequired || strings.TrimSpace(sessionID) == "" {
+	if strings.TrimSpace(sessionID) == "" {
 		return agentsessionstore.WorkspaceAgentGoalReconcileRequest{}, false
 	}
 	metadata := event.Payload.Metadata
+	if event.Type == activityshared.EventGoalProviderObserved {
+		requestID := firstNonEmptyString(event.EventID, newID())
+		return agentsessionstore.WorkspaceAgentGoalReconcileRequest{
+			RequestID:           "goal-provider-observed:" + requestID,
+			Phase:               "provider_observed",
+			AgentSessionID:      strings.TrimSpace(sessionID),
+			ProviderTurnID:      stringFromPayload(metadata, "providerTurnId"),
+			ExpectedOperationID: stringFromPayload(metadata, "operationId"),
+			ExpectedRevision:    payloadInt64(metadata, "revision"),
+			ExpectedRepairEpoch: payloadInt64(metadata, "repairEpoch"),
+			ProviderSource:      stringFromPayload(metadata, "source"),
+			UpdateType:          stringFromPayload(metadata, "updateType"),
+			Observed:            clonePayload(payloadObject(metadata["goal"])),
+			OccurredAtUnixMS:    event.OccurredAtUnixMS,
+		}, true
+	}
+	if event.Type != activityshared.EventGoalReconcileRequired {
+		return agentsessionstore.WorkspaceAgentGoalReconcileRequest{}, false
+	}
 	requestID := firstNonEmptyString(stringFromPayload(metadata, "requestId"), event.EventID)
 	if requestID == "" {
 		return agentsessionstore.WorkspaceAgentGoalReconcileRequest{}, false

@@ -188,7 +188,7 @@ func TestGoalReconcileInboxPoisonRowDoesNotStarveGoodRow(t *testing.T) {
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
 	ctx := context.Background()
 	for _, id := range []string{"bad", "good"} {
-		if _, err := store.PutGoalReconcileInbox(ctx, GoalReconcileInboxItem{RequestID: id, WorkspaceID: "ws", AgentSessionID: "session", Payload: map[string]any{"providerTurnId": id}, CreatedAtUnixMS: 10}); err != nil {
+		if _, err := store.PutGoalReconcileInbox(ctx, GoalReconcileInboxItem{RequestID: id, WorkspaceID: "ws", AgentSessionID: "session-" + id, Payload: map[string]any{"providerTurnId": id}, CreatedAtUnixMS: 10}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -210,5 +210,42 @@ func TestGoalReconcileInboxPoisonRowDoesNotStarveGoodRow(t *testing.T) {
 	}
 	if !seenGood || !seenPoison {
 		t.Fatalf("good=%v poison=%v items=%#v", seenGood, seenPoison, items)
+	}
+}
+
+func TestGoalReconcileInboxKeepsOneSessionStrictlyOrdered(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	for index, id := range []string{"first", "second"} {
+		if _, err := store.PutGoalReconcileInbox(ctx, GoalReconcileInboxItem{
+			RequestID: id, WorkspaceID: "ws-order", AgentSessionID: "session-order",
+			Payload: map[string]any{
+				"phase": "provider_observed", "expectedOperationId": "goal-op",
+				"expectedRevision": int64(1), "updateType": id,
+			},
+			CreatedAtUnixMS: int64(10 + index),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	items, err := store.ListClaimableGoalReconcileInbox(ctx, 20, 10)
+	if err != nil || len(items) != 1 || items[0].RequestID != "first" {
+		t.Fatalf("initial claimable items=%#v error=%v", items, err)
+	}
+	claimed, ok, err := store.ClaimGoalReconcileInbox(ctx, ClaimGoalReconcileInboxInput{
+		RequestID: "first", LeaseOwner: "worker", NowUnixMS: 20, LeaseExpiresAtMS: 30,
+	})
+	if err != nil || !ok || claimed.RequestID != "first" {
+		t.Fatalf("claim=%#v ok=%v error=%v", claimed, ok, err)
+	}
+	if items, err = store.ListClaimableGoalReconcileInbox(ctx, 20, 10); err != nil || len(items) != 0 {
+		t.Fatalf("later item overtook leased predecessor items=%#v error=%v", items, err)
+	}
+	if completed, err := store.CompleteGoalReconcileInbox(ctx, "first", "worker", 21); err != nil || !completed {
+		t.Fatalf("complete=%v error=%v", completed, err)
+	}
+	if items, err = store.ListClaimableGoalReconcileInbox(ctx, 21, 10); err != nil || len(items) != 1 || items[0].RequestID != "second" {
+		t.Fatalf("successor items=%#v error=%v", items, err)
 	}
 }

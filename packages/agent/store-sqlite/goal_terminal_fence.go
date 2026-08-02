@@ -92,9 +92,15 @@ func (s *Store) MarkGoalRevisionTerminalIncident(ctx context.Context, input Goal
 	if err != nil {
 		return SessionGoalState{}, err
 	}
-	delta, err := s.commitTransaction(ctx, tx, input.WorkspaceID, []TransactionMutation{
+	mutations := []TransactionMutation{
 		transactionMutation(input.WorkspaceID, input.AgentSessionID, MutationEntityGoalState, input.AgentSessionID, "terminal", state.Revision),
-	})
+	}
+	if sessionMutation, projectionErr := projectEffectiveGoalMutationTx(ctx, tx, state, input.OccurredAtUnixMS); projectionErr != nil {
+		return SessionGoalState{}, projectionErr
+	} else if sessionMutation != nil {
+		mutations = append(mutations, *sessionMutation)
+	}
+	delta, err := s.commitTransaction(ctx, tx, input.WorkspaceID, mutations)
 	if err != nil {
 		return SessionGoalState{}, err
 	}

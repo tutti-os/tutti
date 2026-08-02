@@ -336,16 +336,19 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 		}
 		return nil, false, nil
 	case "goal_observed":
-		updateType := a.applyClaudeSDKGoalObservation(adapterSession, event.Payload)
+		updateType, goal := a.applyClaudeSDKGoalObservation(adapterSession, event.Payload)
 		if updateType == "" {
 			return nil, false, nil
 		}
-		events := make([]activityshared.Event, 0, 2)
-		if goalEvent, ok := normalizedGoalUpdatedEvent(session, updateType); ok {
-			events = append(events, goalEvent)
+		if goalEvent, ok := claudeSDKProviderGoalObservedEvent(
+			session,
+			event.Payload,
+			updateType,
+			goal,
+		); ok {
+			return []activityshared.Event{goalEvent}, false, nil
 		}
-		events = append(events, newSessionActivityEvent(session, EventSessionUpdated, firstNonEmpty(session.Status, SessionStatusReady), claudeSDKRuntimeContext(session, adapterSession)))
-		return events, false, nil
+		return nil, false, nil
 	case "turn_completed":
 		if boundProviderTurnID == "" {
 			return nil, false, errors.New("claude SDK provider turn completion omitted identity")
@@ -565,7 +568,7 @@ func claudeSDKLifecycleEventDiagnostic(event claudeSDKSidecarEvent) bool {
 	switch strings.TrimSpace(event.Type) {
 	case "sdk_lifecycle_observed",
 		"provider_turn_identity_resolved", "provider_turn_checkpoint",
-		"goal_observed",
+		"goal_observed", "goal_transcript_observed", "goal_transcript_replay",
 		"approval_requested", "user_input_requested",
 		"turn_started", "turn_completed", "turn_canceled", "turn_failed",
 		"continuation_delayed",

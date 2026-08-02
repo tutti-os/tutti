@@ -303,7 +303,7 @@ func TestGoalPrepareParticipatesWithIntentStateAndAudit(t *testing.T) {
 		t.Fatalf("operation=%#v state=%#v", operation, state)
 	}
 	assertParticipantMutationKinds(t, operation.CommitDelta,
-		MutationEntityGoalOperation, MutationEntityGoalState, MutationEntityMessage)
+		MutationEntityGoalOperation, MutationEntityGoalState, MutationEntityMessage, MutationEntitySession)
 	for _, mutation := range operation.CommitDelta.Mutations {
 		if mutation.EntityKind == MutationEntityMessage && (mutation.EntityID != "goal-control:goal-op-1" || mutation.Version != 1) {
 			t.Fatalf("goal audit mutation=%#v", mutation)

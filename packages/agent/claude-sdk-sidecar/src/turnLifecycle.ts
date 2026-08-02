@@ -19,6 +19,7 @@ export type RuntimeTurn = {
   readonly goalRevision?: number;
   readonly goalRepairEpoch?: number;
   readonly goalAction?: "set" | "clear";
+  readonly goalActivatedAtUnixMs?: number;
   settled: boolean;
 };
 

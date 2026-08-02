@@ -59,10 +59,7 @@ func staleGoalResultEvidence(evidence map[string]any, resultRevision, currentRev
 }
 
 func durableGoalForResponse(state storesqlite.SessionGoalState) map[string]any {
-	if state.Tombstoned {
-		return nil
-	}
-	return clonePayload(state.Desired)
+	return clonePayload(storesqlite.ProjectEffectiveSessionGoal(state))
 }
 
 func goalControlOperationID(workspaceID, agentSessionID, clientSubmitID string) string {
@@ -430,10 +427,10 @@ func (h *Host) goalControlSerialized(
 		}
 	}
 	if persistedState != nil {
-		// GoalControlResult.Goal is the Host-owned durable projection used by
-		// every consumer. Provider output remains available independently as
-		// GoalState.Observed and may legitimately be empty while a pause or
-		// resume is applied. Only a durable tombstone projects an explicit nil.
+		// GoalControlResult.Goal is the Host-owned effective projection used by
+		// every consumer. Pending intent comes from Desired; a matching settled
+		// provider lifecycle comes from Observed. Both remain available in the
+		// detailed GoalState, and only a durable tombstone projects explicit nil.
 		responseGoal = durableGoalForResponse(*persistedState)
 	}
 	canonical, found, err := h.store.GetSession(ctx, workspaceID, agentSessionID)

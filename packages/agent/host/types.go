@@ -305,10 +305,21 @@ type RuntimeResumeInput struct {
 	ProviderTargetRef      map[string]any
 	Metadata               storesqlite.SessionMetadata
 	InternalRuntimeContext map[string]any
+	GoalGeneration         *RuntimeGoalGeneration
 	// RecreateIfMissing lets the runtime start a fresh provider session in place
 	// when the existing one can't be restored locally (imported conversations),
 	// instead of surfacing a non-recoverable restore error.
 	RecreateIfMissing bool
+}
+
+// RuntimeGoalGeneration is the Host-authoritative Goal generation restored
+// into a provider runtime. It is transport state, not Session metadata.
+type RuntimeGoalGeneration struct {
+	OperationID       string
+	Revision          int64
+	RepairEpoch       int64
+	ActivatedAtUnixMS int64
+	Goal              map[string]any
 }
 
 type RuntimeExecInput struct {
@@ -875,6 +886,26 @@ type RuntimeGoalControlAppliedInput struct {
 	RepairEpoch      int64
 	Action           string
 	ProviderTurnID   string
+	Observed         map[string]any
+	OccurredAtUnixMS int64
+}
+
+type RuntimeGoalControlAppliedResult struct {
+	Accepted bool
+}
+
+// RuntimeGoalProviderObservedInput is an internal provider-to-Host Goal
+// lifecycle observation. Revision and objective fence it to the currently
+// selected durable Goal before the Host publishes a new effective state.
+type RuntimeGoalProviderObservedInput struct {
+	WorkspaceID      string
+	AgentSessionID   string
+	OperationID      string
+	GoalRevision     int64
+	RepairEpoch      int64
+	ProviderTurnID   string
+	Source           string
+	UpdateType       string
 	Observed         map[string]any
 	OccurredAtUnixMS int64
 }

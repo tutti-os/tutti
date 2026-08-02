@@ -100,6 +100,11 @@ func providerDescriptorHasCapability(descriptor providerregistry.ProviderDescrip
 	return false
 }
 
+func providerUsesHostGoalProjection(provider string) bool {
+	descriptor, ok := providerregistry.Find(provider)
+	return ok && descriptor.Runtime.GoalProjectionOwnership == providerregistry.GoalProjectionOwnershipHost
+}
+
 func newStandardACPAdapterFromProviderDescriptor(
 	descriptor providerregistry.ProviderDescriptor,
 	transport ProcessTransport,

@@ -94,6 +94,9 @@ SELECT EXISTS(
 			return false, false, 0, Session{}, err
 		}
 	}
+	if strings.TrimSpace(input.GoalProjectionAuthority) == agentactivityprojection.GoalProjectionAuthorityHost && hasExisting {
+		input.RuntimeContext = preserveHostOwnedSessionGoal(existing.RuntimeContext, input.RuntimeContext)
+	}
 	projected := agentactivityprojection.ProjectSessionState(
 		existing,
 		hasExisting,
@@ -238,7 +241,8 @@ WHERE workspace_agent_sessions.deleted_at_unix_ms = 0
 	if err != nil {
 		return false, false, 0, Session{}, err
 	}
-	if accepted && len(input.RuntimeContext) > 0 {
+	if accepted && len(input.RuntimeContext) > 0 &&
+		strings.TrimSpace(input.GoalProjectionAuthority) != agentactivityprojection.GoalProjectionAuthorityHost {
 		if err := reconcileObservedGoalFromSessionTx(ctx, tx, session, input.OccurredAtUnixMS); err != nil {
 			return false, false, 0, Session{}, err
 		}
@@ -251,4 +255,17 @@ WHERE workspace_agent_sessions.deleted_at_unix_ms = 0
 	dto.RailProjectPath = railSection.ProjectPath
 	dto.RailSectionKey = railSection.Key
 	return accepted, sessionStateReportApplied(input, projected.Session), projected.LastEventUnixMS, dto, nil
+}
+
+func preserveHostOwnedSessionGoal(existing, reported map[string]any) map[string]any {
+	if reported == nil {
+		return nil
+	}
+	result := cloneJSONMap(reported)
+	delete(result, "goal")
+	goal, _ := existing["goal"].(map[string]any)
+	if goal = cloneJSONMap(goal); len(goal) > 0 {
+		result["goal"] = goal
+	}
+	return result
 }

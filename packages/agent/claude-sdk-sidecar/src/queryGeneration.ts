@@ -5,6 +5,7 @@ import type {
 import { AsyncPromptQueue } from "./promptQueue.ts";
 import { readSDKMessageUuid } from "./sdkMessages.ts";
 import type { PendingFlagSettings } from "./sessionSettings.ts";
+import type { TranscriptObservationStore } from "./transcriptObservationStore.ts";
 import {
   readQueuedTaskNotificationPrompt,
   readUserMessageNotificationText
@@ -27,6 +28,9 @@ export class QueryGeneration {
   readonly cancelController = new AbortController();
   readonly id: number;
   query: ClaudeQueryRuntime | undefined;
+  transcriptObservationStore: TranscriptObservationStore | undefined;
+  liveGoalTranscriptEntryCount = 0;
+  replayedGoalTranscriptEntryCount = 0;
   consumption: Promise<void> | undefined;
   revoked = false;
   private quarantineCanceledTail: boolean;

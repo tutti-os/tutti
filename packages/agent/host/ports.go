@@ -351,7 +351,7 @@ type GoalRuntimeController interface {
 	GoalControl(context.Context, RuntimeGoalControlInput) (RuntimeGoalControlResult, error)
 }
 
-type RuntimeGoalControlAppliedSink func(context.Context, RuntimeGoalControlAppliedInput) error
+type RuntimeGoalControlAppliedSink func(context.Context, RuntimeGoalControlAppliedInput) (RuntimeGoalControlAppliedResult, error)
 
 // GoalRuntimeControlLifecycleRegistrar lets the standard runtime adapter bind
 // provider lifecycle back to the Host-owned Goal state machine. Product

@@ -224,6 +224,15 @@ func Validate(descriptor ProviderDescriptor) error {
 			return fmt.Errorf("provider %q runtime command: %w", providerID, err)
 		}
 	}
+	switch descriptor.Runtime.GoalProjectionOwnership {
+	case "", GoalProjectionOwnershipHost:
+	default:
+		return fmt.Errorf(
+			"provider %q runtime Goal projection ownership %q is unsupported",
+			providerID,
+			descriptor.Runtime.GoalProjectionOwnership,
+		)
+	}
 	switch descriptor.Runtime.Endpoint.ConfigKind {
 	case "", EndpointConfigKindCodexCLI, EndpointConfigKindClaudeSettings:
 	default:

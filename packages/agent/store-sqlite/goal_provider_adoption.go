@@ -139,10 +139,16 @@ INSERT INTO workspace_agent_goal_control_operations (
 	if err != nil {
 		return GoalControlOperation{}, SessionGoalState{}, false, err
 	}
-	delta, err := s.commitTransaction(ctx, tx, input.WorkspaceID, []TransactionMutation{
+	mutations := []TransactionMutation{
 		transactionMutation(input.WorkspaceID, input.AgentSessionID, MutationEntityGoalState, input.AgentSessionID, "upsert", revision),
 		transactionMutation(input.WorkspaceID, input.AgentSessionID, MutationEntityGoalOperation, input.OperationID, "adopt", op.UpdatedAtUnixMS),
-	})
+	}
+	if sessionMutation, projectionErr := projectEffectiveGoalMutationTx(ctx, tx, state, input.OccurredAtUnixMS); projectionErr != nil {
+		return GoalControlOperation{}, SessionGoalState{}, false, projectionErr
+	} else if sessionMutation != nil {
+		mutations = append(mutations, *sessionMutation)
+	}
+	delta, err := s.commitTransaction(ctx, tx, input.WorkspaceID, mutations)
 	if err != nil {
 		return GoalControlOperation{}, SessionGoalState{}, false, fmt.Errorf("commit provider goal adoption: %w", err)
 	}

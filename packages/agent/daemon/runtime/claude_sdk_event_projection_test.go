@@ -61,6 +61,75 @@ func TestClaudeCodeSDKAdapterLogsAPIRetryDiagnostics(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeSDKAdapterLogsGoalTranscriptDiagnostics(t *testing.T) {
+	previousLogger := slog.Default()
+	var output bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
+	t.Cleanup(func() {
+		slog.SetDefault(previousLogger)
+	})
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	adapter.logClaudeSDKLifecycleEvent(
+		"agent-session-goal",
+		&claudeSDKAdapterSession{providerSessionID: "provider-session-goal"},
+		claudeSDKSidecarEvent{
+			Type: "goal_transcript_observed",
+			Payload: map[string]any{
+				"transcriptSource":               "native_replay",
+				"queryGenerationId":              2,
+				"goalStatusEntryCount":           4,
+				"terminalGoalStatusEntryCount":   2,
+				"projectedUpdateCount":           1,
+				"projectedTerminalCount":         1,
+				"ignoredUnboundGenerationCount":  1,
+				"ignoredOutsideCurrentTurnCount": 1,
+				"rootTranscript":                 true,
+				"sessionMatches":                 true,
+				"queryGenerationActive":          true,
+			},
+		},
+	)
+	adapter.logClaudeSDKLifecycleEvent(
+		"agent-session-goal",
+		&claudeSDKAdapterSession{providerSessionID: "provider-session-goal"},
+		claudeSDKSidecarEvent{
+			Type: "goal_transcript_replay",
+			Payload: map[string]any{
+				"phase":                        "completed",
+				"queryGenerationId":            2,
+				"attempt":                      1,
+				"liveGoalStatusEntryCount":     0,
+				"replayedGoalStatusEntryCount": 4,
+				"goalGenerationStillActive":    false,
+			},
+		},
+	)
+
+	logged := output.String()
+	for _, expected := range []string{
+		"sidecar_event_type=goal_transcript_observed",
+		"transcript_source=native_replay",
+		"goal_status_entries=4",
+		"terminal_goal_status_entries=2",
+		"projected_goal_updates=1",
+		"projected_goal_terminals=1",
+		"ignored_goal_unbound_generation=1",
+		"ignored_goal_outside_current_turn=1",
+		"sidecar_event_type=goal_transcript_replay",
+		"transcript_phase=completed",
+		"query_generation_id=2",
+		"transcript_replay_attempt=1",
+		"live_goal_status_entries=0",
+		"replayed_goal_status_entries=4",
+		"goal_generation_still_active=false",
+	} {
+		if !strings.Contains(logged, expected) {
+			t.Fatalf("log = %q, want %q", logged, expected)
+		}
+	}
+}
+
 func TestClaudeCodeSDKAdapterMapsSyntheticTurnStarted(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	session := standardTestSession(ProviderClaudeCode)

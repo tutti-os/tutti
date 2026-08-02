@@ -94,6 +94,59 @@ func TestControllerExecResumesExistingSessionWhenAdapterLiveSessionMissing(t *te
 	}
 }
 
+func TestControllerReconnectRestoresGoalGenerationAppliedAfterSessionStart(t *testing.T) {
+	t.Parallel()
+
+	adapter := newReconnectableAdapter()
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID: "room-goal-reconnect", AgentSessionID: "agent-session-goal",
+		Provider: ProviderClaudeCode, CWD: "/workspace", Title: "Claude Code",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventContext, ok := activityEventContext(started.Session, "goal-applied", "")
+	if !ok {
+		t.Fatal("Goal event context unavailable")
+	}
+	controller.applySessionEventsByAgentSessionID(started.Session.AgentSessionID, []activityshared.Event{
+		activityshared.NewGoalControlApplied(eventContext, map[string]any{
+			"operationId": "goal-op-1", "revision": int64(4), "repairEpoch": int64(1),
+			"action": "set", "goal": map[string]any{"objective": "ship it", "status": "active"},
+		}),
+	})
+	stored, ok := controller.Session(started.Session.RoomID, started.Session.AgentSessionID)
+	if !ok || stored.GoalGeneration == nil || stored.GoalGeneration.OperationID != "goal-op-1" {
+		t.Fatalf("stored Session=%#v, want active Goal generation", stored)
+	}
+	repairContext, ok := activityEventContext(started.Session, "goal-repair-applied", "")
+	if !ok {
+		t.Fatal("Goal repair event context unavailable")
+	}
+	controller.applySessionEventsByAgentSessionID(started.Session.AgentSessionID, []activityshared.Event{
+		activityshared.NewGoalControlApplied(repairContext, map[string]any{
+			"operationId": "goal-op-repair", "revision": int64(4), "repairEpoch": int64(2),
+			"action": "set", "goal": map[string]any{"objective": "ship it", "status": "active"},
+		}),
+	})
+	stored, ok = controller.Session(started.Session.RoomID, started.Session.AgentSessionID)
+	if !ok || stored.GoalGeneration == nil || stored.GoalGeneration.OperationID != "goal-op-repair" ||
+		stored.GoalGeneration.RepairEpoch != 2 {
+		t.Fatalf("stored repaired Session=%#v, want newest repair generation", stored)
+	}
+
+	adapter.dropLiveSession(started.Session.AgentSessionID)
+	if err := controller.ensureLiveAdapterSession(context.Background(), stored, adapter); err != nil {
+		t.Fatal(err)
+	}
+	restored := adapter.lastResumeSession.GoalGeneration
+	if restored == nil || restored.OperationID != "goal-op-repair" || restored.Revision != 4 ||
+		restored.RepairEpoch != 2 || restored.Goal["objective"] != "ship it" || restored.ActivatedAtUnixMS <= 0 {
+		t.Fatalf("resume Goal generation=%#v", restored)
+	}
+}
+
 func TestControllerResumeReattachesExistingProviderSession(t *testing.T) {
 	t.Parallel()
 
@@ -243,8 +296,9 @@ func TestControllerResumeRecreatesMissingProviderSessionWhenOptedIn(t *testing.T
 }
 
 type reconnectableAdapter struct {
-	live        map[string]bool
-	resumeCalls int
+	live              map[string]bool
+	resumeCalls       int
+	lastResumeSession Session
 }
 
 func newReconnectableAdapter() *reconnectableAdapter {
@@ -263,6 +317,7 @@ func (a *reconnectableAdapter) Start(_ context.Context, session Session) ([]acti
 
 func (a *reconnectableAdapter) Resume(_ context.Context, session Session) error {
 	a.resumeCalls++
+	a.lastResumeSession = session
 	a.live[session.AgentSessionID] = true
 	return nil
 }

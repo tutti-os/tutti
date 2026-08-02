@@ -23,6 +23,15 @@ export function claudeSettingsEnv(cwd: string): Record<string, string> {
   return merged;
 }
 
+// CLAUDE_CONFIG_DIR is a process-level storage boundary for the sidecar. The
+// SDK's native resume/import helpers read that process value, so a settings
+// file must not recursively relocate only the child query to another store.
+export function claudeQuerySettingsEnv(cwd: string): Record<string, string> {
+  const merged = claudeSettingsEnv(cwd);
+  delete merged.CLAUDE_CONFIG_DIR;
+  return merged;
+}
+
 function claudeProjectSettingsPaths(cwd: string): string[] {
   const trimmed = cwd.trim();
   if (!trimmed) {

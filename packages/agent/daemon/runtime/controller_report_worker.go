@@ -19,15 +19,41 @@ func (c *Controller) enqueueSessionReport(ctx context.Context, session Session, 
 	c.enrichReportStatePatchesWithSessionMetadata(session, &report)
 	c.observeProviderObservations(ctx, session, report.ProviderObservations)
 	if len(report.GoalReconcileRequests) > 0 {
-		control := report
-		control.TimelineItems = nil
-		control.StatePatches = nil
-		control.MessageUpdates = nil
-		control.SessionAudits = nil
+		controlRequests := make([]agentsessionstore.WorkspaceAgentGoalReconcileRequest, 0, len(report.GoalReconcileRequests))
+		providerObservations := make([]agentsessionstore.WorkspaceAgentGoalReconcileRequest, 0, len(report.GoalReconcileRequests))
+		for _, request := range report.GoalReconcileRequests {
+			if strings.TrimSpace(request.Phase) == "provider_observed" {
+				providerObservations = append(providerObservations, request)
+				continue
+			}
+			controlRequests = append(controlRequests, request)
+		}
 		report.GoalReconcileRequests = nil
-		_ = c.reportGoalReconcileControl(ctx, control)
+		if len(controlRequests) > 0 {
+			_ = c.reportGoalReconcileControl(ctx, goalControlOnlyReport(report, controlRequests))
+		}
+		if len(providerObservations) > 0 {
+			c.enqueueGoalProviderObservation(
+				ctx,
+				goalControlOnlyReport(report, providerObservations),
+				goalGenerationTransitionFromProviderObservations(session, providerObservations),
+			)
+		}
 	}
 	c.enqueueReport(ctx, report)
+}
+
+func goalControlOnlyReport(
+	report agentsessionstore.ReportActivityInput,
+	requests []agentsessionstore.WorkspaceAgentGoalReconcileRequest,
+) agentsessionstore.ReportActivityInput {
+	report.TimelineItems = nil
+	report.StatePatches = nil
+	report.MessageUpdates = nil
+	report.SessionAudits = nil
+	report.ProviderObservations = nil
+	report.GoalReconcileRequests = append([]agentsessionstore.WorkspaceAgentGoalReconcileRequest(nil), requests...)
+	return report
 }
 
 func (c *Controller) SetGoalControlLifecycleObserver(observer GoalControlLifecycleObserver) {
@@ -50,9 +76,6 @@ func (c *Controller) observeGoalControlLifecycle(
 	c.goalControlObserverMu.RLock()
 	observer := c.goalControlObserver
 	c.goalControlObserverMu.RUnlock()
-	if observer == nil {
-		return
-	}
 	for _, event := range events {
 		if event.Type != activityshared.EventGoalControlApplied {
 			continue
@@ -69,7 +92,12 @@ func (c *Controller) observeGoalControlLifecycle(
 			Observed:         payloadObject(metadata["goal"]),
 			OccurredAtUnixMS: event.OccurredAtUnixMS,
 		}
-		if err := observer.ObserveGoalControlApplied(ctx, observation); err != nil {
+		result := GoalControlAppliedObservationResult{Accepted: observer == nil}
+		var observeErr error
+		if observer != nil {
+			result, observeErr = observer.ObserveGoalControlApplied(ctx, observation)
+		}
+		if observeErr != nil {
 			slog.Warn(
 				"record runtime goal control application failed",
 				"event", "agent_session.goal_control.observe_applied_failed",
@@ -77,8 +105,57 @@ func (c *Controller) observeGoalControlLifecycle(
 				"agent_session_id", observation.AgentSessionID,
 				"operation_id", observation.OperationID,
 				"revision", observation.Revision,
-				"error", err,
+				"error", observeErr,
 			)
+			continue
+		}
+		if !result.Accepted {
+			continue
+		}
+		c.applyGoalControlGeneration(session, observation)
+	}
+}
+
+func (c *Controller) enqueueGoalProviderObservation(
+	ctx context.Context,
+	report agentsessionstore.ReportActivityInput,
+	transition *controllerGoalGenerationTransition,
+) {
+	if c == nil || c.reporter == nil || c.goalObservationQueue == nil || len(report.GoalReconcileRequests) == 0 {
+		return
+	}
+	sessionKey, startWorker := c.goalObservationQueue.enqueue(reportRequest{
+		ctx:            context.WithoutCancel(ctx),
+		report:         report,
+		goalTransition: transition,
+	})
+	if startWorker {
+		go c.runGoalObservationWorker(sessionKey)
+	}
+}
+
+// runGoalObservationWorker is the reliable bridge from an ephemeral provider
+// transcript notification to the durable Goal inbox. It is separate from the
+// ordinary activity queue so a control-plane outage cannot block message/UI
+// projection; keyed workers also prevent one Session's retry from blocking
+// another Session, while preserving FIFO within each Session.
+func (c *Controller) runGoalObservationWorker(sessionKey string) {
+	if c == nil || c.goalObservationQueue == nil || strings.TrimSpace(sessionKey) == "" {
+		return
+	}
+	for {
+		request, ok := c.goalObservationQueue.dequeue(sessionKey)
+		if !ok {
+			return
+		}
+		for {
+			if err := c.report(request.ctx, request); err == nil {
+				c.applyGoalProviderGenerationTransition(request.goalTransition)
+				break
+			}
+			if err := sleepWithContext(request.ctx, time.Second); err != nil {
+				break
+			}
 		}
 	}
 }
@@ -342,6 +419,7 @@ func enrichReportStatePatchesWithSessionMetadata(
 		}
 		report.StatePatches[index].RuntimeContext = clonePayload(patch.RuntimeContext)
 		report.StatePatches[index].RuntimeContextPatch = nil
+		report.StatePatches[index].GoalProjectionAuthority = patch.GoalProjectionAuthority
 		if report.StatePatches[index].Provider == "" {
 			report.StatePatches[index].Provider = patch.Provider
 		}

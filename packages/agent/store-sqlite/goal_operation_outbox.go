@@ -129,7 +129,19 @@ WHERE workspace_id = ? AND pending_operation_id = ?`, GoalSyncStatusFailed, stri
 	if changed {
 		mutations = append(mutations, transactionMutation(input.WorkspaceID, op.AgentSessionID, MutationEntityGoalOperation, op.OperationID, "release", op.UpdatedAtUnixMS))
 		if input.Fail {
-			mutations = append(mutations, transactionMutation(input.WorkspaceID, op.AgentSessionID, MutationEntityGoalState, op.AgentSessionID, "upsert", op.GoalRevision))
+			state, found, stateErr := getSessionGoalStateTx(ctx, tx, input.WorkspaceID, op.AgentSessionID)
+			if stateErr != nil {
+				return GoalControlOperation{}, false, stateErr
+			}
+			if !found {
+				return GoalControlOperation{}, false, errors.New("goal state is unavailable after failed operation release")
+			}
+			mutations = append(mutations, transactionMutation(input.WorkspaceID, op.AgentSessionID, MutationEntityGoalState, op.AgentSessionID, "upsert", state.Revision))
+			if sessionMutation, projectionErr := projectEffectiveGoalMutationTx(ctx, tx, state, input.NowUnixMS); projectionErr != nil {
+				return GoalControlOperation{}, false, projectionErr
+			} else if sessionMutation != nil {
+				mutations = append(mutations, *sessionMutation)
+			}
 		}
 	}
 	delta, err := s.commitTransaction(ctx, tx, input.WorkspaceID, mutations)
@@ -507,6 +519,11 @@ func (s *Store) commitGoalOperationMutation(
 			workspaceID, state.AgentSessionID, MutationEntityGoalState,
 			state.AgentSessionID, "upsert", state.Revision,
 		))
+		if sessionMutation, err := projectEffectiveGoalMutationTx(ctx, tx, *state, state.UpdatedAtUnixMS); err != nil {
+			return err
+		} else if sessionMutation != nil {
+			mutations = append(mutations, *sessionMutation)
+		}
 	}
 	delta, err := s.commitTransaction(ctx, tx, workspaceID, mutations)
 	if err != nil {

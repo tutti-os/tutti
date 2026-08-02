@@ -18,17 +18,18 @@ type goalControlLifecycleObserver struct {
 func (o goalControlLifecycleObserver) ObserveGoalControlApplied(
 	ctx context.Context,
 	observation agentruntime.GoalControlAppliedObservation,
-) error {
+) (agentruntime.GoalControlAppliedObservationResult, error) {
 	if o.sink == nil {
-		return nil
+		return agentruntime.GoalControlAppliedObservationResult{}, nil
 	}
-	return o.sink(ctx, host.RuntimeGoalControlAppliedInput{
+	result, err := o.sink(ctx, host.RuntimeGoalControlAppliedInput{
 		WorkspaceID: observation.WorkspaceID, AgentSessionID: observation.AgentSessionID,
 		OperationID: observation.OperationID, GoalRevision: observation.Revision,
 		RepairEpoch: observation.RepairEpoch, Action: observation.Action,
 		ProviderTurnID: observation.ProviderTurnID, Observed: observation.Observed,
 		OccurredAtUnixMS: observation.OccurredAtUnixMS,
 	})
+	return agentruntime.GoalControlAppliedObservationResult{Accepted: result.Accepted}, err
 }
 
 func (a *RuntimeController) SetGoalControlAppliedSink(sink host.RuntimeGoalControlAppliedSink) {

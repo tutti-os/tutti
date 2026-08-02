@@ -38,14 +38,14 @@ func TestRuntimeControllerBridgesGoalLifecycleToHostSink(t *testing.T) {
 	backend := &goalLifecycleRuntimeBackend{}
 	controller := &RuntimeController{Backend: backend}
 	var received host.RuntimeGoalControlAppliedInput
-	controller.SetGoalControlAppliedSink(func(_ context.Context, input host.RuntimeGoalControlAppliedInput) error {
+	controller.SetGoalControlAppliedSink(func(_ context.Context, input host.RuntimeGoalControlAppliedInput) (host.RuntimeGoalControlAppliedResult, error) {
 		received = input
-		return nil
+		return host.RuntimeGoalControlAppliedResult{Accepted: true}, nil
 	})
 	if backend.observer == nil {
 		t.Fatal("goal lifecycle observer was not registered")
 	}
-	err := backend.observer.ObserveGoalControlApplied(t.Context(), agentruntime.GoalControlAppliedObservation{
+	result, err := backend.observer.ObserveGoalControlApplied(t.Context(), agentruntime.GoalControlAppliedObservation{
 		WorkspaceID: "workspace", AgentSessionID: "session", OperationID: "goal-op-1",
 		Revision: 3, RepairEpoch: 1, Action: "set", ProviderTurnID: "provider-turn-1",
 		Observed: map[string]any{"objective": "ship it", "status": "active"}, OccurredAtUnixMS: 42,
@@ -53,11 +53,35 @@ func TestRuntimeControllerBridgesGoalLifecycleToHostSink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !result.Accepted {
+		t.Fatal("Host acceptance was not returned to the runtime")
+	}
 	if received.WorkspaceID != "workspace" || received.AgentSessionID != "session" ||
 		received.OperationID != "goal-op-1" || received.GoalRevision != 3 || received.RepairEpoch != 1 ||
 		received.Action != "set" || received.ProviderTurnID != "provider-turn-1" ||
 		received.Observed["objective"] != "ship it" || received.OccurredAtUnixMS != 42 {
 		t.Fatalf("host goal lifecycle input=%#v", received)
+	}
+}
+
+func TestRuntimeResumeInputCarriesTypedGoalGeneration(t *testing.T) {
+	t.Parallel()
+	input := host.RuntimeResumeInput{
+		WorkspaceID: "workspace", AgentSessionID: "session", Provider: agentruntime.ProviderClaudeCode,
+		GoalGeneration: &host.RuntimeGoalGeneration{
+			OperationID: "goal-op-1", Revision: 4, RepairEpoch: 2, ActivatedAtUnixMS: 42,
+			Goal: map[string]any{"objective": "ship it", "status": "active"},
+		},
+	}
+	projected := runtimeResumeInput(input)
+	if projected.GoalGeneration == nil || projected.GoalGeneration.OperationID != "goal-op-1" ||
+		projected.GoalGeneration.Revision != 4 || projected.GoalGeneration.RepairEpoch != 2 ||
+		projected.GoalGeneration.ActivatedAtUnixMS != 42 || projected.GoalGeneration.Goal["objective"] != "ship it" {
+		t.Fatalf("runtime Goal generation=%#v", projected.GoalGeneration)
+	}
+	projected.GoalGeneration.Goal["objective"] = "changed"
+	if input.GoalGeneration.Goal["objective"] != "ship it" {
+		t.Fatal("runtime resume projection aliased Host Goal payload")
 	}
 }
 

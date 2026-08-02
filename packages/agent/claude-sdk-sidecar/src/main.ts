@@ -41,6 +41,10 @@ export async function handleRequest(
           sidecarClaudeOptionsFromPayload(payload),
           recordValue(payload.resumeCursor) ?? undefined
         );
+        session.restoreGoalGeneration(
+          recordValue(payload.goalGeneration),
+          recordValue(payload.goal)
+        );
         sessions.set(agentSessionId, session);
         await session.start();
         emit({

@@ -93,6 +93,7 @@ type ResumeInput struct {
 	Visible           *bool
 	RuntimeContext    map[string]any
 	ProviderTargetRef map[string]any
+	GoalGeneration    *GoalRuntimeGeneration
 	PermissionModeID  string
 	Settings          *SessionSettings
 	CreatedAtUnixMS   int64
@@ -101,6 +102,16 @@ type ResumeInput struct {
 	// existing provider session can no longer be restored locally (e.g. an
 	// imported conversation), instead of returning a restore error.
 	RecreateIfMissing bool
+}
+
+// GoalRuntimeGeneration is the Host-fenced Goal identity required to restore
+// provider lifecycle observation after a daemon or sidecar restart.
+type GoalRuntimeGeneration struct {
+	OperationID       string
+	Revision          int64
+	RepairEpoch       int64
+	ActivatedAtUnixMS int64
+	Goal              map[string]any
 }
 
 type CloseInput struct {
@@ -363,27 +374,28 @@ type PromptContentBlock struct {
 }
 
 type Session struct {
-	RoomID             string              `json:"roomId"`
-	AgentSessionID     string              `json:"agentSessionId"`
-	RootAgentSessionID string              `json:"rootAgentSessionId,omitempty"`
-	AgentTargetID      string              `json:"agentTargetId,omitempty"`
-	Provider           string              `json:"provider"`
-	ProviderSessionID  string              `json:"providerSessionId"`
-	Resumable          bool                `json:"resumable"`
-	CWD                string              `json:"cwd,omitempty"`
-	Env                []string            `json:"-"`
-	Status             string              `json:"status"`
-	TurnLifecycle      *TurnLifecycle      `json:"turnLifecycle,omitempty"`
-	SubmitAvailability *SubmitAvailability `json:"submitAvailability,omitempty"`
-	Title              string              `json:"title,omitempty"`
-	LastError          string              `json:"lastError,omitempty"`
-	Visible            bool                `json:"visible"`
-	RuntimeContext     map[string]any      `json:"runtimeContext,omitempty"`
-	ProviderTargetRef  map[string]any      `json:"-"`
-	PermissionModeID   string              `json:"permissionModeId,omitempty"`
-	Settings           *SessionSettings    `json:"settings,omitempty"`
-	CreatedAtUnixMS    int64               `json:"createdAtUnixMs"`
-	UpdatedAtUnixMS    int64               `json:"updatedAtUnixMs"`
+	RoomID             string                 `json:"roomId"`
+	AgentSessionID     string                 `json:"agentSessionId"`
+	RootAgentSessionID string                 `json:"rootAgentSessionId,omitempty"`
+	AgentTargetID      string                 `json:"agentTargetId,omitempty"`
+	Provider           string                 `json:"provider"`
+	ProviderSessionID  string                 `json:"providerSessionId"`
+	Resumable          bool                   `json:"resumable"`
+	CWD                string                 `json:"cwd,omitempty"`
+	Env                []string               `json:"-"`
+	Status             string                 `json:"status"`
+	TurnLifecycle      *TurnLifecycle         `json:"turnLifecycle,omitempty"`
+	SubmitAvailability *SubmitAvailability    `json:"submitAvailability,omitempty"`
+	Title              string                 `json:"title,omitempty"`
+	LastError          string                 `json:"lastError,omitempty"`
+	Visible            bool                   `json:"visible"`
+	RuntimeContext     map[string]any         `json:"runtimeContext,omitempty"`
+	ProviderTargetRef  map[string]any         `json:"-"`
+	GoalGeneration     *GoalRuntimeGeneration `json:"-"`
+	PermissionModeID   string                 `json:"permissionModeId,omitempty"`
+	Settings           *SessionSettings       `json:"settings,omitempty"`
+	CreatedAtUnixMS    int64                  `json:"createdAtUnixMs"`
+	UpdatedAtUnixMS    int64                  `json:"updatedAtUnixMs"`
 	// LifecycleAuthority is set once an adapter-origin TurnLifecycle snapshot
 	// was applied (ADR 0008). Authority sessions copy lifecycle from
 	// snapshots and derive Status purely; legacy sessions keep the historic

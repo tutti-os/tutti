@@ -3949,6 +3949,42 @@ permanently ambiguous`. Provider status may already be `active` while the
   [agentTranscriptModel.ts](../../../packages/agent/gui/shared/agentConversation/components/agentTranscriptModel.ts)
   [AgentTranscriptView.tsx](../../../packages/agent/gui/shared/agentConversation/components/AgentTranscriptView.tsx)
 
+### Claude Goal finishes but the banner remains active
+
+- Symptom:
+  Claude reports that the objective is complete and the Turn settles, but the
+  Goal banner keeps showing an active Goal.
+- Quick checks:
+  Find the root `result`, then compare `goal_transcript_observed` and
+  `goal_transcript_replay`. `live_goal_status_entries=0` followed by
+  `replayed_goal_status_entries>0` proves the SDK live mirror omitted records
+  that the official native replay could read. A successful recovery also logs
+  `projected_goal_terminals=1`, then `goal_observed` with
+  `goal_update_type=thread_goal_completed`.
+- Root cause:
+  Claude can durably append the terminal `goal_status` record while omitting
+  Goal attachments from the custom `SessionStore.append` live mirror. The Turn
+  result therefore arrives before Tutti has observed the provider-owned Goal
+  completion.
+- Fix:
+  Keep the live SDK mirror as the primary observation path. Only when a root
+  result arrives with the current Goal generation still active, replay the
+  same provider transcript through the official SDK import API with bounded
+  retries and a total timeout. Publish the buffered replay atomically, and
+  fence it by Goal operation, revision, repair epoch, provider root user UUID,
+  that user's transcript parent/descendant chain, transcript root, and provider
+  Session ID; deduplicate entry IDs. Do not parse private transcript files,
+  poll continuously, or infer Goal completion from ordinary Turn settlement.
+- Validation:
+  Simulate a live mirror with no Goal attachments and an official replay that
+  contains historical Goal records plus the current terminal record. Verify
+  only the current operation completes, a successful explicit clear prevents
+  later replay, and the structured diagnostic counts identify which delivery
+  path supplied or rejected each batch.
+- References:
+  [goalProjection.ts](../../../packages/agent/claude-sdk-sidecar/src/goalProjection.ts)
+  [Claude Code SDK runtime](../../architecture/claude-code-sdk-runtime.md)
+
 ### Recording fails when a tool message contains its runtime CWD
 
 - Symptom:

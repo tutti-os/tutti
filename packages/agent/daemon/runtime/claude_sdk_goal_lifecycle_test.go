@@ -558,6 +558,7 @@ func TestClaudeSDKGoalCompletesOnlyFromProviderGoalObservation(t *testing.T) {
 	conn := &recordingClaudeSDKConnection{}
 	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
 	adapter.applyLocalGoal(adapterSession, map[string]any{"objective": "ship it", "status": "active"})
+	adapter.replaceClaudeGoalOperationIdentity(adapterSession, "goal-op-1", 7, 2)
 
 	events, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-goal", claudeSDKSidecarEvent{
 		Type: "turn_completed",
@@ -586,83 +587,89 @@ func TestClaudeSDKGoalCompletesOnlyFromProviderGoalObservation(t *testing.T) {
 		},
 	})
 	if err != nil || terminal || len(malformed) != 0 {
-		t.Fatalf("malformed active goal events=%#v terminal=%v err=%v", malformed, terminal, err)
+		t.Fatalf("malformed provider Goal events=%#v terminal=%v err=%v", malformed, terminal, err)
 	}
 	if goal := adapter.localGoal(adapterSession); goal["status"] != "active" {
-		t.Fatalf("malformed active goal changed mirror=%#v", goal)
+		t.Fatalf("malformed provider Goal changed mirror=%#v", goal)
 	}
 
 	updates, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-goal", claudeSDKSidecarEvent{
 		Type: "goal_observed",
 		Payload: map[string]any{
-			"turnId": "turn-goal", "source": "active_goal", "updateType": "thread_goal_update",
+			"turnId": "turn-goal", "source": "transcript_mirror", "updateType": "thread_goal_update",
+			"goalOperationId": "goal-op-old", "goalRevision": int64(6), "goalRepairEpoch": int64(2),
+			"goal": map[string]any{"objective": "ship it", "status": "complete"},
+		},
+	})
+	if err != nil || terminal || len(updates) != 0 {
+		t.Fatalf("stale provider Goal events=%#v terminal=%v err=%v", updates, terminal, err)
+	}
+	if goal := adapter.localGoal(adapterSession); goal["status"] != "active" {
+		t.Fatalf("stale provider Goal changed mirror=%#v", goal)
+	}
+
+	updates, terminal, err = adapter.sidecarTurnEvents(adapterSession, session, "turn-goal", claudeSDKSidecarEvent{
+		Type: "goal_observed",
+		Payload: map[string]any{
+			"turnId": "turn-goal", "source": "transcript_mirror", "updateType": "thread_goal_update",
+			"goalOperationId": "goal-op-1", "goalRevision": int64(7), "goalRepairEpoch": int64(2),
 			"goal": map[string]any{
 				"objective": "ship it", "status": "active", "iterations": float64(2), "reason": "not yet",
 			},
 		},
 	})
 	if err != nil || terminal {
-		t.Fatalf("active goal terminal=%v err=%v", terminal, err)
+		t.Fatalf("provider Goal terminal=%v err=%v", terminal, err)
 	}
 	assertClaudeSDKGoalUpdateEvent(t, updates, "thread_goal_update")
 	if goal := adapter.localGoal(adapterSession); goal["status"] != "active" || goal["iterations"] != int64(2) || goal["reason"] != "not yet" {
-		t.Fatalf("active goal mirror = %#v", goal)
+		t.Fatalf("provider Goal mirror = %#v", goal)
 	}
 
 	updates, terminal, err = adapter.sidecarTurnEvents(adapterSession, session, "turn-goal", claudeSDKSidecarEvent{
 		Type: "goal_observed",
 		Payload: map[string]any{
-			"turnId": "turn-goal", "source": "active_goal", "updateType": "thread_goal_completed",
+			"turnId": "turn-goal", "source": "transcript_mirror", "updateType": "thread_goal_completed",
+			"goalOperationId": "goal-op-1", "goalRevision": int64(7), "goalRepairEpoch": int64(2),
+			"goal": map[string]any{
+				"objective": "ship it", "status": "complete", "iterations": float64(3),
+				"durationMs": float64(1200), "tokens": float64(420), "reason": "done",
+			},
 		},
 	})
 	if err != nil || terminal {
 		t.Fatalf("completed goal terminal=%v err=%v", terminal, err)
 	}
-	assertClaudeSDKGoalUpdateEvent(t, updates, "thread_goal_update")
-	if goal := adapter.localGoal(adapterSession); goal["status"] != "complete" {
+	assertClaudeSDKGoalUpdateEvent(t, updates, "thread_goal_completed")
+	if goal := adapter.localGoal(adapterSession); goal["status"] != "complete" ||
+		goal["iterations"] != int64(3) || goal["durationMs"] != int64(1200) ||
+		goal["tokens"] != int64(420) || goal["reason"] != "done" {
 		t.Fatalf("completed goal mirror = %#v", goal)
-	}
-
-	adapter.applyLocalGoal(adapterSession, map[string]any{"objective": "ship it", "status": "active"})
-	updates, terminal, err = adapter.sidecarTurnEvents(adapterSession, session, "turn-goal", claudeSDKSidecarEvent{
-		Type: "goal_observed",
-		Payload: map[string]any{
-			"turnId": "turn-goal", "source": "goal_status", "updateType": "thread_goal_update",
-			"goal": map[string]any{
-				"objective": "ship it", "status": "complete", "iterations": float64(3),
-				"reason": "all steps finished", "durationMs": float64(16_386), "tokens": float64(1_479),
-			},
-		},
-	})
-	if err != nil || terminal {
-		t.Fatalf("goal_status completion terminal=%v err=%v", terminal, err)
-	}
-	assertClaudeSDKGoalUpdateEvent(t, updates, "thread_goal_update")
-	goal := adapter.localGoal(adapterSession)
-	if goal["status"] != "complete" || goal["iterations"] != int64(3) || goal["durationMs"] != int64(16_386) || goal["tokens"] != int64(1_479) || goal["reason"] != "all steps finished" {
-		t.Fatalf("goal_status completion mirror = %#v", goal)
 	}
 }
 
-func TestClaudeSDKExplicitClearUsesNilActiveGoalAsClear(t *testing.T) {
+func TestClaudeSDKGoalProviderFailureBecomesBlocked(t *testing.T) {
 	t.Parallel()
-
 	adapter := NewClaudeCodeSDKAdapter(nil)
-	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, &recordingClaudeSDKConnection{})
+	conn := &recordingClaudeSDKConnection{}
+	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
 	adapter.applyLocalGoal(adapterSession, map[string]any{"objective": "ship it", "status": "active"})
+	adapter.replaceClaudeGoalOperationIdentity(adapterSession, "goal-op-blocked", 3, 1)
 
-	events, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "goal-clear-turn", claudeSDKSidecarEvent{
+	events, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-goal", claudeSDKSidecarEvent{
 		Type: "goal_observed",
 		Payload: map[string]any{
-			"turnId": "goal-clear-turn", "action": "clear", "source": "active_goal", "updateType": "thread_goal_cleared",
+			"turnId": "turn-goal", "source": "transcript_mirror", "updateType": "thread_goal_update",
+			"goalOperationId": "goal-op-blocked", "goalRevision": int64(3), "goalRepairEpoch": int64(1),
+			"goal": map[string]any{"objective": "ship it", "status": "blocked", "reason": "evaluator failed"},
 		},
 	})
 	if err != nil || terminal {
-		t.Fatalf("clear active goal terminal=%v err=%v", terminal, err)
+		t.Fatalf("blocked provider Goal terminal=%v error=%v", terminal, err)
 	}
-	assertClaudeSDKGoalUpdateEvent(t, events, "thread_goal_cleared")
-	if goal := adapter.localGoal(adapterSession); len(goal) != 0 {
-		t.Fatalf("goal after explicit clear=%#v", goal)
+	assertClaudeSDKGoalUpdateEvent(t, events, "thread_goal_update")
+	if goal := adapter.localGoal(adapterSession); goal["status"] != "blocked" || goal["reason"] != "evaluator failed" {
+		t.Fatalf("blocked provider Goal mirror=%#v", goal)
 	}
 }
 
@@ -1457,7 +1464,8 @@ func assertClaudeSDKGoalUpdateEvent(t *testing.T, events []activityshared.Event,
 		if event.Payload.Metadata == nil {
 			continue
 		}
-		if event.Payload.Metadata["sessionUpdateKind"] == updateType {
+		if event.Type == activityshared.EventGoalProviderObserved && event.Payload.Metadata["updateType"] == updateType ||
+			event.Type == activityshared.EventSessionUpdated && event.Payload.Metadata["sessionUpdateKind"] == updateType {
 			return
 		}
 	}

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"sync"
 	"testing"
+
+	canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 func TestProviderGoalAdoptionCompletesWithoutProviderRedispatch(t *testing.T) {
@@ -507,6 +509,70 @@ func TestGoalOperationReleasePreservesPreparedAndDispatchedStatus(t *testing.T) 
 	}
 }
 
+func TestFailedGoalOperationReleaseRestoresSettledSessionProjection(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	const workspaceID = "ws-release-failed-projection"
+	const agentSessionID = "session"
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
+		Provider: "claude-code", OccurredAtUnixMS: 10,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := store.PrepareGoalControlOperation(ctx, GoalControlOperationPrepare{
+		OperationID: "settled", WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
+		Action: "set", Objective: "ship it", OccurredAtUnixMS: 20,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := store.CompleteGoalControlOperation(ctx, GoalControlOperationComplete{
+		WorkspaceID: workspaceID, OperationID: "settled", Succeeded: true,
+		Observed: map[string]any{"objective": "ship it", "status": "complete"},
+		Evidence: map[string]any{"phase": GoalProviderPhaseApplied}, OccurredAtUnixMS: 21,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := store.PrepareGoalControlOperation(ctx, GoalControlOperationPrepare{
+		OperationID: "retry", WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
+		Action: "set", Objective: "ship it", OccurredAtUnixMS: 30,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if session, found, err := store.GetSession(ctx, workspaceID, agentSessionID); err != nil || !found ||
+		session.Metadata.Goal == nil || session.Metadata.Goal.Status != "active" {
+		t.Fatalf("pending Session found=%v error=%v goal=%#v", found, err, session.Metadata.Goal)
+	}
+	if _, claimed, err := store.ClaimGoalControlOperation(ctx, ClaimGoalControlOperationInput{
+		WorkspaceID: workspaceID, OperationID: "retry", LeaseOwner: "worker",
+		NowUnixMS: 30, LeaseExpiresAtMS: 40,
+	}); err != nil || !claimed {
+		t.Fatalf("claim retry claimed=%v error=%v", claimed, err)
+	}
+	released, changed, err := store.ReleaseGoalControlOperation(ctx, ReleaseGoalControlOperationInput{
+		WorkspaceID: workspaceID, OperationID: "retry", LeaseOwner: "worker",
+		ProviderPhase: GoalProviderPhaseUnknown, LastError: "provider rejected retry",
+		NowUnixMS: 31, Fail: true,
+	})
+	if err != nil || !changed || released.Status != GoalOperationStatusFailed {
+		t.Fatalf("release=%#v changed=%v error=%v", released, changed, err)
+	}
+	if session, found, err := store.GetSession(ctx, workspaceID, agentSessionID); err != nil || !found ||
+		session.Metadata.Goal == nil || session.Metadata.Goal.Status != "complete" {
+		t.Fatalf("settled Session found=%v error=%v goal=%#v", found, err, session.Metadata.Goal)
+	}
+	foundSessionMutation := false
+	for _, mutation := range released.CommitDelta.Mutations {
+		if mutation.EntityKind == MutationEntitySession && mutation.EntityID == agentSessionID {
+			foundSessionMutation = true
+		}
+	}
+	if !foundSessionMutation {
+		t.Fatalf("release mutations=%#v, want Session projection", released.CommitDelta.Mutations)
+	}
+}
+
 func TestWakeGoalOperationFencesInflightCompletionUntilRepairEpoch(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
@@ -864,6 +930,113 @@ func TestGoalReconcileCASCompletesAuthoritativeTerminalLifecycleAndIgnoresOldObs
 	})
 	if err != nil || stale.Observed["objective"] != "ship it" || stale.SyncStatus != GoalSyncStatusSynced {
 		t.Fatalf("stale observation overwrote state=%#v error=%v", stale, err)
+	}
+}
+
+func TestHostOwnedGoalSurvivesGenericSessionRuntimeSnapshot(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	const workspaceID = "ws-host-goal-authority"
+	const agentSessionID = "session"
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: workspaceID, AgentSessionID: agentSessionID, Provider: "claude-code",
+		RuntimeContext: map[string]any{
+			"goal":          map[string]any{"objective": "ship it", "status": "complete"},
+			"providerState": "old",
+		},
+		OccurredAtUnixMS: 10,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: workspaceID, AgentSessionID: agentSessionID, Provider: "claude-code",
+		RuntimeContext: map[string]any{
+			"goal":          map[string]any{"objective": "ship it", "status": "active"},
+			"providerState": "new",
+		},
+		GoalProjectionAuthority: canonical.GoalProjectionAuthorityHost,
+		OccurredAtUnixMS:        20,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	session, found, err := store.GetSession(ctx, workspaceID, agentSessionID)
+	if err != nil || !found || session.Metadata.Goal == nil || session.Metadata.Goal.Status != "complete" ||
+		session.InternalRuntimeContext["providerState"] != "new" {
+		t.Fatalf("Session found=%v error=%v goal=%#v runtime=%#v", found, err, session.Metadata.Goal, session.InternalRuntimeContext)
+	}
+	state, found, err := store.GetSessionGoalState(ctx, workspaceID, agentSessionID)
+	if err != nil || !found || state.Observed["status"] != "complete" {
+		t.Fatalf("Goal state found=%v error=%v state=%#v", found, err, state)
+	}
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: workspaceID, AgentSessionID: agentSessionID, Provider: "claude-code",
+		GoalProjectionAuthority: canonical.GoalProjectionAuthorityHost,
+		OccurredAtUnixMS:        30,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	session, found, err = store.GetSession(ctx, workspaceID, agentSessionID)
+	if err != nil || !found || session.Metadata.Goal == nil || session.Metadata.Goal.Status != "complete" ||
+		session.InternalRuntimeContext["providerState"] != "new" {
+		t.Fatalf("nil snapshot found=%v error=%v goal=%#v runtime=%#v", found, err, session.Metadata.Goal, session.InternalRuntimeContext)
+	}
+}
+
+func TestGoalObservationPublishesSessionOnlyOnEffectiveGoalChange(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: "ws-projection", AgentSessionID: "session-projection",
+		Provider: "claude-code", OccurredAtUnixMS: 10,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	first, err := store.ReconcileSessionGoalObservation(ctx, GoalObservationReconcile{
+		WorkspaceID: "ws-projection", AgentSessionID: "session-projection",
+		Observed: map[string]any{"objective": "ship it", "status": "active"},
+		Evidence: map[string]any{"confidence": "authoritative"}, OccurredAtUnixMS: 20,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertParticipantMutationKinds(t, first.CommitDelta, MutationEntitySession, MutationEntityGoalState)
+
+	repeated, err := store.ReconcileSessionGoalObservation(ctx, GoalObservationReconcile{
+		WorkspaceID: "ws-projection", AgentSessionID: "session-projection",
+		Observed: map[string]any{"objective": "ship it", "status": "active"},
+		Evidence: map[string]any{"confidence": "authoritative"}, OccurredAtUnixMS: 30,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertParticipantMutationKinds(t, repeated.CommitDelta, MutationEntityGoalState)
+	if session, found, err := store.GetSession(ctx, "ws-projection", "session-projection"); err != nil || !found ||
+		session.Metadata.Goal == nil || session.Metadata.Goal.Status != "active" {
+		t.Fatalf("canonical Session found=%v error=%v goal=%#v", found, err, session.Metadata.Goal)
+	}
+}
+
+func TestGoalObservationRejectsInvalidCanonicalProjection(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: "ws-invalid-goal", AgentSessionID: "session-invalid-goal",
+		Provider: "claude-code", OccurredAtUnixMS: 10,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ReconcileSessionGoalObservation(ctx, GoalObservationReconcile{
+		WorkspaceID: "ws-invalid-goal", AgentSessionID: "session-invalid-goal",
+		Observed: map[string]any{"objective": "ship it", "status": "provider_magic"},
+		Evidence: map[string]any{"confidence": "authoritative"}, OccurredAtUnixMS: 20,
+	}); err == nil {
+		t.Fatal("invalid provider Goal observation error=nil")
+	}
+	if session, found, err := store.GetSession(ctx, "ws-invalid-goal", "session-invalid-goal"); err != nil || !found || session.Metadata.Goal != nil {
+		t.Fatalf("invalid observation changed Session found=%v error=%v goal=%#v", found, err, session.Metadata.Goal)
 	}
 }
 

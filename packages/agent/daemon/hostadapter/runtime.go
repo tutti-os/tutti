@@ -690,7 +690,21 @@ func runtimeResumeInput(input host.RuntimeResumeInput) agentruntime.ResumeInput 
 		RuntimeContext: cloneMap(input.RuntimeContext), ProviderTargetRef: cloneMap(input.ProviderTargetRef),
 		PermissionModeID: input.Settings.PermissionModeID, Settings: runtimeSettings(input.Settings),
 		CreatedAtUnixMS: input.CreatedAtUnixMS, UpdatedAtUnixMS: input.UpdatedAtUnixMS,
+		GoalGeneration:    runtimeGoalGeneration(input.GoalGeneration),
 		RecreateIfMissing: input.RecreateIfMissing,
+	}
+}
+
+func runtimeGoalGeneration(value *host.RuntimeGoalGeneration) *agentruntime.GoalRuntimeGeneration {
+	if value == nil {
+		return nil
+	}
+	return &agentruntime.GoalRuntimeGeneration{
+		OperationID:       strings.TrimSpace(value.OperationID),
+		Revision:          value.Revision,
+		RepairEpoch:       value.RepairEpoch,
+		ActivatedAtUnixMS: value.ActivatedAtUnixMS,
+		Goal:              cloneMap(value.Goal),
 	}
 }
 

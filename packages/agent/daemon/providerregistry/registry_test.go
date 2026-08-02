@@ -371,6 +371,7 @@ func TestMigratedClaudeCodeDescriptorIsComplete(t *testing.T) {
 		t.Fatalf("Validate(claude-code) error = %v", err)
 	}
 	if descriptor.Runtime.Kind != RuntimeKindClaudeSDK ||
+		descriptor.Runtime.GoalProjectionOwnership != GoalProjectionOwnershipHost ||
 		descriptor.Status.Kind != StatusKindClaudeCLI ||
 		descriptor.ComposerProfile.LiveModelDiscovery.Kind != LiveModelDiscoveryKindClaudeSDK ||
 		!descriptor.ComposerProfile.LiveModelDiscovery.HiddenProbe ||
@@ -574,6 +575,14 @@ func TestValidateRejectsUnsupportedDescriptorStrategies(t *testing.T) {
 				t.Fatalf("Validate() error = nil for %#v", descriptor)
 			}
 		})
+	}
+}
+
+func TestValidateRejectsUnsupportedGoalProjectionOwnership(t *testing.T) {
+	descriptor := claudeCodeDescriptor()
+	descriptor.Runtime.GoalProjectionOwnership = "provider_patch"
+	if err := Validate(descriptor); err == nil {
+		t.Fatal("Validate() error = nil")
 	}
 }
 

@@ -16,9 +16,39 @@ type captureGoalControlLifecycleObserver struct {
 func (o *captureGoalControlLifecycleObserver) ObserveGoalControlApplied(
 	_ context.Context,
 	observation GoalControlAppliedObservation,
-) error {
+) (GoalControlAppliedObservationResult, error) {
 	o.observations = append(o.observations, observation)
-	return nil
+	return GoalControlAppliedObservationResult{Accepted: true}, nil
+}
+
+func TestGoalProviderObservationProjectsToDurableControlInboxOnly(t *testing.T) {
+	t.Parallel()
+	session := Session{
+		RoomID: "room-1", AgentSessionID: "agent-session-1", Provider: ProviderClaudeCode,
+		ProviderSessionID: "provider-session-1", CWD: "/workspace",
+	}
+	ctx, ok := activityEventContext(session, "goal-observed-1", "")
+	if !ok {
+		t.Fatal("provider Goal event context unavailable")
+	}
+	event := activityshared.NewGoalProviderObserved(ctx, map[string]any{
+		"operationId": "goal-op-1", "revision": int64(3), "repairEpoch": int64(1),
+		"providerTurnId": "provider-turn-1", "source": "transcript_mirror",
+		"updateType": "thread_goal_completed",
+		"goal":       map[string]any{"objective": "ship it", "status": "complete"},
+	})
+
+	report := reportActivityInput(session, []activityshared.Event{event})
+	if len(report.StatePatches) != 0 || len(report.GoalReconcileRequests) != 1 {
+		t.Fatalf("provider Goal report=%#v", report)
+	}
+	request := report.GoalReconcileRequests[0]
+	if request.Phase != "provider_observed" || request.AgentSessionID != "agent-session-1" ||
+		request.ExpectedOperationID != "goal-op-1" || request.ExpectedRevision != 3 || request.ExpectedRepairEpoch != 1 ||
+		request.ProviderTurnID != "provider-turn-1" || request.ProviderSource != "transcript_mirror" ||
+		request.UpdateType != "thread_goal_completed" || request.Observed["status"] != "complete" {
+		t.Fatalf("provider Goal control request=%#v", request)
+	}
 }
 
 func TestControllerRoutesGoalControlAppliedOutsideSessionMetadata(t *testing.T) {

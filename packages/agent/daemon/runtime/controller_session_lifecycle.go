@@ -41,6 +41,7 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 	)
 	title := titletext.Normalize(input.Title)
 	initialTitleEstablished := input.InitialTitleEstablished || title != ""
+	runtimeContext := providerPrivateRuntimeContext(provider, input.RuntimeContext)
 	permissionModeID := settings.PermissionModeID
 	if agentSessionID == "" {
 		if existing, ok := c.findStartSession(roomID, strings.TrimSpace(input.AgentTargetID), provider, input.CWD, title, settings, input.ProviderTargetRef); ok {
@@ -66,7 +67,7 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 		InitialTitleEstablished: initialTitleEstablished,
 		Visible:                 sessionVisible(input.Visible),
 		RuntimeContext: runtimeContextWithInitialTitleEstablished(
-			input.RuntimeContext,
+			runtimeContext,
 			initialTitleEstablished,
 		),
 		ProviderTargetRef: clonePayload(input.ProviderTargetRef),
@@ -115,6 +116,29 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 	return StartResult{Session: session}, nil
 }
 
+func cloneGoalRuntimeGeneration(value *GoalRuntimeGeneration) *GoalRuntimeGeneration {
+	if value == nil {
+		return nil
+	}
+	return &GoalRuntimeGeneration{
+		OperationID:       strings.TrimSpace(value.OperationID),
+		Revision:          value.Revision,
+		RepairEpoch:       value.RepairEpoch,
+		ActivatedAtUnixMS: value.ActivatedAtUnixMS,
+		Goal:              clonePayload(value.Goal),
+	}
+}
+
+func providerPrivateRuntimeContext(provider string, runtimeContext map[string]any) map[string]any {
+	result := clonePayload(runtimeContext)
+	if providerUsesHostGoalProjection(provider) {
+		// Host-owned Goal state must never re-enter the generic Session
+		// metadata projection through a provider runtime snapshot.
+		delete(result, "goal")
+	}
+	return result
+}
+
 func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, error) {
 	roomID := strings.TrimSpace(input.RoomID)
 	agentSessionID := strings.TrimSpace(input.AgentSessionID)
@@ -157,8 +181,9 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 	if updatedAtUnixMS <= 0 {
 		updatedAtUnixMS = timestamp
 	}
+	runtimeContext := providerPrivateRuntimeContext(provider, input.RuntimeContext)
 	initialTitleEstablished := initialTitleEstablishedFromRuntimeContext(
-		input.RuntimeContext,
+		runtimeContext,
 		input.Title,
 	)
 	session := Session{
@@ -176,10 +201,11 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 		InitialTitleEstablished: initialTitleEstablished,
 		Visible:                 sessionVisible(input.Visible),
 		RuntimeContext: runtimeContextWithInitialTitleEstablished(
-			input.RuntimeContext,
+			runtimeContext,
 			initialTitleEstablished,
 		),
 		ProviderTargetRef: clonePayload(input.ProviderTargetRef),
+		GoalGeneration:    cloneGoalRuntimeGeneration(input.GoalGeneration),
 		PermissionModeID:  normalizePermissionModeIDWithFallback(provider, input.PermissionModeID, defaultPermissionModeIDForProvider(provider)),
 		Settings:          normalizeOptionalSessionSettings(input.Settings, provider, firstNonEmpty(input.PermissionModeID, defaultPermissionModeIDForProvider(provider))),
 		CreatedAtUnixMS:   createdAtUnixMS,

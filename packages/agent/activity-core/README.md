@@ -334,11 +334,13 @@ identity actually used by the Engine. The Engine owns command identity,
 one-in-flight admission, the 30-second timeout, optimistic projection, typed
 Session/Goal result validation, and delivery-unknown identity reuse. Hosts only
 perform transport and result mapping. A successful typed result treats its
-top-level `goal` as the authoritative durable desired projection and normalizes
-the returned Session to the same value. Provider observation remains in
-`state.observed`, so an empty pause/resume observation cannot erase a Goal;
-only a durable tombstone produces `goal: null`. This also preserves an explicit
-clear even when a runtime Session snapshot still carries the previous Goal.
+top-level `goal` as the authoritative Host-owned effective projection and
+normalizes the returned Session to the same value. Pending intent comes from
+`state.desired`; once settled, a matching `state.observed` lifecycle (including
+completion) owns the projection. An empty pause/resume observation cannot erase
+a Goal, and only a durable tombstone produces `goal: null`. This also preserves
+an explicit clear even when a runtime Session snapshot still carries the
+previous Goal.
 Pending/applying results keep their older canonical Session until Host reports
 synced state. Every admitted action reaches Host so it can create the durable
 revision and audit, even when the visible Goal value is already equal.

@@ -64,7 +64,7 @@ func TestClaudeCodeSDKAdapterPreservesResolvedModelDescriptor(t *testing.T) {
 	}
 }
 
-func TestClaudeCodeSDKAdapterMirrorsGoalSlashPromptIntoRuntimeContext(t *testing.T) {
+func TestClaudeCodeSDKAdapterKeepsGoalSlashPromptInProviderLocalState(t *testing.T) {
 	t.Parallel()
 
 	adapterSession := &claudeSDKAdapterSession{
@@ -77,16 +77,19 @@ func TestClaudeCodeSDKAdapterMirrorsGoalSlashPromptIntoRuntimeContext(t *testing
 	} else if event.Type != activityshared.EventSessionUpdated {
 		t.Fatalf("event type = %q, want session.updated", event.Type)
 	}
-	goal := payloadObject(claudeSDKRuntimeContext(session, adapterSession)["goal"])
+	goal := clonePayload(adapterSession.liveState.goal)
 	if asString(goal["objective"]) != "ship native goal" || asString(goal["status"]) != "active" {
-		t.Fatalf("runtime goal = %#v, want active objective", goal)
+		t.Fatalf("provider-local goal = %#v, want active objective", goal)
+	}
+	if _, leaked := claudeSDKRuntimeContext(session, adapterSession)["goal"]; leaked {
+		t.Fatal("provider-local Goal leaked into generic Session runtime context")
 	}
 
 	if _, ok := adapterSession.mirrorGoalSlashPrompt(session, "/goal clear"); !ok {
 		t.Fatal("mirrorGoalSlashPrompt clear ok=false")
 	}
-	if goal := payloadObject(claudeSDKRuntimeContext(session, adapterSession)["goal"]); len(goal) != 0 {
-		t.Fatalf("runtime goal after clear = %#v, want empty", goal)
+	if goal := adapterSession.liveState.goal; len(goal) != 0 {
+		t.Fatalf("provider-local goal after clear = %#v, want empty", goal)
 	}
 }
 
@@ -95,48 +98,55 @@ func TestClaudeCodeSDKAdapterMapsGoalObservedSidecarEvent(t *testing.T) {
 
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	adapterSession := &claudeSDKAdapterSession{
-		liveState: newClaudeSDKLiveState(),
+		liveState:       newClaudeSDKLiveState(),
+		goalOperationID: "goal-op-1",
+		goalRevision:    1,
 	}
 	session := standardTestSession(ProviderClaudeCode)
+	adapter.applyLocalGoal(adapterSession, map[string]any{"objective": "ship native goal", "status": "active"})
 
 	events, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-goal", claudeSDKSidecarEvent{
 		Type: "goal_observed",
 		Payload: map[string]any{
-			"turnId":     "turn-goal",
-			"updateType": "thread_goal_update",
+			"turnId":          "turn-goal",
+			"updateType":      "thread_goal_update",
+			"goalOperationId": "goal-op-1",
+			"goalRevision":    int64(1),
 			"goal": map[string]any{
 				"objective": "ship native goal",
 				"status":    "active",
-				"sentinel":  true,
 			},
 		},
 	})
 	if err != nil || terminal {
 		t.Fatalf("goal_observed terminal=%v err=%v", terminal, err)
 	}
-	if len(activityEventsWithType(events, activityshared.EventSessionUpdated)) < 2 {
-		t.Fatalf("events = %#v, want goal session.updated events", events)
+	if len(activityEventsWithType(events, activityshared.EventGoalProviderObserved)) != 1 ||
+		len(activityEventsWithType(events, activityshared.EventSessionUpdated)) != 0 {
+		t.Fatalf("events = %#v, want one internal provider Goal observation", events)
 	}
-	goal := payloadObject(claudeSDKRuntimeContext(session, adapterSession)["goal"])
-	if asString(goal["objective"]) != "ship native goal" || asString(goal["status"]) != "active" {
-		t.Fatalf("runtime goal = %#v, want active SDK goal status", goal)
+	if _, leaked := claudeSDKRuntimeContext(session, adapterSession)["goal"]; leaked {
+		t.Fatal("provider Goal leaked into generic Session runtime context")
 	}
 
-	events, terminal, err = adapter.sidecarTurnEvents(adapterSession, session, "turn-goal", claudeSDKSidecarEvent{
-		Type: "goal_observed",
-		Payload: map[string]any{
-			"turnId":     "turn-goal",
-			"updateType": "thread_goal_cleared",
-		},
-	})
-	if err != nil || terminal {
-		t.Fatalf("goal cleared terminal=%v err=%v", terminal, err)
+}
+
+func TestClaudeSDKGoalGenerationRestoresFromTypedHostState(t *testing.T) {
+	t.Parallel()
+	generation := &GoalRuntimeGeneration{
+		OperationID: "goal-op-restored",
+		Revision:    9,
+		RepairEpoch: 1,
+		Goal:        map[string]any{"objective": "ship it", "status": "active"},
 	}
-	if len(events) == 0 {
-		t.Fatal("events empty, want goal cleared session.updated")
+	liveState, identity := restoredClaudeSDKGoalRuntimeState(generation)
+	if identity.operationID != "goal-op-restored" || identity.revision != 9 || identity.repairEpoch != 1 ||
+		liveState.goal["objective"] != "ship it" || liveState.goal["status"] != "active" {
+		t.Fatalf("restored Goal identity=%#v state=%#v", identity, liveState.goal)
 	}
-	if goal := payloadObject(claudeSDKRuntimeContext(session, adapterSession)["goal"]); len(goal) != 0 {
-		t.Fatalf("runtime goal after clear = %#v, want empty", goal)
+	generation.Goal = map[string]any{"objective": "ship it", "status": "complete"}
+	if _, terminalIdentity := restoredClaudeSDKGoalRuntimeState(generation); terminalIdentity.valid() {
+		t.Fatalf("terminal Goal restored as active generation=%#v", terminalIdentity)
 	}
 }
 

@@ -76,11 +76,13 @@ or another adapter-side view change never reassigns an existing session to
 Cancellation exposes durable intent acceptance, provider confirmation, and
 canonical settlement as separate facts. `GoalControl`, `GetGoalState`, and
 `ReconcileGoal` are provider-neutral Host APIs; typed `/goal` commands enter the
-same durable saga without opening a turn. `GoalControlResult.Goal` is always
-the durable desired projection after persistence; provider output is retained
-separately in `GoalState.Observed`. A provider may return no observation for
-pause or resume without erasing the visible Goal, and only a durable tombstone
-returns a nil Goal. `AdoptProviderGoal` is the narrow
+same durable saga without opening a turn. `GoalControlResult.Goal` is the
+Host-owned effective projection after persistence: desired intent is shown
+while a command is pending, then a matching provider observation owns
+lifecycle status and counters. Raw intent and provider output remain available
+as `GoalState.Desired` and `GoalState.Observed`. A provider may return no
+observation for pause or resume without erasing the visible Goal, and only a
+durable tombstone returns a nil Goal. `AdoptProviderGoal` is the narrow
 reverse boundary for a Goal created by a provider tool during an already
 accepted Turn. It atomically records the active provider generation as a
 completed, applied operation and converged desired/observed state; it never

@@ -2,6 +2,8 @@ package canonical
 
 import "strings"
 
+const GoalProjectionAuthorityHost = "host"
+
 type SessionSnapshot struct {
 	WorkspaceID          string
 	AgentSessionID       string

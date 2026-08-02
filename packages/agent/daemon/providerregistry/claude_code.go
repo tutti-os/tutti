@@ -11,9 +11,10 @@ func claudeCodeDescriptor() ProviderDescriptor {
 	return ProviderDescriptor{
 		Identity: canonicalProviderIdentity(ClaudeCodeProviderID),
 		Runtime: RuntimeDescriptor{
-			Kind:              RuntimeKindClaudeSDK,
-			Name:              "claude-agent-sdk",
-			NativeSessionFork: true,
+			Kind:                    RuntimeKindClaudeSDK,
+			Name:                    "claude-agent-sdk",
+			NativeSessionFork:       true,
+			GoalProjectionOwnership: GoalProjectionOwnershipHost,
 			Endpoint: RuntimeEndpointDescriptor{
 				BaseURLEnvVars: []string{
 					"ANTHROPIC_BASE_URL",

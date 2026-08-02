@@ -62,13 +62,19 @@ cancel/fail/complete close dangling tool cards instead of leaving them
 in progress. Protocol-neutral session and interactive activity projection have
 their own modules, while Claude goal, command, usage, and interaction decoding
 stay inside the Claude SDK boundary.
-Claude Goal state comes only from provider-owned Goal observations. The
-sidecar normalizes both SDK `active_goal` messages and the native `/goal` Stop
-hook's top-level `goal_status` attachment into one `goal_observed` event. A
-non-null `active_goal` or `goal_status.met=false` keeps the condition active;
-`goal_status.met=true` completes it. A null `active_goal` is interpreted as
-explicit clear or completion using the exact command action and previous Goal
-observation. Ordinary Turn completion has no Goal semantics.
+Claude Goal observations come from the provider-owned `goal_status` records in
+the official SDK transcript store. The sidecar observes the SDK's live
+`SessionStore.append` mirror first. When a root result arrives with a Goal
+generation still active, it performs a bounded replay through the SDK's
+`importSessionToStore`; this closes a delivery gap where Claude has persisted a
+terminal record but omitted it from the live mirror. Both paths feed the same
+idempotent generation-fenced projection, so replay is a recovery path for one
+provider source rather than a second Goal owner. Replay is buffered until the
+SDK import completes, bounded by the owning query's cancellation signal and a
+total deadline, and fenced to the provider root user plus its transcript
+parent/descendant chain. The sidecar never reads Claude's private transcript
+files directly and never infers Goal state from ordinary Turn completion.
+Explicit clear retires the matching projection generation.
 Command-consumption evidence travels as the internal `goal.control_applied`
 event to the Host Goal lane and must never be embedded in session runtime
 context.

@@ -54,3 +54,21 @@ func TestApplySessionEventsMergesRuntimeContextMetadata(t *testing.T) {
 		t.Fatalf("runtime context = %#v, want provider config", updated.RuntimeContext)
 	}
 }
+
+func TestClaudeProviderRuntimeContextExcludesActorOwnedGoal(t *testing.T) {
+	t.Parallel()
+	input := map[string]any{
+		"goal":          map[string]any{"objective": "ship", "status": "active"},
+		"providerState": "ready",
+	}
+	got := providerPrivateRuntimeContext(ProviderClaudeCode, input)
+	if _, present := got["goal"]; present {
+		t.Fatalf("public Goal remained in Claude runtime context: %#v", got)
+	}
+	if got["providerState"] != "ready" {
+		t.Fatalf("unrelated runtime state was lost: %#v", got)
+	}
+	if _, present := input["goal"]; !present {
+		t.Fatalf("input runtime context mutated: %#v", input)
+	}
+}

@@ -186,11 +186,17 @@ INSERT INTO workspace_agent_goal_control_operations (
 	if err != nil {
 		return GoalControlOperation{}, SessionGoalState{}, false, err
 	}
-	delta, err := s.commitTransaction(ctx, tx, input.WorkspaceID, []TransactionMutation{
+	mutations := []TransactionMutation{
 		transactionMutation(input.WorkspaceID, input.AgentSessionID, MutationEntityGoalState, input.AgentSessionID, "upsert", revision),
 		transactionMutation(input.WorkspaceID, input.AgentSessionID, MutationEntityGoalOperation, input.OperationID, "prepare", op.UpdatedAtUnixMS),
 		transactionMutation(input.WorkspaceID, input.AgentSessionID, MutationEntityMessage, auditMessage.MessageID, "insert", int64(auditMessage.Version)),
-	})
+	}
+	if sessionMutation, projectionErr := projectEffectiveGoalMutationTx(ctx, tx, state, input.OccurredAtUnixMS); projectionErr != nil {
+		return GoalControlOperation{}, SessionGoalState{}, false, projectionErr
+	} else if sessionMutation != nil {
+		mutations = append(mutations, *sessionMutation)
+	}
+	delta, err := s.commitTransaction(ctx, tx, input.WorkspaceID, mutations)
 	if err != nil {
 		return GoalControlOperation{}, SessionGoalState{}, false, fmt.Errorf("commit goal control operation: %w", err)
 	}
@@ -430,10 +436,16 @@ WHERE workspace_id = ? AND agent_session_id = ? AND pending_operation_id = ?
 	if err != nil {
 		return GoalControlOperation{}, SessionGoalState{}, false, err
 	}
-	delta, err := s.commitTransaction(ctx, tx, input.WorkspaceID, []TransactionMutation{
+	mutations := []TransactionMutation{
 		transactionMutation(input.WorkspaceID, op.AgentSessionID, MutationEntityGoalOperation, op.OperationID, "complete", op.UpdatedAtUnixMS),
 		transactionMutation(input.WorkspaceID, op.AgentSessionID, MutationEntityGoalState, op.AgentSessionID, "upsert", state.Revision),
-	})
+	}
+	if sessionMutation, projectionErr := projectEffectiveGoalMutationTx(ctx, tx, state, input.OccurredAtUnixMS); projectionErr != nil {
+		return GoalControlOperation{}, SessionGoalState{}, false, projectionErr
+	} else if sessionMutation != nil {
+		mutations = append(mutations, *sessionMutation)
+	}
+	delta, err := s.commitTransaction(ctx, tx, input.WorkspaceID, mutations)
 	if err != nil {
 		return GoalControlOperation{}, SessionGoalState{}, false, err
 	}
@@ -455,6 +467,15 @@ func (s *Store) ReconcileSessionGoalObservation(ctx context.Context, input GoalO
 	input.WorkspaceID, input.AgentSessionID = strings.TrimSpace(input.WorkspaceID), strings.TrimSpace(input.AgentSessionID)
 	if input.WorkspaceID == "" || input.AgentSessionID == "" || input.OccurredAtUnixMS <= 0 {
 		return SessionGoalState{}, errors.New("goal observation scope and occurred time are required")
+	}
+	if len(input.Observed) > 0 {
+		input.Observed = normalizeSessionGoalStatusAliases(input.Observed)
+		if strings.TrimSpace(asJSONMapString(input.Observed, "status")) != "" {
+			if _, err := DecodeSessionGoal(input.Observed); err != nil {
+				return SessionGoalState{}, fmt.Errorf("validate observed goal: %w", err)
+			}
+			input.Observed = canonicalSessionGoalMap(input.Observed)
+		}
 	}
 	// SQLite serializes writers, but the explicit revision/pending/timestamp
 	// predicate is still the state-machine contract and protects alternative
@@ -565,6 +586,12 @@ WHERE workspace_id = ? AND operation_id = ? AND goal_revision = ? AND status IN 
 		if err == nil {
 			mutations := []TransactionMutation{
 				transactionMutation(input.WorkspaceID, input.AgentSessionID, MutationEntityGoalState, input.AgentSessionID, "reconcile", updated.Revision),
+			}
+			if sessionMutation, projectionErr := projectEffectiveGoalMutationTx(ctx, tx, updated, input.OccurredAtUnixMS); projectionErr != nil {
+				_ = tx.Rollback()
+				return SessionGoalState{}, projectionErr
+			} else if sessionMutation != nil {
+				mutations = append(mutations, *sessionMutation)
 			}
 			if completePending {
 				mutations = append(mutations, transactionMutation(input.WorkspaceID, input.AgentSessionID, MutationEntityGoalOperation, expectedPending, "complete", input.OccurredAtUnixMS))

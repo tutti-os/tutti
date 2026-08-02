@@ -224,9 +224,6 @@ func claudeSDKRuntimeContext(session Session, adapterSession *claudeSDKAdapterSe
 	if title := strings.TrimSpace(session.Title); title != "" {
 		context["title"] = title
 	}
-	if len(liveState.goal) > 0 {
-		context["goal"] = clonePayload(liveState.goal)
-	}
 	return context
 }
 

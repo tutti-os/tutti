@@ -16,6 +16,14 @@ const (
 	RuntimeKindClaudeSDK      RuntimeKind = "claude_sdk"
 )
 
+// GoalProjectionOwnership declares which runtime boundary is allowed to write
+// the canonical Session Goal projection. The empty value keeps the generic
+// Session reporter as owner; host-owned providers publish Goal only through
+// the Host Goal actor and use runtime reports as non-authoritative snapshots.
+type GoalProjectionOwnership string
+
+const GoalProjectionOwnershipHost GoalProjectionOwnership = "host"
+
 type StandardACPAdapterStrategy string
 
 const (
@@ -147,11 +155,12 @@ const (
 type IdentityDescriptor = canonical.ProviderIdentity
 
 type RuntimeDescriptor struct {
-	Kind                RuntimeKind
-	Name                string
-	Command             []string
-	ClientInfoName      string
-	AuthRequiredMessage string
+	Kind                    RuntimeKind
+	Name                    string
+	Command                 []string
+	ClientInfoName          string
+	AuthRequiredMessage     string
+	GoalProjectionOwnership GoalProjectionOwnership
 	// NativeSessionFork marks runtimes whose provider strategy may expose a
 	// native session-fork primitive. The live adapter must still attest the
 	// exact protocol/version before advertising any fork capability.

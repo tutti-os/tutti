@@ -593,25 +593,26 @@ type StaleTurnSettlement struct {
 }
 
 type SessionStateReport struct {
-	WorkspaceID          string
-	AgentSessionID       string
-	Kind                 string
-	RootAgentSessionID   string
-	RootTurnID           string
-	ParentAgentSessionID string
-	ParentTurnID         string
-	ParentToolCallID     string
-	Origin               string
-	UserID               string
-	AgentTargetID        string
-	Provider             string
-	ProviderSessionID    string
-	Model                string
-	Settings             map[string]any
-	Capabilities         *canonical.CapabilitySnapshot
-	RuntimeContext       map[string]any
-	RuntimeContextPatch  *canonical.RuntimeContextPatch
-	Cwd                  string
+	WorkspaceID             string
+	AgentSessionID          string
+	Kind                    string
+	RootAgentSessionID      string
+	RootTurnID              string
+	ParentAgentSessionID    string
+	ParentTurnID            string
+	ParentToolCallID        string
+	Origin                  string
+	UserID                  string
+	AgentTargetID           string
+	Provider                string
+	ProviderSessionID       string
+	Model                   string
+	Settings                map[string]any
+	Capabilities            *canonical.CapabilitySnapshot
+	RuntimeContext          map[string]any
+	RuntimeContextPatch     *canonical.RuntimeContextPatch
+	GoalProjectionAuthority string
+	Cwd                     string
 	// ImportProjectPath is the canonical selected project for a historical
 	// import. The store accepts it only for imported, project-backed sessions.
 	ImportProjectPath string

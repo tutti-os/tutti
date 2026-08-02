@@ -20,7 +20,7 @@ func (h *Host) StepGoalReconcileInboxWorker(ctx context.Context) error {
 		}
 		return nil
 	}
-	if h.goals == nil || h.goalRuntime == nil {
+	if h.goals == nil {
 		return ErrGoalConsumerUnavailable
 	}
 	items, err := h.goalInbox.ListClaimableGoalReconcileInbox(ctx, h.goalOperationNow().UnixMilli(), 64)
@@ -54,21 +54,41 @@ func (h *Host) StepGoalReconcileInboxWorker(ctx context.Context) error {
 			}
 			continue
 		}
-		input := GoalReconcileRequiredInput{
-			WorkspaceID: item.WorkspaceID, AgentSessionID: item.AgentSessionID, RequestID: item.RequestID,
-			ProviderTurnID: metadataString(item.Payload, "providerTurnId"), Reason: metadataString(item.Payload, "reason"),
-			FenceMode: metadataString(item.Payload, "fenceMode"), ExpectedOperationID: metadataString(item.Payload, "expectedOperationId"),
-			ExpectedRevision: metadataInt64(item.Payload, "expectedRevision"), ExpectedRepairEpoch: metadataInt64(item.Payload, "expectedRepairEpoch"),
-			QuiesceSucceeded: metadataBool(item.Payload, "quiesceSucceeded"), QuiesceError: metadataString(item.Payload, "quiesceError"),
+		phase := metadataString(item.Payload, "phase")
+		var handleErr error
+		if phase == "provider_observed" {
+			handleErr = h.ObserveRuntimeGoalProviderState(ctx, RuntimeGoalProviderObservedInput{
+				WorkspaceID: item.WorkspaceID, AgentSessionID: item.AgentSessionID,
+				OperationID:      metadataString(item.Payload, "expectedOperationId"),
+				GoalRevision:     metadataInt64(item.Payload, "expectedRevision"),
+				RepairEpoch:      metadataInt64(item.Payload, "expectedRepairEpoch"),
+				ProviderTurnID:   metadataString(item.Payload, "providerTurnId"),
+				Source:           metadataString(item.Payload, "providerSource"),
+				UpdateType:       metadataString(item.Payload, "updateType"),
+				Observed:         clonePayload(metadataObject(item.Payload, "observed")),
+				OccurredAtUnixMS: metadataInt64(item.Payload, "occurredAtUnixMs"),
+			})
+		} else {
+			if h.goalRuntime == nil {
+				handleErr = ErrGoalConsumerUnavailable
+			} else {
+				input := GoalReconcileRequiredInput{
+					WorkspaceID: item.WorkspaceID, AgentSessionID: item.AgentSessionID, RequestID: item.RequestID,
+					ProviderTurnID: metadataString(item.Payload, "providerTurnId"), Reason: metadataString(item.Payload, "reason"),
+					FenceMode: metadataString(item.Payload, "fenceMode"), ExpectedOperationID: metadataString(item.Payload, "expectedOperationId"),
+					ExpectedRevision: metadataInt64(item.Payload, "expectedRevision"), ExpectedRepairEpoch: metadataInt64(item.Payload, "expectedRepairEpoch"),
+					QuiesceSucceeded: metadataBool(item.Payload, "quiesceSucceeded"), QuiesceError: metadataString(item.Payload, "quiesceError"),
+				}
+				if phase == "quiesce_pending" {
+					// The prepare record outlived its finalize grace. We cannot know
+					// whether the process died before or after exact interrupt, so the
+					// only safe durable conclusion is failed/unknown quiescence.
+					input.QuiesceSucceeded = false
+					input.QuiesceError = "goal reconcile quiesce finalize deadline exceeded"
+				}
+				handleErr = h.ReconcileGoalFromEvidence(ctx, input)
+			}
 		}
-		if metadataString(item.Payload, "phase") == "quiesce_pending" {
-			// The prepare record outlived its finalize grace. We cannot know
-			// whether the process died before or after exact interrupt, so the
-			// only safe durable conclusion is failed/unknown quiescence.
-			input.QuiesceSucceeded = false
-			input.QuiesceError = "goal reconcile quiesce finalize deadline exceeded"
-		}
-		handleErr := h.ReconcileGoalFromEvidence(ctx, input)
 		finishNow := h.goalOperationNow()
 		if handleErr == nil {
 			if _, completeErr := h.goalInbox.CompleteGoalReconcileInbox(ctx, item.RequestID, h.goalOperationOwner(), finishNow.UnixMilli()); completeErr != nil {
@@ -145,6 +165,11 @@ func metadataBool(metadata map[string]any, key string) bool {
 	return value
 }
 
+func metadataObject(metadata map[string]any, key string) map[string]any {
+	value, _ := metadata[key].(map[string]any)
+	return value
+}
+
 func (h *Host) RecoverGoalReconcileInbox(ctx context.Context) error {
 	if h.goalInbox == nil {
 		if h != nil && h.goals != nil {
@@ -152,7 +177,7 @@ func (h *Host) RecoverGoalReconcileInbox(ctx context.Context) error {
 		}
 		return nil
 	}
-	if h.goals == nil || h.goalRuntime == nil {
+	if h.goals == nil {
 		return ErrGoalConsumerUnavailable
 	}
 	_, err := h.goalInbox.RequeueLeasedGoalReconcileInboxOnStartup(ctx, h.goalOperationNow().UnixMilli())
