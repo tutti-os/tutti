@@ -2,7 +2,6 @@ package agenthost
 
 import (
 	"context"
-	"fmt"
 
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 )
@@ -162,7 +161,12 @@ func (s *observedRuntimeOperationStore) ListClaimableEditRetryOperations(
 ) ([]storesqlite.RuntimeOperation, error) {
 	store, ok := s.RuntimeOperationStore.(EditRetryRuntimeOperationStore)
 	if !ok {
-		return nil, fmt.Errorf("edit retry runtime operation store is unavailable")
+		// The V2 recovery queue is an optional, narrow capability. The
+		// observer wrapper must preserve an underlying store's capability set:
+		// test and external Host consumers that only implement the ordinary
+		// runtime-operation contract have no edit-retry queue to drain, not a
+		// daemon-fatal store failure.
+		return nil, nil
 	}
 	return store.ListClaimableEditRetryOperations(ctx, input)
 }

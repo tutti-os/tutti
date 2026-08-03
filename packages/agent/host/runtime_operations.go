@@ -634,12 +634,17 @@ func (h *Host) publishRuntimeOperationEvents(ctx context.Context, workspaceID st
 		h.recordRuntimeOperationWorkerFailure("outbox")
 		return err
 	}
+	var publishErrors []error
 	for _, event := range events {
 		if err := h.events.PublishRuntimeOperationEvent(ctx, event); err != nil {
 			h.recordRuntimeOperationWorkerFailure("outbox")
 			if deferErr := h.deferRuntimeOperationEventPublish(ctx, event); deferErr != nil {
 				logRuntimeOperationFailure(storesqlite.RuntimeOperation{}, fmt.Errorf("defer failed outbox event %d: %w", event.ID, deferErr))
 			}
+			// Keep draining later events so one poison event cannot create
+			// head-of-line blocking, but retain the worker-visible failure
+			// contract after the batch completes.
+			publishErrors = append(publishErrors, fmt.Errorf("publish runtime operation event %d: %w", event.ID, err))
 			continue
 		}
 		if _, err := h.operations.MarkRuntimeOperationEventPublished(ctx, event.WorkspaceID, event.ID, h.now().UnixMilli()); err != nil {
@@ -650,10 +655,11 @@ func (h *Host) publishRuntimeOperationEvents(ctx context.Context, workspaceID st
 			if deferErr := h.deferRuntimeOperationEventPublish(ctx, event); deferErr != nil {
 				logRuntimeOperationFailure(storesqlite.RuntimeOperation{}, fmt.Errorf("defer unmarked outbox event %d: %w", event.ID, deferErr))
 			}
+			publishErrors = append(publishErrors, fmt.Errorf("mark runtime operation event %d published: %w", event.ID, err))
 			continue
 		}
 	}
-	return nil
+	return errors.Join(publishErrors...)
 }
 
 func (h *Host) deferRuntimeOperationEventPublish(ctx context.Context, event storesqlite.RuntimeOperationEvent) error {

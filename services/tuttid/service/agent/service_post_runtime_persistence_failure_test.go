@@ -264,6 +264,10 @@ func TestInlineOutboxPublishFailureDoesNotTurnCompletedAPIIntoFailure(t *testing
 	if len(store.events) != 1 || store.events[0].PublishedAtUnixMS != 0 {
 		t.Fatalf("outbox events = %#v, want one pending event", store.events)
 	}
+	if store.events[0].NextAttemptAtMS <= now.UnixMilli() {
+		t.Fatalf("outbox retry=%d, want future after inline publish failure", store.events[0].NextAttemptAtMS)
+	}
+	now = time.UnixMilli(store.events[0].NextAttemptAtMS)
 	if err := service.ApplicationHost().StepRuntimeOperationWorker(context.Background(), false); err == nil {
 		t.Fatal("worker outbox publish error = nil")
 	}

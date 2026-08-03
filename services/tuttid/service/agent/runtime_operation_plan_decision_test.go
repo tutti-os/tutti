@@ -146,8 +146,8 @@ func TestPlanDecisionOutboxPublishFailureReplaysWithoutRollingBackCompletion(t *
 	now = now.Add(2 * time.Second)
 	service.RuntimeOperationClock = func() time.Time { return now }
 	service.RuntimeOperationEventPublisher = runtimeOperationFailingPublisher{err: errors.New("event unavailable")}
-	if err := service.ApplicationHost().StepRuntimeOperationWorker(context.Background(), false); err == nil {
-		t.Fatal("publish failure error=nil")
+	if err := service.ApplicationHost().StepRuntimeOperationWorker(context.Background(), false); err != nil {
+		t.Fatalf("inline completion publish must not reverse the worker result: %v", err)
 	}
 	if store.operation.Status != agentactivitybiz.RuntimeOperationStatusCompleted || len(store.events) != 2 ||
 		store.events[0].Kind != agentactivitybiz.RuntimeOperationEventPlanDecisionPending ||
@@ -155,6 +155,32 @@ func TestPlanDecisionOutboxPublishFailureReplaysWithoutRollingBackCompletion(t *
 		store.events[0].PublishedAtUnixMS != 0 || store.events[1].PublishedAtUnixMS != 0 {
 		t.Fatalf("operation=%#v events=%#v", store.operation, store.events)
 	}
+	// A failed publication remains pending but is not scheduler-ready until its
+	// durable outbox backoff expires. Advancing the controlled clock verifies
+	// replay without reverting canonical completion.
+	retryAt := store.events[0].NextAttemptAtMS
+	for _, event := range store.events[1:] {
+		if event.NextAttemptAtMS > retryAt {
+			retryAt = event.NextAttemptAtMS
+		}
+	}
+	if retryAt <= now.UnixMilli() {
+		t.Fatalf("outbox retry=%d, want future after publish failure", retryAt)
+	}
+	now = time.UnixMilli(retryAt)
+	if err := service.ApplicationHost().StepRuntimeOperationWorker(context.Background(), false); err == nil {
+		t.Fatal("scheduled publish failure error=nil")
+	}
+	retryAt = store.events[0].NextAttemptAtMS
+	for _, event := range store.events[1:] {
+		if event.NextAttemptAtMS > retryAt {
+			retryAt = event.NextAttemptAtMS
+		}
+	}
+	if retryAt <= now.UnixMilli() {
+		t.Fatalf("outbox retry=%d, want future after scheduled publish failure", retryAt)
+	}
+	now = time.UnixMilli(retryAt)
 	publisher := &planDecisionRecordingPublisher{}
 	service.RuntimeOperationEventPublisher = publisher
 	if err := service.ApplicationHost().StepRuntimeOperationWorker(context.Background(), false); err != nil {
