@@ -56,7 +56,7 @@ export const enAgentGui = {
   targetSetupStage: {
     detect: "Detect runtime",
     install: "Install runtime",
-    login: "Sign in"
+    login: "Sign in",
   },
   targetSetupChecking: "Checking local and Tutti-managed runtimes…",
   targetSetupInstall: "Install runtime",
@@ -90,7 +90,7 @@ export const enAgentGui = {
     probing: "Checking ACP compatibility…",
     activating: "Activating managed runtime…",
     authenticating: "Waiting for authentication…",
-    complete: "Installation complete"
+    complete: "Installation complete",
   },
   collaboratorSessionReadOnlyPlaceholder:
     "This session belongs to another user and cannot be replied to directly",
@@ -136,138 +136,138 @@ export const enAgentGui = {
       "Recent Codex releases, especially when using GPT-5.6 models, may go beyond your intent and accidentally delete or overwrite files. Only continue if you understand and accept this risk.",
     learnMore: "Learn more",
     cancel: "Cancel",
-    confirm: "Enable full access"
+    confirm: "Enable full access",
   },
   fullAccessRestoredWarning: {
     title: "Full access is on",
     description:
       "Codex can run commands, use the internet, and create, modify, upload, or delete files anywhere on this computer without asking. This can cause data loss and expose you to prompt-injection attacks.",
     dontShowAgain: "Don't show again",
-    dismissLabel: "Dismiss full access warning"
+    dismissLabel: "Dismiss full access warning",
   },
   permissionSemantics: {
     "ask-before-write": {
       label: "Ask for approval",
-      description: "Always ask to edit external files and use the internet"
+      description: "Always ask to edit external files and use the internet",
     },
     "accept-edits": {
       label: "Accept edits",
       description:
-        "Allows file edits, but still asks before higher-risk actions"
+        "Allows file edits, but still asks before higher-risk actions",
     },
     "locked-down": {
       label: "Don't ask",
-      description: "Won't prompt. Unapproved actions are rejected"
+      description: "Won't prompt. Unapproved actions are rejected",
     },
     auto: {
       label: "Approve for me",
-      description: "Only ask for actions detected as potentially unsafe"
+      description: "Only ask for actions detected as potentially unsafe",
     },
     "full-access": {
       label: "Full access",
       description:
-        "Unrestricted access to the internet and any file on your computer"
+        "Unrestricted access to the internet and any file on your computer",
     },
     unconfigurable: {
       label: "Fixed mode",
       description:
-        "This provider does not support changing permission mode here"
-    }
+        "This provider does not support changing permission mode here",
+    },
   },
   permissionModes: {
     codex: {
       "read-only": {
         label: "Ask for approval",
-        description: "Always ask to edit external files and use the internet"
+        description: "Always ask to edit external files and use the internet",
       },
       auto: {
         label: "Approve for me",
-        description: "Only ask for actions detected as potentially unsafe"
+        description: "Only ask for actions detected as potentially unsafe",
       },
       "full-access": {
         label: "Full access",
         description:
-          "Unrestricted access to the internet and any file on your computer"
-      }
+          "Unrestricted access to the internet and any file on your computer",
+      },
     },
     cursor: {
       "read-only": {
         label: "Read-only",
         description:
-          "Cursor plans and reads only. Proposes changes without making them."
+          "Cursor plans and reads only. Proposes changes without making them.",
       },
       agent: {
         label: "Ask for approval",
         description:
-          "Full tool access. Cursor asks before running commands or other risky actions."
+          "Full tool access. Cursor asks before running commands or other risky actions.",
       },
       "full-access": {
         label: "Full access",
         description:
-          "Runs commands without asking, unless explicitly denied by your Cursor permission rules."
-      }
+          "Runs commands without asking, unless explicitly denied by your Cursor permission rules.",
+      },
     },
     opencode: {
       "read-only": {
         label: "Read-only",
         description:
-          "Reads and searches the local project, but denies edits, commands, network access, and other approval-gated actions."
+          "Reads and searches the local project, but denies edits, commands, network access, and other approval-gated actions.",
       },
       ask: {
         label: "Ask",
         description:
-          "Reads and searches directly, then asks before edits, commands, network access, and other gated actions."
+          "Reads and searches directly, then asks before edits, commands, network access, and other gated actions.",
       },
       "full-access": {
         label: "Full access",
         description:
-          "Automatically allows gated actions without changing OpenCode's separate Plan mode restrictions."
-      }
+          "Automatically allows gated actions without changing OpenCode's separate Plan mode restrictions.",
+      },
     },
     nexight: {
       "read-only": {
         label: "Ask for approval",
-        description: "Always ask to edit external files and use the internet"
+        description: "Always ask to edit external files and use the internet",
       },
       auto: {
         label: "Approve for me",
-        description: "Only ask for actions detected as potentially unsafe"
+        description: "Only ask for actions detected as potentially unsafe",
       },
       "full-access": {
         label: "Full access",
         description:
-          "Unrestricted access to the internet and any file on your computer"
-      }
+          "Unrestricted access to the internet and any file on your computer",
+      },
     },
     "claude-code": {
       default: {
         label: "Default",
         description:
-          "Starts conservative. Asks before edits or higher-risk actions."
+          "Starts conservative. Asks before edits or higher-risk actions.",
       },
       acceptEdits: {
         label: "Accept edits",
         description:
-          "Allows direct file edits. Still asks before higher-risk actions."
+          "Allows direct file edits. Still asks before higher-risk actions.",
       },
       dontAsk: {
         label: "Don't ask",
         description:
-          "Won't prompt for approval. Actions not already allowed are rejected."
+          "Won't prompt for approval. Actions not already allowed are rejected.",
       },
       bypassPermissions: {
         label: "Bypass permissions",
         description:
-          "Minimizes permission checks. Best for trusted tasks that need uninterrupted execution."
-      }
+          "Minimizes permission checks. Best for trusted tasks that need uninterrupted execution.",
+      },
     },
     hermes: {
       yolo: {
         label: "Fixed mode",
         description:
-          "This provider doesn't support changing permission mode here."
-      }
-    }
+          "This provider doesn't support changing permission mode here.",
+      },
+    },
   },
   modelContextWindowSuffix: "context window",
   modelTooltipVersionLabel: "Version",
@@ -280,7 +280,7 @@ export const enAgentGui = {
     codingOptimized: "Coding-optimized model",
     ultraFastCoding: "Ultra-fast coding model",
     professionalLongRunning:
-      "Optimized for professional work and long-running agents"
+      "Optimized for professional work and long-running agents",
   },
   permissionLabel: "Run permissions",
   ...enAgentGuiOrchestration,
@@ -333,10 +333,29 @@ export const enAgentGui = {
   editRetryCancel: "Cancel",
   editRetrySubmit: "Save and retry",
   editRetryProcessing: "Updating conversation history and retrying…",
+  editRetryRetryWait: "Recovery will retry automatically",
+  editRetryCompleted: "Edited message recovery is complete",
   editRetryNeedsAction:
     "Conversation history was updated, but the edited message still needs recovery",
+  editRetryRolloutDisabled: "Editing and retrying is not enabled for this rollout",
+  editRetryProviderUnsupported: "This provider does not support editing and retrying",
+  editRetryProviderOutcomeUnknown:
+    "The provider outcome is still being confirmed",
+  editRetryReplacementNotProvenAbsent:
+    "The replacement has not been proven absent yet",
+  editRetryBudgetExhausted: "Automatic recovery has reached its safety limit",
+  editRetryLocalStateInconsistent:
+    "This conversation needs a local recovery check",
+  editRetryRecoveryRequired: "This conversation needs a recovery action",
+  editRetryCurrentSessionOnly: "This conversation only",
+  editRetryAutomatic: "Automatic recovery",
+  editRetryAttempt: "Attempt {{attempt}}",
+  editRetryNextAttempt: "Next attempt {{time}}",
   editRetryReconcile: "Reconcile",
   editRetryRetryReplacement: "Retry message",
+  editRetryAbandon: "Abandon recovery",
+  editRetryActionFailed: "Recovery request failed. Try again.",
+  editRetryActionRefreshing: "State changed. Refreshing…",
   messageCopied: "Copied",
   promptTipsPrefix: "Tips: ",
   reviewPicker: {
@@ -355,64 +374,64 @@ export const enAgentGui = {
     commitPlaceholder: "Commit SHA",
     customPlaceholder: "Describe what to review",
     submit: "Start review",
-    cancel: "Cancel"
+    cancel: "Cancel",
   },
   promptTips: {
     setWorkspace: {
       label: "Set the workspace",
       prompt:
-        "Let the Agent know where to read files, run commands, and understand code."
+        "Let the Agent know where to read files, run commands, and understand code.",
     },
     useIssue: {
       label: "Use Tasks well",
       prompt:
-        "Put requirements, constraints, and acceptance criteria in a Task so the Agent can work toward a clear target."
+        "Put requirements, constraints, and acceptance criteria in a Task so the Agent can work toward a clear target.",
     },
     mapCurrentState: {
       label: "Map the current state",
       prompt:
-        "When the next step is unclear, ask the Agent to summarize status, risks, and what to do next."
+        "When the next step is unclear, ask the Agent to summarize status, risks, and what to do next.",
     },
     continueRecentSession: {
       label: "Continue recent work",
       prompt:
-        "When resuming, have the Agent recap recent progress, unfinished work, and blockers first."
+        "When resuming, have the Agent recap recent progress, unfinished work, and blockers first.",
     },
     referenceOtherAgents: {
       label: "Reference other Agent conversations",
-      prompt: "Make context handoffs more complete and reduce lost details."
+      prompt: "Make context handoffs more complete and reduce lost details.",
     },
     controlPermissions: {
       label: "Control permissions",
       prompt:
-        "Use Ask for approval when you want caution, then switch to higher access once file changes are expected."
-    }
+        "Use Ask for approval when you want caution, then switch to higher access once file changes are expected.",
+    },
   },
   empty: "What can {{provider}} help you with?",
   homeSuggestionsClose: "Close suggestions",
   homeSuggestions: {
     about: {
       title: "Meet Tutti",
-      prompt: "Tell me what Tutti can help me do"
+      prompt: "Tell me what Tutti can help me do",
     },
     breakdown: {
       title: "Task breakdown",
       taskCenterLabel: "Task management",
       prompt:
-        "Use {{taskCenterMention}} to help me break down the task, topic { enter here }"
+        "Use {{taskCenterMention}} to help me break down the task, topic { enter here }",
     },
     review: {
       title: "Quality review",
-      prompt: "Have { @agent } review the output quality of { @agent session }"
+      prompt: "Have { @agent } review the output quality of { @agent session }",
     },
     interaction: {
       title: "Agent interaction",
       prompt:
-        "Have { @agent } and { @agent } work together to { do something }, topic { enter here }"
+        "Have { @agent } and { @agent } work together to { do something }, topic { enter here }",
     },
     import: {
-      title: "Import session"
-    }
+      title: "Import session",
+    },
   },
   conversations: "Sessions",
   newConversation: "New session",
@@ -509,7 +528,7 @@ export const enAgentGui = {
     manualApproval: "Yes, and manually approve edits",
     rejectOnce: "No, don't run",
     rejectAlways: "No, and don't ask again",
-    rejectWithFollowUp: "No, then send new instructions"
+    rejectWithFollowUp: "No, then send new instructions",
   },
   authRequired: "Authentication required",
   authLogin: "Sign in",
@@ -598,20 +617,20 @@ export const enAgentGui = {
   planModes: {
     acceptEdits: {
       label: "Accept edits",
-      description: "Auto-approve file edits"
+      description: "Auto-approve file edits",
     },
     askFirst: {
       label: "Ask for approval",
-      description: "Prompt before each tool"
+      description: "Prompt before each tool",
     },
     allowAll: {
       label: "Allow all",
-      description: "Do not prompt for tools"
+      description: "Do not prompt for tools",
     },
     auto: {
       label: "Auto",
-      description: "Let the agent choose when to ask"
-    }
+      description: "Let the agent choose when to ask",
+    },
   },
   stayInPlan: "Keep planning",
   sendFeedback: "Send feedback and keep planning",
@@ -766,10 +785,10 @@ export const enAgentGui = {
     requirementSummaryOutput:
       "2. Unless the user specifies another location, write at least docs/tutti/task_summary_{{issueId}}.md with the result, changes, and conclusion.",
     taskContentLabel: "Task content",
-    taskTitleLabel: "Task title"
+    taskTitleLabel: "Task title",
   },
   syncPending: "Saved locally, syncing to cloud",
   syncSynced: "Synced to cloud",
   syncFailed: "Cloud sync failed",
-  ...enAgentGuiCollaboration
+  ...enAgentGuiCollaboration,
 } as const;

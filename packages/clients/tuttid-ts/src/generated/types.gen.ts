@@ -21,6 +21,99 @@ export type SwitchTuttiModeGoalReviewToSelfResponse = {
 export type HealthStatusResponse = {
   service: string;
   status: "ok";
+  runtimeOperationWorker?: RuntimeOperationWorkerHealth | null;
+};
+
+export type RuntimeOperationWorkerHealth = {
+  itemFailuresTotal: number;
+  /**
+   * Historical process-local cumulative count; use itemFailuresTotal
+   *
+   * @deprecated
+   */
+  itemFailures: number;
+  /**
+   * Historical process-local cumulative count; use outboxFailuresTotal
+   *
+   * @deprecated
+   */
+  outboxFailures: number;
+  outboxFailuresTotal: number;
+  /**
+   * Historical process-local cumulative count; use storeFailuresTotal
+   *
+   * @deprecated
+   */
+  storeFailures: number;
+  storeFailuresTotal: number;
+  /**
+   * Historical process-local cumulative compatibility alias; use postListenerRecoveryFailuresTotal
+   *
+   * @deprecated
+   */
+  postListenerRecoveryFailures: number;
+  /**
+   * Historical process-local cumulative post-listener recovery failures
+   */
+  postListenerRecoveryFailuresTotal: number;
+  /**
+   * Historical process-local cumulative compatibility alias; use postListenerRecoveryDegradedTotal
+   *
+   * @deprecated
+   */
+  postListenerRecoveryDegraded: number;
+  /**
+   * Historical process-local cumulative post-listener degraded recoveries
+   */
+  postListenerRecoveryDegradedTotal: number;
+  lastFailureAtUnixMs?: number | null;
+  /**
+   * Historical process-local observed scopes; use observedFailureScopes
+   *
+   * @deprecated
+   */
+  scopes: Array<
+    | "item"
+    | "outbox"
+    | "store"
+    | "post_listener_recovery"
+    | "post_listener_degraded"
+  >;
+  /**
+   * Process-local scopes observed since this daemon started
+   */
+  observedFailureScopes: Array<
+    | "item"
+    | "outbox"
+    | "store"
+    | "post_listener_recovery"
+    | "post_listener_degraded"
+  >;
+  /**
+   * Count of unresolved durable edit-retry degradation records, including orphan session fences
+   */
+  activeDegradationCount: number;
+  activeDegradationsTruncated: boolean;
+  activeStateAvailable: boolean;
+  activeStateDiagnosticCode?: "runtime_operation_active_state_unavailable";
+  activeEditRetryDegradations: Array<RuntimeOperationEditRetryDegradation>;
+};
+
+export type RuntimeOperationEditRetryDegradation = {
+  workspaceId: string;
+  agentSessionId: string;
+  operationId: string;
+  kind: "edit_retry";
+  state:
+    | "prepared"
+    | "rolling_back"
+    | "resend_pending"
+    | "recovery_required"
+    | "completed";
+  reasonCode: WorkspaceAgentEditRetryReasonCode;
+  nextAttemptAtUnixMs?: number | null;
+  attempt: number;
+  availableActions: Array<"reconcile" | "retry_replacement" | "abandon">;
 };
 
 export type TrackEventsRequest = {
@@ -2512,15 +2605,36 @@ export type WorkspaceAgentEditRetryAvailability = {
     | "recovery_required"
     | "completed";
   operationId?: string;
+  operationVersion?: number;
+  automatic?: boolean;
+  /**
+   * Compatibility alias for nextAttemptAtUnixMs in Unix epoch milliseconds
+   *
+   * @deprecated
+   */
+  nextAttemptAt?: number;
+  /**
+   * Unix epoch milliseconds for the next automatic recovery attempt
+   */
+  nextAttemptAtUnixMs?: number;
+  attempt?: number;
   availableActions: Array<WorkspaceAgentEditRetryRecoveryAction>;
   reasonCode?: WorkspaceAgentEditRetryReasonCode;
+  impactScope?: WorkspaceAgentEditRetryImpactScope;
 };
+
+/**
+ * Exact blast radius of this durable edit-retry operation
+ */
+export type WorkspaceAgentEditRetryImpactScope = "session";
 
 export type WorkspaceAgentEditRetryRecoveryAction =
   | "reconcile"
-  | "retry_replacement";
+  | "retry_replacement"
+  | "abandon";
 
 export type WorkspaceAgentEditRetryReasonCode =
+  | "rollout_disabled"
   | "provider_unsupported"
   | "turn_not_found"
   | "turn_not_latest"
@@ -2529,7 +2643,10 @@ export type WorkspaceAgentEditRetryReasonCode =
   | "operation_conflict"
   | "recovery_required"
   | "provider_outcome_unknown"
-  | "replacement_not_proven_absent";
+  | "replacement_not_proven_absent"
+  | "retry_wait"
+  | "retry_budget_exhausted"
+  | "local_state_inconsistent";
 
 export type EditRetryWorkspaceAgentTurnRequest = {
   editedText: string;
@@ -2539,10 +2656,14 @@ export type EditRetryWorkspaceAgentTurnRequest = {
 
 export type RecoverWorkspaceAgentEditRetryRequest = {
   action: WorkspaceAgentEditRetryRecoveryAction;
+  clientActionId: string;
+  expectedOperationVersion: number;
+  expectedHistoryRevision: number;
 };
 
 export type WorkspaceAgentEditRetryResponse = {
   operationId: string;
+  operationVersion?: number;
   state:
     | "prepared"
     | "rolling_back"
@@ -2552,7 +2673,21 @@ export type WorkspaceAgentEditRetryResponse = {
   retractedTurnId: string;
   replacementTurnId?: string;
   historyRevision: number;
+  automatic?: boolean;
+  /**
+   * Compatibility alias for nextAttemptAtUnixMs in Unix epoch milliseconds
+   *
+   * @deprecated
+   */
+  nextAttemptAt?: number;
+  /**
+   * Unix epoch milliseconds for the next automatic recovery attempt
+   */
+  nextAttemptAtUnixMs?: number;
+  attempt?: number;
+  availableActions?: Array<WorkspaceAgentEditRetryRecoveryAction>;
   reasonCode?: WorkspaceAgentEditRetryReasonCode;
+  impactScope?: WorkspaceAgentEditRetryImpactScope;
 };
 
 export type SendWorkspaceAgentSessionInputResponse =

@@ -6946,6 +6946,154 @@ components:
           type: string
           enum:
             - ok
+        runtimeOperationWorker:
+          allOf:
+            - $ref: "#/components/schemas/RuntimeOperationWorkerHealth"
+          nullable: true
+    RuntimeOperationWorkerHealth:
+      type: object
+      additionalProperties: false
+      required:
+        - itemFailures
+        - outboxFailures
+        - storeFailures
+        - postListenerRecoveryFailures
+        - postListenerRecoveryDegraded
+        - scopes
+        - itemFailuresTotal
+        - outboxFailuresTotal
+        - storeFailuresTotal
+        - postListenerRecoveryFailuresTotal
+        - postListenerRecoveryDegradedTotal
+        - observedFailureScopes
+        - activeDegradationCount
+        - activeEditRetryDegradations
+        - activeDegradationsTruncated
+        - activeStateAvailable
+      properties:
+        itemFailuresTotal:
+          type: integer
+          format: int64
+          minimum: 0
+        itemFailures:
+          deprecated: true
+          description: Historical process-local cumulative count; use itemFailuresTotal
+          type: integer
+          format: int64
+          minimum: 0
+        outboxFailures:
+          deprecated: true
+          description: Historical process-local cumulative count; use outboxFailuresTotal
+          type: integer
+          format: int64
+          minimum: 0
+        outboxFailuresTotal: { type: integer, format: int64, minimum: 0 }
+        storeFailures:
+          deprecated: true
+          description: Historical process-local cumulative count; use storeFailuresTotal
+          type: integer
+          format: int64
+          minimum: 0
+        storeFailuresTotal: { type: integer, format: int64, minimum: 0 }
+        postListenerRecoveryFailures:
+          deprecated: true
+          description: Historical process-local cumulative compatibility alias; use postListenerRecoveryFailuresTotal
+          type: integer
+          format: int64
+          minimum: 0
+        postListenerRecoveryFailuresTotal:
+          description: Historical process-local cumulative post-listener recovery failures
+          type: integer
+          format: int64
+          minimum: 0
+        postListenerRecoveryDegraded:
+          deprecated: true
+          description: Historical process-local cumulative compatibility alias; use postListenerRecoveryDegradedTotal
+          type: integer
+          format: int64
+          minimum: 0
+        postListenerRecoveryDegradedTotal:
+          description: Historical process-local cumulative post-listener degraded recoveries
+          type: integer
+          format: int64
+          minimum: 0
+        lastFailureAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 1
+          nullable: true
+        scopes:
+          deprecated: true
+          description: Historical process-local observed scopes; use observedFailureScopes
+          type: array
+          items:
+            type: string
+            enum:
+              - item
+              - outbox
+              - store
+              - post_listener_recovery
+              - post_listener_degraded
+        observedFailureScopes:
+          description: Process-local scopes observed since this daemon started
+          type: array
+          items:
+            type: string
+            enum:
+              [
+                item,
+                outbox,
+                store,
+                post_listener_recovery,
+                post_listener_degraded,
+              ]
+        activeDegradationCount:
+          description: Count of unresolved durable edit-retry degradation records, including orphan session fences
+          type: integer
+          format: int64
+          minimum: 0
+        activeDegradationsTruncated:
+          type: boolean
+        activeStateAvailable:
+          type: boolean
+        activeStateDiagnosticCode:
+          type: string
+          enum: [runtime_operation_active_state_unavailable]
+          nullable: true
+        activeEditRetryDegradations:
+          type: array
+          items:
+            $ref: "#/components/schemas/RuntimeOperationEditRetryDegradation"
+    RuntimeOperationEditRetryDegradation:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          workspaceId,
+          agentSessionId,
+          operationId,
+          kind,
+          state,
+          reasonCode,
+          attempt,
+          availableActions,
+        ]
+      properties:
+        workspaceId: { type: string }
+        agentSessionId: { type: string }
+        operationId: { type: string }
+        kind: { type: string, enum: [edit_retry] }
+        state:
+          type: string
+          enum: [prepared, rolling_back, resend_pending, recovery_required, completed]
+        reasonCode:
+          $ref: "#/components/schemas/WorkspaceAgentEditRetryReasonCode"
+        nextAttemptAtUnixMs:
+          { type: integer, format: int64, minimum: 1, nullable: true }
+        attempt: { type: integer, minimum: 0 }
+        availableActions:
+          type: array
+          items: { type: string, enum: [reconcile, retry_replacement, abandon] }
     TrackEventsRequest:
       type: object
       additionalProperties: false
@@ -12562,6 +12710,26 @@ components:
         operationId:
           type: string
           minLength: 1
+        operationVersion:
+          type: integer
+          format: int64
+          minimum: 1
+        automatic:
+          type: boolean
+        nextAttemptAt:
+          type: integer
+          format: int64
+          minimum: 1
+          deprecated: true
+          description: Compatibility alias for nextAttemptAtUnixMs in Unix epoch milliseconds
+        nextAttemptAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Unix epoch milliseconds for the next automatic recovery attempt
+        attempt:
+          type: integer
+          minimum: 0
         availableActions:
           type: array
           uniqueItems: true
@@ -12569,17 +12737,26 @@ components:
             $ref: "#/components/schemas/WorkspaceAgentEditRetryRecoveryAction"
         reasonCode:
           $ref: "#/components/schemas/WorkspaceAgentEditRetryReasonCode"
+        impactScope:
+          $ref: "#/components/schemas/WorkspaceAgentEditRetryImpactScope"
+    WorkspaceAgentEditRetryImpactScope:
+      type: string
+      enum: [session]
+      description: Exact blast radius of this durable edit-retry operation
     WorkspaceAgentEditRetryRecoveryAction:
       type: string
       enum:
         - reconcile
         - retry_replacement
+        - abandon
       x-enum-varnames:
         - WorkspaceAgentEditRetryRecoveryActionReconcile
         - WorkspaceAgentEditRetryRecoveryActionRetryReplacement
+        - WorkspaceAgentEditRetryRecoveryActionAbandon
     WorkspaceAgentEditRetryReasonCode:
       type: string
       enum:
+        - rollout_disabled
         - provider_unsupported
         - turn_not_found
         - turn_not_latest
@@ -12589,6 +12766,9 @@ components:
         - recovery_required
         - provider_outcome_unknown
         - replacement_not_proven_absent
+        - retry_wait
+        - retry_budget_exhausted
+        - local_state_inconsistent
     EditRetryWorkspaceAgentTurnRequest:
       type: object
       additionalProperties: false
@@ -12612,9 +12792,23 @@ components:
       additionalProperties: false
       required:
         - action
+        - clientActionId
+        - expectedOperationVersion
+        - expectedHistoryRevision
       properties:
         action:
           $ref: "#/components/schemas/WorkspaceAgentEditRetryRecoveryAction"
+        clientActionId:
+          type: string
+          minLength: 1
+        expectedOperationVersion:
+          type: integer
+          format: int64
+          minimum: 1
+        expectedHistoryRevision:
+          type: integer
+          format: int64
+          minimum: 0
     WorkspaceAgentEditRetryResponse:
       type: object
       additionalProperties: false
@@ -12627,6 +12821,10 @@ components:
         operationId:
           type: string
           minLength: 1
+        operationVersion:
+          type: integer
+          format: int64
+          minimum: 1
         state:
           type: string
           enum:
@@ -12645,8 +12843,31 @@ components:
           type: integer
           format: int64
           minimum: 0
+        automatic:
+          type: boolean
+        nextAttemptAt:
+          type: integer
+          format: int64
+          minimum: 1
+          deprecated: true
+          description: Compatibility alias for nextAttemptAtUnixMs in Unix epoch milliseconds
+        nextAttemptAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Unix epoch milliseconds for the next automatic recovery attempt
+        attempt:
+          type: integer
+          minimum: 0
+        availableActions:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentEditRetryRecoveryAction"
         reasonCode:
           $ref: "#/components/schemas/WorkspaceAgentEditRetryReasonCode"
+        impactScope:
+          $ref: "#/components/schemas/WorkspaceAgentEditRetryImpactScope"
     SendWorkspaceAgentSessionInputResponse:
       oneOf:
         - $ref: "#/components/schemas/SendWorkspaceAgentSessionInputTurnResponse"

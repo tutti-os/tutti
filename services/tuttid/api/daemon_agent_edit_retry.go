@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
+	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	"github.com/tutti-os/tutti/services/tuttid/apierrors"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
@@ -13,7 +14,7 @@ import (
 
 type agentEditRetryService interface {
 	EditRetry(context.Context, string, string, string, agentservice.EditRetryInput) (agentservice.EditRetryResult, error)
-	RecoverEditRetry(context.Context, string, string, string, agentservice.EditRetryRecoveryAction) (agentservice.EditRetryResult, error)
+	RecoverEditRetryCommand(context.Context, string, string, string, agentservice.RecoverEditRetryInput) (agentservice.EditRetryResult, error)
 }
 
 func (api DaemonAPI) EditRetryWorkspaceAgentTurn(
@@ -67,12 +68,11 @@ func (api DaemonAPI) RecoverWorkspaceAgentEditRetry(
 			InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.EmptyBody()),
 		}, nil
 	}
-	result, err := service.RecoverEditRetry(
+	result, err := service.RecoverEditRetryCommand(
 		ctx,
 		string(request.WorkspaceID),
 		string(request.AgentSessionID),
-		request.OperationID,
-		agentservice.EditRetryRecoveryAction(request.Body.Action),
+		request.OperationID, agentservice.RecoverEditRetryInput{Action: agentservice.EditRetryRecoveryAction(request.Body.Action), ClientActionID: request.Body.ClientActionId, ExpectedOperationVersion: request.Body.ExpectedOperationVersion, ExpectedHistoryRevision: uint64(request.Body.ExpectedHistoryRevision)},
 	)
 	response := generatedAgentEditRetryResult(result, err)
 	if editRetryResultIsDurablyPending(result) {
@@ -98,11 +98,22 @@ func generatedAgentEditRetryAvailability(
 		RecoveryState:    tuttigenerated.WorkspaceAgentEditRetryAvailabilityRecoveryState(recoveryState),
 		AvailableActions: make([]tuttigenerated.WorkspaceAgentEditRetryRecoveryAction, 0, len(availability.AvailableActions)),
 	}
+	impactScope := tuttigenerated.WorkspaceAgentEditRetryImpactScope(availability.ImpactScope())
+	result.ImpactScope = &impactScope
 	if value := strings.TrimSpace(availability.TurnID); value != "" {
 		result.TurnId = &value
 	}
 	if value := strings.TrimSpace(availability.OperationID); value != "" {
 		result.OperationId = &value
+		operationVersion, automatic, attempt := availability.OperationVersion, availability.Automatic, availability.Attempt
+		result.OperationVersion = &operationVersion
+		result.Automatic = &automatic
+		if availability.NextAttemptAtMS > 0 {
+			nextAttemptAtUnixMs := availability.NextAttemptAtMS
+			result.NextAttemptAtUnixMs = &nextAttemptAtUnixMs
+			result.NextAttemptAt = &nextAttemptAtUnixMs
+		}
+		result.Attempt = &attempt
 	}
 	for _, action := range availability.AvailableActions {
 		result.AvailableActions = append(result.AvailableActions, tuttigenerated.WorkspaceAgentEditRetryRecoveryAction(action))
@@ -123,8 +134,26 @@ func generatedAgentEditRetryResult(
 		RetractedTurnId: strings.TrimSpace(result.RetractedTurnID),
 		HistoryRevision: int64(result.HistoryRevision),
 	}
+	impactScope := tuttigenerated.WorkspaceAgentEditRetryImpactScope(result.ImpactScope())
+	response.ImpactScope = &impactScope
 	if value := strings.TrimSpace(result.ReplacementTurnID); value != "" {
 		response.ReplacementTurnId = &value
+	}
+	if response.OperationId != "" {
+		operationVersion, automatic, attempt := result.OperationVersion, result.Automatic, result.Attempt
+		response.OperationVersion = &operationVersion
+		response.Automatic = &automatic
+		if result.NextAttemptAtMS > 0 {
+			nextAttemptAtUnixMs := result.NextAttemptAtMS
+			response.NextAttemptAtUnixMs = &nextAttemptAtUnixMs
+			response.NextAttemptAt = &nextAttemptAtUnixMs
+		}
+		response.Attempt = &attempt
+		actions := make([]tuttigenerated.WorkspaceAgentEditRetryRecoveryAction, 0, len(result.AvailableActions))
+		for _, action := range result.AvailableActions {
+			actions = append(actions, tuttigenerated.WorkspaceAgentEditRetryRecoveryAction(action))
+		}
+		response.AvailableActions = &actions
 	}
 	reason := agentEditRetryReasonCode(result, err)
 	if generated := generatedAgentEditRetryReasonCode(reason); generated != nil {
@@ -158,6 +187,8 @@ func agentEditRetryReasonCode(
 	case errors.Is(err, agenthost.ErrEditRetryHistoryConflict):
 		return agenthost.EditRetryReasonCodeHistoryRevisionConflict
 	case errors.Is(err, agenthost.ErrRuntimeOperationIdentityMismatch):
+		return agenthost.EditRetryReasonCodeOperationConflict
+	case errors.Is(err, storesqlite.ErrRuntimeOperationActionConflict):
 		return agenthost.EditRetryReasonCodeOperationConflict
 	case errors.Is(err, agenthost.ErrRuntimeHistoryUnsupported):
 		return agenthost.EditRetryReasonCodeProviderUnsupported
@@ -240,5 +271,6 @@ func isEditRetryConflict(err error) bool {
 	return errors.Is(err, agenthost.ErrEditRetryNotEligible) ||
 		errors.Is(err, agenthost.ErrEditRetryHistoryConflict) ||
 		errors.Is(err, agenthost.ErrRuntimeHistoryUnsupported) ||
-		errors.Is(err, agenthost.ErrRuntimeOperationIdentityMismatch)
+		errors.Is(err, agenthost.ErrRuntimeOperationIdentityMismatch) ||
+		errors.Is(err, storesqlite.ErrRuntimeOperationActionConflict)
 }

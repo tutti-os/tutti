@@ -4,7 +4,11 @@ import "testing"
 
 func TestEditRetryReasonVocabularyIsClosed(t *testing.T) {
 	reasons := []EditRetryReasonCode{
+		EditRetryReasonRetryWait,
+		EditRetryReasonRetryBudgetExhausted,
+		EditRetryReasonLocalStateInconsistent,
 		EditRetryReasonProviderUnsupported,
+		EditRetryReasonRolloutDisabled,
 		EditRetryReasonTurnNotFound,
 		EditRetryReasonTurnNotLatest,
 		EditRetryReasonTurnNotSettled,

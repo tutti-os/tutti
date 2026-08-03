@@ -108,11 +108,13 @@ A caller-stable `ClientSubmitID`
 makes one goal mutation idempotent across retries and Host restarts (and takes
 precedence over the legacy metadata field). `GetGoalState` is a pure canonical
 read: only `GoalControl`, `AdoptProviderGoal`, `ReconcileGoal`, and recovery
-workers may create or change the durable goal projection. `Recover` first
-requeues and recovers
-durable runtime operations, then goal operations and the goal reconcile inbox,
-then settles unrecoverable stale turns, and finally invokes the adapter's
-worktree-isolation sweep. Configuring a goal store
+workers may create or change the durable goal projection. `RecoverCore` is the
+cold-start boundary: it validates ports and performs only local durable
+requeue/invariant work, never claims a runtime operation or calls a provider.
+After the daemon publishes its listener, `Run` supervises bounded
+post-listener recovery for goals, forks, and stale turns plus the periodic
+workers. Stale settlement is ownership-fenced and skips a session protected by
+a prepared, leased, or blocked runtime operation. Configuring a goal store
 without its runtime or inbox consumer fails recovery with
 `ErrGoalConsumerUnavailable` instead of silently accumulating work.
 
@@ -143,26 +145,102 @@ algorithm. Startup and steady-state workers process fences before ordinary
 Goal operations; otherwise a prepared revoked Goal could be replayed during
 recovery before its fence reached the runtime.
 
-> **Currently disabled.** Durable edit-and-retry is neutralized in production via
-> `Config.EditRetryDisabled`: its saga can strand a session in a rolled-back-but-
-> not-resent state whose runtime operation becomes a cold-recovery poison pill
-> that crashes `tuttid` on launch. While disabled, `GetEditRetryAvailability`
-> reports unsupported, `EditRetry`/`RecoverEditRetry` refuse, and recovery
-> quarantines any leftover operation (failing it and clearing the session's
-> history fence back to `ready`). Re-enable only once the resend/recovery gap is
-> fixed. See the troubleshooting entry "A stuck edit-and-retry operation crashes
-> the daemon on every launch". The behavior below describes the feature when
-> enabled.
+> **New admission is currently disabled in production.** Product composition
+> supplies the Host with `DenyNew + Drain`: `EditRetry` refuses to create a new
+> operation and availability reports the stable `rollout_disabled` reason
+> without probing a provider. This is deliberately separate from the lifecycle
+> recovery policy. Any already durable V2 operation remains owned by its exact
+> fence and is stepped or reconciled from its checkpoint after listener
+> publication; disabling new admission never quarantines it merely because a
+> rollout changed. An emergency `ReconcileOnly` policy permits only provider
+> reads and converts uncertain work to a durable local blocked fence, never a
+> new rollback or replacement mutation. Unknown evidence remains fenced and is
+> never implicitly abandoned. Production binaries have no environment-controlled
+> enable path. The explicit `tuttid_dev_edit_retry` development build tag also
+> requires `TUTTID_DEV_ENABLE_EDIT_RETRY_SAGA=1` and the default `.tutti-dev`
+> state root. See the troubleshooting entry "A stuck edit-and-retry operation
+> crashes the daemon on every launch". The behavior below describes admitted
+> V2 work.
+
+## Durable edit-retry V2 contract
+
+V2 is the only scheduler-eligible protocol. Its durable payload has exactly
+these checkpoints: `prepared`, `rollback_dispatched`, `rollback_confirmed`,
+`replacement_dispatched`, and `rollback_aborted`. `completed` and `failed` are
+terminal operation statuses; `abandoned` is a completed result, never an
+execution checkpoint. `prepared`, `leased`, and `blocked` are nonterminal;
+`prepared` with a future retry timestamp is deferred and `blocked` is never
+claimable. A durable step result (`completed`, `deferred`, `blocked`,
+`quarantined`, or ordinary terminal failure) means the item has already reached
+a durable local disposition. It is worker-local: the worker continues with
+later items and the daemon must not convert it into a listener/startup failure.
+Only an error without a reliable durable disposition remains an operation
+error; it is still not, by itself, a daemon-fatal error.
+
+The closed provider-neutral reason vocabulary separates state from cause.
+`retry_wait` is the automatic backoff disposition and is valid only with
+`automatic=true` plus a positive retry timestamp. `retry_budget_exhausted`
+means automatic attempts have stopped at the durable age/attempt budget and
+therefore has `automatic=false` and no retry timestamp. `local_state_inconsistent`
+means the operation, exact fence, or history cannot prove a local transition;
+it is session-local blocked recovery, not a daemon failure. Existing
+`provider_outcome_unknown`, `operation_conflict`, and `recovery_required`
+remain distinct stable causes. Raw provider and SQLite diagnostics are never
+reason codes.
+
+The contract has three fixed scopes:
+
+| Scope | V2 boundary |
+| --- | --- |
+| Impact | `EditRetryImpactScopeSession`: one exact agent Session. A poisoned or fenced operation can reject only conflicting mutations for that Session; reads, diagnostics, and every other Session remain available. |
+| Retry | One Session plus its provider's bounded attempt/age budget and authoritative reconciliation evidence. Unknown evidence is `blocked`/`reconcile`, never automatic replay. |
+| Data | One workspace operation and its exact Session-history fence, plus affected turn history, action ledger, audit, and outbox facts in the same compound transaction. The daemon is never an operation impact scope. |
+
+Every transition checks the operation ID, operation version, checkpoint, and
+the exact fence owner. Only the operation named by `fence.operation_id` can
+advance or release that fence. `reconcile`, `retry_replacement`, and `abandon`
+are CAS-bound commands: they carry a stable client-action identity and the
+expected operation/history revisions. Replaying the same identity returns its
+durable result; changing the identity conflicts. A mismatch is rejected before
+provider work.
+
+Provider boundaries are durable-before-effect. Capability and pre-effect
+history snapshots are evidence, not mutation permission. Rollback and
+replacement calls occur only after their dispatch checkpoints commit. A missing
+or unknown provider outcome retains the exact fence and exposes only the safe
+Host-derived recovery action. Replacement redispatch additionally consumes one
+authoritative absence proof in the same transaction that authorizes its next
+dispatch identity. No absence proof, unknown outcome, or restart can justify a
+blind rollback or replacement replay. Stable reason codes and `availableActions`
+are the only control-plane contract; raw provider or SQLite errors never cross
+this boundary.
+
+The payload version is also a safety boundary: a missing, unknown, or newer
+saga version is fail-closed and grants neither claim nor execution. Current
+V2 readers may retain such a row only as a local recovery incident; claim SQL
+and upgrade compatibility tests own the enforcement. This does not promise
+that an older binary can safely interpret a V2 database.
 
 A completed latest user Turn may be edited and retried only through
-`GetEditRetryAvailability`, `EditRetry`, and `RecoverEditRetry`. Host owns the
-complete lifecycle: it snapshots the lossless submitted content, serializes the
-Session mutation, checkpoints before provider rollback, retracts exactly one
-effective Turn only after authoritative confirmation, then submits a stable
+`GetEditRetryAvailability`, `EditRetry`, and CAS-bound
+`RecoverEditRetryCommand`. Host owns the
+complete lifecycle: it first durably prepares the operation and its exact
+Session fence, then reads provider history and durably records that read-only
+pre-effect snapshot while the operation remains `prepared`. Only that persisted
+snapshot can qualify the later rollback-intent checkpoint. Host retracts exactly
+one effective Turn only after authoritative confirmation, then submits a stable
 replacement Turn. The replacement keeps attachments, mentions, capability
 references, and the Tutti mode snapshot while replacing only the first text
 block. Retraction changes model-visible history and canonical projections; it
 does not compensate filesystem changes produced by the original Turn.
+
+Only the current durable edit-retry saga version is scheduler eligible. The
+additive SQLite cutover terminalizes a legacy row only when its persisted
+checkpoint explicitly proves no rollback was dispatched (`prepared` or
+`rollback_aborted`); missing, malformed, or later checkpoints become a
+non-executable session-local `recovery_required` incident with its fence
+retained. A deleted session is the sole exception: its exact fence is cleared
+inside the same deletion transaction and is excluded from current health.
 Conversation timelines hide retracted Turns, while audit reads and generated
 file projections retain their submitted content and filesystem side effects.
 
@@ -176,12 +254,87 @@ proved its absence from authoritative history; a read-only `reconcile` command
 cannot dispatch provider work. While history is fenced in
 `rollback_pending`, `resend_pending`, or `recovery_required`, ordinary sends
 are rejected rather than appended to an uncertain model context.
-The authoritative absence proof is consumed in the same SQLite transaction
-that removes a discardable failed replacement placeholder and advances the
-stable replacement attempt. There is no separately committed redispatch
-authorization checkpoint. Replaying the same proof is idempotent; a later
-authoritative proof advances a new attempt only after the previous failed
-placeholder and claim are safely discarded.
+For `retry_replacement`, Host reads authoritative provider history before any
+database transaction, then calls one compound Store transition. That
+transition CAS-checks the operation/history/fence, binds the proof to the
+client action ledger, consumes it, advances the stable dispatch attempt, and
+writes the recovery outbox event together. A commit failure leaves every fact
+unchanged; a caller loss after commit is recovered from the ledger. The
+durable authorization alone is never permission for a restarted worker to
+send: a crash before the live provider call is reconcile-only. Replaying the
+same action identity is idempotent; a different identity conflicts.
+
+Runtime-operation outbox events are canonical consequences, not another
+provider mutation. Their stable event ID is the consumer idempotency key.
+Each recovery fact also has a durable occurrence identity (the action/proof
+identity); replay of that same command reuses its event, while a later legal
+wake or replacement authorization creates a distinct event even for the same
+operation and kind.
+Publish or mark-sent failure durably defers only that event with exponential
+backoff; it never rolls back the canonical transition or prevents a later
+workspace/session event from being delivered. A mark-sent failure is
+at-least-once delivery of the same stable ID, rather than exactly-once publish.
+Pending-event diagnostics list every unpublished row; only the worker's
+ready-event query applies `next_attempt_at`, so deferred rows remain observable
+without becoming scheduler-eligible early.
+
+Runtime-operation attempts are Host-owned too: execution is serialized per
+workspace/session and uses a small process-local bounded bulkhead (four slots
+by default). Each attempt receives a deadline. A context-aware provider cannot
+head-of-line block another session or operation kind; a provider that ignores
+context holds at most one bounded slot until it returns and cannot create a
+new goroutine on every worker tick. Durable leases and edit-retry dispatched
+checkpoints remain the cross-process safety boundary, so an uncertain
+edit-retry attempt reconciles instead of repeating its external mutation.
+
+Edit-retry recovery additionally uses a dedicated recovery lane. Its admission
+uses the canonical Session provider identity (one in-flight recovery per
+provider and two per workspace by default); a missing provider is isolated as
+`unknown:<workspace>:<session>`, never pooled with unrelated unknown Sessions.
+Cancel, interactive, and plan-decision operations use the control lane, so a
+stuck recovery provider cannot consume the control reservation. These are
+process-local reservations only and remain held until an ignore-context call
+actually returns; durable leases/backoff remain restart safety.
+
+`RuntimeOperationHealth` separates process-local historical worker totals from
+current durable degradation. Current edit-retry entries are read only from the
+canonical SQLite operation plus Session-fence projection, never from provider
+calls or a raw `last_error`. A completed/abandoned operation with its exact
+fence cleared disappears after restart; blocked, leased, future-deferred work,
+and orphan non-ready fences remain visible. Missing, mismatched, or orphaned
+fence rows are fail-closed as `recovery_required`; an orphan grants no recovery
+action and is never silently reported healthy.
+
+Enabled edit-retry retry handling uses a durable processing-lease ordinal:
+claiming a lease increments `attempt` before the Host reaches a provider
+boundary. The configured limit of eight therefore permits the eighth lease;
+after that lease's durable outcome it becomes `blocked`, while a would-be
+ninth lease is rejected before provider work. The retry timestamp is
+exponential (capped at the eighth exponent) plus stable operation-ID jitter in
+the range `[0, base/4]`; it is always later than the base delay and is derived
+again after restart. Reaching the 24-hour age budget blocks before a provider
+boundary. A blocked operation retains its Session fence, has no claimable
+retry timestamp, and exposes only Host-derived recovery state.
+
+Blocked `reconcile` is a read-only provider operation. It persists the action
+ledger and a projection event even when evidence remains unknown, so caller
+loss cannot turn a repeated click into a stale-CAS ambiguity. The Store accepts
+only this checkpoint/canonical-history evidence matrix; every other pairing
+remains `blocked` with only `reconcile` available:
+
+| Provider observation                  | Durable checkpoint                               | Canonical source/replacement requirement                                                                                           | Result                                                                 |
+| ------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| unknown, unsupported, or read failure | any                                              | any                                                                                                                                | retain `blocked` fence                                                 |
+| source present                        | `prepared`                                       | source is still `effective`                                                                                                        | terminal abandoned, release exact fence                                |
+| replacement absent                    | `rollback_confirmed` or `replacement_dispatched` | source is `retracted` by this operation                                                                                            | persist `replacement_dispatched` + absence fact; expose explicit retry |
+| replacement present                   | `replacement_dispatched`                         | source is retracted by this operation and local replacement receipt/submit claim match the provider ID and stable client-submit ID | complete and release exact fence                                       |
+
+Before persisting a `prepared` edit-retry operation, Host records a read-only
+provider-history snapshot as evidence when the runtime can supply one. That
+snapshot can prove the source-present row only while the checkpoint remains
+`prepared` and the local source is still effective. Once rollback intent is
+durable, reappearance can never restore a turn: the operation stays blocked
+until authoritative reconciliation supplies a later safe disposition.
 
 A provider-accepted Goal operation has crossed the delivery boundary. The
 steady-state worker waits for applied evidence and never resubmits that
@@ -416,13 +569,14 @@ canonical composition port rather than an optional runtime assertion, so
 provider-state binding cannot silently omit committed Fork identity
 verification.
 
-Startup invokes `Host.Recover` before serving traffic and starts the Host-owned
-runtime and goal workers. Adapters can use the supervised
-`Host.Run` entrypoint to start the runtime-operation, goal-operation, goal
-reconcile-inbox, and periodic worktree-GC workers as one lifecycle; an
-infrastructure-level worker exit cancels its siblings, while retryable item
-failures remain worker-local. Host owns when GC runs, while the adapter port
-retains all Git, filesystem, and eligibility decisions. The
+Startup invokes `Host.RecoverCore` before serving traffic. `RecoverCore` only
+repairs local durable state: it does not claim/drain runtime operations or call
+a provider. After the adapter publishes its listener, it starts supervised
+`Host.Run`; `Run` first performs deterministic post-listener recovery, then
+starts the runtime-operation, goal-operation, goal-reconcile-inbox, and
+periodic worktree-GC workers. An infrastructure-level worker exit cancels its
+siblings, while retryable item failures remain worker-local. Host owns when GC
+runs, while the adapter port retains all Git, filesystem, and eligibility decisions. The
 individual worker entrypoints remain available for existing focused wiring and
 tests. The service package translates
 HTTP/query/composer/analytics concerns and provider-specific preparation only;
