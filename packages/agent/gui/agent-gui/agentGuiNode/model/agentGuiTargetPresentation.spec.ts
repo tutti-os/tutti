@@ -23,6 +23,7 @@ describe("Agent GUI target presentation projection", () => {
     expect(
       projectAgentTargetPresentations({
         agentTargets: [TARGET],
+        ownerSeparator: "'s ",
         workspaceId: "workspace-1"
       })
     ).toEqual([
@@ -43,6 +44,35 @@ describe("Agent GUI target presentation projection", () => {
         {
           ...TARGET,
           maskIconUrl: "data:image/svg+xml;base64,kilo-mask-next"
+        }
+      ])
+    );
+  });
+
+  it("uses the localized owner-qualified label for shared Agent mentions", () => {
+    expect(
+      projectAgentTargetPresentations({
+        agentTargets: [
+          {
+            ...TARGET,
+            label: "Codex",
+            ownerLabel: "Lin",
+            ownership: "shared"
+          }
+        ],
+        ownerSeparator: " 的 ",
+        workspaceId: "workspace-1"
+      })
+    ).toMatchObject([{ name: "Lin 的 Codex" }]);
+  });
+
+  it("invalidates presentation memoization when shared ownership changes", () => {
+    expect(agentTargetPresentationKey([TARGET])).not.toBe(
+      agentTargetPresentationKey([
+        {
+          ...TARGET,
+          ownerLabel: "Lin",
+          ownership: "shared"
         }
       ])
     );

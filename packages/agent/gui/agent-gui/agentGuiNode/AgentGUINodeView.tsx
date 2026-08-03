@@ -538,9 +538,14 @@ export function AgentGUINodeView({
     () =>
       projectAgentTargetPresentations({
         agentTargets: viewModel.rail.agentTargets,
+        ownerSeparator: labels.sharedAgentOwnerSeparator,
         workspaceId: viewModel.shell.workspaceId
       }),
-    [targetPresentationKey, viewModel.shell.workspaceId]
+    [
+      labels.sharedAgentOwnerSeparator,
+      targetPresentationKey,
+      viewModel.shell.workspaceId
+    ]
   );
 
   const content = (

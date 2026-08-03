@@ -32,6 +32,10 @@ export interface AgentQuickPromptDraft {
   title: string;
 }
 
+export interface AgentQuickPromptCreateOptions {
+  insertIntoComposerAfterSave?: boolean;
+}
+
 export interface AgentQuickPromptLibraryController {
   capabilityAvailable: boolean;
   canReorder: boolean;
@@ -46,14 +50,19 @@ export interface AgentQuickPromptLibraryController {
   isInteractionLocked: boolean;
   isReordering: boolean;
   initialDraft: AgentQuickPromptDraft | null;
+  insertionError: boolean;
   labels: AgentQuickPromptLabels;
   mode: AgentQuickPromptMode;
   mutationError: AgentQuickPromptMutationError;
-  openCreate: (draft?: AgentQuickPromptDraft) => void;
+  openCreate: (
+    draft?: AgentQuickPromptDraft,
+    options?: AgentQuickPromptCreateOptions
+  ) => void;
   openEdit: (prompt: AgentHostQuickPrompt) => void;
   openPopover: () => void;
   promptToDelete: AgentHostQuickPrompt | null;
   retry: () => void;
+  reorderCapabilityAvailable: boolean;
   reorderError: AgentQuickPromptMutationError;
   reorderPrompts: (
     promptId: string,
@@ -74,7 +83,7 @@ export function useAgentQuickPromptLibrary(input: {
   disabled: boolean;
   labels: AgentQuickPromptLabels;
   onBeforeOpen: () => void;
-  onInsertPrompt: (content: string) => void;
+  onInsertPrompt: (content: string) => boolean;
 }): AgentQuickPromptLibraryController {
   const { disabled, labels, onBeforeOpen, onInsertPrompt } = input;
   const hostApi = useOptionalAgentHostApi();
@@ -91,10 +100,12 @@ export function useAgentQuickPromptLibrary(input: {
     useState<AgentHostQuickPrompt | null>(null);
   const [initialDraft, setInitialDraft] =
     useState<AgentQuickPromptDraft | null>(null);
+  const createOptionsRef = useRef<AgentQuickPromptCreateOptions | null>(null);
   const [promptToDelete, setPromptToDelete] =
     useState<AgentHostQuickPrompt | null>(null);
   const [mutationError, setMutationError] =
     useState<AgentQuickPromptMutationError>(null);
+  const [insertionError, setInsertionError] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isReordering, setIsReordering] = useState(false);
@@ -112,8 +123,10 @@ export function useAgentQuickPromptLibrary(input: {
     setMode("closed");
     setSelectedPrompt(null);
     setInitialDraft(null);
+    createOptionsRef.current = null;
     setPromptToDelete(null);
     setMutationError(null);
+    setInsertionError(false);
     setReorderError(null);
   }
   const effectiveMode =
@@ -138,17 +151,18 @@ export function useAgentQuickPromptLibrary(input: {
     isReordering ||
     Boolean(snapshot.orderMutationPending) ||
     snapshot.pendingMutationIds.length > 0;
+  const reorderCapabilityAvailable = Boolean(
+    quickPrompts?.move && capabilityAvailable
+  );
   const canReorder = Boolean(
-    quickPrompts?.move &&
-    capabilityAvailable &&
+    reorderCapabilityAvailable &&
     !disabled &&
     !searchQuery.trim() &&
     filteredPrompts.length > 1 &&
     !isInteractionLocked
   );
   const showReorderHandles = Boolean(
-    quickPrompts?.move &&
-    capabilityAvailable &&
+    reorderCapabilityAvailable &&
     !searchQuery.trim() &&
     filteredPrompts.length > 1
   );
@@ -159,6 +173,7 @@ export function useAgentQuickPromptLibrary(input: {
     }
     onBeforeOpen();
     setMutationError(null);
+    setInsertionError(false);
     setReorderError(null);
     modeRef.current = "popover";
     setMode("popover");
@@ -178,8 +193,10 @@ export function useAgentQuickPromptLibrary(input: {
     setMode("closed");
     setSelectedPrompt(null);
     setInitialDraft(null);
+    createOptionsRef.current = null;
     setPromptToDelete(null);
     setMutationError(null);
+    setInsertionError(false);
     setReorderError(null);
   }, []);
 
@@ -190,7 +207,9 @@ export function useAgentQuickPromptLibrary(input: {
     setReorderError(null);
     setSelectedPrompt(null);
     setInitialDraft(null);
+    createOptionsRef.current = null;
     setPromptToDelete(null);
+    setInsertionError(false);
     setMode(nextMode);
   }, [capabilityAvailable, disabled]);
 
@@ -206,12 +225,17 @@ export function useAgentQuickPromptLibrary(input: {
   );
 
   const openCreate = useCallback(
-    (draft?: AgentQuickPromptDraft) => {
+    (
+      draft?: AgentQuickPromptDraft,
+      options?: AgentQuickPromptCreateOptions
+    ) => {
       if (isInteractionLocked) return;
       modeRef.current = "create";
       setSelectedPrompt(null);
       setInitialDraft(draft ?? null);
+      createOptionsRef.current = options ?? null;
       setMutationError(null);
+      setInsertionError(false);
       setMode("create");
     },
     [isInteractionLocked]
@@ -223,7 +247,9 @@ export function useAgentQuickPromptLibrary(input: {
       modeRef.current = "edit";
       setSelectedPrompt(prompt);
       setInitialDraft(null);
+      createOptionsRef.current = null;
       setMutationError(null);
+      setInsertionError(false);
       setMode("edit");
     },
     [isInteractionLocked]
@@ -247,8 +273,11 @@ export function useAgentQuickPromptLibrary(input: {
       }
       setIsSaving(true);
       setMutationError(null);
+      setInsertionError(false);
+      const createOptions = selectedPrompt ? null : createOptionsRef.current;
+      let saved: AgentHostQuickPrompt;
       try {
-        const saved = selectedPrompt
+        saved = selectedPrompt
           ? await quickPrompts.update({
               id: selectedPrompt.id,
               title: draft.title,
@@ -256,12 +285,6 @@ export function useAgentQuickPromptLibrary(input: {
               expectedVersion: selectedPrompt.version
             })
           : await quickPrompts.create(draft);
-        setSelectedPrompt(saved);
-        setInitialDraft(null);
-        const nextMode = disclosureAvailableRef.current ? "popover" : "closed";
-        modeRef.current = nextMode;
-        setMode(nextMode);
-        return true;
       } catch (error) {
         const conflict = isVersionConflict(error);
         setMutationError(conflict ? "conflict" : "generic");
@@ -280,8 +303,42 @@ export function useAgentQuickPromptLibrary(input: {
       } finally {
         setIsSaving(false);
       }
+
+      const insertIntoComposerAfterSave = Boolean(
+        createOptions?.insertIntoComposerAfterSave &&
+        createOptionsRef.current === createOptions &&
+        disclosureAvailableRef.current
+      );
+      if (insertIntoComposerAfterSave) {
+        let inserted = false;
+        try {
+          inserted = onInsertPrompt(saved.content);
+        } catch {
+          inserted = false;
+        }
+        if (inserted) {
+          close();
+          return true;
+        }
+        setInsertionError(true);
+      }
+
+      setSelectedPrompt(saved);
+      setInitialDraft(null);
+      createOptionsRef.current = null;
+      const nextMode = disclosureAvailableRef.current ? "popover" : "closed";
+      modeRef.current = nextMode;
+      setMode(nextMode);
+      return true;
     },
-    [capabilityAvailable, isInteractionLocked, quickPrompts, selectedPrompt]
+    [
+      capabilityAvailable,
+      close,
+      isInteractionLocked,
+      onInsertPrompt,
+      quickPrompts,
+      selectedPrompt
+    ]
   );
 
   const submitDelete = useCallback(async (): Promise<boolean> => {
@@ -365,8 +422,17 @@ export function useAgentQuickPromptLibrary(input: {
       if (disabled || !capabilityAvailable || isInteractionLocked) {
         return;
       }
-      close();
-      onInsertPrompt(content);
+      let inserted = false;
+      try {
+        inserted = onInsertPrompt(content);
+      } catch {
+        inserted = false;
+      }
+      if (inserted) {
+        close();
+      } else {
+        setInsertionError(true);
+      }
     },
     [capabilityAvailable, close, disabled, isInteractionLocked, onInsertPrompt]
   );
@@ -399,6 +465,7 @@ export function useAgentQuickPromptLibrary(input: {
     isInteractionLocked,
     isReordering,
     initialDraft,
+    insertionError,
     labels,
     mode: effectiveMode,
     mutationError,
@@ -407,6 +474,7 @@ export function useAgentQuickPromptLibrary(input: {
     openPopover,
     promptToDelete,
     retry,
+    reorderCapabilityAvailable,
     reorderError,
     reorderPrompts,
     saveDraft,

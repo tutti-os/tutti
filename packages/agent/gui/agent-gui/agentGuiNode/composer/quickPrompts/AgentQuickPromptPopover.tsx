@@ -1,4 +1,4 @@
-import { type PointerEvent, useId, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import {
   Button,
   ConfirmationDialog,
@@ -23,10 +23,16 @@ import {
   MessageSquareTextIcon,
   SearchIcon
 } from "@tutti-os/ui-system/icons";
+import { cn } from "../../../../app/renderer/lib/utils";
+import styles from "../../AgentGUINode.styles";
 import { AgentQuickPromptEditorDialog } from "./AgentQuickPromptEditorDialog";
 import { AgentQuickPromptList } from "./AgentQuickPromptList";
 import type { AgentQuickPromptTemplate } from "./agentQuickPromptLabels";
 import type { AgentQuickPromptLibraryController } from "./useAgentQuickPromptLibrary";
+import {
+  type PrimaryPointerAction,
+  usePrimaryPointerAction
+} from "./usePrimaryPointerAction";
 
 export function AgentQuickPromptPopover({
   controller,
@@ -39,9 +45,12 @@ export function AgentQuickPromptPopover({
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
   const firstTemplateRef = useRef<HTMLButtonElement | null>(null);
   const preserveExternalFocusRef = useRef(false);
-  const createRequestedOnPointerDownRef = useRef(false);
-  const templateRequestedOnPointerDownRef = useRef(false);
   const [view, setView] = useState<"prompts" | "templates">("prompts");
+  let activeView = view;
+  if (controller.insertionError && activeView !== "prompts") {
+    activeView = "prompts";
+    setView("prompts");
+  }
   const [sortingState, setSortingState] = useState({
     isPopoverOpen: controller.isPopoverOpen,
     isSorting: false
@@ -68,10 +77,19 @@ export function AgentQuickPromptPopover({
   const returnToPromptsAction = usePrimaryPointerAction(() =>
     setView("prompts")
   );
+  const createAction = usePrimaryPointerAction(() => {
+    if (controller.isInteractionLocked) return;
+    preserveExternalFocusRef.current = true;
+    controller.openCreate();
+  });
   const deleteCancelAction = usePrimaryPointerAction(controller.closeDialog);
   const deleteConfirmAction = usePrimaryPointerAction(() => {
     void controller.submitDelete();
   });
+  const startSortingAction = usePrimaryPointerAction(() => setIsSorting(true));
+  const finishSortingAction = usePrimaryPointerAction(() =>
+    setIsSorting(false)
+  );
 
   if (!controller.capabilityAvailable) {
     return null;
@@ -87,15 +105,27 @@ export function AgentQuickPromptPopover({
       : controller.mutationError === "generic"
         ? labels.mutationError
         : null;
-  const requestCreate = (): void => {
-    preserveExternalFocusRef.current = true;
-    controller.openCreate();
-  };
   const requestTemplate = (template: AgentQuickPromptTemplate): void => {
     preserveExternalFocusRef.current = true;
-    controller.openCreate({ title: template.title, content: template.content });
+    controller.openCreate(
+      { title: template.title, content: template.content },
+      { insertIntoComposerAfterSave: true }
+    );
   };
-  const isTemplateView = view === "templates";
+  const isTemplateView = activeView === "templates";
+  const reorderDisabledMessage = resolveReorderDisabledMessage(controller);
+  const startSortingButton = (
+    <Button
+      disabled={reorderDisabledMessage !== null}
+      size="sm"
+      type="button"
+      variant="ghost"
+      {...startSortingAction}
+    >
+      <GripVerticalIcon data-icon="inline-start" />
+      {labels.startSorting}
+    </Button>
+  );
 
   return (
     <>
@@ -117,12 +147,19 @@ export function AgentQuickPromptPopover({
                 <PopoverTrigger asChild>
                   <Button
                     aria-label={labels.triggerTooltip}
+                    className={cn(
+                      styles.composerMenuTrigger,
+                      "w-auto max-w-[180px] !gap-1.5 focus-visible:!outline-2 focus-visible:!outline-offset-2 focus-visible:!outline-[var(--border-focus)]"
+                    )}
                     disabled={disabled}
                     size="sm"
                     type="button"
                     variant="chrome"
                   >
-                    <MessageSquareTextIcon data-icon="inline-start" />
+                    <MessageSquareTextIcon
+                      className="size-4"
+                      data-icon="inline-start"
+                    />
                     <span className="hidden min-[900px]:inline">
                       {labels.trigger}
                     </span>
@@ -183,43 +220,39 @@ export function AgentQuickPromptPopover({
                     size="sm"
                     type="button"
                     variant="ghost"
-                    onClick={() => setIsSorting(false)}
+                    {...finishSortingAction}
                   >
                     <CheckIcon data-icon="inline-start" />
                     {labels.finishSorting}
                   </Button>
                 ) : (
                   <>
+                    {reorderDisabledMessage ? (
+                      <TooltipProvider delayDuration={120}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span
+                              aria-label={reorderDisabledMessage}
+                              className="inline-flex"
+                              tabIndex={0}
+                            >
+                              {startSortingButton}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">
+                            {reorderDisabledMessage}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ) : (
+                      startSortingButton
+                    )}
                     <Button
-                      disabled={
-                        controller.isInteractionLocked ||
-                        !controller.showReorderHandles
-                      }
-                      size="sm"
-                      type="button"
-                      variant="ghost"
-                      onClick={() => setIsSorting(true)}
-                    >
-                      <GripVerticalIcon data-icon="inline-start" />
-                      {labels.startSorting}
-                    </Button>
-                    <Button
+                      {...createAction}
                       disabled={controller.isInteractionLocked}
                       size="sm"
                       type="button"
                       variant="ghost"
-                      onPointerDown={(event) => {
-                        if (event.button !== 0) return;
-                        createRequestedOnPointerDownRef.current = true;
-                        requestCreate();
-                      }}
-                      onClick={() => {
-                        if (createRequestedOnPointerDownRef.current) {
-                          createRequestedOnPointerDownRef.current = false;
-                          return;
-                        }
-                        requestCreate();
-                      }}
                     >
                       <AddIcon data-icon="inline-start" />
                       {labels.add}
@@ -292,6 +325,14 @@ export function AgentQuickPromptPopover({
               </Button>
             </div>
           ) : null}
+          {!isTemplateView && controller.insertionError ? (
+            <div
+              className="shrink-0 px-3 pb-2 text-[12px] text-[var(--state-danger)]"
+              role="alert"
+            >
+              {labels.insertionError}
+            </div>
+          ) : null}
           <ScrollArea
             className="min-h-0 flex-1"
             viewportClassName="px-2 pb-2"
@@ -303,9 +344,6 @@ export function AgentQuickPromptPopover({
                 firstTemplateRef={firstTemplateRef}
                 labels={labels}
                 onSelect={requestTemplate}
-                selectionRequestedOnPointerDownRef={
-                  templateRequestedOnPointerDownRef
-                }
               />
             ) : snapshot.status === "loading" &&
               snapshot.prompts.length === 0 ? (
@@ -335,9 +373,6 @@ export function AgentQuickPromptPopover({
                 firstTemplateRef={firstTemplateRef}
                 labels={labels}
                 onSelect={requestTemplate}
-                selectionRequestedOnPointerDownRef={
-                  templateRequestedOnPointerDownRef
-                }
               />
             ) : controller.filteredPrompts.length === 0 ? (
               <PromptState label={labels.noResults} />
@@ -427,18 +462,41 @@ export function AgentQuickPromptPopover({
   );
 }
 
+function resolveReorderDisabledMessage(
+  controller: AgentQuickPromptLibraryController
+): string | null {
+  const { labels, snapshot } = controller;
+  if (!controller.reorderCapabilityAvailable) {
+    return labels.reorderDisabledUnsupported;
+  }
+  if (snapshot.status === "idle" || snapshot.status === "loading") {
+    return labels.loading;
+  }
+  if (snapshot.status === "error" && snapshot.prompts.length === 0) {
+    return labels.loadError;
+  }
+  if (controller.isInteractionLocked) {
+    return labels.reorderDisabledPending;
+  }
+  if (controller.searchQuery.trim()) {
+    return labels.reorderDisabledSearch;
+  }
+  if (controller.filteredPrompts.length < 2) {
+    return labels.reorderDisabledMinimum;
+  }
+  return null;
+}
+
 function RecommendedTemplateList({
   disabled,
   firstTemplateRef,
   labels,
-  onSelect,
-  selectionRequestedOnPointerDownRef
+  onSelect
 }: {
   disabled: boolean;
   firstTemplateRef: React.RefObject<HTMLButtonElement | null>;
   labels: AgentQuickPromptLibraryController["labels"];
   onSelect: (template: AgentQuickPromptTemplate) => void;
-  selectionRequestedOnPointerDownRef: React.MutableRefObject<boolean>;
 }): React.JSX.Element {
   return (
     <section className="flex flex-col gap-1 px-1 pt-2">
@@ -451,42 +509,58 @@ function RecommendedTemplateList({
         </p>
       </div>
       {labels.recommendedTemplates.map((template, index) => (
-        <Button
+        <RecommendedTemplateButton
           key={template.id}
-          ref={index === 0 ? firstTemplateRef : undefined}
-          className="h-auto w-full justify-between px-2 py-2 text-left whitespace-normal"
           disabled={disabled}
-          type="button"
-          variant="ghost"
-          onPointerDown={(event) => {
-            if (disabled || event.button !== 0) return;
-            selectionRequestedOnPointerDownRef.current = true;
-            onSelect(template);
-          }}
-          onClick={() => {
-            if (disabled) return;
-            if (selectionRequestedOnPointerDownRef.current) {
-              selectionRequestedOnPointerDownRef.current = false;
-              return;
-            }
-            onSelect(template);
-          }}
-        >
-          <span className="flex min-w-0 flex-col items-start gap-0.5">
-            <span className="w-full truncate font-medium text-[var(--text-primary)]">
-              {template.title}
-            </span>
-            <span className="line-clamp-2 w-full text-[12px] leading-[1.35] text-[var(--text-secondary)]">
-              {template.description}
-            </span>
-          </span>
-          <span className="flex shrink-0 items-center gap-1 text-[12px] text-[var(--text-secondary)]">
-            {labels.useTemplate}
-            <ArrowRightIcon data-icon="inline-end" />
-          </span>
-        </Button>
+          labels={labels}
+          selectionRef={index === 0 ? firstTemplateRef : undefined}
+          template={template}
+          onSelect={onSelect}
+        />
       ))}
     </section>
+  );
+}
+
+function RecommendedTemplateButton({
+  disabled,
+  labels,
+  onSelect,
+  selectionRef,
+  template
+}: {
+  disabled: boolean;
+  labels: AgentQuickPromptLibraryController["labels"];
+  onSelect: (template: AgentQuickPromptTemplate) => void;
+  selectionRef?: React.RefObject<HTMLButtonElement | null>;
+  template: AgentQuickPromptTemplate;
+}): React.JSX.Element {
+  const selectionAction = usePrimaryPointerAction(() => {
+    if (!disabled) onSelect(template);
+  });
+
+  return (
+    <Button
+      {...selectionAction}
+      ref={selectionRef}
+      className="h-auto w-full justify-between px-2 py-2 text-left whitespace-normal"
+      disabled={disabled}
+      type="button"
+      variant="ghost"
+    >
+      <span className="flex min-w-0 flex-col items-start gap-0.5">
+        <span className="w-full truncate font-medium text-[var(--text-primary)]">
+          {template.title}
+        </span>
+        <span className="line-clamp-2 w-full text-[12px] leading-[1.35] text-[var(--text-secondary)]">
+          {template.description}
+        </span>
+      </span>
+      <span className="flex shrink-0 items-center gap-1 text-[12px] text-[var(--text-secondary)]">
+        {labels.useTemplate}
+        <ArrowRightIcon data-icon="inline-end" />
+      </span>
+    </Button>
   );
 }
 
@@ -511,31 +585,6 @@ function TemplateEntry({
       <ArrowRightIcon data-icon="inline-end" />
     </Button>
   );
-}
-
-type PrimaryPointerAction = {
-  onClick: () => void;
-  onPointerDown: (event: PointerEvent<HTMLButtonElement>) => void;
-};
-
-function usePrimaryPointerAction(action: () => void): PrimaryPointerAction {
-  const actionRequestedOnPointerDownRef = useRef(false);
-
-  return {
-    onPointerDown: (event) => {
-      if (event.button !== 0) return;
-      actionRequestedOnPointerDownRef.current = true;
-      event.preventDefault();
-      action();
-    },
-    onClick: () => {
-      if (actionRequestedOnPointerDownRef.current) {
-        actionRequestedOnPointerDownRef.current = false;
-        return;
-      }
-      action();
-    }
-  };
 }
 
 function PromptState({

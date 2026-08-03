@@ -586,8 +586,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     mentionActions.closeFileMentionPalette();
     slashActions.closeSlashFloatingMenu();
   }, [mentionActions, slashActions]);
-  const insertQuickPrompt = useCallback((content: string): void => {
-    editorHandleRef.current?.insertPlainTextAtSelection(content);
+  const insertQuickPrompt = useCallback((content: string): boolean => {
+    return editorHandleRef.current?.insertPlainTextAtSelection(content) != null;
   }, []);
   const quickPromptLibrary = useAgentQuickPromptLibrary({
     disabled: composerControlsHardDisabled || inputDisabled,

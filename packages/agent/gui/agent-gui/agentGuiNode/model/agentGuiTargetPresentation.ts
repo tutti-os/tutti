@@ -1,5 +1,6 @@
 import type { AgentGUIAgentTarget } from "../../../types";
 import type { AgentMessageMarkdownAgentTarget } from "../../../shared/AgentTargetPresentationContext";
+import { projectAgentGUIAgentTargetName } from "./agentGuiTargetName";
 
 export function agentTargetPresentationKey(
   agentTargets: readonly AgentGUIAgentTarget[]
@@ -10,6 +11,8 @@ export function agentTargetPresentationKey(
       target.iconUrl ?? null,
       target.maskIconUrl ?? null,
       target.label,
+      target.ownerLabel ?? null,
+      target.ownership ?? null,
       target.provider
     ])
   );
@@ -17,6 +20,7 @@ export function agentTargetPresentationKey(
 
 export function projectAgentTargetPresentations(input: {
   agentTargets: readonly AgentGUIAgentTarget[];
+  ownerSeparator: string;
   workspaceId: string;
 }): readonly AgentMessageMarkdownAgentTarget[] {
   return input.agentTargets.flatMap((target) =>
@@ -26,7 +30,10 @@ export function projectAgentTargetPresentations(input: {
             agentTargetId: target.agentTargetId,
             iconUrl: target.iconUrl ?? null,
             maskIconUrl: target.maskIconUrl ?? null,
-            name: target.label,
+            name: projectAgentGUIAgentTargetName({
+              ownerSeparator: input.ownerSeparator,
+              target
+            }).fullLabel,
             provider: target.provider,
             workspaceId: input.workspaceId
           }
