@@ -84,7 +84,12 @@ uses that identity to create and select a new tab in the same Browser surface.
 It must not translate this explicit popup intent into a passive Workbench
 `defaultUrl` update: controller synchronization deliberately ignores
 same-origin URL differences so normal in-page and authentication redirects are
-not reset by stale host state.
+not reset by stale host state. Before the new child guest publishes runtime
+state, the Workbench adapter resolves its initial URL from the active tab's
+stored URL ahead of the static product home page. Explicit activation and
+restored runtime state remain higher-priority sources. This keeps the package's
+tab state authoritative during materialization without moving Browser mechanics
+into a Desktop host adapter.
 
 The workspace host keeps one active Browser feature route per workspace and
 source. Rebuilding a Workbench contribution replaces and disconnects the prior
@@ -224,7 +229,13 @@ returns the exact child tab id. If no User Browser host is ready, Main opens the
 workspace window explicitly, independent of the primary workspace UI mode, and
 waits for its verified readiness before sending the create request. Main then
 reveals and focuses that exact owning workspace window only after page creation
-succeeds. The Agent session identity still owns the
+succeeds. Agent-issued requests also carry the daemon's persisted active Turn
+identity as presentation context. Main reveals the owning workspace only for
+the first successful page creation in each workspace, Agent session, and Turn;
+later creations in that Turn still create and select their tabs without
+repeatedly taking foreground focus. The activation cache is bounded, and
+requests without an exact Turn identity retain the previous reveal behavior.
+The Agent session identity still owns the
 automation lease and request guard; it does not choose a narrow Agent UI
 surface. Metadata-only inspection, screenshots, select, and close operations do
 not activate a window, and performance-headless runs remain non-activating.

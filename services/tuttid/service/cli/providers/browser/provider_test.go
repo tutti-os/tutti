@@ -11,6 +11,7 @@ import (
 type fakeBrowserService struct {
 	workspaceID    string
 	agentSessionID string
+	agentTurnID    string
 	tool           string
 	args           map[string]any
 }
@@ -20,14 +21,24 @@ func (f *fakeBrowserService) CallToolForAgent(
 	workspaceID string,
 	_ string,
 	agentSessionID string,
+	agentTurnID string,
 	tool string,
 	args map[string]any,
 ) (browsersvc.ToolResult, error) {
 	f.workspaceID = workspaceID
 	f.agentSessionID = agentSessionID
+	f.agentTurnID = agentTurnID
 	f.tool = tool
 	f.args = args
 	return browsersvc.ToolResult{Text: "opened page"}, nil
+}
+
+type fakeAgentTurnReader struct {
+	turnID string
+}
+
+func (f fakeAgentTurnReader) PersistedActiveTurnID(context.Context, string, string) (string, error) {
+	return f.turnID, nil
 }
 
 func TestProviderBrowserCommandsAdvertiseJSONOutput(t *testing.T) {
@@ -41,7 +52,7 @@ func TestProviderBrowserCommandsAdvertiseJSONOutput(t *testing.T) {
 
 func TestProviderOpenCreatesAgentBrowserPage(t *testing.T) {
 	browser := &fakeBrowserService{}
-	commands := NewProvider(nil, browser).Commands()
+	commands := NewProvider(nil, browser, fakeAgentTurnReader{turnID: "turn-1"}).Commands()
 	var openCommand cliservice.Command
 	for _, command := range commands {
 		if command.Capability.ID == "browser.open" {
@@ -69,6 +80,9 @@ func TestProviderOpenCreatesAgentBrowserPage(t *testing.T) {
 	}
 	if browser.workspaceID != "workspace-1" || browser.agentSessionID != "agent-session-1" {
 		t.Fatalf("browser scope = workspace %q, agent session %q", browser.workspaceID, browser.agentSessionID)
+	}
+	if browser.agentTurnID != "turn-1" {
+		t.Fatalf("browser agent turn = %q, want turn-1", browser.agentTurnID)
 	}
 	if output.Kind != cliservice.OutputModeJSON || output.Value["text"] != "opened page" {
 		t.Fatalf("output = %#v", output)

@@ -1,7 +1,6 @@
 import { createElement, type ReactNode } from "react";
 import type {
   WorkbenchContribution,
-  WorkbenchHostActivation,
   WorkbenchHostDockEntry,
   WorkbenchHostExternalStateSource,
   WorkbenchFrame,
@@ -15,16 +14,15 @@ import type { BrowserNodeFeature } from "../core/feature.ts";
 import type { BrowserNodeAutomationTargetMetadata } from "../core/types.ts";
 import { BrowserNode } from "../react/BrowserNode.tsx";
 import { BrowserNodeWorkbenchHeader } from "../react/BrowserNodeChrome.tsx";
+import {
+  resolveBrowserNodeInitialUrl,
+  type BrowserNodeExternalState
+} from "./browserNodeInitialUrl.ts";
 
-export interface BrowserNodeOpenUrlActivationPayload {
-  title?: string;
-  url: string;
-}
-
-export interface BrowserNodeExternalState {
-  title?: string | null;
-  url?: string | null;
-}
+export type {
+  BrowserNodeExternalState,
+  BrowserNodeOpenUrlActivationPayload
+} from "./browserNodeInitialUrl.ts";
 
 export interface CreateBrowserNodeDefinitionInput {
   automationTarget?: Omit<
@@ -104,7 +102,9 @@ export function createBrowserNodeDefinition({
         defaultUrl: resolveBrowserNodeInitialUrl({
           activation: context.activation,
           defaultUrl,
-          externalNodeState: context.externalNodeState
+          externalNodeState: context.externalNodeState,
+          surfaceNodeId: context.node.id,
+          tabsStore: feature.tabsStore
         }),
         feature,
         hidden: context.node.isMinimized,
@@ -129,7 +129,9 @@ export function createBrowserNodeDefinition({
         defaultUrl: resolveBrowserNodeInitialUrl({
           activation: headerContext.activation,
           defaultUrl,
-          externalNodeState: headerContext.externalNodeState
+          externalNodeState: headerContext.externalNodeState,
+          surfaceNodeId: headerContext.node.id,
+          tabsStore: feature.tabsStore
         }),
         displayMode: headerContext.displayMode,
         dragHandleProps: headerContext.dragHandleProps,
@@ -269,48 +271,4 @@ export function createBrowserWorkbenchContribution({
       typeId
     })
   };
-}
-
-function resolveBrowserNodeInitialUrl({
-  activation,
-  defaultUrl,
-  externalNodeState
-}: {
-  activation: WorkbenchHostActivation | null;
-  defaultUrl: string;
-  externalNodeState?: BrowserNodeExternalState | null;
-}): string {
-  return (
-    readBrowserOpenUrlActivationPayload(activation)?.url ??
-    normalizeBrowserNodeInitialUrl(externalNodeState?.url) ??
-    defaultUrl
-  );
-}
-
-function normalizeBrowserNodeInitialUrl(
-  value: string | null | undefined
-): string | null {
-  const trimmed = value?.trim() ?? "";
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function readBrowserOpenUrlActivationPayload(
-  activation: WorkbenchHostActivation | null
-): BrowserNodeOpenUrlActivationPayload | null {
-  if (
-    activation?.type !== "open-url" ||
-    !activation.payload ||
-    typeof activation.payload !== "object"
-  ) {
-    return null;
-  }
-
-  const typed =
-    activation.payload as Partial<BrowserNodeOpenUrlActivationPayload>;
-  return typeof typed.url === "string"
-    ? {
-        title: typeof typed.title === "string" ? typed.title : undefined,
-        url: typed.url
-      }
-    : null;
 }
