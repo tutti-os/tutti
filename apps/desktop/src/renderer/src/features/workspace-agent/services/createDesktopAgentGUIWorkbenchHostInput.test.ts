@@ -866,7 +866,7 @@ test("desktop agent GUI workbench host input tracks runtime session pin changes"
   ]);
 });
 
-test("desktop agent GUI workbench host input tracks runtime project setting changes", async () => {
+test("desktop agent GUI workbench host input tracks draft project setting changes", async () => {
   const reporterCalls: ReporterEventInput[][] = [];
   const hostInput = createDesktopAgentGUIWorkbenchHostInput({
     agentHostApi: {
@@ -885,7 +885,7 @@ test("desktop agent GUI workbench host input tracks runtime project setting chan
 
   await hostInput.agentActivityRuntime.trackSettingsProjectChange?.({
     workspaceId,
-    agentSessionId: "session-runtime-project-1",
+    agentSessionId: null,
     action: "select_existing",
     provider: "codex"
   });
@@ -897,7 +897,7 @@ test("desktop agent GUI workbench host input tracks runtime project setting chan
         name: "agent.settings.project_changed",
         params: {
           action: "select_existing",
-          agent_session_id: "session-runtime-project-1",
+          agent_session_id: null,
           provider: "codex"
         }
       }
