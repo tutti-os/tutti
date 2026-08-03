@@ -119,6 +119,10 @@ type standardACPAdapter struct {
 type standardACPSession struct {
 	client            *acpClient
 	providerSessionID string
+	// resumeMethod records the capability proven by this process's initialize
+	// handshake. Idle release is safe only when the next process can restore
+	// the provider session through this method.
+	resumeMethod string
 	// resumeRuntimeContext preserves the historical adapter projection only
 	// when replay attaches at an already-initialized connection checkpoint.
 	resumeRuntimeContext map[string]any

@@ -14,12 +14,13 @@ type standardACPTransport struct {
 }
 
 type multiProcStandardACPTransport struct {
-	mu                  sync.Mutex
-	agentTitle          string
-	sessionID           string
-	supportsLoadSession bool
-	specs               []ProcessSpec
-	conns               []*standardACPConnection
+	mu                       sync.Mutex
+	agentTitle               string
+	sessionID                string
+	supportsLoadSession      bool
+	supportsAgentLoadSession bool
+	specs                    []ProcessSpec
+	conns                    []*standardACPConnection
 }
 
 func newStandardACPTransport(agentTitle string, sessionID string) *standardACPTransport {
@@ -43,10 +44,11 @@ func (t *multiProcStandardACPTransport) Start(_ context.Context, spec ProcessSpe
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	conn := &standardACPConnection{
-		recv:                make(chan ProcessFrame, 32),
-		agentTitle:          t.agentTitle,
-		sessionID:           t.sessionID,
-		supportsLoadSession: t.supportsLoadSession,
+		recv:                     make(chan ProcessFrame, 32),
+		agentTitle:               t.agentTitle,
+		sessionID:                t.sessionID,
+		supportsLoadSession:      t.supportsLoadSession,
+		supportsAgentLoadSession: t.supportsAgentLoadSession,
 	}
 	t.specs = append(t.specs, spec)
 	t.conns = append(t.conns, conn)
@@ -95,6 +97,7 @@ type standardACPConnection struct {
 	closeSessionError             *acpError
 	rejectModelValue              string
 	supportsLoadSession           bool
+	supportsAgentLoadSession      bool
 	supportsCloseSession          bool
 	closeSessionExits             bool
 	isClosed                      bool
