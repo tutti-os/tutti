@@ -88,7 +88,11 @@ export function projectAgentGUIEditRetryPresentation(input: {
     operationId: availability?.operationId ?? null,
     operationVersion: availability?.operationVersion ?? null,
     automatic: availability?.automatic === true,
-    nextAttemptAtUnixMs: availability?.nextAttemptAtUnixMs ?? null,
+    nextAttemptAtUnixMs:
+      typeof availability?.nextAttemptAtUnixMs === "number" &&
+      availability.nextAttemptAtUnixMs > 0
+        ? availability.nextAttemptAtUnixMs
+        : null,
     attempt: availability?.attempt ?? null,
     availableActions: availability?.availableActions ?? [],
     actionFeedback: input.actionFeedback ?? null,
