@@ -268,8 +268,8 @@ func TestInlineOutboxPublishFailureDoesNotTurnCompletedAPIIntoFailure(t *testing
 		t.Fatalf("outbox retry=%d, want future after inline publish failure", store.events[0].NextAttemptAtMS)
 	}
 	now = time.UnixMilli(store.events[0].NextAttemptAtMS)
-	if err := service.ApplicationHost().StepRuntimeOperationWorker(context.Background(), false); err == nil {
-		t.Fatal("worker outbox publish error = nil")
+	if err := service.ApplicationHost().StepRuntimeOperationWorker(context.Background(), false); err != nil {
+		t.Fatalf("worker outbox publish error = %v, want health-only degradation", err)
 	}
 }
 

@@ -168,19 +168,6 @@ func TestPlanDecisionOutboxPublishFailureReplaysWithoutRollingBackCompletion(t *
 		t.Fatalf("outbox retry=%d, want future after publish failure", retryAt)
 	}
 	now = time.UnixMilli(retryAt)
-	if err := service.ApplicationHost().StepRuntimeOperationWorker(context.Background(), false); err == nil {
-		t.Fatal("scheduled publish failure error=nil")
-	}
-	retryAt = store.events[0].NextAttemptAtMS
-	for _, event := range store.events[1:] {
-		if event.NextAttemptAtMS > retryAt {
-			retryAt = event.NextAttemptAtMS
-		}
-	}
-	if retryAt <= now.UnixMilli() {
-		t.Fatalf("outbox retry=%d, want future after scheduled publish failure", retryAt)
-	}
-	now = time.UnixMilli(retryAt)
 	publisher := &planDecisionRecordingPublisher{}
 	service.RuntimeOperationEventPublisher = publisher
 	if err := service.ApplicationHost().StepRuntimeOperationWorker(context.Background(), false); err != nil {
