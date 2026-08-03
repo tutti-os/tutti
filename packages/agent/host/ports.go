@@ -53,16 +53,23 @@ type TurnSubmissionStore interface {
 // Its compound transitions atomically fence the Session history projection,
 // the source/replacement Turns, and the runtime operation.
 type EffectiveHistoryStore interface {
+	PrepareEditRetry(context.Context, storesqlite.RuntimeOperationPrepare) (storesqlite.RuntimeOperation, bool, error)
 	GetSessionHistory(context.Context, string, string) (storesqlite.SessionHistory, bool, error)
 	GetTurnHistory(context.Context, string, string, string) (storesqlite.TurnHistory, bool, error)
 	ListEffectiveSessionTurns(context.Context, string, string) ([]storesqlite.Turn, error)
 	MarkEditRetryRollbackDispatched(context.Context, storesqlite.MarkEditRetryRollbackDispatchedInput) (storesqlite.RuntimeOperation, bool, error)
 	ConfirmEditRetryRollback(context.Context, storesqlite.ConfirmEditRetryRollbackInput) (storesqlite.RuntimeOperation, bool, error)
 	AbortEditRetryRollback(context.Context, storesqlite.AbortEditRetryRollbackInput) (storesqlite.RuntimeOperation, bool, error)
-	PrepareEditRetryReplacementRedispatch(context.Context, storesqlite.PrepareEditRetryReplacementRedispatchInput) (storesqlite.RuntimeOperation, bool, error)
+	AuthorizeEditRetryReplacementRetry(context.Context, storesqlite.AuthorizeEditRetryReplacementRetryInput) (storesqlite.RuntimeOperation, bool, error)
+	ReconcileBlockedEditRetry(context.Context, storesqlite.ReconcileBlockedEditRetryInput) (storesqlite.RuntimeOperation, bool, error)
 	CompleteEditRetryRuntimeOperation(context.Context, storesqlite.CompleteEditRetryRuntimeOperationInput) (storesqlite.RuntimeOperationCompletion, bool, error)
+	BlockEditRetry(context.Context, storesqlite.BlockEditRetryInput) (storesqlite.RuntimeOperation, bool, error)
+	DeferEditRetry(context.Context, storesqlite.DeferEditRetryInput) (storesqlite.RuntimeOperation, bool, error)
+	CaptureEditRetryPreEffectSnapshot(context.Context, storesqlite.CaptureEditRetryPreEffectSnapshotInput) (storesqlite.RuntimeOperation, bool, error)
+	AbandonEditRetry(context.Context, storesqlite.AbandonEditRetryInput) (storesqlite.RuntimeOperation, bool, error)
 	FailEditRetryRecovery(context.Context, storesqlite.FailEditRetryRecoveryInput) (storesqlite.RuntimeOperation, bool, error)
-	QuarantineEditRetryOperation(context.Context, storesqlite.QuarantineEditRetryOperationInput) (storesqlite.RuntimeOperation, bool, error)
+	WakeDeferredEditRetry(context.Context, storesqlite.WakeDeferredEditRetryInput) (storesqlite.RuntimeOperation, bool, error)
+	GetRuntimeOperationRecoveryAction(context.Context, string, string, string) (storesqlite.RuntimeOperationRecoveryAction, bool, error)
 	ClearAbandonedEditRetryFence(context.Context, storesqlite.ClearAbandonedEditRetryFenceInput) (bool, error)
 }
 
@@ -300,16 +307,26 @@ type RuntimeOperationStore interface {
 	CompleteCancelRuntimeOperation(context.Context, storesqlite.CompleteCancelRuntimeOperationInput) (storesqlite.RuntimeOperationCompletion, bool, error)
 	CompletePlanDecisionRuntimeOperation(context.Context, storesqlite.CompletePlanDecisionRuntimeOperationInput) (storesqlite.RuntimeOperationCompletion, bool, error)
 	ListPendingRuntimeOperationEvents(context.Context, string, int) ([]storesqlite.RuntimeOperationEvent, error)
+	ListReadyRuntimeOperationEvents(context.Context, string, int64, int) ([]storesqlite.RuntimeOperationEvent, error)
 	MarkRuntimeOperationEventPublished(context.Context, string, int64, int64) (bool, error)
+	DeferRuntimeOperationEventPublish(context.Context, storesqlite.DeferRuntimeOperationEventPublishInput) (bool, error)
+}
+
+// RuntimeOperationHealthStore is the canonical, read-only projection used by
+// RuntimeOperationHealth. It is deliberately separate from RuntimeOperationStore:
+// worker writes and health reads have different ownership and failure modes.
+// Implementations must not call a provider while serving this projection.
+type RuntimeOperationHealthStore interface {
+	ListActiveEditRetryDegradations(context.Context, int) ([]storesqlite.ActiveEditRetryDegradation, int64, bool, error)
 }
 
 type RuntimeOperationEventPublisher interface {
 	PublishRuntimeOperationEvent(context.Context, storesqlite.RuntimeOperationEvent) error
 }
 
-// StaleTurnSettler runs after durable runtime operations, goal operations, and
-// goal reconcile inbox work have been recovered and before the adapter-specific
-// worktree-isolation sweep.
+// StaleTurnSettler runs after listener publication. Its canonical query must
+// exclude every turn/session protected by a prepared, leased, or blocked
+// runtime-operation fence, so settlement cannot race deferred recovery work.
 type StaleTurnSettler interface {
 	SettleStaleTurnsOnStartup(context.Context) error
 }

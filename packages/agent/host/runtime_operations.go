@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,11 +16,57 @@ import (
 )
 
 const (
-	runtimeOperationLeaseDuration  = 30 * time.Second
-	runtimeOperationWorkerInterval = time.Second
-	runtimeOperationBatchSize      = 64
-	runtimeOperationLogPrefix      = "[agent-runtime-operation]"
+	runtimeOperationLeaseDuration         = 30 * time.Second
+	runtimeOperationWorkerInterval        = time.Second
+	runtimeOperationBatchSize             = 64
+	runtimeOperationAttemptTimeoutDefault = 15 * time.Second
+	runtimeOperationLogPrefix             = "[agent-runtime-operation]"
 )
+
+// operationStepDisposition is returned only after a durable transition has
+// committed. It prevents a provider/runtime error from being mistaken for a
+// daemon-startup error once the item has been safely deferred, blocked, or
+// quarantined.
+type operationStepDisposition string
+
+const (
+	operationStepCompleted      operationStepDisposition = "completed"
+	operationStepDeferred       operationStepDisposition = "deferred"
+	operationStepBlocked        operationStepDisposition = "blocked"
+	operationStepQuarantined    operationStepDisposition = "quarantined"
+	operationStepTerminalFailed operationStepDisposition = "terminal_failed"
+)
+
+type operationStepResult struct {
+	Disposition operationStepDisposition
+	Operation   storesqlite.RuntimeOperation
+}
+
+func durableOperationStepResult(operation storesqlite.RuntimeOperation) (operationStepResult, bool) {
+	switch operation.Status {
+	case storesqlite.RuntimeOperationStatusCompleted:
+		return operationStepResult{Disposition: operationStepCompleted, Operation: operation}, true
+	case storesqlite.RuntimeOperationStatusBlocked:
+		return operationStepResult{Disposition: operationStepBlocked, Operation: operation}, true
+	case storesqlite.RuntimeOperationStatusPrepared:
+		return operationStepResult{Disposition: operationStepDeferred, Operation: operation}, true
+	case storesqlite.RuntimeOperationStatusFailed:
+		if operation.Kind == storesqlite.RuntimeOperationKindEditRetry && strings.HasPrefix(strings.TrimSpace(operation.LastError), "edit_retry disabled;") {
+			return operationStepResult{Disposition: operationStepQuarantined, Operation: operation}, true
+		}
+		return operationStepResult{Disposition: operationStepTerminalFailed, Operation: operation}, true
+	default:
+		return operationStepResult{}, false
+	}
+}
+
+func (h *Host) stepRuntimeOperation(ctx context.Context, operation storesqlite.RuntimeOperation, recovering bool) (operationStepResult, error) {
+	processed, err := h.processRuntimeOperationSerialized(ctx, operation, recovering)
+	if result, durable := durableOperationStepResult(processed); durable {
+		return result, nil
+	}
+	return operationStepResult{}, err
+}
 
 // runtimeOperationID is stable across retries and process restarts.
 func runtimeOperationID(workspaceID, agentSessionID, kind, subjectID string) string {
@@ -140,7 +187,22 @@ func (h *Host) prepareCancelRuntimeOperation(
 	return operation, err
 }
 
+// processRuntimeOperation always acquires the exact session actor. Only Host
+// internals already executing in that actor may call the serialized variant.
 func (h *Host) processRuntimeOperation(ctx context.Context, operation storesqlite.RuntimeOperation, recovering bool) (storesqlite.RuntimeOperation, error) {
+	var result storesqlite.RuntimeOperation
+	var processErr error
+	actorErr := h.withSessionMutationActor(ctx, operation.WorkspaceID, operation.AgentSessionID, func(actorCtx context.Context) error {
+		result, processErr = h.processRuntimeOperationSerialized(actorCtx, operation, recovering)
+		return processErr
+	})
+	if actorErr != nil {
+		return result, actorErr
+	}
+	return result, processErr
+}
+
+func (h *Host) processRuntimeOperationSerialized(ctx context.Context, operation storesqlite.RuntimeOperation, recovering bool) (storesqlite.RuntimeOperation, error) {
 	if operation.Status == storesqlite.RuntimeOperationStatusCompleted {
 		return operation, nil
 	}
@@ -180,28 +242,11 @@ func (h *Host) processRuntimeOperation(ctx context.Context, operation storesqlit
 	case storesqlite.RuntimeOperationKindPlanDecision:
 		return h.executePlanDecisionRuntimeOperation(ctx, leased, owner)
 	case storesqlite.RuntimeOperationKindEditRetry:
-		if h.editRetryDisabled {
-			// Feature neutralized (PR #1681). Quarantine any leftover edit-retry
-			// operation so it can neither crash cold recovery nor hot-spin the
-			// live worker. See quarantineDisabledEditRetryOperation.
-			return h.quarantineDisabledEditRetryOperation(ctx, leased, owner)
-		}
-		if !editRetryActorHeld(ctx) {
-			var result storesqlite.RuntimeOperation
-			var executeErr error
-			actorErr := h.withSessionMutationActor(
-				ctx, leased.WorkspaceID, leased.AgentSessionID,
-				func(actorCtx context.Context) error {
-					result, executeErr = h.executeEditRetryRuntimeOperation(
-						withEditRetryActorHeld(actorCtx), leased, owner, recovering,
-					)
-					return executeErr
-				},
-			)
-			if actorErr != nil {
-				return result, actorErr
-			}
-			return result, executeErr
+		if !h.editRetryRecovery.AllowsMutation() {
+			// Emergency policy changes only automatic handling. Preserve this
+			// operation's exact fence and durable evidence, then let the control
+			// plane perform a CAS-bound read-only reconcile when appropriate.
+			return h.blockEditRetryBudget(ctx, leased, owner, ErrEditRetryRecoveryRequired)
 		}
 		return h.executeEditRetryRuntimeOperation(ctx, leased, owner, recovering)
 	default:
@@ -350,103 +395,184 @@ func (h *Host) releaseRuntimeOperation(ctx context.Context, operation storesqlit
 	return released, cause
 }
 
-// quarantineDisabledEditRetryOperation dead-letters an edit-retry operation left
-// over from before the feature was neutralized (see Config.EditRetryDisabled).
-// It both marks the operation failed — dropping it from the claimable set
-// (ListClaimableRuntimeOperations only returns prepared/leased rows), so it can
-// neither fail cold recovery nor hot-spin the live worker — AND clears the
-// session's effective-history fence back to ready. The fence clear is essential:
-// a stuck operation leaves the session at resend_pending/rollback_pending/
-// recovery_required, and with the feature disabled no recovery path can move it
-// back to ready, so requireSendAllowedByEffectiveHistory would otherwise reject
-// every subsequent send for that conversation forever. It returns a nil error on
-// success: a completed quarantine is a terminal, non-fatal outcome for the worker,
-// so it must never abort daemon boot.
-func (h *Host) quarantineDisabledEditRetryOperation(ctx context.Context, operation storesqlite.RuntimeOperation, owner string) (storesqlite.RuntimeOperation, error) {
-	if h.effectiveHistory == nil {
-		return operation, errors.New("effective history store is unavailable")
-	}
-	failed, _, err := h.effectiveHistory.QuarantineEditRetryOperation(ctx, storesqlite.QuarantineEditRetryOperationInput{
-		WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID, LeaseOwner: owner,
-		NowUnixMS: h.now().UnixMilli(),
-	})
-	if err != nil {
-		return operation, err
-	}
-	logRuntimeOperationFailure(failed, errors.New("edit_retry disabled: quarantined orphaned runtime operation and cleared session history fence"))
-	if publishErr := h.publishRuntimeOperationEvents(ctx, operation.WorkspaceID); publishErr != nil {
-		logRuntimeOperationFailure(failed, publishErr)
-	}
-	return failed, nil
-}
-
 func (h *Host) StepRuntimeOperationWorker(ctx context.Context, recovering bool) error {
 	if h == nil || h.operations == nil {
 		return nil
 	}
 	operations, err := h.operations.ListClaimableRuntimeOperations(ctx, storesqlite.ListClaimableRuntimeOperationsInput{NowUnixMS: h.now().UnixMilli(), Limit: runtimeOperationBatchSize})
 	if err != nil {
+		h.recordRuntimeOperationWorkerFailure("store")
 		return err
 	}
-	var processErrors []error
+	var attempts sync.WaitGroup
 	for _, operation := range operations {
-		if _, err := h.processRuntimeOperation(ctx, operation, recovering); err != nil && !errors.Is(err, ErrRuntimeOperationInProgress) {
-			logRuntimeOperationFailure(operation, err)
-			processErrors = append(processErrors, fmt.Errorf("process runtime operation %s: %w", operation.OperationID, err))
+		if !h.runtimeOperationExecutor.reserve(operation) {
+			// A current attempt for this session or operation already owns the
+			// local lane, or every bounded provider slot is occupied. Leave the
+			// durable lease untouched for a later scheduled tick.
+			continue
 		}
+		attempts.Add(1)
+		go func(operation storesqlite.RuntimeOperation) {
+			defer attempts.Done()
+			defer h.runtimeOperationExecutor.release(operation)
+			attemptCtx, cancel := context.WithTimeout(ctx, h.runtimeOperationAttemptTimeout)
+			defer cancel()
+			result, stepErr := h.stepRuntimeOperationSerialized(attemptCtx, operation, recovering)
+			if stepErr != nil && !errors.Is(stepErr, ErrRuntimeOperationInProgress) {
+				h.recordRuntimeOperationWorkerFailure("item")
+				logRuntimeOperationFailure(operation, stepErr)
+				return
+			}
+			// Deferred/blocked work is durably safe but still represents an
+			// operational degradation. Record only the aggregate; never expose a
+			// raw provider error through the worker health projection.
+			if result.Disposition == operationStepDeferred || result.Disposition == operationStepBlocked {
+				h.recordRuntimeOperationWorkerFailure("item")
+			}
+		}(operation)
+	}
+	// Respecting providers return by their per-attempt deadline. A provider
+	// that ignores context is intentionally not waited on past that deadline:
+	// its reservation remains held until it returns, so repeated ticks cannot
+	// create more calls while the remaining bounded slots still serve other
+	// sessions and kinds.
+	done := make(chan struct{})
+	go func() {
+		attempts.Wait()
+		close(done)
+	}()
+	timer := time.NewTimer(h.runtimeOperationAttemptTimeout)
+	defer timer.Stop()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
 	}
 	if err := h.publishRuntimeOperationEvents(ctx, ""); err != nil {
-		processErrors = append(processErrors, fmt.Errorf("publish runtime operation outbox: %w", err))
+		// The canonical transition has already committed. Publishing is an
+		// outbox concern: retain the pending event for a later worker step and
+		// never turn a successful operation into a worker/startup failure.
+		logRuntimeOperationFailure(storesqlite.RuntimeOperation{}, fmt.Errorf("publish runtime operation outbox: %w", err))
 	}
-	return errors.Join(processErrors...)
+	return nil
 }
 
-func (h *Host) RecoverRuntimeOperations(ctx context.Context) error {
-	if h == nil || h.operations == nil {
+// stepRuntimeOperationSerialized makes runtime-operation execution single
+// writer per session for every operation kind.
+func (h *Host) stepRuntimeOperationSerialized(
+	ctx context.Context,
+	operation storesqlite.RuntimeOperation,
+	recovering bool,
+) (operationStepResult, error) {
+	var result operationStepResult
+	var stepErr error
+	actorErr := h.withSessionMutationActor(ctx, operation.WorkspaceID, operation.AgentSessionID, func(actorCtx context.Context) error {
+		result, stepErr = h.stepRuntimeOperation(actorCtx, operation, recovering)
+		return stepErr
+	})
+	if actorErr != nil {
+		return result, actorErr
+	}
+	return result, stepErr
+}
+
+// RecoverCore performs only startup-safe, local durable repair. In particular
+// it does not claim or drain an operation and cannot invoke a provider. The
+// steady-state workers are deliberately started after the daemon has published
+// its listener, so an operation belonging to one session can never be a boot
+// poison pill for the whole daemon.
+func (h *Host) RecoverCore(ctx context.Context) error {
+	if h == nil {
 		return nil
 	}
-	if _, err := h.operations.RequeueLeasedRuntimeOperationsOnStartup(ctx, h.now().UnixMilli()); err != nil {
-		return fmt.Errorf("requeue leased runtime operations on startup: %w", err)
-	}
-	for {
-		if err := h.StepRuntimeOperationWorker(ctx, true); err != nil {
-			return err
-		}
-		remaining, err := h.operations.ListClaimableRuntimeOperations(ctx, storesqlite.ListClaimableRuntimeOperationsInput{NowUnixMS: h.now().UnixMilli(), Limit: 1})
-		if err != nil {
-			return err
-		}
-		if len(remaining) == 0 {
-			return nil
-		}
-	}
-}
-
-// Recover fixes startup order as durable runtime operations, goal operations,
-// the durable goal reconcile inbox, session Forks, unrecoverable stale turns,
-// and finally the adapter-specific worktree-isolation sweep.
-func (h *Host) Recover(ctx context.Context) error {
 	if err := h.validateRecoveryConfiguration(); err != nil {
 		return err
 	}
-	if err := h.RecoverRuntimeOperations(ctx); err != nil {
-		return err
-	}
-	if err := h.RecoverGoalOperations(ctx); err != nil {
-		return err
-	}
-	if err := h.RecoverGoalReconcileInbox(ctx); err != nil {
-		return err
-	}
-	if err := h.RecoverSessionForks(ctx); err != nil {
-		return err
-	}
-	if h != nil && h.staleTurns != nil {
-		if err := h.staleTurns.SettleStaleTurnsOnStartup(ctx); err != nil {
-			return err
+	if h.operations != nil {
+		if _, err := h.operations.RequeueLeasedRuntimeOperationsOnStartup(ctx, h.now().UnixMilli()); err != nil {
+			return fmt.Errorf("requeue leased runtime operations on startup: %w", err)
 		}
 	}
-	return h.RecoverWorktreeIsolation(ctx)
+	// These transitions touch only canonical SQLite rows. They intentionally
+	// requeue work without processing it; provider-capable workers start after
+	// listener publication in Run.
+	if h.goals != nil {
+		if _, err := h.goals.RequeueLeasedGoalControlOperationsOnStartup(ctx, h.goalOperationNow().UnixMilli()); err != nil {
+			return fmt.Errorf("requeue leased goal operations on startup: %w", err)
+		}
+	}
+	if h.goalFences != nil {
+		if _, err := h.goalFences.RequeueLeasedGoalGenerationFencesOnStartup(ctx, h.goalOperationNow().UnixMilli()); err != nil {
+			return fmt.Errorf("requeue leased goal generation fences on startup: %w", err)
+		}
+	}
+	if h.goalInbox != nil {
+		if _, err := h.goalInbox.RequeueLeasedGoalReconcileInboxOnStartup(ctx, h.goalOperationNow().UnixMilli()); err != nil {
+			return fmt.Errorf("requeue leased goal reconcile inbox on startup: %w", err)
+		}
+	}
+	return nil
+}
+
+// RecoverPostListener restores the one-time recovery responsibilities
+// that are not safe before listener publication. Failures remain local to the
+// affected durable domain: the periodic workers and daemon must stay alive.
+// Runtime operations are deliberately not drained here; their ordinary worker
+// keeps session admission fences intact and processes bounded batches.
+// Callers must publish their listener before invoking this method.
+func (h *Host) RecoverPostListener(ctx context.Context) error {
+	if h == nil {
+		return nil
+	}
+	type recoveryStep struct {
+		name string
+		run  func(context.Context) error
+	}
+	// Keep this sequence explicit. Each one-time repair runs before its steady
+	// worker starts in Run, and retries retain this same order rather than
+	// inheriting Go map iteration order.
+	pending := []recoveryStep{
+		{name: "goal_operations", run: h.RecoverGoalOperations},
+		{name: "goal_reconcile_inbox", run: h.RecoverGoalReconcileInbox},
+		{name: "session_forks", run: h.RecoverSessionForks},
+	}
+	if h.staleTurns != nil {
+		// Store-level settlement excludes every session/turn protected by a
+		// prepared, leased, or blocked runtime-operation fence. It therefore
+		// cannot race a deferred edit retry merely because startup order changed.
+		pending = append(pending, recoveryStep{name: "stale_turns", run: h.staleTurns.SettleStaleTurnsOnStartup})
+	}
+	pending = append(pending, recoveryStep{name: "worktree_isolation", run: h.RecoverWorktreeIsolation})
+	const attempts = 3
+	for attempt := 1; len(pending) != 0 && attempt <= attempts; attempt++ {
+		remaining := pending[:0]
+		for _, step := range pending {
+			if err := step.run(ctx); err != nil {
+				h.recordRuntimeOperationWorkerFailure("post_listener_recovery")
+				logRuntimeOperationFailure(storesqlite.RuntimeOperation{}, fmt.Errorf("post-listener recovery %s attempt %d/%d: %w", step.name, attempt, attempts, err))
+				remaining = append(remaining, step)
+				continue
+			}
+		}
+		pending = remaining
+		if len(pending) == 0 || attempt == attempts {
+			break
+		}
+		timer := time.NewTimer(time.Second * time.Duration(attempt))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	for _, step := range pending {
+		h.recordRuntimeOperationWorkerFailure("post_listener_degraded")
+		logRuntimeOperationFailure(storesqlite.RuntimeOperation{}, fmt.Errorf("post-listener recovery %s remains degraded after bounded retries", step.name))
+	}
+	return nil
 }
 
 func (h *Host) validateRecoveryConfiguration() error {
@@ -512,19 +638,58 @@ func (h *Host) publishRuntimeOperationEvents(ctx context.Context, workspaceID st
 	if h.operations == nil || h.events == nil {
 		return nil
 	}
-	events, err := h.operations.ListPendingRuntimeOperationEvents(ctx, workspaceID, runtimeOperationBatchSize)
+	// Multiple session lanes may complete concurrently. Serializing the small
+	// outbox drain prevents two in-process readers from publishing one pending
+	// stable event before either can durably mark it sent.
+	h.outboxMu.Lock()
+	defer h.outboxMu.Unlock()
+	events, err := h.operations.ListReadyRuntimeOperationEvents(ctx, workspaceID, h.now().UnixMilli(), runtimeOperationBatchSize)
 	if err != nil {
+		h.recordRuntimeOperationWorkerFailure("outbox")
 		return err
 	}
 	for _, event := range events {
 		if err := h.events.PublishRuntimeOperationEvent(ctx, event); err != nil {
-			return err
+			h.recordRuntimeOperationWorkerFailure("outbox")
+			if deferErr := h.deferRuntimeOperationEventPublish(ctx, event); deferErr != nil {
+				logRuntimeOperationFailure(storesqlite.RuntimeOperation{}, fmt.Errorf("defer failed outbox event %d: %w", event.ID, deferErr))
+			}
+			continue
 		}
 		if _, err := h.operations.MarkRuntimeOperationEventPublished(ctx, event.WorkspaceID, event.ID, h.now().UnixMilli()); err != nil {
-			return err
+			h.recordRuntimeOperationWorkerFailure("outbox")
+			// The event may have reached its consumer. Preserve the stable ID and
+			// retry it later under the consumer's idempotency contract, without
+			// blocking the following pending event.
+			if deferErr := h.deferRuntimeOperationEventPublish(ctx, event); deferErr != nil {
+				logRuntimeOperationFailure(storesqlite.RuntimeOperation{}, fmt.Errorf("defer unmarked outbox event %d: %w", event.ID, deferErr))
+			}
+			continue
 		}
 	}
 	return nil
+}
+
+func (h *Host) deferRuntimeOperationEventPublish(ctx context.Context, event storesqlite.RuntimeOperationEvent) error {
+	now := h.now()
+	attempt := int(event.PublishAttempt) + 1
+	returnDeferAt := runtimeOperationEventNextAttemptAt(now, attempt)
+	_, err := h.operations.DeferRuntimeOperationEventPublish(ctx, storesqlite.DeferRuntimeOperationEventPublishInput{
+		WorkspaceID: event.WorkspaceID, EventID: event.ID, NowUnixMS: now.UnixMilli(),
+		NextAttemptAtMS: returnDeferAt, ReasonCode: "publish_failed",
+	})
+	return err
+}
+
+func runtimeOperationEventNextAttemptAt(now time.Time, attempt int) int64 {
+	if attempt < 1 {
+		attempt = 1
+	}
+	shift := attempt - 1
+	if shift > 8 {
+		shift = 8
+	}
+	return now.Add(time.Second * time.Duration(1<<shift)).UnixMilli()
 }
 
 func logRuntimeOperationFailure(operation storesqlite.RuntimeOperation, err error) {

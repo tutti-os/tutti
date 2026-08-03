@@ -145,22 +145,18 @@ algorithm. Startup and steady-state workers process fences before ordinary
 Goal operations; otherwise a prepared revoked Goal could be replayed during
 recovery before its fence reached the runtime.
 
-> **New admission is currently disabled in production.** Product composition
-> supplies the Host with `DenyNew + Drain`: `EditRetry` refuses to create a new
-> operation and availability reports the stable `rollout_disabled` reason
-> without probing a provider. This is deliberately separate from the lifecycle
-> recovery policy. Any already durable V2 operation remains owned by its exact
-> fence and is stepped or reconciled from its checkpoint after listener
-> publication; disabling new admission never quarantines it merely because a
-> rollout changed. An emergency `ReconcileOnly` policy permits only provider
-> reads and converts uncertain work to a durable local blocked fence, never a
-> new rollback or replacement mutation. Unknown evidence remains fenced and is
-> never implicitly abandoned. Production binaries have no environment-controlled
-> enable path. The explicit `tuttid_dev_edit_retry` development build tag also
-> requires `TUTTID_DEV_ENABLE_EDIT_RETRY_SAGA=1` and the default `.tutti-dev`
-> state root. See the troubleshooting entry "A stuck edit-and-retry operation
-> crashes the daemon on every launch". The behavior below describes admitted
-> V2 work.
+> **Production admits V2 edit retries.** Product composition supplies the Host
+> with `AllowNew + Drain`; provider support remains a per-session capability.
+> Admission is deliberately separate from lifecycle recovery: an already
+> durable operation remains owned by its exact fence and is stepped or
+> reconciled from its checkpoint after listener publication. A future rollback
+> policy can use `DenyNew + Drain` without revoking that durable ownership; an
+> emergency `ReconcileOnly` policy permits only provider reads and converts
+> uncertain work to a durable local blocked fence, never a new rollback or
+> replacement mutation. Unknown evidence remains fenced and is never implicitly
+> abandoned. Production binaries have no environment-controlled enable path.
+> See the troubleshooting entry "A stuck edit-and-retry operation crashes the
+> daemon on every launch". The behavior below describes admitted V2 work.
 
 ## Durable edit-retry V2 contract
 

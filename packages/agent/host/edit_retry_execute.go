@@ -14,10 +14,35 @@ func (h *Host) executeEditRetryRuntimeOperation(
 	owner string,
 	recovering bool,
 ) (storesqlite.RuntimeOperation, error) {
+	// Claim increments Attempt before Host reaches a provider boundary. The
+	// configured eighth lease is still the final permitted attempt; only a
+	// would-be ninth attempt is blocked before a provider read or mutation.
+	if h.editRetryPreEffectBudgetExceeded(operation) {
+		return h.blockEditRetryBudget(ctx, operation, owner, ErrEditRetryRecoveryRequired)
+	}
 	payload, err := storesqlite.DecodeEditRetryOperationPayload(operation.Payload)
 	if err != nil {
 		return h.failEditRetryRecovery(
 			ctx, operation, owner, storesqlite.EditRetryReasonOperationConflict, err,
+		)
+	}
+	if payload.SagaVersion != storesqlite.EditRetrySagaVersionCurrent {
+		// V1 has been migrated to either a terminal no-effect record or a
+		// blocked incident. A direct caller must not revive it around the claim
+		// query and reach a provider boundary.
+		return operation, ErrEditRetryRecoveryRequired
+	}
+	history, foundHistory, historyErr := h.effectiveHistory.GetSessionHistory(
+		ctx, operation.WorkspaceID, operation.AgentSessionID,
+	)
+	if historyErr != nil || !foundHistory || history.OperationID != operation.OperationID ||
+		history.RecoveryState == storesqlite.SessionHistoryRecoveryReady {
+		// Legacy prepared rows may predate the compound prepare fence. They are
+		// never eligible for an automatic provider mutation after restart; block
+		// them while atomically restoring this operation as the session owner.
+		return h.failEditRetryRecovery(
+			ctx, operation, owner, storesqlite.EditRetryReasonLocalStateInconsistent,
+			editRetryInvariant("prepared edit retry is missing its session fence"),
 		)
 	}
 	envelope, found, err := h.turnSubmissions.GetTurnSubmission(
@@ -101,10 +126,14 @@ func (h *Host) executeEditRetryRuntimeOperation(
 				ErrEditRetryRecoveryRequired,
 			)
 		}
-		operation, err = h.authorizeEditRetryRedispatch(ctx, operation, owner)
-		if err != nil {
-			return h.failEditRetryRecovery(
-				ctx, operation, owner, storesqlite.EditRetryReasonOperationConflict, err,
+		// Only RecoverEditRetryCommand's compound authorization can consume
+		// authoritative absence evidence. A worker must never manufacture a
+		// second dispatch capability after restart.
+		payload, _ = storesqlite.DecodeEditRetryOperationPayload(operation.Payload)
+		if payload.RedispatchProofAt <= 0 {
+			return h.releaseEditRetry(
+				ctx, operation, owner, storesqlite.EditRetryReasonProviderOutcomeUnknown,
+				ErrEditRetryResendPending,
 			)
 		}
 		dispatch = true
@@ -169,6 +198,13 @@ func (h *Host) dispatchEditRetryRollback(
 	runtimeInput := RuntimeHistoryInput{
 		WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID, Provider: session.Provider,
 	}
+	supported, err := h.historyRuntime.SupportsEffectiveHistory(ctx, runtimeInput)
+	if err != nil {
+		return h.releaseEditRetry(ctx, operation, owner, storesqlite.EditRetryReasonProviderOutcomeUnknown, err)
+	}
+	if !supported {
+		return h.failEditRetryBeforeRollback(ctx, operation, owner, storesqlite.EditRetryReasonProviderUnsupported, ErrRuntimeHistoryUnsupported)
+	}
 	current, err := h.historyRuntime.ReadEffectiveHistory(ctx, runtimeInput)
 	if err != nil {
 		return h.releaseEditRetry(ctx, operation, owner, storesqlite.EditRetryReasonProviderOutcomeUnknown, err)
@@ -181,9 +217,24 @@ func (h *Host) dispatchEditRetryRollback(
 		)
 	}
 	payload, _ := storesqlite.DecodeEditRetryOperationPayload(operation.Payload)
+	if len(payload.BeforeProviderIDs) == 0 {
+		operation, _, err = h.effectiveHistory.CaptureEditRetryPreEffectSnapshot(ctx, storesqlite.CaptureEditRetryPreEffectSnapshotInput{
+			WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID, LeaseOwner: owner,
+			ProviderSessionID: strings.TrimSpace(session.ProviderSessionID), ProviderTurnIDs: beforeIDs,
+			NowUnixMS: h.now().UnixMilli(),
+		})
+		if err != nil {
+			return operation, err
+		}
+		payload, _ = storesqlite.DecodeEditRetryOperationPayload(operation.Payload)
+	}
+	if payload.ProviderSessionID != strings.TrimSpace(session.ProviderSessionID) || !equalEditRetryIDs(payload.BeforeProviderIDs, beforeIDs) {
+		return h.failEditRetryBeforeRollback(
+			ctx, operation, owner, storesqlite.EditRetryReasonOperationConflict,
+			editRetryInvariant("durable pre-effect snapshot does not match provider history"),
+		)
+	}
 	payload.Checkpoint = storesqlite.EditRetryCheckpointRollbackDispatched
-	payload.BeforeProviderIDs = append([]string(nil), beforeIDs...)
-	payload.ProviderSessionID = strings.TrimSpace(session.ProviderSessionID)
 	operation, _, err = h.effectiveHistory.MarkEditRetryRollbackDispatched(
 		ctx, storesqlite.MarkEditRetryRollbackDispatchedInput{
 			WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID,

@@ -475,26 +475,31 @@ be resent`). The app never opens.
   logs this at 1 Hz; the fatality appears only on the next cold restart. The
   affected session's `workspace_agent_session_history.recovery_state` is fenced
   (non-`ready`).
-- **Root cause:** The cold-recovery pass (`RecoverRuntimeOperations`) treats a
-  per-operation error as fatal to `build tuttid server`, so a persisted edit-retry
-  operation that can never make progress becomes a boot poison pill. The live
-  worker tolerates the same error, which is why the app worked until the restart.
-- **Fix:** Durable edit-and-retry is disabled (`Config.EditRetryDisabled`, set in
-  production wiring). Recovery quarantines any leftover `edit_retry` operation —
-  marks it failed AND clears the session's effective-history fence back to `ready`
-  so the conversation can still send — and returns non-fatally, so existing poison
-  pills self-heal on the next boot. New edit-retries are refused at the entry
-  points. Sessions fenced before the neutralization (owning operation already
-  failed, so recovery cannot see it) self-heal at the send gate: the first send
-  clears an abandoned fence instead of rejecting. The durable rule: never let one
-  runtime operation's error abort daemon startup.
+- **Root cause:** Older builds drained `RecoverRuntimeOperations` before
+  publishing the listener and surfaced one operation's provider/recovery error
+  as a `build tuttid server` failure. A persisted edit-retry could therefore
+  become a boot poison pill.
+- **Fix:** Production admits only V2 edit-and-retry work, while `RecoverCore`
+  performs local lease/invariant repair only; the daemon then publishes its
+  listener and supervised workers drain or reconcile the exact fenced operation.
+  A future `DenyNew + Drain` or emergency reconcile-only policy may block
+  uncertain work but never sends a rollback or replacement mutation. Unknown
+  provider evidence remains fenced until an explicit safe disposition; it is
+  never cleared by an ordinary send. Production binaries have no environment
+  enable path. The durable rule: never let one runtime operation's error abort
+  daemon startup.
 - **Rescue:** For an install that cannot update yet, quit Tutti and run
   `tools/scripts/rescue-edit-retry-poison-pill.sh`, which quarantines the stuck
   rows and clears the session fence in `~/.tutti/tuttid.db` after backing it up.
 - **Validation:** `packages/agent/host/edit_retry_disabled_test.go` builds a
-  genuinely stuck operation, asserts enabled recovery is boot-fatal, and asserts
-  the disabled path quarantines it, returns nil, and leaves the session at
-  `recovery_state = ready`.
+  genuinely stuck operation and asserts `RecoverCore` does not call a provider
+  or drain it before listener publication; store tests cover deferred wake,
+  blocked ownership fences, and stale-turn exclusion.
+- **Boundary:** A canonical SQLite file or schema that cannot be opened remains
+  a daemon-construction failure, so this architecture cannot publish an
+  independent control-plane listener in that case. This is intentionally
+  separate from a single durable operation failure: the latter remains local to
+  its session and the listener stays available.
 
 ### Many stopped Tutti Mode conversations start again when the app opens
 
@@ -4358,3 +4363,13 @@ permanently ambiguous`. Provider status may already be `active` while the
 - References:
   [checkpoint_provider_candidates.go](../../../services/tuttid/service/agentsessionreplay/checkpoint_provider_candidates.go)
   [checkpoint_activity_boundaries.go](../../../services/tuttid/service/agentsessionreplay/checkpoint_activity_boundaries.go)
+# Durable recovery health
+
+`/v1/health.runtimeOperationWorker` has two different signals: failure totals
+and observed scopes are process-local history, while
+`activeEditRetryDegradations` is a bounded SQLite-derived current projection.
+It includes orphan non-ready session fences as `recovery_required` without any
+action that could clear an unknown owner. Do not diagnose an active provider
+failure from a raw error string: none is intentionally exposed. If
+`activeStateAvailable` is false, listener and ordinary reads may still be
+healthy; use its stable diagnostic code to investigate canonical-store access.

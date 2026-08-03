@@ -100,12 +100,22 @@ func (s *Store) MarkEditRetryRollbackDispatched(ctx context.Context, input MarkE
 	if current.Checkpoint != EditRetryCheckpointPrepared {
 		return op, false, ErrRuntimeOperationSubjectState
 	}
+	// The pre-effect provider snapshot is a separate durable checkpoint. Do not
+	// let callers smuggle it into rollback intent: doing so would reintroduce a
+	// path from an unrecorded provider read to a mutation-qualified operation.
+	if len(current.BeforeProviderIDs) == 0 || current.ProviderSessionID == "" ||
+		!equalStringValues(current.BeforeProviderIDs, input.Payload.BeforeProviderIDs) ||
+		current.ProviderSessionID != input.Payload.ProviderSessionID {
+		return op, false, ErrRuntimeOperationSubjectState
+	}
 	update, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_session_history
 SET recovery_state = 'rollback_pending', operation_id = ?, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND agent_session_id = ?
-  AND history_revision = ? AND recovery_state = 'ready'
-`, op.OperationID, input.NowUnixMS, op.WorkspaceID, op.AgentSessionID, current.ExpectedRevision)
+  AND history_revision = ?
+  AND ((recovery_state = 'ready')
+    OR (recovery_state = 'rollback_pending' AND operation_id = ?))
+`, op.OperationID, input.NowUnixMS, op.WorkspaceID, op.AgentSessionID, current.ExpectedRevision, op.OperationID)
 	if err != nil {
 		return RuntimeOperation{}, false, fmt.Errorf("fence edit retry rollback dispatch: %w", err)
 	}
@@ -456,7 +466,12 @@ WHERE workspace_id = ? AND agent_session_id = ?
 		})
 }
 
-func (s *Store) FailEditRetryRecovery(ctx context.Context, input FailEditRetryRecoveryInput) (RuntimeOperation, bool, error) {
+// BlockEditRetry atomically preserves the session fence and marks an
+// edit-retry operation blocked when provider evidence is insufficient to make
+// another mutation safe. Unlike a terminal failure it is excluded from claim
+// queries but remains owned by the affected session for an explicit, safe
+// recovery action.
+func (s *Store) BlockEditRetry(ctx context.Context, input BlockEditRetryInput) (RuntimeOperation, bool, error) {
 	if s == nil || s.db == nil {
 		return RuntimeOperation{}, false, errors.New("workspace database is not initialized")
 	}
@@ -485,31 +500,50 @@ func (s *Store) FailEditRetryRecovery(ctx context.Context, input FailEditRetryRe
 	if !validEditRetryLease(op, found, input.LeaseOwner, input.NowUnixMS) {
 		return op, false, ErrRuntimeOperationLeaseLost
 	}
-	update, err := tx.ExecContext(ctx, `
+	var revision int64
+	var recoveryState string
+	var fenceOperationID sql.NullString
+	if err := tx.QueryRowContext(ctx, `
+SELECT history_revision, recovery_state, operation_id
+FROM workspace_agent_session_history
+WHERE workspace_id = ? AND agent_session_id = ?
+`, op.WorkspaceID, op.AgentSessionID).Scan(&revision, &recoveryState, &fenceOperationID); err != nil {
+		return RuntimeOperation{}, false, fmt.Errorf("read edit retry recovery history revision: %w", err)
+	}
+	owner := strings.TrimSpace(fenceOperationID.String)
+	// A session fence has one durable owner. A stale operation may become
+	// blocked, but it must never replace or clear another operation's fence.
+	// The mismatch stays locally visible through its blocked invariant row and
+	// has no recovery action because it cannot safely affect the session.
+	// Recovery state alone is not ownership. Historical rows can carry a stale
+	// owner even while marked ready; only an absent/NULL owner or this exact op
+	// may install/advance the fence.
+	ownerMismatch := owner != "" && owner != op.OperationID
+	operationReason := reason
+	if ownerMismatch {
+		operationReason = EditRetryReasonRecoveryRequired
+	}
+	if !ownerMismatch {
+		update, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_session_history
 SET recovery_state = 'recovery_required', operation_id = ?, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND agent_session_id = ?
-`, op.OperationID, input.NowUnixMS, op.WorkspaceID, op.AgentSessionID)
-	if err != nil {
-		return RuntimeOperation{}, false, fmt.Errorf("mark edit retry session recovery required: %w", err)
+  AND (operation_id IS NULL OR operation_id = '' OR operation_id = ?)
+`, op.OperationID, input.NowUnixMS, op.WorkspaceID, op.AgentSessionID, op.OperationID)
+		if err != nil {
+			return RuntimeOperation{}, false, fmt.Errorf("mark edit retry session recovery required: %w", err)
+		}
+		if changed, err := rowsWereAffected(update, "mark edit retry session recovery required"); err != nil || !changed {
+			return RuntimeOperation{}, false, ErrRuntimeOperationSubjectState
+		}
 	}
-	if changed, err := rowsWereAffected(update, "mark edit retry session recovery required"); err != nil || !changed {
-		return RuntimeOperation{}, false, ErrRuntimeOperationSubjectState
-	}
-	var revision int64
-	if err := tx.QueryRowContext(ctx, `
-SELECT history_revision FROM workspace_agent_session_history
-WHERE workspace_id = ? AND agent_session_id = ?
-`, op.WorkspaceID, op.AgentSessionID).Scan(&revision); err != nil {
-		return RuntimeOperation{}, false, fmt.Errorf("read edit retry recovery history revision: %w", err)
-	}
-	update, err = tx.ExecContext(ctx, `
+	update, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_runtime_operations
-SET status = 'failed', result = 'failed', lease_owner = NULL,
+SET status = 'blocked', result = NULL, lease_owner = NULL,
     lease_expires_at_unix_ms = NULL, next_attempt_at_unix_ms = NULL,
     version = version + 1, last_error = ?, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND operation_id = ? AND status = 'leased' AND lease_owner = ?
-`, string(reason), input.NowUnixMS, op.WorkspaceID, op.OperationID, input.LeaseOwner)
+`, string(operationReason), input.NowUnixMS, op.WorkspaceID, op.OperationID, input.LeaseOwner)
 	if err != nil {
 		return RuntimeOperation{}, false, fmt.Errorf("fail edit retry recovery operation: %w", err)
 	}
@@ -517,7 +551,7 @@ WHERE workspace_id = ? AND operation_id = ? AND status = 'leased' AND lease_owne
 		return RuntimeOperation{}, false, ErrRuntimeOperationLeaseLost
 	}
 	event, err := insertRuntimeOperationEventTx(ctx, tx, op, RuntimeOperationEventEditRetryRecovery, map[string]any{
-		"turnId": op.TurnID, "reasonCode": string(reason), "historyRevision": revision,
+		"turnId": op.TurnID, "reasonCode": string(operationReason), "historyRevision": revision,
 	}, input.NowUnixMS)
 	if err != nil {
 		return RuntimeOperation{}, false, err
@@ -526,11 +560,14 @@ WHERE workspace_id = ? AND operation_id = ? AND status = 'leased' AND lease_owne
 	if err != nil {
 		return RuntimeOperation{}, false, err
 	}
-	delta, err := s.commitTransaction(ctx, tx, op.WorkspaceID, []TransactionMutation{
-		transactionMutation(op.WorkspaceID, op.AgentSessionID, MutationEntitySession, op.AgentSessionID, "history_recovery_required", revision),
-		transactionMutation(op.WorkspaceID, op.AgentSessionID, MutationEntityRuntimeOperation, op.OperationID, "fail", op.Version),
+	mutations := []TransactionMutation{
+		transactionMutation(op.WorkspaceID, op.AgentSessionID, MutationEntityRuntimeOperation, op.OperationID, "block", op.Version),
 		transactionMutation(op.WorkspaceID, op.AgentSessionID, MutationEntityRuntimeEvent, fmt.Sprint(event.ID), "insert", event.ID),
-	})
+	}
+	if !ownerMismatch {
+		mutations = append(mutations, transactionMutation(op.WorkspaceID, op.AgentSessionID, MutationEntitySession, op.AgentSessionID, "history_recovery_required", revision))
+	}
+	delta, err := s.commitTransaction(ctx, tx, op.WorkspaceID, mutations)
 	if err != nil {
 		return RuntimeOperation{}, false, fmt.Errorf("commit edit retry recovery failure: %w", err)
 	}
@@ -539,27 +576,28 @@ WHERE workspace_id = ? AND operation_id = ? AND status = 'leased' AND lease_owne
 	return op, true, nil
 }
 
-// QuarantineEditRetryOperation abandons a stuck edit-retry operation: it fails
-// the runtime operation AND clears the session's effective-history fence back to
-// ready (dropping operation_id), in one transaction. It is used when durable
-// edit-retry is disabled — the operation can never make progress, so leaving the
-// session fenced at rollback_pending/resend_pending/recovery_required would
-// permanently block every subsequent send (requireSendAllowedByEffectiveHistory).
-// Unlike AbortEditRetryRollback it tolerates any fenced state and does not restore
-// the retracted turn; the edit is abandoned so the conversation becomes usable.
-func (s *Store) QuarantineEditRetryOperation(ctx context.Context, input QuarantineEditRetryOperationInput) (RuntimeOperation, bool, error) {
+// FailEditRetryRecovery is the legacy spelling retained for older rescue
+// callers. Its durable semantics are blocked, not terminal failure.
+func (s *Store) FailEditRetryRecovery(ctx context.Context, input FailEditRetryRecoveryInput) (RuntimeOperation, bool, error) {
+	return s.BlockEditRetry(ctx, BlockEditRetryInput(input))
+}
+
+// DeferEditRetry is the only retry release transition for edit-retry. It keeps
+// the owner fence intact, writes a provider-neutral reason code, and cannot set
+// an immediately claimable retry time. Generic runtime-operation release is
+// intentionally not used here because it cannot validate edit-retry history
+// ownership.
+func (s *Store) DeferEditRetry(ctx context.Context, input DeferEditRetryInput) (RuntimeOperation, bool, error) {
 	if s == nil || s.db == nil {
 		return RuntimeOperation{}, false, errors.New("workspace database is not initialized")
 	}
-	input.WorkspaceID = strings.TrimSpace(input.WorkspaceID)
-	input.OperationID = strings.TrimSpace(input.OperationID)
-	input.LeaseOwner = strings.TrimSpace(input.LeaseOwner)
-	if input.WorkspaceID == "" || input.OperationID == "" || input.LeaseOwner == "" || input.NowUnixMS <= 0 {
-		return RuntimeOperation{}, false, errors.New("valid edit retry quarantine input is required")
+	input.WorkspaceID, input.OperationID, input.LeaseOwner = strings.TrimSpace(input.WorkspaceID), strings.TrimSpace(input.OperationID), strings.TrimSpace(input.LeaseOwner)
+	if err := input.ReasonCode.Validate(); err != nil || input.WorkspaceID == "" || input.OperationID == "" || input.LeaseOwner == "" || input.NowUnixMS <= 0 || input.NextAttemptAtMS <= input.NowUnixMS {
+		return RuntimeOperation{}, false, errors.New("valid future edit retry defer input is required")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return RuntimeOperation{}, false, fmt.Errorf("begin edit retry quarantine: %w", err)
+		return RuntimeOperation{}, false, fmt.Errorf("begin defer edit retry: %w", err)
 	}
 	committed := false
 	defer func() {
@@ -574,117 +612,71 @@ func (s *Store) QuarantineEditRetryOperation(ctx context.Context, input Quaranti
 	if !validEditRetryLease(op, found, input.LeaseOwner, input.NowUnixMS) {
 		return op, false, ErrRuntimeOperationLeaseLost
 	}
-	// Clear only the fence this operation owns so the session can send again. A
-	// fence owned by a newer operation (or already ready) is left untouched — that
-	// is not an error; the runtime operation is still abandoned below.
-	if _, err := tx.ExecContext(ctx, `
-UPDATE workspace_agent_session_history
-SET recovery_state = 'ready', operation_id = '', updated_at_unix_ms = ?
-WHERE workspace_id = ? AND agent_session_id = ?
-  AND operation_id = ? AND recovery_state != 'ready'
-`, input.NowUnixMS, op.WorkspaceID, op.AgentSessionID, op.OperationID); err != nil {
-		return RuntimeOperation{}, false, fmt.Errorf("clear edit retry history fence: %w", err)
+	var historyState, fenceOperationID string
+	if err := tx.QueryRowContext(ctx, `SELECT recovery_state, operation_id FROM workspace_agent_session_history WHERE workspace_id = ? AND agent_session_id = ?`, op.WorkspaceID, op.AgentSessionID).Scan(&historyState, &fenceOperationID); err != nil {
+		return RuntimeOperation{}, false, fmt.Errorf("read edit retry defer history fence: %w", err)
 	}
-	var revision int64
-	if err := tx.QueryRowContext(ctx, `
-SELECT COALESCE((SELECT history_revision FROM workspace_agent_session_history
-    WHERE workspace_id = ? AND agent_session_id = ?), 0)
-`, op.WorkspaceID, op.AgentSessionID).Scan(&revision); err != nil {
-		return RuntimeOperation{}, false, fmt.Errorf("read edit retry quarantine history revision: %w", err)
+	payload, payloadErr := DecodeEditRetryOperationPayload(op.Payload)
+	if payloadErr != nil {
+		return op, false, payloadErr
 	}
-	update, err := tx.ExecContext(ctx, `
+	// Before rollback dispatch there is no fence yet. Once a saga changes
+	// history, only the owning operation may defer itself.
+	if payload.Checkpoint != EditRetryCheckpointPrepared && (historyState == SessionHistoryRecoveryReady || fenceOperationID != op.OperationID) {
+		return op, false, ErrRuntimeOperationSubjectState
+	}
+	result, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_runtime_operations
-SET status = 'failed', result = 'failed', lease_owner = NULL,
-    lease_expires_at_unix_ms = NULL, next_attempt_at_unix_ms = NULL,
-    version = version + 1, last_error = ?, updated_at_unix_ms = ?
+SET status = 'prepared', result = NULL, lease_owner = NULL, lease_expires_at_unix_ms = NULL,
+    next_attempt_at_unix_ms = ?, version = version + 1, last_error = ?, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND operation_id = ? AND status = 'leased' AND lease_owner = ?
-`, "edit_retry disabled; operation quarantined", input.NowUnixMS, op.WorkspaceID, op.OperationID, input.LeaseOwner)
+`, input.NextAttemptAtMS, string(input.ReasonCode), input.NowUnixMS, op.WorkspaceID, op.OperationID, input.LeaseOwner)
 	if err != nil {
-		return RuntimeOperation{}, false, fmt.Errorf("fail quarantined edit retry operation: %w", err)
+		return RuntimeOperation{}, false, fmt.Errorf("defer edit retry operation: %w", err)
 	}
-	if changed, err := rowsWereAffected(update, "fail quarantined edit retry operation"); err != nil || !changed {
+	if changed, err := rowsWereAffected(result, "defer edit retry operation"); err != nil || !changed {
 		return RuntimeOperation{}, false, ErrRuntimeOperationLeaseLost
 	}
-	op, _, err = getRuntimeOperationTx(ctx, tx, op.WorkspaceID, op.OperationID)
+	op, _, err = getRuntimeOperationTx(ctx, tx, input.WorkspaceID, input.OperationID)
 	if err != nil {
 		return RuntimeOperation{}, false, err
 	}
-	delta, err := s.commitTransaction(ctx, tx, op.WorkspaceID, []TransactionMutation{
-		transactionMutation(op.WorkspaceID, op.AgentSessionID, MutationEntitySession, op.AgentSessionID, "history_edit_retry_quarantined", revision),
-		transactionMutation(op.WorkspaceID, op.AgentSessionID, MutationEntityRuntimeOperation, op.OperationID, "fail", op.Version),
-	})
+	delta, err := s.commitTransaction(ctx, tx, op.WorkspaceID, []TransactionMutation{transactionMutation(op.WorkspaceID, op.AgentSessionID, MutationEntityRuntimeOperation, op.OperationID, "defer", op.Version)})
 	if err != nil {
-		return RuntimeOperation{}, false, fmt.Errorf("commit edit retry quarantine: %w", err)
+		return RuntimeOperation{}, false, fmt.Errorf("commit defer edit retry: %w", err)
 	}
 	committed = true
 	op.CommitTransactionID, op.CommitDelta = delta.TransactionID, delta
 	return op, true, nil
 }
 
-// ClearAbandonedEditRetryFence clears one session's effective-history fence back
-// to ready when the edit-retry operation that owns it can no longer make
-// progress: the owning operation is missing (e.g. removed by an older rescue
-// script) or already terminal (failed/completed). Fences owned by an in-flight
-// (prepared/leased) operation are left untouched — while durable edit-retry is
-// disabled those are quarantined by the recovery worker, which clears the fence
-// itself. This exists for sessions fenced before the feature was neutralized
-// (e.g. recovery_required from FailEditRetryRecovery, or a failed operation
-// quarantined without a fence clear); without it those sessions would reject
-// every send forever. Returns whether the fence was cleared.
-func (s *Store) ClearAbandonedEditRetryFence(ctx context.Context, input ClearAbandonedEditRetryFenceInput) (bool, error) {
+func (s *Store) GetRuntimeOperationRecoveryAction(
+	ctx context.Context,
+	workspaceID, operationID, clientActionID string,
+) (RuntimeOperationRecoveryAction, bool, error) {
 	if s == nil || s.db == nil {
-		return false, errors.New("workspace database is not initialized")
+		return RuntimeOperationRecoveryAction{}, false, errors.New("workspace database is not initialized")
 	}
-	input.WorkspaceID = strings.TrimSpace(input.WorkspaceID)
-	input.AgentSessionID = strings.TrimSpace(input.AgentSessionID)
-	if input.WorkspaceID == "" || input.AgentSessionID == "" || input.NowUnixMS <= 0 {
-		return false, errors.New("valid edit retry fence clear input is required")
+	workspaceID, operationID, clientActionID = strings.TrimSpace(workspaceID), strings.TrimSpace(operationID), strings.TrimSpace(clientActionID)
+	if workspaceID == "" || operationID == "" || clientActionID == "" {
+		return RuntimeOperationRecoveryAction{}, false, errors.New("workspace, operation, and client action are required")
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	var action RuntimeOperationRecoveryAction
+	err := s.db.QueryRowContext(ctx, `
+SELECT workspace_id, operation_id, client_action_id, action_kind, action_identity, created_at_unix_ms
+FROM workspace_agent_runtime_operation_recovery_actions
+WHERE workspace_id = ? AND operation_id = ? AND client_action_id = ?
+`, workspaceID, operationID, clientActionID).Scan(
+		&action.WorkspaceID, &action.OperationID, &action.ClientActionID,
+		&action.ActionKind, &action.ActionIdentity, &action.CreatedAtMS,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return RuntimeOperationRecoveryAction{}, false, nil
+	}
 	if err != nil {
-		return false, fmt.Errorf("begin edit retry fence clear: %w", err)
+		return RuntimeOperationRecoveryAction{}, false, fmt.Errorf("read runtime operation recovery action: %w", err)
 	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback()
-		}
-	}()
-	update, err := tx.ExecContext(ctx, `
-UPDATE workspace_agent_session_history
-SET recovery_state = 'ready', operation_id = '', updated_at_unix_ms = ?
-WHERE workspace_id = ? AND agent_session_id = ?
-  AND recovery_state != 'ready'
-  AND NOT EXISTS (
-    SELECT 1 FROM workspace_agent_runtime_operations o
-    WHERE o.workspace_id = workspace_agent_session_history.workspace_id
-      AND o.operation_id = workspace_agent_session_history.operation_id
-      AND o.status IN ('prepared','leased'))
-`, input.NowUnixMS, input.WorkspaceID, input.AgentSessionID)
-	if err != nil {
-		return false, fmt.Errorf("clear abandoned edit retry fence: %w", err)
-	}
-	changed, err := rowsWereAffected(update, "clear abandoned edit retry fence")
-	if err != nil {
-		return false, err
-	}
-	if !changed {
-		return false, nil
-	}
-	var revision int64
-	if err := tx.QueryRowContext(ctx, `
-SELECT history_revision FROM workspace_agent_session_history
-WHERE workspace_id = ? AND agent_session_id = ?
-`, input.WorkspaceID, input.AgentSessionID).Scan(&revision); err != nil {
-		return false, fmt.Errorf("read edit retry fence clear history revision: %w", err)
-	}
-	if _, err := s.commitTransaction(ctx, tx, input.WorkspaceID, []TransactionMutation{
-		transactionMutation(input.WorkspaceID, input.AgentSessionID, MutationEntitySession, input.AgentSessionID, "history_edit_retry_fence_cleared", revision),
-	}); err != nil {
-		return false, fmt.Errorf("commit edit retry fence clear: %w", err)
-	}
-	committed = true
-	return true, nil
+	return action, true, nil
 }
 
 func validEditRetryLease(op RuntimeOperation, found bool, owner string, now int64) bool {

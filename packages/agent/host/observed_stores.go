@@ -11,6 +11,21 @@ type observedEffectiveHistoryStore struct {
 	host *Host
 }
 
+func (s *observedEffectiveHistoryStore) PrepareEditRetry(
+	ctx context.Context,
+	input storesqlite.RuntimeOperationPrepare,
+) (storesqlite.RuntimeOperation, bool, error) {
+	op, changed, err := s.EffectiveHistoryStore.PrepareEditRetry(ctx, input)
+	if err == nil && changed {
+		s.host.notifyCommitted(ctx, runtimeOperationDelta(RuntimeOperationPrepared, op, nil))
+	}
+	return op, changed, err
+}
+
+func (s *observedEffectiveHistoryStore) GetRuntimeOperationRecoveryAction(ctx context.Context, workspaceID, operationID, clientActionID string) (storesqlite.RuntimeOperationRecoveryAction, bool, error) {
+	return s.EffectiveHistoryStore.GetRuntimeOperationRecoveryAction(ctx, workspaceID, operationID, clientActionID)
+}
+
 func (s *observedEffectiveHistoryStore) MarkEditRetryRollbackDispatched(
 	ctx context.Context,
 	input storesqlite.MarkEditRetryRollbackDispatchedInput,
@@ -44,11 +59,19 @@ func (s *observedEffectiveHistoryStore) AbortEditRetryRollback(
 	return op, changed, err
 }
 
-func (s *observedEffectiveHistoryStore) PrepareEditRetryReplacementRedispatch(
+func (s *observedEffectiveHistoryStore) AuthorizeEditRetryReplacementRetry(
 	ctx context.Context,
-	input storesqlite.PrepareEditRetryReplacementRedispatchInput,
+	input storesqlite.AuthorizeEditRetryReplacementRetryInput,
 ) (storesqlite.RuntimeOperation, bool, error) {
-	op, changed, err := s.EffectiveHistoryStore.PrepareEditRetryReplacementRedispatch(ctx, input)
+	op, changed, err := s.EffectiveHistoryStore.AuthorizeEditRetryReplacementRetry(ctx, input)
+	if err == nil && changed {
+		s.host.notifyCommitted(ctx, runtimeOperationDelta(RuntimeOperationCheckpoint, op, nil))
+	}
+	return op, changed, err
+}
+
+func (s *observedEffectiveHistoryStore) ReconcileBlockedEditRetry(ctx context.Context, input storesqlite.ReconcileBlockedEditRetryInput) (storesqlite.RuntimeOperation, bool, error) {
+	op, changed, err := s.EffectiveHistoryStore.ReconcileBlockedEditRetry(ctx, input)
 	if err == nil && changed {
 		s.host.notifyCommitted(ctx, runtimeOperationDelta(RuntimeOperationCheckpoint, op, nil))
 	}
@@ -81,13 +104,48 @@ func (s *observedEffectiveHistoryStore) FailEditRetryRecovery(
 	return op, changed, err
 }
 
-func (s *observedEffectiveHistoryStore) QuarantineEditRetryOperation(
+func (s *observedEffectiveHistoryStore) BlockEditRetry(
 	ctx context.Context,
-	input storesqlite.QuarantineEditRetryOperationInput,
+	input storesqlite.BlockEditRetryInput,
 ) (storesqlite.RuntimeOperation, bool, error) {
-	op, changed, err := s.EffectiveHistoryStore.QuarantineEditRetryOperation(ctx, input)
+	op, changed, err := s.EffectiveHistoryStore.BlockEditRetry(ctx, input)
 	if err == nil && changed {
 		s.host.notifyCommitted(ctx, runtimeOperationDelta(RuntimeOperationFailed, op, nil))
+	}
+	return op, changed, err
+}
+
+func (s *observedEffectiveHistoryStore) DeferEditRetry(ctx context.Context, input storesqlite.DeferEditRetryInput) (storesqlite.RuntimeOperation, bool, error) {
+	op, changed, err := s.EffectiveHistoryStore.DeferEditRetry(ctx, input)
+	if err == nil && changed {
+		s.host.notifyCommitted(ctx, runtimeOperationDelta(RuntimeOperationReleased, op, nil))
+	}
+	return op, changed, err
+}
+
+func (s *observedEffectiveHistoryStore) CaptureEditRetryPreEffectSnapshot(ctx context.Context, input storesqlite.CaptureEditRetryPreEffectSnapshotInput) (storesqlite.RuntimeOperation, bool, error) {
+	op, changed, err := s.EffectiveHistoryStore.CaptureEditRetryPreEffectSnapshot(ctx, input)
+	if err == nil && changed {
+		s.host.notifyCommitted(ctx, runtimeOperationDelta(RuntimeOperationCheckpoint, op, nil))
+	}
+	return op, changed, err
+}
+
+func (s *observedEffectiveHistoryStore) AbandonEditRetry(ctx context.Context, input storesqlite.AbandonEditRetryInput) (storesqlite.RuntimeOperation, bool, error) {
+	op, changed, err := s.EffectiveHistoryStore.AbandonEditRetry(ctx, input)
+	if err == nil && changed {
+		s.host.notifyCommitted(ctx, runtimeOperationDelta(RuntimeOperationCompleted, op, nil))
+	}
+	return op, changed, err
+}
+
+func (s *observedEffectiveHistoryStore) WakeDeferredEditRetry(
+	ctx context.Context,
+	input storesqlite.WakeDeferredEditRetryInput,
+) (storesqlite.RuntimeOperation, bool, error) {
+	op, changed, err := s.EffectiveHistoryStore.WakeDeferredEditRetry(ctx, input)
+	if err == nil && changed {
+		s.host.notifyCommitted(ctx, runtimeOperationDelta(RuntimeOperationReleased, op, nil))
 	}
 	return op, changed, err
 }
