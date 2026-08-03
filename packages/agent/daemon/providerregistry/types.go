@@ -428,10 +428,6 @@ const (
 	ReasoningEffortOptionsStrictModelCatalog ReasoningEffortOptionsKind = "strict_model_catalog"
 )
 
-type ConfiguredModelOverrideKind string
-
-const ConfiguredModelOverrideCodexCustomProvider ConfiguredModelOverrideKind = "codex_custom_provider"
-
 // CapabilityCatalogKind identifies the protocol used to discover the
 // provider's dynamic composer capabilities.
 type CapabilityCatalogKind string
@@ -508,7 +504,6 @@ type ComposerProfileDescriptor struct {
 	ReasoningEffortValues   []string
 	ReasoningEffortOptions  ReasoningEffortOptionsKind
 	DefaultReasoningEffort  string
-	ConfiguredModelOverride ConfiguredModelOverrideKind
 	Speed                   bool
 	SpeedValues             []string
 	DefaultSpeed            string

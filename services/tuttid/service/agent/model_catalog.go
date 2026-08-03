@@ -75,8 +75,6 @@ type agentModelCatalogSpec struct {
 	// missingDefaultDescription describes a configured default model that the
 	// lister did not return.
 	missingDefaultDescription string
-	configuredModelOnly       func([]AgentModelOption, string) bool
-	configuredModelSource     string
 }
 
 func defaultAgentModelCatalogSpecs() map[string]agentModelCatalogSpec {
@@ -107,10 +105,6 @@ func agentModelCatalogSpecFromDescriptor(descriptor providerregistry.ProviderDes
 				descriptor.Identity.ID,
 			)
 		}
-		configuredModelOnly, configuredModelSource, err := configuredModelOverrideFromDescriptor(descriptor.ComposerProfile.ConfiguredModelOverride)
-		if err != nil {
-			return agentModelCatalogSpec{}, false, err
-		}
 		return agentModelCatalogSpec{
 			source: string(descriptor.ComposerProfile.ModelCatalog),
 			ttl:    codexModelCacheTTL,
@@ -126,8 +120,6 @@ func agentModelCatalogSpecFromDescriptor(descriptor providerregistry.ProviderDes
 			},
 			configuredDefaultModel:    readCodexConfiguredDefaultModel,
 			missingDefaultDescription: descriptor.Identity.DisplayName + " configured custom model",
-			configuredModelOnly:       configuredModelOnly,
-			configuredModelSource:     configuredModelSource,
 		}, true, nil
 	case providerregistry.ModelCatalogKindOpenCodeCLI:
 		command := append([]string(nil), descriptor.Runtime.Command...)
@@ -172,17 +164,6 @@ func agentModelCatalogSpecFromDescriptor(descriptor providerregistry.ProviderDes
 	}
 }
 
-func configuredModelOverrideFromDescriptor(kind providerregistry.ConfiguredModelOverrideKind) (func([]AgentModelOption, string) bool, string, error) {
-	switch kind {
-	case "":
-		return nil, "", nil
-	case providerregistry.ConfiguredModelOverrideCodexCustomProvider:
-		return codexCustomProviderRequiresConfiguredModelOnly, "codex-configured-model", nil
-	default:
-		return nil, "", fmt.Errorf("configured model override kind %q is unsupported", kind)
-	}
-}
-
 type CachedAgentModelCatalog struct {
 	Codex             AgentModelLister
 	TuttiAgent        AgentModelLister
@@ -222,20 +203,10 @@ func (c *CachedAgentModelCatalog) ListModels(ctx context.Context, input AgentMod
 	listResult, err := spec.lister(c, input).ListModels(ctx)
 	configuredDefaultModel := spec.configuredDefaultModel()
 	models := applyConfiguredDefaultModel(listResult.Models, configuredDefaultModel, spec.missingDefaultDescription)
-	source := spec.source
-	if configuredDefaultModel != "" && spec.configuredModelOnly != nil && spec.configuredModelOnly(listResult.Models, configuredDefaultModel) {
-		models = []AgentModelOption{{
-			ID:          configuredDefaultModel,
-			DisplayName: configuredDefaultModel,
-			Description: spec.missingDefaultDescription,
-			IsDefault:   true,
-		}}
-		source = spec.configuredModelSource
-	}
 	models = enrichAgentModelOptions(ctx, provider, models, c.ModelCapabilities)
 	result := AgentModelCatalogResult{
 		Provider:  provider,
-		Source:    source,
+		Source:    spec.source,
 		FetchedAt: now,
 		Models:    models,
 	}
@@ -245,22 +216,6 @@ func (c *CachedAgentModelCatalog) ListModels(ctx context.Context, input AgentMod
 
 func specCachesModelCatalog(spec agentModelCatalogSpec) bool {
 	return spec.ttl > 0 || spec.errTTL > 0 || spec.fallbackTTL > 0
-}
-
-func codexCustomProviderRequiresConfiguredModelOnly(models []AgentModelOption, configuredModel string) bool {
-	if !codexUsesCustomModelProvider() {
-		return false
-	}
-	if readCodexConfiguredModelCatalogPath() == "" {
-		return true
-	}
-	configuredModel = strings.TrimSpace(configuredModel)
-	for _, model := range models {
-		if strings.TrimSpace(model.ID) == configuredModel {
-			return false
-		}
-	}
-	return true
 }
 
 func defaultTuttiAgentModelLister(provider string, providerCommands ProviderCommandResolver) CodexCLIModelLister {

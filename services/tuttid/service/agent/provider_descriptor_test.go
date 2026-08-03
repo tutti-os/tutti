@@ -85,7 +85,7 @@ func TestCodexModelCatalogSpecComesFromProviderDescriptor(t *testing.T) {
 	if spec.source != "codex-cli" {
 		t.Fatalf("source = %q", spec.source)
 	}
-	if spec.lister == nil || spec.configuredDefaultModel == nil || spec.configuredModelOnly == nil || spec.configuredModelSource != "codex-configured-model" {
+	if spec.lister == nil || spec.configuredDefaultModel == nil {
 		t.Fatalf("catalog spec incomplete: %#v", spec)
 	}
 }

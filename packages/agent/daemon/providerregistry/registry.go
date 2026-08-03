@@ -394,15 +394,6 @@ func Validate(descriptor ProviderDescriptor) error {
 	default:
 		return fmt.Errorf("provider %q model catalog kind %q is unsupported", providerID, descriptor.ComposerProfile.ModelCatalog)
 	}
-	switch descriptor.ComposerProfile.ConfiguredModelOverride {
-	case "":
-	case ConfiguredModelOverrideCodexCustomProvider:
-		if descriptor.ComposerProfile.ModelCatalog != ModelCatalogKindCodexCLI {
-			return fmt.Errorf("provider %q codex custom-provider override requires the Codex model catalog", providerID)
-		}
-	default:
-		return fmt.Errorf("provider %q configured model override %q is unsupported", providerID, descriptor.ComposerProfile.ConfiguredModelOverride)
-	}
 	switch descriptor.ComposerProfile.CapabilityCatalog.Kind {
 	case "", CapabilityCatalogKindCodexAppServer, CapabilityCatalogKindAppServerSkills:
 	default:
