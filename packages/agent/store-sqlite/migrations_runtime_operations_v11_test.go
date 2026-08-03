@@ -230,7 +230,7 @@ WHERE workspace_id='ws-v11-malformed-query' AND operation_id='edit-retry-v11-mal
 	if _, err := store.db.ExecContext(ctx, `PRAGMA ignore_check_constraints=OFF`); err != nil {
 		t.Fatal(err)
 	}
-	claimable, err = store.ListClaimableRuntimeOperations(ctx, ListClaimableRuntimeOperationsInput{NowUnixMS: 100, Limit: 100})
+	claimable, err = store.ListClaimableEditRetryOperations(ctx, ListClaimableRuntimeOperationsInput{NowUnixMS: 100, Limit: 100})
 	if err != nil {
 		t.Fatalf("list claimable zero-version row: %v", err)
 	}
@@ -247,7 +247,7 @@ WHERE workspace_id='ws-v11-malformed-query' AND operation_id='edit-retry-v11-mal
 		}
 	}
 	if !currentClaimed {
-		t.Fatalf("current V%d edit retry was not returned from claim query: %#v", EditRetrySagaVersionCurrent, claimable)
+		t.Fatalf("current V%d edit retry was not returned from edit-retry claim query: %#v", EditRetrySagaVersionCurrent, claimable)
 	}
 
 	// V11 remains an idempotent recorded migration on every restart/reopen.
@@ -310,7 +310,7 @@ WHERE workspace_id='ws-v11-v2' AND agent_session_id='session-v11-v2'`); err != n
 	if after := snapshotV11History(t, store, "ws-v11-v2", "session-v11-v2"); after != beforeHistory {
 		t.Fatalf("V2 history changed by V11:\n got %#v\nwant %#v", after, beforeHistory)
 	}
-	claimable, err := store.ListClaimableRuntimeOperations(ctx, ListClaimableRuntimeOperationsInput{NowUnixMS: 100, Limit: 10})
+	claimable, err := store.ListClaimableEditRetryOperations(ctx, ListClaimableRuntimeOperationsInput{NowUnixMS: 100, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +319,7 @@ WHERE workspace_id='ws-v11-v2' AND agent_session_id='session-v11-v2'`); err != n
 			return
 		}
 	}
-	t.Fatalf("V2 operation absent from claim query: %#v", claimable)
+	t.Fatalf("V2 operation absent from edit-retry claim query: %#v", claimable)
 }
 
 func TestRuntimeOperationsV11RollsBackOnFailure(t *testing.T) {

@@ -70,8 +70,8 @@ func runRecoveryOrder(ctx context.Context, driver Driver) error {
 	if err := driver.Reset(ctx, fixture); err != nil {
 		return err
 	}
-	if err := driver.Recover(ctx); err != nil {
-		return fmt.Errorf("recover host: %w", err)
+	if err := driver.RecoverCore(ctx); err != nil {
+		return fmt.Errorf("recover core: %w", err)
 	}
 	metrics := driver.Metrics()
 	if metrics.ExecCalls != 0 {
@@ -81,7 +81,7 @@ func runRecoveryOrder(ctx context.Context, driver Driver) error {
 		)
 	}
 	steps := metrics.RecoverySteps
-	want := []string{"runtime_requeue", "runtime_complete", "goal_requeue", "goal_inbox_requeue", "stale_settle", "worktree_sweep"}
+	want := []string{"runtime_requeue", "goal_requeue", "goal_inbox_requeue"}
 	if len(steps) != len(want) {
 		return fmt.Errorf("recovery steps=%v, want %v", steps, want)
 	}
@@ -90,5 +90,17 @@ func runRecoveryOrder(ctx context.Context, driver Driver) error {
 			return fmt.Errorf("recovery steps=%v, want %v", steps, want)
 		}
 	}
+	if err := driver.RecoverPostListener(ctx); err != nil {
+		return fmt.Errorf("post-listener recovery: %w", err)
+	}
 	return nil
+}
+
+func recoveryStepAppearsAfter(steps []string, start int, wanted string) bool {
+	for _, step := range steps[start:] {
+		if step == wanted {
+			return true
+		}
+	}
+	return false
 }

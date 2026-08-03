@@ -13,18 +13,24 @@ func runWorktreeSweepFailure(ctx context.Context, driver Driver) error {
 	if err := driver.Reset(ctx, fixture); err != nil {
 		return err
 	}
-	if err := driver.Recover(ctx); !errors.Is(err, sweepErr) {
-		return fmt.Errorf("recover worktree sweep error=%v, want %v", err, sweepErr)
+	if err := driver.RecoverCore(ctx); err != nil {
+		return fmt.Errorf("recover core error=%v", err)
+	}
+	if err := driver.RecoverPostListener(ctx); err != nil {
+		return fmt.Errorf("post-listener worktree sweep must degrade locally, got %v", err)
 	}
 	steps := driver.Metrics().RecoverySteps
-	want := []string{"runtime_requeue", "goal_requeue", "goal_inbox_requeue", "stale_settle", "worktree_sweep"}
-	if len(steps) != len(want) {
-		return fmt.Errorf("failed recovery steps=%v, want %v", steps, want)
+	if len(steps) < 5 || !recoveryStepAppearsAfter(steps, 3, "stale_settle") {
+		return fmt.Errorf("failed recovery steps=%v, want post-listener stale recovery", steps)
 	}
-	for index := range want {
-		if steps[index] != want[index] {
-			return fmt.Errorf("failed recovery steps=%v, want %v", steps, want)
+	worktreeAttempts := 0
+	for _, step := range steps[3:] {
+		if step == "worktree_sweep" {
+			worktreeAttempts++
 		}
+	}
+	if worktreeAttempts != 3 {
+		return fmt.Errorf("worktree recovery attempts=%d, want bounded 3; steps=%v", worktreeAttempts, steps)
 	}
 	return nil
 }

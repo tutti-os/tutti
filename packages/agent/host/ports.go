@@ -312,6 +312,12 @@ type RuntimeOperationStore interface {
 	DeferRuntimeOperationEventPublish(context.Context, storesqlite.DeferRuntimeOperationEventPublishInput) (bool, error)
 }
 
+// EditRetryRuntimeOperationStore is intentionally narrow: ordinary operation
+// scheduling never observes or is reordered by its independent recovery queue.
+type EditRetryRuntimeOperationStore interface {
+	ListClaimableEditRetryOperations(context.Context, storesqlite.ListClaimableRuntimeOperationsInput) ([]storesqlite.RuntimeOperation, error)
+}
+
 // RuntimeOperationHealthStore is the canonical, read-only projection used by
 // RuntimeOperationHealth. It is deliberately separate from RuntimeOperationStore:
 // worker writes and health reads have different ownership and failure modes.

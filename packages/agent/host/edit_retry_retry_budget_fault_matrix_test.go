@@ -530,7 +530,7 @@ func newRetryBudgetFixture(t *testing.T, operationID string) *retryBudgetFixture
 func newRetryBudgetHost(store *storesqlite.Store, runtime *hostEditRetryRuntime, operations agenthost.RuntimeOperationStore, clock agenthost.Clock) *agenthost.Host {
 	return agenthost.New(agenthost.Config{
 		CanonicalStore: sqliteCanonicalStore{Store: store}, TurnSubmissions: store, EffectiveHistory: store,
-		RuntimeOperations: operations, Runtime: runtime, HistoryRuntime: runtime, GoalRuntime: runtime,
+		RuntimeOperations: editRetryClaimForwardingStore{RuntimeOperationStore: operations, store: store}, Runtime: runtime, HistoryRuntime: runtime, GoalRuntime: runtime,
 		OperationOwner: "retry-budget", Clock: clock,
 	})
 }

@@ -274,22 +274,24 @@ Pending-event diagnostics list every unpublished row; only the worker's
 ready-event query applies `next_attempt_at`, so deferred rows remain observable
 without becoming scheduler-eligible early.
 
-Runtime-operation attempts are Host-owned too: execution is serialized per
-workspace/session and uses a small process-local bounded bulkhead (four slots
-by default). Each attempt receives a deadline. A context-aware provider cannot
-head-of-line block another session or operation kind; a provider that ignores
-context holds at most one bounded slot until it returns and cannot create a
-new goroutine on every worker tick. Durable leases and edit-retry dispatched
-checkpoints remain the cross-process safety boundary, so an uncertain
-edit-retry attempt reconciles instead of repeating its external mutation.
+Ordinary runtime-operation execution retains its synchronous upstream worker
+contract. Only edit-retry attempts use the process-local bounded recovery lane
+and receive a provider deadline. A context-aware edit-retry provider cannot
+head-of-line block another eligible edit-retry Session; a provider that ignores
+context holds at most one bounded edit-retry slot until it returns and cannot
+create a new goroutine on every worker tick. Durable leases and edit-retry
+dispatched checkpoints remain the cross-process safety boundary, so an
+uncertain edit-retry attempt reconciles instead of repeating its external
+mutation.
 
 Edit-retry recovery additionally uses a dedicated recovery lane. Its admission
 uses the canonical Session provider identity (one in-flight recovery per
 provider and two per workspace by default); a missing provider is isolated as
 `unknown:<workspace>:<session>`, never pooled with unrelated unknown Sessions.
-Cancel, interactive, and plan-decision operations use the control lane, so a
-stuck recovery provider cannot consume the control reservation. These are
-process-local reservations only and remain held until an ignore-context call
+Because edit-retry is queried separately, cancel, interactive, and
+plan-decision operations retain their upstream query and synchronous worker
+semantics and are not hidden by a recovery batch. These are process-local
+reservations only and remain held until an ignore-context call
 actually returns; durable leases/backoff remain restart safety.
 
 `RuntimeOperationHealth` separates process-local historical worker totals from

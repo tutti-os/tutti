@@ -437,7 +437,7 @@ func runGoalInboxConsumerPreflight(ctx context.Context, driver Driver) error {
 	if err := driver.Reset(ctx, fixture); err != nil {
 		return err
 	}
-	if err := driver.Recover(ctx); !errors.Is(err, agenthost.ErrGoalConsumerUnavailable) {
+	if err := driver.RecoverCore(ctx); !errors.Is(err, agenthost.ErrGoalConsumerUnavailable) {
 		return fmt.Errorf("missing goal consumer error=%v", err)
 	}
 	if steps := driver.Metrics().RecoverySteps; len(steps) != 0 {

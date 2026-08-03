@@ -319,7 +319,7 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		d.service.GoalReconcileInboxStore = nil
 	}
 	d.historicalState = &conformanceHistoricalStateStore{driver: d}
-	hostStore := serviceHostStore{service: d.service}
+	hostStore := testApplicationHostCanonical{serviceHostStore: serviceHostStore{service: d.service}}
 	hostSupport := hostSupportPortsForService(
 		d.service,
 		nil,
@@ -337,6 +337,8 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		d.historicalState,
 		serviceHostRuntime{service: d.service},
 		serviceHostGoalRuntime{service: d.service},
+		agenthost.EditRetryAdmissionDenyNew,
+		agenthost.EditRetryRecoveryDrain,
 	))
 	deletionEvents := make([]string, 0)
 	d.deletionEvents = &deletionEvents
@@ -1262,11 +1264,12 @@ func (o *conformanceCommitObserver) snapshot() []agenthost.CommittedDelta {
 	return append([]agenthost.CommittedDelta(nil), o.deltas...)
 }
 
-func (d *legacyHostConformanceDriver) Recover(ctx context.Context) error {
-	if d.directHost {
-		return d.service.ApplicationHost().Recover(ctx)
-	}
-	return d.service.ApplicationHost().Recover(ctx)
+func (d *legacyHostConformanceDriver) RecoverCore(ctx context.Context) error {
+	return d.service.ApplicationHost().RecoverCore(ctx)
+}
+
+func (d *legacyHostConformanceDriver) RecoverPostListener(ctx context.Context) error {
+	return d.service.ApplicationHost().RecoverPostListener(ctx)
 }
 
 type conformanceRuntimeOperationStore struct {

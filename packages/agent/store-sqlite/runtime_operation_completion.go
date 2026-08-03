@@ -454,11 +454,12 @@ func insertRuntimeOperationEventTx(ctx context.Context, tx *sql.Tx, op RuntimeOp
 	if err != nil {
 		return RuntimeOperationEvent{}, err
 	}
+	occurrenceKey := runtimeOperationEventOccurrenceKey(kind, payload)
 	result, err := tx.ExecContext(ctx, `
 INSERT INTO workspace_agent_runtime_operation_events (
-  operation_id, workspace_id, agent_session_id, kind, payload_json, created_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?)
-`, op.OperationID, op.WorkspaceID, op.AgentSessionID, kind, payloadJSON, now)
+  operation_id, workspace_id, agent_session_id, kind, occurrence_key, payload_json, created_at_unix_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?)
+`, op.OperationID, op.WorkspaceID, op.AgentSessionID, kind, occurrenceKey, payloadJSON, now)
 	if err != nil {
 		return RuntimeOperationEvent{}, fmt.Errorf("insert runtime operation event: %w", err)
 	}
@@ -467,5 +468,15 @@ INSERT INTO workspace_agent_runtime_operation_events (
 		return RuntimeOperationEvent{}, fmt.Errorf("read runtime operation event id: %w", err)
 	}
 	return RuntimeOperationEvent{ID: id, OperationID: op.OperationID, WorkspaceID: op.WorkspaceID,
-		AgentSessionID: op.AgentSessionID, Kind: kind, Payload: cloneJSONMap(payload), CreatedAtUnixMS: now}, nil
+		AgentSessionID: op.AgentSessionID, Kind: kind, OccurrenceKey: occurrenceKey, Payload: cloneJSONMap(payload), CreatedAtUnixMS: now}, nil
+}
+
+func runtimeOperationEventOccurrenceKey(kind string, payload map[string]any) string {
+	if identity := payloadString(payload, "actionIdentity"); identity != "" {
+		return identity
+	}
+	if actionID := payloadString(payload, "clientActionId"); actionID != "" {
+		return actionID
+	}
+	return kind
 }

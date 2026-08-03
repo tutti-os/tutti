@@ -2,6 +2,7 @@ package agenthost
 
 import (
 	"context"
+	"fmt"
 
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 )
@@ -153,6 +154,17 @@ func (s *observedEffectiveHistoryStore) WakeDeferredEditRetry(
 type observedRuntimeOperationStore struct {
 	RuntimeOperationStore
 	host *Host
+}
+
+func (s *observedRuntimeOperationStore) ListClaimableEditRetryOperations(
+	ctx context.Context,
+	input storesqlite.ListClaimableRuntimeOperationsInput,
+) ([]storesqlite.RuntimeOperation, error) {
+	store, ok := s.RuntimeOperationStore.(EditRetryRuntimeOperationStore)
+	if !ok {
+		return nil, fmt.Errorf("edit retry runtime operation store is unavailable")
+	}
+	return store.ListClaimableEditRetryOperations(ctx, input)
 }
 
 func (s *observedRuntimeOperationStore) PrepareRuntimeOperation(ctx context.Context, input storesqlite.RuntimeOperationPrepare) (storesqlite.RuntimeOperation, bool, error) {

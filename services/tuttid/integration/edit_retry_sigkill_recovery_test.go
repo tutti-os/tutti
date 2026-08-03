@@ -29,7 +29,7 @@ import (
 func TestTuttidBlackBoxEditRetrySIGKILLAfterSidecarEffect(t *testing.T) {
 	stateDir := t.TempDir()
 	dbPath := filepath.Join(stateDir, "tuttid.db")
-	seedDaemonEnabledEditRetryFixture(t, dbPath)
+	seedEditRetryDaemonEnabledFixture(t, dbPath)
 	sidecar := newEditRetrySIGKILLSidecar(t)
 	childEnv := []string{
 		"TUTTID_INTEGRATION_TEST_CHILD=1",
@@ -37,26 +37,26 @@ func TestTuttidBlackBoxEditRetrySIGKILLAfterSidecarEffect(t *testing.T) {
 		"TUTTID_TEST_EDIT_RETRY_SIDECAR_ADDR=" + sidecar.Addr(),
 	}
 
-	first := startTestDaemonAtWithEnv(t, stateDir, childEnv)
+	first := startEditRetryDaemonAtWithEnv(t, stateDir, childEnv)
 	sidecar.waitForIdentity(t, "rollback:ws-enabled-saga:session-a-retry", 1)
 	// The operation checkpoint committed before the sidecar call; the held
 	// connection means there is no result transaction to observe before kill.
 	assertDaemonEditRetryDispatchedFence(t, dbPath)
-	waitForRuntimeOperationStatus(t, dbPath, "ws-enabled-saga", "operation-b-healthy", storesqlite.RuntimeOperationStatusCompleted)
+	waitForEditRetryDaemonOperationStatus(t, dbPath, "ws-enabled-saga", "operation-b-healthy", storesqlite.RuntimeOperationStatusCompleted)
 	if err := first.cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
 		t.Fatalf("SIGKILL first daemon: %v", err)
 	}
-	if err := waitForDaemonExit(t, first); err == nil {
+	if err := waitForEditRetryDaemonExit(t, first); err == nil {
 		t.Fatal("first daemon exit error=nil after SIGKILL")
 	}
 
 	for restart := 1; restart <= 2; restart++ {
-		daemon := startTestDaemonAtWithEnv(t, stateDir, childEnv)
-		// startTestDaemonAtWithEnv observes real listener publication and health.
+		daemon := startEditRetryDaemonAtWithEnv(t, stateDir, childEnv)
+		// startEditRetryDaemonAtWithEnv observes real listener publication and health.
 		mustRequestJSON[tuttigenerated.ListWorkspacesResponse](t, daemon, "GET", "/v1/workspaces", nil, 200)
 		waitForDaemonEditRetryReconciledUnknown(t, dbPath)
-		assertDaemonEditRetryUnknownIsReconcileOnly(t, dbPath)
-		waitForRuntimeOperationStatus(t, dbPath, "ws-enabled-saga", "operation-b-healthy", storesqlite.RuntimeOperationStatusCompleted)
+		assertEditRetryDaemonUnknownIsReconcileOnly(t, dbPath)
+		waitForEditRetryDaemonOperationStatus(t, dbPath, "ws-enabled-saga", "operation-b-healthy", storesqlite.RuntimeOperationStatusCompleted)
 		sidecar.assertOnlyIdentity(t, "rollback:ws-enabled-saga:session-a-retry", 1)
 		if daemon.cmd.ProcessState != nil && daemon.cmd.ProcessState.Exited() {
 			t.Fatalf("restart %d exited\nstdout:\n%s\nstderr:\n%s", restart, daemon.stdout.String(), daemon.stderr.String())
@@ -64,7 +64,7 @@ func TestTuttidBlackBoxEditRetrySIGKILLAfterSidecarEffect(t *testing.T) {
 		if err := daemon.cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
 			t.Fatalf("SIGKILL restart %d daemon: %v", restart, err)
 		}
-		if err := waitForDaemonExit(t, daemon); err == nil {
+		if err := waitForEditRetryDaemonExit(t, daemon); err == nil {
 			t.Fatalf("restart %d daemon exit error=nil after SIGKILL", restart)
 		}
 	}
@@ -111,7 +111,7 @@ func waitForDaemonEditRetryReconciledUnknown(t *testing.T, dbPath string) {
 		}
 		select {
 		case <-deadline.C:
-			t.Fatalf("timed out waiting for unknown rollback reconciliation: %s", readOptionalFile(filepath.Join(filepath.Dir(dbPath), "logs", "tuttid.log")))
+			t.Fatalf("timed out waiting for unknown rollback reconciliation: %s", readEditRetryOptionalFile(filepath.Join(filepath.Dir(dbPath), "logs", "tuttid.log")))
 		case <-poll.C:
 		}
 	}
@@ -214,7 +214,7 @@ func (s *editRetrySIGKILLSidecar) waitForIdentity(t *testing.T, identity string,
 		}
 		select {
 		case <-timer.C:
-			t.Fatalf("sidecar ledger=%q, want %q count %d", readOptionalFile(s.ledger), identity, want)
+			t.Fatalf("sidecar ledger=%q, want %q count %d", readEditRetryOptionalFile(s.ledger), identity, want)
 		case <-s.recorded:
 		}
 	}
@@ -224,11 +224,11 @@ func (s *editRetrySIGKILLSidecar) assertOnlyIdentity(t *testing.T, identity stri
 	t.Helper()
 	identities := s.identities()
 	if got := s.count(identity); got != want || len(identities) != want {
-		t.Fatalf("sidecar identity %q count=%d total=%d, want %d ledger=%q", identity, got, len(identities), want, readOptionalFile(s.ledger))
+		t.Fatalf("sidecar identity %q count=%d total=%d, want %d ledger=%q", identity, got, len(identities), want, readEditRetryOptionalFile(s.ledger))
 	}
 	for _, recorded := range identities {
 		if recorded != identity {
-			t.Fatalf("sidecar recorded unexpected identity %q, want only %q ledger=%q", recorded, identity, readOptionalFile(s.ledger))
+			t.Fatalf("sidecar recorded unexpected identity %q, want only %q ledger=%q", recorded, identity, readEditRetryOptionalFile(s.ledger))
 		}
 	}
 }

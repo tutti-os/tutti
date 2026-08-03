@@ -480,10 +480,10 @@ func buildDaemonAPI(
 	); providerObserver != nil {
 		agentRuntime.Controller().SetProviderObservationObserver(providerObserver)
 	}
-	// Host fixes startup order: durable runtime operations first, then goal
-	// operations and reconcile inbox work, and only then stale turns.
-	if err := agentHost.Recover(ctx); err != nil {
-		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("recover agent host: %w", err)
+	// Core recovery is local durable repair only. Provider-capable workers are
+	// supervised after the daemon listener is published.
+	if err := agentHost.RecoverCore(ctx); err != nil {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("recover agent host core: %w", err)
 	}
 	go func() {
 		if err := agentHost.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {

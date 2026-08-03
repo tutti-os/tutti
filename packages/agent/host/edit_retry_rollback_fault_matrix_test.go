@@ -266,7 +266,18 @@ func rollbackAbortBoundaries(t *testing.T, _ *rollbackFaultFixture) {
 }
 
 func newRollbackFaultHost(store *storesqlite.Store, runtime *hostEditRetryRuntime, history agenthost.EffectiveHistoryStore, operations agenthost.RuntimeOperationStore) *agenthost.Host {
-	return agenthost.New(agenthost.Config{CanonicalStore: sqliteCanonicalStore{Store: store}, TurnSubmissions: store, EffectiveHistory: history, RuntimeOperations: operations, Runtime: runtime, HistoryRuntime: runtime, GoalRuntime: runtime, OperationOwner: "rollback-fault"})
+	return agenthost.New(agenthost.Config{CanonicalStore: sqliteCanonicalStore{Store: store}, TurnSubmissions: store, EffectiveHistory: history, RuntimeOperations: editRetryClaimForwardingStore{RuntimeOperationStore: operations, store: store}, Runtime: runtime, HistoryRuntime: runtime, GoalRuntime: runtime, OperationOwner: "rollback-fault"})
+}
+
+// editRetryClaimForwardingStore keeps a fault wrapper focused on its injected
+// transition while the Host still exercises the production edit-only query.
+type editRetryClaimForwardingStore struct {
+	agenthost.RuntimeOperationStore
+	store *storesqlite.Store
+}
+
+func (s editRetryClaimForwardingStore) ListClaimableEditRetryOperations(ctx context.Context, input storesqlite.ListClaimableRuntimeOperationsInput) ([]storesqlite.RuntimeOperation, error) {
+	return s.store.ListClaimableEditRetryOperations(ctx, input)
 }
 
 type failCheckpointRuntimeOperationStore struct {

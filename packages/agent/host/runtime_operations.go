@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -399,64 +398,51 @@ func (h *Host) StepRuntimeOperationWorker(ctx context.Context, recovering bool) 
 	if h == nil || h.operations == nil {
 		return nil
 	}
-	operations, err := h.operations.ListClaimableRuntimeOperations(ctx, storesqlite.ListClaimableRuntimeOperationsInput{NowUnixMS: h.now().UnixMilli(), Limit: runtimeOperationBatchSize})
+	// Keep the ordinary runtime-operation queue byte-for-byte aligned with the
+	// upstream synchronous worker contract. Edit retry is deliberately absent
+	// from this query and handled by its own recovery queue below, so a hung
+	// provider cannot change the ordering, limit, or error behavior of any
+	// other operation kind.
+	claimInput := storesqlite.ListClaimableRuntimeOperationsInput{NowUnixMS: h.now().UnixMilli(), Limit: runtimeOperationBatchSize}
+	operations, err := h.operations.ListClaimableRuntimeOperations(ctx, claimInput)
 	if err != nil {
-		h.recordRuntimeOperationWorkerFailure("store")
 		return err
 	}
-	var attempts sync.WaitGroup
+	var processErrors []error
+	legacyEditRetries := make([]storesqlite.RuntimeOperation, 0)
 	for _, operation := range operations {
-		if !h.runtimeOperationExecutor.reserve(operation) {
-			// A current attempt for this session or operation already owns the
-			// local lane, or every bounded provider slot is occupied. Leave the
-			// durable lease untouched for a later scheduled tick.
+		if operation.Kind == storesqlite.RuntimeOperationKindEditRetry {
+			// Canonical SQLite excludes edit_retry above. This compatibility path
+			// exists only for older Host stores; it is still fail-closed and never
+			// admits malformed, legacy, or future saga payloads.
+			payload, decodeErr := storesqlite.DecodeEditRetryOperationPayload(operation.Payload)
+			if decodeErr == nil && payload.SagaVersion == storesqlite.EditRetrySagaVersionCurrent {
+				legacyEditRetries = append(legacyEditRetries, operation)
+			}
 			continue
 		}
-		attempts.Add(1)
-		go func(operation storesqlite.RuntimeOperation) {
-			defer attempts.Done()
-			defer h.runtimeOperationExecutor.release(operation)
-			attemptCtx, cancel := context.WithTimeout(ctx, h.runtimeOperationAttemptTimeout)
-			defer cancel()
-			result, stepErr := h.stepRuntimeOperationSerialized(attemptCtx, operation, recovering)
-			if stepErr != nil && !errors.Is(stepErr, ErrRuntimeOperationInProgress) {
-				h.recordRuntimeOperationWorkerFailure("item")
-				logRuntimeOperationFailure(operation, stepErr)
-				return
-			}
-			// Deferred/blocked work is durably safe but still represents an
-			// operational degradation. Record only the aggregate; never expose a
-			// raw provider error through the worker health projection.
-			if result.Disposition == operationStepDeferred || result.Disposition == operationStepBlocked {
-				h.recordRuntimeOperationWorkerFailure("item")
-			}
-		}(operation)
+		if _, err := h.processRuntimeOperation(ctx, operation, recovering); err != nil && !errors.Is(err, ErrRuntimeOperationInProgress) {
+			logRuntimeOperationFailure(operation, err)
+			processErrors = append(processErrors, fmt.Errorf("process runtime operation %s: %w", operation.OperationID, err))
+		}
 	}
-	// Respecting providers return by their per-attempt deadline. A provider
-	// that ignores context is intentionally not waited on past that deadline:
-	// its reservation remains held until it returns, so repeated ticks cannot
-	// create more calls while the remaining bounded slots still serve other
-	// sessions and kinds.
-	done := make(chan struct{})
-	go func() {
-		attempts.Wait()
-		close(done)
-	}()
-	timer := time.NewTimer(h.runtimeOperationAttemptTimeout)
-	defer timer.Stop()
-	select {
-	case <-done:
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
+
+	if retries, ok := h.operations.(EditRetryRuntimeOperationStore); ok {
+		editRetries, listErr := retries.ListClaimableEditRetryOperations(ctx, claimInput)
+		if listErr != nil {
+			h.recordRuntimeOperationWorkerFailure("store")
+			processErrors = append(processErrors, fmt.Errorf("list claimable edit retry operations: %w", listErr))
+		} else {
+			h.stepEditRetryOperations(ctx, editRetries, recovering)
+		}
+	} else {
+		h.stepEditRetryOperations(ctx, legacyEditRetries, recovering)
 	}
+
 	if err := h.publishRuntimeOperationEvents(ctx, ""); err != nil {
-		// The canonical transition has already committed. Publishing is an
-		// outbox concern: retain the pending event for a later worker step and
-		// never turn a successful operation into a worker/startup failure.
-		logRuntimeOperationFailure(storesqlite.RuntimeOperation{}, fmt.Errorf("publish runtime operation outbox: %w", err))
+		processErrors = append(processErrors, fmt.Errorf("publish runtime operation outbox: %w", err))
 	}
-	return nil
+	return errors.Join(processErrors...)
 }
 
 // stepRuntimeOperationSerialized makes runtime-operation execution single
