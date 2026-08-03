@@ -208,7 +208,10 @@ if (isMainModule()) {
   const violations = scanWorkspace();
   const wiringSource = [
     "services/tuttid/wiring.go",
-    "services/tuttid/wiring_daemon_api.go"
+    "services/tuttid/wiring_daemon_api.go",
+    // Host construction is deliberately centralized here so the API wiring
+    // can publish its listener before starting provider-capable Host work.
+    "services/tuttid/wiring_daemon_agent_host.go"
   ]
     .map((file) => readFileSync(join(workspaceRoot, file), "utf8"))
     .join("\n");
