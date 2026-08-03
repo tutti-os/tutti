@@ -754,7 +754,7 @@ func TestWakeDeferredEditRetryUsesRealClockAndFenceOwnership(t *testing.T) {
 	if op.NextAttemptAtMS != 100 {
 		t.Fatalf("wake rollback next attempt=%d, want 100", op.NextAttemptAtMS)
 	}
-	if claimable, err := store.ListClaimableRuntimeOperations(ctx, ListClaimableRuntimeOperationsInput{NowUnixMS: 99}); err != nil || len(claimable) != 0 {
+	if claimable, err := store.ListClaimableEditRetryOperations(ctx, ListClaimableRuntimeOperationsInput{NowUnixMS: 99}); err != nil || len(claimable) != 0 {
 		t.Fatalf("claimable before wake=%#v error=%v", claimable, err)
 	}
 	op, _, _ = store.GetRuntimeOperation(ctx, "ws-1", "operation-wake")
@@ -765,7 +765,7 @@ func TestWakeDeferredEditRetryUsesRealClockAndFenceOwnership(t *testing.T) {
 	if err != nil || !changed || woken.NextAttemptAtMS != 30 || woken.Status != RuntimeOperationStatusPrepared {
 		t.Fatalf("wake=%#v changed=%v error=%v", woken, changed, err)
 	}
-	if claimable, err := store.ListClaimableRuntimeOperations(ctx, ListClaimableRuntimeOperationsInput{NowUnixMS: 30}); err != nil || len(claimable) != 1 {
+	if claimable, err := store.ListClaimableEditRetryOperations(ctx, ListClaimableRuntimeOperationsInput{NowUnixMS: 30}); err != nil || len(claimable) != 1 {
 		t.Fatalf("claimable after wake=%#v error=%v", claimable, err)
 	}
 	if replay, changed, err := store.WakeDeferredEditRetry(ctx, WakeDeferredEditRetryInput{
