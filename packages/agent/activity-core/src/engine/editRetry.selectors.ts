@@ -13,6 +13,7 @@ const IDLE_OPERATION: EditRetryOperationRecord = {
   clientOperationId: null,
   commandId: null,
   errorCode: null,
+  errorReason: null,
   errorMessage: null,
   requestKey: null,
   result: null,

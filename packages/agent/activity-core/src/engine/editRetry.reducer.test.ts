@@ -144,6 +144,7 @@ test("authoritative unchanged availability settles a read-only recovery", () => 
     availableActions: ["reconcile"] as const,
     eligible: false,
     operationId: "operation-1",
+    operationVersion: 3,
     recoveryState: "resend_pending" as const,
     turnId: undefined
   };
@@ -163,6 +164,28 @@ test("authoritative unchanged availability settles a read-only recovery", () => 
   const command = requested.commands[0];
   assert.equal(command?.type, "turn/recoverEditRetry");
   if (command?.type !== "turn/recoverEditRetry") return;
+  assert.equal(command.expectedOperationVersion, 3);
+  assert.equal(command.expectedHistoryRevision, 7);
+  assert.match(command.clientActionId, /^edit-retry-/);
+
+  const failed = rootEngineReducer(requested.state, {
+    commandId: command.commandId,
+    commandType: command.type,
+    errorCode: "unavailable",
+    errorReason: "transport_unavailable",
+    outcome: "failed",
+    type: "engine/commandResult"
+  });
+  const retried = rootEngineReducer(failed.state, {
+    action: "reconcile",
+    agentSessionId: "session-1",
+    type: "editRetry/recoveryRequested",
+    workspaceId: "workspace-1"
+  });
+  const retryCommand = retried.commands[0];
+  assert.equal(retryCommand?.type, "turn/recoverEditRetry");
+  if (retryCommand?.type !== "turn/recoverEditRetry") return;
+  assert.equal(retryCommand.clientActionId, command.clientActionId);
 
   const accepted = rootEngineReducer(requested.state, {
     commandId: command.commandId,
