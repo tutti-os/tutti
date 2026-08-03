@@ -513,6 +513,10 @@ type ProviderAcceptanceReceipt struct {
 type ProviderDispatchResult struct {
 	Disposition DispatchDisposition        `json:"disposition"`
 	Acceptance  *ProviderAcceptanceReceipt `json:"acceptance,omitempty"`
+	// Failure is a process-local provider observation. It is carried only to
+	// the synchronous Controller caller and is never serialized or persisted as
+	// coordination state.
+	Failure error `json:"-"`
 }
 
 type CompletedCommand struct {

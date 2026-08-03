@@ -4,6 +4,7 @@ import {
   selectEngineInteraction,
   selectEngineSession,
   selectEngineSessionRuntimeAvailability,
+  selectEngineSubmitWouldBeVisibleInQueue,
   selectEngineTurn,
   type AgentSessionEngineState,
   type EngineExternalCommand,
@@ -270,6 +271,20 @@ const agentSessionReplayIntentContracts = {
     },
     replayEffectCommandIdFromPayload: (payload) =>
       submitSendNowCancelCommandId(payload),
+    // Busy-queue submits were recorded while submit was unavailable. Wait until
+    // the engine again admits a visible queue row before replaying them; otherwise
+    // admission recomputes available→immediate send and the composer blue bar
+    // never appears (and later provider outbound order mismatches).
+    isReady: (snapshot, { agentSessionId, payload }) => {
+      const diagnostics = payload.submitDiagnostics;
+      const queued =
+        diagnostics !== null &&
+        typeof diagnostics === "object" &&
+        "queued" in diagnostics &&
+        (diagnostics as { queued?: unknown }).queued === true;
+      if (!queued) return true;
+      return selectEngineSubmitWouldBeVisibleInQueue(snapshot, agentSessionId);
+    },
     replayMaterializesCommandId: false,
     requiresEffect: false,
     timestampRebase: "requestExpiryWindow"

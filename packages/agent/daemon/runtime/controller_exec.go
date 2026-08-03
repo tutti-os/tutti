@@ -160,7 +160,10 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (result ExecResu
 	if titleUpdated {
 		submitEvents = append([]activityshared.Event{newSessionTitleActivityEvent(session, session.Title)}, submitEvents...)
 	}
-	if err := c.reportSubmittedTurnDurable(ctx, session, submitEvents); err != nil {
+	// The submitted Turn is a durable user intent, not provider output. Keep
+	// the Session visible while the provider-identity acceptance barrier is
+	// pending so an explicit provider rejection cannot erase the prompt.
+	if err := c.reportSubmittedTurnDurable(ctx, session, submitEvents, false); err != nil {
 		cancel()
 		c.rollbackSubmittedTurn(previousSession, turnID)
 		logAgentSubmitTrace("runtime.exec.submitted_report_failed", session, turnID, metadata, map[string]any{
@@ -211,10 +214,12 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (result ExecResu
 				turnID,
 				dispatch,
 			)
-			dispatchObserver.ReportWithError(confirmed, confirmErr)
 			if confirmErr != nil {
 				cancel()
 			}
+			// The waiting Exec caller is released only after the acceptance receipt
+			// has crossed the durable reporter (or has a typed rejection).
+			dispatchObserver.ReportWithError(confirmed, confirmErr)
 			return confirmErr
 		}
 		go c.runProviderAcceptanceTurn(
@@ -266,12 +271,23 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (result ExecResu
 		if confirmErr != nil {
 			return result, confirmErr
 		}
+		if dispatch.Disposition == DispatchDispositionRejected ||
+			dispatch.Disposition == DispatchDispositionNotDispatched {
+			// The provider supplied a definite negative delivery result. The
+			// submitted Turn and prompt stay canonical so the failure is visible;
+			// runBlockingExecTurn settles the in-memory Turn without waiting for a
+			// provider-root aggregation that can never arrive.
+			cancel()
+		}
 		if dispatch.Disposition == DispatchDispositionAppliedWithoutProviderTurn &&
 			dispatch.Acceptance == nil {
 			return result, nil
 		}
 		if dispatch.Disposition != DispatchDispositionApplied || dispatch.Acceptance == nil {
 			if input.RequireProviderAcceptance {
+				if dispatch.Failure != nil {
+					return result, dispatch.Failure
+				}
 				return result, errors.New("provider turn was not durably accepted")
 			}
 			return result, nil

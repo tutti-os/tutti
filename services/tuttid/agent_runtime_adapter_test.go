@@ -42,6 +42,7 @@ func (submitProvenanceAdapterTestProvider) Cancel(context.Context, agentruntime.
 type providerAcceptanceMappingTestAdapter struct {
 	execCalls           int
 	acceptanceExecCalls int
+	failure             error
 }
 
 func (*providerAcceptanceMappingTestAdapter) Provider() string {
@@ -98,10 +99,17 @@ func (a *providerAcceptanceMappingTestAdapter) ExecWithProviderAcceptance(
 	_ string,
 	_ agentruntime.EventSink,
 	_ agentruntime.CommandSnapshotSink,
-	_ agentruntime.ProviderDispatchSink,
+	reportDispatch agentruntime.ProviderDispatchSink,
 	acceptProviderTurn agentruntime.ProviderAcceptanceBarrier,
 ) ([]activityshared.Event, error) {
 	a.acceptanceExecCalls++
+	if a.failure != nil {
+		reportDispatch(agentruntime.ProviderDispatchResult{
+			Disposition: agentruntime.DispatchDispositionRejected,
+			Failure:     a.failure,
+		})
+		return nil, a.failure
+	}
 	if err := acceptProviderTurn(agentruntime.ProviderAcceptanceReceipt{
 		Source:            agentruntime.AcceptanceSourceTurnStartResponse,
 		ProviderSessionID: "provider-session-1",
@@ -287,7 +295,7 @@ func TestAgentRuntimeAdapterPreservesProviderAcceptanceRequirement(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = adapter.Exec(t.Context(), agentservice.RuntimeExecInput{
+	result, err := adapter.Exec(t.Context(), agentservice.RuntimeExecInput{
 		WorkspaceID: "workspace-1", AgentSessionID: "session-1",
 		TurnID: "canonical-turn-1", ClientSubmitID: "opaque-submit-1",
 		CanonicalSubmitOccurredAtUnixMS: 1,
@@ -296,6 +304,11 @@ func TestAgentRuntimeAdapterPreservesProviderAcceptanceRequirement(t *testing.T)
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if result.ProviderDispatch.Disposition != agenthost.RuntimeDispatchDispositionApplied ||
+		result.ProviderDispatch.Acceptance == nil ||
+		result.ProviderDispatch.Acceptance.ProviderTurnID != "provider-turn-1" {
+		t.Fatalf("provider dispatch = %#v", result.ProviderDispatch)
 	}
 	if provider.acceptanceExecCalls != 1 || provider.execCalls != 0 {
 		t.Fatalf(
@@ -306,6 +319,39 @@ func TestAgentRuntimeAdapterPreservesProviderAcceptanceRequirement(t *testing.T)
 	}
 	if session.ProviderSessionID != "provider-session-1" {
 		t.Fatalf("provider session id = %q", session.ProviderSessionID)
+	}
+}
+
+func TestAgentRuntimeAdapterPreservesRejectedDispatchWithProviderFailure(t *testing.T) {
+	providerFailure := &agentruntime.AppError{
+		Code:    "auth_required",
+		Message: "Claude Code needs authentication",
+	}
+	provider := &providerAcceptanceMappingTestAdapter{failure: providerFailure}
+	controller := agentruntime.NewController(
+		[]agentruntime.Adapter{provider},
+		&submitProvenanceAdapterTestReporter{},
+	)
+	adapter := newAgentRuntimeAdapter(controller)
+	if _, err := adapter.Start(t.Context(), agentservice.RuntimeStartInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-rejected",
+		Provider: provider.Provider(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := adapter.Exec(t.Context(), agentservice.RuntimeExecInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-rejected",
+		TurnID: "canonical-turn-rejected", Content: agentservice.TextPromptContent("hello"),
+		RequireProviderAcceptance: true,
+	})
+	var mapped *agenthost.ProviderError
+	if !errors.As(err, &mapped) || mapped.Code != "auth_required" {
+		t.Fatalf("Exec() error = %#v, want auth_required ProviderError", err)
+	}
+	if result.ProviderDispatch.Disposition != agenthost.RuntimeDispatchDispositionRejected ||
+		result.ProviderDispatch.Acceptance != nil {
+		t.Fatalf("provider dispatch = %#v, want rejected", result.ProviderDispatch)
 	}
 }
 

@@ -686,7 +686,9 @@ child-Session or Message ordinal columns in the product database. The recorder
 waits for the matching canonical commit before confirming a Provider
 observation. Replay rebuilds the same address bindings from the Cassette start
 and uses exact Host queries plus the recorded observation fingerprint before a
-checkpoint can become ready.
+checkpoint can become ready. When a turn's terminal observation is the first
+observation available to a replay binding, its address still uses the turn's
+recorded birth observation so started and terminal fingerprints remain stable.
 
 Compaction notices normalize to provider-neutral `compaction.updated`
 observations using the canonical system-notice command and status. Attachment

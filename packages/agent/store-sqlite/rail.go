@@ -361,6 +361,21 @@ func RailSectionKeyForProject(projectPath string) string {
 	return "project:" + projectPath
 }
 
+// NormalizeRailSectionKey canonicalizes a rail section key so project keys
+// that differ only by symlink path forms (for example /var vs /private/var
+// on macOS) compare equal.
+func NormalizeRailSectionKey(sectionKey string) string {
+	sectionKey = strings.TrimSpace(sectionKey)
+	if sectionKey == "" || sectionKey == RailSectionKeyConversations {
+		return sectionKey
+	}
+	const prefix = "project:"
+	if strings.HasPrefix(sectionKey, prefix) {
+		return RailSectionKeyForProject(strings.TrimPrefix(sectionKey, prefix))
+	}
+	return sectionKey
+}
+
 func normalizeAgentSessionRailSection(section RailSection) RailSection {
 	section.Kind = strings.TrimSpace(section.Kind)
 	section.ProjectPath = NormalizeProjectPath(section.ProjectPath)

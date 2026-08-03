@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
@@ -548,6 +549,103 @@ func TestSubmitClaimAcceptResponseLossReconcilesWithoutProviderRedispatch(t *tes
 	}
 }
 
+func TestSubmitClaimRejectedReplayReusesFailedTurnWithoutProviderRedispatch(t *testing.T) {
+	ctx := context.Background()
+	wantErr := errors.New("provider rejected submit")
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Rejected replay"}); err != nil {
+		t.Fatal(err)
+	}
+	projection := NewActivityProjection(store)
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-rejected-replay"] = ProviderRuntimeSession{
+		ID: "session-rejected-replay", WorkspaceID: "ws-1", Provider: "codex", Status: "ready", Visible: true,
+	}
+	runtime.execHook = func(input RuntimeExecInput) (RuntimeExecResult, error) {
+		if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
+			WorkspaceID: "ws-1", AgentSessionID: input.AgentSessionID, Origin: "runtime", Provider: "codex",
+			ProviderSessionID: input.AgentSessionID, Cwd: "/workspace", Title: "recovery", Status: "running",
+			OccurredAtUnixMS: 99, StartedAtUnixMS: 98,
+		}); err != nil {
+			t.Fatalf("ReportSessionState() error = %v", err)
+		}
+		if _, err := projection.ReportSessionState(ctx, canonical.ReportSessionStateInput{
+			WorkspaceID: "ws-1", AgentSessionID: input.AgentSessionID,
+			SessionOrigin: agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+			State: canonical.WorkspaceAgentSessionStateUpdate{
+				Provider: "codex", OccurredAtUnixMS: 99,
+				Turn: &canonical.WorkspaceAgentTurnStateUpdate{
+					TurnID: input.TurnID, Phase: agentactivitybiz.TurnPhaseSubmitted,
+					StartedAtUnixMS: 99,
+				},
+			},
+		}); err != nil {
+			t.Fatalf("ReportSessionState(turn) error = %v", err)
+		}
+		return RuntimeExecResult{
+			AgentSessionID: input.AgentSessionID, TurnID: input.TurnID,
+			ProviderDispatch: agenthost.RuntimeProviderDispatchResult{
+				Disposition: agenthost.RuntimeDispatchDispositionRejected,
+			},
+		}, wantErr
+	}
+	runtime.provenanceHook = func(input RuntimeSubmitProvenanceInput) error {
+		content := "hello"
+		if len(input.Content) > 0 && input.Content[0].Text != "" {
+			content = input.Content[0].Text
+		}
+		return projection.ReportSubmitProvenance(ctx, agentsessionstore.ReportActivityInput{
+			WorkspaceID: input.WorkspaceID,
+			Source: canonical.EventSource{
+				AgentID: input.AgentSessionID, Provider: "codex",
+				SessionOrigin: agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+			},
+			StatePatches: []agentsessionstore.WorkspaceAgentStatePatch{{
+				AgentSessionID: input.AgentSessionID, Kind: agentactivitybiz.SessionKindRoot,
+				Provider: "codex", LifecycleStatus: "failed", CurrentPhase: "failed",
+				LastError: wantErr.Error(), OccurredAtUnixMS: input.CanonicalSubmitOccurredAtUnixMS + 1,
+				RuntimeContext: map[string]any{"visible": true, "provisional": false},
+				Turn: &agentsessionstore.WorkspaceAgentTurnPatch{
+					TurnID: input.TurnID, Origin: agentactivitybiz.TurnOriginUserPrompt,
+					Phase: agentactivitybiz.TurnPhaseSettled, Outcome: agentactivitybiz.TurnOutcomeFailed,
+				},
+			}},
+			MessageUpdates: []agentsessionstore.WorkspaceAgentMessageUpdate{{
+				AgentSessionID: input.AgentSessionID,
+				MessageID:      "client-submit:user:" + input.ClientSubmitID,
+				TurnID:         input.TurnID, Role: "user", Kind: "text", Status: "completed",
+				OccurredAtUnixMS: input.CanonicalSubmitOccurredAtUnixMS,
+				Payload: map[string]any{
+					"clientSubmitId": input.ClientSubmitID,
+					"content":        []map[string]any{{"type": "text", "text": content}},
+					"contentMode":    "snapshot", "source": "host", "text": content,
+				},
+			}},
+		})
+	}
+	service := newTestService(runtime)
+	service.SubmitClaimStore = store
+	service.TurnStore = store
+	input := SendInput{Content: TextPromptContent("hello"), ClientSubmitID: "submit-rejected-replay"}
+
+	_, err := service.SendInput(ctx, "ws-1", "session-rejected-replay", input)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("first SendInput() error=%v, want %v", err, wantErr)
+	}
+	claim, found, err := store.GetSubmitClaim(ctx, "ws-1", "session-rejected-replay", input.ClientSubmitID)
+	if err != nil || !found || claim.Status != "rejected" || claim.TurnID == "" {
+		t.Fatalf("rejected claim=%#v found=%v error=%v", claim, found, err)
+	}
+	execCalls, provenanceCalls := len(runtime.execCalls), len(runtime.provenanceCalls)
+	result, err := service.SendInput(ctx, "ws-1", "session-rejected-replay", input)
+	if err != nil || result.TurnID != claim.TurnID {
+		t.Fatalf("replayed SendInput() result=%#v error=%v, want Turn %q", result, err, claim.TurnID)
+	}
+	if len(runtime.execCalls) != execCalls || len(runtime.provenanceCalls) != provenanceCalls {
+		t.Fatalf("replayed rejected submit touched provider: exec=%d provenance=%d, want %d/%d", len(runtime.execCalls), len(runtime.provenanceCalls), execCalls, provenanceCalls)
+	}
+}
+
 func seedDurableClientSubmitEvidence(t *testing.T, store *workspacedata.SQLiteStore, sessionID, turnID, clientSubmitID, messageID string, occurredAt int64) {
 	t.Helper()
 	ctx := context.Background()
@@ -664,6 +762,10 @@ func (s *recordingSubmitClaimStore) AcceptSubmitClaim(ctx context.Context, works
 		return claim, accepted, s.acceptAfterCommitErr
 	}
 	return claim, accepted, err
+}
+
+func (s *recordingSubmitClaimStore) RejectSubmitClaim(ctx context.Context, workspaceID, agentSessionID, clientSubmitID, turnID string, nowUnixMS int64) (agentactivitybiz.SubmitClaim, bool, error) {
+	return s.SQLiteStore.RejectSubmitClaim(ctx, workspaceID, agentSessionID, clientSubmitID, turnID, nowUnixMS)
 }
 
 func (f *fakeTuttiModeActivationCoordinator) AbandonTurnSnapshot(_ context.Context, _, _, turnID string, _ tuttimodeactivationbiz.TurnSnapshot) (bool, error) {

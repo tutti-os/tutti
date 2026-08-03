@@ -512,7 +512,17 @@ func portableReplayPath(path, root string) (string, bool) {
 	if path == "" || root == "" {
 		return path, false
 	}
-	relative, err := filepath.Rel(root, path)
+	normalizedPath := path
+	normalizedRoot := root
+	if evaluated, err := filepath.EvalSymlinks(path); err == nil {
+		normalizedPath = evaluated
+	}
+	if evaluated, err := filepath.EvalSymlinks(root); err == nil {
+		normalizedRoot = evaluated
+	}
+	normalizedPath = filepath.Clean(normalizedPath)
+	normalizedRoot = filepath.Clean(normalizedRoot)
+	relative, err := filepath.Rel(normalizedRoot, normalizedPath)
 	if err != nil || relative == ".." ||
 		strings.HasPrefix(relative, ".."+string(filepath.Separator)) ||
 		filepath.IsAbs(relative) {

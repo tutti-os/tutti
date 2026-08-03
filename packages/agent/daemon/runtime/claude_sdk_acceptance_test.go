@@ -81,6 +81,83 @@ func TestClaudeSDKProviderAcceptanceReportsPreDispatchFailures(t *testing.T) {
 	}
 }
 
+func TestClaudeSDKProviderAcceptanceReportsExplicitAuthenticationRejection(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	conn := newBlockingClaudeSDKConnection()
+	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
+	adapterSession.providerSessionID = session.ProviderSessionID
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	dispatch := make(chan ProviderDispatchResult, 1)
+	emitted := make(chan activityshared.Event, 4)
+	execDone := make(chan error, 1)
+	go func() {
+		_, err := adapter.ExecWithProviderAcceptance(
+			ctx,
+			session,
+			[]PromptContentBlock{{Type: "text", Text: "hello"}},
+			"hello",
+			"canonical-turn-rejected",
+			func(events []activityshared.Event) {
+				for _, event := range events {
+					emitted <- event
+				}
+			},
+			nil,
+			func(result ProviderDispatchResult) {
+				dispatch <- result
+			},
+			func(ProviderAcceptanceReceipt) error {
+				return errors.New("acceptance barrier must not run")
+			},
+		)
+		execDone <- err
+	}()
+
+	waitForClaudeSDKSentRequest(t, conn, "exec")
+	conn.pushEvent(claudeSDKSidecarEvent{
+		Type: "turn_failed",
+		Payload: map[string]any{
+			"turnId":              "canonical-turn-rejected",
+			"dispatchDisposition": "rejected",
+			"code":                "authentication_failed",
+			"apiErrorStatus":      401,
+			"error":               "Failed to authenticate. API Error: 401",
+		},
+	})
+
+	select {
+	case result := <-dispatch:
+		if result.Disposition != DispatchDispositionRejected ||
+			result.Acceptance != nil || result.Failure == nil {
+			t.Fatalf("provider dispatch = %#v, want explicit rejection", result)
+		}
+		var appErr *AppError
+		if !errors.As(result.Failure, &appErr) || appErr.Code != "auth_required" {
+			t.Fatalf("provider failure = %#v, want auth_required AppError", result.Failure)
+		}
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for provider rejection")
+	}
+	select {
+	case err := <-execDone:
+		var appErr *AppError
+		if !errors.As(err, &appErr) || appErr.Code != "auth_required" {
+			t.Fatalf("ExecWithProviderAcceptance error = %#v, want auth_required AppError", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for rejected execution")
+	}
+	select {
+	case event := <-emitted:
+		t.Fatalf("event %q escaped before rejected provider acceptance", event.Type)
+	default:
+	}
+}
+
 func TestClaudeSDKProviderAcceptanceUsesRecoveredSidecarIdentityBeforeCompletion(t *testing.T) {
 	t.Parallel()
 
@@ -252,7 +329,7 @@ func TestClaudeSDKDurableAcceptanceBlocksInteractionPublication(t *testing.T) {
 
 	close(releaseBarrier)
 	var ordered []activityshared.EventType
-	for len(ordered) < 4 {
+	for len(ordered) < 8 {
 		select {
 		case event := <-emitted:
 			ordered = append(ordered, event.Type)

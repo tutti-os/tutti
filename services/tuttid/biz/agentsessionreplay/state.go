@@ -136,7 +136,7 @@ func ProjectPortableAgentState(
 			rootCWD,
 		)
 		if session.RailSectionKind == storesqlite.RailSectionKindProject &&
-			strings.TrimSpace(session.RailSectionKey) ==
+			storesqlite.NormalizeRailSectionKey(session.RailSectionKey) ==
 				storesqlite.RailSectionKeyForProject(sourceSession.RailProjectPath) {
 			session.RailSectionKey = "project:" + session.RailProjectPath
 		}
@@ -407,7 +407,14 @@ func portableReplayPath(path, root string) string {
 	if path == "" || root == "" {
 		return path
 	}
-	relative, err := filepath.Rel(root, path)
+	// Normalize before Rel so macOS /var vs /private/var forms of the same
+	// directory project to ${REPLAY_CWD} instead of leaking absolute paths.
+	normalizedPath := storesqlite.NormalizeProjectPath(path)
+	normalizedRoot := storesqlite.NormalizeProjectPath(root)
+	if normalizedPath == "" || normalizedRoot == "" {
+		return path
+	}
+	relative, err := filepath.Rel(normalizedRoot, normalizedPath)
 	if err != nil || relative == ".." ||
 		strings.HasPrefix(relative, ".."+string(filepath.Separator)) ||
 		filepath.IsAbs(relative) {

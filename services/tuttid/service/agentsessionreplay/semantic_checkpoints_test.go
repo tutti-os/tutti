@@ -298,6 +298,37 @@ func TestProjectBindingMatchesCanonicalCWDAndRailPlacement(t *testing.T) {
 	}
 }
 
+func TestProjectBindingMatchesNormalizesRailSectionKeySymlinks(t *testing.T) {
+	rawDir := t.TempDir()
+	canonicalDir := storesqlite.NormalizeProjectPath(rawDir)
+	if canonicalDir == "" || canonicalDir == rawDir {
+		t.Skip("temp dir has no symlink path form to exercise")
+	}
+	actual := storesqlite.Session{
+		AgentTargetID:   "local:codex",
+		Provider:        "codex",
+		Cwd:             rawDir,
+		RailSectionKind: storesqlite.RailSectionKindProject,
+		RailProjectPath: rawDir,
+		RailSectionKey:  "project:" + rawDir,
+	}
+	expected := agenthost.HistoricalSession{
+		AgentTargetID:   actual.AgentTargetID,
+		Provider:        actual.Provider,
+		Cwd:             canonicalDir,
+		RailSectionKind: actual.RailSectionKind,
+		RailProjectPath: canonicalDir,
+		RailSectionKey:  storesqlite.RailSectionKeyForProject(canonicalDir),
+	}
+	if !projectBindingMatches(actual, expected) {
+		t.Fatalf(
+			"symlink-equivalent rail section keys should match: actual=%q expected=%q",
+			actual.RailSectionKey,
+			expected.RailSectionKey,
+		)
+	}
+}
+
 func TestProjectBindingReadinessResolvesPortableExpectedState(t *testing.T) {
 	replayCWD, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {

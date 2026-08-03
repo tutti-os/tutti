@@ -248,6 +248,13 @@ func (a serviceHostStore) AcceptSubmitClaim(ctx context.Context, workspaceID, se
 	return a.service.SubmitClaimStore.AcceptSubmitClaim(ctx, workspaceID, sessionID, clientSubmitID, turnID, now)
 }
 
+func (a serviceHostStore) RejectSubmitClaim(ctx context.Context, workspaceID, sessionID, clientSubmitID, turnID string, now int64) (storesqlite.SubmitClaim, bool, error) {
+	if a.service.SubmitClaimStore == nil {
+		return storesqlite.SubmitClaim{}, false, nil
+	}
+	return a.service.SubmitClaimStore.RejectSubmitClaim(ctx, workspaceID, sessionID, clientSubmitID, turnID, now)
+}
+
 func (a serviceHostStore) DeleteSubmitClaim(ctx context.Context, workspaceID, sessionID, clientSubmitID string) (bool, error) {
 	if a.service.SubmitClaimStore == nil {
 		return false, nil

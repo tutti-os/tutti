@@ -691,6 +691,14 @@ func (s *SQLiteWorkspaceStore) AcceptSubmitClaim(ctx context.Context, workspaceI
 	return store.AcceptSubmitClaim(ctx, workspaceID, sessionID, clientSubmitID, turnID, now)
 }
 
+func (s *SQLiteWorkspaceStore) RejectSubmitClaim(ctx context.Context, workspaceID, sessionID, clientSubmitID, turnID string, now int64) (storesqlite.SubmitClaim, bool, error) {
+	store, err := s.store(workspaceID)
+	if err != nil {
+		return storesqlite.SubmitClaim{}, false, err
+	}
+	return store.RejectSubmitClaim(ctx, workspaceID, sessionID, clientSubmitID, turnID, now)
+}
+
 func (s *SQLiteWorkspaceStore) DeleteSubmitClaim(ctx context.Context, workspaceID, sessionID, clientSubmitID string) (bool, error) {
 	store, err := s.store(workspaceID)
 	if err != nil {

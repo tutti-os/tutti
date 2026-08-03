@@ -167,6 +167,11 @@ func activityIntentRequiresEffect(eventType string) bool {
 		"interaction/responseRequested", "plan/decisionRequested",
 		"plan/feedbackRequested", "session/cancelRequested",
 		"session/settingsUpdateRequested", "submit/requested":
+		// Keep submit/requested requiring an effect for checkpoint boundaries:
+		// busy-queue admits have no immediate effect, but the same intent later
+		// causes queue/sendPrompt on drain — cutting submission.accepted on the
+		// bare intent fails checkpoint_plan validation (splits intent/effects).
+		// Mid-queue UI evidence stays on record-time captureEvidence.
 		return true
 	default:
 		return false

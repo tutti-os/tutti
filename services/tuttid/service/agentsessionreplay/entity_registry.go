@@ -436,6 +436,18 @@ func (r *replayEntityRegistry) providerAddresses(
 	position replay.ProviderObservationPosition,
 	event replay.ProviderObservationEvent,
 ) ([]replay.EntityAddress, bool) {
+	return r.providerAddressesForPlan(position, event, replay.CheckpointPlan{})
+}
+
+// providerAddressesForPlan binds portable entity addresses for a Provider
+// observation. Turn addresses use the plan's birth observation (started /
+// subject origin) when available so completed-first replay still fingerprints
+// against the same Address recorded at started.
+func (r *replayEntityRegistry) providerAddressesForPlan(
+	position replay.ProviderObservationPosition,
+	event replay.ProviderObservationEvent,
+	plan replay.CheckpointPlan,
+) ([]replay.EntityAddress, bool) {
 	sessionID := strings.TrimSpace(event.AgentSessionID)
 	if sessionID == "" {
 		sessionID = r.rootSessionID
@@ -483,9 +495,10 @@ func (r *replayEntityRegistry) providerAddresses(
 		if turnID == "" {
 			return nil, false
 		}
+		birth := turnBirthPositionFromPlan(plan, position, event.Type)
 		address, ok := r.bindFirst(
 			turnRuntimeKey(sessionID, turnID),
-			providerAddress(replay.EntityKindTurn, position, ""),
+			providerAddress(replay.EntityKindTurn, birth, ""),
 			replayEntityBinding{
 				SessionID: sessionID,
 				TurnID:    turnID,
@@ -593,6 +606,90 @@ func runtimeKey(parts ...string) string {
 		result.WriteString(part)
 	}
 	return result.String()
+}
+
+// turnBirthPositionFromPlan picks the portable Address origin for a turn
+// observation. Fingerprints embed that Address; using the current event
+// position for completed-first replay would diverge from the Address recorded
+// when started bound first. Prefer:
+//  1. started/turn.started events → current position
+//  2. matching checkpoint subject origin at this event position
+//  3. latest started trigger on the same connection before this event
+//  4. current position (degraded)
+func turnBirthPositionFromPlan(
+	plan replay.CheckpointPlan,
+	eventPosition replay.ProviderObservationPosition,
+	eventType string,
+) replay.ProviderObservationPosition {
+	switch eventType {
+	case "turn.started", "root_provider_turn.started":
+		return eventPosition
+	}
+	for _, checkpoint := range plan.Checkpoints {
+		trigger := checkpoint.Trigger
+		if trigger.Source !=
+			replay.CheckpointTriggerProviderObservation ||
+			trigger.Position == nil ||
+			*trigger.Position != eventPosition {
+			continue
+		}
+		for _, subject := range checkpoint.Subjects {
+			if subject.Kind != replay.EntityKindTurn ||
+				subject.Origin.Source !=
+					replay.EntityOriginProviderObservation ||
+				subject.Origin.ProviderObservation == nil {
+				continue
+			}
+			return *subject.Origin.ProviderObservation
+		}
+	}
+	var best *replay.ProviderObservationPosition
+	for _, checkpoint := range plan.Checkpoints {
+		trigger := checkpoint.Trigger
+		if trigger.Source !=
+			replay.CheckpointTriggerProviderObservation ||
+			trigger.Position == nil {
+			continue
+		}
+		if trigger.Type != "turn.started" &&
+			trigger.Type != "root_provider_turn.started" {
+			continue
+		}
+		started := *trigger.Position
+		if started.ConnectionID != eventPosition.ConnectionID {
+			continue
+		}
+		if !providerObservationPositionBeforeOrEqual(
+			started,
+			eventPosition,
+		) {
+			continue
+		}
+		if best == nil ||
+			providerObservationPositionBeforeOrEqual(*best, started) {
+			copy := started
+			best = &copy
+		}
+	}
+	if best != nil {
+		return *best
+	}
+	return eventPosition
+}
+
+func providerObservationPositionBeforeOrEqual(
+	left, right replay.ProviderObservationPosition,
+) bool {
+	if left.ConnectionID != right.ConnectionID {
+		return false
+	}
+	if left.ChunkSeq != right.ChunkSeq {
+		return left.ChunkSeq < right.ChunkSeq
+	}
+	if left.UnitIndex != right.UnitIndex {
+		return left.UnitIndex < right.UnitIndex
+	}
+	return left.EventIndex <= right.EventIndex
 }
 
 func sessionRuntimeKey(sessionID string) string {

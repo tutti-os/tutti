@@ -288,8 +288,8 @@ func projectBindingMatches(
 			strings.TrimSpace(expected.RailSectionKind) &&
 		storesqlite.NormalizeProjectPath(actual.RailProjectPath) ==
 			storesqlite.NormalizeProjectPath(expected.RailProjectPath) &&
-		strings.TrimSpace(actual.RailSectionKey) ==
-			strings.TrimSpace(expected.RailSectionKey)
+		storesqlite.NormalizeRailSectionKey(actual.RailSectionKey) ==
+			storesqlite.NormalizeRailSectionKey(expected.RailSectionKey)
 }
 
 func semanticGoalStatus(state storesqlite.SessionGoalState) string {

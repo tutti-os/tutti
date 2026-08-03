@@ -188,10 +188,15 @@ func restoreHistoricalSession(
 	}
 	railSectionKind := strings.TrimSpace(session.RailSectionKind)
 	railProjectPath := NormalizeProjectPath(session.RailProjectPath)
-	railSectionKey := strings.TrimSpace(session.RailSectionKey)
+	railSectionKey := NormalizeRailSectionKey(session.RailSectionKey)
 	if railSectionKind == "" && railProjectPath == "" && railSectionKey == "" {
 		railSectionKind = RailSectionKindConversations
 		railSectionKey = RailSectionKeyConversations
+	}
+	if railSectionKind == RailSectionKindProject && railProjectPath != "" {
+		// Keep restored membership aligned with live classification and with
+		// user-project SectionKeyFromPath (both use RailSectionKeyForProject).
+		railSectionKey = RailSectionKeyForProject(railProjectPath)
 	}
 	metadataJSON := `{"visible":true,"imported":true,"capabilities":[]}`
 	internalRuntimeContext := map[string]any{

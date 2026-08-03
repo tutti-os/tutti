@@ -15,8 +15,24 @@ import (
 
 func (c *Controller) enqueueSessionReport(ctx context.Context, session Session, events []activityshared.Event) {
 	c.observeGoalControlLifecycle(ctx, session, events)
+	c.mu.Lock()
+	provisional := c.provisionalSessions[sessionKey(session.RoomID, session.AgentSessionID)]
+	c.mu.Unlock()
+	if provisional {
+		// A still-provisional runtime has not crossed the durable submitted-intent
+		// barrier. Keep incidental provider events hidden until that barrier
+		// publishes the canonical prompt. The normal initial-content path removes
+		// this marker immediately after the barrier, so an explicit rejection is
+		// projected as a visible failed Turn rather than compensated away.
+		session.Visible = false
+	}
 	report := reportActivityInput(session, events)
 	c.enrichReportStatePatchesWithSessionMetadata(session, &report)
+	if provisional {
+		hideProvisionalSessionReport(&report)
+		report.MessageUpdates = nil
+		report.SessionAudits = nil
+	}
 	c.observeProviderObservations(ctx, session, report.ProviderObservations)
 	if len(report.GoalReconcileRequests) > 0 {
 		control := report
@@ -125,15 +141,42 @@ func (c *Controller) observeProviderObservations(
 // reportSubmittedTurnDurable is the acceptance barrier for a user submission.
 // The daemon reporter commits the submitted Turn and its session pointer before
 // Exec may publish the transition, start provider work, or return success.
-func (c *Controller) reportSubmittedTurnDurable(ctx context.Context, session Session, events []activityshared.Event) error {
+func (c *Controller) reportSubmittedTurnDurable(
+	ctx context.Context,
+	session Session,
+	events []activityshared.Event,
+	keepProvisional bool,
+) error {
 	if c == nil || c.reporter == nil {
 		// Reporter-less controllers are used as standalone runtimes and have no
 		// durable projection. The wired tuttid runtime always provides a reporter.
 		return nil
 	}
+	if keepProvisional {
+		session.Visible = false
+	}
 	report := reportActivityInput(session, events)
 	c.enrichReportStatePatchesWithSessionMetadata(session, &report)
+	if keepProvisional {
+		hideProvisionalSessionReport(&report)
+	}
 	return c.reporter.Report(ctx, report)
+}
+
+func hideProvisionalSessionReport(report *agentsessionstore.ReportActivityInput) {
+	if report == nil {
+		return
+	}
+	for index := range report.StatePatches {
+		report.StatePatches[index].RuntimeContext = clonePayload(
+			report.StatePatches[index].RuntimeContext,
+		)
+		if report.StatePatches[index].RuntimeContext == nil {
+			report.StatePatches[index].RuntimeContext = make(map[string]any)
+		}
+		report.StatePatches[index].RuntimeContext["visible"] = false
+		report.StatePatches[index].RuntimeContext["provisional"] = true
+	}
 }
 
 // reportProviderAcceptanceDurable is the acceptance barrier for a provider

@@ -83,9 +83,10 @@ func (s *semanticObservationState) observeBatch(
 			UnitIndex:    position.UnitIndex,
 			EventIndex:   event.EventIndex,
 		}
-		addresses, ok := s.projector.entities.providerAddresses(
+		addresses, ok := s.projector.entities.providerAddressesForPlan(
 			eventPosition,
 			event,
+			plan,
 		)
 		if !ok || len(addresses) == 0 {
 			continue

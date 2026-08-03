@@ -74,9 +74,10 @@ func (s *Service) ObserveReplayCommitted(
 					EventIndex:   event.EventIndex,
 				}
 				addresses, found :=
-					s.checkpoints.entities.providerAddresses(
+					s.checkpoints.entities.providerAddressesForPlan(
 						eventPosition,
 						event,
+						s.checkpoints.plan,
 					)
 				if !found || len(addresses) == 0 {
 					continue

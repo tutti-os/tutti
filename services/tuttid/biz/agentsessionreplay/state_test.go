@@ -7,6 +7,7 @@ import (
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	sessionreplay "github.com/tutti-os/tutti/packages/agent/session-replay"
+	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 )
 
 func TestProjectAndResolvePortableAgentSessionBinding(t *testing.T) {
@@ -54,6 +55,53 @@ func TestProjectAndResolvePortableAgentSessionBinding(t *testing.T) {
 		session.RailSectionKey !=
 			"project:"+filepath.Join(replayRoot, "packages", "agent") {
 		t.Fatalf("resolved binding = %#v", session)
+	}
+}
+
+func TestProjectPortableAgentStateNormalizesSymlinkEquivalentPaths(t *testing.T) {
+	rawDir := t.TempDir()
+	canonicalDir := storesqlite.NormalizeProjectPath(rawDir)
+	if canonicalDir == "" || canonicalDir == rawDir {
+		t.Skip("temp dir has no symlink path form to exercise")
+	}
+	agent := TuttiReplayAgent{
+		RootSessionID: "session-1",
+		Sessions: []agenthost.HistoricalSession{{
+			ID:              "session-1",
+			Cwd:             rawDir,
+			RailSectionKind: storesqlite.RailSectionKindProject,
+			RailProjectPath: canonicalDir,
+			RailSectionKey:  "project:" + rawDir,
+		}},
+	}
+
+	portable := ProjectPortableAgentState(agent, t.TempDir())
+	session := portable.Sessions[0]
+	if session.Cwd != sessionreplay.PortableReplayCWDToken {
+		t.Fatalf("portable cwd = %q", session.Cwd)
+	}
+	if session.RailProjectPath != sessionreplay.PortableReplayCWDToken {
+		t.Fatalf("portable railProjectPath = %q", session.RailProjectPath)
+	}
+	if session.RailSectionKey !=
+		"project:"+sessionreplay.PortableReplayCWDToken {
+		t.Fatalf("portable railSectionKey = %q", session.RailSectionKey)
+	}
+	if filepath.IsAbs(session.RailProjectPath) || filepath.IsAbs(session.Cwd) {
+		t.Fatalf("portable paths must not stay absolute: %#v", session)
+	}
+	if err := validateReplayPortableValue("$", "", map[string]any{
+		"agent": map[string]any{
+			"sessions": []any{
+				map[string]any{
+					"cwd":             session.Cwd,
+					"railProjectPath": session.RailProjectPath,
+					"railSectionKey":  session.RailSectionKey,
+				},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("portable binding failed path validation: %v", err)
 	}
 }
 

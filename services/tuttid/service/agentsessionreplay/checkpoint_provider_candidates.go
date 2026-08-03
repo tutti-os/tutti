@@ -175,9 +175,10 @@ func (r *checkpointRecorder) buildCandidate(
 			UnitIndex:    position.UnitIndex,
 			EventIndex:   event.EventIndex,
 		}
-		addresses, ok := r.entities.providerAddresses(
+		addresses, ok := r.entities.providerAddressesForPlan(
 			observationPosition,
 			event,
+			r.plan,
 		)
 		if !ok || len(addresses) == 0 {
 			continue

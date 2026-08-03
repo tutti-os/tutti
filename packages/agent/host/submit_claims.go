@@ -69,3 +69,48 @@ func (h *Host) acceptSubmitClaim(ref SessionRef, clientID, turnID string) error 
 	_, _, err := h.store.AcceptSubmitClaim(ctx, ref.WorkspaceID, ref.AgentSessionID, clientID, turnID, h.now().UnixMilli())
 	return err
 }
+
+func (h *Host) rejectSubmitClaim(ref SessionRef, clientID, turnID string) error {
+	if h == nil || h.store == nil || strings.TrimSpace(clientID) == "" {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, _, err := h.store.RejectSubmitClaim(ctx, ref.WorkspaceID, ref.AgentSessionID, clientID, turnID, h.now().UnixMilli())
+	return err
+}
+
+func (h *Host) finalizeRejectedSubmitClaim(ref SessionRef, clientID, turnID string) error {
+	if strings.TrimSpace(turnID) == "" {
+		return nil
+	}
+	return h.rejectSubmitClaim(ref, clientID, turnID)
+}
+
+func (h *Host) replayedSubmitResult(ctx context.Context, ref SessionRef, claim storesqlite.SubmitClaim) (SendInputResult, error) {
+	canonicalSession, ok, err := h.store.GetSession(ctx, ref.WorkspaceID, ref.AgentSessionID)
+	if err != nil {
+		return SendInputResult{}, err
+	}
+	if !ok {
+		if _, live := h.runtime.Session(ref.WorkspaceID, ref.AgentSessionID); !live {
+			return SendInputResult{}, ErrSessionNotFound
+		}
+	}
+	turn, ok, err := h.store.GetTurn(ctx, ref.WorkspaceID, ref.AgentSessionID, claim.TurnID)
+	if err != nil {
+		return SendInputResult{}, err
+	}
+	if !ok {
+		return SendInputResult{}, ErrSubmitDeliveryUnknown
+	}
+	live, _ := h.runtime.Session(ref.WorkspaceID, ref.AgentSessionID)
+	availability := SubmitAvailability{State: "available"}
+	if strings.TrimSpace(canonicalSession.ActiveTurnID) != "" {
+		availability = SubmitAvailability{State: "blocked", Reason: "active_turn"}
+	}
+	return SendInputResult{
+		Session: live, Canonical: canonicalSession, Turn: &turn, TurnID: claim.TurnID,
+		TurnLifecycle: lifecycleFromTurn(turn), SubmitAvailability: availability,
+	}, nil
+}

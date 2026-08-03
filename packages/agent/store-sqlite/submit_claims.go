@@ -125,6 +125,12 @@ func (s *Store) AcceptSubmitClaim(ctx context.Context, workspaceID, agentSession
 		}
 		return claim, false, nil
 	}
+	if claim.Status == "rejected" {
+		return claim, false, fmt.Errorf("%w: rejected submit claim cannot be accepted", ErrSubmitClaimTurnConflict)
+	}
+	if claim.Status != "prepared" {
+		return claim, false, fmt.Errorf("%w: unsupported submit claim status %q", ErrSubmitClaimTurnConflict, claim.Status)
+	}
 	if err := requireSessionForkSourceWritableTx(ctx, tx, workspaceID, agentSessionID); err != nil {
 		return SubmitClaim{}, false, err
 	}
@@ -146,6 +152,77 @@ func (s *Store) AcceptSubmitClaim(ctx context.Context, workspaceID, agentSession
 	}
 	if err := tx.Commit(); err != nil {
 		return SubmitClaim{}, false, fmt.Errorf("commit accept submit claim: %w", err)
+	}
+	return claim, updated, nil
+}
+
+// RejectSubmitClaim records a definitive provider rejection against the
+// canonical Turn that already owns the submit. Rejection is terminal and
+// idempotent: a replay of the same claim never downgrades an accepted claim or
+// allocates a second Turn.
+func (s *Store) RejectSubmitClaim(ctx context.Context, workspaceID, agentSessionID, clientSubmitID, turnID string, nowUnixMS int64) (SubmitClaim, bool, error) {
+	workspaceID, agentSessionID, clientSubmitID, turnID = strings.TrimSpace(workspaceID), strings.TrimSpace(agentSessionID), strings.TrimSpace(clientSubmitID), strings.TrimSpace(turnID)
+	if workspaceID == "" || agentSessionID == "" || clientSubmitID == "" || turnID == "" || nowUnixMS <= 0 {
+		return SubmitClaim{}, false, fmt.Errorf("invalid rejected submit claim")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return SubmitClaim{}, false, fmt.Errorf("begin reject submit claim: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	claim, ok, err := getSubmitClaimTx(ctx, tx, workspaceID, agentSessionID, clientSubmitID)
+	if err != nil {
+		return SubmitClaim{}, false, err
+	}
+	if !ok {
+		return SubmitClaim{}, false, fmt.Errorf("rejected submit claim does not exist")
+	}
+	if claim.CanonicalTurnID == "" || claim.CanonicalTurnID != turnID ||
+		(claim.Status != "prepared" && claim.TurnID != turnID) {
+		return claim, false, fmt.Errorf(
+			"%w: claim canonical=%q rejected=%q returned=%q",
+			ErrSubmitClaimTurnConflict,
+			claim.CanonicalTurnID,
+			claim.TurnID,
+			turnID,
+		)
+	}
+	if claim.Status == "accepted" {
+		return claim, false, fmt.Errorf("%w: accepted submit claim cannot be rejected", ErrSubmitClaimTurnConflict)
+	}
+	if claim.Status == "rejected" {
+		if err := tx.Commit(); err != nil {
+			return SubmitClaim{}, false, fmt.Errorf("commit rejected submit claim replay: %w", err)
+		}
+		return claim, false, nil
+	}
+	if claim.Status != "prepared" {
+		return claim, false, fmt.Errorf("%w: unsupported submit claim status %q", ErrSubmitClaimTurnConflict, claim.Status)
+	}
+	if err := requireSessionForkSourceWritableTx(ctx, tx, workspaceID, agentSessionID); err != nil {
+		return SubmitClaim{}, false, err
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE workspace_agent_submit_claims SET status='rejected', turn_id=?, updated_at_unix_ms=?
+	WHERE workspace_id=? AND agent_session_id=? AND client_submit_id=? AND status='prepared' AND canonical_turn_id=?`, turnID, nowUnixMS, workspaceID, agentSessionID, clientSubmitID, turnID)
+	if err != nil {
+		return SubmitClaim{}, false, fmt.Errorf("reject submit claim: %w", err)
+	}
+	updated, err := rowsWereAffected(result, "reject submit claim")
+	if err != nil {
+		return SubmitClaim{}, false, err
+	}
+	claim, ok, err = getSubmitClaimTx(ctx, tx, workspaceID, agentSessionID, clientSubmitID)
+	if err != nil {
+		return SubmitClaim{}, false, err
+	}
+	if !ok {
+		return SubmitClaim{}, false, fmt.Errorf("rejected submit claim disappeared before it could be read")
+	}
+	if !updated && claim.Status == "prepared" {
+		return claim, false, fmt.Errorf("%w: prepared submit claim was not rejected", ErrSubmitClaimTurnConflict)
+	}
+	if err := tx.Commit(); err != nil {
+		return SubmitClaim{}, false, fmt.Errorf("commit reject submit claim: %w", err)
 	}
 	return claim, updated, nil
 }
@@ -210,6 +287,7 @@ SELECT workspace_id, agent_session_id, client_submit_id, status,
        canonical_turn_id, turn_id, created_at_unix_ms, updated_at_unix_ms
 FROM workspace_agent_submit_claims
 WHERE workspace_id = ? AND agent_session_id = ? AND canonical_turn_id = ?
+  AND status IN ('prepared', 'accepted')
 ORDER BY client_submit_id
 LIMIT 2
 `, workspaceID, agentSessionID, canonicalTurnID)

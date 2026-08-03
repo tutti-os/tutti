@@ -91,7 +91,18 @@ func (p *ActivityProjection) ReportSubmitProvenance(
 		LastEventAtUnixMS: result.State.LastEventUnixMS,
 		RequestBodyBytes:  result.State.RequestBodyBytes,
 	}
-	p.publishPersistedTurnState(ctx, stateInput, result)
+	provisional := activityStateIsProvisional(stateInput)
+	if !provisional {
+		p.publishPersistedTurnState(ctx, stateInput, result)
+	}
+	if provisional {
+		p.observeSessionState(ctx, stateInput, stateReply)
+		p.observeSessionMessages(ctx, messageInput, canonical.ReportSessionMessagesReply{
+			AcceptedCount: result.Messages.AcceptedCount,
+			LatestVersion: result.Messages.LatestVersion,
+		})
+		return nil
+	}
 	p.publishActivityUpdated(
 		ctx,
 		stateInput.WorkspaceID,
