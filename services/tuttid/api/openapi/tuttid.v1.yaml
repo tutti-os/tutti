@@ -1919,6 +1919,10 @@ paths:
             type: string
             enum:
               - pending
+            # Keep the established Go constant stable when unrelated enums
+            # are added to the composed OpenAPI document.
+            x-enum-varnames:
+              - ListWorkspaceWorkflowsParamsCheckpointStatusPending
           description: When omitted, returns every workflow for the source session. Pass pending to return only workflows with a pending checkpoint.
       responses:
         "200":
@@ -7045,7 +7049,7 @@ components:
                 outbox,
                 store,
                 post_listener_recovery,
-                post_listener_degraded,
+                post_listener_degraded
               ]
         activeDegradationCount:
           description: Count of unresolved durable edit-retry degradation records, including orphan session fences
@@ -7076,7 +7080,7 @@ components:
           state,
           reasonCode,
           attempt,
-          availableActions,
+          availableActions
         ]
       properties:
         workspaceId: { type: string }
@@ -7085,7 +7089,14 @@ components:
         kind: { type: string, enum: [edit_retry] }
         state:
           type: string
-          enum: [prepared, rolling_back, resend_pending, recovery_required, completed]
+          enum:
+            [
+              prepared,
+              rolling_back,
+              resend_pending,
+              recovery_required,
+              completed
+            ]
         reasonCode:
           $ref: "#/components/schemas/WorkspaceAgentEditRetryReasonCode"
         nextAttemptAtUnixMs:

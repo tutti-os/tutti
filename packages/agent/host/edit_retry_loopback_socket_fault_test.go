@@ -128,7 +128,7 @@ type loopbackEditRetryRuntime struct {
 	mode    string
 }
 
-func (r *loopbackEditRetryRuntime) SupportsEffectiveHistory(context.Context, agenthost.RuntimeHistoryInput) (bool, error) {
+func (*loopbackEditRetryRuntime) SupportsEffectiveHistory(context.Context, agenthost.RuntimeHistoryInput) (bool, error) {
 	return true, nil
 }
 

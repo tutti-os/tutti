@@ -4371,13 +4371,13 @@ func (e SubmitWorkspaceAgentPlanDecisionParamsXTuttiAgentCommandOrigin) Valid() 
 
 // Defines values for ListWorkspaceWorkflowsParamsCheckpointStatus.
 const (
-	Pending ListWorkspaceWorkflowsParamsCheckpointStatus = "pending"
+	ListWorkspaceWorkflowsParamsCheckpointStatusPending ListWorkspaceWorkflowsParamsCheckpointStatus = "pending"
 )
 
 // Valid indicates whether the value is a known member of the ListWorkspaceWorkflowsParamsCheckpointStatus enum.
 func (e ListWorkspaceWorkflowsParamsCheckpointStatus) Valid() bool {
 	switch e {
-	case Pending:
+	case ListWorkspaceWorkflowsParamsCheckpointStatusPending:
 		return true
 	default:
 		return false

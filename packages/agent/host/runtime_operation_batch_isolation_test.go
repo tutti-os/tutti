@@ -149,10 +149,7 @@ func TestEditRetryWorkerHungProviderDoesNotBlockHealthyProviderOrControlOperatio
 	// the executor must finish its goroutine (and release its in-process
 	// reservation) before this fixture closes SQLite below.
 	deadline := time.After(time.Second)
-	for {
-		if host.RuntimeOperationWorkerSummary().ItemFailures > 0 {
-			break
-		}
+	for host.RuntimeOperationWorkerSummary().ItemFailures == 0 {
 		select {
 		case <-deadline:
 			t.Fatal("hung edit-retry attempt did not settle after provider returned")
@@ -180,7 +177,7 @@ func newEditRetryIsolationRuntime(hungSession string) *editRetryIsolationRuntime
 	}
 }
 
-func (r *editRetryIsolationRuntime) Session(_ string, agentSessionID string) (agenthost.ProviderRuntimeSession, bool) {
+func (*editRetryIsolationRuntime) Session(_ string, agentSessionID string) (agenthost.ProviderRuntimeSession, bool) {
 	return agenthost.ProviderRuntimeSession{ID: agentSessionID, WorkspaceID: editRetryRestartRef.WorkspaceID, Provider: "provider-" + agentSessionID, ProviderSessionID: "thread-" + agentSessionID, InitialTitleEstablished: true}, true
 }
 
