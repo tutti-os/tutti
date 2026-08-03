@@ -120,7 +120,7 @@ export interface AgentActivityRuntimeSetSessionPinnedInput {
 
 export interface AgentActivityRuntimeTrackSettingsProjectChangeInput {
   action: "clear" | "create_new" | "select_existing";
-  agentSessionId: string;
+  agentSessionId: string | null;
   provider?: string | null;
   workspaceId: string;
 }

@@ -61,6 +61,7 @@ export {
   permissionModeLabel,
   permissionModeOptions
 } from "./agentGuiController.composerHelpers";
+import { trackAgentGUISettingsProjectChange } from "./agentGuiProjectAnalytics";
 export * from "./agentGuiController.conversationHelpers";
 export {
   agentGUIConversationDiagnosticDetails,
@@ -536,17 +537,13 @@ export function useAgentGUINodeController({
       }
       selectedProjectPathRef.current = normalizedPath;
       setSelectedProjectPath(normalizedPath);
-      const agentSessionId = activeConversationIdRef.current;
-      if (!agentSessionId || !metadata) {
-        return;
-      }
-      const tracking = agentActivityRuntime.trackSettingsProjectChange?.({
-        action: metadata.action,
-        agentSessionId,
+      trackAgentGUISettingsProjectChange({
+        agentActivityRuntime,
+        agentSessionId: activeConversationIdRef.current,
+        metadata,
         provider: dataRef.current.provider,
         workspaceId
       });
-      void tracking?.catch(() => {});
     },
     [agentActivityRuntime, workspaceId]
   );
