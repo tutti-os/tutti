@@ -23,6 +23,6 @@ var (
 	_ = (*agenthost.Host).GoalControl
 	_ = (*agenthost.Host).GetGoalState
 	_ = (*agenthost.Host).ReconcileGoal
-	_ = (*agenthost.Host).Recover
+	_ = (*agenthost.Host).RecoverCore
 	_ = (*agenthost.Host).Run
 )

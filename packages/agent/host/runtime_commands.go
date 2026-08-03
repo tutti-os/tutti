@@ -20,6 +20,18 @@ func (h *Host) CancelTurn(ctx context.Context, input CancelTurnInput) (CancelTur
 	if h == nil || h.store == nil || h.runtime == nil || input.WorkspaceID == "" || input.AgentSessionID == "" || input.TurnID == "" {
 		return CancelTurnResult{}, ErrInvalidArgument
 	}
+	var result CancelTurnResult
+	err := h.withSessionMutationActor(ctx, input.WorkspaceID, input.AgentSessionID, func(actorCtx context.Context) error {
+		var commandErr error
+		result, commandErr = h.cancelTurnSerialized(actorCtx, input)
+		return commandErr
+	})
+	return result, err
+}
+
+// cancelTurnSerialized is for Host flows that already own the exact session
+// mutation actor. It must not be called by adapters or runtime callbacks.
+func (h *Host) cancelTurnSerialized(ctx context.Context, input CancelTurnInput) (CancelTurnResult, error) {
 	turn, found, err := h.store.GetTurn(ctx, input.WorkspaceID, input.AgentSessionID, input.TurnID)
 	if err != nil {
 		return CancelTurnResult{}, err
@@ -55,7 +67,7 @@ func (h *Host) CancelTurn(ctx context.Context, input CancelTurnInput) (CancelTur
 		return CancelTurnResult{}, err
 	}
 	result := CancelTurnResult{Canonical: canonical, Turn: &turn, Operation: operation, State: CancelStateRequested, IntentAccepted: true}
-	completed, err := h.processRuntimeOperation(ctx, operation, false)
+	completed, err := h.processRuntimeOperationSerialized(ctx, operation, false)
 	result.Operation = completed
 	if confirmed, _ := completed.Payload["providerConfirmed"].(bool); confirmed {
 		result.ProviderConfirmed = true

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
@@ -38,7 +39,13 @@ func runPlanDecision(ctx context.Context, driver Driver) error {
 	if err := driver.Reset(ctx, fixture); err != nil {
 		return err
 	}
-	operation, err := driver.SubmitPlanDecision(ctx,
+	// Runtime-operation processing owns the session actor. A plan decision must
+	// dispatch its serialized send path directly rather than re-entering the
+	// public actor-taking command; keep this bounded so every Host adapter
+	// proves that regression cannot become a worker deadlock.
+	planCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	operation, err := driver.SubmitPlanDecision(planCtx,
 		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-plan"},
 		"plan-turn", "plan-turn", agenthost.SubmitPlanDecisionInput{
 			PromptKind: "plan-implementation", Action: "implement", IdempotencyKey: "decision-1",
