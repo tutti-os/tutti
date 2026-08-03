@@ -27,6 +27,12 @@ var (
 func startEditRetryDaemonAtWithEnv(t *testing.T, stateDir string, extraEnv []string) *testDaemon {
 	t.Helper()
 	accessToken := "test-access-token"
+	// Each cold-restart assertion needs the address published by that child, not
+	// the stale listener-info file left behind by the SIGKILLed predecessor.
+	// Listener publication is the readiness boundary under test.
+	if err := os.Remove(filepath.Join(stateDir, "run", "tuttid.listener.json")); err != nil && !os.IsNotExist(err) {
+		t.Fatalf("clear stale listener info: %v", err)
+	}
 	cmd := exec.Command(mustBuildEditRetryDaemonBinary(t))
 	cmd.Dir = serviceRoot(t)
 	cmd.Env = append(os.Environ(),

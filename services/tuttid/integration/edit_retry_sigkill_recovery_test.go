@@ -49,6 +49,9 @@ func TestTuttidBlackBoxEditRetrySIGKILLAfterSidecarEffect(t *testing.T) {
 	if err := waitForEditRetryDaemonExit(t, first); err == nil {
 		t.Fatal("first daemon exit error=nil after SIGKILL")
 	}
+	// waitForEditRetryDaemonExit has reaped the child. Prevent the generic
+	// cleanup hook from calling exec.Cmd.Wait a second time.
+	first.cmd = nil
 
 	for restart := 1; restart <= 2; restart++ {
 		daemon := startEditRetryDaemonAtWithEnv(t, stateDir, childEnv)
@@ -67,6 +70,7 @@ func TestTuttidBlackBoxEditRetrySIGKILLAfterSidecarEffect(t *testing.T) {
 		if err := waitForEditRetryDaemonExit(t, daemon); err == nil {
 			t.Fatalf("restart %d daemon exit error=nil after SIGKILL", restart)
 		}
+		daemon.cmd = nil
 	}
 }
 
