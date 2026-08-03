@@ -56,8 +56,12 @@ func TestRuntimeOperationWorkerBatchIsolatesSessionsAndSkipsBlockedDeferredAfter
 	}
 
 	host := newBatchRuntimeOperationHost(store, runtime, store, &recordingRuntimeOperationPublisher{}, true)
-	if err := host.StepRuntimeOperationWorker(t.Context(), false); err != nil {
-		t.Fatalf("StepRuntimeOperationWorker() = %v, want isolated item handling", err)
+	// The ordinary queue deliberately preserves upstream's synchronous worker
+	// contract: it returns the poisoned item's error after attempting the whole
+	// batch. The long-running worker records that error and keeps ticking; the
+	// isolation guarantee is that B still reaches its terminal state below.
+	if err := host.StepRuntimeOperationWorker(t.Context(), false); err == nil {
+		t.Fatal("StepRuntimeOperationWorker() = nil, want poison item error after isolated batch")
 	}
 	assertBatchOperationStatus(t, store, operationA.OperationID, storesqlite.RuntimeOperationStatusFailed)
 	assertBatchOperationStatus(t, store, operationB.OperationID, storesqlite.RuntimeOperationStatusCompleted)
@@ -139,6 +143,21 @@ func TestEditRetryWorkerHungProviderDoesNotBlockHealthyProviderOrControlOperatio
 	case <-runtime.hungReadReturned:
 	case <-time.After(time.Second):
 		t.Fatal("hung edit-retry provider did not release after returning")
+	}
+	// The provider-return barrier is deliberately inside ReadEffectiveHistory.
+	// A deadline may leave the durable lease for ordinary expiry/recovery, but
+	// the executor must finish its goroutine (and release its in-process
+	// reservation) before this fixture closes SQLite below.
+	deadline := time.After(time.Second)
+	for {
+		if host.RuntimeOperationWorkerSummary().ItemFailures > 0 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("hung edit-retry attempt did not settle after provider returned")
+		case <-time.After(10 * time.Millisecond):
+		}
 	}
 }
 
