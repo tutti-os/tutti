@@ -438,7 +438,7 @@ func (s *Service) prepareRuntimeWithModelEndpoint(
 	gatewayRegistered := false
 	if agentprovider.ModelPlanUsesResponsesToChatGateway(provider) && modelEndpointUsesOpenAIProtocol(planEndpoint) {
 		if s.ModelGateway == nil {
-			return preparedRuntime{}, errors.New("codex model-plan gateway is unavailable")
+			return preparedRuntime{}, fmt.Errorf("model-plan gateway is unavailable for provider %q", provider)
 		}
 		models := make([]string, 0, len(planEndpoint.Models)+1)
 		for _, model := range planEndpoint.Models {
@@ -460,7 +460,7 @@ func (s *Service) prepareRuntimeWithModelEndpoint(
 			Models:         models,
 		})
 		if err != nil {
-			return preparedRuntime{}, fmt.Errorf("register Codex model gateway route: %w", err)
+			return preparedRuntime{}, fmt.Errorf("register model-plan gateway route for provider %q: %w", provider, err)
 		}
 		endpointCopy := *planEndpoint
 		endpointCopy.BaseURL = clientEndpoint.BaseURL

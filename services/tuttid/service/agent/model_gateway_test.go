@@ -131,6 +131,34 @@ func TestPrepareRuntimeTuttiAgentGatewayUsesResponsesEndpoint(t *testing.T) {
 	}
 }
 
+func TestPrepareRuntimeTuttiAgentGatewayReportsProviderNeutralFailures(t *testing.T) {
+	t.Parallel()
+
+	endpoint := &runtimeprep.ModelEndpointConfig{
+		Protocol: "openai",
+		BaseURL:  "https://upstream.example/v1",
+		APIKey:   "sk-upstream-secret",
+		Model:    "model-a",
+	}
+	input := CreateSessionInput{AgentSessionID: "session", Provider: "tutti-agent"}
+	withoutGateway := &Service{RuntimePreparer: fakeRuntimePreparer{}}
+	if _, err := withoutGateway.prepareRuntimeWithModelEndpoint(
+		context.Background(), "workspace", "/repo", input, endpoint,
+	); err == nil || err.Error() != `model-plan gateway is unavailable for provider "tutti-agent"` {
+		t.Fatalf("missing gateway error = %v", err)
+	}
+
+	registerFailure := &Service{
+		RuntimePreparer: fakeRuntimePreparer{},
+		ModelGateway:    fakeModelGateway{err: errors.New("register failed")},
+	}
+	if _, err := registerFailure.prepareRuntimeWithModelEndpoint(
+		context.Background(), "workspace", "/repo", input, endpoint,
+	); err == nil || err.Error() != `register model-plan gateway route for provider "tutti-agent": register failed` {
+		t.Fatalf("register gateway error = %v", err)
+	}
+}
+
 func TestPrepareRuntimeOpenCodeKeepsDirectModelPlanEndpoint(t *testing.T) {
 	t.Parallel()
 

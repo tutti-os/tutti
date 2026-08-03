@@ -24,14 +24,15 @@ configuration.
   reference source; Desktop no longer calls its write routes.
 - `packages/agent/daemon/providerregistry` declares whether a provider runtime
   accepts a model-plan endpoint, which protocol it consumes, and whether it
-  requires the Codex Responses-to-Chat gateway adapter.
+  requires the Responses-to-Chat gateway adapter.
 - `packages/agent/runtimeprep` contains the provider-specific endpoint
-  adapters. Codex receives a session-scoped Responses provider configuration
-  pointed at the daemon's loopback Model Gateway; Claude Code receives its
-  supported environment contract; OpenCode receives a session-scoped
-  `opencode.json` provider block via `OPENCODE_CONFIG` (credential travels only
-  as `TUTTI_MODEL_PLAN_API_KEY` with an `{env:…}` reference in the file).
-- `services/tuttid/service/modelgateway` owns the Codex-only local
+  adapters. Codex and Tutti Agent receive session-scoped Responses provider
+  configurations pointed at the daemon's loopback Model Gateway; Claude Code
+  receives its supported environment contract; OpenCode receives a
+  session-scoped `opencode.json` provider block via `OPENCODE_CONFIG`
+  (credential travels only as `TUTTI_MODEL_PLAN_API_KEY` with an `{env:…}`
+  reference in the file).
+- `services/tuttid/service/modelgateway` owns the local
   `Responses API ↔ Chat Completions API` transport adapter. It does not define
   session lifecycle, expose a public daemon API, or act as a general
   multi-provider protocol IR.
@@ -59,8 +60,8 @@ resolves protocols through the catalog instead of provider-identity switches.
 3. Before a new session starts, tuttid resolves that WorkspaceAgent and
    validates its requested model against the Plan catalog.
 4. Runtime preparation injects the endpoint and credential only into the
-   session-scoped provider environment/configuration. Codex receives a
-   temporary gateway token instead of the upstream Plan credential.
+   session-scoped provider environment/configuration. Codex and Tutti Agent
+   receive a temporary gateway token instead of the upstream Plan credential.
    Credentials are never returned by the API or written into generated
    instructions and manifests.
 
@@ -84,15 +85,17 @@ Model tab and Custom Agents under Agent. Historical `lab.modelPlans` and
 
 - Plan credentials are AES-256-GCM encrypted at rest in `model_plans`
   (`api_key_ciphertext`), sharing the managed-credential key derivation.
-- API responses expose only `hasApiKey`. For Codex, the upstream credential
-  remains in daemon memory and only a random 256-bit gateway token enters
-  `TUTTI_MODEL_PLAN_API_KEY`. Other supported runtimes continue to receive
-  their provider-specific session environment, and the legacy workspace-app
-  grant broker remains a separate credential egress.
+- API responses expose only `hasApiKey`. For Responses-gateway consumers
+  (currently Codex and Tutti Agent), the upstream credential remains in daemon
+  memory and only a random 256-bit gateway token enters
+  `TUTTI_MODEL_PLAN_API_KEY`. Other supported runtimes continue to receive their
+  provider-specific session environment, and the legacy workspace-app grant
+  broker remains a separate credential egress.
 - Credentials must never appear in logs, events, timeline payloads, detection
-  results, or generated provider instructions. `runtimeprep` writes the Codex
-  provider table with `env_key`, never the key value. The gateway also redacts
-  the exact upstream credential from forwarded error bodies.
+  results, or generated provider instructions. `runtimeprep` writes the
+  Codex-compatible provider table with `env_key`, never the key value. The
+  gateway also redacts the exact upstream credential from forwarded error
+  bodies.
 
 ## Staged Detection
 
@@ -160,13 +163,14 @@ Rules:
   credential source with a structured log, never a broken session.
 - A plan-bound session validates requested models against the plan's model
   list (`validateModelAgainstPlan`), not provider catalogs.
-- Codex routes are in-memory runtime resources keyed by workspace/session.
+- Responses-gateway routes are in-memory runtime resources keyed by
+  workspace/session.
   Create failure, deletion, legacy cleanup paths, and resume replacement revoke
   the previous token. Resume resolves the immutable Model Plan revision from
   the session runtime snapshot before registering the replacement route.
-- The Codex gateway is bound to `127.0.0.1:0` on its own listener and serves
-  only authenticated `POST /v1/responses`. It is not mounted on the public
-  tuttid HTTP router, so no daemon OpenAPI change is involved.
+- The Responses-to-Chat gateway is bound to `127.0.0.1:0` on its own listener
+  and serves only authenticated `POST /v1/responses`. It is not mounted on the
+  public tuttid HTTP router, so no daemon OpenAPI change is involved.
 - Gateway v1 supports messages, text/image input, function calls and outputs,
   function tools (including Codex namespace containers, with collision-safe
   Chat names restored on Responses output), reasoning effort/content
