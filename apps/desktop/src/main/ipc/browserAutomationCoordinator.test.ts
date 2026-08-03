@@ -158,6 +158,7 @@ test("Agent new_page creates and reveals a full User Browser page", async () => 
   assert.equal(workspaceHost.requests[0]?.surfaceRole, "user");
   assert.equal(workspaceHost.requests[0]?.agentSessionId, "session-a");
   assert.equal(workspaceHost.requests[0]?.agentTurnId, "turn-a");
+  assert.equal(workspaceHost.requests[0]?.reveal, true);
   harness.coordinator.dispose();
 });
 
@@ -253,6 +254,10 @@ test("Browser page creation without a Turn keeps activating its workspace host",
 
   assert.equal(nodeId, "user-page");
   assert.deepEqual(harness.activatedHostIds, [4, 4]);
+  assert.deepEqual(
+    workspaceHost.requests.map((request) => request.reveal),
+    [true, true]
+  );
   harness.coordinator.dispose();
 });
 
@@ -323,6 +328,10 @@ test("Agent new_page activates the Browser host only once per turn", async () =>
   });
 
   assert.equal(workspaceHost.requests.length, 4);
+  assert.deepEqual(
+    workspaceHost.requests.map((request) => request.reveal),
+    [true, false, false, true]
+  );
   assert.deepEqual(harness.activatedHostIds, [4, 4]);
   harness.coordinator.dispose();
 });

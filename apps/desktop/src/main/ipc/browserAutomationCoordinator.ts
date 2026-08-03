@@ -11,7 +11,7 @@ import {
 } from "../../shared/contracts/ipc.ts";
 
 const requestTimeoutMs = 10_000;
-const maximumActivatedAgentTurns = 256;
+const maximumRevealedAgentTurns = 256;
 
 interface PendingRequest {
   reject(error: Error): void;
@@ -56,7 +56,7 @@ export function createDesktopBrowserAutomationCoordinator(
   const readyHostIds = new Map<string, Set<number>>();
   const readyWaiters = new Map<string, Set<() => void>>();
   const targetOwnerIds = new Map<string, number>();
-  const activatedAgentTurns = new Map<string, true>();
+  const revealedAgentTurns = new Map<string, true>();
 
   const handleHostReady = (
     event: IpcMainEvent,
@@ -109,7 +109,7 @@ export function createDesktopBrowserAutomationCoordinator(
     }
     if (
       request.request.action === "create" &&
-      shouldActivateBrowserHost(request.request, activatedAgentTurns)
+      request.request.reveal !== false
     ) {
       runtime.activateHost(event.sender);
     }
@@ -252,10 +252,10 @@ export function createDesktopBrowserAutomationCoordinator(
       }
       readyWaiters.clear();
       targetOwnerIds.clear();
-      activatedAgentTurns.clear();
+      revealedAgentTurns.clear();
     },
     requestTarget(input) {
-      return send({
+      const request = {
         action: "create",
         agentSessionId: input.agentSessionId,
         agentTurnId: input.agentTurnId,
@@ -263,6 +263,10 @@ export function createDesktopBrowserAutomationCoordinator(
         surfaceRole: "user",
         url: input.url ?? null,
         workspaceId: input.workspaceId
+      } satisfies Omit<DesktopBrowserAutomationRequest, "requestId">;
+      return send({
+        ...request,
+        reveal: shouldRevealBrowserHost(request, revealedAgentTurns)
       });
     },
     async selectTarget(target) {
@@ -279,9 +283,9 @@ export function createDesktopBrowserAutomationCoordinator(
   };
 }
 
-function shouldActivateBrowserHost(
+function shouldRevealBrowserHost(
   request: Omit<DesktopBrowserAutomationRequest, "requestId">,
-  activatedAgentTurns: Map<string, true>
+  revealedAgentTurns: Map<string, true>
 ): boolean {
   const agentSessionId = request.agentSessionId?.trim() ?? "";
   const agentTurnId = request.agentTurnId?.trim() ?? "";
@@ -290,14 +294,14 @@ function shouldActivateBrowserHost(
   }
 
   const key = `${request.workspaceId}\u0000${agentSessionId}\u0000${agentTurnId}`;
-  if (activatedAgentTurns.has(key)) {
+  if (revealedAgentTurns.has(key)) {
     return false;
   }
-  activatedAgentTurns.set(key, true);
-  if (activatedAgentTurns.size > maximumActivatedAgentTurns) {
-    const oldestKey = activatedAgentTurns.keys().next().value;
+  revealedAgentTurns.set(key, true);
+  if (revealedAgentTurns.size > maximumRevealedAgentTurns) {
+    const oldestKey = revealedAgentTurns.keys().next().value;
     if (oldestKey !== undefined) {
-      activatedAgentTurns.delete(oldestKey);
+      revealedAgentTurns.delete(oldestKey);
     }
   }
   return true;

@@ -325,7 +325,7 @@ test("workspace app Browser features do not inherit Chrome Cookie import", () =>
   assert.equal(workspaceAppApi.cancelChromeCookieImport, undefined);
 });
 
-test("workspace browser service focuses the full Browser for user automation", async () => {
+test("workspace browser service reveals only the requested user automation page", async () => {
   let handleRequest = (_request: DesktopBrowserAutomationRequest): void =>
     undefined;
   const responses: DesktopBrowserAutomationResponse[] = [];
@@ -365,6 +365,7 @@ test("workspace browser service focuses the full Browser for user automation", a
     action: "create",
     agentSessionId: "agent-1",
     nodeId: initial.tabs[0]!.nodeId,
+    reveal: true,
     requestId: "create-1",
     surfaceRole: "user",
     url: "https://created.example/",
@@ -388,6 +389,27 @@ test("workspace browser service focuses the full Browser for user automation", a
   );
 
   handleRequest({
+    action: "create",
+    agentSessionId: "agent-1",
+    nodeId: createdNodeId,
+    reveal: false,
+    requestId: "create-2",
+    surfaceRole: "user",
+    url: "https://background.example/",
+    workspaceId: "workspace-1"
+  });
+  await Promise.resolve();
+  await Promise.resolve();
+  const backgroundNodeId = responses[1]?.ok ? responses[1].nodeId : null;
+  assert.ok(backgroundNodeId);
+  assert.equal(
+    feature.tabsStore
+      .getSurfaceState(surfaceNodeId)
+      ?.tabs.find((tab) => tab.nodeId === backgroundNodeId)?.defaultUrl,
+    "https://background.example/"
+  );
+
+  handleRequest({
     action: "close",
     agentSessionId: "agent-1",
     nodeId: createdNodeId,
@@ -398,11 +420,11 @@ test("workspace browser service focuses the full Browser for user automation", a
   });
   assert.equal(
     feature.tabsStore.getSurfaceState(surfaceNodeId)?.tabs.length,
-    1
+    2
   );
   assert.deepEqual(
     responses.map((response) => response.ok),
-    [true, true]
+    [true, true, true]
   );
   assert.deepEqual(focusRequests, [
     {

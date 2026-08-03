@@ -228,12 +228,13 @@ and focuses the preferred Browser node, or launches one when none exists, then
 returns the exact child tab id. If no User Browser host is ready, Main opens the
 workspace window explicitly, independent of the primary workspace UI mode, and
 waits for its verified readiness before sending the create request. Main then
-reveals and focuses that exact owning workspace window only after page creation
-succeeds. Agent-issued requests also carry the daemon's persisted active Turn
-identity as presentation context. Main reveals the owning workspace only for
-the first successful page creation in each workspace, Agent session, and Turn;
-later creations in that Turn still create and select their tabs without
-repeatedly taking foreground focus. The activation cache is bounded, and
+reveals and focuses that exact owning workspace window for the first page-create
+request. Agent-issued requests also carry the daemon's persisted active Turn
+identity as presentation context. Main marks only the first page-create request
+in each workspace, Agent session, and Turn for reveal; both workspace and
+standalone Agent renderers obey that presentation flag before switching to the
+Browser surface. Later creations in that Turn still create and select their tabs
+without repeatedly taking foreground focus. The reveal cache is bounded, and
 requests without an exact Turn identity retain the previous reveal behavior.
 The Agent session identity still owns the
 automation lease and request guard; it does not choose a narrow Agent UI

@@ -442,25 +442,31 @@ delimited by ---`, and the composer skill picker may show partial or
   repeated foreground jumps during the same response.
 - Quick checks:
   Confirm the calls carry the same Agent session and persisted active Turn ID.
-  In Desktop, verify every create request still reaches the same workspace
-  Browser host and that only window activation, rather than page creation, is
-  repeated.
+  Separately count `Browser automation host activated` logs and workspace
+  Browser surface-focus requests. One host-activation log with several visible
+  Browser switches means the renderer reveal path is repeating even though
+  Main's window activation is already deduplicated.
 - Root cause:
-  Desktop Main activated the owning host after every successful create response.
-  The Browser automation request carried Agent session ownership but no Turn
-  presentation identity, so Main could not distinguish repeated opens in one
-  Turn from the first open in a later Turn.
+  There are two foreground effects: Desktop Main activates the owning Electron
+  window, while the renderer focuses or opens the Browser surface before
+  creating a tab. Deduplicating only Main's post-create activation still lets
+  every renderer create request switch the workspace or standalone Agent panel
+  back to Browser.
 - Fix:
   Resolve the existing persisted active Turn in the daemon Browser CLI adapter,
-  carry it opaquely through BrowserNode automation, and keep the focus policy in
-  Desktop Main. Activate only the first successful create for each workspace,
-  Agent session, and Turn while still sending every create request to the
-  renderer. Bound the remembered activation keys and preserve the previous
-  reveal behavior when no exact Turn identity is available.
+  carry it opaquely through BrowserNode automation, and keep the reveal policy
+  in Desktop Main. Mark only the first create request for each workspace, Agent
+  session, and Turn as revealable. The renderer must still create and select
+  every requested tab, but it focuses the workspace Browser surface or opens the
+  standalone Browser panel only when that flag is set. Bound the remembered
+  reveal keys and preserve the previous behavior when no exact Turn identity is
+  available.
 - Validation:
   Issue three concurrent create requests for one Turn and assert that all three
-  pages are requested while the host activates once. Then issue a create for a
-  different Turn and assert it activates again. Also cover turnless/manual
+  pages are requested with reveal flags `true`, `false`, `false` while the host
+  activates once. Assert the workspace and standalone renderer handlers do not
+  focus/open their Browser surface for `reveal=false`. Then issue a create for a
+  different Turn and assert it reveals again. Also cover turnless/manual
   requests, BrowserNode transport parsing, and daemon active-Turn propagation.
 - References:
   [browserAutomationCoordinator.ts](../../../apps/desktop/src/main/ipc/browserAutomationCoordinator.ts)
