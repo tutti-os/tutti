@@ -58,6 +58,7 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 		agentInfo:        acpAgentInfo(initializeResult),
 		promptImage:      standardACPProviderPromptImageSupported(a.config.provider, initializeResult),
 		sessionClose:     standardACPSessionCloseSupported(initializeResult),
+		resumeMethod:     acpResumeMethod(initializeResult),
 		acpLiveState:     standardACPInitialLiveState(),
 		pendingApprovals: make(map[string]*pendingACPApproval),
 		permissionModeID: strings.TrimSpace(session.PermissionModeID),
@@ -219,6 +220,7 @@ func (a *standardACPAdapter) Resume(ctx context.Context, session Session) error 
 		agentInfo:         acpAgentInfo(initializeResult),
 		promptImage:       standardACPProviderPromptImageSupported(a.config.provider, initializeResult),
 		sessionClose:      standardACPSessionCloseSupported(initializeResult),
+		resumeMethod:      acpResumeMethod(initializeResult),
 		acpLiveState:      standardACPInitialLiveState(),
 		pendingApprovals:  make(map[string]*pendingACPApproval),
 		permissionModeID:  strings.TrimSpace(session.PermissionModeID),
@@ -229,7 +231,7 @@ func (a *standardACPAdapter) Resume(ctx context.Context, session Session) error 
 	}
 	a.storeSession(session.AgentSessionID, acpSession)
 
-	method := acpResumeMethod(initializeResult)
+	method := acpSession.resumeMethod
 	if method == "" {
 		return unsupportedACPResumeError(session)
 	}
@@ -270,6 +272,57 @@ func (*standardACPAdapter) CanResume(session Session) bool {
 func (a *standardACPAdapter) HasLiveSession(session Session) bool {
 	acpSession := a.getSession(session.AgentSessionID)
 	return acpSession != nil && acpSession.client != nil
+}
+
+func (a *standardACPAdapter) CanReleaseLiveSession(session Session) bool {
+	if a == nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	acpSession := a.sessions[strings.TrimSpace(session.AgentSessionID)]
+	// Let the live-session probe classify an already released session as not
+	// live. A live process is releasable only when its handshake proved that
+	// the provider session can be restored by a replacement process.
+	return acpSession == nil || acpSession.client == nil || strings.TrimSpace(acpSession.resumeMethod) != ""
+}
+
+func (a *standardACPAdapter) ReleaseLiveSession(_ context.Context, session Session) error {
+	if a == nil || a.transport == nil {
+		return nil
+	}
+	agentSessionID := strings.TrimSpace(session.AgentSessionID)
+	unlockLifecycle := a.lockSessionLifecycle(agentSessionID)
+	defer unlockLifecycle()
+
+	a.mu.Lock()
+	acpSession := a.sessions[agentSessionID]
+	if acpSession == nil || acpSession.client == nil {
+		a.mu.Unlock()
+		return nil
+	}
+	if strings.TrimSpace(acpSession.resumeMethod) == "" {
+		a.mu.Unlock()
+		return errors.New("ACP live session cannot be released without resume support")
+	}
+	for _, approval := range acpSession.pendingApprovals {
+		state := approval.disposition()
+		if state == pendingInteractiveRequestStatePending || state == pendingInteractiveRequestStateResolving {
+			a.mu.Unlock()
+			return ErrLiveSessionBusy
+		}
+	}
+	delete(a.sessions, agentSessionID)
+	a.mu.Unlock()
+
+	// Do not send session/close here: the durable provider session id must stay
+	// valid so the next Exec can start a new CLI process and load/resume it.
+	if err := acpSession.client.Close(); err != nil {
+		a.logACPCloseDiagnostics("live_release.transport_close.failed", session, acpSession, err)
+		return err
+	}
+	a.logACPCloseDiagnostics("live_release.succeeded", session, acpSession, nil)
+	return nil
 }
 
 func (a *standardACPAdapter) Close(ctx context.Context, session Session) error {

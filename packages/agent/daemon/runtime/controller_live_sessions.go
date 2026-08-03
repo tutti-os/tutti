@@ -85,7 +85,7 @@ func (c *Controller) releaseIdleLiveSession(
 	idleAfterMS int64,
 ) ReleaseIdleLiveSessionsResult {
 	var result ReleaseIdleLiveSessionsResult
-	_, probe, ok := liveSessionReleaseAdapter(adapter)
+	_, probe, ok := liveSessionReleaseAdapter(adapter, session)
 	if !ok {
 		result.SkippedUnsupported = 1
 		return result
@@ -115,7 +115,7 @@ func (c *Controller) releaseIdleLiveSession(
 		result.SkippedNotLive = 1
 		return result
 	}
-	releaseAdapter, probe, ok := liveSessionReleaseAdapter(adapter)
+	releaseAdapter, probe, ok := liveSessionReleaseAdapter(adapter, refreshed)
 	if !ok {
 		result.SkippedUnsupported = 1
 		return result
@@ -153,10 +153,16 @@ func (c *Controller) releaseIdleLiveSession(
 	return result
 }
 
-func liveSessionReleaseAdapter(adapter Adapter) (LiveSessionReleaseAdapter, LiveSessionProbeAdapter, bool) {
+func liveSessionReleaseAdapter(adapter Adapter, session Session) (LiveSessionReleaseAdapter, LiveSessionProbeAdapter, bool) {
 	releaseAdapter, releaseOK := adapter.(LiveSessionReleaseAdapter)
 	probe, probeOK := adapter.(LiveSessionProbeAdapter)
-	return releaseAdapter, probe, releaseOK && probeOK
+	if !releaseOK || !probeOK {
+		return releaseAdapter, probe, false
+	}
+	if capability, ok := adapter.(LiveSessionReleaseCapabilityAdapter); ok && !capability.CanReleaseLiveSession(session) {
+		return releaseAdapter, probe, false
+	}
+	return releaseAdapter, probe, true
 }
 
 // CloseAllLiveSessions force-terminates every live provider process across
