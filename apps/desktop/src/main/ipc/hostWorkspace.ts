@@ -36,8 +36,12 @@ export function registerHostWorkspaceIpc(
     (event, input: DesktopHostReplaceWorkspaceWindowInput) =>
       deps.workspaceLaunch.replaceWorkspaceWindow(
         resolveOwnerWindowFromEvent(event),
-        normalizeWorkspaceID(input.workspaceId),
-        normalizeWindowKind(input.mode)
+        {
+          clientTS: normalizeClientTS(input.clientTs),
+          mode: normalizeWorkspaceUiMode(input.mode),
+          previousMode: normalizeWorkspaceUiMode(input.previousMode),
+          workspaceID: normalizeWorkspaceID(input.workspaceId)
+        }
       )
   );
   registerDesktopIpcHandler(
@@ -55,14 +59,21 @@ function normalizeWorkspaceID(workspaceID: string): string {
   return normalizedWorkspaceID;
 }
 
-function normalizeWindowKind(mode: string): "agent" | "workspace" {
+function normalizeWorkspaceUiMode(mode: string): "agent" | "os" {
   if (mode === "agent") {
     return "agent";
   }
   if (mode === "os") {
-    return "workspace";
+    return "os";
   }
   throw new Error(
     "mode must be agent or os when replacing the workspace window"
   );
+}
+
+function normalizeClientTS(clientTS: number): number {
+  if (!Number.isFinite(clientTS) || clientTS < 0) {
+    throw new Error("clientTs must be a non-negative finite number");
+  }
+  return clientTS;
 }

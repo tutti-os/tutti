@@ -50,7 +50,6 @@ import { SettingsOpenedReporter } from "../../../analytics/reporters/settings-op
 import { SettingsSectionSwitchedReporter } from "../../../analytics/reporters/settings-section-switched/settingsSectionSwitchedReporter.ts";
 import { SettingsLanguageChangedReporter } from "../../../analytics/reporters/settings-language-changed/settingsLanguageChangedReporter.ts";
 import { SettingsThemeChangedReporter } from "../../../analytics/reporters/settings-theme-changed/settingsThemeChangedReporter.ts";
-import { SettingsWorkspaceUiModeChangedReporter } from "../../../analytics/reporters/settings-workspace-ui-mode-changed/settingsWorkspaceUiModeChangedReporter.ts";
 import {
   IReporterService,
   type IReporterService as ReporterService
@@ -81,7 +80,9 @@ export interface WorkspaceSettingsServiceDependencies {
   client: DesktopWorkspaceSettingsClient;
   onAgentTargetsChanged?: () => void | Promise<void>;
   replaceWorkspaceWindow?: (input: {
+    clientTs: number;
     mode: "agent" | "os";
+    previousMode: "agent" | "os";
     workspaceId: string;
   }) => Promise<void>;
 }
@@ -546,14 +547,11 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
 
     try {
       await this.desktopPreferences.setFeatureFlags(nextFlags);
-      await this.reportSettingsWorkspaceUiModeChanged({
-        action: mode === "agent" ? "enabled" : "disabled",
-        previousMode,
-        nextMode: mode
-      });
       if (this.store.workspaceID) {
         await this.dependencies.replaceWorkspaceWindow?.({
+          clientTs: (this.reporterNow ?? Date.now)(),
           mode,
+          previousMode,
           workspaceId: this.store.workspaceID
         });
       }
@@ -957,21 +955,6 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
 
     void new SettingsThemeChangedReporter(input, {
-      reporterService: this.reporterService,
-      now: this.reporterNow
-    }).report();
-  }
-
-  private async reportSettingsWorkspaceUiModeChanged(input: {
-    action: "enabled" | "disabled";
-    previousMode: DesktopWorkspaceUiMode;
-    nextMode: DesktopWorkspaceUiMode;
-  }): Promise<void> {
-    if (!this.reporterService) {
-      return;
-    }
-
-    await new SettingsWorkspaceUiModeChangedReporter(input, {
       reporterService: this.reporterService,
       now: this.reporterNow
     }).report();

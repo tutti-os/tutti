@@ -145,13 +145,21 @@ workspace UI mode has been persisted. The event carries `previous_mode`,
 Agent to OS. Selecting the already persisted mode or failing to persist the
 preference does not emit an event.
 
-The event records the durable preference change before the current workspace
-window is replaced. The renderer awaits the local analytics acceptance before
-requesting replacement so destroying the old window cannot cancel an in-flight
-submission. If window replacement subsequently fails, the event is still valid
-because the saved preference will apply when a workspace window is next opened.
-This event measures explicit mode changes; the renderer-owned common `mode`
-parameter continues to describe the window that emitted any given event.
+The renderer records the durable preference change and passes the transition
+metadata in the same IPC request that replaces the current workspace window.
+The durable main process starts the analytics transport after the replacement
+window is ready and before destroying the previous renderer. This lets the new
+window's debug subscriber observe the event while ensuring old-window teardown
+cannot discard the handoff. The transport remains best-effort and is not
+awaited by the mode-switch product flow: a delayed or rejected analytics
+request must never delay replacement or turn a successful preference write
+into a save failure. If replacement fails before a new window is ready, main
+still reports the already-persisted change before returning the failure because
+the saved preference will apply when a workspace window is next opened. This
+event measures explicit mode changes through `previous_mode` and `next_mode`.
+It does not set the renderer-owned common `mode` field: after an earlier
+replacement failure, the durable preference and the actual native owner-window
+route can temporarily differ, and the main process must not guess that route.
 
 ## API Contract
 

@@ -155,7 +155,9 @@ export interface DesktopHostWorkspaceApi {
     version?: string | null;
   }): Promise<void>;
   replaceWorkspaceWindow(input: {
+    clientTs: number;
     mode: "agent" | "os";
+    previousMode: "agent" | "os";
     workspaceId: string;
   }): Promise<void>;
   showWorkspace(workspaceID: string): Promise<void>;

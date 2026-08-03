@@ -316,9 +316,14 @@ test("WorkspaceSettingsService writes changed preferences", async () => {
   assert.deepEqual(writes, ["zh-CN", "left", "claude-code", "general", "dark"]);
 });
 
-test("WorkspaceSettingsService enables Agent mode, preserves other flags, and tracks the persisted change", async () => {
+test("WorkspaceSettingsService enables Agent mode, preserves other flags, and hands off persisted analytics", async () => {
   const writes: Array<Record<string, boolean>> = [];
-  const replacements: Array<{ mode: string; workspaceId: string }> = [];
+  const replacements: Array<{
+    clientTs: number;
+    mode: string;
+    previousMode: string;
+    workspaceId: string;
+  }> = [];
   const reporterCalls: ReporterEventInput[][] = [];
   const effects: string[] = [];
   const service = new WorkspaceSettingsService(
@@ -362,27 +367,25 @@ test("WorkspaceSettingsService enables Agent mode, preserves other flags, and tr
     }
   ]);
   assert.deepEqual(replacements, [
-    { mode: "agent", workspaceId: "workspace-1" }
+    {
+      clientTs: 1749124800000,
+      mode: "agent",
+      previousMode: "os",
+      workspaceId: "workspace-1"
+    }
   ]);
-  assert.deepEqual(reporterCalls, [
-    [
-      {
-        clientTS: 1749124800000,
-        name: "settings.workspace_ui_mode_changed",
-        params: {
-          action: "enabled",
-          previous_mode: "os",
-          next_mode: "agent"
-        }
-      }
-    ]
-  ]);
-  assert.deepEqual(effects, ["save", "track", "replace"]);
+  assert.deepEqual(reporterCalls, []);
+  assert.deepEqual(effects, ["save", "replace"]);
 });
 
-test("WorkspaceSettingsService disables Agent mode and tracks the reverse direction", async () => {
+test("WorkspaceSettingsService hands off the reverse Agent-to-OS transition", async () => {
   const writes: Array<Record<string, boolean>> = [];
-  const replacements: Array<{ mode: string; workspaceId: string }> = [];
+  const replacements: Array<{
+    clientTs: number;
+    mode: string;
+    previousMode: string;
+    workspaceId: string;
+  }> = [];
   const reporterCalls: ReporterEventInput[][] = [];
   const service = new WorkspaceSettingsService(
     {
@@ -411,20 +414,15 @@ test("WorkspaceSettingsService disables Agent mode and tracks the reverse direct
   await service.changeWorkspaceUiMode("os");
 
   assert.deepEqual(writes, [{ "workspace.standaloneAgentMode": false }]);
-  assert.deepEqual(replacements, [{ mode: "os", workspaceId: "workspace-1" }]);
-  assert.deepEqual(reporterCalls, [
-    [
-      {
-        clientTS: 1749124800000,
-        name: "settings.workspace_ui_mode_changed",
-        params: {
-          action: "disabled",
-          previous_mode: "agent",
-          next_mode: "os"
-        }
-      }
-    ]
+  assert.deepEqual(replacements, [
+    {
+      clientTs: 1749124800000,
+      mode: "os",
+      previousMode: "agent",
+      workspaceId: "workspace-1"
+    }
   ]);
+  assert.deepEqual(reporterCalls, []);
 });
 
 test("WorkspaceSettingsService does not persist, replace, or track an already selected UI mode", async () => {
@@ -524,13 +522,15 @@ test("WorkspaceSettingsService does not replace or track when UI mode persistenc
   ]);
 });
 
-test("WorkspaceSettingsService tracks a persisted UI mode change even when window replacement fails", async () => {
+test("WorkspaceSettingsService hands off a persisted UI mode change even when replacement fails", async () => {
+  const replacements: unknown[] = [];
   const reporterCalls: ReporterEventInput[][] = [];
   const notifications = createNotificationRecorder();
   const service = new WorkspaceSettingsService(
     {
       client: createWorkspaceSettingsClient({}),
-      replaceWorkspaceWindow: async () => {
+      replaceWorkspaceWindow: async (input) => {
+        replacements.push(input);
         throw new Error("replace failed");
       }
     },
@@ -547,19 +547,15 @@ test("WorkspaceSettingsService tracks a persisted UI mode change even when windo
   reporterCalls.length = 0;
   await service.changeWorkspaceUiMode("agent");
 
-  assert.deepEqual(reporterCalls, [
-    [
-      {
-        clientTS: 1749124800000,
-        name: "settings.workspace_ui_mode_changed",
-        params: {
-          action: "enabled",
-          previous_mode: "os",
-          next_mode: "agent"
-        }
-      }
-    ]
+  assert.deepEqual(replacements, [
+    {
+      clientTs: 1749124800000,
+      mode: "agent",
+      previousMode: "os",
+      workspaceId: "workspace-1"
+    }
   ]);
+  assert.deepEqual(reporterCalls, []);
   assert.deepEqual(notifications.items, [
     "We couldn't update the startup interface right now."
   ]);
