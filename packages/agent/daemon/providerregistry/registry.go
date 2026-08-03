@@ -408,6 +408,16 @@ func Validate(descriptor ProviderDescriptor) error {
 	default:
 		return fmt.Errorf("provider %q capability catalog kind %q is unsupported", providerID, descriptor.ComposerProfile.CapabilityCatalog.Kind)
 	}
+	switch descriptor.ComposerProfile.PluginCatalog.Kind {
+	case "":
+	case PluginCatalogKindCodexAppServer:
+		if descriptor.Runtime.Kind != RuntimeKindCodexAppServer ||
+			descriptor.ComposerProfile.CapabilityCatalog.Kind != CapabilityCatalogKindCodexAppServer {
+			return fmt.Errorf("provider %q Codex plugin catalog requires the Codex App Server runtime and capability catalog", providerID)
+		}
+	default:
+		return fmt.Errorf("provider %q plugin catalog kind %q is unsupported", providerID, descriptor.ComposerProfile.PluginCatalog.Kind)
+	}
 	switch descriptor.ComposerProfile.Skills.Kind {
 	case "":
 		if descriptor.ComposerProfile.Skills.Invocation != "" {

@@ -5,6 +5,7 @@ import type {
   AgentGUIComposerSettingsVM,
   AgentGUIProviderSkillOption
 } from "../model/agentGuiNodeTypes";
+import type { AgentHostComposerCapability } from "../../../host/agentHostApi";
 import type { AgentRichTextEditorHandle } from "../agentRichText/AgentRichTextEditor";
 import type { AgentCapabilityTokenOption } from "../agentRichText/agentCapabilityTokenExtension";
 import type {
@@ -21,7 +22,6 @@ import {
   skillTriggerForPrefix
 } from "../model/agentSkillOptions";
 import {
-  filterProviderSkillsForTrigger,
   getAgentComposerTriggerQueryMatch,
   getPromptStartSlashCommandQuery
 } from "../model/agentComposerTriggerQueries";
@@ -35,6 +35,12 @@ import {
   slashCommandLabelForDisplay
 } from "./slashCommandDisplay";
 import type { AgentSlashPaletteEntry } from "../AgentSlashCommandPalette";
+import {
+  shouldHideSkillPresentationEntry,
+  skillPresentationEntries
+} from "./skillPresentationEntries";
+
+const EMPTY_HIDDEN_SLASH_SKILL_ENTRY_IDS = new Set<string>();
 
 interface UseComposerPaletteCatalogInput {
   provider: string;
@@ -43,6 +49,8 @@ interface UseComposerPaletteCatalogInput {
   paletteDraftPrompt: string;
   availableCommands: readonly AgentSessionCommand[];
   availableSkills: readonly AgentGUIProviderSkillOption[];
+  hiddenSlashSkillEntryIds?: ReadonlySet<string>;
+  nativeCapabilities?: readonly AgentHostComposerCapability[];
   hasCompactableContext: boolean;
   compactSupported: boolean | null;
   composerSettings: AgentGUIComposerSettingsVM;
@@ -66,6 +74,8 @@ export function useComposerPaletteCatalog({
   paletteDraftPrompt,
   availableCommands,
   availableSkills,
+  hiddenSlashSkillEntryIds = EMPTY_HIDDEN_SLASH_SKILL_ENTRY_IDS,
+  nativeCapabilities = [],
   hasCompactableContext,
   compactSupported,
   composerSettings,
@@ -83,6 +93,10 @@ export function useComposerPaletteCatalog({
     editorHandleRef.current?.getPromptTextBeforeSelection() ?? "";
   const skillQueryDraft = promptBeforeSelection || paletteDraftPrompt;
   const skillQueryMatch = getAgentComposerTriggerQueryMatch(skillQueryDraft);
+  const availableSkillEntries = useMemo(
+    () => skillPresentationEntries(availableSkills),
+    [availableSkills]
+  );
   const resolvedSlashCommands = useMemo(
     () =>
       resolveSlashCommandsForProvider({
@@ -92,6 +106,9 @@ export function useComposerPaletteCatalog({
         hasCompactableContext,
         compactSupported,
         planSupported: composerSettings.supportsPlanMode,
+        // Native inventory is presentation-only in this PR. Existing Browser
+        // and Computer slash/token execution stays unchanged until the
+        // turn-scoped native invocation lifecycle lands independently.
         browserSupported: Boolean(composerSettings.supportsBrowser),
         computerSupported: Boolean(composerSettings.supportsComputerUse),
         tuttiSupported: capabilityMenuState?.tuttiMode?.enabled === true
@@ -119,16 +136,39 @@ export function useComposerPaletteCatalog({
         : filterSlashCommands(resolvedSlashCommands, slashQuery),
     [resolvedSlashCommands, slashQuery]
   );
+  const filteredSkillEntries = useMemo(() => {
+    if (skillQueryMatch === null) {
+      return [];
+    }
+    const normalizedQuery = skillQueryMatch.query.trim().toLowerCase();
+    return availableSkillEntries.filter((entry) => {
+      if (
+        shouldHideSkillPresentationEntry({
+          entryId: entry.entryId,
+          hiddenSlashSkillEntryIds,
+          prefix: skillQueryMatch.prefix
+        })
+      ) {
+        return false;
+      }
+      const trigger = skillTriggerForPrefix(
+        entry.skill,
+        skillQueryMatch.prefix
+      );
+      if (!normalizedQuery) {
+        return true;
+      }
+      const description = entry.skill.description?.trim().toLowerCase() ?? "";
+      return (
+        entry.skill.name.trim().toLowerCase().startsWith(normalizedQuery) ||
+        trigger.trim().toLowerCase().slice(1).startsWith(normalizedQuery) ||
+        description.includes(normalizedQuery)
+      );
+    });
+  }, [availableSkillEntries, hiddenSlashSkillEntryIds, skillQueryMatch]);
   const filteredSkills = useMemo(
-    () =>
-      skillQueryMatch === null
-        ? []
-        : filterProviderSkillsForTrigger({
-            skills: availableSkills,
-            query: skillQueryMatch.query,
-            triggerPrefix: skillQueryMatch.prefix
-          }),
-    [availableSkills, skillQueryMatch]
+    () => filteredSkillEntries.map((entry) => entry.skill),
+    [filteredSkillEntries]
   );
   const availableCapabilities = useMemo<AgentCapabilityTokenOption[]>(() => {
     if (capabilityControlsReadOnly) {
@@ -237,12 +277,40 @@ export function useComposerPaletteCatalog({
         };
         return [commandEntry];
       });
-    const skillEntries: AgentSlashPaletteEntry[] = filteredSkills.map(
-      (skill) => {
-        const trigger = skillTriggerForPrefix(skill, skillQueryMatch?.prefix);
+    const nativeCapabilityEntries: AgentSlashPaletteEntry[] =
+      slashQuery === null
+        ? []
+        : nativeCapabilitiesForSlashPresentation(
+            nativeCapabilities,
+            resolvedSlashCommands
+          )
+            // Browser and Computer already have selectable, provider-neutral
+            // capability rows. Keeping a second, disabled native row next to
+            // them makes the same command appear unavailable even though its
+            // established token and submit path still work. Sites has no
+            // legacy row, so it remains the inventory-only presentation.
+            .filter((capability) =>
+              nativeCapabilityMatchesSlashQuery(capability, slashQuery)
+            )
+            .map((capability) => ({
+              type: "nativeCapability" as const,
+              key: `native-capability:${capability.id}`,
+              label: capability.label,
+              ...(capability.description
+                ? { description: capability.description }
+                : {}),
+              // This PR deliberately limits the catalog to presentation and
+              // mapping. Turn-scoped invocation and Computer authorization
+              // have a separate lifecycle PR.
+              disabled: true as const,
+              capability
+            }));
+    const skillEntries: AgentSlashPaletteEntry[] = filteredSkillEntries.map(
+      (entry) => {
+        const skill = entry.skill;
         return {
           type: "skill",
-          key: `skill:${trigger}`,
+          key: entry.entryId,
           label: labelForProviderSkill(skill, skillQueryMatch?.prefix),
           ...(skillDescriptionForDisplay(skill.description)
             ? { description: skillDescriptionForDisplay(skill.description) }
@@ -251,14 +319,14 @@ export function useComposerPaletteCatalog({
         };
       }
     );
-    return [...commandEntries, ...skillEntries];
+    return [...commandEntries, ...nativeCapabilityEntries, ...skillEntries];
   }, [
     capabilityMenuState?.browserUse?.connectionMode,
     capabilityMenuState?.computerUse?.authorization,
     capabilityMenuState?.computerUse?.installed,
     capabilityControlsReadOnly,
     filteredCommands,
-    filteredSkills,
+    filteredSkillEntries,
     labels.browserUseCapabilityDescription,
     labels.browserUseCapabilityDescriptionAutoConnect,
     labels.browserUseCapabilityDescriptionIsolated,
@@ -291,6 +359,9 @@ export function useComposerPaletteCatalog({
     labels.slashCommandReviewDescription,
     labels.slashCommandStatusDescription,
     labels.slashCommandUsageDescription,
+    nativeCapabilities,
+    resolvedSlashCommands,
+    slashQuery,
     uiLanguage,
     skillQueryMatch?.prefix
   ]);
@@ -304,4 +375,48 @@ export function useComposerPaletteCatalog({
     slashCommandPolicy,
     promptBeforeSelection
   };
+}
+
+function nativeCapabilityMatchesSlashQuery(
+  capability: AgentHostComposerCapability,
+  query: string
+): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+  return (
+    capability.label.toLowerCase().includes(normalizedQuery) ||
+    capability.semantic.toLowerCase().includes(normalizedQuery) ||
+    capability.description?.toLowerCase().includes(normalizedQuery) === true
+  );
+}
+
+export function nativeCapabilitiesForSlashPresentation(
+  capabilities: readonly AgentHostComposerCapability[],
+  commands: readonly AgentSlashCommand[]
+): readonly AgentHostComposerCapability[] {
+  return capabilities.filter(
+    (capability) => !nativeCapabilityHasLegacySlashAction(capability, commands)
+  );
+}
+
+function nativeCapabilityHasLegacySlashAction(
+  capability: AgentHostComposerCapability,
+  commands: readonly AgentSlashCommand[]
+): boolean {
+  const legacyCapability =
+    capability.semantic === "browserUse"
+      ? "browserUse"
+      : capability.semantic === "computerUse"
+        ? "computerUse"
+        : null;
+  return (
+    legacyCapability !== null &&
+    commands.some(
+      (command) =>
+        isSlashCommandCapability(command) &&
+        command.capability === legacyCapability
+    )
+  );
 }

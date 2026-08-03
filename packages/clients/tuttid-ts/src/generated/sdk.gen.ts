@@ -367,6 +367,9 @@ import type {
   ListAgentModelBindingsData,
   ListAgentModelBindingsErrors,
   ListAgentModelBindingsResponses,
+  ListAgentProviderPluginsData,
+  ListAgentProviderPluginsErrors,
+  ListAgentProviderPluginsResponses,
   ListAgentQuickPromptsData,
   ListAgentQuickPromptsErrors,
   ListAgentQuickPromptsResponses,
@@ -3233,6 +3236,28 @@ export const getAgentProviderComposerOptions = <
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/agent-providers/{provider}/composer-options",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Read the cached native plugin inventory for one exact agent target
+ *
+ * The response is a daemon-owned snapshot. Set `prime` to request a bounded background refresh; the request never waits for App Server plugin discovery.
+ */
+export const listAgentProviderPlugins = <ThrowOnError extends boolean = false>(
+  options: Options<ListAgentProviderPluginsData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    ListAgentProviderPluginsResponses,
+    ListAgentProviderPluginsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/agent-providers/{provider}/plugins",
     ...options,
     headers: {
       "Content-Type": "application/json",

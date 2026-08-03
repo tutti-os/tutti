@@ -1922,6 +1922,55 @@ export type AgentProviderCapabilityOption = {
   invocation: "promptItem" | "textTrigger" | "none";
 };
 
+export type ListAgentProviderPluginsRequest = {
+  agentTargetId: string;
+  cwd?: string;
+  /**
+   * Start a non-blocking daemon refresh before reading the snapshot
+   */
+  prime?: boolean;
+};
+
+export type AgentProviderPluginListResponse = {
+  provider: WorkspaceAgentProvider;
+  /**
+   * True only when no last-known-good inventory snapshot is available. A failed refresh keeps a still-valid last-known-good snapshot and returns false while the daemon retries in the background.
+   */
+  partial: boolean;
+  plugins: Array<AgentProviderPluginOption>;
+};
+
+export type AgentProviderPluginOption = {
+  id: string;
+  name: string;
+  label: string;
+  description?: string;
+  semantic: AgentProviderPluginSemantic;
+  status: AgentProviderPluginStatus;
+  /**
+   * Daemon-verified local Plugin-to-Skill presentation mappings only. These do not alter Skill execution or `$` invocation.
+   */
+  bundledSkills?: Array<AgentProviderPluginBundledSkill>;
+};
+
+export type AgentProviderPluginSemantic =
+  | "browserUse"
+  | "computerUse"
+  | "sites";
+
+export type AgentProviderPluginStatus =
+  | "ready"
+  | "disabled"
+  | "disabledByAdmin"
+  | "notInstalled"
+  | "unknown"
+  | "unsupported";
+
+export type AgentProviderPluginBundledSkill = {
+  name: string;
+  path?: string;
+};
+
 export type AgentProviderAvailabilityStatus =
   | "ready"
   | "not_installed"
@@ -10542,6 +10591,51 @@ export type GetAgentProviderComposerOptionsResponses = {
 
 export type GetAgentProviderComposerOptionsResponse =
   GetAgentProviderComposerOptionsResponses[keyof GetAgentProviderComposerOptionsResponses];
+
+export type ListAgentProviderPluginsData = {
+  body: ListAgentProviderPluginsRequest;
+  path: {
+    provider: WorkspaceAgentProvider;
+  };
+  query?: never;
+  url: "/v1/agent-providers/{provider}/plugins";
+};
+
+export type ListAgentProviderPluginsErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Agent target was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListAgentProviderPluginsError =
+  ListAgentProviderPluginsErrors[keyof ListAgentProviderPluginsErrors];
+
+export type ListAgentProviderPluginsResponses = {
+  /**
+   * Current native plugin inventory snapshot
+   */
+  200: AgentProviderPluginListResponse;
+};
+
+export type ListAgentProviderPluginsResponse =
+  ListAgentProviderPluginsResponses[keyof ListAgentProviderPluginsResponses];
 
 export type GetAgentProviderRuntimeCandidatesData = {
   body?: never;

@@ -1,8 +1,11 @@
 import type {
+  AgentProviderPluginListResponse,
   AgentTargetSetupSnapshot,
   TuttidClient
 } from "@tutti-os/client-tuttid-ts";
 import type {
+  AgentHostComposerCapabilitiesSnapshot,
+  AgentHostComposerCapabilitySkillEntry,
   AgentHostAgentTargetSetupSnapshot,
   AgentHostInputApi,
   AgentHostQuickPromptsApi,
@@ -16,6 +19,7 @@ import type {
   WorkspaceAgentReadStateSnapshot,
   WriteWorkspaceAgentReadStateInput
 } from "@tutti-os/agent-gui";
+import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
 import type {
   DesktopHostFilesApi,
   DesktopPlatformApi,
@@ -255,6 +259,45 @@ export function createDesktopAgentHostApi({
     agentTargetSetup: {
       watch: (payload: { agentTargetId: string }) =>
         getAgentTargetSetupWatch(payload.agentTargetId)
+    },
+    composerCapabilities: {
+      isSupported: (input: { agentTargetId: string; provider: string }) =>
+        supportsDesktopCodexComposerCapabilities(input),
+      list: async (input: {
+        agentTargetId: string;
+        cwd?: string | null;
+        provider: string;
+        authoritativeSkills: readonly AgentHostComposerCapabilitySkillEntry[];
+      }) => {
+        if (!supportsDesktopCodexComposerCapabilities(input)) {
+          return emptyDesktopComposerCapabilitiesSnapshot();
+        }
+        const snapshot = await tuttidClient.listAgentProviderPlugins(
+          input.provider,
+          {
+            agentTargetId: input.agentTargetId,
+            ...(input.cwd ? { cwd: input.cwd } : {})
+          }
+        );
+        return projectDesktopCodexComposerCapabilities(
+          snapshot,
+          input.authoritativeSkills
+        );
+      },
+      prime: async (input: {
+        agentTargetId: string;
+        cwd?: string | null;
+        provider: string;
+      }) => {
+        if (!supportsDesktopCodexComposerCapabilities(input)) {
+          return;
+        }
+        await tuttidClient.listAgentProviderPlugins(input.provider, {
+          agentTargetId: input.agentTargetId,
+          ...(input.cwd ? { cwd: input.cwd } : {}),
+          prime: true
+        });
+      }
     },
     workspaceAgentProbes: {
       list: (payload: AgentProviderProbeListInput) =>
@@ -559,4 +602,125 @@ function normalizeIdList(value: unknown): string[] {
   return Array.isArray(value)
     ? [...new Set(value.map((item) => `${item}`.trim()).filter(Boolean))]
     : [];
+}
+
+export function projectDesktopCodexComposerCapabilities(
+  snapshot: AgentProviderPluginListResponse,
+  authoritativeSkills: readonly AgentHostComposerCapabilitySkillEntry[]
+): AgentHostComposerCapabilitiesSnapshot {
+  const capabilities = snapshot.plugins
+    .filter((plugin) => isDesktopNativeComposerSemantic(plugin.semantic))
+    .map((plugin) => ({
+      id: plugin.id,
+      semantic: plugin.semantic,
+      label: plugin.label,
+      description: plugin.description ?? null,
+      status: plugin.status
+    }));
+  if (snapshot.partial) {
+    return {
+      capabilities,
+      hiddenSlashSkillEntryIds: [],
+      partial: true
+    };
+  }
+  const skillsByProof = new Map<string, string[]>();
+  for (const skill of authoritativeSkills) {
+    const path = normalizeDesktopSkillProofPath(skill.path);
+    if (!skill.entryId || !skill.name || !path) {
+      continue;
+    }
+    const key = desktopSkillProofKey(skill.name, path);
+    skillsByProof.set(key, [...(skillsByProof.get(key) ?? []), skill.entryId]);
+  }
+  const hidden = new Set<string>();
+  for (const plugin of snapshot.plugins) {
+    if (
+      !isDesktopNativeComposerSemantic(plugin.semantic) ||
+      plugin.status !== "ready"
+    ) {
+      continue;
+    }
+    for (const bundledSkill of plugin.bundledSkills ?? []) {
+      const path = normalizeDesktopSkillProofPath(bundledSkill.path);
+      if (!bundledSkill.name || !path) {
+        continue;
+      }
+      const matches = skillsByProof.get(
+        desktopSkillProofKey(bundledSkill.name, path)
+      );
+      // Name, canonical path, and an exactly-one authoritative Skill entry
+      // are all required. Ambiguity always fails open for `/` presentation.
+      const match = matches?.length === 1 ? matches[0] : undefined;
+      if (match) {
+        hidden.add(match);
+      }
+    }
+  }
+  return {
+    capabilities,
+    hiddenSlashSkillEntryIds: [...hidden],
+    partial: false
+  };
+}
+
+function supportsDesktopCodexComposerCapabilities(input: {
+  agentTargetId: string;
+  provider: string;
+}): boolean {
+  const identity = resolveAgentGUIProviderCatalogIdentity(input.provider);
+  return (
+    identity?.statusKind === "codex_cli" &&
+    identity.providerId === input.provider.trim() &&
+    identity.target.id === input.agentTargetId.trim()
+  );
+}
+
+function emptyDesktopComposerCapabilitiesSnapshot(): AgentHostComposerCapabilitiesSnapshot {
+  return {
+    capabilities: [],
+    hiddenSlashSkillEntryIds: [],
+    partial: false
+  };
+}
+
+function isDesktopNativeComposerSemantic(
+  semantic: string
+): semantic is "browserUse" | "computerUse" | "sites" {
+  return (
+    semantic === "browserUse" ||
+    semantic === "computerUse" ||
+    semantic === "sites"
+  );
+}
+
+function desktopSkillProofKey(name: string, path: string): string {
+  return `${name.trim()}\u0000${path}`;
+}
+
+function normalizeDesktopSkillProofPath(
+  value: string | null | undefined
+): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const isAbsolute = trimmed.startsWith("/");
+  const parts: string[] = [];
+  for (const part of trimmed.replaceAll("\\", "/").split("/")) {
+    if (!part || part === ".") {
+      continue;
+    }
+    if (part === "..") {
+      if (parts.length > 0 && parts[parts.length - 1] !== "..") {
+        parts.pop();
+      } else if (!isAbsolute) {
+        parts.push(part);
+      }
+      continue;
+    }
+    parts.push(part);
+  }
+  const normalized = parts.join("/");
+  return isAbsolute ? `/${normalized}` : normalized || ".";
 }

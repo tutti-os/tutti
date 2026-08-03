@@ -111,6 +111,49 @@ type ComposerCapabilityOption struct {
 	Invocation  string
 }
 
+// ComposerPluginOption is an on-demand, provider-owned inventory record.
+// It is presentation metadata only: neither IDs nor bundled Skills are prompt
+// triggers or execution instructions.
+type ComposerPluginOption struct {
+	ID            string
+	Name          string
+	Label         string
+	Description   string
+	Status        ComposerPluginStatus
+	Semantic      string
+	BundledSkills []ComposerPluginBundledSkill
+}
+
+type ComposerPluginBundledSkill struct {
+	Name string
+	// Path is a daemon-verified canonical local Skill path. It is omitted when
+	// the plugin/read proof is incomplete so clients fail open.
+	Path string
+}
+
+type ComposerPluginStatus string
+
+const (
+	ComposerPluginStatusReady           ComposerPluginStatus = "ready"
+	ComposerPluginStatusDisabled        ComposerPluginStatus = "disabled"
+	ComposerPluginStatusDisabledByAdmin ComposerPluginStatus = "disabledByAdmin"
+	ComposerPluginStatusNotInstalled    ComposerPluginStatus = "notInstalled"
+	ComposerPluginStatusUnknown         ComposerPluginStatus = "unknown"
+	ComposerPluginStatusUnsupported     ComposerPluginStatus = "unsupported"
+)
+
+type ComposerPluginOptionsInput struct {
+	AgentTargetID string
+	Cwd           string
+	Provider      string
+}
+
+type ComposerPluginOptions struct {
+	Provider string
+	Partial  bool
+	Plugins  []ComposerPluginOption
+}
+
 type ComposerCommandOption struct {
 	Name        string
 	Description string

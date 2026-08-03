@@ -332,6 +332,9 @@ function createTransportClient(
     async getAgentProviderComposerOptions() {
       throw new Error("not used");
     },
+    async listAgentProviderPlugins() {
+      throw new Error("not used");
+    },
     async getAgentProviderStatuses() {
       throw new Error("not used");
     },

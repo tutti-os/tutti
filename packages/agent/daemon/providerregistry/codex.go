@@ -129,6 +129,9 @@ func codexDescriptor() ProviderDescriptor {
 			CapabilityCatalog: CapabilityCatalogDescriptor{
 				Kind: CapabilityCatalogKindCodexAppServer,
 			},
+			PluginCatalog: PluginCatalogDescriptor{
+				Kind: PluginCatalogKindCodexAppServer,
+			},
 			SlashCommandPolicy: SlashCommandPolicyDescriptor{
 				FallbackCommands: []string{"compact", "status", "fast", "goal", "review"},
 				CommandEffects: []SlashCommandEffectDescriptor{

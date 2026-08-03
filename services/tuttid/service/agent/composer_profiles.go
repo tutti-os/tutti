@@ -44,7 +44,11 @@ type composerProfile struct {
 	// the executable remains a single descriptor-owned fact.
 	CapabilityCatalogKind    providerregistry.CapabilityCatalogKind
 	CapabilityCatalogCommand []string
-	SlashCommandPolicy       providerregistry.SlashCommandPolicyDescriptor
+	// PluginCatalogKind is deliberately independent from CapabilityCatalogKind.
+	// Plugin discovery is experimental, cached control-plane work and must not
+	// be allowed to delay Skills or generic Composer capabilities.
+	PluginCatalogKind  providerregistry.PluginCatalogKind
+	SlashCommandPolicy providerregistry.SlashCommandPolicyDescriptor
 	// ReasoningEffort: the composer exposes a reasoning-effort selector.
 	ReasoningEffort bool
 	// ReasoningEffortOptions selects the descriptor-owned source of the list.
@@ -116,6 +120,7 @@ func composerProfileFromDescriptor(provider providerregistry.ProviderDescriptor)
 		ModelCatalog:             descriptor.ModelCatalog,
 		CapabilityCatalogKind:    descriptor.CapabilityCatalog.Kind,
 		CapabilityCatalogCommand: append([]string(nil), provider.Runtime.Command...),
+		PluginCatalogKind:        descriptor.PluginCatalog.Kind,
 		SlashCommandPolicy: providerregistry.SlashCommandPolicyDescriptor{
 			FallbackCommands:            append([]string(nil), descriptor.SlashCommandPolicy.FallbackCommands...),
 			CommandEffects:              append([]providerregistry.SlashCommandEffectDescriptor(nil), descriptor.SlashCommandPolicy.CommandEffects...),

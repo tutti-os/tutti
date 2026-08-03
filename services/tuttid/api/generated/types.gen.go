@@ -379,6 +379,57 @@ func (e AgentProviderCapabilityOptionStatus) Valid() bool {
 	}
 }
 
+// Defines values for AgentProviderPluginSemantic.
+const (
+	AgentProviderPluginSemanticBrowserUse  AgentProviderPluginSemantic = "browserUse"
+	AgentProviderPluginSemanticComputerUse AgentProviderPluginSemantic = "computerUse"
+	AgentProviderPluginSemanticSites       AgentProviderPluginSemantic = "sites"
+)
+
+// Valid indicates whether the value is a known member of the AgentProviderPluginSemantic enum.
+func (e AgentProviderPluginSemantic) Valid() bool {
+	switch e {
+	case AgentProviderPluginSemanticBrowserUse:
+		return true
+	case AgentProviderPluginSemanticComputerUse:
+		return true
+	case AgentProviderPluginSemanticSites:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentProviderPluginStatus.
+const (
+	AgentProviderPluginStatusDisabled        AgentProviderPluginStatus = "disabled"
+	AgentProviderPluginStatusDisabledByAdmin AgentProviderPluginStatus = "disabledByAdmin"
+	AgentProviderPluginStatusNotInstalled    AgentProviderPluginStatus = "notInstalled"
+	AgentProviderPluginStatusReady           AgentProviderPluginStatus = "ready"
+	AgentProviderPluginStatusUnknown         AgentProviderPluginStatus = "unknown"
+	AgentProviderPluginStatusUnsupported     AgentProviderPluginStatus = "unsupported"
+)
+
+// Valid indicates whether the value is a known member of the AgentProviderPluginStatus enum.
+func (e AgentProviderPluginStatus) Valid() bool {
+	switch e {
+	case AgentProviderPluginStatusDisabled:
+		return true
+	case AgentProviderPluginStatusDisabledByAdmin:
+		return true
+	case AgentProviderPluginStatusNotInstalled:
+		return true
+	case AgentProviderPluginStatusReady:
+		return true
+	case AgentProviderPluginStatusUnknown:
+		return true
+	case AgentProviderPluginStatusUnsupported:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AgentProviderProbeStatus.
 const (
 	AgentProviderProbeStatusFailed  AgentProviderProbeStatus = "failed"
@@ -4590,6 +4641,38 @@ type AgentProviderNetworkStatus struct {
 	Registry    AgentProviderNetworkEndpoint  `json:"registry"`
 }
 
+// AgentProviderPluginBundledSkill defines model for AgentProviderPluginBundledSkill.
+type AgentProviderPluginBundledSkill struct {
+	Name string  `json:"name"`
+	Path *string `json:"path,omitempty"`
+}
+
+// AgentProviderPluginListResponse defines model for AgentProviderPluginListResponse.
+type AgentProviderPluginListResponse struct {
+	// Partial True only when no last-known-good inventory snapshot is available. A failed refresh keeps a still-valid last-known-good snapshot and returns false while the daemon retries in the background.
+	Partial  bool                        `json:"partial"`
+	Plugins  []AgentProviderPluginOption `json:"plugins"`
+	Provider WorkspaceAgentProvider      `json:"provider"`
+}
+
+// AgentProviderPluginOption defines model for AgentProviderPluginOption.
+type AgentProviderPluginOption struct {
+	// BundledSkills Daemon-verified local Plugin-to-Skill presentation mappings only. These do not alter Skill execution or `$` invocation.
+	BundledSkills *[]AgentProviderPluginBundledSkill `json:"bundledSkills,omitempty"`
+	Description   *string                            `json:"description,omitempty"`
+	Id            string                             `json:"id"`
+	Label         string                             `json:"label"`
+	Name          string                             `json:"name"`
+	Semantic      AgentProviderPluginSemantic        `json:"semantic"`
+	Status        AgentProviderPluginStatus          `json:"status"`
+}
+
+// AgentProviderPluginSemantic defines model for AgentProviderPluginSemantic.
+type AgentProviderPluginSemantic string
+
+// AgentProviderPluginStatus defines model for AgentProviderPluginStatus.
+type AgentProviderPluginStatus string
+
 // AgentProviderProbeResponse defines model for AgentProviderProbeResponse.
 type AgentProviderProbeResponse struct {
 	BinaryPath *string                  `json:"binaryPath,omitempty"`
@@ -6639,6 +6722,15 @@ type IssueManagerTopicResponse struct {
 // ListAgentModelBindingsResponse defines model for ListAgentModelBindingsResponse.
 type ListAgentModelBindingsResponse struct {
 	Bindings []AgentModelBinding `json:"bindings"`
+}
+
+// ListAgentProviderPluginsRequest defines model for ListAgentProviderPluginsRequest.
+type ListAgentProviderPluginsRequest struct {
+	AgentTargetId string  `json:"agentTargetId"`
+	Cwd           *string `json:"cwd,omitempty"`
+
+	// Prime Start a non-blocking daemon refresh before reading the snapshot
+	Prime *bool `json:"prime,omitempty"`
 }
 
 // ListAgentTargetsResponse defines model for ListAgentTargetsResponse.
@@ -9380,6 +9472,9 @@ type DismissAccountRegistrationCreditsRewardJSONRequestBody = DismissAccountRegi
 
 // GetAgentProviderComposerOptionsJSONRequestBody defines body for GetAgentProviderComposerOptions for application/json ContentType.
 type GetAgentProviderComposerOptionsJSONRequestBody = GetAgentProviderComposerOptionsRequest
+
+// ListAgentProviderPluginsJSONRequestBody defines body for ListAgentProviderPlugins for application/json ContentType.
+type ListAgentProviderPluginsJSONRequestBody = ListAgentProviderPluginsRequest
 
 // SetAgentProviderRuntimeSelectionJSONRequestBody defines body for SetAgentProviderRuntimeSelection for application/json ContentType.
 type SetAgentProviderRuntimeSelectionJSONRequestBody = SetAgentProviderRuntimeSelectionRequest

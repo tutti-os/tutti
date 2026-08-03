@@ -3952,6 +3952,45 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/agent-providers/{provider}/plugins:
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/WorkspaceAgentProvider"
+    post:
+      operationId: listAgentProviderPlugins
+      tags:
+        - agent-session
+      summary: Read the cached native plugin inventory for one exact agent target
+      description: >-
+        The response is a daemon-owned snapshot. Set `prime` to request a
+        bounded background refresh; the request never waits for App Server
+        plugin discovery.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ListAgentProviderPluginsRequest"
+      responses:
+        "200":
+          description: Current native plugin inventory snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentProviderPluginListResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/AgentTargetNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/agent-providers/{provider}/runtime-candidates:
     parameters:
       - name: provider
@@ -11297,6 +11336,109 @@ components:
             - promptItem
             - textTrigger
             - none
+    ListAgentProviderPluginsRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - agentTargetId
+      properties:
+        agentTargetId:
+          type: string
+          minLength: 1
+        cwd:
+          type: string
+        prime:
+          type: boolean
+          description: Start a non-blocking daemon refresh before reading the snapshot
+    AgentProviderPluginListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - provider
+        - partial
+        - plugins
+      properties:
+        provider:
+          $ref: "#/components/schemas/WorkspaceAgentProvider"
+        partial:
+          type: boolean
+          description: >-
+            True only when no last-known-good inventory snapshot is available.
+            A failed refresh keeps a still-valid last-known-good snapshot and
+            returns false while the daemon retries in the background.
+        plugins:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentProviderPluginOption"
+    AgentProviderPluginOption:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - label
+        - semantic
+        - status
+      properties:
+        id:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+        label:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        semantic:
+          $ref: "#/components/schemas/AgentProviderPluginSemantic"
+        status:
+          $ref: "#/components/schemas/AgentProviderPluginStatus"
+        bundledSkills:
+          type: array
+          description: >-
+            Daemon-verified local Plugin-to-Skill presentation mappings only.
+            These do not alter Skill execution or `$` invocation.
+          items:
+            $ref: "#/components/schemas/AgentProviderPluginBundledSkill"
+    AgentProviderPluginSemantic:
+      type: string
+      enum:
+        - browserUse
+        - computerUse
+        - sites
+      x-enum-varnames:
+        - AgentProviderPluginSemanticBrowserUse
+        - AgentProviderPluginSemanticComputerUse
+        - AgentProviderPluginSemanticSites
+    AgentProviderPluginStatus:
+      type: string
+      enum:
+        - ready
+        - disabled
+        - disabledByAdmin
+        - notInstalled
+        - unknown
+        - unsupported
+      x-enum-varnames:
+        - AgentProviderPluginStatusReady
+        - AgentProviderPluginStatusDisabled
+        - AgentProviderPluginStatusDisabledByAdmin
+        - AgentProviderPluginStatusNotInstalled
+        - AgentProviderPluginStatusUnknown
+        - AgentProviderPluginStatusUnsupported
+    AgentProviderPluginBundledSkill:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+        path:
+          type: string
     AgentProviderAvailabilityStatus:
       type: string
       enum:

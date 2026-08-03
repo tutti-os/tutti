@@ -16,6 +16,8 @@ type stubAgentSessionService struct {
 	cancelTurnFn                      func(context.Context, string, string, string) (agentservice.CancelTurnResult, error)
 	clearFn                           func(context.Context, string) (agentservice.ClearSessionsResult, error)
 	composerOptionsFn                 func(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
+	composerPluginOptionsFn           func(context.Context, agentservice.ComposerPluginOptionsInput) (agentservice.ComposerPluginOptions, error)
+	primeComposerPluginInventoryFn    func(context.Context, agentservice.ComposerPluginOptionsInput) error
 	createFn                          func(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
 	forkFn                            func(context.Context, string, string, agentservice.ForkSessionInput) (agentservice.SessionForkOperation, error)
 	getSessionForkOperationFn         func(context.Context, string, string) (agentservice.SessionForkOperation, error)
@@ -125,6 +127,20 @@ func (s stubAgentSessionService) GetComposerOptions(ctx context.Context, input a
 		}, nil
 	}
 	return s.composerOptionsFn(ctx, input)
+}
+
+func (s stubAgentSessionService) GetComposerPluginOptions(ctx context.Context, input agentservice.ComposerPluginOptionsInput) (agentservice.ComposerPluginOptions, error) {
+	if s.composerPluginOptionsFn == nil {
+		return agentservice.ComposerPluginOptions{Provider: input.Provider}, nil
+	}
+	return s.composerPluginOptionsFn(ctx, input)
+}
+
+func (s stubAgentSessionService) PrimeComposerPluginInventory(ctx context.Context, input agentservice.ComposerPluginOptionsInput) error {
+	if s.primeComposerPluginInventoryFn == nil {
+		return nil
+	}
+	return s.primeComposerPluginInventoryFn(ctx, input)
 }
 
 func (s stubAgentSessionService) ListMessages(ctx context.Context, workspaceID string, agentSessionID string, input agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error) {

@@ -1847,6 +1847,17 @@ Engine migration preserves all host observability and product integration.
 
 `AgentHostApi` supplies host capabilities only: files, clipboard, project/account lookup, Agent Target setup/probes, diagnostics, and OS/Workbench helpers. It must not become a Session, Turn, timeline, or write source again.
 
+The optional `AgentHostApi.composerCapabilities` capability is a host-owned,
+read-only control-plane projection for the exact Agent Target, provider, and
+working directory. The daemon owns Plugin discovery, freshness, retry, and
+last-known-good state; AgentGUI may prewarm and read a snapshot, but does not
+persist or derive an inventory. AgentGUI fences each response by its exact
+Target/provider/cwd/authoritative-Skill projection and fails open when that
+scope changes. A Plugin-to-Skill proof affects only `/` presentation; the
+authoritative Skill list still owns `$` invocation and Skill-block submission.
+Native inventory presentation must not replace an existing capability token or
+its submit behavior until a separate Host lifecycle contract owns that action.
+
 The optional quick-prompt library follows that host-capability boundary. Tutti
 Desktop projects the device-global `tuttid` quick-prompt CRUD service through
 `AgentHostApi.quickPrompts`; AgentGUI owns only the picker/editor presentation
