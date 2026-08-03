@@ -136,6 +136,23 @@ successful terminal `flow_id` divided by distinct started `flow_id`. Daily
 logged-in users are distinct `uid` values on successful terminal events, with
 dashboard day boundaries evaluated in `Asia/Shanghai`.
 
+### Workspace UI mode changes
+
+The desktop reports `settings.workspace_ui_mode_changed` after the selected
+workspace UI mode has been persisted. The event carries `previous_mode`,
+`next_mode`, and an `action` that describes the standalone Agent mode:
+`"enabled"` when changing from OS to Agent and `"disabled"` when changing from
+Agent to OS. Selecting the already persisted mode or failing to persist the
+preference does not emit an event.
+
+The event records the durable preference change before the current workspace
+window is replaced. The renderer awaits the local analytics acceptance before
+requesting replacement so destroying the old window cannot cancel an in-flight
+submission. If window replacement subsequently fails, the event is still valid
+because the saved preference will apply when a workspace window is next opened.
+This event measures explicit mode changes; the renderer-owned common `mode`
+parameter continues to describe the window that emitted any given event.
+
 ## API Contract
 
 ### Renderer → tuttid

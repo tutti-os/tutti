@@ -153,6 +153,8 @@ export { SettingsLanguageChangedReporter } from "./settings-language-changed";
 export type { SettingsLanguageChangedParams } from "./settings-language-changed";
 export { SettingsThemeChangedReporter } from "./settings-theme-changed";
 export type { SettingsThemeChangedParams } from "./settings-theme-changed";
+export { SettingsWorkspaceUiModeChangedReporter } from "./settings-workspace-ui-mode-changed";
+export type { SettingsWorkspaceUiModeChangedParams } from "./settings-workspace-ui-mode-changed";
 export { SettingsWallpaperChangedReporter } from "./settings-wallpaper-changed";
 export type { SettingsWallpaperChangedParams } from "./settings-wallpaper-changed";
 export { SettingsCustomWallpaperUploadedReporter } from "./settings-custom-wallpaper-uploaded";

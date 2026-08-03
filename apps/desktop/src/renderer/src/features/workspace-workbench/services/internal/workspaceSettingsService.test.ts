@@ -316,9 +316,74 @@ test("WorkspaceSettingsService writes changed preferences", async () => {
   assert.deepEqual(writes, ["zh-CN", "left", "claude-code", "general", "dark"]);
 });
 
-test("WorkspaceSettingsService changes workspace UI mode without replacing other flags", async () => {
+test("WorkspaceSettingsService enables Agent mode, preserves other flags, and tracks the persisted change", async () => {
   const writes: Array<Record<string, boolean>> = [];
   const replacements: Array<{ mode: string; workspaceId: string }> = [];
+  const reporterCalls: ReporterEventInput[][] = [];
+  const effects: string[] = [];
+  const service = new WorkspaceSettingsService(
+    {
+      client: createWorkspaceSettingsClient({}),
+      replaceWorkspaceWindow: async (input) => {
+        effects.push("replace");
+        replacements.push(input);
+      }
+    },
+    createDesktopPreferencesService({
+      onSetFeatureFlags: async (flags) => {
+        effects.push("save");
+        writes.push(flags);
+        return flags;
+      },
+      state: createPreferencesState({
+        featureFlags: { "lab.enabled": true }
+      })
+    }),
+    createNotificationRecorder().service,
+    {
+      async trackEvents(events) {
+        effects.push("track");
+        reporterCalls.push(events);
+      }
+    },
+    null,
+    () => 1749124800000
+  );
+
+  service.openPanel({ id: "workspace-1" });
+  reporterCalls.length = 0;
+  effects.length = 0;
+  await service.changeWorkspaceUiMode("agent");
+
+  assert.deepEqual(writes, [
+    {
+      "lab.enabled": true,
+      "workspace.standaloneAgentMode": true
+    }
+  ]);
+  assert.deepEqual(replacements, [
+    { mode: "agent", workspaceId: "workspace-1" }
+  ]);
+  assert.deepEqual(reporterCalls, [
+    [
+      {
+        clientTS: 1749124800000,
+        name: "settings.workspace_ui_mode_changed",
+        params: {
+          action: "enabled",
+          previous_mode: "os",
+          next_mode: "agent"
+        }
+      }
+    ]
+  ]);
+  assert.deepEqual(effects, ["save", "track", "replace"]);
+});
+
+test("WorkspaceSettingsService disables Agent mode and tracks the reverse direction", async () => {
+  const writes: Array<Record<string, boolean>> = [];
+  const replacements: Array<{ mode: string; workspaceId: string }> = [];
+  const reporterCalls: ReporterEventInput[][] = [];
   const service = new WorkspaceSettingsService(
     {
       client: createWorkspaceSettingsClient({}),
@@ -332,22 +397,171 @@ test("WorkspaceSettingsService changes workspace UI mode without replacing other
         return flags;
       },
       state: createPreferencesState({
-        featureFlags: { "lab.enabled": true }
+        featureFlags: { "workspace.standaloneAgentMode": true }
       })
-    })
+    }),
+    createNotificationRecorder().service,
+    createReporterService(reporterCalls),
+    null,
+    () => 1749124800000
   );
 
   service.openPanel({ id: "workspace-1" });
+  reporterCalls.length = 0;
+  await service.changeWorkspaceUiMode("os");
+
+  assert.deepEqual(writes, [{ "workspace.standaloneAgentMode": false }]);
+  assert.deepEqual(replacements, [{ mode: "os", workspaceId: "workspace-1" }]);
+  assert.deepEqual(reporterCalls, [
+    [
+      {
+        clientTS: 1749124800000,
+        name: "settings.workspace_ui_mode_changed",
+        params: {
+          action: "disabled",
+          previous_mode: "agent",
+          next_mode: "os"
+        }
+      }
+    ]
+  ]);
+});
+
+test("WorkspaceSettingsService does not persist, replace, or track an already selected UI mode", async () => {
+  let writes = 0;
+  let replacements = 0;
+  const reporterCalls: ReporterEventInput[][] = [];
+  const service = new WorkspaceSettingsService(
+    {
+      client: createWorkspaceSettingsClient({}),
+      replaceWorkspaceWindow: async () => {
+        replacements += 1;
+      }
+    },
+    createDesktopPreferencesService({
+      onSetFeatureFlags: async (flags) => {
+        writes += 1;
+        return flags;
+      },
+      state: createPreferencesState({ featureFlags: {} })
+    }),
+    createNotificationRecorder().service,
+    createReporterService(reporterCalls)
+  );
+
+  service.openPanel({ id: "workspace-1" });
+  reporterCalls.length = 0;
+  await service.changeWorkspaceUiMode("os");
+
+  assert.equal(writes, 0);
+  assert.equal(replacements, 0);
+  assert.deepEqual(reporterCalls, []);
+});
+
+test("WorkspaceSettingsService does not duplicate a UI mode change that is already pending", async () => {
+  let writes = 0;
+  let replacements = 0;
+  const reporterCalls: ReporterEventInput[][] = [];
+  const service = new WorkspaceSettingsService(
+    {
+      client: createWorkspaceSettingsClient({}),
+      replaceWorkspaceWindow: async () => {
+        replacements += 1;
+      }
+    },
+    createDesktopPreferencesService({
+      onSetFeatureFlags: async (flags) => {
+        writes += 1;
+        return flags;
+      },
+      state: createPreferencesState({
+        changingFeatureFlags: { "workspace.standaloneAgentMode": true },
+        featureFlags: {}
+      })
+    }),
+    createNotificationRecorder().service,
+    createReporterService(reporterCalls)
+  );
+
+  service.openPanel({ id: "workspace-1" });
+  reporterCalls.length = 0;
   await service.changeWorkspaceUiMode("agent");
 
-  assert.deepEqual(writes, [
+  assert.equal(writes, 0);
+  assert.equal(replacements, 0);
+  assert.deepEqual(reporterCalls, []);
+});
+
+test("WorkspaceSettingsService does not replace or track when UI mode persistence fails", async () => {
+  let replacements = 0;
+  const reporterCalls: ReporterEventInput[][] = [];
+  const notifications = createNotificationRecorder();
+  const service = new WorkspaceSettingsService(
     {
-      "lab.enabled": true,
-      "workspace.standaloneAgentMode": true
-    }
+      client: createWorkspaceSettingsClient({}),
+      replaceWorkspaceWindow: async () => {
+        replacements += 1;
+      }
+    },
+    createDesktopPreferencesService({
+      onSetFeatureFlags: async () => {
+        throw new Error("save failed");
+      },
+      state: createPreferencesState({ featureFlags: {} })
+    }),
+    notifications.service,
+    createReporterService(reporterCalls)
+  );
+
+  service.openPanel({ id: "workspace-1" });
+  reporterCalls.length = 0;
+  await service.changeWorkspaceUiMode("agent");
+
+  assert.equal(replacements, 0);
+  assert.deepEqual(reporterCalls, []);
+  assert.deepEqual(notifications.items, [
+    "We couldn't update the startup interface right now."
   ]);
-  assert.deepEqual(replacements, [
-    { mode: "agent", workspaceId: "workspace-1" }
+});
+
+test("WorkspaceSettingsService tracks a persisted UI mode change even when window replacement fails", async () => {
+  const reporterCalls: ReporterEventInput[][] = [];
+  const notifications = createNotificationRecorder();
+  const service = new WorkspaceSettingsService(
+    {
+      client: createWorkspaceSettingsClient({}),
+      replaceWorkspaceWindow: async () => {
+        throw new Error("replace failed");
+      }
+    },
+    createDesktopPreferencesService({
+      state: createPreferencesState({ featureFlags: {} })
+    }),
+    notifications.service,
+    createReporterService(reporterCalls),
+    null,
+    () => 1749124800000
+  );
+
+  service.openPanel({ id: "workspace-1" });
+  reporterCalls.length = 0;
+  await service.changeWorkspaceUiMode("agent");
+
+  assert.deepEqual(reporterCalls, [
+    [
+      {
+        clientTS: 1749124800000,
+        name: "settings.workspace_ui_mode_changed",
+        params: {
+          action: "enabled",
+          previous_mode: "os",
+          next_mode: "agent"
+        }
+      }
+    ]
+  ]);
+  assert.deepEqual(notifications.items, [
+    "We couldn't update the startup interface right now."
   ]);
 });
 

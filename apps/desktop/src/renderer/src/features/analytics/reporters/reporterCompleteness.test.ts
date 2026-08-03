@@ -81,6 +81,7 @@ const expectedAnalyticsEvents = [
   "settings.section_switched",
   "settings.language_changed",
   "settings.theme_changed",
+  "settings.workspace_ui_mode_changed",
   "settings.wallpaper_changed",
   "settings.custom_wallpaper_uploaded",
   "settings.custom_wallpaper_cleared",

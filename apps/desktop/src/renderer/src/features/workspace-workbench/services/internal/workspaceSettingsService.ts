@@ -26,11 +26,13 @@ import {
   defaultDesktopFeatureFlags,
   defaultDesktopMinimizeAnimation,
   defaultDesktopWorkbenchShortcuts,
-  desktopFeatureFlagsEqual,
   desktopWorkbenchShortcutsEqual,
   desktopWorkbenchWindowSnappingEqual
 } from "../../../../../../shared/preferences/index.ts";
-import { withDesktopWorkspaceUiMode } from "../../../../../../shared/featureFlags/catalog.ts";
+import {
+  resolveDesktopWorkspaceUiMode,
+  withDesktopWorkspaceUiMode
+} from "../../../../../../shared/featureFlags/catalog.ts";
 import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
 import {
   INotificationService,
@@ -48,6 +50,7 @@ import { SettingsOpenedReporter } from "../../../analytics/reporters/settings-op
 import { SettingsSectionSwitchedReporter } from "../../../analytics/reporters/settings-section-switched/settingsSectionSwitchedReporter.ts";
 import { SettingsLanguageChangedReporter } from "../../../analytics/reporters/settings-language-changed/settingsLanguageChangedReporter.ts";
 import { SettingsThemeChangedReporter } from "../../../analytics/reporters/settings-theme-changed/settingsThemeChangedReporter.ts";
+import { SettingsWorkspaceUiModeChangedReporter } from "../../../analytics/reporters/settings-workspace-ui-mode-changed/settingsWorkspaceUiModeChangedReporter.ts";
 import {
   IReporterService,
   type IReporterService as ReporterService
@@ -535,13 +538,19 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     const currentFlags =
       this.desktopPreferences.store.changingFeatureFlags ??
       this.desktopPreferences.store.featureFlags;
-    const nextFlags = withDesktopWorkspaceUiMode(currentFlags, mode);
-    if (desktopFeatureFlagsEqual(currentFlags, nextFlags)) {
+    const previousMode = resolveDesktopWorkspaceUiMode(currentFlags);
+    if (previousMode === mode) {
       return;
     }
+    const nextFlags = withDesktopWorkspaceUiMode(currentFlags, mode);
 
     try {
       await this.desktopPreferences.setFeatureFlags(nextFlags);
+      await this.reportSettingsWorkspaceUiModeChanged({
+        action: mode === "agent" ? "enabled" : "disabled",
+        previousMode,
+        nextMode: mode
+      });
       if (this.store.workspaceID) {
         await this.dependencies.replaceWorkspaceWindow?.({
           mode,
@@ -948,6 +957,21 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
 
     void new SettingsThemeChangedReporter(input, {
+      reporterService: this.reporterService,
+      now: this.reporterNow
+    }).report();
+  }
+
+  private async reportSettingsWorkspaceUiModeChanged(input: {
+    action: "enabled" | "disabled";
+    previousMode: DesktopWorkspaceUiMode;
+    nextMode: DesktopWorkspaceUiMode;
+  }): Promise<void> {
+    if (!this.reporterService) {
+      return;
+    }
+
+    await new SettingsWorkspaceUiModeChangedReporter(input, {
       reporterService: this.reporterService,
       now: this.reporterNow
     }).report();
