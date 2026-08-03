@@ -1,7 +1,9 @@
 package daemon
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -53,6 +55,41 @@ func TestServiceStartsCheckBeforeLocalRead(t *testing.T) {
 	}
 	if snapshot.Policy.Status != "resolved" || snapshot.Policy.Response.Decision != "allowed" {
 		t.Fatalf("snapshot = %#v", snapshot)
+	}
+	assertEmptyFeatureKeysEncodeAsArray(t, snapshot)
+	assertEmptyFeatureKeysEncodeAsArray(t, service.Snapshot())
+}
+
+func TestServiceInitialSnapshotEncodesEmptyFeatureKeysAsArray(t *testing.T) {
+	service, err := New(Config{
+		Identity:      testIdentity(),
+		ChecksEnabled: false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertEmptyFeatureKeysEncodeAsArray(t, service.Snapshot())
+}
+
+func TestFeatureCacheEncodesEmptyFeatureKeysAsArray(t *testing.T) {
+	cachePath := filepath.Join(t.TempDir(), "feature-cache.json")
+	cache := FileFeatureCache{Path: cachePath}
+	now := time.Date(2026, 8, 3, 1, 2, 3, 0, time.UTC)
+	revision := "v1"
+	if err := cache.Save(testIdentity(), FeatureAvailabilitySnapshot{
+		Keys:           nil,
+		Source:         "remote",
+		PolicyRevision: &revision,
+		FetchedAt:      &now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(raw, []byte(`"keys":[]`)) {
+		t.Fatalf("cache keys must encode as an array: %s", raw)
 	}
 }
 
@@ -337,6 +374,20 @@ func TestCloseCancelsActiveRefresh(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("active refresh was not canceled when the service closed")
+	}
+}
+
+func assertEmptyFeatureKeysEncodeAsArray(t *testing.T, snapshot Snapshot) {
+	t.Helper()
+	if snapshot.FeatureAvailability.Keys == nil {
+		t.Fatal("feature availability keys must be a non-nil empty slice")
+	}
+	raw, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(raw, []byte(`"keys":[]`)) {
+		t.Fatalf("snapshot keys must encode as an array: %s", raw)
 	}
 }
 

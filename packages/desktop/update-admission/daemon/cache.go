@@ -75,7 +75,7 @@ func (cache FileFeatureCache) Save(identity Identity, snapshot FeatureAvailabili
 		Identity:       identity,
 		PolicyRevision: *snapshot.PolicyRevision,
 		FetchedAt:      snapshot.FetchedAt.UTC(),
-		Keys:           append([]string(nil), snapshot.Keys...),
+		Keys:           cloneFeatureKeys(snapshot.Keys),
 	}
 	raw, err := json.Marshal(document)
 	if err != nil {
