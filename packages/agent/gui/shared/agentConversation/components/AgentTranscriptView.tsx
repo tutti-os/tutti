@@ -64,6 +64,7 @@ import {
   useAgentTranscriptEditRetryProjection
 } from "./useAgentTranscriptEditRetryProjection";
 import { useAgentObservationGap } from "../AgentObservationGapContext";
+import type { AgentProcessingLabels } from "./AgentProcessingRow";
 
 const AGENT_TRANSCRIPT_DISCLOSURE_TURN_GAP_PX = 24;
 const AGENT_TRANSCRIPT_LEGACY_TURN_GAP_PX = 12;
@@ -99,6 +100,7 @@ export interface AgentTranscriptViewProps {
     toolCallsLabel: (count: number) => string;
     thinkingLabel: string;
     processing: string;
+    processingStatus?: AgentProcessingLabels;
     turnSummary: string;
     rawTimelineJson?: string;
     userMessageLocator?: string;

@@ -17,10 +17,15 @@ import { computeAgentToolGroups } from "./agentToolGroupingProjection";
 import { buildAgentTurnSequenceItems } from "./agentTurnSequenceProjection";
 import { projectTurnRows } from "./agentTurnRowProjection";
 import { projectAgentProcessingRow } from "./agentProcessingProjection";
+import type { AgentProcessingRuntimeState } from "../contracts/agentProcessingRowVM";
 import { projectAgentTurnSummaryRows } from "./agentTurnSummaryProjection";
 
 export interface AgentConversationProjectionOptions {
   avoidGroupingEdits?: boolean;
+  hasPendingInteraction?: boolean;
+  processingRuntimeState?: AgentProcessingRuntimeState;
+  submissionPhase?: "preparing" | "submitting" | null;
+  submissionStartedAtUnixMs?: number | null;
 }
 
 const RENDER_IRRELEVANT_TRANSCRIPT_ROW_FIELDS = new Set(["occurredAtUnixMs"]);
@@ -65,7 +70,12 @@ export function projectAgentConversationVM(
     )
   );
   const timelineRows = insertGoalControlRows(normalizedRows, detail);
-  const processing = projectAgentProcessingRow(detail, timelineRows);
+  const processing = projectAgentProcessingRow(detail, timelineRows, {
+    hasPendingInteraction: options.hasPendingInteraction,
+    runtimeState: options.processingRuntimeState,
+    submissionPhase: options.submissionPhase,
+    submissionStartedAtUnixMs: options.submissionStartedAtUnixMs
+  });
   const projectedRows = projectAgentMessageFinalText(
     processing ? [...timelineRows, processing] : timelineRows,
     detail

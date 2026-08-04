@@ -20,6 +20,7 @@ function conversationDetailInput(
     activeConversationId: "session-1",
     activeConversationLiveState: "inactive",
     activeEngineError: null,
+    activeEngineRuntimeAvailability: null,
     activeMessages: [],
     activePendingInteractions: [],
     activeQueuedPromptInFlight: null,

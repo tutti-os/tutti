@@ -5,6 +5,7 @@ import {
   type AgentActivityMessage,
   type AgentSessionFamilySnapshot,
   type AgentActivityTurn,
+  type SessionRuntimeAvailability,
   type AgentSessionEngine,
   type EngineQueuedPrompt,
   type PromptQueueInFlightCommand
@@ -61,6 +62,7 @@ interface UseAgentGUIConversationDetailInput {
   activeQueueStatus: AgentGUIQueueStatus;
   activeSessionFamily: AgentSessionFamilySnapshot;
   activeSessionReconcileError: string | null;
+  activeEngineRuntimeAvailability: SessionRuntimeAvailability | null;
   activeSessionView: {
     hasOlderMessages: boolean;
     isLoadingOlderMessages: boolean;
@@ -179,12 +181,29 @@ export function useAgentGUIConversationDetail(
       childSessions: input.activeSessionFamily.childSessions,
       childMessagesBySessionId: input.projectedSessionMessagesById,
       workspaceRoot: input.workspacePath,
-      avoidGroupingEdits: input.avoidGroupingEdits
+      avoidGroupingEdits: input.avoidGroupingEdits,
+      hasPendingInteraction: input.activePendingInteractions.length > 0,
+      processingRuntimeState: waitRuntimeState(
+        input.activeEngineRuntimeAvailability
+      ),
+      submissionPhase: submissionPhase(
+        input.activeConversationLiveState,
+        input.activeQueuedPromptInFlight
+      ),
+      submissionStartedAtUnixMs: submissionStartedAtUnixMs(
+        input.activeQueuedPromptInFlight,
+        input.activeQueuedPrompts
+      )
     });
   }, [
     input.activeTimelineItems,
     input.activeSessionFamily.childSessions,
     input.activeSessionFamily.rootSession,
+    input.activeEngineRuntimeAvailability,
+    input.activePendingInteractions.length,
+    input.activeConversationLiveState,
+    input.activeQueuedPromptInFlight,
+    input.activeQueuedPrompts,
     input.avoidGroupingEdits,
     input.projectedSessionMessagesById,
     input.workspacePath,
@@ -328,6 +347,35 @@ export function useAgentGUIConversationDetail(
       ? null
       : rawPendingInteractivePrompt
   };
+}
+
+function waitRuntimeState(
+  availability: SessionRuntimeAvailability | null
+): "connected" | "reconnecting" | "unavailable" {
+  if (availability?.state !== "blocked") return "connected";
+  return availability.reason === "transport_reconnecting"
+    ? "reconnecting"
+    : "unavailable";
+}
+
+function submissionPhase(
+  liveState: UseAgentGUIConversationDetailInput["activeConversationLiveState"],
+  inFlight: PromptQueueInFlightCommand | null
+): "preparing" | "submitting" | null {
+  if (inFlight?.stage === "preparingSettings") return "preparing";
+  if (inFlight) return "submitting";
+  return liveState === "activating" ? "preparing" : null;
+}
+
+function submissionStartedAtUnixMs(
+  inFlight: PromptQueueInFlightCommand | null,
+  prompts: readonly EngineQueuedPrompt[]
+): number | null {
+  if (!inFlight) return null;
+  return (
+    prompts.find((prompt) => prompt.id === inFlight.promptId)
+      ?.createdAtUnixMs ?? null
+  );
 }
 
 function referenceArrayEqual<T>(

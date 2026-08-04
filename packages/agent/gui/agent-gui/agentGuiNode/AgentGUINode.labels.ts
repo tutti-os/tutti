@@ -18,6 +18,7 @@ import { agentGUIProviderManagerLabels } from "./view/agentGUIProviderManagerLab
 import { agentGUIUsageStatusLabels } from "./view/agentGUIUsageStatusLabels";
 import { agentQuickPromptLabels } from "./composer/quickPrompts/agentQuickPromptLabels";
 import { agentGUITuttiModeLabels } from "./view/agentGUITuttiModeLabels";
+import { agentProcessingLabels } from "./view/agentProcessingLabels";
 
 export { buildAgentHomeSuggestions };
 
@@ -480,7 +481,7 @@ export function useAgentGUIViewLabels(input: {
       goalResumeAction: t("agentHost.agentGui.goalResumeAction"),
       goalClearAction: t("agentHost.agentGui.goalClearAction"),
       goalRemoved: t("agentHost.agentGui.goalRemoved"),
-      processing: t("agentHost.agentGui.processing"),
+      ...agentProcessingLabels(t),
       turnSummary: t("agentHost.agentGui.turnSummary"),
       userMessageLocator: t("agentHost.agentGui.userMessageLocator"),
       planLead: t("agentHost.agentGui.planLead"),

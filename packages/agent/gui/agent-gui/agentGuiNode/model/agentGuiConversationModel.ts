@@ -20,6 +20,7 @@ import {
   normalizeAgentGUIConversationFilter
 } from "./agentGuiConversationFilter";
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
+import type { AgentProcessingRuntimeState } from "../../../shared/agentConversation/contracts/agentProcessingRowVM";
 import {
   resolveAgentGUIConversationTitle,
   resolveAgentGUIExplicitConversationTitle,
@@ -250,7 +251,11 @@ export function buildAgentGUIConversationModels({
   childSessions = [],
   childMessagesBySessionId = {},
   workspaceRoot = null,
-  avoidGroupingEdits = false
+  avoidGroupingEdits = false,
+  hasPendingInteraction = false,
+  processingRuntimeState = "connected",
+  submissionPhase = null,
+  submissionStartedAtUnixMs = null
 }: {
   timelineItems: readonly WorkspaceAgentActivityTimelineItem[];
   conversation: AgentGUIConversationProjectionSource;
@@ -261,6 +266,10 @@ export function buildAgentGUIConversationModels({
   >;
   workspaceRoot?: string | null;
   avoidGroupingEdits?: boolean;
+  hasPendingInteraction?: boolean;
+  processingRuntimeState?: AgentProcessingRuntimeState;
+  submissionPhase?: "preparing" | "submitting" | null;
+  submissionStartedAtUnixMs?: number | null;
 }): {
   conversation: AgentConversationVM | null;
   detail: WorkspaceAgentSessionDetailViewModel | null;
@@ -283,7 +292,13 @@ export function buildAgentGUIConversationModels({
     });
   return {
     conversation: attachChildSessionLanesToConversationVM(
-      projectAgentConversationVM(detail, { avoidGroupingEdits }),
+      projectAgentConversationVM(detail, {
+        avoidGroupingEdits,
+        hasPendingInteraction,
+        processingRuntimeState,
+        submissionPhase,
+        submissionStartedAtUnixMs
+      }),
       childSessionLanesByParentToolCallId
     ),
     detail

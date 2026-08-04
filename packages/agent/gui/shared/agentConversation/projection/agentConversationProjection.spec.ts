@@ -1081,10 +1081,15 @@ describe("projectAgentConversationVM", () => {
       ]
     });
 
-    const conversation = projectAgentConversationVM(detail);
+    const conversation = projectAgentConversationVM(detail, {
+      hasPendingInteraction: true
+    });
 
     expect("pendingApproval" in conversation).toBe(false);
     expect("pendingInteractivePrompt" in conversation).toBe(false);
+    expect(conversation.rows.some((row) => row.kind === "processing")).toBe(
+      false
+    );
     expect(
       conversation.rows.flatMap((row) =>
         row.kind === "tool-group" ? row.calls : []
@@ -1366,6 +1371,29 @@ describe("projectAgentConversationVM", () => {
     );
   });
 
+  it("projects engine submission and reconnect facts without mutating detail", () => {
+    const detail = detailViewModel({ showProcessingIndicator: false });
+    const submitting = projectAgentConversationVM(detail, {
+      submissionPhase: "submitting",
+      submissionStartedAtUnixMs: 500
+    });
+    expect(submitting.rows.find((row) => row.kind === "processing")).toEqual(
+      expect.objectContaining({
+        phase: "submitting",
+        startedAtUnixMs: 500
+      })
+    );
+    expect("waitRuntimeState" in detail).toBe(false);
+
+    const reconnecting = projectAgentConversationVM(
+      detailViewModel({ showProcessingIndicator: true }),
+      { processingRuntimeState: "reconnecting" }
+    );
+    expect(reconnecting.rows.find((row) => row.kind === "processing")).toEqual(
+      expect.objectContaining({ phase: "reconnecting" })
+    );
+  });
+
   it("preserves the latest transcript turn as processing fallback identity", () => {
     const firstTurn = detailViewModel().turns[0]!;
     const secondTurn = {
@@ -1428,12 +1456,22 @@ describe("projectAgentConversationVM", () => {
             agentItems: [{ kind: "message", message: compactNotice }]
           }
         ],
+        sessionTurns: [
+          {
+            agentSessionId: "session-1",
+            origin: "user_prompt",
+            phase: "running",
+            startedAtUnixMs: 5_000,
+            turnId: "turn-1",
+            updatedAtUnixMs: 6_000
+          }
+        ],
         showProcessingIndicator: true
       })
     );
 
-    expect(conversation.rows.some((row) => row.kind === "processing")).toBe(
-      false
+    expect(conversation.rows.find((row) => row.kind === "processing")).toEqual(
+      expect.objectContaining({ phase: "waiting_response" })
     );
   });
 
@@ -1493,7 +1531,7 @@ describe("projectAgentConversationVM", () => {
     );
 
     expect(conversation.rows.some((row) => row.kind === "processing")).toBe(
-      false
+      true
     );
   });
 
@@ -1516,12 +1554,22 @@ describe("projectAgentConversationVM", () => {
             agentItems: [{ kind: "message", message: compactNotice }]
           }
         ],
+        sessionTurns: [
+          {
+            agentSessionId: "session-1",
+            origin: "user_prompt",
+            phase: "running",
+            startedAtUnixMs: 5_000,
+            turnId: "turn-1",
+            updatedAtUnixMs: 6_000
+          }
+        ],
         showProcessingIndicator: true
       })
     );
 
     expect(conversation.rows.some((row) => row.kind === "processing")).toBe(
-      false
+      true
     );
     expect(
       conversation.rows.some(

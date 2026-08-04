@@ -300,7 +300,8 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
     ).toEqual([
       "I will inspect the repo.",
       "List,Read file,读取网页",
-      "Thinking after the active tool update."
+      "Thinking after the active tool update.",
+      "processing"
     ]);
   });
 
@@ -1378,7 +1379,7 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
     );
     expect(compactMessage?.presentationKind).toBe("specific-progress");
     expect(conversation.rows.some((row) => row.kind === "processing")).toBe(
-      false
+      true
     );
   });
 

@@ -271,6 +271,16 @@ export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
   goalClearAction: string;
   goalRemoved: string;
   processing: string;
+  processingPreparing: string;
+  processingSubmitting: string;
+  processingWaitingResponse: string;
+  processingThinking: string;
+  processingGenerating: string;
+  processingUsingTool: string;
+  processingWaitingTool: string;
+  processingReconnecting: string;
+  processingWaitingContinuation: string;
+  processingElapsedSeconds: (seconds: number) => string;
   turnSummary: string;
   userMessageLocator: string;
   planLead: string;

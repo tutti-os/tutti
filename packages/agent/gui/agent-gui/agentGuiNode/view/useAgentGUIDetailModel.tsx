@@ -248,11 +248,35 @@ export function useAgentGUIDetailModel(input: Input) {
       thinkingLabel: labels.thinkingLabel,
       toolCallsLabel: labels.toolCallsLabel,
       processing: labels.processing,
+      processingStatus: {
+        phases: {
+          preparing: labels.processingPreparing,
+          submitting: labels.processingSubmitting,
+          waiting_response: labels.processingWaitingResponse,
+          thinking: labels.processingThinking,
+          generating: labels.processingGenerating,
+          using_tool: labels.processingUsingTool,
+          waiting_tool: labels.processingWaitingTool,
+          reconnecting: labels.processingReconnecting,
+          waiting_continuation: labels.processingWaitingContinuation
+        },
+        elapsedSeconds: labels.processingElapsedSeconds
+      },
       turnSummary: labels.turnSummary,
       userMessageLocator: labels.userMessageLocator
     }),
     [
       labels.processing,
+      labels.processingElapsedSeconds,
+      labels.processingGenerating,
+      labels.processingPreparing,
+      labels.processingReconnecting,
+      labels.processingSubmitting,
+      labels.processingThinking,
+      labels.processingUsingTool,
+      labels.processingWaitingContinuation,
+      labels.processingWaitingResponse,
+      labels.processingWaitingTool,
       labels.thinkingLabel,
       labels.toolCallsLabel,
       labels.turnSummary,

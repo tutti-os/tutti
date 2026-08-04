@@ -217,8 +217,9 @@ session metadata.
 
 A Host may expose an ephemeral observation gap for one exact Session and Turn
 when its caller-side projection may be stale. The gap is presentation-only:
-AgentGUI pauses the processing animation, keeps recovery chrome visible, and
-blocks commands that require current state until the Host removes the gap. A
+AgentGUI keeps the single processing status active, keeps recovery chrome
+visible, and blocks commands that require current state until the Host removes
+the gap. A
 Host may additionally classify the gap as peer-offline or synchronizing; while
 that classification is present, AgentGUI replaces the numeric live duration
 with the matching status copy. An older Host that omits the classification
@@ -1278,6 +1279,23 @@ Turn elapsed-time presentation starts at the client submission timestamp carried
 by the canonical user-message payload, not at provider runtime start. Historical
 activity without that timestamp falls back to the leading user-message
 timestamp.
+
+While a Turn is active, AgentGUI projects one stable, single-line processing
+row from Engine submission facts, runtime availability, canonical Turn state,
+and typed transcript rows. Priority is terminal removal, canonical pending
+Interaction cards, reconnecting, waiting/running tools, explicit reasoning,
+assistant text generation, idle continuation, then generic response waiting.
+Before a canonical Turn exists, only Engine-owned preparing or submitting facts
+may select those labels. The UI never infers thinking from silence.
+
+The row uses the shared one-second conversation clock and starts from the same
+client submission timestamp as Turn timing. After three seconds without new
+assistant, reasoning, or tool progress, generating/thinking becomes waiting for
+continuation and tool execution becomes waiting for its result; fresh typed
+progress immediately restores the real phase. The row keeps one DOM identity
+and is removed on terminal success, failure, cancellation, or timeout. Token or
+byte flow is shown only when a reliable Turn-scoped count exists; otherwise the
+count is omitted rather than estimated.
 
 Completed Turn disclosure collapses only process-oriented rows such as thinking,
 tool groups, progress, turn-boundary messages, and transient processing.
