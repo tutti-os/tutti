@@ -266,7 +266,7 @@ func buildDaemonAPI(
 		Store:     agentQuickPromptStore,
 		Publisher: eventstreamservice.AgentQuickPromptPublisher{Service: events},
 	}
-	agentRuntimeController := newAgentRuntimeAdapter(agentRuntime.Controller())
+	agentRuntimeController := newAgentRuntimeAdapter(agentRuntime.Controller(), agentActivityProjection)
 	agentRuntime.Controller().SetStreamEventObserver(agentRuntimeActivityEventBridge{
 		publisher: eventstreamservice.AgentActivityPublisher{Service: events},
 	})

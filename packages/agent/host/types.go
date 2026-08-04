@@ -441,16 +441,9 @@ type RuntimeSubmitProvenanceInput struct {
 	TurnID                          string
 	ClientSubmitID                  string
 	CanonicalSubmitOccurredAtUnixMS int64
-	// These fields are the complete privacy-reviewed performance provenance
-	// allowlist. Do not replace them with arbitrary submission metadata: the
-	// canonical user message must never gain prompt, path, command, or auth data
-	// through this seam.
-	ClientSubmittedAtUnixMS int64
-	SessionState            string
-	WasQueued               *bool
-	Content                 []PromptContentBlock
-	DisplayPrompt           string
-	Guidance                bool
+	Content                         []PromptContentBlock
+	DisplayPrompt                   string
+	Guidance                        bool
 }
 
 type CompletedCommand struct {

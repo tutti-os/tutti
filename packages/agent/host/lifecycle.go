@@ -220,7 +220,7 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 			if persistErr := h.persistRuntimeSubmitOutcome(
 				ctx, SessionRef{WorkspaceID: workspaceID, AgentSessionID: session.ID}, execResult,
 				firstNonEmpty(claim.ClientSubmitID, input.ClientSubmitID, legacyClientSubmitID(metadata)),
-				claim.CreatedAtUnixMS, preparedContent, displayPrompt, metadata, input.CapabilityRefs,
+				claim.CreatedAtUnixMS, preparedContent, displayPrompt, input.CapabilityRefs,
 				input.TuttiModeSnapshot,
 			); persistErr != nil {
 				claimPending = false
@@ -254,11 +254,11 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 		return CreateSessionResult{}, ErrSubmitDeliveryUnknown
 	}
 	if reporter, ok := h.runtime.(RuntimeSubmitProvenanceReporter); ok {
-		provenance := withSubmitPerformanceProvenance(RuntimeSubmitProvenanceInput{
+		provenance := RuntimeSubmitProvenanceInput{
 			WorkspaceID: workspaceID, AgentSessionID: session.ID, TurnID: turnID,
 			ClientSubmitID: claim.ClientSubmitID, CanonicalSubmitOccurredAtUnixMS: claim.CreatedAtUnixMS,
 			Content: preparedContent.Hydrated, DisplayPrompt: displayPrompt,
-		}, metadata)
+		}
 		if err := reporter.DurablyReportSubmitProvenance(ctx, provenance); err != nil {
 			// Provider acceptance is already possible. Keep the runtime, canonical
 			// session, and prepared claim intact so a retry cannot dispatch twice.
@@ -524,7 +524,7 @@ func (h *Host) sendInputSerialized(
 			if persistErr := h.persistRuntimeSubmitOutcome(
 				ctx, ref, execResult,
 				firstNonEmpty(claim.ClientSubmitID, input.ClientSubmitID, legacyClientSubmitID(metadata)),
-				claim.CreatedAtUnixMS, preparedContent, displayPrompt, metadata, input.CapabilityRefs,
+				claim.CreatedAtUnixMS, preparedContent, displayPrompt, input.CapabilityRefs,
 				input.TuttiModeSnapshot,
 			); persistErr != nil {
 				claimPending = false
@@ -564,11 +564,11 @@ func (h *Host) sendInputSerialized(
 		return SendInputResult{}, ErrSubmitDeliveryUnknown
 	}
 	if reporter, ok := h.runtime.(RuntimeSubmitProvenanceReporter); ok {
-		provenance := withSubmitPerformanceProvenance(RuntimeSubmitProvenanceInput{
+		provenance := RuntimeSubmitProvenanceInput{
 			WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID, TurnID: turnID,
 			ClientSubmitID: claim.ClientSubmitID, CanonicalSubmitOccurredAtUnixMS: claim.CreatedAtUnixMS,
 			Content: preparedContent.Hydrated, DisplayPrompt: displayPrompt, Guidance: input.Guidance,
-		}, metadata)
+		}
 		if err := reporter.DurablyReportSubmitProvenance(ctx, provenance); err != nil {
 			claimPending = false
 			return SendInputResult{}, errors.Join(ErrSubmitDeliveryUnknown, err)

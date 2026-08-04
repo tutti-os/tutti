@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,18 +20,20 @@ func TestBuildAgentTurnPerformanceSummaryUsesCanonicalContentWithoutUploadingIt(
 		Phase: agentactivitybiz.TurnPhaseSettled, Outcome: agentactivitybiz.TurnOutcomeCompleted,
 		StartedAtUnixMS: 2_000, SettledAtUnixMS: 22_000,
 	}
+	queued := true
 	summary := buildAgentTurnPerformanceSummary(turn, []agentactivitybiz.Message{
 		{
 			MessageID: "user", Role: "user", Kind: "text", OccurredAtUnixMS: 2_000,
-			Payload: map[string]any{
-				"clientSubmittedAtUnixMs": int64(1_000), "queued": true,
-				"sessionState": "new", "content": "must stay local",
-			},
+			Payload: map[string]any{"content": "must stay local"},
 		},
 		{MessageID: "thinking", Role: "assistant", Kind: "reasoning", OccurredAtUnixMS: 6_000, Payload: map[string]any{"text": "private reasoning"}},
 		{MessageID: "notice", Role: "assistant", Kind: "text", OccurredAtUnixMS: 7_000, Payload: map[string]any{"kind": "agent_system_notice", "text": "retrying"}},
 		{MessageID: "toolcall:1", Role: "assistant", Kind: "tool_call", OccurredAtUnixMS: 8_000, Payload: map[string]any{"input": map[string]any{"path": "/private/file"}}},
 		{MessageID: "answer", Role: "assistant", Kind: "text", OccurredAtUnixMS: 18_000, Payload: map[string]any{"content": "private answer"}},
+	}, agentTurnPerformanceProvenance{
+		clientSubmittedAtUnixMS: 1_000,
+		sessionState:            "new",
+		wasQueued:               &queued,
 	})
 	if summary.timingStartSource != "client_submit" || summary.totalDurationMS != 21_000 {
 		t.Fatalf("timing = source %q duration %d", summary.timingStartSource, summary.totalDurationMS)
@@ -52,7 +56,7 @@ func TestBuildAgentTurnPerformanceSummaryLeavesUnavailableFactsNull(t *testing.T
 	summary := buildAgentTurnPerformanceSummary(agentactivitybiz.Turn{
 		Phase: agentactivitybiz.TurnPhaseSettled, Outcome: agentactivitybiz.TurnOutcomeInterrupted,
 		StartedAtUnixMS: 1_000, SettledAtUnixMS: 2_000,
-	}, nil)
+	}, nil, agentTurnPerformanceProvenance{})
 	if summary.firstProgressMS != nil || summary.ttftMS != nil || summary.wasQueued != nil {
 		t.Fatalf("unavailable fields = %#v", summary)
 	}
@@ -109,8 +113,123 @@ func TestResolveAgentTurnAnalyticsModelRedactsNonCatalogValues(t *testing.T) {
 
 func TestActivityProjectionClaimsTurnPerformanceOncePerProcess(t *testing.T) {
 	projection := NewActivityProjection(nil)
-	if !projection.claimTurnPerformanceReport("turn") || projection.claimTurnPerformanceReport("turn") {
+	now := time.Now()
+	if _, claimed := projection.claimTurnPerformanceReport("turn", now); !claimed {
+		t.Fatal("first turn performance report was not claimed")
+	}
+	if _, claimed := projection.claimTurnPerformanceReport("turn", now); claimed {
 		t.Fatal("turn performance report was not deduplicated")
+	}
+}
+
+func TestActivityProjectionTurnPerformanceProvenanceIsMemoryOnlyAndConsumed(t *testing.T) {
+	projection := NewActivityProjection(nil)
+	projection.RecordTurnPerformanceProvenance("workspace-1", "session-1", "turn-1", map[string]any{
+		"clientSubmittedAtUnixMs": int64(1_000),
+		"sessionState":            "existing",
+		"queued":                  false,
+	})
+	key := agentTurnPerformanceKey("workspace-1", "session-1", "turn-1")
+	provenance, claimed := projection.claimTurnPerformanceReport(key, time.Now())
+	if !claimed || provenance.clientSubmittedAtUnixMS != 1_000 || provenance.sessionState != "existing" ||
+		provenance.wasQueued == nil || *provenance.wasQueued {
+		t.Fatalf("consumed provenance = %#v claimed=%v", provenance, claimed)
+	}
+	if _, ok := projection.turnPerformanceState.provenance[key]; ok {
+		t.Fatal("terminal claim did not remove in-memory performance provenance")
+	}
+}
+
+func TestActivityProjectionTurnPerformanceProvenanceExpires(t *testing.T) {
+	projection := NewActivityProjection(nil)
+	key := agentTurnPerformanceKey("workspace-1", "session-1", "turn-expired")
+	old := time.Now().Add(-agentTurnPerformanceStateTTL - time.Minute)
+	projection.turnPerformanceState.record(key, agentTurnPerformanceProvenance{
+		clientSubmittedAtUnixMS: 1_000,
+		recordedAt:              old,
+		sessionState:            "new",
+	})
+	provenance, claimed := projection.claimTurnPerformanceReport(key, time.Now())
+	if !claimed {
+		t.Fatal("expired turn should still claim terminal reporting")
+	}
+	if provenance.clientSubmittedAtUnixMS != 0 || provenance.sessionState != "" || provenance.wasQueued != nil {
+		t.Fatalf("expired provenance was not discarded: %#v", provenance)
+	}
+}
+
+func TestActivityProjectionTurnPerformanceStateIsBounded(t *testing.T) {
+	projection := NewActivityProjection(nil)
+	base := time.Now()
+	for index := 0; index <= agentTurnPerformanceStateMaxEntries; index++ {
+		key := fmt.Sprintf("turn-%d", index)
+		projection.turnPerformanceState.record(key, agentTurnPerformanceProvenance{
+			clientSubmittedAtUnixMS: int64(index + 1),
+			recordedAt:              base.Add(time.Duration(index) * time.Millisecond),
+		})
+	}
+	if got := len(projection.turnPerformanceState.provenance); got != agentTurnPerformanceStateMaxEntries {
+		t.Fatalf("provenance entries = %d, want %d", got, agentTurnPerformanceStateMaxEntries)
+	}
+	if _, exists := projection.turnPerformanceState.provenance["turn-0"]; exists {
+		t.Fatal("oldest provenance entry was not evicted")
+	}
+}
+
+func TestActivityProjectionTurnPerformanceStateIsConcurrentSafe(t *testing.T) {
+	projection := NewActivityProjection(nil)
+	const count = 100
+	var recorded sync.WaitGroup
+	for index := 0; index < count; index++ {
+		recorded.Add(1)
+		go func(index int) {
+			defer recorded.Done()
+			projection.RecordTurnPerformanceProvenance("workspace-1", "session-1", fmt.Sprintf("turn-%d", index), map[string]any{
+				"clientSubmittedAtUnixMs": int64(index + 1),
+				"sessionState":            "existing",
+				"queued":                  false,
+			})
+		}(index)
+	}
+	recorded.Wait()
+
+	var claimed sync.WaitGroup
+	results := make(chan agentTurnPerformanceProvenance, count)
+	for index := 0; index < count; index++ {
+		claimed.Add(1)
+		go func(index int) {
+			defer claimed.Done()
+			key := agentTurnPerformanceKey("workspace-1", "session-1", fmt.Sprintf("turn-%d", index))
+			if provenance, ok := projection.claimTurnPerformanceReport(key, time.Now()); ok {
+				results <- provenance
+			}
+		}(index)
+	}
+	claimed.Wait()
+	close(results)
+	if got := len(results); got != count {
+		t.Fatalf("claimed provenance entries = %d, want %d", got, count)
+	}
+	if got := len(projection.turnPerformanceState.provenance); got != 0 {
+		t.Fatalf("unconsumed provenance entries = %d", got)
+	}
+}
+
+func TestBuildAgentTurnPerformanceSummaryFallsBackAfterRestart(t *testing.T) {
+	summary := buildAgentTurnPerformanceSummary(agentactivitybiz.Turn{
+		Phase: agentactivitybiz.TurnPhaseSettled, Outcome: agentactivitybiz.TurnOutcomeCompleted,
+		StartedAtUnixMS: 2_000, SettledAtUnixMS: 5_000,
+	}, []agentactivitybiz.Message{{
+		Role: "user", Kind: "text", OccurredAtUnixMS: 2_000,
+		Payload: map[string]any{
+			"clientSubmittedAtUnixMs": int64(1_000),
+			"sessionState":            "new",
+			"queued":                  true,
+		},
+	}}, agentTurnPerformanceProvenance{})
+	if summary.timingStartSource != "canonical_turn" || summary.totalDurationMS != 3_000 ||
+		summary.sessionState != "unknown" || summary.wasQueued != nil {
+		t.Fatalf("restart fallback summary = %#v", summary)
 	}
 }
 
@@ -135,6 +254,11 @@ func TestActivityProjectionReportsOneTerminalTurnPerformanceEvent(t *testing.T) 
 	reporter := &turnPerformanceEventReporter{events: make(chan reporterservice.Event, 2)}
 	projection := NewActivityProjection(store)
 	projection.SetAnalyticsReporter(reporter)
+	projection.RecordTurnPerformanceProvenance("ws-performance", "session-1", "turn-1", map[string]any{
+		"clientSubmittedAtUnixMs": int64(500),
+		"queued":                  false,
+		"sessionState":            "new",
+	})
 	activeTurnID := "turn-1"
 	if err := projection.Report(ctx, agentsessionstore.ReportActivityInput{
 		WorkspaceID: "ws-performance",
@@ -153,10 +277,7 @@ func TestActivityProjectionReportsOneTerminalTurnPerformanceEvent(t *testing.T) 
 		MessageUpdates: []agentsessionstore.WorkspaceAgentMessageUpdate{{
 			AgentSessionID: "session-1", TurnID: "turn-1", MessageID: "user-1",
 			Role: "user", Kind: "text", Status: "completed",
-			Payload: map[string]any{
-				"clientSubmittedAtUnixMs": int64(500), "queued": false,
-				"sessionState": "new", "text": "private prompt",
-			},
+			Payload:          map[string]any{"text": "private prompt"},
 			OccurredAtUnixMS: 1_000,
 		}},
 	}); err != nil {
@@ -202,6 +323,20 @@ func TestActivityProjectionReportsOneTerminalTurnPerformanceEvent(t *testing.T) 
 	for _, forbidden := range []string{"workspace_id", "agent_session_id", "turn_id", "prompt", "response", "content"} {
 		if _, ok := event.Params[forbidden]; ok {
 			t.Fatalf("event contains forbidden key %q: %#v", forbidden, event.Params)
+		}
+	}
+	page, found, err := store.ListSessionMessages(ctx, agentactivitybiz.ListSessionMessagesInput{
+		WorkspaceID: "ws-performance", AgentSessionID: "session-1", TurnID: "turn-1",
+		Limit: 100, Order: agentactivitybiz.MessageOrderAsc,
+	})
+	if err != nil || !found {
+		t.Fatalf("read persisted messages: found=%v error=%v", found, err)
+	}
+	for _, message := range page.Messages {
+		for _, forbidden := range []string{"clientSubmittedAtUnixMs", "sessionState", "queued"} {
+			if _, ok := message.Payload[forbidden]; ok {
+				t.Fatalf("persisted message contains in-memory field %q: %#v", forbidden, message.Payload)
+			}
 		}
 	}
 

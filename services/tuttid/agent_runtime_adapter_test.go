@@ -146,6 +146,25 @@ type submitProvenanceAdapterTestReporter struct {
 	provenance agentsessionstore.ReportActivityInput
 }
 
+type turnPerformanceRecorderStub struct {
+	workspaceID    string
+	agentSessionID string
+	turnID         string
+	metadata       map[string]any
+}
+
+func (r *turnPerformanceRecorderStub) RecordTurnPerformanceProvenance(
+	workspaceID string,
+	agentSessionID string,
+	turnID string,
+	metadata map[string]any,
+) {
+	r.workspaceID = workspaceID
+	r.agentSessionID = agentSessionID
+	r.turnID = turnID
+	r.metadata = cloneRuntimeContext(metadata)
+}
+
 func (*submitProvenanceAdapterTestReporter) Report(context.Context, agentsessionstore.ReportActivityInput) error {
 	return nil
 }
@@ -368,14 +387,10 @@ func TestAgentRuntimeAdapterDelegatesTypedDurableSubmitProvenance(t *testing.T) 
 	}
 
 	adapter := newAgentRuntimeAdapter(controller)
-	queued := false
 	if err := adapter.DurablyReportSubmitProvenance(context.Background(), agentservice.RuntimeSubmitProvenanceInput{
 		WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: "turn-1",
 		ClientSubmitID: "submit-1", Content: agentservice.TextPromptContent("hello"),
 		CanonicalSubmitOccurredAtUnixMS: 1_234,
-		ClientSubmittedAtUnixMS:         1_000,
-		SessionState:                    "new",
-		WasQueued:                       &queued,
 		DisplayPrompt:                   "Visible hello",
 	}); err != nil {
 		t.Fatalf("DurablyReportSubmitProvenance() error = %v", err)
@@ -386,10 +401,44 @@ func TestAgentRuntimeAdapterDelegatesTypedDurableSubmitProvenance(t *testing.T) 
 	}
 	message := got.MessageUpdates[0]
 	if message.TurnID != "turn-1" || message.Seq != 1_234 || message.OccurredAtUnixMS != 1_234 ||
-		message.Payload["clientSubmitId"] != "submit-1" || message.Payload["displayPrompt"] != "Visible hello" ||
-		message.Payload["clientSubmittedAtUnixMs"] != int64(1_000) || message.Payload["sessionState"] != "new" ||
-		message.Payload["queued"] != false {
+		message.Payload["clientSubmitId"] != "submit-1" || message.Payload["displayPrompt"] != "Visible hello" {
 		t.Fatalf("provenance message = %#v", message)
+	}
+	for _, forbidden := range []string{"clientSubmittedAtUnixMs", "sessionState", "queued"} {
+		if _, ok := message.Payload[forbidden]; ok {
+			t.Fatalf("provenance message contains in-memory performance field %q: %#v", forbidden, message)
+		}
+	}
+}
+
+func TestAgentRuntimeAdapterRecordsTurnPerformanceBeforeExecution(t *testing.T) {
+	controller := agentruntime.NewController(
+		[]agentruntime.Adapter{submitProvenanceAdapterTestProvider{}},
+		nil,
+	)
+	if _, err := controller.Start(t.Context(), agentruntime.StartInput{
+		RoomID: "workspace-1", AgentSessionID: "session-1", Provider: "submit-provenance-test", CWD: t.TempDir(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	recorder := &turnPerformanceRecorderStub{}
+	adapter := newAgentRuntimeAdapter(controller, recorder)
+	if _, err := adapter.Exec(t.Context(), agentservice.RuntimeExecInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: "turn-1",
+		ClientSubmitID: "submit-1", CanonicalSubmitOccurredAtUnixMS: 1_200,
+		Content: agentservice.TextPromptContent("hello"),
+		Metadata: map[string]any{
+			"clientSubmittedAtUnixMs": int64(1_000),
+			"sessionState":            "existing",
+			"queued":                  true,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if recorder.workspaceID != "workspace-1" || recorder.agentSessionID != "session-1" || recorder.turnID != "turn-1" ||
+		recorder.metadata["clientSubmittedAtUnixMs"] != int64(1_000) || recorder.metadata["sessionState"] != "existing" ||
+		recorder.metadata["queued"] != true {
+		t.Fatalf("recorded performance provenance = %#v", recorder)
 	}
 }
 

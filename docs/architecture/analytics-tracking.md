@@ -118,6 +118,18 @@ emits at most one event per terminal Turn in one daemon process. Renderer
 snapshots are not an analytics authority, and reporting, message reads, model
 normalization, or transport failure must never delay or fail the Turn.
 
+The client-submit timestamp, new/existing Session classification, and queue
+fact are kept only in a bounded, six-hour process-memory map keyed by the local
+Turn identity. Runtime execution records the entry before provider dispatch;
+terminal observation consumes and deletes it. These fields must not be copied
+into canonical message payloads or SQLite rows, and the raw client-submit time
+must not be copied into local submit-trace logs. The terminal summary itself
+continues through the existing DataFinder reporter transport. A daemon restart
+intentionally loses the entry: timing then falls back to the canonical Turn
+start, Session state becomes `unknown`, and queue state remains null. This is
+an accepted best-effort analytics degradation, not a reason to add a durable
+telemetry outbox.
+
 The event contains only a strict content-free whitelist: normalized provider
 and catalog model (`custom` or `unknown` when a raw value is not safe),
 new/existing/unknown Session state, client-submit or canonical-Turn timing

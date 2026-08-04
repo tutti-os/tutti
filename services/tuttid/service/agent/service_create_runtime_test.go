@@ -628,11 +628,6 @@ func TestServiceCreatePassesInitialDisplayPromptToRuntime(t *testing.T) {
 		runtime.provenanceCalls[0].CanonicalSubmitOccurredAtUnixMS != call.CanonicalSubmitOccurredAtUnixMS {
 		t.Fatalf("canonical submit occurrence exec=%d provenance=%#v", call.CanonicalSubmitOccurredAtUnixMS, runtime.provenanceCalls)
 	}
-	provenance := runtime.provenanceCalls[0]
-	if provenance.ClientSubmittedAtUnixMS != 12345 || provenance.SessionState != "new" ||
-		provenance.WasQueued == nil || *provenance.WasQueued {
-		t.Fatalf("submit performance provenance = %#v", provenance)
-	}
 	if _, ok := call.Metadata[""]; ok {
 		t.Fatalf("runtime metadata includes blank key: %#v", call.Metadata)
 	}
@@ -799,11 +794,6 @@ func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
 	if call.CanonicalSubmitOccurredAtUnixMS <= 0 || len(runtime.provenanceCalls) != 1 ||
 		runtime.provenanceCalls[0].CanonicalSubmitOccurredAtUnixMS != call.CanonicalSubmitOccurredAtUnixMS {
 		t.Fatalf("canonical submit occurrence exec=%d provenance=%#v", call.CanonicalSubmitOccurredAtUnixMS, runtime.provenanceCalls)
-	}
-	provenance := runtime.provenanceCalls[0]
-	if provenance.ClientSubmittedAtUnixMS != 1234 || provenance.SessionState != "existing" ||
-		provenance.WasQueued == nil || !*provenance.WasQueued {
-		t.Fatalf("submit performance provenance = %#v", provenance)
 	}
 	if _, ok := call.Metadata[""]; ok {
 		t.Fatalf("runtime metadata includes blank key: %#v", call.Metadata)

@@ -313,12 +313,14 @@ func TestUserPromptActivityPayloadExtraFromExecMetadataAddsClientSubmitIdentity(
 	})
 
 	if extra["clientSubmitId"] != "submit-1" ||
-		extra["clientSubmittedAtUnixMs"] != int64(1234) ||
-		extra["queued"] != true ||
-		extra["sessionState"] != "existing" ||
 		extra["messageId"] != "client-submit:user:submit-1" ||
 		extra["steered"] != true {
 		t.Fatalf("extra = %#v, want client submit identity and existing fields", extra)
+	}
+	for _, forbidden := range []string{"clientSubmittedAtUnixMs", "queued", "sessionState"} {
+		if _, ok := extra[forbidden]; ok {
+			t.Fatalf("extra contains in-memory performance field %q: %#v", forbidden, extra)
+		}
 	}
 }
 

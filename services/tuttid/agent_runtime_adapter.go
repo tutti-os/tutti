@@ -13,7 +13,12 @@ import (
 )
 
 type agentRuntimeAdapter struct {
-	controller *agentruntime.Controller
+	controller              *agentruntime.Controller
+	turnPerformanceRecorder agentTurnPerformanceRecorder
+}
+
+type agentTurnPerformanceRecorder interface {
+	RecordTurnPerformanceProvenance(string, string, string, map[string]any)
 }
 
 func (a agentRuntimeAdapter) ObserveRootTurnSettled(_ context.Context, workspaceID string, agentSessionID string, turn agentactivitybiz.Turn) {
@@ -26,8 +31,15 @@ func (a agentRuntimeAdapter) ObserveRootTurnSettled(_ context.Context, workspace
 	})
 }
 
-func newAgentRuntimeAdapter(controller *agentruntime.Controller) agentRuntimeAdapter {
-	return agentRuntimeAdapter{controller: controller}
+func newAgentRuntimeAdapter(
+	controller *agentruntime.Controller,
+	recorders ...agentTurnPerformanceRecorder,
+) agentRuntimeAdapter {
+	adapter := agentRuntimeAdapter{controller: controller}
+	if len(recorders) > 0 {
+		adapter.turnPerformanceRecorder = recorders[0]
+	}
+	return adapter
 }
 
 func (a agentRuntimeAdapter) Cancel(ctx context.Context, input agentservice.RuntimeCancelInput) (agentservice.RuntimeCancelResult, error) {
@@ -163,6 +175,18 @@ func (a agentRuntimeAdapter) Exec(ctx context.Context, input agentservice.Runtim
 	agentservice.LogSubmitTrace("runtime_adapter.exec.entered", input.WorkspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{
 		"content_block_count": len(input.Content),
 	})
+	if !input.Guidance && a.turnPerformanceRecorder != nil {
+		a.turnPerformanceRecorder.RecordTurnPerformanceProvenance(
+			input.WorkspaceID,
+			input.AgentSessionID,
+			input.TurnID,
+			input.Metadata,
+		)
+	}
+	runtimeMetadata := cloneRuntimeContext(input.Metadata)
+	delete(runtimeMetadata, "clientSubmittedAtUnixMs")
+	delete(runtimeMetadata, "sessionState")
+	delete(runtimeMetadata, "queued")
 	result, err := a.controller.Exec(ctx, agentruntime.ExecInput{
 		RoomID:                          input.WorkspaceID,
 		AgentSessionID:                  input.AgentSessionID,
@@ -177,7 +201,7 @@ func (a agentRuntimeAdapter) Exec(ctx context.Context, input agentservice.Runtim
 		Guidance:                        input.Guidance,
 		HistoryReplacement:              input.HistoryReplacement,
 		RequireProviderAcceptance:       input.RequireProviderAcceptance,
-		Metadata:                        cloneRuntimeContext(input.Metadata),
+		Metadata:                        runtimeMetadata,
 		TuttiModeSnapshot:               runtimeTuttiModeSnapshotFromService(input.TuttiModeSnapshot),
 	})
 	projected := agentservice.RuntimeExecResult{
@@ -235,9 +259,6 @@ func (a agentRuntimeAdapter) DurablyReportSubmitProvenance(
 		TurnID:                          input.TurnID,
 		ClientSubmitID:                  input.ClientSubmitID,
 		CanonicalSubmitOccurredAtUnixMS: input.CanonicalSubmitOccurredAtUnixMS,
-		ClientSubmittedAtUnixMS:         input.ClientSubmittedAtUnixMS,
-		SessionState:                    input.SessionState,
-		WasQueued:                       cloneBoolPointer(input.WasQueued),
 		Content:                         runtimePromptContentFromService(input.Content),
 		DisplayPrompt:                   input.DisplayPrompt,
 		Guidance:                        input.Guidance,
@@ -246,14 +267,6 @@ func (a agentRuntimeAdapter) DurablyReportSubmitProvenance(
 		return mapAgentRuntimeError(err)
 	}
 	return nil
-}
-
-func cloneBoolPointer(value *bool) *bool {
-	if value == nil {
-		return nil
-	}
-	cloned := *value
-	return &cloned
 }
 
 func runtimeTuttiModeSnapshotFromService(

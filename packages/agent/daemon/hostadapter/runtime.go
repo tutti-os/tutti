@@ -735,20 +735,9 @@ func runtimeSubmitProvenanceInput(input host.RuntimeSubmitProvenanceInput) agent
 		RoomID: input.WorkspaceID, AgentSessionID: input.AgentSessionID,
 		TurnID: input.TurnID, ClientSubmitID: input.ClientSubmitID,
 		CanonicalSubmitOccurredAtUnixMS: input.CanonicalSubmitOccurredAtUnixMS,
-		ClientSubmittedAtUnixMS:         input.ClientSubmittedAtUnixMS,
-		SessionState:                    input.SessionState,
-		WasQueued:                       cloneBoolPointer(input.WasQueued),
 		Content:                         runtimePromptContent(input.Content), DisplayPrompt: input.DisplayPrompt,
 		Guidance: input.Guidance,
 	}
-}
-
-func cloneBoolPointer(value *bool) *bool {
-	if value == nil {
-		return nil
-	}
-	cloned := *value
-	return &cloned
 }
 
 func runtimePromptContent(input []host.PromptContentBlock) []agentruntime.PromptContentBlock {

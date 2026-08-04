@@ -59,18 +59,6 @@ func textMessageUpdateFromSessionEvent(
 	if clientSubmitID := stringFromPayload(event.Payload.Metadata, "clientSubmitId"); clientSubmitID != "" {
 		payload["clientSubmitId"] = clientSubmitID
 	}
-	// Performance provenance is intentionally copied field-by-field. Never
-	// forward arbitrary execution metadata into the durable message payload.
-	if submittedAtUnixMS := metadataInt64(event.Payload.Metadata, "clientSubmittedAtUnixMs"); submittedAtUnixMS > 0 {
-		payload["clientSubmittedAtUnixMs"] = submittedAtUnixMS
-	}
-	if queued, ok := event.Payload.Metadata["queued"].(bool); ok {
-		payload["queued"] = queued
-	}
-	switch sessionState := strings.TrimSpace(stringFromPayload(event.Payload.Metadata, "sessionState")); sessionState {
-	case "new", "existing":
-		payload["sessionState"] = sessionState
-	}
 	update := agentsessionstore.WorkspaceAgentMessageUpdate{
 		AgentSessionID:   strings.TrimSpace(sessionID),
 		MessageID:        messageID,

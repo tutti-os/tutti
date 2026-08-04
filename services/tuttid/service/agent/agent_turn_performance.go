@@ -11,11 +11,25 @@ import (
 	turnperformance "github.com/tutti-os/tutti/services/tuttid/service/reporter/events/agent/turn_performance"
 )
 
-const agentTurnLongIdleThresholdMS int64 = 10_000
+const (
+	agentTurnLongIdleThresholdMS        int64 = 10_000
+	agentTurnPerformanceStateTTL              = 6 * time.Hour
+	agentTurnPerformancePruneInterval         = time.Minute
+	agentTurnPerformanceStateMaxEntries       = 4_096
+)
+
+type agentTurnPerformanceProvenance struct {
+	clientSubmittedAtUnixMS int64
+	recordedAt              time.Time
+	sessionState            string
+	wasQueued               *bool
+}
 
 type agentTurnPerformanceState struct {
 	modelCatalog AgentModelCatalog
 	mu           sync.Mutex
+	lastPrunedAt time.Time
+	provenance   map[string]agentTurnPerformanceProvenance
 	reported     map[string]struct{}
 }
 
@@ -45,11 +59,15 @@ func (p *ActivityProjection) scheduleAgentTurnPerformance(
 	agentSessionID string,
 	turn agentactivitybiz.Turn,
 ) {
-	if p == nil || p.analyticsReporter == nil || turn.Backfilled || turn.Phase != agentactivitybiz.TurnPhaseSettled {
+	if p == nil || turn.Backfilled || turn.Phase != agentactivitybiz.TurnPhaseSettled {
 		return
 	}
-	key := strings.TrimSpace(workspaceID) + "\x00" + strings.TrimSpace(agentSessionID) + "\x00" + strings.TrimSpace(turn.TurnID)
-	if key == "\x00\x00" || !p.claimTurnPerformanceReport(key) {
+	key := agentTurnPerformanceKey(workspaceID, agentSessionID, turn.TurnID)
+	if key == "" {
+		return
+	}
+	provenance, claimed := p.claimTurnPerformanceReport(key, time.Now())
+	if !claimed || p.analyticsReporter == nil {
 		return
 	}
 	// Analytics reads, catalog resolution, and transport are detached from the
@@ -59,21 +77,112 @@ func (p *ActivityProjection) scheduleAgentTurnPerformance(
 		deferredCtx, cancel := context.WithTimeout(deferredCtx, 3*time.Second)
 		defer cancel()
 		defer func() { _ = recover() }()
-		p.reportAgentTurnPerformance(deferredCtx, workspaceID, agentSessionID, turn)
+		p.reportAgentTurnPerformance(deferredCtx, workspaceID, agentSessionID, turn, provenance)
 	}()
 }
 
-func (p *ActivityProjection) claimTurnPerformanceReport(key string) bool {
+// RecordTurnPerformanceProvenance keeps the privacy-reviewed submit timing
+// dimensions in process memory only. Terminal reporting consumes the entry;
+// daemon restart deliberately loses it and falls back to canonical Turn time.
+func (p *ActivityProjection) RecordTurnPerformanceProvenance(
+	workspaceID string,
+	agentSessionID string,
+	turnID string,
+	metadata map[string]any,
+) {
+	if p == nil {
+		return
+	}
+	key := agentTurnPerformanceKey(workspaceID, agentSessionID, turnID)
+	if key == "" {
+		return
+	}
+	provenance := agentTurnPerformanceProvenance{
+		clientSubmittedAtUnixMS: metadataInt64(metadata, "clientSubmittedAtUnixMs"),
+		recordedAt:              time.Now(),
+	}
+	if sessionState, ok := metadata["sessionState"].(string); ok {
+		provenance.sessionState = normalizedAgentTurnSessionState(sessionState)
+	} else {
+		provenance.sessionState = "unknown"
+	}
+	if queued, ok := metadata["queued"].(bool); ok {
+		queuedCopy := queued
+		provenance.wasQueued = &queuedCopy
+	}
+	if provenance.clientSubmittedAtUnixMS <= 0 && provenance.sessionState == "unknown" && provenance.wasQueued == nil {
+		return
+	}
+	p.turnPerformanceState.record(key, provenance)
+}
+
+func (s *agentTurnPerformanceState) record(key string, provenance agentTurnPerformanceProvenance) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pruneIfDueLocked(provenance.recordedAt)
+	if s.provenance == nil {
+		s.provenance = make(map[string]agentTurnPerformanceProvenance)
+	}
+	if _, exists := s.provenance[key]; !exists && len(s.provenance) >= agentTurnPerformanceStateMaxEntries {
+		s.evictOldestProvenanceLocked()
+	}
+	s.provenance[key] = provenance
+}
+
+func (p *ActivityProjection) claimTurnPerformanceReport(
+	key string,
+	now time.Time,
+) (agentTurnPerformanceProvenance, bool) {
 	p.turnPerformanceState.mu.Lock()
 	defer p.turnPerformanceState.mu.Unlock()
+	p.turnPerformanceState.pruneIfDueLocked(now)
 	if p.turnPerformanceState.reported == nil {
 		p.turnPerformanceState.reported = make(map[string]struct{})
 	}
 	if _, reported := p.turnPerformanceState.reported[key]; reported {
-		return false
+		return agentTurnPerformanceProvenance{}, false
 	}
 	p.turnPerformanceState.reported[key] = struct{}{}
-	return true
+	provenance := p.turnPerformanceState.provenance[key]
+	delete(p.turnPerformanceState.provenance, key)
+	return provenance, true
+}
+
+func (s *agentTurnPerformanceState) pruneIfDueLocked(now time.Time) {
+	if !s.lastPrunedAt.IsZero() && now.Sub(s.lastPrunedAt) < agentTurnPerformancePruneInterval {
+		return
+	}
+	s.lastPrunedAt = now
+	cutoff := now.Add(-agentTurnPerformanceStateTTL)
+	for key, provenance := range s.provenance {
+		if provenance.recordedAt.Before(cutoff) {
+			delete(s.provenance, key)
+		}
+	}
+}
+
+func (s *agentTurnPerformanceState) evictOldestProvenanceLocked() {
+	var oldestKey string
+	var oldestAt time.Time
+	for key, provenance := range s.provenance {
+		if oldestKey == "" || provenance.recordedAt.Before(oldestAt) {
+			oldestKey = key
+			oldestAt = provenance.recordedAt
+		}
+	}
+	if oldestKey != "" {
+		delete(s.provenance, oldestKey)
+	}
+}
+
+func agentTurnPerformanceKey(workspaceID string, agentSessionID string, turnID string) string {
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	turnID = strings.TrimSpace(turnID)
+	if workspaceID == "" || agentSessionID == "" || turnID == "" {
+		return ""
+	}
+	return workspaceID + "\x00" + agentSessionID + "\x00" + turnID
 }
 
 func (p *ActivityProjection) reportAgentTurnPerformance(
@@ -81,6 +190,7 @@ func (p *ActivityProjection) reportAgentTurnPerformance(
 	workspaceID string,
 	agentSessionID string,
 	turn agentactivitybiz.Turn,
+	provenance agentTurnPerformanceProvenance,
 ) {
 	session, found, err := p.repo.GetSession(ctx, workspaceID, agentSessionID)
 	if err != nil || !found {
@@ -90,7 +200,7 @@ func (p *ActivityProjection) reportAgentTurnPerformance(
 	if err != nil {
 		return
 	}
-	summary := buildAgentTurnPerformanceSummary(turn, messages)
+	summary := buildAgentTurnPerformanceSummary(turn, messages, provenance)
 	model := resolveAgentTurnAnalyticsModel(ctx, p.turnPerformanceState.modelCatalog, session)
 	provider := normalizeAgentTurnProvider(session.Provider)
 	toolCallCount := summary.toolCallCount
@@ -144,13 +254,22 @@ func (p *ActivityProjection) agentTurnMessages(
 	}
 }
 
-func buildAgentTurnPerformanceSummary(turn agentactivitybiz.Turn, messages []agentactivitybiz.Message) agentTurnPerformanceSummary {
+func buildAgentTurnPerformanceSummary(
+	turn agentactivitybiz.Turn,
+	messages []agentactivitybiz.Message,
+	provenance agentTurnPerformanceProvenance,
+) agentTurnPerformanceSummary {
 	start := firstNonZeroInt64(turn.StartedAtUnixMS, turn.CreatedAtUnixMS)
 	end := firstNonZeroInt64(turn.SettledAtUnixMS, turn.UpdatedAtUnixMS, start)
 	summary := agentTurnPerformanceSummary{
 		outcome:           agentTurnAnalyticsOutcome(turn),
-		sessionState:      "unknown",
+		sessionState:      normalizedAgentTurnSessionState(provenance.sessionState),
 		timingStartSource: "canonical_turn",
+		wasQueued:         cloneBoolPointer(provenance.wasQueued),
+	}
+	if submittedAt := provenance.clientSubmittedAtUnixMS; submittedAt > 0 && (end <= 0 || submittedAt <= end) {
+		start = submittedAt
+		summary.timingStartSource = "client_submit"
 	}
 
 	progressTimes := make([]int64, 0, len(messages)+2)
@@ -160,20 +279,6 @@ func buildAgentTurnPerformanceSummary(turn agentactivitybiz.Turn, messages []age
 	for _, message := range messages {
 		at := agentTurnMessageTimestamp(message)
 		if strings.EqualFold(strings.TrimSpace(message.Role), "user") {
-			if submittedAt := metadataInt64(message.Payload, "clientSubmittedAtUnixMs"); submittedAt > 0 && (end <= 0 || submittedAt <= end) {
-				start = submittedAt
-				summary.timingStartSource = "client_submit"
-			}
-			if queued, ok := message.Payload["queued"].(bool); ok {
-				queuedCopy := queued
-				summary.wasQueued = &queuedCopy
-			}
-			if state, ok := message.Payload["sessionState"].(string); ok {
-				switch strings.TrimSpace(state) {
-				case "new", "existing":
-					summary.sessionState = strings.TrimSpace(state)
-				}
-			}
 			continue
 		}
 		if !strings.EqualFold(strings.TrimSpace(message.Role), "assistant") || at <= 0 {
@@ -229,6 +334,15 @@ func buildAgentTurnPerformanceSummary(turn agentactivitybiz.Turn, messages []age
 	}
 	summary.hadLongIdle = summary.maxIdleMS >= agentTurnLongIdleThresholdMS
 	return summary
+}
+
+func normalizedAgentTurnSessionState(value string) string {
+	switch strings.TrimSpace(value) {
+	case "new", "existing":
+		return strings.TrimSpace(value)
+	default:
+		return "unknown"
+	}
 }
 
 func agentTurnMessageIsAnswerText(message agentactivitybiz.Message) bool {

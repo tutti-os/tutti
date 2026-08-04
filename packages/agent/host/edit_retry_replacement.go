@@ -350,11 +350,11 @@ func (h *Host) recordEditRetryReplacementSubmission(
 				}
 			}
 		}
-		provenance := withSubmitPerformanceProvenance(RuntimeSubmitProvenanceInput{
+		provenance := RuntimeSubmitProvenanceInput{
 			WorkspaceID: operation.WorkspaceID, AgentSessionID: operation.AgentSessionID,
 			TurnID: payload.ReplacementTurnID, ClientSubmitID: payload.ClientSubmitID,
 			Content: hydrated, DisplayPrompt: input.DisplayPrompt,
-		}, input.Metadata)
+		}
 		if err := reporter.DurablyReportSubmitProvenance(ctx, provenance); err != nil {
 			return err
 		}

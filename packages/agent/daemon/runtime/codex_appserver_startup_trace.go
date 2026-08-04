@@ -52,10 +52,6 @@ func newCodexAppServerTurnTrace(session Session, turnID string, metadata map[str
 	if clientSubmitID := metadataString(metadata, "clientSubmitId"); clientSubmitID != "" {
 		fields["client_submit_id"] = clientSubmitID
 	}
-	if submittedAt := metadataInt64(metadata, "clientSubmittedAtUnixMs"); submittedAt > 0 {
-		fields["client_submitted_at_unix_ms"] = submittedAt
-		fields["elapsed_since_client_submit_ms"] = time.Now().UnixMilli() - submittedAt
-	}
 	trace.Log("turn.begin", fields)
 	return trace
 }
