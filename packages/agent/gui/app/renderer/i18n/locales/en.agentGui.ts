@@ -334,31 +334,11 @@ export const enAgentGui = {
   editRetrySubmit: "Save and retry",
   editRetryFailed: "Edit retry failed",
   editRetryProcessing: "Updating conversation history and retrying…",
-  editRetryRetryWait: "Recovery will retry automatically",
-  editRetryCompleted: "Edited message recovery is complete",
   editRetryNeedsAction:
     "Conversation history was updated, but the edited message still needs recovery",
-  editRetryRolloutDisabled:
-    "Editing and retrying is not enabled for this rollout",
-  editRetryProviderUnsupported:
-    "This provider does not support editing and retrying",
-  editRetryProviderOutcomeUnknown:
-    "The provider outcome is still being confirmed",
-  editRetryReplacementNotProvenAbsent:
-    "The replacement has not been proven absent yet",
-  editRetryBudgetExhausted: "Automatic recovery has reached its safety limit",
-  editRetryLocalStateInconsistent:
-    "This conversation needs a local recovery check",
-  editRetryRecoveryRequired: "This conversation needs a recovery action",
-  editRetryCurrentSessionOnly: "This conversation only",
-  editRetryAutomatic: "Automatic recovery",
-  editRetryAttempt: "Attempt {{attempt}}",
-  editRetryNextAttempt: "Next attempt {{time}}",
   editRetryReconcile: "Reconcile",
   editRetryRetryReplacement: "Retry message",
   editRetryAbandon: "Abandon recovery",
-  editRetryActionFailed: "Recovery request failed. Try again.",
-  editRetryActionRefreshing: "State changed. Refreshing…",
   messageCopied: "Copied",
   promptTipsPrefix: "Tips: ",
   reviewPicker: {
