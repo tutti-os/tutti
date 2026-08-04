@@ -244,6 +244,9 @@ export function useAgentGUIComposerSettingsActions(
       // transient empty select value during options refresh is not a user
       // intent and must not clear either the optimistic draft or defaults.
       for (const field of rememberComposerDefaultsFields) {
+        if (field === "codexSaverMode") {
+          continue;
+        }
         if (
           supportedNextSettings[field] !== undefined &&
           normalizeOptionalText(supportedNextSettings[field]) === null
@@ -273,7 +276,10 @@ export function useAgentGUIComposerSettingsActions(
         for (const field of rememberComposerDefaultsFields) {
           if (supportedNextSettings[field] !== undefined) {
             Object.assign(mergedIntent, {
-              [field]: normalizeOptionalText(supportedNextSettings[field])
+              [field]:
+                field === "codexSaverMode"
+                  ? supportedNextSettings.codexSaverMode === true
+                  : normalizeOptionalText(supportedNextSettings[field])
             });
           }
         }

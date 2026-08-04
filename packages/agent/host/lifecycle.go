@@ -127,7 +127,7 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 			Provider: input.Provider, Cwd: prepared.Cwd, Env: append([]string(nil), prepared.Env...),
 			Title: runtimeTitle, InitialTitleEstablished: initialTitleEstablished,
 			PermissionModeID: value(input.PermissionModeID), Model: value(input.Model), PlanMode: valueBool(input.PlanMode),
-			BrowserUse: input.BrowserUse, ComputerUse: input.ComputerUse,
+			BrowserUse: input.BrowserUse, ComputerUse: input.ComputerUse, CodexSaverMode: valueBool(input.CodexSaverMode),
 			ProviderTargetRef: cloneMap(firstMap(prepared.ProviderTargetRef, input.ProviderTargetRef)),
 			RuntimeContext:    cloneMap(input.RuntimeContext), ReasoningEffort: value(input.ReasoningEffort),
 			Speed: value(input.Speed), ConversationDetailMode: strings.TrimSpace(input.ConversationDetailMode),
@@ -227,17 +227,18 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 				return CreateSessionResult{}, errors.Join(ErrSubmitDeliveryUnknown, err, persistErr)
 			}
 			if disposition == RuntimeDispatchDispositionRejected {
-				// A definitive rejection keeps the visible Session/failed Turn. Do
-				// not close the runtime before its terminal report is projected. Keep
-				// the claim as a terminal idempotency fence so a retry can render the
-				// same failed Turn without invoking the provider again.
+				// A definitive rejection keeps the visible Session/failed Turn. The
+				// claim is a terminal idempotency fence, so replay reads the same
+				// failed Turn without invoking the provider again. Once that terminal
+				// report is durable, discard the startup runtime without publishing a
+				// canonical completion over the failure.
 				if strings.TrimSpace(execResult.TurnID) != "" {
 					claimPending = false
 					if rejectErr := h.finalizeRejectedSubmitClaim(ref, firstNonEmpty(claim.ClientSubmitID, input.ClientSubmitID, legacyClientSubmitID(metadata)), execResult.TurnID); rejectErr != nil {
 						return CreateSessionResult{}, errors.Join(ErrSubmitDeliveryUnknown, err, rejectErr)
 					}
 				}
-				return CreateSessionResult{}, h.cleanupPreparedRuntime(ctx, err, workspaceID, input.AgentSessionID, input.Provider)
+				return CreateSessionResult{}, h.discardRejectedPreparedRuntime(ctx, err, workspaceID, session.ID, session.Provider)
 			}
 			claimPending = false
 			return CreateSessionResult{}, errors.Join(ErrSubmitDeliveryUnknown, err)
@@ -734,7 +735,7 @@ func createPreparationInput(workspaceID string, input CreateSessionInput) Runtim
 	return RuntimePreparationInput{
 		WorkspaceID: workspaceID, AgentSessionID: input.AgentSessionID, AgentTargetID: input.AgentTargetID,
 		Provider: input.Provider, Cwd: value(input.Cwd), Title: value(input.Title), PermissionModeID: value(input.PermissionModeID),
-		PlanMode: valueBool(input.PlanMode), BrowserUse: valueBoolDefault(input.BrowserUse, true), ComputerUse: valueBoolDefault(input.ComputerUse, true),
+		PlanMode: valueBool(input.PlanMode), BrowserUse: valueBoolDefault(input.BrowserUse, true), ComputerUse: valueBoolDefault(input.ComputerUse, true), CodexSaverMode: valueBool(input.CodexSaverMode),
 		ProviderTargetRef: cloneMap(input.ProviderTargetRef), Model: value(input.Model), ReasoningEffort: value(input.ReasoningEffort),
 		ConversationDetailMode: input.ConversationDetailMode, Metadata: cloneMap(input.Metadata), RuntimeContext: cloneMap(input.RuntimeContext),
 	}
@@ -744,7 +745,7 @@ func resumePreparationInput(session storesqlite.Session, settings ComposerSettin
 	return RuntimePreparationInput{
 		WorkspaceID: session.WorkspaceID, AgentSessionID: session.ID, AgentTargetID: session.AgentTargetID,
 		Provider: session.Provider, Cwd: session.Cwd, Title: session.Title, PermissionModeID: settings.PermissionModeID,
-		PlanMode: settings.PlanMode, BrowserUse: valueBoolDefault(settings.BrowserUse, true), ComputerUse: valueBoolDefault(settings.ComputerUse, true),
+		PlanMode: settings.PlanMode, BrowserUse: valueBoolDefault(settings.BrowserUse, true), ComputerUse: valueBoolDefault(settings.ComputerUse, true), CodexSaverMode: settings.CodexSaverMode,
 		Model: settings.Model, ReasoningEffort: settings.ReasoningEffort, ConversationDetailMode: settings.ConversationDetailMode,
 		RuntimeContext: cloneMap(session.InternalRuntimeContext), SessionOrigin: session.Origin,
 		ProviderSessionID: session.ProviderSessionID, CreatedAtUnixMS: session.CreatedAtUnixMS,
@@ -755,6 +756,7 @@ func resumePreparationInput(session storesqlite.Session, settings ComposerSettin
 
 func composerSettingsFromMap(values map[string]any) ComposerSettings {
 	result := ComposerSettings{}
+	result.CodexSaverMode, _ = values["codexSaverMode"].(bool)
 	result.Model, _ = values["model"].(string)
 	result.PermissionModeID, _ = values["permissionModeId"].(string)
 	result.PlanMode, _ = values["planMode"].(bool)

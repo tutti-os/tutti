@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:2e36dcc0d1c65637"
+	BusinessEventCatalogRevision = "sha256:0413e48c4012324e"
 )
 
 type Topic string
@@ -299,6 +299,7 @@ type PreferencesAgentComposerDefaultsChangedPayload struct {
 type PreferencesAgentComposerDefaultsPatchRequestedPayload struct {
 	AgentTargetId string `json:"agentTargetId"`
 	Patch         struct {
+		CodexSaverMode   *bool   `json:"codexSaverMode,omitempty"`
 		Model            *string `json:"model,omitempty"`
 		PermissionModeId *string `json:"permissionModeId,omitempty"`
 		ReasoningEffort  *string `json:"reasoningEffort,omitempty"`

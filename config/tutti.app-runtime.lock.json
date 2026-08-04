@@ -7,7 +7,12 @@
   "python": {
     "version": "3.12.13",
     "sourceUrl": "https://www.python.org/ftp/python/3.12.13/Python-3.12.13.tgz",
-    "sourceSha256": "0816c4761c97ecdb3f50a3924de0a93fd78cb63ee8e6c04201ddfaedca500b0b"
+    "sourceSha256": "0816c4761c97ecdb3f50a3924de0a93fd78cb63ee8e6c04201ddfaedca500b0b",
+    "windows": {
+      "archiveUrl": "https://github.com/astral-sh/python-build-standalone/releases/download/20260728/cpython-3.12.13%2B20260728-x86_64-pc-windows-msvc-install_only.tar.gz",
+      "archiveSha256": "86617be5b7f23e36263e1a6b3f27d8a0cd6e0eb2293f06b690de531720d9f59b",
+      "archiveRoot": "python"
+    }
   },
   "node": {
     "version": "22.22.3",
@@ -25,6 +30,10 @@
     "linux-amd64": {
       "runner": "ubuntu-latest",
       "nodeDistribution": "linux-x64"
+    },
+    "windows-amd64": {
+      "runner": "windows-latest",
+      "nodeDistribution": "win-x64"
     }
   }
 }

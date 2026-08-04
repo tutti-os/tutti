@@ -30,6 +30,9 @@ func TestScanCodexPackageLayoutRecognizesNestedAndHoisted(t *testing.T) {
 				platformRoot = filepath.Join(filepath.Dir(pkg), platform)
 			}
 			binary := filepath.Join(platformRoot, "vendor", triple, "bin", "codex")
+			if runtime.GOOS == "windows" {
+				binary += ".exe"
+			}
 			writeExecutable(t, binary, "#!/bin/sh\n")
 			scan := (Service{IsExecutableFile: isTestExecutable}).scanCodexPackageLayout(launcher)
 			if scan.LayoutType != tc.layout || !scan.PlatformBinaryExecutable {
@@ -53,7 +56,7 @@ func TestScanCodexPackageLayoutRecognizesPnpmVirtualStore(t *testing.T) {
 		t.Fatalf("mkdir pnpm scope: %v", err)
 	}
 	if err := os.Symlink(storePkg, pkg); err != nil {
-		t.Fatalf("symlink node_modules @openai/codex: %v", err)
+		t.Skipf("symlink node_modules @openai/codex unavailable: %v", err)
 	}
 	launcher := filepath.Join(storePkg, "bin", "codex")
 	writeExecutable(t, launcher, "#!/bin/sh\n")
@@ -62,7 +65,7 @@ func TestScanCodexPackageLayoutRecognizesPnpmVirtualStore(t *testing.T) {
 		t.Fatalf("mkdir pnpm .bin: %v", err)
 	}
 	if err := os.Symlink(launcher, visibleLauncher); err != nil {
-		t.Fatalf("symlink pnpm launcher: %v", err)
+		t.Skipf("symlink pnpm launcher unavailable: %v", err)
 	}
 	binary := filepath.Join(filepath.Dir(storePkg), platform, "vendor", triple, "bin", "codex")
 	writeExecutable(t, binary, "#!/bin/sh\n")
@@ -176,8 +179,14 @@ func TestScanCodexPackageLayoutSeparatesPackageBinaryAndExecutableEvidence(t *te
 			}
 			test.setup(t, platformRoot, binary)
 			scan := (Service{IsExecutableFile: isTestExecutable}).scanCodexPackageLayout(launcher)
-			if scan.PlatformBinaryDetailCode != test.wantDetail {
-				t.Fatalf("detail = %q, want %q; scan=%#v", scan.PlatformBinaryDetailCode, test.wantDetail, scan)
+			wantDetail := test.wantDetail
+			if runtime.GOOS == "windows" && test.name == "binary non executable" {
+				// Windows does not expose Unix mode bits and production treats a
+				// regular file as executable after the path/extension check.
+				wantDetail = "platform_binary_ready"
+			}
+			if scan.PlatformBinaryDetailCode != wantDetail {
+				t.Fatalf("detail = %q, want %q; scan=%#v", scan.PlatformBinaryDetailCode, wantDetail, scan)
 			}
 		})
 	}
@@ -194,6 +203,9 @@ func TestCodexPathPresenceBrokenSymlinkIsUnknown(t *testing.T) {
 }
 
 func TestCodexPathPresenceInaccessibleIsNotMissing(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows ACL denial is not represented by chmod for the current user")
+	}
 	root := t.TempDir()
 	locked := filepath.Join(root, "locked")
 	if err := os.MkdirAll(locked, 0o700); err != nil {

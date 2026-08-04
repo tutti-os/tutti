@@ -1,0 +1,55 @@
+{
+  "schemaVersion": "tutti.managed-posix-shell-lock.v1",
+  "platforms": {
+    "windows-amd64": {
+      "distribution": "msys2",
+      "version": "20260611",
+      "archiveUrl": "https://repo.msys2.org/distrib/x86_64/msys2-base-x86_64-20260611.tar.xz",
+      "archiveSha256": "a2d047e8ee213c3c6a49a8de427eb1069df12207c0422ff1b3cbb5c905c34221",
+      "archiveRoot": "msys64",
+      "executable": "usr/bin/bash.exe",
+      "components": [
+        {
+          "name": "bash",
+          "version": "5.3.015-1",
+          "license": "GPL-3.0-or-later"
+        },
+        {
+          "name": "coreutils",
+          "version": "8.32-5",
+          "license": "GPL-3.0-or-later"
+        },
+        { "name": "gettext", "version": "0.22.5-1", "license": "GPL" },
+        { "name": "libiconv", "version": "1.19-1", "license": "LGPL" },
+        {
+          "name": "msys2-runtime",
+          "version": "3.6.9-2",
+          "license": "GPL with runtime linking exception"
+        }
+      ],
+      "runtimeFiles": [
+        "usr/bin/bash.exe",
+        "usr/bin/cat.exe",
+        "usr/bin/cp.exe",
+        "usr/bin/dirname.exe",
+        "usr/bin/mkdir.exe",
+        "usr/bin/msys-2.0.dll",
+        "usr/bin/msys-iconv-2.dll",
+        "usr/bin/msys-intl-8.dll",
+        "usr/bin/mv.exe",
+        "usr/bin/rm.exe",
+        "usr/bin/sleep.exe",
+        "usr/bin/uname.exe"
+      ],
+      "licenseFiles": [
+        "usr/share/doc/Cygwin/COPYING",
+        "usr/share/doc/Cygwin/CYGWIN_LICENSE",
+        "var/lib/pacman/local/bash-5.3.015-1/desc",
+        "var/lib/pacman/local/coreutils-8.32-5/desc",
+        "var/lib/pacman/local/gettext-0.22.5-1/desc",
+        "var/lib/pacman/local/libiconv-1.19-1/desc",
+        "var/lib/pacman/local/msys2-runtime-3.6.9-2/desc"
+      ]
+    }
+  }
+}

@@ -14,17 +14,15 @@ describe("agent GUI conversation rail view state", () => {
           kind: "agentTarget",
           agentTargetId: " local:codex "
         },
-        sectionAgentTargetFallbackId: null,
         workspaceId: " workspace-1 "
       })
     ).toBe("workspace-1:agentTarget:local:codex");
     expect(
       agentGUIConversationRailViewScopeKey({
         conversationFilter: { kind: "all" },
-        sectionAgentTargetFallbackId: "local:claude-code",
         workspaceId: "workspace-1"
       })
-    ).toBe("workspace-1:all:local:claude-code");
+    ).toBe("workspace-1:all");
   });
 
   it("keeps collapsed sections and visible limits independent by scope", () => {

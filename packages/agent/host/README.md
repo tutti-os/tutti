@@ -63,9 +63,12 @@ records the submit provenance and lossless replay envelope on a
 cancellation-independent context. An explicit rejection settles an existing
 canonical Turn as failed and transitions its submit claim to terminal
 `rejected`; replaying the same `ClientSubmitID` returns that failed Turn without
-provider dispatch. An outcome-unknown result retains the prepared submit claim
-for reconciliation and never blindly redispatches. Only a new provisional
-Session with no visible message or provider identity may be compensated away.
+provider dispatch. For an initial-Session rejection, Host then closes the
+startup runtime with canonical completion suppressed: the failed Session, Turn,
+and prompt remain historical facts, but that runtime cannot be reactivated.
+An outcome-unknown result retains the prepared submit claim for reconciliation
+and never blindly redispatches. Only a new provisional Session with no visible
+message or provider identity may be compensated away.
 
 Adapters must carry the structured action/objective instead of reconstructing
 it from presentation text. `ParseTypedGoalControl` remains the compatibility

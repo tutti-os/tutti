@@ -302,7 +302,7 @@ func TestAppCenterServiceSerializesSameRemoteBuiltinPackageInstall(t *testing.T)
 	}
 
 	packageDir := service.packageCacheDir("large-builtin", "1.1.0")
-	if err := validateExtractedAppPackage(packageDir, mustReadManifestForTest(t, packageDir)); err != nil {
+	if err := validateExtractedAppPackage(NewPlatformAppShellAdapter(), packageDir, mustReadManifestForTest(t, packageDir)); err != nil {
 		t.Fatalf("copied package validation error = %v", err)
 	}
 }

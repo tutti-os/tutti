@@ -12,6 +12,8 @@ type recordingStartAdapter struct {
 	provider       string
 	started        Session
 	cancelCalls    int
+	closeCalls     int
+	closeErr       error
 	cancelEntered  chan<- struct{}
 	cancelReleased <-chan struct{}
 }
@@ -29,8 +31,9 @@ func (*recordingStartAdapter) Resume(context.Context, Session) error {
 	return nil
 }
 
-func (*recordingStartAdapter) Close(context.Context, Session) error {
-	return nil
+func (a *recordingStartAdapter) Close(context.Context, Session) error {
+	a.closeCalls++
+	return a.closeErr
 }
 
 func (*recordingStartAdapter) Exec(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) ([]activityshared.Event, error) {

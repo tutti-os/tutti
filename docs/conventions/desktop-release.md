@@ -10,10 +10,11 @@ Desktop releases for `apps/desktop` use three GitHub Release shapes:
 - release candidates such as `v1.12.19-rc.0`, which should remain `Pre-release`
 - beta releases such as `v1.12.19-beta.0`, which should remain `Pre-release`
 
-The current release flow intentionally includes:
+The formal desktop release flow currently includes:
 
 - GitHub Release publishing
-- macOS, Windows, and Linux desktop artifacts
+- macOS desktop artifacts
+- opt-in unsigned Windows RC/stable artifacts
 - Electron auto-update metadata
 - release candidate (`rc`) prereleases
 - beta prereleases for development-branch packaging
@@ -23,6 +24,17 @@ The current release flow intentionally excludes:
 
 - nightly releases
 - S3 runtime artifacts
+- Linux artifacts
+
+Windows packaging remains available through
+`.github/workflows/windows-desktop-alpha.yml` for smoke validation. The formal
+`.github/workflows/desktop-release.yml` workflow also accepts the manual
+`include_windows=true` switch. That switch builds an unsigned Windows NSIS
+installer and stages its `.exe`, `.blockmap`, and updater `.yml` beside the
+macOS draft assets. It defaults to false, so formal releases remain macOS-only
+until an operator explicitly enables it. See
+[Windows Platform Support](../architecture/windows-platform-support.md) for the
+promotion gates.
 
 ## Workflow Status
 
@@ -62,6 +74,12 @@ Manual runs also expose `publication_mode`:
 
 - `publish` keeps the existing end-to-end behavior. The workflow stages a GitHub Draft Release, uploads immutable assets, then calls the promotion workflow to update public channel metadata and publish the stable GitHub Release.
 - `draft_only` builds the same signed and notarized artifacts, keeps the GitHub Release as a draft, uploads immutable assets under the versioned S3/CloudFront `<tag>/` directory, and stops before changing any public channel pointer, changelog, stable alias, or GitHub visibility.
+
+For an RC draft that includes Windows, dispatch `patch_rc_release` from
+`main` or `release/*`, select `draft_only`, and set `include_windows=true`.
+Windows is intentionally unsigned for now; stable releases keep the same
+opt-in switch so signing and promotion can be enabled later without redesigning
+the release graph.
 
 Draft-only assets are unlisted, not private. Anyone who knows the immutable CloudFront URL can download them. This is intentional so internal release notifications can carry working QA download links. Do not use the desktop release asset prefix for confidential artifacts.
 
@@ -130,14 +148,18 @@ prefix scans as a runtime fallback.
 
 On Windows the bundled daemon filename is `tuttid.exe`.
 
-Expected release artifacts include:
+The formal release workflow currently produces:
 
 - macOS x64, arm64, and universal `.dmg`
 - macOS x64, arm64, and universal `.zip`
-- Windows `.exe`
-- Linux `.AppImage`
-- update metadata such as `.yml` and `.blockmap`
+- macOS update metadata such as `.yml` and `.blockmap`
 - `SHA256SUMS.txt`
+
+Windows `.exe`/`.blockmap`/`.yml` are included only when the formal workflow's
+`include_windows` switch is enabled. Linux `.AppImage` remains a target
+artifact shape, not a formal-release output. Windows assets are staged on the
+GitHub Release and mirror, but stable/public channel promotion remains
+controlled by the existing release promotion gates.
 
 The release workflow builds macOS x64, arm64, and universal packages as a
 three-entry GitHub Actions matrix. Each architecture uploads an isolated

@@ -181,7 +181,7 @@ func TestAppCenterServicePackageForInstallRepairsMissingRemoteBuiltinCache(t *te
 	if appPackage.PackageDir == missingPackageDir {
 		t.Fatalf("packageForInstall() reused missing package dir %q", missingPackageDir)
 	}
-	if err := validateExtractedAppPackage(appPackage.PackageDir, appPackage.Manifest); err != nil {
+	if err := validateExtractedAppPackage(NewPlatformAppShellAdapter(), appPackage.PackageDir, appPackage.Manifest); err != nil {
 		t.Fatalf("repaired package validation error = %v", err)
 	}
 }

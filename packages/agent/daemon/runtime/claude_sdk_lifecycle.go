@@ -159,7 +159,14 @@ func (a *ClaudeCodeSDKAdapter) Close(ctx context.Context, session Session) error
 	if adapterSession == nil {
 		return nil
 	}
-	closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), claudeSDKCloseTimeout)
+	closeBaseCtx := context.WithoutCancel(ctx)
+	var closeCtx context.Context
+	var cancel context.CancelFunc
+	if deadline, ok := ctx.Deadline(); ok {
+		closeCtx, cancel = context.WithDeadline(closeBaseCtx, deadline)
+	} else {
+		closeCtx, cancel = context.WithTimeout(closeBaseCtx, claudeSDKCloseTimeout)
+	}
 	defer cancel()
 	if err := a.roundTripClaudeSDK(closeCtx, session.AgentSessionID, adapterSession, claudeSDKSidecarRequest{
 		ID:   newID(),
@@ -168,10 +175,8 @@ func (a *ClaudeCodeSDKAdapter) Close(ctx context.Context, session Session) error
 			"agentSessionId": session.AgentSessionID,
 		},
 	}); err != nil {
-		if errors.Is(err, ErrSessionDisconnected) {
-			a.removeSession(session.AgentSessionID, adapterSession)
-			_ = adapterSession.conn.Close()
-		}
+		a.removeSession(session.AgentSessionID, adapterSession)
+		_ = adapterSession.conn.Close()
 		return err
 	}
 	a.removeSession(session.AgentSessionID, adapterSession)

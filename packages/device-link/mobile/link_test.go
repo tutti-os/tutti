@@ -3,7 +3,12 @@ package mobile
 import (
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/gorilla/websocket"
 )
 
 func TestStreamReadPreservesFinalBytesReturnedWithEOF(t *testing.T) {
@@ -110,6 +115,87 @@ func TestProtocolEpochMatchesApplicationPrelude(t *testing.T) {
 	if ProtocolEpoch() != ApplicationProtocolEpoch {
 		t.Fatalf("ProtocolEpoch() = %d, want %d", ProtocolEpoch(), ApplicationProtocolEpoch)
 	}
+}
+
+func TestDialRelayOpensConfiguredByteStream(t *testing.T) {
+	t.Parallel()
+	upgrader := websocket.Upgrader{
+		CheckOrigin:  func(*http.Request) bool { return true },
+		Subprotocols: []string{"relay.test.v1"},
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("authority_id") != "authority-1" {
+			http.Error(w, "authority missing", http.StatusBadRequest)
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer target-token" {
+			http.Error(w, "authorization missing", http.StatusUnauthorized)
+			return
+		}
+		connection, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer connection.Close()
+		messageType, payload, err := connection.ReadMessage()
+		if err != nil {
+			return
+		}
+		_ = connection.WriteMessage(messageType, payload)
+	}))
+	defer server.Close()
+
+	endpoint := "ws" + strings.TrimPrefix(server.URL, "http")
+	stream, err := DialRelay(
+		endpoint,
+		`{"authority_id":["authority-1"]}`,
+		`{"Authorization":["Bearer target-token"]}`,
+		"relay.test.v1",
+		5_000,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	if err := stream.SetDeadline(5_000); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stream.Write([]byte("relay-payload")); err != nil {
+		t.Fatal(err)
+	}
+	buffer := make([]byte, len("relay-payload"))
+	count := stream.ReadInto(buffer)
+	if count != len(buffer) || string(buffer[:count]) != "relay-payload" {
+		t.Fatalf("relay echo = %q (%d bytes)", buffer[:max(count, 0)], count)
+	}
+}
+
+func TestDialRelayRejectsMalformedValuesBeforeDial(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name    string
+		query   string
+		headers string
+		want    string
+	}{
+		{name: "query", query: "[", headers: "{}", want: "decode relay query"},
+		{name: "headers", query: "{}", headers: "[", want: "decode relay headers"},
+		{name: "empty key", query: `{" ":["value"]}`, headers: "{}", want: "empty key"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := DialRelay("ws://relay.invalid", test.query, test.headers, "relay.test.v1", 1)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("DialRelay() error = %v, want substring %q", err, test.want)
+			}
+		})
+	}
+}
+
+func max(left, right int) int {
+	if left > right {
+		return left
+	}
+	return right
 }
 
 type finalBytesConn struct {

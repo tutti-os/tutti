@@ -160,6 +160,9 @@ func TestHostCreateRetainsVisibleFailedTurnAfterExplicitProviderRejection(t *tes
 	if len(runtime.provenanceCalls) != 1 {
 		t.Fatalf("submit provenance calls=%d, want 1", len(runtime.provenanceCalls))
 	}
+	if len(runtime.closeCalls) != 1 || !runtime.closeCalls[0].PreserveCanonicalState {
+		t.Fatalf("runtime close calls=%#v, want one canonical-preserving discard", runtime.closeCalls)
+	}
 	if len(publisher.events) == 0 {
 		t.Fatal("rejected visible create did not publish canonical updates")
 	}
@@ -167,13 +170,13 @@ func TestHostCreateRetainsVisibleFailedTurnAfterExplicitProviderRejection(t *tes
 	if err != nil || !found || claim.Status != "rejected" || claim.TurnID != runtime.execCalls[0].TurnID {
 		t.Fatalf("rejected submit claim=%#v found=%v error=%v", claim, found, err)
 	}
-	startCalls, execCalls, provenanceCalls := len(runtime.startCalls), len(runtime.execCalls), len(runtime.provenanceCalls)
+	startCalls, execCalls, provenanceCalls, closeCalls := len(runtime.startCalls), len(runtime.execCalls), len(runtime.provenanceCalls), len(runtime.closeCalls)
 	replayed, retryErr := service.CreateWithResult(ctx, "ws-rejected", input)
 	if retryErr != nil || replayed.TurnID != claim.TurnID {
 		t.Fatalf("replayed CreateWithResult=%#v error=%v, want terminal failed Turn %q", replayed, retryErr, claim.TurnID)
 	}
-	if len(runtime.startCalls) != startCalls || len(runtime.execCalls) != execCalls || len(runtime.provenanceCalls) != provenanceCalls {
-		t.Fatalf("replayed rejected submit touched runtime: starts=%d exec=%d provenance=%d, want %d/%d/%d", len(runtime.startCalls), len(runtime.execCalls), len(runtime.provenanceCalls), startCalls, execCalls, provenanceCalls)
+	if len(runtime.startCalls) != startCalls || len(runtime.execCalls) != execCalls || len(runtime.provenanceCalls) != provenanceCalls || len(runtime.closeCalls) != closeCalls {
+		t.Fatalf("replayed rejected submit touched runtime: starts=%d exec=%d provenance=%d close=%d, want %d/%d/%d/%d", len(runtime.startCalls), len(runtime.execCalls), len(runtime.provenanceCalls), len(runtime.closeCalls), startCalls, execCalls, provenanceCalls, closeCalls)
 	}
 }
 

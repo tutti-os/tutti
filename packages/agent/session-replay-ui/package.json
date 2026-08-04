@@ -1,0 +1,73 @@
+{
+  "name": "@tutti-os/agent-session-replay",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./activity-event": "./src/activity-event.ts",
+    "./activity-replay-driver": "./src/activity-replay-driver.ts",
+    "./interaction-contract": "./src/interaction-contract.ts",
+    "./react-binding": "./src/react-binding.tsx",
+    "./workspace-contract": "./src/workspace-contract.ts"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tutti-os/tutti.git",
+    "directory": "packages/agent/session-replay-ui"
+  },
+  "scripts": {
+    "build": "tsup --config tsup.config.ts",
+    "test": "node --test --experimental-strip-types \"./src/**/*.test.ts\"",
+    "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
+  },
+  "dependencies": {
+    "@tutti-os/agent-activity-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@tutti-os/config-tsconfig": "workspace:*",
+    "@types/node": "^24.0.1",
+    "@types/react": "^19.2.15",
+    "react": "^19.2.6",
+    "tsup": "8.5.1",
+    "typescript": "^5.8.3"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./activity-event": {
+        "types": "./dist/activity-event.d.ts",
+        "import": "./dist/activity-event.js"
+      },
+      "./activity-replay-driver": {
+        "types": "./dist/activity-replay-driver.d.ts",
+        "import": "./dist/activity-replay-driver.js"
+      },
+      "./interaction-contract": {
+        "types": "./dist/interaction-contract.d.ts",
+        "import": "./dist/interaction-contract.js"
+      },
+      "./react-binding": {
+        "types": "./dist/react-binding.d.ts",
+        "import": "./dist/react-binding.js"
+      },
+      "./workspace-contract": {
+        "types": "./dist/workspace-contract.d.ts",
+        "import": "./dist/workspace-contract.js"
+      }
+    },
+    "types": "./dist/index.d.ts"
+  },
+  "peerDependencies": {
+    "react": "^19.2.6"
+  }
+}

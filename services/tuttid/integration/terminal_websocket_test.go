@@ -3,6 +3,7 @@ package integration_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"runtime"
 	"strings"
@@ -21,10 +22,6 @@ type terminalWebSocketTestFrame struct {
 }
 
 func TestTuttidBlackBoxWorkspaceTerminalWebSocketStreamsInputAndOutput(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Windows terminal support needs ConPTY-specific implementation")
-	}
-
 	t.Setenv("SHELL", "/bin/sh")
 
 	daemon := startTestDaemon(t)
@@ -78,7 +75,7 @@ func TestTuttidBlackBoxWorkspaceTerminalWebSocketStreamsInputAndOutput(t *testin
 
 	inputPayload, err := json.Marshal(map[string]string{
 		"type": "input",
-		"data": "printf websocket-terminal-test\\n\r",
+		"data": terminalWebSocketEchoCommand("websocket-terminal-test"),
 	})
 	if err != nil {
 		t.Fatalf("Marshal input payload error = %v", err)
@@ -111,10 +108,6 @@ func TestTuttidBlackBoxWorkspaceTerminalWebSocketStreamsInputAndOutput(t *testin
 }
 
 func TestTuttidBlackBoxWorkspaceTerminalWebSocketExitFrameCarriesExitCode(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Windows terminal support needs ConPTY-specific implementation")
-	}
-
 	t.Setenv("SHELL", "/bin/sh")
 
 	daemon := startTestDaemon(t)
@@ -169,7 +162,7 @@ func TestTuttidBlackBoxWorkspaceTerminalWebSocketExitFrameCarriesExitCode(t *tes
 	readyMarker := "tutti-terminal-exit-ready"
 	readyPayload, err := json.Marshal(map[string]string{
 		"type": "input",
-		"data": "printf 'tutti-terminal-%s\\n' 'exit-ready'\r",
+		"data": terminalWebSocketEchoCommand(readyMarker),
 	})
 	if err != nil {
 		t.Fatalf("Marshal ready payload error = %v", err)
@@ -184,10 +177,25 @@ func TestTuttidBlackBoxWorkspaceTerminalWebSocketExitFrameCarriesExitCode(t *tes
 			break
 		}
 	}
-
+	if runtime.GOOS == "windows" {
+		mustRequestJSON[tuttigenerated.WorkspaceTerminalResponse](
+			t,
+			daemon,
+			http.MethodDelete,
+			"/v1/workspaces/"+createdWorkspace.Workspace.Id+"/terminals/"+createdTerminal.Terminal.Id,
+			nil,
+			http.StatusOK,
+		)
+		for {
+			frame := readTerminalWebSocketTestFrame(t, ctx, conn)
+			if frame.Type == "exit" {
+				return
+			}
+		}
+	}
 	exitPayload, err := json.Marshal(map[string]string{
 		"type": "input",
-		"data": "exit 9\r",
+		"data": terminalWebSocketExitCommand(9),
 	})
 	if err != nil {
 		t.Fatalf("Marshal exit payload error = %v", err)
@@ -206,6 +214,17 @@ func TestTuttidBlackBoxWorkspaceTerminalWebSocketExitFrameCarriesExitCode(t *tes
 		}
 		return
 	}
+}
+
+func terminalWebSocketEchoCommand(value string) string {
+	if runtime.GOOS == "windows" {
+		return "echo " + value + "\r"
+	}
+	return "printf '" + value + "\\n'\r"
+}
+
+func terminalWebSocketExitCommand(code int) string {
+	return fmt.Sprintf("exit %d\r", code)
 }
 
 func readTerminalWebSocketTestFrame(t *testing.T, ctx context.Context, conn *websocket.Conn) terminalWebSocketTestFrame {

@@ -63,8 +63,12 @@ type ServiceSessionConfig struct {
 }
 
 type ServiceComposerConfig struct {
-	AvailabilityChecker           ProviderAvailabilityChecker
-	ModelCatalog                  AgentModelCatalog
+	AvailabilityChecker ProviderAvailabilityChecker
+	ModelCatalog        AgentModelCatalog
+	// ReplayMode makes cassette-provided model catalogs authoritative. It is
+	// set only for the isolated Replay daemon; normal sessions keep live
+	// catalog and discovery behavior.
+	ReplayMode                    bool
 	ModelCapabilities             ModelCapabilitiesResolver
 	AgentTargetStore              AgentTargetStore
 	WorkspaceAgentResolver        WorkspaceAgentResolver
@@ -103,6 +107,7 @@ func (s *Service) applyConfig(config ServiceConfig) {
 	s.AnalyticsReporter = config.Observers.AnalyticsReporter
 	s.AvailabilityChecker = config.Composer.AvailabilityChecker
 	s.ModelCatalog = config.Composer.ModelCatalog
+	s.ReplayMode = config.Composer.ReplayMode
 	s.ModelCapabilities = config.Composer.ModelCapabilities
 	s.AgentTargetStore = config.Composer.AgentTargetStore
 	s.SessionInitializer = config.Sessions.Initializer

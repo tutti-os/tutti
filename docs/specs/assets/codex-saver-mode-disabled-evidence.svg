@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="760" viewBox="0 0 1440 760">
+  <rect width="1440" height="760" fill="#0b1020"/>
+  <text x="72" y="86" fill="#f8fafc" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="38" font-weight="700">Codex 省额度模式 · 关闭态对照证据</text>
+  <text x="72" y="130" fill="#94a3b8" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="20">Session 48d15900-9423-4d95-9923-a14853b8ca9e · outcome=completed · childSessions=1</text>
+  <rect x="72" y="182" width="1296" height="300" rx="18" fill="#241921" stroke="#64748b"/>
+  <text x="112" y="240" fill="#fda4af" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="26">codexSaverMode = false</text>
+  <text x="112" y="300" fill="#e2e8f0" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="26">main     model = gpt-5.6-sol  reasoning = low</text>
+  <text x="112" y="360" fill="#e2e8f0" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="26">subagent model = gpt-5.6-sol  reasoning = low</text>
+  <text x="112" y="420" fill="#e2e8f0" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="26">agents/luna_worker.toml = absent</text>
+  <text x="72" y="558" fill="#cbd5e1" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="22">证据源：Session API、会话级文件系统与 CODEX_HOME/state_5.sqlite。</text>
+  <text x="72" y="620" fill="#22c55e" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="27" font-weight="700">结论：关闭后恢复原行为，无 Luna 配置残留</text>
+</svg>

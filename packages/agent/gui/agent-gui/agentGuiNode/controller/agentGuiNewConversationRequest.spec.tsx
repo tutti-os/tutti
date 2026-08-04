@@ -8,11 +8,13 @@ import { describe, expect, it, vi } from "vitest";
 import { createLocalAgentGUIAgentTarget } from "../../../agentTargets";
 import type { AgentGUIRuntime } from "../../../agentActivityRuntime";
 import type { AgentHostUserProject } from "../../../host/agentHostApi";
+import type { AgentSessionComposerSettings } from "../../../shared/agentSessionTypes";
 import { createTestEngineCommandPort } from "../../../shared/testing/createTestAgentSessionEngine";
 import type { AgentGUINodeData } from "../../../types";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import type { AgentComposerDraft } from "../model/agentGuiNodeTypes";
 import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
+import { nodeDefaultDraftKey } from "./agentGuiController.composerHelpers";
 import { requestAgentGUINewConversation } from "./agentGuiNewConversationRequest";
 import { useAgentGUIActivation } from "./useAgentGUIActivation";
 import { useAgentGUIConversationHome } from "./useAgentGUIConversationHome";
@@ -104,6 +106,81 @@ describe("P0 new-conversation placement scenarios", () => {
     });
   });
 
+  it("fails closed when a remembered saver mode outlives the developer flag", async () => {
+    const scenario = renderNewConversationScenario({
+      activeConversation: null,
+      codexSaverModeEntryEnabled: false,
+      initialHomeProjectPath: null,
+      rememberedSettings: { codexSaverMode: true },
+      userProjects: []
+    });
+
+    act(() => scenario.requestNewConversation());
+    act(() => scenario.submitPrompt([{ type: "text", text: "start safely" }]));
+
+    expect(await scenario.waitForActivation()).toMatchObject({
+      settings: { codexSaverMode: false }
+    });
+  });
+
+  it("keeps remembered saver mode when both entry and target support it", async () => {
+    const scenario = renderNewConversationScenario({
+      activeConversation: null,
+      codexSaverModeEntryEnabled: true,
+      initialHomeProjectPath: null,
+      rememberedSettings: { codexSaverMode: true },
+      userProjects: []
+    });
+
+    act(() => scenario.requestNewConversation());
+    act(() =>
+      scenario.submitPrompt([{ type: "text", text: "delegate when useful" }])
+    );
+
+    expect(await scenario.waitForActivation()).toMatchObject({
+      settings: { codexSaverMode: true }
+    });
+  });
+
+  it("uses the authoritative remembered saver mode when no local draft exists", async () => {
+    const scenario = renderNewConversationScenario({
+      activeConversation: null,
+      authoritativeSettings: { codexSaverMode: true },
+      codexSaverModeEntryEnabled: true,
+      initialHomeProjectPath: null,
+      userProjects: []
+    });
+
+    act(() => scenario.requestNewConversation());
+    act(() =>
+      scenario.submitPrompt([{ type: "text", text: "use remembered mode" }])
+    );
+
+    expect(await scenario.waitForActivation()).toMatchObject({
+      settings: { codexSaverMode: true }
+    });
+  });
+
+  it("keeps an explicit local saver opt-out above authoritative defaults", async () => {
+    const scenario = renderNewConversationScenario({
+      activeConversation: null,
+      authoritativeSettings: { codexSaverMode: true },
+      codexSaverModeEntryEnabled: true,
+      initialHomeProjectPath: null,
+      rememberedSettings: { codexSaverMode: false },
+      userProjects: []
+    });
+
+    act(() => scenario.requestNewConversation());
+    act(() =>
+      scenario.submitPrompt([{ type: "text", text: "keep saver disabled" }])
+    );
+
+    expect(await scenario.waitForActivation()).toMatchObject({
+      settings: { codexSaverMode: false }
+    });
+  });
+
   it("keeps the logical project when the active session runs in an isolated worktree", async () => {
     const projectPath = "/workspace/project-a";
     const sectionKey = "project:workspace-1:/workspace/project-a";
@@ -177,7 +254,10 @@ describe("P0 new-conversation placement scenarios", () => {
 
 function renderNewConversationScenario(input: {
   activeConversation: AgentGUIConversationSummary | null;
+  authoritativeSettings?: AgentSessionComposerSettings;
+  codexSaverModeEntryEnabled?: boolean;
   initialHomeProjectPath: string | null;
+  rememberedSettings?: AgentSessionComposerSettings;
   userProjects: AgentHostUserProject[];
 }) {
   const commands: EngineExternalCommand[] = [];
@@ -288,12 +368,37 @@ function renderNewConversationScenario(input: {
       agentTargetsProvidedRef: { current: true },
       conversationListQuery,
       conversationsRef,
+      codexSaverModeEntryEnabled: input.codexSaverModeEntryEnabled ?? true,
       currentUserId: "user-1",
       data: dataRef.current,
       defaultReasoningEffort: "high",
       draftByScopeKeyRef,
-      draftSettingsBySessionIdRef: { current: {} },
-      getCachedComposerOptions: () => null,
+      draftSettingsBySessionIdRef: {
+        current: input.rememberedSettings
+          ? {
+              [nodeDefaultDraftKey("codex", target.agentTargetId)]:
+                input.rememberedSettings
+            }
+          : {}
+      },
+      getCachedComposerOptions: () => ({
+        behavior: {
+          collapseModelOptionsToLatest: false,
+          modelOptionsAuthoritative: false,
+          planModeExclusiveWithPermissionMode: false,
+          prewarmDraftSession: false,
+          refreshModelOptionsAfterSettings: false
+        },
+        capabilities: null,
+        codexSaverModeSupported: true,
+        effectiveSettings: input.authoritativeSettings,
+        loadedAtUnixMs: 1,
+        models: [],
+        provider: "codex",
+        reasoningEfforts: [],
+        skills: [],
+        speeds: []
+      }),
       isComposerHomeRef,
       isConversationStale: () => false,
       isCreatingConversationRef: { current: false },

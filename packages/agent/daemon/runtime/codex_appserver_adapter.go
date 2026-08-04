@@ -17,11 +17,12 @@ import (
 // protocol is the official first-party integration surface for Codex; it
 // replaces the previous codex-acp (ACP) bridge for the "codex" provider.
 const (
-	appServerMethodInitialize     = "initialize"
-	appServerMethodInitialized    = "initialized"
-	appServerMethodAccountRead    = "account/read"
-	appServerMethodRateLimitsRead = "account/rateLimits/read"
-	appServerMethodModelList      = "model/list"
+	appServerMethodInitialize          = "initialize"
+	appServerMethodInitialized         = "initialized"
+	appServerMethodAccountRead         = "account/read"
+	appServerMethodRateLimitsRead      = "account/rateLimits/read"
+	appServerMethodModelList           = "model/list"
+	appServerMethodSkillsExtraRootsSet = "skills/extraRoots/set"
 	// Experimental: collaboration mode presets (plan/pair/execute). Absence of
 	// the method on older binaries downgrades planMode capability gracefully.
 	appServerMethodCollaborationModeList = "collaborationMode/list"
@@ -94,6 +95,7 @@ type appServerAdapterConfig struct {
 	command                          []string
 	clientInfoName                   string
 	authRequiredMessage              string
+	skillRootsStrategy               providerregistry.AppServerSkillRootsStrategy
 	commandNetworkAccess             bool
 	rateLimits                       bool
 	nativeSessionFork                bool

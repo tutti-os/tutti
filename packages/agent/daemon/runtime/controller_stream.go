@@ -210,6 +210,7 @@ func sessionSettingsPayload(settings *SessionSettings) map[string]any {
 		return nil
 	}
 	payload := map[string]any{
+		"codexSaverMode":   settings.CodexSaverMode,
 		"model":            strings.TrimSpace(settings.Model),
 		"permissionModeId": strings.TrimSpace(settings.PermissionModeID),
 		"planMode":         settings.PlanMode,
@@ -229,6 +230,7 @@ func sessionSettingsFromPayload(payload map[string]any) *SessionSettings {
 		return nil
 	}
 	settings := &SessionSettings{
+		CodexSaverMode:   payloadBoolValue(payload, "codexSaverMode"),
 		Model:            strings.TrimSpace(payloadStringValue(payload, "model")),
 		PermissionModeID: strings.TrimSpace(payloadStringValue(payload, "permissionModeId")),
 		PlanMode:         payloadBoolValue(payload, "planMode"),
@@ -243,6 +245,7 @@ func sessionSettingsFromPayload(payload map[string]any) *SessionSettings {
 	if strings.TrimSpace(settings.Model) == "" &&
 		strings.TrimSpace(settings.PermissionModeID) == "" &&
 		strings.TrimSpace(settings.ReasoningEffort) == "" &&
+		!settings.CodexSaverMode &&
 		!settings.PlanMode &&
 		settings.BrowserUse == nil &&
 		settings.ComputerUse == nil {

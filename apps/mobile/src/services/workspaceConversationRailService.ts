@@ -102,7 +102,6 @@ export class WorkspaceConversationRailService extends ObservableService<Workspac
     });
     this.controller.configure({
       conversationFilter: { kind: "all" },
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     });
     this.applyControllerSnapshot(this.controller.getSnapshot());

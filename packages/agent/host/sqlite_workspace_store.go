@@ -738,7 +738,8 @@ func composerSettingsPayload(settings *ComposerSettings) map[string]any {
 		return nil
 	}
 	return map[string]any{
-		"model": settings.Model, "permissionModeId": settings.PermissionModeID, "planMode": settings.PlanMode,
+		"codexSaverMode": settings.CodexSaverMode,
+		"model":          settings.Model, "permissionModeId": settings.PermissionModeID, "planMode": settings.PlanMode,
 		"browserUse": settings.BrowserUse, "computerUse": settings.ComputerUse,
 		"reasoningEffort": settings.ReasoningEffort, "speed": settings.Speed,
 		"conversationDetailMode": settings.ConversationDetailMode,

@@ -19,6 +19,7 @@ func TestControllerUpdateSettingsMergesModelPatchWithoutRequiringPermissionMode(
 		CWD:            "/workspace",
 		Title:          "Codex",
 		Settings: &SessionSettings{
+			CodexSaverMode:   true,
 			Model:            "gpt-5.2-codex",
 			ReasoningEffort:  "high",
 			Speed:            "standard",
@@ -53,7 +54,7 @@ func TestControllerUpdateSettingsMergesModelPatchWithoutRequiringPermissionMode(
 	if updated.Settings.Speed != "fast" {
 		t.Fatalf("updated settings speed = %q, want fast", updated.Settings.Speed)
 	}
-	if updated.Settings.ReasoningEffort != "high" || !updated.Settings.PlanMode {
+	if updated.Settings.ReasoningEffort != "high" || !updated.Settings.PlanMode || !updated.Settings.CodexSaverMode {
 		t.Fatalf("updated settings = %#v, want non-updated fields preserved", updated.Settings)
 	}
 }

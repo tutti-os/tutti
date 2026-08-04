@@ -24,6 +24,7 @@ export type DesktopAgentGUIHostProps = {
     | "referenceProvenanceFilterEnabled"
     | "sessionInputHistoryEnabled"
     | "sessionForkEnabled"
+    | "codexSaverModeEntryEnabled"
     | "capabilityMenuState"
     | "visibleErrorPresentationOverrides"
     | "comingSoonProviders"
@@ -105,6 +106,8 @@ export function useStableDesktopAgentGUIHostProps({
       sessionInputHistoryEnabled:
         nextHostCapabilities.sessionInputHistoryEnabled,
       sessionForkEnabled: nextHostCapabilities.sessionForkEnabled,
+      codexSaverModeEntryEnabled:
+        nextHostCapabilities.codexSaverModeEntryEnabled,
       capabilityMenuState: nextHostCapabilities.capabilityMenuState,
       visibleErrorPresentationOverrides:
         nextHostCapabilities.visibleErrorPresentationOverrides,

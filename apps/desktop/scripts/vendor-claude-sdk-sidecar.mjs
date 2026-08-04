@@ -57,8 +57,9 @@ writeFileSync(
 );
 
 log(`installing production dependencies into ${outDir}`);
+const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 execFileSync(
-  "npm",
+  npmCommand,
   [
     "install",
     "--omit=dev",
@@ -67,7 +68,11 @@ execFileSync(
     "--no-fund",
     "--ignore-scripts"
   ],
-  { cwd: outDir, stdio: "inherit" }
+  {
+    cwd: outDir,
+    shell: process.platform === "win32",
+    stdio: "inherit"
+  }
 );
 
 const entry = join(outDir, entryRelPath);

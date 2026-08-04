@@ -292,6 +292,17 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		d.recordSubmittedTurn(input.WorkspaceID, input.AgentSessionID, input.TurnID)
 		return nil
 	}
+	if fixture.RejectInitialExec {
+		d.runtime.execHook = func(input RuntimeExecInput) (RuntimeExecResult, error) {
+			return RuntimeExecResult{
+				AgentSessionID: input.AgentSessionID,
+				TurnID:         input.TurnID,
+				ProviderDispatch: agenthost.RuntimeProviderDispatchResult{
+					Disposition: agenthost.RuntimeDispatchDispositionRejected,
+				},
+			}, errors.New("provider rejected initial submit")
+		}
+	}
 	d.commitObserver = &conformanceCommitObserver{fail: fixture.FailCommitObserver}
 	d.service.CommitObserver = d.commitObserver
 	d.service.SessionReader = d.sessions
@@ -1131,6 +1142,9 @@ func (d *legacyHostConformanceDriver) Metrics() hostconformance.Metrics {
 		CloseCalls:       len(d.runtime.closeCalls),
 		GoalControlCalls: len(d.runtime.goalControlCalls), GoalReconcileCalls: len(d.runtime.goalReconcileCalls),
 		RecoverySteps: append([]string(nil), (*d.recoverySteps)...),
+	}
+	if closeCallCount := len(d.runtime.closeCalls); closeCallCount > 0 {
+		metrics.LastClosePreservedCanonicalState = d.runtime.closeCalls[closeCallCount-1].PreserveCanonicalState
 	}
 	if d.deletionGuard != nil {
 		metrics.DeleteAdmissionPlans = append([]agenthost.DeleteSessionsPlan(nil), d.deletionGuard.plans...)

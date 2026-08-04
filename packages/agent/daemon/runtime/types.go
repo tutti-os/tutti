@@ -106,6 +106,9 @@ type ResumeInput struct {
 type CloseInput struct {
 	RoomID         string
 	AgentSessionID string
+	// PreserveCanonicalState removes the live runtime without emitting a
+	// session_completed event over an already-durable terminal state.
+	PreserveCanonicalState bool
 }
 
 // SessionForkCapabilities reports provider-native fork boundaries supported by
@@ -331,6 +334,7 @@ type UpdateSettingsInput struct {
 }
 
 type SessionSettings struct {
+	CodexSaverMode         bool   `json:"codexSaverMode,omitempty"`
 	Model                  string `json:"model,omitempty"`
 	ReasoningEffort        string `json:"reasoningEffort,omitempty"`
 	Speed                  string `json:"speed,omitempty"`
@@ -508,6 +512,11 @@ type ProviderAcceptanceReceipt struct {
 	Source            AcceptanceSource `json:"source"`
 	ProviderSessionID string           `json:"providerSessionId"`
 	ProviderTurnID    string           `json:"providerTurnId"`
+	// ProviderInputUnit is process-local Replay metadata from the stamped
+	// acceptance event. It must travel with the durable acceptance report so
+	// commit correlation can confirm against the same transaction that writes
+	// RootProviderTurn (Claude Code otherwise re-emits a later no-op report).
+	ProviderInputUnit *activityshared.ProviderInputUnitContext `json:"-"`
 }
 
 type ProviderDispatchResult struct {

@@ -208,7 +208,7 @@ func (s *AppFactoryService) runValidation(ctx context.Context, workspaceID strin
 	}
 
 	result := workspacebiz.AppFactoryValidationResult{CheckedAt: unixMsNow()}
-	if err := prepareAppFactoryJob(ctx, job); err != nil {
+	if err := prepareAppFactoryJobWithShell(ctx, job, s.ShellAdapter); err != nil {
 		result.Errors = append(result.Errors, err.Error())
 		return s.failValidation(ctx, job, result)
 	}

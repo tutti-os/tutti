@@ -72,6 +72,15 @@
     "win": {
       "target": [
         "nsis"
+      ],
+      "extraResources": [
+        {
+          "from": "build/managed-posix-shell",
+          "to": "bin/managed-posix-shell",
+          "filter": [
+            "**/*"
+          ]
+        }
       ]
     },
     "linux": {
@@ -106,6 +115,7 @@
     "@tutti-os/analytics": "workspace:*",
     "@tutti-os/analytics-debug": "workspace:*",
     "@tutti-os/agent-activity-core": "workspace:*",
+    "@tutti-os/agent-session-replay": "workspace:*",
     "@tutti-os/agent-activity-tuttid-adapter": "workspace:*",
     "@tutti-os/agent-gui": "workspace:*",
     "@tutti-os/browser-node": "workspace:*",

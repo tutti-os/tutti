@@ -10,6 +10,7 @@ func TestSessionSettingsPayloadRoundTrip(t *testing.T) {
 	cases := []*SessionSettings{
 		nil,
 		{
+			CodexSaverMode:   true,
 			Model:            "gpt-5",
 			PermissionModeID: "auto",
 			PlanMode:         true,

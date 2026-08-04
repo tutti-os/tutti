@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyPastedTextStagingResult,
   agentComposerDraftDisplayPrompt,
   agentComposerDraftFiles,
   agentComposerDraftHasContent,
@@ -371,6 +372,58 @@ describe("agentComposerDraft", () => {
     });
   });
 
+  it("projects remote pasted text as a safe display-only mention", () => {
+    const signedUrl =
+      "https://assets.example/shared/pasted.txt?signature=short-lived";
+    const staged = applyPastedTextStagingResult(
+      {
+        id: "22222222-2222-4222-8222-222222222222",
+        name: "pasted-text.txt",
+        text: "first line shared",
+        sizeBytes: 22,
+        uploading: true
+      },
+      {
+        name: "pasted-text.txt",
+        sizeBytes: 22,
+        assetId: "asset-1",
+        uri: "object://shared/pasted.txt",
+        uploadStatus: "uploaded",
+        url: signedUrl
+      }
+    );
+    const draft = buildAgentComposerDraft({
+      prompt: "",
+      largeTexts: [staged]
+    });
+
+    const submission = projectAgentComposerDraftSubmission({
+      draft,
+      skills: []
+    });
+
+    expect(submission).toEqual({
+      content: [
+        {
+          type: "file",
+          kind: "pasted-text",
+          mimeType: undefined,
+          name: "first line…",
+          sizeBytes: 22,
+          assetId: "asset-1",
+          uri: "object://shared/pasted.txt",
+          uploadStatus: "uploaded",
+          url: signedUrl
+        }
+      ],
+      displayPrompt:
+        "[@first line…](mention://pasted-text/22222222-2222-4222-8222-222222222222?presentation=remote)"
+    });
+    expect(submission.displayPrompt).not.toContain(signedUrl);
+    expect(submission.displayPrompt).not.toContain("asset-1");
+    expect(submission.displayPrompt).not.toContain("object://");
+  });
+
   it("submits a landed pasted-text draft as a structured file block", () => {
     const draft = buildAgentComposerDraft({
       prompt: "Summarize this",
@@ -525,6 +578,59 @@ describe("agentComposerDraft", () => {
         line: (_preview, path) => path
       })
     ).toEqual([{ type: "text", text: "hi" }]);
+  });
+
+  it("keeps remote pasted text on the prepared-file attachment path", async () => {
+    const { materializePastedTextInstructions } =
+      await import("./agentComposerDraft");
+    const content = [
+      { type: "text" as const, text: "Summarize this" },
+      {
+        type: "file" as const,
+        kind: "pasted-text",
+        mimeType: "text/plain;charset=utf-8",
+        name: "first line",
+        sizeBytes: 22,
+        assetId: "asset-1",
+        uri: "object://shared/pasted.txt",
+        uploadStatus: "uploaded",
+        url: "https://assets.example/shared/pasted.txt?signature=short-lived"
+      }
+    ];
+
+    expect(
+      materializePastedTextInstructions(content, {
+        header: () => "Referenced pasted text files:",
+        line: (preview, path) => `${preview}: ${path}`
+      })
+    ).toEqual([
+      { type: "text", text: "Summarize this" },
+      {
+        type: "file",
+        kind: "file",
+        mimeType: "text/plain;charset=utf-8",
+        name: "first line",
+        sizeBytes: 22,
+        assetId: "asset-1",
+        uri: "object://shared/pasted.txt",
+        uploadStatus: "uploaded",
+        url: "https://assets.example/shared/pasted.txt?signature=short-lived"
+      }
+    ]);
+
+    const restored = agentPromptContentToComposerDraft(
+      content,
+      "remote-restore"
+    );
+    expect(agentComposerDraftHasContent(restored)).toBe(true);
+    expect(agentComposerDraftLargeTexts(restored)).toEqual([
+      expect.objectContaining({
+        url: "https://assets.example/shared/pasted.txt?signature=short-lived",
+        assetId: "asset-1",
+        uri: "object://shared/pasted.txt",
+        uploadStatus: "uploaded"
+      })
+    ]);
   });
 
   it("adds codex app-server prompt items for referenced skills and connectors", () => {

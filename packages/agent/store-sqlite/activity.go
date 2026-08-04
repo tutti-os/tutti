@@ -110,7 +110,11 @@ func (s *Store) ReportActivityState(
 			return ActivityStateReportResult{}, errors.New("workspace agent activity turn transition was rejected")
 		}
 	}
-	if accepted && input.RootProviderTurn != nil {
+	// RootProviderTurn may arrive on an exact-replay session envelope after Exec
+	// already set CurrentPhase (Claude Code identity_resolved). Apply whenever the
+	// session row is addressable so Replay commit correlation still gets a
+	// durable turn mutation / RootProviderTurnAccepted flag.
+	if input.RootProviderTurn != nil && strings.TrimSpace(session.ID) != "" {
 		result.RootTurn, result.RootTurnAccepted, result.RootProviderTurnAccepted, err = s.applyRootProviderTurnTransitionTx(ctx, tx, *input.RootProviderTurn, now)
 		if err != nil {
 			return ActivityStateReportResult{}, err

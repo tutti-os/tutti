@@ -18,6 +18,7 @@ const (
 	defaultRemotePollInterval = 2 * time.Second
 	remoteCallerSettleDelay   = 6 * time.Second
 	deviceLinkProtocolVersion = 2
+	mobileRemoteRelayDriver   = "mobile-remote"
 )
 
 type activeRemoteAttempt struct {
@@ -39,19 +40,22 @@ type remoteManagedLink struct {
 type remoteHostState struct {
 	mu sync.Mutex
 
-	cancel             context.CancelFunc
-	stopping           bool
-	stopDone           chan struct{}
-	handler            http.Handler
-	liveEvents         AgentLiveEventSource
-	attempts           map[string]activeRemoteAttempt
-	registeredSession  string
-	registeredDevice   RegisteredDevice
-	registerAfter      time.Time
-	nextGeneration     uint64
-	linkManager        *linkmanager.Manager[string, remoteLinkMetadata]
-	managedLinks       map[string]remoteManagedLink
-	observedLinkEvents map[string]uint64
+	cancel               context.CancelFunc
+	stopping             bool
+	stopDone             chan struct{}
+	handler              http.Handler
+	liveEvents           AgentLiveEventSource
+	attempts             map[string]activeRemoteAttempt
+	registeredSession    string
+	registeredDevice     RegisteredDevice
+	registerAfter        time.Time
+	nextGeneration       uint64
+	linkManager          *linkmanager.Manager[string, remoteLinkMetadata]
+	managedLinks         map[string]remoteManagedLink
+	observedLinkEvents   map[string]uint64
+	relayOwnerAcquired   bool
+	remoteHostGeneration uint64
+	activePairings       map[string]struct{}
 }
 
 func (s *Service) StartRemoteHost(handler http.Handler) {
@@ -80,8 +84,26 @@ func (s *Service) StartRemoteHost(handler http.Handler) {
 		s.remoteHost.attempts = make(map[string]activeRemoteAttempt)
 		s.remoteHost.managedLinks = make(map[string]remoteManagedLink)
 		s.remoteHost.observedLinkEvents = make(map[string]uint64)
+		s.remoteHost.activePairings = make(map[string]struct{})
 		s.remoteHost.linkManager = s.newRemoteLinkManager()
+		s.remoteHost.remoteHostGeneration++
+		remoteHostGeneration := s.remoteHost.remoteHostGeneration
+		relayOwner := s.RelayOwner
 		s.remoteHost.mu.Unlock()
+
+		if relayOwner != nil {
+			if err := relayOwner.Acquire(ctx, mobileRemoteRelayDriver); err == nil {
+				s.remoteHost.mu.Lock()
+				if s.remoteHost.remoteHostGeneration == remoteHostGeneration && !s.remoteHost.stopping {
+					s.remoteHost.relayOwnerAcquired = true
+					relayOwner = nil
+				}
+				s.remoteHost.mu.Unlock()
+				if relayOwner != nil {
+					_ = relayOwner.Release(mobileRemoteRelayDriver)
+				}
+			}
+		}
 
 		go func() {
 			defer s.remoteWG.Done()
@@ -115,6 +137,9 @@ func (s *Service) StopRemoteHost() {
 	done := make(chan struct{})
 	s.remoteHost.stopping = true
 	s.remoteHost.stopDone = done
+	relayOwner := s.RelayOwner
+	relayOwnerAcquired := s.remoteHost.relayOwnerAcquired
+	s.remoteHost.relayOwnerAcquired = false
 	for _, attempt := range s.remoteHost.attempts {
 		attempt.cancel()
 	}
@@ -129,12 +154,16 @@ func (s *Service) StopRemoteHost() {
 	if manager != nil {
 		_ = manager.WaitForQuiescence(context.Background())
 	}
+	if relayOwnerAcquired && relayOwner != nil {
+		_ = relayOwner.Release(mobileRemoteRelayDriver)
+	}
 	s.remoteHost.mu.Lock()
 	s.remoteHost.cancel = nil
 	s.remoteHost.linkManager = nil
 	s.remoteHost.attempts = nil
 	s.remoteHost.managedLinks = nil
 	s.remoteHost.observedLinkEvents = nil
+	s.remoteHost.activePairings = nil
 	s.remoteHost.stopping = false
 	s.remoteHost.stopDone = nil
 	close(done)
@@ -456,6 +485,14 @@ func (s *Service) stopRemoteAttempts(validPairings map[string]struct{}) {
 			}
 		}
 		invalidPairingSet[pairingID] = struct{}{}
+	}
+	if validPairings == nil {
+		s.remoteHost.activePairings = nil
+	} else {
+		s.remoteHost.activePairings = make(map[string]struct{}, len(validPairings))
+		for pairingID := range validPairings {
+			s.remoteHost.activePairings[pairingID] = struct{}{}
+		}
 	}
 	if validPairings == nil {
 		s.remoteHost.registeredSession = ""

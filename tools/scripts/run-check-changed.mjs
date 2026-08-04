@@ -413,9 +413,12 @@ function runLane(lane, index, runDirectory) {
 
   return new Promise((resolve) => {
     const [command, ...args] = lane.command;
+    const useWindowsShellShim =
+      process.platform === "win32" && /\.(?:cmd|bat)$/iu.test(command);
     const child = spawn(command, args, {
       cwd: workspaceRoot,
       env: process.env,
+      shell: useWindowsShellShim,
       stdio: ["ignore", "pipe", "pipe"]
     });
 

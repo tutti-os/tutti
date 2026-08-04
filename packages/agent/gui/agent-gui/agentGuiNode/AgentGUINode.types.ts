@@ -126,6 +126,8 @@ export interface AgentGUINodeHostCapabilities {
   sessionInputHistoryEnabled?: boolean;
   /** Host-owned experimental opt-in for creating Session forks. */
   sessionForkEnabled?: boolean;
+  /** Host-owned experimental opt-in for the Codex saver-mode composer entry. */
+  codexSaverModeEntryEnabled?: boolean;
   capabilityMenuState?: AgentComposerCapabilityMenuState;
   /**
    * Keeps owner-supported Browser/Computer capability entries visible while
@@ -261,6 +263,8 @@ function agentGuiStateEquals(
       left.conversationRailCollapsed === right.conversationRailCollapsed &&
       (left.composerOverrides?.model ?? null) ===
         (right.composerOverrides?.model ?? null) &&
+      left.composerOverrides?.codexSaverMode ===
+        right.composerOverrides?.codexSaverMode &&
       (left.composerOverrides?.reasoningEffort ?? null) ===
         (right.composerOverrides?.reasoningEffort ?? null) &&
       (left.composerOverrides?.planMode ?? null) ===
@@ -293,6 +297,7 @@ function composerOverridesByProviderEqual(
     const leftSettings = left?.[key] ?? null;
     const rightSettings = right?.[key] ?? null;
     if (
+      leftSettings?.codexSaverMode !== rightSettings?.codexSaverMode ||
       (leftSettings?.model ?? null) !== (rightSettings?.model ?? null) ||
       (leftSettings?.reasoningEffort ?? null) !==
         (rightSettings?.reasoningEffort ?? null) ||
@@ -318,6 +323,7 @@ function composerOverridesByAgentTargetIdEqual(
     const leftSettings = left?.[key] ?? null;
     const rightSettings = right?.[key] ?? null;
     if (
+      leftSettings?.codexSaverMode !== rightSettings?.codexSaverMode ||
       (leftSettings?.model ?? null) !== (rightSettings?.model ?? null) ||
       (leftSettings?.reasoningEffort ?? null) !==
         (rightSettings?.reasoningEffort ?? null) ||
@@ -392,6 +398,7 @@ export function areAgentGUINodePropsEqual(
       nc.referenceProvenanceFilterEnabled &&
     pc.sessionInputHistoryEnabled === nc.sessionInputHistoryEnabled &&
     pc.sessionForkEnabled === nc.sessionForkEnabled &&
+    pc.codexSaverModeEntryEnabled === nc.codexSaverModeEntryEnabled &&
     agentGuiStateEquals(previous.state, next.state) &&
     pf.position.x === nf.position.x &&
     pf.position.y === nf.position.y &&

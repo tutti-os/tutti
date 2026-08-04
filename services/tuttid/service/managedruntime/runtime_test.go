@@ -47,6 +47,36 @@ func TestDefaultResolverInjectsBaselineRuntime(t *testing.T) {
 	}
 }
 
+func TestDefaultResolverUsesExistingNodeProfileWithoutCatalog(t *testing.T) {
+	root := t.TempDir()
+	nodeBinDir := filepath.Join(root, "node", "bin")
+	if err := os.MkdirAll(nodeBinDir, 0o755); err != nil {
+		t.Fatalf("mkdir node bin dir: %v", err)
+	}
+	writeExecutable(t, filepath.Join(nodeBinDir, nodeBinaryName()))
+	writeExecutable(t, filepath.Join(nodeBinDir, npmBinaryName()))
+	writeCorepackWrapper(t, filepath.Join(nodeBinDir, corepackBinaryName()))
+
+	resolved, err := DefaultResolver{
+		RuntimeRoot: root,
+		Environ: func() []string {
+			return []string{
+				tuttiAppRuntimeCatalogEnv + "=",
+				"PATH=/usr/bin:/bin",
+			}
+		},
+	}.ResolveProfile(context.Background(), appRuntimeNodeStaticProfile)
+	if err != nil {
+		t.Fatalf("ResolveProfile() error = %v", err)
+	}
+	if resolved.Node != filepath.Join(nodeBinDir, nodeBinaryName()) {
+		t.Fatalf("resolved Node = %q, want existing managed node", resolved.Node)
+	}
+	if resolved.Python != "" {
+		t.Fatalf("resolved Python = %q, want node-only profile", resolved.Python)
+	}
+}
+
 func TestDefaultResolverRejectsMissingRuntime(t *testing.T) {
 	_, err := DefaultResolver{
 		Environ: func() []string {

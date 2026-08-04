@@ -1,0 +1,627 @@
+openapi: 3.0.3
+info:
+  title: Connector Market API Fragment
+  version: 1.0.0
+  description: Host-neutral connector catalog, installation, authorization, and workspace-binding contract.
+tags:
+  - name: connector-market
+paths:
+  /v1/connector-market:
+    get:
+      operationId: getConnectorMarket
+      tags: [connector-market]
+      summary: Get the authoritative connector-market snapshot
+      parameters:
+        - $ref: "#/components/parameters/ConnectorMarketWorkspaceID"
+      responses:
+        "200":
+          description: Connector-market snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorMarketSnapshot"
+        "400":
+          $ref: "#/components/responses/ConnectorMarketInvalidRequestError"
+        "401":
+          $ref: "#/components/responses/ConnectorMarketUnauthorizedError"
+        "503":
+          $ref: "#/components/responses/ConnectorMarketUnavailableError"
+  /v1/connector-market/connectors/{connectorKey}:
+    parameters:
+      - $ref: "#/components/parameters/ConnectorMarketConnectorKey"
+    get:
+      operationId: getConnectorMarketConnector
+      tags: [connector-market]
+      summary: Get one connector projection
+      parameters:
+        - $ref: "#/components/parameters/ConnectorMarketWorkspaceID"
+      responses:
+        "200":
+          description: Connector projection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorMarketConnector"
+        "400":
+          $ref: "#/components/responses/ConnectorMarketInvalidRequestError"
+        "401":
+          $ref: "#/components/responses/ConnectorMarketUnauthorizedError"
+        "404":
+          $ref: "#/components/responses/ConnectorMarketNotFoundError"
+        "503":
+          $ref: "#/components/responses/ConnectorMarketUnavailableError"
+  /v1/connector-market:refresh:
+    post:
+      operationId: refreshConnectorMarket
+      tags: [connector-market]
+      summary: Refresh and accept the upstream connector catalog
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectorMarketMutationRequest"
+      responses:
+        "202":
+          description: Refresh operation accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorMarketMutationResponse"
+        "400":
+          $ref: "#/components/responses/ConnectorMarketInvalidRequestError"
+        "401":
+          $ref: "#/components/responses/ConnectorMarketUnauthorizedError"
+        "409":
+          $ref: "#/components/responses/ConnectorMarketConflictError"
+        "503":
+          $ref: "#/components/responses/ConnectorMarketUnavailableError"
+  /v1/connector-market/connectors/{connectorKey}:install:
+    parameters:
+      - $ref: "#/components/parameters/ConnectorMarketConnectorKey"
+    post:
+      operationId: installConnectorMarketConnector
+      tags: [connector-market]
+      summary: Install or update one connector
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectorMarketMutationRequest"
+      responses:
+        "202":
+          description: Installation operation accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorMarketMutationResponse"
+        "400":
+          $ref: "#/components/responses/ConnectorMarketInvalidRequestError"
+        "401":
+          $ref: "#/components/responses/ConnectorMarketUnauthorizedError"
+        "404":
+          $ref: "#/components/responses/ConnectorMarketNotFoundError"
+        "409":
+          $ref: "#/components/responses/ConnectorMarketConflictError"
+        "422":
+          $ref: "#/components/responses/ConnectorMarketUnprocessableError"
+        "503":
+          $ref: "#/components/responses/ConnectorMarketUnavailableError"
+  /v1/connector-market/connectors/{connectorKey}:uninstall:
+    parameters:
+      - $ref: "#/components/parameters/ConnectorMarketConnectorKey"
+    post:
+      operationId: uninstallConnectorMarketConnector
+      tags: [connector-market]
+      summary: Uninstall one connector
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectorMarketMutationRequest"
+      responses:
+        "202":
+          description: Uninstallation operation accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorMarketMutationResponse"
+        "400":
+          $ref: "#/components/responses/ConnectorMarketInvalidRequestError"
+        "401":
+          $ref: "#/components/responses/ConnectorMarketUnauthorizedError"
+        "404":
+          $ref: "#/components/responses/ConnectorMarketNotFoundError"
+        "409":
+          $ref: "#/components/responses/ConnectorMarketConflictError"
+        "503":
+          $ref: "#/components/responses/ConnectorMarketUnavailableError"
+  /v1/connector-market/connectors/{connectorKey}/authorization:start:
+    parameters:
+      - $ref: "#/components/parameters/ConnectorMarketConnectorKey"
+    post:
+      operationId: startConnectorMarketAuthorization
+      tags: [connector-market]
+      summary: Start connector authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectorMarketMutationRequest"
+      responses:
+        "200":
+          description: Authorization attempt started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorMarketAuthorizationResponse"
+        "400":
+          $ref: "#/components/responses/ConnectorMarketInvalidRequestError"
+        "401":
+          $ref: "#/components/responses/ConnectorMarketUnauthorizedError"
+        "404":
+          $ref: "#/components/responses/ConnectorMarketNotFoundError"
+        "409":
+          $ref: "#/components/responses/ConnectorMarketConflictError"
+        "503":
+          $ref: "#/components/responses/ConnectorMarketUnavailableError"
+  /v1/connector-market/connectors/{connectorKey}/authorization:disconnect:
+    parameters:
+      - $ref: "#/components/parameters/ConnectorMarketConnectorKey"
+    post:
+      operationId: disconnectConnectorMarketAuthorization
+      tags: [connector-market]
+      summary: Disconnect connector authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectorMarketMutationRequest"
+      responses:
+        "202":
+          description: Authorization disconnection accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorMarketMutationResponse"
+        "400":
+          $ref: "#/components/responses/ConnectorMarketInvalidRequestError"
+        "401":
+          $ref: "#/components/responses/ConnectorMarketUnauthorizedError"
+        "404":
+          $ref: "#/components/responses/ConnectorMarketNotFoundError"
+        "409":
+          $ref: "#/components/responses/ConnectorMarketConflictError"
+        "503":
+          $ref: "#/components/responses/ConnectorMarketUnavailableError"
+  /v1/connector-market/connectors/{connectorKey}/workspace-binding:set:
+    parameters:
+      - $ref: "#/components/parameters/ConnectorMarketConnectorKey"
+    post:
+      operationId: setConnectorMarketWorkspaceBinding
+      tags: [connector-market]
+      summary: Enable or disable a connector for one workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetConnectorMarketWorkspaceBindingRequest"
+      responses:
+        "200":
+          description: Updated connector projection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorMarketConnectorResponse"
+        "400":
+          $ref: "#/components/responses/ConnectorMarketInvalidRequestError"
+        "401":
+          $ref: "#/components/responses/ConnectorMarketUnauthorizedError"
+        "404":
+          $ref: "#/components/responses/ConnectorMarketNotFoundError"
+        "409":
+          $ref: "#/components/responses/ConnectorMarketConflictError"
+        "503":
+          $ref: "#/components/responses/ConnectorMarketUnavailableError"
+  /v1/connector-market/operations/{operationID}:
+    parameters:
+      - $ref: "#/components/parameters/ConnectorMarketOperationID"
+    get:
+      operationId: getConnectorMarketOperation
+      tags: [connector-market]
+      summary: Get one durable connector-market operation
+      responses:
+        "200":
+          description: Connector-market operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorMarketOperation"
+        "400":
+          $ref: "#/components/responses/ConnectorMarketInvalidRequestError"
+        "401":
+          $ref: "#/components/responses/ConnectorMarketUnauthorizedError"
+        "404":
+          $ref: "#/components/responses/ConnectorMarketNotFoundError"
+        "503":
+          $ref: "#/components/responses/ConnectorMarketUnavailableError"
+components:
+  parameters:
+    ConnectorMarketConnectorKey:
+      name: connectorKey
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$"
+    ConnectorMarketOperationID:
+      name: operationID
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    ConnectorMarketWorkspaceID:
+      name: workspaceId
+      in: query
+      required: false
+      schema:
+        type: string
+        minLength: 1
+  responses:
+    ConnectorMarketInvalidRequestError:
+      description: Invalid connector-market request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ConnectorMarketError"
+    ConnectorMarketUnauthorizedError:
+      description: Daemon authorization is required
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ConnectorMarketError"
+    ConnectorMarketNotFoundError:
+      description: Connector or operation was not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ConnectorMarketError"
+    ConnectorMarketConflictError:
+      description: Revision conflict or operation already in progress
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ConnectorMarketError"
+    ConnectorMarketUnprocessableError:
+      description: Connector is incompatible or its manifest cannot be installed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ConnectorMarketError"
+    ConnectorMarketUnavailableError:
+      description: Connector-market capability is temporarily unavailable
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ConnectorMarketError"
+  schemas:
+    ConnectorMarketSnapshot:
+      type: object
+      additionalProperties: false
+      required: [catalogState, connectors, operations, revision]
+      properties:
+        catalogState:
+          $ref: "#/components/schemas/ConnectorMarketCatalogState"
+        connectors:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConnectorMarketConnector"
+        operations:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConnectorMarketOperation"
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+        sourceRevision:
+          type: string
+    ConnectorMarketConnector:
+      type: object
+      additionalProperties: false
+      required:
+        [key, manifest, installation, authorization, compatibility, revision]
+      properties:
+        key:
+          type: string
+        manifest:
+          $ref: "#/components/schemas/ConnectorMarketManifest"
+        installation:
+          $ref: "#/components/schemas/ConnectorMarketInstallation"
+        authorization:
+          $ref: "#/components/schemas/ConnectorMarketAuthorization"
+        compatibility:
+          $ref: "#/components/schemas/ConnectorMarketCompatibility"
+        workspaceBinding:
+          $ref: "#/components/schemas/ConnectorMarketWorkspaceBinding"
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+    ConnectorMarketManifest:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          schemaVersion,
+          key,
+          version,
+          displayName,
+          permissions,
+          artifact,
+          implementation,
+          authorizationKind
+        ]
+      properties:
+        schemaVersion:
+          type: string
+          enum: ["1"]
+        key:
+          type: string
+        version:
+          type: string
+        displayName:
+          type: string
+        description:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+        artifact:
+          $ref: "#/components/schemas/ConnectorMarketArtifact"
+        implementation:
+          $ref: "#/components/schemas/ConnectorMarketImplementation"
+        authorizationKind:
+          type: string
+        compatibility:
+          $ref: "#/components/schemas/ConnectorMarketCompatibilityRequirements"
+    ConnectorMarketArtifact:
+      type: object
+      additionalProperties: false
+      required: [key, sha256, sizeBytes]
+      properties:
+        key:
+          type: string
+          minLength: 1
+        sha256:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+        sizeBytes:
+          type: integer
+          format: int64
+          minimum: 1
+    ConnectorMarketCompatibilityRequirements:
+      type: object
+      additionalProperties: false
+      properties:
+        products:
+          type: array
+          items:
+            type: string
+        platforms:
+          type: array
+          items:
+            type: string
+        minimumHostVersion:
+          type: string
+    ConnectorMarketImplementation:
+      type: object
+      description: Public implementation discriminator; sensitive host configuration is never returned.
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind:
+          type: string
+    ConnectorMarketInstallation:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state:
+          $ref: "#/components/schemas/ConnectorMarketInstallationState"
+        installedVersion:
+          type: string
+        failureCode:
+          type: string
+    ConnectorMarketAuthorization:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state:
+          $ref: "#/components/schemas/ConnectorMarketAuthorizationState"
+        failureCode:
+          type: string
+    ConnectorMarketCompatibility:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state:
+          $ref: "#/components/schemas/ConnectorMarketCompatibilityState"
+        reason:
+          type: string
+    ConnectorMarketWorkspaceBinding:
+      type: object
+      additionalProperties: false
+      required: [workspaceId, enabled]
+      properties:
+        workspaceId:
+          type: string
+        enabled:
+          type: boolean
+    ConnectorMarketOperation:
+      type: object
+      additionalProperties: false
+      required:
+        [operationId, clientRequestId, kind, state, createdAt, updatedAt]
+      properties:
+        operationId:
+          type: string
+        clientRequestId:
+          type: string
+        connectorKey:
+          type: string
+        kind:
+          $ref: "#/components/schemas/ConnectorMarketOperationKind"
+        state:
+          $ref: "#/components/schemas/ConnectorMarketOperationState"
+        stage:
+          type: string
+        failureCode:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ConnectorMarketMutationRequest:
+      type: object
+      additionalProperties: false
+      required: [clientRequestId, expectedRevision]
+      properties:
+        clientRequestId:
+          type: string
+          minLength: 1
+        expectedRevision:
+          type: integer
+          format: int64
+          minimum: 0
+    SetConnectorMarketWorkspaceBindingRequest:
+      type: object
+      additionalProperties: false
+      required: [clientRequestId, expectedRevision, workspaceId, enabled]
+      properties:
+        clientRequestId:
+          type: string
+          minLength: 1
+        expectedRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        workspaceId:
+          type: string
+          minLength: 1
+        enabled:
+          type: boolean
+    ConnectorMarketMutationResponse:
+      type: object
+      additionalProperties: false
+      required: [operation, revision]
+      properties:
+        connector:
+          $ref: "#/components/schemas/ConnectorMarketConnector"
+        operation:
+          $ref: "#/components/schemas/ConnectorMarketOperation"
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+    ConnectorMarketAuthorizationResponse:
+      type: object
+      additionalProperties: false
+      required: [connector, operation, revision]
+      properties:
+        connector:
+          $ref: "#/components/schemas/ConnectorMarketConnector"
+        operation:
+          $ref: "#/components/schemas/ConnectorMarketOperation"
+        authorizationUrl:
+          type: string
+          format: uri
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+    ConnectorMarketConnectorResponse:
+      type: object
+      additionalProperties: false
+      required: [connector, operation, revision]
+      properties:
+        connector:
+          $ref: "#/components/schemas/ConnectorMarketConnector"
+        operation:
+          $ref: "#/components/schemas/ConnectorMarketOperation"
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+    ConnectorMarketError:
+      type: object
+      additionalProperties: false
+      required: [code, message, retryable]
+      properties:
+        code:
+          $ref: "#/components/schemas/ConnectorMarketErrorCode"
+        message:
+          type: string
+        retryable:
+          type: boolean
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+    ConnectorMarketCatalogState:
+      type: string
+      enum: [ready, refreshing, stale, failed]
+    ConnectorMarketInstallationState:
+      type: string
+      enum:
+        [not_installed, installing, installed, updating, uninstalling, failed]
+    ConnectorMarketAuthorizationState:
+      type: string
+      enum: [not_required, disconnected, pending, connected, expired, failed]
+    ConnectorMarketCompatibilityState:
+      type: string
+      enum:
+        [
+          supported,
+          unsupported_product,
+          unsupported_platform,
+          unsupported_version,
+          unsupported_implementation
+        ]
+    ConnectorMarketOperationKind:
+      type: string
+      enum:
+        - refresh_catalog
+        - install
+        - uninstall
+        - start_authorization
+        - set_workspace_enabled
+        - disconnect_authorization
+    ConnectorMarketOperationState:
+      type: string
+      enum: [accepted, running, completed, failed]
+    ConnectorMarketErrorCode:
+      type: string
+      enum:
+        - connector_market_invalid_request
+        - connector_not_found
+        - connector_market_revision_conflict
+        - connector_operation_in_progress
+        - connector_incompatible
+        - connector_manifest_invalid
+        - connector_implementation_unsupported
+        - connector_market_upstream_unavailable
+        - connector_install_failed
+        - connector_authorization_failed
+        - connector_market_unavailable

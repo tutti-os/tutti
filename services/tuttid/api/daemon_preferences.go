@@ -539,6 +539,7 @@ func agentComposerDefaultsFromGenerated(
 	value tuttigenerated.DesktopAgentComposerDefaults,
 ) preferencesbiz.AgentComposerDefaults {
 	return preferencesbiz.AgentComposerDefaults{
+		CodexSaverMode:   value.CodexSaverMode != nil && *value.CodexSaverMode,
 		Model:            optionalStringValue(value.Model),
 		PermissionModeID: optionalStringValue(value.PermissionModeId),
 		ReasoningEffort:  optionalStringValue(value.ReasoningEffort),

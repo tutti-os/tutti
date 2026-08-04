@@ -129,9 +129,32 @@ test("release Feishu card includes tsh-aligned release context fields", () => {
 
   assert.deepEqual(actionLabels, [
     "下载 macOS",
+    "下载 Windows（未签名）",
     "打开 Release 页面",
     "查看流水线"
   ]);
+});
+
+test("release Feishu card uses the mirrored Windows installer URL", () => {
+  const payload = buildCardPayload({
+    actor: "jomeswang",
+    branch: "main",
+    macUrl: "https://example.com/tutti.dmg",
+    releaseUrl: "https://github.com/tutti-os/tutti/releases/tag/v1.12.20-rc.0",
+    runUrl: "https://github.com/tutti-os/tutti/actions/runs/1",
+    tag: "v1.12.20-rc.0",
+    target: "4039186abcdef0",
+    winUrl: "https://downloads.example.com/v1.12.20-rc.0/Tutti-1.12.20-rc.0-win-x64.exe"
+  });
+
+  const windowsAction = payload.card.elements
+    .find((element) => element.tag === "action")
+    .actions.find((action) => action.text.content === "下载 Windows（未签名）");
+
+  assert.equal(
+    windowsAction?.url,
+    "https://downloads.example.com/v1.12.20-rc.0/Tutti-1.12.20-rc.0-win-x64.exe"
+  );
 });
 
 test("release Feishu card includes Chinese release summary when available", () => {
@@ -204,5 +227,19 @@ test("release Feishu card resolves mirrored macOS URLs from local artifact names
       "v0.1.0-rc.4"
     ),
     "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-desktop-release-assets/v0.1.0-rc.4/Tutti-0.1.0-rc.4-mac-universal.dmg"
+  );
+  assert.equal(
+    resolveMirroredAssetUrl(
+      [
+        "Tutti-0.1.0-rc.4-mac-arm64.dmg",
+        "Tutti-0.1.0-rc.4-mac-universal.dmg",
+        "Tutti-0.1.0-rc.4-mac-x64.dmg",
+        "Tutti-0.1.0-rc.4-win-x64.exe"
+      ],
+      /-win-x64\.exe$/i,
+      "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-desktop-release-assets",
+      "v0.1.0-rc.4"
+    ),
+    "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-desktop-release-assets/v0.1.0-rc.4/Tutti-0.1.0-rc.4-win-x64.exe"
   );
 });

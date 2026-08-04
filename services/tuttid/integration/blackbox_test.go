@@ -373,8 +373,14 @@ func stopTestDaemon(t *testing.T, daemon *testDaemon) {
 		return
 	}
 
-	if err := daemon.cmd.Process.Signal(syscall.SIGINT); err != nil && !errors.Is(err, os.ErrProcessDone) {
-		t.Fatalf("signal tuttid shutdown: %v", err)
+	var signalErr error
+	if runtime.GOOS == "windows" {
+		signalErr = daemon.cmd.Process.Kill()
+	} else {
+		signalErr = daemon.cmd.Process.Signal(syscall.SIGINT)
+	}
+	if signalErr != nil && !errors.Is(signalErr, os.ErrProcessDone) {
+		t.Fatalf("signal tuttid shutdown: %v", signalErr)
 	}
 
 	done := make(chan error, 1)
@@ -384,7 +390,7 @@ func stopTestDaemon(t *testing.T, daemon *testDaemon) {
 
 	select {
 	case err := <-done:
-		if err != nil {
+		if err != nil && runtime.GOOS != "windows" {
 			t.Fatalf("wait for tuttid shutdown: %v\nstdout:\n%s\nstderr:\n%s", err, daemon.stdout.String(), daemon.stderr.String())
 		}
 	case <-time.After(5 * time.Second):

@@ -13,6 +13,7 @@ import (
 	agentdaemon "github.com/tutti-os/tutti/packages/agent/daemon"
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	sessionreplay "github.com/tutti-os/tutti/packages/agent/session-replay"
+	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
 
 type cassetteWiringTestTransport struct {
@@ -202,9 +203,21 @@ func TestBuildAgentProcessCompositionCreatesFixedReplayRouter(t *testing.T) {
 	directoryB := t.TempDir()
 	writeCompleteProcessCassette(t, directoryA)
 	writeCompleteProcessCassette(t, directoryB)
-	registrations, err := json.Marshal([]agentdaemon.SessionReplayProcessRegistration{
-		{CassetteID: "cassette-a", RootAgentSessionID: "session-a", CassetteDirectory: directoryA},
-		{CassetteID: "cassette-b", RootAgentSessionID: "session-b", CassetteDirectory: directoryB},
+	registrations, err := json.Marshal([]agentSessionReplayRegistration{
+		{
+			CassetteID:         "cassette-a",
+			RootAgentSessionID: "session-a",
+			CassetteDirectory:  directoryA,
+			Providers:          []string{"codex"},
+			FrozenModel:        "gpt-5.3-codex-spark",
+		},
+		{
+			CassetteID:         "cassette-b",
+			RootAgentSessionID: "session-b",
+			CassetteDirectory:  directoryB,
+			Providers:          []string{"codex"},
+			FrozenModel:        "gpt-5-codex",
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -219,6 +232,18 @@ func TestBuildAgentProcessCompositionCreatesFixedReplayRouter(t *testing.T) {
 	if composition.replay == nil || composition.recorder != nil ||
 		composition.transport == composition.replay {
 		t.Fatalf("composition = %#v, want replay router only", composition)
+	}
+	models, err := composition.replayModelCatalog.ListModels(
+		context.Background(),
+		agentservice.AgentModelCatalogInput{Provider: "codex"},
+	)
+	if err != nil {
+		t.Fatalf("replay model catalog error = %v", err)
+	}
+	if len(models.Models) != 2 ||
+		models.Models[0].ID != "gpt-5.3-codex-spark" ||
+		models.Models[1].ID != "gpt-5-codex" {
+		t.Fatalf("replay model catalog = %#v, want frozen cassette models", models.Models)
 	}
 	tracking, ok := composition.transport.(agentruntime.ProviderInputUnitTrackingTransport)
 	if !ok || !tracking.TracksProviderInputUnits() {

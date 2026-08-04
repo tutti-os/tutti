@@ -42,6 +42,11 @@ on:
         options:
           - publish
           - draft_only
+      include_windows:
+        description: Include an unsigned Windows NSIS package in the release assets
+        required: false
+        type: boolean
+        default: false
       notify_feishu:
         description: Send a Feishu card after publishing
         required: false
@@ -68,6 +73,7 @@ jobs:
       release_version: ${{ steps.release.outputs.release_version }}
       release_channel: ${{ steps.release.outputs.release_channel }}
       publication_mode: ${{ steps.publication.outputs.publication_mode }}
+      include_windows: ${{ steps.windows.outputs.include_windows }}
       notify_feishu: ${{ steps.notify.outputs.notify_feishu }}
 
     steps:
@@ -280,6 +286,19 @@ jobs:
           esac
           echo "publication_mode=${publication_mode}" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve Windows packaging opt-in
+        id: windows
+        shell: bash
+        env:
+          RELEASE_EVENT_NAME: ${{ github.event_name }}
+          INPUT_INCLUDE_WINDOWS: ${{ inputs.include_windows }}
+        run: |
+          include_windows=false
+          if [[ "${RELEASE_EVENT_NAME}" == "workflow_dispatch" && "${INPUT_INCLUDE_WINDOWS}" == "true" ]]; then
+            include_windows=true
+          fi
+          echo "include_windows=${include_windows}" >> "$GITHUB_OUTPUT"
+
   build-macos:
     name: Build macOS (${{ matrix.arch }})
     needs: resolve
@@ -438,13 +457,102 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  build-windows:
+    name: Build Windows (unsigned)
+    needs: resolve
+    if: ${{ needs.resolve.outputs.include_windows == 'true' }}
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      TUTTI_DESKTOP_RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
+      TUTTI_DESKTOP_RELEASE_TARGET: ${{ needs.resolve.outputs.release_target }}
+      TUTTI_DESKTOP_DRY_RUN: ${{ needs.resolve.outputs.release_dry_run }}
+      TUTTI_DESKTOP_RELEASE_CHANNEL: ${{ needs.resolve.outputs.release_channel }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.TUTTI_DESKTOP_RELEASE_TARGET }}
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.24.5"
+          cache-dependency-path: |
+            go.work
+            go.work.sum
+            packages/workbench/service/go.mod
+            packages/workspace/files/go.mod
+            packages/workspace/issues/go.mod
+            services/tuttid/go.mod
+            services/tuttid/go.sum
+
+      - name: Install dependencies
+        shell: pwsh
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Electron runtime
+        shell: pwsh
+        run: pnpm --filter @tutti-os/desktop exec install-electron
+
+      - name: Align package version with release tag
+        working-directory: apps/desktop
+        shell: pwsh
+        run: node scripts/apply-ci-release-version.mjs "$env:TUTTI_DESKTOP_RELEASE_TAG"
+
+      - name: Build unsigned Windows NSIS package
+        shell: pwsh
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: pnpm --filter @tutti-os/desktop build:win
+
+      - name: Verify Windows release metadata
+        shell: pwsh
+        run: |
+          $metadataName = if ($env:TUTTI_DESKTOP_RELEASE_CHANNEL -eq 'stable') { 'latest.yml' } else { "$env:TUTTI_DESKTOP_RELEASE_CHANNEL.yml" }
+          $metadataPath = Join-Path 'apps/desktop/dist' $metadataName
+          if (-not (Test-Path $metadataPath)) {
+            throw "Expected Windows updater metadata at $metadataPath"
+          }
+          if (-not (Get-ChildItem 'apps/desktop/dist' -Filter '*.exe' -File)) {
+            throw 'Windows build did not produce an NSIS installer'
+          }
+
+      - name: Upload Windows release artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: tutti-desktop-release-assets-windows
+          compression-level: 0
+          path: |
+            apps/desktop/dist/*.blockmap
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.yml
+          if-no-files-found: error
+          retention-days: 7
+
   stage:
     name: Stage Release Draft
-    needs: [resolve, build-macos]
-    if: ${{ github.event_name == 'push' || needs.resolve.outputs.release_dry_run != 'true' }}
+    needs: [resolve, build-macos, build-windows]
+    if: >-
+      ${{ always() && needs.resolve.result == 'success' &&
+          (github.event_name == 'push' || needs.resolve.outputs.release_dry_run != 'true') &&
+          needs.build-macos.result == 'success' &&
+          (needs.build-windows.result == 'success' || needs.build-windows.result == 'skipped') }}
     runs-on: ubuntu-latest
     outputs:
-      release_url: ${{ steps.stage-release.outputs.url }}
+      release_url: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.resolve.outputs.release_tag }}
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
       TUTTI_ARTIFACTS_AWS_ROLE_ARN: ${{ vars.TUTTI_ARTIFACTS_AWS_ROLE_ARN }}
@@ -468,12 +576,19 @@ jobs:
         with:
           node-version-file: .node-version
 
-      - name: Download built artifacts
+      - name: Download macOS built artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: tutti-desktop-release-assets-macos-*
           merge-multiple: false
-          path: release-assets-input
+          path: release-assets-input/macos
+
+      - name: Download Windows built artifacts
+        if: ${{ needs.resolve.outputs.include_windows == 'true' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: tutti-desktop-release-assets-windows
+          path: release-assets-input/windows
 
       - name: Merge macOS release artifacts and updater metadata
         env:
@@ -481,8 +596,30 @@ jobs:
           RELEASE_VERSION: ${{ env.TUTTI_DESKTOP_RELEASE_VERSION }}
         run: |
           node apps/desktop/scripts/merge-macos-release-artifacts.mjs \
-            release-assets-input \
+            release-assets-input/macos \
             release-assets
+
+      - name: Add Windows release artifacts
+        if: ${{ needs.resolve.outputs.include_windows == 'true' }}
+        shell: bash
+        run: |
+          shopt -s nullglob globstar
+          windows_files=(
+            release-assets-input/windows/**/*.blockmap
+            release-assets-input/windows/**/*.exe
+            release-assets-input/windows/**/*.yml
+          )
+          copied=0
+          for file in "${windows_files[@]}"; do
+            if [[ -f "${file}" ]]; then
+              cp "${file}" release-assets/"$(basename "${file}")"
+              copied=$((copied + 1))
+            fi
+          done
+          if [[ "${copied}" -eq 0 ]]; then
+            echo "No Windows release artifacts were downloaded" >&2
+            exit 1
+          fi
 
       - name: Generate desktop release summary
         env:
@@ -583,14 +720,20 @@ jobs:
           name: tutti-desktop-release-summary
           path: release-assets/release-summary.json
 
-      - name: Update release notes with summary
+      - name: Update release notes with summary and direct downloads
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          export RELEASE_TAG="${TUTTI_DESKTOP_RELEASE_TAG}"
+          export RELEASE_ASSET_BASE_URL="${TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL}"
           gh release view "${TUTTI_DESKTOP_RELEASE_TAG}" --json body --jq .body > release-body.md
           node apps/desktop/scripts/upsert-release-summary.mjs \
             release-body.md \
             release-assets/release-summary.json \
+            release-body-with-summary.md
+          node apps/desktop/scripts/upsert-release-download-links.mjs \
+            release-body-with-summary.md \
+            release-assets \
             updated-release-body.md
           gh release edit "${TUTTI_DESKTOP_RELEASE_TAG}" --notes-file updated-release-body.md
 

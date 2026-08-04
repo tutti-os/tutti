@@ -64,6 +64,7 @@ type Fixture struct {
 	CompleteGoalOnSet      bool
 	EmptyPauseResumeGoal   bool
 	FailCommitObserver     bool
+	RejectInitialExec      bool
 	WorktreeGCSweepErr     error
 	DeleteAdmissionErr     error
 	DeleteSessionPlans     [][]string
@@ -136,6 +137,7 @@ type Metrics struct {
 	LastInteractiveRequestID           string
 	LastInitialTitle                   string
 	LastExecRequiresProviderAcceptance bool
+	LastClosePreservedCanonicalState   bool
 	LastResumeRecreate                 bool
 	RecoverySteps                      []string
 	DeleteAdmissionPlans               []agenthost.DeleteSessionsPlan

@@ -243,8 +243,14 @@ sidecar state that can be recreated or cleaned up when the owning agent session
 is deleted. Provider-specific homes, generated skills, and cleanup manifests
 live under the matching run directory. Codex sessions use `codex-home` and
 receive it through `CODEX_HOME`; Tutti Agent sessions use `tutti-agent-home`
-and receive it through `TUTTI_AGENT_HOME`. `agent/attachments` stores persisted
-prompt attachments by agent session.
+and receive it through `TUTTI_AGENT_HOME`. `agent/skill-bundles/v1/<digest>`
+stores immutable, rebuildable Tutti-managed Skill bundles shared by equal
+content across Tutti Agent sessions; session cleanup never removes these
+entries. `agent/system-skill-bundles/v1/<digest>/.system` stores immutable,
+rebuildable snapshots of the embedded Skills installed by the active Tutti
+Agent binary; run-scoped homes link to the matching digest before thread
+startup. Session cleanup never removes either shared cache. `agent/attachments`
+stores persisted prompt attachments by agent session.
 
 ## Developer Agent Session Cassettes
 

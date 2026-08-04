@@ -49,6 +49,15 @@ interface DeviceLinkAttempt {
   stunEndpoints?: string[];
 }
 
+export interface AgentRelayDescriptor {
+  authorityId: string;
+  relayDialEndpoint: string;
+  token: string;
+  tokenExpiresAt: string;
+}
+
+const RELAY_STREAM_SUBPROTOCOL = "tsh.relay.stream.v1";
+
 export async function claimPairing(
   sessionId: string,
   payload: PairingQRPayload,
@@ -125,6 +134,30 @@ export async function connectPairedDevice(
   await requireCurrentConnection(isCurrent);
   await registerIdentity(sessionId, identity);
   await requireCurrentConnection(isCurrent);
+  const relayDescriptorTask = issueAgentRelayDescriptor(
+    sessionId,
+    pairingId,
+    identity
+  )
+    .then(async (descriptor) => {
+      if (!isCurrent() || typeof deviceLink.configureRelay !== "function") {
+        return null;
+      }
+      await deviceLink.configureRelay(
+        descriptor.relayDialEndpoint,
+        JSON.stringify({
+          authority_id: [descriptor.authorityId],
+          channel: ["agent"],
+          target: ["device-gateway"]
+        }),
+        JSON.stringify({
+          Authorization: [`Bearer ${descriptor.token}`]
+        }),
+        RELAY_STREAM_SUBPROTOCOL
+      );
+      return isCurrent() ? descriptor : null;
+    })
+    .catch(() => null);
   try {
     let prepared = await deviceLink.prepareLink("[]", 10_000);
     let local = parseDeviceLinkDescription(prepared.descriptionJSON);
@@ -189,6 +222,10 @@ export async function connectPairedDevice(
       );
       await requireCurrentConnection(isCurrent);
     }
+    if (await relayDescriptorTask) {
+      await requireCurrentConnection(isCurrent);
+      return "private_network";
+    }
     throw new Error("device-link attempt expired");
   } catch (error) {
     if (isCurrent()) {
@@ -196,6 +233,57 @@ export async function connectPairedDevice(
     }
     throw error;
   }
+}
+
+export async function issueAgentRelayDescriptor(
+  sessionId: string,
+  pairingId: string,
+  identity?: DeviceIdentity
+): Promise<AgentRelayDescriptor> {
+  const currentIdentity =
+    identity ?? (await mobileSecurity.getOrCreateIdentity());
+  const signature = await mobileSecurity.sign(
+    deviceLinkProof("relay", pairingId, "", "")
+  );
+  const response = await controlPlaneRequest<{
+    descriptor?: AgentRelayDescriptor;
+    relayDialEndpoint?: string;
+    authorityId?: string;
+    token?: string;
+    tokenExpiresAt?: string;
+  }>(
+    sessionId,
+    `/device-pairings/${encodeURIComponent(pairingId)}/agent-relay-descriptor`,
+    {
+      body: JSON.stringify({
+        deviceId: currentIdentity.deviceId,
+        identitySignature: signature,
+        pairingId
+      }),
+      method: "POST"
+    }
+  );
+  const descriptor = response.descriptor ?? response;
+  if (
+    !descriptor ||
+    typeof descriptor !== "object" ||
+    typeof descriptor.authorityId !== "string" ||
+    descriptor.authorityId.trim() === "" ||
+    typeof descriptor.relayDialEndpoint !== "string" ||
+    !/^wss?:\/\/[^\s/]+/i.test(descriptor.relayDialEndpoint.trim()) ||
+    typeof descriptor.token !== "string" ||
+    descriptor.token.trim() === "" ||
+    typeof descriptor.tokenExpiresAt !== "string" ||
+    Number.isNaN(Date.parse(descriptor.tokenExpiresAt))
+  ) {
+    throw new Error("control-plane Relay descriptor is incomplete");
+  }
+  return {
+    authorityId: descriptor.authorityId.trim(),
+    relayDialEndpoint: descriptor.relayDialEndpoint.trim(),
+    token: descriptor.token.trim(),
+    tokenExpiresAt: descriptor.tokenExpiresAt
+  };
 }
 
 function normalizeDeviceLinkPathScope(scope: string): DeviceLinkPathScope {

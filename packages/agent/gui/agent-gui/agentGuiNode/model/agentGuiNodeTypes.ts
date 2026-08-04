@@ -271,6 +271,7 @@ export interface AgentGUIComposerModelPlanVM {
 export interface AgentGUIComposerSettingsVM {
   sessionSettings: AgentSessionComposerSettings | null;
   draftSettings: {
+    codexSaverMode?: boolean;
     model: string | null;
     reasoningEffort: AgentSessionReasoningEffort | null;
     speed: AgentSessionSpeed | null;
@@ -282,6 +283,7 @@ export interface AgentGUIComposerSettingsVM {
     permissionModeId?: string | null;
   };
   supportsModel: boolean;
+  supportsCodexSaverMode?: boolean;
   supportsReasoningEffort: boolean;
   supportsSpeed: boolean;
   supportsPermissionMode?: boolean;

@@ -73,6 +73,105 @@ describe("useAgentGUISessionPresentation", () => {
     });
   });
 
+  it("does not expose manual retry for failed activation", () => {
+    const sessionEngine = createAgentSessionEngine({
+      clock: { nowUnixMs: () => 1 },
+      commandPort: createTestEngineCommandPort({
+        execute: vi.fn(() => new Promise(() => undefined))
+      }),
+      identity: { origin: "test", workspaceId: "workspace-1" },
+      scheduler: { schedule: () => ({ cancel() {} }) }
+    });
+    const input = {
+      activeConversation: null,
+      activeConversationId: "session-rejected",
+      activeEngineActiveTurn: null,
+      activeEngineAvailability: "available",
+      activeEngineHasPendingInteractions: false,
+      activeEngineLatestTurn: null,
+      activeEngineRuntimeAvailability: null,
+      activeEngineSession: null,
+      activeGoalControlPresentation: {
+        agentSessionId: "session-rejected",
+        goal: null,
+        optimistic: false,
+        status: "idle"
+      },
+      activeLatestPendingSubmitTurnId: null,
+      activeLiveState: "failed",
+      activeMessages: [],
+      activePendingActivation: {
+        agentSessionId: "session-rejected",
+        agentTargetId: "local:claude-code",
+        clientSubmitId: "submit-rejected",
+        content: [{ type: "text", text: "hello" }],
+        cwd: "/workspace",
+        errorCode: "auth_required",
+        errorMessage: "Claude Code needs authentication",
+        expiresAtUnixMs: Number.MAX_SAFE_INTEGER,
+        initialPromptRetracted: false,
+        initialTurnExpected: true,
+        mode: "new",
+        requestedAtUnixMs: 1,
+        requestId: "request-rejected",
+        status: "failed",
+        title: null,
+        workspaceId: "workspace-1"
+      },
+      activeSessionState: null,
+      activeTimelineItems: [],
+      activationError: "Claude Code needs authentication",
+      activationErrorCode: "auth_required",
+      activationState: "failed",
+      activityDisplayStatus: null,
+      agentActivityRuntime: {},
+      agentTargetsLoading: false,
+      composerSupport: {
+        model: false,
+        reasoningEffort: false,
+        permissionMode: false,
+        planMode: false,
+        planImplementation: false,
+        plan: false
+      },
+      conversation: null,
+      currentUserId: "user-1",
+      isCreatingConversation: false,
+      isInterrupting: false,
+      isLoadingMessages: false,
+      isRespondingToInteraction: false,
+      isSubmitting: false,
+      lastRenderStateDiagnosticKeyRef: { current: null },
+      pendingApproval: null,
+      planImplementationTurnIdRef: { current: null },
+      providerReadinessGate: null,
+      selectedAgentTargetOwnerLabel: null,
+      selectedAgentTargetUnavailable: false,
+      selectedAgentTargetUnavailableReason: null,
+      serverInteractivePrompt: null,
+      sessionEngine,
+      targetConnectionAgentTargetId: null,
+      workspaceId: "workspace-1"
+    } as unknown as Parameters<typeof useAgentGUISessionPresentation>[0];
+
+    const rendered = renderHook(() => useAgentGUISessionPresentation(input));
+
+    expect(rendered.result.current.sessionChrome.auth).toEqual({
+      message: "Claude Code needs authentication"
+    });
+
+    input.activationError = "Provider rejected the initial request";
+    input.activationErrorCode = null;
+    rendered.rerender();
+
+    expect(rendered.result.current.sessionChrome.auth).toBeNull();
+    expect(rendered.result.current.sessionChrome.recovery).toEqual({
+      kind: "failed",
+      message: "Provider rejected the initial request",
+      canRetry: false
+    });
+  });
+
   it("makes a shared Agent composer editable in the same snapshot that its target connects", () => {
     const targetConnectionSource = new FakeTargetConnectionSource();
     const sessionEngine = createAgentSessionEngine({
