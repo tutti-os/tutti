@@ -8,30 +8,27 @@ import (
 	"strings"
 )
 
-// PrepareEditRetryReplacementRedispatch atomically consumes a durable
-// provider-absence proof and grants one resend attempt for the same canonical
-// replacement identity. A failed local placeholder is deleted, never revived.
-func (s *Store) PrepareEditRetryReplacementRedispatch(
+// AuthorizeEditRetryReplacementRetry is the durable command boundary for a
+// retry-replacement action. It deliberately does not lease or call a provider:
+// the Host has already read authoritative history and supplies its exact proof.
+// If the caller dies after this commit, the prepared checkpoint is reconciled
+// on restart instead of being automatically resent.
+func (s *Store) AuthorizeEditRetryReplacementRetry(
 	ctx context.Context,
-	input PrepareEditRetryReplacementRedispatchInput,
+	input AuthorizeEditRetryReplacementRetryInput,
 ) (RuntimeOperation, bool, error) {
 	if s == nil || s.db == nil {
 		return RuntimeOperation{}, false, errors.New("workspace database is not initialized")
 	}
-	input.WorkspaceID = strings.TrimSpace(input.WorkspaceID)
-	input.OperationID = strings.TrimSpace(input.OperationID)
-	input.LeaseOwner = strings.TrimSpace(input.LeaseOwner)
-	input.ReplacementTurnID = strings.TrimSpace(input.ReplacementTurnID)
-	input.ProviderSessionID = strings.TrimSpace(input.ProviderSessionID)
-	if input.WorkspaceID == "" || input.OperationID == "" ||
-		input.LeaseOwner == "" || input.ReplacementTurnID == "" ||
-		input.ProviderSessionID == "" || input.ProofAtUnixMS <= 0 ||
-		input.NowUnixMS <= 0 {
-		return RuntimeOperation{}, false, errors.New("valid edit retry redispatch input is required")
+	input.WorkspaceID, input.OperationID = strings.TrimSpace(input.WorkspaceID), strings.TrimSpace(input.OperationID)
+	input.ClientActionID, input.ActionIdentity = strings.TrimSpace(input.ClientActionID), strings.TrimSpace(input.ActionIdentity)
+	input.ReplacementTurnID, input.ProviderSessionID = strings.TrimSpace(input.ReplacementTurnID), strings.TrimSpace(input.ProviderSessionID)
+	if input.WorkspaceID == "" || input.OperationID == "" || input.ClientActionID == "" || input.ActionIdentity == "" || input.ReplacementTurnID == "" || input.ProviderSessionID == "" || input.ExpectedOperationVersion <= 0 || input.ExpectedHistoryRevision < 0 || input.ProofAtUnixMS <= 0 || input.NowUnixMS <= 0 {
+		return RuntimeOperation{}, false, errors.New("valid edit retry replacement authorization input is required")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return RuntimeOperation{}, false, fmt.Errorf("begin edit retry replacement redispatch: %w", err)
+		return RuntimeOperation{}, false, fmt.Errorf("begin edit retry replacement authorization: %w", err)
 	}
 	committed := false
 	defer func() {
@@ -40,167 +37,149 @@ func (s *Store) PrepareEditRetryReplacementRedispatch(
 		}
 	}()
 	op, found, err := getRuntimeOperationTx(ctx, tx, input.WorkspaceID, input.OperationID)
-	if err != nil {
-		return RuntimeOperation{}, false, err
+	if err != nil || !found {
+		return op, false, err
 	}
-	if !validEditRetryLease(op, found, input.LeaseOwner, input.NowUnixMS) {
-		return op, false, ErrRuntimeOperationLeaseLost
+	var recorded string
+	err = tx.QueryRowContext(ctx, `SELECT action_identity FROM workspace_agent_runtime_operation_recovery_actions WHERE workspace_id=? AND operation_id=? AND client_action_id=?`, op.WorkspaceID, op.OperationID, input.ClientActionID).Scan(&recorded)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return op, false, fmt.Errorf("read replacement retry action: %w", err)
+	}
+	if err == nil {
+		if recorded != input.ActionIdentity {
+			return op, false, ErrRuntimeOperationActionConflict
+		}
+		if err := s.commitAuthorizationTx(ctx, tx, op, nil); err != nil {
+			return RuntimeOperation{}, false, err
+		}
+		committed = true
+		return op, false, nil
+	}
+	if op.Kind != RuntimeOperationKindEditRetry ||
+		(op.Status != RuntimeOperationStatusPrepared && op.Status != RuntimeOperationStatusBlocked) ||
+		op.Version != input.ExpectedOperationVersion {
+		return op, false, ErrRuntimeOperationSubjectState
 	}
 	payload, err := DecodeEditRetryOperationPayload(op.Payload)
 	if err != nil {
 		return op, false, err
 	}
-	if err := validateEditRetryRedispatchProof(payload, input); err != nil {
-		return op, false, err
-	}
-	var recoveryState, historyOperationID string
-	if err := tx.QueryRowContext(ctx, `
-SELECT recovery_state, operation_id
-FROM workspace_agent_session_history
-WHERE workspace_id = ? AND agent_session_id = ?
-`, op.WorkspaceID, op.AgentSessionID).Scan(&recoveryState, &historyOperationID); err != nil {
-		return op, false, fmt.Errorf("read edit retry redispatch history fence: %w", err)
-	}
-	if recoveryState != SessionHistoryRecoveryResendPending ||
-		strings.TrimSpace(historyOperationID) != op.OperationID {
+	if payload.Checkpoint != EditRetryCheckpointReplacementDispatched || payload.ReplacementTurnID != input.ReplacementTurnID || payload.ProviderSessionID != input.ProviderSessionID || len(payload.BeforeProviderIDs) == 0 || !equalStringValues(payload.BeforeProviderIDs[:len(payload.BeforeProviderIDs)-1], input.ProviderTurnIDs) {
 		return op, false, ErrRuntimeOperationSubjectState
 	}
-	if payload.RedispatchProofAt > 0 {
-		if !equalStringValues(payload.RedispatchProofIDs, input.ProviderTurnIDs) ||
-			payload.RedispatchProofSID != input.ProviderSessionID {
-			return op, false, ErrRuntimeOperationSubjectState
-		}
-		if payload.RedispatchProofAt == input.ProofAtUnixMS {
-			if _, err := s.commitTransaction(ctx, tx, op.WorkspaceID, nil); err != nil {
-				return RuntimeOperation{}, false, err
-			}
-			committed = true
-			return op, false, nil
-		}
-		if input.ProofAtUnixMS < payload.RedispatchProofAt {
-			return op, false, ErrRuntimeOperationSubjectState
-		}
+	var revision int64
+	var state, fence string
+	if err := tx.QueryRowContext(ctx, `SELECT history_revision,recovery_state,operation_id FROM workspace_agent_session_history WHERE workspace_id=? AND agent_session_id=?`, op.WorkspaceID, op.AgentSessionID).Scan(&revision, &state, &fence); err != nil {
+		return op, false, fmt.Errorf("read replacement retry fence: %w", err)
 	}
-
+	if revision != input.ExpectedHistoryRevision || state != SessionHistoryRecoveryResendPending || strings.TrimSpace(fence) != op.OperationID {
+		return op, false, ErrRuntimeOperationSubjectState
+	}
+	// A proof is single-use. A later attempt requires a strictly newer
+	// authoritative proof; a stale token cannot be consumed twice.
+	if payload.RedispatchProofAt != 0 && input.ProofAtUnixMS <= payload.RedispatchProofAt {
+		return op, false, ErrRuntimeOperationSubjectState
+	}
 	turn, turnFound, err := getAgentTurnTx(ctx, tx, op.WorkspaceID, op.AgentSessionID, input.ReplacementTurnID)
 	if err != nil {
-		return RuntimeOperation{}, false, err
+		return op, false, err
 	}
 	discardedMessages := int64(0)
 	if turnFound {
 		if err := validateDiscardableEditRetryReplacementTx(ctx, tx, op, payload, turn); err != nil {
 			return op, false, err
 		}
-		result, deleteErr := tx.ExecContext(ctx, `
-DELETE FROM workspace_agent_messages
-WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ?
-`, op.WorkspaceID, op.AgentSessionID, turn.TurnID)
+		deleted, deleteErr := tx.ExecContext(ctx, `DELETE FROM workspace_agent_messages WHERE workspace_id=? AND agent_session_id=? AND turn_id=?`, op.WorkspaceID, op.AgentSessionID, turn.TurnID)
 		if deleteErr != nil {
-			return RuntimeOperation{}, false, fmt.Errorf("delete failed edit retry messages: %w", deleteErr)
+			return op, false, fmt.Errorf("delete failed edit retry messages: %w", deleteErr)
 		}
-		discardedMessages, err = result.RowsAffected()
+		discardedMessages, err = deleted.RowsAffected()
 		if err != nil {
-			return RuntimeOperation{}, false, fmt.Errorf("count failed edit retry messages: %w", err)
+			return op, false, err
 		}
-		for label, statement := range map[string]string{
-			"interactions": `DELETE FROM workspace_agent_interactions
-				WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ?`,
-			"submission": `DELETE FROM workspace_agent_turn_submissions
-				WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ?`,
-			"history": `DELETE FROM workspace_agent_turn_history
-				WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ?`,
+		for _, statement := range []string{
+			`DELETE FROM workspace_agent_interactions WHERE workspace_id=? AND agent_session_id=? AND turn_id=?`,
+			`DELETE FROM workspace_agent_turn_submissions WHERE workspace_id=? AND agent_session_id=? AND turn_id=?`,
+			`DELETE FROM workspace_agent_turn_history WHERE workspace_id=? AND agent_session_id=? AND turn_id=?`,
 		} {
 			if _, err := tx.ExecContext(ctx, statement, op.WorkspaceID, op.AgentSessionID, turn.TurnID); err != nil {
-				return RuntimeOperation{}, false, fmt.Errorf("delete failed edit retry %s: %w", label, err)
+				return op, false, fmt.Errorf("delete failed edit retry replacement state: %w", err)
 			}
 		}
-		if _, err := tx.ExecContext(ctx, `
-DELETE FROM workspace_agent_turns
-WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ?
-`, op.WorkspaceID, op.AgentSessionID, turn.TurnID); err != nil {
-			return RuntimeOperation{}, false, fmt.Errorf("delete failed edit retry turn: %w", err)
+		if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_turns WHERE workspace_id=? AND agent_session_id=? AND turn_id=?`, op.WorkspaceID, op.AgentSessionID, turn.TurnID); err != nil {
+			return op, false, fmt.Errorf("delete failed edit retry turn: %w", err)
 		}
-		// The accepted claim is part of the failed local placeholder. Leaving
-		// it behind would make the stable clientSubmitId resolve to the deleted
-		// Turn and prevent the authorized redispatch from entering the runtime.
 		if err := deleteEditRetryReplacementClaimTx(ctx, tx, op, payload); err != nil {
-			return RuntimeOperation{}, false, err
+			return op, false, err
 		}
 	} else if err := validatePreparedEditRetryReplacementClaimTx(ctx, tx, op, payload); err != nil {
-		// A definitively not-dispatched request has no local Turn and retains
-		// the original prepared claim. Reusing that stable claim is the safe
-		// redispatch path after authoritative provider absence is proven.
-		return RuntimeOperation{}, false, err
+		return op, false, err
 	}
-
 	payload.RedispatchProofIDs = append([]string(nil), input.ProviderTurnIDs...)
-	payload.RedispatchProofSID = input.ProviderSessionID
-	payload.RedispatchProofAt = input.ProofAtUnixMS
+	payload.RedispatchProofSID, payload.RedispatchProofAt = input.ProviderSessionID, input.ProofAtUnixMS
+	payload.ReplacementNotDispatched = false
 	if payload.DispatchAttempt < 1 {
 		payload.DispatchAttempt = 1
 	}
 	payload.DispatchAttempt++
 	payload.DiscardedMessages = discardedMessages
 	if turnFound {
-		payload.DiscardedOutcome = turn.Outcome
-		payload.DiscardedError = turn.ErrorMessage
+		payload.DiscardedOutcome, payload.DiscardedError = turn.Outcome, turn.ErrorMessage
 	}
 	payloadMap, err := EncodeEditRetryOperationPayload(payload)
 	if err != nil {
-		return RuntimeOperation{}, false, err
+		return op, false, err
 	}
 	payloadJSON, err := marshalJSONMap(payloadMap)
 	if err != nil {
-		return RuntimeOperation{}, false, err
+		return op, false, err
 	}
-	update, err := tx.ExecContext(ctx, `
-UPDATE workspace_agent_runtime_operations
-SET payload_json = ?, version = version + 1, updated_at_unix_ms = ?
-WHERE workspace_id = ? AND operation_id = ?
-  AND status = 'leased' AND lease_owner = ?
-`, payloadJSON, input.NowUnixMS, op.WorkspaceID, op.OperationID, input.LeaseOwner)
+	result, err := tx.ExecContext(ctx, `UPDATE workspace_agent_runtime_operations SET status='prepared',payload_json=?,next_attempt_at_unix_ms=?,version=version+1,updated_at_unix_ms=? WHERE workspace_id=? AND operation_id=? AND status IN ('prepared','blocked') AND version=?`, payloadJSON, input.NowUnixMS, input.NowUnixMS, op.WorkspaceID, op.OperationID, input.ExpectedOperationVersion)
 	if err != nil {
-		return RuntimeOperation{}, false, fmt.Errorf("checkpoint edit retry redispatch preparation: %w", err)
+		return op, false, fmt.Errorf("authorize edit retry replacement: %w", err)
 	}
-	if changed, err := rowsWereAffected(update, "checkpoint edit retry redispatch preparation"); err != nil || !changed {
-		return RuntimeOperation{}, false, ErrRuntimeOperationLeaseLost
+	if changed, err := rowsWereAffected(result, "authorize edit retry replacement"); err != nil || !changed {
+		return op, false, ErrRuntimeOperationSubjectState
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO workspace_agent_runtime_operation_recovery_actions (workspace_id,operation_id,client_action_id,action_kind,action_identity,created_at_unix_ms) VALUES (?,?,?,'retry_replacement',?,?)`, op.WorkspaceID, op.OperationID, input.ClientActionID, input.ActionIdentity, input.NowUnixMS); err != nil {
+		return op, false, fmt.Errorf("record replacement retry action: %w", err)
 	}
 	op, _, err = getRuntimeOperationTx(ctx, tx, op.WorkspaceID, op.OperationID)
 	if err != nil {
+		return op, false, err
+	}
+	// Authorization is a separate durable fact from wake. The unique
+	// (operation_id, kind) event identity must not let an earlier published wake
+	// swallow the later replacement authorization.
+	eventPayload := map[string]any{"clientActionId": input.ClientActionID, "actionIdentity": input.ActionIdentity, "historyRevision": revision, "proofAt": input.ProofAtUnixMS}
+	event, eventFound, err := getRuntimeOperationEventByOccurrenceTx(ctx, tx, op.OperationID, RuntimeOperationEventEditRetryReplacementAuthorized, input.ActionIdentity)
+	if err != nil {
+		return op, false, err
+	}
+	if !eventFound {
+		event, err = insertRuntimeOperationEventTx(ctx, tx, op, RuntimeOperationEventEditRetryReplacementAuthorized, eventPayload, input.NowUnixMS)
+	}
+	if err != nil {
+		return op, false, err
+	}
+	mutations := []TransactionMutation{transactionMutation(op.WorkspaceID, op.AgentSessionID, MutationEntityRuntimeOperation, op.OperationID, "retry_replacement", op.Version)}
+	if turnFound {
+		mutations = append(mutations, transactionMutation(op.WorkspaceID, op.AgentSessionID, MutationEntityTurn, turn.TurnID, "delete_failed_replacement", input.NowUnixMS))
+	}
+	if !eventFound {
+		mutations = append(mutations, transactionMutation(op.WorkspaceID, op.AgentSessionID, MutationEntityRuntimeEvent, fmt.Sprint(event.ID), "insert", event.ID))
+	}
+	if err := s.commitAuthorizationTx(ctx, tx, op, mutations); err != nil {
 		return RuntimeOperation{}, false, err
 	}
-	mutations := []TransactionMutation{
-		transactionMutation(op.WorkspaceID, op.AgentSessionID, MutationEntityRuntimeOperation, op.OperationID, "checkpoint", op.Version),
-	}
-	if turnFound {
-		mutations = append(mutations, transactionMutation(
-			op.WorkspaceID, op.AgentSessionID, MutationEntityTurn,
-			turn.TurnID, "delete_failed_replacement", input.NowUnixMS,
-		))
-	}
-	delta, err := s.commitTransaction(ctx, tx, op.WorkspaceID, mutations)
-	if err != nil {
-		return RuntimeOperation{}, false, fmt.Errorf("commit edit retry redispatch preparation: %w", err)
-	}
 	committed = true
-	op.CommitTransactionID, op.CommitDelta = delta.TransactionID, delta
 	return op, true, nil
 }
 
-func validateEditRetryRedispatchProof(
-	payload EditRetryOperationPayload,
-	input PrepareEditRetryReplacementRedispatchInput,
-) error {
-	if payload.Checkpoint != EditRetryCheckpointReplacementDispatched ||
-		payload.ReplacementTurnID != input.ReplacementTurnID ||
-		len(payload.BeforeProviderIDs) == 0 ||
-		strings.TrimSpace(payload.ProviderSessionID) == "" ||
-		payload.ProviderSessionID != input.ProviderSessionID ||
-		!equalStringValues(
-			payload.BeforeProviderIDs[:len(payload.BeforeProviderIDs)-1],
-			input.ProviderTurnIDs,
-		) {
-		return ErrRuntimeOperationSubjectState
+func (s *Store) commitAuthorizationTx(ctx context.Context, tx *sql.Tx, op RuntimeOperation, mutations []TransactionMutation) error {
+	_, err := s.commitTransaction(ctx, tx, op.WorkspaceID, mutations)
+	if err != nil {
+		return fmt.Errorf("commit edit retry replacement authorization: %w", err)
 	}
 	return nil
 }

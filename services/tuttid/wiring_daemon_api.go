@@ -11,7 +11,6 @@ import (
 
 	"github.com/google/uuid"
 	agentdaemon "github.com/tutti-os/tutti/packages/agent/daemon"
-	agenthostadapter "github.com/tutti-os/tutti/packages/agent/daemon/hostadapter"
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agentstoresqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
@@ -405,29 +404,19 @@ func buildDaemonAPI(
 			TurnCancelObserver:             turnCancelObservers,
 		},
 	}
-	agentHostRuntime := &agenthostadapter.RuntimeController{
-		Backend: agentRuntime.Controller(),
-	}
-	agentServiceComponents := agentservice.NewServiceComponents(
+	agentHost, _, startupProviderCallsSettled, err := composeDaemonAgentHost(
+		ctx,
+		agentRuntime,
 		agentRuntimeController,
-		agentSessionConfig,
-		canonicalHostStore,
-	)
-	agentHost := agentservice.NewApplicationHostWithPorts(
-		agentServiceComponents.HostSupportPorts(),
+		&agentSessionConfig,
 		canonicalHostStore,
 		canonicalStoreProvider.AgentCanonicalStore(),
 		historicalStateStore,
-		agentHostRuntime,
+		agentActivityProjection,
+		nil,
 	)
-	if agentHost == nil {
-		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("compose agent host")
-	}
-	configureAgentProviderGoalAdoption(agentRuntime.Controller(), agentHost)
-	agentActivityProjection.SetTurnForkabilityResolver(agentHost)
-	agentSessionConfig.Host = agentservice.ServiceHostConfig{
-		ApplicationHost: agentHost,
-		Components:      agentServiceComponents,
+	if err != nil {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, err
 	}
 	agentSessionService := agentservice.NewService(agentRuntimeController, agentSessionConfig)
 	preferences.AgentComposerDefaultsValidator = agentSessionService
@@ -481,16 +470,6 @@ func buildDaemonAPI(
 	); providerObserver != nil {
 		agentRuntime.Controller().SetProviderObservationObserver(providerObserver)
 	}
-	// Host fixes startup order: durable runtime operations first, then goal
-	// operations and reconcile inbox work, and only then stale turns.
-	if err := agentHost.Recover(ctx); err != nil {
-		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("recover agent host: %w", err)
-	}
-	go func() {
-		if err := agentHost.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			slog.ErrorContext(ctx, "agent Host worker lifecycle stopped", "error", err)
-		}
-	}()
 	var agentMaintenance *agentmaintenanceservice.Service
 	if maintenanceState, ok := store.(agentmaintenanceservice.StateStore); ok {
 		agentMaintenance = &agentmaintenanceservice.Service{
@@ -823,6 +802,12 @@ func buildDaemonAPI(
 		CLIRegistry:       cliRegistry,
 		AnalyticsReporter: analyticsReporter,
 		OnListenerReady: func() {
+			startupProviderCallsSettled()
+			go func() {
+				if err := agentHost.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+					slog.ErrorContext(ctx, "agent Host worker lifecycle stopped", "error", err)
+				}
+			}()
 			tuttiModeMainWakeRecovery.MarkReady()
 			for _, workspace := range workspaces {
 				issueService.ExecutionRecoveryQueue.Enqueue(workspace.ID)

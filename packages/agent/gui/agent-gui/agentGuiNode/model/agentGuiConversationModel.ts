@@ -283,7 +283,10 @@ export function buildAgentGUIConversationModels({
     });
   return {
     conversation: attachChildSessionLanesToConversationVM(
-      projectAgentConversationVM(detail, { avoidGroupingEdits }),
+      projectAgentConversationVM(detail, {
+        avoidGroupingEdits,
+        suppressGenericProcessing: true
+      }),
       childSessionLanesByParentToolCallId
     ),
     detail

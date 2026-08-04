@@ -10,9 +10,10 @@ func TestRuntimeOperationsV2UpgradesV1DataAndConstraints(t *testing.T) {
 	ctx := context.Background()
 	if _, err := store.db.Exec(`
 DROP TABLE workspace_agent_runtime_operation_events;
+DROP TABLE IF EXISTS workspace_agent_runtime_operation_recovery_actions;
 DROP TABLE workspace_agent_runtime_operations;
 DELETE FROM agent_store_schema_migrations
-WHERE id IN ('workspace_agent_runtime_operations_v1', 'workspace_agent_runtime_operations_v2', 'workspace_agent_runtime_operations_v3', 'workspace_agent_runtime_operations_v4');
+WHERE id IN ('workspace_agent_runtime_operations_v1', 'workspace_agent_runtime_operations_v2', 'workspace_agent_runtime_operations_v3', 'workspace_agent_runtime_operations_v4', 'workspace_agent_runtime_operations_v5', 'workspace_agent_runtime_operations_v6_blocked', 'workspace_agent_runtime_operations_v7_action_workspace_fk', 'workspace_agent_runtime_operations_v8_outbox_retry', 'workspace_agent_runtime_operations_v9_replacement_authorized_event', 'workspace_agent_runtime_operations_v10_event_occurrence_identity', 'workspace_agent_runtime_operations_v11_edit_retry_protocol_v2');
 `); err != nil {
 		t.Fatal(err)
 	}
@@ -52,9 +53,25 @@ INSERT INTO workspace_agent_runtime_operation_events (
 	if err != nil || !found || cancelOperation.Kind != RuntimeOperationKindCancelTurn || cancelOperation.TurnID != "turn-1" {
 		t.Fatalf("cancel operation=%#v found=%v err=%v", cancelOperation, found, err)
 	}
-	events, err := store.ListPendingRuntimeOperationEvents(ctx, "ws-1", 10)
-	if err != nil || len(events) != 2 || events[0].OperationID != "interactive-1" || events[1].OperationID != "cancel-1" {
-		t.Fatalf("events=%#v err=%v", events, err)
+	rows, err := store.db.QueryContext(ctx, `
+SELECT operation_id
+FROM workspace_agent_runtime_operation_events
+WHERE workspace_id = 'ws-1' AND published_at_unix_ms IS NULL
+ORDER BY id`)
+	if err != nil {
+		t.Fatalf("read v2 events: %v", err)
+	}
+	defer rows.Close()
+	var eventOperationIDs []string
+	for rows.Next() {
+		var operationID string
+		if err := rows.Scan(&operationID); err != nil {
+			t.Fatalf("scan v2 event: %v", err)
+		}
+		eventOperationIDs = append(eventOperationIDs, operationID)
+	}
+	if err := rows.Err(); err != nil || len(eventOperationIDs) != 2 || eventOperationIDs[0] != "interactive-1" || eventOperationIDs[1] != "cancel-1" {
+		t.Fatalf("event operation IDs=%#v err=%v", eventOperationIDs, err)
 	}
 	var migrationCount int
 	if err := store.db.QueryRow(`SELECT COUNT(*) FROM agent_store_schema_migrations WHERE id = ?`, schemaMigrationWorkspaceAgentRuntimeOperationsV2).Scan(&migrationCount); err != nil || migrationCount != 1 {
@@ -84,14 +101,14 @@ INSERT INTO workspace_agent_runtime_operations (
 		t.Fatal("invalid plan payload bypassed v2 CHECK")
 	}
 	var foreignKeyCount int
-	rows, err := store.db.Query(`PRAGMA foreign_key_list(workspace_agent_runtime_operations)`)
+	fkRows, err := store.db.Query(`PRAGMA foreign_key_list(workspace_agent_runtime_operations)`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for rows.Next() {
+	for fkRows.Next() {
 		foreignKeyCount++
 	}
-	_ = rows.Close()
+	_ = fkRows.Close()
 	if foreignKeyCount < 2 {
 		t.Fatalf("foreign keys=%d, want session and turn", foreignKeyCount)
 	}

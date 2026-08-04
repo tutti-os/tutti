@@ -45,6 +45,12 @@ const schemaMigrationWorkspaceAgentRuntimeOperationsV2 = "workspace_agent_runtim
 const schemaMigrationWorkspaceAgentRuntimeOperationsV3 = "workspace_agent_runtime_operations_v3"
 const schemaMigrationWorkspaceAgentRuntimeOperationsV4 = "workspace_agent_runtime_operations_v4"
 const schemaMigrationWorkspaceAgentRuntimeOperationsV5 = "workspace_agent_runtime_operations_v5"
+const schemaMigrationWorkspaceAgentRuntimeOperationsV6 = "workspace_agent_runtime_operations_v6_blocked"
+const schemaMigrationWorkspaceAgentRuntimeOperationsV7 = "workspace_agent_runtime_operations_v7_action_workspace_fk"
+const schemaMigrationWorkspaceAgentRuntimeOperationsV8 = "workspace_agent_runtime_operations_v8_outbox_retry"
+const schemaMigrationWorkspaceAgentRuntimeOperationsV9 = "workspace_agent_runtime_operations_v9_replacement_authorized_event"
+const schemaMigrationWorkspaceAgentRuntimeOperationsV10 = "workspace_agent_runtime_operations_v10_event_occurrence_identity"
+const schemaMigrationWorkspaceAgentRuntimeOperationsV11 = "workspace_agent_runtime_operations_v11_edit_retry_protocol_v2"
 const schemaMigrationWorkspaceAgentSubmitClaimsV1 = "workspace_agent_submit_claims_v1"
 const schemaMigrationWorkspaceAgentSubmitClaimsV2 = "workspace_agent_submit_claims_v2"
 const schemaMigrationWorkspaceAgentSubmitClaimsV3 = "workspace_agent_submit_claims_v3"
@@ -208,6 +214,21 @@ CREATE TABLE IF NOT EXISTS `+schemaMigrationsTable+` (
 	if err := s.applyWorkspaceAgentRuntimeOperationsV5(ctx); err != nil {
 		return err
 	}
+	if err := s.applyWorkspaceAgentRuntimeOperationsV6(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentRuntimeOperationsV7(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentRuntimeOperationsV8(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentRuntimeOperationsV9(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentRuntimeOperationsV10(ctx); err != nil {
+		return err
+	}
 	if err := s.applyWorkspaceAgentSubmitClaimsV1(ctx); err != nil {
 		return err
 	}
@@ -293,6 +314,9 @@ CREATE TABLE IF NOT EXISTS `+schemaMigrationsTable+` (
 		return err
 	}
 	if err := s.applyWorkspaceAgentEffectiveHistoryV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentRuntimeOperationsV11(ctx); err != nil {
 		return err
 	}
 	if err := s.applyWorkspaceAgentSessionForkV6(ctx); err != nil {

@@ -59,7 +59,10 @@ type AgentActivityStore interface {
 	agentactivitybiz.SessionTurnSummaryReader
 	agentactivitybiz.EffectiveSessionTurnReader
 	CheckpointRuntimeOperation(context.Context, agentactivitybiz.CheckpointRuntimeOperationInput) (agentactivitybiz.RuntimeOperation, bool, error)
+	ListClaimableEditRetryOperations(context.Context, agentactivitybiz.ListClaimableRuntimeOperationsInput) ([]agentactivitybiz.RuntimeOperation, error)
 	CompletePlanDecisionRuntimeOperation(context.Context, agentactivitybiz.CompletePlanDecisionRuntimeOperationInput) (agentactivitybiz.RuntimeOperationCompletion, bool, error)
+	ListReadyRuntimeOperationEvents(context.Context, string, int64, int) ([]agentactivitybiz.RuntimeOperationEvent, error)
+	DeferRuntimeOperationEventPublish(context.Context, agentactivitybiz.DeferRuntimeOperationEventPublishInput) (bool, error)
 	FindTurnByClientSubmitID(context.Context, string, string, string) (string, bool, error)
 	PrepareGoalControlOperation(context.Context, agentactivitybiz.GoalControlOperationPrepare) (agentactivitybiz.GoalControlOperation, agentactivitybiz.SessionGoalState, bool, error)
 	AdoptProviderGoalOperation(context.Context, agentactivitybiz.ProviderGoalAdoption) (agentactivitybiz.GoalControlOperation, agentactivitybiz.SessionGoalState, bool, error)

@@ -635,66 +635,6 @@ type SubmitPlanDecisionInput struct {
 	IdempotencyKey string
 }
 
-type EditRetryRecoveryAction string
-
-const (
-	EditRetryRecoveryActionReconcile        EditRetryRecoveryAction = "reconcile"
-	EditRetryRecoveryActionRetryReplacement EditRetryRecoveryAction = "retry_replacement"
-)
-
-// EditRetryReasonCode is the stable, coarse provider-neutral classification
-// shared by Host projections and durable edit-retry operations. Provider codes
-// and diagnostics must not be exposed or persisted through this type.
-type EditRetryReasonCode = canonical.EditRetryReasonCode
-
-const (
-	EditRetryReasonCodeProviderUnsupported        = canonical.EditRetryReasonProviderUnsupported
-	EditRetryReasonCodeTurnNotFound               = canonical.EditRetryReasonTurnNotFound
-	EditRetryReasonCodeTurnNotLatest              = canonical.EditRetryReasonTurnNotLatest
-	EditRetryReasonCodeTurnNotSettled             = canonical.EditRetryReasonTurnNotSettled
-	EditRetryReasonCodeHistoryRevisionConflict    = canonical.EditRetryReasonHistoryRevisionConflict
-	EditRetryReasonCodeOperationConflict          = canonical.EditRetryReasonOperationConflict
-	EditRetryReasonCodeRecoveryRequired           = canonical.EditRetryReasonRecoveryRequired
-	EditRetryReasonCodeProviderOutcomeUnknown     = canonical.EditRetryReasonProviderOutcomeUnknown
-	EditRetryReasonCodeReplacementNotProvenAbsent = canonical.EditRetryReasonReplacementNotProvenAbsent
-)
-
-type EditRetryInput struct {
-	EditedText              string
-	ClientOperationID       string
-	ExpectedHistoryRevision uint64
-}
-
-type EditRetryState string
-
-const (
-	EditRetryStatePrepared         EditRetryState = "prepared"
-	EditRetryStateRollingBack      EditRetryState = "rolling_back"
-	EditRetryStateResendPending    EditRetryState = "resend_pending"
-	EditRetryStateRecoveryRequired EditRetryState = "recovery_required"
-	EditRetryStateCompleted        EditRetryState = "completed"
-)
-
-type EditRetryResult struct {
-	OperationID       string
-	State             EditRetryState
-	RetractedTurnID   string
-	ReplacementTurnID string
-	HistoryRevision   uint64
-	ReasonCode        EditRetryReasonCode
-}
-
-type EditRetryAvailability struct {
-	Supported        bool
-	Eligible         bool
-	TurnID           string
-	HistoryRevision  uint64
-	RecoveryState    EditRetryState
-	OperationID      string
-	AvailableActions []EditRetryRecoveryAction
-	ReasonCode       EditRetryReasonCode
-}
-
 type CancelTurnInput struct {
 	WorkspaceID    string
 	AgentSessionID string

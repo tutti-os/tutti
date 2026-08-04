@@ -16,21 +16,21 @@ func (c *recordingWorktreeGarbageCollector) SweepWorktreeIsolation(context.Conte
 	return c.err
 }
 
-func TestRecoverSweepsWorktreeIsolation(t *testing.T) {
+func TestRecoverCoreDoesNotSweepWorktreeIsolation(t *testing.T) {
 	collector := &recordingWorktreeGarbageCollector{}
 	host := New(Config{WorktreeGC: collector})
-	if err := host.Recover(context.Background()); err != nil {
+	if err := host.RecoverCore(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if collector.calls != 1 {
-		t.Fatalf("sweep calls = %d, want 1", collector.calls)
+	if collector.calls != 0 {
+		t.Fatalf("RecoverCore sweep calls = %d, want 0", collector.calls)
 	}
 }
 
-func TestRecoverReturnsWorktreeIsolationSweepFailure(t *testing.T) {
+func TestExplicitWorktreeRecoveryReturnsSweepFailure(t *testing.T) {
 	sweepErr := errors.New("sweep failed")
 	host := New(Config{WorktreeGC: &recordingWorktreeGarbageCollector{err: sweepErr}})
-	if err := host.Recover(context.Background()); !errors.Is(err, sweepErr) {
-		t.Fatalf("Recover error = %v, want %v", err, sweepErr)
+	if err := host.RecoverWorktreeIsolation(context.Background()); !errors.Is(err, sweepErr) {
+		t.Fatalf("RecoverWorktreeIsolation error = %v, want %v", err, sweepErr)
 	}
 }

@@ -262,7 +262,7 @@ func (h *Host) cancelActiveTurnForGoalFence(ctx context.Context, fence storesqli
 		turn.SourceGoalRevision != fence.TargetRevision || turn.SourceGoalRepairEpoch != fence.TargetRepairEpoch {
 		return err == nil, err
 	}
-	result, cancelErr := h.CancelTurn(ctx, CancelTurnInput{
+	result, cancelErr := h.cancelTurnSerialized(ctx, CancelTurnInput{
 		WorkspaceID: fence.WorkspaceID, AgentSessionID: fence.AgentSessionID,
 		TurnID: turn.TurnID, Reason: fence.Reason, RequireLive: true,
 	})

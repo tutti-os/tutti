@@ -18,6 +18,13 @@ FROM workspace_agent_runtime_operations
 `
 
 func (s *Store) PrepareRuntimeOperation(ctx context.Context, input RuntimeOperationPrepare) (RuntimeOperation, bool, error) {
+	if input.Kind == RuntimeOperationKindEditRetry {
+		return s.PrepareEditRetry(ctx, input)
+	}
+	return s.prepareRuntimeOperation(ctx, input)
+}
+
+func (s *Store) prepareRuntimeOperation(ctx context.Context, input RuntimeOperationPrepare) (RuntimeOperation, bool, error) {
 	if s == nil || s.db == nil {
 		return RuntimeOperation{}, false, errors.New("workspace database is not initialized")
 	}
@@ -85,6 +92,9 @@ func (s *Store) PrepareRuntimeOperation(ctx context.Context, input RuntimeOperat
 	if err := validateRuntimeOperationSubjectTx(ctx, tx, input); err != nil {
 		return RuntimeOperation{}, false, err
 	}
+	if err := prepareEditRetryFenceTx(ctx, tx, input, now); err != nil {
+		return RuntimeOperation{}, false, err
+	}
 	_, err = tx.ExecContext(ctx, `
 INSERT INTO workspace_agent_runtime_operations (
 	operation_id, workspace_id, agent_session_id, kind, status, turn_id,
@@ -99,9 +109,8 @@ INSERT INTO workspace_agent_runtime_operations (
 	if err != nil {
 		return RuntimeOperation{}, false, err
 	}
-	delta, err := s.commitTransaction(ctx, tx, input.WorkspaceID, []TransactionMutation{
-		transactionMutation(input.WorkspaceID, input.AgentSessionID, MutationEntityRuntimeOperation, input.OperationID, "prepare", op.Version),
-	})
+	mutations := prepareRuntimeOperationMutations(input, op, now)
+	delta, err := s.commitTransaction(ctx, tx, input.WorkspaceID, mutations)
 	if err != nil {
 		return RuntimeOperation{}, false, fmt.Errorf("commit runtime operation prepare: %w", err)
 	}
@@ -273,8 +282,9 @@ func (s *Store) ListClaimableRuntimeOperations(ctx context.Context, input ListCl
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	query := runtimeOperationSelectSQL + `
 WHERE ((status = ? AND next_attempt_at_unix_ms <= ?)
-    OR (status = ? AND lease_expires_at_unix_ms <= ?))`
-	args := []any{RuntimeOperationStatusPrepared, input.NowUnixMS, RuntimeOperationStatusLeased, input.NowUnixMS}
+	    OR (status = ? AND lease_expires_at_unix_ms <= ?))
+  AND kind <> ?`
+	args := []any{RuntimeOperationStatusPrepared, input.NowUnixMS, RuntimeOperationStatusLeased, input.NowUnixMS, RuntimeOperationKindEditRetry}
 	if workspaceID != "" {
 		query += ` AND workspace_id = ?`
 		args = append(args, workspaceID)

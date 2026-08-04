@@ -3,6 +3,7 @@ package agenthost
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -51,61 +52,66 @@ type Config struct {
 	GoalActor              *SessionActor
 	SessionMutationActor   *SessionActor
 
-	// EditRetryDisabled neutralizes the durable edit-and-retry feature (PR
-	// #1681). When set, new edit-retry operations are refused and any operation
-	// left over from before it was disabled is quarantined during recovery
-	// instead of engaging the saga. The zero value keeps the feature enabled so
-	// its unit/conformance tests still exercise it; production wiring sets this
-	// true. Remove once the saga's resend/recovery gap is fixed.
-	EditRetryDisabled bool
+	RuntimeOperationHealth  RuntimeOperationHealthStore
+	EditRetryAttemptTimeout time.Duration
+	EditRetryMaxConcurrent  int
+	EditRetryAdmission      EditRetryAdmissionPolicy
+	EditRetryRecovery       EditRetryRecoveryPolicy
 }
 
 type Host struct {
-	store                  CanonicalStore
-	interactionTrees       CanonicalInteractionTreeStore
-	turnSubmissions        TurnSubmissionStore
-	effectiveHistory       EffectiveHistoryStore
-	sessionManagement      SessionManagementStore
-	sessionBatchManagement SessionBatchManagementStore
-	sessionDeletionGuard   SessionDeletionGuard
-	sessionPurge           SessionPurgeStore
-	historicalState        HistoricalSessionStateStore
-	sessionForks           SessionForkStore
-	sessionForkRecovery    SessionForkRecoveryStore
-	sessionForkRuntime     SessionForkRuntime
-	sessionForkContext     SessionForkContextPolicy
-	sessionForkState       SessionForkProviderStateBinder
-	sessionForkAttachments SessionForkAttachmentStager
-	runtime                RuntimeController
-	historyRuntime         RuntimeHistoryController
-	preparation            RuntimePreparationPort
-	settingsPolicy         SettingsPolicy
-	attachments            AttachmentMaterializer
-	clock                  Clock
-	locker                 SessionLocker
-	startupGate            RuntimeStartGate
-	observer               LifecycleObserver
-	commitObserver         CommitObserver
-	operations             RuntimeOperationStore
-	events                 RuntimeOperationEventPublisher
-	owner                  string
-	scheduler              Scheduler
-	staleTurns             StaleTurnSettler
-	worktreeGC             WorktreeGarbageCollector
-	goals                  GoalStateStore
-	goalFences             GoalGenerationFenceStore
-	goalRuntime            GoalRuntimeController
-	goalInbox              GoalReconcileInboxStore
-	goalOwner              string
-	goalClock              Clock
-	goalAttemptTimeout     time.Duration
-	goalRecoveryBudget     time.Duration
-	goalMaxAttempts        int
-	goalDispatchDeadline   time.Duration
-	goalActor              *SessionActor
-	sessionMutationActor   *SessionActor
-	editRetryDisabled      bool
-	goalFencesRestored     sync.Map
+	store                       CanonicalStore
+	interactionTrees            CanonicalInteractionTreeStore
+	turnSubmissions             TurnSubmissionStore
+	effectiveHistory            EffectiveHistoryStore
+	sessionManagement           SessionManagementStore
+	sessionBatchManagement      SessionBatchManagementStore
+	sessionDeletionGuard        SessionDeletionGuard
+	sessionPurge                SessionPurgeStore
+	historicalState             HistoricalSessionStateStore
+	sessionForks                SessionForkStore
+	sessionForkRecovery         SessionForkRecoveryStore
+	sessionForkRuntime          SessionForkRuntime
+	sessionForkContext          SessionForkContextPolicy
+	sessionForkState            SessionForkProviderStateBinder
+	sessionForkAttachments      SessionForkAttachmentStager
+	runtime                     RuntimeController
+	historyRuntime              RuntimeHistoryController
+	preparation                 RuntimePreparationPort
+	settingsPolicy              SettingsPolicy
+	attachments                 AttachmentMaterializer
+	clock                       Clock
+	locker                      SessionLocker
+	startupGate                 RuntimeStartGate
+	observer                    LifecycleObserver
+	commitObserver              CommitObserver
+	operations                  RuntimeOperationStore
+	events                      RuntimeOperationEventPublisher
+	owner                       string
+	scheduler                   Scheduler
+	staleTurns                  StaleTurnSettler
+	worktreeGC                  WorktreeGarbageCollector
+	goals                       GoalStateStore
+	goalFences                  GoalGenerationFenceStore
+	goalRuntime                 GoalRuntimeController
+	goalInbox                   GoalReconcileInboxStore
+	goalOwner                   string
+	goalClock                   Clock
+	goalAttemptTimeout          time.Duration
+	goalRecoveryBudget          time.Duration
+	goalMaxAttempts             int
+	goalDispatchDeadline        time.Duration
+	goalActor                   *SessionActor
+	sessionMutationActor        *SessionActor
+	runtimeOperationHealthStore RuntimeOperationHealthStore
+	editRetryAttemptTimeout     time.Duration
+	editRetryExecutor           *editRetryExecutor
+	editRetryAdmission          EditRetryAdmissionPolicy
+	editRetryRecovery           EditRetryRecoveryPolicy
+	runtimeOperationHealth      runtimeOperationWorkerHealth
+	startupRequeuePending       atomic.Bool
+	outboxMu                    sync.Mutex
+	goalFencesRestored          sync.Map
 }
 
 func New(config Config) *Host {
@@ -131,7 +137,7 @@ func New(config Config) *Host {
 		preparation:            config.RuntimePreparation, settingsPolicy: config.SettingsPolicy, attachments: config.Attachments,
 		clock: config.Clock, locker: config.SessionLocker, startupGate: config.RuntimeStartGate,
 		observer: config.LifecycleObserver, commitObserver: config.CommitObserver,
-		operations: config.RuntimeOperations, events: config.OperationEvents,
+		operations: config.RuntimeOperations, runtimeOperationHealthStore: config.RuntimeOperationHealth, events: config.OperationEvents,
 		owner: config.OperationOwner, scheduler: config.Scheduler, staleTurns: config.StaleTurnSettler,
 		worktreeGC: config.WorktreeGC,
 		goals:      config.GoalStore, goalFences: config.GoalFences, goalRuntime: config.GoalRuntime, goalInbox: config.GoalInbox,
@@ -139,7 +145,9 @@ func New(config Config) *Host {
 		goalAttemptTimeout: config.GoalAttemptTimeout, goalRecoveryBudget: config.GoalRecoveryBudget,
 		goalMaxAttempts: config.GoalMaxAttempts, goalDispatchDeadline: config.GoalDispatchDeadline,
 		goalActor: goalActor, sessionMutationActor: sessionMutationActor,
-		editRetryDisabled: config.EditRetryDisabled,
+		editRetryAttemptTimeout: editRetryAttemptTimeout(config.EditRetryAttemptTimeout),
+		editRetryExecutor:       newEditRetryExecutor(config.EditRetryMaxConcurrent),
+		editRetryAdmission:      config.EditRetryAdmission, editRetryRecovery: config.EditRetryRecovery,
 	}
 	if host.interactionTrees == nil {
 		host.interactionTrees, _ = host.store.(CanonicalInteractionTreeStore)

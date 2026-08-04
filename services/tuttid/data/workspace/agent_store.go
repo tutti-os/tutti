@@ -489,6 +489,10 @@ func (s *SQLiteStore) ListClaimableRuntimeOperations(ctx context.Context, input 
 	return s.agentReadStore().ListClaimableRuntimeOperations(ctx, input)
 }
 
+func (s *SQLiteStore) ListClaimableEditRetryOperations(ctx context.Context, input agentactivitybiz.ListClaimableRuntimeOperationsInput) ([]agentactivitybiz.RuntimeOperation, error) {
+	return s.agentReadStore().ListClaimableEditRetryOperations(ctx, input)
+}
+
 func (s *SQLiteStore) ClaimRuntimeOperationLease(ctx context.Context, input agentactivitybiz.ClaimRuntimeOperationLeaseInput) (agentactivitybiz.RuntimeOperation, bool, error) {
 	return s.agentStore().ClaimRuntimeOperationLease(ctx, input)
 }
@@ -525,8 +529,16 @@ func (s *SQLiteStore) ListPendingRuntimeOperationEvents(ctx context.Context, wor
 	return s.agentReadStore().ListPendingRuntimeOperationEvents(ctx, workspaceID, limit)
 }
 
+func (s *SQLiteStore) ListReadyRuntimeOperationEvents(ctx context.Context, workspaceID string, nowUnixMS int64, limit int) ([]agentactivitybiz.RuntimeOperationEvent, error) {
+	return s.agentReadStore().ListReadyRuntimeOperationEvents(ctx, workspaceID, nowUnixMS, limit)
+}
+
 func (s *SQLiteStore) MarkRuntimeOperationEventPublished(ctx context.Context, workspaceID string, eventID int64, publishedAtUnixMS int64) (bool, error) {
 	return s.agentStore().MarkRuntimeOperationEventPublished(ctx, workspaceID, eventID, publishedAtUnixMS)
+}
+
+func (s *SQLiteStore) DeferRuntimeOperationEventPublish(ctx context.Context, input agentactivitybiz.DeferRuntimeOperationEventPublishInput) (bool, error) {
+	return s.agentStore().DeferRuntimeOperationEventPublish(ctx, input)
 }
 
 func (s *SQLiteStore) ListAgentTargets(ctx context.Context) ([]agenttargetbiz.Target, error) {

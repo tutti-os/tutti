@@ -22,6 +22,7 @@ type ApplicationHostCanonicalPorts interface {
 	agenthost.SessionBatchManagementStore
 	agenthost.TurnSubmissionStore
 	agenthost.EffectiveHistoryStore
+	agenthost.RuntimeOperationHealthStore
 	committedSessionForkReader
 }
 
@@ -43,6 +44,7 @@ type HostSupportPorts struct {
 	LifecycleObserver      agenthost.LifecycleObserver
 	CommitObserver         agenthost.CommitObserver
 	RuntimeOperations      agenthost.RuntimeOperationStore
+	RuntimeOperationHealth agenthost.RuntimeOperationHealthStore
 	OperationEvents        agenthost.RuntimeOperationEventPublisher
 	OperationOwner         string
 	StaleTurnSettler       agenthost.StaleTurnSettler
@@ -100,10 +102,11 @@ func NewServiceComponents(
 		SessionLocker: serviceHostLocker{
 			mu: &sessionSettings.mu, locks: &sessionSettings.locks,
 		},
-		RuntimeStartGate:  serviceHostStartupGate{gate: claudecodeservice.DefaultStartupGate},
-		LifecycleObserver: serviceHostLifecycleObserver{reporter: config.Observers.AnalyticsReporter},
-		CommitObserver:    serviceHostCommitObserver{observer: config.Observers.CommitObserver},
-		RuntimeOperations: config.Runtime.RuntimeOperationStore,
+		RuntimeStartGate:       serviceHostStartupGate{gate: claudecodeservice.DefaultStartupGate},
+		LifecycleObserver:      serviceHostLifecycleObserver{reporter: config.Observers.AnalyticsReporter},
+		CommitObserver:         serviceHostCommitObserver{observer: config.Observers.CommitObserver},
+		RuntimeOperations:      config.Runtime.RuntimeOperationStore,
+		RuntimeOperationHealth: canonical,
 		OperationEvents: serviceHostRuntimeOperationEventPublisher{
 			publisher: config.Observers.RuntimeOperationEventPublisher,
 		},
@@ -153,6 +156,9 @@ func NewApplicationHostWithPorts(
 	if canonical == nil || runtime == nil || support.RuntimePreparation == nil {
 		return nil
 	}
+	if support.RuntimeOperationHealth == nil {
+		support.RuntimeOperationHealth = canonical
+	}
 	return composeApplicationHost(
 		support,
 		canonical,
@@ -162,6 +168,8 @@ func NewApplicationHostWithPorts(
 		historicalState,
 		runtime,
 		runtime,
+		agenthost.EditRetryAdmissionAllowNew,
+		agenthost.EditRetryRecoveryDrain,
 	)
 }
 
@@ -174,6 +182,8 @@ func composeApplicationHost(
 	historicalState agenthost.HistoricalSessionStateStore,
 	runtime agenthost.RuntimeController,
 	goalRuntime agenthost.GoalRuntimeController,
+	editRetryAdmission agenthost.EditRetryAdmissionPolicy,
+	editRetryRecovery agenthost.EditRetryRecoveryPolicy,
 ) *agenthost.Host {
 	sessionForks, _ := canonical.(agenthost.SessionForkStore)
 	if sessionForkRecovery == nil {
@@ -181,7 +191,12 @@ func composeApplicationHost(
 	}
 	sessionForkRuntime, _ := runtime.(agenthost.SessionForkRuntime)
 	turnSubmissions, _ := canonical.(agenthost.TurnSubmissionStore)
+	// The edit-retry operation and session fence share one canonical SQLite
+	// transaction. Production composition must never substitute a split store.
 	effectiveHistory, _ := canonical.(agenthost.EffectiveHistoryStore)
+	if effectiveHistory == nil {
+		return nil
+	}
 	historyRuntime, _ := runtime.(agenthost.RuntimeHistoryController)
 	return agenthost.New(agenthost.Config{
 		CanonicalStore: canonical, SessionManagement: sessionManagement,
@@ -204,7 +219,8 @@ func composeApplicationHost(
 		LifecycleObserver: support.LifecycleObserver,
 		CommitObserver:    support.CommitObserver,
 		RuntimeOperations: support.RuntimeOperations, OperationEvents: support.OperationEvents,
-		OperationOwner: support.OperationOwner, StaleTurnSettler: support.StaleTurnSettler,
+		RuntimeOperationHealth: support.RuntimeOperationHealth,
+		OperationOwner:         support.OperationOwner, StaleTurnSettler: support.StaleTurnSettler,
 		WorktreeGC: support.WorktreeGC,
 		GoalStore:  support.GoalStore, GoalFences: support.GoalFences,
 		GoalRuntime: goalRuntime, GoalInbox: support.GoalInbox,
@@ -212,9 +228,9 @@ func composeApplicationHost(
 		GoalAttemptTimeout: support.GoalAttemptTimeout, GoalRecoveryBudget: support.GoalRecoveryBudget,
 		GoalMaxAttempts: support.GoalMaxAttempts, GoalDispatchDeadline: support.GoalDispatchDeadline,
 		GoalActor: agenthost.NewSessionActor(),
-		// Durable edit-and-retry (PR #1681) is neutralized: its saga can strand a
-		// session in a rolled-back-but-not-resent state whose runtime operation
-		// becomes a cold-recovery poison pill that crashes tuttid on launch.
-		EditRetryDisabled: true,
+		// Production admits V2 edit retries. Host recovery remains independently
+		// governed by each durable operation's checkpoint and provider evidence.
+		EditRetryAdmission: editRetryAdmission,
+		EditRetryRecovery:  editRetryRecovery,
 	})
 }

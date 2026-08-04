@@ -454,18 +454,52 @@ func insertRuntimeOperationEventTx(ctx context.Context, tx *sql.Tx, op RuntimeOp
 	if err != nil {
 		return RuntimeOperationEvent{}, err
 	}
+	occurrenceKey := runtimeOperationEventOccurrenceKey(kind, payload)
 	result, err := tx.ExecContext(ctx, `
 INSERT INTO workspace_agent_runtime_operation_events (
-  operation_id, workspace_id, agent_session_id, kind, payload_json, created_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?)
-`, op.OperationID, op.WorkspaceID, op.AgentSessionID, kind, payloadJSON, now)
+  operation_id, workspace_id, agent_session_id, kind, occurrence_key, payload_json, created_at_unix_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(operation_id, kind, occurrence_key) DO NOTHING
+`, op.OperationID, op.WorkspaceID, op.AgentSessionID, kind, occurrenceKey, payloadJSON, now)
 	if err != nil {
 		return RuntimeOperationEvent{}, fmt.Errorf("insert runtime operation event: %w", err)
+	}
+	inserted, err := rowsWereAffected(result, "insert runtime operation event")
+	if err != nil {
+		return RuntimeOperationEvent{}, err
+	}
+	if !inserted {
+		existing, found, err := getRuntimeOperationEventByOccurrenceTx(ctx, tx, op.OperationID, kind, occurrenceKey)
+		if err != nil {
+			return RuntimeOperationEvent{}, err
+		}
+		if !found {
+			return RuntimeOperationEvent{}, fmt.Errorf("runtime operation event conflict was not readable")
+		}
+		existingJSON, err := marshalJSONMap(existing.Payload)
+		if err != nil {
+			return RuntimeOperationEvent{}, err
+		}
+		if existing.OperationID != op.OperationID || existing.WorkspaceID != op.WorkspaceID ||
+			existing.AgentSessionID != op.AgentSessionID || existing.Kind != kind || existingJSON != payloadJSON {
+			return RuntimeOperationEvent{}, ErrRuntimeOperationEventConflict
+		}
+		return existing, nil
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
 		return RuntimeOperationEvent{}, fmt.Errorf("read runtime operation event id: %w", err)
 	}
 	return RuntimeOperationEvent{ID: id, OperationID: op.OperationID, WorkspaceID: op.WorkspaceID,
-		AgentSessionID: op.AgentSessionID, Kind: kind, Payload: cloneJSONMap(payload), CreatedAtUnixMS: now}, nil
+		AgentSessionID: op.AgentSessionID, Kind: kind, OccurrenceKey: occurrenceKey, Payload: cloneJSONMap(payload), CreatedAtUnixMS: now}, nil
+}
+
+func runtimeOperationEventOccurrenceKey(kind string, payload map[string]any) string {
+	if identity := payloadString(payload, "actionIdentity"); identity != "" {
+		return identity
+	}
+	if actionID := payloadString(payload, "clientActionId"); actionID != "" {
+		return actionID
+	}
+	return kind
 }

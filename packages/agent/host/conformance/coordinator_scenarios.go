@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
@@ -38,7 +39,13 @@ func runPlanDecision(ctx context.Context, driver Driver) error {
 	if err := driver.Reset(ctx, fixture); err != nil {
 		return err
 	}
-	operation, err := driver.SubmitPlanDecision(ctx,
+	// Runtime-operation processing owns the session actor. A plan decision must
+	// dispatch its serialized send path directly rather than re-entering the
+	// public actor-taking command; keep this bounded so every Host adapter
+	// proves that regression cannot become a worker deadlock.
+	planCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	operation, err := driver.SubmitPlanDecision(planCtx,
 		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-plan"},
 		"plan-turn", "plan-turn", agenthost.SubmitPlanDecisionInput{
 			PromptKind: "plan-implementation", Action: "implement", IdempotencyKey: "decision-1",
@@ -70,8 +77,8 @@ func runRecoveryOrder(ctx context.Context, driver Driver) error {
 	if err := driver.Reset(ctx, fixture); err != nil {
 		return err
 	}
-	if err := driver.Recover(ctx); err != nil {
-		return fmt.Errorf("recover host: %w", err)
+	if err := driver.RecoverCore(ctx); err != nil {
+		return fmt.Errorf("recover core: %w", err)
 	}
 	metrics := driver.Metrics()
 	if metrics.ExecCalls != 0 {
@@ -81,7 +88,7 @@ func runRecoveryOrder(ctx context.Context, driver Driver) error {
 		)
 	}
 	steps := metrics.RecoverySteps
-	want := []string{"runtime_requeue", "runtime_complete", "goal_requeue", "goal_inbox_requeue", "stale_settle", "worktree_sweep"}
+	want := []string{"runtime_requeue", "goal_requeue", "goal_inbox_requeue"}
 	if len(steps) != len(want) {
 		return fmt.Errorf("recovery steps=%v, want %v", steps, want)
 	}
@@ -90,5 +97,17 @@ func runRecoveryOrder(ctx context.Context, driver Driver) error {
 			return fmt.Errorf("recovery steps=%v, want %v", steps, want)
 		}
 	}
+	if err := driver.RecoverPostListener(ctx); err != nil {
+		return fmt.Errorf("post-listener recovery: %w", err)
+	}
 	return nil
+}
+
+func recoveryStepAppearsAfter(steps []string, start int, wanted string) bool {
+	for _, step := range steps[start:] {
+		if step == wanted {
+			return true
+		}
+	}
+	return false
 }

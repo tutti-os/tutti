@@ -16,6 +16,15 @@ import (
 // narrow in-memory service fakes.
 type serviceHostStore struct{ service *Service }
 
+type testApplicationHostCanonical struct {
+	serviceHostStore
+	agenthost.EffectiveHistoryStore
+}
+
+func (testApplicationHostCanonical) GetSessionHistory(_ context.Context, workspaceID, sessionID string) (storesqlite.SessionHistory, bool, error) {
+	return storesqlite.SessionHistory{WorkspaceID: workspaceID, AgentSessionID: sessionID, RecoveryState: storesqlite.SessionHistoryRecoveryReady}, true, nil
+}
+
 func (serviceHostStore) GetSessionForkLineage(
 	context.Context,
 	string,
@@ -421,7 +430,7 @@ func hostSupportPortsForService(
 }
 
 func newApplicationHost(s *Service, worktreeGC agenthost.WorktreeGarbageCollector) *agenthost.Host {
-	store := serviceHostStore{service: s}
+	store := testApplicationHostCanonical{serviceHostStore: serviceHostStore{service: s}}
 	support := hostSupportPortsForService(s, nil, worktreeGC)
 	return composeApplicationHost(
 		support,
@@ -432,6 +441,8 @@ func newApplicationHost(s *Service, worktreeGC agenthost.WorktreeGarbageCollecto
 		nil,
 		serviceHostRuntime{service: s},
 		serviceHostGoalRuntime{service: s},
+		agenthost.EditRetryAdmissionDenyNew,
+		agenthost.EditRetryRecoveryDrain,
 	)
 }
 

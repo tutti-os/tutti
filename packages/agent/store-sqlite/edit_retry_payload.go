@@ -11,6 +11,11 @@ import (
 
 type EditRetryCheckpoint string
 
+// EditRetrySagaVersionCurrent is the only edit-retry protocol that may enter
+// the runtime scheduler. Zero is reserved for rows written before the durable
+// protocol cutover and is read-only migration input, never an execution grant.
+const EditRetrySagaVersionCurrent int64 = 2
+
 const (
 	EditRetryCheckpointPrepared              EditRetryCheckpoint = "prepared"
 	EditRetryCheckpointRollbackDispatched    EditRetryCheckpoint = "rollback_dispatched"
@@ -22,6 +27,9 @@ const (
 type EditRetryReasonCode = canonical.EditRetryReasonCode
 
 const (
+	EditRetryReasonRetryWait                  = canonical.EditRetryReasonRetryWait
+	EditRetryReasonRetryBudgetExhausted       = canonical.EditRetryReasonRetryBudgetExhausted
+	EditRetryReasonLocalStateInconsistent     = canonical.EditRetryReasonLocalStateInconsistent
 	EditRetryReasonProviderUnsupported        = canonical.EditRetryReasonProviderUnsupported
 	EditRetryReasonTurnNotFound               = canonical.EditRetryReasonTurnNotFound
 	EditRetryReasonTurnNotLatest              = canonical.EditRetryReasonTurnNotLatest
@@ -29,6 +37,7 @@ const (
 	EditRetryReasonHistoryRevisionConflict    = canonical.EditRetryReasonHistoryRevisionConflict
 	EditRetryReasonOperationConflict          = canonical.EditRetryReasonOperationConflict
 	EditRetryReasonRecoveryRequired           = canonical.EditRetryReasonRecoveryRequired
+	EditRetryReasonProviderRejected           = canonical.EditRetryReasonProviderRejected
 	EditRetryReasonProviderOutcomeUnknown     = canonical.EditRetryReasonProviderOutcomeUnknown
 	EditRetryReasonReplacementNotProvenAbsent = canonical.EditRetryReasonReplacementNotProvenAbsent
 )
@@ -37,6 +46,7 @@ const (
 // RuntimeOperation keeps payload_json as its shared storage representation;
 // edit-retry transitions must decode through this type before interpreting it.
 type EditRetryOperationPayload struct {
+	SagaVersion        int64               `json:"sagaVersion,omitempty"`
 	ClientOperationID  string              `json:"clientOperationId"`
 	EditedText         string              `json:"editedText"`
 	ReplacementTurnID  string              `json:"replacementTurnId"`
@@ -49,12 +59,19 @@ type EditRetryOperationPayload struct {
 	RedispatchProofSID string              `json:"recoveryRedispatchProofProviderSessionId,omitempty"`
 	RedispatchProofAt  int64               `json:"recoveryRedispatchProofAtUnixMs,omitempty"`
 	DispatchAttempt    int64               `json:"replacementDispatchAttempt,omitempty"`
-	DiscardedMessages  int64               `json:"lastDiscardedLocalMessageCount,omitempty"`
-	DiscardedOutcome   string              `json:"lastDiscardedLocalOutcome,omitempty"`
-	DiscardedError     string              `json:"lastDiscardedLocalError,omitempty"`
+	// ReplacementNotDispatched is written only after the provider has
+	// authoritatively reported that the most recently prepared replacement
+	// request was not dispatched. An intent checkpoint alone is never proof.
+	ReplacementNotDispatched bool   `json:"replacementNotDispatched,omitempty"`
+	DiscardedMessages        int64  `json:"lastDiscardedLocalMessageCount,omitempty"`
+	DiscardedOutcome         string `json:"lastDiscardedLocalOutcome,omitempty"`
+	DiscardedError           string `json:"lastDiscardedLocalError,omitempty"`
 }
 
 func (payload EditRetryOperationPayload) Validate(operationID string) error {
+	if payload.SagaVersion != 0 && payload.SagaVersion != EditRetrySagaVersionCurrent {
+		return errors.New("edit retry saga version is invalid")
+	}
 	if strings.TrimSpace(payload.ClientOperationID) == "" ||
 		strings.TrimSpace(payload.EditedText) == "" ||
 		strings.TrimSpace(payload.ReplacementTurnID) == "" ||
@@ -64,8 +81,18 @@ func (payload EditRetryOperationPayload) Validate(operationID string) error {
 	}
 	switch payload.Checkpoint {
 	case EditRetryCheckpointPrepared:
+		// A prepared operation may durably retain the read-only provider history
+		// observed before any rollback intent. This is evidence only: it cannot
+		// authorize a provider mutation, but lets blocked reconciliation prove the
+		// source still exists without treating a later dispatched checkpoint as
+		// pre-effect.
 		if payload.BeforeProviderIDs != nil {
-			return errors.New("prepared edit retry must not carry provider history")
+			if strings.TrimSpace(payload.ProviderSessionID) == "" {
+				return errors.New("prepared edit retry provider history needs a session")
+			}
+			if err := validateEditRetryProviderIDs(payload.BeforeProviderIDs); err != nil {
+				return err
+			}
 		}
 	case EditRetryCheckpointRollbackDispatched,
 		EditRetryCheckpointRollbackConfirmed,
@@ -82,6 +109,11 @@ func (payload EditRetryOperationPayload) Validate(operationID string) error {
 }
 
 func EncodeEditRetryOperationPayload(payload EditRetryOperationPayload) (map[string]any, error) {
+	// Every newly encoded payload is V2. Decoding intentionally preserves a
+	// missing version as zero so migration can fail closed on old rows.
+	if payload.SagaVersion == 0 {
+		payload.SagaVersion = EditRetrySagaVersionCurrent
+	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("encode edit retry operation payload: %w", err)

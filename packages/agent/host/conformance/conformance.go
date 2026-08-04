@@ -173,7 +173,8 @@ type Driver interface {
 	GetGoalState(context.Context, agenthost.SessionRef) (GoalObservation, error)
 	ReconcileGoal(context.Context, agenthost.SessionRef) (GoalObservation, error)
 	StepGoalOperations(context.Context, int64) error
-	Recover(context.Context) error
+	RecoverCore(context.Context) error
+	RecoverPostListener(context.Context) error
 	Metrics() Metrics
 }
 

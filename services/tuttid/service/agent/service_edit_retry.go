@@ -10,6 +10,7 @@ import (
 type EditRetryInput = agenthost.EditRetryInput
 type EditRetryResult = agenthost.EditRetryResult
 type EditRetryRecoveryAction = agenthost.EditRetryRecoveryAction
+type RecoverEditRetryInput = agenthost.RecoverEditRetryInput
 
 // GetEditRetryAvailability is an adapter-only projection of Host-owned
 // eligibility and recovery state.
@@ -44,21 +45,8 @@ func (s *Service) EditRetry(
 	)
 }
 
-// RecoverEditRetry delegates one explicit typed recovery command to Host.
-func (s *Service) RecoverEditRetry(
-	ctx context.Context,
-	workspaceID string,
-	agentSessionID string,
-	operationID string,
-	action EditRetryRecoveryAction,
-) (EditRetryResult, error) {
-	return s.ApplicationHost().RecoverEditRetry(
-		ctx,
-		agenthost.SessionRef{
-			WorkspaceID:    strings.TrimSpace(workspaceID),
-			AgentSessionID: strings.TrimSpace(agentSessionID),
-		},
-		strings.TrimSpace(operationID),
-		action,
-	)
+// RecoverEditRetryCommand delegates one explicit CAS-bound recovery command
+// to Host. The adapter deliberately does not infer lifecycle state.
+func (s *Service) RecoverEditRetryCommand(ctx context.Context, workspaceID, agentSessionID, operationID string, input RecoverEditRetryInput) (EditRetryResult, error) {
+	return s.ApplicationHost().RecoverEditRetryCommand(ctx, agenthost.SessionRef{WorkspaceID: strings.TrimSpace(workspaceID), AgentSessionID: strings.TrimSpace(agentSessionID)}, strings.TrimSpace(operationID), input)
 }

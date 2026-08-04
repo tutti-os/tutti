@@ -1366,6 +1366,17 @@ describe("projectAgentConversationVM", () => {
     );
   });
 
+  it("can suppress the generic processing row at the presentation boundary", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({ showProcessingIndicator: true }),
+      { suppressGenericProcessing: true }
+    );
+
+    expect(conversation.rows.some((row) => row.kind === "processing")).toBe(
+      false
+    );
+  });
+
   it("preserves the latest transcript turn as processing fallback identity", () => {
     const firstTurn = detailViewModel().turns[0]!;
     const secondTurn = {

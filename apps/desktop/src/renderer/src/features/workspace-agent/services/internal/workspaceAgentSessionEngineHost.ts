@@ -312,7 +312,12 @@ export function createWorkspaceAgentSessionEngineHost(
                 command.workspaceId.trim(),
                 command.agentSessionId.trim(),
                 command.operationId,
-                { action: command.action },
+                {
+                  action: command.action,
+                  clientActionId: command.clientActionId,
+                  expectedHistoryRevision: command.expectedHistoryRevision,
+                  expectedOperationVersion: command.expectedOperationVersion
+                },
                 { signal: options?.signal }
               )
               .then(editRetryResultFromTuttid);

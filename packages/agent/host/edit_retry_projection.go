@@ -67,15 +67,44 @@ func editRetryResult(operation storesqlite.RuntimeOperation, history storesqlite
 		state = EditRetryStateRollingBack
 	}
 	payload, _ := storesqlite.DecodeEditRetryOperationPayload(operation.Payload)
+	if payload.SagaVersion != storesqlite.EditRetrySagaVersionCurrent {
+		return EditRetryResult{
+			OperationID: operation.OperationID, OperationVersion: operation.Version,
+			State: EditRetryStateRecoveryRequired, RetractedTurnID: operation.TurnID,
+			HistoryRevision: history.Revision, ReasonCode: EditRetryReasonCodeRecoveryRequired,
+			Attempt: operation.Attempt,
+		}
+	}
 	replacementTurnID := ""
 	if state == EditRetryStateCompleted {
 		replacementTurnID = payload.ReplacementTurnID
 	}
+	availableActions := []EditRetryRecoveryAction(nil)
+	switch state {
+	case EditRetryStateRollingBack:
+		availableActions = []EditRetryRecoveryAction{EditRetryRecoveryActionReconcile}
+	case EditRetryStateResendPending:
+		availableActions = []EditRetryRecoveryAction{EditRetryRecoveryActionReconcile}
+		if payload.ReplacementNotDispatched && payload.RedispatchProofAt == 0 {
+			availableActions = append(availableActions, EditRetryRecoveryActionRetryReplacement)
+		}
+		if editRetryCanAbandon(operation) {
+			availableActions = append(availableActions, EditRetryRecoveryActionAbandon)
+		}
+	case EditRetryStateRecoveryRequired:
+		if operation.Status == storesqlite.RuntimeOperationStatusBlocked {
+			availableActions = []EditRetryRecoveryAction{EditRetryRecoveryActionReconcile}
+		}
+	}
 	return EditRetryResult{
-		OperationID: strings.TrimSpace(operation.OperationID),
-		State:       state, RetractedTurnID: operation.TurnID,
+		OperationID:      strings.TrimSpace(operation.OperationID),
+		OperationVersion: operation.Version,
+		State:            state, RetractedTurnID: operation.TurnID,
 		ReplacementTurnID: replacementTurnID, HistoryRevision: history.Revision,
-		ReasonCode: editRetryReasonFromOperation(operation),
+		ReasonCode:      editRetryReasonFromOperation(operation),
+		Automatic:       operation.Status == storesqlite.RuntimeOperationStatusPrepared && operation.NextAttemptAtMS > 0,
+		NextAttemptAtMS: operation.NextAttemptAtMS, Attempt: operation.Attempt,
+		AvailableActions: availableActions,
 	}
 }
 

@@ -6,16 +6,19 @@ import type {
 } from "./types.ts";
 import type {
   AgentActivityEditRetryAvailability,
+  AgentActivityEditRetryRecoveryAction,
   AgentActivityEditRetryResult,
   EditRetryOperationRecord,
   EditRetryState
 } from "./editRetry.types.ts";
+import { isEditRetryAvailabilityOlder } from "./editRetry.selectors.ts";
 
 const NO_COMMANDS: readonly EngineCommand[] = [];
 const IDLE_OPERATION: EditRetryOperationRecord = {
   clientOperationId: null,
   commandId: null,
   errorCode: null,
+  errorReason: null,
   errorMessage: null,
   requestKey: null,
   result: null,
@@ -64,6 +67,9 @@ function receiveAvailability(
   }
   const current = state.availabilityBySessionId[agentSessionId];
   const operation = state.operationBySessionId[agentSessionId];
+  if (current && isEditRetryAvailabilityOlder(intent.availability, current)) {
+    return unchanged(state);
+  }
   const confirmsOperation =
     operation?.status === "reconciling" &&
     operation.result &&
@@ -152,6 +158,7 @@ function requestEditRetry(
           clientOperationId,
           commandId,
           errorCode: null,
+          errorReason: null,
           errorMessage: null,
           requestKey,
           result: null,
@@ -171,23 +178,35 @@ function requestRecovery(
   const workspaceId = intent.workspaceId.trim();
   const availability = state.availabilityBySessionId[agentSessionId];
   const operationId = availability?.operationId?.trim() ?? "";
+  const operationVersion = availability?.operationVersion;
   const current = state.operationBySessionId[agentSessionId] ?? IDLE_OPERATION;
   if (
     !agentSessionId ||
     !workspaceId ||
     !operationId ||
+    !Number.isFinite(operationVersion) ||
     current.status === "pending" ||
     !availability?.availableActions.includes(intent.action)
   ) {
     return unchanged(state);
   }
   const commandId = `turn:recoverEditRetry:${agentSessionId}:${state.nextCommandSequence}`;
+  const expectedOperationVersion = operationVersion as number;
+  const clientActionId = editRetryClientActionId({
+    action: intent.action,
+    expectedHistoryRevision: availability.historyRevision,
+    expectedOperationVersion,
+    operationId
+  });
   return {
     commands: [
       {
         action: intent.action,
         agentSessionId,
+        clientActionId,
         commandId,
+        expectedHistoryRevision: availability.historyRevision,
+        expectedOperationVersion,
         operationId,
         timeoutMs: 60_000,
         type: "turn/recoverEditRetry",
@@ -203,6 +222,7 @@ function requestRecovery(
           ...current,
           commandId,
           errorCode: null,
+          errorReason: null,
           errorMessage: null,
           result: null,
           status: "pending",
@@ -247,6 +267,7 @@ function settleCommand(
         ...operation,
         commandId: null,
         errorCode: intent.errorCode?.trim() || null,
+        errorReason: intent.errorReason?.trim() || null,
         errorMessage:
           intent.errorMessage?.trim() ||
           (intent.outcome === "succeeded"
@@ -274,6 +295,7 @@ function settleCommand(
       ...operation,
       commandId: null,
       errorCode: null,
+      errorReason: null,
       errorMessage: null,
       result,
       status: "reconciling"
@@ -394,6 +416,22 @@ function editRetryClientOperationId(requestKey: string): string {
   const left = hash32(requestKey, 0x811c9dc5);
   const right = hash32(requestKey, 0x9e3779b9);
   return `edit-retry-${hex32(left)}-${hex32(right)}`;
+}
+
+function editRetryClientActionId(input: {
+  action: AgentActivityEditRetryRecoveryAction;
+  expectedHistoryRevision: number;
+  expectedOperationVersion: number;
+  operationId: string;
+}): string {
+  return editRetryClientOperationId(
+    JSON.stringify([
+      input.operationId.trim(),
+      input.action,
+      input.expectedOperationVersion,
+      input.expectedHistoryRevision
+    ])
+  );
 }
 
 function hash32(value: string, seed: number): number {

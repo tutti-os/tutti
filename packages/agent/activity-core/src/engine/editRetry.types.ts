@@ -7,9 +7,14 @@ export type AgentActivityEditRetryRecoveryState =
 
 export type AgentActivityEditRetryRecoveryAction =
   | "reconcile"
-  | "retry_replacement";
+  | "retry_replacement"
+  | "abandon";
 
 export type AgentActivityEditRetryReasonCode =
+  | "retry_wait"
+  | "retry_budget_exhausted"
+  | "local_state_inconsistent"
+  | "rollout_disabled"
   | "provider_unsupported"
   | "turn_not_found"
   | "turn_not_latest"
@@ -17,26 +22,38 @@ export type AgentActivityEditRetryReasonCode =
   | "history_revision_conflict"
   | "operation_conflict"
   | "recovery_required"
+  | "provider_rejected"
   | "provider_outcome_unknown"
   | "replacement_not_proven_absent";
 
 export interface AgentActivityEditRetryAvailability {
+  impactScope?: "session";
   supported: boolean;
   eligible: boolean;
   turnId?: string;
   historyRevision: number;
   recoveryState: AgentActivityEditRetryRecoveryState;
   operationId?: string;
+  operationVersion?: number;
+  automatic?: boolean;
+  nextAttemptAtUnixMs?: number;
+  attempt?: number;
   availableActions: readonly AgentActivityEditRetryRecoveryAction[];
   reasonCode?: AgentActivityEditRetryReasonCode;
 }
 
 export interface AgentActivityEditRetryResult {
+  impactScope?: "session";
   operationId: string;
+  operationVersion?: number;
   state: AgentActivityEditRetryRecoveryState;
   retractedTurnId: string;
   replacementTurnId?: string;
   historyRevision: number;
+  automatic?: boolean;
+  nextAttemptAtUnixMs?: number;
+  attempt?: number;
+  availableActions?: readonly AgentActivityEditRetryRecoveryAction[];
   reasonCode?: AgentActivityEditRetryReasonCode;
 }
 
@@ -53,6 +70,9 @@ export interface AgentActivityEditRetryInput {
 export interface AgentActivityRecoverEditRetryInput {
   action: AgentActivityEditRetryRecoveryAction;
   agentSessionId: string;
+  clientActionId: string;
+  expectedHistoryRevision: number;
+  expectedOperationVersion: number;
   operationId: string;
   signal?: AbortSignal;
   workspaceId: string;
@@ -69,6 +89,7 @@ export interface EditRetryOperationRecord {
   clientOperationId: string | null;
   commandId: string | null;
   errorCode: string | null;
+  errorReason: string | null;
   errorMessage: string | null;
   requestKey: string | null;
   result: AgentActivityEditRetryResult | null;
@@ -127,7 +148,10 @@ export interface TurnRecoverEditRetryCommand {
   type: "turn/recoverEditRetry";
   action: AgentActivityEditRetryRecoveryAction;
   agentSessionId: string;
+  clientActionId: string;
   commandId: string;
+  expectedHistoryRevision: number;
+  expectedOperationVersion: number;
   operationId: string;
   timeoutMs?: number;
   workspaceId: string;

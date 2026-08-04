@@ -13,6 +13,7 @@ const IDLE_OPERATION: EditRetryOperationRecord = {
   clientOperationId: null,
   commandId: null,
   errorCode: null,
+  errorReason: null,
   errorMessage: null,
   requestKey: null,
   result: null,
@@ -41,13 +42,41 @@ export function selectEditRetryAvailabilityIsNewer(
     state,
     agentSessionId
   ).availability;
-  if (!current) return false;
-  if (current.historyRevision !== incoming.historyRevision) {
-    return current.historyRevision > incoming.historyRevision;
+  return current ? isEditRetryAvailabilityOlder(incoming, current) : false;
+}
+
+/** Returns true when an availability snapshot is older than the current one. */
+export function isEditRetryAvailabilityOlder(
+  incoming: AgentActivityEditRetryAvailability,
+  current: AgentActivityEditRetryAvailability
+): boolean {
+  if (incoming.historyRevision !== current.historyRevision) {
+    return incoming.historyRevision < current.historyRevision;
   }
+  // A different operation id at the same history revision is a new lineage;
+  // let the authoritative snapshot win rather than guessing between them.
+  if (
+    incoming.operationId &&
+    current.operationId &&
+    incoming.operationId !== current.operationId
+  ) {
+    return false;
+  }
+  const operationVersion = compareOptionalNumber(
+    incoming.operationVersion,
+    current.operationVersion
+  );
+  if (operationVersion !== 0) return operationVersion < 0;
+  const attempt = compareOptionalNumber(incoming.attempt, current.attempt);
+  if (attempt !== 0) return attempt < 0;
+  const retryAt = compareOptionalNumber(
+    incoming.nextAttemptAtUnixMs,
+    current.nextAttemptAtUnixMs
+  );
+  if (retryAt !== 0) return retryAt < 0;
   return (
-    editRetryRecoveryRank(current.recoveryState) >
-    editRetryRecoveryRank(incoming.recoveryState)
+    editRetryRecoveryRank(incoming.recoveryState) <
+    editRetryRecoveryRank(current.recoveryState)
   );
 }
 
@@ -75,4 +104,11 @@ function editRetryRecoveryRank(
     case "recovery_required":
       return 3;
   }
+}
+
+function compareOptionalNumber(
+  incoming: number | undefined,
+  current: number | undefined
+): number {
+  return (incoming ?? 0) - (current ?? 0);
 }

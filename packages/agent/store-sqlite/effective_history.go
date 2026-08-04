@@ -189,6 +189,29 @@ WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ?
 	return result, true, nil
 }
 
+func getTurnSubmissionTx(ctx context.Context, tx *sql.Tx, workspaceID, agentSessionID, turnID string) (TurnSubmission, bool, error) {
+	var result TurnSubmission
+	err := tx.QueryRowContext(ctx, `
+SELECT workspace_id, agent_session_id, turn_id, content_json, display_prompt,
+       capability_refs_json, tutti_mode_snapshot_json, client_submit_id,
+       created_at_unix_ms, updated_at_unix_ms
+FROM workspace_agent_turn_submissions
+WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ?
+`, workspaceID, agentSessionID, turnID).Scan(
+		&result.WorkspaceID, &result.AgentSessionID, &result.TurnID,
+		&result.ContentJSON, &result.DisplayPrompt, &result.CapabilityRefsJSON,
+		&result.TuttiModeSnapshotJSON, &result.ClientSubmitID,
+		&result.CreatedAtUnixMS, &result.UpdatedAtUnixMS,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return TurnSubmission{}, false, nil
+	}
+	if err != nil {
+		return TurnSubmission{}, false, fmt.Errorf("get workspace agent turn submission in transaction: %w", err)
+	}
+	return result, true, nil
+}
+
 func sameTurnSubmissionEnvelope(left, right TurnSubmission) bool {
 	return left.WorkspaceID == right.WorkspaceID &&
 		left.AgentSessionID == right.AgentSessionID &&

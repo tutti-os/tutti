@@ -264,8 +264,12 @@ func TestInlineOutboxPublishFailureDoesNotTurnCompletedAPIIntoFailure(t *testing
 	if len(store.events) != 1 || store.events[0].PublishedAtUnixMS != 0 {
 		t.Fatalf("outbox events = %#v, want one pending event", store.events)
 	}
-	if err := service.ApplicationHost().StepRuntimeOperationWorker(context.Background(), false); err == nil {
-		t.Fatal("worker outbox publish error = nil")
+	if store.events[0].NextAttemptAtMS <= now.UnixMilli() {
+		t.Fatalf("outbox retry=%d, want future after inline publish failure", store.events[0].NextAttemptAtMS)
+	}
+	now = time.UnixMilli(store.events[0].NextAttemptAtMS)
+	if err := service.ApplicationHost().StepRuntimeOperationWorker(context.Background(), false); err != nil {
+		t.Fatalf("worker outbox publish error = %v, want health-only degradation", err)
 	}
 }
 
@@ -427,8 +431,11 @@ func TestStartupRecoveryRequeuesUnexpiredLeaseBeforeRecoveringCancel(t *testing.
 	service.RuntimeOperationClock = func() time.Time { return now }
 	service.TurnStore = runtimeOperationTurnStore("turn-1", "")
 
-	if err := service.ApplicationHost().RecoverRuntimeOperations(context.Background()); err != nil {
-		t.Fatalf("RecoverRuntimeOperations() error = %v", err)
+	if err := service.ApplicationHost().RecoverCore(context.Background()); err != nil {
+		t.Fatalf("RecoverCore() error = %v", err)
+	}
+	if err := service.ApplicationHost().StepRuntimeOperationWorker(context.Background(), false); err != nil {
+		t.Fatalf("StepRuntimeOperationWorker() error = %v", err)
 	}
 	if store.operation.Status != agentactivitybiz.RuntimeOperationStatusCompleted || store.operation.Result != agentactivitybiz.RuntimeOperationResultCanceled {
 		t.Fatalf("startup recovered operation = %#v", store.operation)
@@ -729,6 +736,16 @@ func (s *runtimeOperationMemoryStore) ListPendingRuntimeOperationEvents(_ contex
 	return s.events, nil
 }
 
+func (s *runtimeOperationMemoryStore) ListReadyRuntimeOperationEvents(_ context.Context, _ string, now int64, _ int) ([]agentactivitybiz.RuntimeOperationEvent, error) {
+	ready := make([]agentactivitybiz.RuntimeOperationEvent, 0, len(s.events))
+	for _, event := range s.events {
+		if event.PublishedAtUnixMS == 0 && (event.NextAttemptAtMS == 0 || event.NextAttemptAtMS <= now) {
+			ready = append(ready, event)
+		}
+	}
+	return ready, nil
+}
+
 func (s *runtimeOperationMemoryStore) MarkRuntimeOperationEventPublished(_ context.Context, _ string, eventID int64, publishedAt int64) (bool, error) {
 	for index := range s.events {
 		if s.events[index].ID == eventID {
@@ -736,4 +753,16 @@ func (s *runtimeOperationMemoryStore) MarkRuntimeOperationEventPublished(_ conte
 		}
 	}
 	return true, nil
+}
+
+func (s *runtimeOperationMemoryStore) DeferRuntimeOperationEventPublish(_ context.Context, input agentactivitybiz.DeferRuntimeOperationEventPublishInput) (bool, error) {
+	for index := range s.events {
+		if s.events[index].ID == input.EventID && s.events[index].WorkspaceID == input.WorkspaceID && s.events[index].PublishedAtUnixMS == 0 {
+			s.events[index].PublishAttempt++
+			s.events[index].NextAttemptAtMS = input.NextAttemptAtMS
+			s.events[index].LastErrorCode = input.ReasonCode
+			return true, nil
+		}
+	}
+	return false, nil
 }

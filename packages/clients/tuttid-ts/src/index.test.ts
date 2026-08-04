@@ -2101,7 +2101,10 @@ test("shared tuttid client edits and recovers one workspace agent turn", async (
   );
   assert.deepEqual(
     await client.recoverEditRetry("ws-1", "session-1", "operation-1", {
-      action: "reconcile"
+      action: "reconcile",
+      clientActionId: "action-1",
+      expectedHistoryRevision: 7,
+      expectedOperationVersion: 1
     }),
     completed
   );
@@ -2119,7 +2122,12 @@ test("shared tuttid client edits and recovers one workspace agent turn", async (
   });
   assertRequest(requests[1]!, {
     authorization: null,
-    body: { action: "reconcile" },
+    body: {
+      action: "reconcile",
+      clientActionId: "action-1",
+      expectedHistoryRevision: 7,
+      expectedOperationVersion: 1
+    },
     method: "POST",
     path: "/v1/workspaces/ws-1/agent-sessions/session-1/edit-retry-operations/operation-1/recover",
     query: {}

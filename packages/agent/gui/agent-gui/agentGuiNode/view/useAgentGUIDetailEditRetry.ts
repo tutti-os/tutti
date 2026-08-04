@@ -16,7 +16,7 @@ export function useAgentGUIDetailEditRetry(input: {
     return {
       agentSessionId: input.agentSessionId ?? "",
       eligibleTurnId,
-      pending: controller.presentation.state === "processing",
+      pending: controller.presentation.state === "recovering",
       labels: {
         edit: translate("agentHost.agentGui.editRetryEditMessage"),
         cancel: translate("agentHost.agentGui.editRetryCancel"),

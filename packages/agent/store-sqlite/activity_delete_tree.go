@@ -73,6 +73,16 @@ func deleteSessionTreeRowsTx(
 	removedMessages := int64(0)
 	removedSessions := int64(0)
 	for _, agentSessionID := range sessionIDs {
+		// A deleted session can never safely recover provider history. Clear only
+		// its fence in this same deletion transaction; live unknown fences are
+		// intentionally left untouched and are handled by the protocol migration.
+		if _, err := tx.ExecContext(ctx, `
+UPDATE workspace_agent_session_history
+SET recovery_state = 'ready', operation_id = '', updated_at_unix_ms = ?
+WHERE workspace_id = ? AND agent_session_id = ? AND recovery_state <> 'ready'
+`, now, workspaceID, agentSessionID); err != nil {
+			return 0, 0, fmt.Errorf("clear deleted workspace agent session history fence: %w", err)
+		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_submit_claims WHERE workspace_id = ? AND agent_session_id = ?`, workspaceID, agentSessionID); err != nil {
 			return 0, 0, fmt.Errorf("delete workspace agent session tree submit claims: %w", err)
 		}

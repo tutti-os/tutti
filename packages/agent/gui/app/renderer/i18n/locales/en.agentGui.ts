@@ -332,11 +332,13 @@ export const enAgentGui = {
   editRetryEditMessage: "Edit message",
   editRetryCancel: "Cancel",
   editRetrySubmit: "Save and retry",
+  editRetryFailed: "Edit retry failed",
   editRetryProcessing: "Updating conversation history and retrying…",
   editRetryNeedsAction:
     "Conversation history was updated, but the edited message still needs recovery",
   editRetryReconcile: "Reconcile",
   editRetryRetryReplacement: "Retry message",
+  editRetryAbandon: "Abandon recovery",
   messageCopied: "Copied",
   promptTipsPrefix: "Tips: ",
   reviewPicker: {

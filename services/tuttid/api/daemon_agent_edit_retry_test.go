@@ -12,8 +12,12 @@ import (
 
 type editRetryAPITestService struct {
 	stubAgentSessionService
-	editFn    func(context.Context, string, string, string, agentservice.EditRetryInput) (agentservice.EditRetryResult, error)
-	recoverFn func(context.Context, string, string, string, agentservice.EditRetryRecoveryAction) (agentservice.EditRetryResult, error)
+	editFn           func(context.Context, string, string, string, agentservice.EditRetryInput) (agentservice.EditRetryResult, error)
+	recoverCommandFn func(context.Context, string, string, string, agentservice.RecoverEditRetryInput) (agentservice.EditRetryResult, error)
+}
+
+func (s editRetryAPITestService) RecoverEditRetryCommand(ctx context.Context, workspaceID, agentSessionID, operationID string, input agentservice.RecoverEditRetryInput) (agentservice.EditRetryResult, error) {
+	return s.recoverCommandFn(ctx, workspaceID, agentSessionID, operationID, input)
 }
 
 func (s editRetryAPITestService) EditRetry(
@@ -24,16 +28,6 @@ func (s editRetryAPITestService) EditRetry(
 	input agentservice.EditRetryInput,
 ) (agentservice.EditRetryResult, error) {
 	return s.editFn(ctx, workspaceID, agentSessionID, turnID, input)
-}
-
-func (s editRetryAPITestService) RecoverEditRetry(
-	ctx context.Context,
-	workspaceID string,
-	agentSessionID string,
-	operationID string,
-	action agentservice.EditRetryRecoveryAction,
-) (agentservice.EditRetryResult, error) {
-	return s.recoverFn(ctx, workspaceID, agentSessionID, operationID, action)
 }
 
 func TestEditRetryWorkspaceAgentTurnReturnsCompletedAndCapturesFence(t *testing.T) {
@@ -81,11 +75,11 @@ func TestEditRetryWorkspaceAgentTurnReturnsCompletedAndCapturesFence(t *testing.
 func TestEditRetryWorkspaceAgentTurnReturnsDurablePendingWithoutRawError(t *testing.T) {
 	api := DaemonAPI{AgentSessionService: editRetryAPITestService{
 		editFn: func(
-			context.Context,
-			string,
-			string,
-			string,
-			agentservice.EditRetryInput,
+			_ context.Context,
+			_ string,
+			_ string,
+			_ string,
+			_ agentservice.EditRetryInput,
 		) (agentservice.EditRetryResult, error) {
 			return agentservice.EditRetryResult{
 				OperationID:     "operation-1",
@@ -108,21 +102,24 @@ func TestEditRetryWorkspaceAgentTurnReturnsDurablePendingWithoutRawError(t *test
 }
 
 func TestRecoverWorkspaceAgentEditRetryReturnsScopedConflict(t *testing.T) {
+	var captured agentservice.RecoverEditRetryInput
 	api := DaemonAPI{AgentSessionService: editRetryAPITestService{
-		recoverFn: func(
-			context.Context,
-			string,
-			string,
-			string,
-			agentservice.EditRetryRecoveryAction,
+		recoverCommandFn: func(
+			_ context.Context,
+			_ string,
+			_ string,
+			_ string,
+			input agentservice.RecoverEditRetryInput,
 		) (agentservice.EditRetryResult, error) {
+			captured = input
 			return agentservice.EditRetryResult{}, agenthost.ErrEditRetryNotEligible
 		},
 	}}
 	response, err := api.RecoverWorkspaceAgentEditRetry(t.Context(), tuttigenerated.RecoverWorkspaceAgentEditRetryRequestObject{
 		WorkspaceID: "ws-1", AgentSessionID: "session-1", OperationID: "operation-1",
 		Body: &tuttigenerated.RecoverWorkspaceAgentEditRetryRequest{
-			Action: tuttigenerated.WorkspaceAgentEditRetryRecoveryActionReconcile,
+			Action:         tuttigenerated.WorkspaceAgentEditRetryRecoveryActionReconcile,
+			ClientActionId: "client-recover-1", ExpectedOperationVersion: 7, ExpectedHistoryRevision: 3,
 		},
 	})
 	if err != nil {
@@ -132,6 +129,78 @@ func TestRecoverWorkspaceAgentEditRetryReturnsScopedConflict(t *testing.T) {
 	if !ok || conflict.Error.Reason == nil || *conflict.Error.Reason != "operation_conflict" ||
 		conflict.Error.DeveloperMessage != nil {
 		t.Fatalf("response=%#v", response)
+	}
+	if captured.ClientActionID != "client-recover-1" || captured.ExpectedOperationVersion != 7 || captured.ExpectedHistoryRevision != 3 || captured.Action != agenthost.EditRetryRecoveryActionReconcile {
+		t.Fatalf("captured=%#v", captured)
+	}
+}
+
+func TestRecoverWorkspaceAgentEditRetryMapsStaleCASToStableConflict(t *testing.T) {
+	api := DaemonAPI{AgentSessionService: editRetryAPITestService{
+		recoverCommandFn: func(_ context.Context, _, _, _ string, _ agentservice.RecoverEditRetryInput) (agentservice.EditRetryResult, error) {
+			return agentservice.EditRetryResult{}, errors.Join(agenthost.ErrEditRetryHistoryConflict, errors.New("provider secret diagnostic"))
+		},
+	}}
+	response, err := api.RecoverWorkspaceAgentEditRetry(t.Context(), recoverEditRetryRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	conflict, ok := response.(tuttigenerated.RecoverWorkspaceAgentEditRetry409JSONResponse)
+	if !ok || conflict.Error.Reason == nil || *conflict.Error.Reason != "history_revision_conflict" || conflict.Error.DeveloperMessage != nil {
+		t.Fatalf("response=%#v", response)
+	}
+}
+
+func TestRecoverWorkspaceAgentEditRetryForwardsEveryAdvertisedAction(t *testing.T) {
+	for _, action := range []tuttigenerated.WorkspaceAgentEditRetryRecoveryAction{
+		tuttigenerated.WorkspaceAgentEditRetryRecoveryActionReconcile,
+		tuttigenerated.WorkspaceAgentEditRetryRecoveryActionRetryReplacement,
+		tuttigenerated.WorkspaceAgentEditRetryRecoveryActionAbandon,
+	} {
+		t.Run(string(action), func(t *testing.T) {
+			var captured agentservice.RecoverEditRetryInput
+			api := DaemonAPI{AgentSessionService: editRetryAPITestService{
+				recoverCommandFn: func(_ context.Context, _, _, _ string, input agentservice.RecoverEditRetryInput) (agentservice.EditRetryResult, error) {
+					captured = input
+					return agentservice.EditRetryResult{OperationID: "operation-1", State: agenthost.EditRetryStateCompleted, RetractedTurnID: "turn-1", HistoryRevision: 4}, nil
+				},
+			}}
+			request := recoverEditRetryRequest()
+			request.Body.Action = action
+			response, err := api.RecoverWorkspaceAgentEditRetry(t.Context(), request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := response.(tuttigenerated.RecoverWorkspaceAgentEditRetry200JSONResponse); !ok || captured.Action != agenthost.EditRetryRecoveryAction(action) {
+				t.Fatalf("response=%#v captured=%#v", response, captured)
+			}
+		})
+	}
+}
+
+func TestGeneratedAgentEditRetryResponseMapsRecoveryProjection(t *testing.T) {
+	generated := generatedAgentEditRetryResult(agentservice.EditRetryResult{
+		OperationID: "operation-1", OperationVersion: 9, State: agenthost.EditRetryStateResendPending,
+		RetractedTurnID: "turn-1", HistoryRevision: 4, Automatic: true, NextAttemptAtMS: 1234, Attempt: 2,
+		AvailableActions: []agenthost.EditRetryRecoveryAction{agenthost.EditRetryRecoveryActionReconcile},
+	}, nil)
+	if generated.OperationVersion == nil || *generated.OperationVersion != 9 || generated.Automatic == nil || !*generated.Automatic ||
+		generated.ImpactScope == nil || *generated.ImpactScope != tuttigenerated.Session ||
+		generated.NextAttemptAtUnixMs == nil || *generated.NextAttemptAtUnixMs != 1234 || generated.NextAttemptAt == nil || *generated.NextAttemptAt != 1234 || generated.Attempt == nil || *generated.Attempt != 2 ||
+		generated.AvailableActions == nil || len(*generated.AvailableActions) != 1 || (*generated.AvailableActions)[0] != tuttigenerated.WorkspaceAgentEditRetryRecoveryActionReconcile {
+		t.Fatalf("response=%#v", generated)
+	}
+}
+
+func TestGeneratedAgentEditRetryAvailabilityMapsRolloutDisabledSeparately(t *testing.T) {
+	availability := generatedAgentEditRetryAvailability(agenthost.EditRetryAvailability{
+		HistoryRevision: 4,
+		ReasonCode:      agenthost.EditRetryReasonCodeRolloutDisabled,
+		RecoveryState:   agenthost.EditRetryStatePrepared,
+	})
+	if availability.Supported || availability.Eligible || availability.ReasonCode == nil ||
+		*availability.ReasonCode != tuttigenerated.WorkspaceAgentEditRetryReasonCodeRolloutDisabled {
+		t.Fatalf("availability=%#v, want rollout-disabled admission projection", availability)
 	}
 }
 
@@ -148,6 +217,17 @@ func TestGeneratedAgentEditRetryAvailabilityKeepsStableOptionalShape(t *testing.
 	}
 }
 
+func TestGeneratedAgentEditRetryAvailabilityMapsRecoveryProjection(t *testing.T) {
+	generated := generatedAgentEditRetryAvailability(agenthost.EditRetryAvailability{
+		OperationID: "operation-1", OperationVersion: 7, Automatic: true, NextAttemptAtMS: 987, Attempt: 3,
+	})
+	if generated.OperationVersion == nil || *generated.OperationVersion != 7 || generated.Automatic == nil || !*generated.Automatic ||
+		generated.ImpactScope == nil || *generated.ImpactScope != tuttigenerated.Session ||
+		generated.NextAttemptAtUnixMs == nil || *generated.NextAttemptAtUnixMs != 987 || generated.NextAttemptAt == nil || *generated.NextAttemptAt != 987 || generated.Attempt == nil || *generated.Attempt != 3 {
+		t.Fatalf("availability=%#v", generated)
+	}
+}
+
 func editRetryRequest() tuttigenerated.EditRetryWorkspaceAgentTurnRequestObject {
 	return tuttigenerated.EditRetryWorkspaceAgentTurnRequestObject{
 		WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
@@ -155,6 +235,16 @@ func editRetryRequest() tuttigenerated.EditRetryWorkspaceAgentTurnRequestObject 
 			EditedText:              "edited",
 			ClientOperationId:       "client-operation-1",
 			ExpectedHistoryRevision: 7,
+		},
+	}
+}
+
+func recoverEditRetryRequest() tuttigenerated.RecoverWorkspaceAgentEditRetryRequestObject {
+	return tuttigenerated.RecoverWorkspaceAgentEditRetryRequestObject{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", OperationID: "operation-1",
+		Body: &tuttigenerated.RecoverWorkspaceAgentEditRetryRequest{
+			Action: tuttigenerated.WorkspaceAgentEditRetryRecoveryActionReconcile, ClientActionId: "client-action-1",
+			ExpectedOperationVersion: 7, ExpectedHistoryRevision: 3,
 		},
 	}
 }

@@ -372,10 +372,12 @@ export const zhCNAgentGui = {
   editRetryEditMessage: "编辑消息",
   editRetryCancel: "取消",
   editRetrySubmit: "保存并重试",
+  editRetryFailed: "编辑重试失败",
   editRetryProcessing: "正在更新会话历史并重试…",
   editRetryNeedsAction: "会话历史已更新，但编辑后的消息仍需恢复",
   editRetryReconcile: "核对状态",
   editRetryRetryReplacement: "重试消息",
+  editRetryAbandon: "放弃恢复",
   messageCopied: "已复制",
   promptTipsPrefix: "Tips：",
   reviewPicker: {

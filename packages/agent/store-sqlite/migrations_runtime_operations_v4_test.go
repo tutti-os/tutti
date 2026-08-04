@@ -11,8 +11,9 @@ func TestRuntimeOperationsV4RejectsDuplicateStructuredIdentityWithoutMutation(t 
 	ctx := context.Background()
 	if _, err := store.db.Exec(`
 DROP TABLE workspace_agent_runtime_operation_events;
+DROP TABLE IF EXISTS workspace_agent_runtime_operation_recovery_actions;
 DROP TABLE workspace_agent_runtime_operations;
-DELETE FROM agent_store_schema_migrations WHERE id = 'workspace_agent_runtime_operations_v4';
+DELETE FROM agent_store_schema_migrations WHERE id IN ('workspace_agent_runtime_operations_v4', 'workspace_agent_runtime_operations_v5', 'workspace_agent_runtime_operations_v6_blocked', 'workspace_agent_runtime_operations_v7_action_workspace_fk', 'workspace_agent_runtime_operations_v8_outbox_retry', 'workspace_agent_runtime_operations_v9_replacement_authorized_event', 'workspace_agent_runtime_operations_v10_event_occurrence_identity', 'workspace_agent_runtime_operations_v11_edit_retry_protocol_v2');
 CREATE TABLE workspace_agent_runtime_operations (
   operation_id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,

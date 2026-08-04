@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
+	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 )
 
 func TestConfiguredServiceReturnsPrecomposedApplicationHost(t *testing.T) {
@@ -28,6 +29,16 @@ func TestConfiguredServiceReturnsPrecomposedApplicationHost(t *testing.T) {
 	)
 	if host == nil {
 		t.Fatal("NewApplicationHostWithPorts() = nil")
+	}
+	if health := host.RuntimeOperationHealth(t.Context()); !health.ActiveStateAvailable {
+		t.Fatalf("production canonical health projection unavailable: %#v", health)
+	}
+	availability, err := host.GetEditRetryAvailability(t.Context(), agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"})
+	if err != nil {
+		t.Fatalf("production edit retry availability: %v", err)
+	}
+	if availability.ReasonCode == agenthost.EditRetryReasonCodeRolloutDisabled {
+		t.Fatalf("production composition still denies new edit retries: %#v", availability)
 	}
 	config.Host = ServiceHostConfig{
 		ApplicationHost: host,
@@ -68,6 +79,10 @@ type configuredServiceHostCanonical struct {
 	serviceHostStore
 	agenthost.TurnSubmissionStore
 	agenthost.EffectiveHistoryStore
+}
+
+func (configuredServiceHostCanonical) ListActiveEditRetryDegradations(context.Context, int) ([]storesqlite.ActiveEditRetryDegradation, int64, bool, error) {
+	return nil, 0, false, nil
 }
 
 func TestConfiguredServiceRejectsIncompleteHostComposition(t *testing.T) {

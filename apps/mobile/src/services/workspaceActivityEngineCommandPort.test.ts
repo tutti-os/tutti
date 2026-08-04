@@ -104,7 +104,10 @@ describe("createWorkspaceActivityEffectPort", () => {
       {
         action: "reconcile",
         agentSessionId: "session-1",
+        clientActionId: "action-1",
         commandId: "command-2",
+        expectedHistoryRevision: 1,
+        expectedOperationVersion: 1,
         operationId: "operation-1",
         type: "turn/recoverEditRetry",
         workspaceId: "workspace-1"

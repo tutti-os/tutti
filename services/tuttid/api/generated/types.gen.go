@@ -2335,6 +2335,138 @@ func (e PermissionModeSemantic) Valid() bool {
 	}
 }
 
+// Defines values for RuntimeOperationEditRetryDegradationAvailableActions.
+const (
+	Abandon          RuntimeOperationEditRetryDegradationAvailableActions = "abandon"
+	Reconcile        RuntimeOperationEditRetryDegradationAvailableActions = "reconcile"
+	RetryReplacement RuntimeOperationEditRetryDegradationAvailableActions = "retry_replacement"
+)
+
+// Valid indicates whether the value is a known member of the RuntimeOperationEditRetryDegradationAvailableActions enum.
+func (e RuntimeOperationEditRetryDegradationAvailableActions) Valid() bool {
+	switch e {
+	case Abandon:
+		return true
+	case Reconcile:
+		return true
+	case RetryReplacement:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RuntimeOperationEditRetryDegradationKind.
+const (
+	EditRetry RuntimeOperationEditRetryDegradationKind = "edit_retry"
+)
+
+// Valid indicates whether the value is a known member of the RuntimeOperationEditRetryDegradationKind enum.
+func (e RuntimeOperationEditRetryDegradationKind) Valid() bool {
+	switch e {
+	case EditRetry:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RuntimeOperationEditRetryDegradationState.
+const (
+	RuntimeOperationEditRetryDegradationStateCompleted        RuntimeOperationEditRetryDegradationState = "completed"
+	RuntimeOperationEditRetryDegradationStatePrepared         RuntimeOperationEditRetryDegradationState = "prepared"
+	RuntimeOperationEditRetryDegradationStateRecoveryRequired RuntimeOperationEditRetryDegradationState = "recovery_required"
+	RuntimeOperationEditRetryDegradationStateResendPending    RuntimeOperationEditRetryDegradationState = "resend_pending"
+	RuntimeOperationEditRetryDegradationStateRollingBack      RuntimeOperationEditRetryDegradationState = "rolling_back"
+)
+
+// Valid indicates whether the value is a known member of the RuntimeOperationEditRetryDegradationState enum.
+func (e RuntimeOperationEditRetryDegradationState) Valid() bool {
+	switch e {
+	case RuntimeOperationEditRetryDegradationStateCompleted:
+		return true
+	case RuntimeOperationEditRetryDegradationStatePrepared:
+		return true
+	case RuntimeOperationEditRetryDegradationStateRecoveryRequired:
+		return true
+	case RuntimeOperationEditRetryDegradationStateResendPending:
+		return true
+	case RuntimeOperationEditRetryDegradationStateRollingBack:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RuntimeOperationWorkerHealthActiveStateDiagnosticCode.
+const (
+	RuntimeOperationActiveStateUnavailable RuntimeOperationWorkerHealthActiveStateDiagnosticCode = "runtime_operation_active_state_unavailable"
+)
+
+// Valid indicates whether the value is a known member of the RuntimeOperationWorkerHealthActiveStateDiagnosticCode enum.
+func (e RuntimeOperationWorkerHealthActiveStateDiagnosticCode) Valid() bool {
+	switch e {
+	case RuntimeOperationActiveStateUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RuntimeOperationWorkerHealthObservedFailureScopes.
+const (
+	RuntimeOperationWorkerHealthObservedFailureScopesItem                 RuntimeOperationWorkerHealthObservedFailureScopes = "item"
+	RuntimeOperationWorkerHealthObservedFailureScopesOutbox               RuntimeOperationWorkerHealthObservedFailureScopes = "outbox"
+	RuntimeOperationWorkerHealthObservedFailureScopesPostListenerDegraded RuntimeOperationWorkerHealthObservedFailureScopes = "post_listener_degraded"
+	RuntimeOperationWorkerHealthObservedFailureScopesPostListenerRecovery RuntimeOperationWorkerHealthObservedFailureScopes = "post_listener_recovery"
+	RuntimeOperationWorkerHealthObservedFailureScopesStore                RuntimeOperationWorkerHealthObservedFailureScopes = "store"
+)
+
+// Valid indicates whether the value is a known member of the RuntimeOperationWorkerHealthObservedFailureScopes enum.
+func (e RuntimeOperationWorkerHealthObservedFailureScopes) Valid() bool {
+	switch e {
+	case RuntimeOperationWorkerHealthObservedFailureScopesItem:
+		return true
+	case RuntimeOperationWorkerHealthObservedFailureScopesOutbox:
+		return true
+	case RuntimeOperationWorkerHealthObservedFailureScopesPostListenerDegraded:
+		return true
+	case RuntimeOperationWorkerHealthObservedFailureScopesPostListenerRecovery:
+		return true
+	case RuntimeOperationWorkerHealthObservedFailureScopesStore:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RuntimeOperationWorkerHealthScopes.
+const (
+	RuntimeOperationWorkerHealthScopesItem                 RuntimeOperationWorkerHealthScopes = "item"
+	RuntimeOperationWorkerHealthScopesOutbox               RuntimeOperationWorkerHealthScopes = "outbox"
+	RuntimeOperationWorkerHealthScopesPostListenerDegraded RuntimeOperationWorkerHealthScopes = "post_listener_degraded"
+	RuntimeOperationWorkerHealthScopesPostListenerRecovery RuntimeOperationWorkerHealthScopes = "post_listener_recovery"
+	RuntimeOperationWorkerHealthScopesStore                RuntimeOperationWorkerHealthScopes = "store"
+)
+
+// Valid indicates whether the value is a known member of the RuntimeOperationWorkerHealthScopes enum.
+func (e RuntimeOperationWorkerHealthScopes) Valid() bool {
+	switch e {
+	case RuntimeOperationWorkerHealthScopesItem:
+		return true
+	case RuntimeOperationWorkerHealthScopesOutbox:
+		return true
+	case RuntimeOperationWorkerHealthScopesPostListenerDegraded:
+		return true
+	case RuntimeOperationWorkerHealthScopesPostListenerRecovery:
+		return true
+	case RuntimeOperationWorkerHealthScopesStore:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SendWorkspaceAgentSessionInputGoalControlResponseKind.
 const (
 	SendWorkspaceAgentSessionInputGoalControlResponseKindGoalControl SendWorkspaceAgentSessionInputGoalControlResponseKind = "goalControl"
@@ -2794,14 +2926,34 @@ func (e WorkspaceAgentEditRetryAvailabilityRecoveryState) Valid() bool {
 	}
 }
 
+// Defines values for WorkspaceAgentEditRetryImpactScope.
+const (
+	Session WorkspaceAgentEditRetryImpactScope = "session"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentEditRetryImpactScope enum.
+func (e WorkspaceAgentEditRetryImpactScope) Valid() bool {
+	switch e {
+	case Session:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkspaceAgentEditRetryReasonCode.
 const (
 	WorkspaceAgentEditRetryReasonCodeHistoryRevisionConflict    WorkspaceAgentEditRetryReasonCode = "history_revision_conflict"
+	WorkspaceAgentEditRetryReasonCodeLocalStateInconsistent     WorkspaceAgentEditRetryReasonCode = "local_state_inconsistent"
 	WorkspaceAgentEditRetryReasonCodeOperationConflict          WorkspaceAgentEditRetryReasonCode = "operation_conflict"
 	WorkspaceAgentEditRetryReasonCodeProviderOutcomeUnknown     WorkspaceAgentEditRetryReasonCode = "provider_outcome_unknown"
+	WorkspaceAgentEditRetryReasonCodeProviderRejected           WorkspaceAgentEditRetryReasonCode = "provider_rejected"
 	WorkspaceAgentEditRetryReasonCodeProviderUnsupported        WorkspaceAgentEditRetryReasonCode = "provider_unsupported"
 	WorkspaceAgentEditRetryReasonCodeRecoveryRequired           WorkspaceAgentEditRetryReasonCode = "recovery_required"
 	WorkspaceAgentEditRetryReasonCodeReplacementNotProvenAbsent WorkspaceAgentEditRetryReasonCode = "replacement_not_proven_absent"
+	WorkspaceAgentEditRetryReasonCodeRetryBudgetExhausted       WorkspaceAgentEditRetryReasonCode = "retry_budget_exhausted"
+	WorkspaceAgentEditRetryReasonCodeRetryWait                  WorkspaceAgentEditRetryReasonCode = "retry_wait"
+	WorkspaceAgentEditRetryReasonCodeRolloutDisabled            WorkspaceAgentEditRetryReasonCode = "rollout_disabled"
 	WorkspaceAgentEditRetryReasonCodeTurnNotFound               WorkspaceAgentEditRetryReasonCode = "turn_not_found"
 	WorkspaceAgentEditRetryReasonCodeTurnNotLatest              WorkspaceAgentEditRetryReasonCode = "turn_not_latest"
 	WorkspaceAgentEditRetryReasonCodeTurnNotSettled             WorkspaceAgentEditRetryReasonCode = "turn_not_settled"
@@ -2812,15 +2964,25 @@ func (e WorkspaceAgentEditRetryReasonCode) Valid() bool {
 	switch e {
 	case WorkspaceAgentEditRetryReasonCodeHistoryRevisionConflict:
 		return true
+	case WorkspaceAgentEditRetryReasonCodeLocalStateInconsistent:
+		return true
 	case WorkspaceAgentEditRetryReasonCodeOperationConflict:
 		return true
 	case WorkspaceAgentEditRetryReasonCodeProviderOutcomeUnknown:
+		return true
+	case WorkspaceAgentEditRetryReasonCodeProviderRejected:
 		return true
 	case WorkspaceAgentEditRetryReasonCodeProviderUnsupported:
 		return true
 	case WorkspaceAgentEditRetryReasonCodeRecoveryRequired:
 		return true
 	case WorkspaceAgentEditRetryReasonCodeReplacementNotProvenAbsent:
+		return true
+	case WorkspaceAgentEditRetryReasonCodeRetryBudgetExhausted:
+		return true
+	case WorkspaceAgentEditRetryReasonCodeRetryWait:
+		return true
+	case WorkspaceAgentEditRetryReasonCodeRolloutDisabled:
 		return true
 	case WorkspaceAgentEditRetryReasonCodeTurnNotFound:
 		return true
@@ -2835,6 +2997,7 @@ func (e WorkspaceAgentEditRetryReasonCode) Valid() bool {
 
 // Defines values for WorkspaceAgentEditRetryRecoveryAction.
 const (
+	WorkspaceAgentEditRetryRecoveryActionAbandon          WorkspaceAgentEditRetryRecoveryAction = "abandon"
 	WorkspaceAgentEditRetryRecoveryActionReconcile        WorkspaceAgentEditRetryRecoveryAction = "reconcile"
 	WorkspaceAgentEditRetryRecoveryActionRetryReplacement WorkspaceAgentEditRetryRecoveryAction = "retry_replacement"
 )
@@ -2842,6 +3005,8 @@ const (
 // Valid indicates whether the value is a known member of the WorkspaceAgentEditRetryRecoveryAction enum.
 func (e WorkspaceAgentEditRetryRecoveryAction) Valid() bool {
 	switch e {
+	case WorkspaceAgentEditRetryRecoveryActionAbandon:
+		return true
 	case WorkspaceAgentEditRetryRecoveryActionReconcile:
 		return true
 	case WorkspaceAgentEditRetryRecoveryActionRetryReplacement:
@@ -6219,8 +6384,9 @@ type GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest struct {
 
 // HealthStatusResponse defines model for HealthStatusResponse.
 type HealthStatusResponse struct {
-	Service string                     `json:"service"`
-	Status  HealthStatusResponseStatus `json:"status"`
+	RuntimeOperationWorker *RuntimeOperationWorkerHealth `json:"runtimeOperationWorker,omitempty"`
+	Service                string                        `json:"service"`
+	Status                 HealthStatusResponseStatus    `json:"status"`
 }
 
 // HealthStatusResponseStatus defines model for HealthStatusResponse.Status.
@@ -7017,7 +7183,10 @@ type PutWorkspaceWorkbenchRequest struct {
 
 // RecoverWorkspaceAgentEditRetryRequest defines model for RecoverWorkspaceAgentEditRetryRequest.
 type RecoverWorkspaceAgentEditRetryRequest struct {
-	Action WorkspaceAgentEditRetryRecoveryAction `json:"action"`
+	Action                   WorkspaceAgentEditRetryRecoveryAction `json:"action"`
+	ClientActionId           string                                `json:"clientActionId"`
+	ExpectedHistoryRevision  int64                                 `json:"expectedHistoryRevision"`
+	ExpectedOperationVersion int64                                 `json:"expectedOperationVersion"`
 }
 
 // ReloadLocalWorkspaceAppRequest defines model for ReloadLocalWorkspaceAppRequest.
@@ -7052,6 +7221,84 @@ type ResizeWorkspaceTerminalRequest struct {
 type RollbackWorkspaceAppRequest struct {
 	Version string `json:"version"`
 }
+
+// RuntimeOperationEditRetryDegradation defines model for RuntimeOperationEditRetryDegradation.
+type RuntimeOperationEditRetryDegradation struct {
+	AgentSessionId      string                                                 `json:"agentSessionId"`
+	Attempt             int                                                    `json:"attempt"`
+	AvailableActions    []RuntimeOperationEditRetryDegradationAvailableActions `json:"availableActions"`
+	Kind                RuntimeOperationEditRetryDegradationKind               `json:"kind"`
+	NextAttemptAtUnixMs *int64                                                 `json:"nextAttemptAtUnixMs,omitempty"`
+	OperationId         string                                                 `json:"operationId"`
+	ReasonCode          WorkspaceAgentEditRetryReasonCode                      `json:"reasonCode"`
+	State               RuntimeOperationEditRetryDegradationState              `json:"state"`
+	WorkspaceId         string                                                 `json:"workspaceId"`
+}
+
+// RuntimeOperationEditRetryDegradationAvailableActions defines model for RuntimeOperationEditRetryDegradation.AvailableActions.
+type RuntimeOperationEditRetryDegradationAvailableActions string
+
+// RuntimeOperationEditRetryDegradationKind defines model for RuntimeOperationEditRetryDegradation.Kind.
+type RuntimeOperationEditRetryDegradationKind string
+
+// RuntimeOperationEditRetryDegradationState defines model for RuntimeOperationEditRetryDegradation.State.
+type RuntimeOperationEditRetryDegradationState string
+
+// RuntimeOperationWorkerHealth defines model for RuntimeOperationWorkerHealth.
+type RuntimeOperationWorkerHealth struct {
+	// ActiveDegradationCount Count of unresolved durable edit-retry degradation records, including orphan session fences
+	ActiveDegradationCount      int64                                                  `json:"activeDegradationCount"`
+	ActiveDegradationsTruncated bool                                                   `json:"activeDegradationsTruncated"`
+	ActiveEditRetryDegradations []RuntimeOperationEditRetryDegradation                 `json:"activeEditRetryDegradations"`
+	ActiveStateAvailable        bool                                                   `json:"activeStateAvailable"`
+	ActiveStateDiagnosticCode   *RuntimeOperationWorkerHealthActiveStateDiagnosticCode `json:"activeStateDiagnosticCode,omitempty"`
+
+	// ItemFailures Historical process-local cumulative count; use itemFailuresTotal
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	ItemFailures        int64  `json:"itemFailures"`
+	ItemFailuresTotal   int64  `json:"itemFailuresTotal"`
+	LastFailureAtUnixMs *int64 `json:"lastFailureAtUnixMs,omitempty"`
+
+	// ObservedFailureScopes Process-local scopes observed since this daemon started
+	ObservedFailureScopes []RuntimeOperationWorkerHealthObservedFailureScopes `json:"observedFailureScopes"`
+
+	// OutboxFailures Historical process-local cumulative count; use outboxFailuresTotal
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	OutboxFailures      int64 `json:"outboxFailures"`
+	OutboxFailuresTotal int64 `json:"outboxFailuresTotal"`
+
+	// PostListenerRecoveryDegraded Historical process-local cumulative compatibility alias; use postListenerRecoveryDegradedTotal
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	PostListenerRecoveryDegraded int64 `json:"postListenerRecoveryDegraded"`
+
+	// PostListenerRecoveryDegradedTotal Historical process-local cumulative post-listener degraded recoveries
+	PostListenerRecoveryDegradedTotal int64 `json:"postListenerRecoveryDegradedTotal"`
+
+	// PostListenerRecoveryFailures Historical process-local cumulative compatibility alias; use postListenerRecoveryFailuresTotal
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	PostListenerRecoveryFailures int64 `json:"postListenerRecoveryFailures"`
+
+	// PostListenerRecoveryFailuresTotal Historical process-local cumulative post-listener recovery failures
+	PostListenerRecoveryFailuresTotal int64 `json:"postListenerRecoveryFailuresTotal"`
+
+	// Scopes Historical process-local observed scopes; use observedFailureScopes
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	Scopes []RuntimeOperationWorkerHealthScopes `json:"scopes"`
+
+	// StoreFailures Historical process-local cumulative count; use storeFailuresTotal
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	StoreFailures      int64 `json:"storeFailures"`
+	StoreFailuresTotal int64 `json:"storeFailuresTotal"`
+}
+
+// RuntimeOperationWorkerHealthActiveStateDiagnosticCode defines model for RuntimeOperationWorkerHealth.ActiveStateDiagnosticCode.
+type RuntimeOperationWorkerHealthActiveStateDiagnosticCode string
+
+// RuntimeOperationWorkerHealthObservedFailureScopes defines model for RuntimeOperationWorkerHealth.ObservedFailureScopes.
+type RuntimeOperationWorkerHealthObservedFailureScopes string
+
+// RuntimeOperationWorkerHealthScopes defines model for RuntimeOperationWorkerHealth.Scopes.
+type RuntimeOperationWorkerHealthScopes string
 
 // SendWorkspaceAgentSessionInputGoalControlResponse defines model for SendWorkspaceAgentSessionInputGoalControlResponse.
 type SendWorkspaceAgentSessionInputGoalControlResponse struct {
@@ -7705,18 +7952,34 @@ type WorkspaceAgentCompletedCommandStatus string
 
 // WorkspaceAgentEditRetryAvailability defines model for WorkspaceAgentEditRetryAvailability.
 type WorkspaceAgentEditRetryAvailability struct {
-	AvailableActions []WorkspaceAgentEditRetryRecoveryAction          `json:"availableActions"`
-	Eligible         bool                                             `json:"eligible"`
-	HistoryRevision  int64                                            `json:"historyRevision"`
-	OperationId      *string                                          `json:"operationId,omitempty"`
-	ReasonCode       *WorkspaceAgentEditRetryReasonCode               `json:"reasonCode,omitempty"`
-	RecoveryState    WorkspaceAgentEditRetryAvailabilityRecoveryState `json:"recoveryState"`
-	Supported        bool                                             `json:"supported"`
-	TurnId           *string                                          `json:"turnId,omitempty"`
+	Attempt          *int                                    `json:"attempt,omitempty"`
+	Automatic        *bool                                   `json:"automatic,omitempty"`
+	AvailableActions []WorkspaceAgentEditRetryRecoveryAction `json:"availableActions"`
+	Eligible         bool                                    `json:"eligible"`
+	HistoryRevision  int64                                   `json:"historyRevision"`
+
+	// ImpactScope Exact blast radius of this durable edit-retry operation
+	ImpactScope *WorkspaceAgentEditRetryImpactScope `json:"impactScope,omitempty"`
+
+	// NextAttemptAt Compatibility alias for nextAttemptAtUnixMs in Unix epoch milliseconds
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	NextAttemptAt *int64 `json:"nextAttemptAt,omitempty"`
+
+	// NextAttemptAtUnixMs Unix epoch milliseconds for the next automatic recovery attempt
+	NextAttemptAtUnixMs *int64                                           `json:"nextAttemptAtUnixMs,omitempty"`
+	OperationId         *string                                          `json:"operationId,omitempty"`
+	OperationVersion    *int64                                           `json:"operationVersion,omitempty"`
+	ReasonCode          *WorkspaceAgentEditRetryReasonCode               `json:"reasonCode,omitempty"`
+	RecoveryState       WorkspaceAgentEditRetryAvailabilityRecoveryState `json:"recoveryState"`
+	Supported           bool                                             `json:"supported"`
+	TurnId              *string                                          `json:"turnId,omitempty"`
 }
 
 // WorkspaceAgentEditRetryAvailabilityRecoveryState defines model for WorkspaceAgentEditRetryAvailability.RecoveryState.
 type WorkspaceAgentEditRetryAvailabilityRecoveryState string
+
+// WorkspaceAgentEditRetryImpactScope Exact blast radius of this durable edit-retry operation
+type WorkspaceAgentEditRetryImpactScope string
 
 // WorkspaceAgentEditRetryReasonCode defines model for WorkspaceAgentEditRetryReasonCode.
 type WorkspaceAgentEditRetryReasonCode string
@@ -7726,12 +7989,26 @@ type WorkspaceAgentEditRetryRecoveryAction string
 
 // WorkspaceAgentEditRetryResponse defines model for WorkspaceAgentEditRetryResponse.
 type WorkspaceAgentEditRetryResponse struct {
-	HistoryRevision   int64                                `json:"historyRevision"`
-	OperationId       string                               `json:"operationId"`
-	ReasonCode        *WorkspaceAgentEditRetryReasonCode   `json:"reasonCode,omitempty"`
-	ReplacementTurnId *string                              `json:"replacementTurnId,omitempty"`
-	RetractedTurnId   string                               `json:"retractedTurnId"`
-	State             WorkspaceAgentEditRetryResponseState `json:"state"`
+	Attempt          *int                                     `json:"attempt,omitempty"`
+	Automatic        *bool                                    `json:"automatic,omitempty"`
+	AvailableActions *[]WorkspaceAgentEditRetryRecoveryAction `json:"availableActions,omitempty"`
+	HistoryRevision  int64                                    `json:"historyRevision"`
+
+	// ImpactScope Exact blast radius of this durable edit-retry operation
+	ImpactScope *WorkspaceAgentEditRetryImpactScope `json:"impactScope,omitempty"`
+
+	// NextAttemptAt Compatibility alias for nextAttemptAtUnixMs in Unix epoch milliseconds
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	NextAttemptAt *int64 `json:"nextAttemptAt,omitempty"`
+
+	// NextAttemptAtUnixMs Unix epoch milliseconds for the next automatic recovery attempt
+	NextAttemptAtUnixMs *int64                               `json:"nextAttemptAtUnixMs,omitempty"`
+	OperationId         string                               `json:"operationId"`
+	OperationVersion    *int64                               `json:"operationVersion,omitempty"`
+	ReasonCode          *WorkspaceAgentEditRetryReasonCode   `json:"reasonCode,omitempty"`
+	ReplacementTurnId   *string                              `json:"replacementTurnId,omitempty"`
+	RetractedTurnId     string                               `json:"retractedTurnId"`
+	State               WorkspaceAgentEditRetryResponseState `json:"state"`
 }
 
 // WorkspaceAgentEditRetryResponseState defines model for WorkspaceAgentEditRetryResponse.State.

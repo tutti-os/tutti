@@ -978,7 +978,7 @@ describe("agentGuiConversationModel", () => {
     ]);
   });
 
-  it("keeps the processing row after an interim assistant message while the turn lifecycle is running", () => {
+  it("hides generic processing rows while the turn lifecycle is running", () => {
     const interimTimelineItems = [
       timelineItem({
         id: 1,
@@ -1036,7 +1036,7 @@ describe("agentGuiConversationModel", () => {
     });
 
     expect(withRunningTurn?.rows.some((row) => row.kind === "processing")).toBe(
-      true
+      false
     );
     expect(
       withoutTurnLifecycle?.rows.some((row) => row.kind === "processing")

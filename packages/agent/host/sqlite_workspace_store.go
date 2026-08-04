@@ -20,7 +20,10 @@ const canonicalRuntimeSessionOrigin = "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME"
 // Product-owned sidecar projections should wrap this type and observe the
 // persisted result; they must not reimplement canonical initialization.
 type SQLiteWorkspaceStore struct {
-	StoreForWorkspace      func(string) *storesqlite.Store
+	StoreForWorkspace func(string) *storesqlite.Store
+	// HealthStore is the canonical read-only store for bounded cross-workspace
+	// edit-retry degradation projection.
+	HealthStore            func() *storesqlite.Store
 	CurrentUserID          func() string
 	Clock                  Clock
 	Observer               CommitObserver
@@ -572,6 +575,13 @@ func (s *SQLiteWorkspaceStore) GetSessionHistory(ctx context.Context, workspaceI
 	return store.GetSessionHistory(ctx, workspaceID, sessionID)
 }
 
+func (s *SQLiteWorkspaceStore) ListActiveEditRetryDegradations(ctx context.Context, limit int) ([]storesqlite.ActiveEditRetryDegradation, int64, bool, error) {
+	if s == nil || s.HealthStore == nil || s.HealthStore() == nil {
+		return nil, 0, false, errors.New("canonical runtime health store is unavailable")
+	}
+	return s.HealthStore().ListActiveEditRetryDegradations(ctx, limit)
+}
+
 func (s *SQLiteWorkspaceStore) GetTurnHistory(ctx context.Context, workspaceID, sessionID, turnID string) (storesqlite.TurnHistory, bool, error) {
 	store, err := s.store(workspaceID)
 	if err != nil {
@@ -586,73 +596,6 @@ func (s *SQLiteWorkspaceStore) ListEffectiveSessionTurns(ctx context.Context, wo
 		return nil, err
 	}
 	return store.ListEffectiveSessionTurns(ctx, workspaceID, sessionID)
-}
-
-func (s *SQLiteWorkspaceStore) MarkEditRetryRollbackDispatched(ctx context.Context, input storesqlite.MarkEditRetryRollbackDispatchedInput) (storesqlite.RuntimeOperation, bool, error) {
-	store, err := s.store(input.WorkspaceID)
-	if err != nil {
-		return storesqlite.RuntimeOperation{}, false, err
-	}
-	return store.MarkEditRetryRollbackDispatched(ctx, input)
-}
-
-func (s *SQLiteWorkspaceStore) ConfirmEditRetryRollback(ctx context.Context, input storesqlite.ConfirmEditRetryRollbackInput) (storesqlite.RuntimeOperation, bool, error) {
-	store, err := s.store(input.WorkspaceID)
-	if err != nil {
-		return storesqlite.RuntimeOperation{}, false, err
-	}
-	return store.ConfirmEditRetryRollback(ctx, input)
-}
-
-func (s *SQLiteWorkspaceStore) AbortEditRetryRollback(ctx context.Context, input storesqlite.AbortEditRetryRollbackInput) (storesqlite.RuntimeOperation, bool, error) {
-	store, err := s.store(input.WorkspaceID)
-	if err != nil {
-		return storesqlite.RuntimeOperation{}, false, err
-	}
-	return store.AbortEditRetryRollback(ctx, input)
-}
-
-func (s *SQLiteWorkspaceStore) PrepareEditRetryReplacementRedispatch(
-	ctx context.Context,
-	input storesqlite.PrepareEditRetryReplacementRedispatchInput,
-) (storesqlite.RuntimeOperation, bool, error) {
-	store, err := s.store(input.WorkspaceID)
-	if err != nil {
-		return storesqlite.RuntimeOperation{}, false, err
-	}
-	return store.PrepareEditRetryReplacementRedispatch(ctx, input)
-}
-
-func (s *SQLiteWorkspaceStore) CompleteEditRetryRuntimeOperation(ctx context.Context, input storesqlite.CompleteEditRetryRuntimeOperationInput) (storesqlite.RuntimeOperationCompletion, bool, error) {
-	store, err := s.store(input.WorkspaceID)
-	if err != nil {
-		return storesqlite.RuntimeOperationCompletion{}, false, err
-	}
-	return store.CompleteEditRetryRuntimeOperation(ctx, input)
-}
-
-func (s *SQLiteWorkspaceStore) FailEditRetryRecovery(ctx context.Context, input storesqlite.FailEditRetryRecoveryInput) (storesqlite.RuntimeOperation, bool, error) {
-	store, err := s.store(input.WorkspaceID)
-	if err != nil {
-		return storesqlite.RuntimeOperation{}, false, err
-	}
-	return store.FailEditRetryRecovery(ctx, input)
-}
-
-func (s *SQLiteWorkspaceStore) QuarantineEditRetryOperation(ctx context.Context, input storesqlite.QuarantineEditRetryOperationInput) (storesqlite.RuntimeOperation, bool, error) {
-	store, err := s.store(input.WorkspaceID)
-	if err != nil {
-		return storesqlite.RuntimeOperation{}, false, err
-	}
-	return store.QuarantineEditRetryOperation(ctx, input)
-}
-
-func (s *SQLiteWorkspaceStore) ClearAbandonedEditRetryFence(ctx context.Context, input storesqlite.ClearAbandonedEditRetryFenceInput) (bool, error) {
-	store, err := s.store(input.WorkspaceID)
-	if err != nil {
-		return false, err
-	}
-	return store.ClearAbandonedEditRetryFence(ctx, input)
 }
 
 func (s *SQLiteWorkspaceStore) ListSessionTurnSummaries(ctx context.Context, input storesqlite.ListSessionTurnSummariesInput) (storesqlite.SessionTurnSummaryPage, error) {

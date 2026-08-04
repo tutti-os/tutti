@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -12,6 +13,25 @@ import (
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	_ "modernc.org/sqlite"
 )
+
+func recoverEditRetryCommand(
+	host *agenthost.Host,
+	ctx context.Context,
+	ref agenthost.SessionRef,
+	operationID string,
+	action agenthost.EditRetryRecoveryAction,
+) (agenthost.EditRetryResult, error) {
+	availability, err := host.GetEditRetryAvailability(ctx, ref)
+	if err != nil {
+		return agenthost.EditRetryResult{}, err
+	}
+	return host.RecoverEditRetryCommand(ctx, ref, operationID, agenthost.RecoverEditRetryInput{
+		Action:                   action,
+		ClientActionID:           fmt.Sprintf("test:%s:%s:%d:%d", operationID, action, availability.OperationVersion, availability.HistoryRevision),
+		ExpectedOperationVersion: availability.OperationVersion,
+		ExpectedHistoryRevision:  availability.HistoryRevision,
+	})
+}
 
 func TestEditRetrySagaPreservesNonTextAndUsesDirectReceipt(t *testing.T) {
 	host, store, runtime := newHostEditRetryFixture(t)
@@ -39,6 +59,12 @@ func TestEditRetrySagaPreservesNonTextAndUsesDirectReceipt(t *testing.T) {
 			runtime.rollbackCalls, runtime.execCalls, runtime.historyReads,
 		)
 	}
+	if runtime.canonicalSubmitOccurredAtUnixMS <= 0 {
+		t.Fatalf(
+			"canonical submit occurrence time = %d, want a durable claim timestamp",
+			runtime.canonicalSubmitOccurredAtUnixMS,
+		)
+	}
 	if len(runtime.content) != 3 ||
 		runtime.content[0].Text != "edited prompt" ||
 		runtime.content[1].AttachmentID != "attachment-1" ||
@@ -48,6 +74,159 @@ func TestEditRetrySagaPreservesNonTextAndUsesDirectReceipt(t *testing.T) {
 	original, found, err := store.GetTurn(t.Context(), "workspace-1", "session-1", "turn-original")
 	if err != nil || !found || len(original.FileChanges) == 0 {
 		t.Fatalf("audited original turn = %#v, found=%v error=%v", original, found, err)
+	}
+}
+
+func TestEditRetryPreEffectProviderErrorReleasesOnlySessionFence(t *testing.T) {
+	host, store, runtime := newHostEditRetryFixture(t)
+	runtime.mu.Lock()
+	runtime.historyUnsupported = true
+	runtime.mu.Unlock()
+	result, err := host.EditRetry(
+		t.Context(),
+		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
+		"turn-original",
+		agenthost.EditRetryInput{EditedText: "edited prompt", ClientOperationID: "edit-provider-unsupported", ExpectedHistoryRevision: 0},
+	)
+	if !errors.Is(err, agenthost.ErrRuntimeHistoryUnsupported) || result.OperationID == "" {
+		t.Fatalf("EditRetry() result=%#v error=%v, want provider-unsupported error with durable operation", result, err)
+	}
+	op, found, err := store.GetRuntimeOperation(t.Context(), "workspace-1", result.OperationID)
+	if err != nil || !found || op.Status != storesqlite.RuntimeOperationStatusFailed {
+		t.Fatalf("operation=%#v found=%v error=%v, want failed terminal operation", op, found, err)
+	}
+	history, found, err := store.GetSessionHistory(t.Context(), "workspace-1", "session-1")
+	if err != nil || !found || history.RecoveryState != storesqlite.SessionHistoryRecoveryReady || history.OperationID != "" {
+		t.Fatalf("session history=%#v found=%v error=%v, want ready fence", history, found, err)
+	}
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	if runtime.historyReads != 0 || runtime.rollbackCalls != 0 || runtime.execCalls != 0 {
+		t.Fatalf("provider calls history=%d rollback=%d exec=%d, want 0/0/0", runtime.historyReads, runtime.rollbackCalls, runtime.execCalls)
+	}
+}
+
+func TestEditRetryReplacementHistoryReadFailureKeepsOnlyCurrentOperationBlocked(t *testing.T) {
+	host, store, runtime := newHostEditRetryFixture(t)
+	runtime.mu.Lock()
+	runtime.execOutcomeUnknown = true
+	runtime.historyReadErrorOn = 3
+	runtime.historyReadError = errors.New("provider history temporarily unavailable")
+	runtime.mu.Unlock()
+	first, err := host.EditRetry(
+		t.Context(),
+		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
+		"turn-original",
+		agenthost.EditRetryInput{EditedText: "edited prompt", ClientOperationID: "edit-history-read-retry", ExpectedHistoryRevision: 0},
+	)
+	if !errors.Is(err, agenthost.ErrEditRetryRecoveryRequired) || first.OperationID == "" {
+		t.Fatalf("EditRetry() result=%#v error=%v, want blocked recovery operation", first, err)
+	}
+	// The next read is an explicit, read-only reconciliation pass. A temporary
+	// history-read failure must not turn an uncertain provider boundary into an
+	// automatic retry.
+	runtime.mu.Lock()
+	runtime.historyReadErrorOn = runtime.historyReads + 1
+	runtime.mu.Unlock()
+	reconciled, reconcileErr := recoverEditRetryCommand(
+		host, t.Context(), agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
+		first.OperationID, agenthost.EditRetryRecoveryActionReconcile,
+	)
+	if reconcileErr != nil || reconciled.State != agenthost.EditRetryStateRecoveryRequired {
+		t.Fatalf("reconcile result=%#v error=%v, want blocked recovery", reconciled, reconcileErr)
+	}
+	op, found, err := store.GetRuntimeOperation(t.Context(), "workspace-1", first.OperationID)
+	if err != nil || !found || op.Status != storesqlite.RuntimeOperationStatusBlocked || op.LeaseOwner != "" || op.NextAttemptAtMS != 0 {
+		t.Fatalf("blocked operation=%#v found=%v error=%v, want no automatic retry", op, found, err)
+	}
+	history, found, err := store.GetSessionHistory(t.Context(), "workspace-1", "session-1")
+	if err != nil || !found || history.RecoveryState != storesqlite.SessionHistoryRecoveryRequired || history.OperationID != first.OperationID {
+		t.Fatalf("session history=%#v found=%v error=%v, want retained recovery fence", history, found, err)
+	}
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	if runtime.execCalls != 1 || runtime.rollbackCalls != 1 {
+		t.Fatalf("provider mutations rollback=%d exec=%d, want 1/1", runtime.rollbackCalls, runtime.execCalls)
+	}
+}
+
+func TestEditRetryReconcilesProviderSuccessAfterLocalProvenanceFailure(t *testing.T) {
+	host, store, runtime := newHostEditRetryFixture(t)
+	runtime.mu.Lock()
+	runtime.provenanceError = errors.New("injected local provenance failure")
+	runtime.mu.Unlock()
+	first, err := host.EditRetry(
+		t.Context(),
+		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
+		"turn-original",
+		agenthost.EditRetryInput{EditedText: "edited prompt", ClientOperationID: "edit-provenance-repair", ExpectedHistoryRevision: 0},
+	)
+	if !errors.Is(err, agenthost.ErrEditRetryRecoveryRequired) || first.OperationID == "" {
+		t.Fatalf("EditRetry() result=%#v error=%v, want session-local recovery", first, err)
+	}
+	runtime.mu.Lock()
+	execCalls := runtime.execCalls
+	runtime.mu.Unlock()
+	recovered, err := recoverEditRetryCommand(
+		host, t.Context(), agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
+		first.OperationID, agenthost.EditRetryRecoveryActionReconcile,
+	)
+	if err != nil || recovered.State != agenthost.EditRetryStateCompleted {
+		t.Fatalf("reconcile result=%#v error=%v, want completed local repair", recovered, err)
+	}
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	if runtime.execCalls != execCalls {
+		t.Fatalf("reconcile redispatched provider exec=%d, want %d", runtime.execCalls, execCalls)
+	}
+	submission, found, err := store.GetTurnSubmission(t.Context(), "workspace-1", "session-1", recovered.ReplacementTurnID)
+	if err != nil || !found || submission.ClientSubmitID != "edit-retry:"+first.OperationID || submission.DisplayPrompt != "edited prompt" {
+		t.Fatalf("repaired submission=%#v found=%v error=%v", submission, found, err)
+	}
+}
+
+func TestEditRetryDefersTransientPostProviderPersistenceFailure(t *testing.T) {
+	host, store, runtime := newHostEditRetryFixture(t)
+	runtime.mu.Lock()
+	runtime.provenanceError = errors.New("database is locked (5) (SQLITE_BUSY)")
+	runtime.mu.Unlock()
+	first, err := host.EditRetry(
+		t.Context(),
+		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
+		"turn-original",
+		agenthost.EditRetryInput{EditedText: "edited prompt", ClientOperationID: "edit-transient-store", ExpectedHistoryRevision: 0},
+	)
+	if !errors.Is(err, agenthost.ErrEditRetryResendPending) || first.OperationID == "" {
+		t.Fatalf("EditRetry() result=%#v error=%v, want deferred resend-pending operation", first, err)
+	}
+	op, found, err := store.GetRuntimeOperation(t.Context(), "workspace-1", first.OperationID)
+	if err != nil || !found || op.Status != storesqlite.RuntimeOperationStatusPrepared || op.LeaseOwner != "" || op.NextAttemptAtMS <= op.UpdatedAtUnixMS {
+		t.Fatalf("deferred operation=%#v found=%v error=%v, want unleased future retry", op, found, err)
+	}
+	payload, err := storesqlite.DecodeEditRetryOperationPayload(op.Payload)
+	if err != nil || payload.Checkpoint != storesqlite.EditRetryCheckpointReplacementDispatched {
+		t.Fatalf("deferred payload=%#v error=%v, want replacement_dispatched checkpoint", payload, err)
+	}
+	history, found, err := store.GetSessionHistory(t.Context(), "workspace-1", "session-1")
+	if err != nil || !found || history.RecoveryState != storesqlite.SessionHistoryRecoveryResendPending || history.OperationID != first.OperationID {
+		t.Fatalf("session history=%#v found=%v error=%v, want retained resend fence", history, found, err)
+	}
+
+	runtime.mu.Lock()
+	runtime.provenanceError = nil
+	execCalls := runtime.execCalls
+	runtime.mu.Unlock()
+	recovered, err := recoverEditRetryCommand(
+		host, t.Context(), agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
+		first.OperationID, agenthost.EditRetryRecoveryActionReconcile,
+	)
+	if err != nil || recovered.State != agenthost.EditRetryStateCompleted {
+		t.Fatalf("reconcile result=%#v error=%v, want completed without redispatch", recovered, err)
+	}
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	if runtime.execCalls != execCalls || runtime.rollbackCalls != 1 {
+		t.Fatalf("provider calls rollback=%d exec=%d, want 1 and unchanged exec=%d", runtime.rollbackCalls, runtime.execCalls, execCalls)
 	}
 }
 
@@ -130,26 +309,36 @@ func TestEditRetrySagaReconcilesAcceptedReplacementAfterResponseLoss(t *testing.
 			ExpectedHistoryRevision: 0,
 		},
 	)
-	if !errors.Is(err, agenthost.ErrEditRetryResendPending) {
-		t.Fatalf("EditRetry() error = %v, want resend pending", err)
+	if !errors.Is(err, agenthost.ErrEditRetryRecoveryRequired) {
+		t.Fatalf("EditRetry() error = %v, want session-local recovery", err)
 	}
 	if first.OperationID == "" {
 		t.Fatalf("EditRetry() result = %#v, want durable operation", first)
 	}
-	if first.ReasonCode != agenthost.EditRetryReasonCodeProviderOutcomeUnknown {
-		t.Fatalf("EditRetry() reason = %q, want provider outcome unknown", first.ReasonCode)
+	if first.State != agenthost.EditRetryStateRecoveryRequired || first.ReasonCode != agenthost.EditRetryReasonCodeProviderOutcomeUnknown {
+		t.Fatalf("EditRetry() result = %#v, want blocked provider-outcome-unknown recovery", first)
 	}
-	recovered, err := host.RecoverEditRetry(
+	if err := host.StepRuntimeOperationWorker(t.Context(), true); err != nil {
+		t.Fatalf("StepRuntimeOperationWorker() error = %v", err)
+	}
+	runtime.mu.Lock()
+	if runtime.execCalls != 1 {
+		runtime.mu.Unlock()
+		t.Fatalf("automatic worker redispatched unknown replacement: execCalls=%d", runtime.execCalls)
+	}
+	runtime.mu.Unlock()
+	recovered, err := recoverEditRetryCommand(
+		host,
 		t.Context(),
 		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
 		first.OperationID,
 		agenthost.EditRetryRecoveryActionReconcile,
 	)
 	if err != nil {
-		t.Fatalf("RecoverEditRetry() error = %v", err)
+		t.Fatalf("RecoverEditRetryCommand(reconcile) error = %v", err)
 	}
 	if recovered.State != agenthost.EditRetryStateCompleted {
-		t.Fatalf("RecoverEditRetry() result = %#v, want completed", recovered)
+		t.Fatalf("RecoverEditRetryCommand(reconcile) result = %#v, want completed", recovered)
 	}
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
@@ -185,23 +374,26 @@ func TestEditRetrySagaRetriesReplacementOnlyAfterAuthoritativeAbsence(t *testing
 			ExpectedHistoryRevision: 0,
 		},
 	)
-	if !errors.Is(err, agenthost.ErrEditRetryResendPending) {
-		t.Fatalf("EditRetry() error = %v, want resend pending", err)
+	if !errors.Is(err, agenthost.ErrEditRetryRecoveryRequired) {
+		t.Fatalf("EditRetry() error = %v, want session-local recovery", err)
 	}
-	if _, err := host.RecoverEditRetry(
+	reconciled, err := recoverEditRetryCommand(
+		host,
 		t.Context(),
 		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
 		first.OperationID,
 		agenthost.EditRetryRecoveryActionReconcile,
-	); !errors.Is(err, agenthost.ErrEditRetryResendPending) {
-		t.Fatalf("reconcile error = %v, want resend pending", err)
+	)
+	if err != nil || reconciled.State != agenthost.EditRetryStateResendPending {
+		t.Fatalf("reconcile result=%#v error=%v, want explicit resend-pending state", reconciled, err)
 	}
 	runtime.mu.Lock()
 	if runtime.execCalls != 1 {
 		t.Fatalf("reconcile exec calls = %d, want 1", runtime.execCalls)
 	}
 	runtime.mu.Unlock()
-	retried, err := host.RecoverEditRetry(
+	retried, err := recoverEditRetryCommand(
+		host,
 		t.Context(),
 		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
 		first.OperationID,
@@ -238,37 +430,43 @@ func TestEditRetrySagaCanRetryReplacementAfterSecondAuthoritativeAbsence(t *test
 			ExpectedHistoryRevision: 0,
 		},
 	)
-	if !errors.Is(err, agenthost.ErrEditRetryResendPending) {
-		t.Fatalf("EditRetry() error = %v, want resend pending", err)
+	if !errors.Is(err, agenthost.ErrEditRetryRecoveryRequired) {
+		t.Fatalf("EditRetry() error = %v, want session-local recovery", err)
 	}
-	if _, err := host.RecoverEditRetry(
+	reconciled, err := recoverEditRetryCommand(
+		host,
 		t.Context(),
 		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
 		first.OperationID,
 		agenthost.EditRetryRecoveryActionReconcile,
-	); !errors.Is(err, agenthost.ErrEditRetryResendPending) {
-		t.Fatalf("first reconcile error = %v, want resend pending", err)
+	)
+	if err != nil || reconciled.State != agenthost.EditRetryStateResendPending {
+		t.Fatalf("first reconcile result=%#v error=%v, want explicit resend-pending state", reconciled, err)
 	}
 	runtime.mu.Lock()
 	runtime.execOutcomeUnknown = true
 	runtime.mu.Unlock()
-	if _, err := host.RecoverEditRetry(
+	if _, err := recoverEditRetryCommand(
+		host,
 		t.Context(),
 		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
 		first.OperationID,
 		agenthost.EditRetryRecoveryActionRetryReplacement,
-	); !errors.Is(err, agenthost.ErrEditRetryResendPending) {
-		t.Fatalf("first retry error = %v, want resend pending", err)
+	); !errors.Is(err, agenthost.ErrEditRetryRecoveryRequired) {
+		t.Fatalf("first retry error = %v, want session-local recovery", err)
 	}
-	if _, err := host.RecoverEditRetry(
+	reconciled, err = recoverEditRetryCommand(
+		host,
 		t.Context(),
 		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
 		first.OperationID,
 		agenthost.EditRetryRecoveryActionReconcile,
-	); !errors.Is(err, agenthost.ErrEditRetryResendPending) {
-		t.Fatalf("second reconcile error = %v, want resend pending", err)
+	)
+	if err != nil || reconciled.State != agenthost.EditRetryStateResendPending {
+		t.Fatalf("second reconcile result=%#v error=%v, want explicit resend-pending state", reconciled, err)
 	}
-	retried, err := host.RecoverEditRetry(
+	retried, err := recoverEditRetryCommand(
+		host,
 		t.Context(),
 		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
 		first.OperationID,
@@ -299,7 +497,7 @@ func TestEditRetrySagaCanRetryReplacementAfterSecondAuthoritativeAbsence(t *test
 }
 
 func TestEditRetrySagaRetriesDefinitivelyNotDispatchedReplacement(t *testing.T) {
-	host, _, runtime := newHostEditRetryFixture(t)
+	host, store, runtime := newHostEditRetryFixture(t)
 	runtime.mu.Lock()
 	runtime.execNotDispatchedBeforeTurn = true
 	runtime.mu.Unlock()
@@ -315,7 +513,19 @@ func TestEditRetrySagaRetriesDefinitivelyNotDispatchedReplacement(t *testing.T) 
 	if !errors.Is(err, agenthost.ErrEditRetryResendPending) {
 		t.Fatalf("EditRetry() error = %v, want resend pending", err)
 	}
-	retried, err := host.RecoverEditRetry(
+	blocked, found, err := store.GetRuntimeOperation(t.Context(), "workspace-1", first.OperationID)
+	if err != nil || !found || blocked.Status != storesqlite.RuntimeOperationStatusBlocked || blocked.NextAttemptAtMS != 0 {
+		t.Fatalf("not-dispatched operation=%#v found=%v error=%v, want non-claimable blocked state", blocked, found, err)
+	}
+	if err := host.StepRuntimeOperationWorker(t.Context(), true); err != nil {
+		t.Fatalf("blocked operation worker step error = %v", err)
+	}
+	afterWorker, found, err := store.GetRuntimeOperation(t.Context(), "workspace-1", first.OperationID)
+	if err != nil || !found || afterWorker.Attempt != blocked.Attempt {
+		t.Fatalf("worker changed blocked operation=%#v found=%v error=%v", afterWorker, found, err)
+	}
+	retried, err := recoverEditRetryCommand(
+		host,
 		t.Context(),
 		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
 		first.OperationID,
@@ -335,6 +545,51 @@ func TestEditRetrySagaRetriesDefinitivelyNotDispatchedReplacement(t *testing.T) 
 			runtime.execCalls,
 			runtime.rollbackCalls,
 		)
+	}
+}
+
+func TestEditRetrySagaBlocksExplicitProviderRejection(t *testing.T) {
+	host, store, runtime := newHostEditRetryFixture(t)
+	runtime.mu.Lock()
+	runtime.execRejected = true
+	runtime.mu.Unlock()
+	first, err := host.EditRetry(
+		t.Context(),
+		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
+		"turn-original",
+		agenthost.EditRetryInput{
+			EditedText: "edited prompt", ClientOperationID: "edit-provider-rejected",
+			ExpectedHistoryRevision: 0,
+		},
+	)
+	if !errors.Is(err, agenthost.ErrEditRetryRecoveryRequired) {
+		t.Fatalf("EditRetry() error = %v, want recovery required", err)
+	}
+	operation, found, err := store.GetRuntimeOperation(t.Context(), "workspace-1", first.OperationID)
+	if err != nil || !found {
+		t.Fatalf("GetRuntimeOperation() found=%v error=%v", found, err)
+	}
+	if operation.Status != storesqlite.RuntimeOperationStatusBlocked ||
+		operation.LastError != string(storesqlite.EditRetryReasonProviderRejected) ||
+		operation.NextAttemptAtMS != 0 || operation.LeaseOwner != "" {
+		t.Fatalf("blocked operation = %#v, want provider-rejected blocked state", operation)
+	}
+	payload, err := storesqlite.DecodeEditRetryOperationPayload(operation.Payload)
+	if err != nil || payload.Checkpoint != storesqlite.EditRetryCheckpointReplacementDispatched ||
+		!payload.ReplacementNotDispatched || payload.RedispatchProofAt != 0 {
+		t.Fatalf("rejection payload = %#v error=%v, want negative receipt without stale proof", payload, err)
+	}
+	history, found, err := store.GetSessionHistory(t.Context(), "workspace-1", "session-1")
+	if err != nil || !found || history.RecoveryState != storesqlite.SessionHistoryRecoveryRequired || history.OperationID != first.OperationID {
+		t.Fatalf("session history = %#v found=%v error=%v, want recovery-required fence", history, found, err)
+	}
+	if err := host.StepRuntimeOperationWorker(t.Context(), true); err != nil {
+		t.Fatalf("StepRuntimeOperationWorker() error = %v", err)
+	}
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	if runtime.execCalls != 1 || runtime.rollbackCalls != 1 {
+		t.Fatalf("provider calls rollback=%d exec=%d, want 1/1 with no automatic retry", runtime.rollbackCalls, runtime.execCalls)
 	}
 }
 
@@ -423,16 +678,33 @@ type hostEditRetryRuntime struct {
 	store                       *storesqlite.Store
 	providerTurns               []agenthost.RuntimeHistoryTurn
 	rollbackCalls               int
+	rollbackNotDispatched       bool
 	execCalls                   int
 	historyReads                int
+	historyReadStarted          chan struct{}
+	historyReadRelease          <-chan struct{}
+	historyReadError            error
+	historyReadErrorOn          int
 	rollbackUnknown             bool
+	rollbackUnknownApplied      bool
 	execOutcomeUnknown          bool
 	execOutcomeUnknownAccepted  bool
 	execNotDispatchedBeforeTurn bool
+	execRejected                bool
+	afterExec                   func() error
+	afterRollback               func() error
+	rollbackLedger              *rollbackMutationLedger
+	replacementLedger           *replacementMutationLedger
 	reconcileAcceptanceCalls    int
 	reconcileAcceptanceInput    agenthost.RuntimeProviderTurnAcceptanceInput
 	goalControlCalls            int
+	cancelCalls                 map[string]int
+	cancelErrors                map[string]error
 	content                     []agenthost.PromptContentBlock
+
+	canonicalSubmitOccurredAtUnixMS int64
+	provenanceError                 error
+	historyUnsupported              bool
 }
 
 func (*hostEditRetryRuntime) Start(context.Context, agenthost.RuntimeStartInput) (agenthost.ProviderRuntimeSession, error) {
@@ -455,21 +727,35 @@ func (r *hostEditRetryRuntime) Exec(ctx context.Context, input agenthost.Runtime
 	r.mu.Lock()
 	r.execCalls++
 	r.content = append([]agenthost.PromptContentBlock(nil), input.Content...)
+	r.canonicalSubmitOccurredAtUnixMS = input.CanonicalSubmitOccurredAtUnixMS
 	providerTurnID := "provider-" + input.TurnID
 	outcomeUnknown := r.execOutcomeUnknown
 	outcomeUnknownAccepted := r.execOutcomeUnknownAccepted
 	notDispatchedBeforeTurn := r.execNotDispatchedBeforeTurn
+	rejected := r.execRejected
+	afterExec := r.afterExec
 	r.execOutcomeUnknown = false
 	r.execOutcomeUnknownAccepted = false
 	r.execNotDispatchedBeforeTurn = false
+	r.execRejected = false
 	if !outcomeUnknown || outcomeUnknownAccepted {
-		if !notDispatchedBeforeTurn {
+		if !notDispatchedBeforeTurn && !rejected {
 			r.providerTurns = append(r.providerTurns, agenthost.RuntimeHistoryTurn{
 				ID: providerTurnID, ClientUserMessageID: input.ClientSubmitID,
 			})
+			if r.replacementLedger != nil && input.HistoryReplacement {
+				r.replacementLedger.Record(input.ClientSubmitID)
+			}
 		}
 	}
 	r.mu.Unlock()
+	if rejected {
+		return agenthost.RuntimeExecResult{
+			ProviderDispatch: agenthost.RuntimeProviderDispatchResult{
+				Disposition: agenthost.RuntimeDispatchDispositionRejected,
+			},
+		}, errors.New("provider rejected turn/start")
+	}
 	if notDispatchedBeforeTurn {
 		return agenthost.RuntimeExecResult{
 			ProviderDispatch: agenthost.RuntimeProviderDispatchResult{
@@ -519,6 +805,11 @@ func (r *hostEditRetryRuntime) Exec(ctx context.Context, input agenthost.Runtime
 	}); err != nil {
 		return agenthost.RuntimeExecResult{}, err
 	}
+	if afterExec != nil {
+		if err := afterExec(); err != nil {
+			return agenthost.RuntimeExecResult{}, err
+		}
+	}
 	return agenthost.RuntimeExecResult{
 		TurnID: input.TurnID,
 		ProviderDispatch: agenthost.RuntimeProviderDispatchResult{
@@ -555,14 +846,33 @@ func (r *hostEditRetryRuntime) ReconcileProviderTurnAcceptance(
 func (*hostEditRetryRuntime) ValidatePromptContent(context.Context, agenthost.RuntimeExecInput) error {
 	return nil
 }
+func (r *hostEditRetryRuntime) DurablyReportSubmitProvenance(_ context.Context, input agenthost.RuntimeSubmitProvenanceInput) error {
+	if input.CanonicalSubmitOccurredAtUnixMS <= 0 {
+		return errors.New("canonical submit occurrence time is required")
+	}
+	r.mu.Lock()
+	if err := r.provenanceError; err != nil {
+		r.mu.Unlock()
+		return err
+	}
+	r.canonicalSubmitOccurredAtUnixMS = input.CanonicalSubmitOccurredAtUnixMS
+	r.mu.Unlock()
+	return nil
+}
 func (r *hostEditRetryRuntime) GoalControl(context.Context, agenthost.RuntimeGoalControlInput) (agenthost.RuntimeGoalControlResult, error) {
 	r.mu.Lock()
 	r.goalControlCalls++
 	r.mu.Unlock()
 	return agenthost.RuntimeGoalControlResult{}, nil
 }
-func (*hostEditRetryRuntime) Cancel(context.Context, agenthost.RuntimeCancelInput) (agenthost.RuntimeCancelResult, error) {
-	return agenthost.RuntimeCancelResult{}, nil
+func (r *hostEditRetryRuntime) Cancel(_ context.Context, input agenthost.RuntimeCancelInput) (agenthost.RuntimeCancelResult, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.cancelCalls == nil {
+		r.cancelCalls = make(map[string]int)
+	}
+	r.cancelCalls[input.RootAgentSessionID]++
+	return agenthost.RuntimeCancelResult{}, r.cancelErrors[input.RootAgentSessionID]
 }
 func (*hostEditRetryRuntime) SubmitInteractive(context.Context, agenthost.RuntimeSubmitInteractiveInput) (agenthost.RuntimeSubmitInteractiveResult, error) {
 	return agenthost.RuntimeSubmitInteractiveResult{}, nil
@@ -580,31 +890,85 @@ func (r *hostEditRetryRuntime) SetVisible(context.Context, agenthost.RuntimeSetV
 	return r.session(), nil
 }
 func (*hostEditRetryRuntime) Close(context.Context, agenthost.RuntimeCloseInput) error { return nil }
-func (*hostEditRetryRuntime) SupportsEffectiveHistory(context.Context, agenthost.RuntimeHistoryInput) (bool, error) {
-	return true, nil
-}
-func (r *hostEditRetryRuntime) ReadEffectiveHistory(context.Context, agenthost.RuntimeHistoryInput) (agenthost.RuntimeHistorySnapshot, error) {
+func (r *hostEditRetryRuntime) SupportsEffectiveHistory(context.Context, agenthost.RuntimeHistoryInput) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	return !r.historyUnsupported, nil
+}
+func (r *hostEditRetryRuntime) ReadEffectiveHistory(ctx context.Context, _ agenthost.RuntimeHistoryInput) (agenthost.RuntimeHistorySnapshot, error) {
+	r.mu.Lock()
 	r.historyReads++
-	return agenthost.RuntimeHistorySnapshot{
+	readNumber := r.historyReads
+	readErr := r.historyReadError
+	started, release := r.historyReadStarted, r.historyReadRelease
+	snapshot := agenthost.RuntimeHistorySnapshot{
 		ProviderSessionID: "thread-1",
 		Turns:             append([]agenthost.RuntimeHistoryTurn(nil), r.providerTurns...),
-	}, nil
+	}
+	r.mu.Unlock()
+	if readErr != nil && readNumber == r.historyReadErrorOn {
+		return agenthost.RuntimeHistorySnapshot{}, readErr
+	}
+	if started != nil {
+		select {
+		case started <- struct{}{}:
+		default:
+		}
+	}
+	if release != nil {
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return agenthost.RuntimeHistorySnapshot{}, ctx.Err()
+		}
+	}
+	return snapshot, nil
 }
 func (r *hostEditRetryRuntime) RollbackLatestTurn(context.Context, agenthost.RuntimeHistoryInput) (agenthost.RuntimeHistoryMutationResult, error) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.rollbackCalls++
-	if r.rollbackUnknown {
+	notDispatched, unknown, unknownApplied := r.rollbackNotDispatched, r.rollbackUnknown, r.rollbackUnknownApplied
+	afterRollback, ledger := r.afterRollback, r.rollbackLedger
+	r.rollbackNotDispatched, r.rollbackUnknown, r.rollbackUnknownApplied = false, false, false
+	if notDispatched {
+		r.mu.Unlock()
+		if afterRollback != nil {
+			if err := afterRollback(); err != nil {
+				return agenthost.RuntimeHistoryMutationResult{}, err
+			}
+		}
+		return agenthost.RuntimeHistoryMutationResult{Disposition: agenthost.RuntimeDispatchDispositionNotDispatched}, errors.New("rollback was not dispatched")
+	}
+	if unknown {
+		if unknownApplied {
+			r.providerTurns = r.providerTurns[:len(r.providerTurns)-1]
+			if ledger != nil {
+				ledger.Record()
+			}
+		}
+		r.mu.Unlock()
+		if afterRollback != nil {
+			if err := afterRollback(); err != nil {
+				return agenthost.RuntimeHistoryMutationResult{}, err
+			}
+		}
 		return agenthost.RuntimeHistoryMutationResult{
 			Disposition: agenthost.RuntimeDispatchDispositionOutcomeUnknown,
 		}, errors.New("rollback response lost")
 	}
 	r.providerTurns = r.providerTurns[:len(r.providerTurns)-1]
+	if ledger != nil {
+		ledger.Record()
+	}
 	snapshot := agenthost.RuntimeHistorySnapshot{
 		ProviderSessionID: "thread-1",
 		Turns:             append([]agenthost.RuntimeHistoryTurn(nil), r.providerTurns...),
+	}
+	r.mu.Unlock()
+	if afterRollback != nil {
+		if err := afterRollback(); err != nil {
+			return agenthost.RuntimeHistoryMutationResult{}, err
+		}
 	}
 	return agenthost.RuntimeHistoryMutationResult{
 		Disposition: agenthost.RuntimeDispatchDispositionApplied, Snapshot: &snapshot,

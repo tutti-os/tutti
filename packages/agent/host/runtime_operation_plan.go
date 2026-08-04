@@ -167,10 +167,26 @@ func (h *Host) executePlanImplementationRuntimeOperation(ctx context.Context, op
 	if err != nil {
 		return operation, err
 	}
-	_, sendErr := h.SendInput(ctx, SessionRef{WorkspaceID: operation.WorkspaceID, AgentSessionID: operation.AgentSessionID}, SendInput{
+	// processRuntimeOperationSerialized already owns this session's mutation
+	// actor. Re-entering the public SendInput command would wait on that same
+	// actor forever, so the plan-decision runtime operation uses the internal
+	// serialized command path instead.
+	input := SendInput{
 		Content:  []PromptContentBlock{{Type: "text", Text: planImplementationPrompt}},
 		Metadata: map[string]any{"clientSubmitId": clientSubmitID},
-	})
+	}
+	normalized, promptText, normalizeErr := normalizePromptContent(input.Content)
+	if normalizeErr != nil {
+		return h.releaseRuntimeOperation(ctx, operation, owner, normalizeErr, true)
+	}
+	_, sendErr := h.sendInputSerialized(
+		ctx,
+		SessionRef{WorkspaceID: operation.WorkspaceID, AgentSessionID: operation.AgentSessionID},
+		input,
+		normalized,
+		promptText,
+		submissionMetadata(input.Metadata, input.ClientSubmitID),
+	)
 	if sendErr != nil {
 		return h.releaseRuntimeOperation(ctx, operation, owner, sendErr, false)
 	}
