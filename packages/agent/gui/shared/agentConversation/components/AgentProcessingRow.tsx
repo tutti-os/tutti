@@ -44,11 +44,6 @@ export function AgentProcessingRow({
         className="shrink-0 animate-spin"
       />
       <span className="truncate font-medium">{phaseLabel}</span>
-      {statusLabels && elapsedSeconds !== null ? (
-        <span className="shrink-0 text-[var(--text-tertiary)]">
-          · {statusLabels.elapsedSeconds(elapsedSeconds)}
-        </span>
-      ) : null}
     </div>
   );
 }
