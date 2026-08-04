@@ -14,6 +14,13 @@ const desktopManagedAgentCatalog =
     (entry) => entry.desktop.managed
   );
 
+const desktopManagedAgentTargetIds = new Map<WorkspaceAgentProvider, string>(
+  desktopManagedAgentCatalog.map((entry) => [
+    entry.providerId as WorkspaceAgentProvider,
+    entry.target.id
+  ])
+);
+
 export const desktopManagedAgentProviders: readonly WorkspaceAgentProvider[] = [
   ...desktopManagedAgentCatalog
 ]
@@ -138,6 +145,12 @@ export function isDesktopManagedAgentProvider(
   return desktopManagedAgentProviders.includes(
     value as (typeof desktopManagedAgentProviders)[number]
   );
+}
+
+export function resolveDesktopManagedAgentTargetId(
+  provider: WorkspaceAgentProvider
+): string | null {
+  return desktopManagedAgentTargetIds.get(provider)?.trim() || null;
 }
 
 export function supportsRuntimeCandidateCatalog(

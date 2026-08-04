@@ -1842,6 +1842,49 @@ status chrome used by other runtime failures, immediately above the composer;
 it does not expose a second Host-owned availability container. The canonical
 composer gate blocks both editing and submission until the selected target is
 available.
+
+The optional `hostCapabilities.agentProviderUpdateNotices` projection and
+paired `hostActions.onAgentProviderUpdateNoticeAction` callback expose CLI
+updates without hiding workflow in a render slot. AgentGUI owns the generic
+card, localization, exact-target presentation, and its placement on the ready,
+empty Home surface. It omits the card for readiness gates and active
+conversations, so update discovery never becomes task-interrupting chrome. It
+also fails closed unless both the notice capability and its paired action are
+present. The Host remains responsible for discovery, actionable version
+metadata, dismissal, details navigation, and update lifecycle state.
+
+Tutti Desktop keeps those responsibilities in the window-scoped
+`DesktopAgentCLIUpdateNoticeService`; the React binding only reports whether a
+surface is eligible, subscribes to the readonly notice snapshot, and forwards
+user actions. The service fills the capability only from
+`desktopManagedAgentProviders`: when automatic checks are enabled, at least one
+visible empty Home surface requests cached update discovery through
+`IAgentProviderStatusService.ensureLoaded({ includeUpdates: true })`; the
+daemon remains the periodic discovery owner. Update discovery has a separate
+request-freshness plane from ordinary local readiness refreshes and is only
+overlaid when the Provider CLI path/version still identifies the same runtime;
+this prevents a later local refresh from hiding a valid discovery result or a
+stale result from crossing runtime selections. Each notice carries only the
+exact catalog-owned built-in `agentTargetId` and current/latest versions.
+AgentGUI resolves presentation from that target and fails closed if it is
+absent from the current directory; Desktop resolves the Provider again from
+its current internal projection before executing an action, so Provider
+metadata never becomes a second public identity. Explicit Update reuses
+`runAction(provider, "update")`, View details opens the existing Agent
+environment panel with `focus: "upgrade"`, and Later dismisses that exact
+available version for the current window. Pending, failed, and completed
+states remain visible in the notice; service-owned reconciliation also closes
+a failed card when another update path completes, and completion dismisses
+after a short confirmation interval. The terminal card uses explicit success
+copy and the installed version instead of retaining the stale “update
+available” title/current-version metadata. No actionable update means the
+capability is empty and no card is mounted. Extension-owned runtime updates do
+not enter this Desktop projection. Each empty Home surface further filters the
+window-scoped snapshot by its exact current `agentTargetId`: the Codex Home
+shows only the built-in Codex notice, the Tutti Agent Home shows only the
+built-in Tutti Agent notice, and another Agent Target never inherits a notice
+merely because it shares Provider metadata.
+
 Host chrome that aligns to AgentGUI's internal layout must consume explicit
 package signals such as `hostActions.onConversationRailLayoutChange`; it must
 not observe package DOM, CSS variables, or class names with

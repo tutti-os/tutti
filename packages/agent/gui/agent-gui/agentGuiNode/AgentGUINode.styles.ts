@@ -135,6 +135,7 @@ const styles = {
   emptyHeroProvider: "agent-gui-node__empty-hero-provider",
   emptyHeroProviderSelect: "agent-gui-node__empty-hero-provider-select",
   emptyHeroTitle: "agent-gui-node__empty-hero-title",
+  emptyHeroUpdateNotices: "agent-gui-node__empty-hero-update-notices",
   emptyHeroSuggestions: "agent-gui-node__empty-hero-suggestions",
   emptyHeroSuggestionsChips: "agent-gui-node__empty-hero-suggestions-chips",
   emptyHeroSuggestionsChip: "agent-gui-node__empty-hero-suggestions-chip",

@@ -404,6 +404,41 @@ describe("AgentGUINode memoization", () => {
     ).toBe(secondRenderer);
   });
 
+  it("passes Agent CLI update capabilities through the memo boundary", () => {
+    mockViewModel = createViewModel();
+    const firstNotices = [{ agentTargetId: "local:codex" }] as never;
+    const secondNotices = [{ agentTargetId: "local:claude-code" }] as never;
+    const initial = createProps();
+    const props = {
+      ...initial,
+      hostCapabilities: {
+        ...initial.hostCapabilities,
+        agentProviderUpdateNotices: firstNotices
+      }
+    };
+    const { rerender } = render(<AgentGUINode {...props} />);
+
+    expect(
+      agentGuiNodeViewSpy.mock.calls.at(-1)?.[0].agentProviderUpdateNotices
+    ).toBe(firstNotices);
+
+    agentGuiNodeViewSpy.mockClear();
+    rerender(
+      <AgentGUINode
+        {...props}
+        hostCapabilities={{
+          ...props.hostCapabilities,
+          agentProviderUpdateNotices: secondNotices
+        }}
+      />
+    );
+
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+    expect(
+      agentGuiNodeViewSpy.mock.calls.at(-1)?.[0].agentProviderUpdateNotices
+    ).toBe(secondNotices);
+  });
+
   it("keeps rail labels stable when provider-facing labels change", () => {
     mockViewModel = createViewModel();
     const props = createProps();

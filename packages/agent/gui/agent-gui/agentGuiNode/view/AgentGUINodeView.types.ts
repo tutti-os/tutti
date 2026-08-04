@@ -17,7 +17,9 @@ import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions"
 import type {
   AgentGUIProvider,
   AgentGUIProviderRailAllPresentation,
-  AgentGUIAgentTargetInfoRenderer
+  AgentGUIAgentTargetInfoRenderer,
+  AgentGUIProviderUpdateNotice,
+  AgentGUIProviderUpdateNoticeAction
 } from "../../../types";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
 import type { PlanIssueBudgetPreset } from "../../../shared/agentConversation/planImplementationPresentation";
@@ -530,6 +532,7 @@ export interface AgentGUINodeViewProps {
   sessionForkEnabled?: boolean;
   /** Host-owned presentation for exact Agent targets; tooltip behavior stays AgentGUI-owned. */
   renderAgentTargetInfo?: AgentGUIAgentTargetInfoRenderer;
+  agentProviderUpdateNotices?: readonly AgentGUIProviderUpdateNotice[];
   renderProjectDirectoryPickerHeaderActions?: ReferenceSourcePickerProps["renderHeaderActions"];
   renderSidebarFooter?: AgentGUISidebarFooterRenderer;
   /** Renders the provider rail empty state in "exact" mode. See the type doc. */
@@ -581,6 +584,10 @@ export interface AgentGUINodeViewProps {
   onSlashStatusRefresh?: AgentComposerProps["onSlashStatusRefresh"];
   onAgentProviderLogin?: (provider?: string | null) => void;
   onAgentEnvPanelOpen?: (input?: OpenAgentEnvPanelInput) => void;
+  onAgentProviderUpdateNoticeAction?: (input: {
+    action: AgentGUIProviderUpdateNoticeAction;
+    notice: AgentGUIProviderUpdateNotice;
+  }) => void;
   actions: {
     updateConversationFilter: (
       filter: AgentGUINodeViewModel["rail"]["conversationFilter"]
@@ -754,6 +761,11 @@ export interface AgentGUIDetailPaneProps {
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   onRequestComposerFocus: () => void;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+  agentProviderUpdateNotices?: readonly AgentGUIProviderUpdateNotice[];
+  onAgentProviderUpdateNoticeAction?: (input: {
+    action: AgentGUIProviderUpdateNoticeAction;
+    notice: AgentGUIProviderUpdateNotice;
+  }) => void;
   renderComposerFooterAccessory?: AgentGUIComposerFooterAccessoryRenderer;
 }
 
