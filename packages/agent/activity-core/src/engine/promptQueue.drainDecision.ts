@@ -1,5 +1,29 @@
-import type { CanonicalSubmitAvailability } from "./sessionLifecycle.availability.ts";
+import type {
+  CanonicalSessionLifecycleView,
+  CanonicalSubmitAvailability
+} from "./sessionLifecycle.availability.ts";
 import type { PromptQueueRecord } from "./promptQueue.types.ts";
+
+export function isSettingsUpdateBlockingDrain(
+  lifecycle: CanonicalSessionLifecycleView,
+  agentSessionId: string
+): boolean {
+  const status =
+    lifecycle.operationBySessionId[agentSessionId]?.settingsUpdate.status;
+  return (
+    status === "inFlight" ||
+    status === "waitingForRuntime" ||
+    status === "unknown" ||
+    status === "failed"
+  );
+}
+
+export function activeTurnIdForSession(
+  lifecycle: CanonicalSessionLifecycleView,
+  rawAgentSessionId: string
+): string | undefined {
+  return lifecycle.sessionsById[rawAgentSessionId.trim()]?.activeTurnId?.trim();
+}
 
 export type QueueDrainDecision =
   | {

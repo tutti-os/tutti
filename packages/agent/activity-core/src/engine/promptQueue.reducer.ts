@@ -30,7 +30,11 @@ import {
   canRequestQueuedPromptSendNow,
   type PromptQueueSendNowStrategy
 } from "./promptQueue.sendNow.ts";
-import { resolveQueueDrainDecision } from "./promptQueue.drainDecision.ts";
+import {
+  activeTurnIdForSession,
+  isSettingsUpdateBlockingDrain,
+  resolveQueueDrainDecision
+} from "./promptQueue.drainDecision.ts";
 import {
   deriveCanonicalSubmitAvailability,
   type CanonicalSessionLifecycleView
@@ -109,7 +113,7 @@ function reduceQueueOwnedState(
           intent.clientSubmitId,
           context.sendNowStrategy,
           intent.targetTurnId ??
-            activeTurnID(context.lifecycle, intent.agentSessionId)
+            activeTurnIdForSession(context.lifecycle, intent.agentSessionId)
         );
       }
       return enqueueSubmit(state, intent, context.lifecycle);
@@ -147,7 +151,7 @@ function reduceQueueOwnedState(
         intent.agentSessionId,
         intent.promptId,
         context.sendNowStrategy,
-        activeTurnID(context.lifecycle, intent.agentSessionId)
+        activeTurnIdForSession(context.lifecycle, intent.agentSessionId)
       );
     case "queue/suspended":
       return suspendQueue(state, intent.agentSessionId, intent.reason);
@@ -677,29 +681,6 @@ function sendCommandFromQueuedPrompt(
     type: "queue/sendPrompt",
     workspaceId: record.workspaceId
   };
-}
-
-function isSettingsUpdateBlockingDrain(
-  lifecycle: CanonicalSessionLifecycleView,
-  agentSessionId: string
-): boolean {
-  const status =
-    lifecycle.operationBySessionId[agentSessionId]?.settingsUpdate.status;
-  return (
-    status === "inFlight" ||
-    status === "waitingForRuntime" ||
-    status === "unknown" ||
-    status === "failed"
-  );
-}
-
-function activeTurnID(
-  lifecycle: CanonicalSessionLifecycleView,
-  rawAgentSessionId: string
-): string | undefined {
-  const activeTurnID =
-    lifecycle.sessionsById[rawAgentSessionId.trim()]?.activeTurnId;
-  return activeTurnID?.trim() || undefined;
 }
 
 function affectedSessionIds(
